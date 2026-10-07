@@ -39,15 +39,13 @@ let activeQueueSession: { handleSent: ReturnType<typeof vi.fn> } | null = null;
 vi.mock('~/composables/useAnswerQueueSession', () => ({
 	useAnswerQueueSession: () => activeQueueSession,
 }));
-// Catch-up and Draft with AI have their own suites; here they are a seam the
-// test switches on and off.
+// Draft with AI has its own suite; here it is a seam the test switches on and off.
 const draftWithAi = ref(false);
 vi.mock('~/composables/useAnswerTeamAssist', () => ({
 	useAnswerTeamAssist: () => ({
 		aiEnabled: draftWithAi,
 		draftWithAi,
 		statusNote: ref('1 of 2 asks covered'),
-		catchUp: { catchUp: ref(null), loading: ref(false) },
 		// The response plan (useResponsePlan): nothing selected, nothing to flag.
 		plan: {
 			view: {
@@ -61,8 +59,8 @@ vi.mock('~/composables/useAnswerTeamAssist', () => ({
 			missingFiles: ref<string[]>([]),
 			checkCoverage: vi.fn(),
 			recheck: vi.fn(),
+			items: ref([]),
 		},
-		planItems: ref([]),
 		ask: {
 			phase: ref('idle'),
 			session: ref(null),
@@ -71,6 +69,14 @@ vi.mock('~/composables/useAnswerTeamAssist', () => ({
 			start: vi.fn(),
 			answer: vi.fn(),
 		},
+	}),
+}));
+// The team stream and its open actions have their own suites (components/team).
+vi.mock('~/composables/team/useTeamThread', () => ({
+	useTeamThread: () => ({
+		stream: { entries: ref([]) },
+		viewerId: ref('u_me'),
+		openItems: ref(null),
 	}),
 }));
 vi.mock('~/composables/useOrganization', () => ({
@@ -215,6 +221,7 @@ async function mountPage() {
 						h('div', { 'data-testid': 'answer-notes-panel', 'data-active': String(props.active) }),
 				}),
 				AnswerTeamConversation: inert('AnswerTeamConversation'),
+				TeamPinnedItems: inert('TeamPinnedItems'),
 				AnswerTeamReusedAnswers: inert('AnswerTeamReusedAnswers'),
 				AnswerTeamPlan: inert('AnswerTeamPlan'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
@@ -454,11 +461,10 @@ describe('Answer mode for a Team inbox thread', () => {
 		expect(wrapper.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
 	});
 
-	it('offers Draft with AI above the editor when it is on, with the asks covered beside Send', async () => {
+	it('offers Draft with AI above the editor when it is on', async () => {
 		draftWithAi.value = true;
 		const wrapper = await mountPage();
 		expect(wrapper.find('[data-testid="answer-ai-bar"]').exists()).toBe(true);
-		expect(wrapper.get('[data-testid="composer-save-state"]').text()).toBe('1 of 2 asks covered');
 		draftWithAi.value = false;
 	});
 

@@ -42,6 +42,34 @@ export async function loadInterpretSource(
 		.first();
 }
 
+/**
+ * A team send and the inbound message it answers: through `inboundMessageId`,
+ * or, for a human follow-up (no inbound message of its own), through its
+ * `inboxFollowUps` row (`inReplyToMessageId`, `threadId`). Null when either
+ * is gone or they name different threads.
+ */
+export async function teamReplyContext(
+	ctx: ReadCtx,
+	sendId: Id<'transactionalSends'>
+): Promise<{
+	send: Doc<'transactionalSends'>;
+	inbound: Doc<'inboundMessages'>;
+	threadId: Id<'conversationThreads'>;
+} | null> {
+	const send = await ctx.db.get(sendId);
+	if (!send) return null;
+	if (send.inboundMessageId) {
+		const inbound = await ctx.db.get(send.inboundMessageId);
+		return inbound?.threadId ? { send, inbound, threadId: inbound.threadId } : null;
+	}
+	if (!send.followUpId) return null;
+	const followUp = await ctx.db.get(send.followUpId);
+	if (!followUp) return null;
+	const inbound = await ctx.db.get(followUp.inReplyToMessageId);
+	if (!inbound || (inbound.threadId && inbound.threadId !== followUp.threadId)) return null;
+	return { send, inbound, threadId: followUp.threadId };
+}
+
 async function threadOfSource(
 	ctx: ReadCtx,
 	source: InterpretationSource
@@ -57,9 +85,8 @@ async function threadOfSource(
 			return row?.threadId ? { kind: 'team', id: row.threadId } : null;
 		}
 		case 'teamReply': {
-			const send = await ctx.db.get(source.id);
-			const inbound = send?.inboundMessageId ? await ctx.db.get(send.inboundMessageId) : null;
-			return inbound?.threadId ? { kind: 'team', id: inbound.threadId } : null;
+			const reply = await teamReplyContext(ctx, source.id);
+			return reply ? { kind: 'team', id: reply.threadId } : null;
 		}
 	}
 }

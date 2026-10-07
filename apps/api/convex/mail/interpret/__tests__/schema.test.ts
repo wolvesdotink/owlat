@@ -50,7 +50,9 @@ const item: InterpretItemProposal = {
 const actionsPayload = {
 	mode: 'actions' as const,
 	items: [item],
-	transitions: [{ itemId: 'item_1', to: 'done' as const, disposition: null, quotes: [quote] }],
+	transitions: [
+		{ itemId: 'item_1', about: null, to: 'done' as const, disposition: null, quotes: [quote] },
+	],
 	replyIntent: 'request_for_action' as const,
 	urgency: 'normal' as const,
 	meetingIntent: null,

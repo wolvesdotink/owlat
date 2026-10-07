@@ -17,6 +17,9 @@ const ALLOWED = new Set([
 	'inbox/notes.ts',
 	'inbox/noteMentions.ts',
 	'inbox/noteRules.ts',
+	// The team thread stream: notes beside the emails on the thread page and
+	// in Answer mode, for Team Inbox readers only (never a prompt or a mail).
+	'inbox/teamStream.ts',
 	'schema/inboxCollaboration.ts',
 	// Emoji reactions on notes and the note's `#` item link (thread brief):
 	// stores reactions and checks the link, never reads a note's text.
@@ -39,7 +42,7 @@ const ALLOWED = new Set([
 	// purged, and declares those relations (never reads a note body).
 	'auth/erasure/threadBriefRelations.ts',
 	'contacts/erasure/threadBriefRelations.ts',
-	'mail/interpret/purgeRows.ts',
+	'mail/interpret/purgeLinks.ts',
 ]);
 
 const ROOT = join(__dirname, '..', '..');

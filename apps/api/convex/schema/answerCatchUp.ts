@@ -4,7 +4,8 @@ import { catchUpValidator } from '../lib/validators/catchUp';
 
 /**
  * Answer mode's catch-up card, cached per thread and interface locale
- * (mail/ai/catchUp.ts for Postbox threads, inbox/catchUp.ts for team threads).
+ * (mail/ai/catchUp.ts for Postbox threads). Team threads had one until the
+ * team stream replaced it (SPEC §7); their rows stay readable for erasure only.
  *
  * One row per (thread, locale). Exactly one of `mailThreadId` /
  * `conversationThreadId` is set. The row is served only while its

@@ -106,7 +106,7 @@ const DELETED_BY_HELPER = new Set([
 	'sendReadyNotices',
 	'platformAdmins',
 	// The thread brief rows of a personal thread: drainThreadBrief, through the
-	// per-thread ranges of mail/interpret/purgeRows.ts.
+	// per-thread ranges of mail/interpret/purgeRows.ts (purge jobs, purgeThread.ts).
 	...THREAD_BRIEF_TABLES,
 ]);
 

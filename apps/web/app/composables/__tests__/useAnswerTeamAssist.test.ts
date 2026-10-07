@@ -12,7 +12,6 @@ vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, { get: () => anyPath });
 	return { api: anyPath };
 });
-vi.mock('~/composables/useAnswerCatchUp', () => ({ useAnswerCatchUp: () => ({}) }));
 vi.mock('~/composables/useResponsePlan', () => ({
 	useResponsePlan: () => ({ statusNote: ref(undefined), checkCoverage: vi.fn() }),
 }));
@@ -30,8 +29,6 @@ function draftWithAiUnder(flags: string[]) {
 					threadId: () => 'ct_1' as never,
 					inboundMessageId: () => null,
 					composer: () => null,
-					messageCount: () => 3,
-					view: ref('summary'),
 					attachFile: () => {},
 				});
 				return () => h('div');

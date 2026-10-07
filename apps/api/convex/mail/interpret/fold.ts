@@ -72,6 +72,8 @@ export interface MemItem extends Omit<PlanItem, 'evidence'> {
 export interface MemFact extends Omit<PlanFact, 'evidence'> {
 	evidence: MemEvidence[];
 	lineage?: string;
+	/** Claim keys merged into it by this fold (kept in the source's claim record). */
+	lineageKeys?: string[];
 	isNew: boolean;
 	/** The claim whose text and value the fact takes (new, or a same-source re-read). */
 	proposal?: ReduceFact;
@@ -169,37 +171,54 @@ function plainEvidence(
 }
 
 /**
- * Resolve each claim's identity against the thread (see the module doc):
- * a claim without a valid `matchItemId` whose content key produced an item
- * before is pointed at that item, so it MERGES instead of creating a twin.
- * Superseded items are never targets. Pure.
+ * Resolve each claim's identity against the thread (see the module doc): a
+ * claim without a valid `matchItemId` whose content key produced (or matched)
+ * an item before is pointed at that item, so it MERGES instead of creating a
+ * twin. Terminal items count too (round 5 F4): a re-read of a request that was
+ * replaced merges into it and never mints a new open item. Fact claims are
+ * resolved the same way (returned as `factIdentity`, index → fact id).
+ * `claimIds` is the source's stored lineage record (`interpretSources`), for
+ * items outside the scanned state that the reducer loaded directly. Pure.
  */
 export function resolveIdentity(
 	state: MemState,
 	result: ReduceResult,
-	sourceKey: string
-): ReduceResult {
-	const byKey = new Map<string, string>();
+	sourceKey: string,
+	claimIds: ReadonlyMap<string, string> = new Map()
+): { result: ReduceResult; factIdentity: Map<number, string> } {
+	const byKey = new Map<string, string>(
+		[...claimIds].filter(([, id]) => state.items.has(id) || state.facts.has(id))
+	);
 	for (const item of state.items.values()) {
-		if (item.status === 'superseded') continue;
 		for (const key of [item.lineage, ...(item.lineageKeys ?? [])]) {
 			if (key && !byKey.has(key)) byKey.set(key, item._id);
 		}
 	}
+	for (const fact of state.facts.values()) {
+		for (const key of [fact.lineage, ...(fact.lineageKeys ?? [])]) {
+			if (key && !byKey.has(key)) byKey.set(key, fact._id);
+		}
+	}
 	const items = result.items.map((claim) => {
-		const target = claim.matchItemId ? state.items.get(claim.matchItemId) : undefined;
-		if (target && target.status !== 'superseded') return claim;
+		if (claim.matchItemId && state.items.has(claim.matchItemId)) return claim;
 		const known = byKey.get(itemLineage(sourceKey, claim));
-		return known ? { ...claim, matchItemId: known } : claim;
+		return known && state.items.has(known) ? { ...claim, matchItemId: known } : claim;
 	});
-	return { ...result, items };
+	const factIdentity = new Map<number, string>();
+	for (const [index, fact] of (result.facts ?? []).entries()) {
+		const known = byKey.get(factLineage(sourceKey, fact));
+		if (known && state.facts.has(known)) factIdentity.set(index, known);
+	}
+	return { result: { ...result, items }, factIdentity };
 }
 
 /** Apply one plan to the state (mutates it). Pure apart from `state`. */
 export function applyPlan(
 	state: MemState,
 	plan: ReductionPlan,
-	entry: Pick<FoldEntry, 'source' | 'sourceKey' | 'contentRevision' | 'sourceAt'>
+	entry: Pick<FoldEntry, 'source' | 'sourceKey' | 'contentRevision' | 'sourceAt'> & {
+		result?: Pick<ReduceResult, 'facts'>;
+	}
 ): Set<string> {
 	const touched = new Set<string>();
 	const ev = (list: readonly ReduceEvidence[]) =>
@@ -283,13 +302,22 @@ export function applyPlan(
 			};
 		}
 	}
+	const noteFactKey = (fact: MemFact, index: number) => {
+		const claim = entry.result?.facts?.[index];
+		if (!claim) return;
+		fact.lineageKeys = [
+			...new Set([...(fact.lineageKeys ?? []), factLineage(entry.sourceKey, claim)]),
+		];
+	};
 	for (const op of plan.facts) {
 		if (op.kind === 'supersede') {
 			const fact = state.facts.get(op.factId);
 			if (fact) fact.status = 'superseded';
 		} else if (op.kind === 'evidence') {
 			const fact = state.facts.get(op.factId);
-			if (fact) fact.evidence = [...fact.evidence, ...ev(op.addEvidence)];
+			if (!fact) continue;
+			fact.evidence = [...fact.evidence, ...ev(op.addEvidence)];
+			noteFactKey(fact, op.index);
 		} else if (op.kind === 'replace') {
 			// A re-read of the fact's own (only) source message: it takes the new claim.
 			const fact = state.facts.get(op.factId);
@@ -298,6 +326,7 @@ export function applyPlan(
 			fact.factKey = op.fact.key;
 			fact.assertionText = op.fact.assertion;
 			fact.evidence = [...fact.evidence, ...ev(op.fact.evidence)];
+			noteFactKey(fact, op.index);
 		} else {
 			const lineage = factLineage(entry.sourceKey, op.fact);
 			let id = `new:${lineage}`;
@@ -351,14 +380,15 @@ export function flagUnreproduced(
 export function foldEntry(
 	state: MemState,
 	entry: FoldEntry,
-	opts: MemOptions
+	opts: MemOptions,
+	claimIds?: ReadonlyMap<string, string>
 ): { plan: ReductionPlan; touched: Set<string> } {
-	const result = resolveIdentity(state, entry.result, entry.sourceKey);
+	const { result, factIdentity } = resolveIdentity(state, entry.result, entry.sourceKey, claimIds);
 	const plan = planReduction(
 		{ items: [...state.items.values()], facts: [...state.facts.values()] },
 		result,
 		entry.contentRevision,
-		{ ...opts, source: entry.source, sourceAt: entry.sourceAt }
+		{ ...opts, source: entry.source, sourceAt: entry.sourceAt, factIdentity }
 	);
 	const touched = applyPlan(state, plan, entry);
 	return { plan, touched };
@@ -369,4 +399,21 @@ export function sameEvidence(a: readonly EvidenceRef[], b: readonly EvidenceRef[
 	if (a.length !== b.length) return false;
 	const set = new Set(a.map(evidenceKey));
 	return b.every((e) => set.has(evidenceKey(e)));
+}
+
+/** Every claim key of `sourceKey` held by the folded state, with its (in-memory) id. Pure. */
+export function claimKeysOf(state: MemState, sourceKey: string): Map<string, string> {
+	const prefix = `${sourceKey}#`;
+	const keys = new Map<string, string>();
+	for (const item of state.items.values()) {
+		for (const key of [item.lineage, ...(item.lineageKeys ?? [])]) {
+			if (key?.startsWith(prefix)) keys.set(key, item._id);
+		}
+	}
+	for (const fact of state.facts.values()) {
+		for (const key of [fact.lineage, ...(fact.lineageKeys ?? [])]) {
+			if (key?.startsWith(prefix)) keys.set(key, fact._id);
+		}
+	}
+	return keys;
 }

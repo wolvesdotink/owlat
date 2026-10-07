@@ -1,93 +1,70 @@
 /**
  * Thread brief erasure, the thread level (SPEC §5 "Erasure"): when a thread is
- * deleted, every row of the seven thread brief tables that names it goes, and
- * so do the links into its items from outside them (`purgeRows.ts`).
+ * deleted, every row of the thread brief tables that names it goes, and so do
+ * the links into its items from outside them (`purgeLinks.ts`), each item's
+ * links cleared before the item.
  *
- * `purgeThreadBrief` runs inline in the transaction that deletes the thread
- * (a Postbox thread losing its last message in `rebuildThreadAggregates`, an
- * external account's teardown) up to a row bound, and hands what is left to
- * `drainThreadBrief` (scheduled as `purgeJobs.drainThreadBrief`), a
- * self-rescheduling continuation that finds the rows by
- * the thread id alone (the thread row is gone by then). The deletion epoch is
- * bumped first, and the brief row that holds it goes last, so an
- * interpretation that loaded the thread before cannot write back.
- *
- * The erasure walkers do not call this: they drain the same ranges within
- * their own budget (`threadBriefRanges` + `deleteThreadBriefRow`).
+ * A `thread` purge job (`purgeDrain.ts`) drains the per-thread ranges
+ * (`purgeRows.ts threadBriefRanges`) in order, children first, the brief row
+ * that holds the deletion epoch last. The epoch is bumped when the job
+ * starts, so an interpretation that loaded the thread before cannot write
+ * back. Every handled row is deleted, so the ranges need no cursor.
  */
 
-import { internal } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
-import type { ThreadRef } from '../../lib/validators/threadRef';
-import {
-	bumpDeletionEpoch,
-	deleteThreadBriefRow,
-	NO_METER,
-	threadBriefRanges,
-	type PurgeMeter,
-} from './purgeRows';
+import type { ThreadRefKind } from '@owlat/shared/threadBrief';
+import type { BriefRow } from './purgeRows';
+import { threadBriefRanges } from './purgeRows';
+import { drainFactLinks, drainItemLinks } from './purgeLinks';
+import { drainShrinking, type JobPlan, type PurgeRange, type RangeRun } from './purgeDrain';
+import type { Doc } from '../../_generated/dataModel';
 
-/** Rows a purge deletes inline, in the caller's transaction. */
-export const INLINE_THREAD_PURGE_ROWS = 256;
-/** Rows one continuation transaction deletes. */
-const DRAIN_ROWS = 512;
-/** Rows read per range at a time. */
-const READ_CHUNK = 64;
+function isItemRow(row: BriefRow): row is Doc<'threadItems'> {
+	return 'disposition' in row && 'evidence' in row;
+}
 
-/**
- * Delete up to `limit` of the thread's brief rows, children first. Returns
- * whether none is left.
- */
-export async function deleteThreadBriefRows(
-	ctx: MutationCtx,
-	ref: ThreadRef,
-	limit: number,
-	meter: PurgeMeter = NO_METER
-): Promise<boolean> {
-	let left = limit;
-	for (const read of threadBriefRanges(ctx, ref)) {
-		for (;;) {
-			if (left <= 0) return false;
-			const take = Math.min(READ_CHUNK, left);
-			const rows = await read(take);
-			for (const row of rows) {
-				meter(row);
-				await deleteThreadBriefRow(ctx, row, meter);
-			}
-			left -= rows.length;
-			if (rows.length < take) break;
-		}
+function isFactRow(row: BriefRow): row is Doc<'threadFacts'> {
+	return 'factKey' in row;
+}
+
+/** Delete one thread brief row of a deleted thread, its links first; false when out of budget. */
+async function deleteRow(ctx: MutationCtx, run: RangeRun, row: BriefRow): Promise<boolean> {
+	if (isItemRow(row)) {
+		if (!(await drainItemLinks(ctx, run.ref, row, run.budget, { isThreadGone: true })))
+			return false;
+	} else if (isFactRow(row)) {
+		if (!(await drainFactLinks(ctx, row, run.budget, { isThreadGone: true }))) return false;
 	}
+	await ctx.db.delete(row._id);
 	return true;
 }
 
-/**
- * Purge a thread's brief: bump the deletion epoch, delete up to `inlineRows`
- * rows now and schedule the rest. Call it in the transaction that deletes the
- * thread; a caller deleting many threads at once passes a smaller bound.
- */
-export async function purgeThreadBrief(
-	ctx: MutationCtx,
-	ref: ThreadRef,
-	inlineRows: number = INLINE_THREAD_PURGE_ROWS
-): Promise<void> {
-	await bumpDeletionEpoch(ctx, ref);
-	const isDone = await deleteThreadBriefRows(ctx, ref, inlineRows);
-	if (!isDone) {
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.drainThreadBrief, {
-			threadRef: ref,
-		});
-	}
+/** The `index`-th per-thread range, drained. */
+function threadRange(index: number): PurgeRange {
+	return async (ctx, run) => {
+		const read = threadBriefRanges(ctx, run.ref)[index]!;
+		const isEmpty = await drainShrinking(run.budget, read, (row) => deleteRow(ctx, run, row));
+		return isEmpty ? { isDone: true } : { isDone: false, cursor: undefined };
+	};
 }
 
-/** Continuation of {@link purgeThreadBrief}: one bounded batch, then itself again. */
-export async function drainThreadBrief(
-	ctx: MutationCtx,
-	args: { threadRef: ThreadRef }
-): Promise<{ isDone: boolean }> {
-	const isDone = await deleteThreadBriefRows(ctx, args.threadRef, DRAIN_ROWS);
-	if (!isDone) {
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.drainThreadBrief, args);
-	}
-	return { isDone };
+/** Settle: a Postbox thread that outlived its brief keeps no projection of it. */
+async function settleThreadJob(ctx: MutationCtx, _job: unknown, ref: RangeRun['ref']) {
+	if (ref.kind !== 'mail') return;
+	const thread = await ctx.db.get(ref.id);
+	if (thread?.briefTop) await ctx.db.patch(ref.id, { briefTop: undefined });
+}
+
+/** How many per-thread ranges a thread of `kind` has (the readers are built, never called). */
+function rangeCount(kind: ThreadRefKind): number {
+	const probe = { kind, id: '' } as RangeRun['ref'];
+	return threadBriefRanges({} as MutationCtx, probe).length;
+}
+
+/** The walk of a `thread` job. */
+export function threadPlan(kind: ThreadRefKind): JobPlan {
+	return {
+		ranges: Array.from({ length: rangeCount(kind) }, (_, i) => threadRange(i)),
+		settle: settleThreadJob,
+	};
 }

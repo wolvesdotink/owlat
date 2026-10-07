@@ -58,10 +58,15 @@ export function clampOutput<O extends InterpretOutput>(output: O): O {
 			: null,
 		options: item.options ? item.options.map((o) => clampText(o, L.option)) : null,
 	}));
-	if (output.mode === 'actions') return { ...output, items };
+	const transitions = output.transitions.map((t) => ({
+		...t,
+		...(t.about ? { about: clampText(t.about, L.assertion) } : {}),
+	}));
+	if (output.mode === 'actions') return { ...output, items, transitions };
 	return {
 		...output,
 		items,
+		transitions,
 		latest: Object.fromEntries(
 			Object.entries(output.latest).map(([locale, lines]) => [
 				locale,

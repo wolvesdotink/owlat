@@ -329,7 +329,10 @@ export const teamStreamEntryValidator = v.union(
 		kind: v.literal('teamReply'),
 		key: v.string(),
 		at: v.number(),
-		source: interpretationSourceValidator,
+		// The interpretation source of the reply. Absent for a follow-up that has
+		// no Send yet (still in its undo window) and for a reply sent before
+		// Sends existed.
+		source: v.optional(interpretationSourceValidator),
 		authorUserId: v.optional(v.string()),
 		isAgent: v.boolean(),
 		status: v.union(
@@ -341,6 +344,15 @@ export const teamStreamEntryValidator = v.union(
 		),
 		toName: v.optional(v.string()),
 		preview: v.string(),
+		// The whole text as it went out (Team Inbox: the immutable send snapshot,
+		// or the follow-up's text). Shared mailboxes render the message itself.
+		body: v.optional(v.string()),
+		// The customer email it answers (inboundMessages / mailMessages id).
+		inReplyToId: v.optional(v.string()),
+		// A Team Inbox follow-up: its row, its Undo deadline and its failure.
+		followUpId: v.optional(v.id('inboxFollowUps')),
+		sendAt: v.optional(v.number()),
+		errorMessage: v.optional(v.string()),
 	}),
 	v.object({
 		kind: v.literal('note'),
@@ -350,9 +362,14 @@ export const teamStreamEntryValidator = v.union(
 		noteSource: v.union(v.literal('threadNote'), v.literal('chatMessage')),
 		noteId: v.string(),
 		authorId: v.string(),
+		authorName: v.optional(v.string()),
+		authorEmail: v.optional(v.string()),
+		authorImage: v.optional(v.string()),
 		body: v.string(),
 		mentionedUserIds: v.array(v.string()),
 		threadItemId: v.optional(v.id('threadItems')),
+		// The linked item's text in the requested locale ("note on Refund €129.00").
+		threadItemText: v.optional(v.string()),
 		editedAt: v.optional(v.number()),
 		isDeleted: v.boolean(),
 		reactions: v.array(noteReactionViewValidator),
@@ -362,6 +379,8 @@ export const teamStreamEntryValidator = v.union(
 		key: v.string(),
 		at: v.number(),
 		activity: activityViewValidator,
+		// The item the row is about, in the requested locale.
+		itemText: v.optional(v.string()),
 	})
 );
 

@@ -315,7 +315,12 @@ describe('transitions', () => {
 
 	it('keeps a transition older than the one that set the state as evidence only (round 4 M2)', () => {
 		const plan = planReduction(
-			{ items: [stored({ lastTransitionAt: 2000 })], facts: [] },
+			{
+				items: [
+					stored({ lastTransitionAt: 2000, statusSource: { sourceKey: 'mail:m9', at: 2000 } }),
+				],
+				facts: [],
+			},
 			result({ items: [proposal()], transitions: [transition()] }),
 			REV,
 			BRIEF
@@ -375,7 +380,9 @@ describe('facts', () => {
 			REV,
 			BRIEF
 		);
-		expect(plan.facts).toEqual([{ kind: 'evidence', factId: 'fact_a', addEvidence: [ev()] }]);
+		expect(plan.facts).toEqual([
+			{ kind: 'evidence', index: 0, factId: 'fact_a', addEvidence: [ev()] },
+		]);
 	});
 
 	it('retires the old fact on a verified supersession', () => {

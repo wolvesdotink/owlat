@@ -21,7 +21,8 @@ import { recordMessageCounters } from './messageCounters';
 import { recordFolderMembership } from './folderMembership';
 import { deleteMessageBody } from '../lib/messageBodyStore';
 import { deleteMessagePartsForRaw } from './messageParts';
-import { mailMessageSources, purgeSourcesFromThread } from './interpret/purge';
+import { mailMessageSources } from './interpret/purge';
+import { purgeSourcesFromThread } from './interpret/purgeRun';
 
 /** The `mailMessages` columns that hold a storage blob a SIBLING row may share. */
 type SharedBlobColumn = 'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageId';

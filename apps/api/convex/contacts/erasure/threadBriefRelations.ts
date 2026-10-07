@@ -11,7 +11,7 @@
  *    it, and the plans of the draft it carried (`eraseInboundMessages` →
  *    `eraseInboundMessageBrief`);
  *  - a deleted item's links are cleared from the rows outside the brief
- *    (`mail/interpret/purgeRows.ts unlinkDeletedItem`).
+ *    (`mail/interpret/purgeLinks.ts drainItemLinks`).
  *
  * Order matters to the coverage test, which seeds the relations in this
  * order: the thread brief tables first, then what points at their rows.
@@ -27,6 +27,8 @@ const IN_THREAD =
 	'Points within one thread, whose thread brief rows are all deleted by their conversationThreadId.';
 const MAIL_ONLY =
 	'Postbox only: a Team Inbox thread’s items never appear here (and contact erasure leaves Postbox mail alone).';
+const PURGE_JOB =
+	'A running thread brief purge job (schema/threadPurgeJobs.ts): ids only, no content; it deletes itself when its walk ends, and a walk over an erased row finds nothing.';
 const DANGLING =
 	'An item id and nothing else; the question text is the message’s own. Readers resolve the item and treat a missing one as unlinked.';
 
@@ -58,6 +60,9 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 				)
 			: relation('conversationThreads', table, 'conversationThreadId', 'delete', WITH_THREAD)
 	),
+
+	relation('conversationThreads', 'threadPurgeJobs', 'conversationThreadId', 'retain', PURGE_JOB),
+	relation('inboundMessages', 'threadPurgeJobs', 'sources[].id', 'retain', PURGE_JOB),
 
 	// ── inboundMessages (the contact's received mail) ──
 	relation(

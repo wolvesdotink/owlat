@@ -3,39 +3,31 @@
  * message is purged (Postbox "Delete forever", the trash auto-purge, an IMAP
  * EXPUNGE, a provider-side deletion pulled in by two-way sync, a contact's
  * erasure taking a Team Inbox message), everything the thread brief derived
- * from it goes or is recomputed, in the purge's transaction:
+ * from it goes or is recomputed. A `sources` purge job (`purgeDrain.ts`)
+ * walks these ranges in order, resumably:
  *
- *  - its `messageInterpretations` rows (the sealed proposals and latest lines),
- *    taken out of the brief's source counters, and its `interpretSources`
- *    row (eligibility snapshot, a team reply's sent text);
- *  - the activity rows the reducer wrote for it (`received:<source>`,
- *    `interp:<source>:…`), the send pipeline's rows keyed by its id
- *    (`sent:<id>`, `delivery_failed:<id>:…`, `send_queued:<id>:…` …) and any
- *    row whose `opRef` names it;
- *  - its evidence entries on items and facts. "A surviving claim must keep
- *    surviving evidence": an item or fact left without evidence is deleted
- *    (with its links, `purgeRows.ts`, and out of the item counters); one
- *    replaced or superseded by a deleted claim comes back (`open` /
- *    `current`, through `counters.ts writeItemChange`); pointers to deleted claims are
- *    cleared on the survivors;
- *  - response plans lose their references to deleted items and go `stale`;
- *  - the Postbox clarification questions lose their item links;
- *  - the brief row: deletion epoch and interpretation revision bumped (an
- *    in-flight run gets `erased`), overview cache dropped, completeness
- *    recomputed, a checkpoint naming the message cleared;
- *  - `mailThreads.briefTop` recomputed, its "Latest update" line cleared when
- *    the purged message had been interpreted (the line may have come from it).
+ *  1. its `messageInterpretations` rows (the sealed proposals and latest
+ *     lines), taken out of the brief's source counters;
+ *  2. its `interpretSources` snapshot (eligibility, a team reply's sent text);
+ *  3. the activity rows naming it: the reducer's (`received:<source>`,
+ *     `interp:<source>:…`), the send pipeline's (`sent:<id>`,
+ *     `delivery_failed:<id>:…` …) and any whose `opRef` names it;
+ *  4. its evidence on the thread's items, then 5. on its facts
+ *     (`purgeClaims.ts`): "a surviving claim must keep surviving evidence".
+ *     A claim left without any is deleted after its links (`purgeLinks.ts`);
+ *     a survivor whose wording came from the purged message is restated
+ *     from a surviving source or redacted;
+ *  6. the thread's response plans lose their references to deleted items and
+ *     go `stale`; 7. the clarification questions (Postbox thread, Team Inbox
+ *     messages) and 8. the Answer mode ask sessions lose their links to
+ *     deleted items (`purgeQuestions.ts`).
  *
- * An item's wording is kept while another message still evidences it: the
- * claim survives on that evidence, and rewording it would need the model.
- *
- * Items and facts are found by scanning the thread (evidence is an array and
- * cannot be indexed). A thread holds far fewer than {@link CLAIM_SCAN_LIMIT}
- * of either; a larger one is finished by `sweepSourcesPage`, a paginated
- * continuation.
+ * Settling (`purgeQuestions.ts settleSourcesJob`) bumps the brief's deletion
+ * epoch and revision, drops the overview, recomputes completeness, clears a
+ * checkpoint naming a purged source, refreshes `mailThreads.briefTop`, and
+ * re-reads the thread when a claim survived on less evidence (F3c).
  */
 
-import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import {
@@ -44,39 +36,25 @@ import {
 } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { scopedIdempotencyKey } from './activity';
-import { loadBriefRow } from './briefRow';
-import { refreshBriefTop } from './briefTop';
+import { recordItemChange } from './counters';
+import { deleteExtractions } from './purgeRows';
+import { drainFactLinks, drainItemLinks } from './purgeLinks';
+import { stripFact, stripItem, type PurgedSources } from './purgeClaims';
 import {
-	deleteExtractions,
-	NO_METER,
-	recomputeCompleteness,
-	unlinkDeletedItem,
-	type PurgeMeter,
-} from './purgeRows';
-import { recordItemChange, writeItemChange } from './counters';
-
-/** Items or facts scanned inline per thread. */
-export const CLAIM_SCAN_LIMIT = 1000;
-/** Rows of one source read per range (extractions, activity). */
-const SOURCE_ROW_LIMIT = 256;
-/** Response plans of one thread rewritten inline. */
-const PLAN_LIMIT = 200;
-/** Page of the continuation sweep. */
-const SWEEP_PAGE = 200;
-
-export type ClaimTable = 'threadItems' | 'threadFacts';
+	drainShrinking,
+	scanRange,
+	type JobPlan,
+	type PurgeRange,
+	type RangePosition,
+	type RangeRun,
+} from './purgeDrain';
+import { clarificationRanges, settleSourcesJob, stripPlan } from './purgeQuestions';
 
 /**
  * Activity key families the send pipeline (`sendActivity.ts`) writes per
  * message or send id: `<family>:<id>` or `<family>:<id>:<detail>`.
  */
 const SEND_EVENT_KEYS = ['sent', 'delivery_failed', 'send_queued', 'send_cancelled', 'send_held'];
-
-interface ClaimOutcome {
-	deletedItemIds: Set<string>;
-	deletedFactIds: Set<string>;
-	changed: number;
-}
 
 /** The interpretation sources a purged Postbox message can be: received or sent. */
 export function mailMessageSources(messageId: Id<'mailMessages'>): InterpretationSource[] {
@@ -86,413 +64,249 @@ export function mailMessageSources(messageId: Id<'mailMessages'>): Interpretatio
 	];
 }
 
-/**
- * Remove what `sources` contributed to one thread's brief (see the module
- * doc). `meter` charges the reads to an erasure walker's budget.
- */
-export async function purgeSourcesFromThread(
-	ctx: MutationCtx,
-	ref: ThreadRef,
-	sources: readonly InterpretationSource[],
-	meter: PurgeMeter = NO_METER
-): Promise<void> {
-	if (sources.length === 0) return;
-	const ids = new Set<string>(sources.map((s) => s.id));
-	const keys = new Set(sources.map(interpretationSourceKey));
-
-	const hadInterpretation = await deleteSourceRows(ctx, ref, sources, meter);
-
-	const outcome: ClaimOutcome = {
-		deletedItemIds: new Set(),
-		deletedFactIds: new Set(),
-		changed: 0,
+/** The purged sources of a `sources` job. */
+export function purgedOf(job: Doc<'threadPurgeJobs'>): PurgedSources {
+	const sources = job.sources ?? [];
+	return {
+		ids: new Set(sources.map((s) => s.id as string)),
+		keys: new Set(sources.map(interpretationSourceKey)),
 	};
-	for (const table of ['threadItems', 'threadFacts'] as const) {
-		if (table === 'threadFacts' && ref.kind !== 'mail') continue;
-		const rows = await scanClaims(ctx, ref, table, CLAIM_SCAN_LIMIT + 1);
-		await stripClaims(ctx, ref, table, ids, rows.slice(0, CLAIM_SCAN_LIMIT), outcome, meter);
-		if (rows.length > CLAIM_SCAN_LIMIT) {
-			await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.sweepSourcesPage, {
-				threadRef: ref,
-				sources: [...sources],
-				table,
-				cursor: null,
-			});
-		}
-	}
-	await settleThread(ctx, ref, outcome, { keys, isLatestStale: hadInterpretation, meter });
 }
 
-/** Delete the source's extractions and the activity rows that name it. */
-async function deleteSourceRows(
-	ctx: MutationCtx,
-	ref: ThreadRef,
-	sources: readonly InterpretationSource[],
-	meter: PurgeMeter
-): Promise<boolean> {
-	let hadInterpretation = false;
-	const remove = async (rows: Array<{ _id: Id<'interpretSources' | 'threadActivity'> }>) => {
-		for (const row of rows) {
-			meter(row);
-			await ctx.db.delete(row._id);
-		}
+const deleting =
+	(ctx: MutationCtx) =>
+	async (row: { _id: Id<'threadActivity' | 'interpretSources'> }): Promise<boolean> => {
+		await ctx.db.delete(row._id);
+		return true;
 	};
-	for (const source of sources) {
-		const key = interpretationSourceKey(source);
-		const extractions = await ctx.db
-			.query('messageInterpretations')
-			.withIndex('by_source_revision', (q) => q.eq('sourceKey', key))
-			.take(SOURCE_ROW_LIMIT);
-		if (extractions.length > 0) hadInterpretation = true;
-		await deleteExtractions(ctx, extractions, meter);
-		// The eligibility snapshot (and a team reply's sent text) of the source.
-		await remove(
-			await ctx.db
-				.query('interpretSources')
-				.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
-				.take(SOURCE_ROW_LIMIT)
-		);
 
-		const received = scopedIdempotencyKey(ref, `received:${key}`);
-		await remove(
-			await ctx.db
-				.query('threadActivity')
-				.withIndex('by_idempotency_key', (q) => q.eq('idempotencyKey', received))
-				.take(SOURCE_ROW_LIMIT)
+/** 1. Every extraction of every purged source. */
+const extractionsRange: PurgeRange = async (ctx, { job, budget, state }) => {
+	for (const key of purgedOf(job).keys) {
+		const isEmpty = await drainShrinking(
+			budget,
+			(n) =>
+				ctx.db
+					.query('messageInterpretations')
+					.withIndex('by_source_revision', (q) => q.eq('sourceKey', key))
+					.take(n),
+			async (row) => {
+				state.isInterpreted = true;
+				await deleteExtractions(ctx, [row]);
+				return true;
+			}
 		);
-		const prefix = scopedIdempotencyKey(ref, `interp:${key}:`);
-		await remove(
-			await ctx.db
-				.query('threadActivity')
-				.withIndex('by_idempotency_key', (q) =>
-					q.gte('idempotencyKey', prefix).lt('idempotencyKey', `${prefix}￿`)
-				)
-				.take(SOURCE_ROW_LIMIT)
-		);
+		if (!isEmpty) return { isDone: false, cursor: undefined };
 	}
-	for (const id of new Set(sources.map((s) => s.id as string))) {
-		await remove(
-			await ctx.db
-				.query('threadActivity')
-				.withIndex('by_op_ref', (q) => q.eq('opRef.id', id))
-				.take(SOURCE_ROW_LIMIT)
+	return { isDone: true };
+};
+
+/** 2. The purged sources' snapshots. */
+const snapshotsRange: PurgeRange = async (ctx, { job, budget }) => {
+	for (const key of purgedOf(job).keys) {
+		const isEmpty = await drainShrinking(
+			budget,
+			(n) =>
+				ctx.db
+					.query('interpretSources')
+					.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
+					.take(n),
+			deleting(ctx)
 		);
-		// The send pipeline's rows keyed by the message (or send) id, some without an opRef.
+		if (!isEmpty) return { isDone: false, cursor: undefined };
+	}
+	return { isDone: true };
+};
+
+/** The activity key ranges `[from, to]` that name a purged source in this thread. */
+function activityKeyRanges(ref: ThreadRef, job: Doc<'threadPurgeJobs'>): Array<[string, string]> {
+	const purged = purgedOf(job);
+	const ranges: Array<[string, string]> = [];
+	for (const key of purged.keys) {
+		const received = scopedIdempotencyKey(ref, `received:${key}`);
+		ranges.push([received, received]);
+		const prefix = scopedIdempotencyKey(ref, `interp:${key}:`);
+		ranges.push([prefix, `${prefix}￿`]);
+	}
+	for (const id of purged.ids) {
 		for (const family of SEND_EVENT_KEYS) {
 			const exact = scopedIdempotencyKey(ref, `${family}:${id}`);
-			await remove(
-				await ctx.db
-					.query('threadActivity')
-					.withIndex('by_idempotency_key', (q) =>
-						q.gte('idempotencyKey', exact).lte('idempotencyKey', `${exact}:\uffff`)
-					)
-					.take(SOURCE_ROW_LIMIT)
-			);
+			ranges.push([exact, `${exact}:￿`]);
 		}
 	}
-	return hadInterpretation;
+	return ranges;
 }
 
-type ClaimRow = Doc<'threadItems'> | Doc<'threadFacts'>;
+/** 3. The activity rows naming a purged source. */
+const sourceActivityRange: PurgeRange = async (ctx, { job, ref, budget }) => {
+	for (const [from, to] of activityKeyRanges(ref, job)) {
+		const isEmpty = await drainShrinking(
+			budget,
+			(n) =>
+				ctx.db
+					.query('threadActivity')
+					.withIndex('by_idempotency_key', (q) =>
+						q.gte('idempotencyKey', from).lte('idempotencyKey', to)
+					)
+					.take(n),
+			deleting(ctx)
+		);
+		if (!isEmpty) return { isDone: false, cursor: undefined };
+	}
+	for (const id of purgedOf(job).ids) {
+		const isEmpty = await drainShrinking(
+			budget,
+			(n) =>
+				ctx.db
+					.query('threadActivity')
+					.withIndex('by_op_ref', (q) => q.eq('opRef.id', id))
+					.take(n),
+			deleting(ctx)
+		);
+		if (!isEmpty) return { isDone: false, cursor: undefined };
+	}
+	return { isDone: true };
+};
 
-function scanClaims(
+/** A thread's items in creation order, from `from`. */
+export function itemsFrom(
 	ctx: MutationCtx,
 	ref: ThreadRef,
-	table: ClaimTable,
-	limit: number
-): Promise<ClaimRow[]> {
-	if (table === 'threadFacts') {
-		return ref.kind === 'mail'
-			? ctx.db
-					.query('threadFacts')
-					.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', ref.id))
-					.take(limit)
-			: Promise.resolve([]);
-	}
+	from: RangePosition | undefined,
+	n: number
+) {
+	const at = typeof from === 'number' ? from : undefined;
 	return ref.kind === 'mail'
 		? ctx.db
 				.query('threadItems')
-				.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', ref.id))
-				.take(limit)
+				.withIndex('by_mail_thread', (q) =>
+					at === undefined
+						? q.eq('mailThreadId', ref.id)
+						: q.eq('mailThreadId', ref.id).gte('_creationTime', at)
+				)
+				.take(n)
 		: ctx.db
 				.query('threadItems')
-				.withIndex('by_conversation_thread_and_status', (q) => q.eq('conversationThreadId', ref.id))
-				.take(limit);
+				.withIndex('by_conversation_thread', (q) =>
+					at === undefined
+						? q.eq('conversationThreadId', ref.id)
+						: q.eq('conversationThreadId', ref.id).gte('_creationTime', at)
+				)
+				.take(n);
 }
 
-/**
- * Drop the evidence that names a purged source from `rows`; delete the claims
- * left without any, then repair the survivors' pointers to them.
- */
-async function stripClaims(
-	ctx: MutationCtx,
-	ref: ThreadRef,
-	table: ClaimTable,
-	ids: ReadonlySet<string>,
-	rows: readonly ClaimRow[],
-	outcome: ClaimOutcome,
-	meter: PurgeMeter
-): Promise<void> {
-	const now = Date.now();
-	const deleted = table === 'threadItems' ? outcome.deletedItemIds : outcome.deletedFactIds;
-	const survivors: ClaimRow[] = [];
-	const doomed: ClaimRow[] = [];
-	const names = (evidence: readonly { source: { id: string } }[]) =>
-		evidence.some((e) => ids.has(e.source.id));
-	for (const row of rows) {
-		meter(row);
-		const pending = 'pendingUpdate' in row ? row.pendingUpdate : undefined;
-		const isPendingNamed = pending !== undefined && names(pending.evidence);
-		if (!names(row.evidence) && !isPendingNamed) {
-			survivors.push(row);
-			continue;
+/** 4. The thread's items: strip, restate or redact, or clear the links and delete. */
+const itemsRange: PurgeRange = (ctx, run: RangeRun) => {
+	const purged = purgedOf(run.job);
+	return scanRange(
+		run.budget,
+		run.cursor,
+		(from, n) => itemsFrom(ctx, run.ref, from, n),
+		(row) => row._creationTime,
+		async (item) => {
+			const fate = await stripItem(ctx, run.ref, item, purged, run.budget);
+			if (fate === 'untouched') return true;
+			run.state.isClaimChanged = true;
+			if (fate === 'survived') {
+				run.state.isSurvivorChanged = true;
+				return true;
+			}
+			if (!(await drainItemLinks(ctx, run.ref, item, run.budget, { isThreadGone: false }))) {
+				return false;
+			}
+			await recordItemChange(ctx, run.ref, item, null);
+			await ctx.db.delete(item._id);
+			run.state.isItemDeleted = true;
+			return true;
 		}
-		const evidence = row.evidence.filter((e) => !ids.has(e.source.id));
-		if (evidence.length === 0) {
-			doomed.push(row);
-			deleted.add(row._id);
-			continue;
-		}
-		// An unconfirmed update loses the purged evidence too, and goes when none is left.
-		const pendingEvidence = pending?.evidence.filter((e) => !ids.has(e.source.id)) ?? [];
-		const pendingPatch = isPendingNamed
-			? {
-					pendingUpdate:
-						pendingEvidence.length > 0 ? { ...pending!, evidence: pendingEvidence } : undefined,
-				}
-			: {};
-		const revision = row.revision + 1;
-		await ctx.db.patch(row._id, { evidence, ...pendingPatch, revision, updatedAt: now });
-		survivors.push({ ...row, evidence, ...pendingPatch, revision } as ClaimRow);
-		outcome.changed += 1;
-	}
-	for (const row of doomed) {
-		if (table === 'threadItems') {
-			await unlinkDeletedItem(ctx, row._id as Id<'threadItems'>, meter);
-			// The brief's item counters (`counters.ts`) lose it.
-			await recordItemChange(ctx, ref, row as Doc<'threadItems'>, null);
-		}
-		await ctx.db.delete(row._id);
-	}
-	for (const row of survivors) {
-		const patch = repairPointers(row, deleted, table, doomed);
-		if (!patch) continue;
-		const stamp = { revision: row.revision + 1, updatedAt: now };
-		if (table === 'threadItems') {
-			// A reopened item moves its list bucket and counters; briefTop is refreshed at the end.
-			const itemPatch: Partial<Doc<'threadItems'>> = {
-				...(patch as Partial<Doc<'threadItems'>>),
-				...stamp,
-			};
-			await writeItemChange(ctx, ref, row as Doc<'threadItems'>, itemPatch);
-		} else {
-			const factPatch: Partial<Doc<'threadFacts'>> = {
-				...(patch as Partial<Doc<'threadFacts'>>),
-				...stamp,
-			};
-			await ctx.db.patch(row._id as Id<'threadFacts'>, factPatch);
-		}
-		outcome.changed += 1;
-	}
-}
-
-/**
- * The patch that clears a survivor's pointers to deleted claims. An item
- * replaced by a deleted item is open again; a fact superseded by a deleted
- * fact is current again: the claim that retired it is gone. Pure.
- */
-export function repairPointers(
-	row: ClaimRow,
-	deleted: ReadonlySet<string>,
-	table: ClaimTable,
-	doomed: readonly ClaimRow[]
-): Partial<Doc<'threadItems'>> | Partial<Doc<'threadFacts'>> | null {
-	if (table === 'threadItems') {
-		const item = row as Doc<'threadItems'>;
-		const patch: Partial<Doc<'threadItems'>> = {};
-		if (item.replacedById && deleted.has(item.replacedById)) {
-			patch.replacedById = undefined;
-			if (item.status === 'superseded') patch.status = 'open';
-		}
-		if (item.possibleDuplicateOfId && deleted.has(item.possibleDuplicateOfId)) {
-			patch.possibleDuplicateOfId = undefined;
-		}
-		return Object.keys(patch).length > 0 ? patch : null;
-	}
-	const fact = row as Doc<'threadFacts'>;
-	const patch: Partial<Doc<'threadFacts'>> = {};
-	if (fact.supersedesId && deleted.has(fact.supersedesId)) patch.supersedesId = undefined;
-	if (fact.conflictsWithId && deleted.has(fact.conflictsWithId)) patch.conflictsWithId = undefined;
-	const isRetiredByDeleted = doomed.some(
-		(d) => (d as Doc<'threadFacts'>).supersedesId === fact._id
 	);
-	if (isRetiredByDeleted && fact.status === 'superseded') patch.status = 'current';
-	return Object.keys(patch).length > 0 ? patch : null;
-}
+};
 
-/**
- * After claims moved: plans and clarification links, the brief row, the list
- * projection.
- */
-async function settleThread(
-	ctx: MutationCtx,
-	ref: ThreadRef,
-	outcome: ClaimOutcome,
-	opts: { keys: ReadonlySet<string>; isLatestStale: boolean; meter: PurgeMeter }
-): Promise<void> {
-	const hasClaimChange =
-		outcome.changed > 0 || outcome.deletedItemIds.size > 0 || outcome.deletedFactIds.size > 0;
-	if (hasClaimChange) await stalePlans(ctx, ref, outcome.deletedItemIds, opts.meter);
-	if (ref.kind === 'mail' && outcome.deletedItemIds.size > 0) {
-		await unlinkClarification(ctx, ref.id, outcome.deletedItemIds);
-	}
-
-	const brief = await loadBriefRow(ctx, ref);
-	if (!brief) {
-		if (ref.kind === 'mail') await clearBriefTop(ctx, ref.id);
-		return;
-	}
-	opts.meter(brief);
-	const completeness = await recomputeCompleteness(ctx, ref);
-	const isCheckpointGone = !!brief.checkpoint && opts.keys.has(brief.checkpoint.sourceKey);
-	await ctx.db.patch(brief._id, {
-		deletionEpoch: brief.deletionEpoch + 1,
-		interpretationRevision: brief.interpretationRevision + 1,
-		overview: undefined,
-		completeness,
-		...(isCheckpointGone ? { checkpoint: undefined } : {}),
-		updatedAt: Date.now(),
-	});
-	if (ref.kind === 'mail') {
-		await refreshBriefTop(ctx, ref.id, opts.isLatestStale ? { latest: null } : {});
-	}
-}
-
-/** Strip deleted items from the thread's response plans and mark every plan stale. */
-async function stalePlans(
-	ctx: MutationCtx,
-	ref: ThreadRef,
-	deleted: ReadonlySet<string>,
-	meter: PurgeMeter
-): Promise<void> {
-	const plans =
-		ref.kind === 'mail'
-			? await ctx.db
-					.query('draftResponsePlans')
-					.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', ref.id))
-					.take(PLAN_LIMIT)
-			: await ctx.db
-					.query('draftResponsePlans')
-					.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', ref.id))
-					.take(PLAN_LIMIT);
-	for (const plan of plans) {
-		meter(plan);
-		await ctx.db.patch(plan._id, stripPlan(plan, deleted));
-	}
-}
-
-/** A plan without its references to deleted items, marked stale. Pure. */
-export function stripPlan(
-	plan: Pick<
-		Doc<'draftResponsePlans'>,
-		'itemRevisions' | 'stances' | 'ownerInputs' | 'coverage' | 'newPromises'
-	>,
-	deleted: ReadonlySet<string>
-) {
-	const keep = (entry: { itemId: string }) => !deleted.has(entry.itemId);
-	return {
-		itemRevisions: plan.itemRevisions.filter(keep),
-		stances: plan.stances.filter(keep),
-		ownerInputs: plan.ownerInputs.map((input) =>
-			input.itemId && deleted.has(input.itemId) ? { questionId: input.questionId } : input
-		),
-		coverage: plan.coverage.filter(keep),
-		newPromises: plan.newPromises.map(({ itemId, ...promise }) =>
-			itemId && !deleted.has(itemId) ? { ...promise, itemId } : promise
-		),
-		verdict: 'stale' as const,
-		updatedAt: Date.now(),
-	};
-}
-
-/** Clear the item links of the Postbox clarification questions on the thread. */
-async function unlinkClarification(
-	ctx: MutationCtx,
-	threadId: Id<'mailThreads'>,
-	deleted: ReadonlySet<string>
-): Promise<void> {
-	const thread = await ctx.db.get(threadId);
-	const clarification = thread?.needsReply?.clarification;
-	if (!thread?.needsReply || !clarification) return;
-	if (!clarification.questions.some((q) => q.itemId && deleted.has(q.itemId))) return;
-	const questions = clarification.questions.map(({ itemId, ...question }) =>
-		itemId && deleted.has(itemId) ? question : { ...question, ...(itemId ? { itemId } : {}) }
+/** 5. The thread's facts (mail threads only). */
+const factsRange: PurgeRange = async (ctx, run) => {
+	if (run.ref.kind !== 'mail') return { isDone: true };
+	const threadId = run.ref.id;
+	const purged = purgedOf(run.job);
+	return scanRange(
+		run.budget,
+		run.cursor,
+		(from, n) =>
+			ctx.db
+				.query('threadFacts')
+				.withIndex('by_mail_thread', (q) =>
+					typeof from === 'number'
+						? q.eq('mailThreadId', threadId).gte('_creationTime', from)
+						: q.eq('mailThreadId', threadId)
+				)
+				.take(n),
+		(row) => row._creationTime,
+		async (fact) => {
+			const fate = await stripFact(ctx, fact, purged, run.budget);
+			if (fate === 'untouched') return true;
+			run.state.isClaimChanged = true;
+			if (fate === 'survived') {
+				run.state.isSurvivorChanged = true;
+				return true;
+			}
+			if (!(await drainFactLinks(ctx, fact, run.budget, { isThreadGone: false }))) return false;
+			await ctx.db.delete(fact._id);
+			return true;
+		}
 	);
-	await ctx.db.patch(threadId, {
-		needsReply: { ...thread.needsReply, clarification: { ...clarification, questions } },
-	});
-}
+};
 
-/** A thread with no brief row keeps no projection of one. */
-async function clearBriefTop(ctx: MutationCtx, threadId: Id<'mailThreads'>): Promise<void> {
-	const thread = await ctx.db.get(threadId);
-	if (thread?.briefTop) await ctx.db.patch(threadId, { briefTop: undefined });
-}
-
-/**
- * Continuation of {@link purgeSourcesFromThread} for a thread with more than
- * {@link CLAIM_SCAN_LIMIT} items or facts: one page of `table`, then the next.
- * Re-reading the rows the inline pass handled is harmless (they no longer
- * name the source).
- */
-/** The arguments of {@link sweepSourcesPage} (validated in `purgeJobs.ts`). */
-export interface SweepSourcesArgs {
-	threadRef: ThreadRef;
-	sources: InterpretationSource[];
-	table: ClaimTable;
-	cursor: string | null;
-}
-
-export async function sweepSourcesPage(
-	ctx: MutationCtx,
-	args: SweepSourcesArgs
-): Promise<{ isDone: boolean }> {
-	const ref = args.threadRef;
-	const query =
-		args.table === 'threadFacts'
-			? ref.kind === 'mail'
+/** 6. The thread's response plans: deleted items out, every plan stale. */
+const plansRange: PurgeRange = async (ctx, run) => {
+	if (!run.state.isClaimChanged) return { isDone: true };
+	const ref = run.ref;
+	return scanRange(
+		run.budget,
+		run.cursor,
+		(from, n) => {
+			const at = typeof from === 'number' ? from : undefined;
+			return ref.kind === 'mail'
 				? ctx.db
-						.query('threadFacts')
-						.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', ref.id))
-				: null
-			: ref.kind === 'mail'
-				? ctx.db
-						.query('threadItems')
-						.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', ref.id))
+						.query('draftResponsePlans')
+						.withIndex('by_mail_thread', (q) =>
+							at === undefined
+								? q.eq('mailThreadId', ref.id)
+								: q.eq('mailThreadId', ref.id).gte('_creationTime', at)
+						)
+						.take(n)
 				: ctx.db
-						.query('threadItems')
-						.withIndex('by_conversation_thread_and_status', (q) =>
-							q.eq('conversationThreadId', ref.id)
-						);
-	if (!query) return { isDone: true };
-	const page = await query.paginate({ cursor: args.cursor, numItems: SWEEP_PAGE });
-	const outcome: ClaimOutcome = {
-		deletedItemIds: new Set(),
-		deletedFactIds: new Set(),
-		changed: 0,
-	};
-	const ids = new Set<string>(args.sources.map((s) => s.id));
-	await stripClaims(ctx, ref, args.table, ids, page.page, outcome, NO_METER);
-	await settleThread(ctx, ref, outcome, {
-		keys: new Set(args.sources.map(interpretationSourceKey)),
-		isLatestStale: false,
-		meter: NO_METER,
-	});
-	if (!page.isDone) {
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.sweepSourcesPage, {
-			...args,
-			cursor: page.continueCursor,
-		});
-	}
-	return { isDone: page.isDone };
-}
+						.query('draftResponsePlans')
+						.withIndex('by_conversation_thread', (q) =>
+							at === undefined
+								? q.eq('conversationThreadId', ref.id)
+								: q.eq('conversationThreadId', ref.id).gte('_creationTime', at)
+						)
+						.take(n);
+		},
+		(row) => row._creationTime,
+		async (plan) => {
+			const gone = new Set<string>();
+			for (const entry of [...plan.itemRevisions, ...plan.stances, ...plan.coverage]) {
+				if (!(await ctx.db.get(entry.itemId))) gone.add(entry.itemId);
+			}
+			for (const input of plan.ownerInputs) {
+				if (input.itemId && !(await ctx.db.get(input.itemId))) gone.add(input.itemId);
+			}
+			await ctx.db.patch(plan._id, stripPlan(plan, gone));
+			return true;
+		}
+	);
+};
+
+/** The walk of a `sources` job. */
+export const sourcesPlan: JobPlan = {
+	ranges: [
+		extractionsRange,
+		snapshotsRange,
+		sourceActivityRange,
+		itemsRange,
+		factsRange,
+		plansRange,
+		...clarificationRanges,
+	],
+	settle: settleSourcesJob,
+};

@@ -10,25 +10,24 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
-import type { Doc, Id } from '../../../_generated/dataModel';
-import type { MutationCtx } from '../../../_generated/server';
-import { threadRefToFields, type ThreadRef } from '../../../lib/validators/threadRef';
-import type { InterpretationSource } from '../../../lib/validators/threadBrief';
-import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from '../../messagePurge';
-import { rebuildThreadAggregates } from '../../threadAggregates';
-import { purgeSourcesFromThread } from '../purge';
-import { listBucketOf, recordItemChange } from '../counters';
-import { purgeThreadBrief } from '../purgeThread';
+import type { Id } from '../../../_generated/dataModel';
+import { threadRefToFields } from '../../../lib/validators/threadRef';
+import { purgeSourcesFromThread, purgeThreadBrief } from '../purgeRun';
+import { REDACTED_CLAIM_TEXT } from '../purgeClaims';
+import { openMessageBody } from '../../../lib/messageBody';
 import { seedFolder } from '../../__tests__/helpers.testlib';
+import { modules, seedMailThread, seedTeamThread } from './interpret.testlib';
 import {
-	modules,
-	reduceResult,
-	seedMailThread,
-	seedTeamThread,
-	type Test,
-} from './interpret.testlib';
-
-const SENT = Date.UTC(2026, 9, 7, 9, 0);
+	SENT,
+	evidence,
+	addSibling,
+	applyArgs,
+	insertFact,
+	insertItem,
+	linkItem,
+	mailRows,
+	purgeMessages,
+} from './purge.testlib';
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -36,179 +35,6 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 });
-
-function evidence(source: InterpretationSource) {
-	return { source, segmentId: 's0', start: 0, end: 4, contentRevision: 'rev-1', quote: 'sealed' };
-}
-
-async function insertItem(
-	ctx: MutationCtx,
-	ref: ThreadRef,
-	sources: InterpretationSource[],
-	extra: Partial<Doc<'threadItems'>> = {}
-): Promise<Id<'threadItems'>> {
-	const row: Omit<Doc<'threadItems'>, '_id' | '_creationTime'> = {
-		...threadRefToFields(ref),
-		revision: 1,
-		intent: 'request',
-		facets: [],
-		assertion: 'sealed',
-		display: { en: 'sealed', de: 'sealed' },
-		requester: { email: 'jonas@example.com', isUs: false },
-		responsible: { isUs: true },
-		responsibility: 'us',
-		status: 'open',
-		disposition: 'unanswered',
-		evidence: sources.map(evidence),
-		verify: 'passed',
-		askedAt: SENT,
-		createdAt: SENT,
-		updatedAt: SENT,
-		...extra,
-	};
-	// As the reducer: the list bucket and the brief's item counters move with the insert.
-	const id = await ctx.db.insert('threadItems', { ...row, listBucket: listBucketOf(row) });
-	await recordItemChange(ctx, ref, null, row);
-	return id;
-}
-
-async function insertFact(
-	ctx: MutationCtx,
-	threadId: Id<'mailThreads'>,
-	sources: InterpretationSource[],
-	extra: Partial<Doc<'threadFacts'>> = {}
-): Promise<Id<'threadFacts'>> {
-	return ctx.db.insert('threadFacts', {
-		threadKind: 'mail',
-		mailThreadId: threadId,
-		factKey: '["contract","due",""]',
-		assertion: 'sealed',
-		display: { en: 'sealed', de: 'sealed' },
-		evidence: sources.map(evidence),
-		provenance: 'reported',
-		status: 'current',
-		revision: 1,
-		createdAt: SENT,
-		updatedAt: SENT,
-		...extra,
-	});
-}
-
-/** A second message in the first one's thread. */
-async function addSibling(t: Test, messageId: Id<'mailMessages'>): Promise<Id<'mailMessages'>> {
-	return t.run(async (ctx) => {
-		const { _id, _creationTime, ...first } = (await ctx.db.get(messageId))!;
-		const id = await ctx.db.insert('mailMessages', {
-			...first,
-			uid: first.uid + 1,
-			receivedAt: first.receivedAt + 60_000,
-		});
-		await ctx.db.patch(first.threadId, { messageCount: 2 });
-		return id;
-	});
-}
-
-function applyArgs(messageId: Id<'mailMessages'>, threadId: Id<'mailThreads'>) {
-	return {
-		source: { kind: 'mail' as const, id: messageId },
-		threadRef: { kind: 'mail' as const, id: threadId },
-		mode: 'brief' as const,
-		contentRevision: 'rev-1',
-		extractorVersion: 1,
-		expectedRevision: 0,
-		deletionEpoch: 0,
-		sourceAt: SENT,
-		direction: 'inbound' as const,
-		status: 'complete' as const,
-		result: reduceResult(),
-	};
-}
-
-/** Purge messages the way the Postbox paths do: rows, then briefs, then aggregates. */
-async function purgeMessages(t: Test, ids: Id<'mailMessages'>[]): Promise<void> {
-	await t.run(async (ctx) => {
-		const purged: PurgedMessages = new Map();
-		const threads = new Set<Id<'mailThreads'>>();
-		for (const id of ids) threads.add(await purgeMessageRow(ctx, (await ctx.db.get(id))!, purged));
-		await purgeThreadBriefsOf(ctx, purged);
-		for (const threadId of threads) await rebuildThreadAggregates(ctx, threadId);
-	});
-}
-
-async function mailRows(t: Test, threadId: Id<'mailThreads'>) {
-	return t.run(async (ctx) => ({
-		thread: await ctx.db.get(threadId),
-		items: await ctx.db
-			.query('threadItems')
-			.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', threadId))
-			.collect(),
-		facts: await ctx.db
-			.query('threadFacts')
-			.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', threadId))
-			.collect(),
-		activity: await ctx.db
-			.query('threadActivity')
-			.withIndex('by_mail_thread_and_seq', (q) => q.eq('mailThreadId', threadId))
-			.collect(),
-		interpretations: await ctx.db
-			.query('messageInterpretations')
-			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
-			.collect(),
-		brief: await ctx.db
-			.query('threadBriefs')
-			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
-			.first(),
-		viewers: await ctx.db
-			.query('threadViewerState')
-			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
-			.collect(),
-		plans: await ctx.db
-			.query('draftResponsePlans')
-			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
-			.collect(),
-	}));
-}
-
-/** A discussion room message and a commitment that link `itemId`. */
-async function linkItem(
-	ctx: MutationCtx,
-	itemId: Id<'threadItems'>,
-	at: { mailboxId: Id<'mailboxes'>; threadId: Id<'mailThreads'>; messageId: Id<'mailMessages'> }
-) {
-	const roomId = await ctx.db.insert('chatRooms', {
-		kind: 'channel',
-		purpose: 'mail_thread_discussion',
-		linkedMailThreadId: at.threadId,
-		name: 'Thread discussion',
-		normalizedName: `mail-thread:${at.threadId}`,
-		visibility: 'private',
-		createdBy: 'user-A',
-		createdAt: SENT,
-		updatedAt: SENT,
-		lastMessageAt: SENT,
-		messageCount: 1,
-	});
-	const chatId = await ctx.db.insert('chatMessages', {
-		roomId,
-		authorId: 'user-A',
-		text: 'on it',
-		threadItemId: itemId,
-		createdAt: SENT,
-	});
-	const commitmentId = await ctx.db.insert('mailCommitments', {
-		mailboxId: at.mailboxId,
-		threadId: at.threadId,
-		messageId: at.messageId,
-		direction: 'inbound',
-		description: 'Send the contract',
-		status: 'open',
-		source: 'llm',
-		threadItemId: itemId,
-		createdAt: SENT,
-		updatedAt: SENT,
-	});
-	return { chatId, commitmentId };
-}
 
 describe('message purge', () => {
 	it('drops the purged message’s evidence, claims, activity and links', async () => {
@@ -304,6 +130,9 @@ describe('message purge', () => {
 		expect(both.revision).toBe(2);
 		// The unconfirmed update held only the purged message's evidence.
 		expect(both.pendingUpdate).toBeUndefined();
+		// Its wording came from the purged message (first evidence): redacted, flagged.
+		expect(both.isReviewNeeded).toBe(true);
+		expect(await openMessageBody(both.display.de)).toBe(REDACTED_CLAIM_TEXT.de);
 		const replaced = after.items.find((i) => i._id === seeded.replaced)!;
 		expect(replaced).toMatchObject({ status: 'open' });
 		expect(replaced.replacedById).toBeUndefined();
@@ -317,9 +146,11 @@ describe('message purge', () => {
 			coverage: [],
 		});
 		expect(after.brief).toMatchObject({
-			deletionEpoch: 1,
+			// Bumped when the purge started and again when it settled.
+			deletionEpoch: 2,
 			interpretationRevision: 2,
-			completeness: 'none',
+			// A claim survived on less evidence: incomplete until the thread is re-read.
+			completeness: 'partial',
 			sourceCounts: { complete: 0, partial: 0, failed: 0, unreadable: 0, skipped: 0 },
 			// The deleted items left the counters, the reopened one came back to `us`.
 			itemCounts: expect.objectContaining({ us: 2, closed: 0 }),
@@ -380,7 +211,7 @@ describe('message purge', () => {
 		const after = await mailRows(t, threadId);
 		expect(after.items).toHaveLength(0);
 		expect(after.interpretations).toHaveLength(0);
-		expect(after.brief?.deletionEpoch).toBe(1);
+		expect(after.brief?.deletionEpoch).toBe(2);
 		expect(await t.run((ctx) => ctx.db.get(b))).not.toBeNull();
 	});
 });

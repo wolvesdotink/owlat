@@ -29,6 +29,10 @@ export const ACCOUNT_EXPORT_PERSONAL_RESOURCES = [
 	'bookings',
 	'savedReplies',
 	'pushSubscriptions',
+	// Thread brief: what interpretation derived from the member's personal mail
+	// (mailbox-scoped, like mailMessages), and their own brief view state.
+	'threadBriefs',
+	'threadViewerState',
 ] as const;
 
 export type AccountExportPersonalResource = (typeof ACCOUNT_EXPORT_PERSONAL_RESOURCES)[number];

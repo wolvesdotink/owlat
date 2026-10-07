@@ -145,6 +145,9 @@ const CHROME = [
 	'PostboxThreadEarlier',
 	'PostboxThreadHeader',
 	'PostboxTriageSuggestion',
+	'PostboxTeamComposer',
+	'PostboxTeamInterlude',
+	'TeamPinnedItems',
 	'PostboxTrustChip',
 	'PostboxUnsubscribeChip',
 ];

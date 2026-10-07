@@ -33,7 +33,7 @@ import type { QueryCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
 import type { mailCategoryLabelValidator } from '../../lib/literalValidators';
 import { batchGet } from '../../_utils/batchLoader';
-import { openBriefTop, type BriefTopRow } from '../interpret/briefTop';
+import { modeOfMailbox, openBriefTop, type BriefTopRow } from '../interpret/briefTop';
 
 /**
  * The fields a list row keeps, as an allowlist: a field added to `mailMessages`
@@ -131,11 +131,19 @@ export async function attachThreadState(
 		ctx,
 		messages.map((m) => m.threadId)
 	);
-	// One unseal per distinct thread, in parallel.
+	// One unseal per distinct thread, in parallel, in the mode the thread's
+	// mailbox has NOW (a just-converted team inbox shows no personal latest).
+	const mailboxes = await batchGet(
+		ctx,
+		[...cache.values()].flatMap((thread) => (thread?.briefTop ? [thread.mailboxId] : []))
+	);
 	const briefTops = new Map<string, BriefTopRow | undefined>();
 	await Promise.all(
 		[...cache.entries()].map(async ([threadId, thread]) => {
-			if (thread?.briefTop) briefTops.set(threadId, await openBriefTop(thread));
+			if (!thread?.briefTop) return;
+			const mailbox = mailboxes.get(thread.mailboxId);
+			if (!mailbox) return;
+			briefTops.set(threadId, await openBriefTop(thread, modeOfMailbox(mailbox)));
 		})
 	);
 	const out: Array<MailListRow & RowThreadState> = [];

@@ -23,6 +23,9 @@ export const interpretApi = {
 		remind: api.mail.interpret.reactions.remind,
 		confirmProposal: api.mail.interpret.reactions.confirmProposal,
 		markReceived: api.mail.interpret.reactions.markReceived,
+		// Team surfaces only: per-item owner (D4) and "Claim".
+		assignItem: api.mail.interpret.reactions.assignItem,
+		claimItem: api.mail.interpret.reactions.claimItem,
 	},
 };
 

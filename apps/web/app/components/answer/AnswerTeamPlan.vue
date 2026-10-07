@@ -19,9 +19,8 @@ import BriefItems from '~/components/brief/BriefItems.vue';
 import AnswerPlanBanner from './AnswerPlanBanner.vue';
 
 const props = defineProps<{
+	/** The reply's plan; its `items` are the thread's open items it plans for. */
 	plan: ResponsePlan;
-	/** The thread's open items the reply plans for (`isPlanItem`). */
-	items: readonly BriefItemView[];
 	canAttach: boolean;
 }>();
 
@@ -33,10 +32,11 @@ provide(RESPONSE_PLAN, props.plan.view);
 // Item sources are the conversation column's to show; nothing to reveal here.
 provide(BRIEF_CONTEXT, { sourceOf: () => undefined, cite: () => {} });
 
-const open = ref(props.items.length <= 4);
+const items = computed(() => props.plan.items.value);
+const open = ref(items.value.length <= 4);
 const selectedSet = computed(() => new Set(props.plan.selected.value));
-const ours = computed(() => props.items.filter((i) => i.responsibility !== 'unclear'));
-const unclear = computed(() => props.items.filter((i) => i.responsibility === 'unclear'));
+const ours = computed(() => items.value.filter((i) => i.responsibility !== 'unclear'));
+const unclear = computed(() => items.value.filter((i) => i.responsibility === 'unclear'));
 
 function toggle(item: BriefItemView) {
 	const next = new Set(selectedSet.value);

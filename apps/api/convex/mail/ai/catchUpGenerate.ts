@@ -1,11 +1,11 @@
 'use node';
 
 /**
- * The model call behind Answer mode's catch-up card, shared by the Postbox
- * action (mail/ai/catchUp.ts) and the team one (inbox/catchUp.ts). Callers own
- * the reader check, the cache and the card's AI gate. It talks to the model,
- * records spend and cleans the output. The asks' coverage check is gone: the
- * draft's response plan replaces it (mail/interpret/coverage.ts).
+ * The model call behind Answer mode's catch-up card, for the Postbox action
+ * (mail/ai/catchUp.ts). Callers own the reader check, the cache and the card's
+ * AI gate. It talks to the model, records spend and cleans the output. The
+ * asks' coverage check is gone: the draft's response plan replaces it
+ * (mail/interpret/coverage.ts).
  *
  * It runs on the cheap `summarize` tier with the interactive deadline and
  * fails soft: any dispatch error comes back as null, never as an exception the

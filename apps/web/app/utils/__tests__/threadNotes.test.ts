@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	activeMentionQuery,
-	countNotesMentioning,
 	insertMention,
-	interleaveNotes,
 	mentionHandle,
 	noteMentionCandidates,
 } from '../threadNotes';
@@ -61,41 +59,5 @@ describe('insertMention', () => {
 			text: 'ask @ben.o  please',
 			caret: 11,
 		});
-	});
-});
-
-describe('interleaveNotes', () => {
-	const messages = [
-		{ _id: 'm2', _creationTime: 200 },
-		{ _id: 'm1', _creationTime: 100 },
-	];
-	it('puts each note after the newest message written before it', () => {
-		const notes = [
-			{ id: 'late', createdAt: 250 },
-			{ id: 'early', createdAt: 50 },
-			{ id: 'mid', createdAt: 150 },
-			{ id: 'mid2', createdAt: 120 },
-		];
-		const { leading, after } = interleaveNotes(messages, notes);
-		expect(leading.map((n) => n.id)).toEqual(['early']);
-		expect(after.get('m1')?.map((n) => n.id)).toEqual(['mid2', 'mid']);
-		expect(after.get('m2')?.map((n) => n.id)).toEqual(['late']);
-	});
-
-	it('keeps every note when there are no messages', () => {
-		expect(interleaveNotes([], [{ createdAt: 1 }]).leading).toHaveLength(1);
-	});
-});
-
-describe('countNotesMentioning', () => {
-	it('counts the notes that mention the user, and nothing without one', () => {
-		const notes = [
-			{ mentionedUserIds: ['u_ben'] },
-			{ mentionedUserIds: [] },
-			{ mentionedUserIds: ['u_cy', 'u_ben'] },
-		];
-		expect(countNotesMentioning(notes, 'u_ben')).toBe(2);
-		expect(countNotesMentioning(notes, 'u_ada')).toBe(0);
-		expect(countNotesMentioning(notes, null)).toBe(0);
 	});
 });

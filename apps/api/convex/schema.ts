@@ -53,6 +53,7 @@ import { pushSubscriptionTables } from './schema/pushSubscriptions';
 import { emailCoeditingTables } from './schema/emailCoediting';
 import { imapServerTables } from './schema/imapServers';
 import { threadBriefTables } from './schema/threadBrief';
+import { threadPurgeJobTables } from './schema/threadPurgeJobs';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -111,4 +112,5 @@ export default defineSchema({
 	...emailCoeditingTables,
 	...imapServerTables,
 	...threadBriefTables,
+	...threadPurgeJobTables,
 });

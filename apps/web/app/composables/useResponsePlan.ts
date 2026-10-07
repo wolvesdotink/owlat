@@ -231,6 +231,8 @@ export function useResponsePlan(opts: {
 
 	return {
 		view,
+		/** The items the reply plans for. */
+		items: computed(() => opts.items()),
 		stances,
 		selected,
 		setSelected,

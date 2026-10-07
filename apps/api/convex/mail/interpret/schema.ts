@@ -41,7 +41,7 @@ import { REPLY_INTENTS } from '../ai/replyIntent';
 // ── Versions and bounds ────────────────────────────────────────────────────
 
 /** Bump when the prompt or the contract changes what is extracted: stored rows are re-run. */
-export const INTERPRET_EXTRACTOR_VERSION = 3;
+export const INTERPRET_EXTRACTOR_VERSION = 4;
 /** Shape version of the sealed `messageInterpretations.payload` JSON. */
 export const INTERPRET_PAYLOAD_VERSION = 1;
 
@@ -150,12 +150,30 @@ export const itemModelSchema = z.object(itemShape(consequencesSchema.nullable())
 /** An item as PARSED from a stored payload: `consequences` may be absent (pre-tag payloads). */
 export const itemProposalSchema = z.object(itemShape(consequencesSchema.nullable().optional()));
 
-export const transitionProposalSchema = z.object({
-	itemId: z.string(),
-	to: z.enum(ITEM_STATUSES).nullable(),
-	disposition: z.enum(ITEM_DISPOSITIONS).nullable(),
-	quotes: quotesSchema,
-});
+function transitionShape<A extends z.ZodTypeAny>(about: A) {
+	return {
+		itemId: z
+			.string()
+			.nullable()
+			.describe('Id of the OPEN ITEM this changes; null when the obligation is not listed'),
+		// An obligation not seen yet ("I've paid invoice 2041" before the
+		// request arrived): kept and matched when the request creates its item.
+		about,
+		to: z.enum(ITEM_STATUSES).nullable(),
+		disposition: z.enum(ITEM_DISPOSITIONS).nullable(),
+		quotes: quotesSchema,
+	};
+}
+
+const aboutSchema = z
+	.string()
+	.nullable()
+	.describe('When itemId is null: the obligation this message reports on, in one sentence');
+
+/** A transition as the MODEL returns it (every key required). */
+export const transitionModelSchema = z.object(transitionShape(aboutSchema));
+/** A transition as PARSED (`about` may be absent from a payload written before it existed). */
+export const transitionProposalSchema = z.object(transitionShape(aboutSchema.optional()));
 
 export const meetingIntentSchema = z.object({
 	isScheduling: z.boolean(),
@@ -169,10 +187,10 @@ export const coverageProposalSchema = z.object({
 	overflow: z.boolean(),
 });
 
-function actionsPart<I extends z.ZodTypeAny>(item: I) {
+function actionsPart<I extends z.ZodTypeAny, T extends z.ZodTypeAny>(item: I, transition: T) {
 	return {
 		items: z.array(item).max(MAX_INTERPRET_ITEMS),
-		transitions: z.array(transitionProposalSchema).max(MAX_INTERPRET_TRANSITIONS),
+		transitions: z.array(transition).max(MAX_INTERPRET_TRANSITIONS),
 		// Postbox projection: the server still runs decideNeedsReply on it.
 		replyIntent: z.enum(REPLY_INTENTS),
 		urgency: z.enum(['high', 'normal', 'low']),
@@ -236,7 +254,7 @@ const factsSchema = z.array(factProposalSchema).max(MAX_INTERPRET_FACTS);
  */
 export const briefModelSchema = z.strictObject({
 	mode: z.literal('brief'),
-	...actionsPart(itemModelSchema),
+	...actionsPart(itemModelSchema, transitionModelSchema),
 	latest: latestSchema,
 	facts: factsSchema,
 	exactWording: exactWordingSchema,
@@ -244,7 +262,7 @@ export const briefModelSchema = z.strictObject({
 
 export const actionsModelSchema = z.strictObject({
 	mode: z.literal('actions'),
-	...actionsPart(itemModelSchema),
+	...actionsPart(itemModelSchema, transitionModelSchema),
 });
 
 /**
@@ -255,7 +273,7 @@ export const actionsModelSchema = z.strictObject({
 /** Personal Postbox: actions plus "Latest update" and facts. */
 export const briefOutputSchema = z.strictObject({
 	mode: z.literal('brief'),
-	...actionsPart(itemProposalSchema),
+	...actionsPart(itemProposalSchema, transitionProposalSchema),
 	latest: latestSchema,
 	facts: factsSchema,
 	// Absent on payloads stored before extractor version 2.
@@ -265,7 +283,7 @@ export const briefOutputSchema = z.strictObject({
 /** Every team surface: actions only. `latest` / `facts` are rejected. */
 export const actionsOutputSchema = z.strictObject({
 	mode: z.literal('actions'),
-	...actionsPart(itemProposalSchema),
+	...actionsPart(itemProposalSchema, transitionProposalSchema),
 });
 
 export const interpretOutputSchema = z.discriminatedUnion('mode', [

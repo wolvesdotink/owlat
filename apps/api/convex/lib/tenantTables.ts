@@ -177,6 +177,8 @@ export const TENANT_TABLES = [
 	// Thread brief (schema/threadBrief.ts) of team and Postbox threads: derived
 	// from the mail, so it goes before the threads it describes.
 	...THREAD_BRIEF_TABLES,
+	// Resumable thread brief purges (schema/threadPurgeJobs.ts): ids only.
+	'threadPurgeJobs',
 	'inboundMessages',
 	'conversationThreads',
 	'coalesceBatches',

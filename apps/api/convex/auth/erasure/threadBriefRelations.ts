@@ -25,6 +25,8 @@ const WITH_THREAD =
 	'Derived from the personal thread’s mail (items, facts, activity, plans, viewer state); deleted with the thread.';
 const SAME_THREAD =
 	'Points within the same personal thread, whose thread brief rows are all deleted.';
+const PURGE_JOB =
+	'A running thread brief purge job (schema/threadPurgeJobs.ts): ids only, no content; it deletes itself when its walk ends, and a walk over an erased row finds nothing.';
 const TEAM_ONLY =
 	'Team Inbox only: a personal mailbox’s items never appear here. A dangling id carries no content.';
 
@@ -41,6 +43,8 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 		descendant('mailThreads', table, 'mailThreadId', 'delete', WITH_THREAD)
 	),
 	descendant('mailboxes', 'threadItems', 'mailboxId', 'delete', WITH_THREAD),
+	descendant('mailThreads', 'threadPurgeJobs', 'mailThreadId', 'retain', PURGE_JOB),
+	descendant('mailMessages', 'threadPurgeJobs', 'sources[].id', 'retain', PURGE_JOB),
 	descendant('mailMessages', 'messageInterpretations', 'source.id', 'delete', WITH_THREAD),
 	descendant(
 		'mailMessages',
@@ -96,7 +100,7 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 		'chatMessages',
 		'threadItemId',
 		'anonymize',
-		'A thread’s discussion room is the organization’s and stays; its messages lose the link to the deleted item (unlinkDeletedItem).'
+		'A thread’s discussion room is the organization’s and stays; its messages lose the link to the deleted item (mail/interpret/purgeLinks.ts drainItemLinks).'
 	),
 	descendant(
 		'threadItems',

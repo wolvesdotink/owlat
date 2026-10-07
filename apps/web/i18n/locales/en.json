@@ -6427,6 +6427,90 @@
 				"gitSha": "Git SHA"
 			}
 		},
+		"team": {
+			"answer": {
+				"view": {
+					"recent": "Recent",
+					"full": "Full conversation"
+				}
+			},
+			"composer": {
+				"continue": "Continue in Answer mode",
+				"hint": "{'@'} to mention · # to link an action",
+				"modeLabel": "Internal note or reply",
+				"note": "Internal note",
+				"notePlaceholder": "Write an internal note to the team… (never sent to {name})",
+				"notePlaceholderNoName": "Write an internal note to the team…",
+				"post": "Add note",
+				"privacy": "Only your team sees this. It never goes to the customer.",
+				"replyHint": "The reply is written and sent in Answer mode.",
+				"replyPlaceholder": "Start your reply to {name}…",
+				"replyTo": "Reply to {name}",
+				"unlink": "Remove the link to this action"
+			},
+			"items": {
+				"askedBy": "asked by {name} {date}",
+				"assignTo": "Assign to",
+				"claim": "Claim",
+				"claimed": "It's yours now.",
+				"empty": "Nothing is open for the team.",
+				"formerTeammate": "Former teammate",
+				"me": "Me",
+				"notes": "{count} note | {count} notes",
+				"openCount": "{count} open | {count} open",
+				"operation": "Update the action",
+				"phoneSummary": "{count} open for the team | {count} open for the team",
+				"title": "Open for the team",
+				"unassign": "Unassign",
+				"unassigned": "Unassigned",
+				"unclearOwner": "unclear who should do this",
+				"unclearTitle": "Not clear who owns these",
+				"waitingTitle": "Waiting on the customer"
+			},
+			"note": {
+				"addReaction": "Add a reaction",
+				"ariaLabel": "Internal note from {name}",
+				"delete": "Delete note",
+				"deleted": "Note deleted",
+				"edit": "Edit note",
+				"edited": "(edited)",
+				"formerTeammate": "Former teammate",
+				"internal": "Internal",
+				"on": "on",
+				"operation": "Save the note",
+				"reactWith": "React with {emoji}",
+				"removedItem": "an action that is gone"
+			},
+			"reply": {
+				"email": "email",
+				"label": "Reply from {name}",
+				"status": {
+					"cancelled": "Cancelled",
+					"failed": "Not delivered",
+					"held": "Held",
+					"queued": "Sending",
+					"sent": "Sent"
+				}
+			},
+			"stream": {
+				"earlier": "Show earlier",
+				"markSeenOperation": "Remember where you stopped reading",
+				"new": "New",
+				"system": {
+					"item_changed": "“{item}” changed",
+					"item_closed": "Closed “{item}”",
+					"item_closed_declined": "Declined “{item}”",
+					"item_closed_superseded": "Replaced “{item}”",
+					"item_closed_untracked": "Stopped tracking “{item}”",
+					"item_corrected": "Corrected “{item}”",
+					"item_opened": "New action for the team: “{item}”",
+					"item_reopened": "Reopened “{item}”",
+					"item_replaced": "“{item}” was replaced by a newer ask",
+					"openedMany": "{count} new action for the team | {count} new actions for the team",
+					"proposal_confirmed": "Confirmed “{item}”"
+				}
+			}
+		},
 		"transactional": {
 			"recentSendsModal": {
 				"hasMore": "Showing the 25 most recent sends.",
@@ -16631,7 +16715,9 @@
 			"topics": "Topics",
 			"transactionalEmails": "Transactional emails",
 			"webhooks": "Webhooks",
-			"pushSubscriptions": "Notification devices"
+			"pushSubscriptions": "Notification devices",
+			"threadBriefs": "Thread overviews",
+			"threadViewerState": "Thread view choices"
 		},
 		"archiveImport": {
 			"refused": {

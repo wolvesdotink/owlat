@@ -27,9 +27,13 @@
  * of a thread is interpreted in the new mode, and older threads stay as their
  * items left them.
  *
- * `invalidateMailboxThreads` walks the mailbox a page of threads at a time;
- * a thread with more rows than one pass allows continues in
- * `invalidateThreadScope`.
+ * `purgeRun.ts invalidateMailboxThreadsPage` walks the mailbox a page of
+ * threads at a time and starts a `scope` purge job per thread
+ * (`purgeDrain.ts`): the brief row is moved to the new mode and its epoch
+ * bumped ONCE, when the job starts ({@link startScopeChange}); the ranges
+ * below are walked resumably, each with its own cursor, so a thread with many
+ * extractions, viewers, activity rows or plans is finished, never re-read
+ * from the start.
  */
 
 import { internal } from '../../_generated/api';
@@ -40,16 +44,17 @@ import { mailboxScope } from '../mailbox/shared';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
 import { deleteExtractions, recomputeCompleteness } from './purgeRows';
-
-/** Threads per walker transaction. */
-const THREAD_PAGE = 25;
-/** Rows of one table removed or rewritten per thread and pass. */
-const ROW_LIMIT = 200;
-/** Activity rows scanned per thread for `fact_changed`. */
-const ACTIVITY_SCAN = 500;
+import {
+	drainShrinking,
+	scanRange,
+	type JobPlan,
+	type PurgeRange,
+	type RangePosition,
+	type RangeRun,
+} from './purgeDrain';
 
 /** The mode a mailbox's threads interpret in. */
-function modeOfScope(mailbox: Pick<Doc<'mailboxes'>, 'scope'>): InterpretMode {
+export function modeOfScope(mailbox: Pick<Doc<'mailboxes'>, 'scope'>): InterpretMode {
 	return mailboxScope(mailbox) === 'shared' ? 'actions' : 'brief';
 }
 
@@ -70,11 +75,12 @@ export async function scheduleScopeInvalidation(
 }
 
 /**
- * Drop what one thread's old mode produced and move its brief to `mode` (see
- * the module doc). Returns whether the thread is done; a thread with more
- * rows than one pass allows needs another call.
+ * The one-time start of a thread's scope change: the brief takes the new
+ * mode, a bumped epoch (an old-mode run that loaded before gets `erased`) and
+ * revision, no overview and no checkpoint. Returns false when the thread has
+ * no brief row (nothing to invalidate; a stale list projection is cleared).
  */
-export async function invalidateThreadForMode(
+export async function startScopeChange(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
 	mode: InterpretMode
@@ -83,11 +89,8 @@ export async function invalidateThreadForMode(
 	if (!brief) {
 		const thread = await ctx.db.get(threadId);
 		if (thread?.briefTop) await ctx.db.patch(threadId, { briefTop: undefined });
-		return true;
+		return false;
 	}
-	let isDone = true;
-
-	// Bump first: an old-mode run that loaded before this pass gets `erased`.
 	await ctx.db.patch(brief._id, {
 		mode,
 		deletionEpoch: brief.deletionEpoch + 1,
@@ -96,104 +99,152 @@ export async function invalidateThreadForMode(
 		checkpoint: undefined,
 		updatedAt: Date.now(),
 	});
+	return true;
+}
 
-	// Extractions in the old mode; a run that already landed in the new one stays.
-	const extractions = await ctx.db
-		.query('messageInterpretations')
-		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
-		.take(ROW_LIMIT);
-	const stale = extractions.filter((row) => row.mode !== mode);
-	await deleteExtractions(ctx, stale);
-	// Another pass only while it still finds old-mode rows to delete.
-	if (extractions.length === ROW_LIMIT && stale.length > 0) isDone = false;
+function mailThreadOf(run: RangeRun): Id<'mailThreads'> | null {
+	return run.ref.kind === 'mail' ? run.ref.id : null;
+}
 
-	if (mode === 'actions') {
-		const facts = await ctx.db
-			.query('threadFacts')
-			.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', threadId))
-			.take(ROW_LIMIT);
-		for (const row of facts) await ctx.db.delete(row._id);
-		if (facts.length === ROW_LIMIT) isDone = false;
-		const activity = await ctx.db
-			.query('threadActivity')
-			.withIndex('by_mail_thread_and_seq', (q) => q.eq('mailThreadId', threadId))
-			.order('desc')
-			.take(ACTIVITY_SCAN);
-		for (const row of activity) {
+/** Rows of a mail-thread table in creation order, from `from`. */
+function byCreation(from: RangePosition | undefined) {
+	return typeof from === 'number' ? from : undefined;
+}
+
+/** 1. The thread's extractions in the old mode (a row a new-mode run wrote stays). */
+const extractionsRange: PurgeRange = async (ctx, run) => {
+	const threadId = mailThreadOf(run);
+	if (!threadId) return { isDone: true };
+	return scanRange(
+		run.budget,
+		run.cursor,
+		(from, n) => {
+			const at = byCreation(from);
+			return ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_mail_thread', (q) =>
+					at === undefined
+						? q.eq('mailThreadId', threadId)
+						: q.eq('mailThreadId', threadId).gte('_creationTime', at)
+				)
+				.take(n);
+		},
+		(row) => row._creationTime,
+		async (row) => {
+			if (row.mode !== run.job.mode) await deleteExtractions(ctx, [row]);
+			return true;
+		}
+	);
+};
+
+/** 2. Actions mode has no facts: every fact of the thread goes. */
+const factsRange: PurgeRange = async (ctx, run) => {
+	const threadId = mailThreadOf(run);
+	if (!threadId || run.job.mode !== 'actions') return { isDone: true };
+	const isEmpty = await drainShrinking(
+		run.budget,
+		(n) =>
+			ctx.db
+				.query('threadFacts')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.take(n),
+		async (row) => {
+			await ctx.db.delete(row._id);
+			return true;
+		}
+	);
+	return isEmpty ? { isDone: true } : { isDone: false, cursor: undefined };
+};
+
+/** 3. ... and the `fact_changed` activity about them, over the whole log. */
+const factActivityRange: PurgeRange = async (ctx, run) => {
+	const threadId = mailThreadOf(run);
+	if (!threadId || run.job.mode !== 'actions') return { isDone: true };
+	return scanRange(
+		run.budget,
+		run.cursor,
+		(from, n) =>
+			ctx.db
+				.query('threadActivity')
+				.withIndex('by_mail_thread_and_seq', (q) =>
+					typeof from === 'number'
+						? q.eq('mailThreadId', threadId).gte('seq', from)
+						: q.eq('mailThreadId', threadId)
+				)
+				.take(n),
+		(row) => row.seq,
+		async (row) => {
 			if (row.type === 'fact_changed') await ctx.db.delete(row._id);
+			return true;
 		}
-	}
+	);
+};
 
-	const viewers = await ctx.db
-		.query('threadViewerState')
-		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
-		.take(ROW_LIMIT);
-	for (const row of viewers) {
-		if (row.viewOverride !== undefined) {
-			await ctx.db.patch(row._id, { viewOverride: undefined, updatedAt: Date.now() });
+/** 4. Every viewer's view override (team surfaces have no Overview switch). */
+const viewersRange: PurgeRange = async (ctx, run) => {
+	const threadId = mailThreadOf(run);
+	if (!threadId) return { isDone: true };
+	return scanRange(
+		run.budget,
+		run.cursor,
+		(from, n) => {
+			const at = byCreation(from);
+			return ctx.db
+				.query('threadViewerState')
+				.withIndex('by_mail_thread', (q) =>
+					at === undefined
+						? q.eq('mailThreadId', threadId)
+						: q.eq('mailThreadId', threadId).gte('_creationTime', at)
+				)
+				.take(n);
+		},
+		(row) => row._creationTime,
+		async (row) => {
+			if (row.viewOverride !== undefined) {
+				await ctx.db.patch(row._id, { viewOverride: undefined, updatedAt: Date.now() });
+			}
+			return true;
 		}
-	}
-	if (viewers.length === ROW_LIMIT) isDone = false;
+	);
+};
 
-	const plans = await ctx.db
-		.query('draftResponsePlans')
-		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
-		.take(ROW_LIMIT);
-	for (const plan of plans) {
-		if (plan.verdict !== 'stale') {
-			await ctx.db.patch(plan._id, { verdict: 'stale', updatedAt: Date.now() });
+/** 5. Every response plan of the thread goes stale. */
+const plansRange: PurgeRange = async (ctx, run) => {
+	const threadId = mailThreadOf(run);
+	if (!threadId) return { isDone: true };
+	return scanRange(
+		run.budget,
+		run.cursor,
+		(from, n) => {
+			const at = byCreation(from);
+			return ctx.db
+				.query('draftResponsePlans')
+				.withIndex('by_mail_thread', (q) =>
+					at === undefined
+						? q.eq('mailThreadId', threadId)
+						: q.eq('mailThreadId', threadId).gte('_creationTime', at)
+				)
+				.take(n);
+		},
+		(row) => row._creationTime,
+		async (plan) => {
+			if (plan.verdict !== 'stale') {
+				await ctx.db.patch(plan._id, { verdict: 'stale', updatedAt: Date.now() });
+			}
+			return true;
 		}
-	}
+	);
+};
 
-	await ctx.db.patch(brief._id, {
-		completeness: await recomputeCompleteness(ctx, { kind: 'mail', id: threadId }),
-	});
-	await refreshBriefTop(ctx, threadId, { latest: null });
-	return isDone;
-}
-
-/**
- * One page of a mailbox's threads. Stops when the mailbox is gone or its
- * scope no longer matches `mode` (a later change runs its own walk).
- */
-export async function invalidateMailboxThreads(
-	ctx: MutationCtx,
-	args: { mailboxId: Id<'mailboxes'>; mode: InterpretMode; cursor: string | null }
-): Promise<{ isDone: boolean; threads: number }> {
-	const mailbox = await ctx.db.get(args.mailboxId);
-	if (!mailbox || modeOfScope(mailbox) !== args.mode) return { isDone: true, threads: 0 };
-	const page = await ctx.db
-		.query('mailThreads')
-		.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', args.mailboxId))
-		.paginate({ cursor: args.cursor, numItems: THREAD_PAGE });
-	for (const thread of page.page) {
-		if (!(await invalidateThreadForMode(ctx, thread._id, args.mode))) {
-			await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.invalidateThreadScope, {
-				threadId: thread._id,
-				mode: args.mode,
-			});
+/** The walk of a `scope` job; settling recomputes completeness and the list projection. */
+export const scopePlan: JobPlan = {
+	ranges: [extractionsRange, factsRange, factActivityRange, viewersRange, plansRange],
+	settle: async (ctx, _job, ref) => {
+		if (ref.kind !== 'mail') return;
+		const brief = await loadBriefRow(ctx, ref);
+		if (brief) {
+			await ctx.db.patch(brief._id, { completeness: await recomputeCompleteness(ctx, ref) });
 		}
-	}
-	if (!page.isDone) {
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.invalidateMailboxThreads, {
-			...args,
-			cursor: page.continueCursor,
-		});
-	}
-	return { isDone: page.isDone, threads: page.page.length };
-}
-
-/** Continuation for one thread with more rows than a pass allows. */
-export async function invalidateThreadScope(
-	ctx: MutationCtx,
-	args: { threadId: Id<'mailThreads'>; mode: InterpretMode }
-): Promise<{ isDone: boolean }> {
-	const thread = await ctx.db.get(args.threadId);
-	const mailbox = thread ? await ctx.db.get(thread.mailboxId) : null;
-	if (!mailbox || modeOfScope(mailbox) !== args.mode) return { isDone: true };
-	const isDone = await invalidateThreadForMode(ctx, args.threadId, args.mode);
-	if (!isDone) {
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.invalidateThreadScope, args);
-	}
-	return { isDone };
-}
+		await refreshBriefTop(ctx, ref.id, { latest: null });
+	},
+};
