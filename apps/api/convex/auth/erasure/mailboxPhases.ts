@@ -28,6 +28,7 @@ import { deleteFolderCounters, deleteMailboxCounters } from '../../mail/messageC
 import { dropFolderMembership } from '../../mail/folderMembership';
 import { isOrgInfrastructureAccount } from '../../mail/external/personalAccount';
 import { deleteStoredAccessToken } from '../../mail/external/accessTokenStore';
+import { drainThreadBrief, eraseDraftPlans } from '../../contacts/erasure/threadBriefPhases';
 import {
 	deleteAskSession,
 	deleteBlobAndReceipt,
@@ -199,8 +200,9 @@ export const eraseMessages: MemberPhaseRunner = (phase) =>
 
 /**
  * Conversation rows, each after what hangs off it: the cached Today summaries
- * and Answer mode catch-up cards (both retell the thread's content), and the
- * Reply Queue answer uploads bound to the thread (`mailThreadUploadKey`). A
+ * and Answer mode catch-up cards (both retell the thread's content), the
+ * Reply Queue answer uploads bound to the thread (`mailThreadUploadKey`), and
+ * its thread brief (items, facts, activity, plans, viewer state). A
  * mailbox that kept its threads after its messages drained can hold far more
  * than one transaction may read; they go one at a time within the budget. A
  * thread whose children outlast the budget stays, and the phase is not done
@@ -250,6 +252,7 @@ export const eraseThreads: MemberPhaseRunner = (phase) =>
 					}
 				);
 				if (!isUploadsEmpty) return false;
+				if (!(await drainThreadBrief(ctx, budget, { kind: 'mail', id: thread._id }))) return false;
 				await ctx.db.delete(thread._id);
 				return true;
 			}
@@ -284,6 +287,7 @@ export const eraseDrafts: MemberPhaseRunner = (phase) =>
 					(session) => deleteAskSession(phase, session)
 				);
 				if (!isSessionsEmpty) return false;
+				if (!(await eraseDraftPlans(ctx, budget, draft._id))) return false;
 				for (const attachment of draft.attachments) {
 					await deleteBlobAndReceipt(phase, attachment.storageId, { draftId: draft._id });
 					budget.chargeRows(1);

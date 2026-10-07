@@ -119,6 +119,59 @@ const ROW_SHAPES: Partial<Record<TableNames, Row>> = {
 	semanticFiles: { captureSource: 'team_inbox' },
 };
 
+/**
+ * Descendants whose reference is nested (`a.b`, `a[].b`): the row is built
+ * around the parent here, since the generic seeder can only set a top-level
+ * field. Both put the claim in a Team Inbox thread the contact does not own,
+ * which the message erasure has to clean up on its own.
+ */
+const NESTED_SEEDS: Record<
+	string,
+	(ctx: MutationCtx, seeder: RowSeeder, parentId: Id<TableNames>) => Promise<Row>
+> = {
+	'messageInterpretations.source.id': async (ctx, seeder, parentId) => ({
+		...(await foreignThread(ctx, seeder, parentId)),
+		source: { kind: 'inbound', id: parentId },
+		sourceKey: `inbound:${parentId}`,
+	}),
+	'threadItems.evidence[].source.id': async (ctx, seeder, parentId) => ({
+		...(await foreignThread(ctx, seeder, parentId)),
+		evidence: [
+			{
+				source: { kind: 'inbound', id: parentId },
+				segmentId: 's0',
+				start: 0,
+				end: 1,
+				contentRevision: 'rev',
+			},
+		],
+	}),
+};
+
+/** Put the seeded inbound message in a thread of its own; the row's thread fields. */
+async function foreignThread(
+	ctx: MutationCtx,
+	seeder: RowSeeder,
+	messageId: Id<TableNames>
+): Promise<Row> {
+	const message = (await ctx.db.get(messageId as Id<'inboundMessages'>))!;
+	const threadId =
+		message.threadId ??
+		((await seeder.insert('conversationThreads', {})) as Id<'conversationThreads'>);
+	await ctx.db.patch(message._id, { threadId });
+	return { threadKind: 'team', conversationThreadId: threadId };
+}
+
+/** Every value at a field path (`a.b`, `a[].b`) of a row. */
+function valuesAt(value: unknown, path: string[]): unknown[] {
+	if (path.length === 0) return [value];
+	const [head, ...rest] = path;
+	const isArray = head!.endsWith('[]');
+	const next = (value as Row | undefined)?.[isArray ? head!.slice(0, -2) : head!];
+	if (isArray) return Array.isArray(next) ? next.flatMap((el) => valuesAt(el, rest)) : [];
+	return next === undefined ? [] : valuesAt(next, rest);
+}
+
 interface SeededRow {
 	/** `table.field`, plus `→ parent` for a descendant. */
 	label: string;
@@ -165,7 +218,14 @@ async function seedEveryClearingRelation(t: Harness, contactFields: Row): Promis
 		for (const relation of DESCENDANT_RELATIONS.filter(isClearing)) {
 			const parentId = parents.get(relation.parent);
 			if (!parentId) throw new Error(`no seeded ${relation.parent} for ${relation.table}`);
-			const id = await seeder.insert(relation.table, { [relation.field]: parentId });
+			const nested = NESTED_SEEDS[`${relation.table}.${relation.field}`];
+			if (!nested && /[.[]/.test(relation.field)) {
+				throw new Error(`no seed for nested ${relation.table}.${relation.field}`);
+			}
+			const id = await seeder.insert(
+				relation.table,
+				nested ? await nested(ctx, seeder, parentId) : { [relation.field]: parentId }
+			);
 			// A descendant can parent the next level (a thread's note, then the
 			// note's mention rows): later relations hang off the first one seeded.
 			if (!parents.has(relation.table)) parents.set(relation.table, id);
@@ -188,11 +248,14 @@ async function survivors(t: Harness, seeded: Seeded): Promise<string[]> {
 			if (row === null) continue;
 			const value = row[baseField(relation.field)];
 			const target = 'parent' in relation ? undefined : seeded.contactId;
-			const stillPoints = relation.field.endsWith('[]')
-				? Array.isArray(value) && value.includes(target)
-				: target === undefined
-					? value !== undefined
-					: value === target;
+			const isNested = /[.[]/.test(baseField(relation.field));
+			const stillPoints = isNested
+				? valuesAt(row, relation.field.split('.')).length > 0
+				: relation.field.endsWith('[]')
+					? Array.isArray(value) && value.includes(target)
+					: target === undefined
+						? value !== undefined
+						: value === target;
 			if (relation.action === 'delete' || stillPoints) left.push(label);
 		}
 		return left.sort();

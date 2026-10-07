@@ -11,6 +11,7 @@ import { deleteBlobQuietly } from '../../lib/storageBlobs';
 import { deleteInboundBodyBlobs } from '../../lib/messageBodyInbound';
 import { purgeReplyAttachments } from '../../inbox/replyAttachmentStore';
 import { detachContactJunctionLink, SEMANTIC_FILE_JUNCTION } from '../../lib/contactJunctions';
+import { drainThreadBrief, eraseInboundMessageBrief } from './threadBriefPhases';
 import {
 	deleteAll,
 	drainEach,
@@ -88,7 +89,8 @@ async function eraseInboundMessageDescendants(
  * Threads with the contact go with every message in them, including
  * organization replies that quote the person, with the team's follow-ups
  * written to them, with their Answer mode catch-up cards, and with the team's
- * internal notes about them (and those notes' mention rows). A follow-up
+ * internal notes about them (and those notes' mention rows), and with their
+ * thread brief (items, activity, plans, viewer state). A follow-up
  * still inside its undo window has its dispatch cancelled; one already
  * handed to a Send finds no row when that Send lands
  * (`inbox/followUps.ts completeSend` returns on a missing follow-up).
@@ -163,6 +165,9 @@ export const eraseConversationThreads: PhaseRunner = (phase) => {
 				}
 			);
 			if (!notesGone) return false;
+			// The thread brief: items, activity, plans, viewer state.
+			const briefGone = await drainThreadBrief(ctx, budget, { kind: 'team', id: thread._id });
+			if (!briefGone) return false;
 			await purgeReplyAttachments(ctx, thread.replyAttachments, LOG_TAG, (doc) =>
 				budget.chargeRead(doc)
 			);
@@ -187,7 +192,10 @@ export const eraseUnifiedMessages: PhaseRunner = async (phase) => {
 	return { isDone };
 };
 
-/** Received mail, its sealed raw message, and the agent's work on it. */
+/**
+ * Received mail, its sealed raw message, the agent's work on it, and what the
+ * thread brief derived from it (in a thread that is not the contact's own).
+ */
 export const eraseInboundMessages: PhaseRunner = (phase) => {
 	const { ctx, contactId, budget } = phase;
 	return drainParents(
@@ -199,6 +207,7 @@ export const eraseInboundMessages: PhaseRunner = (phase) => {
 				.first(),
 		async (message) => {
 			if (!(await eraseInboundMessageDescendants(phase, message._id))) return false;
+			if (!(await eraseInboundMessageBrief(ctx, budget, message))) return false;
 			await deleteMessageRow(phase, message);
 			return true;
 		}
