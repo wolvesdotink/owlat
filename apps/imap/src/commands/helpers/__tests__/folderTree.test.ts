@@ -297,19 +297,27 @@ describe('a top-level folder named INBOX in some case', () => {
 	});
 
 	it('no two folders share a path, even with the same name, and each path resolves to its folder', async () => {
-		const ids = randomIds(300, 1304);
-		const folders = [
-			folder('inbox', 'INBOX', { role: 'inbox' }),
-			// Duplicate names on purpose: the id alone keeps two aliases apart.
-			...ids.map((id, i) => folder(id, INBOX_CASES[i % 4]!)),
-			...ids.slice(0, 50).map((id, i) => folder(`c${i}`, 'Inbox', { parentId: id })),
-			...randomNames(300, 1305).map((name, i) => folder(`o${i}`, `${name}${i}`)),
-		];
-		const tree = buildFolderTree(folders);
-		expect(new Set(tree.map((f) => f.path)).size).toBe(folders.length);
-		const convex = { query: async () => folders } as unknown as ConvexClient;
-		for (const f of tree) {
-			expect((await resolveFolderByName(convex, 'mb', wireOf(f.path)))?._id).toBe(f._id);
+		// Every spelling × 300 ids. Duplicate names on purpose: the id alone
+		// keeps two aliases apart.
+		const ids = randomIds(INBOX_CASES.length * 300, 1304);
+		const aliased = ids.map((id, i) => folder(id, INBOX_CASES[i % INBOX_CASES.length]!));
+		const inbox = folder('inbox', 'INBOX', { role: 'inbox' });
+		const ordinary = randomNames(300, 1305).map((name, i) => folder(`o${i}`, `${name}${i}`));
+		const childrenOf = (parents: readonly FolderRow[]) =>
+			parents.slice(0, 2).map((p) => folder(`c-${p._id}`, 'Inbox', { parentId: p._id }));
+		const all = [inbox, ...ordinary, ...aliased, ...childrenOf(aliased)];
+		expect(new Set(buildFolderTree(all).map((f) => f.path)).size).toBe(all.length);
+
+		// Resolve in mailboxes of one folder per spelling, since a lookup lists
+		// the whole mailbox; random ordinary names round-trip in the test above.
+		for (let start = 0; start < aliased.length; start += INBOX_CASES.length) {
+			const mine = aliased.slice(start, start + INBOX_CASES.length);
+			expect(new Set(mine.map((f) => f.name)).size).toBe(INBOX_CASES.length);
+			const folders = [inbox, ...ordinary.slice(0, 5), ...mine, ...childrenOf(mine)];
+			const convex = { query: async () => folders } as unknown as ConvexClient;
+			for (const f of buildFolderTree(folders)) {
+				expect((await resolveFolderByName(convex, 'mb', wireOf(f.path)))?._id).toBe(f._id);
+			}
 		}
 	});
 
