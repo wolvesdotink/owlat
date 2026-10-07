@@ -4,10 +4,13 @@
  * its own joined with the hierarchy delimiter `/`, outermost first.
  *
  * Each level is a function of one folder's stored name and nothing else (see
- * {@link levelName}), and that function is injective. Stored names are unique
- * per mailbox (`mail/folders.ts`), so no two folders share a path, and a path
- * changes only when the folder or one of its ancestors is renamed or moved,
- * never because another folder was created, renamed or deleted.
+ * {@link levelName}), and that function is injective. The one exception is a
+ * top-level folder named `INBOX` in some case, whose level also holds its own
+ * id and is never a level {@link levelName} writes ({@link topLevelName}).
+ * Stored names are unique per mailbox (`mail/folders.ts`), so no two folders
+ * share a path, and a path changes only when the folder or one of its
+ * ancestors is renamed or moved, never because another folder was created,
+ * renamed or deleted.
  *
  * A folder whose parent is missing (deleted, or in another mailbox) is listed
  * at the top level, as the web app shows it.
@@ -60,6 +63,38 @@ export function levelName(folder: FolderRow): string {
 	return out;
 }
 
+/** `INBOX` in any case, ASCII only: without the `u` flag no non-ASCII char matches `i`. */
+const INBOX_ANY_CASE = /^inbox$/i;
+
+/** What a folder id must look like to go into a name. Convex ids are lowercase base32. */
+const NAME_SAFE_ID = /^[0-9A-Za-z_-]+$/;
+
+/**
+ * The level a folder contributes at the top of its path. That is
+ * {@link levelName}, except for a folder other than the inbox whose name is
+ * `INBOX` in some case, such as `Inbox`. RFC 3501 §5.1 reads `INBOX` in any
+ * case as the inbox, so under its own name that folder could never be opened.
+ * New names cannot be one (`mail/folders.ts`); older ones and folders
+ * mirrored from a provider can. Such a folder is listed as its name, a `⧵`
+ * and its id: `Inbox⧵k57c…`.
+ *
+ * No stored name is ever written that way. Read code word by code word, a
+ * `⧵` in {@link levelName}'s output is always followed by `⧵` or `∕`, and an
+ * id starts with neither. Ids are unique, so no two folders share one. It
+ * depends on the folder's own name and id only, so creating, renaming or
+ * deleting another folder never moves it, and renaming the folder itself to
+ * any other name gives it back an ordinary one. A folder called `Inbox` below
+ * another keeps its name: only a first level reads as the inbox.
+ */
+export function topLevelName(folder: FolderRow): string {
+	const level = levelName(folder);
+	return folder.role !== 'inbox' &&
+		INBOX_ANY_CASE.test(folder.name) &&
+		NAME_SAFE_ID.test(folder._id)
+		? level + NAME_ESCAPE + folder._id
+		: level;
+}
+
 /** Every folder with its path and whether any folder sits below it, in the order given. */
 export function buildFolderTree(folders: readonly FolderRow[]): ImapFolder[] {
 	const byId = new Map(folders.map((f) => [f._id, f]));
@@ -74,7 +109,10 @@ export function buildFolderTree(folders: readonly FolderRow[]): ImapFolder[] {
 			seen.add(f._id);
 			chain.push(f);
 		}
-		return chain.reverse().map(levelName).join(DELIMITER);
+		return chain
+			.reverse()
+			.map((f, i) => (i === 0 ? topLevelName(f) : levelName(f)))
+			.join(DELIMITER);
 	};
 
 	const withChildren = new Set<string>();
