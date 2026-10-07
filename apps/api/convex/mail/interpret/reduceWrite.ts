@@ -181,15 +181,7 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 				continue;
 			}
 			const row = args.factRows.get(fact._id);
-			if (row)
-				await patchFact(
-					ctx,
-					args,
-					row,
-					fact,
-					resolveFact(fact.supersedesId),
-					resolveFact(fact.conflictsWithId)
-				);
+			if (row) await patchFact(ctx, args, row, fact);
 		}
 	}
 	return created;
@@ -395,9 +387,7 @@ async function patchFact(
 	ctx: MutationCtx,
 	args: WriteArgs,
 	row: Doc<'threadFacts'>,
-	fact: MemFact,
-	supersedesId: Id<'threadFacts'> | undefined,
-	conflictsWithId: Id<'threadFacts'> | undefined
+	fact: MemFact
 ): Promise<void> {
 	const patch: Partial<Doc<'threadFacts'>> = {};
 	if (fact.status !== row.status) patch.status = fact.status;

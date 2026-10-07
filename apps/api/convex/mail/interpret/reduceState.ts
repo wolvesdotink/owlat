@@ -9,7 +9,7 @@
  * message produced before, open or closed.
  */
 
-import type { Doc, Id } from '../../_generated/dataModel';
+import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { ITEM_STATUSES, type InterpretMode } from '@owlat/shared/threadBrief';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
