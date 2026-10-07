@@ -162,6 +162,7 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'savedReplyQuery',
 	'teamInboxAdminMutation',
 	'teamInboxAdminQuery',
+	'threadBriefMutation',
 	'transactionalMutation',
 	'transactionalQuery',
 ];
@@ -384,7 +385,18 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
  * or deleted; a listed entry that gains a caller or is deleted fails until its
  * line comes off. Empty, and the empty state is the point (issue #528).
  */
-const UNREACHED_ENTRIES: readonly string[] = [];
+const UNREACHED_ENTRIES: readonly string[] = [
+	// Thread brief: wired by the wiring and web lanes, which delete each line (none may survive).
+	'mail/interpret/activity.ts#record',
+	'mail/interpret/brief.ts#get',
+	'mail/interpret/brief.ts#markSeen',
+	'mail/interpret/brief.ts#setViewOverride',
+	'mail/interpret/brief.ts#markPending',
+	'mail/interpret/preferences.ts#getViewPreference',
+	'mail/interpret/preferences.ts#setThreadDefaultView',
+	'mail/interpret/run.ts#interpretMessage',
+	'mail/interpret/scope.ts#loadSourceForScope',
+];
 
 // ─── The checks ─────────────────────────────────────────────────────────────
 

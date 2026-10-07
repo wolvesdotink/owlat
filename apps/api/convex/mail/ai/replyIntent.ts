@@ -106,7 +106,7 @@ export function decideNeedsReply(input: {
  * The taxonomy as the model reads it. Kept next to the type so a new intent
  * cannot be added without its one-line definition.
  */
-const INTENT_GUIDE = [
+export const INTENT_GUIDE = [
 	'- direct_question: asks the reader something and is waiting for the answer',
 	'- request_for_action: asks the reader to do, send, review, confirm or fix something',
 	'- approval_or_decision: needs the reader to approve, sign off or choose before the sender can proceed',
@@ -124,7 +124,7 @@ const INTENT_GUIDE = [
  * misclassification the queue shipped: the recap rule is the meeting-notes bug
  * this taxonomy was written for.
  */
-const DECISION_RULES = [
+export const DECISION_RULES = [
 	'- Action items, to-dos or next steps listed INSIDE a recap, summary, meeting-notes or status mail do NOT make it reply-expecting. The reader does that work; they do not answer the mail. Name it informational_update.',
 	'- A message from an unattended address (no-reply, notifications@, a notes/digest robot) is never reply-expecting, even when it lists tasks or asks a rhetorical question.',
 	'- Closing politeness ("let me know if you have questions", "hope this helps", "happy to discuss") is not a request.',

@@ -113,6 +113,9 @@ export const threadBriefTables = {
 		errorCode: v.optional(v.string()),
 		// The thread's deletion epoch when the run started; a mismatch at write time drops it.
 		deletionEpoch: v.number(),
+		// When the reducer folded this extraction into the thread (same
+		// transaction as the write); a replay of an applied row is a no-op.
+		appliedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

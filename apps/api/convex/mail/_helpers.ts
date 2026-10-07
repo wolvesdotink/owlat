@@ -59,3 +59,15 @@ export const savedReplyMutation = featureGatedAny(authedMutation, [
 	...POSTBOX_FEATURE_FLAGS,
 	'inbox',
 ]);
+
+/**
+ * The thread brief's viewer writes (`mail/interpret/brief.ts`,
+ * `mail/interpret/preferences.ts`) serve personal Postbox threads and Team
+ * Inbox threads alike, so a team-only instance has them too. The handler then
+ * applies the thread's own reader rule (mailbox access, or the shared-inbox
+ * reader gate).
+ */
+export const threadBriefMutation = featureGatedAny(authedMutation, [
+	...POSTBOX_FEATURE_FLAGS,
+	'inbox',
+]);

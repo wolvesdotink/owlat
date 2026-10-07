@@ -34,9 +34,9 @@ import { forwardDelegation, type Delegation } from './delegation';
 export { normalizeForQuote } from './quoteMatch';
 export { delegatesForward } from './delegation';
 
-// TODO(contract): replace these structural types with the zod-inferred
-// `InterpretOutput` family from `./schema` once the contract lane merges. They
-// name only the fields grounding reads, so the real types satisfy them.
+// Structural on purpose: they name only the fields grounding reads. The
+// contract's `InterpretOutput` (`./schema`) satisfies them (the run passes one
+// in, `run.ts`), and so does the eval's narrower oracle output.
 export interface GroundQuote {
 	segmentId: string;
 	text: string;

@@ -16,6 +16,7 @@
  * `apps/api/scripts/interpret-eval.ts` CLI, never by a deployed function.
  */
 import { z } from 'zod';
+import { ITEM_FACETS, ITEM_INTENTS, MESSAGE_SEGMENT_KINDS } from '@owlat/shared/threadBrief';
 
 export const EVAL_SLICES = [
 	'en',
@@ -33,19 +34,9 @@ export const EVAL_SLICES = [
 	'team_notes',
 ] as const;
 
-// TODO(contract): take INTENTS / FACETS from `@owlat/shared/threadBrief` (ITEM_INTENTS,
-// ITEM_FACETS) once the contract lane merges; these mirror SPEC §0.
-const SEGMENT_KINDS = ['fresh', 'quoted', 'forwarded', 'signature', 'disclaimer'] as const;
-const INTENTS = ['question', 'request', 'decision', 'promise'] as const;
-const FACETS = [
-	'payment',
-	'meeting',
-	'documentReview',
-	'signature',
-	'file',
-	'access',
-	'information',
-] as const;
+const SEGMENT_KINDS = MESSAGE_SEGMENT_KINDS;
+const INTENTS = ITEM_INTENTS;
+const FACETS = ITEM_FACETS;
 
 const party = z.object({ email: z.string(), name: z.string().optional() }).strict();
 

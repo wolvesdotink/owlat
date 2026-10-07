@@ -13,9 +13,9 @@
  * grounded, expected screen flags that did not fire, and any internal note
  * that reached the model input.
  *
- * Model calls are not wired here yet: the interpret lane passes an
- * {@link EvalModel} built on `interpretMessage`'s pure core once it exists. The
- * CLI is `apps/api/scripts/interpret-eval.ts`. Pure and isolate-safe.
+ * The live model is `./liveModel.ts` (the run's pure core around an injected
+ * model call). The CLI is `apps/api/scripts/interpret-eval.ts`. Pure and
+ * isolate-safe.
  */
 import { verifyQuote, type GroundableOutput, type GroundedClaim } from '../ground';
 import { EVAL_SLICES, type EvalSlice, type EvalThread } from './corpus';
