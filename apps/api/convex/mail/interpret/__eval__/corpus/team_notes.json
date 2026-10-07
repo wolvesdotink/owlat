@@ -1,0 +1,306 @@
+{
+	"version": 1,
+	"slice": "team_notes",
+	"threads": [
+		{
+			"id": "team-001",
+			"slices": ["team_notes", "en"],
+			"locale": "en",
+			"mode": "actions",
+			"us": [
+				{
+					"name": "Acme Support",
+					"email": "support@acme.example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					],
+					"sentAt": "2026-10-01T09:00:00+02:00",
+					"subject": "Support request",
+					"text": "Hello,\n\nmy order 4411 arrived damaged. Can you send a replacement?\n\nJonas\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["file"],
+						"responsibility": "us",
+						"quote": "Can you send a replacement?",
+						"segmentKind": "fresh",
+						"assertion": "Send Jonas a replacement for order 4411",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					}
+				]
+			},
+			"internalNotes": [
+				{
+					"id": "n1",
+					"author": "lena@acme.example.com",
+					"text": "Customer is on the legacy plan, do not offer refunds above EUR 50."
+				}
+			]
+		},
+		{
+			"id": "team-002",
+			"slices": ["team_notes", "de"],
+			"locale": "de",
+			"mode": "actions",
+			"us": [
+				{
+					"name": "Acme Support",
+					"email": "support@acme.example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					],
+					"sentAt": "2026-10-02T09:00:00+02:00",
+					"subject": "Support request",
+					"text": "Hallo,\n\nich komme nicht mehr in mein Konto. Könnt ihr mir bitte den Zugang zurücksetzen?\n\nLena\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["access"],
+						"responsibility": "us",
+						"quote": "Könnt ihr mir bitte den Zugang zurücksetzen?",
+						"segmentKind": "fresh",
+						"assertion": "Setze Lenas Zugang zurück",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					}
+				]
+			},
+			"internalNotes": [
+				{
+					"id": "n1",
+					"author": "lena@acme.example.com",
+					"text": "Lena hatte letzte Woche schon zwei Resets, bitte Identität prüfen."
+				}
+			]
+		},
+		{
+			"id": "team-003",
+			"slices": ["team_notes", "en"],
+			"locale": "en",
+			"mode": "actions",
+			"us": [
+				{
+					"name": "Acme Support",
+					"email": "support@acme.example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					],
+					"sentAt": "2026-10-03T09:00:00+02:00",
+					"subject": "Support request",
+					"text": "Hi team,\n\nplease cancel my subscription at the end of this month.\n\nTomás\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "please cancel my subscription at the end of this month.",
+						"segmentKind": "fresh",
+						"assertion": "Cancel Tomás's subscription at month end",
+						"requester": {
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						},
+						"responsible": {
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					}
+				]
+			},
+			"internalNotes": [
+				{
+					"id": "n1",
+					"author": "lena@acme.example.com",
+					"text": "Offer the 20% retention discount first, approved by Clara."
+				}
+			]
+		},
+		{
+			"id": "team-004",
+			"slices": ["team_notes", "en"],
+			"locale": "en",
+			"mode": "actions",
+			"us": [
+				{
+					"name": "Acme Support",
+					"email": "support@acme.example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					],
+					"sentAt": "2026-10-04T09:00:00+02:00",
+					"subject": "Support request",
+					"text": "Hello,\n\ncould you send me the invoice for September again? The PDF was empty.\n\nPriya\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment", "file"],
+						"responsibility": "us",
+						"quote": "could you send me the invoice for September again?",
+						"segmentKind": "fresh",
+						"assertion": "Resend Priya's September invoice",
+						"requester": {
+							"name": "Priya Nair",
+							"email": "priya@example.org"
+						},
+						"responsible": {
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					}
+				]
+			},
+			"internalNotes": [
+				{
+					"id": "n1",
+					"author": "lena@acme.example.com",
+					"text": "Invoice PDF bug is known, ticket BUG-208."
+				}
+			]
+		},
+		{
+			"id": "team-005",
+			"slices": ["team_notes", "en"],
+			"locale": "en",
+			"mode": "actions",
+			"us": [
+				{
+					"name": "Acme Support",
+					"email": "support@acme.example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Noah Berg",
+						"email": "noah@example.net"
+					},
+					"to": [
+						{
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					],
+					"sentAt": "2026-10-05T09:00:00+02:00",
+					"subject": "Support request",
+					"text": "Hi,\n\nwhat are your opening hours over the holidays?\n\nNoah\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "question",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "what are your opening hours over the holidays?",
+						"segmentKind": "fresh",
+						"assertion": "Tell Noah the holiday opening hours",
+						"requester": {
+							"name": "Noah Berg",
+							"email": "noah@example.net"
+						},
+						"responsible": {
+							"name": "Acme Support",
+							"email": "support@acme.example.com"
+						}
+					}
+				]
+			},
+			"internalNotes": [
+				{
+					"id": "n1",
+					"author": "lena@acme.example.com",
+					"text": "Holiday hours are not decided yet, ask Emil before answering."
+				}
+			]
+		}
+	]
+}

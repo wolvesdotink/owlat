@@ -23,6 +23,7 @@
 
 import { z } from 'zod';
 import {
+	ITEM_CONSEQUENCE_KINDS,
 	ITEM_DISPOSITIONS,
 	ITEM_FACETS,
 	ITEM_INTENTS,
@@ -112,6 +113,15 @@ export const itemProposalSchema = z.object({
 	matchItemId: z.string().nullable().describe('Id of an open item this repeats, or null'),
 	intent: z.enum(ITEM_INTENTS),
 	facets: z.array(z.enum(ITEM_FACETS)),
+	// What makes it consequential; [] when nothing does. Optional so an older
+	// payload still parses; a missing list counts as consequential (verified).
+	consequences: z
+		.array(z.enum(ITEM_CONSEQUENCE_KINDS))
+		.max(ITEM_CONSEQUENCE_KINDS.length)
+		.optional()
+		.describe(
+			'Every way acting on this item commits the reader: payment, signature, access, disclosure, promise, concession, cancellation. Empty when none.'
+		),
 	assertion: z.string().describe('The obligation in the language of the email'),
 	display: displaySchema,
 	requester: participantProposalSchema,

@@ -23,6 +23,7 @@ import {
 	interpretationStatusValidator,
 	itemAmountValidator,
 	itemCompletionValidator,
+	itemConsequenceKindValidator,
 	itemCorrectionValidator,
 	itemDispositionValidator,
 	itemDueValidator,
@@ -153,6 +154,10 @@ export const threadBriefTables = {
 		revision: v.number(),
 		intent: itemIntentValidator,
 		facets: v.array(itemFacetValidator),
+		// What makes the item consequential (verifier input, isConsequential in
+		// @owlat/shared/threadBriefRules). Absent = the model did not say, which
+		// counts as consequential.
+		consequences: v.optional(v.array(itemConsequenceKindValidator)),
 		// The obligation in the source language. Sealed.
 		assertion: v.string(),
 		display: localizedSealedTextValidator,
@@ -267,7 +272,10 @@ export const threadBriefTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_user_and_mail_thread', ['userId', 'mailThreadId'])
-		.index('by_user_and_conversation_thread', ['userId', 'conversationThreadId']),
+		.index('by_user_and_conversation_thread', ['userId', 'conversationThreadId'])
+		// Every viewer's row of one thread: thread erasure and scope invalidation.
+		.index('by_mail_thread', ['mailThreadId'])
+		.index('by_conversation_thread', ['conversationThreadId']),
 
 	// Per draft: the stances, coverage and claims of its self-check, bound to
 	// the draft hash and the item revisions it was built against.
@@ -291,5 +299,8 @@ export const threadBriefTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_mail_draft', ['mailDraftId'])
-		.index('by_inbound_draft', ['inboundMessageId']),
+		.index('by_inbound_draft', ['inboundMessageId'])
+		// Every plan of one thread: thread erasure and scope invalidation.
+		.index('by_mail_thread', ['mailThreadId'])
+		.index('by_conversation_thread', ['conversationThreadId']),
 };
