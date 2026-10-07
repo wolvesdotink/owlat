@@ -1,60 +1,36 @@
 /**
- * The thread brief's Convex functions, in one place for the web.
- *
- * TODO(thread brief merge): the interpret lane (`mail/interpret/brief.ts`,
- * `preferences.ts`) and the wiring lane (`reactions.ts`) land these in the
- * generated api. Until they are merged into this branch the references go
- * through the runtime `api` proxy with the contract's argument and return
- * types spelled out here; once merged, replace each cast with the direct
- * `api.mail.interpret.*` reference so typecheck checks the names and shapes.
+ * The thread brief's Convex functions, in one place for the web: the brief
+ * read and the viewer's writes (`mail/interpret/brief.ts`), the view
+ * preference (`preferences.ts`) and the item reactions (`reactions.ts`).
  */
 import { api } from '@owlat/api';
-import type { FunctionReference } from 'convex/server';
 import type { Id } from '@owlat/api/dataModel';
-import type { ItemReaction, ThreadView } from '@owlat/shared/threadBrief';
-import type { ThreadBriefView } from '../../../../api/convex/mail/interpret/briefShape';
+import type { ItemReaction } from '@owlat/shared/threadBrief';
 
 export type MailThreadRefArg = { kind: 'mail'; id: Id<'mailThreads'> };
 export type BriefLocale = 'en' | 'de';
 
-type Query<Args extends Record<string, unknown>, Ret> = FunctionReference<
-	'query',
-	'public',
-	Args,
-	Ret
->;
-type Mutation<Args extends Record<string, unknown>> = FunctionReference<
-	'mutation',
-	'public',
-	Args,
-	unknown
->;
-
-type ItemArgs = { itemId: Id<'threadItems'> };
-
-interface InterpretApi {
+/** The brief's functions (each named, so the entry ledger sees its caller). */
+export const interpretApi = {
 	brief: {
-		get: Query<{ threadRef: MailThreadRefArg; locale: BriefLocale }, ThreadBriefView | null>;
-		markSeen: Mutation<{ threadRef: MailThreadRefArg; interpretationRevision: number }>;
-		setViewOverride: Mutation<{ threadRef: MailThreadRefArg; view: ThreadView }>;
-	};
+		get: api.mail.interpret.brief.get,
+		markSeen: api.mail.interpret.brief.markSeen,
+		setViewOverride: api.mail.interpret.brief.setViewOverride,
+	},
 	preferences: {
-		getViewPreference: Query<Record<string, never>, { threadDefaultView: ThreadView }>;
-		setThreadDefaultView: Mutation<{ view: ThreadView }>;
-	};
+		getViewPreference: api.mail.interpret.preferences.getViewPreference,
+		setThreadDefaultView: api.mail.interpret.preferences.setThreadDefaultView,
+	},
 	reactions: {
-		markDone: Mutation<ItemArgs>;
-		undo: Mutation<ItemArgs>;
-		untrack: Mutation<ItemArgs>;
-		notARequest: Mutation<ItemArgs>;
-		remind: Mutation<ItemArgs & { remindAt: number }>;
-		confirmProposal: Mutation<ItemArgs>;
-		markReceived: Mutation<ItemArgs>;
-	};
-}
-
-/** The brief's functions (see the TODO above). */
-export const interpretApi = (api.mail as unknown as { interpret: InterpretApi }).interpret;
+		markDone: api.mail.interpret.reactions.markDone,
+		undo: api.mail.interpret.reactions.undo,
+		untrack: api.mail.interpret.reactions.untrack,
+		notARequest: api.mail.interpret.reactions.notARequest,
+		remind: api.mail.interpret.reactions.remind,
+		confirmProposal: api.mail.interpret.reactions.confirmProposal,
+		markReceived: api.mail.interpret.reactions.markReceived,
+	},
+};
 
 /** The reactions that change the item itself (the rest open Answer mode). */
 export type MutatingReaction = Extract<
