@@ -54,7 +54,8 @@ export const classificationValidator = v.object({
 	// How much the recipient needs to know about this, 0–1. Ranks the Updates
 	// dashboard; never gates a send.
 	importance: v.optional(v.number()),
-	// One-sentence summary per interface locale (`APP_LOCALES`), rendered in
-	// the reader's own language on the Updates dashboard and review surfaces.
+	// LEGACY: one-sentence summary per interface locale (`APP_LOCALES`). The
+	// classify step stopped writing it (D7, thread brief; ADR-0061 amendment)
+	// and nothing renders it; kept optional so rows written before still load.
 	summary: v.optional(v.record(v.string(), v.string())),
 });

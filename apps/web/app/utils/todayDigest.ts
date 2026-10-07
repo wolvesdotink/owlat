@@ -164,10 +164,11 @@ export interface TeamUpdate {
 		from: string;
 		subject: string;
 		receivedAt: number;
+		/** The first lines of the message as the sender wrote them. */
+		preview?: string;
 		classification?: {
 			importance?: number;
 			priority?: string;
-			summary?: Record<string, string>;
 		} | null;
 	};
 }
@@ -225,8 +226,6 @@ export function buildTodayModel(input: {
 	teamUpdates: ReadonlyArray<TeamUpdate>;
 	teamCounts: TeamUpdateCounts | null;
 	since: number;
-	/** Pick the reader-locale summary out of a per-locale record. */
-	pickSummary: (summary: Record<string, string> | undefined) => string | null;
 }): TodayModel {
 	const filed: Record<FiledCategory, number> = {
 		newsletter: 0,
@@ -298,12 +297,12 @@ export function buildTodayModel(input: {
 		const m = update.message;
 		if (m.receivedAt <= input.since) continue;
 		const from = parseFromHeader(m.from);
-		const summary = input.pickSummary(m.classification?.summary);
+		// No classifier summary (D7): the subject, with the sender's own first lines as the snippet.
 		const line: TodayLine = {
 			key: `team:${m._id}`,
 			lead: senderName(from.name, from.address),
-			text: summary ?? m.subject,
-			isSummary: summary !== null,
+			text: m.subject,
+			isSummary: false,
 			sources: [
 				{
 					kind: 'team',
@@ -313,7 +312,7 @@ export function buildTodayModel(input: {
 					fromName: from.name,
 					fromAddress: from.address,
 					subject: m.subject,
-					snippet: '',
+					snippet: m.preview ?? '',
 					at: m.receivedAt,
 				},
 			],
