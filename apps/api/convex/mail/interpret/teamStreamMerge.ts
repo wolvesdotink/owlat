@@ -94,7 +94,7 @@ export function mergeStreamPage<E extends StreamPosition>(
 	const page = newestFirst.slice(0, limit);
 	const isCut = newestFirst.length > limit;
 	if (!isCut && floor === null) return { entries: page.reverse(), cursor: null, isDone: true };
-	const oldest = page.at(-1);
+	const oldest = page[page.length - 1];
 	const boundary: StreamPosition = isCut && oldest ? oldest : (floor ?? oldest!);
 	return {
 		entries: page.reverse(),

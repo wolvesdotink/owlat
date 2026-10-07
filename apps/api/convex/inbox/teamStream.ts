@@ -44,6 +44,8 @@ import {
 	type SourceBatch,
 	type StreamPosition,
 } from '../mail/interpret/teamStreamMerge';
+import { itemSortKey, listBucketOf } from '../mail/interpret/counters';
+import { loadBriefRow } from '../mail/interpret/briefRow';
 import {
 	itemTextReader,
 	readActivityBatch,
@@ -267,5 +269,60 @@ export const page = publicQuery({
 		);
 		const seenPosition = await readSeenPosition(ctx, ref, session.userId);
 		return { ...merged, ...(seenPosition ? { seenPosition } : {}) };
+	},
+});
+
+/** Open items read per thread for its top one. */
+const TOP_ITEM_SCAN = 50;
+const MAX_TOP_ITEM_THREADS = 10;
+
+/**
+ * The top open action of each of the given Team Inbox threads, for the
+ * Workbench's team rows (SPEC §7: "team rows show the top item, sender and
+ * raw preview"): the team's or nobody's own (not the customer's, not an
+ * unconfirmed proposal), first by due date, risk and age. `count` is how
+ * many such actions the thread holds. Threads with none are left out.
+ * Soft-auth: `[]` for anyone who cannot read the Team Inbox.
+ */
+// public: soft-auth — admin-only shared inbox; returns empty for non-admins
+export const topItems = publicQuery({
+	args: { threadIds: v.array(v.id('conversationThreads')), locale: v.string() },
+	returns: v.array(
+		v.object({
+			threadId: v.id('conversationThreads'),
+			text: v.string(),
+			count: v.number(),
+			dueAt: v.optional(v.number()),
+		})
+	),
+	handler: async (ctx, args) => {
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!isSharedInboxReader(session) || !(await isFeatureEnabled(ctx, 'inbox'))) return [];
+		const locale = streamLocale(args.locale);
+		const rows = await Promise.all(
+			args.threadIds.slice(0, MAX_TOP_ITEM_THREADS).map(async (threadId) => {
+				const open = await ctx.db
+					.query('threadItems')
+					.withIndex('by_conversation_thread_and_status', (q) =>
+						q.eq('conversationThreadId', threadId).eq('status', 'open')
+					)
+					.take(TOP_ITEM_SCAN);
+				const ours = open.filter((item) => {
+					const bucket = listBucketOf(item);
+					return bucket === 'forUs' || bucket === 'unclear';
+				});
+				if (ours.length === 0) return null;
+				const top = ours.reduce((a, b) => (itemSortKey(b) < itemSortKey(a) ? b : a));
+				const counts = (await loadBriefRow(ctx, { kind: 'team', id: threadId }))?.itemCounts;
+				const count = counts ? counts.us + counts.unclear : ours.length;
+				return {
+					threadId,
+					text: await openMessageBody(top.display[locale]),
+					count: Math.max(count, 1),
+					...(top.due?.at !== undefined ? { dueAt: top.due.at } : {}),
+				};
+			})
+		);
+		return rows.filter((row): row is NonNullable<typeof row> => row !== null && row.text !== '');
 	},
 });

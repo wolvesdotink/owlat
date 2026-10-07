@@ -271,6 +271,25 @@ describe('Team Inbox stream', () => {
 	});
 });
 
+describe('Workbench team rows', () => {
+	it("lead with the top open action of the team, never the customer's", async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		await interpretTeam(t, threadId, inboundId);
+		const rows = await t.query(api.inbox.teamStream.topItems, {
+			threadIds: [threadId],
+			locale: 'de',
+		});
+		expect(rows).toEqual([
+			expect.objectContaining({ threadId, text: 'Schick den unterschriebenen Vertrag', count: 1 }),
+		]);
+		session.current = { userId: 'user-B', role: 'member', activeOrganizationId: 'org-1' };
+		expect(
+			await t.query(api.inbox.teamStream.topItems, { threadIds: [threadId], locale: 'en' })
+		).toEqual([]);
+	});
+});
+
 describe('shared mailbox stream', () => {
 	it('carries the discussion only with chat on, and never to a reader without access', async () => {
 		const t = convexTest(schema, modules);
@@ -307,7 +326,7 @@ describe('shared mailbox stream', () => {
 			const settings = await ctx.db.query('instanceSettings').first();
 			if (settings) {
 				await ctx.db.patch(settings._id, {
-					featureFlags: { ...(settings.featureFlags ?? {}), chat: false },
+					featureFlags: { ...settings.featureFlags, chat: false },
 				});
 			}
 		});
