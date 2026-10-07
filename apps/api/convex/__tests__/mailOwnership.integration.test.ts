@@ -18,8 +18,8 @@
  *     (snoozed unread messages are NOT counted; unsnooze mirrors the snooze
  *     decrement);
  *   - folder/label/filter create cross-mailbox-target rejection;
- *   - folder create/rename refusing a name with a control character, or
- *     `INBOX` in any case.
+ *   - folder create/rename refusing a name with a control character, a `/`,
+ *     or `INBOX` in any case.
  *
  * Session mocking: mail reads the session via `getBetterAuthSessionWithRole`
  * (inside `requireMailboxAccess`); the `authedMutation`/`authedQuery` wrappers floor
@@ -1014,6 +1014,30 @@ describe('mail.folders names', () => {
 		}
 	);
 
+	// `/` is the IMAP hierarchy delimiter (RFC 3501 §5.1); nesting is parentId.
+	it.each([['Clients/2025'], ['/Leading'], ['Trailing/']])(
+		'create and rename refuse a "/": %j',
+		async (name) => {
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['mail.external']);
+			const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+
+			await expect(
+				t.mutation(api.mail.folders.create, { mailboxId: a.mailboxId, name })
+			).rejects.toThrow('Folder name cannot contain /');
+
+			const folderId = await t.mutation(api.mail.folders.create, {
+				mailboxId: a.mailboxId,
+				name: 'Receipts',
+			});
+			await expect(t.mutation(api.mail.folders.rename, { folderId, name })).rejects.toThrow(
+				'Folder name cannot contain /'
+			);
+			const folder = await t.run((ctx) => ctx.db.get(folderId));
+			expect(folder?.name).toBe('Receipts');
+		}
+	);
+
 	// `INBOX` in any case is the inbox over IMAP (RFC 3501 §5.1).
 	it.each([['INBOX'], ['Inbox'], ['inbox'], ['iNbOx']])(
 		'create and rename refuse %j as a reserved name',
@@ -1052,7 +1076,13 @@ describe('mail.folders names', () => {
 		await enableFeatures(t, ['mail.external']);
 		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
 
-		for (const name of ['Projekte "Q4"', 'Ablage\\2026', 'Übersicht', '📁 R&D']) {
+		for (const name of [
+			'Projekte "Q4"',
+			'Ablage\\2026',
+			'Übersicht',
+			'📁 R&D',
+			'Clients\u22152025',
+		]) {
 			const folderId = await t.mutation(api.mail.folders.create, { mailboxId: a.mailboxId, name });
 			const folder = await t.run((ctx) => ctx.db.get(folderId));
 			expect(folder?.name).toBe(name);

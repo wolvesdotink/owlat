@@ -88,11 +88,20 @@ function hasControlChar(name: string): boolean {
 	return false;
 }
 
+/**
+ * `/` is the IMAP hierarchy delimiter (RFC 3501 §5.1): in a name it would read
+ * as a level of nesting. Folders nest through `parentId`; the IMAP server sends
+ * a `/` already in a name, such as one mirrored from a provider, as `∕`
+ * (U+2215) so it stays one level.
+ */
+const HIERARCHY_DELIMITER = '/';
+
 /** Trim a folder name a user typed and refuse one no folder may have. */
 function validFolderName(name: string): string {
 	const trimmed = name.trim();
 	if (!trimmed) throwInvalidInput('Folder name required');
 	if (hasControlChar(trimmed)) throwInvalidInput('Folder name cannot contain control characters');
+	if (trimmed.includes(HIERARCHY_DELIMITER)) throwInvalidInput('Folder name cannot contain /');
 	if (RESERVED_NAMES.has(trimmed) || INBOX_ANY_CASE.test(trimmed)) {
 		throwInvalidInput('Reserved system folder name');
 	}
