@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ImapFlow } from 'imapflow';
 import { decodePath, encodePath } from 'imapflow/lib/tools.js';
 import type { ConvexClient, FolderRow } from '../../../convex.js';
-import { buildFolderTree, levelName } from '../folderTree.js';
+import { buildFolderTree, levelName, topLevelName } from '../folderTree.js';
 import { resolveFolderByName } from '../folders.js';
 import {
 	MAX_PATTERN_LENGTH,
@@ -202,6 +202,162 @@ describe('levelName is injective and reads back', () => {
 			const wire = f.path.split('/').map(encodeMailboxName).join('/');
 			expect((await resolveFolderByName(convex, 'mb', wire))?._id).toBe(f._id);
 		}
+	});
+});
+
+/** Ids as Convex writes them: lowercase base32 (no i, l, o, u), 32 chars. */
+const ID_CHARS = '0123456789abcdefghjkmnpqrstvwxyz';
+
+function randomIds(count: number, seed: number): string[] {
+	const next = prng(seed);
+	return Array.from({ length: count }, () =>
+		Array.from({ length: 32 }, () => ID_CHARS[Math.floor(next() * ID_CHARS.length)]).join('')
+	);
+}
+
+/** Every spelling of INBOX: inbox, Inbox, iNbOx, ..., INBOX. */
+const INBOX_CASES = Array.from({ length: 32 }, (_, mask) =>
+	[...'inbox'].map((c, i) => ((mask >> i) & 1 ? c.toUpperCase() : c)).join('')
+);
+
+/** The path a client writes for `path`, each level in modified UTF-7. */
+const wireOf = (path: string): string => path.split('/').map(encodeMailboxName).join('/');
+
+describe('a top-level folder named INBOX in some case', () => {
+	it('is listed as its name, a "⧵" and its id; the inbox and nested folders are not', () => {
+		expect(new Set(INBOX_CASES).size).toBe(32);
+		expect(
+			pathsOf([
+				folder('inbox', 'Inbox', { role: 'inbox' }),
+				folder('k57c', 'Inbox'),
+				folder('j9x2', 'inbox', { role: 'archive' }),
+				folder('w', 'Work'),
+				folder('n', 'Inbox', { parentId: 'w' }),
+				folder('r', 'Receipts', { parentId: 'k57c' }),
+				folder('orphan', 'INBOX', { parentId: 'gone' }),
+				folder('near', 'Inbox2'),
+			])
+		).toEqual({
+			inbox: 'INBOX',
+			k57c: 'Inbox⧵k57c',
+			j9x2: 'inbox⧵j9x2',
+			w: 'Work',
+			n: 'Work/Inbox',
+			r: 'Inbox⧵k57c/Receipts',
+			orphan: 'INBOX⧵orphan',
+			near: 'Inbox2',
+		});
+	});
+
+	it('keeps its plain name when its id could not stand in a name', () => {
+		for (const id of ['a/b', 'a*', '%', '⧵x', '∕x', '']) {
+			expect(topLevelName(folder(id, 'Inbox'))).toBe('Inbox');
+		}
+	});
+
+	it('leaves the top level of every other name as levelName writes it', () => {
+		for (const name of [...allNames(['/', SLASH, ESCAPE, 'a'], 5), ...randomNames(5_000, 1302)]) {
+			expect(topLevelName(folder('k57c', name))).toBe(levelName(folder('k57c', name)));
+		}
+	});
+
+	describe('its name is one no stored name is ever written as', () => {
+		const aliases = INBOX_CASES.flatMap((name) =>
+			randomIds(20, 1302).map((id) => topLevelName(folder(id, name)))
+		);
+
+		it('levelName never writes "⧵" before a char other than "⧵" or "∕", so no alias reads back', () => {
+			for (const alias of aliases) {
+				expect(alias).toMatch(/^[a-z]{5}⧵[0-9a-z]{32}$/i);
+				expect(decodeLevel(alias)).toBeNull();
+			}
+		});
+
+		it('for every name of up to 5 chars after an INBOX spelling, over "⧵", "∕", "/" and id chars', () => {
+			const ids = allNames(['k', '5'], 3);
+			const reserved = new Set(
+				['Inbox', 'inbox'].flatMap((name) => ids.map((id) => topLevelName(folder(id, name))))
+			);
+			const names = allNames([ESCAPE, SLASH, '/', 'k', '5'], 5).flatMap((s) => [
+				`Inbox${s}`,
+				`inbox${s}`,
+			]);
+			for (const name of names) {
+				expect(reserved.has(levelName(folder('x', name)))).toBe(false);
+			}
+		});
+
+		it('for 20,000 random names and every alias above', () => {
+			const reserved = new Set(aliases);
+			for (const name of randomNames(20_000, 1303)) {
+				expect(reserved.has(levelName(folder('x', name)))).toBe(false);
+				expect(reserved.has(levelName(folder('x', `Inbox${ESCAPE}${name}`)))).toBe(false);
+			}
+		});
+	});
+
+	it('no two folders share a path, even with the same name, and each path resolves to its folder', async () => {
+		const ids = randomIds(300, 1304);
+		const folders = [
+			folder('inbox', 'INBOX', { role: 'inbox' }),
+			// Duplicate names on purpose: the id alone keeps two aliases apart.
+			...ids.map((id, i) => folder(id, INBOX_CASES[i % 4]!)),
+			...ids.slice(0, 50).map((id, i) => folder(`c${i}`, 'Inbox', { parentId: id })),
+			...randomNames(300, 1305).map((name, i) => folder(`o${i}`, `${name}${i}`)),
+		];
+		const tree = buildFolderTree(folders);
+		expect(new Set(tree.map((f) => f.path)).size).toBe(folders.length);
+		const convex = { query: async () => folders } as unknown as ConvexClient;
+		for (const f of tree) {
+			expect((await resolveFolderByName(convex, 'mb', wireOf(f.path)))?._id).toBe(f._id);
+		}
+	});
+
+	it('keeps its name and its folder while other folders are created, renamed and deleted', async () => {
+		const target = folder('k57cvz2c1dyq9f3hbn3hq6b9n7rjf3xa', 'Inbox');
+		const alias = 'Inbox⧵k57cvz2c1dyq9f3hbn3hq6b9n7rjf3xa';
+		// Names that compete with the alias: other INBOX spellings, the alias
+		// itself and its look-alikes as stored names, numbered variants.
+		const competing = [
+			'inbox',
+			'INBOX',
+			alias,
+			`Inbox${ESCAPE}${ESCAPE}k57c`,
+			`Inbox${SLASH}k57c`,
+			'Inbox/k57c',
+			'Inbox (2)',
+			'Inbox2',
+			...INBOX_CASES,
+		];
+		const next = prng(1306);
+		const pick = <T>(xs: readonly T[]): T => xs[Math.floor(next() * xs.length)]!;
+		let others: FolderRow[] = [folder('inbox', 'INBOX', { role: 'inbox' })];
+		const convex = { query: async () => [...others, target] } as unknown as ConvexClient;
+		const pathOfTarget = () => buildFolderTree([...others, target]).at(-1)!.path;
+		let serial = 0;
+
+		expect(pathOfTarget()).toBe(alias);
+		for (let step = 0; step < 400; step++) {
+			const op = next();
+			const movable = others.filter((f) => f.role !== 'inbox');
+			if (op < 0.5 || movable.length === 0) {
+				const parentId = next() < 0.3 ? pick(others)._id : undefined;
+				others = [...others, folder(randomIds(1, ++serial)[0]!, pick(competing), { parentId })];
+			} else if (op < 0.8) {
+				const victim = pick(movable);
+				others = others.map((f) => (f === victim ? { ...f, name: pick(competing) } : f));
+			} else {
+				const victim = pick(movable);
+				others = others.filter((f) => f !== victim);
+			}
+			expect(pathOfTarget()).toBe(alias);
+			expect((await resolveFolderByName(convex, 'mb', wireOf(alias)))?._id).toBe(target._id);
+			expect((await resolveFolderByName(convex, 'mb', 'Inbox'))?._id).toBe('inbox');
+		}
+	});
+
+	it('gets an ordinary name back once it is renamed', () => {
+		expect(pathsOf([folder('k57c', 'Inbox old')])).toEqual({ k57c: 'Inbox old' });
 	});
 });
 
