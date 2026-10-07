@@ -356,6 +356,110 @@
 					}
 				]
 			}
+		},
+		{
+			"id": "fwd-008",
+			"slices": ["forwards", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T13:00:00+02:00",
+					"subject": "Fwd: Catering order",
+					"text": "I will handle this, just keeping you posted.\n\n---------- Forwarded message ---------\nFrom: Noah Berg <noah@example.net>\nDate: Tue, 6 Oct 2026 at 10:00\nSubject: Catering order\nTo: Lena Hofmann <lena@example.org>\n\nPlease confirm the catering order for 40 people by Monday.\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Please confirm the catering order for 40 people by Monday.",
+						"segmentKind": "forwarded",
+						"assertion": "Confirm the catering order",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "fwd-009",
+			"slices": ["forwards", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T14:00:00+02:00",
+					"subject": "Fwd: Hosting invoice",
+					"text": "Can you handle the below? Do not reply to the other thread.\n\n---------- Forwarded message ---------\nFrom: Northwind Billing <billing@northwind.example.com>\nDate: Tue, 6 Oct 2026 at 07:00\nSubject: Hosting invoice\nTo: Jonas Weber <jonas@example.org>\n\nPlease pay the hosting invoice of EUR 75.00 by 30 October 2026.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "Please pay the hosting invoice of EUR 75.00 by 30 October 2026.",
+						"segmentKind": "forwarded",
+						"assertion": "Pay the hosting invoice (EUR 75.00) by 30 October",
+						"requester": {
+							"name": "Northwind Billing",
+							"email": "billing@northwind.example.com"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by 30 October 2026"
+						},
+						"amount": {
+							"value": 75.0,
+							"currency": "EUR"
+						}
+					}
+				]
+			}
 		}
 	]
 }
