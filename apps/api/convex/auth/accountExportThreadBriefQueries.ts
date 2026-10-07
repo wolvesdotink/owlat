@@ -157,7 +157,7 @@ export const listMailboxThreadBriefs = internalQuery({
 			);
 			page.push({
 				threadId: thread._id,
-				subject: thread.subject,
+				subject: thread.latestSubject,
 				mode: brief.mode,
 				completeness: brief.completeness,
 				items: await Promise.all(items.rows.map(exportItem)),
