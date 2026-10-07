@@ -5,15 +5,17 @@
  * isolate-safe; `apps/api/scripts/interpret-eval.ts` supplies an AI SDK call
  * when a key and a model are configured, and skips the live run otherwise.
  *
- * Each message is interpreted on its own, with no open items from earlier
- * messages (the eval scores extraction and grounding, not the reducer).
+ * It reads only the sanitized `EvalModelInput` (never labels, notes or later
+ * messages). Each message is interpreted on its own, with no open items from
+ * earlier messages (the eval scores extraction and grounding, not the reducer).
  * Participant refs are resolved before the output goes back to the scorer, so
  * it reads `responsible.isUs` as the run's reducer would.
  */
 
 import type { AppLocale } from '@owlat/shared/appLocales';
 import type { EvalModel } from './runEval';
-import type { EvalParty, EvalThread } from './corpus';
+import type { EvalParty } from './corpus';
+import type { EvalModelMessage } from './replay';
 import { buildInterpretInput, clampOutput, resolveParticipant } from '../pipeline';
 import { buildInterpretPrompt } from '../prompt';
 import {
@@ -30,15 +32,15 @@ export type EvalGenerate = (request: {
 }) => Promise<{ object: unknown; costUsd?: number }>;
 
 function participantsOf(
-	thread: EvalThread,
-	message: EvalThread['messages'][number]
+	us: readonly EvalParty[],
+	message: EvalModelMessage
 ): InterpretInputParticipant[] {
-	const us = new Set(thread.us.map((u) => u.email.toLowerCase()));
+	const own = new Set(us.map((u) => u.email.toLowerCase()));
 	const list: InterpretInputParticipant[] = [];
 	const add = (role: InterpretInputParticipant['role'], party: EvalParty) => {
 		const email = party.email.toLowerCase();
 		if (list.some((p) => p.email === email)) return;
-		const isUs = us.has(email);
+		const isUs = own.has(email);
 		list.push({
 			ref: `p${list.length + 1}`,
 			role: isUs && role !== 'from' ? 'us' : role,
@@ -49,7 +51,7 @@ function participantsOf(
 	};
 	add('from', message.from);
 	for (const p of message.to) add('to', p);
-	for (const p of message.cc ?? []) add('cc', p);
+	for (const p of message.cc) add('cc', p);
 	return list;
 }
 
@@ -57,11 +59,11 @@ function participantsOf(
 export function createLiveEvalModel(name: string, generate: EvalGenerate): EvalModel {
 	return {
 		name,
-		async interpret({ thread, message, segmented }) {
-			const participants = participantsOf(thread, message);
+		async interpret({ mode, us, message, segmented }) {
+			const participants = participantsOf(us, message);
 			const locales: AppLocale[] = ['en', 'de'];
 			const input = buildInterpretInput({
-				mode: thread.mode,
+				mode,
 				segmented,
 				sentAt: Date.parse(message.sentAt),
 				timezone: 'UTC',
@@ -75,10 +77,10 @@ export function createLiveEvalModel(name: string, generate: EvalGenerate): EvalM
 			});
 			const { object, costUsd } = await generate({
 				prompt: buildInterpretPrompt(input),
-				schema: interpretOutputSchemaFor(thread.mode),
+				schema: interpretOutputSchemaFor(mode),
 			});
 			const output = clampOutput(interpretOutputSchema.parse(object) as InterpretOutput);
-			const own = new Set(thread.us.map((u) => u.email.toLowerCase()));
+			const own = new Set(us.map((u) => u.email.toLowerCase()));
 			const resolved = {
 				...output,
 				items: output.items.map((item) => ({

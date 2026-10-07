@@ -13,16 +13,26 @@ import type { ReduceItem, ReduceResult } from '../reduceInput';
 
 const allModules = import.meta.glob('../../../**/*.*s');
 
+/** Vite writes nearby files relative to this directory; convex-test wants them under the root. */
+function reroot(key: string): string {
+	if (key.startsWith('../../../')) return key;
+	if (key.startsWith('../../')) return `../../../mail/${key.slice('../../'.length)}`;
+	if (key.startsWith('../')) return `../../../mail/interpret/${key.slice('../'.length)}`;
+	return `../../../mail/interpret/__tests__/${key.replace(/^\.\//, '')}`;
+}
+
 export const modules = Object.fromEntries(
-	Object.entries(allModules).filter(
-		([path]) =>
-			!path.includes('/agent/') &&
-			!path.includes('sesActions') &&
-			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
-			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider')
-	)
+	Object.entries(allModules)
+		.map(([key, load]) => [reroot(key), load] as const)
+		.filter(
+			([path]) =>
+				!path.includes('/agent/') &&
+				!path.includes('sesActions') &&
+				!path.includes('knowledgeExtraction') &&
+				!path.includes('semanticFileProcessing') &&
+				!path.includes('visualizationAgent') &&
+				!path.includes('llmProvider')
+		)
 );
 
 export type Test = TestConvex<typeof schema>;
@@ -65,7 +75,6 @@ export async function seedTeamThread(
 			lastMessageAt: now,
 			firstMessageAt: now,
 			createdAt: now,
-			updatedAt: now,
 		});
 		const inboundId = await ctx.db.insert('inboundMessages', {
 			messageId: '<order-42@example.com>',

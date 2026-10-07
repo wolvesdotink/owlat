@@ -1,7 +1,7 @@
 /** The reducer's decisions (mail/interpret/reducePlan.ts), every edge. */
 
 import { describe, expect, it } from 'vitest';
-import type { Id } from '../../../_generated/dataModel';
+import type { Id, TableNames } from '../../../_generated/dataModel';
 import {
 	counterpartyKeyOf,
 	planReduction,
@@ -15,7 +15,7 @@ import type { ReduceFact, ReduceItem, ReduceResult, ReduceTransition } from '../
 
 const REV = 'rev-2';
 const ev = (start = 0, end = 10) => ({ segmentId: 's0', start, end, quote: 'quoted words' });
-const id = <T extends string>(s: string) => s as Id<T>;
+const id = <T extends TableNames>(s: string) => s as Id<T>;
 
 function stored(overrides: Partial<PlanItem> = {}): PlanItem {
 	return {
