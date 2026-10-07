@@ -307,17 +307,11 @@ describe('groundProposals', () => {
 
 		const message = FORWARD('Can you handle the below?');
 		const fwd = message.segments.find((s) => s.kind === 'forwarded')?.id ?? 'missing';
+		const closing = [
+			{ itemId: 'i1', to: 'done', quotes: [{ segmentId: fwd, text: 'Please pay invoice 2231' }] },
+		];
 		const forwarded = groundProposals(
-			output({
-				transitions: [
-					{
-						itemId: 'i1',
-						to: 'done',
-						quotes: [{ segmentId: fwd, text: 'Please pay invoice 2231' }],
-					},
-				],
-				coverage: undefined,
-			}),
+			output({ transitions: closing, coverage: undefined }),
 			message
 		);
 		expect(forwarded.transitions[0]?.proposal).toEqual({ reason: 'forwarded' });
