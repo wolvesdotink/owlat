@@ -23,6 +23,7 @@ import {
 	parseMimeTree,
 	parseMimeTreeWithBounds,
 	walkLeaves,
+	bodyLeafKind,
 	isAttachmentPart,
 	partFilename,
 	partDisposition,
@@ -113,6 +114,19 @@ export function extractFirstPartByType(
 		found = leaf;
 	});
 	return found ? toExtracted(found, 'part') : null;
+}
+
+/**
+ * The leaves a message's displayed `text/plain` body is assembled from, in
+ * document order, transfer-decoded but not charset-decoded: the parser's own
+ * body rule (`bodyLeafKind`), so attachments never count.
+ */
+export function extractBodyTextParts(rawEml: string): ExtractedAttachment[] {
+	const parts: ExtractedAttachment[] = [];
+	walkLeaves(parseMimeTree(rawEml), (leaf) => {
+		if (bodyLeafKind(leaf) === 'text') parts.push(toExtracted(leaf, 'body'));
+	});
+	return parts;
 }
 
 /**

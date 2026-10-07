@@ -1,14 +1,20 @@
 import { describe, it, expect } from 'vitest';
+import { parseBody } from '@owlat/mail-message/parse/body';
 import {
 	classifySecureMessage,
 	classifyRawSecureMessage,
 	extractArmoredCiphertext,
 	extractClearsignedBlock,
 	extractClearsignedText,
-	isClearsigned,
 	isEncryptedClass,
 	isSignedPgpMime,
 } from '../secureMessage';
+import {
+	clearsignedBareBody,
+	clearsignedBody,
+	isClearsigned,
+	isClearsignedText,
+} from '../clearsignedBody';
 
 /** A real, structurally complete inline clearsigned body (RFC 4880 §7). */
 const CLEARSIGNED_BODY = [
@@ -247,6 +253,206 @@ describe('raw-message gates — isSignedPgpMime / isClearsigned', () => {
 		expect(isSignedPgpMime(clearsignedRaw)).toBe(false);
 	});
 
+	/** `clearsignedRaw` with its body sent under `encoding`, a binary string. */
+	function encodedClearsigned(encoding: 'base64' | 'quoted-printable', body: string): string {
+		const encoded =
+			encoding === 'base64'
+				? Buffer.from(body, 'latin1').toString('base64')
+				: body.replace(/[=\x80-\xff]/g, (c) => `=${c.charCodeAt(0).toString(16).toUpperCase()}`);
+		return [
+			'From: alice@sender.test',
+			'Subject: clearsigned',
+			'Content-Type: text/plain; charset=iso-8859-1',
+			`Content-Transfer-Encoding: ${encoding}`,
+			'',
+			encoded,
+			'',
+		].join('\r\n');
+	}
+	const LATIN1_BLOCK = CLEARSIGNED_BODY.replace('Hello there', 'Gr\xfc\xdfe')
+		.replace('iQEcBAEBCgAGBQJ...', 'iQEcBAEBCgAGBQJ==\n=AbCd')
+		.replace(/\n/g, '\r\n');
+
+	it('detects a clearsigned body hidden by base64, and hands back its decoded octets (#1300)', () => {
+		const raw = encodedClearsigned('base64', LATIN1_BLOCK);
+		expect(classifyRawSecureMessage(raw)).toBe('none');
+		expect(isClearsigned(raw)).toBe(true);
+		expect(clearsignedBody(raw)).toEqual({
+			verifiable: true,
+			text: LATIN1_BLOCK.replace(/\r\n/g, '\n').replace('Gr\xfc\xdfe', 'Grüße'),
+			octets: LATIN1_BLOCK.replace(/\r\n/g, '\n'),
+		});
+	});
+
+	it('reads a quoted-printable clearsigned body from its decoded octets, not its escaped armor', () => {
+		const raw = encodedClearsigned('quoted-printable', LATIN1_BLOCK);
+		expect(raw).toContain('=3D');
+		expect(isClearsigned(raw)).toBe(true);
+		expect(clearsignedBody(raw)).toEqual({
+			verifiable: true,
+			text: LATIN1_BLOCK.replace(/\r\n/g, '\n').replace('Gr\xfc\xdfe', 'Grüße'),
+			octets: LATIN1_BLOCK.replace(/\r\n/g, '\n'),
+		});
+	});
+
+	it('hands back the displayed body part of an 8-bit message', () => {
+		const body = clearsignedBody(clearsignedRaw);
+		expect(body).toMatchObject({ verifiable: true });
+		const { octets } = body as { octets: string };
+		expect(octets.startsWith('-----BEGIN PGP SIGNED MESSAGE-----')).toBe(true);
+		expect(octets).not.toContain('Subject: clearsigned');
+	});
+
+	/** A multipart/mixed message of `parts` (header lines + body each). */
+	function mixed(parts: Array<[string[], string]>): string {
+		return [
+			'From: alice@sender.test',
+			'Subject: clearsigned',
+			'Content-Type: multipart/mixed; boundary="mx"',
+			'',
+			...parts.flatMap(([headers, body]) => ['--mx', ...headers, '', body]),
+			'--mx--',
+			'',
+		].join('\r\n');
+	}
+	const ATTACHED = [
+		'Content-Type: text/plain; name="signed.txt"',
+		'Content-Disposition: attachment',
+		'Content-Transfer-Encoding: base64',
+	];
+	const attachedBlock = Buffer.from(
+		CLEARSIGNED_BODY.replace('Hello there', 'Attached text'),
+		'latin1'
+	).toString('base64');
+
+	it('never picks a clearsigned ATTACHMENT over the displayed body (#1300)', () => {
+		const visible = CLEARSIGNED_BODY.replace('Hello there', 'Visible text');
+		const raw = mixed([
+			[ATTACHED, attachedBlock],
+			[['Content-Type: text/plain; charset=utf-8'], visible],
+		]);
+		const { text } = clearsignedBody(raw) as { text: string };
+		expect(text).toContain('Visible text');
+		expect(text).not.toContain('Attached text');
+	});
+
+	it('a clearsigned attachment alone does not make the message clearsigned', () => {
+		const raw = mixed([
+			[['Content-Type: text/plain; charset=utf-8'], 'Nothing signed in the body.'],
+			[ATTACHED, attachedBlock],
+		]);
+		expect(isClearsigned(raw)).toBe(false);
+		expect(clearsignedBody(raw)).toBeNull();
+	});
+
+	it('with two text body parts, the block comes from the one the reader shows it from', () => {
+		const raw = mixed([
+			[['Content-Type: text/plain'], 'Unsigned preamble part.'],
+			[['Content-Type: text/plain'], CLEARSIGNED_BODY],
+			[['Content-Type: text/plain'], 'Mailing list footer.'],
+		]);
+		expect(clearsignedBody(raw)).toEqual({
+			verifiable: true,
+			text: CLEARSIGNED_BODY,
+			octets: CLEARSIGNED_BODY,
+		});
+	});
+
+	it('a block split across two body parts is clearsigned but not verifiable', () => {
+		const [head, tail] = CLEARSIGNED_BODY.split('-----BEGIN PGP SIGNATURE-----');
+		const raw = mixed([
+			[['Content-Type: text/plain'], head!],
+			[['Content-Type: text/plain'], `-----BEGIN PGP SIGNATURE-----${tail!}`],
+		]);
+		expect(isClearsigned(raw)).toBe(true);
+		expect(clearsignedBody(raw)).toEqual({ verifiable: false, reason: 'split' });
+	});
+
+	it('a base64 body that only QUOTES a clearsigned block is not clearsigned', () => {
+		const raw = encodedClearsigned('base64', `Thanks.\r\n${quoted(CLEARSIGNED_BODY)}`);
+		expect(isClearsigned(raw)).toBe(false);
+		expect(clearsignedBody(raw)).toBeNull();
+	});
+
+	/** A base64 body part (so any octets survive) under `charset`. */
+	const base64Part = (charset: string, bytes: Buffer): [string[], string] => [
+		[`Content-Type: text/plain; charset=${charset}`, 'Content-Transfer-Encoding: base64'],
+		bytes.toString('base64'),
+	];
+	/** The block text the reader shows: its own body assembly, then its own extractor. */
+	const readerShows = (raw: string) => extractClearsignedText(parseBody(raw).text ?? '');
+
+	it('a UTF-16 block the reader shows above a valid ASCII block is not verifiable (#1300 r2)', () => {
+		const altered = CLEARSIGNED_BODY.replace('Hello there', 'Altered text');
+		const raw = mixed([
+			base64Part('utf-16le', Buffer.from(altered, 'utf16le')),
+			base64Part('us-ascii', Buffer.from(CLEARSIGNED_BODY, 'latin1')),
+		]);
+		// The reader decodes the UTF-16 part and shows its block.
+		expect(readerShows(raw)).toBe('Altered text');
+		expect(isClearsigned(raw)).toBe(true);
+		expect(clearsignedBody(raw)).toEqual({ verifiable: false, reason: 'ambiguous' });
+	});
+
+	it('a single block in a UTF-16 part is clearsigned but not verifiable', () => {
+		const raw = mixed([base64Part('utf-16', Buffer.from(`\ufeff${CLEARSIGNED_BODY}`, 'utf16le'))]);
+		expect(readerShows(raw)).toBe('Hello there');
+		expect(clearsignedBody(raw)).toEqual({ verifiable: false, reason: 'charset' });
+	});
+
+	it('two blocks in one body part are not verifiable', () => {
+		const second = CLEARSIGNED_BODY.replace('Hello there', 'Second block');
+		const raw = mixed([[['Content-Type: text/plain'], `${CLEARSIGNED_BODY}\n\n${second}`]]);
+		expect(clearsignedBody(raw)).toEqual({ verifiable: false, reason: 'ambiguous' });
+		expect(clearsignedBareBody(`${CLEARSIGNED_BODY}\n\n${second}`)).toEqual({
+			verifiable: false,
+			reason: 'ambiguous',
+		});
+	});
+
+	it.each([
+		[
+			'ISO-8859-1',
+			'iso-8859-1',
+			Buffer.from(CLEARSIGNED_BODY.replace('Hello there', 'Grüße aus Köln'), 'latin1'),
+		],
+		[
+			'UTF-8',
+			'utf-8',
+			Buffer.from(CLEARSIGNED_BODY.replace('Hello there', 'Grüße aus Köln'), 'utf8'),
+		],
+		[
+			'windows-1251',
+			'windows-1251',
+			Buffer.concat([
+				Buffer.from(CLEARSIGNED_BODY.split('Hello there')[0]!, 'latin1'),
+				Buffer.from([0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2]),
+				Buffer.from(CLEARSIGNED_BODY.split('Hello there')[1]!, 'latin1'),
+			]),
+		],
+	])(
+		'a single %s block: the reader and the verifier agree on its text',
+		(_label, charset, bytes) => {
+			const raw = mixed([
+				[['Content-Type: text/plain'], 'Unsigned preamble part.'],
+				base64Part(charset, bytes),
+			]);
+			const body = clearsignedBody(raw);
+			expect(body).toMatchObject({ verifiable: true });
+			const { text, octets } = body as { text: string; octets: string };
+			expect(extractClearsignedText(text)).toBe(readerShows(raw));
+			expect(octets).toBe(bytes.toString('latin1'));
+			expect(readerShows(raw)).toMatch(/^(Grüße aus Köln|Привет)$/);
+		}
+	);
+
+	it('PGP/MIME wins over a clearsigned text part, as it does over a raw one', () => {
+		const signedWithBlock = signedRaw.replace('Signed content.', CLEARSIGNED_BODY);
+		expect(isSignedPgpMime(signedWithBlock)).toBe(true);
+		expect(isClearsigned(signedWithBlock)).toBe(false);
+		expect(clearsignedBody(encryptedRaw.replace('Version: 1', CLEARSIGNED_BODY))).toBeNull();
+	});
+
 	it('an ENCRYPTED message is neither signed-plaintext nor clearsigned (sealed path wins)', () => {
 		expect(isSignedPgpMime(encryptedRaw)).toBe(false);
 		expect(isClearsigned(encryptedRaw)).toBe(false);
@@ -290,7 +496,8 @@ describe('structural gates reject quoted / merely-mentioned armor', () => {
 	])('%s prefixes keep the armor out of the clearsign gate', (_label, prefix) => {
 		const body = `see below\n${quoted(CLEARSIGNED_BODY, prefix)}\n`;
 		expect(classifySecureMessage({ textBody: body })).toBe('none');
-		expect(isClearsigned(body)).toBe(false);
+		expect(isClearsignedText(body)).toBe(false);
+		expect(isClearsigned(REPLY_HEADERS + body)).toBe(false);
 	});
 
 	it('a quoted encrypted block does not make the reply encrypted', () => {
@@ -308,7 +515,8 @@ describe('structural gates reject quoted / merely-mentioned armor', () => {
 	it('a clearsign header with no signature block is a mention, not a signature', () => {
 		const body = '-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nhi';
 		expect(classifySecureMessage({ textBody: body })).toBe('none');
-		expect(isClearsigned(body)).toBe(false);
+		expect(isClearsignedText(body)).toBe(false);
+		expect(isClearsigned(REPLY_HEADERS + body)).toBe(false);
 	});
 
 	it('a body that merely names the pgp-signature content type is not signed', () => {
@@ -345,13 +553,15 @@ describe('structural gates reject quoted / merely-mentioned armor', () => {
 
 	it('real clearsigned mail still classifies — armor on the first line', () => {
 		expect(classifySecureMessage({ textBody: CLEARSIGNED_BODY })).toBe('pgp-clearsigned');
-		expect(isClearsigned(CLEARSIGNED_BODY)).toBe(true);
+		expect(isClearsignedText(CLEARSIGNED_BODY)).toBe(true);
+		expect(isClearsigned(REPLY_HEADERS + CLEARSIGNED_BODY)).toBe(true);
 	});
 
 	it('real clearsigned mail still classifies — armor after a preamble line', () => {
 		const body = `Signed as always.\n\n${CLEARSIGNED_BODY}\n`;
 		expect(classifySecureMessage({ textBody: body })).toBe('pgp-clearsigned');
-		expect(isClearsigned(body)).toBe(true);
+		expect(isClearsignedText(body)).toBe(true);
+		expect(isClearsigned(REPLY_HEADERS + body)).toBe(true);
 	});
 
 	it('a clearsigned reply that also quotes one is signed, and its OWN block is extracted', () => {

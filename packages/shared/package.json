@@ -378,6 +378,10 @@
 			"types": "./src/smtpBlockCategories.ts",
 			"import": "./src/smtpBlockCategories.ts"
 		},
+		"./clearsignedBody": {
+			"types": "./src/clearsignedBody.ts",
+			"import": "./src/clearsignedBody.ts"
+		},
 		"./secureMessage": {
 			"types": "./src/secureMessage.ts",
 			"import": "./src/secureMessage.ts"

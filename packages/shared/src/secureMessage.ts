@@ -29,8 +29,8 @@ export interface SecureMessageInput {
 
 const PGP_MESSAGE_HEADER = '-----BEGIN PGP MESSAGE-----';
 const PGP_MESSAGE_FOOTER = '-----END PGP MESSAGE-----';
-const PGP_SIGNED_HEADER = '-----BEGIN PGP SIGNED MESSAGE-----';
-const PGP_SIGNATURE_HEADER = '-----BEGIN PGP SIGNATURE-----';
+export const PGP_SIGNED_HEADER = '-----BEGIN PGP SIGNED MESSAGE-----';
+export const PGP_SIGNATURE_HEADER = '-----BEGIN PGP SIGNATURE-----';
 const PGP_SIGNATURE_FOOTER = '-----END PGP SIGNATURE-----';
 const PGP_SIGNATURE_TYPE = 'application/pgp-signature';
 
@@ -44,7 +44,7 @@ const PGP_SIGNATURE_TYPE = 'application/pgp-signature';
  * block as this message's own made a plaintext reply to signed mail verify the
  * quoted armor, fail, and render the warn-tone "signature invalid" badge.
  */
-function indexOfArmorLine(body: string, marker: string, fromIndex = 0): number {
+export function indexOfArmorLine(body: string, marker: string, fromIndex = 0): number {
 	for (let at = body.indexOf(marker, fromIndex); at >= 0; at = body.indexOf(marker, at + 1)) {
 		// CRLF bodies are covered too: the '\r' sits before the '\n', not after.
 		if (at === 0 || body[at - 1] === '\n') return at;
@@ -64,7 +64,7 @@ function hasArmorLine(body: string, marker: string): boolean {
  * three are required — a lone header is a mention (or a truncated quote), and
  * only a block with its signature can be verified at all.
  */
-function hasClearsignedBlock(body: string): boolean {
+export function hasClearsignedBlock(body: string): boolean {
 	const start = indexOfArmorLine(body, PGP_SIGNED_HEADER);
 	if (start < 0) return false;
 	const sigAt = indexOfArmorLine(body, PGP_SIGNATURE_HEADER, start + PGP_SIGNED_HEADER.length);
@@ -312,14 +312,6 @@ export function isSignedPgpMime(raw: string): boolean {
 }
 
 /**
- * Whether a raw inbound message carries an inline clearsigned body (RFC 4880
- * §7) — the `BEGIN PGP SIGNED MESSAGE` armor directly in the text.
- */
-export function isClearsigned(raw: string): boolean {
-	return classifyRawSecureMessage(raw) === 'pgp-clearsigned';
-}
-
-/**
  * Pull the `Content-Type` header value of every MIME part in a raw message (the
  * outer part plus any `Content-Type:` lines inside), lower-cased by the
  * consumer. Enough for the structural checks — we only need to know whether an
@@ -398,7 +390,7 @@ export function extractClearsignedText(rawBody: string): string | null {
  * SIGNATURE`), CRLF-normalized to LF so an OpenPGP implementation can read it,
  * or null when the body carries none. The verifier consumes this; it shares the
  * classifier's unquoted-line-start anchoring so the block handed to
- * verification is always the same one {@link isClearsigned} gated on — never a
+ * verification is always the same one `isClearsigned` (`./clearsignedBody`) gated on — never a
  * quoted block from a reply.
  */
 export function extractClearsignedBlock(rawBody: string): string | null {
