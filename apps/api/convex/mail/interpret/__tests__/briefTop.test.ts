@@ -182,6 +182,7 @@ describe('refreshBriefTop and the list reads', () => {
 				dueAt: T0 + 14 * DAY,
 			},
 			latest: { en: 'Invoice is out.', de: 'Rechnung ist da.' },
+			isReplyNeeded: false,
 		});
 		const stored = await t.run((ctx) => ctx.db.get(threadId));
 		expect(stored!.briefTop!.revision).toBe(3);

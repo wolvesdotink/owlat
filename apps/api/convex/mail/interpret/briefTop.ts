@@ -128,6 +128,8 @@ export type BriefTopRow = {
 		dueAt?: number;
 	};
 	latest?: { en: string; de: string };
+	/** The thread is in the Answer queue (`needsReply` set): "for you", not "to do". */
+	isReplyNeeded: boolean;
 };
 
 async function openPair(pair: SealedPair): Promise<{ en: string; de: string }> {
@@ -136,7 +138,10 @@ async function openPair(pair: SealedPair): Promise<{ en: string; de: string }> {
 }
 
 /** Unseal the projection for a list row; undefined when the thread has none. */
-export async function openBriefTop(stored: BriefTop | undefined): Promise<BriefTopRow | undefined> {
+export async function openBriefTop(
+	thread: Pick<Doc<'mailThreads'>, 'briefTop' | 'needsReply'>
+): Promise<BriefTopRow | undefined> {
+	const stored = thread.briefTop;
 	if (!stored) return undefined;
 	const [topText, latest] = await Promise.all([
 		stored.top ? openPair(stored.top.text) : Promise.resolve(undefined),
@@ -157,5 +162,6 @@ export async function openBriefTop(stored: BriefTop | undefined): Promise<BriefT
 				}
 			: {}),
 		...(latest ? { latest } : {}),
+		isReplyNeeded: thread.needsReply !== undefined,
 	};
 }

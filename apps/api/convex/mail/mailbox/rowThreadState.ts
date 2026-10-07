@@ -135,7 +135,7 @@ export async function attachThreadState(
 	const briefTops = new Map<string, BriefTopRow | undefined>();
 	await Promise.all(
 		[...cache.entries()].map(async ([threadId, thread]) => {
-			if (thread?.briefTop) briefTops.set(threadId, await openBriefTop(thread.briefTop));
+			if (thread?.briefTop) briefTops.set(threadId, await openBriefTop(thread));
 		})
 	);
 	const out: Array<MailListRow & RowThreadState> = [];

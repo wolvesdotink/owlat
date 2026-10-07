@@ -368,7 +368,7 @@ export const listQueue = publicQuery({
 				snippet: thread.latestSnippet,
 				receivedAt: trigger.receivedAt,
 				// The brief's top item and first latest line (unsealed), when interpreted.
-				briefTop: await openBriefTop(thread.briefTop),
+				briefTop: await openBriefTop(thread),
 			});
 		}
 		for (const { thread, flag, message } of followUps) {
@@ -394,7 +394,7 @@ export const listQueue = publicQuery({
 				subject: message.subject,
 				snippet: thread.latestSnippet,
 				receivedAt: message.receivedAt,
-				briefTop: await openBriefTop(thread.briefTop),
+				briefTop: await openBriefTop(thread),
 			});
 		}
 		return { items };
