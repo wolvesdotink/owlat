@@ -248,10 +248,11 @@ export class ElementStack {
 	 * element down to HTML or an integration point closes. -1 outside SVG and
 	 * MathML content.
 	 */
-	foreignBreakout(): number {
+	foreignBreakout(meter?: { steps: number }): number {
 		if (this.foreignContext() === '') return -1;
 		let index = this.names.length - 1;
 		while (index > 0) {
+			if (meter) meter.steps++;
 			const below = this.namespaces[index - 1] as Namespace;
 			if (below === '' || isIntegrationPoint(below, this.names[index - 1] as string)) break;
 			index--;
@@ -403,11 +404,11 @@ export class ElementStack {
 	 * current table part before a new cell, row or section, a table before a new
 	 * table outside its cells, an option before a new option.
 	 */
-	impliedClose(name: string): number {
+	impliedClose(name: string, meter?: { steps: number }): number {
 		const current = this.names.length - 1;
 		if (current < 0) return -1;
 		if (FOREIGN_BREAKOUT.has(name)) {
-			const breakout = this.foreignBreakout();
+			const breakout = this.foreignBreakout(meter);
 			if (breakout !== -1) return breakout;
 		}
 		if (name === 'li' || name === 'dd' || name === 'dt') {
@@ -481,8 +482,9 @@ export class ElementStack {
 	 * The lowest element above `index` that hides its content, or -1. Callers
 	 * scan upwards from the last element they checked, so the scans stay linear.
 	 */
-	nextHiding(index: number): number {
+	nextHiding(index: number, meter?: { steps: number }): number {
 		for (let i = index + 1; i < this.names.length; i++) {
+			if (meter) meter.steps++;
 			if (this.hides[i]) return i;
 		}
 		return -1;

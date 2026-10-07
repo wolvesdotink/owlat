@@ -70,8 +70,8 @@ export class ActiveFormatting {
 
 	/** Remove every entry after the last marker, and the marker. */
 	clearToMarker(): void {
-		const before = this.entries.length;
 		while (this.entries.length > 0) {
+			this.visit();
 			const entry = this.entries.pop();
 			if (entry === MARKER || entry === undefined) break;
 			this.unlist(entry);
@@ -80,10 +80,10 @@ export class ActiveFormatting {
 		this.stretchStart = this.entries.length;
 		this.liveInStretch = 0;
 		while (this.stretchStart > 0 && this.entries[this.stretchStart - 1] !== MARKER) {
+			this.visit();
 			this.stretchStart--;
 			if (this.entries[this.stretchStart]?.listed) this.liveInStretch++;
 		}
-		this.count(before - this.stretchStart);
 	}
 
 	/** An open entry was closed by something other than its end tag. */
@@ -102,14 +102,14 @@ export class ActiveFormatting {
 			const last = this.entries[this.entries.length - 1];
 			if (last === MARKER || last === undefined || last.listed) break;
 			this.entries.pop();
-			this.count(1);
+			this.visit();
 		}
 	}
 
 	/** The newest live entry named `name` after the last marker, or null. */
 	lastAfterMarker(name: string): FormattingEntry | null {
 		for (let i = this.entries.length - 1; i >= 0; i--) {
-			this.count(1);
+			this.visit();
 			const entry = this.entries[i];
 			if (entry === MARKER || entry === undefined) return null;
 			if (entry.listed && entry.name === name) return entry;
@@ -124,22 +124,24 @@ export class ActiveFormatting {
 	 */
 	reopen(): FormattingEntry[] {
 		let i = this.entries.length - 1;
-		while (i >= 0 && this.entries[i] !== MARKER && !this.entries[i]?.listed) i--;
-		this.count(this.entries.length - i);
+		while (i >= 0 && this.entries[i] !== MARKER && !this.entries[i]?.listed) {
+			this.visit();
+			i--;
+		}
 		const newest = this.entries[i];
 		if (i < 0 || newest === MARKER || newest === undefined || newest.open) return [];
 		let first = i;
-		let j = i - 1;
-		for (; j >= 0; j--) {
+		for (let j = i - 1; j >= 0; j--) {
+			this.visit();
 			const entry = this.entries[j];
 			if (entry === MARKER || entry === undefined) break;
 			if (!entry.listed) continue;
 			if (entry.open) break;
 			first = j;
 		}
-		this.count(i - j + i - first);
 		const reopened: FormattingEntry[] = [];
-		for (j = first; j <= i; j++) {
+		for (let j = first; j <= i; j++) {
+			this.visit();
 			const entry = this.entries[j];
 			if (entry === MARKER || entry === undefined || !entry.listed) continue;
 			entry.open = true;
@@ -149,8 +151,9 @@ export class ActiveFormatting {
 		return reopened;
 	}
 
-	private count(steps: number): void {
-		if (this.meter) this.meter.steps += steps;
+	/** Count one entry visited, for the meter. */
+	private visit(): void {
+		if (this.meter) this.meter.steps++;
 	}
 
 	private unlist(entry: FormattingEntry): void {
@@ -163,7 +166,7 @@ export class ActiveFormatting {
 	/** Drop the oldest live entry after the last marker. */
 	private dropOldest(): void {
 		for (let i = this.stretchStart; i < this.entries.length; i++) {
-			this.count(1);
+			this.visit();
 			const entry = this.entries[i];
 			if (entry === MARKER || entry === undefined || !entry.listed) continue;
 			if (entry.hides) this.overflowed = true;
@@ -174,8 +177,10 @@ export class ActiveFormatting {
 
 	/** Remove unlisted entries from the last stretch. */
 	private compactStretch(): void {
-		this.count(this.entries.length - this.stretchStart);
-		const kept = this.entries.slice(this.stretchStart).filter((entry) => entry?.listed);
+		const kept = this.entries.slice(this.stretchStart).filter((entry) => {
+			this.visit();
+			return entry?.listed;
+		});
 		this.entries.length = this.stretchStart;
 		for (const entry of kept) this.entries.push(entry);
 	}

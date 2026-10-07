@@ -47,9 +47,12 @@ import {
 /**
  * Work one scan did, counted for the linear-time tests: `chars` is input
  * characters read (a search that finds nothing counts up to the end of the
- * input), `steps` is open elements popped or passed over and formatting list
- * entries visited. A new loop over the input, the stack or the list counts
- * itself here too. Callers outside tests pass none.
+ * input), `steps` is open elements and formatting list entries visited. Each
+ * loop counts inside itself, never from what it returns, so a loop that does
+ * more work than it should shows up: a walk over the stack or the list counts
+ * every entry it visits, and a loop over characters counts its cursor's
+ * advance once per tag or attribute. A new loop counts itself the same way.
+ * Callers outside tests pass none.
  */
 export interface ScanMeter {
 	chars: number;
@@ -86,17 +89,23 @@ type Tag =
  * tag can hold a value in that quote character, so a later tag may still end
  * and the caller keeps going from there.
  */
-function readTag(input: string, from: number): Tag {
+function readTag(input: string, from: number, meter?: ScanMeter): Tag {
 	let style: string | null = null;
 	let hidden = false;
 	let i = from;
+	// The meter takes the cursor's advance once per attribute, not per character.
+	let counted = from;
 	for (;;) {
+		if (meter) meter.chars += i - counted;
+		counted = i;
 		// A `/` right before the closing `>` marks a self-closing tag.
 		let slash = false;
 		while (i < input.length && (isTagSpace(input[i]) || input[i] === '/')) {
 			slash = input[i] === '/';
 			i++;
 		}
+		if (meter) meter.chars += i - counted;
+		counted = i;
 		if (i >= input.length) return { end: null, resume: input.length };
 		if (input[i] === '>') return { end: i, style, hidden, selfClosing: slash };
 
@@ -119,7 +128,10 @@ function readTag(input: string, from: number): Tag {
 		const quote = input[i];
 		if (quote === '"' || quote === "'") {
 			const close = input.indexOf(quote, i + 1);
-			if (close === -1) return { end: null, resume: i + 1 };
+			if (close === -1) {
+				if (meter) meter.chars += input.length - counted;
+				return { end: null, resume: i + 1 };
+			}
 			value = input.slice(i + 1, close);
 			i = close + 1;
 		} else {
@@ -132,9 +144,14 @@ function readTag(input: string, from: number): Tag {
 }
 
 /** Index just past a tag name that starts at `from`, lowercased name included. */
-function readTagName(input: string, from: number): { name: string; end: number } {
+function readTagName(
+	input: string,
+	from: number,
+	meter?: ScanMeter
+): { name: string; end: number } {
 	let i = from;
 	while (i < input.length && !isTagSpace(input[i]) && input[i] !== '/' && input[i] !== '>') i++;
+	if (meter) meter.chars += i - from;
 	return { name: input.slice(from, i).toLowerCase(), end: i };
 }
 
@@ -228,8 +245,8 @@ export function stripHiddenElements(input: string, meter?: ScanMeter): string {
 	 */
 	const closeTo = (target: number, at: number, after: number, explicit: boolean) => {
 		let closedForeignRoot = false;
-		if (meter) meter.steps += stack.depth - target;
 		stack.truncate(target, (name, _hides, index, entry) => {
+			if (meter) meter.steps++;
 			const ownEndTag = explicit && index === target;
 			if (ownEndTag && (name === 'svg' || name === 'math')) closedForeignRoot = true;
 			if (entry) {
@@ -262,9 +279,8 @@ export function stripHiddenElements(input: string, meter?: ScanMeter): string {
 		const next = input[lt + 1];
 
 		if (isAsciiAlpha(next)) {
-			const { name, end: nameEnd } = readTagName(input, lt + 1);
-			const tag = readTag(input, nameEnd);
-			if (meter) meter.chars += (tag.end ?? input.length) - lt;
+			const { name, end: nameEnd } = readTagName(input, lt + 1, meter);
+			const tag = readTag(input, nameEnd, meter);
 			if (tag.end === null) {
 				if (tag.resume >= input.length) break;
 				pos = tag.resume;
@@ -315,7 +331,7 @@ export function stripHiddenElements(input: string, meter?: ScanMeter): string {
 				const link = formatting.lastAfterMarker('a');
 				if (link) closeFormatting('a', link, lt, lt);
 			}
-			const item = stack.impliedClose(name);
+			const item = stack.impliedClose(name, meter);
 			if (item !== -1) closeTo(item, lt, lt, false);
 			const paragraph = stack.impliedParagraphClose(name);
 			if (paragraph !== -1) closeTo(paragraph, lt, lt, false);
@@ -356,9 +372,8 @@ export function stripHiddenElements(input: string, meter?: ScanMeter): string {
 				pos = gt + 1;
 				continue;
 			}
-			const { name, end: nameEnd } = readTagName(input, lt + 2);
-			const tag = readTag(input, nameEnd);
-			if (meter) meter.chars += (tag.end ?? input.length) - lt;
+			const { name, end: nameEnd } = readTagName(input, lt + 2, meter);
+			const tag = readTag(input, nameEnd, meter);
 			if (tag.end === null) {
 				if (tag.resume >= input.length) break;
 				pos = tag.resume;
@@ -368,7 +383,7 @@ export function stripHiddenElements(input: string, meter?: ScanMeter): string {
 
 			if (name === 'p' || name === 'br') {
 				// `</p>` and `</br>` inside SVG or MathML end that content first.
-				const breakout = stack.foreignBreakout();
+				const breakout = stack.foreignBreakout(meter);
 				if (breakout !== -1) closeTo(breakout, lt, lt, false);
 			}
 			if (name === 'form') formOpen = false;
@@ -442,8 +457,7 @@ export function stripHiddenElements(input: string, meter?: ScanMeter): string {
 			if (effect.index === rootIndex) {
 				// What was open inside a form stays inside it in the page; what was
 				// inside a detached formatting element no longer sits inside it.
-				rootIndex = name === 'form' ? effect.index + 1 : stack.nextHiding(effect.index);
-				if (meter) meter.steps += (rootIndex === -1 ? stack.depth : rootIndex) - effect.index;
+				rootIndex = name === 'form' ? effect.index + 1 : stack.nextHiding(effect.index, meter);
 				endRegionIfClosed(after);
 			}
 		}
