@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { EVAL_SLICES, parseEvalCorpus, type EvalThread } from '../corpus';
 import { arrivalOrder, modelInputFor, replayThread } from '../replay';
 import { formatEvalReport, runEval, type EvalModel } from '../runEval';
+import type { EvalModelInput } from '../replay';
 
 const CORPUS_DIR = join(import.meta.dirname, '..', 'corpus');
 const files = readdirSync(CORPUS_DIR)
@@ -166,18 +167,18 @@ describe('runEval with a model', () => {
 		const sample = eligible.filter((t) => t.slices.includes('en')).slice(0, 3);
 		const paraphrasing: EvalModel = {
 			name: 'paraphraser',
-			async interpret({ thread, message, segmented }) {
+			async interpret({ mode, message, segmented }) {
 				const fresh = segmented.segments.find((s) => s.kind === 'fresh');
 				return {
 					costUsd: 0.002,
 					output: {
-						mode: thread.mode,
+						mode,
 						items: [
 							{
 								intent: 'request',
 								facets: [],
 								assertion: 'Do something',
-								quotes: [{ segmentId: fresh?.id ?? 's0', text: `not in ${message.id}` }],
+								quotes: [{ segmentId: fresh?.id ?? 's0', text: `not in ${message.messageId}` }],
 							},
 						],
 						transitions: [],
@@ -191,5 +192,66 @@ describe('runEval with a model', () => {
 		expect(report.unsupportedRate).toBe(1);
 		expect(report.missed.length).toBe(report.labelledItems);
 		expect(report.costUsd).toBeCloseTo(0.002 * report.messages);
+	});
+});
+
+describe('runEval: what a model adapter receives', () => {
+	it('gets sanitized metadata, scoped content and only the history so far', async () => {
+		const inputs: EvalModelInput[] = [];
+		const recorder: EvalModel = {
+			name: 'recorder',
+			async interpret(input) {
+				inputs.push(input);
+				return { output: { mode: input.mode, items: [], transitions: [] } };
+			},
+		};
+		const report = await runEval(corpus, recorder);
+		expect(inputs.length).toBe(report.messages);
+		expect(report.notesLeaked).toEqual([]);
+
+		const byThread = new Map(eligible.map((t) => [t.id, t] as const));
+		let k = 0;
+		for (const thread of byThread.values()) {
+			const order = arrivalOrder(thread).map((m) => m.id);
+			for (const [step, id] of order.entries()) {
+				const input = inputs[k++] as EvalModelInput;
+				const json = JSON.stringify(input);
+				expect(Object.keys(input).sort()).toEqual(
+					['history', 'locale', 'message', 'mode', 'segmented', 'us'].sort()
+				);
+				expect(input.message.messageId).toBe(id);
+				// Only messages that arrived before this one.
+				expect(input.history.map((m) => m.messageId)).toEqual(order.slice(0, step));
+				// No team note, no label, no unsigned trailer.
+				for (const note of thread.internalNotes ?? []) expect(json).not.toContain(note.text);
+				// A label's assertion may also be words of the mail itself; only one that is
+				// not in any body proves a leak.
+				const bodies = thread.messages
+					.map((m) => `${m.subject}\n${m.text ?? ''}\n${m.html ?? ''}`)
+					.join('\n');
+				for (const label of [...thread.labels.items, ...(thread.labels.traps ?? [])]) {
+					if (!bodies.includes(label.assertion)) expect(json).not.toContain(label.assertion);
+				}
+				expect(json).not.toMatch(/"labels"|"internalNotes"|"signatureScope"|"arrivalOrder"/);
+				if (thread.slices.includes('clearsigned_trailer')) {
+					expect(json).not.toContain('BEGIN PGP');
+					for (const trap of thread.labels.traps ?? []) expect(json).not.toContain(trap.quote);
+				}
+			}
+		}
+		expect(k).toBe(inputs.length);
+	});
+
+	it('reports a note that does reach an adapter input', async () => {
+		const team = eligible.find((t) => (t.internalNotes ?? []).length > 0) as EvalThread;
+		const note = team.internalNotes?.[0];
+		if (!note) throw new Error('no team note in corpus');
+		const leaky: EvalThread = {
+			...team,
+			id: 'leaky',
+			messages: team.messages.map((m, i) => (i === 0 ? { ...m, subject: note.text } : m)),
+		};
+		const report = await runEval([leaky]);
+		expect(report.notesLeaked).toEqual([{ threadId: 'leaky', noteId: note.id }]);
 	});
 });
