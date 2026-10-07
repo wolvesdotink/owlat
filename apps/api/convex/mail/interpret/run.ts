@@ -4,17 +4,21 @@
  * `interpretMessage` (SPEC §4 `run.ts`): interpret one message and fold it
  * into its thread.
  *
- *   1. load      thread, mode, eligibility signals, brief revision, items, facts
+ *   1. load      thread, mode, the eligibility snapshot taken at enqueue
+ *                (`sources.ts`; none → not interpreted), brief revision, items, facts
  *   2. eligible? an ineligible message is recorded as skipped and stops here
- *   3. scope     signed-block scoping, undecryptable → skipped
+ *   3. scope     signed-block scoping, undecryptable → skipped; the body
+ *                fingerprint the reducer rechecks
  *   4. segment   `segmentMessage` (stable ids) → content revision
- *   5. dedupe    an applied extraction of this revision + extractor is reused
+ *   5. dedupe    an applied extraction of this revision + extractor is reused,
+ *                unless it is incomplete and its retry is due (`retry.ts`)
  *   6. gate      `ai` flag and the spend ceiling (`gate.ts`)
  *   7. model     `runLlmObject` on the `extract` tier, temperature 0, metered
  *                as `interpret`
  *   8. ground    every claim's quotes verbatim in the named segment
  *   9. verify    consequential claims on the `guard` tier (`verify.ts`)
- *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale
+ *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale;
+ *                a changed body or mode starts the run over once
  *
  * FAIL-SOFT: a refusal or any failure records a `failed` extraction, so the
  * brief says it is incomplete; it never deletes items and never reads as
@@ -26,6 +30,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import type { InterpretationStatus } from '@owlat/shared/threadBrief';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -61,18 +66,21 @@ import {
 } from './pipeline';
 import { needsReplyProjectionOf, type NeedsReplyProjection } from './needsReplyProjection';
 import { verifyClaims } from './verify';
+import { isRetryDue } from './retry';
 import type { ReduceResult } from './reduceInput';
 import type { ApplyOutcome } from './reduce';
 
 export const INTERPRET_FEATURE = 'interpret';
 /** Reducer attempts against a moving revision before the run gives up as partial. */
 const MAX_APPLY_ATTEMPTS = 3;
+/** Whole-run attempts when the body or the thread's mode changed under it. */
+const MAX_RUN_ATTEMPTS = 2;
 
 export interface InterpretArgs {
 	source: InterpretationSource;
-	/** Force a mode (scope conversion); default: the thread's own. */
+	/** Ignored: the mode is the thread's current one, rechecked by the reducer. */
 	mode?: InterpretMode;
-	/** Live delivery (default) vs backfill / APPEND. */
+	/** Ignored: eligibility comes from the snapshot taken at enqueue (`sources.ts`). */
 	isLive?: boolean;
 	precedence?: string;
 	listId?: string;
@@ -80,25 +88,36 @@ export interface InterpretArgs {
 
 export type InterpretRunResult =
 	| {
-			status: 'complete' | 'partial' | 'failed' | 'skipped' | 'replayed';
+			/** The stored extraction's status, also when it was reused. */
+			status: InterpretationStatus;
+			/** The extraction was reused (dedupe or the reducer's replay check). */
+			isReplayed: boolean;
 			interpretationId?: Id<'messageInterpretations'>;
 			createdItemIds: Id<'threadItems'>[];
 			/** The Postbox needs-reply inputs, when the model read the message. */
 			projection?: NeedsReplyProjection;
 			errorCode?: string;
+			/** An incomplete extraction will be repaired by a run at or after this time. */
+			retryAt?: number;
 	  }
 	/** The source or its thread is gone, or a purge ran meanwhile: nothing written. */
 	| { status: 'gone' };
 
 type Loaded = NonNullable<Awaited<ReturnType<typeof loadState>>>;
+type RunRecord = {
+	contentRevision: string;
+	status: InterpretationStatus;
+	skipReason?: 'short' | 'bulk' | 'security' | 'undecryptable' | 'ineligible';
+	errorCode?: string;
+	sourceManifest?: Infer<typeof sourceManifestValidator>;
+	coverage?: Infer<typeof interpretCoverageValidator>;
+	result?: ReduceResult;
+	sourceVersion?: string;
+	retryCount?: number;
+};
 
 function loadState(ctx: ActionCtx, args: InterpretArgs) {
-	return ctx.runQuery(internal.mail.interpret.load.loadForInterpretation, {
-		source: args.source,
-		...(args.isLive !== undefined ? { isLive: args.isLive } : {}),
-		...(args.precedence ? { precedence: args.precedence } : {}),
-		...(args.listId ? { listId: args.listId } : {}),
-	});
+	return ctx.runQuery(internal.mail.interpret.load.loadForInterpretation, { source: args.source });
 }
 
 /** Apply through the reducer, reloading the revision while it is stale. */
@@ -106,16 +125,7 @@ async function apply(
 	ctx: ActionCtx,
 	args: InterpretArgs,
 	loaded: Loaded,
-	mode: InterpretMode,
-	record: {
-		contentRevision: string;
-		status: 'complete' | 'partial' | 'failed' | 'skipped';
-		skipReason?: 'short' | 'bulk' | 'security' | 'undecryptable' | 'ineligible';
-		errorCode?: string;
-		sourceManifest?: Infer<typeof sourceManifestValidator>;
-		coverage?: Infer<typeof interpretCoverageValidator>;
-		result?: ReduceResult;
-	}
+	record: RunRecord
 ): Promise<ApplyOutcome> {
 	let state = loaded;
 	let outcome: ApplyOutcome = { outcome: 'gone' };
@@ -123,7 +133,7 @@ async function apply(
 		outcome = await ctx.runMutation(internal.mail.interpret.reduce.applyInterpretation, {
 			source: args.source,
 			threadRef: state.threadRef,
-			mode,
+			mode: state.mode,
 			contentRevision: record.contentRevision,
 			extractorVersion: INTERPRET_EXTRACTOR_VERSION,
 			expectedRevision: state.brief.interpretationRevision,
@@ -133,10 +143,12 @@ async function apply(
 			status: record.status,
 			...(record.skipReason ? { skipReason: record.skipReason } : {}),
 			...(record.errorCode ? { errorCode: record.errorCode } : {}),
-			eligibility: state.eligibility,
+			...(state.eligibility ? { eligibility: state.eligibility } : {}),
 			...(record.sourceManifest ? { sourceManifest: record.sourceManifest } : {}),
 			...(record.coverage ? { coverage: record.coverage } : {}),
 			...(record.result ? { result: record.result } : {}),
+			...(record.sourceVersion ? { sourceVersion: record.sourceVersion } : {}),
+			...(record.retryCount !== undefined ? { retryCount: record.retryCount } : {}),
 			...(state.threadAssigneeUserId ? { threadAssigneeUserId: state.threadAssigneeUserId } : {}),
 		});
 		if (outcome.outcome !== 'stale') return outcome;
@@ -149,25 +161,30 @@ async function apply(
 	return outcome;
 }
 
+/** The run's answer from the reducer's; `restart` when the run must start over. */
 function finish(
 	outcome: ApplyOutcome,
-	status: 'complete' | 'partial' | 'failed' | 'skipped',
 	extra: { projection?: NeedsReplyProjection; errorCode?: string } = {}
-): InterpretRunResult {
+): InterpretRunResult | 'restart' {
 	switch (outcome.outcome) {
 		case 'gone':
 		case 'erased':
 			return { status: 'gone' };
+		case 'modeChanged':
+		case 'sourceChanged':
+			return 'restart';
 		case 'stale':
 			// The revision kept moving: nothing applied this time; the next message retries.
-			return { status: 'failed', createdItemIds: [], errorCode: 'stale', ...extra };
+			return { status: 'failed', isReplayed: false, createdItemIds: [], ...extra, errorCode: 'stale' };
 		case 'applied':
 		case 'replayed':
 			return {
-				status: outcome.outcome === 'replayed' ? 'replayed' : status,
+				status: outcome.status,
+				isReplayed: outcome.outcome === 'replayed',
 				interpretationId: outcome.interpretationId,
 				createdItemIds: outcome.createdItemIds,
 				...extra,
+				...(outcome.nextRetryAt !== undefined ? { retryAt: outcome.nextRetryAt } : {}),
 			};
 	}
 }
@@ -177,33 +194,54 @@ export async function runInterpretation(
 	ctx: ActionCtx,
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
+	for (let attempt = 0; attempt < MAX_RUN_ATTEMPTS; attempt++) {
+		const isLast = attempt === MAX_RUN_ATTEMPTS - 1;
+		const out = await runOnce(ctx, args, isLast);
+		if (out !== 'restart') return out;
+	}
+	return { status: 'gone' };
+}
+
+async function runOnce(
+	ctx: ActionCtx,
+	args: InterpretArgs,
+	isLastAttempt: boolean
+): Promise<InterpretRunResult | 'restart'> {
 	const loaded = await loadState(ctx, args);
 	if (!loaded) return { status: 'gone' };
-	const mode: InterpretMode = args.mode ?? loaded.mode;
+	const mode: InterpretMode = loaded.mode;
 
-	const eligible = isInterpretationEligible(loaded.eligibility, { direction: loaded.direction });
+	const eligible = loaded.eligibility
+		? isInterpretationEligible(loaded.eligibility, { direction: loaded.direction })
+		: ({ isEligible: false, skipReason: 'ineligible', detail: 'no_snapshot' } as const);
 	if (!eligible.isEligible) {
-		const outcome = await apply(ctx, args, loaded, mode, {
-			contentRevision: 'skip',
-			status: 'skipped',
-			skipReason: eligible.skipReason,
-			errorCode: eligible.detail,
-		});
-		return finish(outcome, 'skipped');
+		return finish(
+			await apply(ctx, args, loaded, {
+				contentRevision: 'skip',
+				status: 'skipped',
+				skipReason: eligible.skipReason,
+				errorCode: eligible.detail,
+			})
+		);
 	}
 
 	let contentRevision = 'unread';
+	let retryCount: number | undefined;
 	try {
 		const scoped = await scopeForInterpretation(ctx, args.source);
 		if (!scoped) return { status: 'gone' };
 		if (!scoped.ok) {
-			const outcome = await apply(ctx, args, loaded, mode, {
-				contentRevision: 'undecryptable',
-				status: 'skipped',
-				skipReason: 'undecryptable',
-			});
-			return finish(outcome, 'skipped');
+			return finish(
+				await apply(ctx, args, loaded, {
+					contentRevision: scoped.skipReason,
+					status: 'skipped',
+					skipReason: scoped.skipReason,
+					...('detail' in scoped ? { errorCode: scoped.detail } : {}),
+				})
+			);
 		}
+		// On the last attempt a body that keeps changing is recorded as such, not rechecked.
+		const sourceVersion = isLastAttempt ? undefined : scoped.sourceVersion;
 		const segmented = segmentScoped(scoped);
 		contentRevision = await contentRevisionOf(segmented);
 		const sourceManifest = {
@@ -216,35 +254,49 @@ export async function runInterpretation(
 			isUncertain: segmented.uncertain,
 		};
 
-		// Dedupe: this revision was already folded in by an earlier run.
+		// Dedupe: this revision was already folded in by an earlier run. An
+		// incomplete one is repaired once its retry is due; otherwise it is
+		// reported as it stands (its status, not a bare "replayed").
 		const previous = loaded.previous.find(
 			(p) =>
 				p.contentRevision === contentRevision &&
 				p.extractorVersion === INTERPRET_EXTRACTOR_VERSION &&
-				p.isApplied &&
-				(p.status === 'complete' || p.status === 'partial')
+				p.isApplied
 		);
 		if (previous) {
-			const stored = await ctx.runQuery(internal.mail.interpret.load.readStoredResult, {
-				interpretationId: previous.interpretationId,
-			});
-			return {
-				status: 'replayed',
-				interpretationId: previous.interpretationId,
-				createdItemIds: [],
-				...(stored ? { projection: needsReplyProjectionOf(stored, loaded.ownerLocale) } : {}),
-			};
+			const isComplete = previous.status === 'complete' || previous.status === 'skipped';
+			if (isComplete || !isRetryDue(previous, Date.now())) {
+				const stored = previous.hasPayload
+					? await ctx.runQuery(internal.mail.interpret.load.readStoredResult, {
+							interpretationId: previous.interpretationId,
+						})
+					: null;
+				return {
+					status: previous.status,
+					isReplayed: true,
+					interpretationId: previous.interpretationId,
+					createdItemIds: [],
+					...(stored ? { projection: needsReplyProjectionOf(stored, loaded.ownerLocale) } : {}),
+					...(previous.errorCode ? { errorCode: previous.errorCode } : {}),
+					...(previous.nextRetryAt !== undefined ? { retryAt: previous.nextRetryAt } : {}),
+				};
+			}
+			retryCount = (previous.retryCount ?? 0) + 1;
 		}
+		const attempt = { ...(retryCount !== undefined ? { retryCount } : {}), ...(sourceVersion ? { sourceVersion } : {}) };
 
 		const gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
 		if (!gate.isAllowed) {
-			const outcome = await apply(ctx, args, loaded, mode, {
-				contentRevision,
-				status: 'failed',
-				errorCode: gate.code,
-				sourceManifest,
-			});
-			return finish(outcome, 'failed', { errorCode: gate.code });
+			return finish(
+				await apply(ctx, args, loaded, {
+					contentRevision,
+					status: 'failed',
+					errorCode: gate.code,
+					sourceManifest,
+					...attempt,
+				}),
+				{ errorCode: gate.code }
+			);
 		}
 
 		const input = buildInterpretInput({
@@ -280,11 +332,13 @@ export async function runInterpretation(
 		// Validate with the lenient parse schema (the model schema only shapes the request).
 		const output = clampOutput(interpretOutputSchema.parse(object) as InterpretOutput);
 		const grounding = groundProposals(output, segmented);
+		const ownAddresses = new Set(loaded.ownAddresses);
 
 		const itemText = new Map(loaded.openItems.map((i) => [i.id, i.assertion]));
 		const factText = new Map(loaded.currentFacts.map((f) => [f.id, f.assertion]));
 		const claims = verifyClaimsOf(grounding, segmented.canonicalText, {
 			participants: loaded.participants,
+			ownAddresses,
 			itemText: (id) => itemText.get(id),
 			factText: (id) => factText.get(id),
 		});
@@ -310,8 +364,9 @@ export async function runInterpretation(
 			mode,
 			canonicalText: segmented.canonicalText,
 			participants: loaded.participants,
-			ownAddresses: new Set(loaded.ownAddresses),
+			ownAddresses,
 			timezone: loaded.timezone,
+			sentAt: loaded.sourceAt,
 			verdicts: verified.verdicts,
 			checked: new Set(claims.map((c) => c.id)),
 			...(latestSuppressed ? { latestSuppressed } : {}),
@@ -323,8 +378,9 @@ export async function runInterpretation(
 			isFactsOverflow: loaded.isFactsOverflow,
 			truncatedSegmentIds,
 			isVerifyIncomplete: verified.isIncomplete,
+			isBodyIncomplete: scoped.omitted.includes('body_unavailable'),
 		});
-		const outcome = await apply(ctx, args, loaded, mode, {
+		const outcome = await apply(ctx, args, loaded, {
 			contentRevision,
 			status: run.status,
 			...(run.errorCode ? { errorCode: run.errorCode } : {}),
@@ -335,8 +391,9 @@ export async function runInterpretation(
 				isOverflow: output.coverage.overflow,
 			},
 			result,
+			...attempt,
 		});
-		return finish(outcome, run.status, {
+		return finish(outcome, {
 			projection: needsReplyProjectionOf(result, loaded.ownerLocale),
 			...(run.errorCode ? { errorCode: run.errorCode } : {}),
 		});
@@ -347,14 +404,17 @@ export async function runInterpretation(
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
 		try {
-			const outcome = await apply(ctx, args, loaded, mode, {
-				contentRevision,
-				status: 'failed',
-				errorCode: 'model_error',
-			});
-			return finish(outcome, 'failed', { errorCode: 'model_error' });
+			return finish(
+				await apply(ctx, args, loaded, {
+					contentRevision,
+					status: 'failed',
+					errorCode: 'model_error',
+					...(retryCount !== undefined ? { retryCount } : {}),
+				}),
+				{ errorCode: 'model_error' }
+			);
 		} catch {
-			return { status: 'failed', createdItemIds: [], errorCode: 'model_error' };
+			return { status: 'failed', isReplayed: false, createdItemIds: [], errorCode: 'model_error' };
 		}
 	}
 }
@@ -363,6 +423,7 @@ export async function runInterpretation(
 export const interpretMessage = internalAction({
 	args: {
 		source: interpretationSourceValidator,
+		// Accepted for older callers and ignored (see InterpretArgs).
 		mode: v.optional(interpretModeValidator),
 		isLive: v.optional(v.boolean()),
 		precedence: v.optional(v.string()),

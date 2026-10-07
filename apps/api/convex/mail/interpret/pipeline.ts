@@ -33,6 +33,7 @@ import {
 	type InterpretTransitionProposal,
 } from './schema';
 import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
+import { resolveDue } from './dueDate';
 
 // ── Input ──────────────────────────────────────────────────────────────────
 
@@ -196,13 +197,9 @@ function quotesOf(claim: GroundedClaim<unknown>, canonicalText: string): string[
 	return claim.evidence.map((e) => canonicalText.slice(e.start, e.end));
 }
 
-function partyLabel(
-	p: InterpretParticipantProposal,
-	participants: readonly InterpretInputParticipant[]
-) {
-	const listed = p.ref ? participants.find((x) => x.ref === p.ref) : undefined;
-	if (listed) return listed.isUs ? 'the reader' : (listed.name ?? listed.email ?? 'someone');
-	return p.name ?? p.email ?? 'an unclear person';
+function partyLabel(party: { email?: string; name?: string; isUs: boolean }): string {
+	if (party.isUs) return 'the reader';
+	return party.name ?? party.email ?? 'an unclear person';
 }
 
 /**
@@ -215,6 +212,8 @@ export function verifyClaimsOf(
 	canonicalText: string,
 	context: {
 		participants: readonly InterpretInputParticipant[];
+		/** The mailbox's (or inbox's) own addresses: the same "us" the reducer stores. */
+		ownAddresses: ReadonlySet<string>;
 		itemText: (itemId: string) => string | undefined;
 		factText: (factId: string) => string | undefined;
 	}
@@ -222,14 +221,15 @@ export function verifyClaimsOf(
 	const claims: VerifyClaim[] = [];
 	for (const [i, g] of grounding.items.entries()) {
 		const item = g.claim as InterpretItemProposal;
-		const responsible = resolveTag(item.responsible, context.participants);
-		if (!isConsequential(item) && responsible !== 'us') continue;
+		// One resolver for ownership here and in storage (toReduceResult).
+		const responsible = resolveParticipant(item.responsible, context.participants, context.ownAddresses);
+		if (!isConsequential(item) && !responsible.isUs) continue;
 		const due = item.due ? ` by ${item.due.phrase}` : '';
 		const amount = item.amount ? ` (${item.amount.value} ${item.amount.currency})` : '';
 		claims.push({
 			id: `item:${i}`,
 			statement:
-				`${partyLabel(item.responsible, context.participants)} is asked or committed to: ` +
+				`${partyLabel(responsible)} is asked or committed to: ` +
 				`${item.assertion}${amount}${due}`,
 			quotes: quotesOf(g, canonicalText),
 		});
@@ -265,15 +265,6 @@ export function verifyClaimsOf(
 	return claims;
 }
 
-function resolveTag(
-	p: InterpretParticipantProposal,
-	participants: readonly InterpretInputParticipant[]
-): 'us' | 'them' | 'unclear' {
-	const listed = p.ref ? participants.find((x) => x.ref === p.ref) : undefined;
-	if (listed) return listed.isUs ? 'us' : 'them';
-	return p.name || p.email ? 'them' : 'unclear';
-}
-
 // ── Reducer input ──────────────────────────────────────────────────────────
 
 function evidenceOf(claim: GroundedClaim<unknown>, canonicalText: string): ReduceEvidence[] {
@@ -291,6 +282,8 @@ export interface ToReduceOptions {
 	participants: readonly InterpretInputParticipant[];
 	ownAddresses: ReadonlySet<string>;
 	timezone: string;
+	/** The message date: deadlines resolve relative to it (dueDate.ts). */
+	sentAt: number;
 	/** Verifier verdicts by claim id; a claim absent here was not checked. */
 	verdicts: ReadonlyMap<string, VerifyVerdict>;
 	/** Claim ids that were sent to the verifier. */
@@ -317,7 +310,8 @@ export function toReduceResult(
 			verifyDropped++;
 			continue;
 		}
-		const at = parseIsoMs(p.due?.at);
+		// The deadline is read from its phrase, never taken from the model's timestamp.
+		const due = p.due ? resolveDue(p.due.phrase, opts.sentAt, opts.timezone) : undefined;
 		items.push({
 			...(p.matchItemId ? { matchItemId: p.matchItemId } : {}),
 			intent: p.intent,
@@ -332,9 +326,8 @@ export function toReduceResult(
 				? {
 						due: {
 							phrase: p.due.phrase,
-							...(at !== undefined ? { at } : {}),
-							tz: p.due.tz ?? opts.timezone,
-							isAmbiguous: p.due.ambiguous || (p.due.at !== null && at === undefined),
+							...(due?.at !== undefined ? { at: due.at, tz: opts.timezone } : {}),
+							isAmbiguous: due?.isAmbiguous ?? true,
 							...(p.due.condition ? { condition: p.due.condition } : {}),
 						},
 					}
@@ -443,8 +436,8 @@ function factValueOf(value: InterpretFactProposal['value']): ReduceFact['value']
 
 /**
  * Whether the run read everything it should have: `partial` when grounding
- * found a gap, the model or the prompt overflowed, a segment was cut, or a
- * verification call failed. Pure.
+ * found a gap, the model or the prompt overflowed, a segment was cut, a
+ * verification call failed, or only part of the body could be read. Pure.
  */
 export function runStatusOf(input: {
 	grounding: Pick<GroundingResult<InterpretOutput>, 'coverage'>;
@@ -453,7 +446,10 @@ export function runStatusOf(input: {
 	isFactsOverflow: boolean;
 	truncatedSegmentIds: readonly string[];
 	isVerifyIncomplete: boolean;
+	/** Scoping could not load the whole body (an excerpt stood in). */
+	isBodyIncomplete?: boolean;
 }): { status: 'complete' | 'partial'; errorCode?: string } {
+	if (input.isBodyIncomplete) return { status: 'partial', errorCode: 'body_unavailable' };
 	if (
 		input.output.coverage.overflow ||
 		input.isItemsOverflow ||

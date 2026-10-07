@@ -156,6 +156,10 @@ export const applyInterpretationArgs = {
 	result: v.optional(reduceResultValidator),
 	// Team thread assignee at load time: the default item assignee (D4).
 	threadAssigneeUserId: v.optional(v.string()),
+	// Fingerprint of the body the run read (sourceVersion.ts); rechecked here.
+	sourceVersion: v.optional(v.string()),
+	// Set on a repair attempt of an incomplete extraction (retry.ts).
+	retryCount: v.optional(v.number()),
 };
 
 export type ReduceEvidence = Infer<typeof reduceEvidenceValidator>;

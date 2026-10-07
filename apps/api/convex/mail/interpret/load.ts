@@ -35,11 +35,8 @@ import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { mailboxOwnAddresses } from '../identities';
 import { loadBriefRow, resolveThreadMode } from './briefRow';
-import {
-	loadInboundEligibilitySignals,
-	loadMailEligibilitySignals,
-	type InterpretEligibilitySignals,
-} from './eligibility';
+import type { InterpretEligibilitySignals } from './eligibility';
+import { loadInterpretSource } from './sources';
 import {
 	CLOSED_ITEM_LOOKBACK_MS,
 	MAX_PROMPT_FACTS,
@@ -52,10 +49,8 @@ import type { ReduceResult } from './reduceInput';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
-/** Statuses read as "recently closed" for the prompt. */
-const CLOSED_STATUSES = ['done', 'declined', 'superseded', 'untracked'] as const;
-/** Rows scanned per closed status (the lookback filter runs in memory). */
-const CLOSED_SCAN = 100;
+/** Items changed within the closed lookback read per run. */
+const CLOSED_SCAN = 200;
 
 // ── Items and facts ────────────────────────────────────────────────────────
 
@@ -98,19 +93,46 @@ export function selectPromptItems<T extends { status: string; askedAt: number; u
 	return { page: all.slice(0, limit), isOverflow: all.length > limit };
 }
 
-/** The candidate rows {@link selectPromptItems} picks from (bounded per status). */
+/** A thread's items changed since `since`, newest first, bounded. */
+export async function recentlyUpdatedItems(
+	ctx: ReadCtx,
+	ref: ThreadRef,
+	since: number,
+	limit: number
+): Promise<Doc<'threadItems'>[]> {
+	return ref.kind === 'mail'
+		? ctx.db
+				.query('threadItems')
+				.withIndex('by_mail_thread_and_updated', (q) =>
+					q.eq('mailThreadId', ref.id).gte('updatedAt', since)
+				)
+				.order('desc')
+				.take(limit)
+		: ctx.db
+				.query('threadItems')
+				.withIndex('by_conversation_thread_and_updated', (q) =>
+					q.eq('conversationThreadId', ref.id).gte('updatedAt', since)
+				)
+				.order('desc')
+				.take(limit);
+}
+
+/**
+ * The candidate rows {@link selectPromptItems} picks from: the open items, and
+ * the items changed within the closed-item lookback (by update time, so a
+ * long history never hides a recently closed or corrected item). `isScanCut`
+ * says a bound was hit: the page is then incomplete, never silently short.
+ */
 export async function loadPromptItemCandidates(
 	ctx: ReadCtx,
-	ref: ThreadRef
+	ref: ThreadRef,
+	now: number
 ): Promise<{ rows: Doc<'threadItems'>[]; isScanCut: boolean }> {
 	const open = await threadItemsWithStatus(ctx, ref, 'open', MAX_PROMPT_ITEMS + 1);
-	const closed = await Promise.all(
-		CLOSED_STATUSES.map((status) => threadItemsWithStatus(ctx, ref, status, CLOSED_SCAN))
-	);
+	const recent = await recentlyUpdatedItems(ctx, ref, now - CLOSED_ITEM_LOOKBACK_MS, CLOSED_SCAN + 1);
 	return {
-		rows: [...open, ...closed.flat()],
-		// More open items than one page: the page is cut whatever the closed ones are.
-		isScanCut: open.length > MAX_PROMPT_ITEMS,
+		rows: [...open, ...recent.filter((row) => row.status !== 'open').slice(0, CLOSED_SCAN)],
+		isScanCut: open.length > MAX_PROMPT_ITEMS || recent.length > CLOSED_SCAN,
 	};
 }
 
@@ -334,43 +356,21 @@ export const readStoredResult = internalQuery({
 // ── The query ──────────────────────────────────────────────────────────────
 
 export const loadForInterpretation = internalQuery({
-	args: {
-		source: interpretationSourceValidator,
-		// Live delivery (the pipeline) vs backfill / APPEND; decided by the caller.
-		isLive: v.optional(v.boolean()),
-		// Ingest-time headers that are not persisted on the row.
-		precedence: v.optional(v.string()),
-		listId: v.optional(v.string()),
-	},
+	args: { source: interpretationSourceValidator },
 	handler: async (ctx, args) => {
 		const info = await loadSourceInfo(ctx, args.source);
 		if (!info) return null;
 		const mode: InterpretMode | null = await resolveThreadMode(ctx, info.threadRef);
 		if (!mode) return null;
 
-		let eligibility: InterpretEligibilitySignals;
-		if (args.source.kind === 'mail' || args.source.kind === 'outboundMail') {
-			const message = (await ctx.db.get(args.source.id)) as Doc<'mailMessages'>;
-			eligibility = await loadMailEligibilitySignals(ctx, message, {
-				isLive: args.isLive ?? true,
-				precedence: args.precedence,
-				listId: args.listId,
-			});
-		} else if (args.source.kind === 'inbound') {
-			const inbound = (await ctx.db.get(args.source.id)) as Doc<'inboundMessages'>;
-			eligibility = await loadInboundEligibilitySignals(ctx, inbound);
-		} else {
-			eligibility = {
-				isLive: true,
-				isThreadMuted: false,
-				isBulkHeaderPresent: false,
-				isSenderKnown: true,
-			};
-		}
+		// The snapshot taken at enqueue (sources.ts); without one the message is
+		// not interpreted, so a retry can never widen what was eligible.
+		const snapshot = await loadInterpretSource(ctx, args.source);
+		const eligibility: InterpretEligibilitySignals | null = snapshot?.eligibility ?? null;
 
 		const brief = await loadBriefRow(ctx, info.threadRef);
 		const now = Date.now();
-		const candidates = await loadPromptItemCandidates(ctx, info.threadRef);
+		const candidates = await loadPromptItemCandidates(ctx, info.threadRef, now);
 		const items = selectPromptItems(candidates.rows, now);
 		const openItems = await Promise.all(
 			items.page.map((item) => toPromptItem(item, info.participants))
@@ -396,7 +396,7 @@ export const loadForInterpretation = internalQuery({
 				q.eq('sourceKey', interpretationSourceKey(args.source))
 			)
 			.order('desc')
-			.take(5);
+			.take(20);
 
 		return {
 			...info,
@@ -420,6 +420,10 @@ export const loadForInterpretation = internalQuery({
 				extractorVersion: row.extractorVersion,
 				status: row.status,
 				isApplied: row.appliedAt !== undefined,
+				hasPayload: row.payload !== undefined,
+				retryCount: row.retryCount,
+				nextRetryAt: row.nextRetryAt,
+				errorCode: row.errorCode,
 			})),
 		};
 	},

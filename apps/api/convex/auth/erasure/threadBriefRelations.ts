@@ -30,6 +30,7 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 	...THREAD_BRIEF_TABLES.map((table) => descendant('mailThreads', table, 'mailThreadId')),
 	descendant('mailboxes', 'threadItems', 'mailboxId'),
 	descendant('mailMessages', 'messageInterpretations', 'source.id'),
+	descendant('mailMessages', 'interpretSources', 'source.id'),
 	descendant('mailMessages', 'threadFacts', 'evidence[].source.id'),
 	descendant('mailMessages', 'threadItems', 'evidence[].source.id'),
 	descendant('mailDrafts', 'draftResponsePlans', 'mailDraftId'),

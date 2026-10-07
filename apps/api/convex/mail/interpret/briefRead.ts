@@ -11,12 +11,13 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
 import type { AppLocale } from '@owlat/shared/appLocales';
-import { ITEM_STATUSES } from '@owlat/shared/threadBrief';
 import type { Evidence } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { mailboxOwnAddresses } from '../identities';
-import { readResult, threadItemsWithStatus } from './load';
+import { readResult, recentlyUpdatedItems } from './load';
+import { CLOSED_ITEM_LOOKBACK_MS } from './schema';
+import type { SourceCounts } from './counters';
 import type {
 	ActivityView,
 	EvidenceView,
@@ -29,8 +30,6 @@ import { gapReasonOf, type GapReason, type OpenedItem } from './briefProject';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
-/** Items read per status. */
-const ITEMS_PER_STATUS = 100;
 const FACTS_READ = 60;
 /** Activity rows scanned for the tail and for "since you last looked". */
 const ACTIVITY_SCAN = 100;
@@ -48,18 +47,61 @@ export async function openEvidence(evidence: readonly Evidence[]): Promise<Evide
 	);
 }
 
-/** Every item of the thread (bounded per status), opened in `locale`. */
-export async function readItems(
-	ctx: ReadCtx,
+/** Open items per page of `get`. */
+export const OPEN_ITEMS_PAGE = 100;
+/** Items changed within the closed lookback read with the first page. */
+const CLOSED_READ = 100;
+
+export interface ItemsPage {
+	items: OpenedItem[];
+	page: { cursor: string | null; isDone: boolean; isClosedTruncated: boolean };
+}
+
+/**
+ * One page of the thread's open items, plus (first page only) the items
+ * closed within the lookback, opened in `locale`. Untracked items are only
+ * counted. Nothing is dropped silently: a further page has a cursor and a cut
+ * closed list sets `isClosedTruncated`.
+ */
+export async function readItemsPage(
+	ctx: QueryCtx,
 	ref: ThreadRef,
-	locale: AppLocale
-): Promise<OpenedItem[]> {
-	const rows = (
-		await Promise.all(
-			ITEM_STATUSES.map((s) => threadItemsWithStatus(ctx, ref, s, ITEMS_PER_STATUS))
-		)
-	).flat();
-	return Promise.all(rows.map((row) => openItem(row, locale)));
+	locale: AppLocale,
+	cursor: string | null,
+	now: number
+): Promise<ItemsPage> {
+	const opts = { cursor, numItems: OPEN_ITEMS_PAGE };
+	const open =
+		ref.kind === 'mail'
+			? await ctx.db
+					.query('threadItems')
+					.withIndex('by_mail_thread_and_status', (q) =>
+						q.eq('mailThreadId', ref.id).eq('status', 'open')
+					)
+					.paginate(opts)
+			: await ctx.db
+					.query('threadItems')
+					.withIndex('by_conversation_thread_and_status', (q) =>
+						q.eq('conversationThreadId', ref.id).eq('status', 'open')
+					)
+					.paginate(opts);
+	let closed: Doc<'threadItems'>[] = [];
+	let isClosedTruncated = false;
+	if (cursor === null) {
+		const recent = await recentlyUpdatedItems(ctx, ref, now - CLOSED_ITEM_LOOKBACK_MS, CLOSED_READ + 1);
+		isClosedTruncated = recent.length > CLOSED_READ;
+		closed = recent
+			.slice(0, CLOSED_READ)
+			.filter((r) => r.status === 'done' || r.status === 'declined' || r.status === 'superseded');
+	}
+	return {
+		items: await Promise.all([...open.page, ...closed].map((row) => openItem(row, locale))),
+		page: {
+			cursor: open.isDone ? null : open.continueCursor,
+			isDone: open.isDone,
+			isClosedTruncated,
+		},
+	};
 }
 
 export async function openItem(row: Doc<'threadItems'>, locale: AppLocale): Promise<OpenedItem> {
@@ -314,7 +356,13 @@ export function gapOf(
 		Doc<'messageInterpretations'>,
 		'sourceKey' | 'status' | 'skipReason' | 'errorCode' | 'updatedAt'
 	>[],
-	opts: { totalMessages: number; isPending: boolean; suppressed?: 'short' | 'security' }
+	opts: {
+		totalMessages: number;
+		isPending: boolean;
+		suppressed?: 'short' | 'security';
+		/** The brief's maintained source counters: the authority on counts. */
+		sourceCounts?: SourceCounts;
+	}
 ): { interpretedMessages: number; totalMessages: number; reason?: GapReason } {
 	const newest = new Map<string, (typeof rows)[number]>();
 	for (const row of rows) {
@@ -331,11 +379,17 @@ export function gapOf(
 			(row.status === 'skipped' && row.skipReason === 'undecryptable');
 		if (isProblem && (!problem || row.updatedAt > problem.updatedAt)) problem = row;
 	}
+	const counts = opts.sourceCounts;
+	if (counts) interpretedMessages = counts.complete + counts.partial;
+	const hasUnseenProblem =
+		!problem && !!counts && counts.partial + counts.failed + counts.unreadable > 0;
 	const reason: GapReason | undefined = problem
 		? gapReasonOf(problem)
-		: opts.isPending
-			? 'pending'
-			: opts.suppressed;
+		: hasUnseenProblem
+			? 'failed'
+			: opts.isPending
+				? 'pending'
+				: opts.suppressed;
 	return {
 		interpretedMessages,
 		totalMessages: Math.max(opts.totalMessages, interpretedMessages),

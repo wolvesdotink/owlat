@@ -204,6 +204,16 @@ const sharedViewFields = {
 	// Latest 5 substance rows, newest first.
 	activity: v.array(activityViewValidator),
 	counts: briefCountsViewValidator,
+	// Item paging (`get({cursor})`): the open items come a page at a time; the
+	// recently closed ones on the first page only. Never silently cut: a
+	// further page has a cursor, a cut closed list says so.
+	page: v.optional(
+		v.object({
+			cursor: v.union(v.string(), v.null()),
+			isDone: v.boolean(),
+			isClosedTruncated: v.boolean(),
+		})
+	),
 };
 
 /** Personal Postbox thread (brief mode). */

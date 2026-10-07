@@ -45,9 +45,10 @@ import {
 } from '../lib/validators/threadBrief';
 
 /**
- * The seven thread brief tables, children before parents: plans, viewer state
- * and activity before the items and facts they point at, interpretations and
- * the brief row last. The order the organization wipe deletes them in.
+ * The thread brief tables, children before parents: plans, viewer state
+ * and activity before the items and facts they point at, interpretations,
+ * their source snapshots and the brief row last. The order the organization
+ * wipe deletes them in.
  */
 export const THREAD_BRIEF_TABLES = [
 	'draftResponsePlans',
@@ -56,6 +57,7 @@ export const THREAD_BRIEF_TABLES = [
 	'threadFacts',
 	'threadItems',
 	'messageInterpretations',
+	'interpretSources',
 	'threadBriefs',
 ] as const;
 
@@ -116,6 +118,17 @@ export const threadBriefTables = {
 		// When the reducer folded this extraction into the thread (same
 		// transaction as the write); a replay of an applied row is a no-op.
 		appliedAt: v.optional(v.number()),
+		// The newest applied extraction of its source (one per source): the
+		// row the brief's source counters count.
+		isCurrent: v.optional(v.boolean()),
+		// Message date of the source: the order an ordered replay folds it in.
+		sourceAt: v.optional(v.number()),
+		// Fingerprint of the stored body the run read (mail/interpret/sourceVersion.ts);
+		// the reducer refuses a write when the body changed since.
+		sourceVersion: v.optional(v.string()),
+		// Retryable partial or failed runs: attempts so far and when the next is due.
+		retryCount: v.optional(v.number()),
+		nextRetryAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -139,6 +152,9 @@ export const threadBriefTables = {
 		supersedesId: v.optional(v.id('threadFacts')),
 		conflictsWithId: v.optional(v.id('threadFacts')),
 		status: factStatusValidator,
+		// `<sourceKey>#f<index>`: the proposal that created it, so an ordered
+		// replay maps a rebuilt fact back onto this row.
+		lineage: v.optional(v.string()),
 		revision: v.number(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -190,6 +206,9 @@ export const threadBriefTables = {
 		commitmentId: v.optional(v.id('mailCommitments')),
 		// Normalized counterparty address for cross-thread items (P4).
 		counterpartyKey: v.optional(v.string()),
+		// `<sourceKey>#<index>`: the proposal that created it, so an ordered
+		// replay keeps the item's id.
+		lineage: v.optional(v.string()),
 		// Message date of the first evidence: the "age" of compareForYou.
 		askedAt: v.number(),
 		createdAt: v.number(),
@@ -198,7 +217,10 @@ export const threadBriefTables = {
 		.index('by_mail_thread_and_status', ['mailThreadId', 'status'])
 		.index('by_conversation_thread_and_status', ['conversationThreadId', 'status'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
-		.index('by_counterparty', ['counterpartyKey']),
+		.index('by_counterparty', ['counterpartyKey'])
+		// Recently changed items (the 30-day closed lookback of the prompt and the brief).
+		.index('by_mail_thread_and_updated', ['mailThreadId', 'updatedAt'])
+		.index('by_conversation_thread_and_updated', ['conversationThreadId', 'updatedAt']),
 
 	// Append-only per-thread log.
 	threadActivity: defineTable({
@@ -225,6 +247,22 @@ export const threadBriefTables = {
 		.index('by_conversation_thread_and_seq', ['conversationThreadId', 'seq'])
 		.index('by_idempotency_key', ['idempotencyKey']),
 
+	// One row per source message, written when interpretation is enqueued
+	// (mail/interpret/sources.ts): the eligibility signals every retry reuses,
+	// and for a team reply the immutable text that was sent.
+	interpretSources: defineTable({
+		...threadRefFields,
+		source: interpretationSourceValidator,
+		sourceKey: v.string(),
+		eligibility: interpretEligibilitySignalsValidator,
+		// Team replies: the sent content, captured at send finalization. Sealed.
+		snapshot: v.optional(
+			v.object({ subject: v.string(), text: v.string(), capturedAt: v.number() })
+		),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_source_key', ['sourceKey']),
+
 	// One row per thread: the reducer's revision, checkpoint and completeness.
 	threadBriefs: defineTable({
 		...threadRefFields,
@@ -244,6 +282,28 @@ export const threadBriefTables = {
 		// Highest threadActivity.seq handed out.
 		lastActivitySeq: v.number(),
 		completeness: briefCompletenessValidator,
+		// Per-source counts of the current extractions (mail/interpret/counters.ts),
+		// maintained in the transaction that changes them; completeness reads them.
+		sourceCounts: v.optional(
+			v.object({
+				complete: v.number(),
+				partial: v.number(),
+				failed: v.number(),
+				unreadable: v.number(),
+				skipped: v.number(),
+			})
+		),
+		// Item counts by list (open per responsibility, closed, untracked),
+		// maintained by every writer of an item's status or responsibility.
+		itemCounts: v.optional(
+			v.object({
+				us: v.number(),
+				them: v.number(),
+				unclear: v.number(),
+				closed: v.number(),
+				hidden: v.number(),
+			})
+		),
 		// Bumped by every purge touching the thread.
 		deletionEpoch: v.number(),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.

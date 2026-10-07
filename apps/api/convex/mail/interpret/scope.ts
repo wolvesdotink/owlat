@@ -32,33 +32,55 @@ import {
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
 import { withStoredInlineBody } from '../../lib/messageBodyStore';
-import { openMailMessageInlineBody, readMailMessageText } from '../../lib/messageBody';
+import {
+	openMailMessageInlineBody,
+	openMessageBody,
+	readMailMessageText,
+} from '../../lib/messageBody';
 import { openInboundMessageBody } from '../../lib/messageBodyInbound';
 import { readSealedBlobText } from '../../lib/sealedBlob';
 import { styleHides } from '../../agent/steps/security_scan/hiddenStyle';
+import { sourceVersionOf } from './sourceVersion';
+import { loadInterpretSource } from './sources';
 
-/** The source row(s) the scope needs, as stored (bodies still sealed). */
+/**
+ * The source row(s) the scope needs, as stored (bodies still sealed), with
+ * the body fingerprint the reducer rechecks (`sourceVersion.ts`), read in the
+ * same query so the two describe the same body.
+ */
 export const loadSourceForScope = internalQuery({
 	args: { source: interpretationSourceValidator },
 	handler: async (ctx, args) => {
 		const source = args.source;
+		const sourceVersion = await sourceVersionOf(ctx, source);
 		if (source.kind === 'mail' || source.kind === 'outboundMail') {
 			const row = await ctx.db.get(source.id);
-			if (!row) return null;
-			return { kind: 'mail' as const, row: await withStoredInlineBody(ctx.db, row) };
+			if (!row || sourceVersion === null) return null;
+			return {
+				kind: 'mail' as const,
+				row: await withStoredInlineBody(ctx.db, row),
+				sourceVersion,
+			};
 		}
 		if (source.kind === 'inbound') {
 			const row = await ctx.db.get(source.id);
-			return row ? { kind: 'inbound' as const, row } : null;
+			return row && sourceVersion !== null
+				? { kind: 'inbound' as const, row, sourceVersion }
+				: null;
 		}
 		const reply = await ctx.db.get(source.id);
-		const inbound = reply?.inboundMessageId ? await ctx.db.get(reply.inboundMessageId) : null;
-		if (!reply || !inbound) return null;
+		if (!reply) return null;
+		// The text as the send was finalized (sources.ts), never the inbound
+		// row's draft, which can change or be cleared after the send.
+		const captured = await loadInterpretSource(ctx, source);
+		if (!captured?.snapshot || sourceVersion === null) {
+			return { kind: 'teamReplyMissing' as const };
+		}
 		return {
 			kind: 'teamReply' as const,
-			subject: reply.subject ?? inbound.subject,
-			// The reply as sent: the draft the team approved for this message.
-			text: inbound.draftResponse ?? '',
+			subject: captured.snapshot.subject,
+			sealedText: captured.snapshot.text,
+			sourceVersion,
 		};
 	},
 });
@@ -66,6 +88,8 @@ export const loadSourceForScope = internalQuery({
 export type ScopedMessage =
 	| {
 			ok: true;
+			/** Body fingerprint the reducer rechecks (absent from the pure helpers). */
+			sourceVersion?: string;
 			text?: string;
 			html?: string;
 			subject: string;
@@ -73,7 +97,9 @@ export type ScopedMessage =
 			/** What was left out: `outside_signed_block`, `html_alternative`, `attachments`, `body_unavailable`. */
 			omitted: string[];
 	  }
-	| { ok: false; skipReason: 'undecryptable' };
+	| { ok: false; skipReason: 'undecryptable' }
+	/** A team reply whose sent text was never captured: not interpreted. */
+	| { ok: false; skipReason: 'ineligible'; detail: 'no_snapshot' };
 
 /** The scoping rules over an opened body. Pure. */
 export function scopeBody(input: {
@@ -135,18 +161,28 @@ export async function scopeForInterpretation(
 ): Promise<ScopedMessage | null> {
 	const loaded = await ctx.runQuery(internal.mail.interpret.scope.loadSourceForScope, { source });
 	if (!loaded) return null;
+	if (loaded.kind === 'teamReplyMissing') {
+		return { ok: false, skipReason: 'ineligible', detail: 'no_snapshot' };
+	}
 	if (loaded.kind === 'teamReply') {
-		return { ok: true, text: loaded.text, subject: loaded.subject, omitted: [] };
+		return {
+			ok: true,
+			text: await openMessageBody(loaded.sealedText),
+			subject: loaded.subject,
+			sourceVersion: loaded.sourceVersion,
+			omitted: [],
+		};
 	}
 	if (loaded.kind === 'mail') {
 		const row = loaded.row;
 		const body = await openMailRow(ctx, row);
-		return scopeBody({
+		const scoped = scopeBody({
 			...body,
 			subject: row.subject,
 			attachments: row.attachments,
 			signatureInfo: row.inboundSignatureInfo,
 		});
+		return scoped.ok ? { ...scoped, sourceVersion: loaded.sourceVersion } : scoped;
 	}
 	const row = loaded.row;
 	const body = await openInboundMessageBody(row, ctx.storage);
@@ -157,8 +193,9 @@ export async function scopeForInterpretation(
 		subject: row.subject,
 		attachments: [],
 	});
-	if (scoped.ok && !body.isComplete) scoped.omitted.push('body_unavailable');
-	return scoped;
+	if (!scoped.ok) return scoped;
+	if (!body.isComplete) scoped.omitted.push('body_unavailable');
+	return { ...scoped, sourceVersion: loaded.sourceVersion };
 }
 
 /** Segment a scoped message the way the reader does (stable ids). */
