@@ -8,8 +8,12 @@
  *     that supports it, the kind of segment that quote lies in, intent,
  *     facets, who is responsible, and any deadline or amount;
  *   - `facts`: informational claims (personal mail only);
- *   - `traps`: claims a model could plausibly propose that grounding must
- *     reject (an ask from quoted history, text outside a signature).
+ *   - `traps`: claims a model could plausibly propose that must never become
+ *     a TRACKED obligation: rejected outright (an ask from quoted history,
+ *     text outside a signature), or kept only as a proposal (an ask in a
+ *     forward sent as information, in a signature or a disclaimer).
+ * Labelled items whose quote lies in a forwarded, signature or disclaimer
+ * segment are expected to ground as proposals, never as tracked items.
  *
  * Content is fictional: neutral names, `example` domains, no real data.
  * Pure and isolate-safe; the files are read by the replay test and the
@@ -107,7 +111,8 @@ const trapLabel = z
 		/** The segment the trap claims to quote. */
 		segmentKind: z.enum(SEGMENT_KINDS),
 		assertion: z.string(),
-		reject: z.enum(['not_fresh', 'quote_failed']),
+		/** `proposal`: grounds, but only as a proposal (never tracked). */
+		reject: z.enum(['not_fresh', 'quote_failed', 'proposal']),
 	})
 	.strict();
 

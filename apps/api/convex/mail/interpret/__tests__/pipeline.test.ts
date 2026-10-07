@@ -202,6 +202,28 @@ describe('the pure run core', () => {
 		expect(rejected.dropped.verify).toBe(1);
 	});
 
+	it('never lets a verdict upgrade a grounding proposal (forwarded, signature, disclaimer)', () => {
+		const out = clampOutput(output());
+		const grounding = groundProposals(out, segmented);
+		const first = grounding.items[0];
+		if (!first) throw new Error('no grounded item');
+		first.proposal = { reason: 'forwarded' };
+		for (const transition of grounding.transitions) transition.proposal = { reason: 'forwarded' };
+		const verdicts = new Map<string, 'supported'>([['item:0', 'supported']]);
+		for (const [i] of grounding.transitions.entries()) verdicts.set(`transition:${i}`, 'supported');
+		const result = toReduceResult(out, grounding, {
+			mode: 'brief',
+			canonicalText: segmented.canonicalText,
+			participants,
+			ownAddresses: own,
+			timezone: 'UTC',
+			verdicts,
+			checked: new Set(['item:0']),
+		});
+		expect(result.items[0]?.verify).toBe('proposal');
+		for (const transition of result.transitions) expect(transition.isVerified).toBe(false);
+	});
+
 	it('withholds the latest update for short or security mail', () => {
 		const out = clampOutput(output());
 		const result = toReduceResult(out, groundProposals(out, segmented), {

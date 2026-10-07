@@ -586,6 +586,45 @@ export const SEGMENT_CASES: SegmentCase[] = [
 		],
 	},
 
+	// ── Review round 3 regressions ──
+	{
+		name: 'an end tag inside a select does not close the hidden div',
+		html: '<div hidden><select></div>Please pay EUR 500.</select></div><p>Visible.</p>',
+		expect: [['fresh', 'Visible.']],
+		absent: ['EUR 500'],
+	},
+	{
+		name: 'an end tag inside a table cell does not close the hidden div',
+		html: '<div hidden><table><tr><td>x</div>Please pay EUR 500.</td></tr></table></div><p>Visible.</p>',
+		expect: [['fresh', 'Visible.']],
+		absent: ['EUR 500'],
+	},
+	{
+		name: 'a hidden body hides content after its end tag',
+		html: '<html><body hidden><p>Please pay EUR 500.</p></body></html><p>After body.</p>',
+		expect: [],
+		absent: ['EUR 500', 'After body'],
+	},
+	{
+		name: 'a late hidden body tag hides the whole document',
+		html: '<p>Earlier.</p><body hidden><p>Please pay EUR 500.</p>',
+		expect: [],
+		absent: ['EUR 500', 'Earlier'],
+	},
+	{
+		name: 'imperative lines after a name are not a signature',
+		text: 'The plan is attached.\n\nThanks,\nMara\nCall Jonas.\nPay Acme.\n',
+		expect: [['fresh', 'Call Jonas.\nPay Acme.']],
+	},
+	{
+		name: 'labelled contact lines stay in the signature',
+		text: 'Approved.\n\nBest,\nJonas Weber\nEmail: jonas@example.com\nPhone: +49 30 0000000\nAcme Studio Ltd.\n',
+		expect: [
+			['fresh', 'Approved.'],
+			['signature', 'Acme Studio Ltd.'],
+		],
+	},
+
 	// ── HTML visibility ──
 	{
 		name: 'hidden preheader, script, style and comments are not text',
