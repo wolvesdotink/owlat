@@ -43,7 +43,11 @@ export async function sourceVersionOf(
 		case 'inbound': {
 			const row = await ctx.db.get(source.id);
 			if (!row) return null;
-			columns = [inboundMessageBody(row), row.textBodyStorageId ?? null, row.htmlBodyStorageId ?? null];
+			columns = [
+				inboundMessageBody(row),
+				row.textBodyStorageId ?? null,
+				row.htmlBodyStorageId ?? null,
+			];
 			break;
 		}
 		case 'teamReply': {

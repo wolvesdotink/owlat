@@ -5,10 +5,11 @@
  * makes of malformed markup (review round 3 probes).
  */
 import { describe, expect, it } from 'vitest';
+import { MAX_SCAN_INPUT_CHARS } from '../../../agent/steps/security_scan/patterns';
 import { segmentScoped } from '../scope';
 
 const read = (html: string) =>
-	segmentScoped({ ok: true, html, subject: 'Invoice', omitted: [] }).canonicalText;
+	segmentScoped({ ok: true, html, subject: 'Invoice', omitted: [] }).segmented.canonicalText;
 
 describe('segmentScoped: hidden HTML is stripped first', () => {
 	it.each([
@@ -30,7 +31,7 @@ describe('segmentScoped: hidden HTML is stripped first', () => {
 	});
 
 	it('keeps visible text and its segmentation', () => {
-		const segmented = segmentScoped({
+		const { segmented } = segmentScoped({
 			ok: true,
 			html: '<div>Please pay EUR 500 by Friday.</div><div class="gmail_quote"><div class="gmail_attr">On Mon, Oct 5, 2026 at 10:00 AM Jonas Weber &lt;jonas@example.com&gt; wrote:<br></div><blockquote class="gmail_quote"><div>Old text.</div></blockquote></div>',
 			subject: 'Re: Invoice',
@@ -38,5 +39,41 @@ describe('segmentScoped: hidden HTML is stripped first', () => {
 		});
 		expect(segmented.segments.map((s) => s.kind)).toEqual(['fresh', 'quoted']);
 		expect(segmented.canonicalText).toContain('Please pay EUR 500 by Friday.');
+	});
+});
+
+describe('segmentScoped: review round 1 (G1, G2)', () => {
+	it('reports an HTML body past the scanner cap as truncated', () => {
+		const padded = `<p>${'x '.repeat(MAX_SCAN_INPUT_CHARS / 2)}</p><p>Please pay EUR 500.</p>`;
+		const out = segmentScoped({ ok: true, html: padded, subject: 'Invoice', omitted: [] });
+		expect(out.isTruncated).toBe(true);
+		expect(
+			segmentScoped({ ok: true, html: '<p>Hi</p>', subject: 's', omitted: [] }).isTruncated
+		).toBe(false);
+	});
+
+	it('keeps an HTML body whose visible content is empty, never the text alternative', () => {
+		const out = segmentScoped({
+			ok: true,
+			html: '<div style="display:none">Please pay EUR 500 to account 12345 today.</div>',
+			text: 'Please pay EUR 500 to account 12345 today.',
+			subject: 'Invoice',
+			omitted: [],
+		});
+		expect(out.segmented.canonicalText).not.toContain('Please pay');
+		expect(out.segmented.segments).toHaveLength(0);
+		// The text alternative says what the visible HTML does not: uncertain.
+		expect(out.segmented.uncertain).toBe(true);
+	});
+
+	it('leaves agreeing alternatives certain', () => {
+		const out = segmentScoped({
+			ok: true,
+			html: '<p>Could you send the signed contract by Friday?</p>',
+			text: 'Could you send the signed contract by Friday?',
+			subject: 'Contract',
+			omitted: [],
+		});
+		expect(out.segmented.uncertain).toBe(false);
 	});
 });

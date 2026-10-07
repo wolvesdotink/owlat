@@ -33,7 +33,13 @@ import {
 	type InterpretParticipantProposal,
 	type InterpretTransitionProposal,
 } from './schema';
-import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
+import type {
+	ReduceEvidence,
+	ReduceFact,
+	ReduceItem,
+	ReduceResult,
+	ReduceTransition,
+} from './reduceInput';
 import { resolveDue } from './dueDate';
 
 // ── Input ──────────────────────────────────────────────────────────────────
@@ -194,8 +200,17 @@ export interface VerifyClaim {
 
 export type VerifyVerdict = 'supported' | 'unsupported' | 'unclear';
 
+/** The claim's quotes; for a mixed claim only its FRESH quotes, which must carry it alone. */
 function quotesOf(claim: GroundedClaim<unknown>, canonicalText: string): string[] {
-	return claim.evidence.map((e) => canonicalText.slice(e.start, e.end));
+	const evidence = claim.isMixed
+		? claim.evidence.filter((e) => e.segmentKind === 'fresh')
+		: claim.evidence;
+	return evidence.map((e) => canonicalText.slice(e.start, e.end));
+}
+
+/** A tracked claim: grounding found no proposal, or the fresh quotes alone verified it. */
+function isTracked(g: GroundedClaim<unknown>, verdict: VerifyVerdict | undefined): boolean {
+	return !g.proposal || (g.isMixed === true && verdict === 'supported');
 }
 
 function partyLabel(party: { email?: string; name?: string; isUs: boolean }): string {
@@ -223,8 +238,15 @@ export function verifyClaimsOf(
 	for (const [i, g] of grounding.items.entries()) {
 		const item = g.claim as InterpretItemProposal;
 		// One resolver for ownership here and in storage (toReduceResult).
-		const responsible = resolveParticipant(item.responsible, context.participants, context.ownAddresses);
-		if (!isConsequential(item) && !responsible.isUs) continue;
+		const responsible = resolveParticipant(
+			item.responsible,
+			context.participants,
+			context.ownAddresses
+		);
+		// A forwarded/signature/disclaimer-only proposal stays a proposal whatever a
+		// verifier says; a mixed claim is always checked, on its fresh quotes.
+		if (g.proposal && !g.isMixed) continue;
+		if (!g.isMixed && !isConsequential(item) && !responsible.isUs) continue;
 		const due = item.due ? ` by ${item.due.phrase}` : '';
 		const amount = item.amount ? ` (${item.amount.value} ${item.amount.currency})` : '';
 		claims.push({
@@ -237,7 +259,9 @@ export function verifyClaimsOf(
 	}
 	for (const [i, g] of grounding.transitions.entries()) {
 		const t = g.claim as InterpretTransitionProposal;
-		if (!t.to || !['done', 'declined', 'superseded'].includes(t.to)) continue;
+		if (g.proposal && !g.isMixed) continue;
+		const isClosing = !!t.to && ['done', 'declined', 'superseded'].includes(t.to);
+		if (!isClosing && !g.isMixed) continue;
 		const text = context.itemText(t.itemId);
 		if (!text) continue;
 		const verb =
@@ -245,7 +269,11 @@ export function verifyClaimsOf(
 				? 'has been done'
 				: t.to === 'declined'
 					? 'has been declined'
-					: 'has been replaced by something else';
+					: t.to === 'superseded'
+						? 'has been replaced by something else'
+						: t.to === 'open'
+							? 'is open again'
+							: `has been ${t.disposition ?? 'answered'}`;
 		claims.push({
 			id: `transition:${i}`,
 			statement: `"${text}" ${verb}.`,
@@ -308,7 +336,9 @@ export function toReduceResult(
 		const p = g.claim as InterpretItemProposal;
 		const id = `item:${i}`;
 		const verdict = opts.verdicts.get(id);
-		if (verdict === 'unsupported') {
+		const tracked = isTracked(g, verdict);
+		// A proposal is never dropped by a verdict: it stays for the reader to confirm.
+		if (tracked && verdict === 'unsupported') {
 			verifyDropped++;
 			continue;
 		}
@@ -344,9 +374,9 @@ export function toReduceResult(
 				: {}),
 			...(p.options && p.options.length > 0 ? { options: p.options } : {}),
 			evidence: evidenceOf(g, opts.canonicalText),
-			// Grounding keeps forwarded-only and signature/disclaimer-only items as
-			// proposals: no verdict upgrades them (ground.ts).
-			verify: g.proposal
+			// Forwarded-, signature- or disclaimer-only items, and mixed ones whose
+			// fresh quotes did not verify, are proposals (ground.ts).
+			verify: !tracked
 				? 'proposal'
 				: !opts.checked.has(id)
 					? 'na'
@@ -357,21 +387,27 @@ export function toReduceResult(
 		});
 	}
 
-	const transitions = grounding.transitions.map((g, i) => {
+	const transitions: ReduceTransition[] = [];
+	for (const [i, g] of grounding.transitions.entries()) {
 		const t = g.claim as InterpretTransitionProposal;
 		const id = `transition:${i}`;
-		if (opts.checked.has(id) && opts.verdicts.get(id) !== 'supported') verifyDropped++;
-		return {
+		const verdict = opts.verdicts.get(id);
+		// A proposal transition (forwarded-only, or mixed without fresh support)
+		// never reaches the reducer: no status and no disposition change (ground.ts).
+		if (!isTracked(g, verdict)) {
+			verifyDropped++;
+			continue;
+		}
+		if (opts.checked.has(id) && verdict !== 'supported') verifyDropped++;
+		transitions.push({
 			itemId: t.itemId,
 			...(t.to ? { to: t.to } : {}),
 			...(t.disposition ? { disposition: t.disposition } : {}),
 			evidence: evidenceOf(g, opts.canonicalText),
-			// A transition resting only on forwarded text never counts as verified,
-			// so it cannot close an item (ground.ts).
-			isVerified: !g.proposal && opts.verdicts.get(id) === 'supported',
+			isVerified: verdict === 'supported',
 			isReviewNeeded: g.needsReview,
-		};
-	});
+		});
+	}
 
 	const result: ReduceResult = {
 		items,
@@ -464,7 +500,10 @@ export function runStatusOf(input: {
 	isVerifyIncomplete: boolean;
 	/** Scoping could not load the whole body (an excerpt stood in). */
 	isBodyIncomplete?: boolean;
+	/** The body ran past the hidden-content scanner's cap (its tail was not read). */
+	isBodyTruncated?: boolean;
 }): { status: 'complete' | 'partial'; errorCode?: string } {
+	if (input.isBodyTruncated) return { status: 'partial', errorCode: 'overflow' };
 	if (input.isBodyIncomplete) return { status: 'partial', errorCode: 'body_unavailable' };
 	if (
 		input.output.coverage.overflow ||

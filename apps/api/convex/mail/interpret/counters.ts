@@ -37,7 +37,8 @@ export const EMPTY_ITEM_COUNTS: ItemCounts = { us: 0, them: 0, unclear: 0, close
 export function sourceBucketOf(
 	row: Pick<Doc<'messageInterpretations'>, 'status' | 'skipReason'>
 ): SourceBucket {
-	if (row.status === 'skipped') return row.skipReason === 'undecryptable' ? 'unreadable' : 'skipped';
+	if (row.status === 'skipped')
+		return row.skipReason === 'undecryptable' ? 'unreadable' : 'skipped';
 	return row.status;
 }
 

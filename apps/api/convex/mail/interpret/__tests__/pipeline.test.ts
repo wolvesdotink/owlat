@@ -346,7 +346,13 @@ describe('review round 1', () => {
 				items: [
 					{
 						...base,
-						due: { phrase: 'before the launch', at: '2026-11-30', tz: null, ambiguous: false, condition: null },
+						due: {
+							phrase: 'before the launch',
+							at: '2026-11-30',
+							tz: null,
+							ambiguous: false,
+							condition: null,
+						},
 					},
 				],
 			})

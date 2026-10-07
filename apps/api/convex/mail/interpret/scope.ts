@@ -45,7 +45,7 @@ import { readSealedBlobText } from '../../lib/sealedBlob';
 import { styleHides } from '../../agent/steps/security_scan/hiddenStyle';
 import { sourceVersionOf } from './sourceVersion';
 import { loadInterpretSource } from './sources';
-import { stripHiddenContent } from '../../agent/steps/security_scan/patterns';
+import { MAX_SCAN_INPUT_CHARS, stripHiddenContent } from '../../agent/steps/security_scan/patterns';
 
 /**
  * The source row(s) the scope needs, as stored (bodies still sealed), with
@@ -202,17 +202,66 @@ export async function scopeForInterpretation(
 	return { ...scoped, sourceVersion: loaded.sourceVersion };
 }
 
+/** A segmentation plus what scoping could not read. */
+export interface ScopedSegmentation {
+	segmented: SegmentedMessage;
+	/** The HTML ran past the hidden-content scanner's cap: the tail was not read. */
+	isTruncated: boolean;
+}
+
+function wordsOf(text: string): string[] {
+	return text
+		.normalize('NFKC')
+		.toLowerCase()
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter((w) => w.length > 2);
+}
+
 /**
- * Segment a scoped message (stable ids). The HTML goes through the security
- * scan's hidden-content strip first: conservative by construction, whatever
- * the segmenter's own parser makes of malformed markup.
+ * Whether the text alternative says something the visible HTML does not:
+ * more than a fifth of its words (at least three) are missing from it.
  */
-export function segmentScoped(scoped: Extract<ScopedMessage, { ok: true }>): SegmentedMessage {
-	const html = scoped.html ? stripHiddenContent(scoped.html, { html: true }) : null;
-	return segmentMessage(
-		{ text: scoped.text ?? null, html, subject: scoped.subject },
+export function isAlternativeAtOdds(text: string | undefined, visible: string): boolean {
+	if (!text) return false;
+	const words = wordsOf(text);
+	if (words.length < 3) return false;
+	const seen = new Set(wordsOf(visible));
+	const missing = words.filter((w) => !seen.has(w)).length;
+	return missing >= 3 && missing / words.length > 0.2;
+}
+
+/**
+ * Segment a scoped message (stable ids). The body is CHOSEN before anything is
+ * stripped: an HTML body is read as HTML even when nothing visible is left of
+ * it (then there is nothing to claim), never swapped for the text alternative.
+ * The HTML goes through the security scan's hidden-content strip first; a body
+ * past the scanner's cap is reported (`isTruncated`, the run is partial), and
+ * a text alternative that says more than the visible HTML marks the
+ * segmentation uncertain (the run is partial too).
+ */
+export function segmentScoped(scoped: Extract<ScopedMessage, { ok: true }>): ScopedSegmentation {
+	const isHtml = !!scoped.html && scoped.html.trim() !== '';
+	if (!isHtml) {
+		return {
+			segmented: segmentMessage(
+				{ text: scoped.text ?? null, html: null, subject: scoped.subject },
+				{ styleHides }
+			),
+			isTruncated: false,
+		};
+	}
+	const html = scoped.html as string;
+	const stripped = stripHiddenContent(html, { html: true });
+	const segmented = segmentMessage(
+		// No text alternative: an HTML body whose visible content is empty stays empty.
+		{ text: null, html: stripped.trim() ? stripped : '<p></p>', subject: scoped.subject },
 		{ styleHides }
 	);
+	const isAtOdds = isAlternativeAtOdds(scoped.text, segmented.canonicalText);
+	return {
+		segmented: isAtOdds ? { ...segmented, uncertain: true } : segmented,
+		isTruncated: html.length > MAX_SCAN_INPUT_CHARS,
+	};
 }
 
 /** Hex SHA-256 of a string (Web Crypto: V8 and Node). */

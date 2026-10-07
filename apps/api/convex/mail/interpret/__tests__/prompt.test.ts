@@ -126,6 +126,15 @@ describe('buildInterpretPrompt', () => {
 		expect(prompt).toContain('direct_question');
 	});
 
+	it('asks for asks in forwarded, signature and disclaimer text, and for their coverage (G4)', () => {
+		const prompt = buildInterpretPrompt(input());
+		expect(prompt).toContain(
+			'ALSO list every ask that appears only in a forwarded message, a signature or a disclaimer'
+		);
+		expect(prompt).not.toContain('is context, not an item. A forwarded message counts only');
+		expect(prompt).toContain('including forwarded, signature and disclaimer segments');
+	});
+
 	it('pins German display text to lowercase informal du', () => {
 		const prompt = buildInterpretPrompt(input());
 		expect(prompt).toContain('de (German)');

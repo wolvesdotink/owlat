@@ -366,6 +366,8 @@ describe('source counters', () => {
 		expect(completenessOfCounts(counts({ complete: 300, failed: 1 }))).toBe('partial');
 		expect(completenessOfCounts(counts({ skipped: 1 }))).toBe('complete');
 		expect(completenessOfCounts(counts({ unreadable: 1 }))).toBe('partial');
-		expect(shiftCount(counts({ failed: 1 }), 'failed', 'complete')).toEqual(counts({ complete: 1 }));
+		expect(shiftCount(counts({ failed: 1 }), 'failed', 'complete')).toEqual(
+			counts({ complete: 1 })
+		);
 	});
 });

@@ -73,7 +73,10 @@ export type PlanItem = Pick<
 };
 
 /** The fact fields the plan reads. */
-export type PlanFact = Pick<Doc<'threadFacts'>, '_id' | 'factKey' | 'status' | 'revision' | 'value'> & {
+export type PlanFact = Pick<
+	Doc<'threadFacts'>,
+	'_id' | 'factKey' | 'status' | 'revision' | 'value'
+> & {
 	evidence: readonly EvidenceRef[];
 	/** The value with its sealed text opened, for comparison. */
 	valueText?: string;
@@ -241,7 +244,11 @@ export function storedFactValueText(fact: PlanFact): string | undefined {
 }
 
 function normalizedWords(text: string): string {
-	return text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+	return text
+		.normalize('NFKC')
+		.toLowerCase()
+		.replace(/[^\p{L}\p{N}]+/gu, ' ')
+		.trim();
 }
 
 /**
@@ -372,7 +379,11 @@ export function planReduction(
 			p.completion = t.to === 'done' ? 'reported' : undefined;
 			p.activity = {
 				type:
-					t.to === 'open' ? 'item_reopened' : t.to === 'superseded' ? 'item_replaced' : 'item_closed',
+					t.to === 'open'
+						? 'item_reopened'
+						: t.to === 'superseded'
+							? 'item_replaced'
+							: 'item_closed',
 				delta: {
 					statusFrom,
 					statusTo: t.to,

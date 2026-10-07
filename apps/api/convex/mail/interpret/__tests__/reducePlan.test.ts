@@ -78,7 +78,12 @@ function result(overrides: Partial<ReduceResult> = {}): ReduceResult {
 }
 
 const SOURCE = { kind: 'mail' as const, id: id<'mailMessages'>('m2') };
-const BRIEF: PlanOptions = { mode: 'brief', threadKind: 'mail', isOutOfOrder: false, source: SOURCE };
+const BRIEF: PlanOptions = {
+	mode: 'brief',
+	threadKind: 'mail',
+	isOutOfOrder: false,
+	source: SOURCE,
+};
 
 describe('items', () => {
 	it('creates a new item for an unmatched proposal', () => {
@@ -463,14 +468,26 @@ describe('review round 1', () => {
 			isVerified: false,
 			isReviewNeeded: false,
 		});
-		const same = planReduction({ items: [], facts: [noValue] }, result({ facts: [claim('The venue is hall 3.')] }), REV, BRIEF);
+		const same = planReduction(
+			{ items: [], facts: [noValue] },
+			result({ facts: [claim('The venue is hall 3.')] }),
+			REV,
+			BRIEF
+		);
 		expect(same.facts[0]).toMatchObject({ kind: 'evidence', factId: 'fact_b' });
-		const other = planReduction({ items: [], facts: [noValue] }, result({ facts: [claim('The venue is Hall 7')] }), REV, BRIEF);
+		const other = planReduction(
+			{ items: [], facts: [noValue] },
+			result({ facts: [claim('The venue is Hall 7')] }),
+			REV,
+			BRIEF
+		);
 		expect(other.facts[0]).toMatchObject({ kind: 'insert', conflictsWithId: 'fact_b' });
 		// A value on one side only is not proof either.
 		const withValue = planReduction(
 			{ items: [], facts: [noValue] },
-			result({ facts: [{ ...claim('The venue is Hall 3'), value: { kind: 'text', text: 'Hall 3' } }] }),
+			result({
+				facts: [{ ...claim('The venue is Hall 3'), value: { kind: 'text', text: 'Hall 3' } }],
+			}),
 			REV,
 			BRIEF
 		);
@@ -479,7 +496,10 @@ describe('review round 1', () => {
 
 	it('keeps the conflicting quotes on a corrected item and flags it (F16)', () => {
 		const plan = planReduction(
-			{ items: [stored({ status: 'untracked', correction: { by: 'u', at: 1, kind: 'untracked' } })], facts: [] },
+			{
+				items: [stored({ status: 'untracked', correction: { by: 'u', at: 1, kind: 'untracked' } })],
+				facts: [],
+			},
 			result({ transitions: [transition({ to: 'open' })] }),
 			REV,
 			BRIEF

@@ -30,29 +30,82 @@ interface YMD {
 }
 
 const MONTHS: Record<string, number> = {
-	january: 1, jan: 1, januar: 1, janvier: 1, jänner: 1,
-	february: 2, feb: 2, februar: 2, février: 2, fevrier: 2,
-	march: 3, mar: 3, märz: 3, maerz: 3, mars: 3,
-	april: 4, apr: 4, avril: 4,
-	may: 5, mai: 5,
-	june: 6, jun: 6, juni: 6, juin: 6,
-	july: 7, jul: 7, juli: 7, juillet: 7,
-	august: 8, aug: 8, août: 8, aout: 8,
-	september: 9, sep: 9, sept: 9, septembre: 9,
-	october: 10, oct: 10, oktober: 10, okt: 10, octobre: 10,
-	november: 11, nov: 11, novembre: 11,
-	december: 12, dec: 12, dezember: 12, dez: 12, décembre: 12, decembre: 12,
+	january: 1,
+	jan: 1,
+	januar: 1,
+	janvier: 1,
+	jänner: 1,
+	february: 2,
+	feb: 2,
+	februar: 2,
+	février: 2,
+	fevrier: 2,
+	march: 3,
+	mar: 3,
+	märz: 3,
+	maerz: 3,
+	mars: 3,
+	april: 4,
+	apr: 4,
+	avril: 4,
+	may: 5,
+	mai: 5,
+	june: 6,
+	jun: 6,
+	juni: 6,
+	juin: 6,
+	july: 7,
+	jul: 7,
+	juli: 7,
+	juillet: 7,
+	august: 8,
+	aug: 8,
+	août: 8,
+	aout: 8,
+	september: 9,
+	sep: 9,
+	sept: 9,
+	septembre: 9,
+	october: 10,
+	oct: 10,
+	oktober: 10,
+	okt: 10,
+	octobre: 10,
+	november: 11,
+	nov: 11,
+	novembre: 11,
+	december: 12,
+	dec: 12,
+	dezember: 12,
+	dez: 12,
+	décembre: 12,
+	decembre: 12,
 };
 
 /** Weekday names → 0 (Sunday) … 6 (Saturday). */
 const WEEKDAYS: Record<string, number> = {
-	sunday: 0, sonntag: 0, dimanche: 0,
-	monday: 1, montag: 1, lundi: 1,
-	tuesday: 2, dienstag: 2, mardi: 2,
-	wednesday: 3, mittwoch: 3, mercredi: 3,
-	thursday: 4, donnerstag: 4, jeudi: 4,
-	friday: 5, freitag: 5, vendredi: 5,
-	saturday: 6, samstag: 6, sonnabend: 6, samedi: 6,
+	sunday: 0,
+	sonntag: 0,
+	dimanche: 0,
+	monday: 1,
+	montag: 1,
+	lundi: 1,
+	tuesday: 2,
+	dienstag: 2,
+	mardi: 2,
+	wednesday: 3,
+	mittwoch: 3,
+	mercredi: 3,
+	thursday: 4,
+	donnerstag: 4,
+	jeudi: 4,
+	friday: 5,
+	freitag: 5,
+	vendredi: 5,
+	saturday: 6,
+	samstag: 6,
+	sonnabend: 6,
+	samedi: 6,
 };
 
 const MONTH_RE = Object.keys(MONTHS)
@@ -135,7 +188,9 @@ function weekdayOf(date: YMD): number {
 
 function isValid(date: YMD): boolean {
 	const t = new Date(Date.UTC(date.y, date.m - 1, date.d));
-	return t.getUTCFullYear() === date.y && t.getUTCMonth() + 1 === date.m && t.getUTCDate() === date.d;
+	return (
+		t.getUTCFullYear() === date.y && t.getUTCMonth() + 1 === date.m && t.getUTCDate() === date.d
+	);
 }
 
 /** A date written without a year: this year, or next year when it already passed. */
@@ -153,9 +208,32 @@ function fullYear(raw: string | undefined): number | undefined {
 }
 
 const NUMBER_WORDS: Record<string, number> = {
-	one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, ten: 10, fourteen: 14,
-	einem: 1, einen: 1, zwei: 2, drei: 3, vier: 4, fünf: 5, sieben: 7, zehn: 10, vierzehn: 14,
-	un: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, sept: 7, dix: 10, quinze: 15,
+	one: 1,
+	two: 2,
+	three: 3,
+	four: 4,
+	five: 5,
+	six: 6,
+	seven: 7,
+	ten: 10,
+	fourteen: 14,
+	einem: 1,
+	einen: 1,
+	zwei: 2,
+	drei: 3,
+	vier: 4,
+	fünf: 5,
+	sieben: 7,
+	zehn: 10,
+	vierzehn: 14,
+	un: 1,
+	deux: 2,
+	trois: 3,
+	quatre: 4,
+	cinq: 5,
+	sept: 7,
+	dix: 10,
+	quinze: 15,
 };
 
 /** Every reading the phrase supports, as calendar dates; `ambiguous` when one is unsure. */
@@ -206,12 +284,18 @@ function readings(phrase: string, today: YMD): { dates: YMD[]; isUnsure: boolean
 	}
 
 	// `\b` is ASCII-only; word edges are spelled out so `übermorgen` reads as one word.
-	if (/(?<!\p{L})(?:day after tomorrow|übermorgen|après-demain|apres-demain)(?!\p{L})/u.test(text)) {
+	if (
+		/(?<!\p{L})(?:day after tomorrow|übermorgen|après-demain|apres-demain)(?!\p{L})/u.test(text)
+	) {
 		push(addDays(today, 2));
 	} else if (/(?<!\p{L})(?:tomorrow|morgen|demain)(?!\p{L})/u.test(text)) {
 		push(addDays(today, 1));
 	}
-	if (/\b(?:today|tonight|end of (?:the )?day|eod|cob|heute|aujourd'hui|aujourd’hui|ce soir)\b/.test(text)) {
+	if (
+		/\b(?:today|tonight|end of (?:the )?day|eod|cob|heute|aujourd'hui|aujourd’hui|ce soir)\b/.test(
+			text
+		)
+	) {
 		push(today);
 	}
 	const inDays = text.match(

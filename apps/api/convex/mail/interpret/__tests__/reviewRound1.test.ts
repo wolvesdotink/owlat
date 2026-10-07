@@ -134,12 +134,16 @@ describe('F1: the body the run read is the body stored now', () => {
 		const version = await t.run(async (ctx) =>
 			sourceVersionOf(ctx, { kind: 'mail', id: messageId })
 		);
-		expect(await apply(t, messageId, threadId, { sourceVersion: version as string })).toMatchObject({
-			outcome: 'applied',
-		});
+		expect(await apply(t, messageId, threadId, { sourceVersion: version as string })).toMatchObject(
+			{
+				outcome: 'applied',
+			}
+		);
 		// Editing the body moves the fingerprint.
 		await t.run(async (ctx) => ctx.db.patch(messageId, { textBodyInline: 'edited' }));
-		const edited = await t.run(async (ctx) => sourceVersionOf(ctx, { kind: 'mail', id: messageId }));
+		const edited = await t.run(async (ctx) =>
+			sourceVersionOf(ctx, { kind: 'mail', id: messageId })
+		);
 		expect(edited).not.toBe(version);
 	});
 });
@@ -171,8 +175,16 @@ describe('F5: ordered replay', () => {
 	it('closes the invoice when the late "paid" message arrives, keeping ids and corrections', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId: a, threadId } = await seedMailThread(t);
-		const b = await addMessageToThread(t, { mailboxId, threadId }, { text: 'paid', receivedAt: T2 });
-		const c = await addMessageToThread(t, { mailboxId, threadId }, { text: 'venue?', receivedAt: T3 });
+		const b = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'paid', receivedAt: T2 }
+		);
+		const c = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'venue?', receivedAt: T3 }
+		);
 		const ref: ThreadRef = { kind: 'mail', id: threadId };
 
 		await apply(t, a, threadId, { result: reduceResult({ items: [invoice] }) });
@@ -238,7 +250,11 @@ describe('F5: ordered replay', () => {
 	it('retires items a repaired extraction no longer produces', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedMailThread(t);
-		await apply(t, messageId, threadId, { status: 'partial', errorCode: 'verify', result: reduceResult({ items: [invoice, venue] }) });
+		await apply(t, messageId, threadId, {
+			status: 'partial',
+			errorCode: 'verify',
+			result: reduceResult({ items: [invoice, venue] }),
+		});
 		const [first] = await itemsOf(t, threadId);
 		// The repair reads the same body again and finds only the invoice.
 		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
@@ -269,9 +285,11 @@ describe('F10: the mode is rechecked in the transaction', () => {
 		const { messageId, threadId, mailboxId } = await seedMailThread(t);
 		await apply(t, messageId, threadId);
 		await t.run(async (ctx) => ctx.db.patch(mailboxId, { scope: 'shared' }));
-		expect(await apply(t, messageId, threadId, { contentRevision: 'rev-2', sourceAt: T2 })).toEqual({
-			outcome: 'modeChanged',
-		});
+		expect(await apply(t, messageId, threadId, { contentRevision: 'rev-2', sourceAt: T2 })).toEqual(
+			{
+				outcome: 'modeChanged',
+			}
+		);
 		expect((await briefOf(t, threadId))?.mode).toBe('actions');
 	});
 });
@@ -280,7 +298,11 @@ describe('F16: a conflict on a corrected item is logged and kept', () => {
 	it('appends item_changed and keeps the new quotes', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId: a, threadId } = await seedMailThread(t);
-		const b = await addMessageToThread(t, { mailboxId, threadId }, { text: 'again', receivedAt: T2 });
+		const b = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'again', receivedAt: T2 }
+		);
 		await apply(t, a, threadId, { result: reduceResult({ items: [invoice] }) });
 		const [item] = await itemsOf(t, threadId);
 		await t.run(async (ctx) =>
@@ -411,7 +433,9 @@ describe('F9: a team reply is read from its send-time snapshot', () => {
 			})
 		);
 		await t.run(async (ctx) => ctx.db.patch(inboundId, { draftResponse: 'edited after send' }));
-		expect(await t.query(internal.mail.interpret.scope.loadSourceForScope, { source })).toMatchObject({
+		expect(
+			await t.query(internal.mail.interpret.scope.loadSourceForScope, { source })
+		).toMatchObject({
 			kind: 'teamReply',
 			subject: 'Re: Order 42',
 			sealedText: 'We will refund you by Monday.',

@@ -255,7 +255,10 @@ describe('interpretMessage', () => {
 		expect(items).toHaveLength(1);
 		expect(items[0]).toMatchObject({ verify: 'passed', status: 'open' });
 		const brief = await t.run(async (ctx) => ctx.db.query('threadBriefs').first());
-		expect(brief).toMatchObject({ completeness: 'complete', sourceCounts: { complete: 1, partial: 0 } });
+		expect(brief).toMatchObject({
+			completeness: 'complete',
+			sourceCounts: { complete: 1, partial: 0 },
+		});
 	});
 
 	it('drops a claim the verifier rejects', async () => {

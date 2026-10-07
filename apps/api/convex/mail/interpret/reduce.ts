@@ -42,12 +42,7 @@ import {
 } from './reduceState';
 import { applyHumanOps, foldEntry, replayThread } from './replay';
 import { writeState } from './reduceWrite';
-import {
-	EMPTY_SOURCE_COUNTS,
-	completenessOfCounts,
-	shiftCount,
-	sourceBucketOf,
-} from './counters';
+import { EMPTY_SOURCE_COUNTS, completenessOfCounts, shiftCount, sourceBucketOf } from './counters';
 import { nextRetryAtOf } from './retry';
 import { sourceVersionOf } from './sourceVersion';
 import { refreshBriefTop } from './briefTop';
@@ -127,12 +122,21 @@ export const applyInterpretation = internalMutation({
 			...(row.nextRetryAt !== undefined ? { nextRetryAt: row.nextRetryAt } : {}),
 		});
 		if (existing?.appliedAt !== undefined) {
-			if (args.retryCount === undefined && existing.status === args.status) return replayed(existing);
+			if (args.retryCount === undefined && existing.status === args.status)
+				return replayed(existing);
 			// A repair that read nothing never replaces what the earlier attempt read.
 			if (!args.result && existing.payload !== undefined) {
-				const retryRow = { ...existing, retryCount: args.retryCount, errorCode: args.errorCode ?? existing.errorCode };
+				const retryRow = {
+					...existing,
+					retryCount: args.retryCount,
+					errorCode: args.errorCode ?? existing.errorCode,
+				};
 				const nextRetryAt = nextRetryAtOf(retryRow, now);
-				await ctx.db.patch(existing._id, { retryCount: args.retryCount, nextRetryAt, updatedAt: now });
+				await ctx.db.patch(existing._id, {
+					retryCount: args.retryCount,
+					nextRetryAt,
+					updatedAt: now,
+				});
 				return replayed({ ...existing, nextRetryAt });
 			}
 		}
@@ -203,7 +207,10 @@ export const applyInterpretation = internalMutation({
 			await ctx.db.replace(existing._id, { ...record, createdAt: existing.createdAt });
 			interpretationId = existing._id;
 		} else {
-			interpretationId = await ctx.db.insert('messageInterpretations', { ...record, createdAt: now });
+			interpretationId = await ctx.db.insert('messageInterpretations', {
+				...record,
+				createdAt: now,
+			});
 		}
 		if (previous && previous._id !== interpretationId) {
 			await ctx.db.patch(previous._id, { isCurrent: false });
@@ -223,13 +230,25 @@ export const applyInterpretation = internalMutation({
 					threadKind: ref.kind,
 				});
 				applyHumanOps(after, replay.ops);
-				fold = { ...writeBase, after, rows: replay.rows, factRows: replay.factRows, isRebuild: true };
+				fold = {
+					...writeBase,
+					after,
+					rows: replay.rows,
+					factRows: replay.factRows,
+					isRebuild: true,
+				};
 			}
 		}
 		if (!fold && entry) {
 			const inc = await loadIncrementalState(ctx, ref, mode, now);
 			foldEntry(inc.state, entry, { mode, threadKind: ref.kind, isOutOfOrder });
-			fold = { ...writeBase, after: inc.state, rows: inc.rows, factRows: inc.factRows, isRebuild: false };
+			fold = {
+				...writeBase,
+				after: inc.state,
+				rows: inc.rows,
+				factRows: inc.factRows,
+				isRebuild: false,
+			};
 		}
 
 		const nextRetryAt = nextRetryAtOf({ status, errorCode, retryCount: args.retryCount }, now);

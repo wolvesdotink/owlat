@@ -23,7 +23,13 @@ import { sealBodyAtWrite } from '../../lib/messageBody';
 import { appendActivity } from './activity';
 import { applyItemShifts, itemBucketOf, type ItemBucket } from './counters';
 import { counterpartyKeyOf, evidenceKey, responsibilityOf } from './reducePlan';
-import { sameEvidence, type MemEvidence, type MemFact, type MemItem, type MemState } from './replay';
+import {
+	sameEvidence,
+	type MemEvidence,
+	type MemFact,
+	type MemItem,
+	type MemState,
+} from './replay';
 import type { ReduceFact } from './reduceInput';
 
 const STATUS_LOCKING = new Set(['markedDone', 'reopened', 'untracked', 'notARequest']);
@@ -87,9 +93,17 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 	const itemIds = new Map<string, Id<'threadItems'>>();
 	const factIds = new Map<string, Id<'threadFacts'>>();
 	const resolveItem = (id: string | undefined) =>
-		id === undefined ? undefined : id.startsWith('new:') ? itemIds.get(id) : (id as Id<'threadItems'>);
+		id === undefined
+			? undefined
+			: id.startsWith('new:')
+				? itemIds.get(id)
+				: (id as Id<'threadItems'>);
 	const resolveFact = (id: string | undefined) =>
-		id === undefined ? undefined : id.startsWith('new:') ? factIds.get(id) : (id as Id<'threadFacts'>);
+		id === undefined
+			? undefined
+			: id.startsWith('new:')
+				? factIds.get(id)
+				: (id as Id<'threadFacts'>);
 	const activity = { threadRef: args.ref, mode: args.mode, eventAt: args.eventAt };
 	const actor = { kind: 'system' as const };
 
@@ -100,7 +114,10 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 			itemIds.set(item._id, id);
 			created.push(id);
 			const responsible = item.proposal?.responsible ?? { isUs: false };
-			shifts.push([null, itemBucketOf({ status: item.status, responsibility: responsibilityOf(responsible) })]);
+			shifts.push([
+				null,
+				itemBucketOf({ status: item.status, responsibility: responsibilityOf(responsible) }),
+			]);
 			await appendActivity(ctx, {
 				...activity,
 				idempotencyKey: `${args.keyBase}:item:${item.lineage ?? id}`,
@@ -121,7 +138,12 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 			if (!row.lineage || args.after.items.has(row._id) || row.status === 'superseded') continue;
 			if (row.correction && STATUS_LOCKING.has(row.correction.kind)) continue;
 			const revision = row.revision + 1;
-			await ctx.db.patch(row._id, { status: 'superseded', completion: undefined, revision, updatedAt: args.now });
+			await ctx.db.patch(row._id, {
+				status: 'superseded',
+				completion: undefined,
+				revision,
+				updatedAt: args.now,
+			});
 			shifts.push([itemBucketOf(row), 'closed']);
 			await appendActivity(ctx, {
 				...activity,
@@ -140,7 +162,13 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 	if (args.mode === 'brief' && args.ref.kind === 'mail') {
 		for (const fact of args.after.facts.values()) {
 			if (fact.isNew) {
-				const id = await insertFact(ctx, args, fact, resolveFact(fact.supersedesId), resolveFact(fact.conflictsWithId));
+				const id = await insertFact(
+					ctx,
+					args,
+					fact,
+					resolveFact(fact.supersedesId),
+					resolveFact(fact.conflictsWithId)
+				);
 				if (!id) continue;
 				factIds.set(fact._id, id);
 				if (fact.supersedesId || fact.conflictsWithId) {
@@ -156,12 +184,24 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 				continue;
 			}
 			const row = args.factRows.get(fact._id);
-			if (row) await patchFact(ctx, args, row, fact, resolveFact(fact.supersedesId), resolveFact(fact.conflictsWithId));
+			if (row)
+				await patchFact(
+					ctx,
+					args,
+					row,
+					fact,
+					resolveFact(fact.supersedesId),
+					resolveFact(fact.conflictsWithId)
+				);
 		}
 		if (args.isRebuild) {
 			for (const row of args.factRows.values()) {
 				if (!row.lineage || args.after.facts.has(row._id) || row.status === 'retracted') continue;
-				await ctx.db.patch(row._id, { status: 'retracted', revision: row.revision + 1, updatedAt: args.now });
+				await ctx.db.patch(row._id, {
+					status: 'retracted',
+					revision: row.revision + 1,
+					updatedAt: args.now,
+				});
 			}
 		}
 	}
@@ -190,7 +230,9 @@ async function insertItem(
 		responsible: p.responsible,
 		...(p.beneficiary ? { beneficiary: p.beneficiary } : {}),
 		responsibility: responsibilityOf(p.responsible),
-		...(args.ref.kind === 'team' && args.assigneeUserId ? { assigneeUserId: args.assigneeUserId } : {}),
+		...(args.ref.kind === 'team' && args.assigneeUserId
+			? { assigneeUserId: args.assigneeUserId }
+			: {}),
 		status: item.status,
 		disposition: item.disposition,
 		...(item.completion ? { completion: item.completion } : {}),

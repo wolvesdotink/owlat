@@ -141,7 +141,9 @@ export function needsReplyProjectionOf(
 		urgency: result.urgency,
 		...(result.meetingIntent ? { meetingIntent: result.meetingIntent } : {}),
 		...(top ? { askSummary: clampText(top.display[locale], 120) } : {}),
-		...(top?.due?.at !== undefined ? { dueHint: localDayKey(top.due.at, top.due.tz ?? 'UTC') } : {}),
+		...(top?.due?.at !== undefined
+			? { dueHint: localDayKey(top.due.at, top.due.tz ?? 'UTC') }
+			: {}),
 		isOnlyTheirs: result.items.length > 0 && ours.length === 0,
 	};
 }

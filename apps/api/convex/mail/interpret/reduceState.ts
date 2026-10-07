@@ -85,7 +85,9 @@ export async function factToMem(row: Doc<'threadFacts'>): Promise<MemFact> {
 		status: row.status,
 		revision: row.revision,
 		...(row.value ? { value: row.value } : {}),
-		...(row.value && 'text' in row.value ? { valueText: await openMessageBody(row.value.text) } : {}),
+		...(row.value && 'text' in row.value
+			? { valueText: await openMessageBody(row.value.text) }
+			: {}),
 		assertionText: await openMessageBody(row.assertion),
 		evidence: [...row.evidence],
 		...(row.supersedesId ? { supersedesId: row.supersedesId } : {}),
@@ -109,13 +111,18 @@ export async function loadIncrementalState(
 	ref: ThreadRef,
 	mode: InterpretMode,
 	now: number
-): Promise<{ state: MemState; rows: Map<string, Doc<'threadItems'>>; factRows: Map<string, Doc<'threadFacts'>> }> {
+): Promise<{
+	state: MemState;
+	rows: Map<string, Doc<'threadItems'>>;
+	factRows: Map<string, Doc<'threadFacts'>>;
+}> {
 	const { rows: candidates } = await loadPromptItemCandidates(ctx, ref, now);
 	const open = await threadItemsWithStatus(ctx, ref, 'open', OPEN_SCAN);
 	const rows = new Map<string, Doc<'threadItems'>>();
 	for (const row of [...candidates, ...open]) rows.set(row._id, row);
 	const factRows = new Map<string, Doc<'threadFacts'>>();
-	if (mode === 'brief') for (const row of await currentFacts(ctx, ref, FACT_SCAN)) factRows.set(row._id, row);
+	if (mode === 'brief')
+		for (const row of await currentFacts(ctx, ref, FACT_SCAN)) factRows.set(row._id, row);
 	const state: MemState = { items: new Map(), facts: new Map() };
 	for (const row of rows.values()) state.items.set(row._id, await itemToMem(row));
 	for (const row of factRows.values()) state.facts.set(row._id, await factToMem(row));

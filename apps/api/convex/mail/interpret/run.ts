@@ -175,7 +175,13 @@ function finish(
 			return 'restart';
 		case 'stale':
 			// The revision kept moving: nothing applied this time; the next message retries.
-			return { status: 'failed', isReplayed: false, createdItemIds: [], ...extra, errorCode: 'stale' };
+			return {
+				status: 'failed',
+				isReplayed: false,
+				createdItemIds: [],
+				...extra,
+				errorCode: 'stale',
+			};
 		case 'applied':
 		case 'replayed':
 			return {
@@ -244,7 +250,7 @@ async function runOnce(
 		}
 		// On the last attempt a body that keeps changing is recorded as such, not rechecked.
 		const sourceVersion = isLastAttempt ? undefined : scoped.sourceVersion;
-		const segmented = segmentScoped(scoped);
+		const { segmented, isTruncated } = segmentScoped(scoped);
 		contentRevision = await contentRevisionOf(segmented);
 		const sourceManifest = {
 			segments: segmented.segments.map((s) => ({
@@ -285,7 +291,10 @@ async function runOnce(
 			}
 			retryCount = (previous.retryCount ?? 0) + 1;
 		}
-		const attempt = { ...(retryCount !== undefined ? { retryCount } : {}), ...(sourceVersion ? { sourceVersion } : {}) };
+		const attempt = {
+			...(retryCount !== undefined ? { retryCount } : {}),
+			...(sourceVersion ? { sourceVersion } : {}),
+		};
 
 		const gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
 		if (!gate.isAllowed) {
@@ -381,6 +390,7 @@ async function runOnce(
 			truncatedSegmentIds,
 			isVerifyIncomplete: verified.isIncomplete,
 			isBodyIncomplete: scoped.omitted.includes('body_unavailable'),
+			isBodyTruncated: isTruncated,
 		});
 		const outcome = await apply(ctx, args, loaded, {
 			contentRevision,

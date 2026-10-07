@@ -80,7 +80,12 @@ async function signalsOf(
 		if (!row) return null;
 		return { ...(await loadInboundEligibilitySignals(ctx, row)), isLive: opts.isLive };
 	}
-	return { isLive: opts.isLive, isThreadMuted: false, isBulkHeaderPresent: false, isSenderKnown: true };
+	return {
+		isLive: opts.isLive,
+		isThreadMuted: false,
+		isBulkHeaderPresent: false,
+		isSenderKnown: true,
+	};
 }
 
 /** Snapshot a source's eligibility at enqueue (first call wins). Null when it is gone. */
@@ -128,7 +133,12 @@ export async function captureTeamReplySnapshot(
 		...threadRefToFields(ref),
 		source,
 		sourceKey: interpretationSourceKey(source),
-		eligibility: { isLive: true, isThreadMuted: false, isBulkHeaderPresent: false, isSenderKnown: true },
+		eligibility: {
+			isLive: true,
+			isThreadMuted: false,
+			isBulkHeaderPresent: false,
+			isSenderKnown: true,
+		},
 		snapshot,
 		createdAt: now,
 		updatedAt: now,
