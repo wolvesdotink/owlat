@@ -386,6 +386,14 @@
 			"types": "./src/secureMessage.ts",
 			"import": "./src/secureMessage.ts"
 		},
+		"./signedScope": {
+			"types": "./src/signedScope.ts",
+			"import": "./src/signedScope.ts"
+		},
+		"./mailSegments": {
+			"types": "./src/mailSegments.ts",
+			"import": "./src/mailSegments.ts"
+		},
 		"./spfAlignment": {
 			"types": "./src/spfAlignment.ts",
 			"import": "./src/spfAlignment.ts"
