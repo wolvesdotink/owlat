@@ -9,8 +9,9 @@
  *   - the threshold: 3+ messages or a long newest message get the full card, a
  *     short thread gets asks only and shows only with two or more
  *   - readers only, the `ai` flag, fail-soft on a dispatch error
- *   - the coverage check keeps only real ask ids and skips the model when
- *     there is nothing to check
+ *
+ * The asks' coverage check is gone: the draft's response plan replaces it
+ * (mail/interpret/coverage.ts, tested in mail/interpret/__tests__).
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -343,13 +344,6 @@ describe('mail.ai.catchUp.ensure', () => {
 		expect(
 			await t.query(api.mail.ai.catchUpStore.get, { messageId: messageIds[0]!, locale: 'en' })
 		).toBeNull();
-		expect(
-			await t.action(api.mail.ai.catchUp.coverage, {
-				messageId: messageIds[0]!,
-				draftText: 'Here is the invoice.',
-				locale: 'en',
-			})
-		).toEqual({ coveredAskIds: [] });
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
 	});
 
@@ -370,57 +364,6 @@ describe('mail.ai.catchUp.ensure', () => {
 			await t.action(api.mail.ai.catchUp.ensure, { messageId: messageIds[0]!, locale: 'en' })
 		).toBeNull();
 		expect(await t.run((ctx) => ctx.db.query('threadCatchUps').collect())).toHaveLength(0);
-	});
-});
-
-describe('mail.ai.catchUp.coverage', () => {
-	async function seededCard(t: Harness) {
-		const { messageIds } = await seedThread(t, THREE);
-		modelReturns({
-			sentences: [{ text: 'Ada wants two things.', sources: ['m1', 'm3'] }],
-			asks: [
-				{ text: 'Send the September invoice', source: 'm1' },
-				{ text: 'Share the PO number', source: 'm3' },
-			],
-		});
-		await t.action(api.mail.ai.catchUp.ensure, { messageId: messageIds[2]!, locale: 'en' });
-		return messageIds[2]!;
-	}
-
-	it('returns the covered ask ids the card knows, in card order', async () => {
-		const t = await setup();
-		const messageId = await seededCard(t);
-		modelReturns({ coveredAskIds: ['ask_2', 'ask_7', 'ask_2'] });
-		const result = await t.action(api.mail.ai.catchUp.coverage, {
-			messageId,
-			draftText: 'The PO number is 4711.',
-			locale: 'en',
-		});
-		expect(result).toEqual({ coveredAskIds: ['ask_2'] });
-		const call = runLlmObjectMock.mock.calls[1]![0];
-		expect(call.prompt).toContain('ask_1: Send the September invoice');
-		expect(call.prompt).toContain('<draft>\nThe PO number is 4711.');
-	});
-
-	it('does not call the model for an empty draft or a thread without a card', async () => {
-		const t = await setup();
-		const messageId = await seededCard(t);
-		expect(
-			await t.action(api.mail.ai.catchUp.coverage, { messageId, draftText: '  ', locale: 'en' })
-		).toEqual({ coveredAskIds: [] });
-		expect(
-			await t.action(api.mail.ai.catchUp.coverage, { messageId, draftText: 'Hi', locale: 'de' })
-		).toEqual({ coveredAskIds: [] });
-		expect(runLlmObjectMock).toHaveBeenCalledTimes(1);
-	});
-
-	it('leaves the asks unticked when the model fails', async () => {
-		const t = await setup();
-		const messageId = await seededCard(t);
-		runLlmObjectMock.mockRejectedValueOnce(new Error('timeout'));
-		expect(
-			await t.action(api.mail.ai.catchUp.coverage, { messageId, draftText: 'Hi', locale: 'en' })
-		).toEqual({ coveredAskIds: [] });
 	});
 });
 

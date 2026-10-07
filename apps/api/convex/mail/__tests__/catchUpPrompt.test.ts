@@ -8,10 +8,8 @@ import { describe, it, expect } from 'vitest';
 import {
 	assembleCatchUpTranscript,
 	buildCatchUpPrompt,
-	buildCoveragePrompt,
 	normalizeCatchUpLocale,
 	sanitizeCatchUp,
-	sanitizeCoverage,
 	teamCatchUpMessageCount,
 	visibleCatchUp,
 	MAX_CATCH_UP_ASKS,
@@ -241,27 +239,5 @@ describe('teamCatchUpMessageCount', () => {
 				{ processingStatus: 'received' },
 			])
 		).toBe(4);
-	});
-});
-
-describe('coverage', () => {
-	const asks = [
-		{ id: 'ask_1', text: 'Send the invoice', sourceMessageId: 'msg_a' },
-		{ id: 'ask_2', text: 'Share the PO number', sourceMessageId: 'msg_c' },
-	];
-
-	it('frames the asks as untrusted and bounds the draft', () => {
-		const prompt = buildCoveragePrompt({ asks, draftText: 'y'.repeat(20_000) });
-		expect(prompt).toContain('ask_1: Send the invoice');
-		expect(prompt).toContain('untrusted data');
-		expect(prompt.length).toBeLessThan(7000);
-	});
-
-	it('keeps only known ids, once, in card order', () => {
-		expect(
-			sanitizeCoverage({ coveredAskIds: ['ask_2', ' ask_1 ', 'ask_9', 'ask_2', 7] }, asks)
-		).toEqual(['ask_1', 'ask_2']);
-		expect(sanitizeCoverage({ coveredAskIds: 'ask_1' }, asks)).toEqual([]);
-		expect(sanitizeCoverage(undefined, asks)).toEqual([]);
 	});
 });

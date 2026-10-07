@@ -393,7 +393,10 @@ async function stalePlans(
 
 /** A plan without its references to deleted items, marked stale. Pure. */
 export function stripPlan(
-	plan: Pick<Doc<'draftResponsePlans'>, 'itemRevisions' | 'stances' | 'ownerInputs' | 'coverage'>,
+	plan: Pick<
+		Doc<'draftResponsePlans'>,
+		'itemRevisions' | 'stances' | 'ownerInputs' | 'coverage' | 'newPromises'
+	>,
 	deleted: ReadonlySet<string>
 ) {
 	const keep = (entry: { itemId: string }) => !deleted.has(entry.itemId);
@@ -404,6 +407,9 @@ export function stripPlan(
 			input.itemId && deleted.has(input.itemId) ? { questionId: input.questionId } : input
 		),
 		coverage: plan.coverage.filter(keep),
+		newPromises: plan.newPromises.map(({ itemId, ...promise }) =>
+			itemId && !deleted.has(itemId) ? { ...promise, itemId } : promise
+		),
 		verdict: 'stale' as const,
 		updatedAt: Date.now(),
 	};

@@ -42,6 +42,7 @@ import {
 	INJECTION_CONFIDENCE_THRESHOLD,
 } from '../../agent/steps/security_scan/patterns';
 import { buildDraftMessages, buildDraftSystemPrompt } from '../../agent/shared/draftService';
+import { buildResponsePlanSection, type PlanPromptItem } from '../interpret/planCheck';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from '../../agent/steps/draft/recall';
 import { safeLanguage } from '../../agent/steps/draft/sanitize';
 import {
@@ -75,6 +76,8 @@ export interface AnswerDraftInput {
 	instruction?: string | undefined;
 	/** The owner's IANA zone; the promised day is named on their calendar. */
 	timeZone?: string | undefined;
+	/** The thread's open items with the owner's stances (SPEC §6). */
+	responsePlan?: readonly PlanPromptItem[] | undefined;
 }
 
 /** Settle the session as failed; the composer keeps what the person had. */
@@ -128,6 +131,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 		instruction: input.instruction,
 		timeZone: input.timeZone,
 	});
+	const responsePlan = input.responsePlan ? buildResponsePlanSection(input.responsePlan) : '';
 	const buildMessages = (hasRecallTool: boolean) =>
 		buildDraftMessages({
 			systemPrompt: buildDraftSystemPrompt({
@@ -147,6 +151,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			},
 			context: input.context,
 			...(confirmedContext ? { confirmedContext } : {}),
+			...(responsePlan ? { responsePlan } : {}),
 		});
 
 	const stream = createThrottledStreamFlusher({

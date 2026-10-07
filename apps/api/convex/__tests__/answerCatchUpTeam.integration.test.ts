@@ -207,35 +207,6 @@ describe('inbox.catchUp.ensure', () => {
 		session.current = { userId: 'someone', role: 'member', activeOrganizationId: 'test-org' };
 		expect(await t.action(api.inbox.catchUp.ensure, { threadId, locale: 'en' })).toBeNull();
 		expect(await t.query(api.inbox.catchUpStore.get, { threadId, locale: 'en' })).toBeNull();
-		expect(
-			await t.action(api.inbox.catchUp.coverage, { threadId, draftText: 'Hi', locale: 'en' })
-		).toEqual({ coveredAskIds: [] });
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
-	});
-});
-
-describe('inbox.catchUp.coverage', () => {
-	it('returns the covered ask ids of the cached card', async () => {
-		const { t, threadId } = await seedTeamThread([
-			{ text: 'Please send the invoice and confirm the date.' },
-			{ text: 'Any news?' },
-			{ text: 'Hello again?' },
-		]);
-		modelReturns({
-			sentences: [{ text: 'Ana is waiting.', sources: ['m3'] }],
-			asks: [
-				{ text: 'Send the invoice', source: 'm1' },
-				{ text: 'Confirm the date', source: 'm1' },
-			],
-		});
-		await t.action(api.inbox.catchUp.ensure, { threadId, locale: 'en' });
-		modelReturns({ coveredAskIds: ['ask_1'] });
-		expect(
-			await t.action(api.inbox.catchUp.coverage, {
-				threadId,
-				draftText: 'The invoice is attached.',
-				locale: 'en',
-			})
-		).toEqual({ coveredAskIds: ['ask_1'] });
 	});
 });

@@ -21,6 +21,7 @@ import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from './recall';
 import { draftAttachmentPatch } from './attachment';
+import { loadDraftPlan, recordDraftPlan } from './plan';
 import type { AttachmentSuggestions } from '../../../inbox/attachmentSuggest';
 import {
 	ALLOWED_CATEGORIES,
@@ -164,48 +165,57 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			stanceGuidance = undefined;
 		}
 
+		// The response plan (SPEC §6): every open item of the thread the reply
+		// should cover, each with its default stance. Fail-soft: no plan, no
+		// coverage — the item_coverage gate then objects.
+		const plan = await loadDraftPlan(ctx, input.inboundMessageId, message?.threadId);
+
 		// THE shared draft pipeline (agent/shared/draftService.ts): context
 		// injection re-scan → primary generation (with the recall tool) → draft
 		// self-check. Personal Postbox (mail/ai/draftOnArrival.ts) runs the exact
 		// same service so both surfaces produce identical output for the same
 		// inbound message.
-		const { draftBody, draftQuality, tokenUsage, modelUsed } = await runSharedDraft(ctx, {
-			surface: 'organization',
-			resolveModel: () =>
-				resolveLanguageModelForClassifiedDraft(ctx, {
+		const { draftBody, draftQuality, planCoverage, tokenUsage, modelUsed } = await runSharedDraft(
+			ctx,
+			{
+				surface: 'organization',
+				resolveModel: () =>
+					resolveLanguageModelForClassifiedDraft(ctx, {
+						category: safeCategory,
+						intent: safeIntent,
+						priority: safePriority,
+						confidence: input.classification.confidence,
+					}),
+				audience: 'an organization',
+				styleReference: "the organization's",
+				context: input.context,
+				confirmedContext: input.confirmedContext,
+				stanceGuidance,
+				classification: {
 					category: safeCategory,
 					intent: safeIntent,
+					sentiment: safeSentiment,
 					priority: safePriority,
-					confidence: input.classification.confidence,
-				}),
-			audience: 'an organization',
-			styleReference: "the organization's",
-			context: input.context,
-			confirmedContext: input.confirmedContext,
-			stanceGuidance,
-			classification: {
-				category: safeCategory,
-				intent: safeIntent,
-				sentiment: safeSentiment,
-				priority: safePriority,
-			},
-			toneInstruction,
-			signatureInstruction,
-			voiceSection,
-			// Allow a couple of fetch-more round-trips beyond the recall cap so the
-			// model can act on what it fetched, then still produce the final draft.
-			tools: { recallKnowledge },
-			maxSteps: MAX_RECALL_CALLS + 2,
-			// The service writes every generation to the ledger under these labels,
-			// the one store the spend ceiling reads (#1259). The usage it returns
-			// goes onto the step's agentActions row, the cost-by-step view only.
-			spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
-			replyLanguage,
-			strategyScope: {
-				...(message?.contactId ? { contactId: message.contactId } : {}),
-				classification: safeCategory,
-			},
-		});
+				},
+				toneInstruction,
+				signatureInstruction,
+				voiceSection,
+				// Allow a couple of fetch-more round-trips beyond the recall cap so the
+				// model can act on what it fetched, then still produce the final draft.
+				tools: { recallKnowledge },
+				maxSteps: MAX_RECALL_CALLS + 2,
+				// The service writes every generation to the ledger under these labels,
+				// the one store the spend ceiling reads (#1259). The usage it returns
+				// goes onto the step's agentActions row, the cost-by-step view only.
+				spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
+				replyLanguage,
+				...(plan ? { responsePlan: plan.prompt } : {}),
+				strategyScope: {
+					...(message?.contactId ? { contactId: message.contactId } : {}),
+					classification: safeCategory,
+				},
+			}
+		);
 
 		// Compose the reply subject from the original (fetched above).
 		const replySubject = buildReplySubject(message?.subject);
@@ -226,6 +236,9 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 				input.ownerAttachment
 			)),
 		});
+
+		// Bound to this draft's hash and the items' revisions; the gate re-reads it.
+		if (plan) await recordDraftPlan(ctx, plan, draftBody, planCoverage);
 
 		return {
 			output: {

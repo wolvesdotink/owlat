@@ -164,6 +164,7 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 	relation('threadItems', 'draftResponsePlans', 'stances[].itemId', 'retain', IN_THREAD),
 	relation('threadItems', 'draftResponsePlans', 'ownerInputs[].itemId', 'retain', IN_THREAD),
 	relation('threadItems', 'draftResponsePlans', 'coverage[].itemId', 'retain', IN_THREAD),
+	relation('threadItems', 'draftResponsePlans', 'newPromises[].itemId', 'retain', IN_THREAD),
 
 	// ── messageInterpretations ──
 	relation(
