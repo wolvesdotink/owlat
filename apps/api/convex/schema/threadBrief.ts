@@ -254,7 +254,16 @@ export const threadBriefTables = {
 			})
 		),
 		// Every claim key that ever produced or matched this item: the thread's
-		// identity record, consulted before content (mail/interpret/replay.ts).
+		// identity record, consulted before content (mail/interpret/fold.ts).
+		// Message date of the transition that set the current status or
+		// disposition: an older message's transition only adds evidence.
+		lastTransitionAt: v.optional(v.number()),
+		// Which source set the current status / disposition, and its message time:
+		// `<interpretation sourceKey>` for a mail, `user:<id>` for a reaction,
+		// `op:<ref>` for a recorded operation. A purge of that source resets
+		// what it set (mail/interpret/transitionSources.ts).
+		statusSource: v.optional(v.object({ sourceKey: v.string(), at: v.number() })),
+		dispositionSource: v.optional(v.object({ sourceKey: v.string(), at: v.number() })),
 		lineageKeys: v.optional(v.array(v.string())),
 		lineage: v.optional(v.string()),
 		// Message date of the first evidence: the "age" of compareForYou.

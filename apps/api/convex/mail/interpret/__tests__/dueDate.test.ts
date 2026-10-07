@@ -125,3 +125,26 @@ describe('review round 3 (P5)', () => {
 		});
 	});
 });
+
+describe('review round 4 (M6)', () => {
+	it('reads a 30-minute daylight-saving shift (Lord Howe) as a gap', () => {
+		// Lord Howe Island moves 02:00 → 02:30 on 4 October 2026.
+		const sent = Date.UTC(2026, 9, 1, 0, 0);
+		expect(resolveDue('by 04.10.2026 02:15 Uhr', sent, 'Australia/Lord_Howe')).toEqual({
+			isAmbiguous: true,
+		});
+		expect(resolveDue('by 04.10.2026 03:00 Uhr', sent, 'Australia/Lord_Howe').isAmbiguous).toBe(
+			false
+		);
+	});
+
+	it.each([
+		['dans 1 semaine', day(2026, 10, 14)],
+		['in 2 weeks', day(2026, 10, 21)],
+		['in 2 Wochen', day(2026, 10, 21)],
+		['in 2 Tagen', day(2026, 10, 9)],
+		['dans une semaine', day(2026, 10, 14)],
+	])('consumes the numeral of "%s"', (phrase, at) => {
+		expect(resolveDue(phrase, SENT, BERLIN)).toEqual({ at, isAmbiguous: false });
+	});
+});
