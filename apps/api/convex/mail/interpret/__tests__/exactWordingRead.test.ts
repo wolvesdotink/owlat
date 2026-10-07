@@ -21,6 +21,7 @@ import type { MutationCtx } from '../../../_generated/server';
 import { styleHides } from '../../../agent/steps/security_scan/hiddenStyle';
 import { EXACT_WORDING_PAGE, readExactWording } from '../briefRead';
 import { quoteOccurrences } from '../quoteMatch';
+import { itemSortKey } from '../counters';
 import { modules, reduceResult, seedMailThread } from './interpret.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
@@ -183,6 +184,27 @@ describe('readExactWording', () => {
 		const read = await t.run((ctx) => readExactWording(ctx, threadId));
 		expect(read.messages).toHaveLength(EXACT_WORDING_PAGE);
 		expect(read.isTruncated).toBe(true);
+	});
+});
+
+describe('the reducer writes the list order', () => {
+	it('stores listBucket and the compareForYou sortKey on a new item', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		await t.mutation(
+			internal.mail.interpret.reduce.applyInterpretation,
+			applyArgs(messageId, threadId)
+		);
+		const items = await t.run((ctx) =>
+			ctx.db
+				.query('threadItems')
+				.withIndex('by_mail_thread_bucket_sort', (q) => q.eq('mailThreadId', threadId))
+				.collect()
+		);
+		expect(items).toHaveLength(1);
+		const item = items[0]!;
+		expect(item.listBucket).toBeDefined();
+		expect(item.sortKey).toBe(itemSortKey(item));
 	});
 });
 

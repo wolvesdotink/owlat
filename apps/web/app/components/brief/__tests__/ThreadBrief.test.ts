@@ -191,6 +191,34 @@ describe('ThreadBrief', () => {
 		expect(w.emitted('open-conversation')).toHaveLength(1);
 	});
 
+	it('never says nothing to do while For you items are still loading', () => {
+		const brief = briefView({
+			forYou: [],
+			counts: { forYou: 1, forTeam: 0, waitingOnOthers: 1, unclear: 0, closed: 0, hidden: 0 },
+		});
+		const loading = mountBrief({ brief, itemsState: 'loading' });
+		expect(loading.find('[data-testid="brief-items-forYou-empty"]').exists()).toBe(false);
+		expect(loading.get('[data-testid="brief-items-forYou-more"]').text()).toBe(
+			'Loading the rest of the items…'
+		);
+		expect(loading.text()).toContain('1 open');
+		expect(loading.text()).not.toContain('Nothing for you');
+
+		const cut = mountBrief({ brief, itemsState: 'truncated' });
+		expect(cut.get('[data-testid="brief-items-forYou-more"]').text()).toContain(
+			'Not every item could be loaded here.'
+		);
+	});
+
+	it('heads each list with the maintained count, not the loaded one', () => {
+		const brief = briefView({
+			counts: { forYou: 7, forTeam: 0, waitingOnOthers: 1, unclear: 0, closed: 0, hidden: 0 },
+		});
+		const w = mountBrief({ brief, itemsState: 'loading' });
+		expect(w.text()).toContain('7 open');
+		expect(w.get('[data-testid="brief-items-forYou-more"]').exists()).toBe(true);
+	});
+
 	it('says there is nothing for you only when the brief is complete', () => {
 		const w = mountBrief({ brief: briefView({ forYou: [] }) });
 		expect(w.get('[data-testid="brief-items-forYou-empty"]').text()).toBe(

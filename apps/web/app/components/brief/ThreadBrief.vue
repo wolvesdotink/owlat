@@ -22,6 +22,7 @@ import type {
 } from '../../../../api/convex/mail/interpret/briefShape';
 import { provide } from 'vue';
 import type { BriefAction } from '~/utils/threadBriefItems';
+import type { BriefItemsState } from '~/utils/threadBriefPages';
 import { useMediaQuery } from '~/composables/useMediaQuery';
 import { BRIEF_CONTEXT, type BriefSource } from '~/utils/threadBriefContext';
 import { isBriefComplete } from '~/utils/threadBriefBanners';
@@ -48,6 +49,10 @@ const props = withDefaults(
 		fileAction?: 'attach' | 'open';
 		/** "Jonas · today 09:12": who wrote the newest message. */
 		latestNote?: string;
+		/** Whether every item page is in (useThreadBrief). */
+		itemsState?: BriefItemsState;
+		/** The recently closed items were cut. */
+		isClosedTruncated?: boolean;
 	}>(),
 	{
 		sourceOf: () => undefined,
@@ -56,6 +61,8 @@ const props = withDefaults(
 		addressed: () => [],
 		fileAction: undefined,
 		latestNote: undefined,
+		itemsState: 'complete',
+		isClosedTruncated: false,
 	}
 );
 
@@ -118,6 +125,8 @@ function toggle(item: BriefItemView) {
 				<BriefStanding v-if="brief.standing && showRest" :standing="brief.standing" />
 				<BriefItems
 					kind="forYou"
+					:total="brief.counts.forYou"
+					:items-state="itemsState"
 					:items="brief.forYou"
 					show-empty
 					:incomplete="!complete"
@@ -131,6 +140,8 @@ function toggle(item: BriefItemView) {
 				/>
 				<BriefItems
 					kind="waiting"
+					:total="brief.counts.waitingOnOthers"
+					:items-state="itemsState"
 					:items="brief.waitingOnOthers"
 					:compact="isPhone"
 					:hide-actions="selectable"
@@ -138,6 +149,8 @@ function toggle(item: BriefItemView) {
 				/>
 				<BriefItems
 					kind="unclear"
+					:total="brief.counts.unclear"
+					:items-state="itemsState"
 					:items="brief.unclear"
 					:selectable="selectable"
 					:selected="selectedSet"
@@ -146,6 +159,13 @@ function toggle(item: BriefItemView) {
 					@react="(item, action) => emit('react', item, action)"
 					@toggle-select="toggle"
 				/>
+				<p
+					v-if="isClosedTruncated"
+					class="mt-2 text-xs text-text-tertiary"
+					data-testid="brief-closed-truncated"
+				>
+					{{ t('components.brief.items.closedTruncated') }}
+				</p>
 				<template v-if="showRest">
 					<BriefActivity :activity="brief.activity" />
 					<div

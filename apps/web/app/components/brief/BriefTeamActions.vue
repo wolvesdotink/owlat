@@ -16,6 +16,7 @@ import type {
 } from '../../../../api/convex/mail/interpret/briefShape';
 import { BRIEF_CONTEXT, type BriefSource } from '~/utils/threadBriefContext';
 import { isBriefComplete } from '~/utils/threadBriefBanners';
+import { nextCursorOf } from '~/utils/threadBriefPages';
 import BriefIncomplete from './BriefIncomplete.vue';
 import BriefItems from './BriefItems.vue';
 
@@ -40,6 +41,8 @@ provide(BRIEF_CONTEXT, {
 
 const selectedSet = computed(() => new Set(props.selected));
 const hasBody = computed(() => props.view.completeness !== 'none');
+/** Only the first item page is read here: more pages mean the lists are cut. */
+const itemsState = computed(() => (nextCursorOf(props.view) ? 'truncated' : 'complete'));
 
 function toggle(item: BriefItemView) {
 	const next = new Set(selectedSet.value);
@@ -58,6 +61,8 @@ function toggle(item: BriefItemView) {
 		<template v-if="hasBody">
 			<BriefItems
 				kind="forTeam"
+				:total="view.counts.forTeam"
+				:items-state="itemsState"
 				:items="view.forTeam"
 				show-empty
 				:incomplete="!isBriefComplete(view)"
@@ -66,10 +71,18 @@ function toggle(item: BriefItemView) {
 				hide-actions
 				@toggle-select="toggle"
 			/>
-			<BriefItems kind="waiting" :items="view.waitingOnOthers" hide-actions />
+			<BriefItems
+				kind="waiting"
+				:items="view.waitingOnOthers"
+				:total="view.counts.waitingOnOthers"
+				:items-state="itemsState"
+				hide-actions
+			/>
 			<BriefItems
 				kind="unclear"
 				:items="view.unclear"
+				:total="view.counts.unclear"
+				:items-state="itemsState"
 				selectable
 				:selected="selectedSet"
 				hide-actions

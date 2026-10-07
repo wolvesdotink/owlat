@@ -40,7 +40,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{ reveal: [messageId: string]; attach: [file: ThreadFile] }>();
 
-const { view, brief } = useThreadBrief({ threadId: () => props.threadId });
+const { view, brief, itemsState, isClosedTruncated } = useThreadBrief({
+	threadId: () => props.threadId,
+});
 const teamView = computed(() => (view.value?.mode === 'actions' ? view.value : null));
 
 const selected = ref<string[]>([]);
@@ -102,6 +104,8 @@ function onFile(file: FileView) {
 			selectable
 			:compact="layout === 'phone'"
 			:file-action="canAttach ? 'attach' : undefined"
+			:items-state="itemsState"
+			:is-closed-truncated="isClosedTruncated"
 			@cite="onCite"
 			@select-file="onFile"
 		/>

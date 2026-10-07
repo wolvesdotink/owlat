@@ -55,9 +55,15 @@ vi.stubGlobal('useInboxes', () => ({
 }));
 vi.stubGlobal('useConvexQuery', (fn: string, args: unknown) => {
 	const resolved = typeof args === 'function' ? (args as () => unknown)() : args;
-	(queryArgs[fn] ??= []).push(resolved);
-	data[fn] ??= ref(undefined);
-	return { data: data[fn], isLoading: ref(false), error: ref(null) };
+	// A later item page of the brief answers under `brief.get#<cursor>`.
+	const cursor =
+		typeof resolved === 'object' && resolved !== null
+			? (resolved as { cursor?: string }).cursor
+			: undefined;
+	const key = cursor ? `${fn}#${cursor}` : fn;
+	(queryArgs[key] ??= []).push(resolved);
+	data[key] ??= ref(undefined);
+	return { data: data[key], isLoading: ref(false), error: ref(null) };
 });
 vi.stubGlobal('useBackendOperation', (fn: string) => {
 	runs[fn] ??= vi.fn(async () => ({ ok: true, result: null }));
@@ -272,5 +278,35 @@ describe('exact wording', () => {
 		scope.value = 'shared';
 		data['brief.get'] = ref(briefView({ exactWording: [{ messageId: 'm6' }] }));
 		expect(setup().exactWording.value.size).toBe(0);
+	});
+});
+
+describe('the brief beyond its first item page', () => {
+	it('walks to the page holding the obligation behind 100 waiting items', async () => {
+		const waiting = briefView().waitingOnOthers[0]!;
+		data['brief.get'] = ref(
+			briefView({
+				forYou: [],
+				waitingOnOthers: Array.from({ length: 100 }, (_, i) => ({
+					...waiting,
+					id: `w${i}` as never,
+				})),
+				counts: { forYou: 1, forTeam: 0, waitingOnOthers: 100, unclear: 0, closed: 0, hidden: 0 },
+				page: { cursor: 'c1', isDone: false, isClosedTruncated: false },
+			})
+		);
+		const state = setup();
+		await nextTick();
+		expect(queryArgs['brief.get#c1']?.[0]).toMatchObject({ cursor: 'c1' });
+		expect(state.itemsState.value).toBe('loading');
+		data['brief.get#c1']!.value = briefView({
+			forYou: [{ ...briefView().forYou[0]!, id: 'pay' as never, text: 'Pay €38.08' }],
+			waitingOnOthers: [],
+			page: { cursor: 'c2', isDone: true, isClosedTruncated: false },
+		});
+		await nextTick();
+		expect(state.itemsState.value).toBe('complete');
+		expect(state.brief.value?.forYou.map((i) => i.id)).toEqual(['pay']);
+		expect(state.brief.value?.waitingOnOthers).toHaveLength(100);
 	});
 });
