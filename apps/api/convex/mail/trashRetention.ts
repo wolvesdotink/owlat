@@ -23,7 +23,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { purgeMessageRow } from './messagePurge';
+import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from './messagePurge';
 import { rebuildThreadAggregates } from './threadAggregates';
 import { DAY_MS } from '../lib/constants';
 
@@ -86,11 +86,13 @@ export const sweepExpiredTrash = internalMutation({
 					)
 					.take(TRASH_RETENTION_PURGE_BATCH);
 				const touchedThreads = new Set<Id<'mailThreads'>>();
+				const purgedMessages: PurgedMessages = new Map();
 				for (const message of candidates) {
 					if (message.trashedAt === undefined || message.trashedAt >= cutoff) continue;
-					touchedThreads.add(await purgeMessageRow(ctx, message));
+					touchedThreads.add(await purgeMessageRow(ctx, message, purgedMessages));
 					purged++;
 				}
+				await purgeThreadBriefsOf(ctx, purgedMessages);
 				for (const threadId of touchedThreads) await rebuildThreadAggregates(ctx, threadId);
 			}
 		}

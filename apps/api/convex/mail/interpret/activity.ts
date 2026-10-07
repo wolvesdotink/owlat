@@ -16,14 +16,10 @@
  *   rows (assign, snooze, label, archive, mute, item assignment/reminders)
  *   stay out of the brief's "Activity" block.
  * - `payload` is JSON detail (names, counts, a quote), sealed like a body.
- *
- * `record` is the internal mutation for writers that live in an action.
  */
 
-import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
-import { internalMutation } from '../../lib/writeFence';
 import {
 	defaultActivityVisibility,
 	type ActivityActor,
@@ -32,21 +28,12 @@ import {
 	type InterpretMode,
 } from '@owlat/shared/threadBrief';
 import type { Infer } from 'convex/values';
-import {
-	activityActorValidator,
+import type {
 	activityDeltaValidator,
 	activityOpRefValidator,
 	activityProvenanceValidator,
-	activityTypeValidator,
-	activityVisibilityValidator,
-	interpretModeValidator,
 } from '../../lib/validators/threadBrief';
-import {
-	threadRefKey,
-	threadRefToFields,
-	threadRefValidator,
-	type ThreadRef,
-} from '../../lib/validators/threadRef';
+import { threadRefKey, threadRefToFields, type ThreadRef } from '../../lib/validators/threadRef';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { ensureBriefRow } from './briefRow';
 
@@ -122,35 +109,3 @@ export async function appendActivity(
 	});
 	return { activityId, seq, isDuplicate: false };
 }
-
-/** {@link appendActivity} for writers running in an action. */
-export const record = internalMutation({
-	args: {
-		threadRef: threadRefValidator,
-		idempotencyKey: v.string(),
-		type: activityTypeValidator,
-		actor: activityActorValidator,
-		provenance: activityProvenanceValidator,
-		visibility: v.optional(activityVisibilityValidator),
-		itemId: v.optional(v.id('threadItems')),
-		itemRevision: v.optional(v.number()),
-		delta: v.optional(activityDeltaValidator),
-		opRef: v.optional(activityOpRefValidator),
-		// JSON object text; sealed on write.
-		payloadJson: v.optional(v.string()),
-		eventAt: v.optional(v.number()),
-		mode: v.optional(interpretModeValidator),
-	},
-	handler: async (ctx, args): Promise<AppendActivityResult> => {
-		const { payloadJson, ...rest } = args;
-		let payload: Record<string, unknown> | undefined;
-		if (payloadJson !== undefined) {
-			const parsed: unknown = JSON.parse(payloadJson);
-			payload =
-				parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-					? (parsed as Record<string, unknown>)
-					: { value: parsed };
-		}
-		return appendActivity(ctx, { ...rest, ...(payload ? { payload } : {}) });
-	},
-});

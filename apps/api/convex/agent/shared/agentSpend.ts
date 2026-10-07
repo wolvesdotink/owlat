@@ -26,11 +26,7 @@ type SpendCtx = Parameters<typeof recordLlmSpend>[0];
  * step's generation and self-check record through the shared draft service as
  * `agent_draft` and `agent_draft_selfcheck`.
  */
-export type AgentSpendFeature =
-	| 'agent_security_scan'
-	| 'agent_context_retrieval'
-	| 'agent_classify'
-	| 'agent_clarify';
+export type AgentSpendFeature = 'agent_security_scan' | 'agent_classify' | 'agent_clarify';
 
 /**
  * Run one model call and record what it billed: its usage when it returns, and

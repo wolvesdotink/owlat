@@ -333,3 +333,9 @@ export const interpretEligibilitySignalsValidator = v.object({
 	isSenderKnown: v.boolean(),
 	category: v.optional(v.string()),
 });
+
+// ── Internal notes ─────────────────────────────────────────────────────────
+
+/** Where an internal note lives: a Team Inbox note or a Postbox thread discussion message. */
+export const noteSourceValidator = v.union(v.literal('threadNote'), v.literal('chatMessage'));
+export type NoteSource = Infer<typeof noteSourceValidator>;

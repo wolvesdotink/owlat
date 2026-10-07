@@ -127,7 +127,9 @@ export const chatTables = {
 	})
 		.index('by_room', ['roomId'])
 		.index('by_room_and_created', ['roomId', 'createdAt'])
-		.index('by_author', ['authorId']),
+		.index('by_author', ['authorId'])
+		// Erasure (mail/interpret/purge.ts): unlink the discussion messages about a deleted item.
+		.index('by_thread_item', ['threadItemId']),
 
 	chatMentions: defineTable({
 		messageId: v.id('chatMessages'),

@@ -32,9 +32,11 @@ import {
 	itemResponsibilityValidator,
 	itemRevisionRefValidator,
 	itemStatusValidator,
+	itemCorrectionKindValidator,
 	itemListBucketValidator,
 	itemVerifyValidator,
 	localizedSealedTextValidator,
+	noteSourceValidator,
 	newPromiseValidator,
 	ownerInputRefValidator,
 	participantRefValidator,
@@ -46,12 +48,14 @@ import {
 } from '../lib/validators/threadBrief';
 
 /**
- * The thread brief tables, children before parents: plans, viewer state
- * and activity before the items and facts they point at, interpretations,
- * their source snapshots and the brief row last. The order the organization
- * wipe deletes them in.
+ * The thread brief tables, children before parents: note reactions, the
+ * correction log, plans, viewer state and activity before the items and facts
+ * they point at, interpretations, their source snapshots and the brief row
+ * last. The order the organization wipe deletes them in.
  */
 export const THREAD_BRIEF_TABLES = [
+	'noteReactions',
+	'threadItemCorrections',
 	'draftResponsePlans',
 	'threadViewerState',
 	'threadActivity',
@@ -266,7 +270,9 @@ export const threadBriefTables = {
 		// its first row (mail/interpret/briefTop.ts).
 		.index('by_mail_thread_bucket_sort', ['mailThreadId', 'listBucket', 'sortKey'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
-		.index('by_counterparty', ['counterpartyKey']),
+		.index('by_counterparty', ['counterpartyKey'])
+		// Member erasure: the items assigned to an erased member fall back to Unassigned.
+		.index('by_assignee', ['assigneeUserId']),
 
 	// Append-only per-thread log.
 	threadActivity: defineTable({
@@ -291,7 +297,11 @@ export const threadBriefTables = {
 	})
 		.index('by_mail_thread_and_seq', ['mailThreadId', 'seq'])
 		.index('by_conversation_thread_and_seq', ['conversationThreadId', 'seq'])
-		.index('by_idempotency_key', ['idempotencyKey']),
+		.index('by_idempotency_key', ['idempotencyKey'])
+		// Erasure (mail/interpret/purge.ts): an item's rows go with the item, and
+		// a row whose operation names a purged message goes with the message.
+		.index('by_item', ['itemId'])
+		.index('by_op_ref', ['opRef.id']),
 
 	// One row per source message, written when interpretation is enqueued
 	// (mail/interpret/sources.ts): the eligibility signals every retry reuses,
@@ -307,7 +317,11 @@ export const threadBriefTables = {
 		),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	}).index('by_source_key', ['sourceKey']),
+	})
+		.index('by_source_key', ['sourceKey'])
+		// Thread erasure (mail/interpret/purgeRows.ts threadBriefRanges).
+		.index('by_mail_thread', ['mailThreadId'])
+		.index('by_conversation_thread', ['conversationThreadId']),
 
 	// One row per thread: the reducer's revision, checkpoint and completeness.
 	threadBriefs: defineTable({
@@ -388,6 +402,55 @@ export const threadBriefTables = {
 		// Every viewer's row of one thread: thread erasure and scope invalidation.
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId']),
+
+	// A person's correction of the model about an item ("Not a request"), kept
+	// for the interpretation eval: which kind of item the model got wrong, and
+	// under which extractor. Structure only, never the item's text: the text
+	// stays on the item (sealed) and goes with it.
+	threadItemCorrections: defineTable({
+		...threadRefFields,
+		itemId: v.id('threadItems'),
+		// The item revision the correction was made against.
+		itemRevision: v.number(),
+		kind: itemCorrectionKindValidator,
+		// BetterAuth user id of who corrected it.
+		userId: v.string(),
+		// The item as the model had it.
+		intent: itemIntentValidator,
+		facets: v.array(itemFacetValidator),
+		responsibility: itemResponsibilityValidator,
+		verify: itemVerifyValidator,
+		// The extractions its evidence came from (interpretationSourceKey + revision).
+		evidenceSources: v.array(v.object({ sourceKey: v.string(), contentRevision: v.string() })),
+		createdAt: v.number(),
+	})
+		.index('by_mail_thread', ['mailThreadId'])
+		.index('by_conversation_thread', ['conversationThreadId'])
+		// Erasure: a deleted item's corrections go with it; an erased member's are anonymized.
+		.index('by_item', ['itemId'])
+		.index('by_user', ['userId']),
+
+	// Emoji reactions on internal notes: Team Inbox `threadNotes` and Postbox
+	// thread discussion `chatMessages`. One row per (note, person, emoji);
+	// toggled through `mail/interpret/noteReactions.ts`, bounded per note.
+	noteReactions: defineTable({
+		...threadRefFields,
+		noteSource: noteSourceValidator,
+		// Set when noteSource === 'threadNote'.
+		threadNoteId: v.optional(v.id('threadNotes')),
+		// Set when noteSource === 'chatMessage'.
+		chatMessageId: v.optional(v.id('chatMessages')),
+		// BetterAuth user id of who reacted.
+		userId: v.string(),
+		emoji: v.string(),
+		createdAt: v.number(),
+	})
+		.index('by_thread_note', ['threadNoteId', 'userId', 'emoji'])
+		.index('by_chat_message', ['chatMessageId', 'userId', 'emoji'])
+		.index('by_mail_thread', ['mailThreadId'])
+		.index('by_conversation_thread', ['conversationThreadId'])
+		// Member erasure: an erased member's reactions go.
+		.index('by_user', ['userId']),
 
 	// Per draft: the stances, coverage and claims of its self-check, bound to
 	// the draft hash and the item revisions it was built against.

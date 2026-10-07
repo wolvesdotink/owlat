@@ -24,6 +24,8 @@ import { v } from 'convex/values';
 import { internalAction, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
+import { htmlToPlainText } from '@owlat/shared/html';
+import { captureTeamReplySnapshot } from '../mail/interpret/sources';
 import type { Id } from '../_generated/dataModel';
 import { MAX_ATTACHMENT_BYTES, ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { adminMutation, publicQuery } from '../lib/authedFunctions';
@@ -334,6 +336,16 @@ export const intakeAgentReply = internalMutation({
 		if (outcome.ok && ready.length > 0) {
 			await takeReadyReplyAttachments(ctx, thread, include);
 			await ctx.db.patch(args.inboundMessageId, { replyAttachments: carried });
+		}
+		// The thread brief reads the reply exactly as it was queued (the Send row
+		// keeps no body, and the inbound draft can change afterwards). It is
+		// interpreted once the Send is finalized as sent (`sendActivity.ts`).
+		if (outcome.ok) {
+			await captureTeamReplySnapshot(ctx, {
+				sendId: outcome.sendId,
+				subject: args.subject,
+				text: htmlToPlainText(args.html, { preserveBreaks: true }),
+			});
 		}
 		return outcome;
 	},
