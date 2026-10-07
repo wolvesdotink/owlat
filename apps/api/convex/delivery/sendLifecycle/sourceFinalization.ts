@@ -5,7 +5,9 @@
  * record once the Send is terminal:
  *
  * - `agent_reply` → the inbound message it replies to (`approved → sent` or
- *   `→ failed`), plus the reply mirrored into the thread's unified timeline.
+ *   `→ failed`), plus the reply mirrored into the thread's unified timeline
+ *   and the thread brief's activity and interpretation
+ *   (mail/interpret/sendActivity.ts).
  * - `team_reply` → the follow-up it carries (`inbox/followUps.ts`).
  *
  * This belongs to the Send terminal edge, not to one transport callback.
@@ -18,6 +20,7 @@
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { mirrorEmailSendWrite } from '../../unifiedMessages';
+import { onTeamSendFinalized } from '../../mail/interpret/sendActivity';
 import type { EmailSendDoc, SendRef, TransactionalSendDoc, TransitionInput } from './types';
 
 type TerminalInput = Extract<TransitionInput, { to: 'sent' | 'failed' | 'bounced' | 'complained' }>;
@@ -66,6 +69,11 @@ export async function finalizeSendSource(
 				? { to: 'sent', at: input.at }
 				: { to: 'failed', at: input.at, errorMessage: failureMessage(input) },
 	});
+	// The thread brief: sent → activity + the reply's interpretation; a failed
+	// or bounced Send → activity + the dispositions it answered fail.
+	if (input.to !== 'complained') {
+		await onTeamSendFinalized(ctx, tSend, { to: input.to, at: input.at });
+	}
 	if (input.to !== 'sent') return;
 
 	try {

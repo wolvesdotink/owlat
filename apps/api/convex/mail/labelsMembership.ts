@@ -49,24 +49,25 @@ export async function applyLabelToMessage(
  * Re-derive whether a thread still carries a label from its messages, AFTER
  * their rows have been written. Done once per touched thread (not once per
  * message) so a batch that labels twenty messages of one conversation pays a
- * single sibling scan.
+ * single sibling scan. True when the thread's label set changed.
  */
 export async function reconcileThreadLabel(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
 	labelId: Id<'mailLabels'>,
 	now: number
-): Promise<void> {
+): Promise<boolean> {
 	const thread = await ctx.db.get(threadId);
-	if (!thread) return;
+	if (!thread) return false;
 	const siblings = await ctx.db
 		.query('mailMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
 		.collect(); // bounded: one thread's messages
 	const stillUsed = siblings.some((m) => m.labelIds.includes(labelId));
-	if (stillUsed === thread.labelIds.includes(labelId)) return;
+	if (stillUsed === thread.labelIds.includes(labelId)) return false;
 	const threadLabels = new Set(thread.labelIds);
 	if (stillUsed) threadLabels.add(labelId);
 	else threadLabels.delete(labelId);
 	await ctx.db.patch(threadId, { labelIds: Array.from(threadLabels), updatedAt: now });
+	return true;
 }

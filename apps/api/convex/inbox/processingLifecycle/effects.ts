@@ -35,6 +35,7 @@ import {
 	refusedAsNotAPerson,
 } from './reducers';
 import { enqueuePush } from '../../push/events';
+import { recordTeamSendQueued } from '../../mail/interpret/sendActivity';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -228,6 +229,10 @@ export async function applyEffects(
 				// immediate send.
 				if (!effect.autonomous) {
 					const delayMs = Math.max(0, effect.delayMs ?? 0);
+					await recordTeamSendQueued(ctx, effect.inboundMessageId, {
+						isAutonomous: false,
+						sendAt: Date.now() + delayMs,
+					});
 					if (delayMs === 0) {
 						// Immediate send — the window is off (delay 0 / not threaded),
 						// so a human sign-off ships now and there is nothing to undo.
@@ -261,6 +266,10 @@ export async function applyEffects(
 				const delayMs = Math.max(0, configuredDelay ?? DEFAULT_AUTO_SEND_DELAY_MS);
 
 				const now = Date.now();
+				await recordTeamSendQueued(ctx, effect.inboundMessageId, {
+					isAutonomous: true,
+					sendAt: now + delayMs,
+				});
 				const scheduledFnId = await ctx.scheduler.runAfter(
 					delayMs,
 					internal.agent.agentPipeline.sendApprovedReply,

@@ -21,6 +21,7 @@ import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 import { syncThreadLatestSnooze } from './threadLatestSnooze';
 import { recordMessageCounters } from './messageCounters';
+import { recordMailSnoozed } from './interpret/threadEvents';
 
 export const snooze = postboxMutation({
 	args: {
@@ -46,6 +47,7 @@ export const snooze = postboxMutation({
 			await adjustFolderUnseen(ctx, message.folderId, -1);
 		}
 		await syncThreadLatestSnooze(ctx, message.threadId);
+		await recordMailSnoozed(ctx, [message.threadId], { userId: owned.userId, until: args.until });
 	},
 });
 
@@ -86,6 +88,11 @@ export const snoozeUntilReply = postboxMutation({
 			await adjustFolderUnseen(ctx, message.folderId, -1);
 		}
 		await syncThreadLatestSnooze(ctx, message.threadId);
+		await recordMailSnoozed(ctx, [message.threadId], {
+			userId: owned.userId,
+			until: args.capUntil,
+			isUntilReply: true,
+		});
 	},
 });
 
@@ -208,6 +215,9 @@ export const snoozeThread = postboxMutation({
 		if (thread.snoozeReturnedAt !== undefined) {
 			await ctx.db.patch(args.threadId, { snoozeReturnedAt: undefined, updatedAt: now });
 		}
+		if (snoozed > 0) {
+			await recordMailSnoozed(ctx, [args.threadId], { userId: owned.userId, until: args.until });
+		}
 		return { ok: true, snoozed };
 	},
 });
@@ -266,6 +276,7 @@ export const snoozeMany = postboxMutation({
 
 		let snoozed = 0;
 		const threads = new Set<Id<'mailThreads'>>();
+		let userId: string | undefined;
 		for (const messageId of args.messageIds) {
 			const owned = await requireMessageAccess(ctx, messageId);
 			if (!owned.ok) continue;
@@ -281,9 +292,11 @@ export const snoozeMany = postboxMutation({
 				await adjustFolderUnseen(ctx, message.folderId, -1);
 			}
 			threads.add(message.threadId);
+			userId = owned.userId;
 			snoozed += 1;
 		}
 		for (const threadId of threads) await syncThreadLatestSnooze(ctx, threadId);
+		if (userId) await recordMailSnoozed(ctx, threads, { userId, until: args.until });
 		return { snoozed };
 	},
 });

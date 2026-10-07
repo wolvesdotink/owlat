@@ -116,6 +116,8 @@ describe('thread brief tables', () => {
 			threadBriefs: ['by_mail_thread', 'by_conversation_thread'],
 			threadViewerState: ['by_mail_thread', 'by_conversation_thread'],
 			draftResponsePlans: ['by_mail_thread', 'by_conversation_thread'],
+			threadItemCorrections: ['by_mail_thread', 'by_conversation_thread'],
+			noteReactions: ['by_mail_thread', 'by_conversation_thread'],
 		};
 		for (const [table, [mailIndex, teamIndex]] of Object.entries(perThread)) {
 			const { indexes } = (

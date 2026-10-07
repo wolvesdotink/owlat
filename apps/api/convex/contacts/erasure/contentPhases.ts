@@ -10,6 +10,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { deleteBlobQuietly } from '../../lib/storageBlobs';
 import { deleteInboundBodyBlobs } from '../../lib/messageBodyInbound';
 import { purgeReplyAttachments } from '../../inbox/replyAttachmentStore';
+import { MAX_NOTE_REACTION_ROWS } from '../../mail/interpret/noteReactions';
 import { detachContactJunctionLink, SEMANTIC_FILE_JUNCTION } from '../../lib/contactJunctions';
 import { drainThreadBrief, eraseInboundMessageBrief } from './threadBriefPhases';
 import {
@@ -160,6 +161,14 @@ export const eraseConversationThreads: PhaseRunner = (phase) => {
 					for (const mention of mentions) {
 						budget.chargeRead(mention);
 						await ctx.db.delete(mention._id);
+					}
+					const reactions = await ctx.db
+						.query('noteReactions')
+						.withIndex('by_thread_note', (q) => q.eq('threadNoteId', note._id))
+						.take(MAX_NOTE_REACTION_ROWS); // bounded: one note's reactions
+					for (const reaction of reactions) {
+						budget.chargeRead(reaction);
+						await ctx.db.delete(reaction._id);
 					}
 					await ctx.db.delete(note._id);
 				}

@@ -121,6 +121,18 @@ export const THREAD_BRIEF_MEMBER_RELATIONS: readonly MemberRelation[] = [
 		why: 'A Team Inbox item assigned to the member is the organization’s and stays; the assignment is cleared, so it reads Unassigned (threadItemAssignments phase).',
 	},
 	{
+		table: 'noteReactions',
+		field: 'userId',
+		action: 'retain',
+		why: 'Known gap (thread brief): the member’s emoji reactions on internal notes should go; the erasure step that deletes them lands with the thread brief wiring.',
+	},
+	{
+		table: 'threadItemCorrections',
+		field: 'userId',
+		action: 'retain',
+		why: 'Known gap (thread brief): who corrected an item, kept for the interpretation eval; the erasure step that anonymizes it lands with the thread brief wiring.',
+	},
+	{
 		table: 'threadViewerState',
 		field: 'userId',
 		action: 'delete',

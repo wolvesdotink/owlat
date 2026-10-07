@@ -182,6 +182,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	threadItems: makeSweepStep('threadItems'),
 	messageInterpretations: makeSweepStep('messageInterpretations'),
 	threadBriefs: makeSweepStep('threadBriefs'),
+	threadItemCorrections: makeSweepStep('threadItemCorrections'),
+	noteReactions: makeSweepStep('noteReactions'),
 	inboxAssignmentNotices: makeSweepStep('inboxAssignmentNotices'),
 	unifiedMessages: makeSweepStep('unifiedMessages'),
 	channelConfigs: makeSweepStep('channelConfigs'),
