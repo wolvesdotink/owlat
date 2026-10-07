@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import type { AnswerItem } from '~/composables/useAnswerQueue';
+import { briefLocale } from '~/composables/threadBrief/briefApi';
 import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
 import { useLocalized } from '~/composables/useLocalized';
 import { parseFromHeader } from '~/utils/todayDigest';
@@ -39,6 +41,23 @@ const top = computed(() => props.items.slice(0, TOP));
 
 const text = useLocalized();
 
+// A team row leads with its top open action (inbox.teamStream.topItems), never a summary.
+const teamThreadIds = computed(() =>
+	top.value.flatMap((item) =>
+		item.source === 'team' && item.entry.thread?._id ? [item.entry.thread._id] : []
+	)
+);
+const { data: teamTops } = useConvexQuery(api.inbox.teamStream.topItems, () =>
+	teamThreadIds.value.length > 0
+		? { threadIds: teamThreadIds.value, locale: briefLocale(locale.value) }
+		: ('skip' as const)
+);
+function teamTopOf(item: AnswerItem) {
+	if (item.source !== 'team') return null;
+	const threadId = item.entry.thread?._id;
+	return (teamTops.value ?? []).find((row) => row.threadId === threadId) ?? null;
+}
+
 function isSharedRow(item: AnswerItem): boolean {
 	return (
 		item.source === 'mail' &&
@@ -49,7 +68,9 @@ function rowTitle(item: AnswerItem): string {
 	if (item.source === 'mail') {
 		return text(replyQueueHeadline(item.row, locale.value, { isShared: isSharedRow(item) }));
 	}
-	if (item.source === 'team') return item.entry.message.subject || t('components.shell.noSubject');
+	if (item.source === 'team') {
+		return teamTopOf(item)?.text || item.entry.message.subject || t('components.shell.noSubject');
+	}
 	return t('components.today.answer.mentionTitle', {
 		room: item.mention.roomName,
 		preview: item.mention.messagePreview,
@@ -85,6 +106,11 @@ function rowDetail(item: AnswerItem): string {
 }
 /** "+3 more": the thread's other open items (exact counts). */
 function rowMore(item: AnswerItem): string {
+	const team = teamTopOf(item);
+	if (team) {
+		const chip = briefMoreChip(team.count);
+		return chip ? t(chip.key, { count: chip.count }) : '';
+	}
 	if (item.source !== 'mail') return '';
 	const top = item.row.briefTop;
 	if (!top?.top || top.top.bucket === 'waitingOnOthers' || top.top.responsibility === 'them') {
@@ -94,7 +120,7 @@ function rowMore(item: AnswerItem): string {
 	return chip ? t(chip.key, { count: chip.count }) : '';
 }
 function rowDue(item: AnswerItem): string | null {
-	const at = item.source === 'mail' ? item.row.briefTop?.top?.dueAt : undefined;
+	const at = item.source === 'mail' ? item.row.briefTop?.top?.dueAt : teamTopOf(item)?.dueAt;
 	return at === undefined
 		? null
 		: t('components.brief.item.due', { date: briefDueDate(at, locale.value) });
