@@ -20,6 +20,7 @@ import { factKeyString, type InterpretMode } from '@owlat/shared/threadBrief';
 import { isConsequential } from '@owlat/shared/threadBriefRules';
 import type { ParticipantRef } from '../../lib/validators/threadBrief';
 import type { GroundedClaim, GroundingResult } from './ground';
+import { quoteOccurrence } from './quoteMatch';
 import {
 	INTERPRET_TEXT_LIMITS,
 	type InterpretFactProposal,
@@ -273,6 +274,7 @@ function evidenceOf(claim: GroundedClaim<unknown>, canonicalText: string): Reduc
 		start: e.start,
 		end: e.end,
 		quote: canonicalText.slice(e.start, e.end),
+		occurrence: quoteOccurrence(canonicalText, e.start, e.end),
 	}));
 }
 
@@ -342,7 +344,15 @@ export function toReduceResult(
 				: {}),
 			...(p.options && p.options.length > 0 ? { options: p.options } : {}),
 			evidence: evidenceOf(g, opts.canonicalText),
-			verify: !opts.checked.has(id) ? 'na' : verdict === 'supported' ? 'passed' : 'proposal',
+			// Grounding keeps forwarded-only and signature/disclaimer-only items as
+			// proposals: no verdict upgrades them (ground.ts).
+			verify: g.proposal
+				? 'proposal'
+				: !opts.checked.has(id)
+					? 'na'
+					: verdict === 'supported'
+						? 'passed'
+						: 'proposal',
 			isReviewNeeded: g.needsReview,
 		});
 	}
@@ -356,7 +366,9 @@ export function toReduceResult(
 			...(t.to ? { to: t.to } : {}),
 			...(t.disposition ? { disposition: t.disposition } : {}),
 			evidence: evidenceOf(g, opts.canonicalText),
-			isVerified: opts.verdicts.get(id) === 'supported',
+			// A transition resting only on forwarded text never counts as verified,
+			// so it cannot close an item (ground.ts).
+			isVerified: !g.proposal && opts.verdicts.get(id) === 'supported',
 			isReviewNeeded: g.needsReview,
 		};
 	});
@@ -379,6 +391,10 @@ export function toReduceResult(
 	};
 
 	if (opts.mode === 'brief' && output.mode === 'brief') {
+		if (output.exactWording?.isRequired) {
+			const reason = output.exactWording.reason;
+			result.exactWording = reason ? { reason } : {};
+		}
 		if (opts.latestSuppressed) {
 			result.latestSuppressed = opts.latestSuppressed;
 		} else {

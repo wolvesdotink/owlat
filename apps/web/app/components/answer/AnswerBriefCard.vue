@@ -1,52 +1,53 @@
 <script setup lang="ts">
 /**
- * Answer mode's view of the thread being answered (SPEC §7): the thread brief
- * with selectable items, in place of the catch-up card.
+ * Answer mode's view of the thread being answered (SPEC §7), in place of the
+ * catch-up card:
+ *
+ *  - a personal mailbox: the thread brief with selectable items;
+ *  - a shared (team) mailbox: the actions only (open for the team, waiting on
+ *    others, unclear), never a summary. The originals are the conversation
+ *    beside it, and no catch-up is generated for it (useAnswerModeAssist).
+ *    The web-team lane replaces this with the team stream.
  *
  * Read-only for now: the checkboxes are the items the reply should cover and
- * live in local state (`v-model:selected` on ThreadBrief); the stance picker
- * and the coverage chips from the draft's response plan come with the
- * drafting work. A file chip attaches the file to the reply, as the catch-up
- * card's did; a source marker reveals the message it points at.
- *
- * A shared (team) mailbox has no brief: it keeps the catch-up card until the
- * team stream replaces it.
+ * live in local state; the stance picker and the coverage chips from the
+ * draft's response plan come with the drafting work. A file chip attaches the
+ * file to the reply, as the catch-up card's did; a source marker reveals the
+ * message it points at.
  */
 import type { FileView } from '../../../../api/convex/mail/interpret/briefShape';
-import type { CatchUp } from '~/composables/useAnswerCatchUp';
 import type { AnswerLayout } from '~/utils/answerModeLayout';
 import { useThreadBrief } from '~/composables/useThreadBrief';
 import { resolveCite } from '~/utils/threadBriefItems';
-import { threadFilesOf, type ThreadFile } from '~/utils/answerThreadFiles';
+import { threadFilesOf, type ThreadFile, type ThreadFileSource } from '~/utils/answerThreadFiles';
 import type { BriefSource } from '~/utils/threadBriefContext';
 import ThreadBrief from '~/components/brief/ThreadBrief.vue';
-import CatchUpCard, { type CatchUpMessage } from './CatchUpCard.vue';
+import BriefTeamActions from '~/components/brief/BriefTeamActions.vue';
+
+export interface AnswerBriefMessage extends ThreadFileSource {
+	fromName?: string | null;
+	fromAddress: string;
+}
 
 const props = defineProps<{
-	mailboxId: string;
 	threadId?: string;
-	/** The conversation view: the catch-up card only shows in Summary. */
+	/** The conversation view: the card only shows in Summary. */
 	shown: 'summary' | 'full';
 	layout: AnswerLayout;
-	messages: readonly CatchUpMessage[];
-	catchUp: CatchUp | null;
-	loading: boolean;
-	covered: readonly string[];
-	attaching: string | null;
+	messages: readonly AnswerBriefMessage[];
 	canAttach: boolean;
 }>();
 
 const emit = defineEmits<{ reveal: [messageId: string]; attach: [file: ThreadFile] }>();
 
-const { byId } = useInboxes();
-const isShared = computed(() => byId.value.get(props.mailboxId as never)?.scope === 'shared');
-const { brief } = useThreadBrief({ threadId: () => (isShared.value ? null : props.threadId) });
+const { view, brief } = useThreadBrief({ threadId: () => props.threadId });
+const teamView = computed(() => (view.value?.mode === 'actions' ? view.value : null));
 
 const selected = ref<string[]>([]);
 watch(
-	() => brief.value?.forYou,
+	() => (teamView.value ? teamView.value.forTeam : brief.value?.forYou),
 	(items) => {
-		// Every open for-you item starts selected ("Reply to all 4").
+		// Every open item for the reader starts selected ("Reply to all 4").
 		if (selected.value.length === 0 && items) {
 			selected.value = items.filter((i) => i.status === 'open').map((i) => i.id);
 		}
@@ -60,8 +61,20 @@ function sourceOf(messageId: string): BriefSource | undefined {
 }
 
 function onCite(ref: string, quoteIndex: number) {
-	const target = brief.value ? resolveCite(brief.value, { ref, quoteIndex }) : null;
-	if (target) emit('reveal', target.messageId);
+	const b = brief.value;
+	if (b) {
+		const target = resolveCite(b, { ref, quoteIndex });
+		if (target) emit('reveal', target.messageId);
+		return;
+	}
+	// Team view: items only.
+	const item = [
+		...(teamView.value?.forTeam ?? []),
+		...(teamView.value?.waitingOnOthers ?? []),
+		...(teamView.value?.unclear ?? []),
+	].find((i) => i.id === ref);
+	const source = item?.evidence[quoteIndex]?.source ?? item?.evidence[0]?.source;
+	if (source) emit('reveal', source.id);
 }
 
 function onFile(file: FileView) {
@@ -73,27 +86,24 @@ function onFile(file: FileView) {
 </script>
 
 <template>
-	<CatchUpCard
-		v-if="isShared && shown === 'summary'"
-		:collapsible="layout === 'phone'"
-		:catch-up="catchUp"
-		:loading="loading"
-		:messages="messages"
-		:covered="covered"
-		:attaching="attaching"
-		:can-attach="canAttach"
-		@reveal="emit('reveal', $event)"
-		@attach="emit('attach', $event)"
-	/>
-	<ThreadBrief
-		v-else-if="!isShared && brief !== null && brief?.completeness !== 'none'"
-		v-model:selected="selected"
-		:brief="brief"
-		:source-of="sourceOf"
-		selectable
-		:compact="layout === 'phone'"
-		:file-action="canAttach ? 'attach' : undefined"
-		@cite="onCite"
-		@select-file="onFile"
-	/>
+	<template v-if="shown === 'summary'">
+		<BriefTeamActions
+			v-if="teamView"
+			v-model:selected="selected"
+			:view="teamView"
+			:source-of="sourceOf"
+			@cite="onCite"
+		/>
+		<ThreadBrief
+			v-else-if="brief && brief.completeness !== 'none'"
+			v-model:selected="selected"
+			:brief="brief"
+			:source-of="sourceOf"
+			selectable
+			:compact="layout === 'phone'"
+			:file-action="canAttach ? 'attach' : undefined"
+			@cite="onCite"
+			@select-file="onFile"
+		/>
+	</template>
 </template>

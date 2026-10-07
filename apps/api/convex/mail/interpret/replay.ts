@@ -100,6 +100,7 @@ function plainEvidence(
 		start: e.start,
 		end: e.end,
 		quote: e.quote,
+		...(e.occurrence !== undefined ? { occurrence: e.occurrence } : {}),
 		isPlain: true,
 	}));
 }

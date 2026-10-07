@@ -81,12 +81,21 @@ describe('oracle replay', () => {
 					);
 					expect(accepted, `${label.id}: ${JSON.stringify(rejection)}`).toBeDefined();
 					expect(accepted?.needsReview, label.id).toBe(label.expect === 'flagged');
+					// Forwarded, signature and disclaimer evidence is never tracked as is.
+					expect(!!accepted?.proposal, label.id).toBe(label.segmentKind !== 'fresh');
 				}
 				for (const trap of (thread.labels.traps ?? []).filter((l) => l.messageId === message.id)) {
 					const rejection = grounding.rejected.find(
 						(r) => r.kind === 'item' && labelOf(r.index) === trap.id
 					);
-					expect(rejection?.reason, trap.id).toBe(trap.reject);
+					if (trap.reject === 'proposal') {
+						const shown = grounding.items.find(
+							(c) => (c.claim as { labelId?: string }).labelId === trap.id
+						);
+						expect(shown?.proposal, trap.id).toBeDefined();
+					} else {
+						expect(rejection?.reason, trap.id).toBe(trap.reject);
+					}
 				}
 				const facts = (thread.labels.facts ?? []).filter((l) => l.messageId === message.id);
 				expect(grounding.facts?.length ?? 0, `${message.id} facts`).toBe(facts.length);

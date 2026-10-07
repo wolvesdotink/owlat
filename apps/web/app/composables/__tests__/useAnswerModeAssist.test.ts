@@ -10,7 +10,7 @@
  *     composer attaches the same way;
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h, ref, shallowRef } from 'vue';
+import { computed, defineComponent, h, ref, shallowRef } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -29,7 +29,12 @@ const catchUpState = {
 	checkCoverage: vi.fn(async () => {}),
 };
 /** What the assist handed the catch-up (its view and message count). */
-let catchUpOpts: { view?: unknown; messageCount?: () => number | undefined } = {};
+let catchUpOpts: {
+	view?: unknown;
+	messageCount?: () => number | undefined;
+	target?: () => unknown;
+} = {};
+const inboxScope = ref<'personal' | 'shared' | null>('personal');
 vi.mock('~/composables/useAnswerCatchUp', () => ({
 	useAnswerCatchUp: (opts: typeof catchUpOpts) => {
 		catchUpOpts = opts;
@@ -71,7 +76,13 @@ beforeEach(() => {
 		useToast: () => ({ showToast }),
 		useFeatureFlag: () => ({ isEnabled: () => true }),
 		useBackendOperation: () => ({ run: attachRun, isLoading: ref(false) }),
+		useInboxes: () => ({
+			byId: computed(
+				() => new Map(inboxScope.value ? [['mbx_1', { scope: inboxScope.value }]] : [])
+			),
+		}),
 	});
+	inboxScope.value = 'personal';
 });
 
 function composerMock(written = ''): AnswerComposerApi {
@@ -130,6 +141,21 @@ describe('useAnswerModeAssist: the view', () => {
 		expect(catchUpOpts.view).toBe(view);
 		count.value = 2;
 		expect(catchUpOpts.messageCount?.()).toBe(2);
+	});
+});
+
+describe('useAnswerModeAssist: the catch-up target', () => {
+	it('summarises a personal thread', () => {
+		host();
+		expect(catchUpOpts.target?.()).toEqual({ kind: 'mail', messageId: 'm1' });
+	});
+
+	it('never summarises a shared mailbox, nor before its scope is known', () => {
+		host();
+		inboxScope.value = 'shared';
+		expect(catchUpOpts.target?.()).toBeNull();
+		inboxScope.value = null;
+		expect(catchUpOpts.target?.()).toBeNull();
 	});
 });
 

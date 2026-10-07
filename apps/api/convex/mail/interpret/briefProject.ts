@@ -20,6 +20,7 @@ import type { ThreadRef } from '../../lib/validators/threadRef';
 import type {
 	ActivityView,
 	BriefItemView,
+	BriefModeView,
 	FactView,
 	FileView,
 	LatestLineView,
@@ -61,6 +62,8 @@ export interface ProjectionInput {
 	page?: { cursor: string | null; isDone: boolean; isClosedTruncated: boolean };
 	/** Each interpreted message's own first "Latest update" line (brief mode). */
 	messageLatest?: { messageId: string; text: string }[];
+	/** Messages whose original stays open beside the brief (brief mode). */
+	exactWording?: BriefModeView['exactWording'];
 	now: number;
 }
 
@@ -156,6 +159,9 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 		...(input.viewOverride ? { viewOverride: input.viewOverride } : {}),
 		...(input.messageLatest && input.messageLatest.length > 0
 			? { messageLatest: input.messageLatest }
+			: {}),
+		...(input.exactWording && input.exactWording.length > 0
+			? { exactWording: input.exactWording }
 			: {}),
 	};
 }

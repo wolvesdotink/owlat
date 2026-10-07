@@ -10,6 +10,7 @@
  * Everything it does is an emit; the reader runs it.
  */
 import type { PostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
+import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import { briefShortDate } from '~/utils/threadBriefContext';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import ThreadBrief from '~/components/brief/ThreadBrief.vue';
@@ -18,7 +19,7 @@ const props = defineProps<{
 	/** The reader's brief state (usePostboxReaderBrief). */
 	state: PostboxReaderBrief;
 	/** The loaded conversation, oldest first. */
-	messages: readonly { _id: string; fromName?: string; fromAddress: string; receivedAt: number }[];
+	messages: readonly PostboxReaderMessage[];
 	messageCount: number;
 }>();
 
@@ -32,6 +33,10 @@ const aiEnabled = computed(() => isEnabled('ai'));
 const brief = computed(() => props.state.brief.value);
 const latest = computed(() => props.messages[props.messages.length - 1]);
 const firstAt = computed(() => props.messages[0]?.receivedAt);
+/** Originals the brief asked to keep open beside it (legal notices, terms, payment details). */
+const exactMessages = computed(() =>
+	props.messages.filter((m) => props.state.exactWording.value.has(m._id))
+);
 const asking = ref(false);
 watch(
 	() => latest.value?._id,
@@ -88,6 +93,12 @@ const replyLabel = computed(() =>
 			:latest-note="latestNote"
 			@react="state.react"
 			@cite="state.openCite"
+			@open-conversation="state.setView('conversation')"
+		/>
+
+		<PostboxThreadExactWording
+			:messages="exactMessages"
+			:secure-class="state.secureClass"
 			@open-conversation="state.setView('conversation')"
 		/>
 

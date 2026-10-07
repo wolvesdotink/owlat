@@ -23,7 +23,12 @@
  *   - a raw-text element ends only at an end tag of its exact name followed by
  *     whitespace, `/` or `>` (`</script_>` and `</style:x>` end nothing);
  *   - a hidden formatting element closed implicitly keeps hiding until its own
- *     end tag, as browsers reopen it (`./mailSegmentsElements`).
+ *     end tag, as browsers reopen it; an end tag reaching past a `<select>`, a
+ *     table cell, a caption or a template is ignored, as a browser ignores it
+ *     (`./mailSegmentsElements`); `</body>` and `</html>` close nothing;
+ *   - a hidden `<body>` or `<html>` tag anywhere hides the whole document.
+ * The backend runs the security scan's own `stripHiddenContent` before this
+ * (`mail/interpret/scope.ts`), so these rules are defence in depth there.
  * Whitespace inside text collapses to one space (`<pre>` keeps it), blockquote
  * nesting adds to the depth, `>` markers inside HTML text count too, and a
  * Gmail quote container is tracked over its whole extent.
@@ -160,6 +165,7 @@ export function linesFromHtml(html: string, options: LineSourceOptions = {}): So
 	let pendingHint: LineHint | undefined;
 	let pendingRule = false;
 	let space: [number, number] | null = null;
+	let documentHidden = false;
 
 	// The first raw-text close tag at or after a position, remembered per name:
 	// positions only grow, so a search never rescans what an earlier one read.
@@ -307,6 +313,11 @@ export function linesFromHtml(html: string, options: LineSourceOptions = {}): So
 			i = close === -1 ? n : (scanTag(html, close)?.end ?? n);
 			continue;
 		}
+		if ((name === 'body' || name === 'html') && ownHidden) {
+			// A browser merges a later `<body>`/`<html>` tag's attributes into the
+			// one element there is: the whole document is hidden, before and after.
+			documentHidden = true;
+		}
 		if (name === 'plaintext') {
 			// Everything after it is text, shown only when nothing hides it.
 			if (!ownHidden && !stack.hidden) emitText(tag.end, n, false);
@@ -332,5 +343,5 @@ export function linesFromHtml(html: string, options: LineSourceOptions = {}): So
 	}
 	if (!line.empty) lines.push(finishLine(line, n));
 	stack.finish();
-	return lines;
+	return documentHidden ? [] : lines;
 }

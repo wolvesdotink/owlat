@@ -161,7 +161,7 @@ const assist = useAnswerModeAssist({
 	messageCount: () => messageCount.value,
 	view,
 });
-const { catchUp, ask } = assist;
+const { ask } = assist;
 // An uploaded file answer is kept in Files only by someone who may add to
 // Files, and only for a known contact, which the page cannot see from here.
 const { canManageOrganization } = usePermissions();
@@ -379,15 +379,10 @@ onBeforeUnmount(() => {
 				>
 					<template #catch-up="{ view: shown, messages, reveal }">
 						<AnswerBriefCard
-							:mailbox-id="message.mailboxId"
 							:thread-id="message.threadId"
 							:shown="shown"
 							:layout="layout"
-							:catch-up="catchUp.catchUp.value"
-							:loading="catchUp.loading.value"
 							:messages="messages"
-							:covered="catchUp.covered.value"
-							:attaching="assist.attaching.value"
 							:can-attach="!!seed"
 							@reveal="reveal"
 							@attach="assist.attachThreadFile"

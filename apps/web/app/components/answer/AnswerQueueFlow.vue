@@ -41,7 +41,9 @@ const leavingForAnswerMode = computed(
 
 function headline(item: AnswerItem): string {
 	if (item.source === 'mail') {
-		return localized(replyQueueHeadline(item.row, locale.value));
+		return localized(
+			replyQueueHeadline(item.row, locale.value, { isShared: item.inbox?.scope === 'shared' })
+		);
 	}
 	if (item.source === 'team') return item.entry.message.subject;
 	return `#${item.mention.roomName}: ${item.mention.messagePreview}`;

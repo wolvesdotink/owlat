@@ -158,7 +158,7 @@ function onCancelFollowUp(event: MouseEvent) {
 			<b
 				class="font-medium"
 				:class="briefLine.tone === 'info' ? 'text-info' : 'text-text-primary'"
-				>{{ t(briefLine.leadKey, { count: briefLine.count }, briefLine.count) }}</b
+				>{{ t(briefLine.leadKey, { count: briefLine.countText }, briefLine.count) }}</b
 			>
 			{{ briefLine.text
 			}}<template v-if="briefLine.due">

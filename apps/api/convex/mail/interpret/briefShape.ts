@@ -55,6 +55,8 @@ export const evidenceViewValidator = v.object({
 	contentRevision: v.string(),
 	// The quoted words, for the marker's tooltip.
 	quote: v.optional(v.string()),
+	// Which occurrence of the normalized quote in the message this is (0 = first).
+	occurrence: v.optional(v.number()),
 });
 
 /** One item as the brief shows it. */
@@ -242,6 +244,24 @@ export const briefModeViewValidator = v.object({
 	// sentence in the requested locale: the collapsed rows of Conversation
 	// show it instead of the raw snippet.
 	messageLatest: v.optional(v.array(v.object({ messageId: v.string(), text: v.string() }))),
+	// Messages (mailMessages ids) whose original the reader keeps open beside
+	// the brief ("Read the exact wording"): legal notices, changed terms,
+	// payment details. Security mail is shown as written instead (gap reason).
+	exactWording: v.optional(
+		v.array(
+			v.object({
+				messageId: v.string(),
+				reason: v.optional(
+					v.union(
+						v.literal('legal'),
+						v.literal('terms'),
+						v.literal('payment_details'),
+						v.literal('security')
+					)
+				),
+			})
+		)
+	),
 });
 
 /** Team surfaces (actions mode): the "Open for the team" strip's data. */

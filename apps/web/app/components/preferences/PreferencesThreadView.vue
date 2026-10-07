@@ -7,14 +7,14 @@
  * that thread, and a link to a cited quote always opens the conversation.
  */
 import type { ThreadView } from '@owlat/shared/threadBrief';
-import { interpretApi } from '~/composables/threadBrief/briefApi';
+import { api } from '@owlat/api';
 
 const { t } = useI18n();
 
-const { data } = useConvexQuery(interpretApi.preferences.getViewPreference, {});
+const { data } = useConvexQuery(api.mail.interpret.preferences.getViewPreference, {});
 const current = computed<ThreadView>(() => data.value?.threadDefaultView ?? 'overview');
 
-const save = useBackendOperation(interpretApi.preferences.setThreadDefaultView, {
+const save = useBackendOperation(api.mail.interpret.preferences.setThreadDefaultView, {
 	label: () => t('components.preferences.preferencesReading.threadViewOperation'),
 });
 

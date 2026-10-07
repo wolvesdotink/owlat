@@ -61,15 +61,20 @@ const kinds = computed(() =>
 		...props.item.facets.map((f) => t(`components.brief.facet.${f}`)),
 	].join(' · ')
 );
-const menu = computed<BriefAction[]>(() => {
-	if (!isOpen.value) return canUndo(stateKey.value) ? ['undo'] : [];
-	const rest: BriefAction[] = menuReactions(props.item);
-	if (props.compact && !isProposal.value) rest.unshift(props.item.primaryReaction);
-	return rest;
-});
 const primary = computed<BriefAction | null>(() => {
 	if (!isOpen.value) return null;
 	return isProposal.value ? 'confirmProposal' : props.item.primaryReaction;
+});
+/**
+ * The ⋯ menu. On a phone (`compact`) the primary action moves into it, Track
+ * included, so a proposal can be confirmed there too. A proposal offers only
+ * Track and "Not a request": it is not an obligation until confirmed.
+ */
+const menu = computed<BriefAction[]>(() => {
+	if (!isOpen.value) return canUndo(stateKey.value) ? ['undo'] : [];
+	const rest: BriefAction[] = isProposal.value ? ['notARequest'] : menuReactions(props.item);
+	if (props.compact && primary.value) rest.unshift(primary.value);
+	return rest;
 });
 
 function actionLabel(action: BriefAction): string {

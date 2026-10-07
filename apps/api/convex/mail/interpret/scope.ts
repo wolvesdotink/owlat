@@ -8,10 +8,13 @@
  *     text around it, an HTML alternative and the attachments are `omitted`.
  *   - An encrypted body (PGP or S/MIME, not opened here) is `undecryptable`:
  *     the run records a skip, and the brief says it could not read it.
- *   - Everything else: text and HTML as stored. Hidden HTML (display:none,
- *     zero-size or invisible text) is dropped by `segmentMessage` itself, with
- *     the security scan's `styleHides`, so the model never reads what the scan
- *     would strip and the canonical offsets still map back to the stored body.
+ *   - Everything else: text and HTML as stored. Hidden HTML is removed FIRST
+ *     by the security scan's own `stripHiddenContent` (`segmentScoped`), so
+ *     the model never reads what the scan would strip, however a browser would
+ *     parse the markup; `segmentMessage`'s visibility rules (with the scan's
+ *     `styleHides`) stay as defence in depth. The segment source map then
+ *     points into that stripped HTML, not the stored body; canonical offsets
+ *     (what evidence stores) are unaffected.
  *
  * Isolate-safe (no `'use node'`): the loader is an internal query, the helper
  * runs in any action.
@@ -42,6 +45,7 @@ import { readSealedBlobText } from '../../lib/sealedBlob';
 import { styleHides } from '../../agent/steps/security_scan/hiddenStyle';
 import { sourceVersionOf } from './sourceVersion';
 import { loadInterpretSource } from './sources';
+import { stripHiddenContent } from '../../agent/steps/security_scan/patterns';
 
 /**
  * The source row(s) the scope needs, as stored (bodies still sealed), with
@@ -198,10 +202,15 @@ export async function scopeForInterpretation(
 	return { ...scoped, sourceVersion: loaded.sourceVersion };
 }
 
-/** Segment a scoped message the way the reader does (stable ids). */
+/**
+ * Segment a scoped message (stable ids). The HTML goes through the security
+ * scan's hidden-content strip first: conservative by construction, whatever
+ * the segmenter's own parser makes of malformed markup.
+ */
 export function segmentScoped(scoped: Extract<ScopedMessage, { ok: true }>): SegmentedMessage {
+	const html = scoped.html ? stripHiddenContent(scoped.html, { html: true }) : null;
 	return segmentMessage(
-		{ text: scoped.text ?? null, html: scoped.html ?? null, subject: scoped.subject },
+		{ text: scoped.text ?? null, html, subject: scoped.subject },
 		{ styleHides }
 	);
 }

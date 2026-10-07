@@ -139,7 +139,7 @@
 						"quote": "Amtsgericht Hamburg HRB 00000",
 						"segmentKind": "disclaimer",
 						"assertion": "Kontakt zum Amtsgericht aufnehmen",
-						"reject": "not_fresh"
+						"reject": "proposal"
 					}
 				]
 			}
