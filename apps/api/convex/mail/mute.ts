@@ -35,6 +35,7 @@ import { isThreadMuted } from '../lib/mailMute';
 import { requireMailboxAccess } from './permissions';
 import { clearThreadNeedsReply } from './needsReply';
 import { batchGet } from '../_utils/batchLoader';
+import { recordMailMuted } from './interpret/threadEvents';
 
 /** The mailbox's Archive folder, or null when it hasn't been provisioned. */
 async function findArchiveFolder(
@@ -142,6 +143,10 @@ export const setMutedForMessage = postboxMutation({
 		const thread = await getOrThrow(ctx, message.threadId, 'Thread');
 		if (args.muted) await applyMute(ctx, thread);
 		else await applyUnmute(ctx, thread);
+		if ((thread.mutedAt != null) !== args.muted) {
+			const event = { userId: owned.userId, isMuted: args.muted, at: Date.now() };
+			await recordMailMuted(ctx, thread._id, event);
+		}
 		return { ok: true, threadId: message.threadId };
 	},
 });

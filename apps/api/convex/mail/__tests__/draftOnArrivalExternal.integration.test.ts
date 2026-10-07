@@ -36,6 +36,7 @@ import { api, internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
 import { evaluateNeedsReplyCandidate } from '../needsReplyHeuristic';
 import { SWEEP_MIN_AGE_MS } from '../needsReplyPending';
+import type * as InterpretRun from '../interpret/run';
 
 // ─── Seams: session + LLM only (storage, scheduler, draft service are real) ──
 
@@ -57,26 +58,24 @@ const llm = vi.hoisted(() => ({
 		tokenUsage: undefined,
 		modelUsed: 'mock-model',
 	})),
-	// One object per structured call, carrying BOTH shapes the pipeline asks
-	// for: the draft service's verification verdict (score/complete/grounded)
-	// and the needs-reply refinement (intent/needsReply/urgency/…), which the shared
-	// ingest → classify case below runs through. Each caller reads only its own
-	// keys, and the zod schemas are never applied to a mocked return.
+	// The draft service's verification verdict (score/complete/grounded); the
+	// zod schemas are never applied to a mocked return.
 	runLlmObject: vi.fn(async () => ({
-		object: {
-			score: 0.72,
-			complete: true,
-			grounded: true,
-			flags: [],
-			intent: 'direct_question',
-			needsReply: true,
-			urgency: 'normal',
-			askSummary: 'Confirm Friday.',
-			dueHint: null,
-			meetingIntent: null,
-		},
+		object: { score: 0.72, complete: true, grounded: true, flags: [] },
 		tokenUsage: undefined,
 		modelUsed: 'mock-model',
+	})),
+	// The needs-reply verdict comes from the message's interpretation
+	// (mail/interpret/run.ts), mocked at its seam.
+	runInterpretation: vi.fn(async () => ({
+		status: 'complete' as const,
+		createdItemIds: [],
+		projection: {
+			replyIntent: 'direct_question',
+			urgency: 'normal' as const,
+			askSummary: 'Confirm Friday.',
+			isOnlyTheirs: false,
+		},
 	})),
 }));
 vi.mock('../../lib/llm/dispatch', () => ({
@@ -88,11 +87,16 @@ vi.mock('../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
 	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
 }));
+vi.mock('../interpret/run', async () => {
+	const actual = await vi.importActual<typeof InterpretRun>('../interpret/run');
+	return { ...actual, runInterpretation: llm.runInterpretation };
+});
 vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 
 beforeEach(() => {
 	llm.runLlmText.mockClear();
 	llm.runLlmObject.mockClear();
+	llm.runInterpretation.mockClear();
 });
 
 // ─── Seeding ─────────────────────────────────────────────────────────────────
@@ -485,7 +489,8 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 	// The same synced path, for the mail that started this screen: an
 	// auto-generated notes/digest robot. The worker parses Auto-Submitted off the
 	// raw .eml and ingest hands it to the classifier, which drops the thread
-	// before any LLM call — so no queue row and no draft.
+	// before any reply-queue model call — so no queue row and no draft. The
+	// thread brief still reads it (interpretation is wider than the queue).
 	it('SHARED inbox: machine-generated mail (Auto-Submitted) never reaches the queue', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
@@ -529,6 +534,7 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 		expect(queue.items).toEqual([]);
 		expect(llm.runLlmObject).not.toHaveBeenCalled();
 		expect(llm.runLlmText).not.toHaveBeenCalled();
+		expect(llm.runInterpretation).toHaveBeenCalledTimes(1);
 	});
 });
 

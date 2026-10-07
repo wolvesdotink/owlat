@@ -36,6 +36,7 @@ import { recordTriageVerb } from './triageTally';
 import { recordMessageCounters } from './messageCounters';
 import { recordFolderMembership } from './folderMembership';
 import { recordRemoteChanges, type RemoteChange } from './external/remoteOps';
+import { recordArchivedMoves } from './interpret/threadEvents';
 
 // Re-exported so the modules that reach the rebuild through this one keep
 // working unchanged; it lives in ./threadAggregates now (size cap).
@@ -306,6 +307,7 @@ export const archive = postboxMutation({
 		// mail through `move`, and a rule's own work must never become evidence
 		// for suggesting that rule again.
 		await recordTriageVerb(ctx, args.messageIds, 'archive');
+		await recordArchivedMoves(ctx, result.moved, session.userId);
 		return result;
 	},
 });

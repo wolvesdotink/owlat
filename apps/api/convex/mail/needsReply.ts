@@ -9,9 +9,9 @@
  *      machine-generated marker (Auto-Submitted / List-Id / Precedence /
  *      List-Unsubscribe), is not from an unattended sender, and the owner has
  *      not sent a later message in the thread.
- *   2. Cheap-tier LLM refinement (mail/ai/needsReplyClassify.ts, 'use node')
- *      that classifies candidates: a reply INTENT (mail/ai/replyIntent.ts),
- *      urgency, askSummary, dueHint. Only a reply-expecting intent keeps the
+ *   2. Refinement from the message's interpretation (mail/ai/needsReplyClassify.ts,
+ *      mail/interpret/): a reply INTENT (mail/ai/replyIntent.ts), urgency,
+ *      askSummary, dueHint. Only a reply-expecting intent keeps the
  *      flag — an FYI, a recap or a receipt clears it, even when the model's own
  *      boolean says otherwise. Fail-soft: any LLM/gate failure leaves the
  *      deterministic candidate flag with urgency `normal` and no askSummary.
@@ -99,13 +99,14 @@ export async function scheduleNeedsReplyClassify(
 	threadId: Id<'mailThreads'>,
 	// Ingest-time headers of the triggering message. None of them are persisted
 	// on the row, so they ride along here or the screen never sees them.
-	opts: NeedsReplyHeaders = {}
+	opts: NeedsReplyHeaders & { interpretMessageId?: Id<'mailMessages'> } = {}
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.classifyThread, {
 		threadId,
 		precedence: opts.precedence,
 		autoSubmitted: opts.autoSubmitted,
 		listId: opts.listId,
+		interpretMessageId: opts.interpretMessageId,
 	});
 }
 

@@ -11,8 +11,6 @@
  *     (drives `sinceLastSeen` / `isNew` next time).
  *   - `setViewOverride({threadRef, view})`: this thread opens on Overview or
  *     Conversation for this viewer (personal mail threads only; `null` clears).
- *   - `markPending` (internal): interpretation was enqueued; the brief shows
- *     "pending" until the reducer lands.
  *
  * Reader rule: a mail thread is readable with mailbox access
  * (`loadReadableMailbox` / `requireMailboxAccess`), a Team Inbox thread by a
@@ -23,7 +21,6 @@
 import { v } from 'convex/values';
 import { normalizeCatchUpLocale } from '../ai/catchUpPrompt';
 import { publicQuery } from '../../lib/authedFunctions';
-import { internalMutation } from '../../lib/writeFence';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { throwInvalidInput } from '../../_utils/errors';
 import { isSharedInboxReader } from '../../inbox/access';
@@ -36,7 +33,7 @@ import {
 	type ThreadRef,
 } from '../../lib/validators/threadRef';
 import { threadBriefViewValidator, type ThreadBriefView } from './briefShape';
-import { ensureBriefRow, loadBriefRow, resolveThreadMode } from './briefRow';
+import { loadBriefRow, resolveThreadMode } from './briefRow';
 import { projectBrief } from './briefProject';
 import { readResult } from './load';
 import {
@@ -213,17 +210,6 @@ export const setViewOverride = threadBriefMutation({
 		// requireMailboxAccess for a mail thread, requirePermission(isSharedInboxReader) for a team one.
 		await requireThreadReader(ctx, args.threadRef, session);
 		await upsertViewerState(ctx, args.threadRef, session.userId, { viewOverride: args.view });
-		return null;
-	},
-});
-
-/** Interpretation of the thread was enqueued: show "pending" until the reducer lands. */
-export const markPending = internalMutation({
-	args: { threadRef: threadRefValidator },
-	handler: async (ctx, args) => {
-		const brief = await ensureBriefRow(ctx, args.threadRef);
-		if (!brief) return null;
-		await ctx.db.patch(brief._id, { completeness: 'pending', updatedAt: Date.now() });
 		return null;
 	},
 });

@@ -1,13 +1,15 @@
 /**
  * Reply Queue needs-reply detection — persistence + clearing paths, with the
- * LLM dispatch seam MOCKED (no real model call):
+ * interpretation run (`runInterpretation`) and the LLM dispatch seam (the
+ * clarification passes) MOCKED (no real model call):
  *
- *   - classifyThread persists the LLM-refined result (source `llm`, urgency,
- *     capped askSummary, ISO dueHint) on the thread when the model says yes
- *   - the model saying "no" clears the flag (candidate demoted)
- *   - a dispatch throw leaves the deterministic candidate flag
- *     (source `heuristic`, urgency `normal`, no askSummary) — fail-soft
- *   - `ai` feature flag off → deterministic flag persists, dispatch never runs
+ *   - classifyThread persists the interpretation's projection (source `llm`,
+ *     urgency, capped askSummary, ISO dueHint) when the server's decision says
+ *     a reply is needed
+ *   - every item being someone else's clears the flag (candidate demoted)
+ *   - a failed / skipped / vanished interpretation leaves the deterministic
+ *     candidate flag (source `heuristic`, urgency `normal`) — fail-soft
+ *   - `ai` feature flag off → no clarification pass
  *   - a non-candidate (no-reply sender) clears flag + pending, no LLM call
  *   - any outbound send in the thread clears the flag (draftLifecycle → sent)
  *   - trashing the thread's messages clears the flag (messageActions.trash)
@@ -29,6 +31,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
 import { MAX_SWEEP_RETRIES, SWEEP_MIN_AGE_MS } from '../mail/needsReplyPending';
+import type * as InterpretRun from '../mail/interpret/run';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -55,6 +58,8 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 // Hoisted so the vi.mock factories below can reference it.
 const runLlmObjectMock = vi.hoisted(() => vi.fn());
+// The interpretation run the classifier reads its verdict from.
+const runInterpretationMock = vi.hoisted(() => vi.fn());
 // Candidate replies for the clarification divergence check. Rejects unless a
 // test queues replies, which is what the real dispatcher does without a key.
 const runLlmTextMock = vi.hoisted(() => vi.fn());
@@ -64,6 +69,11 @@ const runLlmTextMock = vi.hoisted(() => vi.fn());
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
 	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
+});
+
+vi.mock('../mail/interpret/run', async () => {
+	const actual = await vi.importActual<typeof InterpretRun>('../mail/interpret/run');
+	return { ...actual, runInterpretation: runInterpretationMock };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
@@ -83,6 +93,8 @@ const modules = Object.fromEntries(
 );
 
 beforeEach(() => {
+	runInterpretationMock.mockReset();
+	runInterpretationMock.mockResolvedValue({ status: 'failed', createdItemIds: [], errorCode: 'x' });
 	runLlmObjectMock.mockReset();
 	runLlmTextMock.mockReset();
 	runLlmTextMock.mockRejectedValue(new Error('no model in tests'));
@@ -228,6 +240,28 @@ async function setNeedsReply(
 
 // ─── classifyThread ──────────────────────────────────────────────────────────
 
+/** A run that read the message and projected these needs-reply inputs. */
+function interpreted(
+	projection: Partial<{
+		replyIntent: string;
+		urgency: 'high' | 'normal' | 'low';
+		askSummary: string;
+		dueHint: string;
+		isOnlyTheirs: boolean;
+	}> = {}
+) {
+	runInterpretationMock.mockResolvedValueOnce({
+		status: 'complete',
+		createdItemIds: [],
+		projection: {
+			replyIntent: 'request_for_action',
+			urgency: 'normal',
+			isOnlyTheirs: false,
+			...projection,
+		},
+	});
+}
+
 describe('mail.needsReplyClassify.classifyThread', () => {
 	it('keeps a memory-filled question on the card, pre-picked as a memory answer', async () => {
 		const t = convexTest(schema, modules);
@@ -263,18 +297,8 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			decisionRelevant: true,
 			options: [],
 		});
+		interpreted({ askSummary: 'Delivery details' });
 		runLlmObjectMock
-			.mockResolvedValueOnce({
-				object: {
-					intent: 'request_for_action',
-					needsReply: true,
-					urgency: 'normal',
-					askSummary: 'Delivery details',
-					dueHint: null,
-				},
-				tokenUsage: usage,
-				modelUsed: 'test-model',
-			})
 			.mockResolvedValueOnce({
 				object: {
 					slots: [slot('factual_lookup', dock), slot('date_time', 'When can we deliver?')],
@@ -317,17 +341,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			needsReplyPendingAt: Date.now(),
 		});
 
-		runLlmObjectMock.mockResolvedValue({
-			object: {
-				intent: 'request_for_action',
-				needsReply: true,
-				urgency: 'high',
-				askSummary: 'Send the report',
-				dueHint: '2026-07-04',
-			},
-			tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-			modelUsed: 'test-model',
-		});
+		interpreted({ urgency: 'high', askSummary: 'Send the report', dueHint: '2026-07-04' });
 
 		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
@@ -340,11 +354,35 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			dueHint: '2026-07-04',
 		});
 		expect(thread?.needsReplyPendingAt).toBeUndefined();
-		// The thread body was framed as data behind the injection guard.
-		expect(runLlmObjectMock.mock.calls[0]?.[0]?.prompt).toContain('untrusted DATA');
+		// The newest inbound message is what gets interpreted, as live mail.
+		expect(runInterpretationMock).toHaveBeenCalledTimes(1);
+		expect(runInterpretationMock.mock.calls[0]?.[1]).toEqual({
+			source: { kind: 'mail', id: messageId },
+			isLive: true,
+		});
 	});
 
-	it('clears the flag when the LLM demotes the candidate (needsReply: false)', async () => {
+	it('uses the stored projection of a replayed run (the sweep re-classifying)', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+		runInterpretationMock.mockResolvedValueOnce({
+			status: 'replayed',
+			createdItemIds: [],
+			projection: { replyIntent: 'direct_question', urgency: 'low', isOnlyTheirs: false },
+		});
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+
+		const thread = await getThread(t, threadId);
+		expect(thread?.needsReply).toMatchObject({ messageId, source: 'llm', urgency: 'low' });
+		expect(thread?.needsReplyPendingAt).toBeUndefined();
+	});
+
+	it("clears the flag when every item is someone else's", async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
@@ -354,17 +392,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			needsReplyPendingAt: Date.now(),
 		});
 
-		runLlmObjectMock.mockResolvedValue({
-			object: {
-				intent: 'direct_question',
-				needsReply: false,
-				urgency: 'low',
-				askSummary: null,
-				dueHint: null,
-			},
-			tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-			modelUsed: 'test-model',
-		});
+		interpreted({ replyIntent: 'direct_question', urgency: 'low', isOnlyTheirs: true });
 
 		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
@@ -373,10 +401,11 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		expect(thread?.needsReplyPendingAt).toBeUndefined();
 	});
 
-	it('clears the flag for a recap the model still called reply-worthy', async () => {
-		// The meeting-notes bug end to end: the model sees the to-do bullets and
-		// answers needsReply true, but it named the message informational_update
-		// and the intent has the final say (mail/ai/replyIntent.ts).
+	it('clears the flag for a recap, whatever items it carries', async () => {
+		// The meeting-notes bug end to end: the run extracts the to-do bullets as
+		// items the reader owns, but it named the message informational_update
+		// and the intent has the final say (mail/ai/replyIntent.ts). An
+		// actionable item alone never implies a reply.
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
@@ -386,23 +415,15 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		});
 		await setNeedsReply(t, threadId, messageId); // stale flag from before
 
-		runLlmObjectMock.mockResolvedValue({
-			object: {
-				intent: 'informational_update',
-				needsReply: true,
-				urgency: 'normal',
-				askSummary: 'Confirm the action items',
-				dueHint: null,
-			},
-			tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-			modelUsed: 'test-model',
-		});
+		interpreted({ replyIntent: 'informational_update', askSummary: 'Confirm the action items' });
 
 		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toBeUndefined();
 		expect(thread?.needsReplyPendingAt).toBeUndefined();
+		// No reply needed → no clarification passes.
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
 	});
 
 	it('clears flag + pending for machine-generated mail without any LLM call', async () => {
@@ -424,6 +445,54 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		expect(thread?.needsReply).toBeUndefined();
 		expect(thread?.needsReplyPendingAt).toBeUndefined();
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
+		expect(runInterpretationMock).not.toHaveBeenCalled();
+	});
+
+	it('still interprets the delivered message of a non-candidate thread (once)', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, {
+			threadId,
+			autoSubmitted: 'auto-generated',
+			precedence: 'list',
+			listId: '<news.example.com>',
+			interpretMessageId: messageId,
+		});
+
+		expect((await getThread(t, threadId))?.needsReply).toBeUndefined();
+		expect(runInterpretationMock).toHaveBeenCalledTimes(1);
+		expect(runInterpretationMock.mock.calls[0]?.[1]).toEqual({
+			source: { kind: 'mail', id: messageId },
+			isLive: true,
+			precedence: 'list',
+			listId: '<news.example.com>',
+		});
+	});
+
+	it('interprets the delivered message once when it is the candidate', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+		interpreted({ replyIntent: 'informational_update' });
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, {
+			threadId,
+			interpretMessageId: messageId,
+		});
+
+		expect(runInterpretationMock).toHaveBeenCalledTimes(1);
+		expect(runInterpretationMock.mock.calls[0]?.[1]?.source).toEqual({
+			kind: 'mail',
+			id: messageId,
+		});
 	});
 
 	it('falls back to the deterministic candidate when the LLM dispatch throws', async () => {
@@ -436,7 +505,11 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			needsReplyPendingAt: Date.now(),
 		});
 
-		runLlmObjectMock.mockRejectedValue(new Error('llm boom'));
+		runInterpretationMock.mockResolvedValueOnce({
+			status: 'failed',
+			createdItemIds: [],
+			errorCode: 'model_error',
+		});
 
 		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
 
@@ -449,16 +522,49 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		expect(thread?.needsReply?.askSummary).toBeUndefined();
 		expect(thread?.needsReply?.dueHint).toBeUndefined();
 		expect(thread?.needsReplyPendingAt).toBeUndefined();
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
 	});
 
-	it('keeps the deterministic candidate and never calls the LLM when `ai` is off', async () => {
+	for (const run of [
+		{ status: 'skipped', createdItemIds: [], errorCode: 'bulk_stranger' },
+		{ status: 'gone' },
+		// A failed run that still carried a projection is not a verdict either.
+		{
+			status: 'failed',
+			createdItemIds: [],
+			errorCode: 'stale',
+			projection: { replyIntent: 'direct_question', urgency: 'high', isOnlyTheirs: false },
+		},
+	]) {
+		it(`keeps the baseline when the interpretation is ${run.status}`, async () => {
+			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
+			const seeded = await seedMailbox(t);
+			const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+				needsReplyPendingAt: Date.now(),
+			});
+			runInterpretationMock.mockResolvedValueOnce(run);
+
+			await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+
+			const thread = await getThread(t, threadId);
+			expect(thread?.needsReply).toMatchObject({ messageId, source: 'heuristic' });
+			expect(thread?.needsReplyPendingAt).toBeUndefined();
+		});
+	}
+
+	it('keeps the deterministic candidate when interpretation is refused (`ai` off)', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
 		rateLimiterTest.register(t);
-		// No enableFeatures → aiGate throws → fail-soft to the heuristic flag.
 		const seeded = await seedMailbox(t);
 		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
 			needsReplyPendingAt: Date.now(),
+		});
+		runInterpretationMock.mockResolvedValueOnce({
+			status: 'failed',
+			createdItemIds: [],
+			errorCode: 'ai_off',
 		});
 
 		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
@@ -468,6 +574,25 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
 		// A refusal would only repeat: the run settles instead of waiting for the sweep.
 		expect(thread?.needsReplyPendingAt).toBeUndefined();
+	});
+
+	it('skips the clarification passes behind the Postbox AI gate when `ai` is off', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		rateLimiterTest.register(t);
+		// No `ai` flag: the clarification gate refuses, the verdict still lands.
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded, {
+			needsReplyPendingAt: Date.now(),
+		});
+		interpreted({ askSummary: 'Send the report' });
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+
+		const thread = await getThread(t, threadId);
+		expect(thread?.needsReply).toMatchObject({ messageId, source: 'llm' });
+		expect(thread?.needsReply?.clarification).toBeUndefined();
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
 	});
 
 	// "Send us the invoices for our four bookings": every sampled reply writes
@@ -483,18 +608,8 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			needsReplyPendingAt: Date.now(),
 		});
 		const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
+		interpreted({ askSummary: 'Invoices for four bookings' });
 		runLlmObjectMock
-			.mockResolvedValueOnce({
-				object: {
-					intent: 'request_for_action',
-					needsReply: true,
-					urgency: 'normal',
-					askSummary: 'Invoices for four bookings',
-					dueHint: null,
-				},
-				tokenUsage: usage,
-				modelUsed: 'm',
-			})
 			.mockResolvedValueOnce({
 				object: {
 					slots: [
@@ -543,18 +658,8 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			decisionRelevant: true,
 			options: [],
 		});
+		interpreted({ askSummary: 'Invoices' });
 		runLlmObjectMock
-			.mockResolvedValueOnce({
-				object: {
-					intent: 'request_for_action',
-					needsReply: true,
-					urgency: 'normal',
-					askSummary: 'Invoices',
-					dueHint: null,
-				},
-				tokenUsage: usage,
-				modelUsed: 'm',
-			})
 			.mockResolvedValueOnce({
 				object: {
 					slots: [
@@ -585,7 +690,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		const questions = (await getThread(t, threadId))?.needsReply?.clarification?.questions;
 		expect(questions?.map((q) => q.text)).toEqual(['Please provide the invoice PDFs']);
 		// Only the decision was put to the divergence judge.
-		const judgePrompt = runLlmObjectMock.mock.calls[2]?.[0]?.prompt as string;
+		const judgePrompt = runLlmObjectMock.mock.calls[1]?.[0]?.prompt as string;
 		expect(judgePrompt).toContain('billing address');
 		expect(judgePrompt).not.toContain('invoice PDFs');
 	});
@@ -602,12 +707,17 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		});
 		await setNeedsReply(t, threadId, messageId); // stale flag from before
 
-		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, {
+			threadId,
+			interpretMessageId: messageId,
+		});
 
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toBeUndefined();
 		expect(thread?.needsReplyPendingAt).toBeUndefined();
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
+		// The brief still reads the mail; the unattended sender just gets no queue row.
+		expect(runInterpretationMock).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not flag when the owner is only Cc-ed', async () => {

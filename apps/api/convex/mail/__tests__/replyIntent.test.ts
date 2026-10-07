@@ -1,12 +1,13 @@
 /**
  * The Reply Queue's stage-2 decision rule (mail/ai/replyIntent.ts): which
- * named intents belong in the queue, and what the prompt has to keep telling
- * the cheap tier so it names them correctly.
+ * named intents belong in the queue, and what the guidance has to keep telling
+ * the model so it names them correctly.
  */
 import { describe, it, expect } from 'vitest';
 import {
+	DECISION_RULES,
+	INTENT_GUIDE,
 	REPLY_INTENTS,
-	buildReplyIntentPrompt,
 	decideNeedsReply,
 	isReplyExpectingIntent,
 	type ReplyIntent,
@@ -69,18 +70,9 @@ describe('decideNeedsReply', () => {
 	});
 });
 
-describe('buildReplyIntentPrompt', () => {
-	const prompt = buildReplyIntentPrompt({
-		systemGuard: 'GUARD',
-		ownerAddress: 'me@example.com',
-		transcript: 'From: alice@example.com\nHello',
-		senderLooksAutomated: false,
-	});
-
-	it('leads with the untrusted-data guard and frames the thread as data', () => {
-		expect(prompt.startsWith('GUARD')).toBe(true);
-		expect(prompt).toContain('From: alice@example.com');
-	});
+// The guidance the interpretation prompt carries (mail/interpret/prompt.ts).
+describe('the reply-intent guidance', () => {
+	const prompt = `${INTENT_GUIDE}\n${DECISION_RULES.join('\n')}`;
 
 	it('defines every intent the schema accepts', () => {
 		for (const intent of REPLY_INTENTS) {
@@ -99,7 +91,7 @@ describe('buildReplyIntentPrompt', () => {
 	it('counts a task whose result goes back to the sender by email as a reply', () => {
 		expect(prompt).toContain('waiting to RECEIVE something from the reader by email');
 		expect(prompt).toContain('only supplies details the reader asked them for');
-		expect(prompt).toContain('that sends nothing back to the sender is not replying');
+		expect(prompt).toContain('Doing a task rules out a reply only when nothing goes back');
 	});
 
 	// Cold pitches ("quick question about your website") end in a question and
@@ -109,14 +101,7 @@ describe('buildReplyIntentPrompt', () => {
 		expect(prompt).toContain('The question is a sales device');
 	});
 
-	it('warns the model when the sender looks like a publishing mailbox', () => {
-		const automated = buildReplyIntentPrompt({
-			systemGuard: 'GUARD',
-			ownerAddress: 'me@example.com',
-			transcript: 'x',
-			senderLooksAutomated: true,
-		});
-		expect(automated).toContain('automated/publishing mailbox');
-		expect(prompt).not.toContain('automated/publishing mailbox');
+	it('never lets an unattended address expect a reply', () => {
+		expect(prompt).toContain('unattended address');
 	});
 });

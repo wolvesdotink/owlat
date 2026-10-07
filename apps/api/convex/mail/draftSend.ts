@@ -23,6 +23,7 @@ import { mailboxHasSendTransport } from './draftQueries';
 import { openMailDraftBody } from '../lib/messageBody';
 import { assertNoAnswerGaps } from './ai/composeDraftStore';
 import { assertNothingOwed } from './draftExpectedAttachments';
+import { recordPostboxSendCancelled, recordPostboxSendQueued } from './interpret/sendActivity';
 
 /**
  * Initiate send: mark draft as pending_send with an undo window, schedule
@@ -105,6 +106,14 @@ export async function sendHandler(
 		}
 	}
 
+	// The thread brief's activity: a reply is on its way (undo window / schedule).
+	await recordPostboxSendQueued(ctx, draft, {
+		userId: owned.userId,
+		undoToken: outcome.undoToken,
+		sendAt: outcome.sendAt,
+		isScheduled: args.scheduledSendAt !== undefined,
+	});
+
 	// First send from this instance completes the member's onboarding
 	// "firstSendDone" step (idempotent — only the first send ever writes it).
 	// This is what the fresh-start welcome's optional "email yourself" step
@@ -147,6 +156,7 @@ export async function cancelPendingSendHandler(
 	);
 
 	if (!outcome.ok) return { ok: false };
+	await recordPostboxSendCancelled(ctx, draft, { userId: owned.userId, at: Date.now() });
 	return { ok: true, draftId: outcome.draftId };
 }
 
@@ -181,5 +191,6 @@ export async function cancelScheduledSendHandler(
 		// UI can simply re-render from the live query.
 		return { ok: false };
 	}
+	await recordPostboxSendCancelled(ctx, draft, { userId: owned.userId, at: Date.now() });
 	return { ok: true, draftId: outcome.draftId };
 }

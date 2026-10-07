@@ -24,6 +24,7 @@ import { clearThreadFollowUp } from '../followUps';
 import { clearSnoozeUntilReplyForThread } from '../snooze';
 import { shouldExtractLiveMessage } from '../liveKnowledge';
 import { enqueuePush } from '../../push/events';
+import { enqueueDeliveredInterpretation } from '../interpret/enqueue';
 import { queuesNeedsReplyCheck, type InboundOrigin } from './insert';
 
 export type { InboundOrigin };
@@ -52,6 +53,10 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *     reply).
  *   - Knowledge extraction, under the same conditions (`../liveKnowledge`).
  *     A backfill is history, which a mailbox import's indexing sweep covers.
+ *   - Interpretation (the thread brief, SPEC §5): the classify above
+ *     interprets the delivered message; other live mail that could be
+ *     eligible is scheduled on its own (`../interpret/enqueue.ts`). Either way
+ *     the brief reads "pending" until the run lands.
  *   - The owner's own reply settles the thread's Reply Queue row.
  *   - Web Push to the owner of a personal mailbox, for live unread mail from
  *     someone else that stayed in the inbox (`../../push/`). Whether it
@@ -71,18 +76,28 @@ export async function runPostInsertInboundEffects(
 	if (!delivered) return;
 	const isLive = origin !== 'backfill';
 
-	if (queuesNeedsReplyCheck(origin, folder, delivered.folderId)) {
-		const precedence = antiLoopHeaders?.['precedence'];
+	const precedence = antiLoopHeaders?.['precedence'];
+	const listId = antiLoopHeaders?.['list-id'];
+	const isClassifyQueued = queuesNeedsReplyCheck(origin, folder, delivered.folderId);
+	if (isClassifyQueued) {
 		await scheduleNeedsReplyClassify(ctx, delivered.threadId, {
 			precedence,
 			// RFC 3834 / list traffic: the strongest "a machine sent this" signal
 			// the Reply Queue can get, and like Precedence it lives only on the
 			// wire.
 			autoSubmitted: antiLoopHeaders?.['auto-submitted'],
-			listId: antiLoopHeaders?.['list-id'],
+			listId,
+			// The classify run interprets this message too (one model read).
+			interpretMessageId: messageId,
 		});
 		await enqueueCategoryCheck(ctx, delivered.threadId, { precedence });
 	}
+	await enqueueDeliveredInterpretation(ctx, delivered, {
+		isLive,
+		isInterpretedByClassify: isClassifyQueued,
+		precedence,
+		listId,
+	});
 
 	if (isLive && !(folder.role !== undefined && NOT_A_REPLY_ROLES.has(folder.role))) {
 		const mailbox = await ctx.db.get(delivered.mailboxId);
