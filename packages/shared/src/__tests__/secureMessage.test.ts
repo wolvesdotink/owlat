@@ -3,16 +3,18 @@ import { parseBody } from '@owlat/mail-message/parse/body';
 import {
 	classifySecureMessage,
 	classifyRawSecureMessage,
-	clearsignedBareBody,
-	clearsignedBody,
 	extractArmoredCiphertext,
 	extractClearsignedBlock,
 	extractClearsignedText,
-	isClearsigned,
-	isClearsignedText,
 	isEncryptedClass,
 	isSignedPgpMime,
 } from '../secureMessage';
+import {
+	clearsignedBareBody,
+	clearsignedBody,
+	isClearsigned,
+	isClearsignedText,
+} from '../clearsignedBody';
 
 /** A real, structurally complete inline clearsigned body (RFC 4880 §7). */
 const CLEARSIGNED_BODY = [

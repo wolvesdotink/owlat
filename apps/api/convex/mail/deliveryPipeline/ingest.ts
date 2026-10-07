@@ -24,7 +24,8 @@ import {
 	type InboundEncryptionInfo,
 } from '../../e2ee/inboundSeal';
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
-import { isClearsigned, isSignedPgpMime } from '@owlat/shared/secureMessage';
+import { isSignedPgpMime } from '@owlat/shared/secureMessage';
+import { isClearsigned } from '@owlat/shared/clearsignedBody';
 import { storeSealedBlob, type BlobStore } from '../../lib/sealedBlob';
 import { base64ToBytes, bytesToBinaryString, utf8Bytes } from '../../lib/bytes';
 import { buildSnippet } from './insert';

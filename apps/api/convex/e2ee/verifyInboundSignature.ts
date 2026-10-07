@@ -21,21 +21,21 @@
  * delivery is never blocked (verification adds data, never routing).
  *
  * The pure record vocabulary lives in the sibling `e2ee/inboundSignature.ts`;
- * the structural gates live in `@owlat/shared/secureMessage` (shared with the
- * reader's classifier so client and server cannot drift).
+ * the structural gates live in `@owlat/shared/secureMessage` and
+ * `@owlat/shared/clearsignedBody` (shared with the reader's classifier so
+ * client and server cannot drift).
  */
 
 import { v, type Infer } from 'convex/values';
 import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { extractRfc3156SignedPart } from '@owlat/mail-canon';
+import { extractClearsignedBlock, isSignedPgpMime } from '@owlat/shared/secureMessage';
 import {
 	clearsignedBareBody,
 	clearsignedBody,
-	extractClearsignedBlock,
-	isSignedPgpMime,
 	type ClearsignedBody,
-} from '@owlat/shared/secureMessage';
+} from '@owlat/shared/clearsignedBody';
 import { binaryStringToBytes, bytesToBinaryString } from '@owlat/shared/mailMime';
 import { resolveSenderVerificationKey } from './senderKey';
 import { inboundSignatureInfoValidator, type InboundSignatureInfo } from './inboundSignature';

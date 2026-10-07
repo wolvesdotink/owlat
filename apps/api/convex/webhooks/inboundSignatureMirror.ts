@@ -15,7 +15,7 @@
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import { isClearsignedText } from '@owlat/shared/secureMessage';
+import { isClearsignedText } from '@owlat/shared/clearsignedBody';
 import { logError } from '../lib/runtimeLog';
 import { utf8ToBase64 } from '../lib/bytes';
 
