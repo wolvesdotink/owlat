@@ -17,6 +17,11 @@ export interface SignedBodyMessage {
 	inboundSignatureInfo?: InboundSignatureInfo;
 }
 
+/** A settled load of the stored text body. */
+type FetchedText =
+	| { state: 'failed' }
+	| { state: 'loaded'; text: string | null; hasHtmlBlob: boolean };
+
 /**
  * The reader card's side of {@link resolveSignedBodyView}: it loads the text
  * body a signature verdict needs when the row has none inline (a body over the
@@ -32,9 +37,7 @@ export function usePostboxSignedBody(source: {
 	active: () => boolean;
 }) {
 	// The stored text body once its load settled: a failed load is not "no text".
-	const fetched = ref<
-		{ state: 'failed' } | { state: 'loaded'; text: string | null; hasHtmlBlob: boolean } | null
-	>(null);
+	const fetched = ref<FetchedText | null>(null);
 
 	const inlineText = computed(() => source.message().textBodyInline || undefined);
 	const scope = computed(() => signedBodyScopeOf(source.message().inboundSignatureInfo));
@@ -66,7 +69,7 @@ export function usePostboxSignedBody(source: {
 			const sequence = ++requestSequence;
 			fetched.value = null;
 			if (!shouldFetch) return;
-			let result: NonNullable<typeof fetched.value>;
+			let result: FetchedText;
 			try {
 				result = { state: 'loaded', ...(await loadPostboxTextBody(requireConvex(), messageId)) };
 			} catch {
