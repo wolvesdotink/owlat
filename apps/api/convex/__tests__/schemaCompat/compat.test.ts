@@ -39,12 +39,7 @@ const RETIRED_TABLES: ReadonlySet<string> = new Set();
  * completed keeps running its old release. An entry becomes inert once the
  * snapshot no longer has the field; drop it at that refresh.
  */
-const RETIRED_FIELDS: Readonly<Record<string, readonly string[]>> = {
-	// 0066_backfill_clarification_origin (0.6.10) moved every legacy sentence
-	// to `origin`; #1224 dropped the field.
-	answerAskSessions: ['questions[].attribution'],
-	mailThreads: ['needsReply.clarification.questions[].attribution'],
-};
+const RETIRED_FIELDS: Readonly<Record<string, readonly string[]>> = {};
 
 /** `row` without the field at `path` (see {@link RETIRED_FIELDS}). */
 function withoutField(row: JSONValue, path: readonly string[]): JSONValue {
