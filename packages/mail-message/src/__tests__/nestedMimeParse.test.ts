@@ -9,8 +9,9 @@
  *    delimiters, preambles and epilogues holding delimiter-like lines, blank-line
  *    placement around header blocks, bare-LF line ends and the depth and part
  *    bounds.
- * 2. Its cost does not grow with nesting depth: a message nested to the depth
- *    bound parses about as fast as the same payload in a single part.
+ * 2. Its cost does not grow with nesting depth: the line scan reads each byte
+ *    of the message once, counted through the parser's `meter` rather than
+ *    timed, so a loaded CI runner cannot fail it.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -40,10 +41,13 @@ function project(node: MimeNode): Projected {
 }
 
 function expectSameTree(raw: string, label: string, depth = 0, nested = false): void {
-	const actual = parseMimeTreeWithBounds(raw, depth, nested);
+	const meter = { bytes: 0 };
+	const actual = parseMimeTreeWithBounds(raw, depth, nested, meter);
 	const expected = referenceMimeTree(raw, depth, nested);
 	expect(actual.truncated, `${label}: truncated`).toBe(expected.truncated);
 	expect(project(actual.root), label).toEqual(project(expected.root));
+	// One pass: every byte once, plus the end of input.
+	expect(meter.bytes, `${label}: bytes scanned`).toBeLessThanOrEqual(raw.length + 1);
 }
 
 /** A small deterministic xorshift PRNG so a failing seed is reproducible. */
@@ -187,41 +191,51 @@ describe('single-pass MIME tree matches the recursive definition', () => {
 
 describe('nested MIME parse cost', () => {
 	/** A message whose one text part sits under `levels` nested containers. */
-	function nestedMessage(levels: number, payload: string): string {
+	function nestedMessage(levels: number, payload: string, boundary = (i: number) => `n${i}`) {
 		let head = '';
 		let tail = '';
 		for (let i = 0; i < levels; i++) {
-			head += `Content-Type: multipart/mixed; boundary="n${i}"\r\n\r\n--n${i}\r\n`;
-			tail = `\r\n--n${i}--\r\n${tail}`;
+			head += `Content-Type: multipart/mixed; boundary="${boundary(i)}"\r\n\r\n--${boundary(i)}\r\n`;
+			tail = `\r\n--${boundary(i)}--\r\n${tail}`;
 		}
 		return `${head}Content-Type: text/plain\r\n\r\n${payload}${tail}`;
 	}
 
-	const timed = (fn: () => unknown): number => {
-		const start = performance.now();
-		fn();
-		return performance.now() - start;
-	};
+	/** The innermost leaf of a parsed `nestedMessage`. */
+	function innermost(node: MimeNode): MimeNode {
+		while (node.children.length > 0) node = node.children[0] as MimeNode;
+		return node;
+	}
 
-	it('does not grow with nesting depth', () => {
-		// 4 MiB of blank lines: the line-heavy shape each nesting level used to
-		// rescan. The previous splitter took roughly depth times the flat time.
-		const payload = '\r\n'.repeat(2 * 1024 * 1024);
-		const flat = nestedMessage(1, payload);
-		const deep = nestedMessage(100, payload);
+	// 64 KiB of each line shape. Blank and short lines are the shapes each
+	// nesting level used to rescan; delimiter-like lines hit the delimiter table
+	// on every line.
+	const PAYLOADS: Array<[string, string]> = [
+		['blank lines', '\r\n'.repeat(32 * 1024)],
+		['short lines', 'a\r\n'.repeat(21 * 1024)],
+		['delimiter-like lines', '--n0x\r\n--n1--x\r\n'.repeat(4 * 1024)],
+		['long lines', `${'x'.repeat(998)}\r\n`.repeat(64)],
+	];
 
-		const flatMs = Math.min(
-			timed(() => parseMimeTreeWithBounds(flat)),
-			timed(() => parseMimeTreeWithBounds(flat))
-		);
-		const deepMs = Math.min(
-			timed(() => parseMimeTreeWithBounds(deep)),
-			timed(() => parseMimeTreeWithBounds(deep))
-		);
+	describe.each(PAYLOADS)('%s', (_shape, payload) => {
+		it.each([
+			['in a single part', 1, (i: number) => `n${i}`],
+			['nested to the depth bound', 100, (i: number) => `n${i}`],
+			[
+				'nested to the depth bound, each boundary a prefix of the next',
+				100,
+				(i: number) => 'n'.repeat(i + 1),
+			],
+		])('reads each byte once %s', (_label, levels, boundary) => {
+			const raw = nestedMessage(levels, payload, boundary);
+			const meter = { bytes: 0 };
+			const { root, truncated } = parseMimeTreeWithBounds(raw, 0, false, meter);
 
-		// Relative to the flat parse on the same machine, so a loaded CI host
-		// slows both sides alike; the old splitter was ~20x slower here.
-		expect(deepMs).toBeLessThan(flatMs * 4 + 250);
-		expect(parseMimeTreeWithBounds(deep).truncated).toBe(false);
+			expect(truncated).toBe(false);
+			expect(innermost(root).rawBody).toBe(payload.replace(/\r\n/g, '\n'));
+			// The splitter that re-split every nested body read about `levels`
+			// times this.
+			expect(meter.bytes).toBeLessThanOrEqual(raw.length + 1);
+		});
 	});
 });
