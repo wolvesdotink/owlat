@@ -82,6 +82,14 @@ export const BASE_MESSAGE = Buffer.from(
 	'latin1'
 );
 
+/**
+ * The fixed `t=` of every oracle seal. mailauth 5.x, given no `signTime`, reads
+ * the clock once for the ARC-Message-Signature `t=` it signs and again for the
+ * one it writes; when the rounded second changes in between, the AMS is invalid
+ * on every verifier. No seal sets `x=`, so a past time never expires.
+ */
+const FIXTURE_SIGN_TIME = new Date('2026-06-17T12:00:00Z');
+
 /** Options for sealing one ARC hop with the `mailauth` oracle. */
 export interface SealHopOptions {
 	readonly domain: string;
@@ -108,6 +116,7 @@ export async function sealHop(input: Buffer, opts: SealHopOptions): Promise<Buff
 		cv: opts.cv,
 		i: opts.instance,
 		authResults: opts.authResults,
+		signTime: FIXTURE_SIGN_TIME,
 	} as unknown as Parameters<typeof sealMessage>[1]);
 	return Buffer.concat([headers, input]);
 }

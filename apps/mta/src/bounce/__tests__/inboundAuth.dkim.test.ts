@@ -17,7 +17,7 @@
 
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { generateKeyPairSync } from 'crypto';
-import { mailauthDkimSign } from '../../__tests__/helpers/mailauthDkimSign.js';
+import { FIXTURE_SIGN_TIME, mailauthDkimSign } from '../../__tests__/helpers/mailauthDkimSign.js';
 import { verifyDkim, type DkimDnsResolver } from './helpers/inboundDkimOracle.js';
 import type { ParsedMessage } from '@owlat/mail-message';
 
@@ -74,6 +74,8 @@ beforeAll(async () => {
 	});
 	expect(signResult.errors).toHaveLength(0);
 	expect(signResult.signatures).toContain('DKIM-Signature');
+	// The helper pins t= so the signed and the written stamp cannot drift apart.
+	expect(signResult.signatures).toContain(`t=${FIXTURE_SIGN_TIME.getTime() / 1000};`);
 
 	// Prepend the DKIM-Signature header to the original message.
 	signedMessage = Buffer.from(signResult.signatures + RAW_MESSAGE);
