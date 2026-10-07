@@ -104,6 +104,13 @@ export type ItemPatch = {
 	fill?: Partial<Pick<Doc<'threadItems'>, 'due' | 'amount' | 'options'>>;
 	verify?: Doc<'threadItems'>['verify'];
 	isReviewNeeded?: boolean;
+	/** An unconfirmed claim's changes to a tracked item, held apart until confirmed. */
+	pendingUpdate?: {
+		addEvidence: PlanEvidence[];
+		due?: Doc<'threadItems'>['due'];
+		amount?: Doc<'threadItems'>['amount'];
+		options?: string[];
+	};
 	activity?: {
 		type: ActivityType;
 		delta?: {
@@ -220,6 +227,36 @@ export function counterpartyKeyOf(
 	return other ? normalizeEmail(other) : undefined;
 }
 
+/** A URL as compared: scheme and host case-insensitive, path, query and fragment as written. */
+function urlKey(raw: string): string {
+	const text = raw.trim();
+	try {
+		const url = new URL(text);
+		return `${url.protocol.toLowerCase()}//${url.host.toLowerCase()}${url.pathname}${url.search}${url.hash}`;
+	} catch {
+		return text;
+	}
+}
+
+/** IBAN-shaped references: case and spacing never matter. */
+const IBAN_SHAPE = /^[a-z]{2}\d{2}(?:\s?[a-z0-9]){10,30}$/i;
+
+/**
+ * A reference as compared: case-sensitive (an order number `Ab12` is not
+ * `AB12`), whitespace collapsed; an IBAN ignores spaces and case.
+ */
+function refKey(raw: string): string {
+	const text = raw.trim().replace(/\s+/g, ' ');
+	return IBAN_SHAPE.test(text) ? text.replace(/\s/g, '').toUpperCase() : text;
+}
+
+/** Kind-specific comparable form of a value's text. Pure. */
+export function valueTextKey(kind: 'ref' | 'url' | 'text', raw: string): string {
+	if (kind === 'url') return urlKey(raw);
+	if (kind === 'ref') return refKey(raw);
+	return raw.trim().replace(/\s+/g, ' ');
+}
+
 function factValueText(value: ReduceFact['value']): string | undefined {
 	if (!value) return undefined;
 	switch (value.kind) {
@@ -228,7 +265,7 @@ function factValueText(value: ReduceFact['value']): string | undefined {
 		case 'money':
 			return `money:${value.value}:${value.currency.toUpperCase()}`;
 		default:
-			return `${value.kind}:${value.text.trim().toLowerCase()}`;
+			return `${value.kind}:${valueTextKey(value.kind, value.text)}`;
 	}
 }
 
@@ -239,7 +276,7 @@ export function storedFactValueText(fact: PlanFact): string | undefined {
 	if (value.kind === 'date') return `date:${value.at}`;
 	if (value.kind === 'money') return `money:${value.value}:${value.currency.toUpperCase()}`;
 	return fact.valueText !== undefined
-		? `${value.kind}:${fact.valueText.trim().toLowerCase()}`
+		? `${value.kind}:${valueTextKey(value.kind, fact.valueText)}`
 		: undefined;
 }
 
@@ -261,6 +298,10 @@ export function isProvenRestatement(fact: ReduceFact, stored: PlanFact): boolean
 	if (incoming !== undefined && existing !== undefined) return incoming === existing;
 	if (incoming !== undefined || existing !== undefined) return false;
 	return normalizedWords(fact.assertion) === normalizedWords(stored.assertionText);
+}
+
+function same(a: unknown, b: unknown): boolean {
+	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 /** Plan one message's changes. Pure. */
@@ -289,6 +330,24 @@ export function planReduction(
 		if (match && match.status !== 'superseded') {
 			const p = patch(match);
 			const added = newEvidence(match.evidence, proposal.evidence, opts.source, contentRevision);
+			if (proposal.verify === 'proposal' && match.verify !== 'proposal') {
+				// An unconfirmed claim never changes a tracked obligation: its quotes,
+				// deadline, amount and options wait as a pending update ("Check this
+				// change") until it is verified or the user confirms it.
+				const pending: NonNullable<ItemPatch['pendingUpdate']> = { addEvidence: added };
+				if (proposal.due && !same(proposal.due, match.due)) pending.due = proposal.due;
+				if (proposal.amount && !same(proposal.amount, match.amount))
+					pending.amount = proposal.amount;
+				if (proposal.options && !same(proposal.options, match.options)) {
+					pending.options = proposal.options;
+				}
+				if (added.length > 0 || pending.due || pending.amount || pending.options) {
+					p.pendingUpdate = pending;
+					p.activity ??= { type: 'item_changed' };
+				}
+				if (proposal.isReviewNeeded) p.isReviewNeeded = true;
+				continue;
+			}
 			if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
 			const fill: ItemPatch['fill'] = {};
 			if (!match.due && proposal.due) fill.due = proposal.due;
@@ -340,6 +399,13 @@ export function planReduction(
 		const dispositionFrom = current?.disposition ?? item.disposition;
 		const wantsStatus = t.to !== undefined && t.to !== statusFrom;
 
+		if (t.to && CLOSING.has(t.to) && !t.isVerified) {
+			// An unsupported closing claim has no effect at all: not on the status,
+			// not on the disposition, not on the quotes, even when the item
+			// already has that status.
+			drop('unverified');
+			continue;
+		}
 		if (wantsStatus && isStatusLocked(item)) {
 			// A human decided this item: keep their status, keep the new quotes,
 			// and ask a person to look (the writer logs it as item_changed).
@@ -347,11 +413,6 @@ export function planReduction(
 			p.isReviewNeeded = true;
 			if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
 			drop('corrected');
-			continue;
-		}
-		if (wantsStatus && t.to && CLOSING.has(t.to) && !t.isVerified) {
-			// An unsupported closing claim has no effect at all, disposition included.
-			drop('unverified');
 			continue;
 		}
 		if (wantsStatus && t.to && !isLegalStatusEdge(statusFrom, t.to, 'system')) {

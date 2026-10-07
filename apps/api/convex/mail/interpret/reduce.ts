@@ -65,15 +65,26 @@ export type ApplyOutcome =
 /** Rows read per source to find its current extraction. */
 const SOURCE_ROWS_SCAN = 50;
 
-async function currentRowOf(
+/**
+ * A source's two marked extractions: `current`, the one the replay folds in
+ * (the newest that READ the message), and `counted`, the newest attempt,
+ * which the source counters count. They differ while a later attempt failed:
+ * its failure shows, the claims of the last good read stay.
+ */
+async function markedRowsOf(
 	ctx: MutationCtx,
 	sourceKey: string
-): Promise<Doc<'messageInterpretations'> | null> {
+): Promise<{
+	current: Doc<'messageInterpretations'> | null;
+	counted: Doc<'messageInterpretations'> | null;
+}> {
 	const rows = await ctx.db
 		.query('messageInterpretations')
 		.withIndex('by_source_revision', (q) => q.eq('sourceKey', sourceKey))
 		.take(SOURCE_ROWS_SCAN);
-	return rows.find((r) => r.isCurrent === true) ?? null;
+	const current = rows.find((r) => r.isCurrent === true) ?? null;
+	const counted = rows.find((r) => r.isCounted === true) ?? current;
+	return { current, counted };
 }
 
 export const applyInterpretation = internalMutation({
@@ -145,8 +156,11 @@ export const applyInterpretation = internalMutation({
 		}
 
 		const isOutOfOrder = !!brief.checkpoint && args.sourceAt < brief.checkpoint.sourceAt;
-		const previous = await currentRowOf(ctx, sourceKey);
-		const isReapply = previous?.appliedAt !== undefined;
+		const { current: previous, counted: previousCounted } = await markedRowsOf(ctx, sourceKey);
+		// An attempt that read nothing never replaces the claims of the last good
+		// read (review round 2 F2): it is recorded and counted, not folded in.
+		const isKeepingPrevious = !args.result && previous?.payload !== undefined;
+		const isReapply = previous?.appliedAt !== undefined && !isKeepingPrevious;
 		let status: InterpretationStatus = args.status;
 		let errorCode = args.errorCode;
 
@@ -205,7 +219,8 @@ export const applyInterpretation = internalMutation({
 			...(args.sourceVersion ? { sourceVersion: args.sourceVersion } : {}),
 			...(args.retryCount !== undefined ? { retryCount: args.retryCount } : {}),
 			sourceAt: args.sourceAt,
-			isCurrent: true,
+			isCurrent: !isKeepingPrevious,
+			isCounted: true,
 			deletionEpoch: brief.deletionEpoch,
 			appliedAt: now,
 			updatedAt: now,
@@ -220,8 +235,11 @@ export const applyInterpretation = internalMutation({
 				createdAt: now,
 			});
 		}
-		if (previous && previous._id !== interpretationId) {
+		if (previous && previous._id !== interpretationId && !isKeepingPrevious) {
 			await ctx.db.patch(previous._id, { isCurrent: false });
+		}
+		if (previousCounted && previousCounted._id !== interpretationId) {
+			await ctx.db.patch(previousCounted._id, { isCounted: false });
 		}
 
 		if (isRebuild && (entry || isReapply)) {
@@ -270,7 +288,7 @@ export const applyInterpretation = internalMutation({
 		const stored = { status, skipReason: args.skipReason };
 		const sourceCounts = shiftCount(
 			brief.sourceCounts ?? EMPTY_SOURCE_COUNTS,
-			previous ? sourceBucketOf(previous) : null,
+			previousCounted ? sourceBucketOf(previousCounted) : null,
 			sourceBucketOf(stored)
 		);
 

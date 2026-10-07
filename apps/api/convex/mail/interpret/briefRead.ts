@@ -137,6 +137,14 @@ export async function openItem(row: Doc<'threadItems'>, locale: AppLocale): Prom
 		...(row.replacedById ? { replacedById: row.replacedById } : {}),
 		...(row.possibleDuplicateOfId ? { possibleDuplicateOfId: row.possibleDuplicateOfId } : {}),
 		...(row.commitmentId ? { commitmentId: row.commitmentId } : {}),
+		...(row.pendingUpdate
+			? {
+					pendingUpdate: {
+						...row.pendingUpdate,
+						evidence: await openEvidence(row.pendingUpdate.evidence),
+					},
+				}
+			: {}),
 		askedAt: row.askedAt,
 		updatedAt: row.updatedAt,
 	};

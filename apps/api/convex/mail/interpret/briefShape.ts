@@ -93,6 +93,16 @@ export const briefItemViewValidator = v.object({
 	replacedById: v.optional(v.id('threadItems')),
 	possibleDuplicateOfId: v.optional(v.id('threadItems')),
 	commitmentId: v.optional(v.id('mailCommitments')),
+	// An unconfirmed claim's changes to this tracked item ("Check this change"):
+	// not applied until verified or confirmed.
+	pendingUpdate: v.optional(
+		v.object({
+			evidence: v.array(evidenceViewValidator),
+			due: v.optional(itemDueValidator),
+			amount: v.optional(itemAmountValidator),
+			options: v.optional(v.array(v.string())),
+		})
+	),
 	askedAt: v.number(),
 	updatedAt: v.number(),
 	// Changed since the viewer last looked.

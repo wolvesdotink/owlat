@@ -19,6 +19,7 @@ const BACKOFF_CODES: ReadonlySet<string> = new Set([
 	'model_error',
 	'stale',
 	'source_changed',
+	'mode_changed',
 	'body_unavailable',
 ]);
 const GATE_CODES: ReadonlySet<string> = new Set(['ai_off', 'budget']);
