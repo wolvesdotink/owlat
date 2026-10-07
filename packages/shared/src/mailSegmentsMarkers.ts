@@ -197,9 +197,12 @@ export function parseHeaderLine(line: string): { field: HeaderField; value: stri
 	return field ? { field, value: (match[2] ?? '').trim() } : null;
 }
 
-/** A forwarded subject: `FW:`, `Fwd:`, German `WG:`, French `TR:`. */
+/**
+ * A forwarded subject: `FW:`, `Fwd:`, German `WG:`, French `TR:`. A reply to a
+ * forward (`RE: FW: …`) is a reply.
+ */
 export function isForwardSubject(subject: string): boolean {
-	return /^(?:(?:RE|AW|Réf)\s?:\s?)*(?:FW|FWD|WG|TR)\s?:/i.test(subject.trim());
+	return /^(?:FW|FWD|WG|TR)\s?:/i.test(subject.trim());
 }
 
 // ── Signatures ──
@@ -219,7 +222,7 @@ export function isMobileSignature(line: string): boolean {
 }
 
 const CLOSING =
-	/^(?:(?:best|kind|warm|many|with best)\s+(?:regards|wishes)|regards|best|cheers|thanks(?: again| a lot| so much)?|thank you|many thanks|sincerely|yours(?: sincerely| truly)?|all the best|talk soon|(?:mit\s+)?(?:freundlichen|besten|herzlichen|lieben|viele|beste|liebe|schöne)\s+grüße|(?:mit\s+)?freundlichen\s+gruß|grüße|gruß|lg|vg|mfg|danke(?: dir| ihnen| schön)?|vielen dank|bis bald|cordialement|bien cordialement|bien à (?:vous|toi)|bonne (?:journée|soirée)|merci(?: beaucoup| d'avance)?|à bientôt|amicalement|salutations(?: distinguées)?)[\s,.!]*$/i;
+	/^(?:(?:best|kind|warm|many|with best)\s+(?:regards|wishes)|regards|best|cheers|thanks(?: again| a lot| so much)?|thank you|many thanks|sincerely|yours(?: sincerely| truly)?|all the best|talk soon|(?:mit\s+)?(?:(?:sehr\s+)?freundlichen?|besten?|herzlichen?|lieben?|vielen?|schönen?)\s+grü(?:ß|ss)en?|(?:mit\s+)?(?:freundlichem|bestem|herzlichem)\s+gru(?:ß|ss)|grü(?:ß|ss)e|gru(?:ß|ss)|lg|vg|mfg|danke(?: dir| ihnen| schön)?|vielen dank|bis bald|cordialement|bien cordialement|bien à (?:vous|toi)|bonne (?:journée|soirée)|merci(?: beaucoup| d'avance)?|à bientôt|amicalement|salutations(?: distinguées)?)[\s,.!]*$/i;
 
 /** A closing on a line of its own ("Best regards,", "Viele Grüße", "Cordialement"). */
 export function isClosingLine(line: string): boolean {

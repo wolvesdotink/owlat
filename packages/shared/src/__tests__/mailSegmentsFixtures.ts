@@ -366,6 +366,15 @@ export const SEGMENT_CASES: SegmentCase[] = [
 		],
 	},
 	{
+		name: 'formal German closing with a company footer',
+		text: 'Sehr geehrte Frau Lind,\n\nbitte senden Sie uns den Vertrag bis zum 15. Oktober zurück.\n\nMit freundlichen Grüßen\nClara Vogel\nVogel & Partner GmbH\nGeschäftsführerin: Clara Vogel · Amtsgericht Hamburg HRB 00000\n',
+		expect: [
+			['fresh', 'Vertrag bis zum 15. Oktober'],
+			['signature', 'Mit freundlichen Grüßen'],
+			['disclaimer', 'Amtsgericht Hamburg'],
+		],
+	},
+	{
 		name: 'legal words in running text stay fresh',
 		text: 'The hearing at the Amtsgericht moved to Monday.\nCan you confirm you can attend?\n',
 		expect: [['fresh', 'Can you confirm you can attend?']],

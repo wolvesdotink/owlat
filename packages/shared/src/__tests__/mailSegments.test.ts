@@ -181,3 +181,24 @@ describe('segmentMessage: details', () => {
 		expect(Date.now() - started).toBeLessThan(2_000);
 	});
 });
+
+describe('segmentMessage: Outlook forwards', () => {
+	const body =
+		'Kannst du das übernehmen?\n\n________________________________\nVon: Tomás Ruiz <tomas@example.net>\nGesendet: Montag, 5. Oktober 2026 11:00\nAn: Lena Hofmann <lena@example.org>\nBetreff: Zugang\n\nBitte richtet mir einen Zugang ein.\n';
+
+	it('reads the header block as forwarded when the message subject is a forward', () => {
+		const kinds = (subject?: string) =>
+			segmentMessage({ text: body, subject }).segments.map((s) => s.kind);
+		expect(kinds('WG: Zugang')).toEqual(['fresh', 'forwarded']);
+		expect(kinds('FW: Zugang')).toEqual(['fresh', 'forwarded']);
+		expect(kinds('TR: Zugang')).toEqual(['fresh', 'forwarded']);
+		expect(kinds('AW: Zugang')).toEqual(['fresh', 'quoted']);
+		expect(kinds('RE: FW: Zugang')).toEqual(['fresh', 'quoted']);
+		expect(kinds()).toEqual(['fresh', 'quoted']);
+	});
+
+	it('keeps the original sender of the forwarded block', () => {
+		const result = segmentMessage({ text: body, subject: 'WG: Zugang' });
+		expect(result.segments[1]?.author).toEqual({ name: 'Tomás Ruiz', email: 'tomas@example.net' });
+	});
+});

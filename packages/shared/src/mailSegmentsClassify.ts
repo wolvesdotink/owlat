@@ -104,7 +104,17 @@ function nextNonBlank(lines: SourceLine[], from: number): number {
 	return -1;
 }
 
-export function classifyLines(lines: SourceLine[]): Classification {
+export interface ClassifyOptions {
+	/**
+	 * The message's own subject is a forward (`FW:`). Outlook writes the same
+	 * header block for a reply and a forward, and keeps the ORIGINAL subject in
+	 * it, so only the outer subject tells them apart: the first header block
+	 * under the fresh text is then the forwarded message.
+	 */
+	forwardedSubject?: boolean;
+}
+
+export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}): Classification {
 	const regionOf: (Region | null)[] = lines.map(() => null);
 	const reasons = new Set<UncertainReason>();
 	let penalty = 0;
@@ -117,6 +127,7 @@ export function classifyLines(lines: SourceLine[]): Classification {
 	const ctx = new Map<number, Region>([[0, open('fresh')]]);
 	const firstOrigin = new Map<number, QuoteOrigin>();
 	let lastRegion: Region | null = null;
+	let headerSeen = false;
 
 	const claim = (from: number, to: number, region: Region) => {
 		for (let k = from; k < to; k++) if (lines[k]?.text !== '') regionOf[k] = region;
@@ -167,7 +178,12 @@ export function classifyLines(lines: SourceLine[]): Classification {
 			(line.hint === 'outlookHeader' && (!!header || !lead))
 		) {
 			const fields = header?.fields ?? {};
-			const kind = fields.subject && isForwardSubject(fields.subject) ? 'forwarded' : 'quoted';
+			const first = !headerSeen && line.depth === 0;
+			headerSeen = true;
+			const forwarded =
+				(fields.subject !== undefined && isForwardSubject(fields.subject)) ||
+				(first && options.forwardedSubject === true);
+			const kind = forwarded ? 'forwarded' : 'quoted';
 			const after = header && (isHeader || line.hint === 'outlookHeader') ? header.end : i + 1;
 			const { region } = startRegion(i, after, kind, originOf(fields));
 			if (line.hint === 'outlookHeader' && !fields.from) reasons.add('unparsed_quote_header');
@@ -272,7 +288,7 @@ function splitFreshTails(
  *     and is followed only by a short name block;
  *   - company legal lines at the end of a signature join the disclaimer.
  */
-export function splitFreshTail(
+function splitFreshTail(
 	texts: string[],
 	breaks: boolean[]
 ): { signature: number; disclaimer: number; byClosing: boolean } {
