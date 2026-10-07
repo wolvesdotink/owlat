@@ -16,6 +16,7 @@ import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { useLocalized } from '~/composables/useLocalized';
 import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListClock';
+import { briefRowLine } from '~/utils/briefRowLine';
 
 const { t, locale } = useI18n();
 // Ticks with the list's shared minute clock (usePostboxListClock).
@@ -71,6 +72,9 @@ const trustMarkerLabel = computed(() => {
 	if (!marker) return '';
 	return `${t(marker.label)} — ${markerText(marker.title)}`;
 });
+
+/** The top open item instead of the snippet, once the thread is interpreted (SPEC §7). */
+const briefLine = computed(() => briefRowLine(props.msg.briefTop, locale.value));
 
 /** Absolute wake time of a snoozed row, formatted against the active locale. */
 function snoozedTitle(until: number): string {
@@ -146,7 +150,26 @@ function onCancelFollowUp(event: MouseEvent) {
 				{{ msg.subject || t('components.postbox.postboxThreadRow.noSubject') }}
 			</p>
 		</div>
-		<p v-if="!compact" class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
+		<p
+			v-if="!compact && briefLine"
+			class="pbx-row-snippet text-xs text-text-secondary truncate mt-0.5"
+			data-testid="row-brief-line"
+		>
+			<b
+				class="font-medium"
+				:class="briefLine.tone === 'info' ? 'text-info' : 'text-text-primary'"
+				>{{ t(briefLine.leadKey, { count: briefLine.count }, briefLine.count) }}</b
+			>
+			{{ briefLine.text
+			}}<template v-if="briefLine.due">
+				{{ t('components.brief.row.by', { date: briefLine.due }) }}</template
+			><template v-if="briefLine.isNoReplyNeeded">
+				· {{ t('components.brief.row.noReplyNeeded') }}</template
+			><span v-if="briefLine.keepsSnippet && msg.snippet" class="text-text-tertiary">
+				· “{{ msg.snippet }}”</span
+			>
+		</p>
+		<p v-else-if="!compact" class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
 			{{ msg.snippet }}
 		</p>
 	</PostboxRowCore>

@@ -14,4 +14,3 @@
 draftResponsePlans.by_inbound_draft
 draftResponsePlans.by_mail_draft
 threadItems.by_counterparty
-threadItems.by_mailbox_responsibility_due

@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { needsReplyClarificationValidator } from '../lib/validators/clarification';
+import { briefTopValidator } from '../lib/validators/briefTop';
 import { draftQualityValidator } from '../lib/convexValidators';
 import {
 	mailCategoryLabelValidator,
@@ -218,6 +219,11 @@ export const mailThreadsTables = {
 				classifiedAt: v.number(),
 			})
 		),
+		// The thread brief folded down for list rows, the Answer queue and the
+		// Workbench (top open item, counts, first "Latest update" line; texts
+		// sealed). Rewritten by mail/interpret/briefTop.ts whenever the items
+		// change; absent until the thread is first interpreted.
+		briefTop: v.optional(briefTopValidator),
 		// Cached advisory AI summary for the long-thread summary strip (mail/ai/assist.ts
 		// getOrGenerateThreadSummary + mail/ai/summaryCache.ts). `messageCount` is the
 		// thread's messageCount at generation time; the cache is served only while it

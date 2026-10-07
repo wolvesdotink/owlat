@@ -66,7 +66,6 @@ export:packages/shared/src/threadBrief.ts:FACT_VALUE_KINDS
 export:packages/shared/src/threadBrief.ts:INTERPRETATION_SOURCE_KINDS
 export:packages/shared/src/threadBriefRules.ts:LEGAL_STATUS_EDGES
 export:packages/shared/src/threadBriefRules.ts:itemFacetRisk
-export:packages/shared/src/threadBriefRules.ts:secondaryReactions
 export:packages/shared/src/tlsReport.ts:gunzipTlsReport
 export:packages/shared/src/utils/errors.ts:normalizeError
 export:packages/shared/src/verp.ts:VERP_KEY_MIN_BYTES
