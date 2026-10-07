@@ -30,6 +30,7 @@ import {
 	transferDecode,
 	type MimeNode,
 } from '@owlat/mail-message/parse/body';
+import { decodeDeclaredCharset } from '@owlat/mail-message/parse/charset';
 import { decodeLocated, decodedLength, locateMimeTree } from '@owlat/mail-message/parse/locate';
 import { bytesToBinaryString, binaryStringToBytes } from '@owlat/mail-message/parse/binaryString';
 
@@ -114,6 +115,17 @@ export function extractFirstPartByType(
 		found = leaf;
 	});
 	return found ? toExtracted(found, 'part') : null;
+}
+
+/**
+ * A text part's content under the charset it declares. A part that declares
+ * none is read as UTF-8 rather than under the RFC 2045 us-ascii default: that is
+ * what an iCalendar part means without one (RFC 5545 §3.1.4). A leading
+ * byte-order mark never overrides the declared charset (`decodeDeclaredCharset`):
+ * an ISO-8859-1 part that happens to start with `EF BB BF` stays ISO-8859-1.
+ */
+export function decodePartText(part: Pick<ExtractedAttachment, 'bytes' | 'charset'>): string {
+	return decodeDeclaredCharset(part.bytes, part.charset ?? 'utf-8');
 }
 
 /**

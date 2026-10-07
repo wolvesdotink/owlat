@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { extractFirstPartByType } from '@owlat/shared/mailMime';
+import { decodePartText, extractFirstPartByType } from '@owlat/shared/mailMime';
 import {
 	parseICalendar,
 	buildReplyICalendar,
@@ -46,9 +46,10 @@ async function loadInviteText(): Promise<string | null> {
 	const bin = await loadRawEml(props.messageId);
 	if (!bin) return null;
 	// Invites are commonly an inline text/calendar part (no disposition or
-	// filename), so match by content-type rather than the attachment index.
+	// filename), so match by content-type rather than the attachment index. Read
+	// under its declared charset, as ingest does when it stores the part.
 	const part = extractFirstPartByType(bin, 'text/calendar');
-	return part ? new TextDecoder('utf-8').decode(part.bytes) : null;
+	return part ? decodePartText(part) : null;
 }
 
 onMounted(async () => {
