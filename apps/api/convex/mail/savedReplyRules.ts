@@ -59,19 +59,25 @@ export const SAVED_REPLY_LIST_CAP = 200;
 const MAX_VARIABLES = 20;
 
 /**
- * The composer's allowlist, minus every `<img>` a saved reply could never show
- * (#1293). A pasted image's bytes are a part of its draft, marked with
+ * The composer's allowlist, minus every image source a saved reply could never
+ * show (#1293). A pasted image's bytes are a part of its draft, marked with
  * `data-inline-cid`, which the allowlist drops along with the session's `blob:`
- * preview; a `cid:` src names a part of another message. Kept, any of them
- * would be inserted into later drafts and go out as an empty image.
+ * preview; a `cid:` src names a part of another message. Kept, an image left
+ * with no source would be inserted into later drafts and go out empty. So a
+ * `cid:` src is removed, and an `<img>` goes only when neither a src nor a
+ * (sanitized) srcset is left to show it from.
  */
 const SAVED_REPLY_SANITIZE_CONFIG: sanitizeHtml.IOptions = {
 	...POSTBOX_SANITIZE_CONFIG,
-	exclusiveFilter: (frame) => {
-		if (frame.tag !== 'img') return false;
-		const src = frame.attribs['src']?.trim() ?? '';
-		return src ? /^cid:/i.test(src) : !frame.attribs['srcset'];
+	transformTags: {
+		img: (tagName, attribs) => {
+			if (!/^cid:/i.test(attribs['src']?.trim() ?? '')) return { tagName, attribs };
+			const { src: _cid, ...rest } = attribs;
+			return { tagName, attribs: rest };
+		},
 	},
+	exclusiveFilter: (frame) =>
+		frame.tag === 'img' && !frame.attribs['src']?.trim() && !frame.attribs['srcset']?.trim(),
 };
 
 export function sanitizeSavedReplyBody(html: string): string {

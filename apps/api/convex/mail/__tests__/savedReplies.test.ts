@@ -154,6 +154,31 @@ describe('personal saved replies', () => {
 		);
 	});
 
+	it('keep an image a usable srcset still shows when its src is cid:, on create and update', async () => {
+		const t = await harness();
+		const body =
+			'<img src="cid:logo@other" srcset="https://cdn.owlat.example/logo.png 1x" alt="logo">';
+		const kept = '<img srcset="https://cdn.owlat.example/logo.png 1x" alt="logo" />';
+		const id = await t.mutation(api.mail.savedReplies.create, {
+			scope: 'personal',
+			name: 'Srcset',
+			shortcut: '',
+			bodyHtml: body,
+		});
+		expect((await t.query(api.mail.savedReplies.listMine, {}))[0]?.bodyHtml).toBe(kept);
+
+		await t.mutation(api.mail.savedReplies.update, { replyId: id, bodyHtml: '<p>x</p>' });
+		await t.mutation(api.mail.savedReplies.update, { replyId: id, bodyHtml: body });
+		expect((await t.query(api.mail.savedReplies.listMine, {}))[0]?.bodyHtml).toBe(kept);
+
+		// A srcset with nothing usable left after sanitizing does not save the image.
+		await t.mutation(api.mail.savedReplies.update, {
+			replyId: id,
+			bodyHtml: '<p>x</p><img src="cid:logo@other" srcset="blob:https://app.owlat.example/1 1x">',
+		});
+		expect((await t.query(api.mail.savedReplies.listMine, {}))[0]?.bodyHtml).toBe('<p>x</p>');
+	});
+
 	it('refuses an empty name and an over-long shortcut', async () => {
 		const t = await harness();
 		await expect(
