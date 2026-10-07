@@ -84,6 +84,14 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 	),
 	relation(
 		'inboundMessages',
+		'threadItems',
+		'pendingUpdate.evidence[].source.id',
+		'unlink',
+		'An unconfirmed update’s evidence entry quotes the message and goes with it; the update goes when none is left.',
+		'the erased message was the item’s only evidence'
+	),
+	relation(
+		'inboundMessages',
 		'threadFacts',
 		'evidence[].source.id',
 		'retain',

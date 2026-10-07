@@ -139,6 +139,22 @@ const NESTED_SEEDS: Record<
 		source: { kind: 'inbound', id: parentId },
 		sourceKey: `inbound:${parentId}`,
 	}),
+	'threadItems.pendingUpdate.evidence[].source.id': async (ctx, seeder, parentId) => {
+		const evidence = [
+			{
+				source: { kind: 'inbound', id: parentId },
+				segmentId: 's0',
+				start: 0,
+				end: 1,
+				contentRevision: 'rev',
+			},
+		];
+		return {
+			...(await foreignThread(ctx, seeder, parentId)),
+			evidence,
+			pendingUpdate: { evidence },
+		};
+	},
 	'threadItems.evidence[].source.id': async (ctx, seeder, parentId) => ({
 		...(await foreignThread(ctx, seeder, parentId)),
 		evidence: [
