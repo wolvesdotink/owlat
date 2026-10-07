@@ -33,6 +33,7 @@ import {
 } from '../../e2ee/__tests__/sealedMailTestHelpers';
 import {
 	clearsign,
+	clearsignOctets,
 	composeClearsignedMessage,
 	composeSignedPgpMime,
 	detachedSign,
@@ -97,11 +98,12 @@ async function seedMailbox(t: T): Promise<void> {
 async function ingest(
 	t: T,
 	raw: string,
-	args: { subject: string; textBody?: string; messageId: string }
+	args: { subject: string; textBody?: string; messageId: string },
+	rawEncoding: BufferEncoding = 'utf8'
 ): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> {
 	return await t.action(internal.mail.delivery.ingestFromWebhook, {
 		deliveryId: 'd-1',
-		rawBytesBase64: Buffer.from(raw, 'utf8').toString('base64'),
+		rawBytesBase64: Buffer.from(raw, rawEncoding).toString('base64'),
 		recipientAddress: RECIPIENT,
 		from: SENDER,
 		to: [RECIPIENT],
@@ -297,6 +299,54 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 			textBody: `Clear ${CANARY} text.`,
 			messageId: '<clearsigned-ingest-0001@sender.test>',
 		});
+		expect('messageId' in result).toBe(true);
+		if (!('messageId' in result)) return;
+
+		const msg = await readRow(t, result.messageId);
+		expect(msg.inboundSignatureInfo).toEqual({
+			isSigned: true,
+			isSignatureValid: true,
+			signerFingerprint: sender.fingerprint,
+			keySource: 'pinned',
+		});
+	});
+
+	it('an ISO-8859-1 clearsigned body sent base64 delivers with a verified verdict (#1300)', async () => {
+		// The armor is invisible in the raw message, and its octets are not UTF-8:
+		// the ingest gate has to find it in the decoded part, and the verifier has
+		// to hash the octets as sent.
+		const t = convexTest(schema, modules);
+		await seedMailbox(t);
+		const sender = await generateTestKeypair(SENDER);
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: sender.publicKeyArmored,
+		});
+
+		const text = `Grüße aus Köln, ${CANARY}.`;
+		const raw = composeClearsignedMessage({
+			from: SENDER,
+			to: RECIPIENT,
+			subject: 'clearsigned latin1',
+			clearsignArmor: await clearsignOctets(
+				new Uint8Array(Buffer.from(text, 'latin1')),
+				sender.privateKeyArmored
+			),
+			messageId: '<clearsigned-ingest-latin1@sender.test>',
+			charset: 'iso-8859-1',
+			encoding: 'base64',
+		});
+		const result = await ingest(
+			t,
+			raw,
+			{
+				subject: 'clearsigned latin1',
+				textBody: text,
+				messageId: '<clearsigned-ingest-latin1@sender.test>',
+			},
+			'latin1'
+		);
 		expect('messageId' in result).toBe(true);
 		if (!('messageId' in result)) return;
 
