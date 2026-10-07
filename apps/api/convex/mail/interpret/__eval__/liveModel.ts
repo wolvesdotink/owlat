@@ -16,7 +16,8 @@ import type { AppLocale } from '@owlat/shared/appLocales';
 import type { EvalModel } from './runEval';
 import type { EvalParty } from './corpus';
 import type { EvalModelMessage } from './replay';
-import { buildInterpretInput, clampOutput, resolveParticipant } from '../pipeline';
+import { buildInterpretInput, resolveParticipant } from '../pipeline';
+import { clampOutput } from '../clamp';
 import { buildInterpretPrompt } from '../prompt';
 import {
 	interpretOutputSchema,

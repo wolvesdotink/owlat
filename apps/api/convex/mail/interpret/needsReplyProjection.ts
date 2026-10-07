@@ -31,7 +31,7 @@ import { isUnattendedAddress } from '../needsReplyHeuristic';
 import type { needsReplyClarificationArgValidator } from '../../lib/validators/clarification';
 import type { AppLocale } from '@owlat/shared/appLocales';
 import { localDayKey } from './dueDate';
-import { clampText } from './pipeline';
+import { clampText } from './clamp';
 import { responsibilityOf } from './reducePlan';
 import type { ReduceResult } from './reduceInput';
 

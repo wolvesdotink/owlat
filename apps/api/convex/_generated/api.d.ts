@@ -13,6 +13,7 @@ import type * as mail_interpret_brief from '../mail/interpret/brief.js';
 import type * as mail_interpret_briefProject from '../mail/interpret/briefProject.js';
 import type * as mail_interpret_briefRead from '../mail/interpret/briefRead.js';
 import type * as mail_interpret_briefRow from '../mail/interpret/briefRow.js';
+import type * as mail_interpret_clamp from '../mail/interpret/clamp.js';
 import type * as mail_interpret_counters from '../mail/interpret/counters.js';
 import type * as mail_interpret_dueDate from '../mail/interpret/dueDate.js';
 import type * as mail_interpret_eligibility from '../mail/interpret/eligibility.js';
@@ -1559,6 +1560,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/briefProject': typeof mail_interpret_briefProject;
 	'mail/interpret/briefRead': typeof mail_interpret_briefRead;
 	'mail/interpret/briefRow': typeof mail_interpret_briefRow;
+	'mail/interpret/clamp': typeof mail_interpret_clamp;
 	'mail/interpret/counters': typeof mail_interpret_counters;
 	'mail/interpret/dueDate': typeof mail_interpret_dueDate;
 	'mail/interpret/eligibility': typeof mail_interpret_eligibility;

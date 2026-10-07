@@ -11,16 +11,14 @@
  *     `teamReply` source: the inbound row's draft can change or be cleared
  *     afterwards. Call it in the transaction that finalizes the send.
  *
- * Both have internal-mutation twins for callers in an action.
+ * Both are helpers for the enqueueing mutation's own transaction (delivery,
+ * the send finalization); an action reaches them through its own mutation.
  */
 
-import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { internalMutation } from '../../lib/writeFence';
 import {
 	interpretationSourceKey,
-	interpretationSourceValidator,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
 import { threadRefToFields, type ThreadRef } from '../../lib/validators/threadRef';
@@ -144,26 +142,3 @@ export async function captureTeamReplySnapshot(
 		updatedAt: now,
 	});
 }
-
-/** {@link captureInterpretSource} for callers in an action. */
-export const captureSource = internalMutation({
-	args: {
-		source: interpretationSourceValidator,
-		isLive: v.boolean(),
-		precedence: v.optional(v.string()),
-		listId: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		await captureInterpretSource(ctx, args);
-		return null;
-	},
-});
-
-/** {@link captureTeamReplySnapshot} for callers in an action. */
-export const captureTeamReply = internalMutation({
-	args: { sendId: v.id('transactionalSends'), subject: v.string(), text: v.string() },
-	handler: async (ctx, args) => {
-		await captureTeamReplySnapshot(ctx, args);
-		return null;
-	},
-});

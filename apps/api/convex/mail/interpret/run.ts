@@ -30,7 +30,6 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import type { InterpretationStatus } from '@owlat/shared/threadBrief';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -39,7 +38,7 @@ import { runLlmObject } from '../../lib/llm/dispatch';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import { logWarn } from '../../lib/runtimeLog';
-import type { InterpretMode } from '@owlat/shared/threadBrief';
+import type { InterpretMode, InterpretationStatus } from '@owlat/shared/threadBrief';
 import {
 	interpretModeValidator,
 	interpretationSourceValidator,
@@ -57,13 +56,8 @@ import { buildInterpretPrompt, renderSegments } from './prompt';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
 import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
-import {
-	buildInterpretInput,
-	clampOutput,
-	runStatusOf,
-	toReduceResult,
-	verifyClaimsOf,
-} from './pipeline';
+import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from './pipeline';
+import { clampOutput } from './clamp';
 import { needsReplyProjectionOf, type NeedsReplyProjection } from './needsReplyProjection';
 import { verifyClaims } from './verify';
 import { isRetryDue } from './retry';

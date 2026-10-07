@@ -10,14 +10,13 @@ import { segmentMessage } from '@owlat/shared/mailSegments';
 import { groundProposals } from '../ground';
 import {
 	buildInterpretInput,
-	clampOutput,
-	clampText,
 	parseIsoMs,
 	resolveParticipant,
 	runStatusOf,
 	toReduceResult,
 	verifyClaimsOf,
 } from '../pipeline';
+import { clampOutput, clampText } from '../clamp';
 import type { InterpretBriefOutput, InterpretInputParticipant } from '../schema';
 import { scopeBody } from '../scope';
 import { needsReplyProjectionOf, needsReplyResultOf } from '../needsReplyProjection';
