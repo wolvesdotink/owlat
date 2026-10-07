@@ -123,9 +123,14 @@ export const threadBriefTables = {
 		// When the reducer folded this extraction into the thread (same
 		// transaction as the write); a replay of an applied row is a no-op.
 		appliedAt: v.optional(v.number()),
-		// The newest applied extraction of its source (one per source): the
-		// row the brief's source counters count.
+		// The newest applied extraction of its source that read the message
+		// (one per source): the one an ordered replay folds in.
 		isCurrent: v.optional(v.boolean()),
+		// The newest attempt of its source (one per source): the row the brief's
+		// source counters count. Differs from `isCurrent` while a later attempt
+		// failed without reading the message: the failure counts, the last good
+		// read's claims stay.
+		isCounted: v.optional(v.boolean()),
 		// Message date of the source: the order an ordered replay folds it in.
 		sourceAt: v.optional(v.number()),
 		// Fingerprint of the stored body the run read (mail/interpret/sourceVersion.ts);
@@ -151,6 +156,10 @@ export const threadBriefTables = {
 	})
 		// Idempotency: one extraction per source revision and extractor version.
 		.index('by_source_revision', ['sourceKey', 'contentRevision', 'extractorVersion'])
+		// A source's current (replayed) and counted extraction, fetched directly
+		// however many revisions it has.
+		.index('by_source_current', ['sourceKey', 'isCurrent'])
+		.index('by_source_counted', ['sourceKey', 'isCounted'])
 		.index('by_mail_thread', ['mailThreadId'])
 		// "Read the exact wording": every source of a thread that asked for it.
 		.index('by_mail_thread_exact_wording', ['mailThreadId', 'isExactWordingRequired'])
@@ -230,6 +239,16 @@ export const threadBriefTables = {
 		counterpartyKey: v.optional(v.string()),
 		// `<sourceKey>#<index>`: the proposal that created it, so an ordered
 		// replay keeps the item's id.
+		// An unconfirmed claim's changes to this (tracked) item, held apart until
+		// it is verified or the user confirms it ("Check this change").
+		pendingUpdate: v.optional(
+			v.object({
+				evidence: v.array(evidenceValidator),
+				due: v.optional(itemDueValidator),
+				amount: v.optional(itemAmountValidator),
+				options: v.optional(v.array(v.string())),
+			})
+		),
 		lineage: v.optional(v.string()),
 		// Message date of the first evidence: the "age" of compareForYou.
 		askedAt: v.number(),

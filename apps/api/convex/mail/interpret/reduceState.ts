@@ -71,6 +71,13 @@ export async function itemToMem(row: Doc<'threadItems'>): Promise<MemItem> {
 		...(row.completion ? { completion: row.completion } : {}),
 		...(row.isReviewNeeded !== undefined ? { isReviewNeeded: row.isReviewNeeded } : {}),
 		assertionText: await openMessageBody(row.assertion),
+		storedDisplay: {
+			en: await openMessageBody(row.display.en),
+			de: await openMessageBody(row.display.de),
+		},
+		...(row.pendingUpdate
+			? { pendingUpdate: { ...row.pendingUpdate, evidence: [...row.pendingUpdate.evidence] } }
+			: {}),
 		askedAt: row.askedAt,
 		...(row.possibleDuplicateOfId ? { possibleDuplicateOfId: row.possibleDuplicateOfId } : {}),
 	};
