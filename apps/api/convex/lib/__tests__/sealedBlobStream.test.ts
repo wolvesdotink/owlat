@@ -6,6 +6,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { Id } from '../../_generated/dataModel';
+import { firstDifference } from '../../__tests__/helpers/bytes';
 import { openBytesAtRest, sealBytesAtRest } from '../atRestBodies';
 import { readSealedBlobBytesStreaming } from '../sealedBlobStream';
 import { readSealedBlobBytes } from '../sealedBlob';
@@ -25,8 +26,9 @@ describe('readSealedBlobBytesStreaming', () => {
 			const plain = sample(size);
 			const sealed = await sealBytesAtRest(SECRET, plain);
 			const streamed = await readSealedBlobBytesStreaming(storage(sealed), ID, SECRET);
-			expect(streamed).toEqual(await openBytesAtRest(SECRET, sealed));
-			expect(streamed).toEqual(plain);
+			if (!streamed) throw new Error(`no bytes for a sealed ${size}-byte blob`);
+			expect(firstDifference(streamed, await openBytesAtRest(SECRET, sealed))).toBe(-1);
+			expect(firstDifference(streamed, plain)).toBe(-1);
 		}
 	});
 
