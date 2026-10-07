@@ -14,6 +14,7 @@ import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import type { AuthRateLimiter } from '../rateLimit.js';
 import type { SequenceGate } from './helpers/sequenceGate.js';
+import type { ArgForm } from '../parser.js';
 
 /** Per-connection auth — populated by LOGIN, cleared on LOGOUT. */
 export interface AuthState {
@@ -257,7 +258,11 @@ export interface ImapCommandModule<TArgs = unknown> {
 	 * running command to complete, and no command starts until it has.
 	 */
 	concurrent?(args: TArgs): boolean;
-	parseArgs(rawArgs: string[]): ParseResult<TArgs>;
+	/**
+	 * `argForms` says how each raw arg was written (`ParsedCommand.argForms`),
+	 * for a module that must tell a quoted string from a list.
+	 */
+	parseArgs(rawArgs: string[], argForms?: readonly ArgForm[]): ParseResult<TArgs>;
 	start(args: StartArgs<TArgs>): CommandSession;
 }
 

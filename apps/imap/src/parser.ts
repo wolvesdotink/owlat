@@ -25,6 +25,23 @@ export interface ParsedCommand {
 	tag: string;
 	command: string;
 	args: string[];
+	/**
+	 * How each of `args` was written, index for index. A quoted string loses
+	 * its quotes in `args`, so this is the only way to tell `"(x)"` from the
+	 * list `(x)`. Absent on commands built by hand in tests.
+	 */
+	argForms?: ArgForm[];
+}
+
+/**
+ * How one argument was written: an `atom` (including a number or `NIL`), a
+ * `string` (quoted, or a literal), or a parenthesized `list`.
+ */
+export type ArgForm = 'atom' | 'string' | 'list';
+
+interface Token {
+	readonly value: string;
+	readonly form: ArgForm;
 }
 
 /**
@@ -33,15 +50,15 @@ export interface ParsedCommand {
  * `parseLine` (the whole-line path) and `parseCommandWithLiterals` (the
  * literal-continuation path), so both treat quotes/parens identically.
  */
-function tokenizeSegment(line: string): string[] {
-	const tokens: string[] = [];
+function tokenizeSegment(line: string): Token[] {
+	const tokens: Token[] = [];
 	let i = 0;
 	let token = '';
 	let depth = 0; // paren nesting
 
 	const flush = () => {
 		if (token.length > 0) {
-			tokens.push(token);
+			tokens.push({ value: token, form: token.startsWith('(') ? 'list' : 'atom' });
 			token = '';
 		}
 	};
@@ -64,7 +81,7 @@ function tokenizeSegment(line: string): string[] {
 				value += c;
 				end += 1;
 			}
-			tokens.push(value);
+			tokens.push({ value, form: 'string' });
 			i = end + 1;
 			continue;
 		}
@@ -103,11 +120,19 @@ export function parseLine(raw: string): ParsedCommand | null {
 	const line = raw.replace(/\r?\n$/, '');
 	if (line.length === 0) return null;
 
-	const tokens = tokenizeSegment(line);
+	return commandOf(tokenizeSegment(line));
+}
 
+/** Tag, verb and arguments from a command's tokens, or null without a verb. */
+function commandOf(tokens: readonly Token[]): ParsedCommand | null {
 	const [tag, command, ...args] = tokens;
 	if (tag === undefined || command === undefined) return null;
-	return { tag, command: command.toUpperCase(), args };
+	return {
+		tag: tag.value,
+		command: command.value.toUpperCase(),
+		args: args.map((t) => t.value),
+		argForms: args.map((t) => t.form),
+	};
 }
 
 /**
@@ -148,7 +173,7 @@ export function parseCommandWithLiterals(
 	segments: string[],
 	literals: string[]
 ): ParsedCommand | null {
-	const tokens: string[] = [];
+	const tokens: Token[] = [];
 	for (let idx = 0; idx < segments.length; idx += 1) {
 		const seg = segments[idx] ?? '';
 		// A literal that abuts a non-space prefix (e.g. `LOGIN user{8}`
@@ -158,13 +183,11 @@ export function parseCommandWithLiterals(
 		for (const t of tokenizeSegment(seg)) tokens.push(t);
 		if (idx < literals.length) {
 			const lit = literals[idx];
-			if (lit !== undefined) tokens.push(lit);
+			if (lit !== undefined) tokens.push({ value: lit, form: 'string' });
 		}
 	}
 
-	const [tag, command, ...args] = tokens;
-	if (tag === undefined || command === undefined) return null;
-	return { tag, command: command.toUpperCase(), args };
+	return commandOf(tokens);
 }
 
 /** Strip the surrounding parentheses from a `(...)` token. */
