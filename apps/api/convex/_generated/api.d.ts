@@ -16,6 +16,7 @@ import type * as mail_interpret_briefRow from '../mail/interpret/briefRow.js';
 import type * as mail_interpret_eligibility from '../mail/interpret/eligibility.js';
 import type * as mail_interpret_gate from '../mail/interpret/gate.js';
 import type * as mail_interpret_load from '../mail/interpret/load.js';
+import type * as mail_interpret_needsReplyProjection from '../mail/interpret/needsReplyProjection.js';
 import type * as mail_interpret_pipeline from '../mail/interpret/pipeline.js';
 import type * as mail_interpret_preferences from '../mail/interpret/preferences.js';
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
@@ -1549,6 +1550,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/eligibility': typeof mail_interpret_eligibility;
 	'mail/interpret/gate': typeof mail_interpret_gate;
 	'mail/interpret/load': typeof mail_interpret_load;
+	'mail/interpret/needsReplyProjection': typeof mail_interpret_needsReplyProjection;
 	'mail/interpret/pipeline': typeof mail_interpret_pipeline;
 	'mail/interpret/preferences': typeof mail_interpret_preferences;
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
