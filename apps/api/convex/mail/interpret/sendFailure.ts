@@ -71,6 +71,28 @@ export async function dependentDispositions(
 }
 
 /**
+ * Whether the item's current disposition still rests on `source`: the value
+ * this send set, and no later source supporting it. Equality alone is not
+ * dependence: when A answers and B answers again, A bouncing must leave the
+ * B-supported `answered` alone.
+ *
+ * TODO(interpret lane): `threadItems.dispositionSource` (the source key of the
+ * latest supporting source) is being added. Once it exists, this reads
+ * `item.dispositionSource === interpretationSourceKey(source)` and the
+ * equality fallback below goes (the skipped regression test in
+ * `__tests__/outbound.test.ts` then runs).
+ */
+function isDispositionStillFrom(
+	item: Doc<'threadItems'>,
+	source: OutboundSource,
+	setTo: Doc<'threadItems'>['disposition']
+): boolean {
+	if (item.disposition !== setTo) return false;
+	const supportedBy = (item as { dispositionSource?: string }).dispositionSource;
+	return supportedBy === undefined || supportedBy === interpretationSourceKey(source);
+}
+
+/**
  * Set every disposition `source` moved to `failed`, for the items of the
  * people it did not reach (see the module doc). Returns the items changed.
  */
@@ -87,7 +109,7 @@ export async function failDependentDispositions(
 	for (const [itemId, setTo] of moved) {
 		const item = await ctx.db.get(itemId);
 		// Moved again since (a later message, a person): no longer this send's.
-		if (!item || item.disposition !== setTo) continue;
+		if (!item || !isDispositionStillFrom(item, args.source, setTo)) continue;
 		if (missed && !(item.counterpartyKey && missed.has(item.counterpartyKey))) continue;
 		if (!isLegalDispositionEdge(item.disposition, 'failed')) continue;
 		const revision = item.revision + 1;
@@ -139,10 +161,37 @@ export async function sendFailureOf(
 		};
 	}
 	const send = await ctx.db.get(source.id);
-	if (!send || !FAILED_SEND_STATUSES.has(send.status) || !send.inboundMessageId) return null;
-	const inbound = await ctx.db.get(send.inboundMessageId);
-	if (!inbound?.threadId) return null;
-	return { threadRef: { kind: 'team', id: inbound.threadId }, scope: { isEveryone: true } };
+	if (!send || !FAILED_SEND_STATUSES.has(send.status)) return null;
+	const team = await teamThreadOfSend(ctx, send);
+	if (!team) return null;
+	return { threadRef: team.threadRef, scope: { isEveryone: true } };
+}
+
+/**
+ * The Team Inbox thread a team reply's Send answers: an agent reply through
+ * the inbound message it replies to (`inboundMessageId`), a person's
+ * follow-up through its `inboxFollowUps` row (`followUpId`). Null for any
+ * other Send, or when the row is gone.
+ */
+export async function teamThreadOfSend(
+	ctx: Pick<MutationCtx, 'db'>,
+	send: Pick<Doc<'transactionalSends'>, 'inboundMessageId' | 'followUpId'>
+): Promise<{
+	threadRef: ThreadRef;
+	inbound?: Doc<'inboundMessages'>;
+	followUp?: Doc<'inboxFollowUps'>;
+} | null> {
+	if (send.inboundMessageId) {
+		const inbound = await ctx.db.get(send.inboundMessageId);
+		return inbound?.threadId
+			? { threadRef: { kind: 'team', id: inbound.threadId }, inbound }
+			: null;
+	}
+	if (send.followUpId) {
+		const followUp = await ctx.db.get(send.followUpId);
+		return followUp ? { threadRef: { kind: 'team', id: followUp.threadId }, followUp } : null;
+	}
+	return null;
 }
 
 /** Fail what `source` answered, if the send (now) failed. Idempotent. */

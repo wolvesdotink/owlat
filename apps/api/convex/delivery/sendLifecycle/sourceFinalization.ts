@@ -8,7 +8,8 @@
  *   `→ failed`), plus the reply mirrored into the thread's unified timeline
  *   and the thread brief's activity and interpretation
  *   (mail/interpret/sendActivity.ts).
- * - `team_reply` → the follow-up it carries (`inbox/followUps.ts`).
+ * - `team_reply` → the follow-up it carries (`inbox/followUps.ts`), plus the
+ *   thread brief's activity and interpretation, like an agent reply.
  *
  * This belongs to the Send terminal edge, not to one transport callback.
  * Direct/relay completion and authenticated MTA remote acceptance both pass
@@ -58,6 +59,10 @@ export async function finalizeSendSource(
 					? { kind: 'sent', at: input.at, providerMessageId: input.providerMessageId }
 					: { kind: 'failed', at: input.at, errorMessage: failureMessage(input) },
 		});
+		// The thread brief, as for an agent reply below.
+		if (input.to !== 'complained') {
+			await onTeamSendFinalized(ctx, tSend, { to: input.to, at: input.at });
+		}
 		return;
 	}
 
