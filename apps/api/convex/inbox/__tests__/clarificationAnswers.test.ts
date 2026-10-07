@@ -245,6 +245,7 @@ describe('multi-file answers and open file questions', () => {
 			answerableFromContext: false,
 			decisionRelevant: true,
 			options: [],
+			itemRef: null,
 			...over,
 		});
 		const file = slot({ slotType: 'attachment', decisionRelevant: false });

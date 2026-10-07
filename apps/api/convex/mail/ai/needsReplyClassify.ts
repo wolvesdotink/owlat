@@ -61,6 +61,9 @@ import {
 	buildDivergencePrompt,
 	sanitizeClarificationQuestions,
 	splitCandidateSlots,
+	itemIdForSlot,
+	slotItemsOf,
+	type SlotItem,
 	DIVERGENCE_SAMPLES,
 	MIN_SAMPLES_FOR_JUDGMENT,
 	type ReplySlot,
@@ -207,6 +210,7 @@ async function applyProjection(
 		? await clarifyWithMemory(ctx, {
 				transcript: args.transcript,
 				fromAddress: args.latestInbound.fromAddress,
+				threadId: args.threadId,
 			})
 		: undefined;
 	// A throw here is a real fault (e.g. the result no longer matching the
@@ -244,14 +248,18 @@ async function applyProjection(
  */
 async function clarifyWithMemory(
 	ctx: ActionCtx,
-	opts: { transcript: string; fromAddress: string }
+	opts: { transcript: string; fromAddress: string; threadId: Id<'mailThreads'> }
 ): Promise<ClarificationFlag | undefined> {
 	try {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 	} catch {
 		return undefined;
 	}
-	const clarification = await refineClarification(ctx, opts);
+	const clarification = await refineClarification(ctx, {
+		transcript: opts.transcript,
+		fromAddress: opts.fromAddress,
+		items: await slotItemsFor(ctx, opts.threadId),
+	});
 	if (!clarification || clarification.questions.length === 0) return clarification;
 	try {
 		const { fills } = await ctx.runMutation(internal.inbox.clarificationMemory.resolveFills, {
@@ -272,6 +280,21 @@ async function clarifyWithMemory(
 }
 
 type SpendCtx = Parameters<typeof recordLlmSpend>[0];
+
+/** The thread's open items, so each question can name the item it fills (SPEC §6). */
+async function slotItemsFor(
+	ctx: ActionCtx,
+	threadId: Id<'mailThreads'>
+): Promise<SlotItem<Id<'threadItems'>>[]> {
+	try {
+		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForDraft, {
+			threadRef: { kind: 'mail', id: threadId },
+		});
+		return slotItemsOf(loaded.items);
+	} catch {
+		return []; // questions without an item link, as before
+	}
+}
 
 /**
  * The clarification refineClarification produces: the persisted
@@ -304,8 +327,13 @@ type ClarificationFlag = Omit<
  */
 export async function refineClarification(
 	ctx: SpendCtx,
-	opts: { transcript: string; fromAddress: string }
+	opts: {
+		transcript: string;
+		fromAddress: string;
+		items?: readonly SlotItem<Id<'threadItems'>>[];
+	}
 ): Promise<ClarificationFlag | undefined> {
+	const items = opts.items ?? [];
 	try {
 		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
 		const slotsResult = await recordSpendOnFailure(
@@ -314,7 +342,7 @@ export async function refineClarification(
 			runLlmObject({
 				model: await resolveLanguageModel(ctx, 'summarize'),
 				schema: replySlotsSchema,
-				prompt: buildSlotPrompt(opts.transcript),
+				prompt: buildSlotPrompt(opts.transcript, items),
 				temperature: 0.2,
 			})
 		);
@@ -333,6 +361,7 @@ export async function refineClarification(
 			slotType: slot.slotType,
 			text: slot.question,
 			options: slot.options,
+			itemId: itemIdForSlot(slot, items),
 		}));
 		if (raw.length === 0) return undefined;
 
