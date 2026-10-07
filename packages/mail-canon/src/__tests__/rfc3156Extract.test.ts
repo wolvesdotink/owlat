@@ -298,6 +298,19 @@ describe('extractRfc3156SignedPart — malformed structures resolve to null', ()
 		expect(extract(raw)).toBeNull();
 	});
 
+	it('rejects a close-delimiter with junk after it (a MIME parser reads past it)', () => {
+		const raw = compose(SIMPLE_PART).replace(
+			'--owlat-sig-boundary--',
+			'--owlat-sig-boundary--extra'
+		);
+		expect(extract(raw)).toBeNull();
+	});
+
+	it('accepts transport padding after the close-delimiter', () => {
+		const raw = compose(SIMPLE_PART).replace('--owlat-sig-boundary--', '--owlat-sig-boundary-- \t');
+		expect(extract(raw)).not.toBeNull();
+	});
+
 	it('still accepts an epilogue after the close-delimiter', () => {
 		const raw = `${compose(SIMPLE_PART)}epilogue text that no reader renders\r\n`;
 		expect(extract(raw)).not.toBeNull();

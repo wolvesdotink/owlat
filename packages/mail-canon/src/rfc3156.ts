@@ -90,7 +90,7 @@ export function extractRfc3156SignedPart(raw: Uint8Array): Rfc3156SignedParts | 
 	// beside a verdict that does not cover it: malformed, like a missing close.
 	const thirdDelimiterAt = findDelimiter(text, delimiter, secondPartStart);
 	if (thirdDelimiterAt < 0) return null;
-	if (!text.startsWith('--', thirdDelimiterAt + delimiter.length)) return null;
+	if (!isCloseDelimiterLine(text, thirdDelimiterAt + delimiter.length)) return null;
 	const signaturePart = text.slice(secondPartStart, thirdDelimiterAt);
 
 	const signatureArmored = decodeSignaturePart(signaturePart);
@@ -116,6 +116,18 @@ function findDelimiter(text: string, delimiter: string, from: number): number {
 		at = text.indexOf(delimiter, at + 1);
 	}
 	return -1;
+}
+
+/**
+ * Whether the delimiter whose boundary text ends at `afterBoundary` is a
+ * close-delimiter line: `--`, transport padding, then CRLF or the end of the
+ * message. `--boundary--extra` is not one (a MIME parser reads past it).
+ */
+function isCloseDelimiterLine(text: string, afterBoundary: number): boolean {
+	if (!text.startsWith('--', afterBoundary)) return false;
+	let i = afterBoundary + 2;
+	while (i < text.length && (text[i] === ' ' || text[i] === '\t')) i++;
+	return i === text.length || text.startsWith('\r\n', i);
 }
 
 /**

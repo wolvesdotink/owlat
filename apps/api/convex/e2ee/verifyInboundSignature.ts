@@ -7,7 +7,8 @@
  * A message that arrived SIGNED but not encrypted (RFC 3156 `multipart/signed`
  * or an inline clearsigned body) gets its signature verified at ingest:
  *
- *   extraction (`@owlat/mail-canon` byte-exact RFC 3156 first part, or the
+ *   extraction (`@owlat/mail-canon` byte-exact RFC 3156 first part, held to
+ *   the reader's own MIME walker by `./signedMimeStructure`, or the
  *   clearsigned armor from the transfer-decoded body octets)
  *     → sender-key resolution (`e2ee/senderKey.ts`, the TOFU ladder sealed
  *       mail also uses, run WKD-first: the instance-manifest fetch is skipped)
@@ -39,6 +40,7 @@ import {
 import { binaryStringToBytes, bytesToBinaryString } from '@owlat/shared/mailMime';
 import { resolveSenderVerificationKey } from './senderKey';
 import { inboundSignatureInfoValidator, type InboundSignatureInfo } from './inboundSignature';
+import { signedPartIsDisplayedBody } from './signedMimeStructure';
 
 /** The outcome of one low-level verify attempt. Bytes + a key in, structured out. */
 interface VerifyAttempt {
@@ -248,14 +250,17 @@ async function verify(
 
 	let attempt: VerifyAttempt;
 	if (clearsigned === null) {
+		// The reader's own MIME walker must agree that the signed part is all it
+		// will show (`./signedMimeStructure`); otherwise nothing is verified.
 		const parts = extractRfc3156SignedPart(rawBytes);
-		attempt = parts
-			? await verifyDetachedSignature(
-					parts.signedPart,
-					parts.signatureArmored,
-					resolved.publicKeyArmored
-				)
-			: { verified: false, malformed: true };
+		attempt =
+			parts && signedPartIsDisplayedBody(rawBytes, parts.signedPart)
+				? await verifyDetachedSignature(
+						parts.signedPart,
+						parts.signatureArmored,
+						resolved.publicKeyArmored
+					)
+				: { verified: false, malformed: true };
 	} else if (clearsigned.verifiable) {
 		attempt = await verifyClearsignedBody(clearsigned.octets, resolved.publicKeyArmored);
 	} else {
