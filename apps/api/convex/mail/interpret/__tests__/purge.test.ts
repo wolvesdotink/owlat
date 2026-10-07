@@ -396,7 +396,29 @@ describe('thread purge', () => {
 				updatedAt: SENT,
 			});
 			// The discussion message and the commitment outlive the item; only their links go.
-			return linkItem(ctx, itemId, { mailboxId, threadId, messageId });
+			const links = await linkItem(ctx, itemId, { mailboxId, threadId, messageId });
+			await ctx.db.insert('threadItemCorrections', {
+				...threadRefToFields(ref),
+				itemId,
+				itemRevision: 1,
+				kind: 'notARequest',
+				userId: 'user-A',
+				intent: 'request',
+				facets: [],
+				responsibility: 'us',
+				verify: 'passed',
+				evidenceSources: [{ sourceKey: `mail:${messageId}`, contentRevision: 'rev-1' }],
+				createdAt: SENT,
+			});
+			await ctx.db.insert('noteReactions', {
+				...threadRefToFields(ref),
+				noteSource: 'chatMessage',
+				chatMessageId: links.chatId,
+				userId: 'user-A',
+				emoji: '👍',
+				createdAt: SENT,
+			});
+			return links;
 		});
 
 		await purgeMessages(t, [messageId]);
@@ -411,6 +433,8 @@ describe('thread purge', () => {
 		expect(after.viewers).toHaveLength(0);
 		expect(after.plans).toHaveLength(0);
 		await t.run(async (ctx) => {
+			expect(await ctx.db.query('threadItemCorrections').collect()).toHaveLength(0);
+			expect(await ctx.db.query('noteReactions').collect()).toHaveLength(0);
 			expect((await ctx.db.get(links.chatId))?.threadItemId).toBeUndefined();
 			expect((await ctx.db.get(links.commitmentId))?.threadItemId).toBeUndefined();
 		});
@@ -476,6 +500,30 @@ describe('team message purge', () => {
 				eventAt: SENT,
 				recordedAt: SENT,
 			});
+			await ctx.db.insert('threadItemCorrections', {
+				...threadRefToFields(ref),
+				itemId: gone,
+				itemRevision: 1,
+				kind: 'notARequest',
+				userId: 'user-A',
+				intent: 'request',
+				facets: [],
+				responsibility: 'us',
+				verify: 'passed',
+				evidenceSources: [],
+				createdAt: SENT,
+			});
+			await ctx.db.insert('threadActivity', {
+				...threadRefToFields(ref),
+				seq: 2,
+				idempotencyKey: `team:${threadId}|send_queued:${inboundId}:${SENT}`,
+				type: 'send_queued',
+				actor: { kind: 'user', id: 'user-A' },
+				provenance: 'recorded',
+				visibility: 'substance',
+				eventAt: SENT,
+				recordedAt: SENT,
+			});
 			await purgeSourcesFromThread(ctx, ref, [src]);
 			return { gone, kept, noteId };
 		});
@@ -490,6 +538,7 @@ describe('team message purge', () => {
 				.withIndex('by_conversation_thread_and_seq', (q) => q.eq('conversationThreadId', threadId))
 				.collect();
 			expect(activity).toHaveLength(0);
+			expect(await ctx.db.query('threadItemCorrections').collect()).toHaveLength(0);
 		});
 	});
 });

@@ -6,9 +6,11 @@
  *  - every thread of a personal mailbox takes its thread brief rows with it
  *    (`eraseThreads` → `drainThreadBrief`), and a draft its response plans
  *    (`eraseDrafts` → `eraseDraftPlans`);
- *  - the member's own viewer state goes everywhere (`threadViewerState`
- *    phase), and the Team Inbox items assigned to them fall back to
- *    Unassigned (`threadItemAssignments` phase).
+ *  - the member's own viewer state and note reactions go everywhere
+ *    (`threadViewerState`, `noteReactions` phases), their item corrections
+ *    are anonymized (`threadItemCorrections` phase), and the Team Inbox items
+ *    assigned to them fall back to Unassigned (`threadItemAssignments`
+ *    phase).
  */
 
 import type { TableNames } from '../../_generated/dataModel';
@@ -92,6 +94,7 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 	descendant('threadItems', 'threadItems', 'replacedById', 'delete', SAME_THREAD),
 	descendant('threadItems', 'threadItems', 'possibleDuplicateOfId', 'delete', SAME_THREAD),
 	descendant('threadItems', 'threadActivity', 'itemId', 'delete', SAME_THREAD),
+	descendant('threadItems', 'threadItemCorrections', 'itemId', 'delete', SAME_THREAD),
 	descendant('threadItems', 'threadActivity', 'delta.replacedById', 'delete', SAME_THREAD),
 	descendant('threadItems', 'draftResponsePlans', 'itemRevisions[].itemId', 'delete', SAME_THREAD),
 	descendant('threadItems', 'draftResponsePlans', 'stances[].itemId', 'delete', SAME_THREAD),
@@ -123,14 +126,14 @@ export const THREAD_BRIEF_MEMBER_RELATIONS: readonly MemberRelation[] = [
 	{
 		table: 'noteReactions',
 		field: 'userId',
-		action: 'retain',
-		why: 'Known gap (thread brief): the member’s emoji reactions on internal notes should go; the erasure step that deletes them lands with the thread brief wiring.',
+		action: 'delete',
+		why: 'The member’s own emoji reactions on internal notes (noteReactions phase).',
 	},
 	{
 		table: 'threadItemCorrections',
 		field: 'userId',
-		action: 'retain',
-		why: 'Known gap (thread brief): who corrected an item, kept for the interpretation eval; the erasure step that anonymizes it lands with the thread brief wiring.',
+		action: 'anonymize',
+		why: 'The organization keeps the correction for the interpretation eval (structure only, no text); who made it becomes [deleted account] (threadItemCorrections phase).',
 	},
 	{
 		table: 'threadViewerState',

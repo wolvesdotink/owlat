@@ -137,6 +137,13 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 		'delete',
 		'The activity about a deleted item goes with it.'
 	),
+	relation(
+		'threadItems',
+		'threadItemCorrections',
+		'itemId',
+		'delete',
+		'An eval correction of a deleted item goes with it.'
+	),
 	relation('threadItems', 'threadActivity', 'delta.replacedById', 'retain', IN_THREAD),
 	relation('threadItems', 'draftResponsePlans', 'itemRevisions[].itemId', 'retain', IN_THREAD),
 	relation('threadItems', 'draftResponsePlans', 'stances[].itemId', 'retain', IN_THREAD),

@@ -7,7 +7,9 @@
  *
  *  - its `messageInterpretations` rows (the sealed proposals and latest lines);
  *  - the activity rows the reducer wrote for it (`received:<source>`,
- *    `interp:<source>:…`) and any row whose `opRef` names it;
+ *    `interp:<source>:…`), the send pipeline's rows keyed by its id
+ *    (`sent:<id>`, `delivery_failed:<id>:…`, `send_queued:<id>:…` …) and any
+ *    row whose `opRef` names it;
  *  - its evidence entries on items and facts. "A surviving claim must keep
  *    surviving evidence": an item or fact left without evidence is deleted
  *    (with its links, `purgeRows.ts`); one replaced or superseded by a deleted
@@ -56,6 +58,12 @@ const PLAN_LIMIT = 200;
 const SWEEP_PAGE = 200;
 
 type ClaimTable = 'threadItems' | 'threadFacts';
+
+/**
+ * Activity key families the send pipeline (`sendActivity.ts`) writes per
+ * message or send id: `<family>:<id>` or `<family>:<id>:<detail>`.
+ */
+const SEND_EVENT_KEYS = ['sent', 'delivery_failed', 'send_queued', 'send_cancelled', 'send_held'];
 
 interface ClaimOutcome {
 	deletedItemIds: Set<string>;
@@ -155,6 +163,18 @@ async function deleteSourceRows(
 				.withIndex('by_op_ref', (q) => q.eq('opRef.id', id))
 				.take(SOURCE_ROW_LIMIT)
 		);
+		// The send pipeline's rows keyed by the message (or send) id, some without an opRef.
+		for (const family of SEND_EVENT_KEYS) {
+			const exact = scopedIdempotencyKey(ref, `${family}:${id}`);
+			await remove(
+				await ctx.db
+					.query('threadActivity')
+					.withIndex('by_idempotency_key', (q) =>
+						q.gte('idempotencyKey', exact).lte('idempotencyKey', `${exact}:\uffff`)
+					)
+					.take(SOURCE_ROW_LIMIT)
+			);
+		}
 	}
 	return hadInterpretation;
 }

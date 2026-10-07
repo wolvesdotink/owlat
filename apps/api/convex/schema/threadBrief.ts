@@ -313,7 +313,10 @@ export const threadBriefTables = {
 		createdAt: v.number(),
 	})
 		.index('by_mail_thread', ['mailThreadId'])
-		.index('by_conversation_thread', ['conversationThreadId']),
+		.index('by_conversation_thread', ['conversationThreadId'])
+		// Erasure: a deleted item's corrections go with it; an erased member's are anonymized.
+		.index('by_item', ['itemId'])
+		.index('by_user', ['userId']),
 
 	// Emoji reactions on internal notes: Team Inbox `threadNotes` and Postbox
 	// thread discussion `chatMessages`. One row per (note, person, emoji);
@@ -333,7 +336,9 @@ export const threadBriefTables = {
 		.index('by_thread_note', ['threadNoteId', 'userId', 'emoji'])
 		.index('by_chat_message', ['chatMessageId', 'userId', 'emoji'])
 		.index('by_mail_thread', ['mailThreadId'])
-		.index('by_conversation_thread', ['conversationThreadId']),
+		.index('by_conversation_thread', ['conversationThreadId'])
+		// Member erasure: an erased member's reactions go.
+		.index('by_user', ['userId']),
 
 	// Per draft: the stances, coverage and claims of its self-check, bound to
 	// the draft hash and the item revisions it was built against.

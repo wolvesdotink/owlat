@@ -12,6 +12,10 @@
  *  - `purge.ts` deletes single items and facts whose last evidence was a
  *    purged message.
  *
+ * The note reactions in a thread's range are those on its Team Inbox notes
+ * and Postbox discussion messages; the notes themselves are the team's and
+ * are deleted (or kept) by their own owners.
+ *
  * Deleting an item takes its links with it: the activity rows about it go,
  * and the commitment, team note and Postbox discussion message that point at
  * it lose the pointer (the rows are the user's or the team's and stay).
@@ -39,9 +43,10 @@ type BriefRow = Doc<ThreadBriefTable>;
 export type BriefRangeReader = (limit: number) => Promise<BriefRow[]>;
 
 /**
- * The thread's rows of every thread brief table, children first (plans,
- * viewer state and activity before the items and facts they point at; the
- * brief row, which holds the deletion epoch, last). Each reader returns the
+ * The thread's rows of every thread brief table, children first (note
+ * reactions, item corrections, plans, viewer state and activity before the
+ * items and facts they point at; the brief row, which holds the deletion
+ * epoch, last). Each reader returns the
  * first `limit` rows of its range; deleting a row takes it out of the range,
  * so draining a reader until it comes back short empties the table.
  */
@@ -49,6 +54,16 @@ export function threadBriefRanges(ctx: MutationCtx, ref: ThreadRef): BriefRangeR
 	if (ref.kind === 'mail') {
 		const id = ref.id;
 		return [
+			(n) =>
+				ctx.db
+					.query('noteReactions')
+					.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', id))
+					.take(n),
+			(n) =>
+				ctx.db
+					.query('threadItemCorrections')
+					.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', id))
+					.take(n),
 			(n) =>
 				ctx.db
 					.query('draftResponsePlans')
@@ -88,6 +103,16 @@ export function threadBriefRanges(ctx: MutationCtx, ref: ThreadRef): BriefRangeR
 	}
 	const id = ref.id;
 	return [
+		(n) =>
+			ctx.db
+				.query('noteReactions')
+				.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', id))
+				.take(n),
+		(n) =>
+			ctx.db
+				.query('threadItemCorrections')
+				.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', id))
+				.take(n),
 		(n) =>
 			ctx.db
 				.query('draftResponsePlans')
@@ -146,7 +171,7 @@ export async function bumpDeletionEpoch(
 /**
  * Take a deleted item's links out of the rows outside the thread brief tables
  * (the commitment, team note and discussion message stay, without the
- * pointer) and delete the activity rows about it. Call before the item row
+ * pointer) and delete the activity rows and corrections about it. Call before the item row
  * goes. Bounded per table by {@link ITEM_LINK_LIMIT}.
  */
 export async function unlinkDeletedItem(
@@ -159,6 +184,14 @@ export async function unlinkDeletedItem(
 		.withIndex('by_item', (q) => q.eq('itemId', itemId))
 		.take(ITEM_LINK_LIMIT);
 	for (const row of activity) {
+		meter(row);
+		await ctx.db.delete(row._id);
+	}
+	const corrections = await ctx.db
+		.query('threadItemCorrections')
+		.withIndex('by_item', (q) => q.eq('itemId', itemId))
+		.take(ITEM_LINK_LIMIT);
+	for (const row of corrections) {
 		meter(row);
 		await ctx.db.delete(row._id);
 	}
@@ -198,6 +231,7 @@ export async function deleteThreadBriefRow(
 	await ctx.db.delete(row._id);
 }
 
+/** A `threadItems` row: the only brief table with both evidence and a disposition. */
 function isItemRow(row: BriefRow): row is Doc<'threadItems'> {
-	return 'intent' in row && 'responsibility' in row;
+	return 'disposition' in row && 'evidence' in row;
 }

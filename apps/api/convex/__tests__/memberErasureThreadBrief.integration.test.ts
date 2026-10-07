@@ -151,7 +151,28 @@ describe('member erasure of the thread brief', () => {
 				{ kind: 'mail', id: team.threadId },
 				{ messageId: team.messageId, viewers: [authUserId, colleagueId], assignee: authUserId }
 			);
-			return { personalRows, planId, teamRows };
+			const teamRef = threadRefToFields({ kind: 'mail', id: team.threadId });
+			const reactionId = await ctx.db.insert('noteReactions', {
+				...teamRef,
+				noteSource: 'chatMessage',
+				userId: authUserId,
+				emoji: '👍',
+				createdAt: NOW,
+			});
+			const correctionId = await ctx.db.insert('threadItemCorrections', {
+				...teamRef,
+				itemId: teamRows.itemId,
+				itemRevision: 1,
+				kind: 'notARequest',
+				userId: authUserId,
+				intent: 'request',
+				facets: [],
+				responsibility: 'us',
+				verify: 'passed',
+				evidenceSources: [],
+				createdAt: NOW,
+			});
+			return { personalRows, planId, teamRows, reactionId, correctionId };
 		});
 
 		await runDeletionCron(t);
@@ -189,6 +210,8 @@ describe('member erasure of the thread brief', () => {
 			const teamItem = await ctx.db.get(seeded.teamRows.itemId);
 			expect(teamItem).not.toBeNull();
 			expect(teamItem?.assigneeUserId).toBeUndefined();
+			expect(await ctx.db.get(seeded.reactionId)).toBeNull();
+			expect((await ctx.db.get(seeded.correctionId))?.userId).toBe('[deleted account]');
 			const [own, colleague] = seeded.teamRows.viewerIds;
 			expect(await ctx.db.get(own!)).toBeNull();
 			expect((await ctx.db.get(colleague!))?.userId).toBe(colleagueId);

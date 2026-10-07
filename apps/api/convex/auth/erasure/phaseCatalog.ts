@@ -43,6 +43,8 @@ export const MEMBER_ERASURE_PHASES = [
 	// Thread brief rows naming the member outside their personal mailboxes.
 	'threadViewerState',
 	'threadItemAssignments',
+	'noteReactions',
+	'threadItemCorrections',
 ] as const;
 
 export type MemberErasurePhase = (typeof MEMBER_ERASURE_PHASES)[number];
