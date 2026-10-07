@@ -129,9 +129,11 @@ describe('F2: a failed later attempt keeps the last good read', () => {
 			isCurrent: true,
 			isCounted: false,
 		});
-		expect(rows.find((r) => r.contentRevision === 'rev-2')).toMatchObject({
+		// The failed attempt is its own row beside the good read (round 3 P3).
+		expect(rows.find((r) => r.contentRevision === 'rev-2~attempt')).toMatchObject({
 			isCurrent: false,
 			isCounted: true,
+			errorCode: 'model_error',
 		});
 
 		// The next good read of the new revision replaces it and completes the brief.
@@ -294,5 +296,83 @@ describe('the current extraction is found however many revisions a source has', 
 		expect(rows.find((r) => r.contentRevision === 'zz-1')).toMatchObject({ isCurrent: false });
 		expect(rows.find((r) => r.contentRevision === 'zz-1')?.isExactWordingRequired).not.toBe(true);
 		expect((await brief(t, threadId))?.sourceCounts).toMatchObject({ complete: 1 });
+	});
+});
+
+describe('review round 3: identity and human state belong to the thread', () => {
+	it('keeps the id, recorded completion, reminder and assignee through a rephrased repair (F1)', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		await apply(t, messageId, threadId, {
+			status: 'partial',
+			errorCode: 'verify',
+			result: reduceResult({ items: [payment] }),
+		});
+		const [first] = await items(t, threadId);
+		await t.run(async (ctx) =>
+			ctx.db.patch(first!._id, {
+				status: 'done',
+				completion: 'recorded',
+				remindAt: 123,
+				assigneeUserId: 'user-B',
+			})
+		);
+		await apply(t, messageId, threadId, {
+			retryCount: 1,
+			result: reduceResult({
+				items: [
+					{
+						...payment,
+						matchItemId: first!._id,
+						assertion: 'Settle invoice 2041 with the supplier',
+						display: { en: 'Settle invoice 2041', de: 'Begleich Rechnung 2041' },
+					},
+				],
+			}),
+		});
+		const after = await items(t, threadId);
+		expect(after).toHaveLength(1);
+		expect(after[0]).toMatchObject({
+			_id: first!._id,
+			status: 'done',
+			completion: 'recorded',
+			remindAt: 123,
+			assigneeUserId: 'user-B',
+		});
+		expect(after[0]?.lineageKeys).toHaveLength(2);
+	});
+
+	it('updates a fact value when the wording stays the same (F5)', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		const fact = (value: number) => ({
+			key: '["invoice","total",""]',
+			assertion: 'The invoice total is due',
+			display: { en: `Invoice total: EUR ${value}`, de: `Rechnungssumme: EUR ${value}` },
+			value: { kind: 'money' as const, value, currency: 'EUR' },
+			evidence: [{ segmentId: 's0', start: 0, end: 7, quote: 'EUR 100' }],
+			isVerified: false,
+			isReviewNeeded: false,
+		});
+		await apply(t, messageId, threadId, {
+			status: 'partial',
+			errorCode: 'verify',
+			result: reduceResult({ items: [], facts: [fact(100)] }),
+		});
+		await apply(t, messageId, threadId, {
+			retryCount: 1,
+			result: reduceResult({ items: [], facts: [fact(900)] }),
+		});
+		const facts = await t.run(async (ctx) =>
+			ctx.db
+				.query('threadFacts')
+				.withIndex('by_mail_thread_and_status', (q) =>
+					q.eq('mailThreadId', threadId).eq('status', 'current')
+				)
+				.collect()
+		);
+		expect(facts).toHaveLength(1);
+		expect(facts[0]?.value).toEqual({ kind: 'money', value: 900, currency: 'EUR' });
+		expect(facts[0]?.display.en).toBe('Invoice total: EUR 900');
 	});
 });

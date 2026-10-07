@@ -379,6 +379,27 @@ export const readStoredResult = internalQuery({
 	},
 });
 
+/** Marks an attempt that read nothing next to a stored good read of the same revision. */
+export const ATTEMPT_SUFFIX = '~attempt';
+
+/** What a run needs to know about a stored extraction to reuse it or retry it. */
+function extractionSummary(row: Doc<'messageInterpretations'>) {
+	return {
+		interpretationId: row._id,
+		contentRevision: row.contentRevision.endsWith(ATTEMPT_SUFFIX)
+			? row.contentRevision.slice(0, -ATTEMPT_SUFFIX.length)
+			: row.contentRevision,
+		extractorVersion: row.extractorVersion,
+		mode: row.mode,
+		status: row.status,
+		isApplied: row.appliedAt !== undefined,
+		hasPayload: row.payload !== undefined,
+		retryCount: row.retryCount,
+		nextRetryAt: row.nextRetryAt,
+		errorCode: row.errorCode,
+	};
+}
+
 // ── The query ──────────────────────────────────────────────────────────────
 
 export const loadForInterpretation = internalQuery({
@@ -416,13 +437,16 @@ export const loadForInterpretation = internalQuery({
 			currentFacts = await Promise.all(facts.slice(0, MAX_PROMPT_FACTS).map(toPromptFact));
 		}
 
-		const existing = await ctx.db
+		const sourceKey = interpretationSourceKey(args.source);
+		const current = await ctx.db
 			.query('messageInterpretations')
-			.withIndex('by_source_revision', (q) =>
-				q.eq('sourceKey', interpretationSourceKey(args.source))
-			)
-			.order('desc')
-			.take(20);
+			.withIndex('by_source_current', (q) => q.eq('sourceKey', sourceKey).eq('isCurrent', true))
+			.first();
+		const counted =
+			(await ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_source_counted', (q) => q.eq('sourceKey', sourceKey).eq('isCounted', true))
+				.first()) ?? current;
 
 		return {
 			...info,
@@ -439,18 +463,11 @@ export const loadForInterpretation = internalQuery({
 			locales: [...INTERPRET_LOCALES],
 			ownerLocale: await ownerLocale(ctx, info.ownerUserId),
 			timezone: await ownerTimeZone(ctx, info.ownerUserId),
-			// Earlier extractions of this source (any revision), newest first.
-			previous: existing.map((row) => ({
-				interpretationId: row._id,
-				contentRevision: row.contentRevision,
-				extractorVersion: row.extractorVersion,
-				status: row.status,
-				isApplied: row.appliedAt !== undefined,
-				hasPayload: row.payload !== undefined,
-				retryCount: row.retryCount,
-				nextRetryAt: row.nextRetryAt,
-				errorCode: row.errorCode,
-			})),
+			// The source's current extraction (the last good read, which the replay
+			// folds in) and its counted one (the newest attempt). A run reuses a
+			// stored extraction only on an exact match of both (run.ts).
+			current: current ? extractionSummary(current) : null,
+			counted: counted ? extractionSummary(counted) : null,
 		};
 	},
 });

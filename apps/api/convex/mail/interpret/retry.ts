@@ -24,6 +24,11 @@ const BACKOFF_CODES: ReadonlySet<string> = new Set([
 ]);
 const GATE_CODES: ReadonlySet<string> = new Set(['ai_off', 'budget']);
 
+/** A gate refusal: free to re-check, never counted against the retry budget. */
+export function isGateCode(code: string | undefined): boolean {
+	return GATE_CODES.has(code ?? '');
+}
+
 /** Backoff before attempt `retryCount + 1`. */
 export function backoffMs(retryCount: number): number {
 	return BASE_BACKOFF_MS * 4 ** Math.max(0, retryCount);

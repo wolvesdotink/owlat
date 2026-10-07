@@ -253,6 +253,9 @@ export const threadBriefTables = {
 				options: v.optional(v.array(v.string())),
 			})
 		),
+		// Every claim key that ever produced or matched this item: the thread's
+		// identity record, consulted before content (mail/interpret/replay.ts).
+		lineageKeys: v.optional(v.array(v.string())),
 		lineage: v.optional(v.string()),
 		// Message date of the first evidence: the "age" of compareForYou.
 		askedAt: v.number(),

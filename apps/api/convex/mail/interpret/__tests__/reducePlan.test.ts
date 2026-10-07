@@ -12,6 +12,7 @@ import {
 	type PlanOptions,
 } from '../reducePlan';
 import type { ReduceFact, ReduceItem, ReduceResult, ReduceTransition } from '../reduceInput';
+import { foldEntry } from '../replay';
 
 const REV = 'rev-2';
 const ev = (start = 0, end = 10) => ({ segmentId: 's0', start, end, quote: 'quoted words' });
@@ -585,6 +586,72 @@ describe('review round 2', () => {
 		).toBe('evidence');
 		expect(kindOf('ref', 'Ab12', 'AB12')).toBe('insert');
 		expect(kindOf('ref', 'DE89 3704 0044 0532 0130 00', 'de89370400440532013000')).toBe('evidence');
+	});
+});
+
+describe('review round 3', () => {
+	it("promotes a proposal with the verified claim's own fields (F6)", () => {
+		const plan = planReduction(
+			{
+				items: [stored({ verify: 'proposal', amount: { value: 900, currency: 'EUR' } })],
+				facts: [],
+			},
+			result({
+				items: [
+					proposal({
+						matchItemId: 'item_a',
+						verify: 'passed',
+						amount: { value: 100, currency: 'EUR' },
+					}),
+				],
+			}),
+			REV,
+			BRIEF
+		);
+		expect(plan.patches[0]).toMatchObject({
+			verify: 'passed',
+			promote: { amount: { value: 100, currency: 'EUR' } },
+		});
+		expect(plan.patches[0]?.fill).toBeUndefined();
+
+		// Folded into memory, the verified amount replaces the proposal's.
+		const state = {
+			items: new Map([
+				[
+					'item_a',
+					{
+						...stored({ verify: 'proposal', amount: { value: 900, currency: 'EUR' } }),
+						evidence: [],
+						isNew: false,
+						askedAt: 0,
+					},
+				],
+			]),
+			facts: new Map(),
+		};
+		foldEntry(
+			state,
+			{
+				source: SOURCE,
+				sourceKey: 'mail:m2',
+				contentRevision: REV,
+				sourceAt: 1,
+				result: result({
+					items: [
+						proposal({
+							matchItemId: 'item_a',
+							verify: 'passed',
+							amount: { value: 100, currency: 'EUR' },
+						}),
+					],
+				}),
+			},
+			{ mode: 'brief', threadKind: 'mail', isOutOfOrder: false }
+		);
+		expect(state.items.get('item_a')).toMatchObject({
+			verify: 'passed',
+			amount: { value: 100, currency: 'EUR' },
+		});
 	});
 });
 

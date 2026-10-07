@@ -341,4 +341,88 @@ describe('interpretMessage', () => {
 		expect(brief?.mode).toBe('actions');
 		expect(await t.run(async (ctx) => ctx.db.query('threadFacts').collect())).toEqual([]);
 	});
+
+	it('re-extracts an older revision that is no longer current (round 3 F2)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedCaptured(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		const setBody = (text: string) =>
+			t.run(async (ctx) => ctx.db.patch(messageId, { textBodyInline: text }));
+		const extractions = () =>
+			llm.runLlmObject.mock.calls.filter((c) => c[0]?.schema === briefModelSchema).length;
+		await t.action(internal.mail.interpret.run.interpretMessage, { source }); // A
+		await setBody(`${TEXT} Thanks, Jonas.`);
+		await t.action(internal.mail.interpret.run.interpretMessage, { source }); // B
+		await setBody(TEXT);
+		const again = await t.action(internal.mail.interpret.run.interpretMessage, { source }); // A
+		expect(again).toMatchObject({ status: 'complete', isReplayed: false });
+		expect(extractions()).toBe(3);
+		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows.filter((r) => r.isCurrent)).toHaveLength(1);
+		const current = rows.find((r) => r.isCurrent);
+		const first = rows.reduce((a, b) => (a._creationTime < b._creationTime ? a : b));
+		expect(current?._id).toBe(first._id);
+	});
+
+	it('re-extracts after the thread changed mode instead of reusing a brief extraction (round 3 F3)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId, mailboxId } = await seedCaptured(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			if (schema === briefModelSchema) return { object: modelOutput('s0') };
+			if (schema === actionsModelSchema) {
+				const { latest: _l, facts: _f, ...actions } = modelOutput('s0');
+				return { object: { ...actions, mode: 'actions' } };
+			}
+			return { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } };
+		});
+		await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		await t.run(async (ctx) => ctx.db.patch(mailboxId, { scope: 'shared' }));
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(out).toMatchObject({ status: 'complete', isReplayed: false });
+		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows.find((r) => r.isCurrent)?.mode).toBe('actions');
+	});
+
+	it('records every failed repair and never spends retries on gate refusals (round 3 F4)', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		// 1. AI is off: a gate refusal, retried freely.
+		const off = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(off).toMatchObject({ status: 'failed', errorCode: 'ai_off' });
+		// 2. AI on, the verifier fails: partial, with the full retry budget left.
+		await enableFeatures(t, ['ai']);
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			if (schema === briefModelSchema) return { object: modelOutput('s0') };
+			throw new Error('verifier down');
+		});
+		const partial = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(partial).toMatchObject({ status: 'partial', errorCode: 'verify' });
+		if (partial.status === 'gone') throw new Error('unreachable');
+		expect(partial.retryAt).toBeDefined();
+		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows.find((r) => r.isCounted)?.retryCount ?? 0).toBe(0);
+		// 3. The repair is due and the model fails: recorded and counted, the good read kept.
+		await t.run(async (ctx) => {
+			const row = (await ctx.db.query('messageInterpretations').collect()).find((r) => r.isCounted);
+			if (row) await ctx.db.patch(row._id, { nextRetryAt: 0 });
+		});
+		llm.runLlmObject.mockRejectedValue(new Error('provider down'));
+		const failed = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(failed).toMatchObject({ status: 'failed', errorCode: 'model_error' });
+		if (failed.status === 'gone') throw new Error('unreachable');
+		expect(failed.retryAt).toBeDefined();
+		const brief = await t.run(async (ctx) =>
+			ctx.db
+				.query('threadBriefs')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.first()
+		);
+		expect(brief?.sourceCounts).toMatchObject({ failed: 1, partial: 0 });
+		const items = await t.run(async (ctx) => ctx.db.query('threadItems').collect());
+		expect(items).toHaveLength(1);
+	});
 });
