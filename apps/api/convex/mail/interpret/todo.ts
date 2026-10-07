@@ -20,6 +20,8 @@ import { postboxQuery } from '../_helpers';
 import { loadReadableMailbox } from '../permissions';
 import { isThreadMuted } from '../../lib/mailMute';
 import { openMessageBody } from '../../lib/messageBody';
+import { loadBriefRow } from './briefRow';
+import { itemCountsOf } from './counters';
 
 /** Rows the band shows at most. */
 export const TODO_BAND_LIMIT = 20;
@@ -128,6 +130,16 @@ export async function collectToDo(
 	return { candidates, isTruncated };
 }
 
+/**
+ * How many open items a band row stands for: the thread's maintained counters
+ * for the same lists the band reads (us and unclear, tracked; proposals are
+ * counted apart and excluded). At least the row's own item.
+ */
+export function toDoCountOf(brief: Pick<Doc<'threadBriefs'>, 'itemCounts'> | null): number {
+	const counts = itemCountsOf(brief);
+	return Math.max(1, counts.us + counts.unclear);
+}
+
 export const listNoReplyToDo = postboxQuery({
 	args: { mailboxId: v.id('mailboxes') },
 	handler: async (ctx, args) => {
@@ -136,10 +148,11 @@ export const listNoReplyToDo = postboxQuery({
 		const { candidates, isTruncated } = await collectToDo(ctx, args.mailboxId);
 		const rows = await Promise.all(
 			candidates.map(async ({ thread, first }) => {
-				const [en, de, latest] = await Promise.all([
+				const [en, de, latest, brief] = await Promise.all([
 					openMessageBody(first.display.en),
 					openMessageBody(first.display.de),
 					thread.latestMessageId ? ctx.db.get(thread.latestMessageId) : null,
+					loadBriefRow(ctx, { kind: 'mail', id: thread._id }),
 				]);
 				return {
 					threadId: thread._id,
@@ -147,8 +160,7 @@ export const listNoReplyToDo = postboxQuery({
 					itemId: first._id,
 					text: { en, de },
 					...(first.due?.at !== undefined ? { dueAt: first.due.at } : {}),
-					// The thread's exact open count (maintained counters via mailThreads.briefTop).
-					count: Math.max(1, thread.briefTop?.forYou ?? 1),
+					count: toDoCountOf(brief),
 					fromAddress: thread.latestFromAddress,
 					...(latest?.fromName ? { fromName: latest.fromName } : {}),
 					subject: thread.latestSubject,

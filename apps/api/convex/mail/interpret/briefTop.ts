@@ -5,9 +5,8 @@
  *
  *  - `refreshBriefTop` rewrites the projection with O(1) reads: the counts are
  *    the thread's maintained `itemCounts` (`counters.ts`, exact, no cap), and
- *    the top item is the first row of the thread's `forUs` list in due order
- *    (dated first), else in asking order, else the same for
- *    `waitingOnOthers`. The reducer calls it after every interpretation
+ *    the top item is the first row of the thread's `forUs` list in the "For
+ *    you" order (`threadItems.sortKey`), else of `waitingOnOthers`. The reducer calls it after every interpretation
  *    (passing the new first "Latest update" line); every other item writer
  *    calls it with no `latest`, which keeps the stored one.
  *  - `openBriefTop` unseals it at the list-read boundary.
@@ -29,25 +28,19 @@ const TOP_BUCKETS = ['forUs', 'waitingOnOthers'] as const;
 type TopBucket = (typeof TOP_BUCKETS)[number];
 
 /**
- * The first item of one of a thread's lists: soonest due among dated items,
- * else the earliest asked. Two indexed `first()` reads at most.
+ * The first item of one of a thread's lists in the "For you" order (due,
+ * facet risk, age, id: `threadItems.sortKey`, the same order compareForYou
+ * gives). One indexed `first()` read.
  */
 export async function firstOfBucket(
 	ctx: Pick<QueryCtx, 'db'>,
 	mailThreadId: Id<'mailThreads'>,
 	bucket: TopBucket
 ): Promise<Doc<'threadItems'> | null> {
-	const dated = await ctx.db
-		.query('threadItems')
-		.withIndex('by_mail_thread_bucket_due', (q) =>
-			q.eq('mailThreadId', mailThreadId).eq('listBucket', bucket).gte('due.at', 0)
-		)
-		.first();
-	if (dated) return dated;
 	return ctx.db
 		.query('threadItems')
-		.withIndex('by_mail_thread_bucket_asked', (q) =>
-			q.eq('mailThreadId', mailThreadId).eq('listBucket', bucket)
+		.withIndex('by_mail_thread_bucket_sort', (q) =>
+			q.eq('mailThreadId', mailThreadId).eq('listBucket', bucket).gte('sortKey', '')
 		)
 		.first();
 }

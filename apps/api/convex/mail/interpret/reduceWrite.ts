@@ -21,7 +21,13 @@ import type { Evidence } from '../../lib/validators/threadBrief';
 import { threadRefToFields, type ThreadRef } from '../../lib/validators/threadRef';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { appendActivity } from './activity';
-import { applyItemShifts, itemBucketOf, listBucketOf, type ItemBucket } from './counters';
+import {
+	applyItemShifts,
+	itemBucketOf,
+	itemSortKey,
+	listBucketOf,
+	type ItemBucket,
+} from './counters';
 import { counterpartyKeyOf, evidenceKey, responsibilityOf } from './reducePlan';
 import {
 	sameEvidence,
@@ -241,7 +247,7 @@ async function insertItem(
 	if (!p) return null;
 	const counterpartyKey = counterpartyKeyOf(p);
 	const responsibility = responsibilityOf(p.responsible);
-	return ctx.db.insert('threadItems', {
+	const id = await ctx.db.insert('threadItems', {
 		...threadRefToFields(args.ref),
 		...(args.mailboxId ? { mailboxId: args.mailboxId } : {}),
 		revision: 1,
@@ -282,6 +288,11 @@ async function insertItem(
 		createdAt: args.now,
 		updatedAt: args.now,
 	});
+	// The order key ends in the id, known only now.
+	await ctx.db.patch(id, {
+		sortKey: itemSortKey({ _id: id, due: item.due, facets: p.facets, askedAt: item.askedAt }),
+	});
+	return id;
 }
 
 async function patchItem(
@@ -340,12 +351,22 @@ async function patchItem(
 	}
 	const after = { status: item.status, responsibility, verify: item.verify };
 	const listBucket = listBucketOf(after);
+	const sortKey = itemSortKey({
+		_id: row._id,
+		due: 'due' in patch ? patch.due : row.due,
+		facets: patch.facets ?? row.facets,
+		askedAt: row.askedAt,
+	});
+	const derived = {
+		...(listBucket !== row.listBucket ? { listBucket } : {}),
+		...(sortKey !== row.sortKey ? { sortKey } : {}),
+	};
 	if (Object.keys(patch).length === 0) {
-		// A row stored before `listBucket` existed: fill it in, no revision or activity.
-		if (listBucket !== row.listBucket) await ctx.db.patch(row._id, { listBucket });
+		// A row stored before these existed: fill them in, no revision or activity.
+		if (Object.keys(derived).length > 0) await ctx.db.patch(row._id, derived);
 		return;
 	}
-	if (listBucket !== row.listBucket) patch.listBucket = listBucket;
+	Object.assign(patch, derived);
 	const revision = row.revision + 1;
 	await ctx.db.patch(row._id, { ...patch, revision, updatedAt: args.now });
 	shifts.push([itemBucketOf(row), itemBucketOf(after)]);
