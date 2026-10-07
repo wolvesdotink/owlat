@@ -32,7 +32,7 @@ import type { needsReplyClarificationArgValidator } from '../../lib/validators/c
 import type { AppLocale } from '@owlat/shared/appLocales';
 import { localDayKey } from './dueDate';
 import { clampText } from './clamp';
-import { responsibilityOf } from './reducePlan';
+import { responsibilityOf } from './parties';
 import type { ReduceResult } from './reduceInput';
 
 export interface LatestInbound {

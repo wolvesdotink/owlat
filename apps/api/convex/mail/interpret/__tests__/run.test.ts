@@ -404,7 +404,8 @@ describe('interpretMessage', () => {
 		if (partial.status === 'gone') throw new Error('unreachable');
 		expect(partial.retryAt).toBeDefined();
 		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
-		expect(rows.find((r) => r.isCounted)?.retryCount ?? 0).toBe(0);
+		// One admitted attempt (the model ran); the gate refusal before it counted nothing.
+		expect(rows.find((r) => r.isCounted)?.retryCount).toBe(1);
 		// 3. The repair is due and the model fails: recorded and counted, the good read kept.
 		await t.run(async (ctx) => {
 			const row = (await ctx.db.query('messageInterpretations').collect()).find((r) => r.isCounted);
