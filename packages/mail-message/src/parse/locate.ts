@@ -62,6 +62,11 @@ export interface LocatedTree {
 	root: MimeNode;
 	/** Body range of every leaf node. */
 	bodies: WeakMap<MimeNode, LocatedBody>;
+	/**
+	 * Every node's whole segment (header block and body, up to the line break
+	 * before the delimiter that ends it), for a check of a part's exact bytes.
+	 */
+	segments: WeakMap<MimeNode, { start: number; end: number }>;
 	/** The part or depth bound left content out (as `parseMimeTreeWithBounds` reports). */
 	truncated: boolean;
 }
@@ -88,6 +93,7 @@ export function locateMimeTree(raw: Uint8Array): LocatedTree {
 	const n = raw.length;
 	const text = (start: number, end: number) => bytesToBinaryString(raw.subarray(start, end));
 	const bodies = new WeakMap<MimeNode, LocatedBody>();
+	const segments = new WeakMap<MimeNode, { start: number; end: number }>();
 	const budget = { remainingParts: MAX_MIME_PARTS, truncated: false };
 	let headerBytesLeft = MAX_HEADER_BYTES;
 	let headersSpent = false;
@@ -163,6 +169,7 @@ export function locateMimeTree(raw: Uint8Array): LocatedTree {
 		const frame = frames[level] as PartFrame;
 		if (frame.bodyStart === -1) readHeaders(frame, level, segEnd, segEnd);
 		const node = frame.node as MimeNode;
+		segments.set(node, { start: frame.segStart, end: Math.max(frame.segStart, segEnd) });
 		if (frame.container) endContainer(frame.container);
 		else
 			bodies.set(node, {
@@ -255,7 +262,7 @@ export function locateMimeTree(raw: Uint8Array): LocatedTree {
 
 	endPartsAbove(0, prevStart);
 	endPart(0, n);
-	return { root: frames[0]?.node as MimeNode, bodies, truncated: budget.truncated };
+	return { root: frames[0]?.node as MimeNode, bodies, segments, truncated: budget.truncated };
 }
 
 // ── Transfer decoding over a body range ─────────────────────────────────────

@@ -299,3 +299,36 @@ describe('locateMimeTree: the same leaves, verdicts and bytes as the string walk
 		}
 	});
 });
+
+describe('locateMimeTree: node segments', () => {
+	const enc = (s: string) => new Uint8Array(Buffer.from(s, 'latin1'));
+	const slice = (raw: Uint8Array, seg: { start: number; end: number } | undefined) =>
+		seg ? Buffer.from(raw.subarray(seg.start, seg.end)).toString('latin1') : undefined;
+
+	it('spans each part from after its delimiter line to before the next one', () => {
+		const first =
+			'Content-Type: multipart/alternative; boundary="in"\r\n\r\n--in\r\n\r\nx\r\n--in--';
+		const raw = enc(
+			[
+				'Content-Type: multipart/signed; boundary="b"',
+				'',
+				'preamble',
+				'--b',
+				first,
+				'--b  ',
+				'Content-Type: application/pgp-signature',
+				'',
+				'sig',
+				'--b--',
+				'epilogue',
+			].join('\r\n')
+		);
+		const { root, segments } = locateMimeTree(raw);
+		expect(root.children).toHaveLength(2);
+		expect(slice(raw, segments.get(root))).toBe(Buffer.from(raw).toString('latin1'));
+		expect(slice(raw, segments.get(root.children[0]!))).toBe(first);
+		expect(slice(raw, segments.get(root.children[1]!))).toBe(
+			'Content-Type: application/pgp-signature\r\n\r\nsig'
+		);
+	});
+});
