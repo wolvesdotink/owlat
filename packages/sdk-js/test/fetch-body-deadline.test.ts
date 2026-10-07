@@ -100,12 +100,15 @@ describe('request deadline covers the response body', () => {
 	});
 
 	it('still succeeds when the body arrives inside the deadline', async () => {
+		vi.useFakeTimers();
 		const spy = mockHeadersThenBody(200, OK_BODY, 1);
 		const http = createHttpClient(API_KEY, BASE_URL, 500, { maxRetries: 0 });
 
-		await expect(http.get('/test')).resolves.toMatchObject({ data: { id: 'x' } });
+		const call = http.get('/test');
+		await vi.advanceTimersByTimeAsync(1);
+		await expect(call).resolves.toMatchObject({ data: { id: 'x' } });
 		// The timer is cleared once the body is in: it must not fire later.
-		await new Promise((r) => setTimeout(r, 600));
+		await vi.advanceTimersByTimeAsync(600);
 		expect(spy.mock.calls[0][1]?.signal?.aborted).toBe(false);
 	});
 
