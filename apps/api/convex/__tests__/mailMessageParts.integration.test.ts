@@ -28,6 +28,7 @@ import { isSealedBytesAtRest } from '../lib/atRestBodies';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 import { MAX_STORED_PARTS } from '../mail/messageParts';
 import { enableFeatures } from './factories';
+import { parseICalendar } from '@owlat/shared/ical';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -355,6 +356,31 @@ describe('stored attachment parts (plan 3.5)', () => {
 		const text = (calendar as { ics: string }).ics;
 		expect(text).toContain('SUMMARY:Besprechung über Q4');
 		expect(text).not.toContain('\uFFFD');
+	});
+
+	it('stores a BOM-less charset=utf-16 invite as big-endian text (RFC 2781 §4.3)', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const messageId = '<parts-utf16@example.com>';
+		const ics = ICS.replace('SUMMARY:Planning', 'SUMMARY:Besprechung über Q4');
+		// Big-endian code units, no BOM: Node's 'utf16le' with every pair swapped.
+		const be = Buffer.from(ics, 'utf16le').swap16();
+		const raw = [
+			'From: Bob <bob@example.com>',
+			'To: alice@example.com',
+			'Subject: planning',
+			`Message-ID: ${messageId}`,
+			'Content-Type: text/calendar; method=REQUEST; charset=utf-16',
+			'Content-Transfer-Encoding: base64',
+			'',
+			be.toString('base64'),
+			'',
+		].join('\r\n');
+		const id = await deliver(t, messageId, 0, raw);
+
+		const calendar = await t.action(api.mail.mailbox.parts.getMessageCalendar, { messageId: id });
+		expect(calendar).toEqual({ status: 'found', ics });
+		expect(parseICalendar((calendar as { ics: string }).ics).events).toHaveLength(1);
 	});
 
 	it('keeps the parts while an IMAP COPY sibling shares the raw blob and frees them with the last row', async () => {

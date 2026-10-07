@@ -7,6 +7,7 @@ import {
 	extractAttachmentAt,
 	extractFirstPartByType,
 } from '../mailMime';
+import { parseICalendar } from '../ical';
 
 const decode = (b: Uint8Array) => new TextDecoder('utf-8').decode(b);
 
@@ -166,6 +167,69 @@ describe('decodePartText (#1299)', () => {
 			...new TextEncoder().encode('SUMMARY:Grüße'),
 		]);
 		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('SUMMARY:Grüße');
+	});
+});
+
+describe('decodePartText on UTF-16 invites, end to end (#1299)', () => {
+	const ICS = [
+		'BEGIN:VCALENDAR',
+		'METHOD:REQUEST',
+		'BEGIN:VEVENT',
+		'SUMMARY:Besprechung über Q4',
+		'DTSTART:20261001T090000Z',
+		'END:VEVENT',
+		'END:VCALENDAR',
+	].join('\r\n');
+	/** UTF-16 code units of `text`, big- or little-endian, written out by hand. */
+	function utf16(text: string, order: 'be' | 'le'): number[] {
+		return [...text].flatMap((c) => {
+			const unit = c.charCodeAt(0);
+			return order === 'be' ? [unit >> 8, unit & 0xff] : [unit & 0xff, unit >> 8];
+		});
+	}
+	/** A base64 inline invite under `contentType`, so every octet survives. */
+	function invite(contentType: string, body: number[]): string {
+		return [
+			'Content-Type: multipart/alternative; boundary="b"',
+			'',
+			'--b',
+			`Content-Type: ${contentType}`,
+			'Content-Transfer-Encoding: base64',
+			'',
+			btoa(bytesToBinaryString(new Uint8Array(body))),
+			'--b--',
+		].join('\r\n');
+	}
+	const events = (raw: string) =>
+		parseICalendar(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).events;
+
+	it('a BOM-less charset=utf-16 invite is big-endian and has its event', () => {
+		const found = events(invite('text/calendar; charset=utf-16', utf16(ICS, 'be')));
+		expect(found).toHaveLength(1);
+		expect(found[0]!.summary).toBe('Besprechung über Q4');
+	});
+
+	it('a utf-16le invite behind a big-endian BOM stays little-endian and has its event', () => {
+		const found = events(
+			invite('text/calendar; charset=utf-16le', [0xfe, 0xff, ...utf16(ICS, 'le')])
+		);
+		expect(found).toHaveLength(1);
+		expect(found[0]!.summary).toBe('Besprechung über Q4');
+	});
+
+	it('a utf-16be invite behind a little-endian BOM stays big-endian and has its event', () => {
+		const found = events(
+			invite('text/calendar; charset=utf-16be', [0xff, 0xfe, ...utf16(ICS, 'be')])
+		);
+		expect(found).toHaveLength(1);
+		expect(found[0]!.summary).toBe('Besprechung über Q4');
+	});
+
+	it('an unknown utf-16-* label keeps its bytes, so a stray FF FE does not garble the invite', () => {
+		const ascii = [...ICS.replace('über', 'ueber')].map((c) => c.charCodeAt(0));
+		const found = events(invite('text/calendar; charset=utf-16-unknown', [0xff, 0xfe, ...ascii]));
+		expect(found).toHaveLength(1);
+		expect(found[0]!.summary).toBe('Besprechung ueber Q4');
 	});
 });
 

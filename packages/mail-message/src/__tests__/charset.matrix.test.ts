@@ -122,6 +122,28 @@ describe('decodeDeclaredCharset', () => {
 		expect(decodeDeclaredCharset(b(0xfe, 0xff, 0x00, 0x41), 'utf-16be')).toBe('A');
 	});
 
+	// Expected outputs written out by hand, not taken from a decoder (#1299 r2).
+	it('a generic utf-16 part with no BOM is big-endian (RFC 2781 §4.3)', () => {
+		expect(decodeDeclaredCharset(b(0x00, 0x41, 0x00, 0xfc), 'utf-16')).toBe('Aü');
+		expect(decodeDeclaredCharset(b(0x00, 0x41), 'UTF-16')).toBe('A');
+	});
+
+	it('explicit utf-16le / utf-16be keep their order when the BOM conflicts', () => {
+		// The conflicting BOM is data: U+FFFE, then the text in the label's order.
+		expect(decodeDeclaredCharset(b(0xfe, 0xff, 0x41, 0x00), 'utf-16le')).toBe('\uFFFEA');
+		expect(decodeDeclaredCharset(b(0xff, 0xfe, 0x00, 0x41), 'utf-16be')).toBe('\uFFFEA');
+	});
+
+	it('explicit utf-16le / utf-16be strip a BOM in their own order', () => {
+		expect(decodeDeclaredCharset(b(0xff, 0xfe, 0x41, 0x00), 'utf-16le')).toBe('A');
+		expect(decodeDeclaredCharset(b(0xfe, 0xff, 0x00, 0x41), 'utf-16be')).toBe('A');
+	});
+
+	it('a label that only starts with utf-16 takes the byte-preserving fallback', () => {
+		expect(decodeDeclaredCharset(b(0xff, 0xfe, 0x41, 0x00), 'utf-16-unknown')).toBe('ÿþA\u0000');
+		expect(decodeDeclaredCharset(b(0x41, 0x42), 'utf-16x')).toBe('AB');
+	});
+
 	it('with no BOM it decodes exactly as decodeCharset does', () => {
 		for (const [bytes, charset] of [
 			[b(...GRUESSE_LATIN1), 'iso-8859-1'],
