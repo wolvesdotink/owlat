@@ -159,6 +159,23 @@ export function zonedTime(date: YMD, minutes: number, timeZone: string): number 
 	return at;
 }
 
+/**
+ * {@link zonedTime}, or undefined when the wall-clock time does not name one
+ * instant there: it falls in a daylight-saving gap (skipped) or overlap
+ * (repeated). Pure.
+ */
+export function zonedTimeExact(date: YMD, minutes: number, timeZone: string): number | undefined {
+	const at = zonedTime(date, minutes, timeZone);
+	const wall = (ms: number) => {
+		const p = partsIn(ms, timeZone);
+		return `${p.y}-${p.m}-${p.d} ${hourIn(ms, timeZone).ms}`;
+	};
+	const wanted = `${date.y}-${date.m}-${date.d} ${minutes * 60_000}`;
+	if (wall(at) !== wanted) return undefined;
+	if (wall(at - 3_600_000) === wanted || wall(at + 3_600_000) === wanted) return undefined;
+	return at;
+}
+
 function hourIn(ms: number, timeZone: string): { ms: number } {
 	let fmt: Intl.DateTimeFormat;
 	try {
@@ -242,23 +259,31 @@ const NUMBER_WORDS: Record<string, number> = {
 };
 
 /** Every reading the phrase supports, as calendar dates; `ambiguous` when one is unsure. */
-function readings(phrase: string, today: YMD): { dates: YMD[]; isUnsure: boolean } {
+function readings(
+	phrase: string,
+	today: YMD,
+	spans: Span[] = []
+): { dates: YMD[]; isUnsure: boolean } {
 	const text = phrase.normalize('NFKC').toLowerCase();
 	const dates: YMD[] = [];
 	let isUnsure = false;
+	const take = (m: RegExpMatchArray) => spans.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
 	const push = (date: YMD | undefined) => {
 		if (date && isValid(date)) dates.push(date);
 		else isUnsure = true;
 	};
 
 	for (const m of text.matchAll(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g)) {
+		take(m);
 		push({ y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) });
 	}
 	for (const m of text.matchAll(/(?<![\d-])(\d{1,2})\.(\d{1,2})\.(\d{2,4})?(?![\d-])/g)) {
+		take(m);
 		const y = fullYear(m[3]);
 		push(y ? { y, m: Number(m[2]), d: Number(m[1]) } : withYear(Number(m[2]), Number(m[1]), today));
 	}
 	for (const m of text.matchAll(/(?<![\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?(?![\d/])/g)) {
+		take(m);
 		const a = Number(m[1]);
 		const b = Number(m[2]);
 		if (a <= 12 && b <= 12 && a !== b) {
@@ -274,6 +299,7 @@ function readings(phrase: string, today: YMD): { dates: YMD[]; isUnsure: boolean
 		'g'
 	);
 	for (const m of text.matchAll(dayMonth)) {
+		take(m);
 		const mo = MONTHS[m[2] as string] as number;
 		const y = fullYear(m[3]);
 		push(y ? { y, m: mo, d: Number(m[1]) } : withYear(mo, Number(m[1]), today));
@@ -283,6 +309,7 @@ function readings(phrase: string, today: YMD): { dates: YMD[]; isUnsure: boolean
 		'g'
 	);
 	for (const m of text.matchAll(monthDay)) {
+		take(m);
 		const mo = MONTHS[m[1] as string] as number;
 		const y = fullYear(m[3]);
 		push(y ? { y, m: mo, d: Number(m[2]) } : withYear(mo, Number(m[2]), today));
@@ -303,6 +330,7 @@ function readings(phrase: string, today: YMD): { dates: YMD[]; isUnsure: boolean
 		/\b(?:in|within|innerhalb von|dans|sous)\s+(\d+|[a-zäöüéè]+)\s+(?:days?|tagen?|jours?)\b/
 	);
 	if (inDays) {
+		take(inDays);
 		const n = /^\d+$/.test(inDays[1] as string)
 			? Number(inDays[1])
 			: NUMBER_WORDS[inDays[1] as string];
@@ -335,6 +363,22 @@ const UTC_ZONE = /(?<!\p{L})(?:utc|gmt)(?!\p{L})/u;
 const OTHER_ZONE =
 	/(?<!\p{L})(?:cet|cest|mez|mesz|est|edt|cst|cdt|mst|mdt|pst|pdt|bst|ist|eet|eest|wet|west|aest|aedt|jst|hst|akst)(?!\p{L})|(?:utc|gmt)\s?[+-]\d|:\d{2}\s?[+-]\d{2}:?\d{2}(?!\d)/u;
 
+/** A [start, end) range of the phrase a reading consumed. */
+type Span = [number, number];
+
+/** Whether any digit is left once every reading's span is removed ("at 5", "17:5"). Pure. */
+function hasUnreadDigits(text: string, spans: readonly Span[]): boolean {
+	const chars = [...text];
+	let offset = 0;
+	const kept: string[] = [];
+	for (const ch of chars) {
+		const at = offset;
+		offset += ch.length;
+		if (!spans.some(([a, b]) => at >= a && at < b)) kept.push(ch);
+	}
+	return /\d/.test(kept.join(''));
+}
+
 interface ClockTime {
 	minutes?: number;
 	isUnsure: boolean;
@@ -346,7 +390,8 @@ interface ClockTime {
  * `17.30 Uhr`, `17h`, `17h30`, noon / Mittag (12:00) / midi. Two different
  * times, an impossible one or a vague one ("Friday afternoon") are unsure.
  */
-function readTime(text: string): ClockTime {
+function readTime(text: string, spans: Span[] = []): ClockTime {
+	const take = (m: RegExpMatchArray) => spans.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
 	const found = new Set<number>();
 	let isUnsure =
 		VAGUE_TIME.test(text) && !/(?<!\p{L})(?:noon|midday|mittag|midi)(?!\p{L})/u.test(text);
@@ -362,6 +407,7 @@ function readTime(text: string): ClockTime {
 	for (const m of text.matchAll(
 		/(?<![\d.:])(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s?m\.?(?![\p{L}])/gu
 	)) {
+		take(m);
 		ampm(Number(m[1]), Number(m[2] ?? 0), m[3] as string);
 	}
 	for (const m of text.matchAll(/(?<![\d.:])(\d{1,2})[:.](\d{2})(?!\s*[ap]\.?\s?m)(?![\d.])/g)) {
@@ -369,10 +415,15 @@ function readTime(text: string): ClockTime {
 		const isDotted = m[0].includes('.');
 		const tail = text.slice((m.index ?? 0) + m[0].length);
 		if (isDotted && !/^\s*(?:uhr|h)\b/.test(tail)) continue;
+		take(m);
 		add(Number(m[1]), Number(m[2]));
 	}
-	for (const m of text.matchAll(/(?<![\d.:])(\d{1,2})\s*uhr(?!\p{L})/gu)) add(Number(m[1]), 0);
+	for (const m of text.matchAll(/(?<![\d.:])(\d{1,2})\s*uhr(?!\p{L})/gu)) {
+		take(m);
+		add(Number(m[1]), 0);
+	}
 	for (const m of text.matchAll(/(?<![\d.:])(\d{1,2})h(\d{2})?(?![\p{L}\d])/gu)) {
+		take(m);
 		add(Number(m[1]), Number(m[2] ?? 0));
 	}
 	if (/(?<!\p{L})(?:noon|midday|mittag|midi)(?!\p{L})/u.test(text)) add(12, 0);
@@ -393,18 +444,24 @@ export function resolveDue(phrase: string, sentAt: number, timeZone: string): Re
 	if (!phrase.trim() || !Number.isFinite(sentAt)) return { isAmbiguous: true };
 	const today = partsIn(sentAt, timeZone);
 	const text = phrase.normalize('NFKC').toLowerCase();
-	const { dates, isUnsure } = readings(phrase, today);
-	const time = readTime(text);
+	const spans: Span[] = [];
+	const { dates, isUnsure } = readings(phrase, today, spans);
+	const time = readTime(text, spans);
 	if (isUnsure || time.isUnsure) return { isAmbiguous: true };
+	// A number nothing read ("at 5", "17:5") could change the meaning: unclear.
+	if (hasUnreadDigits(text, spans)) return { isAmbiguous: true };
 	const distinct = new Set(dates.map((d) => `${d.y}-${d.m}-${d.d}`));
 	if (distinct.size > 1) return { isAmbiguous: true };
 	if (time.minutes === undefined) {
 		if (distinct.size !== 1) return { isAmbiguous: true };
-		return { at: zonedMidnight(dates[0] as YMD, timeZone), isAmbiguous: false };
+		const midnight = zonedTimeExact(dates[0] as YMD, 0, timeZone);
+		return midnight === undefined ? { isAmbiguous: true } : { at: midnight, isAmbiguous: false };
 	}
 	// A time with no date is today's; one already past when the mail was sent is unclear.
 	const date = dates[0] ?? today;
-	const at = zonedTime(date, time.minutes, time.isUtc ? 'UTC' : timeZone);
+	// A wall-clock time in a daylight-saving gap or overlap names no single instant.
+	const at = zonedTimeExact(date, time.minutes, time.isUtc ? 'UTC' : timeZone);
+	if (at === undefined) return { isAmbiguous: true };
 	if (dates.length === 0 && at <= sentAt) return { isAmbiguous: true };
 	return { at, isAmbiguous: false };
 }

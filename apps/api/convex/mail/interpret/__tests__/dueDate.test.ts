@@ -105,3 +105,23 @@ describe('times of day (review round 2 F8)', () => {
 		expect(resolveDue('la date limite est vendredi', SENT, BERLIN).at).toBe(day(2026, 10, 9));
 	});
 });
+
+describe('review round 3 (P5)', () => {
+	it.each(['by Friday at 5', 'by Friday 17:5', 'bis Freitag um 5', 'vendredi à 5', 'by Friday 3'])(
+		'keeps "%s" ambiguous: a number nothing read',
+		(phrase) => {
+			expect(resolveDue(phrase, SENT, BERLIN)).toEqual({ isAmbiguous: true });
+		}
+	);
+
+	it('refuses a wall-clock time in a daylight-saving gap or overlap', () => {
+		// Berlin skips 02:00–03:00 on 29 March 2026 and repeats it on 25 October 2026.
+		const march = Date.UTC(2026, 2, 27, 9, 0);
+		expect(resolveDue('by 29.03.2026 02:30 Uhr', march, BERLIN)).toEqual({ isAmbiguous: true });
+		expect(resolveDue('by 25.10.2026 02:30 Uhr', SENT, BERLIN)).toEqual({ isAmbiguous: true });
+		expect(resolveDue('by 25.10.2026 04:30 Uhr', SENT, BERLIN)).toEqual({
+			at: Date.UTC(2026, 9, 25, 3, 30),
+			isAmbiguous: false,
+		});
+	});
+});

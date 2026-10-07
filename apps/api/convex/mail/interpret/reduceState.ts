@@ -15,6 +15,7 @@ import { ITEM_STATUSES, type InterpretMode } from '@owlat/shared/threadBrief';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
+import { exactValueKey } from './factEquivalence';
 import { loadPromptItemCandidates, readResult, threadItemsWithStatus } from './load';
 import type { HumanOp, LineageSeed, MemFact, MemItem, MemState, ReplayEntry } from './replay';
 import type { ReduceResult } from './reduceInput';
@@ -57,6 +58,7 @@ export async function itemToMem(row: Doc<'threadItems'>): Promise<MemItem> {
 	return {
 		_id: row._id,
 		...(row.lineage ? { lineage: row.lineage } : {}),
+		...(row.lineageKeys ? { lineageKeys: [...row.lineageKeys] } : {}),
 		isNew: false,
 		status: row.status,
 		disposition: row.disposition,
@@ -84,8 +86,13 @@ export async function itemToMem(row: Doc<'threadItems'>): Promise<MemItem> {
 }
 
 export async function factToMem(row: Doc<'threadFacts'>): Promise<MemFact> {
+	const opened =
+		row.value && 'text' in row.value
+			? { ...row.value, text: await openMessageBody(row.value.text) }
+			: row.value;
 	return {
 		_id: row._id,
+		...(exactValueKey(opened) !== undefined ? { storedValueKey: exactValueKey(opened) } : {}),
 		...(row.lineage ? { lineage: row.lineage } : {}),
 		isNew: false,
 		factKey: row.factKey,
@@ -96,6 +103,10 @@ export async function factToMem(row: Doc<'threadFacts'>): Promise<MemFact> {
 			? { valueText: await openMessageBody(row.value.text) }
 			: {}),
 		assertionText: await openMessageBody(row.assertion),
+		storedDisplay: {
+			en: await openMessageBody(row.display.en),
+			de: await openMessageBody(row.display.de),
+		},
 		evidence: [...row.evidence],
 		...(row.supersedesId ? { supersedesId: row.supersedesId } : {}),
 		...(row.conflictsWithId ? { conflictsWithId: row.conflictsWithId } : {}),
@@ -208,10 +219,15 @@ export async function loadReplayState(
 	const base: MemState = { items: new Map(), facts: new Map() };
 	const seedItems = new Map<string, MemItem>();
 	const seedFacts = new Map<string, MemFact>();
+	const seedById = new Map<string, MemItem>();
 	for (const row of rows.values()) {
 		const mem = await itemToMem(row);
-		if (row.lineage) seedItems.set(row.lineage, mem);
-		else base.items.set(row._id, mem);
+		seedById.set(row._id, mem);
+		if (!row.lineage) {
+			base.items.set(row._id, mem);
+			continue;
+		}
+		for (const key of [row.lineage, ...(row.lineageKeys ?? [])]) seedItems.set(key, mem);
 	}
 	for (const row of factRows.values()) {
 		const mem = await factToMem(row);
@@ -247,7 +263,7 @@ export async function loadReplayState(
 	return {
 		isOverBudget: false,
 		base,
-		seed: { items: seedItems, facts: seedFacts },
+		seed: { items: seedItems, itemsById: seedById, facts: seedFacts },
 		rows,
 		factRows,
 		entries,
