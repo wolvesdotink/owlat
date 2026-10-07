@@ -6,19 +6,23 @@
  *  - `threadFacts` and the `fact_changed` activity about them (actions mode
  *    has no facts);
  *  - `threadBriefs.overview` (the compaction cache) and the checkpoint;
- *  - every `messageInterpretations` row of the thread: its sealed payload
- *    carries the latest lines and facts the per-message "latest" reads, and a
- *    stored extraction is replayed instead of re-run, so a brief-mode row
- *    would keep a later actions-mode run from ever happening (the reverse
- *    holds for actions → brief);
+ *  - every `messageInterpretations` row of the thread in the OLD mode (taken
+ *    out of the source counters): its sealed payload carries the latest lines
+ *    and facts the per-message "latest" reads, and a stored extraction is
+ *    replayed instead of re-run, so a brief-mode row would keep a later
+ *    actions-mode run from ever happening (the reverse holds for actions →
+ *    brief). A row a new-mode run already wrote stays;
  *  - every viewer's `viewOverride` (team surfaces have no Overview switch);
  *  - the thread's response plans (marked `stale`);
  *  - `mailThreads.briefTop`, recomputed in the new mode (no latest line).
  *
  * Items carry over: both modes produce them. The brief row takes the new
- * mode, a bumped deletion epoch (an in-flight run in the old mode gets
- * `erased`) and the completeness of what is left (`none` once the
- * extractions are gone). Nothing is re-interpreted here: a mailbox can hold
+ * mode (the reducer reconciles the mode the same way on its next run and
+ * sends an old-mode run back with `modeChanged`), a bumped deletion epoch
+ * (an in-flight run that loaded before gets `erased`) and the completeness
+ * of what is left (`none` once the extractions are gone). The eligibility
+ * snapshots (`interpretSources`) do not depend on the mode and stay.
+ * Nothing is re-interpreted here: a mailbox can hold
  * thousands of threads, and each would cost a model call; the next message
  * of a thread is interpreted in the new mode, and older threads stay as their
  * items left them.
@@ -38,7 +42,7 @@ import { interpretModeValidator } from '../../lib/validators/threadBrief';
 import { mailboxScope } from '../mailbox/shared';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
-import { recomputeCompleteness } from './purge';
+import { deleteExtractions, recomputeCompleteness } from './purgeRows';
 
 /** Threads per walker transaction. */
 const THREAD_PAGE = 25;
@@ -96,12 +100,15 @@ export async function invalidateThreadForMode(
 		updatedAt: Date.now(),
 	});
 
+	// Extractions in the old mode; a run that already landed in the new one stays.
 	const extractions = await ctx.db
 		.query('messageInterpretations')
 		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
 		.take(ROW_LIMIT);
-	for (const row of extractions) await ctx.db.delete(row._id);
-	if (extractions.length === ROW_LIMIT) isDone = false;
+	const stale = extractions.filter((row) => row.mode !== mode);
+	await deleteExtractions(ctx, stale);
+	// Another pass only while it still finds old-mode rows to delete.
+	if (extractions.length === ROW_LIMIT && stale.length > 0) isDone = false;
 
 	if (mode === 'actions') {
 		const facts = await ctx.db

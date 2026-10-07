@@ -5,15 +5,18 @@
  * erasure taking a Team Inbox message), everything the thread brief derived
  * from it goes or is recomputed, in the purge's transaction:
  *
- *  - its `messageInterpretations` rows (the sealed proposals and latest lines);
+ *  - its `messageInterpretations` rows (the sealed proposals and latest lines),
+ *    taken out of the brief's source counters, and its `interpretSources`
+ *    row (eligibility snapshot, a team reply's sent text);
  *  - the activity rows the reducer wrote for it (`received:<source>`,
  *    `interp:<source>:…`), the send pipeline's rows keyed by its id
  *    (`sent:<id>`, `delivery_failed:<id>:…`, `send_queued:<id>:…` …) and any
  *    row whose `opRef` names it;
  *  - its evidence entries on items and facts. "A surviving claim must keep
  *    surviving evidence": an item or fact left without evidence is deleted
- *    (with its links, `purgeRows.ts`); one replaced or superseded by a deleted
- *    claim comes back (`open` / `current`); pointers to deleted claims are
+ *    (with its links, `purgeRows.ts`, and out of the item counters); one
+ *    replaced or superseded by a deleted claim comes back (`open` /
+ *    `current`, through `itemWrite.ts`); pointers to deleted claims are
  *    cleared on the survivors;
  *  - response plans lose their references to deleted items and go `stale`;
  *  - the Postbox clarification questions lose their item links;
@@ -46,7 +49,15 @@ import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadR
 import { scopedIdempotencyKey } from './activity';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
-import { NO_METER, unlinkDeletedItem, type PurgeMeter } from './purgeRows';
+import {
+	deleteExtractions,
+	NO_METER,
+	recomputeCompleteness,
+	unlinkDeletedItem,
+	type PurgeMeter,
+} from './purgeRows';
+import { recordItemChange } from './counters';
+import { writeItemChange } from './itemWrite';
 
 /** Items or facts scanned inline per thread. */
 export const CLAIM_SCAN_LIMIT = 1000;
@@ -103,7 +114,7 @@ export async function purgeSourcesFromThread(
 	for (const table of ['threadItems', 'threadFacts'] as const) {
 		if (table === 'threadFacts' && ref.kind !== 'mail') continue;
 		const rows = await scanClaims(ctx, ref, table, CLAIM_SCAN_LIMIT + 1);
-		await stripClaims(ctx, table, ids, rows.slice(0, CLAIM_SCAN_LIMIT), outcome, meter);
+		await stripClaims(ctx, ref, table, ids, rows.slice(0, CLAIM_SCAN_LIMIT), outcome, meter);
 		if (rows.length > CLAIM_SCAN_LIMIT) {
 			await ctx.scheduler.runAfter(0, internal.mail.interpret.purge.sweepSourcesPage, {
 				threadRef: ref,
@@ -124,7 +135,7 @@ async function deleteSourceRows(
 	meter: PurgeMeter
 ): Promise<boolean> {
 	let hadInterpretation = false;
-	const remove = async (rows: Array<{ _id: Id<'messageInterpretations' | 'threadActivity'> }>) => {
+	const remove = async (rows: Array<{ _id: Id<'interpretSources' | 'threadActivity'> }>) => {
 		for (const row of rows) {
 			meter(row);
 			await ctx.db.delete(row._id);
@@ -137,7 +148,14 @@ async function deleteSourceRows(
 			.withIndex('by_source_revision', (q) => q.eq('sourceKey', key))
 			.take(SOURCE_ROW_LIMIT);
 		if (extractions.length > 0) hadInterpretation = true;
-		await remove(extractions);
+		await deleteExtractions(ctx, extractions, meter);
+		// The eligibility snapshot (and a team reply's sent text) of the source.
+		await remove(
+			await ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
+				.take(SOURCE_ROW_LIMIT)
+		);
 
 		const received = scopedIdempotencyKey(ref, `received:${key}`);
 		await remove(
@@ -212,6 +230,7 @@ function scanClaims(
  */
 async function stripClaims(
 	ctx: MutationCtx,
+	ref: ThreadRef,
 	table: ClaimTable,
 	ids: ReadonlySet<string>,
 	rows: readonly ClaimRow[],
@@ -239,13 +258,25 @@ async function stripClaims(
 		outcome.changed += 1;
 	}
 	for (const row of doomed) {
-		if (table === 'threadItems') await unlinkDeletedItem(ctx, row._id as Id<'threadItems'>, meter);
+		if (table === 'threadItems') {
+			await unlinkDeletedItem(ctx, row._id as Id<'threadItems'>, meter);
+			// The brief's item counters (`counters.ts`) lose it.
+			await recordItemChange(ctx, ref, row as Doc<'threadItems'>, null);
+		}
 		await ctx.db.delete(row._id);
 	}
 	for (const row of survivors) {
 		const patch = repairPointers(row, deleted, table, doomed);
 		if (!patch) continue;
-		await ctx.db.patch(row._id, { ...patch, revision: row.revision + 1, updatedAt: now });
+		const stamped = { ...patch, revision: row.revision + 1, updatedAt: now };
+		if (table === 'threadItems') {
+			// A reopened item moves counter buckets; the list projection is refreshed once, at the end.
+			await writeItemChange(ctx, ref, row as Doc<'threadItems'>, stamped, {
+				isTopRefreshed: false,
+			});
+		} else {
+			await ctx.db.patch(row._id as Id<'threadFacts'>, stamped);
+		}
 		outcome.changed += 1;
 	}
 }
@@ -320,58 +351,6 @@ async function settleThread(
 	if (ref.kind === 'mail') {
 		await refreshBriefTop(ctx, ref.id, opts.isLatestStale ? { latest: null } : {});
 	}
-}
-
-/** Extractions read per thread when completeness is recomputed (as the reducer). */
-const COMPLETENESS_SCAN = 200;
-
-/**
- * The thread's completeness after extractions were removed. The one place a
- * purge (and a scope change) recomputes it, so a different completeness
- * source (counters on the brief row) can be swapped in here.
- *
- * MIRRORS `reduceState.ts completenessOf` over the newest extractions:
- * partial while the newest extraction of any source failed, came back
- * partial or could not be read; none without extractions. It is restated
- * rather than imported because `reduceState` reaches the message purge
- * through `load.ts` (an import cycle); `purge.test.ts` pins the two together.
- */
-export async function recomputeCompleteness(
-	ctx: MutationCtx,
-	ref: ThreadRef
-): Promise<Doc<'threadBriefs'>['completeness']> {
-	const rows =
-		ref.kind === 'mail'
-			? await ctx.db
-					.query('messageInterpretations')
-					.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', ref.id))
-					.order('desc')
-					.take(COMPLETENESS_SCAN)
-			: await ctx.db
-					.query('messageInterpretations')
-					.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', ref.id))
-					.order('desc')
-					.take(COMPLETENESS_SCAN);
-	return completenessOfRows(rows);
-}
-
-/** Pure core of {@link recomputeCompleteness}. */
-export function completenessOfRows(
-	rows: ReadonlyArray<
-		Pick<Doc<'messageInterpretations'>, 'sourceKey' | 'status' | 'skipReason' | 'updatedAt'>
-	>
-): Doc<'threadBriefs'>['completeness'] {
-	const newest = new Map<string, (typeof rows)[number]>();
-	for (const row of rows) {
-		const seen = newest.get(row.sourceKey);
-		if (!seen || row.updatedAt > seen.updatedAt) newest.set(row.sourceKey, row);
-	}
-	if (newest.size === 0) return 'none';
-	for (const row of newest.values()) {
-		if (row.status === 'failed' || row.status === 'partial') return 'partial';
-		if (row.status === 'skipped' && row.skipReason === 'undecryptable') return 'partial';
-	}
-	return 'complete';
 }
 
 /** Strip deleted items from the thread's response plans and mark every plan stale. */
@@ -478,7 +457,7 @@ export const sweepSourcesPage = internalMutation({
 			changed: 0,
 		};
 		const ids = new Set<string>(args.sources.map((s) => s.id));
-		await stripClaims(ctx, args.table, ids, page.page, outcome, NO_METER);
+		await stripClaims(ctx, ref, args.table, ids, page.page, outcome, NO_METER);
 		await settleThread(ctx, ref, outcome, {
 			keys: new Set(args.sources.map(interpretationSourceKey)),
 			isLatestStale: false,

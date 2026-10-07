@@ -16,8 +16,7 @@ import { threadRefToFields, type ThreadRef } from '../../../lib/validators/threa
 import type { InterpretationSource } from '../../../lib/validators/threadBrief';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from '../../messagePurge';
 import { rebuildThreadAggregates } from '../../threadAggregates';
-import { completenessOfRows, purgeSourcesFromThread } from '../purge';
-import { completenessOf } from '../reduceState';
+import { purgeSourcesFromThread } from '../purge';
 import { purgeThreadBrief } from '../purgeThread';
 import { seedFolder } from '../../__tests__/helpers.testlib';
 import {
@@ -217,7 +216,21 @@ describe('message purge', () => {
 
 		// The reducer writes A's item, extraction, activity and the brief.
 		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, applyArgs(a, threadId));
+		expect((await mailRows(t, threadId)).brief?.sourceCounts?.complete).toBe(1);
 		const seeded = await t.run(async (ctx) => {
+			await ctx.db.insert('interpretSources', {
+				...threadRefToFields(ref),
+				source: srcA,
+				sourceKey: `mail:${a}`,
+				eligibility: {
+					isLive: true,
+					isThreadMuted: false,
+					isBulkHeaderPresent: false,
+					isSenderKnown: true,
+				},
+				createdAt: SENT,
+				updatedAt: SENT,
+			});
 			const onlyA = (await ctx.db
 				.query('threadItems')
 				.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', threadId))
@@ -298,6 +311,10 @@ describe('message purge', () => {
 			deletionEpoch: 1,
 			interpretationRevision: 2,
 			completeness: 'none',
+			sourceCounts: { complete: 0, partial: 0, failed: 0, unreadable: 0, skipped: 0 },
+		});
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('interpretSources').collect()).toHaveLength(0);
 		});
 		expect(after.brief?.checkpoint).toBeUndefined();
 		expect(after.thread?.briefTop).toMatchObject({
@@ -540,21 +557,5 @@ describe('team message purge', () => {
 			expect(activity).toHaveLength(0);
 			expect(await ctx.db.query('threadItemCorrections').collect()).toHaveLength(0);
 		});
-	});
-});
-
-describe('completenessOfRows', () => {
-	it('agrees with the reducer’s completenessOf', () => {
-		const row = (sourceKey: string, status: string, updatedAt: number, skipReason?: string) =>
-			({ sourceKey, status, updatedAt, ...(skipReason ? { skipReason } : {}) }) as never;
-		const cases = [
-			[],
-			[row('mail:a', 'complete', 1)],
-			[row('mail:a', 'failed', 1), row('mail:a', 'complete', 2)],
-			[row('mail:a', 'complete', 1), row('mail:b', 'partial', 1)],
-			[row('mail:a', 'skipped', 1, 'undecryptable')],
-			[row('mail:a', 'skipped', 1, 'short'), row('mail:b', 'complete', 3)],
-		];
-		for (const rows of cases) expect(completenessOfRows(rows)).toBe(completenessOf(rows));
 	});
 });

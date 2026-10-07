@@ -26,8 +26,15 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { ThreadBriefTable } from '../../schema/threadBrief';
-import type { ThreadRef } from '../../lib/validators/threadRef';
+import { threadRefFromFields, threadRefKey, type ThreadRef } from '../../lib/validators/threadRef';
 import { loadBriefRow } from './briefRow';
+import {
+	completenessOfCounts,
+	EMPTY_SOURCE_COUNTS,
+	shiftCount,
+	sourceBucketOf,
+	type SourceBucket,
+} from './counters';
 
 /** Charges the documents a purge reads to a caller's budget (the erasure walkers). */
 export type PurgeMeter = (doc: unknown) => void;
@@ -45,8 +52,8 @@ export type BriefRangeReader = (limit: number) => Promise<BriefRow[]>;
 /**
  * The thread's rows of every thread brief table, children first (note
  * reactions, item corrections, plans, viewer state and activity before the
- * items and facts they point at; the brief row, which holds the deletion
- * epoch, last). Each reader returns the
+ * items and facts they point at; extractions and source snapshots; the brief
+ * row, which holds the deletion epoch, last). Each reader returns the
  * first `limit` rows of its range; deleting a row takes it out of the range,
  * so draining a reader until it comes back short empties the table.
  */
@@ -96,6 +103,11 @@ export function threadBriefRanges(ctx: MutationCtx, ref: ThreadRef): BriefRangeR
 					.take(n),
 			(n) =>
 				ctx.db
+					.query('interpretSources')
+					.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', id))
+					.take(n),
+			(n) =>
+				ctx.db
 					.query('threadBriefs')
 					.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', id))
 					.take(n),
@@ -137,6 +149,11 @@ export function threadBriefRanges(ctx: MutationCtx, ref: ThreadRef): BriefRangeR
 		(n) =>
 			ctx.db
 				.query('messageInterpretations')
+				.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', id))
+				.take(n),
+		(n) =>
+			ctx.db
+				.query('interpretSources')
 				.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', id))
 				.take(n),
 		(n) =>
@@ -234,4 +251,45 @@ export async function deleteThreadBriefRow(
 /** A `threadItems` row: the only brief table with both evidence and a disposition. */
 function isItemRow(row: BriefRow): row is Doc<'threadItems'> {
 	return 'disposition' in row && 'evidence' in row;
+}
+
+/**
+ * Delete extraction rows and take each CURRENT one out of its brief's source
+ * counters (`counters.ts`), so completeness stays right without a scan.
+ */
+export async function deleteExtractions(
+	ctx: MutationCtx,
+	rows: readonly Doc<'messageInterpretations'>[],
+	meter: PurgeMeter = NO_METER
+): Promise<void> {
+	const shifts = new Map<string, { ref: ThreadRef; buckets: SourceBucket[] }>();
+	for (const row of rows) {
+		meter(row);
+		await ctx.db.delete(row._id);
+		if (row.isCurrent !== true) continue;
+		const ref = threadRefFromFields(row);
+		const key = threadRefKey(ref);
+		const entry = shifts.get(key) ?? { ref, buckets: [] };
+		entry.buckets.push(sourceBucketOf(row));
+		shifts.set(key, entry);
+	}
+	for (const { ref, buckets } of shifts.values()) {
+		const brief = await loadBriefRow(ctx, ref);
+		if (!brief) continue;
+		let counts = brief.sourceCounts ?? EMPTY_SOURCE_COUNTS;
+		for (const bucket of buckets) counts = shiftCount(counts, bucket, null);
+		await ctx.db.patch(brief._id, { sourceCounts: counts });
+	}
+}
+
+/**
+ * The thread's completeness from its source counters, after a purge or a
+ * scope change removed extractions. The one place either derives it.
+ */
+export async function recomputeCompleteness(
+	ctx: MutationCtx,
+	ref: ThreadRef
+): Promise<Doc<'threadBriefs'>['completeness']> {
+	const brief = await loadBriefRow(ctx, ref);
+	return completenessOfCounts(brief?.sourceCounts ?? EMPTY_SOURCE_COUNTS);
 }

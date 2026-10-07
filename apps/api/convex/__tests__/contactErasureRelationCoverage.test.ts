@@ -134,6 +134,11 @@ const NESTED_SEEDS: Record<
 		source: { kind: 'inbound', id: parentId },
 		sourceKey: `inbound:${parentId}`,
 	}),
+	'interpretSources.source.id': async (ctx, seeder, parentId) => ({
+		...(await foreignThread(ctx, seeder, parentId)),
+		source: { kind: 'inbound', id: parentId },
+		sourceKey: `inbound:${parentId}`,
+	}),
 	'threadItems.evidence[].source.id': async (ctx, seeder, parentId) => ({
 		...(await foreignThread(ctx, seeder, parentId)),
 		evidence: [

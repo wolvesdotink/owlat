@@ -146,7 +146,8 @@ describe('scope change personal → shared', () => {
 		expect(after.thread?.briefTop).toMatchObject({ mode: 'actions', forYou: 1 });
 		expect(after.thread?.briefTop?.latest).toBeUndefined();
 
-		// A brief-mode run that loaded before the change cannot write back.
+		// A brief-mode run that loaded before the change cannot write back: the
+		// reducer re-derives the mode and sends it back.
 		const late = await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
 			source: { kind: 'mail', id: messageId },
 			threadRef: { kind: 'mail', id: threadId },
@@ -160,7 +161,7 @@ describe('scope change personal → shared', () => {
 			status: 'complete',
 			result: reduceResult(),
 		});
-		expect(late).toEqual({ outcome: 'erased' });
+		expect(late).toEqual({ outcome: 'modeChanged' });
 	});
 
 	it('stops when the mailbox scope no longer matches the mode', async () => {

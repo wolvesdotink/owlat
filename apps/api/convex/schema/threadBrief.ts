@@ -286,7 +286,11 @@ export const threadBriefTables = {
 		),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	}).index('by_source_key', ['sourceKey']),
+	})
+		.index('by_source_key', ['sourceKey'])
+		// Thread erasure (mail/interpret/purgeRows.ts threadBriefRanges).
+		.index('by_mail_thread', ['mailThreadId'])
+		.index('by_conversation_thread', ['conversationThreadId']),
 
 	// One row per thread: the reducer's revision, checkpoint and completeness.
 	threadBriefs: defineTable({
