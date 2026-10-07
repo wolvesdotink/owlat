@@ -84,7 +84,7 @@ async function outcome(t: Test, threadId: Id<'mailThreads'>) {
 	}));
 }
 
-const interpretJobs = (jobs: { name: string }[]) =>
+const interpretJobs = <J extends { name: string }>(jobs: J[]) =>
 	jobs.filter((job) => job.name.includes('interpret/run'));
 
 async function seed(t: Test, roles: SeededFolderRole[] = ['inbox']) {
@@ -101,7 +101,7 @@ describe('delivery → interpretation', () => {
 
 		const { jobs, brief } = await outcome(t, message.threadId);
 		const classify = jobs.find((job) => job.name.includes('needsReplyClassify'));
-		expect(classify?.args.interpretMessageId).toBe(message._id);
+		expect(classify?.args['interpretMessageId']).toBe(message._id);
 		expect(interpretJobs(jobs)).toEqual([]);
 		expect(brief?.completeness).toBe('pending');
 	});
