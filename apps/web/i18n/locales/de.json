@@ -16603,7 +16603,9 @@
 			"topics": "Themen",
 			"transactionalEmails": "Transaktions-E-Mails",
 			"webhooks": "Webhooks",
-			"pushSubscriptions": "Benachrichtigungsgeräte"
+			"pushSubscriptions": "Benachrichtigungsgeräte",
+			"threadBriefs": "Überblicke zu E-Mail-Verläufen",
+			"threadViewerState": "Ansicht der E-Mail-Verläufe"
 		},
 		"archiveImport": {
 			"refused": {
