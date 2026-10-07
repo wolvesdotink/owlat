@@ -32,29 +32,25 @@ import {
 	threadRefToFields,
 	type ThreadRef,
 } from '../../lib/validators/threadRef';
-import { openMessageBody, sealBodyAtWrite } from '../../lib/messageBody';
+import { sealBodyAtWrite } from '../../lib/messageBody';
 import { INTERPRET_PAYLOAD_VERSION } from './schema';
 import { ensureBriefRow } from './briefRow';
 import { appendActivity } from './activity';
-import { loadPromptItemCandidates, threadItemsWithStatus } from './load';
 import {
 	applyInterpretationArgs,
 	type ReduceEvidence,
 	type ReduceFact,
 	type ReduceItem,
 } from './reduceInput';
+import { counterpartyKeyOf, planReduction, responsibilityOf } from './reducePlan';
 import {
-	counterpartyKeyOf,
-	planReduction,
-	responsibilityOf,
-	type PlanFact,
-	type PlanItem,
-} from './reducePlan';
-
-/** Interpretations scanned per thread when completeness is recomputed. */
-const COMPLETENESS_SCAN = 200;
-/** Current facts read into the plan. */
-const FACT_SCAN = 200;
+	briefTopLatestOf,
+	completenessOf,
+	loadPlanState,
+	sourceStillInThread,
+	threadInterpretations,
+} from './reduceState';
+import { refreshBriefTop } from './briefTop';
 
 export type ApplyOutcome =
 	| {
@@ -66,30 +62,6 @@ export type ApplyOutcome =
 	  }
 	| { outcome: 'stale'; interpretationRevision: number }
 	| { outcome: 'erased' | 'gone' };
-
-/** Does the source still exist, in this thread? */
-async function sourceStillInThread(
-	ctx: MutationCtx,
-	source: InterpretationSource,
-	ref: ThreadRef
-): Promise<boolean> {
-	switch (source.kind) {
-		case 'mail':
-		case 'outboundMail': {
-			const message = await ctx.db.get(source.id);
-			return !!message && ref.kind === 'mail' && message.threadId === ref.id;
-		}
-		case 'inbound': {
-			const inbound = await ctx.db.get(source.id);
-			return !!inbound && ref.kind === 'team' && inbound.threadId === ref.id;
-		}
-		case 'teamReply': {
-			const reply = await ctx.db.get(source.id);
-			const inbound = reply?.inboundMessageId ? await ctx.db.get(reply.inboundMessageId) : null;
-			return !!inbound && ref.kind === 'team' && inbound.threadId === ref.id;
-		}
-	}
-}
 
 /** Seal one quote list into stored evidence. */
 async function sealEvidence(
@@ -117,74 +89,6 @@ async function sealFactValue(value: ReduceFact['value']): Promise<Doc<'threadFac
 	if (!value) return undefined;
 	if (value.kind === 'date' || value.kind === 'money') return value;
 	return { kind: value.kind, text: await sealBodyAtWrite(value.text) };
-}
-
-/**
- * Completeness of the thread from its extractions: partial while the newest
- * extraction of any source failed, came back partial, or could not be read.
- */
-export function completenessOf(
-	rows: ReadonlyArray<
-		Pick<Doc<'messageInterpretations'>, 'sourceKey' | 'status' | 'skipReason' | 'updatedAt'>
-	>
-): BriefCompleteness {
-	const newest = new Map<string, (typeof rows)[number]>();
-	for (const row of rows) {
-		const seen = newest.get(row.sourceKey);
-		if (!seen || row.updatedAt > seen.updatedAt) newest.set(row.sourceKey, row);
-	}
-	if (newest.size === 0) return 'none';
-	for (const row of newest.values()) {
-		if (row.status === 'failed' || row.status === 'partial') return 'partial';
-		if (row.status === 'skipped' && row.skipReason === 'undecryptable') return 'partial';
-	}
-	return 'complete';
-}
-
-async function threadInterpretations(ctx: MutationCtx, ref: ThreadRef) {
-	return ref.kind === 'mail'
-		? ctx.db
-				.query('messageInterpretations')
-				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', ref.id))
-				.order('desc')
-				.take(COMPLETENESS_SCAN)
-		: ctx.db
-				.query('messageInterpretations')
-				.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', ref.id))
-				.order('desc')
-				.take(COMPLETENESS_SCAN);
-}
-
-async function loadPlanState(ctx: MutationCtx, ref: ThreadRef, mode: 'brief' | 'actions') {
-	const { rows } = await loadPromptItemCandidates(ctx, ref);
-	// Every open item takes part in matching, not only the prompt page.
-	const open = await threadItemsWithStatus(ctx, ref, 'open', 500);
-	const byId = new Map<string, Doc<'threadItems'>>();
-	for (const row of [...rows, ...open]) byId.set(row._id, row);
-	const items: PlanItem[] = await Promise.all(
-		[...byId.values()].map(async (row) => ({
-			...row,
-			assertionText: await openMessageBody(row.assertion),
-		}))
-	);
-	let facts: PlanFact[] = [];
-	if (mode === 'brief' && ref.kind === 'mail') {
-		const rowsF = await ctx.db
-			.query('threadFacts')
-			.withIndex('by_mail_thread_and_status', (q) =>
-				q.eq('mailThreadId', ref.id).eq('status', 'current')
-			)
-			.take(FACT_SCAN);
-		facts = await Promise.all(
-			rowsF.map(async (row) => ({
-				...row,
-				...(row.value && 'text' in row.value
-					? { valueText: await openMessageBody(row.value.text) }
-					: {}),
-			}))
-		);
-	}
-	return { items, facts };
 }
 
 export const applyInterpretation = internalMutation({
@@ -427,6 +331,12 @@ export const applyInterpretation = internalMutation({
 				: {}),
 			updatedAt: now,
 		});
+		// The list rows, the Answer queue and the Workbench read this projection.
+		if (ref.kind === 'mail') {
+			await refreshBriefTop(ctx, ref.id, {
+				latest: briefTopLatestOf(args.result, { mode: args.mode, isOutOfOrder }),
+			});
+		}
 		return {
 			outcome: 'applied',
 			interpretationId,

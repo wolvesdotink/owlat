@@ -53,6 +53,10 @@ export interface ProjectionInput {
 	gap: { interpretedMessages: number; totalMessages: number; reason?: GapReason };
 	/** The thread needs no reply: payment items offer "Mark paid" first. */
 	isNoReplyNeeded?: boolean;
+	/** The viewer's per-thread Overview / Conversation choice (brief mode). */
+	viewOverride?: 'overview' | 'conversation';
+	/** Each interpreted message's own first "Latest update" line (brief mode). */
+	messageLatest?: { messageId: string; text: string }[];
 	now: number;
 }
 
@@ -134,6 +138,10 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 		participants: input.participants,
 		files: input.files,
 		...(input.sinceLastSeen ? { sinceLastSeen: input.sinceLastSeen } : {}),
+		...(input.viewOverride ? { viewOverride: input.viewOverride } : {}),
+		...(input.messageLatest && input.messageLatest.length > 0
+			? { messageLatest: input.messageLatest }
+			: {}),
 	};
 }
 

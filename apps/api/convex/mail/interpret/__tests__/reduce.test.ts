@@ -10,7 +10,7 @@ import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { appendActivity } from '../activity';
-import { completenessOf } from '../reduce';
+import { completenessOf } from '../reduceState';
 import {
 	modules,
 	reduceItem,

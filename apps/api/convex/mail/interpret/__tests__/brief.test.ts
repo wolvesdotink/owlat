@@ -126,6 +126,13 @@ describe('brief.get', () => {
 			'message_received',
 		]);
 		expect(view.participants.map((p) => p.email)).toContain('jonas@example.com');
+		expect(view.messageLatest).toEqual([
+			{ messageId, text: 'Jonas will den Vertrag bis Freitag.' },
+		]);
+		// The list-row projection was refreshed in the same transaction.
+		const thread = await t.run(async (ctx) => ctx.db.get(threadId));
+		expect(thread?.briefTop).toMatchObject({ mode: 'brief', forYou: 1, waiting: 1, revision: 1 });
+		expect(thread?.briefTop?.latest).toBeDefined();
 	});
 
 	it('says completeness none before any interpretation, never an empty "nothing to do"', async () => {
@@ -260,6 +267,9 @@ describe('viewer state', () => {
 					.first()
 			);
 		expect((await read())?.viewOverride).toBe('conversation');
+		expect(
+			await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' })
+		).toMatchObject({ viewOverride: 'conversation' });
 		await t.mutation(api.mail.interpret.brief.setViewOverride, { threadRef: ref, view: null });
 		expect((await read())?.viewOverride).toBeUndefined();
 

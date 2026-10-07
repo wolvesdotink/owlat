@@ -46,6 +46,7 @@ import {
 	readItems,
 	readLatest,
 	readMailPeopleAndFiles,
+	readMessageLatest,
 	readViewerState,
 	sinceLastSeenOf,
 	toActivityViews,
@@ -123,6 +124,10 @@ export const get = publicQuery({
 			participants: people.participants,
 			files: people.files,
 			...(viewer ? { sinceLastSeen: sinceLastSeenOf(tail, viewer.seenActivitySeq) } : {}),
+			...(viewer?.viewOverride ? { viewOverride: viewer.viewOverride } : {}),
+			...(mode === 'brief'
+				? { messageLatest: await readMessageLatest(interpretations, locale) }
+				: {}),
 			gap: gapOf(interpretations, {
 				totalMessages,
 				isPending: brief?.completeness === 'pending',
@@ -188,6 +193,9 @@ async function upsertViewerState(
 export const markSeen = threadBriefMutation({
 	args: {
 		threadRef: threadRefValidator,
+		// The revision the viewer saw (default: the current one). Activity is
+		// marked seen up to now either way.
+		interpretationRevision: v.optional(v.number()),
 		// Team stream: the last entry the viewer actually saw.
 		streamPosition: v.optional(streamPositionValidator),
 	},
@@ -197,7 +205,10 @@ export const markSeen = threadBriefMutation({
 		await requireThreadReader(ctx, args.threadRef, session);
 		const brief = await loadBriefRow(ctx, args.threadRef);
 		await upsertViewerState(ctx, args.threadRef, session.userId, {
-			seenInterpretationRevision: brief?.interpretationRevision ?? 0,
+			seenInterpretationRevision: Math.min(
+				args.interpretationRevision ?? Number.POSITIVE_INFINITY,
+				brief?.interpretationRevision ?? 0
+			),
 			seenActivitySeq: brief?.lastActivitySeq ?? 0,
 			...(args.streamPosition ? { streamPosition: args.streamPosition } : {}),
 		});

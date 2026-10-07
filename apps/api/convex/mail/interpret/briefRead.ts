@@ -342,3 +342,36 @@ export function gapOf(
 		...(reason ? { reason } : {}),
 	};
 }
+
+/** Interpretation rows read for the per-message "Latest update" lines. */
+const MESSAGE_LATEST_READ = 50;
+
+/**
+ * Each interpreted Postbox message's own first "Latest update" line in
+ * `locale` (the collapsed rows of Conversation show it). Newest extraction per
+ * source; skipped, failed and suppressed ones have none.
+ */
+export async function readMessageLatest(
+	rows: readonly Doc<'messageInterpretations'>[],
+	locale: AppLocale
+): Promise<{ messageId: string; text: string }[]> {
+	const newest = new Map<string, Doc<'messageInterpretations'>>();
+	for (const row of rows) {
+		if (
+			row.mode !== 'brief' ||
+			(row.source.kind !== 'mail' && row.source.kind !== 'outboundMail')
+		) {
+			continue;
+		}
+		const seen = newest.get(row.sourceKey);
+		if (!seen || row.updatedAt > seen.updatedAt) newest.set(row.sourceKey, row);
+	}
+	const out: { messageId: string; text: string }[] = [];
+	for (const row of [...newest.values()].slice(0, MESSAGE_LATEST_READ)) {
+		if (row.status !== 'complete' && row.status !== 'partial') continue;
+		const result = await readResult(row);
+		const text = result?.latestSuppressed ? undefined : result?.latest?.[locale][0]?.text;
+		if (text) out.push({ messageId: row.source.id, text });
+	}
+	return out;
+}
