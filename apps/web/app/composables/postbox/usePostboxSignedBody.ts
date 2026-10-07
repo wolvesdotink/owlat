@@ -108,9 +108,12 @@ export function usePostboxSignedBody(source: {
 			if (kind.value === 'loading') return 'none';
 			return source.secureClass();
 		}),
-		/** Withheld while the text loads, and when nothing shown can be tied to it. */
+		/**
+		 * Withheld while the text loads, when nothing shown can be tied to it, and
+		 * always when it has no scope (see `utils/postboxSignedBody.ts`).
+		 */
 		signature: computed(() =>
-			kind.value === 'loading' || kind.value === 'withheld'
+			scope.value === null || kind.value === 'loading' || kind.value === 'withheld'
 				? undefined
 				: source.message().inboundSignatureInfo
 		),

@@ -78,35 +78,13 @@ describe('resolveSignedBodyView', () => {
 			kind: 'signed',
 		});
 	});
-
-	describe('rows verified before the scope was recorded', () => {
-		const legacy = (input: Partial<Input>) => view({ scope: 'unrecorded', ...input });
-
-		it('show the verdict only beside a clearsigned block in text that loaded', () => {
-			expect(legacy({})).toMatchObject({ kind: 'signed' });
-			expect(legacy({ text: LOADING })).toEqual({ kind: 'loading' });
-		});
-
-		it('withhold it on a failed load, a text without a block, and no text', () => {
-			expect(legacy({ text: FAILED })).toEqual({ kind: 'withheld' });
-			expect(legacy({ text: loaded('signed text') })).toEqual({ kind: 'withheld' });
-			expect(legacy({ text: loaded(null) })).toEqual({ kind: 'withheld' });
-		});
-
-		it('withhold it under a .asc attachment or MIME structure, block or not', () => {
-			for (const secureClass of ['pgp-signed', 'pgp-encrypted', 'smime-signed'] as const) {
-				expect(legacy({ secureClass })).toEqual({ kind: 'withheld' });
-				expect(legacy({ secureClass, text: loaded('signed text') })).toEqual({ kind: 'withheld' });
-				expect(legacy({ secureClass, text: LOADING })).toEqual({ kind: 'withheld' });
-			}
-		});
-	});
 });
 
 describe('signedBodyScopeOf', () => {
-	it('names the recorded scope, or marks it unrecorded', () => {
+	it('names the recorded scope, and nothing for an unscoped verdict', () => {
 		expect(signedBodyScopeOf(undefined)).toBeNull();
-		expect(signedBodyScopeOf({ isSigned: true })).toBe('unrecorded');
+		// A verdict written before scopes were recorded is never shown.
+		expect(signedBodyScopeOf({ isSigned: true })).toBeNull();
 		expect(signedBodyScopeOf({ isSigned: true, scope: 'mime' })).toBe('mime');
 	});
 });

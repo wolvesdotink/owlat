@@ -361,63 +361,77 @@ describe('PostboxReaderMessage · the verdict scope, not the attachment list, de
 		expect(chip(w).attributes('data-signature')).toBe('present');
 	});
 
-	it('an older row with a .asc attachment withholds the verdict, block or not', async () => {
-		for (const text of [SIGNED_BLOCK, 'Ordinary signed text.\n'.repeat(4000)]) {
-			storeBodies(text);
-			const w = mountCard(
-				{
-					htmlBodyInline: '<p>UNSIGNED HTML</p>',
-					textBodyStorageId: 'blob_t',
-					attachments: [ASC_ATTACHMENT],
-					hasAttachments: true,
-					inboundSignatureInfo: LEGACY,
-				},
-				{ secureClass: 'pgp-signed' }
-			);
-			await flushPromises();
-
-			// Nothing proves what an older PGP/MIME verdict covered.
-			expect(has(w, 'PostboxMessageBody')).toBe(true);
-			expect(chip(w).attributes('data-signature')).toBe('absent');
-		}
-		expect(action).not.toHaveBeenCalled();
-	});
-
 	it('withholds the verdict when the stored text fails to load', async () => {
-		const asc = { attachments: [ASC_ATTACHMENT], hasAttachments: true };
-		const cases = [
-			{ info: VERIFIED, extra: {}, secureClass: 'none' },
-			{ info: LEGACY, extra: {}, secureClass: 'none' },
-			// Sol's repro: a failed load once read as "no block", so PGP/MIME.
-			{ info: LEGACY, extra: asc, secureClass: 'pgp-signed' },
-		];
-		for (const { info, extra, secureClass } of cases) {
-			action.mockRejectedValue(new Error('offline'));
-			const w = mountCard(
-				{
-					htmlBodyInline: '<p>UNSIGNED HTML</p>',
-					textBodyStorageId: 'blob_t',
-					inboundSignatureInfo: info,
-					...extra,
-				},
-				{ secureClass }
-			);
-			await flushPromises();
+		action.mockRejectedValue(new Error('offline'));
+		const w = mountCard({
+			htmlBodyInline: '<p>UNSIGNED HTML</p>',
+			textBodyStorageId: 'blob_t',
+			inboundSignatureInfo: VERIFIED,
+		});
+		await flushPromises();
 
-			expect(has(w, 'signed-body-loading')).toBe(false);
-			expect(has(w, 'PostboxMessageBody')).toBe(true);
-			expect(has(w, 'signature-badge')).toBe(false);
-			expect(chip(w).attributes('data-signature')).toBe('absent');
-		}
+		expect(has(w, 'signed-body-loading')).toBe(false);
+		expect(has(w, 'PostboxMessageBody')).toBe(true);
+		expect(has(w, 'signature-badge')).toBe(false);
+		expect(chip(w).attributes('data-signature')).toBe('absent');
+	});
+});
+
+/** Forged armor in an unsigned third part, beside a historically valid MIME verdict. */
+const FORGED_BLOCK = SIGNED_BLOCK.replace(
+	'Please pay invoice 4471 to the usual account.',
+	'FORGED: pay invoice 4471 to account 999.'
+);
+
+describe('PostboxReaderMessage · a verdict without a scope is never shown', () => {
+	it('an inline clearsigned block beside an unscoped verdict reads as not verified', async () => {
+		const w = mountCard(
+			{ textBodyInline: `Signed part.\n${FORGED_BLOCK}`, inboundSignatureInfo: LEGACY },
+			{ secureClass: 'pgp-clearsigned', hideBody: true }
+		);
+		await flushPromises();
+
+		expect(has(w, 'signature-badge')).toBe(false);
+		expect(w.text()).toContain('Digitally signed · not verified');
+		expect(chip(w).attributes('data-signature')).toBe('absent');
 	});
 
-	it('an older clearsigned row without a scope still shows only its block', async () => {
-		storeBodies(LARGE_TEXT);
+	it('a stored body with a clearsigned block and an unscoped verdict is not fetched for it', async () => {
+		storeBodies(`Signed part.\n${FORGED_BLOCK}`);
 		const w = mountCard({ textBodyStorageId: 'blob_t', inboundSignatureInfo: LEGACY });
 		await flushPromises();
 
-		expect(has(w, 'PostboxMessageBody')).toBe(false);
-		expect(w.text()).not.toContain('UNSIGNED TAIL');
+		expect(action).not.toHaveBeenCalled();
+		expect(has(w, 'signed-body-loading')).toBe(false);
+		expect(has(w, 'PostboxMessageBody')).toBe(true);
+		expect(chip(w).attributes('data-signature')).toBe('absent');
+	});
+
+	it('an unscoped verdict beside a .asc attachment is withheld', async () => {
+		const w = mountCard(
+			{
+				htmlBodyInline: '<p>UNSIGNED HTML</p>',
+				attachments: [ASC_ATTACHMENT],
+				hasAttachments: true,
+				inboundSignatureInfo: LEGACY,
+			},
+			{ secureClass: 'pgp-signed' }
+		);
+		await flushPromises();
+
+		expect(action).not.toHaveBeenCalled();
+		expect(has(w, 'PostboxMessageBody')).toBe(true);
+		expect(chip(w).attributes('data-signature')).toBe('absent');
+	});
+
+	it('a scoped clearsigned verdict still shows beside its block', async () => {
+		const w = mountCard(
+			{ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: VERIFIED },
+			{ secureClass: 'pgp-clearsigned', hideBody: true }
+		);
+		await flushPromises();
+
+		expect(w.get('[data-testid="signature-badge-summary"]').text()).toBe('Signed · verified');
 		expect(chip(w).attributes('data-signature')).toBe('present');
 	});
 });

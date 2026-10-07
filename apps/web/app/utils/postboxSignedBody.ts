@@ -17,12 +17,12 @@
  * The attachment list cannot tell the two apart: a nameless signature part is
  * no attachment, and an unrelated `.asc` attachment is one.
  *
- * Rows verified before the scope was recorded prove nothing about what their
- * verdict covers: back then a PGP/MIME verdict could be valid with unsigned
- * parts beside the signed one. Their verdict shows only when the text body
- * loaded and holds a clearsigned block, beside that block alone; every other
- * such row (a `.asc` attachment, no block, a failed load) has it withheld.
- * Re-verifying from the raw message would restore it.
+ * A verdict without a scope was written before the verifier recorded one,
+ * and proves nothing about what it covers: back then a PGP/MIME verdict could
+ * be valid with unsigned parts beside the signed one, forged clearsign armor
+ * included. Such a verdict is never shown. The message reads as one with no
+ * verdict ({@link signedBodyScopeOf} gives null), and the reader card drops the
+ * verdict itself. Re-verifying from the raw message would restore it.
  *
  * Pure and module scope; the reader card supplies the loaded text.
  */
@@ -46,8 +46,8 @@ export type SignedBodyView =
 	/** Render the body, but without the verdict: nothing shown can be tied to it. */
 	| { kind: 'withheld' };
 
-/** The verdict's scope; `'unrecorded'` on a row verified before it was stored. */
-export type SignedBodyScope = 'clearsigned' | 'mime' | 'unrecorded';
+/** What a shown verdict covers. */
+export type SignedBodyScope = 'clearsigned' | 'mime';
 
 /** The text body: on its way, failed to load, or here (null when there is none). */
 export type SignedBodyText =
@@ -58,7 +58,7 @@ export type SignedBodyText =
 export interface SignedBodyInput {
 	/** The host's structural class (attachments plus any inline text body). */
 	secureClass: SecureMessageClass;
-	/** The message's signature verdict scope, or null when it has no verdict. */
+	/** The scope of the verdict, or null when there is none that may be shown. */
 	scope: SignedBodyScope | null;
 	text: SignedBodyText;
 	/** The message has an HTML body beside the text. */
@@ -96,20 +96,17 @@ export function resolveSignedBodyView(input: SignedBodyInput): SignedBodyView {
 		}
 		return signedView(text.text, hasHtml);
 	}
-	// An older row with a signature attachment or MIME structure: nothing it
-	// shows can be tied to the verdict (see the module comment).
-	if (scope === 'unrecorded' && secureClass !== 'none' && secureClass !== 'pgp-clearsigned') {
-		return { kind: 'withheld' };
-	}
 	if (text.state === 'loading') return { kind: 'loading' };
 	if (text.state === 'failed') return { kind: 'withheld' };
 	return signedView(text.text ?? '', hasHtml);
 }
 
-/** The scope {@link resolveSignedBodyView} reads off a message's verdict. */
+/**
+ * The scope {@link resolveSignedBodyView} reads off a message's verdict: null
+ * for no verdict, and for a verdict written before scopes were recorded.
+ */
 export function signedBodyScopeOf(
-	info: { isSigned?: boolean; scope?: 'clearsigned' | 'mime' } | undefined
+	info: { isSigned?: boolean; scope?: SignedBodyScope } | undefined
 ): SignedBodyScope | null {
-	if (info?.isSigned !== true) return null;
-	return info.scope ?? 'unrecorded';
+	return info?.isSigned === true ? (info.scope ?? null) : null;
 }
