@@ -38,6 +38,10 @@
 			"types": "./src/answerMode.ts",
 			"import": "./src/answerMode.ts"
 		},
+		"./threadBrief": {
+			"types": "./src/threadBrief.ts",
+			"import": "./src/threadBrief.ts"
+		},
 		"./templateVariables": {
 			"types": "./src/templateVariables.ts",
 			"import": "./src/templateVariables.ts"
