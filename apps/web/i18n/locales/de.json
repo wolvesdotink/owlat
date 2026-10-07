@@ -1061,7 +1061,8 @@
 			"exactWording": {
 				"title": "Den genauen Wortlaut lesen",
 				"hint": "hier kommt es auf den Wortlaut an, deshalb bleibt das Original offen",
-				"secured": "Diese Nachricht wird im E-Mail-Verlauf mit ihrer Sicherheitsprüfung angezeigt."
+				"secured": "Diese Nachricht wird im E-Mail-Verlauf mit ihrer Sicherheitsprüfung angezeigt.",
+				"truncated": "Hier brauchen mehr Nachrichten ihren genauen Wortlaut, als diese Liste zeigt."
 			},
 			"phone": {
 				"more": "Stand der Dinge, Aktivitäten, Personen, Dateien"
@@ -1074,7 +1075,6 @@
 				"noReplyNeeded": "keine Antwort nötig"
 			},
 			"more": "+{count} weitere",
-			"moreAtLeast": "{count}+ weitere",
 			"toast": {
 				"markedDone": "Als erledigt markiert. Du kannst es rückgängig machen.",
 				"reminder": "Du wirst morgen früh erinnert."

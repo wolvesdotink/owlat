@@ -9,7 +9,8 @@
  *   - the next cite clears the previous mark.
  */
 import { describe, expect, it } from 'vitest';
-import { clearQuoteHighlight, highlightQuote, normalizeQuote } from '../postboxQuoteHighlight';
+import { normalizeForQuote } from '@owlat/shared/quoteNormalize';
+import { clearQuoteHighlight, highlightQuote } from '../postboxQuoteHighlight';
 
 function doc(html: string): Document {
 	const d = document.implementation.createHTMLDocument('body');
@@ -108,6 +109,15 @@ describe('highlightQuote', () => {
 		expect(marked(d)).toBe('');
 	});
 
+	it('counts composed and decomposed spellings as grounding does', () => {
+		// "Café" composed (U+00E9) and decomposed (e + U+0301): both one match.
+		const d = doc('<p id="a">Café and</p><p id="b">Cafe\u0301 and more</p>');
+		const result = highlightQuote(d, { quote: 'Café', occurrence: 1, occurrenceCount: 2 });
+		expect(result.status).toBe('marked');
+		expect(markedParagraph(d)).toBe('b');
+		expect(marked(d)).toBe('Cafe\u0301');
+	});
+
 	it('clears the previous cite', () => {
 		const d = doc('<p>One. Two.</p>');
 		highlightQuote(d, { quote: 'One.', occurrence: 0 });
@@ -119,6 +129,6 @@ describe('highlightQuote', () => {
 	});
 
 	it('normalizes the quote like the text', () => {
-		expect(normalizeQuote('  a  “b” — c​ ')).toBe('a "b" - c');
+		expect(normalizeForQuote('  a  “b” — c​ ')).toBe('a "b" - c');
 	});
 });

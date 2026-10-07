@@ -1,9 +1,12 @@
 /**
  * "Read the exact wording" is found by index, not from the newest extractions
- * (SPEC §7 legal mail):
+ * (SPEC §7 legal mail). Only the CURRENT extraction of a source carries the flag:
  *   - the reducer stores the flag and reason on the extraction row;
  *   - an older legal message stays listed behind fifty ordinary ones;
- *   - a newer extraction of the same message that no longer asks for it wins.
+ *   - a newer extraction that read the message and no longer asks for it
+ *     clears the flag on the older row (only current rows stay flagged);
+ *   - a failed re-run that did not read the message keeps the flag;
+ *   - a page larger than the read limit says it is truncated.
  * Plus the grounding side of quote highlighting: hidden copies the scanner
  * strips are not counted in an evidence span's occurrence total.
  */
@@ -16,7 +19,7 @@ import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { MutationCtx } from '../../../_generated/server';
 import { styleHides } from '../../../agent/steps/security_scan/hiddenStyle';
-import { readExactWording } from '../briefRead';
+import { EXACT_WORDING_PAGE, readExactWording } from '../briefRead';
 import { quoteOccurrences } from '../quoteMatch';
 import { modules, reduceResult, seedMailThread } from './interpret.testlib';
 
@@ -44,7 +47,7 @@ function applyArgs(
 		threadRef: { kind: 'mail' as const, id: threadId },
 		mode: 'brief' as const,
 		contentRevision: 'rev-1',
-		extractorVersion: 2,
+		extractorVersion: 3,
 		expectedRevision: 0,
 		deletionEpoch: 0,
 		sourceAt: SENT,
@@ -96,9 +99,10 @@ describe('readExactWording', () => {
 		expect(stored).toMatchObject({ isExactWordingRequired: true, exactWordingReason: 'legal' });
 
 		await t.run((ctx) => ordinaryRows(ctx, threadId, messageId, 50));
-		expect(await t.run((ctx) => readExactWording(ctx, threadId))).toEqual([
-			{ messageId, reason: 'legal' },
-		]);
+		expect(await t.run((ctx) => readExactWording(ctx, threadId))).toEqual({
+			messages: [{ messageId, reason: 'legal' }],
+			isTruncated: false,
+		});
 	});
 
 	it('drops it when a newer extraction of the message no longer asks for it', async () => {
@@ -116,11 +120,79 @@ describe('readExactWording', () => {
 				result: reduceResult(),
 			})
 		);
-		expect(await t.run((ctx) => readExactWording(ctx, threadId))).toEqual([]);
+		expect(await t.run((ctx) => readExactWording(ctx, threadId))).toEqual({
+			messages: [],
+			isTruncated: false,
+		});
+		const flagged = await t.run((ctx) =>
+			ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_mail_thread_exact_wording', (q) =>
+					q.eq('mailThreadId', threadId).eq('isExactWordingRequired', true)
+				)
+				.collect()
+		);
+		expect(flagged).toEqual([]);
+	});
+
+	it('keeps it through a failed re-run that did not read the message', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		await t.mutation(
+			internal.mail.interpret.reduce.applyInterpretation,
+			applyArgs(messageId, threadId)
+		);
+		await t.mutation(
+			internal.mail.interpret.reduce.applyInterpretation,
+			applyArgs(messageId, threadId, {
+				contentRevision: 'rev-2',
+				expectedRevision: 1,
+				status: 'failed',
+				errorCode: 'model_error',
+				result: undefined,
+			})
+		);
+		const read = await t.run((ctx) => readExactWording(ctx, threadId));
+		expect(read.messages).toEqual([{ messageId, reason: 'legal' }]);
+	});
+
+	it('says it is truncated past one page', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		await t.run(async (ctx) => {
+			for (let i = 0; i <= EXACT_WORDING_PAGE; i++) {
+				await ctx.db.insert('messageInterpretations', {
+					threadKind: 'mail',
+					mailThreadId: threadId,
+					source: { kind: 'mail', id: messageId },
+					sourceKey: `mail:legal-${i}`,
+					contentRevision: 'r',
+					extractorVersion: 3,
+					mode: 'brief',
+					status: 'complete',
+					isCurrent: true,
+					isExactWordingRequired: true,
+					exactWordingReason: 'legal',
+					deletionEpoch: 0,
+					appliedAt: SENT,
+					createdAt: SENT,
+					updatedAt: SENT,
+				});
+			}
+		});
+		const read = await t.run((ctx) => readExactWording(ctx, threadId));
+		expect(read.messages).toHaveLength(EXACT_WORDING_PAGE);
+		expect(read.isTruncated).toBe(true);
 	});
 });
 
 describe('quoteOccurrences on scanner-stripped text', () => {
+	it('counts composed and decomposed spellings alike (the reader shares the normalization)', () => {
+		const text = 'Café and Cafe\u0301 again';
+		const second = text.indexOf('Cafe\u0301');
+		expect(quoteOccurrences(text, second, second + 5)).toEqual({ occurrence: 1, total: 2 });
+	});
+
 	it('does not count a hidden copy of the quoted words', () => {
 		const segmented = segmentMessage(
 			{

@@ -83,12 +83,14 @@ function rowDetail(item: AnswerItem): string {
 	}
 	return '';
 }
-/** "+3 more" (or "1999+ more" past the count cap): the thread's other open items. */
+/** "+3 more": the thread's other open items (exact counts). */
 function rowMore(item: AnswerItem): string {
 	if (item.source !== 'mail') return '';
 	const top = item.row.briefTop;
-	if (!top?.top || top.top.responsibility === 'them') return '';
-	const chip = briefMoreChip(top.forYou, top.isCapped === true);
+	if (!top?.top || top.top.bucket === 'waitingOnOthers' || top.top.responsibility === 'them') {
+		return '';
+	}
+	const chip = briefMoreChip(top.forYou);
 	return chip ? t(chip.key, { count: chip.count }) : '';
 }
 function rowDue(item: AnswerItem): string | null {

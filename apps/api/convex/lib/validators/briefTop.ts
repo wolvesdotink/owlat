@@ -20,17 +20,18 @@ export const briefTopValidator = v.object({
 	// `brief` for personal mailboxes, `actions` for shared ones: a shared row
 	// shows the item AND the raw snippet, never a latest-update line.
 	mode: interpretModeValidator,
-	// Open items owed by us (or with unclear ownership), excluding unconfirmed proposals.
+	// Open items owed by us (the thread's maintained `forUsCount`; unclear
+	// ownership and unconfirmed proposals are counted apart).
 	forYou: v.number(),
 	// Open items owed by the other side.
 	waiting: v.number(),
-	// The thread has more open items than a refresh counts: the counts are a
-	// floor ("2000+"), never presented as exact.
-	isCapped: v.optional(v.boolean()),
-	// The first item by compareForYou: a for-you item when there is one, else a waiting one.
+	// The first item of the `forUs` list (soonest due, else earliest asked),
+	// else of `waitingOnOthers`.
 	top: v.optional(
 		v.object({
 			itemId: v.id('threadItems'),
+			// The list it heads; absent on rows written before it existed.
+			bucket: v.optional(v.union(v.literal('forUs'), v.literal('waitingOnOthers'))),
 			responsibility: itemResponsibilityValidator,
 			text: localizedSealedTextValidator,
 			dueAt: v.optional(v.number()),

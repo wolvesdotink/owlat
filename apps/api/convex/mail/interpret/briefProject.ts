@@ -64,6 +64,8 @@ export interface ProjectionInput {
 	messageLatest?: { messageId: string; text: string }[];
 	/** Messages whose original stays open beside the brief (brief mode). */
 	exactWording?: BriefModeView['exactWording'];
+	/** More flagged messages than one read lists. */
+	isExactWordingTruncated?: boolean;
 	now: number;
 }
 
@@ -163,6 +165,7 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 		...(input.exactWording && input.exactWording.length > 0
 			? { exactWording: input.exactWording }
 			: {}),
+		...(input.isExactWordingTruncated ? { isExactWordingTruncated: true } : {}),
 	};
 }
 

@@ -42,6 +42,10 @@
 			"types": "./src/threadBrief.ts",
 			"import": "./src/threadBrief.ts"
 		},
+		"./quoteNormalize": {
+			"types": "./src/quoteNormalize.ts",
+			"import": "./src/quoteNormalize.ts"
+		},
 		"./threadBriefRules": {
 			"types": "./src/threadBriefRules.ts",
 			"import": "./src/threadBriefRules.ts"
