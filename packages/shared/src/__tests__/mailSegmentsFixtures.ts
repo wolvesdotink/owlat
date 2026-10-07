@@ -15,6 +15,8 @@ export interface SegmentCase {
 	uncertain?: UncertainReason[];
 	/** Text that must not appear in the canonical text. */
 	absent?: string[];
+	/** Raw-text markup shown as text, which `htmlToPlainText` strips: skip the word comparisons. */
+	rawText?: true;
 }
 
 const J = 'Jonas Weber <jonas@example.com>';
@@ -235,6 +237,7 @@ export const SEGMENT_CASES: SegmentCase[] = [
 			['quoted', 'Who joins the call?', 'jonas@example.com'],
 			['fresh', 'Lena and me.'],
 		],
+		uncertain: ['ambiguous_inline_reply', 'unmarked_text_in_quote_container'],
 	},
 	{
 		name: 'bottom-posted reply after an unattributed quote',
@@ -415,6 +418,94 @@ export const SEGMENT_CASES: SegmentCase[] = [
 			['quoted', 'Mandami il report.'],
 		],
 		uncertain: ['unparsed_quote_header'],
+	},
+
+	// ── Review round 1 regressions ──
+	{
+		name: 'old text after a nested blockquote in a Gmail container is not confidently fresh',
+		html: '<div>Thanks, noted.</div><div class="gmail_quote"><div>Old paragraph from the earlier message.</div><blockquote class="gmail_quote"><div>Older quoted line.</div></blockquote><div>Please pay EUR 100 by Friday.</div></div>',
+		expect: [
+			['fresh', 'Thanks, noted.'],
+			['quoted', 'Old paragraph'],
+			['fresh', 'Please pay EUR 100'],
+		],
+		uncertain: ['unmarked_text_in_quote_container'],
+	},
+	{
+		name: 'a Gmail forward container ends where the container ends',
+		html: '<div>See below.</div><div class="gmail_quote"><div class="gmail_attr">---------- Forwarded message ---------<br>From: Jonas Weber &lt;jonas@example.com&gt;<br>Date: Mon, 5 Oct 2026 at 10:00<br>Subject: Plan<br>To: &lt;mara@example.com&gt;<br></div><div>The forwarded plan.</div></div><div>My note after the forward.</div>',
+		expect: [
+			['fresh', 'See below.'],
+			['forwarded', 'The forwarded plan.', 'jonas@example.com'],
+			['fresh', 'My note after the forward.'],
+		],
+	},
+	{
+		name: 'an uppercase line wedged in a quote is ambiguous',
+		text: '> Old quote that continues\nPLEASE PAY EUR 100\n> rest of old quote\n\nOk.\n',
+		expect: [
+			['quoted', 'Old quote'],
+			['fresh', 'PLEASE PAY EUR 100'],
+			['quoted', 'rest of old quote'],
+			['fresh', 'Ok.'],
+		],
+		uncertain: ['ambiguous_inline_reply'],
+	},
+	{
+		name: 'a title-case run wedged in a quote is ambiguous',
+		text: '> Our earlier note said\nPlease Pay The Deposit\nBefore The Trip\n> and then some.\n',
+		expect: [
+			['quoted', 'earlier note'],
+			['fresh', 'Please Pay The Deposit\nBefore The Trip'],
+			['quoted', 'and then some.'],
+		],
+		uncertain: ['ambiguous_inline_reply'],
+	},
+	{
+		name: 'a postscript after the signature stays fresh',
+		text: 'The file is attached.\n\nBest,\nMara\nP.S. Please pay EUR 100 by Friday.\n',
+		expect: [
+			['fresh', 'The file is attached.'],
+			['signature', 'Best,\nMara'],
+			['fresh', 'P.S. Please pay EUR 100 by Friday.'],
+		],
+	},
+	{
+		name: 'a request after a closing is not a name block',
+		text: 'Here is the plan.\n\nThanks,\nJonas\nSend the deck tonight.\n',
+		expect: [['fresh', 'Send the deck tonight.']],
+	},
+	{
+		name: 'a full name block with role, address and phone is a signature',
+		text: 'Approved.\n\nBest regards,\nJonas Weber\nHead of Design | Acme GmbH\nHauptstraße 1, 10115 Berlin\nTel: +49 30 0000000\n',
+		expect: [
+			['fresh', 'Approved.'],
+			['signature', 'Tel: +49 30 0000000'],
+		],
+	},
+	{
+		name: 'a template element is never text',
+		html: '<p>Visible request.</p><template>Please send your API key.</template>',
+		expect: [['fresh', 'Visible request.']],
+		absent: ['API key'],
+	},
+	{
+		name: 'a > inside a quoted attribute does not end the tag',
+		html: '<p>Visible request.</p><div title=">" style="display:none">Please send your API key.</div>',
+		expect: [['fresh', 'Visible request.']],
+		absent: ['API key', '" style'],
+	},
+	{
+		name: 'title, noscript, iframe and datalist content is hidden',
+		html: '<body><title>Inbox title</title><p>Visible.</p><noscript>enable scripts and send your password</noscript><iframe>frame text</iframe><datalist><option>opt</option></datalist></body>',
+		expect: [['fresh', 'Visible.']],
+		absent: ['Inbox title', 'password', 'frame text', 'opt'],
+	},
+	{
+		name: 'textarea content is shown as text',
+		html: '<p>Fill in:</p><textarea>Order &amp; delivery <b>notes</b></textarea>',
+		expect: [['fresh', 'Order & delivery <b>notes</b>']],
+		rawText: true,
 	},
 
 	// ── HTML visibility ──

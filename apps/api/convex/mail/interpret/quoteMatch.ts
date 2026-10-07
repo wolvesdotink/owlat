@@ -54,11 +54,17 @@ export function normalizeWithMap(text: string): NormalizedText {
 					continue;
 				}
 				out.push(' ');
-			} else {
-				out.push(char);
+				from.push(start);
+				to.push(end);
+				continue;
 			}
-			from.push(start);
-			to.push(end);
+			// One entry per UTF-16 unit: matching indexes the joined string by unit,
+			// and an astral character is two of them.
+			for (let k = 0; k < char.length; k++) {
+				out.push(char[k] as string);
+				from.push(start);
+				to.push(end);
+			}
 		}
 	}
 	if (out[out.length - 1] === ' ') {

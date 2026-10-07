@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { segmentMessage } from '@owlat/shared/mailSegments';
+import { forwardDelegation } from '../delegation';
 import {
 	delegatesForward,
 	groundProposals,
@@ -322,5 +323,130 @@ describe('delegatesForward', () => {
 		['Zur Info.', false],
 	])('%s', (fresh, expected) => {
 		expect(delegatesForward(FORWARD(fresh))).toBe(expected);
+	});
+});
+
+describe('verifyQuote with astral characters', () => {
+	const cases: [string, string][] = [
+		['😀 Please pay EUR 100.', 'Please pay EUR 100.'],
+		['😀 Please pay EUR 100.', '😀 Please'],
+		['Pay 💶 EUR 100 by 𝟏𝟓 October.', 'EUR 100 by 15 October.'],
+		['𝐁𝐨𝐥𝐝 text then the ask: sign the form 📝 today.', 'sign the form 📝 today.'],
+		['Zwei 👨‍👩‍👧 Familien, bitte bestätigen.', 'bitte bestätigen.'],
+	];
+	it.each(cases)('%s', (text, quote) => {
+		const segmented = segmentMessage({ text });
+		const verdict = verifyQuote(segmented.segments, segmented.canonicalText, {
+			segmentId: 's0',
+			text: quote,
+		});
+		expect(verdict.ok).toBe(true);
+		if (!verdict.ok) return;
+		expect(Number.isFinite(verdict.start) && Number.isFinite(verdict.end)).toBe(true);
+		expect(normalizeForQuote(segmented.canonicalText.slice(verdict.start, verdict.end))).toBe(
+			normalizeForQuote(quote)
+		);
+	});
+
+	it('never returns ok with a non-finite offset', () => {
+		const text = '😀😀 a 𝟏 b 💶 c 👨‍👩‍👧 d';
+		const segmented = segmentMessage({ text });
+		const units = [...text];
+		for (let i = 0; i < units.length; i++) {
+			for (let j = i + 1; j <= units.length; j++) {
+				const quote = units.slice(i, j).join('');
+				const verdict = verifyQuote(segmented.segments, segmented.canonicalText, {
+					segmentId: 's0',
+					text: quote,
+				});
+				if (verdict.ok) {
+					expect(Number.isFinite(verdict.start), quote).toBe(true);
+					expect(Number.isFinite(verdict.end), quote).toBe(true);
+					expect(verdict.end).toBeGreaterThan(verdict.start);
+				}
+			}
+		}
+	});
+});
+
+describe('delegation is bound to the forward it introduces', () => {
+	const forwardItem = (m: ReturnType<typeof FORWARD>) =>
+		groundProposals(
+			output({
+				items: [
+					item([
+						{
+							segmentId: m.segments.find((s) => s.kind === 'forwarded')?.id ?? 'missing',
+							text: 'Please pay invoice 2231',
+						},
+					]),
+				],
+				coverage: undefined,
+			}),
+			m
+		);
+
+	it('rejects a handover aimed at something else, and calls coverage incomplete', () => {
+		const result = forwardItem(
+			FORWARD('Can you handle the meeting? The invoice below is FYI only.')
+		);
+		expect(result.items).toEqual([]);
+		expect(result.rejected[0]?.reason).toBe('not_fresh');
+		expect(result.coverage).toEqual({ complete: false, gaps: ['ambiguous_delegation'] });
+	});
+
+	it.each([
+		'FYI, no action needed.',
+		'Zur Info, kein Handlungsbedarf.',
+		'Pour info.',
+		'No need to handle this, just for your records.',
+	])('treats "%s" as information', (fresh) => {
+		const result = forwardItem(FORWARD(fresh));
+		expect(result.items).toEqual([]);
+		expect(result.coverage.complete).toBe(true);
+	});
+
+	it('flags a handover next to an information marker as ambiguous', () => {
+		const result = forwardItem(FORWARD('FYI. Can you handle the below?'));
+		expect(result.items).toEqual([]);
+		expect(result.coverage.gaps).toEqual(['ambiguous_delegation']);
+	});
+
+	it('cites the fresh handover phrase as the delegation evidence', () => {
+		const message = FORWARD('Hi Mara, can you handle the below? Thanks.');
+		const result = forwardItem(message);
+		expect(result.items[0]?.viaDelegation).toBe(true);
+		const by = result.items[0]?.delegatedBy;
+		expect(by && message.canonicalText.slice(by.start, by.end)).toBe('handle the below');
+	});
+
+	it('reads each forward against its own introducing text, nested ones inheriting', () => {
+		const text = 'FYI.\nA ask\nCan you take care of this one?\nB ask\nC ask';
+		const at = (needle: string) => text.indexOf(needle);
+		const seg = (id: string, kind: 'fresh' | 'forwarded', needle: string) => ({
+			id,
+			kind,
+			start: at(needle),
+			end: at(needle) + needle.length,
+		});
+		const readings = forwardDelegation({
+			canonicalText: text,
+			segments: [
+				seg('s0', 'fresh', 'FYI.'),
+				seg('s1', 'forwarded', 'A ask'),
+				seg('s2', 'fresh', 'Can you take care of this one?'),
+				seg('s3', 'forwarded', 'B ask'),
+				seg('s4', 'forwarded', 'C ask'),
+			],
+		});
+		expect(readings.get('s1')?.reading).toBe('none');
+		expect(readings.get('s3')?.reading).toBe('delegated');
+		expect(readings.get('s4')?.reading).toBe('delegated');
+	});
+
+	it('does not read a comma-separated "nicht" as negating the handover', () => {
+		expect(delegatesForward(FORWARD('Ich schaffe es nicht, kannst du dich darum kümmern?'))).toBe(
+			true
+		);
 	});
 });

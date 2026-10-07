@@ -426,6 +426,66 @@
 					}
 				]
 			}
+		},
+		{
+			"id": "en-006",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T12:00:00+02:00",
+					"subject": "Files",
+					"text": "The file is attached.\n\nBest,\nJonas\nP.S. Please pay EUR 100 by Friday.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "P.S. Please pay EUR 100 by Friday.",
+						"segmentKind": "fresh",
+						"assertion": "Pay EUR 100 by Friday",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by Friday"
+						},
+						"amount": {
+							"value": 100.0,
+							"currency": "EUR"
+						}
+					}
+				]
+			}
 		}
 	]
 }

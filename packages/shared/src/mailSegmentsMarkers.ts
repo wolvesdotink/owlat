@@ -165,27 +165,27 @@ export function isSeparatorLine(line: string): boolean {
 
 export type HeaderField = 'from' | 'date' | 'to' | 'cc' | 'subject' | 'replyTo';
 
-const HEADER_LABELS: Record<string, HeaderField> = {
-	from: 'from',
-	von: 'from',
-	de: 'from',
-	sent: 'date',
-	date: 'date',
-	gesendet: 'date',
-	datum: 'date',
-	envoyé: 'date',
-	to: 'to',
-	an: 'to',
-	à: 'to',
-	pour: 'to',
-	cc: 'cc',
-	subject: 'subject',
-	betreff: 'subject',
-	objet: 'subject',
-	'reply-to': 'replyTo',
-	'antwort an': 'replyTo',
-	'répondre à': 'replyTo',
-};
+const HEADER_LABELS = new Map<string, HeaderField>([
+	['from', 'from'],
+	['von', 'from'],
+	['de', 'from'],
+	['sent', 'date'],
+	['date', 'date'],
+	['gesendet', 'date'],
+	['datum', 'date'],
+	['envoyé', 'date'],
+	['to', 'to'],
+	['an', 'to'],
+	['à', 'to'],
+	['pour', 'to'],
+	['cc', 'cc'],
+	['subject', 'subject'],
+	['betreff', 'subject'],
+	['objet', 'subject'],
+	['reply-to', 'replyTo'],
+	['antwort an', 'replyTo'],
+	['répondre à', 'replyTo'],
+]);
 
 const HEADER_LINE = /^\*{0,2}([A-Za-zÀ-ÿ-]{1,12}(?: [a-zà]{1,3})?)\s?:\*{0,2}\s*(.{0,500})$/;
 
@@ -193,7 +193,7 @@ const HEADER_LINE = /^\*{0,2}([A-Za-zÀ-ÿ-]{1,12}(?: [a-zà]{1,3})?)\s?:\*{0,2}
 export function parseHeaderLine(line: string): { field: HeaderField; value: string } | null {
 	const match = HEADER_LINE.exec(line.trim());
 	if (!match) return null;
-	const field = HEADER_LABELS[(match[1] ?? '').toLowerCase()];
+	const field = HEADER_LABELS.get((match[1] ?? '').toLowerCase());
 	return field ? { field, value: (match[2] ?? '').trim() } : null;
 }
 
@@ -203,6 +203,20 @@ export function parseHeaderLine(line: string): { field: HeaderField; value: stri
  */
 export function isForwardSubject(subject: string): boolean {
 	return /^(?:FW|FWD|WG|TR)\s?:/i.test(subject.trim());
+}
+
+/** A reply subject: `RE:`, German `AW:`/`Antw:`, French `Réf:`, Nordic `SV:`. */
+function isReplySubject(subject: string): boolean {
+	return /^(?:RE|AW|ANTW|RÉF|REF|SV)\s?:/i.test(subject.trim());
+}
+
+/** What a message's own subject says it is (see `ClassifyOptions.subjectKind`). */
+export function subjectKindOf(
+	subject: string | null | undefined
+): 'forward' | 'reply' | 'other' | undefined {
+	if (!subject) return undefined;
+	if (isForwardSubject(subject)) return 'forward';
+	return isReplySubject(subject) ? 'reply' : 'other';
 }
 
 // ── Signatures ──
@@ -230,14 +244,51 @@ export function isClosingLine(line: string): boolean {
 	return text.length <= 40 && CLOSING.test(text);
 }
 
+/** `P.S.`, `PS:`, `P.P.S.`, `PPS` opening a line: a postscript is message text. */
+const POSTSCRIPT = /^(?:P\.?\s?){1,3}S\b\.?/i;
+
+export function isPostscriptLine(line: string): boolean {
+	return POSTSCRIPT.test(line.trim());
+}
+
+/** Words that make a line a request or an instruction, never a name block. */
+const REQUEST =
+	/\b(?:please|pls|kindly|could you|can you|would you|will you|let me know|make sure|don't forget|bitte|kannst du|könntest du|können sie|könnten sie|würdest du|denk daran|merci de|pourriez|pouvez|peux-tu|veuillez|n'oublie)\b/i;
+
+/** A personal name: one to five capitalised words, with the usual particles. */
+const PERSON_NAME =
+	/^\p{Lu}[\p{L}'’.-]*(?:\s+(?:\p{Lu}[\p{L}'’.-]*|von|van|der|den|de|da|di|du|le|la|y|zu))*$/u;
+/** A contact line: an address, a link, a phone or fax number, a handle. */
+const CONTACT =
+	/@|https?:\/\/|\bwww\.|\b(?:tel|phone|mobile|mob|cell|fax|telefon|handy|tél|portable|e-?mail|web|m|t|f)\b\.?\s*:|\+?\d[\d\s()./-]{5,}\d/i;
+/** A company or a role. */
+const COMPANY_OR_ROLE =
+	/\b(?:GmbH|AG|KG|UG|e\.\s?V\.|Ltd|LLC|LLP|Inc|Corp|Co\.|SAS|SARL|SA|BV|NV|Oy|AB|Studio|Agency|Agentur|Group|Gruppe|Team|CEO|CTO|COO|CFO|Founder|Co-?founder|Owner|Inhaber\w*|Manager\w*|Director|Head of|Lead|Engineer|Designer|Developer|Consultant|Berater\w*|Partner\w*|Geschäftsführ\w*|Leiter\w*|Directeur|Directrice|Responsable|Gérant\w*|Assistant\w*|Assistenz|Sales|Vertrieb|Marketing|Support|Office|Büro)\b/i;
+/** A postal address: street and number, or a postcode and town. */
+const ADDRESS =
+	/\b\d{4,5}\s+\p{Lu}\p{L}+|\p{L}+(?:straße|strasse|str\.|weg|platz|allee|gasse|ring|damm)\s*\d+|\b\d+\s+\p{Lu}\p{L}+\s+(?:Street|St\.?|Road|Rd\.?|Avenue|Ave\.?|Lane|Way|Boulevard)\b|\b(?:rue|avenue|boulevard|place|chemin)\s+\p{L}/iu;
+
 /**
- * A line that fits in a name block under a closing: short and not a question,
- * or a company legal line (register court, managing directors), which runs long.
+ * A line that fits in a name block under a closing: a name, a company or role,
+ * a contact or address line, a company legal line, or a list of those joined
+ * by `|`, `·` or `,`. Never a postscript, a question or a request.
  */
 export function isNameBlockLine(line: string): boolean {
 	const text = line.trim();
-	if (text.endsWith('?')) return false;
-	return text.length <= 60 || (text.length <= 240 && isLegalFooterLine(text));
+	if (!text || text.length > 240) return false;
+	if (text.endsWith('?') || isPostscriptLine(text) || REQUEST.test(text)) return false;
+	if (isLegalFooterLine(text)) return true;
+	if (text.length > 100) return false;
+	return text
+		.split(/\s*[|·•,]\s*|\s{2,}/)
+		.filter((part) => part !== '')
+		.every(
+			(part) =>
+				(part.split(/\s+/).length <= 5 && PERSON_NAME.test(part)) ||
+				CONTACT.test(part) ||
+				COMPANY_OR_ROLE.test(part) ||
+				ADDRESS.test(part)
+		);
 }
 
 // ── Disclaimers ──

@@ -8,10 +8,13 @@
  *     folding, whitespace collapse) in the segment it names; one failed quote
  *     rejects the claim it supports and marks coverage incomplete;
  *   - a claim with no quote is dropped (counted as unsupported);
- *   - items must quote the sender's fresh text, or a forwarded message whose
- *     fresh part hands it to us ("can you handle the below?"); asks that sit
- *     only in quoted history, a plain forward, a signature or a disclaimer stay
- *     context. Transitions and latest lines need fresh or forwarded text;
+ *   - items must quote the sender's fresh text, or a forwarded message that
+ *     the fresh text introducing it hands to us ("can you handle the below?",
+ *     read per forward by `./delegation.ts`); asks that sit only in quoted
+ *     history, a forward sent as information, a signature or a disclaimer stay
+ *     context. A forward whose handover is unclear ("handle the meeting; the
+ *     invoice below is FYI") rejects the item and marks coverage incomplete.
+ *     Transitions and latest lines need fresh or forwarded text;
  *     facts may come from anything but a disclaimer;
  *   - every derived string (assertion, display text, options, latest lines,
  *     fact values) is screened with `detectInjection` and
@@ -26,8 +29,10 @@ import type { SegmentKind, SegmentedMessage } from '@owlat/shared/mailSegments';
 import { detectInjection } from '../../agent/steps/security_scan/patterns';
 import { isCredentialSolicitation } from '../../inbox/clarificationSlots';
 import { matchQuote, type NormalizedText, type QuoteFailureReason } from './quoteMatch';
+import { forwardDelegation, type Delegation } from './delegation';
 
 export { normalizeForQuote } from './quoteMatch';
+export { delegatesForward } from './delegation';
 
 // Structural on purpose: they name only the fields grounding reads. The
 // contract's `InterpretOutput` (`./schema`) satisfies them (the run passes one
@@ -98,6 +103,8 @@ export interface GroundedClaim<T> {
 	needsReview: boolean;
 	/** The item rests on forwarded text that the fresh part delegated to us. */
 	viaDelegation?: true;
+	/** The fresh handover phrase that delegated it, when one span holds it. */
+	delegatedBy?: { segmentId: string; start: number; end: number };
 }
 
 export interface RejectedClaim {
@@ -113,7 +120,9 @@ export type CoverageGap =
 	| 'model_uncertain'
 	| 'overflow'
 	| 'segmentation_uncertain'
-	| 'unread_segments';
+	| 'unread_segments'
+	/** An item rests on a forward whose handover the fresh text leaves unclear. */
+	| 'ambiguous_delegation';
 
 export interface GroundingResult<O extends GroundableOutput> {
 	items: GroundedClaim<O['items'][number]>[];
@@ -130,29 +139,17 @@ export interface GroundOptions {
 	/** Screens, injectable for tests; default to the pipeline's own. */
 	detectInjection?: (text: string) => { detected: boolean };
 	isCredentialSolicitation?: (text: string) => boolean;
-	/** Override the delegation reading of the fresh text (default: {@link delegatesForward}). */
+	/**
+	 * Override the delegation reading of every forwarded segment (default: read
+	 * per forward from the fresh text, `./delegation.ts`).
+	 */
 	delegates?: boolean;
 }
 
-const DELEGATION = [
-	/\b(?:can|could|would|will) you(?: please)? (?:handle|take care of|deal with|look (?:at|into)|take over|follow up|answer|reply|respond|action|sort)\b/i,
-	/\bplease (?:handle|take care|deal with|take over|follow up|reply|respond|answer|action|sort)\b/i,
-	/\b(?:over to you|for you to (?:handle|action|answer)|your call|can you own)\b/i,
-	/\b(?:kannst|könntest|würdest) du (?:dich )?(?:(?:bitte )?(?:darum|drum) kümmern|das (?:bitte )?(?:übernehmen|erledigen|beantworten|klären))/i,
-	/\bbitte (?:übernehmen|kümmer(?:e)? dich|erledigen|beantworten|klären)\b/i,
-	/\b(?:übernimmst du|kümmerst du dich)\b/i,
-	/\b(?:peux|pourrais)[- ]tu (?:t'en|t’en) (?:occuper|charger)/i,
-	/\b(?:pouvez|pourriez)[- ]vous (?:vous en )?(?:occuper|charger|traiter|répondre)/i,
-	/\bmerci de (?:t'en|t’en|vous en) (?:occuper|charger)\b/i,
-];
-
-/** Whether the sender's fresh text hands the forwarded message to us. */
-export function delegatesForward(segmented: GroundSegmentation): boolean {
-	return segmented.segments.some(
-		(s) =>
-			s.kind === 'fresh' &&
-			DELEGATION.some((pattern) => pattern.test(segmented.canonicalText.slice(s.start, s.end)))
-	);
+/** Whether a claim's evidence may carry it, and the handover that delegated it. */
+interface Carry {
+	verdict: 'yes' | 'delegated' | 'ambiguous' | 'no';
+	by?: Delegation['evidence'];
 }
 
 /** Keys that hold references or quotes, not derived text. */
@@ -179,7 +176,11 @@ export function groundProposals<O extends GroundableOutput>(
 ): GroundingResult<O> {
 	const injection = options.detectInjection ?? detectInjection;
 	const credential = options.isCredentialSolicitation ?? isCredentialSolicitation;
-	const delegates = options.delegates ?? delegatesForward(segmented);
+	const readings = options.delegates === undefined ? forwardDelegation(segmented) : null;
+	const delegationOf = (segmentId: string): Delegation =>
+		readings
+			? (readings.get(segmentId) ?? { reading: 'none' })
+			: { reading: options.delegates ? 'delegated' : 'none' };
 	const kindOf = new Map(segmented.segments.map((s) => [s.id, s.kind]));
 	const cache = new Map<string, NormalizedText>();
 	const rejected: RejectedClaim[] = [];
@@ -191,7 +192,7 @@ export function groundProposals<O extends GroundableOutput>(
 		claim: T,
 		kind: ClaimKind,
 		index: number,
-		carries: (kinds: SegmentKind[]) => 'yes' | 'delegated' | 'no',
+		carries: (evidence: GroundedEvidence[]) => Carry,
 		locale?: string
 	): GroundedClaim<T> | null => {
 		proposed++;
@@ -225,8 +226,9 @@ export function groundProposals<O extends GroundableOutput>(
 			gaps.add('quote_failed');
 			return reject('quote_failed', failures);
 		}
-		const carried = carries(evidence.map((e) => e.segmentKind));
-		if (carried === 'no') return reject('not_fresh');
+		const carried = carries(evidence);
+		if (carried.verdict === 'ambiguous') gaps.add('ambiguous_delegation');
+		if (carried.verdict === 'no' || carried.verdict === 'ambiguous') return reject('not_fresh');
 		const strings: [string, string][] = [];
 		derivedStrings(claim, '', strings);
 		const flags: ScreenFlag[] = [];
@@ -240,16 +242,29 @@ export function groundProposals<O extends GroundableOutput>(
 			evidence,
 			flags,
 			needsReview: flags.length > 0,
-			...(carried === 'delegated' ? { viaDelegation: true as const } : {}),
+			...(carried.verdict === 'delegated' ? { viaDelegation: true as const } : {}),
+			...(carried.by ? { delegatedBy: carried.by } : {}),
 		};
 	};
 
-	const itemCarrier = (kinds: SegmentKind[]) =>
-		kinds.includes('fresh') ? 'yes' : delegates && kinds.includes('forwarded') ? 'delegated' : 'no';
-	const freshOrForwarded = (kinds: SegmentKind[]) =>
-		kinds.some((k) => k === 'fresh' || k === 'forwarded') ? 'yes' : 'no';
-	const notDisclaimer = (kinds: SegmentKind[]) =>
-		kinds.some((k) => k !== 'disclaimer') ? 'yes' : 'no';
+	const itemCarrier = (evidence: GroundedEvidence[]): Carry => {
+		if (evidence.some((e) => e.segmentKind === 'fresh')) return { verdict: 'yes' };
+		const forwarded = evidence
+			.filter((e) => e.segmentKind === 'forwarded')
+			.map((e) => delegationOf(e.segmentId));
+		const delegated = forwarded.find((d) => d.reading === 'delegated');
+		if (delegated) {
+			return { verdict: 'delegated', ...(delegated.evidence ? { by: delegated.evidence } : {}) };
+		}
+		return { verdict: forwarded.some((d) => d.reading === 'ambiguous') ? 'ambiguous' : 'no' };
+	};
+	const anyKind =
+		(allowed: (kind: SegmentKind) => boolean) =>
+		(evidence: GroundedEvidence[]): Carry => ({
+			verdict: evidence.some((e) => allowed(e.segmentKind)) ? 'yes' : 'no',
+		});
+	const freshOrForwarded = anyKind((k) => k === 'fresh' || k === 'forwarded');
+	const notDisclaimer = anyKind((k) => k !== 'disclaimer');
 	const keep = <T>(claims: (GroundedClaim<T> | null)[]) =>
 		claims.filter((c): c is GroundedClaim<T> => c !== null);
 

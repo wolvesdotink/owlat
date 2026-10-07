@@ -19,12 +19,15 @@ import {
 } from '../ground';
 import type { EvalMessage, EvalParty, EvalThread } from './corpus';
 
-/** One message as the model may read it: its segments, never the team's notes. */
+/** One message as the model may read it: metadata and scoped segments only. */
 export interface EvalModelMessage {
 	messageId: string;
 	direction: EvalMessage['direction'];
 	from: EvalParty;
+	to: EvalParty[];
+	cc: EvalParty[];
 	sentAt: string;
+	subject: string;
 	segments: {
 		id: string;
 		kind: string;
@@ -62,23 +65,42 @@ export function arrivalOrder(thread: EvalThread): EvalMessage[] {
 	);
 }
 
+function modelMessage(message: EvalMessage, segmented: SegmentedMessage): EvalModelMessage {
+	return {
+		messageId: message.id,
+		direction: message.direction,
+		from: message.from,
+		to: message.to,
+		cc: message.cc ?? [],
+		sentAt: message.sentAt,
+		subject: message.subject,
+		segments: segmented.segments.map((s) => ({
+			id: s.id,
+			kind: s.kind,
+			...(s.author ? { author: s.author } : {}),
+			text: segmented.canonicalText.slice(s.start, s.end),
+		})),
+	};
+}
+
 /** The model's view of a thread: message segments only. Internal notes never enter it. */
 export function modelInputFor(thread: EvalThread): EvalModelMessage[] {
-	return arrivalOrder(thread).map((message) => {
-		const segmented = segmentEvalMessage(message);
-		return {
-			messageId: message.id,
-			direction: message.direction,
-			from: message.from,
-			sentAt: message.sentAt,
-			segments: segmented.segments.map((s) => ({
-				id: s.id,
-				kind: s.kind,
-				...(s.author ? { author: s.author } : {}),
-				text: segmented.canonicalText.slice(s.start, s.end),
-			})),
-		};
-	});
+	return arrivalOrder(thread).map((message) => modelMessage(message, segmentEvalMessage(message)));
+}
+
+/**
+ * Everything a model adapter receives for one message: thread mode, locale and
+ * our addresses, the message's scoped content, and the messages that arrived
+ * before it. Never the raw message (an unsigned trailer outside a clearsigned
+ * block), the labels, the team's internal notes or later messages.
+ */
+export interface EvalModelInput {
+	mode: EvalThread['mode'];
+	locale: EvalThread['locale'];
+	us: EvalParty[];
+	message: EvalModelMessage;
+	history: EvalModelMessage[];
+	segmented: SegmentedMessage;
 }
 
 /** The first segment of `kind` that holds `quote` verbatim, else the first of that kind. */
@@ -149,25 +171,43 @@ export function oracleOutput(
 
 export interface ReplayedMessage {
 	message: EvalMessage;
+	input: EvalModelInput;
 	segmented: SegmentedMessage;
 	output: GroundableOutput;
 	grounding: GroundingResult<GroundableOutput>;
 }
 
-/** Ground one model output (or the oracle's) for every message, in arrival order. */
+/**
+ * Ground one model output (or the oracle's) for every message, in arrival
+ * order. `produce` sees only the sanitized {@link EvalModelInput}; the oracle
+ * default reads the labels of the message it names.
+ */
 export async function replayThread(
 	thread: EvalThread,
-	produce: (
-		message: EvalMessage,
-		segmented: SegmentedMessage
-	) => Promise<GroundableOutput> | GroundableOutput = (message, segmented) =>
-		oracleOutput(thread, message, segmented)
+	produce?: (input: EvalModelInput) => Promise<GroundableOutput> | GroundableOutput
 ): Promise<ReplayedMessage[]> {
 	const replayed: ReplayedMessage[] = [];
+	const history: EvalModelMessage[] = [];
 	for (const message of arrivalOrder(thread)) {
 		const segmented = segmentEvalMessage(message);
-		const output = await produce(message, segmented);
-		replayed.push({ message, segmented, output, grounding: groundProposals(output, segmented) });
+		const current = modelMessage(message, segmented);
+		const input: EvalModelInput = {
+			mode: thread.mode,
+			locale: thread.locale,
+			us: thread.us,
+			message: current,
+			history: [...history],
+			segmented,
+		};
+		const output = produce ? await produce(input) : oracleOutput(thread, message, segmented);
+		replayed.push({
+			message,
+			input,
+			segmented,
+			output,
+			grounding: groundProposals(output, segmented),
+		});
+		history.push(current);
 	}
 	return replayed;
 }
