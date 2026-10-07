@@ -108,6 +108,28 @@ describe('thread brief validators', () => {
 });
 
 describe('thread brief tables', () => {
+	it('find every row of one thread in each table (erasure, scope invalidation)', () => {
+		const perThread: Record<string, [string, string]> = {
+			messageInterpretations: ['by_mail_thread', 'by_conversation_thread'],
+			threadItems: ['by_mail_thread_and_status', 'by_conversation_thread_and_status'],
+			threadActivity: ['by_mail_thread_and_seq', 'by_conversation_thread_and_seq'],
+			threadBriefs: ['by_mail_thread', 'by_conversation_thread'],
+			threadViewerState: ['by_mail_thread', 'by_conversation_thread'],
+			draftResponsePlans: ['by_mail_thread', 'by_conversation_thread'],
+		};
+		for (const [table, [mailIndex, teamIndex]] of Object.entries(perThread)) {
+			const { indexes } = (
+				threadBriefTables as unknown as Record<
+					string,
+					{ indexes: Array<{ indexDescriptor: string; fields: string[] }> }
+				>
+			)[table]!;
+			const first = (name: string) => indexes.find((i) => i.indexDescriptor === name)?.fields[0];
+			expect(first(mailIndex), `${table}.${mailIndex}`).toBe('mailThreadId');
+			expect(first(teamIndex), `${table}.${teamIndex}`).toBe('conversationThreadId');
+		}
+	});
+
 	it('are all listed in THREAD_BRIEF_TABLES', () => {
 		expect([...THREAD_BRIEF_TABLES].sort()).toEqual(Object.keys(threadBriefTables).sort());
 	});
@@ -165,7 +187,8 @@ describe('thread brief tables', () => {
 				mailboxId,
 				revision: 1,
 				intent: 'request',
-				facets: ['file'],
+				facets: ['information'],
+				consequences: ['disclosure'],
 				assertion: 'atrest:1:assertion',
 				display,
 				requester: them,
