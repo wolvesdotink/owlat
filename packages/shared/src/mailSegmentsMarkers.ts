@@ -258,37 +258,54 @@ const REQUEST =
 /** A personal name: one to five capitalised words, with the usual particles. */
 const PERSON_NAME =
 	/^\p{Lu}[\p{L}'’.-]*(?:\s+(?:\p{Lu}[\p{L}'’.-]*|von|van|der|den|de|da|di|du|le|la|y|zu))*$/u;
-/** A contact line: an address, a link, a phone or fax number, a handle. */
-const CONTACT =
-	/@|https?:\/\/|\bwww\.|\b(?:tel|phone|mobile|mob|cell|fax|telefon|handy|tél|portable|e-?mail|web|m|t|f)\b\.?\s*:|\+?\d[\d\s()./-]{5,}\d/i;
-/** A company or a role. */
+/** A word of a title-cased company or role line. */
+const TITLE_WORD =
+	/^(?:[\p{Lu}\d][\p{L}\d&'’.()+-]*|&|of|for|and|at|de|der|des|du|für|und|la|le|et|y|von|van|zu)$/u;
+/** A company form or a role, as a whole word of a title-cased line. */
 const COMPANY_OR_ROLE =
-	/\b(?:GmbH|AG|KG|UG|e\.\s?V\.|Ltd|LLC|LLP|Inc|Corp|Co\.|SAS|SARL|SA|BV|NV|Oy|AB|Studio|Agency|Agentur|Group|Gruppe|Team|CEO|CTO|COO|CFO|Founder|Co-?founder|Owner|Inhaber\w*|Manager\w*|Director|Head of|Lead|Engineer|Designer|Developer|Consultant|Berater\w*|Partner\w*|Geschäftsführ\w*|Leiter\w*|Directeur|Directrice|Responsable|Gérant\w*|Assistant\w*|Assistenz|Sales|Vertrieb|Marketing|Support|Office|Büro)\b/i;
-/** A postal address: street and number, or a postcode and town. */
-const ADDRESS =
-	/\b\d{4,5}\s+\p{Lu}\p{L}+|\p{L}+(?:straße|strasse|str\.|weg|platz|allee|gasse|ring|damm)\s*\d+|\b\d+\s+\p{Lu}\p{L}+\s+(?:Street|St\.?|Road|Rd\.?|Avenue|Ave\.?|Lane|Way|Boulevard)\b|\b(?:rue|avenue|boulevard|place|chemin)\s+\p{L}/iu;
+	/\b(?:GmbH|AG|KG|UG|e\.\s?V\.|Ltd|LLC|LLP|Inc|Corp|Co\.|SAS|SARL|SA|BV|NV|Oy|AB|Studio|Agency|Agentur|Group|Gruppe|Team|CEO|CTO|COO|CFO|Founder|Co-?founder|Owner|Inhaber\w*|Manager\w*|Director|Head|Lead|Engineer|Designer|Developer|Consultant|Berater\w*|Partner\w*|Geschäftsführ\w*|Leiter\w*|Directeur|Directrice|Responsable|Gérant\w*|Assistant\w*|Assistenz|Sales|Vertrieb|Marketing|Support|Office|Büro)\b/i;
+const EMAIL = /^(?:mailto:)?[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63})+$/i;
+const URL_SHAPE = /^(?:https?:\/\/|www\.)\S+$/i;
+const PHONE = /^\+?[\d\s()./-]{6,24}\d$/;
+const CONTACT_LABEL =
+	/^(?:tel|phone|mobile|mob|cell|fax|telefon|handy|tél|portable|e-?mail|mail|web|website|m|t|f|p|w|e)\.?\s*:?\s+/i;
+/** A postal address part: street and number, postcode and town. */
+const ADDRESS = [
+	/^[\p{L}.\s-]*(?:straße|strasse|str\.|weg|platz|allee|gasse|ring|damm)\s*\d+\s?\p{L}?$/iu,
+	/^(?:[A-Z]{1,2}-)?\d{4,5}\s+\p{Lu}[\p{L}\s.-]*$/u,
+	/^\d+[a-z]?\s+(?:\p{Lu}[\p{L}.]*\s+){1,4}(?:Street|St\.?|Road|Rd\.?|Avenue|Ave\.?|Lane|Ln\.?|Way|Boulevard|Blvd\.?|Drive|Dr\.?)$/u,
+	/^\d+,?\s+(?:rue|avenue|boulevard|place|chemin|allée)\s+[\p{L}\s'’-]+$/iu,
+];
+/** A company legal part that starts with its label ("Amtsgericht Berlin HRB 12345"). */
+const LEGAL_PART =
+	/^(?:Geschäftsführer(?:in)?|Geschäftsführung|Vorstand|Sitz(?: der Gesellschaft)?|Registergericht|Amtsgericht|Handelsregister|HRB|HRA|USt-?IdNr\.?|Steuer-?Nr\.?|VAT(?: No\.?| number| ID)?|Registered (?:office|in England(?: and Wales)?)|Company (?:number|registration(?: number)?|No\.?)|SIRET|SIREN|RCS|Capital social)\b[\s:.]*[\p{L}\d\s.,&/()'’-]*$/iu;
+
+/** One `|`/`·`/`,`-separated part of a name-block line: it must BE one of the shapes. */
+function isNamePart(part: string): boolean {
+	const value = part.replace(CONTACT_LABEL, '');
+	if (EMAIL.test(value) || URL_SHAPE.test(value)) return true;
+	if (PHONE.test(value) && (value.match(/\d/g) ?? []).length >= 6) return true;
+	if (ADDRESS.some((shape) => shape.test(part)) || LEGAL_PART.test(part)) return true;
+	const words = part.split(/\s+/);
+	if (words.length > 8 || !words.every((word) => TITLE_WORD.test(word))) return false;
+	return (words.length <= 5 && PERSON_NAME.test(part)) || COMPANY_OR_ROLE.test(part);
+}
 
 /**
- * A line that fits in a name block under a closing: a name, a company or role,
- * a contact or address line, a company legal line, or a list of those joined
- * by `|`, `·` or `,`. Never a postscript, a question or a request.
+ * A line that fits in a name block under a closing: every part of it (split on
+ * `|`, `·`, `,`) IS a name, a title-cased company or role, an email address, a
+ * link, a phone number, an address or a company legal entry. A sentence that
+ * merely contains one ("Reply to billing@example.com.", "Send the invoice to
+ * Support.") is not; neither is a postscript, a question or a request.
  */
 export function isNameBlockLine(line: string): boolean {
 	const text = line.trim();
 	if (!text || text.length > 240) return false;
 	if (text.endsWith('?') || isPostscriptLine(text) || REQUEST.test(text)) return false;
-	if (isLegalFooterLine(text)) return true;
-	if (text.length > 100) return false;
 	return text
-		.split(/\s*[|·•,]\s*|\s{2,}/)
+		.split(/\s*[|·•,;]\s*|\s{2,}/)
 		.filter((part) => part !== '')
-		.every(
-			(part) =>
-				(part.split(/\s+/).length <= 5 && PERSON_NAME.test(part)) ||
-				CONTACT.test(part) ||
-				COMPANY_OR_ROLE.test(part) ||
-				ADDRESS.test(part)
-		);
+		.every(isNamePart);
 }
 
 // ── Disclaimers ──
