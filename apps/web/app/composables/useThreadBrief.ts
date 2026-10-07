@@ -11,7 +11,16 @@ import type { Id } from '@owlat/api/dataModel';
 import type { BriefModeView, ThreadBriefView } from '../../../api/convex/mail/interpret/briefShape';
 import { api } from '@owlat/api';
 import { briefLocale, type MailThreadRefArg } from '~/composables/threadBrief/briefApi';
+import type { Ref } from 'vue';
 import type { BriefAvailability } from '~/utils/threadBriefView';
+import {
+	BRIEF_MAX_PAGES,
+	mergeBriefPages,
+	nextCursorOf,
+	type BriefItemsState,
+	type PagedBrief,
+} from '~/utils/threadBriefPages';
+import { useConvexQueryMap } from '~/composables/useConvexQueryMap';
 
 export function useThreadBrief(opts: {
 	/** The thread, or null to read nothing (a shared mailbox, no thread id yet). */
@@ -31,12 +40,43 @@ export function useThreadBrief(opts: {
 	);
 
 	const view = computed(() => query.data.value as ThreadBriefView | null | undefined);
-	/** The personal brief, or null for none / a team view; undefined while loading. */
-	const brief = computed<BriefModeView | null | undefined>(() => {
+
+	// Later item pages, walked in cursor order up to the bound (utils/threadBriefPages).
+	let pages: Map<string, { data: Ref<unknown> }> | null = null;
+	const cursors = computed(() => {
+		const out: string[] = [];
+		let cursor = view.value?.mode === 'brief' ? nextCursorOf(view.value) : null;
+		while (cursor && out.length < BRIEF_MAX_PAGES - 1) {
+			out.push(cursor);
+			cursor = nextCursorOf(pages?.get(cursor)?.data.value as ThreadBriefView | null | undefined);
+		}
+		return out;
+	});
+	pages = useConvexQueryMap(api.mail.interpret.brief.get, cursors, (cursor) =>
+		threadRef.value
+			? { threadRef: threadRef.value, locale: briefLocale(locale.value), cursor }
+			: 'skip'
+	);
+
+	const paged = computed<PagedBrief | null | undefined>(() => {
 		const v = view.value;
 		if (v === undefined) return undefined;
-		return v?.mode === 'brief' ? v : null;
+		if (v?.mode !== 'brief') return null;
+		return mergeBriefPages(
+			v,
+			cursors.value.map(
+				(cursor) => pages?.get(cursor)?.data.value as ThreadBriefView | null | undefined
+			)
+		);
 	});
+	/** The personal brief (all loaded pages merged), or null for none / a team view; undefined while loading. */
+	const brief = computed<BriefModeView | null | undefined>(() => {
+		const p = paged.value;
+		return p === undefined ? undefined : (p?.brief ?? null);
+	});
+	/** Whether the item lists are whole; the Overview never says "nothing to do" otherwise. */
+	const itemsState = computed<BriefItemsState>(() => paged.value?.itemsState ?? 'complete');
+	const isClosedTruncated = computed(() => paged.value?.isClosedTruncated === true);
 
 	/** What the opening-view rule needs to know (utils/threadBriefView). */
 	const availability = computed<BriefAvailability>(() => {
@@ -69,6 +109,8 @@ export function useThreadBrief(opts: {
 		/** The raw view, either mode (a shared mailbox reads `actions`). */
 		view,
 		brief,
+		itemsState,
+		isClosedTruncated,
 		availability,
 		isLoading: query.isLoading,
 		error: query.error,

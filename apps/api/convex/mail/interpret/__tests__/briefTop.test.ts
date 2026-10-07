@@ -22,11 +22,12 @@ import { refreshBriefTop } from '../briefTop';
 import {
 	itemBucketOf,
 	itemCountsOf,
+	itemSortKey,
 	listBucketOf,
 	recordItemChange,
 	writeItemChange,
 } from '../counters';
-import { collectToDo, TODO_SCAN_BUDGET } from '../todo';
+import { collectToDo, TODO_SCAN_BUDGET, toDoCountOf } from '../todo';
 import type { MutationCtx } from '../../../_generated/server';
 
 const SESSION = { userId: 'test-user', role: 'owner', activeOrganizationId: 'test-org' };
@@ -72,6 +73,7 @@ type ItemFields = Omit<Doc<'threadItems'>, '_id' | '_creationTime' | 'listBucket
 /** Insert an item the way every writer must: with its list bucket, counters moved. */
 async function trackedInsert(ctx: MutationCtx, fields: ItemFields): Promise<Id<'threadItems'>> {
 	const id = await ctx.db.insert('threadItems', { ...fields, listBucket: listBucketOf(fields) });
+	await ctx.db.patch(id, { sortKey: itemSortKey({ ...fields, _id: id }) });
 	await recordItemChange(ctx, { kind: 'mail', id: fields.mailThreadId! }, null, fields);
 	return id;
 }
@@ -307,7 +309,9 @@ async function insertItem(
 		dueAt?: number;
 		verify?: 'passed' | 'proposal';
 		text?: string;
-		responsibility?: 'us' | 'them';
+		responsibility?: 'us' | 'them' | 'unclear';
+		facets?: Doc<'threadItems'>['facets'];
+		askedAt?: number;
 	} = {}
 ) {
 	return trackedInsert(ctx, {
@@ -316,7 +320,7 @@ async function insertItem(
 		mailboxId,
 		revision: 1,
 		intent: 'request',
-		facets: [],
+		facets: over.facets ?? [],
 		assertion: 'x',
 		display: { en: over.text ?? 'x', de: over.text ?? 'x' },
 		requester: PARTY,
@@ -329,7 +333,7 @@ async function insertItem(
 			: {}),
 		evidence: [],
 		verify: over.verify ?? 'passed',
-		askedAt: T0,
+		askedAt: over.askedAt ?? T0,
 		createdAt: T0,
 		updatedAt: T0,
 	});
@@ -484,7 +488,7 @@ describe('refreshBriefTop on long threads', () => {
 		await t.run(async (ctx) => {
 			const invoice = (await ctx.db
 				.query('threadItems')
-				.withIndex('by_mail_thread_bucket_asked', (q) =>
+				.withIndex('by_mail_thread_bucket_sort', (q) =>
 					q.eq('mailThreadId', threadId).eq('listBucket', 'forUs')
 				)
 				.first())!;
@@ -512,6 +516,84 @@ describe('refreshBriefTop on long threads', () => {
 		});
 		expect(after.row?.listBucket).toBe('forUs');
 		expect(after.counts).toMatchObject({ us: 2, proposal: 0 });
+	});
+});
+
+describe('the top item follows compareForYou', () => {
+	/** A thread with a brief row and no items yet. */
+	async function emptyThread(t: T) {
+		const { mailboxId } = await seedInterpreted(t);
+		const threadId = await t.run(async (ctx) => {
+			const id = await insertThread(ctx, mailboxId, 'Fresh');
+			await ctx.db.insert('threadBriefs', {
+				threadKind: 'mail',
+				mailThreadId: id,
+				mode: 'brief',
+				sourceRevision: 1,
+				interpretationRevision: 1,
+				lastActivitySeq: 0,
+				completeness: 'complete',
+				deletionEpoch: 0,
+				updatedAt: T0,
+			});
+			return id;
+		});
+		return { mailboxId, threadId };
+	}
+
+	it('puts a payment before an older undated information item', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, threadId } = await emptyThread(t);
+		await t.run(async (ctx) => {
+			await insertItem(ctx, threadId, mailboxId, {
+				facets: ['information'],
+				askedAt: T0 - 10 * DAY,
+				text: 'Note the new address',
+			});
+			await insertItem(ctx, threadId, mailboxId, { facets: ['payment'], text: 'Pay €38.08' });
+			await refreshBriefTop(ctx, threadId);
+		});
+		const top = (await t.run((ctx) => ctx.db.get(threadId)))!.briefTop!;
+		const opened = await t.run(async (ctx) => ctx.db.get(top.top!.itemId));
+		expect(opened?.facets).toEqual(['payment']);
+	});
+
+	it('breaks equal deadlines the way compareForYou does, not by creation order', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, threadId } = await emptyThread(t);
+		const ids = await t.run(async (ctx) => {
+			const a = await insertItem(ctx, threadId, mailboxId, { dueAt: T0 + DAY, facets: ['file'] });
+			const b = await insertItem(ctx, threadId, mailboxId, {
+				dueAt: T0 + DAY,
+				facets: ['signature'],
+			});
+			await refreshBriefTop(ctx, threadId);
+			return { a, b };
+		});
+		const top = (await t.run((ctx) => ctx.db.get(threadId)))!.briefTop!;
+		// Same deadline: the riskier facet (signature) first, though created second.
+		expect(top.top?.itemId).toBe(ids.b);
+	});
+});
+
+describe('the to-do band count', () => {
+	it('counts tracked us and unclear items, not proposals', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, threadId } = await seedInterpreted(t);
+		await t.run(async (ctx) => {
+			// The seeded invoice is `us`; add two unclear, one proposal.
+			await insertItem(ctx, threadId, mailboxId, { responsibility: 'unclear' });
+			await insertItem(ctx, threadId, mailboxId, { responsibility: 'unclear' });
+			await insertItem(ctx, threadId, mailboxId, { verify: 'proposal' });
+		});
+		const brief = await t.run((ctx) =>
+			ctx.db
+				.query('threadBriefs')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.unique()
+		);
+		expect(toDoCountOf(brief)).toBe(3);
+		expect(toDoCountOf(null)).toBe(1);
 	});
 });
 

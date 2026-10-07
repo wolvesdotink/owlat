@@ -900,12 +900,18 @@
 				"openCount": "{count} open | {count} open",
 				"empty": "Nothing for you in this thread.",
 				"emptyTeam": "Nothing open for the team in this thread.",
-				"emptyIncomplete": "Nothing found in the part that was read."
+				"emptyIncomplete": "Nothing found in the part that was read.",
+				"loadingMore": "Loading the rest of the items…",
+				"truncated": "Not every item could be loaded here. The conversation has them all.",
+				"closedTruncated": "Older finished items are not listed."
 			},
 			"item": {
 				"due": "due {date}",
 				"checkThis": "Check this:",
 				"proposal": "proposal · not tracked yet",
+				"pendingChange": "Check this change:",
+				"pendingOptions": "options: {options}",
+				"confirmChange": "Confirm change",
 				"review": "needs a look",
 				"duplicate": "possible duplicate",
 				"new": "new",

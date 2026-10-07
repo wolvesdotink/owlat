@@ -226,6 +226,10 @@ export const threadBriefTables = {
 		// The brief list it sits in (mail/interpret/counters.ts listBucketOf), written
 		// with every item write; threadBriefs.itemCounts counts the same partition.
 		listBucket: v.optional(itemListBucketValidator),
+		// The "For you" order as one string (@owlat/shared/threadBriefRules
+		// forYouSortKey: due, facet risk, age, id), so the first row of a list in
+		// `by_mail_thread_bucket_sort` is its top item, in compareForYou's order.
+		sortKey: v.optional(v.string()),
 		// Conflicting evidence after a human correction, or a security flag.
 		isReviewNeeded: v.optional(v.boolean()),
 		// "Remind me" (lives next to the lifecycle, never changes it).
@@ -255,10 +259,9 @@ export const threadBriefTables = {
 		// reads a status by update time (a long history never hides a recent change).
 		.index('by_mail_thread_and_status', ['mailThreadId', 'status', 'updatedAt'])
 		.index('by_conversation_thread_and_status', ['conversationThreadId', 'status', 'updatedAt'])
-		// One list of a thread in due order / in asking order: the list row's top
-		// item is the first row of one of these (mail/interpret/briefTop.ts).
-		.index('by_mail_thread_bucket_due', ['mailThreadId', 'listBucket', 'due.at'])
-		.index('by_mail_thread_bucket_asked', ['mailThreadId', 'listBucket', 'askedAt'])
+		// One list of a thread in the "For you" order: the list row's top item is
+		// its first row (mail/interpret/briefTop.ts).
+		.index('by_mail_thread_bucket_sort', ['mailThreadId', 'listBucket', 'sortKey'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
 		.index('by_counterparty', ['counterpartyKey']),
 

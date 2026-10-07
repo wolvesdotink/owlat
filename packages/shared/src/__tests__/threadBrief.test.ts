@@ -13,6 +13,7 @@ import {
 } from '../threadBrief';
 import {
 	compareForYou,
+	forYouSortKey,
 	isConsequential,
 	isLegalDispositionEdge,
 	isLegalStatusEdge,
@@ -290,5 +291,21 @@ describe('defaultActivityVisibility', () => {
 		expect(defaultActivityVisibility('reply_sent')).toBe('substance');
 		expect(defaultActivityVisibility('delivery_failed')).toBe('substance');
 		expect(new Set(ACTIVITY_TYPES).size).toBe(ACTIVITY_TYPES.length);
+	});
+});
+
+describe('forYouSortKey', () => {
+	it('orders exactly like compareForYou: due, then risk, then age, then id', () => {
+		const items = [
+			{ id: 'i4', facets: ['information' as const], askedAt: 1 },
+			{ id: 'p1', facets: ['payment' as const], askedAt: 5 },
+			{ id: 'd2', facets: [], askedAt: 9, due: { at: 2_000 } },
+			{ id: 'd1', facets: [], askedAt: 9, due: { at: 2_000 } },
+			{ id: 'd0', facets: ['meeting' as const], askedAt: 9, due: { at: 1_000 } },
+			{ id: 'n', facets: [], askedAt: 3, due: { at: null } },
+		];
+		const byKey = [...items].sort((a, b) => (forYouSortKey(a) < forYouSortKey(b) ? -1 : 1));
+		expect(byKey.map((i) => i.id)).toEqual(['d0', 'd1', 'd2', 'p1', 'i4', 'n']);
+		expect([...items].sort(compareForYou).map((i) => i.id)).toEqual(byKey.map((i) => i.id));
 	});
 });

@@ -900,12 +900,18 @@
 				"openCount": "{count} offen | {count} offen",
 				"empty": "In diesem Verlauf ist nichts für dich zu tun.",
 				"emptyTeam": "In diesem Verlauf ist nichts fürs Team offen.",
-				"emptyIncomplete": "Im gelesenen Teil wurde nichts gefunden."
+				"emptyIncomplete": "Im gelesenen Teil wurde nichts gefunden.",
+				"loadingMore": "Die übrigen Punkte werden geladen…",
+				"truncated": "Hier ließen sich nicht alle Punkte laden. Im E-Mail-Verlauf steht alles.",
+				"closedTruncated": "Ältere erledigte Punkte sind nicht aufgeführt."
 			},
 			"item": {
 				"due": "fällig {date}",
 				"checkThis": "Prüf das:",
 				"proposal": "Vorschlag · noch nicht nachverfolgt",
+				"pendingChange": "Prüf diese Änderung:",
+				"pendingOptions": "Optionen: {options}",
+				"confirmChange": "Änderung bestätigen",
 				"review": "bitte prüfen",
 				"duplicate": "mögliches Duplikat",
 				"new": "neu",

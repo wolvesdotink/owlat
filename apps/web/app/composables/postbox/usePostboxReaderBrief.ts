@@ -180,6 +180,8 @@ export function usePostboxReaderBrief(opts: {
 		isShared,
 		isSigned,
 		brief: read.brief,
+		itemsState: read.itemsState,
+		isClosedTruncated: read.isClosedTruncated,
 		switchView,
 		showsOverview,
 		cited,

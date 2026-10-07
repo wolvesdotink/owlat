@@ -12,7 +12,7 @@
  *
  * Every item also carries `listBucket` ({@link listBucketOf}), the same
  * partition under the brief's list names, so the list row reads the first
- * item of a list from an index (`by_mail_thread_bucket_due` / `_asked`).
+ * item of a list from an index (`by_mail_thread_bucket_sort`, on `sortKey`).
  *
  * Every writer that changes an extraction's status or an item's status,
  * responsibility or verify state adjusts them in the same transaction: the
@@ -24,6 +24,7 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { BriefCompleteness } from '@owlat/shared/threadBrief';
+import { forYouSortKey } from '@owlat/shared/threadBriefRules';
 import type { ItemListBucket } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { ensureBriefRow } from './briefRow';
@@ -91,6 +92,13 @@ const LIST_BUCKET: Record<ItemBucket, ItemListBucket> = {
 	hidden: 'closed',
 };
 
+/** An item's stored "For you" order key (`threadItems.sortKey`). Pure. */
+export function itemSortKey(
+	item: Pick<Doc<'threadItems'>, '_id' | 'due' | 'facets' | 'askedAt'>
+): string {
+	return forYouSortKey({ due: item.due, facets: item.facets, askedAt: item.askedAt, id: item._id });
+}
+
 /** The brief list an item sits in (`threadItems.listBucket`). Pure. */
 export function listBucketOf(item: ItemBucketFields): ItemListBucket {
 	return LIST_BUCKET[itemBucketOf(item)];
@@ -130,21 +138,27 @@ export async function recordItemChange(
 
 /**
  * THE helper for item writes outside the reducer (reactions, corrections,
- * send hooks): patch the item, keep its `listBucket` in step and move the
- * thread's counters, in one call and one transaction.
+ * send hooks): patch the item, keep its `listBucket` and `sortKey` in step
+ * and move the thread's counters, in one call and one transaction.
  */
 export async function writeItemChange(
 	ctx: MutationCtx,
 	ref: ThreadRef,
 	row: Doc<'threadItems'>,
-	patch: Partial<Omit<Doc<'threadItems'>, '_id' | '_creationTime' | 'listBucket'>>
+	patch: Partial<Omit<Doc<'threadItems'>, '_id' | '_creationTime' | 'listBucket' | 'sortKey'>>
 ): Promise<void> {
 	const after: ItemBucketFields = {
 		status: patch.status ?? row.status,
 		responsibility: patch.responsibility ?? row.responsibility,
 		verify: patch.verify ?? row.verify,
 	};
-	await ctx.db.patch(row._id, { ...patch, listBucket: listBucketOf(after) });
+	const sortKey = itemSortKey({
+		_id: row._id,
+		due: 'due' in patch ? patch.due : row.due,
+		facets: patch.facets ?? row.facets,
+		askedAt: patch.askedAt ?? row.askedAt,
+	});
+	await ctx.db.patch(row._id, { ...patch, listBucket: listBucketOf(after), sortKey });
 	await recordItemChange(ctx, ref, row, after);
 }
 
