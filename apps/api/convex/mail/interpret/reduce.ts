@@ -17,7 +17,10 @@
  *   4. fold it in, MONOTONE (`fold.ts`): a new message, a late one and a
  *      re-read all merge on top of the thread's items through the same
  *      planner and its guards; transitions are order-aware; a re-read never
- *      retires what it no longer shows, it flags it for review;
+ *      retires what it no longer shows, it flags it for review. Rows the
+ *      model or the source's claim record names are loaded by id, and
+ *      transitions waiting for their item are applied when it appears
+ *      (`reduceIdentity.ts`);
  *   5. write the difference with activity and item counters (`reduceWrite.ts`);
  *   6. bump the brief row (revision, checkpoint, completeness from the
  *      counters) and refresh the list-row projection.
@@ -37,6 +40,14 @@ import { appendActivity } from './activity';
 import { applyInterpretationArgs } from './reduceInput';
 import { briefTopLatestOf, loadFoldState, sourceStillInThread } from './reduceState';
 import { flagUnreproduced, foldEntry } from './fold';
+import {
+	applyPendingTransitions,
+	identityTargets,
+	loadIdentityTargets,
+	pendingFieldsOf,
+	sourceClaimIds,
+	storeClaimIds,
+} from './reduceIdentity';
 import { writeState } from './reduceWrite';
 import { EMPTY_SOURCE_COUNTS, completenessOfCounts, shiftCount, sourceBucketOf } from './counters';
 import { nextRetryAtOf } from './retry';
@@ -55,6 +66,8 @@ export type ApplyOutcome =
 			completeness: BriefCompleteness;
 			/** When an incomplete extraction will be retried, if it will. */
 			nextRetryAt?: number;
+			/** The thread holds more items than the fold scanned (named rows were still loaded). */
+			isItemScanCut?: true;
 	  }
 	| { outcome: 'stale'; interpretationRevision: number }
 	| { outcome: 'erased' | 'gone' | 'modeChanged' | 'sourceChanged' };
@@ -219,7 +232,12 @@ export const applyInterpretation = internalMutation({
 			});
 		}
 		if (previous && previous._id !== interpretationId && !isKeepingPrevious) {
-			await ctx.db.patch(previous._id, { isCurrent: false, ...RETIRED_EXACT_WORDING });
+			// A replaced read's waiting transitions go with it.
+			await ctx.db.patch(previous._id, {
+				isCurrent: false,
+				...RETIRED_EXACT_WORDING,
+				...pendingFieldsOf([]),
+			});
 		}
 		if (previousCounted && previousCounted._id !== interpretationId) {
 			await ctx.db.patch(previousCounted._id, { isCounted: false });
@@ -228,14 +246,28 @@ export const applyInterpretation = internalMutation({
 		// Monotone (round 4 M1/M2): every extraction folds on top of what the
 		// thread holds; a re-read merges by identity and flags what it no
 		// longer shows, it never retires anything.
+		let claims: Awaited<ReturnType<typeof sourceClaimIds>> | null = null;
+		let settled: Awaited<ReturnType<typeof applyPendingTransitions>> = [];
+		let isItemScanCut = false;
 		if (entry) {
 			const loaded = await loadFoldState(ctx, ref, mode);
-			const { touched } = foldEntry(loaded.state, entry, {
+			isItemScanCut = loaded.isItemScanCut;
+			// Identity beyond the scan (round 5 F5): named rows, loaded by id.
+			claims = await sourceClaimIds(ctx, sourceKey);
+			await loadIdentityTargets(
+				ctx,
+				ref,
 				mode,
-				threadKind: ref.kind,
-				isOutOfOrder,
-			});
+				loaded,
+				identityTargets(entry.result, claims.claimIds)
+			);
+			const foldOpts = { mode, threadKind: ref.kind, isOutOfOrder };
+			const { plan, touched } = foldEntry(loaded.state, entry, foldOpts, claims.claimIds);
 			if (isReapply) flagUnreproduced(loaded.state, sourceKey, touched);
+			// Completions read before their request (round 5 F7): kept, and
+			// applied to the items this fold created.
+			await ctx.db.patch(interpretationId, pendingFieldsOf(plan.unresolved));
+			settled = await applyPendingTransitions(ctx, ref, loaded.state, foldOpts, sourceKey);
 			fold = { ...writeBase, after: loaded.state, rows: loaded.rows, factRows: loaded.factRows };
 		}
 
@@ -260,7 +292,14 @@ export const applyInterpretation = internalMutation({
 				payload: { source: sourceKey },
 			});
 		}
-		const createdItemIds = fold ? await writeState(ctx, fold) : [];
+		const written = fold ? await writeState(ctx, fold) : null;
+		const createdItemIds = written?.created ?? [];
+		if (written && fold && claims) {
+			await storeClaimIds(ctx, claims.sourceRowId, fold.after, sourceKey, written.ids);
+		}
+		for (const { rowId, remaining } of settled) {
+			await ctx.db.patch(rowId, pendingFieldsOf(remaining));
+		}
 		if (status === 'partial' || status === 'failed') {
 			await appendActivity(ctx, {
 				threadRef: ref,
@@ -303,6 +342,7 @@ export const applyInterpretation = internalMutation({
 			createdItemIds,
 			completeness,
 			...(nextRetryAt !== undefined ? { nextRetryAt } : {}),
+			...(isItemScanCut ? { isItemScanCut: true as const } : {}),
 		};
 	},
 });

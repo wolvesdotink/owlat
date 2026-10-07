@@ -103,8 +103,14 @@ function statusActivity(from: ItemStatus, to: ItemStatus): ActivityType {
 	return 'item_changed';
 }
 
-/** Write the state difference. Returns the ids of the items it inserted. */
-export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<'threadItems'>[]> {
+/**
+ * Write the state difference. Returns the ids of the items it inserted and
+ * every in-memory id it gave a row (`new:…` → the inserted row's id).
+ */
+export async function writeState(
+	ctx: MutationCtx,
+	args: WriteArgs
+): Promise<{ created: Id<'threadItems'>[]; ids: Map<string, string> }> {
 	const created: Id<'threadItems'>[] = [];
 	const shifts: Array<[ItemBucket | null, ItemBucket | null]> = [];
 	const itemIds = new Map<string, Id<'threadItems'>>();
@@ -148,6 +154,23 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 				itemId: id,
 				itemRevision: 1,
 			});
+			if (item.status !== 'open') {
+				// Born closed: a completion read before its request (round 5 F7).
+				await appendActivity(ctx, {
+					...activity,
+					idempotencyKey: `${args.keyBase}:item:${item.lineage ?? id}:${item.status}`,
+					type: statusActivity('open', item.status),
+					actor,
+					provenance: 'reported',
+					itemId: id,
+					itemRevision: 1,
+					delta: {
+						statusFrom: 'open',
+						statusTo: item.status,
+						...(item.completion ? { completion: item.completion } : {}),
+					},
+				});
+			}
 			continue;
 		}
 		const row = args.rows.get(item._id);
@@ -184,7 +207,7 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 			if (row) await patchFact(ctx, args, row, fact);
 		}
 	}
-	return created;
+	return { created, ids: new Map<string, string>([...itemIds, ...factIds]) };
 }
 
 async function insertItem(
@@ -216,6 +239,9 @@ async function insertItem(
 		status: item.status,
 		disposition: item.disposition,
 		...(item.completion ? { completion: item.completion } : {}),
+		...(item.lastTransitionAt !== undefined ? { lastTransitionAt: item.lastTransitionAt } : {}),
+		...(item.statusSource ? { statusSource: item.statusSource } : {}),
+		...(item.dispositionSource ? { dispositionSource: item.dispositionSource } : {}),
 		...(item.due ? { due: item.due } : {}),
 		...(item.amount ? { amount: item.amount } : {}),
 		...(item.options ? { options: item.options } : {}),

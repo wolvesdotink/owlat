@@ -26,10 +26,11 @@
  *     contradiction is stored as a conflict beside the current fact.
  *   - EVIDENCE is deduplicated per source message, content revision and span,
  *     so the same words in two messages stay two references.
- *   - ORDER. A status or disposition change from a message applies only when
- *     no newer message's transition set the item's current state
- *     (`lastTransitionAt`); otherwise its quotes are kept as evidence only. A
- *     late message never retires a fact (`isOutOfOrder`).
+ *   - ORDER. Status and disposition are ordered independently, each by the
+ *     message time of the source that set it (`statusSource.at`,
+ *     `dispositionSource.at`): an older message's change to a field is kept
+ *     as evidence only; a supported reaffirmation advances the stamp. A late
+ *     message never retires a fact (`isOutOfOrder`).
  *   - A recorded or asserted completion (a send, "Mark done") is human state:
  *     like a correction, the model never moves it.
  */
@@ -41,17 +42,12 @@ import {
 	interpretationSourceKey,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
-import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
-import { isProvenRestatement } from './factEquivalence';
+import type { ReduceEvidence, ReduceItem, ReduceResult } from './reduceInput';
 
-/** The identity of one piece of evidence (its quote aside). */
-export interface EvidenceRef {
-	source: InterpretationSource;
-	contentRevision: string;
-	segmentId: string;
-	start: number;
-	end: number;
-}
+export { evidenceKey, type EvidenceRef } from './evidence';
+export type { FactOp, PlanFact } from './reducePlanFacts';
+import { planFacts, type FactOp, type PlanFact } from './reducePlanFacts';
+import { newEvidence, type EvidenceRef } from './evidence';
 
 /** The item fields the plan reads. */
 export type PlanItem = Pick<
@@ -77,18 +73,6 @@ export type PlanItem = Pick<
 	assertionText: string;
 };
 
-/** The fact fields the plan reads. */
-export type PlanFact = Pick<
-	Doc<'threadFacts'>,
-	'_id' | 'factKey' | 'status' | 'revision' | 'value'
-> & {
-	evidence: readonly EvidenceRef[];
-	/** The value with its sealed text opened, for comparison. */
-	valueText?: string;
-	/** Unsealed assertion, for the restatement check. */
-	assertionText: string;
-};
-
 export interface PlanOptions {
 	mode: 'brief' | 'actions';
 	threadKind: 'mail' | 'team';
@@ -96,8 +80,10 @@ export interface PlanOptions {
 	isOutOfOrder: boolean;
 	/** The message being folded in (evidence identity). */
 	source: InterpretationSource;
-	/** Its date: order-aware transitions compare it with `lastTransitionAt`. */
+	/** Its date: order-aware transitions compare it with each field's source stamp. */
 	sourceAt: number;
+	/** Fact claims (by index) whose lineage names a fact this claim produced before (`fold.ts`). */
+	factIdentity?: ReadonlyMap<number, string>;
 }
 
 /** Evidence as the plan hands it to the writer (plaintext quote). */
@@ -140,20 +126,6 @@ export type ItemPatch = {
 	};
 };
 
-export type FactOp =
-	| {
-			kind: 'insert';
-			/** Index in the result's `facts` (the fact's lineage). */
-			index: number;
-			fact: ReduceFact;
-			supersedesId?: Id<'threadFacts'>;
-			conflictsWithId?: Id<'threadFacts'>;
-	  }
-	| { kind: 'evidence'; factId: Id<'threadFacts'>; addEvidence: PlanEvidence[] }
-	/** A re-read of the fact's only source message: the new claim replaces it in place. */
-	| { kind: 'replace'; factId: Id<'threadFacts'>; fact: ReduceFact }
-	| { kind: 'supersede'; factId: Id<'threadFacts'> };
-
 export type DropReason =
 	| 'unknown_item'
 	| 'unverified'
@@ -169,6 +141,8 @@ export interface ReductionPlan {
 	patches: ItemPatch[];
 	facts: FactOp[];
 	dropped: Array<{ kind: 'transition' | 'fact'; index: number; reason: DropReason }>;
+	/** Transitions on an obligation not seen yet (indexes into `transitions`), kept pending. */
+	unresolved: number[];
 }
 
 const CLOSING: ReadonlySet<ItemStatus> = new Set(['done', 'declined', 'superseded']);
@@ -203,25 +177,23 @@ export function textSimilarity(a: string, b: string): number {
 	return shared / (ta.size + tb.size - shared);
 }
 
-/** The identity of a piece of evidence: source, content revision and span. Pure. */
-export function evidenceKey(e: EvidenceRef): string {
-	return `${interpretationSourceKey(e.source)}|${e.contentRevision}|${e.segmentId}:${e.start}:${e.end}`;
-}
-
-/** Evidence of `incoming` (from `source` at `contentRevision`) not already held. */
-function newEvidence(
-	existing: readonly EvidenceRef[],
-	incoming: readonly PlanEvidence[],
-	source: InterpretationSource,
-	contentRevision: string
-): PlanEvidence[] {
-	const seen = new Set(existing.map(evidenceKey));
-	return incoming.filter((e) => !seen.has(evidenceKey({ ...e, source, contentRevision })));
-}
-
 function isStatusLocked(item: PlanItem): boolean {
 	if (item.completion === 'recorded' || item.completion === 'asserted') return true;
 	return !!item.correction && STATUS_LOCKING_CORRECTIONS.has(item.correction.kind);
+}
+
+/** The pending update a claim makes to a tracked item, or null when it changes nothing. */
+function pendingOf(
+	proposal: ReduceItem,
+	match: PlanItem,
+	added: PlanEvidence[]
+): ItemPatch['pendingUpdate'] | null {
+	const pending: NonNullable<ItemPatch['pendingUpdate']> = { addEvidence: added };
+	if (proposal.due && !same(proposal.due, match.due)) pending.due = proposal.due;
+	if (proposal.amount && !same(proposal.amount, match.amount)) pending.amount = proposal.amount;
+	if (proposal.options && !same(proposal.options, match.options))
+		pending.options = proposal.options;
+	return added.length > 0 || pending.due || pending.amount || pending.options ? pending : null;
 }
 
 function same(a: unknown, b: unknown): boolean {
@@ -235,7 +207,7 @@ export function planReduction(
 	contentRevision: string,
 	opts: PlanOptions
 ): ReductionPlan {
-	const plan: ReductionPlan = { inserts: [], patches: [], facts: [], dropped: [] };
+	const plan: ReductionPlan = { inserts: [], patches: [], facts: [], dropped: [], unresolved: [] };
 	const byId = new Map(state.items.map((item) => [item._id as string, item]));
 	const patchOf = new Map<string, ItemPatch>();
 	const patch = (item: PlanItem): ItemPatch => {
@@ -251,22 +223,29 @@ export function planReduction(
 	// ── Items ──
 	for (const [index, proposal] of result.items.entries()) {
 		const match = proposal.matchItemId ? byId.get(proposal.matchItemId) : undefined;
-		if (match && match.status !== 'superseded') {
+		if (match) {
 			const p = patch(match);
 			p.matched = [...(p.matched ?? []), proposal];
 			const added = newEvidence(match.evidence, proposal.evidence, opts.source, contentRevision);
+			const sourceKey = interpretationSourceKey(opts.source);
+			const isSeenSource = match.evidence.some(
+				(e) => interpretationSourceKey(e.source) === sourceKey
+			);
+			if (match.status === 'superseded') {
+				// A replaced obligation is never resurrected (round 5 F4): the
+				// re-read merges its quotes, nothing else.
+				if (added.length > 0) {
+					p.addEvidence = [...(p.addEvidence ?? []), ...added];
+					p.activity ??= { type: 'item_changed' };
+				}
+				continue;
+			}
 			if (proposal.verify === 'proposal' && match.verify !== 'proposal') {
 				// An unconfirmed claim never changes a tracked obligation: its quotes,
 				// deadline, amount and options wait as a pending update ("Check this
 				// change") until it is verified or the user confirms it.
-				const pending: NonNullable<ItemPatch['pendingUpdate']> = { addEvidence: added };
-				if (proposal.due && !same(proposal.due, match.due)) pending.due = proposal.due;
-				if (proposal.amount && !same(proposal.amount, match.amount))
-					pending.amount = proposal.amount;
-				if (proposal.options && !same(proposal.options, match.options)) {
-					pending.options = proposal.options;
-				}
-				if (added.length > 0 || pending.due || pending.amount || pending.options) {
+				const pending = pendingOf(proposal, match, added);
+				if (pending) {
 					p.pendingUpdate = pending;
 					p.activity ??= { type: 'item_changed' };
 				}
@@ -276,14 +255,25 @@ export function planReduction(
 			if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
 			const isOwnReread =
 				match.evidence.length > 0 &&
-				match.evidence.every(
-					(e) => interpretationSourceKey(e.source) === interpretationSourceKey(opts.source)
-				);
-			if (proposal.verify === 'passed' && (match.verify === 'proposal' || isOwnReread)) {
-				// Promotion (round 4 M3), or a verified re-read of the item's only
-				// source: the verified claim's own text, parties, deadline, amount and
-				// options replace the item's. Status and human state stay.
-				if (match.verify === 'proposal') p.verify = 'passed';
+				match.evidence.every((e) => interpretationSourceKey(e.source) === sourceKey);
+			const isConfirmed = match.correction?.kind === 'confirmed';
+			if (isConfirmed) {
+				// What a person confirmed is locked (round 5 F1): a different
+				// verified value waits as a pending update, flagged for review;
+				// the confirmed text, deadline, amount and options stay.
+				if (proposal.verify === 'passed' && match.verify === 'proposal') p.verify = 'passed';
+				const pending = pendingOf(proposal, match, []);
+				if (pending) {
+					p.pendingUpdate = pending;
+					p.isReviewNeeded = true;
+				}
+			} else if (proposal.verify === 'passed' && match.verify === 'proposal') {
+				// Promotion (round 4 M3): the verified claim's own text, parties,
+				// deadline, amount and options replace the proposal's.
+				p.verify = 'passed';
+				p.promoteFrom = proposal;
+			} else if (proposal.verify === 'passed' && isOwnReread) {
+				// A verified re-read of the item's only source updates it in place.
 				p.promoteFrom = proposal;
 			} else {
 				const fill: ItemPatch['fill'] = {};
@@ -292,9 +282,11 @@ export function planReduction(
 				if (!match.options && proposal.options) fill.options = proposal.options;
 				if (Object.keys(fill).length > 0) p.fill = fill;
 			}
-			// Asked again after it was closed (by a human, or reported done): a person looks.
-			if (match.status !== 'open' || proposal.isReviewNeeded) p.isReviewNeeded = true;
-			if (added.length > 0 || p.fill || p.verify || p.promoteFrom) {
+			// Asked again by ANOTHER message after it was closed: a person looks.
+			if ((match.status !== 'open' && !isSeenSource) || proposal.isReviewNeeded) {
+				p.isReviewNeeded = true;
+			}
+			if (added.length > 0 || p.fill || p.verify || p.promoteFrom || p.pendingUpdate) {
 				p.activity ??= { type: 'item_changed' };
 			}
 			continue;
@@ -317,10 +309,13 @@ export function planReduction(
 	}
 
 	// ── Transitions ──
+	const setBy = { sourceKey: interpretationSourceKey(opts.source), at: opts.sourceAt };
 	for (const [index, t] of result.transitions.entries()) {
 		const drop = (reason: DropReason) => plan.dropped.push({ kind: 'transition', index, reason });
-		const item = byId.get(t.itemId);
+		const item = t.itemId ? byId.get(t.itemId) : undefined;
 		if (!item) {
+			// An obligation not seen yet: kept, and matched when its item appears (round 5 F7).
+			if (t.about && (t.to || t.disposition)) plan.unresolved.push(index);
 			drop('unknown_item');
 			continue;
 		}
@@ -328,12 +323,6 @@ export function planReduction(
 			drop('model_forbidden');
 			continue;
 		}
-		const added = newEvidence(item.evidence, t.evidence, opts.source, contentRevision);
-		const current = patchOf.get(item._id);
-		const statusFrom = current?.status ?? item.status;
-		const dispositionFrom = current?.disposition ?? item.disposition;
-		const wantsStatus = t.to !== undefined && t.to !== statusFrom;
-
 		if (t.to && CLOSING.has(t.to) && !t.isVerified) {
 			// An unsupported closing claim has no effect at all: not on the status,
 			// not on the disposition, not on the quotes, even when the item
@@ -341,137 +330,101 @@ export function planReduction(
 			drop('unverified');
 			continue;
 		}
-		if (
-			(wantsStatus || (t.disposition !== undefined && t.disposition !== dispositionFrom)) &&
-			item.lastTransitionAt !== undefined &&
-			opts.sourceAt < item.lastTransitionAt
-		) {
-			// A newer message already set this item's state: keep this one's
-			// quotes as evidence, change nothing else (round 4 M2).
-			if (added.length > 0) {
+		const added = newEvidence(item.evidence, t.evidence, opts.source, contentRevision);
+		const current = patchOf.get(item._id);
+		const statusFrom = current?.status ?? item.status;
+		const dispositionFrom = current?.disposition ?? item.disposition;
+		// Each field is ordered by its own stamp (round 5 F3).
+		const statusAt = current?.statusSource?.at ?? item.statusSource?.at;
+		const dispositionAt = current?.dispositionSource?.at ?? item.dispositionSource?.at;
+		const isLocked = isStatusLocked(item);
+		let isTouched = false;
+		let isOlder = false;
+
+		if (t.to) {
+			if (statusAt !== undefined && opts.sourceAt < statusAt) {
+				isOlder = true; // a newer message set the status: evidence only (M2)
+			} else if (t.to === statusFrom) {
+				// A supported reaffirmation advances the stamp (round 5 F2).
+				if (!isLocked && (statusAt === undefined || opts.sourceAt > statusAt)) {
+					patch(item).statusSource = setBy;
+					isTouched = true;
+				}
+			} else if (isLocked) {
 				const p = patch(item);
-				p.addEvidence = [...(p.addEvidence ?? []), ...added];
-			}
-			drop('out_of_order');
-			continue;
-		}
-		if (wantsStatus && isStatusLocked(item)) {
-			// A human decided this item: keep their status, keep the new quotes,
-			// and ask a person to look (the writer logs it as item_changed).
-			const p = patch(item);
-			p.isReviewNeeded = true;
-			if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
-			drop('corrected');
-			continue;
-		}
-		if (wantsStatus && t.to && !isLegalStatusEdge(statusFrom, t.to, 'system')) {
-			drop('illegal_edge');
-			continue;
-		}
-		const wantsDisposition = t.disposition !== undefined && t.disposition !== dispositionFrom;
-		if (
-			wantsDisposition &&
-			t.disposition &&
-			!isLegalDispositionEdge(dispositionFrom, t.disposition)
-		) {
-			if (!wantsStatus) {
+				p.isReviewNeeded = true;
+				if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
+				drop('corrected');
+				continue;
+			} else if (isLegalStatusEdge(statusFrom, t.to, 'system')) {
+				const p = patch(item);
+				p.status = t.to;
+				p.completion = t.to === 'done' ? 'reported' : undefined;
+				p.statusSource = setBy;
+				p.activity = {
+					type:
+						t.to === 'open'
+							? 'item_reopened'
+							: t.to === 'superseded'
+								? 'item_replaced'
+								: 'item_closed',
+					delta: {
+						statusFrom,
+						statusTo: t.to,
+						...(t.to === 'done' ? { completion: 'reported' as const } : {}),
+					},
+				};
+				isTouched = true;
+			} else if (!t.disposition) {
 				drop('illegal_edge');
 				continue;
 			}
 		}
-		if (!wantsStatus && !wantsDisposition) {
+		if (t.disposition) {
+			if (dispositionAt !== undefined && opts.sourceAt < dispositionAt) {
+				isOlder = true;
+			} else if (t.disposition === dispositionFrom) {
+				if (dispositionAt === undefined || opts.sourceAt > dispositionAt) {
+					patch(item).dispositionSource = setBy;
+					isTouched = true;
+				}
+			} else if (isLegalDispositionEdge(dispositionFrom, t.disposition)) {
+				const p = patch(item);
+				p.disposition = t.disposition;
+				p.dispositionSource = setBy;
+				p.activity ??= { type: 'item_changed' };
+				p.activity.delta = { ...p.activity.delta, dispositionFrom, dispositionTo: t.disposition };
+				isTouched = true;
+			} else if (!t.to) {
+				drop('illegal_edge');
+				continue;
+			}
+		}
+		if (!isTouched && !isOlder && added.length === 0) {
 			drop('no_change');
 			continue;
 		}
-		const p = patch(item);
-		const setBy = { sourceKey: interpretationSourceKey(opts.source), at: opts.sourceAt };
-		if (wantsStatus && t.to) {
-			p.status = t.to;
-			p.completion = t.to === 'done' ? 'reported' : undefined;
-			p.statusSource = setBy;
-			p.activity = {
-				type:
-					t.to === 'open'
-						? 'item_reopened'
-						: t.to === 'superseded'
-							? 'item_replaced'
-							: 'item_closed',
-				delta: {
-					statusFrom,
-					statusTo: t.to,
-					...(t.to === 'done' ? { completion: 'reported' as const } : {}),
-				},
-			};
+		if (isOlder && !isTouched) drop('out_of_order');
+		// Supported claims keep their quotes, whether they moved anything or not.
+		if (added.length > 0) {
+			const p = patch(item);
+			p.addEvidence = [...(p.addEvidence ?? []), ...added];
 		}
-		if (
-			wantsDisposition &&
-			t.disposition &&
-			isLegalDispositionEdge(dispositionFrom, t.disposition)
-		) {
-			p.disposition = t.disposition;
-			p.dispositionSource = setBy;
-			p.activity ??= { type: 'item_changed' };
-			p.activity.delta = { ...p.activity.delta, dispositionFrom, dispositionTo: t.disposition };
+		if (isTouched) {
+			const p = patch(item);
+			p.lastTransitionAt = Math.max(
+				p.lastTransitionAt ?? item.lastTransitionAt ?? 0,
+				opts.sourceAt
+			);
 		}
-		p.lastTransitionAt = Math.max(p.lastTransitionAt ?? 0, opts.sourceAt);
-		if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
-		if (t.isReviewNeeded) p.isReviewNeeded = true;
+		if (t.isReviewNeeded) patch(item).isReviewNeeded = true;
 	}
 
 	// ── Facts ──
 	if (opts.mode === 'brief' && opts.threadKind === 'mail') {
-		const current = state.facts.filter((f) => f.status === 'current');
-		const currentById = new Map(current.map((f) => [f._id as string, f]));
-		const retired = new Set<string>();
-		for (const [index, fact] of (result.facts ?? []).entries()) {
-			const named = (id: string | undefined) =>
-				id && !retired.has(id) ? currentById.get(id) : undefined;
-			const superseded = named(fact.supersedes);
-			const contradicted = named(fact.conflictsWith);
-			const sameKey =
-				named(fact.matchFactId) ??
-				current.find((f) => f.factKey === fact.key && !retired.has(f._id));
-			if (superseded) {
-				if (fact.isVerified && !opts.isOutOfOrder) {
-					retired.add(superseded._id);
-					plan.facts.push({ kind: 'supersede', factId: superseded._id });
-					plan.facts.push({ kind: 'insert', index, fact, supersedesId: superseded._id });
-				} else {
-					plan.facts.push({ kind: 'insert', index, fact, conflictsWithId: superseded._id });
-					if (opts.isOutOfOrder) plan.dropped.push({ kind: 'fact', index, reason: 'out_of_order' });
-				}
-				continue;
-			}
-			if (contradicted) {
-				plan.facts.push({ kind: 'insert', index, fact, conflictsWithId: contradicted._id });
-				continue;
-			}
-			if (sameKey) {
-				if (isProvenRestatement(fact, sameKey)) {
-					const added = newEvidence(sameKey.evidence, fact.evidence, opts.source, contentRevision);
-					if (added.length > 0) {
-						plan.facts.push({ kind: 'evidence', factId: sameKey._id, addEvidence: added });
-					} else {
-						plan.dropped.push({ kind: 'fact', index, reason: 'no_change' });
-					}
-				} else if (
-					sameKey.evidence.length > 0 &&
-					sameKey.evidence.every(
-						(e) => interpretationSourceKey(e.source) === interpretationSourceKey(opts.source)
-					)
-				) {
-					// The fact rests only on this message, read again: the new reading
-					// replaces it field by field (a corrected amount, a display).
-					plan.facts.push({ kind: 'replace', factId: sameKey._id, fact });
-				} else {
-					// Same key, not provably the same claim, nothing verified about
-					// replacing it: a conflict to show, never a silent merge.
-					plan.facts.push({ kind: 'insert', index, fact, conflictsWithId: sameKey._id });
-				}
-				continue;
-			}
-			plan.facts.push({ kind: 'insert', index, fact });
-		}
+		const facts = planFacts(state.facts, result.facts ?? [], contentRevision, opts);
+		plan.facts.push(...facts.ops);
+		plan.dropped.push(...facts.dropped);
 	}
 
 	return plan;

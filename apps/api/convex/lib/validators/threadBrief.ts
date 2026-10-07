@@ -185,6 +185,13 @@ export const itemAmountValidator = v.object({
 });
 
 /** A human correction. It wins over every later model proposal. */
+/** One claim key of a source and the item or fact it produced or matched (`interpretSources.claimIds`). */
+export const claimIdValidator = v.object({
+	key: v.string(),
+	itemId: v.optional(v.id('threadItems')),
+	factId: v.optional(v.id('threadFacts')),
+});
+
 export const itemCorrectionValidator = v.object({
 	// BetterAuth user id.
 	by: v.string(),

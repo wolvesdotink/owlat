@@ -9,6 +9,7 @@ import {
 	activityTypeValidator,
 	activityVisibilityValidator,
 	briefCompletenessValidator,
+	claimIdValidator,
 	coverageEntryValidator,
 	draftRefKindValidator,
 	evidenceValidator,
@@ -139,6 +140,10 @@ export const threadBriefTables = {
 		// Retryable partial or failed runs: attempts so far and when the next is due.
 		retryCount: v.optional(v.number()),
 		nextRetryAt: v.optional(v.number()),
+		// Transitions (indexes into the payload's `transitions`) on an obligation
+		// not seen yet, waiting for the item that its delayed request creates.
+		pendingTransitions: v.optional(v.array(v.number())),
+		isPendingTransitions: v.optional(v.boolean()),
 		// Brief mode: the message's exact wording must stay in view beside the
 		// brief (legal notice, changed terms, payment details), and why. Kept
 		// out of the sealed payload so the brief finds every such source by index.
@@ -159,6 +164,8 @@ export const threadBriefTables = {
 		// A source's current (replayed) and counted extraction, fetched directly
 		// however many revisions it has.
 		.index('by_source_current', ['sourceKey', 'isCurrent'])
+		.index('by_mail_thread_pending', ['mailThreadId', 'isPendingTransitions'])
+		.index('by_conversation_thread_pending', ['conversationThreadId', 'isPendingTransitions'])
 		.index('by_source_counted', ['sourceKey', 'isCounted'])
 		.index('by_mail_thread', ['mailThreadId'])
 		// "Read the exact wording": every source of a thread that asked for it.
@@ -324,6 +331,8 @@ export const threadBriefTables = {
 		snapshot: v.optional(
 			v.object({ subject: v.string(), text: v.string(), capturedAt: v.number() })
 		),
+		// The source's lineage record (mail/interpret/reduceIdentity.ts).
+		claimIds: v.optional(v.array(claimIdValidator)),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

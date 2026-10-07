@@ -4,9 +4,9 @@
  * in-memory state (`fold.ts`), and the "Latest update" line the list-row
  * projection (`briefTop.ts`) stores.
  *
- * The fold sees every item of the thread (bounded by {@link FOLD_MAX_ITEMS}),
- * so identity resolution (`matchItemId`, stored claim keys) finds any item a
- * message produced before, open or closed.
+ * The fold sees every item of the thread up to {@link FOLD_MAX_ITEMS}; the
+ * rows the model or a source's claim record names are loaded by id on top
+ * (`reduceIdentity.ts`), so identity never depends on the scan reaching them.
  */
 
 import type { Doc } from '../../_generated/dataModel';
@@ -17,6 +17,7 @@ import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { exactValueKey } from './factEquivalence';
 import { threadItemsWithStatus } from './load';
+import { teamReplyContext } from './sources';
 import type { MemFact, MemItem, MemState } from './fold';
 import type { ReduceResult } from './reduceInput';
 
@@ -40,9 +41,8 @@ export async function sourceStillInThread(
 			return !!inbound && ref.kind === 'team' && inbound.threadId === ref.id;
 		}
 		case 'teamReply': {
-			const reply = await ctx.db.get(source.id);
-			const inbound = reply?.inboundMessageId ? await ctx.db.get(reply.inboundMessageId) : null;
-			return !!inbound && ref.kind === 'team' && inbound.threadId === ref.id;
+			const reply = await teamReplyContext(ctx, source.id);
+			return !!reply && ref.kind === 'team' && reply.threadId === ref.id;
 		}
 	}
 }
@@ -140,12 +140,17 @@ export async function loadFoldState(
 	state: MemState;
 	rows: Map<string, Doc<'threadItems'>>;
 	factRows: Map<string, Doc<'threadFacts'>>;
+	/** The thread holds more items than the scan read. */
+	isItemScanCut: boolean;
 }> {
 	const rows = new Map<string, Doc<'threadItems'>>();
+	let isItemScanCut = false;
 	for (const status of ITEM_STATUSES) {
 		const left = FOLD_MAX_ITEMS - rows.size;
-		if (left <= 0) break;
-		for (const row of await threadItemsWithStatus(ctx, ref, status, left)) rows.set(row._id, row);
+		const page = await threadItemsWithStatus(ctx, ref, status, left + 1);
+		if (page.length > left) isItemScanCut = true;
+		for (const row of page.slice(0, left)) rows.set(row._id, row);
+		if (isItemScanCut) break;
 	}
 	const factRows = new Map<string, Doc<'threadFacts'>>();
 	if (mode === 'brief') {
@@ -154,7 +159,7 @@ export async function loadFoldState(
 	const state: MemState = { items: new Map(), facts: new Map() };
 	for (const row of rows.values()) state.items.set(row._id, await itemToMem(row));
 	for (const row of factRows.values()) state.facts.set(row._id, await factToMem(row));
-	return { state, rows, factRows };
+	return { state, rows, factRows, isItemScanCut };
 }
 
 /**
