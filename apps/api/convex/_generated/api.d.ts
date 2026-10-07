@@ -20,12 +20,15 @@ import type * as mail_interpret_needsReplyProjection from '../mail/interpret/nee
 import type * as mail_interpret_pipeline from '../mail/interpret/pipeline.js';
 import type * as mail_interpret_preferences from '../mail/interpret/preferences.js';
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
+import type * as mail_interpret_purge from '../mail/interpret/purge.js';
+import type * as mail_interpret_purgeThread from '../mail/interpret/purgeThread.js';
 import type * as mail_interpret_reduce from '../mail/interpret/reduce.js';
 import type * as mail_interpret_reduceInput from '../mail/interpret/reduceInput.js';
 import type * as mail_interpret_reducePlan from '../mail/interpret/reducePlan.js';
 import type * as mail_interpret_reduceState from '../mail/interpret/reduceState.js';
 import type * as mail_interpret_run from '../mail/interpret/run.js';
 import type * as mail_interpret_scope from '../mail/interpret/scope.js';
+import type * as mail_interpret_scopeChange from '../mail/interpret/scopeChange.js';
 import type * as mail_interpret_verify from '../mail/interpret/verify.js';
 import type * as mail_messageCounters from '../mail/messageCounters.js';
 import type * as maintenance_counterBackfill from '../maintenance/counterBackfill.js';
@@ -1136,6 +1139,7 @@ import type * as mail_interpret_briefShape from '../mail/interpret/briefShape.js
 import type * as mail_interpret_briefTop from '../mail/interpret/briefTop.js';
 import type * as mail_interpret_delegation from '../mail/interpret/delegation.js';
 import type * as mail_interpret_ground from '../mail/interpret/ground.js';
+import type * as mail_interpret_purgeRows from '../mail/interpret/purgeRows.js';
 import type * as mail_interpret_quoteMatch from '../mail/interpret/quoteMatch.js';
 import type * as mail_interpret_schema from '../mail/interpret/schema.js';
 import type * as mail_interpret_todo from '../mail/interpret/todo.js';
@@ -1559,12 +1563,15 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/pipeline': typeof mail_interpret_pipeline;
 	'mail/interpret/preferences': typeof mail_interpret_preferences;
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
+	'mail/interpret/purge': typeof mail_interpret_purge;
+	'mail/interpret/purgeThread': typeof mail_interpret_purgeThread;
 	'mail/interpret/reduce': typeof mail_interpret_reduce;
 	'mail/interpret/reduceInput': typeof mail_interpret_reduceInput;
 	'mail/interpret/reducePlan': typeof mail_interpret_reducePlan;
 	'mail/interpret/reduceState': typeof mail_interpret_reduceState;
 	'mail/interpret/run': typeof mail_interpret_run;
 	'mail/interpret/scope': typeof mail_interpret_scope;
+	'mail/interpret/scopeChange': typeof mail_interpret_scopeChange;
 	'mail/interpret/verify': typeof mail_interpret_verify;
 	'mail/messageCounters': typeof mail_messageCounters;
 	'maintenance/counterBackfill': typeof maintenance_counterBackfill;
@@ -2665,6 +2672,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/briefTop': typeof mail_interpret_briefTop;
 	'mail/interpret/delegation': typeof mail_interpret_delegation;
 	'mail/interpret/ground': typeof mail_interpret_ground;
+	'mail/interpret/purgeRows': typeof mail_interpret_purgeRows;
 	'mail/interpret/quoteMatch': typeof mail_interpret_quoteMatch;
 	'mail/interpret/schema': typeof mail_interpret_schema;
 	'mail/interpret/todo': typeof mail_interpret_todo;
