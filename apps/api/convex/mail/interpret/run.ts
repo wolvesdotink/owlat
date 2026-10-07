@@ -60,7 +60,7 @@ import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from
 import { clampOutput } from './clamp';
 import { needsReplyProjectionOf, type NeedsReplyProjection } from './needsReplyProjection';
 import { verifyClaims } from './verify';
-import { isGateCode, isRetryDue } from './retry';
+import { isRetryDue } from './retry';
 import type { ReduceResult } from './reduceInput';
 import type { ApplyOutcome } from './reduce';
 
@@ -283,7 +283,9 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			counted.contentRevision === contentRevision &&
 			counted.extractorVersion === INTERPRET_EXTRACTOR_VERSION &&
 			counted.mode === mode;
-		let gateRetryCount: number | undefined;
+		// Admitted attempts (model calls) for this revision so far (round 4 M5):
+		// gate refusals carry the count unchanged, every admitted attempt adds one.
+		const priorAttempts = counted && isExact ? (counted.retryCount ?? 0) : 0;
 		if (counted && isExact) {
 			const isFinished = counted.status === 'complete' || counted.status === 'skipped';
 			const isCurrentRead =
@@ -306,13 +308,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 					...(counted.nextRetryAt !== undefined ? { retryAt: counted.nextRetryAt } : {}),
 				};
 			}
-			if (!isFinished) {
-				// A gate refusal (AI off, budget) never spends the bounded retry budget.
-				const prior = counted.retryCount ?? 0;
-				retryCount = isGateCode(counted.errorCode) ? prior : prior + 1;
-				gateRetryCount = prior;
-			}
 		}
+		retryCount = priorAttempts + 1;
 		const attempt = {
 			...(retryCount !== undefined ? { retryCount } : {}),
 			...(sourceVersion ? { sourceVersion } : {}),
@@ -327,7 +324,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 					errorCode: gate.code,
 					sourceManifest,
 					...(sourceVersion ? { sourceVersion } : {}),
-					...(gateRetryCount !== undefined ? { retryCount: gateRetryCount } : {}),
+					// A refusal is not an admitted attempt: the count stays.
+					retryCount: priorAttempts,
 				}),
 				{ errorCode: gate.code }
 			);

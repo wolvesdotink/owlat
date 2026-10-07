@@ -1,6 +1,6 @@
 /**
  * The reducer's writer: the difference between the rows a fold started from
- * and the in-memory state it ended with (`replay.ts`), written in the
+ * and the in-memory state it ended with (`fold.ts`), written in the
  * reducer's transaction, with one activity row per changed item and the item
  * counters adjusted (`counters.ts`).
  *
@@ -9,9 +9,9 @@
  *     quotes, deadline, amount, options, verify, review flag, possible
  *     duplicate) and a new revision; fields people own (correction, assignee,
  *     reminder, commitment) are never touched;
- *   - in a REPLAY, an item or fact an earlier extraction created that the
- *     replay no longer produces is retired (superseded / retracted), unless a
- *     person corrected it.
+ *   - a promoted proposal takes its verified claim's text, display and
+ *     parties field by field; a same-source fact re-read likewise;
+ *   - nothing is ever retired by omission (round 4 M1, `fold.ts`).
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -28,18 +28,11 @@ import {
 	listBucketOf,
 	type ItemBucket,
 } from './counters';
-import { counterpartyKeyOf, evidenceKey, responsibilityOf } from './reducePlan';
+import { evidenceKey } from './reducePlan';
+import { counterpartyKeyOf, responsibilityOf } from './parties';
 import { exactValueKey } from './factEquivalence';
-import {
-	sameEvidence,
-	type MemEvidence,
-	type MemFact,
-	type MemItem,
-	type MemState,
-} from './replay';
+import { sameEvidence, type MemEvidence, type MemFact, type MemItem, type MemState } from './fold';
 import type { ReduceFact } from './reduceInput';
-
-const STATUS_LOCKING = new Set(['markedDone', 'reopened', 'untracked', 'notARequest']);
 
 export interface WriteArgs {
 	ref: ThreadRef;
@@ -48,7 +41,6 @@ export interface WriteArgs {
 	after: MemState;
 	rows: ReadonlyMap<string, Doc<'threadItems'>>;
 	factRows: ReadonlyMap<string, Doc<'threadFacts'>>;
-	isRebuild: boolean;
 	/** Activity idempotency prefix of this application. */
 	keyBase: string;
 	eventAt: number;
@@ -159,34 +151,9 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 			continue;
 		}
 		const row = args.rows.get(item._id);
-		if (row) await patchItem(ctx, args, row, item, resolveItem(item.possibleDuplicateOfId), shifts);
+		if (row) await patchItem(ctx, args, row, item, shifts);
 	}
 
-	if (args.isRebuild) {
-		for (const row of args.rows.values()) {
-			if (!row.lineage || args.after.items.has(row._id) || row.status === 'superseded') continue;
-			if (row.correction && STATUS_LOCKING.has(row.correction.kind)) continue;
-			const revision = row.revision + 1;
-			await ctx.db.patch(row._id, {
-				status: 'superseded',
-				listBucket: 'closed',
-				completion: undefined,
-				revision,
-				updatedAt: args.now,
-			});
-			shifts.push([itemBucketOf(row), 'closed']);
-			await appendActivity(ctx, {
-				...activity,
-				idempotencyKey: `${args.keyBase}:item:${row._id}`,
-				type: 'item_replaced',
-				actor,
-				provenance: 'reported',
-				itemId: row._id,
-				itemRevision: revision,
-				delta: { statusFrom: row.status, statusTo: 'superseded' },
-			});
-		}
-	}
 	if (shifts.length > 0) await applyItemShifts(ctx, args.briefId, shifts);
 
 	if (args.mode === 'brief' && args.ref.kind === 'mail') {
@@ -223,16 +190,6 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 					resolveFact(fact.supersedesId),
 					resolveFact(fact.conflictsWithId)
 				);
-		}
-		if (args.isRebuild) {
-			for (const row of args.factRows.values()) {
-				if (!row.lineage || args.after.facts.has(row._id) || row.status === 'retracted') continue;
-				await ctx.db.patch(row._id, {
-					status: 'retracted',
-					revision: row.revision + 1,
-					updatedAt: args.now,
-				});
-			}
 		}
 	}
 	return created;
@@ -302,13 +259,19 @@ async function patchItem(
 	args: WriteArgs,
 	row: Doc<'threadItems'>,
 	item: MemItem,
-	possibleDuplicateOfId: Id<'threadItems'> | undefined,
 	shifts: Array<[ItemBucket | null, ItemBucket | null]>
 ): Promise<void> {
 	const patch: Partial<Doc<'threadItems'>> = {};
 	if (item.status !== row.status) patch.status = item.status;
 	if (item.completion !== row.completion) patch.completion = item.completion;
 	if (item.disposition !== row.disposition) patch.disposition = item.disposition;
+	if (item.lastTransitionAt !== row.lastTransitionAt) {
+		patch.lastTransitionAt = item.lastTransitionAt;
+	}
+	if (!same(item.statusSource, row.statusSource)) patch.statusSource = item.statusSource;
+	if (!same(item.dispositionSource, row.dispositionSource)) {
+		patch.dispositionSource = item.dispositionSource;
+	}
 	if (item.verify !== row.verify) patch.verify = item.verify;
 	if ((item.isReviewNeeded === true) !== (row.isReviewNeeded === true)) {
 		patch.isReviewNeeded = item.isReviewNeeded === true ? true : undefined;
@@ -316,9 +279,6 @@ async function patchItem(
 	if (!same(item.due, row.due)) patch.due = item.due;
 	if (!same(item.amount, row.amount)) patch.amount = item.amount;
 	if (!same(item.options, row.options)) patch.options = item.options;
-	if (possibleDuplicateOfId !== row.possibleDuplicateOfId && args.isRebuild) {
-		patch.possibleDuplicateOfId = possibleDuplicateOfId;
-	}
 	if (!sameEvidence(item.evidence, row.evidence)) {
 		patch.evidence = await sealEvidence(item.evidence, row.evidence);
 	}
@@ -340,7 +300,7 @@ async function patchItem(
 	// or the wording still lands.
 	const p = item.proposal;
 	let responsibility = row.responsibility;
-	if (p && args.isRebuild) {
+	if (p) {
 		responsibility = responsibilityOf(p.responsible);
 		if (p.intent !== row.intent) patch.intent = p.intent;
 		if (!same(p.facets, row.facets)) patch.facets = p.facets;
@@ -444,11 +404,10 @@ async function patchFact(
 	if (!sameEvidence(fact.evidence, row.evidence)) {
 		patch.evidence = await sealEvidence(fact.evidence, row.evidence);
 	}
-	if (args.isRebuild) {
-		if (supersedesId !== row.supersedesId) patch.supersedesId = supersedesId;
-		if (conflictsWithId !== row.conflictsWithId) patch.conflictsWithId = conflictsWithId;
-		// Each field on its own (round 3 P4): a corrected amount with the same
-		// wording, one locale's display, or a value the repair no longer gives.
+	{
+		// A same-source re-read replaced the claim: each field on its own (a
+		// corrected amount with the same wording, one locale's display, a value
+		// the re-read no longer gives).
 		const f = fact.proposal;
 		if (f) {
 			if (f.key !== row.factKey) patch.factKey = f.key;

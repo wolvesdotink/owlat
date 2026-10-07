@@ -171,7 +171,7 @@ describe('F3: completeness from per-source counters', () => {
 	});
 });
 
-describe('F5: ordered replay', () => {
+describe('F5: late messages and re-reads (monotone since round 4)', () => {
 	it('closes the invoice when the late "paid" message arrives, keeping ids and corrections', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId: a, threadId } = await seedMailThread(t);
@@ -247,7 +247,7 @@ describe('F5: ordered replay', () => {
 		expect((await briefOf(t, threadId))?.itemCounts).toMatchObject({ us: 0, closed: 2 });
 	});
 
-	it('retires items a repaired extraction no longer produces', async () => {
+	it('never retires what a re-read no longer shows; flags it for review (round 4 M1)', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedMailThread(t);
 		await apply(t, messageId, threadId, {
@@ -274,7 +274,11 @@ describe('F5: ordered replay', () => {
 		const items = await itemsOf(t, threadId);
 		expect(items).toHaveLength(2);
 		expect(items.find((i) => i.intent === 'request')?._id).toBe(first?._id);
-		expect(items.find((i) => i.intent === 'question')?.status).toBe('superseded');
+		expect(items.find((i) => i.intent === 'question')).toMatchObject({
+			status: 'open',
+			isReviewNeeded: true,
+		});
+		expect(items.find((i) => i.intent === 'request')?.isReviewNeeded).not.toBe(true);
 		expect(await briefOf(t, threadId)).toMatchObject({ completeness: 'complete' });
 	});
 });

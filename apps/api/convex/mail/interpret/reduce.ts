@@ -11,13 +11,13 @@
  *   2. compare-and-set on `threadBriefs.interpretationRevision` (`stale` →
  *      the run re-applies the same extraction against the new state);
  *   3. store the extraction (one row per source, content revision and
- *      extractor version; the newest applied one per source is `isCurrent`)
- *      and move the source counters;
- *   4. fold it in: incrementally when it is the newest message and the first
- *      extraction of its source; otherwise (a late message, a repair, an
- *      edited body) by REPLAYING the thread's extractions in message order
- *      and re-applying human and recorded changes (`replay.ts`). A replay over
- *      budget falls back to the incremental rule and marks the run partial;
+ *      extractor version; the last read of a source is `isCurrent`, its newest
+ *      attempt `isCounted`; an attempt that read nothing is its own row) and
+ *      move the source counters;
+ *   4. fold it in, MONOTONE (`fold.ts`): a new message, a late one and a
+ *      re-read all merge on top of the thread's items through the same
+ *      planner and its guards; transitions are order-aware; a re-read never
+ *      retires what it no longer shows, it flags it for review;
  *   5. write the difference with activity and item counters (`reduceWrite.ts`);
  *   6. bump the brief row (revision, checkpoint, completeness from the
  *      counters) and refresh the list-row projection.
@@ -35,13 +35,8 @@ import { ensureBriefRow, resolveThreadMode } from './briefRow';
 import { exactWordingFieldsOf, RETIRED_EXACT_WORDING } from './exactWording';
 import { appendActivity } from './activity';
 import { applyInterpretationArgs } from './reduceInput';
-import {
-	briefTopLatestOf,
-	loadIncrementalState,
-	loadReplayState,
-	sourceStillInThread,
-} from './reduceState';
-import { applyHumanOps, foldEntry, preserveHumanState, replayThread } from './replay';
+import { briefTopLatestOf, loadFoldState, sourceStillInThread } from './reduceState';
+import { flagUnreproduced, foldEntry } from './fold';
 import { writeState } from './reduceWrite';
 import { EMPTY_SOURCE_COUNTS, completenessOfCounts, shiftCount, sourceBucketOf } from './counters';
 import { nextRetryAtOf } from './retry';
@@ -65,7 +60,7 @@ export type ApplyOutcome =
 	| { outcome: 'erased' | 'gone' | 'modeChanged' | 'sourceChanged' };
 
 /**
- * A source's two marked extractions: `current`, the one the replay folds in
+ * A source's two marked extractions: `current`, its last good read
  * (the newest that READ the message), and `counted`, the newest attempt,
  * which the source counters count. They differ while a later attempt failed:
  * its failure shows, the claims of the last good read stay.
@@ -115,7 +110,7 @@ export const applyInterpretation = internalMutation({
 		const { current: previous, counted: previousCounted } = await markedRowsOf(ctx, sourceKey);
 		// An attempt that read nothing never replaces the claims of the last good
 		// read: it is recorded beside it (its own row, `<revision>~attempt`) and
-		// counted, and the good read stays the replay source (round 2 F2, round 3 P3).
+		// counted, and the good read stays current (round 2 F2, round 3 P3).
 		const isKeepingPrevious = !args.result && previous?.payload !== undefined;
 		const rowRevision = isKeepingPrevious
 			? `${args.contentRevision}${ATTEMPT_SUFFIX}`
@@ -136,7 +131,7 @@ export const applyInterpretation = internalMutation({
 		// current one when it read the message), same mode, same outcome, no retry.
 		if (
 			existing?.appliedAt !== undefined &&
-			args.retryCount === undefined &&
+			(existing.retryCount ?? 0) === (args.retryCount ?? 0) &&
 			existing.status === args.status &&
 			existing.mode === mode &&
 			existing.isCounted !== false &&
@@ -158,11 +153,8 @@ export const applyInterpretation = internalMutation({
 
 		const isOutOfOrder = !!brief.checkpoint && args.sourceAt < brief.checkpoint.sourceAt;
 		const isReapply = previous?.appliedAt !== undefined && !isKeepingPrevious;
-		let status: InterpretationStatus = args.status;
-		let errorCode = args.errorCode;
-
-		// Fold first, so a replay over budget can still mark this run partial.
-		let isRebuild = isOutOfOrder || isReapply;
+		const status: InterpretationStatus = args.status;
+		const errorCode = args.errorCode;
 		let fold: Parameters<typeof writeState>[1] | null = null;
 		const writeBase = {
 			ref,
@@ -185,7 +177,7 @@ export const applyInterpretation = internalMutation({
 				}
 			: null;
 
-		// Store the extraction (the replay reads it back as current).
+		// Store the extraction.
 		const record = {
 			...threadRefToFields(ref),
 			source: args.source,
@@ -199,7 +191,8 @@ export const applyInterpretation = internalMutation({
 			...(args.sourceManifest ? { sourceManifest: args.sourceManifest } : {}),
 			...(args.coverage ? { coverage: args.coverage } : {}),
 			...(errorCode ? { errorCode } : {}),
-			...exactWordingFieldsOf(args.result, previous),
+			// Only a read carries the flag; a failed attempt never does (round 4 M4).
+			...(args.result ? exactWordingFieldsOf(args.result, previous) : {}),
 			...(args.result
 				? {
 						payload: await sealBodyAtWrite(JSON.stringify(args.result)),
@@ -232,50 +225,22 @@ export const applyInterpretation = internalMutation({
 			await ctx.db.patch(previousCounted._id, { isCounted: false });
 		}
 
-		if (isRebuild && (entry || isReapply)) {
-			const replay = await loadReplayState(ctx, ref, mode);
-			if (replay.isOverBudget) {
-				// Too long to replay within one transaction: fold incrementally (a late
-				// message then moves no status) and say the brief is incomplete.
-				isRebuild = false;
-				status = 'partial';
-				errorCode = 'replay_budget';
-			} else {
-				const after = replayThread(replay.entries, replay.base, replay.seed, {
-					mode,
-					threadKind: ref.kind,
-				});
-				applyHumanOps(after, replay.ops);
-				preserveHumanState(after, replay.rows);
-				fold = {
-					...writeBase,
-					after,
-					rows: replay.rows,
-					factRows: replay.factRows,
-					isRebuild: true,
-				};
-			}
-		}
-		if (!fold && entry) {
-			const inc = await loadIncrementalState(ctx, ref, mode, now);
-			foldEntry(inc.state, entry, { mode, threadKind: ref.kind, isOutOfOrder });
-			fold = {
-				...writeBase,
-				after: inc.state,
-				rows: inc.rows,
-				factRows: inc.factRows,
-				isRebuild: false,
-			};
+		// Monotone (round 4 M1/M2): every extraction folds on top of what the
+		// thread holds; a re-read merges by identity and flags what it no
+		// longer shows, it never retires anything.
+		if (entry) {
+			const loaded = await loadFoldState(ctx, ref, mode);
+			const { touched } = foldEntry(loaded.state, entry, {
+				mode,
+				threadKind: ref.kind,
+				isOutOfOrder,
+			});
+			if (isReapply) flagUnreproduced(loaded.state, sourceKey, touched);
+			fold = { ...writeBase, after: loaded.state, rows: loaded.rows, factRows: loaded.factRows };
 		}
 
 		const nextRetryAt = nextRetryAtOf({ status, errorCode, retryCount: args.retryCount }, now);
-		if (status !== args.status || errorCode !== args.errorCode || nextRetryAt !== undefined) {
-			await ctx.db.patch(interpretationId, {
-				status,
-				...(errorCode ? { errorCode } : {}),
-				...(nextRetryAt !== undefined ? { nextRetryAt } : {}),
-			});
-		}
+		if (nextRetryAt !== undefined) await ctx.db.patch(interpretationId, { nextRetryAt });
 		const stored = { status, skipReason: args.skipReason };
 		const sourceCounts = shiftCount(
 			brief.sourceCounts ?? EMPTY_SOURCE_COUNTS,
@@ -317,7 +282,9 @@ export const applyInterpretation = internalMutation({
 			sourceRevision: fresh.sourceRevision + 1,
 			sourceCounts,
 			completeness,
-			...(!isOutOfOrder
+			// The checkpoint (and so "Latest update") only ever points at a current
+			// extraction that read the message, never at a failed attempt (M4).
+			...(!isOutOfOrder && !isKeepingPrevious && args.result
 				? { checkpoint: { sourceKey, sourceAt: args.sourceAt, interpretationId } }
 				: {}),
 			updatedAt: now,

@@ -2,17 +2,16 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Id, TableNames } from '../../../_generated/dataModel';
+import { counterpartyKeyOf, responsibilityOf } from '../parties';
 import {
-	counterpartyKeyOf,
 	planReduction,
-	responsibilityOf,
 	textSimilarity,
 	type PlanFact,
 	type PlanItem,
 	type PlanOptions,
 } from '../reducePlan';
 import type { ReduceFact, ReduceItem, ReduceResult, ReduceTransition } from '../reduceInput';
-import { foldEntry } from '../replay';
+import { foldEntry } from '../fold';
 
 const REV = 'rev-2';
 const ev = (start = 0, end = 10) => ({ segmentId: 's0', start, end, quote: 'quoted words' });
@@ -84,6 +83,7 @@ const BRIEF: PlanOptions = {
 	threadKind: 'mail',
 	isOutOfOrder: false,
 	source: SOURCE,
+	sourceAt: 1000,
 };
 
 describe('items', () => {
@@ -313,15 +313,37 @@ describe('transitions', () => {
 		expect(plan.dropped[0]?.reason).toBe('unknown_item');
 	});
 
-	it('lets an out-of-order message add items but not move status', () => {
+	it('keeps a transition older than the one that set the state as evidence only (round 4 M2)', () => {
 		const plan = planReduction(
-			{ items: [stored()], facts: [] },
+			{ items: [stored({ lastTransitionAt: 2000 })], facts: [] },
 			result({ items: [proposal()], transitions: [transition()] }),
 			REV,
-			{ ...BRIEF, isOutOfOrder: true }
+			BRIEF
 		);
 		expect(plan.inserts).toHaveLength(1);
 		expect(plan.dropped[0]?.reason).toBe('out_of_order');
+		expect(plan.patches[0]).toEqual({ itemId: 'item_a', addEvidence: [ev(20, 30)] });
+	});
+
+	it('applies a late transition when nothing newer set the state, and stamps its date (round 4 M2)', () => {
+		const plan = planReduction(
+			{ items: [stored()], facts: [] },
+			result({ transitions: [transition()] }),
+			REV,
+			{ ...BRIEF, isOutOfOrder: true }
+		);
+		expect(plan.patches[0]).toMatchObject({ status: 'done', lastTransitionAt: 1000 });
+	});
+
+	it('never moves a recorded or asserted completion (round 4)', () => {
+		const plan = planReduction(
+			{ items: [stored({ status: 'done', completion: 'recorded' })], facts: [] },
+			result({ transitions: [transition({ to: 'open' })] }),
+			REV,
+			BRIEF
+		);
+		expect(plan.patches[0]?.status).toBeUndefined();
+		expect(plan.dropped[0]?.reason).toBe('corrected');
 	});
 });
 
@@ -610,7 +632,7 @@ describe('review round 3', () => {
 		);
 		expect(plan.patches[0]).toMatchObject({
 			verify: 'passed',
-			promote: { amount: { value: 100, currency: 'EUR' } },
+			promoteFrom: { amount: { value: 100, currency: 'EUR' } },
 		});
 		expect(plan.patches[0]?.fill).toBeUndefined();
 
