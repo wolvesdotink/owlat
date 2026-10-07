@@ -55,8 +55,10 @@ export const evidenceViewValidator = v.object({
 	contentRevision: v.string(),
 	// The quoted words, for the marker's tooltip.
 	quote: v.optional(v.string()),
-	// Which occurrence of the normalized quote in the message this is (0 = first).
+	// Which occurrence of the normalized quote in the message this is (0 = first),
+	// and how many matches the interpreted (visible) text holds in all.
 	occurrence: v.optional(v.number()),
+	occurrenceCount: v.optional(v.number()),
 });
 
 /** One item as the brief shows it. */
@@ -206,6 +208,16 @@ const sharedViewFields = {
 	// Latest 5 substance rows, newest first.
 	activity: v.array(activityViewValidator),
 	counts: briefCountsViewValidator,
+	// Item paging (`get({cursor})`): the open items come a page at a time; the
+	// recently closed ones on the first page only. Never silently cut: a
+	// further page has a cursor, a cut closed list says so.
+	page: v.optional(
+		v.object({
+			cursor: v.union(v.string(), v.null()),
+			isDone: v.boolean(),
+			isClosedTruncated: v.boolean(),
+		})
+	),
 };
 
 /** Personal Postbox thread (brief mode). */

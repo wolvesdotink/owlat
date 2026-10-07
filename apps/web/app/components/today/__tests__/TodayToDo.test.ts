@@ -62,7 +62,19 @@ describe('TodayToDo', () => {
 		expect(w.get('[data-testid="today-todo-more"]').text()).toContain(
 			'There is more to do in this inbox.'
 		);
-		expect(w.text()).toContain('+2+ more');
+		expect(w.text()).toContain('2+ more');
+		expect(w.text()).not.toContain('+2');
+	});
+
+	it('keeps the truncation notice when no row could be listed', () => {
+		data.value = { rows: [], isTruncated: true };
+		const w = mountBand();
+		expect(w.find('[data-testid="today-todo"]').exists()).toBe(true);
+		expect(w.text()).toContain('To do, no reply needed');
+		expect(w.text()).not.toContain('· 0');
+		expect(w.get('[data-testid="today-todo-more"]').text()).toContain(
+			'There is more to do in this inbox.'
+		);
 	});
 
 	it('renders nothing with nothing to do', () => {

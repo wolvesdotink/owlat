@@ -70,7 +70,7 @@ export function deriveBriefTop(items: readonly BriefTopItem[]): BriefTopFold {
  * Open items a refresh reads before it stops counting. A thread never comes
  * near it (the reducer adds at most ten items per message); past it the counts
  * are flagged `isCapped` ("2000+") rather than silently wrong, and the top
- * item is the best of what was read.
+ * item comes from the thread's own due-ordered index ({@link exactTop}).
  */
 export const OPEN_ITEM_READ_LIMIT = 2000;
 
@@ -106,8 +106,14 @@ export async function refreshBriefTop(
 	const latest = await nextLatest(mode, thread.briefTop?.latest, opts.latest);
 	const fold = deriveBriefTop(isCapped ? items.slice(0, OPEN_ITEM_READ_LIMIT) : items);
 	if (isCapped) {
-		const dated = await soonestDatedForYou(ctx, thread);
-		if (dated) fold.top = deriveBriefTop([dated]).top;
+		// Past the read limit the fold saw only part of the items: take the top
+		// from the thread's due-ordered index instead.
+		const top =
+			(await exactTop(ctx, mailThreadId, 'forYou')) ??
+			(await exactTop(ctx, mailThreadId, 'waiting'));
+		const exact = top ? deriveBriefTop([top]).top : undefined;
+		if (exact) fold.top = exact;
+		else delete fold.top;
 	}
 	const next: BriefTop = {
 		mode,
@@ -120,38 +126,46 @@ export async function refreshBriefTop(
 	await ctx.db.patch(mailThreadId, { briefTop: next });
 }
 
-/** Mailbox items read looking for the capped thread's soonest dated item. */
-const DATED_SCAN_LIMIT = 500;
+/** Which side of the list a top item is picked from. */
+function onSide(item: BriefTopItem, side: 'forYou' | 'waiting'): boolean {
+	if (!isTracked(item)) return false;
+	return side === 'waiting' ? item.responsibility === 'them' : item.responsibility !== 'them';
+}
+
+function better(a: BriefTopItem | undefined, b: BriefTopItem): BriefTopItem {
+	return a && compareForYou(sortable(a), sortable(b)) <= 0 ? a : b;
+}
 
 /**
- * A thread past the read limit: its soonest dated for-you item, read off the
- * mailbox's due-ordered index (so the top item is not just the best of the
- * first page). Undefined when none turns up within the scan.
+ * A capped thread's exact top item on one side, read off the THREAD's own
+ * due-ordered index (`by_mail_thread_status_due`), so no other thread can
+ * crowd it out: the soonest due (ties by compareForYou), else the best
+ * undated one by compareForYou. Reads only this thread's open items.
  */
-async function soonestDatedForYou(
+async function exactTop(
 	ctx: MutationCtx,
-	thread: Doc<'mailThreads'>
+	mailThreadId: Id<'mailThreads'>,
+	side: 'forYou' | 'waiting'
 ): Promise<BriefTopItem | undefined> {
-	const found: BriefTopItem[] = [];
-	for (const responsibility of ['us', 'unclear'] as const) {
-		let read = 0;
-		for await (const item of ctx.db
-			.query('threadItems')
-			.withIndex('by_mailbox_responsibility_due', (q) =>
-				q
-					.eq('mailboxId', thread.mailboxId)
-					.eq('responsibility', responsibility)
-					.eq('status', 'open')
-					.gte('due.at', 0)
-			)) {
-			if (++read > DATED_SCAN_LIMIT) break;
-			if (item.mailThreadId === thread._id && item.verify !== 'proposal') {
-				found.push(item);
-				break;
-			}
-		}
+	let best: BriefTopItem | undefined;
+	for await (const item of ctx.db
+		.query('threadItems')
+		.withIndex('by_mail_thread_status_due', (q) =>
+			q.eq('mailThreadId', mailThreadId).eq('status', 'open').gte('due.at', 0)
+		)) {
+		// Due order: once past the first eligible due date, nothing better follows.
+		if (best && (item.due?.at ?? 0) > (best.due?.at ?? 0)) break;
+		if (onSide(item, side)) best = better(best, item);
 	}
-	return found.sort((a, b) => (a.due?.at ?? 0) - (b.due?.at ?? 0))[0];
+	if (best) return best;
+	for await (const item of ctx.db
+		.query('threadItems')
+		.withIndex('by_mail_thread_status_due', (q) =>
+			q.eq('mailThreadId', mailThreadId).eq('status', 'open').eq('due.at', undefined)
+		)) {
+		if (onSide(item, side)) best = better(best, item);
+	}
+	return best;
 }
 
 async function nextLatest(

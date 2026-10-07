@@ -10,7 +10,23 @@ import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
 import { enableFeatures } from '../../../__tests__/factories';
 import { briefModelSchema } from '../schema';
-import { modules, seedMailThread } from './interpret.testlib';
+import { modules, seedMailThread, type Test } from './interpret.testlib';
+import { captureInterpretSource } from '../sources';
+
+/** Seed a message and take its enqueue-time snapshot, as delivery does. */
+async function seedCaptured(
+	t: Test,
+	seed: Parameters<typeof seedMailThread>[1] & { isLive?: boolean } = {}
+) {
+	const seeded = await seedMailThread(t, seed);
+	await t.run(async (ctx) =>
+		captureInterpretSource(ctx, {
+			source: { kind: 'mail', id: seeded.messageId },
+			isLive: seed.isLive ?? true,
+		})
+	);
+	return seeded;
+}
 
 const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), spend: vi.fn() }));
 
@@ -87,7 +103,7 @@ describe('interpretMessage', () => {
 	it('interprets, verifies and folds the message into its thread', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai']);
-		const { messageId, threadId } = await seedMailThread(t, { text: TEXT });
+		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
 		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
 			source: { kind: 'mail', id: messageId },
 		});
@@ -117,7 +133,7 @@ describe('interpretMessage', () => {
 	it('reuses an applied revision instead of calling the model again', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai']);
-		const { messageId } = await seedMailThread(t, { text: TEXT });
+		const { messageId } = await seedCaptured(t, { text: TEXT });
 		await t.action(internal.mail.interpret.run.interpretMessage, {
 			source: { kind: 'mail', id: messageId },
 		});
@@ -126,7 +142,8 @@ describe('interpretMessage', () => {
 			source: { kind: 'mail', id: messageId },
 		});
 		expect(again).toMatchObject({
-			status: 'replayed',
+			status: 'complete',
+			isReplayed: true,
 			projection: { askSummary: 'Send Jonas the signed contract' },
 		});
 		expect(llm.runLlmObject).not.toHaveBeenCalled();
@@ -134,7 +151,7 @@ describe('interpretMessage', () => {
 
 	it('records ai_off as an incomplete brief without calling the model', async () => {
 		const t = convexTest(schema, modules);
-		const { messageId, threadId } = await seedMailThread(t, { text: TEXT });
+		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
 		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
 			source: { kind: 'mail', id: messageId },
 		});
@@ -153,7 +170,7 @@ describe('interpretMessage', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai']);
 		llm.runLlmObject.mockRejectedValue(new Error('provider down'));
-		const { messageId } = await seedMailThread(t, { text: TEXT });
+		const { messageId } = await seedCaptured(t, { text: TEXT });
 		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
 			source: { kind: 'mail', id: messageId },
 		});
@@ -163,27 +180,85 @@ describe('interpretMessage', () => {
 	it('skips a muted thread and backfilled mail without a model call', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai']);
-		const { messageId } = await seedMailThread(t, { text: TEXT });
-		const backfill = await t.action(internal.mail.interpret.run.interpretMessage, {
-			source: { kind: 'mail', id: messageId },
-			isLive: false,
-		});
-		expect(backfill).toMatchObject({ status: 'skipped' });
-		// A second look at the same skipped message is a replay, not a second row.
+		const { messageId } = await seedCaptured(t, { text: TEXT, isLive: false });
+		const source = { kind: 'mail' as const, id: messageId };
+		const backfill = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(backfill).toMatchObject({ status: 'skipped', errorCode: 'not_live' });
+		// A retry decides on the enqueue snapshot: a caller claiming "live" changes nothing.
 		expect(
-			await t.action(internal.mail.interpret.run.interpretMessage, {
-				source: { kind: 'mail', id: messageId },
-				isLive: false,
-			})
-		).toMatchObject({ status: 'replayed' });
+			await t.action(internal.mail.interpret.run.interpretMessage, { source, isLive: true })
+		).toMatchObject({ status: 'skipped', isReplayed: true });
 
 		const second = await seedMailThread(t, { text: TEXT, address: 'two@owlat.test' });
 		await t.run(async (ctx) => ctx.db.patch(second.threadId, { mutedAt: 1 }));
+		await t.run(async (ctx) =>
+			captureInterpretSource(ctx, { source: { kind: 'mail', id: second.messageId }, isLive: true })
+		);
 		const muted = await t.action(internal.mail.interpret.run.interpretMessage, {
 			source: { kind: 'mail', id: second.messageId },
 		});
-		expect(muted).toMatchObject({ status: 'skipped' });
+		expect(muted).toMatchObject({ status: 'skipped', errorCode: 'muted' });
 		expect(llm.runLlmObject).not.toHaveBeenCalled();
+	});
+
+	it('does not interpret a message without an enqueue snapshot (F15)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedMailThread(t, { text: TEXT });
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: messageId },
+			isLive: true,
+		});
+		expect(out).toMatchObject({ status: 'skipped', errorCode: 'no_snapshot' });
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+	});
+
+	it('reports a partial run as partial, and repairs it once its retry is due (F2)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		// The first verifier call fails: the run is partial ('verify').
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			if (schema === briefModelSchema) return { object: modelOutput('s0') };
+			throw new Error('verifier down');
+		});
+		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		const first = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(first).toMatchObject({ status: 'partial', isReplayed: false, errorCode: 'verify' });
+		if (first.status === 'gone') throw new Error('unreachable');
+		expect(first.retryAt).toBeGreaterThan(Date.now());
+
+		// Not due yet: reported as partial, never as a bare replay.
+		llm.runLlmObject.mockClear();
+		const early = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(early).toMatchObject({ status: 'partial', isReplayed: true });
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+
+		// Due: the repair runs, the verifier answers, the thread is rebuilt without duplicates.
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('messageInterpretations').first();
+			if (row) await ctx.db.patch(row._id, { nextRetryAt: 0 });
+		});
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) =>
+			schema === briefModelSchema
+				? { object: modelOutput('s0') }
+				: { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } }
+		);
+		const repaired = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(repaired).toMatchObject({ status: 'complete', isReplayed: false });
+		const items = await t.run(async (ctx) =>
+			ctx.db
+				.query('threadItems')
+				.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', threadId))
+				.collect()
+		);
+		expect(items).toHaveLength(1);
+		expect(items[0]).toMatchObject({ verify: 'passed', status: 'open' });
+		const brief = await t.run(async (ctx) => ctx.db.query('threadBriefs').first());
+		expect(brief).toMatchObject({
+			completeness: 'complete',
+			sourceCounts: { complete: 1, partial: 0 },
+		});
 	});
 
 	it('drops a claim the verifier rejects', async () => {
@@ -194,7 +269,7 @@ describe('interpretMessage', () => {
 				? { object: modelOutput('s0') }
 				: { object: { verdicts: [{ claimId: 'item:0', verdict: 'unsupported' }] } }
 		);
-		const { messageId } = await seedMailThread(t, { text: TEXT });
+		const { messageId } = await seedCaptured(t, { text: TEXT });
 		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
 			source: { kind: 'mail', id: messageId },
 		});

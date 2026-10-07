@@ -17,21 +17,39 @@
  *     'reported'`. The model never untracks and never sets `failed` (the user
  *     and the send lifecycle do). A human correction is never flipped:
  *     conflicting evidence on a corrected item sets `isReviewNeeded`.
- *   - FACTS (brief mode, mail threads only). A restatement adds evidence; a
- *     verified supersession retires the old fact; an unverified one, an
- *     explicit contradiction, or a changed value under the same key is stored
- *     as a conflict beside the current fact.
- *   - OUT OF ORDER. A message older than the brief's checkpoint still adds
- *     items, evidence and new facts, but cannot move an item's status or
- *     retire a fact: the newer state wins. (The full replay-from-checkpoint of
- *     SPEC §4 is reduced to this rule; see interpret.notes.md.)
+ *     An unsupported closing claim has NO effect at all (its disposition and
+ *     quotes are dropped with it).
+ *   - FACTS (brief mode, mail threads only). Only a proven restatement (the
+ *     same structured value, or no value on either side and the same words)
+ *     adds evidence; a verified supersession retires the old fact; anything
+ *     else under the same key, an unverified supersession or an explicit
+ *     contradiction is stored as a conflict beside the current fact.
+ *   - EVIDENCE is deduplicated per source message, content revision and span,
+ *     so the same words in two messages stay two references.
+ *   - OUT OF ORDER. The reducer replays the thread in message order
+ *     (`replay.ts`), so a late message is folded in where it belongs. Only
+ *     when a replay is over budget does it fall back to `isOutOfOrder`: the
+ *     late message then adds items, evidence and facts but moves no status.
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { ActivityType, ItemStatus } from '@owlat/shared/threadBrief';
 import { isLegalDispositionEdge, isLegalStatusEdge } from '@owlat/shared/threadBriefRules';
 import { normalizeEmail } from '@owlat/shared';
+import {
+	interpretationSourceKey,
+	type InterpretationSource,
+} from '../../lib/validators/threadBrief';
 import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
+
+/** The identity of one piece of evidence (its quote aside). */
+export interface EvidenceRef {
+	source: InterpretationSource;
+	contentRevision: string;
+	segmentId: string;
+	start: number;
+	end: number;
+}
 
 /** The item fields the plan reads. */
 export type PlanItem = Pick<
@@ -41,7 +59,6 @@ export type PlanItem = Pick<
 	| 'disposition'
 	| 'intent'
 	| 'revision'
-	| 'evidence'
 	| 'correction'
 	| 'verify'
 	| 'due'
@@ -50,6 +67,7 @@ export type PlanItem = Pick<
 	| 'completion'
 	| 'isReviewNeeded'
 > & {
+	evidence: readonly EvidenceRef[];
 	/** Unsealed assertion, for the duplicate check. */
 	assertionText: string;
 };
@@ -57,16 +75,21 @@ export type PlanItem = Pick<
 /** The fact fields the plan reads. */
 export type PlanFact = Pick<
 	Doc<'threadFacts'>,
-	'_id' | 'factKey' | 'status' | 'revision' | 'evidence' | 'value'
+	'_id' | 'factKey' | 'status' | 'revision' | 'value'
 > & {
+	evidence: readonly EvidenceRef[];
 	/** The value with its sealed text opened, for comparison. */
 	valueText?: string;
+	/** Unsealed assertion, for the restatement check. */
+	assertionText: string;
 };
 
 export interface PlanOptions {
 	mode: 'brief' | 'actions';
 	threadKind: 'mail' | 'team';
 	isOutOfOrder: boolean;
+	/** The message being folded in (evidence identity). */
+	source: InterpretationSource;
 }
 
 /** Evidence as the plan hands it to the writer (plaintext quote). */
@@ -96,6 +119,8 @@ export type ItemPatch = {
 export type FactOp =
 	| {
 			kind: 'insert';
+			/** Index in the result's `facts` (the fact's lineage). */
+			index: number;
 			fact: ReduceFact;
 			supersedesId?: Id<'threadFacts'>;
 			conflictsWithId?: Id<'threadFacts'>;
@@ -113,7 +138,8 @@ export type DropReason =
 	| 'no_change';
 
 export interface ReductionPlan {
-	inserts: Array<{ item: ReduceItem; possibleDuplicateOfId?: Id<'threadItems'> }>;
+	/** `index`: the proposal's index in the result's `items` (the item's lineage). */
+	inserts: Array<{ item: ReduceItem; index: number; possibleDuplicateOfId?: Id<'threadItems'> }>;
 	patches: ItemPatch[];
 	facts: FactOp[];
 	dropped: Array<{ kind: 'transition' | 'fact'; index: number; reason: DropReason }>;
@@ -151,28 +177,20 @@ export function textSimilarity(a: string, b: string): number {
 	return shared / (ta.size + tb.size - shared);
 }
 
-function evidenceKey(e: { segmentId: string; start: number; end: number }): string {
-	return `${e.segmentId}:${e.start}:${e.end}`;
+/** The identity of a piece of evidence: source, content revision and span. Pure. */
+export function evidenceKey(e: EvidenceRef): string {
+	return `${interpretationSourceKey(e.source)}|${e.contentRevision}|${e.segmentId}:${e.start}:${e.end}`;
 }
 
-/**
- * Evidence of `incoming` not already on the item. Keys are per source and
- * revision in the writer; within one message the segment offsets suffice.
- */
+/** Evidence of `incoming` (from `source` at `contentRevision`) not already held. */
 function newEvidence(
-	existing: ReadonlyArray<{
-		segmentId: string;
-		start: number;
-		end: number;
-		contentRevision: string;
-	}>,
+	existing: readonly EvidenceRef[],
 	incoming: readonly PlanEvidence[],
+	source: InterpretationSource,
 	contentRevision: string
 ): PlanEvidence[] {
-	const seen = new Set(
-		existing.filter((e) => e.contentRevision === contentRevision).map(evidenceKey)
-	);
-	return incoming.filter((e) => !seen.has(evidenceKey(e)));
+	const seen = new Set(existing.map(evidenceKey));
+	return incoming.filter((e) => !seen.has(evidenceKey({ ...e, source, contentRevision })));
 }
 
 function isStatusLocked(item: PlanItem): boolean {
@@ -225,6 +243,26 @@ export function storedFactValueText(fact: PlanFact): string | undefined {
 		: undefined;
 }
 
+function normalizedWords(text: string): string {
+	return text
+		.normalize('NFKC')
+		.toLowerCase()
+		.replace(/[^\p{L}\p{N}]+/gu, ' ')
+		.trim();
+}
+
+/**
+ * Whether a proposed fact provably restates a stored one: the same structured
+ * value, or neither has a value and they say the same words. Pure.
+ */
+export function isProvenRestatement(fact: ReduceFact, stored: PlanFact): boolean {
+	const incoming = factValueText(fact.value);
+	const existing = storedFactValueText(stored);
+	if (incoming !== undefined && existing !== undefined) return incoming === existing;
+	if (incoming !== undefined || existing !== undefined) return false;
+	return normalizedWords(fact.assertion) === normalizedWords(stored.assertionText);
+}
+
 /** Plan one message's changes. Pure. */
 export function planReduction(
 	state: { items: readonly PlanItem[]; facts: readonly PlanFact[] },
@@ -246,11 +284,11 @@ export function planReduction(
 	};
 
 	// ── Items ──
-	for (const proposal of result.items) {
+	for (const [index, proposal] of result.items.entries()) {
 		const match = proposal.matchItemId ? byId.get(proposal.matchItemId) : undefined;
 		if (match && match.status !== 'superseded') {
 			const p = patch(match);
-			const added = newEvidence(match.evidence, proposal.evidence, contentRevision);
+			const added = newEvidence(match.evidence, proposal.evidence, opts.source, contentRevision);
 			if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
 			const fill: ItemPatch['fill'] = {};
 			if (!match.due && proposal.due) fill.due = proposal.due;
@@ -275,6 +313,7 @@ export function planReduction(
 		}
 		plan.inserts.push({
 			item: proposal,
+			index,
 			...(possibleDuplicateOfId ? { possibleDuplicateOfId } : {}),
 		});
 	}
@@ -295,54 +334,73 @@ export function planReduction(
 			drop('model_forbidden');
 			continue;
 		}
-		const p = patch(item);
-		const added = newEvidence(item.evidence, t.evidence, contentRevision);
-		const statusFrom = p.status ?? item.status;
-		const dispositionFrom = p.disposition ?? item.disposition;
-		let changed = false;
+		const added = newEvidence(item.evidence, t.evidence, opts.source, contentRevision);
+		const current = patchOf.get(item._id);
+		const statusFrom = current?.status ?? item.status;
+		const dispositionFrom = current?.disposition ?? item.disposition;
+		const wantsStatus = t.to !== undefined && t.to !== statusFrom;
 
-		if (t.to && t.to !== statusFrom) {
-			if (isStatusLocked(item)) {
-				p.isReviewNeeded = true;
-				drop('corrected');
-			} else if (CLOSING.has(t.to) && !t.isVerified) {
-				drop('unverified');
-			} else if (!isLegalStatusEdge(statusFrom, t.to, 'system')) {
+		if (wantsStatus && isStatusLocked(item)) {
+			// A human decided this item: keep their status, keep the new quotes,
+			// and ask a person to look (the writer logs it as item_changed).
+			const p = patch(item);
+			p.isReviewNeeded = true;
+			if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
+			drop('corrected');
+			continue;
+		}
+		if (wantsStatus && t.to && CLOSING.has(t.to) && !t.isVerified) {
+			// An unsupported closing claim has no effect at all, disposition included.
+			drop('unverified');
+			continue;
+		}
+		if (wantsStatus && t.to && !isLegalStatusEdge(statusFrom, t.to, 'system')) {
+			drop('illegal_edge');
+			continue;
+		}
+		const wantsDisposition = t.disposition !== undefined && t.disposition !== dispositionFrom;
+		if (
+			wantsDisposition &&
+			t.disposition &&
+			!isLegalDispositionEdge(dispositionFrom, t.disposition)
+		) {
+			if (!wantsStatus) {
 				drop('illegal_edge');
-			} else {
-				p.status = t.to;
-				p.completion = t.to === 'done' ? 'reported' : undefined;
-				p.activity = {
-					type:
-						t.to === 'open'
-							? 'item_reopened'
-							: t.to === 'superseded'
-								? 'item_replaced'
-								: 'item_closed',
-					delta: {
-						statusFrom,
-						statusTo: t.to,
-						...(t.to === 'done' ? { completion: 'reported' as const } : {}),
-					},
-				};
-				changed = true;
+				continue;
 			}
 		}
-		if (t.disposition && t.disposition !== dispositionFrom) {
-			if (isLegalDispositionEdge(dispositionFrom, t.disposition)) {
-				p.disposition = t.disposition;
-				p.activity ??= { type: 'item_changed' };
-				p.activity.delta = {
-					...p.activity.delta,
-					dispositionFrom,
-					dispositionTo: t.disposition,
-				};
-				changed = true;
-			} else if (!changed) {
-				drop('illegal_edge');
-			}
+		if (!wantsStatus && !wantsDisposition) {
+			drop('no_change');
+			continue;
 		}
-		if (changed && added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
+		const p = patch(item);
+		if (wantsStatus && t.to) {
+			p.status = t.to;
+			p.completion = t.to === 'done' ? 'reported' : undefined;
+			p.activity = {
+				type:
+					t.to === 'open'
+						? 'item_reopened'
+						: t.to === 'superseded'
+							? 'item_replaced'
+							: 'item_closed',
+				delta: {
+					statusFrom,
+					statusTo: t.to,
+					...(t.to === 'done' ? { completion: 'reported' as const } : {}),
+				},
+			};
+		}
+		if (
+			wantsDisposition &&
+			t.disposition &&
+			isLegalDispositionEdge(dispositionFrom, t.disposition)
+		) {
+			p.disposition = t.disposition;
+			p.activity ??= { type: 'item_changed' };
+			p.activity.delta = { ...p.activity.delta, dispositionFrom, dispositionTo: t.disposition };
+		}
+		if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
 		if (t.isReviewNeeded) p.isReviewNeeded = true;
 	}
 
@@ -363,34 +421,33 @@ export function planReduction(
 				if (fact.isVerified && !opts.isOutOfOrder) {
 					retired.add(superseded._id);
 					plan.facts.push({ kind: 'supersede', factId: superseded._id });
-					plan.facts.push({ kind: 'insert', fact, supersedesId: superseded._id });
+					plan.facts.push({ kind: 'insert', index, fact, supersedesId: superseded._id });
 				} else {
-					plan.facts.push({ kind: 'insert', fact, conflictsWithId: superseded._id });
+					plan.facts.push({ kind: 'insert', index, fact, conflictsWithId: superseded._id });
 					if (opts.isOutOfOrder) plan.dropped.push({ kind: 'fact', index, reason: 'out_of_order' });
 				}
 				continue;
 			}
 			if (contradicted) {
-				plan.facts.push({ kind: 'insert', fact, conflictsWithId: contradicted._id });
+				plan.facts.push({ kind: 'insert', index, fact, conflictsWithId: contradicted._id });
 				continue;
 			}
 			if (sameKey) {
-				const incoming = factValueText(fact.value);
-				const stored = storedFactValueText(sameKey);
-				if (incoming === undefined || stored === undefined || incoming === stored) {
-					const added = newEvidence(sameKey.evidence, fact.evidence, contentRevision);
+				if (isProvenRestatement(fact, sameKey)) {
+					const added = newEvidence(sameKey.evidence, fact.evidence, opts.source, contentRevision);
 					if (added.length > 0) {
 						plan.facts.push({ kind: 'evidence', factId: sameKey._id, addEvidence: added });
 					} else {
 						plan.dropped.push({ kind: 'fact', index, reason: 'no_change' });
 					}
 				} else {
-					// Same key, new value, nothing said about replacing it: a conflict to show.
-					plan.facts.push({ kind: 'insert', fact, conflictsWithId: sameKey._id });
+					// Same key, not provably the same claim, nothing verified about
+					// replacing it: a conflict to show, never a silent merge.
+					plan.facts.push({ kind: 'insert', index, fact, conflictsWithId: sameKey._id });
 				}
 				continue;
 			}
-			plan.facts.push({ kind: 'insert', fact });
+			plan.facts.push({ kind: 'insert', index, fact });
 		}
 	}
 

@@ -227,7 +227,7 @@ describe('groundProposals', () => {
 		expect(groundProposals(proposal(plain), plain).items[0]?.viaDelegation).toBeUndefined();
 	});
 
-	it('tracks an ask once the fresh text quotes it too', () => {
+	it('keeps an ask quoted from both fresh and forwarded text a proposal until the fresh quotes verify (G3)', () => {
 		const message = FORWARD('Please pay invoice 2231 today.');
 		const fwd = message.segments.find((s) => s.kind === 'forwarded')?.id ?? 'missing';
 		const fresh = message.segments.find((s) => s.kind === 'fresh')?.id ?? 'missing';
@@ -243,7 +243,48 @@ describe('groundProposals', () => {
 			}),
 			message
 		);
-		expect(result.items[0]?.proposal).toBeUndefined();
+		expect(result.items[0]).toMatchObject({ proposal: { reason: 'forwarded' }, isMixed: true });
+		// Fresh quotes alone: tracked.
+		const freshOnly = groundProposals(
+			output({
+				items: [item([{ segmentId: fresh, text: 'Please pay invoice 2231 today.' }])],
+				coverage: undefined,
+			}),
+			message
+		);
+		expect(freshOnly.items[0]?.proposal).toBeUndefined();
+		expect(freshOnly.items[0]?.isMixed).toBeUndefined();
+	});
+
+	it('never lets a fresh "FYI." carry a forwarded request (G3)', () => {
+		const message = FORWARD('FYI.');
+		const fwd = message.segments.find((s) => s.kind === 'forwarded')?.id ?? 'missing';
+		const fresh = message.segments.find((s) => s.kind === 'fresh')?.id ?? 'missing';
+		const result = groundProposals(
+			output({
+				items: [
+					item([
+						{ segmentId: fresh, text: 'FYI.' },
+						{ segmentId: fwd, text: 'Please pay invoice 2231' },
+					]),
+				],
+				transitions: [
+					{
+						quotes: [
+							{ segmentId: fresh, text: 'FYI.' },
+							{ segmentId: fwd, text: 'Please pay invoice 2231' },
+						],
+					},
+				],
+				coverage: undefined,
+			}),
+			message
+		);
+		expect(result.items[0]).toMatchObject({ proposal: { reason: 'forwarded' }, isMixed: true });
+		expect(result.transitions[0]).toMatchObject({
+			proposal: { reason: 'forwarded' },
+			isMixed: true,
+		});
 	});
 
 	it('flags injected or credential-seeking derived strings but never deletes the item', () => {
@@ -379,9 +420,18 @@ describe('groundProposals', () => {
 		expect([...result.coverage.gaps].sort()).toEqual(
 			['model_uncertain', 'overflow', 'segmentation_uncertain', 'unread_segments'].sort()
 		);
-		const counted = groundProposals(output({ coverage: { segmentsRead: 1 } }), REPLY);
+		const counted = groundProposals(output({ coverage: { segmentsRead: 0 } }), REPLY);
 		expect(counted.coverage.gaps).toEqual(['unread_segments']);
-		const skippedQuote = groundProposals(output({ coverage: { segmentsRead: [FRESH] } }), REPLY);
+		// Quoted history may go unread; a signature may not (its asks become proposals, G4).
+		const skippedSignature = groundProposals(
+			output({ coverage: { segmentsRead: [FRESH] } }),
+			REPLY
+		);
+		expect(skippedSignature.coverage.gaps).toEqual(['unread_segments']);
+		const skippedQuote = groundProposals(
+			output({ coverage: { segmentsRead: [FRESH, SIGNATURE] } }),
+			REPLY
+		);
 		expect(skippedQuote.coverage.complete).toBe(true);
 	});
 });

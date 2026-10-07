@@ -29,6 +29,7 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 		relation('conversationThreads', table, 'conversationThreadId')
 	),
 	relation('inboundMessages', 'messageInterpretations', 'source.id'),
+	relation('inboundMessages', 'interpretSources', 'source.id'),
 	relation('inboundMessages', 'threadFacts', 'evidence[].source.id'),
 	relation('inboundMessages', 'threadItems', 'evidence[].source.id'),
 	relation('inboundMessages', 'draftResponsePlans', 'inboundMessageId'),

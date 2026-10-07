@@ -10,8 +10,14 @@ import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { appendActivity } from '../activity';
-import { completenessOf } from '../reduceState';
 import {
+	EMPTY_SOURCE_COUNTS,
+	completenessOfCounts,
+	shiftCount,
+	type SourceCounts,
+} from '../counters';
+import {
+	addMessageToThread,
 	modules,
 	reduceItem,
 	reduceResult,
@@ -191,9 +197,14 @@ describe('applyInterpretation', () => {
 		expect(out).toEqual({ outcome: 'gone' });
 	});
 
-	it('merges a repeat into the matched item and closes it on a verified transition', async () => {
+	it('closes an item on a verified transition from a later message', async () => {
 		const t = convexTest(schema, modules);
-		const { messageId, threadId } = await seedMailThread(t);
+		const { messageId, threadId, mailboxId } = await seedMailThread(t);
+		const later = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'it is signed', receivedAt: SENT + 1000 }
+		);
 		await t.mutation(
 			internal.mail.interpret.reduce.applyInterpretation,
 			applyArgs({ kind: 'mail', id: messageId }, threadId)
@@ -201,8 +212,7 @@ describe('applyInterpretation', () => {
 		const [item] = (await rows(t, threadId)).items;
 		await t.mutation(
 			internal.mail.interpret.reduce.applyInterpretation,
-			applyArgs({ kind: 'mail', id: messageId }, threadId, {
-				contentRevision: 'rev-2',
+			applyArgs({ kind: 'mail', id: later }, threadId, {
 				expectedRevision: 1,
 				sourceAt: SENT + 1000,
 				result: reduceResult({
@@ -348,23 +358,16 @@ describe('appendActivity', () => {
 	});
 });
 
-describe('completenessOf', () => {
-	it('reads the newest extraction per source', () => {
-		const row = (
-			sourceKey: string,
-			status: 'complete' | 'partial' | 'failed' | 'skipped',
-			updatedAt: number,
-			skipReason?: 'undecryptable' | 'bulk'
-		) => ({
-			sourceKey,
-			status,
-			updatedAt,
-			...(skipReason ? { skipReason } : {}),
-		});
-		expect(completenessOf([])).toBe('none');
-		expect(completenessOf([row('a', 'failed', 1), row('a', 'complete', 2)])).toBe('complete');
-		expect(completenessOf([row('a', 'complete', 1), row('b', 'partial', 2)])).toBe('partial');
-		expect(completenessOf([row('a', 'skipped', 1, 'bulk')])).toBe('complete');
-		expect(completenessOf([row('a', 'skipped', 1, 'undecryptable')])).toBe('partial');
+describe('source counters', () => {
+	it('read completeness from the current extraction of every source', () => {
+		const counts = (c: Partial<SourceCounts>): SourceCounts => ({ ...EMPTY_SOURCE_COUNTS, ...c });
+		expect(completenessOfCounts(EMPTY_SOURCE_COUNTS)).toBe('none');
+		expect(completenessOfCounts(counts({ complete: 3 }))).toBe('complete');
+		expect(completenessOfCounts(counts({ complete: 300, failed: 1 }))).toBe('partial');
+		expect(completenessOfCounts(counts({ skipped: 1 }))).toBe('complete');
+		expect(completenessOfCounts(counts({ unreadable: 1 }))).toBe('partial');
+		expect(shiftCount(counts({ failed: 1 }), 'failed', 'complete')).toEqual(
+			counts({ complete: 1 })
+		);
 	});
 });
