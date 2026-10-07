@@ -31,6 +31,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
 import { MAX_SWEEP_RETRIES, SWEEP_MIN_AGE_MS } from '../mail/needsReplyPending';
+import type * as InterpretRun from '../mail/interpret/run';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -71,8 +72,7 @@ vi.mock('../lib/llmProvider', async () => {
 });
 
 vi.mock('../mail/interpret/run', async () => {
-	const actual =
-		await vi.importActual<typeof import('../mail/interpret/run')>('../mail/interpret/run');
+	const actual = await vi.importActual<typeof InterpretRun>('../mail/interpret/run');
 	return { ...actual, runInterpretation: runInterpretationMock };
 });
 
