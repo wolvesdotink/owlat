@@ -4,9 +4,13 @@
  * `latest` or `facts`.
  */
 
+import { zodSchema } from 'ai';
 import { describe, expect, it } from 'vitest';
+import type { z } from 'zod';
 import {
+	actionsModelSchema,
 	actionsOutputSchema,
+	briefModelSchema,
 	briefOutputSchema,
 	interpretInputSchema,
 	interpretOutputSchema,
@@ -149,9 +153,21 @@ describe('interpretOutputSchema', () => {
 		expect(interpretOutputSchema.safeParse(badIntent).success).toBe(false);
 	});
 
-	it('hands the model a plain object schema per mode', () => {
-		expect(interpretOutputSchemaFor('brief')).toBe(briefOutputSchema);
-		expect(interpretOutputSchemaFor('actions')).toBe(actionsOutputSchema);
+	it('hands the model the strict model schema per mode', () => {
+		expect(interpretOutputSchemaFor('brief')).toBe(briefModelSchema);
+		expect(interpretOutputSchemaFor('actions')).toBe(actionsModelSchema);
+	});
+
+	it('requires consequences from the model, but parses stored payloads without them', () => {
+		const modelItem = { ...item, consequences: null };
+		const model = { ...actionsPayload, items: [modelItem] };
+		expect(actionsModelSchema.safeParse(model).success).toBe(true);
+		expect(actionsModelSchema.safeParse(actionsPayload).success).toBe(false);
+		// Every model result is also a valid parse-schema payload.
+		expect(interpretOutputSchema.safeParse(model).success).toBe(true);
+		expect(interpretOutputSchema.safeParse({ ...briefPayload, items: [modelItem] }).success).toBe(
+			true
+		);
 	});
 });
 
@@ -182,5 +198,68 @@ describe('interpretInputSchema', () => {
 				message: { ...input.message, segments: [{ id: 's1', kind: 'body', text: '' }] },
 			}).success
 		).toBe(false);
+	});
+});
+
+/**
+ * The JSON Schema the provider receives, built by the same conversion the AI
+ * SDK applies to `runLlmObject`'s schema (`zodSchema` from `ai`). The OpenAI
+ * adapter sends it with `strict: true`, which rejects any object whose
+ * properties are not all listed in `required`, or that allows additional
+ * properties.
+ */
+type JsonSchemaNode = {
+	type?: string | string[];
+	properties?: Record<string, JsonSchemaNode>;
+	required?: string[];
+	additionalProperties?: unknown;
+	items?: JsonSchemaNode | JsonSchemaNode[];
+	anyOf?: JsonSchemaNode[];
+	oneOf?: JsonSchemaNode[];
+	allOf?: JsonSchemaNode[];
+};
+
+function strictViolations(node: JsonSchemaNode | undefined, path: string, out: string[]): void {
+	if (!node || typeof node !== 'object') return;
+	if (node.properties) {
+		const keys = Object.keys(node.properties);
+		const required = new Set(node.required ?? []);
+		for (const key of keys) if (!required.has(key)) out.push(`${path}.${key} not required`);
+		if (node.additionalProperties !== false) out.push(`${path} allows additional properties`);
+		for (const [key, child] of Object.entries(node.properties)) {
+			strictViolations(child, `${path}.${key}`, out);
+		}
+	}
+	const items = Array.isArray(node.items) ? node.items : node.items ? [node.items] : [];
+	for (const child of items) strictViolations(child, `${path}[]`, out);
+	for (const [kind, list] of [
+		['anyOf', node.anyOf],
+		['oneOf', node.oneOf],
+		['allOf', node.allOf],
+	] as const) {
+		list?.forEach((child, i) => strictViolations(child, `${path}<${kind}${i}>`, out));
+	}
+}
+
+describe('provider-facing JSON Schema', () => {
+	for (const mode of ['brief', 'actions'] as const) {
+		it(`lists every property as required at every level (${mode})`, async () => {
+			const json = (await zodSchema(interpretOutputSchemaFor(mode) as z.ZodType)
+				.jsonSchema) as JsonSchemaNode;
+			expect(json.type).toBe('object');
+			const violations: string[] = [];
+			strictViolations(json, '$', violations);
+			expect(violations).toEqual([]);
+			// Sanity: the walk reached the item level.
+			const items = json.properties?.['items']?.items as JsonSchemaNode;
+			expect(items.required).toContain('consequences');
+		});
+	}
+
+	it('catches an optional property (the walk is not vacuous)', async () => {
+		const json = (await zodSchema(interpretOutputSchema as z.ZodType).jsonSchema) as JsonSchemaNode;
+		const violations: string[] = [];
+		strictViolations(json, '$', violations);
+		expect(violations.some((v) => v.endsWith('.consequences not required'))).toBe(true);
 	});
 });
