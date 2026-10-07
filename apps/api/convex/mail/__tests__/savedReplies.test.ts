@@ -135,6 +135,25 @@ describe('personal saved replies', () => {
 		expect(await t.query(api.mail.savedReplies.listMine, {})).toEqual([]);
 	});
 
+	it('keep no image they have no bytes for, such as one pasted into the composer (#1293)', async () => {
+		const t = await harness();
+		await t.mutation(api.mail.savedReplies.create, {
+			scope: 'personal',
+			name: 'Logo',
+			shortcut: '',
+			bodyHtml:
+				'<p>Our logo:</p><p><img data-inline-cid="logo@owlat" alt="logo.png"></p>' +
+				'<img src="blob:https://app.owlat.example/1" alt="preview">' +
+				'<img src="cid:part@other" alt="quoted">' +
+				'<img src="https://cdn.owlat.example/banner.png" alt="banner">',
+		});
+
+		const [row] = await t.query(api.mail.savedReplies.listMine, {});
+		expect(row?.bodyHtml).toBe(
+			'<p>Our logo:</p><p></p><img src="https://cdn.owlat.example/banner.png" alt="banner" />'
+		);
+	});
+
 	it('refuses an empty name and an over-long shortcut', async () => {
 		const t = await harness();
 		await expect(

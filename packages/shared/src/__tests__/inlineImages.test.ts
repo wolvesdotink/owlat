@@ -3,6 +3,7 @@ import {
 	rewriteInlineImageCids,
 	isInlineImageReferenced,
 	resolveInlineImageSrcs,
+	stripInlineImages,
 } from '../inlineImages';
 
 describe('rewriteInlineImageCids', () => {
@@ -91,5 +92,20 @@ describe('resolveInlineImageSrcs (#1301)', () => {
 	it('leaves ordinary images alone', () => {
 		const input = '<img src="https://cdn.example/logo.png" width="40">';
 		expect(resolveInlineImageSrcs(input, () => 'https://other.example/x')).toBe(input);
+	});
+});
+
+describe('stripInlineImages (#1293)', () => {
+	it('drops every marked image and counts them, keeping the rest of the body', () => {
+		const { html, removed } = stripInlineImages(
+			'<p>Logo:</p><p><img data-inline-cid="a" alt="a.png"></p>' +
+				'<img src="https://cdn.example/x.png"><img data-inline-cid=\'b\' src="blob:x">'
+		);
+		expect(html).toBe('<p>Logo:</p><p></p><img src="https://cdn.example/x.png">');
+		expect(removed).toBe(2);
+	});
+
+	it('returns a body without inline images unchanged', () => {
+		expect(stripInlineImages('<p>text</p>')).toEqual({ html: '<p>text</p>', removed: 0 });
 	});
 });

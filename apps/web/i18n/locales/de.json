@@ -14844,6 +14844,7 @@
 			"saveCurrent": "Als Antwort speichern",
 			"saveDialog": {
 				"emptyText": "Schreib zuerst etwas.",
+				"imagesLeftOut": "Gespeicherte Antworten können keine eingefügten Bilder enthalten, deshalb fehlt dieses Bild. Füg es nach dem Einsetzen der Antwort neu ein. | Gespeicherte Antworten können keine eingefügten Bilder enthalten, deshalb fehlen diese {count} Bilder. Füg sie nach dem Einsetzen der Antwort neu ein.",
 				"save": "Antwort speichern",
 				"title": "Als Antwort speichern"
 			},

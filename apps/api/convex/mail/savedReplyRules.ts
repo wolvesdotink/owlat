@@ -17,7 +17,8 @@
  *    same.
  *
  * `bodyHtml` is sanitized on save with the composer's own allowlist
- * (POSTBOX_SANITIZE_CONFIG): it is inserted straight into a draft. Its
+ * (POSTBOX_SANITIZE_CONFIG), minus images it has no bytes for: it is inserted
+ * straight into a draft. Its
  * `{{token}}` variables and `[[...]]` gaps are plain text and survive that;
  * they are resolved client-side at insert time, and nothing on the send path
  * reads this table.
@@ -57,8 +58,24 @@ export const SAVED_REPLY_LIST_CAP = 200;
  */
 const MAX_VARIABLES = 20;
 
+/**
+ * The composer's allowlist, minus every `<img>` a saved reply could never show
+ * (#1293). A pasted image's bytes are a part of its draft, marked with
+ * `data-inline-cid`, which the allowlist drops along with the session's `blob:`
+ * preview; a `cid:` src names a part of another message. Kept, any of them
+ * would be inserted into later drafts and go out as an empty image.
+ */
+const SAVED_REPLY_SANITIZE_CONFIG: sanitizeHtml.IOptions = {
+	...POSTBOX_SANITIZE_CONFIG,
+	exclusiveFilter: (frame) => {
+		if (frame.tag !== 'img') return false;
+		const src = frame.attribs['src']?.trim() ?? '';
+		return src ? /^cid:/i.test(src) : !frame.attribs['srcset'];
+	},
+};
+
 export function sanitizeSavedReplyBody(html: string): string {
-	const cleaned = sanitizeHtml(html, POSTBOX_SANITIZE_CONFIG);
+	const cleaned = sanitizeHtml(html, SAVED_REPLY_SANITIZE_CONFIG);
 	if (cleaned.length > BODY_MAX_CHARS) {
 		throwInvalidInput(
 			`Reply text exceeds the maximum allowed size (${BODY_MAX_CHARS} characters).`

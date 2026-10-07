@@ -90,6 +90,20 @@ export function resolveInlineImageSrcs(
 }
 
 /**
+ * The body without its inline images. Their bytes are parts of one draft, so
+ * a copy of the body kept anywhere else (a saved reply, #1293) cannot carry them.
+ */
+export function stripInlineImages(html: string): { html: string; removed: number } {
+	let removed = 0;
+	const stripped = html.replace(IMG_TAG_RE, (tag) => {
+		if (!extractCid(tag)) return tag;
+		removed += 1;
+		return '';
+	});
+	return { html: stripped, removed };
+}
+
+/**
  * Whether an inline part with `contentId` is still referenced by the body.
  * A part with no contentId is never an embeddable inline image, so it is
  * treated as unreferenced by this predicate (callers keep real attachments via
