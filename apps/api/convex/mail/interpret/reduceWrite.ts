@@ -29,6 +29,7 @@ import {
 	type ItemBucket,
 } from './counters';
 import { counterpartyKeyOf, evidenceKey, responsibilityOf } from './reducePlan';
+import { exactValueKey } from './factEquivalence';
 import {
 	sameEvidence,
 	type MemEvidence,
@@ -284,6 +285,7 @@ async function insertItem(
 		...(item.isReviewNeeded ? { isReviewNeeded: true } : {}),
 		...(counterpartyKey ? { counterpartyKey } : {}),
 		...(item.lineage ? { lineage: item.lineage } : {}),
+		...(item.lineageKeys?.length ? { lineageKeys: item.lineageKeys } : {}),
 		askedAt: item.askedAt,
 		createdAt: args.now,
 		updatedAt: args.now,
@@ -320,6 +322,11 @@ async function patchItem(
 	if (!sameEvidence(item.evidence, row.evidence)) {
 		patch.evidence = await sealEvidence(item.evidence, row.evidence);
 	}
+	// The identity record is bookkeeping: written, but no revision or activity of its own.
+	const lineageKeys =
+		item.lineageKeys && !same([...item.lineageKeys].sort(), [...(row.lineageKeys ?? [])].sort())
+			? item.lineageKeys
+			: undefined;
 	if (!samePending(item.pendingUpdate, row.pendingUpdate)) {
 		patch.pendingUpdate = item.pendingUpdate
 			? {
@@ -360,6 +367,7 @@ async function patchItem(
 	const derived = {
 		...(listBucket !== row.listBucket ? { listBucket } : {}),
 		...(sortKey !== row.sortKey ? { sortKey } : {}),
+		...(lineageKeys ? { lineageKeys } : {}),
 	};
 	if (Object.keys(patch).length === 0) {
 		// A row stored before these existed: fill them in, no revision or activity.
@@ -439,14 +447,18 @@ async function patchFact(
 	if (args.isRebuild) {
 		if (supersedesId !== row.supersedesId) patch.supersedesId = supersedesId;
 		if (conflictsWithId !== row.conflictsWithId) patch.conflictsWithId = conflictsWithId;
+		// Each field on its own (round 3 P4): a corrected amount with the same
+		// wording, one locale's display, or a value the repair no longer gives.
 		const f = fact.proposal;
-		if (f && fact.storedAssertionText !== undefined && f.assertion !== fact.storedAssertionText) {
-			Object.assign(patch, {
-				factKey: f.key,
-				assertion: await sealBodyAtWrite(f.assertion),
-				display: await sealDisplay(f.display),
-				value: await sealFactValue(f.value),
-			});
+		if (f) {
+			if (f.key !== row.factKey) patch.factKey = f.key;
+			if (fact.storedAssertionText === undefined || f.assertion !== fact.storedAssertionText) {
+				patch.assertion = await sealBodyAtWrite(f.assertion);
+			}
+			if (!same(f.display, fact.storedDisplay)) patch.display = await sealDisplay(f.display);
+			if (exactValueKey(f.value) !== fact.storedValueKey) {
+				patch.value = await sealFactValue(f.value);
+			}
 		}
 	}
 	if (Object.keys(patch).length === 0) return;

@@ -60,7 +60,7 @@ import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from
 import { clampOutput } from './clamp';
 import { needsReplyProjectionOf, type NeedsReplyProjection } from './needsReplyProjection';
 import { verifyClaims } from './verify';
-import { isRetryDue } from './retry';
+import { isGateCode, isRetryDue } from './retry';
 import type { ReduceResult } from './reduceInput';
 import type { ApplyOutcome } from './reduce';
 
@@ -271,34 +271,47 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			isUncertain: segmented.uncertain,
 		};
 
-		// Dedupe: this revision was already folded in by an earlier run. An
-		// incomplete one is repaired once its retry is due; otherwise it is
-		// reported as it stands (its status, not a bare "replayed").
-		const previous = loaded.previous.find(
-			(p) =>
-				p.contentRevision === contentRevision &&
-				p.extractorVersion === INTERPRET_EXTRACTOR_VERSION &&
-				p.isApplied
-		);
-		if (previous) {
-			const isComplete = previous.status === 'complete' || previous.status === 'skipped';
-			if (isComplete || !isRetryDue(previous, Date.now())) {
-				const stored = previous.hasPayload
-					? await ctx.runQuery(internal.mail.interpret.load.readStoredResult, {
-							interpretationId: previous.interpretationId,
-						})
-					: null;
+		// Reuse only on an EXACT match (review round 3 P3): the source's counted
+		// extraction (its newest attempt) is for this content revision,
+		// extractor version and mode. Then a complete one is reported as it
+		// stands, an incomplete one is repaired once its retry is due. Anything
+		// else (an older revision current again, another mode) re-extracts.
+		const counted = loaded.counted;
+		const isExact =
+			!!counted &&
+			counted.isApplied &&
+			counted.contentRevision === contentRevision &&
+			counted.extractorVersion === INTERPRET_EXTRACTOR_VERSION &&
+			counted.mode === mode;
+		let gateRetryCount: number | undefined;
+		if (counted && isExact) {
+			const isFinished = counted.status === 'complete' || counted.status === 'skipped';
+			const isCurrentRead =
+				loaded.current?.interpretationId === counted.interpretationId || !counted.hasPayload;
+			if ((isFinished && isCurrentRead) || (!isFinished && !isRetryDue(counted, Date.now()))) {
+				const good = loaded.current?.hasPayload ? loaded.current : null;
+				const stored =
+					good && good.contentRevision === contentRevision
+						? await ctx.runQuery(internal.mail.interpret.load.readStoredResult, {
+								interpretationId: good.interpretationId,
+							})
+						: null;
 				return {
-					status: previous.status,
+					status: counted.status,
 					isReplayed: true,
-					interpretationId: previous.interpretationId,
+					interpretationId: counted.interpretationId,
 					createdItemIds: [],
 					...(stored ? { projection: needsReplyProjectionOf(stored, loaded.ownerLocale) } : {}),
-					...(previous.errorCode ? { errorCode: previous.errorCode } : {}),
-					...(previous.nextRetryAt !== undefined ? { retryAt: previous.nextRetryAt } : {}),
+					...(counted.errorCode ? { errorCode: counted.errorCode } : {}),
+					...(counted.nextRetryAt !== undefined ? { retryAt: counted.nextRetryAt } : {}),
 				};
 			}
-			retryCount = (previous.retryCount ?? 0) + 1;
+			if (!isFinished) {
+				// A gate refusal (AI off, budget) never spends the bounded retry budget.
+				const prior = counted.retryCount ?? 0;
+				retryCount = isGateCode(counted.errorCode) ? prior : prior + 1;
+				gateRetryCount = prior;
+			}
 		}
 		const attempt = {
 			...(retryCount !== undefined ? { retryCount } : {}),
@@ -313,7 +326,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 					status: 'failed',
 					errorCode: gate.code,
 					sourceManifest,
-					...attempt,
+					...(sourceVersion ? { sourceVersion } : {}),
+					...(gateRetryCount !== undefined ? { retryCount: gateRetryCount } : {}),
 				}),
 				{ errorCode: gate.code }
 			);

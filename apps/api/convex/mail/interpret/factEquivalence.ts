@@ -82,3 +82,17 @@ export function isProvenRestatement(fact: ReduceFact, stored: PlanFact): boolean
 	if (incoming !== undefined || existing !== undefined) return false;
 	return normalizedWords(fact.assertion) === normalizedWords(stored.assertionText);
 }
+
+/** The exact stored form of a fact value (no equivalence folding): what the writer compares. Pure. */
+export function exactValueKey(
+	value:
+		| { kind: 'date'; at: number; tz?: string }
+		| { kind: 'money'; value: number; currency: string }
+		| { kind: 'ref' | 'url' | 'text'; text: string }
+		| undefined
+): string | undefined {
+	if (!value) return undefined;
+	if (value.kind === 'date') return `date:${value.at}:${value.tz ?? ''}`;
+	if (value.kind === 'money') return `money:${value.value}:${value.currency}`;
+	return `${value.kind}:${value.text}`;
+}

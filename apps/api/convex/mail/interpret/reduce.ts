@@ -41,10 +41,11 @@ import {
 	loadReplayState,
 	sourceStillInThread,
 } from './reduceState';
-import { applyHumanOps, foldEntry, replayThread } from './replay';
+import { applyHumanOps, foldEntry, preserveHumanState, replayThread } from './replay';
 import { writeState } from './reduceWrite';
 import { EMPTY_SOURCE_COUNTS, completenessOfCounts, shiftCount, sourceBucketOf } from './counters';
 import { nextRetryAtOf } from './retry';
+import { ATTEMPT_SUFFIX } from './load';
 import { sourceVersionOf } from './sourceVersion';
 import { refreshBriefTop } from './briefTop';
 
@@ -111,55 +112,51 @@ export const applyInterpretation = internalMutation({
 
 		const sourceKey = interpretationSourceKey(args.source);
 		const now = Date.now();
+		const { current: previous, counted: previousCounted } = await markedRowsOf(ctx, sourceKey);
+		// An attempt that read nothing never replaces the claims of the last good
+		// read: it is recorded beside it (its own row, `<revision>~attempt`) and
+		// counted, and the good read stays the replay source (round 2 F2, round 3 P3).
+		const isKeepingPrevious = !args.result && previous?.payload !== undefined;
+		const rowRevision = isKeepingPrevious
+			? `${args.contentRevision}${ATTEMPT_SUFFIX}`
+			: args.contentRevision;
 		const existing = await ctx.db
 			.query('messageInterpretations')
 			.withIndex('by_source_revision', (q) =>
 				q
 					.eq('sourceKey', sourceKey)
-					.eq('contentRevision', args.contentRevision)
+					.eq('contentRevision', rowRevision)
 					.eq('extractorVersion', args.extractorVersion)
 			)
 			.first();
 		if (existing?.appliedAt !== undefined && !rowMatchesThreadRef(existing, ref)) {
 			return { outcome: 'gone' };
 		}
-		const replayed = (row: Doc<'messageInterpretations'>): ApplyOutcome => ({
-			outcome: 'replayed',
-			status: row.status,
-			interpretationId: row._id,
-			interpretationRevision: brief.interpretationRevision,
-			createdItemIds: [],
-			completeness: brief.completeness,
-			...(row.nextRetryAt !== undefined ? { nextRetryAt: row.nextRetryAt } : {}),
-		});
-		if (existing?.appliedAt !== undefined) {
-			if (args.retryCount === undefined && existing.status === args.status)
-				return replayed(existing);
-			// A repair that read nothing never replaces what the earlier attempt read.
-			if (!args.result && existing.payload !== undefined) {
-				const retryRow = {
-					...existing,
-					retryCount: args.retryCount,
-					errorCode: args.errorCode ?? existing.errorCode,
-				};
-				const nextRetryAt = nextRetryAtOf(retryRow, now);
-				await ctx.db.patch(existing._id, {
-					retryCount: args.retryCount,
-					nextRetryAt,
-					updatedAt: now,
-				});
-				return replayed({ ...existing, nextRetryAt });
-			}
+		// A replay only on an exact match: the same row is the counted one (and the
+		// current one when it read the message), same mode, same outcome, no retry.
+		if (
+			existing?.appliedAt !== undefined &&
+			args.retryCount === undefined &&
+			existing.status === args.status &&
+			existing.mode === mode &&
+			existing.isCounted !== false &&
+			(!args.result || existing.isCurrent === true)
+		) {
+			return {
+				outcome: 'replayed',
+				status: existing.status,
+				interpretationId: existing._id,
+				interpretationRevision: brief.interpretationRevision,
+				createdItemIds: [],
+				completeness: brief.completeness,
+				...(existing.nextRetryAt !== undefined ? { nextRetryAt: existing.nextRetryAt } : {}),
+			};
 		}
 		if (brief.interpretationRevision !== args.expectedRevision) {
 			return { outcome: 'stale', interpretationRevision: brief.interpretationRevision };
 		}
 
 		const isOutOfOrder = !!brief.checkpoint && args.sourceAt < brief.checkpoint.sourceAt;
-		const { current: previous, counted: previousCounted } = await markedRowsOf(ctx, sourceKey);
-		// An attempt that read nothing never replaces the claims of the last good
-		// read (review round 2 F2): it is recorded and counted, not folded in.
-		const isKeepingPrevious = !args.result && previous?.payload !== undefined;
 		const isReapply = previous?.appliedAt !== undefined && !isKeepingPrevious;
 		let status: InterpretationStatus = args.status;
 		let errorCode = args.errorCode;
@@ -193,7 +190,7 @@ export const applyInterpretation = internalMutation({
 			...threadRefToFields(ref),
 			source: args.source,
 			sourceKey,
-			contentRevision: args.contentRevision,
+			contentRevision: rowRevision,
 			extractorVersion: args.extractorVersion,
 			mode,
 			status,
@@ -249,6 +246,7 @@ export const applyInterpretation = internalMutation({
 					threadKind: ref.kind,
 				});
 				applyHumanOps(after, replay.ops);
+				preserveHumanState(after, replay.rows);
 				fold = {
 					...writeBase,
 					after,

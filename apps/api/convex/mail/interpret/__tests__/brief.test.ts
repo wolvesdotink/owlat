@@ -371,7 +371,8 @@ describe('state load', () => {
 		expect(loaded?.openItems).toHaveLength(2);
 		expect(loaded?.openItems[0]?.evidenceExcerpt).toBe('send the signed contract');
 		expect(loaded?.currentFacts).toHaveLength(1);
-		expect(loaded?.previous[0]).toMatchObject({ contentRevision: 'rev-1', isApplied: true });
+		expect(loaded?.current).toMatchObject({ contentRevision: 'rev-1', isApplied: true });
+		expect(loaded?.counted?.interpretationId).toBe(loaded?.current?.interpretationId);
 	});
 });
 

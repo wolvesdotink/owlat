@@ -105,6 +105,10 @@ export type ItemPatch = {
 	fill?: Partial<Pick<Doc<'threadItems'>, 'due' | 'amount' | 'options'>>;
 	verify?: Doc<'threadItems'>['verify'];
 	isReviewNeeded?: boolean;
+	/** The proposals that matched this item (their claim keys join its lineage). */
+	matched?: ReduceItem[];
+	/** A verified claim promoting a proposal item: these fields REPLACE the item's (absent = cleared). */
+	promote?: Partial<Pick<Doc<'threadItems'>, 'due' | 'amount' | 'options'>>;
 	/** An unconfirmed claim's changes to a tracked item, held apart until confirmed. */
 	pendingUpdate?: {
 		addEvidence: PlanEvidence[];
@@ -257,6 +261,7 @@ export function planReduction(
 		const match = proposal.matchItemId ? byId.get(proposal.matchItemId) : undefined;
 		if (match && match.status !== 'superseded') {
 			const p = patch(match);
+			p.matched = [...(p.matched ?? []), proposal];
 			const added = newEvidence(match.evidence, proposal.evidence, opts.source, contentRevision);
 			if (proposal.verify === 'proposal' && match.verify !== 'proposal') {
 				// An unconfirmed claim never changes a tracked obligation: its quotes,
@@ -277,12 +282,22 @@ export function planReduction(
 				continue;
 			}
 			if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
-			const fill: ItemPatch['fill'] = {};
-			if (!match.due && proposal.due) fill.due = proposal.due;
-			if (!match.amount && proposal.amount) fill.amount = proposal.amount;
-			if (!match.options && proposal.options) fill.options = proposal.options;
-			if (Object.keys(fill).length > 0) p.fill = fill;
-			if (match.verify === 'proposal' && proposal.verify === 'passed') p.verify = 'passed';
+			if (match.verify === 'proposal' && proposal.verify === 'passed') {
+				// Promotion (round 3 P4): the verified claim's own fields replace the
+				// proposal's unverified ones, never the other way round.
+				p.verify = 'passed';
+				p.promote = {
+					...(proposal.due ? { due: proposal.due } : {}),
+					...(proposal.amount ? { amount: proposal.amount } : {}),
+					...(proposal.options ? { options: proposal.options } : {}),
+				};
+			} else {
+				const fill: ItemPatch['fill'] = {};
+				if (!match.due && proposal.due) fill.due = proposal.due;
+				if (!match.amount && proposal.amount) fill.amount = proposal.amount;
+				if (!match.options && proposal.options) fill.options = proposal.options;
+				if (Object.keys(fill).length > 0) p.fill = fill;
+			}
 			// Asked again after it was closed (by a human, or reported done): a person looks.
 			if (match.status !== 'open' || proposal.isReviewNeeded) p.isReviewNeeded = true;
 			if (added.length > 0 || p.fill || p.verify) p.activity ??= { type: 'item_changed' };

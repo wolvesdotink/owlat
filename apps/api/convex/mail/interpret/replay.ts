@@ -33,6 +33,8 @@ export type MemEvidence = Evidence & { isPlain?: true };
 export interface MemItem extends Omit<PlanItem, 'evidence'> {
 	evidence: MemEvidence[];
 	lineage?: string;
+	/** Every claim key that produced or matched it (its identity record, round 3 P1). */
+	lineageKeys?: string[];
 	/** No row yet: the writer inserts it. */
 	isNew: boolean;
 	/** The proposal that created it (replay, or a new item): its text and parties. */
@@ -58,6 +60,9 @@ export interface MemFact extends Omit<PlanFact, 'evidence'> {
 	isNew: boolean;
 	proposal?: ReduceFact;
 	storedAssertionText?: string;
+	/** A replayed row's stored display (opened) and value (comparable form). */
+	storedDisplay?: { en: string; de: string };
+	storedValueKey?: string;
 	supersedesId?: Id<'threadFacts'>;
 	conflictsWithId?: Id<'threadFacts'>;
 }
@@ -86,7 +91,10 @@ export interface MemOptions {
 
 /** Existing rows by lineage, so a replayed proposal maps onto its row. */
 export interface LineageSeed {
+	/** Rows by every claim key that ever produced them (`lineage` + `lineageKeys`). */
 	items: ReadonlyMap<string, MemItem>;
+	/** Rows by id: an explicit `matchItemId` to one of them always wins (round 3 P1). */
+	itemsById?: ReadonlyMap<string, MemItem>;
 	facts: ReadonlyMap<string, MemFact>;
 }
 
@@ -178,11 +186,19 @@ export function applyPlan(
 	const taken = new Set<string>();
 	for (const insert of plan.inserts) {
 		const lineage = uniqueLineage(itemLineage(entry.sourceKey, insert.item), taken);
-		const row = seed?.items.get(lineage);
 		const p = insert.item;
+		// Identity is the thread's (round 3 P1): an explicit match to an item of
+		// this thread first, then a claim key that produced an item before; only
+		// a never-seen claim mints a new id. A row is never claimed twice.
+		const free = (candidate: MemItem | undefined) =>
+			candidate && !state.items.has(candidate._id) ? candidate : undefined;
+		const row =
+			free(p.matchItemId ? seed?.itemsById?.get(p.matchItemId) : undefined) ??
+			free(seed?.items.get(lineage));
 		const item: MemItem = {
 			_id: (row?._id ?? `new:${lineage}`) as Id<'threadItems'>,
-			lineage,
+			lineage: row?.lineage ?? lineage,
+			lineageKeys: [...new Set([...(row?.lineageKeys ?? []), lineage])],
 			isNew: !row,
 			proposal: p,
 			status: 'open',
@@ -220,6 +236,19 @@ export function applyPlan(
 		if (patch.fill?.options) item.options = patch.fill.options;
 		if (patch.verify) item.verify = patch.verify;
 		if (patch.isReviewNeeded) item.isReviewNeeded = true;
+		if (patch.promote) {
+			item.due = patch.promote.due;
+			item.amount = patch.promote.amount;
+			item.options = patch.promote.options;
+		}
+		if (patch.matched?.length) {
+			item.lineageKeys = [
+				...new Set([
+					...(item.lineageKeys ?? []),
+					...patch.matched.map((m) => itemLineage(entry.sourceKey, m)),
+				]),
+			];
+		}
 		if (patch.pendingUpdate) {
 			const pending = patch.pendingUpdate;
 			const prior = item.pendingUpdate;
@@ -256,6 +285,8 @@ export function applyPlan(
 				...(f.value && 'text' in f.value ? { valueText: f.value.text } : {}),
 				assertionText: f.assertion,
 				...(row ? { storedAssertionText: row.assertionText } : {}),
+				...(row?.storedDisplay ? { storedDisplay: row.storedDisplay } : {}),
+				...(row ? { storedValueKey: row.storedValueKey } : {}),
 				evidence: ev(f.evidence),
 				...(op.supersedesId ? { supersedesId: op.supersedesId } : {}),
 				...(op.conflictsWithId ? { conflictsWithId: op.conflictsWithId } : {}),
@@ -359,4 +390,37 @@ export function sameEvidence(a: readonly EvidenceRef[], b: readonly EvidenceRef[
 	if (a.length !== b.length) return false;
 	const set = new Set(a.map(evidenceKey));
 	return b.every((e) => set.has(evidenceKey(e)));
+}
+
+/** The human- and operation-owned state of a stored item (round 3 P2). */
+export type HumanState = Pick<
+	Doc<'threadItems'>,
+	'status' | 'completion' | 'correction' | 'due' | 'amount' | 'options' | 'pendingUpdate'
+>;
+
+/**
+ * After a replay, put back what people and operations decided, which a
+ * replay never recomputes (round 3 P2): a completion that was recorded (a
+ * send, a booking) or asserted (marked done) keeps its status, and a
+ * confirmed proposal keeps the deadline, amount and options the person
+ * confirmed (and whatever pending update they left). Mutates `state`.
+ */
+export function preserveHumanState(state: MemState, rows: ReadonlyMap<string, HumanState>): void {
+	for (const item of state.items.values()) {
+		const row = rows.get(item._id);
+		if (!row) continue;
+		if (row.completion === 'recorded' || row.completion === 'asserted') {
+			item.status = row.status;
+			item.completion = row.completion;
+		}
+		if (row.correction?.kind === 'confirmed') {
+			item.verify = 'passed';
+			item.due = row.due;
+			item.amount = row.amount;
+			item.options = row.options;
+			if (row.pendingUpdate)
+				item.pendingUpdate = { ...row.pendingUpdate, evidence: [...row.pendingUpdate.evidence] };
+			else delete item.pendingUpdate;
+		}
+	}
 }
