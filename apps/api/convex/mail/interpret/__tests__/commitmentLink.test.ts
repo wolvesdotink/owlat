@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
-import { linkCommitmentsForMessage, pickCommitmentItem } from '../commitmentLink';
+import { onItemsCreated, pickCommitmentItem } from '../commitmentLink';
 import { modules, reduceItem, reduceResult, seedMailThread, type Test } from './interpret.testlib';
 
 const session = vi.hoisted(() => ({
@@ -108,8 +108,16 @@ describe('commitment links', () => {
 			(await t.run(async (ctx) => ctx.db.query('mailCommitments').first()))?.threadItemId
 		).toBeUndefined();
 		const item = await interpret(t, messageId, threadId);
-		// What the reducer runs after inserting items for a mail source.
-		await t.run(async (ctx) => linkCommitmentsForMessage(ctx, messageId));
+		// Called the way the reducer will, after it inserted the message's items.
+		// Nothing created, or a Team Inbox source: no link.
+		await t.run(async (ctx) => onItemsCreated(ctx, { kind: 'mail', id: messageId }, []));
+		await t.run(async (ctx) =>
+			onItemsCreated(ctx, { kind: 'inbound', id: 'x' as Id<'inboundMessages'> }, [item._id])
+		);
+		expect(
+			(await t.run(async (ctx) => ctx.db.query('mailCommitments').first()))?.threadItemId
+		).toBeUndefined();
+		await t.run(async (ctx) => onItemsCreated(ctx, { kind: 'mail', id: messageId }, [item._id]));
 		expect(
 			(await t.run(async (ctx) => ctx.db.query('mailCommitments').first()))?.threadItemId
 		).toBe(item._id);
