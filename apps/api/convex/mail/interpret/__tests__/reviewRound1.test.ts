@@ -235,7 +235,7 @@ describe('F5: ordered replay', () => {
 		expect(after.find((i) => i._id === invoiceId)).toMatchObject({
 			status: 'done',
 			completion: 'reported',
-			lineage: expect.stringContaining('#0'),
+			lineage: expect.stringMatching(/^mail:.+#[0-9a-z]+$/),
 		});
 		expect(after.find((i) => i._id === venueId)).toMatchObject({
 			status: 'done',

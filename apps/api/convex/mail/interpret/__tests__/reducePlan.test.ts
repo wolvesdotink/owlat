@@ -509,6 +509,85 @@ describe('review round 1', () => {
 	});
 });
 
+describe('review round 2', () => {
+	it('holds an unconfirmed claim on a tracked item as a pending update (F4)', () => {
+		const plan = planReduction(
+			{ items: [stored()], facts: [] },
+			result({
+				items: [
+					proposal({
+						matchItemId: 'item_a',
+						verify: 'proposal',
+						due: { phrase: 'by Monday', isAmbiguous: false },
+						amount: { value: 900, currency: 'EUR' },
+					}),
+				],
+			}),
+			REV,
+			BRIEF
+		);
+		expect(plan.patches[0]).toMatchObject({
+			pendingUpdate: {
+				addEvidence: [ev()],
+				due: { phrase: 'by Monday', isAmbiguous: false },
+				amount: { value: 900, currency: 'EUR' },
+			},
+		});
+		expect(plan.patches[0]?.fill).toBeUndefined();
+		expect(plan.patches[0]?.addEvidence).toBeUndefined();
+	});
+
+	it('rejects an unverified closing claim even when the status is already closed (F7)', () => {
+		const plan = planReduction(
+			{ items: [stored({ status: 'done', completion: 'reported' })], facts: [] },
+			result({
+				transitions: [transition({ to: 'done', disposition: 'answered', isVerified: false })],
+			}),
+			REV,
+			BRIEF
+		);
+		expect(plan.patches).toEqual([]);
+		expect(plan.dropped).toEqual([{ kind: 'transition', index: 0, reason: 'unverified' }]);
+	});
+
+	it('compares URLs and references by kind (F9)', () => {
+		const storedFact = (kind: 'url' | 'ref', text: string): PlanFact => ({
+			_id: id<'threadFacts'>('fact_u'),
+			factKey: '["portal","link",""]',
+			status: 'current',
+			revision: 1,
+			evidence: [],
+			value: { kind, text: 'sealed' },
+			valueText: text,
+			assertionText: 'x',
+		});
+		const claim = (kind: 'url' | 'ref', text: string): ReduceFact => ({
+			key: '["portal","link",""]',
+			assertion: 'x',
+			display: { en: 'x', de: 'x' },
+			value: { kind, text },
+			evidence: [ev()],
+			isVerified: false,
+			isReviewNeeded: false,
+		});
+		const kindOf = (kind: 'url' | 'ref', a: string, b: string) =>
+			planReduction(
+				{ items: [], facts: [storedFact(kind, a)] },
+				result({ facts: [claim(kind, b)] }),
+				REV,
+				BRIEF
+			).facts[0]?.kind;
+		expect(
+			kindOf('url', 'https://pay.example.com/Invoice/7', 'https://pay.example.com/invoice/7')
+		).toBe('insert');
+		expect(
+			kindOf('url', 'https://PAY.example.com/Invoice/7', 'HTTPS://pay.example.com/Invoice/7')
+		).toBe('evidence');
+		expect(kindOf('ref', 'Ab12', 'AB12')).toBe('insert');
+		expect(kindOf('ref', 'DE89 3704 0044 0532 0130 00', 'de89370400440532013000')).toBe('evidence');
+	});
+});
+
 describe('helpers', () => {
 	it('derives responsibility from the responsible party', () => {
 		expect(responsibilityOf({ isUs: true })).toBe('us');
