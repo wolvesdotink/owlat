@@ -41,7 +41,12 @@ import {
 	parseHeaderLine,
 	type HeaderField,
 } from './mailSegmentsMarkers';
-import { insideContainer, type QuoteContainer, type SourceLine } from './mailSegmentsSource';
+import {
+	insideContainer,
+	type QuoteContainer,
+	type SegmentWork,
+	type SourceLine,
+} from './mailSegmentsSource';
 
 export type SegmentKind = 'fresh' | 'quoted' | 'forwarded' | 'signature' | 'disclaimer';
 
@@ -85,13 +90,18 @@ interface HeaderBlock {
 }
 
 /** `Label: value` lines from `start` (blank lines before the first one skipped). */
-function readHeaderBlock(lines: SourceLine[], start: number): HeaderBlock | null {
+function readHeaderBlock(
+	lines: SourceLine[],
+	start: number,
+	work: SegmentWork
+): HeaderBlock | null {
 	let j = start;
 	while (j < lines.length && j < start + 2 && lines[j]?.text === '') j++;
 	const fields: Partial<Record<HeaderField, string>> = {};
 	let count = 0;
 	const depth = lines[j]?.depth;
 	for (; j < lines.length && count < 12; j++) {
+		work.steps++;
 		const line = lines[j] as SourceLine;
 		if (line.depth !== depth) break;
 		const header = parseHeaderLine(line.text);
@@ -107,9 +117,54 @@ function originOf(fields: Partial<Record<HeaderField, string>>): QuoteOrigin {
 	return { ...(author ? { author } : {}), ...(fields.date ? { sentAt: fields.date } : {}) };
 }
 
-function nextNonBlank(lines: SourceLine[], from: number): number {
-	for (let j = from; j < lines.length; j++) if (lines[j]?.text !== '') return j;
+function nextNonBlank(lines: SourceLine[], from: number, work: SegmentWork): number {
+	for (let j = from; j < lines.length; j++) {
+		work.steps++;
+		if (lines[j]?.text !== '') return j;
+	}
 	return -1;
+}
+
+/**
+ * The open region per quote depth. Depths only ever join above the deepest one
+ * open, so pruning everything deeper than a line pops a stack: each depth is
+ * pushed and popped once, and the meter counts both.
+ */
+class DepthContext {
+	private readonly depths: number[] = [];
+	private readonly regions = new Map<number, Region>();
+
+	constructor(private readonly work: SegmentWork) {}
+
+	get(depth: number): Region | undefined {
+		return this.regions.get(depth);
+	}
+
+	set(depth: number, region: Region): void {
+		this.work.steps++;
+		if (!this.regions.has(depth)) {
+			const deepest = this.depths[this.depths.length - 1] ?? -1;
+			if (depth > deepest) this.depths.push(depth);
+			else
+				this.depths.splice(
+					this.depths.findIndex((d) => d > depth),
+					0,
+					depth
+				);
+		}
+		this.regions.set(depth, region);
+	}
+
+	/** Close every region deeper than `depth`. */
+	prune(depth: number): void {
+		for (;;) {
+			const deepest = this.depths[this.depths.length - 1];
+			if (deepest === undefined || deepest <= depth) return;
+			this.work.steps++;
+			this.depths.pop();
+			this.regions.delete(deepest);
+		}
+	}
 }
 
 export interface ClassifyOptions {
@@ -122,6 +177,8 @@ export interface ClassifyOptions {
 	 * the embedded subject decide.
 	 */
 	subjectKind?: 'forward' | 'reply' | 'other';
+	/** Work meter for the linear-time tests (see `SegmentWork`). */
+	work?: SegmentWork;
 }
 
 /**
@@ -129,10 +186,11 @@ export interface ClassifyOptions {
  * no blank line on either side: wrapped quote text or an inline answer, which
  * the markers cannot tell apart (capitalisation proves nothing).
  */
-function sandwichedLines(lines: SourceLine[]): boolean[] {
+function sandwichedLines(lines: SourceLine[], work: SegmentWork): boolean[] {
 	const out = lines.map(() => false);
 	let k = 0;
 	while (k < lines.length) {
+		work.steps++;
 		const first = lines[k] as SourceLine;
 		if (first.text === '') {
 			k++;
@@ -144,6 +202,7 @@ function sandwichedLines(lines: SourceLine[]): boolean[] {
 			lines[e + 1]?.text !== '' &&
 			lines[e + 1]?.depth === first.depth
 		) {
+			work.steps++;
 			e++;
 		}
 		const before = lines[k - 1];
@@ -166,20 +225,25 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 		kind,
 		...(origin && (origin.author || origin.sentAt) ? { origin } : {}),
 	});
-	const ctx = new Map<number, Region>([[0, open('fresh')]]);
+	const work = options.work ?? { chars: 0, steps: 0 };
+	const ctx = new DepthContext(work);
+	ctx.set(0, open('fresh'));
 	const firstOrigin = new Map<number, QuoteOrigin>();
 	let lastRegion: Region | null = null;
 	let headerSeen = false;
-	const sandwiched = sandwichedLines(lines);
+	const sandwiched = sandwichedLines(lines, work);
 
 	const claim = (from: number, to: number, region: Region) => {
-		for (let k = from; k < to; k++) if (lines[k]?.text !== '') regionOf[k] = region;
+		for (let k = from; k < to; k++) {
+			work.steps++;
+			if (lines[k]?.text !== '') regionOf[k] = region;
+		}
 	};
 	/** Open a region at `line`: one level down if the next content is deeper. */
 	const startRegion = (i: number, after: number, kind: SegmentKind, origin: QuoteOrigin) => {
 		const depth = (lines[i] as SourceLine).depth;
 		const region = open(kind, origin);
-		const next = nextNonBlank(lines, after);
+		const next = nextNonBlank(lines, after, work);
 		const marked = next >= 0 && (lines[next] as SourceLine).depth > depth;
 		ctx.set(marked ? depth + 1 : depth, region);
 		if (marked && region.origin && !firstOrigin.has(depth + 1)) {
@@ -196,6 +260,9 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i] as SourceLine;
+		// Each line is read by a fixed set of bounded, anchored marker patterns.
+		work.steps++;
+		work.chars += line.text.length;
 		if (line.text === '') continue;
 		// Lines a marker already claimed (its header block, a wrapped attribution)
 		// leave the open regions alone: the region they opened may sit deeper.
@@ -203,18 +270,18 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 			lastRegion = regionOf[i] as Region;
 			continue;
 		}
-		for (const depth of ctx.keys()) if (depth > line.depth) ctx.delete(depth);
+		ctx.prune(line.depth);
 		// An unmarked region opened inside a quote container ends with it.
 		const bound = ctx.get(line.depth);
 		if (bound?.container && !insideContainer(line, bound.container)) {
 			if (line.depth === 0) ctx.set(0, open('fresh'));
-			else ctx.delete(line.depth);
+			else ctx.prune(line.depth - 1);
 		}
 		const text = line.text.trim();
 		const nextLine = lines[i + 1];
 
 		if (isForwardBanner(text) || line.hint === 'forwardContainer') {
-			const header = readHeaderBlock(lines, i + 1);
+			const header = readHeaderBlock(lines, i + 1, work);
 			const origin = header ? originOf(header.fields) : {};
 			const { region } = startRegion(i, header?.end ?? i + 1, 'forwarded', origin);
 			if (!origin.author) reasons.add('forward_without_author');
@@ -223,7 +290,7 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 		}
 
 		const lead = isSeparatorLine(text) || isOriginalMessageLine(text);
-		const header = readHeaderBlock(lines, lead ? i + 1 : i);
+		const header = readHeaderBlock(lines, lead ? i + 1 : i, work);
 		const isHeader = !!header && !!header.fields.from && !!header.fields.date;
 		if (
 			isHeader ||
@@ -279,14 +346,15 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 		lastRegion = region;
 	}
 
-	penalty += splitFreshTails(lines, regionOf, open);
+	penalty += splitFreshTails(lines, regionOf, open, work);
 	return { regionOf, reasons: [...reasons], penalty };
 }
 
 /** Indices of the lines of each fresh region, in order. */
-function freshRuns(regionOf: (Region | null)[]): number[][] {
+function freshRuns(regionOf: (Region | null)[], work: SegmentWork): number[][] {
 	const runs = new Map<number, number[]>();
 	for (const [i, region] of regionOf.entries()) {
+		work.steps++;
 		if (region?.kind !== 'fresh') continue;
 		const run = runs.get(region.id) ?? [];
 		run.push(i);
@@ -298,14 +366,17 @@ function freshRuns(regionOf: (Region | null)[]): number[][] {
 function splitFreshTails(
 	lines: SourceLine[],
 	regionOf: (Region | null)[],
-	open: (kind: SegmentKind) => Region
+	open: (kind: SegmentKind) => Region,
+	work: SegmentWork
 ): number {
 	let penalty = 0;
-	for (const run of freshRuns(regionOf)) {
+	for (const run of freshRuns(regionOf, work)) {
+		// The mapping, the split and the relabelling each walk the run once or twice.
+		work.steps += 4 * run.length;
 		const texts = run.map((i) => (lines[i] as SourceLine).text);
 		// A gap in the line numbers is a blank line (or another region) between.
 		const breaks = run.map((i, k) => k === 0 || i !== (run[k - 1] as number) + 1);
-		const tail = splitFreshTail(texts, breaks);
+		const tail = splitFreshTail(texts, breaks, work);
 		if (tail.byClosing) penalty += 0.05;
 		if (tail.signature < tail.signatureEnd) {
 			const signature = open('signature');
@@ -345,12 +416,16 @@ function splitFreshTails(
  */
 function splitFreshTail(
 	texts: string[],
-	breaks: boolean[]
+	breaks: boolean[],
+	work: SegmentWork
 ): { signature: number; signatureEnd: number; disclaimer: number; byClosing: boolean } {
 	let disclaimer = texts.length;
 	for (;;) {
 		let start = disclaimer - 1;
-		while (start > 0 && !breaks[start]) start--;
+		while (start > 0 && !breaks[start]) {
+			work.steps++;
+			start--;
+		}
 		if (start <= 0) break;
 		if (!isConfidentialityNotice(texts.slice(start, disclaimer).join(' '))) break;
 		disclaimer = start;
@@ -358,12 +433,16 @@ function splitFreshTail(
 
 	/** The signature start within `[0, end)`, or -1. */
 	const signatureIn = (end: number): { at: number; byClosing: boolean } => {
-		const delimiter = texts.findIndex((t, k) => k < end && isSignatureDelimiter(t));
+		const delimiter = texts.findIndex((t, k) => {
+			work.steps++;
+			return k < end && isSignatureDelimiter(t);
+		});
 		if (delimiter >= 0) return { at: delimiter, byClosing: false };
 		if (end > 1 && isMobileSignature(texts[end - 1] as string)) {
 			return { at: end - 1, byClosing: false };
 		}
 		for (let c = end - 2; c >= 1 && c >= end - 9; c--) {
+			work.steps += end - c;
 			if (!isClosingLine(texts[c] as string)) continue;
 			if (texts.slice(c + 1, end).every(isNameBlockLine)) return { at: c, byClosing: true };
 			break;
@@ -371,7 +450,10 @@ function splitFreshTail(
 		return { at: -1, byClosing: false };
 	};
 
-	const postscript = texts.findIndex((t, k) => k > 0 && k < disclaimer && isPostscriptLine(t));
+	const postscript = texts.findIndex((t, k) => {
+		work.steps++;
+		return k > 0 && k < disclaimer && isPostscriptLine(t);
+	});
 	let found = postscript > 0 ? signatureIn(postscript) : { at: -1, byClosing: false };
 	let signatureEnd = postscript;
 	if (found.at < 0) {
@@ -383,6 +465,7 @@ function splitFreshTail(
 	}
 	if (signatureEnd === disclaimer) {
 		while (disclaimer > found.at + 1 && isLegalFooterLine(texts[disclaimer - 1] as string)) {
+			work.steps++;
 			disclaimer--;
 		}
 		signatureEnd = disclaimer;

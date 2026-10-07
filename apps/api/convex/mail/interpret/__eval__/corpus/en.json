@@ -486,6 +486,59 @@
 					}
 				]
 			}
+		},
+		{
+			"id": "en-007",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T15:00:00+02:00",
+					"subject": "Draft",
+					"text": "The draft is ready.\n\nBest regards,\nJonas Weber\nSend the invoice to Support.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "Send the invoice to Support.",
+						"segmentKind": "fresh",
+						"assertion": "Send the invoice to Support",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
 		}
 	]
 }

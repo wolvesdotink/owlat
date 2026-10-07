@@ -145,11 +145,16 @@ export function compareReplyQueueItems(
  * Card headline: the thread brief's top item when the thread is interpreted
  * (in the UI `locale`), else the AI's askSummary, else the subject — the
  * deterministic queue must read fine with AI disabled or failed.
+ *
+ * A shared (team) mailbox is never summarised (SPEC §7): its row reads the top
+ * item or the subject, never the askSummary. `isShared` comes from the inbox's
+ * scope; an actions-mode brief says the same on its own.
  */
 export function replyQueueHeadline(
 	item: Pick<ReplyQueueItem, 'askSummary' | 'subject' | 'kind' | 'waitingOn'> &
 		Partial<Pick<ReplyQueueItem, 'fromAddress' | 'fromName' | 'briefTop'>>,
-	locale?: string
+	locale?: string,
+	opts: { isShared?: boolean } = {}
 ): ReplyQueueText {
 	// Follow-up items invert the framing: WE are waiting on THEM. The server
 	// resolves the counterpart's name when it knows one; the address is the fallback.
@@ -164,7 +169,8 @@ export function replyQueueHeadline(
 		const text = (locale?.toLowerCase().startsWith('de') ? top.text.de : top.text.en).trim();
 		if (text) return text;
 	}
-	const ask = item.askSummary?.trim();
+	const isShared = opts.isShared === true || item.briefTop?.mode === 'actions';
+	const ask = isShared ? undefined : item.askSummary?.trim();
 	if (ask) return ask;
 	return item.subject.trim() || 'shared.postboxReplyQueue.noSubject';
 }

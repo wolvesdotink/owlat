@@ -106,6 +106,10 @@ export const evidenceValidator = v.object({
 	// The quoted words, for the brief's evidence marker and the next prompt's
 	// excerpt (the source body is not re-read for either). Sealed.
 	quote: v.optional(v.string()),
+	// Which occurrence of the normalized quote in the canonical text this is
+	// (0 = the first), so the reader marks this passage and not an earlier
+	// one with the same words. Absent on evidence stored before it existed.
+	occurrence: v.optional(v.number()),
 });
 export type Evidence = Infer<typeof evidenceValidator>;
 

@@ -99,6 +99,7 @@ function tierTwoRouteFixture(options: { readonly auditFails?: boolean } = {}) {
 			}
 			if (name.includes('getMessage')) return message;
 			if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
+			if (name.includes('interpretationHold')) return { reason: null };
 			if (name.includes('getAgentConfig')) return null;
 			if (name.includes('evaluateForMessage')) {
 				return { restrictsAutoSend: false, reasons: [] };

@@ -38,6 +38,7 @@ interface GateFixture {
 		| { readonly restrictsAutoSend: boolean; readonly reasons: readonly string[] }
 		| 'throw';
 	readonly breakers?: readonly { readonly state: string; readonly breakerType: string }[] | 'throw';
+	readonly hold?: { readonly reason: string | null } | 'throw';
 }
 
 function context(fixture: GateFixture = {}) {
@@ -59,6 +60,7 @@ function context(fixture: GateFixture = {}) {
 				);
 			}
 			if (name.includes('getCircuitBreakersInternal')) return resolve(fixture.breakers ?? []);
+			if (name.includes('interpretationHold')) return resolve(fixture.hold ?? { reason: null });
 			throw new Error(`Unexpected query: ${name}`);
 		},
 	} as unknown as ActionCtx;
@@ -95,6 +97,7 @@ describe('ordered core auto-send gate registry', () => {
 			'outbound_dlp',
 			'draft_gaps',
 			'handling_rules',
+			'interpretation_incomplete',
 		]);
 		expect(Object.isFrozen(PRE_AUTONOMY_GATE_IDS)).toBe(true);
 		expect(Object.isFrozen(CORE_FINAL_AUTO_SEND_GATE_IDS)).toBe(true);
@@ -128,6 +131,7 @@ describe('ordered core auto-send gate registry', () => {
 			'getBudgetStatus',
 			'getAgentConfig',
 			'evaluateForMessage',
+			'interpretationHold',
 		]);
 	});
 
@@ -227,6 +231,24 @@ describe('ordered core auto-send gate registry', () => {
 			rules: { restrictsAutoSend: true, reasons: ['Manager review required', 'Second'] },
 		});
 		expect(decision).toEqual({ safe: false, reason: 'Manager review required' });
+	});
+
+	it('holds auto-send when interpretation is incomplete (D3)', async () => {
+		const { decision } = await finalDecision({
+			hold: { reason: 'Interpretation of this message is partial; not auto-sending.' },
+		});
+		expect(decision).toEqual({
+			safe: false,
+			reason: 'Interpretation of this message is partial; not auto-sending.',
+		});
+	});
+
+	it('fails closed when the interpretation state cannot be read', async () => {
+		const { decision } = await finalDecision({ hold: 'throw' });
+		expect(decision).toMatchObject({
+			safe: false,
+			reason: expect.stringContaining('interpretation_incomplete'),
+		});
 	});
 
 	it('pins the legacy fail-soft handling-rule read exception', async () => {
@@ -360,6 +382,18 @@ describe('ordered core auto-send gate registry', () => {
 				fixture: { rules: restrictiveRules },
 				reason: 'Handling rule objects',
 				calls: ['getMessage', 'getBudgetStatus', 'getAgentConfig', 'evaluateForMessage'],
+			},
+			{
+				id: 'interpretation_incomplete',
+				fixture: { hold: { reason: 'Interpretation of this message is failed' } },
+				reason: 'Interpretation of this message is failed',
+				calls: [
+					'getMessage',
+					'getBudgetStatus',
+					'getAgentConfig',
+					'evaluateForMessage',
+					'interpretationHold',
+				],
 			},
 		];
 

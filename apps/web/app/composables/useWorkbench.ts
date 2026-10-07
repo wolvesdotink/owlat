@@ -1,5 +1,4 @@
 import { api } from '@owlat/api';
-import { localizedSummary } from '~/utils/clarificationLocale';
 import type { Id } from '@owlat/api/dataModel';
 import type { Ref } from 'vue';
 import { TEAM_SCOPE, type WorkbenchScope } from '~/utils/workbench';
@@ -118,7 +117,6 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 			teamUpdates: teamTab.value ? (teamUpdates.value ?? []) : [],
 			teamCounts: teamTab.value ? (teamCounts.value ?? null) : null,
 			since: since.value ?? mountedAt,
-			pickSummary: (summary) => (summary ? localizedSummary(summary, locale.value) || null : null),
 		}),
 		since: since.value,
 		isFallback: watermark.value?.isFallback ?? false,

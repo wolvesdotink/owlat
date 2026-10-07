@@ -3,7 +3,6 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import { categoryIcon } from '~/utils/agentCategories';
-import { localizedSummary } from '~/utils/clarificationLocale';
 import { formatDateTime } from '~/utils/formatters';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 
@@ -24,11 +23,11 @@ import { isEditableTarget } from '~/utils/postboxShortcuts';
  * agent for a draft after all (the classifier can be wrong; the overrule goes
  * through the normal review queue and can never auto-send).
  *
- * The one-sentence summary is the point of a row, so it is the largest line;
- * it is read in the reader's own interface language — the classifier writes
- * one per shipped locale.
+ * A row shows the subject and the first lines of the message as the sender
+ * wrote them (`preview`, quoted history cut). No model-written summary (D7,
+ * thread brief): an old row's stored classifier summary is not shown.
  */
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.inbox.updates.pageTitle') });
 
@@ -177,10 +176,6 @@ function senderLabel(item: UpdateItem): string {
 	const contact = item.contact;
 	const name = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ').trim();
 	return name || item.message.from;
-}
-
-function summaryFor(item: UpdateItem): string | undefined {
-	return localizedSummary(item.message.classification?.summary, locale.value);
 }
 
 type Tone = 'high' | 'normal' | 'low';
@@ -461,11 +456,11 @@ const HINTS: ReadonlyArray<{ keys: string[]; label: string; spamToo: boolean }> 
 										</div>
 									</div>
 									<p
-										v-if="summaryFor(row.item)"
-										class="mt-2 text-md leading-snug text-text-secondary"
-										data-testid="update-summary"
+										v-if="row.item.message.preview"
+										class="mt-2 line-clamp-2 text-sm leading-snug text-text-secondary"
+										data-testid="update-preview"
 									>
-										{{ summaryFor(row.item) }}
+										{{ row.item.message.preview }}
 									</p>
 								</div>
 							</div>

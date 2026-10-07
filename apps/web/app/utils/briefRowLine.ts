@@ -16,6 +16,8 @@ export interface BriefRowLine {
 	/** "{count} for you" / "{count} to do" / "waiting". */
 	leadKey: string;
 	count: number;
+	/** The count as shown: "2000+" when the thread has more than were counted. */
+	countText: string;
 	tone: 'brand' | 'info';
 	text: string;
 	/** "Fri", "21 Oct": already formatted for the locale. */
@@ -44,6 +46,7 @@ export function briefRowLine(
 				? 'components.brief.row.forYou'
 				: 'components.brief.row.toDo',
 		count: isWaiting ? top.waiting : top.forYou,
+		countText: `${isWaiting ? top.waiting : top.forYou}${top.isCapped ? '+' : ''}`,
 		tone: isWaiting ? 'info' : 'brand',
 		text,
 		due,

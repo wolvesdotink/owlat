@@ -10,13 +10,12 @@
  *  - short mail and security mail, shown as written;
  *  - signed mail: only the signed part was read.
  */
-import type { BriefModeView } from '../../../../api/convex/mail/interpret/briefShape';
-import { briefBanners } from '~/utils/threadBriefBanners';
+import { briefBanners, type BriefGapInput } from '~/utils/threadBriefBanners';
 import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	/** null: no brief at all. */
-	brief: BriefModeView | null;
+	brief: BriefGapInput | null;
 	/** A clearsigned message in the thread: the overview only covers the signed part. */
 	isSigned?: boolean;
 }>();

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { isBulkKind, rankUpdates, updateRankScore, updateViewForKind } from '../updates';
+import {
+	UPDATE_PREVIEW_CODE_POINTS,
+	isBulkKind,
+	rankUpdates,
+	updatePreviewText,
+	updateRankScore,
+	updateViewForKind,
+} from '../updates';
 
 /**
  * Pure ranking contract for the Updates dashboard: the classifier's
@@ -81,5 +88,31 @@ describe('updateViewForKind', () => {
 		expect(isBulkKind('receipt')).toBe(true);
 		expect(isBulkKind('personal')).toBe(false);
 		expect(isBulkKind(undefined)).toBe(false);
+	});
+});
+
+describe('updatePreviewText (D7: the sender’s own first lines, no summary)', () => {
+	it('uses the text part, cuts quoted history and collapses whitespace', () => {
+		expect(
+			updatePreviewText({
+				text: 'Hi team,\n\nthe delivery moves to Friday.\n\nOn Mon, 5 Oct 2026, Ops <ops@example.com> wrote:\n> old text',
+			})
+		).toBe('Hi team, the delivery moves to Friday.');
+	});
+
+	it('reads HTML as text when there is no text part', () => {
+		expect(updatePreviewText({ html: '<p>Invoice <b>4821</b> is paid.</p>' })).toBe(
+			'Invoice 4821 is paid.'
+		);
+	});
+
+	it('falls back to the stored excerpt of a large body, and to empty', () => {
+		expect(updatePreviewText({ excerpt: 'Excerpt of a big mail' })).toBe('Excerpt of a big mail');
+		expect(updatePreviewText({})).toBe('');
+	});
+
+	it('is bounded', () => {
+		const out = updatePreviewText({ text: 'word '.repeat(500) });
+		expect([...out].length).toBeLessThanOrEqual(UPDATE_PREVIEW_CODE_POINTS);
 	});
 });

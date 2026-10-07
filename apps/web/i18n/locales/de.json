@@ -894,10 +894,12 @@
 			},
 			"items": {
 				"forYou": "Für dich",
+				"forTeam": "Fürs Team",
 				"waiting": "Ausstehend bei anderen",
 				"unclear": "Unklar, wer zuständig ist",
 				"openCount": "{count} offen | {count} offen",
 				"empty": "In diesem Verlauf ist nichts für dich zu tun.",
+				"emptyTeam": "In diesem Verlauf ist nichts fürs Team offen.",
 				"emptyIncomplete": "Im gelesenen Teil wurde nichts gefunden."
 			},
 			"item": {
@@ -1051,7 +1053,15 @@
 			},
 			"cite": {
 				"showing": "Quelle von „{label}“",
-				"back": "zurück zum Überblick"
+				"back": "zurück zum Überblick",
+				"notLocated": "Die genaue Stelle ließ sich in dieser Nachricht nicht finden.",
+				"loading": "diese Nachricht wird geladen…",
+				"unreachable": "diese Nachricht ist nicht im geladenen Verlauf"
+			},
+			"exactWording": {
+				"title": "Den genauen Wortlaut lesen",
+				"hint": "hier kommt es auf den Wortlaut an, deshalb bleibt das Original offen",
+				"secured": "Diese Nachricht wird im E-Mail-Verlauf mit ihrer Sicherheitsprüfung angezeigt."
 			},
 			"phone": {
 				"more": "Stand der Dinge, Aktivitäten, Personen, Dateien"
@@ -6714,7 +6724,9 @@
 			},
 			"todo": {
 				"title": "Zu erledigen, keine Antwort nötig · {count}",
-				"due": "bis {date}"
+				"due": "bis {date}",
+				"more": "In diesem Postfach ist noch mehr zu erledigen.",
+				"openInbox": "Postfach öffnen"
 			},
 			"changed": {
 				"title": "Was sich getan hat",

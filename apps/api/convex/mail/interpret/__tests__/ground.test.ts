@@ -118,7 +118,14 @@ describe('groundProposals', () => {
 		expect(evidence?.segmentKind).toBe('fresh');
 		expect(REPLY.canonicalText.slice(evidence?.start, evidence?.end)).toBe('confirm the venue');
 		expect(result.coverage).toEqual({ complete: true, gaps: [] });
-		expect(result.counts).toEqual({ proposed: 1, accepted: 1, rejected: 0, flagged: 0 });
+		expect(result.counts).toEqual({
+			proposed: 1,
+			accepted: 1,
+			rejected: 0,
+			flagged: 0,
+			proposals: 0,
+		});
+		expect(result.items[0]?.proposal).toBeUndefined();
 	});
 
 	it('rejects a claim when any one of its quotes fails, and marks coverage incomplete', () => {
@@ -152,7 +159,7 @@ describe('groundProposals', () => {
 		expect(result.coverage.complete).toBe(true);
 	});
 
-	it('keeps asks from quoted history and signatures as context, not items', () => {
+	it('rejects asks from quoted history, and keeps signature-only asks as proposals', () => {
 		const result = groundProposals(
 			output({
 				items: [
@@ -162,12 +169,41 @@ describe('groundProposals', () => {
 			}),
 			REPLY
 		);
-		expect(result.items).toEqual([]);
-		expect(result.rejected.map((r) => r.reason)).toEqual(['not_fresh', 'not_fresh']);
+		expect(result.rejected).toEqual([{ kind: 'item', index: 0, reason: 'not_fresh' }]);
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0]?.proposal).toEqual({ reason: 'signature' });
+		expect(result.counts.proposals).toBe(1);
 		expect(result.coverage.complete).toBe(true);
 	});
 
-	it('accepts a forwarded ask only when the fresh part delegates it', () => {
+	it('never silently drops an ask misread as a signature or disclaimer', () => {
+		// "Call Jonas." used to be read as part of a name block; whatever the
+		// segmenter says, grounding keeps the ask visible.
+		const misread = {
+			canonicalText: 'The plan is attached.\nThanks,\nMara\nCall Jonas.\nPlease pay EUR 900.',
+			uncertain: false,
+			segments: [
+				{ id: 's0', kind: 'fresh' as const, start: 0, end: 21 },
+				{ id: 's1', kind: 'signature' as const, start: 22, end: 46 },
+				{ id: 's2', kind: 'disclaimer' as const, start: 47, end: 66 },
+			],
+		};
+		const result = groundProposals(
+			output({
+				items: [
+					item([{ segmentId: 's1', text: 'Call Jonas.' }]),
+					item([{ segmentId: 's2', text: 'Please pay EUR 900.' }]),
+				],
+				coverage: undefined,
+			}),
+			misread
+		);
+		expect(result.rejected).toEqual([]);
+		expect(result.items.map((c) => c.proposal?.reason)).toEqual(['signature', 'disclaimer']);
+		expect(result.coverage.complete).toBe(true);
+	});
+
+	it('keeps a forwarded-only ask as a proposal; delegation is context and never upgrades it', () => {
 		const delegated = FORWARD('Can you handle the below?');
 		const plain = FORWARD('FYI.');
 		const forwarded = (m: typeof delegated) =>
@@ -177,10 +213,37 @@ describe('groundProposals', () => {
 				items: [item([{ segmentId: forwarded(m), text: 'Please pay invoice 2231' }])],
 				coverage: undefined,
 			});
-		const accepted = groundProposals(proposal(delegated), delegated);
-		expect(accepted.items[0]?.viaDelegation).toBe(true);
-		expect(groundProposals(proposal(plain), plain).rejected[0]?.reason).toBe('not_fresh');
-		expect(groundProposals(proposal(plain), plain, { delegates: true }).items).toHaveLength(1);
+		for (const [message, options] of [
+			[delegated, {}],
+			[plain, {}],
+			[plain, { delegates: true }],
+		] as const) {
+			const result = groundProposals(proposal(message), message, options);
+			expect(result.items).toHaveLength(1);
+			expect(result.items[0]?.proposal).toEqual({ reason: 'forwarded' });
+			expect(result.coverage).toEqual({ complete: true, gaps: [] });
+		}
+		expect(groundProposals(proposal(delegated), delegated).items[0]?.viaDelegation).toBe(true);
+		expect(groundProposals(proposal(plain), plain).items[0]?.viaDelegation).toBeUndefined();
+	});
+
+	it('tracks an ask once the fresh text quotes it too', () => {
+		const message = FORWARD('Please pay invoice 2231 today.');
+		const fwd = message.segments.find((s) => s.kind === 'forwarded')?.id ?? 'missing';
+		const fresh = message.segments.find((s) => s.kind === 'fresh')?.id ?? 'missing';
+		const result = groundProposals(
+			output({
+				items: [
+					item([
+						{ segmentId: fresh, text: 'Please pay invoice 2231 today.' },
+						{ segmentId: fwd, text: 'Please pay invoice 2231' },
+					]),
+				],
+				coverage: undefined,
+			}),
+			message
+		);
+		expect(result.items[0]?.proposal).toBeUndefined();
 	});
 
 	it('flags injected or credential-seeking derived strings but never deletes the item', () => {
@@ -232,14 +295,26 @@ describe('groundProposals', () => {
 		expect(result.items[0]?.flags.map((f) => f.path)).toEqual(['assertion', 'display.en']);
 	});
 
-	it('grounds transitions in fresh or forwarded text only', () => {
+	it('applies transitions from fresh text only; forwarded-only ones are proposals', () => {
 		const transitions = [
 			{ itemId: 'i1', to: 'done', quotes: [{ segmentId: FRESH, text: 'confirm the venue' }] },
 			{ itemId: 'i2', to: 'done', quotes: [{ segmentId: QUOTED, text: 'approve the draft' }] },
 		];
 		const result = groundProposals(output({ transitions }), REPLY);
 		expect(result.transitions).toHaveLength(1);
+		expect(result.transitions[0]?.proposal).toBeUndefined();
 		expect(result.rejected).toEqual([{ kind: 'transition', index: 1, reason: 'not_fresh' }]);
+
+		const message = FORWARD('Can you handle the below?');
+		const fwd = message.segments.find((s) => s.kind === 'forwarded')?.id ?? 'missing';
+		const closing = [
+			{ itemId: 'i1', to: 'done', quotes: [{ segmentId: fwd, text: 'Please pay invoice 2231' }] },
+		];
+		const forwarded = groundProposals(
+			output({ transitions: closing, coverage: undefined }),
+			message
+		);
+		expect(forwarded.transitions[0]?.proposal).toEqual({ reason: 'forwarded' });
 	});
 
 	it('grounds latest lines per locale and facts outside disclaimers (brief mode)', () => {
@@ -369,7 +444,7 @@ describe('verifyQuote with astral characters', () => {
 	});
 });
 
-describe('delegation is bound to the forward it introduces', () => {
+describe('delegation is context, bound to the forward it introduces', () => {
 	const forwardItem = (m: ReturnType<typeof FORWARD>) =>
 		groundProposals(
 			output({
@@ -385,38 +460,61 @@ describe('delegation is bound to the forward it introduces', () => {
 			}),
 			m
 		);
-
-	it('rejects a handover aimed at something else, and calls coverage incomplete', () => {
-		const result = forwardItem(
-			FORWARD('Can you handle the meeting? The invoice below is FYI only.')
-		);
-		expect(result.items).toEqual([]);
-		expect(result.rejected[0]?.reason).toBe('not_fresh');
-		expect(result.coverage).toEqual({ complete: false, gaps: ['ambiguous_delegation'] });
-	});
+	const readingOf = (fresh: string) => {
+		const message = FORWARD(fresh);
+		const fwd = message.segments.find((s) => s.kind === 'forwarded')?.id ?? 'missing';
+		return forwardDelegation(message).get(fwd)?.reading;
+	};
 
 	it.each([
-		'FYI, no action needed.',
-		'Zur Info, kein Handlungsbedarf.',
-		'Pour info.',
+		'Can you handle the meeting? The invoice below is FYI only.',
+		'FYI. Can you handle the below?',
+		'I will handle this.',
+		'Jonas will handle this.',
+		'Could you not handle this?',
 		'No need to handle this, just for your records.',
-	])('treats "%s" as information', (fresh) => {
+		"Can you handle the below? Actually, don't handle this yet.",
+		'Lena takes care of this one.',
+		'Je vais m’en occuper, tu peux ignorer.',
+		'Please note that I will handle this.',
+		'Can you confirm that Jonas will handle this?',
+		'Could you avoid handling this?',
+	])('"%s": ambiguous, and the ask is still only a proposal', (fresh) => {
+		expect(readingOf(fresh)).toBe('ambiguous');
 		const result = forwardItem(FORWARD(fresh));
-		expect(result.items).toEqual([]);
+		expect(result.items[0]?.proposal).toEqual({ reason: 'forwarded' });
+		expect(result.items[0]?.viaDelegation).toBeUndefined();
 		expect(result.coverage.complete).toBe(true);
 	});
 
-	it('flags a handover next to an information marker as ambiguous', () => {
-		const result = forwardItem(FORWARD('FYI. Can you handle the below?'));
-		expect(result.items).toEqual([]);
-		expect(result.coverage.gaps).toEqual(['ambiguous_delegation']);
+	it.each(['FYI, no action needed.', 'Zur Info, kein Handlungsbedarf.', 'Pour info.'])(
+		'"%s": no handover, the ask is a proposal without delegation context',
+		(fresh) => {
+			expect(readingOf(fresh)).toBe('none');
+			expect(forwardItem(FORWARD(fresh)).items[0]?.proposal).toEqual({ reason: 'forwarded' });
+		}
+	);
+
+	it.each([
+		'Hi Mara, can you handle the below?',
+		'Please take care of this one.',
+		'Handle this please.',
+		'Kannst du dich bitte darum kümmern?',
+		'Bitte übernehmen.',
+		'Kümmer dich bitte darum.',
+		"Peux-tu t'en occuper ?",
+		'Pourriez-vous vous en charger ?',
+		'Can you handle the below? Do not reply to the other thread.',
+	])('"%s": delegated context on a proposal, never a tracked item', (fresh) => {
+		expect(readingOf(fresh)).toBe('delegated');
+		const result = forwardItem(FORWARD(fresh));
+		expect(result.items[0]?.viaDelegation).toBe(true);
+		expect(result.items[0]?.proposal).toEqual({ reason: 'forwarded' });
 	});
 
-	it('cites the fresh handover phrase as the delegation evidence', () => {
+	it('cites the fresh handover phrase as context', () => {
 		const message = FORWARD('Hi Mara, can you handle the below? Thanks.');
-		const result = forwardItem(message);
-		expect(result.items[0]?.viaDelegation).toBe(true);
-		const by = result.items[0]?.delegatedBy;
+		const by = forwardItem(message).items[0]?.delegatedBy;
 		expect(by && message.canonicalText.slice(by.start, by.end)).toBe('handle the below');
 	});
 
@@ -448,5 +546,155 @@ describe('delegation is bound to the forward it introduces', () => {
 		expect(delegatesForward(FORWARD('Ich schaffe es nicht, kannst du dich darum kümmern?'))).toBe(
 			true
 		);
+	});
+});
+
+describe('whole-string NFKC', () => {
+	const KA_FULL = 'ガ'; // ガ
+	const KA_HALF = 'ｶﾞ'; // ｶﾞ
+	const GA_SYLLABLE = '가'; // 가
+	const GA_JAMO = '가'; // ᄀ + ᅡ
+	it.each([
+		[`お見積り${KA_FULL}イドを送って`, `${KA_HALF}イド`],
+		[`お見積り${KA_HALF}イドを送って`, `${KA_FULL}イド`],
+		[`견적서를 ${GA_SYLLABLE}져와`, `${GA_JAMO}져와`],
+		[`견적서를 ${GA_JAMO}져와`, `${GA_SYLLABLE}져와`],
+		['Café au lait', 'Café au'],
+		['e​́ accent', 'é accent'],
+	])('%s contains %s', (text, quote) => {
+		expect(normalizeForQuote(quote)).toBe(normalizeForQuote(quote).normalize('NFKC'));
+		const segmented = segmentMessage({ text });
+		const verdict = verifyQuote(segmented.segments, segmented.canonicalText, {
+			segmentId: 's0',
+			text: quote,
+		});
+		expect(verdict.ok).toBe(true);
+		if (!verdict.ok) return;
+		expect(normalizeForQuote(segmented.canonicalText.slice(verdict.start, verdict.end))).toBe(
+			normalizeForQuote(quote)
+		);
+	});
+
+	it('equals whole-string NFKC on mixed text', () => {
+		const text = `Rechnung ${KA_HALF} ${GA_JAMO} ﬁnal Café ①`;
+		expect(normalizeForQuote(text)).toBe(text.normalize('NFKC'));
+	});
+});
+
+describe('normalizeForQuote: property against whole-string NFKC', () => {
+	const POOL = [
+		'a',
+		'e',
+		'o',
+		'A',
+		'Z',
+		'1',
+		' ',
+		'  ',
+		'\n',
+		'\t',
+		'.',
+		',',
+		'-',
+		'̀',
+		'́',
+		'̕',
+		'̧',
+		'̛',
+		'̣',
+		'̸',
+		'⃗',
+		'ᄀ',
+		'ᅡ',
+		'ᆨ',
+		'ᄒ',
+		'ᅵ',
+		'가',
+		'한',
+		'ｶ',
+		'ﾞ',
+		'ﾟ',
+		'ﾊ',
+		'ｳ',
+		'😀',
+		'𝟏',
+		'𝐀',
+		'👨‍👩‍👧',
+		'ﬁ',
+		'①',
+		'½',
+		'Å',
+		'​',
+		'‍',
+		'­',
+		'﻿',
+		'“',
+		'”',
+		'’',
+		'—',
+		'−',
+		'´',
+		' ',
+		'　',
+		'é',
+		'à',
+		'ß',
+		'ﬀ',
+		'™',
+	];
+	const INVISIBLE = /[­​-‍⁠﻿]/g;
+	const expected = (s: string) =>
+		s
+			.replace(INVISIBLE, '')
+			.normalize('NFKC')
+			.replace(/[‘’‚‛′´`]/g, "'")
+			.replace(/[“”„‟″«»]/g, '"')
+			.replace(/[‐-―−﹘﹣－]/g, '-')
+			.replace(/\s+/g, ' ')
+			.trim();
+	// A seeded generator, so a failure reproduces.
+	let seed = 0x2f6e2b1;
+	const next = () => {
+		seed = (seed * 1103515245 + 12345) >>> 0;
+		return seed / 0x100000000;
+	};
+	const randomString = () => {
+		const length = 1 + Math.floor(next() * 24);
+		let s = '';
+		for (let k = 0; k < length; k++) s += POOL[Math.floor(next() * POOL.length)];
+		return s;
+	};
+
+	it('matches on 3,000 random strings', () => {
+		for (let k = 0; k < 3_000; k++) {
+			const s = randomString();
+			expect(normalizeForQuote(s), JSON.stringify(s)).toBe(expected(s));
+		}
+	});
+
+	it('maps every match back to finite offsets that normalize to the quote', () => {
+		for (let k = 0; k < 500; k++) {
+			const s = `Start ${randomString()} end`;
+			const segmented = segmentMessage({ text: s });
+			if (segmented.segments.length !== 1) continue;
+			const cps = [...s];
+			const a = Math.floor(next() * cps.length);
+			const b = a + 1 + Math.floor(next() * (cps.length - a));
+			const quote = cps.slice(a, b).join('');
+			const verdict = verifyQuote(segmented.segments, segmented.canonicalText, {
+				segmentId: 's0',
+				text: quote,
+			});
+			if (!verdict.ok) continue;
+			expect(Number.isFinite(verdict.start) && Number.isFinite(verdict.end)).toBe(true);
+			expect(
+				normalizeForQuote(segmented.canonicalText.slice(verdict.start, verdict.end))
+			).toContain(normalizeForQuote(quote));
+		}
+	});
+
+	it('handles the reviewer probe à̕ (reordered marks)', () => {
+		const s = 'à̕';
+		expect(normalizeForQuote(s)).toBe(s.normalize('NFKC'));
 	});
 });
