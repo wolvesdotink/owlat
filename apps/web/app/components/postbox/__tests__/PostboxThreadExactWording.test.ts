@@ -58,6 +58,16 @@ describe('PostboxThreadExactWording', () => {
 		expect(w.emitted('open-conversation')).toHaveLength(1);
 	});
 
+	it('says when the brief lists fewer than there are', () => {
+		const w = mount(PostboxThreadExactWording, {
+			props: { messages: [msg('m1')] as never, secureClass: () => 'none', isTruncated: true },
+			global: { plugins: [createTestI18n()], components: { PostboxMessageBody: Body } },
+		});
+		expect(w.get('[data-testid="exact-wording-truncated"]').text()).toContain(
+			'More messages here need their exact wording than this list shows.'
+		);
+	});
+
 	it('renders nothing without such messages', () => {
 		expect(mountPanel([]).find('details').exists()).toBe(false);
 	});

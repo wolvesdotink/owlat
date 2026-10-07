@@ -147,9 +147,8 @@ export const listNoReplyToDo = postboxQuery({
 					itemId: first._id,
 					text: { en, de },
 					...(first.due?.at !== undefined ? { dueAt: first.due.at } : {}),
-					// The thread's complete open count (mailThreads.briefTop), not the scan's.
+					// The thread's exact open count (maintained counters via mailThreads.briefTop).
 					count: Math.max(1, thread.briefTop?.forYou ?? 1),
-					...(thread.briefTop?.isCapped ? { isCountCapped: true } : {}),
 					fromAddress: thread.latestFromAddress,
 					...(latest?.fromName ? { fromName: latest.fromName } : {}),
 					subject: thread.latestSubject,

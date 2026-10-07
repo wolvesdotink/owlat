@@ -3,79 +3,58 @@
  * threads (Postbox list, Answer queue, Workbench). See
  * `lib/validators/briefTop.ts` for the stored shape.
  *
- *  - `deriveBriefTop` is the pure fold: counts plus the first item by
- *    `compareForYou` (a for-you item when one is open, else a waiting one).
- *    Unconfirmed proposals ("Check this") are not counted: they are not
- *    tracked until someone confirms them.
- *  - `refreshBriefTop` rewrites the projection from the thread's open items.
- *    The reducer calls it after every interpretation (passing the new first
- *    "Latest update" line), and every reaction that moves an item calls it
- *    with no `latest`, which keeps the stored one.
+ *  - `refreshBriefTop` rewrites the projection with O(1) reads: the counts are
+ *    the thread's maintained `itemCounts` (`counters.ts`, exact, no cap), and
+ *    the top item is the first row of the thread's `forUs` list in due order
+ *    (dated first), else in asking order, else the same for
+ *    `waitingOnOthers`. The reducer calls it after every interpretation
+ *    (passing the new first "Latest update" line); every other item writer
+ *    calls it with no `latest`, which keeps the stored one.
  *  - `openBriefTop` unseals it at the list-read boundary.
  *
  * Isolate-safe; not a Convex function.
  */
 
-import { compareForYou } from '@owlat/shared/threadBriefRules';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type { MutationCtx } from '../../_generated/server';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { BriefTop } from '../../lib/validators/briefTop';
 import type { ItemResponsibility, InterpretMode } from '@owlat/shared/threadBrief';
 import { openMessageBody, sealBodyAtWrite } from '../../lib/messageBody';
+import { itemCountsOf } from './counters';
 
 type SealedPair = { en: string; de: string };
 
-/** The item fields the fold reads. */
-export type BriefTopItem = Pick<
-	Doc<'threadItems'>,
-	'_id' | 'responsibility' | 'status' | 'verify' | 'due' | 'facets' | 'askedAt' | 'display'
->;
-
-/** Counts and the top item, before the brief's mode, latest line and stamps are added. */
-export type BriefTopFold = Pick<BriefTop, 'forYou' | 'waiting' | 'top'>;
-
-function isTracked(item: BriefTopItem): boolean {
-	return item.status === 'open' && item.verify !== 'proposal';
-}
-
-function sortable(item: BriefTopItem) {
-	return { due: item.due, facets: item.facets, askedAt: item.askedAt, id: item._id };
-}
-
-/** Fold a thread's items into the row projection. Pure. */
-export function deriveBriefTop(items: readonly BriefTopItem[]): BriefTopFold {
-	const tracked = items.filter(isTracked);
-	const forYou = tracked.filter((i) => i.responsibility !== 'them');
-	const waiting = tracked.filter((i) => i.responsibility === 'them');
-	const pick = (list: BriefTopItem[]) =>
-		[...list].sort((a, b) => compareForYou(sortable(a), sortable(b)))[0];
-	const first = pick(forYou) ?? pick(waiting);
-	return {
-		forYou: forYou.length,
-		waiting: waiting.length,
-		...(first
-			? {
-					top: {
-						itemId: first._id,
-						responsibility: first.responsibility,
-						text: first.display,
-						...(first.due?.at !== undefined ? { dueAt: first.due.at } : {}),
-					},
-				}
-			: {}),
-	};
-}
+/** The lists a list row's top item can come from, in order. */
+const TOP_BUCKETS = ['forUs', 'waitingOnOthers'] as const;
+type TopBucket = (typeof TOP_BUCKETS)[number];
 
 /**
- * Open items a refresh reads before it stops counting. A thread never comes
- * near it (the reducer adds at most ten items per message); past it the counts
- * are flagged `isCapped` ("2000+") rather than silently wrong, and the top
- * item comes from the thread's own due-ordered index ({@link exactTop}).
+ * The first item of one of a thread's lists: soonest due among dated items,
+ * else the earliest asked. Two indexed `first()` reads at most.
  */
-export const OPEN_ITEM_READ_LIMIT = 2000;
+export async function firstOfBucket(
+	ctx: Pick<QueryCtx, 'db'>,
+	mailThreadId: Id<'mailThreads'>,
+	bucket: TopBucket
+): Promise<Doc<'threadItems'> | null> {
+	const dated = await ctx.db
+		.query('threadItems')
+		.withIndex('by_mail_thread_bucket_due', (q) =>
+			q.eq('mailThreadId', mailThreadId).eq('listBucket', bucket).gte('due.at', 0)
+		)
+		.first();
+	if (dated) return dated;
+	return ctx.db
+		.query('threadItems')
+		.withIndex('by_mail_thread_bucket_asked', (q) =>
+			q.eq('mailThreadId', mailThreadId).eq('listBucket', bucket)
+		)
+		.first();
+}
 
 /**
- * Rewrite `mailThreads.briefTop` from the thread's open items.
+ * Rewrite `mailThreads.briefTop` from the thread's counters and the first row
+ * of its lists.
  *
  * `latest`: the first "Latest update" line in both locales (plaintext; sealed
  * here), `null` to clear it, or omitted to keep the stored one. Actions-mode
@@ -93,79 +72,34 @@ export async function refreshBriefTop(
 		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', mailThreadId))
 		.unique();
 	if (!brief) return;
-	// Every open item, not a first page: the counts and the top item are only
-	// right over all of them.
-	const items = await ctx.db
-		.query('threadItems')
-		.withIndex('by_mail_thread_and_status', (q) =>
-			q.eq('mailThreadId', mailThreadId).eq('status', 'open')
-		)
-		.take(OPEN_ITEM_READ_LIMIT + 1);
-	const isCapped = items.length > OPEN_ITEM_READ_LIMIT;
+	const counts = itemCountsOf(brief);
+	let top: BriefTop['top'];
+	for (const bucket of TOP_BUCKETS) {
+		const count = bucket === 'forUs' ? counts.us : counts.them;
+		if (count === 0) continue;
+		const item = await firstOfBucket(ctx, mailThreadId, bucket);
+		if (!item) continue;
+		top = {
+			itemId: item._id,
+			bucket,
+			responsibility: item.responsibility,
+			text: item.display,
+			...(item.due?.at !== undefined ? { dueAt: item.due.at } : {}),
+		};
+		break;
+	}
 	const mode: InterpretMode = brief.mode;
 	const latest = await nextLatest(mode, thread.briefTop?.latest, opts.latest);
-	const fold = deriveBriefTop(isCapped ? items.slice(0, OPEN_ITEM_READ_LIMIT) : items);
-	if (isCapped) {
-		// Past the read limit the fold saw only part of the items: take the top
-		// from the thread's due-ordered index instead.
-		const top =
-			(await exactTop(ctx, mailThreadId, 'forYou')) ??
-			(await exactTop(ctx, mailThreadId, 'waiting'));
-		const exact = top ? deriveBriefTop([top]).top : undefined;
-		if (exact) fold.top = exact;
-		else delete fold.top;
-	}
 	const next: BriefTop = {
 		mode,
-		...fold,
-		...(isCapped ? { isCapped } : {}),
+		forYou: counts.us,
+		waiting: counts.them,
+		...(top ? { top } : {}),
 		...(latest ? { latest } : {}),
 		revision: brief.interpretationRevision,
 		updatedAt: Date.now(),
 	};
 	await ctx.db.patch(mailThreadId, { briefTop: next });
-}
-
-/** Which side of the list a top item is picked from. */
-function onSide(item: BriefTopItem, side: 'forYou' | 'waiting'): boolean {
-	if (!isTracked(item)) return false;
-	return side === 'waiting' ? item.responsibility === 'them' : item.responsibility !== 'them';
-}
-
-function better(a: BriefTopItem | undefined, b: BriefTopItem): BriefTopItem {
-	return a && compareForYou(sortable(a), sortable(b)) <= 0 ? a : b;
-}
-
-/**
- * A capped thread's exact top item on one side, read off the THREAD's own
- * due-ordered index (`by_mail_thread_status_due`), so no other thread can
- * crowd it out: the soonest due (ties by compareForYou), else the best
- * undated one by compareForYou. Reads only this thread's open items.
- */
-async function exactTop(
-	ctx: MutationCtx,
-	mailThreadId: Id<'mailThreads'>,
-	side: 'forYou' | 'waiting'
-): Promise<BriefTopItem | undefined> {
-	let best: BriefTopItem | undefined;
-	for await (const item of ctx.db
-		.query('threadItems')
-		.withIndex('by_mail_thread_status_due', (q) =>
-			q.eq('mailThreadId', mailThreadId).eq('status', 'open').gte('due.at', 0)
-		)) {
-		// Due order: once past the first eligible due date, nothing better follows.
-		if (best && (item.due?.at ?? 0) > (best.due?.at ?? 0)) break;
-		if (onSide(item, side)) best = better(best, item);
-	}
-	if (best) return best;
-	for await (const item of ctx.db
-		.query('threadItems')
-		.withIndex('by_mail_thread_status_due', (q) =>
-			q.eq('mailThreadId', mailThreadId).eq('status', 'open').eq('due.at', undefined)
-		)) {
-		if (onSide(item, side)) best = better(best, item);
-	}
-	return best;
 }
 
 async function nextLatest(
@@ -185,13 +119,13 @@ export type BriefTopRow = {
 	waiting: number;
 	top?: {
 		itemId: Id<'threadItems'>;
+		/** The list it heads: `waitingOnOthers` is what the row calls "waiting". */
+		bucket?: 'forUs' | 'waitingOnOthers';
 		responsibility: ItemResponsibility;
 		text: { en: string; de: string };
 		dueAt?: number;
 	};
 	latest?: { en: string; de: string };
-	/** More open items than a refresh counts: show the counts as "N+". */
-	isCapped?: boolean;
 	/** The thread is in the Answer queue (`needsReply` set): "for you", not "to do". */
 	isReplyNeeded: boolean;
 };
@@ -215,11 +149,11 @@ export async function openBriefTop(
 		mode: stored.mode,
 		forYou: stored.forYou,
 		waiting: stored.waiting,
-		...(stored.isCapped ? { isCapped: true } : {}),
 		...(stored.top && topText
 			? {
 					top: {
 						itemId: stored.top.itemId,
+						...(stored.top.bucket ? { bucket: stored.top.bucket } : {}),
 						responsibility: stored.top.responsibility,
 						text: topText,
 						...(stored.top.dueAt !== undefined ? { dueAt: stored.top.dueAt } : {}),

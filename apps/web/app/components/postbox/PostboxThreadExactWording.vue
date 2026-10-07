@@ -17,6 +17,8 @@ import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 const props = defineProps<{
 	messages: readonly PostboxReaderMessage[];
 	secureClass: (msg: { _id: string }) => SecureMessageClass;
+	/** More such messages than the brief lists: the conversation has them all. */
+	isTruncated?: boolean;
 }>();
 
 const emit = defineEmits<{ 'open-conversation': [] }>();
@@ -37,7 +39,7 @@ function isBodyHidden(msg: PostboxReaderMessage): boolean {
 
 <template>
 	<details
-		v-if="messages.length > 0"
+		v-if="messages.length > 0 || isTruncated"
 		:open="open"
 		class="rounded-xl border border-border-subtle bg-bg-elevated"
 		data-testid="exact-wording"
@@ -49,6 +51,16 @@ function isBodyHidden(msg: PostboxReaderMessage): boolean {
 				t('components.brief.exactWording.hint')
 			}}</span>
 		</summary>
+		<p
+			v-if="isTruncated"
+			class="border-t border-border-subtle px-4 py-2 text-xs text-text-secondary"
+			data-testid="exact-wording-truncated"
+		>
+			{{ t('components.brief.exactWording.truncated') }}
+			<button type="button" class="text-brand hover:underline" @click="emit('open-conversation')">
+				{{ t('components.brief.incomplete.openConversation') }}
+			</button>
+		</p>
 		<section
 			v-for="msg in messages"
 			:key="msg._id"

@@ -33,6 +33,7 @@ import {
 	itemRevisionRefValidator,
 	itemStatusValidator,
 	itemCorrectionKindValidator,
+	itemListBucketValidator,
 	itemVerifyValidator,
 	localizedSealedTextValidator,
 	noteSourceValidator,
@@ -217,6 +218,9 @@ export const threadBriefTables = {
 		possibleDuplicateOfId: v.optional(v.id('threadItems')),
 		correction: v.optional(itemCorrectionValidator),
 		verify: itemVerifyValidator,
+		// The brief list it sits in (mail/interpret/counters.ts listBucketOf), written
+		// with every item write; threadBriefs.itemCounts counts the same partition.
+		listBucket: v.optional(itemListBucketValidator),
 		// Conflicting evidence after a human correction, or a security flag.
 		isReviewNeeded: v.optional(v.boolean()),
 		// "Remind me" (lives next to the lifecycle, never changes it).
@@ -236,8 +240,10 @@ export const threadBriefTables = {
 		// reads a status by update time (a long history never hides a recent change).
 		.index('by_mail_thread_and_status', ['mailThreadId', 'status', 'updatedAt'])
 		.index('by_conversation_thread_and_status', ['conversationThreadId', 'status', 'updatedAt'])
-		// A thread's open items in due order: the exact top item of its list row.
-		.index('by_mail_thread_status_due', ['mailThreadId', 'status', 'due.at'])
+		// One list of a thread in due order / in asking order: the list row's top
+		// item is the first row of one of these (mail/interpret/briefTop.ts).
+		.index('by_mail_thread_bucket_due', ['mailThreadId', 'listBucket', 'due.at'])
+		.index('by_mail_thread_bucket_asked', ['mailThreadId', 'listBucket', 'askedAt'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
 		.index('by_counterparty', ['counterpartyKey'])
 		// Member erasure: the items assigned to an erased member fall back to Unassigned.
@@ -322,13 +328,16 @@ export const threadBriefTables = {
 				skipped: v.number(),
 			})
 		),
-		// Item counts by list (open per responsibility, closed, untracked),
-		// maintained by every writer of an item's status or responsibility.
+		// Item counts by list (open per responsibility, unconfirmed proposals,
+		// closed, untracked), maintained by every writer of an item's status,
+		// responsibility or verify state. `proposal` is absent on rows written
+		// before it existed (read as 0).
 		itemCounts: v.optional(
 			v.object({
 				us: v.number(),
 				them: v.number(),
 				unclear: v.number(),
+				proposal: v.optional(v.number()),
 				closed: v.number(),
 				hidden: v.number(),
 			})

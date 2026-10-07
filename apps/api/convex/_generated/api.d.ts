@@ -20,7 +20,6 @@ import type * as mail_interpret_dueDate from '../mail/interpret/dueDate.js';
 import type * as mail_interpret_eligibility from '../mail/interpret/eligibility.js';
 import type * as mail_interpret_enqueue from '../mail/interpret/enqueue.js';
 import type * as mail_interpret_gate from '../mail/interpret/gate.js';
-import type * as mail_interpret_itemWrite from '../mail/interpret/itemWrite.js';
 import type * as mail_interpret_load from '../mail/interpret/load.js';
 import type * as mail_interpret_needsReplyProjection from '../mail/interpret/needsReplyProjection.js';
 import type * as mail_interpret_noteReactions from '../mail/interpret/noteReactions.js';
@@ -1158,6 +1157,7 @@ import type * as mail_interpret___eval___runEval from '../mail/interpret/__eval_
 import type * as mail_interpret_briefShape from '../mail/interpret/briefShape.js';
 import type * as mail_interpret_briefTop from '../mail/interpret/briefTop.js';
 import type * as mail_interpret_delegation from '../mail/interpret/delegation.js';
+import type * as mail_interpret_exactWording from '../mail/interpret/exactWording.js';
 import type * as mail_interpret_ground from '../mail/interpret/ground.js';
 import type * as mail_interpret_purgeRows from '../mail/interpret/purgeRows.js';
 import type * as mail_interpret_quoteMatch from '../mail/interpret/quoteMatch.js';
@@ -1584,7 +1584,6 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/eligibility': typeof mail_interpret_eligibility;
 	'mail/interpret/enqueue': typeof mail_interpret_enqueue;
 	'mail/interpret/gate': typeof mail_interpret_gate;
-	'mail/interpret/itemWrite': typeof mail_interpret_itemWrite;
 	'mail/interpret/load': typeof mail_interpret_load;
 	'mail/interpret/needsReplyProjection': typeof mail_interpret_needsReplyProjection;
 	'mail/interpret/noteReactions': typeof mail_interpret_noteReactions;
@@ -2712,6 +2711,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/briefShape': typeof mail_interpret_briefShape;
 	'mail/interpret/briefTop': typeof mail_interpret_briefTop;
 	'mail/interpret/delegation': typeof mail_interpret_delegation;
+	'mail/interpret/exactWording': typeof mail_interpret_exactWording;
 	'mail/interpret/ground': typeof mail_interpret_ground;
 	'mail/interpret/purgeRows': typeof mail_interpret_purgeRows;
 	'mail/interpret/quoteMatch': typeof mail_interpret_quoteMatch;

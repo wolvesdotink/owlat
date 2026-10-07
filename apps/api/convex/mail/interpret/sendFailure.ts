@@ -32,7 +32,7 @@ import {
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { appendActivity, scopedIdempotencyKey } from './activity';
 import { refreshBriefTop } from './briefTop';
-import { writeItemChange } from './itemWrite';
+import { writeItemChange } from './counters';
 
 /** Reducer rows one send can have produced (items × extractor versions); bounded. */
 const DEPENDENT_SCAN = 200;
@@ -104,13 +104,11 @@ export async function failDependentDispositions(
 		});
 		// Failed once by this send already (then answered again by another): leave it.
 		if (!appended || appended.isDuplicate) continue;
-		await writeItemChange(
-			ctx,
-			args.threadRef,
-			item,
-			{ disposition: 'failed', revision, updatedAt: now },
-			{ isTopRefreshed: false }
-		);
+		await writeItemChange(ctx, args.threadRef, item, {
+			disposition: 'failed',
+			revision,
+			updatedAt: now,
+		});
 		changed.push(itemId);
 	}
 	if (changed.length > 0 && args.threadRef.kind === 'mail') {

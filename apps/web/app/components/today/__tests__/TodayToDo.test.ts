@@ -57,13 +57,12 @@ describe('TodayToDo', () => {
 	});
 
 	it('says when there is more than it lists', () => {
-		data.value = { rows: [{ ...row, isCountCapped: true }], isTruncated: true };
+		data.value = { rows: [row], isTruncated: true };
 		const w = mountBand();
 		expect(w.get('[data-testid="today-todo-more"]').text()).toContain(
 			'There is more to do in this inbox.'
 		);
-		expect(w.text()).toContain('2+ more');
-		expect(w.text()).not.toContain('+2');
+		expect(w.text()).toContain('+2 more');
 	});
 
 	it('keeps the truncation notice when no row could be listed', () => {

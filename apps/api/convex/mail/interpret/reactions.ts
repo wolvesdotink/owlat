@@ -47,7 +47,8 @@ import {
 import { threadRefToFields, type ThreadRef } from '../../lib/validators/threadRef';
 import type { MutationSessionContext } from '../../lib/sessionOrganization';
 import { appendActivity } from './activity';
-import { writeItemChange } from './itemWrite';
+import { writeItemChange } from './counters';
+import { refreshBriefTop } from './briefTop';
 import { resolveThreadMode } from './briefRow';
 import { canUserReadThread, requireItemReader } from './threadAccess';
 import { planReaction, toDbPatch, type LifecycleReaction } from './reactionRules';
@@ -67,7 +68,7 @@ type ItemChange = {
 	item: Doc<'threadItems'>;
 	ref: ThreadRef;
 	userId: string;
-	patch: Partial<Doc<'threadItems'>>;
+	patch: Partial<Omit<Doc<'threadItems'>, '_id' | '_creationTime' | 'listBucket'>>;
 	type: ActivityType;
 	provenance: 'asserted' | 'recorded';
 	delta?: Infer<typeof activityDeltaValidator>;
@@ -89,7 +90,9 @@ async function recordChange(ctx: MutationCtx, change: ItemChange): Promise<React
 		...(change.delta ? { delta: change.delta } : {}),
 		...(change.payload ? { payload: change.payload } : {}),
 	});
+	// The one write path outside the reducer: item, list bucket and counters.
 	await writeItemChange(ctx, ref, item, { ...change.patch, revision, updatedAt: Date.now() });
+	if (ref.kind === 'mail') await refreshBriefTop(ctx, ref.id);
 	return { itemId: item._id, revision };
 }
 
