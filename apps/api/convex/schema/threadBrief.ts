@@ -297,6 +297,10 @@ export const threadBriefTables = {
 	})
 		.index('by_mail_thread_and_seq', ['mailThreadId', 'seq'])
 		.index('by_conversation_thread_and_seq', ['conversationThreadId', 'seq'])
+		// The team stream (mail/interpret/teamStream*.ts): system lines in event
+		// order, paged together with the emails and notes by time.
+		.index('by_mail_thread_and_event', ['mailThreadId', 'eventAt'])
+		.index('by_conversation_thread_and_event', ['conversationThreadId', 'eventAt'])
 		.index('by_idempotency_key', ['idempotencyKey'])
 		// Erasure (mail/interpret/purge.ts): an item's rows go with the item, and
 		// a row whose operation names a purged message goes with the message.

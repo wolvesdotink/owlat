@@ -215,30 +215,31 @@ async function activityText(row: Doc<'threadActivity'>): Promise<string | undefi
 	return undefined;
 }
 
+/** One activity row as the brief and the team stream show it. */
+export async function toActivityView(row: Doc<'threadActivity'>): Promise<ActivityView> {
+	const text = await activityText(row);
+	return {
+		id: row._id,
+		seq: row.seq,
+		type: row.type,
+		actor: row.actor,
+		provenance: row.provenance,
+		visibility: row.visibility,
+		...(row.itemId ? { itemId: row.itemId } : {}),
+		...(row.itemRevision !== undefined ? { itemRevision: row.itemRevision } : {}),
+		...(row.delta ? { delta: row.delta } : {}),
+		...(row.opRef ? { opRef: row.opRef } : {}),
+		...(text !== undefined ? { text } : {}),
+		eventAt: row.eventAt,
+	};
+}
+
 /** The latest substance rows as the brief's "Activity" block. */
 export async function toActivityViews(
 	rows: readonly Doc<'threadActivity'>[]
 ): Promise<ActivityView[]> {
 	const shown = rows.filter((r) => r.visibility === 'substance').slice(0, ACTIVITY_SHOWN);
-	return Promise.all(
-		shown.map(async (row) => {
-			const text = await activityText(row);
-			return {
-				id: row._id,
-				seq: row.seq,
-				type: row.type,
-				actor: row.actor,
-				provenance: row.provenance,
-				visibility: row.visibility,
-				...(row.itemId ? { itemId: row.itemId } : {}),
-				...(row.itemRevision !== undefined ? { itemRevision: row.itemRevision } : {}),
-				...(row.delta ? { delta: row.delta } : {}),
-				...(row.opRef ? { opRef: row.opRef } : {}),
-				...(text !== undefined ? { text } : {}),
-				eventAt: row.eventAt,
-			};
-		})
-	);
+	return Promise.all(shown.map(toActivityView));
 }
 
 /** "Since you last looked", from the activity tail past the viewer's seen seq. Pure. */
