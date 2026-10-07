@@ -165,15 +165,23 @@ export function zonedTime(date: YMD, minutes: number, timeZone: string): number 
  * (repeated). Pure.
  */
 export function zonedTimeExact(date: YMD, minutes: number, timeZone: string): number | undefined {
-	const at = zonedTime(date, minutes, timeZone);
-	const wall = (ms: number) => {
+	// Every UTC offset the zone uses within a day either side of the wall time
+	// is a candidate; the instants that read back as that wall time are its
+	// matches: none in a gap, two in an overlap (any shift size, Lord Howe's
+	// 30 minutes included).
+	const guess = Date.UTC(date.y, date.m - 1, date.d) + minutes * 60_000;
+	const offsetAt = (ms: number) => {
 		const p = partsIn(ms, timeZone);
-		return `${p.y}-${p.m}-${p.d} ${hourIn(ms, timeZone).ms}`;
+		return Date.UTC(p.y, p.m - 1, p.d) + hourIn(ms, timeZone).ms - ms;
 	};
-	const wanted = `${date.y}-${date.m}-${date.d} ${minutes * 60_000}`;
-	if (wall(at) !== wanted) return undefined;
-	if (wall(at - 3_600_000) === wanted || wall(at + 3_600_000) === wanted) return undefined;
-	return at;
+	const offsets = new Set<number>();
+	for (let h = -26; h <= 26; h += 1) offsets.add(offsetAt(guess + h * 3_600_000));
+	const matches = new Set<number>();
+	for (const offset of offsets) {
+		const at = guess - offset;
+		if (offsetAt(at) === offset) matches.add(at);
+	}
+	return matches.size === 1 ? [...matches][0] : undefined;
 }
 
 function hourIn(ms: number, timeZone: string): { ms: number } {
@@ -337,8 +345,14 @@ function readings(
 		if (n === undefined) isUnsure = true;
 		else push(addDays(today, n));
 	}
-	if (/\b(?:in a week|in one week|in einer woche|dans une semaine|dans 1 semaine)\b/.test(text)) {
-		push(addDays(today, 7));
+	const inWeeks = text.match(
+		/\b(?:in|within|innerhalb von|dans|sous)\s+(\d+|a|one|einer|eine|une|un)\s+(?:weeks?|wochen?|semaines?)\b/
+	);
+	if (inWeeks) {
+		take(inWeeks);
+		const raw = inWeeks[1] as string;
+		const n = /^\d+$/.test(raw) ? Number(raw) : 1;
+		push(addDays(today, 7 * n));
 	}
 
 	const weekdayRe = new RegExp(`\\b(${WEEKDAY_RE})\\b`, 'g');

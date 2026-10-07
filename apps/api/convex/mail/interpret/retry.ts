@@ -24,11 +24,6 @@ const BACKOFF_CODES: ReadonlySet<string> = new Set([
 ]);
 const GATE_CODES: ReadonlySet<string> = new Set(['ai_off', 'budget']);
 
-/** A gate refusal: free to re-check, never counted against the retry budget. */
-export function isGateCode(code: string | undefined): boolean {
-	return GATE_CODES.has(code ?? '');
-}
-
 /** Backoff before attempt `retryCount + 1`. */
 export function backoffMs(retryCount: number): number {
 	return BASE_BACKOFF_MS * 4 ** Math.max(0, retryCount);
@@ -42,9 +37,11 @@ export function nextRetryAtOf(
 	if (row.status !== 'partial' && row.status !== 'failed') return undefined;
 	const code = row.errorCode ?? '';
 	if (GATE_CODES.has(code)) return now;
-	const count = row.retryCount ?? 0;
-	if (!BACKOFF_CODES.has(code) || count >= MAX_RETRIES) return undefined;
-	return now + backoffMs(count);
+	// `retryCount` counts admitted attempts (model calls), the first included:
+	// the first read plus at most MAX_RETRIES repairs.
+	const attempts = row.retryCount ?? 1;
+	if (!BACKOFF_CODES.has(code) || attempts > MAX_RETRIES) return undefined;
+	return now + backoffMs(attempts - 1);
 }
 
 /** Whether a stored incomplete extraction should be run again now. */

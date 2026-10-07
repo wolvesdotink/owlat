@@ -100,10 +100,21 @@ export const get = publicQuery({
 			readInterpretations(ctx, ref),
 			readViewerState(ctx, ref, session.userId),
 		]);
-		const checkpointRow = brief?.checkpoint
+		const pointed = brief?.checkpoint
 			? (interpretations.find((r) => r._id === brief.checkpoint?.interpretationId) ??
 				(await ctx.db.get(brief.checkpoint.interpretationId)))
 			: null;
+		// "Latest update" reads only the source's CURRENT extraction (round 4 M4):
+		// a row a later read of the same message replaced is never shown.
+		const checkpointRow =
+			pointed && pointed.isCurrent === false
+				? await ctx.db
+						.query('messageInterpretations')
+						.withIndex('by_source_current', (q) =>
+							q.eq('sourceKey', pointed.sourceKey).eq('isCurrent', true)
+						)
+						.first()
+				: pointed;
 		const latest = await readLatest(checkpointRow, locale);
 		const checkpointResult = checkpointRow ? await readResult(checkpointRow) : null;
 		const facts =
