@@ -2,10 +2,11 @@
  * Everything Answer mode adds around the Postbox composer (plan §03 to §06),
  * wired for the page:
  *
- *  - the catch-up card's data, and the asks it ticks as the draft covers them
- *    ("2 of 3 asks covered" in the composer footer);
- *  - which conversation view opens: Summary when there is a card; with no card
- *    a short thread opens in full, since there is nothing to summarise;
+ *  - the reply's response plan (SPEC §6): a stance per open item of the
+ *    thread brief, and what the draft addresses ("3 of 4 addressed · 1 needs a
+ *    file" in the composer footer, chips on the items, the file-claim banner);
+ *  - which conversation view opens: Summary when the thread has a brief, the
+ *    full conversation when it has none (nothing interpreted to show);
  *  - "Draft with AI" and its ask session;
  *  - a reply the AI prepared before Answer mode opened, put in the editor of a
  *    fresh reply the person has not written in yet;
@@ -19,7 +20,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import { useAnswerAskSession } from '~/composables/useAnswerAskSession';
-import { useAnswerCatchUp } from '~/composables/useAnswerCatchUp';
+import { useThreadBrief } from '~/composables/useThreadBrief';
+import { useResponsePlan } from '~/composables/useResponsePlan';
+import { isPlanItem } from '~/utils/responsePlan';
 import { useAnswerFileUpload } from '~/composables/useAnswerFileUpload';
 import { useAnswerPreparedDraft } from '~/composables/useAnswerPreparedDraft';
 import { useAnswerThreadFiles } from '~/composables/useAnswerThreadFiles';
@@ -44,20 +47,39 @@ export function useAnswerModeAssist(opts: {
 
 	const draftText = computed(() => opts.composer()?.draftText.value ?? '');
 
-	// Catch-up, its footer note and the opening view. Personal mailboxes only:
-	// a shared (team) mailbox is never summarised (SPEC §7), so nothing is
-	// generated there, nor before the mailbox's scope is known.
-	const { byId: inboxById } = useInboxes();
-	const catchUp = useAnswerCatchUp({
-		target: () => {
-			const message = opts.message();
-			const inbox = message ? inboxById.value.get(message.mailboxId as Id<'mailboxes'>) : null;
-			if (!message || !inbox || inbox.scope === 'shared') return null;
-			return { kind: 'mail', messageId: message._id as Id<'mailMessages'> };
+	// The thread brief: the plan's items, and the opening view. Summary when
+	// the thread has a brief; with none there is nothing to show but the
+	// conversation. Decided once, so it never flips under someone who toggled.
+	const { view: briefView } = useThreadBrief({ threadId: () => opts.message()?.threadId });
+	let viewDecided = false;
+	watch(
+		briefView,
+		(v) => {
+			if (viewDecided || v === undefined) return;
+			viewDecided = true;
+			if (!v || v.completeness === 'none') opts.view.value = 'full';
+		},
+		{ immediate: true }
+	);
+
+	// The response plan over the brief's open items (personal: for you and
+	// unclear; a shared mailbox: for the team and unclear).
+	const plan = useResponsePlan({
+		threadRef: () => {
+			const threadId = opts.message()?.threadId;
+			return threadId ? { kind: 'mail', id: threadId as Id<'mailThreads'> } : null;
+		},
+		draftRef: () => {
+			const draftId = opts.draftId();
+			return draftId ? { kind: 'mailDraft', id: draftId as Id<'mailDrafts'> } : null;
 		},
 		draftText: () => draftText.value,
-		view: opts.view,
-		messageCount: opts.messageCount,
+		items: () => {
+			const v = briefView.value;
+			if (!v) return [];
+			const ours = v.mode === 'brief' ? v.forYou : v.forTeam;
+			return [...ours, ...v.unclear].filter(isPlanItem);
+		},
 	});
 
 	// Draft with AI
@@ -67,7 +89,7 @@ export function useAnswerModeAssist(opts: {
 			return draftId ? { kind: 'mailDraft', draftId: draftId as Id<'mailDrafts'> } : null;
 		},
 		composer: opts.composer,
-		onSettled: () => void catchUp.checkCoverage(),
+		onSettled: () => void plan.checkCoverage(),
 	});
 
 	// A draft the AI prepared earlier.
@@ -89,7 +111,7 @@ export function useAnswerModeAssist(opts: {
 			void composer
 				.applyAiDraft(text)
 				.then(() => prepared.attachFiles(composer))
-				.then(() => catchUp.checkCoverage());
+				.then(() => plan.checkCoverage());
 		},
 		{ immediate: true }
 	);
@@ -109,7 +131,7 @@ export function useAnswerModeAssist(opts: {
 		appliedText = text;
 		await composer.applyAiDraft(text);
 		await prepared.attachFiles(composer);
-		void catchUp.checkCoverage();
+		void plan.checkCoverage();
 	}
 
 	// Files from the thread.
@@ -170,8 +192,8 @@ export function useAnswerModeAssist(opts: {
 
 	return {
 		aiEnabled,
-		catchUp,
-		statusNote: catchUp.statusNote,
+		plan,
+		statusNote: plan.statusNote,
 		ask,
 		attaching,
 		attachThreadFile,

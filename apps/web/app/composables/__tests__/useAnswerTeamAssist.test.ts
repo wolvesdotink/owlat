@@ -8,19 +8,27 @@ import { defineComponent, h, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { useAnswerTeamAssist } from '../useAnswerTeamAssist';
 
-vi.mock('~/composables/useAnswerCatchUp', () => ({
-	useAnswerCatchUp: () => ({ statusNote: ref(undefined) }),
+vi.mock('@owlat/api', () => {
+	const anyPath: unknown = new Proxy(function () {}, { get: () => anyPath });
+	return { api: anyPath };
+});
+vi.mock('~/composables/useAnswerCatchUp', () => ({ useAnswerCatchUp: () => ({}) }));
+vi.mock('~/composables/useResponsePlan', () => ({
+	useResponsePlan: () => ({ statusNote: ref(undefined), checkCoverage: vi.fn() }),
 }));
 vi.mock('~/composables/useAnswerAskSession', () => ({ useAnswerAskSession: () => ({}) }));
 
 function draftWithAiUnder(flags: string[]) {
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: (f: string) => flags.includes(f) }));
+	vi.stubGlobal('useI18n', () => ({ locale: ref('en') }));
+	vi.stubGlobal('useConvexQuery', () => ({ data: ref(undefined) }));
 	let result!: ReturnType<typeof useAnswerTeamAssist>;
 	mount(
 		defineComponent({
 			setup() {
 				result = useAnswerTeamAssist({
 					threadId: () => 'ct_1' as never,
+					inboundMessageId: () => null,
 					composer: () => null,
 					messageCount: () => 3,
 					view: ref('summary'),

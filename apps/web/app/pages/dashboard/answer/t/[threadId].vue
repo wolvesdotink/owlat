@@ -134,6 +134,7 @@ const view = ref<AnswerConversationView>('summary');
 // Catch-up, Draft with AI, and the agent's questions
 const assist = useAnswerTeamAssist({
 	threadId: () => threadId.value,
+	inboundMessageId: () => reply.target.value?._id ?? null,
 	composer: () => composerRef.value?.answer ?? null,
 	messageCount: () => (thread.value ? messages.value.length : undefined),
 	view,
@@ -339,7 +340,6 @@ onBeforeUnmount(() => {
 							:catch-up="assist.catchUp.catchUp.value"
 							:loading="assist.catchUp.loading.value"
 							:messages="catchUpMessages"
-							:covered="assist.catchUp.covered.value"
 							:can-attach="false"
 							@reveal="reveal"
 						/>
@@ -420,6 +420,13 @@ onBeforeUnmount(() => {
 							/>
 						</div>
 						<template v-else>
+							<AnswerTeamPlan
+								v-if="assist.aiEnabled.value"
+								:plan="assist.plan"
+								:items="assist.planItems.value"
+								:can-attach="attachmentsAllowed"
+								@files="(list) => (files.addFiles(list), assist.plan.recheck())"
+							/>
 							<AnswerTeamReusedAnswers
 								v-if="reply.reusedAnswers.value.length > 0"
 								:questions="reply.reusedAnswers.value"

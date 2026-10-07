@@ -42,7 +42,22 @@ vi.mock('~/composables/useAnswerQueueSession', () => ({
 
 const assist = {
 	aiEnabled: ref(false),
-	catchUp: { catchUp: ref(null), loading: ref(false), covered: ref([]) },
+	catchUp: { catchUp: ref(null), loading: ref(false) },
+	// The response plan (useResponsePlan): nothing selected, nothing to flag.
+	plan: {
+		view: {
+			stanceOf: () => 'answer',
+			setStance: vi.fn(),
+			addressed: computed(() => []),
+			fileMissing: computed(() => new Set<string>()),
+		},
+		selected: ref<string[]>([]),
+		setSelected: vi.fn(),
+		missingFiles: ref<string[]>([]),
+		checkCoverage: vi.fn(),
+		recheck: vi.fn(),
+	},
+	planItems: ref([]),
 	statusNote: ref<string | undefined>(undefined),
 	ask: {
 		phase: ref('idle'),
@@ -240,6 +255,7 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 				UiSkeleton: inert('UiSkeleton'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
 				AnswerQueueMailAsk: QueueAskStub,
+				AnswerPlanBanner: inert('AnswerPlanBanner'),
 				AnswerPeekDraft: inert('AnswerPeekDraft'),
 				PostboxLabelPickerDialog: LabelDialogStub,
 				PostboxAiStrip: AiStripStub,

@@ -6906,10 +6906,32 @@
 				"attachFile": "{file} an die Antwort anhängen",
 				"attachFailed": "Die Datei konnte nicht angehängt werden.",
 				"attachOperation": "Datei anhängen",
-				"covered": "{covered} von {total} Anfrage beantwortet | {covered} von {total} Anfragen beantwortet",
 				"asksCount": "{count} Anfrage | {count} Anfragen",
 				"show": "Anzeigen",
 				"hide": "Ausblenden"
+			},
+			"plan": {
+				"title": "Deine Antwort umfasst",
+				"selected": "{count} von {total} ausgewählt",
+				"stanceGroup": "Wie die Antwort darauf eingeht: {item}",
+				"stance": {
+					"answer": "Antworten",
+					"accept": "Annehmen",
+					"decline": "Ablehnen",
+					"defer": "Später",
+					"clarify": "Nachfragen"
+				},
+				"fileMissing": "Datei fehlt",
+				"status": {
+					"addressed": "{addressed} von {total} berücksichtigt",
+					"needsFile": "{count} braucht eine Datei | {count} brauchen eine Datei",
+					"promise": "neues Versprechen notiert: „{text}“"
+				},
+				"banner": {
+					"title": "Eins noch vor dem Senden.",
+					"body": "Der Entwurf sagt „{claim}“, aber es ist noch keine Datei angehängt.",
+					"pick": "Datei auswählen"
+				}
 			},
 			"aiBar": {
 				"label": "Was soll in der Antwort stehen?",

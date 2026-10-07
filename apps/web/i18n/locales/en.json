@@ -6906,10 +6906,32 @@
 				"attachFile": "Attach {file} to the reply",
 				"attachFailed": "The file could not be attached.",
 				"attachOperation": "Attach file",
-				"covered": "{covered} of {total} ask covered | {covered} of {total} asks covered",
 				"asksCount": "{count} ask | {count} asks",
 				"show": "Show",
 				"hide": "Hide"
+			},
+			"plan": {
+				"title": "Your reply covers",
+				"selected": "{count} of {total} selected",
+				"stanceGroup": "How the reply takes on: {item}",
+				"stance": {
+					"answer": "Answer",
+					"accept": "Accept",
+					"decline": "Decline",
+					"defer": "Defer",
+					"clarify": "Ask"
+				},
+				"fileMissing": "File missing",
+				"status": {
+					"addressed": "{addressed} of {total} addressed",
+					"needsFile": "{count} needs a file | {count} need a file",
+					"promise": "new promise noted: “{text}”"
+				},
+				"banner": {
+					"title": "One thing before sending.",
+					"body": "The draft says “{claim}”, but no file is attached yet.",
+					"pick": "Pick file"
+				}
 			},
 			"aiBar": {
 				"label": "What should the reply say?",
