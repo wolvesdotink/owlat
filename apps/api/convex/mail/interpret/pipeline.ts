@@ -5,7 +5,7 @@
  * share it.
  *
  *   buildInterpretInput   load + segmentation → the prompt input
- *   clampOutput           bound every model string (INTERPRET_TEXT_LIMITS)
+ *   (clamping of the model's strings lives in `clamp.ts`)
  *   verifyClaimsOf        which grounded claims the verifier must check
  *   toReduceResult        grounded + verified proposals → the reducer input
  *   runStatusOf           complete / partial, and why
@@ -22,7 +22,6 @@ import type { ParticipantRef } from '../../lib/validators/threadBrief';
 import type { GroundedClaim, GroundingResult } from './ground';
 import { quoteOccurrences } from './quoteMatch';
 import {
-	INTERPRET_TEXT_LIMITS,
 	type InterpretFactProposal,
 	type InterpretInput,
 	type InterpretInputFact,
@@ -33,7 +32,14 @@ import {
 	type InterpretParticipantProposal,
 	type InterpretTransitionProposal,
 } from './schema';
-import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
+import type {
+	ReduceEvidence,
+	ReduceFact,
+	ReduceItem,
+	ReduceResult,
+	ReduceTransition,
+} from './reduceInput';
+import { resolveDue } from './dueDate';
 
 // ── Input ──────────────────────────────────────────────────────────────────
 
@@ -70,82 +76,6 @@ export function buildInterpretInput(args: {
 		factsOverflow: args.mode === 'brief' && args.isFactsOverflow,
 		locales: args.locales,
 	};
-}
-
-// ── Clamping ───────────────────────────────────────────────────────────────
-
-/** Strip control characters, collapse whitespace, cut at a word. */
-export function clampText(value: string, max: number): string {
-	const flat = value
-		// eslint-disable-next-line no-control-regex
-		.replace(/[\u0000-\u001f\u007f]/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
-	if (flat.length <= max) return flat;
-	const cut = flat.slice(0, max - 1);
-	return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 1))}…`;
-}
-
-const L = INTERPRET_TEXT_LIMITS;
-
-function clampDisplay(display: Record<string, string>): Record<string, string> {
-	return Object.fromEntries(
-		Object.entries(display).map(([k, val]) => [k, clampText(val, L.display)])
-	);
-}
-
-function clampParticipant(p: InterpretParticipantProposal): InterpretParticipantProposal {
-	return {
-		ref: p.ref,
-		name: p.name === null ? null : clampText(p.name, L.participantName),
-		email: p.email === null ? null : p.email.trim().slice(0, 254),
-	};
-}
-
-/** Bound every derived string of the model output. Quotes stay verbatim (grounding needs them). */
-export function clampOutput<O extends InterpretOutput>(output: O): O {
-	const items = output.items.map((item) => ({
-		...item,
-		assertion: clampText(item.assertion, L.assertion),
-		display: clampDisplay(item.display) as InterpretItemProposal['display'],
-		requester: clampParticipant(item.requester),
-		responsible: clampParticipant(item.responsible),
-		beneficiary: item.beneficiary ? clampParticipant(item.beneficiary) : null,
-		due: item.due
-			? {
-					...item.due,
-					phrase: clampText(item.due.phrase, L.duePhrase),
-					condition: item.due.condition ? clampText(item.due.condition, L.duePhrase) : null,
-				}
-			: null,
-		options: item.options ? item.options.map((o) => clampText(o, L.option)) : null,
-	}));
-	if (output.mode === 'actions') return { ...output, items };
-	return {
-		...output,
-		items,
-		latest: Object.fromEntries(
-			Object.entries(output.latest).map(([locale, lines]) => [
-				locale,
-				lines.map((line) => ({ ...line, text: clampText(line.text, L.latestLine) })),
-			])
-		) as typeof output.latest,
-		facts: output.facts.map((fact) => ({
-			...fact,
-			key: {
-				entity: clampText(fact.key.entity, L.factKeyPart),
-				attribute: clampText(fact.key.attribute, L.factKeyPart),
-				context: fact.key.context ? clampText(fact.key.context, L.factKeyPart) : null,
-			},
-			assertion: clampText(fact.assertion, L.assertion),
-			display: clampDisplay(fact.display) as InterpretFactProposal['display'],
-			value:
-				fact.value && 'text' in fact.value
-					? { ...fact.value, text: clampText(fact.value.text, L.factValueText) }
-					: fact.value,
-			reportedBy: clampParticipant(fact.reportedBy),
-		})),
-	} as O;
 }
 
 // ── Participants and dates ─────────────────────────────────────────────────
@@ -193,17 +123,22 @@ export interface VerifyClaim {
 
 export type VerifyVerdict = 'supported' | 'unsupported' | 'unclear';
 
+/** The claim's quotes; for a mixed claim only its FRESH quotes, which must carry it alone. */
 function quotesOf(claim: GroundedClaim<unknown>, canonicalText: string): string[] {
-	return claim.evidence.map((e) => canonicalText.slice(e.start, e.end));
+	const evidence = claim.isMixed
+		? claim.evidence.filter((e) => e.segmentKind === 'fresh')
+		: claim.evidence;
+	return evidence.map((e) => canonicalText.slice(e.start, e.end));
 }
 
-function partyLabel(
-	p: InterpretParticipantProposal,
-	participants: readonly InterpretInputParticipant[]
-) {
-	const listed = p.ref ? participants.find((x) => x.ref === p.ref) : undefined;
-	if (listed) return listed.isUs ? 'the reader' : (listed.name ?? listed.email ?? 'someone');
-	return p.name ?? p.email ?? 'an unclear person';
+/** A tracked claim: grounding found no proposal, or the fresh quotes alone verified it. */
+function isTracked(g: GroundedClaim<unknown>, verdict: VerifyVerdict | undefined): boolean {
+	return !g.proposal || (g.isMixed === true && verdict === 'supported');
+}
+
+function partyLabel(party: { email?: string; name?: string; isUs: boolean }): string {
+	if (party.isUs) return 'the reader';
+	return party.name ?? party.email ?? 'an unclear person';
 }
 
 /**
@@ -216,6 +151,8 @@ export function verifyClaimsOf(
 	canonicalText: string,
 	context: {
 		participants: readonly InterpretInputParticipant[];
+		/** The mailbox's (or inbox's) own addresses: the same "us" the reducer stores. */
+		ownAddresses: ReadonlySet<string>;
 		itemText: (itemId: string) => string | undefined;
 		factText: (factId: string) => string | undefined;
 	}
@@ -223,21 +160,31 @@ export function verifyClaimsOf(
 	const claims: VerifyClaim[] = [];
 	for (const [i, g] of grounding.items.entries()) {
 		const item = g.claim as InterpretItemProposal;
-		const responsible = resolveTag(item.responsible, context.participants);
-		if (!isConsequential(item) && responsible !== 'us') continue;
+		// One resolver for ownership here and in storage (toReduceResult).
+		const responsible = resolveParticipant(
+			item.responsible,
+			context.participants,
+			context.ownAddresses
+		);
+		// A forwarded/signature/disclaimer-only proposal stays a proposal whatever a
+		// verifier says; a mixed claim is always checked, on its fresh quotes.
+		if (g.proposal && !g.isMixed) continue;
+		if (!g.isMixed && !isConsequential(item) && !responsible.isUs) continue;
 		const due = item.due ? ` by ${item.due.phrase}` : '';
 		const amount = item.amount ? ` (${item.amount.value} ${item.amount.currency})` : '';
 		claims.push({
 			id: `item:${i}`,
 			statement:
-				`${partyLabel(item.responsible, context.participants)} is asked or committed to: ` +
+				`${partyLabel(responsible)} is asked or committed to: ` +
 				`${item.assertion}${amount}${due}`,
 			quotes: quotesOf(g, canonicalText),
 		});
 	}
 	for (const [i, g] of grounding.transitions.entries()) {
 		const t = g.claim as InterpretTransitionProposal;
-		if (!t.to || !['done', 'declined', 'superseded'].includes(t.to)) continue;
+		if (g.proposal && !g.isMixed) continue;
+		const isClosing = !!t.to && ['done', 'declined', 'superseded'].includes(t.to);
+		if (!isClosing && !g.isMixed) continue;
 		const text = context.itemText(t.itemId);
 		if (!text) continue;
 		const verb =
@@ -245,7 +192,11 @@ export function verifyClaimsOf(
 				? 'has been done'
 				: t.to === 'declined'
 					? 'has been declined'
-					: 'has been replaced by something else';
+					: t.to === 'superseded'
+						? 'has been replaced by something else'
+						: t.to === 'open'
+							? 'is open again'
+							: `has been ${t.disposition ?? 'answered'}`;
 		claims.push({
 			id: `transition:${i}`,
 			statement: `"${text}" ${verb}.`,
@@ -264,15 +215,6 @@ export function verifyClaimsOf(
 		});
 	}
 	return claims;
-}
-
-function resolveTag(
-	p: InterpretParticipantProposal,
-	participants: readonly InterpretInputParticipant[]
-): 'us' | 'them' | 'unclear' {
-	const listed = p.ref ? participants.find((x) => x.ref === p.ref) : undefined;
-	if (listed) return listed.isUs ? 'us' : 'them';
-	return p.name || p.email ? 'them' : 'unclear';
 }
 
 // ── Reducer input ──────────────────────────────────────────────────────────
@@ -297,6 +239,8 @@ export interface ToReduceOptions {
 	participants: readonly InterpretInputParticipant[];
 	ownAddresses: ReadonlySet<string>;
 	timezone: string;
+	/** The message date: deadlines resolve relative to it (dueDate.ts). */
+	sentAt: number;
 	/** Verifier verdicts by claim id; a claim absent here was not checked. */
 	verdicts: ReadonlyMap<string, VerifyVerdict>;
 	/** Claim ids that were sent to the verifier. */
@@ -319,11 +263,14 @@ export function toReduceResult(
 		const p = g.claim as InterpretItemProposal;
 		const id = `item:${i}`;
 		const verdict = opts.verdicts.get(id);
-		if (verdict === 'unsupported') {
+		const tracked = isTracked(g, verdict);
+		// A proposal is never dropped by a verdict: it stays for the reader to confirm.
+		if (tracked && verdict === 'unsupported') {
 			verifyDropped++;
 			continue;
 		}
-		const at = parseIsoMs(p.due?.at);
+		// The deadline is read from its phrase, never taken from the model's timestamp.
+		const due = p.due ? resolveDue(p.due.phrase, opts.sentAt, opts.timezone) : undefined;
 		items.push({
 			...(p.matchItemId ? { matchItemId: p.matchItemId } : {}),
 			intent: p.intent,
@@ -338,9 +285,8 @@ export function toReduceResult(
 				? {
 						due: {
 							phrase: p.due.phrase,
-							...(at !== undefined ? { at } : {}),
-							tz: p.due.tz ?? opts.timezone,
-							isAmbiguous: p.due.ambiguous || (p.due.at !== null && at === undefined),
+							...(due?.at !== undefined ? { at: due.at, tz: opts.timezone } : {}),
+							isAmbiguous: due?.isAmbiguous ?? true,
 							...(p.due.condition ? { condition: p.due.condition } : {}),
 						},
 					}
@@ -355,9 +301,9 @@ export function toReduceResult(
 				: {}),
 			...(p.options && p.options.length > 0 ? { options: p.options } : {}),
 			evidence: evidenceOf(g, opts.canonicalText),
-			// Grounding keeps forwarded-only and signature/disclaimer-only items as
-			// proposals: no verdict upgrades them (ground.ts).
-			verify: g.proposal
+			// Forwarded-, signature- or disclaimer-only items, and mixed ones whose
+			// fresh quotes did not verify, are proposals (ground.ts).
+			verify: !tracked
 				? 'proposal'
 				: !opts.checked.has(id)
 					? 'na'
@@ -368,21 +314,27 @@ export function toReduceResult(
 		});
 	}
 
-	const transitions = grounding.transitions.map((g, i) => {
+	const transitions: ReduceTransition[] = [];
+	for (const [i, g] of grounding.transitions.entries()) {
 		const t = g.claim as InterpretTransitionProposal;
 		const id = `transition:${i}`;
-		if (opts.checked.has(id) && opts.verdicts.get(id) !== 'supported') verifyDropped++;
-		return {
+		const verdict = opts.verdicts.get(id);
+		// A proposal transition (forwarded-only, or mixed without fresh support)
+		// never reaches the reducer: no status and no disposition change (ground.ts).
+		if (!isTracked(g, verdict)) {
+			verifyDropped++;
+			continue;
+		}
+		if (opts.checked.has(id) && verdict !== 'supported') verifyDropped++;
+		transitions.push({
 			itemId: t.itemId,
 			...(t.to ? { to: t.to } : {}),
 			...(t.disposition ? { disposition: t.disposition } : {}),
 			evidence: evidenceOf(g, opts.canonicalText),
-			// A transition resting only on forwarded text never counts as verified,
-			// so it cannot close an item (ground.ts).
-			isVerified: !g.proposal && opts.verdicts.get(id) === 'supported',
+			isVerified: verdict === 'supported',
 			isReviewNeeded: g.needsReview,
-		};
-	});
+		});
+	}
 
 	const result: ReduceResult = {
 		items,
@@ -463,8 +415,8 @@ function factValueOf(value: InterpretFactProposal['value']): ReduceFact['value']
 
 /**
  * Whether the run read everything it should have: `partial` when grounding
- * found a gap, the model or the prompt overflowed, a segment was cut, or a
- * verification call failed. Pure.
+ * found a gap, the model or the prompt overflowed, a segment was cut, a
+ * verification call failed, or only part of the body could be read. Pure.
  */
 export function runStatusOf(input: {
 	grounding: Pick<GroundingResult<InterpretOutput>, 'coverage'>;
@@ -473,7 +425,13 @@ export function runStatusOf(input: {
 	isFactsOverflow: boolean;
 	truncatedSegmentIds: readonly string[];
 	isVerifyIncomplete: boolean;
+	/** Scoping could not load the whole body (an excerpt stood in). */
+	isBodyIncomplete?: boolean;
+	/** The body ran past the hidden-content scanner's cap (its tail was not read). */
+	isBodyTruncated?: boolean;
 }): { status: 'complete' | 'partial'; errorCode?: string } {
+	if (input.isBodyTruncated) return { status: 'partial', errorCode: 'overflow' };
+	if (input.isBodyIncomplete) return { status: 'partial', errorCode: 'body_unavailable' };
 	if (
 		input.output.coverage.overflow ||
 		input.isItemsOverflow ||

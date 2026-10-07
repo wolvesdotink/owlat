@@ -41,7 +41,7 @@ import { REPLY_INTENTS } from '../ai/replyIntent';
 // ── Versions and bounds ────────────────────────────────────────────────────
 
 /** Bump when the prompt or the contract changes what is extracted: stored rows are re-run. */
-export const INTERPRET_EXTRACTOR_VERSION = 2;
+export const INTERPRET_EXTRACTOR_VERSION = 3;
 /** Shape version of the sealed `messageInterpretations.payload` JSON. */
 export const INTERPRET_PAYLOAD_VERSION = 1;
 

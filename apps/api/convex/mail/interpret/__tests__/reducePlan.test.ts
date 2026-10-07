@@ -77,7 +77,13 @@ function result(overrides: Partial<ReduceResult> = {}): ReduceResult {
 	};
 }
 
-const BRIEF: PlanOptions = { mode: 'brief', threadKind: 'mail', isOutOfOrder: false };
+const SOURCE = { kind: 'mail' as const, id: id<'mailMessages'>('m2') };
+const BRIEF: PlanOptions = {
+	mode: 'brief',
+	threadKind: 'mail',
+	isOutOfOrder: false,
+	source: SOURCE,
+};
 
 describe('items', () => {
 	it('creates a new item for an unmatched proposal', () => {
@@ -326,6 +332,7 @@ describe('facts', () => {
 		revision: 1,
 		evidence: [],
 		value: { kind: 'date', at: 1000 },
+		assertionText: 'The meeting is on Monday',
 	};
 	const fact = (overrides: Partial<ReduceFact> = {}): ReduceFact => ({
 		key: '["meeting","date",""]',
@@ -398,6 +405,107 @@ describe('facts', () => {
 				threadKind: 'team',
 			}).facts
 		).toEqual([]);
+	});
+});
+
+describe('review round 1', () => {
+	it('keeps the same words quoted from another message as a second reference (F6)', () => {
+		const item = stored({
+			evidence: [
+				{
+					source: { kind: 'mail', id: id<'mailMessages'>('m1') },
+					segmentId: 's0',
+					start: 0,
+					end: 10,
+					contentRevision: REV,
+				},
+			],
+		});
+		const plan = planReduction(
+			{ items: [item], facts: [] },
+			result({ items: [proposal({ matchItemId: 'item_a' })] }),
+			REV,
+			BRIEF
+		);
+		expect(plan.patches[0]?.addEvidence).toEqual([ev()]);
+		// The same span from the same message is not added twice.
+		const again = planReduction(
+			{ items: [item], facts: [] },
+			result({ items: [proposal({ matchItemId: 'item_a' })] }),
+			REV,
+			{ ...BRIEF, source: { kind: 'mail', id: id<'mailMessages'>('m1') } }
+		);
+		expect(again.patches[0]?.addEvidence).toBeUndefined();
+	});
+
+	it('drops every effect of an unverified closing claim, disposition included (F7)', () => {
+		const plan = planReduction(
+			{ items: [stored()], facts: [] },
+			result({
+				transitions: [transition({ to: 'declined', disposition: 'declined', isVerified: false })],
+			}),
+			REV,
+			BRIEF
+		);
+		expect(plan.patches).toEqual([]);
+		expect(plan.dropped).toEqual([{ kind: 'transition', index: 0, reason: 'unverified' }]);
+	});
+
+	it('merges only a proven restatement of a fact (F8)', () => {
+		const noValue: PlanFact = {
+			_id: id<'threadFacts'>('fact_b'),
+			factKey: '["venue","address",""]',
+			status: 'current',
+			revision: 1,
+			evidence: [],
+			assertionText: 'The venue is Hall 3',
+		};
+		const claim = (assertion: string): ReduceFact => ({
+			key: '["venue","address",""]',
+			assertion,
+			display: { en: assertion, de: assertion },
+			evidence: [ev()],
+			isVerified: false,
+			isReviewNeeded: false,
+		});
+		const same = planReduction(
+			{ items: [], facts: [noValue] },
+			result({ facts: [claim('The venue is hall 3.')] }),
+			REV,
+			BRIEF
+		);
+		expect(same.facts[0]).toMatchObject({ kind: 'evidence', factId: 'fact_b' });
+		const other = planReduction(
+			{ items: [], facts: [noValue] },
+			result({ facts: [claim('The venue is Hall 7')] }),
+			REV,
+			BRIEF
+		);
+		expect(other.facts[0]).toMatchObject({ kind: 'insert', conflictsWithId: 'fact_b' });
+		// A value on one side only is not proof either.
+		const withValue = planReduction(
+			{ items: [], facts: [noValue] },
+			result({
+				facts: [{ ...claim('The venue is Hall 3'), value: { kind: 'text', text: 'Hall 3' } }],
+			}),
+			REV,
+			BRIEF
+		);
+		expect(withValue.facts[0]).toMatchObject({ kind: 'insert', conflictsWithId: 'fact_b' });
+	});
+
+	it('keeps the conflicting quotes on a corrected item and flags it (F16)', () => {
+		const plan = planReduction(
+			{
+				items: [stored({ status: 'untracked', correction: { by: 'u', at: 1, kind: 'untracked' } })],
+				facts: [],
+			},
+			result({ transitions: [transition({ to: 'open' })] }),
+			REV,
+			BRIEF
+		);
+		expect(plan.patches[0]).toMatchObject({ isReviewNeeded: true, addEvidence: [ev(20, 30)] });
+		expect(plan.patches[0]?.status).toBeUndefined();
 	});
 });
 

@@ -62,6 +62,55 @@ export async function seedMailThread(
 	return { mailboxId, messageId, threadId };
 }
 
+/** One more message in an existing Postbox thread (same shape as seedMessage's). */
+export async function addMessageToThread(
+	t: Test,
+	at: { mailboxId: Id<'mailboxes'>; threadId: Id<'mailThreads'> },
+	seed: { text: string; receivedAt: number; fromAddress?: string }
+): Promise<Id<'mailMessages'>> {
+	return t.run(async (ctx) => {
+		const first = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread', (q) => q.eq('threadId', at.threadId))
+			.first();
+		if (!first) throw new Error('thread has no message');
+		const rawStorageId = await ctx.storage.store(new Blob(['raw']));
+		const thread = await ctx.db.get(at.threadId);
+		await ctx.db.patch(at.threadId, { messageCount: (thread?.messageCount ?? 1) + 1 });
+		return ctx.db.insert('mailMessages', {
+			mailboxId: at.mailboxId,
+			folderId: first.folderId,
+			uid: seed.receivedAt % 100000,
+			modseq: 1,
+			rfc822MessageId: `<m-${seed.receivedAt}@example.com>`,
+			threadId: at.threadId,
+			fromAddress: seed.fromAddress ?? 'jonas@example.com',
+			toAddresses: ['me@owlat.test'],
+			ccAddresses: [],
+			bccAddresses: [],
+			subject: 'Contract',
+			normalizedSubject: 'contract',
+			snippet: seed.text,
+			textBodyInline: seed.text,
+			rawStorageId,
+			rawSize: 3,
+			attachments: [],
+			hasAttachments: false,
+			flagSeen: false,
+			flagFlagged: false,
+			flagAnswered: false,
+			flagDraft: false,
+			flagDeleted: false,
+			customFlags: [],
+			labelIds: [],
+			receivedAt: seed.receivedAt,
+			internalDate: seed.receivedAt,
+			createdAt: seed.receivedAt,
+			updatedAt: seed.receivedAt,
+		});
+	});
+}
+
 /** A Team Inbox conversation with one inbound message. */
 export async function seedTeamThread(
 	t: Test,

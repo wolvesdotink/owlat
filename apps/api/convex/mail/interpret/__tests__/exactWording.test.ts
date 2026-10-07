@@ -10,7 +10,8 @@
 import { describe, expect, it } from 'vitest';
 import { segmentMessage } from '@owlat/shared/mailSegments';
 import { groundProposals } from '../ground';
-import { clampOutput, toReduceResult } from '../pipeline';
+import { toReduceResult } from '../pipeline';
+import { clampOutput } from '../clamp';
 import { quoteOccurrences } from '../quoteMatch';
 import { briefModelSchema, briefOutputSchema, type InterpretBriefOutput } from '../schema';
 
@@ -58,6 +59,7 @@ const opts = {
 	participants: [],
 	ownAddresses: new Set<string>(),
 	timezone: 'UTC',
+	sentAt: 0,
 	verdicts: new Map(),
 	checked: new Set<string>(),
 };
