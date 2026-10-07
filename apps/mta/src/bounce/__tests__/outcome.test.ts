@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ParsedMessage } from '@owlat/mail-message';
+import { parseMessage, type ParsedMessage } from '@owlat/mail-message';
 import { reduce } from '../outcome.js';
 import type { BasePhaseCtx, BounceAttempt } from '../types.js';
 import type { InboundRoute } from '../../inbound/router.js';
@@ -533,5 +533,61 @@ describe('reduce(route_hold | route_bounce | unrecognized)', () => {
 	])('%s emits no effects', (_label, attempt) => {
 		const { effects } = reduce(attempt, makeCtx());
 		expect(effects).toEqual([]);
+	});
+});
+
+describe('reduce: raw UTF-8 headers reach Convex decoded (#1297)', () => {
+	// What the MX hands `onData`: the wire bytes, with UTF-8 straight in the
+	// headers (RFC 6532), parsed the way `server.ts` parses them.
+	const rawBuffer = Buffer.from(
+		[
+			'From: Jörg Müller <joerg@isp.example>',
+			'To: inbox@org.example',
+			'Subject: Grüße aus Köln, voilà',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Hallo',
+		].join('\r\n'),
+		'utf-8'
+	);
+	const ctx = (): BasePhaseCtx =>
+		makeCtx({ parsed: parseMessage(rawBuffer), rawBuffer, rcptTo: 'inbox@org.example' });
+
+	function notifyOf(attempt: BounceAttempt) {
+		const notify = reduce(attempt, ctx()).effects.find((e) => e.kind === 'notify_convex');
+		if (notify?.kind !== 'notify_convex') throw new Error('no notify_convex effect');
+		return notify.event;
+	}
+
+	it('on a personal mailbox delivery', () => {
+		const event = notifyOf({
+			kind: 'mailbox',
+			mailbox: { mailboxId: 'mb-1', organizationId: 'org-1', usedBytes: 0, cachedAt: 0 },
+			rcptTo: 'inbox@org.example',
+			attachments: [],
+			toAddrs: ['inbox@org.example'],
+			ccAddrs: [],
+			bccAddrs: [],
+			references: undefined,
+			dkimResult: undefined,
+			dmarcResult: undefined,
+			dmarcPolicy: undefined,
+			arcCv: undefined,
+			arcSealerDomain: undefined,
+			arcAttestsOriginalPass: undefined,
+		});
+		expect(event.mailboxPayload?.subject).toBe('Grüße aus Köln, voilà');
+		expect(event.message).toContain('Jörg Müller <joerg@isp.example>');
+	});
+
+	it('on an inbound route', () => {
+		const event = notifyOf({
+			kind: 'inbound_accept',
+			route: makeRoute(),
+			rcptTo: 'inbox@org.example',
+			attachments: [],
+			headers: {},
+		});
+		expect(event.inboundPayload?.subject).toBe('Grüße aus Köln, voilà');
 	});
 });

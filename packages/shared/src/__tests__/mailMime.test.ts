@@ -136,6 +136,25 @@ describe('extractAttachmentAt', () => {
 		expect(extractAttachmentAt(RAW, '9', 'data.bin')?.filename).toBe('data.bin');
 	});
 
+	it('reads a raw UTF-8 filename as ingest stored it (RFC 6532)', () => {
+		const raw = bytesToBinaryString(
+			new TextEncoder().encode(
+				[
+					'Content-Type: multipart/mixed; boundary="b"',
+					'',
+					'--b',
+					'Content-Type: application/pdf',
+					'Content-Disposition: attachment; filename="Rechnung März.pdf"',
+					'',
+					'x',
+					'--b--',
+				].join('\r\n')
+			)
+		);
+		expect(extractAttachments(raw).map((a) => a.filename)).toEqual(['Rechnung März.pdf']);
+		expect(extractAttachmentAt(raw, '9', 'Rechnung März.pdf')?.filename).toBe('Rechnung März.pdf');
+	});
+
 	it('returns null when nothing matches', () => {
 		expect(extractAttachmentAt(RAW, '9', 'missing.pdf')).toBeNull();
 	});

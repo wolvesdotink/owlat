@@ -88,8 +88,12 @@ export default defineNuxtConfig({
 				'base-uri': ["'none'"],
 				'font-src': ["'self'", 'https:', 'data:'],
 				'form-action': ["'self'"],
-				'img-src': ["'self'", 'data:', 'https:'],
-				'object-src': ["'none'"],
+				// `blob:`: object URLs this page's own script creates (attachment
+				// lightbox, chip thumbnails, pasted images, upload size probes).
+				// Markup cannot create one, so an injected tag gains nothing from it.
+				'img-src': ["'self'", 'data:', 'https:', 'blob:'],
+				// Only the lightbox's `<object data="blob:…">` PDF; see frame-src.
+				'object-src': ['blob:'],
 				'script-src-attr': ["'none'"],
 				// 'unsafe-inline' kept on style-src because email-builder
 				// previews and inline component styles legitimately need it.
@@ -134,7 +138,9 @@ export default defineNuxtConfig({
 				// remote frame loads are never legitimate. Local-scheme frames
 				// (about:srcdoc) are exempt from frame-src and inherit this
 				// document's policy, so this only bars future external embeds.
-				'frame-src': ["'none'"],
+				// `blob:` because Chrome checks a PDF `<object>` against frame-src too.
+				// The mail iframes' own meta CSP (default-src 'none') still refuses it.
+				'frame-src': ['blob:'],
 				// Desktop builds (`OWLAT_DESKTOP=true`, produced by `generate:desktop`)
 				// connect to arbitrary self-hosted instances chosen at runtime, so the
 				// build-time single-URL allowlist is wrong for them — allow any https/wss

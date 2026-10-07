@@ -105,6 +105,34 @@ describe('PostboxAttachmentLightbox', () => {
 		expect(obj.attributes('type')).toBe('application/pdf');
 	});
 
+	it("gives the PDF's object URL the PDF type, whatever type the part arrived with", async () => {
+		// `<object>` renders by the blob's own type, so an HTML-typed part would
+		// load as a same-origin document instead of in the PDF viewer.
+		const loadPart = async (att: unknown) =>
+			new Blob(['x'], {
+				type:
+					(att as { contentType: string }).contentType === 'application/pdf'
+						? 'text/html'
+						: 'image/png',
+			});
+		mountLightbox(2, loadPart);
+		await flush();
+		await nextTick();
+
+		expect(createObjectURL).toHaveBeenCalledTimes(1);
+		const passed = (createObjectURL.mock.calls[0] as unknown[])[0] as Blob;
+		expect(passed.type).toBe('application/pdf');
+	});
+
+	it("passes an image part's blob through untouched", async () => {
+		const original = new Blob(['x'], { type: 'image/png' });
+		mountLightbox(0, async () => original);
+		await flush();
+		await nextTick();
+
+		expect((createObjectURL.mock.calls[0] as unknown[])[0]).toBe(original);
+	});
+
 	it('does not advance past the last attachment', async () => {
 		const w = mountLightbox(2);
 		await flush();

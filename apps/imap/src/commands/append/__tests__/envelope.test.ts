@@ -141,6 +141,30 @@ describe('appendEnvelope', () => {
 		expect(appendEnvelope(raw).text).toBe('Grüße');
 	});
 
+	it('decodes a raw UTF-8 subject and display names (RFC 6532)', () => {
+		const env = appendEnvelope(
+			eml([
+				'Subject: Grüße aus Köln, voilà',
+				'From: Jörg Müller <joerg@example.com>',
+				'To: Zoë <zoe@example.com>',
+			])
+		);
+		expect(env.subject).toBe('Grüße aus Köln, voilà');
+		expect(env.from).toEqual({ address: 'joerg@example.com', name: 'Jörg Müller' });
+		expect(env.to).toEqual([{ address: 'zoe@example.com', name: 'Zoë' }]);
+	});
+
+	it('keeps an encoded CR/LF out of the subject and display name', () => {
+		const env = appendEnvelope(
+			eml([
+				'Subject: =?UTF-8?Q?Hi=0D=0ABcc=3A_x=40evil.example?=',
+				'From: =?UTF-8?Q?Eve=0D=0ABcc=3A_x?= <eve@example.com>',
+			])
+		);
+		expect(env.subject).toBe('Hi Bcc: x@evil.example');
+		expect(env.from).toEqual({ address: 'eve@example.com', name: 'Eve Bcc: x' });
+	});
+
 	it('caps each inline body to a byte-accurate UTF-8 prefix', () => {
 		const long = 'é'.repeat(APPEND_INLINE_BODY_LIMIT_BYTES);
 		const raw = Buffer.from(

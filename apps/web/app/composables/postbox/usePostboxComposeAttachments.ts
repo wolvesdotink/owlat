@@ -159,8 +159,11 @@ export function usePostboxComposeAttachments(opts: {
 	 *   - combined-SIZE cap (ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes),
 	 * counting committed + in-flight attachments so a user can't queue ten oversized
 	 * files and OOM the send.
+	 *
+	 * Takes an array, never a live `FileList`: the files are read after the
+	 * draft row is awaited, and a file input's list is empty by then.
 	 */
-	async function addFiles(files: File[] | FileList) {
+	async function addFiles(files: File[]) {
 		const id = await opts.ensureDraft();
 		if (!id) return;
 		// Existing footprint: committed attachments + still-uploading chips.
@@ -169,7 +172,7 @@ export function usePostboxComposeAttachments(opts: {
 			attachments.value.reduce((sum, a) => sum + a.size, 0) +
 			uploads.value.reduce((sum, c) => sum + c.size, 0);
 		const accepted: File[] = [];
-		for (const file of Array.from(files)) {
+		for (const file of files) {
 			if (file.size > MAX_ATTACHMENT_BYTES) {
 				showToast(
 					t('shared.postbox.usePostboxComposeAttachments.tooLarge', {

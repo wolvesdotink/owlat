@@ -35,6 +35,8 @@ import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
 import type { Queue } from 'groupmq';
 import { promoteIntakeReceipt } from '../../routes/sendReceipt.js';
+import { prepareSignedMessage } from '../send/compose.js';
+import { parseMessage } from '@owlat/mail-message';
 import {
 	SUBMISSION_DEDUPLICATION_MAIL_PARAMETER,
 	SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER,
@@ -851,6 +853,30 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(job.dkimDomain).toBe('senderbrand.com');
 		expect(job.dkimDomain).toBe((job.from as string).split('@')[1]);
 		expect(job.dkimDomain).not.toBe('recipientdomain.net');
+	});
+
+	// A client may put UTF-8 straight in the Subject (RFC 6532). The queued job
+	// carries it decoded, and the composer re-encodes it as RFC 2047 on the way
+	// out, so the recipient reads the subject the client wrote.
+	it('relays a raw UTF-8 subject to the recipient intact', async () => {
+		const subject = 'Grüße aus Köln — voilà 😠';
+		const { reply, queue } = await dataCall(
+			`From: Jörg <joerg@brand.com>\r\nTo: rcpt@x.com\r\nSubject: ${subject}\r\n\r\nhi\r\n`,
+			{ organizationId: 'org1', credentialName: 'cred' }
+		);
+		expect(reply).toBeUndefined();
+		const job = queue.add.mock.calls[0]![0].data;
+		expect(job.subject).toBe(subject);
+
+		const { signedBytes } = await prepareSignedMessage(
+			job,
+			{ returnPathDomain: 'bounces.example.com' } as MtaConfig,
+			new Redis() as never
+		);
+		const headerBlock = signedBytes.toString('latin1').split('\r\n\r\n')[0]!;
+		expect(headerBlock).not.toMatch(/[\u0080-\uffff]/);
+		expect(headerBlock).toMatch(/^Subject: =\?UTF-8\?/m);
+		expect(parseMessage(signedBytes).subject).toBe(subject);
 	});
 });
 

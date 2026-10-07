@@ -94,8 +94,7 @@ function getFileExtColor(contentType: string) {
 	return 'text-text-secondary bg-bg-surface';
 }
 
-async function handleFileUpload(files: FileList | File[]) {
-	const fileArray = Array.from(files);
+async function handleFileUpload(fileArray: File[]) {
 	if (fileArray.length === 0) return;
 
 	// Validate limits
@@ -228,7 +227,7 @@ function removeAttachment(id: string) {
 function handleFileInput(event: Event) {
 	const input = event.target as HTMLInputElement;
 	if (input.files?.length) {
-		handleFileUpload(input.files);
+		handleFileUpload(Array.from(input.files));
 		input.value = '';
 	}
 }
