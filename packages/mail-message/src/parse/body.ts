@@ -126,7 +126,8 @@ function parseMimeNode(
 	raw: string,
 	depth: number,
 	nested: boolean,
-	budget: MimeParseBudget
+	budget: MimeParseBudget,
+	meter: { bytes: number } | undefined
 ): MimeNode {
 	const n = raw.length;
 	const frames: PartFrame[] = [
@@ -275,6 +276,7 @@ function parseMimeNode(
 		const atEnd = nl === -1;
 		const lineEnd = atEnd ? n : nl > pos && raw.charCodeAt(nl - 1) === 0x0d ? nl - 1 : nl;
 		const next = atEnd ? n + 1 : nl + 1;
+		if (meter) meter.bytes += next - pos;
 
 		// A delimiter of an open container, the outermost one when several match.
 		const text = delimiters.size > 0 ? delimiterText(pos, lineEnd) : null;
@@ -335,11 +337,17 @@ export interface BoundedMimeTree {
 
 /**
  * {@link parseMimeTree}, also reporting whether {@link MAX_DEPTH} or
- * {@link MAX_MIME_PARTS} cut any content off. The tree is identical.
+ * {@link MAX_MIME_PARTS} cut any content off. The tree is identical. `meter`,
+ * which only tests pass, counts the bytes the line scan reads.
  */
-export function parseMimeTreeWithBounds(raw: string, depth = 0, nested = false): BoundedMimeTree {
+export function parseMimeTreeWithBounds(
+	raw: string,
+	depth = 0,
+	nested = false,
+	meter?: { bytes: number }
+): BoundedMimeTree {
 	const budget: MimeParseBudget = { remainingParts: MAX_MIME_PARTS, truncated: false };
-	const root = parseMimeNode(raw, depth, nested, budget);
+	const root = parseMimeNode(raw, depth, nested, budget, meter);
 	return { root, truncated: budget.truncated };
 }
 

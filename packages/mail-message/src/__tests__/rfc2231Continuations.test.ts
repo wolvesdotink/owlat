@@ -108,7 +108,7 @@ describe('huge continuation indexes stay cheap', () => {
 			'',
 		].join('\r\n');
 
-	it.each(huge)('index %s: parsed in well under 50 ms, and ignored', (index) => {
+	it.each(huge)('index %s: parsed in well under a second, and ignored', (index) => {
 		const text = message(index);
 		const raw = Uint8Array.from(text, (c) => c.charCodeAt(0));
 		const started = performance.now();
@@ -119,7 +119,10 @@ describe('huge continuation indexes stay cheap', () => {
 		const located = locateMimeTree(raw);
 		const filenames: string[] = [];
 		walkLeaves(walked.root, (leaf) => filenames.push(partFilename(leaf)));
-		expect(performance.now() - started).toBeLessThan(50);
+		// The old join walked an array sized by the index, seconds per part. The
+		// parse takes a few ms; the wide ceiling keeps a loaded CI runner from
+		// failing it, and the `toBeUndefined` above catches the old join anyway.
+		expect(performance.now() - started).toBeLessThan(1_000);
 		expect(walked.root.children).toHaveLength(3);
 		expect(located.root.children).toHaveLength(3);
 		expect(filenames).toEqual(['', '', '']);
