@@ -42,7 +42,7 @@ import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { resolveCounterpartName } from './counterpartName';
-import { openBriefTop } from './interpret/briefTop';
+import { modeOfMailbox, openBriefTop } from './interpret/briefTop';
 import { mailboxScope } from './mailbox/shared';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { type NeedsReplyHeaders } from './needsReplyHeuristic';
@@ -370,7 +370,7 @@ export const listQueue = publicQuery({
 				snippet: thread.latestSnippet,
 				receivedAt: trigger.receivedAt,
 				// The brief's top item and first latest line (unsealed), when interpreted.
-				briefTop: await openBriefTop(thread),
+				briefTop: await openBriefTop(thread, modeOfMailbox(mailbox)),
 			});
 		}
 		for (const { thread, flag, message } of followUps) {
@@ -396,7 +396,7 @@ export const listQueue = publicQuery({
 				subject: message.subject,
 				snippet: thread.latestSnippet,
 				receivedAt: message.receivedAt,
-				briefTop: await openBriefTop(thread),
+				briefTop: await openBriefTop(thread, modeOfMailbox(mailbox)),
 			});
 		}
 		return { items };

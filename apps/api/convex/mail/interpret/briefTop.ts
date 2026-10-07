@@ -19,6 +19,7 @@ import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { BriefTop } from '../../lib/validators/briefTop';
 import type { ItemResponsibility, InterpretMode } from '@owlat/shared/threadBrief';
 import { openMessageBody, sealBodyAtWrite } from '../../lib/messageBody';
+import { mailboxScope } from '../mailbox/shared';
 import { itemCountsOf } from './counters';
 
 type SealedPair = { en: string; de: string };
@@ -128,18 +129,32 @@ async function openPair(pair: SealedPair): Promise<{ en: string; de: string }> {
 	return { en, de };
 }
 
-/** Unseal the projection for a list row; undefined when the thread has none. */
+/** The mode a mailbox's threads read in now: `actions` for a shared mailbox. Pure. */
+export function modeOfMailbox(mailbox: Pick<Doc<'mailboxes'>, 'scope'>): InterpretMode {
+	return mailboxScope(mailbox) === 'shared' ? 'actions' : 'brief';
+}
+
+/**
+ * Unseal the projection for a list row; undefined when the thread has none.
+ *
+ * `mode` is the thread's mode NOW, from its mailbox's scope (review F8): the
+ * stored projection may still be the personal one of a mailbox that has just
+ * become a team inbox, and its "Latest update" line must not reach a shared
+ * surface while the async scope-change cleanup catches up.
+ */
 export async function openBriefTop(
-	thread: Pick<Doc<'mailThreads'>, 'briefTop' | 'needsReply'>
+	thread: Pick<Doc<'mailThreads'>, 'briefTop' | 'needsReply'>,
+	mode: InterpretMode
 ): Promise<BriefTopRow | undefined> {
 	const stored = thread.briefTop;
 	if (!stored) return undefined;
+	const storedLatest = mode === 'brief' && stored.mode === 'brief' ? stored.latest : undefined;
 	const [topText, latest] = await Promise.all([
 		stored.top ? openPair(stored.top.text) : Promise.resolve(undefined),
-		stored.latest ? openPair(stored.latest) : Promise.resolve(undefined),
+		storedLatest ? openPair(storedLatest) : Promise.resolve(undefined),
 	]);
 	return {
-		mode: stored.mode,
+		mode,
 		forYou: stored.forYou,
 		waiting: stored.waiting,
 		...(stored.top && topText

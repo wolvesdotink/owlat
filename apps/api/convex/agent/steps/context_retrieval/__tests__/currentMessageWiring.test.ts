@@ -27,6 +27,7 @@ const ITEM: BriefingItem = {
 	text: 'Tell the customer where order 4821 is.',
 	isUnconfirmed: false,
 	isReviewNeeded: false,
+	isFromCurrentMessage: true,
 	askedAt: 1,
 };
 
@@ -37,6 +38,18 @@ type Read = {
 	} | null;
 	items: BriefingItem[];
 };
+
+const toRead = (read: Read) => ({
+	interpretation: read.interpretation,
+	selection: {
+		ours: read.items.filter((i) => i.responsibility !== 'them'),
+		theirs: read.items.filter((i) => i.responsibility === 'them'),
+		omitted: 0,
+		omittedOurs: 0,
+		omittedTheirs: 0,
+		isReadTruncated: false,
+	},
+});
 
 /** ctx serving one contact-less/thread-less inbound; retrieval legs empty. */
 function makeCtx(reads: Array<Read | 'throw'>, opts: { canRun?: boolean } = {}) {
@@ -61,8 +74,9 @@ function makeCtx(reads: Array<Read | 'throw'>, opts: { canRun?: boolean } = {}) 
 			isGraphRetrievalEnabled: false,
 			briefingActions: () => {
 				const read = reads[Math.min(readIndex++, reads.length - 1)];
+				if (read === undefined) throw new Error('no read fixture');
 				if (read === 'throw') throw new Error('read failed');
-				return read;
+				return toRead(read);
 			},
 		},
 		actions: {
