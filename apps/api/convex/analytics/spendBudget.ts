@@ -7,7 +7,7 @@
  * priced by `lib/llm/pricing.ts`. The ledger is the single source of truth for
  * money: features that call a language or decision model write one row per
  * billed call there, including each call of the Team Inbox agent pipeline
- * (guard, quarantined extraction, classify, clarify, draft and its self-check,
+ * (guard, message interpretation, classify, clarify, draft and its self-check,
  * outcome sentiment; `agent/shared/agentSpend.ts`). The per-step
  * `agentActions.tokenUsage` the walker stores is a reporting view and is never
  * summed here (#1259). Embedding calls write no row, so they are outside the
