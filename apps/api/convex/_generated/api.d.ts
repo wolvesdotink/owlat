@@ -30,6 +30,7 @@ import type * as mail_interpret_run from '../mail/interpret/run.js';
 import type * as mail_interpret_scope from '../mail/interpret/scope.js';
 import type * as mail_interpret_sendActivity from '../mail/interpret/sendActivity.js';
 import type * as mail_interpret_sendFailure from '../mail/interpret/sendFailure.js';
+import type * as mail_interpret_threadEvents from '../mail/interpret/threadEvents.js';
 import type * as mail_interpret_verify from '../mail/interpret/verify.js';
 import type * as mail_messageCounters from '../mail/messageCounters.js';
 import type * as maintenance_counterBackfill from '../maintenance/counterBackfill.js';
@@ -1573,6 +1574,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/scope': typeof mail_interpret_scope;
 	'mail/interpret/sendActivity': typeof mail_interpret_sendActivity;
 	'mail/interpret/sendFailure': typeof mail_interpret_sendFailure;
+	'mail/interpret/threadEvents': typeof mail_interpret_threadEvents;
 	'mail/interpret/verify': typeof mail_interpret_verify;
 	'mail/messageCounters': typeof mail_messageCounters;
 	'maintenance/counterBackfill': typeof maintenance_counterBackfill;

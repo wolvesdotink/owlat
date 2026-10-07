@@ -25,6 +25,7 @@ import type { MutationSessionContext } from '../lib/sessionOrganization';
 import { STRING_LIMITS, validateStringLength } from '../lib/inputGuards';
 import { consumeUpload, storedFileSize } from '../storage/uploads';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { recordFileAddedToDraft } from '../mail/interpret/threadEvents';
 
 /** The `storageUploads.resourceKey` a fresh upload is bound to. */
 export function replyUploadResourceKey(threadId: Id<'conversationThreads'>): string {
@@ -155,6 +156,16 @@ export async function attachExistingToThread(
 	};
 	const next = [...entries, entry];
 	await ctx.db.patch(threadId, { replyAttachments: next });
+	await recordFileAddedToDraft(
+		ctx,
+		{ kind: 'team', id: threadId },
+		{
+			userId: session.userId,
+			draftKey: `teamReply:${threadId}`,
+			fileKey: entry.id,
+			filename: entry.filename,
+		}
+	);
 	await ctx.scheduler.runAfter(0, internal.inbox.replyAttachments.copyExisting, {
 		threadId,
 		entryId: entry.id,

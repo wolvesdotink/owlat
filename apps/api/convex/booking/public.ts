@@ -27,6 +27,7 @@ import { BOOKING_LIMITS } from '@owlat/shared/booking';
 import { randomToken } from '../lib/randomToken';
 import { hashManageToken, hostDisplayName, isKnownTimeZone, loadBusy, rulesOf } from './model';
 import { bookableWindow, computeSlots, isSlotOpen } from './slots';
+import { recordBooked } from '../mail/interpret/threadEvents';
 
 type ReadCtx = QueryCtx | MutationCtx;
 
@@ -257,6 +258,13 @@ export const reserve = internalMutation({
 			kind: 'confirmed',
 			sequence: 0,
 			manageToken: args.manageToken,
+		});
+		// The thread brief of the conversation the booking answers, if any.
+		await recordBooked(ctx, bookingId, {
+			userId: page.profile.userId,
+			guestEmail: guest.guestEmail,
+			startAt: args.start,
+			title: type.title,
 		});
 		return {
 			ok: true,

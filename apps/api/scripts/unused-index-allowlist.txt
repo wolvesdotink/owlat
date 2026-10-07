@@ -13,4 +13,3 @@
 # line in the change that adds its first query.
 draftResponsePlans.by_inbound_draft
 draftResponsePlans.by_mail_draft
-threadItems.by_counterparty
