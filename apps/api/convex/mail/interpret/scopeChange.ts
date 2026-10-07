@@ -32,13 +32,10 @@
  * `invalidateThreadScope`.
  */
 
-import { v } from 'convex/values';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
-import { internalMutation } from '../../lib/writeFence';
-import { interpretModeValidator } from '../../lib/validators/threadBrief';
 import { mailboxScope } from '../mailbox/shared';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
@@ -65,7 +62,7 @@ export async function scheduleScopeInvalidation(
 	mailboxId: Id<'mailboxes'>,
 	mode: InterpretMode
 ): Promise<void> {
-	await ctx.scheduler.runAfter(0, internal.mail.interpret.scopeChange.invalidateMailboxThreads, {
+	await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.invalidateMailboxThreads, {
 		mailboxId,
 		mode,
 		cursor: null,
@@ -159,53 +156,44 @@ export async function invalidateThreadForMode(
  * One page of a mailbox's threads. Stops when the mailbox is gone or its
  * scope no longer matches `mode` (a later change runs its own walk).
  */
-export const invalidateMailboxThreads = internalMutation({
-	args: {
-		mailboxId: v.id('mailboxes'),
-		mode: interpretModeValidator,
-		cursor: v.union(v.string(), v.null()),
-	},
-	handler: async (ctx, args): Promise<{ isDone: boolean; threads: number }> => {
-		const mailbox = await ctx.db.get(args.mailboxId);
-		if (!mailbox || modeOfScope(mailbox) !== args.mode) return { isDone: true, threads: 0 };
-		const page = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', args.mailboxId))
-			.paginate({ cursor: args.cursor, numItems: THREAD_PAGE });
-		for (const thread of page.page) {
-			if (!(await invalidateThreadForMode(ctx, thread._id, args.mode))) {
-				await ctx.scheduler.runAfter(0, internal.mail.interpret.scopeChange.invalidateThreadScope, {
-					threadId: thread._id,
-					mode: args.mode,
-				});
-			}
+export async function invalidateMailboxThreads(
+	ctx: MutationCtx,
+	args: { mailboxId: Id<'mailboxes'>; mode: InterpretMode; cursor: string | null }
+): Promise<{ isDone: boolean; threads: number }> {
+	const mailbox = await ctx.db.get(args.mailboxId);
+	if (!mailbox || modeOfScope(mailbox) !== args.mode) return { isDone: true, threads: 0 };
+	const page = await ctx.db
+		.query('mailThreads')
+		.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', args.mailboxId))
+		.paginate({ cursor: args.cursor, numItems: THREAD_PAGE });
+	for (const thread of page.page) {
+		if (!(await invalidateThreadForMode(ctx, thread._id, args.mode))) {
+			await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.invalidateThreadScope, {
+				threadId: thread._id,
+				mode: args.mode,
+			});
 		}
-		if (!page.isDone) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.mail.interpret.scopeChange.invalidateMailboxThreads,
-				{ ...args, cursor: page.continueCursor }
-			);
-		}
-		return { isDone: page.isDone, threads: page.page.length };
-	},
-});
+	}
+	if (!page.isDone) {
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.invalidateMailboxThreads, {
+			...args,
+			cursor: page.continueCursor,
+		});
+	}
+	return { isDone: page.isDone, threads: page.page.length };
+}
 
 /** Continuation for one thread with more rows than a pass allows. */
-export const invalidateThreadScope = internalMutation({
-	args: { threadId: v.id('mailThreads'), mode: interpretModeValidator },
-	handler: async (ctx, args): Promise<{ isDone: boolean }> => {
-		const thread = await ctx.db.get(args.threadId);
-		const mailbox = thread ? await ctx.db.get(thread.mailboxId) : null;
-		if (!mailbox || modeOfScope(mailbox) !== args.mode) return { isDone: true };
-		const isDone = await invalidateThreadForMode(ctx, args.threadId, args.mode);
-		if (!isDone) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.mail.interpret.scopeChange.invalidateThreadScope,
-				args
-			);
-		}
-		return { isDone };
-	},
-});
+export async function invalidateThreadScope(
+	ctx: MutationCtx,
+	args: { threadId: Id<'mailThreads'>; mode: InterpretMode }
+): Promise<{ isDone: boolean }> {
+	const thread = await ctx.db.get(args.threadId);
+	const mailbox = thread ? await ctx.db.get(thread.mailboxId) : null;
+	if (!mailbox || modeOfScope(mailbox) !== args.mode) return { isDone: true };
+	const isDone = await invalidateThreadForMode(ctx, args.threadId, args.mode);
+	if (!isDone) {
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.invalidateThreadScope, args);
+	}
+	return { isDone };
+}

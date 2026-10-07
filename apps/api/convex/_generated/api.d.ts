@@ -28,6 +28,7 @@ import type * as mail_interpret_pipeline from '../mail/interpret/pipeline.js';
 import type * as mail_interpret_preferences from '../mail/interpret/preferences.js';
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
 import type * as mail_interpret_purge from '../mail/interpret/purge.js';
+import type * as mail_interpret_purgeJobs from '../mail/interpret/purgeJobs.js';
 import type * as mail_interpret_purgeThread from '../mail/interpret/purgeThread.js';
 import type * as mail_interpret_reactionRules from '../mail/interpret/reactionRules.js';
 import type * as mail_interpret_reactions from '../mail/interpret/reactions.js';
@@ -1592,6 +1593,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/preferences': typeof mail_interpret_preferences;
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
 	'mail/interpret/purge': typeof mail_interpret_purge;
+	'mail/interpret/purgeJobs': typeof mail_interpret_purgeJobs;
 	'mail/interpret/purgeThread': typeof mail_interpret_purgeThread;
 	'mail/interpret/reactionRules': typeof mail_interpret_reactionRules;
 	'mail/interpret/reactions': typeof mail_interpret_reactions;

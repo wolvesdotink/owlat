@@ -47,7 +47,7 @@ async function insertItem(
 	sources: InterpretationSource[],
 	extra: Partial<Doc<'threadItems'>> = {}
 ): Promise<Id<'threadItems'>> {
-	const row = {
+	const row: Omit<Doc<'threadItems'>, '_id' | '_creationTime'> = {
 		...threadRefToFields(ref),
 		revision: 1,
 		intent: 'request',
@@ -65,7 +65,7 @@ async function insertItem(
 		createdAt: SENT,
 		updatedAt: SENT,
 		...extra,
-	} as const;
+	};
 	// As the reducer: the list bucket and the brief's item counters move with the insert.
 	const id = await ctx.db.insert('threadItems', { ...row, listBucket: listBucketOf(row) });
 	await recordItemChange(ctx, ref, null, row);

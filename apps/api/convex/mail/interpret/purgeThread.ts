@@ -6,7 +6,8 @@
  * `purgeThreadBrief` runs inline in the transaction that deletes the thread
  * (a Postbox thread losing its last message in `rebuildThreadAggregates`, an
  * external account's teardown) up to a row bound, and hands what is left to
- * `drainThreadBrief`, a self-rescheduling continuation that finds the rows by
+ * `drainThreadBrief` (scheduled as `purgeJobs.drainThreadBrief`), a
+ * self-rescheduling continuation that finds the rows by
  * the thread id alone (the thread row is gone by then). The deletion epoch is
  * bumped first, and the brief row that holds it goes last, so an
  * interpretation that loaded the thread before cannot write back.
@@ -17,8 +18,7 @@
 
 import { internal } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
-import { internalMutation } from '../../lib/writeFence';
-import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
+import type { ThreadRef } from '../../lib/validators/threadRef';
 import {
 	bumpDeletionEpoch,
 	deleteThreadBriefRow,
@@ -74,20 +74,20 @@ export async function purgeThreadBrief(
 	await bumpDeletionEpoch(ctx, ref);
 	const isDone = await deleteThreadBriefRows(ctx, ref, inlineRows);
 	if (!isDone) {
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeThread.drainThreadBrief, {
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.drainThreadBrief, {
 			threadRef: ref,
 		});
 	}
 }
 
 /** Continuation of {@link purgeThreadBrief}: one bounded batch, then itself again. */
-export const drainThreadBrief = internalMutation({
-	args: { threadRef: threadRefValidator },
-	handler: async (ctx, args): Promise<{ isDone: boolean }> => {
-		const isDone = await deleteThreadBriefRows(ctx, args.threadRef, DRAIN_ROWS);
-		if (!isDone) {
-			await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeThread.drainThreadBrief, args);
-		}
-		return { isDone };
-	},
-});
+export async function drainThreadBrief(
+	ctx: MutationCtx,
+	args: { threadRef: ThreadRef }
+): Promise<{ isDone: boolean }> {
+	const isDone = await deleteThreadBriefRows(ctx, args.threadRef, DRAIN_ROWS);
+	if (!isDone) {
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.drainThreadBrief, args);
+	}
+	return { isDone };
+}

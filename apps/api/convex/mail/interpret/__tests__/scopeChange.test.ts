@@ -122,7 +122,7 @@ describe('scope change personal → shared', () => {
 		expect(before.thread?.briefTop).toMatchObject({ mode: 'brief', latest: expect.any(Object) });
 
 		await t.run((ctx) => ctx.db.patch(mailboxId, { scope: 'shared' }));
-		const out = await t.mutation(internal.mail.interpret.scopeChange.invalidateMailboxThreads, {
+		const out = await t.mutation(internal.mail.interpret.purgeJobs.invalidateMailboxThreads, {
 			mailboxId,
 			mode: 'actions',
 			cursor: null,
@@ -167,7 +167,7 @@ describe('scope change personal → shared', () => {
 	it('stops when the mailbox scope no longer matches the mode', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, threadId } = await seedBrief(t);
-		const out = await t.mutation(internal.mail.interpret.scopeChange.invalidateMailboxThreads, {
+		const out = await t.mutation(internal.mail.interpret.purgeJobs.invalidateMailboxThreads, {
 			mailboxId,
 			mode: 'actions',
 			cursor: null,

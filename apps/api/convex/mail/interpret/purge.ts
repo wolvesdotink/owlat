@@ -35,17 +35,14 @@
  * continuation.
  */
 
-import { v } from 'convex/values';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
-import { internalMutation } from '../../lib/writeFence';
 import {
 	interpretationSourceKey,
-	interpretationSourceValidator,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
-import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
+import type { ThreadRef } from '../../lib/validators/threadRef';
 import { scopedIdempotencyKey } from './activity';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
@@ -67,7 +64,7 @@ const PLAN_LIMIT = 200;
 /** Page of the continuation sweep. */
 const SWEEP_PAGE = 200;
 
-type ClaimTable = 'threadItems' | 'threadFacts';
+export type ClaimTable = 'threadItems' | 'threadFacts';
 
 /**
  * Activity key families the send pipeline (`sendActivity.ts`) writes per
@@ -115,7 +112,7 @@ export async function purgeSourcesFromThread(
 		const rows = await scanClaims(ctx, ref, table, CLAIM_SCAN_LIMIT + 1);
 		await stripClaims(ctx, ref, table, ids, rows.slice(0, CLAIM_SCAN_LIMIT), outcome, meter);
 		if (rows.length > CLAIM_SCAN_LIMIT) {
-			await ctx.scheduler.runAfter(0, internal.mail.interpret.purge.sweepSourcesPage, {
+			await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.sweepSourcesPage, {
 				threadRef: ref,
 				sources: [...sources],
 				table,
@@ -429,51 +426,54 @@ async function clearBriefTop(ctx: MutationCtx, threadId: Id<'mailThreads'>): Pro
  * Re-reading the rows the inline pass handled is harmless (they no longer
  * name the source).
  */
-export const sweepSourcesPage = internalMutation({
-	args: {
-		threadRef: threadRefValidator,
-		sources: v.array(interpretationSourceValidator),
-		table: v.union(v.literal('threadItems'), v.literal('threadFacts')),
-		cursor: v.union(v.string(), v.null()),
-	},
-	handler: async (ctx, args): Promise<{ isDone: boolean }> => {
-		const ref = args.threadRef;
-		const query =
-			args.table === 'threadFacts'
-				? ref.kind === 'mail'
-					? ctx.db
-							.query('threadFacts')
-							.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', ref.id))
-					: null
-				: ref.kind === 'mail'
-					? ctx.db
-							.query('threadItems')
-							.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', ref.id))
-					: ctx.db
-							.query('threadItems')
-							.withIndex('by_conversation_thread_and_status', (q) =>
-								q.eq('conversationThreadId', ref.id)
-							);
-		if (!query) return { isDone: true };
-		const page = await query.paginate({ cursor: args.cursor, numItems: SWEEP_PAGE });
-		const outcome: ClaimOutcome = {
-			deletedItemIds: new Set(),
-			deletedFactIds: new Set(),
-			changed: 0,
-		};
-		const ids = new Set<string>(args.sources.map((s) => s.id));
-		await stripClaims(ctx, ref, args.table, ids, page.page, outcome, NO_METER);
-		await settleThread(ctx, ref, outcome, {
-			keys: new Set(args.sources.map(interpretationSourceKey)),
-			isLatestStale: false,
-			meter: NO_METER,
+/** The arguments of {@link sweepSourcesPage} (validated in `purgeJobs.ts`). */
+export interface SweepSourcesArgs {
+	threadRef: ThreadRef;
+	sources: InterpretationSource[];
+	table: ClaimTable;
+	cursor: string | null;
+}
+
+export async function sweepSourcesPage(
+	ctx: MutationCtx,
+	args: SweepSourcesArgs
+): Promise<{ isDone: boolean }> {
+	const ref = args.threadRef;
+	const query =
+		args.table === 'threadFacts'
+			? ref.kind === 'mail'
+				? ctx.db
+						.query('threadFacts')
+						.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', ref.id))
+				: null
+			: ref.kind === 'mail'
+				? ctx.db
+						.query('threadItems')
+						.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', ref.id))
+				: ctx.db
+						.query('threadItems')
+						.withIndex('by_conversation_thread_and_status', (q) =>
+							q.eq('conversationThreadId', ref.id)
+						);
+	if (!query) return { isDone: true };
+	const page = await query.paginate({ cursor: args.cursor, numItems: SWEEP_PAGE });
+	const outcome: ClaimOutcome = {
+		deletedItemIds: new Set(),
+		deletedFactIds: new Set(),
+		changed: 0,
+	};
+	const ids = new Set<string>(args.sources.map((s) => s.id));
+	await stripClaims(ctx, ref, args.table, ids, page.page, outcome, NO_METER);
+	await settleThread(ctx, ref, outcome, {
+		keys: new Set(args.sources.map(interpretationSourceKey)),
+		isLatestStale: false,
+		meter: NO_METER,
+	});
+	if (!page.isDone) {
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.sweepSourcesPage, {
+			...args,
+			cursor: page.continueCursor,
 		});
-		if (!page.isDone) {
-			await ctx.scheduler.runAfter(0, internal.mail.interpret.purge.sweepSourcesPage, {
-				...args,
-				cursor: page.continueCursor,
-			});
-		}
-		return { isDone: page.isDone };
-	},
-});
+	}
+	return { isDone: page.isDone };
+}
