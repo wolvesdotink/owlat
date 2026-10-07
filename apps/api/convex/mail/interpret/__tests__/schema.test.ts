@@ -237,7 +237,9 @@ function strictViolations(node: JsonSchemaNode | undefined, path: string, out: s
 		['oneOf', node.oneOf],
 		['allOf', node.allOf],
 	] as const) {
-		list?.forEach((child, i) => strictViolations(child, `${path}<${kind}${i}>`, out));
+		for (const [i, child] of (list ?? []).entries()) {
+			strictViolations(child, `${path}<${kind}${i}>`, out);
+		}
 	}
 }
 
