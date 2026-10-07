@@ -1,8 +1,8 @@
 /**
  * The cache behind Answer mode's catch-up card for Postbox threads: the
  * non-'use node' half of mail/ai/catchUp.ts, since an action cannot touch the
- * database itself. The table and the visibility rule are shared with the team
- * twin, inbox/catchUpStore.ts.
+ * database itself. (Team threads have no catch-up: their Answer mode shows the
+ * team stream; older team rows in the table are never served.)
  *
  *   - {@link get}: the reactive read the card subscribes to, so a warm card
  *     paints without an action round trip. Serves a row only while its
@@ -10,7 +10,7 @@
  *     which is the web's cue to call `ensure`.
  *   - {@link readForMessage}: the same check for the actions, plus what they
  *     need to regenerate (the owner's address, the live count, the AI flag).
- *   - {@link store}: the writer (the team twin lives in inbox/catchUpStore.ts).
+ *   - {@link store}: the writer.
  *
  * Advisory and fail-soft like the reader's summary strip (mail/ai/summaryCache.ts):
  * nothing here moves or changes mail.
@@ -26,7 +26,7 @@ import { catchUpValidator } from '../../lib/validators/catchUp';
 import { loadReadableMailbox } from '../permissions';
 import { normalizeCatchUpLocale, visibleCatchUp, type CatchUp } from './catchUpPrompt';
 
-export const catchUpModeValidator = v.union(v.literal('full'), v.literal('asksOnly'));
+const catchUpModeValidator = v.union(v.literal('full'), v.literal('asksOnly'));
 
 /** The cached row for a Postbox thread in one locale, fresh or not. */
 export async function loadMailCatchUpRow(
@@ -118,7 +118,7 @@ export const readForMessage = internalQuery({
 
 /**
  * Write a freshly generated card for a Postbox thread, replacing whatever the
- * thread had in the same locale (the team twin is inbox/catchUpStore.ts).
+ * thread had in the same locale.
  * Internal-only: its caller has already checked the reader and the AI gate.
  */
 export const store = internalMutation({

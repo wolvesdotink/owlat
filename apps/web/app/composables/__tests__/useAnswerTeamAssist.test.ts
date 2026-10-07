@@ -4,13 +4,10 @@
  * nothing else: a team-only instance (no Postbox, no external mail) has it.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { defineComponent, h, ref } from 'vue';
+import { defineComponent, h } from 'vue';
 import { mount } from '@vue/test-utils';
 import { useAnswerTeamAssist } from '../useAnswerTeamAssist';
 
-vi.mock('~/composables/useAnswerCatchUp', () => ({
-	useAnswerCatchUp: () => ({ statusNote: ref(undefined) }),
-}));
 vi.mock('~/composables/useAnswerAskSession', () => ({ useAnswerAskSession: () => ({}) }));
 
 function draftWithAiUnder(flags: string[]) {
@@ -22,8 +19,6 @@ function draftWithAiUnder(flags: string[]) {
 				result = useAnswerTeamAssist({
 					threadId: () => 'ct_1' as never,
 					composer: () => null,
-					messageCount: () => 3,
-					view: ref('summary'),
 					attachFile: () => {},
 				});
 				return () => h('div');

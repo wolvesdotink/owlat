@@ -12,7 +12,6 @@ import {
 	normalizeCatchUpLocale,
 	sanitizeCatchUp,
 	sanitizeCoverage,
-	teamCatchUpMessageCount,
 	visibleCatchUp,
 	MAX_CATCH_UP_ASKS,
 	MAX_CATCH_UP_SENTENCES,
@@ -229,18 +228,6 @@ describe('visibleCatchUp', () => {
 		expect(Object.keys(visibleCatchUp(row)!).sort()).toEqual(
 			['asks', 'generatedAt', 'locale', 'messageCount', 'sentences'].sort()
 		);
-	});
-});
-
-describe('teamCatchUpMessageCount', () => {
-	it('counts inbound messages plus the replies the team sent', () => {
-		expect(
-			teamCatchUpMessageCount([
-				{ processingStatus: 'sent', draftResponse: 'Here you go' },
-				{ processingStatus: 'draft_ready', draftResponse: 'Not sent yet' },
-				{ processingStatus: 'received' },
-			])
-		).toBe(4);
 	});
 });
 

@@ -20,8 +20,8 @@
  *    Summary when there is a card; with no card a short thread opens in full,
  *    since there is nothing to summarise.
  *
- * The Postbox (`messageId`) and the team inbox (`threadId`) have the same
- * three functions under different paths; the target picks which.
+ * Postbox threads only: team threads have no catch-up (no summary on team
+ * surfaces); their Answer mode shows the team stream and its open actions.
  */
 import type { Ref } from 'vue';
 import type { FunctionReturnType } from 'convex/server';
@@ -32,9 +32,7 @@ import type { AnswerConversationView } from '~/components/answer/AnswerConversat
 
 export type CatchUp = NonNullable<FunctionReturnType<typeof api.mail.ai.catchUpStore.get>>;
 
-export type AnswerCatchUpTarget =
-	| { kind: 'mail'; messageId: Id<'mailMessages'> }
-	| { kind: 'team'; threadId: Id<'conversationThreads'> };
+export type AnswerCatchUpTarget = { kind: 'mail'; messageId: Id<'mailMessages'> };
 
 /** How long typing must pause before the draft is checked against the asks. */
 export const COVERAGE_DEBOUNCE_MS = 1500;
@@ -51,20 +49,12 @@ export function useAnswerCatchUp(opts: {
 	const { isEnabled } = useFeatureFlag();
 	const aiOn = computed(() => isEnabled('ai'));
 
-	const mailArgs = () => {
+	const mailStore = useConvexQuery(api.mail.ai.catchUpStore.get, () => {
 		const target = opts.target();
-		return aiOn.value && target?.kind === 'mail'
+		return aiOn.value && target
 			? { messageId: target.messageId, locale: locale.value }
 			: ('skip' as const);
-	};
-	const teamArgs = () => {
-		const target = opts.target();
-		return aiOn.value && target?.kind === 'team'
-			? { threadId: target.threadId, locale: locale.value }
-			: ('skip' as const);
-	};
-	const mailStore = useConvexQuery(api.mail.ai.catchUpStore.get, mailArgs);
-	const teamStore = useConvexQuery(api.inbox.catchUpStore.get, teamArgs);
+	});
 
 	/** What `ensure` answered, shown until the subscription has caught up. */
 	const ensured = shallowRef<CatchUp | null | undefined>(undefined);
@@ -76,16 +66,14 @@ export function useAnswerCatchUp(opts: {
 
 	const catchUp = computed<CatchUp | null>(() => {
 		if (failed.value) return null;
-		const stored = opts.target()?.kind === 'team' ? teamStore.data.value : mailStore.data.value;
-		return stored ?? ensured.value ?? null;
+		return mailStore.data.value ?? ensured.value ?? null;
 	});
 	/** A quiet skeleton while the first answer is on its way. */
 	const loading = computed(() => pending.value && !catchUp.value);
 
 	function keyOf(target: AnswerCatchUpTarget | null): string | null {
 		if (!target || !aiOn.value) return null;
-		const id = target.kind === 'mail' ? target.messageId : target.threadId;
-		return `${target.kind}:${id}:${locale.value}`;
+		return `${target.kind}:${target.messageId}:${locale.value}`;
 	}
 
 	let ensureSeq = 0;
@@ -96,16 +84,10 @@ export function useAnswerCatchUp(opts: {
 		ensured.value = undefined;
 		try {
 			const convex = requireConvex();
-			const result =
-				target.kind === 'mail'
-					? await convex.action(api.mail.ai.catchUp.ensure, {
-							messageId: target.messageId,
-							locale: locale.value,
-						})
-					: await convex.action(api.inbox.catchUp.ensure, {
-							threadId: target.threadId,
-							locale: locale.value,
-						});
+			const result = await convex.action(api.mail.ai.catchUp.ensure, {
+				messageId: target.messageId,
+				locale: locale.value,
+			});
 			if (seq === ensureSeq) ensured.value = result;
 		} catch {
 			// The card is a convenience: a refusal or a fault hides it, silently.
@@ -146,18 +128,11 @@ export function useAnswerCatchUp(opts: {
 		}
 		try {
 			const convex = requireConvex();
-			const result =
-				target.kind === 'mail'
-					? await convex.action(api.mail.ai.catchUp.coverage, {
-							messageId: target.messageId,
-							draftText: text,
-							locale: locale.value,
-						})
-					: await convex.action(api.inbox.catchUp.coverage, {
-							threadId: target.threadId,
-							draftText: text,
-							locale: locale.value,
-						});
+			const result = await convex.action(api.mail.ai.catchUp.coverage, {
+				messageId: target.messageId,
+				draftText: text,
+				locale: locale.value,
+			});
 			if (seq === coverageSeq) coveredAskIds.value = result.coveredAskIds;
 		} catch {
 			// No ticks is the honest answer when the check could not run; the

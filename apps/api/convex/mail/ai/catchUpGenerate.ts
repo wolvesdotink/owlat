@@ -1,8 +1,8 @@
 'use node';
 
 /**
- * The two model calls behind Answer mode's catch-up card, shared by the Postbox
- * actions (mail/ai/catchUp.ts) and the team ones (inbox/catchUp.ts). Callers
+ * The two model calls behind Answer mode's catch-up card, for the Postbox
+ * actions (mail/ai/catchUp.ts). Callers
  * own the reader check and the cache, and the card's AI gate; the coverage
  * check charges its own gate bucket. These talk to the model, record spend and
  * clean the output.

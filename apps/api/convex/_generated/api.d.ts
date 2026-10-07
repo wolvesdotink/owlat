@@ -701,8 +701,6 @@ import type * as inbox_attachmentMatch from '../inbox/attachmentMatch.js';
 import type * as inbox_attachmentSuggest from '../inbox/attachmentSuggest.js';
 import type * as inbox_bodyStorage from '../inbox/bodyStorage.js';
 import type * as inbox_bodyText from '../inbox/bodyText.js';
-import type * as inbox_catchUp from '../inbox/catchUp.js';
-import type * as inbox_catchUpStore from '../inbox/catchUpStore.js';
 import type * as inbox_clarification from '../inbox/clarification.js';
 import type * as inbox_clarificationAnswers from '../inbox/clarificationAnswers.js';
 import type * as inbox_clarificationFileAnswer from '../inbox/clarificationFileAnswer.js';
@@ -2261,8 +2259,6 @@ declare const fullApi: ApiFromModules<{
 	'inbox/attachmentSuggest': typeof inbox_attachmentSuggest;
 	'inbox/bodyStorage': typeof inbox_bodyStorage;
 	'inbox/bodyText': typeof inbox_bodyText;
-	'inbox/catchUp': typeof inbox_catchUp;
-	'inbox/catchUpStore': typeof inbox_catchUpStore;
 	'inbox/clarification': typeof inbox_clarification;
 	'inbox/clarificationAnswers': typeof inbox_clarificationAnswers;
 	'inbox/clarificationFileAnswer': typeof inbox_clarificationFileAnswer;
