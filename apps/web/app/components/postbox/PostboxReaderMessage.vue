@@ -27,6 +27,8 @@ import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
 import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
+import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
+import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -110,6 +112,27 @@ function onSenderClick() {
 
 const authInput = computed<SenderAuthInput>(() => senderAuthInputOf(msg.value));
 
+// A clearsigned text body shows its signed block alone, and its verdict stands
+// only beside that block, also when the text is stored rather than inline.
+// `signedOnly` is the one gate for every surface below built from the message
+// body (snippet, invite card, scheduling chip, tracker findings, attachment
+// previews): a new one must read it too. Attachments are always read through
+// `shownAttachments`, which drops a MIME message's detached signature part.
+const {
+	view: signedView,
+	signedOnly,
+	shownAttachments,
+	hideBody: holdBody,
+	secureClass: shownSecureClass,
+	signature: shownSignature,
+	badgeMessage,
+} = usePostboxSignedBody({
+	message: () => msg.value,
+	secureClass: () => props.secureClass,
+	hideBody: () => props.hideBody,
+	active: () => props.expanded,
+});
+
 /**
  * The legacy DMARC-fail line. `senderAuthBadges` moved this into the auth badge;
  * with the flag off the banner is still the only place a DMARC failure is said
@@ -153,7 +176,7 @@ const renderToggleLabel = computed(() =>
 		<div class="flex-1 min-w-0">
 			<p class="text-sm truncate">
 				<span class="font-medium text-text-primary">{{ msg.fromName || msg.fromAddress }}</span>
-				<template v-if="msg.snippet">
+				<template v-if="msg.snippet && !signedOnly">
 					<span class="text-text-tertiary mx-1.5">·</span>
 					<span class="text-text-tertiary">{{ msg.snippet }}</span>
 				</template>
@@ -238,13 +261,13 @@ const renderToggleLabel = computed(() =>
 							:heuristics="msg.senderHeuristics"
 							:sealed-enabled="sealedEnabled"
 							:sealed="msg.inboundEncryptionInfo"
-							:signature="msg.inboundSignatureInfo"
-							:secure-class="secureClass"
+							:signature="shownSignature"
+							:secure-class="shownSecureClass"
 							:message="msg"
-							:tracker="tracker"
+							:tracker="signedOnly ? null : tracker"
 							:show-sender-controls="showSenderControls"
 							:seal-status="sealStatus"
-							:show-security-detail="!hideBody"
+							:show-security-detail="!holdBody"
 							:hide-when-ok="reduced"
 							@seal-refetch="emit('seal-refetch')"
 						/>
@@ -307,7 +330,7 @@ const renderToggleLabel = computed(() =>
 					<!-- Quiet "draft a reply?" prompt for a plain-prose scheduling
 					     request. Never renders beside a real .ics invite. -->
 					<PostboxSchedulingChip
-						v-if="schedulingTimes"
+						v-if="schedulingTimes && !signedOnly"
 						:message-id="msg._id"
 						:proposed-times="schedulingTimes"
 						@use-reply="(text) => emit('use-reply', text)"
@@ -343,15 +366,29 @@ const renderToggleLabel = computed(() =>
 			<span v-else>{{ senderAuthSummary }}</span>
 		</div>
 
+		<!-- A signature verdict about a text body that is still loading: nothing
+		     renders until the signed block can be picked out of it. -->
+		<div
+			v-if="signedView.kind === 'loading'"
+			class="mt-4"
+			aria-busy="true"
+			data-testid="signed-body-loading"
+		>
+			<p class="sr-only" role="status">
+				{{ t('components.postbox.postboxReaderMessage.loadingSignedText') }}
+			</p>
+			<PostboxReaderSkeleton :with-header="false" />
+		</div>
 		<!-- Ciphertext or clearsigned text: the security badge IS the readable half
 		     (plus the copy / download recovery controls), so it renders where the
 		     body would have been rather than inside the trust chip. -->
 		<PostboxSecurityBadge
-			v-if="hideBody"
-			:klass="secureClass"
-			:message="msg"
+			v-else-if="holdBody"
+			:klass="shownSecureClass"
+			:message="badgeMessage"
 			:sealed="sealedEnabled ? msg.inboundEncryptionInfo : undefined"
-			:signature="msg.inboundSignatureInfo"
+			:signature="shownSignature"
+			:omits-content="signedView.kind === 'signed' && signedView.omitsContent"
 		/>
 		<!-- Off-screen bodies of a long thread wait as a sized placeholder
 		     until they scroll near the viewport (plan D8). -->
@@ -372,17 +409,20 @@ const renderToggleLabel = computed(() =>
 			/>
 		</PostboxLazyBody>
 
+		<!-- Under `signedOnly` an invite is a part the signature does not cover:
+		     listed below as an attachment, never rendered as a card. -->
 		<PostboxInviteCard
-			v-if="hasInvite"
+			v-if="hasInvite && !signedOnly && shownAttachments.some(isCalendarInviteAttachment)"
 			:message-id="msg._id"
 			:mailbox-id="mailboxId"
 			:own-email="ownEmail"
 		/>
 
 		<PostboxMessageAttachments
-			:attachments="msg.attachments"
+			:attachments="shownAttachments"
 			:message-id="msg._id"
 			:downloading-key="downloadingAttachment"
+			:is-preview-enabled="!signedOnly"
 			@preview="(att, all) => emit('preview-attachment', att, all)"
 			@download="(att) => emit('download-attachment', att)"
 		/>

@@ -109,6 +109,35 @@ async function loadPostboxBody(
 	return urls.htmlUrl ? { html: body, text: null } : { html: null, text: body };
 }
 
+/** A message's TEXT part as stored, whatever the HTML part does. */
+export interface PostboxTextBody {
+	/** The stored text/plain body; null when there is none (or it is unreadable). */
+	text: string | null;
+	/** The message also stores an HTML body over the inline threshold. */
+	hasHtmlBlob: boolean;
+}
+
+/**
+ * Load a message's text body from its storage blob, for a reader that must
+ * show the text part even where the HTML part would win (a clearsigned text
+ * body: the signature covers the text, never the HTML alternative). The
+ * shared resolver above prefers the HTML blob, so this asks for the text one.
+ * Uncached: the one caller renders the text it gets and keeps nothing.
+ */
+export async function loadPostboxTextBody(
+	client: PostboxBodyClient,
+	messageId: string,
+	fetchImpl: BodyFetch = (url: string) => fetch(url)
+): Promise<PostboxTextBody> {
+	const urls = await client.action(api.mail.mailbox.messages.getMessageBodyBlobUrls, {
+		messageId: messageId as Id<'mailMessages'>,
+	});
+	if (!urls?.textUrl) return { text: null, hasHtmlBlob: !!urls?.htmlUrl };
+	const response = await fetchImpl(urls.textUrl);
+	if (response.ok === false) throw new Error('Could not load message body');
+	return { text: await response.text(), hasHtmlBlob: !!urls.htmlUrl };
+}
+
 /** Resolve and cache the complete body, not its short-lived signed URL. The
  * client-scoped LRU lets list prefetch and the reader share one action/blob
  * request without allowing one authenticated client to reuse another's data. */

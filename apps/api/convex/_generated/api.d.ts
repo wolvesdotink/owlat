@@ -615,6 +615,7 @@ import type * as e2ee_recoveryKitGate from '../e2ee/recoveryKitGate.js';
 import type * as e2ee_seal from '../e2ee/seal.js';
 import type * as e2ee_sealing from '../e2ee/sealing.js';
 import type * as e2ee_senderKey from '../e2ee/senderKey.js';
+import type * as e2ee_signedMimeStructure from '../e2ee/signedMimeStructure.js';
 import type * as e2ee_verifyInboundSignature from '../e2ee/verifyInboundSignature.js';
 import type * as e2ee_wkd from '../e2ee/wkd.js';
 import type * as emailBlocks_blocks from '../emailBlocks/blocks.js';
@@ -2107,6 +2108,7 @@ declare const fullApi: ApiFromModules<{
 	'e2ee/seal': typeof e2ee_seal;
 	'e2ee/sealing': typeof e2ee_sealing;
 	'e2ee/senderKey': typeof e2ee_senderKey;
+	'e2ee/signedMimeStructure': typeof e2ee_signedMimeStructure;
 	'e2ee/verifyInboundSignature': typeof e2ee_verifyInboundSignature;
 	'e2ee/wkd': typeof e2ee_wkd;
 	'emailBlocks/blocks': typeof emailBlocks_blocks;

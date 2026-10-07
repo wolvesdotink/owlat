@@ -4,6 +4,7 @@ import {
 	CONSUMED_POSTBOX_BODY_TTL_MS,
 	clearResolvedPostboxBodies,
 	consumeResolvedPostboxMessageBody,
+	loadPostboxTextBody,
 	resolvePostboxMessageBody,
 	setResolvedPostboxBodyScope,
 	type PostboxBodyClient,
@@ -175,5 +176,43 @@ describe('postboxBodyResolver', () => {
 		await resolvePostboxMessageBody(client, 'a');
 
 		expect(query).toHaveBeenCalledTimes(7);
+	});
+});
+
+describe('loadPostboxTextBody', () => {
+	it('downloads the text blob even when an HTML blob exists', async () => {
+		const { client, query } = makeClient(null, {
+			htmlUrl: 'https://blob.example.com/h',
+			textUrl: 'https://blob.example.com/t',
+		});
+		const fetchImpl = vi.fn(async (url: string) => ({
+			ok: true,
+			text: async () => `body of ${url}`,
+		}));
+
+		expect(await loadPostboxTextBody(client, 'both', fetchImpl)).toEqual({
+			text: 'body of https://blob.example.com/t',
+			hasHtmlBlob: true,
+		});
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		expect(query).not.toHaveBeenCalled();
+	});
+
+	it('answers no text, without a download, when no text blob is stored', async () => {
+		const { client } = makeClient(null, { htmlUrl: 'https://blob.example.com/h', textUrl: null });
+		const fetchImpl = vi.fn();
+
+		expect(await loadPostboxTextBody(client, 'html-only', fetchImpl)).toEqual({
+			text: null,
+			hasHtmlBlob: true,
+		});
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+
+	it('throws on a failed download', async () => {
+		const { client } = makeClient(null, { htmlUrl: null, textUrl: 'https://blob.example.com/t' });
+		const fetchImpl = vi.fn(async () => ({ ok: false, text: async () => '' }));
+
+		await expect(loadPostboxTextBody(client, 'gone', fetchImpl)).rejects.toThrow();
 	});
 });
