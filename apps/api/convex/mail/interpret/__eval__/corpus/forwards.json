@@ -155,7 +155,7 @@
 						"quote": "Could you confirm the venue by Wednesday?",
 						"segmentKind": "forwarded",
 						"assertion": "Confirm the venue by Wednesday",
-						"reject": "not_fresh"
+						"reject": "proposal"
 					}
 				]
 			}
@@ -308,7 +308,7 @@
 						"quote": "Please pay invoice 7781 for EUR 310.00 by 23 October 2026.",
 						"segmentKind": "forwarded",
 						"assertion": "Pay invoice 7781",
-						"reject": "not_fresh"
+						"reject": "proposal"
 					}
 				]
 			}
@@ -352,7 +352,7 @@
 						"quote": "Bitte bestätigt den Liefertermin bis Freitag.",
 						"segmentKind": "forwarded",
 						"assertion": "Liefertermin bestätigen",
-						"reject": "not_fresh"
+						"reject": "proposal"
 					}
 				]
 			}
@@ -396,7 +396,7 @@
 						"quote": "Please confirm the catering order for 40 people by Monday.",
 						"segmentKind": "forwarded",
 						"assertion": "Confirm the catering order",
-						"reject": "not_fresh"
+						"reject": "proposal"
 					}
 				]
 			}

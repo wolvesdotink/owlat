@@ -9,11 +9,8 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import type { BriefModeView, ThreadBriefView } from '../../../api/convex/mail/interpret/briefShape';
-import {
-	briefLocale,
-	interpretApi,
-	type MailThreadRefArg,
-} from '~/composables/threadBrief/briefApi';
+import { api } from '@owlat/api';
+import { briefLocale, type MailThreadRefArg } from '~/composables/threadBrief/briefApi';
 import type { BriefAvailability } from '~/utils/threadBriefView';
 
 export function useThreadBrief(opts: {
@@ -27,7 +24,7 @@ export function useThreadBrief(opts: {
 		return id ? { kind: 'mail', id: id as Id<'mailThreads'> } : null;
 	});
 
-	const query = useConvexQuery(interpretApi.brief.get, () =>
+	const query = useConvexQuery(api.mail.interpret.brief.get, () =>
 		threadRef.value
 			? { threadRef: threadRef.value, locale: briefLocale(locale.value) }
 			: ('skip' as const)
@@ -51,7 +48,7 @@ export function useThreadBrief(opts: {
 		return 'available';
 	});
 
-	const markSeenOp = useBackendOperation(interpretApi.brief.markSeen, {
+	const markSeenOp = useBackendOperation(api.mail.interpret.brief.markSeen, {
 		label: () => t('components.brief.operations.markSeen'),
 		announce: false,
 	});
@@ -69,6 +66,8 @@ export function useThreadBrief(opts: {
 
 	return {
 		threadRef,
+		/** The raw view, either mode (a shared mailbox reads `actions`). */
+		view,
 		brief,
 		availability,
 		isLoading: query.isLoading,

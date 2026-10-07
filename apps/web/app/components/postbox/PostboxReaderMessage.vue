@@ -28,6 +28,7 @@ import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
+import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 
 const props = defineProps<{
@@ -68,8 +69,8 @@ const props = defineProps<{
 	eagerBody?: boolean;
 	/** The thread brief's latest-update sentence for this message (personal only). */
 	latestLine?: string | null;
-	/** A cited quote in this message: scroll to it and mark it (`''` scrolls only). */
-	citeQuote?: string | null;
+	/** A cited quote in this message: scroll to it and mark it (an empty quote scrolls only). */
+	citeQuote?: CitedQuote | null;
 	/**
 	 * Answer mode's cut of the card (plan §09): no action row, the trust chip
 	 * only when the sender is not verified, and To/Cc, the unsubscribe chip and
@@ -154,8 +155,16 @@ const showSpamBanner = computed(
 	() => msg.value.spamVerdict === 'spam' || (!props.authEnabled && msg.value.dmarcResult === 'fail')
 );
 
-// A cited quote (plan §4.2): bring the message into view; the body marks the words.
+// A cited quote (plan §4.2): bring the message into view; the body marks the
+// words, or reports that it could not find that exact passage.
 const sectionEl = ref<HTMLElement | null>(null);
+const isCiteMissed = ref(false);
+watch(
+	() => props.citeQuote,
+	() => {
+		isCiteMissed.value = false;
+	}
+);
 watch(
 	() => [props.citeQuote, props.expanded] as const,
 	async ([quote, open]) => {
@@ -375,6 +384,14 @@ const renderToggleLabel = computed(() =>
 		     header) behind `senderAuthBadges`. When the flag is off the legacy
 		     banner still surfaces a DMARC failure so behavior is unchanged; the
 		     spam line always shows. -->
+		<p
+			v-if="citeQuote?.quote && (isCiteMissed || holdBody)"
+			role="status"
+			class="mt-3 rounded bg-bg-surface px-3 py-2 text-xs text-text-secondary"
+			data-testid="cite-not-located"
+		>
+			{{ t('components.brief.cite.notLocated') }}
+		</p>
 		<div
 			v-if="showSpamBanner"
 			class="my-3 px-3 py-2 rounded bg-warning/10 text-warning text-xs flex items-center gap-2"
@@ -424,6 +441,7 @@ const renderToggleLabel = computed(() =>
 				:force-light="forcedLight"
 				:sender-images-allowed="imagesAllowed"
 				:highlight-quote="citeQuote"
+				@cite-located="isCiteMissed = !$event"
 				@trackers="emit('trackers', $event)"
 				@trust-sender="emit('trust-sender', $event)"
 				@untrust-sender="emit('untrust-sender', $event)"

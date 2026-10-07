@@ -388,12 +388,7 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
 const UNREACHED_ENTRIES: readonly string[] = [
 	// Thread brief: wired by the wiring and web lanes, which delete each line (none may survive).
 	'mail/interpret/activity.ts#record',
-	'mail/interpret/brief.ts#get',
-	'mail/interpret/brief.ts#markSeen',
-	'mail/interpret/brief.ts#setViewOverride',
 	'mail/interpret/brief.ts#markPending',
-	'mail/interpret/preferences.ts#getViewPreference',
-	'mail/interpret/preferences.ts#setThreadDefaultView',
 	'mail/interpret/scope.ts#loadSourceForScope',
 ];
 

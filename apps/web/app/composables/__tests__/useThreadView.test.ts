@@ -5,21 +5,32 @@
  *     nor does going back to the Overview;
  *   - a thread with no interpretation opens on Conversation;
  *   - a shared (team) mailbox reads no brief and shows no switch, no Overview
- *     and no per-message latest lines.
+ *     and no per-message latest lines;
+ *   - a cited message on an earlier, unloaded page is walked back to, expanded
+ *     and marked, or said to be out of reach;
+ *   - the messages whose exact wording matters are loaded and kept expanded.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive, ref } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 import { briefView } from '~/utils/__tests__/threadBriefFixtures';
 
+vi.mock('@owlat/api', () => ({
+	api: {
+		mail: {
+			interpret: {
+				brief: {
+					get: 'brief.get',
+					markSeen: 'brief.markSeen',
+					setViewOverride: 'brief.setViewOverride',
+				},
+				preferences: { getViewPreference: 'pref.get', setThreadDefaultView: 'pref.set' },
+			},
+		},
+	},
+}));
 vi.mock('~/composables/threadBrief/briefApi', () => ({
 	interpretApi: {
-		brief: {
-			get: 'brief.get',
-			markSeen: 'brief.markSeen',
-			setViewOverride: 'brief.setViewOverride',
-		},
-		preferences: { getViewPreference: 'pref.get', setThreadDefaultView: 'pref.set' },
 		reactions: new Proxy({}, { get: (_t, key) => `reactions.${String(key)}` }),
 	},
 	briefLocale: () => 'en',
@@ -55,21 +66,44 @@ vi.stubGlobal('useBackendOperation', (fn: string) => {
 
 const { usePostboxReaderBrief } = await import('../postbox/usePostboxReaderBrief');
 
-function setup() {
+interface Msg {
+	_id: string;
+	fromName?: string;
+	fromAddress: string;
+	receivedAt: number;
+}
+const JONAS = { fromName: 'Jonas Weber', fromAddress: 'jonas@kestrel.example' };
+
+function setup(
+	over: {
+		messages?: Msg[];
+		hasEarlier?: boolean;
+		older?: Msg[][];
+	} = {}
+) {
 	const expanded = ref(new Set<string>());
-	return usePostboxReaderBrief({
+	const messages = ref<Msg[]>(over.messages ?? [{ _id: 'm6', ...JONAS, receivedAt: 1 }]);
+	const older = [...(over.older ?? [])];
+	const hasEarlier = ref(over.hasEarlier ?? false);
+	const loadingEarlier = ref(false);
+	const loadEarlier = vi.fn(() => {
+		const page = older.shift();
+		if (page) messages.value = [...page, ...messages.value];
+		hasEarlier.value = older.length > 0;
+	});
+	const state = usePostboxReaderBrief({
 		mailboxId: () => 'mb1',
 		threadId: () => 't1',
-		messages: ref([
-			{ _id: 'm6', fromName: 'Jonas Weber', fromAddress: 'jonas@kestrel.example', receivedAt: 1 },
-		]),
+		messages,
 		expanded,
 		toggleExpanded: (id) => {
 			expanded.value = new Set([...expanded.value, id]);
 		},
+		pages: { hasEarlier, loadingEarlier, loadEarlier },
 		secureClass: () => 'none',
 		onReply: vi.fn(),
 	});
+	return Object.assign(state, { expandedIds: expanded, loadEarlier });
 }
 
 beforeEach(() => {
@@ -106,7 +140,8 @@ describe('the reader view', () => {
 		await nextTick();
 		expect(route.query['cite']).toBe('i_contract:0');
 		expect(state.switchView.value).toBe('conversation');
-		expect(state.citeQuoteFor('m6')).toBe('Send the signed contract as a PDF');
+		expect(state.citeQuoteFor('m6')).toEqual({ quote: 'Send the signed contract as a PDF' });
+		expect(state.citeState.value).toBe('shown');
 		expect(state.citeQuoteFor('m1')).toBeNull();
 
 		state.backToOverview();
@@ -145,5 +180,92 @@ describe('a shared mailbox', () => {
 		expect(state.showsOverview.value).toBe(false);
 		expect(state.latestFor('m6')).toBeNull();
 		expect(runs['brief.markSeen']).not.toHaveBeenCalled();
+	});
+});
+
+describe('a cited message beyond the loaded pages', () => {
+	/** A thread of 120 messages: the newest 50 loaded, the cited one on the third page. */
+	function longThread() {
+		const page = (from: number, to: number) =>
+			Array.from({ length: to - from }, (_, i) => ({
+				_id: `m${from + i}`,
+				...JONAS,
+				receivedAt: from + i,
+			}));
+		return {
+			messages: page(70, 120),
+			older: [page(20, 70), page(0, 20)],
+			hasEarlier: true,
+		};
+	}
+
+	it('walks back to it, expands it and marks its quote', async () => {
+		data['brief.get'] = ref(
+			briefView({
+				forYou: [
+					{
+						...briefView().forYou[0]!,
+						evidence: [
+							{
+								source: { kind: 'mail', id: 'm5' as never },
+								segmentId: 's0',
+								start: 0,
+								end: 9,
+								contentRevision: 'r1',
+								quote: 'by Friday',
+								occurrence: 1,
+							},
+						],
+					},
+				],
+			})
+		);
+		const state = setup(longThread());
+		state.openCite('i_quote', 0);
+		await nextTick();
+		await nextTick();
+		await nextTick();
+		expect(state.loadEarlier).toHaveBeenCalledTimes(2);
+		expect(state.citeState.value).toBe('shown');
+		expect(state.expandedIds.value.has('m5')).toBe(true);
+		expect(state.citeQuoteFor('m5')).toEqual({ quote: 'by Friday', occurrence: 1 });
+	});
+
+	it('says the message is out of reach when no earlier page has it', async () => {
+		data['brief.get'] = ref(
+			briefView({
+				forYou: [
+					{
+						...briefView().forYou[0]!,
+						evidence: [
+							{
+								...briefView().forYou[0]!.evidence[0]!,
+								source: { kind: 'mail', id: 'gone' as never },
+							},
+						],
+					},
+				],
+			})
+		);
+		const state = setup();
+		state.openCite('i_quote', 0);
+		await nextTick();
+		expect(state.citeState.value).toBe('unreachable');
+	});
+});
+
+describe('exact wording', () => {
+	it('loads and expands the messages whose wording matters', async () => {
+		data['brief.get'] = ref(briefView({ exactWording: [{ messageId: 'm6', reason: 'legal' }] }));
+		const state = setup();
+		await nextTick();
+		expect(state.exactWording.value.has('m6')).toBe(true);
+		expect(state.expandedIds.value.has('m6')).toBe(true);
+	});
+
+	it('keeps none open on a shared mailbox', () => {
+		scope.value = 'shared';
+		data['brief.get'] = ref(briefView({ exactWording: [{ messageId: 'm6' }] }));
+		expect(setup().exactWording.value.size).toBe(0);
 	});
 });

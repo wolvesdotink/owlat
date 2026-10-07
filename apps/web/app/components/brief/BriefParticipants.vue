@@ -31,7 +31,13 @@ function nameOf(p: ParticipantView): string {
 	>
 		<ul class="flex flex-wrap gap-x-3 gap-y-1.5 text-xs" data-testid="brief-people">
 			<li v-for="(p, i) in people" :key="p.email ?? i" class="flex items-center gap-1.5">
-				<UiAvatar :name="nameOf(p)" :email="p.email" deterministic-color size="xs" aria-hidden="true" />
+				<UiAvatar
+					:name="nameOf(p)"
+					:email="p.email"
+					deterministic-color
+					size="xs"
+					aria-hidden="true"
+				/>
 				<span class="text-text-primary" :title="p.email">{{ nameOf(p) }}</span>
 				<span v-if="!p.isUs" class="text-text-tertiary">{{
 					t(`components.brief.people.role.${p.role}`)
