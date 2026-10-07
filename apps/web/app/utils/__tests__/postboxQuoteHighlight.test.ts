@@ -24,7 +24,11 @@ const markedParagraph = (d: Document) =>
 describe('highlightQuote', () => {
 	it('marks a quote that runs across inline markup', () => {
 		const d = doc('<p>With the migration added the quote comes to <b>€5,350</b> instead.</p>');
-		const result = highlightQuote(d, { quote: 'the quote comes to €5,350', occurrence: 0 });
+		const result = highlightQuote(d, {
+			quote: 'the quote comes to €5,350',
+			occurrence: 0,
+			occurrenceCount: 1,
+		});
 		expect(result.status).toBe('marked');
 		expect(marked(d)).toBe('the quote comes to |€5,350');
 		expect(d.body.textContent).toBe('With the migration added the quote comes to €5,350 instead.');
@@ -34,20 +38,24 @@ describe('highlightQuote', () => {
 		const d = doc(
 			'<p id="a">Please confirm by Friday.</p><p id="b">Quoted: please confirm by Friday.</p><p id="c">Again, please confirm by Friday.</p>'
 		);
-		expect(highlightQuote(d, { quote: 'please confirm by Friday', occurrence: 1 }).status).toBe(
-			'marked'
-		);
+		expect(
+			highlightQuote(d, { quote: 'please confirm by Friday', occurrence: 1, occurrenceCount: 2 })
+				.status
+		).toBe('marked');
 		expect(markedParagraph(d)).toBe('c');
-		expect(highlightQuote(d, { quote: 'please confirm by Friday', occurrence: 0 }).status).toBe(
-			'marked'
-		);
+		expect(
+			highlightQuote(d, { quote: 'please confirm by Friday', occurrence: 0, occurrenceCount: 2 })
+				.status
+		).toBe('marked');
 		expect(markedParagraph(d)).toBe('b');
 	});
 
 	it('does not guess: repeated words without an occurrence, or too few matches', () => {
 		const d = doc('<p>please confirm.</p><p>please confirm.</p>');
 		expect(highlightQuote(d, { quote: 'please confirm' }).status).toBe('ambiguous');
-		expect(highlightQuote(d, { quote: 'please confirm', occurrence: 2 }).status).toBe('notFound');
+		expect(
+			highlightQuote(d, { quote: 'please confirm', occurrence: 1, occurrenceCount: 3 }).status
+		).toBe('notFound');
 		expect(marked(d)).toBe('');
 		// A unique quote needs no occurrence.
 		expect(highlightQuote(doc('<p>only once</p>'), { quote: 'only once' }).status).toBe('marked');
@@ -56,16 +64,48 @@ describe('highlightQuote', () => {
 	it('folds whitespace and typographic quotes, but not case (as grounding does)', () => {
 		const d = doc('<p>Could you  approve “that”\n by Friday?</p>');
 		expect(
-			highlightQuote(d, { quote: 'Could you approve "that" by Friday', occurrence: 0 }).status
+			highlightQuote(d, {
+				quote: 'Could you approve "that" by Friday',
+				occurrence: 0,
+				occurrenceCount: 1,
+			}).status
 		).toBe('marked');
-		expect(highlightQuote(d, { quote: 'could you approve', occurrence: 0 }).status).toBe(
-			'notFound'
-		);
+		expect(
+			highlightQuote(d, { quote: 'could you approve', occurrence: 0, occurrenceCount: 1 }).status
+		).toBe('notFound');
 	});
 
 	it('reads two paragraphs as two words', () => {
 		const d = doc('<p>Best,</p><p>Jonas</p>');
-		expect(highlightQuote(d, { quote: 'Best, Jonas', occurrence: 0 }).status).toBe('marked');
+		expect(
+			highlightQuote(d, { quote: 'Best, Jonas', occurrence: 0, occurrenceCount: 1 }).status
+		).toBe('marked');
+	});
+
+	it('never counts or marks hidden text: a hidden copy before the passage is skipped', () => {
+		const d = doc(
+			'<p><span style="display:none">please confirm by Friday</span></p>' +
+				'<p hidden>please confirm by Friday</p>' +
+				'<p aria-hidden="true">please confirm by Friday</p>' +
+				'<p><span style="color:#ffffff">please confirm by Friday</span></p>' +
+				'<template><p>please confirm by Friday</p></template>' +
+				'<p id="v">Visible: please confirm by Friday.</p>'
+		);
+		const result = highlightQuote(d, {
+			quote: 'please confirm by Friday',
+			occurrence: 0,
+			occurrenceCount: 1,
+		});
+		expect(result.status).toBe('marked');
+		expect(markedParagraph(d)).toBe('v');
+	});
+
+	it('refuses when the visible text holds a different number of matches than grounding saw', () => {
+		const d = doc('<p>please confirm.</p><p>please confirm.</p>');
+		expect(
+			highlightQuote(d, { quote: 'please confirm', occurrence: 0, occurrenceCount: 1 }).status
+		).toBe('notFound');
+		expect(marked(d)).toBe('');
 	});
 
 	it('clears the previous cite', () => {

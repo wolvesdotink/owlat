@@ -129,7 +129,7 @@ export const get = publicQuery({
 			...(mode === 'brief'
 				? {
 						messageLatest: await readMessageLatest(interpretations, locale),
-						exactWording: await readExactWording(interpretations),
+						...(ref.kind === 'mail' ? { exactWording: await readExactWording(ctx, ref.id) } : {}),
 					}
 				: {}),
 			gap: gapOf(interpretations, {

@@ -110,6 +110,10 @@ export const evidenceValidator = v.object({
 	// (0 = the first), so the reader marks this passage and not an earlier
 	// one with the same words. Absent on evidence stored before it existed.
 	occurrence: v.optional(v.number()),
+	// How many matches of those words the canonical (scanner-stripped) text
+	// holds: the reader marks the passage only when its visible text holds
+	// exactly as many.
+	occurrenceCount: v.optional(v.number()),
 });
 export type Evidence = Infer<typeof evidenceValidator>;
 

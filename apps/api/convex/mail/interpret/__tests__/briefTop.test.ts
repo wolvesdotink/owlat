@@ -353,6 +353,25 @@ describe('refreshBriefTop past the read limit', () => {
 		expect(top.top?.dueAt).toBe(T0 + DAY);
 	});
 
+	it('finds the top item in its own thread however many other threads are due sooner', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, mailboxId } = await seedInterpreted(t);
+		await t.run(async (ctx) => {
+			// Another thread of the mailbox, all due earlier: it must not crowd this one out.
+			const busy = await insertThread(ctx, mailboxId, 'Busy');
+			for (let i = 0; i < 600; i++) {
+				await insertItem(ctx, busy, mailboxId, { dueAt: T0 - DAY - i });
+			}
+			for (let i = 0; i < OPEN_ITEM_READ_LIMIT; i++) await insertItem(ctx, threadId, mailboxId);
+			await insertItem(ctx, threadId, mailboxId, { dueAt: T0 + 3 * DAY, text: 'Later' });
+			await insertItem(ctx, threadId, mailboxId, { dueAt: T0 + DAY, text: 'Soonest' });
+			await refreshBriefTop(ctx, threadId);
+		});
+		const top = (await t.run((ctx) => ctx.db.get(threadId)))!.briefTop!;
+		expect(top.isCapped).toBe(true);
+		expect(top.top?.dueAt).toBe(T0 + DAY);
+	});
+
 	it('counts every open item below the limit', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, mailboxId } = await seedInterpreted(t);

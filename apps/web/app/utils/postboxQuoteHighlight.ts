@@ -7,14 +7,17 @@
  * sanitized, link-rewritten and dark-adapted since, so no offset survives
  * into its DOM. What does survive is WHICH occurrence of the words it was:
  * grounding stamps every evidence span with `occurrence` (the Nth match of the
- * normalized quote in the canonical text, `mail/interpret/quoteMatch.ts
- * quoteOccurrence`). This marks that Nth match of the same normalized words in
- * the rendered text, so repeated wording never highlights the wrong statement.
+ * normalized quote in the canonical, scanner-stripped text) and
+ * `occurrenceCount` (how many matches that text holds; `mail/interpret/
+ * quoteMatch.ts quoteOccurrences`). This counts the same normalized words in
+ * the VISIBLE rendered text only (hidden attributes, aria-hidden, display:none,
+ * visibility:hidden, zero size or opacity, white or transparent text, and
+ * non-rendered elements are skipped, as the scanner strips them), and marks the
+ * Nth match only when it sees exactly `occurrenceCount` of them.
  *
- * It never guesses: when the rendered text holds fewer matches than the
- * occurrence, or the occurrence is unknown (evidence stored before it existed)
- * and the words appear more than once, nothing is marked and the result says
- * why, so the reader can say it could not locate the exact passage.
+ * It never guesses: when the counts differ, or the evidence predates the
+ * counts and the words appear more than once, nothing is marked and the result
+ * says why, so the reader can say it could not locate the exact passage.
  *
  * Normalization is grounding's (`quoteMatch.ts normalizeForQuote`): NFKC,
  * curly quotes and dashes folded to ASCII, invisible format characters
@@ -31,6 +34,8 @@ const MARK_STYLE = 'background:#f6dfb4;color:inherit;border-radius:2px;padding:0
 export interface CitedQuote {
 	quote: string;
 	occurrence?: number;
+	/** Matches of the words in the interpreted (visible) text. */
+	occurrenceCount?: number;
 }
 
 export type HighlightResult =
@@ -83,8 +88,47 @@ function startsNewLine(prev: Text | null, node: Text): boolean {
 	return before?.nodeType === 1 && (before as Element).tagName === 'BR';
 }
 
+/** Elements whose text is never rendered. */
+const NOT_RENDERED = /^(HEAD|TITLE|SCRIPT|STYLE|TEMPLATE|NOSCRIPT|IFRAME|OBJECT|SVG|MATH)$/;
+
+/**
+ * An inline style that hides its element, as the security scan reads it
+ * (`agent/steps/security_scan/hiddenStyle.ts`): display:none,
+ * visibility:hidden, zero font size or opacity, white or transparent text.
+ */
+const HIDING_STYLE =
+	/display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse)|font-size\s*:\s*0(?:\.0+)?(?:px|pt|em|rem|%)?(?![.\d])|opacity\s*:\s*0(?:\.0+)?(?![.\d])|(?<![-\w])color\s*:\s*(?:white|transparent|#fff(?:fff)?|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgba\([^)]{0,64},\s*0(?:\.0+)?\s*\))/i;
+
+function hidesItself(el: Element): boolean {
+	if (NOT_RENDERED.test(el.tagName.toUpperCase())) return true;
+	if (el.hasAttribute('hidden') || el.getAttribute('aria-hidden') === 'true') return true;
+	if (HIDING_STYLE.test(el.getAttribute('style') ?? '')) return true;
+	const view = el.ownerDocument.defaultView;
+	if (!view?.getComputedStyle) return false;
+	const style = view.getComputedStyle(el);
+	return (
+		style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse'
+	);
+}
+
+/** Whether a text node is visible: no ancestor hides it (memoized per element). */
+function visibleIn(cache: Map<Element, boolean>) {
+	const isHidden = (el: Element | null): boolean => {
+		if (!el) return false;
+		const known = cache.get(el);
+		if (known !== undefined) return known;
+		const hidden = hidesItself(el) || isHidden(el.parentElement);
+		cache.set(el, hidden);
+		return hidden;
+	};
+	return (node: Text) => !isHidden(node.parentElement);
+}
+
 function indexText(doc: Document): Indexed {
-	const walker = doc.createTreeWalker(doc.body ?? doc.documentElement, 4 /* SHOW_TEXT */);
+	const isVisible = visibleIn(new Map());
+	const walker = doc.createTreeWalker(doc.body ?? doc.documentElement, 4 /* SHOW_TEXT */, {
+		acceptNode: (node) => (isVisible(node as Text) ? 1 /* ACCEPT */ : 2 /* REJECT */),
+	});
 	const out: Indexed = { text: '', at: [] };
 	let lastSpace = true;
 	let prev: Text | null = null;
@@ -158,9 +202,15 @@ export function highlightQuote(doc: Document, cited: CitedQuote): HighlightResul
 	const index = indexText(doc);
 	const matches = matchesOf(index.text, needle);
 	let start: number | undefined;
-	if (cited.occurrence !== undefined) start = matches[cited.occurrence];
-	else if (matches.length > 1) return { status: 'ambiguous' };
-	else start = matches[0];
+	if (cited.occurrence !== undefined && cited.occurrenceCount !== undefined) {
+		// The visible text must hold exactly the matches grounding counted.
+		if (matches.length !== cited.occurrenceCount) return { status: 'notFound' };
+		start = matches[cited.occurrence];
+	} else if (matches.length > 1) {
+		return { status: 'ambiguous' };
+	} else {
+		start = matches[0];
+	}
 	if (start === undefined) return { status: 'notFound' };
 	return { status: 'marked', mark: wrap(doc, index, start, needle.length) };
 }

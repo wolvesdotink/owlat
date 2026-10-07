@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { briefRing, canUndo, menuReactions, resolveCite } from '../threadBriefItems';
 import { factLabel, factRows } from '../threadBriefFacts';
 import { briefBanners } from '../threadBriefBanners';
-import { briefRowLatest, briefRowLine } from '../briefRowLine';
+import { briefMoreChip, briefRowLatest, briefRowLine } from '../briefRowLine';
 import { briefView, DAY, fact, item, T0 } from './threadBriefFixtures';
 
 describe('briefRing', () => {
@@ -194,5 +194,16 @@ describe('briefRowLine', () => {
 	it('keeps the snippet when there is no open item', () => {
 		expect(briefRowLine(undefined, 'en')).toBeNull();
 		expect(briefRowLine({ ...top, forYou: 0, waiting: 0, top: undefined }, 'en')).toBeNull();
+	});
+});
+
+describe('briefMoreChip', () => {
+	it('is exact below the cap and a lower bound at it, with the zero and one edges', () => {
+		expect(briefMoreChip(4, false)).toEqual({ key: 'components.brief.more', count: 3 });
+		expect(briefMoreChip(1, false)).toBeNull();
+		expect(briefMoreChip(0, false)).toBeNull();
+		expect(briefMoreChip(2000, true)).toEqual({ key: 'components.brief.moreAtLeast', count: 1999 });
+		expect(briefMoreChip(1, true)).toEqual({ key: 'components.brief.moreAtLeast', count: 1 });
+		expect(briefMoreChip(0, true)).toEqual({ key: 'components.brief.moreAtLeast', count: 1 });
 	});
 });
