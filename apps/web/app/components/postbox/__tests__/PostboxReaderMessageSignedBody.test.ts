@@ -86,12 +86,16 @@ const TrustChipMarker = defineComponent({
 /** Records whether the attachment rows offer Quick Look. */
 const AttachmentsMarker = defineComponent({
 	name: 'PostboxMessageAttachments',
-	props: ['isPreviewEnabled'],
+	props: ['isPreviewEnabled', 'attachments'],
 	setup: (p) => () =>
-		h('div', {
-			'data-testid': 'PostboxMessageAttachments',
-			'data-preview': String(p['isPreviewEnabled'] !== false),
-		}),
+		h(
+			'div',
+			{
+				'data-testid': 'PostboxMessageAttachments',
+				'data-preview': String(p['isPreviewEnabled'] !== false),
+			},
+			((p['attachments'] ?? []) as Array<{ filename: string }>).map((a) => a.filename).join('|')
+		),
 });
 const marker = (name: string) =>
 	defineComponent({ name, setup: () => () => h('div', { 'data-testid': name }) });
@@ -554,5 +558,67 @@ describe('PostboxReaderMessage · nothing body-derived renders beside a clearsig
 		await flushPromises();
 
 		expect(has(w, 'PostboxInviteCard')).toBe(true);
+	});
+});
+
+/** Sol's round-5 case: a detached signature part renamed to look like a signed file. */
+const SIGNATURE_PART = {
+	filename: 'UNSIGNED_pay_to_new_account.pdf',
+	contentType: 'application/pgp-signature',
+	size: 833,
+	partIndex: '1',
+};
+const SIGNED_PDF = {
+	filename: 'contract.pdf',
+	contentType: 'application/pdf',
+	size: 52_000,
+	partIndex: '0',
+};
+
+describe('PostboxReaderMessage · a MIME signature part is not a signed attachment', () => {
+	for (const reduced of [false, true]) {
+		const mode = reduced ? 'Answer mode' : 'the reader';
+		it(`${mode}: the renamed signature part is not listed, the signed one is`, async () => {
+			const w = mountCard(
+				{
+					inboundSignatureInfo: VERIFIED_MIME,
+					attachments: [SIGNED_PDF, SIGNATURE_PART],
+					hasAttachments: true,
+				},
+				{ secureClass: 'pgp-signed', reduced }
+			);
+			await flushPromises();
+
+			const rows = w.get('[data-testid="PostboxMessageAttachments"]').text();
+			expect(rows).toBe('contract.pdf');
+			expect(chip(w).attributes('data-signature')).toBe('present');
+		});
+	}
+
+	it('a signature part named like an invite raises no invite card', async () => {
+		const w = mountCard(
+			{
+				inboundSignatureInfo: VERIFIED_MIME,
+				attachments: [{ ...SIGNATURE_PART, filename: 'invite.ics' }],
+				hasAttachments: true,
+			},
+			{ secureClass: 'pgp-signed', hasInvite: true }
+		);
+		await flushPromises();
+
+		expect(has(w, 'PostboxInviteCard')).toBe(false);
+		expect(w.get('[data-testid="PostboxMessageAttachments"]').text()).toBe('');
+	});
+
+	it('lists a pgp-signature attachment when there is no MIME verdict', async () => {
+		const w = mountCard(
+			{ attachments: [SIGNATURE_PART], hasAttachments: true },
+			{ secureClass: 'pgp-signed' }
+		);
+		await flushPromises();
+
+		expect(w.get('[data-testid="PostboxMessageAttachments"]').text()).toBe(
+			'UNSIGNED_pay_to_new_account.pdf'
+		);
 	});
 });

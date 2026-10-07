@@ -1,6 +1,7 @@
 import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import {
+	isDetachedSignatureAttachment,
 	resolveSignedBodyView,
 	signedBodyScopeOf,
 	type SignedBodyText,
@@ -14,7 +15,7 @@ export interface SignedBodyMessage {
 	textBodyInline?: string;
 	htmlBodyStorageId?: string;
 	bodyPending?: boolean;
-	attachments?: readonly unknown[];
+	attachments?: ReadonlyArray<{ contentType: string }>;
 	inboundSignatureInfo?: InboundSignatureInfo;
 }
 
@@ -31,8 +32,8 @@ type FetchedText =
  *
  * Runs only while the card is expanded: a collapsed card renders no body.
  */
-export function usePostboxSignedBody(source: {
-	message: () => SignedBodyMessage;
+export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
+	message: () => M;
 	secureClass: () => SecureMessageClass;
 	hideBody: () => boolean;
 	active: () => boolean;
@@ -111,6 +112,17 @@ export function usePostboxSignedBody(source: {
 		 * on the card must read this gate.
 		 */
 		signedOnly: computed(() => kind.value === 'signed' || kind.value === 'loading'),
+		/**
+		 * The attachments the card lists. Under a MIME verdict the detached
+		 * signature part is left out: its name is not covered by the signature,
+		 * so it must not read as one of the signed attachments.
+		 */
+		shownAttachments: computed(() => {
+			const all = source.message().attachments ?? [];
+			return (
+				scope.value === 'mime' ? all.filter((a) => !isDetachedSignatureAttachment(a)) : all
+			) as NonNullable<M['attachments']>;
+		}),
 		/** Hold the body back: it is loading, or only the signed block may show. */
 		hideBody: computed(() =>
 			kind.value === 'loading' || kind.value === 'signed' ? true : source.hideBody()

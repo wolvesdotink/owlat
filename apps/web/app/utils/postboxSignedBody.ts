@@ -112,3 +112,15 @@ export function signedBodyScopeOf(
 ): SignedBodyScope | null {
 	return info?.isSigned === true ? (info.scope ?? null) : null;
 }
+
+/**
+ * Whether an attachment is the detached signature part of a `multipart/signed`
+ * message. That part, its filename included, sits outside the signed first
+ * part, so under a MIME verdict it is no signed attachment and the reader
+ * does not list it as one. The stored `partIndex` counts attachments, not MIME
+ * positions, so the part is recognised by its content type; a pgp-signature
+ * part inside the signed first part is left out with it.
+ */
+export function isDetachedSignatureAttachment(att: { contentType: string }): boolean {
+	return att.contentType.trim().toLowerCase().startsWith('application/pgp-signature');
+}

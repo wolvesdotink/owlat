@@ -28,6 +28,7 @@ import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
+import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -115,10 +116,12 @@ const authInput = computed<SenderAuthInput>(() => senderAuthInputOf(msg.value));
 // only beside that block, also when the text is stored rather than inline.
 // `signedOnly` is the one gate for every surface below built from the message
 // body (snippet, invite card, scheduling chip, tracker findings, attachment
-// previews): a new one must read it too.
+// previews): a new one must read it too. Attachments are always read through
+// `shownAttachments`, which drops a MIME message's detached signature part.
 const {
 	view: signedView,
 	signedOnly,
+	shownAttachments,
 	hideBody: holdBody,
 	secureClass: shownSecureClass,
 	signature: shownSignature,
@@ -409,14 +412,14 @@ const renderToggleLabel = computed(() =>
 		<!-- Under `signedOnly` an invite is a part the signature does not cover:
 		     listed below as an attachment, never rendered as a card. -->
 		<PostboxInviteCard
-			v-if="hasInvite && !signedOnly"
+			v-if="hasInvite && !signedOnly && shownAttachments.some(isCalendarInviteAttachment)"
 			:message-id="msg._id"
 			:mailbox-id="mailboxId"
 			:own-email="ownEmail"
 		/>
 
 		<PostboxMessageAttachments
-			:attachments="msg.attachments"
+			:attachments="shownAttachments"
 			:message-id="msg._id"
 			:downloading-key="downloadingAttachment"
 			:is-preview-enabled="!signedOnly"

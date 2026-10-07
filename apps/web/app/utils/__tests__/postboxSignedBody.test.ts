@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveSignedBodyView, signedBodyScopeOf } from '../postboxSignedBody';
+import {
+	isDetachedSignatureAttachment,
+	resolveSignedBodyView,
+	signedBodyScopeOf,
+} from '../postboxSignedBody';
 
 const BLOCK = [
 	'-----BEGIN PGP SIGNED MESSAGE-----',
@@ -86,5 +90,15 @@ describe('signedBodyScopeOf', () => {
 		// A verdict written before scopes were recorded is never shown.
 		expect(signedBodyScopeOf({ isSigned: true })).toBeNull();
 		expect(signedBodyScopeOf({ isSigned: true, scope: 'mime' })).toBe('mime');
+	});
+});
+
+describe('isDetachedSignatureAttachment', () => {
+	it('goes by content type, never by name', () => {
+		expect(isDetachedSignatureAttachment({ contentType: 'application/pgp-signature' })).toBe(true);
+		expect(
+			isDetachedSignatureAttachment({ contentType: ' Application/PGP-Signature; name="x.pdf"' })
+		).toBe(true);
+		expect(isDetachedSignatureAttachment({ contentType: 'application/pdf' })).toBe(false);
 	});
 });
