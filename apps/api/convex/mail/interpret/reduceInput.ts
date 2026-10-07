@@ -85,7 +85,9 @@ export const reduceItemValidator = v.object({
 });
 
 export const reduceTransitionValidator = v.object({
-	itemId: v.string(),
+	// Absent: an obligation not seen yet, described by `about` (kept pending).
+	itemId: v.optional(v.string()),
+	about: v.optional(v.string()),
 	to: v.optional(itemStatusValidator),
 	disposition: v.optional(itemDispositionValidator),
 	evidence: v.array(reduceEvidenceValidator),

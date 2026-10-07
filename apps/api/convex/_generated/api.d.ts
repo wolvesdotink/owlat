@@ -19,6 +19,7 @@ import type * as mail_interpret_counters from '../mail/interpret/counters.js';
 import type * as mail_interpret_dueDate from '../mail/interpret/dueDate.js';
 import type * as mail_interpret_eligibility from '../mail/interpret/eligibility.js';
 import type * as mail_interpret_enqueue from '../mail/interpret/enqueue.js';
+import type * as mail_interpret_evidence from '../mail/interpret/evidence.js';
 import type * as mail_interpret_factEquivalence from '../mail/interpret/factEquivalence.js';
 import type * as mail_interpret_fold from '../mail/interpret/fold.js';
 import type * as mail_interpret_gate from '../mail/interpret/gate.js';
@@ -36,8 +37,10 @@ import type * as mail_interpret_purgeThread from '../mail/interpret/purgeThread.
 import type * as mail_interpret_reactionRules from '../mail/interpret/reactionRules.js';
 import type * as mail_interpret_reactions from '../mail/interpret/reactions.js';
 import type * as mail_interpret_reduce from '../mail/interpret/reduce.js';
+import type * as mail_interpret_reduceIdentity from '../mail/interpret/reduceIdentity.js';
 import type * as mail_interpret_reduceInput from '../mail/interpret/reduceInput.js';
 import type * as mail_interpret_reducePlan from '../mail/interpret/reducePlan.js';
+import type * as mail_interpret_reducePlanFacts from '../mail/interpret/reducePlanFacts.js';
 import type * as mail_interpret_reduceState from '../mail/interpret/reduceState.js';
 import type * as mail_interpret_reduceWrite from '../mail/interpret/reduceWrite.js';
 import type * as mail_interpret_retry from '../mail/interpret/retry.js';
@@ -1587,6 +1590,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/dueDate': typeof mail_interpret_dueDate;
 	'mail/interpret/eligibility': typeof mail_interpret_eligibility;
 	'mail/interpret/enqueue': typeof mail_interpret_enqueue;
+	'mail/interpret/evidence': typeof mail_interpret_evidence;
 	'mail/interpret/factEquivalence': typeof mail_interpret_factEquivalence;
 	'mail/interpret/fold': typeof mail_interpret_fold;
 	'mail/interpret/gate': typeof mail_interpret_gate;
@@ -1604,8 +1608,10 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/reactionRules': typeof mail_interpret_reactionRules;
 	'mail/interpret/reactions': typeof mail_interpret_reactions;
 	'mail/interpret/reduce': typeof mail_interpret_reduce;
+	'mail/interpret/reduceIdentity': typeof mail_interpret_reduceIdentity;
 	'mail/interpret/reduceInput': typeof mail_interpret_reduceInput;
 	'mail/interpret/reducePlan': typeof mail_interpret_reducePlan;
+	'mail/interpret/reducePlanFacts': typeof mail_interpret_reducePlanFacts;
 	'mail/interpret/reduceState': typeof mail_interpret_reduceState;
 	'mail/interpret/reduceWrite': typeof mail_interpret_reduceWrite;
 	'mail/interpret/retry': typeof mail_interpret_retry;

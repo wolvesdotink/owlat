@@ -185,7 +185,8 @@ export function verifyClaimsOf(
 		if (g.proposal && !g.isMixed) continue;
 		const isClosing = !!t.to && ['done', 'declined', 'superseded'].includes(t.to);
 		if (!isClosing && !g.isMixed) continue;
-		const text = context.itemText(t.itemId);
+		// A listed item by its text; an obligation not seen yet by its `about`.
+		const text = t.itemId ? context.itemText(t.itemId) : (t.about ?? undefined);
 		if (!text) continue;
 		const verb =
 			t.to === 'done'
@@ -326,8 +327,10 @@ export function toReduceResult(
 			continue;
 		}
 		if (opts.checked.has(id) && verdict !== 'supported') verifyDropped++;
+		if (!t.itemId && !t.about) continue;
 		transitions.push({
-			itemId: t.itemId,
+			...(t.itemId ? { itemId: t.itemId } : {}),
+			...(!t.itemId && t.about ? { about: t.about } : {}),
 			...(t.to ? { to: t.to } : {}),
 			...(t.disposition ? { disposition: t.disposition } : {}),
 			evidence: evidenceOf(g, opts.canonicalText),

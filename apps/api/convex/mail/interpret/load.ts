@@ -36,7 +36,7 @@ import { openMessageBody } from '../../lib/messageBody';
 import { mailboxOwnAddresses } from '../identities';
 import { loadBriefRow, resolveThreadMode } from './briefRow';
 import type { InterpretEligibilitySignals } from './eligibility';
-import { loadInterpretSource } from './sources';
+import { loadInterpretSource, teamReplyContext } from './sources';
 import {
 	CLOSED_ITEM_LOOKBACK_MS,
 	MAX_PROMPT_FACTS,
@@ -284,10 +284,12 @@ async function mailSourceInfo(
 async function teamSourceInfo(
 	ctx: QueryCtx,
 	inbound: Doc<'inboundMessages'>,
-	reply?: Doc<'transactionalSends'>
+	reply?: Doc<'transactionalSends'>,
+	replyThreadId?: Id<'conversationThreads'>
 ): Promise<SourceInfo | null> {
-	if (!inbound.threadId) return null;
-	const thread = await ctx.db.get(inbound.threadId);
+	const threadId = replyThreadId ?? inbound.threadId;
+	if (!threadId) return null;
+	const thread = await ctx.db.get(threadId);
 	if (!thread) return null;
 	const own = new Set([normalizeEmail(inbound.to)]);
 	const entries = reply
@@ -327,9 +329,8 @@ export async function loadSourceInfo(
 			return inbound ? teamSourceInfo(ctx, inbound) : null;
 		}
 		case 'teamReply': {
-			const reply = await ctx.db.get(source.id);
-			const inbound = reply?.inboundMessageId ? await ctx.db.get(reply.inboundMessageId) : null;
-			return reply && inbound ? teamSourceInfo(ctx, inbound, reply) : null;
+			const reply = await teamReplyContext(ctx, source.id);
+			return reply ? teamSourceInfo(ctx, reply.inbound, reply.send, reply.threadId) : null;
 		}
 	}
 }
