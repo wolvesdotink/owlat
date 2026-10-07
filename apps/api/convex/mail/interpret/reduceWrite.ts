@@ -21,7 +21,7 @@ import type { Evidence } from '../../lib/validators/threadBrief';
 import { threadRefToFields, type ThreadRef } from '../../lib/validators/threadRef';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { appendActivity } from './activity';
-import { applyItemShifts, itemBucketOf, type ItemBucket } from './counters';
+import { applyItemShifts, itemBucketOf, listBucketOf, type ItemBucket } from './counters';
 import { counterpartyKeyOf, evidenceKey, responsibilityOf } from './reducePlan';
 import {
 	sameEvidence,
@@ -116,7 +116,11 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 			const responsible = item.proposal?.responsible ?? { isUs: false };
 			shifts.push([
 				null,
-				itemBucketOf({ status: item.status, responsibility: responsibilityOf(responsible) }),
+				itemBucketOf({
+					status: item.status,
+					responsibility: responsibilityOf(responsible),
+					verify: item.verify,
+				}),
 			]);
 			await appendActivity(ctx, {
 				...activity,
@@ -140,6 +144,7 @@ export async function writeState(ctx: MutationCtx, args: WriteArgs): Promise<Id<
 			const revision = row.revision + 1;
 			await ctx.db.patch(row._id, {
 				status: 'superseded',
+				listBucket: 'closed',
 				completion: undefined,
 				revision,
 				updatedAt: args.now,
@@ -217,6 +222,7 @@ async function insertItem(
 	const p = item.proposal;
 	if (!p) return null;
 	const counterpartyKey = counterpartyKeyOf(p);
+	const responsibility = responsibilityOf(p.responsible);
 	return ctx.db.insert('threadItems', {
 		...threadRefToFields(args.ref),
 		...(args.mailboxId ? { mailboxId: args.mailboxId } : {}),
@@ -229,7 +235,7 @@ async function insertItem(
 		requester: p.requester,
 		responsible: p.responsible,
 		...(p.beneficiary ? { beneficiary: p.beneficiary } : {}),
-		responsibility: responsibilityOf(p.responsible),
+		responsibility,
 		...(args.ref.kind === 'team' && args.assigneeUserId
 			? { assigneeUserId: args.assigneeUserId }
 			: {}),
@@ -242,6 +248,7 @@ async function insertItem(
 		evidence: await sealEvidence(item.evidence),
 		...(possibleDuplicateOfId ? { possibleDuplicateOfId } : {}),
 		verify: item.verify,
+		listBucket: listBucketOf({ status: item.status, responsibility, verify: item.verify }),
 		...(item.isReviewNeeded ? { isReviewNeeded: true } : {}),
 		...(counterpartyKey ? { counterpartyKey } : {}),
 		...(item.lineage ? { lineage: item.lineage } : {}),
@@ -297,10 +304,17 @@ async function patchItem(
 			responsibility,
 		});
 	}
-	if (Object.keys(patch).length === 0) return;
+	const after = { status: item.status, responsibility, verify: item.verify };
+	const listBucket = listBucketOf(after);
+	if (Object.keys(patch).length === 0) {
+		// A row stored before `listBucket` existed: fill it in, no revision or activity.
+		if (listBucket !== row.listBucket) await ctx.db.patch(row._id, { listBucket });
+		return;
+	}
+	if (listBucket !== row.listBucket) patch.listBucket = listBucket;
 	const revision = row.revision + 1;
 	await ctx.db.patch(row._id, { ...patch, revision, updatedAt: args.now });
-	shifts.push([itemBucketOf(row), itemBucketOf({ status: item.status, responsibility })]);
+	shifts.push([itemBucketOf(row), itemBucketOf(after)]);
 	const statusChanged = item.status !== row.status;
 	const dispositionChanged = item.disposition !== row.disposition;
 	await appendActivity(ctx, {

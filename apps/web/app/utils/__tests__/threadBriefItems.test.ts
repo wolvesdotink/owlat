@@ -186,9 +186,20 @@ describe('briefRowLine', () => {
 		expect(briefRowLine({ ...top, mode: 'actions' }, 'en', T0)?.keepsSnippet).toBe(true);
 	});
 
-	it('shows a capped count as a floor', () => {
-		expect(briefRowLine({ ...top, isCapped: true }, 'en', T0)?.countText).toBe('4+');
-		expect(briefRowLine(top, 'en', T0)?.countText).toBe('4');
+	it('says "waiting" from the list the top item heads, never from a zero count', () => {
+		const waitingTop = {
+			...top.top,
+			bucket: 'waitingOnOthers' as const,
+			responsibility: 'them' as const,
+		};
+		expect(briefRowLine({ ...top, top: waitingTop }, 'en', T0)?.leadKey).toBe(
+			'components.brief.row.waiting'
+		);
+		// No for-you items counted, but the top item heads `forUs`: not "waiting".
+		const usTop = { ...top.top, bucket: 'forUs' as const };
+		expect(briefRowLine({ ...top, forYou: 0, top: usTop }, 'en', T0)?.leadKey).toBe(
+			'components.brief.row.forYou'
+		);
 	});
 
 	it('keeps the snippet when there is no open item', () => {
@@ -198,12 +209,10 @@ describe('briefRowLine', () => {
 });
 
 describe('briefMoreChip', () => {
-	it('is exact below the cap and a lower bound at it, with the zero and one edges', () => {
-		expect(briefMoreChip(4, false)).toEqual({ key: 'components.brief.more', count: 3 });
-		expect(briefMoreChip(1, false)).toBeNull();
-		expect(briefMoreChip(0, false)).toBeNull();
-		expect(briefMoreChip(2000, true)).toEqual({ key: 'components.brief.moreAtLeast', count: 1999 });
-		expect(briefMoreChip(1, true)).toEqual({ key: 'components.brief.moreAtLeast', count: 1 });
-		expect(briefMoreChip(0, true)).toEqual({ key: 'components.brief.moreAtLeast', count: 1 });
+	it('is exact, with the zero and one edges', () => {
+		expect(briefMoreChip(4)).toEqual({ key: 'components.brief.more', count: 3 });
+		expect(briefMoreChip(2000)).toEqual({ key: 'components.brief.more', count: 1999 });
+		expect(briefMoreChip(1)).toBeNull();
+		expect(briefMoreChip(0)).toBeNull();
 	});
 });

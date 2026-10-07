@@ -5,22 +5,31 @@
  *     extraction (`messageInterpretations.isCurrent`). Completeness and the
  *     incomplete banner read these, so an old unresolved failure is never
  *     lost behind newer rows.
- *   - `itemCounts`: open items per responsibility, closed, untracked. The
- *     brief's counts read these, so a long thread is never undercounted.
+ *   - `itemCounts`: open items per responsibility, unconfirmed proposals
+ *     ("Check this", any responsibility), closed, untracked. The brief's
+ *     counts and the list row (`briefTop.ts`) read these, so a long thread is
+ *     never undercounted and a proposal never counts as tracked work.
  *
- * Every writer that changes an extraction's status or an item's status or
- * responsibility adjusts them in the same transaction: the reducer does;
- * reactions and send hooks outside it call {@link recordItemChange}.
+ * Every item also carries `listBucket` ({@link listBucketOf}), the same
+ * partition under the brief's list names, so the list row reads the first
+ * item of a list from an index (`by_mail_thread_bucket_due` / `_asked`).
+ *
+ * Every writer that changes an extraction's status or an item's status,
+ * responsibility or verify state adjusts them in the same transaction: the
+ * reducer does (`reduceWrite.ts`); reactions and send hooks outside it call
+ * {@link writeItemChange} (patch + bucket + counters in one call) or, for an
+ * insert / delete, {@link recordItemChange} with the stored `listBucket`.
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { BriefCompleteness } from '@owlat/shared/threadBrief';
+import type { ItemListBucket } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { ensureBriefRow } from './briefRow';
 
 export type SourceCounts = NonNullable<Doc<'threadBriefs'>['sourceCounts']>;
-export type ItemCounts = NonNullable<Doc<'threadBriefs'>['itemCounts']>;
+export type ItemCounts = Required<NonNullable<Doc<'threadBriefs'>['itemCounts']>>;
 export type SourceBucket = keyof SourceCounts;
 export type ItemBucket = keyof ItemCounts;
 
@@ -31,7 +40,19 @@ export const EMPTY_SOURCE_COUNTS: SourceCounts = {
 	unreadable: 0,
 	skipped: 0,
 };
-export const EMPTY_ITEM_COUNTS: ItemCounts = { us: 0, them: 0, unclear: 0, closed: 0, hidden: 0 };
+export const EMPTY_ITEM_COUNTS: ItemCounts = {
+	us: 0,
+	them: 0,
+	unclear: 0,
+	proposal: 0,
+	closed: 0,
+	hidden: 0,
+};
+
+/** A brief row's item counters, fields written before they existed read as 0. Pure. */
+export function itemCountsOf(brief: Pick<Doc<'threadBriefs'>, 'itemCounts'> | null): ItemCounts {
+	return { ...EMPTY_ITEM_COUNTS, ...brief?.itemCounts };
+}
 
 /** The bucket an extraction counts in. Pure. */
 export function sourceBucketOf(
@@ -49,13 +70,30 @@ export function completenessOfCounts(counts: SourceCounts): BriefCompleteness {
 	return 'none';
 }
 
-/** The bucket an item counts in. Pure. */
-export function itemBucketOf(
-	item: Pick<Doc<'threadItems'>, 'status' | 'responsibility'>
-): ItemBucket {
-	if (item.status === 'open') return item.responsibility;
+/** What decides an item's bucket; `verify` absent reads as tracked. */
+export type ItemBucketFields = Pick<Doc<'threadItems'>, 'status' | 'responsibility'> & {
+	verify?: Doc<'threadItems'>['verify'];
+};
+
+/** The bucket an item counts in: an open unconfirmed proposal apart from tracked work. Pure. */
+export function itemBucketOf(item: ItemBucketFields): ItemBucket {
+	if (item.status === 'open') return item.verify === 'proposal' ? 'proposal' : item.responsibility;
 	if (item.status === 'untracked') return 'hidden';
 	return 'closed';
+}
+
+const LIST_BUCKET: Record<ItemBucket, ItemListBucket> = {
+	us: 'forUs',
+	them: 'waitingOnOthers',
+	unclear: 'unclear',
+	proposal: 'proposal',
+	closed: 'closed',
+	hidden: 'closed',
+};
+
+/** The brief list an item sits in (`threadItems.listBucket`). Pure. */
+export function listBucketOf(item: ItemBucketFields): ItemListBucket {
+	return LIST_BUCKET[itemBucketOf(item)];
 }
 
 /** Counters after moving one entry from `before` to `after` (null = absent). Pure. */
@@ -79,17 +117,35 @@ export function shiftCount<K extends string>(
 export async function recordItemChange(
 	ctx: MutationCtx,
 	ref: ThreadRef,
-	before: Pick<Doc<'threadItems'>, 'status' | 'responsibility'> | null,
-	after: Pick<Doc<'threadItems'>, 'status' | 'responsibility'> | null
+	before: ItemBucketFields | null,
+	after: ItemBucketFields | null
 ): Promise<void> {
 	const from = before ? itemBucketOf(before) : null;
 	const to = after ? itemBucketOf(after) : null;
 	if (from === to) return;
 	const brief = await ensureBriefRow(ctx, ref);
 	if (!brief) return;
-	await ctx.db.patch(brief._id, {
-		itemCounts: shiftCount(brief.itemCounts ?? EMPTY_ITEM_COUNTS, from, to),
-	});
+	await ctx.db.patch(brief._id, { itemCounts: shiftCount(itemCountsOf(brief), from, to) });
+}
+
+/**
+ * THE helper for item writes outside the reducer (reactions, corrections,
+ * send hooks): patch the item, keep its `listBucket` in step and move the
+ * thread's counters, in one call and one transaction.
+ */
+export async function writeItemChange(
+	ctx: MutationCtx,
+	ref: ThreadRef,
+	row: Doc<'threadItems'>,
+	patch: Partial<Omit<Doc<'threadItems'>, '_id' | '_creationTime' | 'listBucket'>>
+): Promise<void> {
+	const after: ItemBucketFields = {
+		status: patch.status ?? row.status,
+		responsibility: patch.responsibility ?? row.responsibility,
+		verify: patch.verify ?? row.verify,
+	};
+	await ctx.db.patch(row._id, { ...patch, listBucket: listBucketOf(after) });
+	await recordItemChange(ctx, ref, row, after);
 }
 
 /** Apply a batch of item bucket moves to a brief row in one patch. */
@@ -99,7 +155,7 @@ export async function applyItemShifts(
 	shifts: ReadonlyArray<[ItemBucket | null, ItemBucket | null]>
 ): Promise<ItemCounts> {
 	const brief = await ctx.db.get(briefId);
-	let counts = brief?.itemCounts ?? EMPTY_ITEM_COUNTS;
+	let counts = itemCountsOf(brief);
 	for (const [from, to] of shifts) counts = shiftCount(counts, from, to);
 	await ctx.db.patch(briefId, { itemCounts: counts });
 	return counts;

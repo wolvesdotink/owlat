@@ -1143,6 +1143,7 @@ import type * as mail_interpret___eval___runEval from '../mail/interpret/__eval_
 import type * as mail_interpret_briefShape from '../mail/interpret/briefShape.js';
 import type * as mail_interpret_briefTop from '../mail/interpret/briefTop.js';
 import type * as mail_interpret_delegation from '../mail/interpret/delegation.js';
+import type * as mail_interpret_exactWording from '../mail/interpret/exactWording.js';
 import type * as mail_interpret_ground from '../mail/interpret/ground.js';
 import type * as mail_interpret_quoteMatch from '../mail/interpret/quoteMatch.js';
 import type * as mail_interpret_schema from '../mail/interpret/schema.js';
@@ -2680,6 +2681,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/briefShape': typeof mail_interpret_briefShape;
 	'mail/interpret/briefTop': typeof mail_interpret_briefTop;
 	'mail/interpret/delegation': typeof mail_interpret_delegation;
+	'mail/interpret/exactWording': typeof mail_interpret_exactWording;
 	'mail/interpret/ground': typeof mail_interpret_ground;
 	'mail/interpret/quoteMatch': typeof mail_interpret_quoteMatch;
 	'mail/interpret/schema': typeof mail_interpret_schema;

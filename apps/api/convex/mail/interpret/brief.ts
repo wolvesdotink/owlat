@@ -136,7 +136,7 @@ export const get = publicQuery({
 			...(mode === 'brief'
 				? {
 						messageLatest: await readMessageLatest(interpretations, locale),
-						...(ref.kind === 'mail' ? { exactWording: await readExactWording(ctx, ref.id) } : {}),
+						...(ref.kind === 'mail' ? exactWordingFields(await readExactWording(ctx, ref.id)) : {}),
 					}
 				: {}),
 			gap: gapOf(interpretations, {
@@ -250,3 +250,11 @@ export const markPending = internalMutation({
 		return null;
 	},
 });
+
+/** The brief's "Read the exact wording" fields from one indexed page. */
+function exactWordingFields(read: Awaited<ReturnType<typeof readExactWording>>) {
+	return {
+		exactWording: read.messages,
+		...(read.isTruncated ? { isExactWordingTruncated: true } : {}),
+	};
+}
