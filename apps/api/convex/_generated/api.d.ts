@@ -941,6 +941,7 @@ import type * as lib_validators_aiProviderConfig from '../lib/validators/aiProvi
 import type * as lib_validators_answerAsk from '../lib/validators/answerAsk.js';
 import type * as lib_validators_attachment from '../lib/validators/attachment.js';
 import type * as lib_validators_brandKit from '../lib/validators/brandKit.js';
+import type * as lib_validators_briefTop from '../lib/validators/briefTop.js';
 import type * as lib_validators_autonomy from '../lib/validators/autonomy.js';
 import type * as lib_validators_campaigns from '../lib/validators/campaigns.js';
 import type * as lib_validators_catchUp from '../lib/validators/catchUp.js';
@@ -1112,10 +1113,12 @@ import type * as mail_interpret___eval___corpus from '../mail/interpret/__eval__
 import type * as mail_interpret___eval___replay from '../mail/interpret/__eval__/replay.js';
 import type * as mail_interpret___eval___runEval from '../mail/interpret/__eval__/runEval.js';
 import type * as mail_interpret_briefShape from '../mail/interpret/briefShape.js';
+import type * as mail_interpret_briefTop from '../mail/interpret/briefTop.js';
 import type * as mail_interpret_delegation from '../mail/interpret/delegation.js';
 import type * as mail_interpret_ground from '../mail/interpret/ground.js';
 import type * as mail_interpret_quoteMatch from '../mail/interpret/quoteMatch.js';
 import type * as mail_interpret_schema from '../mail/interpret/schema.js';
+import type * as mail_interpret_todo from '../mail/interpret/todo.js';
 import type * as mail_knowledgeScreen from '../mail/knowledgeScreen.js';
 import type * as mail_labels from '../mail/labels.js';
 import type * as mail_labelsMembership from '../mail/labelsMembership.js';
@@ -2447,6 +2450,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/answerAsk': typeof lib_validators_answerAsk;
 	'lib/validators/attachment': typeof lib_validators_attachment;
 	'lib/validators/brandKit': typeof lib_validators_brandKit;
+	'lib/validators/briefTop': typeof lib_validators_briefTop;
 	'lib/validators/autonomy': typeof lib_validators_autonomy;
 	'lib/validators/campaigns': typeof lib_validators_campaigns;
 	'lib/validators/catchUp': typeof lib_validators_catchUp;
@@ -2618,10 +2622,12 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/__eval__/replay': typeof mail_interpret___eval___replay;
 	'mail/interpret/__eval__/runEval': typeof mail_interpret___eval___runEval;
 	'mail/interpret/briefShape': typeof mail_interpret_briefShape;
+	'mail/interpret/briefTop': typeof mail_interpret_briefTop;
 	'mail/interpret/delegation': typeof mail_interpret_delegation;
 	'mail/interpret/ground': typeof mail_interpret_ground;
 	'mail/interpret/quoteMatch': typeof mail_interpret_quoteMatch;
 	'mail/interpret/schema': typeof mail_interpret_schema;
+	'mail/interpret/todo': typeof mail_interpret_todo;
 	'mail/knowledgeScreen': typeof mail_knowledgeScreen;
 	'mail/labels': typeof mail_labels;
 	'mail/labelsMembership': typeof mail_labelsMembership;

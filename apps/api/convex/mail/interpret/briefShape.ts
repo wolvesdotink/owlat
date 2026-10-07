@@ -40,6 +40,7 @@ import {
 	itemVerifyValidator,
 	participantRefValidator,
 	streamPositionValidator,
+	threadViewValidator,
 } from '../../lib/validators/threadBrief';
 import { threadRefValidator } from '../../lib/validators/threadRef';
 
@@ -224,6 +225,13 @@ export const briefModeViewValidator = v.object({
 	participants: v.array(participantViewValidator),
 	files: v.array(fileViewValidator),
 	sinceLastSeen: v.optional(sinceLastSeenViewValidator),
+	// The viewer's per-thread choice (`threadViewerState.viewOverride`); the
+	// web resolves the opening view from it and the saved default.
+	viewOverride: v.optional(threadViewValidator),
+	// Per interpreted message (mailMessages id), its own first "Latest update"
+	// sentence in the requested locale: the collapsed rows of Conversation
+	// show it instead of the raw snippet.
+	messageLatest: v.optional(v.array(v.object({ messageId: v.string(), text: v.string() }))),
 });
 
 /** Team surfaces (actions mode): the "Open for the team" strip's data. */

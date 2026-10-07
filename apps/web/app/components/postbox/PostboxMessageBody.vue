@@ -49,6 +49,7 @@ import {
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
+import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
 import { resolveCidImages, type CidAttachment } from '~/utils/postboxCidImages';
 import { notePostboxBodyRendered } from '~/composables/postbox/usePostboxPerfMarks';
 import {
@@ -88,6 +89,8 @@ const props = defineProps<{
 	 * sender exactly as they do for an untrusted one.
 	 */
 	senderImagesAllowed?: boolean;
+	/** A cited quote of the thread brief to mark and scroll to (plan §4.2). */
+	highlightQuote?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -141,6 +144,7 @@ const showImages = ref(false);
 const loadEverything = ref(false);
 const showQuoted = ref(false);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
+usePostboxQuoteHighlight({ frame: iframeRef, quote: () => props.highlightQuote });
 
 // Apply (and un-apply) the sender grant. Watching rather than initialising
 // once matters twice over: the allowlist query resolves after first render,

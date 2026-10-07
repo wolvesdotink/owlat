@@ -1,0 +1,72 @@
+<script setup lang="ts">
+/**
+ * A list of items under its heading: "For you", "Waiting on others" or
+ * "Unclear who should act" (plan §4.1).
+ *
+ * The empty "For you" says so only when the brief is complete: an incomplete
+ * brief never claims there is nothing to do (plan §8), it says that nothing
+ * was found in the part that was read.
+ */
+import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
+import type { BriefAction } from '~/utils/threadBriefItems';
+import BriefItem from './BriefItem.vue';
+import BriefSection from './BriefSection.vue';
+
+const props = defineProps<{
+	kind: 'forYou' | 'waiting' | 'unclear';
+	items: readonly BriefItemView[];
+	/** Show the empty state (For you only); `incomplete` picks its wording. */
+	showEmpty?: boolean;
+	incomplete?: boolean;
+	selectable?: boolean;
+	selected?: ReadonlySet<string>;
+	compact?: boolean;
+	/** Items an unsent draft covers. */
+	addressed?: ReadonlySet<string>;
+	hideActions?: boolean;
+}>();
+
+const emit = defineEmits<{
+	react: [item: BriefItemView, action: BriefAction];
+	'toggle-select': [item: BriefItemView];
+}>();
+
+const { t } = useI18n();
+
+const title = computed(() => t(`components.brief.items.${props.kind}`));
+const openCount = computed(() => props.items.filter((i) => i.status === 'open').length);
+const note = computed(() =>
+	props.kind === 'forYou'
+		? t('components.brief.items.openCount', { count: openCount.value }, openCount.value)
+		: openCount.value > 0
+			? String(openCount.value)
+			: ''
+);
+</script>
+
+<template>
+	<BriefSection
+		v-if="items.length > 0 || showEmpty"
+		:title="title"
+		:note="items.length > 0 ? note : undefined"
+		:heading-id="`brief-${kind}`"
+	>
+		<ul v-if="items.length > 0" :data-testid="`brief-items-${kind}`">
+			<BriefItem
+				v-for="item in items"
+				:key="item.id"
+				:item="item"
+				:selectable="selectable"
+				:selected="selected?.has(item.id)"
+				:compact="compact"
+				:addressed-in-draft="addressed?.has(item.id)"
+				:hide-actions="hideActions"
+				@react="(action) => emit('react', item, action)"
+				@toggle-select="emit('toggle-select', item)"
+			/>
+		</ul>
+		<p v-else class="text-sm text-text-secondary" :data-testid="`brief-items-${kind}-empty`">
+			{{ incomplete ? t('components.brief.items.emptyIncomplete') : t('components.brief.items.empty') }}
+		</p>
+	</BriefSection>
+</template>

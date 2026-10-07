@@ -85,7 +85,7 @@ import { discussionCounterpartyLabel } from '~/utils/postboxThreadDiscussion';
 import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/senderAuth';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
-import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
+import { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
 import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
 import { usePostboxReaderOpenRow } from '~/composables/postbox/usePostboxReaderOpenRow';
 import {
@@ -242,20 +242,6 @@ const threadMessageCount = computed(() =>
 );
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
-// The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
-// thread has a latest message; it hosts the summary gist and Ask (drafting a
-// reply with AI happens in Answer mode, where the reply is written).
-// `warrantsSummary` decides whether it eagerly generates a summary: long thread
-// (>= 5 messages OR a lot of body text) AND the per-user auto-summary toggle
-// (default ON). When false and nothing is cached, the strip collapses to zero
-// height — so a short thread shows no AI element at all.
-const { autoSummarize } = usePostboxSettings();
-const warrantsSummary = computed(
-	() => autoSummarize.value && isLongThreadForSummary(allMessages.value)
-);
-const aiEnabled = computed(() => isFeatureEnabled('ai'));
-const showAiStrip = computed(() => aiEnabled.value && !!latestMessage.value);
-
 // Follow-up ("remind me if no reply") chip: armable only while the thread
 // ends on our own sent message — an inbound reply on top means they already
 // answered (and clears any armed watch server-side anyway).
@@ -281,6 +267,18 @@ const readerThread = computed(
 			| null
 			| undefined
 );
+// The thread brief (SPEC §7, personal mailboxes): Overview / Conversation, cited
+// quotes, latest lines, item reactions. It replaced the AI strip; Ask is in it.
+const rb = usePostboxReaderBrief({
+	mailboxId: () => props.message.mailboxId,
+	threadId: () => readerThread.value?._id ?? props.message.threadId,
+	messages: allMessages,
+	expanded,
+	toggleExpanded,
+	secureClass,
+	onReply: () => runReaderAction('reply'),
+});
+
 const latestOutboundId = computed(() => {
 	const last = allMessages.value[allMessages.value.length - 1] as
 		| { _id: string; outbound?: unknown }
@@ -737,6 +735,8 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:labels="labelMap"
 			:show-mark-read="showsManualMarkReadButton"
 			:marking-read="markThreadReadOp.isLoading.value"
+			:view="rb.switchView.value"
+			@update:view="rb.setView"
 			@toggle-mute="toggleOpenThreadMute"
 			@toggle-alert="toggleOpenThreadAlert"
 			@mark-read="markOpenThreadRead"
@@ -767,19 +767,17 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 
 		<!-- No skeleton while the thread loads: the opened row renders with its
 		     inline body, and the rest of the conversation joins it on arrival.
-		     What depends on the whole thread (the AI strip, the triage offer)
+		     What depends on the whole thread (the Overview, the triage offer)
 		     waits for it. -->
-		<div class="space-y-2">
-			<!-- The reader's ONE AI home, one line: the summary gist plus an Ask
-			     link. Renders nothing when
-			     there's no summary and the thread is too short to warrant one
-			     (fail-soft, same thresholds). -->
-			<PostboxAiStrip
-				v-if="showAiStrip && latestMessage && !isLoading"
-				:key="latestMessage._id"
-				:message-id="latestMessage._id"
-				:warrants-summary="warrantsSummary"
-			/>
+		<PostboxThreadOverview
+			v-if="rb.showsOverview.value"
+			:state="rb"
+			:messages="allMessages"
+			:message-count="threadMessageCount"
+			@action="runReaderAction"
+		/>
+		<div v-show="!rb.showsOverview.value" class="space-y-2">
+			<PostboxThreadCiteNote :state="rb" />
 
 			<PostboxThreadEarlier
 				v-if="hasEarlier || loadingEarlier || earlierFailed"
@@ -814,6 +812,8 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 				:seal-status="sealStatusFor(msg)"
 				:downloading-attachment="downloadingAttachment"
 				:eager-body="mountAllBodies"
+				:latest-line="rb.latestFor(msg._id)"
+				:cite-quote="rb.citeQuoteFor(msg._id)"
 				@toggle-expanded="toggleExpanded(msg._id)"
 				@open-sender-profile="openSenderProfile(msg)"
 				@toggle-forced-light="toggleForcedLight(msg._id)"
