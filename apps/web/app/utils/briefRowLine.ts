@@ -15,9 +15,8 @@ import { briefDueDate } from '~/utils/threadBriefContext';
 export interface BriefRowLine {
 	/** "{count} for you" / "{count} to do" / "waiting". */
 	leadKey: string;
+	/** Exact: the thread's maintained item counters. */
 	count: number;
-	/** The count as shown: "2000+" when the thread has more than were counted. */
-	countText: string;
 	tone: 'brand' | 'info';
 	text: string;
 	/** "Fri", "21 Oct": already formatted for the locale. */
@@ -37,7 +36,10 @@ export function briefRowLine(
 	if (!top || !item) return null;
 	const text = locale.toLowerCase().startsWith('de') ? item.text.de : item.text.en;
 	if (!text.trim()) return null;
-	const isWaiting = item.responsibility === 'them' || top.forYou === 0;
+	// "waiting" is the list the top item heads, never inferred from a zero count.
+	const isWaiting = item.bucket
+		? item.bucket === 'waitingOnOthers'
+		: item.responsibility === 'them';
 	const due = item.dueAt !== undefined ? briefDueDate(item.dueAt, locale, now) : null;
 	return {
 		leadKey: isWaiting
@@ -46,7 +48,6 @@ export function briefRowLine(
 				? 'components.brief.row.forYou'
 				: 'components.brief.row.toDo',
 		count: isWaiting ? top.waiting : top.forYou,
-		countText: `${isWaiting ? top.waiting : top.forYou}${top.isCapped ? '+' : ''}`,
 		tone: isWaiting ? 'info' : 'brand',
 		text,
 		due,
@@ -63,16 +64,11 @@ export function briefRowLatest(top: BriefTopRow | undefined, locale: string): st
 }
 
 /**
- * The "+N more" chip behind a row's title: the thread's other open items.
- * A capped count (`isCapped`, more open items than were counted) is a lower
- * bound, so the chip reads "N+ more", never an exact "+N more". Null when
- * there is nothing more (a capped count always has more).
+ * The "+N more" chip behind a row's title: the thread's other open items. The
+ * counts are maintained exactly (no cap), so the chip is exact too. Null when
+ * there is nothing more.
  */
-export function briefMoreChip(
-	total: number,
-	isCapped: boolean
-): { key: string; count: number } | null {
+export function briefMoreChip(total: number): { key: string; count: number } | null {
 	const rest = total - 1;
-	if (isCapped) return { key: 'components.brief.moreAtLeast', count: Math.max(1, rest) };
 	return rest > 0 ? { key: 'components.brief.more', count: rest } : null;
 }

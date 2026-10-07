@@ -47,6 +47,21 @@ import { literalUnion } from '../literalUnion';
 
 export const interpretModeValidator = literalUnion(INTERPRET_MODES);
 export const threadViewValidator = literalUnion(THREAD_VIEWS);
+
+/**
+ * Which list of the brief an item sits in, derived from its status,
+ * responsibility and verify state (`mail/interpret/counters.ts listBucketOf`)
+ * and stored on the item, so the first item of a list is an indexed read.
+ */
+export const ITEM_LIST_BUCKETS = [
+	'forUs',
+	'waitingOnOthers',
+	'unclear',
+	'proposal',
+	'closed',
+] as const;
+export type ItemListBucket = (typeof ITEM_LIST_BUCKETS)[number];
+export const itemListBucketValidator = literalUnion(ITEM_LIST_BUCKETS);
 export const itemIntentValidator = literalUnion(ITEM_INTENTS);
 export const itemFacetValidator = literalUnion(ITEM_FACETS);
 export const itemResponsibilityValidator = literalUnion(ITEM_RESPONSIBILITIES);

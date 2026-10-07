@@ -1,10 +1,12 @@
 /**
  * The thread brief folded down for list rows (`mailThreads.briefTop`) and the
  * Workbench "To do, no reply needed" band:
- *   - the fold counts tracked items (no proposals, no closed ones), picks the
- *     top item by compareForYou, for-you before waiting;
- *   - refreshBriefTop writes it from the thread's open items, keeps the stored
- *     latest line unless given a new one, and never writes one in actions mode;
+ *   - an item's list bucket and the thread's maintained counters: proposals
+ *     and closed items never count as tracked work;
+ *   - refreshBriefTop takes the counts from the counters and the top item from
+ *     the first row of the thread's `forUs` (else `waitingOnOthers`) list, with
+ *     O(1) reads however long the thread; it keeps the stored latest line
+ *     unless given a new one, and never writes one in actions mode;
  *   - list rows and Answer queue rows carry it unsealed;
  *   - the band lists threads with open for-you items that need no reply.
  */
@@ -16,12 +18,14 @@ import { api } from '../../../_generated/api';
 import type { Doc, Id } from '../../../_generated/dataModel';
 import { enableFeatures } from '../../../__tests__/factories';
 import { modules, seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
+import { refreshBriefTop } from '../briefTop';
 import {
-	deriveBriefTop,
-	OPEN_ITEM_READ_LIMIT,
-	refreshBriefTop,
-	type BriefTopItem,
-} from '../briefTop';
+	itemBucketOf,
+	itemCountsOf,
+	listBucketOf,
+	recordItemChange,
+	writeItemChange,
+} from '../counters';
 import { collectToDo, TODO_SCAN_BUDGET } from '../todo';
 import type { MutationCtx } from '../../../_generated/server';
 
@@ -48,50 +52,84 @@ beforeEach(() => {
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 9, 7, 9);
 
-function item(over: Partial<Omit<BriefTopItem, '_id'>> & { _id: string }): BriefTopItem {
-	return {
-		responsibility: 'us',
-		status: 'open',
-		verify: 'passed',
-		facets: [],
-		askedAt: T0,
-		display: { en: `${over._id} en`, de: `${over._id} de` },
-		...over,
-		_id: over._id as Id<'threadItems'>,
-	};
-}
-
-describe('deriveBriefTop', () => {
-	it('counts tracked items and picks the soonest for-you item', () => {
-		const fold = deriveBriefTop([
-			item({ _id: 'a', facets: ['meeting'] }),
-			item({ _id: 'b', due: { phrase: 'Fri', at: T0 + 2 * DAY, isAmbiguous: false } }),
-			item({
-				_id: 'c',
-				responsibility: 'them',
-				due: { phrase: 'Mon', at: T0 + DAY, isAmbiguous: false },
-			}),
-			item({ _id: 'd', verify: 'proposal' }),
-			item({ _id: 'e', status: 'done' }),
-			item({ _id: 'f', responsibility: 'unclear' }),
-		]);
-		expect(fold.forYou).toBe(3);
-		expect(fold.waiting).toBe(1);
-		expect(fold.top).toEqual({
-			itemId: 'b',
-			responsibility: 'us',
-			text: { en: 'b en', de: 'b de' },
-			dueAt: T0 + 2 * DAY,
-		});
-	});
-
-	it('falls back to the first waiting item, and to nothing', () => {
-		expect(deriveBriefTop([item({ _id: 'w', responsibility: 'them' })]).top?.itemId).toBe('w');
-		expect(deriveBriefTop([])).toEqual({ forYou: 0, waiting: 0 });
+describe('list buckets', () => {
+	it('keeps proposals and closed items out of tracked work', () => {
+		const open = { status: 'open', responsibility: 'us', verify: 'passed' } as const;
+		expect(listBucketOf(open)).toBe('forUs');
+		expect(listBucketOf({ ...open, responsibility: 'them' })).toBe('waitingOnOthers');
+		expect(listBucketOf({ ...open, responsibility: 'unclear' })).toBe('unclear');
+		expect(listBucketOf({ ...open, verify: 'proposal' })).toBe('proposal');
+		expect(itemBucketOf({ ...open, verify: 'proposal', responsibility: 'them' })).toBe('proposal');
+		expect(listBucketOf({ ...open, status: 'done' })).toBe('closed');
+		expect(itemBucketOf({ ...open, status: 'untracked' })).toBe('hidden');
+		expect(listBucketOf({ ...open, status: 'untracked' })).toBe('closed');
 	});
 });
 
 type T = ReturnType<typeof convexTest>;
+type ItemFields = Omit<Doc<'threadItems'>, '_id' | '_creationTime' | 'listBucket'>;
+
+/** Insert an item the way every writer must: with its list bucket, counters moved. */
+async function trackedInsert(ctx: MutationCtx, fields: ItemFields): Promise<Id<'threadItems'>> {
+	const id = await ctx.db.insert('threadItems', { ...fields, listBucket: listBucketOf(fields) });
+	await recordItemChange(ctx, { kind: 'mail', id: fields.mailThreadId! }, null, fields);
+	return id;
+}
+
+/**
+ * `ctx` with a `db` that counts the documents its reads return (get, first,
+ * unique, take, collect, async iteration): what a mutation pays for.
+ */
+function countingReads(ctx: MutationCtx): { ctx: MutationCtx; reads: () => number } {
+	let reads = 0;
+	const wrap = (query: object): object =>
+		new Proxy(query, {
+			get(target, prop) {
+				const value = Reflect.get(target, prop) as unknown;
+				if (prop === Symbol.asyncIterator && typeof value === 'function') {
+					return () => {
+						const inner = (value as () => AsyncIterator<unknown>).call(target);
+						return {
+							next: async () => {
+								const step = await inner.next();
+								if (!step.done) reads++;
+								return step;
+							},
+							[Symbol.asyncIterator]() {
+								return this;
+							},
+						};
+					};
+				}
+				if (typeof value !== 'function') return value;
+				return (...args: unknown[]) => {
+					const out = (value as (...a: unknown[]) => unknown).apply(target, args);
+					if (out instanceof Promise) {
+						return out.then((res) => {
+							reads += Array.isArray(res) ? res.length : res ? 1 : 0;
+							return res;
+						});
+					}
+					return out && typeof out === 'object' ? wrap(out) : out;
+				};
+			},
+		});
+	const db = new Proxy(ctx.db, {
+		get(target, prop) {
+			if (prop === 'query') return (table: string) => wrap(target.query(table as never));
+			if (prop === 'get') {
+				return async (id: never) => {
+					const doc = await target.get(id);
+					if (doc) reads++;
+					return doc;
+				};
+			}
+			const value = Reflect.get(target, prop) as unknown;
+			return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+		},
+	});
+	return { ctx: { ...ctx, db } as MutationCtx, reads: () => reads };
+}
 
 async function seedInterpreted(
 	t: T,
@@ -125,7 +163,7 @@ async function seedInterpreted(
 			updatedAt: T0,
 		});
 		const party = { isUs: false, email: 'billing@example.com' };
-		await ctx.db.insert('threadItems', {
+		await trackedInsert(ctx, {
 			threadKind: 'mail',
 			mailThreadId: id,
 			mailboxId,
@@ -172,6 +210,7 @@ describe('refreshBriefTop and the list reads', () => {
 			waiting: 0,
 			top: {
 				itemId: expect.any(String),
+				bucket: 'forUs',
 				responsibility: 'us',
 				text: { en: 'Pay €38.08', de: 'Zahle 38,08 €' },
 				dueAt: T0 + 14 * DAY,
@@ -264,9 +303,14 @@ async function insertItem(
 	ctx: MutationCtx,
 	mailThreadId: Id<'mailThreads'>,
 	mailboxId: Id<'mailboxes'>,
-	over: { dueAt?: number; verify?: 'passed' | 'proposal'; text?: string } = {}
+	over: {
+		dueAt?: number;
+		verify?: 'passed' | 'proposal';
+		text?: string;
+		responsibility?: 'us' | 'them';
+	} = {}
 ) {
-	return ctx.db.insert('threadItems', {
+	return trackedInsert(ctx, {
 		threadKind: 'mail',
 		mailThreadId,
 		mailboxId,
@@ -276,8 +320,8 @@ async function insertItem(
 		assertion: 'x',
 		display: { en: over.text ?? 'x', de: over.text ?? 'x' },
 		requester: PARTY,
-		responsible: { isUs: true },
-		responsibility: 'us',
+		responsible: { isUs: over.responsibility !== 'them' },
+		responsibility: over.responsibility ?? 'us',
 		status: 'open',
 		disposition: 'unanswered',
 		...(over.dueAt !== undefined
@@ -338,50 +382,136 @@ describe('the to-do band never drops a thread silently', () => {
 	});
 });
 
-describe('refreshBriefTop past the read limit', () => {
-	it('flags the counts as capped and takes the soonest dated item as the top', async () => {
+describe('refreshBriefTop on long threads', () => {
+	it('counts 1 tracked item behind 2000 proposals, and takes it as the top', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, mailboxId } = await seedInterpreted(t);
 		await t.run(async (ctx) => {
-			for (let i = 0; i < OPEN_ITEM_READ_LIMIT; i++) await insertItem(ctx, threadId, mailboxId);
-			await insertItem(ctx, threadId, mailboxId, { dueAt: T0 + DAY, text: 'Soonest' });
+			for (let i = 0; i < 2000; i++) {
+				await insertItem(ctx, threadId, mailboxId, { verify: 'proposal', dueAt: T0 - DAY - i });
+			}
 			await refreshBriefTop(ctx, threadId);
 		});
+		const thread = (await t.run((ctx) => ctx.db.get(threadId)))!;
+		// The seeded invoice is the one tracked item; the proposals are apart.
+		expect(thread.briefTop).toMatchObject({ forYou: 1, waiting: 0 });
+		expect(thread.briefTop!.top?.dueAt).toBe(T0 + 14 * DAY);
+		const brief = await t.run((ctx) =>
+			ctx.db
+				.query('threadBriefs')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.unique()
+		);
+		expect(itemCountsOf(brief)).toMatchObject({ us: 1, proposal: 2000 });
+	});
+
+	it('refreshes a 10,000-item thread with O(1) reads', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, mailboxId } = await seedInterpreted(t);
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 10_000; i++) {
+				await ctx.db.insert('threadItems', {
+					threadKind: 'mail',
+					mailThreadId: threadId,
+					mailboxId,
+					revision: 1,
+					intent: 'request',
+					facets: [],
+					assertion: 'x',
+					display: { en: 'x', de: 'x' },
+					requester: PARTY,
+					responsible: { isUs: true },
+					responsibility: 'us',
+					status: 'open',
+					disposition: 'unanswered',
+					due: { phrase: 'later', at: T0 + 30 * DAY + i, isAmbiguous: false },
+					evidence: [],
+					verify: 'passed',
+					listBucket: 'forUs',
+					askedAt: T0,
+					createdAt: T0,
+					updatedAt: T0,
+				});
+			}
+			const brief = await ctx.db
+				.query('threadBriefs')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.unique();
+			const counts = itemCountsOf(brief);
+			await ctx.db.patch(brief!._id, { itemCounts: { ...counts, us: counts.us + 10_000 } });
+		});
+		const reads = await t.run(async (ctx) => {
+			const counting = countingReads(ctx);
+			await refreshBriefTop(counting.ctx, threadId);
+			return counting.reads();
+		});
+		expect(reads).toBeLessThanOrEqual(4);
 		const top = (await t.run((ctx) => ctx.db.get(threadId)))!.briefTop!;
-		expect(top.isCapped).toBe(true);
-		expect(top.forYou).toBe(OPEN_ITEM_READ_LIMIT);
-		expect(top.top?.dueAt).toBe(T0 + DAY);
+		expect(top.forYou).toBe(10_001);
+		expect(top.top?.dueAt).toBe(T0 + 14 * DAY);
 	});
 
 	it('finds the top item in its own thread however many other threads are due sooner', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, mailboxId } = await seedInterpreted(t);
 		await t.run(async (ctx) => {
-			// Another thread of the mailbox, all due earlier: it must not crowd this one out.
 			const busy = await insertThread(ctx, mailboxId, 'Busy');
+			await ctx.db.insert('threadBriefs', {
+				threadKind: 'mail',
+				mailThreadId: busy,
+				mode: 'brief',
+				sourceRevision: 1,
+				interpretationRevision: 1,
+				lastActivitySeq: 0,
+				completeness: 'complete',
+				deletionEpoch: 0,
+				updatedAt: T0,
+			});
 			for (let i = 0; i < 600; i++) {
 				await insertItem(ctx, busy, mailboxId, { dueAt: T0 - DAY - i });
 			}
-			for (let i = 0; i < OPEN_ITEM_READ_LIMIT; i++) await insertItem(ctx, threadId, mailboxId);
-			await insertItem(ctx, threadId, mailboxId, { dueAt: T0 + 3 * DAY, text: 'Later' });
 			await insertItem(ctx, threadId, mailboxId, { dueAt: T0 + DAY, text: 'Soonest' });
 			await refreshBriefTop(ctx, threadId);
 		});
 		const top = (await t.run((ctx) => ctx.db.get(threadId)))!.briefTop!;
-		expect(top.isCapped).toBe(true);
 		expect(top.top?.dueAt).toBe(T0 + DAY);
+		expect(top.forYou).toBe(2);
 	});
 
-	it('counts every open item below the limit', async () => {
+	it('says "waiting" from the list the top item heads, not from a zero count', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, mailboxId } = await seedInterpreted(t);
 		await t.run(async (ctx) => {
-			for (let i = 0; i < 150; i++) await insertItem(ctx, threadId, mailboxId);
+			const invoice = (await ctx.db
+				.query('threadItems')
+				.withIndex('by_mail_thread_bucket_asked', (q) =>
+					q.eq('mailThreadId', threadId).eq('listBucket', 'forUs')
+				)
+				.first())!;
+			await writeItemChange(ctx, { kind: 'mail', id: threadId }, invoice, { status: 'done' });
+			await insertItem(ctx, threadId, mailboxId, { responsibility: 'them', text: 'Photos' });
 			await refreshBriefTop(ctx, threadId);
 		});
 		const top = (await t.run((ctx) => ctx.db.get(threadId)))!.briefTop!;
-		expect(top.isCapped).toBeUndefined();
-		expect(top.forYou).toBe(151);
+		expect(top).toMatchObject({ forYou: 0, waiting: 1 });
+		expect(top.top).toMatchObject({ bucket: 'waitingOnOthers', responsibility: 'them' });
+	});
+
+	it('moves an item and the counters together when a proposal is confirmed', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, mailboxId } = await seedInterpreted(t);
+		const after = await t.run(async (ctx) => {
+			const id = await insertItem(ctx, threadId, mailboxId, { verify: 'proposal' });
+			const row = (await ctx.db.get(id))!;
+			await writeItemChange(ctx, { kind: 'mail', id: threadId }, row, { verify: 'passed' });
+			const brief = await ctx.db
+				.query('threadBriefs')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.unique();
+			return { row: await ctx.db.get(id), counts: itemCountsOf(brief) };
+		});
+		expect(after.row?.listBucket).toBe('forUs');
+		expect(after.counts).toMatchObject({ us: 2, proposal: 0 });
 	});
 });
 

@@ -19,13 +19,17 @@
  * counts and the words appear more than once, nothing is marked and the result
  * says why, so the reader can say it could not locate the exact passage.
  *
- * Normalization is grounding's (`quoteMatch.ts normalizeForQuote`): NFKC,
- * curly quotes and dashes folded to ASCII, invisible format characters
- * dropped, whitespace runs collapsed. Case must match.
+ * Normalization is grounding's own (`@owlat/shared/quoteNormalize`): NFKC over
+ * complete combining sequences, curly quotes and dashes folded to ASCII,
+ * invisible format characters dropped, whitespace runs collapsed, case kept.
+ * It runs over the whole visible text, and its offset map leads a normalized
+ * match back to the raw text, then to the DOM text nodes.
  *
  * Pure DOM work over a `Document`: the body iframe is same-origin, and a test
  * hands in any document.
  */
+
+import { normalizeForQuote, normalizeWithMap } from '@owlat/shared/quoteNormalize';
 
 const MARK_ATTR = 'data-owlat-cite';
 const MARK_STYLE = 'background:#f6dfb4;color:inherit;border-radius:2px;padding:0 1px';
@@ -45,29 +49,9 @@ export type HighlightResult =
 	/** The words appear more than once and the evidence does not say which. */
 	| { status: 'ambiguous' };
 
-const SINGLE_QUOTES = /[‘’‚‛′´`]/g;
-const DOUBLE_QUOTES = /[“”„‟″«»]/g;
-const DASHES = /[‐-―−﹘﹣－]/g;
-const INVISIBLE = /[­​-‍⁠﻿]/g;
-
-function fold(ch: string): string {
-	if (/\s/.test(ch)) return ' ';
-	return ch
-		.normalize('NFKC')
-		.replace(INVISIBLE, '')
-		.replace(SINGLE_QUOTES, "'")
-		.replace(DOUBLE_QUOTES, '"')
-		.replace(DASHES, '-');
-}
-
-/** Normalize a quote the way the document text is normalized below. */
-export function normalizeQuote(text: string): string {
-	return [...text].map(fold).join('').replace(/\s+/g, ' ').trim();
-}
-
+/** The visible text as one string, with each UTF-16 unit's text node and offset. */
 interface Indexed {
 	text: string;
-	/** For each character of `text`: the text node and offset it came from. */
 	at: Array<{ node: Text; offset: number }>;
 }
 
@@ -129,29 +113,21 @@ function indexText(doc: Document): Indexed {
 	const walker = doc.createTreeWalker(doc.body ?? doc.documentElement, 4 /* SHOW_TEXT */, {
 		acceptNode: (node) => (isVisible(node as Text) ? 1 /* ACCEPT */ : 2 /* REJECT */),
 	});
-	const out: Indexed = { text: '', at: [] };
-	let lastSpace = true;
+	const parts: string[] = [];
+	const at: Indexed['at'] = [];
 	let prev: Text | null = null;
 	for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
 		const value = node.nodeValue ?? '';
-		if (prev && !lastSpace && startsNewLine(prev, node)) {
+		if (prev && startsNewLine(prev, node)) {
 			// A separator that belongs to no character: mapped onto the end of `prev`.
-			out.text += ' ';
-			out.at.push({ node: prev, offset: Math.max(0, (prev.nodeValue ?? '').length - 1) });
-			lastSpace = true;
+			parts.push('\n');
+			at.push({ node: prev, offset: Math.max(0, (prev.nodeValue ?? '').length - 1) });
 		}
 		prev = node;
-		for (let i = 0; i < value.length; i++) {
-			const ch = fold(value[i]!);
-			if (ch === ' ' && lastSpace) continue;
-			lastSpace = ch === ' ';
-			for (const c of ch) {
-				out.text += c;
-				out.at.push({ node, offset: i });
-			}
-		}
+		parts.push(value);
+		for (let i = 0; i < value.length; i++) at.push({ node, offset: i });
 	}
-	return out;
+	return { text: parts.join(''), at };
 }
 
 /** Remove marks a previous cite left behind. */
@@ -169,19 +145,19 @@ function matchesOf(hay: string, needle: string): number[] {
 	return out;
 }
 
-/** Wrap `[start, start + length)` of the indexed text in marks; return the first. */
-function wrap(doc: Document, index: Indexed, start: number, length: number): HTMLElement {
-	// Per text node: the first and last source offset the match covers.
+/** Wrap the raw visible-text range `[start, end)` in marks; return the first. */
+function wrap(doc: Document, index: Indexed, start: number, end: number): HTMLElement {
+	// Per text node: the first and last source offset the range covers.
 	const spans = new Map<Text, { from: number; to: number }>();
-	for (let i = start; i < start + length; i++) {
+	for (let i = start; i < end; i++) {
 		const { node, offset } = index.at[i]!;
 		const span = spans.get(node);
-		if (span) span.to = offset;
+		if (span) span.to = Math.max(span.to, offset);
 		else spans.set(node, { from: offset, to: offset });
 	}
 	let first: HTMLElement | null = null;
 	for (const [node, { from, to }] of spans) {
-		// Split the text node around the match and move the middle into a mark.
+		// Split the text node around the range and move the middle into a mark.
 		const middle = node.splitText(from);
 		middle.splitText(to + 1 - from);
 		const mark = doc.createElement('mark');
@@ -197,20 +173,25 @@ function wrap(doc: Document, index: Indexed, start: number, length: number): HTM
 /** Mark the cited occurrence of the quote, or say why not (see the module note). */
 export function highlightQuote(doc: Document, cited: CitedQuote): HighlightResult {
 	clearQuoteHighlight(doc);
-	const needle = normalizeQuote(cited.quote);
+	const needle = normalizeForQuote(cited.quote);
 	if (!needle) return { status: 'notFound' };
 	const index = indexText(doc);
-	const matches = matchesOf(index.text, needle);
-	let start: number | undefined;
+	// Grounding's normalization over the whole visible text, with its map back
+	// to raw offsets: combining sequences normalize exactly as they did there.
+	const hay = normalizeWithMap(index.text);
+	const matches = matchesOf(hay.normalized, needle);
+	let at: number | undefined;
 	if (cited.occurrence !== undefined && cited.occurrenceCount !== undefined) {
 		// The visible text must hold exactly the matches grounding counted.
 		if (matches.length !== cited.occurrenceCount) return { status: 'notFound' };
-		start = matches[cited.occurrence];
+		at = matches[cited.occurrence];
 	} else if (matches.length > 1) {
 		return { status: 'ambiguous' };
 	} else {
-		start = matches[0];
+		at = matches[0];
 	}
-	if (start === undefined) return { status: 'notFound' };
-	return { status: 'marked', mark: wrap(doc, index, start, needle.length) };
+	if (at === undefined) return { status: 'notFound' };
+	const start = hay.from[at]!;
+	const end = hay.to[at + needle.length - 1]!;
+	return { status: 'marked', mark: wrap(doc, index, start, end) };
 }
