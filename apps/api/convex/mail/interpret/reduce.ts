@@ -63,9 +63,6 @@ export type ApplyOutcome =
 	| { outcome: 'stale'; interpretationRevision: number }
 	| { outcome: 'erased' | 'gone' | 'modeChanged' | 'sourceChanged' };
 
-/** Rows read per source to find its current extraction. */
-const SOURCE_ROWS_SCAN = 50;
-
 /**
  * A source's two marked extractions: `current`, the one the replay folds in
  * (the newest that READ the message), and `counted`, the newest attempt,
@@ -79,13 +76,15 @@ async function markedRowsOf(
 	current: Doc<'messageInterpretations'> | null;
 	counted: Doc<'messageInterpretations'> | null;
 }> {
-	const rows = await ctx.db
+	const current = await ctx.db
 		.query('messageInterpretations')
-		.withIndex('by_source_revision', (q) => q.eq('sourceKey', sourceKey))
-		.take(SOURCE_ROWS_SCAN);
-	const current = rows.find((r) => r.isCurrent === true) ?? null;
-	const counted = rows.find((r) => r.isCounted === true) ?? current;
-	return { current, counted };
+		.withIndex('by_source_current', (q) => q.eq('sourceKey', sourceKey).eq('isCurrent', true))
+		.first();
+	const counted = await ctx.db
+		.query('messageInterpretations')
+		.withIndex('by_source_counted', (q) => q.eq('sourceKey', sourceKey).eq('isCounted', true))
+		.first();
+	return { current, counted: counted ?? current };
 }
 
 export const applyInterpretation = internalMutation({

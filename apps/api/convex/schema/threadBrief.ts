@@ -152,6 +152,10 @@ export const threadBriefTables = {
 	})
 		// Idempotency: one extraction per source revision and extractor version.
 		.index('by_source_revision', ['sourceKey', 'contentRevision', 'extractorVersion'])
+		// A source's current (replayed) and counted extraction, fetched directly
+		// however many revisions it has.
+		.index('by_source_current', ['sourceKey', 'isCurrent'])
+		.index('by_source_counted', ['sourceKey', 'isCounted'])
 		.index('by_mail_thread', ['mailThreadId'])
 		// "Read the exact wording": every source of a thread that asked for it.
 		.index('by_mail_thread_exact_wording', ['mailThreadId', 'isExactWordingRequired'])

@@ -249,3 +249,50 @@ describe('F5: a repair updates each derived field on its own', () => {
 		expect((await brief(t, threadId))?.itemCounts).toMatchObject({ us: 0, them: 1 });
 	});
 });
+
+describe('the current extraction is found however many revisions a source has', () => {
+	it('retires the old current row, its exact-wording flag and its count past 50 revisions', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		const sourceKey = `mail:${messageId}`;
+		// 60 older, already-replaced extractions of the same source.
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 60; i++) {
+				await ctx.db.insert('messageInterpretations', {
+					threadKind: 'mail',
+					mailThreadId: threadId,
+					source: { kind: 'mail', id: messageId },
+					sourceKey,
+					contentRevision: `old-${String(i).padStart(2, '0')}`,
+					extractorVersion: 3,
+					mode: 'brief',
+					status: 'complete',
+					isCurrent: false,
+					isCounted: false,
+					deletionEpoch: 0,
+					createdAt: i,
+					updatedAt: i,
+				});
+			}
+		});
+		await apply(t, messageId, threadId, {
+			contentRevision: 'zz-1',
+			result: reduceResult({ items: [payment], exactWording: { reason: 'payment_details' } }),
+		});
+		await apply(t, messageId, threadId, {
+			contentRevision: 'zz-2',
+			result: reduceResult({ items: [payment] }),
+		});
+		const rows = await t.run(async (ctx) =>
+			ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_source_revision', (q) => q.eq('sourceKey', sourceKey))
+				.collect()
+		);
+		expect(rows.filter((r) => r.isCurrent)).toHaveLength(1);
+		expect(rows.filter((r) => r.isCounted)).toHaveLength(1);
+		expect(rows.find((r) => r.contentRevision === 'zz-1')).toMatchObject({ isCurrent: false });
+		expect(rows.find((r) => r.contentRevision === 'zz-1')?.isExactWordingRequired).not.toBe(true);
+		expect((await brief(t, threadId))?.sourceCounts).toMatchObject({ complete: 1 });
+	});
+});
