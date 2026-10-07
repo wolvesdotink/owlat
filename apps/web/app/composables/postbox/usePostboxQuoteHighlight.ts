@@ -14,14 +14,20 @@ export function usePostboxQuoteHighlight(opts: {
 	/** The quote to mark; `null`/`undefined` for none. */
 	quote: () => string | null | undefined;
 }) {
+	// Whether this frame's document may hold a mark: a body that was never
+	// cited is never touched.
+	let marked = false;
 	function apply() {
+		const quote = opts.quote();
+		if (!quote && !marked) return;
 		const doc = opts.frame.value?.contentDocument;
 		if (!doc?.body) return;
-		const quote = opts.quote();
 		if (!quote) {
 			clearQuoteHighlight(doc);
+			marked = false;
 			return;
 		}
+		marked = true;
 		highlightQuote(doc, quote)?.scrollIntoView({
 			block: 'center',
 			behavior: prefersReducedMotion() ? 'auto' : 'smooth',

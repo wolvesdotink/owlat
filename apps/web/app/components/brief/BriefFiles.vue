@@ -5,6 +5,7 @@
  * something with it: Answer mode attaches it to the reply, the reader opens
  * the message it came with.
  */
+import { inject } from 'vue';
 import type { FileView } from '../../../../api/convex/mail/interpret/briefShape';
 import { briefShortDate, BRIEF_CONTEXT } from '~/utils/threadBriefContext';
 import BriefSection from './BriefSection.vue';

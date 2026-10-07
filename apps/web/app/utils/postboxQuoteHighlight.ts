@@ -112,13 +112,14 @@ export function highlightQuote(doc: Document, quote: string): HTMLElement | null
 	}
 	let first: HTMLElement | null = null;
 	for (const [node, { from, to }] of spans) {
-		const range = doc.createRange();
-		range.setStart(node, from);
-		range.setEnd(node, to + 1);
+		// Split the text node around the match and move the middle into a mark.
+		const middle = node.splitText(from);
+		middle.splitText(to + 1 - from);
 		const mark = doc.createElement('mark');
 		mark.setAttribute(MARK_ATTR, '');
 		mark.setAttribute('style', MARK_STYLE);
-		range.surroundContents(mark);
+		middle.parentNode?.insertBefore(mark, middle);
+		mark.appendChild(middle);
 		first ??= mark;
 	}
 	return first;

@@ -20,7 +20,9 @@ import type {
 	BriefModeView,
 	FileView,
 } from '../../../../api/convex/mail/interpret/briefShape';
+import { provide } from 'vue';
 import type { BriefAction } from '~/utils/threadBriefItems';
+import { useMediaQuery } from '~/composables/useMediaQuery';
 import { BRIEF_CONTEXT, type BriefSource } from '~/utils/threadBriefContext';
 import { isBriefComplete } from '~/utils/threadBriefBanners';
 import BriefActivity from './BriefActivity.vue';

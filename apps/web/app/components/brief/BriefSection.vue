@@ -13,17 +13,17 @@ defineProps<{
 </script>
 
 <template>
-	<section
-		class="brief-section"
-		:aria-labelledby="headingId"
-	>
+	<section class="brief-section" :aria-labelledby="headingId">
 		<h3
 			:id="headingId"
 			class="mb-1.5 flex items-center gap-2 text-2xs font-medium uppercase tracking-wider text-text-tertiary"
 		>
 			{{ title }}
 			<slot name="badge" />
-			<span v-if="note || $slots.note" class="ml-auto text-xs font-normal normal-case tracking-normal">
+			<span
+				v-if="note || $slots['note']"
+				class="ml-auto text-xs font-normal normal-case tracking-normal"
+			>
 				<slot name="note">{{ note }}</slot>
 			</span>
 		</h3>

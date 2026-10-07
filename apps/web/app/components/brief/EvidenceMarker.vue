@@ -8,6 +8,7 @@
  * Reads the sender and date from the thread through `BRIEF_CONTEXT`; a message
  * that is not loaded yet still gets a marker, just without the initials.
  */
+import { inject } from 'vue';
 import type { EvidenceView } from '../../../../api/convex/mail/interpret/briefShape';
 import { BRIEF_CONTEXT, briefShortDate } from '~/utils/threadBriefContext';
 import { initialsOf } from '~/utils/threadBriefItems';
@@ -23,7 +24,9 @@ const { t, locale } = useI18n();
 const context = inject(BRIEF_CONTEXT, null);
 
 const source = computed(() => context?.sourceOf(props.evidence.source.id));
-const date = computed(() => (source.value?.at ? briefShortDate(source.value.at, locale.value) : ''));
+const date = computed(() =>
+	source.value?.at ? briefShortDate(source.value.at, locale.value) : ''
+);
 const text = computed(() => {
 	const who = source.value ? initialsOf(source.value.name, source.value.email) : '';
 	return [who, date.value].filter(Boolean).join(' ') || '·';

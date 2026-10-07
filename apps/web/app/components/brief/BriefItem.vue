@@ -115,8 +115,7 @@ const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {
 		/>
 		<div class="min-w-0">
 			<p class="text-sm text-text-primary">
-				<template v-if="isProposal">{{ t('components.brief.item.checkThis') }} </template
-				>{{ item.text }}
+				{{ isProposal ? `${t('components.brief.item.checkThis')} ${item.text}` : item.text }}
 			</p>
 			<p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-tertiary">
 				<span v-if="due && isOpen" class="font-medium text-error">{{
