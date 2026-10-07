@@ -268,14 +268,22 @@ async function stripClaims(
 	for (const row of survivors) {
 		const patch = repairPointers(row, deleted, table, doomed);
 		if (!patch) continue;
-		const stamped = { ...patch, revision: row.revision + 1, updatedAt: now };
+		const stamp = { revision: row.revision + 1, updatedAt: now };
 		if (table === 'threadItems') {
 			// A reopened item moves counter buckets; the list projection is refreshed once, at the end.
-			await writeItemChange(ctx, ref, row as Doc<'threadItems'>, stamped, {
+			const itemPatch: Partial<Doc<'threadItems'>> = {
+				...(patch as Partial<Doc<'threadItems'>>),
+				...stamp,
+			};
+			await writeItemChange(ctx, ref, row as Doc<'threadItems'>, itemPatch, {
 				isTopRefreshed: false,
 			});
 		} else {
-			await ctx.db.patch(row._id as Id<'threadFacts'>, stamped);
+			const factPatch: Partial<Doc<'threadFacts'>> = {
+				...(patch as Partial<Doc<'threadFacts'>>),
+				...stamp,
+			};
+			await ctx.db.patch(row._id as Id<'threadFacts'>, factPatch);
 		}
 		outcome.changed += 1;
 	}
