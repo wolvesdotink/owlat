@@ -144,7 +144,8 @@ export function finishLine(b: LineBuilder, srcEnd: number): SourceLine {
 }
 
 /** Lines of a plain-text body. */
-export function linesFromText(text: string): SourceLine[] {
+export function linesFromText(text: string, work?: SegmentWork): SourceLine[] {
+	if (work) work.chars += text.length;
 	const lines: SourceLine[] = [];
 	const breaks = /\r\n|\r|\n/g;
 	let start = 0;
@@ -161,8 +162,9 @@ export function linesFromText(text: string): SourceLine[] {
 }
 
 /** Drop leading and trailing blank lines and squeeze blank runs to one. */
-export function squeezeBlankLines(lines: SourceLine[]): SourceLine[] {
+export function squeezeBlankLines(lines: SourceLine[], work?: SegmentWork): SourceLine[] {
 	const out: SourceLine[] = [];
+	if (work) work.steps += lines.length;
 	for (const current of lines) {
 		const blank = current.text.trim() === '';
 		const prev = out[out.length - 1];

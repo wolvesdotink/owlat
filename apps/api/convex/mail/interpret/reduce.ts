@@ -77,6 +77,7 @@ async function sealEvidence(
 			end: e.end,
 			contentRevision,
 			quote: await sealBodyAtWrite(e.quote),
+			...(e.occurrence !== undefined ? { occurrence: e.occurrence } : {}),
 		}))
 	);
 }

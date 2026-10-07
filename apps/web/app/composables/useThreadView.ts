@@ -12,7 +12,8 @@
  */
 import type { ThreadView } from '@owlat/shared/threadBrief';
 import type { BriefModeView } from '../../../api/convex/mail/interpret/briefShape';
-import { interpretApi, type MailThreadRefArg } from '~/composables/threadBrief/briefApi';
+import { api } from '@owlat/api';
+import type { MailThreadRefArg } from '~/composables/threadBrief/briefApi';
 import {
 	formatCite,
 	parseCite,
@@ -34,12 +35,14 @@ export function useThreadView(opts: {
 	const route = useRoute();
 	const router = useRouter();
 
-	const preference = useConvexQuery(interpretApi.preferences.getViewPreference, () =>
+	const preference = useConvexQuery(api.mail.interpret.preferences.getViewPreference, () =>
 		opts.isShared() ? ('skip' as const) : {}
 	);
-	const savedDefault = computed<ThreadView | undefined>(
-		() =>
-			preference.data.value?.threadDefaultView ?? (preference.error.value ? 'overview' : undefined)
+	const savedDefault = computed<ThreadView | undefined>(() =>
+		// null: no session to read a preference for; an error: the default default.
+		preference.data.value === null || preference.error.value
+			? 'overview'
+			: preference.data.value?.threadDefaultView
 	);
 
 	// What the viewer clicked in this visit; a different thread starts afresh.
@@ -65,7 +68,7 @@ export function useThreadView(opts: {
 		})
 	);
 
-	const overrideOp = useBackendOperation(interpretApi.brief.setViewOverride, {
+	const overrideOp = useBackendOperation(api.mail.interpret.brief.setViewOverride, {
 		label: () => t('components.brief.operations.saveView'),
 		announce: false,
 	});

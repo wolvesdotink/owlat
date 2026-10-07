@@ -21,6 +21,11 @@ const SHAPES: Record<string, (k: number) => string> = {
 	'unterminated comments and declarations': (k) => `${'<!DOCTYPE x'.repeat(k)}<!--${'-'.repeat(k)}`,
 	'quoted attributes with >': (k) => `${'<div title=">>>" class="a">t'.repeat(k)}`,
 	'nested quote containers': (k) => `${'<div class="gmail_quote">x<br>'.repeat(k)}`,
+	'nested attributed Gmail quotes': (k) =>
+		'<div class="gmail_quote">On Mon, 5 Oct 2026 at 10:00, J <j@example.com> wrote:<blockquote>q'.repeat(
+			k
+		),
+	'implicit closes and hidden formatting': (k) => '<p><b hidden>x<li>y<div>z</div></b>'.repeat(k),
 	'nested blockquotes': (k) => `${'<blockquote>q'.repeat(k)}${'</blockquote>x'.repeat(k)}`,
 };
 
@@ -37,6 +42,22 @@ describe('segmentMessage: linear work on hostile HTML', () => {
 			expect(large / small).toBeLessThan(5);
 		});
 	}
+});
+
+describe('segmentMessage: linear work on hostile plain text', () => {
+	it('deepening > quote markers', () => {
+		const shape = (k: number) =>
+			Array.from({ length: k }, (_, d) => `${'>'.repeat(d % 200)} line ${d}`).join('\n');
+		const work = (text: string) => {
+			const meter = { chars: 0, steps: 0 };
+			segmentMessage({ text }, { work: meter });
+			return meter.chars + meter.steps;
+		};
+		for (const k of [1_000, 4_000]) {
+			const text = shape(k);
+			expect(work(text)).toBeLessThanOrEqual(6 * text.length);
+		}
+	});
 });
 
 describe('segmentMessage: names that collide with Object.prototype', () => {

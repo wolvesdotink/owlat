@@ -2,32 +2,62 @@
  * Mark a cited quote inside a rendered message body (plan §4.2: "scrolls to
  * the message and highlights the quoted words").
  *
- * The quote is matched against the document's visible text, not by offsets:
- * the evidence offsets index the interpretation's canonical text
- * (`@owlat/shared/mailSegments`), and the body the reader renders has been
+ * The evidence offsets index the interpretation's canonical text
+ * (`@owlat/shared/mailSegments`); the body the reader renders has been
  * sanitized, link-rewritten and dark-adapted since, so no offset survives
- * into its DOM. Matching normalizes both sides the way grounding does (NFKC,
- * whitespace collapsed, typographic quotes and dashes folded), first
- * case-sensitively, then without case.
+ * into its DOM. What does survive is WHICH occurrence of the words it was:
+ * grounding stamps every evidence span with `occurrence` (the Nth match of the
+ * normalized quote in the canonical text, `mail/interpret/quoteMatch.ts
+ * quoteOccurrence`). This marks that Nth match of the same normalized words in
+ * the rendered text, so repeated wording never highlights the wrong statement.
  *
- * Pure DOM work over a `Document`: the body iframe is same-origin, and a
- * test hands in any document.
+ * It never guesses: when the rendered text holds fewer matches than the
+ * occurrence, or the occurrence is unknown (evidence stored before it existed)
+ * and the words appear more than once, nothing is marked and the result says
+ * why, so the reader can say it could not locate the exact passage.
+ *
+ * Normalization is grounding's (`quoteMatch.ts normalizeForQuote`): NFKC,
+ * curly quotes and dashes folded to ASCII, invisible format characters
+ * dropped, whitespace runs collapsed. Case must match.
+ *
+ * Pure DOM work over a `Document`: the body iframe is same-origin, and a test
+ * hands in any document.
  */
 
 const MARK_ATTR = 'data-owlat-cite';
 const MARK_STYLE = 'background:#f6dfb4;color:inherit;border-radius:2px;padding:0 1px';
 
+/** A cited quote: its words and which occurrence of them it is (0 = the first). */
+export interface CitedQuote {
+	quote: string;
+	occurrence?: number;
+}
+
+export type HighlightResult =
+	| { status: 'marked'; mark: HTMLElement }
+	/** The words are not there, or not that many times. */
+	| { status: 'notFound' }
+	/** The words appear more than once and the evidence does not say which. */
+	| { status: 'ambiguous' };
+
+const SINGLE_QUOTES = /[‘’‚‛′´`]/g;
+const DOUBLE_QUOTES = /[“”„‟″«»]/g;
+const DASHES = /[‐-―−﹘﹣－]/g;
+const INVISIBLE = /[­​-‍⁠﻿]/g;
+
 function fold(ch: string): string {
 	if (/\s/.test(ch)) return ' ';
-	if (/[‘’‚′]/.test(ch)) return "'";
-	if (/[“”„″]/.test(ch)) return '"';
-	if (/[‐-―−]/.test(ch)) return '-';
-	return ch.normalize('NFKC');
+	return ch
+		.normalize('NFKC')
+		.replace(INVISIBLE, '')
+		.replace(SINGLE_QUOTES, "'")
+		.replace(DOUBLE_QUOTES, '"')
+		.replace(DASHES, '-');
 }
 
 /** Normalize a quote the way the document text is normalized below. */
 export function normalizeQuote(text: string): string {
-	return [...text].map(fold).join('').replace(/ +/g, ' ').trim();
+	return [...text].map(fold).join('').replace(/\s+/g, ' ').trim();
 }
 
 interface Indexed {
@@ -88,23 +118,18 @@ export function clearQuoteHighlight(doc: Document): void {
 	doc.body?.normalize();
 }
 
-/**
- * Wrap the first occurrence of `quote` in `<mark>` elements (one per text node
- * it spans) and return the first mark, or null when the quote is not found.
- */
-export function highlightQuote(doc: Document, quote: string): HTMLElement | null {
-	clearQuoteHighlight(doc);
-	const needle = normalizeQuote(quote);
-	if (!needle) return null;
-	const index = indexText(doc);
-	let start = index.text.indexOf(needle);
-	if (start < 0) start = index.text.toLowerCase().indexOf(needle.toLowerCase());
-	if (start < 0) return null;
-	const end = start + needle.length - 1;
+/** Every start index of `needle` in `hay`. */
+function matchesOf(hay: string, needle: string): number[] {
+	const out: number[] = [];
+	for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + 1)) out.push(at);
+	return out;
+}
 
+/** Wrap `[start, start + length)` of the indexed text in marks; return the first. */
+function wrap(doc: Document, index: Indexed, start: number, length: number): HTMLElement {
 	// Per text node: the first and last source offset the match covers.
 	const spans = new Map<Text, { from: number; to: number }>();
-	for (let i = start; i <= end; i++) {
+	for (let i = start; i < start + length; i++) {
 		const { node, offset } = index.at[i]!;
 		const span = spans.get(node);
 		if (span) span.to = offset;
@@ -122,5 +147,20 @@ export function highlightQuote(doc: Document, quote: string): HTMLElement | null
 		mark.appendChild(middle);
 		first ??= mark;
 	}
-	return first;
+	return first!;
+}
+
+/** Mark the cited occurrence of the quote, or say why not (see the module note). */
+export function highlightQuote(doc: Document, cited: CitedQuote): HighlightResult {
+	clearQuoteHighlight(doc);
+	const needle = normalizeQuote(cited.quote);
+	if (!needle) return { status: 'notFound' };
+	const index = indexText(doc);
+	const matches = matchesOf(index.text, needle);
+	let start: number | undefined;
+	if (cited.occurrence !== undefined) start = matches[cited.occurrence];
+	else if (matches.length > 1) return { status: 'ambiguous' };
+	else start = matches[0];
+	if (start === undefined) return { status: 'notFound' };
+	return { status: 'marked', mark: wrap(doc, index, start, needle.length) };
 }

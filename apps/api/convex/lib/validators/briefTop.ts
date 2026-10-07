@@ -24,6 +24,9 @@ export const briefTopValidator = v.object({
 	forYou: v.number(),
 	// Open items owed by the other side.
 	waiting: v.number(),
+	// The thread has more open items than a refresh counts: the counts are a
+	// floor ("2000+"), never presented as exact.
+	isCapped: v.optional(v.boolean()),
 	// The first item by compareForYou: a for-you item when there is one, else a waiting one.
 	top: v.optional(
 		v.object({

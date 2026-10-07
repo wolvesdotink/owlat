@@ -44,11 +44,16 @@ export function useAnswerModeAssist(opts: {
 
 	const draftText = computed(() => opts.composer()?.draftText.value ?? '');
 
-	// Catch-up, its footer note and the opening view.
+	// Catch-up, its footer note and the opening view. Personal mailboxes only:
+	// a shared (team) mailbox is never summarised (SPEC §7), so nothing is
+	// generated there, nor before the mailbox's scope is known.
+	const { byId: inboxById } = useInboxes();
 	const catchUp = useAnswerCatchUp({
 		target: () => {
 			const message = opts.message();
-			return message ? { kind: 'mail', messageId: message._id as Id<'mailMessages'> } : null;
+			const inbox = message ? inboxById.value.get(message.mailboxId as Id<'mailboxes'>) : null;
+			if (!message || !inbox || inbox.scope === 'shared') return null;
+			return { kind: 'mail', messageId: message._id as Id<'mailMessages'> };
 		},
 		draftText: () => draftText.value,
 		view: opts.view,

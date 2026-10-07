@@ -894,10 +894,12 @@
 			},
 			"items": {
 				"forYou": "For you",
+				"forTeam": "For the team",
 				"waiting": "Waiting on others",
 				"unclear": "Unclear who should act",
 				"openCount": "{count} open | {count} open",
 				"empty": "Nothing for you in this thread.",
+				"emptyTeam": "Nothing open for the team in this thread.",
 				"emptyIncomplete": "Nothing found in the part that was read."
 			},
 			"item": {
@@ -1051,7 +1053,15 @@
 			},
 			"cite": {
 				"showing": "Showing the source of “{label}”",
-				"back": "back to the overview"
+				"back": "back to the overview",
+				"notLocated": "Couldn't locate the exact passage in this message.",
+				"loading": "loading that message…",
+				"unreachable": "that message isn't in the loaded conversation"
+			},
+			"exactWording": {
+				"title": "Read the exact wording",
+				"hint": "the wording matters here, so the original stays open",
+				"secured": "This message is shown with its security check in the conversation."
 			},
 			"phone": {
 				"more": "Where things stand, activity, people, files"
@@ -6714,7 +6724,9 @@
 			},
 			"todo": {
 				"title": "To do, no reply needed · {count}",
-				"due": "by {date}"
+				"due": "by {date}",
+				"more": "There is more to do in this inbox.",
+				"openInbox": "Open the inbox"
 			},
 			"changed": {
 				"title": "What changed",

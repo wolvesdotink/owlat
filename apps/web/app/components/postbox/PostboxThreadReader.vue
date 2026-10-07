@@ -267,14 +267,14 @@ const readerThread = computed(
 			| null
 			| undefined
 );
-// The thread brief (SPEC §7, personal mailboxes): Overview / Conversation, cited
-// quotes, latest lines, item reactions. It replaced the AI strip; Ask is in it.
+// The thread brief (SPEC §7, personal mailboxes): Overview, cites, latest lines, reactions.
 const rb = usePostboxReaderBrief({
 	mailboxId: () => props.message.mailboxId,
 	threadId: () => readerThread.value?._id ?? props.message.threadId,
 	messages: allMessages,
 	expanded,
 	toggleExpanded,
+	pages: threadPages,
 	secureClass,
 	onReply: () => runReaderAction('reply'),
 });

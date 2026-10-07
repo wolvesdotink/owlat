@@ -2,7 +2,7 @@
  * The banners `BriefIncomplete` shows, as data (plan §8 "Hard cases"). Pure:
  * texts are catalog keys the component resolves.
  */
-import type { BriefModeView } from '../../../api/convex/mail/interpret/briefShape';
+import type { BriefModeView, ThreadBriefView } from '../../../api/convex/mail/interpret/briefShape';
 import type { LocalizedText } from '~/utils/localizedText';
 
 export interface BriefBanner {
@@ -30,8 +30,11 @@ const PARTIAL_REASON: Partial<Record<GapReason, string>> = {
 	pending: 'components.brief.incomplete.partialReason.pending',
 };
 
+/** What the banners read: the same on a personal brief and a team view. */
+export type BriefGapInput = Pick<ThreadBriefView, 'completeness' | 'gap'>;
+
 export function briefBanners(
-	brief: BriefModeView | null,
+	brief: BriefGapInput | null,
 	opts: { isSigned?: boolean } = {}
 ): BriefBanner[] {
 	const banners: BriefBanner[] = [];
@@ -93,6 +96,6 @@ export function briefBanners(
 }
 
 /** Whether "For you" may say there is nothing to do. */
-export function isBriefComplete(brief: BriefModeView | null | undefined): boolean {
+export function isBriefComplete(brief: BriefGapInput | null | undefined): boolean {
 	return brief?.completeness === 'complete';
 }

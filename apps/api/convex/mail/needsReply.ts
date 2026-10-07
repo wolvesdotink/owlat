@@ -43,6 +43,7 @@ import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { resolveCounterpartName } from './counterpartName';
 import { openBriefTop } from './interpret/briefTop';
+import { mailboxScope } from './mailbox/shared';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { type NeedsReplyHeaders } from './needsReplyHeuristic';
 import { mailboxOwnAddresses } from './identities';
@@ -350,7 +351,7 @@ export const listQueue = publicQuery({
 				// Ranking key — sender-importance × urgency blend. Falls back to the
 				// urgency bucket for rows persisted before scoring existed.
 				priorityScore: flag.priorityScore ?? urgencyFallbackScore(flag.urgency),
-				askSummary: flag.askSummary,
+				askSummary: mailboxScope(mailbox) === 'shared' ? undefined : flag.askSummary, // a summary: never on a team surface
 				dueHint: flag.dueHint,
 				detectedAt: flag.detectedAt,
 				source: flag.source,
