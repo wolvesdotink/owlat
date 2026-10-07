@@ -173,6 +173,9 @@ describe('lifecycle reactions on a Postbox thread', () => {
 			correction: { by: 'user-A', kind: 'markedDone' },
 		});
 		expect(item.updatedAt).toBeGreaterThanOrEqual(us.updatedAt);
+		// The person set this status: a purge of a message never resets it.
+		expect(item.statusSource).toMatchObject({ sourceKey: 'user:user-A' });
+		expect(item.lastTransitionAt).toBe(item.statusSource?.at);
 
 		const [row] = await activityFor(t, us._id);
 		expect(row).toMatchObject({
@@ -197,6 +200,7 @@ describe('lifecycle reactions on a Postbox thread', () => {
 		expect(item.completion).toBeUndefined();
 		expect(item.correction).toBeUndefined();
 		expect(item.revision).toBe(3);
+		expect(item.statusSource).toMatchObject({ sourceKey: 'user:user-A' });
 		expect((await activityFor(t, us._id)).map((a) => a.type)).toEqual([
 			'item_closed',
 			'item_reopened',
