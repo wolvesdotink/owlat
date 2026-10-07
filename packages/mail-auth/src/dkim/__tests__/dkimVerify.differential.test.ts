@@ -158,6 +158,14 @@ const edPrivatePem = ed.privateKey.export({ type: 'pkcs8', format: 'pem' }).toSt
 const edTxt = `v=DKIM1; k=ed25519; p=${ed25519RawBase64(ed.publicKey)}`;
 
 /**
+ * The fixed `t=` of every oracle signature. mailauth 5.x, given no `signTime`,
+ * reads the clock once for the `t=` it signs and again for the `t=` it writes;
+ * when the rounded second changes in between, the signature is invalid on every
+ * verifier. No oracle signature sets `x=`, so a past time never expires.
+ */
+const FIXTURE_SIGN_TIME = new Date('2026-06-17T12:00:00Z');
+
+/**
  * mailauth's type definitions require flat top-level `signingDomain` /
  * `selector` / `privateKey`, but its signer ignores those and signs once per
  * `signatureData` entry, so the oracle is called with that shape alone.
@@ -166,7 +174,10 @@ function signWithSignatureData(
 	message: Buffer,
 	options: { canonicalization: string; algorithm: string; signatureData: DKIMSignOptions[] }
 ) {
-	return dkimSign(message, options as unknown as DKIMSignOptions);
+	return dkimSign(message, {
+		...options,
+		signTime: FIXTURE_SIGN_TIME,
+	} as unknown as DKIMSignOptions);
 }
 
 async function signRsa(canon: string, message = RAW_MESSAGE): Promise<Buffer> {
