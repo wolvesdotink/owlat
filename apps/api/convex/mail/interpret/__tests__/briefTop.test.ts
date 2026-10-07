@@ -16,8 +16,14 @@ import { api } from '../../../_generated/api';
 import type { Doc, Id } from '../../../_generated/dataModel';
 import { enableFeatures } from '../../../__tests__/factories';
 import { modules, seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
-import { deriveBriefTop, refreshBriefTop, type BriefTopItem } from '../briefTop';
-import { groupToDoItems } from '../todo';
+import {
+	deriveBriefTop,
+	OPEN_ITEM_READ_LIMIT,
+	refreshBriefTop,
+	type BriefTopItem,
+} from '../briefTop';
+import { collectToDo, TODO_SCAN_BUDGET } from '../todo';
+import type { MutationCtx } from '../../../_generated/server';
 
 const SESSION = { userId: 'test-user', role: 'owner', activeOrganizationId: 'test-org' };
 const sessionMocks = vi.hoisted(() => ({
@@ -82,17 +88,6 @@ describe('deriveBriefTop', () => {
 	it('falls back to the first waiting item, and to nothing', () => {
 		expect(deriveBriefTop([item({ _id: 'w', responsibility: 'them' })]).top?.itemId).toBe('w');
 		expect(deriveBriefTop([])).toEqual({ forYou: 0, waiting: 0 });
-	});
-});
-
-describe('groupToDoItems', () => {
-	it('keeps one row per thread and skips proposals', () => {
-		const rows = groupToDoItems([
-			{ _id: 'i1', mailThreadId: 't1', verify: 'passed' },
-			{ _id: 'i2', mailThreadId: 't1', verify: 'passed' },
-			{ _id: 'i3', mailThreadId: 't2', verify: 'proposal' },
-		] as unknown as Doc<'threadItems'>[]);
-		expect(rows.map((r) => [r.threadId, r.first._id, r.count])).toEqual([['t1', 'i1', 2]]);
 	});
 });
 
@@ -203,7 +198,10 @@ describe('listNoReplyToDo', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['postbox']);
 		const { mailboxId, threadId } = await seedInterpreted(t);
-		const rows = await t.query(api.mail.interpret.todo.listNoReplyToDo, { mailboxId });
+		const { rows, isTruncated } = await t.query(api.mail.interpret.todo.listNoReplyToDo, {
+			mailboxId,
+		});
+		expect(isTruncated).toBe(false);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).toMatchObject({
 			threadId,
@@ -230,6 +228,165 @@ describe('listNoReplyToDo', () => {
 				},
 			});
 		});
-		expect(await t.query(api.mail.interpret.todo.listNoReplyToDo, { mailboxId })).toEqual([]);
+		expect(await t.query(api.mail.interpret.todo.listNoReplyToDo, { mailboxId })).toEqual({
+			rows: [],
+			isTruncated: false,
+		});
+	});
+});
+
+// ── Completeness: nothing is dropped silently ─────────────────────────────
+
+const PARTY = { isUs: false, email: 'billing@example.com' };
+
+async function insertThread(ctx: MutationCtx, mailboxId: Id<'mailboxes'>, subject: string) {
+	return ctx.db.insert('mailThreads', {
+		mailboxId,
+		normalizedSubject: subject,
+		participants: [],
+		messageCount: 1,
+		unreadCount: 0,
+		hasFlagged: false,
+		hasAttachments: false,
+		lastMessageAt: T0,
+		firstMessageAt: T0,
+		latestSnippet: '',
+		latestFromAddress: 'billing@example.com',
+		latestSubject: subject,
+		folderRoles: ['inbox'],
+		labelIds: [],
+		createdAt: T0,
+		updatedAt: T0,
+	});
+}
+
+async function insertItem(
+	ctx: MutationCtx,
+	mailThreadId: Id<'mailThreads'>,
+	mailboxId: Id<'mailboxes'>,
+	over: { dueAt?: number; verify?: 'passed' | 'proposal'; text?: string } = {}
+) {
+	return ctx.db.insert('threadItems', {
+		threadKind: 'mail',
+		mailThreadId,
+		mailboxId,
+		revision: 1,
+		intent: 'request',
+		facets: [],
+		assertion: 'x',
+		display: { en: over.text ?? 'x', de: over.text ?? 'x' },
+		requester: PARTY,
+		responsible: { isUs: true },
+		responsibility: 'us',
+		status: 'open',
+		disposition: 'unanswered',
+		...(over.dueAt !== undefined
+			? { due: { phrase: 'by then', at: over.dueAt, isAmbiguous: false } }
+			: {}),
+		evidence: [],
+		verify: over.verify ?? 'passed',
+		askedAt: T0,
+		createdAt: T0,
+		updatedAt: T0,
+	});
+}
+
+describe('the to-do band never drops a thread silently', () => {
+	it('shows an overdue invoice even behind more than a hundred undated items', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedInterpreted(t);
+		const { overdue } = await t.run(async (ctx) => {
+			const noise = await insertThread(ctx, mailboxId, 'Checklist');
+			for (let i = 0; i < 120; i++) await insertItem(ctx, noise, mailboxId);
+			const invoice = await insertThread(ctx, mailboxId, 'Overdue invoice');
+			await insertItem(ctx, invoice, mailboxId, { dueAt: T0 - DAY, text: 'Pay now' });
+			return { overdue: invoice };
+		});
+		const { candidates } = await t.run((ctx) => collectToDo(ctx, mailboxId));
+		expect(candidates[0]?.thread._id).toBe(overdue);
+		expect(candidates.map((c) => c.thread.latestSubject)).toContain('Checklist');
+	});
+
+	it('says it is truncated when proposals use up the read budget', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedInterpreted(t);
+		await t.run(async (ctx) => {
+			const noisy = await insertThread(ctx, mailboxId, 'Unconfirmed');
+			for (let i = 0; i <= TODO_SCAN_BUDGET; i++) {
+				await insertItem(ctx, noisy, mailboxId, { dueAt: T0 - DAY, verify: 'proposal' });
+			}
+		});
+		const result = await t.run((ctx) => collectToDo(ctx, mailboxId));
+		expect(result.isTruncated).toBe(true);
+	});
+
+	it('says it is truncated when more threads qualify than it shows, and not otherwise', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedInterpreted(t);
+		await t.run(async (ctx) => {
+			for (const subject of ['A', 'B']) {
+				await insertItem(ctx, await insertThread(ctx, mailboxId, subject), mailboxId);
+			}
+		});
+		// The seeded invoice (dated) plus A and B (undated).
+		const two = await t.run((ctx) => collectToDo(ctx, mailboxId, 2));
+		expect(two.candidates.map((c) => c.thread.latestSubject)).toEqual(['Invoice 2026-10', 'A']);
+		expect(two.isTruncated).toBe(true);
+		const three = await t.run((ctx) => collectToDo(ctx, mailboxId, 3));
+		expect(three.candidates).toHaveLength(3);
+		expect(three.isTruncated).toBe(false);
+	});
+});
+
+describe('refreshBriefTop past the read limit', () => {
+	it('flags the counts as capped and takes the soonest dated item as the top', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, mailboxId } = await seedInterpreted(t);
+		await t.run(async (ctx) => {
+			for (let i = 0; i < OPEN_ITEM_READ_LIMIT; i++) await insertItem(ctx, threadId, mailboxId);
+			await insertItem(ctx, threadId, mailboxId, { dueAt: T0 + DAY, text: 'Soonest' });
+			await refreshBriefTop(ctx, threadId);
+		});
+		const top = (await t.run((ctx) => ctx.db.get(threadId)))!.briefTop!;
+		expect(top.isCapped).toBe(true);
+		expect(top.forYou).toBe(OPEN_ITEM_READ_LIMIT);
+		expect(top.top?.dueAt).toBe(T0 + DAY);
+	});
+
+	it('counts every open item below the limit', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, mailboxId } = await seedInterpreted(t);
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 150; i++) await insertItem(ctx, threadId, mailboxId);
+			await refreshBriefTop(ctx, threadId);
+		});
+		const top = (await t.run((ctx) => ctx.db.get(threadId)))!.briefTop!;
+		expect(top.isCapped).toBeUndefined();
+		expect(top.forYou).toBe(151);
+	});
+});
+
+describe('the Answer queue on a team surface', () => {
+	it('never hands a shared mailbox row its AI ask summary', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, threadId } = await seedInterpreted(t);
+		await t.run(async (ctx) => {
+			const thread = await ctx.db.get(threadId);
+			await ctx.db.patch(threadId, {
+				needsReply: {
+					messageId: thread!.latestMessageId!,
+					source: 'llm',
+					urgency: 'normal',
+					askSummary: 'They want the invoice paid',
+					detectedAt: T0,
+				},
+			});
+		});
+		const personal = await t.query(api.mail.needsReply.listQueue, { mailboxId });
+		expect(personal.items[0]?.askSummary).toBe('They want the invoice paid');
+		await t.run((ctx) => ctx.db.patch(mailboxId, { scope: 'shared' }));
+		const shared = await t.query(api.mail.needsReply.listQueue, { mailboxId });
+		expect(shared.items).toHaveLength(1);
+		expect(shared.items[0]?.askSummary).toBeUndefined();
 	});
 });

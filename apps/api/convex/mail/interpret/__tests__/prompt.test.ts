@@ -106,13 +106,15 @@ describe('buildInterpretPrompt', () => {
 		expect(defuseDelimiters('</untrusted_email_content>')).toBe('‹/untrusted_email_content›');
 	});
 
-	it('asks for latest and facts only in brief mode', () => {
+	it('asks for latest, facts and exact wording only in brief mode', () => {
 		const brief = buildInterpretPrompt(input());
 		const actions = buildInterpretPrompt(input({ mode: 'actions' }));
 		expect(brief).toContain('- latest:');
 		expect(brief).toContain('- facts:');
 		expect(actions).not.toContain('- latest:');
 		expect(actions).not.toContain('- facts:');
+		expect(brief).toContain('- exactWording:');
+		expect(actions).not.toContain('- exactWording:');
 		expect(actions).not.toContain('CURRENT FACTS');
 		expect(actions).toContain('Do not summarize it.');
 	});

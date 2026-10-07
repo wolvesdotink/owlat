@@ -116,3 +116,27 @@ export function matchQuote(
 		end: segment.start + (hay.to[at + needle.length - 1] as number),
 	};
 }
+
+/** The last canonical text normalized by {@link quoteOccurrence} (one run reads one message). */
+let occurrenceCache: { text: string; hay: NormalizedText } | null = null;
+
+/**
+ * Which occurrence (0 = the first) of the normalized words at
+ * `canonicalText[start, end)` the span at `start` is, counting every match in
+ * the whole canonical text. The reader marks that occurrence in the rendered
+ * body, so repeated wording never highlights an earlier statement.
+ */
+export function quoteOccurrence(canonicalText: string, start: number, end: number): number {
+	const needle = normalizeForQuote(canonicalText.slice(start, end));
+	if (!needle) return 0;
+	if (occurrenceCache?.text !== canonicalText) {
+		occurrenceCache = { text: canonicalText, hay: normalizeWithMap(canonicalText) };
+	}
+	const { normalized, from } = occurrenceCache.hay;
+	let count = 0;
+	for (let at = normalized.indexOf(needle); at >= 0; at = normalized.indexOf(needle, at + 1)) {
+		if ((from[at] as number) >= start) break;
+		count++;
+	}
+	return count;
+}

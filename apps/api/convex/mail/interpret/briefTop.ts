@@ -66,8 +66,13 @@ export function deriveBriefTop(items: readonly BriefTopItem[]): BriefTopFold {
 	};
 }
 
-/** Every open item a brief lists is bounded by the reducer's prompt budget; read a little past it. */
-const OPEN_ITEM_READ_LIMIT = 100;
+/**
+ * Open items a refresh reads before it stops counting. A thread never comes
+ * near it (the reducer adds at most ten items per message); past it the counts
+ * are flagged `isCapped` ("2000+") rather than silently wrong, and the top
+ * item is the best of what was read.
+ */
+export const OPEN_ITEM_READ_LIMIT = 2000;
 
 /**
  * Rewrite `mailThreads.briefTop` from the thread's open items.
@@ -88,22 +93,65 @@ export async function refreshBriefTop(
 		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', mailThreadId))
 		.unique();
 	if (!brief) return;
+	// Every open item, not a first page: the counts and the top item are only
+	// right over all of them.
 	const items = await ctx.db
 		.query('threadItems')
 		.withIndex('by_mail_thread_and_status', (q) =>
 			q.eq('mailThreadId', mailThreadId).eq('status', 'open')
 		)
-		.take(OPEN_ITEM_READ_LIMIT);
+		.take(OPEN_ITEM_READ_LIMIT + 1);
+	const isCapped = items.length > OPEN_ITEM_READ_LIMIT;
 	const mode: InterpretMode = brief.mode;
 	const latest = await nextLatest(mode, thread.briefTop?.latest, opts.latest);
+	const fold = deriveBriefTop(isCapped ? items.slice(0, OPEN_ITEM_READ_LIMIT) : items);
+	if (isCapped) {
+		const dated = await soonestDatedForYou(ctx, thread);
+		if (dated) fold.top = deriveBriefTop([dated]).top;
+	}
 	const next: BriefTop = {
 		mode,
-		...deriveBriefTop(items),
+		...fold,
+		...(isCapped ? { isCapped } : {}),
 		...(latest ? { latest } : {}),
 		revision: brief.interpretationRevision,
 		updatedAt: Date.now(),
 	};
 	await ctx.db.patch(mailThreadId, { briefTop: next });
+}
+
+/** Mailbox items read looking for the capped thread's soonest dated item. */
+const DATED_SCAN_LIMIT = 500;
+
+/**
+ * A thread past the read limit: its soonest dated for-you item, read off the
+ * mailbox's due-ordered index (so the top item is not just the best of the
+ * first page). Undefined when none turns up within the scan.
+ */
+async function soonestDatedForYou(
+	ctx: MutationCtx,
+	thread: Doc<'mailThreads'>
+): Promise<BriefTopItem | undefined> {
+	const found: BriefTopItem[] = [];
+	for (const responsibility of ['us', 'unclear'] as const) {
+		let read = 0;
+		for await (const item of ctx.db
+			.query('threadItems')
+			.withIndex('by_mailbox_responsibility_due', (q) =>
+				q
+					.eq('mailboxId', thread.mailboxId)
+					.eq('responsibility', responsibility)
+					.eq('status', 'open')
+					.gte('due.at', 0)
+			)) {
+			if (++read > DATED_SCAN_LIMIT) break;
+			if (item.mailThreadId === thread._id && item.verify !== 'proposal') {
+				found.push(item);
+				break;
+			}
+		}
+	}
+	return found.sort((a, b) => (a.due?.at ?? 0) - (b.due?.at ?? 0))[0];
 }
 
 async function nextLatest(
@@ -128,6 +176,8 @@ export type BriefTopRow = {
 		dueAt?: number;
 	};
 	latest?: { en: string; de: string };
+	/** More open items than a refresh counts: show the counts as "N+". */
+	isCapped?: boolean;
 	/** The thread is in the Answer queue (`needsReply` set): "for you", not "to do". */
 	isReplyNeeded: boolean;
 };
@@ -151,6 +201,7 @@ export async function openBriefTop(
 		mode: stored.mode,
 		forYou: stored.forYou,
 		waiting: stored.waiting,
+		...(stored.isCapped ? { isCapped: true } : {}),
 		...(stored.top && topText
 			? {
 					top: {

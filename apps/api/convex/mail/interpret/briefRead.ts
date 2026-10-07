@@ -17,6 +17,9 @@ import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { mailboxOwnAddresses } from '../identities';
 import { readResult, threadItemsWithStatus } from './load';
+import type { EXACT_WORDING_REASONS } from './schema';
+
+type ExactWordingReason = (typeof EXACT_WORDING_REASONS)[number];
 import type {
 	ActivityView,
 	EvidenceView,
@@ -303,6 +306,7 @@ export async function readLatest(
 				end: e.end,
 				contentRevision: row.contentRevision,
 				quote: e.quote,
+				...(e.occurrence !== undefined ? { occurrence: e.occurrence } : {}),
 			})),
 		})),
 	};
@@ -372,6 +376,29 @@ export async function readMessageLatest(
 		const result = await readResult(row);
 		const text = result?.latestSuppressed ? undefined : result?.latest?.[locale][0]?.text;
 		if (text) out.push({ messageId: row.source.id, text });
+	}
+	return out;
+}
+
+/**
+ * The messages whose newest extraction asked for the exact wording to stay in
+ * view (legal notices, changed terms, payment details), newest first.
+ */
+export async function readExactWording(
+	rows: readonly Doc<'messageInterpretations'>[]
+): Promise<{ messageId: string; reason?: ExactWordingReason }[]> {
+	const newest = new Map<string, Doc<'messageInterpretations'>>();
+	for (const row of rows) {
+		if (row.mode !== 'brief' || row.source.kind !== 'mail') continue;
+		const seen = newest.get(row.sourceKey);
+		if (!seen || row.updatedAt > seen.updatedAt) newest.set(row.sourceKey, row);
+	}
+	const out: { messageId: string; reason?: ExactWordingReason }[] = [];
+	for (const row of [...newest.values()].slice(0, MESSAGE_LATEST_READ)) {
+		if (row.status !== 'complete' && row.status !== 'partial') continue;
+		const exact = (await readResult(row))?.exactWording;
+		if (exact)
+			out.push({ messageId: row.source.id, ...(exact.reason ? { reason: exact.reason } : {}) });
 	}
 	return out;
 }

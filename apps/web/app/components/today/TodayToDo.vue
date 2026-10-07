@@ -7,7 +7,8 @@
  * row opens the thread on its Overview.
  *
  * Personal and shared mailboxes alike; renders nothing when there is nothing
- * to do, and nothing for the team inbox tab (no mailbox there).
+ * to do, and nothing for the team inbox tab (no mailbox there). When more
+ * threads owe something than the band lists, it says so.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -20,7 +21,9 @@ const { t, locale } = useI18n();
 const { data } = useConvexQuery(api.mail.interpret.todo.listNoReplyToDo, () => ({
 	mailboxId: props.mailboxId as Id<'mailboxes'>,
 }));
-const rows = computed(() => data.value ?? []);
+const rows = computed(() => data.value?.rows ?? []);
+/** More threads owe something than the band lists: said, never dropped silently. */
+const isTruncated = computed(() => data.value?.isTruncated === true);
 
 type Row = (typeof rows.value)[number];
 
@@ -59,7 +62,11 @@ function href(row: Row): string {
 							<span
 								v-if="row.count > 1"
 								class="shrink-0 rounded-full bg-bg-surface px-1.5 text-2xs font-medium text-text-secondary"
-								>{{ t('components.brief.more', { count: row.count - 1 }) }}</span
+								>{{
+									t('components.brief.more', {
+										count: row.isCountCapped ? `${row.count - 1}+` : row.count - 1,
+									})
+								}}</span
 							>
 						</span>
 						<span class="block truncate text-xs text-text-tertiary">{{ detail(row) }}</span>
@@ -70,5 +77,13 @@ function href(row: Row): string {
 				</NuxtLink>
 			</li>
 		</ul>
+		<p v-if="isTruncated" class="mt-2 text-xs text-text-tertiary" data-testid="today-todo-more">
+			{{ t('components.today.todo.more') }}
+			<NuxtLink
+				:to="`/dashboard/postbox/inbox?mailbox=${mailboxId}`"
+				class="text-brand hover:underline"
+				>{{ t('components.today.todo.openInbox') }}</NuxtLink
+			>
+		</p>
 	</section>
 </template>

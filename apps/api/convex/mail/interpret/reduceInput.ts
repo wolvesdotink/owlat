@@ -43,6 +43,20 @@ export const reduceEvidenceValidator = v.object({
 	start: v.number(),
 	end: v.number(),
 	quote: v.string(),
+	// Which occurrence of the (normalized) quote in the canonical text this is.
+	occurrence: v.optional(v.number()),
+});
+
+/** Brief mode: keep this message's original open beside the brief, and why. */
+export const exactWordingResultValidator = v.object({
+	reason: v.optional(
+		v.union(
+			v.literal('legal'),
+			v.literal('terms'),
+			v.literal('payment_details'),
+			v.literal('security')
+		)
+	),
 });
 
 const localizedTextValidator = v.object({ en: v.string(), de: v.string() });
@@ -121,6 +135,8 @@ export const reduceResultValidator = v.object({
 	),
 	latestSuppressed: v.optional(latestSuppressionValidator),
 	facts: v.optional(v.array(reduceFactValidator)),
+	// Brief mode, set only when the model asked for the exact wording.
+	exactWording: v.optional(exactWordingResultValidator),
 	// The Postbox needs-reply projection inputs (stored for replay).
 	replyIntent: v.string(),
 	urgency: v.union(v.literal('high'), v.literal('normal'), v.literal('low')),

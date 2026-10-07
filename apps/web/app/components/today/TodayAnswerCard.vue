@@ -39,8 +39,16 @@ const top = computed(() => props.items.slice(0, TOP));
 
 const text = useLocalized();
 
+function isSharedRow(item: AnswerItem): boolean {
+	return (
+		item.source === 'mail' &&
+		(item.inbox?.scope === 'shared' || item.row.briefTop?.mode === 'actions')
+	);
+}
 function rowTitle(item: AnswerItem): string {
-	if (item.source === 'mail') return text(replyQueueHeadline(item.row, locale.value));
+	if (item.source === 'mail') {
+		return text(replyQueueHeadline(item.row, locale.value, { isShared: isSharedRow(item) }));
+	}
 	if (item.source === 'team') return item.entry.message.subject || t('components.shell.noSubject');
 	return t('components.today.answer.mentionTitle', {
 		room: item.mention.roomName,
@@ -50,7 +58,8 @@ function rowTitle(item: AnswerItem): string {
 /**
  * Under the title (plan §7 "Queues and the Workbench"): a personal row names
  * the sender, the subject and the brief's latest update; a shared mailbox's
- * row and a team row the sender and the raw preview, never a summary.
+ * row and a team row name the sender and the raw preview, never a summary,
+ * whether or not the thread has an item yet.
  */
 function rowDetail(item: AnswerItem): string {
 	const quoted = (raw: string | undefined) => (raw?.trim() ? `“${raw.trim()}”` : '');
@@ -59,11 +68,11 @@ function rowDetail(item: AnswerItem): string {
 		const who = item.row.fromName || item.row.fromAddress;
 		const named = rowTitle(item).includes(who) ? '' : who;
 		const top = item.row.briefTop;
-		if (!top?.top) return named;
-		const parts =
-			top.mode === 'actions' || item.inbox?.scope === 'shared'
-				? [named, quoted(item.row.snippet)]
-				: [named, item.row.subject, briefRowLatest(top, locale.value) ?? ''];
+		const parts = isSharedRow(item)
+			? [named, quoted(item.row.snippet)]
+			: top?.top
+				? [named, item.row.subject, briefRowLatest(top, locale.value) ?? '']
+				: [named];
 		return parts.filter(Boolean).join(' · ');
 	}
 	if (item.source === 'team') {
