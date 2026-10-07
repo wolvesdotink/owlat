@@ -83,3 +83,14 @@ export async function ensureBriefRow(
 	const id = await ctx.db.insert('threadBriefs', emptyBriefRow(ref, resolved, Date.now()));
 	return ctx.db.get(id);
 }
+
+/**
+ * Interpretation of a message in this thread was just enqueued: the brief
+ * reads `pending` until the reducer lands (it recomputes completeness on every
+ * apply, skipped runs included). Creates the row when missing.
+ */
+export async function markBriefPending(ctx: MutationCtx, ref: ThreadRef): Promise<void> {
+	const brief = await ensureBriefRow(ctx, ref);
+	if (!brief || brief.completeness === 'pending') return;
+	await ctx.db.patch(brief._id, { completeness: 'pending', updatedAt: Date.now() });
+}

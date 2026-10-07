@@ -14,9 +14,11 @@ import type * as mail_interpret_briefProject from '../mail/interpret/briefProjec
 import type * as mail_interpret_briefRead from '../mail/interpret/briefRead.js';
 import type * as mail_interpret_briefRow from '../mail/interpret/briefRow.js';
 import type * as mail_interpret_eligibility from '../mail/interpret/eligibility.js';
+import type * as mail_interpret_enqueue from '../mail/interpret/enqueue.js';
 import type * as mail_interpret_gate from '../mail/interpret/gate.js';
 import type * as mail_interpret_load from '../mail/interpret/load.js';
 import type * as mail_interpret_needsReplyProjection from '../mail/interpret/needsReplyProjection.js';
+import type * as mail_interpret_outboundRun from '../mail/interpret/outboundRun.js';
 import type * as mail_interpret_pipeline from '../mail/interpret/pipeline.js';
 import type * as mail_interpret_preferences from '../mail/interpret/preferences.js';
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
@@ -26,6 +28,8 @@ import type * as mail_interpret_reducePlan from '../mail/interpret/reducePlan.js
 import type * as mail_interpret_reduceState from '../mail/interpret/reduceState.js';
 import type * as mail_interpret_run from '../mail/interpret/run.js';
 import type * as mail_interpret_scope from '../mail/interpret/scope.js';
+import type * as mail_interpret_sendActivity from '../mail/interpret/sendActivity.js';
+import type * as mail_interpret_sendFailure from '../mail/interpret/sendFailure.js';
 import type * as mail_interpret_verify from '../mail/interpret/verify.js';
 import type * as mail_messageCounters from '../mail/messageCounters.js';
 import type * as maintenance_counterBackfill from '../maintenance/counterBackfill.js';
@@ -1553,9 +1557,11 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/briefRead': typeof mail_interpret_briefRead;
 	'mail/interpret/briefRow': typeof mail_interpret_briefRow;
 	'mail/interpret/eligibility': typeof mail_interpret_eligibility;
+	'mail/interpret/enqueue': typeof mail_interpret_enqueue;
 	'mail/interpret/gate': typeof mail_interpret_gate;
 	'mail/interpret/load': typeof mail_interpret_load;
 	'mail/interpret/needsReplyProjection': typeof mail_interpret_needsReplyProjection;
+	'mail/interpret/outboundRun': typeof mail_interpret_outboundRun;
 	'mail/interpret/pipeline': typeof mail_interpret_pipeline;
 	'mail/interpret/preferences': typeof mail_interpret_preferences;
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
@@ -1565,6 +1571,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/reduceState': typeof mail_interpret_reduceState;
 	'mail/interpret/run': typeof mail_interpret_run;
 	'mail/interpret/scope': typeof mail_interpret_scope;
+	'mail/interpret/sendActivity': typeof mail_interpret_sendActivity;
+	'mail/interpret/sendFailure': typeof mail_interpret_sendFailure;
 	'mail/interpret/verify': typeof mail_interpret_verify;
 	'mail/messageCounters': typeof mail_messageCounters;
 	'maintenance/counterBackfill': typeof maintenance_counterBackfill;

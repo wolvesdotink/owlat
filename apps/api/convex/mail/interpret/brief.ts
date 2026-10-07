@@ -35,7 +35,7 @@ import {
 	type ThreadRef,
 } from '../../lib/validators/threadRef';
 import { threadBriefViewValidator, type ThreadBriefView } from './briefShape';
-import { ensureBriefRow, loadBriefRow, resolveThreadMode } from './briefRow';
+import { loadBriefRow, markBriefPending, resolveThreadMode } from './briefRow';
 import { projectBrief } from './briefProject';
 import { readResult } from './load';
 import {
@@ -232,9 +232,7 @@ export const setViewOverride = threadBriefMutation({
 export const markPending = internalMutation({
 	args: { threadRef: threadRefValidator },
 	handler: async (ctx, args) => {
-		const brief = await ensureBriefRow(ctx, args.threadRef);
-		if (!brief) return null;
-		await ctx.db.patch(brief._id, { completeness: 'pending', updatedAt: Date.now() });
+		await markBriefPending(ctx, args.threadRef);
 		return null;
 	},
 });
