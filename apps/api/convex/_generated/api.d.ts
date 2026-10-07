@@ -941,6 +941,7 @@ import type * as lib_validators_aiProviderConfig from '../lib/validators/aiProvi
 import type * as lib_validators_answerAsk from '../lib/validators/answerAsk.js';
 import type * as lib_validators_attachment from '../lib/validators/attachment.js';
 import type * as lib_validators_brandKit from '../lib/validators/brandKit.js';
+import type * as lib_validators_briefTop from '../lib/validators/briefTop.js';
 import type * as lib_validators_autonomy from '../lib/validators/autonomy.js';
 import type * as lib_validators_campaigns from '../lib/validators/campaigns.js';
 import type * as lib_validators_catchUp from '../lib/validators/catchUp.js';
@@ -2448,6 +2449,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/answerAsk': typeof lib_validators_answerAsk;
 	'lib/validators/attachment': typeof lib_validators_attachment;
 	'lib/validators/brandKit': typeof lib_validators_brandKit;
+	'lib/validators/briefTop': typeof lib_validators_briefTop;
 	'lib/validators/autonomy': typeof lib_validators_autonomy;
 	'lib/validators/campaigns': typeof lib_validators_campaigns;
 	'lib/validators/catchUp': typeof lib_validators_catchUp;

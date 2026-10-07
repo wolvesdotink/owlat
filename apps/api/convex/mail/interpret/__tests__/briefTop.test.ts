@@ -42,7 +42,7 @@ beforeEach(() => {
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 9, 7, 9);
 
-function item(over: Partial<BriefTopItem> & { _id: string }): BriefTopItem {
+function item(over: Partial<Omit<BriefTopItem, '_id'>> & { _id: string }): BriefTopItem {
 	return {
 		responsibility: 'us',
 		status: 'open',
