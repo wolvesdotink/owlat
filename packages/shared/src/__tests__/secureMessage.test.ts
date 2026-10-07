@@ -7,6 +7,7 @@ import {
 	extractClearsignedBlock,
 	extractClearsignedText,
 	isClearsigned,
+	isClearsignedText,
 	isEncryptedClass,
 	isSignedPgpMime,
 } from '../secureMessage';
@@ -282,9 +283,72 @@ describe('raw-message gates — isSignedPgpMime / isClearsigned', () => {
 		expect(clearsignedBody(raw)).toBe(`${LATIN1_BLOCK}\r\n`);
 	});
 
-	it('falls back to the raw text when the text part holds no block (a bare body)', () => {
-		expect(clearsignedBody(CLEARSIGNED_BODY)).toBe(CLEARSIGNED_BODY);
+	it('hands back the displayed body part of an 8-bit message', () => {
 		expect(clearsignedBody(clearsignedRaw)).toContain('-----BEGIN PGP SIGNED MESSAGE-----');
+		expect(clearsignedBody(clearsignedRaw)).not.toContain('Subject: clearsigned');
+	});
+
+	/** A multipart/mixed message of `parts` (header lines + body each). */
+	function mixed(parts: Array<[string[], string]>): string {
+		return [
+			'From: alice@sender.test',
+			'Subject: clearsigned',
+			'Content-Type: multipart/mixed; boundary="mx"',
+			'',
+			...parts.flatMap(([headers, body]) => ['--mx', ...headers, '', body]),
+			'--mx--',
+			'',
+		].join('\r\n');
+	}
+	const ATTACHED = [
+		'Content-Type: text/plain; name="signed.txt"',
+		'Content-Disposition: attachment',
+		'Content-Transfer-Encoding: base64',
+	];
+	const attachedBlock = Buffer.from(
+		CLEARSIGNED_BODY.replace('Hello there', 'Attached text'),
+		'latin1'
+	).toString('base64');
+
+	it('never picks a clearsigned ATTACHMENT over the displayed body (#1300)', () => {
+		const visible = CLEARSIGNED_BODY.replace('Hello there', 'Visible text');
+		const raw = mixed([
+			[ATTACHED, attachedBlock],
+			[['Content-Type: text/plain; charset=utf-8'], visible],
+		]);
+		expect(clearsignedBody(raw)).toContain('Visible text');
+		expect(clearsignedBody(raw)).not.toContain('Attached text');
+	});
+
+	it('a clearsigned attachment alone does not make the message clearsigned', () => {
+		const raw = mixed([
+			[['Content-Type: text/plain; charset=utf-8'], 'Nothing signed in the body.'],
+			[ATTACHED, attachedBlock],
+		]);
+		expect(isClearsigned(raw)).toBe(false);
+		expect(clearsignedBody(raw)).toBeNull();
+	});
+
+	it('with two text body parts, the block comes from the one the reader shows it from', () => {
+		const raw = mixed([
+			[['Content-Type: text/plain'], 'Unsigned preamble part.'],
+			[['Content-Type: text/plain'], CLEARSIGNED_BODY],
+			[['Content-Type: text/plain'], 'Mailing list footer.'],
+		]);
+		const body = clearsignedBody(raw)!;
+		expect(body).toContain(CLEARSIGNED_BODY);
+		expect(body).not.toContain('preamble');
+		expect(body).not.toContain('footer');
+	});
+
+	it('a block split across two body parts yields the part it opens in, which then fails to verify', () => {
+		const [head, tail] = CLEARSIGNED_BODY.split('-----BEGIN PGP SIGNATURE-----');
+		const raw = mixed([
+			[['Content-Type: text/plain'], head!],
+			[['Content-Type: text/plain'], `-----BEGIN PGP SIGNATURE-----${tail!}`],
+		]);
+		expect(isClearsigned(raw)).toBe(true);
+		expect(extractClearsignedBlock(clearsignedBody(raw)!)).toBeNull();
 	});
 
 	it('a base64 body that only QUOTES a clearsigned block is not clearsigned', () => {
@@ -343,7 +407,8 @@ describe('structural gates reject quoted / merely-mentioned armor', () => {
 	])('%s prefixes keep the armor out of the clearsign gate', (_label, prefix) => {
 		const body = `see below\n${quoted(CLEARSIGNED_BODY, prefix)}\n`;
 		expect(classifySecureMessage({ textBody: body })).toBe('none');
-		expect(isClearsigned(body)).toBe(false);
+		expect(isClearsignedText(body)).toBe(false);
+		expect(isClearsigned(REPLY_HEADERS + body)).toBe(false);
 	});
 
 	it('a quoted encrypted block does not make the reply encrypted', () => {
@@ -361,7 +426,8 @@ describe('structural gates reject quoted / merely-mentioned armor', () => {
 	it('a clearsign header with no signature block is a mention, not a signature', () => {
 		const body = '-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nhi';
 		expect(classifySecureMessage({ textBody: body })).toBe('none');
-		expect(isClearsigned(body)).toBe(false);
+		expect(isClearsignedText(body)).toBe(false);
+		expect(isClearsigned(REPLY_HEADERS + body)).toBe(false);
 	});
 
 	it('a body that merely names the pgp-signature content type is not signed', () => {
@@ -398,13 +464,15 @@ describe('structural gates reject quoted / merely-mentioned armor', () => {
 
 	it('real clearsigned mail still classifies — armor on the first line', () => {
 		expect(classifySecureMessage({ textBody: CLEARSIGNED_BODY })).toBe('pgp-clearsigned');
-		expect(isClearsigned(CLEARSIGNED_BODY)).toBe(true);
+		expect(isClearsignedText(CLEARSIGNED_BODY)).toBe(true);
+		expect(isClearsigned(REPLY_HEADERS + CLEARSIGNED_BODY)).toBe(true);
 	});
 
 	it('real clearsigned mail still classifies — armor after a preamble line', () => {
 		const body = `Signed as always.\n\n${CLEARSIGNED_BODY}\n`;
 		expect(classifySecureMessage({ textBody: body })).toBe('pgp-clearsigned');
-		expect(isClearsigned(body)).toBe(true);
+		expect(isClearsignedText(body)).toBe(true);
+		expect(isClearsigned(REPLY_HEADERS + body)).toBe(true);
 	});
 
 	it('a clearsigned reply that also quotes one is signed, and its OWN block is extracted', () => {

@@ -42,6 +42,11 @@ import {
 	detachedSign,
 	signedFirstPart,
 } from './signedMailTestHelpers';
+import {
+	GPG_CLEARSIGNED_ASCII_BASE64,
+	GPG_CLEARSIGNED_LATIN1_BASE64,
+	GPG_PUBLIC_KEY,
+} from './gpgClearsignedFixtures';
 
 const SENDER = 'alice@sender.test';
 const RECIPIENT = 'me@example.com';
@@ -75,6 +80,16 @@ async function pinSender(t: T, publicKeyArmored: string): Promise<void> {
 		pinnedPublicKeyArmored: publicKeyArmored,
 	});
 }
+
+const VERIFIED_PINNED = (fingerprint: string) => ({
+	isSigned: true,
+	info: {
+		isSigned: true,
+		isSignatureValid: true,
+		signerFingerprint: fingerprint,
+		keySource: 'pinned',
+	},
+});
 
 describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 	it('valid detached (RFC 3156) against the pinned key ⇒ verified + fingerprint', async () => {
@@ -368,6 +383,137 @@ describe('clearsigned bodies verify over the octets that were signed (#1300)', (
 		});
 		expect(raw).not.toContain('BEGIN PGP SIGNED MESSAGE');
 		expect((await runVerify(t, raw, 'latin1')).isSigned).toBe(true);
+	});
+});
+
+describe('the verified block is the one the reader displays (#1300)', () => {
+	/** A multipart/mixed message of `parts` (header lines + body lines each). */
+	function mixed(parts: Array<[string[], string]>): string {
+		return [
+			`From: ${SENDER}`,
+			`To: ${RECIPIENT}`,
+			'Subject: clearsigned with parts',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/mixed; boundary="mx"',
+			'',
+			...parts.flatMap(([headers, body]) => ['--mx', ...headers, '', body]),
+			'--mx--',
+			'',
+		].join('\r\n');
+	}
+	const crlf = (armor: string) => armor.trim().replace(/\n/g, '\r\n');
+	const base64Lines = (armor: string) =>
+		(
+			Buffer.from(crlf(armor), 'utf8')
+				.toString('base64')
+				.match(/.{1,76}/g) ?? []
+		).join('\r\n');
+	const BODY = ['Content-Type: text/plain; charset=utf-8'];
+	const ATTACHED = [
+		'Content-Type: text/plain; charset=utf-8; name="signed.txt"',
+		'Content-Disposition: attachment; filename="signed.txt"',
+		'Content-Transfer-Encoding: base64',
+	];
+
+	async function pinned() {
+		const t = convexTest(schema, modules);
+		const sender = await generateTestKeypair(SENDER);
+		await pinSender(t, sender.publicKeyArmored);
+		return { t, sender };
+	}
+
+	it('a signed ATTACHMENT next to an altered visible body does not verify', async () => {
+		const { t, sender } = await pinned();
+		const signed = await clearsign(`Pay ${CANARY} 10 EUR.`, sender.privateKeyArmored);
+		const raw = mixed([
+			[ATTACHED, base64Lines(signed)],
+			[BODY, crlf(signed.replace('10 EUR', '9000 EUR'))],
+		]);
+		expect(await runVerify(t, raw)).toEqual({
+			isSigned: true,
+			info: { isSigned: true, isSignatureValid: false, keySource: 'pinned' },
+		});
+	});
+
+	it('a signed ATTACHMENT under an unsigned visible body is not a signed message', async () => {
+		const { t, sender } = await pinned();
+		const signed = await clearsign(`Pay ${CANARY} 10 EUR.`, sender.privateKeyArmored);
+		const raw = mixed([
+			[BODY, 'Nothing signed up here.'],
+			[ATTACHED, base64Lines(signed)],
+		]);
+		expect(await runVerify(t, raw)).toEqual({ isSigned: false });
+	});
+
+	it('a signed visible body next to an unrelated attachment verifies', async () => {
+		const { t, sender } = await pinned();
+		const signed = await clearsign(`Clear ${CANARY} text.`, sender.privateKeyArmored);
+		const raw = mixed([
+			[BODY, crlf(signed)],
+			[
+				['Content-Type: application/pdf; name="a.pdf"', 'Content-Transfer-Encoding: base64'],
+				Buffer.from('%PDF-1.4 unrelated').toString('base64'),
+			],
+		]);
+		expect(await runVerify(t, raw)).toEqual(VERIFIED_PINNED(sender.fingerprint));
+	});
+
+	it('two text body parts around a signed one verify, as on main (the signed part is the one shown)', async () => {
+		const { t, sender } = await pinned();
+		const signed = await clearsign(`Clear ${CANARY} text.`, sender.privateKeyArmored);
+		const raw = mixed([
+			[BODY, crlf(signed)],
+			[BODY, 'Mailing list footer, added in transit.'],
+		]);
+		expect(await runVerify(t, raw)).toEqual(VERIFIED_PINNED(sender.fingerprint));
+	});
+
+	it('a bare body (the AI-inbox mirror) still verifies as a whole', async () => {
+		const { t, sender } = await pinned();
+		const signed = await clearsign(`Clear ${CANARY} text.`, sender.privateKeyArmored);
+		const bare = `Signed as always.\n\n${signed}`;
+		const result = await t.action(internal.e2ee.verifyInboundSignature.forInbound, {
+			rawBytesBase64: Buffer.from(bare, 'utf8').toString('base64'),
+			from: SENDER,
+			bareBody: true,
+		});
+		expect(result).toEqual(VERIFIED_PINNED(sender.fingerprint));
+	});
+});
+
+describe('GnuPG-made clearsigned bodies, and a CR that ends no line (#1300)', () => {
+	const gpgBody = (base64: string) => Buffer.from(base64, 'base64').toString('latin1');
+	const fixtures: Array<[string, string]> = [
+		['ASCII', GPG_CLEARSIGNED_ASCII_BASE64],
+		['ISO-8859-1', GPG_CLEARSIGNED_LATIN1_BASE64],
+	];
+
+	it.each(fixtures)('the %s message verifies', async (_label, base64) => {
+		expect(await verifyClearsignedBody(gpgBody(base64), GPG_PUBLIC_KEY)).toMatchObject({
+			verified: true,
+		});
+	});
+
+	it.each(fixtures)(
+		'the %s message with a bare CR inside a word does not verify',
+		async (_label, base64) => {
+			// gpg --verify: BAD signature. openpgp.js alone drops the CR and verifies.
+			const tampered = gpgBody(base64).replace('aus', 'a\rus');
+			expect(await verifyClearsignedBody(tampered, GPG_PUBLIC_KEY)).toEqual({ verified: false });
+		}
+	);
+
+	it.each(fixtures)(
+		'the %s message with a stray CR before a line end does not verify',
+		async (_label, base64) => {
+			const tampered = gpgBody(base64).replace(',\n', ',\r\r\n');
+			expect(await verifyClearsignedBody(tampered, GPG_PUBLIC_KEY)).toEqual({ verified: false });
+		}
+	);
+
+	it('CRLF line ends are not bare CRs: the CRLF form of the ISO-8859-1 message verifies', async () => {
+		const crlfBody = gpgBody(GPG_CLEARSIGNED_LATIN1_BASE64).replace(/\n/g, '\r\n');
+		expect(await verifyClearsignedBody(crlfBody, GPG_PUBLIC_KEY)).toMatchObject({ verified: true });
 	});
 });
 

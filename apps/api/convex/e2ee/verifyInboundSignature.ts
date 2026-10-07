@@ -32,6 +32,7 @@ import { extractRfc3156SignedPart } from '@owlat/mail-canon';
 import {
 	clearsignedBody,
 	extractClearsignedBlock,
+	isClearsignedText,
 	isSignedPgpMime,
 } from '@owlat/shared/secureMessage';
 import { binaryStringToBytes, bytesToBinaryString } from '@owlat/shared/mailMime';
@@ -104,6 +105,11 @@ export async function verifyDetachedSignature(
  * bytes instead: openpgp.js's canonical form of it (trailing blanks stripped,
  * CRLF line ends, RFC 4880 §7.1) taken back to octets. A text-mode signature
  * over a binary message hashes exactly those octets.
+ *
+ * A carriage return that does not end a line fails closed. openpgp.js drops
+ * every CR while it reads the armor, so the text it hands back would no longer
+ * hold that octet, and a signature could verify over text that differs from the
+ * body by it (GnuPG reports such a body as a bad signature).
  */
 export async function verifyClearsignedBody(
 	body: string,
@@ -111,6 +117,8 @@ export async function verifyClearsignedBody(
 ): Promise<VerifyAttempt> {
 	const block = extractClearsignedBlock(body);
 	if (!block) return { verified: false, malformed: true };
+	// The block's CRLFs are already LF, so any CR left is one that ends no line.
+	if (block.includes('\r')) return { verified: false };
 	let cleartext: Awaited<ReturnType<typeof openpgp.readCleartextMessage>>;
 	try {
 		cleartext = await openpgp.readCleartextMessage({ cleartextMessage: block });
@@ -163,6 +171,12 @@ export const forInbound = internalAction({
 	args: {
 		rawBytesBase64: v.string(),
 		from: v.string(),
+		/**
+		 * The bytes are a bare body with no MIME headers (the AI-inbox mirror's
+		 * parsed text), so the whole text is the displayed body. Otherwise they
+		 * are a raw RFC 5322 message.
+		 */
+		bareBody: v.optional(v.boolean()),
 	},
 	returns: verifyResultValidator,
 	handler: async (ctx, args): Promise<Infer<typeof verifyResultValidator>> => {
@@ -171,7 +185,7 @@ export const forInbound = internalAction({
 		// clearsigned text must reach the verifier as the octets that were signed.
 		const raw = bytesToBinaryString(rawBytes);
 		const detached = isSignedPgpMime(raw);
-		const clearsigned = detached ? null : clearsignedBody(raw);
+		const clearsigned = detached ? null : clearsignedRegion(raw, args.bareBody === true);
 		if (!detached && clearsigned === null) return { isSigned: false as const };
 
 		try {
@@ -193,6 +207,15 @@ export const forInbound = internalAction({
 		}
 	},
 });
+
+/**
+ * The text a clearsigned message's block is verified in: the whole of a bare
+ * body, or the displayed body part of a raw message ({@link clearsignedBody}).
+ */
+function clearsignedRegion(raw: string, bareBody: boolean): string | null {
+	if (bareBody) return isClearsignedText(raw) ? raw : null;
+	return clearsignedBody(raw);
+}
 
 /**
  * The verification core: resolve the key, verify, build the honest record.

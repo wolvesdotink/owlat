@@ -833,6 +833,8 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 
 		expect(runActionCalls).toHaveLength(1);
 		expect(runActionCalls[0]?.ref).toBe(ref(internal.e2ee.verifyInboundSignature.forInbound));
+		// The parsed text is the whole displayed body, not a raw message (#1300).
+		expect(runActionCalls[0]?.args).toMatchObject({ bareBody: true });
 		const args = runMutationCalls[0]?.args as Record<string, unknown>;
 		expect(args['isInboundSignatureValid']).toBe(true);
 		expect(args['inboundSignerFingerprint']).toBe('ABCDEF1234567890ABCDEF1234567890ABCDEF12');

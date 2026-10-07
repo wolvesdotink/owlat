@@ -12,7 +12,7 @@
  * detection-only).
  */
 
-import { bytesToBinaryString, extractFirstPartByType } from './mailMime';
+import { bytesToBinaryString, extractBodyTextParts } from './mailMime';
 
 export type SecureMessageClass =
 	| 'pgp-encrypted'
@@ -315,34 +315,45 @@ export function isSignedPgpMime(raw: string): boolean {
 
 /**
  * Whether a raw inbound message carries an inline clearsigned body (RFC 4880
- * §7) — the `BEGIN PGP SIGNED MESSAGE` armor directly in the text, or in its
- * `text/plain` part once that part's transfer encoding is undone.
+ * §7): the `BEGIN PGP SIGNED MESSAGE` armor in its displayed `text/plain`
+ * body, read once each part's transfer encoding is undone.
  */
 export function isClearsigned(raw: string): boolean {
 	return clearsignedBody(raw) !== null;
 }
 
 /**
- * The text a raw message's inline clearsigned block sits in, as a binary
- * string (one char per byte), or null when it carries none. `raw` must be a
- * binary string too.
+ * Whether a BARE body (text with no MIME headers, e.g. the AI-inbox path's
+ * already-parsed text) carries an inline clearsigned block. The whole text is
+ * the displayed body, so it is classified as it stands.
+ */
+export function isClearsignedText(text: string): boolean {
+	return classifyRawSecureMessage(text) === 'pgp-clearsigned';
+}
+
+/**
+ * The body part a raw message's inline clearsigned block sits in, as a binary
+ * string (one char per byte) of the transfer-decoded octets, or null when the
+ * message carries none. `raw` must be a binary string too.
  *
- * The first `text/plain` part with its transfer encoding undone, when the
- * block is there: those are the octets the sender signed. A quoted-printable
- * body escapes the armor's `=`, and a base64 body hides the armor from the
- * raw text altogether. Otherwise the raw message itself, which is also how a
- * bare body with no MIME headers is read. A raw message that classifies as
- * PGP/MIME or S/MIME is never clearsigned, whatever its text part holds.
+ * Only the leaves the displayed text body is assembled from count
+ * (`extractBodyTextParts`, the parser's own rule): a clearsigned ATTACHMENT is
+ * never what the reader shows, so it is never what gets verified. The message
+ * is clearsigned when its assembled body is, the reader's own classification
+ * of `textBodyInline`. The part returned is the first one whose unquoted
+ * `BEGIN PGP SIGNED MESSAGE` line opens the block the reader displays; when
+ * that part does not hold the complete block, verification fails rather than
+ * reaching into another part. Decoded octets, because a quoted-printable body
+ * escapes the armor's `=` and a base64 body hides the armor altogether. A raw
+ * message that classifies as PGP/MIME or S/MIME is never clearsigned.
  */
 export function clearsignedBody(raw: string): string | null {
 	const rawClass = classifyRawSecureMessage(raw);
 	if (rawClass !== 'none' && rawClass !== 'pgp-clearsigned') return null;
-	const part = extractFirstPartByType(raw, 'text/plain');
-	if (part) {
-		const text = bytesToBinaryString(part.bytes);
-		if (hasClearsignedBlock(text)) return text;
-	}
-	return rawClass === 'pgp-clearsigned' ? raw : null;
+	const texts = extractBodyTextParts(raw).map((part) => bytesToBinaryString(part.bytes));
+	// Joined as the parser joins the displayed text body.
+	if (!hasClearsignedBlock(texts.join('\n'))) return null;
+	return texts.find((text) => indexOfArmorLine(text, PGP_SIGNED_HEADER) >= 0) ?? null;
 }
 
 /**
