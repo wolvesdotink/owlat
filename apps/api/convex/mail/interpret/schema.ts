@@ -13,12 +13,15 @@
  * every claim cites quotes `{segmentId, text}` that grounding (`ground.ts`)
  * resolves to offsets and rejects unless verbatim.
  *
- * Optional model fields are `.nullable()`, not `.optional()`: structured-output
- * providers require every key to be present.
- *
- * Pass {@link interpretOutputSchemaFor} (a plain object schema) to the model;
- * structured-output providers reject a union at the root. Validate a stored
- * payload with {@link interpretOutputSchema}.
+ * Two schema families:
+ * - MODEL schemas ({@link interpretOutputSchemaFor}, `briefModelSchema`,
+ *   `actionsModelSchema`): what the provider receives. A plain object per mode
+ *   (providers reject a root union), every key required at every level,
+ *   optional values `.nullable()`, never `.optional()` (strict structured
+ *   output rejects a property missing from `required`).
+ * - PARSE schemas ({@link interpretOutputSchema}, `briefOutputSchema`,
+ *   `actionsOutputSchema`): validate a model result or a stored payload, and
+ *   tolerate keys added later (an item without `consequences`).
  */
 
 import { z } from 'zod';
@@ -109,29 +112,43 @@ export const amountProposalSchema = z.object({
 	currency: z.string().describe('ISO 4217 code'),
 });
 
-export const itemProposalSchema = z.object({
-	matchItemId: z.string().nullable().describe('Id of an open item this repeats, or null'),
-	intent: z.enum(ITEM_INTENTS),
-	facets: z.array(z.enum(ITEM_FACETS)),
-	// What makes it consequential; [] when nothing does. Optional so an older
-	// payload still parses; a missing list counts as consequential (verified).
-	consequences: z
-		.array(z.enum(ITEM_CONSEQUENCE_KINDS))
-		.max(ITEM_CONSEQUENCE_KINDS.length)
-		.optional()
-		.describe(
-			'Every way acting on this item commits the reader: payment, signature, access, disclosure, promise, concession, cancellation. Empty when none.'
-		),
-	assertion: z.string().describe('The obligation in the language of the email'),
-	display: displaySchema,
-	requester: participantProposalSchema,
-	responsible: participantProposalSchema,
-	beneficiary: participantProposalSchema.nullable(),
-	due: dueProposalSchema.nullable(),
-	amount: amountProposalSchema.nullable(),
-	options: z.array(z.string()).max(MAX_ITEM_OPTIONS).nullable(),
-	quotes: quotesSchema,
-});
+/** What makes an item consequential; `[]` when nothing does (isConsequential). */
+const consequencesSchema = z
+	.array(z.enum(ITEM_CONSEQUENCE_KINDS))
+	.max(ITEM_CONSEQUENCE_KINDS.length)
+	.describe(
+		'Every way acting on this item commits the reader: payment, signature, access, disclosure, promise, concession, cancellation. Empty when none, null when unsure.'
+	);
+
+/**
+ * An item proposal with the given `consequences` schema: required and
+ * nullable for the model ({@link itemModelSchema}), also absent-tolerant for
+ * parsing stored payloads ({@link itemProposalSchema}). Null or absent counts
+ * as consequential.
+ */
+function itemShape<C extends z.ZodTypeAny>(consequences: C) {
+	return {
+		matchItemId: z.string().nullable().describe('Id of an open item this repeats, or null'),
+		intent: z.enum(ITEM_INTENTS),
+		facets: z.array(z.enum(ITEM_FACETS)),
+		consequences,
+		assertion: z.string().describe('The obligation in the language of the email'),
+		display: displaySchema,
+		requester: participantProposalSchema,
+		responsible: participantProposalSchema,
+		beneficiary: participantProposalSchema.nullable(),
+		due: dueProposalSchema.nullable(),
+		amount: amountProposalSchema.nullable(),
+		options: z.array(z.string()).max(MAX_ITEM_OPTIONS).nullable(),
+		quotes: quotesSchema,
+	};
+}
+
+/** The item the MODEL returns: every key present (structured-output strict mode). */
+export const itemModelSchema = z.object(itemShape(consequencesSchema.nullable()));
+
+/** An item as PARSED from a stored payload: `consequences` may be absent (pre-tag payloads). */
+export const itemProposalSchema = z.object(itemShape(consequencesSchema.nullable().optional()));
 
 export const transitionProposalSchema = z.object({
 	itemId: z.string(),
@@ -152,15 +169,17 @@ export const coverageProposalSchema = z.object({
 	overflow: z.boolean(),
 });
 
-const actionsPart = {
-	items: z.array(itemProposalSchema).max(MAX_INTERPRET_ITEMS),
-	transitions: z.array(transitionProposalSchema).max(MAX_INTERPRET_TRANSITIONS),
-	// Postbox projection: the server still runs decideNeedsReply on it.
-	replyIntent: z.enum(REPLY_INTENTS),
-	urgency: z.enum(['high', 'normal', 'low']),
-	meetingIntent: meetingIntentSchema.nullable(),
-	coverage: coverageProposalSchema,
-};
+function actionsPart<I extends z.ZodTypeAny>(item: I) {
+	return {
+		items: z.array(item).max(MAX_INTERPRET_ITEMS),
+		transitions: z.array(transitionProposalSchema).max(MAX_INTERPRET_TRANSITIONS),
+		// Postbox projection: the server still runs decideNeedsReply on it.
+		replyIntent: z.enum(REPLY_INTENTS),
+		urgency: z.enum(['high', 'normal', 'low']),
+		meetingIntent: meetingIntentSchema.nullable(),
+		coverage: coverageProposalSchema,
+	};
+}
 
 const latestLineSchema = z.object({ text: z.string(), quotes: quotesSchema });
 
@@ -192,18 +211,45 @@ export const factProposalSchema = z.object({
 
 // ── Output ─────────────────────────────────────────────────────────────────
 
+const latestSchema = z.object(perLocaleShape(z.array(latestLineSchema).max(MAX_LATEST_LINES)));
+const factsSchema = z.array(factProposalSchema).max(MAX_INTERPRET_FACTS);
+
+/**
+ * MODEL schemas: what {@link interpretOutputSchemaFor} hands to `runLlmObject`.
+ * Every key at every level is required (optional values are `.nullable()`),
+ * because the OpenAI adapter sends `strict: true` and strict structured output
+ * rejects a property missing from `required`. Never add `.optional()` here; the
+ * JSON-schema test in `__tests__/schema.test.ts` enforces it.
+ */
+export const briefModelSchema = z.strictObject({
+	mode: z.literal('brief'),
+	...actionsPart(itemModelSchema),
+	latest: latestSchema,
+	facts: factsSchema,
+});
+
+export const actionsModelSchema = z.strictObject({
+	mode: z.literal('actions'),
+	...actionsPart(itemModelSchema),
+});
+
+/**
+ * PARSE schemas: validate a model result or a stored payload. Same contract,
+ * but tolerant of payloads written before an optional tag existed (an item
+ * without `consequences`). A model result always parses here.
+ */
 /** Personal Postbox: actions plus "Latest update" and facts. */
 export const briefOutputSchema = z.strictObject({
 	mode: z.literal('brief'),
-	...actionsPart,
-	latest: z.object(perLocaleShape(z.array(latestLineSchema).max(MAX_LATEST_LINES))),
-	facts: z.array(factProposalSchema).max(MAX_INTERPRET_FACTS),
+	...actionsPart(itemProposalSchema),
+	latest: latestSchema,
+	facts: factsSchema,
 });
 
 /** Every team surface: actions only. `latest` / `facts` are rejected. */
 export const actionsOutputSchema = z.strictObject({
 	mode: z.literal('actions'),
-	...actionsPart,
+	...actionsPart(itemProposalSchema),
 });
 
 export const interpretOutputSchema = z.discriminatedUnion('mode', [
@@ -211,17 +257,20 @@ export const interpretOutputSchema = z.discriminatedUnion('mode', [
 	actionsOutputSchema,
 ]);
 
-/** The object schema the model is asked for in `mode`. */
+/** The MODEL schema for `mode`: a plain object (providers reject a root union), all keys required. */
 export function interpretOutputSchemaFor(
 	mode: InterpretMode
-): typeof briefOutputSchema | typeof actionsOutputSchema {
-	return mode === 'brief' ? briefOutputSchema : actionsOutputSchema;
+): typeof briefModelSchema | typeof actionsModelSchema {
+	return mode === 'brief' ? briefModelSchema : actionsModelSchema;
 }
 
 export type InterpretOutput = z.infer<typeof interpretOutputSchema>;
 export type InterpretBriefOutput = z.infer<typeof briefOutputSchema>;
 export type InterpretActionsOutput = z.infer<typeof actionsOutputSchema>;
 export type InterpretItemProposal = z.infer<typeof itemProposalSchema>;
+export type InterpretModelOutput =
+	| z.infer<typeof briefModelSchema>
+	| z.infer<typeof actionsModelSchema>;
 export type InterpretTransitionProposal = z.infer<typeof transitionProposalSchema>;
 export type InterpretFactProposal = z.infer<typeof factProposalSchema>;
 export type InterpretQuote = z.infer<typeof quoteSchema>;
