@@ -31,6 +31,9 @@ export const mailCommitmentsFields = {
 	// Set once the pre-lapse reminder fired (status → reminded), so the cron
 	// never re-reminds the same commitment.
 	remindedAt: v.optional(v.number()),
+	// The thread brief item this commitment tracks (schema/threadBrief.ts).
+	// Reminder state stays here, outside the item lifecycle.
+	threadItemId: v.optional(v.id('threadItems')),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 };

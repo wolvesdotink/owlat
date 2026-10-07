@@ -1,4 +1,5 @@
 import type { TableNames } from '../_generated/dataModel';
+import { THREAD_BRIEF_TABLES } from '../schema/threadBrief';
 
 /**
  * The single source of truth for "which tables hold tenant business data".
@@ -173,6 +174,9 @@ export const TENANT_TABLES = [
 	// Answer mode catch-up cards of team and Postbox threads: derived from the
 	// mail, so they go before the threads they summarise.
 	'threadCatchUps',
+	// Thread brief (schema/threadBrief.ts) of team and Postbox threads: derived
+	// from the mail, so it goes before the threads it describes.
+	...THREAD_BRIEF_TABLES,
 	'inboundMessages',
 	'conversationThreads',
 	'coalesceBatches',

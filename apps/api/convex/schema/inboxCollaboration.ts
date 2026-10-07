@@ -112,6 +112,9 @@ export const inboxCollaborationTables = {
 		authorId: v.string(), // BetterAuth user id ('[deleted account]' once erased)
 		body: v.string(),
 		mentionedUserIds: v.array(v.string()),
+		// The thread brief item this note is about (`#` link). Validated to
+		// belong to the same thread on write.
+		threadItemId: v.optional(v.id('threadItems')),
 		createdAt: v.number(),
 		editedAt: v.optional(v.number()),
 		deletedAt: v.optional(v.number()),

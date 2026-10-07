@@ -120,6 +120,10 @@ export const chatTables = {
 		// The human message whose @assistant mention triggered this reply
 		// (observability / threading of the request→reply pair).
 		aiPromptMessageId: v.optional(v.id('chatMessages')),
+		// Postbox thread discussion only (chat/mailDiscussion.ts): the thread
+		// brief item this message is about (`#` link). Validated to belong to the
+		// room's linked mail thread on write.
+		threadItemId: v.optional(v.id('threadItems')),
 	})
 		.index('by_room', ['roomId'])
 		.index('by_room_and_created', ['roomId', 'createdAt'])
