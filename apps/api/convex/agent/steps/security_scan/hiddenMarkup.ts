@@ -24,7 +24,8 @@
  * would let hidden text through.
  *
  * Linear: every character is read a bounded number of times, and every close
- * decision takes constant time, amortised over the pops it causes.
+ * decision takes constant time, amortised over the pops it causes. The tests
+ * check that by counting the work through a {@link ScanMeter}.
  */
 
 import { ActiveFormatting, type FormattingEntry } from './activeFormatting';
@@ -42,6 +43,17 @@ import {
 	TABLE_PARTS,
 	VOID_ELEMENTS,
 } from './htmlElements';
+
+/**
+ * Work one scan did, counted for the linear-time tests: `chars` is input
+ * characters read (a search that finds nothing counts up to the end of the
+ * input), `steps` is open elements popped or passed over and formatting list
+ * entries visited. Callers outside tests pass none.
+ */
+export interface ScanMeter {
+	chars: number;
+	steps: number;
+}
 
 const isTagSpace = (c: string | undefined): boolean =>
 	c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
@@ -155,9 +167,9 @@ const CELL_MARKERS = new Set(['caption', 'td', 'th']);
  * dropped span is replaced by one space. Input without a hidden element comes
  * back unchanged.
  */
-export function stripHiddenElements(input: string): string {
+export function stripHiddenElements(input: string, meter?: ScanMeter): string {
 	const stack = new ElementStack();
-	const formatting = new ActiveFormatting();
+	const formatting = new ActiveFormatting(meter);
 	let out = '';
 	let copied = 0;
 
@@ -215,6 +227,7 @@ export function stripHiddenElements(input: string): string {
 	 */
 	const closeTo = (target: number, at: number, after: number, explicit: boolean) => {
 		let closedForeignRoot = false;
+		if (meter) meter.steps += stack.depth - target;
 		stack.truncate(target, (name, _hides, index, entry) => {
 			const ownEndTag = explicit && index === target;
 			if (ownEndTag && (name === 'svg' || name === 'math')) closedForeignRoot = true;
@@ -242,6 +255,7 @@ export function stripHiddenElements(input: string): string {
 	let pos = 0;
 	for (;;) {
 		const lt = input.indexOf('<', pos);
+		if (meter) meter.chars += (lt === -1 ? input.length : lt) - pos;
 		if (lt === -1) break;
 		if (lt > pos) reopenFormatting(pos);
 		const next = input[lt + 1];
@@ -249,6 +263,7 @@ export function stripHiddenElements(input: string): string {
 		if (isAsciiAlpha(next)) {
 			const { name, end: nameEnd } = readTagName(input, lt + 1);
 			const tag = readTag(input, nameEnd);
+			if (meter) meter.chars += (tag.end ?? input.length) - lt;
 			if (tag.end === null) {
 				if (tag.resume >= input.length) break;
 				pos = tag.resume;
@@ -323,6 +338,7 @@ export function stripHiddenElements(input: string): string {
 					close.lastIndex = pos;
 					found = close.exec(input);
 				}
+				if (meter) meter.chars += (found ? found.index : input.length) - pos;
 				if (!found) break;
 				pos = found.index;
 			}
@@ -334,12 +350,14 @@ export function stripHiddenElements(input: string): string {
 			if (!isAsciiAlpha(after)) {
 				// `</>` is dropped; `</` + anything else is a bogus comment up to `>`.
 				const gt = after === '>' ? lt + 2 : input.indexOf('>', lt + 2);
+				if (meter) meter.chars += (gt === -1 ? input.length : gt) - lt;
 				if (gt === -1) break;
 				pos = gt + 1;
 				continue;
 			}
 			const { name, end: nameEnd } = readTagName(input, lt + 2);
 			const tag = readTag(input, nameEnd);
+			if (meter) meter.chars += (tag.end ?? input.length) - lt;
 			if (tag.end === null) {
 				if (tag.resume >= input.length) break;
 				pos = tag.resume;
@@ -378,6 +396,7 @@ export function stripHiddenElements(input: string): string {
 			// Comments are gone by now (`stripHiddenContent` removes them first);
 			// what is left is a doctype or a bogus comment, which ends at `>`.
 			const gt = input.indexOf('>', lt + 2);
+			if (meter) meter.chars += (gt === -1 ? input.length : gt) - lt;
 			if (gt === -1) break;
 			pos = gt + 1;
 			continue;
@@ -423,6 +442,7 @@ export function stripHiddenElements(input: string): string {
 				// What was open inside a form stays inside it in the page; what was
 				// inside a detached formatting element no longer sits inside it.
 				rootIndex = name === 'form' ? effect.index + 1 : stack.nextHiding(effect.index);
+				if (meter) meter.steps += (rootIndex === -1 ? stack.depth : rootIndex) - effect.index;
 				endRegionIfClosed(after);
 			}
 		}

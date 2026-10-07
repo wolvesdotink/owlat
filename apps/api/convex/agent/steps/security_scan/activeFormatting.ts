@@ -11,7 +11,8 @@
  * {@link MAX_ENTRIES} live entries. Dropping a hidden one to stay under that
  * bound sets {@link ActiveFormatting.overflowed}, and the strip then hides to
  * the end of the input rather than lose track of it. Every operation walks only
- * the last stretch, so the cost per operation is constant.
+ * the last stretch, so the cost per operation is constant. A meter, when given,
+ * counts the entries the walks visit (see `ScanMeter` in hiddenMarkup.ts).
  */
 
 /** One formatting element on the list. */
@@ -47,6 +48,8 @@ export class ActiveFormatting {
 	/** A hidden entry was dropped to respect the bound. */
 	overflowed = false;
 
+	constructor(private readonly meter?: { steps: number }) {}
+
 	/** Add an open formatting element. */
 	add(name: string, hides: boolean): FormattingEntry {
 		const entry: FormattingEntry = { name, hides, open: true, listed: true, stretch: this.stretch };
@@ -67,6 +70,7 @@ export class ActiveFormatting {
 
 	/** Remove every entry after the last marker, and the marker. */
 	clearToMarker(): void {
+		const before = this.entries.length;
 		while (this.entries.length > 0) {
 			const entry = this.entries.pop();
 			if (entry === MARKER || entry === undefined) break;
@@ -79,6 +83,7 @@ export class ActiveFormatting {
 			this.stretchStart--;
 			if (this.entries[this.stretchStart]?.listed) this.liveInStretch++;
 		}
+		this.count(before - this.stretchStart);
 	}
 
 	/** An open entry was closed by something other than its end tag. */
@@ -97,12 +102,14 @@ export class ActiveFormatting {
 			const last = this.entries[this.entries.length - 1];
 			if (last === MARKER || last === undefined || last.listed) break;
 			this.entries.pop();
+			this.count(1);
 		}
 	}
 
 	/** The newest live entry named `name` after the last marker, or null. */
 	lastAfterMarker(name: string): FormattingEntry | null {
 		for (let i = this.entries.length - 1; i >= 0; i--) {
+			this.count(1);
 			const entry = this.entries[i];
 			if (entry === MARKER || entry === undefined) return null;
 			if (entry.listed && entry.name === name) return entry;
@@ -118,18 +125,21 @@ export class ActiveFormatting {
 	reopen(): FormattingEntry[] {
 		let i = this.entries.length - 1;
 		while (i >= 0 && this.entries[i] !== MARKER && !this.entries[i]?.listed) i--;
+		this.count(this.entries.length - i);
 		const newest = this.entries[i];
 		if (i < 0 || newest === MARKER || newest === undefined || newest.open) return [];
 		let first = i;
-		for (let j = i - 1; j >= 0; j--) {
+		let j = i - 1;
+		for (; j >= 0; j--) {
 			const entry = this.entries[j];
 			if (entry === MARKER || entry === undefined) break;
 			if (!entry.listed) continue;
 			if (entry.open) break;
 			first = j;
 		}
+		this.count(i - j + i - first);
 		const reopened: FormattingEntry[] = [];
-		for (let j = first; j <= i; j++) {
+		for (j = first; j <= i; j++) {
 			const entry = this.entries[j];
 			if (entry === MARKER || entry === undefined || !entry.listed) continue;
 			entry.open = true;
@@ -137,6 +147,10 @@ export class ActiveFormatting {
 			reopened.push(entry);
 		}
 		return reopened;
+	}
+
+	private count(steps: number): void {
+		if (this.meter) this.meter.steps += steps;
 	}
 
 	private unlist(entry: FormattingEntry): void {
@@ -149,6 +163,7 @@ export class ActiveFormatting {
 	/** Drop the oldest live entry after the last marker. */
 	private dropOldest(): void {
 		for (let i = this.stretchStart; i < this.entries.length; i++) {
+			this.count(1);
 			const entry = this.entries[i];
 			if (entry === MARKER || entry === undefined || !entry.listed) continue;
 			if (entry.hides) this.overflowed = true;
@@ -159,6 +174,7 @@ export class ActiveFormatting {
 
 	/** Remove unlisted entries from the last stretch. */
 	private compactStretch(): void {
+		this.count(this.entries.length - this.stretchStart);
 		const kept = this.entries.slice(this.stretchStart).filter((entry) => entry?.listed);
 		this.entries.length = this.stretchStart;
 		for (const entry of kept) this.entries.push(entry);

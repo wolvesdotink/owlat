@@ -5,7 +5,7 @@
  * import them without dragging in the action wrapper.
  */
 
-import { stripHiddenElements } from './hiddenMarkup';
+import { type ScanMeter, stripHiddenElements } from './hiddenMarkup';
 
 /**
  * Confidence floor (0–1) at or above which a detected prompt-injection match is
@@ -135,15 +135,17 @@ function findInstructionComment(html: string): string | null {
  * ended, and an `open` without a following `close` ends the pass, because no
  * later `open` could be closed either. Both regexes must carry the `g` flag.
  */
-function stripDelimited(input: string, open: RegExp, close: RegExp): string {
+function stripDelimited(input: string, open: RegExp, close: RegExp, meter?: ScanMeter): string {
 	let out = '';
 	let pos = 0;
 	for (;;) {
 		open.lastIndex = pos;
 		const start = open.exec(input);
+		if (meter) meter.chars += (start ? start.index : input.length) - pos;
 		if (!start) break;
 		close.lastIndex = start.index + start[0].length;
 		const end = close.exec(input);
+		if (meter) meter.chars += (end ? end.index + end[0].length : input.length) - start.index;
 		if (!end) break;
 		out += `${input.slice(pos, start.index)} `;
 		pos = end.index + end[0].length;
@@ -177,23 +179,24 @@ function stripDelimited(input: string, open: RegExp, close: RegExp): string {
  * mentions `<template>` keeps the text after it. The comment strip and the
  * zero-width strip still apply. Input past {@link MAX_SCAN_INPUT_CHARS} is
  * dropped first, and every pass is a single forward scan, so the cost stays
- * linear in the input. Never throws.
+ * linear in the input; `options.meter` counts the work for the tests that
+ * check that. Never throws.
  */
 export function stripHiddenContent(
 	input: string | undefined | null,
-	options: { html?: boolean } = {}
+	options: { html?: boolean; meter?: ScanMeter } = {}
 ): string {
 	if (!input) return '';
 	let out = capScanInput(input);
 
 	// 1. HTML comments: up to the first `-->` (or `--!>`, which also ends a
 	//    comment) after each `<!--`.
-	out = stripDelimited(out, /<!--/g, /--!?>/g);
+	out = stripDelimited(out, /<!--/g, /--!?>/g, options.meter);
 
 	// 2. Hidden elements, including <script> and <style>: the start tag, its
 	//    content and the end tag go. What counts as hidden and how elements are
 	//    matched is in hiddenMarkup.ts.
-	if (options.html) out = stripHiddenElements(out);
+	if (options.html) out = stripHiddenElements(out, options.meter);
 
 	// 3. Zero-width / invisible / bidi-control characters. The zero-width
 	//    joiner/non-joiner (U+200C/U+200D) are listed as standalone alternatives
