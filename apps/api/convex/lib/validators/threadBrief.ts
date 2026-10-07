@@ -101,6 +101,9 @@ export const evidenceValidator = v.object({
 	start: v.number(),
 	end: v.number(),
 	contentRevision: v.string(),
+	// The quoted words, for the brief's evidence marker and the next prompt's
+	// excerpt (the source body is not re-read for either). Sealed.
+	quote: v.optional(v.string()),
 });
 export type Evidence = Infer<typeof evidenceValidator>;
 
