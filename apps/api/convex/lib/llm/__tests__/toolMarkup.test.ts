@@ -231,11 +231,18 @@ describe('hostile input stays linear', () => {
 		['namespaces', '<a:b:c:d:'.repeat(20_000)],
 		['a huge namespace', `<${'a'.repeat(200_000)}:invoke name="x">`],
 	];
+	// A time budget, not a work count (#1315): the lexer's reads are bounded at
+	// several return points in toolTagGrammar.ts, too many to meter cheaply. The
+	// budget is over 50 times what each shape takes on a developer machine
+	// (15-35 ms), so a CI runner meets it with room to spare. A lexer that
+	// rereads the rest of the text from every tag takes 8 to 80 seconds on
+	// these shapes on the same machine.
+	const BUDGET_MS = 2_000;
 	it.each(shapes)('%s', (_label, text) => {
 		const started = performance.now();
 		stripLeakedToolMarkup(text);
 		visibleDraftStreamText(text);
-		expect(performance.now() - started).toBeLessThan(1_000);
+		expect(performance.now() - started).toBeLessThan(BUDGET_MS);
 	});
 });
 

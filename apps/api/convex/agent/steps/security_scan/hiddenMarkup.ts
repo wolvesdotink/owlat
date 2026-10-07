@@ -24,7 +24,8 @@
  * would let hidden text through.
  *
  * Linear: every character is read a bounded number of times, and every close
- * decision takes constant time, amortised over the pops it causes.
+ * decision takes constant time, amortised over the pops it causes. The tests
+ * check that by counting the work through a {@link ScanMeter}.
  */
 
 import { ActiveFormatting, type FormattingEntry } from './activeFormatting';
@@ -42,6 +43,21 @@ import {
 	TABLE_PARTS,
 	VOID_ELEMENTS,
 } from './htmlElements';
+
+/**
+ * Work one scan did, counted for the linear-time tests: `chars` is input
+ * characters read (a search that finds nothing counts up to the end of the
+ * input), `steps` is open elements and formatting list entries visited. Each
+ * loop counts inside itself, never from what it returns, so a loop that does
+ * more work than it should shows up: a walk over the stack or the list counts
+ * every entry it visits, and a loop over characters counts its cursor's
+ * advance once per tag or attribute. A new loop counts itself the same way.
+ * Callers outside tests pass none.
+ */
+export interface ScanMeter {
+	chars: number;
+	steps: number;
+}
 
 const isTagSpace = (c: string | undefined): boolean =>
 	c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
@@ -73,17 +89,23 @@ type Tag =
  * tag can hold a value in that quote character, so a later tag may still end
  * and the caller keeps going from there.
  */
-function readTag(input: string, from: number): Tag {
+function readTag(input: string, from: number, meter?: ScanMeter): Tag {
 	let style: string | null = null;
 	let hidden = false;
 	let i = from;
+	// The meter takes the cursor's advance once per attribute, not per character.
+	let counted = from;
 	for (;;) {
+		if (meter) meter.chars += i - counted;
+		counted = i;
 		// A `/` right before the closing `>` marks a self-closing tag.
 		let slash = false;
 		while (i < input.length && (isTagSpace(input[i]) || input[i] === '/')) {
 			slash = input[i] === '/';
 			i++;
 		}
+		if (meter) meter.chars += i - counted;
+		counted = i;
 		if (i >= input.length) return { end: null, resume: input.length };
 		if (input[i] === '>') return { end: i, style, hidden, selfClosing: slash };
 
@@ -106,7 +128,10 @@ function readTag(input: string, from: number): Tag {
 		const quote = input[i];
 		if (quote === '"' || quote === "'") {
 			const close = input.indexOf(quote, i + 1);
-			if (close === -1) return { end: null, resume: i + 1 };
+			if (close === -1) {
+				if (meter) meter.chars += input.length - counted;
+				return { end: null, resume: i + 1 };
+			}
 			value = input.slice(i + 1, close);
 			i = close + 1;
 		} else {
@@ -119,9 +144,14 @@ function readTag(input: string, from: number): Tag {
 }
 
 /** Index just past a tag name that starts at `from`, lowercased name included. */
-function readTagName(input: string, from: number): { name: string; end: number } {
+function readTagName(
+	input: string,
+	from: number,
+	meter?: ScanMeter
+): { name: string; end: number } {
 	let i = from;
 	while (i < input.length && !isTagSpace(input[i]) && input[i] !== '/' && input[i] !== '>') i++;
+	if (meter) meter.chars += i - from;
 	return { name: input.slice(from, i).toLowerCase(), end: i };
 }
 
@@ -155,9 +185,9 @@ const CELL_MARKERS = new Set(['caption', 'td', 'th']);
  * dropped span is replaced by one space. Input without a hidden element comes
  * back unchanged.
  */
-export function stripHiddenElements(input: string): string {
+export function stripHiddenElements(input: string, meter?: ScanMeter): string {
 	const stack = new ElementStack();
-	const formatting = new ActiveFormatting();
+	const formatting = new ActiveFormatting(meter);
 	let out = '';
 	let copied = 0;
 
@@ -216,6 +246,7 @@ export function stripHiddenElements(input: string): string {
 	const closeTo = (target: number, at: number, after: number, explicit: boolean) => {
 		let closedForeignRoot = false;
 		stack.truncate(target, (name, _hides, index, entry) => {
+			if (meter) meter.steps++;
 			const ownEndTag = explicit && index === target;
 			if (ownEndTag && (name === 'svg' || name === 'math')) closedForeignRoot = true;
 			if (entry) {
@@ -242,13 +273,14 @@ export function stripHiddenElements(input: string): string {
 	let pos = 0;
 	for (;;) {
 		const lt = input.indexOf('<', pos);
+		if (meter) meter.chars += (lt === -1 ? input.length : lt) - pos;
 		if (lt === -1) break;
 		if (lt > pos) reopenFormatting(pos);
 		const next = input[lt + 1];
 
 		if (isAsciiAlpha(next)) {
-			const { name, end: nameEnd } = readTagName(input, lt + 1);
-			const tag = readTag(input, nameEnd);
+			const { name, end: nameEnd } = readTagName(input, lt + 1, meter);
+			const tag = readTag(input, nameEnd, meter);
 			if (tag.end === null) {
 				if (tag.resume >= input.length) break;
 				pos = tag.resume;
@@ -299,7 +331,7 @@ export function stripHiddenElements(input: string): string {
 				const link = formatting.lastAfterMarker('a');
 				if (link) closeFormatting('a', link, lt, lt);
 			}
-			const item = stack.impliedClose(name);
+			const item = stack.impliedClose(name, meter);
 			if (item !== -1) closeTo(item, lt, lt, false);
 			const paragraph = stack.impliedParagraphClose(name);
 			if (paragraph !== -1) closeTo(paragraph, lt, lt, false);
@@ -323,6 +355,7 @@ export function stripHiddenElements(input: string): string {
 					close.lastIndex = pos;
 					found = close.exec(input);
 				}
+				if (meter) meter.chars += (found ? found.index : input.length) - pos;
 				if (!found) break;
 				pos = found.index;
 			}
@@ -334,12 +367,13 @@ export function stripHiddenElements(input: string): string {
 			if (!isAsciiAlpha(after)) {
 				// `</>` is dropped; `</` + anything else is a bogus comment up to `>`.
 				const gt = after === '>' ? lt + 2 : input.indexOf('>', lt + 2);
+				if (meter) meter.chars += (gt === -1 ? input.length : gt) - lt;
 				if (gt === -1) break;
 				pos = gt + 1;
 				continue;
 			}
-			const { name, end: nameEnd } = readTagName(input, lt + 2);
-			const tag = readTag(input, nameEnd);
+			const { name, end: nameEnd } = readTagName(input, lt + 2, meter);
+			const tag = readTag(input, nameEnd, meter);
 			if (tag.end === null) {
 				if (tag.resume >= input.length) break;
 				pos = tag.resume;
@@ -349,7 +383,7 @@ export function stripHiddenElements(input: string): string {
 
 			if (name === 'p' || name === 'br') {
 				// `</p>` and `</br>` inside SVG or MathML end that content first.
-				const breakout = stack.foreignBreakout();
+				const breakout = stack.foreignBreakout(meter);
 				if (breakout !== -1) closeTo(breakout, lt, lt, false);
 			}
 			if (name === 'form') formOpen = false;
@@ -378,6 +412,7 @@ export function stripHiddenElements(input: string): string {
 			// Comments are gone by now (`stripHiddenContent` removes them first);
 			// what is left is a doctype or a bogus comment, which ends at `>`.
 			const gt = input.indexOf('>', lt + 2);
+			if (meter) meter.chars += (gt === -1 ? input.length : gt) - lt;
 			if (gt === -1) break;
 			pos = gt + 1;
 			continue;
@@ -422,7 +457,7 @@ export function stripHiddenElements(input: string): string {
 			if (effect.index === rootIndex) {
 				// What was open inside a form stays inside it in the page; what was
 				// inside a detached formatting element no longer sits inside it.
-				rootIndex = name === 'form' ? effect.index + 1 : stack.nextHiding(effect.index);
+				rootIndex = name === 'form' ? effect.index + 1 : stack.nextHiding(effect.index, meter);
 				endRegionIfClosed(after);
 			}
 		}

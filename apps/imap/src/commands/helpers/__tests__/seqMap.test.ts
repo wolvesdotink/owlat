@@ -79,22 +79,28 @@ describe('resolveSet (repeated and overlapping parts)', () => {
 
 	it('stays linear for a set of many parts on a large folder', () => {
 		// 60,000 messages with sparse UIDs 1, 3, 5, ...; the sets below are the
-		// size a single maximum-length command line can carry.
+		// size a single maximum-length command line can carry. The walk is
+		// counted rather than timed (#1315): it visits each message at most
+		// once, plus one step past the end of each merged range, where an
+		// uncoalesced walk would visit the folder once per part.
 		const large = buildSeqMap(Array.from({ length: 60_000 }, (_, i) => 2 * i + 1));
 		const manyWholeRanges = Array.from({ length: 16_000 }, () => '1:*').join(',');
 		const manySingles = Array.from({ length: 32_000 }, () => '1').join(',');
+		const resolved = (set: string, byUid: boolean) => {
+			const meter = { steps: 0 };
+			const rows = resolveSet(large, set, byUid, meter);
+			expect(meter.steps).toBeLessThanOrEqual(large.uids.length + 1);
+			return rows;
+		};
 
-		const start = performance.now();
-		const bySeq = resolveSet(large, manyWholeRanges, false);
-		const byUid = resolveSet(large, manySingles, true);
-		const byUidRanges = resolveSet(large, manyWholeRanges, true);
-		const elapsedMs = performance.now() - start;
+		const bySeq = resolved(manyWholeRanges, false);
+		const byUid = resolved(manySingles, true);
+		const byUidRanges = resolved(manyWholeRanges, true);
 
 		expect(bySeq).toHaveLength(60_000);
 		expect(bySeq[59_999]).toEqual({ uid: 119_999, seq: 60_000 });
 		expect(byUid).toEqual([{ uid: 1, seq: 1 }]);
 		expect(byUidRanges).toHaveLength(60_000);
-		expect(elapsedMs).toBeLessThan(1000);
 	});
 });
 
