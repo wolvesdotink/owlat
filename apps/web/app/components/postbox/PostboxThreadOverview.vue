@@ -99,6 +99,7 @@ const replyLabel = computed(() =>
 		<PostboxThreadExactWording
 			:messages="exactMessages"
 			:secure-class="state.secureClass"
+			:is-truncated="brief?.isExactWordingTruncated === true"
 			@open-conversation="state.setView('conversation')"
 		/>
 

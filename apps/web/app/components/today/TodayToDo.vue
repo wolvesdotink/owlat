@@ -35,7 +35,7 @@ function detail(row: Row): string {
 	return [row.fromName || row.fromAddress, row.subject].filter(Boolean).join(' · ');
 }
 function more(row: Row): string {
-	const chip = briefMoreChip(row.count, row.isCountCapped === true);
+	const chip = briefMoreChip(row.count);
 	return chip ? t(chip.key, { count: chip.count }) : '';
 }
 function href(row: Row): string {

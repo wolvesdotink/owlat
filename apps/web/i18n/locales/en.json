@@ -1061,7 +1061,8 @@
 			"exactWording": {
 				"title": "Read the exact wording",
 				"hint": "the wording matters here, so the original stays open",
-				"secured": "This message is shown with its security check in the conversation."
+				"secured": "This message is shown with its security check in the conversation.",
+				"truncated": "More messages here need their exact wording than this list shows."
 			},
 			"phone": {
 				"more": "Where things stand, activity, people, files"
@@ -1074,7 +1075,6 @@
 				"noReplyNeeded": "no reply needed"
 			},
 			"more": "+{count} more",
-			"moreAtLeast": "{count}+ more",
 			"toast": {
 				"markedDone": "Marked done. You can undo it.",
 				"reminder": "You'll be reminded tomorrow morning."

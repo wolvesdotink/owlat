@@ -446,45 +446,35 @@ export async function readMessageLatest(
 	return out;
 }
 
-/** Flagged sources a brief lists at most ("Read the exact wording"). */
-const EXACT_WORDING_READ = 100;
+/** Flagged sources one brief read lists ("Read the exact wording"). */
+export const EXACT_WORDING_PAGE = 100;
 
 /**
- * The messages of a mail thread whose newest extraction asked for the exact
- * wording to stay in view (legal notices, changed terms, payment details).
- * Read off `by_mail_thread_exact_wording`, so it does not depend on how many
- * other messages the thread has; a flagged row only counts while it is still
- * the newest extraction of its source.
+ * The messages of a mail thread whose CURRENT extraction asked for the exact
+ * wording to stay in view (legal notices, changed terms, payment details). The
+ * reducer keeps the flag on current rows only (`exactWording.ts`), so this is
+ * one indexed page, independent of how many other messages the thread has;
+ * `isTruncated` says the thread has more than the page.
  */
 export async function readExactWording(
 	ctx: Pick<QueryCtx, 'db'>,
 	mailThreadId: Id<'mailThreads'>
-): Promise<{ messageId: string; reason?: ExactWordingReason }[]> {
-	const flagged = await ctx.db
+): Promise<{
+	messages: { messageId: string; reason?: ExactWordingReason }[];
+	isTruncated: boolean;
+}> {
+	const page = await ctx.db
 		.query('messageInterpretations')
 		.withIndex('by_mail_thread_exact_wording', (q) =>
 			q.eq('mailThreadId', mailThreadId).eq('isExactWordingRequired', true)
 		)
-		.take(EXACT_WORDING_READ);
-	const out: { messageId: string; reason?: ExactWordingReason }[] = [];
-	const seen = new Set<string>();
-	for (const row of flagged) {
-		if (row.mode !== 'brief' || row.source.kind !== 'mail' || seen.has(row.sourceKey)) continue;
-		if (row.status !== 'complete' && row.status !== 'partial') continue;
-		const versions = await ctx.db
-			.query('messageInterpretations')
-			.withIndex('by_source_revision', (q) => q.eq('sourceKey', row.sourceKey))
-			.collect();
-		// A newer extraction that read the message again decides; a failed re-run does not.
-		const newest = versions
-			.filter((v) => v.status === 'complete' || v.status === 'partial')
-			.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a), row);
-		if (newest._id !== row._id) continue;
-		seen.add(row.sourceKey);
-		out.push({
+		.take(EXACT_WORDING_PAGE + 1);
+	const messages = page
+		.slice(0, EXACT_WORDING_PAGE)
+		.filter((row) => row.mode === 'brief' && row.source.kind === 'mail' && row.isCurrent !== false)
+		.map((row) => ({
 			messageId: row.source.id,
 			...(row.exactWordingReason ? { reason: row.exactWordingReason } : {}),
-		});
-	}
-	return out;
+		}));
+	return { messages, isTruncated: page.length > EXACT_WORDING_PAGE };
 }

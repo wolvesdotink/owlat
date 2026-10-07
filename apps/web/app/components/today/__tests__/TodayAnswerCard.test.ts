@@ -235,11 +235,9 @@ describe('TodayAnswerCard · brief rows (SPEC §7)', () => {
 		expect(text).not.toContain('Ana wants a refund');
 	});
 
-	it('shows a capped count as a lower bound, never as exact', () => {
-		const capped = { ...top, forYou: 2000, isCapped: true };
-		const text = mountRows([mail('personal', { briefTop: capped })]).text();
-		expect(text).toContain('1999+ more');
-		expect(text).not.toContain('+1999 more');
+	it('shows the exact count of the other open items', () => {
+		const text = mountRows([mail('personal', { briefTop: { ...top, forYou: 2000 } })]).text();
+		expect(text).toContain('+1999 more');
 	});
 
 	it('shows no chip for a single open item', () => {

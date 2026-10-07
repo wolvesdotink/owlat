@@ -274,6 +274,8 @@ export const briefModeViewValidator = v.object({
 			})
 		)
 	),
+	// More such messages than one read lists: the reader says so.
+	isExactWordingTruncated: v.optional(v.boolean()),
 });
 
 /** Team surfaces (actions mode): the "Open for the team" strip's data. */
