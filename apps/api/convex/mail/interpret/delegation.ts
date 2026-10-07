@@ -1,14 +1,15 @@
 /**
  * Whether the sender's fresh text hands a forwarded message to us (plan §11:
- * "can you handle the below?"). Grounding (`./ground.ts`) lets an item rest on
- * forwarded text only when the reading for that forwarded segment is
- * `delegated`; otherwise forwarded asks stay context.
+ * "can you handle the below?"). Context only: grounding (`./ground.ts`) keeps
+ * every item that rests only on forwarded text as a proposal ("Check this")
+ * whatever this says, and uses a `delegated` reading to say why it is shown
+ * ("Mara asked you to handle this"). It never authorizes tracking.
  *
  * Each forwarded segment is read against the fresh text that introduces it:
  * the fresh segments since the previous forward. A forward nested in another
  * one (no fresh text of its own) inherits the outer forward's reading.
  *
- * Only positive evidence authorizes. The fresh text delegates when one of its
+ * Only positive evidence reads `delegated`. The fresh text delegates when one of its
  * clauses is a request to the recipient (`can you`, `please`, `kannst du`,
  * `bitte`, `peux-tu`, an imperative) whose handover points at the forward
  * ("handle the below", "take care of this one", "kümmer dich darum", "t'en
@@ -17,8 +18,7 @@
  * "Jonas will handle this", "don't handle this"), and no information marker
  * ("FYI", "no action needed", "zur Info", "pour info"). Anything else that
  * talks about handling (a handover verb aimed elsewhere, someone else handling
- * it, a negated or contradicted handover) is `ambiguous`: grounding rejects
- * the item and calls coverage incomplete. Only text with no handover language
+ * it, a negated or contradicted handover) is `ambiguous`. Only text with no handover language
  * at all reads `none`. Negation binds to its own clause, so "Can you handle
  * the below? Do not reply to the other thread." still delegates.
  *
@@ -51,16 +51,38 @@ const HANDOVER = [
 	/(?:\bt'en|\bt’en|\bvous en|\bs'en|\bs’en) (?:occuper|charger)\b/i,
 	/\b(?:occupe|occupez)[- ](?:toi|vous)[- ]en\b|\boccupe-t[’']en\b/i,
 ];
-/** A clause asking the recipient: a question to you/du/Sie/vous, `please`, or an imperative. */
-const DIRECTED = [
-	/\b(?:can|could|would|will) you\b/i,
-	/\b(?:please|kindly)\b/i,
-	/\b(?:over to you|for you to)\b/i,
-	/^(?:(?:please|kindly|bitte)\s+)?(?:handle|take care|deal with|look|take over|action|sort|follow up|reply|respond|answer|own|kümmer(?:e)?\s+dich|übernimm|erledige|kläre|beantworte|occupe|occupez|charge|chargez)\b/i,
-	/\b(?:kannst|könntest|würdest|magst|willst|kümmerst|übernimmst) du\b/i,
-	/\b(?:können|könnten|würden) Sie\b/,
-	/\bbitte\b/i,
-	/\b(?:peux|pourrais)[- ]tu\b|\b(?:pouvez|pourriez)[- ]vous\b|\bmerci de\b|\bs['’]il (?:te|vous) pla[iî]t\b/i,
+/** English handover verbs in the base form a request uses. */
+const EN_BASE =
+	'(?:handle|take care of|deal with|look (?:at|into)|take over|action|sort out|follow up on|reply to|respond to|answer|own)';
+/**
+ * A request to the recipient whose verb IS the handover: "can you handle the
+ * below", "please take care of this one", "Handle this please", "kannst du
+ * dich darum kümmern", "peux-tu t'en occuper". The verb must follow the
+ * request opener directly, so "Please note that I will handle this" or "Can you
+ * confirm that Jonas will handle this?" or "Could you avoid handling this?" are
+ * not requests to hand anything over.
+ */
+const DIRECTED_HANDOVER = [
+	new RegExp(`^(?:(?:please|kindly)\\s+)?${EN_BASE}\\s+${DEICTIC}\\b`, 'i'),
+	new RegExp(
+		`\\b(?:can|could|would|will) you(?: please| kindly)?\\s+${EN_BASE}\\s+${DEICTIC}\\b`,
+		'i'
+	),
+	new RegExp(`\\b(?:please|kindly)\\s+${EN_BASE}\\s+${DEICTIC}\\b`, 'i'),
+	/\b(?:can|could|would|will) you(?: please)?\s+(?:handle|take over|action|sort)\s*[?.!]*\s*$/i,
+	/^(?:please\s+)?(?:handle|take over)(?:,?\s+please)?\s*[?.!]*\s*$/i,
+	/\b(?:over to you|for you to (?:handle|action|answer))\b/i,
+	/\b(?:kannst|könntest|würdest) du (?:dich )?(?:bitte )?(?:darum|drum) kümmern\b/i,
+	/\b(?:kannst|könntest|würdest) du (?:das|dies) (?:bitte )?(?:übernehmen|erledigen|beantworten|klären)\b/i,
+	/\b(?:können|könnten|würden) Sie sich (?:bitte )?(?:darum|drum) kümmern\b/,
+	/^(?:bitte\s+)?kümmer(?:e)? dich (?:bitte )?(?:darum|drum)\b/i,
+	/^bitte (?:übernehmen|erledigen)\b/i,
+	/^(?:bitte\s+)?(?:übernimm|erledige) (?:das|dies)\b/i,
+	/\b(?:übernimmst du das|kümmerst du dich (?:darum|drum))\b/i,
+	/\b(?:peux|pourrais)[- ]tu t['’]en (?:occuper|charger)\b/i,
+	/\b(?:pouvez|pourriez)[- ]vous vous en (?:occuper|charger)\b/i,
+	/\bmerci de (?:t['’]en|vous en) (?:occuper|charger)\b/i,
+	/^(?:occupe-t['’]en|occupe-toi en|occupez-vous en|charge-t['’]en)\b/i,
 ];
 const NEGATION =
 	/(?:\bnot\b|n['’]t\b|\bnever\b|\bno need\b|\bnicht\b|\bkein\w*|\bnie\b|\bpas\b|\bjamais\b|\bne\s|\bn['’](?=\p{L}))/iu;
@@ -90,11 +112,12 @@ function readFresh(text: string): {
 		}
 		if (!handover) continue;
 		const trimmed = body.trimStart();
-		const directed = DIRECTED.some((pattern) => pattern.test(trimmed));
+		const directed = DIRECTED_HANDOVER.some((pattern) => pattern.test(trimmed));
 		if (directed && !NEGATION.test(body)) {
 			positive ??= { index: clause.index + handover.index, length: handover[0].length };
 		} else {
-			// Someone else handles it, or it is negated: the forward's status is unclear.
+			// Someone else handles it, it is negated, or the handover is not what
+			// the recipient is asked to do: the forward's status is unclear.
 			contradicted = true;
 		}
 	}

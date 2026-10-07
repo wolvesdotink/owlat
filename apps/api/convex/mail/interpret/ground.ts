@@ -8,13 +8,20 @@
  *     folding, whitespace collapse) in the segment it names; one failed quote
  *     rejects the claim it supports and marks coverage incomplete;
  *   - a claim with no quote is dropped (counted as unsupported);
- *   - items must quote the sender's fresh text, or a forwarded message that
- *     the fresh text introducing it hands to us ("can you handle the below?",
- *     read per forward by `./delegation.ts`); asks that sit only in quoted
- *     history, a forward sent as information, a signature or a disclaimer stay
- *     context. A forward whose handover is unclear ("handle the meeting; the
- *     invoice below is FYI") rejects the item and marks coverage incomplete.
- *     Transitions and latest lines need fresh or forwarded text;
+ *   - an item is TRACKED only when a quote comes from the sender's fresh text.
+ *     An item that rests only on forwarded text is never authorized by text
+ *     analysis: it is kept as a proposal (`proposal.reason: 'forwarded'`, the
+ *     reducer stores `verify: 'proposal'`, shown as "Check this" until the
+ *     user tracks it), whatever the fresh text says. Delegation detection
+ *     (`./delegation.ts`) only adds context (`viaDelegation`, `delegatedBy`:
+ *     "Mara asked you to handle this") and never upgrades it;
+ *   - an item that rests only on a signature or a disclaimer is never dropped
+ *     for it either, since that classification is a heuristic: it is kept as a
+ *     proposal too (`'signature'` / `'disclaimer'`). Asks only in quoted history
+ *     are rejected (`not_fresh`): their own message carries them;
+ *   - transitions need fresh text to apply; one that rests only on forwarded
+ *     text is kept as a proposal (the pipeline marks it unverified, so it
+ *     cannot close anything). Latest lines need fresh or forwarded text;
  *     facts may come from anything but a disclaimer;
  *   - every derived string (assertion, display text, options, latest lines,
  *     fact values) is screened with `detectInjection` and
@@ -101,7 +108,12 @@ export interface GroundedClaim<T> {
 	flags: ScreenFlag[];
 	/** A screen flagged a derived string: restrict automation, show the line marked. */
 	needsReview: boolean;
-	/** The item rests on forwarded text that the fresh part delegated to us. */
+	/**
+	 * Not to be tracked on this evidence: shown as a proposal ("Check this")
+	 * that the user confirms. Set for items and transitions only.
+	 */
+	proposal?: { reason: 'forwarded' | 'signature' | 'disclaimer' };
+	/** Context only: the fresh text asked us to handle the forward this rests on. */
 	viaDelegation?: true;
 	/** The fresh handover phrase that delegated it, when one span holds it. */
 	delegatedBy?: { segmentId: string; start: number; end: number };
@@ -120,9 +132,7 @@ export type CoverageGap =
 	| 'model_uncertain'
 	| 'overflow'
 	| 'segmentation_uncertain'
-	| 'unread_segments'
-	/** An item rests on a forward whose handover the fresh text leaves unclear. */
-	| 'ambiguous_delegation';
+	| 'unread_segments';
 
 export interface GroundingResult<O extends GroundableOutput> {
 	items: GroundedClaim<O['items'][number]>[];
@@ -131,7 +141,14 @@ export interface GroundingResult<O extends GroundableOutput> {
 	latest?: Record<string, GroundedClaim<NonNullable<O['latest']>[string][number]>[]>;
 	facts?: GroundedClaim<NonNullable<O['facts']>[number]>[];
 	rejected: RejectedClaim[];
-	counts: { proposed: number; accepted: number; rejected: number; flagged: number };
+	/** `proposals`: accepted claims kept as proposals (see `GroundedClaim.proposal`). */
+	counts: {
+		proposed: number;
+		accepted: number;
+		rejected: number;
+		flagged: number;
+		proposals: number;
+	};
 	coverage: { complete: boolean; gaps: CoverageGap[] };
 }
 
@@ -146,9 +163,11 @@ export interface GroundOptions {
 	delegates?: boolean;
 }
 
-/** Whether a claim's evidence may carry it, and the handover that delegated it. */
+/** Whether a claim's evidence may carry it, as tracked or as a proposal, and its context. */
 interface Carry {
-	verdict: 'yes' | 'delegated' | 'ambiguous' | 'no';
+	verdict: 'yes' | 'no';
+	proposal?: 'forwarded' | 'signature' | 'disclaimer';
+	delegated?: true;
 	by?: Delegation['evidence'];
 }
 
@@ -187,6 +206,7 @@ export function groundProposals<O extends GroundableOutput>(
 	const gaps = new Set<CoverageGap>();
 	let proposed = 0;
 	let flagged = 0;
+	let proposals = 0;
 
 	const ground = <T extends Quoted>(
 		claim: T,
@@ -227,8 +247,8 @@ export function groundProposals<O extends GroundableOutput>(
 			return reject('quote_failed', failures);
 		}
 		const carried = carries(evidence);
-		if (carried.verdict === 'ambiguous') gaps.add('ambiguous_delegation');
-		if (carried.verdict === 'no' || carried.verdict === 'ambiguous') return reject('not_fresh');
+		if (carried.verdict === 'no') return reject('not_fresh');
+		if (carried.proposal) proposals++;
 		const strings: [string, string][] = [];
 		derivedStrings(claim, '', strings);
 		const flags: ScreenFlag[] = [];
@@ -242,21 +262,38 @@ export function groundProposals<O extends GroundableOutput>(
 			evidence,
 			flags,
 			needsReview: flags.length > 0,
-			...(carried.verdict === 'delegated' ? { viaDelegation: true as const } : {}),
+			...(carried.proposal ? { proposal: { reason: carried.proposal } } : {}),
+			...(carried.delegated ? { viaDelegation: true as const } : {}),
 			...(carried.by ? { delegatedBy: carried.by } : {}),
 		};
 	};
 
-	const itemCarrier = (evidence: GroundedEvidence[]): Carry => {
-		if (evidence.some((e) => e.segmentKind === 'fresh')) return { verdict: 'yes' };
-		const forwarded = evidence
+	const has = (evidence: GroundedEvidence[], kind: SegmentKind) =>
+		evidence.some((e) => e.segmentKind === kind);
+	/** Forwarded evidence: a proposal, with the delegation reading as context. */
+	const forwardedProposal = (evidence: GroundedEvidence[]): Carry => {
+		const delegated = evidence
 			.filter((e) => e.segmentKind === 'forwarded')
-			.map((e) => delegationOf(e.segmentId));
-		const delegated = forwarded.find((d) => d.reading === 'delegated');
-		if (delegated) {
-			return { verdict: 'delegated', ...(delegated.evidence ? { by: delegated.evidence } : {}) };
-		}
-		return { verdict: forwarded.some((d) => d.reading === 'ambiguous') ? 'ambiguous' : 'no' };
+			.map((e) => delegationOf(e.segmentId))
+			.find((d) => d.reading === 'delegated');
+		return {
+			verdict: 'yes',
+			proposal: 'forwarded',
+			...(delegated ? { delegated: true } : {}),
+			...(delegated?.evidence ? { by: delegated.evidence } : {}),
+		};
+	};
+	const itemCarrier = (evidence: GroundedEvidence[]): Carry => {
+		if (has(evidence, 'fresh')) return { verdict: 'yes' };
+		if (has(evidence, 'forwarded')) return forwardedProposal(evidence);
+		if (has(evidence, 'signature')) return { verdict: 'yes', proposal: 'signature' };
+		if (has(evidence, 'disclaimer')) return { verdict: 'yes', proposal: 'disclaimer' };
+		return { verdict: 'no' };
+	};
+	const transitionCarrier = (evidence: GroundedEvidence[]): Carry => {
+		if (has(evidence, 'fresh')) return { verdict: 'yes' };
+		if (has(evidence, 'forwarded')) return forwardedProposal(evidence);
+		return { verdict: 'no' };
 	};
 	const anyKind =
 		(allowed: (kind: SegmentKind) => boolean) =>
@@ -270,7 +307,7 @@ export function groundProposals<O extends GroundableOutput>(
 
 	const items = keep(output.items.map((c, i) => ground(c, 'item', i, itemCarrier)));
 	const transitions = keep(
-		output.transitions.map((c, i) => ground(c, 'transition', i, freshOrForwarded))
+		output.transitions.map((c, i) => ground(c, 'transition', i, transitionCarrier))
 	);
 	let latest: GroundingResult<O>['latest'];
 	if (output.latest) {
@@ -295,7 +332,13 @@ export function groundProposals<O extends GroundableOutput>(
 		...(latest ? { latest } : {}),
 		...(facts ? { facts } : {}),
 		rejected,
-		counts: { proposed, accepted: proposed - rejected.length, rejected: rejected.length, flagged },
+		counts: {
+			proposed,
+			accepted: proposed - rejected.length,
+			rejected: rejected.length,
+			flagged,
+			proposals,
+		},
 		coverage: { complete: gaps.size === 0, gaps: [...gaps] },
 	};
 }
