@@ -7,6 +7,7 @@ import type * as inbox_followUps from '../inbox/followUps.js';
 import type * as lib_counters from '../lib/counters.js';
 import type * as lib_listingCounters from '../lib/listingCounters.js';
 import type * as lib_rowCounters from '../lib/rowCounters.js';
+import type * as mail_interpret___eval___liveModel from '../mail/interpret/__eval__/liveModel.js';
 import type * as mail_interpret_activity from '../mail/interpret/activity.js';
 import type * as mail_interpret_brief from '../mail/interpret/brief.js';
 import type * as mail_interpret_briefProject from '../mail/interpret/briefProject.js';
@@ -1539,6 +1540,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/counters': typeof lib_counters;
 	'lib/listingCounters': typeof lib_listingCounters;
 	'lib/rowCounters': typeof lib_rowCounters;
+	'mail/interpret/__eval__/liveModel': typeof mail_interpret___eval___liveModel;
 	'mail/interpret/activity': typeof mail_interpret_activity;
 	'mail/interpret/brief': typeof mail_interpret_brief;
 	'mail/interpret/briefProject': typeof mail_interpret_briefProject;

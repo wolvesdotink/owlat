@@ -42,7 +42,12 @@ import {
 	sourceManifestValidator,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
-import { INTERPRET_EXTRACTOR_VERSION, interpretOutputSchemaFor, type InterpretOutput } from './schema';
+import {
+	INTERPRET_EXTRACTOR_VERSION,
+	interpretOutputSchema,
+	interpretOutputSchemaFor,
+	type InterpretOutput,
+} from './schema';
 import { buildInterpretPrompt, renderSegments } from './prompt';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
@@ -270,7 +275,8 @@ export async function runInterpretation(
 			// A lost ledger row under-counts; dropping the interpretation over it would be worse.
 		}
 
-		const output = clampOutput(object as InterpretOutput);
+		// Validate with the lenient parse schema (the model schema only shapes the request).
+		const output = clampOutput(interpretOutputSchema.parse(object) as InterpretOutput);
 		const grounding = groundProposals(output, segmented);
 
 		const itemText = new Map(loaded.openItems.map((i) => [i.id, i.assertion]));
