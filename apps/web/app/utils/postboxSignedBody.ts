@@ -1,22 +1,25 @@
 /**
- * What the reader shows of a message whose signature verdict speaks for its
- * TEXT part, and which verdict may stand beside it.
+ * What the reader shows of a signed message, and whether its signature
+ * verdict may stand beside it.
  *
- * An inline clearsigned body (RFC 4880 §7) signs one armor block in the
- * text/plain part. The ingest verifier checks that block and nothing else
- * (`@owlat/shared/clearsignedBody`): not text around it, not an HTML
- * alternative. So the reader shows that block alone, and the verdict stands
- * only beside it. Two things used to break that:
- *   - a text body over the inline threshold lives in storage, so the inline
- *     classification saw no text, found no block, and the whole body rendered;
- *   - with the text in storage, an HTML alternative rendered instead.
- * The classification therefore runs on the text body as loaded, inline or
- * from storage, and the verdict is held back until that text is here.
+ * The verdict says what it covers (`InboundSignatureInfo.scope`, recorded by
+ * the ingest verifier):
+ *   - `'clearsigned'`: one inline armor block (RFC 4880 §7) in the text/plain
+ *     body, checked by `@owlat/shared/clearsignedBody`. Not the text around it
+ *     and not an HTML alternative. The reader shows that block alone, from the
+ *     text body as loaded (inline, or from storage when it is over the inline
+ *     threshold), and holds the verdict back until that text is here.
+ *   - `'mime'`: the first part of a root RFC 3156 `multipart/signed` with
+ *     exactly two parts (`@owlat/mail-canon`'s extractor rejects anything
+ *     else), which holds every body part the reader renders. The body renders
+ *     as it always did, verdict beside it.
+ * The attachment list cannot tell the two apart: a nameless signature part is
+ * no attachment, and an unrelated `.asc` attachment is one.
  *
- * PGP/MIME (`multipart/signed`) and S/MIME are not this path: their structure
- * comes from the attachment list and their body renders as it always did.
- * A verified PGP/MIME verdict requires `multipart/signed` at the message root,
- * whose signed first part holds every body part the reader shows.
+ * Rows verified before the scope was recorded fall back to the attachment
+ * list, and where that and the text disagree (a `.asc` attachment beside a
+ * clearsigned block) the verdict is withheld: the reader cannot know which of
+ * the two it is about.
  *
  * Pure and module scope; the reader card supplies the loaded text.
  */
@@ -24,40 +27,35 @@ import {
 	classifySecureMessage,
 	extractClearsignedBlock,
 	extractClearsignedText,
+	isEncryptedClass,
 	type SecureMessageClass,
 } from '@owlat/shared/secureMessage';
 
 export type SignedBodyView =
-	/** Not a text-part signature: render as the host classified it. */
+	/** Render as the host classified it, verdict as given. */
 	| { kind: 'passthrough' }
-	/** A text-part verdict, but the text body is not loaded yet. */
+	/** The verdict needs the text body, which is not loaded yet. */
 	| { kind: 'loading' }
 	/**
 	 * Show `text`, the signed block, and nothing else. `omitsContent` says the
 	 * message holds more (text outside the block, or an HTML alternative).
 	 */
 	| { kind: 'signed'; text: string; omitsContent: boolean }
-	/** A verdict with no signed block in the text to tie it to: render the body, drop the verdict. */
-	| { kind: 'unbound' };
+	/** Render the body, but without the verdict: nothing shown can be tied to it. */
+	| { kind: 'withheld' };
+
+/** The verdict's scope; `'unrecorded'` on a row verified before it was stored. */
+export type SignedBodyScope = 'clearsigned' | 'mime' | 'unrecorded';
 
 export interface SignedBodyInput {
 	/** The host's structural class (attachments plus any inline text body). */
 	secureClass: SecureMessageClass;
-	/** The message carries an inbound signature verdict (any status). */
-	hasVerdict: boolean;
+	/** The message's signature verdict scope, or null when it has no verdict. */
+	scope: SignedBodyScope | null;
 	/** The text body as loaded; undefined while it is still on its way, null when there is none. */
 	text: string | null | undefined;
 	/** The message has an HTML body beside the text. */
 	hasHtml: boolean;
-}
-
-/**
- * Whether a message's signature verdict, if any, is about its text part: the
- * attachment list shows no MIME signature or encryption structure. Only these
- * messages need their text body to decide what may be shown.
- */
-export function isTextPartSignature(secureClass: SecureMessageClass): boolean {
-	return secureClass === 'none' || secureClass === 'pgp-clearsigned';
 }
 
 /** Whether `text` holds anything beyond its clearsigned armor block. */
@@ -67,21 +65,45 @@ function hasTextOutsideBlock(text: string): boolean {
 	return text.replace(/\r\n/g, '\n').replace(block, '').trim() !== '';
 }
 
-export function resolveSignedBodyView(input: SignedBodyInput): SignedBodyView {
-	if (!isTextPartSignature(input.secureClass)) return { kind: 'passthrough' };
-	// No verdict and no block found in an inline text: ordinary mail, no claim.
-	if (!input.hasVerdict && input.secureClass === 'none') return { kind: 'passthrough' };
-	if (input.text === undefined) return { kind: 'loading' };
+/** The text's own clearsigned block, as the reader shows it, or null. */
+function signedBlockOf(text: string): string | null {
+	return classifySecureMessage({ textBody: text }) === 'pgp-clearsigned'
+		? extractClearsignedText(text)
+		: null;
+}
 
+/** The signed block alone, or the verdict withheld when the text has none. */
+function signedView(text: string, hasHtml: boolean): SignedBodyView {
+	const signed = signedBlockOf(text);
+	if (signed === null) return { kind: 'withheld' };
+	return { kind: 'signed', text: signed, omitsContent: hasHtml || hasTextOutsideBlock(text) };
+}
+
+export function resolveSignedBodyView(input: SignedBodyInput): SignedBodyView {
+	const { secureClass, scope, hasHtml } = input;
+	if (scope === 'mime') return { kind: 'passthrough' };
+	if (scope === null) {
+		// No verdict: an inline clearsigned body still shows only its block.
+		if (secureClass !== 'pgp-clearsigned') return { kind: 'passthrough' };
+		return input.text ? signedView(input.text, hasHtml) : { kind: 'passthrough' };
+	}
+	// An unrecorded scope under a structure no clearsigned verdict comes with.
+	if (scope === 'unrecorded' && (isEncryptedClass(secureClass) || secureClass === 'smime-signed')) {
+		return { kind: 'passthrough' };
+	}
+	if (input.text === undefined) return { kind: 'loading' };
 	const text = input.text ?? '';
-	const signed =
-		classifySecureMessage({ textBody: text }) === 'pgp-clearsigned'
-			? extractClearsignedText(text)
-			: null;
-	if (signed === null) return input.hasVerdict ? { kind: 'unbound' } : { kind: 'passthrough' };
-	return {
-		kind: 'signed',
-		text: signed,
-		omitsContent: input.hasHtml || hasTextOutsideBlock(text),
-	};
+	if (scope === 'unrecorded' && secureClass === 'pgp-signed') {
+		// A signature attachment: PGP/MIME, unless the text carries a block too.
+		return signedBlockOf(text) === null ? { kind: 'passthrough' } : { kind: 'withheld' };
+	}
+	return signedView(text, hasHtml);
+}
+
+/** The scope {@link resolveSignedBodyView} reads off a message's verdict. */
+export function signedBodyScopeOf(
+	info: { isSigned?: boolean; scope?: 'clearsigned' | 'mime' } | undefined
+): SignedBodyScope | null {
+	if (info?.isSigned !== true) return null;
+	return info.scope ?? 'unrecorded';
 }

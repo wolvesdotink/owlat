@@ -5671,6 +5671,7 @@
 				"toastOn": "Two-way sync is on. Both sides are lined up on the next sync."
 			},
 			"postboxReaderMessage": {
+				"loadingSignedText": "Loading the signed text…",
 				"showDetails": "Show recipients and details"
 			},
 			"postboxComposerEnvelopeLine": {

@@ -1,8 +1,8 @@
 import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import {
-	isTextPartSignature,
 	resolveSignedBodyView,
+	signedBodyScopeOf,
 	type SignedBodyView,
 } from '~/utils/postboxSignedBody';
 import { loadPostboxTextBody } from './postboxBodyResolver';
@@ -18,9 +18,9 @@ export interface SignedBodyMessage {
 
 /**
  * The reader card's side of {@link resolveSignedBodyView}: it loads the text
- * body a text-part signature verdict needs when the row has none inline (a
- * body over the inline threshold), and hands the card what to render and which
- * verdict, class and body text the trust chip and security badge may use.
+ * body a signature verdict needs when the row has none inline (a body over the
+ * inline threshold), and hands the card what to render and which verdict,
+ * class and body text the trust chip and security badge may use.
  *
  * Runs only while the card is expanded: a collapsed card renders no body.
  */
@@ -33,17 +33,25 @@ export function usePostboxSignedBody(source: {
 	const fetched = ref<{ text: string | null; hasHtmlBlob: boolean } | null>(null);
 
 	const inlineText = computed(() => source.message().textBodyInline || undefined);
-	const hasVerdict = computed(() => source.message().inboundSignatureInfo?.isSigned === true);
+	const scope = computed(() => signedBodyScopeOf(source.message().inboundSignatureInfo));
+	const hasHtml = computed(() => {
+		const m = source.message();
+		return !!(m.htmlBodyInline || m.htmlBodyStorageId || fetched.value?.hasHtmlBlob);
+	});
 
-	// A text-part verdict with no inline text: the text lives in storage (or the
+	// The verdict needs the text and none is inline: it lives in storage (or the
 	// inline answer is still on its way, which needs no fetch of its own).
 	const needsTextFetch = computed(
 		() =>
 			source.active() &&
-			hasVerdict.value &&
-			isTextPartSignature(source.secureClass()) &&
 			!inlineText.value &&
-			source.message().bodyPending !== true
+			source.message().bodyPending !== true &&
+			resolveSignedBodyView({
+				secureClass: source.secureClass(),
+				scope: scope.value,
+				text: undefined,
+				hasHtml: false,
+			}).kind === 'loading'
 	);
 
 	let requestSequence = 0;
@@ -70,9 +78,9 @@ export function usePostboxSignedBody(source: {
 		const text = inlineText.value ?? (m.bodyPending ? undefined : fetched.value?.text);
 		return resolveSignedBodyView({
 			secureClass: source.secureClass(),
-			hasVerdict: hasVerdict.value,
+			scope: scope.value,
 			text,
-			hasHtml: !!(m.htmlBodyInline || m.htmlBodyStorageId || fetched.value?.hasHtmlBlob),
+			hasHtml: hasHtml.value,
 		});
 	});
 
@@ -88,9 +96,9 @@ export function usePostboxSignedBody(source: {
 			if (kind.value === 'loading') return 'none';
 			return source.secureClass();
 		}),
-		/** The verdict stands only beside the block it describes. */
+		/** Withheld while the text loads, and when nothing shown can be tied to it. */
 		signature: computed(() =>
-			kind.value === 'loading' || kind.value === 'unbound'
+			kind.value === 'loading' || kind.value === 'withheld'
 				? undefined
 				: source.message().inboundSignatureInfo
 		),

@@ -361,7 +361,15 @@ const renderToggleLabel = computed(() =>
 
 		<!-- A signature verdict about a text body that is still loading: nothing
 		     renders until the signed block can be picked out of it. -->
-		<div v-if="signedView.kind === 'loading'" class="mt-4" data-testid="signed-body-loading">
+		<div
+			v-if="signedView.kind === 'loading'"
+			class="mt-4"
+			aria-busy="true"
+			data-testid="signed-body-loading"
+		>
+			<p class="sr-only" role="status">
+				{{ t('components.postbox.postboxReaderMessage.loadingSignedText') }}
+			</p>
 			<PostboxReaderSkeleton :with-header="false" />
 		</div>
 		<!-- Ciphertext or clearsigned text: the security badge IS the readable half

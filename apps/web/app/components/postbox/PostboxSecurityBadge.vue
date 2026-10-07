@@ -286,8 +286,9 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 			}}</span>
 		</div>
 
-		<!-- Clearsigned: show the signed block's cleartext, and only that. -->
-		<template v-if="clearsignedText && !sealedBadge">
+		<!-- Clearsigned: show the signed block's cleartext, and only that. A block
+		     can sign nothing but whitespace, so the note must not depend on it. -->
+		<template v-if="clearsignedText !== null && !sealedBadge">
 			<pre
 				class="mt-2 text-sm whitespace-pre-wrap font-sans text-text-primary"
 				data-testid="clearsigned-text"

@@ -5671,6 +5671,7 @@
 				"toastOn": "Die Synchronisierung in beide Richtungen ist an. Beide Seiten werden beim nächsten Abgleich angeglichen."
 			},
 			"postboxReaderMessage": {
+				"loadingSignedText": "Signierter Text wird geladen…",
 				"showDetails": "Empfänger und Details anzeigen"
 			},
 			"postboxComposerEnvelopeLine": {

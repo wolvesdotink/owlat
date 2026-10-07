@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTextPartSignature, resolveSignedBodyView } from '../postboxSignedBody';
+import { resolveSignedBodyView, signedBodyScopeOf } from '../postboxSignedBody';
 
 const BLOCK = [
 	'-----BEGIN PGP SIGNED MESSAGE-----',
@@ -16,7 +16,7 @@ const BLOCK = [
 const view = (input: Partial<Parameters<typeof resolveSignedBodyView>[0]>) =>
 	resolveSignedBodyView({
 		secureClass: 'none',
-		hasVerdict: true,
+		scope: 'clearsigned',
 		text: BLOCK,
 		hasHtml: false,
 		...input,
@@ -38,33 +38,68 @@ describe('resolveSignedBodyView', () => {
 		expect(view({ hasHtml: true })).toMatchObject({ omitsContent: true });
 	});
 
-	it('is loading while a text-part verdict waits for its text', () => {
+	it('keeps a whitespace-only block, which can still verify, as a signed view', () => {
+		const blank = BLOCK.replace('- -- signed line\nsecond line', '   ');
+		expect(view({ text: blank, hasHtml: true })).toEqual({
+			kind: 'signed',
+			text: '',
+			omitsContent: true,
+		});
+	});
+
+	it('is loading while a clearsigned verdict waits for its text', () => {
 		expect(view({ text: undefined })).toEqual({ kind: 'loading' });
 	});
 
-	it('drops a verdict the text holds no signed block for', () => {
-		expect(view({ text: 'plain text' })).toEqual({ kind: 'unbound' });
-		expect(view({ text: null })).toEqual({ kind: 'unbound' });
+	it('withholds a clearsigned verdict the text holds no block for', () => {
+		expect(view({ text: 'plain text' })).toEqual({ kind: 'withheld' });
+		expect(view({ text: null })).toEqual({ kind: 'withheld' });
 		// A quoted block is not this message's own.
-		expect(view({ text: BLOCK.replace(/^/gm, '> ') })).toEqual({ kind: 'unbound' });
+		expect(view({ text: BLOCK.replace(/^/gm, '> ') })).toEqual({ kind: 'withheld' });
 	});
 
-	it('passes MIME-structured and unsigned mail through', () => {
-		expect(view({ secureClass: 'pgp-signed', text: undefined })).toEqual({ kind: 'passthrough' });
-		expect(view({ secureClass: 'smime-signed' })).toEqual({ kind: 'passthrough' });
-		expect(view({ secureClass: 'pgp-encrypted' })).toEqual({ kind: 'passthrough' });
-		expect(view({ hasVerdict: false, text: undefined })).toEqual({ kind: 'passthrough' });
+	it('reads the scope, not the attachment list', () => {
+		// An unrelated .asc attachment makes the host say pgp-signed.
+		expect(view({ secureClass: 'pgp-signed' })).toMatchObject({ kind: 'signed' });
+		// A nameless MIME signature part leaves the host saying none.
+		expect(view({ scope: 'mime', text: undefined })).toEqual({ kind: 'passthrough' });
 	});
 
-	it('keeps an unverified inline clearsigned body on its signed block', () => {
-		expect(view({ secureClass: 'pgp-clearsigned', hasVerdict: false })).toMatchObject({
+	it('passes mail without a verdict through, except an inline clearsigned block', () => {
+		expect(view({ scope: null, text: undefined })).toEqual({ kind: 'passthrough' });
+		expect(view({ scope: null, secureClass: 'pgp-signed' })).toEqual({ kind: 'passthrough' });
+		expect(view({ scope: null, secureClass: 'pgp-clearsigned' })).toMatchObject({
 			kind: 'signed',
 		});
 	});
 
-	it('names which classes carry a text-part verdict', () => {
-		expect(isTextPartSignature('none')).toBe(true);
-		expect(isTextPartSignature('pgp-clearsigned')).toBe(true);
-		expect(isTextPartSignature('pgp-signed')).toBe(false);
+	describe('rows verified before the scope was recorded', () => {
+		const legacy = (input: Partial<Parameters<typeof resolveSignedBodyView>[0]>) =>
+			view({ scope: 'unrecorded', ...input });
+
+		it('read a .asc attachment as PGP/MIME only when the text has no block', () => {
+			expect(legacy({ secureClass: 'pgp-signed', text: undefined })).toEqual({
+				kind: 'loading',
+			});
+			expect(legacy({ secureClass: 'pgp-signed', text: 'signed text' })).toEqual({
+				kind: 'passthrough',
+			});
+			expect(legacy({ secureClass: 'pgp-signed' })).toEqual({ kind: 'withheld' });
+		});
+
+		it('read the text body otherwise, and leave encrypted and S/MIME mail alone', () => {
+			expect(legacy({})).toMatchObject({ kind: 'signed' });
+			expect(legacy({ text: 'signed text' })).toEqual({ kind: 'withheld' });
+			expect(legacy({ secureClass: 'pgp-encrypted' })).toEqual({ kind: 'passthrough' });
+			expect(legacy({ secureClass: 'smime-signed' })).toEqual({ kind: 'passthrough' });
+		});
+	});
+});
+
+describe('signedBodyScopeOf', () => {
+	it('names the recorded scope, or marks it unrecorded', () => {
+		expect(signedBodyScopeOf(undefined)).toBeNull();
+		expect(signedBodyScopeOf({ isSigned: true })).toBe('unrecorded');
+		expect(signedBodyScopeOf({ isSigned: true, scope: 'mime' })).toBe('mime');
 	});
 });

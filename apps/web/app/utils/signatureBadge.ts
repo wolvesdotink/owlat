@@ -43,6 +43,12 @@ export type InboundSignatureInfo = {
 	signerFingerprint?: string;
 	keySource: InboundSignatureKeySource;
 	failure?: string;
+	/**
+	 * What the verdict covers: the inline clearsigned block of the text body, or
+	 * a root `multipart/signed` first part. Absent on rows verified before it
+	 * was recorded (see `utils/postboxSignedBody.ts` for how those are read).
+	 */
+	scope?: 'clearsigned' | 'mime';
 };
 
 export type SignatureBadgeState = 'verified' | 'invalid' | 'keyNotFound' | 'keyChanged';
