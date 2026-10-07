@@ -29,7 +29,11 @@ const MenuStub = defineComponent({
 	setup:
 		(props, { slots }) =>
 		() =>
-			h('div', { 'data-testid': 'item-menu', 'aria-label': props.label }, slots['default']?.({ close: () => {} })),
+			h(
+				'div',
+				{ 'data-testid': 'item-menu', 'aria-label': props.label },
+				slots['default']?.({ close: () => {} })
+			),
 });
 
 const SOURCES: Record<string, { name: string; email: string; at: number }> = {
@@ -56,7 +60,15 @@ describe('ThreadBrief', () => {
 	it('shows the blocks, each line with a marker that cites it', async () => {
 		const w = mountBrief();
 		const text = w.text();
-		for (const heading of ['Latest update', 'Where things stand', 'For you', 'Waiting on others', 'Activity', 'People', 'Files']) {
+		for (const heading of [
+			'Latest update',
+			'Where things stand',
+			'For you',
+			'Waiting on others',
+			'Activity',
+			'People',
+			'Files',
+		]) {
 			expect(text).toContain(heading);
 		}
 		const marker = w.findAll('[data-testid="evidence-marker"]')[0]!;
@@ -77,9 +89,29 @@ describe('ThreadBrief', () => {
 	it('draws item states, due dates and the primary reaction', async () => {
 		const brief = briefView({
 			forYou: [
-				item({ id: 'a', text: 'Approve the quote', intent: 'decision', facets: ['payment'], primaryReaction: 'replyWithStance', due: { phrase: 'Fri', at: T0 + 86_400_000 * 10, isAmbiguous: false } }),
-				item({ id: 'b', text: 'Make the design changes', disposition: 'accepted', stateKey: 'answeredStillToDo' }),
-				item({ id: 'c', text: 'Send design v2', intent: 'promise', status: 'done', completion: 'asserted', stateKey: 'markedDoneByYou', primaryReaction: 'markDone' }),
+				item({
+					id: 'a',
+					text: 'Approve the quote',
+					intent: 'decision',
+					facets: ['payment'],
+					primaryReaction: 'replyWithStance',
+					due: { phrase: 'Fri', at: T0 + 86_400_000 * 10, isAmbiguous: false },
+				}),
+				item({
+					id: 'b',
+					text: 'Make the design changes',
+					disposition: 'accepted',
+					stateKey: 'answeredStillToDo',
+				}),
+				item({
+					id: 'c',
+					text: 'Send design v2',
+					intent: 'promise',
+					status: 'done',
+					completion: 'asserted',
+					stateKey: 'markedDoneByYou',
+					primaryReaction: 'markDone',
+				}),
 				item({ id: 'd', text: 'Cover shipping costs', verify: 'proposal' }),
 			],
 		});
@@ -91,12 +123,9 @@ describe('ThreadBrief', () => {
 			'markedDoneByYou',
 			'open',
 		]);
-		expect(items.map((i) => i.find('[data-testid="brief-item-ring"]').attributes('data-ring'))).toEqual([
-			'open',
-			'half',
-			'done',
-			'proposal',
-		]);
+		expect(
+			items.map((i) => i.find('[data-testid="brief-item-ring"]').attributes('data-ring'))
+		).toEqual(['open', 'half', 'done', 'proposal']);
 		expect(items[0]!.text()).toContain('due ');
 		expect(items[0]!.text()).toContain('decision · payment');
 		expect(items[1]!.get('[data-testid="brief-item-state"]').text()).toBe('Answered, still to do');
@@ -109,7 +138,10 @@ describe('ThreadBrief', () => {
 		await items[2]!.get('[data-action="undo"]').trigger('click');
 		expect(items[3]!.get('[data-testid="brief-item-primary"]').text()).toBe('Track');
 		await items[3]!.get('[data-testid="brief-item-primary"]').trigger('click');
-		const emitted = (w.emitted('react') ?? []).map(([i, action]) => [(i as { id: string }).id, action]);
+		const emitted = (w.emitted('react') ?? []).map(([i, action]) => [
+			(i as { id: string }).id,
+			action,
+		]);
 		expect(emitted).toEqual([
 			['a', 'replyWithStance'],
 			['c', 'undo'],
@@ -154,7 +186,10 @@ describe('ThreadBrief', () => {
 
 	it('explains a missing overview and shows no blocks', () => {
 		const w = mountBrief({
-			brief: briefView({ completeness: 'none', gap: { interpretedMessages: 0, totalMessages: 1, reason: 'aiOff' } }),
+			brief: briefView({
+				completeness: 'none',
+				gap: { interpretedMessages: 0, totalMessages: 1, reason: 'aiOff' },
+			}),
 		});
 		expect(w.get('[data-testid="brief-incomplete"]').attributes('data-kind')).toBe('none');
 		expect(w.text()).toContain('AI is off');
@@ -163,7 +198,10 @@ describe('ThreadBrief', () => {
 
 	it('shows a security mail as written', () => {
 		const w = mountBrief({
-			brief: briefView({ latest: undefined, gap: { interpretedMessages: 1, totalMessages: 1, reason: 'security' } }),
+			brief: briefView({
+				latest: undefined,
+				gap: { interpretedMessages: 1, totalMessages: 1, reason: 'security' },
+			}),
 		});
 		expect(w.get('[data-testid="brief-incomplete"]').text()).toContain('Security email.');
 	});
