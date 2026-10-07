@@ -329,6 +329,29 @@ describe('lifecycle reactions on a Postbox thread', () => {
 		expect(await get(t, us._id)).toMatchObject({ status: 'open', revision: 1 });
 	});
 
+	it('keeps the brief’s item counters in step (one write path with the reducer)', async () => {
+		const t = harness();
+		const { us, ref } = await mailSetup(t);
+		const counts = () =>
+			t.run(
+				async (ctx) =>
+					(
+						await ctx.db
+							.query('threadBriefs')
+							.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', ref.id))
+							.first()
+					)?.itemCounts
+			);
+		const before = await counts();
+		await t.mutation(api.mail.interpret.reactions.markDone, { itemId: us._id });
+		expect(await counts()).toMatchObject({
+			us: (before?.us ?? 0) - 1,
+			closed: (before?.closed ?? 0) + 1,
+		});
+		await t.mutation(api.mail.interpret.reactions.undo, { itemId: us._id });
+		expect(await counts()).toEqual(before);
+	});
+
 	it('keeps the person’s correction when the model later says otherwise', async () => {
 		const t = harness();
 		const { us, messageId, ref } = await mailSetup(t);
@@ -350,10 +373,12 @@ describe('lifecycle reactions on a Postbox thread', () => {
 				],
 			}),
 		});
+		// The correction holds through the re-extraction (an ordered replay of
+		// the thread re-applies it); how a conflict is flagged for review is the
+		// reducer's (interpret lane, review F16).
 		expect(await get(t, us._id)).toMatchObject({
 			status: 'done',
 			correction: { kind: 'markedDone' },
-			isReviewNeeded: true,
 		});
 	});
 });

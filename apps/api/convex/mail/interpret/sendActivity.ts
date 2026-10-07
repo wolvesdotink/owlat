@@ -189,18 +189,6 @@ export async function recordTeamSendHeld(
 	});
 }
 
-/**
- * Freeze what the team reply said, at finalization, before its interpretation
- * is enqueued: the source text must not move after the send (an edit, a
- * reopen). TODO(interpret lane): call the immutable sent-content snapshot
- * function here once it lands; until then the run reads the answered inbound
- * message's `draftResponse` (interpret.notes.md deviation 10).
- */
-async function snapshotTeamReplyContent(
-	_ctx: MutationCtx,
-	_send: Pick<Doc<'transactionalSends'>, '_id' | 'inboundMessageId'>
-): Promise<void> {}
-
 /** A team reply's Send reached a terminal edge (see the module doc). */
 export async function onTeamSendFinalized(
 	ctx: MutationCtx,
@@ -223,7 +211,6 @@ export async function onTeamSendFinalized(
 			eventAt: outcome.at,
 		});
 		if (appended && !appended.isDuplicate) {
-			await snapshotTeamReplyContent(ctx, send);
 			await enqueueSentInterpretation(ctx, { kind: 'teamReply', id: send._id }, team.threadRef);
 		}
 		return;

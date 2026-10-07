@@ -2,6 +2,8 @@
  * The Team Inbox agent pipeline's view of interpretation (SPEC §5 "Team
  * pipeline", D3).
  *
+ *   - `captureInbound` is the team pipeline's enqueue point: it snapshots the
+ *     message's eligibility (`sources.ts`) before the first run.
  *   - `briefingActions` reads what the context step renders into the
  *     `[CURRENT MESSAGE]` section instead of the sender's prose: the state of
  *     this message's interpretation and the thread's open items (unsealed).
@@ -21,6 +23,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { internalQuery } from '../../_generated/server';
+import { internalMutation } from '../../lib/writeFence';
 import { compareForYou } from '@owlat/shared/threadBriefRules';
 import type {
 	BriefCompleteness,
@@ -36,6 +39,7 @@ import { utcDayKey } from '../../lib/clock';
 import { INTERPRET_EXTRACTOR_VERSION } from './schema';
 import { loadBriefRow } from './briefRow';
 import { threadItemsWithStatus } from './load';
+import { captureInterpretSource } from './sources';
 
 /** Open items read for one briefing (the prompt page is 40; read a little past it). */
 const BRIEFING_ITEM_LIMIT = 50;
@@ -63,12 +67,11 @@ export interface BriefingItem {
 export interface BriefingInterpretation {
 	status: InterpretationStatus;
 	skipReason?: InterpretationSkipReason;
+	/** Run it again: an older extractor wrote it, or its scheduled repair is due. */
+	isRerunDue?: boolean;
 }
 
-/**
- * The newest extraction of a source made by the current extractor, or null
- * (none yet, or only an older extractor's: the run must read it again).
- */
+/** The source's current extraction (`isCurrent`), or null when it has none yet. */
 async function currentExtraction(
 	ctx: Pick<QueryCtx, 'db'>,
 	inboundMessageId: Id<'inboundMessages'>
@@ -79,10 +82,18 @@ async function currentExtraction(
 			q.eq('sourceKey', interpretationSourceKey({ kind: 'inbound', id: inboundMessageId }))
 		)
 		.take(10);
-	const current = rows
-		.filter((r) => r.extractorVersion === INTERPRET_EXTRACTOR_VERSION && r.appliedAt !== undefined)
-		.sort((a, b) => b.updatedAt - a.updatedAt);
-	return current[0] ?? null;
+	return rows.find((r) => r.isCurrent === true) ?? null;
+}
+
+function toInterpretation(row: Doc<'messageInterpretations'>, now: number): BriefingInterpretation {
+	const isRerunDue =
+		row.extractorVersion !== INTERPRET_EXTRACTOR_VERSION ||
+		(row.nextRetryAt !== undefined && row.nextRetryAt <= now);
+	return {
+		status: row.status,
+		...(row.skipReason ? { skipReason: row.skipReason } : {}),
+		...(isRerunDue ? { isRerunDue: true } : {}),
+	};
 }
 
 async function toBriefingItem(item: Doc<'threadItems'>): Promise<BriefingItem> {
@@ -123,12 +134,24 @@ export const briefingActions = internalQuery({
 			)
 		);
 		return {
-			interpretation: row
-				? { status: row.status, ...(row.skipReason ? { skipReason: row.skipReason } : {}) }
-				: null,
+			interpretation: row ? toInterpretation(row, Date.now()) : null,
 			items: await Promise.all(sorted.map(toBriefingItem)),
 		};
 	},
+});
+
+/**
+ * The team pipeline's enqueue point: snapshot the inbound message's
+ * eligibility before its first interpretation (first snapshot wins; the agent
+ * pipeline only ever sees live mail). Returns whether the source can run.
+ */
+export const captureInbound = internalMutation({
+	args: { inboundMessageId: v.id('inboundMessages') },
+	handler: async (ctx, args): Promise<boolean> =>
+		(await captureInterpretSource(ctx, {
+			source: { kind: 'inbound', id: args.inboundMessageId },
+			isLive: true,
+		})) !== null,
 });
 
 // ── Rendering ──────────────────────────────────────────────────────────────
@@ -217,9 +240,7 @@ export const interpretationHold = internalQuery({
 		const brief = await loadBriefRow(ctx, { kind: 'team', id: message.threadId });
 		return {
 			reason: interpretationHoldReason({
-				interpretation: row
-					? { status: row.status, ...(row.skipReason ? { skipReason: row.skipReason } : {}) }
-					: null,
+				interpretation: row ? toInterpretation(row, Date.now()) : null,
 				completeness: brief?.completeness ?? null,
 			}),
 		};

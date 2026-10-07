@@ -20,6 +20,7 @@ import type * as mail_interpret_dueDate from '../mail/interpret/dueDate.js';
 import type * as mail_interpret_eligibility from '../mail/interpret/eligibility.js';
 import type * as mail_interpret_enqueue from '../mail/interpret/enqueue.js';
 import type * as mail_interpret_gate from '../mail/interpret/gate.js';
+import type * as mail_interpret_itemWrite from '../mail/interpret/itemWrite.js';
 import type * as mail_interpret_load from '../mail/interpret/load.js';
 import type * as mail_interpret_needsReplyProjection from '../mail/interpret/needsReplyProjection.js';
 import type * as mail_interpret_noteReactions from '../mail/interpret/noteReactions.js';
@@ -1577,6 +1578,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/eligibility': typeof mail_interpret_eligibility;
 	'mail/interpret/enqueue': typeof mail_interpret_enqueue;
 	'mail/interpret/gate': typeof mail_interpret_gate;
+	'mail/interpret/itemWrite': typeof mail_interpret_itemWrite;
 	'mail/interpret/load': typeof mail_interpret_load;
 	'mail/interpret/needsReplyProjection': typeof mail_interpret_needsReplyProjection;
 	'mail/interpret/noteReactions': typeof mail_interpret_noteReactions;

@@ -354,11 +354,11 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			dueHint: '2026-07-04',
 		});
 		expect(thread?.needsReplyPendingAt).toBeUndefined();
-		// The newest inbound message is what gets interpreted, as live mail.
+		// The newest inbound message is what gets interpreted (its eligibility
+		// snapshot was taken at delivery).
 		expect(runInterpretationMock).toHaveBeenCalledTimes(1);
 		expect(runInterpretationMock.mock.calls[0]?.[1]).toEqual({
 			source: { kind: 'mail', id: messageId },
-			isLive: true,
 		});
 	});
 
@@ -370,7 +370,8 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 			needsReplyPendingAt: Date.now(),
 		});
 		runInterpretationMock.mockResolvedValueOnce({
-			status: 'replayed',
+			status: 'complete',
+			isReplayed: true,
 			createdItemIds: [],
 			projection: { replyIntent: 'direct_question', urgency: 'low', isOnlyTheirs: false },
 		});
@@ -468,9 +469,6 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		expect(runInterpretationMock).toHaveBeenCalledTimes(1);
 		expect(runInterpretationMock.mock.calls[0]?.[1]).toEqual({
 			source: { kind: 'mail', id: messageId },
-			isLive: true,
-			precedence: 'list',
-			listId: '<news.example.com>',
 		});
 	});
 

@@ -93,8 +93,9 @@ export async function buildCurrentMessageSection(
 
 /**
  * The rendered actions of a completely interpreted message, or null (fall
- * back to the raw body). Runs interpretation only when no current extraction
- * of the message exists. Never throws.
+ * back to the raw body). Runs interpretation only when the message has no
+ * current extraction, or its extraction is an older extractor's or due for a
+ * repair. Never throws.
  */
 async function structuredActions(
 	ctx: ActionCtx,
@@ -104,7 +105,11 @@ async function structuredActions(
 		let read = await ctx.runQuery(internal.mail.interpret.teamActions.briefingActions, {
 			inboundMessageId,
 		});
-		if (!read.interpretation) {
+		if (!read.interpretation || read.interpretation.isRerunDue) {
+			const canRun = await ctx.runMutation(internal.mail.interpret.teamActions.captureInbound, {
+				inboundMessageId,
+			});
+			if (!canRun) return null;
 			await ctx.runAction(internal.mail.interpret.run.interpretMessage, {
 				source: { kind: 'inbound', id: inboundMessageId },
 			});
