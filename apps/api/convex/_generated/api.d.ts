@@ -182,6 +182,7 @@ import type * as auth_accountExportArtifacts from '../auth/accountExportArtifact
 import type * as auth_accountExportBookingQueries from '../auth/accountExportBookingQueries.js';
 import type * as auth_accountExportPushQueries from '../auth/accountExportPushQueries.js';
 import type * as auth_accountExportQueries from '../auth/accountExportQueries.js';
+import type * as auth_accountExportThreadBriefQueries from '../auth/accountExportThreadBriefQueries.js';
 import type * as auth_accountManagement from '../auth/accountManagement.js';
 import type * as apiV1Http from '../apiV1Http.js';
 import type * as auth_apiAuth from '../auth/apiAuth.js';
@@ -1740,6 +1741,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/accountExportBookingQueries': typeof auth_accountExportBookingQueries;
 	'auth/accountExportPushQueries': typeof auth_accountExportPushQueries;
 	'auth/accountExportQueries': typeof auth_accountExportQueries;
+	'auth/accountExportThreadBriefQueries': typeof auth_accountExportThreadBriefQueries;
 	'auth/accountManagement': typeof auth_accountManagement;
 	apiV1Http: typeof apiV1Http;
 	'auth/apiAuth': typeof auth_apiAuth;

@@ -12,8 +12,10 @@
  *
  * Lifecycle reactions (markDone, markReceived, untrack, notARequest,
  * confirmProposal, undo) are the person's assertions about the item
- * (provenance `asserted`) and are planned in `reactionRules.ts`, which also
- * documents their exact edges and what undo reverses. Each sets the item's
+ * (provenance `asserted`). One that moves the status records the person as
+ * its `statusSource` (`user:<id>`) and stamps `lastTransitionAt`. They are
+ * planned in `reactionRules.ts`, which also documents their exact edges and
+ * what undo reverses. Each sets the item's
  * `correction`, which the reducer never flips.
  *
  * remind, assignItem and claimItem sit next to the lifecycle and never touch
@@ -107,11 +109,21 @@ async function runLifecycle(
 	const plan = planReaction(item, reaction, { userId: session.userId, now: Date.now() });
 	if (!plan.ok) throwInvalidState(plan.reason);
 	const patch = toDbPatch(plan);
+	const now = Date.now();
 	const result = await recordChange(ctx, {
 		item,
 		ref,
 		userId: session.userId,
-		patch,
+		// A status the person set names them as its source (a purge of a message
+		// never resets it, transitionSources.ts) and stamps the order of
+		// transitions, so an older message cannot move it back (fold.ts).
+		patch: plan.statusTo
+			? {
+					...patch,
+					statusSource: { sourceKey: `user:${session.userId}`, at: now },
+					lastTransitionAt: now,
+				}
+			: patch,
 		type: plan.activity,
 		provenance: 'asserted',
 		...(plan.statusFrom
