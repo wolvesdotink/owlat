@@ -8,13 +8,19 @@
  * the fresh segments since the previous forward. A forward nested in another
  * one (no fresh text of its own) inherits the outer forward's reading.
  *
- * The fresh text delegates only when a handover phrase points at the forward
- * ("handle this", "take care of the below", "kümmer dich darum", "t'en
- * occuper") and nothing marks it as information ("FYI", "no action needed",
- * "zur Info", "pour info"). A handover verb aimed at something else ("handle
- * the meeting"), or a handover beside an information marker, is `ambiguous`:
- * grounding rejects the item and calls coverage incomplete. A negated handover
- * ("no need to handle this") reads as `none`.
+ * Only positive evidence authorizes. The fresh text delegates when one of its
+ * clauses is a request to the recipient (`can you`, `please`, `kannst du`,
+ * `bitte`, `peux-tu`, an imperative) whose handover points at the forward
+ * ("handle the below", "take care of this one", "kümmer dich darum", "t'en
+ * occuper"), with no negation in that clause, no other clause handing the same
+ * object over in a way that is not such a request ("I will handle this",
+ * "Jonas will handle this", "don't handle this"), and no information marker
+ * ("FYI", "no action needed", "zur Info", "pour info"). Anything else that
+ * talks about handling (a handover verb aimed elsewhere, someone else handling
+ * it, a negated or contradicted handover) is `ambiguous`: grounding rejects
+ * the item and calls coverage incomplete. Only text with no handover language
+ * at all reads `none`. Negation binds to its own clause, so "Can you handle
+ * the below? Do not reply to the other thread." still delegates.
  *
  * Pure and isolate-safe.
  */
@@ -28,47 +34,74 @@ export interface Delegation {
 	evidence?: { segmentId: string; start: number; end: number };
 }
 
+/** English handover verbs in every form ("handles", "took care of", "dealing with"). */
+const EN_VERB =
+	'(?:handl(?:e|es|ed|ing)|(?:tak(?:e|es|ing)|took) care of|deal(?:s|t|ing)? with|look(?:s|ed|ing)? (?:at|into)|(?:tak(?:e|es|ing)|took) over|sort(?:s|ed|ing)? out|follow(?:s|ed|ing)? up on|repl(?:y|ies|ied|ying) to|respond(?:s|ed|ing)? to|answer(?:s|ed|ing)?|own(?:s|ed|ing)?|action(?:s|ed|ing)?)';
 const DEICTIC =
 	'(?:this(?: one)?|it|that|these|them|the (?:below|following|(?:e-?mail|message|mail|thread) below|forwarded (?:e-?mail|message|mail))|below)';
+/** A handover whose object is the forward, whoever is asked. */
 const HANDOVER = [
-	new RegExp(
-		`\\b(?:handle|take care of|deal with|look (?:at|into)|take over|action|sort out|follow up on|reply to|respond to|answer|own)\\s+${DEICTIC}\\b`,
-		'i'
-	),
-	/\b(?:can|could|would|will) you(?: please)? (?:handle|take care of|take over|sort|action)\s*(?:[?.!]|$)/i,
-	/\bplease (?:handle|take over|action)\s*(?:[?.!]|$)/i,
+	new RegExp(`\\b${EN_VERB}\\s+${DEICTIC}\\b`, 'i'),
+	/\b(?:handl(?:e|es|ed|ing)|(?:tak(?:e|es|ing)|took) over|action|sort)\s*[?.!]*\s*$/i,
 	/\b(?:over to you|for you to (?:handle|action|answer))\b/i,
-	/\b(?:kannst|könntest|würdest) du (?:dich )?(?:bitte )?(?:darum|drum) kümmern/i,
-	/\b(?:kannst|könntest|würdest) du (?:das|dies) (?:bitte )?(?:übernehmen|erledigen|beantworten|klären)/i,
+	/\b(?:darum|drum) kümmern\b/i,
 	/\bkümmer(?:e|st)? (?:du )?dich (?:bitte )?(?:darum|drum)\b/i,
-	/\b(?:bitte (?:übernehmen|erledigen)|übernimmst du das)\b/i,
-	/\b(?:peux|pourrais)[- ]tu (?:t'en|t’en) (?:occuper|charger)/i,
-	/\b(?:pouvez|pourriez)[- ]vous vous en (?:occuper|charger)/i,
-	/\bmerci de (?:t'en|t’en|vous en) (?:occuper|charger)\b/i,
+	/\b(?:das|dies) (?:bitte )?(?:übernehmen|erledigen|beantworten|klären)\b/i,
+	/\b(?:bitte (?:übernehmen|erledigen)|übernimm(?:st du)? das|erledige das)\b/i,
+	/(?:\bt'en|\bt’en|\bvous en|\bs'en|\bs’en) (?:occuper|charger)\b/i,
+	/\b(?:occupe|occupez)[- ](?:toi|vous)[- ]en\b|\boccupe-t[’']en\b/i,
 ];
-/** A handover verb, whatever it points at. */
-const HANDOVER_VERB =
-	/\b(?:handle|take care|deal with|look into|take over|follow up|kümmern|übernehmen|erledigen|occuper|charger|traiter)\b/i;
+/** A clause asking the recipient: a question to you/du/Sie/vous, `please`, or an imperative. */
+const DIRECTED = [
+	/\b(?:can|could|would|will) you\b/i,
+	/\b(?:please|kindly)\b/i,
+	/\b(?:over to you|for you to)\b/i,
+	/^(?:(?:please|kindly|bitte)\s+)?(?:handle|take care|deal with|look|take over|action|sort|follow up|reply|respond|answer|own|kümmer(?:e)?\s+dich|übernimm|erledige|kläre|beantworte|occupe|occupez|charge|chargez)\b/i,
+	/\b(?:kannst|könntest|würdest|magst|willst|kümmerst|übernimmst) du\b/i,
+	/\b(?:können|könnten|würden) Sie\b/,
+	/\bbitte\b/i,
+	/\b(?:peux|pourrais)[- ]tu\b|\b(?:pouvez|pourriez)[- ]vous\b|\bmerci de\b|\bs['’]il (?:te|vous) pla[iî]t\b/i,
+];
+const NEGATION =
+	/(?:\bnot\b|n['’]t\b|\bnever\b|\bno need\b|\bnicht\b|\bkein\w*|\bnie\b|\bpas\b|\bjamais\b|\bne\s|\bn['’](?=\p{L}))/iu;
+/** A handover verb, whatever it points at and whoever does it. */
+// Not `answer`, `own` or `action`: as nouns they say nothing about handing over.
+const HANDOVER_VERB = new RegExp(
+	`\\b(?:handl(?:e|es|ed|ing)|(?:tak(?:e|es|ing)|took) (?:care of|over)|deal(?:s|t|ing)? with|look(?:s|ed|ing)? into|sort(?:s|ed|ing)? out|follow(?:s|ed|ing)? up|repl(?:y|ies|ied|ying) to|respond(?:s|ed|ing)? to|kümmer(?:n|e|t|st)?|übernehmen|übernimm(?:st|t)?|erledig(?:en|e|st|t)?|occuper|occupe|occupez|charger|chargez|traiter|traitez)\\b`,
+	'i'
+);
 const INFORMATIONAL =
 	/\b(?:fyi|for your information|for info|no action (?:is )?(?:needed|required)|nothing (?:to do|needed)|just so you know|for reference|for your records|zur (?:info|kenntnis)|nur zur info|zu deiner info|kein handlungsbedarf|keine aktion (?:nötig|erforderlich)|pour info(?:rmation)?|à titre d'information|aucune action)\b/i;
-const NEGATED =
-	/\b(?:no need to|don't|do not|needn't|need not|nicht|kein(?:e|en)?|pas besoin de|ne pas)\b[^.,;?!\n]{0,30}\b(?:handle|take care|deal with|action|reply|respond|answer|kümmern|übernehmen|erledigen|beantworten|occuper|charger|répondre)/i;
+/** A clause: up to its own punctuation. */
+const CLAUSE = /[^.?!;,\n]+[.?!]*/g;
 
 function readFresh(text: string): {
 	reading: DelegationReading;
 	match?: { index: number; length: number };
 } {
-	if (NEGATED.test(text)) return { reading: 'none' };
-	let match: RegExpExecArray | null = null;
-	for (const pattern of HANDOVER) {
-		match = pattern.exec(text);
-		if (match) break;
+	let positive: { index: number; length: number } | undefined;
+	let contradicted = false;
+	for (const clause of text.matchAll(CLAUSE)) {
+		const body = clause[0];
+		let handover: RegExpExecArray | null = null;
+		for (const pattern of HANDOVER) {
+			handover = pattern.exec(body);
+			if (handover) break;
+		}
+		if (!handover) continue;
+		const trimmed = body.trimStart();
+		const directed = DIRECTED.some((pattern) => pattern.test(trimmed));
+		if (directed && !NEGATION.test(body)) {
+			positive ??= { index: clause.index + handover.index, length: handover[0].length };
+		} else {
+			// Someone else handles it, or it is negated: the forward's status is unclear.
+			contradicted = true;
+		}
 	}
-	const informational = INFORMATIONAL.test(text);
-	if (match && !informational) {
-		return { reading: 'delegated', match: { index: match.index, length: match[0].length } };
+	if (positive && !contradicted && !INFORMATIONAL.test(text)) {
+		return { reading: 'delegated', match: positive };
 	}
-	if (match || HANDOVER_VERB.test(text)) return { reading: 'ambiguous' };
+	if (positive || contradicted || HANDOVER_VERB.test(text)) return { reading: 'ambiguous' };
 	return { reading: 'none' };
 }
 

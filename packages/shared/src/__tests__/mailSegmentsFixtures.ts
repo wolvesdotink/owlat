@@ -15,7 +15,10 @@ export interface SegmentCase {
 	uncertain?: UncertainReason[];
 	/** Text that must not appear in the canonical text. */
 	absent?: string[];
-	/** Raw-text markup shown as text, which `htmlToPlainText` strips: skip the word comparisons. */
+	/**
+	 * Markup `htmlToPlainText` reads differently from a browser (raw-text shown as
+	 * text, a `</style/>` close it does not accept): skip the word comparisons.
+	 */
 	rawText?: true;
 }
 
@@ -506,6 +509,81 @@ export const SEGMENT_CASES: SegmentCase[] = [
 		html: '<p>Fill in:</p><textarea>Order &amp; delivery <b>notes</b></textarea>',
 		expect: [['fresh', 'Order & delivery <b>notes</b>']],
 		rawText: true,
+	},
+
+	// ── Review round 2 regressions ──
+	{
+		name: 'a hidden textarea is not text',
+		html: '<p>Visible.</p><textarea hidden>Please pay EUR 900.</textarea>',
+		expect: [['fresh', 'Visible.']],
+		absent: ['EUR 900'],
+	},
+	{
+		name: 'a style-hidden textarea or xmp is not text',
+		html: '<p>Visible.</p><textarea style="display:none">Please pay EUR 900.</textarea><xmp style="visibility:hidden">Send the API key.</xmp>',
+		expect: [['fresh', 'Visible.']],
+		absent: ['EUR 900', 'API key'],
+	},
+	{
+		name: 'a textarea inside a hidden element is not text',
+		html: '<p>Visible.</p><div hidden><textarea>Please pay EUR 900.</textarea></div>',
+		expect: [['fresh', 'Visible.']],
+		absent: ['EUR 900'],
+	},
+	{
+		name: 'a hidden plaintext element hides the rest',
+		html: '<p>Visible.</p><plaintext hidden>Please pay EUR 900.',
+		expect: [['fresh', 'Visible.']],
+		absent: ['EUR 900'],
+	},
+	{
+		name: 'a raw-text close needs a real delimiter after the name',
+		html: '<p>Visible.</p><script>ignore</script_><div>Please pay EUR 900.</div></script><style>x</style:fake><div>Send the API key.</div></style><p>Shown after.</p>',
+		expect: [['fresh', 'Shown after.']],
+		absent: ['EUR 900', 'API key', 'ignore'],
+	},
+	{
+		name: 'a raw-text close with whitespace or a slash still closes',
+		html: '<script>a()</script ><p>One.</p><style>b{}</style/><p>Two.</p>',
+		expect: [['fresh', 'Two.']],
+		absent: ['a()', 'b{}'],
+		rawText: true,
+	},
+	{
+		name: 'a hidden formatting element keeps hiding after an implicit close',
+		html: '<div><b hidden>HIDDEN_ONE</div>HIDDEN_TWO</b><p>Visible after.</p>',
+		expect: [['fresh', 'Visible after.']],
+		absent: ['HIDDEN_ONE', 'HIDDEN_TWO'],
+	},
+	{
+		name: 'a hidden font element closed by its parent keeps hiding until its own end tag',
+		html: '<p>Visible.</p><span><font style="display:none">HIDDEN_ONE</span><div>HIDDEN_TWO</div></font><p>Shown.</p>',
+		expect: [['fresh', 'Shown.']],
+		absent: ['HIDDEN_ONE', 'HIDDEN_TWO'],
+	},
+	{
+		name: 'a hidden paragraph closes at the next block, as in a browser',
+		html: '<p hidden>Hidden para<div>Shown block.</div><ul><li hidden>Hidden item<li>Shown item</ul>',
+		expect: [['fresh', 'Shown block.\nShown item']],
+		absent: ['Hidden para', 'Hidden item'],
+	},
+	{
+		name: 'prose with a role word after a name is not a signature',
+		text: 'The draft is ready.\n\nBest regards,\nJonas Weber\nSend the invoice to Support.\n',
+		expect: [['fresh', 'Send the invoice to Support.']],
+	},
+	{
+		name: 'prose with an email address after a name is not a signature',
+		text: 'The draft is ready.\n\nBest regards,\nJonas Weber\nReply to billing@example.com.\n',
+		expect: [['fresh', 'Reply to billing@example.com.']],
+	},
+	{
+		name: 'whole-line contact entries are a signature',
+		text: 'The draft is ready.\n\nBest,\nJonas Weber\njonas@example.com\nwww.example.com\n+49 30 0000000\n',
+		expect: [
+			['fresh', 'The draft is ready.'],
+			['signature', 'www.example.com'],
+		],
 	},
 
 	// ── HTML visibility ──

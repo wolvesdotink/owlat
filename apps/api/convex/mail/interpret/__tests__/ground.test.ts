@@ -395,15 +395,49 @@ describe('delegation is bound to the forward it introduces', () => {
 		expect(result.coverage).toEqual({ complete: false, gaps: ['ambiguous_delegation'] });
 	});
 
+	it.each(['FYI, no action needed.', 'Zur Info, kein Handlungsbedarf.', 'Pour info.'])(
+		'treats "%s" as information',
+		(fresh) => {
+			const result = forwardItem(FORWARD(fresh));
+			expect(result.items).toEqual([]);
+			expect(result.coverage.complete).toBe(true);
+		}
+	);
+
 	it.each([
-		'FYI, no action needed.',
-		'Zur Info, kein Handlungsbedarf.',
-		'Pour info.',
+		'I will handle this.',
+		'Jonas will handle this.',
+		'Could you not handle this?',
 		'No need to handle this, just for your records.',
-	])('treats "%s" as information', (fresh) => {
+		"Can you handle the below? Actually, don't handle this yet.",
+		'Lena takes care of this one.',
+		'Je vais m’en occuper, tu peux ignorer.',
+	])('never authorizes on "%s": ambiguous, coverage incomplete', (fresh) => {
 		const result = forwardItem(FORWARD(fresh));
 		expect(result.items).toEqual([]);
+		expect(result.coverage).toEqual({ complete: false, gaps: ['ambiguous_delegation'] });
+	});
+
+	it('binds a negation to its own clause', () => {
+		const result = forwardItem(
+			FORWARD('Can you handle the below? Do not reply to the other thread.')
+		);
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0]?.viaDelegation).toBe(true);
 		expect(result.coverage.complete).toBe(true);
+	});
+
+	it.each([
+		'Hi Mara, can you handle the below?',
+		'Please take care of this one.',
+		'Handle this please.',
+		'Kannst du dich bitte darum kümmern?',
+		'Bitte übernehmen.',
+		'Kümmer dich bitte darum.',
+		"Peux-tu t'en occuper ?",
+		'Pourriez-vous vous en charger ?',
+	])('authorizes the positive request "%s"', (fresh) => {
+		expect(forwardItem(FORWARD(fresh)).items).toHaveLength(1);
 	});
 
 	it('flags a handover next to an information marker as ambiguous', () => {
@@ -448,5 +482,37 @@ describe('delegation is bound to the forward it introduces', () => {
 		expect(delegatesForward(FORWARD('Ich schaffe es nicht, kannst du dich darum kümmern?'))).toBe(
 			true
 		);
+	});
+});
+
+describe('whole-string NFKC', () => {
+	const KA_FULL = 'ガ'; // ガ
+	const KA_HALF = 'ｶﾞ'; // ｶﾞ
+	const GA_SYLLABLE = '가'; // 가
+	const GA_JAMO = '가'; // ᄀ + ᅡ
+	it.each([
+		[`お見積り${KA_FULL}イドを送って`, `${KA_HALF}イド`],
+		[`お見積り${KA_HALF}イドを送って`, `${KA_FULL}イド`],
+		[`견적서를 ${GA_SYLLABLE}져와`, `${GA_JAMO}져와`],
+		[`견적서를 ${GA_JAMO}져와`, `${GA_SYLLABLE}져와`],
+		['Café au lait', 'Café au'],
+		['e​́ accent', 'é accent'],
+	])('%s contains %s', (text, quote) => {
+		expect(normalizeForQuote(quote)).toBe(normalizeForQuote(quote).normalize('NFKC'));
+		const segmented = segmentMessage({ text });
+		const verdict = verifyQuote(segmented.segments, segmented.canonicalText, {
+			segmentId: 's0',
+			text: quote,
+		});
+		expect(verdict.ok).toBe(true);
+		if (!verdict.ok) return;
+		expect(normalizeForQuote(segmented.canonicalText.slice(verdict.start, verdict.end))).toBe(
+			normalizeForQuote(quote)
+		);
+	});
+
+	it('equals whole-string NFKC on mixed text', () => {
+		const text = `Rechnung ${KA_HALF} ${GA_JAMO} ﬁnal Café ①`;
+		expect(normalizeForQuote(text)).toBe(text.normalize('NFKC'));
 	});
 });

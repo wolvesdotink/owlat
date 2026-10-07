@@ -10,20 +10,15 @@
  * Pure and isolate-safe.
  */
 
-/** Grapheme-ish clusters: a base character with its combining marks. */
-const CLUSTER = /\P{M}\p{M}*|\p{M}+/gu;
 const SINGLE_QUOTES = /[‘’‚‛′´`]/g;
 const DOUBLE_QUOTES = /[“”„‟″«»]/g;
 const DASHES = /[‐-―−﹘﹣－]/g;
-const INVISIBLE = /[­​-‍⁠﻿]/g;
+const INVISIBLE = /^[­​-‍⁠﻿]$/;
+/** A run of code points normalized as one beyond this many: hostile input only. */
+const MAX_RUN = 32;
 
-function foldCluster(cluster: string): string {
-	return cluster
-		.normalize('NFKC')
-		.replace(INVISIBLE, '')
-		.replace(SINGLE_QUOTES, "'")
-		.replace(DOUBLE_QUOTES, '"')
-		.replace(DASHES, '-');
+function fold(normalized: string): string {
+	return normalized.replace(SINGLE_QUOTES, "'").replace(DOUBLE_QUOTES, '"').replace(DASHES, '-');
 }
 
 /** The normalized form of `text` (see the module header). */
@@ -33,20 +28,26 @@ export function normalizeForQuote(text: string): string {
 
 export interface NormalizedText {
 	normalized: string;
-	/** Per normalized character: the original range it came from. */
+	/** Per normalized UTF-16 unit: the original range it came from. */
 	from: number[];
 	to: number[];
 }
 
-/** {@link normalizeForQuote}, plus a map from each normalized char back to `text`. */
+/**
+ * {@link normalizeForQuote}, plus a map from each normalized UTF-16 unit back
+ * to `text`. NFKC runs over the whole string: code points that compose or
+ * reorder with what comes before them (`ｶ` + `ﾞ` into `ガ`, conjoining Hangul
+ * jamo into a syllable, a base with its marks) are normalized as one run and
+ * map to that run's range. A run is found by checking whether normalizing it
+ * with the next code point differs from normalizing them apart; an ASCII code
+ * point never composes with what precedes it, so it always starts a new run.
+ */
 export function normalizeWithMap(text: string): NormalizedText {
 	const out: string[] = [];
 	const from: number[] = [];
 	const to: number[] = [];
-	for (const match of text.matchAll(CLUSTER)) {
-		const start = match.index;
-		const end = start + match[0].length;
-		for (const char of foldCluster(match[0])) {
+	const emit = (run: string, start: number, end: number) => {
+		for (const char of fold(run)) {
 			if (/\s/.test(char)) {
 				if (out.length === 0) continue;
 				if (out[out.length - 1] === ' ') {
@@ -66,7 +67,40 @@ export function normalizeWithMap(text: string): NormalizedText {
 				to.push(end);
 			}
 		}
+	};
+	let run = '';
+	let runNormalized = '';
+	let runLength = 0;
+	let runStart = 0;
+	let runEnd = 0;
+	let i = 0;
+	for (const cp of text) {
+		const start = i;
+		i += cp.length;
+		if (INVISIBLE.test(cp)) {
+			// Never visible: dropped before normalization, its range joins the run.
+			if (run) runEnd = i;
+			continue;
+		}
+		const single = cp.normalize('NFKC');
+		if (run && cp.charCodeAt(0) >= 0x80 && runLength < MAX_RUN) {
+			const joined = (run + cp).normalize('NFKC');
+			if (joined !== runNormalized + single) {
+				run += cp;
+				runNormalized = joined;
+				runLength++;
+				runEnd = i;
+				continue;
+			}
+		}
+		if (run) emit(runNormalized, runStart, runEnd);
+		run = cp;
+		runNormalized = single;
+		runLength = 1;
+		runStart = start;
+		runEnd = i;
 	}
+	if (run) emit(runNormalized, runStart, runEnd);
 	if (out[out.length - 1] === ' ') {
 		out.pop();
 		from.pop();

@@ -6,53 +6,49 @@
  * their content (an unterminated `<head>` loses only its tag), every tag is
  * removed, the same named and numeric entities decode, and `<br>`, block ends
  * and `</p>`/`</h1-6>` break lines the way its `preserveBreaks` layout does.
- * Closer to what a browser shows, and to the security scan's hidden-markup
- * strip (`agent/steps/security_scan/hiddenMarkup.ts`), it also:
- *   - tokenizes tags the way a browser does: a `>` inside a quoted attribute
- *     value does not end the tag, and an unterminated tag or quoted value
- *     swallows the rest of the input;
- *   - drops the elements a browser never shows, with their content: raw-text
+ *
+ * What may be shown is decided at least as conservatively as the security
+ * scan's hidden-markup strip (`agent/steps/security_scan/hiddenMarkup.ts`);
+ * it never tries to out-guess a browser in the showing direction:
+ *   - tags tokenize the way a browser reads them: a `>` inside a quoted
+ *     attribute value does not end the tag, and an unterminated tag or quoted
+ *     value swallows the rest of the input;
+ *   - EVERY element, raw-text and `plaintext` ones included, is hidden by the
+ *     `hidden` attribute or an inline style (default test `display:none` /
+ *     `visibility:hidden`; the backend passes the scan's stricter
+ *     `styleHides`), and so is everything inside a hidden element;
+ *   - the scan's always-hidden elements drop with their content: raw-text
  *     `script`, `style`, `title`, `iframe`, `noembed`, `noframes`, and parsed
- *     `template`, `datalist`, `rp`, `noscript` (the scan's always-hidden set,
- *     plus `noscript`, kept hidden because it may or may not render);
- *   - drops an element hidden by the `hidden` attribute or an inline style.
- *     The default style test is `display:none` / `visibility:hidden`; the
- *     backend passes the security scan's stricter `styleHides`;
- *   - collapses whitespace inside text to one space (`<pre>` keeps it).
- * Blockquote nesting adds to the depth, `>` markers inside HTML text count too
- * (some clients render a plain-text reply that way), and a Gmail quote
- * container is tracked over its whole extent.
+ *     `template`, `datalist`, `rp`, plus `noscript`;
+ *   - a raw-text element ends only at an end tag of its exact name followed by
+ *     whitespace, `/` or `>` (`</script_>` and `</style:x>` end nothing);
+ *   - a hidden formatting element closed implicitly keeps hiding until its own
+ *     end tag, as browsers reopen it (`./mailSegmentsElements`).
+ * Whitespace inside text collapses to one space (`<pre>` keeps it), blockquote
+ * nesting adds to the depth, `>` markers inside HTML text count too, and a
+ * Gmail quote container is tracked over its whole extent.
  *
  * Linear: every character is read a bounded number of times. A raw-text close
  * search remembers its answer, so repeated unclosed `<head>`/`<script>` tags do
- * not rescan the rest of the input, and an end tag with no open element of its
- * name is dropped in constant time. `options.work` counts the work for tests.
+ * not rescan the rest of the input; the element stack is amortised.
+ * `options.work` counts the work for tests.
  */
+import {
+	BLOCK,
+	ElementStack,
+	PARSED_HIDDEN,
+	RAW_HIDDEN,
+	RAW_SHOWN,
+	VOID,
+} from './mailSegmentsElements';
 import {
 	LineBuilder,
 	finishLine,
 	type LineHint,
 	type LineSourceOptions,
-	type QuoteContainer,
 	type SourceLine,
 } from './mailSegmentsSource';
 
-const VOID = new Set(
-	'area base basefont bgsound br col embed frame hr img input keygen link meta param source track wbr'.split(
-		' '
-	)
-);
-const BLOCK = new Set(
-	'address article aside blockquote center dd div dl dt figure footer form h1 h2 h3 h4 h5 h6 header li main nav ol p pre section table tbody td th thead tr ul'.split(
-		' '
-	)
-);
-/** Content is text up to the element's own end tag, never shown. */
-const RAW_HIDDEN = new Set(['script', 'style', 'title', 'iframe', 'noembed', 'noframes']);
-/** Content is text up to the element's own end tag, shown. */
-const RAW_SHOWN = new Set(['textarea', 'xmp']);
-/** Parsed normally, never shown. */
-const PARSED_HIDDEN = new Set(['template', 'datalist', 'rp', 'noscript']);
 const PARAGRAPH = /^(?:p|h[1-6])$/;
 const ENTITY = /&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|(amp|lt|gt|quot|apos|nbsp));/iy;
 const NAMED = new Map([
@@ -153,25 +149,13 @@ function fromCodePoint(code: number): string {
 	return String.fromCodePoint(code);
 }
 
-interface OpenElement {
-	name: string;
-	hidden: boolean;
-	container?: QuoteContainer;
-}
-
 /** Lines of an HTML body. */
 export function linesFromHtml(html: string, options: LineSourceOptions = {}): SourceLine[] {
 	const styleHides = options.styleHides ?? DEFAULT_STYLE_HIDES;
 	const work = options.work ?? { chars: 0, steps: 0 };
 	const n = html.length;
 	const lines: SourceLine[] = [];
-	const stack: OpenElement[] = [];
-	const openCount = new Map<string, number>();
-	const containers: QuoteContainer[] = [];
-	let nextContainer = 0;
-	let hiddenOpen = 0;
-	let quoteDepth = 0;
-	let pre = 0;
+	const stack = new ElementStack(work);
 	let line = new LineBuilder(0);
 	let pendingHint: LineHint | undefined;
 	let pendingRule = false;
@@ -184,7 +168,9 @@ export function linesFromHtml(html: string, options: LineSourceOptions = {}): So
 		let entry = closeSearch.get(name);
 		if (entry && from >= entry.from && (entry.at === -1 || from <= entry.at)) return entry.at;
 		if (!entry) {
-			entry = { re: new RegExp(`</${name}(?![A-Za-z0-9-])`, 'gi'), from, at: -1 };
+			// An end tag's name ends at ASCII whitespace, `/` or `>`: `</script_>` and
+			// `</style:x>` close nothing.
+			entry = { re: new RegExp(`</${name}(?=[\\t\\n\\f\\r />])`, 'gi'), from, at: -1 };
 			closeSearch.set(name, entry);
 		}
 		entry.re.lastIndex = from;
@@ -207,12 +193,12 @@ export function linesFromHtml(html: string, options: LineSourceOptions = {}): So
 		else line.srcStart = end;
 	};
 	const emit = (text: string, s: number, e: number) => {
-		if (hiddenOpen > 0) return;
+		if (stack.hidden) return;
 		if (line.empty) {
-			line.depth = quoteDepth;
+			line.depth = stack.quoteDepth;
 			line.hint = pendingHint;
 			line.afterRule = pendingRule;
-			line.container = containers[containers.length - 1];
+			line.container = stack.container;
 			pendingHint = undefined;
 			pendingRule = false;
 			space = null;
@@ -245,8 +231,8 @@ export function linesFromHtml(html: string, options: LineSourceOptions = {}): So
 				}
 			}
 			if (isSpace(c)) {
-				if (hiddenOpen === 0) {
-					if (pre > 0) {
+				if (!stack.hidden) {
+					if (stack.pre > 0) {
 						if (c === '\n') breakLine(i, i + 1);
 						else if (c !== '\r') emit(c, i, i + 1);
 					} else if (!line.empty) {
@@ -259,28 +245,6 @@ export function linesFromHtml(html: string, options: LineSourceOptions = {}): So
 			i++;
 		}
 	};
-	const pop = (name: string, at: number, tagEnd: number) => {
-		if (!openCount.get(name)) return;
-		const wasHidden = hiddenOpen > 0;
-		for (;;) {
-			work.steps++;
-			const open = stack.pop() as OpenElement;
-			openCount.set(open.name, (openCount.get(open.name) ?? 1) - 1);
-			if (open.hidden) hiddenOpen--;
-			if (open.name === 'blockquote') quoteDepth--;
-			if (open.name === 'pre') pre--;
-			if (open.container) {
-				open.container.last = nextContainer - 1;
-				containers.pop();
-			}
-			if (open.name === name) break;
-		}
-		if (!wasHidden && BLOCK.has(name)) {
-			softBreak(at, tagEnd);
-			if (PARAGRAPH.test(name)) breakLine(at, tagEnd);
-		}
-	};
-
 	let i = 0;
 	while (i < n) {
 		if (html[i] !== '<') {
@@ -316,10 +280,20 @@ export function linesFromHtml(html: string, options: LineSourceOptions = {}): So
 		work.chars += tag.end - i;
 		const { name } = tag;
 		if (tag.isEnd) {
-			pop(name, i, tag.end);
+			const wasHidden = stack.hidden;
+			if (stack.close(name) && !wasHidden && BLOCK.has(name)) {
+				softBreak(i, tag.end);
+				if (PARAGRAPH.test(name)) breakLine(i, tag.end);
+			}
 			i = tag.end;
 			continue;
 		}
+		// Every element's own visibility, raw-text and `plaintext` ones included.
+		const ownHidden =
+			RAW_HIDDEN.has(name) ||
+			PARSED_HIDDEN.has(name) ||
+			tag.attrs.has('hidden') ||
+			styleHides(tag.attrs.get('style') ?? '');
 		if (RAW_HIDDEN.has(name) || RAW_SHOWN.has(name) || name === 'head') {
 			const close = findClose(name, tag.end);
 			if (name === 'head' && close === -1) {
@@ -327,45 +301,36 @@ export function linesFromHtml(html: string, options: LineSourceOptions = {}): So
 				continue;
 			}
 			const contentEnd = close === -1 ? n : close;
-			if (RAW_SHOWN.has(name)) emitText(tag.end, contentEnd, name === 'textarea');
+			if (RAW_SHOWN.has(name) && !ownHidden && !stack.hidden) {
+				emitText(tag.end, contentEnd, name === 'textarea');
+			}
 			i = close === -1 ? n : (scanTag(html, close)?.end ?? n);
 			continue;
 		}
+		if (name === 'plaintext') {
+			// Everything after it is text, shown only when nothing hides it.
+			if (!ownHidden && !stack.hidden) emitText(tag.end, n, false);
+			i = n;
+			continue;
+		}
+		stack.closeFor(name);
 		if (name === 'br') {
-			if (hiddenOpen === 0) breakLine(i, tag.end);
+			if (!stack.hidden) breakLine(i, tag.end);
 		} else if (name === 'hr') {
-			if (hiddenOpen === 0) {
+			if (!stack.hidden) {
 				softBreak(i, tag.end);
 				pendingRule = true;
 			}
-		} else if (name === 'plaintext') {
-			emitText(tag.end, n, false);
-			i = n;
-			continue;
 		} else if (!VOID.has(name)) {
-			const hidden =
-				PARSED_HIDDEN.has(name) ||
-				tag.attrs.has('hidden') ||
-				styleHides(tag.attrs.get('style') ?? '');
-			if (BLOCK.has(name) && hiddenOpen === 0 && !hidden) softBreak(i, tag.end);
-			const hint = hiddenOpen === 0 && !hidden ? hintOf(tag) : undefined;
+			if (BLOCK.has(name) && !stack.hidden && !ownHidden) softBreak(i, tag.end);
+			const hint = !stack.hidden && !ownHidden ? hintOf(tag) : undefined;
 			// `/>` closes nothing on an HTML element: only void elements are empty.
-			const open: OpenElement = { name, hidden };
-			if (hint === 'quoteContainer' || hint === 'forwardContainer') {
-				open.container = { id: nextContainer, last: Number.POSITIVE_INFINITY };
-				nextContainer++;
-				containers.push(open.container);
-			}
-			stack.push(open);
-			openCount.set(name, (openCount.get(name) ?? 0) + 1);
-			if (hidden) hiddenOpen++;
-			if (name === 'blockquote') quoteDepth++;
-			if (name === 'pre') pre++;
+			stack.open(name, ownHidden, hint === 'quoteContainer' || hint === 'forwardContainer');
 			if (hint) pendingHint = hint;
 		}
 		i = tag.end;
 	}
 	if (!line.empty) lines.push(finishLine(line, n));
-	for (const open of containers) open.last = nextContainer - 1;
+	stack.finish();
 	return lines;
 }

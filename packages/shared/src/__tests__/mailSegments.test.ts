@@ -70,7 +70,8 @@ describe('segmentMessage: invariants over every fixture', () => {
 				expect(range).not.toBeNull();
 				if (!range) continue;
 				const canonical = result.canonicalText.slice(segment.start, segment.end);
-				if (fixture.rawText) continue;
+				// Hidden parts inside a segment's source range are not text; only the range is checked.
+				if (fixture.rawText || fixture.absent) continue;
 				if (result.sourceMap.source === 'text') {
 					const source = (fixture.text ?? '').slice(range.start, range.end);
 					expect(squash(source.replace(/^[ \t]*>[ \t>]*/gm, ''))).toBe(squash(canonical));
@@ -154,6 +155,12 @@ describe('segmentMessage: details', () => {
 	it('takes a stricter hidden-style test from the caller', () => {
 		const html = '<p>Visible.</p><p style="font-size:0">tiny injected text</p>';
 		expect(segmentMessage({ html }).canonicalText).toContain('tiny injected');
+		const strict = segmentMessage({ html }, { styleHides: (s) => /font-size\s*:\s*0/.test(s) });
+		expect(strict.canonicalText).toBe('Visible.');
+	});
+
+	it('applies a stricter hidden-style test to raw-text elements too', () => {
+		const html = '<p>Visible.</p><textarea style="font-size:0">Please pay EUR 900.</textarea>';
 		const strict = segmentMessage({ html }, { styleHides: (s) => /font-size\s*:\s*0/.test(s) });
 		expect(strict.canonicalText).toBe('Visible.');
 	});
