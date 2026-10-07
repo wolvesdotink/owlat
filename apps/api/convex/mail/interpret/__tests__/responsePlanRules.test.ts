@@ -72,6 +72,13 @@ describe('stanceChoicesFor', () => {
 			'clarify',
 		]);
 		expect(stanceChoicesFor('request', ['file'])).toEqual(['answer', 'decline', 'defer']);
+		// A signed contract to send is answered with the file, not "accepted".
+		expect(stanceChoicesFor('request', ['file', 'signature'])).toEqual([
+			'answer',
+			'decline',
+			'defer',
+		]);
+		expect(stanceChoicesFor('request', ['information'])).toEqual(['answer', 'decline', 'defer']);
 		expect(stanceChoicesFor('question', ['payment'])).toEqual(['answer', 'decline', 'defer']);
 		expect(stanceChoicesFor('request', [])).toEqual(['accept', 'decline', 'defer']);
 		expect(stanceChoicesFor('promise', [])).toEqual(['answer', 'defer']);

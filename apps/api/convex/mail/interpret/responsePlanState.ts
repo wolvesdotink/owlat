@@ -275,7 +275,7 @@ export async function planForDraft(
 	ctx: ReadCtx,
 	ref: ThreadRef,
 	draftRef: DraftRef | null,
-	options: Parameters<typeof loadPlanState>[3]
+	options: Parameters<typeof loadPlanState>[3] = {}
 ): Promise<PlanForDraft> {
 	const state = await loadPlanState(ctx, ref, draftRef, options);
 	return {

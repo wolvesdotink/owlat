@@ -37,13 +37,9 @@ export const loadForDraft = internalQuery({
 	args: {
 		threadRef: threadRefValidator,
 		draftRef: v.optional(draftRefValidator),
-		// Items with an unanswered question in an Answer mode ask session.
-		openSlots: v.optional(v.array(v.string())),
 	},
 	handler: (ctx, args): Promise<PlanForDraft> =>
-		planForDraft(ctx, args.threadRef, args.draftRef ?? null, {
-			...(args.openSlots ? { openSlots: args.openSlots } : {}),
-		}),
+		planForDraft(ctx, args.threadRef, args.draftRef ?? null),
 });
 
 /**

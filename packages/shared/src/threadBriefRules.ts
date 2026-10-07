@@ -260,32 +260,33 @@ const ACCEPTING_FACETS: ReadonlySet<ItemFacet> = new Set<ItemFacet>([
 	'signature',
 	'access',
 ]);
+/** A file to send or a time to pick is answered, even when it also needs a signature. */
+const DELIVERING_FACETS: ReadonlySet<ItemFacet> = new Set<ItemFacet>(['file', 'meeting']);
 const ANSWERING_FACETS: ReadonlySet<ItemFacet> = new Set<ItemFacet>([
-	'file',
-	'meeting',
 	'information',
 	'documentReview',
 ]);
 
 /**
- * The stances Answer mode offers for an item (plan §6): a decision, or a
- * request with money, a signature or access in it, is accepted, declined,
- * deferred or held for the owner's input ("Ask"); a question, or a request for
- * a file, a meeting time or information, is answered, declined or deferred; any
- * other request is accepted, declined or deferred; a promise of ours is answered
- * (an update) or deferred. `skip` is never offered: an unselected item is
- * skipped.
+ * The stances Answer mode offers for an item (plan §6): a decision is
+ * accepted, declined, deferred or held for the owner's input ("Ask"); so is a
+ * request with money, a signature or access in it, unless what it asks for is
+ * a file or a meeting time, which is answered, declined or deferred, like a
+ * question or a request for information; any other request is accepted,
+ * declined or deferred; a promise of ours is answered (an update) or
+ * deferred. `skip` is never offered: an unselected item is skipped.
  */
 export function stanceChoicesFor(
 	intent: ItemIntent,
 	facets: readonly ItemFacet[]
 ): readonly ResponseStance[] {
+	const has = (set: ReadonlySet<ItemFacet>) => facets.some((f) => set.has(f));
 	if (intent === 'promise') return ['answer', 'defer'];
 	if (intent === 'question') return ['answer', 'decline', 'defer'];
-	if (intent === 'decision' || facets.some((f) => ACCEPTING_FACETS.has(f))) {
-		return ['accept', 'decline', 'defer', 'clarify'];
-	}
-	if (facets.some((f) => ANSWERING_FACETS.has(f))) return ['answer', 'decline', 'defer'];
+	if (intent === 'decision') return ['accept', 'decline', 'defer', 'clarify'];
+	if (has(DELIVERING_FACETS)) return ['answer', 'decline', 'defer'];
+	if (has(ACCEPTING_FACETS)) return ['accept', 'decline', 'defer', 'clarify'];
+	if (has(ANSWERING_FACETS)) return ['answer', 'decline', 'defer'];
 	return ['accept', 'decline', 'defer'];
 }
 
