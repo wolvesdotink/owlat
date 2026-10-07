@@ -19,7 +19,6 @@
  * gets through is a new source and is interpreted again normally.
  */
 
-import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
