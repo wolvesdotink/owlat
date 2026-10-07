@@ -167,6 +167,19 @@ const handlingRulesGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
+// D3: interpretation that failed, is partial, or never ran means the structured
+// actions the draft answered may be incomplete, so a person decides
+// (mail/interpret/teamActions.ts). Restrict-only; an unreadable state holds too.
+const interpretationIncompleteGate: CoreAutoSendGate = Object.freeze({
+	id: 'interpretation_incomplete',
+	async evaluate({ action, inboundMessageId }: AutoSendGateContext) {
+		const hold = await action.runQuery(internal.mail.interpret.teamActions.interpretationHold, {
+			inboundMessageId,
+		});
+		return hold.reason ? unsafe(hold.reason) : safe();
+	},
+});
+
 const PRE_AUTONOMY_GATES = Object.freeze([circuitBreakersGate]);
 const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	messageExistsGate,
@@ -180,6 +193,7 @@ const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	outboundDlpGate,
 	draftGapsGate,
 	handlingRulesGate,
+	interpretationIncompleteGate,
 ]);
 
 export const PRE_AUTONOMY_GATE_IDS = gateIds(PRE_AUTONOMY_GATES);

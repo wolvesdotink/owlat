@@ -394,7 +394,6 @@ const UNREACHED_ENTRIES: readonly string[] = [
 	'mail/interpret/brief.ts#markPending',
 	'mail/interpret/preferences.ts#getViewPreference',
 	'mail/interpret/preferences.ts#setThreadDefaultView',
-	'mail/interpret/run.ts#interpretMessage',
 	'mail/interpret/scope.ts#loadSourceForScope',
 ];
 

@@ -365,10 +365,10 @@ export async function assembleInboundBriefing(
 		}
 	}
 
-	// 4. Current message — the sender's body rendered as a QUARANTINED
-	// STRUCTURED extraction (facts + the sender's actual questions) rather than
-	// raw prose (see ./currentMessage). FAIL-SOFT to the hidden-stripped raw
-	// body; never blocks retrieval.
+	// 4. Current message — the sender's body rendered as the thread's
+	// structured actions from interpretation rather than raw prose (see
+	// ./currentMessage). FAIL-SOFT to the hidden-stripped raw body; never
+	// blocks retrieval.
 	const currentMessageSection = await buildCurrentMessageSection(ctx, message, inboundBody);
 	contextParts.push(currentMessageSection);
 
