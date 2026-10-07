@@ -84,10 +84,13 @@ export function extractRfc3156SignedPart(raw: Uint8Array): Rfc3156SignedParts | 
 
 	const secondPartStart = endOfDelimiterLine(text, secondDelimiterAt + delimiter.length);
 	if (secondPartStart < 0) return null;
-	// The second part runs to the next delimiter (normally the close-delimiter
-	// `--boundary--`); a missing close-delimiter is malformed.
+	// The second part runs to the close-delimiter `--boundary--`. RFC 1847
+	// allows exactly two parts, and a reader renders every part it finds, so a
+	// third part after the signature (an opening delimiter here) would show
+	// beside a verdict that does not cover it: malformed, like a missing close.
 	const thirdDelimiterAt = findDelimiter(text, delimiter, secondPartStart);
 	if (thirdDelimiterAt < 0) return null;
+	if (!text.startsWith('--', thirdDelimiterAt + delimiter.length)) return null;
 	const signaturePart = text.slice(secondPartStart, thirdDelimiterAt);
 
 	const signatureArmored = decodeSignaturePart(signaturePart);

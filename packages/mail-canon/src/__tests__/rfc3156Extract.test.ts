@@ -284,6 +284,25 @@ describe('extractRfc3156SignedPart — malformed structures resolve to null', ()
 		expect(extract(raw)).toBeNull();
 	});
 
+	it('rejects a third part after the signature part (RFC 1847: exactly two parts)', () => {
+		const raw = compose(SIMPLE_PART).replace(
+			'--owlat-sig-boundary--',
+			[
+				'--owlat-sig-boundary',
+				'Content-Type: text/html; charset=utf-8',
+				'',
+				'<p>not covered by the signature</p>',
+				'--owlat-sig-boundary--',
+			].join('\r\n')
+		);
+		expect(extract(raw)).toBeNull();
+	});
+
+	it('still accepts an epilogue after the close-delimiter', () => {
+		const raw = `${compose(SIMPLE_PART)}epilogue text that no reader renders\r\n`;
+		expect(extract(raw)).not.toBeNull();
+	});
+
 	it('rejects a second part that is not application/pgp-signature', () => {
 		const raw = compose(SIMPLE_PART).replace(
 			'Content-Type: application/pgp-signature; name="signature.asc"',
