@@ -109,8 +109,10 @@ describe('briefBanners', () => {
 		expect(banners).toMatchObject([
 			{
 				key: 'partial',
-				text: 'components.brief.incomplete.partialReason.tooLong',
-				params: { done: 2, total: 3 },
+				text: {
+					key: 'components.brief.incomplete.partialReason.tooLong',
+					params: { done: 2, total: 3 },
+				},
 				offersConversation: true,
 			},
 		]);

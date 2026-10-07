@@ -82,7 +82,7 @@ function indexText(doc: Document): Indexed {
 
 /** Remove marks a previous cite left behind. */
 export function clearQuoteHighlight(doc: Document): void {
-	for (const mark of [...doc.querySelectorAll(`mark[${MARK_ATTR}]`)]) {
+	for (const mark of doc.querySelectorAll(`mark[${MARK_ATTR}]`)) {
 		mark.replaceWith(...mark.childNodes);
 	}
 	doc.body?.normalize();

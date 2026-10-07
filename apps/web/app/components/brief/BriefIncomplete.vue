@@ -12,6 +12,7 @@
  */
 import type { BriefModeView } from '../../../../api/convex/mail/interpret/briefShape';
 import { briefBanners } from '~/utils/threadBriefBanners';
+import { useLocalized } from '~/composables/useLocalized';
 
 const props = defineProps<{
 	/** null: no brief at all. */
@@ -23,6 +24,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'open-conversation': [] }>();
 
 const { t } = useI18n();
+const localized = useLocalized();
 const banners = computed(() => briefBanners(props.brief, { isSigned: props.isSigned }));
 
 const TONE: Record<string, string> = {
@@ -53,7 +55,7 @@ const ICON: Record<string, string> = {
 			<Icon :name="ICON[banner.tone]!" class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
 			<p class="min-w-0 flex-1">
 				<b v-if="banner.lead" class="font-medium">{{ t(banner.lead) }}</b>
-				{{ t(banner.text, banner.params ?? {}) }}
+				{{ localized(banner.text) }}
 			</p>
 			<button
 				v-if="banner.offersConversation"

@@ -3,13 +3,13 @@
  * texts are catalog keys the component resolves.
  */
 import type { BriefModeView } from '../../../api/convex/mail/interpret/briefShape';
+import type { LocalizedText } from '~/utils/localizedText';
 
 export interface BriefBanner {
 	key: string;
 	tone: 'warn' | 'info' | 'err' | 'neutral';
 	lead?: string;
-	text: string;
-	params?: Record<string, string | number>;
+	text: LocalizedText;
 	offersConversation: boolean;
 }
 
@@ -73,9 +73,11 @@ export function briefBanners(
 			lead: 'components.brief.incomplete.partialLead',
 			// Every partial text names the counts, so one without a gap says less.
 			text: gap
-				? ((reason && PARTIAL_REASON[reason]) ?? 'components.brief.incomplete.partialCount')
+				? {
+						key: (reason && PARTIAL_REASON[reason]) ?? 'components.brief.incomplete.partialCount',
+						params: { done: gap.interpretedMessages, total: gap.totalMessages },
+					}
 				: 'components.brief.incomplete.partialPlain',
-			params: gap ? { done: gap.interpretedMessages, total: gap.totalMessages } : {},
 			offersConversation: true,
 		});
 	}
