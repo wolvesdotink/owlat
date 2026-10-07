@@ -11,46 +11,43 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
  * part URL that would not load — and the caller extracts it from the raw
  * `.eml` exactly as before.
  *
- * The minted URLs are kept until shortly before their token expires. The proxy
- * lets the browser cache a part privately for the token's lifetime, and only
- * the SAME URL can hit that cache, so reopening a file in the lightbox or
- * downloading it after previewing it is served locally.
+ * The minted URLs are kept for a while. The proxy lets the browser cache a part
+ * privately for the token's lifetime, and only the SAME URL can hit that cache,
+ * so reopening a file in the lightbox or downloading it after previewing it is
+ * served locally. How long a URL is kept is counted on this device from when it
+ * arrived, never by comparing the token's `exp` (server time) with the device
+ * clock (#1294): a clock running behind kept expired URLs, one running ahead
+ * kept none. A kept URL the proxy refuses anyway is minted once more before the
+ * caller falls back to the whole message.
  */
 
-/** Stop reusing a URL this long before its token expires. */
-const EXPIRY_MARGIN_MS = 60_000;
+/**
+ * Reuse a URL for at most this long after it arrived. The proxy's tokens live
+ * an hour from when the server minted it (`lib/sealedBlob.ts`); the ten minutes
+ * left over are far more than the answer takes to arrive.
+ */
+const URL_REUSE_MS = 50 * 60_000;
 /** How many minted part URLs are remembered. */
 const URL_CACHE_LIMIT = 50;
 
 type MintPartUrl = (messageId: string, att: AttachmentMeta) => Promise<string | null>;
 
-/** The `exp` a sealed-blob URL carries, or null for any other URL. */
-function tokenExpiry(url: string): number | null {
-	try {
-		const exp = Number(new URL(url).searchParams.get('exp'));
-		return Number.isFinite(exp) && exp > 0 ? exp : null;
-	} catch {
-		return null;
-	}
-}
-
 export function createMessagePartLoader(mint: MintPartUrl, now: () => number = Date.now) {
-	const urls = new Map<string, { url: string; expiresAt: number }>();
+	const urls = new Map<string, { url: string; reuseUntil: number }>();
 
 	async function urlFor(key: string, messageId: string, att: AttachmentMeta) {
 		const hit = urls.get(key);
-		if (hit && hit.expiresAt - EXPIRY_MARGIN_MS > now()) return hit.url;
+		if (hit && now() < hit.reuseUntil) return { url: hit.url, reused: true };
 		urls.delete(key);
 		const url = await mint(messageId, att);
-		const expiresAt = url ? tokenExpiry(url) : null;
-		if (url && expiresAt !== null) {
-			urls.set(key, { url, expiresAt });
+		if (url) {
+			urls.set(key, { url, reuseUntil: now() + URL_REUSE_MS });
 			if (urls.size > URL_CACHE_LIMIT) {
 				const oldest = urls.keys().next().value;
 				if (oldest !== undefined) urls.delete(oldest);
 			}
 		}
-		return url;
+		return { url, reused: false };
 	}
 
 	return async function loadMessagePart(
@@ -58,9 +55,17 @@ export function createMessagePartLoader(mint: MintPartUrl, now: () => number = D
 		att: AttachmentMeta
 	): Promise<Blob | null> {
 		const key = `${messageId}:${att.partIndex ?? '0'}:${att.filename}`;
-		const url = await urlFor(key, messageId, att);
+		let { url, reused } = await urlFor(key, messageId, att);
 		if (!url) return null;
-		const res = await fetch(url);
+		let res = await fetch(url);
+		if (!res.ok && reused) {
+			// Refused before its time (a clock that jumped, a shorter token): one
+			// fresh URL costs far less than the raw `.eml` the caller falls back to.
+			urls.delete(key);
+			({ url } = await urlFor(key, messageId, att));
+			if (!url) return null;
+			res = await fetch(url);
+		}
 		if (!res.ok) {
 			urls.delete(key);
 			return null;

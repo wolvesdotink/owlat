@@ -5,8 +5,13 @@
  * whether it is theirs or the team's; everyone else saves a personal reply.
  * Variables (`{{contact.firstName}}`) and gaps (`[[order number]]`) in the
  * text are kept as written and resolve on every later insert.
+ *
+ * A pasted image is left out, and the dialog says so (#1293): its bytes are a
+ * part of this draft, which a saved reply has nowhere to keep, so it would be
+ * inserted as an empty image.
  */
 import { htmlToPlainText } from '@owlat/shared/html';
+import { stripInlineImages } from '@owlat/shared/inlineImages';
 import { useCreateSavedReply, type SavedReplyScope } from '~/composables/useSavedReplies';
 
 const props = defineProps<{
@@ -25,7 +30,8 @@ const shortcut = ref('');
 const scope = ref<SavedReplyScope>('personal');
 const saving = ref(false);
 
-const preview = computed(() => htmlToPlainText(props.bodyHtml, { preserveBreaks: true }).trim());
+const kept = computed(() => stripInlineImages(props.bodyHtml));
+const preview = computed(() => htmlToPlainText(kept.value.html, { preserveBreaks: true }).trim());
 
 async function save() {
 	if (!name.value.trim() || !preview.value || saving.value) return;
@@ -34,7 +40,7 @@ async function save() {
 		const saved = await create(scope.value, {
 			name: name.value,
 			shortcut: shortcut.value,
-			bodyHtml: props.bodyHtml,
+			bodyHtml: kept.value.html,
 		});
 		if (saved.ok) open.value = false;
 	} finally {
@@ -90,6 +96,14 @@ async function save() {
 					class="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-bg-surface p-3 text-sm text-text-primary"
 				>
 					{{ preview || t('shared.savedReplies.saveDialog.emptyText') }}
+				</p>
+				<p
+					v-if="kept.removed > 0"
+					class="mt-2 flex items-start gap-1.5 text-xs text-text-secondary"
+					data-testid="saved-reply-images-left-out"
+				>
+					<Icon name="lucide:image-off" class="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+					{{ t('shared.savedReplies.saveDialog.imagesLeftOut', kept.removed) }}
 				</p>
 			</div>
 			<div class="flex items-center justify-end gap-2">

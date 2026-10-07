@@ -16,6 +16,7 @@ import type { EditorBlock } from '@owlat/email-builder';
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { ComposerTargetCapabilities } from '~/utils/composerTarget';
 import type { ComposerSavedReplies } from '~/composables/useComposerSavedReplyPicker';
+import type { InlineImageSources } from '~/composables/postbox/usePostboxInlineImages';
 import SavedReplyComposerTools from '~/components/savedReply/SavedReplyComposerTools.vue';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
 import { usePostboxInsertAvailability } from '~/composables/postbox/usePostboxInsertAvailability';
@@ -44,6 +45,8 @@ const props = defineProps<{
 	/** Live subject + blocks, for the read-only "Preview as sent" dialog below. */
 	subject?: string;
 	bodyBlocks?: EditorBlock[];
+	/** The URLs the editor shows pasted images from; the preview shows them too. */
+	inlineImageSources?: InlineImageSources;
 	persistentToolbar?: boolean;
 	/** Deterministic pre-send findings (plan idea 6); empty means nothing to say. */
 	preflight?: PreflightFinding[];
@@ -354,6 +357,7 @@ function onPickFiles(event: Event) {
 					:body-html="bodyHtml"
 					:body-blocks="bodyBlocks ?? []"
 					:composer-mode="composerMode ?? 'simple'"
+					:inline-image-sources="inlineImageSources"
 					@update:open="previewOpen = $event"
 				/>
 				<PostboxFollowUpDialog

@@ -14844,6 +14844,7 @@
 			"saveCurrent": "Save as reply",
 			"saveDialog": {
 				"emptyText": "Write something first.",
+				"imagesLeftOut": "A saved reply cannot keep pasted images, so this one is left out. Paste it again after you insert the reply. | A saved reply cannot keep pasted images, so these {count} images are left out. Paste them again after you insert the reply.",
 				"save": "Save reply",
 				"title": "Save as reply"
 			},
