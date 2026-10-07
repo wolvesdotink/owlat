@@ -116,12 +116,26 @@ export const threadBriefTables = {
 		// When the reducer folded this extraction into the thread (same
 		// transaction as the write); a replay of an applied row is a no-op.
 		appliedAt: v.optional(v.number()),
+		// Brief mode: the message's exact wording must stay in view beside the
+		// brief (legal notice, changed terms, payment details), and why. Kept
+		// out of the sealed payload so the brief finds every such source by index.
+		isExactWordingRequired: v.optional(v.boolean()),
+		exactWordingReason: v.optional(
+			v.union(
+				v.literal('legal'),
+				v.literal('terms'),
+				v.literal('payment_details'),
+				v.literal('security')
+			)
+		),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
 		// Idempotency: one extraction per source revision and extractor version.
 		.index('by_source_revision', ['sourceKey', 'contentRevision', 'extractorVersion'])
 		.index('by_mail_thread', ['mailThreadId'])
+		// "Read the exact wording": every source of a thread that asked for it.
+		.index('by_mail_thread_exact_wording', ['mailThreadId', 'isExactWordingRequired'])
 		.index('by_conversation_thread', ['conversationThreadId']),
 
 	// Informational claims of personal mail threads (brief mode only).
@@ -196,6 +210,8 @@ export const threadBriefTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_mail_thread_and_status', ['mailThreadId', 'status'])
+		// A thread's open items in due order: the exact top item of its list row.
+		.index('by_mail_thread_status_due', ['mailThreadId', 'status', 'due.at'])
 		.index('by_conversation_thread_and_status', ['conversationThreadId', 'status'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
 		.index('by_counterparty', ['counterpartyKey']),

@@ -214,6 +214,7 @@ describe('a cited message beyond the loaded pages', () => {
 								contentRevision: 'r1',
 								quote: 'by Friday',
 								occurrence: 1,
+								occurrenceCount: 2,
 							},
 						],
 					},
@@ -228,7 +229,11 @@ describe('a cited message beyond the loaded pages', () => {
 		expect(state.loadEarlier).toHaveBeenCalledTimes(2);
 		expect(state.citeState.value).toBe('shown');
 		expect(state.expandedIds.value.has('m5')).toBe(true);
-		expect(state.citeQuoteFor('m5')).toEqual({ quote: 'by Friday', occurrence: 1 });
+		expect(state.citeQuoteFor('m5')).toEqual({
+			quote: 'by Friday',
+			occurrence: 1,
+			occurrenceCount: 2,
+		});
 	});
 
 	it('says the message is out of reach when no earlier page has it', async () => {

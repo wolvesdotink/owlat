@@ -78,6 +78,7 @@ async function sealEvidence(
 			contentRevision,
 			quote: await sealBodyAtWrite(e.quote),
 			...(e.occurrence !== undefined ? { occurrence: e.occurrence } : {}),
+			...(e.occurrenceCount !== undefined ? { occurrenceCount: e.occurrenceCount } : {}),
 		}))
 	);
 }
@@ -142,6 +143,14 @@ export const applyInterpretation = internalMutation({
 			...(args.sourceManifest ? { sourceManifest: args.sourceManifest } : {}),
 			...(args.coverage ? { coverage: args.coverage } : {}),
 			...(args.errorCode ? { errorCode: args.errorCode } : {}),
+			...(args.result?.exactWording
+				? {
+						isExactWordingRequired: true,
+						...(args.result.exactWording.reason
+							? { exactWordingReason: args.result.exactWording.reason }
+							: {}),
+					}
+				: {}),
 			...(args.result
 				? {
 						payload: await sealBodyAtWrite(JSON.stringify(args.result)),

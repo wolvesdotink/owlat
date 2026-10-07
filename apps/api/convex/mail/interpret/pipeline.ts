@@ -20,7 +20,7 @@ import { factKeyString, type InterpretMode } from '@owlat/shared/threadBrief';
 import { isConsequential } from '@owlat/shared/threadBriefRules';
 import type { ParticipantRef } from '../../lib/validators/threadBrief';
 import type { GroundedClaim, GroundingResult } from './ground';
-import { quoteOccurrence } from './quoteMatch';
+import { quoteOccurrences } from './quoteMatch';
 import {
 	INTERPRET_TEXT_LIMITS,
 	type InterpretFactProposal,
@@ -278,13 +278,17 @@ function resolveTag(
 // ── Reducer input ──────────────────────────────────────────────────────────
 
 function evidenceOf(claim: GroundedClaim<unknown>, canonicalText: string): ReduceEvidence[] {
-	return claim.evidence.map((e) => ({
-		segmentId: e.segmentId,
-		start: e.start,
-		end: e.end,
-		quote: canonicalText.slice(e.start, e.end),
-		occurrence: quoteOccurrence(canonicalText, e.start, e.end),
-	}));
+	return claim.evidence.map((e) => {
+		const { occurrence, total } = quoteOccurrences(canonicalText, e.start, e.end);
+		return {
+			segmentId: e.segmentId,
+			start: e.start,
+			end: e.end,
+			quote: canonicalText.slice(e.start, e.end),
+			occurrence,
+			occurrenceCount: total,
+		};
+	});
 }
 
 export interface ToReduceOptions {
