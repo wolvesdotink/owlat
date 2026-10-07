@@ -17,26 +17,20 @@
  * {@link EvalModel} built on `interpretMessage`'s pure core once it exists. The
  * CLI is `apps/api/scripts/interpret-eval.ts`. Pure and isolate-safe.
  */
-import type { SegmentedMessage } from '@owlat/shared/mailSegments';
 import { verifyQuote, type GroundableOutput, type GroundedClaim } from '../ground';
-import { EVAL_SLICES, type EvalMessage, type EvalSlice, type EvalThread } from './corpus';
+import { EVAL_SLICES, type EvalSlice, type EvalThread } from './corpus';
 import {
 	evidenceMapsBack,
 	locateQuote,
-	modelInputFor,
 	replayThread,
 	scopeEvalMessage,
-	type EvalModelMessage,
+	type EvalModelInput,
 } from './replay';
 
 export interface EvalModel {
 	name: string;
-	interpret(input: {
-		thread: EvalThread;
-		message: EvalMessage;
-		segmented: SegmentedMessage;
-		history: EvalModelMessage[];
-	}): Promise<{ output: GroundableOutput; costUsd?: number }>;
+	/** Interpret one message from its sanitized input (see `EvalModelInput`). */
+	interpret(input: EvalModelInput): Promise<{ output: GroundableOutput; costUsd?: number }>;
 }
 
 export interface EvalReport {
@@ -114,22 +108,25 @@ export async function runEval(
 			report.skippedIneligible++;
 			continue;
 		}
-		const history = modelInputFor(thread);
-		const seen = JSON.stringify(history);
-		for (const note of thread.internalNotes ?? []) {
-			if (seen.includes(note.text))
-				report.notesLeaked.push({ threadId: thread.id, noteId: note.id });
-		}
 		const replayed = await replayThread(
 			thread,
 			model
-				? async (message, segmented) => {
-						const result = await model.interpret({ thread, message, segmented, history });
+				? async (input) => {
+						const result = await model.interpret(input);
 						report.costUsd += result.costUsd ?? 0;
 						return result.output;
 					}
 				: undefined
 		);
+		// The leak check reads exactly what an adapter received (or would have).
+		const leaked = new Set<string>();
+		for (const { input } of replayed) {
+			const seen = JSON.stringify(input);
+			for (const note of thread.internalNotes ?? []) {
+				if (seen.includes(note.text)) leaked.add(note.id);
+			}
+		}
+		for (const noteId of leaked) report.notesLeaked.push({ threadId: thread.id, noteId });
 		for (const { message, segmented, output, grounding } of replayed) {
 			report.messages++;
 			if (!grounding.coverage.complete) report.incompleteMessages++;
