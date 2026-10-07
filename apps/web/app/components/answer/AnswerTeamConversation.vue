@@ -4,6 +4,9 @@ import type { FunctionReturnType } from 'convex/server';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { teamConversationEntries, teamConversationOpenIds } from '~/utils/answerTeamConversation';
+import type { TeamStreamEntry } from '../../../../api/convex/mail/interpret/briefShape';
+import { placeStreamExtras } from '~/utils/teamStream';
+import TeamThreadStream from '~/components/team/TeamThreadStream.vue';
 
 type ThreadData = NonNullable<FunctionReturnType<typeof api.inbox.queries.getThread>>;
 type ThreadMessage = ThreadData['messages'][number];
@@ -19,6 +22,10 @@ type FollowUp = FunctionReturnType<typeof api.inbox.followUps.listForThread>[num
  * answers, open in full; older ones are one-line rows. "Full conversation"
  * (`t` on the page) opens them all.
  *
+ * The team's internal notes and what happened (the team stream, SPEC §7)
+ * sit between them as on the thread page, read-only here; the open actions
+ * come above (`#open-items`). No summary: a team thread has none.
+ *
  * The agent's working, the retry of a failed message and assignment stay on
  * the thread page; this column is only what is being answered.
  */
@@ -31,6 +38,9 @@ const props = defineProps<{
 	/** A follow-up author's display name. */
 	memberName: (userId: string) => string;
 	undoingFollowUpId?: string | null;
+	/** The team stream (notes and system lines are placed between the messages). */
+	stream?: readonly TeamStreamEntry[];
+	viewerId?: string | null;
 }>();
 
 const view = defineModel<AnswerConversationView>('view', { default: 'summary' });
@@ -39,6 +49,27 @@ const emit = defineEmits<{ (e: 'undo-follow-up', followUpId: FollowUp['_id']): v
 const { t } = useI18n();
 
 const entries = computed(() => teamConversationEntries(props.messages, props.followUps));
+// Notes and system lines after the customer message they follow in the stream.
+const extras = computed(() =>
+	placeStreamExtras(props.stream ?? [], (entry) =>
+		entry.kind === 'customerEmail' ? entry.source.id : null
+	)
+);
+/** The extras to show before `index`: the previous message's, once its replies are out. */
+function extrasBefore(index: number): TeamStreamEntry[] {
+	const entry = entries.value[index];
+	if (index === 0) return extras.value.leading;
+	if (entry && entry.kind !== 'inbound') return [];
+	for (let i = index - 1; i >= 0; i--) {
+		const previous = entries.value[i]!;
+		if (previous.kind === 'inbound') return extras.value.after.get(previous.message._id) ?? [];
+	}
+	return [];
+}
+const trailing = computed(() => {
+	const last = [...entries.value].reverse().find((e) => e.kind === 'inbound');
+	return last?.kind === 'inbound' ? (extras.value.after.get(last.message._id) ?? []) : [];
+});
 const defaultOpen = computed(() => teamConversationOpenIds(props.messages, props.answeringId));
 // Rows a person opened or closed by hand, over the default.
 const toggled = ref(new Set<string>());
@@ -136,15 +167,22 @@ const showViewToggle = computed(() => props.messages.length > 1);
 					:data-testid="`answer-view-${option}`"
 					@click="view = option"
 				>
-					{{ t(`components.answer.mode.view.${option}`) }}
+					{{ t(`components.team.answer.view.${option === 'summary' ? 'recent' : 'full'}`) }}
 				</button>
 			</div>
 		</div>
 
-		<!-- The catch-up card (summary, asks) of a thread worth summarising. -->
-		<slot name="catch-up" :view="view" :reveal="reveal" />
+		<!-- The open actions, pinned above the conversation. -->
+		<slot name="open-items" :view="view" :reveal="reveal" />
 
-		<template v-for="entry in entries" :key="entry.key">
+		<template v-for="(entry, index) in entries" :key="entry.key">
+			<TeamThreadStream
+				v-if="extrasBefore(index).length > 0"
+				:entries="extrasBefore(index)"
+				:viewer-id="viewerId ?? null"
+				:member-name="memberName"
+				:can-react="false"
+			/>
 			<article
 				v-if="entry.kind === 'inbound'"
 				class="rounded-(--radius-card) border border-border-subtle bg-bg-elevated transition-shadow"
@@ -223,5 +261,12 @@ const showViewToggle = computed(() => props.messages.length > 1);
 				@undo="emit('undo-follow-up', entry.followUp._id)"
 			/>
 		</template>
+		<TeamThreadStream
+			v-if="trailing.length > 0"
+			:entries="trailing"
+			:viewer-id="viewerId ?? null"
+			:member-name="memberName"
+			:can-react="false"
+		/>
 	</div>
 </template>
