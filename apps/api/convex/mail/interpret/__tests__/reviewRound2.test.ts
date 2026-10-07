@@ -244,6 +244,7 @@ describe('F5: a repair updates each derived field on its own', () => {
 		expect(after).toMatchObject({
 			responsible: { email: 'jonas@example.com', isUs: false },
 			responsibility: 'them',
+			listBucket: 'waitingOnOthers',
 		});
 		expect((await brief(t, threadId))?.itemCounts).toMatchObject({ us: 0, them: 1 });
 	});
