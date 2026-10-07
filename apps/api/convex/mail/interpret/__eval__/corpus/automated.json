@@ -1,0 +1,301 @@
+{
+	"version": 1,
+	"slice": "automated",
+	"threads": [
+		{
+			"id": "auto-001",
+			"slices": ["automated", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Northwind Billing",
+						"email": "billing@northwind.example.com"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-01T06:00:00+00:00",
+					"subject": "Invoice INV-2231",
+					"text": "Invoice INV-2231\n\nAmount due: EUR 1,250.00\nDue date: 20 October 2026\n\nPlease pay by bank transfer to the account shown on the attached invoice.\n\nThis is an automated message, please do not reply.\n",
+					"headers": {
+						"listUnsubscribe": true
+					}
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "Please pay by bank transfer to the account shown on the attached invoice.",
+						"segmentKind": "fresh",
+						"assertion": "Pay invoice INV-2231 (EUR 1,250.00) by 20 October",
+						"requester": {
+							"name": "Northwind Billing",
+							"email": "billing@northwind.example.com"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "20 October 2026"
+						},
+						"amount": {
+							"value": 1250.0,
+							"currency": "EUR"
+						}
+					}
+				],
+				"facts": [
+					{
+						"id": "f1",
+						"messageId": "m1",
+						"key": {
+							"entity": "invoice INV-2231",
+							"attribute": "amount"
+						},
+						"quote": "Amount due: EUR 1,250.00",
+						"segmentKind": "fresh",
+						"assertion": "Invoice INV-2231 is EUR 1,250.00"
+					}
+				]
+			}
+		},
+		{
+			"id": "auto-002",
+			"slices": ["automated", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Calendar",
+						"email": "calendar-noreply@example.com"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-02T09:00:00+02:00",
+					"subject": "Invitation: Design review",
+					"text": "You have been invited to Design review on Tue 13 Oct 2026 10:00 - 11:00 (CEST).\n\nOrganizer: Jonas Weber\n\nGoing? Yes - Maybe - No\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["meeting"],
+						"responsibility": "us",
+						"quote": "You have been invited to Design review on Tue 13 Oct 2026 10:00 - 11:00 (CEST).",
+						"segmentKind": "fresh",
+						"assertion": "Answer the Design review invitation for 13 Oct",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "Tue 13 Oct 2026 10:00",
+							"tz": "Europe/Berlin"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "auto-003",
+			"slices": ["automated", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "CloudDocs",
+						"email": "noreply@clouddocs.example.com"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-03T12:00:00+00:00",
+					"subject": "Your subscription renews soon",
+					"text": "Your Team plan renews on 1 November 2026 for USD 480.00 unless you cancel before 25 October 2026.\n\nManage your subscription in the billing settings.\n",
+					"headers": {
+						"listUnsubscribe": true
+					}
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "decision",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "renews on 1 November 2026 for USD 480.00 unless you cancel before 25 October 2026.",
+						"segmentKind": "fresh",
+						"assertion": "Decide before 25 October whether to keep the Team plan (USD 480.00)",
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "before 25 October 2026"
+						},
+						"amount": {
+							"value": 480.0,
+							"currency": "USD"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "auto-004",
+			"slices": ["automated", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Paketdienst",
+						"email": "versand@paket.example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-04T08:00:00+02:00",
+					"subject": "Deine Sendung kommt",
+					"text": "Deine Sendung 00340000 wird am Dienstag, 6. Oktober, zwischen 10 und 14 Uhr zugestellt.\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"facts": [
+					{
+						"id": "f1",
+						"messageId": "m1",
+						"key": {
+							"entity": "parcel 00340000",
+							"attribute": "delivery"
+						},
+						"quote": "wird am Dienstag, 6. Oktober, zwischen 10 und 14 Uhr zugestellt.",
+						"segmentKind": "fresh",
+						"assertion": "Die Sendung kommt am 6. Oktober zwischen 10 und 14 Uhr"
+					}
+				]
+			}
+		},
+		{
+			"id": "auto-005",
+			"slices": ["automated", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "SignFlow",
+						"email": "noreply@signflow.example.com"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T10:00:00+00:00",
+					"subject": "Clara Vogel sent you a document to sign",
+					"html": "<table><tr><td><p>Clara Vogel sent you a document to review and sign.</p><p>Please review and sign the agreement by 16 October 2026.</p><p><a href=\"https://signflow.example.com/d/0000\">Review document</a></p></td></tr></table>"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["signature", "documentReview"],
+						"responsibility": "us",
+						"quote": "Please review and sign the agreement by 16 October 2026.",
+						"segmentKind": "fresh",
+						"assertion": "Review and sign Clara's agreement by 16 October",
+						"requester": {
+							"name": "Clara Vogel",
+							"email": "clara@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by 16 October 2026"
+						}
+					}
+				]
+			}
+		}
+	]
+}

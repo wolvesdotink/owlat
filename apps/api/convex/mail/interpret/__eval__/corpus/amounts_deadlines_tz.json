@@ -1,0 +1,327 @@
+{
+	"version": 1,
+	"slice": "amounts_deadlines_tz",
+	"threads": [
+		{
+			"id": "amt-001",
+			"slices": ["amounts_deadlines_tz", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Noah Berg",
+						"email": "noah@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T09:00:00-07:00",
+					"subject": "Deposit",
+					"text": "Hi Mara,\n\nThe deposit of USD 2,400 is due by 5 pm Pacific on Oct 15.\n\nNoah\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "The deposit of USD 2,400 is due by 5 pm Pacific on Oct 15.",
+						"segmentKind": "fresh",
+						"assertion": "Pay the USD 2,400 deposit by 15 Oct, 5 pm Pacific",
+						"requester": {
+							"name": "Noah Berg",
+							"email": "noah@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by 5 pm Pacific on Oct 15",
+							"at": "2026-10-15T17:00:00-07:00",
+							"tz": "America/Los_Angeles"
+						},
+						"amount": {
+							"value": 2400.0,
+							"currency": "USD"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "amt-002",
+			"slices": ["amounts_deadlines_tz", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Felix Braun",
+						"email": "felix@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T10:00:00+02:00",
+					"subject": "Überweisung",
+					"text": "Hallo Mara,\n\nbitte überweise 1.250,00 € bis 20.10.2026, 12:00 Uhr.\n\nGruß\nFelix\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "bitte überweise 1.250,00 € bis 20.10.2026, 12:00 Uhr.",
+						"segmentKind": "fresh",
+						"assertion": "Überweise 1.250,00 € bis 20.10.2026, 12:00 Uhr",
+						"requester": {
+							"name": "Felix Braun",
+							"email": "felix@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "bis 20.10.2026, 12:00 Uhr",
+							"at": "2026-10-20T12:00:00+02:00",
+							"tz": "Europe/Berlin"
+						},
+						"amount": {
+							"value": 1250.0,
+							"currency": "EUR"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "amt-003",
+			"slices": ["amounts_deadlines_tz", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T10:00:00+09:00",
+					"subject": "Booth fee",
+					"text": "Hi Mara,\n\nPlease transfer ¥48,000 for the booth by 18:00 JST on 22 October.\n\nAiko\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "Please transfer ¥48,000 for the booth by 18:00 JST on 22 October.",
+						"segmentKind": "fresh",
+						"assertion": "Transfer ¥48,000 for the booth by 22 Oct 18:00 JST",
+						"requester": {
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by 18:00 JST on 22 October",
+							"at": "2026-10-22T18:00:00+09:00",
+							"tz": "Asia/Tokyo"
+						},
+						"amount": {
+							"value": 48000.0,
+							"currency": "JPY"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "amt-004",
+			"slices": ["amounts_deadlines_tz", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Sofia Marin",
+						"email": "sofia@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T11:00:00+01:00",
+					"subject": "Translation",
+					"text": "Hi Mara,\n\nThe translation costs £300. Could you approve it by end of day Friday (UK time)?\n\nSofia\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "decision",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "Could you approve it by end of day Friday (UK time)?",
+						"segmentKind": "fresh",
+						"assertion": "Approve the £300 translation by Friday (UK time)",
+						"requester": {
+							"name": "Sofia Marin",
+							"email": "sofia@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by end of day Friday (UK time)",
+							"tz": "Europe/London"
+						},
+						"amount": {
+							"value": 300.0,
+							"currency": "GBP"
+						}
+					}
+				],
+				"facts": [
+					{
+						"id": "f1",
+						"messageId": "m1",
+						"key": {
+							"entity": "translation",
+							"attribute": "cost"
+						},
+						"quote": "The translation costs £300.",
+						"segmentKind": "fresh",
+						"assertion": "The translation costs £300"
+					}
+				]
+			}
+		},
+		{
+			"id": "amt-005",
+			"slices": ["amounts_deadlines_tz", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T08:00:00+02:00",
+					"subject": "Honorar",
+					"text": "Hi Mara,\n\nmein Honorar beträgt CHF 3'200. Kannst du es bis Ende Monat (MEZ) anweisen?\n\nEmil\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "Kannst du es bis Ende Monat (MEZ) anweisen?",
+						"segmentKind": "fresh",
+						"assertion": "Weise Emils Honorar von CHF 3'200 bis Monatsende an",
+						"requester": {
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "bis Ende Monat (MEZ)",
+							"tz": "Europe/Zurich"
+						},
+						"amount": {
+							"value": 3200.0,
+							"currency": "CHF"
+						}
+					}
+				]
+			}
+		}
+	]
+}
