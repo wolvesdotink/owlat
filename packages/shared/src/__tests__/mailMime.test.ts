@@ -3,6 +3,7 @@ import {
 	binaryStringToBytes,
 	bytesToBinaryString,
 	extractAttachments,
+	extractBodyTextParts,
 	extractAttachmentAt,
 	extractFirstPartByType,
 } from '../mailMime';
@@ -86,6 +87,40 @@ const RAW = [
 	'--OUTER--',
 	'',
 ].join('\n');
+
+describe('extractBodyTextParts', () => {
+	it('returns the text/plain leaves the displayed body is made of, never an attachment', () => {
+		const raw = [
+			'Content-Type: multipart/mixed; boundary="b"',
+			'',
+			'--b',
+			'Content-Type: text/plain; name="notes.txt"',
+			'Content-Disposition: attachment',
+			'',
+			'attached text',
+			'--b',
+			'Content-Type: text/plain; charset=iso-8859-1',
+			'Content-Transfer-Encoding: quoted-printable',
+			'',
+			'Gr=FC=DFe',
+			'--b',
+			'Content-Type: text/html',
+			'',
+			'<p>html</p>',
+			'--b',
+			'Content-Type: text/plain',
+			'',
+			'footer',
+			'--b--',
+		].join('\r\n');
+		const parts = extractBodyTextParts(raw);
+		expect(parts.map((part) => bytesToBinaryString(part.bytes).trim())).toEqual([
+			'Gr\xfc\xdfe',
+			'footer',
+		]);
+		expect(parts[0]!.charset).toBe('iso-8859-1');
+	});
+});
 
 describe('extractAttachments', () => {
 	it('returns only attachment leaves, in document order, decoded', () => {

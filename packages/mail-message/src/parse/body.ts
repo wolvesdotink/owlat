@@ -447,8 +447,23 @@ export interface AssembledBody {
 }
 
 /**
- * Flatten a parsed MIME tree into `text` / `html` bodies. Every non-attachment
- * `text/plain` leaf feeds `text`; every non-attachment `text/html` leaf feeds
+ * Which body a leaf feeds, if any: a non-attachment `text/plain` leaf is
+ * `text`, a non-attachment `text/html` leaf is `html`, anything else is none.
+ * {@link assembleBody}'s rule, exported so a reader of a body's bytes (the
+ * clearsigned verifier) picks exactly the leaves the displayed body is made of.
+ */
+export function bodyLeafKind(leaf: MimeNode): 'text' | 'html' | null {
+	if (isAttachmentPart(leaf)) return null;
+	const { type, subtype } = leaf.contentType;
+	if (type !== 'text') return null;
+	if (subtype === 'plain') return 'text';
+	if (subtype === 'html') return 'html';
+	return null;
+}
+
+/**
+ * Flatten a parsed MIME tree into `text` / `html` bodies. Every
+ * {@link bodyLeafKind} `text` leaf feeds `text` and every `html` leaf feeds
  * `html`; each is transfer-decoded and then charset-decoded under ITS OWN
  * declared charset. `html` is `false` when no HTML part exists.
  */
@@ -457,13 +472,11 @@ export function assembleBody(root: MimeNode): AssembledBody {
 	const htmlParts: string[] = [];
 
 	walkLeaves(root, (leaf) => {
-		if (isAttachmentPart(leaf)) return;
-		const { type, subtype } = leaf.contentType;
-		if (type !== 'text') return;
-		if (subtype !== 'plain' && subtype !== 'html') return;
+		const kind = bodyLeafKind(leaf);
+		if (kind === null) return;
 		const bytes = transferDecode(leaf.rawBody, leaf.headers.last('content-transfer-encoding'));
 		const decoded = decodeCharset(bytes, leaf.contentType.params['charset']);
-		if (subtype === 'html') htmlParts.push(decoded);
+		if (kind === 'html') htmlParts.push(decoded);
 		else textParts.push(decoded);
 	});
 

@@ -15,7 +15,7 @@
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import { isClearsigned } from '@owlat/shared/secureMessage';
+import { isClearsignedText } from '@owlat/shared/clearsignedBody';
 import { logError } from '../lib/runtimeLog';
 import { utf8ToBase64 } from '../lib/bytes';
 
@@ -35,11 +35,12 @@ export async function clearsignedSignatureMirror(
 	textBody: string | undefined,
 	from: string
 ): Promise<SignatureMirrorFields | undefined> {
-	if (!textBody || !isClearsigned(textBody)) return undefined;
+	if (!textBody || !isClearsignedText(textBody)) return undefined;
 	try {
 		const verdict = await ctx.runAction(internal.e2ee.verifyInboundSignature.forInbound, {
 			rawBytesBase64: utf8ToBase64(textBody),
 			from,
+			bareBody: true,
 		});
 		if (!verdict.isSigned) return undefined;
 		return {
