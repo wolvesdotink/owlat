@@ -61,6 +61,7 @@ const opts = {
 	participants: [],
 	ownAddresses: new Set<string>(),
 	timezone: 'UTC',
+	sentAt: 0,
 	verdicts: new Map(),
 	checked: new Set<string>(),
 };
