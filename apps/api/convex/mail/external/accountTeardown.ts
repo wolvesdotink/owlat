@@ -39,11 +39,14 @@ import { deleteStoredAccessToken } from './accessTokenStore';
 import { listMailboxesOnAddress } from '../mailbox/addressResolution';
 import type { Doc } from '../../_generated/dataModel';
 import { deleteMailThreadCatchUps } from '../ai/catchUpStore';
+import { purgeThreadBrief } from '../interpret/purgeThread';
 import { deleteResourceUploads, mailThreadUploadKey } from '../../storage/uploads';
 import { deleteAskSessionsForDraft } from '../ai/composeDraftStore';
 
 /** Messages deleted per purge step; the step re-schedules itself while more remain. */
 const PURGE_CHUNK = 200;
+/** Thread brief rows deleted inline per thread (PURGE_CHUNK threads per step); the rest is scheduled. */
+const THREAD_BRIEF_INLINE_ROWS = 8;
 
 /**
  * WHO ended the connection. The three answers differ in what else has to happen,
@@ -216,6 +219,8 @@ export const _purgeChunk = internalMutation({
 			await deleteMailThreadCatchUps(ctx, t._id);
 			// A Reply Queue answer's upload the thread still holds.
 			await deleteResourceUploads(ctx, mailThreadUploadKey(t._id));
+			// The thread brief: items, facts, activity, plans (the rest is scheduled).
+			await purgeThreadBrief(ctx, { kind: 'mail', id: t._id }, THREAD_BRIEF_INLINE_ROWS);
 			await ctx.db.delete(t._id);
 		}
 		if (threads.length === PURGE_CHUNK) {

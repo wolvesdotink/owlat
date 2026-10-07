@@ -88,7 +88,9 @@ export const mailAiTables = {
 		.index('by_message', ['messageId', 'direction'])
 		// Backs the pre-lapse reminder scan — open commitments per mailbox ordered
 		// by deadline.
-		.index('by_mailbox_status_due', ['mailboxId', 'status', 'dueAt']),
+		.index('by_mailbox_status_due', ['mailboxId', 'status', 'dueAt'])
+		// Erasure (mail/interpret/purge.ts): unlink the commitments of a deleted item.
+		.index('by_thread_item', ['threadItemId']),
 
 	// "What needs you today" digest snapshot (Daily Brief), rebuilt by the daily
 	// cron per active mailbox (mail/dailyBrief.ts). Holds the ranked list of

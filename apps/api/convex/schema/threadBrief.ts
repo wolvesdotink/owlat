@@ -198,7 +198,9 @@ export const threadBriefTables = {
 		.index('by_mail_thread_and_status', ['mailThreadId', 'status'])
 		.index('by_conversation_thread_and_status', ['conversationThreadId', 'status'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
-		.index('by_counterparty', ['counterpartyKey']),
+		.index('by_counterparty', ['counterpartyKey'])
+		// Member erasure: the items assigned to an erased member fall back to Unassigned.
+		.index('by_assignee', ['assigneeUserId']),
 
 	// Append-only per-thread log.
 	threadActivity: defineTable({
@@ -223,7 +225,11 @@ export const threadBriefTables = {
 	})
 		.index('by_mail_thread_and_seq', ['mailThreadId', 'seq'])
 		.index('by_conversation_thread_and_seq', ['conversationThreadId', 'seq'])
-		.index('by_idempotency_key', ['idempotencyKey']),
+		.index('by_idempotency_key', ['idempotencyKey'])
+		// Erasure (mail/interpret/purge.ts): an item's rows go with the item, and
+		// a row whose operation names a purged message goes with the message.
+		.index('by_item', ['itemId'])
+		.index('by_op_ref', ['opRef.id']),
 
 	// One row per thread: the reducer's revision, checkpoint and completeness.
 	threadBriefs: defineTable({

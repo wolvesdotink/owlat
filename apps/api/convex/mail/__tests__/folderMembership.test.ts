@@ -192,7 +192,7 @@ async function randomOp(w: World, r: Rng): Promise<void> {
 			return;
 		case 2:
 			await t.run(async (ctx) => {
-				await purgeMessageRow(ctx, m);
+				await purgeMessageRow(ctx, m, new Map());
 			});
 			return;
 		case 3:
@@ -532,7 +532,7 @@ describe('migration 0054 backfills, resumes and rebuilds', () => {
 		await w.t.run((ctx) => deliver(ctx, w, folderId));
 		const [first] = await w.t.run((ctx) => messagesIn(ctx, folderId));
 		await w.t.run(async (ctx) => {
-			await purgeMessageRow(ctx, first!);
+			await purgeMessageRow(ctx, first!, new Map());
 		});
 		await expectMembershipExact(w, 'interrupted');
 

@@ -18,7 +18,7 @@ import { createMailboxAccessGate, requireMailboxAccess } from './permissions';
 import type { MutationSessionContext } from '../lib/sessionOrganization';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { clearThreadNeedsReply } from './needsReply';
-import { purgeMessageRow } from './messagePurge';
+import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from './messagePurge';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
 import {
 	applyThreadFlagDeltas,
@@ -346,15 +346,17 @@ export const purge = postboxMutation({
 	handler: async (ctx, args, session): Promise<{ ok: true }> => {
 		const access = createMailboxAccessGate(ctx, session);
 		const touchedThreads = new Set<Id<'mailThreads'>>();
+		const purged: PurgedMessages = new Map();
 		const remote: RemoteChange[] = [];
 		for (const id of args.messageIds) {
 			const message = await ctx.db.get(id);
 			if (!message) continue;
 			const owned = await access(message.mailboxId);
 			if (!owned.ok) continue;
-			touchedThreads.add(await purgeMessageRow(ctx, message));
+			touchedThreads.add(await purgeMessageRow(ctx, message, purged));
 			remote.push({ kind: 'delete', message });
 		}
+		await purgeThreadBriefsOf(ctx, purged);
 		for (const t of touchedThreads) {
 			await rebuildThreadAggregates(ctx, t);
 		}
