@@ -41,6 +41,8 @@ const P_CLOSERS = words(
 );
 /** Elements that end the scope a `<p>` or `<dd>` is looked up in. */
 const SCOPE = words('applet button caption html marquee object table td template th');
+/** Table structure: closes through its own table, past cells and captions. */
+const TABLE_PARTS = words('caption col colgroup table tbody td tfoot th thead tr');
 /** List-item scope adds the lists themselves. */
 const LIST_SCOPE = words('applet button caption html marquee object ol table td template th ul');
 
@@ -55,6 +57,8 @@ export class ElementStack {
 	private readonly byName = new Map<string, number[]>();
 	private readonly scope: number[] = [];
 	private readonly listScope: number[] = [];
+	/** Open `<select>` elements: inside one, other end tags are ignored. */
+	private readonly selects: number[] = [];
 	/** Hidden formatting elements closed implicitly: they hide until their own end tag. */
 	private readonly lingering = new Map<string, number>();
 	private lingeringTotal = 0;
@@ -98,6 +102,7 @@ export class ElementStack {
 		this.byName.set(name, indexes);
 		if (SCOPE.has(name)) this.scope.push(index);
 		if (LIST_SCOPE.has(name)) this.listScope.push(index);
+		if (name === 'select') this.selects.push(index);
 		if (hidden) this.hiddenOpen++;
 		if (name === 'blockquote') this.quoteDepth++;
 		if (name === 'pre') this.pre++;
@@ -105,6 +110,9 @@ export class ElementStack {
 
 	/** An end tag: pops to the innermost open element of its name. Returns whether one was open. */
 	close(name: string): boolean {
+		// A browser never closes these: content after `</body>` still lands in
+		// the body, so their end tags change nothing.
+		if (name === 'body' || name === 'html') return false;
 		const index = last(this.byName.get(name) ?? []);
 		if (index === undefined) {
 			const lingering = this.lingering.get(name) ?? 0;
@@ -114,7 +122,18 @@ export class ElementStack {
 			}
 			return false;
 		}
-		this.popTo(index, true);
+		// An end tag only reaches elements in the parser's scope: a `</div>` with a
+		// `<select>`, a table cell, a caption or a template open above its target
+		// is ignored by a browser, and so here (the hidden `<div>` stays open).
+		// Table parts close through their own table structure.
+		if (!TABLE_PARTS.has(name)) {
+			const boundary = Math.max(last(this.scope) ?? -1, last(this.selects) ?? -1);
+			if (boundary > index) {
+				this.work.steps++;
+				return false;
+			}
+		}
+		this.popTo(index, this.stack.length - 1 === index ? 'clean' : 'implied');
 		return true;
 	}
 
@@ -127,11 +146,17 @@ export class ElementStack {
 		this.work.steps++;
 		const index = last(this.byName.get(name) ?? []);
 		const boundary = last(boundaries) ?? -1;
-		if (index !== undefined && index > boundary) this.popTo(index, false);
+		if (index !== undefined && index > boundary) this.popTo(index, 'implied');
 	}
 
-	/** Pop every element from the top down to `index`; `ownEndTag` says the last one closed itself. */
-	private popTo(index: number, ownEndTag: boolean): void {
+	/**
+	 * Pop every element from the top down to `index`. `clean`: the element's own
+	 * end tag with nothing above it. `implied`: the browser closes the elements
+	 * above as well (an end tag in scope, or a start tag such as a new `<p>`);
+	 * hidden formatting elements among them keep hiding until their own end
+	 * tag, since the browser reopens those.
+	 */
+	private popTo(index: number, how: 'clean' | 'implied'): void {
 		while (this.stack.length > index) {
 			this.work.steps++;
 			const at = this.stack.length - 1;
@@ -139,10 +164,11 @@ export class ElementStack {
 			this.byName.get(element.name)?.pop();
 			if (last(this.scope) === at) this.scope.pop();
 			if (last(this.listScope) === at) this.listScope.pop();
+			if (last(this.selects) === at) this.selects.pop();
 			if (element.hidden) {
 				this.hiddenOpen--;
-				const implicit = !(ownEndTag && at === index);
-				if (implicit && FORMATTING.has(element.name)) {
+				const target = how === 'clean' && at === index;
+				if (!target && FORMATTING.has(element.name)) {
 					this.lingering.set(element.name, (this.lingering.get(element.name) ?? 0) + 1);
 					this.lingeringTotal++;
 				}

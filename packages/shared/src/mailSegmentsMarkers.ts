@@ -255,6 +255,15 @@ export function isPostscriptLine(line: string): boolean {
 const REQUEST =
 	/\b(?:please|pls|kindly|could you|can you|would you|will you|let me know|make sure|don't forget|bitte|kannst du|könntest du|können sie|könnten sie|würdest du|denk daran|merci de|pourriez|pouvez|peux-tu|veuillez|n'oublie)\b/i;
 
+/**
+ * A line that opens with an imperative ("Call Jonas.", "Pay Acme.", "Ruf mich
+ * an.", "Appelle-moi.") is an instruction, never a name, whatever its case.
+ */
+const IMPERATIVE_START =
+	/^(?:please|call|phone|ring|pay|send|sign|book|confirm|reply|review|check|approve|forward|schedule|transfer|wire|email|contact|order|buy|cancel|update|share|submit|return|bring|ask|tell|remind|bitte|ruf|rufe|zahl|zahle|überweis|überweise|schick|schicke|sende|unterschreib|unterschreibe|buch|buche|bestätig|bestätige|prüf|prüfe|antworte|melde|kontaktiere|appelle|appelez|paie|payez|envoie|envoyez|signe|signez|réserve|réservez|confirme|confirmez|rappelle|rappelez|vérifie|vérifiez)\b/i;
+/** A company-form or title abbreviation, the one way a name-block part may end in a period. */
+const ABBREVIATION_END = /\b(?:Ltd|Inc|Co|Corp|Bros|Jr|Sr|Dr|Prof|e\.\s?V|S\.A|S\.à\s?r\.l)\.$/i;
+
 /** A personal name: one to five capitalised words, with the usual particles. */
 const PERSON_NAME =
 	/^\p{Lu}[\p{L}'’.-]*(?:\s+(?:\p{Lu}[\p{L}'’.-]*|von|van|der|den|de|da|di|du|le|la|y|zu))*$/u;
@@ -268,7 +277,7 @@ const EMAIL = /^(?:mailto:)?[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63})+$/i;
 const URL_SHAPE = /^(?:https?:\/\/|www\.)\S+$/i;
 const PHONE = /^\+?[\d\s()./-]{6,24}\d$/;
 const CONTACT_LABEL =
-	/^(?:tel|phone|mobile|mob|cell|fax|telefon|handy|tél|portable|e-?mail|mail|web|website|m|t|f|p|w|e)\.?\s*:?\s+/i;
+	/^(?:tel|phone|mobile|mob|cell|fax|telefon|handy|tél|portable|e-?mail|mail|web|website|contact|m|t|f|p|w|e)\.?\s*:?\s+/i;
 /** A postal address part: street and number, postcode and town. */
 const ADDRESS = [
 	/^[\p{L}.\s-]*(?:straße|strasse|str\.|weg|platz|allee|gasse|ring|damm)\s*\d+\s?\p{L}?$/iu,
@@ -282,6 +291,9 @@ const LEGAL_PART =
 
 /** One `|`/`·`/`,`-separated part of a name-block line: it must BE one of the shapes. */
 function isNamePart(part: string): boolean {
+	// An instruction or a sentence is never part of a name block.
+	if (IMPERATIVE_START.test(part) && !CONTACT_LABEL.test(part)) return false;
+	if (/[.!]$/.test(part) && !ABBREVIATION_END.test(part)) return false;
 	const value = part.replace(CONTACT_LABEL, '');
 	if (EMAIL.test(value) || URL_SHAPE.test(value)) return true;
 	if (PHONE.test(value) && (value.match(/\d/g) ?? []).length >= 6) return true;
