@@ -4,6 +4,7 @@ import { resolveFolderByName } from '../helpers/folders.js';
 import { parseList } from '../../parser.js';
 import { logger } from '../../logger.js';
 import { serverFailure } from '../helpers/replies.js';
+import { imapMailboxName } from '../helpers/mailboxName.js';
 
 interface StatusArgs {
 	readonly mailboxName: string;
@@ -65,7 +66,7 @@ export const statusModule: ImapCommandModule<StatusArgs> = {
 					}
 				}
 
-				send(`* STATUS "${target.name}" (${out.join(' ')})`);
+				send(`* STATUS ${imapMailboxName(target.name)} (${out.join(' ')})`);
 				send(`${tag} OK STATUS completed`);
 			} catch (err) {
 				logger.error({ err }, 'STATUS failed');
