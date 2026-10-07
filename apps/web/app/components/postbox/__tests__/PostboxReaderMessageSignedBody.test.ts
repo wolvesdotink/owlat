@@ -74,12 +74,23 @@ const LARGE_TEXT = `${SIGNED_BLOCK}\n\n${UNSIGNED_TAIL}\n${'filler line\n'.repea
 /** Records the verdict and class the trust chip is handed. */
 const TrustChipMarker = defineComponent({
 	name: 'PostboxTrustChip',
-	props: ['signature', 'secureClass', 'showSecurityDetail'],
+	props: ['signature', 'secureClass', 'showSecurityDetail', 'tracker'],
 	setup: (p) => () =>
 		h('div', {
 			'data-testid': 'trust-chip',
 			'data-signature': p['signature'] ? 'present' : 'absent',
 			'data-secure-class': p['secureClass'],
+			'data-tracker': p['tracker'] ? 'present' : 'absent',
+		}),
+});
+/** Records whether the attachment rows offer Quick Look. */
+const AttachmentsMarker = defineComponent({
+	name: 'PostboxMessageAttachments',
+	props: ['isPreviewEnabled'],
+	setup: (p) => () =>
+		h('div', {
+			'data-testid': 'PostboxMessageAttachments',
+			'data-preview': String(p['isPreviewEnabled'] !== false),
 		}),
 });
 const marker = (name: string) =>
@@ -109,7 +120,14 @@ const base = {
 
 function mountCard(
 	message: Record<string, unknown>,
-	opts: { secureClass?: string; hideBody?: boolean; expanded?: boolean } = {}
+	opts: {
+		secureClass?: string;
+		hideBody?: boolean;
+		expanded?: boolean;
+		reduced?: boolean;
+		hasInvite?: boolean;
+		schedulingTimes?: string[] | null;
+	} = {}
 ) {
 	return mount(PostboxReaderMessage, {
 		props: {
@@ -127,7 +145,10 @@ function mountCard(
 			showRenderToggle: false,
 			forcedLight: false,
 			imagesAllowed: false,
-			hasInvite: false,
+			hasInvite: opts.hasInvite ?? false,
+			reduced: opts.reduced ?? false,
+			schedulingTimes: opts.schedulingTimes ?? null,
+			tracker: { pixelCount: 2, trackerHosts: ['t.example.com'] } as never,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -135,14 +156,14 @@ function mountCard(
 				UiAvatar: marker('UiAvatar'),
 				PostboxTrustChip: TrustChipMarker,
 				PostboxUnsubscribeChip: marker('PostboxUnsubscribeChip'),
-				PostboxMessageDetails: marker('PostboxMessageDetails'),
+				PostboxMessageDetails: passThrough('PostboxMessageDetails'),
 				PostboxReaderMessageActions: marker('PostboxReaderMessageActions'),
 				PostboxLazyBody: passThrough('PostboxLazyBody'),
 				PostboxMessageBody: marker('PostboxMessageBody'),
 				PostboxSecurityBadge,
 				PostboxReaderSkeleton: marker('PostboxReaderSkeleton'),
 				PostboxInviteCard: marker('PostboxInviteCard'),
-				PostboxMessageAttachments: marker('PostboxMessageAttachments'),
+				PostboxMessageAttachments: AttachmentsMarker,
 				PostboxSchedulingChip: marker('PostboxSchedulingChip'),
 				PostboxDeliveryStrip: marker('PostboxDeliveryStrip'),
 			},
@@ -433,5 +454,105 @@ describe('PostboxReaderMessage · a verdict without a scope is never shown', () 
 
 		expect(w.get('[data-testid="signature-badge-summary"]').text()).toBe('Signed · verified');
 		expect(chip(w).attributes('data-signature')).toBe('present');
+	});
+});
+
+/** Sol's case: clearsigned text plus an unsigned invite.ics in a multipart/mixed. */
+const INVITE = {
+	filename: 'invite.ics',
+	contentType: 'text/calendar; method=REQUEST',
+	size: 912,
+	partIndex: '2',
+};
+const withInvite = { attachments: [INVITE], hasAttachments: true };
+
+describe('PostboxReaderMessage · nothing body-derived renders beside a clearsigned verdict', () => {
+	for (const reduced of [false, true]) {
+		const mode = reduced ? 'Answer mode' : 'the reader';
+		it(`${mode}: an unsigned invite is listed, never rendered, and the note says so`, async () => {
+			const w = mountCard(
+				{ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: VERIFIED, ...withInvite },
+				{ secureClass: 'pgp-clearsigned', hideBody: true, hasInvite: true, reduced }
+			);
+			await flushPromises();
+
+			expect(has(w, 'PostboxInviteCard')).toBe(false);
+			expect(has(w, 'clearsigned-omitted')).toBe(true);
+			expect(w.get('[data-testid="PostboxMessageAttachments"]').attributes('data-preview')).toBe(
+				'false'
+			);
+			expect(w.get('[data-testid="signature-badge-summary"]').text()).toBe('Signed · verified');
+		});
+	}
+
+	it('a stored clearsigned body keeps the invite back while loading and after', async () => {
+		let resolve!: (v: unknown) => void;
+		action.mockReturnValue(new Promise((r) => (resolve = r)));
+		fetchMock.mockImplementation(async () => ({ ok: true, text: async () => SIGNED_BLOCK }));
+		const w = mountCard(
+			{ textBodyStorageId: 'blob_t', inboundSignatureInfo: VERIFIED, ...withInvite },
+			{ hasInvite: true }
+		);
+		await flushPromises();
+		expect(has(w, 'signed-body-loading')).toBe(true);
+		expect(has(w, 'PostboxInviteCard')).toBe(false);
+
+		resolve({ htmlUrl: null, textUrl: 'https://blob.example.com/t' });
+		await flushPromises();
+		expect(has(w, 'clearsigned-text')).toBe(true);
+		expect(has(w, 'PostboxInviteCard')).toBe(false);
+		expect(has(w, 'clearsigned-omitted')).toBe(true);
+	});
+
+	it('drops the scheduling chip and the tracker findings, which read the whole body', async () => {
+		const w = mountCard(
+			{ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: VERIFIED },
+			{ secureClass: 'pgp-clearsigned', hideBody: true, schedulingTimes: ['Tue 14:00'] }
+		);
+		await flushPromises();
+
+		expect(has(w, 'PostboxSchedulingChip')).toBe(false);
+		expect(chip(w).attributes('data-tracker')).toBe('absent');
+	});
+
+	it('shows no snippet on the collapsed card', async () => {
+		const w = mountCard(
+			{
+				textBodyInline: SIGNED_BLOCK,
+				snippet: 'UNSIGNED snippet text',
+				inboundSignatureInfo: VERIFIED,
+			},
+			{ secureClass: 'pgp-clearsigned', hideBody: true, expanded: false }
+		);
+		await flushPromises();
+
+		expect(w.text()).not.toContain('UNSIGNED snippet text');
+	});
+
+	it('keeps an invite, previews, chips and the snippet under a MIME verdict', async () => {
+		const w = mountCard(
+			{ inboundSignatureInfo: VERIFIED_MIME, ...withInvite },
+			{ secureClass: 'pgp-signed', hasInvite: true, schedulingTimes: ['Tue 14:00'] }
+		);
+		const collapsed = mountCard(
+			{ snippet: 'Signed snippet', inboundSignatureInfo: VERIFIED_MIME },
+			{ expanded: false }
+		);
+		await flushPromises();
+
+		expect(has(w, 'PostboxInviteCard')).toBe(true);
+		expect(has(w, 'PostboxSchedulingChip')).toBe(true);
+		expect(chip(w).attributes('data-tracker')).toBe('present');
+		expect(w.get('[data-testid="PostboxMessageAttachments"]').attributes('data-preview')).toBe(
+			'true'
+		);
+		expect(collapsed.text()).toContain('Signed snippet');
+	});
+
+	it('leaves an invite in mail without a verdict alone', async () => {
+		const w = mountCard({ textBodyInline: 'Plain text.', ...withInvite }, { hasInvite: true });
+		await flushPromises();
+
+		expect(has(w, 'PostboxInviteCard')).toBe(true);
 	});
 });

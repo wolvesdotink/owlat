@@ -13,13 +13,18 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
  * object-URL lifetime) belongs to the reader, which already owns it for the
  * lightbox.
  */
-defineProps<{
-	attachments: AttachmentMeta[];
-	/** `${messageId}:${part}` of the attachment being fetched right now, if any. */
-	downloadingKey?: string | null;
-	/** This message's id — the first half of `downloadingKey`. */
-	messageId: string;
-}>();
+withDefaults(
+	defineProps<{
+		attachments: AttachmentMeta[];
+		/** `${messageId}:${part}` of the attachment being fetched right now, if any. */
+		downloadingKey?: string | null;
+		/** This message's id — the first half of `downloadingKey`. */
+		messageId: string;
+		/** Offer Quick Look. Off for parts a shown signature does not cover: download only. */
+		isPreviewEnabled?: boolean;
+	}>(),
+	{ isPreviewEnabled: true }
+);
 
 const emit = defineEmits<{
 	(e: 'preview', att: AttachmentMeta, all: AttachmentMeta[]): void;
@@ -44,7 +49,7 @@ function previewLabel(filename: string): string {
 		:downloading-key="downloadingKey"
 		:download-label="downloadLabel"
 		:preview-label="previewLabel"
-		is-preview-enabled
+		:is-preview-enabled="isPreviewEnabled"
 		@preview="(att: AttachmentMeta, all: AttachmentMeta[]) => emit('preview', att, all)"
 		@download="(att: AttachmentMeta) => emit('download', att)"
 	/>

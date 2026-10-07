@@ -5,8 +5,9 @@
  * The verdict says what it covers (`InboundSignatureInfo.scope`, recorded by
  * the ingest verifier):
  *   - `'clearsigned'`: one inline armor block (RFC 4880 §7) in the text/plain
- *     body, checked by `@owlat/shared/clearsignedBody`. Not the text around it
- *     and not an HTML alternative. The reader shows that block alone, from the
+ *     body, checked by `@owlat/shared/clearsignedBody`. Not the text around it,
+ *     not an HTML alternative, not an attachment (an invite among them). The
+ *     reader shows that block alone, from the
  *     text body as loaded (inline, or from storage when it is over the inline
  *     threshold), and holds the verdict back until that text is here.
  *   - `'mime'`: the first part of a root RFC 3156 `multipart/signed` with
@@ -40,7 +41,8 @@ export type SignedBodyView =
 	| { kind: 'loading' }
 	/**
 	 * Show `text`, the signed block, and nothing else. `omitsContent` says the
-	 * message holds more (text outside the block, or an HTML alternative).
+	 * message holds more (text outside the block, an HTML alternative, any
+	 * attachment).
 	 */
 	| { kind: 'signed'; text: string; omitsContent: boolean }
 	/** Render the body, but without the verdict: nothing shown can be tied to it. */
@@ -61,8 +63,8 @@ export interface SignedBodyInput {
 	/** The scope of the verdict, or null when there is none that may be shown. */
 	scope: SignedBodyScope | null;
 	text: SignedBodyText;
-	/** The message has an HTML body beside the text. */
-	hasHtml: boolean;
+	/** The message has parts beside the text: an HTML alternative or any attachment. */
+	hasOtherParts: boolean;
 }
 
 /** Whether `text` holds anything beyond its clearsigned armor block. */
@@ -80,25 +82,25 @@ function signedBlockOf(text: string): string | null {
 }
 
 /** The signed block alone, or the verdict withheld when the text has none. */
-function signedView(text: string, hasHtml: boolean): SignedBodyView {
+function signedView(text: string, hasOtherParts: boolean): SignedBodyView {
 	const signed = signedBlockOf(text);
 	if (signed === null) return { kind: 'withheld' };
-	return { kind: 'signed', text: signed, omitsContent: hasHtml || hasTextOutsideBlock(text) };
+	return { kind: 'signed', text: signed, omitsContent: hasOtherParts || hasTextOutsideBlock(text) };
 }
 
 export function resolveSignedBodyView(input: SignedBodyInput): SignedBodyView {
-	const { secureClass, scope, text, hasHtml } = input;
+	const { secureClass, scope, text, hasOtherParts } = input;
 	if (scope === 'mime') return { kind: 'passthrough' };
 	if (scope === null) {
 		// No verdict: an inline clearsigned body still shows only its block.
 		if (secureClass !== 'pgp-clearsigned' || text.state !== 'loaded' || !text.text) {
 			return { kind: 'passthrough' };
 		}
-		return signedView(text.text, hasHtml);
+		return signedView(text.text, hasOtherParts);
 	}
 	if (text.state === 'loading') return { kind: 'loading' };
 	if (text.state === 'failed') return { kind: 'withheld' };
-	return signedView(text.text ?? '', hasHtml);
+	return signedView(text.text ?? '', hasOtherParts);
 }
 
 /**

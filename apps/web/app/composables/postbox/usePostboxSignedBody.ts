@@ -14,6 +14,7 @@ export interface SignedBodyMessage {
 	textBodyInline?: string;
 	htmlBodyStorageId?: string;
 	bodyPending?: boolean;
+	attachments?: readonly unknown[];
 	inboundSignatureInfo?: InboundSignatureInfo;
 }
 
@@ -41,10 +42,12 @@ export function usePostboxSignedBody(source: {
 
 	const inlineText = computed(() => source.message().textBodyInline || undefined);
 	const scope = computed(() => signedBodyScopeOf(source.message().inboundSignatureInfo));
-	const hasHtml = computed(() => {
+	// Anything beside the text part: an HTML alternative, or any attachment (an
+	// invite among them), which the signed view leaves out or only lists.
+	const hasOtherParts = computed(() => {
 		const m = source.message();
 		const blob = fetched.value?.state === 'loaded' && fetched.value.hasHtmlBlob;
-		return !!(m.htmlBodyInline || m.htmlBodyStorageId || blob);
+		return !!(m.htmlBodyInline || m.htmlBodyStorageId || blob || m.attachments?.length);
 	});
 
 	// The verdict needs the text and none is inline: it lives in storage (or the
@@ -58,7 +61,7 @@ export function usePostboxSignedBody(source: {
 				secureClass: source.secureClass(),
 				scope: scope.value,
 				text: { state: 'loading' },
-				hasHtml: false,
+				hasOtherParts: false,
 			}).kind === 'loading'
 	);
 
@@ -92,13 +95,22 @@ export function usePostboxSignedBody(source: {
 			secureClass: source.secureClass(),
 			scope: scope.value,
 			text: text.value,
-			hasHtml: hasHtml.value,
+			hasOtherParts: hasOtherParts.value,
 		})
 	);
 
 	const kind = computed(() => view.value.kind);
 	return {
 		view,
+		/**
+		 * The one gate for everything the card derives from the message body.
+		 * While true, the signed block is the only body content rendered: no
+		 * other part, no card built from one (an invite, a scheduling chip), no
+		 * preview of an attachment and no snippet. Attachments stay listed for
+		 * download and count toward the omission note. A new body-derived surface
+		 * on the card must read this gate.
+		 */
+		signedOnly: computed(() => kind.value === 'signed' || kind.value === 'loading'),
 		/** Hold the body back: it is loading, or only the signed block may show. */
 		hideBody: computed(() =>
 			kind.value === 'loading' || kind.value === 'signed' ? true : source.hideBody()

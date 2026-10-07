@@ -23,7 +23,7 @@ const view = (input: Partial<Input>) =>
 		secureClass: 'none',
 		scope: 'clearsigned',
 		text: loaded(BLOCK),
-		hasHtml: false,
+		hasOtherParts: false,
 		...input,
 	});
 
@@ -40,12 +40,12 @@ describe('resolveSignedBodyView', () => {
 		expect(view({ text: loaded(`Intro\n${BLOCK}`) })).toMatchObject({ omitsContent: true });
 		expect(view({ text: loaded(`${BLOCK}\r\n\r\nFooter`) })).toMatchObject({ omitsContent: true });
 		expect(view({ text: loaded(`\n${BLOCK}\n\n  \n`) })).toMatchObject({ omitsContent: false });
-		expect(view({ hasHtml: true })).toMatchObject({ omitsContent: true });
+		expect(view({ hasOtherParts: true })).toMatchObject({ omitsContent: true });
 	});
 
 	it('keeps a whitespace-only block, which can still verify, as a signed view', () => {
 		const blank = BLOCK.replace('- -- signed line\nsecond line', '   ');
-		expect(view({ text: loaded(blank), hasHtml: true })).toEqual({
+		expect(view({ text: loaded(blank), hasOtherParts: true })).toEqual({
 			kind: 'signed',
 			text: '',
 			omitsContent: true,

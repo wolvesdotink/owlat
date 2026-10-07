@@ -113,8 +113,12 @@ const authInput = computed<SenderAuthInput>(() => senderAuthInputOf(msg.value));
 
 // A clearsigned text body shows its signed block alone, and its verdict stands
 // only beside that block, also when the text is stored rather than inline.
+// `signedOnly` is the one gate for every surface below built from the message
+// body (snippet, invite card, scheduling chip, tracker findings, attachment
+// previews): a new one must read it too.
 const {
 	view: signedView,
+	signedOnly,
 	hideBody: holdBody,
 	secureClass: shownSecureClass,
 	signature: shownSignature,
@@ -169,7 +173,7 @@ const renderToggleLabel = computed(() =>
 		<div class="flex-1 min-w-0">
 			<p class="text-sm truncate">
 				<span class="font-medium text-text-primary">{{ msg.fromName || msg.fromAddress }}</span>
-				<template v-if="msg.snippet">
+				<template v-if="msg.snippet && !signedOnly">
 					<span class="text-text-tertiary mx-1.5">·</span>
 					<span class="text-text-tertiary">{{ msg.snippet }}</span>
 				</template>
@@ -257,7 +261,7 @@ const renderToggleLabel = computed(() =>
 							:signature="shownSignature"
 							:secure-class="shownSecureClass"
 							:message="msg"
-							:tracker="tracker"
+							:tracker="signedOnly ? null : tracker"
 							:show-sender-controls="showSenderControls"
 							:seal-status="sealStatus"
 							:show-security-detail="!holdBody"
@@ -323,7 +327,7 @@ const renderToggleLabel = computed(() =>
 					<!-- Quiet "draft a reply?" prompt for a plain-prose scheduling
 					     request. Never renders beside a real .ics invite. -->
 					<PostboxSchedulingChip
-						v-if="schedulingTimes"
+						v-if="schedulingTimes && !signedOnly"
 						:message-id="msg._id"
 						:proposed-times="schedulingTimes"
 						@use-reply="(text) => emit('use-reply', text)"
@@ -402,8 +406,10 @@ const renderToggleLabel = computed(() =>
 			/>
 		</PostboxLazyBody>
 
+		<!-- Under `signedOnly` an invite is a part the signature does not cover:
+		     listed below as an attachment, never rendered as a card. -->
 		<PostboxInviteCard
-			v-if="hasInvite"
+			v-if="hasInvite && !signedOnly"
 			:message-id="msg._id"
 			:mailbox-id="mailboxId"
 			:own-email="ownEmail"
@@ -413,6 +419,7 @@ const renderToggleLabel = computed(() =>
 			:attachments="msg.attachments"
 			:message-id="msg._id"
 			:downloading-key="downloadingAttachment"
+			:is-preview-enabled="!signedOnly"
 			@preview="(att, all) => emit('preview-attachment', att, all)"
 			@download="(att) => emit('download-attachment', att)"
 		/>
