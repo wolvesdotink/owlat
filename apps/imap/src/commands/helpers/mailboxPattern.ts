@@ -26,12 +26,29 @@ export function pathFromClient(wire: string): string {
 
 const WILDCARD_RUN = /[*%]{2,}/g;
 
+/** The longest reference plus mailbox pattern a LIST or LSUB may send. */
+export const MAX_PATTERN_LENGTH = 1024;
+
+/** The most `*` and `%` wildcards a LIST or LSUB pattern may hold. */
+export const MAX_PATTERN_WILDCARDS = 64;
+
+/** Why a raw LIST pattern is refused, or null when it is within the caps. */
+export function patternOverLimit(raw: string): string | null {
+	if (raw.length > MAX_PATTERN_LENGTH) return `pattern longer than ${MAX_PATTERN_LENGTH} chars`;
+	let wildcards = 0;
+	for (const ch of raw) if (ch === '*' || ch === '%') wildcards += 1;
+	return wildcards > MAX_PATTERN_WILDCARDS
+		? `pattern with more than ${MAX_PATTERN_WILDCARDS} wildcards`
+		: null;
+}
+
 /**
  * Whether `path` matches the decoded LIST pattern `pattern`. A table over the
- * positions of `path`, one pattern char at a time, so a pattern with many
- * wildcards costs at most pattern × path steps and never backtracks.
+ * positions of `path`, one row per pattern char, so it never backtracks and
+ * fills at most (pattern + 1) × (path + 1) cells. `meter`, when given, counts
+ * the cells filled.
  */
-export function matchesPattern(pattern: string, path: string): boolean {
+export function matchesPattern(pattern: string, path: string, meter?: { cells: number }): boolean {
 	// `**`, `*%` and `%*` match what `*` matches, and `%%` what `%` matches.
 	const p = pattern.replace(WILDCARD_RUN, (run) => (run.includes('*') ? '*' : '%'));
 	let literals = 0;
@@ -42,6 +59,7 @@ export function matchesPattern(pattern: string, path: string): boolean {
 	// reach[j]: the pattern so far matches the first j chars of `path`.
 	let reach = new Uint8Array(n + 1);
 	reach[0] = 1;
+	if (meter) meter.cells += n + 1;
 	for (let k = 0; k < p.length; k++) {
 		const ch = p[k];
 		const next = new Uint8Array(n + 1);
@@ -62,6 +80,7 @@ export function matchesPattern(pattern: string, path: string): boolean {
 				if (reach[j] && path[j] === ch) next[j + 1] = 1;
 			}
 		}
+		if (meter) meter.cells += n + 1;
 		if (!next.includes(1)) return false;
 		reach = next;
 	}

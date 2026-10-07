@@ -4,7 +4,13 @@ import { decodePath, encodePath } from 'imapflow/lib/tools.js';
 import type { ConvexClient, FolderRow } from '../../../convex.js';
 import { buildFolderTree, levelName } from '../folderTree.js';
 import { resolveFolderByName } from '../folders.js';
-import { matchesPattern, pathFromClient } from '../mailboxPattern.js';
+import {
+	MAX_PATTERN_LENGTH,
+	MAX_PATTERN_WILDCARDS,
+	matchesPattern,
+	pathFromClient,
+	patternOverLimit,
+} from '../mailboxPattern.js';
 import { decodeMailboxName, encodeMailboxName } from '../mailboxName.js';
 
 const folder = (_id: string, name: string, extra: Partial<FolderRow> = {}): FolderRow => ({
@@ -332,12 +338,39 @@ describe('matchesPattern', () => {
 		expect(matchesPattern(pattern, path)).toBe(expected);
 	});
 
-	it('a pattern of many wildcards against a long name answers at once', () => {
-		const pattern = '*a'.repeat(2000) + 'b';
-		const path = 'a'.repeat(5000);
-		const start = performance.now();
-		expect(matchesPattern(pattern, path)).toBe(false);
-		expect(matchesPattern('%a'.repeat(2000), path)).toBe(true);
-		expect(performance.now() - start).toBeLessThan(2000);
+	it.each([
+		['*a'.repeat(2000) + 'b', 'a'.repeat(5000), false],
+		['%a'.repeat(2000), 'a'.repeat(5000), true],
+		['*a'.repeat(4000) + 'b', 'a'.repeat(10_000), false],
+		['%/'.repeat(500) + '*', 'x/'.repeat(1000), true],
+	])(
+		'fills at most (pattern + 1) × (path + 1) cells, with no backtracking (%#)',
+		(pattern, path, expected) => {
+			const meter = { cells: 0 };
+			expect(matchesPattern(pattern, path, meter)).toBe(expected);
+			expect(meter.cells).toBeGreaterThan(0);
+			expect(meter.cells).toBeLessThanOrEqual((pattern.length + 1) * (path.length + 1));
+		}
+	);
+
+	it('stops at the first row nothing reaches', () => {
+		const meter = { cells: 0 };
+		expect(matchesPattern('b' + '*a'.repeat(2000), 'a'.repeat(5000), meter)).toBe(false);
+		expect(meter.cells).toBe(2 * 5001);
+	});
+});
+
+describe('patternOverLimit', () => {
+	it.each([
+		['*', null],
+		['a'.repeat(MAX_PATTERN_LENGTH), null],
+		['%'.repeat(MAX_PATTERN_WILDCARDS), null],
+		['a'.repeat(MAX_PATTERN_LENGTH + 1), `pattern longer than ${MAX_PATTERN_LENGTH} chars`],
+		[
+			'*'.repeat(MAX_PATTERN_WILDCARDS + 1),
+			`pattern with more than ${MAX_PATTERN_WILDCARDS} wildcards`,
+		],
+	])('%#', (raw, reason) => {
+		expect(patternOverLimit(raw)).toBe(reason);
 	});
 });

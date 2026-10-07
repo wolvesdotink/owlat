@@ -6,7 +6,7 @@ import { logger } from '../../logger.js';
 import { serverFailure } from '../helpers/replies.js';
 import { imapMailboxName } from '../helpers/mailboxName.js';
 import { DELIMITER, type ImapFolder } from '../helpers/folderTree.js';
-import { matchesPattern, pathFromClient } from '../helpers/mailboxPattern.js';
+import { matchesPattern, pathFromClient, patternOverLimit } from '../helpers/mailboxPattern.js';
 
 interface ListArgs {
 	readonly reference: string;
@@ -21,7 +21,8 @@ interface ListArgs {
  * branch off it.
  *
  * Only the RFC 3501 form is accepted: two mailbox names, each an atom or a
- * string, never a parenthesized list. LIST-EXTENDED (RFC 5258), LIST-STATUS
+ * string, never a parenthesized list, together within the pattern caps of
+ * `mailboxPattern.ts`. LIST-EXTENDED (RFC 5258), LIST-STATUS
  * (RFC 5819) and SPECIAL-USE (RFC 6154, whose capability names the extended
  * LIST options) are not advertised, so clients read subscriptions with LSUB
  * and counts with STATUS. The special-use attributes (`\Sent`, ...) are still
@@ -41,6 +42,8 @@ export const listModule: ImapCommandModule<ListArgs> = {
 		) {
 			return { ok: false, error: 'LIST and LSUB take <reference> <mailbox>' };
 		}
+		const overLimit = patternOverLimit(reference + pattern);
+		if (overLimit) return { ok: false, error: `LIST and LSUB refuse a ${overLimit}` };
 		return { ok: true, args: { reference, pattern } };
 	},
 	start({ deps, state, args, tag, verb, send }) {

@@ -179,6 +179,23 @@ describe('LIST reference and pattern', () => {
 	});
 });
 
+describe('pattern caps', () => {
+	it.each([
+		['LIST "" "%s"', 'a'.repeat(1025), 'pattern longer than 1024 chars'],
+		['LSUB "Work/" "%s"', 'a'.repeat(1020), 'pattern longer than 1024 chars'],
+		['LIST "" "%s"', '*a'.repeat(65), 'pattern with more than 64 wildcards'],
+	])('%s is refused with BAD over the cap', async (template, pattern, reason) => {
+		const { socket } = await loggedIn();
+		const out = await exchange(socket, 'l1', `l1 ${template.replace('%s', pattern)}`);
+		expect(out).toEqual([`l1 BAD LIST and LSUB refuse a ${reason}`]);
+	});
+
+	it('a pattern at the caps is answered', async () => {
+		const out = await list(`LIST "" "${'%'.repeat(64)}${'a'.repeat(960)}"`);
+		expect(out).toEqual(['l1 OK LIST completed']);
+	});
+});
+
 describe('names in parentheses', () => {
 	it('a quoted pattern holding parentheses is a name, not a list', async () => {
 		const out = await list('LIST "" "(Old)"');
