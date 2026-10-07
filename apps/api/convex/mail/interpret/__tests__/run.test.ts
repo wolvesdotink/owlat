@@ -32,7 +32,10 @@ function modelOutput(segmentId: string) {
 				facets: ['file', 'signature'],
 				consequences: ['signature'],
 				assertion: 'Send the signed contract',
-				display: { en: 'Send Jonas the signed contract', de: 'Schick Jonas den unterschriebenen Vertrag' },
+				display: {
+					en: 'Send Jonas the signed contract',
+					de: 'Schick Jonas den unterschriebenen Vertrag',
+				},
 				requester: { ref: 'p1', name: null, email: null },
 				responsible: { ref: null, name: null, email: 'me@owlat.test' },
 				beneficiary: null,
@@ -48,7 +51,12 @@ function modelOutput(segmentId: string) {
 		meetingIntent: null,
 		coverage: { segmentsRead: [segmentId], uncertain: false, overflow: false },
 		latest: {
-			en: [{ text: 'Jonas wants the signed contract.', quotes: [{ segmentId, text: 'signed contract' }] }],
+			en: [
+				{
+					text: 'Jonas wants the signed contract.',
+					quotes: [{ segmentId, text: 'signed contract' }],
+				},
+			],
 			de: [{ text: 'Jonas will den Vertrag.', quotes: [{ segmentId, text: 'signed contract' }] }],
 		},
 		facts: [],
@@ -60,7 +68,11 @@ beforeEach(() => {
 	llm.spend.mockReset();
 	llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
 		if (schema === briefModelSchema) {
-			return { object: modelOutput('s0'), tokenUsage: { totalTokens: 10 }, modelUsed: 'stub-model' };
+			return {
+				object: modelOutput('s0'),
+				tokenUsage: { totalTokens: 10 },
+				modelUsed: 'stub-model',
+			};
 		}
 		// The verifier: support every claim it is asked about.
 		return {
@@ -90,7 +102,11 @@ describe('interpretMessage', () => {
 			},
 		});
 		const items = await t.run(async (ctx) => ctx.db.query('threadItems').collect());
-		expect(items[0]).toMatchObject({ mailThreadId: threadId, verify: 'passed', responsibility: 'us' });
+		expect(items[0]).toMatchObject({
+			mailThreadId: threadId,
+			verify: 'passed',
+			responsibility: 'us',
+		});
 		expect(llm.spend.mock.calls.map((c) => c[1])).toEqual(['interpret', 'interpret_verify']);
 		// The verifier read the claim and its quote, nothing else.
 		const verifyPrompt = llm.runLlmObject.mock.calls[1]?.[0]?.prompt as string;
@@ -102,12 +118,17 @@ describe('interpretMessage', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedMailThread(t, { text: TEXT });
-		await t.action(internal.mail.interpret.run.interpretMessage, { source: { kind: 'mail', id: messageId } });
+		await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: messageId },
+		});
 		llm.runLlmObject.mockClear();
 		const again = await t.action(internal.mail.interpret.run.interpretMessage, {
 			source: { kind: 'mail', id: messageId },
 		});
-		expect(again).toMatchObject({ status: 'replayed', projection: { askSummary: 'Send Jonas the signed contract' } });
+		expect(again).toMatchObject({
+			status: 'replayed',
+			projection: { askSummary: 'Send Jonas the signed contract' },
+		});
 		expect(llm.runLlmObject).not.toHaveBeenCalled();
 	});
 

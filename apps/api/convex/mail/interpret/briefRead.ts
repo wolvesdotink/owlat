@@ -55,7 +55,9 @@ export async function readItems(
 	locale: AppLocale
 ): Promise<OpenedItem[]> {
 	const rows = (
-		await Promise.all(ITEM_STATUSES.map((s) => threadItemsWithStatus(ctx, ref, s, ITEMS_PER_STATUS)))
+		await Promise.all(
+			ITEM_STATUSES.map((s) => threadItemsWithStatus(ctx, ref, s, ITEMS_PER_STATUS))
+		)
 	).flat();
 	return Promise.all(rows.map((row) => openItem(row, locale)));
 }
@@ -158,7 +160,9 @@ async function activityText(row: Doc<'threadActivity'>): Promise<string | undefi
 }
 
 /** The latest substance rows as the brief's "Activity" block. */
-export async function toActivityViews(rows: readonly Doc<'threadActivity'>[]): Promise<ActivityView[]> {
+export async function toActivityViews(
+	rows: readonly Doc<'threadActivity'>[]
+): Promise<ActivityView[]> {
 	const shown = rows.filter((r) => r.visibility === 'substance').slice(0, ACTIVITY_SHOWN);
 	return Promise.all(
 		shown.map(async (row) => {

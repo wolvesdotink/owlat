@@ -15,7 +15,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseEvalCorpus } from '../convex/mail/interpret/__eval__/corpus';
-import { formatEvalReport, runEval, type EvalModel } from '../convex/mail/interpret/__eval__/runEval';
+import {
+	formatEvalReport,
+	runEval,
+	type EvalModel,
+} from '../convex/mail/interpret/__eval__/runEval';
 import { createLiveEvalModel } from '../convex/mail/interpret/__eval__/liveModel';
 
 /** The live model from the environment, or null (then the oracle replays). */

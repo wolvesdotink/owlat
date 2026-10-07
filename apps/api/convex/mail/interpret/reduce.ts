@@ -27,7 +27,11 @@ import {
 	type Evidence,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
-import { rowMatchesThreadRef, threadRefToFields, type ThreadRef } from '../../lib/validators/threadRef';
+import {
+	rowMatchesThreadRef,
+	threadRefToFields,
+	type ThreadRef,
+} from '../../lib/validators/threadRef';
 import { openMessageBody, sealBodyAtWrite } from '../../lib/messageBody';
 import { INTERPRET_PAYLOAD_VERSION } from './schema';
 import { ensureBriefRow } from './briefRow';
@@ -120,7 +124,9 @@ async function sealFactValue(value: ReduceFact['value']): Promise<Doc<'threadFac
  * extraction of any source failed, came back partial, or could not be read.
  */
 export function completenessOf(
-	rows: ReadonlyArray<Pick<Doc<'messageInterpretations'>, 'sourceKey' | 'status' | 'skipReason' | 'updatedAt'>>
+	rows: ReadonlyArray<
+		Pick<Doc<'messageInterpretations'>, 'sourceKey' | 'status' | 'skipReason' | 'updatedAt'>
+	>
 ): BriefCompleteness {
 	const newest = new Map<string, (typeof rows)[number]>();
 	for (const row of rows) {
@@ -276,8 +282,7 @@ export const applyInterpretation = internalMutation({
 				isOutOfOrder,
 			});
 
-			const mailboxId =
-				ref.kind === 'mail' ? (await ctx.db.get(ref.id))?.mailboxId : undefined;
+			const mailboxId = ref.kind === 'mail' ? (await ctx.db.get(ref.id))?.mailboxId : undefined;
 			for (const [index, insert] of plan.inserts.entries()) {
 				const id = await insertItem(ctx, {
 					ref,
@@ -327,7 +332,7 @@ export const applyInterpretation = internalMutation({
 								],
 							}
 						: {}),
-					...(p.fill ?? {}),
+					...p.fill,
 					...(p.verify ? { verify: p.verify } : {}),
 					...(p.isReviewNeeded ? { isReviewNeeded: true } : {}),
 					updatedAt: now,

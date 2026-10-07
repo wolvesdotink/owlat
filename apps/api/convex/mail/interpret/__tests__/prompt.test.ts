@@ -48,7 +48,12 @@ function input(overrides: Partial<InterpretInput> = {}): InterpretInput {
 		],
 		itemsOverflow: false,
 		currentFacts: [
-			{ id: 'fact_a', key: '["invoice","amount",""]', assertion: 'The invoice is 200 EUR', evidenceExcerpt: '200 EUR' },
+			{
+				id: 'fact_a',
+				key: '["invoice","amount",""]',
+				assertion: 'The invoice is 200 EUR',
+				evidenceExcerpt: '200 EUR',
+			},
 		],
 		factsOverflow: false,
 		locales: ['en', 'de'],
@@ -64,7 +69,9 @@ describe('buildInterpretPrompt', () => {
 		const close = prompt.indexOf('</untrusted_email_content>');
 		expect(open).toBeGreaterThan(prompt.indexOf('Return:'));
 		expect(prompt.slice(open, close)).toContain('[s0 fresh]\nCould you send the signed contract');
-		expect(prompt.slice(open, close)).toContain('[s1 quoted | from: Mara Example <mara@example.com>]');
+		expect(prompt.slice(open, close)).toContain(
+			'[s1 quoted | from: Mara Example <mara@example.com>]'
+		);
 	});
 
 	it('frames thread state as data, after the message, with refs and ids', () => {

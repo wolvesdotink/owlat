@@ -94,7 +94,12 @@ export type ItemPatch = {
 };
 
 export type FactOp =
-	| { kind: 'insert'; fact: ReduceFact; supersedesId?: Id<'threadFacts'>; conflictsWithId?: Id<'threadFacts'> }
+	| {
+			kind: 'insert';
+			fact: ReduceFact;
+			supersedesId?: Id<'threadFacts'>;
+			conflictsWithId?: Id<'threadFacts'>;
+	  }
 	| { kind: 'evidence'; factId: Id<'threadFacts'>; addEvidence: PlanEvidence[] }
 	| { kind: 'supersede'; factId: Id<'threadFacts'> };
 
@@ -155,7 +160,12 @@ function evidenceKey(e: { segmentId: string; start: number; end: number }): stri
  * revision in the writer; within one message the segment offsets suffice.
  */
 function newEvidence(
-	existing: ReadonlyArray<{ segmentId: string; start: number; end: number; contentRevision: string }>,
+	existing: ReadonlyArray<{
+		segmentId: string;
+		start: number;
+		end: number;
+		contentRevision: string;
+	}>,
 	incoming: readonly PlanEvidence[],
 	contentRevision: string
 ): PlanEvidence[] {
@@ -181,7 +191,9 @@ export function responsibilityOf(responsible: {
 }
 
 /** The counterparty of an item (P4 cross-thread key): the other side's address. */
-export function counterpartyKeyOf(item: Pick<ReduceItem, 'requester' | 'responsible'>): string | undefined {
+export function counterpartyKeyOf(
+	item: Pick<ReduceItem, 'requester' | 'responsible'>
+): string | undefined {
 	const other = !item.requester.isUs
 		? item.requester.email
 		: !item.responsible.isUs
@@ -208,7 +220,9 @@ export function storedFactValueText(fact: PlanFact): string | undefined {
 	if (!value) return undefined;
 	if (value.kind === 'date') return `date:${value.at}`;
 	if (value.kind === 'money') return `money:${value.value}:${value.currency.toUpperCase()}`;
-	return fact.valueText !== undefined ? `${value.kind}:${fact.valueText.trim().toLowerCase()}` : undefined;
+	return fact.valueText !== undefined
+		? `${value.kind}:${fact.valueText.trim().toLowerCase()}`
+		: undefined;
 }
 
 /** Plan one message's changes. Pure. */
@@ -259,7 +273,10 @@ export function planReduction(
 				possibleDuplicateOfId = item._id;
 			}
 		}
-		plan.inserts.push({ item: proposal, ...(possibleDuplicateOfId ? { possibleDuplicateOfId } : {}) });
+		plan.inserts.push({
+			item: proposal,
+			...(possibleDuplicateOfId ? { possibleDuplicateOfId } : {}),
+		});
 	}
 
 	// ── Transitions ──
@@ -340,7 +357,8 @@ export function planReduction(
 			const superseded = named(fact.supersedes);
 			const contradicted = named(fact.conflictsWith);
 			const sameKey =
-				named(fact.matchFactId) ?? current.find((f) => f.factKey === fact.key && !retired.has(f._id));
+				named(fact.matchFactId) ??
+				current.find((f) => f.factKey === fact.key && !retired.has(f._id));
 			if (superseded) {
 				if (fact.isVerified && !opts.isOutOfOrder) {
 					retired.add(superseded._id);

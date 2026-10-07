@@ -81,7 +81,12 @@ const BRIEF: PlanOptions = { mode: 'brief', threadKind: 'mail', isOutOfOrder: fa
 
 describe('items', () => {
 	it('creates a new item for an unmatched proposal', () => {
-		const plan = planReduction({ items: [], facts: [] }, result({ items: [proposal()] }), REV, BRIEF);
+		const plan = planReduction(
+			{ items: [], facts: [] },
+			result({ items: [proposal()] }),
+			REV,
+			BRIEF
+		);
 		expect(plan.inserts).toHaveLength(1);
 		expect(plan.inserts[0]?.possibleDuplicateOfId).toBeUndefined();
 	});
@@ -89,7 +94,11 @@ describe('items', () => {
 	it('merges evidence into the matched item instead of creating one', () => {
 		const plan = planReduction(
 			{ items: [stored()], facts: [] },
-			result({ items: [proposal({ matchItemId: 'item_a', due: { phrase: 'by Friday', isAmbiguous: false } })] }),
+			result({
+				items: [
+					proposal({ matchItemId: 'item_a', due: { phrase: 'by Friday', isAmbiguous: false } }),
+				],
+			}),
 			REV,
 			BRIEF
 		);
@@ -124,7 +133,16 @@ describe('items', () => {
 
 	it('flags a repeat of a closed item for review instead of reopening it', () => {
 		const plan = planReduction(
-			{ items: [stored({ status: 'done', completion: 'asserted', correction: { by: 'u', at: 1, kind: 'markedDone' } })], facts: [] },
+			{
+				items: [
+					stored({
+						status: 'done',
+						completion: 'asserted',
+						correction: { by: 'u', at: 1, kind: 'markedDone' },
+					}),
+				],
+				facts: [],
+			},
 			result({ items: [proposal({ matchItemId: 'item_a' })] }),
 			REV,
 			BRIEF
@@ -146,11 +164,19 @@ describe('items', () => {
 
 describe('transitions', () => {
 	it('closes an item as reported done when verified', () => {
-		const plan = planReduction({ items: [stored()], facts: [] }, result({ transitions: [transition()] }), REV, BRIEF);
+		const plan = planReduction(
+			{ items: [stored()], facts: [] },
+			result({ transitions: [transition()] }),
+			REV,
+			BRIEF
+		);
 		expect(plan.patches[0]).toMatchObject({
 			status: 'done',
 			completion: 'reported',
-			activity: { type: 'item_closed', delta: { statusFrom: 'open', statusTo: 'done', completion: 'reported' } },
+			activity: {
+				type: 'item_closed',
+				delta: { statusFrom: 'open', statusTo: 'done', completion: 'reported' },
+			},
 		});
 	});
 
@@ -182,7 +208,10 @@ describe('transitions', () => {
 			REV,
 			BRIEF
 		);
-		expect(plan.patches[0]).toMatchObject({ status: 'superseded', activity: { type: 'item_replaced' } });
+		expect(plan.patches[0]).toMatchObject({
+			status: 'superseded',
+			activity: { type: 'item_replaced' },
+		});
 	});
 
 	it('never leaves superseded (terminal)', () => {
@@ -223,7 +252,13 @@ describe('transitions', () => {
 	it('never flips a human correction; flags it instead', () => {
 		const plan = planReduction(
 			{
-				items: [stored({ status: 'done', completion: 'asserted', correction: { by: 'u', at: 1, kind: 'markedDone' } })],
+				items: [
+					stored({
+						status: 'done',
+						completion: 'asserted',
+						correction: { by: 'u', at: 1, kind: 'markedDone' },
+					}),
+				],
 				facts: [],
 			},
 			result({ transitions: [transition({ to: 'open' })] }),
@@ -244,7 +279,10 @@ describe('transitions', () => {
 		);
 		expect(plan.patches[0]).toMatchObject({
 			disposition: 'answered',
-			activity: { type: 'item_changed', delta: { dispositionFrom: 'unanswered', dispositionTo: 'answered' } },
+			activity: {
+				type: 'item_changed',
+				delta: { dispositionFrom: 'unanswered', dispositionTo: 'answered' },
+			},
 		});
 	});
 
@@ -301,14 +339,23 @@ describe('facts', () => {
 	});
 
 	it('adds evidence to a restated fact', () => {
-		const plan = planReduction({ items: [], facts: [current] }, result({ facts: [fact()] }), REV, BRIEF);
+		const plan = planReduction(
+			{ items: [], facts: [current] },
+			result({ facts: [fact()] }),
+			REV,
+			BRIEF
+		);
 		expect(plan.facts).toEqual([{ kind: 'evidence', factId: 'fact_a', addEvidence: [ev()] }]);
 	});
 
 	it('retires the old fact on a verified supersession', () => {
 		const plan = planReduction(
 			{ items: [], facts: [current] },
-			result({ facts: [fact({ value: { kind: 'date', at: 2000 }, supersedes: 'fact_a', isVerified: true })] }),
+			result({
+				facts: [
+					fact({ value: { kind: 'date', at: 2000 }, supersedes: 'fact_a', isVerified: true }),
+				],
+			}),
 			REV,
 			BRIEF
 		);
@@ -323,7 +370,9 @@ describe('facts', () => {
 			REV,
 			BRIEF
 		);
-		expect(plan.facts).toEqual([expect.objectContaining({ kind: 'insert', conflictsWithId: 'fact_a' })]);
+		expect(plan.facts).toEqual([
+			expect.objectContaining({ kind: 'insert', conflictsWithId: 'fact_a' }),
+		]);
 	});
 
 	it('stores a changed value under the same key as a conflict', () => {
@@ -338,10 +387,16 @@ describe('facts', () => {
 
 	it('writes no facts in actions mode or on team threads', () => {
 		expect(
-			planReduction({ items: [], facts: [] }, result({ facts: [fact()] }), REV, { ...BRIEF, mode: 'actions' }).facts
+			planReduction({ items: [], facts: [] }, result({ facts: [fact()] }), REV, {
+				...BRIEF,
+				mode: 'actions',
+			}).facts
 		).toEqual([]);
 		expect(
-			planReduction({ items: [], facts: [] }, result({ facts: [fact()] }), REV, { ...BRIEF, threadKind: 'team' }).facts
+			planReduction({ items: [], facts: [] }, result({ facts: [fact()] }), REV, {
+				...BRIEF,
+				threadKind: 'team',
+			}).facts
 		).toEqual([]);
 	});
 });
@@ -355,9 +410,14 @@ describe('helpers', () => {
 
 	it('keys the counterparty by the other side', () => {
 		expect(
-			counterpartyKeyOf({ requester: { email: 'Jonas@Example.com', isUs: false }, responsible: { isUs: true } })
+			counterpartyKeyOf({
+				requester: { email: 'Jonas@Example.com', isUs: false },
+				responsible: { isUs: true },
+			})
 		).toBe('jonas@example.com');
-		expect(counterpartyKeyOf({ requester: { isUs: true }, responsible: { isUs: true } })).toBeUndefined();
+		expect(
+			counterpartyKeyOf({ requester: { isUs: true }, responsible: { isUs: true } })
+		).toBeUndefined();
 	});
 
 	it('scores similar sentences high and unrelated ones low', () => {

@@ -12,7 +12,6 @@ import {
 	buildInterpretInput,
 	clampOutput,
 	clampText,
-	needsReplyProjectionOf,
 	parseIsoMs,
 	resolveParticipant,
 	runStatusOf,
@@ -21,7 +20,7 @@ import {
 } from '../pipeline';
 import type { InterpretBriefOutput, InterpretInputParticipant } from '../schema';
 import { scopeBody } from '../scope';
-import { needsReplyResultOf } from '../needsReplyProjection';
+import { needsReplyProjectionOf, needsReplyResultOf } from '../needsReplyProjection';
 import type { Id } from '../../../_generated/dataModel';
 
 const segmented = segmentMessage({
@@ -48,7 +47,10 @@ function output(overrides: Partial<InterpretBriefOutput> = {}): InterpretBriefOu
 				facets: ['file', 'signature'],
 				consequences: ['signature'],
 				assertion: 'Send the signed contract',
-				display: { en: 'Send Jonas the signed contract', de: 'Schick Jonas den unterschriebenen Vertrag' },
+				display: {
+					en: 'Send Jonas the signed contract',
+					de: 'Schick Jonas den unterschriebenen Vertrag',
+				},
 				requester: { ref: 'p1', name: null, email: null },
 				responsible: { ref: 'p2', name: null, email: null },
 				beneficiary: null,
@@ -78,10 +80,24 @@ function output(overrides: Partial<InterpretBriefOutput> = {}): InterpretBriefOu
 		replyIntent: 'request_for_action',
 		urgency: 'normal',
 		meetingIntent: null,
-		coverage: { segmentsRead: segmented.segments.map((s) => s.id), uncertain: false, overflow: false },
+		coverage: {
+			segmentsRead: segmented.segments.map((s) => s.id),
+			uncertain: false,
+			overflow: false,
+		},
 		latest: {
-			en: [{ text: 'Jonas wants the signed contract by Friday.', quotes: [{ segmentId: fresh.id, text: 'signed contract by Friday' }] }],
-			de: [{ text: 'Jonas will den Vertrag bis Freitag.', quotes: [{ segmentId: fresh.id, text: 'signed contract by Friday' }] }],
+			en: [
+				{
+					text: 'Jonas wants the signed contract by Friday.',
+					quotes: [{ segmentId: fresh.id, text: 'signed contract by Friday' }],
+				},
+			],
+			de: [
+				{
+					text: 'Jonas will den Vertrag bis Freitag.',
+					quotes: [{ segmentId: fresh.id, text: 'signed contract by Friday' }],
+				},
+			],
 		},
 		facts: [
 			{
@@ -147,7 +163,12 @@ describe('the pure run core', () => {
 			verify: 'passed',
 			requester: { email: 'jonas@example.com', name: 'Jonas', isUs: false },
 			responsible: { email: 'me@owlat.example', isUs: true },
-			due: { phrase: 'by Friday', at: Date.parse('2026-10-09'), tz: 'Europe/Berlin', isAmbiguous: false },
+			due: {
+				phrase: 'by Friday',
+				at: Date.parse('2026-10-09'),
+				tz: 'Europe/Berlin',
+				isAmbiguous: false,
+			},
 			consequences: ['signature'],
 		});
 		expect(result.items[0]?.evidence[0]?.quote).toBe('send me the signed contract by Friday');
@@ -170,8 +191,13 @@ describe('the pure run core', () => {
 			timezone: 'UTC',
 			checked: new Set(['item:0']),
 		};
-		expect(toReduceResult(out, grounding, { ...base, verdicts: new Map() }).items[0]?.verify).toBe('proposal');
-		const rejected = toReduceResult(out, grounding, { ...base, verdicts: new Map([['item:0', 'unsupported']]) });
+		expect(toReduceResult(out, grounding, { ...base, verdicts: new Map() }).items[0]?.verify).toBe(
+			'proposal'
+		);
+		const rejected = toReduceResult(out, grounding, {
+			...base,
+			verdicts: new Map([['item:0', 'unsupported']]),
+		});
 		expect(rejected.items).toHaveLength(0);
 		expect(rejected.dropped.verify).toBe(1);
 	});
@@ -205,14 +231,33 @@ describe('the pure run core', () => {
 			isVerifyIncomplete: false,
 		};
 		expect(runStatusOf(base)).toEqual({ status: 'complete' });
-		expect(runStatusOf({ ...base, isItemsOverflow: true })).toEqual({ status: 'partial', errorCode: 'overflow' });
-		expect(runStatusOf({ ...base, truncatedSegmentIds: ['s0'] })).toEqual({ status: 'partial', errorCode: 'overflow' });
-		expect(runStatusOf({ ...base, isVerifyIncomplete: true })).toEqual({ status: 'partial', errorCode: 'verify' });
+		expect(runStatusOf({ ...base, isItemsOverflow: true })).toEqual({
+			status: 'partial',
+			errorCode: 'overflow',
+		});
+		expect(runStatusOf({ ...base, truncatedSegmentIds: ['s0'] })).toEqual({
+			status: 'partial',
+			errorCode: 'overflow',
+		});
+		expect(runStatusOf({ ...base, isVerifyIncomplete: true })).toEqual({
+			status: 'partial',
+			errorCode: 'verify',
+		});
 		const failed = groundProposals(
-			output({ items: [{ ...output().items[0]!, quotes: [{ segmentId: fresh.id, text: 'words that are not there' }] }] }),
+			output({
+				items: [
+					{
+						...output().items[0]!,
+						quotes: [{ segmentId: fresh.id, text: 'words that are not there' }],
+					},
+				],
+			}),
 			segmented
 		);
-		expect(runStatusOf({ ...base, grounding: failed })).toEqual({ status: 'partial', errorCode: 'grounding' });
+		expect(runStatusOf({ ...base, grounding: failed })).toEqual({
+			status: 'partial',
+			errorCode: 'grounding',
+		});
 	});
 
 	it('projects the top owned item for the needs-reply flag', () => {
@@ -253,12 +298,16 @@ describe('helpers', () => {
 			email: 'me@owlat.example',
 			isUs: true,
 		});
-		expect(resolveParticipant({ ref: null, name: 'Mara', email: 'Mara@Example.com' }, participants, own)).toEqual({
+		expect(
+			resolveParticipant({ ref: null, name: 'Mara', email: 'Mara@Example.com' }, participants, own)
+		).toEqual({
 			email: 'mara@example.com',
 			name: 'Mara',
 			isUs: false,
 		});
-		expect(resolveParticipant({ ref: null, name: null, email: null }, participants, own)).toEqual({ isUs: false });
+		expect(resolveParticipant({ ref: null, name: null, email: null }, participants, own)).toEqual({
+			isUs: false,
+		});
 	});
 });
 
@@ -310,16 +359,30 @@ describe('needsReplyResultOf', () => {
 
 	it('queues a reply-expecting intent with the owned item as the ask', () => {
 		const { decision, needsReply } = needsReplyResultOf(
-			{ replyIntent: 'direct_question', urgency: 'high', askSummary: 'Confirm the date', dueHint: '2026-10-09', isOnlyTheirs: false },
+			{
+				replyIntent: 'direct_question',
+				urgency: 'high',
+				askSummary: 'Confirm the date',
+				dueHint: '2026-10-09',
+				isOnlyTheirs: false,
+			},
 			latest
 		);
 		expect(decision.needsReply).toBe(true);
-		expect(needsReply).toMatchObject({ source: 'llm', urgency: 'high', askSummary: 'Confirm the date', dueHint: '2026-10-09' });
+		expect(needsReply).toMatchObject({
+			source: 'llm',
+			urgency: 'high',
+			askSummary: 'Confirm the date',
+			dueHint: '2026-10-09',
+		});
 	});
 
 	it('keeps informational mail out even when it carries items', () => {
 		expect(
-			needsReplyResultOf({ replyIntent: 'informational_update', urgency: 'low', isOnlyTheirs: false }, latest).needsReply
+			needsReplyResultOf(
+				{ replyIntent: 'informational_update', urgency: 'low', isOnlyTheirs: false },
+				latest
+			).needsReply
 		).toBeNull();
 	});
 

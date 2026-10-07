@@ -12,7 +12,14 @@ import { selectPromptItems } from '../load';
 import { resolveThreadDefaultView } from '../preferences';
 import { gapOf, sinceLastSeenOf } from '../briefRead';
 import { MAX_PROMPT_ITEMS } from '../schema';
-import { modules, reduceItem, reduceResult, seedMailThread, seedTeamThread, type Test } from './interpret.testlib';
+import {
+	modules,
+	reduceItem,
+	reduceResult,
+	seedMailThread,
+	seedTeamThread,
+	type Test,
+} from './interpret.testlib';
 
 const session = vi.hoisted(() => ({
 	current: { userId: 'user-A', role: 'owner', activeOrganizationId: 'org-1' } as {
@@ -102,11 +109,22 @@ describe('brief.get', () => {
 			evidence: [{ source: { kind: 'mail', id: messageId }, quote: 'send the signed contract' }],
 		});
 		expect(view.forYou.map((i) => i.text)).toEqual(['Schick den unterschriebenen Vertrag']);
-		expect(view.forYou[0]).toMatchObject({ stateKey: 'open', primaryReaction: 'attach', isNew: false });
+		expect(view.forYou[0]).toMatchObject({
+			stateKey: 'open',
+			primaryReaction: 'attach',
+			isNew: false,
+		});
 		expect(view.waitingOnOthers.map((i) => i.text)).toEqual(['Jonas bestätigt den Ort']);
-		expect(view.standing?.facts[0]).toMatchObject({ text: 'Rechnungssumme: 1.200 EUR', value: { kind: 'money' } });
+		expect(view.standing?.facts[0]).toMatchObject({
+			text: 'Rechnungssumme: 1.200 EUR',
+			value: { kind: 'money' },
+		});
 		expect(view.counts).toMatchObject({ forYou: 1, waitingOnOthers: 1, forTeam: 0 });
-		expect(view.activity.map((a) => a.type)).toEqual(['item_opened', 'item_opened', 'message_received']);
+		expect(view.activity.map((a) => a.type)).toEqual([
+			'item_opened',
+			'item_opened',
+			'message_received',
+		]);
 		expect(view.participants.map((p) => p.email)).toContain('jonas@example.com');
 	});
 
@@ -117,13 +135,21 @@ describe('brief.get', () => {
 			threadRef: { kind: 'mail', id: threadId },
 			locale: 'en',
 		});
-		expect(view).toMatchObject({ mode: 'brief', completeness: 'none', gap: { interpretedMessages: 0, totalMessages: 1 } });
+		expect(view).toMatchObject({
+			mode: 'brief',
+			completeness: 'none',
+			gap: { interpretedMessages: 0, totalMessages: 1 },
+		});
 	});
 
 	it('shows a failed run as an incomplete brief with its reason', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedMailThread(t);
-		await interpretMail(t, messageId, threadId, { status: 'failed', errorCode: 'ai_off', result: undefined });
+		await interpretMail(t, messageId, threadId, {
+			status: 'failed',
+			errorCode: 'ai_off',
+			result: undefined,
+		});
 		const view = await t.query(api.mail.interpret.brief.get, {
 			threadRef: { kind: 'mail', id: threadId },
 			locale: 'en',
@@ -136,18 +162,27 @@ describe('brief.get', () => {
 		const { threadId } = await seedMailThread(t, { userId: 'someone-else' });
 		session.current = { userId: 'user-A', role: 'member', activeOrganizationId: 'org-1' };
 		expect(
-			await t.query(api.mail.interpret.brief.get, { threadRef: { kind: 'mail', id: threadId }, locale: 'en' })
+			await t.query(api.mail.interpret.brief.get, {
+				threadRef: { kind: 'mail', id: threadId },
+				locale: 'en',
+			})
 		).toBeNull();
 		session.current = null;
 		expect(
-			await t.query(api.mail.interpret.brief.get, { threadRef: { kind: 'mail', id: threadId }, locale: 'en' })
+			await t.query(api.mail.interpret.brief.get, {
+				threadRef: { kind: 'mail', id: threadId },
+				locale: 'en',
+			})
 		).toBeNull();
 	});
 
 	it('shows a shared mailbox thread in actions mode (no latest, no facts)', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedMailThread(t, { scope: 'shared' });
-		await interpretMail(t, messageId, threadId, { mode: 'actions', result: reduceResult({ latest: undefined, facts: undefined }) });
+		await interpretMail(t, messageId, threadId, {
+			mode: 'actions',
+			result: reduceResult({ latest: undefined, facts: undefined }),
+		});
 		const view = await t.query(api.mail.interpret.brief.get, {
 			threadRef: { kind: 'mail', id: threadId },
 			locale: 'en',
@@ -163,12 +198,16 @@ describe('brief.get', () => {
 		const t = convexTest(schema, modules);
 		const { threadId } = await seedTeamThread(t);
 		const ref = { kind: 'team' as const, id: threadId };
-		expect(await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' })).toMatchObject({
+		expect(
+			await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' })
+		).toMatchObject({
 			mode: 'actions',
 			completeness: 'none',
 		});
 		session.current = { userId: 'user-A', role: 'member', activeOrganizationId: 'org-1' };
-		expect(await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' })).toBeNull();
+		expect(
+			await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' })
+		).toBeNull();
 	});
 });
 
@@ -187,7 +226,13 @@ describe('viewer state', () => {
 			expectedRevision: 1,
 			sourceAt: SENT + 1,
 			result: reduceResult({
-				items: [reduceItem({ assertion: 'Book the room', display: { en: 'Book the room', de: 'Buch den Raum' }, facets: ['meeting'] })],
+				items: [
+					reduceItem({
+						assertion: 'Book the room',
+						display: { en: 'Book the room', de: 'Buch den Raum' },
+						facets: ['meeting'],
+					}),
+				],
 				facts: [],
 			}),
 		});
@@ -201,12 +246,17 @@ describe('viewer state', () => {
 		const t = convexTest(schema, modules);
 		const { threadId } = await seedMailThread(t);
 		const ref = { kind: 'mail' as const, id: threadId };
-		await t.mutation(api.mail.interpret.brief.setViewOverride, { threadRef: ref, view: 'conversation' });
+		await t.mutation(api.mail.interpret.brief.setViewOverride, {
+			threadRef: ref,
+			view: 'conversation',
+		});
 		const read = () =>
 			t.run(async (ctx) =>
 				ctx.db
 					.query('threadViewerState')
-					.withIndex('by_user_and_mail_thread', (q) => q.eq('userId', 'user-A').eq('mailThreadId', threadId))
+					.withIndex('by_user_and_mail_thread', (q) =>
+						q.eq('userId', 'user-A').eq('mailThreadId', threadId)
+					)
 					.first()
 			);
 		expect((await read())?.viewOverride).toBe('conversation');
@@ -236,7 +286,9 @@ describe('view preference (D1)', () => {
 	it('defaults to Overview, Conversation when auto-summarize is off, and the explicit choice wins', () => {
 		expect(resolveThreadDefaultView(null)).toBe('overview');
 		expect(resolveThreadDefaultView({ isAutoSummarizeOn: false })).toBe('conversation');
-		expect(resolveThreadDefaultView({ isAutoSummarizeOn: false, threadDefaultView: 'overview' })).toBe('overview');
+		expect(
+			resolveThreadDefaultView({ isAutoSummarizeOn: false, threadDefaultView: 'overview' })
+		).toBe('overview');
 	});
 
 	it('saves the default on a team-only install', async () => {
@@ -322,19 +374,31 @@ describe('pure read helpers', () => {
 	});
 
 	it('explains the gap from the newest problem, then pending, then the suppressed latest', () => {
-		const row = (sourceKey: string, status: 'complete' | 'partial' | 'failed', updatedAt: number, errorCode?: string) => ({
+		const row = (
+			sourceKey: string,
+			status: 'complete' | 'partial' | 'failed',
+			updatedAt: number,
+			errorCode?: string
+		) => ({
 			sourceKey,
 			status,
 			updatedAt,
 			...(errorCode ? { errorCode } : {}),
 		});
-		expect(gapOf([row('a', 'complete', 1), row('b', 'partial', 2, 'overflow')], { totalMessages: 3, isPending: false })).toEqual({
+		expect(
+			gapOf([row('a', 'complete', 1), row('b', 'partial', 2, 'overflow')], {
+				totalMessages: 3,
+				isPending: false,
+			})
+		).toEqual({
 			interpretedMessages: 2,
 			totalMessages: 3,
 			reason: 'tooLong',
 		});
 		expect(gapOf([], { totalMessages: 1, isPending: true })).toMatchObject({ reason: 'pending' });
-		expect(gapOf([row('a', 'complete', 1)], { totalMessages: 1, isPending: false, suppressed: 'short' })).toMatchObject({
+		expect(
+			gapOf([row('a', 'complete', 1)], { totalMessages: 1, isPending: false, suppressed: 'short' })
+		).toMatchObject({
 			reason: 'short',
 		});
 	});

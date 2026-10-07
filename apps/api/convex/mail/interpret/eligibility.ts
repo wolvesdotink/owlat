@@ -48,7 +48,8 @@ export function isInterpretationEligible(
 	options: { direction?: 'inbound' | 'outbound' } = {}
 ): EligibilityVerdict {
 	if (!signals.isLive) return { isEligible: false, skipReason: 'ineligible', detail: 'not_live' };
-	if (signals.isThreadMuted) return { isEligible: false, skipReason: 'ineligible', detail: 'muted' };
+	if (signals.isThreadMuted)
+		return { isEligible: false, skipReason: 'ineligible', detail: 'muted' };
 	if (
 		options.direction !== 'outbound' &&
 		signals.folder !== undefined &&
@@ -167,7 +168,8 @@ function inboundHeader(headersJson: string | undefined, name: string): string | 
 		}
 		if (parsed && typeof parsed === 'object') {
 			for (const [key, value] of Object.entries(parsed)) {
-				if (key.toLowerCase() === lower) return Array.isArray(value) ? String(value[0]) : String(value);
+				if (key.toLowerCase() === lower)
+					return Array.isArray(value) ? String(value[0]) : String(value);
 			}
 		}
 	} catch {

@@ -7,7 +7,12 @@
 import type { TestConvex } from 'convex-test';
 import type { Id } from '../../../_generated/dataModel';
 import type schema from '../../../schema';
-import { seedFolder, seedMailbox, seedMessage, type MailboxSeed } from '../../__tests__/helpers.testlib';
+import {
+	seedFolder,
+	seedMailbox,
+	seedMessage,
+	type MailboxSeed,
+} from '../../__tests__/helpers.testlib';
 import { enableFeatures } from '../../../__tests__/factories';
 import type { ReduceItem, ReduceResult } from '../reduceInput';
 

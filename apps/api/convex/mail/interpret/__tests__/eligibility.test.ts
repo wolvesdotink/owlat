@@ -42,7 +42,9 @@ describe('isInterpretationEligible', () => {
 	});
 
 	it('reads our own sent mail when the source is outbound', () => {
-		expect(isInterpretationEligible({ ...live, folder: 'sent' }, { direction: 'outbound' })).toEqual({
+		expect(
+			isInterpretationEligible({ ...live, folder: 'sent' }, { direction: 'outbound' })
+		).toEqual({
 			isEligible: true,
 		});
 	});
@@ -50,7 +52,9 @@ describe('isInterpretationEligible', () => {
 	it('excludes bulk mail from strangers only when all three signals agree', () => {
 		const bulk = { ...live, isBulkHeaderPresent: true, category: 'newsletter' };
 		expect(isInterpretationEligible(bulk)).toMatchObject({ isEligible: false, skipReason: 'bulk' });
-		expect(isInterpretationEligible({ ...bulk, isSenderKnown: true })).toEqual({ isEligible: true });
+		expect(isInterpretationEligible({ ...bulk, isSenderKnown: true })).toEqual({
+			isEligible: true,
+		});
 		expect(isInterpretationEligible({ ...bulk, isBulkHeaderPresent: false })).toEqual({
 			isEligible: true,
 		});
@@ -64,7 +68,9 @@ describe('isInterpretationEligible', () => {
 describe('short and security mail', () => {
 	it('treats a short fresh part alone in its thread as short', () => {
 		expect(isShortMail({ freshChars: SHORT_MAIL_MAX_CHARS, threadMessageCount: 1 })).toBe(true);
-		expect(isShortMail({ freshChars: SHORT_MAIL_MAX_CHARS + 1, threadMessageCount: 1 })).toBe(false);
+		expect(isShortMail({ freshChars: SHORT_MAIL_MAX_CHARS + 1, threadMessageCount: 1 })).toBe(
+			false
+		);
 		expect(isShortMail({ freshChars: 20, threadMessageCount: 2 })).toBe(false);
 	});
 

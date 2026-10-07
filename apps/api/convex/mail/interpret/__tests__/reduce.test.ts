@@ -11,7 +11,14 @@ import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { appendActivity } from '../activity';
 import { completenessOf } from '../reduce';
-import { modules, reduceItem, reduceResult, seedMailThread, seedTeamThread, type Test } from './interpret.testlib';
+import {
+	modules,
+	reduceItem,
+	reduceResult,
+	seedMailThread,
+	seedTeamThread,
+	type Test,
+} from './interpret.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
@@ -77,7 +84,11 @@ describe('applyInterpretation', () => {
 			internal.mail.interpret.reduce.applyInterpretation,
 			applyArgs({ kind: 'mail', id: messageId }, threadId)
 		);
-		expect(out).toMatchObject({ outcome: 'applied', interpretationRevision: 1, completeness: 'complete' });
+		expect(out).toMatchObject({
+			outcome: 'applied',
+			interpretationRevision: 1,
+			completeness: 'complete',
+		});
 		const state = await rows(t, threadId);
 		expect(state.items).toHaveLength(1);
 		expect(state.items[0]).toMatchObject({
@@ -105,7 +116,10 @@ describe('applyInterpretation', () => {
 			completeness: 'complete',
 			checkpoint: { sourceKey: `mail:${messageId}`, sourceAt: SENT },
 		});
-		expect(state.interpretations[0]).toMatchObject({ status: 'complete', appliedAt: expect.any(Number) });
+		expect(state.interpretations[0]).toMatchObject({
+			status: 'complete',
+			appliedAt: expect.any(Number),
+		});
 	});
 
 	it('answers stale when the revision moved, and writes nothing', async () => {
@@ -117,7 +131,10 @@ describe('applyInterpretation', () => {
 		);
 		const stale = await t.mutation(
 			internal.mail.interpret.reduce.applyInterpretation,
-			applyArgs({ kind: 'mail', id: messageId }, threadId, { contentRevision: 'rev-2', expectedRevision: 0 })
+			applyArgs({ kind: 'mail', id: messageId }, threadId, {
+				contentRevision: 'rev-2',
+				expectedRevision: 0,
+			})
 		);
 		expect(stale).toEqual({ outcome: 'stale', interpretationRevision: 1 });
 		expect((await rows(t, threadId)).items).toHaveLength(1);
@@ -205,7 +222,7 @@ describe('applyInterpretation', () => {
 		const state = await rows(t, threadId);
 		expect(state.items[0]).toMatchObject({ status: 'done', completion: 'reported', revision: 2 });
 		expect(state.items[0]?.evidence).toHaveLength(2);
-		expect(state.activity.at(-1)).toMatchObject({
+		expect(state.activity[state.activity.length - 1]).toMatchObject({
 			type: 'item_closed',
 			itemId: item!._id,
 			itemRevision: 2,
@@ -226,7 +243,10 @@ describe('applyInterpretation', () => {
 		);
 		expect(out).toMatchObject({ outcome: 'applied', completeness: 'partial' });
 		const state = await rows(t, threadId);
-		expect(state.activity.map((a) => a.type)).toEqual(['message_received', 'interpretation_incomplete']);
+		expect(state.activity.map((a) => a.type)).toEqual([
+			'message_received',
+			'interpretation_incomplete',
+		]);
 	});
 
 	it('assigns new team items to the thread assignee (D4) and writes no facts', async () => {
@@ -263,7 +283,9 @@ describe('applyInterpretation', () => {
 		const items = await t.run(async (ctx) =>
 			ctx.db
 				.query('threadItems')
-				.withIndex('by_conversation_thread_and_status', (q) => q.eq('conversationThreadId', threadId))
+				.withIndex('by_conversation_thread_and_status', (q) =>
+					q.eq('conversationThreadId', threadId)
+				)
 				.collect()
 		);
 		expect(items[0]).toMatchObject({ assigneeUserId: 'user-B', threadKind: 'team' });
@@ -328,7 +350,12 @@ describe('appendActivity', () => {
 
 describe('completenessOf', () => {
 	it('reads the newest extraction per source', () => {
-		const row = (sourceKey: string, status: 'complete' | 'partial' | 'failed' | 'skipped', updatedAt: number, skipReason?: 'undecryptable' | 'bulk') => ({
+		const row = (
+			sourceKey: string,
+			status: 'complete' | 'partial' | 'failed' | 'skipped',
+			updatedAt: number,
+			skipReason?: 'undecryptable' | 'bulk'
+		) => ({
 			sourceKey,
 			status,
 			updatedAt,

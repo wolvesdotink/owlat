@@ -101,9 +101,12 @@ export const get = publicQuery({
 			: null;
 		const latest = await readLatest(checkpointRow, locale);
 		const checkpointResult = checkpointRow ? await readResult(checkpointRow) : null;
-		const facts = mode === 'brief' && ref.kind === 'mail' ? await readFacts(ctx, ref.id, locale) : [];
+		const facts =
+			mode === 'brief' && ref.kind === 'mail' ? await readFacts(ctx, ref.id, locale) : [];
 		const overview =
-			mode === 'brief' && brief?.overview && brief.overview.revision === brief.interpretationRevision
+			mode === 'brief' &&
+			brief?.overview &&
+			brief.overview.revision === brief.interpretationRevision
 				? brief.overview[locale]
 				: undefined;
 
@@ -164,7 +167,9 @@ async function upsertViewerState(
 	const now = Date.now();
 	const { viewOverride, ...rest } = patch;
 	const override =
-		viewOverride === undefined ? {} : { viewOverride: viewOverride === null ? undefined : viewOverride };
+		viewOverride === undefined
+			? {}
+			: { viewOverride: viewOverride === null ? undefined : viewOverride };
 	if (existing) {
 		await ctx.db.patch(existing._id, { ...rest, ...override, updatedAt: now });
 		return;
@@ -187,6 +192,8 @@ export const markSeen = threadBriefMutation({
 		streamPosition: v.optional(streamPositionValidator),
 	},
 	handler: async (ctx, args, session) => {
+		// authz: requireThreadReader applies the thread's reader rule:
+		// requireMailboxAccess for a mail thread, requirePermission(isSharedInboxReader) for a team one.
 		await requireThreadReader(ctx, args.threadRef, session);
 		const brief = await loadBriefRow(ctx, args.threadRef);
 		await upsertViewerState(ctx, args.threadRef, session.userId, {
@@ -202,6 +209,8 @@ export const setViewOverride = threadBriefMutation({
 	args: { threadRef: threadRefValidator, view: v.union(threadViewValidator, v.null()) },
 	handler: async (ctx, args, session) => {
 		if (args.threadRef.kind !== 'mail') throwInvalidInput('Team threads have no Overview');
+		// authz: requireThreadReader applies the thread's reader rule:
+		// requireMailboxAccess for a mail thread, requirePermission(isSharedInboxReader) for a team one.
 		await requireThreadReader(ctx, args.threadRef, session);
 		await upsertViewerState(ctx, args.threadRef, session.userId, { viewOverride: args.view });
 		return null;

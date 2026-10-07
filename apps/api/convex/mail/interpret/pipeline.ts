@@ -9,7 +9,6 @@
  *   verifyClaimsOf        which grounded claims the verifier must check
  *   toReduceResult        grounded + verified proposals → the reducer input
  *   runStatusOf           complete / partial, and why
- *   needsReplyProjectionOf  the Postbox needs-reply inputs from the result
  *
  * Isolate-safe.
  */
@@ -34,8 +33,6 @@ import {
 	type InterpretTransitionProposal,
 } from './schema';
 import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
-import { responsibilityOf } from './reducePlan';
-import { utcDayKey } from '../../lib/clock';
 
 // ── Input ──────────────────────────────────────────────────────────────────
 
@@ -78,8 +75,11 @@ export function buildInterpretInput(args: {
 
 /** Strip control characters, collapse whitespace, cut at a word. */
 export function clampText(value: string, max: number): string {
-	// eslint-disable-next-line no-control-regex
-	const flat = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+	const flat = value
+		// eslint-disable-next-line no-control-regex
+		.replace(/[\u0000-\u001f\u007f]/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
 	if (flat.length <= max) return flat;
 	const cut = flat.slice(0, max - 1);
 	return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 1))}…`;
@@ -164,7 +164,8 @@ export function resolveParticipant(
 			isUs: listed.isUs,
 		};
 	}
-	const email = proposal.email && proposal.email.includes('@') ? normalizeEmail(proposal.email) : undefined;
+	const email =
+		proposal.email && proposal.email.includes('@') ? normalizeEmail(proposal.email) : undefined;
 	return {
 		...(email ? { email } : {}),
 		...(proposal.name ? { name: proposal.name } : {}),
@@ -195,7 +196,10 @@ function quotesOf(claim: GroundedClaim<unknown>, canonicalText: string): string[
 	return claim.evidence.map((e) => canonicalText.slice(e.start, e.end));
 }
 
-function partyLabel(p: InterpretParticipantProposal, participants: readonly InterpretInputParticipant[]) {
+function partyLabel(
+	p: InterpretParticipantProposal,
+	participants: readonly InterpretInputParticipant[]
+) {
 	const listed = p.ref ? participants.find((x) => x.ref === p.ref) : undefined;
 	if (listed) return listed.isUs ? 'the reader' : (listed.name ?? listed.email ?? 'someone');
 	return p.name ?? p.email ?? 'an unclear person';
@@ -235,8 +239,17 @@ export function verifyClaimsOf(
 		if (!t.to || !['done', 'declined', 'superseded'].includes(t.to)) continue;
 		const text = context.itemText(t.itemId);
 		if (!text) continue;
-		const verb = t.to === 'done' ? 'has been done' : t.to === 'declined' ? 'has been declined' : 'has been replaced by something else';
-		claims.push({ id: `transition:${i}`, statement: `"${text}" ${verb}.`, quotes: quotesOf(g, canonicalText) });
+		const verb =
+			t.to === 'done'
+				? 'has been done'
+				: t.to === 'declined'
+					? 'has been declined'
+					: 'has been replaced by something else';
+		claims.push({
+			id: `transition:${i}`,
+			statement: `"${text}" ${verb}.`,
+			quotes: quotesOf(g, canonicalText),
+		});
 	}
 	for (const [i, g] of (grounding.facts ?? []).entries()) {
 		const f = g.claim as InterpretFactProposal;
@@ -327,7 +340,12 @@ export function toReduceResult(
 					}
 				: {}),
 			...(p.amount && Number.isFinite(p.amount.value)
-				? { amount: { value: p.amount.value, currency: p.amount.currency.toUpperCase().slice(0, 3) } }
+				? {
+						amount: {
+							value: p.amount.value,
+							currency: p.amount.currency.toUpperCase().slice(0, 3),
+						},
+					}
 				: {}),
 			...(p.options && p.options.length > 0 ? { options: p.options } : {}),
 			evidence: evidenceOf(g, opts.canonicalText),
@@ -448,39 +466,4 @@ export function runStatusOf(input: {
 	if (!input.grounding.coverage.complete) return { status: 'partial', errorCode: 'grounding' };
 	if (input.isVerifyIncomplete) return { status: 'partial', errorCode: 'verify' };
 	return { status: 'complete' };
-}
-
-// ── Postbox needs-reply projection ─────────────────────────────────────────
-
-export interface NeedsReplyProjection {
-	replyIntent: string;
-	urgency: 'high' | 'normal' | 'low';
-	meetingIntent?: { isScheduling: boolean; proposedTimes: string[]; topic?: string };
-	/** The top item the reader owns, in the owner's locale. */
-	askSummary?: string;
-	/** Its deadline as an ISO date (YYYY-MM-DD). */
-	dueHint?: string;
-	/** Every item is someone else's: the veto `decideNeedsReply` takes as the model's boolean. */
-	isOnlyTheirs: boolean;
-}
-
-/** The needs-reply inputs of one result. Pure. */
-export function needsReplyProjectionOf(
-	result: Pick<ReduceResult, 'items' | 'replyIntent' | 'urgency' | 'meetingIntent'>,
-	locale: AppLocale
-): NeedsReplyProjection {
-	const ours = result.items.filter((i) => responsibilityOf(i.responsible) !== 'them');
-	const top = [...ours].sort(
-		(a, b) => (a.due?.at ?? Number.POSITIVE_INFINITY) - (b.due?.at ?? Number.POSITIVE_INFINITY)
-	)[0];
-	return {
-		replyIntent: result.replyIntent,
-		urgency: result.urgency,
-		...(result.meetingIntent ? { meetingIntent: result.meetingIntent } : {}),
-		...(top ? { askSummary: clampText(top.display[locale], 120) } : {}),
-		...(top?.due?.at !== undefined
-			? { dueHint: utcDayKey(top.due.at) }
-			: {}),
-		isOnlyTheirs: result.items.length > 0 && ours.length === 0,
-	};
 }

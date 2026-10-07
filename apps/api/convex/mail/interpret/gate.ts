@@ -27,10 +27,14 @@ export const checkAllowed = internalQuery({
 	args: { mode: interpretModeValidator },
 	returns: v.union(
 		v.object({ isAllowed: v.literal(true) }),
-		v.object({ isAllowed: v.literal(false), code: v.union(v.literal('ai_off'), v.literal('budget')) })
+		v.object({
+			isAllowed: v.literal(false),
+			code: v.union(v.literal('ai_off'), v.literal('budget')),
+		})
 	),
 	handler: async (ctx, args) => {
-		if (!(await isFeatureEnabled(ctx, 'ai'))) return { isAllowed: false as const, code: 'ai_off' as const };
+		if (!(await isFeatureEnabled(ctx, 'ai')))
+			return { isAllowed: false as const, code: 'ai_off' as const };
 		try {
 			const budget = await computeBudgetStatus(ctx);
 			const isWithin =

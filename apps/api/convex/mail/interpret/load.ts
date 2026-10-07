@@ -85,9 +85,11 @@ export async function threadItemsWithStatus(
  * The prompt page of a thread's items: open items oldest ask first, then
  * items closed within the lookback newest first, cut at `limit`. Pure.
  */
-export function selectPromptItems<
-	T extends { status: string; askedAt: number; updatedAt: number },
->(rows: readonly T[], now: number, limit = MAX_PROMPT_ITEMS): { page: T[]; isOverflow: boolean } {
+export function selectPromptItems<T extends { status: string; askedAt: number; updatedAt: number }>(
+	rows: readonly T[],
+	now: number,
+	limit = MAX_PROMPT_ITEMS
+): { page: T[]; isOverflow: boolean } {
 	const open = rows.filter((r) => r.status === 'open').sort((a, b) => a.askedAt - b.askedAt);
 	const closed = rows
 		.filter((r) => r.status !== 'open' && now - r.updatedAt <= CLOSED_ITEM_LOOKBACK_MS)

@@ -36,11 +36,11 @@ import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
 import { logWarn } from '../../lib/runtimeLog';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
 import {
-	interpretCoverageValidator,
 	interpretModeValidator,
 	interpretationSourceValidator,
-	sourceManifestValidator,
 	type InterpretationSource,
+	type interpretCoverageValidator,
+	type sourceManifestValidator,
 } from '../../lib/validators/threadBrief';
 import {
 	INTERPRET_EXTRACTOR_VERSION,
@@ -55,12 +55,11 @@ import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scop
 import {
 	buildInterpretInput,
 	clampOutput,
-	needsReplyProjectionOf,
 	runStatusOf,
 	toReduceResult,
 	verifyClaimsOf,
-	type NeedsReplyProjection,
 } from './pipeline';
+import { needsReplyProjectionOf, type NeedsReplyProjection } from './needsReplyProjection';
 import { verifyClaims } from './verify';
 import type { ReduceResult } from './reduceInput';
 import type { ApplyOutcome } from './reduce';
@@ -91,9 +90,7 @@ export type InterpretRunResult =
 	/** The source or its thread is gone, or a purge ran meanwhile: nothing written. */
 	| { status: 'gone' };
 
-type Loaded = NonNullable<
-	Awaited<ReturnType<typeof loadState>>
->;
+type Loaded = NonNullable<Awaited<ReturnType<typeof loadState>>>;
 
 function loadState(ctx: ActionCtx, args: InterpretArgs) {
 	return ctx.runQuery(internal.mail.interpret.load.loadForInterpretation, {
@@ -210,7 +207,12 @@ export async function runInterpretation(
 		const segmented = segmentScoped(scoped);
 		contentRevision = await contentRevisionOf(segmented);
 		const sourceManifest = {
-			segments: segmented.segments.map((s) => ({ id: s.id, kind: s.kind, start: s.start, end: s.end })),
+			segments: segmented.segments.map((s) => ({
+				id: s.id,
+				kind: s.kind,
+				start: s.start,
+				end: s.end,
+			})),
 			isUncertain: segmented.uncertain,
 		};
 
@@ -297,7 +299,10 @@ export async function runInterpretation(
 				? undefined
 				: isSecurityMail({ subject: scoped.subject, freshText })
 					? ('security' as const)
-					: isShortMail({ freshChars: freshText.length, threadMessageCount: loaded.threadMessageCount })
+					: isShortMail({
+								freshChars: freshText.length,
+								threadMessageCount: loaded.threadMessageCount,
+						  })
 						? ('short' as const)
 						: undefined;
 

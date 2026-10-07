@@ -14,11 +14,7 @@
  */
 
 import type { Id } from '../../_generated/dataModel';
-import type {
-	BriefCompleteness,
-	InterpretMode,
-	ItemStatus,
-} from '@owlat/shared/threadBrief';
+import type { BriefCompleteness, InterpretMode, ItemStatus } from '@owlat/shared/threadBrief';
 import { compareForYou, itemStateKey, primaryReaction } from '@owlat/shared/threadBriefRules';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import type {

@@ -21,7 +21,11 @@ import type { Doc } from '../../_generated/dataModel';
 import { internalQuery, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { classifySecureMessage, isEncryptedClass } from '@owlat/shared/secureMessage';
-import { resolveSignedBodyView, signedBodyScopeOf, type SignedBodyScope } from '@owlat/shared/signedScope';
+import {
+	resolveSignedBodyView,
+	signedBodyScopeOf,
+	type SignedBodyScope,
+} from '@owlat/shared/signedScope';
 import { segmentMessage, type SegmentedMessage } from '@owlat/shared/mailSegments';
 import {
 	interpretationSourceValidator,

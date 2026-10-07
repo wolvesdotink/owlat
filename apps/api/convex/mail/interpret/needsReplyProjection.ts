@@ -29,7 +29,11 @@ import {
 } from '../ai/replyIntent';
 import { isUnattendedAddress } from '../needsReplyHeuristic';
 import type { needsReplyClarificationArgValidator } from '../../lib/validators/clarification';
-import type { NeedsReplyProjection } from './pipeline';
+import type { AppLocale } from '@owlat/shared/appLocales';
+import { utcDayKey } from '../../lib/clock';
+import { clampText } from './pipeline';
+import { responsibilityOf } from './reducePlan';
+import type { ReduceResult } from './reduceInput';
 
 export interface LatestInbound {
 	messageId: Id<'mailMessages'>;
@@ -103,8 +107,41 @@ export async function projectNeedsReply(
 	);
 	await ctx.runMutation(internal.mail.needsReply.applyResult, {
 		threadId: args.threadId,
-		...(args.expectedLatestMessageId ? { expectedLatestMessageId: args.expectedLatestMessageId } : {}),
+		...(args.expectedLatestMessageId
+			? { expectedLatestMessageId: args.expectedLatestMessageId }
+			: {}),
 		needsReply,
 	});
 	return decision;
+}
+
+export interface NeedsReplyProjection {
+	replyIntent: string;
+	urgency: 'high' | 'normal' | 'low';
+	meetingIntent?: { isScheduling: boolean; proposedTimes: string[]; topic?: string };
+	/** The top item the reader owns, in the owner's locale. */
+	askSummary?: string;
+	/** Its deadline as an ISO date (YYYY-MM-DD). */
+	dueHint?: string;
+	/** Every item is someone else's: the veto `decideNeedsReply` takes as the model's boolean. */
+	isOnlyTheirs: boolean;
+}
+
+/** The needs-reply inputs of one result. Pure. */
+export function needsReplyProjectionOf(
+	result: Pick<ReduceResult, 'items' | 'replyIntent' | 'urgency' | 'meetingIntent'>,
+	locale: AppLocale
+): NeedsReplyProjection {
+	const ours = result.items.filter((i) => responsibilityOf(i.responsible) !== 'them');
+	const top = [...ours].sort(
+		(a, b) => (a.due?.at ?? Number.POSITIVE_INFINITY) - (b.due?.at ?? Number.POSITIVE_INFINITY)
+	)[0];
+	return {
+		replyIntent: result.replyIntent,
+		urgency: result.urgency,
+		...(result.meetingIntent ? { meetingIntent: result.meetingIntent } : {}),
+		...(top ? { askSummary: clampText(top.display[locale], 120) } : {}),
+		...(top?.due?.at !== undefined ? { dueHint: utcDayKey(top.due.at) } : {}),
+		isOnlyTheirs: result.items.length > 0 && ours.length === 0,
+	};
 }
