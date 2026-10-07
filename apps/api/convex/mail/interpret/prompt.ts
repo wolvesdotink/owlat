@@ -119,6 +119,7 @@ function itemRules(): string {
 	return [
 		`- items: at most ${MAX_INTERPRET_ITEMS} obligations this message creates or repeats: a question someone must answer, a request someone must act on, a decision someone must make, a promise someone made. One item per obligation.`,
 		'  - intent: question, request, decision or promise. facets: what it involves (payment, meeting, documentReview, signature, file, access, information); empty when none fits.',
+		'  - consequences: ALWAYS give this list: every way acting on the item would commit the reader (payment, signature, access, disclosure, promise, concession, cancellation); [] when none applies.',
 		'  - assertion: the obligation as one sentence in the language of the email.',
 		'  - display: one short line per language code, starting with a verb when "us" must act ("Send the signed contract to Anna"). Never repeat a password, code or other secret in it.',
 		'  - requester / responsible / beneficiary: a participant ref ("p2") when the person is listed; otherwise name and email as written; all null when it is unclear who. "us" (the participants marked us) is responsible only when the message asks us, not someone else on the thread.',

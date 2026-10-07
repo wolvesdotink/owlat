@@ -48,6 +48,7 @@ import {
 	type InterpretInputItem,
 	type InterpretInputParticipant,
 } from './schema';
+import type { ReduceResult } from './reduceInput';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
@@ -308,6 +309,25 @@ export async function ownerTimeZone(ctx: ReadCtx, userId: string | undefined): P
 	const settings = await ctx.db.query('instanceSettings').first();
 	return settings?.timezone ?? 'UTC';
 }
+
+/** The stored result of an extraction, or null when it has none or it does not parse. */
+export async function readResult(row: Doc<'messageInterpretations'>): Promise<ReduceResult | null> {
+	if (!row.payload) return null;
+	try {
+		return JSON.parse(await openMessageBody(row.payload)) as ReduceResult;
+	} catch {
+		return null;
+	}
+}
+
+/** The stored result of one extraction (a replayed run hands it to its caller). */
+export const readStoredResult = internalQuery({
+	args: { interpretationId: v.id('messageInterpretations') },
+	handler: async (ctx, args): Promise<ReduceResult | null> => {
+		const row = await ctx.db.get(args.interpretationId);
+		return row ? readResult(row) : null;
+	},
+});
 
 // ── The query ──────────────────────────────────────────────────────────────
 

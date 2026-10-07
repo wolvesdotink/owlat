@@ -25,6 +25,7 @@ import {
 	interpretationSourceValidator,
 	interpretationStatusValidator,
 	itemAmountValidator,
+	itemConsequenceKindValidator,
 	itemDispositionValidator,
 	itemDueValidator,
 	itemFacetValidator,
@@ -50,6 +51,8 @@ export const reduceItemValidator = v.object({
 	matchItemId: v.optional(v.string()),
 	intent: itemIntentValidator,
 	facets: v.array(itemFacetValidator),
+	// Absent = the model did not say (counts as consequential).
+	consequences: v.optional(v.array(itemConsequenceKindValidator)),
 	assertion: v.string(),
 	display: localizedTextValidator,
 	requester: participantRefValidator,

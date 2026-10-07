@@ -264,7 +264,7 @@ export const applyInterpretation = internalMutation({
 				type: 'message_received',
 				actor: { kind: 'sender' },
 				provenance: 'recorded',
-				opRef: { kind: 'outbound', id: sourceKey },
+				payload: { source: sourceKey },
 			});
 		}
 
@@ -454,6 +454,7 @@ async function insertItem(
 		revision: 1,
 		intent: item.intent,
 		facets: item.facets,
+		...(item.consequences ? { consequences: item.consequences } : {}),
 		assertion: await sealBodyAtWrite(item.assertion),
 		display: await sealDisplay(item.display),
 		requester: item.requester,
