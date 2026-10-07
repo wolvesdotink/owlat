@@ -20,9 +20,10 @@
  *
  * A message row also renders chips that live on its THREAD, not on the message:
  * the follow-up watch, the mute marker, the back-from-snooze marker and the
- * smart-inbox category. {@link attachThreadState} joins them in so no client has
- * to join a second, capped thread subscription to recover a field the server
- * already read.
+ * smart-inbox category, and the thread brief's top item (`briefTop`, opened
+ * from its at-rest seal once per thread). {@link attachThreadState} joins them
+ * in so no client has to join a second, capped thread subscription to recover
+ * a field the server already read.
  *
  * Not a Convex function; a helper shared by the list reads.
  */
@@ -32,6 +33,7 @@ import type { QueryCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
 import type { mailCategoryLabelValidator } from '../../lib/literalValidators';
 import { batchGet } from '../../_utils/batchLoader';
+import { openBriefTop, type BriefTopRow } from '../interpret/briefTop';
 
 /**
  * The fields a list row keeps, as an allowlist: a field added to `mailMessages`
@@ -116,6 +118,7 @@ export type RowThreadState = {
 	mutedAt?: number;
 	snoozeReturnedAt?: number;
 	category?: Infer<typeof mailCategoryLabelValidator>;
+	briefTop?: BriefTopRow;
 };
 
 export async function attachThreadState(
@@ -128,11 +131,19 @@ export async function attachThreadState(
 		ctx,
 		messages.map((m) => m.threadId)
 	);
+	// One unseal per distinct thread, in parallel.
+	const briefTops = new Map<string, BriefTopRow | undefined>();
+	await Promise.all(
+		[...cache.entries()].map(async ([threadId, thread]) => {
+			if (thread?.briefTop) briefTops.set(threadId, await openBriefTop(thread.briefTop));
+		})
+	);
 	const out: Array<MailListRow & RowThreadState> = [];
 	for (const m of messages) {
 		const thread = cache.get(m.threadId) ?? null;
 		const followUp = thread?.followUp;
 		const category = thread?.category?.label;
+		const briefTop = briefTops.get(m.threadId);
 		const state: RowThreadState = {
 			...(followUp
 				? {
@@ -148,6 +159,7 @@ export async function attachThreadState(
 				? { snoozeReturnedAt: thread.snoozeReturnedAt }
 				: {}),
 			...(category !== undefined ? { category } : {}),
+			...(briefTop !== undefined ? { briefTop } : {}),
 		};
 		out.push({ ...toMailListRow(m), ...state });
 	}

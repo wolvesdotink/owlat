@@ -67,7 +67,6 @@ export:packages/shared/src/threadBrief.ts:INTERPRETATION_SOURCE_KINDS
 export:packages/shared/src/threadBrief.ts:defaultActivityVisibility
 export:packages/shared/src/threadBrief.ts:factKeyString
 export:packages/shared/src/threadBriefRules.ts:LEGAL_STATUS_EDGES
-export:packages/shared/src/threadBriefRules.ts:compareForYou
 export:packages/shared/src/threadBriefRules.ts:isConsequential
 export:packages/shared/src/threadBriefRules.ts:isLegalDispositionEdge
 export:packages/shared/src/threadBriefRules.ts:isLegalStatusEdge
