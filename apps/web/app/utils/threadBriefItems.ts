@@ -107,11 +107,24 @@ function evidenceAt(list: readonly EvidenceView[], index: number): EvidenceView 
 	return list[index] ?? list[0];
 }
 
+/** The cite ref of an item's unconfirmed change ("Check this change"). */
+export function pendingCiteRef(itemId: string): string {
+	return `${itemId}~pending`;
+}
+
 export function resolveCite(brief: BriefModeView, cite: CiteParam): ResolvedCite | null {
 	let label: string | undefined;
 	let evidence: EvidenceView | undefined;
 	const latestIndex = /^latest-(\d+)$/.exec(cite.ref);
-	if (latestIndex) {
+	const pendingOf = /^(.+)~pending$/.exec(cite.ref);
+	if (pendingOf) {
+		const items = [...brief.forYou, ...brief.waitingOnOthers, ...brief.unclear];
+		const item = items.find((i) => i.id === pendingOf[1]);
+		label = item?.text;
+		evidence = item?.pendingUpdate
+			? evidenceAt(item.pendingUpdate.evidence, cite.quoteIndex)
+			: undefined;
+	} else if (latestIndex) {
 		const line = brief.latest?.[Number(latestIndex[1])];
 		label = line?.text;
 		evidence = line ? evidenceAt(line.evidence, cite.quoteIndex) : undefined;

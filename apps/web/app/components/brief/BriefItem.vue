@@ -24,6 +24,7 @@ import {
 } from '~/utils/threadBriefItems';
 import { briefDueDate } from '~/utils/threadBriefContext';
 import EvidenceMarker from './EvidenceMarker.vue';
+import BriefPendingUpdate from './BriefPendingUpdate.vue';
 
 const props = defineProps<{
 	item: BriefItemView;
@@ -148,6 +149,13 @@ const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {
 					:quote-index="0"
 				/>
 			</p>
+			<BriefPendingUpdate
+				v-if="item.pendingUpdate && isOpen"
+				:item-id="item.id"
+				:update="item.pendingUpdate"
+				:can-confirm="!selectable && !hideActions"
+				@confirm="emit('react', 'confirmProposal')"
+			/>
 		</div>
 		<div v-if="!selectable && !hideActions" class="flex items-center gap-1.5">
 			<UiButton

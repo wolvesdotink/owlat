@@ -4,11 +4,17 @@
  * rows, the incomplete banners, and the one line a list row shows.
  */
 import { describe, expect, it } from 'vitest';
-import { briefRing, canUndo, menuReactions, resolveCite } from '../threadBriefItems';
+import {
+	briefRing,
+	canUndo,
+	menuReactions,
+	pendingCiteRef,
+	resolveCite,
+} from '../threadBriefItems';
 import { factLabel, factRows } from '../threadBriefFacts';
 import { briefBanners } from '../threadBriefBanners';
 import { briefMoreChip, briefRowLatest, briefRowLine } from '../briefRowLine';
-import { briefView, DAY, fact, item, T0 } from './threadBriefFixtures';
+import { briefView, DAY, evidence, fact, item, T0 } from './threadBriefFixtures';
 
 describe('briefRing', () => {
 	it('draws each state as the plan shows it', () => {
@@ -57,6 +63,23 @@ describe('resolveCite', () => {
 			'Launch moved because of the board meeting'
 		);
 		expect(resolveCite(brief, { ref: 'latest-0', quoteIndex: 0 })?.quote).toBe('v2 looks great');
+	});
+
+	it("points a pending change cite at the change's own quote", () => {
+		const withPending = briefView({
+			forYou: [
+				item({
+					id: 'q',
+					text: 'Approve the quote',
+					pendingUpdate: { evidence: [evidence('m7', 'make it €5,000')] },
+				}),
+			],
+		});
+		expect(resolveCite(withPending, { ref: pendingCiteRef('q'), quoteIndex: 0 })).toEqual({
+			messageId: 'm7',
+			quote: 'make it €5,000',
+			label: 'Approve the quote',
+		});
 	});
 
 	it('falls back to the first quote, and gives up on an unknown ref', () => {

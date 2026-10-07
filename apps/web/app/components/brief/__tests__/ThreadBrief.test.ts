@@ -16,7 +16,7 @@ import { defineComponent, h } from 'vue';
 import { mount } from '@vue/test-utils';
 import ThreadBrief from '../ThreadBrief.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
-import { briefView, item, T0 } from '~/utils/__tests__/threadBriefFixtures';
+import { briefView, evidence, item, T0 } from '~/utils/__tests__/threadBriefFixtures';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -170,6 +170,35 @@ describe('ThreadBrief', () => {
 		expect(proposal.get('[data-action="confirmProposal"]').text()).toBe('Track');
 		await proposal.get('[data-action="confirmProposal"]').trigger('click');
 		expect(w.emitted('react')?.[0]?.[1]).toBe('confirmProposal');
+	});
+
+	it('shows an unconfirmed change as "Check this change" with Confirm', async () => {
+		const brief = briefView({
+			forYou: [
+				item({
+					id: 'q',
+					text: 'Approve the revised quote',
+					pendingUpdate: {
+						evidence: [evidence('m6', 'make it €5,000 instead')],
+						due: { phrase: 'by Monday', at: Date.UTC(2026, 9, 26), isAmbiguous: false },
+						amount: { value: 5000, currency: 'EUR' },
+					},
+				}),
+			],
+		});
+		const w = mountBrief({ brief });
+		const pending = w.get('[data-testid="brief-item-pending"]');
+		expect(pending.text()).toContain('Check this change:');
+		expect(pending.text()).toContain('€5,000.00');
+		expect(pending.text()).toContain('due ');
+		await pending.get('[data-testid="evidence-marker"]').trigger('click');
+		expect(w.emitted('cite')).toEqual([['q~pending', 0]]);
+		await pending.get('[data-testid="brief-item-pending-confirm"]').trigger('click');
+		expect(w.emitted('react')?.[0]?.[1]).toBe('confirmProposal');
+
+		const readOnly = mountBrief({ brief, selectable: true });
+		expect(readOnly.find('[data-testid="brief-item-pending-confirm"]').exists()).toBe(false);
+		expect(readOnly.find('[data-testid="brief-item-pending"]').exists()).toBe(true);
 	});
 
 	it('says when it is incomplete, and never that there is nothing to do', async () => {
