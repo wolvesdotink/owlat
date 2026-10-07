@@ -74,13 +74,8 @@ export async function dependentDispositions(
  * Whether the item's current disposition still rests on `source`: the value
  * this send set, and no later source supporting it. Equality alone is not
  * dependence: when A answers and B answers again, A bouncing must leave the
- * B-supported `answered` alone.
- *
- * TODO(interpret lane): `threadItems.dispositionSource` (the source key of the
- * latest supporting source) is being added. Once it exists, this reads
- * `item.dispositionSource === interpretationSourceKey(source)` and the
- * equality fallback below goes (the skipped regression test in
- * `__tests__/outbound.test.ts` then runs).
+ * B-supported `answered` alone. `threadItems.dispositionSource` says which
+ * source set the standing value.
  */
 function isDispositionStillFrom(
 	item: Doc<'threadItems'>,
@@ -88,8 +83,9 @@ function isDispositionStillFrom(
 	setTo: Doc<'threadItems'>['disposition']
 ): boolean {
 	if (item.disposition !== setTo) return false;
-	const supportedBy = (item as { dispositionSource?: string }).dispositionSource;
-	return supportedBy === undefined || supportedBy === interpretationSourceKey(source);
+	// The reducer records which source set the standing disposition (also when
+	// a later reply restates it): only this send's own answer is taken back.
+	return item.dispositionSource?.sourceKey === interpretationSourceKey(source);
 }
 
 /**
@@ -128,6 +124,8 @@ export async function failDependentDispositions(
 		if (!appended || appended.isDuplicate) continue;
 		await writeItemChange(ctx, args.threadRef, item, {
 			disposition: 'failed',
+			// A recorded operation: the failed send itself is the source now.
+			dispositionSource: { sourceKey: `op:${sourceKey}`, at: now },
 			revision,
 			updatedAt: now,
 		});

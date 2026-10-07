@@ -344,10 +344,48 @@ describe('Postbox outbound lifecycle → thread brief', () => {
 			'answered'
 		);
 	});
-	// Review F1: equal disposition is not dependence. Needs
-	// `threadItems.dispositionSource` (interpret lane); with today's reducer B's
-	// repeat of `answered` leaves no trace, so A's bounce cannot tell. Unskip
-	// once the field lands (`sendFailure.isDispositionStillFrom` already reads it).
+	it('a bounce leaves an answer another send now supports (dispositionSource)', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, messageId, threadId } = await seedMailThread(t);
+		const [first] = await seedItems(t, messageId, threadId);
+		const replyA = await seedOutbound(t, mailboxId, threadId, ['jonas@example.com']);
+		await transition(t, replyA, 0, { to: 'sent', at: REPLIED });
+		await applyReply(t, replyA, threadId, [first!._id]);
+		// What the reducer records once a later reply B restates the answer.
+		await t.run(async (ctx) =>
+			ctx.db.patch(first!._id, {
+				dispositionSource: { sourceKey: 'outboundMail:replyB', at: REPLIED + 1 },
+			})
+		);
+
+		await transition(t, replyA, 0, { to: 'bounced', at: REPLIED + 60_000 });
+
+		const item = (await state(t, threadId)).items.find((i) => i._id === first!._id);
+		expect(item?.disposition).toBe('answered');
+	});
+
+	it('a failure it does make names the failed send as the disposition source', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, messageId, threadId } = await seedMailThread(t);
+		const [first] = await seedItems(t, messageId, threadId);
+		const replyA = await seedOutbound(t, mailboxId, threadId, ['jonas@example.com']);
+		await transition(t, replyA, 0, { to: 'sent', at: REPLIED });
+		await applyReply(t, replyA, threadId, [first!._id]);
+
+		await transition(t, replyA, 0, { to: 'bounced', at: REPLIED + 60_000 });
+
+		const item = (await state(t, threadId)).items.find((i) => i._id === first!._id);
+		expect(item).toMatchObject({
+			disposition: 'failed',
+			dispositionSource: { sourceKey: `op:outboundMail:${replyA}` },
+		});
+	});
+
+	// Review F1: equal disposition is not dependence. `sendFailure` reads
+	// `threadItems.dispositionSource`; the reducer still drops B's restatement
+	// of `answered` as `no_change` (reducePlan.ts), so the source stays A.
+	// Unskip once a newer message restating the current disposition moves
+	// `dispositionSource` (interpret lane).
 	it.skip('A answers, B answers again, A bounces: the item stays answered', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId, threadId } = await seedMailThread(t);
@@ -517,7 +555,11 @@ describe('Team send finalization → thread brief', () => {
 					q.eq('conversationThreadId', threadId)
 				)
 				.first())!;
-			await ctx.db.patch(item._id, { disposition: 'answered', revision: 2 });
+			await ctx.db.patch(item._id, {
+				disposition: 'answered',
+				dispositionSource: { sourceKey: `teamReply:${sendId}`, at: REPLIED },
+				revision: 2,
+			});
 			await appendActivity(ctx, {
 				threadRef: { kind: 'team', id: threadId },
 				idempotencyKey: `interp:teamReply:${sendId}:rev-out:1:patch:${item._id}`,
