@@ -152,20 +152,36 @@ export interface ForYouSortable {
 	id?: string;
 }
 
+/** Width of a zero-padded epoch-ms number in a sort key (covers year 2286). */
+const MS_WIDTH = 13;
+
+function padMs(ms: number): string {
+	return String(Math.max(0, Math.min(Math.floor(ms), 10 ** MS_WIDTH - 1))).padStart(MS_WIDTH, '0');
+}
+
+/**
+ * The "For you" order as one string, so a database index on it returns the
+ * same order {@link compareForYou} gives: earliest due date first (undated
+ * last), then riskier facets, then older items, then `id`. Stored on an item
+ * (`threadItems.sortKey`), the first row of a list is the list's top item.
+ */
+export function forYouSortKey(item: ForYouSortable): string {
+	const at = item.due?.at;
+	const due = at === undefined || at === null ? `1${'0'.repeat(MS_WIDTH)}` : `0${padMs(at)}`;
+	// Risk -1..6, riskier first: rank 7..0.
+	const riskRank = String(6 - itemFacetRisk(item.facets));
+	return `${due}|${riskRank}|${padMs(item.askedAt)}|${item.id ?? ''}`;
+}
+
 /**
  * The "For you" order: earliest due date first (undated last), then riskier
- * facets, then older items first. Ties fall back to `id`.
+ * facets, then older items first. Ties fall back to `id`. Defined by
+ * {@link forYouSortKey}, so an index on the key and this comparator agree.
  */
 export function compareForYou(a: ForYouSortable, b: ForYouSortable): number {
-	const dueA = a.due?.at ?? Number.POSITIVE_INFINITY;
-	const dueB = b.due?.at ?? Number.POSITIVE_INFINITY;
-	if (dueA !== dueB) return dueA < dueB ? -1 : 1;
-	const risk = itemFacetRisk(b.facets) - itemFacetRisk(a.facets);
-	if (risk !== 0) return risk;
-	if (a.askedAt !== b.askedAt) return a.askedAt - b.askedAt;
-	const idA = a.id ?? '';
-	const idB = b.id ?? '';
-	return idA < idB ? -1 : idA > idB ? 1 : 0;
+	const keyA = forYouSortKey(a);
+	const keyB = forYouSortKey(b);
+	return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
 }
 
 const CONSEQUENTIAL_FACETS: ReadonlySet<ItemFacet> = new Set<ItemFacet>([

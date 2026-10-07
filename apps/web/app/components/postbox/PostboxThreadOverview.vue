@@ -91,6 +91,8 @@ const replyLabel = computed(() =>
 			:source-of="state.sourceOf"
 			:is-signed="state.isSigned.value"
 			:latest-note="latestNote"
+			:items-state="state.itemsState.value"
+			:is-closed-truncated="state.isClosedTruncated.value"
 			@react="state.react"
 			@cite="state.openCite"
 			@open-conversation="state.setView('conversation')"
