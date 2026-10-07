@@ -157,7 +157,8 @@ export async function clearsignOctets(
 		detached: true,
 		format: 'object',
 	});
-	const hash = openpgp.enums.read(openpgp.enums.hash, signature.packets[0]!.hashAlgorithm!);
+	const packet = signature.packets[0] as openpgp.SignaturePacket;
+	const hash = openpgp.enums.read(openpgp.enums.hash, packet.hashAlgorithm!);
 	return [
 		'-----BEGIN PGP SIGNED MESSAGE-----',
 		`Hash: ${hash.toUpperCase()}`,
