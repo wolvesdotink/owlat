@@ -29,7 +29,7 @@ import {
 	transferDecode,
 	type MimeNode,
 } from '@owlat/mail-message/parse/body';
-import { decodeCharset } from '@owlat/mail-message/parse/charset';
+import { decodeDeclaredCharset } from '@owlat/mail-message/parse/charset';
 import { decodeLocated, decodedLength, locateMimeTree } from '@owlat/mail-message/parse/locate';
 import { bytesToBinaryString, binaryStringToBytes } from '@owlat/mail-message/parse/binaryString';
 
@@ -119,11 +119,12 @@ export function extractFirstPartByType(
 /**
  * A text part's content under the charset it declares. A part that declares
  * none is read as UTF-8 rather than under the RFC 2045 us-ascii default: that is
- * what an iCalendar part means without one (RFC 5545 §3.1.4), and what every
- * inner part of a sealed message was read as before #1284.
+ * what an iCalendar part means without one (RFC 5545 §3.1.4). A leading
+ * byte-order mark never overrides the declared charset (`decodeDeclaredCharset`):
+ * an ISO-8859-1 part that happens to start with `EF BB BF` stays ISO-8859-1.
  */
 export function decodePartText(part: Pick<ExtractedAttachment, 'bytes' | 'charset'>): string {
-	return decodeCharset(part.bytes, part.charset ?? 'utf-8');
+	return decodeDeclaredCharset(part.bytes, part.charset ?? 'utf-8');
 }
 
 /**

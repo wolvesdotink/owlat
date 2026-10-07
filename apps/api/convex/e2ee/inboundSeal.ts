@@ -22,9 +22,10 @@ import { v } from 'convex/values';
 import { classifyRawSecureMessage, isEncryptedClass } from '@owlat/shared/secureMessage';
 import {
 	bytesToBinaryString,
-	decodePartText,
 	extractFirstPartByType,
+	type ExtractedAttachment,
 } from '@owlat/shared/mailMime';
+import { decodeCharset } from '@owlat/mail-message/parse/charset';
 import {
 	collapseControlChars,
 	decodeHeaderValue,
@@ -151,6 +152,15 @@ export function parseInnerMessage(innerMime: Uint8Array): RestoredMessage {
 	if (textPart) result.text = decodePartText(textPart);
 	if (htmlPart) result.html = decodePartText(htmlPart);
 	return result;
+}
+
+/**
+ * A part's text under the charset it declares. A part that declares none is
+ * read as UTF-8, as every inner part was before #1284, rather than under the
+ * RFC 2045 us-ascii default.
+ */
+function decodePartText(part: ExtractedAttachment): string {
+	return decodeCharset(part.bytes, part.charset ?? 'utf-8');
 }
 
 /**

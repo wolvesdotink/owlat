@@ -144,6 +144,29 @@ describe('decodePartText (#1299)', () => {
 		const raw = invite('text/calendar', [...new TextEncoder().encode('SUMMARY:Grüße')]);
 		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('SUMMARY:Grüße');
 	});
+
+	it('keeps the declared ISO-8859-1 when the part starts with a UTF-8 BOM', () => {
+		const raw = invite('text/calendar; charset=iso-8859-1', [
+			0xef,
+			0xbb,
+			0xbf,
+			...ascii('SUMMARY:Gr'),
+			0xfc,
+			0xdf,
+			...ascii('e'),
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('ï»¿SUMMARY:Grüße');
+	});
+
+	it('strips a UTF-8 BOM from a UTF-8 part', () => {
+		const raw = invite('text/calendar; charset=utf-8', [
+			0xef,
+			0xbb,
+			0xbf,
+			...new TextEncoder().encode('SUMMARY:Grüße'),
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('SUMMARY:Grüße');
+	});
 });
 
 describe('extractAttachments', () => {

@@ -132,3 +132,21 @@ export function decodeCharset(bytes: Uint8Array, charset: string | undefined): s
 	if (bom) return decodeWithLabel(bom.label, bytes.subarray(bom.skip));
 	return decodeWithLabel(normalizeCharset(charset), bytes);
 }
+
+/**
+ * Decode a MIME leaf's raw bytes under the charset it DECLARES, where a
+ * byte-order mark never switches the encoding (as it does in
+ * {@link decodeCharset}). Only the declared decoder reads its own BOM: a UTF-8
+ * BOM is stripped when the part is UTF-8, a UTF-16 BOM when it is UTF-16 (and
+ * there gives the byte order). Under any other charset the BOM's bytes are text
+ * in that charset. Same alias table and fallback as {@link decodeCharset}.
+ */
+export function decodeDeclaredCharset(bytes: Uint8Array, charset: string | undefined): string {
+	const label = normalizeCharset(charset);
+	const bom = sniffBom(bytes);
+	if (bom && label.startsWith('utf-16') && bom.label.startsWith('utf-16')) {
+		return decodeWithLabel(bom.label, bytes.subarray(bom.skip));
+	}
+	// The WHATWG decoder strips a BOM of its own encoding and of no other.
+	return decodeWithLabel(label, bytes);
+}

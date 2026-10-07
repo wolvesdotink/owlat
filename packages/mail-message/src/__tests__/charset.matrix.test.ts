@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decodeCharset, normalizeCharset } from '../parse/charset';
+import { decodeCharset, decodeDeclaredCharset, normalizeCharset } from '../parse/charset';
 
 const b = (...bytes: number[]): Uint8Array => Uint8Array.from(bytes);
 
@@ -86,5 +86,51 @@ describe('normalizeCharset', () => {
 	it('passes an already-canonical label through untouched', () => {
 		expect(normalizeCharset('utf-8')).toBe('utf-8');
 		expect(normalizeCharset('koi8-r')).toBe('koi8-r');
+	});
+});
+
+/**
+ * The declared-charset mode (#1299): a part read under the charset it declares,
+ * where a BOM is only ever read by the declared decoder and never switches the
+ * encoding away from it.
+ */
+describe('decodeDeclaredCharset', () => {
+	const UTF8_BOM = [0xef, 0xbb, 0xbf];
+	const GRUESSE_LATIN1 = [0x47, 0x72, 0xfc, 0xdf, 0x65]; // Grüße
+
+	it('a UTF-8 BOM before ISO-8859-1 bytes stays ISO-8859-1 text', () => {
+		const bytes = b(...UTF8_BOM, ...GRUESSE_LATIN1);
+		expect(decodeDeclaredCharset(bytes, 'iso-8859-1')).toBe('ï»¿Grüße');
+		// The sniffing decoder switches to UTF-8 and loses the Latin-1 octets.
+		expect(decodeCharset(bytes, 'iso-8859-1')).toBe('Gr\uFFFD\uFFFDe');
+	});
+
+	it('a UTF-16 BOM under a declared ISO-8859-1 stays ISO-8859-1 text', () => {
+		expect(decodeDeclaredCharset(b(0xff, 0xfe, ...GRUESSE_LATIN1), 'iso-8859-1')).toBe('ÿþGrüße');
+		expect(decodeDeclaredCharset(b(0xfe, 0xff, ...GRUESSE_LATIN1), 'iso-8859-1')).toBe('þÿGrüße');
+	});
+
+	it('a UTF-8 BOM on a UTF-8 part is stripped', () => {
+		const bytes = b(...UTF8_BOM, ...new TextEncoder().encode('Grüße'));
+		expect(decodeDeclaredCharset(bytes, 'utf-8')).toBe('Grüße');
+		expect(decodeDeclaredCharset(bytes, 'UTF8')).toBe('Grüße');
+	});
+
+	it('a UTF-16 BOM on a UTF-16 part is stripped and gives the byte order', () => {
+		expect(decodeDeclaredCharset(b(0xff, 0xfe, 0x41, 0x00), 'utf-16le')).toBe('A');
+		expect(decodeDeclaredCharset(b(0xfe, 0xff, 0x00, 0x41), 'utf-16')).toBe('A');
+		expect(decodeDeclaredCharset(b(0xfe, 0xff, 0x00, 0x41), 'utf-16be')).toBe('A');
+	});
+
+	it('with no BOM it decodes exactly as decodeCharset does', () => {
+		for (const [bytes, charset] of [
+			[b(...GRUESSE_LATIN1), 'iso-8859-1'],
+			[b(0x80), 'windows-1252'],
+			[b(0x82, 0xa0), 'Shift_JIS'],
+			[b(...new TextEncoder().encode('Grüße')), 'utf-8'],
+			[b(0x41, 0xff), 'x-unknown-charset'],
+		] as const) {
+			expect(decodeDeclaredCharset(bytes, charset)).toBe(decodeCharset(bytes, charset));
+		}
 	});
 });

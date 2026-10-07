@@ -332,6 +332,31 @@ describe('stored attachment parts (plan 3.5)', () => {
 		expect(ics).not.toContain('\uFFFD');
 	});
 
+	it('keeps a declared ISO-8859-1 invite ISO-8859-1 when it starts with a UTF-8 BOM', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const messageId = '<parts-latin1-bom@example.com>';
+		const ics = ICS.replace('SUMMARY:Planning', 'SUMMARY:Besprechung über Q4');
+		const raw = [
+			'From: Bob <bob@example.com>',
+			'To: alice@example.com',
+			'Subject: planning',
+			`Message-ID: ${messageId}`,
+			'Content-Type: text/calendar; method=REQUEST; charset=iso-8859-1',
+			'Content-Transfer-Encoding: 8bit',
+			'',
+			// EF BB BF, then Latin-1 octets: the BOM must not switch the decoder.
+			`\xef\xbb\xbf${ics}`,
+			'',
+		].join('\r\n');
+		const id = await deliver(t, messageId, 0, raw);
+
+		const calendar = await t.action(api.mail.mailbox.parts.getMessageCalendar, { messageId: id });
+		const text = (calendar as { ics: string }).ics;
+		expect(text).toContain('SUMMARY:Besprechung über Q4');
+		expect(text).not.toContain('\uFFFD');
+	});
+
 	it('keeps the parts while an IMAP COPY sibling shares the raw blob and frees them with the last row', async () => {
 		const t = setupTest();
 		await seedInbox(t);

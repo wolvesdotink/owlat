@@ -123,6 +123,22 @@ describe('PostboxInviteCard', () => {
 		expect(w.text()).not.toContain('\uFFFD');
 	});
 
+	it('a UTF-8 BOM does not switch a declared ISO-8859-1 raw-message invite to UTF-8', async () => {
+		calendarAnswer = async () => ({ status: 'unknown' });
+		loadRawEml.mockResolvedValueOnce(
+			RAW_EML.replace(
+				'Content-Type: text/calendar; method=REQUEST',
+				'Content-Type: text/calendar; method=REQUEST; charset=iso-8859-1'
+			)
+				.replace('BEGIN:VCALENDAR', '\xef\xbb\xbfBEGIN:VCALENDAR')
+				.replace('From the raw message', 'Besprechung über Q4')
+		);
+		const w = await mountCard();
+
+		expect(w.text()).toContain('Besprechung über Q4');
+		expect(w.text()).not.toContain('\uFFFD');
+	});
+
 	it('falls back to the raw message when the stored read fails', async () => {
 		calendarAnswer = async () => {
 			throw new Error('offline for a moment');
