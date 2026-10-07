@@ -1107,6 +1107,7 @@ import type * as mail_imap_session from '../mail/imap/session.js';
 import type * as mail_interpret___eval___corpus from '../mail/interpret/__eval__/corpus.js';
 import type * as mail_interpret___eval___replay from '../mail/interpret/__eval__/replay.js';
 import type * as mail_interpret___eval___runEval from '../mail/interpret/__eval__/runEval.js';
+import type * as mail_interpret_delegation from '../mail/interpret/delegation.js';
 import type * as mail_interpret_ground from '../mail/interpret/ground.js';
 import type * as mail_interpret_quoteMatch from '../mail/interpret/quoteMatch.js';
 import type * as mail_knowledgeScreen from '../mail/knowledgeScreen.js';
@@ -2605,6 +2606,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/__eval__/corpus': typeof mail_interpret___eval___corpus;
 	'mail/interpret/__eval__/replay': typeof mail_interpret___eval___replay;
 	'mail/interpret/__eval__/runEval': typeof mail_interpret___eval___runEval;
+	'mail/interpret/delegation': typeof mail_interpret_delegation;
 	'mail/interpret/ground': typeof mail_interpret_ground;
 	'mail/interpret/quoteMatch': typeof mail_interpret_quoteMatch;
 	'mail/knowledgeScreen': typeof mail_knowledgeScreen;
