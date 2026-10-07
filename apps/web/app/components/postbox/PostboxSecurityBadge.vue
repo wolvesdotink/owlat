@@ -57,6 +57,12 @@ const props = defineProps<{
 	 * rows, where the structural `klass` driver takes over.
 	 */
 	signature?: InboundSignatureInfo;
+	/**
+	 * The message holds more than the clearsigned block shown here (text around
+	 * it, an HTML alternative). The signature covers none of it, so the reader
+	 * leaves it out and says so under the block.
+	 */
+	omitsContent?: boolean;
 }>();
 
 // Sealed-Mail badge (priority driver). Null for a message with no sealing record.
@@ -280,11 +286,20 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 			}}</span>
 		</div>
 
-		<!-- Clearsigned: show the readable cleartext (signature is not verified). -->
-		<pre
-			v-if="clearsignedText && !sealedBadge"
-			class="mt-2 text-sm whitespace-pre-wrap font-sans text-text-primary"
-			>{{ clearsignedText }}</pre>
+		<!-- Clearsigned: show the signed block's cleartext, and only that. -->
+		<template v-if="clearsignedText && !sealedBadge">
+			<pre
+				class="mt-2 text-sm whitespace-pre-wrap font-sans text-text-primary"
+				data-testid="clearsigned-text"
+				>{{ clearsignedText }}</pre>
+			<p
+				v-if="omitsContent"
+				class="mt-2 text-xs text-text-tertiary max-w-prose"
+				data-testid="clearsigned-omitted"
+			>
+				{{ t('components.postbox.postboxSecurityBadge.signedPartOnly') }}
+			</p>
+		</template>
 
 		<!-- Encrypted: recovery controls so the user can decrypt externally. -->
 		<div v-if="showRecovery" class="mt-2 flex flex-wrap items-center gap-2">

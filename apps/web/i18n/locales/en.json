@@ -4992,6 +4992,7 @@
 				"encryptedTooltip": "{technology}: Owlat can't decrypt this message — the encrypted content is shown as-is.",
 				"notVerifiedSuffix": "· not verified",
 				"signed": "Digitally signed",
+				"signedPartOnly": "Only the signed part is shown. The rest of this message is not covered by the signature.",
 				"signedTooltip": "{technology}: a cryptographic signature is present but is not verified by Owlat."
 			},
 			"postboxSenderControls": {

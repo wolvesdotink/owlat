@@ -27,6 +27,7 @@ import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
 import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
+import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -109,6 +110,21 @@ function onSenderClick() {
 }
 
 const authInput = computed<SenderAuthInput>(() => senderAuthInputOf(msg.value));
+
+// A clearsigned text body shows its signed block alone, and its verdict stands
+// only beside that block, also when the text is stored rather than inline.
+const {
+	view: signedView,
+	hideBody: holdBody,
+	secureClass: shownSecureClass,
+	signature: shownSignature,
+	badgeMessage,
+} = usePostboxSignedBody({
+	message: () => msg.value,
+	secureClass: () => props.secureClass,
+	hideBody: () => props.hideBody,
+	active: () => props.expanded,
+});
 
 /**
  * The legacy DMARC-fail line. `senderAuthBadges` moved this into the auth badge;
@@ -238,13 +254,13 @@ const renderToggleLabel = computed(() =>
 							:heuristics="msg.senderHeuristics"
 							:sealed-enabled="sealedEnabled"
 							:sealed="msg.inboundEncryptionInfo"
-							:signature="msg.inboundSignatureInfo"
-							:secure-class="secureClass"
+							:signature="shownSignature"
+							:secure-class="shownSecureClass"
 							:message="msg"
 							:tracker="tracker"
 							:show-sender-controls="showSenderControls"
 							:seal-status="sealStatus"
-							:show-security-detail="!hideBody"
+							:show-security-detail="!holdBody"
 							:hide-when-ok="reduced"
 							@seal-refetch="emit('seal-refetch')"
 						/>
@@ -343,15 +359,21 @@ const renderToggleLabel = computed(() =>
 			<span v-else>{{ senderAuthSummary }}</span>
 		</div>
 
+		<!-- A signature verdict about a text body that is still loading: nothing
+		     renders until the signed block can be picked out of it. -->
+		<div v-if="signedView.kind === 'loading'" class="mt-4" data-testid="signed-body-loading">
+			<PostboxReaderSkeleton :with-header="false" />
+		</div>
 		<!-- Ciphertext or clearsigned text: the security badge IS the readable half
 		     (plus the copy / download recovery controls), so it renders where the
 		     body would have been rather than inside the trust chip. -->
 		<PostboxSecurityBadge
-			v-if="hideBody"
-			:klass="secureClass"
-			:message="msg"
+			v-else-if="holdBody"
+			:klass="shownSecureClass"
+			:message="badgeMessage"
 			:sealed="sealedEnabled ? msg.inboundEncryptionInfo : undefined"
-			:signature="msg.inboundSignatureInfo"
+			:signature="shownSignature"
+			:omits-content="signedView.kind === 'signed' && signedView.omitsContent"
 		/>
 		<!-- Off-screen bodies of a long thread wait as a sized placeholder
 		     until they scroll near the viewport (plan D8). -->

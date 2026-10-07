@@ -69,6 +69,7 @@ function mountCard(reduced: boolean) {
 				PostboxLazyBody: marker('PostboxLazyBody'),
 				PostboxMessageBody: marker('PostboxMessageBody'),
 				PostboxSecurityBadge: marker('PostboxSecurityBadge'),
+				PostboxReaderSkeleton: marker('PostboxReaderSkeleton'),
 				PostboxInviteCard: marker('PostboxInviteCard'),
 				PostboxMessageAttachments: marker('PostboxMessageAttachments'),
 				PostboxSchedulingChip: marker('PostboxSchedulingChip'),
