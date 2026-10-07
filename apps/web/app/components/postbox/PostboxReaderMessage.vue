@@ -66,6 +66,10 @@ const props = defineProps<{
 	downloadingAttachment?: string | null;
 	/** Mount the body now instead of when it nears the viewport (printing). */
 	eagerBody?: boolean;
+	/** The thread brief's latest-update sentence for this message (personal only). */
+	latestLine?: string | null;
+	/** A cited quote in this message: scroll to it and mark it (`''` scrolls only). */
+	citeQuote?: string | null;
 	/**
 	 * Answer mode's cut of the card (plan §09): no action row, the trust chip
 	 * only when the sender is not verified, and To/Cc, the unsubscribe chip and
@@ -150,6 +154,18 @@ const showSpamBanner = computed(
 	() => msg.value.spamVerdict === 'spam' || (!props.authEnabled && msg.value.dmarcResult === 'fail')
 );
 
+// A cited quote (plan §4.2): bring the message into view; the body marks the words.
+const sectionEl = ref<HTMLElement | null>(null);
+watch(
+	() => [props.citeQuote, props.expanded] as const,
+	async ([quote, open]) => {
+		if (quote == null || !open) return;
+		await nextTick();
+		sectionEl.value?.scrollIntoView({ block: 'start', behavior: 'auto' });
+	},
+	{ immediate: true }
+);
+
 const renderToggleLabel = computed(() =>
 	props.forcedLight
 		? t('components.postbox.postboxThreadReader.renderDark')
@@ -176,9 +192,11 @@ const renderToggleLabel = computed(() =>
 		<div class="flex-1 min-w-0">
 			<p class="text-sm truncate">
 				<span class="font-medium text-text-primary">{{ msg.fromName || msg.fromAddress }}</span>
-				<template v-if="msg.snippet && !signedOnly">
+				<template v-if="(latestLine || msg.snippet) && !signedOnly">
 					<span class="text-text-tertiary mx-1.5">·</span>
-					<span class="text-text-tertiary">{{ msg.snippet }}</span>
+					<span class="text-text-tertiary" :data-latest="latestLine ? '' : undefined">{{
+						latestLine || msg.snippet
+					}}</span>
 				</template>
 			</p>
 		</div>
@@ -193,7 +211,9 @@ const renderToggleLabel = computed(() =>
 	<!-- Expanded message -->
 	<section
 		v-else
-		class="pbx-reader-message border border-border-subtle rounded-md bg-bg-elevated px-5 py-4"
+		ref="sectionEl"
+		class="pbx-reader-message border border-border-subtle rounded-md bg-bg-elevated px-5 py-4 scroll-mt-4"
+		:class="{ 'ring-1 ring-brand': citeQuote != null }"
 	>
 		<header class="flex items-start gap-3">
 			<UiAvatar
@@ -403,6 +423,7 @@ const renderToggleLabel = computed(() =>
 				:message="msg"
 				:force-light="forcedLight"
 				:sender-images-allowed="imagesAllowed"
+				:highlight-quote="citeQuote"
 				@trackers="emit('trackers', $event)"
 				@trust-sender="emit('trust-sender', $event)"
 				@untrust-sender="emit('untrust-sender', $event)"

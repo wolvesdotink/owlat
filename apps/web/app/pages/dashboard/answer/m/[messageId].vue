@@ -38,7 +38,7 @@ import { useAnswerModeAssist } from '~/composables/useAnswerModeAssist';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
-import CatchUpCard from '~/components/answer/CatchUpCard.vue';
+import AnswerBriefCard from '~/components/answer/AnswerBriefCard.vue';
 import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
@@ -378,9 +378,11 @@ onBeforeUnmount(() => {
 					@count="messageCount = $event"
 				>
 					<template #catch-up="{ view: shown, messages, reveal }">
-						<CatchUpCard
-							v-if="shown === 'summary'"
-							:collapsible="layout === 'phone'"
+						<AnswerBriefCard
+							:mailbox-id="message.mailboxId"
+							:thread-id="message.threadId"
+							:shown="shown"
+							:layout="layout"
 							:catch-up="catchUp.catchUp.value"
 							:loading="catchUp.loading.value"
 							:messages="messages"

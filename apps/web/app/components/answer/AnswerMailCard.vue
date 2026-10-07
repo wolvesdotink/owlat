@@ -40,7 +40,7 @@ const props = defineProps<{
 const { t, locale } = useI18n();
 
 const replyQueueText = useLocalized();
-const headline = computed(() => replyQueueText(replyQueueHeadline(props.row)));
+const headline = computed(() => replyQueueText(replyQueueHeadline(props.row, locale.value)));
 const dueLabel = computed(() => {
 	const due = formatReplyQueueDueHint(props.row.dueHint, locale.value);
 	return due === null ? undefined : replyQueueText(due);

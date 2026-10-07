@@ -88,7 +88,9 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 		<header class="px-5 py-3 border-b border-border-subtle">
 			<h2 class="font-semibold">{{ t('components.preferences.preferencesReading.reading') }}</h2>
 		</header>
-		<div class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+		<div
+			class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+		>
 			<div class="min-w-0">
 				<label for="postbox-auto-advance" class="font-medium text-sm block">
 					{{ t('components.preferences.preferencesReading.autoAdvanceLabel') }}
@@ -158,11 +160,7 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				:disabled="isSaving"
 				@change="onDensityChange"
 			>
-				<option
-					v-for="option in POSTBOX_DENSITY_OPTIONS"
-					:key="option.value"
-					:value="option.value"
-				>
+				<option v-for="option in POSTBOX_DENSITY_OPTIONS" :key="option.value" :value="option.value">
 					{{ t(option.label) }}
 				</option>
 			</select>
@@ -198,7 +196,9 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 		     answers to touch and pen, but people configure their phone from their
 		     desktop, and a control that hides itself where it is easiest to reach
 		     is a control nobody finds. -->
-		<div class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle">
+		<div
+			class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle"
+		>
 			<div class="min-w-0">
 				<label for="postbox-swipe-left" class="font-medium text-sm block">
 					{{ t('components.preferences.preferencesReading.swipeLeftLabel') }}
@@ -214,12 +214,18 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				:disabled="isSaving"
 				@change="onSwipeChange('left', $event)"
 			>
-				<option v-for="option in POSTBOX_SWIPE_ACTION_OPTIONS" :key="option.value" :value="option.value">
+				<option
+					v-for="option in POSTBOX_SWIPE_ACTION_OPTIONS"
+					:key="option.value"
+					:value="option.value"
+				>
 					{{ t(option.label) }}
 				</option>
 			</select>
 		</div>
-		<div class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle">
+		<div
+			class="px-5 py-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 border-t border-border-subtle"
+		>
 			<div class="min-w-0">
 				<label for="postbox-swipe-right" class="font-medium text-sm block">
 					{{ t('components.preferences.preferencesReading.swipeRightLabel') }}
@@ -235,7 +241,11 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				:disabled="isSaving"
 				@change="onSwipeChange('right', $event)"
 			>
-				<option v-for="option in POSTBOX_SWIPE_ACTION_OPTIONS" :key="option.value" :value="option.value">
+				<option
+					v-for="option in POSTBOX_SWIPE_ACTION_OPTIONS"
+					:key="option.value"
+					:value="option.value"
+				>
 					{{ t(option.label) }}
 				</option>
 			</select>
@@ -311,9 +321,8 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				@update:model-value="setAutoSummarize"
 			/>
 		</div>
-		<div
-			class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle"
-		>
+		<PreferencesThreadView v-if="isEnabled('ai') && autoSummarize" />
+		<div class="px-5 py-4 flex items-center justify-between gap-4 border-t border-border-subtle">
 			<div class="min-w-0">
 				<label for="postbox-send-sound" class="font-medium text-sm block">
 					{{ t('components.preferences.preferencesReading.sendSoundLabel') }}

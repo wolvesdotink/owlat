@@ -13,6 +13,14 @@ import type {
 } from '../../../api/convex/mail/interpret/briefShape';
 import type { CiteParam } from '~/utils/threadBriefView';
 
+/** What a person can do to an item: a reaction, or undoing their own statement. */
+export type BriefAction = ItemReaction | 'undo' | 'confirmProposal';
+
+/** Whether the viewer's own statement about the item can be taken back. */
+export function canUndo(stateKey: ItemStateKey): boolean {
+	return stateKey === 'markedDoneByYou' || stateKey === 'notTracked';
+}
+
 /** The ring left of an item (plan §5 "Item states"). */
 export type BriefRing = 'open' | 'half' | 'done' | 'declined' | 'replaced' | 'proposal' | 'waiting';
 

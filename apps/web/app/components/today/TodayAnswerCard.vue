@@ -3,6 +3,8 @@ import type { AnswerItem } from '~/composables/useAnswerQueue';
 import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
 import { useLocalized } from '~/composables/useLocalized';
 import { parseFromHeader } from '~/utils/todayDigest';
+import { briefRowLatest } from '~/utils/briefRowLine';
+import { briefDueDate } from '~/utils/threadBriefContext';
 import {
 	answerEffortParts,
 	answerSourceParts,
@@ -31,31 +33,58 @@ const props = withDefaults(
 	{ queueTotal: undefined, queueHref: '/dashboard/answer', inboxName: undefined }
 );
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const TOP = 3;
 const top = computed(() => props.items.slice(0, TOP));
 
 const text = useLocalized();
 
 function rowTitle(item: AnswerItem): string {
-	if (item.source === 'mail') return text(replyQueueHeadline(item.row));
+	if (item.source === 'mail') return text(replyQueueHeadline(item.row, locale.value));
 	if (item.source === 'team') return item.entry.message.subject || t('components.shell.noSubject');
 	return t('components.today.answer.mentionTitle', {
 		room: item.mention.roomName,
 		preview: item.mention.messagePreview,
 	});
 }
+/**
+ * Under the title (plan §7 "Queues and the Workbench"): a personal row names
+ * the sender, the subject and the brief's latest update; a shared mailbox's
+ * row and a team row the sender and the raw preview, never a summary.
+ */
 function rowDetail(item: AnswerItem): string {
+	const quoted = (raw: string | undefined) => (raw?.trim() ? `“${raw.trim()}”` : '');
 	if (item.source === 'mail') {
 		// A follow-up headline already names who ("You're waiting on …").
 		const who = item.row.fromName || item.row.fromAddress;
-		return rowTitle(item).includes(who) ? '' : who;
+		const named = rowTitle(item).includes(who) ? '' : who;
+		const top = item.row.briefTop;
+		if (!top?.top) return named;
+		const parts =
+			top.mode === 'actions' || item.inbox?.scope === 'shared'
+				? [named, quoted(item.row.snippet)]
+				: [named, item.row.subject, briefRowLatest(top, locale.value) ?? ''];
+		return parts.filter(Boolean).join(' · ');
 	}
 	if (item.source === 'team') {
 		const from = parseFromHeader(item.entry.message.from);
-		return from.name ?? from.address;
+		return [from.name ?? from.address, quoted(item.entry.thread?.lastPreview)]
+			.filter(Boolean)
+			.join(' · ');
 	}
 	return '';
+}
+/** "+3 more": the other open items of the thread behind the title. */
+function rowMore(item: AnswerItem): number {
+	if (item.source !== 'mail') return 0;
+	const top = item.row.briefTop;
+	return top?.top && top.top.responsibility !== 'them' ? Math.max(0, top.forYou - 1) : 0;
+}
+function rowDue(item: AnswerItem): string | null {
+	const at = item.source === 'mail' ? item.row.briefTop?.top?.dueAt : undefined;
+	return at === undefined
+		? null
+		: t('components.brief.item.due', { date: briefDueDate(at, locale.value) });
 }
 function rowMeta(item: AnswerItem): string {
 	const when = formatCompactRelativeTime(item.at);
@@ -162,14 +191,24 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 						data-today-line
 					>
 						<span class="min-w-0 flex-1">
-							<span class="block truncate text-sm font-medium text-text-primary">{{
-								rowTitle(item)
-							}}</span>
+							<span class="flex min-w-0 items-center gap-1.5">
+								<span class="truncate text-sm font-medium text-text-primary">{{
+									rowTitle(item)
+								}}</span>
+								<span
+									v-if="rowMore(item) > 0"
+									class="shrink-0 rounded-full bg-brand-soft px-1.5 text-2xs font-medium text-brand"
+									>{{ t('components.brief.more', { count: rowMore(item) }) }}</span
+								>
+							</span>
 							<span v-if="rowDetail(item)" class="block truncate text-xs text-text-tertiary">{{
 								rowDetail(item)
 							}}</span>
 						</span>
 						<span class="flex shrink-0 flex-col items-end gap-1">
+							<span v-if="rowDue(item)" class="text-2xs font-medium text-error">{{
+								rowDue(item)
+							}}</span>
 							<span class="text-2xs text-text-tertiary">{{ rowMeta(item) }}</span>
 						</span>
 					</NuxtLink>
