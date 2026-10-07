@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -251,8 +251,21 @@ describe('stopRunningChildren', () => {
 	);
 
 	it('returns at once when nothing is running', async () => {
-		const started = Date.now();
-		await stopRunningChildren(5_000);
-		expect(Date.now() - started).toBeLessThan(100);
+		// Fake timers: had it armed its 5 s grace timer it would never settle
+		// here. That is checked without reading the clock (#1315).
+		vi.useFakeTimers();
+		try {
+			let settled = false;
+			const stopping = stopRunningChildren(5_000).then(() => {
+				settled = true;
+			});
+			// Let pending promise callbacks run while the fake clock stands still.
+			await vi.advanceTimersByTimeAsync(0);
+			expect(settled).toBe(true);
+			expect(vi.getTimerCount()).toBe(0);
+			await stopping;
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
