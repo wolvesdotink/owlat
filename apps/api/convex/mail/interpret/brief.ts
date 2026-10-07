@@ -16,17 +16,18 @@
  *
  * Reader rule: a mail thread is readable with mailbox access
  * (`loadReadableMailbox` / `requireMailboxAccess`), a Team Inbox thread by a
- * shared-inbox reader (`isSharedInboxReader`). Every row read here inherits it.
+ * shared-inbox reader (`isSharedInboxReader`). Every row read here inherits it;
+ * the writes go through `threadAccess.ts requireThreadReader`.
  */
 
 import { v } from 'convex/values';
 import { normalizeCatchUpLocale } from '../ai/catchUpPrompt';
 import { publicQuery } from '../../lib/authedFunctions';
 import { internalMutation } from '../../lib/writeFence';
-import { getBetterAuthSessionWithRole, requirePermission } from '../../lib/sessionOrganization';
-import { getOrThrow, throwForbidden, throwInvalidInput } from '../../_utils/errors';
+import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
+import { throwInvalidInput } from '../../_utils/errors';
 import { isSharedInboxReader } from '../../inbox/access';
-import { loadReadableMailbox, requireMailboxAccess } from '../permissions';
+import { loadReadableMailbox } from '../permissions';
 import { threadBriefMutation } from '../_helpers';
 import { threadViewValidator, streamPositionValidator } from '../../lib/validators/threadBrief';
 import {
@@ -54,7 +55,7 @@ import {
 import { isReplyExpectingIntent, type ReplyIntent } from '../ai/replyIntent';
 import { openMessageBody } from '../../lib/messageBody';
 import type { MutationCtx } from '../../_generated/server';
-import type { MutationSessionContext } from '../../lib/sessionOrganization';
+import { requireThreadReader } from './threadAccess';
 
 // public: soft-auth — returns null for anonymous callers and for anyone the
 // thread's reader rule refuses (mailbox access, or the shared-inbox reader gate).
@@ -140,22 +141,6 @@ export const get = publicQuery({
 		});
 	},
 });
-
-/** Throw unless the session may read the thread (the writes' reader rule). */
-async function requireThreadReader(
-	ctx: MutationCtx,
-	ref: ThreadRef,
-	session: MutationSessionContext
-): Promise<void> {
-	if (ref.kind === 'mail') {
-		const thread = await getOrThrow(ctx, ref.id, 'Thread');
-		const owned = await requireMailboxAccess(ctx, thread.mailboxId, 'member', session);
-		if (!owned.ok) throwForbidden('Thread not accessible');
-		return;
-	}
-	await getOrThrow(ctx, ref.id, 'Thread');
-	requirePermission(isSharedInboxReader(session), 'Only owners and admins can use the Team Inbox');
-}
 
 async function upsertViewerState(
 	ctx: MutationCtx,

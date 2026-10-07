@@ -44,6 +44,18 @@ export const THREAD_BRIEF_MEMBER_RELATIONS: readonly MemberRelation[] = [
 		why: 'Known gap (thread brief): a team item assigned to the member should fall back to Unassigned; the erasure step lands with the thread brief wiring.',
 	},
 	{
+		table: 'noteReactions',
+		field: 'userId',
+		action: 'retain',
+		why: 'Known gap (thread brief): the member’s emoji reactions on internal notes should go; the erasure step that deletes them lands with the thread brief wiring.',
+	},
+	{
+		table: 'threadItemCorrections',
+		field: 'userId',
+		action: 'retain',
+		why: 'Known gap (thread brief): who corrected an item, kept for the interpretation eval; the erasure step that anonymizes it lands with the thread brief wiring.',
+	},
+	{
 		table: 'threadViewerState',
 		field: 'userId',
 		action: 'retain',

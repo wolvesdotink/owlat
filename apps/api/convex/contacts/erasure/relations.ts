@@ -302,6 +302,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	},
 	{
 		parent: 'threadNotes',
+		table: 'noteReactions',
+		field: 'threadNoteId',
+		action: 'delete',
+		why: 'An emoji reaction is meaningless without its note.',
+	},
+	{
+		parent: 'threadNotes',
 		table: 'inboxAssignmentNotices',
 		field: 'noteId',
 		action: 'retain',
