@@ -190,6 +190,11 @@ const EditorStub = defineComponent({
 		return () => h('div', { class: 'postbox-basic-editor', innerHTML: props.modelValue });
 	},
 });
+const PreviewStub = defineComponent({
+	name: 'PostboxPreviewAsSent',
+	props: ['inlineImageSources'],
+	setup: () => () => h('div'),
+});
 const inert = (name: string) =>
 	defineComponent({ name, setup: () => () => h('div', { 'data-testid': name }) });
 
@@ -217,7 +222,7 @@ function mountComposer(props: Record<string, unknown>, slots: Record<string, unk
 				Icon: true,
 				PostboxOverflowMenu: { template: '<div><slot :close="() => {}" /></div>' },
 				PostboxComposerPreflightChip: true,
-				PostboxPreviewAsSent: true,
+				PostboxPreviewAsSent: PreviewStub,
 				PostboxFollowUpDialog: true,
 				PostboxComposerFollowUp: { template: '<button data-testid="follow-up" />' },
 				PostboxComposerModeControls: true,
@@ -464,6 +469,13 @@ describe('PostboxComposer frame="page" (new mail)', () => {
 		expect(editor.props('inlineImageSources')).toBe(inlineImageSources.value);
 		// Keyed by the composition: another one always gets a fresh editor.
 		expect(editor.vm.$.vnode.key).toBe('composition-1');
+		w.unmount();
+	});
+
+	it('hands "Preview as sent" the same URLs, so it shows pasted images (#1301)', () => {
+		const w = mountComposer({ frame: 'page', seed: { mailboxId: 'mbx_1' } });
+		const preview = w.getComponent(PreviewStub);
+		expect(preview.props('inlineImageSources')).toBe(inlineImageSources.value);
 		w.unmount();
 	});
 

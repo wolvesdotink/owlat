@@ -209,9 +209,8 @@ const { sending, handleSend, guards, stale } = usePostboxComposerSendGate({
 	onSent: (outcome) => emit('sent', outcome),
 });
 
-// --- Frames. The view state (folded envelope/quote, Coach under ⋯, what is
-// focused on mount) lives in its own composable; the draft underneath is the
-// same in both frames.
+// --- Frames. The view state (folded envelope/quote, Coach under ⋯, what is focused
+// on mount) lives in its own composable; the draft underneath is the same in both.
 const frameView = usePostboxComposerAnswerFrame({
 	frame: props.frame ?? 'page',
 	bodyHtml,
@@ -453,6 +452,7 @@ function onKeydown(event: KeyboardEvent) {
 				:subject="subject"
 				v-model:body-html="bodyHtml"
 				:body-blocks="bodyBlocks"
+				:inline-image-sources="inlineImageSources"
 				:persistent-toolbar="persistentToolbar"
 				:preflight="guards.preflight"
 				:last-saved-label="footerStatus"

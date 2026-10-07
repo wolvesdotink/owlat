@@ -14,6 +14,7 @@
  */
 
 import { renderDraftBodies, type DraftBodySource } from '@owlat/email-renderer';
+import { resolveInlineImageSrcs } from '@owlat/shared/inlineImages';
 
 export type SentPreviewPaneId = 'html' | 'plain' | 'dark';
 
@@ -47,10 +48,22 @@ export interface SentPreview {
  * The three renderings of one draft. Blocks and HTML both flow through the
  * shared derivation, so simple-mode and designer drafts are previewed the same
  * way they are sent.
+ *
+ * A pasted image is `<img data-inline-cid="X">` in the body with no src (#1301).
+ * The send path points it at `cid:X`, which a browser cannot load, so the
+ * preview points it at the URL the editor shows the draft's part from
+ * (`inlineImageUrl`) instead, at the same step. One without a URL yet keeps no
+ * src. The plain-text part carries no images, so it is the same either way.
  */
-export function buildSentPreview(draft: DraftBodySource): SentPreview {
-	const light = renderDraftBodies(draft);
-	const dark = renderDraftBodies(draft, { darkMode: true });
+export function buildSentPreview(
+	draft: DraftBodySource,
+	inlineImageUrl: (contentId: string) => string | undefined = () => undefined
+): SentPreview {
+	const source = draft.bodyHtml
+		? { ...draft, bodyHtml: resolveInlineImageSrcs(draft.bodyHtml, inlineImageUrl) }
+		: draft;
+	const light = renderDraftBodies(source);
+	const dark = renderDraftBodies(source, { darkMode: true });
 	return { html: light.html, dark: dark.html, text: light.text, hasAmp: light.amp !== undefined };
 }
 
@@ -59,7 +72,9 @@ export function buildSentPreview(draft: DraftBodySource): SentPreview {
  * form, no fetch — only images, inline styles and fonts. The preview renders
  * the sender's OWN markup, but it is markup a pasted signature or a template
  * could have carried in from anywhere, so it gets the same sandbox rather than
- * a weaker one on the grounds of authorship.
+ * a weaker one on the grounds of authorship. The draft's own pasted images
+ * load under it: their URLs are the backend's `https:` `/sealed-blob` proxy
+ * (a plain-`http:` development backend is the exception and shows them broken).
  */
 const META_CSP =
 	`<meta http-equiv="Content-Security-Policy" ` +
