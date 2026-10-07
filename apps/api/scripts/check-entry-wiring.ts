@@ -388,11 +388,6 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
 const UNREACHED_ENTRIES: readonly string[] = [
 	// Thread brief: wired by the wiring and web lanes, which delete each line (none may survive).
 	'mail/interpret/scope.ts#loadSourceForScope',
-	// Team verbs and note reactions: the web-team lane (TeamOpenItems, TeamThreadStream) calls them.
-	'mail/interpret/reactions.ts#assignItem',
-	'mail/interpret/reactions.ts#claimItem',
-	'inbox/notes.ts#toggleReaction',
-	'chat/mailDiscussion.ts#toggleReaction',
 ];
 
 // ─── The checks ─────────────────────────────────────────────────────────────
