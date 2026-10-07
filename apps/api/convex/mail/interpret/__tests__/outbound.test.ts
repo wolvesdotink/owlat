@@ -17,6 +17,7 @@ import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { onTeamSendFinalized } from '../sendActivity';
 import { reconcileSendFailure } from '../sendFailure';
+import { appendActivity } from '../activity';
 import {
 	modules,
 	reduceItem,
@@ -343,6 +344,26 @@ describe('Postbox outbound lifecycle → thread brief', () => {
 			'answered'
 		);
 	});
+	// Review F1: equal disposition is not dependence. Needs
+	// `threadItems.dispositionSource` (interpret lane); with today's reducer B's
+	// repeat of `answered` leaves no trace, so A's bounce cannot tell. Unskip
+	// once the field lands (`sendFailure.isDispositionStillFrom` already reads it).
+	it.skip('A answers, B answers again, A bounces: the item stays answered', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, messageId, threadId } = await seedMailThread(t);
+		const [first] = await seedItems(t, messageId, threadId);
+		const replyA = await seedOutbound(t, mailboxId, threadId, ['jonas@example.com']);
+		const replyB = await seedOutbound(t, mailboxId, threadId, ['jonas@example.com', 'x@y.test']);
+		await transition(t, replyA, 0, { to: 'sent', at: REPLIED });
+		await applyReply(t, replyA, threadId, [first!._id]);
+		await transition(t, replyB, 0, { to: 'sent', at: REPLIED + 1 });
+		await applyReply(t, replyB, threadId, [first!._id]);
+
+		await transition(t, replyA, 0, { to: 'bounced', at: REPLIED + 60_000 });
+
+		const item = (await state(t, threadId)).items.find((i) => i._id === first!._id);
+		expect(item?.disposition).toBe('answered');
+	});
 });
 
 describe('Team send finalization → thread brief', () => {
@@ -411,6 +432,118 @@ describe('Team send finalization → thread brief', () => {
 			['delivery_failed', 'system'],
 		]);
 	});
+
+	/** A person's follow-up on the thread, queued as a `team_reply` Send. */
+	async function seedFollowUp(
+		t: Test,
+		threadId: Id<'conversationThreads'>,
+		inboundId: Id<'inboundMessages'>
+	) {
+		return t.run(async (ctx) => {
+			const followUpId = await ctx.db.insert('inboxFollowUps', {
+				threadId,
+				inReplyToMessageId: inboundId,
+				subject: 'Re: Order 42',
+				body: 'The refund is on its way.',
+				status: 'sending',
+				createdBy: 'user-B',
+				createdAt: REPLIED,
+				sendAt: REPLIED,
+			});
+			const sendId = await ctx.db.insert('transactionalSends', {
+				kind: 'team_reply',
+				email: 'customer@example.com',
+				status: 'queued',
+				queuedAt: REPLIED,
+				subject: 'Re: Order 42',
+				followUpId,
+			});
+			await ctx.db.patch(followUpId, { sendId });
+			return { followUpId, sendId };
+		});
+	}
+
+	it('a follow-up sent through the Send lifecycle appends reply_sent by its author and is interpreted once', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		const { followUpId, sendId } = await seedFollowUp(t, threadId, inboundId);
+
+		for (const at of [REPLIED, REPLIED + 1]) {
+			await t.mutation(internal.delivery.sendLifecycle.transition, {
+				send: { kind: 'transactional', id: sendId },
+				transition: { to: 'sent', at, providerMessageId: 'p-1' },
+			});
+		}
+
+		const s = await teamActivity(t, threadId);
+		expect(s.activity.map((a) => [a.type, a.actor])).toEqual([
+			['reply_sent', { kind: 'user', id: 'user-B' }],
+		]);
+		const runs = s.scheduled.filter((j) => j.name.includes('outboundRun'));
+		expect(runs).toHaveLength(1);
+		expect(runs[0]?.args[0]).toEqual({ source: { kind: 'teamReply', id: sendId } });
+		expect((await t.run(async (ctx) => ctx.db.get(followUpId)))?.status).toBe('sent');
+	});
+
+	it('a failed follow-up appends delivery_failed and fails what it answered', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		const { sendId } = await seedFollowUp(t, threadId, inboundId);
+		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+			source: { kind: 'inbound', id: inboundId },
+			threadRef: { kind: 'team', id: threadId },
+			mode: 'actions',
+			contentRevision: 'rev-1',
+			extractorVersion: 1,
+			expectedRevision: 0,
+			deletionEpoch: 0,
+			sourceAt: SENT,
+			direction: 'inbound',
+			status: 'complete',
+			result: reduceResult({
+				items: [reduceItem({ requester: { email: 'customer@example.com', isUs: false } })],
+				latest: undefined,
+				facts: undefined,
+			}),
+		});
+		// What the reducer records when the follow-up's interpretation answers
+		// the item (its key shape, reduce.ts keyBase). Written by hand: the
+		// reducer resolves a follow-up's thread only once sources/load/reduceState
+		// follow `followUpId` (interpret lane).
+		const itemId = await t.run(async (ctx) => {
+			const item = (await ctx.db
+				.query('threadItems')
+				.withIndex('by_conversation_thread_and_status', (q) =>
+					q.eq('conversationThreadId', threadId)
+				)
+				.first())!;
+			await ctx.db.patch(item._id, { disposition: 'answered', revision: 2 });
+			await appendActivity(ctx, {
+				threadRef: { kind: 'team', id: threadId },
+				idempotencyKey: `interp:teamReply:${sendId}:rev-out:1:patch:${item._id}`,
+				type: 'item_changed',
+				actor: { kind: 'system' },
+				provenance: 'reported',
+				itemId: item._id,
+				itemRevision: 2,
+				delta: { dispositionFrom: 'unanswered', dispositionTo: 'answered' },
+			});
+			return item._id;
+		});
+
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'transactional', id: sendId },
+			transition: { to: 'failed', at: REPLIED, errorMessage: 'boom', errorCode: 'X' },
+		});
+
+		const s = await teamActivity(t, threadId);
+		expect(s.activity.filter((a) => a.type === 'delivery_failed')).toHaveLength(1);
+		expect((await t.run(async (ctx) => ctx.db.get(itemId)))?.disposition).toBe('failed');
+	});
+
+	it.todo(
+		'a dispatched follow-up stores its text snapshot (needs sources.threadOfSource to follow followUpId)'
+	);
 
 	it('a failed team reply fails the dispositions it answered', async () => {
 		const t = convexTest(schema, modules);
