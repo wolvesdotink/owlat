@@ -2,11 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
 	binaryStringToBytes,
 	bytesToBinaryString,
+	decodePartText,
 	extractAttachments,
 	extractBodyTextParts,
 	extractAttachmentAt,
 	extractFirstPartByType,
 } from '../mailMime';
+import { parseICalendar } from '../ical';
 
 const decode = (b: Uint8Array) => new TextDecoder('utf-8').decode(b);
 
@@ -87,6 +89,165 @@ const RAW = [
 	'--OUTER--',
 	'',
 ].join('\n');
+
+describe('decodePartText (#1299)', () => {
+	/** An inline invite whose body is the given bytes, 8-bit, under `contentType`. */
+	function invite(contentType: string, body: number[]): string {
+		return [
+			'Content-Type: multipart/alternative; boundary="b"',
+			'',
+			'--b',
+			`Content-Type: ${contentType}`,
+			'Content-Transfer-Encoding: 8bit',
+			'',
+			bytesToBinaryString(new Uint8Array(body)),
+			'--b--',
+		].join('\r\n');
+	}
+	const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0));
+
+	it('reads an ISO-8859-1 part under its charset', () => {
+		const raw = invite('text/calendar; method=REQUEST; charset=iso-8859-1', [
+			...ascii('SUMMARY:Besprechung '),
+			0xfc,
+			...ascii('ber Q4'),
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe(
+			'SUMMARY:Besprechung über Q4'
+		);
+	});
+
+	it('reads a windows-1252 part, including its 0x80-0x9F range', () => {
+		const raw = invite('text/calendar; charset=windows-1252', [
+			...ascii('SUMMARY:Budget '),
+			0x80,
+			...ascii(' 100 '),
+			0x96,
+			...ascii(' Q4'),
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe(
+			'SUMMARY:Budget € 100 – Q4'
+		);
+	});
+
+	it('reads a Shift_JIS part under its charset', () => {
+		// 会議 is 0x89EF 0x8B63 in Shift_JIS.
+		const raw = invite('text/calendar; charset=Shift_JIS', [
+			...ascii('SUMMARY:'),
+			0x89,
+			0xef,
+			0x8b,
+			0x63,
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('SUMMARY:会議');
+	});
+
+	it('reads a part that declares no charset as UTF-8, the iCalendar default', () => {
+		const raw = invite('text/calendar', [...new TextEncoder().encode('SUMMARY:Grüße')]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('SUMMARY:Grüße');
+	});
+
+	it('keeps the declared ISO-8859-1 when the part starts with a UTF-8 BOM', () => {
+		const raw = invite('text/calendar; charset=iso-8859-1', [
+			0xef,
+			0xbb,
+			0xbf,
+			...ascii('SUMMARY:Gr'),
+			0xfc,
+			0xdf,
+			...ascii('e'),
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('ï»¿SUMMARY:Grüße');
+	});
+
+	it('strips a UTF-8 BOM from a UTF-8 part', () => {
+		const raw = invite('text/calendar; charset=utf-8', [
+			0xef,
+			0xbb,
+			0xbf,
+			...new TextEncoder().encode('SUMMARY:Grüße'),
+		]);
+		expect(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).toBe('SUMMARY:Grüße');
+	});
+});
+
+describe('decodePartText on UTF-16 invites, end to end (#1299)', () => {
+	const ICS = [
+		'BEGIN:VCALENDAR',
+		'METHOD:REQUEST',
+		'BEGIN:VEVENT',
+		'SUMMARY:Besprechung über Q4',
+		'DTSTART:20261001T090000Z',
+		'END:VEVENT',
+		'END:VCALENDAR',
+	].join('\r\n');
+	/** UTF-16 code units of `text`, big- or little-endian, written out by hand. */
+	function utf16(text: string, order: 'be' | 'le'): number[] {
+		const bytes: number[] = [];
+		// Every code unit, so a surrogate pair contributes both halves.
+		for (let i = 0; i < text.length; i++) {
+			const unit = text.charCodeAt(i);
+			bytes.push(...(order === 'be' ? [unit >> 8, unit & 0xff] : [unit & 0xff, unit >> 8]));
+		}
+		return bytes;
+	}
+	/** A base64 inline invite under `contentType`, so every octet survives. */
+	function invite(contentType: string, body: number[]): string {
+		return [
+			'Content-Type: multipart/alternative; boundary="b"',
+			'',
+			'--b',
+			`Content-Type: ${contentType}`,
+			'Content-Transfer-Encoding: base64',
+			'',
+			btoa(bytesToBinaryString(new Uint8Array(body))),
+			'--b--',
+		].join('\r\n');
+	}
+	const events = (raw: string) =>
+		parseICalendar(decodePartText(extractFirstPartByType(raw, 'text/calendar')!)).events;
+
+	it('a BOM-less charset=utf-16 invite is big-endian and has its event', () => {
+		const found = events(invite('text/calendar; charset=utf-16', utf16(ICS, 'be')));
+		expect(found).toHaveLength(1);
+		expect(found[0]!.summary).toBe('Besprechung über Q4');
+	});
+
+	it.each(['be', 'le'] as const)(
+		'a utf-16 invite with an emoji (a surrogate pair), %s with its BOM, has its event',
+		(order) => {
+			const bom = order === 'be' ? [0xfe, 0xff] : [0xff, 0xfe];
+			const ics = ICS.replace('über Q4', 'über Q4 😀');
+			expect(utf16('😀', 'le')).toEqual([0x3d, 0xd8, 0x00, 0xde]);
+			const found = events(invite('text/calendar; charset=utf-16', [...bom, ...utf16(ics, order)]));
+			expect(found).toHaveLength(1);
+			expect(found[0]!.summary).toBe('Besprechung über Q4 😀');
+		}
+	);
+
+	it('a utf-16le invite behind a big-endian BOM stays little-endian and has its event', () => {
+		const found = events(
+			invite('text/calendar; charset=utf-16le', [0xfe, 0xff, ...utf16(ICS, 'le')])
+		);
+		expect(found).toHaveLength(1);
+		expect(found[0]!.summary).toBe('Besprechung über Q4');
+	});
+
+	it('a utf-16be invite behind a little-endian BOM stays big-endian and has its event', () => {
+		const found = events(
+			invite('text/calendar; charset=utf-16be', [0xff, 0xfe, ...utf16(ICS, 'be')])
+		);
+		expect(found).toHaveLength(1);
+		expect(found[0]!.summary).toBe('Besprechung über Q4');
+	});
+
+	it('an unknown utf-16-* label keeps its bytes, so a stray FF FE does not garble the invite', () => {
+		const ascii = [...ICS.replace('über', 'ueber')].map((c) => c.charCodeAt(0));
+		const found = events(invite('text/calendar; charset=utf-16-unknown', [0xff, 0xfe, ...ascii]));
+		expect(found).toHaveLength(1);
+		expect(found[0]!.summary).toBe('Besprechung ueber Q4');
+	});
+});
 
 describe('extractBodyTextParts', () => {
 	it('returns the text/plain leaves the displayed body is made of, never an attachment', () => {

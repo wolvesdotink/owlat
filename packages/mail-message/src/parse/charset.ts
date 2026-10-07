@@ -143,3 +143,44 @@ export function charsetDecoderFor(
 ): { label: string; skip: number } {
 	return sniffBom(bytes) ?? { label: normalizeCharset(charset), skip: 0 };
 }
+
+/**
+ * The UTF-16 labels {@link decodeDeclaredCharset} handles itself, and the byte
+ * order each fixes. `utf-16` (and its IANA alias) fixes none: a BOM gives it, and
+ * without one it is big-endian, as RFC 2781 §4.3 says. A label that only begins
+ * with `utf-16` is not one of these and takes the usual fallback.
+ */
+const DECLARED_UTF16: Record<string, 'utf-16le' | 'utf-16be' | 'bom-or-be'> = {
+	'utf-16': 'bom-or-be',
+	csutf16: 'bom-or-be',
+	'utf-16le': 'utf-16le',
+	csutf16le: 'utf-16le',
+	'utf-16be': 'utf-16be',
+	csutf16be: 'utf-16be',
+};
+
+/**
+ * Decode a MIME leaf's raw bytes under the charset it DECLARES, where a
+ * byte-order mark never switches the encoding (as it does in
+ * {@link decodeCharset}). Only the declared decoder reads its own BOM:
+ *   - UTF-8: a UTF-8 BOM is stripped.
+ *   - `utf-16`: a UTF-16 BOM gives the byte order and is stripped; with none the
+ *     bytes are big-endian (RFC 2781 §4.3).
+ *   - `utf-16le` / `utf-16be`: the byte order is the label's. A BOM in that
+ *     order is stripped; one in the other order is data (U+FFFE), never a
+ *     reason to swap (RFC 2781 §4.1-4.2: these labels carry no BOM).
+ *   - any other charset: the BOM's bytes are text in that charset.
+ * Same alias table and fallback as {@link decodeCharset}.
+ */
+export function decodeDeclaredCharset(bytes: Uint8Array, charset: string | undefined): string {
+	const label = normalizeCharset(charset);
+	const utf16 = DECLARED_UTF16[label];
+	if (utf16 === 'bom-or-be') {
+		const bom = sniffBom(bytes);
+		// The BOM picks the order; the decoder for that order strips it, once.
+		if (bom && bom.label !== 'utf-8') return decodeWithLabel(bom.label, bytes);
+		return decodeWithLabel('utf-16be', bytes);
+	}
+	// The WHATWG decoder strips a BOM of its own encoding and of no other.
+	return decodeWithLabel(utf16 ?? label, bytes);
+}

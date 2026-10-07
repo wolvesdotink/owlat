@@ -8,7 +8,8 @@
  *   - `absent` (the message has no text/calendar part) renders nothing and
  *     fetches nothing;
  *   - `unknown` (older mail, parts not cut yet) and a failed action both fall
- *     back to the raw `.eml`, as before.
+ *     back to the raw `.eml`, as before, reading the part under the charset it
+ *     declares (#1299).
  *
  * An RSVP opens the composer with the generated `reply.ics` in the compose
  * request itself (plain text that survives a reload), not in memory (#1257).
@@ -102,6 +103,40 @@ describe('PostboxInviteCard', () => {
 
 		expect(loadRawEml).toHaveBeenCalledWith('msg-1');
 		expect(w.text()).toContain('From the raw message');
+	});
+
+	it('reads a raw-message invite under the charset it declares', async () => {
+		calendarAnswer = async () => ({ status: 'unknown' });
+		// One char per byte, as `loadRawEml` returns it: ü is the single byte 0xFC.
+		loadRawEml.mockResolvedValueOnce(
+			RAW_EML.replace(
+				'Content-Type: text/calendar; method=REQUEST',
+				'Content-Type: text/calendar; method=REQUEST; charset=iso-8859-1'
+			)
+				.replace('From the raw message', 'Besprechung über Q4')
+				.replace('END:VEVENT', 'LOCATION:Büro München\r\nEND:VEVENT')
+		);
+		const w = await mountCard();
+
+		expect(w.text()).toContain('Besprechung über Q4');
+		expect(w.text()).toContain('Büro München');
+		expect(w.text()).not.toContain('\uFFFD');
+	});
+
+	it('a UTF-8 BOM does not switch a declared ISO-8859-1 raw-message invite to UTF-8', async () => {
+		calendarAnswer = async () => ({ status: 'unknown' });
+		loadRawEml.mockResolvedValueOnce(
+			RAW_EML.replace(
+				'Content-Type: text/calendar; method=REQUEST',
+				'Content-Type: text/calendar; method=REQUEST; charset=iso-8859-1'
+			)
+				.replace('BEGIN:VCALENDAR', '\xef\xbb\xbfBEGIN:VCALENDAR')
+				.replace('From the raw message', 'Besprechung über Q4')
+		);
+		const w = await mountCard();
+
+		expect(w.text()).toContain('Besprechung über Q4');
+		expect(w.text()).not.toContain('\uFFFD');
 	});
 
 	it('falls back to the raw message when the stored read fails', async () => {

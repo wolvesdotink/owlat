@@ -9,6 +9,8 @@
  *     immutable) while the raw `.eml` stays `no-store`;
  *   - the invite card gets the iCalendar text without the raw message, and a
  *     message with no stored parts says `unknown` so the client falls back;
+ *   - an invite in a legacy charset is stored transcoded to UTF-8, so the
+ *     `charset=utf-8` it is stored under is true (#1299);
  *   - the parts live exactly as long as the raw blob: an IMAP COPY sibling
  *     keeps them, the last purge frees them, and a duplicate delivery drops
  *     the parts it staged along with its raw blob;
@@ -26,6 +28,7 @@ import { isSealedBytesAtRest } from '../lib/atRestBodies';
 import { deleteMessageRowAndBlobs } from '../mail/messagePurge';
 import { MAX_STORED_PARTS } from '../mail/messageParts';
 import { enableFeatures } from './factories';
+import { parseICalendar } from '@owlat/shared/ical';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -165,9 +168,9 @@ async function drain(t: ReturnType<typeof convexTest>): Promise<void> {
 async function deliver(
 	t: ReturnType<typeof convexTest>,
 	messageId: string,
-	extraLeaves = 0
+	extraLeaves = 0,
+	raw = buildRawEml(messageId, extraLeaves)
 ): Promise<Id<'mailMessages'>> {
-	const raw = buildRawEml(messageId, extraLeaves);
 	const result = await t.action(internal.mail.delivery.ingestFromWebhook, {
 		deliveryId: `d-${messageId}`,
 		rawBytesBase64: Buffer.from(raw, 'latin1').toString('base64'),
@@ -288,6 +291,96 @@ describe('stored attachment parts (plan 3.5)', () => {
 		expect(
 			await t.action(api.mail.mailbox.parts.getMessagePartUrl, { messageId, partIndex: '0' })
 		).toBeNull();
+	});
+
+	it('stores an 8-bit ISO-8859-1 invite as UTF-8 text, so the card reads it intact', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const messageId = '<parts-latin1@example.com>';
+		// One char per byte, so `deliver` sends ü as the single byte 0xFC.
+		const latin1Ics = ICS.replace(
+			'SUMMARY:Planning',
+			'SUMMARY:Besprechung über Q4\r\nLOCATION:Büro München'
+		);
+		const raw = [
+			'From: Bob <bob@example.com>',
+			'To: alice@example.com',
+			'Subject: planning',
+			`Message-ID: ${messageId}`,
+			'Content-Type: multipart/alternative; boundary="alt"',
+			'',
+			'--alt',
+			'Content-Type: text/plain; charset=iso-8859-1',
+			'Content-Transfer-Encoding: 8bit',
+			'',
+			'Bis dann.',
+			'--alt',
+			'Content-Type: text/calendar; method=REQUEST; charset=iso-8859-1',
+			'Content-Transfer-Encoding: 8bit',
+			'',
+			latin1Ics,
+			'--alt--',
+			'',
+		].join('\r\n');
+		const id = await deliver(t, messageId, 0, raw);
+
+		const calendar = await t.action(api.mail.mailbox.parts.getMessageCalendar, { messageId: id });
+		// An 8-bit body comes out of the MIME walker with LF line ends.
+		expect(calendar).toEqual({ status: 'found', ics: latin1Ics.replace(/\r\n/g, '\n') });
+		const ics = (calendar as { ics: string }).ics;
+		expect(ics).toContain('SUMMARY:Besprechung über Q4');
+		expect(ics).toContain('LOCATION:Büro München');
+		expect(ics).not.toContain('\uFFFD');
+	});
+
+	it('keeps a declared ISO-8859-1 invite ISO-8859-1 when it starts with a UTF-8 BOM', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const messageId = '<parts-latin1-bom@example.com>';
+		const ics = ICS.replace('SUMMARY:Planning', 'SUMMARY:Besprechung über Q4');
+		const raw = [
+			'From: Bob <bob@example.com>',
+			'To: alice@example.com',
+			'Subject: planning',
+			`Message-ID: ${messageId}`,
+			'Content-Type: text/calendar; method=REQUEST; charset=iso-8859-1',
+			'Content-Transfer-Encoding: 8bit',
+			'',
+			// EF BB BF, then Latin-1 octets: the BOM must not switch the decoder.
+			`\xef\xbb\xbf${ics}`,
+			'',
+		].join('\r\n');
+		const id = await deliver(t, messageId, 0, raw);
+
+		const calendar = await t.action(api.mail.mailbox.parts.getMessageCalendar, { messageId: id });
+		const text = (calendar as { ics: string }).ics;
+		expect(text).toContain('SUMMARY:Besprechung über Q4');
+		expect(text).not.toContain('\uFFFD');
+	});
+
+	it('stores a BOM-less charset=utf-16 invite as big-endian text (RFC 2781 §4.3)', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const messageId = '<parts-utf16@example.com>';
+		const ics = ICS.replace('SUMMARY:Planning', 'SUMMARY:Besprechung über Q4');
+		// Big-endian code units, no BOM: Node's 'utf16le' with every pair swapped.
+		const be = Buffer.from(ics, 'utf16le').swap16();
+		const raw = [
+			'From: Bob <bob@example.com>',
+			'To: alice@example.com',
+			'Subject: planning',
+			`Message-ID: ${messageId}`,
+			'Content-Type: text/calendar; method=REQUEST; charset=utf-16',
+			'Content-Transfer-Encoding: base64',
+			'',
+			be.toString('base64'),
+			'',
+		].join('\r\n');
+		const id = await deliver(t, messageId, 0, raw);
+
+		const calendar = await t.action(api.mail.mailbox.parts.getMessageCalendar, { messageId: id });
+		expect(calendar).toEqual({ status: 'found', ics });
+		expect(parseICalendar((calendar as { ics: string }).ics).events).toHaveLength(1);
 	});
 
 	it('keeps the parts while an IMAP COPY sibling shares the raw blob and frees them with the last row', async () => {
