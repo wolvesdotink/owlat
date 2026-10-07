@@ -51,7 +51,7 @@ export const EMPTY_ITEM_COUNTS: ItemCounts = {
 
 /** A brief row's item counters, fields written before they existed read as 0. Pure. */
 export function itemCountsOf(brief: Pick<Doc<'threadBriefs'>, 'itemCounts'> | null): ItemCounts {
-	return { ...EMPTY_ITEM_COUNTS, ...(brief?.itemCounts ?? {}) };
+	return { ...EMPTY_ITEM_COUNTS, ...brief?.itemCounts };
 }
 
 /** The bucket an extraction counts in. Pure. */
