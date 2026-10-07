@@ -2,24 +2,26 @@ import { describe, expect, it } from 'vitest';
 import {
 	ACTIVITY_ACTORS,
 	ACTIVITY_TYPES,
-	compareForYou,
 	defaultActivityVisibility,
 	factKeyString,
-	isConsequential,
-	isLegalDispositionEdge,
-	isLegalStatusEdge,
 	ITEM_DISPOSITIONS,
 	ITEM_REACTIONS,
 	ITEM_STATE_KEYS,
 	ITEM_STATUSES,
+	type ItemStatus,
+} from '../threadBrief';
+import {
+	compareForYou,
+	isConsequential,
+	isLegalDispositionEdge,
+	isLegalStatusEdge,
 	itemFacetRisk,
 	itemStateKey,
 	LEGAL_STATUS_EDGES,
 	primaryReaction,
 	secondaryReactions,
 	type ForYouSortable,
-	type ItemStatus,
-} from '../threadBrief';
+} from '../threadBriefRules';
 
 describe('itemStateKey', () => {
 	it('maps every stored combination the plan names', () => {
