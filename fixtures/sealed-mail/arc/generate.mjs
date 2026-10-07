@@ -24,6 +24,8 @@ import { sealMessage } from 'mailauth/lib/arc/index.js';
 
 const outDir = dirname(fileURLToPath(import.meta.url));
 const SELECTOR = 'arc1';
+// Fixed seal time; see FIXTURE_SIGN_TIME in apps/mta/src/__tests__/helpers/mailauthDkimSign.ts.
+const SIGN_TIME = new Date('2026-06-17T12:00:00Z');
 
 /** One RSA keypair per sealer domain; public half → keys.json TXT record. */
 function makeKey() {
@@ -72,6 +74,7 @@ async function seal(sealerDomain, key, authResults) {
 		algorithm: 'rsa-sha256',
 		cv: 'none', // i=1: no prior chain
 		i: 1,
+		signTime: SIGN_TIME,
 		authResults:
 			authResults ??
 			`${sealerDomain}; dmarc=pass header.from=author.example; ` +
