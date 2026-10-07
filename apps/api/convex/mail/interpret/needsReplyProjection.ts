@@ -30,7 +30,7 @@ import {
 import { isUnattendedAddress } from '../needsReplyHeuristic';
 import type { needsReplyClarificationArgValidator } from '../../lib/validators/clarification';
 import type { AppLocale } from '@owlat/shared/appLocales';
-import { utcDayKey } from '../../lib/clock';
+import { localDayKey } from './dueDate';
 import { clampText } from './pipeline';
 import { responsibilityOf } from './reducePlan';
 import type { ReduceResult } from './reduceInput';
@@ -141,7 +141,7 @@ export function needsReplyProjectionOf(
 		urgency: result.urgency,
 		...(result.meetingIntent ? { meetingIntent: result.meetingIntent } : {}),
 		...(top ? { askSummary: clampText(top.display[locale], 120) } : {}),
-		...(top?.due?.at !== undefined ? { dueHint: utcDayKey(top.due.at) } : {}),
+		...(top?.due?.at !== undefined ? { dueHint: localDayKey(top.due.at, top.due.tz ?? 'UTC') } : {}),
 		isOnlyTheirs: result.items.length > 0 && ours.length === 0,
 	};
 }

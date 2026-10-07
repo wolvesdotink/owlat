@@ -214,13 +214,12 @@ export const threadBriefTables = {
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
-		.index('by_mail_thread_and_status', ['mailThreadId', 'status'])
-		.index('by_conversation_thread_and_status', ['conversationThreadId', 'status'])
+		// Trailing updatedAt: the 30-day closed lookback of the prompt and the brief
+		// reads a status by update time (a long history never hides a recent change).
+		.index('by_mail_thread_and_status', ['mailThreadId', 'status', 'updatedAt'])
+		.index('by_conversation_thread_and_status', ['conversationThreadId', 'status', 'updatedAt'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
-		.index('by_counterparty', ['counterpartyKey'])
-		// Recently changed items (the 30-day closed lookback of the prompt and the brief).
-		.index('by_mail_thread_and_updated', ['mailThreadId', 'updatedAt'])
-		.index('by_conversation_thread_and_updated', ['conversationThreadId', 'updatedAt']),
+		.index('by_counterparty', ['counterpartyKey']),
 
 	// Append-only per-thread log.
 	threadActivity: defineTable({

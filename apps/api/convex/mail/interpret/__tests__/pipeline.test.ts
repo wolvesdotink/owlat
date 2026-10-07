@@ -36,6 +36,8 @@ const participants: InterpretInputParticipant[] = [
 	{ ref: 'p2', role: 'us', email: 'me@owlat.example', isUs: true },
 ];
 const own = new Set(['me@owlat.example']);
+/** Wednesday 7 October 2026, 09:00 UTC. */
+const SENT = Date.UTC(2026, 9, 7, 9, 0);
 
 function output(overrides: Partial<InterpretBriefOutput> = {}): InterpretBriefOutput {
 	return {
@@ -144,6 +146,7 @@ describe('the pure run core', () => {
 		expect(grounding.items).toHaveLength(1);
 		const claims = verifyClaimsOf(grounding, segmented.canonicalText, {
 			participants,
+			ownAddresses: own,
 			itemText: () => undefined,
 			factText: () => undefined,
 		});
@@ -156,6 +159,7 @@ describe('the pure run core', () => {
 			participants,
 			ownAddresses: own,
 			timezone: 'Europe/Berlin',
+			sentAt: SENT,
 			verdicts: new Map([['item:0', 'supported']]),
 			checked: new Set(['item:0']),
 		});
@@ -165,7 +169,8 @@ describe('the pure run core', () => {
 			responsible: { email: 'me@owlat.example', isUs: true },
 			due: {
 				phrase: 'by Friday',
-				at: Date.parse('2026-10-09'),
+				// Friday 9 October, midnight in Berlin: read from the phrase, not the model.
+				at: Date.UTC(2026, 9, 8, 22),
 				tz: 'Europe/Berlin',
 				isAmbiguous: false,
 			},
@@ -189,6 +194,7 @@ describe('the pure run core', () => {
 			participants,
 			ownAddresses: own,
 			timezone: 'UTC',
+			sentAt: SENT,
 			checked: new Set(['item:0']),
 		};
 		expect(toReduceResult(out, grounding, { ...base, verdicts: new Map() }).items[0]?.verify).toBe(
@@ -217,6 +223,7 @@ describe('the pure run core', () => {
 			participants,
 			ownAddresses: own,
 			timezone: 'UTC',
+			sentAt: SENT,
 			verdicts,
 			checked: new Set(['item:0']),
 		});
@@ -232,6 +239,7 @@ describe('the pure run core', () => {
 			participants,
 			ownAddresses: own,
 			timezone: 'UTC',
+			sentAt: SENT,
 			verdicts: new Map(),
 			checked: new Set(),
 			latestSuppressed: 'security',
@@ -290,6 +298,7 @@ describe('the pure run core', () => {
 			participants,
 			ownAddresses: own,
 			timezone: 'UTC',
+			sentAt: SENT,
 			verdicts: new Map([['item:0', 'supported']]),
 			checked: new Set(['item:0']),
 		});
@@ -300,6 +309,74 @@ describe('the pure run core', () => {
 			dueHint: '2026-10-09',
 			isOnlyTheirs: false,
 		});
+	});
+});
+
+describe('review round 1', () => {
+	it('verifies an item that names our own address without a ref (F12)', () => {
+		const base = output().items[0]!;
+		const out = clampOutput(
+			output({
+				items: [
+					{
+						...base,
+						consequences: [],
+						facets: ['information'],
+						due: null,
+						responsible: { ref: null, name: null, email: 'ME@owlat.example' },
+					},
+				],
+			})
+		);
+		const grounding = groundProposals(out, segmented);
+		const claims = verifyClaimsOf(grounding, segmented.canonicalText, {
+			participants,
+			ownAddresses: own,
+			itemText: () => undefined,
+			factText: () => undefined,
+		});
+		expect(claims.map((c) => c.id)).toEqual(['item:0']);
+		expect(claims[0]?.statement).toContain('the reader');
+	});
+
+	it('never stores the model timestamp for a phrase it cannot read (F11)', () => {
+		const base = output().items[0]!;
+		const out = clampOutput(
+			output({
+				items: [
+					{
+						...base,
+						due: { phrase: 'before the launch', at: '2026-11-30', tz: null, ambiguous: false, condition: null },
+					},
+				],
+			})
+		);
+		const result = toReduceResult(out, groundProposals(out, segmented), {
+			mode: 'brief',
+			canonicalText: segmented.canonicalText,
+			participants,
+			ownAddresses: own,
+			timezone: 'UTC',
+			sentAt: SENT,
+			verdicts: new Map([['item:0', 'supported']]),
+			checked: new Set(['item:0']),
+		});
+		expect(result.items[0]?.due).toEqual({ phrase: 'before the launch', isAmbiguous: true });
+	});
+
+	it('marks an excerpt-only read partial (F13)', () => {
+		const out = output();
+		expect(
+			runStatusOf({
+				grounding: groundProposals(out, segmented),
+				output: out,
+				isItemsOverflow: false,
+				isFactsOverflow: false,
+				truncatedSegmentIds: [],
+				isVerifyIncomplete: false,
+				isBodyIncomplete: true,
+			})
+		).toEqual({ status: 'partial', errorCode: 'body_unavailable' });
 	});
 });
 

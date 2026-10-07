@@ -15,8 +15,8 @@ import type { Evidence } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { mailboxOwnAddresses } from '../identities';
-import { readResult, recentlyUpdatedItems } from './load';
-import { CLOSED_ITEM_LOOKBACK_MS, type EXACT_WORDING_REASONS } from './schema';
+import { readResult, recentlyClosedItems } from './load';
+import type { EXACT_WORDING_REASONS } from './schema';
 import type { SourceCounts } from './counters';
 
 type ExactWordingReason = (typeof EXACT_WORDING_REASONS)[number];
@@ -90,11 +90,15 @@ export async function readItemsPage(
 	let closed: Doc<'threadItems'>[] = [];
 	let isClosedTruncated = false;
 	if (cursor === null) {
-		const recent = await recentlyUpdatedItems(ctx, ref, now - CLOSED_ITEM_LOOKBACK_MS, CLOSED_READ + 1);
-		isClosedTruncated = recent.length > CLOSED_READ;
-		closed = recent
-			.slice(0, CLOSED_READ)
-			.filter((r) => r.status === 'done' || r.status === 'declined' || r.status === 'superseded');
+		const recent = await recentlyClosedItems(
+			ctx,
+			ref,
+			['done', 'declined', 'superseded'],
+			now,
+			CLOSED_READ
+		);
+		isClosedTruncated = recent.isCut;
+		closed = recent.rows;
 	}
 	return {
 		items: await Promise.all([...open.page, ...closed].map((row) => openItem(row, locale))),

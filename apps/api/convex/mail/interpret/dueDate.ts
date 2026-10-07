@@ -82,6 +82,12 @@ function partsIn(ms: number, timeZone: string): YMD {
 	return { y: get('year'), m: get('month'), d: get('day') };
 }
 
+/** The calendar date (YYYY-MM-DD) of an instant in `timeZone`. Pure. */
+export function localDayKey(ms: number, timeZone: string): string {
+	const { y, m, d } = partsIn(ms, timeZone);
+	return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
 /** Epoch ms of local midnight of a calendar date in `timeZone`. */
 export function zonedMidnight(date: YMD, timeZone: string): number {
 	const guess = Date.UTC(date.y, date.m - 1, date.d);
@@ -199,9 +205,10 @@ function readings(phrase: string, today: YMD): { dates: YMD[]; isUnsure: boolean
 		push(y ? { y, m: mo, d: Number(m[2]) } : withYear(mo, Number(m[2]), today));
 	}
 
-	if (/\b(?:day after tomorrow|übermorgen|après-demain|apres-demain)\b/.test(text)) {
+	// `\b` is ASCII-only; word edges are spelled out so `übermorgen` reads as one word.
+	if (/(?<!\p{L})(?:day after tomorrow|übermorgen|après-demain|apres-demain)(?!\p{L})/u.test(text)) {
 		push(addDays(today, 2));
-	} else if (/\b(?:tomorrow|morgen|demain)\b/.test(text)) {
+	} else if (/(?<!\p{L})(?:tomorrow|morgen|demain)(?!\p{L})/u.test(text)) {
 		push(addDays(today, 1));
 	}
 	if (/\b(?:today|tonight|end of (?:the )?day|eod|cob|heute|aujourd'hui|aujourd’hui|ce soir)\b/.test(text)) {

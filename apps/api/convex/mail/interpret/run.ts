@@ -221,7 +221,8 @@ async function runOnce(
 				status: 'skipped',
 				skipReason: eligible.skipReason,
 				errorCode: eligible.detail,
-			})
+			}),
+			{ errorCode: eligible.detail }
 		);
 	}
 
@@ -237,7 +238,8 @@ async function runOnce(
 					status: 'skipped',
 					skipReason: scoped.skipReason,
 					...('detail' in scoped ? { errorCode: scoped.detail } : {}),
-				})
+				}),
+				'detail' in scoped ? { errorCode: scoped.detail } : {}
 			);
 		}
 		// On the last attempt a body that keeps changing is recorded as such, not rechecked.

@@ -49,8 +49,10 @@ import type { ReduceResult } from './reduceInput';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
-/** Items changed within the closed lookback read per run. */
-const CLOSED_SCAN = 200;
+/** Statuses read as "recently closed" for the prompt. */
+const CLOSED_STATUSES = ['done', 'declined', 'superseded', 'untracked'] as const;
+/** Items per closed status read within the lookback. */
+const CLOSED_SCAN = 100;
 
 // ── Items and facts ────────────────────────────────────────────────────────
 
@@ -93,35 +95,59 @@ export function selectPromptItems<T extends { status: string; askedAt: number; u
 	return { page: all.slice(0, limit), isOverflow: all.length > limit };
 }
 
-/** A thread's items changed since `since`, newest first, bounded. */
+/** A thread's items of `status` changed since `since`, newest first, bounded. */
 export async function recentlyUpdatedItems(
 	ctx: ReadCtx,
 	ref: ThreadRef,
+	status: Doc<'threadItems'>['status'],
 	since: number,
 	limit: number
 ): Promise<Doc<'threadItems'>[]> {
 	return ref.kind === 'mail'
 		? ctx.db
 				.query('threadItems')
-				.withIndex('by_mail_thread_and_updated', (q) =>
-					q.eq('mailThreadId', ref.id).gte('updatedAt', since)
+				.withIndex('by_mail_thread_and_status', (q) =>
+					q.eq('mailThreadId', ref.id).eq('status', status).gte('updatedAt', since)
 				)
 				.order('desc')
 				.take(limit)
 		: ctx.db
 				.query('threadItems')
-				.withIndex('by_conversation_thread_and_updated', (q) =>
-					q.eq('conversationThreadId', ref.id).gte('updatedAt', since)
+				.withIndex('by_conversation_thread_and_status', (q) =>
+					q.eq('conversationThreadId', ref.id).eq('status', status).gte('updatedAt', since)
 				)
 				.order('desc')
 				.take(limit);
 }
 
 /**
+ * Items of `statuses` changed within the closed-item lookback, newest first,
+ * read by update time (a long history never hides a recently closed or
+ * corrected item). `isCut` says a bound was hit.
+ */
+export async function recentlyClosedItems(
+	ctx: ReadCtx,
+	ref: ThreadRef,
+	statuses: readonly Doc<'threadItems'>['status'][],
+	now: number,
+	limitPerStatus: number
+): Promise<{ rows: Doc<'threadItems'>[]; isCut: boolean }> {
+	const since = now - CLOSED_ITEM_LOOKBACK_MS;
+	const found = await Promise.all(
+		statuses.map((status) => recentlyUpdatedItems(ctx, ref, status, since, limitPerStatus + 1))
+	);
+	return {
+		rows: found
+			.flatMap((rows) => rows.slice(0, limitPerStatus))
+			.sort((a, b) => b.updatedAt - a.updatedAt),
+		isCut: found.some((rows) => rows.length > limitPerStatus),
+	};
+}
+
+/**
  * The candidate rows {@link selectPromptItems} picks from: the open items, and
- * the items changed within the closed-item lookback (by update time, so a
- * long history never hides a recently closed or corrected item). `isScanCut`
- * says a bound was hit: the page is then incomplete, never silently short.
+ * the items closed within the lookback. `isScanCut` says a bound was hit: the
+ * page is then incomplete, never silently short.
  */
 export async function loadPromptItemCandidates(
 	ctx: ReadCtx,
@@ -129,10 +155,10 @@ export async function loadPromptItemCandidates(
 	now: number
 ): Promise<{ rows: Doc<'threadItems'>[]; isScanCut: boolean }> {
 	const open = await threadItemsWithStatus(ctx, ref, 'open', MAX_PROMPT_ITEMS + 1);
-	const recent = await recentlyUpdatedItems(ctx, ref, now - CLOSED_ITEM_LOOKBACK_MS, CLOSED_SCAN + 1);
+	const closed = await recentlyClosedItems(ctx, ref, CLOSED_STATUSES, now, CLOSED_SCAN);
 	return {
-		rows: [...open, ...recent.filter((row) => row.status !== 'open').slice(0, CLOSED_SCAN)],
-		isScanCut: open.length > MAX_PROMPT_ITEMS || recent.length > CLOSED_SCAN,
+		rows: [...open, ...closed.rows],
+		isScanCut: open.length > MAX_PROMPT_ITEMS || closed.isCut,
 	};
 }
 

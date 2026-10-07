@@ -16,7 +16,7 @@
 
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type { MutationCtx } from '../../_generated/server';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import {
 	interpretationSourceKey,
@@ -31,7 +31,7 @@ import {
 	type InterpretEligibilitySignals,
 } from './eligibility';
 
-type ReadCtx = Pick<MutationCtx, 'db'>;
+type ReadCtx = Pick<QueryCtx, 'db'>;
 
 /** The stored snapshot of a source, or null. */
 export async function loadInterpretSource(
