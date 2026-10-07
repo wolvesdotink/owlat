@@ -18,6 +18,7 @@
  */
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import type { EditorBlock } from '@owlat/email-builder';
+import type { InlineImageSources } from '~/composables/postbox/usePostboxInlineImages';
 import {
 	SENT_PREVIEW_PANES,
 	buildSentPreview,
@@ -32,6 +33,8 @@ const props = defineProps<{
 	bodyHtml: string;
 	bodyBlocks: EditorBlock[];
 	composerMode: ComposerMode;
+	/** Where the editor shows pasted images from, by Content-ID. */
+	inlineImageSources?: InlineImageSources;
 }>();
 
 const emit = defineEmits<{ 'update:open': [value: boolean] }>();
@@ -44,12 +47,16 @@ const activePane = ref<SentPreviewPaneId>('html');
 // every keystroke of a composer nobody is previewing would be pure waste.
 const preview = computed(() => {
 	if (!props.open) return null;
-	return buildSentPreview({
-		composerMode: props.composerMode,
-		bodyHtml: props.bodyHtml,
-		bodyBlocks: props.composerMode === 'full' ? JSON.stringify(props.bodyBlocks) : undefined,
-		subject: props.subject,
-	});
+	const urls = props.inlineImageSources?.urls;
+	return buildSentPreview(
+		{
+			composerMode: props.composerMode,
+			bodyHtml: props.bodyHtml,
+			bodyBlocks: props.composerMode === 'full' ? JSON.stringify(props.bodyBlocks) : undefined,
+			subject: props.subject,
+		},
+		(contentId) => urls?.get(contentId)
+	);
 });
 
 const srcdoc = computed(() => {

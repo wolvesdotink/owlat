@@ -49,6 +49,43 @@ describe('buildSentPreview', () => {
 	});
 });
 
+describe('buildSentPreview with pasted images (#1301)', () => {
+	// What a paste leaves in the body: a marked image with no src.
+	const draft = {
+		composerMode: 'simple',
+		bodyHtml:
+			'<p>Our logo:</p><p><img data-inline-cid="logo@owlat" alt="logo.png" style="max-width: 100%; height: auto;"></p>',
+	};
+	const url = 'https://api.owlat.example/sealed-blob?id=s1&ct=image%2Fpng&exp=1&sig=x';
+	const urls = new Map([['logo@owlat', url]]);
+	const imgOf = (html: string) => /<img\b[^>]*>/.exec(html)?.[0] ?? '';
+
+	it('shows each one from the URL the editor has for its part, light and dark', () => {
+		const preview = buildSentPreview(draft, (cid) => urls.get(cid));
+		const escaped = url.replace(/&/g, '&amp;');
+		expect(imgOf(preview.html)).toContain(`src="${escaped}"`);
+		expect(imgOf(preview.dark)).toContain(`src="${escaped}"`);
+		expect(imgOf(preview.html)).toContain('alt="logo.png"');
+		expect(preview.html).not.toContain('data-inline-cid');
+	});
+
+	it('loads it under the frame policy: the proxy URL is https', () => {
+		const srcdoc = sentPreviewSrcdoc(buildSentPreview(draft, (cid) => urls.get(cid)).html);
+		expect(srcdoc).toMatch(/img-src https: data:;/);
+		expect(new URL(url).protocol).toBe('https:');
+	});
+
+	it('leaves one whose URL is not known yet without a src', () => {
+		const preview = buildSentPreview(draft, () => undefined);
+		expect(imgOf(preview.html)).not.toContain('src=');
+		expect(imgOf(preview.html)).toContain('alt="logo.png"');
+	});
+
+	it('derives the same plain-text part with or without the URLs', () => {
+		expect(buildSentPreview(draft, (cid) => urls.get(cid)).text).toBe(buildSentPreview(draft).text);
+	});
+});
+
 describe('sentPreviewSrcdoc', () => {
 	it('puts the CSP meta first inside the head', () => {
 		const out = sentPreviewSrcdoc(
