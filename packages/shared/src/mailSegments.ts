@@ -23,15 +23,15 @@
  */
 
 import { classifyLines, type SegmentKind, type UncertainReason } from './mailSegmentsClassify';
-import { isForwardSubject, type SegmentAuthor } from './mailSegmentsMarkers';
+import { subjectKindOf, type SegmentAuthor } from './mailSegmentsMarkers';
 import {
 	type LineSourceOptions,
 	type SourceLine,
 	type SourceRun,
-	linesFromHtml,
 	linesFromText,
 	squeezeBlankLines,
 } from './mailSegmentsSource';
+import { linesFromHtml } from './mailSegmentsHtml';
 
 export type { SegmentAuthor } from './mailSegmentsMarkers';
 export type { SegmentKind, UncertainReason } from './mailSegmentsClassify';
@@ -73,7 +73,10 @@ export interface SegmentedMessage {
 export interface SegmentMessageInput {
 	text?: string | null;
 	html?: string | null;
-	/** The message subject: a forward's (`FW:`) marks an Outlook header block as forwarded. */
+	/**
+	 * The message subject. Its prefix decides an Outlook header block: `FW:` makes
+	 * it forwarded, `RE:` (also `RE: FW:`) quoted, whatever the block's own subject says.
+	 */
 	subject?: string | null;
 }
 
@@ -91,7 +94,7 @@ export function segmentMessage(
 	const lines = squeezeBlankLines(raw);
 	const { canonicalText, lineStarts, runs } = assemble(lines);
 	const { regionOf, reasons, penalty } = classifyLines(lines, {
-		forwardedSubject: !!input.subject && isForwardSubject(input.subject),
+		subjectKind: subjectKindOf(input.subject),
 	});
 
 	const segments: MailSegment[] = [];

@@ -30,6 +30,7 @@ import {
 	isLegalFooterLine,
 	isMobileSignature,
 	isNameBlockLine,
+	isPostscriptLine,
 	isOriginalMessageLine,
 	isSeparatorLine,
 	isSignatureDelimiter,
@@ -40,7 +41,7 @@ import {
 	parseHeaderLine,
 	type HeaderField,
 } from './mailSegmentsMarkers';
-import type { SourceLine } from './mailSegmentsSource';
+import { insideContainer, type QuoteContainer, type SourceLine } from './mailSegmentsSource';
 
 export type SegmentKind = 'fresh' | 'quoted' | 'forwarded' | 'signature' | 'disclaimer';
 
@@ -55,12 +56,19 @@ export type UncertainReason =
 	/** A quote container that is neither clearly a reply nor a forward. */
 	| 'ambiguous_quote_container'
 	/** An attribution run into other text, so the quote boundary is unknown. */
-	| 'embedded_attribution';
+	| 'embedded_attribution'
+	/**
+	 * Unmarked text inside a quote container (Gmail's `gmail_quote`): an
+	 * inline answer, or old text the container quotes without a blockquote.
+	 */
+	| 'unmarked_text_in_quote_container';
 
 export interface Region {
 	id: number;
 	kind: SegmentKind;
 	origin?: QuoteOrigin;
+	/** An unmarked region opened inside a quote container ends with it. */
+	container?: QuoteContainer;
 }
 
 export interface Classification {
@@ -106,12 +114,46 @@ function nextNonBlank(lines: SourceLine[], from: number): number {
 
 export interface ClassifyOptions {
 	/**
-	 * The message's own subject is a forward (`FW:`). Outlook writes the same
-	 * header block for a reply and a forward, and keeps the ORIGINAL subject in
-	 * it, so only the outer subject tells them apart: the first header block
-	 * under the fresh text is then the forwarded message.
+	 * What the message's own subject says it is. Outlook writes the same header
+	 * block for a reply and a forward and keeps the ORIGINAL subject in it, so
+	 * the outer subject decides the first header block under the fresh text: a
+	 * forward (`FW:`) makes it forwarded, a reply (`RE:`, also `RE: FW:`) makes
+	 * it quoted whatever the embedded subject says. Only without either does
+	 * the embedded subject decide.
 	 */
-	forwardedSubject?: boolean;
+	subjectKind?: 'forward' | 'reply' | 'other';
+}
+
+/**
+ * Lines in a run of same-depth text squeezed between deeper quote lines with
+ * no blank line on either side: wrapped quote text or an inline answer, which
+ * the markers cannot tell apart (capitalisation proves nothing).
+ */
+function sandwichedLines(lines: SourceLine[]): boolean[] {
+	const out = lines.map(() => false);
+	let k = 0;
+	while (k < lines.length) {
+		const first = lines[k] as SourceLine;
+		if (first.text === '') {
+			k++;
+			continue;
+		}
+		let e = k;
+		while (
+			e + 1 < lines.length &&
+			lines[e + 1]?.text !== '' &&
+			lines[e + 1]?.depth === first.depth
+		) {
+			e++;
+		}
+		const before = lines[k - 1];
+		const after = lines[e + 1];
+		if (before?.text && after?.text && before.depth > first.depth && after.depth > first.depth) {
+			for (let j = k; j <= e; j++) out[j] = true;
+		}
+		k = e + 1;
+	}
+	return out;
 }
 
 export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}): Classification {
@@ -128,6 +170,7 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 	const firstOrigin = new Map<number, QuoteOrigin>();
 	let lastRegion: Region | null = null;
 	let headerSeen = false;
+	const sandwiched = sandwichedLines(lines);
 
 	const claim = (from: number, to: number, region: Region) => {
 		for (let k = from; k < to; k++) if (lines[k]?.text !== '') regionOf[k] = region;
@@ -142,7 +185,11 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 		if (marked && region.origin && !firstOrigin.has(depth + 1)) {
 			firstOrigin.set(depth + 1, region.origin);
 		}
-		if (!marked) penalty += 0.05;
+		if (!marked) {
+			penalty += 0.05;
+			const holder = (lines[i] as SourceLine).container;
+			if (holder) region.container = holder;
+		}
 		claim(i, after, region);
 		return { region, marked };
 	};
@@ -157,6 +204,12 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 			continue;
 		}
 		for (const depth of ctx.keys()) if (depth > line.depth) ctx.delete(depth);
+		// An unmarked region opened inside a quote container ends with it.
+		const bound = ctx.get(line.depth);
+		if (bound?.container && !insideContainer(line, bound.container)) {
+			if (line.depth === 0) ctx.set(0, open('fresh'));
+			else ctx.delete(line.depth);
+		}
 		const text = line.text.trim();
 		const nextLine = lines[i + 1];
 
@@ -180,9 +233,10 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 			const fields = header?.fields ?? {};
 			const first = !headerSeen && line.depth === 0;
 			headerSeen = true;
+			const outer = first ? options.subjectKind : undefined;
 			const forwarded =
-				(fields.subject !== undefined && isForwardSubject(fields.subject)) ||
-				(first && options.forwardedSubject === true);
+				outer === 'forward' ||
+				(outer !== 'reply' && fields.subject !== undefined && isForwardSubject(fields.subject));
 			const kind = forwarded ? 'forwarded' : 'quoted';
 			const after = header && (isHeader || line.hint === 'outlookHeader') ? header.end : i + 1;
 			const { region } = startRegion(i, after, kind, originOf(fields));
@@ -217,20 +271,8 @@ export function classifyLines(lines: SourceLine[], options: ClassifyOptions = {}
 			ctx.set(line.depth, region);
 		}
 		if (region.kind === 'fresh') {
-			const prev = lines[i - 1];
-			const after = lines[i + 1];
-			if (
-				prev &&
-				after &&
-				prev.text !== '' &&
-				prev.depth > line.depth &&
-				after.depth === prev.depth &&
-				after.text !== '' &&
-				/^\p{Ll}/u.test(text) &&
-				!/[.?!:;]$/.test(prev.text.trim())
-			) {
-				reasons.add('ambiguous_inline_reply');
-			}
+			if (sandwiched[i]) reasons.add('ambiguous_inline_reply');
+			if (line.container) reasons.add('unmarked_text_in_quote_container');
 			if (hasEmbeddedAttribution(text)) reasons.add('embedded_attribution');
 		}
 		regionOf[i] = region;
@@ -265,9 +307,18 @@ function splitFreshTails(
 		const breaks = run.map((i, k) => k === 0 || i !== (run[k - 1] as number) + 1);
 		const tail = splitFreshTail(texts, breaks);
 		if (tail.byClosing) penalty += 0.05;
-		if (tail.signature < tail.disclaimer) {
+		if (tail.signature < tail.signatureEnd) {
 			const signature = open('signature');
-			for (let k = tail.signature; k < tail.disclaimer; k++) regionOf[run[k] as number] = signature;
+			for (let k = tail.signature; k < tail.signatureEnd; k++) {
+				regionOf[run[k] as number] = signature;
+			}
+		}
+		if (tail.signatureEnd < tail.disclaimer && tail.signature < tail.signatureEnd) {
+			// A postscript after the signature is message text again.
+			const postscript = open('fresh');
+			for (let k = tail.signatureEnd; k < tail.disclaimer; k++) {
+				regionOf[run[k] as number] = postscript;
+			}
 		}
 		if (tail.disclaimer < run.length) {
 			const disclaimer = open('disclaimer');
@@ -278,20 +329,24 @@ function splitFreshTails(
 }
 
 /**
- * Where a fresh run's signature and disclaimer start (indices into `texts`, the
- * run's non-blank lines; `texts.length` when there is none). `breaks[k]` says a
- * new paragraph starts at line `k`. Conservative:
+ * Where a fresh run's signature and disclaimer lie (indices into `texts`, the
+ * run's non-blank lines). The signature is `[signature, signatureEnd)`; lines
+ * from `signatureEnd` to `disclaimer` are a postscript and stay fresh; the
+ * disclaimer runs from `disclaimer` to the end. `breaks[k]` says a new
+ * paragraph starts at line `k`. Conservative:
  *   - confidentiality notices count from the end, a whole paragraph at a time,
  *     and never the first paragraph;
  *   - a signature starts at the `-- ` delimiter, at a trailing "Sent from my
  *     phone" line, or at a closing ("Best regards,") that is not the first line
- *     and is followed only by a short name block;
+ *     and is followed only by a name block: names, companies, roles, contact
+ *     and address lines (`isNameBlockLine`), never a request or a question;
+ *   - a postscript (`P.S.`) after the signature ends it;
  *   - company legal lines at the end of a signature join the disclaimer.
  */
 function splitFreshTail(
 	texts: string[],
 	breaks: boolean[]
-): { signature: number; disclaimer: number; byClosing: boolean } {
+): { signature: number; signatureEnd: number; disclaimer: number; byClosing: boolean } {
 	let disclaimer = texts.length;
 	for (;;) {
 		let start = disclaimer - 1;
@@ -301,27 +356,36 @@ function splitFreshTail(
 		disclaimer = start;
 	}
 
-	let signature = texts.length;
-	let byClosing = false;
-	const delimiter = texts.findIndex((t, k) => k < disclaimer && isSignatureDelimiter(t));
-	if (delimiter >= 0) {
-		signature = delimiter;
-	} else if (disclaimer > 1 && isMobileSignature(texts[disclaimer - 1] as string)) {
-		signature = disclaimer - 1;
-	} else {
-		for (let c = disclaimer - 2; c >= 1 && c >= disclaimer - 9; c--) {
+	/** The signature start within `[0, end)`, or -1. */
+	const signatureIn = (end: number): { at: number; byClosing: boolean } => {
+		const delimiter = texts.findIndex((t, k) => k < end && isSignatureDelimiter(t));
+		if (delimiter >= 0) return { at: delimiter, byClosing: false };
+		if (end > 1 && isMobileSignature(texts[end - 1] as string)) {
+			return { at: end - 1, byClosing: false };
+		}
+		for (let c = end - 2; c >= 1 && c >= end - 9; c--) {
 			if (!isClosingLine(texts[c] as string)) continue;
-			if (texts.slice(c + 1, disclaimer).every(isNameBlockLine)) {
-				signature = c;
-				byClosing = true;
-			}
+			if (texts.slice(c + 1, end).every(isNameBlockLine)) return { at: c, byClosing: true };
 			break;
 		}
+		return { at: -1, byClosing: false };
+	};
+
+	const postscript = texts.findIndex((t, k) => k > 0 && k < disclaimer && isPostscriptLine(t));
+	let found = postscript > 0 ? signatureIn(postscript) : { at: -1, byClosing: false };
+	let signatureEnd = postscript;
+	if (found.at < 0) {
+		found = signatureIn(disclaimer);
+		signatureEnd = disclaimer;
 	}
-	if (signature < disclaimer) {
-		while (disclaimer > signature + 1 && isLegalFooterLine(texts[disclaimer - 1] as string)) {
+	if (found.at < 0) {
+		return { signature: disclaimer, signatureEnd: disclaimer, disclaimer, byClosing: false };
+	}
+	if (signatureEnd === disclaimer) {
+		while (disclaimer > found.at + 1 && isLegalFooterLine(texts[disclaimer - 1] as string)) {
 			disclaimer--;
 		}
+		signatureEnd = disclaimer;
 	}
-	return { signature: Math.min(signature, disclaimer), disclaimer, byClosing };
+	return { signature: found.at, signatureEnd, disclaimer, byClosing: found.byClosing };
 }

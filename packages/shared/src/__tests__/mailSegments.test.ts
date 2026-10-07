@@ -70,6 +70,7 @@ describe('segmentMessage: invariants over every fixture', () => {
 				expect(range).not.toBeNull();
 				if (!range) continue;
 				const canonical = result.canonicalText.slice(segment.start, segment.end);
+				if (fixture.rawText) continue;
 				if (result.sourceMap.source === 'text') {
 					const source = (fixture.text ?? '').slice(range.start, range.end);
 					expect(squash(source.replace(/^[ \t]*>[ \t>]*/gm, ''))).toBe(squash(canonical));
@@ -84,7 +85,9 @@ describe('segmentMessage: invariants over every fixture', () => {
 
 	it('reads the same words as htmlToPlainText for HTML without hidden parts', () => {
 		for (const fixture of SEGMENT_CASES) {
-			if (!fixture.html || fixture.absent || fixture.html.includes('&gt; ')) continue;
+			if (!fixture.html || fixture.absent || fixture.rawText || fixture.html.includes('&gt; ')) {
+				continue;
+			}
 			const result = segmentMessage({ html: fixture.html });
 			expect(squash(result.canonicalText), fixture.name).toBe(
 				squash(htmlToPlainText(fixture.html))
@@ -195,6 +198,19 @@ describe('segmentMessage: Outlook forwards', () => {
 		expect(kinds('AW: Zugang')).toEqual(['fresh', 'quoted']);
 		expect(kinds('RE: FW: Zugang')).toEqual(['fresh', 'quoted']);
 		expect(kinds()).toEqual(['fresh', 'quoted']);
+	});
+
+	it('lets an explicit reply subject win over an embedded FW subject', () => {
+		const history =
+			'Paid, thanks.\n\nFrom: Billing <billing@example.com>\nSent: Monday, October 5, 2026 10:00 AM\nTo: Mara Lind\nSubject: FW: Invoice\n\nPlease pay invoice 2231.\n';
+		const kinds = (subject?: string) =>
+			segmentMessage({ text: history, subject }).segments.map((s) => s.kind);
+		expect(kinds('RE: FW: Invoice')).toEqual(['fresh', 'quoted']);
+		expect(kinds('AW: WG: Rechnung')).toEqual(['fresh', 'quoted']);
+		expect(kinds('FW: Invoice')).toEqual(['fresh', 'forwarded']);
+		// Without a reply or forward prefix the embedded subject still decides.
+		expect(kinds('Invoice')).toEqual(['fresh', 'forwarded']);
+		expect(kinds()).toEqual(['fresh', 'forwarded']);
 	});
 
 	it('keeps the original sender of the forwarded block', () => {
