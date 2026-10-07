@@ -6,6 +6,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { Id } from '../../_generated/dataModel';
+import { firstDifference } from '../../__tests__/helpers/bytes';
 import { openBytesAtRest, sealBytesAtRest } from '../atRestBodies';
 import { readSealedBlobBytesStreaming } from '../sealedBlobStream';
 import { readSealedBlobBytes } from '../sealedBlob';
@@ -18,21 +19,6 @@ function storage(bytes: Uint8Array | null) {
 }
 
 const sample = (size: number) => Uint8Array.from({ length: size }, (_, i) => (i * 31 + 7) & 0xff);
-
-/**
- * The index of the first byte where `a` and `b` differ (the shorter length
- * when one is a prefix of the other), or -1 when they are the same bytes.
- * `toEqual` walks a typed array element by element through its generic deep
- * equality, about 3 µs a byte under coverage, so four 1 MB comparisons outran
- * the 10 s test timeout on CI; `Buffer.equals` compares them natively.
- */
-function firstDifference(a: Uint8Array, b: Uint8Array): number {
-	const view = (bytes: Uint8Array) => Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-	if (view(a).equals(view(b))) return -1;
-	const shorter = Math.min(a.length, b.length);
-	for (let i = 0; i < shorter; i++) if (a[i] !== b[i]) return i;
-	return shorter;
-}
 
 describe('readSealedBlobBytesStreaming', () => {
 	it('unseals a sealed blob to the bytes openBytesAtRest gives, across chunk sizes', async () => {
