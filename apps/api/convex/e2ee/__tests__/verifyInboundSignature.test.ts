@@ -22,6 +22,8 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import * as openpgp from 'openpgp';
+import { parseBody } from '@owlat/mail-message/parse/body';
+import { extractClearsignedText } from '@owlat/shared/secureMessage';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { discoverKeyForAddress } from '../discovery';
@@ -466,6 +468,66 @@ describe('the verified block is the one the reader displays (#1300)', () => {
 			[BODY, 'Mailing list footer, added in transit.'],
 		]);
 		expect(await runVerify(t, raw)).toEqual(VERIFIED_PINNED(sender.fingerprint));
+	});
+
+	/** A base64 body part (so any octets survive) under `charset`. */
+	const base64Part = (charset: string, bytes: Buffer): [string[], string] => [
+		[`Content-Type: text/plain; charset=${charset}`, 'Content-Transfer-Encoding: base64'],
+		(bytes.toString('base64').match(/.{1,76}/g) ?? []).join('\r\n'),
+	];
+	/** The signed text the reader shows: its own body assembly and extractor. */
+	const readerShows = (raw: string) => extractClearsignedText(parseBody(raw).text ?? '');
+	const MALFORMED = {
+		isSigned: true,
+		info: {
+			isSigned: true,
+			isSignatureValid: false,
+			keySource: 'pinned',
+			failure: 'malformed_signature',
+		},
+	};
+
+	it('an altered UTF-16 block shown above the valid ASCII one does not verify', async () => {
+		const { t, sender } = await pinned();
+		const signed = await clearsign(`Pay ${CANARY} 10 EUR.`, sender.privateKeyArmored);
+		const altered = signed.replace('10 EUR', '9000 EUR');
+		const raw = mixed([
+			base64Part('utf-16le', Buffer.from(crlf(altered), 'utf16le')),
+			base64Part('us-ascii', Buffer.from(crlf(signed), 'latin1')),
+		]);
+		// What the reader displays is the altered block.
+		expect(readerShows(raw)).toBe(`Pay ${CANARY} 9000 EUR.`);
+		expect(await runVerify(t, raw, 'latin1')).toEqual(MALFORMED);
+	});
+
+	it('a valid block in a UTF-16 part does not verify (not an ASCII-compatible charset)', async () => {
+		const { t, sender } = await pinned();
+		const signed = await clearsign(`Clear ${CANARY} text.`, sender.privateKeyArmored);
+		const raw = mixed([base64Part('utf-16le', Buffer.from(crlf(signed), 'utf16le'))]);
+		expect(readerShows(raw)).toBe(`Clear ${CANARY} text.`);
+		expect(await runVerify(t, raw, 'latin1')).toEqual(MALFORMED);
+	});
+
+	it('two valid blocks in one body do not verify', async () => {
+		const { t, sender } = await pinned();
+		const first = await clearsign(`First ${CANARY}.`, sender.privateKeyArmored);
+		const second = await clearsign(`Second ${CANARY}.`, sender.privateKeyArmored);
+		const raw = mixed([[BODY, crlf(`${first}\n\n${second}`)]]);
+		expect(await runVerify(t, raw)).toEqual(MALFORMED);
+	});
+
+	it('a single ISO-8859-1 block verifies, and the reader shows the text that was signed', async () => {
+		const { t, sender } = await pinned();
+		const armor = await clearsignOctets(
+			new Uint8Array(Buffer.from(`Grüße aus Köln, ${CANARY}.`, 'latin1')),
+			sender.privateKeyArmored
+		);
+		const raw = mixed([
+			[BODY, 'Unsigned preamble part.'],
+			base64Part('iso-8859-1', Buffer.from(crlf(armor), 'latin1')),
+		]);
+		expect(readerShows(raw)).toBe(`Grüße aus Köln, ${CANARY}.`);
+		expect(await runVerify(t, raw, 'latin1')).toEqual(VERIFIED_PINNED(sender.fingerprint));
 	});
 
 	it('a bare body (the AI-inbox mirror) still verifies as a whole', async () => {

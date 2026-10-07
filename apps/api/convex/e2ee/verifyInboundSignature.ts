@@ -30,10 +30,11 @@ import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { extractRfc3156SignedPart } from '@owlat/mail-canon';
 import {
+	clearsignedBareBody,
 	clearsignedBody,
 	extractClearsignedBlock,
-	isClearsignedText,
 	isSignedPgpMime,
+	type ClearsignedBody,
 } from '@owlat/shared/secureMessage';
 import { binaryStringToBytes, bytesToBinaryString } from '@owlat/shared/mailMime';
 import { resolveSenderVerificationKey } from './senderKey';
@@ -95,9 +96,9 @@ export async function verifyDetachedSignature(
 
 /**
  * Verify an inline CLEARSIGNED body (RFC 4880 §7) against a public key. `body`
- * is the text the armor block sits in as a BINARY string, one char per byte
- * ({@link clearsignedBody}), so the signed octets are hashed as sent whatever
- * their charset. Never throws.
+ * is the transmitted octets of the armor block as a BINARY string, one char
+ * per byte (`ClearsignedBody.octets`), so the signed octets are hashed as sent
+ * whatever their charset. Never throws.
  *
  * openpgp.js reads the armor (dash-unescaping, the `Hash:` header check) but
  * hashes a cleartext message's text as UTF-8, which only matches a UTF-8 body.
@@ -209,23 +210,25 @@ export const forInbound = internalAction({
 });
 
 /**
- * The text a clearsigned message's block is verified in: the whole of a bare
- * body, or the displayed body part of a raw message ({@link clearsignedBody}).
+ * The clearsigned block the reader shows, bound to its octets: from the
+ * displayed body of a raw message ({@link clearsignedBody}), or from a bare
+ * body, whose bytes are its UTF-8 text.
  */
-function clearsignedRegion(raw: string, bareBody: boolean): string | null {
-	if (bareBody) return isClearsignedText(raw) ? raw : null;
-	return clearsignedBody(raw);
+function clearsignedRegion(raw: string, bareBody: boolean): ClearsignedBody | null {
+	if (!bareBody) return clearsignedBody(raw);
+	return clearsignedBareBody(new TextDecoder().decode(binaryStringToBytes(raw)));
 }
 
 /**
  * The verification core: resolve the key, verify, build the honest record.
- * `clearsigned` is the clearsigned body ({@link clearsignedBody}), or null for
- * RFC 3156 `multipart/signed`.
+ * `clearsigned` is the displayed clearsigned block ({@link clearsignedRegion}),
+ * or null for RFC 3156 `multipart/signed`. A block no octets can be tied to is
+ * recorded as a malformed signature: shown as signed, never as verified.
  */
 async function verify(
 	ctx: ActionCtx,
 	rawBytes: Buffer,
-	clearsigned: string | null,
+	clearsigned: ClearsignedBody | null,
 	from: string
 ): Promise<InboundSignatureInfo> {
 	// WKD-first: an arbitrary PGP sender is rarely an Owlat instance, so the
@@ -250,8 +253,10 @@ async function verify(
 					resolved.publicKeyArmored
 				)
 			: { verified: false, malformed: true };
+	} else if (clearsigned.verifiable) {
+		attempt = await verifyClearsignedBody(clearsigned.octets, resolved.publicKeyArmored);
 	} else {
-		attempt = await verifyClearsignedBody(clearsigned, resolved.publicKeyArmored);
+		attempt = { verified: false, malformed: true };
 	}
 
 	if (attempt.verified) {

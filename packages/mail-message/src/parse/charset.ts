@@ -128,7 +128,18 @@ function sniffBom(bytes: Uint8Array): { label: string; skip: number } | undefine
  * latin1 decode, malformed bytes to U+FFFD.
  */
 export function decodeCharset(bytes: Uint8Array, charset: string | undefined): string {
-	const bom = sniffBom(bytes);
-	if (bom) return decodeWithLabel(bom.label, bytes.subarray(bom.skip));
-	return decodeWithLabel(normalizeCharset(charset), bytes);
+	const decoder = charsetDecoderFor(bytes, charset);
+	return decodeWithLabel(decoder.label, bytes.subarray(decoder.skip));
+}
+
+/**
+ * The decoder {@link decodeCharset} reads `bytes` with, and how many leading
+ * BOM bytes it drops first: a BOM's encoding, else the normalized `charset`.
+ * For a reader that must know which encoding produced the text it shows.
+ */
+export function charsetDecoderFor(
+	bytes: Uint8Array,
+	charset: string | undefined
+): { label: string; skip: number } {
+	return sniffBom(bytes) ?? { label: normalizeCharset(charset), skip: 0 };
 }
