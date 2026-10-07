@@ -166,7 +166,8 @@ export function decodeDeclaredCharset(bytes: Uint8Array, charset: string | undef
 	const utf16 = DECLARED_UTF16[label];
 	if (utf16 === 'bom-or-be') {
 		const bom = sniffBom(bytes);
-		if (bom && bom.label !== 'utf-8') return decodeWithLabel(bom.label, bytes.subarray(bom.skip));
+		// The BOM picks the order; the decoder for that order strips it, once.
+		if (bom && bom.label !== 'utf-8') return decodeWithLabel(bom.label, bytes);
 		return decodeWithLabel('utf-16be', bytes);
 	}
 	// The WHATWG decoder strips a BOM of its own encoding and of no other.

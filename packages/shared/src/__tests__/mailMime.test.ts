@@ -182,10 +182,13 @@ describe('decodePartText on UTF-16 invites, end to end (#1299)', () => {
 	].join('\r\n');
 	/** UTF-16 code units of `text`, big- or little-endian, written out by hand. */
 	function utf16(text: string, order: 'be' | 'le'): number[] {
-		return [...text].flatMap((c) => {
-			const unit = c.charCodeAt(0);
-			return order === 'be' ? [unit >> 8, unit & 0xff] : [unit & 0xff, unit >> 8];
-		});
+		const bytes: number[] = [];
+		// Every code unit, so a surrogate pair contributes both halves.
+		for (let i = 0; i < text.length; i++) {
+			const unit = text.charCodeAt(i);
+			bytes.push(...(order === 'be' ? [unit >> 8, unit & 0xff] : [unit & 0xff, unit >> 8]));
+		}
+		return bytes;
 	}
 	/** A base64 inline invite under `contentType`, so every octet survives. */
 	function invite(contentType: string, body: number[]): string {
@@ -208,6 +211,18 @@ describe('decodePartText on UTF-16 invites, end to end (#1299)', () => {
 		expect(found).toHaveLength(1);
 		expect(found[0]!.summary).toBe('Besprechung über Q4');
 	});
+
+	it.each(['be', 'le'] as const)(
+		'a utf-16 invite with an emoji (a surrogate pair), %s with its BOM, has its event',
+		(order) => {
+			const bom = order === 'be' ? [0xfe, 0xff] : [0xff, 0xfe];
+			const ics = ICS.replace('über Q4', 'über Q4 😀');
+			expect(utf16('😀', 'le')).toEqual([0x3d, 0xd8, 0x00, 0xde]);
+			const found = events(invite('text/calendar; charset=utf-16', [...bom, ...utf16(ics, order)]));
+			expect(found).toHaveLength(1);
+			expect(found[0]!.summary).toBe('Besprechung über Q4 😀');
+		}
+	);
 
 	it('a utf-16le invite behind a big-endian BOM stays little-endian and has its event', () => {
 		const found = events(

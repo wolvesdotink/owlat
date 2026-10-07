@@ -139,6 +139,18 @@ describe('decodeDeclaredCharset', () => {
 		expect(decodeDeclaredCharset(b(0xfe, 0xff, 0x00, 0x41), 'utf-16be')).toBe('A');
 	});
 
+	it('a BOM is stripped once: a second U+FEFF is text (ZERO WIDTH NO-BREAK SPACE)', () => {
+		const be = b(0xfe, 0xff, 0xfe, 0xff, 0x00, 0x41);
+		const le = b(0xff, 0xfe, 0xff, 0xfe, 0x41, 0x00);
+		expect(decodeDeclaredCharset(be, 'utf-16')).toBe('\uFEFFA');
+		expect(decodeDeclaredCharset(le, 'utf-16')).toBe('\uFEFFA');
+		expect(decodeDeclaredCharset(be, 'utf-16be')).toBe('\uFEFFA');
+		expect(decodeDeclaredCharset(le, 'utf-16le')).toBe('\uFEFFA');
+		// Under the other explicit order both marks are U+FFFE data.
+		expect(decodeDeclaredCharset(be, 'utf-16le')).toBe('\uFFFE\uFFFE䄀');
+		expect(decodeDeclaredCharset(le, 'utf-16be')).toBe('\uFFFE\uFFFE䄀');
+	});
+
 	it('a label that only starts with utf-16 takes the byte-preserving fallback', () => {
 		expect(decodeDeclaredCharset(b(0xff, 0xfe, 0x41, 0x00), 'utf-16-unknown')).toBe('ÿþA\u0000');
 		expect(decodeDeclaredCharset(b(0x41, 0x42), 'utf-16x')).toBe('AB');
