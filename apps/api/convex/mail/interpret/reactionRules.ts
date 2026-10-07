@@ -20,8 +20,11 @@
  *   - confirmProposal: `verify: proposal` → `passed`, correction `confirmed`.
  *     An unconfirmed claim's held changes to a tracked item
  *     (`pendingUpdate`: quotes, deadline, amount, options) are applied and
- *     cleared, on a proposal item or on a tracked one ("Check this change");
- *     confirming only a held change records no correction.
+ *     cleared, on a proposal item or on a tracked one ("Check this change").
+ *     Both record the `confirmed` correction, which an ordered replay keeps.
+ *     Undoing a confirmation puts the item back to "Check this" (`verify:
+ *     proposal`); the correction does not say whether it confirmed a
+ *     proposal or only a held change.
  *     The item is tracked from now on; its status does not change.
  *   - undo reverses the item's standing correction and clears it, so the item
  *     is as it was before the statement and the model may move it again:
@@ -174,9 +177,12 @@ export function planReaction(
 				};
 			}
 			if (!item.pendingUpdate) return refuse('This item is not waiting to be confirmed');
+			// The `confirmed` correction is what an ordered replay keeps
+			// (`replay.preserveHumanState`): the confirmed deadline, amount and
+			// options survive a rebuild of the thread.
 			return {
 				ok: true,
-				patch: held,
+				patch: { ...held, correction: correction('confirmed') },
 				clears: ['pendingUpdate'],
 				activity: 'proposal_confirmed',
 			};

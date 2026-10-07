@@ -528,7 +528,7 @@ describe('planReaction', () => {
 		contentRevision: 'r1',
 	});
 
-	it('applies a held update to a tracked item and clears it, with no correction', () => {
+	it('applies a held update to a tracked item, clears it and records the confirmation', () => {
 		const plan = planReaction(
 			{
 				...open,
@@ -547,7 +547,8 @@ describe('planReaction', () => {
 			clears: ['pendingUpdate'],
 			activity: 'proposal_confirmed',
 		});
-		expect(plan.ok && 'correction' in plan.patch).toBe(false);
+		// The correction is what an ordered replay preserves.
+		expect(plan).toMatchObject({ patch: { correction: { kind: 'confirmed', by: 'u' } } });
 	});
 
 	it('confirms a proposal item together with its held update', () => {
