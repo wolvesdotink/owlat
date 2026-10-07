@@ -130,6 +130,18 @@ describe('interpretOutputSchema', () => {
 		expect(interpretOutputSchema.safeParse(tooManyQuotes).success).toBe(false);
 	});
 
+	it('carries consequence tags, and still parses a payload without them', () => {
+		const disclosure = {
+			...actionsPayload,
+			items: [{ ...item, facets: ['information'], consequences: ['disclosure'] }],
+		};
+		const parsed = interpretOutputSchema.parse(disclosure);
+		expect(parsed.items[0]?.consequences).toEqual(['disclosure']);
+		expect(interpretOutputSchema.parse(actionsPayload).items[0]?.consequences).toBeUndefined();
+		const unknown = { ...actionsPayload, items: [{ ...item, consequences: ['refund'] }] };
+		expect(interpretOutputSchema.safeParse(unknown).success).toBe(false);
+	});
+
 	it('rejects values outside the shared vocabulary', () => {
 		const badFacet = { ...actionsPayload, items: [{ ...item, facets: ['refund'] }] };
 		const badIntent = { ...actionsPayload, replyIntent: 'maybe' };

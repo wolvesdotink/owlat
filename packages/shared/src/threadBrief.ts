@@ -78,6 +78,24 @@ export type ItemDisposition = (typeof ITEM_DISPOSITIONS)[number];
 export const ITEM_COMPLETIONS = ['recorded', 'asserted', 'reported'] as const;
 export type ItemCompletion = (typeof ITEM_COMPLETIONS)[number];
 
+/**
+ * What makes an item consequential enough for the verifier (SPEC §4 verify):
+ * money, a signature, access, disclosing information, a promise, a concession
+ * (price, deadline, terms) or a cancellation. The model tags each item; an
+ * item whose tags are missing counts as consequential.
+ */
+export const ITEM_CONSEQUENCE_KINDS = [
+	'payment',
+	'signature',
+	'access',
+	'disclosure',
+	'promise',
+	'concession',
+	'cancellation',
+] as const;
+/** @public Contract type for the thread brief lanes. */
+export type ItemConsequenceKind = (typeof ITEM_CONSEQUENCE_KINDS)[number];
+
 /** Verifier outcome: `proposal` items show as "Check this" and are not tracked until confirmed. */
 export const ITEM_VERIFY_STATES = ['passed', 'proposal', 'na'] as const;
 /** @public Contract type for the thread brief lanes. */
@@ -139,14 +157,16 @@ export interface FactKey {
 }
 
 /**
- * The stored, indexable form of a {@link FactKey}: each part trimmed, lowercased
- * and whitespace-collapsed, joined with `|`. Two proposals naming the same
- * entity/attribute/context get the same string.
+ * The stored, indexable form of a {@link FactKey}: each part NFKC-normalized,
+ * trimmed, lowercased and whitespace-collapsed, serialized as a JSON array
+ * `["entity","attribute","context"]`. Two proposals naming the same
+ * entity/attribute/context get the same string, and distinct tuples never
+ * collide (no separator character can be smuggled in through a part).
  */
 export function factKeyString(key: FactKey): string {
 	const part = (value: string | null | undefined) =>
-		(value ?? '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\|/g, '/');
-	return `${part(key.entity)}|${part(key.attribute)}|${part(key.context)}`;
+		(value ?? '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+	return JSON.stringify([part(key.entity), part(key.attribute), part(key.context)]);
 }
 
 // ── Activity ───────────────────────────────────────────────────────────────

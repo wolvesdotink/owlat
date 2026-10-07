@@ -25,6 +25,7 @@ import {
 	INTERPRETATION_SKIP_REASONS,
 	INTERPRETATION_STATUSES,
 	ITEM_COMPLETIONS,
+	ITEM_CONSEQUENCE_KINDS,
 	ITEM_CORRECTION_KINDS,
 	ITEM_DISPOSITIONS,
 	ITEM_FACETS,
@@ -52,6 +53,7 @@ export const itemResponsibilityValidator = literalUnion(ITEM_RESPONSIBILITIES);
 export const itemStatusValidator = literalUnion(ITEM_STATUSES);
 export const itemDispositionValidator = literalUnion(ITEM_DISPOSITIONS);
 export const itemCompletionValidator = literalUnion(ITEM_COMPLETIONS);
+export const itemConsequenceKindValidator = literalUnion(ITEM_CONSEQUENCE_KINDS);
 export const itemVerifyValidator = literalUnion(ITEM_VERIFY_STATES);
 export const itemCorrectionKindValidator = literalUnion(ITEM_CORRECTION_KINDS);
 export const itemStateKeyValidator = literalUnion(ITEM_STATE_KEYS);

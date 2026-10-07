@@ -4,6 +4,7 @@ import {
 	ACTIVITY_TYPES,
 	defaultActivityVisibility,
 	factKeyString,
+	ITEM_CONSEQUENCE_KINDS,
 	ITEM_DISPOSITIONS,
 	ITEM_REACTIONS,
 	ITEM_STATE_KEYS,
@@ -159,25 +160,56 @@ describe('compareForYou', () => {
 });
 
 describe('isConsequential', () => {
+	const none = { consequences: [] as const };
+
 	it('flags money, signature, access, promises, amounts and deadlines', () => {
-		expect(isConsequential({ intent: 'request', facets: ['payment'] })).toBe(true);
-		expect(isConsequential({ intent: 'request', facets: ['signature'] })).toBe(true);
-		expect(isConsequential({ intent: 'request', facets: ['access'] })).toBe(true);
-		expect(isConsequential({ intent: 'promise', facets: [] })).toBe(true);
+		expect(isConsequential({ intent: 'request', facets: ['payment'], ...none })).toBe(true);
+		expect(isConsequential({ intent: 'request', facets: ['signature'], ...none })).toBe(true);
+		expect(isConsequential({ intent: 'request', facets: ['access'], ...none })).toBe(true);
+		expect(isConsequential({ intent: 'promise', facets: [], ...none })).toBe(true);
 		expect(
-			isConsequential({ intent: 'decision', facets: [], amount: { value: 5, currency: 'EUR' } })
+			isConsequential({
+				intent: 'decision',
+				facets: [],
+				amount: { value: 5, currency: 'EUR' },
+				...none,
+			})
 		).toBe(true);
-		expect(isConsequential({ intent: 'request', facets: [], due: { phrase: 'by Friday' } })).toBe(
-			true
-		);
+		expect(
+			isConsequential({ intent: 'request', facets: [], due: { phrase: 'by Friday' }, ...none })
+		).toBe(true);
 	});
 
-	it('leaves plain questions and file or meeting requests alone', () => {
-		expect(isConsequential({ intent: 'question', facets: ['information'] })).toBe(false);
-		expect(isConsequential({ intent: 'request', facets: ['file', 'meeting'] })).toBe(false);
-		expect(isConsequential({ intent: 'request', facets: [], amount: null, due: undefined })).toBe(
+	it('flags disclosure, concession and cancellation claims without amount or deadline', () => {
+		// "Send me your passport number": a disclosure request tagged only `information`.
+		expect(
+			isConsequential({ intent: 'request', facets: ['information'], consequences: ['disclosure'] })
+		).toBe(true);
+		// "Shall we cancel the contract?": a cancellation decision, no amount, no deadline.
+		expect(
+			isConsequential({ intent: 'decision', facets: [], consequences: ['cancellation'] })
+		).toBe(true);
+		expect(isConsequential({ intent: 'request', facets: [], consequences: ['concession'] })).toBe(
+			true
+		);
+		for (const kind of ITEM_CONSEQUENCE_KINDS) {
+			expect(isConsequential({ intent: 'question', facets: [], consequences: [kind] })).toBe(true);
+		}
+	});
+
+	it('treats missing consequence tags as consequential', () => {
+		expect(isConsequential({ intent: 'question', facets: ['information'] })).toBe(true);
+		expect(isConsequential({ intent: 'question', facets: [], consequences: null })).toBe(true);
+	});
+
+	it('leaves plain questions and file or meeting requests alone when tagged as nothing', () => {
+		expect(isConsequential({ intent: 'question', facets: ['information'], ...none })).toBe(false);
+		expect(isConsequential({ intent: 'request', facets: ['file', 'meeting'], ...none })).toBe(
 			false
 		);
+		expect(
+			isConsequential({ intent: 'request', facets: [], amount: null, due: undefined, ...none })
+		).toBe(false);
 	});
 });
 
@@ -227,14 +259,27 @@ describe('isLegalDispositionEdge', () => {
 });
 
 describe('factKeyString', () => {
-	it('normalizes case, whitespace and the separator', () => {
+	it('normalizes case and whitespace', () => {
 		expect(factKeyString({ entity: ' Launch  Date ', attribute: 'Value' })).toBe(
-			'launch date|value|'
+			'["launch date","value",""]'
 		);
-		expect(factKeyString({ entity: 'a|b', attribute: 'c', context: 'D' })).toBe('a/b|c|d');
 		expect(factKeyString({ entity: 'x', attribute: 'y', context: null })).toBe(
 			factKeyString({ entity: 'X', attribute: 'Y' })
 		);
+	});
+
+	it('never lets two distinct tuples collide', () => {
+		const keys = [
+			{ entity: 'a|b', attribute: 'c' },
+			{ entity: 'a/b', attribute: 'c' },
+			{ entity: 'a', attribute: 'b|c' },
+			{ entity: 'a', attribute: 'b', context: 'c' },
+			{ entity: 'a","b', attribute: 'c' },
+			{ entity: 'a', attribute: '","b', context: 'c' },
+		];
+		const strings = keys.map(factKeyString);
+		expect(new Set(strings).size).toBe(keys.length);
+		for (const s of strings) expect(JSON.parse(s)).toHaveLength(3);
 	});
 });
 
