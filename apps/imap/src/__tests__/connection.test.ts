@@ -492,7 +492,7 @@ describe('ImapConnection — LIST after LOGIN', () => {
 		mocks.convex.query.mockResolvedValue([
 			{ id: 'f1', name: 'INBOX', role: 'inbox', uidNext: 1, totalCount: 0 },
 		]);
-		await exec(mocks.socket, 'a001 LIST "" "*"');
+		await execMulti(mocks.socket, 'a001 LIST "" "*"');
 		expect(mocks.convex.query).toHaveBeenCalledWith(
 			expect.anything(),
 			expect.objectContaining({ mailboxId: 'mb1' })
@@ -501,14 +501,18 @@ describe('ImapConnection — LIST after LOGIN', () => {
 		expect(tagged).toMatch(/^a001 OK LIST completed$/);
 	});
 
-	it('LSUB is handled identically to LIST (subscribed = all)', async () => {
+	it('LSUB lists the subscribed folders only', async () => {
 		const mocks = makeMocks();
 		await login(mocks);
 		mocks.convex.query.mockResolvedValue([
-			{ id: 'f1', name: 'INBOX', role: 'inbox', uidNext: 1, totalCount: 0 },
+			{ _id: 'f1', name: 'INBOX', role: 'inbox', subscribed: true },
+			{ _id: 'f2', name: 'Hidden', subscribed: false },
 		]);
-		await exec(mocks.socket, 'a001 LSUB "" "*"');
-		expect(mocks.socket.lines().pop()).toBe('a001 OK LSUB completed');
+		await execMulti(mocks.socket, 'a001 LSUB "" "*"');
+		expect(mocks.socket.lines()).toEqual([
+			'* LSUB (\\HasNoChildren) "/" "INBOX"',
+			'a001 OK LSUB completed',
+		]);
 	});
 });
 

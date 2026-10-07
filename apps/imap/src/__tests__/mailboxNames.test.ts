@@ -7,62 +7,24 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getFunctionName } from 'convex/server';
-import { EventEmitter } from 'events';
-import type { Socket } from 'net';
-import type { ImapFlow } from 'imapflow';
-import { compiler, parser } from 'imapflow/lib/handler/imap-handler.js';
-import { decodePath, encodePath } from 'imapflow/lib/tools.js';
-import { ImapConnection } from '../connection.js';
-import type { ImapConfig } from '../config.js';
+import { parser } from 'imapflow/lib/handler/imap-handler.js';
+import { decodePath } from 'imapflow/lib/tools.js';
 import type { ConvexClient, FolderRow } from '../convex.js';
-import { AuthRateLimiter } from '../rateLimit.js';
 import { resolveFolderByName } from '../commands/helpers/folders.js';
-
-// convex/server declares this type but does not export it.
-type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
+import {
+	REV1,
+	exchange,
+	imapflowSelect,
+	listedNames,
+	loggedIn as loggedInWith,
+	selectedIds,
+	targetIds,
+	withCounters,
+} from './imapWire.js';
 
 vi.mock('../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-
-/** An IMAP4rev1 session without UTF8=ACCEPT, as ImapFlow sees this server. */
-const REV1 = { enabled: new Set(), capabilities: new Set(['IMAP4rev1']) } as unknown as ImapFlow;
-
-class MockSocket extends EventEmitter {
-	readonly written: string[] = [];
-
-	write(data: string | Buffer): boolean {
-		this.written.push(data.toString());
-		return true;
-	}
-
-	end(): void {}
-	pause(): this {
-		return this;
-	}
-	resume(): this {
-		return this;
-	}
-
-	text(): string {
-		return this.written.join('');
-	}
-}
-
-const config: ImapConfig = {
-	port: 993,
-	listenAddress: '0.0.0.0',
-	tls: null,
-	greetingHost: 'imap.test',
-	convexUrl: 'https://example.convex.cloud',
-	convexAdminKey: 'test-admin-key',
-	redisUrl: null,
-	maxConnectionsPerIp: 20,
-	maxClients: 500,
-	idleTimeoutMs: 30 * 60 * 1000,
-	authRateLimit: { failuresPerWindow: 5, windowMs: 60_000, tarpitMs: 900_000 },
-};
 
 /**
  * The issue's names, a few more that need encoding, and one with a line
@@ -88,123 +50,18 @@ const NAMES = [
 
 const folderNamed = (name: string): FolderRow => FOLDERS.find((f) => f.name === name)!;
 
-const FOLDERS: FolderRow[] = [
+const FOLDERS: FolderRow[] = withCounters([
 	{ _id: 'f-inbox', name: 'INBOX', role: 'inbox', subscribed: true },
 	...NAMES.map((name, i) => ({ _id: `f-${i}`, name, subscribed: i % 2 === 0 })),
-].map((f, i) => ({
-	...f,
-	uidValidity: 100 + i,
-	uidNext: 1,
-	highestModseq: 1,
-	totalCount: 0,
-	unseenCount: i,
-}));
-
-function makeConvex() {
-	const query = vi.fn(async (ref: AnyFunctionReference, args: Record<string, unknown>) => {
-		switch (getFunctionName(ref)) {
-			case 'mail/imap/session:listFolders':
-				return FOLDERS;
-			case 'mail/imap/session:selectFolder': {
-				const folder = FOLDERS.find((f) => f._id === args['folderId']);
-				return folder ? { folder } : null;
-			}
-			// INBOX holds one message, UID 1, for COPY and MOVE to take.
-			case 'mail/imap/fetch:listFolderUidsPage':
-				return {
-					uids: args['folderId'] === 'f-inbox' && !args['afterUid'] ? [1] : [],
-					nextUid: null,
-				};
-			case 'mail/imap/fetch:resolveMessageIdsByUid':
-				return {
-					rows: args['folderId'] === 'f-inbox' ? [{ _id: 'm1', uid: 1, modseq: 1 }] : [],
-					nextUid: null,
-				};
-			default:
-				return null;
-		}
-	});
-	const mutation = vi.fn(async (ref: AnyFunctionReference) => {
-		switch (getFunctionName(ref)) {
-			case 'mail/imap/move:copyMessages':
-			case 'mail/imap/move:moveMessages':
-				return { uidValidity: 1, pairs: [{ sourceUid: 1, targetUid: 1 }] };
-			default:
-				return undefined;
-		}
-	});
-	const action = vi.fn(async () => ({ mailboxId: 'mb1', appPasswordId: 'ap1', userId: 'u1' }));
-	return { query, mutation, action };
-}
-
-function connect() {
-	const socket = new MockSocket();
-	const convex = makeConvex();
-	const connection = new ImapConnection(
-		socket as unknown as Socket,
-		config,
-		convex as unknown as ConvexClient,
-		new AuthRateLimiter(null, config.authRateLimit),
-		'10.0.0.1'
-	);
-	return { connection, socket, convex };
-}
+]);
 
 /**
- * Send one command (its raw bytes, CRLF included) and return the response
- * lines up to and including its tagged completion. A response line that held
- * a raw CR or LF would come back here as more than one line.
+ * The name LIST gives a stored one: a `/` inside a single folder's name would
+ * read as a hierarchy level, so it is sent as U+2215 (`folderTree.ts`).
  */
-async function exchange(socket: MockSocket, tag: string, command: string | Buffer) {
-	const mark = socket.text().length;
-	socket.emit('data', typeof command === 'string' ? `${command}\r\n` : command);
-	await vi.waitFor(() => expect(socket.text().slice(mark)).toMatch(new RegExp(`^${tag} `, 'm')));
-	return socket
-		.text()
-		.slice(mark)
-		.split('\r\n')
-		.filter((l) => l.length > 0);
-}
+const listedAs = (name: string): string => name.replaceAll('/', '\u2215');
 
-async function loggedIn() {
-	const conn = connect();
-	const out = await exchange(conn.socket, 'a0', 'a0 LOGIN "alice@example.com" "pw"');
-	expect(out.at(-1)).toBe('a0 OK LOGIN completed');
-	return conn;
-}
-
-/** The mailbox names in a set of LIST/LSUB lines, decoded as ImapFlow does. */
-async function listedNames(lines: string[], verb: 'LIST' | 'LSUB'): Promise<string[]> {
-	const names: string[] = [];
-	for (const line of lines.filter((l) => l.startsWith(`* ${verb} `))) {
-		const parsed = await parser(line);
-		const attr = parsed.attributes?.[2];
-		expect(attr?.type).toBe('STRING');
-		names.push(decodePath(REV1, String(attr?.value)));
-	}
-	return names;
-}
-
-/** The SELECT command ImapFlow writes for a decoded path (commands/select.js). */
-async function imapflowSelect(tag: string, path: string): Promise<Buffer> {
-	const encoded = encodePath(REV1, path);
-	const parts = await compiler(
-		{
-			tag,
-			command: 'SELECT',
-			attributes: [{ type: encoded.includes('&') ? 'STRING' : 'ATOM', value: encoded }],
-		},
-		{ asArray: true }
-	);
-	return Buffer.concat([...parts, Buffer.from('\r\n')]);
-}
-
-/** The folder each SELECT opened, by `selectFolder` call. */
-function selectedIds(convex: ReturnType<typeof makeConvex>): unknown[] {
-	return convex.query.mock.calls
-		.filter(([ref]) => getFunctionName(ref) === 'mail/imap/session:selectFolder')
-		.map(([, args]) => args['folderId']);
-}
+const loggedIn = () => loggedInWith(FOLDERS);
 
 afterEach(() => {
 	vi.clearAllMocks();
@@ -216,7 +73,7 @@ describe('LIST and LSUB mailbox names', () => {
 		const out = await exchange(socket, 'a1', 'a1 LIST "" "*"');
 		expect(out.at(-1)).toBe('a1 OK LIST completed');
 		expect(out.filter((l) => !l.startsWith('* LIST ')).length).toBe(1);
-		expect(await listedNames(out, 'LIST')).toEqual(FOLDERS.map((f) => f.name));
+		expect(await listedNames(out, 'LIST')).toEqual(FOLDERS.map((f) => listedAs(f.name)));
 	});
 
 	it('writes the scenario names quoted and modified UTF-7 encoded', async () => {
@@ -227,7 +84,7 @@ describe('LIST and LSUB mailbox names', () => {
 		expect(out).toContain('* LIST (\\HasNoChildren) "/" "&ANw-bersicht"');
 		expect(out).toContain('* LIST (\\HasNoChildren) "/" "&2D3cwQ- Mail"');
 		expect(out).toContain('* LIST (\\HasNoChildren) "/" "R&-D"');
-		expect(out).toContain('* LIST (\\HasNoChildren) "/" "Ablage/&ANw-bersicht"');
+		expect(out).toContain('* LIST (\\HasNoChildren) "/" "Ablage&IhUA3A-bersicht"');
 		expect(out).toContain('* LIST (\\HasNoChildren) "/" "Alt&AA0ACg-Name"');
 	});
 
@@ -236,7 +93,7 @@ describe('LIST and LSUB mailbox names', () => {
 		const out = await exchange(socket, 'a1', 'a1 LSUB "" "*"');
 		expect(out.at(-1)).toBe('a1 OK LSUB completed');
 		expect(await listedNames(out, 'LSUB')).toEqual(
-			FOLDERS.filter((f) => f.subscribed).map((f) => f.name)
+			FOLDERS.filter((f) => f.subscribed).map((f) => listedAs(f.name))
 		);
 	});
 });
@@ -301,13 +158,6 @@ describe('STATUS mailbox names', () => {
 	});
 });
 
-/** The target folder of each COPY or MOVE, by mutation call. */
-function targetIds(convex: ReturnType<typeof makeConvex>, verb: 'copy' | 'move'): unknown[] {
-	return convex.mutation.mock.calls
-		.filter(([ref]) => getFunctionName(ref) === `mail/imap/move:${verb}Messages`)
-		.map((call) => (call as unknown as [unknown, Record<string, unknown>])[1]['targetFolderId']);
-}
-
 describe('names that differ only in case or in how they are encoded', () => {
 	/** Each pair: the name LIST writes, and the stored name it must reach. */
 	const PAIRS: Array<[string, string]> = [
@@ -363,7 +213,7 @@ describe('resolveFolderByName (SELECT, EXAMINE, STATUS, APPEND, COPY, MOVE)', ()
 	it.each([
 		['&ANw-bersicht', 'Übersicht'],
 		['&APw-bersicht', 'übersicht'],
-		['Ablage/&ANw-bersicht', 'Ablage/Übersicht'],
+		['Ablage&IhUA3A-bersicht', 'Ablage/Übersicht'],
 		['R&-D', 'R&D'],
 		['&2D3cwQ- Mail', '📁 Mail'],
 		['&ANwA5A-', 'Üä'],

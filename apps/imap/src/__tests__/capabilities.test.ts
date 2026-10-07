@@ -5,9 +5,11 @@
  * greeting, the post-LOGIN banner, and the `* CAPABILITY` response. These
  * tests pin (2) that the advertised set never silently drifts, that no
  * module declares a capability the line never advertises (and the reverse —
- * no advertised atom lacks an owning module), and that QRESYNC is *not*
- * advertised (we ship CONDSTORE but not QRESYNC); and (3) that STARTTLS is
- * not a verb, never appears in CAPABILITY, and is rejected with BAD.
+ * no advertised atom lacks an owning module), that QRESYNC is *not*
+ * advertised (we ship CONDSTORE but not QRESYNC), and that neither are
+ * LIST-EXTENDED and LIST-STATUS, which LIST does not implement; and (3)
+ * that STARTTLS is not a verb, never appears in CAPABILITY, and is rejected
+ * with BAD.
  *
  * RFC 3501 §6.1.1 / §11.1; RFC 2595 (no plaintext creds without TLS);
  * RFC 7162 (CONDSTORE/QRESYNC); RFC 8314 (implicit TLS — no STARTTLS).
@@ -28,8 +30,6 @@ const MODULE_CAPABILITIES: readonly string[] = [
 	'UIDPLUS',
 	'LITERAL+',
 	'NAMESPACE',
-	'LIST-EXTENDED',
-	'LIST-STATUS',
 	'SPECIAL-USE',
 	'ID',
 	'CONDSTORE',
@@ -51,8 +51,6 @@ describe('CAPABILITY_LINE — exact advertised set (snapshot)', () => {
 				'ID',
 				'IDLE',
 				'IMAP4rev1',
-				'LIST-EXTENDED',
-				'LIST-STATUS',
 				'LITERAL+',
 				'MOVE',
 				'NAMESPACE',
@@ -101,6 +99,13 @@ describe('CAPABILITY_LINE — module/line consistency', () => {
 		expect(atomsOf(PLAINTEXT_CAPABILITY_LINE)).not.toContain('QRESYNC');
 		// CONDSTORE *is* present — the pair must not be conflated.
 		expect(atomsOf(CAPABILITY_LINE)).toContain('CONDSTORE');
+	});
+
+	it('does NOT advertise LIST-EXTENDED or LIST-STATUS (LIST takes the RFC 3501 form only)', () => {
+		for (const line of [CAPABILITY_LINE, PLAINTEXT_CAPABILITY_LINE]) {
+			expect(atomsOf(line)).not.toContain('LIST-EXTENDED');
+			expect(atomsOf(line)).not.toContain('LIST-STATUS');
+		}
 	});
 
 	it('is deterministic — re-assembling yields the identical line', () => {
