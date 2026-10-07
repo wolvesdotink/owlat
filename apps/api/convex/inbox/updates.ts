@@ -4,7 +4,7 @@
  * The classify step parks a message in `informational` when the sender is not
  * waiting for an answer (ADR-0061). Nothing is drafted for it; instead it is
  * ranked here so a reader can walk through the important updates in one place,
- * read the one-sentence summary in their own language, and either let it go
+ * read the subject and the first lines of the message, and either let it go
  * (`dismissUpdate` → archived) or overrule the classifier and ask for a draft
  * after all (`requestReply` → drafting, through the same resume path an
  * answered clarification takes).
@@ -13,6 +13,11 @@
  * importance score first, its priority second, newest first as the tie-break.
  * It never makes a model call, so the dashboard cannot fail-open into hiding
  * something the classifier already decided was important.
+ *
+ * D7 (thread brief): the classifier no longer writes a one-sentence summary
+ * for these rows. Each row carries `preview`, the first lines of the message
+ * itself (quoted history cut, bounded), so what a reader sees is what the
+ * sender wrote, never a model's paraphrase.
  */
 
 import { v } from 'convex/values';
@@ -24,7 +29,11 @@ import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidState } from '../_utils/errors';
 import { isSharedInboxReader } from './access';
 import { openConversationThreadPreview } from '../lib/messageBody';
+import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { BULK_KINDS } from '../lib/validators/classification';
+import { htmlToPlainText } from '@owlat/shared/html';
+import { splitQuotedText } from '@owlat/shared/quotedText';
+import { truncateCodePoints } from '@owlat/shared/unicode';
 
 /**
  * The dashboard's tabs. `updates` is mail a human wrote that needs no reply;
@@ -91,8 +100,30 @@ export function rankUpdates<T extends RankableUpdate>(updates: readonly T[]): T[
 	});
 }
 
+/** Longest preview a row carries, in code points. */
+export const UPDATE_PREVIEW_CODE_POINTS = 280;
+
+/**
+ * The first lines of a message as an Updates row shows them: the text part
+ * (else the HTML as text, else the stored excerpt of a large body), quoted
+ * history cut, whitespace collapsed, bounded. Pure + exported for tests.
+ */
+export function updatePreviewText(body: {
+	text?: string | undefined;
+	html?: string | undefined;
+	excerpt?: string | undefined;
+}): string {
+	const source =
+		body.text ?? (body.html !== undefined ? htmlToPlainText(body.html) : (body.excerpt ?? ''));
+	const fresh = splitQuotedText(source).fresh;
+	const flat = (fresh.trim() ? fresh : source).replace(/\s+/g, ' ').trim();
+	return truncateCodePoints(flat, UPDATE_PREVIEW_CODE_POINTS);
+}
+
 /** The projection the dashboard renders for one update. */
-function toUpdateRow(message: Doc<'inboundMessages'>) {
+async function toUpdateRow(message: Doc<'inboundMessages'>) {
+	// A query cannot read body blobs: a large body previews from its excerpt.
+	const body = await openInboundMessageBody(message, null);
 	return {
 		_id: message._id,
 		threadId: message.threadId,
@@ -103,6 +134,7 @@ function toUpdateRow(message: Doc<'inboundMessages'>) {
 		processingStatus: message.processingStatus,
 		archiveReason: message.archiveReason,
 		classification: message.classification,
+		preview: updatePreviewText(body),
 	};
 }
 
@@ -145,7 +177,7 @@ export const listUpdates = publicQuery({
 				const thread = message.threadId ? await ctx.db.get(message.threadId) : null;
 				const contact = message.contactId ? await ctx.db.get(message.contactId) : null;
 				return {
-					message: toUpdateRow(message),
+					message: await toUpdateRow(message),
 					thread: thread ? await openConversationThreadPreview(thread) : null,
 					contact: contact
 						? { _id: contact._id, firstName: contact.firstName, lastName: contact.lastName }

@@ -6,8 +6,13 @@
  *    useThreadView), for personal mailboxes only. A shared (team) mailbox gets
  *    no switch, no Overview and no per-message latest lines: `isShared` is the
  *    seam the team stream fills in;
- *  - a cited quote: its message is expanded, scrolled to and the quote marked
- *    (`citeQuoteFor`), and the header line says what is being shown;
+ *  - a cited quote: its message is loaded (earlier pages are walked back to
+ *    it, like an opened search hit), expanded, scrolled to and the quote
+ *    marked (`citeQuoteFor`); the header line says what is being shown, or
+ *    that the message could not be reached;
+ *  - the messages whose exact wording matters (legal notices, changed terms,
+ *    payment details): loaded and expanded the same way, and kept open beside
+ *    the Overview (`exactWordingMessages`);
  *  - the collapsed rows' "latest update" sentence (`latestFor`);
  *  - marking the brief seen once the Overview has been on screen;
  *  - running item reactions, with the replying ones handed to the reader.
@@ -18,8 +23,11 @@ import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefS
 import { useThreadBrief } from '~/composables/useThreadBrief';
 import { useThreadView } from '~/composables/useThreadView';
 import { useBriefReactions } from '~/composables/threadBrief/useBriefReactions';
+import { THREAD_ANCHOR_PAGE_LIMIT } from '~/composables/postbox/postboxThreadPage';
 import { messageLatestMap, resolveCite, type BriefAction } from '~/utils/threadBriefItems';
 import type { BriefSource } from '~/utils/threadBriefContext';
+import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
+import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 
 interface ReaderMessageLike {
 	_id: string;
@@ -27,6 +35,16 @@ interface ReaderMessageLike {
 	fromAddress: string;
 	receivedAt: number;
 }
+
+/** The reader's paging, for walking back to a message the brief points at. */
+interface ReaderPages {
+	hasEarlier: Readonly<Ref<boolean>>;
+	loadingEarlier: Readonly<Ref<boolean>>;
+	loadEarlier: () => void;
+}
+
+/** Where a cited message is: on screen, on its way, or out of reach. */
+export type CiteState = 'loading' | 'shown' | 'unreachable';
 
 export type PostboxReaderBrief = ReturnType<typeof usePostboxReaderBrief>;
 
@@ -36,8 +54,9 @@ export function usePostboxReaderBrief(opts: {
 	messages: Ref<readonly ReaderMessageLike[]>;
 	expanded: Ref<ReadonlySet<string>>;
 	toggleExpanded: (id: string) => void;
+	pages: ReaderPages;
 	/** The reader's PGP/S-MIME structure per message (a clearsigned one scopes the brief). */
-	secureClass: (msg: { _id: string }) => string;
+	secureClass: (msg: { _id: string }) => SecureMessageClass;
 	/** A replying reaction or the brief's Reply: open Answer mode (guarded). */
 	onReply: (item: BriefItemView | null, action: BriefAction | null) => void;
 }) {
@@ -62,14 +81,54 @@ export function usePostboxReaderBrief(opts: {
 		return brief && cite ? resolveCite(brief, cite) : null;
 	});
 
-	// The cited message opens, so its quote can be scrolled to and marked.
+	/** Messages whose original stays open beside the Overview. */
+	const exactWordingIds = computed(() =>
+		isShared.value ? [] : (read.brief.value?.exactWording ?? []).map((e) => e.messageId)
+	);
+
+	// Messages the brief needs on screen: walk back through earlier pages
+	// until they are loaded (bounded like the reader's own anchor walk), and
+	// expand them once they arrive.
+	const loadedIds = computed(() => new Set(opts.messages.value.map((m) => m._id)));
+	const wanted = computed(() => [
+		...(cited.value ? [cited.value.messageId] : []),
+		...exactWordingIds.value,
+	]);
+	const walks = ref(0);
 	watch(
 		() => cited.value?.messageId,
-		(id) => {
-			if (id && !opts.expanded.value.has(id)) opts.toggleExpanded(id);
+		() => {
+			walks.value = 0;
+		}
+	);
+	watch(
+		() =>
+			[
+				wanted.value,
+				loadedIds.value,
+				opts.pages.hasEarlier.value,
+				opts.pages.loadingEarlier.value,
+			] as const,
+		([ids, loaded, more, loading]) => {
+			for (const id of ids) {
+				if (loaded.has(id) && !opts.expanded.value.has(id)) opts.toggleExpanded(id);
+			}
+			const missing = ids.some((id) => !loaded.has(id));
+			if (missing && more && !loading && walks.value < THREAD_ANCHOR_PAGE_LIMIT) {
+				walks.value++;
+				opts.pages.loadEarlier();
+			}
 		},
 		{ immediate: true }
 	);
+
+	const citeState = computed<CiteState | null>(() => {
+		const id = cited.value?.messageId;
+		if (!id) return null;
+		if (loadedIds.value.has(id)) return 'shown';
+		const canWalk = opts.pages.hasEarlier.value && walks.value < THREAD_ANCHOR_PAGE_LIMIT;
+		return opts.pages.loadingEarlier.value || canWalk ? 'loading' : 'unreachable';
+	});
 
 	// Seen once the Overview is actually showing a brief.
 	watch(
@@ -84,10 +143,18 @@ export function usePostboxReaderBrief(opts: {
 	function latestFor(messageId: string): string | null {
 		return latest.value.get(messageId) ?? null;
 	}
-	function citeQuoteFor(messageId: string): string | null {
+	/** The cited quote in this message (its words and which occurrence), or null. */
+	function citeQuoteFor(messageId: string): CitedQuote | null {
 		const c = cited.value;
-		return c && c.messageId === messageId ? (c.quote ?? '') : null;
+		if (!c || c.messageId !== messageId) return null;
+		return {
+			quote: c.quote ?? '',
+			...(c.occurrence !== undefined ? { occurrence: c.occurrence } : {}),
+		};
 	}
+
+	/** Messages whose original stays open beside the Overview (loaded or not). */
+	const exactWording = computed(() => new Set(exactWordingIds.value));
 
 	const sources = computed(
 		() =>
@@ -115,6 +182,9 @@ export function usePostboxReaderBrief(opts: {
 		switchView,
 		showsOverview,
 		cited,
+		citeState,
+		exactWording,
+		secureClass: opts.secureClass,
 		setView: (next: ThreadView) => viewState.setView(next),
 		openCite: (ref: string, quoteIndex: number) => viewState.openCite({ ref, quoteIndex }),
 		backToOverview: viewState.backToOverview,

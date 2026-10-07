@@ -90,11 +90,19 @@ export function segmentMessage(
 ): SegmentedMessage {
 	const html = input.html ?? '';
 	const source: 'text' | 'html' = html.trim() ? 'html' : 'text';
-	const raw = source === 'html' ? linesFromHtml(html, options) : linesFromText(input.text ?? '');
-	const lines = squeezeBlankLines(raw);
+	const work = options.work ?? { chars: 0, steps: 0 };
+	const raw =
+		source === 'html'
+			? linesFromHtml(html, { ...options, work })
+			: linesFromText(input.text ?? '', work);
+	const lines = squeezeBlankLines(raw, work);
+	// Assembly and segment building each walk every line and run once.
+	work.steps += 2 * lines.length;
+	for (const line of lines) work.chars += line.text.length + line.runs.length;
 	const { canonicalText, lineStarts, runs } = assemble(lines);
 	const { regionOf, reasons, penalty } = classifyLines(lines, {
 		subjectKind: subjectKindOf(input.subject),
+		work,
 	});
 
 	const segments: MailSegment[] = [];

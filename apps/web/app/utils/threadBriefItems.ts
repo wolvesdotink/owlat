@@ -95,6 +95,8 @@ export interface ResolvedCite {
 	/** The mailMessages id the quote is in (only mail sources can be shown in the reader). */
 	messageId: string;
 	quote: string | null;
+	/** Which occurrence of the quote's words in the message it is (0 = the first). */
+	occurrence?: number;
 	/** The cited line's own text, for "Showing the source of …". */
 	label: string;
 }
@@ -121,7 +123,12 @@ export function resolveCite(brief: BriefModeView, cite: CiteParam): ResolvedCite
 	if (!evidence || label === undefined) return null;
 	const { source } = evidence;
 	if (source.kind !== 'mail' && source.kind !== 'outboundMail') return null;
-	return { messageId: source.id, quote: evidence.quote ?? null, label };
+	return {
+		messageId: source.id,
+		quote: evidence.quote ?? null,
+		...(evidence.occurrence !== undefined ? { occurrence: evidence.occurrence } : {}),
+		label,
+	};
 }
 
 /** The per-message "Latest update" sentence (collapsed rows of Conversation). */

@@ -41,7 +41,7 @@ import { REPLY_INTENTS } from '../ai/replyIntent';
 // ── Versions and bounds ────────────────────────────────────────────────────
 
 /** Bump when the prompt or the contract changes what is extracted: stored rows are re-run. */
-export const INTERPRET_EXTRACTOR_VERSION = 1;
+export const INTERPRET_EXTRACTOR_VERSION = 2;
 /** Shape version of the sealed `messageInterpretations.payload` JSON. */
 export const INTERPRET_PAYLOAD_VERSION = 1;
 
@@ -209,6 +209,19 @@ export const factProposalSchema = z.object({
 	reportedBy: participantProposalSchema,
 });
 
+/** Why a message's exact wording matters more than any summary of it. */
+export const EXACT_WORDING_REASONS = ['legal', 'terms', 'payment_details', 'security'] as const;
+
+/**
+ * Brief mode: whether the reader should keep this message's original open
+ * next to the brief ("Read the exact wording"), and why. A display hint only:
+ * it can show more of the original, never less, so it is not grounded.
+ */
+export const exactWordingSchema = z.object({
+	isRequired: z.boolean(),
+	reason: z.enum(EXACT_WORDING_REASONS).nullable(),
+});
+
 // ── Output ─────────────────────────────────────────────────────────────────
 
 const latestSchema = z.object(perLocaleShape(z.array(latestLineSchema).max(MAX_LATEST_LINES)));
@@ -226,6 +239,7 @@ export const briefModelSchema = z.strictObject({
 	...actionsPart(itemModelSchema),
 	latest: latestSchema,
 	facts: factsSchema,
+	exactWording: exactWordingSchema,
 });
 
 export const actionsModelSchema = z.strictObject({
@@ -244,6 +258,8 @@ export const briefOutputSchema = z.strictObject({
 	...actionsPart(itemProposalSchema),
 	latest: latestSchema,
 	facts: factsSchema,
+	// Absent on payloads stored before extractor version 2.
+	exactWording: exactWordingSchema.optional(),
 });
 
 /** Every team surface: actions only. `latest` / `facts` are rejected. */

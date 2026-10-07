@@ -10,20 +10,15 @@
  * Pure and isolate-safe.
  */
 
-/** Grapheme-ish clusters: a base character with its combining marks. */
-const CLUSTER = /\P{M}\p{M}*|\p{M}+/gu;
 const SINGLE_QUOTES = /[‘’‚‛′´`]/g;
 const DOUBLE_QUOTES = /[“”„‟″«»]/g;
 const DASHES = /[‐-―−﹘﹣－]/g;
-const INVISIBLE = /[­​-‍⁠﻿]/g;
+const INVISIBLE = /^[­​-‍⁠﻿]$/;
+/** Sequences joined into one run beyond this many: hostile input only. */
+const MAX_RUN = 32;
 
-function foldCluster(cluster: string): string {
-	return cluster
-		.normalize('NFKC')
-		.replace(INVISIBLE, '')
-		.replace(SINGLE_QUOTES, "'")
-		.replace(DOUBLE_QUOTES, '"')
-		.replace(DASHES, '-');
+function fold(normalized: string): string {
+	return normalized.replace(SINGLE_QUOTES, "'").replace(DOUBLE_QUOTES, '"').replace(DASHES, '-');
 }
 
 /** The normalized form of `text` (see the module header). */
@@ -33,20 +28,31 @@ export function normalizeForQuote(text: string): string {
 
 export interface NormalizedText {
 	normalized: string;
-	/** Per normalized character: the original range it came from. */
+	/** Per normalized UTF-16 unit: the original range it came from. */
 	from: number[];
 	to: number[];
 }
 
-/** {@link normalizeForQuote}, plus a map from each normalized char back to `text`. */
+/** A combining mark: it joins the combining sequence before it. */
+const MARK = /^\p{M}$/u;
+
+/**
+ * {@link normalizeForQuote}, plus a map from each normalized UTF-16 unit back
+ * to `text`. Invisible characters go first. NFKC then runs per complete
+ * combining sequence: a starter with ALL the marks after it, composing or not,
+ * so canonical reordering inside the sequence is the one whole-string NFKC
+ * does. Neighbouring sequences that still interact (halfwidth `ｶ` + `ﾞ` into
+ * `ガ`, conjoining Hangul jamo into a syllable) are joined into one run: a
+ * sequence joins the run before it when normalizing them together differs
+ * from normalizing them apart. A sequence starting with ASCII never joins.
+ * Every output unit maps to its run's source range.
+ */
 export function normalizeWithMap(text: string): NormalizedText {
 	const out: string[] = [];
 	const from: number[] = [];
 	const to: number[] = [];
-	for (const match of text.matchAll(CLUSTER)) {
-		const start = match.index;
-		const end = start + match[0].length;
-		for (const char of foldCluster(match[0])) {
+	const emit = (run: string, start: number, end: number) => {
+		for (const char of fold(run)) {
 			if (/\s/.test(char)) {
 				if (out.length === 0) continue;
 				if (out[out.length - 1] === ' ') {
@@ -66,7 +72,54 @@ export function normalizeWithMap(text: string): NormalizedText {
 				to.push(end);
 			}
 		}
+	};
+
+	// 1. Combining sequences over the visible code points.
+	const sequences: { text: string; start: number; end: number }[] = [];
+	let i = 0;
+	for (const cp of text) {
+		const start = i;
+		i += cp.length;
+		const open = sequences[sequences.length - 1];
+		if (INVISIBLE.test(cp)) {
+			// Never visible: dropped before normalization, its range joins the sequence.
+			if (open) open.end = i;
+			continue;
+		}
+		if (open && MARK.test(cp)) {
+			open.text += cp;
+			open.end = i;
+		} else {
+			sequences.push({ text: cp, start, end: i });
+		}
 	}
+
+	// 2. Runs of sequences that interact, each normalized as a whole.
+	let run = '';
+	let runNormalized = '';
+	let runLength = 0;
+	let runStart = 0;
+	let runEnd = 0;
+	for (const sequence of sequences) {
+		const single = sequence.text.normalize('NFKC');
+		if (run && sequence.text.charCodeAt(0) >= 0x80 && runLength < MAX_RUN) {
+			const joined = (run + sequence.text).normalize('NFKC');
+			if (joined !== runNormalized + single) {
+				run += sequence.text;
+				runNormalized = joined;
+				runLength++;
+				runEnd = sequence.end;
+				continue;
+			}
+		}
+		if (run) emit(runNormalized, runStart, runEnd);
+		run = sequence.text;
+		runNormalized = single;
+		runLength = 1;
+		runStart = sequence.start;
+		runEnd = sequence.end;
+	}
+	if (run) emit(runNormalized, runStart, runEnd);
 	if (out[out.length - 1] === ' ') {
 		out.pop();
 		from.pop();
@@ -115,4 +168,28 @@ export function matchQuote(
 		start: segment.start + (hay.from[at] as number),
 		end: segment.start + (hay.to[at + needle.length - 1] as number),
 	};
+}
+
+/** The last canonical text normalized by {@link quoteOccurrence} (one run reads one message). */
+let occurrenceCache: { text: string; hay: NormalizedText } | null = null;
+
+/**
+ * Which occurrence (0 = the first) of the normalized words at
+ * `canonicalText[start, end)` the span at `start` is, counting every match in
+ * the whole canonical text. The reader marks that occurrence in the rendered
+ * body, so repeated wording never highlights an earlier statement.
+ */
+export function quoteOccurrence(canonicalText: string, start: number, end: number): number {
+	const needle = normalizeForQuote(canonicalText.slice(start, end));
+	if (!needle) return 0;
+	if (occurrenceCache?.text !== canonicalText) {
+		occurrenceCache = { text: canonicalText, hay: normalizeWithMap(canonicalText) };
+	}
+	const { normalized, from } = occurrenceCache.hay;
+	let count = 0;
+	for (let at = normalized.indexOf(needle); at >= 0; at = normalized.indexOf(needle, at + 1)) {
+		if ((from[at] as number) >= start) break;
+		count++;
+	}
+	return count;
 }

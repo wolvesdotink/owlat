@@ -49,6 +49,9 @@ export interface EvalReport {
 	perSlice: Partial<Record<EvalSlice, { items: number; recall: number }>>;
 	worstSlice: { slice: EvalSlice; recall: number } | null;
 	missed: { threadId: string; labelId: string }[];
+	/** Accepted claims kept as proposals ("Check this"). */
+	proposals: number;
+	/** Traps that grounded as TRACKED obligations (a proposal is fine). */
 	trapsAccepted: { threadId: string; labelId: string }[];
 	flagsMissed: { threadId: string; labelId: string }[];
 	notesLeaked: { threadId: string; noteId: string }[];
@@ -90,6 +93,7 @@ export async function runEval(
 		perSlice: {},
 		worstSlice: null,
 		missed: [],
+		proposals: 0,
 		trapsAccepted: [],
 		flagsMissed: [],
 		notesLeaked: [],
@@ -191,10 +195,16 @@ export async function runEval(
 				}
 			}
 			for (const claim of items) {
+				if (claim.proposal) report.proposals++;
 				if (isTrap(claim)) {
-					report.trapsAccepted.push({ threadId: thread.id, labelId: claim.claim.labelId ?? '' });
+					// A trap kept as a proposal is shown, never tracked: that is fine.
+					if (!claim.proposal) {
+						report.trapsAccepted.push({ threadId: thread.id, labelId: claim.claim.labelId ?? '' });
+					}
 					continue;
 				}
+				// Precision is about TRACKED obligations; proposals ask the user first.
+				if (claim.proposal) continue;
 				accepted++;
 				if (used.has(claim)) acceptedMatched++;
 			}
@@ -231,6 +241,7 @@ export function formatEvalReport(report: EvalReport): string {
 		`unsupported rate  ${pct(report.unsupportedRate)}`,
 		`cost              $${report.costUsd.toFixed(4)}`,
 		`incomplete messages ${report.incompleteMessages}`,
+		`proposals         ${report.proposals}`,
 		`worst slice       ${report.worstSlice ? `${report.worstSlice.slice} ${pct(report.worstSlice.recall)}` : 'n/a'}`,
 		'per slice:',
 		...Object.entries(report.perSlice).map(

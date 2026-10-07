@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. Amended 2026-10-07 (thread brief): the classifier summary is no longer written; see the amendment at the end.
 
 ## Context
 
@@ -138,3 +138,27 @@ clarification is never coalesced into an assignment burst.
 - Plugin draft strategies (ADR-0050) do not receive `replyLanguage`; the host
   `default` strategy does. A plugin that ignores the inbound language is a
   plugin defect, not a host one.
+
+## Amendment: no classifier summary (2026-10-07)
+
+The thread brief (owner decision D7) drops the one-sentence `summary` the
+classifier wrote per interface locale for the Updates dashboard. A model's
+paraphrase of a message the team never reads in full is the wrong thing to
+put in front of a reader deciding whether to let it go: the brief's structured
+items say what is asked of the team, and an Updates row should say what the
+sender wrote.
+
+- The classify step no longer asks for or stores `summary`. Its prompt and
+  output schema lose the field, and the call returns less text.
+- `classification.summary` stays an optional field in the validator, so rows
+  written before still load. Nothing renders it.
+- Updates rows (`inbox/updates.listUpdates`) carry `preview`: the first lines
+  of the message as the sender wrote them, quoted history cut, whitespace
+  collapsed and bounded (`updatePreviewText`). A large body whose parts live
+  in storage previews from its stored excerpt. The dashboard shows the
+  subject, then the preview. The Today page's team lines show the subject,
+  with the preview as the source snippet.
+
+Everything else in this ADR stands: the disposition rules, the `informational`
+state, the dashboard and its actions, the reply language, and the clarification
+flow.

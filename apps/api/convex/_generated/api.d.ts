@@ -95,7 +95,6 @@ import type * as agent_steps_classify_index from '../agent/steps/classify/index.
 import type * as agent_steps_context_retrieval_currentMessage from '../agent/steps/context_retrieval/currentMessage.js';
 import type * as agent_steps_context_retrieval_emergency from '../agent/steps/context_retrieval/emergency.js';
 import type * as agent_steps_context_retrieval_index from '../agent/steps/context_retrieval/index.js';
-import type * as agent_steps_context_retrieval_quarantine from '../agent/steps/context_retrieval/quarantine.js';
 import type * as agent_steps_draft_attachment from '../agent/steps/draft/attachment.js';
 import type * as agent_steps_draft_index from '../agent/steps/draft/index.js';
 import type * as agent_steps_draft_recall from '../agent/steps/draft/recall.js';
@@ -1142,6 +1141,7 @@ import type * as mail_interpret_ground from '../mail/interpret/ground.js';
 import type * as mail_interpret_purgeRows from '../mail/interpret/purgeRows.js';
 import type * as mail_interpret_quoteMatch from '../mail/interpret/quoteMatch.js';
 import type * as mail_interpret_schema from '../mail/interpret/schema.js';
+import type * as mail_interpret_teamActions from '../mail/interpret/teamActions.js';
 import type * as mail_interpret_todo from '../mail/interpret/todo.js';
 import type * as mail_knowledgeScreen from '../mail/knowledgeScreen.js';
 import type * as mail_labels from '../mail/labels.js';
@@ -1628,7 +1628,6 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/context_retrieval/currentMessage': typeof agent_steps_context_retrieval_currentMessage;
 	'agent/steps/context_retrieval/emergency': typeof agent_steps_context_retrieval_emergency;
 	'agent/steps/context_retrieval/index': typeof agent_steps_context_retrieval_index;
-	'agent/steps/context_retrieval/quarantine': typeof agent_steps_context_retrieval_quarantine;
 	'agent/steps/draft/attachment': typeof agent_steps_draft_attachment;
 	'agent/steps/draft/index': typeof agent_steps_draft_index;
 	'agent/steps/draft/recall': typeof agent_steps_draft_recall;
@@ -2675,6 +2674,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/purgeRows': typeof mail_interpret_purgeRows;
 	'mail/interpret/quoteMatch': typeof mail_interpret_quoteMatch;
 	'mail/interpret/schema': typeof mail_interpret_schema;
+	'mail/interpret/teamActions': typeof mail_interpret_teamActions;
 	'mail/interpret/todo': typeof mail_interpret_todo;
 	'mail/knowledgeScreen': typeof mail_knowledgeScreen;
 	'mail/labels': typeof mail_labels;

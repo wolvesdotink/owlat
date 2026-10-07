@@ -3,7 +3,6 @@ import {
 	canonicalOption,
 	clarificationTrust,
 	localizedQuestionCopy,
-	localizedSummary,
 	type ClarificationProvenance,
 } from '../clarificationLocale';
 
@@ -54,15 +53,6 @@ describe('canonicalOption', () => {
 	it('passes free text and canonical values through unchanged', () => {
 		expect(canonicalOption(question, 'de', 'Only for one invoice')).toBe('Only for one invoice');
 		expect(canonicalOption(question, 'en', 'Yes')).toBe('Yes');
-	});
-});
-
-describe('localizedSummary', () => {
-	it('prefers the locale, then English, then anything', () => {
-		expect(localizedSummary({ en: 'E', de: 'D' }, 'de')).toBe('D');
-		expect(localizedSummary({ en: 'E', de: 'D' }, 'fr')).toBe('E');
-		expect(localizedSummary({ de: 'D' }, 'fr')).toBe('D');
-		expect(localizedSummary(undefined, 'de')).toBeUndefined();
 	});
 });
 
