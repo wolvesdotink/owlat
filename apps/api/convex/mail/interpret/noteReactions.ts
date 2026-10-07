@@ -40,7 +40,7 @@ const MAX_EMOJI_LENGTH = 32;
  * tag sequences: what an emoji picker produces. No letters, digits or spaces.
  */
 const EMOJI_RE =
-	/^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|[‍️⃣]|[\u{E0020}-\u{E007F}])+$/u;
+	/^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3|[\u{E0020}-\u{E007F}])+$/u;
 
 /** The note a reaction belongs to. */
 export type NoteRef =
