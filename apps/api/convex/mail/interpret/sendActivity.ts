@@ -25,7 +25,9 @@
  *     (`delivery/sendLifecycle/sourceFinalization.ts`), NOT `sendApprovedReply`,
  *     which only queues. `sent` appends `auto_sent` (router auto-approve) or
  *     `reply_sent` and enqueues the reply's interpretation; `failed` / `bounced`
- *     appends `delivery_failed` and fails what the reply answered.
+ *     appends `delivery_failed` and fails what the reply answered. A person's
+ *     follow-up on the thread (`team_reply` Send, `inbox/followUps.ts`) takes
+ *     the same terminal hooks; its text is snapshotted when its Send is queued.
  *
  * Idempotency keys name the event and the send: a repeat (a webhook redelivery,
  * a second recipient reaching `sent`) is a no-op.
@@ -36,7 +38,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { appendActivity } from './activity';
 import { enqueueSentInterpretation } from './enqueue';
-import { reconcileSendFailure } from './sendFailure';
+import { reconcileSendFailure, teamThreadOfSend } from './sendFailure';
 
 function userActor(userId: string | undefined) {
 	return { kind: 'user' as const, ...(userId ? { id: userId } : {}) };
@@ -189,23 +191,26 @@ export async function recordTeamSendHeld(
 	});
 }
 
-/** A team reply's Send reached a terminal edge (see the module doc). */
+/**
+ * A team reply's Send reached a terminal edge (see the module doc): an agent
+ * reply (`inboundMessageId`) or a person's follow-up (`followUpId`, always
+ * `reply_sent` by its author).
+ */
 export async function onTeamSendFinalized(
 	ctx: MutationCtx,
-	send: Pick<Doc<'transactionalSends'>, '_id' | 'inboundMessageId'>,
+	send: Pick<Doc<'transactionalSends'>, '_id' | 'inboundMessageId' | 'followUpId'>,
 	outcome: { to: 'sent' | 'failed' | 'bounced'; at: number }
 ): Promise<void> {
-	if (!send.inboundMessageId) return;
-	const team = await teamThreadOf(ctx, send.inboundMessageId);
+	const team = await teamThreadOfSend(ctx, send);
 	if (!team) return;
 	const opRef = { kind: 'outbound' as const, id: send._id };
 	if (outcome.to === 'sent') {
-		const isAuto = team.inbound.approvalSource === 'auto';
+		const isAuto = team.inbound?.approvalSource === 'auto';
 		const appended = await appendActivity(ctx, {
 			threadRef: team.threadRef,
 			idempotencyKey: `sent:${send._id}`,
 			type: isAuto ? 'auto_sent' : 'reply_sent',
-			actor: isAuto ? { kind: 'agent' } : { kind: 'user' },
+			actor: isAuto ? { kind: 'agent' } : userActor(team.followUp?.createdBy),
 			provenance: 'recorded',
 			opRef,
 			eventAt: outcome.at,
