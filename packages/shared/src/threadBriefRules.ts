@@ -11,6 +11,7 @@
 import type {
 	ActivityActor,
 	ItemCompletion,
+	ItemConsequenceKind,
 	ItemDisposition,
 	ItemFacet,
 	ItemIntent,
@@ -178,15 +179,25 @@ export interface ConsequentialInput {
 	facets: readonly ItemFacet[];
 	amount?: unknown;
 	due?: unknown;
+	/**
+	 * The model's consequence tags (`ITEM_CONSEQUENCE_KINDS`). `undefined` or
+	 * `null` means the model did not say: treated as consequential.
+	 */
+	consequences?: readonly ItemConsequenceKind[] | null;
 }
 
 /**
- * Whether an item proposal goes through the verifier (SPEC §4 verify): money,
- * signature or access, a promise, a stated amount, or a deadline. Ownership,
- * closing transitions and fact supersession are verified as well; that is
- * decided per claim kind by the verifier, not by this item test.
+ * Whether an item proposal goes through the verifier (SPEC §4 verify): any
+ * consequence tag (payment, signature, access, disclosure, promise,
+ * concession, cancellation), a promise, a payment/signature/access facet, a
+ * stated amount, or a deadline. Missing tags are ambiguity, and ambiguity is
+ * consequential. Ownership, closing transitions and fact supersession are
+ * verified as well; that is decided per claim kind by the verifier, not by
+ * this item test.
  */
 export function isConsequential(item: ConsequentialInput): boolean {
+	if (item.consequences == null) return true;
+	if (item.consequences.length > 0) return true;
 	if (item.intent === 'promise') return true;
 	if (item.amount != null || item.due != null) return true;
 	return item.facets.some((facet) => CONSEQUENTIAL_FACETS.has(facet));
