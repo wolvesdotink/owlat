@@ -86,6 +86,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'inboxFollowUps', // team follow-up bodies — clear before their threads
 	'threadCatchUps', // Answer mode catch-up cards (team and Postbox) — before both thread tables
 	...THREAD_BRIEF_TABLES, // thread brief (team and Postbox) — before both thread tables
+	'threadPurgeJobs', // resumable thread brief purges — ids only, before both thread tables
 	'inboxAssignmentNotices', // per-assignee notice denormalized subjects/assigner names
 	'inboundMessages',
 	'conversationThreads',

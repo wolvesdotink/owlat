@@ -3,83 +3,80 @@
  * "Erasure"; relations in `threadBriefRelations.ts` here and in
  * `auth/erasure/threadBriefRelations.ts`).
  *
- * The rows themselves are deleted by `mail/interpret/purgeRows.ts`, which the
- * inline purge paths use too; here they are drained within the walker's
- * per-transaction budget, so a thread with a long brief history is erased
- * over several transactions like any other parent.
+ * The walkers drive the same resumable purge jobs the inline purge paths
+ * schedule (`mail/interpret/purgeRun.ts drivePurgeJob`), inside their own
+ * per-transaction budget: a job is keyed by what it erases, found again in
+ * the walker's next transaction and continued where it stopped, never
+ * scheduled. The parent row (thread, message) is only deleted once its job
+ * finished.
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { ThreadRef } from '../../lib/validators/threadRef';
+import { threadRefKey } from '../../lib/validators/threadRef';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
-import {
-	bumpDeletionEpoch,
-	deleteThreadBriefRow,
-	threadBriefRanges,
-} from '../../mail/interpret/purgeRows';
-import { purgeSourcesFromThread } from '../../mail/interpret/purge';
+import type { DrainBudget } from '../../mail/interpret/purgeDrain';
+import { drivePurgeJob } from '../../mail/interpret/purgeRun';
 import type { ErasureBudget } from './budget';
 import { drainEach } from './phaseKit';
 
-/** Team replies to one received message whose interpretation goes with it. */
-const REPLY_SOURCE_LIMIT = 32;
+/**
+ * Team replies to one received message whose interpretation goes with it: a
+ * message is answered by a handful of sends (one per reply attempt).
+ */
+const REPLY_SOURCE_LIMIT = 64;
 /**
  * Index ranges one row of budget stands for. The walkers bound a transaction
  * by rows and bytes; an empty range read costs neither, but the platform caps
- * a transaction at 4,096 ranges, and a phase walking hundreds of threads reads
- * eight brief ranges for each even when none holds a row.
+ * a transaction at 4,096 ranges.
  */
 const RANGES_PER_ROW = 4;
-/**
- * Rows charged per message source purge for its index ranges (extractions,
- * activity keys, op refs, items, plans, brief row, list projection).
- */
-const SOURCE_PURGE_ROWS = 5;
+
+/** The walker's budget as a purge job's: every document a row, every 4 range queries one more. */
+export function walkerDrainBudget(budget: ErasureBudget): DrainBudget {
+	let ranges = 0;
+	return {
+		isExhausted: () => budget.isExhausted,
+		read: (doc) => {
+			if (doc) budget.charge(doc);
+		},
+		range: () => {
+			ranges += 1;
+			if (ranges % RANGES_PER_ROW === 0) budget.chargeRows(1);
+		},
+	};
+}
 
 /**
- * Delete every thread brief row of a thread being erased, within `budget`:
- * the deletion epoch is bumped first (an in-flight interpretation gets
- * `erased`), the brief row that holds it goes last. Returns whether the
- * thread has none left; call it before deleting the thread row.
+ * Delete every thread brief row of a thread being erased, within `budget`
+ * (a `thread` purge job). Returns whether it finished; call it before
+ * deleting the thread row.
  */
-export async function drainThreadBrief(
+export function drainThreadBrief(
 	ctx: MutationCtx,
 	budget: ErasureBudget,
 	ref: ThreadRef
 ): Promise<boolean> {
-	const meter = (doc: unknown) => budget.chargeRead(doc);
-	await bumpDeletionEpoch(ctx, ref, meter);
-	let ranges = 1;
-	try {
-		for (const read of threadBriefRanges(ctx, ref)) {
-			const counted = (n: number) => {
-				ranges += 1;
-				return read(n);
-			};
-			const isEmpty = await drainEach(budget, counted, (row) =>
-				deleteThreadBriefRow(ctx, row, meter)
-			);
-			if (!isEmpty) return false;
-		}
-		return true;
-	} finally {
-		budget.chargeRows(Math.ceil(ranges / RANGES_PER_ROW));
-	}
+	return drivePurgeJob(
+		ctx,
+		`erasure:thread:${threadRefKey(ref)}`,
+		{ ref, kind: 'thread' },
+		walkerDrainBudget(budget)
+	);
 }
 
 /**
  * Before a received Team Inbox message is erased: remove what its thread's
- * brief derived from it and from the team replies that answered it (their
- * extractions, the evidence they alone held, the activity naming them), and
- * the response plans of the draft it carried.
+ * brief derived from it and from the team replies that answered it (a
+ * `sources` purge job: extractions, evidence, claims left without evidence,
+ * activity, links), and the response plans of the draft it carried.
  */
 export async function eraseInboundMessageBrief(
 	ctx: MutationCtx,
 	budget: ErasureBudget,
 	message: Doc<'inboundMessages'>
 ): Promise<boolean> {
-	const meter = (doc: unknown) => budget.chargeRead(doc);
 	const isPlansEmpty = await drainEach(
 		budget,
 		(n) =>
@@ -95,14 +92,17 @@ export async function eraseInboundMessageBrief(
 		.query('transactionalSends')
 		.withIndex('by_inbound_message_status', (q) => q.eq('inboundMessageId', message._id))
 		.take(REPLY_SOURCE_LIMIT);
-	for (const reply of replies) meter(reply);
+	for (const reply of replies) budget.chargeRead(reply);
 	const sources: InterpretationSource[] = [
 		{ kind: 'inbound', id: message._id },
 		...replies.map((reply) => ({ kind: 'teamReply' as const, id: reply._id })),
 	];
-	await purgeSourcesFromThread(ctx, { kind: 'team', id: message.threadId }, sources, meter);
-	budget.chargeRows(SOURCE_PURGE_ROWS);
-	return true;
+	return drivePurgeJob(
+		ctx,
+		`erasure:inbound:${message._id}`,
+		{ ref: { kind: 'team', id: message.threadId }, kind: 'sources', sources },
+		walkerDrainBudget(budget)
+	);
 }
 
 /** The response plans of one Postbox draft, before the draft goes. */
