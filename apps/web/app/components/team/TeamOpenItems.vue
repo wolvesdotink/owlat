@@ -70,18 +70,22 @@ const isShown = computed(() => {
 			data-testid="team-open-items-toggle"
 			@click="open = !open"
 		>
-			<h2 class="text-xs font-medium uppercase tracking-wide text-text-secondary">
-				<span class="hidden sm:inline">{{ t('components.team.items.title') }}</span>
-				<span class="sm:hidden">{{
+			<h2 class="text-xs font-medium text-text-secondary">
+				<span class="hidden uppercase tracking-wide sm:inline">{{
+					t('components.team.items.title')
+				}}</span>
+				<span class="text-sm text-text-primary sm:hidden">{{
 					t('components.team.items.phoneSummary', { count: openCount }, openCount)
 				}}</span>
 			</h2>
-			<span class="ml-auto text-xs text-text-tertiary" data-testid="team-open-items-count">{{
-				t('components.team.items.openCount', { count: openCount }, openCount)
-			}}</span>
+			<span
+				class="ml-auto hidden text-xs text-text-tertiary sm:inline"
+				data-testid="team-open-items-count"
+				>{{ t('components.team.items.openCount', { count: openCount }, openCount) }}</span
+			>
 			<Icon
 				name="lucide:chevron-down"
-				class="size-4 text-text-tertiary transition-transform sm:hidden"
+				class="ml-auto size-4 text-text-tertiary transition-transform sm:hidden"
 				:class="{ 'rotate-180': open }"
 				aria-hidden="true"
 			/>

@@ -182,7 +182,7 @@ defineExpose({ focus });
 
 <template>
 	<div
-		class="sticky bottom-0 z-10 -mx-4 border-t border-border-subtle bg-bg-base px-4 pb-4 pt-3 sm:static sm:mx-0 sm:rounded-(--radius-card) sm:border sm:bg-bg-elevated"
+		class="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 -mx-4 border-t border-border-subtle bg-bg-base px-4 pb-4 pt-3 sm:static sm:mx-0 sm:rounded-(--radius-card) sm:border sm:bg-bg-elevated"
 		data-testid="team-note-composer"
 		:data-mode="activeMode"
 	>
@@ -227,7 +227,10 @@ defineExpose({ focus });
 					{{ t('components.team.composer.replyTo', { name: replyName }) }}
 				</button>
 			</div>
-			<span v-if="activeMode === 'note'" class="ml-auto text-2xs text-text-tertiary">
+			<span
+				v-if="activeMode === 'note'"
+				class="ml-auto hidden text-2xs text-text-tertiary sm:inline"
+			>
 				{{ t('components.team.composer.hint') }}
 			</span>
 		</div>
@@ -308,7 +311,14 @@ defineExpose({ focus });
 		</div>
 
 		<div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-			<span class="text-2xs text-text-tertiary">
+			<span
+				class="text-2xs"
+				:class="
+					activeMode === 'note' && remaining < 0
+						? 'text-error'
+						: 'hidden text-text-tertiary sm:inline'
+				"
+			>
 				<template v-if="activeMode === 'note' && remaining < 0">
 					{{ t('components.inbox.notes.tooLong', { count: -remaining }, -remaining) }}
 				</template>
@@ -319,6 +329,7 @@ defineExpose({ focus });
 			</span>
 			<UiButton
 				v-if="activeMode === 'note'"
+				class="ml-auto"
 				size="sm"
 				:disabled="!canPost"
 				:loading="saving"
@@ -328,7 +339,13 @@ defineExpose({ focus });
 				<Icon name="lucide:lock" class="size-3.5" />
 				{{ t('components.team.composer.post') }}
 			</UiButton>
-			<UiButton v-else size="sm" data-testid="team-composer-continue" @click="continueReply">
+			<UiButton
+				v-else
+				class="ml-auto"
+				size="sm"
+				data-testid="team-composer-continue"
+				@click="continueReply"
+			>
 				<Icon name="lucide:reply" class="size-3.5" />
 				{{ t('components.team.composer.continue') }}
 			</UiButton>

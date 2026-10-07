@@ -12,7 +12,8 @@
 import { splitMentionSegments } from '@owlat/shared/chatMentions';
 import { formatRelativeTime } from '~/utils/formatters';
 import type { NoteMentionCandidate } from '~/utils/threadNotes';
-import { QUICK_REACTIONS, type NoteEntry } from '~/utils/teamStream';
+import type { NoteEntry } from '~/utils/teamStream';
+import TeamReactionPicker from './TeamReactionPicker.vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -32,7 +33,6 @@ const emit = defineEmits<{ react: [emoji: string]; delete: [] }>();
 const { t, locale } = useI18n();
 
 const editing = ref(false);
-const picking = ref(false);
 const author = computed(
 	() =>
 		props.entry.authorName || props.entry.authorEmail || t('components.team.note.formerTeammate')
@@ -48,11 +48,7 @@ async function saveEdit(body: string): Promise<boolean> {
 	if (saved) editing.value = false;
 	return saved;
 }
-
-function react(emoji: string) {
-	picking.value = false;
-	emit('react', emoji);
-}
+const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reactions.length > 0);
 </script>
 
 <template>
@@ -101,9 +97,10 @@ function react(emoji: string) {
 				{{ t('components.team.note.edited') }}
 			</span>
 			<span
-				v-if="!entry.isDeleted && !editing && (save || canDelete)"
+				v-if="!entry.isDeleted && !editing && (save || canDelete || canReact)"
 				class="ui-hover-reveal ml-auto flex shrink-0 items-center gap-0.5"
 			>
+				<TeamReactionPicker v-if="canReact && !hasReactions" @pick="emit('react', $event)" />
 				<button
 					v-if="save"
 					type="button"
@@ -156,7 +153,7 @@ function react(emoji: string) {
 		</p>
 
 		<div
-			v-if="!entry.isDeleted && (entry.reactions.length > 0 || canReact)"
+			v-if="hasReactions"
 			class="mt-2 flex flex-wrap items-center gap-1"
 			data-testid="team-note-reactions"
 		>
@@ -173,40 +170,12 @@ function react(emoji: string) {
 				:aria-pressed="reaction.isMine"
 				:disabled="!canReact"
 				:title="t('components.team.note.reactWith', { emoji: reaction.emoji })"
-				@click="react(reaction.emoji)"
+				@click="emit('react', reaction.emoji)"
 			>
 				<span aria-hidden="true">{{ reaction.emoji }}</span>
 				<span class="tabular-nums">{{ reaction.count }}</span>
 			</button>
-			<span v-if="canReact" class="relative">
-				<button
-					type="button"
-					class="ui-hover-reveal inline-flex items-center rounded-full border border-border-subtle px-1.5 py-px text-text-tertiary hover:text-text-primary"
-					:aria-label="t('components.team.note.addReaction')"
-					:aria-expanded="picking"
-					data-testid="team-note-add-reaction"
-					@click="picking = !picking"
-				>
-					<Icon name="lucide:smile-plus" class="size-3.5" />
-				</button>
-				<span
-					v-if="picking"
-					class="absolute left-0 top-full z-10 mt-1 flex gap-0.5 rounded-lg border border-border-subtle bg-bg-elevated p-1 shadow-md"
-					role="menu"
-				>
-					<button
-						v-for="emoji in QUICK_REACTIONS"
-						:key="emoji"
-						type="button"
-						role="menuitem"
-						class="rounded px-1.5 py-0.5 text-sm hover:bg-bg-surface"
-						:aria-label="t('components.team.note.reactWith', { emoji })"
-						@click="react(emoji)"
-					>
-						{{ emoji }}
-					</button>
-				</span>
-			</span>
+			<TeamReactionPicker v-if="canReact" class="ui-hover-reveal" @pick="emit('react', $event)" />
 		</div>
 	</article>
 </template>
