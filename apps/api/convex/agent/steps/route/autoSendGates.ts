@@ -180,6 +180,35 @@ const interpretationIncompleteGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
+// SPEC §6: the reply must cover the thread's open items. Objects when an open
+// item of ours is not addressed (or not deliberately skipped), when an item's
+// owner is unclear, when the plan is missing or stale against the draft hash or
+// the item revisions, when the draft makes a commitment nobody authorised, or
+// when it says a file is attached that is not (mail/interpret/planGate.ts).
+// Restrict-only. SHADOW by default: the objection is logged on the shadow
+// observation and the send proceeds; `agentConfig.isItemCoverageEnforced`
+// makes it hold. An unreadable state throws and the runner holds (fail closed).
+const itemCoverageGate: CoreAutoSendGate = Object.freeze({
+	id: 'item_coverage',
+	async evaluate({ action, inboundMessageId }: AutoSendGateContext) {
+		const check = await action.runQuery(internal.mail.interpret.planGate.itemCoverageCheck, {
+			inboundMessageId,
+		});
+		if (!check.reason) return safe();
+		if (check.isEnforced) return unsafe(check.reason);
+		try {
+			await action.runMutation(internal.mail.interpret.planGate.recordShadow, {
+				inboundMessageId,
+				objections: check.objections,
+				reason: check.reason,
+			});
+		} catch {
+			// swallowed: shadow logging is best-effort and never changes the decision
+		}
+		return safe();
+	},
+});
+
 const PRE_AUTONOMY_GATES = Object.freeze([circuitBreakersGate]);
 const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	messageExistsGate,
@@ -194,6 +223,7 @@ const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	draftGapsGate,
 	handlingRulesGate,
 	interpretationIncompleteGate,
+	itemCoverageGate,
 ]);
 
 export const PRE_AUTONOMY_GATE_IDS = gateIds(PRE_AUTONOMY_GATES);
