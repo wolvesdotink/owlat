@@ -85,6 +85,24 @@ function same(a: unknown, b: unknown): boolean {
 	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
+type Pending = {
+	evidence: readonly Evidence[];
+	due?: unknown;
+	amount?: unknown;
+	options?: unknown;
+};
+
+/** Same pending update (quotes compared by identity, not by their sealed text)? */
+function samePending(a: Pending | undefined, b: Pending | undefined): boolean {
+	if (!a || !b) return !a && !b;
+	return (
+		sameEvidence(a.evidence, b.evidence) &&
+		same(a.due, b.due) &&
+		same(a.amount, b.amount) &&
+		same(a.options, b.options)
+	);
+}
+
 function statusActivity(from: ItemStatus, to: ItemStatus): ActivityType {
 	if (to === 'open') return 'item_reopened';
 	if (to === 'superseded') return 'item_replaced';
@@ -252,6 +270,14 @@ async function insertItem(
 		...(item.amount ? { amount: item.amount } : {}),
 		...(item.options ? { options: item.options } : {}),
 		evidence: await sealEvidence(item.evidence),
+		...(item.pendingUpdate
+			? {
+					pendingUpdate: {
+						...item.pendingUpdate,
+						evidence: await sealEvidence(item.pendingUpdate.evidence),
+					},
+				}
+			: {}),
 		...(possibleDuplicateOfId ? { possibleDuplicateOfId } : {}),
 		verify: item.verify,
 		listBucket: listBucketOf({ status: item.status, responsibility, verify: item.verify }),
@@ -294,26 +320,34 @@ async function patchItem(
 	if (!sameEvidence(item.evidence, row.evidence)) {
 		patch.evidence = await sealEvidence(item.evidence, row.evidence);
 	}
+	if (!samePending(item.pendingUpdate, row.pendingUpdate)) {
+		patch.pendingUpdate = item.pendingUpdate
+			? {
+					...item.pendingUpdate,
+					evidence: await sealEvidence(item.pendingUpdate.evidence, row.pendingUpdate?.evidence),
+				}
+			: undefined;
+	}
+	// A replayed proposal: each derived field is compared and updated on its own
+	// (review round 2 F5), so a repair that corrects only the owner, the facets
+	// or the wording still lands.
 	const p = item.proposal;
 	let responsibility = row.responsibility;
-	if (
-		p &&
-		args.isRebuild &&
-		item.storedAssertionText !== undefined &&
-		p.assertion !== item.storedAssertionText
-	) {
+	if (p && args.isRebuild) {
 		responsibility = responsibilityOf(p.responsible);
-		Object.assign(patch, {
-			intent: p.intent,
-			facets: p.facets,
-			consequences: p.consequences,
-			assertion: await sealBodyAtWrite(p.assertion),
-			display: await sealDisplay(p.display),
-			requester: p.requester,
-			responsible: p.responsible,
-			beneficiary: p.beneficiary,
-			responsibility,
-		});
+		if (p.intent !== row.intent) patch.intent = p.intent;
+		if (!same(p.facets, row.facets)) patch.facets = p.facets;
+		if (!same(p.consequences, row.consequences)) patch.consequences = p.consequences;
+		if (!same(p.requester, row.requester)) patch.requester = p.requester;
+		if (!same(p.responsible, row.responsible)) patch.responsible = p.responsible;
+		if (!same(p.beneficiary, row.beneficiary)) patch.beneficiary = p.beneficiary;
+		if (responsibility !== row.responsibility) patch.responsibility = responsibility;
+		const counterpartyKey = counterpartyKeyOf(p);
+		if (counterpartyKey !== row.counterpartyKey) patch.counterpartyKey = counterpartyKey;
+		if (item.storedAssertionText === undefined || p.assertion !== item.storedAssertionText) {
+			patch.assertion = await sealBodyAtWrite(p.assertion);
+		}
+		if (!same(p.display, item.storedDisplay)) patch.display = await sealDisplay(p.display);
 	}
 	const after = { status: item.status, responsibility, verify: item.verify };
 	const listBucket = listBucketOf(after);

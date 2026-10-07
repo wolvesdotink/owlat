@@ -143,7 +143,12 @@ export function localDayKey(ms: number, timeZone: string): string {
 
 /** Epoch ms of local midnight of a calendar date in `timeZone`. */
 export function zonedMidnight(date: YMD, timeZone: string): number {
-	const guess = Date.UTC(date.y, date.m - 1, date.d);
+	return zonedTime(date, 0, timeZone);
+}
+
+/** Epoch ms of a wall-clock time (`minutes` after midnight) on a date in `timeZone`. */
+export function zonedTime(date: YMD, minutes: number, timeZone: string): number {
+	const guess = Date.UTC(date.y, date.m - 1, date.d) + minutes * 60_000;
 	let at = guess;
 	for (let i = 0; i < 2; i++) {
 		const local = partsIn(at, timeZone);
@@ -291,11 +296,7 @@ function readings(phrase: string, today: YMD): { dates: YMD[]; isUnsure: boolean
 	} else if (/(?<!\p{L})(?:tomorrow|morgen|demain)(?!\p{L})/u.test(text)) {
 		push(addDays(today, 1));
 	}
-	if (
-		/\b(?:today|tonight|end of (?:the )?day|eod|cob|heute|aujourd'hui|aujourd’hui|ce soir)\b/.test(
-			text
-		)
-	) {
+	if (/\b(?:today|end of (?:the )?day|eod|cob|heute|aujourd'hui|aujourd’hui)\b/.test(text)) {
 		push(today);
 	}
 	const inDays = text.match(
@@ -326,12 +327,84 @@ function readings(phrase: string, today: YMD): { dates: YMD[]; isUnsure: boolean
 	return { dates, isUnsure };
 }
 
+/** Times of day this resolver cannot pin to a clock time. */
+const VAGUE_TIME =
+	/(?<!\p{L})(?:morning|afternoon|evening|tonight|night|lunch(?:time)?|close of business|vormittags?|nachmittags?|abends?|morgens|nachts?|früh|matin(?:ée)?|après-midi|apres-midi|soir(?:ée)?|ce soir|nuit)(?!\p{L})/u;
+/** Zone names: only UTC/GMT are read; any other named zone or offset is ambiguous. */
+const UTC_ZONE = /(?<!\p{L})(?:utc|gmt)(?!\p{L})/u;
+const OTHER_ZONE =
+	/(?<!\p{L})(?:cet|cest|mez|mesz|est|edt|cst|cdt|mst|mdt|pst|pdt|bst|ist|eet|eest|wet|west|aest|aedt|jst|hst|akst)(?!\p{L})|(?:utc|gmt)\s?[+-]\d|:\d{2}\s?[+-]\d{2}:?\d{2}(?!\d)/u;
+
+interface ClockTime {
+	minutes?: number;
+	isUnsure: boolean;
+	isUtc: boolean;
+}
+
+/**
+ * The clock time in a phrase: `17:00`, `5pm`, `5:30 p.m.`, `17 Uhr`,
+ * `17.30 Uhr`, `17h`, `17h30`, noon / Mittag (12:00) / midi. Two different
+ * times, an impossible one or a vague one ("Friday afternoon") are unsure.
+ */
+function readTime(text: string): ClockTime {
+	const found = new Set<number>();
+	let isUnsure =
+		VAGUE_TIME.test(text) && !/(?<!\p{L})(?:noon|midday|mittag|midi)(?!\p{L})/u.test(text);
+	const add = (h: number, m: number) => {
+		if (h > 23 || m > 59) isUnsure = true;
+		else found.add(h * 60 + m);
+	};
+	const ampm = (h: number, m: number, mark: string) => {
+		if (h < 1 || h > 12) return void (isUnsure = true);
+		const pm = mark.startsWith('p');
+		add((h % 12) + (pm ? 12 : 0), m);
+	};
+	for (const m of text.matchAll(
+		/(?<![\d.:])(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s?m\.?(?![\p{L}])/gu
+	)) {
+		ampm(Number(m[1]), Number(m[2] ?? 0), m[3] as string);
+	}
+	for (const m of text.matchAll(/(?<![\d.:])(\d{1,2})[:.](\d{2})(?!\s*[ap]\.?\s?m)(?![\d.])/g)) {
+		// `9.10.` is a date: a dot-separated pair is a time only with `Uhr` or `h`.
+		const isDotted = m[0].includes('.');
+		const tail = text.slice((m.index ?? 0) + m[0].length);
+		if (isDotted && !/^\s*(?:uhr|h)\b/.test(tail)) continue;
+		add(Number(m[1]), Number(m[2]));
+	}
+	for (const m of text.matchAll(/(?<![\d.:])(\d{1,2})\s*uhr(?!\p{L})/gu)) add(Number(m[1]), 0);
+	for (const m of text.matchAll(/(?<![\d.:])(\d{1,2})h(\d{2})?(?![\p{L}\d])/gu)) {
+		add(Number(m[1]), Number(m[2] ?? 0));
+	}
+	if (/(?<!\p{L})(?:noon|midday|mittag|midi)(?!\p{L})/u.test(text)) add(12, 0);
+	if (found.size > 1) isUnsure = true;
+	const hasTime = found.size > 0;
+	// A named zone or offset other than UTC is not read (only beside a time:
+	// "est" is also French for "is").
+	if (hasTime && OTHER_ZONE.test(text)) isUnsure = true;
+	return {
+		...(found.size === 1 ? { minutes: [...found][0] } : {}),
+		isUnsure,
+		isUtc: hasTime && UTC_ZONE.test(text),
+	};
+}
+
 /** Resolve a deadline phrase (see the module doc). Pure. */
 export function resolveDue(phrase: string, sentAt: number, timeZone: string): ResolvedDue {
 	if (!phrase.trim() || !Number.isFinite(sentAt)) return { isAmbiguous: true };
 	const today = partsIn(sentAt, timeZone);
+	const text = phrase.normalize('NFKC').toLowerCase();
 	const { dates, isUnsure } = readings(phrase, today);
+	const time = readTime(text);
+	if (isUnsure || time.isUnsure) return { isAmbiguous: true };
 	const distinct = new Set(dates.map((d) => `${d.y}-${d.m}-${d.d}`));
-	if (isUnsure || distinct.size !== 1) return { isAmbiguous: true };
-	return { at: zonedMidnight(dates[0] as YMD, timeZone), isAmbiguous: false };
+	if (distinct.size > 1) return { isAmbiguous: true };
+	if (time.minutes === undefined) {
+		if (distinct.size !== 1) return { isAmbiguous: true };
+		return { at: zonedMidnight(dates[0] as YMD, timeZone), isAmbiguous: false };
+	}
+	// A time with no date is today's; one already past when the mail was sent is unclear.
+	const date = dates[0] ?? today;
+	const at = zonedTime(date, time.minutes, time.isUtc ? 'UTC' : timeZone);
+	if (dates.length === 0 && at <= sentAt) return { isAmbiguous: true };
+	return { at, isAmbiguous: false };
 }

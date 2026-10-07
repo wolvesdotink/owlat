@@ -41,6 +41,15 @@ export interface MemItem extends Omit<PlanItem, 'evidence'> {
 	storedAssertionText?: string;
 	askedAt: number;
 	possibleDuplicateOfId?: Id<'threadItems'>;
+	/** An unconfirmed claim's changes, held apart (see reducePlan `pendingUpdate`). */
+	pendingUpdate?: {
+		evidence: MemEvidence[];
+		due?: Doc<'threadItems'>['due'];
+		amount?: Doc<'threadItems'>['amount'];
+		options?: string[];
+	};
+	/** A replayed row's stored display text (opened), to tell whether it changed. */
+	storedDisplay?: { en: string; de: string };
 }
 
 export interface MemFact extends Omit<PlanFact, 'evidence'> {
@@ -81,11 +90,62 @@ export interface LineageSeed {
 	facts: ReadonlyMap<string, MemFact>;
 }
 
-export function itemLineage(sourceKey: string, index: number): string {
-	return `${sourceKey}#${index}`;
+/** cyrb53: a fast, stable 53-bit string hash (identity keys, not security). */
+function hash53(text: string): string {
+	let h1 = 0xdeadbeef;
+	let h2 = 0x41c6ce57;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text.charCodeAt(i);
+		h1 = Math.imul(h1 ^ ch, 2654435761);
+		h2 = Math.imul(h2 ^ ch, 1597334677);
+	}
+	h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+	h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+	return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
-export function factLineage(sourceKey: string, index: number): string {
-	return `${sourceKey}#f${index}`;
+
+function words(text: string): string {
+	return text
+		.normalize('NFKC')
+		.toLowerCase()
+		.replace(/[^\p{L}\p{N}]+/gu, ' ')
+		.trim();
+}
+
+function spans(evidence: readonly ReduceEvidence[]): string {
+	return evidence
+		.map((e) => `${e.segmentId}:${e.start}:${e.end}`)
+		.sort()
+		.join(',');
+}
+
+/**
+ * An item's identity within its source message: what it says, its intent and
+ * where it is quoted, never its position in the model's list (review round 2
+ * F3), so a repair that drops or reorders proposals can never hand one
+ * obligation's id or correction to another. Pure.
+ */
+export function itemLineage(
+	sourceKey: string,
+	item: Pick<ReduceItem, 'intent' | 'assertion' | 'evidence'>
+): string {
+	return `${sourceKey}#${hash53(`${item.intent}|${words(item.assertion)}|${spans(item.evidence)}`)}`;
+}
+
+/** A fact's identity within its source message (see {@link itemLineage}). Pure. */
+export function factLineage(
+	sourceKey: string,
+	fact: Pick<ReduceFact, 'key' | 'assertion' | 'evidence'>
+): string {
+	return `${sourceKey}#f${hash53(`${fact.key}|${words(fact.assertion)}|${spans(fact.evidence)}`)}`;
+}
+
+/** Two identical proposals in one message get distinct lineages (`.1`, `.2` …). */
+function uniqueLineage(base: string, taken: Set<string>): string {
+	let lineage = base;
+	for (let n = 1; taken.has(lineage); n++) lineage = `${base}.${n}`;
+	taken.add(lineage);
+	return lineage;
 }
 
 function plainEvidence(
@@ -115,8 +175,9 @@ export function applyPlan(
 ): void {
 	const ev = (list: readonly ReduceEvidence[]) =>
 		plainEvidence(list, entry.source, entry.contentRevision);
+	const taken = new Set<string>();
 	for (const insert of plan.inserts) {
-		const lineage = itemLineage(entry.sourceKey, insert.index);
+		const lineage = uniqueLineage(itemLineage(entry.sourceKey, insert.item), taken);
 		const row = seed?.items.get(lineage);
 		const p = insert.item;
 		const item: MemItem = {
@@ -137,6 +198,7 @@ export function applyPlan(
 			isReviewNeeded: p.isReviewNeeded,
 			assertionText: p.assertion,
 			...(row ? { storedAssertionText: row.assertionText } : {}),
+			...(row?.storedDisplay ? { storedDisplay: row.storedDisplay } : {}),
 			askedAt: entry.sourceAt,
 			...(insert.possibleDuplicateOfId
 				? { possibleDuplicateOfId: insert.possibleDuplicateOfId }
@@ -158,6 +220,18 @@ export function applyPlan(
 		if (patch.fill?.options) item.options = patch.fill.options;
 		if (patch.verify) item.verify = patch.verify;
 		if (patch.isReviewNeeded) item.isReviewNeeded = true;
+		if (patch.pendingUpdate) {
+			const pending = patch.pendingUpdate;
+			const prior = item.pendingUpdate;
+			item.pendingUpdate = {
+				evidence: [...(prior?.evidence ?? []), ...ev(pending.addEvidence)],
+				...((pending.due ?? prior?.due) ? { due: pending.due ?? prior?.due } : {}),
+				...((pending.amount ?? prior?.amount) ? { amount: pending.amount ?? prior?.amount } : {}),
+				...((pending.options ?? prior?.options)
+					? { options: pending.options ?? prior?.options }
+					: {}),
+			};
+		}
 	}
 	for (const op of plan.facts) {
 		if (op.kind === 'supersede') {
@@ -167,7 +241,7 @@ export function applyPlan(
 			const fact = state.facts.get(op.factId);
 			if (fact) fact.evidence = [...fact.evidence, ...ev(op.addEvidence)];
 		} else {
-			const lineage = factLineage(entry.sourceKey, op.index);
+			const lineage = uniqueLineage(factLineage(entry.sourceKey, op.fact), taken);
 			const row = seed?.facts.get(lineage);
 			const f = op.fact;
 			const fact: MemFact = {

@@ -127,7 +127,8 @@ async function apply(
 		outcome = await ctx.runMutation(internal.mail.interpret.reduce.applyInterpretation, {
 			source: args.source,
 			threadRef: state.threadRef,
-			mode: state.mode,
+			// The extraction is bound to the mode it was made in, whatever a reload says.
+			mode: loaded.mode,
 			contentRevision: record.contentRevision,
 			extractorVersion: INTERPRET_EXTRACTOR_VERSION,
 			expectedRevision: state.brief.interpretationRevision,
@@ -150,6 +151,9 @@ async function apply(
 		if (!reloaded) return { outcome: 'gone' };
 		// A purge between the load and the write is not a retry: the content is gone.
 		if (reloaded.brief.deletionEpoch !== state.brief.deletionEpoch) return { outcome: 'erased' };
+		// The scope changed: this extraction (its latest lines and facts, or their
+		// absence) belongs to the old mode. Extract again.
+		if (reloaded.mode !== loaded.mode) return { outcome: 'modeChanged' };
 		state = reloaded;
 	}
 	return outcome;
@@ -159,14 +163,14 @@ async function apply(
 function finish(
 	outcome: ApplyOutcome,
 	extra: { projection?: NeedsReplyProjection; errorCode?: string } = {}
-): InterpretRunResult | 'restart' {
+): InterpretRunResult | Restart {
 	switch (outcome.outcome) {
 		case 'gone':
 		case 'erased':
 			return { status: 'gone' };
 		case 'modeChanged':
 		case 'sourceChanged':
-			return 'restart';
+			return { restart: outcome.outcome };
 		case 'stale':
 			// The revision kept moving: nothing applied this time; the next message retries.
 			return {
@@ -194,19 +198,30 @@ export async function runInterpretation(
 	ctx: ActionCtx,
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
+	let reason: Restart['restart'] = 'sourceChanged';
 	for (let attempt = 0; attempt < MAX_RUN_ATTEMPTS; attempt++) {
-		const isLast = attempt === MAX_RUN_ATTEMPTS - 1;
-		const out = await runOnce(ctx, args, isLast);
-		if (out !== 'restart') return out;
+		const out = await runOnce(ctx, args);
+		if (!('restart' in out)) return out;
+		reason = out.restart;
 	}
-	return { status: 'gone' };
+	// The body (or the scope) kept changing under every attempt: record that, with
+	// no claims written, and keep the last good read (the reducer does).
+	const errorCode = reason === 'sourceChanged' ? 'source_changed' : 'mode_changed';
+	const loaded = await loadState(ctx, args);
+	if (!loaded) return { status: 'gone' };
+	const out = finish(
+		await apply(ctx, args, loaded, { contentRevision: 'unread', status: 'failed', errorCode }),
+		{ errorCode }
+	);
+	return 'restart' in out
+		? { status: 'failed', isReplayed: false, createdItemIds: [], errorCode }
+		: out;
 }
 
-async function runOnce(
-	ctx: ActionCtx,
-	args: InterpretArgs,
-	isLastAttempt: boolean
-): Promise<InterpretRunResult | 'restart'> {
+/** The run must start over: the body or the thread's mode changed under it. */
+type Restart = { restart: 'modeChanged' | 'sourceChanged' };
+
+async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRunResult | Restart> {
 	const loaded = await loadState(ctx, args);
 	if (!loaded) return { status: 'gone' };
 	const mode: InterpretMode = loaded.mode;
@@ -242,8 +257,8 @@ async function runOnce(
 				'detail' in scoped ? { errorCode: scoped.detail } : {}
 			);
 		}
-		// On the last attempt a body that keeps changing is recorded as such, not rechecked.
-		const sourceVersion = isLastAttempt ? undefined : scoped.sourceVersion;
+		// Every attempt is checked against the body it read (review round 2 F1).
+		const sourceVersion = scoped.sourceVersion;
 		const { segmented, isTruncated } = segmentScoped(scoped);
 		contentRevision = await contentRevisionOf(segmented);
 		const sourceManifest = {

@@ -41,6 +41,7 @@ import {
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
 import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
+import { isProvenRestatement } from './factEquivalence';
 
 /** The identity of one piece of evidence (its quote aside). */
 export interface EvidenceRef {
@@ -104,6 +105,13 @@ export type ItemPatch = {
 	fill?: Partial<Pick<Doc<'threadItems'>, 'due' | 'amount' | 'options'>>;
 	verify?: Doc<'threadItems'>['verify'];
 	isReviewNeeded?: boolean;
+	/** An unconfirmed claim's changes to a tracked item, held apart until confirmed. */
+	pendingUpdate?: {
+		addEvidence: PlanEvidence[];
+		due?: Doc<'threadItems'>['due'];
+		amount?: Doc<'threadItems'>['amount'];
+		options?: string[];
+	};
 	activity?: {
 		type: ActivityType;
 		delta?: {
@@ -220,47 +228,8 @@ export function counterpartyKeyOf(
 	return other ? normalizeEmail(other) : undefined;
 }
 
-function factValueText(value: ReduceFact['value']): string | undefined {
-	if (!value) return undefined;
-	switch (value.kind) {
-		case 'date':
-			return `date:${value.at}`;
-		case 'money':
-			return `money:${value.value}:${value.currency.toUpperCase()}`;
-		default:
-			return `${value.kind}:${value.text.trim().toLowerCase()}`;
-	}
-}
-
-/** The comparable form of a stored fact's value (`valueText` holds opened text). */
-export function storedFactValueText(fact: PlanFact): string | undefined {
-	const value = fact.value;
-	if (!value) return undefined;
-	if (value.kind === 'date') return `date:${value.at}`;
-	if (value.kind === 'money') return `money:${value.value}:${value.currency.toUpperCase()}`;
-	return fact.valueText !== undefined
-		? `${value.kind}:${fact.valueText.trim().toLowerCase()}`
-		: undefined;
-}
-
-function normalizedWords(text: string): string {
-	return text
-		.normalize('NFKC')
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, ' ')
-		.trim();
-}
-
-/**
- * Whether a proposed fact provably restates a stored one: the same structured
- * value, or neither has a value and they say the same words. Pure.
- */
-export function isProvenRestatement(fact: ReduceFact, stored: PlanFact): boolean {
-	const incoming = factValueText(fact.value);
-	const existing = storedFactValueText(stored);
-	if (incoming !== undefined && existing !== undefined) return incoming === existing;
-	if (incoming !== undefined || existing !== undefined) return false;
-	return normalizedWords(fact.assertion) === normalizedWords(stored.assertionText);
+function same(a: unknown, b: unknown): boolean {
+	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 /** Plan one message's changes. Pure. */
@@ -289,6 +258,24 @@ export function planReduction(
 		if (match && match.status !== 'superseded') {
 			const p = patch(match);
 			const added = newEvidence(match.evidence, proposal.evidence, opts.source, contentRevision);
+			if (proposal.verify === 'proposal' && match.verify !== 'proposal') {
+				// An unconfirmed claim never changes a tracked obligation: its quotes,
+				// deadline, amount and options wait as a pending update ("Check this
+				// change") until it is verified or the user confirms it.
+				const pending: NonNullable<ItemPatch['pendingUpdate']> = { addEvidence: added };
+				if (proposal.due && !same(proposal.due, match.due)) pending.due = proposal.due;
+				if (proposal.amount && !same(proposal.amount, match.amount))
+					pending.amount = proposal.amount;
+				if (proposal.options && !same(proposal.options, match.options)) {
+					pending.options = proposal.options;
+				}
+				if (added.length > 0 || pending.due || pending.amount || pending.options) {
+					p.pendingUpdate = pending;
+					p.activity ??= { type: 'item_changed' };
+				}
+				if (proposal.isReviewNeeded) p.isReviewNeeded = true;
+				continue;
+			}
 			if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
 			const fill: ItemPatch['fill'] = {};
 			if (!match.due && proposal.due) fill.due = proposal.due;
@@ -340,6 +327,13 @@ export function planReduction(
 		const dispositionFrom = current?.disposition ?? item.disposition;
 		const wantsStatus = t.to !== undefined && t.to !== statusFrom;
 
+		if (t.to && CLOSING.has(t.to) && !t.isVerified) {
+			// An unsupported closing claim has no effect at all: not on the status,
+			// not on the disposition, not on the quotes, even when the item
+			// already has that status.
+			drop('unverified');
+			continue;
+		}
 		if (wantsStatus && isStatusLocked(item)) {
 			// A human decided this item: keep their status, keep the new quotes,
 			// and ask a person to look (the writer logs it as item_changed).
@@ -347,11 +341,6 @@ export function planReduction(
 			p.isReviewNeeded = true;
 			if (added.length > 0) p.addEvidence = [...(p.addEvidence ?? []), ...added];
 			drop('corrected');
-			continue;
-		}
-		if (wantsStatus && t.to && CLOSING.has(t.to) && !t.isVerified) {
-			// An unsupported closing claim has no effect at all, disposition included.
-			drop('unverified');
 			continue;
 		}
 		if (wantsStatus && t.to && !isLegalStatusEdge(statusFrom, t.to, 'system')) {

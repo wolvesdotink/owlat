@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
 import { enableFeatures } from '../../../__tests__/factories';
-import { briefModelSchema } from '../schema';
+import { actionsModelSchema, briefModelSchema } from '../schema';
 import { modules, seedMailThread, type Test } from './interpret.testlib';
 import { captureInterpretSource } from '../sources';
 
@@ -274,5 +274,71 @@ describe('interpretMessage', () => {
 			source: { kind: 'mail', id: messageId },
 		});
 		expect(out).toMatchObject({ status: 'complete', createdItemIds: [] });
+	});
+
+	it('checks the body on every attempt and records a body that keeps changing (round 2 F1)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
+		let edits = 0;
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			if (schema === briefModelSchema) {
+				// The body changes while every extraction is in flight.
+				edits++;
+				await t.run(async (ctx) =>
+					ctx.db.patch(messageId, { textBodyInline: `${TEXT} (edit ${edits})` })
+				);
+				return { object: modelOutput('s0') };
+			}
+			return { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } };
+		});
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: messageId },
+		});
+		expect(out).toMatchObject({ status: 'failed', errorCode: 'source_changed' });
+		expect(edits).toBe(2);
+		const items = await t.run(async (ctx) =>
+			ctx.db
+				.query('threadItems')
+				.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', threadId))
+				.collect()
+		);
+		expect(items).toEqual([]);
+	});
+
+	it('re-extracts when the mailbox changes scope under the run (round 2 F6)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId, threadId, mailboxId } = await seedCaptured(t, { text: TEXT });
+		const schemas: unknown[] = [];
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			schemas.push(schema);
+			if (schema === briefModelSchema) {
+				// The owner converts the mailbox to a team inbox meanwhile.
+				await t.run(async (ctx) => ctx.db.patch(mailboxId, { scope: 'shared' }));
+				return { object: modelOutput('s0') };
+			}
+			if (schema === actionsModelSchema) {
+				const { latest: _l, facts: _f, ...actions } = modelOutput('s0');
+				return { object: { ...actions, mode: 'actions' } };
+			}
+			return { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } };
+		});
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: messageId },
+		});
+		expect(out).toMatchObject({ status: 'complete' });
+		expect(schemas.filter((x) => x === briefModelSchema)).toHaveLength(1);
+		expect(schemas.filter((x) => x === actionsModelSchema)).toHaveLength(1);
+		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows.every((r) => r.mode === 'actions')).toBe(true);
+		const brief = await t.run(async (ctx) =>
+			ctx.db
+				.query('threadBriefs')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.first()
+		);
+		expect(brief?.mode).toBe('actions');
+		expect(await t.run(async (ctx) => ctx.db.query('threadFacts').collect())).toEqual([]);
 	});
 });
