@@ -12,6 +12,7 @@ const API_KEY = 'lm_test_key';
 const TIMEOUT_MS = 20;
 
 afterEach(() => {
+	vi.useRealTimers();
 	vi.restoreAllMocks();
 });
 
@@ -54,16 +55,27 @@ const ERROR_BODY = JSON.stringify({ error: { message: 'boom', category: 'interna
 
 describe('request deadline covers the response body', () => {
 	it('times out a success body that arrives after the deadline', async () => {
+		// Fake timers, so the test reads the order of events rather than a busy
+		// runner's clock (#1315).
+		vi.useFakeTimers();
 		mockHeadersThenBody(200, OK_BODY, 120);
 
-		const started = Date.now();
-		await expect(client().get('/test')).rejects.toMatchObject({
+		let failure: unknown;
+		const call = client()
+			.get('/test')
+			.catch((error: unknown) => {
+				failure = error;
+			});
+		await vi.advanceTimersByTimeAsync(TIMEOUT_MS - 1);
+		expect(failure).toBeUndefined();
+		// Rejected at the deadline, not when the late body lands 100 ms later.
+		await vi.advanceTimersByTimeAsync(1);
+		expect(failure).toMatchObject({
 			code: 'timeout',
 			statusCode: 0,
 			message: `Request timed out after ${TIMEOUT_MS}ms`,
 		});
-		// Rejected at the deadline, not when the late body finally landed.
-		expect(Date.now() - started).toBeLessThan(110);
+		await call;
 	});
 
 	it('times out a success body that never arrives', async () => {
