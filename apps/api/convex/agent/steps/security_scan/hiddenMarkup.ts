@@ -48,7 +48,8 @@ import {
  * Work one scan did, counted for the linear-time tests: `chars` is input
  * characters read (a search that finds nothing counts up to the end of the
  * input), `steps` is open elements popped or passed over and formatting list
- * entries visited. Callers outside tests pass none.
+ * entries visited. A new loop over the input, the stack or the list counts
+ * itself here too. Callers outside tests pass none.
  */
 export interface ScanMeter {
 	chars: number;
