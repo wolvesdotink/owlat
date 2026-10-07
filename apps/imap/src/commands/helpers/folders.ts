@@ -42,7 +42,8 @@ export async function listImapFolders(
  *      matched with its case folded; that now holds for ASCII levels only, and
  *      only when one folder matches, so no fold picks between two folders. A
  *      first level of `INBOX` stays the inbox here too, never a folder whose
- *      own name only folds to it.
+ *      own name only folds to it. Such a folder is reached in step 2 by the
+ *      name LIST gives it, its name with its id (`topLevelName`).
  *
  * Returns null when nothing matches.
  */
