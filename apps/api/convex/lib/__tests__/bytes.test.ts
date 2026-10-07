@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { firstDifference } from '../../__tests__/helpers/bytes';
 import {
 	base64ToBytes,
 	base64UrlToBytes,
@@ -30,7 +31,12 @@ describe('bytesToBase64', () => {
 
 		const encoded = bytesToBase64(bytes);
 
-		expect(Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))).toEqual(bytes);
+		expect(
+			firstDifference(
+				Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0)),
+				bytes
+			)
+		).toBe(-1);
 	});
 
 	it('agrees with Buffer for every byte value', () => {
@@ -67,7 +73,7 @@ describe('base64ToBytes', () => {
 	it('round-trips arbitrary bytes through bytesToBase64', () => {
 		const bytes = Uint8Array.from({ length: OVER_ONE_CHUNK }, (_, index) => (index * 7) % 256);
 
-		expect(base64ToBytes(bytesToBase64(bytes))).toEqual(bytes);
+		expect(firstDifference(base64ToBytes(bytesToBase64(bytes)), bytes)).toBe(-1);
 	});
 
 	it('decodes what Buffer.from(value, base64) decodes', () => {
