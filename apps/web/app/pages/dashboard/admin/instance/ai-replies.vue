@@ -341,6 +341,10 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 					:busy="workingHoursBusy"
 					@save="handleSaveWorkingHours"
 				/>
+				<AutonomyItemCoverage
+					v-if="mode === 'auto'"
+					:enforced="config?.isItemCoverageEnforced ?? false"
+				/>
 
 				<!-- Rules: per type of message, and in plain words -->
 				<template v-if="agentEnabled">

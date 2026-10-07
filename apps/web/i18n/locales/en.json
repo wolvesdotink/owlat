@@ -712,6 +712,12 @@
 				"thresholdMin": "0% (all auto)",
 				"todayCount": "Today: {current} / {max}"
 			},
+			"autonomyItemCoverage": {
+				"title": "Hold replies that miss an open item",
+				"subtitle": "An automatic reply waits for review when it leaves an open request unanswered, says a file is attached that is not, or makes a commitment nobody approved. While this is off, Owlat only notes what it would have held.",
+				"operation": "Save the item check",
+				"saved": "Item check saved"
+			},
 			"autonomyWorkingHours": {
 				"daysLabel": "Days",
 				"fromLabel": "From",
