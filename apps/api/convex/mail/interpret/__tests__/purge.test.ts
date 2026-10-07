@@ -16,7 +16,8 @@ import { threadRefToFields, type ThreadRef } from '../../../lib/validators/threa
 import type { InterpretationSource } from '../../../lib/validators/threadBrief';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from '../../messagePurge';
 import { rebuildThreadAggregates } from '../../threadAggregates';
-import { purgeSourcesFromThread } from '../purge';
+import { completenessOfRows, purgeSourcesFromThread } from '../purge';
+import { completenessOf } from '../reduceState';
 import { purgeThreadBrief } from '../purgeThread';
 import { seedFolder } from '../../__tests__/helpers.testlib';
 import {
@@ -490,5 +491,21 @@ describe('team message purge', () => {
 				.collect();
 			expect(activity).toHaveLength(0);
 		});
+	});
+});
+
+describe('completenessOfRows', () => {
+	it('agrees with the reducer’s completenessOf', () => {
+		const row = (sourceKey: string, status: string, updatedAt: number, skipReason?: string) =>
+			({ sourceKey, status, updatedAt, ...(skipReason ? { skipReason } : {}) }) as never;
+		const cases = [
+			[],
+			[row('mail:a', 'complete', 1)],
+			[row('mail:a', 'failed', 1), row('mail:a', 'complete', 2)],
+			[row('mail:a', 'complete', 1), row('mail:b', 'partial', 1)],
+			[row('mail:a', 'skipped', 1, 'undecryptable')],
+			[row('mail:a', 'skipped', 1, 'short'), row('mail:b', 'complete', 3)],
+		];
+		for (const rows of cases) expect(completenessOfRows(rows)).toBe(completenessOf(rows));
 	});
 });

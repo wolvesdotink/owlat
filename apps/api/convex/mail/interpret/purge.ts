@@ -44,7 +44,6 @@ import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadR
 import { scopedIdempotencyKey } from './activity';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
-import { completenessOf, threadInterpretations } from './reduceState';
 import { NO_METER, unlinkDeletedItem, type PurgeMeter } from './purgeRows';
 
 /** Items or facts scanned inline per thread. */
@@ -303,16 +302,56 @@ async function settleThread(
 	}
 }
 
+/** Extractions read per thread when completeness is recomputed (as the reducer). */
+const COMPLETENESS_SCAN = 200;
+
 /**
  * The thread's completeness after extractions were removed. The one place a
- * purge recomputes it, so a different completeness source (counters on the
- * brief row) can be swapped in here.
+ * purge (and a scope change) recomputes it, so a different completeness
+ * source (counters on the brief row) can be swapped in here.
+ *
+ * MIRRORS `reduceState.ts completenessOf` over the newest extractions:
+ * partial while the newest extraction of any source failed, came back
+ * partial or could not be read; none without extractions. It is restated
+ * rather than imported because `reduceState` reaches the message purge
+ * through `load.ts` (an import cycle); `purge.test.ts` pins the two together.
  */
 export async function recomputeCompleteness(
 	ctx: MutationCtx,
 	ref: ThreadRef
 ): Promise<Doc<'threadBriefs'>['completeness']> {
-	return completenessOf(await threadInterpretations(ctx, ref));
+	const rows =
+		ref.kind === 'mail'
+			? await ctx.db
+					.query('messageInterpretations')
+					.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', ref.id))
+					.order('desc')
+					.take(COMPLETENESS_SCAN)
+			: await ctx.db
+					.query('messageInterpretations')
+					.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', ref.id))
+					.order('desc')
+					.take(COMPLETENESS_SCAN);
+	return completenessOfRows(rows);
+}
+
+/** Pure core of {@link recomputeCompleteness}. */
+export function completenessOfRows(
+	rows: ReadonlyArray<
+		Pick<Doc<'messageInterpretations'>, 'sourceKey' | 'status' | 'skipReason' | 'updatedAt'>
+	>
+): Doc<'threadBriefs'>['completeness'] {
+	const newest = new Map<string, (typeof rows)[number]>();
+	for (const row of rows) {
+		const seen = newest.get(row.sourceKey);
+		if (!seen || row.updatedAt > seen.updatedAt) newest.set(row.sourceKey, row);
+	}
+	if (newest.size === 0) return 'none';
+	for (const row of newest.values()) {
+		if (row.status === 'failed' || row.status === 'partial') return 'partial';
+		if (row.status === 'skipped' && row.skipReason === 'undecryptable') return 'partial';
+	}
+	return 'complete';
 }
 
 /** Strip deleted items from the thread's response plans and mark every plan stale. */
