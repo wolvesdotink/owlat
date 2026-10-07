@@ -216,35 +216,42 @@ describe('exec', () => {
 });
 
 describe('stopRunningChildren', () => {
+	// What gets stopped is asserted here, against real process groups. How long
+	// a stop takes is pinned with fake timers in stopRunningChildren.test.ts,
+	// since a busy CI runner's clock says little (#1315). A stop that hung
+	// would run into this generous per-test timeout instead.
+	const STOP_TEST_TIMEOUT_MS = 15_000;
+
 	/** What the shutdown deadline does before the process exits. */
-	it('stops and collects every command still running', async () => {
-		const pidFile = join(DIR, 'deadline.pid');
-		const running = exec('sh', ['-c', spawnsGrandchild(pidFile)], DIR);
-		await new Promise((resolve) => setTimeout(resolve, 150));
+	it(
+		'stops and collects every command still running',
+		{ timeout: STOP_TEST_TIMEOUT_MS },
+		async () => {
+			const pidFile = join(DIR, 'deadline.pid');
+			const running = exec('sh', ['-c', spawnsGrandchild(pidFile)], DIR);
+			await new Promise((resolve) => setTimeout(resolve, 150));
 
-		const started = Date.now();
-		await stopRunningChildren(1_000);
+			await stopRunningChildren(1_000);
 
-		expect(Date.now() - started).toBeLessThan(2_000);
-		const result = await running;
-		expect(result.ok).toBe(false);
-		expect(await gone(Number(readFileSync(pidFile, 'utf-8')))).toBe(true);
-	});
+			const result = await running;
+			expect(result.ok).toBe(false);
+			expect(await gone(Number(readFileSync(pidFile, 'utf-8')))).toBe(true);
+		}
+	);
 
 	it.each([
 		['holds the output pipes', true],
 		['has let go of the output pipes', false],
 	])(
 		'kills a SIGTERM-resistant descendant whose leader has exited, when it %s',
+		{ timeout: STOP_TEST_TIMEOUT_MS },
 		async (_, holdsPipes) => {
 			const pidFile = join(DIR, `stubborn-deadline-${holdsPipes}.pid`);
 			const running = exec('sh', ['-c', leaderWithStubbornDescendant(pidFile, holdsPipes)], DIR);
 			const pid = await descendantPid(pidFile);
 
-			const started = Date.now();
 			await stopRunningChildren(300);
 
-			expect(Date.now() - started).toBeLessThan(2_000);
 			expect(alive(pid)).toBe(false);
 			expect((await running).ok).toBe(false);
 		}
