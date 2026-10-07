@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
 	rewriteInlineImageCids,
 	isInlineImageReferenced,
+	resolveInlineImageSrcs,
+	stripInlineImages,
 } from '../inlineImages';
 
 describe('rewriteInlineImageCids', () => {
 	it('rewrites a blob-preview img to a cid: src matching its content-id', () => {
 		const { html, referencedCids } = rewriteInlineImageCids(
-			'<p>hi</p><img src="blob:https://app/abc" data-inline-cid="cid-1" alt="pic">',
+			'<p>hi</p><img src="blob:https://app/abc" data-inline-cid="cid-1" alt="pic">'
 		);
 		expect(html).toContain('src="cid:cid-1"');
 		expect(html).not.toContain('blob:');
@@ -22,7 +24,7 @@ describe('rewriteInlineImageCids', () => {
 		const { referencedCids } = rewriteInlineImageCids(
 			'<img data-inline-cid="a" src="blob:1">' +
 				'<img data-inline-cid="b" src="blob:2">' +
-				'<img data-inline-cid="a" src="blob:3">',
+				'<img data-inline-cid="a" src="blob:3">'
 		);
 		expect(referencedCids.sort()).toEqual(['a', 'b']);
 	});
@@ -61,5 +63,49 @@ describe('isInlineImageReferenced (prune predicate)', () => {
 
 	it('treats a part with no content-id as unreferenced', () => {
 		expect(isInlineImageReferenced(['a'], undefined)).toBe(false);
+	});
+});
+
+describe('resolveInlineImageSrcs (#1301)', () => {
+	const urls = new Map([
+		['logo@owlat', 'https://api.owlat.example/sealed-blob?id=s1&exp=9&sig="x"'],
+	]);
+
+	it('points a marked image at the URL resolved for its content-id', () => {
+		const html = resolveInlineImageSrcs(
+			'<p>hi</p><img data-inline-cid="logo@owlat" alt="logo.png" style="max-width: 100%">',
+			(cid) => urls.get(cid)
+		);
+		expect(html).toBe(
+			'<p>hi</p><img src="https://api.owlat.example/sealed-blob?id=s1&amp;exp=9&amp;sig=&quot;x&quot;" alt="logo.png" style="max-width: 100%">'
+		);
+	});
+
+	it('leaves an image whose URL is not known yet without a src, stale src included', () => {
+		const html = resolveInlineImageSrcs(
+			'<img src="blob:dead" data-inline-cid="later">',
+			() => undefined
+		);
+		expect(html).toBe('<img>');
+	});
+
+	it('leaves ordinary images alone', () => {
+		const input = '<img src="https://cdn.example/logo.png" width="40">';
+		expect(resolveInlineImageSrcs(input, () => 'https://other.example/x')).toBe(input);
+	});
+});
+
+describe('stripInlineImages (#1293)', () => {
+	it('drops every marked image and counts them, keeping the rest of the body', () => {
+		const { html, removed } = stripInlineImages(
+			'<p>Logo:</p><p><img data-inline-cid="a" alt="a.png"></p>' +
+				'<img src="https://cdn.example/x.png"><img data-inline-cid=\'b\' src="blob:x">'
+		);
+		expect(html).toBe('<p>Logo:</p><p></p><img src="https://cdn.example/x.png">');
+		expect(removed).toBe(2);
+	});
+
+	it('returns a body without inline images unchanged', () => {
+		expect(stripInlineImages('<p>text</p>')).toEqual({ html: '<p>text</p>', removed: 0 });
 	});
 });

@@ -43,14 +43,21 @@ function extractCid(tag: string): string | undefined {
 
 /**
  * Rewrite one `<img>` tag: drop the `data-inline-cid` marker + any existing
- * `src`, then inject `src="cid:<contentId>"`. Other attributes are preserved
- * verbatim so the sanitized alt/width/style survive to the wire.
+ * `src`, then inject `src` (`cid:<contentId>` on the send path; none when it is
+ * undefined). Other attributes are preserved verbatim so the sanitized
+ * alt/width/style survive to the wire.
  */
-function rewriteTag(tag: string, contentId: string): string {
+function rewriteTag(tag: string, src: string | undefined): string {
 	let out = tag.replace(DATA_CID_RE, '');
 	out = out.replace(SRC_RE, '');
-	// Insert the cid src immediately after `<img` (there is always exactly one).
-	return out.replace(/<img\b/i, `<img src="cid:${contentId}"`);
+	if (src === undefined) return out;
+	// Insert the src immediately after `<img` (there is always exactly one).
+	return out.replace(/<img\b/i, `<img src="${src}"`);
+}
+
+/** A URL as a double-quoted attribute value. */
+function attributeValue(url: string): string {
+	return url.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
 export function rewriteInlineImageCids(html: string): InlineCidRewriteResult {
@@ -59,9 +66,41 @@ export function rewriteInlineImageCids(html: string): InlineCidRewriteResult {
 		const cid = extractCid(tag);
 		if (!cid) return tag;
 		referenced.add(cid);
-		return rewriteTag(tag, cid);
+		return rewriteTag(tag, `cid:${cid}`);
 	});
 	return { html: rewritten, referencedCids: [...referenced] };
+}
+
+/**
+ * The same images pointed at a URL the browser can load, for showing a body
+ * before it is sent ("Preview as sent", #1301): each `<img data-inline-cid="X">`
+ * gets `src` = `resolve(X)`, without the marker. An image whose URL is not known
+ * yet gets no src at all, as in the editor. Ordinary images are left alone.
+ */
+export function resolveInlineImageSrcs(
+	html: string,
+	resolve: (contentId: string) => string | undefined
+): string {
+	return html.replace(IMG_TAG_RE, (tag) => {
+		const cid = extractCid(tag);
+		if (!cid) return tag;
+		const url = resolve(cid);
+		return rewriteTag(tag, url ? attributeValue(url) : undefined);
+	});
+}
+
+/**
+ * The body without its inline images. Their bytes are parts of one draft, so
+ * a copy of the body kept anywhere else (a saved reply, #1293) cannot carry them.
+ */
+export function stripInlineImages(html: string): { html: string; removed: number } {
+	let removed = 0;
+	const stripped = html.replace(IMG_TAG_RE, (tag) => {
+		if (!extractCid(tag)) return tag;
+		removed += 1;
+		return '';
+	});
+	return { html: stripped, removed };
 }
 
 /**
