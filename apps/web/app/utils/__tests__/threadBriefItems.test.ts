@@ -11,7 +11,7 @@ import {
 	pendingCiteRef,
 	resolveCite,
 } from '../threadBriefItems';
-import { factLabel, factRows } from '../threadBriefFacts';
+import { factLabel, factRows, formatAmount } from '../threadBriefFacts';
 import { briefBanners } from '../threadBriefBanners';
 import { briefMoreChip, briefRowLatest, briefRowLine } from '../briefRowLine';
 import { briefView, DAY, evidence, fact, item, T0 } from './threadBriefFixtures';
@@ -237,5 +237,30 @@ describe('briefMoreChip', () => {
 		expect(briefMoreChip(2000)).toEqual({ key: 'components.brief.more', count: 1999 });
 		expect(briefMoreChip(1)).toBeNull();
 		expect(briefMoreChip(0)).toBeNull();
+	});
+});
+
+describe('formatAmount', () => {
+	it('formats an ISO currency and falls back to the written currency otherwise', () => {
+		expect(formatAmount(38.08, 'EUR', 'en')).toBe('€38.08');
+		expect(formatAmount(38.08, 'eur', 'en')).toBe('€38.08');
+		expect(formatAmount(38.08, '€', 'en')).toBe('38.08 €');
+		expect(formatAmount(1200, ' US dollars ', 'en')).toBe('1,200 US dollars');
+		expect(formatAmount(5, '', 'en')).toBe('5');
+	});
+
+	it('never throws for a money fact with a malformed currency', () => {
+		const rows = factRows(
+			[
+				fact({
+					id: 'f',
+					key: '["quote","amount",""]',
+					text: 'Quote',
+					value: { kind: 'money', value: 5350, currency: '€' },
+				}),
+			],
+			'en'
+		);
+		expect(rows[0]!.value).toBe('5,350 €');
 	});
 });

@@ -39,6 +39,7 @@ provide(BRIEF_CONTEXT, {
 	cite: (ref, quoteIndex) => emit('cite', ref, quoteIndex),
 });
 
+const { t } = useI18n();
 const selectedSet = computed(() => new Set(props.selected));
 const hasBody = computed(() => props.view.completeness !== 'none');
 /** Only the first item page is read here: more pages mean the lists are cut. */
@@ -59,6 +60,14 @@ function toggle(item: BriefItemView) {
 	>
 		<BriefIncomplete :brief="view" :class="{ 'mb-4': hasBody }" />
 		<template v-if="hasBody">
+			<p
+				v-if="itemsState !== 'complete'"
+				role="status"
+				class="mb-3 rounded-lg bg-bg-surface px-3 py-2 text-xs text-text-secondary"
+				data-testid="brief-items-pagination"
+			>
+				{{ t('components.brief.items.pagesTruncated') }}
+			</p>
 			<BriefItems
 				kind="forTeam"
 				:total="view.counts.forTeam"
