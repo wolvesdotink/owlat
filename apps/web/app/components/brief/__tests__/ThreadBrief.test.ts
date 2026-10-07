@@ -239,6 +239,52 @@ describe('ThreadBrief', () => {
 		);
 	});
 
+	it('discloses a cut walk even when the loaded items are all proposals', () => {
+		const proposals = Array.from({ length: 5 }, (_, i) =>
+			item({ id: `p${i}`, text: `Maybe ${i}`, verify: 'proposal' })
+		);
+		const brief = briefView({
+			forYou: proposals,
+			counts: { forYou: 1, forTeam: 0, waitingOnOthers: 1, unclear: 0, closed: 0, hidden: 0 },
+		});
+		const w = mountBrief({ brief, itemsState: 'truncated' });
+		// The one tracked obligation is not on screen: the list says so.
+		expect(w.get('[data-testid="brief-items-forYou-more"]').text()).toContain(
+			'Not every item could be loaded here.'
+		);
+		expect(w.get('[data-testid="brief-items-pagination"]').attributes('data-state')).toBe(
+			'truncated'
+		);
+	});
+
+	it('never gives the empty assurance before every page is in, and still discloses the cut', () => {
+		const brief = briefView({
+			forYou: [],
+			counts: { forYou: 0, forTeam: 0, waitingOnOthers: 1, unclear: 0, closed: 0, hidden: 0 },
+		});
+		const w = mountBrief({ brief, itemsState: 'truncated' });
+		expect(w.find('[data-testid="brief-items-forYou-empty"]').exists()).toBe(false);
+		expect(w.get('[data-testid="brief-items-pagination"]').text()).toContain(
+			'possibly including requests to check'
+		);
+		const complete = mountBrief({ brief });
+		expect(complete.find('[data-testid="brief-items-pagination"]').exists()).toBe(false);
+	});
+
+	it('renders a pending amount with a malformed currency instead of failing', () => {
+		const brief = briefView({
+			forYou: [
+				item({
+					id: 'q',
+					text: 'Approve the quote',
+					pendingUpdate: { evidence: [], amount: { value: 5000, currency: '€' } },
+				}),
+			],
+		});
+		const pending = mountBrief({ brief }).get('[data-testid="brief-item-pending"]');
+		expect(pending.text()).toContain('5,000 €');
+	});
+
 	it('heads each list with the maintained count, not the loaded one', () => {
 		const brief = briefView({
 			counts: { forYou: 7, forTeam: 0, waitingOnOthers: 1, unclear: 0, closed: 0, hidden: 0 },

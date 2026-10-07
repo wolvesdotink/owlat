@@ -8,6 +8,7 @@
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
 import { briefDueDate } from '~/utils/threadBriefContext';
+import { formatAmount } from '~/utils/threadBriefFacts';
 import { pendingCiteRef } from '~/utils/threadBriefItems';
 import EvidenceMarker from './EvidenceMarker.vue';
 
@@ -30,13 +31,7 @@ const changes = computed(() => {
 		out.push(t('components.brief.item.due', { date }));
 	}
 	const amount = props.update.amount;
-	if (amount) {
-		out.push(
-			new Intl.NumberFormat(locale.value, { style: 'currency', currency: amount.currency }).format(
-				amount.value
-			)
-		);
-	}
+	if (amount) out.push(formatAmount(amount.value, amount.currency, locale.value));
 	if (props.update.options?.length) {
 		out.push(
 			t('components.brief.item.pendingOptions', { options: props.update.options.join(' / ') })

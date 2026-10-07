@@ -10,6 +10,7 @@ import type {
 	BriefItemView,
 	BriefModeView,
 	EvidenceView,
+	ThreadBriefView,
 } from '../../../api/convex/mail/interpret/briefShape';
 import type { CiteParam } from '~/utils/threadBriefView';
 
@@ -112,26 +113,36 @@ export function pendingCiteRef(itemId: string): string {
 	return `${itemId}~pending`;
 }
 
-export function resolveCite(brief: BriefModeView, cite: CiteParam): ResolvedCite | null {
+/** Every item a view lists, in either mode. */
+function itemsOf(view: ThreadBriefView): BriefItemView[] {
+	const own = view.mode === 'brief' ? view.forYou : view.forTeam;
+	return [...own, ...view.waitingOnOthers, ...view.unclear];
+}
+
+/**
+ * What a cite points at, in a personal brief or a team (actions) view: an
+ * item's quote, its pending change's quote (`<id>~pending`), a fact or a
+ * "Latest update" line. The reader and Answer mode share it.
+ */
+export function resolveCite(view: ThreadBriefView, cite: CiteParam): ResolvedCite | null {
+	const brief = view.mode === 'brief' ? view : null;
 	let label: string | undefined;
 	let evidence: EvidenceView | undefined;
 	const latestIndex = /^latest-(\d+)$/.exec(cite.ref);
 	const pendingOf = /^(.+)~pending$/.exec(cite.ref);
 	if (pendingOf) {
-		const items = [...brief.forYou, ...brief.waitingOnOthers, ...brief.unclear];
-		const item = items.find((i) => i.id === pendingOf[1]);
+		const item = itemsOf(view).find((i) => i.id === pendingOf[1]);
 		label = item?.text;
 		evidence = item?.pendingUpdate
 			? evidenceAt(item.pendingUpdate.evidence, cite.quoteIndex)
 			: undefined;
 	} else if (latestIndex) {
-		const line = brief.latest?.[Number(latestIndex[1])];
+		const line = brief?.latest?.[Number(latestIndex[1])];
 		label = line?.text;
 		evidence = line ? evidenceAt(line.evidence, cite.quoteIndex) : undefined;
 	} else {
-		const items = [...brief.forYou, ...brief.waitingOnOthers, ...brief.unclear];
-		const item = items.find((i) => i.id === cite.ref);
-		const fact = brief.standing?.facts.find((f) => f.id === cite.ref);
+		const item = itemsOf(view).find((i) => i.id === cite.ref);
+		const fact = brief?.standing?.facts.find((f) => f.id === cite.ref);
 		label = item?.text ?? fact?.text;
 		evidence = evidenceAt(item?.evidence ?? fact?.evidence ?? [], cite.quoteIndex);
 	}

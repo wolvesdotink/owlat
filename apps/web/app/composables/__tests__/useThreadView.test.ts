@@ -310,3 +310,34 @@ describe('the brief beyond its first item page', () => {
 		expect(state.brief.value?.waitingOnOthers).toHaveLength(100);
 	});
 });
+
+describe('a brief whose pages are already in the cache', () => {
+	it('walks on to the third page and finishes', async () => {
+		const base = briefView();
+		const tracked = (id: string) => ({ ...base.forYou[0]!, id: id as never, text: id });
+		data['brief.get'] = ref(
+			briefView({
+				forYou: [tracked('a')],
+				page: { cursor: 'c1', isDone: false, isClosedTruncated: false },
+			})
+		);
+		data['brief.get#c1'] = ref(
+			briefView({
+				forYou: [tracked('b')],
+				page: { cursor: 'c2', isDone: false, isClosedTruncated: false },
+			})
+		);
+		data['brief.get#c2'] = ref(
+			briefView({
+				forYou: [tracked('c')],
+				page: { cursor: 'c3', isDone: true, isClosedTruncated: false },
+			})
+		);
+		const state = setup();
+		await nextTick();
+		await nextTick();
+		expect(queryArgs['brief.get#c2']?.[0]).toMatchObject({ cursor: 'c2' });
+		expect(state.itemsState.value).toBe('complete');
+		expect(state.brief.value?.forYou.map((i) => i.id).sort()).toEqual(['a', 'b', 'c']);
+	});
+});

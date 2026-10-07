@@ -10,7 +10,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import { briefView, item } from '~/utils/__tests__/threadBriefFixtures';
+import { briefView, evidence, item } from '~/utils/__tests__/threadBriefFixtures';
 
 const view = ref<unknown>(undefined);
 vi.mock('~/composables/useThreadBrief', async () => {
@@ -79,5 +79,34 @@ describe('AnswerBriefCard', () => {
 		expect(text).not.toContain('Where things stand');
 		expect(w.find('[data-testid="catch-up"]').exists()).toBe(false);
 		expect(w.find('[data-testid="thread-brief"]').exists()).toBe(false);
+	});
+
+	it('reveals the source of a pending change in a shared mailbox', async () => {
+		const base = briefView();
+		view.value = {
+			mode: 'actions',
+			threadRef: base.threadRef,
+			interpretationRevision: 2,
+			completeness: 'complete',
+			waitingOnOthers: [],
+			unclear: [],
+			activity: [],
+			counts: base.counts,
+			forTeam: [
+				item({
+					id: 'r',
+					text: 'Refund €129.00',
+					pendingUpdate: {
+						evidence: [evidence('m9', 'make it €99')],
+						amount: { value: 99, currency: 'EUR' },
+					},
+				}),
+			],
+		};
+		const w = mountCard();
+		await flushPromises();
+		const marker = w.get('[data-testid="brief-item-pending"] [data-testid="evidence-marker"]');
+		await marker.trigger('click');
+		expect(w.emitted('reveal')).toEqual([['m9']]);
 	});
 });

@@ -903,7 +903,9 @@
 				"emptyIncomplete": "Nothing found in the part that was read.",
 				"loadingMore": "Loading the rest of the items…",
 				"truncated": "Not every item could be loaded here. The conversation has them all.",
-				"closedTruncated": "Older finished items are not listed."
+				"closedTruncated": "Older finished items are not listed.",
+				"pagesLoading": "More items of this thread are still loading.",
+				"pagesTruncated": "This thread has more items than are shown here, possibly including requests to check. The conversation has everything."
 			},
 			"item": {
 				"due": "due {date}",

@@ -42,17 +42,23 @@ export function useThreadBrief(opts: {
 	const view = computed(() => query.data.value as ThreadBriefView | null | undefined);
 
 	// Later item pages, walked in cursor order up to the bound (utils/threadBriefPages).
-	let pages: Map<string, { data: Ref<unknown> }> | null = null;
+	// The page map is created after the cursor chain that keys it, so it lives in
+	// a ref: setting it re-runs the chain, which then reads each page's cursor
+	// reactively. A first page already in the cache (the chain runs at once,
+	// before the map exists) still walks on to page 3 and beyond.
+	const pages = shallowRef<Map<string, { data: Ref<unknown> }> | null>(null);
+	const pageOf = (cursor: string) =>
+		pages.value?.get(cursor)?.data.value as ThreadBriefView | null | undefined;
 	const cursors = computed(() => {
 		const out: string[] = [];
 		let cursor = view.value?.mode === 'brief' ? nextCursorOf(view.value) : null;
 		while (cursor && out.length < BRIEF_MAX_PAGES - 1) {
 			out.push(cursor);
-			cursor = nextCursorOf(pages?.get(cursor)?.data.value as ThreadBriefView | null | undefined);
+			cursor = nextCursorOf(pageOf(cursor));
 		}
 		return out;
 	});
-	pages = useConvexQueryMap(api.mail.interpret.brief.get, cursors, (cursor) =>
+	pages.value = useConvexQueryMap(api.mail.interpret.brief.get, cursors, (cursor) =>
 		threadRef.value
 			? { threadRef: threadRef.value, locale: briefLocale(locale.value), cursor }
 			: 'skip'
@@ -62,12 +68,7 @@ export function useThreadBrief(opts: {
 		const v = view.value;
 		if (v === undefined) return undefined;
 		if (v?.mode !== 'brief') return null;
-		return mergeBriefPages(
-			v,
-			cursors.value.map(
-				(cursor) => pages?.get(cursor)?.data.value as ThreadBriefView | null | undefined
-			)
-		);
+		return mergeBriefPages(v, cursors.value.map(pageOf));
 	});
 	/** The personal brief (all loaded pages merged), or null for none / a team view; undefined while loading. */
 	const brief = computed<BriefModeView | null | undefined>(() => {
