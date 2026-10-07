@@ -32,6 +32,7 @@ import {
 	itemResponsibilityValidator,
 	itemRevisionRefValidator,
 	itemStatusValidator,
+	itemConfirmedFromValidator,
 	itemCorrectionKindValidator,
 	itemListBucketValidator,
 	itemVerifyValidator,
@@ -241,6 +242,9 @@ export const threadBriefTables = {
 		commitmentId: v.optional(v.id('mailCommitments')),
 		// Normalized counterparty address for cross-thread items (P4).
 		counterpartyKey: v.optional(v.string()),
+		// What the standing `confirmed` correction changed, for an exact undo
+		// (mail/interpret/reactionRules.ts). Cleared when the confirmation is undone.
+		confirmedFrom: v.optional(itemConfirmedFromValidator),
 		// `<sourceKey>#<index>`: the proposal that created it, so an ordered
 		// replay keeps the item's id.
 		// An unconfirmed claim's changes to this (tracked) item, held apart until

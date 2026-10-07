@@ -334,6 +334,38 @@ export const interpretEligibilitySignalsValidator = v.object({
 	category: v.optional(v.string()),
 });
 
+// ── Confirmations ──────────────────────────────────────────────────────────
+
+/**
+ * What a confirmation changed (`threadItems.confirmedFrom`), so undo puts it
+ * back exactly: the item's values before the confirmation, the held update it
+ * applied, and the quotes it added. It names no message: the added quotes stay
+ * on the item (found again by key), so erasing a message needs nothing here.
+ */
+export const itemConfirmedFromValidator = v.object({
+	// `proposal`: a "Check this" item became tracked; `heldChange`: a tracked
+	// item took its held update ("Check this change").
+	kind: v.union(v.literal('proposal'), v.literal('heldChange')),
+	// The `confirmed` correction this snapshot belongs to.
+	confirmation: itemCorrectionValidator,
+	verify: itemVerifyValidator,
+	correction: v.optional(itemCorrectionValidator),
+	due: v.optional(itemDueValidator),
+	amount: v.optional(itemAmountValidator),
+	options: v.optional(v.array(v.string())),
+	// The held update it applied, without its quotes (those are the added ones).
+	pendingUpdate: v.optional(
+		v.object({
+			due: v.optional(itemDueValidator),
+			amount: v.optional(itemAmountValidator),
+			options: v.optional(v.array(v.string())),
+		})
+	),
+	// mail/interpret/reducePlan.ts evidenceKey of each quote the confirmation
+	// moved from the held update onto the item; undo moves them back.
+	addedEvidenceKeys: v.array(v.string()),
+});
+
 // ── Internal notes ─────────────────────────────────────────────────────────
 
 /** Where an internal note lives: a Team Inbox note or a Postbox thread discussion message. */
