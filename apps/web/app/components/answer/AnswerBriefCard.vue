@@ -63,20 +63,11 @@ function sourceOf(messageId: string): BriefSource | undefined {
 }
 
 function onCite(ref: string, quoteIndex: number) {
-	const b = brief.value;
-	if (b) {
-		const target = resolveCite(b, { ref, quoteIndex });
-		if (target) emit('reveal', target.messageId);
-		return;
-	}
-	// Team view: items only.
-	const item = [
-		...(teamView.value?.forTeam ?? []),
-		...(teamView.value?.waitingOnOthers ?? []),
-		...(teamView.value?.unclear ?? []),
-	].find((i) => i.id === ref);
-	const source = item?.evidence[quoteIndex]?.source ?? item?.evidence[0]?.source;
-	if (source) emit('reveal', source.id);
+	// One resolver for both modes: items, pending changes (`<id>~pending`),
+	// facts and latest lines (utils/threadBriefItems resolveCite).
+	const v = brief.value ?? teamView.value;
+	const target = v ? resolveCite(v, { ref, quoteIndex }) : null;
+	if (target) emit('reveal', target.messageId);
 }
 
 function onFile(file: FileView) {

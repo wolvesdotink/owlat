@@ -21,6 +21,30 @@ export function factLabel(key: string): string {
 	return entity.charAt(0).toLocaleUpperCase() + entity.slice(1);
 }
 
+/** An ISO 4217 currency code, the only kind `Intl.NumberFormat` accepts. */
+const CURRENCY_CODE = /^[A-Za-z]{3}$/;
+
+/**
+ * An amount as text: formatted as currency when `currency` is a valid ISO
+ * 4217 code, else the number and the currency as written ("38.08 €"), so a
+ * model's "€" or "EUR " never throws and never hides the value.
+ */
+export function formatAmount(value: number, currency: string, locale: string): string {
+	const code = currency.trim();
+	if (CURRENCY_CODE.test(code)) {
+		try {
+			return new Intl.NumberFormat(locale, {
+				style: 'currency',
+				currency: code.toUpperCase(),
+			}).format(value);
+		} catch {
+			// An unknown code a runtime still rejects: written out below.
+		}
+	}
+	const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
+	return code ? `${number} ${code}` : number;
+}
+
 /** A structured value as text ("14 Nov", "€5,350.00"), or null for none. */
 export function factValueText(value: FactView['value'], locale: string): string | null {
 	if (!value) return null;
@@ -32,9 +56,7 @@ export function factValueText(value: FactView['value'], locale: string): string 
 				...(value.tz ? { timeZone: value.tz } : {}),
 			}).format(value.at);
 		case 'money':
-			return new Intl.NumberFormat(locale, { style: 'currency', currency: value.currency }).format(
-				value.value
-			);
+			return formatAmount(value.value, value.currency, locale);
 		default:
 			return value.text;
 	}

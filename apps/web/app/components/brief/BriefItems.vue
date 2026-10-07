@@ -6,8 +6,9 @@
  * The empty "For you" says so only when the brief is complete AND every item
  * page is in: an incomplete brief never claims there is nothing to do (plan
  * §8). The heading counts come from the thread's maintained counters
- * (`total`), not from the items loaded so far; while more pages are on their
- * way, or the walk was cut, the list says so.
+ * (`total`, tracked items only: unconfirmed proposals are compared apart), not
+ * from the items loaded so far; while more pages are on their way, or the walk
+ * was cut, the list says so. The empty assurance needs every page in.
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
 import type { BriefAction } from '~/utils/threadBriefItems';
@@ -41,13 +42,14 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const title = computed(() => t(`components.brief.items.${props.kind}`));
-const openCount = computed(
-	() => props.total ?? props.items.filter((i) => i.status === 'open').length
+/** Open TRACKED items on screen: the counters (`total`) count tracked items only. */
+const loadedTracked = computed(
+	() => props.items.filter((i) => i.status === 'open' && i.verify !== 'proposal').length
 );
-const loadedOpen = computed(() => props.items.filter((i) => i.status === 'open').length);
+const openCount = computed(() => props.total ?? loadedTracked.value);
 const state = computed<BriefItemsState>(() => props.itemsState ?? 'complete');
 /** Open items the counters know of that are not on screen yet. */
-const isShort = computed(() => state.value !== 'complete' && loadedOpen.value < openCount.value);
+const isShort = computed(() => state.value !== 'complete' && loadedTracked.value < openCount.value);
 const note = computed(() =>
 	props.kind === 'forYou' || props.kind === 'forTeam'
 		? t('components.brief.items.openCount', { count: openCount.value }, openCount.value)
@@ -91,7 +93,7 @@ const note = computed(() =>
 			}}
 		</p>
 		<p
-			v-else-if="items.length === 0"
+			v-else-if="items.length === 0 && state === 'complete'"
 			class="text-sm text-text-secondary"
 			:data-testid="`brief-items-${kind}-empty`"
 		>

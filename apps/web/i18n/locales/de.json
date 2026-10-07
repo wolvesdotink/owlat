@@ -903,7 +903,9 @@
 				"emptyIncomplete": "Im gelesenen Teil wurde nichts gefunden.",
 				"loadingMore": "Die übrigen Punkte werden geladen…",
 				"truncated": "Hier ließen sich nicht alle Punkte laden. Im E-Mail-Verlauf steht alles.",
-				"closedTruncated": "Ältere erledigte Punkte sind nicht aufgeführt."
+				"closedTruncated": "Ältere erledigte Punkte sind nicht aufgeführt.",
+				"pagesLoading": "Weitere Punkte dieses Verlaufs werden noch geladen.",
+				"pagesTruncated": "Dieser Verlauf hat mehr Punkte, als hier stehen, vielleicht auch zu prüfende Bitten. Im E-Mail-Verlauf steht alles."
 			},
 			"item": {
 				"due": "fällig {date}",

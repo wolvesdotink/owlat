@@ -123,6 +123,19 @@ function toggle(item: BriefItemView) {
 			<template v-if="brief && hasBody">
 				<BriefLatest :lines="brief.latest ?? []" :is-new="isLatestNew" :note="latestNote" />
 				<BriefStanding v-if="brief.standing && showRest" :standing="brief.standing" />
+				<p
+					v-if="itemsState !== 'complete'"
+					role="status"
+					class="mb-3 rounded-lg bg-bg-surface px-3 py-2 text-xs text-text-secondary"
+					data-testid="brief-items-pagination"
+					:data-state="itemsState"
+				>
+					{{
+						itemsState === 'loading'
+							? t('components.brief.items.pagesLoading')
+							: t('components.brief.items.pagesTruncated')
+					}}
+				</p>
 				<BriefItems
 					kind="forYou"
 					:total="brief.counts.forYou"
