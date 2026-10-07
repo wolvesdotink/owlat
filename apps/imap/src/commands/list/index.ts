@@ -20,18 +20,25 @@ interface ListArgs {
  * verb arrives in `start({ verb })` so the response label and filter both
  * branch off it.
  *
- * Only the RFC 3501 form is accepted. LIST-EXTENDED (RFC 5258) and
- * LIST-STATUS (RFC 5819) are not advertised: clients without them read
- * subscriptions with LSUB and counts with STATUS.
+ * Only the RFC 3501 form is accepted: two mailbox names, each an atom or a
+ * string, never a parenthesized list. LIST-EXTENDED (RFC 5258), LIST-STATUS
+ * (RFC 5819) and SPECIAL-USE (RFC 6154, whose capability names the extended
+ * LIST options) are not advertised, so clients read subscriptions with LSUB
+ * and counts with STATUS. The special-use attributes (`\Sent`, ...) are still
+ * sent, which RFC 6154 §2 allows on the plain LIST.
  */
 export const listModule: ImapCommandModule<ListArgs> = {
 	verbs: ['LIST', 'LSUB'],
-	capabilities: ['SPECIAL-USE'],
 	requires: 'auth',
 	concurrent: () => true,
-	parseArgs(rawArgs) {
+	parseArgs(rawArgs, argForms) {
 		const [reference, pattern] = rawArgs;
-		if (rawArgs.length !== 2 || reference === undefined || pattern === undefined) {
+		if (
+			rawArgs.length !== 2 ||
+			reference === undefined ||
+			pattern === undefined ||
+			argForms?.includes('list')
+		) {
 			return { ok: false, error: 'LIST and LSUB take <reference> <mailbox>' };
 		}
 		return { ok: true, args: { reference, pattern } };
@@ -67,20 +74,17 @@ export const listModule: ImapCommandModule<ListArgs> = {
 };
 
 /**
- * An unsubscribed folder in LSUB. RFC 3501 §6.3.9: when `%` stops at a level
- * whose folder is not subscribed while a subscribed folder below it is out of
- * the pattern's reach, that level is returned with `\Noselect`, so the client
- * can still find what is below it. Otherwise it is left out.
+ * An unsubscribed folder in LSUB. RFC 3501 §6.3.9: when a pattern's trailing
+ * `%` stops at a level whose folder is not subscribed but has a subscribed
+ * folder below it, that level is returned with `\Noselect`, so the client can
+ * still find what is below it. Otherwise it is left out.
  */
 function lsubPlaceholder(
 	folder: ImapFolder,
 	folders: readonly ImapFolder[],
 	pattern: string
 ): string | null {
-	if (!pattern.includes('%') || !folder.hasChildren) return null;
+	if (!pattern.endsWith('%') || !folder.hasChildren) return null;
 	const below = folder.path + DELIMITER;
-	const hidden = folders.some(
-		(f) => f.subscribed && f.path.startsWith(below) && !matchesPattern(pattern, f.path)
-	);
-	return hidden ? '\\Noselect' : null;
+	return folders.some((f) => f.subscribed && f.path.startsWith(below)) ? '\\Noselect' : null;
 }

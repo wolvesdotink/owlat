@@ -10,7 +10,7 @@
  * the parse-and-start ceremony.
  */
 
-import { matchTrailingLiteral, parseLine, type ParsedCommand } from '../parser.js';
+import { matchTrailingLiteral, parseLine, type ArgForm, type ParsedCommand } from '../parser.js';
 import type {
 	CommandDeps,
 	CommandSession,
@@ -30,6 +30,7 @@ interface DispatchEnv {
 	readonly deps: CommandDeps;
 	readonly state: ConnectionState;
 	readonly rawArgs: string[];
+	readonly argForms?: readonly ArgForm[];
 	readonly tag: string;
 	readonly verb: ImapVerb;
 	readonly send: (line: string | Buffer) => void;
@@ -46,7 +47,7 @@ interface DispatchEnv {
 interface ErasedCommandModule {
 	readonly verbs: readonly ImapVerb[];
 	readonly capabilities?: readonly string[];
-	concurrent(rawArgs: string[]): boolean;
+	concurrent(rawArgs: string[], argForms?: readonly ArgForm[]): boolean;
 	dispatch(env: DispatchEnv): CommandSession;
 }
 
@@ -54,12 +55,12 @@ function erase<TArgs>(m: ImapCommandModule<TArgs>): ErasedCommandModule {
 	return {
 		verbs: m.verbs,
 		capabilities: m.capabilities,
-		concurrent(rawArgs) {
-			const parsed = m.parseArgs(rawArgs);
+		concurrent(rawArgs, argForms) {
+			const parsed = m.parseArgs(rawArgs, argForms);
 			return parsed.ok && (m.concurrent?.(parsed.args) ?? false);
 		},
 		dispatch(env) {
-			const parseResult = m.parseArgs(env.rawArgs);
+			const parseResult = m.parseArgs(env.rawArgs, env.argForms);
 			if (!parseResult.ok) {
 				env.send(`${env.tag} BAD ${parseResult.error}`);
 				return syncSession();
@@ -152,7 +153,7 @@ export function runsConcurrently(line: string): boolean {
 	if (matchTrailingLiteral(line)) return false;
 	const parsed = parseLine(line);
 	if (!parsed) return false;
-	return REGISTRY[parsed.command as ImapVerb]?.concurrent(parsed.args) ?? false;
+	return REGISTRY[parsed.command as ImapVerb]?.concurrent(parsed.args, parsed.argForms) ?? false;
 }
 
 /**
@@ -213,6 +214,7 @@ export function dispatch(
 		deps,
 		state,
 		rawArgs: parsed.args,
+		argForms: parsed.argForms,
 		tag: parsed.tag,
 		verb,
 		send,

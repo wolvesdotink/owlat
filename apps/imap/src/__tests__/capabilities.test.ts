@@ -7,7 +7,8 @@
  * module declares a capability the line never advertises (and the reverse —
  * no advertised atom lacks an owning module), that QRESYNC is *not*
  * advertised (we ship CONDSTORE but not QRESYNC), and that neither are
- * LIST-EXTENDED and LIST-STATUS, which LIST does not implement; and (3)
+ * LIST-EXTENDED, LIST-STATUS and SPECIAL-USE, whose extended LIST forms LIST
+ * does not implement; and (3)
  * that STARTTLS is not a verb, never appears in CAPABILITY, and is rejected
  * with BAD.
  *
@@ -30,7 +31,6 @@ const MODULE_CAPABILITIES: readonly string[] = [
 	'UIDPLUS',
 	'LITERAL+',
 	'NAMESPACE',
-	'SPECIAL-USE',
 	'ID',
 	'CONDSTORE',
 ];
@@ -54,7 +54,6 @@ describe('CAPABILITY_LINE — exact advertised set (snapshot)', () => {
 				'LITERAL+',
 				'MOVE',
 				'NAMESPACE',
-				'SPECIAL-USE',
 				'UIDPLUS',
 				'UNSELECT',
 				'ENABLE',
@@ -101,10 +100,13 @@ describe('CAPABILITY_LINE — module/line consistency', () => {
 		expect(atomsOf(CAPABILITY_LINE)).toContain('CONDSTORE');
 	});
 
-	it('does NOT advertise LIST-EXTENDED or LIST-STATUS (LIST takes the RFC 3501 form only)', () => {
+	it('does NOT advertise LIST-EXTENDED, LIST-STATUS or SPECIAL-USE (LIST takes the RFC 3501 form only)', () => {
 		for (const line of [CAPABILITY_LINE, PLAINTEXT_CAPABILITY_LINE]) {
 			expect(atomsOf(line)).not.toContain('LIST-EXTENDED');
 			expect(atomsOf(line)).not.toContain('LIST-STATUS');
+			// RFC 6154 §2: the capability names the extended LIST options; the
+			// attributes on a plain LIST need none.
+			expect(atomsOf(line)).not.toContain('SPECIAL-USE');
 		}
 	});
 

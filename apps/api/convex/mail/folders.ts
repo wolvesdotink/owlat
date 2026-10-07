@@ -90,9 +90,9 @@ function hasControlChar(name: string): boolean {
 
 /**
  * `/` is the IMAP hierarchy delimiter (RFC 3501 §5.1): in a name it would read
- * as a level of nesting. Folders nest through `parentId`; the IMAP server sends
- * a `/` already in a name, such as one mirrored from a provider, as `∕`
- * (U+2215) so it stays one level.
+ * as a level of nesting. Folders nest through `parentId`; the IMAP server
+ * escapes a `/` already in a name, such as one mirrored from a provider, so it
+ * stays one level (`apps/imap/src/commands/helpers/folderTree.ts`).
  */
 const HIERARCHY_DELIMITER = '/';
 

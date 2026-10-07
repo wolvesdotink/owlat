@@ -32,8 +32,9 @@ vi.mock('../logger.js', () => ({
 /**
  * A mailbox with nesting under a user folder and under INBOX, a top-level name
  * that shares a prefix with a parent, a non-ASCII nested name, a folder whose
- * own name holds a `/`, and one whose parent is gone. `Work` is not
- * subscribed but has subscribed folders below it.
+ * own name holds a `/` next to one whose name holds its look-alike `∕`, a name
+ * in parentheses, and one whose parent is gone. `Work` is not subscribed but
+ * has subscribed folders below it.
  */
 const FOLDERS: FolderRow[] = withCounters([
 	{ _id: 'f-inbox', name: 'INBOX', role: 'inbox', subscribed: true },
@@ -45,7 +46,9 @@ const FOLDERS: FolderRow[] = withCounters([
 	{ _id: 'f-workshop', name: 'Workshop', subscribed: true },
 	{ _id: 'f-receipts', name: 'Receipts', parentId: 'f-inbox', subscribed: true },
 	{ _id: 'f-slash', name: 'Clients/2026', subscribed: true },
+	{ _id: 'f-look', name: 'Clients∕2026', subscribed: true },
 	{ _id: 'f-orphan', name: 'Orphan', parentId: 'f-deleted', subscribed: true },
+	{ _id: 'f-paren', name: '(Old)', subscribed: true },
 ]);
 
 /** Each folder's path, as LIST must give it. */
@@ -59,8 +62,22 @@ const PATHS: Record<string, string> = {
 	'f-workshop': 'Workshop',
 	'f-receipts': 'INBOX/Receipts',
 	'f-slash': 'Clients∕2026',
+	'f-look': 'Clients⧵∕2026',
 	'f-orphan': 'Orphan',
+	'f-paren': '(Old)',
 };
+
+/** The top-level folders, in listing order. */
+const TOP_LEVEL = [
+	'INBOX',
+	'Sent',
+	'Work',
+	'Workshop',
+	'Clients∕2026',
+	'Clients⧵∕2026',
+	'Orphan',
+	'(Old)',
+];
 
 const idOf = (path: string): string => Object.keys(PATHS).find((id) => PATHS[id] === path)!;
 const pathsOf = (...ids: string[]): string[] => ids.map((id) => PATHS[id]!);
@@ -93,9 +110,7 @@ describe('LIST reference and pattern', () => {
 
 	it('LIST "" "%" lists the top level only', async () => {
 		const out = await list('LIST "" "%"');
-		expect(await listedNames(out, 'LIST')).toEqual(
-			pathsOf('f-inbox', 'f-sent', 'f-work', 'f-workshop', 'f-slash', 'f-orphan')
-		);
+		expect(await listedNames(out, 'LIST')).toEqual(TOP_LEVEL);
 	});
 
 	it('LIST "Work/" "%" lists the level below Work', async () => {
@@ -153,10 +168,33 @@ describe('LIST reference and pattern', () => {
 		['LIST "" "*" "%"'],
 		['LIST ""'],
 		['LSUB "" "*" RETURN (CHILDREN)'],
+		['LIST "" ("*")'],
+		['LIST "" ("*" "%")'],
+		['LIST () "*"'],
+		['LSUB ("") "*"'],
 	])('%s is refused: LIST-EXTENDED syntax is not supported', async (command) => {
 		const { socket } = await loggedIn();
 		const out = await exchange(socket, 'l1', `l1 ${command}`);
 		expect(out).toEqual(['l1 BAD LIST and LSUB take <reference> <mailbox>']);
+	});
+});
+
+describe('names in parentheses', () => {
+	it('a quoted pattern holding parentheses is a name, not a list', async () => {
+		const out = await list('LIST "" "(Old)"');
+		expect(out).toEqual(['* LIST (\\HasNoChildren) "/" "(Old)"', 'l1 OK LIST completed']);
+	});
+
+	it('so is a literal one', async () => {
+		const out = await list('LIST "" {5+}\r\n(Old)');
+		expect(await listedNames(out, 'LIST')).toEqual(['(Old)']);
+	});
+
+	it('SELECT opens it', async () => {
+		const { socket, convex } = await loggedIn();
+		const out = await exchange(socket, 's1', await imapflowSelect('s1', '(Old)'));
+		expect(out.at(-1)).toBe('s1 OK [READ-WRITE] SELECT completed');
+		expect(selectedIds(convex)).toEqual(['f-paren']);
 	});
 });
 
@@ -174,11 +212,15 @@ describe('LIST hierarchy attributes', () => {
 		expect(entries.find((e) => e.path === 'Sent')?.flags).toEqual(['\\Sent', '\\HasNoChildren']);
 	});
 
-	it('a folder whose own name holds a "/" is one level, not a phantom parent', async () => {
+	it('a folder whose own name holds a "/" is one level, apart from its look-alike', async () => {
 		const out = await list('LIST "" "*"');
 		expect(out).toContain('* LIST (\\HasNoChildren) "/" "Clients&IhU-2026"');
-		const entry = (await listedEntries(out, 'LIST')).find((e) => e.path.startsWith('Clients'));
-		expect(entry?.path.split(entry.delimiter)).toEqual(['Clients∕2026']);
+		expect(out).toContain('* LIST (\\HasNoChildren) "/" "Clients&KfUiFQ-2026"');
+		const entries = (await listedEntries(out, 'LIST')).filter((e) => e.path.startsWith('Clients'));
+		expect(entries.map((e) => e.path.split(e.delimiter))).toEqual([
+			['Clients∕2026'],
+			['Clients⧵∕2026'],
+		]);
 	});
 });
 
@@ -192,10 +234,26 @@ describe('LSUB', () => {
 
 	it('LSUB "" "%" returns an unsubscribed parent of subscribed folders as \\Noselect', async () => {
 		const entries = await listedEntries(await list('LSUB "" "%"', 'LSUB'), 'LSUB');
-		expect(entries.map((e) => e.path)).toEqual(
-			pathsOf('f-inbox', 'f-sent', 'f-work', 'f-workshop', 'f-slash', 'f-orphan')
-		);
+		expect(entries.map((e) => e.path)).toEqual(TOP_LEVEL);
 		expect(entries.find((e) => e.path === 'Work')?.flags).toEqual(['\\Noselect']);
+	});
+
+	it.each([
+		// The trailing `%` stops at Work: it stands in for what is below.
+		['Wo%', ['Work', 'Workshop']],
+		['*%', FOLDERS.filter((f) => f.subscribed || f._id === 'f-work').map((f) => PATHS[f._id])],
+		// No trailing `%`: Work is not subscribed, so it is not returned.
+		['%ork', []],
+		['Work', []],
+		['*', FOLDERS.filter((f) => f.subscribed).map((f) => PATHS[f._id])],
+		// Übersicht is not subscribed and has nothing below it.
+		['%/%', ['Work/Clients', 'INBOX/Receipts']],
+	])('LSUB "" %j returns %j', async (pattern, paths) => {
+		const entries = await listedEntries(await list(`LSUB "" "${pattern}"`, 'LSUB'), 'LSUB');
+		expect(entries.map((e) => e.path)).toEqual(paths);
+		for (const e of entries) {
+			expect(e.flags.includes('\\Noselect')).toBe(e.path === 'Work');
+		}
 	});
 
 	it('LSUB "Work/" "%" leaves out an unsubscribed folder with nothing subscribed below', async () => {
@@ -226,6 +284,7 @@ describe('the listed path reaches its folder', () => {
 		['"Work/&ANw-bersicht"', 'f-ueber'],
 		['"Work/Übersicht"', 'f-ueber'],
 		['"Clients&IhU-2026"', 'f-slash'],
+		['"Clients&KfUiFQ-2026"', 'f-look'],
 	])('SELECT %s opens its folder', async (name, id) => {
 		const { socket, convex } = await loggedIn();
 		const out = await exchange(socket, 's1', `s1 SELECT ${name}`);
@@ -243,19 +302,22 @@ describe('the listed path reaches its folder', () => {
 		}
 	);
 
-	it.each(['Work/Clients/2025', 'Work/Übersicht', 'INBOX/Receipts', 'Clients∕2026'])(
-		'STATUS %s answers for that folder under its path',
-		async (path) => {
-			const { socket } = await loggedIn();
-			const folder = FOLDERS.find((f) => f._id === idOf(path))!;
-			const command = await imapflowCommand('t1', 'STATUS', [{ path }, ['UNSEEN']]);
-			const out = await exchange(socket, 't1', command);
-			expect(out.at(-1)).toBe('t1 OK STATUS completed');
-			expect(out[0]).toMatch(new RegExp(` \\(UNSEEN ${folder.unseenCount}\\)$`));
-			const parsed = await parser(out[0]!);
-			expect(decodePath(REV1, String(parsed.attributes?.[0]?.value))).toBe(path);
-		}
-	);
+	it.each([
+		'Work/Clients/2025',
+		'Work/Übersicht',
+		'INBOX/Receipts',
+		'Clients∕2026',
+		'Clients⧵∕2026',
+	])('STATUS %s answers for that folder under its path', async (path) => {
+		const { socket } = await loggedIn();
+		const folder = FOLDERS.find((f) => f._id === idOf(path))!;
+		const command = await imapflowCommand('t1', 'STATUS', [{ path }, ['UNSEEN']]);
+		const out = await exchange(socket, 't1', command);
+		expect(out.at(-1)).toBe('t1 OK STATUS completed');
+		expect(out[0]).toMatch(new RegExp(` \\(UNSEEN ${folder.unseenCount}\\)$`));
+		const parsed = await parser(out[0]!);
+		expect(decodePath(REV1, String(parsed.attributes?.[0]?.value))).toBe(path);
+	});
 
 	describe('APPEND', () => {
 		beforeEach(() => {
@@ -270,7 +332,7 @@ describe('the listed path reaches its folder', () => {
 			vi.restoreAllMocks();
 		});
 
-		it.each(['Work/Clients', 'Work/Übersicht', 'INBOX/Receipts', 'Clients∕2026'])(
+		it.each(['Work/Clients', 'Work/Übersicht', 'INBOX/Receipts', 'Clients∕2026', 'Clients⧵∕2026'])(
 			'APPEND to %s stores into that folder',
 			async (path) => {
 				const { socket, convex } = await loggedIn();
@@ -291,7 +353,13 @@ describe('the listed path reaches its folder', () => {
 
 	it.each(['COPY', 'MOVE'] as const)('%s to a nested path lands in that folder', async (verb) => {
 		const targets: unknown[] = [];
-		const paths = ['Work/Clients/2025', 'Work/Übersicht', 'INBOX/Receipts', 'Clients∕2026'];
+		const paths = [
+			'Work/Clients/2025',
+			'Work/Übersicht',
+			'INBOX/Receipts',
+			'Clients∕2026',
+			'Clients⧵∕2026',
+		];
 		for (const path of paths) {
 			const { socket, convex } = await loggedIn();
 			await exchange(socket, 's1', 's1 SELECT INBOX');

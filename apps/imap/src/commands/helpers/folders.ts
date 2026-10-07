@@ -33,9 +33,8 @@ export async function listImapFolders(
  *   2. The folder whose path is exactly the decoded name. Names are only
  *      unique as written: `Übersicht` and `übersicht` are two folders, and an
  *      encoded run is case-sensitive (RFC 3501 §5.1.3), so the name a client
- *      read from LIST always opens that folder. Should two folders share a
- *      path, the older one has it, so a folder created later never takes over
- *      a name a client already holds.
+ *      read from LIST always opens that folder. No two folders share a path
+ *      (`folderTree.ts`), so this is that folder or none.
  *   3. For a name of printable ASCII only, the one folder whose path it
  *      matches with A-Z folded, so a hand-typed `receipts` still finds
  *      `Receipts`. Before names were decoded every name was matched with its

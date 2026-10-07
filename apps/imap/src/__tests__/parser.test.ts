@@ -31,6 +31,7 @@ describe('parseLine — basic command shape', () => {
 			tag: 'a001',
 			command: 'CAPABILITY',
 			args: [],
+			argForms: [],
 		});
 	});
 
@@ -55,6 +56,7 @@ describe('parseLine — quoted strings', () => {
 			tag: 'a001',
 			command: 'LOGIN',
 			args: ['alice@example.com', 'secret'],
+			argForms: ['string', 'string'],
 		});
 	});
 
@@ -89,6 +91,12 @@ describe('parseLine — parenthesized lists', () => {
 		expect(result?.args[0]).toBe('1');
 		expect(result?.args[2]).toBe('(\\Seen)');
 		expect(result?.args[3]).toBe('(UID 42)');
+	});
+
+	it('records which args were lists, so a quoted "(x)" is not one', () => {
+		const result = parseLine('a001 LIST "(Old)" (x) Work a(b)');
+		expect(result?.args).toEqual(['(Old)', '(x)', 'Work', 'a(b)']);
+		expect(result?.argForms).toEqual(['string', 'list', 'atom', 'atom']);
 	});
 });
 
@@ -156,6 +164,7 @@ describe('parseCommandWithLiterals', () => {
 			tag: 'a',
 			command: 'LOGIN',
 			args: ['user', 'password'],
+			argForms: ['string', 'string'],
 		});
 	});
 
