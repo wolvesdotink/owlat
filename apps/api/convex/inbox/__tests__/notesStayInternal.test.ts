@@ -35,6 +35,11 @@ const ALLOWED = new Set([
 	'workspaces/deletion/steps/_common.ts',
 	'workspaces/deletion/steps/cascadeOrder.ts',
 	'workspaces/deletion/steps/registry.ts',
+	// Thread brief erasure: unlinks a note's `threadItemId` when its item is
+	// purged, and declares those relations (never reads a note body).
+	'auth/erasure/threadBriefRelations.ts',
+	'contacts/erasure/threadBriefRelations.ts',
+	'mail/interpret/purgeRows.ts',
 ]);
 
 const ROOT = join(__dirname, '..', '..');
