@@ -10,6 +10,8 @@
 
 import { v } from 'convex/values';
 import type { MutationCtx } from '../../../_generated/server';
+import { literalUnion } from '../../../lib/literalUnion';
+import { THREAD_BRIEF_TABLES, type ThreadBriefTable } from '../../../schema/threadBrief';
 
 /**
  * Typed literal union of every table the wipe walks. The walker's
@@ -59,6 +61,7 @@ export type OrganizationDeletionTable =
 	| 'threadNotes'
 	| 'inboxFollowUps'
 	| 'threadCatchUps'
+	| ThreadBriefTable
 	| 'inboxAssignmentNotices'
 	| 'inboundMessages'
 	| 'conversationThreads'
@@ -284,6 +287,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('threadNotes'),
 	v.literal('inboxFollowUps'),
 	v.literal('threadCatchUps'),
+	...literalUnion(THREAD_BRIEF_TABLES).members,
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),
