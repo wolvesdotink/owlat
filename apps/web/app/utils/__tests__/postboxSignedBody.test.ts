@@ -99,6 +99,12 @@ describe('isDetachedSignatureAttachment', () => {
 		expect(
 			isDetachedSignatureAttachment({ contentType: ' Application/PGP-Signature; name="x.pdf"' })
 		).toBe(true);
+		expect(
+			isDetachedSignatureAttachment({ contentType: 'Application/PGP-Signature; name="x.asc"' })
+		).toBe(true);
 		expect(isDetachedSignatureAttachment({ contentType: 'application/pdf' })).toBe(false);
+		expect(isDetachedSignatureAttachment({ contentType: 'application/pgp-signature+xml' })).toBe(
+			false
+		);
 	});
 });

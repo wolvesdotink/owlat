@@ -122,5 +122,6 @@ export function signedBodyScopeOf(
  * part inside the signed first part is left out with it.
  */
 export function isDetachedSignatureAttachment(att: { contentType: string }): boolean {
-	return att.contentType.trim().toLowerCase().startsWith('application/pgp-signature');
+	const mediaType = att.contentType.split(';', 1)[0] ?? '';
+	return mediaType.trim().toLowerCase() === 'application/pgp-signature';
 }
