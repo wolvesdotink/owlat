@@ -188,11 +188,13 @@ export const forInbound = internalAction({
 		const detached = isSignedPgpMime(raw);
 		const clearsigned = detached ? null : clearsignedRegion(raw, args.bareBody === true);
 		if (!detached && clearsigned === null) return { isSigned: false as const };
+		// Recorded on every verdict so the reader can tie it to what it covers.
+		const scope = detached ? ('mime' as const) : ('clearsigned' as const);
 
 		try {
 			return {
 				isSigned: true as const,
-				info: await verify(ctx, rawBytes, clearsigned, args.from),
+				info: { ...(await verify(ctx, rawBytes, clearsigned, args.from)), scope },
 			};
 		} catch {
 			// The verifier itself failed — record honestly, never block delivery.
@@ -203,6 +205,7 @@ export const forInbound = internalAction({
 					isSignatureValid: false,
 					keySource: 'not_found',
 					failure: 'verification_error',
+					scope,
 				},
 			};
 		}

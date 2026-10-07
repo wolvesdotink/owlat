@@ -180,6 +180,7 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 			isSignatureValid: true,
 			signerFingerprint: sender.fingerprint,
 			keySource: 'pinned',
+			scope: 'mime',
 		});
 		expect(msg.inboundEncryptionInfo).toBeUndefined();
 	});
@@ -226,6 +227,7 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 				isSignatureValid: true,
 				signerFingerprint: sender.fingerprint,
 				keySource: 'pinned',
+				scope: 'mime',
 			});
 			expect(msg.textBodyInline).toBe(`Signed ${CANARY} content.`);
 		}
@@ -274,6 +276,7 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 			isSignatureValid: true,
 			signerFingerprint: sender.fingerprint,
 			keySource: 'pinned',
+			scope: 'mime',
 		});
 	});
 
@@ -308,6 +311,7 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 			isSignatureValid: true,
 			signerFingerprint: sender.fingerprint,
 			keySource: 'pinned',
+			scope: 'clearsigned',
 		});
 	});
 
@@ -356,6 +360,7 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 			isSignatureValid: true,
 			signerFingerprint: sender.fingerprint,
 			keySource: 'pinned',
+			scope: 'clearsigned',
 		});
 	});
 
@@ -430,6 +435,7 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 			isSigned: true,
 			isSignatureValid: false,
 			keySource: 'pinned',
+			scope: 'mime',
 		});
 		// The message itself delivered normally into INBOX.
 		expect(msg.textBodyInline).toContain('TAMPERED_CONTENT');
@@ -453,6 +459,7 @@ describe('mail.delivery.ingestFromWebhook — inbound signature verification (F1
 			isSigned: true,
 			isSignatureValid: false,
 			keySource: 'not_found',
+			scope: 'mime',
 		});
 	});
 

@@ -54,7 +54,21 @@ export type InboundSignatureInfo = {
 	signerFingerprint?: string;
 	keySource: InboundSignatureKeySource;
 	failure?: string;
+	/** What the verdict covers; absent on rows verified before it was recorded. */
+	scope?: InboundSignatureScope;
 };
+
+/**
+ * Which signed structure the verdict is about, so the reader shows the verdict
+ * only beside what it covers:
+ *   - `'clearsigned'` — the one inline armor block in the text body (RFC 4880
+ *     §7); not the text around it and not an HTML alternative;
+ *   - `'mime'` — the first part of a root RFC 3156 `multipart/signed`, which
+ *     holds every body part a reader shows.
+ * The reader cannot tell the two apart from the attachment list: a nameless
+ * signature part is no attachment, and an unrelated `.asc` attachment is.
+ */
+export type InboundSignatureScope = 'clearsigned' | 'mime';
 
 /** Convex validator mirroring {@link InboundSignatureInfo} exactly (kept in lockstep). */
 export const inboundSignatureInfoValidator = v.object({
@@ -68,4 +82,5 @@ export const inboundSignatureInfoValidator = v.object({
 		v.literal('not_found')
 	),
 	failure: v.optional(v.string()),
+	scope: v.optional(v.union(v.literal('clearsigned'), v.literal('mime'))),
 });

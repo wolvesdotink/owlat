@@ -83,6 +83,17 @@ async function pinSender(t: T, publicKeyArmored: string): Promise<void> {
 	});
 }
 
+const VERIFIED_MIME = (fingerprint: string) => ({
+	isSigned: true,
+	info: {
+		isSigned: true,
+		isSignatureValid: true,
+		signerFingerprint: fingerprint,
+		keySource: 'pinned',
+		scope: 'mime',
+	},
+});
+
 const VERIFIED_PINNED = (fingerprint: string) => ({
 	isSigned: true,
 	info: {
@@ -90,6 +101,7 @@ const VERIFIED_PINNED = (fingerprint: string) => ({
 		isSignatureValid: true,
 		signerFingerprint: fingerprint,
 		keySource: 'pinned',
+		scope: 'clearsigned',
 	},
 });
 
@@ -107,6 +119,7 @@ describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 				isSignatureValid: true,
 				signerFingerprint: sender.fingerprint,
 				keySource: 'pinned',
+				scope: 'mime',
 			},
 		});
 	});
@@ -131,6 +144,7 @@ describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 				isSignatureValid: true,
 				signerFingerprint: sender.fingerprint,
 				keySource: 'pinned',
+				scope: 'clearsigned',
 			},
 		});
 	});
@@ -144,7 +158,7 @@ describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 		const result = await runVerify(t, raw);
 		expect(result).toEqual({
 			isSigned: true,
-			info: { isSigned: true, isSignatureValid: false, keySource: 'pinned' },
+			info: { isSigned: true, isSignatureValid: false, keySource: 'pinned', scope: 'mime' },
 		});
 	});
 
@@ -157,7 +171,7 @@ describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 		const result = await runVerify(t, await composeDetached(sender.privateKeyArmored));
 		expect(result).toEqual({
 			isSigned: true,
-			info: { isSigned: true, isSignatureValid: false, keySource: 'pinned' },
+			info: { isSigned: true, isSignatureValid: false, keySource: 'pinned', scope: 'mime' },
 		});
 	});
 
@@ -169,7 +183,7 @@ describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 		const result = await runVerify(t, await composeDetached(sender.privateKeyArmored));
 		expect(result).toEqual({
 			isSigned: true,
-			info: { isSigned: true, isSignatureValid: false, keySource: 'not_found' },
+			info: { isSigned: true, isSignatureValid: false, keySource: 'not_found', scope: 'mime' },
 		});
 	});
 
@@ -200,6 +214,7 @@ describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 				isSigned: true,
 				isSignatureValid: false,
 				keySource: 'pinned',
+				scope: 'mime',
 				failure: 'key_changed',
 			},
 		});
@@ -231,6 +246,7 @@ describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 				isSigned: true,
 				isSignatureValid: false,
 				keySource: 'pinned',
+				scope: 'mime',
 				failure: 'malformed_signature',
 			},
 		});
@@ -240,6 +256,84 @@ describe('e2ee.verifyInboundSignature.forInbound — verdict matrix', () => {
 		const t = convexTest(schema, modules);
 		const raw = 'From: a@b.c\r\nSubject: plain\r\n\r\nJust text.\r\n';
 		expect(await runVerify(t, raw)).toEqual({ isSigned: false });
+	});
+});
+
+describe('the verdict names what it covers (#1311)', () => {
+	async function pinned() {
+		const t = convexTest(schema, modules);
+		const sender = await generateTestKeypair(SENDER);
+		await pinSender(t, sender.publicKeyArmored);
+		return { t, sender };
+	}
+
+	it('a nameless signature part is still RFC 3156 and verifies with scope mime', async () => {
+		const { t, sender } = await pinned();
+		// No name, no disposition: the reader's attachment list never sees this part.
+		const raw = (await composeDetached(sender.privateKeyArmored)).replace(
+			'Content-Type: application/pgp-signature; name="signature.asc"',
+			'Content-Type: application/pgp-signature'
+		);
+		expect(await runVerify(t, raw)).toEqual(VERIFIED_MIME(sender.fingerprint));
+	});
+
+	it('a third part after the signature part is never verified', async () => {
+		const { t, sender } = await pinned();
+		const raw = (await composeDetached(sender.privateKeyArmored)).replace(
+			'--owlat-f1-signed--',
+			[
+				'--owlat-f1-signed',
+				'Content-Type: text/html; charset=utf-8',
+				'',
+				'<p>Not covered by the signature.</p>',
+				'--owlat-f1-signed--',
+			].join('\r\n')
+		);
+		expect(await runVerify(t, raw)).toEqual({
+			isSigned: true,
+			info: {
+				isSigned: true,
+				isSignatureValid: false,
+				keySource: 'pinned',
+				failure: 'malformed_signature',
+				scope: 'mime',
+			},
+		});
+	});
+
+	it('an unrelated .asc attachment beside a clearsigned body leaves the scope clearsigned', async () => {
+		const { t, sender } = await pinned();
+		const signed = await clearsign(`Clear ${CANARY} text.`, sender.privateKeyArmored);
+		const detached = await detachedSign(signedFirstPart('elsewhere'), sender.privateKeyArmored);
+		const raw = [
+			`From: ${SENDER}`,
+			`To: ${RECIPIENT}`,
+			'Subject: clearsigned with an old signature attached',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/mixed; boundary="mx"',
+			'',
+			'--mx',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			signed.trim().replace(/\n/g, '\r\n'),
+			'--mx',
+			'Content-Type: application/pgp-signature; name="old.asc"',
+			'Content-Disposition: attachment; filename="old.asc"',
+			'',
+			detached.trim().replace(/\n/g, '\r\n'),
+			'--mx--',
+			'',
+		].join('\r\n');
+		expect(await runVerify(t, raw)).toEqual({
+			isSigned: true,
+			info: {
+				isSigned: true,
+				isSignatureValid: true,
+				signerFingerprint: sender.fingerprint,
+				keySource: 'pinned',
+				scope: 'clearsigned',
+			},
+		});
 	});
 });
 
@@ -257,11 +351,12 @@ describe('clearsigned bodies verify over the octets that were signed (#1300)', (
 			isSignatureValid: true,
 			signerFingerprint: fingerprint,
 			keySource: 'pinned',
+			scope: 'clearsigned',
 		},
 	});
 	const NOT_VERIFIED = {
 		isSigned: true,
-		info: { isSigned: true, isSignatureValid: false, keySource: 'pinned' },
+		info: { isSigned: true, isSignatureValid: false, keySource: 'pinned', scope: 'clearsigned' },
 	};
 
 	async function signedMessage(args: {
@@ -433,7 +528,7 @@ describe('the verified block is the one the reader displays (#1300)', () => {
 		]);
 		expect(await runVerify(t, raw)).toEqual({
 			isSigned: true,
-			info: { isSigned: true, isSignatureValid: false, keySource: 'pinned' },
+			info: { isSigned: true, isSignatureValid: false, keySource: 'pinned', scope: 'clearsigned' },
 		});
 	});
 
@@ -483,6 +578,7 @@ describe('the verified block is the one the reader displays (#1300)', () => {
 			isSigned: true,
 			isSignatureValid: false,
 			keySource: 'pinned',
+			scope: 'clearsigned',
 			failure: 'malformed_signature',
 		},
 	};

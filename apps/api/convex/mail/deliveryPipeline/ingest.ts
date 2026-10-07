@@ -141,7 +141,8 @@ export async function prepareInboundMessage(
 	// an honest `verification_error` verdict — signature verification adds
 	// data, never blocks delivery (D10).
 	let inboundSignatureInfo: InboundSignatureInfo | undefined;
-	if (!opened.isSealed && (isSignedPgpMime(rawBinary) || isClearsigned(rawBinary))) {
+	const signedPgpMime = !opened.isSealed && isSignedPgpMime(rawBinary);
+	if (!opened.isSealed && (signedPgpMime || isClearsigned(rawBinary))) {
 		try {
 			const verdict = await ctx.runAction(internal.e2ee.verifyInboundSignature.forInbound, {
 				rawBytesBase64: args.rawBytesBase64,
@@ -155,6 +156,7 @@ export async function prepareInboundMessage(
 				isSignatureValid: false,
 				keySource: 'not_found',
 				failure: 'verification_error',
+				scope: signedPgpMime ? 'mime' : 'clearsigned',
 			};
 		}
 	}
