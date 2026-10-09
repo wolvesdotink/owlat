@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-	usePostboxGhostText,
-	type GhostTextRequestInput,
-} from '../usePostboxGhostText';
+import { usePostboxGhostText, type GhostTextRequestInput } from '../usePostboxGhostText';
 
 const INPUT: GhostTextRequestInput = {
 	threadContext: 'ctx',

@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
-import {
-	statsQueryArgs,
-	subgraphQueryArgs,
-	useKnowledgeGraphView,
-} from '../useKnowledgeGraphView';
+import { statsQueryArgs, subgraphQueryArgs, useKnowledgeGraphView } from '../useKnowledgeGraphView';
 import type { Id } from '@owlat/api/dataModel';
 
 const rootId = 'entry_root' as Id<'knowledgeEntries'>;

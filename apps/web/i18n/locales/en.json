@@ -914,6 +914,8 @@
 				"pendingChange": "Check this change:",
 				"pendingOptions": "options: {options}",
 				"confirmChange": "Confirm change",
+				"maybeSettled": "A later message may have settled this",
+				"confirmSettled": "Confirm",
 				"review": "needs a look",
 				"duplicate": "possible duplicate",
 				"new": "new",

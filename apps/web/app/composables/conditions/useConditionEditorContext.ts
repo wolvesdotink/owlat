@@ -2,9 +2,8 @@ import { computed, inject, provide, type ComputedRef, type InjectionKey, type Re
 import type { Doc } from '@owlat/api/dataModel';
 import type { ConditionEditorContext } from './types';
 
-const CONDITION_EDITOR_CONTEXT_KEY: InjectionKey<ConditionEditorContext> = Symbol(
-	'ConditionEditorContext'
-);
+const CONDITION_EDITOR_CONTEXT_KEY: InjectionKey<ConditionEditorContext> =
+	Symbol('ConditionEditorContext');
 
 const EMPTY_CONTEXT: ConditionEditorContext = {
 	contactProperties: computed(() => [] as Doc<'contactProperties'>[]),
@@ -12,7 +11,9 @@ const EMPTY_CONTEXT: ConditionEditorContext = {
 };
 
 export interface ConditionEditorContextInput {
-	contactProperties: Ref<Doc<'contactProperties'>[] | null | undefined> | ComputedRef<Doc<'contactProperties'>[] | null | undefined>;
+	contactProperties:
+		| Ref<Doc<'contactProperties'>[] | null | undefined>
+		| ComputedRef<Doc<'contactProperties'>[] | null | undefined>;
 	topics: Ref<Doc<'topics'>[] | null | undefined> | ComputedRef<Doc<'topics'>[] | null | undefined>;
 }
 

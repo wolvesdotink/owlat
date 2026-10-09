@@ -123,9 +123,10 @@ export function useTeamStream(opts: {
 
 	// The place saved before this visit: the "New" divider stays put while this
 	// visit moves the saved place forward.
-	const seenAtOpen = ref<{ target: string; position: { at: number; key: string } | null } | null>(
-		null
-	);
+	const seenAtOpen = ref<{
+		target: string;
+		position: { at: number; tie?: number; key: string } | null;
+	} | null>(null);
 	watch(
 		first,
 		(page) => {

@@ -914,6 +914,8 @@
 				"pendingChange": "Prüf diese Änderung:",
 				"pendingOptions": "Optionen: {options}",
 				"confirmChange": "Änderung bestätigen",
+				"maybeSettled": "Eine spätere Nachricht hat das vielleicht schon erledigt",
+				"confirmSettled": "Bestätigen",
 				"review": "bitte prüfen",
 				"duplicate": "mögliches Duplikat",
 				"new": "neu",

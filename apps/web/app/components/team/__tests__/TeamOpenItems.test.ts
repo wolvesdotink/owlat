@@ -117,6 +117,22 @@ describe('TeamOpenItems', () => {
 		expect(none.find('[data-testid="team-open-items"]').exists()).toBe(false);
 	});
 
+	it('offers to confirm when a later message may have settled an action', async () => {
+		const settled = item({
+			id: 'i_s',
+			text: 'Send the invoice',
+			assigneeUserId: 'user_mika',
+			pendingUpdate: { evidence: [], transitions: [{ to: 'done', at: 1 }] },
+		});
+		const w = mountItems({ view: teamView({ forTeam: [settled] }) });
+		const pending = w.get('[data-testid="brief-item-pending"]');
+		expect(pending.text()).toContain('A later message may have settled this');
+		await pending.get('[data-testid="brief-item-pending-confirm"]').trigger('click');
+		expect(pending.get('[data-testid="brief-item-pending-confirm"]').text()).toBe('Confirm');
+		expect(w.emitted('act')?.[0]?.[1]).toBe('confirmProposal');
+		expectFullyLocalized(w);
+	});
+
 	it('folds into "2 open for the team" on a phone', async () => {
 		const w = mountItems();
 		const toggle = w.find('[data-testid="team-open-items-toggle"]');

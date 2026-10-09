@@ -5,6 +5,11 @@
  * or choice), but the claim could not be verified, so the item is unchanged
  * until someone confirms it. Shows the proposed values with their source
  * marker, and Confirm (the `confirmProposal` reaction, which applies them).
+ *
+ * A held transition (`transitions`: a later message may have closed or
+ * answered the item, matched by wording only) reads "A later message may have
+ * settled this" with the same marker and Confirm; it applies only on confirm,
+ * and Undo reverses it. Used by the personal brief and the team strip.
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
 import { briefDueDate } from '~/utils/threadBriefContext';
@@ -39,6 +44,8 @@ const changes = computed(() => {
 	}
 	return out;
 });
+/** A later message may have closed or answered the item (held until confirmed). */
+const isSettling = computed(() => (props.update.transitions?.length ?? 0) > 0);
 </script>
 
 <template>
@@ -46,8 +53,16 @@ const changes = computed(() => {
 		class="mt-1 flex flex-wrap items-center gap-x-1.5 rounded bg-warning-subtle px-2 py-1 text-xs text-warning"
 		data-testid="brief-item-pending"
 	>
-		<span class="font-medium">{{ t('components.brief.item.pendingChange') }}</span>
+		<span v-if="changes.length > 0" class="font-medium">{{
+			t('components.brief.item.pendingChange')
+		}}</span>
 		<span v-for="(change, i) in changes" :key="i">{{ change }}</span>
+		<span
+			v-if="isSettling"
+			:class="{ 'font-medium': changes.length === 0 }"
+			data-testid="brief-item-pending-settled"
+			>{{ t('components.brief.item.maybeSettled') }}</span
+		>
 		<EvidenceMarker
 			v-if="update.evidence[0]"
 			:evidence="update.evidence[0]"
@@ -61,7 +76,11 @@ const changes = computed(() => {
 			data-testid="brief-item-pending-confirm"
 			@click="emit('confirm')"
 		>
-			{{ t('components.brief.item.confirmChange') }}
+			{{
+				changes.length > 0
+					? t('components.brief.item.confirmChange')
+					: t('components.brief.item.confirmSettled')
+			}}
 		</button>
 	</p>
 </template>

@@ -32,7 +32,7 @@ export interface FloatingFormatBarOptions {
 }
 
 export function usePostboxFloatingFormatBar(
-	opts: FloatingFormatBarOptions,
+	opts: FloatingFormatBarOptions
 ): FloatingFormatBarController {
 	const formatBarStyle = ref<Record<string, string> | null>(null);
 	// Component ref — `$el` is the bar's root, measured for an accurate flip/clamp.
