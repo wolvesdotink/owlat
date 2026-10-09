@@ -20,7 +20,13 @@ import {
 	responsePlanStanceValidator,
 	type DraftRef,
 } from '../../lib/validators/responsePlan';
-import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
+import {
+	rowMatchesThreadRef,
+	threadRefValidator,
+	type ThreadRef,
+} from '../../lib/validators/threadRef';
+import type { Id } from '../../_generated/dataModel';
+import { loadBriefRow } from './briefRow';
 import {
 	canRead,
 	isDraftLive,
@@ -102,6 +108,40 @@ const plainPromiseValidator = v.object({
 });
 
 /**
+ * Whether a check is still bound to the thread as it is: the same deletion
+ * epoch, every item it read still there at that revision and in this thread,
+ * and no stance, coverage entry or commitment naming an item it did not read.
+ */
+async function isStillBound(
+	ctx: Parameters<typeof readPlanRow>[0],
+	args: {
+		threadRef: ThreadRef;
+		deletionEpoch: number;
+		itemRevisions: { itemId: Id<'threadItems'>; revision: number }[];
+		stances: { itemId: Id<'threadItems'> }[];
+		coverage: { itemId: Id<'threadItems'> }[];
+		newPromises: { itemId?: Id<'threadItems'> }[];
+	}
+): Promise<boolean> {
+	const brief = await loadBriefRow(ctx, args.threadRef);
+	if ((brief?.deletionEpoch ?? 0) !== args.deletionEpoch) return false;
+	const bound = new Set<string>(args.itemRevisions.map((r) => r.itemId));
+	const named = [
+		...args.stances.map((s) => s.itemId),
+		...args.coverage.map((c) => c.itemId),
+		...args.newPromises.flatMap((p) => (p.itemId ? [p.itemId] : [])),
+	];
+	if (named.some((id) => !bound.has(id))) return false;
+	for (const ref of args.itemRevisions) {
+		const item = await ctx.db.get(ref.itemId);
+		if (!item || item.revision !== ref.revision || !rowMatchesThreadRef(item, args.threadRef)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
  * Store a checked plan for a draft (the agent draft step, Answer mode's
  * coverage check, draft on arrival). The caller already applied the reader
  * rule; claim and promise texts are sealed here.
@@ -125,8 +165,9 @@ export const recordCheck = internalMutation({
 		newPromises: v.array(plainPromiseValidator),
 		draftHash: v.string(),
 		verdict: planVerdictValidator,
-		// The plan revision the check read.
+		// The plan revision and the brief's deletion epoch the check read.
 		planRevision: v.number(),
+		deletionEpoch: v.number(),
 		attachmentSetHash: v.string(),
 		isCheckIncomplete: v.boolean(),
 	},
@@ -135,6 +176,9 @@ export const recordCheck = internalMutation({
 		if (!(await isDraftLive(ctx, args.draftRef))) return { isStored: false };
 		const existing = await readPlanRow(ctx, args.draftRef);
 		if ((existing?.planRevision ?? 0) !== args.planRevision) return { isStored: false };
+		// Nothing purged or erased since the check read, and every item it names
+		// still exists at the revision it read (final review F3).
+		if (!(await isStillBound(ctx, args))) return { isStored: false };
 		await upsertPlan(ctx, args.threadRef, args.draftRef, {
 			threadRevision: args.threadRevision,
 			itemRevisions: args.itemRevisions,

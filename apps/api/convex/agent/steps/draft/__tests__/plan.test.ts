@@ -39,6 +39,7 @@ const loaded = {
 	stances: [{ itemId, stance: 'answer', source: 'default' }],
 	attachments: [],
 	planRevision: 2,
+	deletionEpoch: 3,
 	attachmentSetHash: 'files-0',
 	isOverflow: false,
 };
@@ -92,6 +93,7 @@ describe('recordDraftPlan', () => {
 			verdict: 'covered',
 			// Bound to the stance revision and the attachment set it read (review D1).
 			planRevision: 2,
+			deletionEpoch: 3,
 			attachmentSetHash: 'files-0',
 			isCheckIncomplete: false,
 		});

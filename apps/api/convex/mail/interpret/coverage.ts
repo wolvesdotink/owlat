@@ -128,6 +128,7 @@ export const check = authedAction({
 			draftHash,
 			verdict: output ? planVerdictOf(loaded.stances, checked) : 'pending',
 			planRevision: loaded.planRevision,
+			deletionEpoch: loaded.deletionEpoch,
 			attachmentSetHash: loaded.attachmentSetHash,
 			isCheckIncomplete,
 		});

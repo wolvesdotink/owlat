@@ -262,6 +262,8 @@ export interface PlanState {
 	stances: PlanStance<ItemId>[];
 	/** The stored row's stance revision (0 without a row). */
 	planRevision: number;
+	/** The thread brief's deletion epoch the state was read at. */
+	deletionEpoch: number;
 	row: Doc<'draftResponsePlans'> | null;
 }
 
@@ -289,6 +291,7 @@ export async function loadPlanState(
 		isOverflow: loaded.isOverflow,
 		stances: planStances(loaded.items, latest, slots),
 		planRevision: row?.planRevision ?? 0,
+		deletionEpoch: brief?.deletionEpoch ?? 0,
 		row,
 	};
 }
@@ -387,6 +390,7 @@ export interface PlanForDraft {
 	isOverflow: boolean;
 	stances: PlanStance<ItemId>[];
 	planRevision: number;
+	deletionEpoch: number;
 	attachments: AttachmentRef[];
 	attachmentSetHash: string;
 }
@@ -406,6 +410,7 @@ export async function planForDraft(
 		isOverflow: state.isOverflow,
 		stances: state.stances,
 		planRevision: state.planRevision,
+		deletionEpoch: state.deletionEpoch,
 		attachments,
 		attachmentSetHash: await attachmentSetHashOf(attachments.map((a) => a.id)),
 	};

@@ -80,6 +80,7 @@ export interface ThreadPlan {
 	prompt: { items: PlanPromptItem[]; attachments: [] };
 	threadRevision: number;
 	planRevision: number;
+	deletionEpoch: number;
 	isOverflow: boolean;
 	itemRevisions: { itemId: Id<'threadItems'>; revision: number }[];
 	stances: PlanForDraft['stances'];
@@ -106,6 +107,7 @@ export async function loadThreadPlan(
 			prompt: { items: toPromptItems(loaded.items, loaded.stances), attachments: [] },
 			threadRevision: loaded.threadRevision,
 			planRevision: loaded.planRevision,
+			deletionEpoch: loaded.deletionEpoch,
 			isOverflow: loaded.isOverflow,
 			itemRevisions: loaded.items.map((i) => ({ itemId: i.id, revision: i.revision })),
 			stances: loaded.stances,
@@ -151,6 +153,7 @@ export async function recordArrivalPlan(
 			draftHash: await draftHashOf(draft),
 			verdict: checked ? planVerdictOf(plan.stances, coverage) : 'pending',
 			planRevision: plan.planRevision,
+			deletionEpoch: plan.deletionEpoch,
 			attachmentSetHash: await attachmentSetHashOf([]),
 			isCheckIncomplete: coverage.isIncomplete || plan.isOverflow,
 		});

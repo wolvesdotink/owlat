@@ -36,11 +36,15 @@ const SESSION_CHUNK = 64;
 /** The machine reason on an extraction marked for a re-read after a purge. */
 export { PURGE_RECHECK_CODE } from './purgeRepairs';
 
-/** A plan without its references to `gone` items, marked stale. Pure. */
+/**
+ * A plan without its references to `gone` items, marked stale, its revision
+ * bumped so a check computed before the purge is never stored after it
+ * (final review F3). Pure.
+ */
 export function stripPlan(
 	plan: Pick<
 		Doc<'draftResponsePlans'>,
-		'itemRevisions' | 'stances' | 'ownerInputs' | 'coverage' | 'newPromises'
+		'itemRevisions' | 'stances' | 'ownerInputs' | 'coverage' | 'newPromises' | 'planRevision'
 	>,
 	gone: ReadonlySet<string>
 ) {
@@ -56,6 +60,7 @@ export function stripPlan(
 			itemId && !gone.has(itemId) ? { ...promise, itemId } : promise
 		),
 		verdict: 'stale' as const,
+		planRevision: (plan.planRevision ?? 0) + 1,
 		updatedAt: Date.now(),
 	};
 }
