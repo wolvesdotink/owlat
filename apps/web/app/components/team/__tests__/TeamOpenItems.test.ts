@@ -150,6 +150,19 @@ describe('TeamOpenItems', () => {
 		expect(w.emitted('act')?.[0]?.[1]).toBe('undo');
 	});
 
+	it('keeps Undo on a customer-owed action a confirmation closed', () => {
+		const closed = item({
+			id: 'w_c',
+			text: 'Ana sends photos',
+			responsibility: 'them',
+			status: 'done',
+			stateKey: 'reportedDone',
+			correction: { kind: 'confirmed', at: 1 },
+		});
+		const w = mountItems({ view: teamView({ waitingOnOthers: [closed] }) });
+		expect(w.get('[data-testid="team-open-items-closed"]').text()).toContain('Ana sends photos');
+	});
+
 	it('folds into "2 open for the team" on a phone', async () => {
 		const w = mountItems();
 		const toggle = w.find('[data-testid="team-open-items-toggle"]');

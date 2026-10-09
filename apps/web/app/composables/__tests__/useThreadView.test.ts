@@ -265,6 +265,36 @@ describe('a cited message beyond the loaded pages', () => {
 	});
 });
 
+describe('a team marker on a shared mailbox', () => {
+	it('loads earlier pages until the cited email is there, expands it, and lets go once shown', async () => {
+		scope.value = 'shared';
+		const state = setup({
+			hasEarlier: true,
+			older: [
+				[{ _id: 'm5', ...JONAS, receivedAt: 0.5 }],
+				[{ _id: 'm1', ...JONAS, receivedAt: 0.1 }],
+			],
+		});
+		state.citeMessage('m1');
+		await nextTick();
+		await nextTick();
+		await nextTick();
+		expect(state.loadEarlier).toHaveBeenCalledTimes(2);
+		expect(state.expandedIds.value.has('m1')).toBe(true);
+		await nextTick();
+		await nextTick();
+		expect(state.messageCiteState.value).toBeNull();
+	});
+
+	it('keeps the target and says it is out of reach when no page has it', async () => {
+		scope.value = 'shared';
+		const state = setup({ hasEarlier: false });
+		state.citeMessage('gone');
+		await nextTick();
+		expect(state.messageCiteState.value).toBe('unreachable');
+	});
+});
+
 describe('exact wording', () => {
 	it('loads and expands the messages whose wording matters', async () => {
 		data['brief.get'] = ref(briefView({ exactWording: [{ messageId: 'm6', reason: 'legal' }] }));

@@ -6475,6 +6475,7 @@
 			"items": {
 				"askedBy": "von {name} am {date} gefragt",
 				"assignTo": "Zuweisen an",
+				"citeUnreachable": "Die zitierte E-Mail ließ sich nicht laden.",
 				"claim": "Übernehmen",
 				"closedTitle": "Gerade erledigt",
 				"claimed": "Jetzt bist du dran.",
