@@ -13,7 +13,8 @@ import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { threadRefToFields } from '../../../lib/validators/threadRef';
 import { purgeSourcesFromThread, purgeThreadBrief } from '../purgeRun';
-import { REDACTED_CLAIM_TEXT } from '../purgeClaims';
+import { REDACTED_CLAIM_TEXT, redactedFactKey } from '../purgeClaims';
+import { captureInterpretSource } from '../sources';
 import { openMessageBody } from '../../../lib/messageBody';
 import { seedFolder } from '../../__tests__/helpers.testlib';
 import { modules, seedMailThread, seedTeamThread } from './interpret.testlib';
@@ -399,5 +400,41 @@ describe('team message purge', () => {
 			expect(activity).toHaveLength(0);
 			expect(await ctx.db.query('threadItemCorrections').collect()).toHaveLength(0);
 		});
+	});
+});
+
+describe('final review F4: a redacted fact keeps no descriptor of the deleted message', () => {
+	it('replaces the key with an opaque identity and leaves the fact out of later prompts', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId: a, threadId } = await seedMailThread(t);
+		const b = await addSibling(t, a);
+		const factId = await t.run(async (ctx) =>
+			insertFact(
+				ctx,
+				threadId,
+				[
+					{ kind: 'mail', id: a },
+					{ kind: 'mail', id: b },
+				],
+				{
+					factKey: '["dr. jane roe","diagnosis","oncology referral"]',
+				}
+			)
+		);
+
+		await purgeMessages(t, [a]);
+
+		const fact = (await mailRows(t, threadId)).facts.find((f) => f._id === factId)!;
+		expect(fact.factKey).toBe(redactedFactKey(factId));
+		expect(fact.factKey).not.toContain('jane');
+		expect(fact.redactedFields).toContain('factKey');
+		await t.run(async (ctx) => {
+			await captureInterpretSource(ctx, { source: { kind: 'mail', id: b }, isLive: true });
+		});
+		const loaded = await t.query(internal.mail.interpret.load.loadForInterpretation, {
+			source: { kind: 'mail', id: b },
+		});
+		expect(loaded?.currentFacts.map((f) => f.id)).not.toContain(factId);
+		expect(JSON.stringify(loaded?.currentFacts)).not.toContain('jane');
 	});
 });
