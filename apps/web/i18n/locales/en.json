@@ -7042,6 +7042,7 @@
 				},
 				"fileMissing": "File missing",
 				"status": {
+					"checking": "Checking the draft…",
 					"addressed": "{addressed} of {total} addressed",
 					"needsFile": "{count} needs a file | {count} need a file",
 					"promise": "new promise noted: “{text}”"

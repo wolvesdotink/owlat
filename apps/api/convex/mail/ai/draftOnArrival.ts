@@ -24,12 +24,8 @@ import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
-import {
-	buildConfirmedContext,
-	runSharedDraft,
-	type SharedDraftParams,
-} from '../../agent/shared/draftService';
-import { toPromptItems } from '../interpret/planCheck';
+import { buildConfirmedContext, runSharedDraft } from '../../agent/shared/draftService';
+import { loadThreadPlan, recordArrivalPlan } from './composeDraftPlan';
 import {
 	buildOpenFileNote,
 	buildOpenQuestionNote,
@@ -43,28 +39,6 @@ function priorityForUrgency(urgency: 'high' | 'normal' | 'low'): string {
 	if (urgency === 'high') return 'high';
 	if (urgency === 'low') return 'low';
 	return 'medium';
-}
-
-/**
- * The thread's open items with their default stances (SPEC §6): `answer`, or
- * `clarify` while a Reply Queue question of the item is unanswered. Nothing
- * owner-chosen exists yet; Answer mode re-checks coverage once the draft is in
- * the composer. Fail-soft: no plan, the draft is written as before.
- */
-async function loadArrivalPlan(
-	ctx: ActionCtx,
-	threadId: Id<'mailThreads'>
-): Promise<SharedDraftParams['responsePlan']> {
-	try {
-		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForDraft, {
-			threadRef: { kind: 'mail', id: threadId },
-		});
-		if (loaded.items.length === 0) return undefined;
-		return { items: toPromptItems(loaded.items, loaded.stances), attachments: [] };
-	} catch (err) {
-		logError('[draftOnArrival] loading the response plan failed:', err);
-		return undefined;
-	}
 }
 
 /** Fallback confidence shown next to a draft when the quality self-check failed. */
@@ -112,7 +86,8 @@ export async function generateDraftOnArrival(
 		buildOpenQuestionNote(loaded.questionGaps)
 	);
 	const gaps = [...loaded.fileGaps, ...loaded.questionGaps];
-	const responsePlan = await loadArrivalPlan(ctx, args.threadId);
+	// The thread's open items with their default stances (SPEC §6).
+	const plan = await loadThreadPlan(ctx, args.threadId);
 
 	try {
 		const result = await runSharedDraft(ctx, {
@@ -139,22 +114,25 @@ export async function generateDraftOnArrival(
 			// service records it under its own label, next to the self-check's,
 			// on success and on a throw.
 			spendLabels: { draft: 'postbox_draft', selfCheck: 'postbox_draft_selfcheck' },
-			...(responsePlan ? { responsePlan } : {}),
+			...(plan ? { responsePlan: plan.prompt } : {}),
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
 
 		if (result.draftBody.trim().length === 0) return; // nothing usable
 
+		const draft = ensureGapPlaceholders(result.draftBody, gaps);
 		await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
 			threadId: args.threadId,
 			triggerMessageId: loaded.triggerMessageId,
-			draft: ensureGapPlaceholders(result.draftBody, gaps),
+			draft,
 			draftSubject: buildReplySubject(loaded.triggerSubject),
 			// Surface the quality self-check score as the confidence; unknown
 			// quality shows a deliberately low value so review-first reads right.
 			confidence: result.draftQuality?.score ?? UNKNOWN_QUALITY_CONFIDENCE,
 			...(result.draftQuality ? { quality: result.draftQuality } : {}),
 		});
+		// The prepared reply's plan, bound to its text (review F16).
+		if (plan) await recordArrivalPlan(ctx, args.threadId, plan, draft, result.planCoverage);
 	} catch (err) {
 		// Injection re-scan / LLM error → no slot; the thread still shows for
 		// manual reply. Never wedge the caller.

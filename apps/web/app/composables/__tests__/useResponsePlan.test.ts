@@ -18,6 +18,7 @@ import { defineComponent, h, nextTick, ref, type Ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { item } from '~/utils/__tests__/threadBriefFixtures';
+import { draftHashOf } from '@owlat/shared/threadBriefRules';
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
 import { PLAN_COVERAGE_DEBOUNCE_MS, useResponsePlan, type PlanDraftRef } from '../useResponsePlan';
 
@@ -25,7 +26,11 @@ vi.mock('@owlat/api', () => ({
 	api: {
 		mail: {
 			interpret: {
-				responsePlan: { get: 'plan.get', setStances: 'plan.setStances' },
+				responsePlan: {
+					get: 'plan.get',
+					setStances: 'plan.setStances',
+					adoptArrivalPlan: 'plan.adopt',
+				},
 				coverage: { check: 'coverage.check' },
 			},
 		},
@@ -141,44 +146,72 @@ describe('stances', () => {
 	});
 });
 
-const RESULT = {
-	coverage: [
-		{ itemId: 'contract', verdict: 'addressed', spans: [] },
-		{ itemId: 'quote', verdict: 'partial', spans: [] },
-	],
-	fileClaims: [{ text: 'I’ve attached the contract.', spans: [], isMatched: false }],
-	newPromises: [{ text: 'I’ll send the logo by Friday', spans: [] }],
-	draftHash: 'h1',
-	isChecked: true,
-};
+async function result(text: string, over: Record<string, unknown> = {}) {
+	return {
+		coverage: [
+			{ itemId: 'contract', verdict: 'addressed', spans: [] },
+			{ itemId: 'quote', verdict: 'partial', spans: [] },
+		],
+		fileClaims: [{ text: 'I’ve attached the contract.', spans: [], isMatched: false }],
+		newPromises: [{ text: 'I’ll send the logo by Friday', spans: [] }],
+		isIncomplete: false,
+		planRevision: 0,
+		draftHash: await draftHashOf(text),
+		isChecked: true,
+		isStored: true,
+		...over,
+	};
+}
 
 describe('coverage', () => {
-	it('checks once typing pauses, with the text and the stances', async () => {
+	it('checks once typing pauses, with the text, after the choices are written', async () => {
 		vi.useFakeTimers();
 		const text = ref('');
 		const { plan } = host({ text });
-		action.mockResolvedValueOnce(RESULT);
-		text.value = 'Hi Jonas, I’ve attached the contract.';
+		const written = 'Hi Jonas, I’ve attached the contract.';
+		action.mockResolvedValueOnce(await result(written));
+		text.value = written;
 		await nextTick();
 		vi.advanceTimersByTime(PLAN_COVERAGE_DEBOUNCE_MS - 10);
 		expect(action).not.toHaveBeenCalled();
 		vi.advanceTimersByTime(20);
+		await vi.runAllTimersAsync();
 		await flushPromises();
 		expect(action).toHaveBeenCalledWith('coverage.check', {
 			threadRef: { kind: 'mail', id: 't1' },
 			draftRef: { kind: 'mailDraft', id: 'd1' },
-			draftText: 'Hi Jonas, I’ve attached the contract.',
-			stances: [
-				{ itemId: 'contract', stance: 'answer' },
-				{ itemId: 'quote', stance: 'answer' },
-			],
+			draftText: written,
 		});
-		expect(plan.addressed.value).toEqual(['contract']);
+		vi.useRealTimers();
+		await vi.waitFor(() => expect(plan.addressed.value).toEqual(['contract']));
 		expect(plan.missingFiles.value).toEqual(['I’ve attached the contract.']);
 		expect([...plan.view.fileMissing.value]).toEqual(['contract']);
 		expect(plan.statusNote.value).toBe(
 			'1 of 2 addressed · 1 needs a file · new promise noted: “I’ll send the logo by Friday”'
 		);
+	});
+
+	it('F10: shows chips only for the text on screen; an edit makes it "checking" at once', async () => {
+		const text = ref('First version.');
+		const { plan } = host({ text });
+		action.mockResolvedValueOnce(await result('First version.'));
+		await plan.checkCoverage();
+		await vi.waitFor(() => expect(plan.addressed.value).toEqual(['contract']));
+		text.value = 'First version, edited.';
+		await flushPromises();
+		expect(plan.addressed.value).toEqual([]);
+		expect(plan.missingFiles.value).toEqual([]);
+		expect(plan.statusNote.value).toBe('Checking the draft…');
+	});
+
+	it('F10: a result for another plan revision is not shown', async () => {
+		const text = ref('Hello.');
+		const { plan } = host({ text });
+		stored.value = { stances: [], planRevision: 3, verdict: 'pending', isStale: false };
+		action.mockResolvedValueOnce(await result('Hello.', { planRevision: 2 }));
+		await plan.checkCoverage();
+		await flushPromises();
+		expect(plan.addressed.value).toEqual([]);
 	});
 
 	it('lets the newest check win, and never checks an empty draft', async () => {
@@ -187,11 +220,15 @@ describe('coverage', () => {
 		let resolveOld!: (value: unknown) => void;
 		action.mockImplementationOnce(() => new Promise((r) => (resolveOld = r)));
 		const older = plan.checkCoverage();
+		await flushPromises();
 		text.value = 'second';
-		action.mockResolvedValueOnce({ ...RESULT, coverage: [], fileClaims: [], newPromises: [] });
+		action.mockResolvedValueOnce(
+			await result('second', { coverage: [], fileClaims: [], newPromises: [] })
+		);
 		await plan.checkCoverage();
-		resolveOld(RESULT);
+		resolveOld(await result('first'));
 		await older;
+		await flushPromises();
 		expect(plan.addressed.value).toEqual([]);
 
 		text.value = '  ';
@@ -200,18 +237,21 @@ describe('coverage', () => {
 		expect(plan.statusNote.value).toBeUndefined();
 	});
 
-	it('shows the stored coverage until this page checks, when it is current', () => {
+	it('shows the stored coverage until this page checks, when it is current', async () => {
+		const text = ref('The quote is approved.');
 		stored.value = {
 			stances: [],
 			coverage: [{ itemId: 'quote', verdict: 'addressed', spans: [] }],
 			fileClaims: [],
 			newPromises: [],
-			draftHash: 'h0',
+			planRevision: 0,
+			checkedPlanRevision: 0,
+			draftHash: await draftHashOf('The quote is approved.'),
 			verdict: 'gaps',
 			isStale: false,
 		};
-		const { plan } = host({ text: ref('The quote is approved.') });
-		expect(plan.addressed.value).toEqual(['quote']);
+		const { plan } = host({ text });
+		await vi.waitFor(() => expect(plan.addressed.value).toEqual(['quote']));
 		expect(plan.statusNote.value).toBe('1 of 2 addressed');
 		stored.value = { ...(stored.value as object), isStale: true, verdict: 'stale' };
 		expect(plan.addressed.value).toEqual([]);
@@ -220,8 +260,33 @@ describe('coverage', () => {
 	it('does not count a skipped item', async () => {
 		const { plan } = host({ text: ref('Hi') });
 		plan.setSelected(['contract']);
-		action.mockResolvedValueOnce(RESULT);
+		action.mockResolvedValueOnce(await result('Hi'));
 		await plan.checkCoverage();
-		expect(plan.statusNote.value).toMatch(/^1 of 1 addressed/);
+		await vi.waitFor(() => expect(plan.statusNote.value).toMatch(/^1 of 1 addressed/));
+	});
+
+	it('F12: checks file claims and promises with nothing planned', async () => {
+		const { plan, items } = host({ text: ref('I’ve attached it.') });
+		items.value = [];
+		action.mockResolvedValueOnce(await result('I’ve attached it.', { coverage: [] }));
+		await plan.checkCoverage();
+		await flushPromises();
+		expect(action).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() =>
+			expect(plan.missingFiles.value).toEqual(['I’ve attached the contract.'])
+		);
+	});
+
+	it('F11: flush writes the choices to a draft created just now, before the AI drafts', async () => {
+		const draftRef = ref<PlanDraftRef | null>(null);
+		const { plan } = host({ draftRef });
+		plan.setStance('quote', 'accept');
+		await flushPromises();
+		expect(mutation).not.toHaveBeenCalled();
+		await plan.flush({ kind: 'mailDraft', id: 'd7' as never });
+		expect(mutation).toHaveBeenCalledWith(
+			'plan.setStances',
+			expect.objectContaining({ draftRef: { kind: 'mailDraft', id: 'd7' } })
+		);
 	});
 });

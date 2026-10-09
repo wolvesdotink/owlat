@@ -38,6 +38,9 @@ const loaded = {
 	],
 	stances: [{ itemId, stance: 'answer', source: 'default' }],
 	attachments: [],
+	planRevision: 2,
+	attachmentSetHash: 'files-0',
+	isOverflow: false,
 };
 
 describe('loadDraftPlan', () => {
@@ -76,6 +79,7 @@ describe('recordDraftPlan', () => {
 			coverage: [{ itemId, verdict: 'addressed' as const, spans: [{ start: 0, end: 5 }] }],
 			fileClaims: [],
 			newPromises: [],
+			isIncomplete: false,
 		};
 		await recordDraftPlan({ runMutation } as never, plan, 'Your refund is on its way.', checked);
 		const [ref, args] = runMutation.mock.calls[0] as unknown as [never, Record<string, unknown>];
@@ -86,6 +90,10 @@ describe('recordDraftPlan', () => {
 			coverage: checked.coverage,
 			draftHash: await draftHashOf('Your refund is on its way.'),
 			verdict: 'covered',
+			// Bound to the stance revision and the attachment set it read (review D1).
+			planRevision: 2,
+			attachmentSetHash: 'files-0',
+			isCheckIncomplete: false,
 		});
 	});
 

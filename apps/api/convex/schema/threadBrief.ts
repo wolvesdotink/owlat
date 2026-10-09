@@ -13,12 +13,10 @@ import {
 	claimIdValidator,
 	itemCountsValidator,
 	sourceCountsValidator,
-	coverageEntryValidator,
 	draftRefKindValidator,
 	evidenceValidator,
 	factStatusValidator,
 	factValueValidator,
-	fileClaimValidator,
 	interpretCoverageValidator,
 	interpretEligibilitySignalsValidator,
 	interpretModeValidator,
@@ -34,24 +32,28 @@ import {
 	itemFacetValidator,
 	itemIntentValidator,
 	itemResponsibilityValidator,
-	itemRevisionRefValidator,
 	itemStatusValidator,
 	itemConfirmedFromValidator,
 	itemListBucketValidator,
 	itemVerifyValidator,
 	localizedSealedTextValidator,
-	newPromiseValidator,
-	ownerInputRefValidator,
 	participantRefValidator,
 	pendingUpdateValidator,
 	itemFieldSourcesValidator,
 	transitionSourceValidator,
 	planVerdictValidator,
-	responsePlanStanceValidator,
 	sourceManifestValidator,
 	streamPositionValidator,
 	threadViewValidator,
 } from '../lib/validators/threadBrief';
+import {
+	coverageEntryValidator,
+	fileClaimValidator,
+	itemRevisionRefValidator,
+	newPromiseValidator,
+	ownerInputRefValidator,
+	responsePlanStanceValidator,
+} from '../lib/validators/responsePlan';
 
 /**
  * The thread brief tables, children before parents: note reactions, the
@@ -438,6 +440,7 @@ export const threadBriefTables = {
 		// Set when draftKind === 'mailDraft'.
 		mailDraftId: v.optional(v.id('mailDrafts')),
 		// Set when draftKind === 'inboundDraft' (the team draft lives on the inbound message).
+		// draftKind === 'arrivalDraft' (the Reply Queue's prepared reply) sets neither.
 		inboundMessageId: v.optional(v.id('inboundMessages')),
 		threadRevision: v.number(),
 		itemRevisions: v.array(itemRevisionRefValidator),
@@ -448,6 +451,14 @@ export const threadBriefTables = {
 		fileClaims: v.array(fileClaimValidator),
 		draftHash: v.string(),
 		verdict: planVerdictValidator,
+		// Bumped by every stance write; the coverage above is current only for
+		// `checkedPlanRevision === planRevision` (plus the draft and item binding).
+		planRevision: v.optional(v.number()),
+		checkedPlanRevision: v.optional(v.number()),
+		// The attachment set the file claims were checked against.
+		attachmentSetHash: v.optional(v.string()),
+		// The check could not cover everything (items or claims past the bound).
+		isCheckIncomplete: v.optional(v.boolean()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

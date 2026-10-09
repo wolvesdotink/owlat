@@ -90,7 +90,17 @@ export function useAnswerModeAssist(opts: {
 		},
 		composer: opts.composer,
 		onSettled: () => void plan.checkCoverage(),
+		// The drafter reads the stored stances: write the person's choices first.
+		beforeDraft: async (target) => {
+			if (target.kind === 'mailDraft') await plan.flush({ kind: 'mailDraft', id: target.draftId });
+		},
 	});
+
+	/** The prepared reply's plan moves to the draft it became (review F16). */
+	async function adoptPrepared(composer: AnswerComposerApi) {
+		const draftId = await composer.ensureDraftId();
+		if (draftId) await plan.adoptPreparedPlan(draftId);
+	}
 
 	// A draft the AI prepared earlier.
 	const prepared = useAnswerPreparedDraft({
@@ -110,6 +120,7 @@ export function useAnswerModeAssist(opts: {
 			appliedText = text;
 			void composer
 				.applyAiDraft(text)
+				.then(() => adoptPrepared(composer))
 				.then(() => prepared.attachFiles(composer))
 				.then(() => plan.checkCoverage());
 		},
@@ -130,6 +141,7 @@ export function useAnswerModeAssist(opts: {
 		preparedTaken = true;
 		appliedText = text;
 		await composer.applyAiDraft(text);
+		await adoptPrepared(composer);
 		await prepared.attachFiles(composer);
 		void plan.checkCoverage();
 	}

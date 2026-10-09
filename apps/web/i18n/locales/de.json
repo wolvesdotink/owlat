@@ -7042,6 +7042,7 @@
 				},
 				"fileMissing": "Datei fehlt",
 				"status": {
+					"checking": "Der Entwurf wird geprüft …",
 					"addressed": "{addressed} von {total} berücksichtigt",
 					"needsFile": "{count} braucht eine Datei | {count} brauchen eine Datei",
 					"promise": "neues Versprechen notiert: „{text}“"

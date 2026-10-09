@@ -1039,6 +1039,7 @@ import type * as lib_validators_teamReplyAttachment from '../lib/validators/team
 import type * as lib_validators_templates from '../lib/validators/templates.js';
 import type * as lib_validators_threadBrief from '../lib/validators/threadBrief.js';
 import type * as lib_validators_threadRef from '../lib/validators/threadRef.js';
+import type * as lib_validators_responsePlan from '../lib/validators/responsePlan.js';
 import type * as lib_validators_coediting from '../lib/validators/coediting.js';
 import type * as lib_vectorMath from '../lib/vectorMath.js';
 import type * as lib_webPush from '../lib/webPush.js';
@@ -2626,6 +2627,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/templates': typeof lib_validators_templates;
 	'lib/validators/threadBrief': typeof lib_validators_threadBrief;
 	'lib/validators/threadRef': typeof lib_validators_threadRef;
+	'lib/validators/responsePlan': typeof lib_validators_responsePlan;
 	'lib/validators/coediting': typeof lib_validators_coediting;
 	'lib/vectorMath': typeof lib_vectorMath;
 	'lib/webPush': typeof lib_webPush;

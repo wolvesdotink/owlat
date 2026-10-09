@@ -34,6 +34,9 @@ export interface DraftPlan {
 	inboundMessageId: Id<'inboundMessages'>;
 	threadId: Id<'conversationThreads'>;
 	threadRevision: number;
+	planRevision: number;
+	attachmentSetHash: string;
+	isOverflow: boolean;
 	stances: PlanStance<ItemId>[];
 	itemRevisions: { itemId: ItemId; revision: number }[];
 	prompt: { items: PlanPromptItem<ItemId>[]; attachments: AttachmentRef[] };
@@ -59,6 +62,9 @@ export async function loadDraftPlan(
 			inboundMessageId,
 			threadId,
 			threadRevision: loaded.threadRevision,
+			planRevision: loaded.planRevision,
+			attachmentSetHash: loaded.attachmentSetHash,
+			isOverflow: loaded.isOverflow,
 			stances: loaded.stances,
 			itemRevisions: loaded.items.map((i) => ({ itemId: i.id, revision: i.revision })),
 			prompt: {
@@ -85,6 +91,7 @@ export async function recordDraftPlan(
 			coverage: [],
 			fileClaims: [],
 			newPromises: [],
+			isIncomplete: false,
 		}) as PlanCoverage<ItemId>;
 		await ctx.runMutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
 			threadRef: { kind: 'team', id: plan.threadId },
@@ -98,6 +105,10 @@ export async function recordDraftPlan(
 			draftHash: await draftHashOf(draftBody),
 			// No self-check answer: nothing is known to be covered.
 			verdict: checked ? planVerdictOf(plan.stances, coverage) : 'pending',
+			// Compare-and-set: a person's stance write since the load wins.
+			planRevision: plan.planRevision,
+			attachmentSetHash: plan.attachmentSetHash,
+			isCheckIncomplete: coverage.isIncomplete || plan.isOverflow,
 		});
 	} catch (err) {
 		logError('[draft] storing the response plan failed:', failureText(err));

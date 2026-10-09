@@ -21,6 +21,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ResponseStance } from '@owlat/shared/threadBrief';
+import { draftHashOf } from '@owlat/shared/threadBriefRules';
 import type { FunctionReturnType } from 'convex/server';
 import type { BriefItemView } from '../../../api/convex/mail/interpret/briefShape';
 import {
@@ -92,14 +93,17 @@ export function useResponsePlan(opts: {
 
 	// Writing the choices onto the draft's plan
 	let writing: Promise<void> = Promise.resolve();
-	function persist() {
+	/** Writes in flight: until they land, no coverage on screen is trusted. */
+	const pendingWrites = ref(0);
+	function persist(explicit?: PlanDraftRef | null) {
 		const threadRef = opts.threadRef();
-		const draftRef = opts.draftRef();
-		if (!threadRef || !draftRef || chosen.value.size === 0) return;
+		const draftRef = explicit ?? opts.draftRef();
+		if (!threadRef || !draftRef || chosen.value.size === 0) return writing;
 		const given = [...chosen.value].map(([itemId, stance]) => ({
 			itemId: itemId as Id<'threadItems'>,
 			stance,
 		}));
+		pendingWrites.value++;
 		writing = writing
 			.then(() =>
 				requireConvex().mutation(api.mail.interpret.responsePlan.setStances, {
@@ -111,15 +115,22 @@ export function useResponsePlan(opts: {
 			.then(() => undefined)
 			.catch(() => {
 				// The choice stays on screen and goes with the next write or check.
+			})
+			.finally(() => {
+				pendingWrites.value--;
 			});
+		return writing;
 	}
-	watch(() => opts.draftRef()?.id, persist);
+	watch(
+		() => opts.draftRef()?.id,
+		() => void persist()
+	);
 
 	function setStance(itemId: string, stance: ResponseStance) {
 		const next = new Map(chosen.value);
 		next.set(itemId, stance);
 		chosen.value = next;
-		persist();
+		void persist();
 		scheduleCoverage();
 	}
 
@@ -132,22 +143,35 @@ export function useResponsePlan(opts: {
 			if (want.has(id) && stance === 'skip') next.set(id, 'answer');
 		}
 		chosen.value = next;
-		persist();
+		void persist();
 		scheduleCoverage();
 	}
 
-	// Coverage
+	/** The hash of the text in the editor now, which a result must match (review D1). */
+	const currentHash = ref<string | null>(null);
+	let hashSeq = 0;
+	watch(
+		opts.draftText,
+		(text) => {
+			const mine = ++hashSeq;
+			currentHash.value = null;
+			void draftHashOf(text).then((hash) => {
+				if (mine === hashSeq) currentHash.value = hash;
+			});
+		},
+		{ immediate: true }
+	);
+
+	// Coverage. The check reads the STORED stances, so the choices are written
+	// first; its result is bound to the plan revision and the text it read.
 	async function checkCoverage() {
 		clearTimeout(timer);
 		const threadRef = opts.threadRef();
 		const draftRef = opts.draftRef();
 		const text = opts.draftText().trim();
-		if (!threadRef || !draftRef || !aiOn.value || stances.value.size === 0) return;
-		const stanceList = [...stances.value].map(([itemId, stance]) => ({
-			itemId: itemId as Id<'threadItems'>,
-			stance,
-		}));
-		const key = `${draftRef.id}:${JSON.stringify(stanceList)}:${text}`;
+		if (!threadRef || !draftRef || !aiOn.value) return;
+		await persist();
+		const key = `${draftRef.id}:${stored.data.value?.planRevision ?? 0}:${JSON.stringify([...chosen.value])}:${text}`;
 		if (key === lastChecked) return;
 		lastChecked = key;
 		const mine = ++seq;
@@ -160,7 +184,6 @@ export function useResponsePlan(opts: {
 				threadRef,
 				draftRef,
 				draftText: text,
-				stances: stanceList,
 			});
 			if (mine === seq) checked.value = result;
 		} catch {
@@ -176,12 +199,29 @@ export function useResponsePlan(opts: {
 	watch(opts.draftText, scheduleCoverage);
 	onBeforeUnmount(() => clearTimeout(timer));
 
-	/** The coverage on screen: this page's last check, else the draft's stored one when current. */
+	/**
+	 * The coverage on screen: only a result bound to exactly what is on screen
+	 * now (review D1, F10): the editor's text (draft hash), the stored stance
+	 * revision, and no stance write still in flight. This page's last check
+	 * first, else the draft's stored check. Anything else is "checking".
+	 */
 	const coverage = computed(() => {
-		if (checked.value) return checked.value;
 		const view = stored.data.value;
-		if (!view || view.isStale || view.verdict === 'pending' || !view.draftHash) return null;
-		return { ...view, isChecked: true };
+		const revision = view?.planRevision ?? 0;
+		const hash = currentHash.value;
+		if (!hash || pendingWrites.value > 0) return null;
+		const local = checked.value;
+		if (local && local.draftHash === hash && local.planRevision === revision) return local;
+		if (
+			view &&
+			!view.isStale &&
+			view.verdict !== 'pending' &&
+			view.draftHash === hash &&
+			view.checkedPlanRevision === revision
+		) {
+			return { ...view, isChecked: true };
+		}
+		return null;
 	});
 	const coverageEntries = computed<PlanCoverageEntry[]>(() => coverage.value?.coverage ?? []);
 	const addressed = computed(() =>
@@ -206,7 +246,12 @@ export function useResponsePlan(opts: {
 			hasText: !!opts.draftText().trim(),
 		})
 	);
+	/** Something is written and checkable, but no result matches it yet. */
+	const isChecking = computed(
+		() => aiOn.value && !!opts.draftRef() && !!opts.draftText().trim() && !coverage.value
+	);
 	const statusNote = computed(() => {
+		if (isChecking.value) return t('components.answer.plan.status.checking');
 		const s = status.value;
 		if (!s) return undefined;
 		const parts: string[] = [];
@@ -247,8 +292,24 @@ export function useResponsePlan(opts: {
 			lastChecked = null;
 			scheduleCoverage();
 		},
-		/** The choices are written before the AI drafts from them. */
-		flush: () => writing,
+		/**
+		 * The Reply Queue's prepared reply went into this Postbox draft: its plan,
+		 * still bound to the prepared text, moves to the draft (review F16).
+		 */
+		adoptPreparedPlan: async (draftId: Id<'mailDrafts'>) => {
+			const threadRef = opts.threadRef();
+			if (threadRef?.kind !== 'mail') return;
+			try {
+				await requireConvex().mutation(api.mail.interpret.responsePlan.adoptArrivalPlan, {
+					threadRef,
+					draftId,
+				});
+			} catch {
+				// The draft is checked afresh instead.
+			}
+		},
+		/** Write the choices (to `draftRef` when the draft was just created) and wait. */
+		flush: (draftRef?: PlanDraftRef | null) => persist(draftRef),
 	};
 }
 

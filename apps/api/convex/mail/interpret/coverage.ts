@@ -28,7 +28,7 @@ import { runLlmObject } from '../../lib/llm/dispatch';
 import { interactiveLlmPolicy } from '../../lib/llm/retryPolicy';
 import { scheduleLlmSpend } from '../../analytics/llmUsage';
 import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
-import { draftRefValidator, responseStanceValidator } from '../../lib/validators/threadBrief';
+import { draftRefValidator } from '../../lib/validators/responsePlan';
 import { threadRefValidator } from '../../lib/validators/threadRef';
 import {
 	buildPlanCoveragePrompt,
@@ -45,9 +45,13 @@ const MAX_DRAFT_CHARS = 20_000;
 
 /** What the composer gets back. */
 export interface CoverageResult extends PlanCoverage<Id<'threadItems'>> {
+	/** What the result is bound to (review D1): the stance revision and the text. */
+	planRevision: number;
 	draftHash: string;
 	/** The model answered. Without it only the attachment claims are known. */
 	isChecked: boolean;
+	/** Stored as the draft's coverage; false when newer stances superseded it. */
+	isStored: boolean;
 }
 
 /** The model's plan check, or null when the gate refused or the call failed. */
@@ -56,7 +60,8 @@ async function checkWithModel(
 	items: readonly PlanPromptItem[],
 	draft: string
 ): Promise<PlanCheckOutput | null> {
-	if (!items.some((i) => i.stance !== 'skip')) return null;
+	// File claims and commitments are checked even when no item is planned or
+	// every item is skipped (review F12).
 	try {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 			rateLimitBucket: 'answerCoveragePerUser',
@@ -91,14 +96,11 @@ export const check = authedAction({
 		threadRef: threadRefValidator,
 		draftRef: draftRefValidator,
 		draftText: v.string(),
-		// The owner's current stances (possibly not stored yet).
-		stances: v.array(v.object({ itemId: v.id('threadItems'), stance: responseStanceValidator })),
 	},
 	handler: async (ctx, args): Promise<CoverageResult | null> => {
 		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForCoverage, {
 			threadRef: args.threadRef,
 			draftRef: args.draftRef,
-			stances: args.stances,
 		});
 		if (!loaded) return null;
 		const draft = args.draftText.slice(0, MAX_DRAFT_CHARS);
@@ -110,7 +112,8 @@ export const check = authedAction({
 			attachments: loaded.attachments,
 		});
 		const draftHash = await draftHashOf(draft);
-		await ctx.runMutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
+		const isCheckIncomplete = checked.isIncomplete || loaded.isOverflow;
+		const stored = await ctx.runMutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
 			threadRef: args.threadRef,
 			draftRef: args.draftRef,
 			threadRevision: loaded.threadRevision,
@@ -121,7 +124,17 @@ export const check = authedAction({
 			newPromises: checked.newPromises,
 			draftHash,
 			verdict: output ? planVerdictOf(loaded.stances, checked) : 'pending',
+			planRevision: loaded.planRevision,
+			attachmentSetHash: loaded.attachmentSetHash,
+			isCheckIncomplete,
 		});
-		return { ...checked, draftHash, isChecked: output !== null };
+		return {
+			...checked,
+			isIncomplete: isCheckIncomplete,
+			planRevision: loaded.planRevision,
+			draftHash,
+			isChecked: output !== null,
+			isStored: stored.isStored,
+		};
 	},
 });
