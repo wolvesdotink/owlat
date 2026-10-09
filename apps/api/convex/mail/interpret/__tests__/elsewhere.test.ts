@@ -11,7 +11,7 @@ import schema from '../../../schema';
 import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
-import { counterpartiesOf, nameOf, PERSON_SCAN } from '../elsewhere';
+import { counterpartiesOf, nameOf } from '../elsewhere';
 import type { ReduceItem } from '../reduceInput';
 import {
 	modules,
@@ -169,7 +169,7 @@ describe('elsewhere.list', () => {
 		});
 	});
 
-	it('adds the Team Inbox and every mailbox for an admin, still never this thread', async () => {
+	it('adds the Team Inbox for an admin, never a teammate’s private mailbox, never this thread', async () => {
 		const t = convexTest(schema, modules);
 		const { here } = await seedWorld(t);
 		session.current = { userId: 'user-A', role: 'admin', activeOrganizationId: 'org-1' };
@@ -178,11 +178,7 @@ describe('elsewhere.list', () => {
 			locale: 'de',
 		});
 		const texts = out!.groups[0]!.items.map((i) => i.text).sort();
-		expect(texts).toEqual([
-			'Jonas sends the signed NDA (de)',
-			'Refund order 42 (de)',
-			'Review B’s draft (de)',
-		]);
+		expect(texts).toEqual(['Jonas sends the signed NDA (de)', 'Refund order 42 (de)']);
 	});
 
 	it('answers null to a reader who cannot open this thread', async () => {
@@ -197,46 +193,48 @@ describe('elsewhere.list', () => {
 		).toBeNull();
 	});
 
-	it('reads past rows the viewer cannot open and hands back a cursor when the scan stops (F7)', async () => {
+	it('shows nothing at all when every match is in someone else’s mail (round 2 F3)', async () => {
 		const t = convexTest(schema, modules);
-		const { here, other } = await seedWorld(t);
-		// More newer rows in someone else's mailbox than one scan reads.
-		await t.run(async (ctx) => {
-			const hidden = await ctx.db
-				.query('threadItems')
-				.filter((q) => q.neq(q.field('mailThreadId'), here.threadId))
-				.collect();
-			const template = hidden.find(
-				(i) => i.counterpartyKey === 'jonas@example.com' && i.mailboxId !== undefined
-			)!;
-			const visible = hidden.find(
-				(i) => i.mailThreadId === other.threadId && i.verify !== 'proposal'
-			)!;
-			const { _id: _a, _creationTime: _b, ...fields } = template;
-			const theirs = hidden.find((i) => i.mailboxId !== visible.mailboxId && i.mailThreadId)!;
-			for (let i = 0; i < PERSON_SCAN + 5; i++) {
-				await ctx.db.insert('threadItems', {
-					...fields,
-					mailThreadId: theirs.mailThreadId,
-					mailboxId: theirs.mailboxId,
-					updatedAt: visible.updatedAt + 1000 + i,
-				});
-			}
+		const here = await seedMailThread(t);
+		await interpret(t, { kind: 'mail', ...here }, [fromJonas('Send the signed contract')]);
+		const mailboxB = await seedMailbox(t, { userId: 'user-B', address: 'b@owlat.test' });
+		await seedFolder(t, mailboxB, 'inbox');
+		for (let i = 0; i < 12; i++) {
+			const theirs = await mailThreadIn(t, mailboxB, `B private ${i}`);
+			await interpret(t, theirs, [fromJonas(`Private ${i}`)]);
+		}
+		const team = await seedTeamThread(t);
+		await interpret(t, { kind: 'team', ...team }, [fromJonas('Refund order 42')]);
+		const out = await t.query(api.mail.interpret.elsewhere.list, {
+			threadRef: { kind: 'mail', id: here.threadId },
+			locale: 'en',
+			limit: 25,
 		});
+		// No group, no "more", no position: nothing about the hidden rows.
+		expect(out).toEqual({ groups: [] });
+	});
+
+	it('shows more of the same person on request, up to the bound (round 2 F4)', async () => {
+		const t = convexTest(schema, modules);
+		const here = await seedMailThread(t);
+		await interpret(t, { kind: 'mail', ...here }, [fromJonas('Send the signed contract')]);
+		for (let i = 0; i < 7; i++) {
+			const other = await mailThreadIn(t, here.mailboxId, `Other ${i}`);
+			await interpret(t, other, [fromJonas(`Open item ${i}`)]);
+		}
 		const first = await t.query(api.mail.interpret.elsewhere.list, {
 			threadRef: { kind: 'mail', id: here.threadId },
 			locale: 'en',
 		});
-		const group = first!.groups[0]!;
-		expect(group.items).toEqual([]);
-		expect(group.continueCursor).toBeDefined();
-		const next = await t.query(api.mail.interpret.elsewhere.list, {
+		expect(first!.groups[0]).toMatchObject({ isMore: true });
+		expect(first!.groups[0]!.items).toHaveLength(5);
+		const more = await t.query(api.mail.interpret.elsewhere.list, {
 			threadRef: { kind: 'mail', id: here.threadId },
 			locale: 'en',
-			more: { counterpartyKey: 'jonas@example.com', cursor: group.continueCursor! },
+			limit: 25,
 		});
-		expect(next!.groups[0]!.items.map((i) => i.text)).toEqual(['Jonas sends the signed NDA']);
-		expect(next!.groups[0]!.continueCursor).toBeUndefined();
+		expect(more!.groups[0]).toMatchObject({ isMore: false });
+		expect(more!.groups[0]!.items).toHaveLength(7);
 	});
 
 	it('refuses a Team Inbox thread while the Team Inbox is off (F8)', async () => {

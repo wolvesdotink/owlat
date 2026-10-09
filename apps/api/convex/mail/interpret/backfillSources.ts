@@ -47,6 +47,7 @@ import {
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { ensureBriefRow, markBriefPending } from './briefRow';
 import { captureInterpretSource, loadInterpretSource } from './sources';
+import { briefCompleteness } from './purgeRepairs';
 
 /** Messages of one thread read per page. */
 export const HISTORY_PAGE = 4;
@@ -304,11 +305,19 @@ export async function enqueueHistoryPage(
 		scheduled++;
 	}
 	const now = Date.now();
-	await ctx.db.patch(brief._id, {
+	const history = {
 		historyCursor: found.isDone ? undefined : found.continueCursor,
-		historyState: found.isDone ? 'done' : 'pending',
+		historyState: found.isDone ? ('done' as const) : ('pending' as const),
 		historyUpdatedAt: now,
 		...(found.isUnreadable ? { isHistoryIncomplete: true } : {}),
+	};
+	await ctx.db.patch(brief._id, {
+		...history,
+		// The stored completeness the gates read follows the history at once
+		// (briefCompleteness); runs in flight keep it `pending` until they land.
+		...(brief.completeness === 'pending'
+			? {}
+			: { completeness: briefCompleteness({ ...brief, ...history }) }),
 		updatedAt: now,
 	});
 	if (scheduled > 0) await markBriefPending(ctx, ref);

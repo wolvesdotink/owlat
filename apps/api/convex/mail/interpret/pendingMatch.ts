@@ -36,7 +36,8 @@ import {
 } from '../../lib/validators/threadRef';
 import { loadBriefRow } from './briefRow';
 import { appendActivity } from './activity';
-import { EMPTY_SOURCE_COUNTS, completenessOfCounts, writeItemChange } from './counters';
+import { writeItemChange } from './counters';
+import { briefCompleteness } from './purgeRepairs';
 import { evidenceKey } from './evidence';
 import { readResult } from './load';
 import { textSimilarity } from './reducePlan';
@@ -111,9 +112,7 @@ async function finishRun(ctx: MutationCtx, brief: Doc<'threadBriefs'>): Promise<
 		pendingMatchRuns: runs > 0 ? runs : undefined,
 		...(runs === 0
 			? {
-					completeness: brief.isFoldScanCut
-						? ('partial' as const)
-						: completenessOfCounts(brief.sourceCounts ?? EMPTY_SOURCE_COUNTS),
+					completeness: briefCompleteness({ ...brief, pendingMatchRuns: 0 }),
 				}
 			: {}),
 		updatedAt: Date.now(),

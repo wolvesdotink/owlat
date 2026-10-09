@@ -18,9 +18,17 @@ import { enableFeatures } from '../../../__tests__/factories';
 import { seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
 import { HISTORY_PAGE, isActiveThread, mailSourceOf } from '../backfillSources';
 import { historyGapOf } from '../brief';
+import { briefCompleteness } from '../purgeRepairs';
 import { captureTeamReplySnapshot } from '../sources';
 import { BACKFILL_WINDOW_MS, MAX_THREADS_PER_RUN, THREADS_PER_BATCH } from '../backfill';
-import { addMessageToThread, modules, seedTeamThread, type Test } from './interpret.testlib';
+import {
+	addMessageToThread,
+	modules,
+	reduceItem,
+	reduceResult,
+	seedTeamThread,
+	type Test,
+} from './interpret.testlib';
 
 const session = vi.hoisted(() => ({
 	current: { userId: 'user-A', role: 'member', activeOrganizationId: 'org-1' } as {
@@ -413,5 +421,94 @@ describe('lazy.ensure', () => {
 		);
 		expect(brief).toMatchObject({ historyState: 'done', isHistoryIncomplete: true });
 		expect(historyGapOf(brief)).toBe('history');
+	});
+});
+
+describe('history and the auto-send hold (round 2 F1)', () => {
+	const counts = { complete: 2, partial: 0, failed: 0, skipped: 0, unreadable: 0 };
+
+	it('keeps the stored completeness partial while history is unread or unreadable', () => {
+		expect(briefCompleteness({ sourceCounts: counts })).toBe('complete');
+		expect(briefCompleteness({ sourceCounts: counts, historyState: 'pending' })).toBe('partial');
+		expect(briefCompleteness({ sourceCounts: counts, historyState: 'done' })).toBe('complete');
+		expect(
+			briefCompleteness({ sourceCounts: counts, historyState: 'done', isHistoryIncomplete: true })
+		).toBe('partial');
+	});
+
+	it('holds team auto-send when a sent reply has no snapshot to read back', async () => {
+		const t = lazyTest();
+		await enableFeatures(t, ['ai']);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		await t.run((ctx) =>
+			ctx.db.insert('transactionalSends', {
+				kind: 'agent_reply',
+				email: 'customer@example.com',
+				status: 'sent',
+				inboundMessageId: inboundId,
+			})
+		);
+		session.current = { userId: 'user-A', role: 'admin', activeOrganizationId: 'org-1' };
+		await t.mutation(api.mail.interpret.lazy.ensure, {
+			threadRef: { kind: 'team', id: threadId },
+		});
+		// The customer's email is read completely.
+		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+			source: { kind: 'inbound', id: inboundId },
+			threadRef: { kind: 'team', id: threadId },
+			mode: 'actions',
+			contentRevision: 'rev-1',
+			extractorVersion: 1,
+			expectedRevision: 0,
+			deletionEpoch: 0,
+			sourceAt: Date.UTC(2026, 9, 7, 9, 0),
+			direction: 'inbound',
+			status: 'complete',
+			result: reduceResult({ items: [reduceItem()], latest: undefined, facts: [] }),
+		});
+		const brief = await t.run((ctx) =>
+			ctx.db
+				.query('threadBriefs')
+				.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', threadId))
+				.first()
+		);
+		expect(brief).toMatchObject({ isHistoryIncomplete: true, completeness: 'partial' });
+		const hold = await t.query(internal.mail.interpret.teamActions.interpretationHold, {
+			inboundMessageId: inboundId,
+		});
+		expect(hold.reason).toMatch(/incomplete/);
+	});
+
+	it('shows a history stopped by the spend gate as stalled', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox30Days(t);
+		const first = await seedMessage(t, mailboxId, { subject: 'a', receivedAt: Date.now() - DAY });
+		const threadId = await threadOf(t, first);
+		for (let i = 1; i <= HISTORY_PAGE; i++) {
+			await addMessageToThread(
+				t,
+				{ mailboxId, threadId },
+				{ text: `More ${i}`, receivedAt: Date.now() - DAY + i * 1000 }
+			);
+		}
+		await t.mutation(api.mail.interpret.backfill.start, { mailboxId });
+		await batch(t, mailboxId);
+		const pending = (await briefOf(t, threadId))!;
+		expect(pending.historyState).toBe('pending');
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, {
+				featureFlags: { ...settings!.featureFlags, ai: false },
+			});
+		});
+		await t.mutation(internal.mail.interpret.backfill.continueHistory, {
+			threadRef: { kind: 'mail', id: threadId },
+			cursor: pending.historyCursor!,
+		});
+		const view = await t.query(api.mail.interpret.brief.get, {
+			threadRef: { kind: 'mail', id: threadId },
+			locale: 'en',
+		});
+		expect(view?.history).toBe('stalled');
 	});
 });

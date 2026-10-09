@@ -5,9 +5,10 @@
  * still owes you in "Framework agreement". Each row links to its thread.
  *
  * Reads `mail.interpret.elsewhere.list` itself, so a host only places it:
- * the personal Overview and the Team Inbox side column. The server filters
- * every item by its own thread's access; nothing renders when there is
- * nothing to show.
+ * the personal Overview and the Team Inbox side column. The server limits
+ * the scan to the viewer's own mailboxes and the Team Inbox; nothing renders
+ * when there is nothing to show. "Show more" asks for more of the same
+ * person's items, up to a bound, and a note says when even that is not all.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -26,8 +27,20 @@ const props = defineProps<{ threadRef: ThreadRefArg | null }>();
 
 const { t, locale } = useI18n();
 
+/** Items per person: five, then "Show more" asks for up to {@link MAX_LIMIT}. */
+const FIRST_LIMIT = 5;
+const MAX_LIMIT = 25;
+const limit = ref(FIRST_LIMIT);
+watch(
+	() => props.threadRef?.id,
+	() => {
+		limit.value = FIRST_LIMIT;
+	}
+);
 const { data } = useConvexQuery(api.mail.interpret.elsewhere.list, () =>
-	props.threadRef ? { threadRef: props.threadRef, locale: briefLocale(locale.value) } : 'skip'
+	props.threadRef
+		? { threadRef: props.threadRef, locale: briefLocale(locale.value), limit: limit.value }
+		: 'skip'
 );
 const groups = computed<Groups>(() => data.value?.groups ?? []);
 
@@ -74,7 +87,16 @@ function sideOf(item: Item): string {
 					</NuxtLink>
 				</li>
 			</ul>
-			<p v-if="group.isMore || group.continueCursor" class="mt-1.5 text-xs text-text-tertiary">
+			<button
+				v-if="group.isMore && limit < MAX_LIMIT"
+				type="button"
+				class="mt-1.5 text-xs text-brand hover:underline"
+				data-testid="brief-elsewhere-more"
+				@click="limit = MAX_LIMIT"
+			>
+				{{ t('components.brief.elsewhere.showMore') }}
+			</button>
+			<p v-else-if="group.isMore" class="mt-1.5 text-xs text-text-tertiary">
 				{{ t('components.brief.elsewhere.more') }}
 			</p>
 		</BriefSection>

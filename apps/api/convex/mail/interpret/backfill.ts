@@ -279,7 +279,11 @@ export const continueHistory = internalMutation({
 		if (brief?.historyState !== 'pending' || brief.historyCursor !== args.cursor) return;
 		const mode = await activeModeOf(ctx, args.threadRef);
 		if (!mode) return;
-		if (!(await interpretGate(ctx, mode)).isAllowed) return;
+		if (!(await interpretGate(ctx, mode)).isAllowed) {
+			// Stalled, visibly at once: the reader's next look asks to resume it.
+			await ctx.db.patch(brief._id, { historyUpdatedAt: undefined });
+			return;
+		}
 		await enqueueHistoryPage(ctx, args.threadRef);
 	},
 });

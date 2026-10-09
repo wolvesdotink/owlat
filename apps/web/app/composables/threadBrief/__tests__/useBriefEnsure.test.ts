@@ -40,17 +40,27 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-function mount(threadRef: unknown, completeness: () => string | undefined) {
+function mount(
+	threadRef: unknown,
+	completeness: () => string | undefined,
+	history?: () => 'running' | 'stalled' | undefined
+) {
 	const scope = effectScope();
 	scopes.push(scope);
-	scope.run(() => useBriefEnsure({ threadRef: () => threadRef as never, completeness }));
+	scope.run(() =>
+		useBriefEnsure({
+			threadRef: () => threadRef as never,
+			completeness,
+			...(history ? { history } : {}),
+		})
+	);
 	return scope;
 }
 
 const team = { kind: 'team', id: 'ct1' };
 
 describe('useBriefEnsure', () => {
-	it('asks once per thread when the brief reads none, team threads included', async () => {
+	it('asks when the brief reads none, and remembers only a history read through', async () => {
 		const completeness = ref<string | undefined>(undefined);
 		mount(team, () => completeness.value);
 		expect(run).not.toHaveBeenCalled();
@@ -58,9 +68,39 @@ describe('useBriefEnsure', () => {
 		await nextTick();
 		await flushPromises();
 		expect(run).toHaveBeenCalledWith({ threadRef: team });
+		// Accepted is not done: a later look asks again.
 		mount(team, () => 'none');
 		await flushPromises();
+		expect(run).toHaveBeenCalledTimes(2);
+		run.mockResolvedValue({ ok: true, result: { isEnqueued: false, reason: 'has_brief' } });
+		mount(team, () => 'none');
+		await flushPromises();
+		mount(team, () => 'none');
+		await flushPromises();
+		expect(run).toHaveBeenCalledTimes(3);
+	});
+
+	it('resumes a stalled history, never a running one, within the bound (F2)', async () => {
+		const history = ref<'running' | 'stalled' | undefined>('running');
+		mount(
+			{ kind: 'mail', id: 'm3' },
+			() => 'partial',
+			() => history.value
+		);
+		await flushPromises();
+		expect(run).not.toHaveBeenCalled();
+		history.value = 'stalled';
+		await nextTick();
+		await flushPromises();
 		expect(run).toHaveBeenCalledTimes(1);
+		for (let i = 0; i < ENSURE_MAX_TRIES + 2; i++) {
+			history.value = 'running';
+			await nextTick();
+			history.value = 'stalled';
+			await nextTick();
+			await flushPromises();
+		}
+		expect(run).toHaveBeenCalledTimes(ENSURE_MAX_TRIES);
 	});
 
 	it('retries a refusal a bounded number of times', async () => {

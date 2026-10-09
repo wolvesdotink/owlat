@@ -6,7 +6,7 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { defineComponent, h, ref } from 'vue';
+import { defineComponent, h, nextTick, ref, watchEffect } from 'vue';
 import BriefElsewhere from '../BriefElsewhere.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
@@ -24,7 +24,7 @@ const queriedWith = vi.fn();
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useConvexQuery', (_fn: unknown, args: () => unknown) => {
-		queriedWith(args());
+		watchEffect(() => queriedWith(args()));
 		return { data, isLoading: ref(false) };
 	});
 });
@@ -50,7 +50,7 @@ function mountCard(threadRef: unknown = { kind: 'mail', id: 'th1' }) {
 }
 
 describe('BriefElsewhere', () => {
-	it('lists each person’s open items elsewhere with a link to their thread', () => {
+	it('lists each person’s open items elsewhere with a link to their thread', async () => {
 		data.value = {
 			groups: [
 				{
@@ -83,12 +83,20 @@ describe('BriefElsewhere', () => {
 		expect(queriedWith).toHaveBeenCalledWith({
 			threadRef: { kind: 'mail', id: 'th1' },
 			locale: 'en',
+			limit: 5,
 		});
 		expect(w.text()).toContain('With Jonas elsewhere');
 		expect(w.text()).toContain('Jonas sends the signed NDA');
 		expect(w.text()).toContain('in “Framework agreement”');
 		expect(w.text()).toContain('on their side');
 		expect(w.text()).toContain('for you');
+		// More readable items: "Show more" asks for them (F4).
+		expect(w.text()).not.toContain('More open items with them in other conversations.');
+		queriedWith.mockReset();
+		await w.get('[data-testid="brief-elsewhere-more"]').trigger('click');
+		await nextTick();
+		expect(queriedWith).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 25 }));
+		expect(w.find('[data-testid="brief-elsewhere-more"]').exists()).toBe(false);
 		expect(w.text()).toContain('More open items with them in other conversations.');
 		const hrefs = w.findAll('a').map((a) => a.attributes('href'));
 		expect(hrefs).toEqual(['/dashboard/postbox/inbox/m9?mailbox=mb1', '/dashboard/inbox/ct1']);

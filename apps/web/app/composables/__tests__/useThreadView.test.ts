@@ -163,7 +163,10 @@ describe('the reader view', () => {
 
 	it('opens on Conversation when there is no interpretation, and asks for one once', async () => {
 		data['brief.get'] = ref(briefView({ completeness: 'none' }));
-		runs['lazy.ensure'] = vi.fn(async () => ({ ok: true, result: { isEnqueued: true, runs: 1 } }));
+		runs['lazy.ensure'] = vi.fn(async () => ({
+			ok: true,
+			result: { isEnqueued: false, reason: 'has_brief' },
+		}));
 		expect(setup().switchView.value).toBe('conversation');
 		await flushPromises();
 		setup();
