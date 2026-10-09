@@ -24,7 +24,7 @@ import { newEvidence, type EvidenceRef } from './evidence';
 /** The fact fields the plan reads. */
 export type PlanFact = Pick<
 	Doc<'threadFacts'>,
-	'_id' | 'factKey' | 'status' | 'revision' | 'value'
+	'_id' | 'factKey' | 'status' | 'revision' | 'value' | 'redactedFields'
 > & {
 	evidence: readonly EvidenceRef[];
 	/** The value with its sealed text opened, for comparison. */
@@ -84,7 +84,8 @@ export function planFacts(
 	const claimed = new Set<string>();
 	const merge = (index: number, fact: ReduceFact, target: PlanFact) => {
 		claimed.add(target._id);
-		if (!isProvenRestatement(fact, target) && isOnlyFrom(target)) {
+		// A fact a message purge redacted (purgeClaims.ts) takes the new claim whole.
+		if (target.redactedFields?.length || (!isProvenRestatement(fact, target) && isOnlyFrom(target))) {
 			ops.push({ kind: 'replace', index, factId: target._id, fact });
 			return;
 		}

@@ -303,6 +303,7 @@ export function applyPlan(
 			item.amount = claim.amount;
 			item.options = claim.options;
 			item.assertionText = claim.assertion;
+			item.redactedFields = undefined;
 		}
 		if (patch.matched?.length) {
 			item.lineageKeys = [
@@ -338,6 +339,7 @@ export function applyPlan(
 			const fact = state.facts.get(op.factId);
 			if (!fact) continue;
 			fact.proposal = op.fact;
+			fact.redactedFields = undefined;
 			fact.factKey = op.fact.key;
 			fact.assertionText = op.fact.assertion;
 			fact.evidence = [...fact.evidence, ...ev(op.fact.evidence)];

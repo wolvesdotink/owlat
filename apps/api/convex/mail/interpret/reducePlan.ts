@@ -68,6 +68,7 @@ export type PlanItem = Pick<
 	| 'lastTransitionAt'
 	| 'statusSource'
 	| 'dispositionSource'
+	| 'redactedFields'
 > &
 	Partial<
 		Pick<Doc<'threadItems'>, 'requester' | 'responsible' | 'beneficiary' | 'responsibility'>
@@ -270,6 +271,10 @@ export function planReduction(
 				// Promotion (round 4 M3): the verified claim's own text, parties,
 				// deadline, amount and options replace the proposal's.
 				p.verify = 'passed';
+				p.promoteFrom = proposal;
+			} else if (proposal.verify === 'passed' && match.redactedFields?.length) {
+				// A message purge redacted its fields (purgeClaims.ts): a verified
+				// claim refills them directly, not through a held update.
 				p.promoteFrom = proposal;
 			} else if (proposal.verify === 'passed' && isOwnReread) {
 				// A verified re-read of the item's only source updates it in place.

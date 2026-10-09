@@ -194,6 +194,8 @@ export const threadBriefTables = {
 		// `<sourceKey>#f<index>`: the proposal that created it, so an ordered
 		// replay maps a rebuilt fact back onto this row.
 		lineage: v.optional(v.string()),
+		// Fields a message purge redacted (mail/interpret/purgeClaims.ts); a later claim refills them.
+		redactedFields: v.optional(v.array(v.string())),
 		revision: v.number(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -277,6 +279,8 @@ export const threadBriefTables = {
 		dispositionSource: v.optional(transitionSourceValidator),
 		lineageKeys: v.optional(v.array(v.string())),
 		lineage: v.optional(v.string()),
+		// Fields a message purge redacted (mail/interpret/purgeClaims.ts); a verified claim refills them.
+		redactedFields: v.optional(v.array(v.string())),
 		// Message date of the first evidence: the "age" of compareForYou.
 		askedAt: v.number(),
 		createdAt: v.number(),
