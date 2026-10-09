@@ -48,6 +48,7 @@ import { openMessageBody } from '../../lib/messageBody';
 import { utcDayKey } from '../../lib/clock';
 import { INTERPRET_EXTRACTOR_VERSION } from './schema';
 import { loadBriefRow } from './briefRow';
+import { isPurgeActive } from './purgeActive';
 import { threadItemsWithStatus } from './load';
 import { captureInterpretSource, loadInterpretSource } from './sources';
 
@@ -424,6 +425,14 @@ async function holdOf(
 	const message = await ctx.db.get(args.inboundMessageId);
 	if (!message?.threadId) {
 		return { reason: 'This message has no Team Inbox thread to interpret; not auto-sending.' };
+	}
+	// An erasure of this thread still running: claims it will redact may still
+	// read complete (final review r2, F1).
+	if (await isPurgeActive(ctx, { kind: 'team', id: message.threadId })) {
+		return {
+			reason:
+				'A deleted message is still being removed from this thread (purge_in_progress); not auto-sending — routing to human review.',
+		};
 	}
 	const row = await countedExtraction(ctx, args.inboundMessageId);
 	const brief = await loadBriefRow(ctx, { kind: 'team', id: message.threadId });

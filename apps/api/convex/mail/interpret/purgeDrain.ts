@@ -35,6 +35,7 @@
 import { getConvexSize, type Value } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
+import { syncActivePurgeJobs } from './purgeActive';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
 import {
@@ -261,6 +262,8 @@ export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promis
 		createdAt: now,
 		updatedAt: now,
 	});
+	// The thread reads partial, and D3 holds, until the job's last slice.
+	await syncActivePurgeJobs(ctx, job.ref);
 	return (await ctx.db.get(id))!;
 }
 
@@ -304,6 +307,7 @@ export async function runJobPlan(
 	if (index >= plan.ranges.length) {
 		await plan.settle(ctx, job, ref, state);
 		await ctx.db.delete(job._id);
+		await syncActivePurgeJobs(ctx, ref);
 		return true;
 	}
 	const { sources, ...findings } = state;

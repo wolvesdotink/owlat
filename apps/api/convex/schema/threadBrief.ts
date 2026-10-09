@@ -408,6 +408,8 @@ export const threadBriefTables = {
 		pendingMatchRuns: v.optional(v.number()),
 		// Purge repairs scheduled and not yet recorded (mail/interpret/purgeRepairs.ts).
 		pendingRepairs: v.optional(v.number()),
+		// Unfinished purge jobs of the thread (mail/interpret/purgeDrain.ts): partial.
+		activePurgeJobs: v.optional(v.number()),
 		// The last fold read only part of the thread's items or facts (R2): partial.
 		isFoldScanCut: v.optional(v.boolean()),
 		// Reading the thread's earlier mail (mail/interpret/backfillSources.ts):
