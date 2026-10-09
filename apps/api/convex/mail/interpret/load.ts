@@ -435,7 +435,15 @@ export const loadForInterpretation = internalQuery({
 				)
 				.take(MAX_PROMPT_FACTS + 1);
 			isFactsOverflow = facts.length > MAX_PROMPT_FACTS;
-			currentFacts = await Promise.all(facts.slice(0, MAX_PROMPT_FACTS).map(toPromptFact));
+			// A fact a purge redacted carries nothing to show the model (final
+			// review F4): no descriptor of the deleted message enters a prompt
+			// until a re-read of a surviving message derives it again.
+			currentFacts = await Promise.all(
+				facts
+					.slice(0, MAX_PROMPT_FACTS)
+					.filter((f) => !f.redactedFields?.length)
+					.map(toPromptFact)
+			);
 		}
 
 		const sourceKey = interpretationSourceKey(args.source);
