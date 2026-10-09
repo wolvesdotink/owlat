@@ -19,7 +19,7 @@ const ALLOWED = new Set([
 	'inbox/noteRules.ts',
 	// The team thread stream: notes beside the emails on the thread page and
 	// in Answer mode, for Team Inbox readers only (never a prompt or a mail).
-	'inbox/teamStream.ts',
+	'inbox/teamStreamSources.ts',
 	'schema/inboxCollaboration.ts',
 	// Emoji reactions on notes and the note's `#` item link (thread brief):
 	// stores reactions and checks the link, never reads a note's text.

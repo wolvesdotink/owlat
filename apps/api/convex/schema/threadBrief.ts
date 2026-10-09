@@ -293,6 +293,7 @@ export const threadBriefTables = {
 		// One list of a thread in the "For you" order: the list row's top item is
 		// its first row (mail/interpret/briefTop.ts).
 		.index('by_mail_thread_bucket_sort', ['mailThreadId', 'listBucket', 'sortKey'])
+		.index('by_conversation_thread_bucket_sort', ['conversationThreadId', 'listBucket', 'sortKey'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
 		.index('by_counterparty', ['counterpartyKey'])
 		// Erasure: an erased member's assignments; items in creation order and

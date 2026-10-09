@@ -101,7 +101,10 @@ export function nodeRadius(degree: number, isGod: boolean): number {
  * is absent (a derived/legacy edge), fall back to bucketing the numeric
  * confidence so the canvas always has a definite style to draw.
  */
-export function coerceConfidenceTag(tag: string | undefined, confidence: number): EdgeConfidenceTag {
+export function coerceConfidenceTag(
+	tag: string | undefined,
+	confidence: number
+): EdgeConfidenceTag {
 	if (tag === 'extracted' || tag === 'inferred' || tag === 'ambiguous') return tag;
 	if (confidence >= 0.9) return 'extracted';
 	if (confidence >= 0.5) return 'inferred';

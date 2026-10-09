@@ -310,14 +310,17 @@ export const noteReactionViewValidator = v.object({
 });
 
 /**
- * One entry of the team thread stream. Order: `at`, then `key`; `key` is
- * stable across pages (`<kind>:<id>`). Internal notes never leave this stream.
+ * One entry of the team thread stream. Order: `at`, then `tie`, then `key`
+ * (`teamStreamMerge.ts`); `key` is stable across pages (`<kind>:<id>`).
+ * Internal notes never leave this stream.
  */
 export const teamStreamEntryValidator = v.union(
 	v.object({
 		kind: v.literal('customerEmail'),
 		key: v.string(),
 		at: v.number(),
+		// The row's `_creationTime`: the index order among equal `at`.
+		tie: v.number(),
 		source: interpretationSourceValidator,
 		fromName: v.optional(v.string()),
 		fromEmail: v.optional(v.string()),
@@ -329,6 +332,8 @@ export const teamStreamEntryValidator = v.union(
 		kind: v.literal('teamReply'),
 		key: v.string(),
 		at: v.number(),
+		// The row's `_creationTime`: the index order among equal `at`.
+		tie: v.number(),
 		// The interpretation source of the reply. Absent for a follow-up that has
 		// no Send yet (still in its undo window) and for a reply sent before
 		// Sends existed.
@@ -358,6 +363,8 @@ export const teamStreamEntryValidator = v.union(
 		kind: v.literal('note'),
 		key: v.string(),
 		at: v.number(),
+		// The row's `_creationTime`: the index order among equal `at`.
+		tie: v.number(),
 		// `threadNote` (agent Team Inbox) or `chatMessage` (shared mailbox discussion).
 		noteSource: v.union(v.literal('threadNote'), v.literal('chatMessage')),
 		noteId: v.string(),
@@ -378,6 +385,8 @@ export const teamStreamEntryValidator = v.union(
 		kind: v.literal('activity'),
 		key: v.string(),
 		at: v.number(),
+		// The row's `_creationTime`: the index order among equal `at`.
+		tie: v.number(),
 		activity: activityViewValidator,
 		// The item the row is about, in the requested locale.
 		itemText: v.optional(v.string()),
