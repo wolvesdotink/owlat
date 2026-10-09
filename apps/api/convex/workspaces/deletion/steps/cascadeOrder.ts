@@ -38,6 +38,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// parent rows so the sweep never leaves a file pointing at a deleted message.
 	'mailAttachments',
 	'mailAttachmentBackfillJobs',
+	'interpretBackfillJobs',
 	'mailBodySearchBackfillJobs',
 	// Inline bodies (plan 3.2), 1:1 with mailMessages: swept before their rows
 	// like the attachment index, so no body outlives its message.

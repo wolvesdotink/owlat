@@ -24,6 +24,7 @@ vi.mock('@owlat/api', () => ({
 					markSeen: 'brief.markSeen',
 					setViewOverride: 'brief.setViewOverride',
 				},
+				lazy: { ensure: 'lazy.ensure' },
 				preferences: { getViewPreference: 'pref.get', setThreadDefaultView: 'pref.set' },
 			},
 		},
@@ -50,6 +51,7 @@ vi.stubGlobal('useI18n', () => i18n);
 vi.stubGlobal('useRoute', () => route);
 vi.stubGlobal('useRouter', () => ({ replace }));
 vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));
 vi.stubGlobal('useInboxes', () => ({
 	byId: ref(new Map([['mb1', { scope: scope.value }]])),
 }));
@@ -158,9 +160,12 @@ describe('the reader view', () => {
 		expect(runs['pref.set']).toBeUndefined();
 	});
 
-	it('opens on Conversation when there is no interpretation', () => {
+	it('opens on Conversation when there is no interpretation, and asks for one once', () => {
 		data['brief.get'] = ref(briefView({ completeness: 'none' }));
 		expect(setup().switchView.value).toBe('conversation');
+		setup();
+		expect(runs['lazy.ensure']).toHaveBeenCalledTimes(1);
+		expect(runs['lazy.ensure']).toHaveBeenCalledWith({ threadRef: { kind: 'mail', id: 't1' } });
 	});
 
 	it('marks the brief seen once the Overview shows it', () => {

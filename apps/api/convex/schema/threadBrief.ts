@@ -287,7 +287,7 @@ export const threadBriefTables = {
 		.index('by_mail_thread_bucket_sort', ['mailThreadId', 'listBucket', 'sortKey'])
 		.index('by_conversation_thread_bucket_sort', ['conversationThreadId', 'listBucket', 'sortKey'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
-		.index('by_counterparty', ['counterpartyKey'])
+		.index('by_counterparty', ['counterpartyKey', 'status', 'updatedAt']) // elsewhere.ts, threadEvents.ts
 		// Erasure: an erased member's assignments; items in creation order and
 		// those pointing at a deleted one (mail/interpret/purgeDrain.ts).
 		.index('by_assignee', ['assigneeUserId'])

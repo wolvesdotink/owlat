@@ -218,6 +218,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 40,
 	},
 
+	// The thread brief's first-open interpretation (`mail.interpret.lazy.ensure`).
+	// The reader calls it once per older thread it opens; each call schedules
+	// a few cheap-tier runs, so a loop over every thread is capped here.
+	briefEnsurePerUser: {
+		kind: 'token bucket',
+		rate: 60,
+		period: MINUTE,
+		capacity: 60,
+	},
+
 	// Campaign pre-send checks (`emailTemplates/presendChecksActions.run`). One
 	// run probes up to 300 links and images on outside hosts and screens the
 	// message through the MTA, so cap per user: the Review step runs once per

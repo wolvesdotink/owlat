@@ -4,7 +4,9 @@
  * Overview, so "new since you last looked" moves only on a real look.
  *
  * `brief` is `undefined` while loading, `null` when the server has nothing
- * (no access, or no brief row), else the view. A team-mode view (actions,
+ * (no access, or no brief row), else the view. A thread with nothing
+ * interpreted yet (`completeness: 'none'`) is handed to the first-open
+ * interpretation (`mail.interpret.lazy.ensure`, D5) once. A team-mode view (actions,
  * shared mailbox) is passed through: the reader decides not to show it.
  */
 import type { Id } from '@owlat/api/dataModel';
@@ -21,6 +23,9 @@ import {
 	type PagedBrief,
 } from '~/utils/threadBriefPages';
 import { useConvexQueryMap } from '~/composables/useConvexQueryMap';
+
+/** Threads this tab already asked to interpret on first open (one ask per thread). */
+const ensured = new Set<string>();
 
 export function useThreadBrief(opts: {
 	/** The thread, or null to read nothing (a shared mailbox, no thread id yet). */
@@ -88,6 +93,24 @@ export function useThreadBrief(opts: {
 		if (reason === 'short' || reason === 'security') return 'original';
 		return 'available';
 	});
+
+	// An older thread with nothing interpreted yet (D5): ask for its
+	// interpretation once; the Conversation shows until the brief arrives.
+	const { isEnabled } = useFeatureFlag();
+	const ensureOp = useBackendOperation(api.mail.interpret.lazy.ensure, {
+		label: () => t('components.brief.operations.ensure'),
+		announce: false,
+	});
+	watch(
+		() => [threadRef.value, view.value?.completeness] as const,
+		([ref, completeness]) => {
+			if (!ref || completeness !== 'none' || !isEnabled('ai')) return;
+			if (ensured.has(ref.id)) return;
+			ensured.add(ref.id);
+			void ensureOp.run({ threadRef: ref });
+		},
+		{ immediate: true }
+	);
 
 	const markSeenOp = useBackendOperation(api.mail.interpret.brief.markSeen, {
 		label: () => t('components.brief.operations.markSeen'),

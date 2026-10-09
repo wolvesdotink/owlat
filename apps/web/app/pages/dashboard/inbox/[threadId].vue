@@ -510,8 +510,8 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					/>
 				</div>
 
-				<!-- Sidebar -->
 				<div class="space-y-6">
+					<BriefElsewhere :thread-ref="{ kind: 'team', id: threadId }" class="card" />
 					<!-- Contact Card -->
 					<div v-if="contact" class="card">
 						<h2 class="text-lg font-medium text-text-primary mb-4">

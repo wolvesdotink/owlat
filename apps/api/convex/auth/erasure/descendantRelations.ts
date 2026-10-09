@@ -122,6 +122,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	),
 	desc(
 		'mailboxes',
+		'interpretBackfillJobs',
+		'mailboxId',
+		'delete',
+		'Stopped before the mail goes.'
+	),
+	desc(
+		'mailboxes',
 		'mailBodySearchBackfillJobs',
 		'mailboxId',
 		'delete',

@@ -8,6 +8,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
 import {
 	modules,
 	seedFolder,
@@ -47,7 +48,7 @@ describe('0067_empty_retired_summaries', () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t);
 		await seedFolder(t, mailboxId);
-		const threadIds = [];
+		const threadIds: Id<'mailThreads'>[] = [];
 		for (let i = 0; i < 3; i++) {
 			const messageId = await seedMessage(t, mailboxId, { subject: `s${i}` });
 			threadIds.push(await t.run(async (ctx) => (await ctx.db.get(messageId))!.threadId));
