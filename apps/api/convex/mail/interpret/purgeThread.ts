@@ -24,7 +24,7 @@ function isItemRow(row: BriefRow): row is Doc<'threadItems'> {
 }
 
 function isFactRow(row: BriefRow): row is Doc<'threadFacts'> {
-	return 'factKey' in row;
+	return 'factKeyHash' in row || 'factKey' in row;
 }
 
 /** Delete one thread brief row of a deleted thread, its links first; false when out of budget. */

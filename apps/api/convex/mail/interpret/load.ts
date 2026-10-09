@@ -33,6 +33,7 @@ import {
 } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
+import { rowFactKeyLabel } from './factKeys';
 import { mailboxOwnAddresses } from '../identities';
 import { loadBriefRow, resolveThreadMode } from './briefRow';
 import type { InterpretEligibilitySignals } from './eligibility';
@@ -197,7 +198,7 @@ async function toPromptFact(fact: Doc<'threadFacts'>): Promise<InterpretInputFac
 	const quote = fact.evidence.find((e) => e.quote !== undefined)?.quote;
 	return {
 		id: fact._id,
-		key: fact.factKey,
+		key: await rowFactKeyLabel(fact),
 		assertion: await openMessageBody(fact.assertion),
 		evidenceExcerpt: quote ? await openMessageBody(quote) : '',
 	};

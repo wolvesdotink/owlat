@@ -13,7 +13,8 @@ import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { threadRefToFields } from '../../../lib/validators/threadRef';
 import { purgeSourcesFromThread, purgeThreadBrief } from '../purgeRun';
-import { REDACTED_CLAIM_TEXT, redactedFactKey } from '../purgeClaims';
+import { REDACTED_CLAIM_TEXT } from '../purgeClaims';
+import { redactedFactKeyHash } from '../factKeys';
 import { captureInterpretSource } from '../sources';
 import { openMessageBody } from '../../../lib/messageBody';
 import { seedFolder } from '../../__tests__/helpers.testlib';
@@ -425,8 +426,9 @@ describe('final review F4: a redacted fact keeps no descriptor of the deleted me
 		await purgeMessages(t, [a]);
 
 		const fact = (await mailRows(t, threadId)).facts.find((f) => f._id === factId)!;
-		expect(fact.factKey).toBe(redactedFactKey(factId));
-		expect(fact.factKey).not.toContain('jane');
+		expect(fact.factKeyHash).toBe(redactedFactKeyHash(factId));
+		expect(fact.factKeyLabel).toBeUndefined();
+		expect(fact.factKey).toBeUndefined();
 		expect(fact.redactedFields).toContain('factKey');
 		await t.run(async (ctx) => {
 			await captureInterpretSource(ctx, { source: { kind: 'mail', id: b }, isLive: true });

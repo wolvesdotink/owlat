@@ -8,6 +8,7 @@ import { openMessageBody } from '../lib/messageBody';
 import { loadPersonalMailboxForUser } from '../mail/permissions';
 import { loadBriefRow } from '../mail/interpret/briefRow';
 import { openEvidence } from '../mail/interpret/briefOpen';
+import { rowFactKeyLabel } from '../mail/interpret/factKeys';
 
 // Thread brief resources of "Export my data" (SPEC §5 Erasure: "Export
 // includes authorized derived content"), next to accountExportQueries.ts.
@@ -72,7 +73,7 @@ async function exportFact(row: Doc<'threadFacts'>) {
 	const value = row.value;
 	return {
 		_id: row._id,
-		factKey: row.factKey,
+		factKey: await rowFactKeyLabel(row),
 		assertion: await openMessageBody(row.assertion),
 		display: await openPair(row.display),
 		...(value

@@ -13,6 +13,7 @@ import { normalizeEmail } from '@owlat/shared';
 import type { AppLocale } from '@owlat/shared/appLocales';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
+import { rowFactKeyLabel } from './factKeys';
 import { mailboxOwnAddresses } from '../identities';
 import { readResult, recentlyClosedItems } from './load';
 import type { EXACT_WORDING_REASONS } from './schema';
@@ -156,7 +157,7 @@ export async function readFacts(
 			}
 			return {
 				id: row._id,
-				key: row.factKey,
+				key: await rowFactKeyLabel(row),
 				text: await openMessageBody(row.display[locale]),
 				...(value ? { value } : {}),
 				status: row.status,
