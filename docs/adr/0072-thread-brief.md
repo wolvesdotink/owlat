@@ -153,7 +153,10 @@ only the viewer's own scopes, one index range each: the mailboxes they own
 or are a member of (an admin's reach into a teammate's private mailbox is not
 one) and the Team Inbox for its readers. No row from anyone else's mail is
 read, so nothing about it (not a count, not a "more", not a position) can
-reach the card. "Show more" raises the per-person limit to a bound. Aliases
+reach the card. Only the active organization's mailboxes count, and the
+Team Inbox only in its own organization. The scan reads at most 200 rows per
+person across those scopes and says `isPartial` when it stops short. "Show
+more" raises the per-person limit to a bound. Aliases
 are not joined: that can hide an item, never show one about someone else.
 
 ### 6. Team surfaces: the chat stream
@@ -240,7 +243,10 @@ Reply Queue write.
 
 The stored completeness the auto-send gates read follows the history too:
 `briefCompleteness` (the one rule every writer uses) keeps a complete brief
-partial while history is unread or unreadable, so D3 holds Team Inbox
+partial while history is unread or unreadable, and never complete while a
+source enqueued anywhere (delivery, a send, the Team Inbox pipeline, a
+history page) has not recorded its outcome yet (`pendingSources`, counted
+once per source in `sources.ts`), so D3 holds Team Inbox
 auto-send meanwhile. `brief.get` also says whether a pending history is
 `running` or `stalled`; the reader asks to resume a stalled one.
 

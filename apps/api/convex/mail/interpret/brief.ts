@@ -253,15 +253,16 @@ export const setViewOverride = threadBriefMutation({
 	},
 });
 /**
- * Earlier history the brief does not cover yet: still being read (`pending`,
- * `backfillSources.ts`), or some of it unreadable (`history`). Either keeps
+ * What the brief does not cover yet: history still being read or sources
+ * enqueued and not yet recorded (`pending`, `backfillSources.ts`,
+ * `sources.ts`), or history that cannot be read back (`history`). Either keeps
  * a complete brief partial; null when the whole history is in. Pure.
  */
 export function historyGapOf(
-	brief: Pick<Doc<'threadBriefs'>, 'historyState' | 'isHistoryIncomplete'> | null
+	brief: Pick<Doc<'threadBriefs'>, 'historyState' | 'isHistoryIncomplete' | 'pendingSources'> | null
 ): 'pending' | 'history' | null {
 	if (brief?.isHistoryIncomplete) return 'history';
-	if (brief?.historyState === 'pending') return 'pending';
+	if (brief?.historyState === 'pending' || (brief?.pendingSources ?? 0) > 0) return 'pending';
 	return null;
 }
 

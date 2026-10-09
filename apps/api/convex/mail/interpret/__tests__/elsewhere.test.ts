@@ -11,7 +11,7 @@ import schema from '../../../schema';
 import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
-import { counterpartiesOf, nameOf } from '../elsewhere';
+import { counterpartiesOf, nameOf, ROWS_PER_PERSON } from '../elsewhere';
 import type { ReduceItem } from '../reduceInput';
 import {
 	modules,
@@ -38,6 +38,8 @@ vi.mock('../../../lib/sessionOrganization', async () => {
 		isActiveOrgMember: vi.fn(async () => session.current !== null),
 		getMutationContext: vi.fn(async () => session.current),
 		getBetterAuthSessionWithRole: vi.fn(async () => session.current),
+		// The Team Inbox's organization (the instance's one).
+		getSingletonOrganizationId: vi.fn(async () => 'org-1'),
 	};
 });
 
@@ -156,6 +158,7 @@ describe('elsewhere.list', () => {
 					counterpartyKey: 'jonas@example.com',
 					name: 'Jonas',
 					isMore: false,
+					isPartial: false,
 					items: [
 						expect.objectContaining({
 							threadRef: { kind: 'mail', id: other.threadId },
@@ -254,5 +257,66 @@ describe('elsewhere.list', () => {
 				locale: 'en',
 			})
 		).toBeNull();
+	});
+
+	it('never reads another organization’s mailbox the viewer owns (round 3 F2)', async () => {
+		const t = convexTest(schema, modules);
+		const { here } = await seedWorld(t);
+		const elsewhereOrg = await seedMailbox(t, {
+			userId: 'user-A',
+			organizationId: 'org-2',
+			address: 'a@other.test',
+		});
+		await seedFolder(t, elsewhereOrg, 'inbox');
+		const foreign = await mailThreadIn(t, elsewhereOrg, 'Other org');
+		await interpret(t, foreign, [fromJonas('Other org secret')]);
+		const out = await t.query(api.mail.interpret.elsewhere.list, {
+			threadRef: { kind: 'mail', id: here.threadId },
+			locale: 'en',
+			limit: 25,
+		});
+		const texts = out!.groups.flatMap((g) => g.items.map((i) => i.text));
+		expect(texts).not.toContain('Other org secret');
+		expect(texts).toEqual(['Jonas sends the signed NDA']);
+	});
+
+	it('bounds the rows it reads and says when it stopped short (round 3 F3)', async () => {
+		const t = convexTest(schema, modules);
+		const { here, other } = await seedWorld(t);
+		await t.run(async (ctx) => {
+			const visible = (await ctx.db
+				.query('threadItems')
+				.filter((q) => q.eq(q.field('mailThreadId'), other.threadId))
+				.collect())!.find((i) => i.verify !== 'proposal')!;
+			const { _id: _a, _creationTime: _b, ...fields } = visible;
+			// Newer unconfirmed proposals in the viewer's own mailbox, past the budget.
+			for (let i = 0; i < ROWS_PER_PERSON + 5; i++) {
+				await ctx.db.insert('threadItems', {
+					...fields,
+					verify: 'proposal',
+					updatedAt: visible.updatedAt + 1000 + i,
+				});
+			}
+		});
+		const out = await t.query(api.mail.interpret.elsewhere.list, {
+			threadRef: { kind: 'mail', id: here.threadId },
+			locale: 'en',
+		});
+		// Nothing listable was reached: no group (the proposals are not listable).
+		expect(out).toEqual({ groups: [] });
+		// With a listable item inside the budget, the group says it is partial.
+		await t.run(async (ctx) => {
+			const extra = (await ctx.db
+				.query('threadItems')
+				.filter((q) => q.eq(q.field('mailThreadId'), other.threadId))
+				.collect())!.find((i) => i.verify !== 'proposal')!;
+			await ctx.db.patch(extra._id, { updatedAt: Date.now() * 2 });
+		});
+		const again = await t.query(api.mail.interpret.elsewhere.list, {
+			threadRef: { kind: 'mail', id: here.threadId },
+			locale: 'en',
+		});
+		expect(again!.groups[0]).toMatchObject({ isPartial: true, isMore: false });
+		expect(again!.groups[0]!.items.map((i) => i.text)).toEqual(['Jonas sends the signed NDA']);
 	});
 });

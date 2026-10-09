@@ -21,7 +21,12 @@ import {
 	interpretationSourceKey,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
-import { threadRefToFields, type ThreadRef } from '../../lib/validators/threadRef';
+import {
+	threadRefFromFields,
+	threadRefToFields,
+	type ThreadRef,
+} from '../../lib/validators/threadRef';
+import { ensureBriefRow, loadBriefRow } from './briefRow';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import {
 	loadInboundEligibilitySignals,
@@ -113,18 +118,25 @@ async function signalsOf(
 	};
 }
 
-/** Snapshot a source's eligibility at enqueue (first call wins). Null when it is gone. */
+/**
+ * Snapshot a source's eligibility at enqueue (first call wins), and mark it
+ * outstanding: every caller enqueues its interpretation next. Null when it
+ * is gone.
+ */
 export async function captureInterpretSource(
 	ctx: MutationCtx,
 	args: { source: InterpretationSource; isLive: boolean; precedence?: string; listId?: string }
 ): Promise<Id<'interpretSources'> | null> {
 	const existing = await loadInterpretSource(ctx, args.source);
-	if (existing) return existing._id;
+	if (existing) {
+		await markSourceOutstanding(ctx, existing);
+		return existing._id;
+	}
 	const ref = await threadOfSource(ctx, args.source);
 	const eligibility = await signalsOf(ctx, args.source, args);
 	if (!ref || !eligibility) return null;
 	const now = Date.now();
-	return ctx.db.insert('interpretSources', {
+	const id = await ctx.db.insert('interpretSources', {
 		...threadRefToFields(ref),
 		source: args.source,
 		sourceKey: interpretationSourceKey(args.source),
@@ -132,6 +144,48 @@ export async function captureInterpretSource(
 		createdAt: now,
 		updatedAt: now,
 	});
+	const inserted = await ctx.db.get(id);
+	if (inserted) await markSourceOutstanding(ctx, inserted);
+	return id;
+}
+
+// ── Outstanding sources (p4 final review F2) ────────────────────────────────
+//
+// A source enqueued for interpretation is outstanding until it records an
+// outcome, any outcome (complete, partial, failed, skipped). The thread's
+// brief counts them (`threadBriefs.pendingSources`) and `briefCompleteness`
+// never reads complete while one is left, so one finished source cannot
+// clear the auto-send hold while another is unread. Both moves are keyed by
+// the source's snapshot flag (`interpretSources.isOutstanding`), so a
+// repeated enqueue or a retried run counts once.
+
+/** Mark an enqueued source outstanding (idempotent). */
+export async function markSourceOutstanding(
+	ctx: MutationCtx,
+	snapshot: Doc<'interpretSources'>
+): Promise<void> {
+	if (snapshot.isOutstanding) return;
+	await ctx.db.patch(snapshot._id, { isOutstanding: true });
+	const brief = await ensureBriefRow(ctx, threadRefFromFields(snapshot));
+	if (!brief) return;
+	await ctx.db.patch(brief._id, { pendingSources: (brief.pendingSources ?? 0) + 1 });
+}
+
+/**
+ * The source recorded an outcome, or is being purged: no longer outstanding
+ * (idempotent). Call in the transaction that records it; the caller
+ * recomputes completeness (the reducer and the purge both do).
+ */
+export async function settleSource(
+	ctx: MutationCtx,
+	snapshot: Doc<'interpretSources'> | null
+): Promise<void> {
+	if (!snapshot?.isOutstanding) return;
+	await ctx.db.patch(snapshot._id, { isOutstanding: undefined });
+	const brief = await loadBriefRow(ctx, threadRefFromFields(snapshot));
+	if (!brief) return;
+	const left = Math.max(0, (brief.pendingSources ?? 0) - 1);
+	await ctx.db.patch(brief._id, { pendingSources: left > 0 ? left : undefined });
 }
 
 /** Snapshot the text a team send went out with (call at send finalization). */

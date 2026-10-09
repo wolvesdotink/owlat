@@ -24,7 +24,10 @@ import { v, type Infer } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { publicQuery } from '../../lib/authedFunctions';
-import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
+import {
+	getBetterAuthSessionWithRole,
+	getSingletonOrganizationId,
+} from '../../lib/sessionOrganization';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { isSharedInboxReader } from '../../inbox/access';
 import { loadAccessibleMailboxes, loadReadableMailbox } from '../permissions';
@@ -38,6 +41,8 @@ export const ELSEWHERE_PEOPLE = 2;
 /** Items shown per person, and the most "Show more" asks for. */
 export const ELSEWHERE_ITEMS = 5;
 export const ELSEWHERE_MAX_ITEMS = 25;
+/** Rows read per person across the viewer's scopes before the answer says `isPartial`. */
+export const ROWS_PER_PERSON = 200;
 /** This thread's items read to find its counterparties. */
 const OWN_ITEM_SCAN = 60;
 
@@ -59,6 +64,9 @@ const elsewhereGroupValidator = v.object({
 	items: v.array(elsewhereItemValidator),
 	// More readable open items exist than are listed.
 	isMore: v.boolean(),
+	// The row budget ran out before every one of the viewer's own scopes was
+	// read: there may be more. Says nothing about anyone else's mail.
+	isPartial: v.boolean(),
 });
 
 export type ElsewhereGroup = Infer<typeof elsewhereGroupValidator>;
@@ -119,13 +127,19 @@ interface ItemSource {
 type Scope = { kind: 'mailbox'; mailboxId: Id<'mailboxes'> } | { kind: 'team' };
 
 async function scopesOf(ctx: QueryCtx, session: Session): Promise<Scope[]> {
-	const mailboxes = session.activeOrganizationId
-		? await loadAccessibleMailboxes(ctx, session.userId, session.activeOrganizationId)
-		: [];
+	const orgId = session.activeOrganizationId;
+	if (!orgId) return [];
+	// Only the active organization's mailboxes: a user can own one elsewhere.
+	const mailboxes = await loadAccessibleMailboxes(ctx, session.userId, orgId);
 	const scopes: Scope[] = mailboxes
-		.filter((m) => m.status === 'active')
+		.filter((m) => m.status === 'active' && m.organizationId === orgId)
 		.map((m) => ({ kind: 'mailbox' as const, mailboxId: m._id }));
-	if (isSharedInboxReader(session) && (await isFeatureEnabled(ctx, 'inbox'))) {
+	// The Team Inbox belongs to the instance's one organization.
+	if (
+		isSharedInboxReader(session) &&
+		(await isFeatureEnabled(ctx, 'inbox')) &&
+		orgId === (await getSingletonOrganizationId(ctx))
+	) {
 		scopes.push({ kind: 'team' });
 	}
 	return scopes;
@@ -158,9 +172,10 @@ async function scopeItems(
 	key: string,
 	scope: Scope,
 	here: ThreadRef,
-	want: number
-): Promise<Found[]> {
-	const out: Found[] = [];
+	want: number,
+	budget: { rows: number }
+): Promise<{ found: Found[]; isCut: boolean }> {
+	const found: Found[] = [];
 	const mailboxId = scope.kind === 'mailbox' ? scope.mailboxId : undefined;
 	for await (const item of ctx.db
 		.query('threadItems')
@@ -168,16 +183,18 @@ async function scopeItems(
 			q.eq('counterpartyKey', key).eq('status', 'open').eq('mailboxId', mailboxId)
 		)
 		.order('desc')) {
+		if (budget.rows <= 0) return { found, isCut: true };
+		budget.rows--;
 		if (item.verify === 'proposal') continue;
 		if (item.mailThreadId === here.id || item.conversationThreadId === here.id) continue;
 		// The team scope holds the items without a mailbox: Team Inbox ones only.
 		if (scope.kind === 'team' && !item.conversationThreadId) continue;
 		const source = await sourceOf(ctx, item);
 		if (!source) continue;
-		out.push({ item, source });
-		if (out.length >= want) break;
+		found.push({ item, source });
+		if (found.length >= want) break;
 	}
-	return out;
+	return { found, isCut: false };
 }
 
 /** May the session read THIS thread (the brief's reader rule)? */
@@ -186,8 +203,10 @@ async function canReadThread(ctx: QueryCtx, ref: ThreadRef, session: Session): P
 		const thread = await ctx.db.get(ref.id);
 		return thread ? (await loadReadableMailbox(ctx, thread.mailboxId)) !== null : false;
 	}
-	// The same gate as requireThreadReader: the reader role AND the Team Inbox on.
+	// The same gate as requireThreadReader: the reader role AND the Team Inbox on,
+	// in the organization the Team Inbox belongs to.
 	if (!isSharedInboxReader(session) || !(await isFeatureEnabled(ctx, 'inbox'))) return false;
+	if (session.activeOrganizationId !== (await getSingletonOrganizationId(ctx))) return false;
 	return (await ctx.db.get(ref.id)) !== null;
 }
 
@@ -198,9 +217,17 @@ async function groupFor(
 	locale: AppLocale,
 	scopes: readonly Scope[],
 	limit: number
-): Promise<{ items: ElsewhereGroup['items']; isMore: boolean }> {
+): Promise<{ items: ElsewhereGroup['items']; isMore: boolean; isPartial: boolean }> {
 	const found: Found[] = [];
-	for (const scope of scopes) found.push(...(await scopeItems(ctx, key, scope, here, limit + 1)));
+	// One row budget per person across the viewer's scopes (rows read, not
+	// items kept): proposals, this thread's items and gone threads count too.
+	const budget = { rows: ROWS_PER_PERSON };
+	let isPartial = false;
+	for (const scope of scopes) {
+		const read = await scopeItems(ctx, key, scope, here, limit + 1, budget);
+		found.push(...read.found);
+		if (read.isCut) isPartial = true;
+	}
 	found.sort((a, b) => b.item.updatedAt - a.item.updatedAt);
 	const items: ElsewhereGroup['items'] = [];
 	for (const { item, source } of found.slice(0, limit)) {
@@ -215,7 +242,7 @@ async function groupFor(
 			...(item.due?.at !== undefined ? { dueAt: item.due.at } : {}),
 		});
 	}
-	return { items, isMore: found.length > limit };
+	return { items, isMore: found.length > limit, isPartial };
 }
 
 // public: soft-auth — returns null for anonymous callers and for anyone this

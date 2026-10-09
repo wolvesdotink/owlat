@@ -353,6 +353,9 @@ export const threadBriefTables = {
 		// The source's lineage record (mail/interpret/reduceIdentity.ts).
 		claimIds: v.optional(v.array(claimIdValidator)),
 		isClaimRecordFull: v.optional(v.boolean()),
+		// Enqueued for interpretation and not yet recorded (sources.ts): counted
+		// in threadBriefs.pendingSources until any outcome lands.
+		isOutstanding: v.optional(v.boolean()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -406,6 +409,8 @@ export const threadBriefTables = {
 		historyState: v.optional(v.union(v.literal('pending'), v.literal('done'))),
 		historyUpdatedAt: v.optional(v.number()),
 		isHistoryIncomplete: v.optional(v.boolean()),
+		// Sources enqueued and not yet recorded (sources.ts): never complete until zero.
+		pendingSources: v.optional(v.number()),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.
 		overview: v.optional(
 			v.object({

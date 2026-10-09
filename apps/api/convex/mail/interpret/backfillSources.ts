@@ -298,7 +298,9 @@ export async function enqueueHistoryPage(
 	const startDelayMs = opts.startDelayMs ?? 0;
 	let scheduled = 0;
 	for (const source of found.sources) {
-		if (!(await captureInterpretSource(ctx, { source, isLive: true }))) continue;
+		// Captured as outstanding (sources.ts) until its run records an outcome.
+		const snapshotId = await captureInterpretSource(ctx, { source, isLive: true });
+		if (!snapshotId) continue;
 		await ctx.scheduler.runAfter(startDelayMs + scheduled * RUN_SPACING_MS, runOf(source), {
 			source,
 		});
@@ -311,13 +313,15 @@ export async function enqueueHistoryPage(
 		historyUpdatedAt: now,
 		...(found.isUnreadable ? { isHistoryIncomplete: true } : {}),
 	};
+	// Re-read: the captures above raised the brief's outstanding count.
+	const fresh = (await ctx.db.get(brief._id)) ?? brief;
 	await ctx.db.patch(brief._id, {
 		...history,
 		// The stored completeness the gates read follows the history at once
 		// (briefCompleteness); runs in flight keep it `pending` until they land.
 		...(brief.completeness === 'pending'
 			? {}
-			: { completeness: briefCompleteness({ ...brief, ...history }) }),
+			: { completeness: briefCompleteness({ ...fresh, ...history }) }),
 		updatedAt: now,
 	});
 	if (scheduled > 0) await markBriefPending(ctx, ref);

@@ -19,7 +19,7 @@ import { seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.te
 import { HISTORY_PAGE, isActiveThread, mailSourceOf } from '../backfillSources';
 import { historyGapOf } from '../brief';
 import { briefCompleteness } from '../purgeRepairs';
-import { captureTeamReplySnapshot } from '../sources';
+import { captureInterpretSource, captureTeamReplySnapshot } from '../sources';
 import { BACKFILL_WINDOW_MS, MAX_THREADS_PER_RUN, THREADS_PER_BATCH } from '../backfill';
 import {
 	addMessageToThread,
@@ -510,5 +510,145 @@ describe('history and the auto-send hold (round 2 F1)', () => {
 			locale: 'en',
 		});
 		expect(view?.history).toBe('stalled');
+	});
+});
+
+describe('admitted history sources until each records an outcome (round 3 F1)', () => {
+	it('stays partial while one of two scheduled sources is unread', async () => {
+		const t = lazyTest();
+		const mailboxId = await seedMailbox30Days(t);
+		const at = Date.now() - 90 * DAY;
+		const first = await seedMessage(t, mailboxId, { subject: 'old', receivedAt: at });
+		const threadId = await threadOf(t, first);
+		const second = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'And the invoice?', receivedAt: at + 1000 }
+		);
+		const threadRef = { kind: 'mail' as const, id: threadId };
+		expect(await t.mutation(api.mail.interpret.lazy.ensure, { threadRef })).toEqual({
+			isEnqueued: true,
+			runs: 2,
+		});
+		expect(await briefOf(t, threadId)).toMatchObject({
+			historyState: 'done',
+			pendingSources: 2,
+		});
+		const apply = (messageId: typeof first, revision: number, status: 'complete' | 'skipped') =>
+			t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+				source: { kind: 'mail', id: messageId },
+				threadRef,
+				mode: 'brief',
+				contentRevision: `rev-${revision}`,
+				extractorVersion: 1,
+				expectedRevision: revision,
+				deletionEpoch: 0,
+				sourceAt: at + revision * 1000,
+				direction: 'inbound',
+				status,
+				...(status === 'complete'
+					? { result: reduceResult({ items: [reduceItem()] }) }
+					: { skipReason: 'ineligible' as const }),
+			});
+		await apply(first, 0, 'complete');
+		expect(await briefOf(t, threadId)).toMatchObject({
+			completeness: 'partial',
+			pendingSources: 1,
+		});
+		// Any outcome settles it, a skip included.
+		await apply(second, 1, 'skipped');
+		const settled = (await briefOf(t, threadId))!;
+		expect(settled.completeness).toBe('complete');
+		expect(settled.pendingSources).toBeUndefined();
+	});
+});
+
+describe('every enqueued source is outstanding until it records an outcome (final review F2)', () => {
+	const applyTo = (
+		t: Test,
+		source:
+			| { kind: 'mail'; id: Id<'mailMessages'> }
+			| { kind: 'inbound'; id: Id<'inboundMessages'> },
+		threadRef:
+			| { kind: 'mail'; id: Id<'mailThreads'> }
+			| { kind: 'team'; id: Id<'conversationThreads'> },
+		revision: number
+	) =>
+		t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+			source,
+			threadRef,
+			mode: threadRef.kind === 'mail' ? 'brief' : 'actions',
+			contentRevision: `rev-${revision}`,
+			extractorVersion: 1,
+			expectedRevision: revision,
+			deletionEpoch: 0,
+			sourceAt: Date.UTC(2026, 9, 7, 9, revision),
+			direction: 'inbound',
+			status: 'complete',
+			result: reduceResult({
+				items: [reduceItem()],
+				...(threadRef.kind === 'team' ? { latest: undefined, facts: [] } : {}),
+			}),
+		});
+
+	it('mail: B completing leaves the brief incomplete while A is unread', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox30Days(t);
+		const a = await seedMessage(t, mailboxId, { subject: 'A', receivedAt: Date.now() - DAY });
+		const threadId = await threadOf(t, a);
+		const b = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'B', receivedAt: Date.now() - DAY + 1000 }
+		);
+		await t.run(async (ctx) => {
+			for (const id of [a, b, a]) {
+				await captureInterpretSource(ctx, { source: { kind: 'mail', id }, isLive: true });
+			}
+		});
+		expect(await briefOf(t, threadId)).toMatchObject({ pendingSources: 2 });
+		const threadRef = { kind: 'mail' as const, id: threadId };
+		await applyTo(t, { kind: 'mail', id: b }, threadRef, 0);
+		expect(await briefOf(t, threadId)).toMatchObject({
+			completeness: 'partial',
+			pendingSources: 1,
+		});
+		// A retried outcome for B does not count twice.
+		await applyTo(t, { kind: 'mail', id: b }, threadRef, 1);
+		expect(await briefOf(t, threadId)).toMatchObject({ pendingSources: 1 });
+		await applyTo(t, { kind: 'mail', id: a }, threadRef, 2);
+		const done = (await briefOf(t, threadId))!;
+		expect(done.completeness).toBe('complete');
+		expect(done.pendingSources).toBeUndefined();
+	});
+
+	it('team: B completing does not clear the auto-send hold while A is unread', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId: a } = await seedTeamThread(t);
+		const b = await t.run(async (ctx) => {
+			const first = (await ctx.db.get(a))!;
+			const { _id: _x, _creationTime: _y, ...fields } = first;
+			return ctx.db.insert('inboundMessages', {
+				...fields,
+				messageId: '<order-42-b@example.com>',
+				receivedAt: first.receivedAt + 1000,
+			});
+		});
+		for (const id of [a, b]) {
+			await t.mutation(internal.mail.interpret.teamActions.captureInbound, {
+				inboundMessageId: id,
+			});
+		}
+		const threadRef = { kind: 'team' as const, id: threadId };
+		await applyTo(t, { kind: 'inbound', id: b }, threadRef, 0);
+		const hold = await t.query(internal.mail.interpret.teamActions.interpretationHold, {
+			inboundMessageId: b,
+		});
+		expect(hold.reason).toMatch(/incomplete/);
+		await applyTo(t, { kind: 'inbound', id: a }, threadRef, 1);
+		const after = await t.query(internal.mail.interpret.teamActions.interpretationHold, {
+			inboundMessageId: b,
+		});
+		expect(after.reason).toBeNull();
 	});
 });

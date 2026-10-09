@@ -34,8 +34,9 @@ export function isRepairMarked(row: Pick<Doc<'messageInterpretations'>, 'errorCo
  * The brief's completeness, the one rule every stored write and both
  * auto-send gates read: partial while a repair, a pending-transition scan or
  * a cut fold is outstanding, else what its source counters say; and a
- * complete brief whose earlier history is still being read, or cannot be
- * read back (`backfillSources.ts`), is partial too. Pure.
+ * complete brief whose earlier history is still being read (pages left, or
+ * admitted sources not yet recorded) or cannot be read back
+ * (`backfillSources.ts`), is partial too. Pure.
  */
 export function briefCompleteness(
 	brief: Pick<
@@ -46,12 +47,16 @@ export function briefCompleteness(
 		| 'isFoldScanCut'
 		| 'historyState'
 		| 'isHistoryIncomplete'
+		| 'pendingSources'
 	>
 ): BriefCompleteness {
 	if ((brief.pendingRepairs ?? 0) > 0) return 'partial';
 	if ((brief.pendingMatchRuns ?? 0) > 0 || brief.isFoldScanCut === true) return 'partial';
 	const counted = completenessOfCounts(brief.sourceCounts ?? EMPTY_SOURCE_COUNTS);
-	const isHistoryOpen = brief.historyState === 'pending' || brief.isHistoryIncomplete === true;
+	const isHistoryOpen =
+		brief.historyState === 'pending' ||
+		brief.isHistoryIncomplete === true ||
+		(brief.pendingSources ?? 0) > 0;
 	return counted === 'complete' && isHistoryOpen ? 'partial' : counted;
 }
 
