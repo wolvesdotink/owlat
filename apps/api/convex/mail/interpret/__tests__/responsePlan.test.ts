@@ -572,3 +572,33 @@ describe('review round 3', () => {
 		expect(after).toMatchObject({ isStale: true, verdict: 'stale' });
 	});
 });
+
+describe('review round 4', () => {
+	it('F1: a stance for an item closed since is skipped, not refused', async () => {
+		const t = harness();
+		const s = await setup(t);
+		await t.run((ctx) => ctx.db.patch(s.call, { status: 'done' }));
+		const { planRevision } = await t.mutation(api.mail.interpret.responsePlan.setStances, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			stances: [
+				{ itemId: s.call, stance: 'decline' },
+				{ itemId: s.ours, stance: 'accept' },
+			],
+		});
+		expect(planRevision).toBe(1);
+		const view = await t.query(api.mail.interpret.responsePlan.get, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+		});
+		expect(view?.stances).toEqual([{ itemId: s.ours, stance: 'accept', source: 'owner' }]);
+		// The other side's open item is still not this reply's to cover.
+		await expect(
+			t.mutation(api.mail.interpret.responsePlan.setStances, {
+				threadRef: s.ref,
+				draftRef: s.draftRef,
+				stances: [{ itemId: s.theirs, stance: 'accept' }],
+			})
+		).rejects.toThrow(/not open in this thread/);
+	});
+});

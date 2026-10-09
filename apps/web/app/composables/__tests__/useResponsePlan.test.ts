@@ -424,3 +424,34 @@ describe('review round 3', () => {
 		await vi.waitFor(() => expect(plan.addressed.value).toEqual(['contract']));
 	});
 });
+
+describe('review round 4', () => {
+	it('F1: stance change, then the item closes: the choice is dropped, flush and the recheck go on', async () => {
+		const text = ref('Hello.');
+		const { plan, items } = host({ text });
+		plan.setStance('contract', 'decline');
+		await flushPromises();
+		mutation.mockClear();
+		// The contract is marked done elsewhere: it leaves the plan.
+		items.value = [quote];
+		await nextTick();
+		await expect(plan.flush()).resolves.toBeUndefined();
+		expect(mutation).not.toHaveBeenCalled();
+		plan.setStance('quote', 'accept');
+		await plan.flush();
+		expect(mutation).toHaveBeenLastCalledWith('plan.setStances', {
+			threadRef: { kind: 'mail', id: 't1' },
+			draftRef: { kind: 'mailDraft', id: 'd1' },
+			stances: [{ itemId: 'quote', stance: 'accept' }],
+		});
+		stored.value = storedView({
+			stances: [{ itemId: 'quote', stance: 'accept', source: 'owner' }],
+		});
+		action.mockResolvedValueOnce(
+			await result('Hello.', { itemRevisions: [{ itemId: 'quote', revision: 1 }] })
+		);
+		await plan.checkCoverage();
+		expect(action).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(plan.statusNote.value).not.toBe('Checking the draft…'));
+	});
+});

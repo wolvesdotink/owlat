@@ -80,6 +80,18 @@ export function useResponsePlan(opts: {
 		lastChecked = null;
 	});
 
+	// A choice for an item that left the plan (closed, done, replaced) is
+	// dropped: writing it again would be refused and block every later write,
+	// check and draft (review r4 F1).
+	watch(
+		() => opts.items().map((i) => i.id),
+		(ids) => {
+			const open = new Set<string>(ids);
+			if ([...chosen.value.keys()].every((id) => open.has(id))) return;
+			chosen.value = new Map([...chosen.value].filter(([id]) => open.has(id)));
+		}
+	);
+
 	const stances = computed(() => {
 		const out = new Map<string, ResponseStance>();
 		const server = new Map((stored.data.value?.stances ?? []).map((s) => [s.itemId, s.stance]));
@@ -101,8 +113,10 @@ export function useResponsePlan(opts: {
 	function persist(explicit?: PlanDraftRef | null): Promise<void> {
 		const threadRef = opts.threadRef();
 		const draftRef = explicit ?? opts.draftRef();
-		if (!threadRef || !draftRef || chosen.value.size === 0) return writing;
-		const given = [...chosen.value].map(([itemId, stance]) => ({
+		const open = new Set<string>(opts.items().map((i) => i.id));
+		const current = [...chosen.value].filter(([id]) => open.has(id));
+		if (!threadRef || !draftRef || current.length === 0) return writing;
+		const given = current.map(([itemId, stance]) => ({
 			itemId: itemId as Id<'threadItems'>,
 			stance,
 		}));
@@ -140,7 +154,8 @@ export function useResponsePlan(opts: {
 		const server = new Map(
 			(stored.data.value?.stances ?? []).map((s) => [s.itemId as string, s.stance])
 		);
-		return [...chosen.value].every(([id, stance]) => server.get(id) === stance);
+		const open = new Set<string>(opts.items().map((i) => i.id));
+		return [...chosen.value].every(([id, stance]) => !open.has(id) || server.get(id) === stance);
 	});
 
 	/** The thread and item revisions on screen; a result for others is stale (r2 F3). */
