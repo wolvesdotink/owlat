@@ -139,6 +139,8 @@ export interface FoldEntry {
 	/** The message's date: what order-aware transitions compare. */
 	sourceAt: number;
 	result: ReduceResult;
+	/** The fact claims' keys, hashed (`factKeys.ts`); absent: keys stand for themselves. */
+	factKeyHashes?: ReadonlyMap<string, string>;
 }
 
 export interface MemOptions {
@@ -257,10 +259,14 @@ export function resolveIdentity(
 export function applyPlan(
 	state: MemState,
 	plan: ReductionPlan,
-	entry: Pick<FoldEntry, 'source' | 'sourceKey' | 'contentRevision' | 'sourceAt'> & {
+	entry: Pick<
+		FoldEntry,
+		'source' | 'sourceKey' | 'contentRevision' | 'sourceAt' | 'factKeyHashes'
+	> & {
 		result?: Pick<ReduceResult, 'facts'>;
 	}
 ): Set<string> {
+	const keyHashOf = (key: string) => entry.factKeyHashes?.get(key) ?? key;
 	const touched = new Set<string>();
 	const setBy = { sourceKey: entry.sourceKey, at: entry.sourceAt };
 	const ev = (list: readonly ReduceEvidence[]) =>
@@ -365,7 +371,7 @@ export function applyPlan(
 			if (!fact) continue;
 			fact.proposal = op.fact;
 			fact.redactedFields = undefined;
-			fact.factKey = op.fact.key;
+			fact.factKeyHash = keyHashOf(op.fact.key);
 			fact.assertionText = op.fact.assertion;
 			fact.evidence = [...fact.evidence, ...ev(op.fact.evidence)];
 			noteFactKey(fact, op.index);
@@ -379,7 +385,7 @@ export function applyPlan(
 				lineage,
 				isNew: true,
 				proposal: f,
-				factKey: f.key,
+				factKeyHash: keyHashOf(f.key),
 				status: 'current',
 				revision: 0,
 				...(f.value ? { value: f.value as Doc<'threadFacts'>['value'] } : {}),
@@ -430,7 +436,13 @@ export function foldEntry(
 		{ items: [...state.items.values()], facts: [...state.facts.values()] },
 		result,
 		entry.contentRevision,
-		{ ...opts, source: entry.source, sourceAt: entry.sourceAt, factIdentity }
+		{
+			...opts,
+			source: entry.source,
+			sourceAt: entry.sourceAt,
+			factIdentity,
+			...(entry.factKeyHashes ? { factKeyHashes: entry.factKeyHashes } : {}),
+		}
 	);
 	const touched = applyPlan(state, plan, entry);
 	return { plan, touched };

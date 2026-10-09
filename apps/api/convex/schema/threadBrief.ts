@@ -182,9 +182,12 @@ export const threadBriefTables = {
 	// Informational claims of personal mail threads (brief mode only).
 	threadFacts: defineTable({
 		...threadRefFields,
-		// @owlat/shared/threadBrief factKeyString({entity, attribute, context}):
-		// a short normalized label, stored plain so it can be matched.
-		factKey: v.string(),
+		// The key (factKeyString): matched by its keyed hash, shown from the
+		// sealed label (mail/interpret/factKeys.ts). `factKey` is the RETIRED
+		// plaintext, read for one release (migration 0068 converts it).
+		factKeyHash: v.optional(v.string()),
+		factKeyLabel: v.optional(v.string()), // sealed
+		factKey: v.optional(v.string()),
 		// The claim in the source language. Sealed.
 		assertion: v.string(),
 		display: localizedSealedTextValidator,

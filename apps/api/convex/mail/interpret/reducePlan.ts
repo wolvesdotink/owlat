@@ -92,6 +92,8 @@ export interface PlanOptions {
 	sourceAt: number;
 	/** Fact claims (by index) whose lineage names a fact this claim produced before (`fold.ts`). */
 	factIdentity?: ReadonlyMap<number, string>;
+	/** The incoming fact claims' keys, hashed (`factKeys.ts`). */
+	factKeyHashes?: ReadonlyMap<string, string>;
 }
 
 /** Evidence as the plan hands it to the writer (plaintext quote). */

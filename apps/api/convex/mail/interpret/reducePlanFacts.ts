@@ -24,8 +24,10 @@ import { newEvidence, type EvidenceRef } from './evidence';
 /** The fact fields the plan reads. */
 export type PlanFact = Pick<
 	Doc<'threadFacts'>,
-	'_id' | 'factKey' | 'status' | 'revision' | 'value' | 'redactedFields'
+	'_id' | 'status' | 'revision' | 'value' | 'redactedFields'
 > & {
+	/** The keyed hash of the fact's key: what claims match on (`factKeys.ts`). */
+	factKeyHash: string;
 	evidence: readonly EvidenceRef[];
 	/** The value with its sealed text opened, for comparison. */
 	valueText?: string;
@@ -56,6 +58,8 @@ export interface FactPlanOptions {
 	isOutOfOrder: boolean;
 	source: InterpretationSource;
 	factIdentity?: ReadonlyMap<number, string>;
+	/** The incoming claims' keys, hashed (`factKeys.ts`); absent: keys compare as given (tests). */
+	factKeyHashes?: ReadonlyMap<string, string>;
 }
 
 export type FactDrop = { kind: 'fact'; index: number; reason: 'no_change' | 'out_of_order' };
@@ -98,6 +102,7 @@ export function planFacts(
 		} else dropped.push({ kind: 'fact', index, reason: 'no_change' });
 	};
 	for (const [index, fact] of (result.facts ?? []).entries()) {
+		const keyHash = opts.factKeyHashes?.get(fact.key) ?? fact.key;
 		// 1. Identity first (round 5 F6): the fact this very claim produced
 		//    before (its lineage), whatever relation the model now names.
 		//    A current same-key fact resting only on this message is its
@@ -105,14 +110,14 @@ export function planFacts(
 		const isOpen = (f: PlanFact) => !retired.has(f._id) && !claimed.has(f._id);
 		const own =
 			allById.get(opts.factIdentity?.get(index) ?? '') ??
-			current.find((f) => f.factKey === fact.key && isOpen(f) && isOnlyFrom(f));
+			current.find((f) => f.factKeyHash === keyHash && isOpen(f) && isOnlyFrom(f));
 		if (own) {
 			merge(index, fact, own);
 			continue;
 		}
 		const named = (id: string | undefined) =>
 			id && !retired.has(id) ? currentById.get(id) : undefined;
-		const sameKeys = current.filter((f) => f.factKey === fact.key && isOpen(f));
+		const sameKeys = current.filter((f) => f.factKeyHash === keyHash && isOpen(f));
 		const sameKey = named(fact.matchFactId) ?? sameKeys[0];
 		// 2. A proven restatement of any current fact merges, never conflicts.
 		const restated = [named(fact.matchFactId), ...sameKeys].find(

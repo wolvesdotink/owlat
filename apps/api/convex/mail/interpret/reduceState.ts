@@ -16,6 +16,7 @@ import type { InterpretationSource } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { exactValueKey } from './factEquivalence';
+import { rowFactKeyHash } from './factKeys';
 import { threadItemsWithStatus } from './load';
 import { teamReplyContext } from './sources';
 import type { MemFact, MemItem, MemState } from './fold';
@@ -127,7 +128,7 @@ export async function factToMem(row: Doc<'threadFacts'>): Promise<MemFact> {
 		...(row.lineage ? { lineage: row.lineage } : {}),
 		...(row.redactedFields ? { redactedFields: row.redactedFields } : {}),
 		isNew: false,
-		factKey: row.factKey,
+		factKeyHash: await rowFactKeyHash(row),
 		status: row.status,
 		revision: row.revision,
 		...(row.value ? { value: row.value } : {}),

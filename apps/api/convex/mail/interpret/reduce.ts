@@ -61,6 +61,7 @@ import { ATTEMPT_SUFFIX } from './load';
 import { sourceVersionOf } from './sourceVersion';
 import { refreshBriefTop } from './briefTop';
 import { onItemsCreated } from './commitmentLink';
+import { factKeyHashes } from './factKeys';
 import { startPendingMatch } from './pendingMatch';
 
 export type ApplyOutcome =
@@ -279,7 +280,14 @@ export const applyInterpretation = internalMutation({
 				identityTargets(entry.result, sourceKey, claims.claimIds, { isReapply })
 			);
 			const foldOpts = { mode, threadKind: ref.kind, isOutOfOrder };
-			const { plan, touched } = foldEntry(loaded.state, entry, foldOpts, claims.claimIds);
+			// Fact claims match by the keyed hash of their key (factKeys.ts).
+			const factKeyHashesOf = await factKeyHashes((entry.result.facts ?? []).map((f) => f.key));
+			const { plan, touched } = foldEntry(
+				loaded.state,
+				{ ...entry, factKeyHashes: factKeyHashesOf },
+				foldOpts,
+				claims.claimIds
+			);
 			if (isReapply) flagUnreproduced(loaded.state, sourceKey, touched);
 			// Completions read before their request (round 5 F7): kept, and
 			// proposed to the items a later fold creates (pendingMatch.ts).

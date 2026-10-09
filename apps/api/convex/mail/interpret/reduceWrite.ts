@@ -32,6 +32,7 @@ import {
 import { evidenceKey } from './reducePlan';
 import { counterpartyKeyOf, responsibilityOf } from './parties';
 import { exactValueKey } from './factEquivalence';
+import { storedFactKey } from './factKeys';
 import {
 	sameEvidence,
 	type MemEvidence,
@@ -436,7 +437,7 @@ async function insertFact(
 	if (!f) return null;
 	return ctx.db.insert('threadFacts', {
 		...threadRefToFields(args.ref),
-		factKey: f.key,
+		...(await storedFactKey(f.key)),
 		assertion: await sealBodyAtWrite(f.assertion),
 		display: await sealDisplay(f.display),
 		...(f.value ? { value: await sealFactValue(f.value) } : {}),
@@ -470,7 +471,9 @@ async function patchFact(
 		// the re-read no longer gives).
 		const f = fact.proposal;
 		if (f) {
-			if (f.key !== row.factKey) patch.factKey = f.key;
+			if (fact.factKeyHash !== row.factKeyHash || row.factKey !== undefined) {
+				Object.assign(patch, await storedFactKey(f.key), { factKey: undefined });
+			}
 			if (fact.storedAssertionText === undefined || f.assertion !== fact.storedAssertionText) {
 				patch.assertion = await sealBodyAtWrite(f.assertion);
 			}

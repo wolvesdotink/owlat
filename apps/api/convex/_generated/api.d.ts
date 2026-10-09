@@ -26,6 +26,7 @@ import type * as mail_interpret_elsewhere from '../mail/interpret/elsewhere.js';
 import type * as mail_interpret_enqueue from '../mail/interpret/enqueue.js';
 import type * as mail_interpret_evidence from '../mail/interpret/evidence.js';
 import type * as mail_interpret_factEquivalence from '../mail/interpret/factEquivalence.js';
+import type * as mail_interpret_factKeys from '../mail/interpret/factKeys.js';
 import type * as mail_interpret_fold from '../mail/interpret/fold.js';
 import type * as mail_interpret_gate from '../mail/interpret/gate.js';
 import type * as mail_interpret_heldSources from '../mail/interpret/heldSources.js';
@@ -93,6 +94,7 @@ import type * as migrations_0064_backfill_send_time_profiles from '../migrations
 import type * as migrations_0065_backfill_thread_response_metrics from '../migrations/0065_backfill_thread_response_metrics.js';
 import type * as migrations_0066_backfill_clarification_origin from '../migrations/0066_backfill_clarification_origin.js';
 import type * as migrations_0067_empty_retired_summaries from '../migrations/0067_empty_retired_summaries.js';
+import type * as migrations_0068_seal_fact_keys from '../migrations/0068_seal_fact_keys.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
 import type * as migrations_0060_saved_reply_scopes from '../migrations/0060_saved_reply_scopes.js';
@@ -1626,6 +1628,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/enqueue': typeof mail_interpret_enqueue;
 	'mail/interpret/evidence': typeof mail_interpret_evidence;
 	'mail/interpret/factEquivalence': typeof mail_interpret_factEquivalence;
+	'mail/interpret/factKeys': typeof mail_interpret_factKeys;
 	'mail/interpret/fold': typeof mail_interpret_fold;
 	'mail/interpret/gate': typeof mail_interpret_gate;
 	'mail/interpret/heldSources': typeof mail_interpret_heldSources;
@@ -1693,6 +1696,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0065_backfill_thread_response_metrics': typeof migrations_0065_backfill_thread_response_metrics;
 	'migrations/0066_backfill_clarification_origin': typeof migrations_0066_backfill_clarification_origin;
 	'migrations/0067_empty_retired_summaries': typeof migrations_0067_empty_retired_summaries;
+	'migrations/0068_seal_fact_keys': typeof migrations_0068_seal_fact_keys;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'schema/migrationRuns': typeof schema_migrationRuns;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;

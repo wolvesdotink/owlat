@@ -355,7 +355,7 @@ describe('transitions', () => {
 describe('facts', () => {
 	const current: PlanFact = {
 		_id: id<'threadFacts'>('fact_a'),
-		factKey: '["meeting","date",""]',
+		factKeyHash: '["meeting","date",""]',
 		status: 'current',
 		revision: 1,
 		evidence: [],
@@ -484,7 +484,7 @@ describe('review round 1', () => {
 	it('merges only a proven restatement of a fact (F8)', () => {
 		const noValue: PlanFact = {
 			_id: id<'threadFacts'>('fact_b'),
-			factKey: '["venue","address",""]',
+			factKeyHash: '["venue","address",""]',
 			status: 'current',
 			revision: 1,
 			evidence: [],
@@ -583,7 +583,7 @@ describe('review round 2', () => {
 	it('compares URLs and references by kind (F9)', () => {
 		const storedFact = (kind: 'url' | 'ref', text: string): PlanFact => ({
 			_id: id<'threadFacts'>('fact_u'),
-			factKey: '["portal","link",""]',
+			factKeyHash: '["portal","link",""]',
 			status: 'current',
 			revision: 1,
 			evidence: [],

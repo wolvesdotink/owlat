@@ -32,13 +32,14 @@
  * Isolate-safe helpers, no Convex functions.
  */
 
-import type { Doc, Id } from '../../_generated/dataModel';
+import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { writeItemChange } from './counters';
 import type { DrainBudget } from './purgeDrain';
 import { resetTransitionsFrom } from './transitionSources';
+import { redactedFactKeyHash } from './factKeys';
 import { isHolding, redactSourcedFields, withoutSources } from './heldSources';
 import { counterpartyKeyOf } from './parties';
 
@@ -319,18 +320,6 @@ function strippedHeld(
 	return evidence.length > 0 || isStanding ? { ...kept, evidence } : undefined;
 }
 
-/**
- * The key a redacted fact carries (final review F4): `factKey` is plaintext
- * model-derived text (entity, attribute, context), so after a purge it is
- * replaced by an opaque identity that says nothing about the deleted message.
- * Matching keeps working through the fact's identity (lineage and the
- * sources' claim records); a verified re-read sets a real key again (`fold.ts`
- * `replace`). Pure.
- */
-export function redactedFactKey(factId: Id<'threadFacts'>): string {
-	return `redacted:${factId}`;
-}
-
 /** Strip one fact (mail threads only); a survivor is redacted. */
 export async function stripFact(
 	ctx: MutationCtx,
@@ -342,7 +331,9 @@ export async function stripFact(
 	if (evidence.length === 0) return 'doomed';
 	await ctx.db.patch(fact._id, {
 		evidence,
-		factKey: redactedFactKey(fact._id),
+		factKeyHash: redactedFactKeyHash(fact._id),
+		factKeyLabel: undefined,
+		factKey: undefined,
 		assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
 		display: await sealedPair(REDACTED_CLAIM_TEXT),
 		value: undefined,
