@@ -45,6 +45,22 @@ vi.mock('~/composables/useAnswerTeamAssist', () => ({
 	useAnswerTeamAssist: () => ({
 		aiEnabled: draftWithAi,
 		draftWithAi,
+		statusNote: ref('1 of 2 asks covered'),
+		// The response plan (useResponsePlan): nothing selected, nothing to flag.
+		plan: {
+			view: {
+				stanceOf: () => 'answer',
+				setStance: vi.fn(),
+				addressed: computed(() => []),
+				fileMissing: computed(() => new Set<string>()),
+			},
+			selected: ref<string[]>([]),
+			setSelected: vi.fn(),
+			missingFiles: ref<string[]>([]),
+			checkCoverage: vi.fn(),
+			recheck: vi.fn(),
+			items: ref([]),
+		},
 		ask: {
 			phase: ref('idle'),
 			session: ref(null),
@@ -213,6 +229,7 @@ async function mountPage() {
 				AnswerTeamConversation: inert('AnswerTeamConversation'),
 				TeamPinnedItems: inert('TeamPinnedItems'),
 				AnswerTeamReusedAnswers: inert('AnswerTeamReusedAnswers'),
+				AnswerTeamPlan: inert('AnswerTeamPlan'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
 				AnswerPeekDraft,
 				AnswerTeamRejectModal,

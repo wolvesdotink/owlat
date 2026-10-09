@@ -67,9 +67,16 @@ export function useBriefReactions(opts: {
 			case 'undo':
 				await undo.run({ itemId });
 				return;
-			case 'confirmProposal':
-				await confirm.run({ itemId });
+			case 'confirmProposal': {
+				// Confirming may close the item (a held closing transition): say so, with Undo.
+				const result = await confirm.run({ itemId });
+				if (result.ok) {
+					showToast(t('components.brief.toast.confirmed'), 'success', {
+						action: { label: t('common.undo'), onAction: () => void undo.run({ itemId }) },
+					});
+				}
 				return;
+			}
 			default:
 				// `assign` is a team verb; personal mailboxes never offer it.
 				return;

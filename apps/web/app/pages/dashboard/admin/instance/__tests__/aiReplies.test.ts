@@ -94,6 +94,7 @@ function mountPage() {
 			UiSkeleton: true,
 			UiSkeletonText: true,
 			AutonomyWorkingHours: true,
+			AutonomyItemCoverage: true,
 			AutonomyDemotionAlerts: true,
 			AutonomyGraduationNudge: true,
 			AutonomyRuleEditor: true,

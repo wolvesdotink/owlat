@@ -39,7 +39,10 @@ export const PURGE_RECHECK_CODE = 'purge_recheck';
 
 /** A plan without its references to `gone` items, marked stale. Pure. */
 export function stripPlan(
-	plan: Pick<Doc<'draftResponsePlans'>, 'itemRevisions' | 'stances' | 'ownerInputs' | 'coverage'>,
+	plan: Pick<
+		Doc<'draftResponsePlans'>,
+		'itemRevisions' | 'stances' | 'ownerInputs' | 'coverage' | 'newPromises'
+	>,
 	gone: ReadonlySet<string>
 ) {
 	const keep = (entry: { itemId: string }) => !gone.has(entry.itemId);
@@ -50,6 +53,9 @@ export function stripPlan(
 			input.itemId && gone.has(input.itemId) ? { questionId: input.questionId } : input
 		),
 		coverage: plan.coverage.filter(keep),
+		newPromises: plan.newPromises.map(({ itemId, ...promise }) =>
+			itemId && !gone.has(itemId) ? { ...promise, itemId } : promise
+		),
 		verdict: 'stale' as const,
 		updatedAt: Date.now(),
 	};

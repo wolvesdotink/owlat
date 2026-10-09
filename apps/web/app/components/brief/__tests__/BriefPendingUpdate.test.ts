@@ -8,15 +8,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import BriefPendingUpdate from '../BriefPendingUpdate.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
-import { evidence, T0 } from '~/utils/__tests__/threadBriefFixtures';
+import { evidence, item, T0 } from '~/utils/__tests__/threadBriefFixtures';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-function mountUpdate(update: Record<string, unknown>) {
+function mountUpdate(update: Record<string, unknown>, item?: unknown) {
 	return mount(BriefPendingUpdate, {
-		props: { itemId: 'i1', update: update as never, canConfirm: true },
+		props: { itemId: 'i1', update: update as never, canConfirm: true, item: item as never },
 		global: { plugins: [createTestI18n()] },
 	});
 }
@@ -43,5 +43,38 @@ describe('BriefPendingUpdate', () => {
 		expect(w.text()).toContain('Check this change:');
 		expect(w.find('[data-testid="brief-item-pending-settled"]').exists()).toBe(false);
 		expect(w.get('[data-testid="brief-item-pending-confirm"]').text()).toBe('Confirm change');
+	});
+});
+
+describe('BriefPendingUpdate, every change Confirm applies', () => {
+	it('shows wording, parties, whose turn and removals as old → new', () => {
+		const current = item({
+			id: 'i1',
+			text: 'Send the contract',
+			amount: { value: 100, currency: 'EUR' },
+			responsible: { isUs: true },
+		});
+		const w = mountUpdate(
+			{
+				evidence: [],
+				text: 'Send the signed contract',
+				responsible: { name: 'Lena Hofmann', isUs: false },
+				responsibility: 'them',
+				removes: ['amount'],
+			},
+			current
+		);
+		const text = w.text();
+		expect(text).toContain('wording: “Send the contract” → “Send the signed contract”');
+		expect(text).toContain('who does it: you → Lena Hofmann');
+		expect(text).toContain('whose turn: yours → theirs');
+		expect(text).toContain('removed: amount');
+		expect(w.find('[data-testid="brief-item-pending-confirm"]').exists()).toBe(true);
+		expectFullyLocalized(w);
+	});
+
+	it('offers no Confirm when there is nothing it would change', () => {
+		const w = mountUpdate({ evidence: [] });
+		expect(w.find('[data-testid="brief-item-pending-confirm"]').exists()).toBe(false);
 	});
 });

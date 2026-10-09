@@ -148,6 +148,7 @@ const team = useTeamThread({
 // Draft with AI, and the agent's questions
 const assist = useAnswerTeamAssist({
 	threadId: () => threadId.value,
+	inboundMessageId: () => reply.target.value?._id ?? null,
 	composer: () => composerRef.value?.answer ?? null,
 	// A reply on another channel carries no files: the server would refuse.
 	attachFile: (file) => {
@@ -194,7 +195,6 @@ const keptReply = useKeptTeamComposer(() => threadId.value, composerRef);
 const answerNav = useAnswerModeNav({ currentPath: () => route.path });
 const queueSession = useAnswerQueueSession();
 const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
-
 // However the page is left (Esc, a link, the queue moving on), keep the text.
 onBeforeUnmount(keptReply.keep);
 
@@ -396,6 +396,7 @@ onBeforeUnmount(() => {
 					:held-by="heldBy"
 					:held-reason="holdReason"
 					:send-hold="sendHold"
+					:status-note="assist.statusNote.value"
 					:ask-session="!!assist.ask.session.value"
 					@send="onSend"
 					@save="(body, subject, gapGuarded) => reply.save({ body, subject, gapGuarded })"
@@ -423,6 +424,11 @@ onBeforeUnmount(() => {
 							/>
 						</div>
 						<template v-else>
+							<AnswerTeamPlan
+								:plan="assist.plan"
+								:can-attach="attachmentsAllowed"
+								@files="files.addFiles"
+							/>
 							<AnswerTeamReusedAnswers
 								v-if="reply.reusedAnswers.value.length > 0"
 								:questions="reply.reusedAnswers.value"

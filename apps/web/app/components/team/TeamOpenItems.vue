@@ -14,8 +14,11 @@ import type {
 	BriefItemView,
 	TeamOpenItemsView,
 } from '../../../../api/convex/mail/interpret/briefShape';
+import { provide } from 'vue';
 import { isBriefComplete } from '~/utils/threadBriefBanners';
+import { BRIEF_CONTEXT, type BriefSource } from '~/utils/threadBriefContext';
 import { nextCursorOf } from '~/utils/threadBriefPages';
+import { canUndoItem } from '~/utils/threadBriefItems';
 import BriefIncomplete from '~/components/brief/BriefIncomplete.vue';
 import TeamOpenItem, { type TeamItemAction, type TeamMember } from './TeamOpenItem.vue';
 
@@ -26,14 +29,23 @@ const props = withDefaults(
 		members: readonly TeamMember[];
 		noteCounts?: ReadonlyMap<string, number>;
 		hideActions?: boolean;
+		/** Who sent a message of the thread and when (the source markers). */
+		sourceOf?: (messageId: string) => BriefSource | undefined;
 	}>(),
-	{ noteCounts: () => new Map(), hideActions: false }
+	{ noteCounts: () => new Map(), hideActions: false, sourceOf: () => undefined }
 );
 
 const emit = defineEmits<{
 	act: [item: BriefItemView, action: TeamItemAction];
 	assign: [item: BriefItemView, userId: string | null];
+	/** A source marker was clicked: show where the line comes from. */
+	cite: [ref: string, quoteIndex: number];
 }>();
+
+provide(BRIEF_CONTEXT, {
+	sourceOf: (id) => props.sourceOf(id),
+	cite: (ref, quoteIndex) => emit('cite', ref, quoteIndex),
+});
 
 const { t } = useI18n();
 const open = ref(false);
@@ -43,6 +55,12 @@ const unclear = computed(() => props.view?.unclear.filter((i) => i.status === 'o
 const waiting = computed(
 	() => props.view?.waitingOnOthers.filter((i) => i.status === 'open') ?? []
 );
+/** Actions closed by a confirmation or a "done" the viewer can still take back. */
+const recentlyClosed = computed(() =>
+	[...(props.view?.forTeam ?? []), ...(props.view?.unclear ?? [])].filter(
+		(i) => i.status !== 'open' && canUndoItem(i, i.stateKey)
+	)
+);
 const openCount = computed(() => props.view?.counts.forTeam ?? forTeam.value.length);
 const isComplete = computed(() => !!props.view && isBriefComplete(props.view));
 const isCut = computed(() => !!props.view && nextCursorOf(props.view) !== null);
@@ -51,7 +69,8 @@ const isShown = computed(() => {
 	if (!v) return false;
 	return (
 		v.completeness !== 'none' ||
-		forTeam.value.length + unclear.value.length + waiting.value.length > 0
+		forTeam.value.length + unclear.value.length + waiting.value.length > 0 ||
+		recentlyClosed.value.length > 0
 	);
 });
 </script>
@@ -136,6 +155,22 @@ const isShown = computed(() => {
 						:hide-actions="hideActions"
 						@act="(action) => emit('act', item, action)"
 						@assign="(userId) => emit('assign', item, userId)"
+					/>
+				</ul>
+			</template>
+			<template v-if="recentlyClosed.length > 0">
+				<h3 class="mt-3 text-xs font-medium text-text-secondary">
+					{{ t('components.team.items.closedTitle') }}
+				</h3>
+				<ul data-testid="team-open-items-closed">
+					<TeamOpenItem
+						v-for="item in recentlyClosed"
+						:key="item.id"
+						:item="item"
+						:viewer-id="viewerId"
+						:members="members"
+						:hide-actions="hideActions"
+						@act="(action) => emit('act', item, action)"
 					/>
 				</ul>
 			</template>

@@ -712,6 +712,12 @@
 				"thresholdMin": "0 % (alles automatisch)",
 				"todayCount": "Heute: {current} / {max}"
 			},
+			"autonomyItemCoverage": {
+				"title": "Antworten zurückhalten, die einen offenen Punkt auslassen",
+				"subtitle": "Eine automatische Antwort wartet auf Prüfung, wenn sie eine offene Anfrage unbeantwortet lässt, eine fehlende Datei als angehängt bezeichnet oder etwas zusagt, das niemand freigegeben hat. Solange das aus ist, notiert Owlat nur, was es zurückgehalten hätte.",
+				"operation": "Prüfung offener Punkte speichern",
+				"saved": "Prüfung offener Punkte gespeichert"
+			},
 			"autonomyWorkingHours": {
 				"daysLabel": "Tage",
 				"fromLabel": "Von",
@@ -916,6 +922,26 @@
 				"confirmChange": "Änderung bestätigen",
 				"maybeSettled": "Eine spätere Nachricht hat das vielleicht schon erledigt",
 				"confirmSettled": "Bestätigen",
+				"pending": {
+					"removed": "entfernt: {fields}",
+					"nobody": "noch niemand",
+					"us": "du",
+					"field": {
+						"text": "Wortlaut",
+						"requester": "gefragt von",
+						"responsible": "wer es macht",
+						"beneficiary": "für",
+						"responsibility": "wer dran ist",
+						"due": "fällig",
+						"amount": "Betrag",
+						"options": "Auswahl"
+					},
+					"responsibility": {
+						"us": "bei dir",
+						"them": "bei ihnen",
+						"unclear": "unklar"
+					}
+				},
 				"review": "bitte prüfen",
 				"duplicate": "mögliches Duplikat",
 				"new": "neu",
@@ -1086,6 +1112,7 @@
 			},
 			"more": "+{count} weitere",
 			"toast": {
+				"confirmed": "Bestätigt. Du kannst das rückgängig machen.",
 				"markedDone": "Als erledigt markiert. Du kannst es rückgängig machen.",
 				"reminder": "Du wirst morgen früh erinnert."
 			},
@@ -6449,6 +6476,7 @@
 				"askedBy": "von {name} am {date} gefragt",
 				"assignTo": "Zuweisen an",
 				"claim": "Übernehmen",
+				"closedTitle": "Gerade erledigt",
 				"claimed": "Jetzt bist du dran.",
 				"empty": "Fürs Team ist nichts offen.",
 				"formerTeammate": "Ehemaliges Teammitglied",
@@ -6996,10 +7024,32 @@
 				"attachFile": "{file} an die Antwort anhängen",
 				"attachFailed": "Die Datei konnte nicht angehängt werden.",
 				"attachOperation": "Datei anhängen",
-				"covered": "{covered} von {total} Anfrage beantwortet | {covered} von {total} Anfragen beantwortet",
 				"asksCount": "{count} Anfrage | {count} Anfragen",
 				"show": "Anzeigen",
 				"hide": "Ausblenden"
+			},
+			"plan": {
+				"title": "Deine Antwort umfasst",
+				"selected": "{count} von {total} ausgewählt",
+				"stanceGroup": "Wie die Antwort darauf eingeht: {item}",
+				"stance": {
+					"answer": "Antworten",
+					"accept": "Annehmen",
+					"decline": "Ablehnen",
+					"defer": "Später",
+					"clarify": "Nachfragen"
+				},
+				"fileMissing": "Datei fehlt",
+				"status": {
+					"addressed": "{addressed} von {total} berücksichtigt",
+					"needsFile": "{count} braucht eine Datei | {count} brauchen eine Datei",
+					"promise": "neues Versprechen notiert: „{text}“"
+				},
+				"banner": {
+					"title": "Eins noch vor dem Senden.",
+					"body": "Der Entwurf sagt „{claim}“, aber es ist noch keine Datei angehängt.",
+					"pick": "Datei auswählen"
+				}
 			},
 			"aiBar": {
 				"label": "Was soll in der Antwort stehen?",

@@ -19,6 +19,7 @@ import type {
 	ItemResponsibility,
 	ItemStateKey,
 	ItemStatus,
+	ResponseStance,
 } from './threadBrief';
 
 // ── Item state (what the user sees) ────────────────────────────────────────
@@ -250,4 +251,52 @@ export function isLegalDispositionEdge(from: ItemDisposition, to: ItemDispositio
 	if (from === 'failed') return true;
 	if (from === 'deferred') return to === 'answered' || to === 'accepted' || to === 'declined';
 	return from === 'unanswered';
+}
+
+// ── Response plan stances (SPEC §6) ────────────────────────────────────────
+
+const ACCEPTING_FACETS: ReadonlySet<ItemFacet> = new Set<ItemFacet>([
+	'payment',
+	'signature',
+	'access',
+]);
+/** A file to send or a time to pick is answered, even when it also needs a signature. */
+const DELIVERING_FACETS: ReadonlySet<ItemFacet> = new Set<ItemFacet>(['file', 'meeting']);
+const ANSWERING_FACETS: ReadonlySet<ItemFacet> = new Set<ItemFacet>([
+	'information',
+	'documentReview',
+]);
+
+/**
+ * The stances Answer mode offers for an item (plan §6): a decision is
+ * accepted, declined, deferred or held for the owner's input ("Ask"); so is a
+ * request with money, a signature or access in it, unless what it asks for is
+ * a file or a meeting time, which is answered, declined or deferred, like a
+ * question or a request for information; any other request is accepted,
+ * declined or deferred; a promise of ours is answered (an update) or
+ * deferred. `skip` is never offered: an unselected item is skipped.
+ */
+export function stanceChoicesFor(
+	intent: ItemIntent,
+	facets: readonly ItemFacet[]
+): readonly ResponseStance[] {
+	const has = (set: ReadonlySet<ItemFacet>) => facets.some((f) => set.has(f));
+	if (intent === 'promise') return ['answer', 'defer'];
+	if (intent === 'question') return ['answer', 'decline', 'defer'];
+	if (intent === 'decision') return ['accept', 'decline', 'defer', 'clarify'];
+	if (has(DELIVERING_FACETS)) return ['answer', 'decline', 'defer'];
+	if (has(ACCEPTING_FACETS)) return ['accept', 'decline', 'defer', 'clarify'];
+	if (has(ANSWERING_FACETS)) return ['answer', 'decline', 'defer'];
+	return ['accept', 'decline', 'defer'];
+}
+
+/**
+ * The stance a plan starts with for an item: `clarify` while a clarification
+ * slot of the item is still unanswered (the owner has to supply something),
+ * otherwise `answer`. A request is never accepted by default: accepting a
+ * price, a deadline, a concession or a disclosure takes the owner's choice or a
+ * policy (SPEC §6).
+ */
+export function defaultStance(options: { hasOpenSlot: boolean }): ResponseStance {
+	return options.hasOpenSlot ? 'clarify' : 'answer';
 }

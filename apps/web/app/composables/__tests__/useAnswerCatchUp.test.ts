@@ -3,23 +3,16 @@
  * The catch-up card's data (composables/useAnswerCatchUp):
  *   - `ensure` runs once per open, and not at all with AI off;
  *   - the reactive cache wins over what `ensure` returned; a failure hides it;
- *   - coverage waits for typing to pause (1.5s), sends the draft's text, and a
- *     newer check always wins over an older one still in flight;
- *   - an empty draft covers nothing without asking the server, and the same
- *     text is not checked twice (an AI draft settles and changes the text);
- *   - the footer note waits for something written;
  *   - a short thread without a card opens in full, decided once.
+ *
+ * What the draft covers is the response plan's (useResponsePlan.test.ts).
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref, type Ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import {
-	COVERAGE_DEBOUNCE_MS,
-	useAnswerCatchUp,
-	type AnswerCatchUpTarget,
-} from '../useAnswerCatchUp';
+import { useAnswerCatchUp, type AnswerCatchUpTarget } from '../useAnswerCatchUp';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
 
 vi.mock('@owlat/api', () => ({
@@ -27,7 +20,7 @@ vi.mock('@owlat/api', () => ({
 		mail: {
 			ai: {
 				catchUpStore: { get: 'mail.get' },
-				catchUp: { ensure: 'mail.ensure', coverage: 'mail.coverage' },
+				catchUp: { ensure: 'mail.ensure' },
 			},
 		},
 	},
@@ -62,13 +55,9 @@ beforeEach(() => {
 	});
 	vi.stubGlobal('requireConvex', () => ({ action }));
 });
-afterEach(() => {
-	vi.useRealTimers();
-});
-
 function host(
 	target: Ref<AnswerCatchUpTarget | null>,
-	draftText: Ref<string>,
+	_draftText: Ref<string>,
 	conversation?: { view: Ref<AnswerConversationView>; count: Ref<number | undefined> }
 ) {
 	let api!: ReturnType<typeof useAnswerCatchUp>;
@@ -76,7 +65,6 @@ function host(
 		setup() {
 			api = useAnswerCatchUp({
 				target: () => target.value,
-				draftText: () => draftText.value,
 				...(conversation
 					? { view: conversation.view, messageCount: () => conversation.count.value }
 					: {}),
@@ -132,117 +120,6 @@ describe('useAnswerCatchUp: the card', () => {
 		await flushPromises();
 		expect(api().catchUp.value).toBeNull();
 		expect(api().loading.value).toBe(false);
-	});
-});
-
-describe('useAnswerCatchUp: coverage', () => {
-	it('checks the draft once typing pauses, and ticks what came back', async () => {
-		vi.useFakeTimers();
-		action.mockResolvedValueOnce(CARD);
-		const text = ref('');
-		const { api } = host(ref(mail()), text);
-		await flushPromises();
-
-		action.mockResolvedValueOnce({ coveredAskIds: ['ask_2', 'ask_gone'] });
-		text.value = 'Hi Jonas, the PO is on it';
-		await flushPromises();
-		vi.advanceTimersByTime(COVERAGE_DEBOUNCE_MS - 10);
-		expect(action).toHaveBeenCalledTimes(1);
-		text.value = 'Hi Jonas, the PO is on it.';
-		await flushPromises();
-		vi.advanceTimersByTime(COVERAGE_DEBOUNCE_MS);
-		await flushPromises();
-		expect(action).toHaveBeenCalledTimes(2);
-		expect(action).toHaveBeenLastCalledWith('mail.coverage', {
-			messageId: 'm1',
-			draftText: 'Hi Jonas, the PO is on it.',
-			locale: 'en',
-		});
-		// Only ids the card still has.
-		expect(api().covered.value).toEqual(['ask_2']);
-	});
-
-	it('lets the newest check win over an older one still in flight', async () => {
-		action.mockResolvedValueOnce(CARD);
-		const text = ref('first');
-		const { api } = host(ref(mail()), text);
-		await flushPromises();
-
-		let resolveOld!: (value: unknown) => void;
-		action.mockImplementationOnce(() => new Promise((r) => (resolveOld = r)));
-		const older = api().checkCoverage();
-		text.value = 'second';
-		action.mockResolvedValueOnce({ coveredAskIds: ['ask_1'] });
-		await api().checkCoverage();
-		resolveOld({ coveredAskIds: ['ask_2'] });
-		await older;
-		expect(api().covered.value).toEqual(['ask_1']);
-	});
-
-	it('clears the ticks for an empty draft without asking', async () => {
-		action.mockResolvedValueOnce(CARD);
-		const text = ref('something');
-		const { api } = host(ref(mail()), text);
-		await flushPromises();
-		action.mockResolvedValueOnce({ coveredAskIds: ['ask_1'] });
-		await api().checkCoverage();
-		expect(api().covered.value).toEqual(['ask_1']);
-		text.value = '   ';
-		await api().checkCoverage();
-		expect(api().covered.value).toEqual([]);
-		expect(action).toHaveBeenCalledTimes(2);
-	});
-});
-
-describe('useAnswerCatchUp: one check per AI draft', () => {
-	it('does not check the same text again after the pause once the settle checked it', async () => {
-		vi.useFakeTimers();
-		action.mockResolvedValueOnce(CARD);
-		const text = ref('');
-		const { api } = host(ref(mail()), text);
-		await flushPromises();
-
-		// The AI draft lands: the text changes (arming the paused check) and the
-		// settle checks at once.
-		action.mockResolvedValue({ coveredAskIds: ['ask_1'] });
-		text.value = 'Attached the September invoice.';
-		await nextTick();
-		await api().checkCoverage();
-		vi.advanceTimersByTime(COVERAGE_DEBOUNCE_MS * 2);
-		await flushPromises();
-
-		expect(action.mock.calls.filter((c) => c[0] === 'mail.coverage')).toHaveLength(1);
-
-		// An edit is new text: checked again.
-		text.value = 'Attached the September invoice, PO on it.';
-		await nextTick();
-		vi.advanceTimersByTime(COVERAGE_DEBOUNCE_MS);
-		await flushPromises();
-		expect(action.mock.calls.filter((c) => c[0] === 'mail.coverage')).toHaveLength(2);
-	});
-});
-
-describe('useAnswerCatchUp: the footer note', () => {
-	it('says nothing on an untouched reply, then counts the asks covered', async () => {
-		action.mockResolvedValueOnce(CARD);
-		const text = ref('');
-		const { api } = host(ref(mail()), text);
-		await flushPromises();
-		// "0 of 2 asks covered" on a reply nobody wrote in reads like a warning.
-		expect(api().statusNote.value).toBeUndefined();
-
-		text.value = 'Hi Jonas';
-		expect(api().statusNote.value).toBe('0 of 2 asks covered');
-		action.mockResolvedValueOnce({ coveredAskIds: ['ask_2'] });
-		await api().checkCoverage();
-		expect(api().statusNote.value).toBe('1 of 2 asks covered');
-	});
-
-	it('says nothing without asks', async () => {
-		action.mockResolvedValueOnce({ ...CARD, asks: [] });
-		const { api } = host(ref(mail()), ref('Hi Jonas'));
-		await flushPromises();
-		expect(api().statusNote.value).toBeUndefined();
 	});
 });
 

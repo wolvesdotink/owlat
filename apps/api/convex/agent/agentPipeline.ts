@@ -327,6 +327,16 @@ export const sendApprovedReply = internalAction({
 		// anomaly that slipped past it, and it never auto-sends on uncertainty.
 		// Human-reviewed sends bypass the monitor entirely.
 		if (args.autonomous) {
+			// The item_coverage gate's check again at dispatch (SPEC §6): the draft
+			// or the thread's items may have moved since route time. Holds only
+			// while the gate enforces; in shadow mode it returns no reason.
+			const coverage = await ctx.runQuery(internal.mail.interpret.planGate.dispatchHold, {
+				inboundMessageId: args.inboundMessageId,
+			});
+			if (coverage.reason) {
+				await fail(coverage.reason);
+				return;
+			}
 			const monitor = runReferenceMonitor({
 				inboundFrom: message.from,
 				resolvedRecipient: recipient,

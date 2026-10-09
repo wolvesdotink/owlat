@@ -712,6 +712,12 @@
 				"thresholdMin": "0% (all auto)",
 				"todayCount": "Today: {current} / {max}"
 			},
+			"autonomyItemCoverage": {
+				"title": "Hold replies that miss an open item",
+				"subtitle": "An automatic reply waits for review when it leaves an open request unanswered, says a file is attached that is not, or makes a commitment nobody approved. While this is off, Owlat only notes what it would have held.",
+				"operation": "Save the item check",
+				"saved": "Item check saved"
+			},
 			"autonomyWorkingHours": {
 				"daysLabel": "Days",
 				"fromLabel": "From",
@@ -916,6 +922,26 @@
 				"confirmChange": "Confirm change",
 				"maybeSettled": "A later message may have settled this",
 				"confirmSettled": "Confirm",
+				"pending": {
+					"removed": "removed: {fields}",
+					"nobody": "nobody yet",
+					"us": "you",
+					"field": {
+						"text": "wording",
+						"requester": "asked by",
+						"responsible": "who does it",
+						"beneficiary": "for",
+						"responsibility": "whose turn",
+						"due": "due",
+						"amount": "amount",
+						"options": "choices"
+					},
+					"responsibility": {
+						"us": "yours",
+						"them": "theirs",
+						"unclear": "unclear"
+					}
+				},
 				"review": "needs a look",
 				"duplicate": "possible duplicate",
 				"new": "new",
@@ -1086,6 +1112,7 @@
 			},
 			"more": "+{count} more",
 			"toast": {
+				"confirmed": "Confirmed. You can undo it.",
 				"markedDone": "Marked done. You can undo it.",
 				"reminder": "You'll be reminded tomorrow morning."
 			},
@@ -6449,6 +6476,7 @@
 				"askedBy": "asked by {name} {date}",
 				"assignTo": "Assign to",
 				"claim": "Claim",
+				"closedTitle": "Just closed",
 				"claimed": "It's yours now.",
 				"empty": "Nothing is open for the team.",
 				"formerTeammate": "Former teammate",
@@ -6996,10 +7024,32 @@
 				"attachFile": "Attach {file} to the reply",
 				"attachFailed": "The file could not be attached.",
 				"attachOperation": "Attach file",
-				"covered": "{covered} of {total} ask covered | {covered} of {total} asks covered",
 				"asksCount": "{count} ask | {count} asks",
 				"show": "Show",
 				"hide": "Hide"
+			},
+			"plan": {
+				"title": "Your reply covers",
+				"selected": "{count} of {total} selected",
+				"stanceGroup": "How the reply takes on: {item}",
+				"stance": {
+					"answer": "Answer",
+					"accept": "Accept",
+					"decline": "Decline",
+					"defer": "Defer",
+					"clarify": "Ask"
+				},
+				"fileMissing": "File missing",
+				"status": {
+					"addressed": "{addressed} of {total} addressed",
+					"needsFile": "{count} needs a file | {count} need a file",
+					"promise": "new promise noted: “{text}”"
+				},
+				"banner": {
+					"title": "One thing before sending.",
+					"body": "The draft says “{claim}”, but no file is attached yet.",
+					"pick": "Pick file"
+				}
 			},
 			"aiBar": {
 				"label": "What should the reply say?",
