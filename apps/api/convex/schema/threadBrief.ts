@@ -393,6 +393,8 @@ export const threadBriefTables = {
 		// Wording-only matches of pending transitions still being scanned
 		// (mail/interpret/pendingMatch.ts): the brief stays partial meanwhile.
 		pendingMatchRuns: v.optional(v.number()),
+		// Purge repairs scheduled and not yet recorded (mail/interpret/purgeRepairs.ts).
+		pendingRepairs: v.optional(v.number()),
 		// The last fold read only part of the thread's items or facts (R2): partial.
 		isFoldScanCut: v.optional(v.boolean()),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.

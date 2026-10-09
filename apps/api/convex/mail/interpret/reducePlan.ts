@@ -42,6 +42,7 @@ import {
 	interpretationSourceKey,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
+import { refillableFields } from './redactedRefill';
 import type { ReduceEvidence, ReduceItem, ReduceResult } from './reduceInput';
 
 export { evidenceKey, type EvidenceRef } from './evidence';
@@ -109,6 +110,8 @@ export type ItemPatch = {
 	matched?: ReduceItem[];
 	/** A verified claim promoting a proposal item: its text, parties, due, amount and options replace the item's. */
 	promoteFrom?: ReduceItem;
+	/** A verified claim refilling the fields a purge redacted (`redactedRefill.ts`). */
+	refill?: { claim: ReduceItem; fields: string[] };
 	/** The message date of the transition that set the new status or disposition. */
 	lastTransitionAt?: number;
 	/** The source (and its message time) that set the new status / disposition. */
@@ -279,10 +282,16 @@ export function planReduction(
 				// deadline, amount and options replace the proposal's.
 				p.verify = 'passed';
 				p.promoteFrom = proposal;
-			} else if (proposal.verify === 'passed' && match.redactedFields?.length) {
-				// A message purge redacted its fields (purgeClaims.ts): a verified
-				// claim refills them directly, not through a held update.
-				p.promoteFrom = proposal;
+			} else if (
+				proposal.verify === 'passed' &&
+				refillableFields(match.redactedFields ?? [], proposal).length > 0
+			) {
+				// A message purge redacted fields (purgeClaims.ts): a verified claim
+				// refills exactly those it states, nothing else (redactedRefill.ts).
+				p.refill = {
+					claim: proposal,
+					fields: refillableFields(match.redactedFields ?? [], proposal),
+				};
 			} else if (proposal.verify === 'passed' && isOwnReread) {
 				// A verified re-read of the item's only source updates it in place.
 				p.promoteFrom = proposal;
@@ -297,7 +306,7 @@ export function planReduction(
 			if ((match.status !== 'open' && !isSeenSource) || proposal.isReviewNeeded) {
 				p.isReviewNeeded = true;
 			}
-			if (added.length > 0 || p.fill || p.verify || p.promoteFrom || p.pendingUpdate) {
+			if (added.length > 0 || p.fill || p.verify || p.promoteFrom || p.refill || p.pendingUpdate) {
 				p.activity ??= { type: 'item_changed' };
 			}
 			continue;

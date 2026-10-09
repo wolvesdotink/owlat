@@ -14,6 +14,7 @@
  *   - nothing is ever retired by omission (round 4 M1, `fold.ts`).
  */
 
+import { refillPatch } from './redactedRefill';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { ActivityType, InterpretMode, ItemStatus } from '@owlat/shared/threadBrief';
@@ -366,6 +367,15 @@ async function patchItem(
 			patch.assertion = await sealBodyAtWrite(p.assertion);
 		}
 		if (!same(p.display, item.storedDisplay)) patch.display = await sealDisplay(p.display);
+	} else if (item.refilled) {
+		// Only the redacted fields a verified claim refilled (redactedRefill.ts).
+		const refill = refillPatch(row, item.refilled);
+		Object.assign(patch, refill.patch);
+		if (refill.patch.responsibility) responsibility = refill.patch.responsibility;
+		if (refill.text) {
+			patch.assertion = await sealBodyAtWrite(refill.text.assertion);
+			patch.display = await sealDisplay(refill.text.display);
+		}
 	}
 	const after = { status: item.status, responsibility, verify: item.verify };
 	const listBucket = listBucketOf(after);

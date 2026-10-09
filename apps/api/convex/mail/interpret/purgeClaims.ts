@@ -99,16 +99,6 @@ export function transitionReset(item: Doc<'threadItems'>, purged: PurgedSources)
 	return patch;
 }
 
-/** Does an undo snapshot hold evidence a purged source moved onto the item? Pure. */
-export function isSnapshotPurged(
-	snapshot: Doc<'threadItems'>['confirmedFrom'],
-	purged: PurgedSources
-): boolean {
-	return !!snapshot?.addedEvidenceKeys.some((key) =>
-		purged.keys.has(key.slice(0, key.indexOf('|')))
-	);
-}
-
 async function sealedPair(text: { en: string; de: string }) {
 	return { en: await sealBodyAtWrite(text.en), de: await sealBodyAtWrite(text.de) };
 }
@@ -149,13 +139,59 @@ const SOURCED_FIELDS: Record<string, readonly RedactedItemField[]> = {
 	options: ['options'],
 };
 
+type ProvenanceField = keyof NonNullable<Doc<'threadItems'>['fieldSources']>;
+
+const isStatedParty = (p: { email?: string; name?: string; isUs: boolean } | undefined) =>
+	!!p && (p.isUs || !!p.email || !!p.name);
+
+/**
+ * The provenance fields an item shows a value for: its wording always, the
+ * rest when set. Provenance is complete only when each has a `fieldSources`
+ * stamp (review round 4, F2). Pure.
+ */
+export function populatedFields(item: Doc<'threadItems'>): ProvenanceField[] {
+	const fields: ProvenanceField[] = ['wording'];
+	if (isStatedParty(item.requester)) fields.push('requester');
+	if (isStatedParty(item.responsible)) fields.push('responsible');
+	if (isStatedParty(item.beneficiary)) fields.push('beneficiary');
+	if (item.responsibility !== 'unclear') fields.push('responsibility');
+	if (item.due) fields.push('due');
+	if (item.amount) fields.push('amount');
+	if (item.options?.length) fields.push('options');
+	return fields;
+}
+
+/** The neutral value of each unstamped field (provenance unknown). */
+function neutralOf(fields: readonly ProvenanceField[]): ItemPatch {
+	const unknown = { isUs: false };
+	const patch: ItemPatch = {};
+	for (const field of fields) {
+		if (field === 'requester') {
+			patch.requester = unknown;
+			patch.counterpartyKey = undefined;
+		} else if (field === 'responsible' || field === 'responsibility') {
+			patch.responsible = unknown;
+			patch.responsibility = 'unclear';
+		} else if (field === 'beneficiary') patch.beneficiary = undefined;
+		else if (field === 'due') patch.due = undefined;
+		else if (field === 'amount') patch.amount = undefined;
+		else if (field === 'options') patch.options = undefined;
+	}
+	return patch;
+}
+
 /**
  * The redaction of a surviving item (rule P), ONE path for every purge:
- * with per-field provenance (`fieldSources`) exactly the fields the purged
- * sources set, through `heldSources.redactSourcedFields` (parties unknown,
- * counterparty recomputed, provenance pruned); without it (an item written
- * before round 8) every extracted value, unless a person confirmed the item.
- * Null when nothing shown came from the purged sources.
+ *
+ *  - the shown fields stamped (`fieldSources`) with a purged source go,
+ *    through `heldSources.redactSourcedFields` (parties unknown,
+ *    counterparty recomputed, provenance pruned);
+ *  - when the item's evidence names a purged source and its provenance is
+ *    incomplete (a populated field without a stamp: written before round 8,
+ *    or only partly stamped since), every UNSTAMPED field goes too, unless a
+ *    person confirmed the item (review round 4, F2).
+ *
+ * Null when nothing shown came from (or may have come from) the purged sources.
  */
 async function itemRedaction(
 	ctx: MutationCtx,
@@ -165,41 +201,23 @@ async function itemRedaction(
 	budget: DrainBudget,
 	opts: { isLegacyRedacted: boolean }
 ): Promise<ItemPatch | null> {
-	let fields: RedactedItemField[];
-	let patch: ItemPatch;
-	if (item.fieldSources) {
-		const sourced = redactSourcedFields(item, purged.keys);
-		if (!sourced) return null;
-		fields = [
-			...new Set(
-				Object.keys(item.fieldSources)
-					.filter((f) =>
-						purged.keys.has(item.fieldSources![f as keyof typeof item.fieldSources]!.sourceKey)
-					)
-					.flatMap((f) => SOURCED_FIELDS[f] ?? [])
-			),
-		];
-		patch = { ...sourced.patch };
-	} else {
-		if (!opts.isLegacyRedacted || item.correction?.kind === 'confirmed') return null;
-		fields = [...REDACTED_ITEM_FIELDS];
-		const unknown = { isUs: false };
-		patch = {
-			requester: unknown,
-			responsible: unknown,
-			beneficiary: undefined,
-			responsibility: 'unclear',
-			counterpartyKey: undefined,
-			due: undefined,
-			amount: undefined,
-			options: undefined,
-		};
-	}
+	const sources = item.fieldSources ?? {};
+	const stamped = (Object.keys(sources) as ProvenanceField[]).filter((field) =>
+		purged.keys.has(sources[field]!.sourceKey)
+	);
+	const unstamped = populatedFields(item).filter((field) => !sources[field]);
+	const legacy = opts.isLegacyRedacted && item.correction?.kind !== 'confirmed' ? unstamped : [];
+	if (stamped.length === 0 && legacy.length === 0) return null;
+	const sourced = stamped.length > 0 ? redactSourcedFields(item, purged.keys) : null;
+	const fields = [
+		...new Set([...stamped, ...legacy].flatMap((field) => SOURCED_FIELDS[field] ?? [])),
+	];
 	const isWordingGone = fields.includes('assertion');
 	const isFacetsKept =
 		!isWordingGone || (await isNamedBySurvivingRecord(ctx, item._id, evidence, budget));
 	return {
-		...patch,
+		...neutralOf(legacy),
+		...sourced?.patch,
 		...(isWordingGone
 			? {
 					assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
@@ -246,16 +264,21 @@ export async function stripItem(
 	const held = isPendingNamed
 		? { pendingUpdate: strippedHeld(pending!, pendingEvidence, purged) }
 		: {};
-	const isSnapshotGone =
-		isSnapshotPurged(item.confirmedFrom, purged) || !!redaction || isPendingNamed;
-	const snapshot = item.confirmedFrom && isSnapshotGone ? { confirmedFrom: undefined } : {};
+	// Any erasure in the thread ends undo on every item (review round 4, F1):
+	// a snapshot may hold a value the purged message once set.
+	const snapshot = item.confirmedFrom ? { confirmedFrom: undefined } : {};
 	const reset = transitionReset(item, purged);
 	const stamp = { revision: item.revision + 1, updatedAt: Date.now() };
 	if (!isNamedByEvidence) {
 		// No evidence of the purged source, but a status or disposition it set
 		// (a bounced send's `failed` names the send, not the item's evidence),
 		// held changes, a confirmation or a shown field it proposed.
-		if (!reset && !isPendingNamed && !redaction) return 'untouched';
+		if (!reset && !isPendingNamed && !redaction) {
+			// Untouched but for its undo snapshot, which goes (no revision: undo
+			// just becomes unavailable).
+			if (item.confirmedFrom) await ctx.db.patch(item._id, { confirmedFrom: undefined });
+			return 'untouched';
+		}
 		await writeItemChange(ctx, ref, item, {
 			...reset,
 			...held,

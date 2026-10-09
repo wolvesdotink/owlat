@@ -149,8 +149,8 @@ describe('message purge', () => {
 			// Bumped once, when the purge started (a re-read it schedules must not be erased).
 			deletionEpoch: 1,
 			interpretationRevision: 2,
-			// A claim survived on less evidence: incomplete until the thread is re-read.
-			completeness: 'partial',
+			// Derived, not forced: no surviving source has a snapshot to re-read, no repair is outstanding.
+			completeness: 'none',
 			sourceCounts: { complete: 0, partial: 0, failed: 0, unreadable: 0, skipped: 0 },
 			// The deleted items left the counters; the redacted survivor reads `unclear`, the reopened one `us`.
 			itemCounts: expect.objectContaining({ us: 1, unclear: 1, closed: 0 }),
