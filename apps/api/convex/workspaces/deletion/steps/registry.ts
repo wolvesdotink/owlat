@@ -65,6 +65,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	semanticFiles: semanticFilesStep,
 	mailAttachments: makeSweepStep('mailAttachments'),
 	mailAttachmentBackfillJobs: makeSweepStep('mailAttachmentBackfillJobs'),
+	interpretBackfillJobs: makeSweepStep('interpretBackfillJobs'),
 	mailBodySearchBackfillJobs: makeSweepStep('mailBodySearchBackfillJobs'),
 	mailMessageBodies: makeSweepStep('mailMessageBodies'),
 	mailMessages: mailMessagesStep,

@@ -18,10 +18,36 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../../_generated/server';
+import { internalQuery, type QueryCtx } from '../../_generated/server';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { computeBudgetStatus } from '../../analytics/spendBudget';
 import { interpretModeValidator } from '../../lib/validators/threadBrief';
+import type { InterpretMode } from '@owlat/shared/threadBrief';
+
+export type InterpretGateVerdict =
+	| { isAllowed: true }
+	| { isAllowed: false; code: 'ai_off' | 'budget' };
+
+/**
+ * The gate itself, for a query or a mutation: the run checks it before the
+ * model call (`checkAllowed`), and the backfill and the lazy first-open
+ * interpretation check it before they schedule anything (`backfill.ts`,
+ * `lazy.ts`), so a spent budget never queues work it would refuse.
+ */
+export async function interpretGate(
+	ctx: QueryCtx,
+	mode: InterpretMode
+): Promise<InterpretGateVerdict> {
+	if (!(await isFeatureEnabled(ctx, 'ai'))) return { isAllowed: false, code: 'ai_off' };
+	try {
+		const budget = await computeBudgetStatus(ctx);
+		const isWithin = mode === 'brief' ? budget.advisoryAllowed : budget.autonomousAutoSendAllowed;
+		if (!isWithin) return { isAllowed: false, code: 'budget' };
+	} catch {
+		// A budget that cannot be computed does not stop interpretation.
+	}
+	return { isAllowed: true };
+}
 
 export const checkAllowed = internalQuery({
 	args: { mode: interpretModeValidator },
@@ -32,17 +58,5 @@ export const checkAllowed = internalQuery({
 			code: v.union(v.literal('ai_off'), v.literal('budget')),
 		})
 	),
-	handler: async (ctx, args) => {
-		if (!(await isFeatureEnabled(ctx, 'ai')))
-			return { isAllowed: false as const, code: 'ai_off' as const };
-		try {
-			const budget = await computeBudgetStatus(ctx);
-			const isWithin =
-				args.mode === 'brief' ? budget.advisoryAllowed : budget.autonomousAutoSendAllowed;
-			if (!isWithin) return { isAllowed: false as const, code: 'budget' as const };
-		} catch {
-			// A budget that cannot be computed does not stop interpretation.
-		}
-		return { isAllowed: true as const };
-	},
+	handler: (ctx, args): Promise<InterpretGateVerdict> => interpretGate(ctx, args.mode),
 });

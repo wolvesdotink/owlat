@@ -1,18 +1,18 @@
 'use node';
 
 /**
- * In-inbox AI for Postbox: thread summarization + suggested replies, built on
- * the shared LLM seam (lib/llmProvider + lib/llm/dispatch). User-triggered and
- * advisory (output is shown to the user, never auto-sent), so the thread body —
- * which is attacker-controlled inbound email — is framed as data, not
- * instructions, in the system prompt.
+ * In-inbox AI for Postbox: suggested replies, Ask about this thread, inline
+ * completion and selection rewrites, built on the shared LLM seam
+ * (lib/llmProvider + lib/llm/dispatch). A thread's summary is its brief
+ * (mail/interpret), not a call here. User-triggered and advisory (output is
+ * shown to the user, never auto-sent), so the thread body, which is
+ * attacker-controlled inbound email, is framed as data, not instructions, in
+ * the system prompt.
  */
 
 import { v } from 'convex/values';
 import { authedAction } from '../../lib/authedFunctions';
 import { internal } from '../../_generated/api';
-import type { Doc } from '../../_generated/dataModel';
-import type { ActionCtx } from '../../_generated/server';
 import { resolveLanguageModel, resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmText } from '../../lib/llm/dispatch';
 import { interactiveLlmPolicy } from '../../lib/llm/retryPolicy';
@@ -24,36 +24,6 @@ import { SYSTEM_GUARD } from './promptGuards';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { throwNotFound } from '../../_utils/errors';
-
-/** System prompt for extractive thread summarization (2–4 bullets). */
-const SUMMARIZE_SYSTEM =
-	`${SYSTEM_GUARD} You summarize email threads concisely as 2–4 short bullet ` +
-	`points covering the key points, any decisions, and action items or questions ` +
-	`directed at the reader. Plain text, no preamble.`;
-
-/**
- * Run the cheap-tier summarizer over a thread's messages and record spend.
- * Shared by the on-demand {@link summarizeThread} action and the cached
- * {@link getOrGenerateThreadSummary} strip so the flatten + SYSTEM_GUARD framing
- * lives in exactly one place. Advisory + extractive, so it runs on the fast tier
- * the task router models for `summarize` (reply *drafting* is the only Postbox AI
- * that needs the capable tier).
- */
-async function runThreadSummary(ctx: ActionCtx, messages: Doc<'mailMessages'>[]): Promise<string> {
-	const [model, transcript] = await Promise.all([
-		resolveLanguageModel(ctx, 'summarize'),
-		buildThreadTranscript(messages, THREAD_SUMMARY),
-	]);
-	const { text, tokenUsage, modelUsed } = await runLlmText({
-		model,
-		system: SUMMARIZE_SYSTEM,
-		prompt: `Summarize this email thread:\n\n${transcript}`,
-		temperature: 0.2,
-		...interactiveLlmPolicy('reply'),
-	});
-	await scheduleLlmSpend(ctx, 'postbox_summarize', tokenUsage, modelUsed);
-	return text.trim();
-}
 
 /** Hard cap on an inline completion — Superhuman-style, one short continuation. */
 const MAX_COMPLETION_CHARS = 140;
@@ -107,61 +77,6 @@ export function postProcessCompletion(raw: string): string {
 	if (sentenceEnd !== -1) text = text.slice(0, sentenceEnd + 1);
 	return text.slice(0, MAX_COMPLETION_CHARS).replace(/\s+$/, '');
 }
-
-/**
- * Cached thread summary for the long-thread summary strip. Returns the persisted
- * summary when it is still fresh (its `messageCount` matches the live thread),
- * otherwise regenerates on the cheap tier and persists the result so the next
- * open is warm. Edge-triggered: a new inbound message bumps the thread's
- * messageCount, which invalidates the cache exactly once — never a hot loop.
- *
- * Fully advisory + fail-soft: any AI failure (dispatch error, empty output) or a
- * missing/unreadable thread returns `null` and caches nothing, so the strip just
- * disappears and the reader is unaffected.
- */
-// authz: ownership enforced by mail.mailbox.messages.listThreadMessages (returns null for
-// a non-owned message); org membership enforced by authedAction; the `ai` flag +
-// per-user rate limit enforced by aiGate.assertAiAllowed.
-export const getOrGenerateThreadSummary = authedAction({
-	args: { messageId: v.id('mailMessages') },
-	handler: async (
-		ctx,
-		args
-	): Promise<{ summary: string; messageCount: number; generatedAt: number } | null> => {
-		const thread = await gateAndLoadThread(ctx, args.messageId);
-		if (!thread || thread.messages.length === 0) return null;
-		const messageCount = thread.messages.length;
-		// Cache hit: serve the persisted summary without a dispatch call.
-		const cache = thread.thread?.summaryCache;
-		if (cache && cache.messageCount === messageCount) {
-			return {
-				summary: cache.summary,
-				messageCount: cache.messageCount,
-				generatedAt: cache.generatedAt,
-			};
-		}
-		// Miss: regenerate (bounded, cheap tier). A dispatch failure or empty
-		// output caches nothing and returns null — the strip fails soft.
-		let summary: string;
-		try {
-			summary = await runThreadSummary(ctx, thread.messages);
-		} catch {
-			return null;
-		}
-		if (!summary) return null;
-		const generatedAt = Date.now();
-		const threadId = thread.thread?._id;
-		if (threadId) {
-			await ctx.runMutation(internal.mail.ai.summaryCache.setThreadSummaryCache, {
-				threadId,
-				summary,
-				messageCount,
-				generatedAt,
-			});
-		}
-		return { summary, messageCount, generatedAt };
-	},
-});
 
 /**
  * Assemble the prompt for {@link suggestReplies}. Pure + exported so the unit
@@ -281,7 +196,7 @@ export function buildAskThreadPrompt(args: {
  * the caller shows the answer inline and never auto-acts on it. Chose the
  * single-turn action over reusing the full assistant runner because it is far
  * less new code (one bounded LLM call, no conversation persistence / tool loop),
- * while still grounding on the same bounded thread flatten as the summarizer.
+ * while still grounding on the same bounded thread flatten as suggested replies.
  */
 // authz: ownership enforced by mail.mailbox.messages.listThreadMessages (returns null for
 // a non-owned message); org membership enforced by authedAction; the `ai` flag +

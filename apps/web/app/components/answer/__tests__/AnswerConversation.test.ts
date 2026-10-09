@@ -6,7 +6,7 @@
  *     as one-line rows (the thread's first message too, unlike the reader);
  *   - "Full conversation" opens everything loaded, and going back restores
  *     the summary set;
- *   - the catch-up card has a slot at the top, and the top bar gets the count.
+ *   - the brief has a slot at the top, and the top bar gets the count.
  *
  * The thread paging composables are replaced by a fixed page: the paging has
  * its own suites; what is under test is what this column does with it.
@@ -162,12 +162,12 @@ describe('AnswerConversation', () => {
 		expect(expandedIds(w)).toEqual(['m1', 'm3', 'm5']);
 	});
 
-	it('keeps a place for the catch-up card and reports the count', () => {
-		const w = mountColumn({ 'catch-up': '<aside data-testid="catch-up">Catching up</aside>' });
+	it('keeps a place for the brief and reports the count', () => {
+		const w = mountColumn({ brief: '<aside data-testid="brief">Overview</aside>' });
 		const children = w.get('[data-testid="answer-conversation"]').element.children;
 		// The card comes before the first message.
 		const order = Array.from(children).map((el) => el.getAttribute('data-testid'));
-		expect(order.indexOf('catch-up')).toBeLessThan(order.indexOf('card'));
+		expect(order.indexOf('brief')).toBeLessThan(order.indexOf('card'));
 		expect(w.emitted('count')?.[0]).toEqual([5]);
 	});
 
@@ -181,7 +181,7 @@ describe('AnswerConversation', () => {
 		const w = mount(AnswerConversation, {
 			props: { message: THREAD[4]! as never },
 			slots: {
-				'catch-up': (props: { reveal: (id: string) => Promise<void> }) => {
+				brief: (props: { reveal: (id: string) => Promise<void> }) => {
 					reveal = props.reveal;
 					return h('aside');
 				},

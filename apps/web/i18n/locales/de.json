@@ -1046,6 +1046,15 @@
 				"attach": "{name} an die Antwort anhängen",
 				"open": "Die Nachricht mit {name} öffnen"
 			},
+			"elsewhere": {
+				"title": "Mit {name} in anderen Gesprächen",
+				"inThread": "in „{subject}“",
+				"forYou": "für dich",
+				"theirs": "bei der Gegenseite",
+				"unclear": "unklar, wer",
+				"due": "fällig {date}",
+				"more": "Weitere offene Punkte mit dieser Person in anderen Gesprächen."
+			},
 			"incomplete": {
 				"partialLead": "Teilweise gelesen.",
 				"partialCount": "{done} von {total} Nachrichten sind in diesem Überblick.",
@@ -1119,7 +1128,8 @@
 			"operations": {
 				"markSeen": "Überblick als gesehen markieren",
 				"saveView": "Ansicht des Verlaufs speichern",
-				"react": "Punkt aktualisieren"
+				"react": "Punkt aktualisieren",
+				"ensure": "Überblick vorbereiten"
 			},
 			"evidence": {
 				"label": "Quelle zeigen: {name}, {date}",
@@ -4429,12 +4439,7 @@
 				"askFailed": "Das ließ sich gerade nicht beantworten. Versuche es gleich noch einmal.",
 				"askOperation": "Zu diesem Thread fragen",
 				"askPlaceholder": "Zu diesem Thread fragen…",
-				"less": "weniger",
-				"more": "mehr",
-				"summarizeOperation": "Thread zusammenfassen",
-				"summaryLabel": "Zusammenfassung:",
-				"thinking": "Denkt nach…",
-				"toggleSummaryDetail": "Details der Zusammenfassung umschalten"
+				"thinking": "Denkt nach…"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} benötigt ein App-Passwort",
@@ -5994,6 +5999,19 @@
 				"threadViewHelp": "Überblick oder der ganze E-Mail-Verlauf. Wechselst du in einem Verlauf, merkt er sich das. Nur für persönliche Postfächer.",
 				"threadViewConversation": "E-Mail-Verlauf",
 				"threadViewOperation": "Speichern, womit Verläufe öffnen",
+				"backfillLabel": "Überblicke für neuere E-Mails vorbereiten",
+				"backfillHelp": "Liest deine aktiven Gespräche der letzten 30 Tage, damit sie mit einem Überblick öffnen. Ältere werden vorbereitet, wenn du sie zum ersten Mal öffnest. Das nutzt das KI-Budget.",
+				"backfillStart": "Vorbereiten",
+				"backfillResume": "Fortsetzen",
+				"backfillCancel": "Stoppen",
+				"backfillRunning": "Wird vorbereitet … bisher {count} Gespräch | Wird vorbereitet … bisher {count} Gespräche",
+				"backfillDone": "Fertig: {count} Gespräch vorbereitet | Fertig: {count} Gespräche vorbereitet",
+				"backfillPausedBudget": "Pausiert: das KI-Budget ist vorerst aufgebraucht.",
+				"backfillPausedOff": "Pausiert: KI ist ausgeschaltet.",
+				"backfillPausedCap": "Nach {count} Gesprächen pausiert. Setz es fort, um weiterzumachen.",
+				"backfillCancelled": "Gestoppt. Setz es fort, um dort weiterzumachen, wo es aufgehört hat.",
+				"backfillOperation": "Überblicke vorbereiten",
+				"backfillCancelOperation": "Vorbereitung der Überblicke stoppen",
 				"sendSoundLabel": "Ton beim Senden abspielen",
 				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
 				"swipeLeftLabel": "Nach links wischen",
@@ -7012,22 +7030,9 @@
 				"openInPostbox": "In Postbox öffnen",
 				"skipMissing": "Weiter zum nächsten Eintrag"
 			},
-			"catchUp": {
-				"title": "Kurz zusammengefasst",
-				"meta": "{count} Nachricht seit {date} | {count} Nachrichten seit {date}",
-				"marker": "Nachricht von {sender} vom {date} anzeigen",
-				"loading": "Die Unterhaltung wird zusammengefasst",
-				"asksTitle": "Angefragt wird",
-				"askCovered": "Im Entwurf beantwortet:",
-				"askOpen": "Noch offen:",
-				"filesTitle": "Dateien in dieser Unterhaltung",
-				"attachHint": "Klicken, um sie an die Antwort anzuhängen, oder in die Antwort ziehen",
-				"attachFile": "{file} an die Antwort anhängen",
+			"threadFiles": {
 				"attachFailed": "Die Datei konnte nicht angehängt werden.",
-				"attachOperation": "Datei anhängen",
-				"asksCount": "{count} Anfrage | {count} Anfragen",
-				"show": "Anzeigen",
-				"hide": "Ausblenden"
+				"attachOperation": "Datei anhängen"
 			},
 			"plan": {
 				"title": "Deine Antwort umfasst",

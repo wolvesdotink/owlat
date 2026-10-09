@@ -156,6 +156,11 @@ export const quiesceMailboxes: MemberPhaseRunner = (phase) =>
 					.take(n),
 			(n) =>
 				ctx.db
+					.query('interpretBackfillJobs')
+					.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
+					.take(n),
+			(n) =>
+				ctx.db
 					.query('mailFilterRunJobs')
 					.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
 					.take(n),

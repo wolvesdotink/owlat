@@ -228,7 +228,7 @@ async function bookingThreadOf(
 	const items = await ctx.db
 		.query('threadItems')
 		.withIndex('by_counterparty', (q) =>
-			q.eq('counterpartyKey', normalizeEmail(booking.guestEmail))
+			q.eq('counterpartyKey', normalizeEmail(booking.guestEmail)).eq('status', 'open')
 		)
 		.order('desc')
 		.take(BOOKING_ITEM_SCAN);

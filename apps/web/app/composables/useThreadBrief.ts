@@ -4,7 +4,9 @@
  * Overview, so "new since you last looked" moves only on a real look.
  *
  * `brief` is `undefined` while loading, `null` when the server has nothing
- * (no access, or no brief row), else the view. A team-mode view (actions,
+ * (no access, or no brief row), else the view. A thread with nothing
+ * interpreted yet (`completeness: 'none'`) is handed to the first-open
+ * interpretation (`mail.interpret.lazy.ensure`, D5) once. A team-mode view (actions,
  * shared mailbox) is passed through: the reader decides not to show it.
  */
 import type { Id } from '@owlat/api/dataModel';
@@ -21,6 +23,7 @@ import {
 	type PagedBrief,
 } from '~/utils/threadBriefPages';
 import { useConvexQueryMap } from '~/composables/useConvexQueryMap';
+import { useBriefEnsure } from '~/composables/threadBrief/useBriefEnsure';
 
 export function useThreadBrief(opts: {
 	/** The thread, or null to read nothing (a shared mailbox, no thread id yet). */
@@ -87,6 +90,13 @@ export function useThreadBrief(opts: {
 		const reason = b.gap?.reason;
 		if (reason === 'short' || reason === 'security') return 'original';
 		return 'available';
+	});
+
+	// An older thread with nothing interpreted yet (D5): ask for its
+	// interpretation once; the Conversation shows until the brief arrives.
+	useBriefEnsure({
+		threadRef: () => threadRef.value,
+		completeness: () => view.value?.completeness,
 	});
 
 	const markSeenOp = useBackendOperation(api.mail.interpret.brief.markSeen, {

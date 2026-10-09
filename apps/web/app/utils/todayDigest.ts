@@ -60,7 +60,7 @@ export interface TodayChange {
 	subject: string;
 	inboxId: string;
 	newMessages: number;
-	/** A fresh thread summary, when the summary cache still covers the thread. */
+	/** The thread brief's "Latest update" line (personal mailboxes), when there is one. */
 	summary: string | null;
 	latest: TodaySource | null;
 	sources: TodaySource[];
@@ -98,7 +98,6 @@ export interface MailboxDigest {
 		lastMessageAt: number;
 		snippet: string;
 		summary: string | null;
-		summaryRequest?: SummaryRequest;
 		sources: DigestSource[];
 	}>;
 	arrived: Array<{
@@ -112,39 +111,10 @@ export interface MailboxDigest {
 		bucket?: 'important' | 'routine';
 		reason?: ImportantReason | null;
 		lastMessageAt: number;
-		summaryRequest?: SummaryRequest;
 		sources: DigestSource[];
 	}>;
 	filed: Record<FiledCategory, number>;
 	filedSenders?: Partial<Record<FiledCategory, string[]>>;
-}
-
-/** What to ask the summarizer for when a line has no sentence yet. */
-export interface SummaryRequest {
-	messageId: string | null | undefined;
-	sinceCount: number;
-}
-
-/** Lines still showing a bare subject, as summarizer requests (deduped, newest first). */
-export function missingSummaries(
-	digests: ReadonlyArray<MailboxDigest | null | undefined>
-): Array<{ messageId: string; sinceCount: number }> {
-	const out: Array<{ messageId: string; sinceCount: number; at: number }> = [];
-	for (const digest of digests) {
-		if (!digest) continue;
-		for (const item of [...digest.changed, ...digest.arrived]) {
-			const request = item.summaryRequest;
-			if (item.summary || !request?.messageId) continue;
-			out.push({
-				messageId: request.messageId,
-				sinceCount: request.sinceCount,
-				at: item.lastMessageAt,
-			});
-		}
-	}
-	return out
-		.sort((a, b) => b.at - a.at)
-		.map(({ messageId, sinceCount }) => ({ messageId, sinceCount }));
 }
 
 interface DigestSource {

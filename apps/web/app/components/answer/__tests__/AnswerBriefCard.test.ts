@@ -3,8 +3,7 @@
  * Answer mode's view of the thread (SPEC §7):
  *   - a personal thread: the brief with selectable items, all open ones selected;
  *   - a shared (team) mailbox: the actions only (for the team, waiting on
- *     others), never a latest update or "where things stand", and never the
- *     catch-up summary card.
+ *     others), never a latest update or "where things stand".
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
@@ -40,7 +39,6 @@ function mountCard() {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiSkeleton: Plain, UiAvatar: Plain, PostboxOverflowMenu: Plain },
-			stubs: { CatchUpCard: { template: '<div data-testid="catch-up" />' } },
 		},
 	});
 }
@@ -77,7 +75,6 @@ describe('AnswerBriefCard', () => {
 		expect(text).toContain('Waiting on others');
 		expect(text).not.toContain('Latest update');
 		expect(text).not.toContain('Where things stand');
-		expect(w.find('[data-testid="catch-up"]').exists()).toBe(false);
 		expect(w.find('[data-testid="thread-brief"]').exists()).toBe(false);
 	});
 

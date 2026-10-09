@@ -11,12 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { nameFromAddress, resolveInboxIdentities } from '../inboxIdentity';
 import { compareAnswerItems } from '../answerQueue';
-import {
-	buildTodayModel,
-	missingSummaries,
-	parseFromHeader,
-	type MailboxDigest,
-} from '../todayDigest';
+import { buildTodayModel, parseFromHeader, type MailboxDigest } from '../todayDigest';
 import { parsePeekKey, peekKey, threadHref } from '../todayPeek';
 
 const row = (over: Partial<Parameters<typeof resolveInboxIdentities>[0][number]>) => ({
@@ -225,55 +220,6 @@ describe('today model', () => {
 		});
 		expect(model.also.length + model.alsoHidden).toBe(20);
 		expect(model.alsoHidden).toBeGreaterThan(0);
-	});
-
-	it('asks the summarizer only for lines still showing a subject, newest first', () => {
-		expect(
-			missingSummaries([
-				digest({
-					arrived: [
-						{
-							threadId: 'a',
-							mailboxId: 'mb',
-							subject: 'A',
-							snippet: '',
-							summary: 'done',
-							category: null,
-							lastMessageAt: 5,
-							summaryRequest: { messageId: 'ma', sinceCount: 0 },
-							sources: [],
-						},
-						{
-							threadId: 'b',
-							mailboxId: 'mb',
-							subject: 'B',
-							snippet: '',
-							summary: null,
-							category: null,
-							lastMessageAt: 1,
-							summaryRequest: { messageId: 'mb1', sinceCount: 0 },
-							sources: [],
-						},
-					],
-					changed: [
-						{
-							threadId: 'c',
-							mailboxId: 'mb',
-							subject: 'C',
-							newMessages: 2,
-							lastMessageAt: 9,
-							snippet: '',
-							summary: null,
-							summaryRequest: { messageId: 'mc', sinceCount: 3 },
-							sources: [],
-						},
-					],
-				}),
-			])
-		).toEqual([
-			{ messageId: 'mc', sinceCount: 3 },
-			{ messageId: 'mb1', sinceCount: 0 },
-		]);
 	});
 
 	it('reads a display name out of a From header', () => {

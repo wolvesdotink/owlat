@@ -1046,6 +1046,15 @@
 				"attach": "Attach {name} to the reply",
 				"open": "Open the message with {name}"
 			},
+			"elsewhere": {
+				"title": "With {name} elsewhere",
+				"inThread": "in “{subject}”",
+				"forYou": "for you",
+				"theirs": "on their side",
+				"unclear": "unclear who",
+				"due": "due {date}",
+				"more": "More open items with them in other conversations."
+			},
 			"incomplete": {
 				"partialLead": "Partly read.",
 				"partialCount": "{done} of {total} messages are in this overview.",
@@ -1119,7 +1128,8 @@
 			"operations": {
 				"markSeen": "Mark the overview as seen",
 				"saveView": "Save the thread view",
-				"react": "Update the item"
+				"react": "Update the item",
+				"ensure": "Prepare the overview"
 			},
 			"evidence": {
 				"label": "Show the source: {name}, {date}",
@@ -4429,12 +4439,7 @@
 				"askFailed": "Couldn't answer that right now. Try again in a moment.",
 				"askOperation": "Ask about this thread",
 				"askPlaceholder": "Ask about this thread…",
-				"less": "less",
-				"more": "more",
-				"summarizeOperation": "Summarize thread",
-				"summaryLabel": "Summary:",
-				"thinking": "Thinking…",
-				"toggleSummaryDetail": "Toggle summary detail"
+				"thinking": "Thinking…"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} needs an app password",
@@ -5994,6 +5999,19 @@
 				"threadViewHelp": "Overview or the whole conversation. Switching inside a thread remembers that thread. Personal mailboxes only.",
 				"threadViewConversation": "Conversation",
 				"threadViewOperation": "Save where threads open",
+				"backfillLabel": "Prepare overviews for recent mail",
+				"backfillHelp": "Reads your active conversations from the last 30 days so they open on an overview. Older ones are prepared when you first open them. This uses the AI budget.",
+				"backfillStart": "Prepare",
+				"backfillResume": "Resume",
+				"backfillCancel": "Stop",
+				"backfillRunning": "Preparing… {count} conversation so far | Preparing… {count} conversations so far",
+				"backfillDone": "Done: {count} conversation prepared | Done: {count} conversations prepared",
+				"backfillPausedBudget": "Paused: the AI budget is used up for now.",
+				"backfillPausedOff": "Paused: AI is turned off.",
+				"backfillPausedCap": "Paused after {count} conversations. Resume to continue.",
+				"backfillCancelled": "Stopped. Resume to continue where it left off.",
+				"backfillOperation": "Prepare overviews",
+				"backfillCancelOperation": "Stop preparing overviews",
 				"sendSoundLabel": "Play sound when sending",
 				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
 				"swipeLeftLabel": "Swipe left on a message",
@@ -7012,22 +7030,9 @@
 				"openInPostbox": "Open in Postbox",
 				"skipMissing": "Skip to the next item"
 			},
-			"catchUp": {
-				"title": "Catching up",
-				"meta": "{count} message since {date} | {count} messages since {date}",
-				"marker": "Show the message from {sender}, {date}",
-				"loading": "Catching up on this conversation",
-				"asksTitle": "They are asking for",
-				"askCovered": "Covered by your draft:",
-				"askOpen": "Not covered yet:",
-				"filesTitle": "Files in this thread",
-				"attachHint": "Click to attach it to the reply, or drag it into the reply",
-				"attachFile": "Attach {file} to the reply",
+			"threadFiles": {
 				"attachFailed": "The file could not be attached.",
-				"attachOperation": "Attach file",
-				"asksCount": "{count} ask | {count} asks",
-				"show": "Show",
-				"hide": "Hide"
+				"attachOperation": "Attach file"
 			},
 			"plan": {
 				"title": "Your reply covers",

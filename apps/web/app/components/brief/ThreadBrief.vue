@@ -2,8 +2,8 @@
 /**
  * The Overview of a personal Postbox thread (SPEC §7, plan §4.1): what is new,
  * where things stand, what is asked of you, what you are waiting for, and
- * what was done. Replaces the one-line AI strip in the reader and the
- * catch-up card in Answer mode.
+ * what was done. It is the thread's one summary, in the reader and in Answer
+ * mode (ADR-0072).
  *
  * Presentational over semantic emits: the host runs reactions, shows cited
  * quotes and attaches files. Every line carries a source marker; the markers

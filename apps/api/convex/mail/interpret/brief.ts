@@ -19,7 +19,7 @@
  */
 
 import { v } from 'convex/values';
-import { normalizeCatchUpLocale } from '../ai/catchUpPrompt';
+import { appLocaleOf } from '@owlat/shared/appLocales';
 import { publicQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { throwInvalidInput } from '../../_utils/errors';
@@ -69,7 +69,7 @@ export const get = publicQuery({
 	returns: v.union(threadBriefViewValidator, v.null()),
 	handler: async (ctx, args): Promise<ThreadBriefView | null> => {
 		const ref = args.threadRef;
-		const locale = normalizeCatchUpLocale(args.locale);
+		const locale = appLocaleOf(args.locale);
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session) return null;
 

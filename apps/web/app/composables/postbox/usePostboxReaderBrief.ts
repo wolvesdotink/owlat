@@ -202,6 +202,8 @@ export function usePostboxReaderBrief(opts: {
 	return {
 		isShared,
 		isSigned,
+		/** The personal thread the brief reads, or null (a shared mailbox). */
+		threadRef: read.threadRef,
 		brief: read.brief,
 		itemsState: read.itemsState,
 		isClosedTruncated: read.isClosedTruncated,

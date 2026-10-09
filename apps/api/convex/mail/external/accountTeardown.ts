@@ -38,7 +38,7 @@ import { cancelActiveMigrationForAccount } from './accountShared';
 import { deleteStoredAccessToken } from './accessTokenStore';
 import { listMailboxesOnAddress } from '../mailbox/addressResolution';
 import type { Doc } from '../../_generated/dataModel';
-import { deleteMailThreadCatchUps } from '../ai/catchUpStore';
+import { deleteMailThreadCatchUps } from '../legacySummaryRows';
 import { purgeThreadBrief } from '../interpret/purgeRun';
 import { deleteResourceUploads, mailThreadUploadKey } from '../../storage/uploads';
 import { deleteAskSessionsForDraft } from '../ai/composeDraftStore';

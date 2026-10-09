@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * The reader's Overview of a personal thread (SPEC §7, plan §4.1): the counts
- * line, the thread brief, the way to the whole conversation, and the thread's
+ * line, the thread brief, the open items with the same people in other
+ * threads (plan §4.3), the way to the whole conversation, and the thread's
  * verbs: Reply (covering every open item), Archive, Snooze and "Ask about
  * this thread", whose grounded Q&A opens right here (it used to live in the
  * one-line AI strip this replaces).
@@ -14,6 +15,7 @@ import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import { briefShortDate } from '~/utils/threadBriefContext';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import ThreadBrief from '~/components/brief/ThreadBrief.vue';
+import BriefElsewhere from '~/components/brief/BriefElsewhere.vue';
 
 const props = defineProps<{
 	/** The reader's brief state (usePostboxReaderBrief). */
@@ -105,6 +107,11 @@ const replyLabel = computed(() =>
 			@open-conversation="state.setView('conversation')"
 		/>
 
+		<BriefElsewhere
+			:thread-ref="state.threadRef.value"
+			class="rounded-lg border border-border-subtle bg-bg-elevated px-3.5 py-3"
+		/>
+
 		<button
 			type="button"
 			class="flex w-full items-center gap-2.5 rounded-lg border border-border-subtle bg-bg-elevated px-3.5 py-2.5 text-left text-sm text-text-secondary hover:bg-bg-surface"
@@ -140,12 +147,6 @@ const replyLabel = computed(() =>
 			>
 		</div>
 
-		<PostboxAiStrip
-			v-if="asking && latest"
-			:message-id="latest._id"
-			:warrants-summary="false"
-			ask-only
-			@close="asking = false"
-		/>
+		<PostboxAiStrip v-if="asking && latest" :message-id="latest._id" @close="asking = false" />
 	</div>
 </template>
