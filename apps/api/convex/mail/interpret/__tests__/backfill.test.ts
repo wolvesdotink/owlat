@@ -19,10 +19,16 @@ import { seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.te
 import { HISTORY_PAGE, isActiveThread, mailSourceOf } from '../backfillSources';
 import { historyGapOf } from '../brief';
 import { briefCompleteness } from '../purgeRepairs';
-import { reduceItem, reduceResult } from './interpret.testlib';
 import { captureTeamReplySnapshot } from '../sources';
 import { BACKFILL_WINDOW_MS, MAX_THREADS_PER_RUN, THREADS_PER_BATCH } from '../backfill';
-import { addMessageToThread, modules, seedTeamThread, type Test } from './interpret.testlib';
+import {
+	addMessageToThread,
+	modules,
+	reduceItem,
+	reduceResult,
+	seedTeamThread,
+	type Test,
+} from './interpret.testlib';
 
 const session = vi.hoisted(() => ({
 	current: { userId: 'user-A', role: 'member', activeOrganizationId: 'org-1' } as {
