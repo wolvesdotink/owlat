@@ -415,46 +415,40 @@ describe('answer', () => {
 	});
 });
 
-describe('a 0.6.10 caller (N-1 shim, #1224)', () => {
+describe('the legacy attribution sentence (#1224, #1265)', () => {
 	const LEGACY =
 		'Generated from an email from example.org — Owlat will never ask for your password.';
 
-	it('stores the questions it sends back without the legacy attribution sentence', async () => {
+	it('is rejected on questions written back to a session', async () => {
+		// 0.6.11 accepted `attribution` in these arguments for one release, so a
+		// 0.6.10 `answer` action still in flight could finish. No supported caller
+		// sends it any more: the arguments are the stored shape again.
 		const t = await makeT();
 		llm.slots = [slot('date_time', 'When will payment arrive?')];
 		const { target } = await replyDraft(t);
 		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
 		const stored = await t.run(async (ctx) => (await ctx.db.get(asked.sessionId))!.questions);
-		// A 0.6.10 `answer` action that read the session before 0066 converted it
-		// claims the session, then writes back the questions it holds, sentence
-		// and all, after this release is deployed.
 		const held = stored.map((q) => ({ ...q, attribution: LEGACY }));
-		await t.mutation(internal.mail.ai.composeDraftStore.updateSession, {
-			sessionId: asked.sessionId,
-			status: 'drafting',
-			expectStatus: 'asking',
-		});
 
-		const updated = await t.mutation(internal.mail.ai.composeDraftStore.updateSession, {
-			sessionId: asked.sessionId,
-			status: 'asking',
-			expectStatus: 'drafting',
-			questions: held,
-		});
+		await expect(
+			t.mutation(internal.mail.ai.composeDraftStore.updateSession, {
+				sessionId: asked.sessionId,
+				status: 'asking',
+				questions: held,
+			})
+		).rejects.toThrow(/attribution/);
+		await expect(
+			t.mutation(internal.mail.ai.composeDraftStore.replaceSession, {
+				target,
+				locale: 'en',
+				status: 'asking',
+				questions: held,
+				attachedFiles: [],
+			})
+		).rejects.toThrow(/attribution/);
 
-		expect(updated.status).toBe('asking');
-		expect(updated.questions).toEqual(stored);
-		const replaced = await t.mutation(internal.mail.ai.composeDraftStore.replaceSession, {
-			target,
-			locale: 'en',
-			status: 'asking',
-			questions: held,
-			attachedFiles: [],
-		});
-		expect(replaced.questions).toEqual(stored);
-		for (const q of [...updated.questions, ...replaced.questions]) {
-			expect(q).not.toHaveProperty('attribution');
-		}
+		const session = await t.run(async (ctx) => await ctx.db.get(asked.sessionId));
+		expect(session?.questions).toEqual(stored);
 	});
 });
 

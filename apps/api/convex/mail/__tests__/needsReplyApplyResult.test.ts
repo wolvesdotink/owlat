@@ -185,43 +185,36 @@ describe('mail.needsReply.applyResult', () => {
 		});
 	});
 
-	it("stores a 0.6.10 caller's questions without the legacy attribution sentence (#1224)", async () => {
-		// N-1 shim: a 0.6.10 classifier may still send a question it read before
-		// migration 0066 converted it. The argument accepts the sentence and the
-		// write drops it, so the strict stored schema never sees it.
+	it('rejects a question that still carries the legacy attribution sentence (#1224, #1265)', async () => {
+		// 0.6.11 accepted `attribution` in the argument for one release, so a
+		// 0.6.10 classifier still in flight could finish. No supported caller
+		// sends it any more: the argument is the stored shape again.
 		const t = convexTest(schema, modules);
 		const { threadId, messageId } = await seedThread(t);
-		const question = {
+		const legacy = {
 			id: 'clarify_0',
 			slotType: 'decision',
 			text: 'Should we approve the refund?',
 			origin: { kind: 'email' as const, senderDomain: 'acme.com' },
+			attribution:
+				'Generated from an email from acme.com — Owlat will never ask for your password.',
 		};
 
-		await t.mutation(internal.mail.needsReply.applyResult, {
-			threadId,
-			expectedLatestMessageId: messageId,
-			needsReply: {
-				messageId,
-				source: 'heuristic',
-				urgency: 'normal',
-				clarification: {
-					isNeeded: true,
-					questions: [
-						{
-							...question,
-							attribution:
-								'Generated from an email from acme.com — Owlat will never ask for your password.',
-						},
-					],
-					askedAt: 1,
+		await expect(
+			t.mutation(internal.mail.needsReply.applyResult, {
+				threadId,
+				expectedLatestMessageId: messageId,
+				needsReply: {
+					messageId,
+					source: 'heuristic',
+					urgency: 'normal',
+					clarification: { isNeeded: true, questions: [legacy], askedAt: 1 },
 				},
-			},
-		});
+			})
+		).rejects.toThrow(/attribution/);
 
 		await t.run(async (ctx) => {
-			const flag = (await ctx.db.get(threadId))?.needsReply;
-			expect(flag?.clarification?.questions).toEqual([question]);
+			expect((await ctx.db.get(threadId))?.needsReply).toBeUndefined();
 		});
 	});
 
