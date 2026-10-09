@@ -67,6 +67,7 @@ function fakePlan(
 		selected,
 		setSelected: vi.fn((ids: string[]) => (selected.value = ids)),
 		missingFiles: ref(over.missingFiles ?? []),
+		items: ref(over.items ?? []),
 		statusNote: ref(undefined),
 		checkCoverage: vi.fn(),
 		recheck: vi.fn(),
@@ -186,9 +187,9 @@ describe('AnswerTeamPlan (t/)', () => {
 	];
 
 	it('lists the reply’s items with their stances and counts the selection', async () => {
-		const plan = fakePlan({ missingFiles: ['Attached is the invoice.'] });
+		const plan = fakePlan({ missingFiles: ['Attached is the invoice.'], items });
 		const w = mount(AnswerTeamPlan, {
-			props: { plan, items, canAttach: true },
+			props: { plan, canAttach: true },
 			global: {
 				plugins: [createTestI18n()],
 				components: { UiButton: ButtonStub, PostboxOverflowMenu: Plain },
