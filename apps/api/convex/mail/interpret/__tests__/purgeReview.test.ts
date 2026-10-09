@@ -369,8 +369,9 @@ describe('F3: a survivor is redacted, reverted and re-read', () => {
 		expect(item?.lineageKeys).toEqual([itemLineage(`mail:${srcB.id}`, claim)]);
 		// Its saved values may restore what the purged message said: the undo snapshot goes.
 		expect(item?.confirmedFrom).toBeUndefined();
-		// A claim survived on less evidence: incomplete until the thread is re-read.
-		expect((await mailRows(t, threadId)).brief?.completeness).toBe('partial');
+		// No surviving source has a snapshot to re-read: no repair is outstanding, so
+		// completeness follows the counters (round 4 F5); the item is flagged for review.
+		expect((await mailRows(t, threadId)).brief?.pendingRepairs).toBeUndefined();
 	});
 
 	it('redacts wording with no surviving claim, marks the brief partial and schedules a re-read', async () => {
