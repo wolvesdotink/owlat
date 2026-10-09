@@ -260,6 +260,26 @@ export const heldFieldsValidator = v.object({
 		v.array(v.union(v.literal('due'), v.literal('amount'), v.literal('options')))
 	),
 	transitions: v.optional(v.array(heldTransitionValidator)),
+	// Which source each held field (or removal) came from (round 7 F1), so a
+	// purge drops exactly what the purged message said. `wording` covers
+	// assertion and display.
+	fieldSources: v.optional(
+		v.array(
+			v.object({
+				field: v.union(
+					v.literal('due'),
+					v.literal('amount'),
+					v.literal('options'),
+					v.literal('wording'),
+					v.literal('requester'),
+					v.literal('responsible'),
+					v.literal('beneficiary'),
+					v.literal('responsibility')
+				),
+				sourceKey: v.string(),
+			})
+		)
+	),
 });
 
 /** `threadItems.pendingUpdate`: the held changes and the quotes behind them. */

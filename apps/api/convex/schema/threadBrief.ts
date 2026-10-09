@@ -259,13 +259,8 @@ export const threadBriefTables = {
 		// What the standing `confirmed` correction changed, for an exact undo
 		// (mail/interpret/reactionRules.ts). Cleared when the confirmation is undone.
 		confirmedFrom: v.optional(itemConfirmedFromValidator),
-		// `<sourceKey>#<index>`: the proposal that created it, so an ordered
-		// replay keeps the item's id.
-		// An unconfirmed claim's changes to this (tracked) item, held apart until
-		// it is verified or the user confirms it ("Check this change").
+		// Changes held apart until confirmed ("Check this change"), each with its source.
 		pendingUpdate: v.optional(pendingUpdateValidator),
-		// Every claim key that ever produced or matched this item: the thread's
-		// identity record, consulted before content (mail/interpret/fold.ts).
 		// Message date of the transition that set the current status or
 		// disposition: an older message's transition only adds evidence.
 		lastTransitionAt: v.optional(v.number()),
@@ -275,6 +270,7 @@ export const threadBriefTables = {
 		// what it set (mail/interpret/transitionSources.ts).
 		statusSource: v.optional(transitionSourceValidator),
 		dispositionSource: v.optional(transitionSourceValidator),
+		// Every claim key that produced or matched it; and the first one (fold.ts).
 		lineageKeys: v.optional(v.array(v.string())),
 		lineage: v.optional(v.string()),
 		// Message date of the first evidence: the "age" of compareForYou.
@@ -298,7 +294,8 @@ export const threadBriefTables = {
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId'])
 		.index('by_replaced_by', ['replacedById'])
-		.index('by_duplicate_of', ['possibleDuplicateOfId']),
+		.index('by_duplicate_of', ['possibleDuplicateOfId'])
+		.index('by_disposition_source', ['dispositionSource.sourceKey']), // sendFailure.ts
 
 	// Append-only per-thread log.
 	threadActivity: defineTable({
