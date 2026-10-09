@@ -152,13 +152,21 @@ export function useResponsePlan(opts: {
 			.join(',');
 		return `${stored.data.value?.threadRevision ?? '?'}|${items}`;
 	});
-	function resultRevisionsKey(result: CoverageResult): string {
-		const items = result.itemRevisions
+	/** Requests in flight: a revision change during one is followed by a fresh check. */
+	const inFlight = ref(0);
+	/** The binding key of a check: its thread revision and its COMPLETE item set. */
+	function bindingKey(
+		threadRevision: number | undefined,
+		itemRevisions: readonly { itemId: string; revision: number }[]
+	): string {
+		const items = itemRevisions
 			.map((r) => `${r.itemId}@${r.revision}`)
 			.sort()
 			.join(',');
-		return `${result.threadRevision}|${items}`;
+		return `${threadRevision ?? '?'}|${items}`;
 	}
+	const resultRevisionsKey = (result: CoverageResult) =>
+		bindingKey(result.threadRevision, result.itemRevisions);
 
 	function setStance(itemId: string, stance: ResponseStance) {
 		const next = new Map(chosen.value);
@@ -217,16 +225,21 @@ export function useResponsePlan(opts: {
 			checked.value = null;
 			return;
 		}
+		inFlight.value++;
 		try {
 			const result = await requireConvex().action(api.mail.interpret.coverage.check, {
 				threadRef,
 				draftRef,
 				draftText: text,
 			});
+			// A result stale on arrival (items moved while it ran) stays hidden; the
+			// revision watch below already scheduled the next check (r3 F3).
 			if (mine === seq) checked.value = result;
 		} catch {
 			// No chips is the honest answer when the check could not run.
 			if (mine === seq) lastChecked = null;
+		} finally {
+			inFlight.value--;
 		}
 	}
 
@@ -235,12 +248,12 @@ export function useResponsePlan(opts: {
 		timer = setTimeout(() => void checkCoverage(), PLAN_COVERAGE_DEBOUNCE_MS);
 	}
 	watch(opts.draftText, scheduleCoverage);
-	// An item or the thread changed under the last check: check again.
+	// An item or the thread changed: whatever was checked (here, in flight, or
+	// stored) no longer counts, so check again (review r3 F1, F3).
 	watch(revisionsKey, () => {
-		if (checked.value && resultRevisionsKey(checked.value) !== revisionsKey.value) {
-			lastChecked = null;
-			scheduleCoverage();
-		}
+		if (!opts.draftText().trim()) return;
+		lastChecked = null;
+		scheduleCoverage();
 	});
 	onBeforeUnmount(() => clearTimeout(timer));
 
@@ -269,12 +282,35 @@ export function useResponsePlan(opts: {
 			!view.isStale &&
 			view.verdict !== 'pending' &&
 			view.draftHash === hash &&
-			view.checkedPlanRevision === revision
+			view.checkedPlanRevision === revision &&
+			bindingKey(view.checkedThreadRevision, view.checkedItemRevisions) === revisionsKey.value
 		) {
 			return { ...view, isChecked: true };
 		}
 		return null;
 	});
+	// A stored check of this very text that no longer matches the items, with
+	// nothing local and no request running: check now instead of "Checking"
+	// forever (review r3 F3).
+	// Once per stored state, so a check that cannot help never loops.
+	let stuckKey: string | null = null;
+	watch(
+		() =>
+			!!stored.data.value?.draftHash &&
+			stored.data.value.draftHash === currentHash.value &&
+			!coverage.value &&
+			!checked.value &&
+			inFlight.value === 0
+				? `${stored.data.value.planRevision}|${stored.data.value.draftHash}|${revisionsKey.value}`
+				: null,
+		(key) => {
+			if (key && key !== stuckKey) {
+				stuckKey = key;
+				lastChecked = null;
+				scheduleCoverage();
+			}
+		}
+	);
 	const coverageEntries = computed<PlanCoverageEntry[]>(() => coverage.value?.coverage ?? []);
 	const addressed = computed(() =>
 		coverageEntries.value

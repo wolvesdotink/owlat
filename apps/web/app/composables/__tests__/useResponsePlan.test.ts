@@ -42,6 +42,11 @@ const queryArgs: unknown[] = [];
 const action = vi.fn();
 const mutation = vi.fn(async () => null);
 
+const CHECKED_ITEMS = [
+	{ itemId: 'contract', revision: 1 },
+	{ itemId: 'quote', revision: 1 },
+];
+
 /** The stored plan as `responsePlan.get` returns it, before any check. */
 function storedView(over: Record<string, unknown> = {}) {
 	return {
@@ -261,6 +266,8 @@ describe('coverage', () => {
 		stored.value = storedView({
 			coverage: [{ itemId: 'quote', verdict: 'addressed', spans: [] }],
 			checkedPlanRevision: 0,
+			checkedThreadRevision: 4,
+			checkedItemRevisions: CHECKED_ITEMS,
 			draftHash: await draftHashOf('The quote is approved.'),
 			verdict: 'gaps',
 		});
@@ -358,6 +365,62 @@ describe('review round 2', () => {
 			stances: [{ itemId: 'quote', stance: 'decline', source: 'owner' }],
 		});
 		await nextTick();
+		await vi.waitFor(() => expect(plan.addressed.value).toEqual(['contract']));
+	});
+});
+
+describe('review round 3', () => {
+	it('F1: closing an item hides the stored coverage and checks again', async () => {
+		vi.useFakeTimers();
+		const text = ref('The quote is approved.');
+		stored.value = storedView({
+			coverage: [{ itemId: 'quote', verdict: 'addressed', spans: [] }],
+			checkedPlanRevision: 0,
+			checkedThreadRevision: 4,
+			checkedItemRevisions: CHECKED_ITEMS,
+			draftHash: await draftHashOf('The quote is approved.'),
+			verdict: 'gaps',
+		});
+		const { plan, items } = host({ text });
+		vi.useRealTimers();
+		await vi.waitFor(() => expect(plan.addressed.value).toEqual(['quote']));
+		vi.useFakeTimers();
+		action.mockResolvedValue(null);
+		// "Mark done" on the contract: the thread revision stays, the item leaves.
+		items.value = [quote];
+		await nextTick();
+		expect(plan.addressed.value).toEqual([]);
+		vi.advanceTimersByTime(PLAN_COVERAGE_DEBOUNCE_MS + 10);
+		await vi.runAllTimersAsync();
+		expect(action).toHaveBeenCalledTimes(1);
+	});
+
+	it('F3: an item change during the first request is followed by a fresh check (delayed response)', async () => {
+		vi.useFakeTimers();
+		const text = ref('Hello.');
+		const { plan, items } = host({ text });
+		let respond!: (value: unknown) => void;
+		action.mockImplementationOnce(() => new Promise((r) => (respond = r)));
+		const first = plan.checkCoverage();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(action).toHaveBeenCalledTimes(1);
+		items.value = [{ ...contract, revision: 2 }, quote];
+		await nextTick();
+		// The delayed response was computed for the old revisions.
+		respond(await result('Hello.'));
+		await first;
+		expect(plan.addressed.value).toEqual([]);
+		action.mockResolvedValueOnce(
+			await result('Hello.', {
+				itemRevisions: [
+					{ itemId: 'contract', revision: 2 },
+					{ itemId: 'quote', revision: 1 },
+				],
+			})
+		);
+		await vi.advanceTimersByTimeAsync(PLAN_COVERAGE_DEBOUNCE_MS + 10);
+		expect(action).toHaveBeenCalledTimes(2);
+		vi.useRealTimers();
 		await vi.waitFor(() => expect(plan.addressed.value).toEqual(['contract']));
 	});
 });

@@ -64,6 +64,9 @@ export interface PlanView {
 	checkedPlanRevision?: number;
 	/** The draft text the stored coverage was computed for. */
 	draftHash?: string;
+	/** The thread revision and the COMPLETE item set the stored coverage read (review r3 F1). */
+	checkedThreadRevision?: number;
+	checkedItemRevisions: { itemId: ItemId; revision: number }[];
 	verdict: PlanVerdict;
 	/** The stored coverage was checked against other item revisions. */
 	isStale: boolean;
@@ -80,14 +83,17 @@ async function toView(state: PlanState): Promise<PlanView> {
 			fileClaims: [],
 			newPromises: [],
 			planRevision: 0,
+			checkedItemRevisions: [],
 			verdict: 'pending',
 			isStale: false,
 			isCheckIncomplete: state.isOverflow,
 		};
 	}
+	// The complete set: an item closed or removed since the check counts too.
 	const revisions = new Map(row.itemRevisions.map((r) => [r.itemId as string, r.revision]));
 	const isStale =
 		row.threadRevision !== state.threadRevision ||
+		row.itemRevisions.length !== state.items.length ||
 		state.items.some((i) => revisions.get(i.id) !== i.revision);
 	const isChecked = row.checkedPlanRevision === state.planRevision;
 	return {
@@ -113,6 +119,8 @@ async function toView(state: PlanState): Promise<PlanView> {
 			? { checkedPlanRevision: row.checkedPlanRevision }
 			: {}),
 		...(row.draftHash ? { draftHash: row.draftHash } : {}),
+		checkedThreadRevision: row.threadRevision,
+		checkedItemRevisions: row.itemRevisions,
 		verdict: isStale ? 'stale' : isChecked ? row.verdict : 'pending',
 		isStale,
 		isCheckIncomplete: state.isOverflow || row.isCheckIncomplete === true,

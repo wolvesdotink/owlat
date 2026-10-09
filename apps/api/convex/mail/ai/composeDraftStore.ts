@@ -133,11 +133,27 @@ export const getSession = answerModeQuery({
 	args: { target: answerAskTargetValidator },
 	handler: async (ctx, args, session): Promise<AskSessionView | null> => {
 		const row = await findOwnSession(ctx, args.target, session.userId);
-		if (!row) return null;
+		if (!row || !isSameReplyTarget(row.target, args.target)) return null;
 		if (!(await canReachTarget(ctx, args.target, session))) return null;
 		return toAskSessionView(row);
 	},
 });
+
+/**
+ * Whether a stored session belongs to the reply the caller asks about. A team
+ * session is per thread, but it answers one inbound message: a composer for
+ * another message of the thread never gets it (its questions, context or
+ * stream), and starting there replaces it (review r3 F2).
+ */
+export function isSameReplyTarget(stored: AnswerAskTarget, asked: AnswerAskTarget): boolean {
+	if (stored.kind !== asked.kind) return false;
+	if (stored.kind === 'mailDraft' || asked.kind === 'mailDraft') {
+		return (
+			stored.kind === 'mailDraft' && asked.kind === 'mailDraft' && stored.draftId === asked.draftId
+		);
+	}
+	return stored.threadId === asked.threadId && stored.inboundMessageId === asked.inboundMessageId;
+}
 
 /** Delete a session and the draft stream it owns. */
 async function deleteSessionRow(ctx: MutationCtx, row: Doc<'answerAskSessions'>): Promise<void> {
