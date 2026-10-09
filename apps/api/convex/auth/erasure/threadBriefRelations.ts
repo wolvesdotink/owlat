@@ -134,6 +134,15 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 		'delete',
 		SAME_THREAD
 	),
+	...['pendingUpdate', 'confirmedFrom.pendingUpdate'].map((path) =>
+		descendant(
+			'messageInterpretations',
+			'threadItems',
+			`${path}.transitions[].interpretationId`,
+			'delete',
+			SAME_THREAD
+		)
+	),
 ];
 
 export const THREAD_BRIEF_MEMBER_RELATIONS: readonly MemberRelation[] = [

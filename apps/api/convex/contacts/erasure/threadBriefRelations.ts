@@ -182,4 +182,15 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 		'retain',
 		IN_THREAD
 	),
+	// A held update's transitions name the extraction they came from; a purge
+	// drops a held update (and an undo snapshot) its purged source supported.
+	...['pendingUpdate', 'confirmedFrom.pendingUpdate'].map((path) =>
+		relation(
+			'messageInterpretations',
+			'threadItems',
+			`${path}.transitions[].interpretationId`,
+			'retain',
+			IN_THREAD
+		)
+	),
 ];
