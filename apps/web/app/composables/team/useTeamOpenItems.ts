@@ -30,6 +30,7 @@ export function useTeamOpenItems(opts: { target: () => TeamStreamTarget | null }
 	useBriefEnsure({
 		threadRef: () => opts.target(),
 		completeness: () => query.data.value?.completeness,
+		history: () => query.data.value?.history,
 	});
 	return { view, isLoading: query.isLoading };
 }

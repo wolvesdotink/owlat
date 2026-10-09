@@ -148,10 +148,13 @@ checkboxes and a stance per item.
 
 "With this contact elsewhere" (`elsewhere.ts`) lists the open, tracked items
 the thread's counterparties have in other threads. The key is the item's
-`counterpartyKey`, the other side's exact normalised address. Every listed
-item passes the read rule of its own thread, so the card never hints at a
-thread the viewer could not open. Aliases are not joined: that can hide an
-item, never show one about someone else.
+`counterpartyKey`, the other side's exact normalised address. The scan reads
+only the viewer's own scopes, one index range each: the mailboxes they own
+or are a member of (an admin's reach into a teammate's private mailbox is not
+one) and the Team Inbox for its readers. No row from anyone else's mail is
+read, so nothing about it (not a count, not a "more", not a position) can
+reach the card. "Show more" raises the per-person limit to a bound. Aliases
+are not joined: that can hide an item, never show one about someone else.
 
 ### 6. Team surfaces: the chat stream
 
@@ -234,6 +237,12 @@ generation, so a batch of a cancelled run never joins the next one, and a
 mailbox that is disconnected or purged ends its job (account teardown deletes
 it). It schedules interpretation runs and nothing else: no notification, no
 Reply Queue write.
+
+The stored completeness the auto-send gates read follows the history too:
+`briefCompleteness` (the one rule every writer uses) keeps a complete brief
+partial while history is unread or unreadable, so D3 holds Team Inbox
+auto-send meanwhile. `brief.get` also says whether a pending history is
+`running` or `stalled`; the reader asks to resume a stalled one.
 
 Older threads are interpreted on first open. `brief.get` answers
 `completeness: 'none'`, the web shows the Conversation and calls

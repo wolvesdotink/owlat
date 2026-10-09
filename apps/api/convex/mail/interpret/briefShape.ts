@@ -235,6 +235,10 @@ const sharedViewFields = {
 	interpretationRevision: v.number(),
 	completeness: briefCompletenessValidator,
 	gap: v.optional(briefGapViewValidator),
+	// Earlier history still being read: `running` while its chain moves,
+	// `stalled` when it stopped (spend gate, AI off, a lost chain); the reader
+	// asks `lazy.ensure` to resume a stalled one.
+	history: v.optional(v.union(v.literal('running'), v.literal('stalled'))),
 	waitingOnOthers: v.array(briefItemViewValidator),
 	unclear: v.array(briefItemViewValidator),
 	// Latest 5 substance rows, newest first.

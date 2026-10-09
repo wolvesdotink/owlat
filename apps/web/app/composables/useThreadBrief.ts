@@ -97,6 +97,7 @@ export function useThreadBrief(opts: {
 	useBriefEnsure({
 		threadRef: () => threadRef.value,
 		completeness: () => view.value?.completeness,
+		history: () => view.value?.history,
 	});
 
 	const markSeenOp = useBackendOperation(api.mail.interpret.brief.markSeen, {

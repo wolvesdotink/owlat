@@ -52,6 +52,7 @@ export interface ProjectionInput {
 		newActivityCount: number;
 	};
 	gap: { interpretedMessages: number; totalMessages: number; reason?: GapReason };
+	history?: 'running' | 'stalled';
 	/** The thread needs no reply: payment items offer "Mark paid" first. */
 	isNoReplyNeeded?: boolean;
 	/** The viewer's per-thread Overview / Conversation choice (brief mode). */
@@ -131,6 +132,7 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 		interpretationRevision: input.interpretationRevision,
 		completeness: input.completeness,
 		...(showGap ? { gap: input.gap } : {}),
+		...(input.history ? { history: input.history } : {}),
 		waitingOnOthers,
 		unclear,
 		activity: input.activity,

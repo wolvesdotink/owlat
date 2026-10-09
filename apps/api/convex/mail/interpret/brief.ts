@@ -57,6 +57,7 @@ import { openMessageBody } from '../../lib/messageBody';
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
 import { requireThreadReader } from './threadAccess';
+import { isHistoryRunning } from './backfillSources';
 
 // public: soft-auth — returns null for anonymous callers and for anyone the
 // thread's reader rule refuses (mailbox access, or the shared-inbox reader gate).
@@ -166,6 +167,13 @@ export const get = publicQuery({
 					}
 				: {}),
 			gap: history && (!gap.reason || gap.reason === 'pending') ? { ...gap, reason: history } : gap,
+			...(brief?.historyState === 'pending'
+				? {
+						history: isHistoryRunning(brief, Date.now())
+							? ('running' as const)
+							: ('stalled' as const),
+					}
+				: {}),
 			isNoReplyNeeded: checkpointResult
 				? !isReplyExpectingIntent(checkpointResult.replyIntent as ReplyIntent)
 				: false,

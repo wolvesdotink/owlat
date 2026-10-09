@@ -49,8 +49,13 @@ import {
 	storeClaimIds,
 } from './reduceIdentity';
 import { writeState } from './reduceWrite';
-import { EMPTY_SOURCE_COUNTS, completenessOfCounts, shiftCount, sourceBucketOf } from './counters';
-import { abandonRepair, isRepairMarked, shiftPendingRepairs } from './purgeRepairs';
+import { EMPTY_SOURCE_COUNTS, shiftCount, sourceBucketOf } from './counters';
+import {
+	abandonRepair,
+	briefCompleteness,
+	isRepairMarked,
+	shiftPendingRepairs,
+} from './purgeRepairs';
 import { nextRetryAtOf } from './retry';
 import { ATTEMPT_SUFFIX } from './load';
 import { sourceVersionOf } from './sourceVersion';
@@ -338,13 +343,13 @@ export const applyInterpretation = internalMutation({
 			await shiftPendingRepairs(ctx, brief._id, -1);
 		}
 		// A pending-transition scan in flight keeps the brief partial (round 6 R2),
-		// and so does an outstanding purge repair (purgeRepairs.ts).
+		// and so do an outstanding purge repair and unread history (briefCompleteness).
 		const briefNow = await ctx.db.get(brief._id);
-		const isScanning =
-			isMatching || (briefNow?.pendingMatchRuns ?? 0) > 0 || (briefNow?.pendingRepairs ?? 0) > 0;
 		// So does a fold that read only part of the thread (round 6 W-F8).
 		const isScanCut = entry ? isItemScanCut : briefNow?.isFoldScanCut === true;
-		const completeness = isScanning || isScanCut ? 'partial' : completenessOfCounts(sourceCounts);
+		const completeness = isMatching
+			? 'partial'
+			: briefCompleteness({ ...(briefNow ?? brief), sourceCounts, isFoldScanCut: isScanCut });
 		const fresh = (await ctx.db.get(brief._id)) ?? brief;
 		const revision = brief.interpretationRevision + 1;
 		await ctx.db.patch(brief._id, {

@@ -9,12 +9,15 @@
  * same person is not joined, which can only hide an item, never show one
  * about someone else.
  *
- * Every item shown passes the reader rule of ITS OWN thread, checked here
- * for each source: mailbox access for a Postbox thread (the same
- * `loadReadableMailbox` as `brief.get`), the shared-inbox reader role for a
- * Team Inbox thread. An item the viewer could not open is never counted or
- * hinted at. Unconfirmed proposals ("Check this") are left out: they are not
- * tracked anywhere yet.
+ * The scan never touches a row the viewer could not open. It reads, per
+ * person, one index range per scope the viewer has: each mailbox they own or
+ * are a member of (`loadAccessibleMailboxes`, the same set the mailbox
+ * switcher lists, so an admin's view of a teammate's private mailbox is not
+ * part of it), and the Team Inbox for a shared-inbox reader with the inbox
+ * on. So nothing about other people's mail reaches the answer, not even a
+ * count or a position. Unconfirmed proposals ("Check this") and this thread's
+ * own items are left out. `limit` (at most {@link ELSEWHERE_MAX_ITEMS}) is
+ * what "Show more" raises; `isMore` says readable items remain beyond it.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -24,21 +27,19 @@ import { publicQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { isSharedInboxReader } from '../../inbox/access';
-import { loadReadableMailbox } from '../permissions';
+import { loadAccessibleMailboxes, loadReadableMailbox } from '../permissions';
 import { openMessageBody } from '../../lib/messageBody';
 import { appLocaleOf, type AppLocale } from '@owlat/shared/appLocales';
 import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
 import { itemResponsibilityValidator } from '../../lib/validators/threadBrief';
-import { decodeHistoryCursor, encodeHistoryCursor, isPastCursor } from './backfillSources';
 
 /** People of this thread looked up (the most frequent counterparties first). */
 export const ELSEWHERE_PEOPLE = 2;
-/** Items shown per person. */
+/** Items shown per person, and the most "Show more" asks for. */
 export const ELSEWHERE_ITEMS = 5;
+export const ELSEWHERE_MAX_ITEMS = 25;
 /** This thread's items read to find its counterparties. */
 const OWN_ITEM_SCAN = 60;
-/** Open items read per person before the scan stops and hands back a cursor. */
-export const PERSON_SCAN = 200;
 
 const elsewhereItemValidator = v.object({
 	itemId: v.id('threadItems'),
@@ -58,10 +59,6 @@ const elsewhereGroupValidator = v.object({
 	items: v.array(elsewhereItemValidator),
 	// More readable open items exist than are listed.
 	isMore: v.boolean(),
-	// The scan stopped before it reached every open item with this person (the
-	// rest belongs to threads it could not show, or was not read yet): pass it
-	// back as `more` to read on from there.
-	continueCursor: v.optional(v.string()),
 });
 
 export type ElsewhereGroup = Infer<typeof elsewhereGroupValidator>;
@@ -118,38 +115,69 @@ interface ItemSource {
 	mailboxId?: Id<'mailboxes'>;
 }
 
+/** One scope the viewer can read: a mailbox of theirs, or the Team Inbox. */
+type Scope = { kind: 'mailbox'; mailboxId: Id<'mailboxes'> } | { kind: 'team' };
+
+async function scopesOf(ctx: QueryCtx, session: Session): Promise<Scope[]> {
+	const mailboxes = session.activeOrganizationId
+		? await loadAccessibleMailboxes(ctx, session.userId, session.activeOrganizationId)
+		: [];
+	const scopes: Scope[] = mailboxes
+		.filter((m) => m.status === 'active')
+		.map((m) => ({ kind: 'mailbox' as const, mailboxId: m._id }));
+	if (isSharedInboxReader(session) && (await isFeatureEnabled(ctx, 'inbox'))) {
+		scopes.push({ kind: 'team' });
+	}
+	return scopes;
+}
+
+async function sourceOf(ctx: QueryCtx, item: Doc<'threadItems'>): Promise<ItemSource | null> {
+	if (item.mailThreadId) {
+		const thread = await ctx.db.get(item.mailThreadId);
+		if (!thread) return null;
+		return {
+			ref: { kind: 'mail', id: thread._id },
+			subject: thread.latestSubject,
+			mailboxId: thread.mailboxId,
+			...(thread.latestMessageId ? { messageId: thread.latestMessageId } : {}),
+		};
+	}
+	if (!item.conversationThreadId) return null;
+	const thread = await ctx.db.get(item.conversationThreadId);
+	return thread ? { ref: { kind: 'team', id: thread._id }, subject: thread.subject } : null;
+}
+
+type Found = { item: Doc<'threadItems'>; source: ItemSource };
+
 /**
- * Per-request reader rule over the threads items come from, memoized: a
- * mailbox is checked once, the Team Inbox once.
+ * The newest `want` listable items with this person in one scope. Every row
+ * read belongs to the scope (index range), so skipping one tells nothing.
  */
-function readerOf(ctx: QueryCtx, session: Session) {
-	const mailboxes = new Map<string, boolean>();
-	let team: boolean | undefined;
-	return async (item: Doc<'threadItems'>): Promise<ItemSource | null> => {
-		if (item.mailThreadId) {
-			const thread = await ctx.db.get(item.mailThreadId);
-			if (!thread) return null;
-			let isReadable = mailboxes.get(thread.mailboxId);
-			if (isReadable === undefined) {
-				isReadable = (await loadReadableMailbox(ctx, thread.mailboxId)) !== null;
-				mailboxes.set(thread.mailboxId, isReadable);
-			}
-			if (!isReadable) return null;
-			return {
-				ref: { kind: 'mail', id: thread._id },
-				subject: thread.latestSubject,
-				mailboxId: thread.mailboxId,
-				...(thread.latestMessageId ? { messageId: thread.latestMessageId } : {}),
-			};
-		}
-		if (item.conversationThreadId) {
-			team ??= isSharedInboxReader(session) && (await isFeatureEnabled(ctx, 'inbox'));
-			if (!team) return null;
-			const thread = await ctx.db.get(item.conversationThreadId);
-			return thread ? { ref: { kind: 'team', id: thread._id }, subject: thread.subject } : null;
-		}
-		return null;
-	};
+async function scopeItems(
+	ctx: QueryCtx,
+	key: string,
+	scope: Scope,
+	here: ThreadRef,
+	want: number
+): Promise<Found[]> {
+	const out: Found[] = [];
+	const mailboxId = scope.kind === 'mailbox' ? scope.mailboxId : undefined;
+	for await (const item of ctx.db
+		.query('threadItems')
+		.withIndex('by_counterparty', (q) =>
+			q.eq('counterpartyKey', key).eq('status', 'open').eq('mailboxId', mailboxId)
+		)
+		.order('desc')) {
+		if (item.verify === 'proposal') continue;
+		if (item.mailThreadId === here.id || item.conversationThreadId === here.id) continue;
+		// The team scope holds the items without a mailbox: Team Inbox ones only.
+		if (scope.kind === 'team' && !item.conversationThreadId) continue;
+		const source = await sourceOf(ctx, item);
+		if (!source) continue;
+		out.push({ item, source });
+		if (out.length >= want) break;
+	}
+	return out;
 }
 
 /** May the session read THIS thread (the brief's reader rule)? */
@@ -168,33 +196,14 @@ async function groupFor(
 	key: string,
 	here: ThreadRef,
 	locale: AppLocale,
-	read: ReturnType<typeof readerOf>,
-	startCursor: string | null
-): Promise<{ items: ElsewhereGroup['items']; isMore: boolean; continueCursor?: string }> {
+	scopes: readonly Scope[],
+	limit: number
+): Promise<{ items: ElsewhereGroup['items']; isMore: boolean }> {
+	const found: Found[] = [];
+	for (const scope of scopes) found.push(...(await scopeItems(ctx, key, scope, here, limit + 1)));
+	found.sort((a, b) => b.item.updatedAt - a.item.updatedAt);
 	const items: ElsewhereGroup['items'] = [];
-	const from = decodeHistoryCursor(startCursor);
-	let scanned = 0;
-	let lastCursor: string | undefined;
-	// Rows are read until enough readable items are found, the index ends, or
-	// the scan budget is spent; the last case hands back where it stopped.
-	for await (const item of ctx.db
-		.query('threadItems')
-		.withIndex('by_counterparty', (q) => {
-			const open = q.eq('counterpartyKey', key).eq('status', 'open');
-			return from ? open.lte('updatedAt', from.at) : open;
-		})
-		.order('desc')) {
-		if (!isPastCursor({ at: item.updatedAt, creation: item._creationTime }, from)) continue;
-		if (scanned >= PERSON_SCAN) {
-			return { items, isMore: false, ...(lastCursor ? { continueCursor: lastCursor } : {}) };
-		}
-		scanned++;
-		lastCursor = encodeHistoryCursor(item.updatedAt, item._creationTime);
-		if (item.verify === 'proposal') continue;
-		if (item.mailThreadId === here.id || item.conversationThreadId === here.id) continue;
-		const source = await read(item);
-		if (!source) continue;
-		if (items.length >= ELSEWHERE_ITEMS) return { items, isMore: true };
+	for (const { item, source } of found.slice(0, limit)) {
 		items.push({
 			itemId: item._id,
 			threadRef: source.ref,
@@ -206,19 +215,20 @@ async function groupFor(
 			...(item.due?.at !== undefined ? { dueAt: item.due.at } : {}),
 		});
 	}
-	return { items, isMore: false };
+	return { items, isMore: found.length > limit };
 }
 
 // public: soft-auth — returns null for anonymous callers and for anyone this
-// thread's reader rule refuses; every listed item passes its own thread's rule.
-// authz: canReadThread (loadReadableMailbox / isSharedInboxReader) for this
-// thread, readerOf (the same two, plus the `inbox` flag) for every item.
+// thread's reader rule refuses; the scan reads only the viewer's own scopes.
+// authz: canReadThread (loadReadableMailbox / isSharedInboxReader + inbox flag)
+// for this thread; scopesOf (loadAccessibleMailboxes, the Team Inbox reader
+// gate) bounds every row read for the items.
 export const list = publicQuery({
 	args: {
 		threadRef: threadRefValidator,
 		locale: v.string(),
-		// Read on for one person from a group's `continueCursor`.
-		more: v.optional(v.object({ counterpartyKey: v.string(), cursor: v.string() })),
+		// "Show more": items per person, up to ELSEWHERE_MAX_ITEMS (default ELSEWHERE_ITEMS).
+		limit: v.optional(v.number()),
 	},
 	returns: v.union(v.object({ groups: v.array(elsewhereGroupValidator) }), v.null()),
 	handler: async (ctx, args) => {
@@ -226,22 +236,17 @@ export const list = publicQuery({
 		if (!session) return null;
 		if (!(await canReadThread(ctx, args.threadRef, session))) return null;
 		const own = await ownItems(ctx, args.threadRef);
-		const keys = args.more
-			? [args.more.counterpartyKey]
-			: counterpartiesOf(own).slice(0, ELSEWHERE_PEOPLE);
-		const read = readerOf(ctx, session);
+		const keys = counterpartiesOf(own).slice(0, ELSEWHERE_PEOPLE);
+		const scopes = await scopesOf(ctx, session);
+		const limit = Math.max(
+			1,
+			Math.min(ELSEWHERE_MAX_ITEMS, Math.floor(args.limit ?? ELSEWHERE_ITEMS))
+		);
 		const locale = appLocaleOf(args.locale);
 		const groups: ElsewhereGroup[] = [];
 		for (const key of keys) {
-			const found = await groupFor(
-				ctx,
-				key,
-				args.threadRef,
-				locale,
-				read,
-				args.more?.cursor ?? null
-			);
-			if (found.items.length === 0 && !found.continueCursor) continue;
+			const found = await groupFor(ctx, key, args.threadRef, locale, scopes, limit);
+			if (found.items.length === 0) continue;
 			const name = nameOf(key, own);
 			groups.push({ counterpartyKey: key, ...(name ? { name } : {}), ...found });
 		}
