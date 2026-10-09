@@ -19,7 +19,7 @@ import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefS
 import { itemStateKey } from '@owlat/shared/threadBriefRules';
 import {
 	briefRing,
-	canUndo,
+	canUndoItem,
 	menuReactions,
 	showsStateChip,
 	type BriefAction,
@@ -81,8 +81,9 @@ const primary = computed<BriefAction | null>(() => {
  * Track and "Not a request": it is not an obligation until confirmed.
  */
 const menu = computed<BriefAction[]>(() => {
-	if (!isOpen.value) return canUndo(stateKey.value) ? ['undo'] : [];
+	if (!isOpen.value) return canUndoItem(props.item, stateKey.value) ? ['undo'] : [];
 	const rest: BriefAction[] = isProposal.value ? ['notARequest'] : menuReactions(props.item);
+	if (props.item.correction?.kind === 'confirmed') rest.push('undo');
 	if (props.compact && primary.value) rest.unshift(primary.value);
 	return rest;
 });
@@ -167,6 +168,7 @@ const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {
 				v-if="item.pendingUpdate && isOpen"
 				:item-id="item.id"
 				:update="item.pendingUpdate"
+				:item="item"
 				:can-confirm="!selectable && !hideActions"
 				@confirm="emit('react', 'confirmProposal')"
 			/>

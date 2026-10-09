@@ -3,8 +3,9 @@
  * "Check this change" under a tracked item (review round 2 of the interpret
  * lane, F4): a later message seems to change the item (a new deadline, amount
  * or choice), but the claim could not be verified, so the item is unchanged
- * until someone confirms it. Shows the proposed values with their source
- * marker, and Confirm (the `confirmProposal` reaction, which applies them).
+ * until someone confirms it. Shows EVERY change Confirm would apply (wording,
+ * parties, who does it, due, amount, choices as old → new, and removals),
+ * with the source marker, and Confirm (`confirmProposal`).
  *
  * A held transition (`transitions`: a later message may have closed or
  * answered the item, matched by wording only) reads "A later message may have
@@ -12,14 +13,15 @@
  * and Undo reverses it. Used by the personal brief and the team strip.
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
-import { briefDueDate } from '~/utils/threadBriefContext';
-import { formatAmount } from '~/utils/threadBriefFacts';
+import { pendingChangeLines } from '~/utils/threadBriefPending';
 import { pendingCiteRef } from '~/utils/threadBriefItems';
 import EvidenceMarker from './EvidenceMarker.vue';
 
 const props = defineProps<{
 	itemId: string;
 	update: NonNullable<BriefItemView['pendingUpdate']>;
+	/** The item as it stands, for "old → new". */
+	item?: BriefItemView;
 	/** Offer Confirm (not in read-only lists). */
 	canConfirm?: boolean;
 }>();
@@ -28,22 +30,10 @@ const emit = defineEmits<{ confirm: [] }>();
 
 const { t, locale } = useI18n();
 
-const changes = computed(() => {
-	const out: string[] = [];
-	const due = props.update.due;
-	if (due) {
-		const date = due.at !== undefined ? briefDueDate(due.at, locale.value) : due.phrase;
-		out.push(t('components.brief.item.due', { date }));
-	}
-	const amount = props.update.amount;
-	if (amount) out.push(formatAmount(amount.value, amount.currency, locale.value));
-	if (props.update.options?.length) {
-		out.push(
-			t('components.brief.item.pendingOptions', { options: props.update.options.join(' / ') })
-		);
-	}
-	return out;
-});
+/** Every change Confirm would apply: wording, parties, due, amount, choices, removals. */
+const changes = computed(() =>
+	pendingChangeLines(props.item ?? null, props.update, { t, locale: locale.value })
+);
 /** A later message may have closed or answered the item (held until confirmed). */
 const isSettling = computed(() => (props.update.transitions?.length ?? 0) > 0);
 </script>
@@ -70,7 +60,7 @@ const isSettling = computed(() => (props.update.transitions?.length ?? 0) > 0);
 			:quote-index="0"
 		/>
 		<button
-			v-if="canConfirm"
+			v-if="canConfirm && (changes.length > 0 || isSettling)"
 			type="button"
 			class="ml-auto font-medium underline-offset-2 hover:underline"
 			data-testid="brief-item-pending-confirm"
