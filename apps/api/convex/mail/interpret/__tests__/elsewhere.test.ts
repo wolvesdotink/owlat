@@ -247,7 +247,7 @@ describe('elsewhere.list', () => {
 		await t.run(async (ctx) => {
 			const settings = await ctx.db.query('instanceSettings').first();
 			await ctx.db.patch(settings!._id, {
-				featureFlags: { ...(settings!.featureFlags ?? {}), inbox: false },
+				featureFlags: { ...settings!.featureFlags, inbox: false },
 			});
 		});
 		expect(
