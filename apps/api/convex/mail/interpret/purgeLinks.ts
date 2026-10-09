@@ -191,7 +191,7 @@ export async function drainFactLinks(
 	// The fact it superseded is current again: the claim that retired it is gone.
 	if (fact.supersedesId) {
 		const retired = await ctx.db.get(fact.supersedesId);
-		budget.read(retired);
+		budget.charge(retired);
 		if (retired && retired.status === 'superseded') {
 			await ctx.db.patch(retired._id, {
 				status: 'current',

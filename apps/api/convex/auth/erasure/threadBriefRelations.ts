@@ -112,6 +112,7 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 	descendant('threadItems', 'threadItems', 'replacedById', 'delete', SAME_THREAD),
 	descendant('threadItems', 'threadItems', 'possibleDuplicateOfId', 'delete', SAME_THREAD),
 	descendant('threadItems', 'threadActivity', 'itemId', 'delete', SAME_THREAD),
+	descendant('threadItems', 'interpretSources', 'claimIds[].itemId', 'delete', SAME_THREAD),
 	descendant('threadItems', 'threadItemCorrections', 'itemId', 'delete', SAME_THREAD),
 	descendant('threadItems', 'threadActivity', 'delta.replacedById', 'delete', SAME_THREAD),
 	descendant('threadItems', 'draftResponsePlans', 'itemRevisions[].itemId', 'delete', SAME_THREAD),
@@ -123,6 +124,7 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 	descendant('threadFacts', 'threadFacts', 'supersedesId', 'delete', SAME_THREAD),
 	descendant('threadFacts', 'threadFacts', 'conflictsWithId', 'delete', SAME_THREAD),
 	descendant('threadFacts', 'threadActivity', 'delta.factId', 'delete', SAME_THREAD),
+	descendant('threadFacts', 'interpretSources', 'claimIds[].factId', 'delete', SAME_THREAD),
 
 	// ── messageInterpretations ──
 	descendant(

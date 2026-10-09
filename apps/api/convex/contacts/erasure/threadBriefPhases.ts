@@ -22,24 +22,24 @@ import type { ErasureBudget } from './budget';
 import { drainEach } from './phaseKit';
 
 /**
- * Team replies to one received message whose interpretation goes with it: a
- * message is answered by a handful of sends (one per reply attempt).
- */
-const REPLY_SOURCE_LIMIT = 64;
-/**
  * Index ranges one row of budget stands for. The walkers bound a transaction
  * by rows and bytes; an empty range read costs neither, but the platform caps
  * a transaction at 4,096 ranges.
  */
 const RANGES_PER_ROW = 4;
 
-/** The walker's budget as a purge job's: every document a row, every 4 range queries one more. */
+/**
+ * The walker's budget as a purge job's: reads sized by its rows and bytes
+ * left, every fetched document charged, every 4 range queries one more row.
+ */
 export function walkerDrainBudget(budget: ErasureBudget): DrainBudget {
 	let ranges = 0;
 	return {
 		isExhausted: () => budget.isExhausted,
-		read: (doc) => {
+		chunk: (max) => budget.chunk(max),
+		charge: (doc) => {
 			if (doc) budget.charge(doc);
+			else budget.chargeRows(1);
 		},
 		range: () => {
 			ranges += 1;
@@ -88,19 +88,18 @@ export async function eraseInboundMessageBrief(
 	);
 	if (!isPlansEmpty) return false;
 	if (!message.threadId) return true;
-	const replies = await ctx.db
-		.query('transactionalSends')
-		.withIndex('by_inbound_message_status', (q) => q.eq('inboundMessageId', message._id))
-		.take(REPLY_SOURCE_LIMIT);
-	for (const reply of replies) budget.chargeRead(reply);
-	const sources: InterpretationSource[] = [
-		{ kind: 'inbound', id: message._id },
-		...replies.map((reply) => ({ kind: 'teamReply' as const, id: reply._id })),
-	];
+	// Every team reply that answered it is paged into the job's sources first
+	// (`purge.ts repliesRange`), however many there are.
+	const sources: InterpretationSource[] = [{ kind: 'inbound', id: message._id }];
 	return drivePurgeJob(
 		ctx,
 		`erasure:inbound:${message._id}`,
-		{ ref: { kind: 'team', id: message.threadId }, kind: 'sources', sources },
+		{
+			ref: { kind: 'team', id: message.threadId },
+			kind: 'sources',
+			sources,
+			inboundMessageId: message._id,
+		},
 		walkerDrainBudget(budget)
 	);
 }

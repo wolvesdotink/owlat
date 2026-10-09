@@ -33,6 +33,7 @@ import type * as mail_interpret_preferences from '../mail/interpret/preferences.
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
 import type * as mail_interpret_purge from '../mail/interpret/purge.js';
 import type * as mail_interpret_purgeClaims from '../mail/interpret/purgeClaims.js';
+import type * as mail_interpret_purgeClaimSources from '../mail/interpret/purgeClaimSources.js';
 import type * as mail_interpret_purgeDrain from '../mail/interpret/purgeDrain.js';
 import type * as mail_interpret_purgeJobs from '../mail/interpret/purgeJobs.js';
 import type * as mail_interpret_purgeLinks from '../mail/interpret/purgeLinks.js';
@@ -1613,6 +1614,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
 	'mail/interpret/purge': typeof mail_interpret_purge;
 	'mail/interpret/purgeClaims': typeof mail_interpret_purgeClaims;
+	'mail/interpret/purgeClaimSources': typeof mail_interpret_purgeClaimSources;
 	'mail/interpret/purgeDrain': typeof mail_interpret_purgeDrain;
 	'mail/interpret/purgeJobs': typeof mail_interpret_purgeJobs;
 	'mail/interpret/purgeLinks': typeof mail_interpret_purgeLinks;

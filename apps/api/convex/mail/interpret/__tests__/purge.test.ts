@@ -309,7 +309,7 @@ describe('thread purge', () => {
 		);
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 5; i++) await insertItem(ctx, ref, [{ kind: 'mail', id: messageId }]);
-			await purgeThreadBrief(ctx, ref, 2);
+			await purgeThreadBrief(ctx, ref, { isInline: false });
 		});
 		const before = await mailRows(t, threadId);
 		expect(before.brief?.deletionEpoch).toBe(1);
