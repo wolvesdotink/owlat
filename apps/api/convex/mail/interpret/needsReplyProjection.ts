@@ -28,7 +28,7 @@ import {
 	type ReplyIntent,
 } from '../ai/replyIntent';
 import { isUnattendedAddress } from '../needsReplyHeuristic';
-import type { needsReplyClarificationArgValidator } from '../../lib/validators/clarification';
+import type { needsReplyClarificationValidator } from '../../lib/validators/clarification';
 import type { AppLocale } from '@owlat/shared/appLocales';
 import { localDayKey } from './dueDate';
 import { clampText } from './clamp';
@@ -51,7 +51,7 @@ function asReplyIntent(value: string): ReplyIntent {
 export function needsReplyResultOf(
 	projection: NeedsReplyProjection,
 	latest: LatestInbound,
-	clarification?: Infer<typeof needsReplyClarificationArgValidator>
+	clarification?: Infer<typeof needsReplyClarificationValidator>
 ) {
 	const decision: ReplyDecision = decideNeedsReply({
 		intent: asReplyIntent(projection.replyIntent),
@@ -97,7 +97,7 @@ export async function projectNeedsReply(
 		expectedLatestMessageId?: Id<'mailMessages'>;
 		latestInbound: LatestInbound;
 		projection: NeedsReplyProjection;
-		clarification?: Infer<typeof needsReplyClarificationArgValidator>;
+		clarification?: Infer<typeof needsReplyClarificationValidator>;
 	}
 ): Promise<ReplyDecision> {
 	const { decision, needsReply } = needsReplyResultOf(
