@@ -49,6 +49,7 @@ import {
 	takeReadyReplyAttachments,
 } from './replyAttachmentStore';
 import { outgoingCoverageHold } from '../mail/interpret/planGate';
+import { interpretationHoldFor } from '../mail/interpret/teamActions';
 import { retirePlansForDraft } from '../mail/interpret/responsePlanState';
 
 const LOG_TAG = '[team reply attachments]';
@@ -286,7 +287,9 @@ export type AgentReplyIntakeOutcome =
 	| NonCampaignIntakeOutcome
 	| { ok: false; reason: 'attachment_copying' | 'attachment_failed'; detail?: undefined }
 	// The item_coverage gate enforces and the exact outgoing reply is not covered.
-	| { ok: false; reason: 'item_coverage'; detail: string };
+	| { ok: false; reason: 'item_coverage'; detail: string }
+	// D3: the thread's interpretation is no longer complete (always checked).
+	| { ok: false; reason: 'interpretation_incomplete'; detail: string };
 
 export const intakeAgentReply = internalMutation({
 	args: {
@@ -326,6 +329,11 @@ export const intakeAgentReply = internalMutation({
 		// SPEC §6: an unattended reply goes out only if its coverage was checked
 		// for exactly this text and these files (review D1), in this transaction.
 		if (args.autonomous === true) {
+			// D3 again, whatever the item_coverage mode: a purge or a re-read in the
+			// undo or file-copy window can leave the interpretation incomplete or an
+			// item redacted after the route approved (final review F1).
+			const incomplete = await interpretationHoldFor(ctx, message._id);
+			if (incomplete) return { ok: false, reason: 'interpretation_incomplete', detail: incomplete };
 			const hold = await outgoingCoverageHold(ctx, message, {
 				draftText: args.draftText ?? message.draftResponse ?? '',
 				attachmentIds: carried.map((entry) => entry.id),

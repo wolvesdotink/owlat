@@ -398,25 +398,44 @@ export function isUnresolved(
 	return item.isReviewNeeded === true || (item.redactedFields?.length ?? 0) > 0;
 }
 
+/**
+ * The D3 hold for one message, read in the caller's transaction: the route
+ * gate (`interpretationHold`) and, again, the transaction that creates an
+ * autonomous Send (`inbox/replyAttachments.intakeAgentReply`), so a purge or
+ * re-read in the undo / file-copy window still holds the send (final review
+ * F1). Null when nothing holds.
+ */
+export async function interpretationHoldFor(
+	ctx: Pick<QueryCtx, 'db'>,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<string | null> {
+	return (await holdOf(ctx, { inboundMessageId })).reason;
+}
+
 export const interpretationHold = internalQuery({
 	args: { inboundMessageId: v.id('inboundMessages') },
-	handler: async (ctx, args): Promise<{ reason: string | null }> => {
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message?.threadId) {
-			return { reason: 'This message has no Team Inbox thread to interpret; not auto-sending.' };
-		}
-		const row = await countedExtraction(ctx, args.inboundMessageId);
-		const brief = await loadBriefRow(ctx, { kind: 'team', id: message.threadId });
-		// The same selection the briefing made (no unsealing needed to count).
-		const { rows, readCount } = await readOpenItems(ctx, message.threadId, args.inboundMessageId);
-		const picked = selectBriefing(rows.map(selectable), readCount);
-		return {
-			reason: interpretationHoldReason({
-				interpretation: row ? toInterpretation(row, Date.now()) : null,
-				completeness: brief?.completeness ?? null,
-				overflow: { omitted: picked.omitted, isReadTruncated: picked.isReadTruncated },
-				unresolvedCount: rows.filter(({ item }) => isUnresolved(item)).length,
-			}),
-		};
-	},
+	handler: (ctx, args): Promise<{ reason: string | null }> => holdOf(ctx, args),
 });
+
+async function holdOf(
+	ctx: Pick<QueryCtx, 'db'>,
+	args: { inboundMessageId: Id<'inboundMessages'> }
+): Promise<{ reason: string | null }> {
+	const message = await ctx.db.get(args.inboundMessageId);
+	if (!message?.threadId) {
+		return { reason: 'This message has no Team Inbox thread to interpret; not auto-sending.' };
+	}
+	const row = await countedExtraction(ctx, args.inboundMessageId);
+	const brief = await loadBriefRow(ctx, { kind: 'team', id: message.threadId });
+	// The same selection the briefing made (no unsealing needed to count).
+	const { rows, readCount } = await readOpenItems(ctx, message.threadId, args.inboundMessageId);
+	const picked = selectBriefing(rows.map(selectable), readCount);
+	return {
+		reason: interpretationHoldReason({
+			interpretation: row ? toInterpretation(row, Date.now()) : null,
+			completeness: brief?.completeness ?? null,
+			overflow: { omitted: picked.omitted, isReadTruncated: picked.isReadTruncated },
+			unresolvedCount: rows.filter(({ item }) => isUnresolved(item)).length,
+		}),
+	};
+}

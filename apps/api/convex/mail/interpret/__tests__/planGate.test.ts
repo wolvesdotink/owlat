@@ -104,6 +104,7 @@ async function recordPlan(
 		draftHash: await draftHashOf(overrides.draft ?? DRAFT),
 		verdict: 'covered',
 		planRevision: overrides.planRevision ?? 0,
+		deletionEpoch: s.brief.deletionEpoch,
 		attachmentSetHash: await attachmentSetHashOf(overrides.attachmentIds ?? []),
 		isCheckIncomplete: false,
 	});
@@ -339,6 +340,7 @@ describe('review round 2', () => {
 			draftHash: await draftHashOf(DRAFT),
 			verdict: 'covered',
 			planRevision: 0,
+			deletionEpoch: s.brief.deletionEpoch,
 			attachmentSetHash: await attachmentSetHashOf([]),
 			isCheckIncomplete: false,
 		});
@@ -395,5 +397,76 @@ describe('review round 2', () => {
 		const [row] = await t.run((ctx) => ctx.db.query('draftResponsePlans').collect());
 		expect(row).toMatchObject({ planRevision: 1, verdict: 'stale', coverage: [] });
 		expect(row?.checkedPlanRevision).toBeUndefined();
+	});
+});
+
+describe('final review', () => {
+	const intake = (t: Test, inboundId: Id<'inboundMessages'>) =>
+		t.mutation(internal.inbox.replyAttachments.intakeAgentReply, {
+			inboundMessageId: inboundId,
+			autonomous: true,
+			email: 'customer@example.com',
+			subject: 'Re: Order 42',
+			html: `<p>${DRAFT}</p>`,
+			draftText: DRAFT,
+			from: 'support@owlat.test',
+		});
+
+	it('F1: the autonomous intake holds once interpretation went incomplete, item_coverage in shadow mode', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await recordPlan(t, s);
+		await t.run((ctx) => ctx.db.patch(s.brief._id, { completeness: 'partial' }));
+		expect(await intake(t, s.inboundId)).toMatchObject({
+			ok: false,
+			reason: 'interpretation_incomplete',
+		});
+		expect(await t.run((ctx) => ctx.db.query('transactionalSends').collect())).toEqual([]);
+	});
+
+	it('F1: the autonomous intake holds once an open item was redacted by a purge', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await recordPlan(t, s);
+		await t.run((ctx) => ctx.db.patch(s.item._id, { redactedFields: ['due'] }));
+		expect(await intake(t, s.inboundId)).toMatchObject({
+			ok: false,
+			reason: 'interpretation_incomplete',
+		});
+	});
+
+	it('F3: a check computed before an erasure is not stored after it', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		// The purge ran in between: the epoch moved and the item is gone.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(s.brief._id, { deletionEpoch: s.brief.deletionEpoch + 1 });
+			await ctx.db.delete(s.item._id);
+		});
+		expect(await recordPlan(t, s)).toEqual({ isStored: false });
+		expect(await t.run((ctx) => ctx.db.query('draftResponsePlans').collect())).toEqual([]);
+	});
+
+	it('F3: a check naming an item at another revision, or one it did not read, is not stored', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await t.run((ctx) => ctx.db.patch(s.item._id, { revision: s.item.revision + 1 }));
+		expect(await recordPlan(t, s)).toEqual({ isStored: false });
+	});
+
+	it('F3: stripping a purged item bumps the plan revision', async () => {
+		const { stripPlan } = await import('../purgeQuestions');
+		const stripped = stripPlan(
+			{
+				itemRevisions: [],
+				stances: [],
+				ownerInputs: [],
+				coverage: [],
+				newPromises: [],
+				planRevision: 3,
+			},
+			new Set(['gone'])
+		);
+		expect(stripped).toMatchObject({ planRevision: 4, verdict: 'stale' });
 	});
 });

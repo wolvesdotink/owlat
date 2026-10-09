@@ -483,6 +483,7 @@ describe('review round 1', () => {
 				draftHash: 'prepared-hash',
 				verdict: 'covered',
 				planRevision: 0,
+				deletionEpoch: 0,
 				attachmentSetHash: 'none',
 				isCheckIncomplete: false,
 			})
@@ -554,6 +555,7 @@ describe('review round 3', () => {
 			draftHash: 'h',
 			verdict: 'covered',
 			planRevision: 0,
+			deletionEpoch: loaded.deletionEpoch,
 			attachmentSetHash: loaded.attachmentSetHash,
 			isCheckIncomplete: false,
 		});

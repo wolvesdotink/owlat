@@ -145,6 +145,8 @@ describe('scope change personal → shared', () => {
 		expect(after.brief?.checkpoint).toBeUndefined();
 		expect(after.viewers[0]?.viewOverride).toBeUndefined();
 		expect(after.plans[0]?.verdict).toBe('stale');
+		// A check computed in the old mode can never be stored (final review F3).
+		expect(after.plans[0]?.planRevision).toBe(1);
 		expect(after.thread?.briefTop).toMatchObject({ mode: 'actions', forYou: 1 });
 		expect(after.thread?.briefTop?.latest).toBeUndefined();
 

@@ -35,6 +35,7 @@ export interface DraftPlan {
 	threadId: Id<'conversationThreads'>;
 	threadRevision: number;
 	planRevision: number;
+	deletionEpoch: number;
 	attachmentSetHash: string;
 	isOverflow: boolean;
 	stances: PlanStance<ItemId>[];
@@ -63,6 +64,7 @@ export async function loadDraftPlan(
 			threadId,
 			threadRevision: loaded.threadRevision,
 			planRevision: loaded.planRevision,
+			deletionEpoch: loaded.deletionEpoch,
 			attachmentSetHash: loaded.attachmentSetHash,
 			isOverflow: loaded.isOverflow,
 			stances: loaded.stances,
@@ -107,6 +109,7 @@ export async function recordDraftPlan(
 			verdict: checked ? planVerdictOf(plan.stances, coverage) : 'pending',
 			// Compare-and-set: a person's stance write since the load wins.
 			planRevision: plan.planRevision,
+			deletionEpoch: plan.deletionEpoch,
 			attachmentSetHash: plan.attachmentSetHash,
 			isCheckIncomplete: coverage.isIncomplete || plan.isOverflow,
 		});

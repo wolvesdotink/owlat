@@ -228,9 +228,13 @@ const plansRange: PurgeRange = async (ctx, run) => {
 		},
 		(row) => row._creationTime,
 		async (plan) => {
-			if (plan.verdict !== 'stale') {
-				await ctx.db.patch(plan._id, { verdict: 'stale', updatedAt: Date.now() });
-			}
+			// Stale, and a new revision: a check computed in the old mode is never
+			// stored after the change (final review F3).
+			await ctx.db.patch(plan._id, {
+				verdict: 'stale',
+				planRevision: (plan.planRevision ?? 0) + 1,
+				updatedAt: Date.now(),
+			});
 			return true;
 		}
 	);

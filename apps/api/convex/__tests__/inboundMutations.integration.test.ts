@@ -10,6 +10,7 @@ import {
 	createTestInboundMessage,
 	createTestConversationThread,
 } from './factories';
+import { seedCleanInterpretation } from '../mail/interpret/__tests__/interpret.testlib';
 
 // The approved agent reply no longer dispatches inline — it enqueues a
 // `transactionalSends` Send row on the workpool, and `completeSend` drives the
@@ -1160,10 +1161,13 @@ describe('agentPipeline.sendApprovedReply', () => {
 		await seedSettings(t);
 
 		let messageId!: Id<'inboundMessages'>;
+		let threadId!: Id<'conversationThreads'>;
 		await t.run(async (ctx) => {
+			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId: undefined }));
 			messageId = await ctx.db.insert(
 				'inboundMessages',
 				msgData({
+					threadId,
 					from: 'Jane Customer <jane@customer.test>',
 					subject: 'Help with my order',
 					processingStatus: 'approved',
@@ -1172,6 +1176,8 @@ describe('agentPipeline.sendApprovedReply', () => {
 				})
 			);
 		});
+		// The route only auto-sends an interpreted message; the intake rechecks it.
+		await seedCleanInterpretation(t, threadId, messageId);
 
 		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
 			inboundMessageId: messageId,

@@ -396,7 +396,7 @@ export const sendApprovedReply = internalAction({
 				await fail('A file for this reply is still being attached. Review and send it by hand.');
 				return;
 			}
-			if (outcome.reason === 'item_coverage') {
+			if (outcome.reason === 'item_coverage' || outcome.reason === 'interpretation_incomplete') {
 				await fail(outcome.detail);
 				return;
 			}
