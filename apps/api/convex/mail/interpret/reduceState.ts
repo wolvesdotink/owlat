@@ -60,6 +60,28 @@ async function openedText(row: Pick<Doc<'threadItems'>, 'assertion' | 'display'>
 	};
 }
 
+/** A stored held update in memory: its wording opened, and kept to compare against. */
+async function heldToMem(
+	held: Doc<'threadItems'>['pendingUpdate']
+): Promise<Pick<MemItem, 'pendingUpdate' | 'storedPending'>> {
+	if (!held) return {};
+	const text = {
+		...(held.assertion !== undefined ? { assertion: await openMessageBody(held.assertion) } : {}),
+		...(held.display
+			? {
+					display: {
+						en: await openMessageBody(held.display.en),
+						de: await openMessageBody(held.display.de),
+					},
+				}
+			: {}),
+	};
+	return {
+		pendingUpdate: { ...held, ...text, evidence: [...held.evidence] },
+		storedPending: text,
+	};
+}
+
 export async function itemToMem(row: Doc<'threadItems'>): Promise<MemItem> {
 	return {
 		_id: row._id,
@@ -82,9 +104,11 @@ export async function itemToMem(row: Doc<'threadItems'>): Promise<MemItem> {
 		...(row.statusSource ? { statusSource: row.statusSource } : {}),
 		...(row.dispositionSource ? { dispositionSource: row.dispositionSource } : {}),
 		...(await openedText(row)),
-		...(row.pendingUpdate
-			? { pendingUpdate: { ...row.pendingUpdate, evidence: [...row.pendingUpdate.evidence] } }
-			: {}),
+		...(await heldToMem(row.pendingUpdate)),
+		requester: row.requester,
+		responsible: row.responsible,
+		...(row.beneficiary ? { beneficiary: row.beneficiary } : {}),
+		responsibility: row.responsibility,
 		askedAt: row.askedAt,
 		...(row.possibleDuplicateOfId ? { possibleDuplicateOfId: row.possibleDuplicateOfId } : {}),
 	};
@@ -142,6 +166,8 @@ export async function loadFoldState(
 	factRows: Map<string, Doc<'threadFacts'>>;
 	/** The thread holds more items than the scan read. */
 	isItemScanCut: boolean;
+	/** The thread holds more current facts than the scan read. */
+	isFactScanCut: boolean;
 }> {
 	const rows = new Map<string, Doc<'threadItems'>>();
 	let isItemScanCut = false;
@@ -153,13 +179,16 @@ export async function loadFoldState(
 		if (isItemScanCut) break;
 	}
 	const factRows = new Map<string, Doc<'threadFacts'>>();
+	let isFactScanCut = false;
 	if (mode === 'brief') {
-		for (const row of await currentFacts(ctx, ref, FACT_SCAN)) factRows.set(row._id, row);
+		const page = await currentFacts(ctx, ref, FACT_SCAN + 1);
+		isFactScanCut = page.length > FACT_SCAN;
+		for (const row of page.slice(0, FACT_SCAN)) factRows.set(row._id, row);
 	}
 	const state: MemState = { items: new Map(), facts: new Map() };
 	for (const row of rows.values()) state.items.set(row._id, await itemToMem(row));
 	for (const row of factRows.values()) state.facts.set(row._id, await factToMem(row));
-	return { state, rows, factRows, isItemScanCut };
+	return { state, rows, factRows, isItemScanCut, isFactScanCut };
 }
 
 /**
