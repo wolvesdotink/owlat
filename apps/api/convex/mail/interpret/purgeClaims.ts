@@ -110,7 +110,9 @@ export async function stripItem(
 		...(isPendingNamed
 			? {
 					pendingUpdate:
-						pendingEvidence.length > 0 ? { ...pending!, evidence: pendingEvidence } : undefined,
+						pendingEvidence.length > 0
+							? strippedHeld(pending!, pendingEvidence, purged)
+							: undefined,
 				}
 			: {}),
 		...(item.lineageKeys
@@ -128,6 +130,32 @@ export async function stripItem(
 	if (confirmedFrom !== item.confirmedFrom) patch.confirmedFrom = confirmedFrom;
 	await writeItemChange(ctx, ref, item, patch);
 	return 'survived';
+}
+
+/**
+ * A held update that named a purged source, kept for its surviving quotes:
+ * the wording-only transitions of a purged message go, and so do a re-read's
+ * wording, parties and dropped values (round 6: they may be the purged
+ * message's words). Pure.
+ */
+function strippedHeld(
+	held: NonNullable<Doc<'threadItems'>['pendingUpdate']>,
+	evidence: NonNullable<Doc<'threadItems'>['pendingUpdate']>['evidence'],
+	purged: PurgedSources
+): NonNullable<Doc<'threadItems'>['pendingUpdate']> {
+	const {
+		assertion: _assertion,
+		display: _display,
+		requester: _requester,
+		responsible: _responsible,
+		beneficiary: _beneficiary,
+		responsibility: _responsibility,
+		removes: _removes,
+		transitions,
+		...values
+	} = held;
+	const kept = transitions?.filter((t) => !purged.keys.has(t.sourceKey)) ?? [];
+	return { ...values, evidence, ...(kept.length > 0 ? { transitions: kept } : {}) };
 }
 
 /**

@@ -101,6 +101,26 @@ export const briefItemViewValidator = v.object({
 			due: v.optional(itemDueValidator),
 			amount: v.optional(itemAmountValidator),
 			options: v.optional(v.array(v.string())),
+			// A confirmed item's re-read wording, in the requested locale.
+			text: v.optional(v.string()),
+			requester: v.optional(participantRefValidator),
+			responsible: v.optional(participantRefValidator),
+			beneficiary: v.optional(participantRefValidator),
+			responsibility: v.optional(itemResponsibilityValidator),
+			// Values the newer reading no longer has.
+			removes: v.optional(
+				v.array(v.union(v.literal('due'), v.literal('amount'), v.literal('options')))
+			),
+			// "A later message may have settled this": matched by wording only.
+			transitions: v.optional(
+				v.array(
+					v.object({
+						to: v.optional(itemStatusValidator),
+						disposition: v.optional(itemDispositionValidator),
+						at: v.number(),
+					})
+				)
+			),
 		})
 	),
 	askedAt: v.number(),

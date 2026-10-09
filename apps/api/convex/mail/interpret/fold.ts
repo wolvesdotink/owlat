@@ -39,6 +39,7 @@ import {
 	type ReductionPlan,
 } from './reducePlan';
 import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
+import type { PlanHeld } from './reduceHeld';
 
 /** Evidence in memory: stored (sealed quote) or new (plaintext quote, `isPlain`). */
 export type MemEvidence = Evidence & { isPlain?: true };
@@ -60,13 +61,35 @@ export interface MemItem extends Omit<PlanItem, 'evidence'> {
 	storedDisplay?: { en: string; de: string };
 	askedAt: number;
 	possibleDuplicateOfId?: Id<'threadItems'>;
-	/** An unconfirmed claim's changes, held apart (see reducePlan `pendingUpdate`). */
-	pendingUpdate?: {
-		evidence: MemEvidence[];
-		due?: Doc<'threadItems'>['due'];
-		amount?: Doc<'threadItems'>['amount'];
-		options?: string[];
+	/** Changes held apart until confirmed (`reduceHeld.ts`); wording in plaintext. */
+	pendingUpdate?: MemHeld;
+	/** The stored held update's wording, opened (the writer compares against it). */
+	storedPending?: { assertion?: string; display?: { en: string; de: string } };
+}
+
+export type MemHeld = Omit<PlanHeld, 'addEvidence'> & {
+	evidence: MemEvidence[];
+	transitions?: NonNullable<Doc<'threadItems'>['pendingUpdate']>['transitions'];
+};
+
+/** A held update merged onto the one already held: newer values win, removals stay unless re-set. */
+export function mergeHeld(prior: MemHeld | undefined, next: MemHeld): MemHeld {
+	const merged: MemHeld = {
+		...prior,
+		...next,
+		evidence: [...(prior?.evidence ?? []), ...next.evidence],
 	};
+	for (const key of Object.keys(next) as Array<keyof MemHeld>) {
+		if (next[key] === undefined && prior?.[key] !== undefined) {
+			(merged as Record<string, unknown>)[key] = prior[key];
+		}
+	}
+	const removes = [...new Set([...(prior?.removes ?? []), ...(next.removes ?? [])])].filter(
+		(key) => next[key] === undefined
+	);
+	if (removes.length > 0) merged.removes = removes;
+	else delete merged.removes;
+	return merged;
 }
 
 export interface MemFact extends Omit<PlanFact, 'evidence'> {
@@ -290,16 +313,8 @@ export function applyPlan(
 			];
 		}
 		if (patch.pendingUpdate) {
-			const pending = patch.pendingUpdate;
-			const prior = item.pendingUpdate;
-			item.pendingUpdate = {
-				evidence: [...(prior?.evidence ?? []), ...ev(pending.addEvidence)],
-				...((pending.due ?? prior?.due) ? { due: pending.due ?? prior?.due } : {}),
-				...((pending.amount ?? prior?.amount) ? { amount: pending.amount ?? prior?.amount } : {}),
-				...((pending.options ?? prior?.options)
-					? { options: pending.options ?? prior?.options }
-					: {}),
-			};
+			const { addEvidence, ...changes } = patch.pendingUpdate;
+			item.pendingUpdate = mergeHeld(item.pendingUpdate, { ...changes, evidence: ev(addEvidence) });
 		}
 	}
 	const noteFactKey = (fact: MemFact, index: number) => {

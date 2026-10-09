@@ -19,8 +19,12 @@
  *     On an item already untracked only the correction changes.
  *   - confirmProposal: `verify: proposal` → `passed`, correction `confirmed`.
  *     An unconfirmed claim's held changes to a tracked item
- *     (`pendingUpdate`: quotes, deadline, amount, options) are applied and
+ *     (`pendingUpdate`: quotes, deadline, amount, options; on a confirmed
+ *     item also wording, parties and values a re-read dropped; and
+ *     transitions matched by wording only, `pendingMatch.ts`) are applied and
  *     cleared, on a proposal item or on a tracked one ("Check this change").
+ *     A held transition moves the status / disposition along the model's
+ *     legal edges and names its message as the source.
  *     Both record the `confirmed` correction, which an ordered replay keeps,
  *     and a `confirmedFrom` snapshot: which kind of confirmation it was, the
  *     item's verify, correction, deadline, amount, options and held update
@@ -51,7 +55,7 @@
 
 import type { Doc } from '../../_generated/dataModel';
 import type { ActivityType, ItemStatus } from '@owlat/shared/threadBrief';
-import { isLegalStatusEdge } from '@owlat/shared/threadBriefRules';
+import { isLegalDispositionEdge, isLegalStatusEdge } from '@owlat/shared/threadBriefRules';
 import { evidenceKey } from './reducePlan';
 
 /** The lifecycle reactions this module plans. */
@@ -77,7 +81,21 @@ export type ReactionItem = Pick<
 	| 'amount'
 	| 'options'
 	| 'confirmedFrom'
->;
+> &
+	Partial<
+		Pick<
+			Doc<'threadItems'>,
+			| 'assertion'
+			| 'display'
+			| 'requester'
+			| 'responsible'
+			| 'beneficiary'
+			| 'disposition'
+			| 'statusSource'
+			| 'dispositionSource'
+			| 'lastTransitionAt'
+		>
+	>;
 
 type Correction = NonNullable<Doc<'threadItems'>['correction']>;
 
@@ -97,6 +115,16 @@ export interface ReactionPatch {
 	options?: Doc<'threadItems'>['options'];
 	pendingUpdate?: Doc<'threadItems'>['pendingUpdate'];
 	confirmedFrom?: Doc<'threadItems'>['confirmedFrom'];
+	assertion?: Doc<'threadItems'>['assertion'];
+	display?: Doc<'threadItems'>['display'];
+	requester?: Doc<'threadItems'>['requester'];
+	responsible?: Doc<'threadItems'>['responsible'];
+	beneficiary?: Doc<'threadItems'>['beneficiary'];
+	responsibility?: Doc<'threadItems'>['responsibility'];
+	disposition?: Doc<'threadItems'>['disposition'];
+	statusSource?: Doc<'threadItems'>['statusSource'];
+	dispositionSource?: Doc<'threadItems'>['dispositionSource'];
+	lastTransitionAt?: Doc<'threadItems'>['lastTransitionAt'];
 }
 
 /** Keys a plan may remove from the item. */
@@ -107,7 +135,11 @@ type ClearableKey =
 	| 'confirmedFrom'
 	| 'due'
 	| 'amount'
-	| 'options';
+	| 'options'
+	| 'beneficiary'
+	| 'statusSource'
+	| 'dispositionSource'
+	| 'lastTransitionAt';
 
 export type ReactionPlan =
 	| {
@@ -200,10 +232,11 @@ export function planReaction(
 			// (`replay.preserveHumanState`): the confirmed deadline, amount and
 			// options survive a rebuild of the thread.
 			const confirmation = correction('confirmed');
+			const held = heldChanges(item);
 			return {
 				ok: true,
 				patch: {
-					...heldChanges(item),
+					...held.patch,
 					...(isProposal ? { verify: 'passed' as const } : {}),
 					correction: confirmation,
 					confirmedFrom: snapshotBeforeConfirm(
@@ -212,8 +245,9 @@ export function planReaction(
 						confirmation
 					),
 				},
-				clears: item.pendingUpdate ? ['pendingUpdate'] : [],
+				clears: [...(item.pendingUpdate ? (['pendingUpdate'] as const) : []), ...held.clears],
 				activity: 'proposal_confirmed',
+				...(held.patch.status ? { statusFrom: item.status, statusTo: held.patch.status } : {}),
 			};
 		}
 		case 'undo':
@@ -221,17 +255,54 @@ export function planReaction(
 	}
 }
 
-/** A held update folded into the item: new quotes appended, fields replaced. Pure. */
-export function heldChanges(item: Pick<ReactionItem, 'evidence' | 'pendingUpdate'>): ReactionPatch {
+/**
+ * A held update folded into the item: new quotes appended, fields replaced,
+ * dropped values cleared, held transitions applied in message order along the
+ * model's legal edges. Pure.
+ */
+export function heldChanges(item: ReactionItem): { patch: ReactionPatch; clears: ClearableKey[] } {
 	const held = item.pendingUpdate;
-	if (!held) return {};
+	if (!held) return { patch: {}, clears: [] };
 	const seen = new Set(item.evidence.map(evidenceKey));
-	return {
+	const patch: ReactionPatch = {
 		evidence: [...item.evidence, ...held.evidence.filter((e) => !seen.has(evidenceKey(e)))],
 		...(held.due ? { due: held.due } : {}),
 		...(held.amount ? { amount: held.amount } : {}),
 		...(held.options ? { options: held.options } : {}),
+		...(held.assertion !== undefined ? { assertion: held.assertion } : {}),
+		...(held.display ? { display: held.display } : {}),
+		...(held.requester ? { requester: held.requester } : {}),
+		...(held.responsible ? { responsible: held.responsible } : {}),
+		...(held.beneficiary ? { beneficiary: held.beneficiary } : {}),
+		...(held.responsibility ? { responsibility: held.responsibility } : {}),
 	};
+	const clears: ClearableKey[] = (held.removes ?? []).filter((key) => patch[key] === undefined);
+	let status = item.status;
+	let disposition = item.disposition;
+	for (const t of [...(held.transitions ?? [])].sort((a, b) => a.at - b.at)) {
+		const setBy = { sourceKey: t.sourceKey, at: t.at };
+		if (t.to && t.to !== status && isLegalStatusEdge(status, t.to, 'system')) {
+			status = t.to;
+			patch.status = t.to;
+			patch.statusSource = setBy;
+		}
+		if (
+			t.disposition &&
+			disposition &&
+			t.disposition !== disposition &&
+			isLegalDispositionEdge(disposition, t.disposition)
+		) {
+			disposition = t.disposition;
+			patch.disposition = t.disposition;
+			patch.dispositionSource = setBy;
+		}
+		if (patch.status || patch.disposition) {
+			patch.lastTransitionAt = Math.max(patch.lastTransitionAt ?? item.lastTransitionAt ?? 0, t.at);
+		}
+	}
+	if (patch.status === 'done') patch.completion = 'reported';
+	else if (patch.status && item.completion) clears.push('completion');
+	return { patch, clears };
 }
 
 type ConfirmedFrom = NonNullable<Doc<'threadItems'>['confirmedFrom']>;
@@ -255,16 +326,40 @@ export function snapshotBeforeConfirm(
 		...(item.amount ? { amount: item.amount } : {}),
 		...(item.options ? { options: item.options } : {}),
 		...(item.pendingUpdate ? { pendingUpdate: heldFields(item.pendingUpdate) } : {}),
+		...changedGroups(item),
 		addedEvidenceKeys: [...new Set(added)],
 	};
 }
 
-function heldFields(held: NonNullable<ReactionItem['pendingUpdate']>) {
+/** The fields the held update is about to change, as they are (round 6). Pure. */
+function changedGroups(item: ReactionItem): Partial<ConfirmedFrom> {
+	const held = item.pendingUpdate;
+	if (!held) return {};
+	const isWording = held.assertion !== undefined || held.display !== undefined;
+	const isParties =
+		!!held.requester || !!held.responsible || !!held.beneficiary || !!held.responsibility;
+	const isLifecycle = (held.transitions?.length ?? 0) > 0;
 	return {
-		...(held.due ? { due: held.due } : {}),
-		...(held.amount ? { amount: held.amount } : {}),
-		...(held.options ? { options: held.options } : {}),
+		...(isWording && item.assertion !== undefined ? { assertion: item.assertion } : {}),
+		...(isWording && item.display ? { display: item.display } : {}),
+		...(isParties && item.requester ? { requester: item.requester } : {}),
+		...(isParties && item.responsible ? { responsible: item.responsible } : {}),
+		...(isParties && item.beneficiary ? { beneficiary: item.beneficiary } : {}),
+		...(isParties ? { responsibility: item.responsibility } : {}),
+		...(isLifecycle ? { status: item.status } : {}),
+		...(isLifecycle && item.completion ? { completion: item.completion } : {}),
+		...(isLifecycle && item.disposition ? { disposition: item.disposition } : {}),
+		...(isLifecycle && item.statusSource ? { statusSource: item.statusSource } : {}),
+		...(isLifecycle && item.dispositionSource ? { dispositionSource: item.dispositionSource } : {}),
+		...(isLifecycle && item.lastTransitionAt !== undefined
+			? { lastTransitionAt: item.lastTransitionAt }
+			: {}),
 	};
+}
+
+function heldFields(held: NonNullable<ReactionItem['pendingUpdate']>) {
+	const { evidence: _quotes, ...fields } = held;
+	return fields;
 }
 
 /**
@@ -289,7 +384,32 @@ function undoConfirmation(item: ReactionItem, from: ConfirmedFrom): ReactionPlan
 	else clears.push('options');
 	if (from.pendingUpdate) patch.pendingUpdate = { ...from.pendingUpdate, evidence: moved };
 	else clears.push('pendingUpdate');
-	return { ok: true, patch, clears, activity: 'item_corrected' };
+	if (from.assertion !== undefined) patch.assertion = from.assertion;
+	if (from.display) patch.display = from.display;
+	if (from.responsible) {
+		if (from.requester) patch.requester = from.requester;
+		patch.responsible = from.responsible;
+		if (from.responsibility) patch.responsibility = from.responsibility;
+		if (from.beneficiary) patch.beneficiary = from.beneficiary;
+		else clears.push('beneficiary');
+	}
+	if (from.status === undefined) return { ok: true, patch, clears, activity: 'item_corrected' };
+	// The confirmation moved the lifecycle: every lifecycle field back as it was.
+	patch.status = from.status;
+	if (from.completion) patch.completion = from.completion;
+	else clears.push('completion');
+	if (from.disposition) patch.disposition = from.disposition;
+	for (const key of ['statusSource', 'dispositionSource', 'lastTransitionAt'] as const) {
+		if (from[key] !== undefined) (patch as Record<string, unknown>)[key] = from[key];
+		else clears.push(key);
+	}
+	return {
+		ok: true,
+		patch,
+		clears,
+		activity: 'item_corrected',
+		...(from.status !== item.status ? { statusFrom: item.status, statusTo: from.status } : {}),
+	};
 }
 
 function planUndo(item: ReactionItem, reopened: Correction): ReactionPlan {
@@ -298,7 +418,11 @@ function planUndo(item: ReactionItem, reopened: Correction): ReactionPlan {
 	if ((kind === 'untracked' || kind === 'notARequest') && item.status === 'untracked') {
 		return reopen(item, null);
 	}
-	if (kind === 'confirmed' && item.status === 'open' && item.confirmedFrom) {
+	if (
+		kind === 'confirmed' &&
+		item.confirmedFrom &&
+		(item.status === 'open' || item.confirmedFrom.status !== undefined)
+	) {
 		return undoConfirmation(item, item.confirmedFrom);
 	}
 	if (kind === 'confirmed' && item.status === 'open' && item.verify === 'passed') {

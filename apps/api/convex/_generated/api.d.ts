@@ -28,6 +28,7 @@ import type * as mail_interpret_needsReplyProjection from '../mail/interpret/nee
 import type * as mail_interpret_noteReactions from '../mail/interpret/noteReactions.js';
 import type * as mail_interpret_outboundRun from '../mail/interpret/outboundRun.js';
 import type * as mail_interpret_parties from '../mail/interpret/parties.js';
+import type * as mail_interpret_pendingMatch from '../mail/interpret/pendingMatch.js';
 import type * as mail_interpret_pipeline from '../mail/interpret/pipeline.js';
 import type * as mail_interpret_preferences from '../mail/interpret/preferences.js';
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
@@ -42,6 +43,7 @@ import type * as mail_interpret_purgeThread from '../mail/interpret/purgeThread.
 import type * as mail_interpret_reactionRules from '../mail/interpret/reactionRules.js';
 import type * as mail_interpret_reactions from '../mail/interpret/reactions.js';
 import type * as mail_interpret_reduce from '../mail/interpret/reduce.js';
+import type * as mail_interpret_reduceHeld from '../mail/interpret/reduceHeld.js';
 import type * as mail_interpret_reduceIdentity from '../mail/interpret/reduceIdentity.js';
 import type * as mail_interpret_reduceInput from '../mail/interpret/reduceInput.js';
 import type * as mail_interpret_reducePlan from '../mail/interpret/reducePlan.js';
@@ -1608,6 +1610,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/noteReactions': typeof mail_interpret_noteReactions;
 	'mail/interpret/outboundRun': typeof mail_interpret_outboundRun;
 	'mail/interpret/parties': typeof mail_interpret_parties;
+	'mail/interpret/pendingMatch': typeof mail_interpret_pendingMatch;
 	'mail/interpret/pipeline': typeof mail_interpret_pipeline;
 	'mail/interpret/preferences': typeof mail_interpret_preferences;
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
@@ -1622,6 +1625,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/reactionRules': typeof mail_interpret_reactionRules;
 	'mail/interpret/reactions': typeof mail_interpret_reactions;
 	'mail/interpret/reduce': typeof mail_interpret_reduce;
+	'mail/interpret/reduceHeld': typeof mail_interpret_reduceHeld;
 	'mail/interpret/reduceIdentity': typeof mail_interpret_reduceIdentity;
 	'mail/interpret/reduceInput': typeof mail_interpret_reduceInput;
 	'mail/interpret/reducePlan': typeof mail_interpret_reducePlan;

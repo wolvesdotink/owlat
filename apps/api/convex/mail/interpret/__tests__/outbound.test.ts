@@ -382,11 +382,9 @@ describe('Postbox outbound lifecycle → thread brief', () => {
 	});
 
 	// Review F1: equal disposition is not dependence. `sendFailure` reads
-	// `threadItems.dispositionSource`; the reducer still drops B's restatement
-	// of `answered` as `no_change` (reducePlan.ts), so the source stays A.
-	// Unskip once a newer message restating the current disposition moves
-	// `dispositionSource` (interpret lane).
-	it.skip('A answers, B answers again, A bounces: the item stays answered', async () => {
+	// `threadItems.dispositionSource`; a newer verified reply restating the
+	// current disposition moves it to that reply (reducePlan.ts, round 5 F2).
+	it('A answers, B answers again, A bounces: the item stays answered', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId, threadId } = await seedMailThread(t);
 		const [first] = await seedItems(t, messageId, threadId);

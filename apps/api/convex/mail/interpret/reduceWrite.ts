@@ -31,7 +31,14 @@ import {
 import { evidenceKey } from './reducePlan';
 import { counterpartyKeyOf, responsibilityOf } from './parties';
 import { exactValueKey } from './factEquivalence';
-import { sameEvidence, type MemEvidence, type MemFact, type MemItem, type MemState } from './fold';
+import {
+	sameEvidence,
+	type MemEvidence,
+	type MemFact,
+	type MemHeld,
+	type MemItem,
+	type MemState,
+} from './fold';
 import type { ReduceFact } from './reduceInput';
 
 export interface WriteArgs {
@@ -78,22 +85,54 @@ function same(a: unknown, b: unknown): boolean {
 	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
-type Pending = {
-	evidence: readonly Evidence[];
-	due?: unknown;
-	amount?: unknown;
-	options?: unknown;
-};
-
-/** Same pending update (quotes compared by identity, not by their sealed text)? */
-function samePending(a: Pending | undefined, b: Pending | undefined): boolean {
-	if (!a || !b) return !a && !b;
-	return (
-		sameEvidence(a.evidence, b.evidence) &&
-		same(a.due, b.due) &&
-		same(a.amount, b.amount) &&
-		same(a.options, b.options)
+/** JSON with sorted keys: the same value whatever order its fields were written in. */
+function canon(value: unknown): string {
+	return JSON.stringify(value ?? null, (_key, v: unknown) =>
+		v && typeof v === 'object' && !Array.isArray(v)
+			? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+			: v
 	);
+}
+
+const HELD_VALUE_KEYS = [
+	'due',
+	'amount',
+	'options',
+	'requester',
+	'responsible',
+	'beneficiary',
+	'responsibility',
+	'removes',
+	'transitions',
+] as const;
+
+/**
+ * Same held update as stored? Quotes by identity, wording against the stored
+ * wording as opened at load (`storedPending`), every other field by value.
+ */
+function samePending(item: MemItem, row: Doc<'threadItems'>['pendingUpdate']): boolean {
+	const a = item.pendingUpdate;
+	if (!a || !row) return !a && !row;
+	return (
+		sameEvidence(a.evidence, row.evidence) &&
+		HELD_VALUE_KEYS.every((key) => canon(a[key]) === canon(row[key])) &&
+		a.assertion === item.storedPending?.assertion &&
+		canon(a.display) === canon(item.storedPending?.display)
+	);
+}
+
+/** A held update as stored: wording and new quotes sealed. */
+async function sealHeld(
+	held: MemHeld,
+	stored?: Doc<'threadItems'>['pendingUpdate']
+): Promise<NonNullable<Doc<'threadItems'>['pendingUpdate']>> {
+	const { evidence, assertion, display, ...rest } = held;
+	return {
+		...rest,
+		evidence: await sealEvidence(evidence, stored?.evidence),
+		...(assertion !== undefined ? { assertion: await sealBodyAtWrite(assertion) } : {}),
+		...(display ? { display: await sealDisplay(display) } : {}),
+	};
 }
 
 function statusActivity(from: ItemStatus, to: ItemStatus): ActivityType {
@@ -246,14 +285,7 @@ async function insertItem(
 		...(item.amount ? { amount: item.amount } : {}),
 		...(item.options ? { options: item.options } : {}),
 		evidence: await sealEvidence(item.evidence),
-		...(item.pendingUpdate
-			? {
-					pendingUpdate: {
-						...item.pendingUpdate,
-						evidence: await sealEvidence(item.pendingUpdate.evidence),
-					},
-				}
-			: {}),
+		...(item.pendingUpdate ? { pendingUpdate: await sealHeld(item.pendingUpdate) } : {}),
 		...(possibleDuplicateOfId ? { possibleDuplicateOfId } : {}),
 		verify: item.verify,
 		listBucket: listBucketOf({ status: item.status, responsibility, verify: item.verify }),
@@ -305,12 +337,9 @@ async function patchItem(
 		item.lineageKeys && !same([...item.lineageKeys].sort(), [...(row.lineageKeys ?? [])].sort())
 			? item.lineageKeys
 			: undefined;
-	if (!samePending(item.pendingUpdate, row.pendingUpdate)) {
+	if (!samePending(item, row.pendingUpdate)) {
 		patch.pendingUpdate = item.pendingUpdate
-			? {
-					...item.pendingUpdate,
-					evidence: await sealEvidence(item.pendingUpdate.evidence, row.pendingUpdate?.evidence),
-				}
+			? await sealHeld(item.pendingUpdate, row.pendingUpdate)
 			: undefined;
 	}
 	// A replayed proposal: each derived field is compared and updated on its own

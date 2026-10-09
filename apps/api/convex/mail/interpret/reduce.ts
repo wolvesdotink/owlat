@@ -28,6 +28,7 @@
 
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
 import type { BriefCompleteness, InterpretationStatus } from '@owlat/shared/threadBrief';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
@@ -41,7 +42,6 @@ import { applyInterpretationArgs } from './reduceInput';
 import { briefTopLatestOf, loadFoldState, sourceStillInThread } from './reduceState';
 import { flagUnreproduced, foldEntry } from './fold';
 import {
-	applyPendingTransitions,
 	identityTargets,
 	loadIdentityTargets,
 	pendingFieldsOf,
@@ -54,6 +54,8 @@ import { nextRetryAtOf } from './retry';
 import { ATTEMPT_SUFFIX } from './load';
 import { sourceVersionOf } from './sourceVersion';
 import { refreshBriefTop } from './briefTop';
+import { onItemsCreated } from './commitmentLink';
+import { startPendingMatch } from './pendingMatch';
 
 export type ApplyOutcome =
 	| {
@@ -66,8 +68,13 @@ export type ApplyOutcome =
 			completeness: BriefCompleteness;
 			/** When an incomplete extraction will be retried, if it will. */
 			nextRetryAt?: number;
-			/** The thread holds more items than the fold scanned (named rows were still loaded). */
+			/**
+			 * The thread holds more items or current facts than the fold scanned
+			 * (named rows were still loaded by id): the brief stays partial (R2).
+			 */
 			isItemScanCut?: true;
+			/** The source's claim record reached its limit (its recorded keys still resolve). */
+			isClaimRecordFull?: true;
 	  }
 	| { outcome: 'stale'; interpretationRevision: number }
 	| { outcome: 'erased' | 'gone' | 'modeChanged' | 'sourceChanged' };
@@ -247,11 +254,10 @@ export const applyInterpretation = internalMutation({
 		// thread holds; a re-read merges by identity and flags what it no
 		// longer shows, it never retires anything.
 		let claims: Awaited<ReturnType<typeof sourceClaimIds>> | null = null;
-		let settled: Awaited<ReturnType<typeof applyPendingTransitions>> = [];
 		let isItemScanCut = false;
 		if (entry) {
 			const loaded = await loadFoldState(ctx, ref, mode);
-			isItemScanCut = loaded.isItemScanCut;
+			isItemScanCut = loaded.isItemScanCut || loaded.isFactScanCut;
 			// Identity beyond the scan (round 5 F5): named rows, loaded by id.
 			claims = await sourceClaimIds(ctx, sourceKey);
 			await loadIdentityTargets(
@@ -259,15 +265,14 @@ export const applyInterpretation = internalMutation({
 				ref,
 				mode,
 				loaded,
-				identityTargets(entry.result, claims.claimIds)
+				identityTargets(entry.result, sourceKey, claims.claimIds, { isReapply })
 			);
 			const foldOpts = { mode, threadKind: ref.kind, isOutOfOrder };
 			const { plan, touched } = foldEntry(loaded.state, entry, foldOpts, claims.claimIds);
 			if (isReapply) flagUnreproduced(loaded.state, sourceKey, touched);
 			// Completions read before their request (round 5 F7): kept, and
-			// applied to the items this fold created.
+			// proposed to the items a later fold creates (pendingMatch.ts).
 			await ctx.db.patch(interpretationId, pendingFieldsOf(plan.unresolved));
-			settled = await applyPendingTransitions(ctx, ref, loaded.state, foldOpts, sourceKey);
 			fold = { ...writeBase, after: loaded.state, rows: loaded.rows, factRows: loaded.factRows };
 		}
 
@@ -294,12 +299,21 @@ export const applyInterpretation = internalMutation({
 		}
 		const written = fold ? await writeState(ctx, fold) : null;
 		const createdItemIds = written?.created ?? [];
-		if (written && fold && claims) {
-			await storeClaimIds(ctx, claims.sourceRowId, fold.after, sourceKey, written.ids);
+		// Commitments extracted before this message was interpreted link now.
+		await onItemsCreated(ctx, args.source, createdItemIds);
+		const isClaimRecordFull =
+			written && fold && claims
+				? await storeClaimIds(ctx, claims.sourceRow, fold.after, sourceKey, written.ids)
+				: false;
+		const matchRun = await startPendingMatch(ctx, ref, brief, createdItemIds, sourceKey);
+		if (matchRun) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.mail.interpret.pendingMatch.matchPendingTransitions,
+				matchRun
+			);
 		}
-		for (const { rowId, remaining } of settled) {
-			await ctx.db.patch(rowId, pendingFieldsOf(remaining));
-		}
+		const isMatching = matchRun !== null;
 		if (status === 'partial' || status === 'failed') {
 			await appendActivity(ctx, {
 				threadRef: ref,
@@ -313,7 +327,12 @@ export const applyInterpretation = internalMutation({
 			});
 		}
 
-		const completeness = completenessOfCounts(sourceCounts);
+		// A pending-transition scan in flight keeps the brief partial (round 6 R2).
+		const briefNow = await ctx.db.get(brief._id);
+		const isScanning = isMatching || (briefNow?.pendingMatchRuns ?? 0) > 0;
+		// So does a fold that read only part of the thread (round 6 W-F8).
+		const isScanCut = entry ? isItemScanCut : briefNow?.isFoldScanCut === true;
+		const completeness = isScanning || isScanCut ? 'partial' : completenessOfCounts(sourceCounts);
 		const fresh = (await ctx.db.get(brief._id)) ?? brief;
 		const revision = brief.interpretationRevision + 1;
 		await ctx.db.patch(brief._id, {
@@ -321,6 +340,7 @@ export const applyInterpretation = internalMutation({
 			sourceRevision: fresh.sourceRevision + 1,
 			sourceCounts,
 			completeness,
+			...(entry ? { isFoldScanCut: isItemScanCut ? true : undefined } : {}),
 			// The checkpoint (and so "Latest update") only ever points at a current
 			// extraction that read the message, never at a failed attempt (M4).
 			...(!isOutOfOrder && !isKeepingPrevious && args.result
@@ -343,6 +363,7 @@ export const applyInterpretation = internalMutation({
 			completeness,
 			...(nextRetryAt !== undefined ? { nextRetryAt } : {}),
 			...(isItemScanCut ? { isItemScanCut: true as const } : {}),
+			...(isClaimRecordFull ? { isClaimRecordFull: true as const } : {}),
 		};
 	},
 });
