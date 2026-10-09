@@ -18,6 +18,7 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { ReduceEvidence, ReduceItem } from './reduceInput';
 import { responsibilityOf } from './parties';
+import { heldFieldsOf, type HeldField } from './heldSources';
 
 type Party = Doc<'threadItems'>['requester'];
 type Removable = 'due' | 'amount' | 'options';
@@ -35,6 +36,8 @@ export interface PlanHeld {
 	beneficiary?: Party;
 	responsibility?: Doc<'threadItems'>['responsibility'];
 	removes?: Removable[];
+	/** Which source proposed each field (`heldSources.ts`). */
+	fieldSources?: Array<{ field: HeldField; sourceKey: string }>;
 }
 
 /** The item fields the comparison reads. */
@@ -70,7 +73,7 @@ export function heldUpdateOf(
 	proposal: ReduceItem,
 	target: HeldTarget,
 	added: ReduceEvidence[],
-	opts: { isConfirmed: boolean; isSeenSource: boolean }
+	opts: { isConfirmed: boolean; isSeenSource: boolean; sourceKey: string }
 ): PlanHeld | null {
 	const held: PlanHeld = { addEvidence: added };
 	if (proposal.due && !same(proposal.due, target.due)) held.due = proposal.due;
@@ -106,5 +109,10 @@ export function heldUpdateOf(
 		}
 	}
 	const { addEvidence, ...changes } = held;
-	return addEvidence.length > 0 || Object.keys(changes).length > 0 ? held : null;
+	if (addEvidence.length === 0 && Object.keys(changes).length === 0) return null;
+	const fields = heldFieldsOf(changes);
+	if (fields.length > 0) {
+		held.fieldSources = fields.map((field) => ({ field, sourceKey: opts.sourceKey }));
+	}
+	return held;
 }

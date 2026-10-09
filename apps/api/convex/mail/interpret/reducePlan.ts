@@ -243,6 +243,7 @@ export function planReduction(
 				const pending = heldUpdateOf(proposal, match, added, {
 					isConfirmed: false,
 					isSeenSource,
+					sourceKey,
 				});
 				if (pending) {
 					p.pendingUpdate = pending;
@@ -262,7 +263,11 @@ export function planReduction(
 				// amount, options, a value dropped) waits as a held update,
 				// flagged for review.
 				if (proposal.verify === 'passed' && match.verify === 'proposal') p.verify = 'passed';
-				const pending = heldUpdateOf(proposal, match, [], { isConfirmed: true, isSeenSource });
+				const pending = heldUpdateOf(proposal, match, [], {
+					isConfirmed: true,
+					isSeenSource,
+					sourceKey,
+				});
 				if (pending) {
 					p.pendingUpdate = pending;
 					p.isReviewNeeded = true;

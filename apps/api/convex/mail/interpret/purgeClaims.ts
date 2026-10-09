@@ -17,10 +17,11 @@
  *    (`reducePlan.ts` / `reducePlanFacts.ts` read the marker);
  *  - what a person confirmed (correction `confirmed`) stays, as do the
  *    status, assignee and reminder a person set;
- *  - an unconfirmed held update (`pendingUpdate`) a purged source supported
- *    goes whole, and so does a confirmation undo snapshot (`confirmedFrom`)
- *    that moved a purged source's evidence: neither can bring a purged value
- *    back;
+ *  - a held update (`pendingUpdate`) loses exactly the fields, removals and
+ *    transitions a purged source proposed (`heldSources.ts`, per-field
+ *    provenance), a confirmation that applied a purged source's parties is
+ *    reverted, and the undo snapshot (`confirmedFrom`) goes when the purge
+ *    touched what it would restore;
  *  - a status or disposition the purged source set, as a message or as a
  *    recorded operation on it (`op:<sourceKey>`), goes back to `open` /
  *    `unanswered` (`transitionSources.ts resetTransitionsFrom`).
@@ -36,6 +37,7 @@ import { sealBodyAtWrite } from '../../lib/messageBody';
 import { writeItemChange } from './counters';
 import type { DrainBudget } from './purgeDrain';
 import { resetTransitionsFrom } from './transitionSources';
+import { isHolding, revertPurgedConfirmation, withoutSources } from './heldSources';
 
 /** The neutral line a redacted claim shows. */
 export const REDACTED_CLAIM_TEXT = {
@@ -162,28 +164,50 @@ export async function stripItem(
 ): Promise<ClaimFate> {
 	const names = (evidence: ReadonlyArray<{ source: { id: string } }>) =>
 		evidence.some((e) => purged.ids.has(e.source.id));
-	const isPendingNamed = !!item.pendingUpdate && names(item.pendingUpdate.evidence);
+	const pending = item.pendingUpdate;
+	// A held field or transition names its source even without quotes (interpret round 7 F1).
+	const isPendingNamed =
+		!!pending &&
+		(names(pending.evidence) ||
+			(pending.fieldSources ?? []).some((f) => purged.keys.has(f.sourceKey)) ||
+			(pending.transitions ?? []).some((t) => purged.keys.has(t.sourceKey)));
+	// A confirmation that applied parties the purged message proposed: put back.
+	const reverted = revertPurgedConfirmation(item, purged.keys);
+	const pendingEvidence = pending?.evidence.filter((e) => !purged.ids.has(e.source.id)) ?? [];
+	const held = isPendingNamed
+		? { pendingUpdate: strippedHeld(pending!, pendingEvidence, purged) }
+		: {};
+	const isSnapshotGone = isSnapshotPurged(item.confirmedFrom, purged) || !!reverted || isPendingNamed;
+	const snapshot = item.confirmedFrom && isSnapshotGone ? { confirmedFrom: undefined } : {};
 	const reset = transitionReset(item, purged);
 	const stamp = { revision: item.revision + 1, updatedAt: Date.now() };
-	if (!names(item.evidence) && !isPendingNamed) {
+	if (!names(item.evidence)) {
 		// No evidence of the purged source, but a status or disposition it set
-		// (a bounced send's `failed` names the send, not the item's evidence).
-		if (!reset) return 'untouched';
-		await writeItemChange(ctx, ref, item, { ...reset, ...stamp });
+		// (a bounced send's `failed` names the send, not the item's evidence),
+		// or held changes or a confirmation it proposed.
+		if (!reset && !isPendingNamed && !reverted) return 'untouched';
+		await writeItemChange(ctx, ref, item, {
+			...reset,
+			...held,
+			...reverted?.patch,
+			...snapshot,
+			...stamp,
+		});
 		return 'survived';
 	}
 	const evidence = item.evidence.filter((e) => !purged.ids.has(e.source.id));
 	if (evidence.length === 0) return 'doomed';
 
-	const isEvidenceLost = evidence.length !== item.evidence.length;
 	const isConfirmed = item.correction?.kind === 'confirmed';
 	const patch: ItemPatch = {
 		evidence,
-		...(isEvidenceLost && !isConfirmed
+		...reverted?.patch,
+		// Rule P: what a person did not confirm is redacted until a re-read refills it.
+		...(!isConfirmed
 			? await redactedItem(await isNamedBySurvivingRecord(ctx, item._id, evidence, budget))
 			: {}),
-		...(isPendingNamed ? { pendingUpdate: undefined } : {}),
-		...(isSnapshotPurged(item.confirmedFrom, purged) ? { confirmedFrom: undefined } : {}),
+		...held,
+		...snapshot,
 		...(item.lineageKeys
 			? { lineageKeys: item.lineageKeys.filter((k) => !purged.keys.has(lineageSource(k))) }
 			: {}),
@@ -194,6 +218,23 @@ export async function stripItem(
 	};
 	await writeItemChange(ctx, ref, item, patch);
 	return 'survived';
+}
+
+/**
+ * A held update that named a purged source: its surviving quotes, without
+ * every field, removal and transition the purged sources proposed
+ * (`heldSources.ts`); gone when nothing is left. Pure.
+ */
+function strippedHeld(
+	held: NonNullable<Doc<'threadItems'>['pendingUpdate']>,
+	evidence: NonNullable<Doc<'threadItems'>['pendingUpdate']>['evidence'],
+	purged: PurgedSources
+): Doc<'threadItems'>['pendingUpdate'] {
+	const kept = withoutSources(held, purged.keys);
+	// Without per-field sources (a held update written before them) the values
+	// stand on the quotes alone: no quotes left, nothing held.
+	const isStanding = held.fieldSources ? isHolding(kept) : (kept.transitions?.length ?? 0) > 0;
+	return evidence.length > 0 || isStanding ? { ...kept, evidence } : undefined;
 }
 
 /** Strip one fact (mail threads only); a survivor is redacted. */

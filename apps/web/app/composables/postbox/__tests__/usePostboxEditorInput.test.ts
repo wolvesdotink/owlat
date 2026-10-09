@@ -68,7 +68,9 @@ describe('usePostboxEditorInput', () => {
 	});
 
 	it('Escape dismisses a rewrite pill when there is no ghost', () => {
-		const deps = makeDeps({ rewrite: { invalidateOnEdit: vi.fn(), handleEscape: vi.fn(() => true) } });
+		const deps = makeDeps({
+			rewrite: { invalidateOnEdit: vi.fn(), handleEscape: vi.fn(() => true) },
+		});
 		const e = keydown('Escape');
 		usePostboxEditorInput(deps).onKeydown(e);
 		expect(e.defaultPrevented).toBe(true);

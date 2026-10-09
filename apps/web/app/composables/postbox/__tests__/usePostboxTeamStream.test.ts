@@ -99,6 +99,17 @@ describe('usePostboxTeamStream', () => {
 		expect(state().earlier.value).toBe('none');
 	});
 
+	it('clears the mentions when an older page brings the first discussion note', async () => {
+		host([{ _id: 'm1', receivedAt: 100 }]);
+		entries.value = [note(300, 'threadNote')];
+		await nextTick();
+		expect(markRead).not.toHaveBeenCalled();
+		// The newest entry stays the same; the discussion note is older.
+		entries.value = [note(150), note(300, 'threadNote')];
+		await nextTick();
+		expect(markRead).toHaveBeenCalledTimes(1);
+	});
+
 	it('clears the discussion mentions once, when discussion notes are seen', async () => {
 		host([{ _id: 'm1', receivedAt: 100 }]);
 		entries.value = [note(200)];

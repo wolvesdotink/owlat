@@ -7,7 +7,7 @@ import { throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { openMessageBody } from '../lib/messageBody';
 import { loadPersonalMailboxForUser } from '../mail/permissions';
 import { loadBriefRow } from '../mail/interpret/briefRow';
-import { openEvidence } from '../mail/interpret/briefRead';
+import { openEvidence } from '../mail/interpret/briefOpen';
 
 // Thread brief resources of "Export my data" (SPEC §5 Erasure: "Export
 // includes authorized derived content"), next to accountExportQueries.ts.

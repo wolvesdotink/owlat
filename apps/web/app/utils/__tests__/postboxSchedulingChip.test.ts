@@ -4,10 +4,7 @@
  * there is NO .ics invite attached, and it has not been dismissed this session.
  */
 import { describe, it, expect } from 'vitest';
-import {
-	shouldShowSchedulingChip,
-	isCalendarInviteAttachment,
-} from '../postboxSchedulingChip';
+import { shouldShowSchedulingChip, isCalendarInviteAttachment } from '../postboxSchedulingChip';
 
 const intent = { isScheduling: true, proposedTimes: ['Tuesday afternoon'] };
 
@@ -26,7 +23,9 @@ describe('isCalendarInviteAttachment', () => {
 	it('detects .ics and text/calendar', () => {
 		expect(isCalendarInviteAttachment({ filename: 'x.ics', contentType: 'x' })).toBe(true);
 		expect(isCalendarInviteAttachment({ filename: 'x', contentType: 'text/calendar' })).toBe(true);
-		expect(isCalendarInviteAttachment({ filename: 'a.pdf', contentType: 'application/pdf' })).toBe(false);
+		expect(isCalendarInviteAttachment({ filename: 'a.pdf', contentType: 'application/pdf' })).toBe(
+			false
+		);
 	});
 });
 
@@ -42,9 +41,7 @@ describe('shouldShowSchedulingChip', () => {
 	it('hides when there is no scheduling intent', () => {
 		expect(shouldShowSchedulingChip(base({ meetingIntent: null }))).toBe(false);
 		expect(
-			shouldShowSchedulingChip(
-				base({ meetingIntent: { isScheduling: false, proposedTimes: [] } }),
-			),
+			shouldShowSchedulingChip(base({ meetingIntent: { isScheduling: false, proposedTimes: [] } }))
 		).toBe(false);
 	});
 
@@ -60,8 +57,8 @@ describe('shouldShowSchedulingChip', () => {
 						_id: 'm1',
 						attachments: [{ filename: 'invite.ics', contentType: 'text/calendar' }],
 					},
-				}),
-			),
+				})
+			)
 		).toBe(false);
 	});
 

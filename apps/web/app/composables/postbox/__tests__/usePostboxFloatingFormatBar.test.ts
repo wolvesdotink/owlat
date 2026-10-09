@@ -61,8 +61,7 @@ function mountBar(enabled: () => boolean): {
 				const surfaceRef = ref<HTMLElement | null>(null) as Ref<HTMLElement | null>;
 				const editor = document.createElement('div');
 				const surface = document.createElement('div');
-				surface.getBoundingClientRect = () =>
-					({ top: 0, left: 0 }) as DOMRect;
+				surface.getBoundingClientRect = () => ({ top: 0, left: 0 }) as DOMRect;
 				Object.defineProperty(surface, 'scrollLeft', { value: 0, configurable: true });
 				Object.defineProperty(surface, 'scrollTop', { value: 0, configurable: true });
 				Object.defineProperty(surface, 'scrollWidth', { value: 300, configurable: true });
@@ -72,7 +71,7 @@ function mountBar(enabled: () => boolean): {
 				captured = usePostboxFloatingFormatBar({ editorRef, surfaceRef, enabled });
 				return () => null;
 			},
-		}),
+		})
 	);
 	return { ctl: captured, editor: editorEl };
 }

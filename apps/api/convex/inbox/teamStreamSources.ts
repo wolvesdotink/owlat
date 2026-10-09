@@ -176,7 +176,8 @@ export function readReplyBatch(s: StreamContext): Promise<SourceBatch<Entry>> {
 		toEntries: async (row): Promise<Entry[]> => {
 			if (row.source.kind !== 'teamReply' || !row.snapshot) return [];
 			const send = await ctx.db.get(row.source.id);
-			if (!send) return [];
+			// A follow-up's Send has a snapshot too; the follow-up entry is its one row.
+			if (send?.kind !== 'agent_reply') return [];
 			const inbound = send.inboundMessageId ? await ctx.db.get(send.inboundMessageId) : null;
 			return [
 				replyEntry({

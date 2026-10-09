@@ -11,7 +11,6 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
 import type { AppLocale } from '@owlat/shared/appLocales';
-import type { Evidence } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { mailboxOwnAddresses } from '../identities';
@@ -22,13 +21,13 @@ import type { SourceCounts } from './counters';
 type ExactWordingReason = (typeof EXACT_WORDING_REASONS)[number];
 import type {
 	ActivityView,
-	EvidenceView,
 	FactView,
 	FileView,
 	LatestLineView,
 	ParticipantView,
 } from './briefShape';
 import { gapReasonOf, type GapReason, type OpenedItem } from './briefProject';
+import { openEvidence, openHeld } from './briefOpen';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
@@ -39,15 +38,6 @@ const ACTIVITY_SHOWN = 5;
 /** Messages read for participants and files. */
 const MESSAGES_READ = 30;
 const INTERPRETATIONS_READ = 200;
-
-export async function openEvidence(evidence: readonly Evidence[]): Promise<EvidenceView[]> {
-	return Promise.all(
-		evidence.map(async ({ quote, ...rest }) => ({
-			...rest,
-			...(quote !== undefined ? { quote: await openMessageBody(quote) } : {}),
-		}))
-	);
-}
 
 /** Open items per page of `get`. */
 export const OPEN_ITEMS_PAGE = 100;
@@ -107,28 +97,6 @@ export async function readItemsPage(
 			isDone: open.isDone,
 			isClosedTruncated,
 		},
-	};
-}
-
-/** A held update as the brief shows it: quotes and wording opened, sources left out. */
-async function openHeld(
-	held: NonNullable<Doc<'threadItems'>['pendingUpdate']>,
-	locale: AppLocale
-): Promise<NonNullable<OpenedItem['pendingUpdate']>> {
-	const { evidence, assertion: _assertion, display, transitions, ...fields } = held;
-	return {
-		...fields,
-		evidence: await openEvidence(evidence),
-		...(display ? { text: await openMessageBody(display[locale]) } : {}),
-		...(transitions
-			? {
-					transitions: transitions.map((t) => ({
-						...(t.to ? { to: t.to } : {}),
-						...(t.disposition ? { disposition: t.disposition } : {}),
-						at: t.at,
-					})),
-				}
-			: {}),
 	};
 }
 

@@ -12,6 +12,7 @@ import {
 	linkableItems,
 	matchItems,
 	mergeStreamPages,
+	newestPosition,
 	noteCountsByItem,
 	placeStreamExtras,
 	removeItemQuery,
@@ -61,6 +62,20 @@ describe('buildStreamRows', () => {
 			'note:theirs',
 		]);
 		expect(buildStreamRows(entries).some((r) => r.kind === 'newDivider')).toBe(false);
+	});
+});
+
+describe('the "New" divider at equal timestamps', () => {
+	it('follows creation order, not key order, and the saved place keeps its tie', () => {
+		// Same timestamp; ids run against creation order (z… created first).
+		const first = note('z_first', T0, { tie: T0 + 1 } as never);
+		const second = note('a_second', T0, { tie: T0 + 2 } as never);
+		const entries = mergeStreamPages([[second, first]]);
+		expect(entries.map((e) => e.key)).toEqual(['note:z_first', 'note:a_second']);
+		const seen = newestPosition([first]);
+		expect(seen).toEqual({ at: T0, tie: T0 + 1, key: 'note:z_first' });
+		const rows = buildStreamRows(entries, { seenPosition: seen });
+		expect(rows.map((r) => r.key)).toEqual(['note:z_first', 'new:note:a_second', 'note:a_second']);
 	});
 });
 

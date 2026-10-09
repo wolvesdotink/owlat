@@ -12,6 +12,7 @@
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
 import { briefDueDate, briefShortDate } from '~/utils/threadBriefContext';
 import { menuReactions, type BriefAction } from '~/utils/threadBriefItems';
+import BriefPendingUpdate from '~/components/brief/BriefPendingUpdate.vue';
 
 export interface TeamMember {
 	userId: string;
@@ -136,6 +137,13 @@ function label(action: TeamItemAction): string {
 					t('components.team.items.notes', { count: noteCount }, noteCount)
 				}}</span>
 			</p>
+			<BriefPendingUpdate
+				v-if="item.pendingUpdate && item.status === 'open'"
+				:item-id="item.id"
+				:update="item.pendingUpdate"
+				:can-confirm="!hideActions"
+				@confirm="emit('act', 'confirmProposal')"
+			/>
 		</div>
 		<div v-if="!hideActions" class="flex items-center gap-1.5">
 			<UiButton

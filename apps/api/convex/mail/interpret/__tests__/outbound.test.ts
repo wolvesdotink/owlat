@@ -296,7 +296,11 @@ describe('Postbox outbound lifecycle → thread brief', () => {
 		await transition(t, outboundId, 0, { to: 'sent', at: REPLIED });
 		await applyReply(t, outboundId, threadId, [first!._id]);
 		await t.run(async (ctx) => {
-			await ctx.db.patch(first!._id, { disposition: 'accepted' });
+			// Another message moved it: it is that message's disposition now.
+			await ctx.db.patch(first!._id, {
+				disposition: 'accepted',
+				dispositionSource: { sourceKey: 'mail:other', at: REPLIED + 1 },
+			});
 		});
 
 		await transition(t, outboundId, 0, { to: 'bounced', at: REPLIED + 60_000 });

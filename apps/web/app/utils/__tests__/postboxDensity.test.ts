@@ -27,9 +27,6 @@ describe('resolvePostboxDensity', () => {
 	});
 
 	it('offers exactly the two modes as options', () => {
-		expect(POSTBOX_DENSITY_OPTIONS.map((o) => o.value)).toEqual([
-			'comfortable',
-			'compact',
-		]);
+		expect(POSTBOX_DENSITY_OPTIONS.map((o) => o.value)).toEqual(['comfortable', 'compact']);
 	});
 });
