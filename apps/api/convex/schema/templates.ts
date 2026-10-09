@@ -333,6 +333,8 @@ export const templateTables = {
 		.index('by_inbound_message_status', ['inboundMessageId', 'status'])
 		// Thread brief erasure: every Send that answered a received message, in creation order.
 		.index('by_inbound_message', ['inboundMessageId'])
+		// Thread brief erasure: every Send of a team follow-up, in creation order.
+		.index('by_follow_up', ['followUpId'])
 		// Point lookup for the automation intake's step-run idempotency key.
 		.index('by_automation_step_run', ['automationStepRunId'])
 		// The lost-send sweep (`delivery/stuckSendSweep.ts`); see `emailSends`.

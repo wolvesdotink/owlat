@@ -146,21 +146,21 @@ describe('message purge', () => {
 			coverage: [],
 		});
 		expect(after.brief).toMatchObject({
-			// Bumped when the purge started and again when it settled.
-			deletionEpoch: 2,
+			// Bumped once, when the purge started (a re-read it schedules must not be erased).
+			deletionEpoch: 1,
 			interpretationRevision: 2,
 			// A claim survived on less evidence: incomplete until the thread is re-read.
 			completeness: 'partial',
 			sourceCounts: { complete: 0, partial: 0, failed: 0, unreadable: 0, skipped: 0 },
-			// The deleted items left the counters, the reopened one came back to `us`.
-			itemCounts: expect.objectContaining({ us: 2, closed: 0 }),
+			// The deleted items left the counters; the redacted survivor reads `unclear`, the reopened one `us`.
+			itemCounts: expect.objectContaining({ us: 1, unclear: 1, closed: 0 }),
 		});
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('interpretSources').collect()).toHaveLength(0);
 		});
 		expect(after.brief?.checkpoint).toBeUndefined();
 		expect(after.thread?.briefTop).toMatchObject({
-			forYou: 2,
+			forYou: 1,
 			top: { itemId: expect.any(String) },
 		});
 		expect(after.thread?.briefTop?.latest).toBeUndefined();
@@ -211,7 +211,7 @@ describe('message purge', () => {
 		const after = await mailRows(t, threadId);
 		expect(after.items).toHaveLength(0);
 		expect(after.interpretations).toHaveLength(0);
-		expect(after.brief?.deletionEpoch).toBe(2);
+		expect(after.brief?.deletionEpoch).toBe(1);
 		expect(await t.run((ctx) => ctx.db.get(b))).not.toBeNull();
 	});
 });

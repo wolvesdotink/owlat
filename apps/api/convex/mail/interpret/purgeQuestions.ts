@@ -18,10 +18,7 @@ import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { answerAskTargetKey } from '../../lib/validators/answerAsk';
-import {
-	interpretationSourceKey,
-	type InterpretationSource,
-} from '../../lib/validators/threadBrief';
+import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
@@ -35,8 +32,6 @@ import {
 	type PurgeRange,
 } from './purgeDrain';
 
-/** Newest messages examined for the thread's re-read. */
-const RECHECK_SCAN = 20;
 /** Ask sessions of one draft read at a time (one per owner). */
 const SESSION_CHUNK = 64;
 /** The machine reason on an extraction marked for a re-read after a purge. */
@@ -228,76 +223,81 @@ export const clarificationRanges: readonly PurgeRange[] = [
 ];
 
 /**
- * The newest surviving source of the thread with a complete current read and
- * an enqueue snapshot (`interpretSources`), or null. Never a source without a
- * snapshot: a re-read may not invent eligibility.
+ * Rule P (4): a claim lost evidence and was redacted, so the thread is
+ * re-read from every surviving source that has an enqueue snapshot
+ * (`interpretSources`; never one without: a re-read may not invent
+ * eligibility). Each source whose counted read is complete is marked
+ * `partial` (retry due now; the source counters follow, so the brief reads
+ * incomplete and autonomy holds) and its interpretation is scheduled; the
+ * monotone planner merges by lineage and refills the redacted fields. A
+ * resumable range: every source costs budget, so a thread with many sources
+ * is scheduled over as many slices as it takes.
  */
-async function recheckCandidate(
-	ctx: MutationCtx,
-	ref: ThreadRef
-): Promise<{ source: InterpretationSource; counted: Doc<'messageInterpretations'> } | null> {
-	const candidates: InterpretationSource[] = [];
-	if (ref.kind === 'mail') {
-		const messages = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_thread_and_received', (q) => q.eq('threadId', ref.id))
-			.order('desc')
-			.take(RECHECK_SCAN);
-		for (const m of messages) {
-			candidates.push({ kind: 'mail', id: m._id }, { kind: 'outboundMail', id: m._id });
+const reinterpretRange: PurgeRange = async (ctx, run) => {
+	const { ref, state, budget } = run;
+	if (!state.isSurvivorChanged) return { isDone: true };
+	return scanRange(
+		budget,
+		run.cursor,
+		(after, n) => {
+			const at = typeof after === 'number' ? after : undefined;
+			return ref.kind === 'mail'
+				? ctx.db
+						.query('interpretSources')
+						.withIndex('by_mail_thread', (q) =>
+							at === undefined
+								? q.eq('mailThreadId', ref.id)
+								: q.eq('mailThreadId', ref.id).gt('_creationTime', at)
+						)
+						.take(n)
+				: ctx.db
+						.query('interpretSources')
+						.withIndex('by_conversation_thread', (q) =>
+							at === undefined
+								? q.eq('conversationThreadId', ref.id)
+								: q.eq('conversationThreadId', ref.id).gt('_creationTime', at)
+						)
+						.take(n);
+		},
+		(row) => row._creationTime,
+		async (snapshot) => {
+			budget.range();
+			const counted = await ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_source_counted', (q) =>
+					q.eq('sourceKey', snapshot.sourceKey).eq('isCounted', true)
+				)
+				.first();
+			budget.charge(counted);
+			if (!counted || counted.status !== 'complete' || !counted.payload) return true;
+			await ctx.db.patch(counted._id, {
+				status: 'partial',
+				errorCode: PURGE_RECHECK_CODE,
+				nextRetryAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			const brief = await loadBriefRow(ctx, ref);
+			if (brief) {
+				await ctx.db.patch(brief._id, {
+					sourceCounts: shiftCount(
+						brief.sourceCounts ?? EMPTY_SOURCE_COUNTS,
+						sourceBucketOf(counted),
+						'partial'
+					),
+				});
+			}
+			await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
+				source: snapshot.source,
+			});
+			return true;
 		}
-	} else {
-		const messages = await ctx.db
-			.query('inboundMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', ref.id))
-			.order('desc')
-			.take(RECHECK_SCAN);
-		for (const m of messages) candidates.push({ kind: 'inbound', id: m._id });
-	}
-	for (const source of candidates) {
-		const key = interpretationSourceKey(source);
-		const counted = await ctx.db
-			.query('messageInterpretations')
-			.withIndex('by_source_counted', (q) => q.eq('sourceKey', key).eq('isCounted', true))
-			.first();
-		if (!counted || counted.status !== 'complete' || !counted.payload) continue;
-		const snapshot = await ctx.db
-			.query('interpretSources')
-			.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
-			.first();
-		if (snapshot) return { source, counted };
-	}
-	return null;
-}
+	);
+};
 
-/**
- * F3c: a claim survived on less evidence, so the thread is re-read. The
- * newest surviving source's counted read is marked `partial` (retry due now;
- * the source counters follow, so the brief reads incomplete and autonomy
- * holds) and its interpretation is scheduled: the reducer's re-run rebuilds
- * the thread from every current read and writes a new counted row. Without
- * a candidate the brief is still marked partial until the next
- * interpretation of the thread lands.
- */
-async function recheckThread(ctx: MutationCtx, ref: ThreadRef): Promise<void> {
-	const candidate = await recheckCandidate(ctx, ref);
-	if (!candidate) return;
-	const { counted, source } = candidate;
-	const before = sourceBucketOf(counted);
-	await ctx.db.patch(counted._id, {
-		status: 'partial',
-		errorCode: PURGE_RECHECK_CODE,
-		nextRetryAt: Date.now(),
-		updatedAt: Date.now(),
-	});
-	const brief = await loadBriefRow(ctx, ref);
-	if (brief) {
-		await ctx.db.patch(brief._id, {
-			sourceCounts: shiftCount(brief.sourceCounts ?? EMPTY_SOURCE_COUNTS, before, 'partial'),
-		});
-	}
-	await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, { source });
-}
+export const clarificationAndRereadRanges: readonly PurgeRange[] = [
+	...clarificationRanges,
+	reinterpretRange,
+];
 
 /** Settle a `sources` job: the brief row and the list projection. */
 export async function settleSourcesJob(
@@ -314,13 +314,13 @@ export async function settleSourcesJob(
 		}
 		return;
 	}
-	if (state.isSurvivorChanged) await recheckThread(ctx, ref);
 	const keys = new Set(state.sources.map(interpretationSourceKey));
 	const isCheckpointGone = !!brief.checkpoint && keys.has(brief.checkpoint.sourceKey);
 	const counted = await recomputeCompleteness(ctx, ref);
 	const fresh = (await ctx.db.get(brief._id)) ?? brief;
+	// The epoch was bumped when the job started; bumping it again here would
+	// turn the re-reads scheduled above (an earlier slice) into `erased`.
 	await ctx.db.patch(brief._id, {
-		deletionEpoch: fresh.deletionEpoch + 1,
 		interpretationRevision: fresh.interpretationRevision + 1,
 		overview: undefined,
 		completeness: state.isSurvivorChanged ? 'partial' : counted,

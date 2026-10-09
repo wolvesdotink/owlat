@@ -34,12 +34,17 @@ const RANGES_PER_ROW = 4;
  */
 export function walkerDrainBudget(budget: ErasureBudget): DrainBudget {
 	let ranges = 0;
+	let handled = 0;
 	return {
-		isExhausted: () => budget.isExhausted,
-		chunk: (max) => budget.chunk(max),
+		// Every walker transaction handles at least one row of the job (review round 3 F4).
+		isExhausted: () => handled > 0 && budget.isExhausted,
+		chunk: (max) => (handled === 0 ? 1 : budget.chunk(max)),
 		charge: (doc) => {
-			if (doc) budget.charge(doc);
-			else budget.chargeRows(1);
+			if (doc) budget.chargeRead(doc);
+		},
+		progress: () => {
+			handled += 1;
+			budget.chargeRows(1);
 		},
 		range: () => {
 			ranges += 1;
