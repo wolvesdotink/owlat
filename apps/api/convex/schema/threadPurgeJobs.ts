@@ -34,8 +34,6 @@ export const purgeCursorValidator = v.object({
 	inner: v.optional(v.number()),
 	// The last slice stopped inside a row: read the range one row at a time.
 	isNarrow: v.optional(v.boolean()),
-	// The last slice stopped inside a row: read the range one row at a time.
-	isNarrow: v.optional(v.boolean()),
 });
 
 /**

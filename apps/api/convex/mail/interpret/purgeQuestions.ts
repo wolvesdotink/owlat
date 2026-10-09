@@ -18,10 +18,7 @@ import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { answerAskTargetKey } from '../../lib/validators/answerAsk';
-import {
-	interpretationSourceKey,
-	type InterpretationSource,
-} from '../../lib/validators/threadBrief';
+import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';

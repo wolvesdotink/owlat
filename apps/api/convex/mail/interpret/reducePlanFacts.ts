@@ -85,7 +85,10 @@ export function planFacts(
 	const merge = (index: number, fact: ReduceFact, target: PlanFact) => {
 		claimed.add(target._id);
 		// A fact a message purge redacted (purgeClaims.ts) takes the new claim whole.
-		if (target.redactedFields?.length || (!isProvenRestatement(fact, target) && isOnlyFrom(target))) {
+		if (
+			target.redactedFields?.length ||
+			(!isProvenRestatement(fact, target) && isOnlyFrom(target))
+		) {
 			ops.push({ kind: 'replace', index, factId: target._id, fact });
 			return;
 		}
