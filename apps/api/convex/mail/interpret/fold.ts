@@ -40,6 +40,7 @@ import {
 } from './reducePlan';
 import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
 import type { PlanHeld } from './reduceHeld';
+import { heldFieldsOf } from './heldSources';
 
 /** Evidence in memory: stored (sealed quote) or new (plaintext quote, `isPlain`). */
 export type MemEvidence = Evidence & { isPlain?: true };
@@ -72,7 +73,12 @@ export type MemHeld = Omit<PlanHeld, 'addEvidence'> & {
 	transitions?: NonNullable<Doc<'threadItems'>['pendingUpdate']>['transitions'];
 };
 
-/** A held update merged onto the one already held: newer values win, removals stay unless re-set. */
+/**
+ * A held update merged onto the one already held: newer values win; a newer
+ * removal deletes the value it names (round 7 F3); an older removal stays
+ * unless a newer value re-sets the field; each field keeps the source of its
+ * newest proposal. Pure.
+ */
 export function mergeHeld(prior: MemHeld | undefined, next: MemHeld): MemHeld {
 	const merged: MemHeld = {
 		...prior,
@@ -84,11 +90,18 @@ export function mergeHeld(prior: MemHeld | undefined, next: MemHeld): MemHeld {
 			(merged as Record<string, unknown>)[key] = prior[key];
 		}
 	}
+	for (const field of next.removes ?? []) delete merged[field];
 	const removes = [...new Set([...(prior?.removes ?? []), ...(next.removes ?? [])])].filter(
 		(key) => next[key] === undefined
 	);
 	if (removes.length > 0) merged.removes = removes;
 	else delete merged.removes;
+	const sources = new Map((prior?.fieldSources ?? []).map((f) => [f.field, f]));
+	for (const f of next.fieldSources ?? []) sources.set(f.field, f);
+	const held = new Set(heldFieldsOf(merged));
+	const fieldSources = [...sources.values()].filter((f) => held.has(f.field));
+	if (fieldSources.length > 0) merged.fieldSources = fieldSources;
+	else delete merged.fieldSources;
 	return merged;
 }
 

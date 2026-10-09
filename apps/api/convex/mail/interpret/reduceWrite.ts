@@ -104,6 +104,7 @@ const HELD_VALUE_KEYS = [
 	'responsibility',
 	'removes',
 	'transitions',
+	'fieldSources',
 ] as const;
 
 /**

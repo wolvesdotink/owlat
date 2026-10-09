@@ -54,7 +54,13 @@ import { refreshBriefTop } from './briefTop';
 import { resolveThreadMode } from './briefRow';
 import { canUserReadThread, requireItemReader } from './threadAccess';
 import { planReaction, toDbPatch, type LifecycleReaction } from './reactionRules';
-import { liveHeldTransitions, settleHeldTransitions } from './pendingMatch';
+import {
+	heldTransitionSources,
+	liveHeldTransitions,
+	restoreHeldTransitions,
+	settleHeldTransitions,
+} from './pendingMatch';
+import { reconcileSendFailure } from './sendFailure';
 
 /** How far ahead a reminder may be set. */
 const MAX_REMIND_AHEAD_MS = 400 * 24 * 60 * 60 * 1000;
@@ -146,7 +152,20 @@ async function runLifecycle(
 				}
 			: {}),
 	});
-	if (live.length > 0) await settleHeldTransitions(ctx, live);
+	if (live.length > 0) {
+		await settleHeldTransitions(ctx, live);
+		// A disposition now resting on a send that already failed is taken back
+		// at once (round 7 F5): the send's failure has landed before.
+		for (const source of await heldTransitionSources(ctx, live)) {
+			if (source.kind === 'outboundMail' || source.kind === 'teamReply') {
+				await reconcileSendFailure(ctx, source);
+			}
+		}
+	}
+	// Undoing a confirmation that settled pending transitions makes them pending
+	// again on their extraction rows, so a new confirmation applies them (F2).
+	const restored = reaction === 'undo' ? plan.patch.pendingUpdate?.transitions : undefined;
+	if (restored?.length) await restoreHeldTransitions(ctx, restored);
 	return { result, item, ref };
 }
 

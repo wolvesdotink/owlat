@@ -5,10 +5,11 @@
  * `declined`) become `failed`. Nothing else is recomputed: items the send did
  * not touch, and items something later moved again, stay as they are.
  *
- * Which items depended on the send is read from the reducer's own record: an
- * item patch from an outbound source is a `threadActivity` row whose stored key
- * starts with `<threadRefKey>|interp:<sourceKey>:` (`reduce.ts` keyBase,
- * `activity.ts` scopedIdempotencyKey) and whose delta carries `dispositionTo`.
+ * Which items depend on the send is read from the items themselves (review
+ * round 7 F5): `threadItems.dispositionSource.sourceKey` names the source
+ * that set (or last reaffirmed) the standing disposition, whether the reducer
+ * set it or a person confirmed a held transition (`pendingMatch.ts`); the
+ * `by_disposition_source` index finds them.
  * A Postbox send to several people only fails the items of the people it did
  * not reach (the item's counterparty), unless it reached nobody.
  *
@@ -29,13 +30,10 @@ import {
 	interpretationSourceValidator,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
-import type { ThreadRef } from '../../lib/validators/threadRef';
-import { appendActivity, scopedIdempotencyKey } from './activity';
+import { rowMatchesThreadRef, type ThreadRef } from '../../lib/validators/threadRef';
+import { appendActivity } from './activity';
 import { refreshBriefTop } from './briefTop';
 import { writeItemChange } from './counters';
-
-/** Reducer rows one send can have produced (items × extractor versions); bounded. */
-const DEPENDENT_SCAN = 200;
 
 /** Delivery states that mean "this recipient never got it". */
 const FAILED_RECIPIENT_STATES: ReadonlySet<string> = new Set(['bounced', 'failed']);
@@ -47,25 +45,25 @@ export type OutboundSource = Extract<InterpretationSource, { kind: 'outboundMail
 export type SendFailureScope = { isEveryone: true } | { isEveryone: false; addresses: string[] };
 
 /**
- * The items whose disposition this source moved, with the value it set. The
- * newest row per item wins (a re-extraction of the same source).
+ * The items of the thread whose standing disposition rests on this source,
+ * with that value. Every one (no cap: a send's items are the ones it answered).
  */
 export async function dependentDispositions(
 	ctx: Pick<MutationCtx, 'db'>,
 	ref: ThreadRef,
 	source: OutboundSource
 ): Promise<Map<Id<'threadItems'>, Doc<'threadItems'>['disposition']>> {
-	const prefix = scopedIdempotencyKey(ref, `interp:${interpretationSourceKey(source)}:`);
 	const rows = await ctx.db
-		.query('threadActivity')
-		.withIndex('by_idempotency_key', (q) =>
-			q.gte('idempotencyKey', prefix).lt('idempotencyKey', `${prefix}￿`)
+		.query('threadItems')
+		.withIndex('by_disposition_source', (q) =>
+			q.eq('dispositionSource.sourceKey', interpretationSourceKey(source))
 		)
-		.take(DEPENDENT_SCAN);
+		.collect();
 	const moved = new Map<Id<'threadItems'>, Doc<'threadItems'>['disposition']>();
-	for (const row of [...rows].sort((a, b) => a.seq - b.seq)) {
-		const to = row.delta?.dispositionTo;
-		if (row.itemId && to && to !== 'failed') moved.set(row.itemId, to);
+	for (const row of rows) {
+		if (rowMatchesThreadRef(row, ref) && row.disposition !== 'failed') {
+			moved.set(row._id, row.disposition);
+		}
 	}
 	return moved;
 }

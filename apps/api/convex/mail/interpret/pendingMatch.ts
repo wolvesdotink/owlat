@@ -287,3 +287,29 @@ export async function settleHeldTransitions(
 		);
 	}
 }
+
+/** Undo of a confirmation: its transitions are pending again on rows that still stand (round 7 F2). */
+export async function restoreHeldTransitions(
+	ctx: MutationCtx,
+	transitions: readonly HeldTransition[]
+): Promise<void> {
+	for (const t of transitions) {
+		const row = await ctx.db.get(t.interpretationId);
+		if (!row || row.isCurrent === false || row.pendingTransitions?.includes(t.index)) continue;
+		await ctx.db.patch(row._id, pendingFieldsOf([...(row.pendingTransitions ?? []), t.index]));
+	}
+}
+
+/** The sources of the messages the held transitions came from (one each). */
+export async function heldTransitionSources(
+	ctx: MutationCtx,
+	transitions: readonly HeldTransition[]
+): Promise<Doc<'messageInterpretations'>['source'][]> {
+	const sources = new Map<string, Doc<'messageInterpretations'>['source']>();
+	for (const t of transitions) {
+		if (!t.disposition || sources.has(t.sourceKey)) continue;
+		const row = await ctx.db.get(t.interpretationId);
+		if (row) sources.set(t.sourceKey, row.source);
+	}
+	return [...sources.values()];
+}

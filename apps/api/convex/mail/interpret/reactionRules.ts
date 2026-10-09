@@ -57,6 +57,7 @@ import type { Doc } from '../../_generated/dataModel';
 import type { ActivityType, ItemStatus } from '@owlat/shared/threadBrief';
 import { isLegalDispositionEdge, isLegalStatusEdge } from '@owlat/shared/threadBriefRules';
 import { evidenceKey } from './reducePlan';
+import { counterpartyKeyOf } from './parties';
 
 /** The lifecycle reactions this module plans. */
 export type LifecycleReaction =
@@ -125,6 +126,7 @@ export interface ReactionPatch {
 	statusSource?: Doc<'threadItems'>['statusSource'];
 	dispositionSource?: Doc<'threadItems'>['dispositionSource'];
 	lastTransitionAt?: Doc<'threadItems'>['lastTransitionAt'];
+	counterpartyKey?: Doc<'threadItems'>['counterpartyKey'];
 }
 
 /** Keys a plan may remove from the item. */
@@ -139,7 +141,8 @@ type ClearableKey =
 	| 'beneficiary'
 	| 'statusSource'
 	| 'dispositionSource'
-	| 'lastTransitionAt';
+	| 'lastTransitionAt'
+	| 'counterpartyKey';
 
 export type ReactionPlan =
 	| {
@@ -277,6 +280,7 @@ export function heldChanges(item: ReactionItem): { patch: ReactionPatch; clears:
 		...(held.responsibility ? { responsibility: held.responsibility } : {}),
 	};
 	const clears: ClearableKey[] = (held.removes ?? []).filter((key) => patch[key] === undefined);
+	withCounterparty(item, patch, clears);
 	let status = item.status;
 	let disposition = item.disposition;
 	for (const t of [...(held.transitions ?? [])].sort((a, b) => a.at - b.at)) {
@@ -329,6 +333,20 @@ export function snapshotBeforeConfirm(
 		...changedGroups(item),
 		addedEvidenceKeys: [...new Set(added)],
 	};
+}
+
+/**
+ * Parties changed: the cross-thread counterparty key follows them (round 7
+ * F4), so the item is indexed, and a bounce matched, by who it is with now.
+ */
+function withCounterparty(item: ReactionItem, patch: ReactionPatch, clears: ClearableKey[]): void {
+	if (!patch.requester && !patch.responsible) return;
+	const requester = patch.requester ?? item.requester;
+	const responsible = patch.responsible ?? item.responsible;
+	if (!requester || !responsible) return;
+	const key = counterpartyKeyOf({ requester, responsible });
+	if (key) patch.counterpartyKey = key;
+	else clears.push('counterpartyKey');
 }
 
 /** The fields the held update is about to change, as they are (round 6). Pure. */
@@ -393,6 +411,7 @@ function undoConfirmation(item: ReactionItem, from: ConfirmedFrom): ReactionPlan
 		if (from.beneficiary) patch.beneficiary = from.beneficiary;
 		else clears.push('beneficiary');
 	}
+	withCounterparty(item, patch, clears);
 	if (from.status === undefined) return { ok: true, patch, clears, activity: 'item_corrected' };
 	// The confirmation moved the lifecycle: every lifecycle field back as it was.
 	patch.status = from.status;
