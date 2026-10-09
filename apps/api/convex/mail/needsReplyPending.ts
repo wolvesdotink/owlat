@@ -19,6 +19,7 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
+import { sweepStaleSources } from './interpret/outstanding';
 import type { Doc } from '../_generated/dataModel';
 
 /**
@@ -81,9 +82,10 @@ export const sweepPending = internalMutation({
 			});
 			rescheduled += 1;
 		}
-		// The same reconcile for the thread brief: sources whose interpretation
-		// run was lost are run again, or given up on (mail/interpret/outstanding.ts).
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.outstanding.sweep, {});
+		// The same reconcile for the thread brief, inline: sources whose
+		// interpretation run was lost are run again, or given up on
+		// (mail/interpret/outstanding.ts).
+		await sweepStaleSources(ctx);
 		return { rescheduled, abandoned };
 	},
 });

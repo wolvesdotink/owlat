@@ -754,7 +754,11 @@ describe('the outstanding-source owner (round 4)', () => {
 					.first())!;
 				await ctx.db.patch(row._id, { outstandingSince: Date.now() - STALE_MS - 1 });
 			});
-		for (let i = 0; i < MAX_SWEEP_TRIES; i++) {
+		// The needs-reply reconcile cron runs the sweep inline.
+		await age();
+		await t.mutation(internal.mail.needsReplyPending.sweepPending, {});
+		expect(runsOf(await jobs(t))).toHaveLength(1);
+		for (let i = 1; i < MAX_SWEEP_TRIES; i++) {
 			await age();
 			expect(await t.mutation(internal.mail.interpret.outstanding.sweep, {})).toEqual({
 				rerun: 1,

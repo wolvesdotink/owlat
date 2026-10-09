@@ -126,29 +126,34 @@ export const settleRecorded = internalMutation({
 });
 
 /** Re-run stale outstanding sources; give up on them after the bounded retries. */
+export async function sweepStaleSources(
+	ctx: MutationCtx
+): Promise<{ rerun: number; unread: number }> {
+	const now = Date.now();
+	const stale = await ctx.db
+		.query('interpretSources')
+		.withIndex('by_outstanding', (q) =>
+			q.eq('isOutstanding', true).lt('outstandingSince', now - STALE_MS)
+		)
+		.take(SWEEP_BATCH);
+	let rerun = 0;
+	let unread = 0;
+	for (const snapshot of stale) {
+		const tries = (snapshot.outstandingTries ?? 0) + 1;
+		if (tries > MAX_SWEEP_TRIES) {
+			await settleSource(ctx, snapshot.sourceKey, 'unread');
+			unread++;
+			continue;
+		}
+		await ctx.db.patch(snapshot._id, { outstandingSince: now, outstandingTries: tries });
+		await ctx.scheduler.runAfter(0, runOf(snapshot.source), { source: snapshot.source });
+		rerun++;
+	}
+	return { rerun, unread };
+}
+
+/** The sweep on its own (tests, an operator); the reconcile cron runs it inline. */
 export const sweep = internalMutation({
 	args: {},
-	handler: async (ctx): Promise<{ rerun: number; unread: number }> => {
-		const now = Date.now();
-		const stale = await ctx.db
-			.query('interpretSources')
-			.withIndex('by_outstanding', (q) =>
-				q.eq('isOutstanding', true).lt('outstandingSince', now - STALE_MS)
-			)
-			.take(SWEEP_BATCH);
-		let rerun = 0;
-		let unread = 0;
-		for (const snapshot of stale) {
-			const tries = (snapshot.outstandingTries ?? 0) + 1;
-			if (tries > MAX_SWEEP_TRIES) {
-				await settleSource(ctx, snapshot.sourceKey, 'unread');
-				unread++;
-				continue;
-			}
-			await ctx.db.patch(snapshot._id, { outstandingSince: now, outstandingTries: tries });
-			await ctx.scheduler.runAfter(0, runOf(snapshot.source), { source: snapshot.source });
-			rerun++;
-		}
-		return { rerun, unread };
-	},
+	handler: (ctx): Promise<{ rerun: number; unread: number }> => sweepStaleSources(ctx),
 });
