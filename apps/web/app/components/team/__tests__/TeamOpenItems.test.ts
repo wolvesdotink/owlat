@@ -133,6 +133,36 @@ describe('TeamOpenItems', () => {
 		expectFullyLocalized(w);
 	});
 
+	it('lists an action closed by a confirmation under "Just closed", with Undo', async () => {
+		const closed = item({
+			id: 'i_c',
+			text: 'Refund €129.00',
+			status: 'done',
+			stateKey: 'reportedDone',
+			correction: { kind: 'confirmed', at: 1 },
+		});
+		const w = mountItems({ view: teamView({ forTeam: [closed] }) });
+		const list = w.get('[data-testid="team-open-items-closed"]');
+		expect(w.text()).toContain('Just closed');
+		const undo = list.get('[data-testid="team-item-primary"]');
+		expect(undo.text()).toBe('Undo');
+		await undo.trigger('click');
+		expect(w.emitted('act')?.[0]?.[1]).toBe('undo');
+	});
+
+	it('keeps Undo on a customer-owed action a confirmation closed', () => {
+		const closed = item({
+			id: 'w_c',
+			text: 'Ana sends photos',
+			responsibility: 'them',
+			status: 'done',
+			stateKey: 'reportedDone',
+			correction: { kind: 'confirmed', at: 1 },
+		});
+		const w = mountItems({ view: teamView({ waitingOnOthers: [closed] }) });
+		expect(w.get('[data-testid="team-open-items-closed"]').text()).toContain('Ana sends photos');
+	});
+
 	it('folds into "2 open for the team" on a phone', async () => {
 		const w = mountItems();
 		const toggle = w.find('[data-testid="team-open-items-toggle"]');

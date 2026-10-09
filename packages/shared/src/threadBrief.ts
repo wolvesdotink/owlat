@@ -135,7 +135,7 @@ export const PLAN_VERDICTS = ['pending', 'covered', 'gaps', 'stale'] as const;
 /** @public Contract type for the thread brief lanes. */
 export type PlanVerdict = (typeof PLAN_VERDICTS)[number];
 
-export const DRAFT_REF_KINDS = ['mailDraft', 'inboundDraft'] as const;
+export const DRAFT_REF_KINDS = ['mailDraft', 'inboundDraft', 'arrivalDraft'] as const;
 /** @public Contract type for the thread brief lanes. */
 export type DraftRefKind = (typeof DRAFT_REF_KINDS)[number];
 

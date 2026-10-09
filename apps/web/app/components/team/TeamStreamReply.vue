@@ -42,6 +42,7 @@ const isCountingDown = computed(
 		class="rounded-(--radius-card) border border-border-subtle bg-bg-elevated px-4 py-3"
 		:aria-label="t('components.team.reply.label', { name: authorLabel })"
 		data-testid="team-stream-reply"
+		:data-message-id="entry.source?.id"
 		:data-status="entry.status"
 	>
 		<header class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">

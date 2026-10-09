@@ -922,6 +922,26 @@
 				"confirmChange": "Änderung bestätigen",
 				"maybeSettled": "Eine spätere Nachricht hat das vielleicht schon erledigt",
 				"confirmSettled": "Bestätigen",
+				"pending": {
+					"removed": "entfernt: {fields}",
+					"nobody": "noch niemand",
+					"us": "du",
+					"field": {
+						"text": "Wortlaut",
+						"requester": "gefragt von",
+						"responsible": "wer es macht",
+						"beneficiary": "für",
+						"responsibility": "wer dran ist",
+						"due": "fällig",
+						"amount": "Betrag",
+						"options": "Auswahl"
+					},
+					"responsibility": {
+						"us": "bei dir",
+						"them": "bei ihnen",
+						"unclear": "unklar"
+					}
+				},
 				"review": "bitte prüfen",
 				"duplicate": "mögliches Duplikat",
 				"new": "neu",
@@ -1101,6 +1121,7 @@
 			},
 			"more": "+{count} weitere",
 			"toast": {
+				"confirmed": "Bestätigt. Du kannst das rückgängig machen.",
 				"markedDone": "Als erledigt markiert. Du kannst es rückgängig machen.",
 				"reminder": "Du wirst morgen früh erinnert."
 			},
@@ -6472,7 +6493,9 @@
 			"items": {
 				"askedBy": "von {name} am {date} gefragt",
 				"assignTo": "Zuweisen an",
+				"citeUnreachable": "Die zitierte E-Mail ließ sich nicht laden.",
 				"claim": "Übernehmen",
+				"closedTitle": "Gerade erledigt",
 				"claimed": "Jetzt bist du dran.",
 				"empty": "Fürs Team ist nichts offen.",
 				"formerTeammate": "Ehemaliges Teammitglied",
@@ -7024,6 +7047,7 @@
 				},
 				"fileMissing": "Datei fehlt",
 				"status": {
+					"checking": "Der Entwurf wird geprüft …",
 					"addressed": "{addressed} von {total} berücksichtigt",
 					"needsFile": "{count} braucht eine Datei | {count} brauchen eine Datei",
 					"promise": "neues Versprechen notiert: „{text}“"

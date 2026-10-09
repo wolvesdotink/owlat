@@ -32,13 +32,12 @@ import {
 } from '../../lib/validators/threadRef';
 import {
 	activityTypeValidator,
-	draftRefFromFields,
-	draftRefToFields,
 	interpretationSourceKey,
 	itemFacetValidator,
 	itemStatusValidator,
 	responseStanceValidator,
 } from '../../lib/validators/threadBrief';
+import { draftRefFromFields, draftRefToFields } from '../../lib/validators/responsePlan';
 
 const mailThread = 'mailThreadId' as Id<'mailThreads'>;
 const teamThread = 'teamThreadId' as Id<'conversationThreads'>;

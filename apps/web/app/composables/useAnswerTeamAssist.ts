@@ -74,6 +74,8 @@ export function useAnswerTeamAssist(opts: {
 		},
 		composer: opts.composer,
 		onSettled: () => void plan.checkCoverage(),
+		// The drafter reads the stored stances: write the person's choices first.
+		beforeDraft: () => plan.flush(),
 		onAttachedFiles: (files) => {
 			for (const file of files) opts.attachFile(file);
 		},

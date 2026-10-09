@@ -174,7 +174,7 @@ describe('F1: a purge drops the held fields its message proposed', () => {
 		expect((await itemOf(t, threadId)).pendingUpdate).toBeUndefined();
 	});
 
-	it('a confirmed change from the purged message is reverted, and leaves the snapshot', async () => {
+	it('a confirmed change from the purged message is redacted', async () => {
 		const t = harness();
 		const { b, threadId, itemId } = await confirmedOnTwo(t);
 		await apply(t, mail(b), threadId, {
@@ -193,10 +193,12 @@ describe('F1: a purge drops the held fields its message proposed', () => {
 		await t.mutation(api.mail.interpret.reactions.confirmProposal, { itemId });
 		expect((await itemOf(t, threadId)).responsible.email).toBe('bob@example.com');
 		await purge(t, threadId, b);
+		// Round 8: the standing provenance redacts what the purged message set.
 		const after = await itemOf(t, threadId);
-		expect(after.responsible.email).toBe('alice@example.com');
-		expect(after.counterpartyKey).toBe('alice@example.com');
-		expect(after.confirmedFrom?.pendingUpdate?.fieldSources).toBeUndefined();
+		expect(after.responsible).toEqual({ isUs: false });
+		expect(after.counterpartyKey).toBeUndefined();
+		expect(after.isReviewNeeded).toBe(true);
+		expect(after.fieldSources?.responsible).toBeUndefined();
 	});
 });
 

@@ -14,6 +14,7 @@
  *   - nothing is ever retired by omission (round 4 M1, `fold.ts`).
  */
 
+import { refillPatch } from './redactedRefill';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { ActivityType, InterpretMode, ItemStatus } from '@owlat/shared/threadBrief';
@@ -282,6 +283,7 @@ async function insertItem(
 		...(item.lastTransitionAt !== undefined ? { lastTransitionAt: item.lastTransitionAt } : {}),
 		...(item.statusSource ? { statusSource: item.statusSource } : {}),
 		...(item.dispositionSource ? { dispositionSource: item.dispositionSource } : {}),
+		...(item.fieldSources ? { fieldSources: item.fieldSources } : {}),
 		...(item.due ? { due: item.due } : {}),
 		...(item.amount ? { amount: item.amount } : {}),
 		...(item.options ? { options: item.options } : {}),
@@ -320,6 +322,7 @@ async function patchItem(
 		patch.lastTransitionAt = item.lastTransitionAt;
 	}
 	if (!same(item.statusSource, row.statusSource)) patch.statusSource = item.statusSource;
+	if (canon(item.fieldSources) !== canon(row.fieldSources)) patch.fieldSources = item.fieldSources;
 	if (!same(item.dispositionSource, row.dispositionSource)) {
 		patch.dispositionSource = item.dispositionSource;
 	}
@@ -330,6 +333,7 @@ async function patchItem(
 	if (!same(item.due, row.due)) patch.due = item.due;
 	if (!same(item.amount, row.amount)) patch.amount = item.amount;
 	if (!same(item.options, row.options)) patch.options = item.options;
+	if (!same(item.redactedFields, row.redactedFields)) patch.redactedFields = item.redactedFields;
 	if (!sameEvidence(item.evidence, row.evidence)) {
 		patch.evidence = await sealEvidence(item.evidence, row.evidence);
 	}
@@ -363,6 +367,15 @@ async function patchItem(
 			patch.assertion = await sealBodyAtWrite(p.assertion);
 		}
 		if (!same(p.display, item.storedDisplay)) patch.display = await sealDisplay(p.display);
+	} else if (item.refilled) {
+		// Only the redacted fields a verified claim refilled (redactedRefill.ts).
+		const refill = refillPatch(row, item.refilled);
+		Object.assign(patch, refill.patch);
+		if (refill.patch.responsibility) responsibility = refill.patch.responsibility;
+		if (refill.text) {
+			patch.assertion = await sealBodyAtWrite(refill.text.assertion);
+			patch.display = await sealDisplay(refill.text.display);
+		}
 	}
 	const after = { status: item.status, responsibility, verify: item.verify };
 	const listBucket = listBucketOf(after);
@@ -447,6 +460,7 @@ async function patchFact(
 ): Promise<void> {
 	const patch: Partial<Doc<'threadFacts'>> = {};
 	if (fact.status !== row.status) patch.status = fact.status;
+	if (!same(fact.redactedFields, row.redactedFields)) patch.redactedFields = fact.redactedFields;
 	if (!sameEvidence(fact.evidence, row.evidence)) {
 		patch.evidence = await sealEvidence(fact.evidence, row.evidence);
 	}

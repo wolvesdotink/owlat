@@ -10,7 +10,8 @@ import { describe, expect, it } from 'vitest';
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
-import { draftHashOf } from '../responsePlanRules';
+import { attachmentSetHashOf, draftHashOf } from '@owlat/shared/threadBriefRules';
+import { outgoingCoverageHold } from '../planGate';
 import {
 	modules as interpretModules,
 	reduceItem,
@@ -78,9 +79,11 @@ async function recordPlan(
 		verdict?: 'addressed' | 'partial';
 		draft?: string;
 		isMatched?: boolean;
+		planRevision?: number;
+		attachmentIds?: string[];
 	} = {}
 ) {
-	await t.mutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
+	return t.mutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
 		threadRef: s.ref,
 		draftRef: { kind: 'inboundDraft', id: s.inboundId },
 		threadRevision: s.brief.interpretationRevision,
@@ -100,6 +103,9 @@ async function recordPlan(
 		newPromises: [],
 		draftHash: await draftHashOf(overrides.draft ?? DRAFT),
 		verdict: 'covered',
+		planRevision: overrides.planRevision ?? 0,
+		attachmentSetHash: await attachmentSetHashOf(overrides.attachmentIds ?? []),
+		isCheckIncomplete: false,
 	});
 }
 
@@ -124,7 +130,7 @@ describe('itemCoverageCheck', () => {
 		const s = await setup(t);
 		expect(await check(t, s.inboundId)).toEqual({
 			objections: ['no_plan'],
-			reason: expect.stringContaining('no checked response plan'),
+			reason: expect.stringContaining('no response plan'),
 			isEnforced: false,
 		});
 	});
@@ -170,33 +176,111 @@ describe('itemCoverageCheck', () => {
 	});
 });
 
-describe('dispatchHold', () => {
+describe('outgoingCoverageHold (the Send-creating transaction)', () => {
+	const hold = (t: Test, inboundId: Id<'inboundMessages'>, draftText: string, ids: string[] = []) =>
+		t.run(async (ctx) => {
+			const message = (await ctx.db.get(inboundId))!;
+			return outgoingCoverageHold(ctx, message, { draftText, attachmentIds: ids });
+		});
+
 	it('never holds while the gate only observes', async () => {
 		const t = convexTest(schema, modules);
 		const s = await setup(t);
-		expect(
-			await t.query(internal.mail.interpret.planGate.dispatchHold, {
-				inboundMessageId: s.inboundId,
-			})
-		).toEqual({ reason: null });
+		expect(await hold(t, s.inboundId, 'anything')).toBeNull();
 	});
 
-	it('holds an enforced send whose draft moved since route time', async () => {
+	it('F8: holds an enforced send whose outgoing text is not the checked one', async () => {
 		const t = convexTest(schema, modules);
 		const s = await setup(t);
 		await enforce(t, true);
 		await recordPlan(t, s);
-		expect(
-			await t.query(internal.mail.interpret.planGate.dispatchHold, {
-				inboundMessageId: s.inboundId,
-			})
-		).toEqual({ reason: null });
-		await t.run((ctx) => ctx.db.patch(s.inboundId, { draftResponse: `${DRAFT} P.S. 20% off.` }));
-		expect(
-			await t.query(internal.mail.interpret.planGate.dispatchHold, {
-				inboundMessageId: s.inboundId,
-			})
-		).toEqual({ reason: expect.stringContaining('different draft text') });
+		expect(await hold(t, s.inboundId, DRAFT)).toBeNull();
+		expect(await hold(t, s.inboundId, `${DRAFT} P.S. 20% off.`)).toContain('different draft text');
+	});
+
+	it('F4: holds when the outgoing files are not the checked set, ignoring earlier staged files', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await enforce(t, true);
+		await recordPlan(t, s);
+		expect(await hold(t, s.inboundId, DRAFT, ['f1'])).toContain('different attachments');
+		// A file staged on the thread BEFORE the message arrived is not in the
+		// autonomous set, so the route-time check does not count it either.
+		await t.run(async (ctx) => {
+			const storageId = await ctx.storage.store(new Blob(['x']));
+			await ctx.db.patch(s.threadId, {
+				replyAttachments: [
+					{
+						id: 'staged',
+						storageId,
+						filename: 'contract.pdf',
+						contentType: 'application/pdf',
+						size: 1,
+						origin: 'upload',
+						addedBy: 'user-A',
+						addedAt: SENT - 60_000,
+					},
+				],
+			});
+		});
+		expect((await check(t, s.inboundId)).objections).toEqual([]);
+	});
+});
+
+describe('intakeAgentReply (review F8)', () => {
+	it('refuses an enforced autonomous send whose outgoing text was not checked, before any Send', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await enforce(t, true);
+		await recordPlan(t, s);
+		const outcome = await t.mutation(internal.inbox.replyAttachments.intakeAgentReply, {
+			inboundMessageId: s.inboundId,
+			autonomous: true,
+			email: 'customer@example.com',
+			subject: 'Re: Order 42',
+			html: '<p>changed</p>',
+			draftText: `${DRAFT} And a discount.`,
+			from: 'support@owlat.test',
+		});
+		expect(outcome).toMatchObject({ ok: false, reason: 'item_coverage' });
+		expect(await t.run((ctx) => ctx.db.query('transactionalSends').collect())).toEqual([]);
+	});
+});
+
+describe('compare-and-set and draft liveness', () => {
+	it('F3: a check computed for older stances never overwrites newer ones', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		expect(await recordPlan(t, s, { planRevision: 0 })).toEqual({ isStored: true });
+		await t.run(async (ctx) => {
+			const row = (await ctx.db.query('draftResponsePlans').first())!;
+			await ctx.db.patch(row._id, { planRevision: 1, verdict: 'pending' });
+		});
+		expect(await recordPlan(t, s, { planRevision: 0 })).toEqual({ isStored: false });
+		const row = await t.run(async (ctx) => (await ctx.db.query('draftResponsePlans').first())!);
+		expect(row).toMatchObject({ planRevision: 1, verdict: 'pending', checkedPlanRevision: 0 });
+		expect((await check(t, s.inboundId)).objections).toContain('pending_check');
+	});
+
+	it('F14: rejecting the draft deletes its plan', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await recordPlan(t, s);
+		await t.run((ctx) => ctx.db.patch(s.inboundId, { processingStatus: 'draft_ready' }));
+		const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: s.inboundId,
+			input: { to: 'rejected', at: SENT, userId: 'user-A' },
+		});
+		expect(outcome).toMatchObject({ ok: true });
+		expect(await t.run((ctx) => ctx.db.query('draftResponsePlans').collect())).toEqual([]);
+	});
+
+	it('F14: a late check does not recreate the plan of a rejected draft', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await t.run((ctx) => ctx.db.patch(s.inboundId, { processingStatus: 'rejected' }));
+		expect(await recordPlan(t, s)).toEqual({ isStored: false });
+		expect(await t.run((ctx) => ctx.db.query('draftResponsePlans').collect())).toEqual([]);
 	});
 });
 

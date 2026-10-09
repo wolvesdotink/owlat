@@ -23,8 +23,12 @@ import type {
 } from '@owlat/shared/threadBrief';
 import { defaultStance } from '@owlat/shared/threadBriefRules';
 
-/** Items one plan holds at most (the drafter's prompt lists every one). */
-export const PLAN_ITEM_LIMIT = 25;
+/**
+ * Items one plan holds at most (the drafter's prompt lists every one). Past it
+ * the plan is marked overflowing and its check is incomplete: nothing is
+ * dropped silently (review D2).
+ */
+export const MAX_PLAN_ITEMS = 200;
 
 export type StanceSource = 'default' | 'owner' | 'policy';
 
@@ -90,26 +94,7 @@ export function planStances<Id extends string>(
 	});
 }
 
-/** Whitespace-insensitive form of a draft: what the hash and the spans read. */
-export function normalizeDraftText(text: string): string {
-	return text
-		.replace(/\r\n?/g, '\n')
-		.replace(/[ \t]+/g, ' ')
-		.replace(/\n{3,}/g, '\n\n')
-		.trim();
-}
-
-/** The hash a plan is bound to: SHA-256 of the normalized draft, 32 hex chars. */
-export async function draftHashOf(text: string): Promise<string> {
-	const digest = await crypto.subtle.digest(
-		'SHA-256',
-		new TextEncoder().encode(normalizeDraftText(text))
-	);
-	return [...new Uint8Array(digest)]
-		.map((b) => b.toString(16).padStart(2, '0'))
-		.join('')
-		.slice(0, 32);
-}
+export { draftHashOf, normalizeDraftText } from '@owlat/shared/threadBriefRules';
 
 export interface DraftSpan {
 	start: number;
@@ -133,6 +118,7 @@ export interface NewPromise<Id extends string = string> {
 	text: string;
 	spans: DraftSpan[];
 	duePhrase?: string;
+	amount?: { value: number; currency: string };
 	/** The item the promise answers, when it answers one. */
 	itemId?: Id;
 }
@@ -141,6 +127,8 @@ export interface PlanCoverage<Id extends string = string> {
 	coverage: CoverageEntry<Id>[];
 	fileClaims: FileClaim[];
 	newPromises: NewPromise<Id>[];
+	/** More claims or promises than the bound: the check did not see them all. */
+	isIncomplete: boolean;
 }
 
 /**
@@ -163,9 +151,12 @@ export function planVerdictOf<Id extends string>(
 
 export const ITEM_COVERAGE_OBJECTIONS = [
 	'no_plan',
+	'pending_check',
 	'stale_draft',
+	'stale_attachments',
 	'stale_items',
 	'incomplete',
+	'incomplete_check',
 	'not_addressed',
 	'unclear_owner',
 	'unauthorized_commitment',
@@ -173,7 +164,13 @@ export const ITEM_COVERAGE_OBJECTIONS = [
 ] as const;
 export type ItemCoverageObjection = (typeof ITEM_COVERAGE_OBJECTIONS)[number];
 
-/** What the gate compares: the stored plan and the thread as it is now. */
+/** An item's own terms: what accepting it commits to. */
+export interface ItemTerms {
+	duePhrase?: string;
+	amount?: { value: number; currency: string };
+}
+
+/** What the gate compares: the stored plan, and the send and thread as they are now. */
 export interface ItemCoverageInput<Id extends string = string> {
 	plan: {
 		draftHash: string;
@@ -182,15 +179,60 @@ export interface ItemCoverageInput<Id extends string = string> {
 		stances: readonly PlanStance<Id>[];
 		coverage: readonly CoverageEntry<Id>[];
 		fileClaims: readonly Pick<FileClaim, 'isMatched'>[];
-		newPromises: readonly Pick<NewPromise<Id>, 'itemId'>[];
+		newPromises: readonly Pick<NewPromise<Id>, 'itemId' | 'duePhrase' | 'amount'>[];
+		verdict: PlanVerdict;
+		planRevision?: number;
+		checkedPlanRevision?: number;
+		attachmentSetHash?: string;
+		isCheckIncomplete?: boolean;
 	} | null;
-	/** Hash of the draft that would be sent now; null when there is none. */
+	/** Hash of the exact outgoing draft text; null when there is none. */
 	draftHash: string | null;
+	/** Hash of the exact outgoing attachment set. */
+	attachmentSetHash: string;
 	/** `threadBriefs.interpretationRevision` now; null when there is no brief. */
 	threadRevision: number | null;
 	completeness: BriefCompleteness | null;
-	/** The thread's plan-relevant items now (see {@link isPlanRelevant}). */
-	items: readonly { id: Id; revision: number; responsibility: ItemResponsibility }[];
+	/** The thread's plan-relevant items now (see {@link isPlanRelevant}), with their terms. */
+	items: readonly ({ id: Id; revision: number; responsibility: ItemResponsibility } & ItemTerms)[];
+	/** More relevant items than a plan holds. */
+	isItemsOverflow: boolean;
+}
+
+function sameWords(a: string, b: string): boolean {
+	const norm = (t: string) => t.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+	return norm(a) === norm(b);
+}
+
+/**
+ * Whether a commitment stays within what the owner accepted (review D3): it
+ * names the item, the owner (or a policy) chose to accept that item, and the
+ * terms the draft commits to are the item's own: no other amount, no deadline
+ * the item does not carry. Anything else is unauthorised.
+ */
+export function isCommitmentAuthorised<Id extends string>(
+	promise: Pick<NewPromise<Id>, 'itemId' | 'duePhrase' | 'amount'>,
+	stances: readonly PlanStance<Id>[],
+	items: ReadonlyMap<string, ItemTerms>
+): boolean {
+	if (!promise.itemId) return false;
+	const stance = stances.find((s) => s.itemId === promise.itemId);
+	if (stance?.stance !== 'accept' || stance.source === 'default') return false;
+	const terms = items.get(promise.itemId);
+	if (!terms) return false;
+	if (promise.amount) {
+		if (!terms.amount) return false;
+		if (
+			terms.amount.value !== promise.amount.value ||
+			terms.amount.currency.toUpperCase() !== promise.amount.currency.toUpperCase()
+		) {
+			return false;
+		}
+	}
+	if (promise.duePhrase) {
+		if (!terms.duePhrase || !sameWords(terms.duePhrase, promise.duePhrase)) return false;
+	}
+	return true;
 }
 
 /**
@@ -198,16 +240,18 @@ export interface ItemCoverageInput<Id extends string = string> {
  * order; empty when it does not. Restrict-only by construction: the caller
  * can only hold a send on the result.
  *
- *   - no plan, or a plan for another draft text or another state of the
- *     thread's items (coverage is bound to the draft hash, the thread revision
- *     and every item revision);
- *   - interpretation not complete;
+ *   - no plan, or no check of the plan as it stands now (pending, or checked
+ *     against an older stance revision: D1);
+ *   - a check of another draft text, another attachment set, or another state
+ *     of the thread's items (draft hash, attachment-set hash, thread revision
+ *     and every item revision are bound);
+ *   - interpretation not complete; more items than a plan holds, or more
+ *     claims than a check reads (D2);
  *   - an item the reply should answer is not addressed: a partial or missing
- *     verdict, or a `clarify` stance (the owner's input is still needed);
- *     only an explicit `skip` passes an item over;
+ *     verdict, or a `clarify` stance; only an explicit `skip` passes an item;
  *   - an item whose owner is unclear;
- *   - a commitment no stance authorised: a promise tied to no item, or to an
- *     item the owner (or a policy) did not choose to accept;
+ *   - a commitment no stance authorised, or one whose terms are not the
+ *     accepted item's own (D3);
  *   - a file the draft says is attached and is not.
  */
 export function itemCoverageObjections<Id extends string>(
@@ -216,7 +260,14 @@ export function itemCoverageObjections<Id extends string>(
 	const { plan } = input;
 	if (!plan) return ['no_plan'];
 	const out: ItemCoverageObjection[] = [];
+	const isChecked =
+		plan.verdict !== 'pending' &&
+		plan.verdict !== 'stale' &&
+		plan.checkedPlanRevision !== undefined &&
+		plan.checkedPlanRevision === (plan.planRevision ?? 0);
+	if (!isChecked) out.push('pending_check');
 	if (input.draftHash === null || plan.draftHash !== input.draftHash) out.push('stale_draft');
+	if (plan.attachmentSetHash !== input.attachmentSetHash) out.push('stale_attachments');
 	const planned = new Map(plan.itemRevisions.map((r) => [r.itemId, r.revision]));
 	const isStale =
 		input.threadRevision === null ||
@@ -225,6 +276,7 @@ export function itemCoverageObjections<Id extends string>(
 		input.items.some((item) => planned.get(item.id) !== item.revision);
 	if (isStale) out.push('stale_items');
 	if (input.completeness !== 'complete') out.push('incomplete');
+	if (input.isItemsOverflow || plan.isCheckIncomplete === true) out.push('incomplete_check');
 
 	const verdicts = new Map(plan.coverage.map((c) => [c.itemId, c.verdict]));
 	const answered = plan.stances.filter((s) => s.stance !== 'skip');
@@ -236,12 +288,8 @@ export function itemCoverageObjections<Id extends string>(
 	);
 	if (answered.some((s) => unclear.has(s.itemId))) out.push('unclear_owner');
 
-	const authorised = new Set(
-		plan.stances
-			.filter((s) => s.stance === 'accept' && s.source !== 'default')
-			.map((s) => s.itemId as string)
-	);
-	if (plan.newPromises.some((p) => !p.itemId || !authorised.has(p.itemId))) {
+	const terms = new Map<string, ItemTerms>(input.items.map((i) => [i.id, i]));
+	if (plan.newPromises.some((p) => !isCommitmentAuthorised(p, plan.stances, terms))) {
 		out.push('unauthorized_commitment');
 	}
 	if (plan.fileClaims.some((c) => !c.isMatched)) out.push('file_missing');
@@ -249,10 +297,13 @@ export function itemCoverageObjections<Id extends string>(
 }
 
 const OBJECTION_TEXT: Record<ItemCoverageObjection, string> = {
-	no_plan: 'the draft has no checked response plan',
+	no_plan: 'the draft has no response plan',
+	pending_check: 'the response plan was not checked as it stands now',
 	stale_draft: 'the coverage check was made for a different draft text',
+	stale_attachments: 'the coverage check was made for different attachments',
 	stale_items: 'the thread’s items changed since the coverage check',
 	incomplete: 'the thread’s interpretation is incomplete',
+	incomplete_check: 'the coverage check could not cover every item or claim',
 	not_addressed: 'an open item the reply should answer is not addressed',
 	unclear_owner: 'an open item has no clear owner',
 	unauthorized_commitment: 'the draft makes a commitment nobody authorised',

@@ -38,8 +38,11 @@ const ITEM_TEXT_CHARS = 300;
 const CLAIM_TEXT_CHARS = 240;
 /** Quotes kept per item. */
 const MAX_SPANS = 4;
-/** Claims and promises kept per draft. */
-const MAX_CLAIMS = 8;
+/**
+ * Claims and promises kept per draft. Past it the check is incomplete (the
+ * gate then holds); nothing is dropped silently (review D2).
+ */
+const MAX_CLAIMS = 50;
 
 /** One plan item as the prompt names it: `i1`, `i2`, … in plan order. */
 export interface PlanPromptItem<Id extends string = string> {
@@ -144,6 +147,10 @@ export const planCheckShape = {
 				quote: z.string().describe('The exact words of the draft that make the commitment'),
 				itemRef: z.string().nullable().describe('The item ref it answers, or null'),
 				due: z.string().nullable().describe('The deadline it names, as written, or null'),
+				amount: z
+					.object({ value: z.number(), currency: z.string() })
+					.nullable()
+					.describe('The amount of money it commits to, or null'),
 			})
 		)
 		.describe(
@@ -236,7 +243,8 @@ export function detectAttachmentClaims(draft: string): { text: string; span: Dra
 		const span = sentenceAround(draft, match.index ?? 0, match[0].length);
 		if (out.some((c) => c.span.start === span.start)) continue;
 		out.push({ text: draft.slice(span.start, span.end), span });
-		if (out.length >= MAX_CLAIMS) break;
+		// Past the bound the caller marks the check incomplete; reading on is enough.
+		if (out.length > MAX_CLAIMS) break;
 	}
 	return out;
 }
@@ -264,6 +272,38 @@ const GENERIC_FILE_WORDS = new Set([
 	'der',
 	'die',
 	'das',
+	// The claim's own wording, which names no file.
+	'attached',
+	'attaching',
+	'attach',
+	'enclosed',
+	'please',
+	'find',
+	'here',
+	'you',
+	'your',
+	'have',
+	'with',
+	'this',
+	'that',
+	'these',
+	'those',
+	'are',
+	'also',
+	'anbei',
+	'beigefügt',
+	'angehängt',
+	'hier',
+	'ist',
+	'sind',
+	'mit',
+	'dir',
+	'ihnen',
+	'euch',
+	'den',
+	'dem',
+	'eine',
+	'einen',
 ]);
 
 function fileWords(text: string): Set<string> {
@@ -282,9 +322,11 @@ export interface AttachmentRef {
 }
 
 /**
- * The attachment a claim refers to: one whose name shares a word with what
- * the claim names, or the only attachment when exactly one claim and one
- * file exist. Undefined when none does.
+ * The attachment a claim refers to. A claim that names a file ("the signed
+ * contract") needs an attachment whose name shares one of those words; only a
+ * generic claim ("I've attached it", "see the attachment") is satisfied by the
+ * single attachment of a draft with a single claim (review F5). Undefined
+ * when none does.
  */
 export function matchAttachment(
 	described: string,
@@ -292,8 +334,9 @@ export function matchAttachment(
 	isOnlyClaim: boolean
 ): string | undefined {
 	const wanted = fileWords(described);
-	const hit = attachments.find((a) => [...fileWords(a.filename)].some((w) => wanted.has(w)));
-	if (hit) return hit.id;
+	if (wanted.size > 0) {
+		return attachments.find((a) => [...fileWords(a.filename)].some((w) => wanted.has(w)))?.id;
+	}
 	return isOnlyClaim && attachments.length === 1 ? attachments[0]!.id : undefined;
 }
 
@@ -313,7 +356,9 @@ function clip(text: string): string {
  * Spans index the normalized draft (`normalizeDraftText`), the text the hash
  * is taken over. A skipped item is `skipped`; an item the model left out is
  * `notAddressed`; an `addressed` verdict without one quote found in the draft
- * drops to `partial`.
+ * drops to `partial`. A claim or a commitment whose quote is not found is kept
+ * (without a span): the gate errs towards holding. Past {@link MAX_CLAIMS}
+ * claims or commitments the result is `isIncomplete`.
  */
 export function parsePlanCheck<Id extends string>(
 	output: PlanCheckOutput | null,
@@ -337,40 +382,45 @@ export function parsePlanCheck<Id extends string>(
 		return { itemId: entry.itemId, verdict, spans };
 	});
 
-	const claims: { text: string; span: DraftSpan; described: string }[] = [];
+	const claims: { text: string; span: DraftSpan | null; described: string }[] = [];
+	const overlapsAny = (span: DraftSpan | null) =>
+		span !== null && claims.some((c) => c.span !== null && overlaps(c.span, span));
 	for (const claim of output?.fileClaims ?? []) {
 		const span = locateQuote(draft, claim.quote);
-		if (span && !claims.some((c) => overlaps(c.span, span))) {
-			claims.push({ text: draft.slice(span.start, span.end), span, described: claim.file });
-		}
+		if (overlapsAny(span)) continue;
+		claims.push({
+			text: span ? draft.slice(span.start, span.end) : claim.quote,
+			span,
+			described: claim.file,
+		});
 	}
-	for (const found of detectAttachmentClaims(draft)) {
-		if (!claims.some((c) => overlaps(c.span, found.span))) {
-			claims.push({ ...found, described: found.text });
-		}
+	const detected = detectAttachmentClaims(draft);
+	for (const found of detected) {
+		if (!overlapsAny(found.span)) claims.push({ ...found, described: found.text });
 	}
 	const fileClaims: FileClaim[] = claims.slice(0, MAX_CLAIMS).map((c, _i, all) => {
 		const attachmentId = matchAttachment(c.described, input.attachments, all.length === 1);
 		return {
 			text: clip(c.text),
-			spans: [c.span],
+			spans: c.span ? [c.span] : [],
 			isMatched: attachmentId !== undefined,
 			...(attachmentId ? { attachmentId } : {}),
 		};
 	});
 
-	const newPromises: NewPromise<Id>[] = [];
-	for (const promise of output?.promises ?? []) {
+	const promises = output?.promises ?? [];
+	const newPromises: NewPromise<Id>[] = promises.slice(0, MAX_CLAIMS).map((promise) => {
 		const span = locateQuote(draft, promise.quote);
-		if (!span) continue;
 		const item = promise.itemRef ? byRef.get(promise.itemRef) : undefined;
-		newPromises.push({
-			text: clip(draft.slice(span.start, span.end)),
-			spans: [span],
+		return {
+			text: clip(span ? draft.slice(span.start, span.end) : promise.quote),
+			spans: span ? [span] : [],
 			...(promise.due?.trim() ? { duePhrase: clip(promise.due) } : {}),
+			...(promise.amount ? { amount: promise.amount } : {}),
 			...(item ? { itemId: item.itemId } : {}),
-		});
-		if (newPromises.length >= MAX_CLAIMS) break;
-	}
-	return { coverage, fileClaims, newPromises };
+		};
+	});
+	const isIncomplete =
+		claims.length > MAX_CLAIMS || detected.length > MAX_CLAIMS || promises.length > MAX_CLAIMS;
+	return { coverage, fileClaims, newPromises, isIncomplete };
 }

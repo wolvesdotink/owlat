@@ -40,7 +40,8 @@ import {
 } from './reducePlan';
 import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
 import type { PlanHeld } from './reduceHeld';
-import { heldFieldsOf } from './heldSources';
+import { heldFieldsOf, sourcesOfClaim, type ItemFieldSources } from './heldSources';
+import { applyRefill, type RefilledFields } from './redactedRefill';
 
 /** Evidence in memory: stored (sealed quote) or new (plaintext quote, `isPlain`). */
 export type MemEvidence = Evidence & { isPlain?: true };
@@ -62,6 +63,10 @@ export interface MemItem extends Omit<PlanItem, 'evidence'> {
 	storedDisplay?: { en: string; de: string };
 	askedAt: number;
 	possibleDuplicateOfId?: Id<'threadItems'>;
+	/** Which source set each shown field (round 8; `heldSources.ts`). */
+	fieldSources?: ItemFieldSources;
+	/** Redacted fields a verified claim refilled, still to be written (`redactedRefill.ts`). */
+	refilled?: RefilledFields;
 	/** Changes held apart until confirmed (`reduceHeld.ts`); wording in plaintext. */
 	pendingUpdate?: MemHeld;
 	/** The stored held update's wording, opened (the writer compares against it). */
@@ -257,6 +262,7 @@ export function applyPlan(
 	}
 ): Set<string> {
 	const touched = new Set<string>();
+	const setBy = { sourceKey: entry.sourceKey, at: entry.sourceAt };
 	const ev = (list: readonly ReduceEvidence[]) =>
 		plainEvidence(list, entry.source, entry.contentRevision);
 	for (const insert of plan.inserts) {
@@ -281,6 +287,7 @@ export function applyPlan(
 			...(p.options ? { options: p.options } : {}),
 			isReviewNeeded: p.isReviewNeeded,
 			assertionText: p.assertion,
+			fieldSources: sourcesOfClaim(p, setBy),
 			askedAt: entry.sourceAt,
 			...(insert.possibleDuplicateOfId
 				? { possibleDuplicateOfId: insert.possibleDuplicateOfId }
@@ -305,6 +312,9 @@ export function applyPlan(
 		if (patch.fill?.due) item.due = patch.fill.due;
 		if (patch.fill?.amount) item.amount = patch.fill.amount;
 		if (patch.fill?.options) item.options = patch.fill.options;
+		for (const field of ['due', 'amount', 'options'] as const) {
+			if (patch.fill?.[field]) item.fieldSources = { ...item.fieldSources, [field]: setBy };
+		}
 		if (patch.verify) item.verify = patch.verify;
 		if (patch.isReviewNeeded) item.isReviewNeeded = true;
 		if (patch.promoteFrom) {
@@ -316,7 +326,10 @@ export function applyPlan(
 			item.amount = claim.amount;
 			item.options = claim.options;
 			item.assertionText = claim.assertion;
+			item.redactedFields = undefined;
+			item.fieldSources = sourcesOfClaim(claim, setBy);
 		}
+		if (patch.refill) applyRefill(item, patch.refill.claim, patch.refill.fields, setBy);
 		if (patch.matched?.length) {
 			item.lineageKeys = [
 				...new Set([
@@ -351,6 +364,7 @@ export function applyPlan(
 			const fact = state.facts.get(op.factId);
 			if (!fact) continue;
 			fact.proposal = op.fact;
+			fact.redactedFields = undefined;
 			fact.factKey = op.fact.key;
 			fact.assertionText = op.fact.assertion;
 			fact.evidence = [...fact.evidence, ...ev(op.fact.evidence)];

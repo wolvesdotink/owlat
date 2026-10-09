@@ -9,9 +9,14 @@
  *     enforces (`agentConfig.isItemCoverageEnforced`, off by default).
  *   - `recordShadow`: in shadow mode the gate lets the send through and logs
  *     what it objected to on the message's `agentShadowDecisions` row.
- *   - `dispatchHold`: the same check again immediately before an autonomous
- *     send (`agent/agentPipeline.sendApprovedReply`); it only holds while the
- *     gate enforces. Shadow mode never relaxes another gate and never holds.
+ *   - `outgoingCoverageHold`: the same check in the transaction that creates
+ *     the Send (`inbox/replyAttachments.intakeAgentReply`), against the exact
+ *     outgoing text and attachment set; it holds only while the gate enforces.
+ *     Shadow mode never relaxes another gate and never holds.
+ *
+ * Coverage counts only when every value it is bound to equals the send's
+ * (review D1): the plan revision it was computed for, the draft hash, the
+ * attachment-set hash, the thread revision and every item revision.
  *
  * Restrict-only: nothing here can approve or widen a send.
  */
@@ -22,10 +27,10 @@ import type { QueryCtx } from '../../_generated/server';
 import { internalQuery } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { extractEmail } from '../../lib/emailAddress';
+import { attachmentSetHashOf, draftHashOf } from '@owlat/shared/threadBriefRules';
 import { loadBriefRow } from './briefRow';
-import { loadPlanItems, readPlanRow } from './responsePlanState';
+import { loadPlanItems, outgoingTeamAttachments, readPlanRow } from './responsePlanState';
 import {
-	draftHashOf,
 	itemCoverageObjections,
 	itemCoverageReason,
 	type ItemCoverageObjection,
@@ -37,14 +42,21 @@ export interface ItemCoverageCheck {
 	isEnforced: boolean;
 }
 
-async function isEnforced(ctx: Pick<QueryCtx, 'db'>): Promise<boolean> {
+type ReadCtx = Pick<QueryCtx, 'db'>;
+
+export async function isItemCoverageEnforced(ctx: ReadCtx): Promise<boolean> {
 	const config = await ctx.db.query('agentConfig').first();
 	return config?.isItemCoverageEnforced === true;
 }
 
-async function checkMessage(
-	ctx: Pick<QueryCtx, 'db'>,
-	message: Doc<'inboundMessages'> | null
+/**
+ * The objections to sending `draftText` with `attachmentIds` as the reply to
+ * `message`: the stored plan of its draft against exactly these.
+ */
+export async function checkOutgoing(
+	ctx: ReadCtx,
+	message: Doc<'inboundMessages'> | null,
+	outgoing: { draftText: string | undefined; attachmentIds: readonly string[] }
 ): Promise<Omit<ItemCoverageCheck, 'isEnforced'>> {
 	if (!message?.threadId) {
 		const objections: ItemCoverageObjection[] = ['no_plan'];
@@ -58,38 +70,52 @@ async function checkMessage(
 	]);
 	const objections = itemCoverageObjections({
 		plan,
-		draftHash: message.draftResponse ? await draftHashOf(message.draftResponse) : null,
+		draftHash: outgoing.draftText ? await draftHashOf(outgoing.draftText) : null,
+		attachmentSetHash: await attachmentSetHashOf(outgoing.attachmentIds),
 		threadRevision: brief?.interpretationRevision ?? null,
 		completeness: brief?.completeness ?? null,
 		items: loaded.rows.map((row) => ({
 			id: row._id,
 			revision: row.revision,
 			responsibility: row.responsibility,
+			...(row.due ? { duePhrase: row.due.phrase } : {}),
+			...(row.amount ? { amount: row.amount } : {}),
 		})),
+		isItemsOverflow: loaded.isOverflow,
 	});
 	return { objections, reason: itemCoverageReason(objections) };
 }
 
+/** Route time: the draft on the message and the files an autonomous send would carry. */
 export const itemCoverageCheck = internalQuery({
 	args: { inboundMessageId: v.id('inboundMessages') },
 	handler: async (ctx, args): Promise<ItemCoverageCheck> => {
-		const enforced = await isEnforced(ctx);
-		return {
-			...(await checkMessage(ctx, await ctx.db.get(args.inboundMessageId))),
-			isEnforced: enforced,
-		};
+		const isEnforced = await isItemCoverageEnforced(ctx);
+		const message = await ctx.db.get(args.inboundMessageId);
+		const thread = message?.threadId ? await ctx.db.get(message.threadId) : null;
+		const attachmentIds = message
+			? outgoingTeamAttachments(message, thread?.replyAttachments).map((a) => a.id)
+			: [];
+		const check = await checkOutgoing(ctx, message, {
+			draftText: message?.draftResponse,
+			attachmentIds,
+		});
+		return { ...check, isEnforced };
 	},
 });
 
-/** Why an autonomous send must not go out now, or null; null whenever the gate only observes. */
-export const dispatchHold = internalQuery({
-	args: { inboundMessageId: v.id('inboundMessages') },
-	handler: async (ctx, args): Promise<{ reason: string | null }> => {
-		if (!(await isEnforced(ctx))) return { reason: null };
-		const check = await checkMessage(ctx, await ctx.db.get(args.inboundMessageId));
-		return { reason: check.reason };
-	},
-});
+/**
+ * In the transaction that creates an autonomous Send: why it must not go out,
+ * or null. Null whenever the gate only observes (shadow mode).
+ */
+export async function outgoingCoverageHold(
+	ctx: ReadCtx,
+	message: Doc<'inboundMessages'>,
+	outgoing: { draftText: string; attachmentIds: readonly string[] }
+): Promise<string | null> {
+	if (!(await isItemCoverageEnforced(ctx))) return null;
+	return (await checkOutgoing(ctx, message, outgoing)).reason;
+}
 
 /**
  * Log a shadow-mode objection on the message's shadow observation. The gate

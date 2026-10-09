@@ -274,7 +274,6 @@ describe('coverage.check', () => {
 			threadRef: s.ref,
 			draftRef: s.draftRef,
 			draftText: draft,
-			stances: [],
 		});
 		expect(result?.isChecked).toBe(true);
 		expect(result?.coverage.map((c) => c.verdict)).toEqual(['addressed', 'addressed']);
@@ -314,7 +313,6 @@ describe('coverage.check', () => {
 			threadRef: s.ref,
 			draftRef: s.draftRef,
 			draftText: '   ',
-			stances: [],
 		});
 		expect(result).toMatchObject({ isChecked: false, fileClaims: [], newPromises: [] });
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
@@ -329,7 +327,6 @@ describe('coverage.check', () => {
 				threadRef: s.ref,
 				draftRef: s.draftRef,
 				draftText: draft,
-				stances: [],
 			})
 		).toBeNull();
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
@@ -339,11 +336,15 @@ describe('coverage.check', () => {
 		const t = harness();
 		const s = await setup(t);
 		runLlmObjectMock.mockRejectedValueOnce(new Error('model down'));
+		await t.mutation(api.mail.interpret.responsePlan.setStances, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			stances: [{ itemId: s.call, stance: 'skip' }],
+		});
 		const result = await t.action(api.mail.interpret.coverage.check, {
 			threadRef: s.ref,
 			draftRef: s.draftRef,
 			draftText: draft,
-			stances: [{ itemId: s.call, stance: 'skip' }],
 		});
 		expect(result?.isChecked).toBe(false);
 		expect(result?.coverage.find((c) => c.itemId === s.call)?.verdict).toBe('skipped');
@@ -365,5 +366,131 @@ describe('a draft’s plan goes with the draft', () => {
 		expect(await count()).toBe(1);
 		await t.mutation(api.mail.drafts.discard, { draftId: s.draftId as Id<'mailDrafts'> });
 		expect(await count()).toBe(0);
+	});
+});
+
+describe('review round 1', () => {
+	const USAGE_ = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
+	const empty = { coverage: [], fileClaims: [], promises: [] };
+
+	it('F2/D1: a stance write bumps the revision and leaves the old check pending', async () => {
+		const t = harness();
+		const s = await setup(t);
+		runLlmObjectMock.mockResolvedValue({ object: empty, tokenUsage: USAGE_, modelUsed: 'm' });
+		const first = await t.action(api.mail.interpret.coverage.check, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			draftText: 'Hello Jonas.',
+		});
+		expect(first).toMatchObject({ planRevision: 0, isStored: true });
+		const { planRevision } = await t.mutation(api.mail.interpret.responsePlan.setStances, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			stances: [{ itemId: s.ours, stance: 'decline' }],
+		});
+		expect(planRevision).toBe(1);
+		const view = await t.query(api.mail.interpret.responsePlan.get, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+		});
+		expect(view).toMatchObject({ planRevision: 1, checkedPlanRevision: 0, verdict: 'pending' });
+	});
+
+	it('F12: file claims and commitments are checked with every item skipped', async () => {
+		const t = harness();
+		const s = await setup(t);
+		await t.mutation(api.mail.interpret.responsePlan.setStances, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			stances: [
+				{ itemId: s.ours, stance: 'skip' },
+				{ itemId: s.call, stance: 'skip' },
+			],
+		});
+		runLlmObjectMock.mockResolvedValueOnce({
+			object: {
+				...empty,
+				promises: [{ quote: 'I will refund you', itemRef: null, due: null, amount: null }],
+			},
+			tokenUsage: USAGE_,
+			modelUsed: 'm',
+		});
+		const result = await t.action(api.mail.interpret.coverage.check, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			draftText: 'I will refund you. I’ve attached the receipt.',
+		});
+		expect(runLlmObjectMock).toHaveBeenCalledTimes(1);
+		expect(result?.newPromises).toHaveLength(1);
+		expect(result?.fileClaims).toEqual([expect.objectContaining({ isMatched: false })]);
+	});
+
+	it('F1/D2: items past the bound are counted as overflow, not dropped silently', async () => {
+		const t = harness();
+		const s = await setup(t);
+		await t.run(async (ctx) => {
+			const template = (await ctx.db.get(s.ours))!;
+			const { _id, _creationTime, ...fields } = template;
+			for (let i = 0; i < 205; i++) {
+				await ctx.db.insert('threadItems', { ...fields, askedAt: SENT + i });
+			}
+		});
+		const loaded = await t.query(internal.mail.interpret.responsePlanDraft.loadForDraft, {
+			threadRef: s.ref,
+		});
+		expect(loaded.isOverflow).toBe(true);
+		expect(loaded.items.length).toBe(200);
+		const view = await t.query(api.mail.interpret.responsePlan.get, { threadRef: s.ref });
+		expect(view?.isCheckIncomplete).toBe(true);
+	});
+
+	it('F16: the prepared reply’s plan moves to the Postbox draft made from it', async () => {
+		const t = harness();
+		const s = await setup(t);
+		await t.run(async (ctx) => {
+			const message = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_thread', (q) => q.eq('threadId', s.threadId))
+				.first();
+			await ctx.db.patch(s.threadId, {
+				needsReply: {
+					messageId: message!._id,
+					source: 'llm',
+					urgency: 'normal',
+					detectedAt: SENT,
+					draftSlot: { draft: 'Prepared.', confidence: 0.8, generatedAt: SENT },
+				},
+			});
+		});
+		const arrival = { kind: 'arrivalDraft' as const, id: s.threadId };
+		expect(
+			await t.mutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
+				threadRef: s.ref,
+				draftRef: arrival,
+				threadRevision: 1,
+				itemRevisions: [],
+				stances: [],
+				coverage: [],
+				fileClaims: [],
+				newPromises: [],
+				draftHash: 'prepared-hash',
+				verdict: 'covered',
+				planRevision: 0,
+				attachmentSetHash: 'none',
+				isCheckIncomplete: false,
+			})
+		).toEqual({ isStored: true });
+		await t.mutation(api.mail.interpret.responsePlan.adoptArrivalPlan, {
+			threadRef: s.ref,
+			draftId: s.draftId,
+		});
+		const rows = await t.run((ctx) => ctx.db.query('draftResponsePlans').collect());
+		expect(rows).toEqual([
+			expect.objectContaining({
+				draftKind: 'mailDraft',
+				mailDraftId: s.draftId,
+				draftHash: 'prepared-hash',
+			}),
+		]);
 	});
 });

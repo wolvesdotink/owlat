@@ -11,20 +11,19 @@ import { internalMutation } from '../../lib/writeFence';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { answerAskTargetValidator } from '../../lib/validators/answerAsk';
+import { itemAmountValidator, planVerdictValidator } from '../../lib/validators/threadBrief';
 import {
 	coverageEntryValidator,
-	draftRefFromFields,
 	draftRefValidator,
 	draftSpanValidator,
 	itemRevisionRefValidator,
-	planVerdictValidator,
 	responsePlanStanceValidator,
 	type DraftRef,
-} from '../../lib/validators/threadBrief';
+} from '../../lib/validators/responsePlan';
 import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
 import {
 	canRead,
-	givenStanceValidator,
+	isDraftLive,
 	isDraftOfThread,
 	planForDraft,
 	readPlanRow,
@@ -45,10 +44,15 @@ export const loadForDraft = internalQuery({
 /**
  * Answer mode "Draft with AI"'s read for an ask session's target (the session
  * already passed its access check): a Postbox draft's own plan; for a team
- * thread, the plan most recently written in it (the reply's inbound message).
+ * thread, the plan of the exact inbound message the session answers (carried
+ * on the session, review F9), or the thread's defaults without one.
  */
 export const loadForAskTarget = internalQuery({
-	args: { target: answerAskTargetValidator, openSlots: v.array(v.string()) },
+	args: {
+		target: answerAskTargetValidator,
+		openSlots: v.array(v.string()),
+		inboundMessageId: v.optional(v.id('inboundMessages')),
+	},
 	handler: async (ctx, args): Promise<PlanForDraft | null> => {
 		const options = { openSlots: args.openSlots };
 		if (args.target.kind === 'mailDraft') {
@@ -58,33 +62,28 @@ export const loadForAskTarget = internalQuery({
 			return planForDraft(ctx, { kind: 'mail', id: draft.threadId }, draftRef, options);
 		}
 		const ref: ThreadRef = { kind: 'team', id: args.target.threadId };
-		const plans = await ctx.db
-			.query('draftResponsePlans')
-			.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', ref.id))
-			.take(20);
-		const newest = plans.sort((a, b) => b.updatedAt - a.updatedAt)[0];
-		return planForDraft(ctx, ref, newest ? draftRefFromFields(newest) : null, options);
+		const draftRef: DraftRef | null = args.inboundMessageId
+			? { kind: 'inboundDraft', id: args.inboundMessageId }
+			: null;
+		if (draftRef && !(await isDraftOfThread(ctx, draftRef, ref))) return null;
+		return planForDraft(ctx, ref, draftRef, options);
 	},
 });
 
 /**
  * The coverage check's read, under the caller's session: null unless the
- * caller can read the thread and the draft replies in it. `stances` are the
- * owner's current choices (possibly not stored yet).
+ * caller can read the thread and the draft replies in it and is still a
+ * draft. The stances are the STORED ones (the web writes its choices before it
+ * asks), so the result binds to the plan revision it was computed for.
  */
 export const loadForCoverage = internalQuery({
-	args: {
-		threadRef: threadRefValidator,
-		draftRef: draftRefValidator,
-		stances: v.array(givenStanceValidator),
-	},
+	args: { threadRef: threadRefValidator, draftRef: draftRefValidator },
 	handler: async (ctx, args): Promise<PlanForDraft | null> => {
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session || !(await canRead(ctx, args.threadRef, session))) return null;
 		if (!(await isDraftOfThread(ctx, args.draftRef, args.threadRef))) return null;
-		return planForDraft(ctx, args.threadRef, args.draftRef, {
-			chosen: args.stances.map((s) => ({ ...s, source: 'owner' as const })),
-		});
+		if (!(await isDraftLive(ctx, args.draftRef))) return null;
+		return planForDraft(ctx, args.threadRef, args.draftRef);
 	},
 });
 
@@ -98,14 +97,21 @@ const plainPromiseValidator = v.object({
 	text: v.string(),
 	spans: v.array(draftSpanValidator),
 	duePhrase: v.optional(v.string()),
+	amount: v.optional(itemAmountValidator),
 	itemId: v.optional(v.id('threadItems')),
 });
 
 /**
  * Store a checked plan for a draft (the agent draft step, Answer mode's
- * coverage check). The caller already applied the reader rule; claim and
- * promise texts are sealed here. A draft that no longer replies in the
- * thread is not written.
+ * coverage check, draft on arrival). The caller already applied the reader
+ * rule; claim and promise texts are sealed here.
+ *
+ * Compare-and-set on the plan revision (review D1): the result is written only
+ * while the stored stances are still the ones the check read
+ * (`planRevision`); a result computed for older stances is dropped, never
+ * written over newer ones. A draft that no longer replies in the thread, or
+ * is no longer a draft (sent, rejected, discarded), is not written either, so
+ * a late check cannot recreate a removed plan. Returns whether it stored.
  */
 export const recordCheck = internalMutation({
 	args: {
@@ -119,10 +125,16 @@ export const recordCheck = internalMutation({
 		newPromises: v.array(plainPromiseValidator),
 		draftHash: v.string(),
 		verdict: planVerdictValidator,
+		// The plan revision the check read.
+		planRevision: v.number(),
+		attachmentSetHash: v.string(),
+		isCheckIncomplete: v.boolean(),
 	},
-	handler: async (ctx, args) => {
-		if (!(await isDraftOfThread(ctx, args.draftRef, args.threadRef))) return null;
+	handler: async (ctx, args): Promise<{ isStored: boolean }> => {
+		if (!(await isDraftOfThread(ctx, args.draftRef, args.threadRef))) return { isStored: false };
+		if (!(await isDraftLive(ctx, args.draftRef))) return { isStored: false };
 		const existing = await readPlanRow(ctx, args.draftRef);
+		if ((existing?.planRevision ?? 0) !== args.planRevision) return { isStored: false };
 		await upsertPlan(ctx, args.threadRef, args.draftRef, {
 			threadRevision: args.threadRevision,
 			itemRevisions: args.itemRevisions,
@@ -142,8 +154,12 @@ export const recordCheck = internalMutation({
 			),
 			draftHash: args.draftHash,
 			verdict: args.verdict,
+			planRevision: args.planRevision,
+			checkedPlanRevision: args.planRevision,
+			attachmentSetHash: args.attachmentSetHash,
+			isCheckIncomplete: args.isCheckIncomplete,
 			updatedAt: Date.now(),
 		});
-		return null;
+		return { isStored: true };
 	},
 });

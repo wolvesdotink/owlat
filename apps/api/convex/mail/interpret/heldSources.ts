@@ -4,18 +4,17 @@
  * it (`fieldSources`; `wording` covers assertion and display, a removal is
  * recorded under the field it removes), and each held transition carries its
  * own `sourceKey`. A purge of a message therefore drops exactly the held
- * fields that message proposed, and, for a confirmation that already applied
- * them, puts back the value the item had before (`confirmedFrom`).
+ * fields that message proposed; and, through the item's standing
+ * `fieldSources`, redacts exactly the shown fields it set.
  */
 
 import type { Doc } from '../../_generated/dataModel';
-import { counterpartyKeyOf } from './parties';
+import { counterpartyKeyOf, responsibilityOf } from './parties';
 
 type Held = NonNullable<Doc<'threadItems'>['pendingUpdate']>;
 type HeldValues = Omit<Held, 'evidence'>;
 type FieldSource = NonNullable<Held['fieldSources']>[number];
 export type HeldField = FieldSource['field'];
-type ConfirmedFrom = NonNullable<Doc<'threadItems'>['confirmedFrom']>;
 
 /** The stored keys a held field stands for. */
 const KEYS_OF: Record<HeldField, ReadonlyArray<keyof HeldValues>> = {
@@ -70,50 +69,84 @@ export function isHolding(held: Partial<HeldValues>): boolean {
 	return heldFieldsOf(held).length > 0 || (held.transitions?.length ?? 0) > 0;
 }
 
+export type ItemFieldSources = NonNullable<Doc<'threadItems'>['fieldSources']>;
+type SetBy = { sourceKey: string; at: number };
+
+/** The provenance of every field a whole claim sets (an insert, a promotion). Pure. */
+export function sourcesOfClaim(
+	claim: { beneficiary?: unknown; due?: unknown; amount?: unknown; options?: unknown },
+	setBy: SetBy
+): ItemFieldSources {
+	return {
+		wording: setBy,
+		requester: setBy,
+		responsible: setBy,
+		responsibility: setBy,
+		...(claim.beneficiary ? { beneficiary: setBy } : {}),
+		...(claim.due ? { due: setBy } : {}),
+		...(claim.amount ? { amount: setBy } : {}),
+		...(claim.options ? { options: setBy } : {}),
+	};
+}
+
 /**
- * A standing confirmation that applied fields a purged message proposed: the
- * item gets those fields back as they were before the confirmation, and the
- * snapshot forgets them. Null when the confirmation applied nothing purged.
+ * The fields an item shows that a purged message set (`fieldSources`, round
+ * 8, 9): parties become unknown, responsibility unclear (counterparty key
+ * recomputed), deadline, amount and options are cleared, review is flagged;
+ * `isWordingPurged` tells the caller to redact the wording. Null when the
+ * purged messages set none of them.
  */
-export function revertPurgedConfirmation(
-	item: Pick<Doc<'threadItems'>, 'requester' | 'responsible' | 'confirmedFrom'>,
+export function redactSourcedFields(
+	item: Pick<Doc<'threadItems'>, 'requester' | 'responsible' | 'fieldSources'>,
 	keys: ReadonlySet<string>
-): {
-	patch: Partial<Doc<'threadItems'>>;
-	confirmedFrom: ConfirmedFrom;
-} | null {
-	const from = item.confirmedFrom;
-	const applied = from?.pendingUpdate;
-	if (!from || !applied) return null;
-	const gone = purgedFields(applied, keys);
-	if (gone.size === 0) return null;
-	const patch: Partial<Doc<'threadItems'>> = {};
-	const put = <K extends keyof Doc<'threadItems'>>(key: K, value: Doc<'threadItems'>[K]) => {
-		patch[key] = value;
+): { patch: Partial<Doc<'threadItems'>>; isWordingPurged: boolean } | null {
+	const sources = item.fieldSources;
+	if (!sources) return null;
+	const gone = (Object.keys(sources) as Array<keyof ItemFieldSources>).filter((field) =>
+		keys.has(sources[field]!.sourceKey)
+	);
+	if (gone.length === 0) return null;
+	const unknown = { isUs: false };
+	const patch: Partial<Doc<'threadItems'>> = { isReviewNeeded: true };
+	const kept: ItemFieldSources = { ...sources };
+	// Every field whose stamp goes gets its neutral value (round 9): a record,
+	// so a field added to `fieldSources` cannot be left out.
+	const neutral: Record<keyof ItemFieldSources, () => void> = {
+		wording: () => {}, // redacted by the caller (sealed text)
+		requester: () => {
+			patch.requester = unknown;
+		},
+		responsible: () => {
+			patch.responsible = unknown;
+			patch.responsibility = responsibilityOf(unknown);
+			delete kept.responsibility;
+		},
+		beneficiary: () => {
+			patch.beneficiary = undefined;
+		},
+		responsibility: () => {
+			patch.responsibility = responsibilityOf(unknown);
+		},
+		due: () => {
+			patch.due = undefined;
+		},
+		amount: () => {
+			patch.amount = undefined;
+		},
+		options: () => {
+			patch.options = undefined;
+		},
 	};
 	for (const field of gone) {
-		if (field === 'due') put('due', from.due);
-		if (field === 'amount') put('amount', from.amount);
-		if (field === 'options') put('options', from.options);
-		if (field === 'wording' && from.assertion !== undefined) {
-			put('assertion', from.assertion);
-			if (from.display) put('display', from.display);
-		}
-		if (field === 'requester' && from.requester) put('requester', from.requester);
-		if (field === 'responsible' && from.responsible) put('responsible', from.responsible);
-		if (field === 'beneficiary') put('beneficiary', from.beneficiary);
-		if (field === 'responsibility' && from.responsibility) {
-			put('responsibility', from.responsibility);
-		}
+		delete kept[field];
+		neutral[field]();
 	}
 	if (patch.requester || patch.responsible) {
-		put(
-			'counterpartyKey',
-			counterpartyKeyOf({
-				requester: patch.requester ?? item.requester,
-				responsible: patch.responsible ?? item.responsible,
-			})
-		);
+		patch.counterpartyKey = counterpartyKeyOf({
+			requester: patch.requester ?? item.requester,
+			responsible: patch.responsible ?? item.responsible,
+		});
 	}
-	return { patch, confirmedFrom: { ...from, pendingUpdate: withoutSources(applied, keys) } };
+	patch.fieldSources = Object.keys(kept).length > 0 ? kept : undefined;
+	return { patch, isWordingPurged: gone.includes('wording') };
 }

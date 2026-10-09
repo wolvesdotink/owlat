@@ -48,6 +48,8 @@ import {
 	replyAttachmentStatus,
 	takeReadyReplyAttachments,
 } from './replyAttachmentStore';
+import { outgoingCoverageHold } from '../mail/interpret/planGate';
+import { deletePlansForDraft } from '../mail/interpret/responsePlanState';
 
 const LOG_TAG = '[team reply attachments]';
 
@@ -282,7 +284,9 @@ export const finishCopy = internalMutation({
  */
 export type AgentReplyIntakeOutcome =
 	| NonCampaignIntakeOutcome
-	| { ok: false; reason: 'attachment_copying' | 'attachment_failed'; detail?: undefined };
+	| { ok: false; reason: 'attachment_copying' | 'attachment_failed'; detail?: undefined }
+	// The item_coverage gate enforces and the exact outgoing reply is not covered.
+	| { ok: false; reason: 'item_coverage'; detail: string };
 
 export const intakeAgentReply = internalMutation({
 	args: {
@@ -292,6 +296,8 @@ export const intakeAgentReply = internalMutation({
 		contactId: v.optional(v.id('contacts')),
 		subject: v.string(),
 		html: v.string(),
+		// The draft text `html` was rendered from: what the coverage check binds to.
+		draftText: v.optional(v.string()),
 		from: v.string(),
 		headers: v.optional(v.record(v.string(), v.string())),
 	},
@@ -317,6 +323,15 @@ export const intakeAgentReply = internalMutation({
 			(entry) => replyAttachmentStatus(entry) === 'ready' && include(entry)
 		);
 		const carried = [...(message.replyAttachments ?? []), ...ready];
+		// SPEC §6: an unattended reply goes out only if its coverage was checked
+		// for exactly this text and these files (review D1), in this transaction.
+		if (args.autonomous === true) {
+			const hold = await outgoingCoverageHold(ctx, message, {
+				draftText: args.draftText ?? message.draftResponse ?? '',
+				attachmentIds: carried.map((entry) => entry.id),
+			});
+			if (hold) return { ok: false, reason: 'item_coverage', detail: hold };
+		}
 		const attachmentRefs = await replyAttachmentRefs(ctx, carried);
 
 		const outcome: NonCampaignIntakeOutcome = await ctx.runMutation(
@@ -341,6 +356,8 @@ export const intakeAgentReply = internalMutation({
 		// keeps no body, and the inbound draft can change afterwards). It is
 		// interpreted once the Send is finalized as sent (`sendActivity.ts`).
 		if (outcome.ok) {
+			// The draft is sent: its response plan goes with it.
+			await deletePlansForDraft(ctx, { kind: 'inboundDraft', id: args.inboundMessageId });
 			await captureTeamReplySnapshot(ctx, {
 				sendId: outcome.sendId,
 				subject: args.subject,

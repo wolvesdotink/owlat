@@ -16,8 +16,6 @@ import { sealBodyAtWrite } from '../../../lib/messageBody';
 import { scanRange, unitBudget, type DrainBudget } from '../purgeDrain';
 import { CONTINUATION_BYTES, CONTINUATION_UNITS, drivePurgeJob } from '../purgeRun';
 import { mailMessageSources } from '../purge';
-import { itemLineage } from '../fold';
-import { planReaction } from '../reactionRules';
 import {
 	modules,
 	reduceItem,
@@ -144,6 +142,7 @@ describe('F3: reads are bounded by rows and bytes', () => {
 			isExhausted: budget.isExhausted,
 			chunk: budget.chunk,
 			range: budget.range,
+			progress: budget.progress,
 			charge: (doc) => {
 				charged += 1;
 				budget.charge(doc);
@@ -182,75 +181,118 @@ describe('F3: reads are bounded by rows and bytes', () => {
 	});
 });
 
-describe('F4/F5: a survivor is rebuilt field by field', () => {
-	async function thousandFromB(t: Test) {
+describe('round 3 rule P: a survivor is redacted, never rebuilt', () => {
+	async function seedThree(t: Test) {
 		const { messageId: a, threadId } = await seedMailThread(t);
 		const b = await addSibling(t, a);
+		const c = await addSibling(t, a);
 		const ref = { kind: 'mail' as const, id: threadId };
-		const srcA = { kind: 'mail' as const, id: a };
-		const srcB = { kind: 'mail' as const, id: b };
-		const claimA = reduceItem({ due: undefined, amount: undefined });
-		const claimB = reduceItem({
-			assertion: 'Pay the invoice',
-			display: { en: 'Pay the invoice', de: 'Bezahl die Rechnung' },
-			amount: { value: 1000, currency: 'EUR' },
-			due: { phrase: 'by Friday', at: Date.UTC(2026, 9, 9), isAmbiguous: false },
-		});
-		const keyA = itemLineage(`mail:${a}`, claimA);
-		const keyB = itemLineage(`mail:${b}`, claimB);
+		return {
+			ref,
+			threadId,
+			srcA: { kind: 'mail' as const, id: a },
+			srcB: { kind: 'mail' as const, id: b },
+			srcC: { kind: 'mail' as const, id: c },
+		};
+	}
+	const quoteOf = (source: InterpretationSource) => ({
+		source,
+		segmentId: 's1',
+		start: 0,
+		end: 4,
+		contentRevision: 'rev-1',
+	});
+
+	it('purging C does not promote B’s held €1,000', async () => {
+		const t = convexTest(schema, modules);
+		const { ref, srcA, srcB, srcC } = await seedThree(t);
 		const itemId = await t.run(async (ctx) => {
-			await extraction(ctx, ref, srcA, reduceResult({ items: [claimA] }), SENT);
-			await extraction(ctx, ref, srcB, reduceResult({ items: [claimB] }), SENT + 60_000);
-			return insertItem(ctx, ref, [srcA, srcB], {
-				lineage: keyA,
-				lineageKeys: [keyA, keyB],
-				amount: claimB.amount,
-				due: claimB.due,
-				options: ['card', 'transfer'],
-				// A confirmed held change whose undo would put €1,000 back as pending.
-				correction: { by: 'user-A', at: SENT, kind: 'confirmed' },
+			// B's €1,000 is a held (unconfirmed) update: it must stay held.
+			await extraction(
+				ctx,
+				ref,
+				srcB,
+				reduceResult({ items: [reduceItem({ amount: { value: 1000, currency: 'EUR' } })] })
+			);
+			return insertItem(ctx, ref, [srcA, srcC], {
+				amount: { value: 100, currency: 'EUR' },
+				pendingUpdate: { evidence: [quoteOf(srcB)], amount: { value: 1000, currency: 'EUR' } },
+			});
+		});
+
+		await drive(t, { ref, kind: 'sources', sources: [srcC] }, () => unitBudget(400));
+
+		const item = (await t.run((ctx) => ctx.db.get(itemId)))!;
+		expect(item.amount).toBeUndefined();
+		expect(item.redactedFields).toContain('amount');
+		expect(item.pendingUpdate).toMatchObject({ amount: { value: 1000, currency: 'EUR' } });
+		expect(item.isReviewNeeded).toBe(true);
+	});
+
+	it('takes the parties erased B named off the item', async () => {
+		const t = convexTest(schema, modules);
+		const { ref, srcA, srcB } = await seedThree(t);
+		const itemId = await t.run((ctx) =>
+			insertItem(ctx, ref, [srcA, srcB], {
+				requester: { email: 'bea@example.com', name: 'Bea', isUs: false },
+				responsible: { email: 'carl@example.com', name: 'Carl', isUs: false },
+				beneficiary: { name: 'Dana', isUs: false },
+				responsibility: 'them',
+				counterpartyKey: 'bea@example.com',
+			})
+		);
+
+		await drive(t, { ref, kind: 'sources', sources: [srcB] }, () => unitBudget(400));
+
+		const item = (await t.run((ctx) => ctx.db.get(itemId)))!;
+		expect(item.requester).toEqual({ isUs: false });
+		expect(item.responsible).toEqual({ isUs: false });
+		expect(item.beneficiary).toBeUndefined();
+		expect(item.responsibility).toBe('unclear');
+		expect(item.counterpartyKey).toBeUndefined();
+		expect(JSON.stringify(item)).not.toMatch(/bea@|Carl|Dana/);
+	});
+
+	it('leaves no held update or undo snapshot that could restore a purged value', async () => {
+		const t = convexTest(schema, modules);
+		const { ref, srcA, srcB } = await seedThree(t);
+		const itemId = await t.run((ctx) =>
+			insertItem(ctx, ref, [srcA, srcB], {
 				confirmedFrom: {
 					kind: 'heldChange',
 					confirmation: { by: 'user-A', at: SENT, kind: 'confirmed' },
 					verify: 'passed',
 					amount: { value: 1000, currency: 'EUR' },
-					pendingUpdate: { amount: { value: 1000, currency: 'EUR' } },
-					addedEvidenceKeys: [`mail:${b}|rev-1|s0:0:4`],
+					addedEvidenceKeys: [`mail:${srcB.id}|rev-1|s1:0:4`],
 				},
-				pendingUpdate: {
-					evidence: [{ source: srcB, segmentId: 's1', start: 0, end: 4, contentRevision: 'rev-1' }],
-					amount: { value: 2000, currency: 'EUR' },
-				},
-			});
-		});
-		return { ref, srcB, itemId, claimA };
-	}
-
-	it('drops the amount and deadline only the purged message supplied', async () => {
-		const t = convexTest(schema, modules);
-		const { ref, srcB, itemId } = await thousandFromB(t);
+				pendingUpdate: { evidence: [quoteOf(srcB)], amount: { value: 2000, currency: 'EUR' } },
+			})
+		);
 
 		await drive(t, { ref, kind: 'sources', sources: [srcB] }, () => unitBudget(400));
 
 		const item = (await t.run((ctx) => ctx.db.get(itemId)))!;
+		// Undo restores from the snapshot: with it gone, nothing purged comes back.
+		expect(item.confirmedFrom).toBeUndefined();
+		expect(item.pendingUpdate).toBeUndefined();
 		expect(item.amount).toBeUndefined();
-		expect(item.due).toBeUndefined();
-		// A's claim states no options either: nothing stands without a claim behind it.
-		expect(item.options).toBeUndefined();
-		expect(item.evidence.map((e) => e.source.id)).not.toContain(srcB.id);
 	});
 
-	it('leaves no held update or undo snapshot that could restore the purged values', async () => {
+	it('keeps what a person confirmed', async () => {
 		const t = convexTest(schema, modules);
-		const { ref, srcB, itemId } = await thousandFromB(t);
+		const { ref, srcA, srcB } = await seedThree(t);
+		const itemId = await t.run((ctx) =>
+			insertItem(ctx, ref, [srcA, srcB], {
+				amount: { value: 300, currency: 'EUR' },
+				correction: { by: 'user-A', at: SENT, kind: 'confirmed' },
+			})
+		);
 
 		await drive(t, { ref, kind: 'sources', sources: [srcB] }, () => unitBudget(400));
 
 		const item = (await t.run((ctx) => ctx.db.get(itemId)))!;
-		expect(item.pendingUpdate).toBeUndefined();
-		expect(item.confirmedFrom).toBeUndefined();
-		const plan = planReaction(item as never, 'undo', { userId: 'user-A', now: SENT + 1 });
-		expect(JSON.stringify(plan)).not.toContain('1000');
+		expect(item.amount).toEqual({ value: 300, currency: 'EUR' });
+		expect(item.redactedFields).toBeUndefined();
 	});
 });
 

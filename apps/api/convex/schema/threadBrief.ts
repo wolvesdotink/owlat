@@ -13,12 +13,10 @@ import {
 	claimIdValidator,
 	itemCountsValidator,
 	sourceCountsValidator,
-	coverageEntryValidator,
 	draftRefKindValidator,
 	evidenceValidator,
 	factStatusValidator,
 	factValueValidator,
-	fileClaimValidator,
 	interpretCoverageValidator,
 	interpretEligibilitySignalsValidator,
 	interpretModeValidator,
@@ -34,23 +32,28 @@ import {
 	itemFacetValidator,
 	itemIntentValidator,
 	itemResponsibilityValidator,
-	itemRevisionRefValidator,
 	itemStatusValidator,
 	itemConfirmedFromValidator,
 	itemListBucketValidator,
 	itemVerifyValidator,
 	localizedSealedTextValidator,
-	newPromiseValidator,
-	ownerInputRefValidator,
 	participantRefValidator,
 	pendingUpdateValidator,
+	itemFieldSourcesValidator,
 	transitionSourceValidator,
 	planVerdictValidator,
-	responsePlanStanceValidator,
 	sourceManifestValidator,
 	streamPositionValidator,
 	threadViewValidator,
 } from '../lib/validators/threadBrief';
+import {
+	coverageEntryValidator,
+	fileClaimValidator,
+	itemRevisionRefValidator,
+	newPromiseValidator,
+	ownerInputRefValidator,
+	responsePlanStanceValidator,
+} from '../lib/validators/responsePlan';
 
 /**
  * The thread brief tables, children before parents: note reactions, the
@@ -194,6 +197,8 @@ export const threadBriefTables = {
 		// `<sourceKey>#f<index>`: the proposal that created it, so an ordered
 		// replay maps a rebuilt fact back onto this row.
 		lineage: v.optional(v.string()),
+		// Fields a message purge redacted (mail/interpret/purgeClaims.ts); a later claim refills them.
+		redactedFields: v.optional(v.array(v.string())),
 		revision: v.number(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -261,6 +266,8 @@ export const threadBriefTables = {
 		confirmedFrom: v.optional(itemConfirmedFromValidator),
 		// Changes held apart until confirmed ("Check this change"), each with its source.
 		pendingUpdate: v.optional(pendingUpdateValidator),
+		// Which source set each shown field (purge redacts exactly those).
+		fieldSources: v.optional(itemFieldSourcesValidator),
 		// Message date of the transition that set the current status or
 		// disposition: an older message's transition only adds evidence.
 		lastTransitionAt: v.optional(v.number()),
@@ -273,6 +280,8 @@ export const threadBriefTables = {
 		// Every claim key that produced or matched it; and the first one (fold.ts).
 		lineageKeys: v.optional(v.array(v.string())),
 		lineage: v.optional(v.string()),
+		// Fields a message purge redacted (mail/interpret/purgeClaims.ts); a verified claim refills them.
+		redactedFields: v.optional(v.array(v.string())),
 		// Message date of the first evidence: the "age" of compareForYou.
 		askedAt: v.number(),
 		createdAt: v.number(),
@@ -384,6 +393,8 @@ export const threadBriefTables = {
 		// Wording-only matches of pending transitions still being scanned
 		// (mail/interpret/pendingMatch.ts): the brief stays partial meanwhile.
 		pendingMatchRuns: v.optional(v.number()),
+		// Purge repairs scheduled and not yet recorded (mail/interpret/purgeRepairs.ts).
+		pendingRepairs: v.optional(v.number()),
 		// The last fold read only part of the thread's items or facts (R2): partial.
 		isFoldScanCut: v.optional(v.boolean()),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.
@@ -431,6 +442,7 @@ export const threadBriefTables = {
 		// Set when draftKind === 'mailDraft'.
 		mailDraftId: v.optional(v.id('mailDrafts')),
 		// Set when draftKind === 'inboundDraft' (the team draft lives on the inbound message).
+		// draftKind === 'arrivalDraft' (the Reply Queue's prepared reply) sets neither.
 		inboundMessageId: v.optional(v.id('inboundMessages')),
 		threadRevision: v.number(),
 		itemRevisions: v.array(itemRevisionRefValidator),
@@ -441,6 +453,14 @@ export const threadBriefTables = {
 		fileClaims: v.array(fileClaimValidator),
 		draftHash: v.string(),
 		verdict: planVerdictValidator,
+		// Bumped by every stance write; the coverage above is current only for
+		// `checkedPlanRevision === planRevision` (plus the draft and item binding).
+		planRevision: v.optional(v.number()),
+		checkedPlanRevision: v.optional(v.number()),
+		// The attachment set the file claims were checked against.
+		attachmentSetHash: v.optional(v.string()),
+		// The check could not cover everything (items or claims past the bound).
+		isCheckIncomplete: v.optional(v.boolean()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

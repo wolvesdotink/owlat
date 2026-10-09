@@ -100,15 +100,12 @@ import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
-	// Auto-advance context (folder view only; the search preview passes
-	// neither and keeps its stay-put behavior). `advanceIds` is the list's
-	// current visual order (optimistic-hide filtered), `folderRole` the
-	// route segment used to build /dashboard/postbox/<folder>/<id> links.
+	// Auto-advance (folder view only): `advanceIds` is the list's visual order,
+	// `folderRole` the route segment for /dashboard/postbox/<folder>/<id> links.
 	advanceIds?: string[];
 	folderRole?: string;
-	// Overlay hosting (the Today view's centered reader): auto-advance swaps
-	// the reader IN PLACE via the `advance` emit instead of navigating to the
-	// folder/message route, so triaging never tears down the overlay.
+	// Overlay hosting (Today's centered reader): auto-advance swaps the reader in
+	// place via `advance`, so triaging never tears down the overlay.
 	advanceInPlace?: boolean;
 }>();
 
@@ -178,9 +175,8 @@ function calendarAttachment(msg: {
 	);
 }
 
-// Plan idea 45: the sender profile slide-over. One instance for the whole
-// reader — a thread with twenty collapsed messages must not mount (and
-// subscribe) twenty panels, so the opened sender travels in state instead.
+// Plan idea 45: one sender profile slide-over for the whole reader; the opened
+// sender travels in state instead of mounting a panel per message.
 const senderProfile = ref<{ fromAddress: string; fromName: string | null } | null>(null);
 function openSenderProfile(msg: { fromAddress: string; fromName?: string | null }) {
 	senderProfile.value = { fromAddress: msg.fromAddress, fromName: msg.fromName ?? null };
@@ -767,7 +763,13 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 		<div v-show="!rb.showsOverview.value" class="space-y-2">
 			<PostboxThreadCiteNote :state="rb" />
 
-			<TeamPinnedItems v-if="team.isActive.value" class="mb-3" :team="team.team" />
+			<TeamPinnedItems
+				v-if="team.isActive.value"
+				class="mb-3"
+				:team="team.team"
+				:cite-message="rb.citeMessage"
+				:cite-unreachable="rb.messageCiteState.value === 'unreachable'"
+			/>
 			<PostboxThreadEarlier
 				v-if="hasEarlier || loadingEarlier || earlierFailed"
 				:remaining="Math.max(0, threadMessageCount - allMessages.length)"
