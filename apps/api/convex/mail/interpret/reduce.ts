@@ -56,6 +56,8 @@ import {
 	isRepairMarked,
 	shiftPendingRepairs,
 } from './purgeRepairs';
+import { settleHistorySource } from './backfillSources';
+import { loadInterpretSource } from './sources';
 import { nextRetryAtOf } from './retry';
 import { ATTEMPT_SUFFIX } from './load';
 import { sourceVersionOf } from './sourceVersion';
@@ -342,6 +344,8 @@ export const applyInterpretation = internalMutation({
 		if (previousCounted && isRepairMarked(previousCounted)) {
 			await shiftPendingRepairs(ctx, brief._id, -1);
 		}
+		// A history source admitted by a page has its outcome now (p4 round 3 F1).
+		await settleHistorySource(ctx, await loadInterpretSource(ctx, args.source));
 		// A pending-transition scan in flight keeps the brief partial (round 6 R2),
 		// and so do an outstanding purge repair and unread history (briefCompleteness).
 		const briefNow = await ctx.db.get(brief._id);

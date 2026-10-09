@@ -44,8 +44,8 @@ import {
 	interpretationSourceKey,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
-import type { ThreadRef } from '../../lib/validators/threadRef';
-import { ensureBriefRow, markBriefPending } from './briefRow';
+import { threadRefFromFields, type ThreadRef } from '../../lib/validators/threadRef';
+import { ensureBriefRow, loadBriefRow, markBriefPending } from './briefRow';
 import { captureInterpretSource, loadInterpretSource } from './sources';
 import { briefCompleteness } from './purgeRepairs';
 
@@ -298,14 +298,18 @@ export async function enqueueHistoryPage(
 	const startDelayMs = opts.startDelayMs ?? 0;
 	let scheduled = 0;
 	for (const source of found.sources) {
-		if (!(await captureInterpretSource(ctx, { source, isLive: true }))) continue;
+		const snapshotId = await captureInterpretSource(ctx, { source, isLive: true });
+		if (!snapshotId) continue;
 		await ctx.scheduler.runAfter(startDelayMs + scheduled * RUN_SPACING_MS, runOf(source), {
 			source,
 		});
+		// Outstanding until its run records an outcome (settleHistorySource).
+		await ctx.db.patch(snapshotId, { isHistoryOutstanding: true });
 		scheduled++;
 	}
 	const now = Date.now();
 	const history = {
+		pendingHistorySources: (brief.pendingHistorySources ?? 0) + scheduled || undefined,
 		historyCursor: found.isDone ? undefined : found.continueCursor,
 		historyState: found.isDone ? ('done' as const) : ('pending' as const),
 		historyUpdatedAt: now,
@@ -341,4 +345,23 @@ export function isHistoryRunning(
 		brief.historyUpdatedAt !== undefined &&
 		now - brief.historyUpdatedAt < HISTORY_STALE_MS
 	);
+}
+
+/**
+ * A source a history page admitted has an outcome (any: complete, partial,
+ * failed, skipped), or is being purged: it is no longer outstanding. Call in
+ * the transaction that records it. Returns whether the brief's counter moved;
+ * the caller recomputes completeness (the reducer and the purge both do).
+ */
+export async function settleHistorySource(
+	ctx: MutationCtx,
+	snapshot: Doc<'interpretSources'> | null
+): Promise<boolean> {
+	if (!snapshot?.isHistoryOutstanding) return false;
+	await ctx.db.patch(snapshot._id, { isHistoryOutstanding: undefined });
+	const brief = await loadBriefRow(ctx, threadRefFromFields(snapshot));
+	if (!brief) return true;
+	const left = Math.max(0, (brief.pendingHistorySources ?? 0) - 1);
+	await ctx.db.patch(brief._id, { pendingHistorySources: left > 0 ? left : undefined });
+	return true;
 }

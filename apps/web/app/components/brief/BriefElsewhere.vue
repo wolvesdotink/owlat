@@ -96,7 +96,7 @@ function sideOf(item: Item): string {
 			>
 				{{ t('components.brief.elsewhere.showMore') }}
 			</button>
-			<p v-else-if="group.isMore" class="mt-1.5 text-xs text-text-tertiary">
+			<p v-else-if="group.isMore || group.isPartial" class="mt-1.5 text-xs text-text-tertiary">
 				{{ t('components.brief.elsewhere.more') }}
 			</p>
 		</BriefSection>

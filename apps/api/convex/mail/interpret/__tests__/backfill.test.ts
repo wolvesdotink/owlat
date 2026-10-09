@@ -512,3 +512,53 @@ describe('history and the auto-send hold (round 2 F1)', () => {
 		expect(view?.history).toBe('stalled');
 	});
 });
+
+describe('admitted history sources until each records an outcome (round 3 F1)', () => {
+	it('stays partial while one of two scheduled sources is unread', async () => {
+		const t = lazyTest();
+		const mailboxId = await seedMailbox30Days(t);
+		const at = Date.now() - 90 * DAY;
+		const first = await seedMessage(t, mailboxId, { subject: 'old', receivedAt: at });
+		const threadId = await threadOf(t, first);
+		const second = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'And the invoice?', receivedAt: at + 1000 }
+		);
+		const threadRef = { kind: 'mail' as const, id: threadId };
+		expect(await t.mutation(api.mail.interpret.lazy.ensure, { threadRef })).toEqual({
+			isEnqueued: true,
+			runs: 2,
+		});
+		expect(await briefOf(t, threadId)).toMatchObject({
+			historyState: 'done',
+			pendingHistorySources: 2,
+		});
+		const apply = (messageId: typeof first, revision: number, status: 'complete' | 'skipped') =>
+			t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+				source: { kind: 'mail', id: messageId },
+				threadRef,
+				mode: 'brief',
+				contentRevision: `rev-${revision}`,
+				extractorVersion: 1,
+				expectedRevision: revision,
+				deletionEpoch: 0,
+				sourceAt: at + revision * 1000,
+				direction: 'inbound',
+				status,
+				...(status === 'complete'
+					? { result: reduceResult({ items: [reduceItem()] }) }
+					: { skipReason: 'ineligible' as const }),
+			});
+		await apply(first, 0, 'complete');
+		expect(await briefOf(t, threadId)).toMatchObject({
+			completeness: 'partial',
+			pendingHistorySources: 1,
+		});
+		// Any outcome settles it, a skip included.
+		await apply(second, 1, 'skipped');
+		const settled = (await briefOf(t, threadId))!;
+		expect(settled.completeness).toBe('complete');
+		expect(settled.pendingHistorySources).toBeUndefined();
+	});
+});

@@ -57,6 +57,7 @@ describe('BriefElsewhere', () => {
 					counterpartyKey: 'jonas@example.com',
 					name: 'Jonas',
 					isMore: true,
+					isPartial: false,
 					items: [
 						{
 							itemId: 'i1',
@@ -101,6 +102,30 @@ describe('BriefElsewhere', () => {
 		const hrefs = w.findAll('a').map((a) => a.attributes('href'));
 		expect(hrefs).toEqual(['/dashboard/postbox/inbox/m9?mailbox=mb1', '/dashboard/inbox/ct1']);
 		expectFullyLocalized(w);
+	});
+
+	it('says when the scan of the viewer’s own scopes stopped short', () => {
+		data.value = {
+			groups: [
+				{
+					counterpartyKey: 'ana@example.com',
+					isMore: false,
+					isPartial: true,
+					items: [
+						{
+							itemId: 'i3',
+							threadRef: { kind: 'team', id: 'ct2' },
+							subject: 'Order 7',
+							text: 'Refund order 7',
+							responsibility: 'us',
+						},
+					],
+				},
+			],
+		};
+		const w = mountCard();
+		expect(w.find('[data-testid="brief-elsewhere-more"]').exists()).toBe(false);
+		expect(w.text()).toContain('More open items with them in other conversations.');
 	});
 
 	it('renders nothing when there is nothing elsewhere, and reads nothing without a thread', () => {
