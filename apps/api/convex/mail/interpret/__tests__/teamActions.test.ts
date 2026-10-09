@@ -5,6 +5,7 @@ import {
 	BRIEFING_CONTEXT_PER_SECTION,
 	BRIEFING_ITEM_READ,
 	interpretationHoldReason,
+	isUnresolved,
 	renderBriefingActions,
 	selectBriefing,
 	type BriefingItem,
@@ -149,6 +150,21 @@ describe('interpretationHoldReason (D3)', () => {
 		expect(
 			interpretationHoldReason({ ...complete, overflow: { omitted: 0, isReadTruncated: false } })
 		).toBeNull();
+	});
+
+	it('holds while an open item on us is flagged for review or redacted (round 5 F1)', () => {
+		const complete = {
+			interpretation: { status: 'complete' as const },
+			completeness: 'complete' as const,
+		};
+		expect(interpretationHoldReason({ ...complete, unresolvedCount: 1 })).toContain('needs review');
+		expect(interpretationHoldReason({ ...complete, unresolvedCount: 0 })).toBeNull();
+		const open = { status: 'open' as const, responsibility: 'us' as const };
+		expect(isUnresolved({ ...open, isReviewNeeded: true })).toBe(true);
+		expect(isUnresolved({ ...open, redactedFields: ['due'] })).toBe(true);
+		expect(isUnresolved({ ...open, redactedFields: [] })).toBe(false);
+		expect(isUnresolved({ ...open, responsibility: 'them', isReviewNeeded: true })).toBe(false);
+		expect(isUnresolved({ ...open, status: 'done', isReviewNeeded: true })).toBe(false);
 	});
 
 	it('lets a complete interpretation through, and an ineligible skip of a complete brief', () => {

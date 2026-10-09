@@ -12,8 +12,11 @@
  *     mode) reuses the stored result without a model call.
  *   - `interpretationHold` is the D3 autonomy input: auto-send holds for a
  *     person unless this message was interpreted completely, the thread's
- *     brief is complete, AND the briefing showed every open item (review F9:
- *     an item the draft never saw must not be auto-answered by omission).
+ *     brief is complete, the briefing showed every open item (review F9:
+ *     an item the draft never saw must not be auto-answered by omission), AND
+ *     no open item on us is flagged for review or redacted by a purge (review
+ *     round 5, F1; the drafting lane's `item_coverage` gate does not read
+ *     those flags, so this is the one place that does).
  *     Read by the `interpretation_incomplete` core gate in
  *     `agent/steps/route/autoSendGates.ts`.
  *
@@ -357,8 +360,10 @@ export function interpretationHoldReason(input: {
 	completeness: BriefCompleteness | null;
 	/** Open items the briefing could not show (left out, or past one read). */
 	overflow?: { omitted: number; isReadTruncated: boolean };
+	/** Open items on us (or unclear) a purge redacted or that are flagged for review. */
+	unresolvedCount?: number;
 }): string | null {
-	const { interpretation, completeness, overflow } = input;
+	const { interpretation, completeness, overflow, unresolvedCount } = input;
 	if (!interpretation) {
 		return 'This message has not been interpreted; not auto-sending — routing to human review.';
 	}
@@ -374,7 +379,23 @@ export function interpretationHoldReason(input: {
 	if (overflow && (overflow.omitted > 0 || overflow.isReadTruncated)) {
 		return 'The thread has more open items than the draft was shown; not auto-sending — routing to human review.';
 	}
+	if ((unresolvedCount ?? 0) > 0) {
+		return 'An open item needs review (flagged, or details removed with a deleted message); not auto-sending — routing to human review.';
+	}
 	return null;
+}
+
+/**
+ * An open item on us (or unclear) that a person must look at before anything
+ * is sent for it (review round 5, F1): flagged for review, or with fields a
+ * purge redacted. Completeness alone does not cover it (a purge whose
+ * surviving messages cannot be re-read leaves the brief complete). Pure.
+ */
+export function isUnresolved(
+	item: Pick<Doc<'threadItems'>, 'status' | 'responsibility' | 'isReviewNeeded' | 'redactedFields'>
+): boolean {
+	if (item.status !== 'open' || item.responsibility === 'them') return false;
+	return item.isReviewNeeded === true || (item.redactedFields?.length ?? 0) > 0;
 }
 
 export const interpretationHold = internalQuery({
@@ -394,6 +415,7 @@ export const interpretationHold = internalQuery({
 				interpretation: row ? toInterpretation(row, Date.now()) : null,
 				completeness: brief?.completeness ?? null,
 				overflow: { omitted: picked.omitted, isReadTruncated: picked.isReadTruncated },
+				unresolvedCount: rows.filter(({ item }) => isUnresolved(item)).length,
 			}),
 		};
 	},

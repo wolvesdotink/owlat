@@ -106,4 +106,48 @@ describe('team briefing read', () => {
 		});
 		expect(hold.reason).not.toBeNull();
 	});
+
+	it('holds auto-send on a complete brief while an item a purge redacted stays open (no surviving snapshot)', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		const itemId = await insertItem(t, threadId, 'Details removed with the deleted message', AT, {
+			kind: 'inbound',
+			id: inboundId,
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.patch(itemId, { redactedFields: ['due', 'amount'], isReviewNeeded: true });
+			const now = AT;
+			await ctx.db.insert('threadBriefs', {
+				threadKind: 'team',
+				conversationThreadId: threadId,
+				mode: 'actions',
+				sourceRevision: 1,
+				interpretationRevision: 1,
+				lastActivitySeq: 0,
+				completeness: 'complete',
+				deletionEpoch: 1,
+				updatedAt: now,
+			});
+			await ctx.db.insert('messageInterpretations', {
+				threadKind: 'team',
+				conversationThreadId: threadId,
+				source: { kind: 'inbound', id: inboundId },
+				sourceKey: `inbound:${inboundId}`,
+				contentRevision: 'rev-1',
+				extractorVersion: 1,
+				mode: 'actions',
+				status: 'complete',
+				deletionEpoch: 1,
+				isCurrent: true,
+				isCounted: true,
+				appliedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+		const hold = await t.query(internal.mail.interpret.teamActions.interpretationHold, {
+			inboundMessageId: inboundId,
+		});
+		expect(hold.reason).toContain('needs review');
+	});
 });
