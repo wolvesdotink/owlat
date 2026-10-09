@@ -71,7 +71,9 @@ async function shiftCounts(
 	await ctx.db.patch(brief._id, {
 		pendingSources: pendingSources > 0 ? pendingSources : undefined,
 		unreadSources: unreadSources > 0 ? unreadSources : undefined,
-		completeness: brief.completeness === 'pending' ? 'pending' : briefCompleteness(next),
+		// Recomputed from the counts every time, `pending` included: a brief
+		// whose last outstanding source settled reads what it holds.
+		completeness: briefCompleteness(next),
 		updatedAt: Date.now(),
 	});
 }

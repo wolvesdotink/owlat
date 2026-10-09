@@ -35,7 +35,6 @@ import { openMessageBody } from '../../lib/messageBody';
 import { appLocaleOf, type AppLocale } from '@owlat/shared/appLocales';
 import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
 import { itemResponsibilityValidator } from '../../lib/validators/threadBrief';
-import { isPastCursor } from './backfillSources';
 
 /** People of this thread looked up (the most frequent counterparties first). */
 export const ELSEWHERE_PEOPLE = 2;
@@ -188,26 +187,29 @@ export async function scopeItems(
 ): Promise<{ found: Found[]; isCut: boolean }> {
 	const found: Found[] = [];
 	const mailboxId = scope.kind === 'mailbox' ? scope.mailboxId : undefined;
+	// The position after the last row read, as the full index order: by
+	// updatedAt, then creation time (rows tied on updatedAt are walked through
+	// by creation time, never re-read).
 	let from: { at: number; creation: number } | null = null;
+	let isTieDone = true;
 	while (budget.rows > 0) {
 		const n = Math.min(budget.rows, SCAN_CHUNK);
 		const after: { at: number; creation: number } | null = from;
+		const isTie = after !== null && !isTieDone;
 		const rows: Doc<'threadItems'>[] = await ctx.db
 			.query('threadItems')
 			.withIndex('by_counterparty', (q) => {
 				const range = q.eq('counterpartyKey', key).eq('status', 'open').eq('mailboxId', mailboxId);
-				return after ? range.lte('updatedAt', after.at) : range;
+				if (!after) return range;
+				return isTie
+					? range.eq('updatedAt', after.at).lt('_creationTime', after.creation)
+					: range.lt('updatedAt', after.at);
 			})
 			.order('desc')
 			.take(n);
 		budget.rows -= rows.length;
 		for (const item of rows) {
-			const at: { at: number; creation: number } = {
-				at: item.updatedAt,
-				creation: item._creationTime,
-			};
-			if (!isPastCursor(at, after)) continue;
-			from = at;
+			from = { at: item.updatedAt, creation: item._creationTime };
 			if (item.verify === 'proposal') continue;
 			if (item.mailThreadId === here.id || item.conversationThreadId === here.id) continue;
 			// The team scope holds the items without a mailbox: Team Inbox ones only.
@@ -217,7 +219,16 @@ export async function scopeItems(
 			found.push({ item, source });
 			if (found.length >= want) return { found, isCut: false };
 		}
-		if (rows.length < n) return { found, isCut: false };
+		if (rows.length < n) {
+			// This tie is walked through: go on with older rows; past those, done.
+			if (isTie) {
+				isTieDone = true;
+				continue;
+			}
+			return { found, isCut: false };
+		}
+		// A full chunk: the next one first finishes the last row's timestamp.
+		isTieDone = false;
 	}
 	return { found, isCut: true };
 }
@@ -303,7 +314,9 @@ export const list = publicQuery({
 		const groups: ElsewhereGroup[] = [];
 		for (const key of keys) {
 			const found = await groupFor(ctx, key, args.threadRef, locale, scopes, limit);
-			if (found.items.length === 0) continue;
+			// An empty group is shown only when the scan of the viewer's own
+			// scopes was cut, so the truncation is never hidden.
+			if (found.items.length === 0 && !found.isPartial) continue;
 			const name = nameOf(key, own);
 			groups.push({ counterpartyKey: key, ...(name ? { name } : {}), ...found });
 		}

@@ -51,14 +51,14 @@ export function briefCompleteness(
 		| 'unreadSources'
 	>
 ): BriefCompleteness {
+	// A source the stale sweep gave up on: partial, whatever else was read.
+	if ((brief.unreadSources ?? 0) > 0) return 'partial';
 	if ((brief.pendingRepairs ?? 0) > 0) return 'partial';
 	if ((brief.pendingMatchRuns ?? 0) > 0 || brief.isFoldScanCut === true) return 'partial';
 	const counted = completenessOfCounts(brief.sourceCounts ?? EMPTY_SOURCE_COUNTS);
-	const isHistoryOpen =
-		brief.historyState === 'pending' ||
-		brief.isHistoryIncomplete === true ||
-		(brief.pendingSources ?? 0) > 0 ||
-		(brief.unreadSources ?? 0) > 0;
+	// Runs still out: `pending` while nothing is recorded yet, else partial.
+	if ((brief.pendingSources ?? 0) > 0) return counted === 'none' ? 'pending' : 'partial';
+	const isHistoryOpen = brief.historyState === 'pending' || brief.isHistoryIncomplete === true;
 	return counted === 'complete' && isHistoryOpen ? 'partial' : counted;
 }
 

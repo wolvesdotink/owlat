@@ -302,8 +302,10 @@ describe('elsewhere.list', () => {
 			threadRef: { kind: 'mail', id: here.threadId },
 			locale: 'en',
 		});
-		// Nothing listable was reached: no group (the proposals are not listable).
-		expect(out).toEqual({ groups: [] });
+		// Nothing listable was reached, but the cut is said, not hidden.
+		expect(out!.groups).toEqual([
+			expect.objectContaining({ items: [], isPartial: true, isMore: false }),
+		]);
 		// With a listable item inside the budget, the group says it is partial.
 		await t.run(async (ctx) => {
 			const extra = (await ctx.db
@@ -372,5 +374,31 @@ describe('elsewhere.list', () => {
 			expect(budget.rows).toBe(0);
 			expect(result.isCut).toBe(true);
 		});
+	});
+
+	it('walks rows tied on updatedAt instead of re-reading them (round 5 F1)', async () => {
+		const t = convexTest(schema, modules);
+		const { here, other } = await seedWorld(t);
+		await t.run(async (ctx) => {
+			const visible = (await ctx.db
+				.query('threadItems')
+				.filter((q) => q.eq(q.field('mailThreadId'), other.threadId))
+				.collect())!.find((i) => i.verify !== 'proposal')!;
+			const { _id: _a, _creationTime: _b, ...fields } = visible;
+			// 30 newer proposals, all on one timestamp: more than one fetch chunk.
+			for (let i = 0; i < 30; i++) {
+				await ctx.db.insert('threadItems', {
+					...fields,
+					verify: 'proposal',
+					updatedAt: visible.updatedAt + 1000,
+				});
+			}
+		});
+		const out = await t.query(api.mail.interpret.elsewhere.list, {
+			threadRef: { kind: 'mail', id: here.threadId },
+			locale: 'en',
+		});
+		expect(out!.groups[0]).toMatchObject({ isPartial: false });
+		expect(out!.groups[0]!.items.map((i) => i.text)).toEqual(['Jonas sends the signed NDA']);
 	});
 });
