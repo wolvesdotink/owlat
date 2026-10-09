@@ -90,13 +90,17 @@ export function usePostboxReaderBrief(opts: {
 	// until they are loaded (bounded like the reader's own anchor walk), and
 	// expand them once they arrive.
 	const loadedIds = computed(() => new Set(opts.messages.value.map((m) => m._id)));
+	// A team source marker on a shared mailbox (TeamPinnedItems): the cited email
+	// is brought in by the same walk, then scrolled to and ringed.
+	const messageCite = ref<string | null>(null);
 	const wanted = computed(() => [
 		...(cited.value ? [cited.value.messageId] : []),
+		...(messageCite.value ? [messageCite.value] : []),
 		...exactWordingIds.value,
 	]);
 	const walks = ref(0);
 	watch(
-		() => cited.value?.messageId,
+		() => [cited.value?.messageId, messageCite.value],
 		() => {
 			walks.value = 0;
 		}
@@ -122,13 +126,32 @@ export function usePostboxReaderBrief(opts: {
 		{ immediate: true }
 	);
 
-	const citeState = computed<CiteState | null>(() => {
-		const id = cited.value?.messageId;
+	function stateOf(id: string | undefined | null): CiteState | null {
 		if (!id) return null;
 		if (loadedIds.value.has(id)) return 'shown';
 		const canWalk = opts.pages.hasEarlier.value && walks.value < THREAD_ANCHOR_PAGE_LIMIT;
 		return opts.pages.loadingEarlier.value || canWalk ? 'loading' : 'unreachable';
-	});
+	}
+	const citeState = computed<CiteState | null>(() => stateOf(cited.value?.messageId));
+	/** The team marker's email: on its way, or out of reach (kept until shown). */
+	const messageCiteState = computed(() => stateOf(messageCite.value));
+	watch(
+		() =>
+			messageCite.value &&
+			loadedIds.value.has(messageCite.value) &&
+			opts.expanded.value.has(messageCite.value),
+		(isReady) => {
+			const id = messageCite.value;
+			if (!isReady || !id) return;
+			void nextTick(() => {
+				const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`);
+				el?.scrollIntoView?.({ block: 'start' });
+				el?.classList.add('ring-2', 'ring-brand/50');
+				setTimeout(() => el?.classList.remove('ring-2', 'ring-brand/50'), 1600);
+				messageCite.value = null;
+			});
+		}
+	);
 
 	// Seen once the Overview is actually showing a brief.
 	watch(
@@ -194,6 +217,9 @@ export function usePostboxReaderBrief(opts: {
 		latestFor,
 		citeQuoteFor,
 		sourceOf,
+		/** Show a message of the thread (loading earlier pages as needed). */
+		citeMessage: (messageId: string) => (messageCite.value = messageId),
+		messageCiteState,
 		react: reactions.run,
 	};
 }

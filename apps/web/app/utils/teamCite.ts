@@ -9,8 +9,15 @@ import type {
 } from '../../../api/convex/mail/interpret/briefShape';
 import type { BriefSource } from '~/utils/threadBriefContext';
 
-/** The sender and date of each email the stream has loaded, by message id. */
-export function streamSources(entries: readonly TeamStreamEntry[]): Map<string, BriefSource> {
+/**
+ * The sender and date of each email the stream has loaded, by message id. A
+ * reply's sender is whoever on the team wrote it (`replyAuthor`), never the
+ * customer it went to.
+ */
+export function streamSources(
+	entries: readonly TeamStreamEntry[],
+	replyAuthor: (entry: Extract<TeamStreamEntry, { kind: 'teamReply' }>) => string
+): Map<string, BriefSource> {
 	const out = new Map<string, BriefSource>();
 	for (const entry of entries) {
 		if (entry.kind === 'customerEmail') {
@@ -20,7 +27,7 @@ export function streamSources(entries: readonly TeamStreamEntry[]): Map<string, 
 				at: entry.at,
 			});
 		} else if (entry.kind === 'teamReply' && entry.source) {
-			out.set(entry.source.id, { ...(entry.toName ? { name: entry.toName } : {}), at: entry.at });
+			out.set(entry.source.id, { name: replyAuthor(entry), at: entry.at });
 		}
 	}
 	return out;
