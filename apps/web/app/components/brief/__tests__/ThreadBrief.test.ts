@@ -190,7 +190,7 @@ describe('ThreadBrief', () => {
 		const pending = w.get('[data-testid="brief-item-pending"]');
 		expect(pending.text()).toContain('Check this change:');
 		expect(pending.text()).toContain('€5,000.00');
-		expect(pending.text()).toContain('due ');
+		expect(pending.text()).toContain('due: ');
 		await pending.get('[data-testid="evidence-marker"]').trigger('click');
 		expect(w.emitted('cite')).toEqual([['q~pending', 0]]);
 		await pending.get('[data-testid="brief-item-pending-confirm"]').trigger('click');

@@ -13,6 +13,7 @@ import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefS
 import { briefDueDate, briefShortDate } from '~/utils/threadBriefContext';
 import { menuReactions, type BriefAction } from '~/utils/threadBriefItems';
 import BriefPendingUpdate from '~/components/brief/BriefPendingUpdate.vue';
+import EvidenceMarker from '~/components/brief/EvidenceMarker.vue';
 
 export interface TeamMember {
 	userId: string;
@@ -59,14 +60,21 @@ const kinds = computed(() =>
 		...props.item.facets.map((f) => t(`components.brief.facet.${f}`)),
 	].join(' · ')
 );
+const isOpen = computed(() => props.item.status === 'open');
 const primary = computed<TeamItemAction>(() => {
+	// A recently closed action (confirmed or marked done) can be taken back.
+	if (!isOpen.value) return 'undo';
 	if (isProposal.value) return 'confirmProposal';
 	if (!props.item.assigneeUserId && props.item.responsibility !== 'them') return 'claim';
 	return props.item.primaryReaction;
 });
 const menu = computed<BriefAction[]>(() => {
+	if (!isOpen.value) return [];
 	if (isProposal.value) return ['notARequest'];
-	const rest = menuReactions(props.item, { isTeam: true }).filter((r) => r !== 'assign');
+	const rest: BriefAction[] = menuReactions(props.item, { isTeam: true }).filter(
+		(r) => r !== 'assign'
+	);
+	if (props.item.correction?.kind === 'confirmed') rest.push('undo');
 	return primary.value === 'claim' ? [props.item.primaryReaction, ...rest] : rest;
 });
 const assignable = computed(() =>
@@ -116,6 +124,12 @@ function label(action: TeamItemAction): string {
 				<span v-if="item.isReviewNeeded" class="text-warning">{{
 					t('components.brief.item.review')
 				}}</span>
+				<EvidenceMarker
+					v-if="item.evidence[0]"
+					:evidence="item.evidence[0]"
+					:cite-ref="item.id"
+					:quote-index="0"
+				/>
 				<span
 					v-if="item.responsibility !== 'them'"
 					class="inline-flex items-center gap-1"
@@ -141,6 +155,7 @@ function label(action: TeamItemAction): string {
 				v-if="item.pendingUpdate && item.status === 'open'"
 				:item-id="item.id"
 				:update="item.pendingUpdate"
+				:item="item"
 				:can-confirm="!hideActions"
 				@confirm="emit('act', 'confirmProposal')"
 			/>
@@ -156,6 +171,7 @@ function label(action: TeamItemAction): string {
 				{{ label(primary) }}
 			</UiButton>
 			<PostboxOverflowMenu
+				v-if="isOpen"
 				:label="t('components.brief.item.menu', { item: item.text })"
 				align="right"
 			>
@@ -174,7 +190,7 @@ function label(action: TeamItemAction): string {
 					>
 						{{ label(action) }}
 					</button>
-					<template v-if="item.responsibility !== 'them' && !isProposal">
+					<template v-if="isOpen && item.responsibility !== 'them' && !isProposal">
 						<p
 							class="px-3 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-text-tertiary"
 						>

@@ -916,6 +916,26 @@
 				"confirmChange": "Confirm change",
 				"maybeSettled": "A later message may have settled this",
 				"confirmSettled": "Confirm",
+				"pending": {
+					"removed": "removed: {fields}",
+					"nobody": "nobody yet",
+					"us": "you",
+					"field": {
+						"text": "wording",
+						"requester": "asked by",
+						"responsible": "who does it",
+						"beneficiary": "for",
+						"responsibility": "whose turn",
+						"due": "due",
+						"amount": "amount",
+						"options": "choices"
+					},
+					"responsibility": {
+						"us": "yours",
+						"them": "theirs",
+						"unclear": "unclear"
+					}
+				},
 				"review": "needs a look",
 				"duplicate": "possible duplicate",
 				"new": "new",
@@ -1086,6 +1106,7 @@
 			},
 			"more": "+{count} more",
 			"toast": {
+				"confirmed": "Confirmed. You can undo it.",
 				"markedDone": "Marked done. You can undo it.",
 				"reminder": "You'll be reminded tomorrow morning."
 			},
@@ -6449,6 +6470,7 @@
 				"askedBy": "asked by {name} {date}",
 				"assignTo": "Assign to",
 				"claim": "Claim",
+				"closedTitle": "Just closed",
 				"claimed": "It's yours now.",
 				"empty": "Nothing is open for the team.",
 				"formerTeammate": "Former teammate",

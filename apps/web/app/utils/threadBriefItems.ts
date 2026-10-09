@@ -22,6 +22,18 @@ export function canUndo(stateKey: ItemStateKey): boolean {
 	return stateKey === 'markedDoneByYou' || stateKey === 'notTracked';
 }
 
+/**
+ * Whether Undo applies to an item: the viewer's own statement, or a confirmed
+ * change (a confirmed held update or closing transition; the backend puts it
+ * back on hold).
+ */
+export function canUndoItem(
+	item: Pick<BriefItemView, 'correction'>,
+	stateKey: ItemStateKey
+): boolean {
+	return canUndo(stateKey) || item.correction?.kind === 'confirmed';
+}
+
 /** The ring left of an item (plan §5 "Item states"). */
 export type BriefRing = 'open' | 'half' | 'done' | 'declined' | 'replaced' | 'proposal' | 'waiting';
 
