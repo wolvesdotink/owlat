@@ -29,6 +29,7 @@ import { openMessageBody } from '../../lib/messageBody';
 import { appLocaleOf, type AppLocale } from '@owlat/shared/appLocales';
 import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
 import { itemResponsibilityValidator } from '../../lib/validators/threadBrief';
+import { decodeHistoryCursor, encodeHistoryCursor, isPastCursor } from './backfillSources';
 
 /** People of this thread looked up (the most frequent counterparties first). */
 export const ELSEWHERE_PEOPLE = 2;
@@ -36,8 +37,8 @@ export const ELSEWHERE_PEOPLE = 2;
 export const ELSEWHERE_ITEMS = 5;
 /** This thread's items read to find its counterparties. */
 const OWN_ITEM_SCAN = 60;
-/** Open items read per person before the access filter. */
-const PERSON_ITEM_SCAN = 40;
+/** Open items read per person before the scan stops and hands back a cursor. */
+export const PERSON_SCAN = 200;
 
 const elsewhereItemValidator = v.object({
 	itemId: v.id('threadItems'),
@@ -57,6 +58,10 @@ const elsewhereGroupValidator = v.object({
 	items: v.array(elsewhereItemValidator),
 	// More readable open items exist than are listed.
 	isMore: v.boolean(),
+	// The scan stopped before it reached every open item with this person (the
+	// rest belongs to threads it could not show, or was not read yet): pass it
+	// back as `more` to read on from there.
+	continueCursor: v.optional(v.string()),
 });
 
 export type ElsewhereGroup = Infer<typeof elsewhereGroupValidator>;
@@ -153,7 +158,9 @@ async function canReadThread(ctx: QueryCtx, ref: ThreadRef, session: Session): P
 		const thread = await ctx.db.get(ref.id);
 		return thread ? (await loadReadableMailbox(ctx, thread.mailboxId)) !== null : false;
 	}
-	return isSharedInboxReader(session) && (await ctx.db.get(ref.id)) !== null;
+	// The same gate as requireThreadReader: the reader role AND the Team Inbox on.
+	if (!isSharedInboxReader(session) || !(await isFeatureEnabled(ctx, 'inbox'))) return false;
+	return (await ctx.db.get(ref.id)) !== null;
 }
 
 async function groupFor(
@@ -161,24 +168,33 @@ async function groupFor(
 	key: string,
 	here: ThreadRef,
 	locale: AppLocale,
-	read: ReturnType<typeof readerOf>
-): Promise<{ items: ElsewhereGroup['items']; isMore: boolean }> {
-	const candidates = await ctx.db
-		.query('threadItems')
-		.withIndex('by_counterparty', (q) => q.eq('counterpartyKey', key).eq('status', 'open'))
-		.order('desc')
-		.take(PERSON_ITEM_SCAN);
+	read: ReturnType<typeof readerOf>,
+	startCursor: string | null
+): Promise<{ items: ElsewhereGroup['items']; isMore: boolean; continueCursor?: string }> {
 	const items: ElsewhereGroup['items'] = [];
-	let isMore = false;
-	for (const item of candidates) {
+	const from = decodeHistoryCursor(startCursor);
+	let scanned = 0;
+	let lastCursor: string | undefined;
+	// Rows are read until enough readable items are found, the index ends, or
+	// the scan budget is spent; the last case hands back where it stopped.
+	for await (const item of ctx.db
+		.query('threadItems')
+		.withIndex('by_counterparty', (q) => {
+			const open = q.eq('counterpartyKey', key).eq('status', 'open');
+			return from ? open.lte('updatedAt', from.at) : open;
+		})
+		.order('desc')) {
+		if (!isPastCursor({ at: item.updatedAt, creation: item._creationTime }, from)) continue;
+		if (scanned >= PERSON_SCAN) {
+			return { items, isMore: false, ...(lastCursor ? { continueCursor: lastCursor } : {}) };
+		}
+		scanned++;
+		lastCursor = encodeHistoryCursor(item.updatedAt, item._creationTime);
 		if (item.verify === 'proposal') continue;
 		if (item.mailThreadId === here.id || item.conversationThreadId === here.id) continue;
 		const source = await read(item);
 		if (!source) continue;
-		if (items.length >= ELSEWHERE_ITEMS) {
-			isMore = true;
-			break;
-		}
+		if (items.length >= ELSEWHERE_ITEMS) return { items, isMore: true };
 		items.push({
 			itemId: item._id,
 			threadRef: source.ref,
@@ -190,7 +206,7 @@ async function groupFor(
 			...(item.due?.at !== undefined ? { dueAt: item.due.at } : {}),
 		});
 	}
-	return { items, isMore };
+	return { items, isMore: false };
 }
 
 // public: soft-auth — returns null for anonymous callers and for anyone this
@@ -198,22 +214,36 @@ async function groupFor(
 // authz: canReadThread (loadReadableMailbox / isSharedInboxReader) for this
 // thread, readerOf (the same two, plus the `inbox` flag) for every item.
 export const list = publicQuery({
-	args: { threadRef: threadRefValidator, locale: v.string() },
+	args: {
+		threadRef: threadRefValidator,
+		locale: v.string(),
+		// Read on for one person from a group's `continueCursor`.
+		more: v.optional(v.object({ counterpartyKey: v.string(), cursor: v.string() })),
+	},
 	returns: v.union(v.object({ groups: v.array(elsewhereGroupValidator) }), v.null()),
 	handler: async (ctx, args) => {
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session) return null;
 		if (!(await canReadThread(ctx, args.threadRef, session))) return null;
 		const own = await ownItems(ctx, args.threadRef);
-		const keys = counterpartiesOf(own).slice(0, ELSEWHERE_PEOPLE);
+		const keys = args.more
+			? [args.more.counterpartyKey]
+			: counterpartiesOf(own).slice(0, ELSEWHERE_PEOPLE);
 		const read = readerOf(ctx, session);
 		const locale = appLocaleOf(args.locale);
 		const groups: ElsewhereGroup[] = [];
 		for (const key of keys) {
-			const { items, isMore } = await groupFor(ctx, key, args.threadRef, locale, read);
-			if (items.length === 0) continue;
+			const found = await groupFor(
+				ctx,
+				key,
+				args.threadRef,
+				locale,
+				read,
+				args.more?.cursor ?? null
+			);
+			if (found.items.length === 0 && !found.continueCursor) continue;
 			const name = nameOf(key, own);
-			groups.push({ counterpartyKey: key, ...(name ? { name } : {}), items, isMore });
+			groups.push({ counterpartyKey: key, ...(name ? { name } : {}), ...found });
 		}
 		return { groups };
 	},

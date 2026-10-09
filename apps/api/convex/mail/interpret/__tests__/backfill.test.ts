@@ -1,8 +1,11 @@
 /**
  * The 30-day backfill and the first-open interpretation (ADR-0072, D5):
- * active threads only, bounded per batch and per run, paused by the spend
- * gate and resumed from the cursor, idempotent, and nothing scheduled but
- * interpretation runs (no notification, no Reply Queue write).
+ * active threads only, each thread's whole history paged with a durable
+ * cursor (partial until read through), sends only once they went out and
+ * through the outbound run, bounded per batch and per run, paused by the
+ * spend gate, one generation at a time, stopped for an inactive mailbox,
+ * and nothing scheduled but interpretation (no notification, no Reply Queue
+ * write). Review round 1: F1 to F5.
  */
 
 import { convexTest } from 'convex-test';
@@ -13,7 +16,9 @@ import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { enableFeatures } from '../../../__tests__/factories';
 import { seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
-import { isActiveThread, mailSourceOf, MESSAGES_PER_THREAD } from '../backfillSources';
+import { HISTORY_PAGE, isActiveThread, mailSourceOf } from '../backfillSources';
+import { historyGapOf } from '../brief';
+import { captureTeamReplySnapshot } from '../sources';
 import { BACKFILL_WINDOW_MS, MAX_THREADS_PER_RUN, THREADS_PER_BATCH } from '../backfill';
 import { addMessageToThread, modules, seedTeamThread, type Test } from './interpret.testlib';
 
@@ -42,7 +47,7 @@ beforeEach(() => {
 
 const DAY = 24 * 60 * 60 * 1000;
 
-describe('isActiveThread / mailSourceOf', () => {
+describe('isActiveThread / mailSourceOf / historyGapOf', () => {
 	const thread = (folderRoles: string[], extra = {}) => ({
 		folderRoles,
 		mutedAt: undefined,
@@ -62,21 +67,35 @@ describe('isActiveThread / mailSourceOf', () => {
 		expect(isActiveThread(thread(['inbox'], { isSelfDeliveredBrief: true }))).toBe(false);
 	});
 
-	it('reads our own mail as outbound', () => {
+	it('admits our own mail as outbound, and a Postbox send only once it went out (F3)', () => {
 		const id = 'm1' as Id<'mailMessages'>;
-		expect(
-			mailSourceOf({ _id: id, outbound: undefined, sentByUserId: undefined }, 'inbox')
-		).toEqual({ kind: 'mail', id });
-		expect(mailSourceOf({ _id: id, outbound: undefined, sentByUserId: undefined }, 'sent')).toEqual(
-			{ kind: 'outboundMail', id }
+		const plain = { _id: id, outbound: undefined, sentByUserId: undefined };
+		expect(mailSourceOf(plain, 'inbox')).toEqual({ kind: 'mail', id });
+		expect(mailSourceOf(plain, 'sent')).toEqual({ kind: 'outboundMail', id });
+		expect(mailSourceOf({ ...plain, sentByUserId: 'user-A' }, 'inbox')).toEqual({
+			kind: 'outboundMail',
+			id,
+		});
+		const sent = (state: 'queued' | 'sent' | 'bounced' | 'failed' | 'partial') =>
+			mailSourceOf({ ...plain, outbound: { state, recipients: [] } }, 'sent');
+		expect(sent('queued')).toBeNull();
+		expect(sent('failed')).toBeNull();
+		expect(sent('bounced')).toBeNull();
+		expect(sent('sent')).toEqual({ kind: 'outboundMail', id });
+		expect(sent('partial')).toEqual({ kind: 'outboundMail', id });
+	});
+
+	it('keeps a brief partial while history is unread or unreadable (F1, F2)', () => {
+		expect(historyGapOf(null)).toBeNull();
+		expect(historyGapOf({ historyState: 'done', isHistoryIncomplete: undefined })).toBeNull();
+		expect(historyGapOf({ historyState: 'pending', isHistoryIncomplete: undefined })).toBe(
+			'pending'
 		);
-		expect(mailSourceOf({ _id: id, outbound: undefined, sentByUserId: 'user-A' }, 'inbox')).toEqual(
-			{ kind: 'outboundMail', id }
-		);
+		expect(historyGapOf({ historyState: 'done', isHistoryIncomplete: true })).toBe('history');
 	});
 });
 
-/** The scheduled jobs by function name. */
+/** The pending scheduled jobs. */
 async function jobs(t: Test) {
 	return t.run(async (ctx) =>
 		(await ctx.db.system.query('_scheduled_functions').collect())
@@ -85,15 +104,34 @@ async function jobs(t: Test) {
 	);
 }
 
-function runsOf(scheduled: Awaited<ReturnType<typeof jobs>>) {
-	return scheduled.filter((job) => job.name.includes('interpretMessage'));
-}
+const runsOf = (scheduled: Awaited<ReturnType<typeof jobs>>) =>
+	scheduled.filter((job) => /interpretMessage|interpretSent/.test(job.name));
+const sentRunsOf = (scheduled: Awaited<ReturnType<typeof jobs>>) =>
+	scheduled.filter((job) => job.name.includes('interpretSent'));
 
 async function job(t: Test, mailboxId: Id<'mailboxes'>) {
 	return t.run((ctx) =>
 		ctx.db
 			.query('interpretBackfillJobs')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+			.first()
+	);
+}
+
+/** Run the job's next batch under its current generation. */
+async function batch(t: Test, mailboxId: Id<'mailboxes'>) {
+	const current = (await job(t, mailboxId))!;
+	await t.mutation(internal.mail.interpret.backfill.runBatch, {
+		mailboxId,
+		generation: current.generation,
+	});
+}
+
+async function briefOf(t: Test, threadId: Id<'mailThreads'>) {
+	return t.run((ctx) =>
+		ctx.db
+			.query('threadBriefs')
+			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
 			.first()
 	);
 }
@@ -107,18 +145,23 @@ async function seedMailbox30Days(t: Test, opts: { isAiOn?: boolean } = {}) {
 	return mailboxId;
 }
 
+async function threadOf(t: Test, messageId: Id<'mailMessages'>) {
+	return t.run(async (ctx) => (await ctx.db.get(messageId))!.threadId);
+}
+
 describe('backfill', () => {
-	it('interprets active threads of the last 30 days, a few messages each, and nothing else', async () => {
+	it('reads every active thread’s whole history, page by page, and nothing else (F1)', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox30Days(t);
 		const now = Date.now();
-		const active = await seedMessage(t, mailboxId, { subject: 'active', receivedAt: now - DAY });
-		const activeThread = await t.run(async (ctx) => (await ctx.db.get(active))!.threadId);
-		for (let i = 0; i < MESSAGES_PER_THREAD + 2; i++) {
+		const first = await seedMessage(t, mailboxId, { subject: 'active', receivedAt: now - DAY });
+		const activeThread = await threadOf(t, first);
+		const total = HISTORY_PAGE + 3;
+		for (let i = 1; i < total; i++) {
 			await addMessageToThread(
 				t,
 				{ mailboxId, threadId: activeThread },
-				{ text: `More ${i}`, receivedAt: now - DAY + (i + 1) * 1000 }
+				{ text: `More ${i}`, receivedAt: now - DAY + i * 1000 }
 			);
 		}
 		await seedMessage(t, mailboxId, {
@@ -134,45 +177,81 @@ describe('backfill', () => {
 		const muted = await seedMessage(t, mailboxId, { subject: 'muted', receivedAt: now - DAY });
 		await t.run(async (ctx) => ctx.db.patch((await ctx.db.get(muted))!.threadId, { mutedAt: now }));
 
-		session.current = { userId: 'user-A', role: 'member', activeOrganizationId: 'org-1' };
 		expect(await t.mutation(api.mail.interpret.backfill.start, { mailboxId })).toEqual({
 			started: true,
 		});
-		await t.mutation(internal.mail.interpret.backfill.runBatch, { mailboxId });
+		await batch(t, mailboxId);
+		expect(runsOf(await jobs(t))).toHaveLength(HISTORY_PAGE);
+		const pending = (await briefOf(t, activeThread))!;
+		expect(pending).toMatchObject({ historyState: 'pending', completeness: 'pending' });
+		expect(historyGapOf(pending)).toBe('pending');
 
-		const runs = runsOf(await jobs(t));
-		expect(runs).toHaveLength(MESSAGES_PER_THREAD);
-		// Only interpretation runs and the walk itself: no notification, no classify.
+		// The thread's own chain reads the next page from the stored cursor; a
+		// stale chain (another cursor) does nothing.
+		await t.mutation(internal.mail.interpret.backfill.continueHistory, {
+			threadRef: { kind: 'mail', id: activeThread },
+			cursor: 'not-the-cursor',
+		});
+		expect(runsOf(await jobs(t))).toHaveLength(HISTORY_PAGE);
+		await t.mutation(internal.mail.interpret.backfill.continueHistory, {
+			threadRef: { kind: 'mail', id: activeThread },
+			cursor: pending.historyCursor!,
+		});
+		expect(runsOf(await jobs(t))).toHaveLength(total);
+		expect(await briefOf(t, activeThread)).toMatchObject({ historyState: 'done' });
+
+		// Only interpretation runs, the walk and the history chain: no notification, no classify.
 		for (const scheduled of await jobs(t)) {
-			expect(scheduled.name).toMatch(/interpret\/(run|backfill)/);
+			expect(scheduled.name).toMatch(/interpret\/(run|outboundRun|backfill)/);
 		}
 		await t.run(async (ctx) => {
-			const thread = (await ctx.db.get(activeThread))!;
-			expect(thread.needsReply).toBeUndefined();
-			const brief = await ctx.db
-				.query('threadBriefs')
-				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', activeThread))
-				.first();
-			expect(brief?.completeness).toBe('pending');
-			// Each picked message has its snapshot, admitted as live.
+			expect((await ctx.db.get(activeThread))!.needsReply).toBeUndefined();
 			const sources = await ctx.db
 				.query('interpretSources')
 				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', activeThread))
 				.collect();
-			expect(sources).toHaveLength(MESSAGES_PER_THREAD);
+			expect(sources).toHaveLength(total);
 			expect(sources.every((s) => s.eligibility.isLive)).toBe(true);
 		});
-		expect(await job(t, mailboxId)).toMatchObject({
-			status: 'completed',
-			threadCount: 1,
-			messageCount: MESSAGES_PER_THREAD,
-		});
+		expect(await job(t, mailboxId)).toMatchObject({ status: 'completed', threadCount: 1 });
 
-		// A second walk finds every message taken and schedules nothing new.
+		// A second walk finds the history read through and schedules nothing.
 		await t.mutation(api.mail.interpret.backfill.start, { mailboxId, restart: true });
-		await t.mutation(internal.mail.interpret.backfill.runBatch, { mailboxId });
-		expect(runsOf(await jobs(t))).toHaveLength(MESSAGES_PER_THREAD);
+		await batch(t, mailboxId);
+		expect(runsOf(await jobs(t))).toHaveLength(total);
 		expect(await job(t, mailboxId)).toMatchObject({ status: 'completed', threadCount: 0 });
+	});
+
+	it('admits sent mail only once it went out, through the outbound run (F3)', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox30Days(t);
+		const now = Date.now();
+		const inbound = await seedMessage(t, mailboxId, { subject: 'q', receivedAt: now - DAY });
+		const threadId = await threadOf(t, inbound);
+		const [queued, sent] = await t.run(async (ctx) => {
+			const base = (await ctx.db.get(inbound))!;
+			const { _id: _a, _creationTime: _b, ...fields } = base;
+			const outbound = (state: 'queued' | 'sent', at: number) =>
+				ctx.db.insert('mailMessages', {
+					...fields,
+					receivedAt: at,
+					fromAddress: 'me@owlat.test',
+					sentByUserId: 'user-A',
+					outbound: { state, recipients: [] },
+				});
+			return [await outbound('queued', now - DAY + 2000), await outbound('sent', now - DAY + 1000)];
+		});
+		await t.mutation(api.mail.interpret.backfill.start, { mailboxId });
+		await batch(t, mailboxId);
+		const scheduled = await jobs(t);
+		const ids = runsOf(scheduled).map((r) => (r.args['source'] as { id: string }).id);
+		expect(ids).toContain(inbound);
+		expect(ids).toContain(sent);
+		expect(ids).not.toContain(queued);
+		expect(sentRunsOf(scheduled).map((r) => r.args['source'])).toEqual([
+			{ kind: 'outboundMail', id: sent },
+		]);
+		expect(await briefOf(t, threadId)).toMatchObject({ historyState: 'done' });
 	});
 
 	it('is bounded per batch and per run, and resumes from its cursor', async () => {
@@ -183,24 +262,22 @@ describe('backfill', () => {
 			await seedMessage(t, mailboxId, { subject: `t${i}`, receivedAt: now - DAY - i * 1000 });
 		}
 		await t.mutation(api.mail.interpret.backfill.start, { mailboxId });
-		await t.mutation(internal.mail.interpret.backfill.runBatch, { mailboxId });
+		await batch(t, mailboxId);
 		const first = (await job(t, mailboxId))!;
 		expect(first).toMatchObject({ status: 'running', threadCount: THREADS_PER_BATCH });
 		expect(first.cursor).toBeDefined();
 		expect(runsOf(await jobs(t))).toHaveLength(THREADS_PER_BATCH);
 
-		// The run cap pauses the walk, cursor kept.
 		await t.run((ctx) => ctx.db.patch(first._id, { runThreadCount: MAX_THREADS_PER_RUN }));
-		await t.mutation(internal.mail.interpret.backfill.runBatch, { mailboxId });
+		await batch(t, mailboxId);
 		expect(await job(t, mailboxId)).toMatchObject({
 			status: 'paused',
 			pausedReason: 'run_cap',
 			cursor: first.cursor,
 		});
 
-		// Starting again resumes where it stopped, with the same cutoff.
 		await t.mutation(api.mail.interpret.backfill.start, { mailboxId });
-		await t.mutation(internal.mail.interpret.backfill.runBatch, { mailboxId });
+		await batch(t, mailboxId);
 		expect(await job(t, mailboxId)).toMatchObject({
 			status: 'completed',
 			cutoffAt: first.cutoffAt,
@@ -209,12 +286,36 @@ describe('backfill', () => {
 		expect(runsOf(await jobs(t))).toHaveLength(THREADS_PER_BATCH + 2);
 	});
 
+	it('drops a batch of an earlier run after cancel and start (F4)', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox30Days(t);
+		await seedMessage(t, mailboxId, { subject: 'a', receivedAt: Date.now() - DAY });
+		await t.mutation(api.mail.interpret.backfill.start, { mailboxId });
+		const old = (await job(t, mailboxId))!.generation;
+		await t.mutation(api.mail.interpret.backfill.cancel, { mailboxId });
+		await t.mutation(api.mail.interpret.backfill.start, { mailboxId });
+		await t.mutation(internal.mail.interpret.backfill.runBatch, { mailboxId, generation: old });
+		expect(runsOf(await jobs(t))).toHaveLength(0);
+		expect(await job(t, mailboxId)).toMatchObject({ status: 'running', scannedCount: 0 });
+	});
+
+	it('ends the job of a mailbox that is no longer active, spending nothing (F5)', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox30Days(t);
+		await seedMessage(t, mailboxId, { subject: 'a', receivedAt: Date.now() - DAY });
+		await t.mutation(api.mail.interpret.backfill.start, { mailboxId });
+		await t.run((ctx) => ctx.db.patch(mailboxId, { status: 'deleted' }));
+		await batch(t, mailboxId);
+		expect(await job(t, mailboxId)).toBeNull();
+		expect(runsOf(await jobs(t))).toHaveLength(0);
+	});
+
 	it('pauses on the spend gate without scheduling anything', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox30Days(t, { isAiOn: false });
 		await seedMessage(t, mailboxId, { subject: 'active', receivedAt: Date.now() - DAY });
 		await t.mutation(api.mail.interpret.backfill.start, { mailboxId });
-		await t.mutation(internal.mail.interpret.backfill.runBatch, { mailboxId });
+		await batch(t, mailboxId);
 		expect(await job(t, mailboxId)).toMatchObject({ status: 'paused', pausedReason: 'ai_off' });
 		expect(runsOf(await jobs(t))).toHaveLength(0);
 	});
@@ -235,16 +336,14 @@ function lazyTest(): Test {
 }
 
 describe('lazy.ensure', () => {
-	it('interprets an older thread on first open, once', async () => {
+	it('starts an older thread’s history on first open, once', async () => {
 		const t = lazyTest();
 		const mailboxId = await seedMailbox30Days(t);
 		const old = await seedMessage(t, mailboxId, {
 			subject: 'old',
 			receivedAt: Date.now() - 90 * DAY,
 		});
-		const threadId = await t.run(async (ctx) => (await ctx.db.get(old))!.threadId);
-		const threadRef = { kind: 'mail' as const, id: threadId };
-
+		const threadRef = { kind: 'mail' as const, id: await threadOf(t, old) };
 		expect(await t.mutation(api.mail.interpret.lazy.ensure, { threadRef })).toEqual({
 			isEnqueued: true,
 			runs: 1,
@@ -260,7 +359,7 @@ describe('lazy.ensure', () => {
 		const t = lazyTest();
 		const mailboxId = await seedMailbox30Days(t);
 		const message = await seedMessage(t, mailboxId, { subject: 'x' });
-		const threadId = await t.run(async (ctx) => (await ctx.db.get(message))!.threadId);
+		const threadId = await threadOf(t, message);
 		session.current = { userId: 'user-B', role: 'member', activeOrganizationId: 'org-1' };
 		await expect(
 			t.mutation(api.mail.interpret.lazy.ensure, { threadRef: { kind: 'mail', id: threadId } })
@@ -268,15 +367,51 @@ describe('lazy.ensure', () => {
 		expect(runsOf(await jobs(t))).toHaveLength(0);
 	});
 
-	it('reads a Team Inbox thread’s newest inbound mail for an admin', async () => {
+	it('reads a Team Inbox thread’s replies from their snapshots, and says when one is unreadable (F2, F3)', async () => {
 		const t = lazyTest();
 		await enableFeatures(t, ['ai']);
-		const { threadId } = await seedTeamThread(t);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		const { snapshotted, queued } = await t.run(async (ctx) => {
+			const send = (status: 'sent' | 'queued' | 'delivered') =>
+				ctx.db.insert('transactionalSends', {
+					kind: 'agent_reply',
+					email: 'customer@example.com',
+					status,
+					inboundMessageId: inboundId,
+				});
+			const snapshotted = await send('delivered');
+			await captureTeamReplySnapshot(ctx, {
+				sendId: snapshotted,
+				subject: 'Re: Order 42',
+				text: 'Refunded today.',
+			});
+			const queued = await send('queued');
+			// A reply sent before snapshots existed.
+			await send('sent');
+			return { snapshotted, queued };
+		});
 		session.current = { userId: 'user-A', role: 'admin', activeOrganizationId: 'org-1' };
-		expect(
-			await t.mutation(api.mail.interpret.lazy.ensure, {
-				threadRef: { kind: 'team', id: threadId },
-			})
-		).toEqual({ isEnqueued: true, runs: 1 });
+		const threadRef = { kind: 'team' as const, id: threadId };
+		expect(await t.mutation(api.mail.interpret.lazy.ensure, { threadRef })).toEqual({
+			isEnqueued: true,
+			runs: 2,
+		});
+		const scheduled = await jobs(t);
+		expect(runsOf(scheduled).map((r) => r.args['source'])).toEqual([
+			{ kind: 'inbound', id: inboundId },
+			{ kind: 'teamReply', id: snapshotted },
+		]);
+		expect(sentRunsOf(scheduled).map((r) => r.args['source'])).toEqual([
+			{ kind: 'teamReply', id: snapshotted },
+		]);
+		expect(JSON.stringify(scheduled)).not.toContain(queued);
+		const brief = await t.run((ctx) =>
+			ctx.db
+				.query('threadBriefs')
+				.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', threadId))
+				.first()
+		);
+		expect(brief).toMatchObject({ historyState: 'done', isHistoryIncomplete: true });
+		expect(historyGapOf(brief)).toBe('history');
 	});
 });

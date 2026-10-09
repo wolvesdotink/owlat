@@ -55,6 +55,7 @@ import {
 import { isReplyExpectingIntent, type ReplyIntent } from '../ai/replyIntent';
 import { openMessageBody } from '../../lib/messageBody';
 import type { MutationCtx } from '../../_generated/server';
+import type { Doc } from '../../_generated/dataModel';
 import { requireThreadReader } from './threadAccess';
 
 // public: soft-auth — returns null for anonymous callers and for anyone the
@@ -134,11 +135,19 @@ export const get = publicQuery({
 				? brief.overview[locale]
 				: undefined;
 
+		const history = historyGapOf(brief);
+		const gap = gapOf(interpretations, {
+			totalMessages,
+			isPending: brief?.completeness === 'pending',
+			...(brief?.sourceCounts ? { sourceCounts: brief.sourceCounts } : {}),
+			suppressed: latest.suppressed,
+		});
 		return projectBrief({
 			threadRef: ref,
 			mode,
 			interpretationRevision: brief?.interpretationRevision ?? 0,
-			completeness: brief?.completeness ?? 'none',
+			completeness:
+				history && brief?.completeness === 'complete' ? 'partial' : (brief?.completeness ?? 'none'),
 			items: itemsPage.items,
 			page: itemsPage.page,
 			...(brief?.itemCounts ? { itemCounts: brief.itemCounts } : {}),
@@ -156,12 +165,7 @@ export const get = publicQuery({
 						...(ref.kind === 'mail' ? exactWordingFields(await readExactWording(ctx, ref.id)) : {}),
 					}
 				: {}),
-			gap: gapOf(interpretations, {
-				totalMessages,
-				isPending: brief?.completeness === 'pending',
-				...(brief?.sourceCounts ? { sourceCounts: brief.sourceCounts } : {}),
-				suppressed: latest.suppressed,
-			}),
+			gap: history && (!gap.reason || gap.reason === 'pending') ? { ...gap, reason: history } : gap,
 			isNoReplyNeeded: checkpointResult
 				? !isReplyExpectingIntent(checkpointResult.replyIntent as ReplyIntent)
 				: false,
@@ -240,6 +244,19 @@ export const setViewOverride = threadBriefMutation({
 		return null;
 	},
 });
+/**
+ * Earlier history the brief does not cover yet: still being read (`pending`,
+ * `backfillSources.ts`), or some of it unreadable (`history`). Either keeps
+ * a complete brief partial; null when the whole history is in. Pure.
+ */
+export function historyGapOf(
+	brief: Pick<Doc<'threadBriefs'>, 'historyState' | 'isHistoryIncomplete'> | null
+): 'pending' | 'history' | null {
+	if (brief?.isHistoryIncomplete) return 'history';
+	if (brief?.historyState === 'pending') return 'pending';
+	return null;
+}
+
 /** The brief's "Read the exact wording" fields from one indexed page. */
 function exactWordingFields(read: Awaited<ReturnType<typeof readExactWording>>) {
 	return {

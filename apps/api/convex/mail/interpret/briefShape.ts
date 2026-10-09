@@ -216,6 +216,8 @@ export const briefGapViewValidator = v.object({
 		v.union(
 			v.literal('pending'),
 			v.literal('failed'),
+			// Earlier history that cannot be read back (a team reply sent before snapshots).
+			v.literal('history'),
 			v.literal('tooLong'),
 			v.literal('aiOff'),
 			v.literal('undecryptable'),

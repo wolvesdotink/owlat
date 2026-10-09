@@ -1063,7 +1063,8 @@
 					"tooLong": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest war zu lang.",
 					"failed": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest konnte nicht gelesen werden.",
 					"undecryptable": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest ließ sich nicht entschlüsseln.",
-					"pending": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest wird noch gelesen."
+					"pending": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest wird noch gelesen.",
+					"history": "{done} von {total} Nachrichten sind in diesem Überblick. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie."
 				},
 				"pending": "Dieser Verlauf wird gerade gelesen. Der Überblick folgt gleich.",
 				"none": {
@@ -1094,7 +1095,7 @@
 			},
 			"meta": {
 				"forYou": "{count} für dich | {count} für dich",
-				"waiting": "{count} ausstehend bei ihnen | {count} ausstehend bei ihnen"
+				"waiting": "{count} ausstehend bei anderen | {count} ausstehend bei anderen"
 			},
 			"cite": {
 				"showing": "Quelle von „{label}“",

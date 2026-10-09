@@ -12,6 +12,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, reactive, ref } from 'vue';
+import { flushPromises } from '@vue/test-utils';
 import { createTestI18n } from '~/__tests__/i18n';
 import { briefView } from '~/utils/__tests__/threadBriefFixtures';
 
@@ -160,9 +161,11 @@ describe('the reader view', () => {
 		expect(runs['pref.set']).toBeUndefined();
 	});
 
-	it('opens on Conversation when there is no interpretation, and asks for one once', () => {
+	it('opens on Conversation when there is no interpretation, and asks for one once', async () => {
 		data['brief.get'] = ref(briefView({ completeness: 'none' }));
+		runs['lazy.ensure'] = vi.fn(async () => ({ ok: true, result: { isEnqueued: true, runs: 1 } }));
 		expect(setup().switchView.value).toBe('conversation');
+		await flushPromises();
 		setup();
 		expect(runs['lazy.ensure']).toHaveBeenCalledTimes(1);
 		expect(runs['lazy.ensure']).toHaveBeenCalledWith({ threadRef: { kind: 'mail', id: 't1' } });

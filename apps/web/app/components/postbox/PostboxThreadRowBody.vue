@@ -161,8 +161,8 @@ function onCancelFollowUp(event: MouseEvent) {
 				>{{ t(briefLine.leadKey, { count: briefLine.count }, briefLine.count) }}</b
 			>
 			{{ briefLine.text
-			}}<template v-if="briefLine.due">
-				{{ t('components.brief.row.by', { date: briefLine.due }) }}</template
+			}}<template v-if="briefLine.due"
+				>{{ ' ' }}{{ t('components.brief.row.by', { date: briefLine.due }) }}</template
 			><template v-if="briefLine.isNoReplyNeeded">
 				· {{ t('components.brief.row.noReplyNeeded') }}</template
 			><span v-if="briefLine.keepsSnippet && msg.snippet" class="text-text-tertiary">

@@ -74,7 +74,7 @@ function sideOf(item: Item): string {
 					</NuxtLink>
 				</li>
 			</ul>
-			<p v-if="group.isMore" class="mt-1.5 text-xs text-text-tertiary">
+			<p v-if="group.isMore || group.continueCursor" class="mt-1.5 text-xs text-text-tertiary">
 				{{ t('components.brief.elsewhere.more') }}
 			</p>
 		</BriefSection>

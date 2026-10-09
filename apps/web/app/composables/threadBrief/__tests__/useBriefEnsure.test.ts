@@ -1,18 +1,20 @@
 // @vitest-environment happy-dom
 /**
  * First-open interpretation (D5): a thread whose brief reads `none` is handed
- * to `lazy.ensure` once per tab, for a personal and a team thread alike, and
- * never while AI is off or once a brief exists.
+ * to `lazy.ensure`, for a personal and a team thread alike. Only a request
+ * the server took is remembered; a refusal is retried a bounded number of
+ * times, and AI turning on asks again.
  */
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { nextTick, ref } from 'vue';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { effectScope, nextTick, ref } from 'vue';
+import { flushPromises } from '@vue/test-utils';
 import { createTestI18n } from '~/__tests__/i18n';
 
 vi.mock('@owlat/api', () => ({
 	api: { mail: { interpret: { lazy: { ensure: 'lazy.ensure' } } } },
 }));
 
-const run = vi.fn(async () => ({ ok: true }));
+const run = vi.fn();
 const isAiOn = ref(true);
 
 beforeAll(() => {
@@ -22,36 +24,70 @@ beforeAll(() => {
 	vi.stubGlobal('useBackendOperation', () => ({ run, isLoading: ref(false) }));
 });
 
+const { useBriefEnsure, resetBriefEnsure, ENSURE_MAX_TRIES, ENSURE_RETRY_MS } =
+	await import('../useBriefEnsure');
+
 beforeEach(() => {
-	run.mockClear();
+	vi.useFakeTimers();
+	run.mockReset();
+	run.mockResolvedValue({ ok: true, result: { isEnqueued: true, runs: 1 } });
 	isAiOn.value = true;
+	resetBriefEnsure();
+});
+const scopes: ReturnType<typeof effectScope>[] = [];
+afterEach(() => {
+	for (const scope of scopes.splice(0)) scope.stop();
+	vi.useRealTimers();
 });
 
-const { useBriefEnsure } = await import('../useBriefEnsure');
+function mount(threadRef: unknown, completeness: () => string | undefined) {
+	const scope = effectScope();
+	scopes.push(scope);
+	scope.run(() => useBriefEnsure({ threadRef: () => threadRef as never, completeness }));
+	return scope;
+}
+
+const team = { kind: 'team', id: 'ct1' };
 
 describe('useBriefEnsure', () => {
 	it('asks once per thread when the brief reads none, team threads included', async () => {
 		const completeness = ref<string | undefined>(undefined);
-		const team = { kind: 'team' as const, id: 'ct1' as never };
-		useBriefEnsure({ threadRef: () => team, completeness: () => completeness.value });
+		mount(team, () => completeness.value);
 		expect(run).not.toHaveBeenCalled();
 		completeness.value = 'none';
 		await nextTick();
+		await flushPromises();
 		expect(run).toHaveBeenCalledWith({ threadRef: team });
-		useBriefEnsure({ threadRef: () => team, completeness: () => 'none' });
+		mount(team, () => 'none');
+		await flushPromises();
 		expect(run).toHaveBeenCalledTimes(1);
 	});
 
-	it('leaves a thread with a brief, or with AI off, alone', () => {
-		useBriefEnsure({
-			threadRef: () => ({ kind: 'mail', id: 'm1' as never }),
-			completeness: () => 'pending',
-		});
+	it('retries a refusal a bounded number of times', async () => {
+		run.mockResolvedValue({ ok: true, result: { isEnqueued: false, reason: 'busy' } });
+		mount(team, () => 'none');
+		await flushPromises();
+		for (let i = 1; i < ENSURE_MAX_TRIES + 2; i++) {
+			await vi.advanceTimersByTimeAsync(ENSURE_RETRY_MS * i);
+			await flushPromises();
+		}
+		expect(run).toHaveBeenCalledTimes(ENSURE_MAX_TRIES);
+	});
+
+	it('waits for AI, and asks once it turns on', async () => {
 		isAiOn.value = false;
-		useBriefEnsure({
-			threadRef: () => ({ kind: 'mail', id: 'm2' as never }),
-			completeness: () => 'none',
-		});
+		mount({ kind: 'mail', id: 'm1' }, () => 'none');
+		await flushPromises();
+		expect(run).not.toHaveBeenCalled();
+		isAiOn.value = true;
+		await nextTick();
+		await flushPromises();
+		expect(run).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves a thread with a brief alone', async () => {
+		mount({ kind: 'mail', id: 'm2' }, () => 'pending');
+		await flushPromises();
 		expect(run).not.toHaveBeenCalled();
 	});
 });

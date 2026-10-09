@@ -207,25 +207,39 @@ drops them. Until then thread deletion and erasure keep deleting their rows
 ### 9. Mail from before the brief
 
 `mail/interpret/backfill.ts` walks a mailbox's active threads of the last 30
-days (D5): a message in the window, not muted, not archived or trashed. It
-hands each thread's newest four messages to `interpretMessage`, snapshotted as
-admitted so the run's `not_live` rule does not refuse them. Folder, mute and
-bulk rules still apply. The walk is one job row per mailbox, started by the
-owner from Settings > Reading ("Prepare overviews for recent mail"), or for
-every mailbox by an operator:
+days (D5): a message in the window, not muted, not archived or trashed. For
+each thread it starts reading the thread's whole history
+(`backfillSources.ts`), newest first, four messages per page, with a durable
+cursor on the brief row. The rest of the pages follow in a chain per thread,
+and the brief reads partial ("the rest is still being read") until every page
+was admitted. Inbound mail goes through `interpretMessage`. Our own sent mail
+is admitted only once its transport recorded it sent, and goes through
+`outboundRun.interpretSent`, so a recipient that later failed is reconciled the
+same way as for a live send. A Team Inbox thread reads the customer's emails
+and every reply and follow-up that went out, from its sent-text snapshot; a
+reply sent before snapshots existed cannot be read back, and the brief says so
+and stays partial. Each source is snapshotted as admitted, so the run's
+`not_live` rule does not refuse it; folder, mute and bulk rules still apply.
+The walk is one job row per mailbox, started by the owner from Settings >
+Reading ("Prepare overviews for recent mail"), or for every mailbox by an
+operator:
 
     npx convex run mail/interpret/backfill:startAll
 
 It reads ten threads per batch and waits a minute between batches, so the
 spend ledger has caught up before the next batch asks the gate. It pauses when
 the gate refuses (`ai_off`, `budget`) or after 300 threads in one run, and
-resumes from its cursor with the same cutoff. It schedules interpretation runs
-and nothing else: no notification, no Reply Queue write.
+resumes from its cursor with the same cutoff. Every batch carries the job's
+generation, so a batch of a cancelled run never joins the next one, and a
+mailbox that is disconnected or purged ends its job (account teardown deletes
+it). It schedules interpretation runs and nothing else: no notification, no
+Reply Queue write.
 
 Older threads are interpreted on first open. `brief.get` answers
 `completeness: 'none'`, the web shows the Conversation and calls
-`mail.interpret.lazy.ensure`, which does the same for that one thread, once,
-behind the gate and a per-user rate limit.
+`mail.interpret.lazy.ensure`, which starts or resumes that one thread's
+history, behind the gate and a per-user rate limit. The web remembers a thread
+only once the server took it, and retries a refusal a few times.
 
 ### 10. Erasure
 
@@ -241,8 +255,11 @@ runs as resumable jobs (`purgeRun.ts`, `threadPurgeJobs`).
 `apps/api/convex/mail/interpret/__eval__/` holds a labelled corpus (71
 threads across the slices of plan §14: forwards, inline replies, quoted
 history, German, injection, amounts and deadlines with time zones, team notes
-and more) and a replay harness over the deterministic parts: segmentation,
-grounding and the reducer. Run it with:
+and more) and a replay harness over the deterministic parts: scope,
+segmentation and grounding. The harness does not run the reducer yet; replaying
+the corpus through the reducer (identity, transitions, completion) is
+outstanding work, covered meanwhile by the reducer's own unit tests. Run it
+with:
 
     bun apps/api/scripts/interpret-eval.ts [corpus-dir] [--out <file>]
 

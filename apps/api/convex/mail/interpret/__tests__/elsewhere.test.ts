@@ -11,7 +11,7 @@ import schema from '../../../schema';
 import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
-import { counterpartiesOf, nameOf } from '../elsewhere';
+import { counterpartiesOf, nameOf, PERSON_SCAN } from '../elsewhere';
 import type { ReduceItem } from '../reduceInput';
 import {
 	modules,
@@ -192,6 +192,67 @@ describe('elsewhere.list', () => {
 		expect(
 			await t.query(api.mail.interpret.elsewhere.list, {
 				threadRef: { kind: 'mail', id: here.threadId },
+				locale: 'en',
+			})
+		).toBeNull();
+	});
+
+	it('reads past rows the viewer cannot open and hands back a cursor when the scan stops (F7)', async () => {
+		const t = convexTest(schema, modules);
+		const { here, other } = await seedWorld(t);
+		// More newer rows in someone else's mailbox than one scan reads.
+		await t.run(async (ctx) => {
+			const hidden = await ctx.db
+				.query('threadItems')
+				.filter((q) => q.neq(q.field('mailThreadId'), here.threadId))
+				.collect();
+			const template = hidden.find(
+				(i) => i.counterpartyKey === 'jonas@example.com' && i.mailboxId !== undefined
+			)!;
+			const visible = hidden.find(
+				(i) => i.mailThreadId === other.threadId && i.verify !== 'proposal'
+			)!;
+			const { _id: _a, _creationTime: _b, ...fields } = template;
+			const theirs = hidden.find((i) => i.mailboxId !== visible.mailboxId && i.mailThreadId)!;
+			for (let i = 0; i < PERSON_SCAN + 5; i++) {
+				await ctx.db.insert('threadItems', {
+					...fields,
+					mailThreadId: theirs.mailThreadId,
+					mailboxId: theirs.mailboxId,
+					updatedAt: visible.updatedAt + 1000 + i,
+				});
+			}
+		});
+		const first = await t.query(api.mail.interpret.elsewhere.list, {
+			threadRef: { kind: 'mail', id: here.threadId },
+			locale: 'en',
+		});
+		const group = first!.groups[0]!;
+		expect(group.items).toEqual([]);
+		expect(group.continueCursor).toBeDefined();
+		const next = await t.query(api.mail.interpret.elsewhere.list, {
+			threadRef: { kind: 'mail', id: here.threadId },
+			locale: 'en',
+			more: { counterpartyKey: 'jonas@example.com', cursor: group.continueCursor! },
+		});
+		expect(next!.groups[0]!.items.map((i) => i.text)).toEqual(['Jonas sends the signed NDA']);
+		expect(next!.groups[0]!.continueCursor).toBeUndefined();
+	});
+
+	it('refuses a Team Inbox thread while the Team Inbox is off (F8)', async () => {
+		const t = convexTest(schema, modules);
+		await seedWorld(t);
+		const team = await t.run((ctx) => ctx.db.query('conversationThreads').first());
+		session.current = { userId: 'user-A', role: 'admin', activeOrganizationId: 'org-1' };
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, {
+				featureFlags: { ...settings!.featureFlags, inbox: false },
+			});
+		});
+		expect(
+			await t.query(api.mail.interpret.elsewhere.list, {
+				threadRef: { kind: 'team', id: team!._id },
 				locale: 'en',
 			})
 		).toBeNull();

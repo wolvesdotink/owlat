@@ -10,7 +10,9 @@ import { v } from 'convex/values';
  * messages at a time. `cursor` is the thread page to continue from, so a walk
  * stopped by the spend budget, the per-run cap or a cancel resumes where it
  * stopped. `paused` means it stopped on its own (`pausedReason`) and can be
- * resumed; `cancelled` was the owner's choice. Derived from the mailbox's
+ * resumed; `cancelled` was the owner's choice. Each thread's own history is
+ * paged on its brief row (`threadBriefs.historyCursor`); the walk starts or
+ * resumes it. Derived from the mailbox's
  * mail and naming no reader, so it goes with the mailbox.
  */
 export const interpretBackfillTables = {
@@ -25,6 +27,8 @@ export const interpretBackfillTables = {
 		pausedReason: v.optional(
 			v.union(v.literal('budget'), v.literal('ai_off'), v.literal('run_cap'))
 		),
+		// Bumped by every start: a batch scheduled by an earlier run is dropped.
+		generation: v.number(),
 		// Threads whose last message is at or after this are walked.
 		cutoffAt: v.number(),
 		cursor: v.optional(v.string()),
