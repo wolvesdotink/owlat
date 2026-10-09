@@ -30,6 +30,12 @@ export const purgeCursorValidator = v.object({
 	at: v.optional(v.number()),
 	key: v.optional(v.string()),
 	step: v.optional(v.number()),
+	// A two-level range: the position inside the row at `at`'s successor (a follow-up's sends).
+	inner: v.optional(v.number()),
+	// The last slice stopped inside a row: read the range one row at a time.
+	isNarrow: v.optional(v.boolean()),
+	// The last slice stopped inside a row: read the range one row at a time.
+	isNarrow: v.optional(v.boolean()),
 });
 
 /**

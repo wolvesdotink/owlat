@@ -132,25 +132,45 @@ async function isNamedBySurvivingRecord(
 	return false;
 }
 
+type RedactedItemField = (typeof REDACTED_ITEM_FIELDS)[number];
+
+/**
+ * Which extracted fields of a surviving item the purge redacts. Conservative
+ * for now: every one (the items carry no standing per-field provenance yet).
+ * When they do, this is the one function to narrow to the fields whose
+ * source is a purged message. Pure.
+ */
+export function fieldsToRedact(
+	_item: Doc<'threadItems'>,
+	_purged: PurgedSources
+): readonly RedactedItemField[] {
+	return REDACTED_ITEM_FIELDS;
+}
+
 /** The redaction of an item's unconfirmed extracted values (rule P). */
-async function redactedItem(isFacetsKept: boolean): Promise<ItemPatch> {
+async function redactedItem(
+	fields: readonly RedactedItemField[],
+	isFacetsKept: boolean
+): Promise<ItemPatch> {
 	const unclear = { isUs: false };
+	const has = (field: RedactedItemField) => fields.includes(field);
+	const isTextRedacted = has('assertion') || has('display');
 	return {
-		assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
-		display: await sealedPair(REDACTED_CLAIM_TEXT),
-		requester: unclear,
-		responsible: unclear,
-		beneficiary: undefined,
-		responsibility: 'unclear',
-		due: undefined,
-		amount: undefined,
-		options: undefined,
-		counterpartyKey: undefined,
+		...(isTextRedacted
+			? {
+					assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
+					display: await sealedPair(REDACTED_CLAIM_TEXT),
+				}
+			: {}),
+		...(has('requester') ? { requester: unclear, counterpartyKey: undefined } : {}),
+		...(has('responsible') ? { responsible: unclear } : {}),
+		...(has('beneficiary') ? { beneficiary: undefined } : {}),
+		...(has('responsibility') ? { responsibility: 'unclear' as const } : {}),
+		...(has('due') ? { due: undefined } : {}),
+		...(has('amount') ? { amount: undefined } : {}),
+		...(has('options') ? { options: undefined } : {}),
 		...(isFacetsKept ? {} : { facets: [], consequences: undefined }),
-		redactedFields: [
-			...REDACTED_ITEM_FIELDS,
-			...(isFacetsKept ? [] : ['facets', 'consequences']),
-		],
+		redactedFields: [...fields, ...(isFacetsKept ? [] : ['facets', 'consequences'])],
 	};
 }
 
@@ -177,7 +197,8 @@ export async function stripItem(
 	const held = isPendingNamed
 		? { pendingUpdate: strippedHeld(pending!, pendingEvidence, purged) }
 		: {};
-	const isSnapshotGone = isSnapshotPurged(item.confirmedFrom, purged) || !!reverted || isPendingNamed;
+	const isSnapshotGone =
+		isSnapshotPurged(item.confirmedFrom, purged) || !!reverted || isPendingNamed;
 	const snapshot = item.confirmedFrom && isSnapshotGone ? { confirmedFrom: undefined } : {};
 	const reset = transitionReset(item, purged);
 	const stamp = { revision: item.revision + 1, updatedAt: Date.now() };
@@ -204,7 +225,10 @@ export async function stripItem(
 		...reverted?.patch,
 		// Rule P: what a person did not confirm is redacted until a re-read refills it.
 		...(!isConfirmed
-			? await redactedItem(await isNamedBySurvivingRecord(ctx, item._id, evidence, budget))
+			? await redactedItem(
+					fieldsToRedact(item, purged),
+					await isNamedBySurvivingRecord(ctx, item._id, evidence, budget)
+				)
 			: {}),
 		...held,
 		...snapshot,
