@@ -798,3 +798,36 @@ describe('the outstanding-source owner (round 4)', () => {
 		).toBeNull();
 	});
 });
+
+describe('settling recomputes completeness (round 5 F2)', () => {
+	it('a pending brief whose only run is given up on reads partial, not "still reading"', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		await t.mutation(internal.mail.interpret.teamActions.captureInbound, {
+			inboundMessageId: inboundId,
+		});
+		const briefOfTeam = () =>
+			t.run((ctx) =>
+				ctx.db
+					.query('threadBriefs')
+					.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', threadId))
+					.first()
+			);
+		expect(await briefOfTeam()).toMatchObject({ completeness: 'pending', pendingSources: 1 });
+		for (let i = 0; i <= MAX_SWEEP_TRIES; i++) {
+			await t.run(async (ctx) => {
+				const row = (await ctx.db
+					.query('interpretSources')
+					.withIndex('by_source_key', (q) => q.eq('sourceKey', `inbound:${inboundId}`))
+					.first())!;
+				await ctx.db.patch(row._id, { outstandingSince: Date.now() - STALE_MS - 1 });
+			});
+			await t.mutation(internal.mail.interpret.outstanding.sweep, {});
+		}
+		const brief = (await briefOfTeam())!;
+		expect(brief.pendingSources).toBeUndefined();
+		expect(brief.unreadSources).toBe(1);
+		expect(brief.completeness).toBe('partial');
+		expect(historyGapOf(brief)).toBe('failed');
+	});
+});
