@@ -32,15 +32,15 @@
  * Isolate-safe helpers, no Convex functions.
  */
 
-import type { Doc, Id } from '../../_generated/dataModel';
+import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
-import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { writeItemChange } from './counters';
 import type { DrainBudget } from './purgeDrain';
 import { resetTransitionsFrom } from './transitionSources';
 import { isHolding, redactSourcedFields, withoutSources } from './heldSources';
+import { counterpartyKeyOf } from './parties';
 
 /** The neutral line a redacted claim shows. */
 export const REDACTED_CLAIM_TEXT = {
@@ -104,25 +104,19 @@ async function sealedPair(text: { en: string; de: string }) {
 }
 
 /**
- * Does a surviving source's claim record (`interpretSources.claimIds`) still
- * name the row? Read per source its surviving evidence names (a handful).
+ * Does a surviving source still claim the item? Its claim keys (`lineage`,
+ * `lineageKeys`: every claim that produced or matched it, the item-side
+ * mirror of the sources' `interpretSources.claimIds` records) name the
+ * source; any key of a source not purged is a surviving claim. No reads: O(1)
+ * per item, whatever the number of sources (review round 5, F5). Pure.
  */
-async function isNamedBySurvivingRecord(
-	ctx: MutationCtx,
-	rowId: Id<'threadItems'>,
-	evidence: Doc<'threadItems'>['evidence'],
-	budget: DrainBudget
-): Promise<boolean> {
-	for (const sourceKey of new Set(evidence.map((e) => interpretationSourceKey(e.source)))) {
-		budget.range();
-		const record = await ctx.db
-			.query('interpretSources')
-			.withIndex('by_source_key', (q) => q.eq('sourceKey', sourceKey))
-			.first();
-		budget.charge(record);
-		if (record?.claimIds?.some((entry) => entry.itemId === rowId)) return true;
-	}
-	return false;
+export function isClaimedBySurvivor(
+	item: Pick<Doc<'threadItems'>, 'lineage' | 'lineageKeys'>,
+	purged: PurgedSources
+): boolean {
+	return [item.lineage, ...(item.lineageKeys ?? [])].some(
+		(key) => !!key && !purged.keys.has(lineageSource(key))
+	);
 }
 
 type RedactedItemField = (typeof REDACTED_ITEM_FIELDS)[number];
@@ -166,11 +160,12 @@ function neutralOf(fields: readonly ProvenanceField[]): ItemPatch {
 	const unknown = { isUs: false };
 	const patch: ItemPatch = {};
 	for (const field of fields) {
-		if (field === 'requester') {
-			patch.requester = unknown;
-			patch.counterpartyKey = undefined;
-		} else if (field === 'responsible' || field === 'responsibility') {
+		if (field === 'requester') patch.requester = unknown;
+		else if (field === 'responsible') {
 			patch.responsible = unknown;
+			patch.responsibility = 'unclear';
+		} else if (field === 'responsibility') {
+			// Its own field: a responsible party with surviving provenance stays (round 5 F3).
 			patch.responsibility = 'unclear';
 		} else if (field === 'beneficiary') patch.beneficiary = undefined;
 		else if (field === 'due') patch.due = undefined;
@@ -194,11 +189,8 @@ function neutralOf(fields: readonly ProvenanceField[]): ItemPatch {
  * Null when nothing shown came from (or may have come from) the purged sources.
  */
 async function itemRedaction(
-	ctx: MutationCtx,
 	item: Doc<'threadItems'>,
 	purged: PurgedSources,
-	evidence: Doc<'threadItems'>['evidence'],
-	budget: DrainBudget,
 	opts: { isLegacyRedacted: boolean }
 ): Promise<ItemPatch | null> {
 	const sources = item.fieldSources ?? {};
@@ -213,11 +205,15 @@ async function itemRedaction(
 		...new Set([...stamped, ...legacy].flatMap((field) => SOURCED_FIELDS[field] ?? [])),
 	];
 	const isWordingGone = fields.includes('assertion');
-	const isFacetsKept =
-		!isWordingGone || (await isNamedBySurvivingRecord(ctx, item._id, evidence, budget));
+	const isFacetsKept = !isWordingGone || isClaimedBySurvivor(item, purged);
+	const parties: ItemPatch = { ...neutralOf(legacy), ...sourced?.patch };
 	return {
-		...neutralOf(legacy),
-		...sourced?.patch,
+		...parties,
+		// Last: the counterparty follows the FINAL parties (round 5 F2).
+		counterpartyKey: counterpartyKeyOf({
+			requester: parties.requester ?? item.requester,
+			responsible: parties.responsible ?? item.responsible,
+		}),
 		...(isWordingGone
 			? {
 					assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
@@ -242,7 +238,7 @@ export async function stripItem(
 	ref: ThreadRef,
 	item: Doc<'threadItems'>,
 	purged: PurgedSources,
-	budget: DrainBudget
+	_budget: DrainBudget
 ): Promise<ClaimFate> {
 	const names = (list: ReadonlyArray<{ source: { id: string } }>) =>
 		list.some((e) => purged.ids.has(e.source.id));
@@ -257,7 +253,7 @@ export async function stripItem(
 	const isNamedByEvidence = evidence.length < item.evidence.length;
 	if (isNamedByEvidence && evidence.length === 0) return 'doomed';
 	// Rule P: the shown fields the purged sources set (one path, see itemRedaction).
-	const redaction = await itemRedaction(ctx, item, purged, evidence, budget, {
+	const redaction = await itemRedaction(item, purged, {
 		isLegacyRedacted: isNamedByEvidence,
 	});
 	const pendingEvidence = pending?.evidence.filter((e) => !purged.ids.has(e.source.id)) ?? [];
