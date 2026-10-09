@@ -60,7 +60,7 @@ export async function fetchSpfRecords(domain: string): Promise<string[]> {
  */
 export async function computeSpfSuggestion(
 	domain: string,
-	ourSpfValue: string,
+	ourSpfValue: string
 ): Promise<SpfCoexistenceSuggestion | null> {
 	try {
 		const txtRecords = await fetchSpfRecords(domain);

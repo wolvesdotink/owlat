@@ -125,7 +125,7 @@ const extractionsRange: PurgeRange = async (ctx, run) => {
 				.withIndex('by_mail_thread', (q) =>
 					at === undefined
 						? q.eq('mailThreadId', threadId)
-						: q.eq('mailThreadId', threadId).gte('_creationTime', at)
+						: q.eq('mailThreadId', threadId).gt('_creationTime', at)
 				)
 				.take(n);
 		},
@@ -168,7 +168,7 @@ const factActivityRange: PurgeRange = async (ctx, run) => {
 				.query('threadActivity')
 				.withIndex('by_mail_thread_and_seq', (q) =>
 					typeof from === 'number'
-						? q.eq('mailThreadId', threadId).gte('seq', from)
+						? q.eq('mailThreadId', threadId).gt('seq', from)
 						: q.eq('mailThreadId', threadId)
 				)
 				.take(n),
@@ -194,7 +194,7 @@ const viewersRange: PurgeRange = async (ctx, run) => {
 				.withIndex('by_mail_thread', (q) =>
 					at === undefined
 						? q.eq('mailThreadId', threadId)
-						: q.eq('mailThreadId', threadId).gte('_creationTime', at)
+						: q.eq('mailThreadId', threadId).gt('_creationTime', at)
 				)
 				.take(n);
 		},
@@ -222,7 +222,7 @@ const plansRange: PurgeRange = async (ctx, run) => {
 				.withIndex('by_mail_thread', (q) =>
 					at === undefined
 						? q.eq('mailThreadId', threadId)
-						: q.eq('mailThreadId', threadId).gte('_creationTime', at)
+						: q.eq('mailThreadId', threadId).gt('_creationTime', at)
 				)
 				.take(n);
 		},

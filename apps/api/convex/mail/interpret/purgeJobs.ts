@@ -12,12 +12,21 @@ import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
 import { interpretModeValidator } from '../../lib/validators/threadBrief';
 import { unitBudget } from './purgeDrain';
-import { CONTINUATION_UNITS, invalidateMailboxThreadsPage, runPurgeJob } from './purgeRun';
+import {
+	CONTINUATION_BYTES,
+	CONTINUATION_UNITS,
+	invalidateMailboxThreadsPage,
+	runPurgeJob,
+} from './purgeRun';
 
 export const continueJob = internalMutation({
 	args: { jobId: v.id('threadPurgeJobs') },
 	handler: async (ctx, args): Promise<{ isDone: boolean }> => {
-		const isDone = await runPurgeJob(ctx, args.jobId, unitBudget(CONTINUATION_UNITS));
+		const isDone = await runPurgeJob(
+			ctx,
+			args.jobId,
+			unitBudget(CONTINUATION_UNITS, CONTINUATION_BYTES)
+		);
 		if (!isDone) {
 			await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.continueJob, args);
 		}

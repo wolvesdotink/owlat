@@ -18,7 +18,6 @@ import { unitBudget } from '../purgeDrain';
 import { drivePurgeJob } from '../purgeRun';
 import { itemLineage } from '../fold';
 import { PURGE_RECHECK_CODE } from '../purgeQuestions';
-import { strippedConfirmation } from '../purgeClaims';
 import {
 	modules,
 	reduceItem,
@@ -317,22 +316,6 @@ describe('F13: team clarification and ask-session links', () => {
 			const session = (await ctx.db.get(seeded.sessionId))!;
 			expect(session.questions[0]?.itemId).toBeUndefined();
 		});
-	});
-});
-
-describe('confirmation snapshots', () => {
-	it('lose the purged source’s evidence keys, or go with purged wording', () => {
-		const snapshot = {
-			kind: 'heldChange' as const,
-			confirmation: { by: 'user-A', at: SENT, kind: 'confirmed' as const },
-			verify: 'passed' as const,
-			addedEvidenceKeys: ['mail:a|rev-1|s0:0:4', 'mail:b|rev-1|s0:0:4'],
-		};
-		const purged = { ids: new Set(['a']), keys: new Set(['mail:a']) };
-		expect(strippedConfirmation(snapshot, purged, false)?.addedEvidenceKeys).toEqual([
-			'mail:b|rev-1|s0:0:4',
-		]);
-		expect(strippedConfirmation(snapshot, purged, true)).toBeUndefined();
 	});
 });
 

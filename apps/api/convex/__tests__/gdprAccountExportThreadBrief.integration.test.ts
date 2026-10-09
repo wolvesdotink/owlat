@@ -36,8 +36,16 @@ afterEach(() => {
 /** A mailbox with one thread whose brief holds one item, one fact and one activity row. */
 async function seedBriefThread(
 	t: TestConvex<typeof schema>,
-	opts: { userId: string; address: string; scope?: 'shared'; label: string }
+	opts: {
+		userId: string;
+		address: string;
+		scope?: 'shared';
+		label: string;
+		/** Rows per kind (default 1 each). */
+		counts?: { items: number; facts: number; activity: number };
+	}
 ): Promise<Id<'mailThreads'>> {
+	const counts = opts.counts ?? { items: 1, facts: 1, activity: 1 };
 	const mailboxId = await seedMailbox(t, {
 		userId: opts.userId,
 		organizationId: 'org-x',
@@ -65,58 +73,61 @@ async function seedBriefThread(
 				quote: await sealBodyAtWrite(`${opts.label} quote`),
 			},
 		];
-		await ctx.db.insert('threadItems', {
-			...ref,
-			mailboxId,
-			revision: 1,
-			intent: 'request',
-			facets: ['payment'],
-			assertion: await sealBodyAtWrite(`${opts.label}: pay the invoice`),
-			display: {
-				en: await sealBodyAtWrite(`${opts.label}: pay the invoice`),
-				de: await sealBodyAtWrite(`${opts.label}: zahl die Rechnung`),
-			},
-			requester: { email: 'jonas@example.com', isUs: false },
-			responsible: { isUs: true },
-			responsibility: 'us',
-			status: 'open',
-			disposition: 'unanswered',
-			amount: { value: 100, currency: 'EUR' },
-			evidence,
-			verify: 'passed',
-			askedAt: now,
-			createdAt: now,
-			updatedAt: now,
-		});
-		await ctx.db.insert('threadFacts', {
-			...ref,
-			factKey: '["invoice","number",""]',
-			assertion: await sealBodyAtWrite(`${opts.label}: invoice R-7`),
-			display: {
-				en: await sealBodyAtWrite('Invoice R-7'),
-				de: await sealBodyAtWrite('Rechnung R-7'),
-			},
-			value: { kind: 'ref', text: await sealBodyAtWrite('R-7') },
-			evidence,
-			provenance: 'reported',
-			status: 'current',
-			revision: 1,
-			createdAt: now,
-			updatedAt: now,
-		});
-		await ctx.db.insert('threadActivity', {
-			...ref,
-			seq: 1,
-			idempotencyKey: `mail:${threadId}|received`,
-			type: 'message_received',
-			actor: { kind: 'sender' },
-			provenance: 'recorded',
-			visibility: 'substance',
-			payload: await sealBodyAtWrite(JSON.stringify({ text: `${opts.label} arrived` })),
-			payloadVersion: 1,
-			eventAt: now,
-			recordedAt: now,
-		});
+		for (let i = 0; i < counts.items; i++)
+			await ctx.db.insert('threadItems', {
+				...ref,
+				mailboxId,
+				revision: 1,
+				intent: 'request',
+				facets: ['payment'],
+				assertion: await sealBodyAtWrite(`${opts.label}: pay the invoice`),
+				display: {
+					en: await sealBodyAtWrite(`${opts.label}: pay the invoice`),
+					de: await sealBodyAtWrite(`${opts.label}: zahl die Rechnung`),
+				},
+				requester: { email: 'jonas@example.com', isUs: false },
+				responsible: { isUs: true },
+				responsibility: 'us',
+				status: 'open',
+				disposition: 'unanswered',
+				amount: { value: 100, currency: 'EUR' },
+				evidence,
+				verify: 'passed',
+				askedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		for (let i = 0; i < counts.facts; i++)
+			await ctx.db.insert('threadFacts', {
+				...ref,
+				factKey: '["invoice","number",""]',
+				assertion: await sealBodyAtWrite(`${opts.label}: invoice R-7`),
+				display: {
+					en: await sealBodyAtWrite('Invoice R-7'),
+					de: await sealBodyAtWrite('Rechnung R-7'),
+				},
+				value: { kind: 'ref', text: await sealBodyAtWrite('R-7') },
+				evidence,
+				provenance: 'reported',
+				status: 'current',
+				revision: 1,
+				createdAt: now,
+				updatedAt: now,
+			});
+		for (let i = 0; i < counts.activity; i++)
+			await ctx.db.insert('threadActivity', {
+				...ref,
+				seq: i + 1,
+				idempotencyKey: `mail:${threadId}|received:${i}`,
+				type: 'message_received',
+				actor: { kind: 'sender' },
+				provenance: 'recorded',
+				visibility: 'substance',
+				payload: await sealBodyAtWrite(JSON.stringify({ text: `${opts.label} arrived` })),
+				payloadVersion: 1,
+				eventAt: now,
+				recordedAt: now,
+			});
 		return threadId;
 	});
 }
@@ -165,22 +176,29 @@ describe('account export: thread brief', () => {
 
 		const exported = await exportAllUserData(t, 'auth-user-1');
 		const briefs = exported.personalData.threadBriefs as Array<Record<string, unknown>>;
-		expect(briefs).toHaveLength(1);
-		expect(briefs[0]).toMatchObject({
-			threadId: mine,
-			mode: 'brief',
-			items: [
-				{
-					assertion: 'Mine: pay the invoice',
-					display: { en: 'Mine: pay the invoice', de: 'Mine: zahl die Rechnung' },
-					amount: { value: 100, currency: 'EUR' },
-					evidence: [{ quote: 'Mine quote' }],
-				},
-			],
-			isItemsTruncated: false,
-			facts: [{ assertion: 'Mine: invoice R-7', value: { kind: 'ref', text: 'R-7' } }],
-			activity: [{ type: 'message_received', payload: { text: 'Mine arrived' } }],
-		});
+		expect(briefs).toEqual([
+			expect.objectContaining({ threadId: mine, kind: 'thread', mode: 'brief' }),
+			expect.objectContaining({
+				threadId: mine,
+				kind: 'item',
+				assertion: 'Mine: pay the invoice',
+				display: { en: 'Mine: pay the invoice', de: 'Mine: zahl die Rechnung' },
+				amount: { value: 100, currency: 'EUR' },
+				evidence: [expect.objectContaining({ quote: 'Mine quote' })],
+			}),
+			expect.objectContaining({
+				threadId: mine,
+				kind: 'fact',
+				assertion: 'Mine: invoice R-7',
+				value: { kind: 'ref', text: 'R-7' },
+			}),
+			expect.objectContaining({
+				threadId: mine,
+				kind: 'activity',
+				type: 'message_received',
+				payload: { text: 'Mine arrived' },
+			}),
+		]);
 		const text = JSON.stringify(briefs);
 		expect(text).not.toContain('Team');
 		expect(text).not.toContain('Theirs');
@@ -192,5 +210,32 @@ describe('account export: thread brief', () => {
 		expect(viewer).toEqual([
 			expect.objectContaining({ userId: 'auth-user-1', mailThreadId: mine }),
 		]);
+	});
+
+	it('exports every row of a thread past one page of each kind (review round 2)', async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1', 'me@example.com');
+		const orgId = await seedOrg(t);
+		await seedMember(t, orgId, 'auth-user-1', 'editor');
+		const big = await seedBriefThread(t, {
+			userId: 'auth-user-1',
+			address: 'me@example.com',
+			label: 'Big',
+			counts: { items: 201, facts: 201, activity: 501 },
+		});
+
+		const exported = await exportAllUserData(t, 'auth-user-1');
+		const rows = exported.personalData.threadBriefs as Array<Record<string, unknown>>;
+		const count = (kind: string) => rows.filter((row) => row['kind'] === kind).length;
+		expect(count('thread')).toBe(1);
+		expect(count('item')).toBe(201);
+		expect(count('fact')).toBe(201);
+		expect(count('activity')).toBe(501);
+		expect(rows.every((row) => row['threadId'] === big)).toBe(true);
+		// No row twice: every exported id is distinct.
+		const ids = rows.filter((row) => row['kind'] !== 'thread').map((row) => row['_id']);
+		expect(new Set(ids).size).toBe(ids.length);
 	});
 });

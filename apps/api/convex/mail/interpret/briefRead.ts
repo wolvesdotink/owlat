@@ -11,7 +11,6 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
 import type { AppLocale } from '@owlat/shared/appLocales';
-import type { Evidence } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { mailboxOwnAddresses } from '../identities';
@@ -22,7 +21,6 @@ import type { SourceCounts } from './counters';
 type ExactWordingReason = (typeof EXACT_WORDING_REASONS)[number];
 import type {
 	ActivityView,
-	EvidenceView,
 	FactView,
 	FileView,
 	LatestLineView,

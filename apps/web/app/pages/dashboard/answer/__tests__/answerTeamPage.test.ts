@@ -58,7 +58,13 @@ vi.mock('~/composables/useAnswerTeamAssist', () => ({
 // The team stream and its open actions have their own suites (components/team).
 vi.mock('~/composables/team/useTeamThread', () => ({
 	useTeamThread: () => ({
-		stream: { entries: ref([]) },
+		stream: {
+			entries: ref([]),
+			isReady: ref(false),
+			hasEarlier: ref(false),
+			isLoadingEarlier: ref(false),
+			loadEarlier: () => {},
+		},
 		viewerId: ref('u_me'),
 		openItems: ref(null),
 	}),

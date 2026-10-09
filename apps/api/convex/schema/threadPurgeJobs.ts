@@ -22,14 +22,14 @@ export const purgeJobKindValidator = v.union(
 );
 
 /**
- * Where a job's current range stands. `at` is the position (creation time or
- * activity seq) of the last row handled and `ids` the rows handled at exactly
- * that position; `key` is a string position (an ask session's owner).
+ * Where a job's current range stands: the position of the last row handled
+ * (`at`: creation time or activity seq; `key`: an ask session's owner), or
+ * for a range of sub-ranges the first unfinished one (`step`).
  */
 export const purgeCursorValidator = v.object({
 	at: v.optional(v.number()),
-	ids: v.optional(v.array(v.string())),
 	key: v.optional(v.string()),
+	step: v.optional(v.number()),
 });
 
 /**
@@ -49,6 +49,9 @@ export const threadPurgeJobTables = {
 		jobKey: v.optional(v.string()),
 		// `sources` jobs: the purged sources.
 		sources: v.optional(v.array(interpretationSourceValidator)),
+		// `sources` jobs of a received Team Inbox message: every team reply
+		// that answered it is added to `sources` (paged, before anything else).
+		inboundMessageId: v.optional(v.id('inboundMessages')),
 		// `scope` jobs: the thread's new mode.
 		mode: v.optional(interpretModeValidator),
 		// The range being drained (index into the kind's range list) and its cursor.
