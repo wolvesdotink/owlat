@@ -12,6 +12,7 @@ import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { ReduceItem, ReduceResult } from '../reduceInput';
 import { stripItem } from '../purgeClaims';
+import { redactSourcedFields } from '../heldSources';
 import { unitBudget } from '../purgeDrain';
 import { reconcileSendFailure } from '../sendFailure';
 import {
@@ -258,5 +259,51 @@ describe('F2 / F3: held answers and the sends they rest on', () => {
 		await t.mutation(api.mail.interpret.reactions.undo, { itemId });
 		await t.mutation(api.mail.interpret.reactions.confirmProposal, { itemId });
 		expect((await itemOf(t, threadId)).disposition).toBe('failed');
+	});
+});
+
+describe('Round 9: a purged stamp resets its field to the neutral value', () => {
+	const by = (sourceKey: string) => ({ sourceKey, at: T1 });
+	const item = {
+		requester: { email: 'me@owlat.test', isUs: true },
+		responsible: { email: 'bob@example.com', name: 'Bob', isUs: false },
+		fieldSources: {
+			wording: by('mail:a'),
+			requester: by('mail:a'),
+			responsible: by('mail:c'),
+			responsibility: by('mail:b'),
+			beneficiary: by('mail:b'),
+			due: by('mail:b'),
+			amount: by('mail:b'),
+			options: by('mail:b'),
+		},
+	};
+
+	it('B set responsibility only (C set Bob): purging B makes it unclear, Bob stays', () => {
+		const out = redactSourcedFields(item, new Set(['mail:b']));
+		expect(out?.patch).toMatchObject({ responsibility: 'unclear', isReviewNeeded: true });
+		expect(out?.patch.responsible).toBeUndefined();
+		expect(out?.patch.fieldSources).toEqual({
+			wording: by('mail:a'),
+			requester: by('mail:a'),
+			responsible: by('mail:c'),
+		});
+		// Every other field B stamped is reset too.
+		for (const field of ['beneficiary', 'due', 'amount', 'options'] as const) {
+			expect(field in out!.patch && out!.patch[field] === undefined).toBe(true);
+		}
+		expect(out?.isWordingPurged).toBe(false);
+	});
+
+	it('every field whose stamp goes gets a neutral value', () => {
+		const out = redactSourcedFields(item, new Set(['mail:a', 'mail:b', 'mail:c']));
+		expect(out?.patch).toMatchObject({
+			requester: { isUs: false },
+			responsible: { isUs: false },
+			responsibility: 'unclear',
+			fieldSources: undefined,
+		});
+		expect(out?.patch.counterpartyKey).toBeUndefined();
+		expect(out?.isWordingPurged).toBe(true);
 	});
 });
