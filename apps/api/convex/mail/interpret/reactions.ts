@@ -54,6 +54,7 @@ import { refreshBriefTop } from './briefTop';
 import { resolveThreadMode } from './briefRow';
 import { canUserReadThread, requireItemReader } from './threadAccess';
 import { planReaction, toDbPatch, type LifecycleReaction } from './reactionRules';
+import { liveHeldTransitions, settleHeldTransitions } from './pendingMatch';
 
 /** How far ahead a reminder may be set. */
 const MAX_REMIND_AHEAD_MS = 400 * 24 * 60 * 60 * 1000;
@@ -105,7 +106,15 @@ async function runLifecycle(
 	session: MutationSessionContext,
 	reaction: LifecycleReaction
 ): Promise<{ result: ReactionResult; item: Doc<'threadItems'>; ref: ThreadRef }> {
-	const { item, ref } = await requireItemReader(ctx, itemId, session);
+	const { item: row, ref } = await requireItemReader(ctx, itemId, session);
+	// A held transition whose message was re-read (or confirmed elsewhere)
+	// since no longer stands: it is not applied (pendingMatch.ts).
+	const held = row.pendingUpdate?.transitions;
+	const live = reaction === 'confirmProposal' && held ? await liveHeldTransitions(ctx, held) : [];
+	const item =
+		held && reaction === 'confirmProposal'
+			? { ...row, pendingUpdate: { ...row.pendingUpdate!, transitions: live } }
+			: row;
 	const plan = planReaction(item, reaction, { userId: session.userId, now: Date.now() });
 	if (!plan.ok) throwInvalidState(plan.reason);
 	const patch = toDbPatch(plan);
@@ -117,13 +126,14 @@ async function runLifecycle(
 		// A status the person set names them as its source (a purge of a message
 		// never resets it, transitionSources.ts) and stamps the order of
 		// transitions, so an older message cannot move it back (fold.ts).
-		patch: plan.statusTo
-			? {
-					...patch,
-					statusSource: { sourceKey: `user:${session.userId}`, at: now },
-					lastTransitionAt: now,
-				}
-			: patch,
+		patch:
+			plan.statusTo && !('statusSource' in patch)
+				? {
+						...patch,
+						statusSource: { sourceKey: `user:${session.userId}`, at: now },
+						lastTransitionAt: now,
+					}
+				: patch,
 		type: plan.activity,
 		provenance: 'asserted',
 		...(plan.statusFrom
@@ -136,6 +146,7 @@ async function runLifecycle(
 				}
 			: {}),
 	});
+	if (live.length > 0) await settleHeldTransitions(ctx, live);
 	return { result, item, ref };
 }
 

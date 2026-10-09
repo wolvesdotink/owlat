@@ -342,7 +342,10 @@ describe('F6: a re-read fact merges before any relation', () => {
 });
 
 describe('F7: a completion read before its request', () => {
-	it('is kept, and applied when the request creates the item', async () => {
+	// Round 6 R1 replaced "applied": a wording match only proposes
+	// (reviewRound6.test.ts covers confirming it).
+	it('is kept, and proposed to the item the request creates', async () => {
+		vi.useFakeTimers();
 		const t = convexTest(schema, modules);
 		const { a, b, threadId } = await threeMessages(t);
 		await apply(t, b, threadId, {
@@ -372,28 +375,14 @@ describe('F7: a completion read before its request', () => {
 		expect(await items(t, threadId)).toHaveLength(0);
 
 		await apply(t, a, threadId, { sourceAt: T1, result: reduceResult({ items: [invoice] }) });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
 		const [item] = await items(t, threadId);
 		expect(item).toMatchObject({
-			status: 'done',
-			completion: 'reported',
-			statusSource: { sourceKey: `mail:${b}`, at: T2 },
+			status: 'open',
+			isReviewNeeded: true,
+			pendingUpdate: { transitions: [{ to: 'done', sourceKey: `mail:${b}`, at: T2, index: 0 }] },
 		});
-		const settled = await t.run(async (ctx) =>
-			ctx.db
-				.query('messageInterpretations')
-				.withIndex('by_mail_thread_pending', (q) =>
-					q.eq('mailThreadId', threadId).eq('isPendingTransitions', true)
-				)
-				.collect()
-		);
-		expect(settled).toHaveLength(0);
-		const brief = await t.run(async (ctx) =>
-			ctx.db
-				.query('threadBriefs')
-				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
-				.first()
-		);
-		expect(brief?.itemCounts).toMatchObject({ us: 0, closed: 1 });
+		vi.useRealTimers();
 	});
 
 	it('leaves a pending transition that names no new item pending', async () => {
