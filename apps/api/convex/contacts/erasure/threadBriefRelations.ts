@@ -151,6 +151,13 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 		'A Postbox discussion message is the team’s; it loses the link to the deleted item.'
 	),
 	relation('threadItems', 'answerAskSessions', 'questions[].itemId', 'retain', DANGLING),
+	relation(
+		'inboundMessages',
+		'answerAskSessions',
+		'target.inboundMessageId',
+		'retain',
+		'Governed by the session’s own contactId (deleted in the contact phases), the message’s sender when one is linked; the id only names which message of the thread a team reply answers.'
+	),
 	relation('threadItems', 'threadItems', 'replacedById', 'retain', IN_THREAD),
 	relation('threadItems', 'threadItems', 'possibleDuplicateOfId', 'retain', IN_THREAD),
 	relation(

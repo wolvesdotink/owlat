@@ -238,13 +238,6 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		why: 'Governed by the session’s own contactId (deleted above), which is the thread’s contact when one is linked; a session without a contact carries no contact data beyond the thread it names.',
 	},
 	{
-		parent: 'inboundMessages',
-		table: 'answerAskSessions',
-		field: 'target.inboundMessageId',
-		action: 'retain',
-		why: 'Governed by the session’s own contactId (deleted above), the message’s sender when one is linked; the id alone names which message of the thread the reply answers.',
-	},
-	{
 		parent: 'conversationThreads',
 		table: 'coalesceBatches',
 		field: 'threadId',
