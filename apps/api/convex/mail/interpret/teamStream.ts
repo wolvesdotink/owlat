@@ -33,6 +33,7 @@ import {
 	decodeStreamCursor,
 	mergeStreamPage,
 	outboundStatusOf,
+	rangesBefore,
 	readSourceBatch,
 	streamPreview,
 	type SourceBatch,
@@ -48,7 +49,6 @@ import {
 } from './teamStreamRead';
 
 type Entry = TeamStreamEntry;
-const UP_TO_NOW = Number.MAX_SAFE_INTEGER;
 
 /** The thread's emails before the cursor, newest first. */
 async function mailBatch(
@@ -57,47 +57,61 @@ async function mailBatch(
 	before: StreamPosition | null,
 	ownAddresses: ReadonlySet<string>
 ): Promise<SourceBatch<Entry>> {
-	const rows = ctx.db
-		.query('mailMessages')
-		.withIndex('by_thread_and_received', (q) =>
-			q.eq('threadId', ref.id).lte('receivedAt', before?.at ?? UP_TO_NOW)
-		)
-		.order('desc');
+	const messages = ctx.db.query('mailMessages');
+	const rows = rangesBefore(before, {
+		all: () =>
+			messages.withIndex('by_thread_and_received', (q) => q.eq('threadId', ref.id)).order('desc'),
+		tied: (at, tie) =>
+			messages
+				.withIndex('by_thread_and_received', (q) =>
+					q.eq('threadId', ref.id).eq('receivedAt', at).lte('_creationTime', tie)
+				)
+				.order('desc'),
+		older: (at) =>
+			messages
+				.withIndex('by_thread_and_received', (q) => q.eq('threadId', ref.id).lt('receivedAt', at))
+				.order('desc'),
+	});
+	const positionOf = (m: Doc<'mailMessages'>) => ({
+		at: m.receivedAt,
+		tie: m._creationTime,
+		key: `email:${m._id}`,
+	});
 	return readSourceBatch(rows, {
 		before,
 		limit: STREAM_PAGE_SIZE,
 		budget: STREAM_SCAN_BUDGET,
-		positionOf: (m) => ({ at: m.receivedAt, key: `email:${m._id}` }),
-		toEntry: (m): Entry => {
-			const isOurs =
-				m.outbound !== undefined ||
-				m.sentByUserId !== undefined ||
-				ownAddresses.has(normalizeEmail(m.fromAddress));
-			if (!isOurs) {
-				return {
-					kind: 'customerEmail',
-					at: m.receivedAt,
-					key: `email:${m._id}`,
-					source: { kind: 'mail', id: m._id },
-					...(m.fromName ? { fromName: m.fromName } : {}),
-					fromEmail: m.fromAddress,
-					subject: m.subject,
-					preview: streamPreview(m.snippet),
-				};
-			}
+		positionOf,
+		toEntries: (m): Entry[] => [toMailEntry(m)],
+	});
+
+	function toMailEntry(m: Doc<'mailMessages'>): Entry {
+		const isOurs =
+			m.outbound !== undefined ||
+			m.sentByUserId !== undefined ||
+			ownAddresses.has(normalizeEmail(m.fromAddress));
+		if (!isOurs) {
 			return {
-				kind: 'teamReply',
-				at: m.receivedAt,
-				key: `email:${m._id}`,
-				source: { kind: 'outboundMail', id: m._id },
-				...(m.sentByUserId ? { authorUserId: m.sentByUserId } : {}),
-				isAgent: false,
-				status: m.outbound ? outboundStatusOf(m.outbound.recipients) : 'sent',
-				...(m.toAddresses[0] ? { toName: m.toAddresses[0] } : {}),
+				kind: 'customerEmail',
+				...positionOf(m),
+				source: { kind: 'mail', id: m._id },
+				...(m.fromName ? { fromName: m.fromName } : {}),
+				fromEmail: m.fromAddress,
+				subject: m.subject,
 				preview: streamPreview(m.snippet),
 			};
-		},
-	});
+		}
+		return {
+			kind: 'teamReply',
+			...positionOf(m),
+			source: { kind: 'outboundMail', id: m._id },
+			...(m.sentByUserId ? { authorUserId: m.sentByUserId } : {}),
+			isAgent: false,
+			status: m.outbound ? outboundStatusOf(m.outbound.recipients) : 'sent',
+			...(m.toAddresses[0] ? { toName: m.toAddresses[0] } : {}),
+			preview: streamPreview(m.snippet),
+		};
+	}
 }
 
 /** The thread's discussion messages before the cursor, newest first. */
@@ -114,30 +128,43 @@ async function discussionBatch(
 		.first();
 	if (room?.purpose !== MAIL_THREAD_DISCUSSION) return { entries: [], floor: null };
 	const authors = new Map<string, ProfileSummary>();
-	const rows = ctx.db
-		.query('chatMessages')
-		.withIndex('by_room_and_created', (q) =>
-			q.eq('roomId', room._id).lte('createdAt', before?.at ?? UP_TO_NOW)
-		)
-		.order('desc');
+	const messages = ctx.db.query('chatMessages');
+	const rows = rangesBefore(before, {
+		all: () =>
+			messages.withIndex('by_room_and_created', (q) => q.eq('roomId', room._id)).order('desc'),
+		tied: (at, tie) =>
+			messages
+				.withIndex('by_room_and_created', (q) =>
+					q.eq('roomId', room._id).eq('createdAt', at).lte('_creationTime', tie)
+				)
+				.order('desc'),
+		older: (at) =>
+			messages
+				.withIndex('by_room_and_created', (q) => q.eq('roomId', room._id).lt('createdAt', at))
+				.order('desc'),
+	});
+	const positionOf = (m: Doc<'chatMessages'>) => ({
+		at: m.createdAt,
+		tie: m._creationTime,
+		key: `note:${m._id}`,
+	});
 	return readSourceBatch(rows, {
 		before,
 		limit: STREAM_PAGE_SIZE,
 		budget: STREAM_SCAN_BUDGET,
-		positionOf: (m) => ({ at: m.createdAt, key: `note:${m._id}` }),
-		toEntry: async (m: Doc<'chatMessages'>): Promise<Entry | null> => {
+		positionOf,
+		toEntries: async (m: Doc<'chatMessages'>): Promise<Entry[]> => {
 			// A deleted discussion message leaves nothing behind (as in the panel).
-			if (m.deletedAt !== undefined) return null;
+			if (m.deletedAt !== undefined) return [];
 			let author = authors.get(m.authorId);
 			if (!author) {
 				author = await loadProfileSummary(ctx, m.authorId);
 				authors.set(m.authorId, author);
 			}
 			const linkText = await itemText(m.threadItemId);
-			return {
+			const entry: Entry = {
 				kind: 'note',
-				at: m.createdAt,
-				key: `note:${m._id}`,
+				...positionOf(m),
 				noteSource: 'chatMessage',
 				noteId: m._id,
 				authorId: m.authorId,
@@ -152,6 +179,7 @@ async function discussionBatch(
 				isDeleted: false,
 				reactions: await readNoteReactions(ctx, { source: 'chatMessage', id: m._id }, viewerId),
 			};
+			return [entry];
 		},
 	});
 }

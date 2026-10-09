@@ -86,7 +86,7 @@ function kinds(page: TeamStreamPage | null) {
 async function walkTeam(t: Test, threadId: Id<'conversationThreads'>) {
 	const pages: TeamStreamEntry[][] = [];
 	let cursor: string | null = null;
-	for (let i = 0; i < 20; i++) {
+	for (let i = 0; i < 100; i++) {
 		const page: TeamStreamPage | null = await t.query(api.inbox.teamStream.page, {
 			threadId,
 			locale: 'en',
@@ -241,6 +241,111 @@ describe('Team Inbox stream', () => {
 		expect([...ats].sort((a, b) => a - b)).toEqual(ats);
 	});
 
+	it('pages every source to its end: emails, replies and follow-ups past any cap', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		const EMAILS = STREAM_PAGE_SIZE + 25;
+		await t.run(async (ctx) => {
+			for (let i = 0; i < EMAILS; i++) {
+				const inbound = await ctx.db.insert('inboundMessages', {
+					messageId: `<m${i}@example.com>`,
+					from: 'customer@example.com',
+					to: 'support@owlat.test',
+					subject: 'Order 42',
+					textBody: `Message ${i}`,
+					processingStatus: 'sent',
+					draftResponse: `Approved ${i}`,
+					receivedAt: SENT + i,
+					threadId,
+				});
+				// Every third reply has its snapshot (queued or failed); the rest predate snapshots.
+				const sendId = await ctx.db.insert('transactionalSends', {
+					kind: 'agent_reply',
+					inboundMessageId: inbound,
+					email: 'customer@example.com',
+					status: i % 2 === 0 ? 'queued' : 'failed',
+				});
+				if (i % 3 === 0) {
+					await ctx.db.insert('interpretSources', {
+						threadKind: 'team',
+						conversationThreadId: threadId,
+						source: { kind: 'teamReply', id: sendId },
+						sourceKey: `teamReply:${sendId}`,
+						eligibility: {
+							isLive: true,
+							isThreadMuted: false,
+							isBulkHeaderPresent: false,
+							isSenderKnown: true,
+						},
+						snapshot: { subject: 'Re', text: `Sent ${i}`, capturedAt: SENT },
+						createdAt: SENT,
+						updatedAt: SENT,
+					});
+				}
+				await ctx.db.insert('inboxFollowUps', {
+					threadId,
+					inReplyToMessageId: inboundId,
+					subject: 'Re: Order 42',
+					body: `Follow-up ${i}`,
+					status: 'sent',
+					createdBy: 'user-A',
+					createdAt: SENT + i,
+					sendAt: SENT + i,
+				});
+			}
+		});
+		const walked = await walkTeam(t, threadId);
+		const keys = walked.map((e) => e.key);
+		expect(new Set(keys).size).toBe(keys.length);
+		expect(walked.filter((e) => e.kind === 'customerEmail')).toHaveLength(EMAILS + 1);
+		const replies = walked.filter(
+			(e): e is Extract<TeamStreamEntry, { kind: 'teamReply' }> =>
+				e.kind === 'teamReply' && !e.followUpId
+		);
+		expect(replies).toHaveLength(EMAILS);
+		expect(replies.filter((r) => r.body?.startsWith('Sent '))).toHaveLength(Math.ceil(EMAILS / 3));
+		expect(replies.filter((r) => r.body?.startsWith('Approved '))).toHaveLength(
+			EMAILS - Math.ceil(EMAILS / 3)
+		);
+		expect(new Set(replies.map((r) => r.status))).toEqual(new Set(['queued', 'failed']));
+		expect(walked.filter((e) => e.kind === 'teamReply' && e.followUpId)).toHaveLength(EMAILS);
+	});
+
+	it('walks runs of equal timestamps in the index order, whatever the ids', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId } = await seedTeamThread(t);
+		const COUNT = STREAM_PAGE_SIZE + 17;
+		await t.run(async (ctx) => {
+			for (let i = 0; i < COUNT; i++) {
+				await ctx.db.insert('threadNotes', {
+					threadId,
+					authorId: 'user-A',
+					body: `tied ${i}`,
+					mentionedUserIds: [],
+					createdAt: SENT,
+				});
+				await appendActivity(ctx, {
+					threadRef: { kind: 'team', id: threadId },
+					idempotencyKey: `tied-${i}`,
+					type: 'send_held',
+					actor: { kind: 'system' },
+					provenance: 'recorded',
+					eventAt: SENT,
+				});
+			}
+		});
+		const walked = await walkTeam(t, threadId);
+		const tied = walked.filter((e) => e.at === SENT && e.kind !== 'customerEmail');
+		expect(tied).toHaveLength(2 * COUNT);
+		expect(new Set(tied.map((e) => e.key)).size).toBe(2 * COUNT);
+		const notes = tied.filter((e) => e.kind === 'note').map((e) => (e as { body: string }).body);
+		expect(notes).toEqual(Array.from({ length: COUNT }, (_, i) => `tied ${i}`));
+		for (let i = 1; i < walked.length; i++) {
+			const [a, b] = [walked[i - 1]!, walked[i]!];
+			expect(a.at < b.at || (a.at === b.at && a.tie <= b.tie)).toBe(true);
+		}
+	});
+
 	it('is closed to anyone who cannot read the Team Inbox', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId } = await seedTeamThread(t);
@@ -287,6 +392,40 @@ describe('Workbench team rows', () => {
 		expect(
 			await t.query(api.inbox.teamStream.topItems, { threadIds: [threadId], locale: 'en' })
 		).toEqual([]);
+	});
+});
+
+describe('Workbench team rows, past many other open items', () => {
+	it('find the team action through the bucket index, not among the newest open items', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		const itemId = await interpretTeam(t, threadId, inboundId);
+		await t.run(async (ctx) => {
+			const ours = (await ctx.db.get(itemId))!;
+			const { _id, _creationTime, ...fields } = ours;
+			void _id;
+			void _creationTime;
+			// 80 customer-owed items, all touched before ours (first in updatedAt order).
+			for (let i = 0; i < 80; i++) {
+				await ctx.db.insert('threadItems', {
+					...fields,
+					responsibility: 'them',
+					listBucket: 'waitingOnOthers',
+					updatedAt: ours.updatedAt - 1000 - i,
+				});
+			}
+		});
+		const rows = await t.query(api.inbox.teamStream.topItems, {
+			threadIds: [threadId],
+			locale: 'en',
+		});
+		expect(rows).toEqual([expect.objectContaining({ text: 'Send the signed contract', count: 1 })]);
+		await expect(
+			t.query(api.inbox.teamStream.topItems, {
+				threadIds: Array.from({ length: 11 }, () => threadId),
+				locale: 'en',
+			})
+		).rejects.toThrow(/at most 10/);
 	});
 });
 
@@ -367,6 +506,7 @@ describe('the stream stays out of every prompt and mail', () => {
 			.sort();
 		expect(readers).toEqual([
 			'inbox/teamStream.ts',
+			'inbox/teamStreamSources.ts',
 			'mail/interpret/teamStream.ts',
 			'mail/interpret/teamStreamRead.ts',
 		]);

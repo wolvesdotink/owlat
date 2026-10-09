@@ -60,7 +60,7 @@ const route = useRoute();
 
 const threadId = useRouteId<'conversationThreads'>('threadId');
 const detail = useThreadDetail(threadId);
-const { thread, messages, contact, followUps, threadLoading, threadError, cancelFollowUp } = detail;
+const { thread, messages, contact, threadLoading, threadError, cancelFollowUp } = detail;
 
 useHead({ title: () => thread.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
@@ -334,14 +334,16 @@ onBeforeUnmount(() => {
 					v-if="thread"
 					v-model:view="view"
 					:messages="messages"
-					:follow-ups="followUps"
 					:contact="contact"
 					:answering-id="reply.target.value?._id ?? null"
 					:member-name="memberName"
 					:undoing-follow-up-id="undoingFollowUpId"
-					:stream="team.stream.entries.value"
+					:stream="team.stream.isReady.value ? team.stream.entries.value : undefined"
+					:has-earlier="team.stream.hasEarlier.value"
+					:loading-earlier="team.stream.isLoadingEarlier.value"
 					:viewer-id="team.viewerId.value"
 					@undo-follow-up="undoFollowUp"
+					@load-earlier="team.stream.loadEarlier"
 				>
 					<template #open-items>
 						<TeamPinnedItems v-if="isAdmin" :team="team" />

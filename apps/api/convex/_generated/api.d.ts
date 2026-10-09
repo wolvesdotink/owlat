@@ -751,6 +751,7 @@ import type * as inbox_retryFailed from '../inbox/retryFailed.js';
 import type * as inbox_snooze from '../inbox/snooze.js';
 import type * as inbox_stepOutputs from '../inbox/stepOutputs.js';
 import type * as inbox_teamStream from '../inbox/teamStream.js';
+import type * as inbox_teamStreamSources from '../inbox/teamStreamSources.js';
 import type * as inbox_threadFilters from '../inbox/threadFilters.js';
 import type * as inbox_threadSearch from '../inbox/threadSearch.js';
 import type * as inbox_threadSort from '../inbox/threadSort.js';
@@ -2323,6 +2324,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/snooze': typeof inbox_snooze;
 	'inbox/stepOutputs': typeof inbox_stepOutputs;
 	'inbox/teamStream': typeof inbox_teamStream;
+	'inbox/teamStreamSources': typeof inbox_teamStreamSources;
 	'inbox/threadFilters': typeof inbox_threadFilters;
 	'inbox/threadSearch': typeof inbox_threadSearch;
 	'inbox/threadSort': typeof inbox_threadSort;

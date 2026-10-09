@@ -17,12 +17,15 @@ export type EmailEntry = Extract<TeamStreamEntry, { kind: 'customerEmail' }>;
 
 interface Position {
 	at: number;
+	/** The row's `_creationTime` (absent on a saved place, which compares by `at` and `key`). */
+	tie?: number;
 	key: string;
 }
 
-/** Ascending stream order: time, then key. */
+/** Ascending stream order, the server's: time, then creation, then key. */
 export function compareStream(a: Position, b: Position): number {
 	if (a.at !== b.at) return a.at - b.at;
+	if (a.tie !== undefined && b.tie !== undefined && a.tie !== b.tie) return a.tie - b.tie;
 	return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 }
 

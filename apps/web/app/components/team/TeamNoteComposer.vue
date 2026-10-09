@@ -22,6 +22,8 @@ import {
 	type NoteMentionCandidate,
 } from '~/utils/threadNotes';
 import { activeItemQuery, matchItems, removeItemQuery } from '~/utils/teamStream';
+import TeamItemPicker from './TeamItemPicker.vue';
+import { useId } from 'vue';
 
 export type TeamComposeMode = 'note' | 'reply';
 
@@ -88,6 +90,26 @@ const mentionCandidates = computed(() =>
 const itemCandidates = computed(() =>
 	itemQuery.value ? matchItems(props.items, itemQuery.value.fragment) : []
 );
+const isPickerOpen = computed(() => !mention.value && itemCandidates.value.length > 0);
+const pickerId = `team-item-picker-${useId()}`;
+const picker = ref<{ contains: (node: Node | null) => boolean } | null>(null);
+/** The `#` picker's active option (ArrowUp / ArrowDown). */
+const activeIndex = ref(0);
+watch(
+	() => itemQuery.value?.fragment,
+	() => {
+		activeIndex.value = 0;
+	}
+);
+function moveActive(delta: number) {
+	const count = itemCandidates.value.length;
+	activeIndex.value = (activeIndex.value + delta + count) % count;
+}
+/** Leaving the box closes the pickers, unless focus went into the `#` picker. */
+function onBlur(event: FocusEvent) {
+	if (picker.value?.contains(event.relatedTarget as Node | null)) return;
+	mention.value = itemQuery.value = null;
+}
 const remaining = computed(() => NOTE_BODY_MAX_LENGTH - noteBody.value.length);
 const canPost = computed(
 	() => noteBody.value.trim().length > 0 && remaining.value >= 0 && !saving.value
@@ -161,9 +183,15 @@ function onKeydown(event: KeyboardEvent) {
 		pickMention(mentionCandidates.value[0].handle);
 		return;
 	}
-	if (event.key === 'Enter' && itemQuery.value && itemCandidates.value[0]) {
+	if (isPickerOpen.value && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
 		event.preventDefault();
-		pickItem(itemCandidates.value[0]);
+		moveActive(event.key === 'ArrowDown' ? 1 : -1);
+		return;
+	}
+	const active = itemCandidates.value[activeIndex.value];
+	if (isPickerOpen.value && (event.key === 'Enter' || event.key === 'Tab') && active) {
+		event.preventDefault();
+		pickItem(active);
 		return;
 	}
 	if (event.key === 'Escape' && (mention.value || itemQuery.value)) {
@@ -241,24 +269,15 @@ defineExpose({ focus });
 				:candidates="mentionCandidates"
 				@pick="pickMention"
 			/>
-			<div
-				v-else-if="itemCandidates.length > 0"
-				class="absolute bottom-full left-4 right-4 z-20 mb-2 max-h-64 overflow-y-auto rounded-lg border border-border-subtle bg-bg-elevated shadow-xl"
-				role="listbox"
-				data-testid="team-composer-item-picker"
-			>
-				<button
-					v-for="item in itemCandidates"
-					:key="item.id"
-					type="button"
-					role="option"
-					class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-bg-surface"
-					@mousedown.prevent="pickItem(item)"
-				>
-					<Icon name="lucide:hash" class="size-3.5 shrink-0 text-text-tertiary" />
-					<span class="truncate text-text-primary">{{ item.text }}</span>
-				</button>
-			</div>
+			<TeamItemPicker
+				v-else-if="isPickerOpen"
+				ref="picker"
+				:items="itemCandidates"
+				:active-index="activeIndex"
+				:list-id="pickerId"
+				@hover="activeIndex = $event"
+				@pick="pickItem"
+			/>
 
 			<p
 				v-if="activeMode === 'note' && linkedItem"
@@ -291,11 +310,15 @@ defineExpose({ focus });
 						: t('components.team.composer.notePlaceholderNoName')
 				"
 				:aria-label="t('components.team.composer.note')"
+				aria-autocomplete="list"
+				:aria-expanded="isPickerOpen"
+				:aria-controls="isPickerOpen ? pickerId : undefined"
+				:aria-activedescendant="isPickerOpen ? `${pickerId}-${activeIndex}` : undefined"
 				data-testid="team-composer-note-input"
 				@input="recalc"
 				@click="recalc"
 				@keydown="onKeydown"
-				@blur="mention = itemQuery = null"
+				@blur="onBlur"
 			/>
 			<textarea
 				v-else

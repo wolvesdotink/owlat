@@ -6431,6 +6431,7 @@
 			"composer": {
 				"continue": "Continue in Answer mode",
 				"hint": "{'@'} to mention · # to link an action",
+				"itemPicker": "Actions to link",
 				"modeLabel": "Internal note or reply",
 				"note": "Internal note",
 				"notePlaceholder": "Write an internal note to the team… (never sent to {name})",
@@ -6487,7 +6488,10 @@
 				}
 			},
 			"stream": {
+				"cut": "Some older team notes and activity are not loaded yet.",
 				"earlier": "Show earlier",
+				"earlierNotes": "Show earlier team notes",
+				"loadingEarlier": "Loading earlier team notes…",
 				"markSeenOperation": "Remember where you stopped reading",
 				"new": "New",
 				"system": {
