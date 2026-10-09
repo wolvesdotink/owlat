@@ -36,6 +36,7 @@ import {
 } from './reducers';
 import { enqueuePush } from '../../push/events';
 import { recordTeamSendQueued } from '../../mail/interpret/sendActivity';
+import { deletePlansForDraft } from '../../mail/interpret/responsePlanState';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -397,6 +398,11 @@ export async function dispatch(
 	await applyEffects(ctx, result.effects);
 	// The thread's response clock (inbox/sla): a reply sent, nothing left to answer.
 	await settleClockForMessage(ctx, message, input);
+	// A rejected draft, or one a person took over, is no draft of the agent's any
+	// more: its response plan goes (SPEC §6; the send removes it at intake).
+	if (input.to === 'rejected' || (input.to === 'draft_ready' && input.manualTakeover === true)) {
+		await deletePlansForDraft(ctx, { kind: 'inboundDraft', id: message._id });
+	}
 
 	// Maintain the singleton `instanceSettings.inboxStats` counter doc so
 	// `getInboundStats` does not have to `.collect()` the whole table on

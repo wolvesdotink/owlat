@@ -300,3 +300,32 @@ export function stanceChoicesFor(
 export function defaultStance(options: { hasOpenSlot: boolean }): ResponseStance {
 	return options.hasOpenSlot ? 'clarify' : 'answer';
 }
+
+// ── Draft binding (SPEC §6) ────────────────────────────────────────────────
+
+/** Whitespace-insensitive form of a draft: what a plan's hash and spans read. */
+export function normalizeDraftText(text: string): string {
+	return text
+		.replace(/\r\n?/g, '\n')
+		.replace(/[ \t]+/g, ' ')
+		.replace(/\n{3,}/g, '\n\n')
+		.trim();
+}
+
+async function sha256Hex32(text: string): Promise<string> {
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+	return [...new Uint8Array(digest)]
+		.map((b) => b.toString(16).padStart(2, '0'))
+		.join('')
+		.slice(0, 32);
+}
+
+/** The hash a coverage result is bound to: SHA-256 of the normalized draft, 32 hex chars. */
+export function draftHashOf(text: string): Promise<string> {
+	return sha256Hex32(normalizeDraftText(text));
+}
+
+/** The hash of an attachment set (order-free): the files a send carries. */
+export function attachmentSetHashOf(ids: readonly string[]): Promise<string> {
+	return sha256Hex32([...new Set(ids)].sort().join('\n'));
+}

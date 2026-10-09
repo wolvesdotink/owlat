@@ -9,6 +9,7 @@ import { stanceChoicesFor } from '@owlat/shared/threadBriefRules';
 import {
 	draftHashOf,
 	isPlanRelevant,
+	isCommitmentAuthorised,
 	itemCoverageObjections,
 	itemCoverageReason,
 	planStances,
@@ -145,14 +146,20 @@ describe('itemCoverageObjections', () => {
 				],
 				fileClaims: [],
 				newPromises: [],
+				verdict: 'covered',
+				planRevision: 2,
+				checkedPlanRevision: 2,
+				attachmentSetHash: 'files-1',
 			},
 			draftHash: 'h1',
+			attachmentSetHash: 'files-1',
 			threadRevision: 3,
 			completeness: 'complete',
 			items: [
 				{ id: 'a', revision: 1, responsibility: 'us' },
 				{ id: 'b', revision: 2, responsibility: 'us' },
 			],
+			isItemsOverflow: false,
 			...overrides,
 		};
 	}
@@ -293,5 +300,99 @@ describe('itemCoverageObjections', () => {
 		expect(reason).toContain('not addressed');
 		expect(reason).toContain('file is attached that is not');
 		expect(reason).toContain('routing to human review');
+	});
+});
+
+describe('review round 1: binding, bounds and terms', () => {
+	const base: ItemCoverageInput = {
+		plan: {
+			draftHash: 'h1',
+			threadRevision: 3,
+			itemRevisions: [{ itemId: 'a', revision: 1 }],
+			stances: [{ itemId: 'a', stance: 'accept', source: 'owner' }],
+			coverage: [{ itemId: 'a', verdict: 'addressed', spans: [] }],
+			fileClaims: [],
+			newPromises: [],
+			verdict: 'covered',
+			planRevision: 4,
+			checkedPlanRevision: 4,
+			attachmentSetHash: 'files-1',
+		},
+		draftHash: 'h1',
+		attachmentSetHash: 'files-1',
+		threadRevision: 3,
+		completeness: 'complete',
+		items: [
+			{
+				id: 'a',
+				revision: 1,
+				responsibility: 'us',
+				amount: { value: 5350, currency: 'EUR' },
+				duePhrase: 'by Friday',
+			},
+		],
+		isItemsOverflow: false,
+	};
+	const plan = base.plan!;
+
+	it('F2: a check of older stances, or a pending one, does not count', () => {
+		expect(itemCoverageObjections(base)).toEqual([]);
+		// Answer → Decline after the check: the plan revision moved on.
+		expect(itemCoverageObjections({ ...base, plan: { ...plan, planRevision: 5 } })).toEqual([
+			'pending_check',
+		]);
+		expect(itemCoverageObjections({ ...base, plan: { ...plan, verdict: 'pending' } })).toEqual([
+			'pending_check',
+		]);
+		const { checkedPlanRevision: _c, ...unchecked } = plan;
+		expect(itemCoverageObjections({ ...base, plan: unchecked })).toEqual(['pending_check']);
+	});
+
+	it('F4: a check of another attachment set does not count', () => {
+		expect(itemCoverageObjections({ ...base, attachmentSetHash: 'files-2' })).toEqual([
+			'stale_attachments',
+		]);
+	});
+
+	it('F1/F6: overflowing items or claims make the check incomplete', () => {
+		expect(itemCoverageObjections({ ...base, isItemsOverflow: true })).toEqual([
+			'incomplete_check',
+		]);
+		expect(itemCoverageObjections({ ...base, plan: { ...plan, isCheckIncomplete: true } })).toEqual(
+			['incomplete_check']
+		);
+	});
+
+	it('F7: an accepted item authorises only its own terms', () => {
+		const withPromise = (p: Record<string, unknown>) =>
+			itemCoverageObjections({ ...base, plan: { ...plan, newPromises: [{ itemId: 'a', ...p }] } });
+		expect(withPromise({})).toEqual([]);
+		expect(
+			withPromise({ amount: { value: 5350, currency: 'eur' }, duePhrase: 'By  Friday' })
+		).toEqual([]);
+		expect(withPromise({ amount: { value: 4000, currency: 'EUR' } })).toEqual([
+			'unauthorized_commitment',
+		]);
+		expect(withPromise({ duePhrase: 'by Monday' })).toEqual(['unauthorized_commitment']);
+	});
+
+	it('F7: an invented deadline on an item that names none is unauthorised', () => {
+		const terms = new Map([['a', {}]]);
+		const stances = [{ itemId: 'a', stance: 'accept' as const, source: 'owner' as const }];
+		expect(isCommitmentAuthorised({ itemId: 'a' }, stances, terms)).toBe(true);
+		expect(isCommitmentAuthorised({ itemId: 'a', duePhrase: 'tomorrow' }, stances, terms)).toBe(
+			false
+		);
+		expect(
+			isCommitmentAuthorised({ itemId: 'a', amount: { value: 1, currency: 'EUR' } }, stances, terms)
+		).toBe(false);
+		// A default (not chosen) accept never authorises.
+		expect(
+			isCommitmentAuthorised(
+				{ itemId: 'a' },
+				[{ itemId: 'a', stance: 'accept', source: 'default' }],
+				terms
+			)
+		).toBe(false);
 	});
 });

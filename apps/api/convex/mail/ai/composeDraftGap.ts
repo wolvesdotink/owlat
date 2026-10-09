@@ -229,8 +229,10 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 
 	// A file request: the phrasing in the email, or a slot of type attachment.
 	let request = detectAttachmentRequest(input.triggerText);
+	const attachmentSlot = slots.find((slot) => slot.slotType === 'attachment');
+	// The file question keeps the item its slot fills (review F15).
+	const fileItemId = attachmentSlot ? itemIdForSlot(attachmentSlot, items) : undefined;
 	if (!request.requested) {
-		const attachmentSlot = slots.find((slot) => slot.slotType === 'attachment');
 		if (attachmentSlot) {
 			request = { requested: true, query: detectAttachmentRequest(attachmentSlot.question).query };
 		}
@@ -255,7 +257,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 			autoAttach = outcome.file;
 		} else {
 			const question = buildFileQuestion(outcome, label, provenance);
-			if (question) questions.push(question);
+			if (question) questions.push(fileItemId ? { ...question, itemId: fileItemId } : question);
 			else fileRequest = undefined;
 		}
 	}

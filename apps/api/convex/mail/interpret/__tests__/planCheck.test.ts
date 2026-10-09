@@ -156,7 +156,9 @@ describe('parsePlanCheck', () => {
 					{ ref: 'i3', verdict: 'addressed', quotes: ['Tuesday at 10:00 works.'] },
 				],
 				fileClaims: [],
-				promises: [{ quote: 'I’ll send the logo by Friday.', itemRef: null, due: 'by Friday' }],
+				promises: [
+					{ quote: 'I’ll send the logo by Friday.', itemRef: null, due: 'by Friday', amount: null },
+				],
 			},
 			{ draft, items, attachments: [] }
 		);
@@ -181,7 +183,14 @@ describe('parsePlanCheck', () => {
 			{
 				coverage: [],
 				fileClaims: [],
-				promises: [{ quote: 'the revised quote of €5,350 is approved', itemRef: 'i1', due: null }],
+				promises: [
+					{
+						quote: 'the revised quote of €5,350 is approved',
+						itemRef: 'i1',
+						due: null,
+						amount: { value: 5350, currency: 'EUR' },
+					},
+				],
 			},
 			{ draft, items, attachments: [] }
 		);
@@ -232,5 +241,46 @@ describe('parsePlanCheck', () => {
 		);
 		const span = result.coverage[2]!.spans[0]!;
 		expect(draft.slice(span.start, span.end)).toBe('Tuesday at 10:00 works.');
+	});
+});
+
+describe('review round 1: matching and bounds', () => {
+	it('F5: a named file is never satisfied by an unrelated single attachment', () => {
+		const holiday = [{ id: 'h', filename: 'holiday.jpg' }];
+		expect(matchAttachment('the signed contract', holiday, true)).toBeUndefined();
+		expect(matchAttachment('I’ve attached the signed contract.', holiday, true)).toBeUndefined();
+		// A generic claim takes the only attachment.
+		expect(matchAttachment('I’ve attached it.', holiday, true)).toBe('h');
+		expect(matchAttachment('Please find attached.', holiday, true)).toBe('h');
+	});
+
+	it('F6: claims and commitments past the bound make the result incomplete, none dropped silently', () => {
+		const draft = Array.from({ length: 60 }, (_, i) => `I’ve attached file ${i}.`).join(' ');
+		const promises = Array.from({ length: 60 }, (_, i) => ({
+			quote: `promise ${i}`,
+			itemRef: null,
+			due: null,
+			amount: null,
+		}));
+		const many = parsePlanCheck(
+			{ coverage: [], fileClaims: [], promises },
+			{ draft, items: [], attachments: [] }
+		);
+		expect(many.isIncomplete).toBe(true);
+		expect(many.newPromises.length).toBeGreaterThan(8);
+		const few = parsePlanCheck(null, { draft: 'I’ve attached it.', items: [], attachments: [] });
+		expect(few.isIncomplete).toBe(false);
+	});
+
+	it('keeps a commitment whose quote the draft does not contain, and its amount', () => {
+		const result = parsePlanCheck(
+			{
+				coverage: [],
+				fileClaims: [],
+				promises: [{ quote: 'not in the draft', itemRef: null, due: null, amount: null }],
+			},
+			{ draft: 'Hello.', items: [], attachments: [] }
+		);
+		expect(result.newPromises).toEqual([{ text: 'not in the draft', spans: [] }]);
 	});
 });

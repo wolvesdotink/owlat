@@ -327,16 +327,6 @@ export const sendApprovedReply = internalAction({
 		// anomaly that slipped past it, and it never auto-sends on uncertainty.
 		// Human-reviewed sends bypass the monitor entirely.
 		if (args.autonomous) {
-			// The item_coverage gate's check again at dispatch (SPEC §6): the draft
-			// or the thread's items may have moved since route time. Holds only
-			// while the gate enforces; in shadow mode it returns no reason.
-			const coverage = await ctx.runQuery(internal.mail.interpret.planGate.dispatchHold, {
-				inboundMessageId: args.inboundMessageId,
-			});
-			if (coverage.reason) {
-				await fail(coverage.reason);
-				return;
-			}
 			const monitor = runReferenceMonitor({
 				inboundFrom: message.from,
 				resolvedRecipient: recipient,
@@ -376,6 +366,7 @@ export const sendApprovedReply = internalAction({
 				inboundMessageId: args.inboundMessageId,
 				subject,
 				html,
+				draftText: message.draftResponse,
 				from,
 				...(Object.keys(headers).length > 0 ? { headers } : {}),
 			});
@@ -403,6 +394,10 @@ export const sendApprovedReply = internalAction({
 					return;
 				}
 				await fail('A file for this reply is still being attached. Review and send it by hand.');
+				return;
+			}
+			if (outcome.reason === 'item_coverage') {
+				await fail(outcome.detail);
 				return;
 			}
 			if (outcome.reason === 'attachment_failed') {

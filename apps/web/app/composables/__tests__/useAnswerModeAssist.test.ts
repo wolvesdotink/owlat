@@ -30,6 +30,8 @@ vi.mock('~/composables/useThreadBrief', () => ({
 const planState = {
 	statusNote: ref<string | undefined>(undefined),
 	checkCoverage: vi.fn(async () => {}),
+	flush: vi.fn(async () => {}),
+	adoptPreparedPlan: vi.fn(async () => {}),
 };
 /** What the assist handed the plan. */
 let planOpts: {
@@ -200,6 +202,8 @@ describe('useAnswerModeAssist: a prepared draft', () => {
 		// The files answered on the Reply Queue follow the text onto the draft.
 		expect(preparedAttach).toHaveBeenCalledWith(composer);
 		expect(planState.checkCoverage).toHaveBeenCalled();
+		// The prepared reply's plan moves to the draft it became (review F16).
+		expect(planState.adoptPreparedPlan).toHaveBeenCalledWith('d1');
 		preparedText.value = 'Another';
 		await flushPromises();
 		expect(composer.applyAiDraft).toHaveBeenCalledTimes(1);
