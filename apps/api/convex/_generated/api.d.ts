@@ -34,6 +34,7 @@ import type * as mail_interpret_preferences from '../mail/interpret/preferences.
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
 import type * as mail_interpret_purge from '../mail/interpret/purge.js';
 import type * as mail_interpret_purgeClaims from '../mail/interpret/purgeClaims.js';
+import type * as mail_interpret_purgeClaimSources from '../mail/interpret/purgeClaimSources.js';
 import type * as mail_interpret_purgeDrain from '../mail/interpret/purgeDrain.js';
 import type * as mail_interpret_purgeJobs from '../mail/interpret/purgeJobs.js';
 import type * as mail_interpret_purgeLinks from '../mail/interpret/purgeLinks.js';
@@ -1422,6 +1423,7 @@ import type * as schema_smtpResponseCategories from '../schema/smtpResponseCateg
 import type * as schema_snds from '../schema/snds.js';
 import type * as schema_templates from '../schema/templates.js';
 import type * as schema_threadBrief from '../schema/threadBrief.js';
+import type * as schema_threadBriefFeedback from '../schema/threadBriefFeedback.js';
 import type * as schema_threadPurgeJobs from '../schema/threadPurgeJobs.js';
 import type * as schema_emailCoediting from '../schema/emailCoediting.js';
 import type * as schema_today from '../schema/today.js';
@@ -1617,6 +1619,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
 	'mail/interpret/purge': typeof mail_interpret_purge;
 	'mail/interpret/purgeClaims': typeof mail_interpret_purgeClaims;
+	'mail/interpret/purgeClaimSources': typeof mail_interpret_purgeClaimSources;
 	'mail/interpret/purgeDrain': typeof mail_interpret_purgeDrain;
 	'mail/interpret/purgeJobs': typeof mail_interpret_purgeJobs;
 	'mail/interpret/purgeLinks': typeof mail_interpret_purgeLinks;
@@ -2995,6 +2998,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/snds': typeof schema_snds;
 	'schema/templates': typeof schema_templates;
 	'schema/threadBrief': typeof schema_threadBrief;
+	'schema/threadBriefFeedback': typeof schema_threadBriefFeedback;
 	'schema/threadPurgeJobs': typeof schema_threadPurgeJobs;
 	'schema/emailCoediting': typeof schema_emailCoediting;
 	'schema/today': typeof schema_today;

@@ -128,6 +128,8 @@ describe('scope change personal → shared', () => {
 			cursor: null,
 		});
 		expect(out).toEqual({ isDone: true, threads: 1 });
+		// Each thread's walk runs as its own scheduled purge job.
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 		const after = await state(t, threadId);
 		expect(after.facts).toHaveLength(0);

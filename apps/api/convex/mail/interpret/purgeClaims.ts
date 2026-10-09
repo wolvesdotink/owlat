@@ -1,20 +1,26 @@
 /**
- * One claim (item or fact) under a message purge (review round 1, F3):
+ * One claim (item or fact) under a message purge (review rounds 1–2, F3–F5):
  *
- *  - the evidence entries that name a purged source go (an unconfirmed
- *    `pendingUpdate` loses them too, and goes when none is left);
+ *  - the evidence entries that name a purged source go;
  *  - a claim left without evidence is `doomed`: the caller clears its links
  *    (`purgeLinks.ts`) and deletes it;
- *  - a claim that survives but whose WORDING came from a purged source (its
- *    lineage, or for an older row its first evidence) is restated from a
- *    surviving source's stored claim, matched by lineage (items: a claim key
- *    in `lineageKeys`; facts: the same fact key), or else redacted to a
- *    neutral line ("Details removed with the deleted message") with its
- *    extracted values (due, amount, options, fact value) dropped and review
- *    flagged;
- *  - a status or disposition the purged source set goes back to `open` /
- *    `unanswered` with review flagged (`transitionSources.ts
- *    resetTransitionsFrom`); what a person or another source set stays.
+ *  - a claim that survives is REBUILT field by field from the stored claims
+ *    that still support it (`purgeClaimSources.ts`): its text from the
+ *    newest surviving source's claim, and every extracted value (item: due,
+ *    amount, options; fact: value) from the newest surviving claim that
+ *    states it. A field no surviving claim states is dropped; with no
+ *    surviving claim at all, text the purged message wrote is redacted to a
+ *    neutral line ("Details removed with the deleted message") and review is
+ *    flagged. So a value only a purged message supplied never outlives it;
+ *  - an unconfirmed held update (`pendingUpdate`) that a purged source
+ *    supported goes whole, and so does the confirmation undo snapshot
+ *    (`confirmedFrom`) of any claim the purge touched: its saved values
+ *    could otherwise restore what the purged message said;
+ *  - a status or disposition the purged source set, as a message or as a
+ *    recorded operation on it (a bounced send: `op:<sourceKey>`), goes back
+ *    to `open` / `unanswered` with review flagged
+ *    (`transitionSources.ts resetTransitionsFrom`); what a person or another
+ *    source set stays.
  *
  * Isolate-safe helpers, no Convex functions.
  */
@@ -22,12 +28,21 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { ThreadRef } from '../../lib/validators/threadRef';
-import { openMessageBody, sealBodyAtWrite } from '../../lib/messageBody';
+import { sealBodyAtWrite } from '../../lib/messageBody';
 import { writeItemChange } from './counters';
 import type { DrainBudget } from './purgeDrain';
-import type { ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
-import { factLineage, itemLineage } from './fold';
+import type { ReduceFact, ReduceItem } from './reduceInput';
 import { resetTransitionsFrom } from './transitionSources';
+import { factLineage } from './fold';
+import {
+	lineageSource,
+	survivingFactClaims,
+	survivingItemClaims,
+	type PurgedSources,
+	type StoredClaim,
+} from './purgeClaimSources';
+
+export { lineageSource, type PurgedSources } from './purgeClaimSources';
 
 /** The neutral line a claim whose wording came from a purged message shows. */
 export const REDACTED_CLAIM_TEXT = {
@@ -39,18 +54,6 @@ export type ClaimFate = 'untouched' | 'doomed' | 'survived';
 
 /** An item patch as the counters' item write takes it. */
 type ItemPatch = Parameters<typeof writeItemChange>[3];
-
-/** The purged sources, by id (evidence) and by key (lineage, extractions). */
-export interface PurgedSources {
-	ids: ReadonlySet<string>;
-	keys: ReadonlySet<string>;
-}
-
-/** The source key a lineage or claim key starts with (`<sourceKey>#…`). Pure. */
-export function lineageSource(lineage: string): string {
-	const at = lineage.indexOf('#');
-	return at < 0 ? lineage : lineage.slice(0, at);
-}
 
 /**
  * Did the claim's wording come from a purged source? Its origin is the claim
@@ -74,7 +77,9 @@ export function isWordingPurged(
 /**
  * The patch that reverts what the purged sources set on an item: its status
  * back to `open`, its disposition back to `unanswered`, review flagged
- * (`transitionSources.ts`); what a person or another source set stays. Pure.
+ * (`transitionSources.ts`, which also matches the `op:<sourceKey>` a
+ * recorded operation on the source wrote); what a person or another source
+ * set stays. Pure.
  */
 export function transitionReset(item: Doc<'threadItems'>, purged: PurgedSources): ItemPatch | null {
 	let current: Doc<'threadItems'> = item;
@@ -88,7 +93,54 @@ export function transitionReset(item: Doc<'threadItems'>, purged: PurgedSources)
 	return patch;
 }
 
-/** Strip one item; a survivor's patch goes through the counters' item write. */
+/** The newest claim in `claims` (newest first) that states `field`. Pure. */
+function newestWith<T, K extends keyof T>(
+	claims: readonly StoredClaim<T>[],
+	field: K
+): T[K] | undefined {
+	return claims.find((c) => c.claim[field] !== undefined && c.claim[field] !== null)?.claim[field];
+}
+
+async function sealedPair(text: { en: string; de: string }) {
+	return { en: await sealBodyAtWrite(text.en), de: await sealBodyAtWrite(text.de) };
+}
+
+/** An item's fields rebuilt from its surviving claims (newest first). */
+async function rebuiltItem(
+	item: Doc<'threadItems'>,
+	claims: readonly StoredClaim<ReduceItem>[],
+	purged: PurgedSources
+): Promise<ItemPatch> {
+	const newest = claims[0];
+	const values: ItemPatch = {
+		due: newestWith(claims, 'due') ?? undefined,
+		amount: newestWith(claims, 'amount') ?? undefined,
+		options: newestWith(claims, 'options') ?? undefined,
+	};
+	if (newest) {
+		return {
+			...values,
+			assertion: await sealBodyAtWrite(newest.claim.assertion),
+			display: await sealedPair(newest.claim.display),
+			lineage: newest.key,
+		};
+	}
+	// No surviving claim states anything: text the purged message wrote goes,
+	// and no value stands without a claim behind it.
+	return {
+		...values,
+		...(isWordingPurged(item, purged)
+			? {
+					assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
+					display: await sealedPair(REDACTED_CLAIM_TEXT),
+					lineage: undefined,
+				}
+			: {}),
+		isReviewNeeded: true,
+	};
+}
+
+/** Strip one item; a survivor is rebuilt and written through the counters' item write. */
 export async function stripItem(
 	ctx: MutationCtx,
 	ref: ThreadRef,
@@ -98,23 +150,28 @@ export async function stripItem(
 ): Promise<ClaimFate> {
 	const names = (evidence: ReadonlyArray<{ source: { id: string } }>) =>
 		evidence.some((e) => purged.ids.has(e.source.id));
-	const pending = item.pendingUpdate;
-	const isPendingNamed = !!pending && names(pending.evidence);
-	if (!names(item.evidence) && !isPendingNamed) return 'untouched';
+	const isPendingNamed = !!item.pendingUpdate && names(item.pendingUpdate.evidence);
+	if (!names(item.evidence) && !isPendingNamed) {
+		// No evidence of the purged source, but a status or disposition it set
+		// (a bounced send's `failed` names the send, not the item's evidence).
+		const reset = transitionReset(item, purged);
+		if (!reset) return 'untouched';
+		await writeItemChange(ctx, ref, item, {
+			...reset,
+			revision: item.revision + 1,
+			updatedAt: Date.now(),
+		});
+		return 'survived';
+	}
 	const evidence = item.evidence.filter((e) => !purged.ids.has(e.source.id));
 	if (evidence.length === 0) return 'doomed';
 
-	const pendingEvidence = pending?.evidence.filter((e) => !purged.ids.has(e.source.id)) ?? [];
+	const claims = await survivingItemClaims(ctx, item, evidence, purged, budget);
 	const patch: ItemPatch = {
 		evidence,
-		...(isPendingNamed
-			? {
-					pendingUpdate:
-						pendingEvidence.length > 0
-							? strippedHeld(pending!, pendingEvidence, purged)
-							: undefined,
-				}
-			: {}),
+		...(await rebuiltItem(item, claims, purged)),
+		...(isPendingNamed ? { pendingUpdate: undefined } : {}),
+		...(item.confirmedFrom ? { confirmedFrom: undefined } : {}),
 		...(item.lineageKeys
 			? { lineageKeys: item.lineageKeys.filter((k) => !purged.keys.has(lineageSource(k))) }
 			: {}),
@@ -122,63 +179,17 @@ export async function stripItem(
 		revision: item.revision + 1,
 		updatedAt: Date.now(),
 	};
-	const isRedacted = isWordingPurged(item, purged);
-	if (isRedacted) {
-		Object.assign(patch, (await restatedItem(ctx, item, purged, budget)) ?? (await redactedItem()));
-	}
-	const confirmedFrom = strippedConfirmation(item.confirmedFrom, purged, isRedacted);
-	if (confirmedFrom !== item.confirmedFrom) patch.confirmedFrom = confirmedFrom;
 	await writeItemChange(ctx, ref, item, patch);
 	return 'survived';
 }
 
-/**
- * A held update that named a purged source, kept for its surviving quotes:
- * the wording-only transitions of a purged message go, and so do a re-read's
- * wording, parties and dropped values (round 6: they may be the purged
- * message's words). Pure.
- */
-function strippedHeld(
-	held: NonNullable<Doc<'threadItems'>['pendingUpdate']>,
-	evidence: NonNullable<Doc<'threadItems'>['pendingUpdate']>['evidence'],
-	purged: PurgedSources
-): NonNullable<Doc<'threadItems'>['pendingUpdate']> {
-	const {
-		assertion: _assertion,
-		display: _display,
-		requester: _requester,
-		responsible: _responsible,
-		beneficiary: _beneficiary,
-		responsibility: _responsibility,
-		removes: _removes,
-		transitions,
-		...values
-	} = held;
-	const kept = transitions?.filter((t) => !purged.keys.has(t.sourceKey)) ?? [];
-	return { ...values, evidence, ...(kept.length > 0 ? { transitions: kept } : {}) };
+async function sealedFactValue(value: ReduceFact['value']): Promise<Doc<'threadFacts'>['value']> {
+	if (!value) return undefined;
+	if (value.kind === 'date' || value.kind === 'money') return value;
+	return { kind: value.kind, text: await sealBodyAtWrite(value.text) };
 }
 
-/**
- * A confirmation's undo snapshot without the evidence keys of a purged
- * source; gone with an item whose wording came from one (its saved values
- * could restore what the purged message said). Pure.
- */
-export function strippedConfirmation(
-	snapshot: Doc<'threadItems'>['confirmedFrom'],
-	purged: PurgedSources,
-	isRedacted: boolean
-): Doc<'threadItems'>['confirmedFrom'] {
-	if (!snapshot) return snapshot;
-	if (isRedacted) return undefined;
-	const keys = snapshot.addedEvidenceKeys.filter(
-		(key) => !purged.keys.has(key.slice(0, key.indexOf('|')))
-	);
-	return keys.length === snapshot.addedEvidenceKeys.length
-		? snapshot
-		: { ...snapshot, addedEvidenceKeys: keys };
-}
-
-/** Strip one fact (mail threads only). */
+/** Strip one fact (mail threads only); a survivor is rebuilt from its surviving claims. */
 export async function stripFact(
 	ctx: MutationCtx,
 	fact: Doc<'threadFacts'>,
@@ -188,118 +199,29 @@ export async function stripFact(
 	if (!fact.evidence.some((e) => purged.ids.has(e.source.id))) return 'untouched';
 	const evidence = fact.evidence.filter((e) => !purged.ids.has(e.source.id));
 	if (evidence.length === 0) return 'doomed';
+	const claims = await survivingFactClaims(ctx, fact, evidence, purged, budget);
+	const newest = claims[0];
 	const patch: Partial<Doc<'threadFacts'>> = {
 		evidence,
+		value: await sealedFactValue(newestWith(claims, 'value') ?? undefined),
+		...(newest
+			? {
+					assertion: await sealBodyAtWrite(newest.claim.assertion),
+					display: await sealedPair(newest.claim.display),
+					lineage: newest.key.endsWith('#bykey')
+						? factLineage(newest.sourceKey, newest.claim)
+						: newest.key,
+				}
+			: isWordingPurged(fact, purged)
+				? {
+						assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
+						display: await sealedPair(REDACTED_CLAIM_TEXT),
+						lineage: undefined,
+					}
+				: {}),
 		revision: fact.revision + 1,
 		updatedAt: Date.now(),
 	};
-	if (isWordingPurged(fact, purged)) {
-		const sources = [...new Set(evidence.map((e) => `${e.source.kind}:${e.source.id}`))];
-		Object.assign(
-			patch,
-			(await restatedFact(ctx, fact, sources, budget)) ?? (await redactedFact())
-		);
-	}
 	await ctx.db.patch(fact._id, patch);
 	return 'survived';
-}
-
-/** The stored result of a source's current extraction, or null. */
-async function currentResult(
-	ctx: MutationCtx,
-	sourceKey: string,
-	budget: DrainBudget
-): Promise<ReduceResult | null> {
-	budget.range();
-	const row = await ctx.db
-		.query('messageInterpretations')
-		.withIndex('by_source_current', (q) => q.eq('sourceKey', sourceKey).eq('isCurrent', true))
-		.first();
-	budget.read(row);
-	if (!row?.payload) return null;
-	try {
-		return JSON.parse(await openMessageBody(row.payload)) as ReduceResult;
-	} catch {
-		return null;
-	}
-}
-
-async function sealedPair(text: { en: string; de: string }) {
-	return { en: await sealBodyAtWrite(text.en), de: await sealBodyAtWrite(text.de) };
-}
-
-/** The item's wording from a surviving source's claim of it (by claim key), or null. */
-async function restatedItem(
-	ctx: MutationCtx,
-	item: Doc<'threadItems'>,
-	purged: PurgedSources,
-	budget: DrainBudget
-): Promise<ItemPatch | null> {
-	for (const key of item.lineageKeys ?? []) {
-		const sourceKey = lineageSource(key);
-		if (purged.keys.has(sourceKey)) continue;
-		const result = await currentResult(ctx, sourceKey, budget);
-		const base = key.replace(/\.\d+$/, '');
-		const claim: ReduceItem | undefined = result?.items.find(
-			(proposal) => itemLineage(sourceKey, proposal) === base
-		);
-		if (!claim) continue;
-		return {
-			assertion: await sealBodyAtWrite(claim.assertion),
-			display: await sealedPair(claim.display),
-			due: claim.due,
-			amount: claim.amount,
-			options: claim.options,
-			lineage: key,
-		};
-	}
-	return null;
-}
-
-async function redactedItem(): Promise<ItemPatch> {
-	return {
-		assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
-		display: await sealedPair(REDACTED_CLAIM_TEXT),
-		due: undefined,
-		amount: undefined,
-		options: undefined,
-		lineage: undefined,
-		isReviewNeeded: true,
-	};
-}
-
-/** The fact's wording from a surviving source's claim of the same fact key, or null. */
-async function restatedFact(
-	ctx: MutationCtx,
-	fact: Doc<'threadFacts'>,
-	sourceKeys: readonly string[],
-	budget: DrainBudget
-): Promise<Partial<Doc<'threadFacts'>> | null> {
-	for (const sourceKey of sourceKeys) {
-		const result = await currentResult(ctx, sourceKey, budget);
-		const claim: ReduceFact | undefined = result?.facts?.find((f) => f.key === fact.factKey);
-		if (!claim) continue;
-		return {
-			assertion: await sealBodyAtWrite(claim.assertion),
-			display: await sealedPair(claim.display),
-			value: await sealedFactValue(claim.value),
-			lineage: factLineage(sourceKey, claim),
-		};
-	}
-	return null;
-}
-
-async function sealedFactValue(value: ReduceFact['value']): Promise<Doc<'threadFacts'>['value']> {
-	if (!value) return undefined;
-	if (value.kind === 'date' || value.kind === 'money') return value;
-	return { kind: value.kind, text: await sealBodyAtWrite(value.text) };
-}
-
-async function redactedFact(): Promise<Partial<Doc<'threadFacts'>>> {
-	return {
-		assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
-		display: await sealedPair(REDACTED_CLAIM_TEXT),
-		value: undefined,
-		lineage: undefined,
-	};
 }

@@ -331,6 +331,8 @@ export const templateTables = {
 		// lookup. The stuck-approved reconciler used to infer that from a bounded
 		// scan of all queued sends, which unrelated volume could starve.
 		.index('by_inbound_message_status', ['inboundMessageId', 'status'])
+		// Thread brief erasure: every Send that answered a received message, in creation order.
+		.index('by_inbound_message', ['inboundMessageId'])
 		// Point lookup for the automation intake's step-run idempotency key.
 		.index('by_automation_step_run', ['automationStepRunId'])
 		// The lost-send sweep (`delivery/stuckSendSweep.ts`); see `emailSends`.

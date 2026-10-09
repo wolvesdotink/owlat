@@ -8,10 +8,11 @@
  *    last message, an external account's teardown);
  *  - {@link invalidateMailboxThreadsPage}: a mailbox scope change.
  *
- * Each runs the job's first slice inline, in the caller's transaction (the
- * epoch is bumped there, so in-flight interpretations stop at once), and
- * hands the rest to `purgeJobs.continueJob`, which reschedules itself until
- * every range is exhausted. The erasure walkers drive their jobs themselves
+ * Each bumps the epoch in the caller's transaction (in-flight
+ * interpretations stop at once), runs a first slice there from the
+ * transaction's one shared inline budget (rows and bytes, however many
+ * purges it starts), and hands the rest to `purgeJobs.continueJob`, which
+ * reschedules itself until every range is exhausted. The erasure walkers drive their jobs themselves
  * through {@link drivePurgeJob}, inside their own budget.
  */
 
@@ -38,10 +39,12 @@ import { modeOfScope, scopePlan, startScopeChange } from './scopeChange';
 
 /** Units a purge spends inline, in the transaction of the purge itself. */
 export const INLINE_PURGE_UNITS = 400;
-/** Units a scheduled continuation spends per transaction. */
+/** Bytes the purges of one transaction may read inline, all of them together. */
+const INLINE_PURGE_BYTES = 4 * 1024 * 1024;
+/** Rows a scheduled continuation spends per transaction. */
 export const CONTINUATION_UNITS = 2000;
-/** Units a scope change spends inline per thread of a mailbox page. */
-const INLINE_SCOPE_UNITS = 60;
+/** Bytes a scheduled continuation may read per transaction. */
+export const CONTINUATION_BYTES = 8 * 1024 * 1024;
 /** Threads per mailbox page of a scope change. */
 const THREAD_PAGE = 25;
 
@@ -67,10 +70,29 @@ export async function runPurgeJob(
 	return runJobPlan(ctx, job, planOf(job), budget);
 }
 
-/** Start a job, run its first slice inline, schedule the rest. */
-async function startScheduled(ctx: MutationCtx, fields: NewPurgeJob, units: number) {
+/**
+ * The inline budget of one transaction, shared by every purge it starts (a
+ * trash sweep purging messages of many threads spends one budget, not one
+ * per thread). Keyed by the transaction's context object.
+ */
+const inlineBudgets = new WeakMap<object, DrainBudget>();
+function inlineBudgetOf(ctx: MutationCtx): DrainBudget {
+	let budget = inlineBudgets.get(ctx);
+	if (!budget) {
+		budget = unitBudget(INLINE_PURGE_UNITS, INLINE_PURGE_BYTES);
+		inlineBudgets.set(ctx, budget);
+	}
+	return budget;
+}
+
+/**
+ * Start a job and schedule what its first slice leaves. `isInline: false`
+ * starts it without a slice (the caller deletes many threads at once).
+ */
+async function startScheduled(ctx: MutationCtx, fields: NewPurgeJob, isInline: boolean) {
 	const job = await createPurgeJob(ctx, fields);
-	const isDone = await runJobPlan(ctx, job, planOf(job), unitBudget(units));
+	const budget = isInline ? inlineBudgetOf(ctx) : unitBudget(0, 0);
+	const isDone = await runJobPlan(ctx, job, planOf(job), budget);
 	if (!isDone) {
 		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.continueJob, {
 			jobId: job._id,
@@ -86,17 +108,17 @@ export async function purgeSourcesFromThread(
 ): Promise<void> {
 	if (sources.length === 0) return;
 	await bumpDeletionEpoch(ctx, ref);
-	await startScheduled(ctx, { ref, kind: 'sources', sources: [...sources] }, INLINE_PURGE_UNITS);
+	await startScheduled(ctx, { ref, kind: 'sources', sources: [...sources] }, true);
 }
 
 /** Purge a deleted thread's brief (see `purgeThread.ts`). Call where the thread is deleted. */
 export async function purgeThreadBrief(
 	ctx: MutationCtx,
 	ref: ThreadRef,
-	inlineUnits: number = INLINE_PURGE_UNITS
+	opts: { isInline?: boolean } = {}
 ): Promise<void> {
 	await bumpDeletionEpoch(ctx, ref);
-	await startScheduled(ctx, { ref, kind: 'thread' }, inlineUnits);
+	await startScheduled(ctx, { ref, kind: 'thread' }, opts.isInline ?? true);
 }
 
 /**
@@ -159,10 +181,8 @@ async function startThreadScopeChange(
 		mode,
 		jobKey,
 	});
-	const isDone = await runJobPlan(ctx, job, scopePlan, unitBudget(INLINE_SCOPE_UNITS));
-	if (!isDone) {
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.continueJob, {
-			jobId: job._id,
-		});
-	}
+	// No inline slice: a page starts 25 threads, each walk runs on its own.
+	await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.continueJob, {
+		jobId: job._id,
+	});
 }

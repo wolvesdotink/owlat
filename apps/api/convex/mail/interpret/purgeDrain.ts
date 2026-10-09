@@ -12,9 +12,14 @@
  *    comes back short empties it, so it needs no cursor.
  *  - {@link scanRange}: a range whose rows STAY (patched in place, or
  *    skipped). It walks by an index position that a handled row never
- *    changes (creation time, activity seq, owner id) and keeps a cursor:
- *    the last position and the ids handled at exactly that position, so
- *    rows that share one are neither skipped nor read twice.
+ *    changes and that is unique in the range (creation time, activity seq,
+ *    an ask session's owner) and keeps the last handled position as its
+ *    cursor; the next read starts strictly after it.
+ *  - {@link drainSteps}: a list of sub-ranges, with the first unfinished
+ *    one in the cursor, so emptied sub-ranges are never queried again.
+ *
+ * Reads are bounded by the rows AND the bytes a slice has left, and every
+ * fetched document is charged (review round 2, F3).
  *
  * A row handler returns false when it ran out of budget before it finished
  * the row (an item whose links are still being cleared): the row is handled
@@ -27,7 +32,8 @@
  * Isolate-safe helpers, no Convex functions.
  */
 
-import type { Doc } from '../../_generated/dataModel';
+import { getConvexSize, type Value } from 'convex/values';
+import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
@@ -37,30 +43,52 @@ import {
 	type ThreadRef,
 } from '../../lib/validators/threadRef';
 
-/** Rows read per range query. */
+/** Most rows one range query asks for. */
 export const DRAIN_CHUNK = 64;
+/** Convex's per-document size limit: the most one fetched row can cost. */
+const MAX_DOCUMENT_BYTES = 1024 * 1024;
+/** Charged per document on top of its encoded size (index entry, framing). */
+const DOCUMENT_OVERHEAD_BYTES = 64;
 
 /**
- * What one slice may spend: every document read and every index range
- * queried costs a unit. The erasure walkers adapt their own budget
- * (`contacts/erasure/threadBriefPhases.ts`).
+ * What one slice may spend: rows and bytes of the documents it fetches, and
+ * the index ranges it queries. A read never asks for more rows than the rows
+ * left, nor more than the bytes left could hold at the maximum document size
+ * ({@link DrainBudget.chunk}); every fetched document is charged, handled or
+ * not. The first row of a slice is always allowed, so a slice always moves.
+ * The erasure walkers adapt their own budget
+ * (`contacts/erasure/threadBriefPhases.ts walkerDrainBudget`).
  */
 export interface DrainBudget {
 	isExhausted(): boolean;
-	read(doc: unknown): void;
+	/** Rows the next read may ask for (at least one, at most `max`). */
+	chunk(max: number): number;
+	/** A fetched document. */
+	charge(doc: unknown): void;
+	/** An index range queried. */
 	range(): void;
 }
 
-/** A budget of `units` reads and range queries. */
-export function unitBudget(units: number): DrainBudget {
-	let spent = 0;
+export function documentBytes(doc: unknown): number {
+	return doc === null || doc === undefined
+		? DOCUMENT_OVERHEAD_BYTES
+		: getConvexSize(doc as Value) + DOCUMENT_OVERHEAD_BYTES;
+}
+
+/** A budget of `rows` rows (each range query counts as one) and `bytes` fetched bytes. */
+export function unitBudget(rows: number, bytes: number = 8 * MAX_DOCUMENT_BYTES): DrainBudget {
+	let spentRows = 0;
+	let spentBytes = 0;
+	const affordable = () => Math.floor((bytes - spentBytes) / MAX_DOCUMENT_BYTES);
 	return {
-		isExhausted: () => spent >= units,
-		read: () => {
-			spent += 1;
+		isExhausted: () => spentRows >= rows || (spentRows > 0 && affordable() < 1),
+		chunk: (max) => Math.max(1, Math.min(max, rows - spentRows, affordable())),
+		charge: (doc) => {
+			spentRows += 1;
+			spentBytes += documentBytes(doc);
 		},
 		range: () => {
-			spent += 1;
+			spentRows += 1;
 		},
 	};
 }
@@ -70,6 +98,8 @@ export type PurgeCursor = NonNullable<PurgeJob['cursor']>;
 
 /** The job's findings, carried across slices. */
 export interface JobState {
+	/** The purged sources (`sources` jobs); a range may add to them (a message's team replies). */
+	sources: InterpretationSource[];
 	isInterpreted: boolean;
 	isItemDeleted: boolean;
 	isClaimChanged: boolean;
@@ -107,14 +137,14 @@ export async function drainShrinking<Row>(
 ): Promise<boolean> {
 	for (;;) {
 		if (budget.isExhausted()) return false;
+		const asked = budget.chunk(DRAIN_CHUNK);
 		budget.range();
-		const rows = await read(DRAIN_CHUNK);
+		const rows = await read(asked);
+		for (const row of rows) budget.charge(row);
 		for (const row of rows) {
-			if (budget.isExhausted()) return false;
-			budget.read(row);
 			if (!(await each(row))) return false;
 		}
-		if (rows.length < DRAIN_CHUNK) return true;
+		if (rows.length < asked) return true;
 	}
 }
 
@@ -122,45 +152,53 @@ export async function drainShrinking<Row>(
 export type RangePosition = number | string;
 
 /**
- * Walk a range whose rows stay, from `cursor`, by a position a handled row
- * never changes. `read(from, n)` returns the first `n` rows at or after
- * position `from` (all of them when `from` is undefined), in position order.
+ * Walk a range whose rows stay, from `cursor`, by a position that is unique
+ * within the range and that a handled row never changes (creation time,
+ * activity seq, an ask session's owner per target). `read(after, n)` returns
+ * the first `n` rows strictly after position `after` (from the start when
+ * undefined), in position order. The cursor is the last handled position.
  */
-export async function scanRange<Row extends { _id: string }>(
+export async function scanRange<Row>(
 	budget: DrainBudget,
 	cursor: PurgeCursor | undefined,
-	read: (from: RangePosition | undefined, n: number) => Promise<Row[]>,
+	read: (after: RangePosition | undefined, n: number) => Promise<Row[]>,
 	position: (row: Row) => RangePosition,
 	each: (row: Row) => Promise<boolean>
 ): Promise<RangeOutcome> {
-	let at: RangePosition | undefined = cursor?.key ?? cursor?.at;
-	let ids = cursor?.ids ?? [];
+	let after: RangePosition | undefined = cursor?.key ?? cursor?.at;
 	const save = (): RangeOutcome => ({
 		isDone: false,
-		cursor: {
-			...(typeof at === 'string' ? { key: at } : at !== undefined ? { at } : {}),
-			ids,
-		},
+		cursor:
+			typeof after === 'string' ? { key: after } : after !== undefined ? { at: after } : undefined,
 	});
 	for (;;) {
 		if (budget.isExhausted()) return save();
+		const asked = budget.chunk(DRAIN_CHUNK);
 		budget.range();
-		const asked = DRAIN_CHUNK + ids.length;
-		const rows = await read(at, asked);
+		const rows = await read(after, asked);
+		for (const row of rows) budget.charge(row);
 		for (const row of rows) {
-			const pos = position(row);
-			if (pos === at && ids.includes(row._id)) continue;
-			if (budget.isExhausted()) return save();
-			budget.read(row);
 			if (!(await each(row))) return save();
-			if (pos === at) ids = [...ids, row._id];
-			else {
-				at = pos;
-				ids = [row._id];
-			}
+			after = position(row);
 		}
 		if (rows.length < asked) return { isDone: true };
 	}
+}
+
+/**
+ * Walk a list of sub-ranges in order (`drainShrinking` each), keeping the
+ * index of the first unfinished one in the cursor (`step`), so a slice never
+ * re-reads the sub-ranges an earlier slice emptied.
+ */
+export async function drainSteps(
+	budget: DrainBudget,
+	cursor: PurgeCursor | undefined,
+	steps: ReadonlyArray<() => Promise<boolean>>
+): Promise<RangeOutcome> {
+	for (let step = cursor?.step ?? 0; step < steps.length; step++) {
+		if (!(await steps[step]!())) return { isDone: false, cursor: { step } };
+	}
+	return { isDone: true };
 }
 
 /** The fields a new job starts from. */
@@ -169,6 +207,8 @@ export interface NewPurgeJob {
 	kind: PurgeJob['kind'];
 	jobKey?: string;
 	sources?: InterpretationSource[];
+	/** `sources` jobs of a received Team Inbox message: its team replies are added as found. */
+	inboundMessageId?: Id<'inboundMessages'>;
 	mode?: InterpretMode;
 }
 
@@ -179,6 +219,7 @@ export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promis
 		kind: job.kind,
 		...(job.jobKey ? { jobKey: job.jobKey } : {}),
 		...(job.sources ? { sources: job.sources } : {}),
+		...(job.inboundMessageId ? { inboundMessageId: job.inboundMessageId } : {}),
 		...(job.mode ? { mode: job.mode } : {}),
 		rangeIndex: 0,
 		isInterpreted: false,
@@ -211,6 +252,7 @@ export async function runJobPlan(
 ): Promise<boolean> {
 	const ref = threadRefFromFields(job);
 	const state: JobState = {
+		sources: [...(job.sources ?? [])],
 		isInterpreted: job.isInterpreted,
 		isItemDeleted: job.isItemDeleted,
 		isClaimChanged: job.isClaimChanged,
@@ -232,10 +274,12 @@ export async function runJobPlan(
 		await ctx.db.delete(job._id);
 		return true;
 	}
+	const { sources, ...findings } = state;
 	await ctx.db.patch(job._id, {
 		rangeIndex: index,
 		cursor,
-		...state,
+		...(job.kind === 'sources' ? { sources } : {}),
+		...findings,
 		updatedAt: Date.now(),
 	});
 	return false;
