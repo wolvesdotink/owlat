@@ -25,7 +25,7 @@ import { internal } from '../../_generated/api';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { isInterpretationEligible } from './eligibility';
 import { markBriefPending } from './briefRow';
-import { captureInterpretSource } from './sources';
+import { captureInterpretSource, loadInterpretSource, markSourceOutstanding } from './sources';
 import type { OutboundSource } from './sendFailure';
 
 /**
@@ -91,7 +91,13 @@ export async function enqueueSentInterpretation(
 	// A team reply's snapshot (its text as queued) was taken at intake
 	// (`inbox/replyAttachments.intakeAgentReply`); a Postbox sent message is
 	// snapshotted here, as live.
-	if (source.kind === 'outboundMail') await captureInterpretSource(ctx, { source, isLive: true });
+	if (source.kind === 'outboundMail') {
+		await captureInterpretSource(ctx, { source, isLive: true });
+	} else {
+		// The team reply's snapshot exists already; it is outstanding from now on.
+		const snapshot = await loadInterpretSource(ctx, source);
+		if (snapshot) await markSourceOutstanding(ctx, snapshot);
+	}
 	await ctx.scheduler.runAfter(0, internal.mail.interpret.outboundRun.interpretSent, { source });
 	await markBriefPending(ctx, ref);
 }

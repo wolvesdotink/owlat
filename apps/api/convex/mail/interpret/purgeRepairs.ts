@@ -47,7 +47,7 @@ export function briefCompleteness(
 		| 'isFoldScanCut'
 		| 'historyState'
 		| 'isHistoryIncomplete'
-		| 'pendingHistorySources'
+		| 'pendingSources'
 	>
 ): BriefCompleteness {
 	if ((brief.pendingRepairs ?? 0) > 0) return 'partial';
@@ -56,7 +56,7 @@ export function briefCompleteness(
 	const isHistoryOpen =
 		brief.historyState === 'pending' ||
 		brief.isHistoryIncomplete === true ||
-		(brief.pendingHistorySources ?? 0) > 0;
+		(brief.pendingSources ?? 0) > 0;
 	return counted === 'complete' && isHistoryOpen ? 'partial' : counted;
 }
 

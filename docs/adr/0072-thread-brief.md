@@ -243,8 +243,10 @@ Reply Queue write.
 
 The stored completeness the auto-send gates read follows the history too:
 `briefCompleteness` (the one rule every writer uses) keeps a complete brief
-partial while history is unread or unreadable, or while a source a history
-page admitted has not recorded its outcome yet (`pendingHistorySources`), so D3 holds Team Inbox
+partial while history is unread or unreadable, and never complete while a
+source enqueued anywhere (delivery, a send, the Team Inbox pipeline, a
+history page) has not recorded its outcome yet (`pendingSources`, counted
+once per source in `sources.ts`), so D3 holds Team Inbox
 auto-send meanwhile. `brief.get` also says whether a pending history is
 `running` or `stalled`; the reader asks to resume a stalled one.
 

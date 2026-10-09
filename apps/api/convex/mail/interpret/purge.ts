@@ -32,7 +32,7 @@
  */
 
 import type { Id } from '../../_generated/dataModel';
-import { settleHistorySource } from './backfillSources';
+import { settleSource } from './sources';
 import type { MutationCtx } from '../../_generated/server';
 import {
 	interpretationSourceKey,
@@ -227,8 +227,8 @@ const snapshotsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
 						.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
 						.take(n),
 				async (row) => {
-					// A purged history source will never record an outcome.
-					await settleHistorySource(ctx, row);
+					// A purged source will never record an outcome.
+					await settleSource(ctx, row);
 					return deleting(ctx)(row);
 				}
 			)
