@@ -11,7 +11,7 @@ import schema from '../../../schema';
 import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
-import { counterpartiesOf, nameOf, ROWS_PER_PERSON } from '../elsewhere';
+import { counterpartiesOf, nameOf, ROWS_PER_PERSON, scopeItems } from '../elsewhere';
 import type { ReduceItem } from '../reduceInput';
 import {
 	modules,
@@ -318,5 +318,59 @@ describe('elsewhere.list', () => {
 		});
 		expect(again!.groups[0]).toMatchObject({ isPartial: true, isMore: false });
 		expect(again!.groups[0]!.items.map((i) => i.text)).toEqual(['Jonas sends the signed NDA']);
+	});
+
+	it('never reads more rows than the budget (round 4 F4)', async () => {
+		const t = convexTest(schema, modules);
+		const { here, other } = await seedWorld(t);
+		await t.run(async (ctx) => {
+			const visible = (await ctx.db
+				.query('threadItems')
+				.filter((q) => q.eq(q.field('mailThreadId'), other.threadId))
+				.collect())!.find((i) => i.verify !== 'proposal')!;
+			const { _id: _a, _creationTime: _b, ...fields } = visible;
+			for (let i = 0; i < ROWS_PER_PERSON + 30; i++) {
+				await ctx.db.insert('threadItems', {
+					...fields,
+					verify: 'proposal',
+					updatedAt: visible.updatedAt + 1000 + i,
+				});
+			}
+		});
+		await t.run(async (ctx) => {
+			let read = 0;
+			const wrap = <T extends object>(target: T): T =>
+				new Proxy(target, {
+					get(obj, prop, receiver) {
+						const value = Reflect.get(obj, prop, receiver) as unknown;
+						if (typeof value !== 'function') return value;
+						if (prop === 'take') {
+							return async (n: number) => {
+								const rows =
+									(await (value as (n: number) => Promise<unknown[]>).call(obj, n)) ?? [];
+								read += rows.length;
+								return rows;
+							};
+						}
+						return (...args: unknown[]) => {
+							const out = (value as (...a: unknown[]) => unknown).apply(obj, args);
+							return out && typeof out === 'object' && 'take' in out ? wrap(out) : out;
+						};
+					},
+				});
+			const counting = { ...ctx, db: wrap(ctx.db) } as typeof ctx;
+			const budget = { rows: ROWS_PER_PERSON };
+			const result = await scopeItems(
+				counting,
+				'jonas@example.com',
+				{ kind: 'mailbox', mailboxId: here.mailboxId },
+				{ kind: 'mail', id: here.threadId },
+				6,
+				budget
+			);
+			expect(read).toBe(ROWS_PER_PERSON);
+			expect(budget.rows).toBe(0);
+			expect(result.isCut).toBe(true);
+		});
 	});
 });

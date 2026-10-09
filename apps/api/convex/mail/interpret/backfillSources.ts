@@ -48,6 +48,7 @@ import type { ThreadRef } from '../../lib/validators/threadRef';
 import { ensureBriefRow, markBriefPending } from './briefRow';
 import { captureInterpretSource, loadInterpretSource } from './sources';
 import { briefCompleteness } from './purgeRepairs';
+import { runOf } from './outstanding';
 
 /** Messages of one thread read per page. */
 export const HISTORY_PAGE = 4;
@@ -263,13 +264,6 @@ async function teamPage(
 		continueCursor: last ? encodeHistoryCursor(last._creationTime, last._creationTime) : '',
 		isDone,
 	};
-}
-
-/** The run that reads a source: sends go through the outbound run (failure reconciliation). */
-function runOf(source: InterpretationSource) {
-	return source.kind === 'outboundMail' || source.kind === 'teamReply'
-		? internal.mail.interpret.outboundRun.interpretSent
-		: internal.mail.interpret.run.interpretMessage;
 }
 
 export interface HistoryPageOutcome {

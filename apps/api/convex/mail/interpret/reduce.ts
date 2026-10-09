@@ -56,7 +56,7 @@ import {
 	isRepairMarked,
 	shiftPendingRepairs,
 } from './purgeRepairs';
-import { loadInterpretSource, settleSource } from './sources';
+import { settleSource } from './outstanding';
 import { nextRetryAtOf } from './retry';
 import { ATTEMPT_SUFFIX } from './load';
 import { sourceVersionOf } from './sourceVersion';
@@ -170,6 +170,8 @@ export const applyInterpretation = internalMutation({
 			existing.isCounted !== false &&
 			(!args.result || existing.isCurrent === true)
 		) {
+			// A replayed outcome is an outcome: the source is no longer outstanding.
+			await settleSource(ctx, sourceKey, 'recorded');
 			return {
 				outcome: 'replayed',
 				status: existing.status,
@@ -352,7 +354,7 @@ export const applyInterpretation = internalMutation({
 			await shiftPendingRepairs(ctx, brief._id, -1);
 		}
 		// This source has its outcome now: no longer outstanding (p4 final review F2).
-		await settleSource(ctx, await loadInterpretSource(ctx, args.source));
+		await settleSource(ctx, sourceKey, 'recorded');
 		// A pending-transition scan in flight keeps the brief partial (round 6 R2),
 		// and so do an outstanding purge repair and unread history (briefCompleteness).
 		const briefNow = await ctx.db.get(brief._id);

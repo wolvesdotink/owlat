@@ -32,7 +32,7 @@
  */
 
 import type { Id } from '../../_generated/dataModel';
-import { settleSource } from './sources';
+import { settleSource } from './outstanding';
 import type { MutationCtx } from '../../_generated/server';
 import {
 	interpretationSourceKey,
@@ -228,7 +228,7 @@ const snapshotsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
 						.take(n),
 				async (row) => {
 					// A purged source will never record an outcome.
-					await settleSource(ctx, row);
+					await settleSource(ctx, row.sourceKey, 'purged');
 					return deleting(ctx)(row);
 				}
 			)

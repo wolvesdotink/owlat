@@ -35,6 +35,7 @@ import { openMessageBody } from '../../lib/messageBody';
 import { appLocaleOf, type AppLocale } from '@owlat/shared/appLocales';
 import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
 import { itemResponsibilityValidator } from '../../lib/validators/threadBrief';
+import { isPastCursor } from './backfillSources';
 
 /** People of this thread looked up (the most frequent counterparties first). */
 export const ELSEWHERE_PEOPLE = 2;
@@ -124,7 +125,7 @@ interface ItemSource {
 }
 
 /** One scope the viewer can read: a mailbox of theirs, or the Team Inbox. */
-type Scope = { kind: 'mailbox'; mailboxId: Id<'mailboxes'> } | { kind: 'team' };
+export type Scope = { kind: 'mailbox'; mailboxId: Id<'mailboxes'> } | { kind: 'team' };
 
 async function scopesOf(ctx: QueryCtx, session: Session): Promise<Scope[]> {
 	const orgId = session.activeOrganizationId;
@@ -167,7 +168,17 @@ type Found = { item: Doc<'threadItems'>; source: ItemSource };
  * The newest `want` listable items with this person in one scope. Every row
  * read belongs to the scope (index range), so skipping one tells nothing.
  */
-async function scopeItems(
+/** Rows fetched per read inside one scope. */
+const SCAN_CHUNK = 25;
+
+/**
+ * The newest `want` listable items with this person in one scope. Every row
+ * read belongs to the scope (index range), so skipping one tells nothing.
+ * Rows are fetched in chunks no larger than what is left of `budget`, so the
+ * person's whole scan never reads more than {@link ROWS_PER_PERSON} rows;
+ * `isCut` says the budget ended it before the scope did.
+ */
+export async function scopeItems(
 	ctx: QueryCtx,
 	key: string,
 	scope: Scope,
@@ -177,24 +188,38 @@ async function scopeItems(
 ): Promise<{ found: Found[]; isCut: boolean }> {
 	const found: Found[] = [];
 	const mailboxId = scope.kind === 'mailbox' ? scope.mailboxId : undefined;
-	for await (const item of ctx.db
-		.query('threadItems')
-		.withIndex('by_counterparty', (q) =>
-			q.eq('counterpartyKey', key).eq('status', 'open').eq('mailboxId', mailboxId)
-		)
-		.order('desc')) {
-		if (budget.rows <= 0) return { found, isCut: true };
-		budget.rows--;
-		if (item.verify === 'proposal') continue;
-		if (item.mailThreadId === here.id || item.conversationThreadId === here.id) continue;
-		// The team scope holds the items without a mailbox: Team Inbox ones only.
-		if (scope.kind === 'team' && !item.conversationThreadId) continue;
-		const source = await sourceOf(ctx, item);
-		if (!source) continue;
-		found.push({ item, source });
-		if (found.length >= want) break;
+	let from: { at: number; creation: number } | null = null;
+	while (budget.rows > 0) {
+		const n = Math.min(budget.rows, SCAN_CHUNK);
+		const after: { at: number; creation: number } | null = from;
+		const rows: Doc<'threadItems'>[] = await ctx.db
+			.query('threadItems')
+			.withIndex('by_counterparty', (q) => {
+				const range = q.eq('counterpartyKey', key).eq('status', 'open').eq('mailboxId', mailboxId);
+				return after ? range.lte('updatedAt', after.at) : range;
+			})
+			.order('desc')
+			.take(n);
+		budget.rows -= rows.length;
+		for (const item of rows) {
+			const at: { at: number; creation: number } = {
+				at: item.updatedAt,
+				creation: item._creationTime,
+			};
+			if (!isPastCursor(at, after)) continue;
+			from = at;
+			if (item.verify === 'proposal') continue;
+			if (item.mailThreadId === here.id || item.conversationThreadId === here.id) continue;
+			// The team scope holds the items without a mailbox: Team Inbox ones only.
+			if (scope.kind === 'team' && !item.conversationThreadId) continue;
+			const source = await sourceOf(ctx, item);
+			if (!source) continue;
+			found.push({ item, source });
+			if (found.length >= want) return { found, isCut: false };
+		}
+		if (rows.length < n) return { found, isCut: false };
 	}
-	return { found, isCut: false };
+	return { found, isCut: true };
 }
 
 /** May the session read THIS thread (the brief's reader rule)? */
@@ -224,6 +249,11 @@ async function groupFor(
 	const budget = { rows: ROWS_PER_PERSON };
 	let isPartial = false;
 	for (const scope of scopes) {
+		// No scope is opened once the budget is spent: say so instead.
+		if (budget.rows <= 0) {
+			isPartial = true;
+			break;
+		}
 		const read = await scopeItems(ctx, key, scope, here, limit + 1, budget);
 		found.push(...read.found);
 		if (read.isCut) isPartial = true;

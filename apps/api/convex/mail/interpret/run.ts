@@ -292,6 +292,10 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 				loaded.current?.interpretationId === counted.interpretationId || !counted.hasPayload;
 			if ((isFinished && isCurrentRead) || (!isFinished && !isRetryDue(counted, Date.now()))) {
 				const good = loaded.current?.hasPayload ? loaded.current : null;
+				// A reused result is an outcome: the source is no longer outstanding.
+				await ctx.runMutation(internal.mail.interpret.outstanding.settleRecorded, {
+					source: args.source,
+				});
 				const stored =
 					good && good.contentRevision === contentRevision
 						? await ctx.runQuery(internal.mail.interpret.load.readStoredResult, {
