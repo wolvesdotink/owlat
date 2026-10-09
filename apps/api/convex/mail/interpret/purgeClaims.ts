@@ -4,13 +4,16 @@
  *  - the evidence entries that name a purged source go;
  *  - a claim left without evidence is `doomed`: the caller clears its links
  *    (`purgeLinks.ts`) and deletes it;
- *  - a claim that survives on other evidence is REDACTED, safe by
- *    construction: every extracted value a person did not confirm goes. Its
- *    text becomes the neutral line ("Details removed with the deleted
- *    message"), its parties unclear (no address, no name), its
- *    responsibility `unclear`, its deadline, amount and options cleared, its
- *    facets and consequences kept only when a surviving source's claim record
- *    still names the item. A fact loses its text and value the same way. The
+ *  - a claim that survives on other evidence is REDACTED: exactly the shown
+ *    fields the purged message set go (`threadItems.fieldSources`, read by
+ *    `heldSources.redactSourcedFields`, interpret round 8): the wording
+ *    becomes the neutral line ("Details removed with the deleted message"),
+ *    parties become unknown (no address, no name) with responsibility
+ *    `unclear` and the counterparty recomputed, deadline, amount and options
+ *    are cleared. An item written before `fieldSources` existed is redacted
+ *    conservatively: every extracted value a person did not confirm. Facets
+ *    and consequences go with purged wording unless a surviving source's
+ *    claim record still names the item. A fact loses its text and value. The
  *    redacted fields are listed in `redactedFields`, review is flagged, and
  *    the thread is re-read from its surviving sources (`purge.ts`
  *    `reinterpretRange`): a verified claim then refills the fields directly
@@ -37,7 +40,7 @@ import { sealBodyAtWrite } from '../../lib/messageBody';
 import { writeItemChange } from './counters';
 import type { DrainBudget } from './purgeDrain';
 import { resetTransitionsFrom } from './transitionSources';
-import { isHolding, revertPurgedConfirmation, withoutSources } from './heldSources';
+import { isHolding, redactSourcedFields, withoutSources } from './heldSources';
 
 /** The neutral line a redacted claim shows. */
 export const REDACTED_CLAIM_TEXT = {
@@ -134,43 +137,84 @@ async function isNamedBySurvivingRecord(
 
 type RedactedItemField = (typeof REDACTED_ITEM_FIELDS)[number];
 
-/**
- * Which extracted fields of a surviving item the purge redacts. Conservative
- * for now: every one (the items carry no standing per-field provenance yet).
- * When they do, this is the one function to narrow to the fields whose
- * source is a purged message. Pure.
- */
-export function fieldsToRedact(
-	_item: Doc<'threadItems'>,
-	_purged: PurgedSources
-): readonly RedactedItemField[] {
-	return REDACTED_ITEM_FIELDS;
-}
+/** An item's `fieldSources` field → the item fields it covers. */
+const SOURCED_FIELDS: Record<string, readonly RedactedItemField[]> = {
+	wording: ['assertion', 'display'],
+	requester: ['requester'],
+	responsible: ['responsible', 'responsibility'],
+	beneficiary: ['beneficiary'],
+	responsibility: ['responsibility'],
+	due: ['due'],
+	amount: ['amount'],
+	options: ['options'],
+};
 
-/** The redaction of an item's unconfirmed extracted values (rule P). */
-async function redactedItem(
-	fields: readonly RedactedItemField[],
-	isFacetsKept: boolean
-): Promise<ItemPatch> {
-	const unclear = { isUs: false };
-	const has = (field: RedactedItemField) => fields.includes(field);
-	const isTextRedacted = has('assertion') || has('display');
+/**
+ * The redaction of a surviving item (rule P), ONE path for every purge:
+ * with per-field provenance (`fieldSources`) exactly the fields the purged
+ * sources set, through `heldSources.redactSourcedFields` (parties unknown,
+ * counterparty recomputed, provenance pruned); without it (an item written
+ * before round 8) every extracted value, unless a person confirmed the item.
+ * Null when nothing shown came from the purged sources.
+ */
+async function itemRedaction(
+	ctx: MutationCtx,
+	item: Doc<'threadItems'>,
+	purged: PurgedSources,
+	evidence: Doc<'threadItems'>['evidence'],
+	budget: DrainBudget,
+	opts: { isLegacyRedacted: boolean }
+): Promise<ItemPatch | null> {
+	let fields: RedactedItemField[];
+	let patch: ItemPatch;
+	if (item.fieldSources) {
+		const sourced = redactSourcedFields(item, purged.keys);
+		if (!sourced) return null;
+		fields = [
+			...new Set(
+				Object.keys(item.fieldSources)
+					.filter((f) =>
+						purged.keys.has(item.fieldSources![f as keyof typeof item.fieldSources]!.sourceKey)
+					)
+					.flatMap((f) => SOURCED_FIELDS[f] ?? [])
+			),
+		];
+		patch = { ...sourced.patch };
+	} else {
+		if (!opts.isLegacyRedacted || item.correction?.kind === 'confirmed') return null;
+		fields = [...REDACTED_ITEM_FIELDS];
+		const unknown = { isUs: false };
+		patch = {
+			requester: unknown,
+			responsible: unknown,
+			beneficiary: undefined,
+			responsibility: 'unclear',
+			counterpartyKey: undefined,
+			due: undefined,
+			amount: undefined,
+			options: undefined,
+		};
+	}
+	const isWordingGone = fields.includes('assertion');
+	const isFacetsKept =
+		!isWordingGone || (await isNamedBySurvivingRecord(ctx, item._id, evidence, budget));
 	return {
-		...(isTextRedacted
+		...patch,
+		...(isWordingGone
 			? {
 					assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
 					display: await sealedPair(REDACTED_CLAIM_TEXT),
 				}
 			: {}),
-		...(has('requester') ? { requester: unclear, counterpartyKey: undefined } : {}),
-		...(has('responsible') ? { responsible: unclear } : {}),
-		...(has('beneficiary') ? { beneficiary: undefined } : {}),
-		...(has('responsibility') ? { responsibility: 'unclear' as const } : {}),
-		...(has('due') ? { due: undefined } : {}),
-		...(has('amount') ? { amount: undefined } : {}),
-		...(has('options') ? { options: undefined } : {}),
 		...(isFacetsKept ? {} : { facets: [], consequences: undefined }),
-		redactedFields: [...fields, ...(isFacetsKept ? [] : ['facets', 'consequences'])],
+		redactedFields: [
+			...new Set([
+				...(item.redactedFields ?? []),
+				...fields,
+				...(isFacetsKept ? [] : ['facets', 'consequences']),
+			]),
+		],
+		isReviewNeeded: true,
 	};
 }
 
@@ -182,8 +226,8 @@ export async function stripItem(
 	purged: PurgedSources,
 	budget: DrainBudget
 ): Promise<ClaimFate> {
-	const names = (evidence: ReadonlyArray<{ source: { id: string } }>) =>
-		evidence.some((e) => purged.ids.has(e.source.id));
+	const names = (list: ReadonlyArray<{ source: { id: string } }>) =>
+		list.some((e) => purged.ids.has(e.source.id));
 	const pending = item.pendingUpdate;
 	// A held field or transition names its source even without quotes (interpret round 7 F1).
 	const isPendingNamed =
@@ -191,45 +235,40 @@ export async function stripItem(
 		(names(pending.evidence) ||
 			(pending.fieldSources ?? []).some((f) => purged.keys.has(f.sourceKey)) ||
 			(pending.transitions ?? []).some((t) => purged.keys.has(t.sourceKey)));
-	// A confirmation that applied parties the purged message proposed: put back.
-	const reverted = revertPurgedConfirmation(item, purged.keys);
+	const evidence = item.evidence.filter((e) => !purged.ids.has(e.source.id));
+	const isNamedByEvidence = evidence.length < item.evidence.length;
+	if (isNamedByEvidence && evidence.length === 0) return 'doomed';
+	// Rule P: the shown fields the purged sources set (one path, see itemRedaction).
+	const redaction = await itemRedaction(ctx, item, purged, evidence, budget, {
+		isLegacyRedacted: isNamedByEvidence,
+	});
 	const pendingEvidence = pending?.evidence.filter((e) => !purged.ids.has(e.source.id)) ?? [];
 	const held = isPendingNamed
 		? { pendingUpdate: strippedHeld(pending!, pendingEvidence, purged) }
 		: {};
 	const isSnapshotGone =
-		isSnapshotPurged(item.confirmedFrom, purged) || !!reverted || isPendingNamed;
+		isSnapshotPurged(item.confirmedFrom, purged) || !!redaction || isPendingNamed;
 	const snapshot = item.confirmedFrom && isSnapshotGone ? { confirmedFrom: undefined } : {};
 	const reset = transitionReset(item, purged);
 	const stamp = { revision: item.revision + 1, updatedAt: Date.now() };
-	if (!names(item.evidence)) {
+	if (!isNamedByEvidence) {
 		// No evidence of the purged source, but a status or disposition it set
 		// (a bounced send's `failed` names the send, not the item's evidence),
-		// or held changes or a confirmation it proposed.
-		if (!reset && !isPendingNamed && !reverted) return 'untouched';
+		// held changes, a confirmation or a shown field it proposed.
+		if (!reset && !isPendingNamed && !redaction) return 'untouched';
 		await writeItemChange(ctx, ref, item, {
 			...reset,
 			...held,
-			...reverted?.patch,
+			...redaction,
 			...snapshot,
 			...stamp,
 		});
 		return 'survived';
 	}
-	const evidence = item.evidence.filter((e) => !purged.ids.has(e.source.id));
-	if (evidence.length === 0) return 'doomed';
 
-	const isConfirmed = item.correction?.kind === 'confirmed';
 	const patch: ItemPatch = {
 		evidence,
-		...reverted?.patch,
-		// Rule P: what a person did not confirm is redacted until a re-read refills it.
-		...(!isConfirmed
-			? await redactedItem(
-					fieldsToRedact(item, purged),
-					await isNamedBySurvivingRecord(ctx, item._id, evidence, budget)
-				)
-			: {}),
+		...redaction,
 		...held,
 		...snapshot,
 		...(item.lineageKeys

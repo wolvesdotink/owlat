@@ -282,6 +282,7 @@ async function insertItem(
 		...(item.lastTransitionAt !== undefined ? { lastTransitionAt: item.lastTransitionAt } : {}),
 		...(item.statusSource ? { statusSource: item.statusSource } : {}),
 		...(item.dispositionSource ? { dispositionSource: item.dispositionSource } : {}),
+		...(item.fieldSources ? { fieldSources: item.fieldSources } : {}),
 		...(item.due ? { due: item.due } : {}),
 		...(item.amount ? { amount: item.amount } : {}),
 		...(item.options ? { options: item.options } : {}),
@@ -320,6 +321,7 @@ async function patchItem(
 		patch.lastTransitionAt = item.lastTransitionAt;
 	}
 	if (!same(item.statusSource, row.statusSource)) patch.statusSource = item.statusSource;
+	if (canon(item.fieldSources) !== canon(row.fieldSources)) patch.fieldSources = item.fieldSources;
 	if (!same(item.dispositionSource, row.dispositionSource)) {
 		patch.dispositionSource = item.dispositionSource;
 	}

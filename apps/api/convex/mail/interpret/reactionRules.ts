@@ -56,7 +56,7 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { ActivityType, ItemStatus } from '@owlat/shared/threadBrief';
 import { isLegalDispositionEdge, isLegalStatusEdge } from '@owlat/shared/threadBriefRules';
-import { evidenceKey } from './reducePlan';
+import { advancesStamp, evidenceKey } from './reducePlan';
 import { counterpartyKeyOf } from './parties';
 
 /** The lifecycle reactions this module plans. */
@@ -95,6 +95,7 @@ export type ReactionItem = Pick<
 			| 'statusSource'
 			| 'dispositionSource'
 			| 'lastTransitionAt'
+			| 'fieldSources'
 		>
 	>;
 
@@ -127,6 +128,7 @@ export interface ReactionPatch {
 	dispositionSource?: Doc<'threadItems'>['dispositionSource'];
 	lastTransitionAt?: Doc<'threadItems'>['lastTransitionAt'];
 	counterpartyKey?: Doc<'threadItems'>['counterpartyKey'];
+	fieldSources?: Doc<'threadItems'>['fieldSources'];
 }
 
 /** Keys a plan may remove from the item. */
@@ -142,7 +144,8 @@ type ClearableKey =
 	| 'statusSource'
 	| 'dispositionSource'
 	| 'lastTransitionAt'
-	| 'counterpartyKey';
+	| 'counterpartyKey'
+	| 'fieldSources';
 
 export type ReactionPlan =
 	| {
@@ -281,26 +284,50 @@ export function heldChanges(item: ReactionItem): { patch: ReactionPatch; clears:
 	};
 	const clears: ClearableKey[] = (held.removes ?? []).filter((key) => patch[key] === undefined);
 	withCounterparty(item, patch, clears);
+	// The applied fields now rest on the sources that proposed them (round 8 F1).
+	if (held.fieldSources?.length) {
+		const sources = { ...item.fieldSources };
+		for (const { field, sourceKey, at } of held.fieldSources) {
+			if (held.removes?.includes(field as 'due')) delete sources[field];
+			else sources[field] = { sourceKey, at: at ?? 0 };
+		}
+		patch.fieldSources = sources;
+	}
+	// Held transitions in message order, each field ordered by its own stamp
+	// as the reducer orders them; a supported reaffirmation of the standing
+	// value moves the stamp to its newer source (round 8 F2).
 	let status = item.status;
 	let disposition = item.disposition;
+	let statusStamp = item.statusSource;
+	let dispositionStamp = item.dispositionSource;
 	for (const t of [...(held.transitions ?? [])].sort((a, b) => a.at - b.at)) {
 		const setBy = { sourceKey: t.sourceKey, at: t.at };
-		if (t.to && t.to !== status && isLegalStatusEdge(status, t.to, 'system')) {
-			status = t.to;
-			patch.status = t.to;
-			patch.statusSource = setBy;
+		const isNewer = (stamp: typeof setBy | undefined) => !stamp || t.at >= stamp.at;
+		if (t.to && isNewer(statusStamp)) {
+			if (
+				t.to === status
+					? advancesStamp(statusStamp, setBy)
+					: isLegalStatusEdge(status, t.to, 'system')
+			) {
+				if (t.to !== status) patch.status = t.to;
+				status = t.to;
+				statusStamp = setBy;
+				patch.statusSource = setBy;
+			}
 		}
-		if (
-			t.disposition &&
-			disposition &&
-			t.disposition !== disposition &&
-			isLegalDispositionEdge(disposition, t.disposition)
-		) {
-			disposition = t.disposition;
-			patch.disposition = t.disposition;
-			patch.dispositionSource = setBy;
+		if (t.disposition && disposition && isNewer(dispositionStamp)) {
+			const isMove =
+				t.disposition === disposition
+					? advancesStamp(dispositionStamp, setBy)
+					: isLegalDispositionEdge(disposition, t.disposition);
+			if (isMove) {
+				if (t.disposition !== disposition) patch.disposition = t.disposition;
+				disposition = t.disposition;
+				dispositionStamp = setBy;
+				patch.dispositionSource = setBy;
+			}
 		}
-		if (patch.status || patch.disposition) {
+		if (patch.statusSource === setBy || patch.dispositionSource === setBy) {
 			patch.lastTransitionAt = Math.max(patch.lastTransitionAt ?? item.lastTransitionAt ?? 0, t.at);
 		}
 	}
@@ -331,6 +358,7 @@ export function snapshotBeforeConfirm(
 		...(item.options ? { options: item.options } : {}),
 		...(item.pendingUpdate ? { pendingUpdate: heldFields(item.pendingUpdate) } : {}),
 		...changedGroups(item),
+		...(item.fieldSources ? { fieldSources: item.fieldSources } : {}),
 		addedEvidenceKeys: [...new Set(added)],
 	};
 }
@@ -412,6 +440,8 @@ function undoConfirmation(item: ReactionItem, from: ConfirmedFrom): ReactionPlan
 		else clears.push('beneficiary');
 	}
 	withCounterparty(item, patch, clears);
+	if (from.fieldSources) patch.fieldSources = from.fieldSources;
+	else clears.push('fieldSources');
 	if (from.status === undefined) return { ok: true, patch, clears, activity: 'item_corrected' };
 	// The confirmation moved the lifecycle: every lifecycle field back as it was.
 	patch.status = from.status;
