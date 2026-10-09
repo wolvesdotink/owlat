@@ -23,6 +23,8 @@ export interface RefilledFields {
 	display?: { en: string; de: string };
 	requester?: ReduceItem['requester'];
 	responsible?: ReduceItem['responsible'];
+	/** Refilled on its own: the responsible party it is derived from stays (round 5 F4). */
+	responsibility?: Doc<'threadItems'>['responsibility'];
 	beneficiary?: ReduceItem['beneficiary'];
 	facets?: ReduceItem['facets'];
 	consequences?: ReduceItem['consequences'];
@@ -91,7 +93,8 @@ export function applyRefill(
 		refilled.display = claim.display;
 	}
 	if (has('requester')) refilled.requester = claim.requester;
-	if (has('responsible') || has('responsibility')) refilled.responsible = claim.responsible;
+	if (has('responsible')) refilled.responsible = claim.responsible;
+	else if (has('responsibility')) refilled.responsibility = responsibilityOf(claim.responsible);
 	if (has('beneficiary')) refilled.beneficiary = claim.beneficiary;
 	if (has('facets')) refilled.facets = claim.facets;
 	if (has('consequences')) refilled.consequences = claim.consequences;
@@ -123,7 +126,7 @@ export function refillPatch(
 	if (refilled.responsible) {
 		patch.responsible = refilled.responsible;
 		patch.responsibility = responsibilityOf(refilled.responsible);
-	}
+	} else if (refilled.responsibility) patch.responsibility = refilled.responsibility;
 	if (refilled.beneficiary) patch.beneficiary = refilled.beneficiary;
 	if (refilled.facets) patch.facets = refilled.facets;
 	if (refilled.consequences) patch.consequences = refilled.consequences;
