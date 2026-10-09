@@ -397,6 +397,15 @@ export const threadBriefTables = {
 		pendingRepairs: v.optional(v.number()),
 		// The last fold read only part of the thread's items or facts (R2): partial.
 		isFoldScanCut: v.optional(v.boolean()),
+		// Reading the thread's earlier mail (mail/interpret/backfillSources.ts):
+		// the next page of messages, `pending` until every page was admitted
+		// (the brief reads partial meanwhile), when it last moved, and whether
+		// some history cannot be read back (a team reply sent without a
+		// snapshot): partial for good.
+		historyCursor: v.optional(v.string()),
+		historyState: v.optional(v.union(v.literal('pending'), v.literal('done'))),
+		historyUpdatedAt: v.optional(v.number()),
+		isHistoryIncomplete: v.optional(v.boolean()),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.
 		overview: v.optional(
 			v.object({

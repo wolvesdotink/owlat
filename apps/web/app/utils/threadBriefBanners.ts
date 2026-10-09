@@ -28,6 +28,7 @@ const PARTIAL_REASON: Partial<Record<GapReason, string>> = {
 	failed: 'components.brief.incomplete.partialReason.failed',
 	undecryptable: 'components.brief.incomplete.partialReason.undecryptable',
 	pending: 'components.brief.incomplete.partialReason.pending',
+	history: 'components.brief.incomplete.partialReason.history',
 };
 
 /** What the banners read: the same on a personal brief and a team view. */

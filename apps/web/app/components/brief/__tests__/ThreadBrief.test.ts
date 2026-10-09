@@ -154,6 +154,7 @@ describe('ThreadBrief', () => {
 		const contract = w.findAll('[data-testid="brief-item"]')[1]!;
 		const actions = contract.findAll('[data-action]').map((b) => b.attributes('data-action'));
 		expect(actions).toEqual(['reply', 'decline', 'markDone']);
+		expect(contract.find('[data-testid="brief-item-menu-hint"]').exists()).toBe(true);
 		await contract.get('[data-action="markDone"]').trigger('click');
 		expect(w.emitted('react')?.[0]?.[1]).toBe('markDone');
 	});
@@ -167,6 +168,8 @@ describe('ThreadBrief', () => {
 		expect(proposal.find('[data-testid="brief-item-primary"]').exists()).toBe(false);
 		const actions = proposal.findAll('[data-action]').map((b) => b.attributes('data-action'));
 		expect(actions).toEqual(['confirmProposal', 'notARequest']);
+		// No Mark done in this menu, so no hint about what Mark done records.
+		expect(proposal.find('[data-testid="brief-item-menu-hint"]').exists()).toBe(false);
 		expect(proposal.get('[data-action="confirmProposal"]').text()).toBe('Track');
 		await proposal.get('[data-action="confirmProposal"]').trigger('click');
 		expect(w.emitted('react')?.[0]?.[1]).toBe('confirmProposal');

@@ -202,7 +202,11 @@ const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {
 					>
 						{{ actionLabel(action) }}
 					</button>
-					<p v-if="isOpen" class="max-w-56 px-3 pb-1.5 pt-1 text-2xs text-text-tertiary">
+					<p
+						v-if="isOpen && menu.includes('markDone')"
+						class="max-w-56 px-3 pb-1.5 pt-1 text-2xs text-text-tertiary"
+						data-testid="brief-item-menu-hint"
+					>
 						{{ t('components.brief.item.menuHint') }}
 					</p>
 				</template>

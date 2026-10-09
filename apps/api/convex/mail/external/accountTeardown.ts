@@ -39,6 +39,7 @@ import { deleteStoredAccessToken } from './accessTokenStore';
 import { listMailboxesOnAddress } from '../mailbox/addressResolution';
 import type { Doc } from '../../_generated/dataModel';
 import { deleteMailThreadCatchUps } from '../legacySummaryRows';
+import { deleteBackfill } from '../interpret/backfill';
 import { purgeThreadBrief } from '../interpret/purgeRun';
 import { deleteResourceUploads, mailThreadUploadKey } from '../../storage/uploads';
 import { deleteAskSessionsForDraft } from '../ai/composeDraftStore';
@@ -102,6 +103,8 @@ export async function stopExternalAccountSync(
 	if (reason !== 'move') {
 		// Hide from the inbox UI (requireMailboxAccess refuses non-active rows).
 		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
+		// And stop the thread brief's backfill: nothing more is spent on it.
+		await deleteBackfill(ctx, account.mailboxId);
 	}
 	await ctx.db.insert('mailAuditLog', {
 		mailboxId: account.mailboxId,
@@ -299,6 +302,7 @@ export const _purgeChunk = internalMutation({
 		for (const mv of moves) await ctx.db.delete(mv._id);
 
 		await ctx.db.delete(args.accountId);
+		await deleteBackfill(ctx, args.mailboxId);
 		await deleteMailboxUsage(ctx, args.mailboxId);
 		await deleteMailboxCounters(ctx, args.mailboxId);
 		await ctx.db.delete(args.mailboxId);

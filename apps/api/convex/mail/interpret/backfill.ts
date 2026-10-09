@@ -7,11 +7,14 @@
  * Shaped like the attachment and body-search backfills: one job row per
  * mailbox (`interpretBackfillJobs`), started and cancelled by the mailbox
  * owner, and a self-rescheduling `runBatch` that pages the mailbox's threads
- * newest first down to the cutoff. Each batch hands at most
- * {@link THREADS_PER_BATCH} threads to `enqueueThreadInterpretation`
- * (`backfillSources.ts`, which never notifies and never touches the Reply
- * Queue), then waits {@link BATCH_INTERVAL_MS} so the runs it scheduled are
- * billed before the next batch asks the spend gate again.
+ * newest first down to the cutoff. Each batch starts (or resumes) the history
+ * of at most {@link THREADS_PER_BATCH} threads (`backfillSources.ts`: one
+ * page now, the rest chained per thread through {@link continueHistory};
+ * nothing notifies and nothing touches the Reply Queue), then waits
+ * {@link BATCH_INTERVAL_MS} so the runs it scheduled are billed before the
+ * next batch asks the spend gate again. Every batch carries the job's
+ * `generation`, so a batch of a cancelled run never joins a later one, and a
+ * mailbox that is no longer active ends its job.
  *
  * Bounded and budgeted:
  *   - every batch first asks the interpretation gate (`gate.ts`: the `ai`
@@ -40,7 +43,15 @@ import { postboxMutation } from '../_helpers';
 import { requireMailboxAccess } from '../permissions';
 import { modeOfMailbox } from './briefTop';
 import { interpretGate } from './gate';
-import { enqueueThreadInterpretation, isActiveThread, RUN_SPACING_MS } from './backfillSources';
+import {
+	enqueueHistoryPage,
+	isActiveThread,
+	isHistoryRunning,
+	RUN_SPACING_MS,
+} from './backfillSources';
+import { loadBriefRow } from './briefRow';
+import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
+import type { InterpretMode } from '@owlat/shared/threadBrief';
 
 /** How far back the walk reaches (D5). */
 export const BACKFILL_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -84,8 +95,10 @@ export async function startBackfill(
 		threadCount: 0,
 		messageCount: 0,
 	};
+	const generation = (existing?.generation ?? 0) + 1;
 	const running = {
 		status: 'running' as const,
+		generation,
 		pausedReason: undefined,
 		runThreadCount: 0,
 		updatedAt: now,
@@ -104,8 +117,20 @@ export async function startBackfill(
 			startedAt: now,
 		});
 	}
-	await ctx.scheduler.runAfter(0, internal.mail.interpret.backfill.runBatch, { mailboxId });
+	await ctx.scheduler.runAfter(0, internal.mail.interpret.backfill.runBatch, {
+		mailboxId,
+		generation,
+	});
 	return { started: true };
+}
+
+/**
+ * Stop and delete a mailbox's walk (the mailbox is disconnected or purged).
+ * A batch still scheduled finds no job and does nothing.
+ */
+export async function deleteBackfill(ctx: MutationCtx, mailboxId: Id<'mailboxes'>): Promise<void> {
+	const job = await readJob(ctx, mailboxId);
+	if (job) await ctx.db.delete(job._id);
 }
 
 // public: soft-auth — returns null for anonymous; mailbox access is enforced in-handler
@@ -182,13 +207,15 @@ async function pause(ctx: MutationCtx, job: Job, reason: NonNullable<Job['paused
 
 /** One page of threads, then the next batch after {@link BATCH_INTERVAL_MS}. */
 export const runBatch = internalMutation({
-	args: { mailboxId: v.id('mailboxes') },
+	args: { mailboxId: v.id('mailboxes'), generation: v.number() },
 	handler: async (ctx, args): Promise<void> => {
-		// Re-read every batch, so a cancel between pages actually stops the walk.
+		// Re-read every batch, so a cancel between pages actually stops the walk,
+		// and a batch of an earlier run (cancel, then start again) stops here.
 		const job = await readJob(ctx, args.mailboxId);
-		if (!job || job.status !== 'running') return;
+		if (!job || job.status !== 'running' || job.generation !== args.generation) return;
 		const mailbox = await ctx.db.get(args.mailboxId);
-		if (!mailbox) {
+		// A disconnected or purged mailbox spends nothing more.
+		if (!mailbox || mailbox.status !== 'active') {
 			await ctx.db.delete(job._id);
 			return;
 		}
@@ -204,22 +231,21 @@ export const runBatch = internalMutation({
 			.order('desc')
 			.paginate({ cursor: job.cursor ?? null, numItems: THREADS_PER_BATCH });
 
+		const now = Date.now();
 		let threads = 0;
 		let messages = 0;
 		for (const thread of page) {
 			if (!isActiveThread(thread)) continue;
-			const scheduled = await enqueueThreadInterpretation(
-				ctx,
-				{ kind: 'mail', id: thread._id },
-				{ startDelayMs: messages * RUN_SPACING_MS }
-			);
-			if (scheduled > 0) {
-				threads++;
-				messages += scheduled;
-			}
+			const ref = { kind: 'mail' as const, id: thread._id };
+			// A history another chain is reading, or one read through, is left alone.
+			if (isHistoryRunning(await loadBriefRow(ctx, ref), now)) continue;
+			const outcome = await enqueueHistoryPage(ctx, ref, {
+				startDelayMs: messages * RUN_SPACING_MS,
+			});
+			if (outcome.scheduled > 0 || !outcome.isDone) threads++;
+			messages += outcome.scheduled;
 		}
 
-		const now = Date.now();
 		await ctx.db.patch(job._id, {
 			cursor: isDone ? undefined : continueCursor,
 			scannedCount: job.scannedCount + page.length,
@@ -234,8 +260,37 @@ export const runBatch = internalMutation({
 			await ctx.scheduler.runAfter(
 				messages > 0 ? BATCH_INTERVAL_MS : 0,
 				internal.mail.interpret.backfill.runBatch,
-				{ mailboxId: args.mailboxId }
+				{ mailboxId: args.mailboxId, generation: args.generation }
 			);
 		}
 	},
 });
+
+/**
+ * The next page of one thread's history (`backfillSources.ts`). Only the
+ * chain holding the brief's current cursor moves it; it stops while the
+ * spend gate refuses (cursor kept, the next walk or open resumes it) and for
+ * a thread or mailbox that is gone or no longer active.
+ */
+export const continueHistory = internalMutation({
+	args: { threadRef: threadRefValidator, cursor: v.string() },
+	handler: async (ctx, args): Promise<void> => {
+		const brief = await loadBriefRow(ctx, args.threadRef);
+		if (brief?.historyState !== 'pending' || brief.historyCursor !== args.cursor) return;
+		const mode = await activeModeOf(ctx, args.threadRef);
+		if (!mode) return;
+		if (!(await interpretGate(ctx, mode)).isAllowed) return;
+		await enqueueHistoryPage(ctx, args.threadRef);
+	},
+});
+
+/** The thread's mode while it can still be read: null for a gone thread or an inactive mailbox. */
+export async function activeModeOf(
+	ctx: MutationCtx,
+	ref: ThreadRef
+): Promise<InterpretMode | null> {
+	if (ref.kind === 'team') return (await ctx.db.get(ref.id)) ? 'actions' : null;
+	const thread = await ctx.db.get(ref.id);
+	const mailbox = thread ? await ctx.db.get(thread.mailboxId) : null;
+	return mailbox?.status === 'active' ? modeOfMailbox(mailbox) : null;
+}

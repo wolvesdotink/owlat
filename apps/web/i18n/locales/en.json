@@ -1063,7 +1063,8 @@
 					"tooLong": "{done} of {total} messages are in this overview. The rest was too long to process.",
 					"failed": "{done} of {total} messages are in this overview. Reading the rest failed.",
 					"undecryptable": "{done} of {total} messages are in this overview. The rest could not be decrypted.",
-					"pending": "{done} of {total} messages are in this overview. The rest is still being read."
+					"pending": "{done} of {total} messages are in this overview. The rest is still being read.",
+					"history": "{done} of {total} messages are in this overview. Some earlier replies were sent before Owlat kept their text, so they are not in it."
 				},
 				"pending": "Reading this thread. The overview fills in shortly.",
 				"none": {
@@ -1094,7 +1095,7 @@
 			},
 			"meta": {
 				"forYou": "{count} for you | {count} for you",
-				"waiting": "{count} waiting on them | {count} waiting on them"
+				"waiting": "{count} waiting on others | {count} waiting on others"
 			},
 			"cite": {
 				"showing": "Showing the source of “{label}”",
