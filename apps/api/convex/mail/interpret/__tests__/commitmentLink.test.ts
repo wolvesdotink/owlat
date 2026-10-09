@@ -107,9 +107,17 @@ describe('commitment links', () => {
 		expect(
 			(await t.run(async (ctx) => ctx.db.query('mailCommitments').first()))?.threadItemId
 		).toBeUndefined();
+		// The reducer links once it has inserted the message's items.
 		const item = await interpret(t, messageId, threadId);
-		// Called the way the reducer will, after it inserted the message's items.
-		// Nothing created, or a Team Inbox source: no link.
+		const commitment = await t.run(async (ctx) => ctx.db.query('mailCommitments').first());
+		expect(commitment?.threadItemId).toBe(item._id);
+		expect((await t.run(async (ctx) => ctx.db.get(item._id)))?.commitmentId).toBe(commitment?._id);
+
+		// The hook itself: nothing created, or a Team Inbox source, links nothing.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(commitment!._id, { threadItemId: undefined });
+			await ctx.db.patch(item._id, { commitmentId: undefined });
+		});
 		await t.run(async (ctx) => onItemsCreated(ctx, { kind: 'mail', id: messageId }, []));
 		await t.run(async (ctx) =>
 			onItemsCreated(ctx, { kind: 'inbound', id: 'x' as Id<'inboundMessages'> }, [item._id])

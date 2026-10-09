@@ -110,6 +110,28 @@ export async function readItemsPage(
 	};
 }
 
+/** A held update as the brief shows it: quotes and wording opened, sources left out. */
+async function openHeld(
+	held: NonNullable<Doc<'threadItems'>['pendingUpdate']>,
+	locale: AppLocale
+): Promise<NonNullable<OpenedItem['pendingUpdate']>> {
+	const { evidence, assertion: _assertion, display, transitions, ...fields } = held;
+	return {
+		...fields,
+		evidence: await openEvidence(evidence),
+		...(display ? { text: await openMessageBody(display[locale]) } : {}),
+		...(transitions
+			? {
+					transitions: transitions.map((t) => ({
+						...(t.to ? { to: t.to } : {}),
+						...(t.disposition ? { disposition: t.disposition } : {}),
+						at: t.at,
+					})),
+				}
+			: {}),
+	};
+}
+
 export async function openItem(row: Doc<'threadItems'>, locale: AppLocale): Promise<OpenedItem> {
 	return {
 		id: row._id,
@@ -137,14 +159,7 @@ export async function openItem(row: Doc<'threadItems'>, locale: AppLocale): Prom
 		...(row.replacedById ? { replacedById: row.replacedById } : {}),
 		...(row.possibleDuplicateOfId ? { possibleDuplicateOfId: row.possibleDuplicateOfId } : {}),
 		...(row.commitmentId ? { commitmentId: row.commitmentId } : {}),
-		...(row.pendingUpdate
-			? {
-					pendingUpdate: {
-						...row.pendingUpdate,
-						evidence: await openEvidence(row.pendingUpdate.evidence),
-					},
-				}
-			: {}),
+		...(row.pendingUpdate ? { pendingUpdate: await openHeld(row.pendingUpdate, locale) } : {}),
 		askedAt: row.askedAt,
 		updatedAt: row.updatedAt,
 	};

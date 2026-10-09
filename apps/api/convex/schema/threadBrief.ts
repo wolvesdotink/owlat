@@ -11,6 +11,8 @@ import {
 	activityVisibilityValidator,
 	briefCompletenessValidator,
 	claimIdValidator,
+	itemCountsValidator,
+	sourceCountsValidator,
 	coverageEntryValidator,
 	draftRefKindValidator,
 	evidenceValidator,
@@ -41,6 +43,8 @@ import {
 	newPromiseValidator,
 	ownerInputRefValidator,
 	participantRefValidator,
+	pendingUpdateValidator,
+	transitionSourceValidator,
 	planVerdictValidator,
 	responsePlanStanceValidator,
 	sourceManifestValidator,
@@ -259,14 +263,7 @@ export const threadBriefTables = {
 		// replay keeps the item's id.
 		// An unconfirmed claim's changes to this (tracked) item, held apart until
 		// it is verified or the user confirms it ("Check this change").
-		pendingUpdate: v.optional(
-			v.object({
-				evidence: v.array(evidenceValidator),
-				due: v.optional(itemDueValidator),
-				amount: v.optional(itemAmountValidator),
-				options: v.optional(v.array(v.string())),
-			})
-		),
+		pendingUpdate: v.optional(pendingUpdateValidator),
 		// Every claim key that ever produced or matched this item: the thread's
 		// identity record, consulted before content (mail/interpret/fold.ts).
 		// Message date of the transition that set the current status or
@@ -276,8 +273,8 @@ export const threadBriefTables = {
 		// `<interpretation sourceKey>` for a mail, `user:<id>` for a reaction,
 		// `op:<ref>` for a recorded operation. A purge of that source resets
 		// what it set (mail/interpret/transitionSources.ts).
-		statusSource: v.optional(v.object({ sourceKey: v.string(), at: v.number() })),
-		dispositionSource: v.optional(v.object({ sourceKey: v.string(), at: v.number() })),
+		statusSource: v.optional(transitionSourceValidator),
+		dispositionSource: v.optional(transitionSourceValidator),
 		lineageKeys: v.optional(v.array(v.string())),
 		lineage: v.optional(v.string()),
 		// Message date of the first evidence: the "age" of compareForYou.
@@ -348,6 +345,7 @@ export const threadBriefTables = {
 		),
 		// The source's lineage record (mail/interpret/reduceIdentity.ts).
 		claimIds: v.optional(v.array(claimIdValidator)),
+		isClaimRecordFull: v.optional(v.boolean()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -377,31 +375,19 @@ export const threadBriefTables = {
 		completeness: briefCompletenessValidator,
 		// Per-source counts of the current extractions (mail/interpret/counters.ts),
 		// maintained in the transaction that changes them; completeness reads them.
-		sourceCounts: v.optional(
-			v.object({
-				complete: v.number(),
-				partial: v.number(),
-				failed: v.number(),
-				unreadable: v.number(),
-				skipped: v.number(),
-			})
-		),
+		sourceCounts: v.optional(sourceCountsValidator),
 		// Item counts by list (open per responsibility, unconfirmed proposals,
 		// closed, untracked), maintained by every writer of an item's status,
 		// responsibility or verify state. `proposal` is absent on rows written
 		// before it existed (read as 0).
-		itemCounts: v.optional(
-			v.object({
-				us: v.number(),
-				them: v.number(),
-				unclear: v.number(),
-				proposal: v.optional(v.number()),
-				closed: v.number(),
-				hidden: v.number(),
-			})
-		),
+		itemCounts: v.optional(itemCountsValidator),
 		// Bumped by every purge touching the thread.
 		deletionEpoch: v.number(),
+		// Wording-only matches of pending transitions still being scanned
+		// (mail/interpret/pendingMatch.ts): the brief stays partial meanwhile.
+		pendingMatchRuns: v.optional(v.number()),
+		// The last fold read only part of the thread's items or facts (R2): partial.
+		isFoldScanCut: v.optional(v.boolean()),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.
 		overview: v.optional(
 			v.object({
