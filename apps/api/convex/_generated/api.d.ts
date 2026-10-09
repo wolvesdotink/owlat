@@ -1182,6 +1182,7 @@ import type * as mail_imap_serverRegistry from '../mail/imap/serverRegistry.js';
 import type * as mail_imap_session from '../mail/imap/session.js';
 import type * as mail_interpret___eval___corpus from '../mail/interpret/__eval__/corpus.js';
 import type * as mail_interpret___eval___replay from '../mail/interpret/__eval__/replay.js';
+import type * as mail_interpret___eval___reportFile from '../mail/interpret/__eval__/reportFile.js';
 import type * as mail_interpret___eval___runEval from '../mail/interpret/__eval__/runEval.js';
 import type * as mail_interpret_briefShape from '../mail/interpret/briefShape.js';
 import type * as mail_interpret_briefTop from '../mail/interpret/briefTop.js';
@@ -2769,6 +2770,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/imap/session': typeof mail_imap_session;
 	'mail/interpret/__eval__/corpus': typeof mail_interpret___eval___corpus;
 	'mail/interpret/__eval__/replay': typeof mail_interpret___eval___replay;
+	'mail/interpret/__eval__/reportFile': typeof mail_interpret___eval___reportFile;
 	'mail/interpret/__eval__/runEval': typeof mail_interpret___eval___runEval;
 	'mail/interpret/briefShape': typeof mail_interpret_briefShape;
 	'mail/interpret/briefTop': typeof mail_interpret_briefTop;
