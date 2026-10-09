@@ -195,7 +195,6 @@ const keptReply = useKeptTeamComposer(() => threadId.value, composerRef);
 const answerNav = useAnswerModeNav({ currentPath: () => route.path });
 const queueSession = useAnswerQueueSession();
 const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
-
 // However the page is left (Esc, a link, the queue moving on), keep the text.
 onBeforeUnmount(keptReply.keep);
 
@@ -426,10 +425,9 @@ onBeforeUnmount(() => {
 						</div>
 						<template v-else>
 							<AnswerTeamPlan
-								v-if="assist.aiEnabled.value"
 								:plan="assist.plan"
 								:can-attach="attachmentsAllowed"
-								@files="(list) => (files.addFiles(list), assist.plan.recheck())"
+								@files="files.addFiles"
 							/>
 							<AnswerTeamReusedAnswers
 								v-if="reply.reusedAnswers.value.length > 0"

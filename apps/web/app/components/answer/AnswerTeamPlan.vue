@@ -7,7 +7,8 @@
  * file-claim banner. The thread's stream and its pinned "Open for the team"
  * list are the conversation column's; this is only the reply's side of them.
  *
- * Folds to its heading line ("Your reply covers · 3 of 4 selected"); open by
+ * Shown with the `ai` flag on (the plan's coverage is a model check). Folds
+ * to its heading line ("Your reply covers · 3 of 4 selected"); open by
  * default while the list is short.
  */
 import { provide } from 'vue';
@@ -27,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{ files: [files: File[]] }>();
 
 const { t } = useI18n();
+const { isEnabled } = useFeatureFlag();
 
 provide(RESPONSE_PLAN, props.plan.view);
 // Item sources are the conversation column's to show; nothing to reveal here.
@@ -38,6 +40,12 @@ const selectedSet = computed(() => new Set(props.plan.selected.value));
 const ours = computed(() => items.value.filter((i) => i.responsibility !== 'unclear'));
 const unclear = computed(() => items.value.filter((i) => i.responsibility === 'unclear'));
 
+/** Hand the picked files to the reply, and check the draft again once they land. */
+function onFiles(list: File[]) {
+	emit('files', list);
+	props.plan.recheck();
+}
+
 function toggle(item: BriefItemView) {
 	const next = new Set(selectedSet.value);
 	if (next.has(item.id)) next.delete(item.id);
@@ -48,7 +56,7 @@ function toggle(item: BriefItemView) {
 
 <template>
 	<section
-		v-if="items.length > 0 || plan.missingFiles.value.length > 0"
+		v-if="isEnabled('ai') && (items.length > 0 || plan.missingFiles.value.length > 0)"
 		class="border-b border-border-subtle"
 		data-testid="answer-team-plan"
 	>
@@ -99,7 +107,7 @@ function toggle(item: BriefItemView) {
 			class="mb-3"
 			:claims="plan.missingFiles.value"
 			:can-attach="canAttach"
-			@files="emit('files', $event)"
+			@files="onFiles"
 		/>
 	</section>
 </template>

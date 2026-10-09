@@ -35,6 +35,7 @@ vi.mock('~/composables/useThreadBrief', async () => {
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));
 });
 
 const { default: AnswerBriefCard } = await import('../AnswerBriefCard.vue');
