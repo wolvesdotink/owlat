@@ -365,7 +365,7 @@ describe('F3: a survivor is redacted, reverted and re-read', () => {
 		expect(item?.completion).toBeUndefined();
 		expect(item?.statusSource).toBeUndefined();
 		expect(await openMessageBody(item!.assertion)).toBe('Details removed with the deleted message');
-		expect(item?.redactedFields).toContain('due');
+		expect(item?.redactedFields).toContain('assertion');
 		expect(item?.lineageKeys).toEqual([itemLineage(`mail:${srcB.id}`, claim)]);
 		// Its saved values may restore what the purged message said: the undo snapshot goes.
 		expect(item?.confirmedFrom).toBeUndefined();

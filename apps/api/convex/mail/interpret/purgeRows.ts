@@ -12,13 +12,8 @@ import type { MutationCtx } from '../../_generated/server';
 import type { ThreadBriefTable } from '../../schema/threadBrief';
 import { threadRefFromFields, threadRefKey, type ThreadRef } from '../../lib/validators/threadRef';
 import { loadBriefRow } from './briefRow';
-import {
-	completenessOfCounts,
-	EMPTY_SOURCE_COUNTS,
-	shiftCount,
-	sourceBucketOf,
-	type SourceBucket,
-} from './counters';
+import { briefCompleteness, isRepairMarked, shiftPendingRepairs } from './purgeRepairs';
+import { EMPTY_SOURCE_COUNTS, shiftCount, sourceBucketOf, type SourceBucket } from './counters';
 
 export type BriefRow = Doc<ThreadBriefTable>;
 
@@ -173,6 +168,11 @@ export async function deleteExtractions(
 	for (const row of rows) {
 		await ctx.db.delete(row._id);
 		if (row.isCounted !== true) continue;
+		// A marked row's outstanding repair goes with it (purgeRepairs.ts).
+		if (isRepairMarked(row)) {
+			const brief = await loadBriefRow(ctx, threadRefFromFields(row));
+			if (brief) await shiftPendingRepairs(ctx, brief._id, -1);
+		}
 		const ref = threadRefFromFields(row);
 		const key = threadRefKey(ref);
 		const entry = shifts.get(key) ?? { ref, buckets: [] };
@@ -197,5 +197,5 @@ export async function recomputeCompleteness(
 	ref: ThreadRef
 ): Promise<Doc<'threadBriefs'>['completeness']> {
 	const brief = await loadBriefRow(ctx, ref);
-	return completenessOfCounts(brief?.sourceCounts ?? EMPTY_SOURCE_COUNTS);
+	return brief ? briefCompleteness(brief) : 'none';
 }

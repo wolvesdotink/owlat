@@ -22,8 +22,7 @@ import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
-import { EMPTY_SOURCE_COUNTS, shiftCount, sourceBucketOf } from './counters';
-import { recomputeCompleteness } from './purgeRows';
+import { briefCompleteness, isRepairMarked, markRepair } from './purgeRepairs';
 import {
 	scanRange,
 	type DrainBudget,
@@ -35,7 +34,7 @@ import {
 /** Ask sessions of one draft read at a time (one per owner). */
 const SESSION_CHUNK = 64;
 /** The machine reason on an extraction marked for a re-read after a purge. */
-export const PURGE_RECHECK_CODE = 'purge_recheck';
+export { PURGE_RECHECK_CODE } from './purgeRepairs';
 
 /** A plan without its references to `gone` items, marked stale. Pure. */
 export function stripPlan(
@@ -269,23 +268,13 @@ const reinterpretRange: PurgeRange = async (ctx, run) => {
 				)
 				.first();
 			budget.charge(counted);
-			if (!counted || counted.status !== 'complete' || !counted.payload) return true;
-			await ctx.db.patch(counted._id, {
-				status: 'partial',
-				errorCode: PURGE_RECHECK_CODE,
-				nextRetryAt: Date.now(),
-				updatedAt: Date.now(),
-			});
+			if (!counted?.payload) return true;
+			// A complete read is marked for repair; one an earlier purge marked
+			// (still outstanding) is scheduled again, counted once.
+			if (counted.status !== 'complete' && !isRepairMarked(counted)) return true;
 			const brief = await loadBriefRow(ctx, ref);
-			if (brief) {
-				await ctx.db.patch(brief._id, {
-					sourceCounts: shiftCount(
-						brief.sourceCounts ?? EMPTY_SOURCE_COUNTS,
-						sourceBucketOf(counted),
-						'partial'
-					),
-				});
-			}
+			if (!brief) return true;
+			await markRepair(ctx, brief, counted);
 			await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
 				source: snapshot.source,
 			});
@@ -316,14 +305,15 @@ export async function settleSourcesJob(
 	}
 	const keys = new Set(state.sources.map(interpretationSourceKey));
 	const isCheckpointGone = !!brief.checkpoint && keys.has(brief.checkpoint.sourceKey);
-	const counted = await recomputeCompleteness(ctx, ref);
 	const fresh = (await ctx.db.get(brief._id)) ?? brief;
 	// The epoch was bumped when the job started; bumping it again here would
 	// turn the re-reads scheduled above (an earlier slice) into `erased`.
 	await ctx.db.patch(brief._id, {
 		interpretationRevision: fresh.interpretationRevision + 1,
 		overview: undefined,
-		completeness: state.isSurvivorChanged ? 'partial' : counted,
+		// Derived like the reducer does (purgeRepairs.ts): partial while a
+		// repair is outstanding, never forced (a repair may already have landed).
+		completeness: briefCompleteness(fresh),
 		...(isCheckpointGone ? { checkpoint: undefined } : {}),
 		updatedAt: Date.now(),
 	});

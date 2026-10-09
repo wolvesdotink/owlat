@@ -77,16 +77,29 @@ export function documentBytes(doc: unknown): number {
 		: getConvexSize(doc as Value) + DOCUMENT_OVERHEAD_BYTES;
 }
 
+/**
+ * Index range reads one slice may make, whatever else it has left. A hard cap
+ * the progress rule never lifts: Convex fails a transaction past 4,096, and a
+ * walk over empty sub-ranges makes no progress to stop it (review round 4, F4).
+ * The sub-ranges a slice emptied are kept in the job cursor (`drainSteps`).
+ */
+export const MAX_RANGE_READS = 1000;
+
 /** A budget of `rows` rows (each range query counts as one) and `bytes` fetched bytes. */
 export function unitBudget(rows: number, bytes: number = 8 * MAX_DOCUMENT_BYTES): DrainBudget {
 	let spentRows = 0;
 	let spentBytes = 0;
+	let spentRanges = 0;
 	let handled = 0;
 	const affordable = () => Math.floor((bytes - spentBytes) / MAX_DOCUMENT_BYTES);
 	return {
-		// Until a row is handled the slice is never exhausted: every slice moves
-		// (review round 3 F4). A zero budget starts no work at all.
-		isExhausted: () => rows <= 0 || (handled > 0 && (spentRows >= rows || affordable() < 1)),
+		// Until a row is handled the slice is never exhausted by rows or bytes:
+		// every slice moves (review round 3 F4). The range cap always holds. A
+		// zero budget starts no work at all.
+		isExhausted: () =>
+			rows <= 0 ||
+			spentRanges >= MAX_RANGE_READS ||
+			(handled > 0 && (spentRows >= rows || affordable() < 1)),
 		// Before the first handled row, one row at a time: a slice whose first
 		// parent is large never fetches a whole batch it cannot then handle.
 		chunk: (max) =>
@@ -97,6 +110,7 @@ export function unitBudget(rows: number, bytes: number = 8 * MAX_DOCUMENT_BYTES)
 		},
 		range: () => {
 			spentRows += 1;
+			spentRanges += 1;
 		},
 		progress: () => {
 			handled += 1;

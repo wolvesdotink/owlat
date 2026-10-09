@@ -41,6 +41,7 @@ import {
 import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
 import type { PlanHeld } from './reduceHeld';
 import { heldFieldsOf, sourcesOfClaim, type ItemFieldSources } from './heldSources';
+import { applyRefill, type RefilledFields } from './redactedRefill';
 
 /** Evidence in memory: stored (sealed quote) or new (plaintext quote, `isPlain`). */
 export type MemEvidence = Evidence & { isPlain?: true };
@@ -64,6 +65,8 @@ export interface MemItem extends Omit<PlanItem, 'evidence'> {
 	possibleDuplicateOfId?: Id<'threadItems'>;
 	/** Which source set each shown field (round 8; `heldSources.ts`). */
 	fieldSources?: ItemFieldSources;
+	/** Redacted fields a verified claim refilled, still to be written (`redactedRefill.ts`). */
+	refilled?: RefilledFields;
 	/** Changes held apart until confirmed (`reduceHeld.ts`); wording in plaintext. */
 	pendingUpdate?: MemHeld;
 	/** The stored held update's wording, opened (the writer compares against it). */
@@ -326,6 +329,7 @@ export function applyPlan(
 			item.redactedFields = undefined;
 			item.fieldSources = sourcesOfClaim(claim, setBy);
 		}
+		if (patch.refill) applyRefill(item, patch.refill.claim, patch.refill.fields, setBy);
 		if (patch.matched?.length) {
 			item.lineageKeys = [
 				...new Set([

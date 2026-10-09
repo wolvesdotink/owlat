@@ -16,7 +16,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { threadRefKey } from '../../lib/validators/threadRef';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
-import type { DrainBudget } from '../../mail/interpret/purgeDrain';
+import { MAX_RANGE_READS, type DrainBudget } from '../../mail/interpret/purgeDrain';
 import { drivePurgeJob } from '../../mail/interpret/purgeRun';
 import type { ErasureBudget } from './budget';
 import { drainEach } from './phaseKit';
@@ -37,7 +37,7 @@ export function walkerDrainBudget(budget: ErasureBudget): DrainBudget {
 	let handled = 0;
 	return {
 		// Every walker transaction handles at least one row of the job (review round 3 F4).
-		isExhausted: () => handled > 0 && budget.isExhausted,
+		isExhausted: () => ranges >= MAX_RANGE_READS || (handled > 0 && budget.isExhausted),
 		chunk: (max) => (handled === 0 ? 1 : budget.chunk(max)),
 		charge: (doc) => {
 			if (doc) budget.chargeRead(doc);

@@ -43,10 +43,12 @@ import type * as mail_interpret_purgeDrain from '../mail/interpret/purgeDrain.js
 import type * as mail_interpret_purgeJobs from '../mail/interpret/purgeJobs.js';
 import type * as mail_interpret_purgeLinks from '../mail/interpret/purgeLinks.js';
 import type * as mail_interpret_purgeQuestions from '../mail/interpret/purgeQuestions.js';
+import type * as mail_interpret_purgeRepairs from '../mail/interpret/purgeRepairs.js';
 import type * as mail_interpret_purgeRun from '../mail/interpret/purgeRun.js';
 import type * as mail_interpret_purgeThread from '../mail/interpret/purgeThread.js';
 import type * as mail_interpret_reactionRules from '../mail/interpret/reactionRules.js';
 import type * as mail_interpret_reactions from '../mail/interpret/reactions.js';
+import type * as mail_interpret_redactedRefill from '../mail/interpret/redactedRefill.js';
 import type * as mail_interpret_reduce from '../mail/interpret/reduce.js';
 import type * as mail_interpret_reduceHeld from '../mail/interpret/reduceHeld.js';
 import type * as mail_interpret_reduceIdentity from '../mail/interpret/reduceIdentity.js';
@@ -1640,10 +1642,12 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/purgeJobs': typeof mail_interpret_purgeJobs;
 	'mail/interpret/purgeLinks': typeof mail_interpret_purgeLinks;
 	'mail/interpret/purgeQuestions': typeof mail_interpret_purgeQuestions;
+	'mail/interpret/purgeRepairs': typeof mail_interpret_purgeRepairs;
 	'mail/interpret/purgeRun': typeof mail_interpret_purgeRun;
 	'mail/interpret/purgeThread': typeof mail_interpret_purgeThread;
 	'mail/interpret/reactionRules': typeof mail_interpret_reactionRules;
 	'mail/interpret/reactions': typeof mail_interpret_reactions;
+	'mail/interpret/redactedRefill': typeof mail_interpret_redactedRefill;
 	'mail/interpret/reduce': typeof mail_interpret_reduce;
 	'mail/interpret/reduceHeld': typeof mail_interpret_reduceHeld;
 	'mail/interpret/reduceIdentity': typeof mail_interpret_reduceIdentity;

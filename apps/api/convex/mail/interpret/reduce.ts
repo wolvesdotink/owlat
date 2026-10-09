@@ -50,6 +50,7 @@ import {
 } from './reduceIdentity';
 import { writeState } from './reduceWrite';
 import { EMPTY_SOURCE_COUNTS, completenessOfCounts, shiftCount, sourceBucketOf } from './counters';
+import { abandonRepair, isRepairMarked, shiftPendingRepairs } from './purgeRepairs';
 import { nextRetryAtOf } from './retry';
 import { ATTEMPT_SUFFIX } from './load';
 import { sourceVersionOf } from './sourceVersion';
@@ -117,7 +118,12 @@ export const applyInterpretation = internalMutation({
 			await ctx.db.patch(brief._id, { mode, overview: undefined, updatedAt: Date.now() });
 		}
 		if (mode !== args.mode) return { outcome: 'modeChanged' };
-		if (brief.deletionEpoch !== args.deletionEpoch) return { outcome: 'erased' };
+		if (brief.deletionEpoch !== args.deletionEpoch) {
+			// A purge repair refused here cannot leave its counter behind (purgeRepairs.ts).
+			const { counted } = await markedRowsOf(ctx, interpretationSourceKey(args.source));
+			await abandonRepair(ctx, brief._id, counted);
+			return { outcome: 'erased' };
+		}
 		if (
 			args.sourceVersion !== undefined &&
 			(await sourceVersionOf(ctx, args.source)) !== args.sourceVersion
@@ -327,9 +333,15 @@ export const applyInterpretation = internalMutation({
 			});
 		}
 
-		// A pending-transition scan in flight keeps the brief partial (round 6 R2).
+		// This run recorded a purge repair's result: the repair is no longer outstanding.
+		if (previousCounted && isRepairMarked(previousCounted)) {
+			await shiftPendingRepairs(ctx, brief._id, -1);
+		}
+		// A pending-transition scan in flight keeps the brief partial (round 6 R2),
+		// and so does an outstanding purge repair (purgeRepairs.ts).
 		const briefNow = await ctx.db.get(brief._id);
-		const isScanning = isMatching || (briefNow?.pendingMatchRuns ?? 0) > 0;
+		const isScanning =
+			isMatching || (briefNow?.pendingMatchRuns ?? 0) > 0 || (briefNow?.pendingRepairs ?? 0) > 0;
 		// So does a fold that read only part of the thread (round 6 W-F8).
 		const isScanCut = entry ? isItemScanCut : briefNow?.isFoldScanCut === true;
 		const completeness = isScanning || isScanCut ? 'partial' : completenessOfCounts(sourceCounts);
