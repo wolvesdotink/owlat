@@ -167,6 +167,16 @@ export function useAnswerAskSession(opts: {
 		claim(view);
 	}
 
+	/** The host's pre-draft hook; false when it failed (the host said why). */
+	async function runBeforeDraft(target: AskTarget): Promise<boolean> {
+		try {
+			await opts.beforeDraft?.(target);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
 	async function start(instruction: string) {
 		const composer = opts.composer();
 		if (!composer || busy.value) return;
@@ -176,7 +186,8 @@ export function useAnswerAskSession(opts: {
 		const target: AskTarget | null =
 			known?.kind === 'teamThread' ? known : draftId ? { kind: 'mailDraft', draftId } : null;
 		if (!target) return;
-		await opts.beforeDraft?.(target);
+		// A failed pre-draft write stops the draft: it would read old choices.
+		if (!(await runBeforeDraft(target))) return;
 		const trimmed = instruction.trim();
 		idAtRunStart =
 			sessionQuery.data.value === undefined
@@ -198,7 +209,7 @@ export function useAnswerAskSession(opts: {
 		// What this answer brings (a file, the draft) is this page's from now on.
 		claim(current);
 		const target = opts.target();
-		if (target) await opts.beforeDraft?.(target);
+		if (target && !(await runBeforeDraft(target))) return;
 		await ownRun(() =>
 			answerOp.run({
 				sessionId: current.sessionId,

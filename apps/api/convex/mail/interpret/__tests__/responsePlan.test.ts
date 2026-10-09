@@ -15,7 +15,14 @@ import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { enableFeatures } from '../../../__tests__/factories';
 import type * as LlmDispatch from '../../../lib/llm/dispatch';
-import { modules, reduceItem, reduceResult, seedMailThread, type Test } from './interpret.testlib';
+import {
+	modules,
+	reduceItem,
+	reduceResult,
+	seedMailThread,
+	seedTeamThread,
+	type Test,
+} from './interpret.testlib';
 
 const session = vi.hoisted(() => ({
 	current: { userId: 'user-A', role: 'owner', activeOrganizationId: 'org-1' } as {
@@ -492,5 +499,33 @@ describe('review round 1', () => {
 				draftHash: 'prepared-hash',
 			}),
 		]);
+	});
+});
+
+describe('review round 2: the team context reads the answered message (F2)', () => {
+	it('takes the target’s message, the newest without one, and refuses another thread’s', async () => {
+		const t = harness();
+		const { threadId, inboundId } = await seedTeamThread(t);
+		const other = await seedTeamThread(t);
+		const newer = await t.run((ctx) =>
+			ctx.db.insert('inboundMessages', {
+				messageId: '<order-42-b@example.com>',
+				from: 'customer@example.com',
+				to: 'support@owlat.test',
+				subject: 'Order 42, again',
+				textBody: 'Any news?',
+				processingStatus: 'received',
+				receivedAt: SENT + 60_000,
+				threadId,
+			})
+		);
+		const load = (inboundMessageId?: Id<'inboundMessages'>) =>
+			t.query(internal.mail.ai.composeDraftContext.loadTeamThreadContext, {
+				threadId,
+				...(inboundMessageId ? { inboundMessageId } : {}),
+			});
+		expect((await load()).inboundMessageId).toBe(newer);
+		expect((await load(inboundId)).inboundMessageId).toBe(inboundId);
+		await expect(load(other.inboundId)).rejects.toThrow();
 	});
 });

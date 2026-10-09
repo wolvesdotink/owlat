@@ -12,7 +12,15 @@ import { v, type Infer } from 'convex/values';
 
 export const answerAskTargetValidator = v.union(
 	v.object({ kind: v.literal('mailDraft'), draftId: v.id('mailDrafts') }),
-	v.object({ kind: v.literal('teamThread'), threadId: v.id('conversationThreads') })
+	v.object({
+		kind: v.literal('teamThread'),
+		threadId: v.id('conversationThreads'),
+		// The inbound message the reply answers (the composer's target). Context,
+		// clarification slots and the response plan all read this one message, so
+		// a newer arrival does not swap them mid-session (review r2 F2). Absent:
+		// the thread's newest message. The session key stays the thread.
+		inboundMessageId: v.optional(v.id('inboundMessages')),
+	})
 );
 
 export type AnswerAskTarget = Infer<typeof answerAskTargetValidator>;

@@ -48,6 +48,9 @@ export interface CoverageResult extends PlanCoverage<Id<'threadItems'>> {
 	/** What the result is bound to (review D1): the stance revision and the text. */
 	planRevision: number;
 	draftHash: string;
+	/** The thread and item revisions it read: an item change invalidates it (review r2 F3). */
+	threadRevision: number;
+	itemRevisions: { itemId: Id<'threadItems'>; revision: number }[];
 	/** The model answered. Without it only the attachment claims are known. */
 	isChecked: boolean;
 	/** Stored as the draft's coverage; false when newer stances superseded it. */
@@ -133,6 +136,8 @@ export const check = authedAction({
 			isIncomplete: isCheckIncomplete,
 			planRevision: loaded.planRevision,
 			draftHash,
+			threadRevision: loaded.threadRevision,
+			itemRevisions: loaded.items.map((i) => ({ itemId: i.id, revision: i.revision })),
 			isChecked: output !== null,
 			isStored: stored.isStored,
 		};

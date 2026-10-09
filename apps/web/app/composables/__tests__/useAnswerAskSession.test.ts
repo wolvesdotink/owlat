@@ -514,3 +514,14 @@ describe('useAnswerAskSession: the pre-draft hook (review F11)', () => {
 		expect(order).toEqual(['before:d1', 'start', 'before:d1', 'answer']);
 	});
 });
+
+describe('useAnswerAskSession: a failed pre-draft write (review r2 F4)', () => {
+	it('stops the draft when the host could not write what the drafter reads', async () => {
+		const beforeDraft = vi.fn(async () => {
+			throw new Error('write failed');
+		});
+		const { api } = host(composerMock(), ref<string | null>('d1'), beforeDraft);
+		await api.start('');
+		expect(runs['start']).not.toHaveBeenCalled();
+	});
+});

@@ -36,7 +36,7 @@ import {
 } from './reducers';
 import { enqueuePush } from '../../push/events';
 import { recordTeamSendQueued } from '../../mail/interpret/sendActivity';
-import { deletePlansForDraft } from '../../mail/interpret/responsePlanState';
+import { deletePlansForDraft, retirePlansForDraft } from '../../mail/interpret/responsePlanState';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -400,8 +400,12 @@ export async function dispatch(
 	await settleClockForMessage(ctx, message, input);
 	// A rejected draft, or one a person took over, is no draft of the agent's any
 	// more: its response plan goes (SPEC §6; the send removes it at intake).
-	if (input.to === 'rejected' || (input.to === 'draft_ready' && input.manualTakeover === true)) {
+	if (input.to === 'rejected') {
 		await deletePlansForDraft(ctx, { kind: 'inboundDraft', id: message._id });
+	} else if (input.to === 'draft_ready' && input.manualTakeover === true && message.threadId) {
+		// A takeover keeps a retired marker: a late check of the agent's draft
+		// must not come back as the person's plan (review r2 F5).
+		await retirePlansForDraft(ctx, { kind: 'inboundDraft', id: message._id }, message.threadId);
 	}
 
 	// Maintain the singleton `instanceSettings.inboxStats` counter doc so

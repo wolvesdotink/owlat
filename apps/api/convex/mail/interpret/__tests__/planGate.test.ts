@@ -322,3 +322,78 @@ describe('recordShadow', () => {
 		});
 	});
 });
+
+describe('review round 2', () => {
+	async function acceptedPlan(t: Test, s: Awaited<ReturnType<typeof setup>>, duePhrase: string) {
+		return t.mutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
+			threadRef: s.ref,
+			draftRef: { kind: 'inboundDraft', id: s.inboundId },
+			threadRevision: s.brief.interpretationRevision,
+			itemRevisions: [{ itemId: s.item._id, revision: s.item.revision }],
+			stances: [{ itemId: s.item._id, stance: 'accept', source: 'owner' }],
+			coverage: [{ itemId: s.item._id, verdict: 'addressed', spans: [{ start: 0, end: 5 }] }],
+			fileClaims: [],
+			newPromises: [
+				{ text: 'refund it', spans: [{ start: 0, end: 5 }], duePhrase, itemId: s.item._id },
+			],
+			draftHash: await draftHashOf(DRAFT),
+			verdict: 'covered',
+			planRevision: 0,
+			attachmentSetHash: await attachmentSetHashOf([]),
+			isCheckIncomplete: false,
+		});
+	}
+
+	it('F1: a stored commitment with another deadline than the accepted item is held', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await enforce(t, true);
+		// The item's own deadline is "by Friday" (reduceItem fixture).
+		await acceptedPlan(t, s, 'by Wednesday');
+		expect((await check(t, s.inboundId)).objections).toEqual(['unauthorized_commitment']);
+		expect(
+			await t.run(async (ctx) => {
+				const message = (await ctx.db.get(s.inboundId))!;
+				return outgoingCoverageHold(ctx, message, { draftText: DRAFT, attachmentIds: [] });
+			})
+		).toContain('commitment nobody authorised');
+	});
+
+	it('F1: the item’s own deadline passes', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await acceptedPlan(t, s, 'by Friday');
+		expect((await check(t, s.inboundId)).objections).toEqual([]);
+	});
+
+	it('F5: a late check computed before a takeover is not stored', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		// A person takes the received message over to write the reply themselves.
+		const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: s.inboundId,
+			input: { to: 'draft_ready', at: SENT, manualTakeover: true },
+		});
+		expect(outcome).toMatchObject({ ok: true });
+		// The check read "no plan" (revision 0) before the takeover.
+		expect(await recordPlan(t, s, { planRevision: 0 })).toEqual({ isStored: false });
+		const rows = await t.run((ctx) => ctx.db.query('draftResponsePlans').collect());
+		expect(rows).toEqual([
+			expect.objectContaining({ planRevision: 1, verdict: 'stale', coverage: [] }),
+		]);
+	});
+
+	it('F5: a late check computed before Send intake is not stored', async () => {
+		const t = convexTest(schema, modules);
+		const s = await setup(t);
+		await recordPlan(t, s, { planRevision: 0 });
+		await t.run(async (ctx) => {
+			const { retirePlansForDraft } = await import('../responsePlanState');
+			await retirePlansForDraft(ctx, { kind: 'inboundDraft', id: s.inboundId }, s.threadId);
+		});
+		expect(await recordPlan(t, s, { planRevision: 0 })).toEqual({ isStored: false });
+		const [row] = await t.run((ctx) => ctx.db.query('draftResponsePlans').collect());
+		expect(row).toMatchObject({ planRevision: 1, verdict: 'stale', coverage: [] });
+		expect(row?.checkedPlanRevision).toBeUndefined();
+	});
+});

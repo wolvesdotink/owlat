@@ -203,6 +203,55 @@ export async function deletePlansForDraft(ctx: MutationCtx, draftRef: DraftRef):
 	for (const row of await planRowsOf(ctx, draftRef)) await ctx.db.delete(row._id);
 }
 
+/**
+ * Retire a team draft's plan: the draft was sent (Send intake) or a person
+ * took the reply over. The row stays as a generation marker with its revision
+ * bumped and everything checked cleared, so a check computed before (for the
+ * old revision, or for "no row" = revision 0) can never be stored after it
+ * (review r2 F5). A draft without a row gets a marker row.
+ */
+export async function retirePlansForDraft(
+	ctx: MutationCtx,
+	draftRef: Extract<DraftRef, { kind: 'inboundDraft' }>,
+	threadId: Id<'conversationThreads'>
+): Promise<void> {
+	const retired = {
+		stances: [],
+		coverage: [],
+		fileClaims: [],
+		newPromises: [],
+		ownerInputs: [],
+		itemRevisions: [],
+		draftHash: '',
+		verdict: 'stale' as const,
+		updatedAt: Date.now(),
+	};
+	const cleared = {
+		checkedPlanRevision: undefined,
+		attachmentSetHash: undefined,
+		isCheckIncomplete: undefined,
+	};
+	const rows = await planRowsOf(ctx, draftRef);
+	if (rows.length === 0) {
+		await ctx.db.insert('draftResponsePlans', {
+			...threadRefToFields({ kind: 'team', id: threadId }),
+			...draftRefToFields(draftRef),
+			...retired,
+			threadRevision: 0,
+			planRevision: 1,
+			createdAt: retired.updatedAt,
+		});
+		return;
+	}
+	for (const row of rows) {
+		await ctx.db.patch(row._id, {
+			...retired,
+			...cleared,
+			planRevision: (row.planRevision ?? 0) + 1,
+		});
+	}
+}
+
 /** A thread's plan as it stands: its items now, and the stances over them. */
 export interface PlanState {
 	threadRevision: number;
