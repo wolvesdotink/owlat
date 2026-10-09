@@ -34,7 +34,7 @@ import { answerModeQuery, threadBriefMutation } from '../_helpers';
 import { draftRefValidator, type DraftRef } from '../../lib/validators/responsePlan';
 import type { MutationCtx } from '../../_generated/server';
 import type { MutationSessionContext } from '../../lib/sessionOrganization';
-import { threadRefValidator } from '../../lib/validators/threadRef';
+import { rowMatchesThreadRef, threadRefValidator } from '../../lib/validators/threadRef';
 import { requireThreadReader } from './threadAccess';
 import type { PlanStance } from './responsePlanRules';
 import {
@@ -177,34 +177,42 @@ export const setStances = threadBriefMutation({
 	},
 	handler: async (ctx, args, session): Promise<{ planRevision: number }> => {
 		await requireDraftWriter(ctx, args.threadRef, args.draftRef, session);
-		const given = args.stances.map((s): PlanStance<ItemId> => ({
-			itemId: s.itemId,
-			stance: s.stance,
-			source: 'owner',
-		}));
-		const state = await loadPlanState(ctx, args.threadRef, args.draftRef, { chosen: given });
+		const state = await loadPlanState(ctx, args.threadRef, args.draftRef);
 		const open = new Set<string>(state.items.map((i) => i.id));
-		if (given.some((s) => !open.has(s.itemId))) {
-			throwInvalidInput('That item is not open in this thread');
+		// An item of this thread that was closed since the choice was made is
+		// skipped, not refused: a reply cannot cover it any more, and refusing
+		// the whole write would block every later one (review r4 F1). An item
+		// that is not this reply's to cover (another thread's, the other side's)
+		// is still refused.
+		const kept: PlanStance<ItemId>[] = [];
+		for (const s of args.stances) {
+			if (open.has(s.itemId)) {
+				kept.push({ itemId: s.itemId, stance: s.stance, source: 'owner' });
+				continue;
+			}
+			const item = await ctx.db.get(s.itemId);
+			const isClosedHere =
+				!!item && item.status !== 'open' && rowMatchesThreadRef(item, args.threadRef);
+			if (!isClosedHere) throwInvalidInput('That item is not open in this thread');
 		}
-		const planRevision = state.planRevision + 1;
+		const next = await loadPlanState(ctx, args.threadRef, args.draftRef, { chosen: kept });
+		const planRevision = next.planRevision + 1;
 		await upsertPlan(ctx, args.threadRef, args.draftRef, {
-			threadRevision: state.row?.threadRevision ?? state.threadRevision,
+			threadRevision: next.row?.threadRevision ?? next.threadRevision,
 			itemRevisions:
-				state.row?.itemRevisions ??
-				state.items.map((i) => ({ itemId: i.id, revision: i.revision })),
-			stances: state.stances,
-			ownerInputs: state.row?.ownerInputs ?? [],
-			coverage: state.row?.coverage ?? [],
-			newPromises: state.row?.newPromises ?? [],
-			fileClaims: state.row?.fileClaims ?? [],
-			draftHash: state.row?.draftHash ?? '',
+				next.row?.itemRevisions ?? next.items.map((i) => ({ itemId: i.id, revision: i.revision })),
+			stances: next.stances,
+			ownerInputs: next.row?.ownerInputs ?? [],
+			coverage: next.row?.coverage ?? [],
+			newPromises: next.row?.newPromises ?? [],
+			fileClaims: next.row?.fileClaims ?? [],
+			draftHash: next.row?.draftHash ?? '',
 			verdict: 'pending',
 			planRevision,
-			...(state.row?.checkedPlanRevision !== undefined
-				? { checkedPlanRevision: state.row.checkedPlanRevision }
+			...(next.row?.checkedPlanRevision !== undefined
+				? { checkedPlanRevision: next.row.checkedPlanRevision }
 				: {}),
-			...(state.row?.attachmentSetHash ? { attachmentSetHash: state.row.attachmentSetHash } : {}),
+			...(next.row?.attachmentSetHash ? { attachmentSetHash: next.row.attachmentSetHash } : {}),
 			updatedAt: Date.now(),
 		});
 		return { planRevision };
