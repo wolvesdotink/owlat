@@ -319,7 +319,7 @@ describe('F13: team clarification and ask-session links', () => {
 	});
 });
 
-describe('F3: a survivor is restated, reverted and re-read', () => {
+describe('F3: a survivor is redacted, reverted and re-read', () => {
 	async function seedSurvivor(t: Test) {
 		const { messageId: a, threadId } = await seedMailThread(t);
 		const b = await addSibling(t, a);
@@ -329,7 +329,7 @@ describe('F3: a survivor is restated, reverted and re-read', () => {
 		return { a, b, threadId, ref, srcA, srcB };
 	}
 
-	it('restates wording from a surviving claim and reverts a status the purged message set', async () => {
+	it('redacts a survivor (rule P) and reverts a status the purged message set', async () => {
 		const t = convexTest(schema, modules);
 		const { a, threadId, ref, srcA, srcB } = await seedSurvivor(t);
 		const claim = reduceItem({
@@ -360,10 +360,12 @@ describe('F3: a survivor is restated, reverted and re-read', () => {
 		await purgeInSlices(t, ref, [srcA], 400);
 
 		const item = await t.run((ctx) => ctx.db.get(itemId));
-		expect(item).toMatchObject({ status: 'open', isReviewNeeded: true, due: claim.due });
+		expect(item).toMatchObject({ status: 'open', isReviewNeeded: true, responsibility: 'unclear' });
+		expect(item?.due).toBeUndefined();
 		expect(item?.completion).toBeUndefined();
 		expect(item?.statusSource).toBeUndefined();
-		expect(await openMessageBody(item!.assertion)).toBe('Send the countersigned contract');
+		expect(await openMessageBody(item!.assertion)).toBe('Details removed with the deleted message');
+		expect(item?.redactedFields).toContain('due');
 		expect(item?.lineageKeys).toEqual([itemLineage(`mail:${srcB.id}`, claim)]);
 		// Its saved values may restore what the purged message said: the undo snapshot goes.
 		expect(item?.confirmedFrom).toBeUndefined();

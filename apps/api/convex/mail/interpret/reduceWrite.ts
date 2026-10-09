@@ -332,6 +332,7 @@ async function patchItem(
 	if (!same(item.due, row.due)) patch.due = item.due;
 	if (!same(item.amount, row.amount)) patch.amount = item.amount;
 	if (!same(item.options, row.options)) patch.options = item.options;
+	if (!same(item.redactedFields, row.redactedFields)) patch.redactedFields = item.redactedFields;
 	if (!sameEvidence(item.evidence, row.evidence)) {
 		patch.evidence = await sealEvidence(item.evidence, row.evidence);
 	}
@@ -449,6 +450,7 @@ async function patchFact(
 ): Promise<void> {
 	const patch: Partial<Doc<'threadFacts'>> = {};
 	if (fact.status !== row.status) patch.status = fact.status;
+	if (!same(fact.redactedFields, row.redactedFields)) patch.redactedFields = fact.redactedFields;
 	if (!sameEvidence(fact.evidence, row.evidence)) {
 		patch.evidence = await sealEvidence(fact.evidence, row.evidence);
 	}

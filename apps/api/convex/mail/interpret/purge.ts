@@ -44,6 +44,7 @@ import { deleteExtractions } from './purgeRows';
 import { drainFactLinks, drainItemLinks } from './purgeLinks';
 import { stripFact, stripItem, type PurgedSources } from './purgeClaims';
 import {
+	DRAIN_CHUNK,
 	drainShrinking,
 	drainSteps,
 	scanRange,
@@ -52,7 +53,7 @@ import {
 	type RangePosition,
 	type RangeRun,
 } from './purgeDrain';
-import { clarificationRanges, settleSourcesJob, stripPlan } from './purgeQuestions';
+import { clarificationAndRereadRanges, settleSourcesJob, stripPlan } from './purgeQuestions';
 
 /**
  * Activity key families the send pipeline (`sendActivity.ts`) writes per
@@ -122,6 +123,71 @@ const repliesRange: PurgeRange = async (ctx, { job, cursor, budget, state }) => 
 			return true;
 		}
 	);
+};
+
+/** A team reply source, added once. */
+function addReply(state: { sources: InterpretationSource[] }, sendId: Id<'transactionalSends'>) {
+	if (!state.sources.some((s) => s.kind === 'teamReply' && s.id === sendId)) {
+		state.sources.push({ kind: 'teamReply', id: sendId });
+	}
+}
+
+/**
+ * 0b. The team follow-ups written in reply to the erased message
+ * (`inboxFollowUps.inReplyToMessageId`): every Send of each (its `sendId`, and
+ * every Send naming it by `followUpId`) becomes a purged source. Follow-ups
+ * are walked by creation time (`at`), a follow-up's Sends likewise (`inner`).
+ */
+const followUpRepliesRange: PurgeRange = async (ctx, { job, ref, cursor, budget, state }) => {
+	const inboundMessageId = job.inboundMessageId;
+	if (!inboundMessageId || ref.kind !== 'team') return { isDone: true };
+	let at = cursor?.at;
+	let inner = cursor?.inner;
+	const save = () => ({
+		isDone: false as const,
+		cursor: { ...(at !== undefined ? { at } : {}), ...(inner !== undefined ? { inner } : {}) },
+	});
+	for (;;) {
+		if (budget.isExhausted()) return save();
+		budget.range();
+		const followUps = await ctx.db
+			.query('inboxFollowUps')
+			.withIndex('by_thread', (q) =>
+				at === undefined
+					? q.eq('threadId', ref.id)
+					: q.eq('threadId', ref.id).gt('_creationTime', at)
+			)
+			.take(1);
+		const followUp = followUps[0];
+		if (!followUp) return { isDone: true };
+		budget.charge(followUp);
+		if (followUp.inReplyToMessageId === inboundMessageId) {
+			if (followUp.sendId) addReply(state, followUp.sendId);
+			for (;;) {
+				if (budget.isExhausted()) return save();
+				const asked = budget.chunk(DRAIN_CHUNK);
+				budget.range();
+				const sends = await ctx.db
+					.query('transactionalSends')
+					.withIndex('by_follow_up', (q) =>
+						inner === undefined
+							? q.eq('followUpId', followUp._id)
+							: q.eq('followUpId', followUp._id).gt('_creationTime', inner)
+					)
+					.take(asked);
+				for (const send of sends) {
+					budget.charge(send);
+					addReply(state, send._id);
+					inner = send._creationTime;
+					budget.progress();
+				}
+				if (sends.length < asked) break;
+			}
+		}
+		at = followUp._creationTime;
+		inner = undefined;
+		budget.progress();
+	}
 };
 
 /** 1. Every extraction of every purged source. */
@@ -288,7 +354,7 @@ const factsRange: PurgeRange = async (ctx, run) => {
 		},
 		(row) => row._creationTime,
 		async (fact) => {
-			const fate = await stripFact(ctx, fact, purged, run.budget);
+			const fate = await stripFact(ctx, fact, purged);
 			if (fate === 'untouched') return true;
 			run.state.isClaimChanged = true;
 			if (fate === 'survived') {
@@ -407,6 +473,7 @@ const claimRecordsRange: PurgeRange = async (ctx, run) => {
 export const sourcesPlan: JobPlan = {
 	ranges: [
 		repliesRange,
+		followUpRepliesRange,
 		extractionsRange,
 		snapshotsRange,
 		sourceActivityRange,
@@ -414,7 +481,7 @@ export const sourcesPlan: JobPlan = {
 		factsRange,
 		plansRange,
 		claimRecordsRange,
-		...clarificationRanges,
+		...clarificationAndRereadRanges,
 	],
 	settle: settleSourcesJob,
 };

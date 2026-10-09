@@ -9,7 +9,8 @@ import { defineComponent, h, nextTick, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import TeamPinnedItems from '../TeamPinnedItems.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import { email, item, teamView, T0 } from '~/utils/__tests__/teamStreamFixtures';
+import { email, item, reply, teamView, T0 } from '~/utils/__tests__/teamStreamFixtures';
+import TeamThreadStream from '../TeamThreadStream.vue';
 import { evidence } from '~/utils/__tests__/threadBriefFixtures';
 
 beforeAll(() => {
@@ -18,9 +19,10 @@ beforeAll(() => {
 
 const Plain = defineComponent({ setup: () => () => h('span') });
 
-function teamOf(entries: unknown[], hasEarlier = false) {
-	const cited = item({ id: 'i_1', text: 'Refund', evidence: [evidence('in_2', 'a refund')] });
+function teamOf(entries: unknown[], hasEarlier = false, citedId = 'in_2') {
+	const cited = item({ id: 'i_1', text: 'Refund', evidence: [evidence(citedId, 'a refund')] });
 	return {
+		memberName: (id: string) => (id === 'user_mika' ? 'Mika Brandt' : id),
 		stream: { entries: ref(entries), hasEarlier: ref(hasEarlier), loadEarlier: vi.fn() },
 		openItems: ref(teamView({ forTeam: [cited] })),
 		viewerId: ref('me'),
@@ -31,9 +33,9 @@ function teamOf(entries: unknown[], hasEarlier = false) {
 	};
 }
 
-function mountPinned(team: ReturnType<typeof teamOf>) {
+function mountPinned(team: ReturnType<typeof teamOf>, props: Record<string, unknown> = {}) {
 	return mount(TeamPinnedItems, {
-		props: { team: team as never },
+		props: { team: team as never, ...props },
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
@@ -66,6 +68,77 @@ describe('TeamPinnedItems source markers', () => {
 		await w.get('[data-testid="evidence-marker"]').trigger('click');
 		await nextTick();
 		expect(team.stream.loadEarlier).toHaveBeenCalledTimes(1);
+		w.unmount();
+	});
+});
+
+describe('TeamPinnedItems, outgoing citations', () => {
+	it('name the teammate who wrote the reply, never the customer it went to', () => {
+		const sent = reply('s1', T0, {
+			source: { kind: 'teamReply', id: 'send_1' as never },
+			authorUserId: 'user_mika',
+			toName: 'Ana Costa',
+		});
+		const w = mountPinned(teamOf([sent], false, 'send_1'));
+		const marker = w.get('[data-testid="evidence-marker"]');
+		expect(marker.text()).toBe('MB Oct 7');
+		expect(marker.attributes('aria-label')).toContain('Mika Brandt');
+		expect(marker.attributes('aria-label')).not.toContain('Ana Costa');
+		w.unmount();
+	});
+
+	it('bring the cited reply into view in the stream', async () => {
+		const sent = reply('s1', T0, {
+			source: { kind: 'teamReply', id: 'send_1' as never },
+			isAgent: true,
+			authorUserId: undefined,
+		});
+		const team = teamOf([email('in_1', T0 - 1000), sent], false, 'send_1');
+		const Host = defineComponent({
+			setup: () => () =>
+				h('div', [
+					h(TeamPinnedItems, { team: team as never }),
+					h(TeamThreadStream, {
+						entries: team.stream.entries.value as never,
+						memberName: team.memberName,
+					}),
+				]),
+		});
+		const w = mount(Host, {
+			attachTo: document.body,
+			global: {
+				plugins: [createTestI18n()],
+				components: {
+					UiAvatar: Plain,
+					UiButton: Plain,
+					PostboxOverflowMenu: Plain,
+					InboxAutoSendCountdown: Plain,
+					InboxNoteComposer: Plain,
+				},
+				stubs: { Icon: true },
+			},
+		});
+		const row = w.get('[data-testid="team-stream-reply"]');
+		expect(row.attributes('data-message-id')).toBe('send_1');
+		const scroll = vi.fn();
+		(row.element as HTMLElement).scrollIntoView = scroll;
+		expect(w.get('[data-testid="evidence-marker"]').attributes('aria-label')).toContain(
+			'The agent'
+		);
+		await w.get('[data-testid="evidence-marker"]').trigger('click');
+		await nextTick();
+		expect(scroll).toHaveBeenCalled();
+		w.unmount();
+	});
+
+	it('hand a shared mailbox citation to the reader and say when it is out of reach', async () => {
+		const citeMessage = vi.fn();
+		const w = mountPinned(teamOf([]), { citeMessage, citeUnreachable: true });
+		await w.get('[data-testid="evidence-marker"]').trigger('click');
+		expect(citeMessage).toHaveBeenCalledWith('in_2');
+		expect(w.get('[data-testid="team-cite-unreachable"]').text()).toBe(
+			"Couldn't load the cited email."
+		);
 		w.unmount();
 	});
 });

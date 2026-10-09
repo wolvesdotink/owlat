@@ -57,9 +57,11 @@ const waiting = computed(
 );
 /** Actions closed by a confirmation or a "done" the viewer can still take back. */
 const recentlyClosed = computed(() =>
-	[...(props.view?.forTeam ?? []), ...(props.view?.unclear ?? [])].filter(
-		(i) => i.status !== 'open' && canUndoItem(i, i.stateKey)
-	)
+	[
+		...(props.view?.forTeam ?? []),
+		...(props.view?.unclear ?? []),
+		...(props.view?.waitingOnOthers ?? []),
+	].filter((i) => i.status !== 'open' && canUndoItem(i, i.stateKey))
 );
 const openCount = computed(() => props.view?.counts.forTeam ?? forTeam.value.length);
 const isComplete = computed(() => !!props.view && isBriefComplete(props.view));

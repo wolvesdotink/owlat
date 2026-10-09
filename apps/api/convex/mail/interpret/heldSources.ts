@@ -91,7 +91,7 @@ export function sourcesOfClaim(
 
 /**
  * The fields an item shows that a purged message set (`fieldSources`, round
- * 8): parties become unknown (responsibility unclear, counterparty key
+ * 8, 9): parties become unknown, responsibility unclear (counterparty key
  * recomputed), deadline, amount and options are cleared, review is flagged;
  * `isWordingPurged` tells the caller to redact the wording. Null when the
  * purged messages set none of them.
@@ -109,16 +109,37 @@ export function redactSourcedFields(
 	const unknown = { isUs: false };
 	const patch: Partial<Doc<'threadItems'>> = { isReviewNeeded: true };
 	const kept: ItemFieldSources = { ...sources };
-	for (const field of gone) {
-		delete kept[field];
-		if (field === 'requester') patch.requester = unknown;
-		if (field === 'responsible') {
+	// Every field whose stamp goes gets its neutral value (round 9): a record,
+	// so a field added to `fieldSources` cannot be left out.
+	const neutral: Record<keyof ItemFieldSources, () => void> = {
+		wording: () => {}, // redacted by the caller (sealed text)
+		requester: () => {
+			patch.requester = unknown;
+		},
+		responsible: () => {
 			patch.responsible = unknown;
 			patch.responsibility = responsibilityOf(unknown);
 			delete kept.responsibility;
-		}
-		if (field === 'beneficiary') patch.beneficiary = undefined;
-		if (field === 'due' || field === 'amount' || field === 'options') patch[field] = undefined;
+		},
+		beneficiary: () => {
+			patch.beneficiary = undefined;
+		},
+		responsibility: () => {
+			patch.responsibility = responsibilityOf(unknown);
+		},
+		due: () => {
+			patch.due = undefined;
+		},
+		amount: () => {
+			patch.amount = undefined;
+		},
+		options: () => {
+			patch.options = undefined;
+		},
+	};
+	for (const field of gone) {
+		delete kept[field];
+		neutral[field]();
 	}
 	if (patch.requester || patch.responsible) {
 		patch.counterpartyKey = counterpartyKeyOf({

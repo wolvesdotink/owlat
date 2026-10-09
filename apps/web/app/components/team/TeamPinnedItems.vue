@@ -9,9 +9,26 @@ import type { TeamThread } from '~/composables/team/useTeamThread';
 import { citedMessageId, streamSources } from '~/utils/teamCite';
 import TeamOpenItems from './TeamOpenItems.vue';
 
-const props = defineProps<{ team: TeamThread }>();
+const props = defineProps<{
+	team: TeamThread;
+	/**
+	 * Show a message through the host's own paging (the shared-mailbox reader,
+	 * which renders the emails itself); without it the stream is walked back.
+	 */
+	citeMessage?: (messageId: string) => void;
+	/** The host could not load the cited email. */
+	citeUnreachable?: boolean;
+}>();
 
-const sources = computed(() => streamSources(props.team.stream.entries.value));
+const { t } = useI18n();
+const sources = computed(() =>
+	streamSources(props.team.stream.entries.value, (entry) => {
+		if (entry.isAgent) return t('dashboard.inbox.detail.outbound.agent');
+		return entry.authorUserId
+			? props.team.memberName(entry.authorUserId)
+			: t('dashboard.inbox.detail.outbound.yourTeam');
+	})
+);
 /** The email a marker asked for, while older pages are still loading. */
 const wanted = ref<string | null>(null);
 
@@ -28,6 +45,10 @@ function show(messageId: string): boolean {
 function cite(ref: string, quoteIndex: number) {
 	const id = citedMessageId(props.team.openItems.value, ref, quoteIndex);
 	if (!id) return;
+	if (props.citeMessage) {
+		props.citeMessage(id);
+		return;
+	}
 	wanted.value = id;
 	void nextTick(seek);
 }
@@ -51,6 +72,14 @@ watch(
 </script>
 
 <template>
+	<p
+		v-if="citeUnreachable"
+		role="status"
+		class="mb-2 rounded-lg bg-warning-subtle px-3 py-2 text-xs text-warning"
+		data-testid="team-cite-unreachable"
+	>
+		{{ t('components.team.items.citeUnreachable') }}
+	</p>
 	<TeamOpenItems
 		:view="team.openItems.value"
 		:viewer-id="team.viewerId.value"
