@@ -37,7 +37,7 @@ export interface PlanHeld {
 	responsibility?: Doc<'threadItems'>['responsibility'];
 	removes?: Removable[];
 	/** Which source proposed each field (`heldSources.ts`). */
-	fieldSources?: Array<{ field: HeldField; sourceKey: string }>;
+	fieldSources?: Array<{ field: HeldField; sourceKey: string; at?: number }>;
 }
 
 /** The item fields the comparison reads. */
@@ -73,7 +73,7 @@ export function heldUpdateOf(
 	proposal: ReduceItem,
 	target: HeldTarget,
 	added: ReduceEvidence[],
-	opts: { isConfirmed: boolean; isSeenSource: boolean; sourceKey: string }
+	opts: { isConfirmed: boolean; isSeenSource: boolean; sourceKey: string; at: number }
 ): PlanHeld | null {
 	const held: PlanHeld = { addEvidence: added };
 	if (proposal.due && !same(proposal.due, target.due)) held.due = proposal.due;
@@ -112,7 +112,7 @@ export function heldUpdateOf(
 	if (addEvidence.length === 0 && Object.keys(changes).length === 0) return null;
 	const fields = heldFieldsOf(changes);
 	if (fields.length > 0) {
-		held.fieldSources = fields.map((field) => ({ field, sourceKey: opts.sourceKey }));
+		held.fieldSources = fields.map((field) => ({ field, sourceKey: opts.sourceKey, at: opts.at }));
 	}
 	return held;
 }

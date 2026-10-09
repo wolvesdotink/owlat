@@ -16,7 +16,7 @@
  * {@link reconcileSendFailure} reads the send's current state, so it is called
  * both when the failure lands and after the send's interpretation is applied
  * (a bounce can arrive before the model has read the sent message). It is
- * idempotent: each (source, item) pair is failed at most once. A resend that
+ * idempotent: once failed, the item's disposition no longer rests on the send. A resend that
  * gets through is a new source and is interpreted again normally.
  */
 
@@ -109,7 +109,9 @@ export async function failDependentDispositions(
 		const revision = item.revision + 1;
 		const appended = await appendActivity(ctx, {
 			threadRef: args.threadRef,
-			idempotencyKey: `send_failed:${sourceKey}:item:${itemId}`,
+			// Keyed by the item's revision: the row is deduplicated, never the
+			// state (a send supporting the item again fails it again, round 8 F3).
+			idempotencyKey: `send_failed:${sourceKey}:item:${itemId}:${item.revision}`,
 			type: 'item_changed',
 			actor: { kind: 'system' },
 			provenance: 'recorded',
@@ -118,8 +120,7 @@ export async function failDependentDispositions(
 			delta: { dispositionFrom: item.disposition, dispositionTo: 'failed' },
 			opRef: { kind: 'outbound', id: args.source.id },
 		});
-		// Failed once by this send already (then answered again by another): leave it.
-		if (!appended || appended.isDuplicate) continue;
+		if (!appended) continue;
 		await writeItemChange(ctx, args.threadRef, item, {
 			disposition: 'failed',
 			// A recorded operation: the failed send itself is the source now.

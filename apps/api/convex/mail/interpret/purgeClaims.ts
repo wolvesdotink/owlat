@@ -43,7 +43,7 @@ import {
 } from './purgeClaimSources';
 
 export { lineageSource, type PurgedSources } from './purgeClaimSources';
-import { isHolding, revertPurgedConfirmation, withoutSources } from './heldSources';
+import { isHolding, redactSourcedFields, withoutSources } from './heldSources';
 
 /** The neutral line a claim whose wording came from a purged message shows. */
 export const REDACTED_CLAIM_TEXT = {
@@ -158,8 +158,21 @@ export async function stripItem(
 		(names(pending.evidence) ||
 			(pending.fieldSources ?? []).some((f) => purged.keys.has(f.sourceKey)) ||
 			(pending.transitions ?? []).some((t) => purged.keys.has(t.sourceKey)));
-	// A confirmation that applied parties the purged message proposed: put back.
-	const reverted = revertPurgedConfirmation(item, purged.keys);
+	// Shown fields the purged message set (`fieldSources`, round 8): redacted.
+	const sourced = redactSourcedFields(item, purged.keys);
+	const reverted = sourced
+		? {
+				patch: {
+					...sourced.patch,
+					...(sourced.isWordingPurged
+						? {
+								assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
+								display: await sealedPair(REDACTED_CLAIM_TEXT),
+							}
+						: {}),
+				},
+			}
+		: null;
 	const pendingEvidence = pending?.evidence.filter((e) => !purged.ids.has(e.source.id)) ?? [];
 	const held = isPendingNamed
 		? { pendingUpdate: strippedHeld(pending!, pendingEvidence, purged) }

@@ -44,6 +44,7 @@ import {
 	ownerInputRefValidator,
 	participantRefValidator,
 	pendingUpdateValidator,
+	itemFieldSourcesValidator,
 	transitionSourceValidator,
 	planVerdictValidator,
 	responsePlanStanceValidator,
@@ -261,6 +262,8 @@ export const threadBriefTables = {
 		confirmedFrom: v.optional(itemConfirmedFromValidator),
 		// Changes held apart until confirmed ("Check this change"), each with its source.
 		pendingUpdate: v.optional(pendingUpdateValidator),
+		// Which source set each shown field (purge redacts exactly those).
+		fieldSources: v.optional(itemFieldSourcesValidator),
 		// Message date of the transition that set the current status or
 		// disposition: an older message's transition only adds evidence.
 		lastTransitionAt: v.optional(v.number()),
