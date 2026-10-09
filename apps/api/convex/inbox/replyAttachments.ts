@@ -49,7 +49,7 @@ import {
 	takeReadyReplyAttachments,
 } from './replyAttachmentStore';
 import { outgoingCoverageHold } from '../mail/interpret/planGate';
-import { deletePlansForDraft } from '../mail/interpret/responsePlanState';
+import { retirePlansForDraft } from '../mail/interpret/responsePlanState';
 
 const LOG_TAG = '[team reply attachments]';
 
@@ -356,8 +356,15 @@ export const intakeAgentReply = internalMutation({
 		// keeps no body, and the inbound draft can change afterwards). It is
 		// interpreted once the Send is finalized as sent (`sendActivity.ts`).
 		if (outcome.ok) {
-			// The draft is sent: its response plan goes with it.
-			await deletePlansForDraft(ctx, { kind: 'inboundDraft', id: args.inboundMessageId });
+			// The draft is sent: its response plan is retired, so no late check of
+			// the draft as it was can be stored after the Send.
+			if (message.threadId) {
+				await retirePlansForDraft(
+					ctx,
+					{ kind: 'inboundDraft', id: args.inboundMessageId },
+					message.threadId
+				);
+			}
 			await captureTeamReplySnapshot(ctx, {
 				sendId: outcome.sendId,
 				subject: args.subject,

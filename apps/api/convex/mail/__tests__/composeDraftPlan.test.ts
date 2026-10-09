@@ -63,3 +63,22 @@ describe('loadAnswerPlan', () => {
 		expect(calls[0]!.args).not.toHaveProperty('inboundMessageId');
 	});
 });
+
+describe('review round 2: the answered message travels on the target (F2)', () => {
+	it('reads the plan and slots of the target’s message, never the newest one', async () => {
+		const calls: { name: string; args: Record<string, unknown> }[] = [];
+		const target = {
+			kind: 'teamThread' as const,
+			threadId: 'thread_1' as never,
+			inboundMessageId: 'inbound_older' as never,
+		};
+		await loadAnswerPlan(ctxWith(calls) as never, { target, questions: [] });
+		await loadSlotItems(ctxWith(calls) as never, target);
+		expect(calls.some((c) => c.name.includes('loadTeamThreadContext'))).toBe(false);
+		const reads = calls.filter((c) => c.name.includes('loadForAskTarget'));
+		expect(reads.map((c) => c.args['inboundMessageId'])).toEqual([
+			'inbound_older',
+			'inbound_older',
+		]);
+	});
+});

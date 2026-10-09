@@ -69,7 +69,17 @@ export async function checkOutgoing(
 		loadBriefRow(ctx, ref),
 	]);
 	const objections = itemCoverageObjections({
-		plan,
+		// A stored commitment keeps its deadline as `due.phrase` (review r2 F1).
+		plan: plan
+			? {
+					...plan,
+					newPromises: plan.newPromises.map((p) => ({
+						...(p.itemId ? { itemId: p.itemId } : {}),
+						...(p.amount ? { amount: p.amount } : {}),
+						...(p.due ? { duePhrase: p.due.phrase } : {}),
+					})),
+				}
+			: null,
 		draftHash: outgoing.draftText ? await draftHashOf(outgoing.draftText) : null,
 		attachmentSetHash: await attachmentSetHashOf(outgoing.attachmentIds),
 		threadRevision: brief?.interpretationRevision ?? null,

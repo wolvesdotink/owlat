@@ -7040,6 +7040,7 @@
 					"defer": "Später",
 					"clarify": "Nachfragen"
 				},
+				"writeFailed": "Deine Auswahl für die Antwort konnte nicht gespeichert werden. Versuch es noch mal.",
 				"fileMissing": "Datei fehlt",
 				"status": {
 					"checking": "Der Entwurf wird geprüft …",

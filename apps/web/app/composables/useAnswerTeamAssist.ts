@@ -70,7 +70,11 @@ export function useAnswerTeamAssist(opts: {
 	const ask = useAnswerAskSession({
 		target: () => {
 			const threadId = opts.threadId();
-			return draftWithAi.value && threadId ? { kind: 'teamThread', threadId } : null;
+			if (!draftWithAi.value || !threadId) return null;
+			// The message the reply answers: the drafter's context, slots and plan
+			// all read it, the same message the plan's stances are written to.
+			const inboundMessageId = opts.inboundMessageId();
+			return { kind: 'teamThread', threadId, ...(inboundMessageId ? { inboundMessageId } : {}) };
 		},
 		composer: opts.composer,
 		onSettled: () => void plan.checkCoverage(),

@@ -27,6 +27,8 @@ async function answeredInbound(
 	target: AnswerAskTarget
 ): Promise<{ inboundMessageId?: Id<'inboundMessages'> }> {
 	if (target.kind !== 'teamThread') return {};
+	// The message the session answers, carried on its target (review r2 F2).
+	if (target.inboundMessageId) return { inboundMessageId: target.inboundMessageId };
 	const loaded = await ctx.runQuery(internal.mail.ai.composeDraftContext.loadTeamThreadContext, {
 		threadId: target.threadId,
 	});

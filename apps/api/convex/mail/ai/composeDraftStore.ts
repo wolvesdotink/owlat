@@ -97,10 +97,12 @@ async function canReachTarget(
 	session: MutationSessionContext
 ): Promise<boolean> {
 	if (target.kind === 'teamThread') {
+		const message = target.inboundMessageId ? await ctx.db.get(target.inboundMessageId) : null;
 		return (
 			isSharedInboxReader(session) &&
 			(await isFeatureEnabled(ctx, 'inbox')) &&
-			(await ctx.db.get(target.threadId)) !== null
+			(await ctx.db.get(target.threadId)) !== null &&
+			(!target.inboundMessageId || message?.threadId === target.threadId)
 		);
 	}
 	const draft = await ctx.db.get(target.draftId);

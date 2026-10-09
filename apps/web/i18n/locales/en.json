@@ -7040,6 +7040,7 @@
 					"defer": "Defer",
 					"clarify": "Ask"
 				},
+				"writeFailed": "Your choices for the reply could not be saved. Try again.",
 				"fileMissing": "File missing",
 				"status": {
 					"checking": "Checking the draft…",

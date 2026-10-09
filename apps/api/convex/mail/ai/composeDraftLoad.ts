@@ -95,6 +95,7 @@ export async function loadAnswerContext(
 	}
 	const loaded = await ctx.runQuery(internal.mail.ai.composeDraftContext.loadTeamThreadContext, {
 		threadId: target.threadId,
+		...(target.inboundMessageId ? { inboundMessageId: target.inboundMessageId } : {}),
 	});
 	// The pipeline's own briefing (contact, commitments, knowledge, files,
 	// history, the quarantined current message), without re-recording it.

@@ -52,6 +52,7 @@ export function useResponsePlan(opts: {
 	items: () => readonly BriefItemView[];
 }) {
 	const { t } = useI18n();
+	const { showToast } = useToast();
 	const { isEnabled } = useFeatureFlag();
 	const aiOn = computed(() => isEnabled('ai'));
 
@@ -91,11 +92,13 @@ export function useResponsePlan(opts: {
 		[...stances.value].filter(([, stance]) => stance !== 'skip').map(([id]) => id)
 	);
 
-	// Writing the choices onto the draft's plan
+	// Writing the choices onto the draft's plan. A failed write is said, and
+	// rejects `flush`, so nothing that reads the stored stances (the drafter,
+	// the check) runs on old ones (review r2 F4).
 	let writing: Promise<void> = Promise.resolve();
 	/** Writes in flight: until they land, no coverage on screen is trusted. */
 	const pendingWrites = ref(0);
-	function persist(explicit?: PlanDraftRef | null) {
+	function persist(explicit?: PlanDraftRef | null): Promise<void> {
 		const threadRef = opts.threadRef();
 		const draftRef = explicit ?? opts.draftRef();
 		if (!threadRef || !draftRef || chosen.value.size === 0) return writing;
@@ -104,33 +107,64 @@ export function useResponsePlan(opts: {
 			stance,
 		}));
 		pendingWrites.value++;
-		writing = writing
-			.then(() =>
-				requireConvex().mutation(api.mail.interpret.responsePlan.setStances, {
-					threadRef,
-					draftRef,
-					stances: given,
-				})
-			)
-			.then(() => undefined)
-			.catch(() => {
-				// The choice stays on screen and goes with the next write or check.
+		const attempt = writing.then(() =>
+			requireConvex().mutation(api.mail.interpret.responsePlan.setStances, {
+				threadRef,
+				draftRef,
+				stances: given,
 			})
+		);
+		writing = attempt
+			.then(
+				() => undefined,
+				() => {
+					showToast(t('components.answer.plan.writeFailed'), 'error');
+				}
+			)
 			.finally(() => {
 				pendingWrites.value--;
 			});
-		return writing;
+		return attempt.then(() => undefined);
 	}
+	const persistQuietly = (explicit?: PlanDraftRef | null) =>
+		persist(explicit).catch(() => {
+			// Said by the toast; the choice stays on screen for the next write.
+		});
 	watch(
 		() => opts.draftRef()?.id,
-		() => void persist()
+		() => void persistQuietly()
 	);
+
+	/** Every choice on screen is the stored one: until then no coverage counts. */
+	const isAcknowledged = computed(() => {
+		const server = new Map(
+			(stored.data.value?.stances ?? []).map((s) => [s.itemId as string, s.stance])
+		);
+		return [...chosen.value].every(([id, stance]) => server.get(id) === stance);
+	});
+
+	/** The thread and item revisions on screen; a result for others is stale (r2 F3). */
+	const revisionsKey = computed(() => {
+		const items = opts
+			.items()
+			.map((i) => `${i.id}@${i.revision}`)
+			.sort()
+			.join(',');
+		return `${stored.data.value?.threadRevision ?? '?'}|${items}`;
+	});
+	function resultRevisionsKey(result: CoverageResult): string {
+		const items = result.itemRevisions
+			.map((r) => `${r.itemId}@${r.revision}`)
+			.sort()
+			.join(',');
+		return `${result.threadRevision}|${items}`;
+	}
 
 	function setStance(itemId: string, stance: ResponseStance) {
 		const next = new Map(chosen.value);
 		next.set(itemId, stance);
 		chosen.value = next;
-		void persist();
+		void persistQuietly();
 		scheduleCoverage();
 	}
 
@@ -143,7 +177,7 @@ export function useResponsePlan(opts: {
 			if (want.has(id) && stance === 'skip') next.set(id, 'answer');
 		}
 		chosen.value = next;
-		void persist();
+		void persistQuietly();
 		scheduleCoverage();
 	}
 
@@ -170,8 +204,12 @@ export function useResponsePlan(opts: {
 		const draftRef = opts.draftRef();
 		const text = opts.draftText().trim();
 		if (!threadRef || !draftRef || !aiOn.value) return;
-		await persist();
-		const key = `${draftRef.id}:${stored.data.value?.planRevision ?? 0}:${JSON.stringify([...chosen.value])}:${text}`;
+		try {
+			await persist();
+		} catch {
+			return; // the stances on screen are not stored: no check of the old ones
+		}
+		const key = `${draftRef.id}:${stored.data.value?.planRevision ?? 0}:${revisionsKey.value}:${JSON.stringify([...chosen.value])}:${text}`;
 		if (key === lastChecked) return;
 		lastChecked = key;
 		const mine = ++seq;
@@ -197,6 +235,13 @@ export function useResponsePlan(opts: {
 		timer = setTimeout(() => void checkCoverage(), PLAN_COVERAGE_DEBOUNCE_MS);
 	}
 	watch(opts.draftText, scheduleCoverage);
+	// An item or the thread changed under the last check: check again.
+	watch(revisionsKey, () => {
+		if (checked.value && resultRevisionsKey(checked.value) !== revisionsKey.value) {
+			lastChecked = null;
+			scheduleCoverage();
+		}
+	});
 	onBeforeUnmount(() => clearTimeout(timer));
 
 	/**
@@ -209,9 +254,16 @@ export function useResponsePlan(opts: {
 		const view = stored.data.value;
 		const revision = view?.planRevision ?? 0;
 		const hash = currentHash.value;
-		if (!hash || pendingWrites.value > 0) return null;
+		if (!hash || pendingWrites.value > 0 || !isAcknowledged.value) return null;
 		const local = checked.value;
-		if (local && local.draftHash === hash && local.planRevision === revision) return local;
+		if (
+			local &&
+			local.draftHash === hash &&
+			local.planRevision === revision &&
+			resultRevisionsKey(local) === revisionsKey.value
+		) {
+			return local;
+		}
 		if (
 			view &&
 			!view.isStale &&
@@ -308,7 +360,10 @@ export function useResponsePlan(opts: {
 				// The draft is checked afresh instead.
 			}
 		},
-		/** Write the choices (to `draftRef` when the draft was just created) and wait. */
+		/**
+		 * Write the choices (to `draftRef` when the draft was just created) and
+		 * wait. Rejects when the write failed: the caller must not go on.
+		 */
 		flush: (draftRef?: PlanDraftRef | null) => persist(draftRef),
 	};
 }
