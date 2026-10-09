@@ -529,3 +529,46 @@ describe('review round 2: the team context reads the answered message (F2)', () 
 		await expect(load(other.inboundId)).rejects.toThrow();
 	});
 });
+
+describe('review round 3', () => {
+	it('F1: a stored check reads as stale once an item it covered is closed', async () => {
+		const t = harness();
+		const s = await setup(t);
+		const loaded = await t.query(internal.mail.interpret.responsePlanDraft.loadForDraft, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+		});
+		await t.mutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			threadRevision: loaded.threadRevision,
+			itemRevisions: loaded.items.map((i) => ({ itemId: i.id, revision: i.revision })),
+			stances: loaded.stances,
+			coverage: loaded.items.map((i) => ({
+				itemId: i.id,
+				verdict: 'addressed' as const,
+				spans: [],
+			})),
+			fileClaims: [],
+			newPromises: [],
+			draftHash: 'h',
+			verdict: 'covered',
+			planRevision: 0,
+			attachmentSetHash: loaded.attachmentSetHash,
+			isCheckIncomplete: false,
+		});
+		const before = await t.query(api.mail.interpret.responsePlan.get, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+		});
+		expect(before).toMatchObject({ isStale: false, verdict: 'covered' });
+		expect(before?.checkedItemRevisions).toHaveLength(2);
+		// "Mark done": the item leaves the open set; the thread revision stays.
+		await t.run((ctx) => ctx.db.patch(s.call, { status: 'done' }));
+		const after = await t.query(api.mail.interpret.responsePlan.get, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+		});
+		expect(after).toMatchObject({ isStale: true, verdict: 'stale' });
+	});
+});
