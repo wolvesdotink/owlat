@@ -140,12 +140,6 @@ const replyLabel = computed(() =>
 			>
 		</div>
 
-		<PostboxAiStrip
-			v-if="asking && latest"
-			:message-id="latest._id"
-			:warrants-summary="false"
-			ask-only
-			@close="asking = false"
-		/>
+		<PostboxAiStrip v-if="asking && latest" :message-id="latest._id" @close="asking = false" />
 	</div>
 </template>

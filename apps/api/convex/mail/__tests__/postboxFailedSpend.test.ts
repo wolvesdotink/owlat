@@ -28,7 +28,6 @@ vi.mock('../../analytics/llmUsage', () => ({
 import { scheduleLlmSpend } from '../../analytics/llmUsage';
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
 import { refineClarification } from '../ai/needsReplyClassify';
-import { generateCatchUp } from '../ai/catchUpGenerate';
 
 const ctx = {} as never;
 const billed = { promptTokens: 30, completionTokens: 15, totalTokens: 45 };
@@ -98,24 +97,5 @@ describe('refineClarification — the spend of a failed structured call', () => 
 
 		await expect(refineClarification(ctx, opts)).resolves.toBeUndefined();
 		expect(spentUnder('postbox_clarify_slots')).toEqual([]);
-	});
-});
-
-describe('generateCatchUp — the spend of a failed structured call', () => {
-	it('schedules the billed usage the way its success does, and fails soft', async () => {
-		mocks.runLlmObject.mockRejectedValueOnce(schemaFailure());
-
-		const card = await generateCatchUp(ctx, {
-			entries: [{ label: 'm1', messageId: 'msg-1', side: 'other', text: 'Can you send it?' }],
-			mode: 'full',
-			locale: 'en',
-			feature: 'answer_catch_up',
-		});
-
-		expect(card).toBeNull();
-		expect(vi.mocked(scheduleLlmSpend).mock.calls).toEqual([
-			[ctx, 'answer_catch_up', billed, 'mock-model'],
-		]);
-		expect(mocks.recordLlmSpend).not.toHaveBeenCalled();
 	});
 });

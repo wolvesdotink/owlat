@@ -37,7 +37,6 @@ vi.mock('~/composables/useAnswerQueueSession', () => ({
 vi.mock('~/composables/useAnswerModeAssist', () => ({
 	useAnswerModeAssist: () => ({
 		aiEnabled: ref(false),
-		catchUp: { catchUp: ref(null), loading: ref(false) },
 		// The response plan (useResponsePlan): nothing selected, nothing to flag.
 		plan: {
 			view: {

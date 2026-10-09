@@ -42,7 +42,6 @@ vi.mock('~/composables/useAnswerQueueSession', () => ({
 
 const assist = {
 	aiEnabled: ref(false),
-	catchUp: { catchUp: ref(null), loading: ref(false) },
 	// The response plan (useResponsePlan): nothing selected, nothing to flag.
 	plan: {
 		view: {
@@ -162,7 +161,7 @@ const LabelDialogStub = defineComponent({
 });
 const AiStripStub = defineComponent({
 	name: 'PostboxAiStrip',
-	props: { messageId: String, warrantsSummary: Boolean, askOnly: Boolean },
+	props: { messageId: String },
 	emits: ['close'],
 	setup: () => () => h('div', { 'data-testid': 'ask-strip' }),
 });
@@ -268,7 +267,7 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 							h('a', { href: props.to }, slots.default?.()),
 				}),
 			},
-			stubs: { Icon: true, AnswerAiBar: AiBarStub, AskCard: AskCardStub, CatchUpCard: true },
+			stubs: { Icon: true, AnswerAiBar: AiBarStub, AskCard: AskCardStub },
 		},
 	});
 	await flushPromises();
@@ -556,7 +555,7 @@ describe('Answer mode page', () => {
 		expect(w.find('[data-testid="ask-strip"]').exists()).toBe(false);
 		await w.get('[data-testid="answer-menu-ask"]').trigger('click');
 		const strip = w.getComponent(AiStripStub);
-		expect(strip.props()).toMatchObject({ messageId: 'msg_1', askOnly: true });
+		expect(strip.props()).toMatchObject({ messageId: 'msg_1' });
 		strip.vm.$emit('close');
 		await flushPromises();
 		expect(w.find('[data-testid="ask-strip"]').exists()).toBe(false);

@@ -59,12 +59,12 @@ export function useAnswerPreparedDraft(opts: {
 	// A failure is said once, quietly, by `attachFiles`; not as an error toast.
 	const quiet = { onError: () => true, announce: false } as const;
 	const attachExisting = useBackendOperation(api.mail.drafts.attachExisting, {
-		label: () => t('components.answer.catchUp.attachOperation'),
+		label: () => t('components.answer.threadFiles.attachOperation'),
 		type: 'action',
 		...quiet,
 	});
 	const addAttachment = useBackendOperation(api.mail.drafts.addAttachment, {
-		label: () => t('components.answer.catchUp.attachOperation'),
+		label: () => t('components.answer.threadFiles.attachOperation'),
 		...quiet,
 	});
 

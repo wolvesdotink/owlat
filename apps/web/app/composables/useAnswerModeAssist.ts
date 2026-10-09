@@ -140,7 +140,7 @@ export function useAnswerModeAssist(opts: {
 	});
 	const { upload } = useAnswerFileUpload();
 	const attachExisting = useBackendOperation(api.mail.drafts.attachExisting, {
-		label: () => t('components.answer.catchUp.attachOperation'),
+		label: () => t('components.answer.threadFiles.attachOperation'),
 		type: 'action',
 	});
 	const attaching = ref<string | null>(null);
@@ -165,7 +165,7 @@ export function useAnswerModeAssist(opts: {
 			}
 			const local = await threadFiles.toFile(file);
 			if (local) await composer.addFiles([local]);
-			else showToast(t('components.answer.catchUp.attachFailed'), 'error');
+			else showToast(t('components.answer.threadFiles.attachFailed'), 'error');
 		} finally {
 			attaching.value = null;
 		}
@@ -177,7 +177,7 @@ export function useAnswerModeAssist(opts: {
 		if (indexId) return { source: 'mailAttachment', id: indexId, filename: file.filename };
 		const local = await threadFiles.toFile(file);
 		if (!local) {
-			showToast(t('components.answer.catchUp.attachFailed'), 'error');
+			showToast(t('components.answer.threadFiles.attachFailed'), 'error');
 			return null;
 		}
 		const done = await upload(local);

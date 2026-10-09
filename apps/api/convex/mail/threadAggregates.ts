@@ -12,7 +12,7 @@
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { batchGet } from '../_utils/batchLoader';
-import { deleteMailThreadCatchUps } from './ai/catchUpStore';
+import { deleteMailThreadCatchUps } from './legacySummaryRows';
 import { deleteResourceUploads, mailThreadUploadKey } from '../storage/uploads';
 import { purgeThreadBrief } from './interpret/purgeRun';
 

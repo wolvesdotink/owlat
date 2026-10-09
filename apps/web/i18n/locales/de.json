@@ -4408,12 +4408,7 @@
 				"askFailed": "Das ließ sich gerade nicht beantworten. Versuche es gleich noch einmal.",
 				"askOperation": "Zu diesem Thread fragen",
 				"askPlaceholder": "Zu diesem Thread fragen…",
-				"less": "weniger",
-				"more": "mehr",
-				"summarizeOperation": "Thread zusammenfassen",
-				"summaryLabel": "Zusammenfassung:",
-				"thinking": "Denkt nach…",
-				"toggleSummaryDetail": "Details der Zusammenfassung umschalten"
+				"thinking": "Denkt nach…"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} benötigt ein App-Passwort",
@@ -6989,22 +6984,9 @@
 				"openInPostbox": "In Postbox öffnen",
 				"skipMissing": "Weiter zum nächsten Eintrag"
 			},
-			"catchUp": {
-				"title": "Kurz zusammengefasst",
-				"meta": "{count} Nachricht seit {date} | {count} Nachrichten seit {date}",
-				"marker": "Nachricht von {sender} vom {date} anzeigen",
-				"loading": "Die Unterhaltung wird zusammengefasst",
-				"asksTitle": "Angefragt wird",
-				"askCovered": "Im Entwurf beantwortet:",
-				"askOpen": "Noch offen:",
-				"filesTitle": "Dateien in dieser Unterhaltung",
-				"attachHint": "Klicken, um sie an die Antwort anzuhängen, oder in die Antwort ziehen",
-				"attachFile": "{file} an die Antwort anhängen",
+			"threadFiles": {
 				"attachFailed": "Die Datei konnte nicht angehängt werden.",
-				"attachOperation": "Datei anhängen",
-				"asksCount": "{count} Anfrage | {count} Anfragen",
-				"show": "Anzeigen",
-				"hide": "Ausblenden"
+				"attachOperation": "Datei anhängen"
 			},
 			"plan": {
 				"title": "Deine Antwort umfasst",

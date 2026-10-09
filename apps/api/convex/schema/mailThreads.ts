@@ -224,12 +224,9 @@ export const mailThreadsTables = {
 		// sealed). Rewritten by mail/interpret/briefTop.ts whenever the items
 		// change; absent until the thread is first interpreted.
 		briefTop: v.optional(briefTopValidator),
-		// Cached advisory AI summary for the long-thread summary strip (mail/ai/assist.ts
-		// getOrGenerateThreadSummary + mail/ai/summaryCache.ts). `messageCount` is the
-		// thread's messageCount at generation time; the cache is served only while it
-		// still matches the live count, so a new inbound message makes it stale and
-		// the next open regenerates it (edge-triggered, never a hot loop). Absent
-		// until the strip first generates one; never moves or modifies mail.
+		// RETIRED (ADR-0072): the reader strip's cached thread summary, replaced by
+		// the thread brief. Nothing writes or reads it; migration 0067 clears it and
+		// the next release drops the field (mail/legacySummaryRows.ts).
 		summaryCache: v.optional(
 			v.object({
 				summary: v.string(),

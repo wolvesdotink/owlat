@@ -4408,12 +4408,7 @@
 				"askFailed": "Couldn't answer that right now. Try again in a moment.",
 				"askOperation": "Ask about this thread",
 				"askPlaceholder": "Ask about this thread…",
-				"less": "less",
-				"more": "more",
-				"summarizeOperation": "Summarize thread",
-				"summaryLabel": "Summary:",
-				"thinking": "Thinking…",
-				"toggleSummaryDetail": "Toggle summary detail"
+				"thinking": "Thinking…"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} needs an app password",
@@ -6989,22 +6984,9 @@
 				"openInPostbox": "Open in Postbox",
 				"skipMissing": "Skip to the next item"
 			},
-			"catchUp": {
-				"title": "Catching up",
-				"meta": "{count} message since {date} | {count} messages since {date}",
-				"marker": "Show the message from {sender}, {date}",
-				"loading": "Catching up on this conversation",
-				"asksTitle": "They are asking for",
-				"askCovered": "Covered by your draft:",
-				"askOpen": "Not covered yet:",
-				"filesTitle": "Files in this thread",
-				"attachHint": "Click to attach it to the reply, or drag it into the reply",
-				"attachFile": "Attach {file} to the reply",
+			"threadFiles": {
 				"attachFailed": "The file could not be attached.",
-				"attachOperation": "Attach file",
-				"asksCount": "{count} ask | {count} asks",
-				"show": "Show",
-				"hide": "Hide"
+				"attachOperation": "Attach file"
 			},
 			"plan": {
 				"title": "Your reply covers",

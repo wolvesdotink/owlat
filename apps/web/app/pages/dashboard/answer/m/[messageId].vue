@@ -367,8 +367,6 @@ onBeforeUnmount(() => {
 					v-if="askingThread && message"
 					class="mx-4 mt-4"
 					:message-id="messageId"
-					:warrants-summary="false"
-					ask-only
 					@close="askingThread = false"
 				/>
 				<AnswerConversation
@@ -377,7 +375,7 @@ onBeforeUnmount(() => {
 					:message="message"
 					@count="messageCount = $event"
 				>
-					<template #catch-up="{ view: shown, messages, reveal }">
+					<template #brief="{ view: shown, messages, reveal }">
 						<AnswerBriefCard
 							:thread-id="message.threadId"
 							:shown="shown"

@@ -61,13 +61,11 @@ export const todayTables = {
 		// member-erasure sweep.
 		.index('by_user_and_thread', ['userId', 'threadId']),
 
-	// One-sentence Today summaries of what is new in a conversation, written by
-	// the cheap summarizer tier (today/summarize.ts). Keyed by the thread's
-	// message count and the count the reader had already seen (`sinceCount`:
-	// 0 for a new conversation, the visit's count for "what changed"), plus the
-	// reader's locale — so a new message or a different starting point is a
-	// cache miss, never a stale sentence. Derived from the thread's content, so
-	// it goes with the tenant; it names no reader.
+	// RETIRED (ADR-0072): Today's one-sentence thread summaries. The Workbench
+	// shows the thread brief's "Latest update" line instead; nothing writes or
+	// reads these rows. Migration 0067 empties the table and the next release
+	// drops it (mail/legacySummaryRows.ts). Derived from the thread's content,
+	// so erasure still deletes its rows; it names no reader.
 	todayThreadSummaries: defineTable({
 		threadId: v.id('mailThreads'),
 		locale: v.string(),

@@ -29,7 +29,8 @@ import { classifyMailCategory } from '../mail/category';
 import { isFromMailboxOwner } from '../mail/needsReplyHeuristic';
 import { loadState, resolveWatermark } from './state';
 import { countFolderArrivalsSince } from '../mail/messageCounters';
-import { loadTodaySummary } from './summaryCache';
+import { modeOfMailbox, openBriefTop } from '../mail/interpret/briefTop';
+import { appLocaleOf } from '@owlat/shared/appLocales';
 import { type ImportantReason, isFiledBucket, triageThread } from './triage';
 import {
 	FILED_CATEGORIES,
@@ -74,6 +75,19 @@ function toSource(message: Doc<'mailMessages'>): SourceMessage {
 }
 
 /** "The Verge", else the sender's domain ("substack.com"), else the address. */
+/**
+ * The thread brief's "Latest update" line in the reader's language, or null.
+ * Personal mailboxes only: a shared one never shows a latest line (SPEC §7).
+ */
+async function latestLineOf(
+	thread: Doc<'mailThreads'>,
+	mailbox: Doc<'mailboxes'>,
+	locale: string
+): Promise<string | null> {
+	const top = await openBriefTop(thread, modeOfMailbox(mailbox));
+	return top?.latest?.[appLocaleOf(locale)] ?? null;
+}
+
 function senderLabel(message: Doc<'mailMessages'>): string {
 	const name = message.fromName?.trim();
 	if (name) return name;
@@ -250,7 +264,6 @@ export const digest = publicQuery({
 				const after = Math.max(visit?.visitedAt ?? 0, since);
 				const sources = await messagesAfter(ctx, thread._id, after);
 				const newMessages = visit ? visitDelta(thread, visit).newSinceVisit : sources.length;
-				const sinceCount = Math.max(0, thread.messageCount - Math.max(newMessages, 1));
 				changed.push({
 					threadId: thread._id,
 					mailboxId: thread.mailboxId,
@@ -258,13 +271,7 @@ export const digest = publicQuery({
 					newMessages,
 					lastMessageAt: thread.lastMessageAt,
 					snippet: thread.latestSnippet,
-					summary: await loadTodaySummary(ctx, {
-						threadId: thread._id,
-						locale,
-						messageCount: thread.messageCount,
-						sinceCount,
-					}),
-					summaryRequest: { messageId: thread.latestMessageId, sinceCount },
+					summary: await latestLineOf(thread, mailbox, locale),
 					sources: sources.map(toSource),
 				});
 				continue;
@@ -280,13 +287,7 @@ export const digest = publicQuery({
 				mailboxId: thread.mailboxId,
 				subject: thread.latestSubject,
 				snippet: thread.latestSnippet,
-				summary: await loadTodaySummary(ctx, {
-					threadId: thread._id,
-					locale,
-					messageCount: thread.messageCount,
-					sinceCount: 0,
-				}),
-				summaryRequest: { messageId: thread.latestMessageId, sinceCount: 0 },
+				summary: await latestLineOf(thread, mailbox, locale),
 				category: stored?.label ?? heuristic ?? null,
 				bucket: important ? ('important' as const) : ('routine' as const),
 				reason: triage.reason as ImportantReason | null,
