@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Id } from '@owlat/api/dataModel';
-import {
-	fetchPropertyValuesChunked,
-	PROPERTY_VALUES_CHUNK_SIZE,
-} from '../contactsCsv';
+import { fetchPropertyValuesChunked, PROPERTY_VALUES_CHUNK_SIZE } from '../contactsCsv';
 
 const idOf = (n: number) => `contact_${n}` as Id<'contacts'>;
 

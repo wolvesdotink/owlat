@@ -17,7 +17,11 @@ const node = (id: string, over: Partial<SubgraphNodeInput> = {}): SubgraphNodeIn
 	...over,
 });
 
-const edge = (fromId: string, toId: string, over: Partial<SubgraphEdgeInput> = {}): SubgraphEdgeInput => ({
+const edge = (
+	fromId: string,
+	toId: string,
+	over: Partial<SubgraphEdgeInput> = {}
+): SubgraphEdgeInput => ({
 	fromId,
 	toId,
 	relationType: 'relates_to',

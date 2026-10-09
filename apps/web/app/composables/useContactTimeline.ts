@@ -23,13 +23,13 @@ export function useContactTimeline(contactId: Ref<Id<'contacts'>>) {
 	// Unified timeline (cross-channel messages + activities)
 	const { data: timeline, isLoading: timelineLoading } = useConvexQuery(
 		api.contacts.timeline.getTimeline,
-		() => ({ contactId: contactId.value, limit: 50 }),
+		() => ({ contactId: contactId.value, limit: 50 })
 	);
 
 	// Timeline stats
 	const { data: stats, isLoading: statsLoading } = useConvexQuery(
 		api.contacts.timeline.getTimelineStats,
-		() => ({ contactId: contactId.value }),
+		() => ({ contactId: contactId.value })
 	);
 
 	// Channel filter

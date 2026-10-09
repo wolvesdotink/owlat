@@ -102,20 +102,27 @@ export function usePostboxTeamStream(opts: {
 		label: () => t('components.postbox.threadDiscussion.markReadOperation'),
 		announce: false,
 	});
-	const readThreads = new Set<string>();
 	watch(
 		() => (isActive.value ? team.stream.entries.value.at(-1)?.key : undefined),
-		(key) => {
-			if (!key) return;
-			team.stream.markSeen();
+		(key) => key && team.stream.markSeen()
+	);
+	// Discussion notes can arrive on any page (an older page holds the first
+	// one): watch their presence and the thread, not the newest entry.
+	const readThreads = new Set<string>();
+	watch(
+		() => {
 			const threadId = opts.threadId();
 			const hasDiscussion = team.stream.entries.value.some(
 				(e) => e.kind === 'note' && e.noteSource === 'chatMessage'
 			);
-			if (!threadId || !notesEnabled.value || !hasDiscussion || readThreads.has(threadId)) return;
+			return isActive.value && notesEnabled.value && hasDiscussion && threadId ? threadId : null;
+		},
+		(threadId) => {
+			if (!threadId || readThreads.has(threadId)) return;
 			readThreads.add(threadId);
 			void markReadOp.run({ threadId: threadId as Id<'mailThreads'> });
-		}
+		},
+		{ immediate: true }
 	);
 
 	// The reply's unsent text, per thread for the session.

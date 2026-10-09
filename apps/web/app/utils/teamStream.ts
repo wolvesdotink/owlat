@@ -124,9 +124,11 @@ export function placeStreamExtras(
 }
 
 /** The newest entry's position, for `markSeen({streamPosition})`. */
-export function newestPosition(entries: readonly TeamStreamEntry[]): Position | null {
+export function newestPosition(
+	entries: readonly TeamStreamEntry[]
+): { at: number; tie: number; key: string } | null {
 	const last = entries.at(-1);
-	return last ? { at: last.at, key: last.key } : null;
+	return last ? { at: last.at, tie: last.tie, key: last.key } : null;
 }
 
 /** Live notes linked to each item: the "· 2 notes" on a pinned item. */

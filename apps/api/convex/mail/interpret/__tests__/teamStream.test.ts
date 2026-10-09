@@ -15,6 +15,7 @@ import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { enableFeatures } from '../../../__tests__/factories';
 import { appendActivity } from '../activity';
+import { captureTeamReplySnapshot } from '../sources';
 import type { TeamStreamEntry, TeamStreamPage } from '../briefShape';
 import { STREAM_PAGE_SIZE } from '../teamStreamRead';
 import {
@@ -309,6 +310,46 @@ describe('Team Inbox stream', () => {
 		);
 		expect(new Set(replies.map((r) => r.status))).toEqual(new Set(['queued', 'failed']));
 		expect(walked.filter((e) => e.kind === 'teamReply' && e.followUpId)).toHaveLength(EMAILS);
+	});
+
+	it('shows a follow-up once, from scheduled through dispatched to sent', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		const followUpId = await t.run((ctx) =>
+			ctx.db.insert('inboxFollowUps', {
+				threadId,
+				inReplyToMessageId: inboundId,
+				subject: 'Re: Order 42',
+				body: 'One more thing',
+				status: 'scheduled',
+				createdBy: 'user-A',
+				createdAt: SENT,
+				sendAt: SENT + MIN,
+			})
+		);
+		const replies = async () => (await walkTeam(t, threadId)).filter((e) => e.kind === 'teamReply');
+		expect(await replies()).toEqual([expect.objectContaining({ followUpId, status: 'queued' })]);
+		await t.run(async (ctx) => {
+			const sendId = await ctx.db.insert('transactionalSends', {
+				kind: 'team_reply',
+				followUpId,
+				email: 'customer@example.com',
+				status: 'queued',
+			});
+			await ctx.db.patch(followUpId, { status: 'sending', sendId });
+			await captureTeamReplySnapshot(ctx, {
+				sendId,
+				subject: 'Re: Order 42',
+				text: 'One more thing',
+			});
+		});
+		expect(await replies()).toEqual([expect.objectContaining({ followUpId, status: 'queued' })]);
+		await t.run(async (ctx) => {
+			const row = await ctx.db.get(followUpId);
+			await ctx.db.patch(row!.sendId!, { status: 'sent' });
+			await ctx.db.patch(followUpId, { status: 'sent', sentAt: SENT + 2 * MIN });
+		});
+		expect(await replies()).toEqual([expect.objectContaining({ followUpId, status: 'sent' })]);
 	});
 
 	it('walks runs of equal timestamps in the index order, whatever the ids', async () => {

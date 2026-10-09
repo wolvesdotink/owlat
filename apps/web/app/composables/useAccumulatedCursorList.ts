@@ -26,7 +26,7 @@ interface CursorPage<Item> {
 export function useAccumulatedCursorList<Item extends { _id: string }>(
 	page: Ref<CursorPage<Item> | null | undefined>,
 	cursor: Ref<string | null>,
-	resetSources: WatchSource[] = [],
+	resetSources: WatchSource[] = []
 ) {
 	const accumulated = ref<Item[]>([]) as Ref<Item[]>;
 
@@ -42,7 +42,7 @@ export function useAccumulatedCursorList<Item extends { _id: string }>(
 				accumulated.value = [...accumulated.value, ...next.filter((i) => !seen.has(i._id))];
 			}
 		},
-		{ immediate: true },
+		{ immediate: true }
 	);
 
 	// Reset to a fresh first page when any filter changes. `flush: 'sync'` so the
@@ -54,7 +54,7 @@ export function useAccumulatedCursorList<Item extends { _id: string }>(
 				cursor.value = null;
 				accumulated.value = [];
 			},
-			{ flush: 'sync' },
+			{ flush: 'sync' }
 		);
 	}
 

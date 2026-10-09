@@ -389,6 +389,9 @@ export const fileClaimValidator = v.object({
 /** The last team-stream entry a viewer actually saw (stream order is `at`, then `key`). */
 export const streamPositionValidator = v.object({
 	at: v.number(),
+	// The row's `_creationTime` (the stream's order among equal `at`); absent
+	// on positions saved before it was recorded.
+	tie: v.optional(v.number()),
 	key: v.string(),
 });
 

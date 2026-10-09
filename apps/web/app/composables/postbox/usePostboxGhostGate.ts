@@ -14,8 +14,6 @@ export function usePostboxGhostGate(): {
 } {
 	const { isEnabled } = useFeatureFlag();
 	const { writingSuggestions } = usePostboxSettings();
-	const ghostSuggestionsEnabled = computed(
-		() => isEnabled('ai') && writingSuggestions.value,
-	);
+	const ghostSuggestionsEnabled = computed(() => isEnabled('ai') && writingSuggestions.value);
 	return { ghostSuggestionsEnabled };
 }

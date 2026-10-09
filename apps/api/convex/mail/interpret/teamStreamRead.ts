@@ -134,6 +134,6 @@ export async function readSeenPosition(
 	ctx: ReadCtx,
 	ref: ThreadRef,
 	userId: string
-): Promise<{ at: number; key: string } | undefined> {
+): Promise<{ at: number; tie?: number; key: string } | undefined> {
 	return (await readViewerState(ctx, ref, userId))?.streamPosition;
 }
