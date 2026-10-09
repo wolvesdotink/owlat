@@ -23,9 +23,7 @@ import {
 	type PagedBrief,
 } from '~/utils/threadBriefPages';
 import { useConvexQueryMap } from '~/composables/useConvexQueryMap';
-
-/** Threads this tab already asked to interpret on first open (one ask per thread). */
-const ensured = new Set<string>();
+import { useBriefEnsure } from '~/composables/threadBrief/useBriefEnsure';
 
 export function useThreadBrief(opts: {
 	/** The thread, or null to read nothing (a shared mailbox, no thread id yet). */
@@ -96,21 +94,10 @@ export function useThreadBrief(opts: {
 
 	// An older thread with nothing interpreted yet (D5): ask for its
 	// interpretation once; the Conversation shows until the brief arrives.
-	const { isEnabled } = useFeatureFlag();
-	const ensureOp = useBackendOperation(api.mail.interpret.lazy.ensure, {
-		label: () => t('components.brief.operations.ensure'),
-		announce: false,
+	useBriefEnsure({
+		threadRef: () => threadRef.value,
+		completeness: () => view.value?.completeness,
 	});
-	watch(
-		() => [threadRef.value, view.value?.completeness] as const,
-		([ref, completeness]) => {
-			if (!ref || completeness !== 'none' || !isEnabled('ai')) return;
-			if (ensured.has(ref.id)) return;
-			ensured.add(ref.id);
-			void ensureOp.run({ threadRef: ref });
-		},
-		{ immediate: true }
-	);
 
 	const markSeenOp = useBackendOperation(api.mail.interpret.brief.markSeen, {
 		label: () => t('components.brief.operations.markSeen'),
