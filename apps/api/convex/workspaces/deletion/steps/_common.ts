@@ -237,11 +237,9 @@ export type OrganizationDeletionTable =
 import { TENANT_TABLES } from '../../../lib/tenantTables';
 
 /**
- * Compile-time guard: every table classified as tenant data MUST have an
- * organization-deletion step. Before this guard, 41 tenant tables — including
- * externalMailAccounts (encrypted IMAP/SMTP credentials) — silently survived
- * 'Delete organization'. Adding a table to TENANT_TABLES without extending
- * the union above (and the walker's STEPS/registry) is now a compile error.
+ * Compile-time guard: every TENANT_TABLES entry MUST have a deletion step (41
+ * once survived 'Delete organization', externalMailAccounts among them). A
+ * tenant table missing from the union above is a compile error.
  */
 type TenantTableMissingFromWipe = Exclude<
 	(typeof TENANT_TABLES)[number],
