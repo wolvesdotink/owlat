@@ -5,6 +5,7 @@
  */
 
 import type { TestConvex } from 'convex-test';
+import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type schema from '../../../schema';
 import {
@@ -141,6 +142,31 @@ export async function seedTeamThread(
 			threadId,
 		});
 		return { threadId, inboundId };
+	});
+}
+
+/**
+ * A complete interpretation with no open items for one Team Inbox message:
+ * the state the `interpretation_incomplete` gate (D3) needs before any
+ * autonomous send, which the dispatch transaction rechecks.
+ */
+export async function seedCleanInterpretation(
+	t: Test,
+	threadId: Id<'conversationThreads'>,
+	inboundId: Id<'inboundMessages'>
+): Promise<void> {
+	await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		source: { kind: 'inbound', id: inboundId },
+		threadRef: { kind: 'team', id: threadId },
+		mode: 'actions',
+		contentRevision: 'rev-1',
+		extractorVersion: 1,
+		expectedRevision: 0,
+		deletionEpoch: 0,
+		sourceAt: Date.UTC(2026, 9, 7, 9, 0),
+		direction: 'inbound',
+		status: 'complete',
+		result: reduceResult({ items: [], latest: undefined, facts: undefined }),
 	});
 }
 
