@@ -277,9 +277,26 @@ export const heldFieldsValidator = v.object({
 					v.literal('responsibility')
 				),
 				sourceKey: v.string(),
+				at: v.optional(v.number()),
 			})
 		)
 	),
+});
+
+/**
+ * `threadItems.fieldSources`: which source set each field the item shows now,
+ * and that message's time (round 8). Written by the reducer and by
+ * confirm / undo; a purge redacts exactly the fields its message set.
+ */
+export const itemFieldSourcesValidator = v.object({
+	wording: v.optional(transitionSourceValidator),
+	requester: v.optional(transitionSourceValidator),
+	responsible: v.optional(transitionSourceValidator),
+	beneficiary: v.optional(transitionSourceValidator),
+	responsibility: v.optional(transitionSourceValidator),
+	due: v.optional(transitionSourceValidator),
+	amount: v.optional(transitionSourceValidator),
+	options: v.optional(transitionSourceValidator),
 });
 
 /** `threadItems.pendingUpdate`: the held changes and the quotes behind them. */
@@ -459,6 +476,7 @@ export const itemConfirmedFromValidator = v.object({
 	statusSource: v.optional(transitionSourceValidator),
 	dispositionSource: v.optional(transitionSourceValidator),
 	lastTransitionAt: v.optional(v.number()),
+	fieldSources: v.optional(itemFieldSourcesValidator),
 	// The held update it applied, without its quotes (those are the added ones).
 	pendingUpdate: v.optional(heldFieldsValidator),
 	// mail/interpret/reducePlan.ts evidenceKey of each quote the confirmation

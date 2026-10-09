@@ -187,7 +187,7 @@ function isStatusLocked(item: PlanItem): boolean {
  * Does a reaffirmation from `setBy` take a field's stamp? A newer message
  * does; on a tie of message times the later applied other source does.
  */
-function advancesStamp(
+export function advancesStamp(
 	stamp: { sourceKey: string; at: number } | undefined,
 	setBy: { sourceKey: string; at: number }
 ): boolean {
@@ -243,6 +243,7 @@ export function planReduction(
 					isConfirmed: false,
 					isSeenSource,
 					sourceKey,
+					at: opts.sourceAt,
 				});
 				if (pending) {
 					p.pendingUpdate = pending;
@@ -266,6 +267,7 @@ export function planReduction(
 					isConfirmed: true,
 					isSeenSource,
 					sourceKey,
+					at: opts.sourceAt,
 				});
 				if (pending) {
 					p.pendingUpdate = pending;

@@ -103,6 +103,7 @@ export async function itemToMem(row: Doc<'threadItems'>): Promise<MemItem> {
 		...(row.lastTransitionAt !== undefined ? { lastTransitionAt: row.lastTransitionAt } : {}),
 		...(row.statusSource ? { statusSource: row.statusSource } : {}),
 		...(row.dispositionSource ? { dispositionSource: row.dispositionSource } : {}),
+		...(row.fieldSources ? { fieldSources: { ...row.fieldSources } } : {}),
 		...(await openedText(row)),
 		...(await heldToMem(row.pendingUpdate)),
 		requester: row.requester,
