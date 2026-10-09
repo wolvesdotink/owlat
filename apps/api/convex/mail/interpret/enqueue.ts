@@ -25,7 +25,9 @@ import { internal } from '../../_generated/api';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { isInterpretationEligible } from './eligibility';
 import { markBriefPending } from './briefRow';
-import { captureInterpretSource, loadInterpretSource, markSourceOutstanding } from './sources';
+import { captureInterpretSource } from './sources';
+import { markOutstanding } from './outstanding';
+import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { OutboundSource } from './sendFailure';
 
 /**
@@ -95,8 +97,7 @@ export async function enqueueSentInterpretation(
 		await captureInterpretSource(ctx, { source, isLive: true });
 	} else {
 		// The team reply's snapshot exists already; it is outstanding from now on.
-		const snapshot = await loadInterpretSource(ctx, source);
-		if (snapshot) await markSourceOutstanding(ctx, snapshot);
+		await markOutstanding(ctx, interpretationSourceKey(source));
 	}
 	await ctx.scheduler.runAfter(0, internal.mail.interpret.outboundRun.interpretSent, { source });
 	await markBriefPending(ctx, ref);

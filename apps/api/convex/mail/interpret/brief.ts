@@ -259,8 +259,12 @@ export const setViewOverride = threadBriefMutation({
  * a complete brief partial; null when the whole history is in. Pure.
  */
 export function historyGapOf(
-	brief: Pick<Doc<'threadBriefs'>, 'historyState' | 'isHistoryIncomplete' | 'pendingSources'> | null
-): 'pending' | 'history' | null {
+	brief: Pick<
+		Doc<'threadBriefs'>,
+		'historyState' | 'isHistoryIncomplete' | 'pendingSources' | 'unreadSources'
+	> | null
+): 'pending' | 'history' | 'failed' | null {
+	if ((brief?.unreadSources ?? 0) > 0) return 'failed';
 	if (brief?.isHistoryIncomplete) return 'history';
 	if (brief?.historyState === 'pending' || (brief?.pendingSources ?? 0) > 0) return 'pending';
 	return null;

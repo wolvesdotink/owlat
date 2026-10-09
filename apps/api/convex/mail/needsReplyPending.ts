@@ -81,6 +81,9 @@ export const sweepPending = internalMutation({
 			});
 			rescheduled += 1;
 		}
+		// The same reconcile for the thread brief: sources whose interpretation
+		// run was lost are run again, or given up on (mail/interpret/outstanding.ts).
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.outstanding.sweep, {});
 		return { rescheduled, abandoned };
 	},
 });

@@ -20,6 +20,7 @@ import { HISTORY_PAGE, isActiveThread, mailSourceOf } from '../backfillSources';
 import { historyGapOf } from '../brief';
 import { briefCompleteness } from '../purgeRepairs';
 import { captureInterpretSource, captureTeamReplySnapshot } from '../sources';
+import { MAX_SWEEP_TRIES, STALE_MS } from '../outstanding';
 import { BACKFILL_WINDOW_MS, MAX_THREADS_PER_RUN, THREADS_PER_BATCH } from '../backfill';
 import {
 	addMessageToThread,
@@ -650,5 +651,146 @@ describe('every enqueued source is outstanding until it records an outcome (fina
 			inboundMessageId: b,
 		});
 		expect(after.reason).toBeNull();
+	});
+});
+
+describe('the outstanding-source owner (round 4)', () => {
+	const complete = (
+		t: Test,
+		source:
+			| { kind: 'mail'; id: Id<'mailMessages'> }
+			| { kind: 'inbound'; id: Id<'inboundMessages'> },
+		threadRef:
+			| { kind: 'mail'; id: Id<'mailThreads'> }
+			| { kind: 'team'; id: Id<'conversationThreads'> },
+		revision: number,
+		contentRevision = `rev-${revision}`
+	) =>
+		t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+			source,
+			threadRef,
+			mode: threadRef.kind === 'mail' ? 'brief' : 'actions',
+			contentRevision,
+			extractorVersion: 1,
+			expectedRevision: revision,
+			deletionEpoch: 0,
+			sourceAt: Date.UTC(2026, 9, 7, 9, revision),
+			direction: 'inbound',
+			status: 'complete',
+			result: reduceResult({
+				items: [reduceItem()],
+				...(threadRef.kind === 'team' ? { latest: undefined, facts: [] } : {}),
+			}),
+		});
+
+	async function teamPair(t: Test) {
+		const { threadId, inboundId: a } = await seedTeamThread(t);
+		const b = await t.run(async (ctx) => {
+			const first = (await ctx.db.get(a))!;
+			const { _id: _x, _creationTime: _y, ...fields } = first;
+			return ctx.db.insert('inboundMessages', {
+				...fields,
+				messageId: '<order-42-b@example.com>',
+				receivedAt: first.receivedAt + 1000,
+			});
+		});
+		return { threadId, a, b, threadRef: { kind: 'team' as const, id: threadId } };
+	}
+
+	it('F1: holds at once when another source is captured on a complete thread', async () => {
+		const t = convexTest(schema, modules);
+		const { a, b, threadRef } = await teamPair(t);
+		await t.mutation(internal.mail.interpret.teamActions.captureInbound, { inboundMessageId: a });
+		await complete(t, { kind: 'inbound', id: a }, threadRef, 0);
+		expect(
+			(
+				await t.query(internal.mail.interpret.teamActions.interpretationHold, {
+					inboundMessageId: a,
+				})
+			).reason
+		).toBeNull();
+		await t.mutation(internal.mail.interpret.teamActions.captureInbound, { inboundMessageId: b });
+		const hold = await t.query(internal.mail.interpret.teamActions.interpretationHold, {
+			inboundMessageId: a,
+		});
+		expect(hold.reason).toMatch(/incomplete/);
+	});
+
+	it('F2: a replayed outcome settles a re-enqueued source', async () => {
+		const t = convexTest(schema, modules);
+		const { a, threadId, threadRef } = await teamPair(t);
+		await t.mutation(internal.mail.interpret.teamActions.captureInbound, { inboundMessageId: a });
+		await complete(t, { kind: 'inbound', id: a }, threadRef, 0);
+		await t.mutation(internal.mail.interpret.teamActions.captureInbound, { inboundMessageId: a });
+		const briefOfTeam = () =>
+			t.run((ctx) =>
+				ctx.db
+					.query('threadBriefs')
+					.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', threadId))
+					.first()
+			);
+		expect(await briefOfTeam()).toMatchObject({ pendingSources: 1, completeness: 'partial' });
+		// The same extraction again: the reducer answers `replayed`.
+		await complete(t, { kind: 'inbound', id: a }, threadRef, 1, 'rev-0');
+		const settled = (await briefOfTeam())!;
+		expect(settled.pendingSources).toBeUndefined();
+		expect(settled.completeness).toBe('complete');
+	});
+
+	it('F3: re-runs a stale source a bounded number of times, then keeps the brief partial', async () => {
+		const t = convexTest(schema, modules);
+		const { a, b, threadId, threadRef } = await teamPair(t);
+		for (const id of [a, b]) {
+			await t.mutation(internal.mail.interpret.teamActions.captureInbound, {
+				inboundMessageId: id,
+			});
+		}
+		await complete(t, { kind: 'inbound', id: a }, threadRef, 0);
+		const age = () =>
+			t.run(async (ctx) => {
+				const row = (await ctx.db
+					.query('interpretSources')
+					.withIndex('by_source_key', (q) => q.eq('sourceKey', `inbound:${b}`))
+					.first())!;
+				await ctx.db.patch(row._id, { outstandingSince: Date.now() - STALE_MS - 1 });
+			});
+		for (let i = 0; i < MAX_SWEEP_TRIES; i++) {
+			await age();
+			expect(await t.mutation(internal.mail.interpret.outstanding.sweep, {})).toEqual({
+				rerun: 1,
+				unread: 0,
+			});
+		}
+		expect(runsOf(await jobs(t))).toHaveLength(MAX_SWEEP_TRIES);
+		await age();
+		expect(await t.mutation(internal.mail.interpret.outstanding.sweep, {})).toEqual({
+			rerun: 0,
+			unread: 1,
+		});
+		const brief = await t.run((ctx) =>
+			ctx.db
+				.query('threadBriefs')
+				.withIndex('by_conversation_thread', (q) => q.eq('conversationThreadId', threadId))
+				.first()
+		);
+		expect(brief).toMatchObject({ unreadSources: 1, completeness: 'partial' });
+		expect(brief?.pendingSources).toBeUndefined();
+		expect(historyGapOf(brief)).toBe('failed');
+		expect(
+			(
+				await t.query(internal.mail.interpret.teamActions.interpretationHold, {
+					inboundMessageId: a,
+				})
+			).reason
+		).toMatch(/incomplete/);
+		// A late outcome for it lifts the hold.
+		await complete(t, { kind: 'inbound', id: b }, threadRef, 1);
+		expect(
+			(
+				await t.query(internal.mail.interpret.teamActions.interpretationHold, {
+					inboundMessageId: a,
+				})
+			).reason
+		).toBeNull();
 	});
 });

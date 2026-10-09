@@ -245,8 +245,11 @@ The stored completeness the auto-send gates read follows the history too:
 `briefCompleteness` (the one rule every writer uses) keeps a complete brief
 partial while history is unread or unreadable, and never complete while a
 source enqueued anywhere (delivery, a send, the Team Inbox pipeline, a
-history page) has not recorded its outcome yet (`pendingSources`, counted
-once per source in `sources.ts`), so D3 holds Team Inbox
+history page) has not recorded its outcome yet. One module owns that count
+(`outstanding.ts`): marking and settling update it and store completeness in
+the same transaction; reused and replayed results settle too, and a sweep
+on the needs-reply reconcile cron re-runs a source whose run was lost, at
+most three times, then keeps the brief partial (`unreadSources`), so D3 holds Team Inbox
 auto-send meanwhile. `brief.get` also says whether a pending history is
 `running` or `stalled`; the reader asks to resume a stalled one.
 

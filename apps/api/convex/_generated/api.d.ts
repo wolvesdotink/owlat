@@ -34,6 +34,7 @@ import type * as mail_interpret_load from '../mail/interpret/load.js';
 import type * as mail_interpret_needsReplyProjection from '../mail/interpret/needsReplyProjection.js';
 import type * as mail_interpret_noteReactions from '../mail/interpret/noteReactions.js';
 import type * as mail_interpret_outboundRun from '../mail/interpret/outboundRun.js';
+import type * as mail_interpret_outstanding from '../mail/interpret/outstanding.js';
 import type * as mail_interpret_parties from '../mail/interpret/parties.js';
 import type * as mail_interpret_pendingMatch from '../mail/interpret/pendingMatch.js';
 import type * as mail_interpret_pipeline from '../mail/interpret/pipeline.js';
@@ -1634,6 +1635,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/needsReplyProjection': typeof mail_interpret_needsReplyProjection;
 	'mail/interpret/noteReactions': typeof mail_interpret_noteReactions;
 	'mail/interpret/outboundRun': typeof mail_interpret_outboundRun;
+	'mail/interpret/outstanding': typeof mail_interpret_outstanding;
 	'mail/interpret/parties': typeof mail_interpret_parties;
 	'mail/interpret/pendingMatch': typeof mail_interpret_pendingMatch;
 	'mail/interpret/pipeline': typeof mail_interpret_pipeline;

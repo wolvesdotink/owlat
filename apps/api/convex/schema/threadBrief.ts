@@ -353,13 +353,20 @@ export const threadBriefTables = {
 		// The source's lineage record (mail/interpret/reduceIdentity.ts).
 		claimIds: v.optional(v.array(claimIdValidator)),
 		isClaimRecordFull: v.optional(v.boolean()),
-		// Enqueued for interpretation and not yet recorded (sources.ts): counted
-		// in threadBriefs.pendingSources until any outcome lands.
+		// Enqueued for interpretation and not yet recorded (outstanding.ts):
+		// counted in threadBriefs.pendingSources until any outcome lands; since
+		// when, and the stale sweep's re-runs so far. `isUnread`: the sweep
+		// gave up on it (threadBriefs.unreadSources) until an outcome lands.
 		isOutstanding: v.optional(v.boolean()),
+		outstandingSince: v.optional(v.number()),
+		outstandingTries: v.optional(v.number()),
+		isUnread: v.optional(v.boolean()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
 		.index('by_source_key', ['sourceKey'])
+		// The stale-source sweep (mail/interpret/outstanding.ts).
+		.index('by_outstanding', ['isOutstanding', 'outstandingSince'])
 		// Thread erasure (mail/interpret/purgeRows.ts threadBriefRanges).
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId']),
@@ -409,8 +416,10 @@ export const threadBriefTables = {
 		historyState: v.optional(v.union(v.literal('pending'), v.literal('done'))),
 		historyUpdatedAt: v.optional(v.number()),
 		isHistoryIncomplete: v.optional(v.boolean()),
-		// Sources enqueued and not yet recorded (sources.ts): never complete until zero.
+		// Sources enqueued and not yet recorded, and sources the stale sweep gave
+		// up on (outstanding.ts): never complete while either is above zero.
 		pendingSources: v.optional(v.number()),
+		unreadSources: v.optional(v.number()),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.
 		overview: v.optional(
 			v.object({
