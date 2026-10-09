@@ -29,7 +29,7 @@ export function contactPickerLabel(contact: PickerContact): string {
  */
 export function addPickedContact(
 	selected: PickerContact[],
-	contact: PickerContact,
+	contact: PickerContact
 ): PickerContact[] {
 	if (selected.some((c) => c._id === contact._id)) return selected;
 	return [...selected, contact];
@@ -40,7 +40,7 @@ export function addPickedContact(
  */
 export function removePickedContact(
 	selected: PickerContact[],
-	contactId: Id<'contacts'>,
+	contactId: Id<'contacts'>
 ): PickerContact[] {
 	return selected.filter((c) => c._id !== contactId);
 }
@@ -50,7 +50,7 @@ export function removePickedContact(
  */
 export function unselectedCandidates(
 	candidates: PickerContact[],
-	selected: PickerContact[],
+	selected: PickerContact[]
 ): PickerContact[] {
 	const taken = new Set(selected.map((c) => c._id));
 	return candidates.filter((c) => !taken.has(c._id));

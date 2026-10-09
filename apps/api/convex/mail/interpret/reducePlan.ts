@@ -48,6 +48,7 @@ export { evidenceKey, type EvidenceRef } from './evidence';
 export type { FactOp, PlanFact } from './reducePlanFacts';
 import { planFacts, type FactOp, type PlanFact } from './reducePlanFacts';
 import { newEvidence, type EvidenceRef } from './evidence';
+import { heldUpdateOf, type PlanHeld } from './reduceHeld';
 
 /** The item fields the plan reads. */
 export type PlanItem = Pick<
@@ -67,11 +68,16 @@ export type PlanItem = Pick<
 	| 'lastTransitionAt'
 	| 'statusSource'
 	| 'dispositionSource'
-> & {
-	evidence: readonly EvidenceRef[];
-	/** Unsealed assertion, for the duplicate check. */
-	assertionText: string;
-};
+> &
+	Partial<
+		Pick<Doc<'threadItems'>, 'requester' | 'responsible' | 'beneficiary' | 'responsibility'>
+	> & {
+		evidence: readonly EvidenceRef[];
+		/** Unsealed assertion, for the duplicate check. */
+		assertionText: string;
+		/** Unsealed display, for the confirmed-field comparison. */
+		storedDisplay?: { en: string; de: string };
+	};
 
 export interface PlanOptions {
 	mode: 'brief' | 'actions';
@@ -107,13 +113,8 @@ export type ItemPatch = {
 	/** The source (and its message time) that set the new status / disposition. */
 	statusSource?: { sourceKey: string; at: number };
 	dispositionSource?: { sourceKey: string; at: number };
-	/** An unconfirmed claim's changes to a tracked item, held apart until confirmed. */
-	pendingUpdate?: {
-		addEvidence: PlanEvidence[];
-		due?: Doc<'threadItems'>['due'];
-		amount?: Doc<'threadItems'>['amount'];
-		options?: string[];
-	};
+	/** Changes the claim may not make directly, held apart until confirmed (`reduceHeld.ts`). */
+	pendingUpdate?: PlanHeld;
 	activity?: {
 		type: ActivityType;
 		delta?: {
@@ -182,22 +183,16 @@ function isStatusLocked(item: PlanItem): boolean {
 	return !!item.correction && STATUS_LOCKING_CORRECTIONS.has(item.correction.kind);
 }
 
-/** The pending update a claim makes to a tracked item, or null when it changes nothing. */
-function pendingOf(
-	proposal: ReduceItem,
-	match: PlanItem,
-	added: PlanEvidence[]
-): ItemPatch['pendingUpdate'] | null {
-	const pending: NonNullable<ItemPatch['pendingUpdate']> = { addEvidence: added };
-	if (proposal.due && !same(proposal.due, match.due)) pending.due = proposal.due;
-	if (proposal.amount && !same(proposal.amount, match.amount)) pending.amount = proposal.amount;
-	if (proposal.options && !same(proposal.options, match.options))
-		pending.options = proposal.options;
-	return added.length > 0 || pending.due || pending.amount || pending.options ? pending : null;
-}
-
-function same(a: unknown, b: unknown): boolean {
-	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/**
+ * Does a reaffirmation from `setBy` take a field's stamp? A newer message
+ * does; on a tie of message times the later applied other source does.
+ */
+function advancesStamp(
+	stamp: { sourceKey: string; at: number } | undefined,
+	setBy: { sourceKey: string; at: number }
+): boolean {
+	if (!stamp) return true;
+	return setBy.at > stamp.at || (setBy.at === stamp.at && setBy.sourceKey !== stamp.sourceKey);
 }
 
 /** Plan one message's changes. Pure. */
@@ -244,7 +239,10 @@ export function planReduction(
 				// An unconfirmed claim never changes a tracked obligation: its quotes,
 				// deadline, amount and options wait as a pending update ("Check this
 				// change") until it is verified or the user confirms it.
-				const pending = pendingOf(proposal, match, added);
+				const pending = heldUpdateOf(proposal, match, added, {
+					isConfirmed: false,
+					isSeenSource,
+				});
 				if (pending) {
 					p.pendingUpdate = pending;
 					p.activity ??= { type: 'item_changed' };
@@ -258,11 +256,12 @@ export function planReduction(
 				match.evidence.every((e) => interpretationSourceKey(e.source) === sourceKey);
 			const isConfirmed = match.correction?.kind === 'confirmed';
 			if (isConfirmed) {
-				// What a person confirmed is locked (round 5 F1): a different
-				// verified value waits as a pending update, flagged for review;
-				// the confirmed text, deadline, amount and options stay.
+				// What a person confirmed is locked (round 5 F1, round 6 F4): any
+				// difference in a confirmed field (wording, parties, deadline,
+				// amount, options, a value dropped) waits as a held update,
+				// flagged for review.
 				if (proposal.verify === 'passed' && match.verify === 'proposal') p.verify = 'passed';
-				const pending = pendingOf(proposal, match, []);
+				const pending = heldUpdateOf(proposal, match, [], { isConfirmed: true, isSeenSource });
 				if (pending) {
 					p.pendingUpdate = pending;
 					p.isReviewNeeded = true;
@@ -345,8 +344,10 @@ export function planReduction(
 			if (statusAt !== undefined && opts.sourceAt < statusAt) {
 				isOlder = true; // a newer message set the status: evidence only (M2)
 			} else if (t.to === statusFrom) {
-				// A supported reaffirmation advances the stamp (round 5 F2).
-				if (!isLocked && (statusAt === undefined || opts.sourceAt > statusAt)) {
+				// A supported reaffirmation advances the stamp and names this
+				// message as the source (round 5 F2); on a tie the later applied wins.
+				const stamp = current?.statusSource ?? item.statusSource;
+				if (!isLocked && advancesStamp(stamp, setBy)) {
 					patch(item).statusSource = setBy;
 					isTouched = true;
 				}
@@ -384,7 +385,7 @@ export function planReduction(
 			if (dispositionAt !== undefined && opts.sourceAt < dispositionAt) {
 				isOlder = true;
 			} else if (t.disposition === dispositionFrom) {
-				if (dispositionAt === undefined || opts.sourceAt > dispositionAt) {
+				if (advancesStamp(current?.dispositionSource ?? item.dispositionSource, setBy)) {
 					patch(item).dispositionSource = setBy;
 					isTouched = true;
 				}

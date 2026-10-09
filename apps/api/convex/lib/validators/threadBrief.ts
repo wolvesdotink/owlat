@@ -185,6 +185,25 @@ export const itemAmountValidator = v.object({
 });
 
 /** A human correction. It wins over every later model proposal. */
+/** `threadBriefs.sourceCounts`: current extractions per outcome (mail/interpret/counters.ts). */
+export const sourceCountsValidator = v.object({
+	complete: v.number(),
+	partial: v.number(),
+	failed: v.number(),
+	unreadable: v.number(),
+	skipped: v.number(),
+});
+
+/** `threadBriefs.itemCounts`: items per list (`proposal` absent on rows written before it). */
+export const itemCountsValidator = v.object({
+	us: v.number(),
+	them: v.number(),
+	unclear: v.number(),
+	proposal: v.optional(v.number()),
+	closed: v.number(),
+	hidden: v.number(),
+});
+
 /** One claim key of a source and the item or fact it produced or matched (`interpretSources.claimIds`). */
 export const claimIdValidator = v.object({
 	key: v.string(),
@@ -203,6 +222,50 @@ export const itemCorrectionValidator = v.object({
 export const localizedSealedTextValidator = v.object({
 	en: v.string(), // sealed
 	de: v.string(), // sealed
+});
+
+/** Who set a field, and the message time it was set at (`statusSource` / `dispositionSource`). */
+export const transitionSourceValidator = v.object({ sourceKey: v.string(), at: v.number() });
+
+/**
+ * A transition a later message may have made, matched to the item by wording
+ * only (mail/interpret/pendingMatch.ts): never applied until a person confirms
+ * it. Names the extraction row and transition index it came from.
+ */
+export const heldTransitionValidator = v.object({
+	to: v.optional(itemStatusValidator),
+	disposition: v.optional(itemDispositionValidator),
+	sourceKey: v.string(),
+	at: v.number(),
+	interpretationId: v.id('messageInterpretations'),
+	index: v.number(),
+});
+
+/**
+ * A held update's changes ("Check this change"), applied only on
+ * confirmation: values, the confirmed item's re-read text and parties, the
+ * values a re-read no longer has (`removes`), and wording-only transitions.
+ */
+export const heldFieldsValidator = v.object({
+	due: v.optional(itemDueValidator),
+	amount: v.optional(itemAmountValidator),
+	options: v.optional(v.array(v.string())),
+	assertion: v.optional(v.string()), // sealed
+	display: v.optional(localizedSealedTextValidator),
+	requester: v.optional(participantRefValidator),
+	responsible: v.optional(participantRefValidator),
+	beneficiary: v.optional(participantRefValidator),
+	responsibility: v.optional(itemResponsibilityValidator),
+	removes: v.optional(
+		v.array(v.union(v.literal('due'), v.literal('amount'), v.literal('options')))
+	),
+	transitions: v.optional(v.array(heldTransitionValidator)),
+});
+
+/** `threadItems.pendingUpdate`: the held changes and the quotes behind them. */
+export const pendingUpdateValidator = v.object({
+	evidence: v.array(evidenceValidator),
+	...heldFieldsValidator.fields,
 });
 
 // ── Facts ──────────────────────────────────────────────────────────────────
@@ -362,14 +425,21 @@ export const itemConfirmedFromValidator = v.object({
 	due: v.optional(itemDueValidator),
 	amount: v.optional(itemAmountValidator),
 	options: v.optional(v.array(v.string())),
+	// The fields a held update may change, as they were (review round 6).
+	assertion: v.optional(v.string()), // sealed
+	display: v.optional(localizedSealedTextValidator),
+	requester: v.optional(participantRefValidator),
+	responsible: v.optional(participantRefValidator),
+	beneficiary: v.optional(participantRefValidator),
+	responsibility: v.optional(itemResponsibilityValidator),
+	status: v.optional(itemStatusValidator),
+	completion: v.optional(itemCompletionValidator),
+	disposition: v.optional(itemDispositionValidator),
+	statusSource: v.optional(transitionSourceValidator),
+	dispositionSource: v.optional(transitionSourceValidator),
+	lastTransitionAt: v.optional(v.number()),
 	// The held update it applied, without its quotes (those are the added ones).
-	pendingUpdate: v.optional(
-		v.object({
-			due: v.optional(itemDueValidator),
-			amount: v.optional(itemAmountValidator),
-			options: v.optional(v.array(v.string())),
-		})
-	),
+	pendingUpdate: v.optional(heldFieldsValidator),
 	// mail/interpret/reducePlan.ts evidenceKey of each quote the confirmation
 	// moved from the held update onto the item; undo moves them back.
 	addedEvidenceKeys: v.array(v.string()),

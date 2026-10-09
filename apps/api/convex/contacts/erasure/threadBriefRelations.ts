@@ -29,6 +29,8 @@ const MAIL_ONLY =
 	'Postbox only: a Team Inbox thread’s items never appear here (and contact erasure leaves Postbox mail alone).';
 const PURGE_JOB =
 	'A running thread brief purge job (schema/threadPurgeJobs.ts): ids only, no content; it deletes itself when its walk ends, and a walk over an erased row finds nothing.';
+const CLAIM_RECORD =
+	'A source’s claim record (ids only): deleted with the thread by its conversationThreadId; a message purge drops the entries of the claims it deleted (purge.ts claimRecordsRange).';
 const DANGLING =
 	'An item id and nothing else; the question text is the message’s own. Readers resolve the item and treat a missing one as unlinked.';
 
@@ -63,6 +65,7 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 
 	relation('conversationThreads', 'threadPurgeJobs', 'conversationThreadId', 'retain', PURGE_JOB),
 	relation('inboundMessages', 'threadPurgeJobs', 'sources[].id', 'retain', PURGE_JOB),
+	relation('inboundMessages', 'threadPurgeJobs', 'inboundMessageId', 'retain', PURGE_JOB),
 
 	// ── inboundMessages (the contact's received mail) ──
 	relation(
@@ -165,6 +168,7 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 		'An eval correction of a deleted item goes with it.'
 	),
 	relation('threadItems', 'threadActivity', 'delta.replacedById', 'retain', IN_THREAD),
+	relation('threadItems', 'interpretSources', 'claimIds[].itemId', 'retain', CLAIM_RECORD),
 	relation('threadItems', 'draftResponsePlans', 'itemRevisions[].itemId', 'retain', IN_THREAD),
 	relation('threadItems', 'draftResponsePlans', 'stances[].itemId', 'retain', IN_THREAD),
 	relation('threadItems', 'draftResponsePlans', 'ownerInputs[].itemId', 'retain', IN_THREAD),
@@ -178,5 +182,16 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 		'checkpoint.interpretationId',
 		'retain',
 		IN_THREAD
+	),
+	// A held update's transitions name the extraction they came from; a purge
+	// drops a held update (and an undo snapshot) its purged source supported.
+	...['pendingUpdate', 'confirmedFrom.pendingUpdate'].map((path) =>
+		relation(
+			'messageInterpretations',
+			'threadItems',
+			`${path}.transitions[].interpretationId`,
+			'retain',
+			IN_THREAD
+		)
 	),
 ];

@@ -81,11 +81,40 @@ describe('TeamNoteComposer', () => {
 		await box.trigger('input');
 		const picker = w.find('[data-testid="team-composer-item-picker"]');
 		expect(picker.text()).toContain('Refund €129.00 for order #4471');
-		await picker.find('button').trigger('mousedown');
+		await picker.find('[role="option"]').trigger('click');
 		expect(w.find('[data-testid="team-composer-linked-item"]').text()).toContain('Refund €129.00');
 		await w.find('[data-testid="team-composer-post"]').trigger('click');
 		await nextTick();
 		expect(submitNote).toHaveBeenCalledWith('refund is fine', 'i_refund');
+	});
+
+	it('moves through the # picker with the arrows and picks the active option', async () => {
+		const { w, submitNote } = mountComposer();
+		const box = w.find('[data-testid="team-composer-note-input"]');
+		const el = box.element as HTMLTextAreaElement;
+		await box.setValue('#');
+		el.setSelectionRange(1, 1);
+		await box.trigger('input');
+		const options = () => w.findAll('[role="option"]');
+		expect(options().map((o) => o.attributes('aria-selected'))).toEqual(['true', 'false']);
+		await box.trigger('keydown', { key: 'ArrowDown' });
+		expect(options().map((o) => o.attributes('aria-selected'))).toEqual(['false', 'true']);
+		expect(box.attributes('aria-activedescendant')).toBe(options()[1]!.attributes('id'));
+		expect(box.attributes('aria-expanded')).toBe('true');
+		await box.trigger('keydown', { key: 'ArrowDown' });
+		expect(options()[0]!.attributes('aria-selected')).toBe('true');
+		await box.trigger('keydown', { key: 'ArrowUp' });
+		// Focus moving into the picker keeps it open.
+		await box.trigger('blur', { relatedTarget: options()[0]!.element });
+		expect(w.find('[data-testid="team-composer-item-picker"]').exists()).toBe(true);
+		await box.trigger('keydown', { key: 'Enter' });
+		expect(w.find('[data-testid="team-composer-linked-item"]').text()).toContain(
+			'Tell her whether to return the broken lamps'
+		);
+		await box.setValue('note');
+		await w.find('[data-testid="team-composer-post"]').trigger('click');
+		await nextTick();
+		expect(submitNote).toHaveBeenCalledWith('note', 'i_return');
 	});
 
 	it('hands the reply text to Answer mode', async () => {

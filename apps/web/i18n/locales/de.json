@@ -6437,6 +6437,7 @@
 			"composer": {
 				"continue": "Im Antwortmodus weiterschreiben",
 				"hint": "{'@'} erwähnt jemanden · # verknüpft eine Aufgabe",
+				"itemPicker": "Aufgaben zum Verknüpfen",
 				"modeLabel": "Interne Notiz oder Antwort",
 				"note": "Interne Notiz",
 				"notePlaceholder": "Schreib eine interne Notiz ans Team… (geht nie an {name})",
@@ -6493,7 +6494,10 @@
 				}
 			},
 			"stream": {
+				"cut": "Ein Teil der älteren Team-Notizen und Aktivitäten ist noch nicht geladen.",
 				"earlier": "Frühere anzeigen",
+				"earlierNotes": "Frühere Team-Notizen anzeigen",
+				"loadingEarlier": "Frühere Team-Notizen werden geladen…",
 				"markSeenOperation": "Merken, wo du aufgehört hast",
 				"new": "Neu",
 				"system": {

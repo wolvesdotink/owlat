@@ -333,5 +333,5 @@ const RAW: readonly EmojiTuple[] = [
 
 /** The curated Postbox emoji list (frozen, immutable). */
 export const POSTBOX_EMOJI: readonly PostboxEmoji[] = Object.freeze(
-	RAW.map(([shortcode, name, char]) => Object.freeze({ shortcode, name, char })),
+	RAW.map(([shortcode, name, char]) => Object.freeze({ shortcode, name, char }))
 );

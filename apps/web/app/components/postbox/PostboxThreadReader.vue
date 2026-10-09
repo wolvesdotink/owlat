@@ -775,7 +775,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 				:failed="earlierFailed"
 				@load="loadEarlier"
 			/>
-			<PostboxTeamInterlude :state="team" :entries="team.leading.value" />
+			<PostboxTeamInterlude :state="team" :entries="team.leading.value" leading />
 
 			<template v-for="msg in allMessages" :key="msg._id">
 				<PostboxReaderMessage

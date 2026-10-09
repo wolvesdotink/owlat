@@ -92,7 +92,7 @@ function goneCheck(ctx: MutationCtx, budget: DrainBudget) {
 		const known = cache.get(id);
 		if (known !== undefined) return known;
 		const row = await ctx.db.get(id);
-		budget.read(row);
+		budget.charge(row);
 		cache.set(id, row === null);
 		return row === null;
 	};
@@ -102,7 +102,7 @@ function goneCheck(ctx: MutationCtx, budget: DrainBudget) {
 const mailClarificationRange: PurgeRange = async (ctx, { ref, state, budget }) => {
 	if (ref.kind !== 'mail' || !state.isItemDeleted) return { isDone: true };
 	const thread = await ctx.db.get(ref.id);
-	budget.read(thread);
+	budget.charge(thread);
 	const clarification = thread?.needsReply?.clarification;
 	if (!thread?.needsReply || !clarification) return { isDone: true };
 	const questions = await unlinkQuestions(clarification.questions, goneCheck(ctx, budget));
@@ -127,7 +127,7 @@ const teamClarificationRange: PurgeRange = async (ctx, run) => {
 				.query('inboundMessages')
 				.withIndex('by_thread', (q) =>
 					typeof from === 'number'
-						? q.eq('threadId', ref.id).gte('_creationTime', from)
+						? q.eq('threadId', ref.id).gt('_creationTime', from)
 						: q.eq('threadId', ref.id)
 				)
 				.take(n),
@@ -143,7 +143,7 @@ const teamClarificationRange: PurgeRange = async (ctx, run) => {
 	);
 };
 
-/** One target's ask sessions (one per owner), from `afterOwner`. */
+/** One target's ask sessions (one per owner), strictly after `afterOwner`. */
 function sessionsOf(
 	ctx: MutationCtx,
 	targetKey: string,
@@ -155,7 +155,7 @@ function sessionsOf(
 		.withIndex('by_target_owner', (q) =>
 			afterOwner === undefined
 				? q.eq('targetKey', targetKey)
-				: q.eq('targetKey', targetKey).gte('ownerId', afterOwner)
+				: q.eq('targetKey', targetKey).gt('ownerId', afterOwner)
 		)
 		.take(n);
 }
@@ -197,7 +197,7 @@ const askSessionsRange: PurgeRange = async (ctx, run) => {
 				.query('mailDrafts')
 				.withIndex('by_thread', (q) =>
 					typeof from === 'number'
-						? q.eq('threadId', ref.id).gte('_creationTime', from)
+						? q.eq('threadId', ref.id).gt('_creationTime', from)
 						: q.eq('threadId', ref.id)
 				)
 				.take(n),
@@ -205,21 +205,15 @@ const askSessionsRange: PurgeRange = async (ctx, run) => {
 		async (draft) => {
 			const targetKey = answerAskTargetKey({ kind: 'mailDraft', draftId: draft._id });
 			let after: string | undefined;
-			let atAfter = new Set<string>();
 			for (;;) {
 				if (budget.isExhausted()) return false;
+				const asked = budget.chunk(SESSION_CHUNK);
 				budget.range();
-				const asked = SESSION_CHUNK + atAfter.size;
 				const rows = await sessionsOf(ctx, targetKey, after, asked);
+				for (const session of rows) budget.charge(session);
 				for (const session of rows) {
-					if (session.ownerId === after && atAfter.has(session._id)) continue;
-					budget.read(session);
 					await unlinkSession(ctx, session, isGone);
-					if (session.ownerId === after) atAfter.add(session._id);
-					else {
-						after = session.ownerId;
-						atAfter = new Set([session._id]);
-					}
+					after = session.ownerId;
 				}
 				if (rows.length < asked) return true;
 			}
@@ -321,7 +315,7 @@ export async function settleSourcesJob(
 		return;
 	}
 	if (state.isSurvivorChanged) await recheckThread(ctx, ref);
-	const keys = new Set((job.sources ?? []).map(interpretationSourceKey));
+	const keys = new Set(state.sources.map(interpretationSourceKey));
 	const isCheckpointGone = !!brief.checkpoint && keys.has(brief.checkpoint.sourceKey);
 	const counted = await recomputeCompleteness(ctx, ref);
 	const fresh = (await ctx.db.get(brief._id)) ?? brief;

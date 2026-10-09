@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { threadRefFields } from '../lib/validators/threadRef';
+import { threadBriefFeedbackTables } from './threadBriefFeedback';
 import {
 	activityActorValidator,
 	activityDeltaValidator,
@@ -10,6 +11,8 @@ import {
 	activityVisibilityValidator,
 	briefCompletenessValidator,
 	claimIdValidator,
+	itemCountsValidator,
+	sourceCountsValidator,
 	coverageEntryValidator,
 	draftRefKindValidator,
 	evidenceValidator,
@@ -34,14 +37,14 @@ import {
 	itemRevisionRefValidator,
 	itemStatusValidator,
 	itemConfirmedFromValidator,
-	itemCorrectionKindValidator,
 	itemListBucketValidator,
 	itemVerifyValidator,
 	localizedSealedTextValidator,
-	noteSourceValidator,
 	newPromiseValidator,
 	ownerInputRefValidator,
 	participantRefValidator,
+	pendingUpdateValidator,
+	transitionSourceValidator,
 	planVerdictValidator,
 	responsePlanStanceValidator,
 	sourceManifestValidator,
@@ -260,14 +263,7 @@ export const threadBriefTables = {
 		// replay keeps the item's id.
 		// An unconfirmed claim's changes to this (tracked) item, held apart until
 		// it is verified or the user confirms it ("Check this change").
-		pendingUpdate: v.optional(
-			v.object({
-				evidence: v.array(evidenceValidator),
-				due: v.optional(itemDueValidator),
-				amount: v.optional(itemAmountValidator),
-				options: v.optional(v.array(v.string())),
-			})
-		),
+		pendingUpdate: v.optional(pendingUpdateValidator),
 		// Every claim key that ever produced or matched this item: the thread's
 		// identity record, consulted before content (mail/interpret/fold.ts).
 		// Message date of the transition that set the current status or
@@ -277,8 +273,8 @@ export const threadBriefTables = {
 		// `<interpretation sourceKey>` for a mail, `user:<id>` for a reaction,
 		// `op:<ref>` for a recorded operation. A purge of that source resets
 		// what it set (mail/interpret/transitionSources.ts).
-		statusSource: v.optional(v.object({ sourceKey: v.string(), at: v.number() })),
-		dispositionSource: v.optional(v.object({ sourceKey: v.string(), at: v.number() })),
+		statusSource: v.optional(transitionSourceValidator),
+		dispositionSource: v.optional(transitionSourceValidator),
 		lineageKeys: v.optional(v.array(v.string())),
 		lineage: v.optional(v.string()),
 		// Message date of the first evidence: the "age" of compareForYou.
@@ -293,6 +289,7 @@ export const threadBriefTables = {
 		// One list of a thread in the "For you" order: the list row's top item is
 		// its first row (mail/interpret/briefTop.ts).
 		.index('by_mail_thread_bucket_sort', ['mailThreadId', 'listBucket', 'sortKey'])
+		.index('by_conversation_thread_bucket_sort', ['conversationThreadId', 'listBucket', 'sortKey'])
 		.index('by_mailbox_responsibility_due', ['mailboxId', 'responsibility', 'status', 'due.at'])
 		.index('by_counterparty', ['counterpartyKey'])
 		// Erasure: an erased member's assignments; items in creation order and
@@ -349,6 +346,7 @@ export const threadBriefTables = {
 		),
 		// The source's lineage record (mail/interpret/reduceIdentity.ts).
 		claimIds: v.optional(v.array(claimIdValidator)),
+		isClaimRecordFull: v.optional(v.boolean()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -378,31 +376,19 @@ export const threadBriefTables = {
 		completeness: briefCompletenessValidator,
 		// Per-source counts of the current extractions (mail/interpret/counters.ts),
 		// maintained in the transaction that changes them; completeness reads them.
-		sourceCounts: v.optional(
-			v.object({
-				complete: v.number(),
-				partial: v.number(),
-				failed: v.number(),
-				unreadable: v.number(),
-				skipped: v.number(),
-			})
-		),
+		sourceCounts: v.optional(sourceCountsValidator),
 		// Item counts by list (open per responsibility, unconfirmed proposals,
 		// closed, untracked), maintained by every writer of an item's status,
 		// responsibility or verify state. `proposal` is absent on rows written
 		// before it existed (read as 0).
-		itemCounts: v.optional(
-			v.object({
-				us: v.number(),
-				them: v.number(),
-				unclear: v.number(),
-				proposal: v.optional(v.number()),
-				closed: v.number(),
-				hidden: v.number(),
-			})
-		),
+		itemCounts: v.optional(itemCountsValidator),
 		// Bumped by every purge touching the thread.
 		deletionEpoch: v.number(),
+		// Wording-only matches of pending transitions still being scanned
+		// (mail/interpret/pendingMatch.ts): the brief stays partial meanwhile.
+		pendingMatchRuns: v.optional(v.number()),
+		// The last fold read only part of the thread's items or facts (R2): partial.
+		isFoldScanCut: v.optional(v.boolean()),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.
 		overview: v.optional(
 			v.object({
@@ -437,52 +423,8 @@ export const threadBriefTables = {
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId']),
 
-	// A person's correction of the model about an item ("Not a request"), kept
-	// for the interpretation eval: which kind of item the model got wrong, and
-	// under which extractor. Structure only, never the item's text: the text
-	// stays on the item (sealed) and goes with it.
-	threadItemCorrections: defineTable({
-		...threadRefFields,
-		itemId: v.id('threadItems'),
-		// The item revision the correction was made against.
-		itemRevision: v.number(),
-		kind: itemCorrectionKindValidator,
-		// BetterAuth user id of who corrected it.
-		userId: v.string(),
-		// The item as the model had it.
-		intent: itemIntentValidator,
-		facets: v.array(itemFacetValidator),
-		responsibility: itemResponsibilityValidator,
-		verify: itemVerifyValidator,
-		// The extractions its evidence came from (interpretationSourceKey + revision).
-		evidenceSources: v.array(v.object({ sourceKey: v.string(), contentRevision: v.string() })),
-		createdAt: v.number(),
-	})
-		.index('by_mail_thread', ['mailThreadId'])
-		.index('by_conversation_thread', ['conversationThreadId'])
-		.index('by_item', ['itemId'])
-		.index('by_user', ['userId']),
-
-	// Emoji reactions on internal notes: Team Inbox `threadNotes` and Postbox
-	// thread discussion `chatMessages`. One row per (note, person, emoji);
-	// toggled through `mail/interpret/noteReactions.ts`, bounded per note.
-	noteReactions: defineTable({
-		...threadRefFields,
-		noteSource: noteSourceValidator,
-		// Set when noteSource === 'threadNote'.
-		threadNoteId: v.optional(v.id('threadNotes')),
-		// Set when noteSource === 'chatMessage'.
-		chatMessageId: v.optional(v.id('chatMessages')),
-		// BetterAuth user id of who reacted.
-		userId: v.string(),
-		emoji: v.string(),
-		createdAt: v.number(),
-	})
-		.index('by_thread_note', ['threadNoteId', 'userId', 'emoji'])
-		.index('by_chat_message', ['chatMessageId', 'userId', 'emoji'])
-		.index('by_mail_thread', ['mailThreadId'])
-		.index('by_conversation_thread', ['conversationThreadId'])
-		.index('by_user', ['userId']), // member erasure
+	// The correction log and note reactions (schema/threadBriefFeedback.ts).
+	...threadBriefFeedbackTables,
 
 	// Per draft: the stances, coverage and claims of its self-check, bound to
 	// the draft hash and the item revisions it was built against.

@@ -15,7 +15,8 @@ export type TransitionFields = Pick<
 >;
 
 /**
- * The item patch that resets whatever `purgedSourceKey` set: its status back
+ * The item patch that resets whatever `purgedSourceKey` set, as a message or
+ * as a recorded operation on it (`op:<sourceKey>`): its status back
  * to `open` (no completion), its disposition back to `unanswered`, with
  * `isReviewNeeded`. Returns null when the source set neither. The order
  * stamp (`lastTransitionAt`) falls back to what still stands.
@@ -24,8 +25,12 @@ export function resetTransitionsFrom(
 	item: TransitionFields,
 	purgedSourceKey: string
 ): Partial<Doc<'threadItems'>> | null {
-	const isStatus = item.statusSource?.sourceKey === purgedSourceKey;
-	const isDisposition = item.dispositionSource?.sourceKey === purgedSourceKey;
+	// The source itself (a message read), or a recorded operation on it (a
+	// bounced send: `sendFailure.ts` writes `op:<sourceKey>`).
+	const isFrom = (setBy: string | undefined) =>
+		setBy === purgedSourceKey || setBy === `op:${purgedSourceKey}`;
+	const isStatus = isFrom(item.statusSource?.sourceKey);
+	const isDisposition = isFrom(item.dispositionSource?.sourceKey);
 	if (!isStatus && !isDisposition) return null;
 	const remaining = [
 		isStatus ? undefined : item.statusSource?.at,

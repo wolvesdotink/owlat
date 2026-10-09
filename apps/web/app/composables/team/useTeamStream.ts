@@ -22,9 +22,6 @@ export type TeamStreamTarget =
 	| { kind: 'team'; id: Id<'conversationThreads'> }
 	| { kind: 'mail'; id: Id<'mailThreads'> };
 
-/** Most older pages one viewer walks back through. */
-const MAX_EARLIER_PAGES = 25;
-
 export function useTeamStream(opts: {
 	target: () => TeamStreamTarget | null;
 	enabled?: () => boolean;
@@ -95,16 +92,17 @@ export function useTeamStream(opts: {
 		mergeStreamPages(loaded.value.map((page) => page?.entries))
 	);
 	const oldestLoaded = computed(() => loaded.value.at(-1));
+	// Every older page stays reachable: nothing caps the walk back.
 	const hasEarlier = computed(() => {
 		const page = oldestLoaded.value;
-		return !!page && !page.isDone && requested.value < MAX_EARLIER_PAGES;
+		return !!page && !page.isDone;
 	});
 	const isLoadingEarlier = computed(() => oldestLoaded.value === undefined && requested.value > 0);
 	const isLoading = computed(() => target.value !== null && first.value === undefined);
 
 	function loadEarlier() {
-		if (!hasEarlier.value) return;
-		requested.value = Math.min(requested.value + 1, MAX_EARLIER_PAGES);
+		if (!hasEarlier.value || isLoadingEarlier.value) return;
+		requested.value = cursors.value.length + 1;
 	}
 
 	// "New since you looked": the newest entry seen is saved once per position.
@@ -144,6 +142,8 @@ export function useTeamStream(opts: {
 		entries,
 		seenPosition: computed(() => seenAtOpen.value?.position ?? null),
 		isAvailable: computed(() => first.value !== null),
+		/** The first page has arrived and the viewer may read the stream. */
+		isReady: computed(() => first.value !== undefined && first.value !== null),
 		isLoading,
 		hasEarlier,
 		isLoadingEarlier,

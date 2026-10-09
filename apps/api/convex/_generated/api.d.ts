@@ -29,6 +29,7 @@ import type * as mail_interpret_needsReplyProjection from '../mail/interpret/nee
 import type * as mail_interpret_noteReactions from '../mail/interpret/noteReactions.js';
 import type * as mail_interpret_outboundRun from '../mail/interpret/outboundRun.js';
 import type * as mail_interpret_parties from '../mail/interpret/parties.js';
+import type * as mail_interpret_pendingMatch from '../mail/interpret/pendingMatch.js';
 import type * as mail_interpret_pipeline from '../mail/interpret/pipeline.js';
 import type * as mail_interpret_planCheck from '../mail/interpret/planCheck.js';
 import type * as mail_interpret_planGate from '../mail/interpret/planGate.js';
@@ -36,6 +37,7 @@ import type * as mail_interpret_preferences from '../mail/interpret/preferences.
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
 import type * as mail_interpret_purge from '../mail/interpret/purge.js';
 import type * as mail_interpret_purgeClaims from '../mail/interpret/purgeClaims.js';
+import type * as mail_interpret_purgeClaimSources from '../mail/interpret/purgeClaimSources.js';
 import type * as mail_interpret_purgeDrain from '../mail/interpret/purgeDrain.js';
 import type * as mail_interpret_purgeJobs from '../mail/interpret/purgeJobs.js';
 import type * as mail_interpret_purgeLinks from '../mail/interpret/purgeLinks.js';
@@ -45,6 +47,7 @@ import type * as mail_interpret_purgeThread from '../mail/interpret/purgeThread.
 import type * as mail_interpret_reactionRules from '../mail/interpret/reactionRules.js';
 import type * as mail_interpret_reactions from '../mail/interpret/reactions.js';
 import type * as mail_interpret_reduce from '../mail/interpret/reduce.js';
+import type * as mail_interpret_reduceHeld from '../mail/interpret/reduceHeld.js';
 import type * as mail_interpret_reduceIdentity from '../mail/interpret/reduceIdentity.js';
 import type * as mail_interpret_reduceInput from '../mail/interpret/reduceInput.js';
 import type * as mail_interpret_reducePlan from '../mail/interpret/reducePlan.js';
@@ -759,6 +762,7 @@ import type * as inbox_retryFailed from '../inbox/retryFailed.js';
 import type * as inbox_snooze from '../inbox/snooze.js';
 import type * as inbox_stepOutputs from '../inbox/stepOutputs.js';
 import type * as inbox_teamStream from '../inbox/teamStream.js';
+import type * as inbox_teamStreamSources from '../inbox/teamStreamSources.js';
 import type * as inbox_threadFilters from '../inbox/threadFilters.js';
 import type * as inbox_threadSearch from '../inbox/threadSearch.js';
 import type * as inbox_threadSort from '../inbox/threadSort.js';
@@ -1430,6 +1434,7 @@ import type * as schema_smtpResponseCategories from '../schema/smtpResponseCateg
 import type * as schema_snds from '../schema/snds.js';
 import type * as schema_templates from '../schema/templates.js';
 import type * as schema_threadBrief from '../schema/threadBrief.js';
+import type * as schema_threadBriefFeedback from '../schema/threadBriefFeedback.js';
 import type * as schema_threadPurgeJobs from '../schema/threadPurgeJobs.js';
 import type * as schema_emailCoediting from '../schema/emailCoediting.js';
 import type * as schema_today from '../schema/today.js';
@@ -1620,6 +1625,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/noteReactions': typeof mail_interpret_noteReactions;
 	'mail/interpret/outboundRun': typeof mail_interpret_outboundRun;
 	'mail/interpret/parties': typeof mail_interpret_parties;
+	'mail/interpret/pendingMatch': typeof mail_interpret_pendingMatch;
 	'mail/interpret/pipeline': typeof mail_interpret_pipeline;
 	'mail/interpret/planCheck': typeof mail_interpret_planCheck;
 	'mail/interpret/planGate': typeof mail_interpret_planGate;
@@ -1627,6 +1633,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
 	'mail/interpret/purge': typeof mail_interpret_purge;
 	'mail/interpret/purgeClaims': typeof mail_interpret_purgeClaims;
+	'mail/interpret/purgeClaimSources': typeof mail_interpret_purgeClaimSources;
 	'mail/interpret/purgeDrain': typeof mail_interpret_purgeDrain;
 	'mail/interpret/purgeJobs': typeof mail_interpret_purgeJobs;
 	'mail/interpret/purgeLinks': typeof mail_interpret_purgeLinks;
@@ -1636,6 +1643,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/reactionRules': typeof mail_interpret_reactionRules;
 	'mail/interpret/reactions': typeof mail_interpret_reactions;
 	'mail/interpret/reduce': typeof mail_interpret_reduce;
+	'mail/interpret/reduceHeld': typeof mail_interpret_reduceHeld;
 	'mail/interpret/reduceIdentity': typeof mail_interpret_reduceIdentity;
 	'mail/interpret/reduceInput': typeof mail_interpret_reduceInput;
 	'mail/interpret/reducePlan': typeof mail_interpret_reducePlan;
@@ -2340,6 +2348,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/snooze': typeof inbox_snooze;
 	'inbox/stepOutputs': typeof inbox_stepOutputs;
 	'inbox/teamStream': typeof inbox_teamStream;
+	'inbox/teamStreamSources': typeof inbox_teamStreamSources;
 	'inbox/threadFilters': typeof inbox_threadFilters;
 	'inbox/threadSearch': typeof inbox_threadSearch;
 	'inbox/threadSort': typeof inbox_threadSort;
@@ -3011,6 +3020,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/snds': typeof schema_snds;
 	'schema/templates': typeof schema_templates;
 	'schema/threadBrief': typeof schema_threadBrief;
+	'schema/threadBriefFeedback': typeof schema_threadBriefFeedback;
 	'schema/threadPurgeJobs': typeof schema_threadPurgeJobs;
 	'schema/emailCoediting': typeof schema_emailCoediting;
 	'schema/today': typeof schema_today;

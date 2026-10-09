@@ -46,7 +46,7 @@ import { utcDayKey } from '../../lib/clock';
 import { INTERPRET_EXTRACTOR_VERSION } from './schema';
 import { loadBriefRow } from './briefRow';
 import { threadItemsWithStatus } from './load';
-import { captureInterpretSource } from './sources';
+import { captureInterpretSource, loadInterpretSource } from './sources';
 
 /** Open items read for one briefing; more than this is an overflow (held). */
 export const BRIEFING_ITEM_READ = 200;
@@ -167,22 +167,49 @@ export function selectBriefing<T extends Selectable>(
 	};
 }
 
-/** Read the thread's open items for a briefing (one past the bound, to see overflow). */
-async function readOpenItems(ctx: Pick<QueryCtx, 'db'>, threadId: Id<'conversationThreads'>) {
-	const rows = await threadItemsWithStatus(
+/**
+ * The open items a briefing works from (review round 2, F9): the CURRENT
+ * message's items loaded on their own, through the source's lineage record
+ * (`interpretSources.claimIds`: every item its extraction produced or merged
+ * into), so none of them can fall behind a page of older ones; plus the
+ * thread's other open items as context, one past the bound to see overflow.
+ */
+async function readOpenItems(
+	ctx: Pick<QueryCtx, 'db'>,
+	threadId: Id<'conversationThreads'>,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<{ rows: Array<{ item: Doc<'threadItems'>; isCurrent: boolean }>; readCount: number }> {
+	const source = await loadInterpretSource(ctx, { kind: 'inbound', id: inboundMessageId });
+	const current = new Map<string, Doc<'threadItems'>>();
+	for (const claim of source?.claimIds ?? []) {
+		if (!claim.itemId || current.has(claim.itemId)) continue;
+		const item = await ctx.db.get(claim.itemId);
+		if (item && item.status === 'open' && item.conversationThreadId === threadId) {
+			current.set(item._id, item);
+		}
+	}
+	const context = await threadItemsWithStatus(
 		ctx,
 		{ kind: 'team', id: threadId },
 		'open',
 		BRIEFING_ITEM_READ + 1
 	);
-	return { rows: rows.slice(0, BRIEFING_ITEM_READ), readCount: rows.length };
+	const rows = [
+		...[...current.values()].map((item) => ({ item, isCurrent: true })),
+		...context
+			.slice(0, BRIEFING_ITEM_READ)
+			.filter((item) => !current.has(item._id))
+			.map((item) => ({ item, isCurrent: isFromInbound(item, inboundMessageId) })),
+	];
+	return { rows, readCount: context.length };
 }
 
-function selectable(item: Doc<'threadItems'>, inboundMessageId: Id<'inboundMessages'>) {
+function selectable(row: { item: Doc<'threadItems'>; isCurrent: boolean }) {
+	const { item } = row;
 	return {
 		item,
 		responsibility: item.responsibility,
-		isFromCurrentMessage: isFromInbound(item, inboundMessageId),
+		isFromCurrentMessage: row.isCurrent,
 		...(item.due ? { due: item.due } : {}),
 		facets: item.facets,
 		askedAt: item.askedAt,
@@ -230,11 +257,8 @@ export const briefingActions = internalQuery({
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message?.threadId) return { interpretation: null, selection: empty };
 		const row = await countedExtraction(ctx, args.inboundMessageId);
-		const { rows, readCount } = await readOpenItems(ctx, message.threadId);
-		const picked = selectBriefing(
-			rows.map((item) => selectable(item, args.inboundMessageId)),
-			readCount
-		);
+		const { rows, readCount } = await readOpenItems(ctx, message.threadId, args.inboundMessageId);
+		const picked = selectBriefing(rows.map(selectable), readCount);
 		const open = (list: typeof picked.ours) =>
 			Promise.all(list.map((p) => toBriefingItem(p.item, p.isFromCurrentMessage)));
 		return {
@@ -363,11 +387,8 @@ export const interpretationHold = internalQuery({
 		const row = await countedExtraction(ctx, args.inboundMessageId);
 		const brief = await loadBriefRow(ctx, { kind: 'team', id: message.threadId });
 		// The same selection the briefing made (no unsealing needed to count).
-		const { rows, readCount } = await readOpenItems(ctx, message.threadId);
-		const picked = selectBriefing(
-			rows.map((item) => selectable(item, args.inboundMessageId)),
-			readCount
-		);
+		const { rows, readCount } = await readOpenItems(ctx, message.threadId, args.inboundMessageId);
+		const picked = selectBriefing(rows.map(selectable), readCount);
 		return {
 			reason: interpretationHoldReason({
 				interpretation: row ? toInterpretation(row, Date.now()) : null,
