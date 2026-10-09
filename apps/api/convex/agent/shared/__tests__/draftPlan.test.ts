@@ -148,6 +148,7 @@ describe('runSharedDraft with a plan', () => {
 				},
 			],
 			newPromises: [],
+			isIncomplete: false,
 		});
 	});
 
