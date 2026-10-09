@@ -1420,6 +1420,7 @@ import type * as schema_smtpResponseCategories from '../schema/smtpResponseCateg
 import type * as schema_snds from '../schema/snds.js';
 import type * as schema_templates from '../schema/templates.js';
 import type * as schema_threadBrief from '../schema/threadBrief.js';
+import type * as schema_threadBriefFeedback from '../schema/threadBriefFeedback.js';
 import type * as schema_threadPurgeJobs from '../schema/threadPurgeJobs.js';
 import type * as schema_emailCoediting from '../schema/emailCoediting.js';
 import type * as schema_today from '../schema/today.js';
@@ -2991,6 +2992,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/snds': typeof schema_snds;
 	'schema/templates': typeof schema_templates;
 	'schema/threadBrief': typeof schema_threadBrief;
+	'schema/threadBriefFeedback': typeof schema_threadBriefFeedback;
 	'schema/threadPurgeJobs': typeof schema_threadPurgeJobs;
 	'schema/emailCoediting': typeof schema_emailCoediting;
 	'schema/today': typeof schema_today;

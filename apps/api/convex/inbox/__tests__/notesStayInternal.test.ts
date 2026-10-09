@@ -24,7 +24,7 @@ const ALLOWED = new Set([
 	// Emoji reactions on notes and the note's `#` item link (thread brief):
 	// stores reactions and checks the link, never reads a note's text.
 	'mail/interpret/noteReactions.ts',
-	'schema/threadBrief.ts',
+	'schema/threadBriefFeedback.ts',
 	// The author's own account export (not the contact's data export).
 	'auth/accountExport.ts',
 	'auth/accountExportQueries.ts',
