@@ -119,6 +119,7 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 	descendant('threadItems', 'draftResponsePlans', 'stances[].itemId', 'delete', SAME_THREAD),
 	descendant('threadItems', 'draftResponsePlans', 'ownerInputs[].itemId', 'delete', SAME_THREAD),
 	descendant('threadItems', 'draftResponsePlans', 'coverage[].itemId', 'delete', SAME_THREAD),
+	descendant('threadItems', 'draftResponsePlans', 'newPromises[].itemId', 'delete', SAME_THREAD),
 
 	// ── threadFacts ──
 	descendant('threadFacts', 'threadFacts', 'supersedesId', 'delete', SAME_THREAD),

@@ -44,6 +44,7 @@ function makeCtx(shadowEnabled: boolean, recorded: Recorded[]) {
 		queries: {
 			getBudgetStatus: { autonomousAutoSendAllowed: true },
 			interpretationHold: { reason: null },
+			itemCoverageCheck: { objections: [], reason: null, isEnforced: false },
 			getCircuitBreakersInternal: [],
 			checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
 			getMessage: {
@@ -99,6 +100,8 @@ describe('routeStep.execute — shadow mode', () => {
 				const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 				if (name.includes('getBudgetStatus')) return { autonomousAutoSendAllowed: true };
 				if (name.includes('interpretationHold')) return { reason: null };
+				if (name.includes('itemCoverageCheck'))
+					return { objections: [], reason: null, isEnforced: false };
 				if (name.includes('getCircuitBreakersInternal')) return [];
 				if (name.includes('checkPermissionInternal'))
 					return { mode: 'enabled', allowed: false, reason: 'below threshold' };
@@ -137,6 +140,7 @@ describe('routeStep.execute — shadow mode', () => {
 			queries: {
 				getBudgetStatus: { autonomousAutoSendAllowed: true },
 				interpretationHold: { reason: null },
+				itemCoverageCheck: { objections: [], reason: null, isEnforced: false },
 				getCircuitBreakersInternal: [],
 				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
 				getMessage: {
@@ -165,6 +169,7 @@ describe('routeStep.execute — shadow mode', () => {
 			queries: {
 				getBudgetStatus: { autonomousAutoSendAllowed: true },
 				interpretationHold: { reason: null },
+				itemCoverageCheck: { objections: [], reason: null, isEnforced: false },
 				getCircuitBreakersInternal: [],
 				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
 				getMessage: {
@@ -196,6 +201,7 @@ describe('routeStep.execute — shadow mode', () => {
 			queries: {
 				getBudgetStatus: { autonomousAutoSendAllowed: true },
 				interpretationHold: { reason: null },
+				itemCoverageCheck: { objections: [], reason: null, isEnforced: false },
 				getCircuitBreakersInternal: [],
 				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
 				getMessage: {

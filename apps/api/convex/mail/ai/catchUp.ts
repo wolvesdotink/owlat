@@ -28,7 +28,7 @@ import { openMailMessageInlineBody } from '../../lib/messageBody';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { gateAndLoadThread } from './gate';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
-import { checkAskCoverage, generateCatchUp } from './catchUpGenerate';
+import { generateCatchUp } from './catchUpGenerate';
 import {
 	normalizeCatchUpLocale,
 	visibleCatchUp,
@@ -115,27 +115,5 @@ export const ensure = authedAction({
 			catchUp,
 		});
 		return visibleCatchUp({ mode, ...catchUp });
-	},
-});
-
-// authz: the card is read through mail.ai.catchUpStore.readForMessage, which
-// returns null unless the caller can read the mailbox (loadReadableMailbox);
-// org membership is enforced by authedAction; the `ai` flag, spend budget and a
-// per-user rate limit (its own bucket) by aiGate.assertAiAllowed. The draft
-// text is the caller's own.
-export const coverage = authedAction({
-	args: { messageId: v.id('mailMessages'), draftText: v.string(), locale: v.string() },
-	handler: async (ctx, args): Promise<{ coveredAskIds: string[] }> => {
-		const state = await ctx.runQuery(internal.mail.ai.catchUpStore.readForMessage, {
-			messageId: args.messageId,
-			locale: normalizeCatchUpLocale(args.locale),
-		});
-		const card = state?.aiEnabled && state.cached ? visibleCatchUp(state.cached) : null;
-		const coveredAskIds = await checkAskCoverage(ctx, {
-			asks: card?.asks ?? [],
-			draftText: args.draftText,
-			feature: 'answer_ask_coverage',
-		});
-		return { coveredAskIds };
 	},
 });

@@ -152,7 +152,7 @@ function onDraftId(id: string) {
 	});
 }
 
-// Catch-up, "Draft with AI" and thread files (plan §03 to §06)
+// The response plan, "Draft with AI" and thread files (plan §03 to §06)
 const assist = useAnswerModeAssist({
 	message: () => message.value,
 	composer: () => composerRef.value?.answer ?? null,
@@ -384,6 +384,7 @@ onBeforeUnmount(() => {
 							:layout="layout"
 							:messages="messages"
 							:can-attach="!!seed"
+							:plan="assist.plan"
 							@reveal="reveal"
 							@attach="assist.attachThreadFile"
 						/>
@@ -443,6 +444,11 @@ onBeforeUnmount(() => {
 							ref="queueAskRef"
 							@visible="queueAskVisible = $event"
 							@use-draft="assist.applyQueueDraft(composer, $event)"
+						/>
+						<AnswerPlanBanner
+							:claims="assist.plan.missingFiles.value"
+							can-attach
+							@files="(list) => composer.addFiles(list).then(assist.plan.recheck)"
 						/>
 						<template v-if="assist.aiEnabled.value && !queueAskVisible">
 							<AskCard

@@ -388,11 +388,13 @@ export const coverageEntryValidator = v.object({
 	verdict: coverageVerdictValidator,
 });
 
-/** A promise the draft makes that no item asked for. */
+/** A commitment the draft makes: to an item, or one nobody asked for. */
 export const newPromiseValidator = v.object({
 	text: v.string(), // sealed
 	spans: v.array(draftSpanValidator),
 	due: v.optional(itemDueValidator),
+	// The item the promise answers; absent for a promise nobody asked for.
+	itemId: v.optional(v.id('threadItems')),
 });
 
 /** "I've attached …" in the draft, checked against the real attachments. */

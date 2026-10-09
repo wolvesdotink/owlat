@@ -23,6 +23,7 @@ import { isFeatureEnabled } from '../../lib/featureFlags';
 import { requireMailboxAccess } from '../permissions';
 import { isSharedInboxReader } from '../../inbox/access';
 import { captureStandingAnswers } from '../../inbox/clarificationMemory';
+import { deletePlansForDraft } from '../interpret/responsePlanState';
 import { requireOrgMember, type MutationSessionContext } from '../../lib/sessionOrganization';
 import {
 	answerAskStatusValidator,
@@ -157,7 +158,10 @@ export function throwAskSessionClaimed(): never {
 	throwInvalidState('These questions were already answered', { code: 'ASK_SESSION_CLAIMED' });
 }
 
-/** Drop every ask session of a draft (discard, send). */
+/**
+ * Drop every ask session of a draft, and its response plan (SPEC §6): the
+ * draft's Answer mode state goes with the draft (discard, send, teardown).
+ */
 export async function deleteAskSessionsForDraft(
 	ctx: MutationCtx,
 	draftId: Id<'mailDrafts'>
@@ -169,6 +173,7 @@ export async function deleteAskSessionsForDraft(
 		)
 		.take(ASK_SESSION_BATCH); // bounded: one session per person who drafted with AI on this draft
 	for (const row of rows) await deleteSessionRow(ctx, row);
+	await deletePlansForDraft(ctx, { kind: 'mailDraft', id: draftId });
 }
 
 /**

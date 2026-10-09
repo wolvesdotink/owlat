@@ -9,11 +9,12 @@
  *    beside it, and no catch-up is generated for it (useAnswerModeAssist).
  *    The web-team lane replaces this with the team stream.
  *
- * Read-only for now: the checkboxes are the items the reply should cover and
- * live in local state; the stance picker and the coverage chips from the
- * draft's response plan come with the drafting work. A file chip attaches the
- * file to the reply, as the catch-up card's did; a source marker reveals the
- * message it points at.
+ * With the reply's response plan (`plan`, SPEC §6) the checkboxes are the
+ * plan's selection (an unchecked item is skipped), each selected item has its
+ * stance picker, and the draft's coverage marks it "Addressed in draft" or
+ * "File missing" (provided to the items as `RESPONSE_PLAN`). Without a plan
+ * the selection is local. A file chip attaches the file to the reply, as the
+ * catch-up card's did; a source marker reveals the message it points at.
  */
 import type { FileView } from '../../../../api/convex/mail/interpret/briefShape';
 import type { AnswerLayout } from '~/utils/answerModeLayout';
@@ -21,6 +22,9 @@ import { useThreadBrief } from '~/composables/useThreadBrief';
 import { resolveCite } from '~/utils/threadBriefItems';
 import { threadFilesOf, type ThreadFile, type ThreadFileSource } from '~/utils/answerThreadFiles';
 import type { BriefSource } from '~/utils/threadBriefContext';
+import { provide } from 'vue';
+import { RESPONSE_PLAN } from '~/utils/responsePlan';
+import type { ResponsePlan } from '~/composables/useResponsePlan';
 import ThreadBrief from '~/components/brief/ThreadBrief.vue';
 import BriefTeamActions from '~/components/brief/BriefTeamActions.vue';
 
@@ -36,6 +40,8 @@ const props = defineProps<{
 	layout: AnswerLayout;
 	messages: readonly AnswerBriefMessage[];
 	canAttach: boolean;
+	/** The reply's response plan (Answer mode drafting). */
+	plan?: ResponsePlan;
 }>();
 
 const emit = defineEmits<{ reveal: [messageId: string]; attach: [file: ThreadFile] }>();
@@ -45,17 +51,26 @@ const { view, brief, itemsState, isClosedTruncated } = useThreadBrief({
 });
 const teamView = computed(() => (view.value?.mode === 'actions' ? view.value : null));
 
-const selected = ref<string[]>([]);
+if (props.plan) provide(RESPONSE_PLAN, props.plan.view);
+
+const localSelected = ref<string[]>([]);
 watch(
 	() => (teamView.value ? teamView.value.forTeam : brief.value?.forYou),
 	(items) => {
 		// Every open item for the reader starts selected ("Reply to all 4").
-		if (selected.value.length === 0 && items) {
-			selected.value = items.filter((i) => i.status === 'open').map((i) => i.id);
+		if (localSelected.value.length === 0 && items) {
+			localSelected.value = items.filter((i) => i.status === 'open').map((i) => i.id);
 		}
 	},
 	{ immediate: true }
 );
+const selected = computed({
+	get: () => props.plan?.selected.value ?? localSelected.value,
+	set: (ids: string[]) => {
+		if (props.plan) props.plan.setSelected(ids);
+		else localSelected.value = ids;
+	},
+});
 
 function sourceOf(messageId: string): BriefSource | undefined {
 	const m = props.messages.find((x) => x._id === messageId);

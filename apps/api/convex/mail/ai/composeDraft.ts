@@ -43,6 +43,7 @@ import { draftContextOf, loadAnswerContext } from './composeDraftLoad';
 import { normalizeTimeZone, resolveFollowUpAt } from './composeDraftDates';
 import { attributionFor, localizeForOwner, runGapCheck } from './composeDraftGap';
 import { writeAnswerDraft } from './composeDraftWrite';
+import { loadAnswerPlan, loadSlotItems } from './composeDraftPlan';
 import {
 	FILE_QUESTION_ID,
 	FOLLOW_UP_QUESTION_ID,
@@ -186,6 +187,7 @@ async function draftNow(
 			remindAt: followUp.at,
 		});
 	}
+	const plan = await loadAnswerPlan(ctx, session);
 	await writeAnswerDraft(ctx, {
 		sessionId: session._id,
 		context: context.context,
@@ -202,6 +204,7 @@ async function draftNow(
 		followUp,
 		instruction: session.instruction,
 		timeZone: session.timeZone,
+		...(plan ? { responsePlan: plan } : {}),
 	});
 	const settled = await ctx.runQuery(internal.mail.ai.composeDraftStore.getOwnSession, {
 		sessionId: session._id,
@@ -238,6 +241,7 @@ export const start = authedAction({
 			eagerness: context.eagerness,
 			instruction,
 			locale,
+			slotItems: await loadSlotItems(ctx, args.target),
 		});
 
 		let questions = gap.questions;

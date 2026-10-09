@@ -10,7 +10,9 @@
  * runs them.
  *
  * `selectable` (Answer mode) swaps the ring for a checkbox: the items the
- * reply should cover. An unconfirmed proposal ("Check this") offers Track
+ * reply should cover. With a response plan provided (`RESPONSE_PLAN`), a
+ * selected item shows its stance picker, and the draft's coverage overlays
+ * "Addressed in draft". An unconfirmed proposal ("Check this") offers Track
  * instead of a reaction: it is not tracked until someone confirms it.
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
@@ -23,8 +25,11 @@ import {
 	type BriefAction,
 } from '~/utils/threadBriefItems';
 import { briefDueDate } from '~/utils/threadBriefContext';
+import { inject } from 'vue';
+import { RESPONSE_PLAN } from '~/utils/responsePlan';
 import EvidenceMarker from './EvidenceMarker.vue';
 import BriefPendingUpdate from './BriefPendingUpdate.vue';
+import BriefItemStance from './BriefItemStance.vue';
 
 const props = defineProps<{
 	item: BriefItemView;
@@ -44,9 +49,13 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const plan = inject(RESPONSE_PLAN, null);
 
+const isAddressed = computed(
+	() => props.addressedInDraft || (plan?.addressed.value.includes(props.item.id) ?? false)
+);
 const stateKey = computed(() =>
-	props.addressedInDraft && props.item.status === 'open'
+	isAddressed.value && props.item.status === 'open'
 		? itemStateKey(props.item, { addressedInDraft: true })
 		: props.item.stateKey
 );
@@ -149,6 +158,11 @@ const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {
 					:quote-index="0"
 				/>
 			</p>
+			<BriefItemStance
+				v-if="plan && selectable && selected && isOpen && !isProposal"
+				:item="item"
+				:plan="plan"
+			/>
 			<BriefPendingUpdate
 				v-if="item.pendingUpdate && isOpen"
 				:item-id="item.id"

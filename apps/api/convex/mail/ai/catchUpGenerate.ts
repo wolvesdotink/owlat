@@ -1,18 +1,17 @@
 'use node';
 
 /**
- * The two model calls behind Answer mode's catch-up card, for the Postbox
- * actions (mail/ai/catchUp.ts). Callers
- * own the reader check and the cache, and the card's AI gate; the coverage
- * check charges its own gate bucket. These talk to the model, record spend and
- * clean the output.
+ * The model call behind Answer mode's catch-up card, for the Postbox action
+ * (mail/ai/catchUp.ts). Callers own the reader check, the cache and the card's
+ * AI gate. It talks to the model, records spend and cleans the output. The
+ * asks' coverage check is gone: the draft's response plan replaces it
+ * (mail/interpret/coverage.ts).
  *
- * Both run on the cheap `summarize` tier with the interactive deadline, and
- * both fail soft: any dispatch error comes back as null (card) or no ticks
- * (coverage), never as an exception the page has to catch.
+ * It runs on the cheap `summarize` tier with the interactive deadline and
+ * fails soft: any dispatch error comes back as null, never as an exception the
+ * page has to catch.
  */
 
-import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import type { AppLocale } from '@owlat/shared/appLocales';
 import { resolveLanguageModel } from '../../lib/llmProvider';
@@ -24,11 +23,8 @@ import { THREAD_SUMMARY } from './transcript';
 import {
 	assembleCatchUpTranscript,
 	buildCatchUpPrompt,
-	buildCoveragePrompt,
 	catchUpModelSchema,
-	coverageModelSchema,
 	sanitizeCatchUp,
-	sanitizeCoverage,
 	type CatchUp,
 	type CatchUpEntry,
 	type CatchUpMode,
@@ -62,39 +58,5 @@ export async function generateCatchUp(
 		return sanitizeCatchUp(object, kept, input.mode);
 	} catch {
 		return null;
-	}
-}
-
-/**
- * Which of the card's asks the draft addresses. Nothing to check (no asks, an
- * empty draft) costs nothing. The gate charges its own rate bucket, since the
- * composer calls this while the user types, and a refusal (budget spent,
- * bucket empty, AI off) just leaves the asks unticked: the ticks are a hint.
- */
-export async function checkAskCoverage(
-	ctx: ActionCtx,
-	input: { asks: CatchUp['asks']; draftText: string; feature: string }
-): Promise<string[]> {
-	if (input.asks.length === 0 || !input.draftText.trim()) return [];
-	try {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
-			rateLimitBucket: 'answerCoveragePerUser',
-		});
-		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
-			ctx,
-			input.feature,
-			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'summarize'),
-				schema: coverageModelSchema,
-				prompt: buildCoveragePrompt({ asks: input.asks, draftText: input.draftText }),
-				temperature: 0,
-				...interactiveLlmPolicy('reply'),
-			}),
-			scheduleLlmSpend
-		);
-		await scheduleLlmSpend(ctx, input.feature, tokenUsage, modelUsed);
-		return sanitizeCoverage(object, input.asks);
-	} catch {
-		return [];
 	}
 }
