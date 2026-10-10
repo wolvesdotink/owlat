@@ -7,7 +7,7 @@
  * a message with its body on the row still renders through the sandboxed HTML
  * body component. The collapsed row previews the excerpt.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
 
@@ -227,5 +227,35 @@ describe('AnswerTeamConversation, a citation', () => {
 		await nextTick();
 		expect(rows()[0]!.find('[data-testid="answer-team-message-body"]').exists()).toBe(true);
 		expect(vm.reveal('in_unloaded')).toBe(false);
+	});
+
+	it('rings a cited outgoing reply as well as an email', async () => {
+		vi.useFakeTimers();
+		const stream = [
+			{
+				kind: 'teamReply',
+				key: 'reply:snd_1',
+				at: 1,
+				tie: 1,
+				source: { kind: 'send', id: 'snd_1' },
+				isAgent: false,
+				status: 'sent',
+				toName: 'Ana',
+				preview: 'On its way',
+				body: 'On its way',
+			},
+		];
+		const w = mountColumn([], 'full', { stream });
+		const host = document.createElement('div');
+		host.setAttribute('data-message-id', 'snd_1');
+		document.body.appendChild(host);
+		const vm = w.vm as unknown as { reveal: (id: string) => boolean };
+		expect(vm.reveal('snd_1')).toBe(true);
+		await nextTick();
+		expect(host.classList.contains('ring-2')).toBe(true);
+		vi.advanceTimersByTime(1700);
+		expect(host.classList.contains('ring-2')).toBe(false);
+		host.remove();
+		vi.useRealTimers();
 	});
 });
