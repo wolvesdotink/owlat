@@ -104,8 +104,11 @@ function reveal(id: string): boolean {
 		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 		el?.scrollIntoView?.({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
 		flashed.value = id;
+		// Reply rows come from the stream component, so ring the element itself too.
+		el?.classList.add('ring-2', 'ring-brand/50');
 		setTimeout(() => {
 			if (flashed.value === id) flashed.value = null;
+			el?.classList.remove('ring-2', 'ring-brand/50');
 		}, 1600);
 	});
 	return true;
