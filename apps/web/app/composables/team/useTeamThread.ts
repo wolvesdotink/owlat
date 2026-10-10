@@ -27,6 +27,8 @@ export function useTeamThread(opts: {
 	enabled?: () => boolean;
 	/** Open Answer mode for a replying reaction on an item. */
 	onReply: (item: BriefItemView, action: BriefAction) => void;
+	/** How the host shows a cited message (Answer mode: its conversation column). */
+	reveal?: (messageId: string) => boolean;
 }) {
 	const { t } = useI18n();
 	const { user } = useAuth();
@@ -101,7 +103,12 @@ export function useTeamThread(opts: {
 	}
 
 	/** Source markers for the team's brief components (strip, Answer mode's plan). */
-	const cite = useTeamCite({ stream, view: openItems.view, memberName });
+	const cite = useTeamCite({
+		stream,
+		view: openItems.view,
+		memberName,
+		...(opts.reveal ? { reveal: opts.reveal } : {}),
+	});
 
 	return {
 		stream,

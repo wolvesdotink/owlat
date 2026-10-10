@@ -12,13 +12,9 @@
  * says so. `?message=` picks the message the reply answers when it is not the
  * newest one waiting.
  *
- * The thread page keeps assignment, status and the discussion; its Reply and
- * `r` open this route. Leaving (Esc, "← Team inbox", or a send) goes back to
- * the page the reply started from; text typed and not sent is kept for this
- * thread until the reply is written.
- *
- * The left column is the team stream with the open actions pinned above it
- * (SPEC §7 "Team"): no summary on a team thread.
+ * The thread page keeps assignment, status and the discussion. Leaving (Esc,
+ * "← Team inbox", or a send) goes back where the reply started; unsent text is
+ * kept. The left column is the team stream with the open actions pinned above.
  *
  * Keys: Esc leaves (inside the editor the first Esc only blurs it), `t`
  * toggles Recent / Full conversation, `n` opens the Note tab (the team's
@@ -143,7 +139,10 @@ const team = useTeamThread({
 		composeMode.value = 'reply';
 		composerRef.value?.focus();
 	},
+	// A source marker shows its email in the column (the Conversation tab on a phone).
+	reveal: (id) => ((tab.value = 'conversation'), conversation.value?.reveal(id) ?? false),
 });
+const conversation = ref<{ reveal: (id: string) => boolean } | null>(null);
 // Draft with AI, and the agent's questions
 const assist = useAnswerTeamAssist({
 	threadId: () => threadId.value,
@@ -331,6 +330,7 @@ onBeforeUnmount(() => {
 			<template #conversation>
 				<AnswerTeamConversation
 					v-if="thread"
+					ref="conversation"
 					v-model:view="view"
 					:messages="messages"
 					:contact="contact"

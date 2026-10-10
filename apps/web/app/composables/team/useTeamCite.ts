@@ -18,6 +18,8 @@ export function useTeamCite(opts: {
 	memberName: (userId: string) => string;
 	/** Show a message through the host's own paging, when it has one. */
 	citeMessage?: () => ((messageId: string) => void) | undefined;
+	/** The host's own reveal (expand, scroll, ring); false while not loaded. */
+	reveal?: (messageId: string) => boolean;
 }): BriefContext {
 	const { t } = useI18n();
 	const sources = computed(() =>
@@ -32,6 +34,7 @@ export function useTeamCite(opts: {
 	const wanted = ref<string | null>(null);
 
 	function show(messageId: string): boolean {
+		if (opts.reveal) return opts.reveal(messageId);
 		const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`);
 		if (!el) return false;
 		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
