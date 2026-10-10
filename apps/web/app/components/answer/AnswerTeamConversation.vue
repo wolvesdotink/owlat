@@ -92,8 +92,13 @@ function isOpen(id: string): boolean {
 }
 // A marker elsewhere: open the message, bring it into view, and ring it briefly.
 const flashed = ref<string | null>(null);
-function reveal(id: string) {
-	if (!isOpen(id)) toggle(id);
+/** Open, scroll to and ring a message or reply; false while it is not loaded. */
+function reveal(id: string): boolean {
+	const isShown = entries.value.some((e) =>
+		e.kind === 'customerEmail' ? e.source.id === id : e.kind === 'teamReply' && e.source?.id === id
+	);
+	if (!isShown) return false;
+	if (messageById.value.has(id) && !isOpen(id)) toggle(id);
 	void nextTick(() => {
 		const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`);
 		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -103,7 +108,9 @@ function reveal(id: string) {
 			if (flashed.value === id) flashed.value = null;
 		}, 1600);
 	});
+	return true;
 }
+defineExpose({ reveal });
 function toggle(id: string) {
 	const next = new Set(toggled.value);
 	if (next.has(id)) next.delete(id);

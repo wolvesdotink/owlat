@@ -8,7 +8,7 @@
  * body component. The collapsed row previews the excerpt.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import AnswerTeamConversation from '../AnswerTeamConversation.vue';
@@ -187,5 +187,45 @@ describe('AnswerTeamConversation, the team stream', () => {
 		const w = mountColumn([message('in_1', 1, { textBody: 'Hi' })], 'full');
 		expect(w.findAll('[data-testid="answer-team-message"]')).toHaveLength(1);
 		expect(w.find('[data-testid="team-stream-reply"]').exists()).toBe(false);
+	});
+});
+
+describe('AnswerTeamConversation, a citation', () => {
+	it('opens a collapsed older message and says when the target is not loaded', async () => {
+		const stream = [
+			{
+				kind: 'customerEmail',
+				key: 'email:in_old',
+				at: 1,
+				tie: 1,
+				source: { kind: 'inbound', id: 'in_old' },
+				fromEmail: 'ana@example.org',
+				preview: '',
+			},
+			{
+				kind: 'customerEmail',
+				key: 'email:in_new',
+				at: 2,
+				tie: 2,
+				source: { kind: 'inbound', id: 'in_new' },
+				fromEmail: 'ana@example.org',
+				preview: '',
+			},
+		];
+		const w = mountColumn(
+			[
+				message('in_old', 1, { textBody: 'Old one' }),
+				message('in_new', 2, { textBody: 'New one' }),
+			],
+			'summary',
+			{ stream }
+		);
+		const rows = () => w.findAll('[data-testid="answer-team-message"]');
+		expect(rows()[0]!.find('[data-testid="answer-team-message-body"]').exists()).toBe(false);
+		const vm = w.vm as unknown as { reveal: (id: string) => boolean };
+		expect(vm.reveal('in_old')).toBe(true);
+		await nextTick();
+		expect(rows()[0]!.find('[data-testid="answer-team-message-body"]').exists()).toBe(true);
+		expect(vm.reveal('in_unloaded')).toBe(false);
 	});
 });

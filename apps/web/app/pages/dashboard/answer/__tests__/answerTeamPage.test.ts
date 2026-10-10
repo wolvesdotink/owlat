@@ -73,7 +73,8 @@ vi.mock('~/composables/useAnswerTeamAssist', () => ({
 }));
 // The team stream and its open actions have their own suites (components/team).
 vi.mock('~/composables/team/useTeamThread', () => ({
-	useTeamThread: () => ({
+	useTeamThread: (opts: { reveal?: (id: string) => boolean }) => ({
+		...((teamOpts.reveal = opts.reveal), {}),
 		stream: {
 			entries: ref([]),
 			isReady: ref(false),
@@ -91,6 +92,9 @@ vi.mock('~/composables/useOrganization', () => ({
 		fetchMembers: async () => {},
 	}),
 }));
+
+const teamOpts: { reveal?: (id: string) => boolean } = {};
+const conversationReveal = vi.fn(() => true);
 
 const route = reactive({
 	path: '/dashboard/answer/t/ct_1',
@@ -226,7 +230,13 @@ async function mountPage() {
 					setup: (props) => () =>
 						h('div', { 'data-testid': 'answer-notes-panel', 'data-active': String(props.active) }),
 				}),
-				AnswerTeamConversation: inert('AnswerTeamConversation'),
+				AnswerTeamConversation: defineComponent({
+					name: 'AnswerTeamConversation',
+					setup: (_p, { expose }) => {
+						expose({ reveal: conversationReveal });
+						return () => h('div');
+					},
+				}),
 				TeamPinnedItems: inert('TeamPinnedItems'),
 				AnswerTeamReusedAnswers: inert('AnswerTeamReusedAnswers'),
 				AnswerTeamPlan: inert('AnswerTeamPlan'),
@@ -579,6 +589,17 @@ describe('Answer mode for a Team inbox thread', () => {
 			source: 'semanticFile',
 			id: 'sf_9',
 		});
+	});
+
+	it('shows a plan citation in the conversation column, on the Conversation tab', async () => {
+		const wrapper = await mountPage();
+		const frame = wrapper.getComponent(AnswerModeFrame);
+		frame.vm.$emit('update:tab', 'reply');
+		await flushPromises();
+		expect(teamOpts.reveal?.('in_1')).toBe(true);
+		expect(conversationReveal).toHaveBeenCalledWith('in_1');
+		await flushPromises();
+		expect(frame.props('tab')).toBe('conversation');
 	});
 
 	it('puts the caret in the reply inside the phone row tap', async () => {
