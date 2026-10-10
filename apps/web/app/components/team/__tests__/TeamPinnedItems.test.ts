@@ -72,6 +72,14 @@ describe('TeamPinnedItems source markers', () => {
 	});
 });
 
+describe('TeamPinnedItems, attributes', () => {
+	it('puts the host class on the strip itself, without a Vue warning', () => {
+		const w = mountPinned(teamOf([email('in_2', T0)]), { class: 'mb-3' });
+		expect(w.get('[data-testid="team-open-items"]').classes()).toContain('mb-3');
+		w.unmount();
+	});
+});
+
 describe('TeamPinnedItems, outgoing citations', () => {
 	it('name the teammate who wrote the reply, never the customer it went to', () => {
 		const sent = reply('s1', T0, {

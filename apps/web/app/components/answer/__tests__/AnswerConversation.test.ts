@@ -2,9 +2,9 @@
 /**
  * Answer mode's conversation column (plan §03, v1):
  *   - the thread newest last, every card in its reduced cut;
- *   - "Summary" opens the newest and the unread messages and leaves the rest
+ *   - "Overview" opens the newest and the unread messages and leaves the rest
  *     as one-line rows (the thread's first message too, unlike the reader);
- *   - "Full conversation" opens everything loaded, and going back restores
+ *   - "Conversation" opens everything loaded, and going back restores
  *     the summary set;
  *   - the brief has a slot at the top, and the top bar gets the count.
  *

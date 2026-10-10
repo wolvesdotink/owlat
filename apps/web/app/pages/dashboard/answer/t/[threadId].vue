@@ -144,7 +144,6 @@ const team = useTeamThread({
 		composerRef.value?.focus();
 	},
 });
-
 // Draft with AI, and the agent's questions
 const assist = useAnswerTeamAssist({
 	threadId: () => threadId.value,
@@ -427,6 +426,7 @@ onBeforeUnmount(() => {
 							<AnswerTeamPlan
 								:plan="assist.plan"
 								:can-attach="attachmentsAllowed"
+								:cite-context="team.cite"
 								@files="files.addFiles"
 							/>
 							<AnswerTeamReusedAnswers

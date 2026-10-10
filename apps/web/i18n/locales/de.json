@@ -7025,8 +7025,8 @@
 				"viewLabel": "Wie viel der Unterhaltung angezeigt wird",
 				"viewShortcut": "Mit T umschalten",
 				"view": {
-					"summary": "Zusammenfassung",
-					"full": "Ganze Unterhaltung"
+					"summary": "Überblick",
+					"full": "E-Mail-Verlauf"
 				},
 				"more": "Mehr zu dieser Unterhaltung",
 				"openInPostbox": "In Postbox öffnen",

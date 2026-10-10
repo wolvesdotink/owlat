@@ -7,7 +7,7 @@
  *   - the composer's first autosave writes the draft id into the URL with a
  *     REPLACE, so Back still leaves Answer mode and a reload lands here again;
  *   - Esc leaves (the draft stays saved and is offered back on the list),
- *     `t` toggles Summary / Full, Cmd/Ctrl+J focuses "Draft with AI";
+ *     `t` toggles Overview / Conversation, Cmd/Ctrl+J focuses "Draft with AI";
  *   - a send goes back where the reply started;
  *   - with AI on, the composer carries "Draft with AI" (or the ask card while
  *     the AI asks), the footer the asks covered, and the resting phone sheet a
@@ -468,7 +468,7 @@ describe('Answer mode page', () => {
 		expect(navigateTo).not.toHaveBeenCalled();
 	});
 
-	it('toggles Summary / Full conversation with t', async () => {
+	it('toggles Overview / Conversation with t', async () => {
 		const w = await mountAt({});
 		expect(w.get('[data-testid="conversation"]').attributes('data-view')).toBe('summary');
 		press({ key: 't' });
