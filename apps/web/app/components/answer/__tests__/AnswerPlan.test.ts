@@ -207,4 +207,32 @@ describe('AnswerTeamPlan (t/)', () => {
 		await w.get('[data-testid="answer-team-plan-toggle"]').trigger('click');
 		expect(w.find('[data-testid="brief-item-plan"]').exists()).toBe(false);
 	});
+
+	it('names each item’s source from the team context and shows it on a click', async () => {
+		const plan = fakePlan({ items });
+		const cite = vi.fn();
+		const w = mount(AnswerTeamPlan, {
+			props: {
+				plan,
+				canAttach: false,
+				citeContext: {
+					sourceOf: () => ({
+						name: 'Ana Costa',
+						email: 'ana@kestrel.example',
+						at: Date.UTC(2026, 9, 7),
+					}),
+					cite,
+				},
+			},
+			global: {
+				plugins: [createTestI18n()],
+				components: { UiButton: ButtonStub, PostboxOverflowMenu: Plain },
+				stubs: { Icon: true },
+			},
+		});
+		const marker = w.findAll('[data-testid="evidence-marker"]')[0]!;
+		expect(marker.text()).toBe('AC Oct 7');
+		await marker.trigger('click');
+		expect(cite).toHaveBeenCalledWith('i_quote', 0);
+	});
 });

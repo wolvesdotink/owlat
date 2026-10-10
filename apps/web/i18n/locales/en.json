@@ -7025,8 +7025,8 @@
 				"viewLabel": "How much of the conversation to show",
 				"viewShortcut": "Switch with T",
 				"view": {
-					"summary": "Summary",
-					"full": "Full conversation"
+					"summary": "Overview",
+					"full": "Conversation"
 				},
 				"more": "More for this conversation",
 				"openInPostbox": "Open in Postbox",

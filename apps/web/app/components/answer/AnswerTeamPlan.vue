@@ -13,7 +13,7 @@
  */
 import { provide } from 'vue';
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
-import { BRIEF_CONTEXT } from '~/utils/threadBriefContext';
+import { BRIEF_CONTEXT, type BriefContext } from '~/utils/threadBriefContext';
 import { RESPONSE_PLAN } from '~/utils/responsePlan';
 import type { ResponsePlan } from '~/composables/useResponsePlan';
 import BriefItems from '~/components/brief/BriefItems.vue';
@@ -23,6 +23,8 @@ const props = defineProps<{
 	/** The reply's plan; its `items` are the thread's open items it plans for. */
 	plan: ResponsePlan;
 	canAttach: boolean;
+	/** The team's source markers (`useTeamCite`): who sent a cited email, and showing it. */
+	citeContext?: BriefContext;
 }>();
 
 const emit = defineEmits<{ files: [files: File[]] }>();
@@ -31,8 +33,11 @@ const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
 
 provide(RESPONSE_PLAN, props.plan.view);
-// Item sources are the conversation column's to show; nothing to reveal here.
-provide(BRIEF_CONTEXT, { sourceOf: () => undefined, cite: () => {} });
+// Item sources name their sender and reveal the email in the conversation column.
+provide(BRIEF_CONTEXT, {
+	sourceOf: (id) => props.citeContext?.sourceOf(id),
+	cite: (ref, quoteIndex) => props.citeContext?.cite(ref, quoteIndex),
+});
 
 const items = computed(() => props.plan.items.value);
 const open = ref(items.value.length <= 4);

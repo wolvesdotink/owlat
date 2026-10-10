@@ -15,6 +15,7 @@ import { useOrganization } from '~/composables/useOrganization';
 import { useTeamItemActions } from '~/composables/team/useTeamItemActions';
 import { useTeamOpenItems } from '~/composables/team/useTeamOpenItems';
 import { useTeamStream, type TeamStreamTarget } from '~/composables/team/useTeamStream';
+import { useTeamCite } from '~/composables/team/useTeamCite';
 import type { TeamItemAction, TeamMember } from '~/components/team/TeamOpenItem.vue';
 import type { BriefAction } from '~/utils/threadBriefItems';
 import { linkableItems, noteCountsByItem, type NoteEntry } from '~/utils/teamStream';
@@ -99,8 +100,12 @@ export function useTeamThread(opts: {
 		else await actions.react(item, action);
 	}
 
+	/** Source markers for the team's brief components (strip, Answer mode's plan). */
+	const cite = useTeamCite({ stream, view: openItems.view, memberName });
+
 	return {
 		stream,
+		cite,
 		openItems: openItems.view,
 		viewerId,
 		members,
