@@ -44,6 +44,7 @@ import type * as mail_interpret_planGate from '../mail/interpret/planGate.js';
 import type * as mail_interpret_preferences from '../mail/interpret/preferences.js';
 import type * as mail_interpret_prompt from '../mail/interpret/prompt.js';
 import type * as mail_interpret_purge from '../mail/interpret/purge.js';
+import type * as mail_interpret_purgeActive from '../mail/interpret/purgeActive.js';
 import type * as mail_interpret_purgeClaims from '../mail/interpret/purgeClaims.js';
 import type * as mail_interpret_purgeDrain from '../mail/interpret/purgeDrain.js';
 import type * as mail_interpret_purgeJobs from '../mail/interpret/purgeJobs.js';
@@ -1647,6 +1648,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/preferences': typeof mail_interpret_preferences;
 	'mail/interpret/prompt': typeof mail_interpret_prompt;
 	'mail/interpret/purge': typeof mail_interpret_purge;
+	'mail/interpret/purgeActive': typeof mail_interpret_purgeActive;
 	'mail/interpret/purgeClaims': typeof mail_interpret_purgeClaims;
 	'mail/interpret/purgeDrain': typeof mail_interpret_purgeDrain;
 	'mail/interpret/purgeJobs': typeof mail_interpret_purgeJobs;

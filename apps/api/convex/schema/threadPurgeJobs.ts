@@ -69,5 +69,9 @@ export const threadPurgeJobTables = {
 		isSurvivorChanged: v.boolean(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	}).index('by_job_key', ['jobKey']),
+	})
+		.index('by_job_key', ['jobKey'])
+		// The thread's unfinished jobs: D3 holds auto-send while one exists.
+		.index('by_mail_thread', ['mailThreadId'])
+		.index('by_conversation_thread', ['conversationThreadId']),
 };
