@@ -43,6 +43,7 @@ import { throwForbidden, throwInvalidState } from '../_utils/errors';
 import { postboxMutation } from './_helpers';
 import { loadPersonalMailboxForUser } from './permissions';
 import { seedSharedInboxRoster } from './mailboxMembers';
+import { scheduleScopeInvalidation } from './interpret/scopeChange';
 
 /** Why a mailbox cannot become a team inbox for this caller. */
 type ConversionBlocker = 'not_yours' | 'inactive' | 'disconnected' | 'moving';
@@ -168,6 +169,9 @@ export const convertToTeamInbox = postboxMutation({
 			memberUserIds: args.memberUserIds,
 			now,
 		});
+		// Its threads now interpret in actions mode: what the personal brief
+		// produced (facts, overview, latest lines, view overrides) goes.
+		await scheduleScopeInvalidation(ctx, mailbox._id, 'actions');
 		await ctx.db.insert('mailAuditLog', {
 			mailboxId: mailbox._id,
 			event: 'mailbox.converted_to_team_inbox',

@@ -87,6 +87,8 @@ export const clarificationQuestionValidator = v.object({
 	answerKind: v.optional(clarificationAnswerKindValidator),
 	// Near matches offered with a `file` question.
 	fileCandidates: v.optional(v.array(clarificationFileCandidateValidator)),
+	// The thread brief item this question fills a slot for.
+	itemId: v.optional(v.id('threadItems')),
 	// The resolved answer — absent until answered. For a `file` answer, `value`
 	// is the filename and `file` points at the bytes.
 	answer: v.optional(
@@ -152,6 +154,8 @@ export const needsReplyClarificationQuestionValidator = v.object({
 	answerKind: v.optional(clarificationAnswerKindValidator),
 	// Near matches offered with a `file` question.
 	fileCandidates: v.optional(v.array(clarificationFileCandidateValidator)),
+	// The thread brief item this question fills a slot for.
+	itemId: v.optional(v.id('threadItems')),
 	// The owner's answer — absent until answered. `source` is absent on rows
 	// written before memory answers were shown in the Postbox (read as 'user').
 	// A file answer keeps its first file in `file`; `files` lists them all when

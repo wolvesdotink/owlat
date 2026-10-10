@@ -31,6 +31,9 @@ export const mailCommitmentsFields = {
 	// Set once the pre-lapse reminder fired (status → reminded), so the cron
 	// never re-reminds the same commitment.
 	remindedAt: v.optional(v.number()),
+	// The thread brief item this commitment tracks (schema/threadBrief.ts).
+	// Reminder state stays here, outside the item lifecycle.
+	threadItemId: v.optional(v.id('threadItems')),
 	createdAt: v.number(),
 	updatedAt: v.number(),
 };
@@ -85,7 +88,9 @@ export const mailAiTables = {
 		.index('by_message', ['messageId', 'direction'])
 		// Backs the pre-lapse reminder scan — open commitments per mailbox ordered
 		// by deadline.
-		.index('by_mailbox_status_due', ['mailboxId', 'status', 'dueAt']),
+		.index('by_mailbox_status_due', ['mailboxId', 'status', 'dueAt'])
+		// Erasure (mail/interpret/purge.ts): unlink the commitments of a deleted item.
+		.index('by_thread_item', ['threadItemId']),
 
 	// "What needs you today" digest snapshot (Daily Brief), rebuilt by the daily
 	// cron per active mailbox (mail/dailyBrief.ts). Holds the ranked list of

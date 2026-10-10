@@ -29,6 +29,7 @@ import type { Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { recordAuditLog } from '../../lib/auditLog';
 import { dispatch } from './effects';
+import { recordTeamSendCancelled, recordTeamSendHeld } from '../../mail/interpret/sendActivity';
 
 type CancelAutoSendReason = 'thread_reply' | 'kill_switch' | 'user_cancel';
 
@@ -102,6 +103,11 @@ export async function cancelPendingAutoSend(
 	// explicit user Undo) as an audit trail before routing to review, so the
 	// `reason` discriminator is a real signal rather than dead surface.
 	await recordAutoSendCancellation(ctx, message, reason, userId);
+	await recordTeamSendCancelled(ctx, message, {
+		reason,
+		...(userId ? { userId } : {}),
+		scheduledAt: pending.scheduledAt,
+	});
 
 	// Route back to human review. The `→ draft_ready` reducer clears the
 	// pendingAutoSend marker (any transition out of `approved` does) and
@@ -138,6 +144,10 @@ export async function holdApprovedSend(
 	);
 	await ctx.db.patch(message._id, {
 		pendingAutoSend: { scheduledFnId, sendAt: now + args.delayMs, scheduledAt: now },
+	});
+	await recordTeamSendHeld(ctx, message, {
+		attachmentWaits: args.attachmentWaits,
+		sendAt: now + args.delayMs,
 	});
 	return true;
 }

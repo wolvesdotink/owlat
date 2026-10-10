@@ -10,18 +10,30 @@ import { dirname, resolve } from 'node:path';
  * The page is Convex-query driven and awkward to mount in happy-dom, so, like
  * `emptyStates.test.ts` beside it, the load-bearing template facts are asserted
  * against the source. The countdown and the skeleton themselves are mounted in
- * `components/inbox/__tests__/ThreadOutbound.test.ts` and
+ * `components/team/__tests__/TeamThreadStream.test.ts` and
  * `ThreadDetailSkeleton.test.ts`.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const page = readFileSync(resolve(here, '../[threadId].vue'), 'utf8');
 const template = page.slice(page.indexOf('<template>'));
+const reply = readFileSync(
+	resolve(here, '../../../../components/team/TeamStreamReply.vue'),
+	'utf8'
+);
 
 describe('Team Inbox thread page rendering', () => {
 	it('hands follow-up countdowns their send time, not a page-computed seconds count', () => {
 		expect(template).not.toMatch(/seconds-left=/);
-		expect(template).toContain(':send-at="followUp.sendAt"');
+		expect(reply).toContain(':send-at="entry.sendAt!"');
 		expect(page).not.toMatch(/followUpSecondsLeft/);
+	});
+
+	it('reads as the team stream with the open actions pinned, and no AI line in the header', () => {
+		expect(template).toContain('<TeamPinnedItems');
+		expect(template).toContain('<TeamThreadStream');
+		expect(template).toContain('<TeamNoteComposer');
+		expect(template).not.toContain('thread-classification');
+		expect(page).not.toMatch(/classificationLine/);
 	});
 
 	it('runs no sub-second clock of its own', () => {

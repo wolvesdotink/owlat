@@ -10,6 +10,7 @@ import {
 	MEMBER_RELATIONS,
 	tablesErasureDeletesFrom,
 } from '../auth/erasure/relations';
+import { THREAD_BRIEF_TABLES } from '../schema/threadBrief';
 
 /**
  * Schema coverage gate for the member erasure relation registry
@@ -76,7 +77,13 @@ function schemaFields(match: Match): string[] {
 const referencesTo = (target: string) =>
 	schemaFields((validator) => validator.kind === 'id' && validator.tableName === target);
 
-const erasureSource = ['identityPhases', 'mailboxPhases', 'memberPhases', 'phases']
+const erasureSource = [
+	'identityPhases',
+	'mailboxPhases',
+	'memberPhases',
+	'phases',
+	'threadBriefPhases',
+]
 	.map((file) => readFileSync(join(__dirname, '..', 'auth', 'erasure', `${file}.ts`), 'utf8'))
 	.join('\n');
 
@@ -98,6 +105,9 @@ const DELETED_BY_HELPER = new Set([
 	'userOnboarding',
 	'sendReadyNotices',
 	'platformAdmins',
+	// The thread brief rows of a personal thread: drainThreadBrief, through the
+	// per-thread ranges of mail/interpret/purgeRows.ts (purge jobs, purgeThread.ts).
+	...THREAD_BRIEF_TABLES,
 ]);
 
 describe('member erasure relation registry', () => {

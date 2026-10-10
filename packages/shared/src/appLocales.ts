@@ -21,6 +21,15 @@ export function isAppLocale(value: unknown): value is AppLocale {
 }
 
 /**
+ * The interface language a requested tag reads as: its base subtag when this
+ * product ships it (`de-DE` and `DE_at` read as `de`), else English.
+ */
+export function appLocaleOf(tag: string): AppLocale {
+	const base = tag.trim().toLowerCase().split(/[-_]/)[0];
+	return isAppLocale(base) ? base : 'en';
+}
+
+/**
  * The BCP-47 tag `Intl` formats each interface language with. Naming the
  * region keeps a system email's dates consistent with what the app renders for
  * the same person.

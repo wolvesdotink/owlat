@@ -49,6 +49,8 @@ import {
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
+import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
+import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { resolveCidImages, type CidAttachment } from '~/utils/postboxCidImages';
 import { notePostboxBodyRendered } from '~/composables/postbox/usePostboxPerfMarks';
 import {
@@ -88,6 +90,8 @@ const props = defineProps<{
 	 * sender exactly as they do for an untrusted one.
 	 */
 	senderImagesAllowed?: boolean;
+	/** A cited quote of the thread brief to mark and scroll to (plan §4.2). */
+	highlightQuote?: CitedQuote | null;
 }>();
 
 const emit = defineEmits<{
@@ -97,6 +101,8 @@ const emit = defineEmits<{
 	trustSender: [fromAddress: string];
 	/** Revoke, from the auto-loaded banner. */
 	untrustSender: [fromAddress: string];
+	/** Whether the cited passage was found in the rendered body. */
+	citeLocated: [isLocated: boolean];
 }>();
 
 const { t } = useI18n();
@@ -141,6 +147,11 @@ const showImages = ref(false);
 const loadEverything = ref(false);
 const showQuoted = ref(false);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
+usePostboxQuoteHighlight({
+	frame: iframeRef,
+	quote: () => props.highlightQuote,
+	onResult: (isLocated) => emit('citeLocated', isLocated),
+});
 
 // Apply (and un-apply) the sender grant. Watching rather than initialising
 // once matters twice over: the allowlist query resolves after first render,

@@ -9,8 +9,8 @@
  * messages are one-line rows; the newest and the unread ones open in full.
  *
  * Two views, one toggle (the page binds `t`): "summary" is that default,
- * "full" opens every loaded message. The catch-up card of a long thread slots
- * in above the messages (`#catch-up`); this column only reserves the place.
+ * "full" opens every loaded message. The thread brief slots in above the
+ * messages (`#brief`); this column only reserves the place.
  */
 import type { Id } from '@owlat/api/dataModel';
 import { api } from '@owlat/api';
@@ -181,7 +181,7 @@ function openSenderProfile(msg: { fromAddress: string; fromName?: string | null 
 
 const showViewToggle = computed(() => allMessages.value.length > 1);
 
-// The catch-up card's date markers: open the source message, bring it into
+// The brief's source markers: open the source message, bring it into
 // view and flash it, so "which message said that?" is one click.
 const rootEl = ref<HTMLElement | null>(null);
 const highlightedId = ref<string | null>(null);
@@ -234,8 +234,8 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 			</div>
 		</div>
 
-		<!-- The catch-up card (summary, asks) of a thread worth summarising. -->
-		<slot name="catch-up" :view="view" :messages="allMessages" :reveal="reveal" />
+		<!-- The thread brief (AnswerBriefCard). -->
+		<slot name="brief" :view="view" :messages="allMessages" :reveal="reveal" />
 
 		<PostboxThreadEarlier
 			v-if="hasEarlier || loadingEarlier || earlierFailed"

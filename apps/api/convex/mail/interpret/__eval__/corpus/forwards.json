@@ -1,0 +1,465 @@
+{
+	"version": 1,
+	"slice": "forwards",
+	"threads": [
+		{
+			"id": "fwd-001",
+			"slices": ["forwards", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Sofia Marin",
+						"email": "sofia@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T10:15:00+02:00",
+					"subject": "Fwd: Invoice 2231",
+					"text": "Hi Mara, can you handle the below? I'm out until Monday.\n\n---------- Forwarded message ---------\nFrom: Northwind Billing <billing@northwind.example.com>\nDate: Mon, 5 Oct 2026 at 08:00\nSubject: Invoice 2231\nTo: Sofia Marin <sofia@example.org>\n\nPlease pay invoice 2231 for EUR 840.00 by 20 October 2026.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "Please pay invoice 2231 for EUR 840.00 by 20 October 2026.",
+						"segmentKind": "forwarded",
+						"assertion": "Pay invoice 2231 (EUR 840.00) by 20 October",
+						"requester": {
+							"name": "Northwind Billing",
+							"email": "billing@northwind.example.com"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by 20 October 2026",
+							"at": "2026-10-20"
+						},
+						"amount": {
+							"value": 840.0,
+							"currency": "EUR"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "fwd-002",
+			"slices": ["forwards", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T13:00:00+02:00",
+					"subject": "WG: Zugang Kundenportal",
+					"text": "Hi Mara,\n\nkannst du dich bitte darum kümmern?\n\nLena\n\n________________________________\nVon: Tomás Ruiz <tomas@example.net>\nGesendet: Montag, 5. Oktober 2026 11:00\nAn: Lena Hofmann <lena@example.org>\nBetreff: Zugang Kundenportal\n\nBitte richtet mir einen Zugang zum Kundenportal ein.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["access"],
+						"responsibility": "us",
+						"quote": "Bitte richtet mir einen Zugang zum Kundenportal ein.",
+						"segmentKind": "forwarded",
+						"assertion": "Richte Tomás einen Zugang zum Kundenportal ein",
+						"requester": {
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "fwd-003",
+			"slices": ["forwards", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T09:00:00+01:00",
+					"subject": "Fwd: Venue options",
+					"text": "FYI.\n\n---------- Forwarded message ---------\nFrom: Noah Berg <noah@example.net>\nDate: Mon, 5 Oct 2026 at 17:00\nSubject: Venue options\nTo: Priya Nair <priya@example.org>\n\nCould you confirm the venue by Wednesday?\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Could you confirm the venue by Wednesday?",
+						"segmentKind": "forwarded",
+						"assertion": "Confirm the venue by Wednesday",
+						"reject": "proposal"
+					}
+				]
+			}
+		},
+		{
+			"id": "fwd-004",
+			"slices": ["forwards", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T12:00:00+02:00",
+					"subject": "FW: Contract renewal",
+					"text": "Mara, please take care of this one.\n\nFrom: Clara Vogel <clara@example.org>\nSent: Monday, October 5, 2026 4:12 PM\nTo: Jonas Weber <jonas@example.org>\nSubject: FW: Contract renewal\n\nPlease countersign the renewal and return it by 30 October.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["signature"],
+						"responsibility": "us",
+						"quote": "Please countersign the renewal and return it by 30 October.",
+						"segmentKind": "forwarded",
+						"assertion": "Countersign and return the renewal by 30 October",
+						"requester": {
+							"name": "Clara Vogel",
+							"email": "clara@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by 30 October"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "fwd-005",
+			"slices": ["forwards", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T09:00:00+02:00",
+					"subject": "Fwd: Fwd: Badge photos",
+					"text": "Could you look into this?\n\n---------- Forwarded message ---------\nFrom: Felix Braun <felix@example.net>\nDate: Tue, 6 Oct 2026 at 15:00\nSubject: Fwd: Badge photos\nTo: Lena Hofmann <lena@example.org>\n\nAdding Lena.\n\n---------- Forwarded message ---------\nFrom: Emil Sander <emil@example.net>\nDate: Tue, 6 Oct 2026 at 11:00\nSubject: Badge photos\nTo: Felix Braun <felix@example.net>\n\nPlease upload the badge photos for the new team members.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["file"],
+						"responsibility": "us",
+						"quote": "Please upload the badge photos for the new team members.",
+						"segmentKind": "forwarded",
+						"assertion": "Upload the badge photos for the new team members",
+						"requester": {
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "fwd-006",
+			"slices": ["forwards", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T10:00:00+01:00",
+					"subject": "Fwd: Invoice 7781",
+					"text": "Can you handle the meeting on Thursday? The invoice below is FYI only.\n\n---------- Forwarded message ---------\nFrom: Northwind Billing <billing@northwind.example.com>\nDate: Tue, 6 Oct 2026 at 08:00\nSubject: Invoice 7781\nTo: Priya Nair <priya@example.org>\n\nPlease pay invoice 7781 for EUR 310.00 by 23 October 2026.\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Please pay invoice 7781 for EUR 310.00 by 23 October 2026.",
+						"segmentKind": "forwarded",
+						"assertion": "Pay invoice 7781",
+						"reject": "proposal"
+					}
+				]
+			}
+		},
+		{
+			"id": "fwd-007",
+			"slices": ["forwards", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Felix Braun",
+						"email": "felix@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T11:00:00+02:00",
+					"subject": "WG: Lieferung",
+					"text": "Zur Info, kein Handlungsbedarf.\n\n---------- Forwarded message ---------\nFrom: Noah Berg <noah@example.net>\nDate: Di., 6. Okt. 2026 um 09:00 Uhr\nSubject: Lieferung\nTo: Felix Braun <felix@example.net>\n\nBitte bestätigt den Liefertermin bis Freitag.\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Bitte bestätigt den Liefertermin bis Freitag.",
+						"segmentKind": "forwarded",
+						"assertion": "Liefertermin bestätigen",
+						"reject": "proposal"
+					}
+				]
+			}
+		},
+		{
+			"id": "fwd-008",
+			"slices": ["forwards", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T13:00:00+02:00",
+					"subject": "Fwd: Catering order",
+					"text": "I will handle this, just keeping you posted.\n\n---------- Forwarded message ---------\nFrom: Noah Berg <noah@example.net>\nDate: Tue, 6 Oct 2026 at 10:00\nSubject: Catering order\nTo: Lena Hofmann <lena@example.org>\n\nPlease confirm the catering order for 40 people by Monday.\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Please confirm the catering order for 40 people by Monday.",
+						"segmentKind": "forwarded",
+						"assertion": "Confirm the catering order",
+						"reject": "proposal"
+					}
+				]
+			}
+		},
+		{
+			"id": "fwd-009",
+			"slices": ["forwards", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T14:00:00+02:00",
+					"subject": "Fwd: Hosting invoice",
+					"text": "Can you handle the below? Do not reply to the other thread.\n\n---------- Forwarded message ---------\nFrom: Northwind Billing <billing@northwind.example.com>\nDate: Tue, 6 Oct 2026 at 07:00\nSubject: Hosting invoice\nTo: Jonas Weber <jonas@example.org>\n\nPlease pay the hosting invoice of EUR 75.00 by 30 October 2026.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "Please pay the hosting invoice of EUR 75.00 by 30 October 2026.",
+						"segmentKind": "forwarded",
+						"assertion": "Pay the hosting invoice (EUR 75.00) by 30 October",
+						"requester": {
+							"name": "Northwind Billing",
+							"email": "billing@northwind.example.com"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by 30 October 2026"
+						},
+						"amount": {
+							"value": 75.0,
+							"currency": "EUR"
+						}
+					}
+				]
+			}
+		}
+	]
+}

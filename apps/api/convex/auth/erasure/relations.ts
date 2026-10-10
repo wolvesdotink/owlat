@@ -31,6 +31,7 @@
 
 import type { TableNames } from '../../_generated/dataModel';
 import type { tables as betterAuthTables } from '../../betterAuth/schema';
+import { THREAD_BRIEF_MEMBER_RELATIONS } from './threadBriefRelations';
 import {
 	DESCENDANT_RELATIONS,
 	type MemberErasureAction,
@@ -341,6 +342,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('systemUpdates', 'initiatedBy', 'retain', ORG_ATTRIBUTION),
 	rel('workspaceDeletionJobs', 'requestedBy', 'retain', 'The workspace deletion’s own history.'),
 	rel('workspaceDeletionJobs', 'abortedBy', 'retain', 'The workspace deletion’s own history.'),
+	...THREAD_BRIEF_MEMBER_RELATIONS,
 ];
 
 type BetterAuthTable = keyof typeof betterAuthTables;

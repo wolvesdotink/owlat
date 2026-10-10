@@ -1,0 +1,636 @@
+{
+	"version": 1,
+	"slice": "out_of_order",
+	"threads": [
+		{
+			"id": "ooo-001",
+			"slices": ["out_of_order", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T10:00:00+02:00",
+					"subject": "Requests",
+					"text": "Can you send the logo files?\n",
+					"arrivalOrder": 3
+				},
+				{
+					"id": "m2",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T11:00:00+02:00",
+					"subject": "Requests",
+					"text": "Also, can you send the brand colours?\n",
+					"arrivalOrder": 1
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T12:00:00+02:00",
+					"subject": "Requests",
+					"text": "One more: please confirm the font licence.\n",
+					"arrivalOrder": 2
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Can you send the logo files?",
+						"segmentKind": "fresh",
+						"assertion": "Can you send the logo files",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m2",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Also, can you send the brand colours?",
+						"segmentKind": "fresh",
+						"assertion": "Also, can you send the brand colours",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i3",
+						"messageId": "m3",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "One more: please confirm the font licence.",
+						"segmentKind": "fresh",
+						"assertion": "One more: please confirm the font licence",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "ooo-002",
+			"slices": ["out_of_order", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T10:00:00+02:00",
+					"subject": "Requests",
+					"text": "Kannst du mir die Rechnung schicken?\n",
+					"arrivalOrder": 3
+				},
+				{
+					"id": "m2",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T11:00:00+02:00",
+					"subject": "Requests",
+					"text": "Und bitte bestätige den Liefertermin.\n",
+					"arrivalOrder": 1
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T12:00:00+02:00",
+					"subject": "Requests",
+					"text": "Kannst du auch das Angebot anpassen?\n",
+					"arrivalOrder": 2
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Kannst du mir die Rechnung schicken?",
+						"segmentKind": "fresh",
+						"assertion": "Kannst du mir die Rechnung schicken",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m2",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Und bitte bestätige den Liefertermin.",
+						"segmentKind": "fresh",
+						"assertion": "Und bitte bestätige den Liefertermin",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i3",
+						"messageId": "m3",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Kannst du auch das Angebot anpassen?",
+						"segmentKind": "fresh",
+						"assertion": "Kannst du auch das Angebot anpassen",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "ooo-003",
+			"slices": ["out_of_order", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T10:00:00+02:00",
+					"subject": "Requests",
+					"text": "Please approve the travel request.\n",
+					"arrivalOrder": 3
+				},
+				{
+					"id": "m2",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T11:00:00+02:00",
+					"subject": "Requests",
+					"text": "Could you book the hotel as well?\n",
+					"arrivalOrder": 1
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T12:00:00+02:00",
+					"subject": "Requests",
+					"text": "And please send the agenda.\n",
+					"arrivalOrder": 2
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Please approve the travel request.",
+						"segmentKind": "fresh",
+						"assertion": "Please approve the travel request",
+						"requester": {
+							"name": "Priya Nair",
+							"email": "priya@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m2",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Could you book the hotel as well?",
+						"segmentKind": "fresh",
+						"assertion": "Could you book the hotel as well",
+						"requester": {
+							"name": "Priya Nair",
+							"email": "priya@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i3",
+						"messageId": "m3",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "And please send the agenda.",
+						"segmentKind": "fresh",
+						"assertion": "And please send the agenda",
+						"requester": {
+							"name": "Priya Nair",
+							"email": "priya@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "ooo-004",
+			"slices": ["out_of_order", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Felix Braun",
+						"email": "felix@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T10:00:00+02:00",
+					"subject": "Requests",
+					"text": "Bitte prüf den Entwurf bis Montag.\n",
+					"arrivalOrder": 3
+				},
+				{
+					"id": "m2",
+					"direction": "inbound",
+					"from": {
+						"name": "Felix Braun",
+						"email": "felix@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T11:00:00+02:00",
+					"subject": "Requests",
+					"text": "Kannst du die Zahlen aktualisieren?\n",
+					"arrivalOrder": 1
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Felix Braun",
+						"email": "felix@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T12:00:00+02:00",
+					"subject": "Requests",
+					"text": "Bitte schick mir die finale Version.\n",
+					"arrivalOrder": 2
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Bitte prüf den Entwurf bis Montag.",
+						"segmentKind": "fresh",
+						"assertion": "Bitte prüf den Entwurf bis Montag",
+						"requester": {
+							"name": "Felix Braun",
+							"email": "felix@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m2",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Kannst du die Zahlen aktualisieren?",
+						"segmentKind": "fresh",
+						"assertion": "Kannst du die Zahlen aktualisieren",
+						"requester": {
+							"name": "Felix Braun",
+							"email": "felix@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i3",
+						"messageId": "m3",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Bitte schick mir die finale Version.",
+						"segmentKind": "fresh",
+						"assertion": "Bitte schick mir die finale Version",
+						"requester": {
+							"name": "Felix Braun",
+							"email": "felix@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "ooo-005",
+			"slices": ["out_of_order", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Sofia Marin",
+						"email": "sofia@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T10:00:00+02:00",
+					"subject": "Requests",
+					"text": "Could you share the access link?\n",
+					"arrivalOrder": 3
+				},
+				{
+					"id": "m2",
+					"direction": "inbound",
+					"from": {
+						"name": "Sofia Marin",
+						"email": "sofia@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T11:00:00+02:00",
+					"subject": "Requests",
+					"text": "Please add Noah to the folder.\n",
+					"arrivalOrder": 1
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Sofia Marin",
+						"email": "sofia@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T12:00:00+02:00",
+					"subject": "Requests",
+					"text": "Can you confirm the deadline?\n",
+					"arrivalOrder": 2
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Could you share the access link?",
+						"segmentKind": "fresh",
+						"assertion": "Could you share the access link",
+						"requester": {
+							"name": "Sofia Marin",
+							"email": "sofia@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m2",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Please add Noah to the folder.",
+						"segmentKind": "fresh",
+						"assertion": "Please add Noah to the folder",
+						"requester": {
+							"name": "Sofia Marin",
+							"email": "sofia@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i3",
+						"messageId": "m3",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Can you confirm the deadline?",
+						"segmentKind": "fresh",
+						"assertion": "Can you confirm the deadline",
+						"requester": {
+							"name": "Sofia Marin",
+							"email": "sofia@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		}
+	]
+}

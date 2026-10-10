@@ -101,7 +101,11 @@ function composerMock(): AnswerComposerApi {
 	};
 }
 
-function host(composer: AnswerComposerApi, draftId = ref<string | null>('d1')) {
+function host(
+	composer: AnswerComposerApi,
+	draftId = ref<string | null>('d1'),
+	beforeDraft?: (target: unknown) => Promise<void>
+) {
 	const onSettled = vi.fn();
 	let api!: ReturnType<typeof useAnswerAskSession>;
 	mount(
@@ -112,6 +116,7 @@ function host(composer: AnswerComposerApi, draftId = ref<string | null>('d1')) {
 						draftId.value ? { kind: 'mailDraft', draftId: draftId.value as never } : null,
 					composer: () => composer,
 					onSettled,
+					...(beforeDraft ? { beforeDraft } : {}),
 				});
 				return () => h('div');
 			},
@@ -483,5 +488,40 @@ describe('useAnswerAskSession: the action and the subscriptions in either order'
 		await starting;
 		await flushPromises();
 		expect(composer.applyAiDraft).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('useAnswerAskSession: the pre-draft hook (review F11)', () => {
+	it('awaits the host before the server drafts, on start and on an answer', async () => {
+		const order: string[] = [];
+		runs['start'] = vi.fn(async () => {
+			order.push('start');
+			return { ok: true, result: session({ status: 'asking' }) };
+		});
+		runs['answer'] = vi.fn(async () => {
+			order.push('answer');
+			return { ok: true, result: session({ updatedAt: 2 }) };
+		});
+		const beforeDraft = vi.fn(async (target: unknown) => {
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			order.push(`before:${(target as { draftId: string }).draftId}`);
+		});
+		const { api } = host(composerMock(), ref<string | null>('d1'), beforeDraft);
+		await api.start('');
+		data['getSession']!.value = session({ status: 'asking' });
+		await flushPromises();
+		await api.answer([]);
+		expect(order).toEqual(['before:d1', 'start', 'before:d1', 'answer']);
+	});
+});
+
+describe('useAnswerAskSession: a failed pre-draft write (review r2 F4)', () => {
+	it('stops the draft when the host could not write what the drafter reads', async () => {
+		const beforeDraft = vi.fn(async () => {
+			throw new Error('write failed');
+		});
+		const { api } = host(composerMock(), ref<string | null>('d1'), beforeDraft);
+		await api.start('');
+		expect(runs['start']).not.toHaveBeenCalled();
 	});
 });

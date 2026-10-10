@@ -12,8 +12,9 @@
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { batchGet } from '../_utils/batchLoader';
-import { deleteMailThreadCatchUps } from './ai/catchUpStore';
+import { deleteMailThreadCatchUps } from './legacySummaryRows';
 import { deleteResourceUploads, mailThreadUploadKey } from '../storage/uploads';
+import { purgeThreadBrief } from './interpret/purgeRun';
 
 /**
  * Most addresses a thread's `participants` array holds. Every message adds its
@@ -65,6 +66,8 @@ export async function rebuildThreadAggregates(
 		// Answer mode catch-up cards retell the purged mail: they go with the thread.
 		await deleteMailThreadCatchUps(ctx, threadId);
 		await deleteResourceUploads(ctx, mailThreadUploadKey(threadId));
+		// The thread brief (items, facts, activity, plans …) is derived from it too.
+		await purgeThreadBrief(ctx, { kind: 'mail', id: threadId });
 		await ctx.db.delete(threadId);
 		return;
 	}

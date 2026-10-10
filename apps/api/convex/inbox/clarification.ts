@@ -22,6 +22,7 @@ import {
 	type ClarificationFileRef,
 	type ResolvedFileAnswer,
 } from './clarificationFileAnswer';
+import { recordClarificationAnswered } from '../mail/interpret/threadEvents';
 
 /**
  * Answer the open clarification questions parked on a message and resume the
@@ -182,6 +183,18 @@ export const answerClarification = adminMutation({
 			}
 		} catch {
 			// Memory is best-effort — never block the draft resume below.
+		}
+
+		if (message.threadId) {
+			await recordClarificationAnswered(
+				ctx,
+				{ kind: 'team', id: message.threadId },
+				{
+					userId: session.userId,
+					clarificationKey: `${args.inboundMessageId}:${pending.askedAt}`,
+					questions: questions.filter((q) => answerByQuestion.has(q.id)),
+				}
+			);
 		}
 
 		// Drive awaiting_clarification → drafting via the single lifecycle writer.

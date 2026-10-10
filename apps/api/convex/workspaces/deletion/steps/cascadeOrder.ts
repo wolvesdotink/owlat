@@ -5,6 +5,7 @@
  */
 
 import type { OrganizationDeletionTable } from './_common';
+import { THREAD_BRIEF_TABLES } from '../../../schema/threadBrief';
 
 /**
  * Ordered cascade: children before parents, storage-bearing tables
@@ -37,6 +38,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// parent rows so the sweep never leaves a file pointing at a deleted message.
 	'mailAttachments',
 	'mailAttachmentBackfillJobs',
+	'interpretBackfillJobs',
 	'mailBodySearchBackfillJobs',
 	// Inline bodies (plan 3.2), 1:1 with mailMessages: swept before their rows
 	// like the attachment index, so no body outlives its message.
@@ -84,6 +86,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'threadNotes', // internal team notes — clear before their threads
 	'inboxFollowUps', // team follow-up bodies — clear before their threads
 	'threadCatchUps', // Answer mode catch-up cards (team and Postbox) — before both thread tables
+	...THREAD_BRIEF_TABLES, // thread brief (team and Postbox) — before both thread tables
+	'threadPurgeJobs', // resumable thread brief purges — ids only, before both thread tables
 	'inboxAssignmentNotices', // per-assignee notice denormalized subjects/assigner names
 	'inboundMessages',
 	'conversationThreads',

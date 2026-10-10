@@ -40,10 +40,12 @@ import {
 	divergenceSchema,
 	emailProvenance,
 	replySlotsSchema,
+	itemIdForSlot,
 	sanitizeClarificationQuestions,
 	splitCandidateSlots,
 	type QuestionProvenance,
 	type ReplySlot,
+	type SlotItem,
 } from '../../inbox/clarificationSlots';
 import {
 	isHighStakesSlot,
@@ -80,6 +82,8 @@ export interface GapCheckInput {
 	/** The owner's own instruction; a slot it already answers is not asked. */
 	instruction?: string | undefined;
 	locale: string;
+	/** The thread's open items: each question names the item it fills (SPEC §6). */
+	slotItems?: readonly SlotItem<Id<'threadItems'>>[] | undefined;
 }
 
 export interface GapCheckResult {
@@ -112,7 +116,8 @@ export function attributionFor(counterpartAddress: string | undefined): Question
 async function findOpenSlots(
 	ctx: ActionCtx,
 	context: string,
-	eagerness: EagernessMode | undefined
+	eagerness: EagernessMode | undefined,
+	items: readonly SlotItem[]
 ): Promise<ReplySlot[]> {
 	// Files owed survive a failed divergence stage: they were never judged by it.
 	let owed: ReplySlot[] = [];
@@ -123,7 +128,7 @@ async function findOpenSlots(
 			runLlmObject({
 				model: await resolveLanguageModel(ctx, 'summarize'),
 				schema: replySlotsSchema,
-				prompt: buildSlotPrompt(context),
+				prompt: buildSlotPrompt(context, items),
 				temperature: 0.2,
 			})
 		);
@@ -219,12 +224,15 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 	const slotContext = input.instruction
 		? `${input.context}\n\n(The recipient's note on what to answer: ${input.instruction})`
 		: input.context;
-	let slots = await findOpenSlots(ctx, slotContext, input.eagerness);
+	const items = input.slotItems ?? [];
+	let slots = await findOpenSlots(ctx, slotContext, input.eagerness, items);
 
 	// A file request: the phrasing in the email, or a slot of type attachment.
 	let request = detectAttachmentRequest(input.triggerText);
+	const attachmentSlot = slots.find((slot) => slot.slotType === 'attachment');
+	// The file question keeps the item its slot fills (review F15).
+	const fileItemId = attachmentSlot ? itemIdForSlot(attachmentSlot, items) : undefined;
 	if (!request.requested) {
-		const attachmentSlot = slots.find((slot) => slot.slotType === 'attachment');
 		if (attachmentSlot) {
 			request = { requested: true, query: detectAttachmentRequest(attachmentSlot.question).query };
 		}
@@ -249,13 +257,18 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 			autoAttach = outcome.file;
 		} else {
 			const question = buildFileQuestion(outcome, label, provenance);
-			if (question) questions.push(question);
+			if (question) questions.push(fileItemId ? { ...question, itemId: fileItemId } : question);
 			else fileRequest = undefined;
 		}
 	}
 
 	const sanitized = sanitizeClarificationQuestions(
-		slots.map((slot) => ({ slotType: slot.slotType, text: slot.question, options: slot.options })),
+		slots.map((slot) => ({
+			slotType: slot.slotType,
+			text: slot.question,
+			options: slot.options,
+			itemId: itemIdForSlot(slot, items),
+		})),
 		input.counterpartAddress ?? ''
 	);
 	for (const q of sanitized) {

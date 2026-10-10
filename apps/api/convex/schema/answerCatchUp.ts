@@ -3,19 +3,15 @@ import { v } from 'convex/values';
 import { catchUpValidator } from '../lib/validators/catchUp';
 
 /**
- * Answer mode's catch-up card, cached per thread and interface locale
- * (mail/ai/catchUp.ts for Postbox threads, inbox/catchUp.ts for team threads).
+ * RETIRED (ADR-0072): Answer mode's catch-up card, cached per thread and
+ * interface locale. The thread brief replaced it; nothing writes or serves a
+ * row any more. The table stays for one release so its rows still validate,
+ * migration 0067 empties it, and the next release drops it
+ * (`mail/legacySummaryRows.ts`). Until then erasure and thread deletion keep
+ * deleting its rows, which retell the thread's mail.
  *
- * One row per (thread, locale). Exactly one of `mailThreadId` /
- * `conversationThreadId` is set. The row is served only while its
- * `messageCount` matches the thread's live count, so a new message makes it
- * stale and the next open regenerates it in place.
- *
- * `mode` records what was asked of the model: a thread worth a summary gets the
- * full card (`full`), a short one only its asks (`asksOnly`, `sentences` empty),
- * which is cached too so a short email is not re-read on every open just to
- * learn it has one ask. Derived from the thread's content, so it goes with the
- * tenant and with the thread; it names no reader.
+ * One row per (thread, locale); exactly one of `mailThreadId` /
+ * `conversationThreadId` is set.
  */
 export const answerCatchUpTables = {
 	threadCatchUps: defineTable({

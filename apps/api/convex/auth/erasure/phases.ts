@@ -50,6 +50,12 @@ import {
 	eraseNoteMentions,
 	eraseSharedMemberships,
 } from './memberPhases';
+import {
+	eraseNoteReactions,
+	eraseThreadItemAssignments,
+	eraseThreadItemCorrections,
+	eraseThreadViewerState,
+} from './threadBriefPhases';
 import type { MemberPhaseRunner } from './phaseKit';
 
 const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
@@ -80,6 +86,10 @@ const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
 	savedReplyAuthorship: eraseSavedReplyAuthorship,
 	noteAuthorship: eraseNoteAuthorship,
 	noteMentions: eraseNoteMentions,
+	threadViewerState: eraseThreadViewerState,
+	threadItemAssignments: eraseThreadItemAssignments,
+	noteReactions: eraseNoteReactions,
+	threadItemCorrections: eraseThreadItemCorrections,
 };
 
 export const FIRST_MEMBER_ERASURE_PHASE: MemberErasurePhase = MEMBER_ERASURE_PHASES[0];
@@ -215,6 +225,38 @@ export async function remainingMemberData(
 				ctx.db
 					.query('threadNotes')
 					.withIndex('by_author', (q) => q.eq('authorId', authUserId))
+					.first(),
+		],
+		[
+			'threadViewerState',
+			() =>
+				ctx.db
+					.query('threadViewerState')
+					.withIndex('by_user_and_mail_thread', (q) => q.eq('userId', authUserId))
+					.first(),
+		],
+		[
+			'noteReactions',
+			() =>
+				ctx.db
+					.query('noteReactions')
+					.withIndex('by_user', (q) => q.eq('userId', authUserId))
+					.first(),
+		],
+		[
+			'threadItemCorrections',
+			() =>
+				ctx.db
+					.query('threadItemCorrections')
+					.withIndex('by_user', (q) => q.eq('userId', authUserId))
+					.first(),
+		],
+		[
+			'threadItems assignee',
+			() =>
+				ctx.db
+					.query('threadItems')
+					.withIndex('by_assignee', (q) => q.eq('assigneeUserId', authUserId))
 					.first(),
 		],
 	];

@@ -712,6 +712,12 @@
 				"thresholdMin": "0 % (alles automatisch)",
 				"todayCount": "Heute: {current} / {max}"
 			},
+			"autonomyItemCoverage": {
+				"title": "Antworten zurückhalten, die einen offenen Punkt auslassen",
+				"subtitle": "Eine automatische Antwort wartet auf Prüfung, wenn sie eine offene Anfrage unbeantwortet lässt, eine fehlende Datei als angehängt bezeichnet oder etwas zusagt, das niemand freigegeben hat. Solange das aus ist, notiert Owlat nur, was es zurückgehalten hätte.",
+				"operation": "Prüfung offener Punkte speichern",
+				"saved": "Prüfung offener Punkte gespeichert"
+			},
 			"autonomyWorkingHours": {
 				"daysLabel": "Tage",
 				"fromLabel": "Von",
@@ -875,6 +881,262 @@
 		"breadcrumbs": {
 			"home": "Startseite",
 			"label": "Navigationspfad"
+		},
+		"brief": {
+			"view": {
+				"label": "Ansicht des Verlaufs",
+				"overview": "Überblick",
+				"conversation": "E-Mail-Verlauf ({count})"
+			},
+			"latest": {
+				"title": "Neueste Nachricht",
+				"newSince": "neu seit deinem letzten Blick"
+			},
+			"standing": {
+				"title": "Stand der Dinge",
+				"versus": "gegenüber",
+				"conflict": "Diese Angaben widersprechen sich.",
+				"was": "vorher"
+			},
+			"items": {
+				"forYou": "Für dich",
+				"forTeam": "Fürs Team",
+				"waiting": "Ausstehend bei anderen",
+				"unclear": "Unklar, wer zuständig ist",
+				"openCount": "{count} offen | {count} offen",
+				"empty": "In diesem Verlauf ist nichts für dich zu tun.",
+				"emptyTeam": "In diesem Verlauf ist nichts fürs Team offen.",
+				"emptyIncomplete": "Im gelesenen Teil wurde nichts gefunden.",
+				"loadingMore": "Die übrigen Punkte werden geladen…",
+				"truncated": "Hier ließen sich nicht alle Punkte laden. Im E-Mail-Verlauf steht alles.",
+				"closedTruncated": "Ältere erledigte Punkte sind nicht aufgeführt.",
+				"pagesLoading": "Weitere Punkte dieses Verlaufs werden noch geladen.",
+				"pagesTruncated": "Dieser Verlauf hat mehr Punkte, als hier stehen, vielleicht auch zu prüfende Bitten. Im E-Mail-Verlauf steht alles."
+			},
+			"item": {
+				"due": "fällig {date}",
+				"checkThis": "Prüf das:",
+				"proposal": "Vorschlag · noch nicht nachverfolgt",
+				"pendingChange": "Prüf diese Änderung:",
+				"pendingOptions": "Optionen: {options}",
+				"confirmChange": "Änderung bestätigen",
+				"maybeSettled": "Eine spätere Nachricht hat das vielleicht schon erledigt",
+				"confirmSettled": "Bestätigen",
+				"pending": {
+					"removed": "entfernt: {fields}",
+					"nobody": "noch niemand",
+					"us": "du",
+					"field": {
+						"text": "Wortlaut",
+						"requester": "gefragt von",
+						"responsible": "wer es macht",
+						"beneficiary": "für",
+						"responsibility": "wer dran ist",
+						"due": "fällig",
+						"amount": "Betrag",
+						"options": "Auswahl"
+					},
+					"responsibility": {
+						"us": "bei dir",
+						"them": "bei ihnen",
+						"unclear": "unklar"
+					}
+				},
+				"review": "bitte prüfen",
+				"duplicate": "mögliches Duplikat",
+				"new": "neu",
+				"undo": "Rückgängig",
+				"track": "Nachverfolgen",
+				"select": "In der Antwort berücksichtigen: {item}",
+				"menu": "Mehr zu „{item}“",
+				"menuHint": "„Erledigt“ hält fest, dass du es gesagt hast. Du kannst es rückgängig machen."
+			},
+			"state": {
+				"open": "Offen",
+				"addressedInDraft": "Im Entwurf berücksichtigt",
+				"answeredStillToDo": "Beantwortet, noch offen",
+				"markedDoneByYou": "Von dir als erledigt markiert",
+				"done": "Erledigt",
+				"reportedDone": "Als erledigt gemeldet",
+				"declined": "Abgelehnt",
+				"replaced": "Ersetzt",
+				"notTracked": "Nicht nachverfolgt"
+			},
+			"intent": {
+				"question": "Frage",
+				"request": "Bitte",
+				"decision": "Entscheidung",
+				"promise": "Zusage"
+			},
+			"facet": {
+				"payment": "Zahlung",
+				"meeting": "Termin",
+				"documentReview": "Dokumentprüfung",
+				"signature": "Unterschrift",
+				"file": "Datei",
+				"access": "Zugang",
+				"information": "Auskunft"
+			},
+			"reaction": {
+				"reply": "Antworten",
+				"replyWithStance": "Antworten",
+				"replyWithUpdate": "Mit einem Zwischenstand antworten",
+				"attach": "Anhängen",
+				"proposeTimes": "Termine vorschlagen",
+				"markPaid": "Als bezahlt markieren",
+				"markDone": "Als erledigt markieren",
+				"nudge": "Nachhaken",
+				"markReceived": "Als erhalten markieren",
+				"decline": "Höflich ablehnen",
+				"remind": "Morgen erinnern",
+				"assign": "Zuweisen an…",
+				"notARequest": "Keine Bitte",
+				"untrack": "Nicht mehr nachverfolgen"
+			},
+			"activity": {
+				"title": "Aktivitäten",
+				"provenance": {
+					"recorded": "erfasst",
+					"asserted": "laut dir",
+					"reported": "laut E-Mail"
+				},
+				"type": {
+					"message_received": "Eine neue Nachricht ist eingegangen.",
+					"reply_sent": "Du hast geantwortet.",
+					"auto_sent": "Eine Antwort wurde automatisch gesendet.",
+					"send_queued": "Eine Antwort wartet auf den Versand.",
+					"send_held": "Eine Antwort wurde zur Prüfung angehalten.",
+					"send_cancelled": "Eine Antwort wurde abgebrochen.",
+					"delivery_failed": "Eine Antwort konnte nicht zugestellt werden.",
+					"file_added_to_draft": "Eine Datei wurde an den Entwurf angehängt.",
+					"booked": "Ein Termin wurde gebucht.",
+					"item_opened": "Ein neuer Punkt wurde erfasst.",
+					"item_changed": "Ein Punkt hat sich geändert.",
+					"item_closed": "Ein Punkt wurde abgeschlossen.",
+					"item_reopened": "Ein Punkt wurde wieder geöffnet.",
+					"item_replaced": "Ein Punkt wurde durch eine neuere Bitte ersetzt.",
+					"item_assigned": "Ein Punkt wurde zugewiesen.",
+					"item_claimed": "Jemand hat einen Punkt übernommen.",
+					"item_reminder_set": "Eine Erinnerung wurde gesetzt.",
+					"item_corrected": "Ein Punkt wurde korrigiert.",
+					"proposal_confirmed": "Eine mögliche Bitte wurde bestätigt.",
+					"clarification_answered": "Eine Rückfrage zur Antwort wurde beantwortet.",
+					"fact_changed": "Eine Angabe hat sich geändert.",
+					"interpretation_incomplete": "Ein Teil des Verlaufs konnte nicht gelesen werden.",
+					"assigned": "Der Verlauf wurde zugewiesen.",
+					"snoozed": "Der Verlauf wurde zurückgestellt.",
+					"labelled": "Ein Label wurde hinzugefügt.",
+					"archived": "Der Verlauf wurde archiviert.",
+					"muted": "Der Verlauf wurde stummgeschaltet."
+				}
+			},
+			"people": {
+				"title": "Personen",
+				"you": "Du",
+				"role": {
+					"from": "hat geschrieben",
+					"to": "an",
+					"cc": "in Kopie",
+					"us": "du"
+				}
+			},
+			"files": {
+				"title": "Dateien",
+				"you": "du",
+				"attach": "{name} an die Antwort anhängen",
+				"open": "Die Nachricht mit {name} öffnen"
+			},
+			"elsewhere": {
+				"title": "Mit {name} in anderen Gesprächen",
+				"inThread": "in „{subject}“",
+				"forYou": "für dich",
+				"theirs": "bei der Gegenseite",
+				"unclear": "unklar, wer",
+				"due": "fällig {date}",
+				"showMore": "Mehr anzeigen",
+				"more": "Weitere offene Punkte mit dieser Person in anderen Gesprächen."
+			},
+			"incomplete": {
+				"partialLead": "Teilweise gelesen.",
+				"partialCount": "{done} von {total} Nachrichten sind in diesem Überblick.",
+				"partialPlain": "Ein Teil dieses Verlaufs fehlt in diesem Überblick.",
+				"partialReason": {
+					"tooLong": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest war zu lang.",
+					"failed": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest konnte nicht gelesen werden.",
+					"undecryptable": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest ließ sich nicht entschlüsseln.",
+					"pending": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest wird noch gelesen.",
+					"history": "{done} von {total} Nachrichten sind in diesem Überblick. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie."
+				},
+				"pending": "Dieser Verlauf wird gerade gelesen. Der Überblick folgt gleich.",
+				"none": {
+					"default": "Für diesen Verlauf gibt es noch keinen Überblick. Im E-Mail-Verlauf siehst du alles.",
+					"aiOff": "Die KI ist aus, deshalb gibt es keinen Überblick. Im E-Mail-Verlauf siehst du alles.",
+					"undecryptable": "Diese Nachricht ließ sich nicht entschlüsseln, deshalb gibt es keinen Überblick.",
+					"ineligible": "Mails wie diese werden nicht zusammengefasst, deshalb gibt es keinen Überblick.",
+					"failed": "Das Lesen dieses Verlaufs ist fehlgeschlagen, deshalb gibt es keinen Überblick.",
+					"pending": "Dieser Verlauf wurde noch nicht gelesen. Der Überblick folgt gleich."
+				},
+				"short": "So angezeigt, wie geschrieben. Hier gibt es nichts zusammenzufassen.",
+				"securityLead": "Sicherheits-E-Mail.",
+				"security": "Wird so angezeigt, wie geschrieben, und nie zusammengefasst.",
+				"signed": "Nur der signierte Teil ist zusammengefasst.",
+				"openConversation": "E-Mail-Verlauf öffnen"
+			},
+			"conversation": {
+				"read": "Den ganzen Verlauf lesen",
+				"span": "{count} E-Mail · {from} | {count} E-Mails · {from} bis {to}",
+				"open": "E-Mail-Verlauf →"
+			},
+			"actions": {
+				"reply": "Antworten",
+				"replyAll": "Auf alle {count} antworten",
+				"archive": "Archivieren",
+				"snooze": "Zurückstellen",
+				"ask": "Frag zu diesem Verlauf"
+			},
+			"meta": {
+				"forYou": "{count} für dich | {count} für dich",
+				"waiting": "{count} ausstehend bei anderen | {count} ausstehend bei anderen"
+			},
+			"cite": {
+				"showing": "Quelle von „{label}“",
+				"back": "zurück zum Überblick",
+				"notLocated": "Die genaue Stelle ließ sich in dieser Nachricht nicht finden.",
+				"loading": "diese Nachricht wird geladen…",
+				"unreachable": "diese Nachricht ist nicht im geladenen Verlauf"
+			},
+			"exactWording": {
+				"title": "Den genauen Wortlaut lesen",
+				"hint": "hier kommt es auf den Wortlaut an, deshalb bleibt das Original offen",
+				"secured": "Diese Nachricht wird im E-Mail-Verlauf mit ihrer Sicherheitsprüfung angezeigt.",
+				"truncated": "Hier brauchen mehr Nachrichten ihren genauen Wortlaut, als diese Liste zeigt."
+			},
+			"phone": {
+				"more": "Stand der Dinge, Aktivitäten, Personen, Dateien"
+			},
+			"row": {
+				"forYou": "{count} für dich | {count} für dich",
+				"toDo": "{count} zu erledigen | {count} zu erledigen",
+				"waiting": "ausstehend",
+				"by": "bis {date}",
+				"noReplyNeeded": "keine Antwort nötig"
+			},
+			"more": "+{count} weitere",
+			"toast": {
+				"confirmed": "Bestätigt. Du kannst das rückgängig machen.",
+				"markedDone": "Als erledigt markiert. Du kannst es rückgängig machen.",
+				"reminder": "Du wirst morgen früh erinnert."
+			},
+			"operations": {
+				"markSeen": "Überblick als gesehen markieren",
+				"saveView": "Ansicht des Verlaufs speichern",
+				"react": "Punkt aktualisieren",
+				"ensure": "Überblick vorbereiten"
+			},
+			"evidence": {
+				"label": "Quelle zeigen: {name}, {date}",
+				"unknown": "Quelle zeigen"
+			}
 		},
 		"campaigns": {
 			"abTestConfig": {
@@ -4179,12 +4441,7 @@
 				"askFailed": "Das ließ sich gerade nicht beantworten. Versuche es gleich noch einmal.",
 				"askOperation": "Zu diesem Thread fragen",
 				"askPlaceholder": "Zu diesem Thread fragen…",
-				"less": "weniger",
-				"more": "mehr",
-				"summarizeOperation": "Thread zusammenfassen",
-				"summaryLabel": "Zusammenfassung:",
-				"thinking": "Denkt nach…",
-				"toggleSummaryDetail": "Details der Zusammenfassung umschalten"
+				"thinking": "Denkt nach…"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} benötigt ein App-Passwort",
@@ -5738,8 +5995,25 @@
 				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen kannst du eine Antwort auf „Allen antworten“ umstellen.",
 				"writingSuggestionsLabel": "Schreibvorschläge",
 				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
-				"autoSummarizeLabel": "Lange Konversationen automatisch zusammenfassen",
-				"autoSummarizeHelp": "Eine einzeilige KI-Zusammenfassung oben in langen Konversationen anzeigen. Klicke darauf, um die Kernpunkte aufzuklappen.",
+				"autoSummarizeLabel": "Überblicke anzeigen",
+				"autoSummarizeHelp": "Öffne einen Verlauf mit dem Neuesten, dem Stand der Dinge und dem, worum du gebeten wirst, jeweils mit Link zur Quelle. Nur für persönliche Postfächer.",
+				"threadViewLabel": "Verläufe öffnen mit",
+				"threadViewHelp": "Überblick oder der ganze E-Mail-Verlauf. Wechselst du in einem Verlauf, merkt er sich das. Nur für persönliche Postfächer.",
+				"threadViewConversation": "E-Mail-Verlauf",
+				"threadViewOperation": "Speichern, womit Verläufe öffnen",
+				"backfillLabel": "Überblicke für neuere E-Mails vorbereiten",
+				"backfillHelp": "Liest deine aktiven Gespräche der letzten 30 Tage, damit sie mit einem Überblick öffnen. Ältere werden vorbereitet, wenn du sie zum ersten Mal öffnest. Das nutzt das KI-Budget.",
+				"backfillStart": "Vorbereiten",
+				"backfillResume": "Fortsetzen",
+				"backfillCancel": "Stoppen",
+				"backfillRunning": "Wird vorbereitet … bisher {count} Gespräch | Wird vorbereitet … bisher {count} Gespräche",
+				"backfillDone": "Fertig: {count} Gespräch vorbereitet | Fertig: {count} Gespräche vorbereitet",
+				"backfillPausedBudget": "Pausiert: das KI-Budget ist vorerst aufgebraucht.",
+				"backfillPausedOff": "Pausiert: KI ist ausgeschaltet.",
+				"backfillPausedCap": "Nach {count} Gesprächen pausiert. Setz es fort, um weiterzumachen.",
+				"backfillCancelled": "Gestoppt. Setz es fort, um dort weiterzumachen, wo es aufgehört hat.",
+				"backfillOperation": "Überblicke vorbereiten",
+				"backfillCancelOperation": "Vorbereitung der Überblicke stoppen",
 				"sendSoundLabel": "Ton beim Senden abspielen",
 				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
 				"swipeLeftLabel": "Nach links wischen",
@@ -6196,6 +6470,96 @@
 				"gitSha": "Git-SHA"
 			}
 		},
+		"team": {
+			"answer": {
+				"view": {
+					"recent": "Neueste",
+					"full": "Ganzer Verlauf"
+				}
+			},
+			"composer": {
+				"continue": "Im Antwortmodus weiterschreiben",
+				"hint": "{'@'} erwähnt jemanden · # verknüpft eine Aufgabe",
+				"itemPicker": "Aufgaben zum Verknüpfen",
+				"modeLabel": "Interne Notiz oder Antwort",
+				"note": "Interne Notiz",
+				"notePlaceholder": "Schreib eine interne Notiz ans Team… (geht nie an {name})",
+				"notePlaceholderNoName": "Schreib eine interne Notiz ans Team…",
+				"post": "Notiz hinzufügen",
+				"privacy": "Nur dein Team sieht das. Es geht nie an den Kunden.",
+				"replyHint": "Die Antwort schreibst und sendest du im Antwortmodus.",
+				"replyPlaceholder": "Fang deine Antwort an {name} an…",
+				"replyTo": "Antworten an {name}",
+				"unlink": "Verknüpfung mit dieser Aufgabe entfernen"
+			},
+			"items": {
+				"askedBy": "von {name} am {date} gefragt",
+				"assignTo": "Zuweisen an",
+				"citeUnreachable": "Die zitierte E-Mail ließ sich nicht laden.",
+				"claim": "Übernehmen",
+				"closedTitle": "Gerade erledigt",
+				"claimed": "Jetzt bist du dran.",
+				"empty": "Fürs Team ist nichts offen.",
+				"formerTeammate": "Ehemaliges Teammitglied",
+				"me": "Mir",
+				"notes": "{count} Notiz | {count} Notizen",
+				"openCount": "{count} offen | {count} offen",
+				"operation": "Aufgabe aktualisieren",
+				"phoneSummary": "{count} offen fürs Team | {count} offen fürs Team",
+				"title": "Offen fürs Team",
+				"unassign": "Zuweisung aufheben",
+				"unassigned": "Nicht zugewiesen",
+				"unclearOwner": "unklar, wer das übernimmt",
+				"unclearTitle": "Unklar, wer zuständig ist",
+				"waitingTitle": "Ausstehend beim Kunden"
+			},
+			"note": {
+				"addReaction": "Reaktion hinzufügen",
+				"ariaLabel": "Interne Notiz von {name}",
+				"delete": "Notiz löschen",
+				"deleted": "Notiz gelöscht",
+				"edit": "Notiz bearbeiten",
+				"edited": "(bearbeitet)",
+				"formerTeammate": "Ehemaliges Teammitglied",
+				"internal": "Intern",
+				"on": "zu",
+				"operation": "Notiz speichern",
+				"reactWith": "Mit {emoji} reagieren",
+				"removedItem": "einer Aufgabe, die es nicht mehr gibt"
+			},
+			"reply": {
+				"email": "E-Mail",
+				"label": "Antwort von {name}",
+				"status": {
+					"cancelled": "Abgebrochen",
+					"failed": "Nicht zugestellt",
+					"held": "Zurückgehalten",
+					"queued": "Wird gesendet",
+					"sent": "Gesendet"
+				}
+			},
+			"stream": {
+				"cut": "Ein Teil der älteren Team-Notizen und Aktivitäten ist noch nicht geladen.",
+				"earlier": "Frühere anzeigen",
+				"earlierNotes": "Frühere Team-Notizen anzeigen",
+				"loadingEarlier": "Frühere Team-Notizen werden geladen…",
+				"markSeenOperation": "Merken, wo du aufgehört hast",
+				"new": "Neu",
+				"system": {
+					"item_changed": "„{item}“ hat sich geändert",
+					"item_closed": "„{item}“ erledigt",
+					"item_closed_declined": "„{item}“ abgelehnt",
+					"item_closed_superseded": "„{item}“ ersetzt",
+					"item_closed_untracked": "„{item}“ nicht mehr nachverfolgt",
+					"item_corrected": "„{item}“ korrigiert",
+					"item_opened": "Neue Aufgabe fürs Team: „{item}“",
+					"item_reopened": "„{item}“ wieder geöffnet",
+					"item_replaced": "„{item}“ wurde durch eine neuere Bitte ersetzt",
+					"openedMany": "{count} neue Aufgabe fürs Team | {count} neue Aufgaben fürs Team",
+					"proposal_confirmed": "„{item}“ bestätigt"
+				}
+			}
+		},
 		"transactional": {
 			"recentSendsModal": {
 				"hasMore": "Es werden die 25 neuesten Sendungen angezeigt.",
@@ -6506,6 +6870,13 @@
 				"mentionTitle": "#{room}: „{preview}“",
 				"clearTitleIn": "In {inbox} wartet nichts auf eine Antwort"
 			},
+			"todo": {
+				"title": "Zu erledigen, keine Antwort nötig · {count}",
+				"titlePlain": "Zu erledigen, keine Antwort nötig",
+				"due": "bis {date}",
+				"more": "In diesem Postfach ist noch mehr zu erledigen.",
+				"openInbox": "Postfach öffnen"
+			},
 			"changed": {
 				"title": "Was sich getan hat",
 				"subtitle": "in Unterhaltungen, die du schon kennst",
@@ -6654,30 +7025,41 @@
 				"viewLabel": "Wie viel der Unterhaltung angezeigt wird",
 				"viewShortcut": "Mit T umschalten",
 				"view": {
-					"summary": "Zusammenfassung",
-					"full": "Ganze Unterhaltung"
+					"summary": "Überblick",
+					"full": "E-Mail-Verlauf"
 				},
 				"more": "Mehr zu dieser Unterhaltung",
 				"openInPostbox": "In Postbox öffnen",
 				"skipMissing": "Weiter zum nächsten Eintrag"
 			},
-			"catchUp": {
-				"title": "Kurz zusammengefasst",
-				"meta": "{count} Nachricht seit {date} | {count} Nachrichten seit {date}",
-				"marker": "Nachricht von {sender} vom {date} anzeigen",
-				"loading": "Die Unterhaltung wird zusammengefasst",
-				"asksTitle": "Angefragt wird",
-				"askCovered": "Im Entwurf beantwortet:",
-				"askOpen": "Noch offen:",
-				"filesTitle": "Dateien in dieser Unterhaltung",
-				"attachHint": "Klicken, um sie an die Antwort anzuhängen, oder in die Antwort ziehen",
-				"attachFile": "{file} an die Antwort anhängen",
+			"threadFiles": {
 				"attachFailed": "Die Datei konnte nicht angehängt werden.",
-				"attachOperation": "Datei anhängen",
-				"covered": "{covered} von {total} Anfrage beantwortet | {covered} von {total} Anfragen beantwortet",
-				"asksCount": "{count} Anfrage | {count} Anfragen",
-				"show": "Anzeigen",
-				"hide": "Ausblenden"
+				"attachOperation": "Datei anhängen"
+			},
+			"plan": {
+				"title": "Deine Antwort umfasst",
+				"selected": "{count} von {total} ausgewählt",
+				"stanceGroup": "Wie die Antwort darauf eingeht: {item}",
+				"stance": {
+					"answer": "Antworten",
+					"accept": "Annehmen",
+					"decline": "Ablehnen",
+					"defer": "Später",
+					"clarify": "Nachfragen"
+				},
+				"writeFailed": "Deine Auswahl für die Antwort konnte nicht gespeichert werden. Versuch es noch mal.",
+				"fileMissing": "Datei fehlt",
+				"status": {
+					"checking": "Der Entwurf wird geprüft …",
+					"addressed": "{addressed} von {total} berücksichtigt",
+					"needsFile": "{count} braucht eine Datei | {count} brauchen eine Datei",
+					"promise": "neues Versprechen notiert: „{text}“"
+				},
+				"banner": {
+					"title": "Eins noch vor dem Senden.",
+					"body": "Der Entwurf sagt „{claim}“, aber es ist noch keine Datei angehängt.",
+					"pick": "Datei auswählen"
+				}
 			},
 			"aiBar": {
 				"label": "Was soll in der Antwort stehen?",
@@ -15064,8 +15446,12 @@
 					"keywords": "KI, Autovervollständigung, Schreibhilfe"
 				},
 				"autoSummarize": {
-					"title": "Lange Konversationen automatisch zusammenfassen",
-					"keywords": "KI, Zusammenfassung, Kurzfassung"
+					"title": "Überblicke anzeigen",
+					"keywords": "ki, zusammenfassung, überblick"
+				},
+				"threadView": {
+					"title": "Verläufe öffnen mit",
+					"keywords": "überblick, e-mail-verlauf, standardansicht"
 				},
 				"sendSound": {
 					"title": "Ton beim Senden abspielen",
@@ -16367,7 +16753,9 @@
 			"topics": "Themen",
 			"transactionalEmails": "Transaktions-E-Mails",
 			"webhooks": "Webhooks",
-			"pushSubscriptions": "Benachrichtigungsgeräte"
+			"pushSubscriptions": "Benachrichtigungsgeräte",
+			"threadBriefs": "Überblicke zu E-Mail-Verläufen",
+			"threadViewerState": "Ansicht der E-Mail-Verläufe"
 		},
 		"archiveImport": {
 			"refused": {

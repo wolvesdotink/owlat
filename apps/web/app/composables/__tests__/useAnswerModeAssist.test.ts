@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 /**
  * Answer mode's wiring around the composer (composables/useAnswerModeAssist):
- *   - the catch-up gets the view and message count (it decides the opening
- *     view and the footer note; useAnswerCatchUp.test.ts);
+ *   - the opening view comes from the thread brief: Summary with a brief, the
+ *     full conversation without one, decided once;
+ *   - the response plan reads the brief's open items for this thread and this
+ *     draft, and its note is the footer's (useResponsePlan.test.ts);
  *   - a reply the AI prepared earlier goes into an untouched fresh reply only,
  *     with the files answered for it;
  *   - a thread file is copied onto the draft by its index id, and uploaded from
@@ -21,19 +23,26 @@ import { THREAD_FILE_DRAG_TYPE, type ThreadFile } from '~/utils/answerThreadFile
 
 vi.mock('@owlat/api', () => ({ api: { mail: { drafts: { attachExisting: 'attachExisting' } } } }));
 
-const catchUpState = {
-	catchUp: ref<{ asks: { id: string }[] } | null>(null),
-	loading: ref(false),
-	covered: ref<string[]>([]),
+const briefView = ref<unknown>(undefined);
+vi.mock('~/composables/useThreadBrief', () => ({
+	useThreadBrief: () => ({ view: briefView }),
+}));
+const planState = {
 	statusNote: ref<string | undefined>(undefined),
 	checkCoverage: vi.fn(async () => {}),
+	flush: vi.fn(async () => {}),
+	adoptPreparedPlan: vi.fn(async () => {}),
 };
-/** What the assist handed the catch-up (its view and message count). */
-let catchUpOpts: { view?: unknown; messageCount?: () => number | undefined } = {};
-vi.mock('~/composables/useAnswerCatchUp', () => ({
-	useAnswerCatchUp: (opts: typeof catchUpOpts) => {
-		catchUpOpts = opts;
-		return catchUpState;
+/** What the assist handed the plan. */
+let planOpts: {
+	threadRef?: () => unknown;
+	draftRef?: () => unknown;
+	items?: () => readonly { id: string }[];
+} = {};
+vi.mock('~/composables/useResponsePlan', () => ({
+	useResponsePlan: (opts: typeof planOpts) => {
+		planOpts = opts;
+		return planState;
 	},
 }));
 vi.mock('~/composables/useAnswerAskSession', () => ({ useAnswerAskSession: () => ({}) }));
@@ -56,10 +65,9 @@ const attachRun = vi.fn();
 const showToast = vi.fn();
 
 beforeEach(() => {
-	catchUpState.catchUp.value = null;
-	catchUpState.loading.value = false;
-	catchUpState.covered.value = [];
-	catchUpOpts = {};
+	briefView.value = undefined;
+	planOpts = {};
+	planState.checkCoverage.mockClear();
 	preparedText.value = null;
 	indexIdOf.mockReset();
 	toFile.mockReset();
@@ -124,12 +132,63 @@ const FILE: ThreadFile = {
 	receivedAt: 1,
 };
 
+function item(id: string, overrides: Record<string, unknown> = {}) {
+	return { id, status: 'open', verify: 'passed', responsibility: 'us', ...overrides };
+}
+
 describe('useAnswerModeAssist: the view', () => {
-	it('hands the catch-up the conversation view and count it decides the opening view from', () => {
-		const { view, count } = host({ count: 4 });
-		expect(catchUpOpts.view).toBe(view);
-		count.value = 2;
-		expect(catchUpOpts.messageCount?.()).toBe(2);
+	it('stays on Summary for a thread with a brief, once it is known', async () => {
+		const { view } = host();
+		briefView.value = { mode: 'brief', completeness: 'complete', forYou: [], unclear: [] };
+		await flushPromises();
+		expect(view.value).toBe('summary');
+		// Decided once: a brief that goes away later does not flip it.
+		briefView.value = null;
+		await flushPromises();
+		expect(view.value).toBe('summary');
+	});
+
+	it('opens the full conversation for a thread with no brief', async () => {
+		const { view } = host();
+		await flushPromises();
+		expect(view.value).toBe('summary'); // still loading
+		briefView.value = null;
+		await flushPromises();
+		expect(view.value).toBe('full');
+	});
+
+	it('opens the full conversation when nothing was interpreted', async () => {
+		const { view } = host();
+		briefView.value = { mode: 'brief', completeness: 'none', forYou: [], unclear: [] };
+		await flushPromises();
+		expect(view.value).toBe('full');
+	});
+});
+
+describe('useAnswerModeAssist: the response plan', () => {
+	it('plans for this thread and this draft', () => {
+		host();
+		expect(planOpts.threadRef?.()).toEqual({ kind: 'mail', id: 'thr_1' });
+		expect(planOpts.draftRef?.()).toBeNull();
+	});
+
+	it('plans for the open items the reply covers, ours and unclear', () => {
+		host();
+		briefView.value = {
+			mode: 'brief',
+			completeness: 'complete',
+			forYou: [item('a'), item('p', { verify: 'proposal' }), item('d', { status: 'done' })],
+			unclear: [item('u', { responsibility: 'unclear' })],
+		};
+		expect(planOpts.items?.().map((i) => i.id)).toEqual(['a', 'u']);
+		// A shared mailbox's actions view: the team's items.
+		briefView.value = {
+			mode: 'actions',
+			completeness: 'complete',
+			forTeam: [item('t')],
+			unclear: [],
+		};
+		expect(planOpts.items?.().map((i) => i.id)).toEqual(['t']);
 	});
 });
 
@@ -142,7 +201,9 @@ describe('useAnswerModeAssist: a prepared draft', () => {
 		expect(composer.applyAiDraft).toHaveBeenCalledWith('Hi Jonas, here it is.');
 		// The files answered on the Reply Queue follow the text onto the draft.
 		expect(preparedAttach).toHaveBeenCalledWith(composer);
-		expect(catchUpState.checkCoverage).toHaveBeenCalled();
+		expect(planState.checkCoverage).toHaveBeenCalled();
+		// The prepared reply's plan moves to the draft it became (review F16).
+		expect(planState.adoptPreparedPlan).toHaveBeenCalledWith('d1');
 		preparedText.value = 'Another';
 		await flushPromises();
 		expect(composer.applyAiDraft).toHaveBeenCalledTimes(1);
@@ -260,8 +321,8 @@ describe('useAnswerModeAssist: thread files', () => {
 });
 
 describe('useAnswerModeAssist: the footer note', () => {
-	it("is the catch-up's own note", () => {
+	it("is the response plan's own note", () => {
 		const { assist } = host();
-		expect(assist.statusNote).toBe(catchUpState.statusNote);
+		expect(assist.statusNote).toBe(planState.statusNote);
 	});
 });

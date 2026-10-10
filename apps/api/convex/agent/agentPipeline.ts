@@ -366,6 +366,7 @@ export const sendApprovedReply = internalAction({
 				inboundMessageId: args.inboundMessageId,
 				subject,
 				html,
+				draftText: message.draftResponse,
 				from,
 				...(Object.keys(headers).length > 0 ? { headers } : {}),
 			});
@@ -393,6 +394,10 @@ export const sendApprovedReply = internalAction({
 					return;
 				}
 				await fail('A file for this reply is still being attached. Review and send it by hand.');
+				return;
+			}
+			if (outcome.reason === 'item_coverage' || outcome.reason === 'interpretation_incomplete') {
+				await fail(outcome.detail);
 				return;
 			}
 			if (outcome.reason === 'attachment_failed') {

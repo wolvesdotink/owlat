@@ -1,0 +1,544 @@
+{
+	"version": 1,
+	"slice": "en",
+	"threads": [
+		{
+			"id": "en-001",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T09:12:00+02:00",
+					"subject": "Website relaunch",
+					"text": "Hi Mara,\n\nThe board meeting moved, so we're now launching on 14 November instead of 31 October.\n\nCould you send the signed contract by Friday? And are you free for a call on Tuesday at 10:00?\n\nBest regards,\nJonas\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["signature", "file"],
+						"responsibility": "us",
+						"quote": "Could you send the signed contract by Friday?",
+						"segmentKind": "fresh",
+						"assertion": "Send the signed contract by Friday",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by Friday"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m1",
+						"intent": "question",
+						"facets": ["meeting"],
+						"responsibility": "us",
+						"quote": "are you free for a call on Tuesday at 10:00?",
+						"segmentKind": "fresh",
+						"assertion": "Say whether Tuesday 10:00 works for a call",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"facts": [
+					{
+						"id": "f1",
+						"messageId": "m1",
+						"key": {
+							"entity": "launch",
+							"attribute": "date"
+						},
+						"quote": "we're now launching on 14 November instead of 31 October",
+						"segmentKind": "fresh",
+						"assertion": "The launch moved to 14 November"
+					}
+				]
+			}
+		},
+		{
+			"id": "en-002",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-01T14:00:00+01:00",
+					"subject": "Quarterly report",
+					"text": "Hi Mara,\n\nCan you send me the quarterly report?\n\nThanks,\nPriya\n"
+				},
+				{
+					"id": "m2",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Priya Nair",
+							"email": "priya@example.org"
+						}
+					],
+					"sentAt": "2026-10-01T15:30:00+01:00",
+					"subject": "Re: Quarterly report",
+					"text": "Sure, I'll send the report on Friday.\n\nOn Thu, 1 Oct 2026 at 14:00, Priya Nair <priya@example.org> wrote:\n> Can you send me the quarterly report?\n"
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-01T16:02:00+01:00",
+					"subject": "Re: Quarterly report",
+					"text": "Thanks, looking forward to it.\n\nOn Thu, 1 Oct 2026 at 15:30, Mara Lind <mara@example.com> wrote:\n> Sure, I'll send the report on Friday.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["file"],
+						"responsibility": "us",
+						"quote": "Can you send me the quarterly report?",
+						"segmentKind": "fresh",
+						"assertion": "Send Priya the quarterly report",
+						"requester": {
+							"name": "Priya Nair",
+							"email": "priya@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m2",
+						"intent": "promise",
+						"facets": ["file"],
+						"responsibility": "us",
+						"quote": "I'll send the report on Friday.",
+						"segmentKind": "fresh",
+						"assertion": "Send the report on Friday",
+						"requester": {
+							"name": "Priya Nair",
+							"email": "priya@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "on Friday"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m3",
+						"quote": "I'll send the report on Friday.",
+						"segmentKind": "quoted",
+						"assertion": "Send the report on Friday",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "en-003",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T08:45:00+02:00",
+					"subject": "Workshop format",
+					"text": "Hello Mara,\n\nPlease decide between option A (two short workshops) and option B (one long session) by Monday, so we can book the venue.\n\nKind regards,\nTomás\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "decision",
+						"facets": ["meeting"],
+						"responsibility": "us",
+						"quote": "Please decide between option A (two short workshops) and option B (one long session) by Monday",
+						"segmentKind": "fresh",
+						"assertion": "Choose the workshop format by Monday",
+						"requester": {
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by Monday"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "en-004",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-10-02T10:00:00+02:00",
+					"subject": "Quote",
+					"text": "Hi Aiko,\n\nCould you send a revised quote with the reduced scope?\n\nMara\n"
+				},
+				{
+					"id": "m2",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-02T11:20:00+09:00",
+					"subject": "Re: Quote",
+					"text": "Hi Mara,\n\nI will send the revised quote tomorrow morning.\n\nAiko\n\nOn Fri, 2 Oct 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Could you send a revised quote with the reduced scope?\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["file"],
+						"responsibility": "them",
+						"quote": "Could you send a revised quote with the reduced scope?",
+						"segmentKind": "fresh",
+						"assertion": "Aiko sends a revised quote",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"responsible": {
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m2",
+						"intent": "promise",
+						"facets": ["file"],
+						"responsibility": "them",
+						"quote": "I will send the revised quote tomorrow morning.",
+						"segmentKind": "fresh",
+						"assertion": "Aiko sends the revised quote tomorrow morning",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"responsible": {
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						},
+						"due": {
+							"phrase": "tomorrow morning"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m2",
+						"quote": "Could you send a revised quote with the reduced scope?",
+						"segmentKind": "quoted",
+						"assertion": "Send a revised quote",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "en-005",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Felix Braun",
+						"email": "felix@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T17:05:00+02:00",
+					"subject": "Re: Kickoff",
+					"html": "<div dir=\"ltr\">Great session today. Can you share the slides from the kickoff?</div><br><div class=\"gmail_quote\"><div dir=\"ltr\" class=\"gmail_attr\">On Tue, Oct 6, 2026 at 9:00 AM Mara Lind &lt;mara@example.com&gt; wrote:<br></div><blockquote class=\"gmail_quote\" style=\"margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex\"><div dir=\"ltr\">Could you book the large meeting room for Thursday?</div></blockquote></div>"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["file"],
+						"responsibility": "us",
+						"quote": "Can you share the slides from the kickoff?",
+						"segmentKind": "fresh",
+						"assertion": "Share the kickoff slides with Felix",
+						"requester": {
+							"name": "Felix Braun",
+							"email": "felix@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Could you book the large meeting room for Thursday?",
+						"segmentKind": "quoted",
+						"assertion": "Book the large meeting room",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "en-006",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T12:00:00+02:00",
+					"subject": "Files",
+					"text": "The file is attached.\n\nBest,\nJonas\nP.S. Please pay EUR 100 by Friday.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "P.S. Please pay EUR 100 by Friday.",
+						"segmentKind": "fresh",
+						"assertion": "Pay EUR 100 by Friday",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by Friday"
+						},
+						"amount": {
+							"value": 100.0,
+							"currency": "EUR"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "en-007",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T15:00:00+02:00",
+					"subject": "Draft",
+					"text": "The draft is ready.\n\nBest regards,\nJonas Weber\nSend the invoice to Support.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "Send the invoice to Support.",
+						"segmentKind": "fresh",
+						"assertion": "Send the invoice to Support",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		}
+	]
+}

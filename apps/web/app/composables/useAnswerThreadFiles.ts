@@ -1,5 +1,5 @@
 /**
- * Turning a file from the thread (a catch-up chip) into an attachment of the
+ * Turning a file from the thread (a brief file chip) into an attachment of the
  * reply, or into the answer to a file question.
  *
  * The server copies an existing file onto a draft by its `mailAttachments` id
@@ -24,7 +24,7 @@ export function useAnswerThreadFiles(opts: { mailboxId: () => Id<'mailboxes'> | 
 	const { extractPartBlob } = useMimePartDownload({
 		loadRaw: loadRawEml,
 		loadPart: loadMessagePart,
-		failureKey: 'components.answer.catchUp.attachFailed',
+		failureKey: 'components.answer.threadFiles.attachFailed',
 	});
 	const resolved = new Map<string, Id<'mailAttachments'> | null>();
 

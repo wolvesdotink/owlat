@@ -1,0 +1,412 @@
+/**
+ * Convex validators of the thread brief (SPEC §2): items, facts, activity,
+ * evidence, participants, response plans. Every literal union derives from the
+ * tuples in `@owlat/shared/threadBrief`, so the schema, the functions and the
+ * web read one vocabulary.
+ *
+ * SEALED strings. A field commented `sealed` holds an at-rest envelope
+ * (`lib/atRestBodies.ts`, written through `lib/messageBody.ts` like a body):
+ * text derived from mail is body text, so a database dump shows no plaintext
+ * summary of a sealed message. Readers open it with `openMessageBody`.
+ */
+
+import { v, type Infer } from 'convex/values';
+import {
+	ACTIVITY_ACTORS,
+	ACTIVITY_OP_REF_KINDS,
+	ACTIVITY_PROVENANCES,
+	ACTIVITY_TYPES,
+	ACTIVITY_VISIBILITIES,
+	BRIEF_COMPLETENESS,
+	COVERAGE_VERDICTS,
+	DRAFT_REF_KINDS,
+	FACT_STATUSES,
+	INTERPRET_MODES,
+	INTERPRETATION_SKIP_REASONS,
+	INTERPRETATION_STATUSES,
+	ITEM_COMPLETIONS,
+	ITEM_CONSEQUENCE_KINDS,
+	ITEM_CORRECTION_KINDS,
+	ITEM_DISPOSITIONS,
+	ITEM_FACETS,
+	ITEM_INTENTS,
+	ITEM_REACTIONS,
+	ITEM_RESPONSIBILITIES,
+	ITEM_STATE_KEYS,
+	ITEM_STATUSES,
+	ITEM_VERIFY_STATES,
+	MESSAGE_SEGMENT_KINDS,
+	PLAN_VERDICTS,
+	RESPONSE_STANCES,
+	THREAD_VIEWS,
+} from '@owlat/shared/threadBrief';
+import { literalUnion } from '../literalUnion';
+
+// ── Literal unions ─────────────────────────────────────────────────────────
+
+export const interpretModeValidator = literalUnion(INTERPRET_MODES);
+export const threadViewValidator = literalUnion(THREAD_VIEWS);
+
+/**
+ * Which list of the brief an item sits in, derived from its status,
+ * responsibility and verify state (`mail/interpret/counters.ts listBucketOf`)
+ * and stored on the item, so the first item of a list is an indexed read.
+ */
+export const ITEM_LIST_BUCKETS = [
+	'forUs',
+	'waitingOnOthers',
+	'unclear',
+	'proposal',
+	'closed',
+] as const;
+export type ItemListBucket = (typeof ITEM_LIST_BUCKETS)[number];
+export const itemListBucketValidator = literalUnion(ITEM_LIST_BUCKETS);
+export const itemIntentValidator = literalUnion(ITEM_INTENTS);
+export const itemFacetValidator = literalUnion(ITEM_FACETS);
+export const itemResponsibilityValidator = literalUnion(ITEM_RESPONSIBILITIES);
+export const itemStatusValidator = literalUnion(ITEM_STATUSES);
+export const itemDispositionValidator = literalUnion(ITEM_DISPOSITIONS);
+export const itemCompletionValidator = literalUnion(ITEM_COMPLETIONS);
+export const itemConsequenceKindValidator = literalUnion(ITEM_CONSEQUENCE_KINDS);
+export const itemVerifyValidator = literalUnion(ITEM_VERIFY_STATES);
+export const itemCorrectionKindValidator = literalUnion(ITEM_CORRECTION_KINDS);
+export const itemStateKeyValidator = literalUnion(ITEM_STATE_KEYS);
+export const itemReactionValidator = literalUnion(ITEM_REACTIONS);
+export const responseStanceValidator = literalUnion(RESPONSE_STANCES);
+export const coverageVerdictValidator = literalUnion(COVERAGE_VERDICTS);
+export const planVerdictValidator = literalUnion(PLAN_VERDICTS);
+export const draftRefKindValidator = literalUnion(DRAFT_REF_KINDS);
+export const factStatusValidator = literalUnion(FACT_STATUSES);
+export const activityTypeValidator = literalUnion(ACTIVITY_TYPES);
+export const activityActorKindValidator = literalUnion(ACTIVITY_ACTORS);
+export const activityProvenanceValidator = literalUnion(ACTIVITY_PROVENANCES);
+export const activityVisibilityValidator = literalUnion(ACTIVITY_VISIBILITIES);
+export const activityOpRefKindValidator = literalUnion(ACTIVITY_OP_REF_KINDS);
+export const interpretationStatusValidator = literalUnion(INTERPRETATION_STATUSES);
+export const interpretationSkipReasonValidator = literalUnion(INTERPRETATION_SKIP_REASONS);
+export const briefCompletenessValidator = literalUnion(BRIEF_COMPLETENESS);
+export const messageSegmentKindValidator = literalUnion(MESSAGE_SEGMENT_KINDS);
+
+// ── Sources and evidence ───────────────────────────────────────────────────
+
+/**
+ * The message an interpretation (and every claim it supports) was read from:
+ * an inbound Postbox message, a team inbound message, a sent Postbox message
+ * (the `mailMessages` row with `outbound`), or a finalized team send.
+ */
+export const interpretationSourceValidator = v.union(
+	v.object({ kind: v.literal('mail'), id: v.id('mailMessages') }),
+	v.object({ kind: v.literal('inbound'), id: v.id('inboundMessages') }),
+	v.object({ kind: v.literal('outboundMail'), id: v.id('mailMessages') }),
+	v.object({ kind: v.literal('teamReply'), id: v.id('transactionalSends') })
+);
+export type InterpretationSource = Infer<typeof interpretationSourceValidator>;
+
+/** `<kind>:<id>`, the indexed form of a source (`messageInterpretations.sourceKey`). */
+export function interpretationSourceKey(source: InterpretationSource): string {
+	return `${source.kind}:${source.id}`;
+}
+
+/**
+ * One quote supporting a claim, resolved by grounding to offsets in the named
+ * segment's canonical text at `contentRevision`.
+ */
+export const evidenceValidator = v.object({
+	source: interpretationSourceValidator,
+	segmentId: v.string(),
+	start: v.number(),
+	end: v.number(),
+	contentRevision: v.string(),
+	// The quoted words, for the brief's evidence marker and the next prompt's
+	// excerpt (the source body is not re-read for either). Sealed.
+	quote: v.optional(v.string()),
+	// Which occurrence of the normalized quote in the canonical text this is
+	// (0 = the first), so the reader marks this passage and not an earlier
+	// one with the same words. Absent on evidence stored before it existed.
+	occurrence: v.optional(v.number()),
+	// How many matches of those words the canonical (scanner-stripped) text
+	// holds: the reader marks the passage only when its visible text holds
+	// exactly as many.
+	occurrenceCount: v.optional(v.number()),
+});
+export type Evidence = Infer<typeof evidenceValidator>;
+
+/** One segment of the interpreted message (`segmentMessage` output, offsets only). */
+export const sourceManifestSegmentValidator = v.object({
+	id: v.string(),
+	kind: messageSegmentKindValidator,
+	start: v.number(),
+	end: v.number(),
+});
+
+/** The segmentation an interpretation ran against; evidence offsets index into it. */
+export const sourceManifestValidator = v.object({
+	segments: v.array(sourceManifestSegmentValidator),
+	// Whether segmentation itself was unsure (inline replies it could not split).
+	isUncertain: v.boolean(),
+});
+
+/** What the model said it read (`coverage` of the output). */
+export const interpretCoverageValidator = v.object({
+	segmentsRead: v.array(v.string()),
+	isUncertain: v.boolean(),
+	isOverflow: v.boolean(),
+});
+
+// ── Item parts ─────────────────────────────────────────────────────────────
+
+/** A party to an item. `isUs` = the mailbox owner / the team. */
+export const participantRefValidator = v.object({
+	email: v.optional(v.string()),
+	name: v.optional(v.string()),
+	isUs: v.boolean(),
+});
+export type ParticipantRef = Infer<typeof participantRefValidator>;
+
+/** A due date as written, plus what it resolved to. */
+export const itemDueValidator = v.object({
+	// The phrase as written ("by Friday", "before the launch").
+	phrase: v.string(),
+	// Resolved deadline (ms epoch); absent when it could not be resolved.
+	at: v.optional(v.number()),
+	// IANA time zone `at` was resolved in.
+	tz: v.optional(v.string()),
+	isAmbiguous: v.boolean(),
+	// A condition the deadline hangs on ("unless you object by 1 Nov").
+	condition: v.optional(v.string()),
+});
+export type ItemDue = Infer<typeof itemDueValidator>;
+
+/** A money amount: decimal value plus ISO 4217 currency. */
+export const itemAmountValidator = v.object({
+	value: v.number(),
+	currency: v.string(),
+});
+
+/** A human correction. It wins over every later model proposal. */
+/** `threadBriefs.sourceCounts`: current extractions per outcome (mail/interpret/counters.ts). */
+export const sourceCountsValidator = v.object({
+	complete: v.number(),
+	partial: v.number(),
+	failed: v.number(),
+	unreadable: v.number(),
+	skipped: v.number(),
+});
+
+/** `threadBriefs.itemCounts`: items per list (`proposal` absent on rows written before it). */
+export const itemCountsValidator = v.object({
+	us: v.number(),
+	them: v.number(),
+	unclear: v.number(),
+	proposal: v.optional(v.number()),
+	closed: v.number(),
+	hidden: v.number(),
+});
+
+/** One claim key of a source and the item or fact it produced or matched (`interpretSources.claimIds`). */
+export const claimIdValidator = v.object({
+	key: v.string(),
+	itemId: v.optional(v.id('threadItems')),
+	factId: v.optional(v.id('threadFacts')),
+});
+
+export const itemCorrectionValidator = v.object({
+	// BetterAuth user id.
+	by: v.string(),
+	at: v.number(),
+	kind: itemCorrectionKindValidator,
+});
+
+/** Display text per interface locale. Each value is sealed. */
+export const localizedSealedTextValidator = v.object({
+	en: v.string(), // sealed
+	de: v.string(), // sealed
+});
+
+/** Who set a field, and the message time it was set at (`statusSource` / `dispositionSource`). */
+export const transitionSourceValidator = v.object({ sourceKey: v.string(), at: v.number() });
+
+/**
+ * A transition a later message may have made, matched to the item by wording
+ * only (mail/interpret/pendingMatch.ts): never applied until a person confirms
+ * it. Names the extraction row and transition index it came from.
+ */
+export const heldTransitionValidator = v.object({
+	to: v.optional(itemStatusValidator),
+	disposition: v.optional(itemDispositionValidator),
+	sourceKey: v.string(),
+	at: v.number(),
+	interpretationId: v.id('messageInterpretations'),
+	index: v.number(),
+});
+
+/**
+ * A held update's changes ("Check this change"), applied only on
+ * confirmation: values, the confirmed item's re-read text and parties, the
+ * values a re-read no longer has (`removes`), and wording-only transitions.
+ */
+export const heldFieldsValidator = v.object({
+	due: v.optional(itemDueValidator),
+	amount: v.optional(itemAmountValidator),
+	options: v.optional(v.array(v.string())),
+	assertion: v.optional(v.string()), // sealed
+	display: v.optional(localizedSealedTextValidator),
+	requester: v.optional(participantRefValidator),
+	responsible: v.optional(participantRefValidator),
+	beneficiary: v.optional(participantRefValidator),
+	responsibility: v.optional(itemResponsibilityValidator),
+	removes: v.optional(
+		v.array(v.union(v.literal('due'), v.literal('amount'), v.literal('options')))
+	),
+	transitions: v.optional(v.array(heldTransitionValidator)),
+	// Which source each held field (or removal) came from (round 7 F1), so a
+	// purge drops exactly what the purged message said. `wording` covers
+	// assertion and display.
+	fieldSources: v.optional(
+		v.array(
+			v.object({
+				field: v.union(
+					v.literal('due'),
+					v.literal('amount'),
+					v.literal('options'),
+					v.literal('wording'),
+					v.literal('requester'),
+					v.literal('responsible'),
+					v.literal('beneficiary'),
+					v.literal('responsibility')
+				),
+				sourceKey: v.string(),
+				at: v.optional(v.number()),
+			})
+		)
+	),
+});
+
+/**
+ * `threadItems.fieldSources`: which source set each field the item shows now,
+ * and that message's time (round 8). Written by the reducer and by
+ * confirm / undo; a purge redacts exactly the fields its message set.
+ */
+export const itemFieldSourcesValidator = v.object({
+	wording: v.optional(transitionSourceValidator),
+	requester: v.optional(transitionSourceValidator),
+	responsible: v.optional(transitionSourceValidator),
+	beneficiary: v.optional(transitionSourceValidator),
+	responsibility: v.optional(transitionSourceValidator),
+	due: v.optional(transitionSourceValidator),
+	amount: v.optional(transitionSourceValidator),
+	options: v.optional(transitionSourceValidator),
+});
+
+/** `threadItems.pendingUpdate`: the held changes and the quotes behind them. */
+export const pendingUpdateValidator = v.object({
+	evidence: v.array(evidenceValidator),
+	...heldFieldsValidator.fields,
+});
+
+// ── Facts ──────────────────────────────────────────────────────────────────
+
+/** A fact's structured value. The string payloads of `ref` / `url` / `text` are sealed. */
+export const factValueValidator = v.union(
+	v.object({ kind: v.literal('date'), at: v.number(), tz: v.optional(v.string()) }),
+	v.object({ kind: v.literal('money'), value: v.number(), currency: v.string() }),
+	v.object({ kind: v.literal('ref'), text: v.string() }), // sealed
+	v.object({ kind: v.literal('url'), text: v.string() }), // sealed
+	v.object({ kind: v.literal('text'), text: v.string() }) // sealed
+);
+
+// ── Activity ───────────────────────────────────────────────────────────────
+
+/** Who did it. `id` = BetterAuth user id for `user`, the agent action id for `agent`. */
+export const activityActorValidator = v.object({
+	kind: activityActorKindValidator,
+	id: v.optional(v.string()),
+});
+
+/** The record an activity row links to (sent message, booking, audit row, agent action, note). */
+export const activityOpRefValidator = v.object({
+	kind: activityOpRefKindValidator,
+	id: v.string(),
+});
+
+/** What an item activity changed. */
+export const activityDeltaValidator = v.object({
+	statusFrom: v.optional(itemStatusValidator),
+	statusTo: v.optional(itemStatusValidator),
+	dispositionFrom: v.optional(itemDispositionValidator),
+	dispositionTo: v.optional(itemDispositionValidator),
+	completion: v.optional(itemCompletionValidator),
+	factId: v.optional(v.id('threadFacts')),
+	replacedById: v.optional(v.id('threadItems')),
+});
+
+// ── Response plans: lib/validators/responsePlan.ts ────────────────────────
+
+// ── Viewer state ───────────────────────────────────────────────────────────
+
+/** The last team-stream entry a viewer actually saw (stream order is `at`, then `key`). */
+export const streamPositionValidator = v.object({
+	at: v.number(),
+	// The row's `_creationTime` (the stream's order among equal `at`); absent
+	// on positions saved before it was recorded.
+	tie: v.optional(v.number()),
+	key: v.string(),
+});
+
+/** Eligibility inputs persisted so a retry sees the same ones (SPEC §4 eligibility). */
+export const interpretEligibilitySignalsValidator = v.object({
+	isLive: v.boolean(),
+	folder: v.optional(v.string()),
+	isThreadMuted: v.boolean(),
+	// A List-Unsubscribe or Precedence bulk/list header is present.
+	isBulkHeaderPresent: v.boolean(),
+	// The owner (or the inbox) has written to the sender before.
+	isSenderKnown: v.boolean(),
+	category: v.optional(v.string()),
+});
+
+// ── Confirmations ──────────────────────────────────────────────────────────
+
+/**
+ * What a confirmation changed (`threadItems.confirmedFrom`), so undo puts it
+ * back exactly: the item's values before the confirmation, the held update it
+ * applied, and the quotes it added. It names no message: the added quotes stay
+ * on the item (found again by key), so erasing a message needs nothing here.
+ */
+export const itemConfirmedFromValidator = v.object({
+	// `proposal`: a "Check this" item became tracked; `heldChange`: a tracked
+	// item took its held update ("Check this change").
+	kind: v.union(v.literal('proposal'), v.literal('heldChange')),
+	// The `confirmed` correction this snapshot belongs to.
+	confirmation: itemCorrectionValidator,
+	verify: itemVerifyValidator,
+	correction: v.optional(itemCorrectionValidator),
+	due: v.optional(itemDueValidator),
+	amount: v.optional(itemAmountValidator),
+	options: v.optional(v.array(v.string())),
+	// The fields a held update may change, as they were (review round 6).
+	assertion: v.optional(v.string()), // sealed
+	display: v.optional(localizedSealedTextValidator),
+	requester: v.optional(participantRefValidator),
+	responsible: v.optional(participantRefValidator),
+	beneficiary: v.optional(participantRefValidator),
+	responsibility: v.optional(itemResponsibilityValidator),
+	status: v.optional(itemStatusValidator),
+	completion: v.optional(itemCompletionValidator),
+	disposition: v.optional(itemDispositionValidator),
+	statusSource: v.optional(transitionSourceValidator),
+	dispositionSource: v.optional(transitionSourceValidator),
+	lastTransitionAt: v.optional(v.number()),
+	fieldSources: v.optional(itemFieldSourcesValidator),
+	// The held update it applied, without its quotes (those are the added ones).
+	pendingUpdate: v.optional(heldFieldsValidator),
+	// mail/interpret/reducePlan.ts evidenceKey of each quote the confirmation
+	// moved from the held update onto the item; undo moves them back.
+	addedEvidenceKeys: v.array(v.string()),
+});
+
+// ── Internal notes ─────────────────────────────────────────────────────────
+
+/** Where an internal note lives: a Team Inbox note or a Postbox thread discussion message. */
+export const noteSourceValidator = v.union(v.literal('threadNote'), v.literal('chatMessage'));
+export type NoteSource = Infer<typeof noteSourceValidator>;

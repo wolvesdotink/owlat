@@ -38,12 +38,8 @@ export type PostboxReaderMessage = {
 		contentId?: string;
 	}>;
 	spamVerdict?: string;
-	// Inbound sender-authentication verdicts + DMARC alignment inputs, persisted
-	// at ingest (Sealed Mail A1) and threaded through the reader queries here so
-	// A3 can render an honest sender badge. All optional: a message delivered by
-	// an older MTA (or a legacy row from before A1) carries them absent, and the
-	// reader must surface that as "unknown" rather than assert a verdict we never
-	// computed.
+	// Sender-authentication verdicts + DMARC inputs persisted at ingest (Sealed Mail
+	// A1); absent on older rows, which the badge shows as "unknown", never a verdict.
 	spfResult?: string;
 	dkimResult?: string;
 	dmarcResult?: string;
@@ -55,22 +51,14 @@ export type PostboxReaderMessage = {
 	// names the honoured sealer so the badge can render "verified via forwarder".
 	dmarcOverride?: string;
 	arcSealer?: string;
-	// Ingest-computed sender-impersonation heuristics (Sealed Mail A4), threaded
-	// through so the sender badge can render secondary detail lines (first-time
-	// sender, look-alike of a known contact's domain). Whole object absent when
-	// nothing fired — the badge shows no extra lines rather than a false "clear".
+	// Sender-impersonation heuristics (Sealed Mail A4): the badge's detail lines;
+	// absent when nothing fired, so no false "clear".
 	senderHeuristics?: SenderHeuristics;
-	// Sealed Mail (E5): the honest inbound sealing record from decrypt-on-ingest
-	// (D3, `mailMessages.inboundEncryptionInfo`). Present only on a message that
-	// arrived sealed between Owlat instances; absent for ordinary mail, where the
-	// structural PGP/S-MIME badge (`secureClass`) takes over. Drives the reader's
-	// "Sealed — sender verified / not verified" / "can't decrypt" badge.
+	// Sealed Mail (E5): the inbound sealing record (`inboundEncryptionInfo`), only on
+	// mail sealed between Owlat instances; else the structural badge takes over.
 	inboundEncryptionInfo?: InboundEncryptionInfo;
-	// F2 (D9): the honest inbound signature verdict for PGP-signed (unencrypted)
-	// mail, verified server-side at ingest (F1, `mailMessages.inboundSignatureInfo`).
-	// Absent for plaintext mail and pre-F1 rows, where the structural badge's
-	// "not verified" fallback takes over. Sealed record precedence is owned by
-	// the badge's drivers, not here.
+	// F2 (D9): the signature verdict for PGP-signed mail verified at ingest; absent
+	// for plaintext and pre-F1 rows (the badge falls back to "not verified").
 	inboundSignatureInfo?: InboundSignatureInfo;
 	flagSeen?: boolean;
 	unsubscribe?: ListUnsubscribeTarget;
@@ -85,7 +73,8 @@ import { discussionCounterpartyLabel } from '~/utils/postboxThreadDiscussion';
 import { deriveReplyRisk, senderRiskInputOf, type ReplyRisk } from '~/utils/senderAuth';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
-import { isLongThreadForSummary } from '~/utils/postboxAutoSummary';
+import { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
+import { usePostboxTeamStream } from '~/composables/postbox/usePostboxTeamStream';
 import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
 import { usePostboxReaderOpenRow } from '~/composables/postbox/usePostboxReaderOpenRow';
 import {
@@ -111,15 +100,12 @@ import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
-	// Auto-advance context (folder view only; the search preview passes
-	// neither and keeps its stay-put behavior). `advanceIds` is the list's
-	// current visual order (optimistic-hide filtered), `folderRole` the
-	// route segment used to build /dashboard/postbox/<folder>/<id> links.
+	// Auto-advance (folder view only): `advanceIds` is the list's visual order,
+	// `folderRole` the route segment for /dashboard/postbox/<folder>/<id> links.
 	advanceIds?: string[];
 	folderRole?: string;
-	// Overlay hosting (the Today view's centered reader): auto-advance swaps
-	// the reader IN PLACE via the `advance` emit instead of navigating to the
-	// folder/message route, so triaging never tears down the overlay.
+	// Overlay hosting (Today's centered reader): auto-advance swaps the reader in
+	// place via `advance`, so triaging never tears down the overlay.
 	advanceInPlace?: boolean;
 }>();
 
@@ -189,9 +175,8 @@ function calendarAttachment(msg: {
 	);
 }
 
-// Plan idea 45: the sender profile slide-over. One instance for the whole
-// reader — a thread with twenty collapsed messages must not mount (and
-// subscribe) twenty panels, so the opened sender travels in state instead.
+// Plan idea 45: one sender profile slide-over for the whole reader; the opened
+// sender travels in state instead of mounting a panel per message.
 const senderProfile = ref<{ fromAddress: string; fromName: string | null } | null>(null);
 function openSenderProfile(msg: { fromAddress: string; fromName?: string | null }) {
 	senderProfile.value = { fromAddress: msg.fromAddress, fromName: msg.fromName ?? null };
@@ -242,20 +227,6 @@ const threadMessageCount = computed(() =>
 );
 const latestMessage = computed(() => allMessages.value[allMessages.value.length - 1]);
 
-// The one reader AI strip (PostboxAiStrip) mounts whenever AI is on and the
-// thread has a latest message; it hosts the summary gist and Ask (drafting a
-// reply with AI happens in Answer mode, where the reply is written).
-// `warrantsSummary` decides whether it eagerly generates a summary: long thread
-// (>= 5 messages OR a lot of body text) AND the per-user auto-summary toggle
-// (default ON). When false and nothing is cached, the strip collapses to zero
-// height — so a short thread shows no AI element at all.
-const { autoSummarize } = usePostboxSettings();
-const warrantsSummary = computed(
-	() => autoSummarize.value && isLongThreadForSummary(allMessages.value)
-);
-const aiEnabled = computed(() => isFeatureEnabled('ai'));
-const showAiStrip = computed(() => aiEnabled.value && !!latestMessage.value);
-
 // Follow-up ("remind me if no reply") chip: armable only while the thread
 // ends on our own sent message — an inbound reply on top means they already
 // answered (and clears any armed watch server-side anyway).
@@ -281,6 +252,18 @@ const readerThread = computed(
 			| null
 			| undefined
 );
+// The thread brief (SPEC §7, personal mailboxes): Overview, cites, latest lines, reactions.
+const rb = usePostboxReaderBrief({
+	mailboxId: () => props.message.mailboxId,
+	threadId: () => readerThread.value?._id ?? props.message.threadId,
+	messages: allMessages,
+	expanded,
+	toggleExpanded,
+	pages: threadPages,
+	secureClass,
+	onReply: () => runReaderAction('reply'),
+});
+
 const latestOutboundId = computed(() => {
 	const last = allMessages.value[allMessages.value.length - 1] as
 		| { _id: string; outbound?: unknown }
@@ -312,12 +295,8 @@ const labelMap = computed(() => {
 });
 const threadLabels = computed(() => threadData.value?.thread?.labelIds ?? []);
 
-// Plain-prose scheduling request ("can we meet Tuesday afternoon?") detected by
-// the needs-reply refinement pass and stashed on the thread. Drives the quiet
-// "draft a reply?" chip under the triggering message's header. Server already
-// excludes messages that carry a real .ics invite; the reader guards again so
-// the chip never coexists with the PostboxInviteCard. Dismissible per message
-// for the session.
+// A plain-prose scheduling request stashed on the thread: the quiet "draft a reply?"
+// chip, never beside a real .ics invite, dismissible per message for the session.
 const schedulingIntent = computed(() => {
 	const needsReply = (
 		threadData.value?.thread as
@@ -365,24 +344,14 @@ function schedulingTimesFor(msg: {
 	return show ? (intent?.proposedTimes ?? []) : null;
 }
 
-// Per-user reader preferences: auto-advance after triaging the open message
-// away (archive / trash / snooze / spam — active only in the folder view, the
-// search preview stays put), the primary reply mode, and when an opened
-// conversation is marked read. Read here rather than beside their consumers
-// because the mark-read watcher below runs immediately.
+// Per-user reader preferences (auto-advance, reply default, mark-read policy), read
+// here because the mark-read watcher below runs immediately.
 const { autoAdvance, replyDefault, markReadPolicy } = usePostboxSettings();
 
-// Mark-as-read on open (Gmail conversation-view semantics), under the user's
-// markReadPolicy: 'immediate' clears the unread flags on render (the behaviour
-// the reader always had, and what an unset preference resolves to),
-// 'after-dwell' waits POSTBOX_MARK_READ_DWELL_MS of visible dwell and cancels
-// if the reader is navigated away or torn down first, and 'manual' never fires
-// — the thread ⋯ menu offers an explicit item instead.
-//
-// Guarded per thread so the reactive re-fetch that follows (flagSeen flips →
-// query re-runs) doesn't re-fire, and so a dwell timer is armed at most once.
-// The optimistic update clears the list row's bold and the rail's count as the
-// conversation opens, not a round trip later (plan 2.2).
+// Mark-as-read on open under markReadPolicy: 'immediate' on render (also unset),
+// 'after-dwell' after POSTBOX_MARK_READ_DWELL_MS of visible dwell (cancelled on
+// leave), 'manual' never (the ⋯ menu offers it). Guarded per thread so the
+// re-fetch that follows does not re-fire; optimistic, so the row's bold clears at once.
 const markThreadReadOp = useBackendOperation(api.mail.messageActions.markThreadRead, {
 	label: () => t('components.postbox.postboxThreadReader.markReadOperation'),
 	optimisticUpdate: optimisticMarkThreadRead,
@@ -556,6 +525,16 @@ const discussionThreadId = computed(() => readerThread.value?._id ?? props.messa
 const discussionCounterparty = computed(() =>
 	discussionCounterpartyLabel(allMessages.value, ownAddresses.value)
 );
+// A shared mailbox reads as a team thread: actions pinned, notes between the emails.
+const team = usePostboxTeamStream({
+	isShared: () => rb.isShared.value,
+	threadId: () => discussionThreadId.value,
+	messages: () => allMessages.value,
+	reply: (text) =>
+		text.trim() && latestMessage.value
+			? guardLatestReply(() => void openReplyWithBody(latestMessage.value!, text))
+			: runReaderAction('reply'),
+});
 
 // The correspondent's PUBLIC sealing-key status, read once per thread (E5). The
 // key-change BANNER stays here — it is an alarm — while the key panel travels
@@ -725,7 +704,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 	<article
 		ref="articleEl"
 		class="pbx-reader-article p-6 max-w-4xl mx-auto"
-		:class="discussionArticleClass"
+		:class="team.isActive.value ? '' : discussionArticleClass"
 	>
 		<PostboxThreadHeader
 			:subject="message.subject"
@@ -737,12 +716,17 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:labels="labelMap"
 			:show-mark-read="showsManualMarkReadButton"
 			:marking-read="markThreadReadOp.isLoading.value"
+			:view="rb.switchView.value"
+			@update:view="rb.setView"
 			@toggle-mute="toggleOpenThreadMute"
 			@toggle-alert="toggleOpenThreadAlert"
 			@mark-read="markOpenThreadRead"
 		>
 			<template #actions>
-				<PostboxThreadDiscussionToggle v-if="discussionThreadId" :thread-id="discussionThreadId" />
+				<PostboxThreadDiscussionToggle
+					v-if="discussionThreadId && !team.isActive.value"
+					:thread-id="discussionThreadId"
+				/>
 			</template>
 		</PostboxThreadHeader>
 
@@ -767,20 +751,25 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 
 		<!-- No skeleton while the thread loads: the opened row renders with its
 		     inline body, and the rest of the conversation joins it on arrival.
-		     What depends on the whole thread (the AI strip, the triage offer)
+		     What depends on the whole thread (the Overview, the triage offer)
 		     waits for it. -->
-		<div class="space-y-2">
-			<!-- The reader's ONE AI home, one line: the summary gist plus an Ask
-			     link. Renders nothing when
-			     there's no summary and the thread is too short to warrant one
-			     (fail-soft, same thresholds). -->
-			<PostboxAiStrip
-				v-if="showAiStrip && latestMessage && !isLoading"
-				:key="latestMessage._id"
-				:message-id="latestMessage._id"
-				:warrants-summary="warrantsSummary"
-			/>
+		<PostboxThreadOverview
+			v-if="rb.showsOverview.value"
+			:state="rb"
+			:messages="allMessages"
+			:message-count="threadMessageCount"
+			@action="runReaderAction"
+		/>
+		<div v-show="!rb.showsOverview.value" class="space-y-2">
+			<PostboxThreadCiteNote :state="rb" />
 
+			<TeamPinnedItems
+				v-if="team.isActive.value"
+				class="mb-3"
+				:team="team.team"
+				:cite-message="rb.citeMessage"
+				:cite-unreachable="rb.messageCiteState.value === 'unreachable'"
+			/>
 			<PostboxThreadEarlier
 				v-if="hasEarlier || loadingEarlier || earlierFailed"
 				:remaining="Math.max(0, threadMessageCount - allMessages.length)"
@@ -788,53 +777,57 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 				:failed="earlierFailed"
 				@load="loadEarlier"
 			/>
+			<PostboxTeamInterlude :state="team" :entries="team.leading.value" leading />
 
-			<PostboxReaderMessage
-				v-for="msg in allMessages"
-				:key="msg._id"
-				:message="msg"
-				:mailbox-id="message.mailboxId"
-				:expanded="expanded.has(msg._id)"
-				:relative-time="relativeReceivedAt(msg.receivedAt)"
-				:starred="isMessageStarred(msg)"
-				:show-reply-all="hasOtherRecipients(msg)"
-				:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
-				:auth-enabled="authBadgesEnabled"
-				:sealed-enabled="sealedMailEnabled"
-				:secure-class="secureClass(msg)"
-				:hide-body="hideRawBody(msg)"
-				:tracker="trackerDetection(msg)"
-				:delivery="deliveryFor(msg)"
-				:scheduling-times="schedulingTimesFor(msg)"
-				:show-render-toggle="appIsDark"
-				:forced-light="isForcedLight(msg._id)"
-				:images-allowed="imageAllowlist.isAllowed(msg.fromAddress)"
-				:own-email="ownEmail"
-				:has-invite="!!calendarAttachment(msg)"
-				:seal-status="sealStatusFor(msg)"
-				:downloading-attachment="downloadingAttachment"
-				:eager-body="mountAllBodies"
-				@toggle-expanded="toggleExpanded(msg._id)"
-				@open-sender-profile="openSenderProfile(msg)"
-				@toggle-forced-light="toggleForcedLight(msg._id)"
-				@toggle-star="toggleMessageStar(msg)"
-				@reply="guardedReply(msg)"
-				@reply-all="guardedReplyAll(msg)"
-				@forward="openForward(msg)"
-				@report-spam="reportSpamMessage(msg._id)"
-				@block-sender="blockSenderOf(msg._id)"
-				@create-filter="createFilterFrom(msg)"
-				@print="runReaderAction('print')"
-				@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
-				@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
-				@trackers="onTrackersDetected(msg._id, $event)"
-				@trust-sender="imageAllowlist.allow($event)"
-				@untrust-sender="imageAllowlist.revoke($event)"
-				@resend="(addresses) => openResend(msg, addresses)"
-				@use-reply="(text) => openReplyWithBody(msg, text)"
-				@dismiss-scheduling="dismissScheduling(msg._id)"
-				@seal-refetch="refetchCorrespondentKey()"
-			/>
+			<template v-for="msg in allMessages" :key="msg._id">
+				<PostboxReaderMessage
+					:message="msg"
+					:mailbox-id="message.mailboxId"
+					:expanded="expanded.has(msg._id)"
+					:relative-time="relativeReceivedAt(msg.receivedAt)"
+					:starred="isMessageStarred(msg)"
+					:show-reply-all="hasOtherRecipients(msg)"
+					:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
+					:auth-enabled="authBadgesEnabled"
+					:sealed-enabled="sealedMailEnabled"
+					:secure-class="secureClass(msg)"
+					:hide-body="hideRawBody(msg)"
+					:tracker="trackerDetection(msg)"
+					:delivery="deliveryFor(msg)"
+					:scheduling-times="schedulingTimesFor(msg)"
+					:show-render-toggle="appIsDark"
+					:forced-light="isForcedLight(msg._id)"
+					:images-allowed="imageAllowlist.isAllowed(msg.fromAddress)"
+					:own-email="ownEmail"
+					:has-invite="!!calendarAttachment(msg)"
+					:seal-status="sealStatusFor(msg)"
+					:downloading-attachment="downloadingAttachment"
+					:eager-body="mountAllBodies"
+					:latest-line="rb.latestFor(msg._id)"
+					:cite-quote="rb.citeQuoteFor(msg._id)"
+					@toggle-expanded="toggleExpanded(msg._id)"
+					@open-sender-profile="openSenderProfile(msg)"
+					@toggle-forced-light="toggleForcedLight(msg._id)"
+					@toggle-star="toggleMessageStar(msg)"
+					@reply="guardedReply(msg)"
+					@reply-all="guardedReplyAll(msg)"
+					@forward="openForward(msg)"
+					@report-spam="reportSpamMessage(msg._id)"
+					@block-sender="blockSenderOf(msg._id)"
+					@create-filter="createFilterFrom(msg)"
+					@print="runReaderAction('print')"
+					@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
+					@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
+					@trackers="onTrackersDetected(msg._id, $event)"
+					@trust-sender="imageAllowlist.allow($event)"
+					@untrust-sender="imageAllowlist.revoke($event)"
+					@resend="(addresses) => openResend(msg, addresses)"
+					@use-reply="(text) => openReplyWithBody(msg, text)"
+					@dismiss-scheduling="dismissScheduling(msg._id)"
+					@seal-refetch="refetchCorrespondentKey()"
+				/>
+				<PostboxTeamInterlude :state="team" :entries="team.after(msg._id)" />
+			</template>
 
 			<!-- "You archive everything from this sender. Always archive it?"
 			     (idea 27). Foot of the reader, under the conversation: it is an
@@ -844,8 +837,14 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			<PostboxTriageSuggestion v-if="latestMessage && !isLoading" :message-id="latestMessage._id" />
 		</div>
 
+		<PostboxTeamComposer
+			v-if="team.isActive.value && discussionThreadId"
+			:state="team"
+			:thread-id="discussionThreadId"
+			:counterparty="discussionCounterparty"
+		/>
 		<PostboxThreadDiscussion
-			v-if="discussionThreadId"
+			v-else-if="discussionThreadId"
 			:thread-id="discussionThreadId"
 			:mailbox-id="message.mailboxId"
 			:counterparty-label="discussionCounterparty"

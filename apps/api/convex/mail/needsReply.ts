@@ -9,9 +9,9 @@
  *      machine-generated marker (Auto-Submitted / List-Id / Precedence /
  *      List-Unsubscribe), is not from an unattended sender, and the owner has
  *      not sent a later message in the thread.
- *   2. Cheap-tier LLM refinement (mail/ai/needsReplyClassify.ts, 'use node')
- *      that classifies candidates: a reply INTENT (mail/ai/replyIntent.ts),
- *      urgency, askSummary, dueHint. Only a reply-expecting intent keeps the
+ *   2. Refinement from the message's interpretation (mail/ai/needsReplyClassify.ts,
+ *      mail/interpret/): a reply INTENT (mail/ai/replyIntent.ts), urgency,
+ *      askSummary, dueHint. Only a reply-expecting intent keeps the
  *      flag — an FYI, a recap or a receipt clears it, even when the model's own
  *      boolean says otherwise. Fail-soft: any LLM/gate failure leaves the
  *      deterministic candidate flag with urgency `normal` and no askSummary.
@@ -42,6 +42,8 @@ import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { resolveCounterpartName } from './counterpartName';
+import { modeOfMailbox, openBriefTop } from './interpret/briefTop';
+import { mailboxScope } from './mailbox/shared';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { type NeedsReplyHeaders } from './needsReplyHeuristic';
 import { mailboxOwnAddresses } from './identities';
@@ -93,13 +95,14 @@ export async function scheduleNeedsReplyClassify(
 	threadId: Id<'mailThreads'>,
 	// Ingest-time headers of the triggering message. None of them are persisted
 	// on the row, so they ride along here or the screen never sees them.
-	opts: NeedsReplyHeaders = {}
+	opts: NeedsReplyHeaders & { interpretMessageId?: Id<'mailMessages'> } = {}
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.mail.ai.needsReplyClassify.classifyThread, {
 		threadId,
 		precedence: opts.precedence,
 		autoSubmitted: opts.autoSubmitted,
 		listId: opts.listId,
+		interpretMessageId: opts.interpretMessageId,
 	});
 }
 
@@ -336,7 +339,7 @@ export const listQueue = publicQuery({
 				// Ranking key — sender-importance × urgency blend. Falls back to the
 				// urgency bucket for rows persisted before scoring existed.
 				priorityScore: flag.priorityScore ?? urgencyFallbackScore(flag.urgency),
-				askSummary: flag.askSummary,
+				askSummary: mailboxScope(mailbox) === 'shared' ? undefined : flag.askSummary, // a summary: never on a team surface
 				dueHint: flag.dueHint,
 				detectedAt: flag.detectedAt,
 				source: flag.source,
@@ -354,6 +357,8 @@ export const listQueue = publicQuery({
 				subject: trigger.subject,
 				snippet: thread.latestSnippet,
 				receivedAt: trigger.receivedAt,
+				// The brief's top item and first latest line (unsealed), when interpreted.
+				briefTop: await openBriefTop(thread, modeOfMailbox(mailbox)),
 			});
 		}
 		for (const { thread, flag, message } of followUps) {
@@ -379,6 +384,7 @@ export const listQueue = publicQuery({
 				subject: message.subject,
 				snippet: thread.latestSnippet,
 				receivedAt: message.receivedAt,
+				briefTop: await openBriefTop(thread, modeOfMailbox(mailbox)),
 			});
 		}
 		return { items };

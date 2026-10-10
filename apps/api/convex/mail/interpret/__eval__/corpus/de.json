@@ -1,0 +1,371 @@
+{
+	"version": 1,
+	"slice": "de",
+	"threads": [
+		{
+			"id": "de-001",
+			"slices": ["de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T09:30:00+02:00",
+					"subject": "Angebot Relaunch",
+					"text": "Hallo Mara,\n\nkannst du mir bis Mittwoch das überarbeitete Angebot schicken? Und passt dir ein Telefonat am Donnerstag um 14 Uhr?\n\nViele Grüße\nLena\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["file"],
+						"responsibility": "us",
+						"quote": "kannst du mir bis Mittwoch das überarbeitete Angebot schicken?",
+						"segmentKind": "fresh",
+						"assertion": "Schick Lena bis Mittwoch das überarbeitete Angebot",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "bis Mittwoch"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m1",
+						"intent": "question",
+						"facets": ["meeting"],
+						"responsibility": "us",
+						"quote": "passt dir ein Telefonat am Donnerstag um 14 Uhr?",
+						"segmentKind": "fresh",
+						"assertion": "Sag Lena, ob Donnerstag 14 Uhr passt",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "de-002",
+			"slices": ["de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Clara Vogel",
+						"email": "clara@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-04T11:00:00+02:00",
+					"subject": "Vertrag",
+					"text": "Sehr geehrte Frau Lind,\n\nbitte senden Sie uns den unterschriebenen Vertrag bis zum 15. Oktober zurück.\n\nMit freundlichen Grüßen\nClara Vogel\nVogel & Partner GmbH\nGeschäftsführerin: Clara Vogel · Amtsgericht Hamburg HRB 00000\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["signature"],
+						"responsibility": "us",
+						"quote": "bitte senden Sie uns den unterschriebenen Vertrag bis zum 15. Oktober zurück.",
+						"segmentKind": "fresh",
+						"assertion": "Schick den unterschriebenen Vertrag bis 15. Oktober zurück",
+						"requester": {
+							"name": "Clara Vogel",
+							"email": "clara@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "bis zum 15. Oktober",
+							"at": "2026-10-15T23:59:00+02:00",
+							"tz": "Europe/Berlin"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Amtsgericht Hamburg HRB 00000",
+						"segmentKind": "disclaimer",
+						"assertion": "Kontakt zum Amtsgericht aufnehmen",
+						"reject": "proposal"
+					}
+				]
+			}
+		},
+		{
+			"id": "de-003",
+			"slices": ["de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					],
+					"sentAt": "2026-10-03T10:00:00+02:00",
+					"subject": "Fotos",
+					"text": "Hallo Emil,\n\nkannst du mir die Fotos vom Shooting schicken?\n\nGrüße\nMara\n"
+				},
+				{
+					"id": "m2",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-03T12:40:00+02:00",
+					"subject": "AW: Fotos",
+					"text": "Hi Mara,\n\nich schicke dir die Fotos bis Freitag. Die Auswahl ist schon fertig.\n\nLG Emil\n\nAm 03.10.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> kannst du mir die Fotos vom Shooting schicken?\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["file"],
+						"responsibility": "them",
+						"quote": "kannst du mir die Fotos vom Shooting schicken?",
+						"segmentKind": "fresh",
+						"assertion": "Emil schickt die Fotos vom Shooting",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"responsible": {
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					},
+					{
+						"id": "i2",
+						"messageId": "m2",
+						"intent": "promise",
+						"facets": ["file"],
+						"responsibility": "them",
+						"quote": "ich schicke dir die Fotos bis Freitag.",
+						"segmentKind": "fresh",
+						"assertion": "Emil schickt die Fotos bis Freitag",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"responsible": {
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						},
+						"due": {
+							"phrase": "bis Freitag"
+						}
+					}
+				],
+				"facts": [
+					{
+						"id": "f1",
+						"messageId": "m2",
+						"key": {
+							"entity": "photo selection",
+							"attribute": "status"
+						},
+						"quote": "Die Auswahl ist schon fertig.",
+						"segmentKind": "fresh",
+						"assertion": "Die Fotoauswahl ist fertig"
+					}
+				]
+			}
+		},
+		{
+			"id": "de-004",
+			"slices": ["de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Noah Berg",
+						"email": "noah@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T16:10:00+02:00",
+					"subject": "Re: Workshop",
+					"html": "<div dir=\"ltr\">Danke für die Agenda! Kannst du noch die Teilnehmerliste ergänzen?</div><br><div class=\"gmail_quote gmail_quote_container\"><div dir=\"ltr\" class=\"gmail_attr\">Am Di., 6. Okt. 2026 um 09:00 Uhr schrieb Mara Lind &lt;<a href=\"mailto:mara@example.com\">mara@example.com</a>&gt;:<br></div><blockquote class=\"gmail_quote\" style=\"margin:0px 0px 0px 0.8ex\"><div dir=\"ltr\">Kannst du den Raum für Donnerstag reservieren?</div></blockquote></div>"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["documentReview"],
+						"responsibility": "us",
+						"quote": "Kannst du noch die Teilnehmerliste ergänzen?",
+						"segmentKind": "fresh",
+						"assertion": "Ergänze die Teilnehmerliste",
+						"requester": {
+							"name": "Noah Berg",
+							"email": "noah@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Kannst du den Raum für Donnerstag reservieren?",
+						"segmentKind": "quoted",
+						"assertion": "Raum für Donnerstag reservieren",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "de-005",
+			"slices": ["de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Felix Braun",
+						"email": "felix@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T08:20:00+02:00",
+					"subject": "Entscheidung Druckerei",
+					"text": "Moin Mara,\n\nwir müssen uns bis Montag entscheiden: Druckerei Nord (günstiger) oder Druckerei Süd (schneller). Was ist dir lieber?\n\nGruß\nFelix\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "decision",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Druckerei Nord (günstiger) oder Druckerei Süd (schneller). Was ist dir lieber?",
+						"segmentKind": "fresh",
+						"assertion": "Entscheide dich bis Montag für eine Druckerei",
+						"requester": {
+							"name": "Felix Braun",
+							"email": "felix@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "bis Montag"
+						}
+					}
+				]
+			}
+		}
+	]
+}

@@ -4,8 +4,7 @@
  *
  *  - who the @-picker offers (Team Inbox readers, never yourself), with the
  *    handle the server resolves (`apps/api/convex/inbox/noteRules.ts`);
- *  - where an `@fragment` is being typed, and what picking a person writes;
- *  - where each note goes between the messages of the thread.
+ *  - where an `@fragment` is being typed, and what picking a person writes.
  *
  * The `@handle` grammar is the chat one (`@owlat/shared/chatMentions`), so a
  * note mention reads and resolves the way a chat mention does.
@@ -100,42 +99,4 @@ export function insertMention(
 ): { text: string; caret: number } {
 	const before = `${text.slice(0, start)}@${handle} `;
 	return { text: before + text.slice(caret), caret: before.length };
-}
-
-/**
- * Place notes between messages by time. Returns the notes written before the
- * first message, and for each message the notes written after it and before
- * the next one. Messages and notes may arrive in any order.
- */
-export function interleaveNotes<
-	M extends { _id: string; _creationTime: number },
-	N extends { createdAt: number },
->(messages: readonly M[], notes: readonly N[]): { leading: N[]; after: Map<string, N[]> } {
-	const ordered = [...messages].sort((a, b) => a._creationTime - b._creationTime);
-	const after = new Map<string, N[]>();
-	const leading: N[] = [];
-	for (const note of [...notes].sort((a, b) => a.createdAt - b.createdAt)) {
-		let home: M | undefined;
-		for (const message of ordered) {
-			if (message._creationTime <= note.createdAt) home = message;
-			else break;
-		}
-		if (!home) {
-			leading.push(note);
-			continue;
-		}
-		const list = after.get(home._id) ?? [];
-		list.push(note);
-		after.set(home._id, list);
-	}
-	return { leading, after };
-}
-
-/** How many of `notes` mention `userId` (0 without a user). */
-export function countNotesMentioning(
-	notes: readonly { mentionedUserIds: readonly string[] }[],
-	userId: string | null | undefined
-): number {
-	if (!userId) return 0;
-	return notes.filter((note) => note.mentionedUserIds.includes(userId)).length;
 }

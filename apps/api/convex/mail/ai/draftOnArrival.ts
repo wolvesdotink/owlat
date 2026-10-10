@@ -25,6 +25,7 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
 import { buildConfirmedContext, runSharedDraft } from '../../agent/shared/draftService';
+import { loadThreadPlan, recordArrivalPlan } from './composeDraftPlan';
 import {
 	buildOpenFileNote,
 	buildOpenQuestionNote,
@@ -85,6 +86,8 @@ export async function generateDraftOnArrival(
 		buildOpenQuestionNote(loaded.questionGaps)
 	);
 	const gaps = [...loaded.fileGaps, ...loaded.questionGaps];
+	// The thread's open items with their default stances (SPEC §6).
+	const plan = await loadThreadPlan(ctx, args.threadId);
 
 	try {
 		const result = await runSharedDraft(ctx, {
@@ -111,21 +114,25 @@ export async function generateDraftOnArrival(
 			// service records it under its own label, next to the self-check's,
 			// on success and on a throw.
 			spendLabels: { draft: 'postbox_draft', selfCheck: 'postbox_draft_selfcheck' },
+			...(plan ? { responsePlan: plan.prompt } : {}),
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
 
 		if (result.draftBody.trim().length === 0) return; // nothing usable
 
+		const draft = ensureGapPlaceholders(result.draftBody, gaps);
 		await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
 			threadId: args.threadId,
 			triggerMessageId: loaded.triggerMessageId,
-			draft: ensureGapPlaceholders(result.draftBody, gaps),
+			draft,
 			draftSubject: buildReplySubject(loaded.triggerSubject),
 			// Surface the quality self-check score as the confidence; unknown
 			// quality shows a deliberately low value so review-first reads right.
 			confidence: result.draftQuality?.score ?? UNKNOWN_QUALITY_CONFIDENCE,
 			...(result.draftQuality ? { quality: result.draftQuality } : {}),
 		});
+		// The prepared reply's plan, bound to its text (review F16).
+		if (plan) await recordArrivalPlan(ctx, args.threadId, plan, draft, result.planCoverage);
 	} catch (err) {
 		// Injection re-scan / LLM error → no slot; the thread still shows for
 		// manual reply. Never wedge the caller.

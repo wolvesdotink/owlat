@@ -1,0 +1,174 @@
+/**
+ * `mailThreads.briefTop`: the brief folded down for the rows that list
+ * threads (Postbox list, Answer queue, Workbench). See
+ * `lib/validators/briefTop.ts` for the stored shape.
+ *
+ *  - `refreshBriefTop` rewrites the projection with O(1) reads: the counts are
+ *    the thread's maintained `itemCounts` (`counters.ts`, exact, no cap), and
+ *    the top item is the first row of the thread's `forUs` list in the "For
+ *    you" order (`threadItems.sortKey`), else of `waitingOnOthers`. The reducer calls it after every interpretation
+ *    (passing the new first "Latest update" line); every other item writer
+ *    calls it with no `latest`, which keeps the stored one.
+ *  - `openBriefTop` unseals it at the list-read boundary.
+ *
+ * Isolate-safe; not a Convex function.
+ */
+
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import type { BriefTop } from '../../lib/validators/briefTop';
+import type { ItemResponsibility, InterpretMode } from '@owlat/shared/threadBrief';
+import { openMessageBody, sealBodyAtWrite } from '../../lib/messageBody';
+import { mailboxScope } from '../mailbox/shared';
+import { itemCountsOf } from './counters';
+
+type SealedPair = { en: string; de: string };
+
+/** The lists a list row's top item can come from, in order. */
+const TOP_BUCKETS = ['forUs', 'waitingOnOthers'] as const;
+type TopBucket = (typeof TOP_BUCKETS)[number];
+
+/**
+ * The first item of one of a thread's lists in the "For you" order (due,
+ * facet risk, age, id: `threadItems.sortKey`, the same order compareForYou
+ * gives). One indexed `first()` read.
+ */
+export async function firstOfBucket(
+	ctx: Pick<QueryCtx, 'db'>,
+	mailThreadId: Id<'mailThreads'>,
+	bucket: TopBucket
+): Promise<Doc<'threadItems'> | null> {
+	return ctx.db
+		.query('threadItems')
+		.withIndex('by_mail_thread_bucket_sort', (q) =>
+			q.eq('mailThreadId', mailThreadId).eq('listBucket', bucket).gte('sortKey', '')
+		)
+		.first();
+}
+
+/**
+ * Rewrite `mailThreads.briefTop` from the thread's counters and the first row
+ * of its lists.
+ *
+ * `latest`: the first "Latest update" line in both locales (plaintext; sealed
+ * here), `null` to clear it, or omitted to keep the stored one. Actions-mode
+ * briefs never carry a latest line. A thread with no brief row is left alone.
+ */
+export async function refreshBriefTop(
+	ctx: MutationCtx,
+	mailThreadId: Id<'mailThreads'>,
+	opts: { latest?: { en: string; de: string } | null } = {}
+): Promise<void> {
+	const thread = await ctx.db.get(mailThreadId);
+	if (!thread) return;
+	const brief = await ctx.db
+		.query('threadBriefs')
+		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', mailThreadId))
+		.unique();
+	if (!brief) return;
+	const counts = itemCountsOf(brief);
+	let top: BriefTop['top'];
+	for (const bucket of TOP_BUCKETS) {
+		const count = bucket === 'forUs' ? counts.us : counts.them;
+		if (count === 0) continue;
+		const item = await firstOfBucket(ctx, mailThreadId, bucket);
+		if (!item) continue;
+		top = {
+			itemId: item._id,
+			bucket,
+			responsibility: item.responsibility,
+			text: item.display,
+			...(item.due?.at !== undefined ? { dueAt: item.due.at } : {}),
+		};
+		break;
+	}
+	const mode: InterpretMode = brief.mode;
+	const latest = await nextLatest(mode, thread.briefTop?.latest, opts.latest);
+	const next: BriefTop = {
+		mode,
+		forYou: counts.us,
+		waiting: counts.them,
+		...(top ? { top } : {}),
+		...(latest ? { latest } : {}),
+		revision: brief.interpretationRevision,
+		updatedAt: Date.now(),
+	};
+	await ctx.db.patch(mailThreadId, { briefTop: next });
+}
+
+async function nextLatest(
+	mode: InterpretMode,
+	stored: SealedPair | undefined,
+	given: { en: string; de: string } | null | undefined
+): Promise<SealedPair | undefined> {
+	if (mode === 'actions' || given === null) return undefined;
+	if (given === undefined) return stored;
+	return { en: await sealBodyAtWrite(given.en), de: await sealBodyAtWrite(given.de) };
+}
+
+/** `briefTop` as list reads return it: unsealed, both locales (the client picks one). */
+export type BriefTopRow = {
+	mode: InterpretMode;
+	forYou: number;
+	waiting: number;
+	top?: {
+		itemId: Id<'threadItems'>;
+		/** The list it heads: `waitingOnOthers` is what the row calls "waiting". */
+		bucket?: 'forUs' | 'waitingOnOthers';
+		responsibility: ItemResponsibility;
+		text: { en: string; de: string };
+		dueAt?: number;
+	};
+	latest?: { en: string; de: string };
+	/** The thread is in the Answer queue (`needsReply` set): "for you", not "to do". */
+	isReplyNeeded: boolean;
+};
+
+async function openPair(pair: SealedPair): Promise<{ en: string; de: string }> {
+	const [en, de] = await Promise.all([openMessageBody(pair.en), openMessageBody(pair.de)]);
+	return { en, de };
+}
+
+/** The mode a mailbox's threads read in now: `actions` for a shared mailbox. Pure. */
+export function modeOfMailbox(mailbox: Pick<Doc<'mailboxes'>, 'scope'>): InterpretMode {
+	return mailboxScope(mailbox) === 'shared' ? 'actions' : 'brief';
+}
+
+/**
+ * Unseal the projection for a list row; undefined when the thread has none.
+ *
+ * `mode` is the thread's mode NOW, from its mailbox's scope (review F8): the
+ * stored projection may still be the personal one of a mailbox that has just
+ * become a team inbox, and its "Latest update" line must not reach a shared
+ * surface while the async scope-change cleanup catches up.
+ */
+export async function openBriefTop(
+	thread: Pick<Doc<'mailThreads'>, 'briefTop' | 'needsReply'>,
+	mode: InterpretMode
+): Promise<BriefTopRow | undefined> {
+	const stored = thread.briefTop;
+	if (!stored) return undefined;
+	const storedLatest = mode === 'brief' && stored.mode === 'brief' ? stored.latest : undefined;
+	const [topText, latest] = await Promise.all([
+		stored.top ? openPair(stored.top.text) : Promise.resolve(undefined),
+		storedLatest ? openPair(storedLatest) : Promise.resolve(undefined),
+	]);
+	return {
+		mode,
+		forYou: stored.forYou,
+		waiting: stored.waiting,
+		...(stored.top && topText
+			? {
+					top: {
+						itemId: stored.top.itemId,
+						...(stored.top.bucket ? { bucket: stored.top.bucket } : {}),
+						responsibility: stored.top.responsibility,
+						text: topText,
+						...(stored.top.dueAt !== undefined ? { dueAt: stored.top.dueAt } : {}),
+					},
+				}
+			: {}),
+		...(latest ? { latest } : {}),
+		isReplyNeeded: thread.needsReply !== undefined,
+	};
+}

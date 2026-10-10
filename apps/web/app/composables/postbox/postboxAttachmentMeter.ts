@@ -43,7 +43,7 @@ export interface AttachmentMeter {
  */
 export function attachmentMeter(
 	totalBytes: number,
-	budgetBytes: number = ATTACHMENT_TOTAL_BUDGET_BYTES,
+	budgetBytes: number = ATTACHMENT_TOTAL_BUDGET_BYTES
 ): AttachmentMeter {
 	const total = Math.max(0, totalBytes);
 	const budget = budgetBytes > 0 ? budgetBytes : 0;

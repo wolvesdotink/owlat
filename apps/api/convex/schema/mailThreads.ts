@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { needsReplyClarificationValidator } from '../lib/validators/clarification';
+import { briefTopValidator } from '../lib/validators/briefTop';
 import { draftQualityValidator } from '../lib/convexValidators';
 import {
 	mailCategoryLabelValidator,
@@ -218,12 +219,14 @@ export const mailThreadsTables = {
 				classifiedAt: v.number(),
 			})
 		),
-		// Cached advisory AI summary for the long-thread summary strip (mail/ai/assist.ts
-		// getOrGenerateThreadSummary + mail/ai/summaryCache.ts). `messageCount` is the
-		// thread's messageCount at generation time; the cache is served only while it
-		// still matches the live count, so a new inbound message makes it stale and
-		// the next open regenerates it (edge-triggered, never a hot loop). Absent
-		// until the strip first generates one; never moves or modifies mail.
+		// The thread brief folded down for list rows, the Answer queue and the
+		// Workbench (top open item, counts, first "Latest update" line; texts
+		// sealed). Rewritten by mail/interpret/briefTop.ts whenever the items
+		// change; absent until the thread is first interpreted.
+		briefTop: v.optional(briefTopValidator),
+		// RETIRED (ADR-0072): the reader strip's cached thread summary, replaced by
+		// the thread brief. Nothing writes or reads it; migration 0067 clears it and
+		// the next release drops the field (mail/legacySummaryRows.ts).
 		summaryCache: v.optional(
 			v.object({
 				summary: v.string(),

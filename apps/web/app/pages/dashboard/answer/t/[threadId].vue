@@ -12,13 +12,12 @@
  * says so. `?message=` picks the message the reply answers when it is not the
  * newest one waiting.
  *
- * The thread page keeps assignment, status and the discussion; its Reply and
- * `r` open this route. Leaving (Esc, "← Team inbox", or a send) goes back to
- * the page the reply started from; text typed and not sent is kept for this
- * thread until the reply is written.
+ * The thread page keeps assignment, status and the discussion. Leaving (Esc,
+ * "← Team inbox", or a send) goes back where the reply started; unsent text is
+ * kept. The left column is the team stream with the open actions pinned above.
  *
  * Keys: Esc leaves (inside the editor the first Esc only blurs it), `t`
- * toggles Summary / Full conversation, `n` opens the Note tab (the team's
+ * toggles Recent / Full conversation, `n` opens the Note tab (the team's
  * internal notes, which never reach the reply), Cmd/Ctrl+J focuses the reply.
  */
 import type { PresencePerson } from '~/components/inbox/InboxThreadPresence.vue';
@@ -27,7 +26,7 @@ import { useAnswerAiFocus, useAnswerModeNav } from '~/composables/useAnswerMode'
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import type { AskAnswer, AskQuestion } from '~/composables/useAnswerAskSession';
 import { useAnswerTeamAssist } from '~/composables/useAnswerTeamAssist';
-import CatchUpCard from '~/components/answer/CatchUpCard.vue';
+import { useTeamThread } from '~/composables/team/useTeamThread';
 import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
@@ -57,7 +56,7 @@ const route = useRoute();
 
 const threadId = useRouteId<'conversationThreads'>('threadId');
 const detail = useThreadDetail(threadId);
-const { thread, messages, contact, followUps, threadLoading, threadError, cancelFollowUp } = detail;
+const { thread, messages, contact, threadLoading, threadError, cancelFollowUp } = detail;
 
 useHead({ title: () => thread.value?.subject || t('dashboard.answer.mode.pageTitle') });
 
@@ -131,20 +130,29 @@ const composeMode = ref<'reply' | 'note'>('reply');
 const threadNotes = useThreadNotes(threadId, { enabled: () => isAdmin.value });
 const view = ref<AnswerConversationView>('summary');
 
-// Catch-up, Draft with AI, and the agent's questions
+// The team stream and its open actions (left column); a replying action goes to the reply.
+const team = useTeamThread({
+	target: () => ({ kind: 'team', id: threadId.value }),
+	enabled: () => isAdmin.value,
+	onReply: () => {
+		tab.value = 'reply';
+		composeMode.value = 'reply';
+		composerRef.value?.focus();
+	},
+	// A source marker shows its email in the column (the Conversation tab on a phone).
+	reveal: (id) => ((tab.value = 'conversation'), conversation.value?.reveal(id) ?? false),
+});
+const conversation = ref<{ reveal: (id: string) => boolean } | null>(null);
+// Draft with AI, and the agent's questions
 const assist = useAnswerTeamAssist({
 	threadId: () => threadId.value,
+	inboundMessageId: () => reply.target.value?._id ?? null,
 	composer: () => composerRef.value?.answer ?? null,
-	messageCount: () => (thread.value ? messages.value.length : undefined),
-	view,
 	// A reply on another channel carries no files: the server would refuse.
 	attachFile: (file) => {
 		if (attachmentsAllowed.value) void files.attachAnswerFile(file);
 	},
 });
-const catchUpMessages = computed(() =>
-	messages.value.map((m) => ({ _id: m._id, receivedAt: m._creationTime, fromAddress: m.from }))
-);
 // The agent's questions carry the clarification question shape the ask card
 // takes (lib/validators/clarification.ts).
 const clarificationQuestions = computed(
@@ -185,7 +193,6 @@ const keptReply = useKeptTeamComposer(() => threadId.value, composerRef);
 const answerNav = useAnswerModeNav({ currentPath: () => route.path });
 const queueSession = useAnswerQueueSession();
 const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value)));
-
 // However the page is left (Esc, a link, the queue moving on), keep the text.
 onBeforeUnmount(keptReply.keep);
 
@@ -320,29 +327,25 @@ onBeforeUnmount(() => {
 				<AnswerPeekDraft :disabled="assist.ask.busy.value" @draft="draftFromPeek" />
 			</template>
 
-			<template #conversation="{ layout }">
+			<template #conversation>
 				<AnswerTeamConversation
 					v-if="thread"
+					ref="conversation"
 					v-model:view="view"
 					:messages="messages"
-					:follow-ups="followUps"
 					:contact="contact"
 					:answering-id="reply.target.value?._id ?? null"
 					:member-name="memberName"
 					:undoing-follow-up-id="undoingFollowUpId"
+					:stream="team.stream.isReady.value ? team.stream.entries.value : undefined"
+					:has-earlier="team.stream.hasEarlier.value"
+					:loading-earlier="team.stream.isLoadingEarlier.value"
+					:viewer-id="team.viewerId.value"
 					@undo-follow-up="undoFollowUp"
+					@load-earlier="team.stream.loadEarlier"
 				>
-					<template #catch-up="{ view: shown, reveal }">
-						<CatchUpCard
-							v-if="shown === 'summary'"
-							:collapsible="layout === 'phone'"
-							:catch-up="assist.catchUp.catchUp.value"
-							:loading="assist.catchUp.loading.value"
-							:messages="catchUpMessages"
-							:covered="assist.catchUp.covered.value"
-							:can-attach="false"
-							@reveal="reveal"
-						/>
+					<template #open-items>
+						<TeamPinnedItems v-if="isAdmin" :team="team" />
 					</template>
 				</AnswerTeamConversation>
 				<!-- A failed read is not a missing thread (#721). -->
@@ -420,6 +423,12 @@ onBeforeUnmount(() => {
 							/>
 						</div>
 						<template v-else>
+							<AnswerTeamPlan
+								:plan="assist.plan"
+								:can-attach="attachmentsAllowed"
+								:cite-context="team.cite"
+								@files="files.addFiles"
+							/>
 							<AnswerTeamReusedAnswers
 								v-if="reply.reusedAnswers.value.length > 0"
 								:questions="reply.reusedAnswers.value"

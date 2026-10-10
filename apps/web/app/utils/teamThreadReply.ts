@@ -216,38 +216,3 @@ export function replySubject(
 export function hasAgentDraft(message: Pick<ReplyTargetMessage, 'draftResponse'>): boolean {
 	return !!message.draftResponse?.trim();
 }
-
-/** Classification as the header's one line: category, plus priority when it matters. */
-export interface ClassificationSummary {
-	category: string;
-	/** Only `high` / `urgent`: a normal or low priority is not worth a word. */
-	priority: string | null;
-}
-
-const LOUD_PRIORITIES = new Set(['high', 'urgent']);
-
-export function classificationSummary(
-	classification: { category: string; priority: string } | null | undefined
-): ClassificationSummary | null {
-	if (!classification?.category) return null;
-	return {
-		category: classification.category,
-		priority: LOUD_PRIORITIES.has(classification.priority) ? classification.priority : null,
-	};
-}
-
-/**
- * The classification the header summarises: the newest message that has one.
- * A thread is about what the customer said last.
- */
-export function latestClassification<
-	T extends { _creationTime: number; classification?: { category: string; priority: string } },
->(messages: readonly T[] | null | undefined): T['classification'] | null {
-	if (!messages) return null;
-	let best: T | null = null;
-	for (const m of messages) {
-		if (!m.classification) continue;
-		if (!best || m._creationTime > best._creationTime) best = m;
-	}
-	return best?.classification ?? null;
-}

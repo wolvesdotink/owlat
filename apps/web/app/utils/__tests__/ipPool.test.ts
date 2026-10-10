@@ -6,7 +6,7 @@ describe('unknownIpPoolWarning', () => {
 
 	it('warns on a pool name the MTA does not know', () => {
 		expect(unknownIpPoolWarning('marketing', pools)).toBe(
-			'"marketing" is not a known MTA IP pool. Known pools: transactional, campaign.',
+			'"marketing" is not a known MTA IP pool. Known pools: transactional, campaign.'
 		);
 	});
 

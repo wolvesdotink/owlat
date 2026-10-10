@@ -6,6 +6,7 @@
 
 import type { ClarificationOrigin } from '~/utils/clarificationLocale';
 import type { LocalizedText } from '~/utils/localizedText';
+import type { BriefTopRow } from '../../../api/convex/mail/interpret/briefTop';
 
 export type ReplyQueueUrgency = 'high' | 'normal' | 'low';
 
@@ -101,6 +102,12 @@ export interface ReplyQueueItem {
 	subject: string;
 	snippet: string;
 	receivedAt: number;
+	/**
+	 * The thread brief's top open item and first "Latest update" line, once
+	 * the thread is interpreted (mail/interpret/briefTop.ts). The row then
+	 * reads the item rather than the ask summary (SPEC §7).
+	 */
+	briefTop?: BriefTopRow;
 }
 
 /**
@@ -135,12 +142,19 @@ export function compareReplyQueueItems(
 }
 
 /**
- * Card headline: the AI's askSummary when present, else the subject — the
+ * Card headline: the thread brief's top item when the thread is interpreted
+ * (in the UI `locale`), else the AI's askSummary, else the subject — the
  * deterministic queue must read fine with AI disabled or failed.
+ *
+ * A shared (team) mailbox is never summarised (SPEC §7): its row reads the top
+ * item or the subject, never the askSummary. `isShared` comes from the inbox's
+ * scope; an actions-mode brief says the same on its own.
  */
 export function replyQueueHeadline(
 	item: Pick<ReplyQueueItem, 'askSummary' | 'subject' | 'kind' | 'waitingOn'> &
-		Partial<Pick<ReplyQueueItem, 'fromAddress' | 'fromName'>>
+		Partial<Pick<ReplyQueueItem, 'fromAddress' | 'fromName' | 'briefTop'>>,
+	locale?: string,
+	opts: { isShared?: boolean } = {}
 ): ReplyQueueText {
 	// Follow-up items invert the framing: WE are waiting on THEM. The server
 	// resolves the counterpart's name when it knows one; the address is the fallback.
@@ -150,7 +164,13 @@ export function replyQueueHeadline(
 			? { key: 'shared.postboxReplyQueue.waitingOn', params: { who } }
 			: 'shared.postboxReplyQueue.waitingOnReply';
 	}
-	const ask = item.askSummary?.trim();
+	const top = item.briefTop?.top;
+	if (top && top.responsibility !== 'them') {
+		const text = (locale?.toLowerCase().startsWith('de') ? top.text.de : top.text.en).trim();
+		if (text) return text;
+	}
+	const isShared = opts.isShared === true || item.briefTop?.mode === 'actions';
+	const ask = isShared ? undefined : item.askSummary?.trim();
 	if (ask) return ask;
 	return item.subject.trim() || 'shared.postboxReplyQueue.noSubject';
 }

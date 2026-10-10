@@ -437,6 +437,7 @@ useWorkbenchKeyboard({
 						:queue-href="answerHref"
 						:inbox-name="scopeName"
 					/>
+					<TodayToDo v-if="!isTeam && scope" :mailbox-id="scope" />
 
 					<TodayChanges
 						:changes="model.changed"

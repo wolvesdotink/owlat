@@ -249,7 +249,7 @@ onMounted(() => {
 	if (props.blocker === null) focus();
 });
 
-// What "Draft with AI" and the catch-up card work with (the slot's `composer`).
+// What "Draft with AI" and the pinned items work with (the slot's `composer`).
 const answer = useTeamComposerAnswerApi({
 	body,
 	touch: () => {

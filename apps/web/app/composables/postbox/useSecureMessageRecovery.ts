@@ -37,8 +37,7 @@ export function computeSecureMessageRecovery(
 	textBody: string | undefined
 ): SecureMessageRecovery {
 	const isEncrypted = isEncryptedClass(klass);
-	const armoredCiphertext =
-		isEncrypted && textBody ? extractArmoredCiphertext(textBody) : null;
+	const armoredCiphertext = isEncrypted && textBody ? extractArmoredCiphertext(textBody) : null;
 	return {
 		isEncrypted,
 		armoredCiphertext,

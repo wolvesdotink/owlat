@@ -1,0 +1,127 @@
+/**
+ * Thread brief erasure inside the contact and member erasure walkers (SPEC §5
+ * "Erasure"; relations in `threadBriefRelations.ts` here and in
+ * `auth/erasure/threadBriefRelations.ts`).
+ *
+ * The walkers drive the same resumable purge jobs the inline purge paths
+ * schedule (`mail/interpret/purgeRun.ts drivePurgeJob`), inside their own
+ * per-transaction budget: a job is keyed by what it erases, found again in
+ * the walker's next transaction and continued where it stopped, never
+ * scheduled. The parent row (thread, message) is only deleted once its job
+ * finished.
+ */
+
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx } from '../../_generated/server';
+import type { ThreadRef } from '../../lib/validators/threadRef';
+import { threadRefKey } from '../../lib/validators/threadRef';
+import type { InterpretationSource } from '../../lib/validators/threadBrief';
+import { MAX_RANGE_READS, type DrainBudget } from '../../mail/interpret/purgeDrain';
+import { drivePurgeJob } from '../../mail/interpret/purgeRun';
+import type { ErasureBudget } from './budget';
+import { drainEach } from './phaseKit';
+
+/**
+ * Index ranges one row of budget stands for. The walkers bound a transaction
+ * by rows and bytes; an empty range read costs neither, but the platform caps
+ * a transaction at 4,096 ranges.
+ */
+const RANGES_PER_ROW = 4;
+
+/**
+ * The walker's budget as a purge job's: reads sized by its rows and bytes
+ * left, every fetched document charged, every 4 range queries one more row.
+ */
+export function walkerDrainBudget(budget: ErasureBudget): DrainBudget {
+	let ranges = 0;
+	let handled = 0;
+	return {
+		// Every walker transaction handles at least one row of the job (review round 3 F4).
+		isExhausted: () => ranges >= MAX_RANGE_READS || (handled > 0 && budget.isExhausted),
+		chunk: (max) => (handled === 0 ? 1 : budget.chunk(max)),
+		charge: (doc) => {
+			if (doc) budget.chargeRead(doc);
+		},
+		progress: () => {
+			handled += 1;
+			budget.chargeRows(1);
+		},
+		range: () => {
+			ranges += 1;
+			if (ranges % RANGES_PER_ROW === 0) budget.chargeRows(1);
+		},
+	};
+}
+
+/**
+ * Delete every thread brief row of a thread being erased, within `budget`
+ * (a `thread` purge job). Returns whether it finished; call it before
+ * deleting the thread row.
+ */
+export function drainThreadBrief(
+	ctx: MutationCtx,
+	budget: ErasureBudget,
+	ref: ThreadRef
+): Promise<boolean> {
+	return drivePurgeJob(
+		ctx,
+		`erasure:thread:${threadRefKey(ref)}`,
+		{ ref, kind: 'thread' },
+		walkerDrainBudget(budget)
+	);
+}
+
+/**
+ * Before a received Team Inbox message is erased: remove what its thread's
+ * brief derived from it and from the team replies that answered it (a
+ * `sources` purge job: extractions, evidence, claims left without evidence,
+ * activity, links), and the response plans of the draft it carried.
+ */
+export async function eraseInboundMessageBrief(
+	ctx: MutationCtx,
+	budget: ErasureBudget,
+	message: Doc<'inboundMessages'>
+): Promise<boolean> {
+	const isPlansEmpty = await drainEach(
+		budget,
+		(n) =>
+			ctx.db
+				.query('draftResponsePlans')
+				.withIndex('by_inbound_draft', (q) => q.eq('inboundMessageId', message._id))
+				.take(n),
+		(plan) => ctx.db.delete(plan._id)
+	);
+	if (!isPlansEmpty) return false;
+	if (!message.threadId) return true;
+	// Every team reply that answered it is paged into the job's sources first
+	// (`purge.ts repliesRange`), however many there are.
+	const sources: InterpretationSource[] = [{ kind: 'inbound', id: message._id }];
+	return drivePurgeJob(
+		ctx,
+		`erasure:inbound:${message._id}`,
+		{
+			ref: { kind: 'team', id: message.threadId },
+			kind: 'sources',
+			sources,
+			inboundMessageId: message._id,
+		},
+		walkerDrainBudget(budget)
+	);
+}
+
+/** The response plans of one Postbox draft, before the draft goes. */
+export function eraseDraftPlans(
+	ctx: MutationCtx,
+	budget: ErasureBudget,
+	draftId: Id<'mailDrafts'>
+): Promise<boolean> {
+	return drainEach(
+		budget,
+		(n) =>
+			ctx.db
+				.query('draftResponsePlans')
+				.withIndex('by_mail_draft', (q) => q.eq('mailDraftId', draftId))
+				.take(n),
+		(plan) => ctx.db.delete(plan._id)
+	);
+}

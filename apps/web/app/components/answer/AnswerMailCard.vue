@@ -40,7 +40,14 @@ const props = defineProps<{
 const { t, locale } = useI18n();
 
 const replyQueueText = useLocalized();
-const headline = computed(() => replyQueueText(replyQueueHeadline(props.row)));
+const { byId: inboxById } = useInboxes();
+const headline = computed(() =>
+	replyQueueText(
+		replyQueueHeadline(props.row, locale.value, {
+			isShared: inboxById.value.get(props.mailboxId)?.scope === 'shared',
+		})
+	)
+);
 const dueLabel = computed(() => {
 	const due = formatReplyQueueDueHint(props.row.dueHint, locale.value);
 	return due === null ? undefined : replyQueueText(due);

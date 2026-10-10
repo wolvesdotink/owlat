@@ -4090,6 +4090,72 @@ gate (overloaded with IMAP-level access concerns), `loadOwnedMailbox`
 module (names the function not the role; the function is the helper's
 single export, the helper is the unit).
 
+## Thread brief
+
+**Thread brief**:
+The per-thread state every surface reads instead of summarising the thread
+itself (ADR-0072): the thread's **Items**, **Facts** and **Activity**, kept
+up to date by interpreting each message once, when it arrives or is sent.
+One `threadBriefs` row per thread carries its revisions, its completeness
+(`complete | partial | pending | none`) and its deletion epoch. In
+**Interpretation mode** `brief` it is shown as the personal Overview: Latest
+update, Where things stand, For you, Waiting on others, Activity, People and
+Files. An incomplete brief says so and never reads as "nothing to do". A
+thread with no brief yet opens on its conversation and is interpreted on
+first open or by the 30-day backfill. The read is `mail/interpret/brief.ts`;
+every row inherits its thread's read rule (**§ Postbox mailbox** access for a
+mail thread, the Team Inbox reader role for a **§ Conversation threads**
+row).
+_Avoid_: Summary (the brief tracks state; the five summary generators it
+replaced are gone), Catch-up (the retired Answer mode card), Overview in code
+("Overview" is the UI name, "brief" the code name, D6).
+
+**Item**:
+One obligation in a thread, a row in `threadItems`: an `intent` (`question |
+request | decision | promise`), `facets` (payment, meeting, signature and so
+on), the requester and responsible parties, the `responsibility` derived from
+them (`us | them | unclear`), an optional teammate assignee, a `status`
+(`open | done | declined | superseded | untracked`), a `disposition`
+independent of it (`unanswered | answered | accepted | deferred | declined |
+failed`) and, once done, a `completion` (`recorded | asserted | reported`).
+Every item quotes the message it came from. Items with the same
+`counterpartyKey` across threads feed "With this contact elsewhere".
+_Avoid_: Task, To-do (an item can be theirs, or a promise), Ask (the
+retired catch-up's word for a request).
+
+**Fact**:
+An informational claim in a personal thread, a row in `threadFacts`, keyed
+by entity, attribute and context ("the venue", "the price for 2027"), with
+evidence and a status of `current | superseded | retracted`. Facts make up
+"Where things stand". Team threads have none.
+_Avoid_: Detail, Info.
+
+**Activity**:
+The append-only log of a thread, `threadActivity`: who did what (`actor`:
+user, agent, sender or system), how Owlat knows (`provenance`: recorded,
+asserted or reported) and whether it matters to a reader (`visibility`:
+substance or housekeeping). The reducer, sends, bookings, item reactions and
+thread housekeeping all write through `mail/interpret/activity.ts`.
+_Avoid_: History, Timeline (the channel timeline is something else).
+
+**Response plan**:
+What one draft does about the thread's items, `draftResponsePlans`: a stance
+per item (`answer | accept | decline | defer | clarify | skip`), the
+drafter's coverage spans, file claims and new promises, bound to the draft
+hash and the item revisions. A draft that covers an item marks it "Addressed
+in draft", never done. The Team Inbox `item_coverage` auto-send gate reads it
+(ADR-0051 amendment), in shadow mode unless an instance enforces it.
+_Avoid_: Reply plan, Coverage (one part of the plan).
+
+**Interpretation mode**:
+How a thread is interpreted: `brief` for a personal Postbox mailbox,
+`actions` for every team surface (Team Inbox threads and `shared` mailboxes).
+Actions mode extracts items only; it writes no facts, latest lines or
+overview, and team threads read as the team chat stream instead. The mode is
+read from the mailbox scope at read time, never from a cached row.
+_Avoid_: Brief mode / team mode as separate features (one pipeline, two
+outputs).
+
 ## IMAP
 
 **IMAP command (module)**:
