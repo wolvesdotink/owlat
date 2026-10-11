@@ -1,0 +1,87 @@
+{
+	"version": 1,
+	"status": "not_run",
+	"generatedAt": null,
+	"corpus": null,
+	"executors": {
+		"decision": null,
+		"today": null,
+		"interpretation": null
+	},
+	"interpretation": null,
+	"tasks": [
+		{
+			"task": "triage",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "postbox_category",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "team_category",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "disposition",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "necessity",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "draft_quality",
+			"status": "not_run",
+			"report": null
+		}
+	],
+	"todayTasks": [
+		{
+			"task": "triage",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "postbox_category",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "team_category",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "disposition",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "necessity",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "draft_quality",
+			"status": "not_run",
+			"report": null
+		}
+	],
+	"calls": {
+		"decision": null,
+		"today": null,
+		"ledger": null
+	},
+	"notes": [
+		"Not run: no provider has answered yet. Run apps/api/scripts/ai-baseline-eval.ts with a provider configured.",
+		"Intervals are 95% Wilson score intervals over the reported split only.",
+		"Zero observed consequential errors is not a safety guarantee; see upper95WhenNoneObserved.",
+		"Choice tasks score Choice peakedness (confidence), which is not a probability of being right."
+	]
+}

@@ -7,6 +7,7 @@
 			"slices": ["amounts_deadlines_tz", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -61,6 +62,15 @@
 							"currency": "USD"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -69,6 +79,7 @@
 			"slices": ["amounts_deadlines_tz", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -123,6 +134,15 @@
 							"currency": "EUR"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -131,6 +151,7 @@
 			"slices": ["amounts_deadlines_tz", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -185,6 +206,15 @@
 							"currency": "JPY"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -193,6 +223,7 @@
 			"slices": ["amounts_deadlines_tz", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -259,6 +290,18 @@
 						"segmentKind": "fresh",
 						"assertion": "The translation costs £300"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -267,6 +310,7 @@
 			"slices": ["amounts_deadlines_tz", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -319,6 +363,18 @@
 							"value": 3200.0,
 							"currency": "CHF"
 						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
 					}
 				]
 			}

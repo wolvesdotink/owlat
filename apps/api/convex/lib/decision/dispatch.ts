@@ -245,7 +245,7 @@ interface AttemptContext<Q extends QuestionSet> {
  * fitted the schema (`LlmPartialUsageError`, #1260). Anything else bills
  * nothing we can see.
  */
-function billedUsage(error: unknown): { usage?: TokenUsage; modelUsed?: string } {
+export function billedUsage(error: unknown): { usage?: TokenUsage; modelUsed?: string } {
 	if (error instanceof DecisionWireError) return { usage: error.usage, modelUsed: error.modelUsed };
 	const partial = partialUsageOf(error);
 	return partial ? { usage: partial.tokenUsage, modelUsed: partial.modelUsed } : {};

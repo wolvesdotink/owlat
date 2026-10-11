@@ -7,6 +7,7 @@
 			"slices": ["inline_replies", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -92,6 +93,17 @@
 						"assertion": "Tell Jonas the budget",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m2",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						}
+					}
 				]
 			}
 		},
@@ -100,6 +112,7 @@
 			"slices": ["inline_replies", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -155,6 +168,26 @@
 						"assertion": "Unterlagen mitbringen",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"senderKnown": true,
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hi Lena,\n\ndanke dir! Wegen des Beamers melde ich mich noch. Bis Freitag!\n\nMara",
+								"acceptance": "accept",
+								"reason": "Answers the open ask with a hold; Friday is settled in the thread."
+							}
+						]
+					}
 				]
 			}
 		},
@@ -163,6 +196,7 @@
 			"slices": ["inline_replies", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -218,6 +252,18 @@
 						"assertion": "Say who joins the call",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -226,6 +272,7 @@
 			"slices": ["inline_replies", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -271,6 +318,18 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -279,6 +338,7 @@
 			"slices": ["inline_replies", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -336,6 +396,15 @@
 						"quote": "We can ship on Monday.",
 						"segmentKind": "fresh",
 						"assertion": "The order ships on Monday"
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
 					}
 				]
 			}
