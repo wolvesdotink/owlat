@@ -70,7 +70,12 @@ export function applyTermUpdates(
 	}
 	if (Object.keys(fill).length > 0) p.fill = { ...p.fill, ...fill };
 	if (restamp.length > 0) p.restamp = restamp;
-	if (isChanged && !skip.includes('assertion')) p.reword = claim;
+	// Its wording goes with its terms only when the whole claim is current:
+	// newer than the wording's own stamp and no term of it rejected as older
+	// (re-review F1); otherwise the wording stays and the structured terms
+	// beside it are what counts. A stamp never moves back.
+	const isWordingNewer = advancesStamp(match.fieldSources?.wording, setBy);
+	if (isChanged && !p.dropped && isWordingNewer && !skip.includes('assertion')) p.reword = claim;
 }
 
 /**
