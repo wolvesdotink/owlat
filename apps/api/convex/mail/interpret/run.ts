@@ -226,6 +226,25 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 	if (!loaded) return { status: 'gone' };
 	const mode: InterpretMode = loaded.mode;
 
+	// A bulk-stranger candidate whose thread category is still provisional
+	// (PR-4): wait for the category refinement, bounded, instead of deciding
+	// the bulk rule on the baseline label. Nothing is written meanwhile.
+	if (loaded.categoryPendingUntil !== undefined) {
+		await ctx.scheduler.runAt(
+			loaded.categoryPendingUntil,
+			internal.mail.interpret.run.interpretMessage,
+			{
+				source: args.source,
+			}
+		);
+		return {
+			status: 'skipped',
+			isReplayed: false,
+			createdItemIds: [],
+			errorCode: 'category_pending',
+		};
+	}
+
 	const eligible = loaded.eligibility
 		? isInterpretationEligible(loaded.eligibility, { direction: loaded.direction })
 		: ({ isEligible: false, skipReason: 'ineligible', detail: 'no_snapshot' } as const);
