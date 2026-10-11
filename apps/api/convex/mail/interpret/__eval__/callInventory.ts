@@ -42,6 +42,8 @@ export interface LedgerCallRow {
 	latencyMs?: number;
 	isEstimated?: boolean;
 	isFallback?: boolean;
+	/** The ceiling slice the call drew on; absent ⇒ `standard`. `shadow` is shadow-run overhead. */
+	budgetClass?: 'standard' | 'triage' | 'shadow';
 }
 
 export interface Spread {
@@ -76,6 +78,9 @@ export interface PathInventory {
 	costUsd: number;
 	/** The part of `costUsd` on rows marked `isEstimated`. */
 	estimatedCostUsd: number;
+	/** Requests and cost of shadow runs (`budgetClass: 'shadow'`), included in the totals. */
+	shadowRequests: number;
+	shadowCostUsd: number;
 	requestsPerMessage: Spread;
 	costPerMessage: Spread;
 	byTask: Record<string, TaskInventory>;
@@ -206,6 +211,8 @@ export function callInventory(
 			fallbacks: all.filter((r) => r.isFallback).length,
 			costUsd: sumCost(all),
 			estimatedCostUsd: sumCost(all.filter((r) => r.isEstimated)),
+			shadowRequests: all.filter((r) => r.budgetClass === 'shadow').length,
+			shadowCostUsd: sumCost(all.filter((r) => r.budgetClass === 'shadow')),
 			requestsPerMessage: spread([...groups.map((g) => g.length), ...zeros]),
 			costPerMessage: spread([...groups.map(sumCost), ...zeros]),
 			byTask,

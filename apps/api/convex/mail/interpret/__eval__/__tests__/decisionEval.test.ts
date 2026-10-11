@@ -11,9 +11,9 @@ import type {
 } from '../../../../lib/decisionProviders/types';
 import type { EvalThread } from '../corpus';
 import {
-	DECISION_EVAL_TASKS,
 	decisionProviderFromAdapter,
 	runDecisionEval,
+	type DecisionEvalTask,
 	type DecisionRun,
 	type EvalDecisionProvider,
 } from '../decisionRunner';
@@ -161,7 +161,7 @@ describe('runDecisionEval', () => {
 
 describe('scoreDecisionTask', () => {
 	let run: DecisionRun;
-	const score = async (task: (typeof DECISION_EVAL_TASKS)[number], options = {}) => {
+	const score = async (task: DecisionEvalTask, options = {}) => {
 		run ??= await runDecisionEval(small, { provider: constant(), split: 'heldout' });
 		return scoreDecisionTask(small, run, task, options);
 	};

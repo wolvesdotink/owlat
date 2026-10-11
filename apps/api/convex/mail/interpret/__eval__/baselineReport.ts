@@ -258,7 +258,7 @@ export function formatBaselineReport(report: BaselineReport): string {
 		lines.push(`calls (${source}):`);
 		for (const path of inventory.paths) {
 			lines.push(
-				`  ${path.path}: ${path.messages} messages, ${num(path.requestsPerMessage.mean, 2)} requests/message (p95 ${num(path.requestsPerMessage.p95, 0)}), $${num(path.costPerMessage.mean, 6)}/message${path.isRootsOnly ? ' (messages with calls only)' : ''}`
+				`  ${path.path}: ${path.messages} messages, ${num(path.requestsPerMessage.mean, 2)} requests/message (p95 ${num(path.requestsPerMessage.p95, 0)}), $${num(path.costPerMessage.mean, 6)}/message${path.shadowRequests > 0 ? `, shadow $${num(path.shadowCostUsd, 6)}` : ''}${path.isRootsOnly ? ' (messages with calls only)' : ''}`
 			);
 		}
 		if (inventory.unattributedRows > 0) {

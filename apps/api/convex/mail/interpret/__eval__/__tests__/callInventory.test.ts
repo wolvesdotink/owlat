@@ -16,7 +16,7 @@ const row = (patch: Partial<LedgerCallRow>): LedgerCallRow => ({
 	...patch,
 });
 
-/** Two Team messages: one guard + classify + a retried draft, one classify only. */
+/** Two Team messages: guard + classify + a retried draft; classify + a shadow category judgment. */
 const baseline: LedgerCallRow[] = [
 	row({
 		rootRequestId: 'team:m1',
@@ -28,13 +28,21 @@ const baseline: LedgerCallRow[] = [
 	row({ rootRequestId: 'team:m1', requestId: 'd1', task: 'mail.draft', attempt: 1, costUsd: 0.02 }),
 	row({ rootRequestId: 'team:m1', requestId: 'd1', task: 'mail.draft', attempt: 2, costUsd: 0.02 }),
 	row({ rootRequestId: 'team:m2', requestId: 'c2', task: 'mail.classify', isEstimated: true }),
+	row({
+		rootRequestId: 'team:m2',
+		requestId: 's2',
+		task: 'mail.category',
+		plane: 'decision',
+		budgetClass: 'shadow',
+		costUsd: 0.0002,
+	}),
 	row({ feature: 'postbox_category' }),
 ];
 
 describe('callInventory', () => {
 	it('groups rows by root request and counts requests, logical calls and retries', () => {
 		const inventory = callInventory(baseline);
-		expect(inventory.rows).toBe(6);
+		expect(inventory.rows).toBe(7);
 		expect(inventory.unattributedRows).toBe(1);
 		expect(inventory.unattributedCostUsd).toBeCloseTo(0.001, 10);
 		expect(inventory.paths).toHaveLength(1);
@@ -44,27 +52,34 @@ describe('callInventory', () => {
 			roots: 2,
 			messages: 2,
 			isRootsOnly: true,
-			requests: 5,
-			logicalCalls: 4,
+			requests: 6,
+			logicalCalls: 5,
 			retries: 1,
+			shadowRequests: 1,
 		});
-		expect(team?.costUsd).toBeCloseTo(0.043, 10);
+		expect(team?.costUsd).toBeCloseTo(0.0432, 10);
 		expect(team?.estimatedCostUsd).toBeCloseTo(0.001, 10);
-		expect(team?.requestsPerMessage).toMatchObject({ mean: 2.5, p50: 1, max: 4 });
+		expect(team?.shadowCostUsd).toBeCloseTo(0.0002, 10);
+		expect(team?.requestsPerMessage).toMatchObject({ mean: 3, p50: 2, max: 4 });
 		expect(team?.byTask['mail.draft']).toMatchObject({
 			requests: 2,
 			logicalCalls: 1,
 			retries: 1,
 			requestsPerMessage: 1,
 		});
-		expect(Object.keys(team?.byTask ?? {})).toEqual(['mail.classify', 'mail.draft', 'mail.guard']);
+		expect(Object.keys(team?.byTask ?? {})).toEqual([
+			'mail.category',
+			'mail.classify',
+			'mail.draft',
+			'mail.guard',
+		]);
 	});
 
 	it('counts messages that made no call when the path’s message count is given', () => {
 		const inventory = callInventory(baseline, { messageCounts: { team: 4, postbox: 3 } });
 		const team = inventory.paths.find((p) => p.path === 'team');
 		expect(team).toMatchObject({ roots: 2, messages: 4, isRootsOnly: false });
-		expect(team?.requestsPerMessage).toMatchObject({ mean: 1.25, p50: 0, max: 4 });
+		expect(team?.requestsPerMessage).toMatchObject({ mean: 1.5, p50: 0, max: 4 });
 		expect(team?.byTask['mail.classify']?.requestsPerMessage).toBe(0.5);
 		// A path with messages and no rows at all still appears, at zero.
 		const postbox = inventory.paths.find((p) => p.path === 'postbox');
@@ -103,14 +118,14 @@ describe('compareInventories', () => {
 		);
 		const deltas = compareInventories(before, after);
 		const path = deltas.find((d) => d.path === 'team' && d.task === null);
-		expect(path?.requestsPerMessage).toEqual({ before: 2.5, after: 1.5, change: -1 });
+		expect(path?.requestsPerMessage).toEqual({ before: 3, after: 2, change: -1 });
 		const guard = deltas.find((d) => d.task === 'mail.guard');
 		expect(guard?.requestsPerMessage).toEqual({ before: 0.5, after: 0, change: -0.5 });
 		expect(guard?.costPerMessage.after).toBe(0);
 		const fresh = compareInventories(callInventory([]), after);
 		expect(fresh.find((d) => d.path === 'team' && d.task === null)?.requestsPerMessage).toEqual({
 			before: null,
-			after: 1.5,
+			after: 2,
 			change: null,
 		});
 	});
