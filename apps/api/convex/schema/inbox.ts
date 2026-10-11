@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	securityFlagsValidator,
+	spamVerdictValidator,
 	contextCoverageValidator,
 	draftQualityValidator,
 	groundingSourceValidator,
@@ -10,6 +11,7 @@ import {
 } from '../lib/convexValidators';
 import { classificationValidator } from '../lib/validators/classification';
 import { pendingClarificationValidator } from '../lib/validators/clarification';
+import { budgetHoldValidator } from '../lib/validators/aiRouting';
 import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { teamReplyAttachmentsValidator } from '../lib/validators/teamReplyAttachment';
 import { draftRevisionValidator } from '../lib/validators/draftRevision';
@@ -182,6 +184,16 @@ export const inboxTables = {
 		archiveReason: v.optional(v.string()),
 		// Security filter results
 		securityFlags: v.optional(securityFlagsValidator),
+		// L5 (ADR-0073): the MTA's spam verdict and score, passed through ingest
+		// from the authenticated delivery webhook. Recorded always; terminal only
+		// behind the `mtaVerdictTerminal` routing switch. Absent: an older MTA.
+		mtaSpamVerdict: v.optional(spamVerdictValidator),
+		mtaSpamScore: v.optional(v.number()),
+		// D1 (ADR-0073): the spend ceiling (or unverifiable spend state) stopped
+		// the model path; the message waits for a person, auto-send is blocked,
+		// and the reason and the missing judgments are shown. Cleared when the
+		// pipeline re-runs with headroom.
+		budgetHold: v.optional(budgetHoldValidator),
 		// Agent classification result
 		classification: v.optional(classificationValidator),
 		// Agent-generated draft
@@ -410,7 +422,9 @@ export const inboxTables = {
 			'organizationId',
 			'pluginId',
 			'createdAt',
-		]),
+		])
+		// Settling a reservation whose action died reads the rows it already wrote.
+		.index('by_reservation_id', ['reservationId']),
 
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is

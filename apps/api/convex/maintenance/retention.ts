@@ -94,6 +94,45 @@ export const sweepPluginLlmAccounting = internalMutation({
 });
 
 /**
+ * AI routing records (ADR-0073): decision artifacts and sender memory past their
+ * own `expiresAt` (every row carries one), and admission reservations that
+ * reached a terminal state more than the audit window ago. A `held` reservation
+ * is never swept here; the admission expiry sweep settles it first.
+ */
+export const sweepAiRoutingRecords = internalMutation({
+	args: {},
+	returns: v.null(),
+	handler: async (ctx) => {
+		const now = Date.now();
+		const terminalCutoff = now - AUDIT_LOG_RETENTION_MS;
+		const [artifacts, memory, ...reservations] = await Promise.all([
+			ctx.db
+				.query('decisionArtifacts')
+				.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
+				.take(BATCH),
+			ctx.db
+				.query('senderMemory')
+				.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
+				.take(BATCH),
+			...(['settled', 'released', 'expired'] as const).map((status) =>
+				ctx.db
+					.query('llmReservations')
+					.withIndex('by_status_and_updated_at', (q) =>
+						q.eq('status', status).lt('updatedAt', terminalCutoff)
+					)
+					.take(BATCH)
+			),
+		]);
+		const pages = [artifacts, memory, ...reservations];
+		for (const row of pages.flat()) await ctx.db.delete(row._id);
+		if (pages.some((page) => page.length === BATCH)) {
+			await ctx.scheduler.runAfter(0, internal.maintenance.retention.sweepAiRoutingRecords, {});
+		}
+		return null;
+	},
+});
+
+/**
  * Agent-health rollup points (`agentMetrics`) past their 7-day window.
  *
  * Lives here, on the daily schedule every other table's retention runs on,

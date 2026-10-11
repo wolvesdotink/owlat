@@ -1,5 +1,6 @@
 import type { TableNames } from '../_generated/dataModel';
 import { THREAD_BRIEF_TABLES } from '../schema/threadBrief';
+import { AI_ROUTING_TABLES } from '../schema/aiRouting';
 
 /**
  * The single source of truth for "which tables hold tenant business data".
@@ -321,6 +322,7 @@ export const TENANT_TABLES = [
 	// workspace up next, behind a masked preview nobody recognises. The
 	// deployment's own `LLM_*` env fallback is untouched.
 	'aiProviderConfig',
+	...AI_ROUTING_TABLES, // ADR-0073: routing policy, admission, embedding provenance, artifacts
 
 	// ── Dashboard & visualizations ──
 	'visualizations',
