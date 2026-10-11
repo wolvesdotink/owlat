@@ -341,9 +341,8 @@ export const threadBriefTables = {
 		.index('by_item', ['itemId'])
 		.index('by_op_ref', ['opRef.id']),
 
-	// One row per source message, written when interpretation is enqueued
-	// (mail/interpret/sources.ts): the eligibility signals every retry reuses,
-	// and for a team reply the immutable text that was sent.
+	// One row per source message, written at enqueue (mail/interpret/sources.ts):
+	// the eligibility signals every retry reuses, a team reply's sent text.
 	interpretSources: defineTable({
 		...threadRefFields,
 		source: interpretationSourceValidator,
@@ -356,14 +355,15 @@ export const threadBriefTables = {
 		// The source's lineage record (mail/interpret/reduceIdentity.ts).
 		claimIds: v.optional(v.array(claimIdValidator)),
 		isClaimRecordFull: v.optional(v.boolean()),
-		// Enqueued for interpretation and not yet recorded (outstanding.ts):
-		// counted in threadBriefs.pendingSources until any outcome lands; since
-		// when, and the stale sweep's re-runs so far. `isUnread`: the sweep
-		// gave up on it (threadBriefs.unreadSources) until an outcome lands.
+		// Enqueued, not yet recorded (outstanding.ts; threadBriefs.pendingSources);
+		// since when, the stale sweep's re-runs so far; `isUnread`: the sweep gave
+		// up on it (threadBriefs.unreadSources) until an outcome lands.
 		isOutstanding: v.optional(v.boolean()),
 		outstandingSince: v.optional(v.number()),
 		outstandingTries: v.optional(v.number()),
 		isUnread: v.optional(v.boolean()),
+		// A run waiting for the category refinement (mail/interpret/categoryDefer.ts).
+		categoryDeferredUntil: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

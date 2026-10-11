@@ -228,15 +228,13 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 
 	// A bulk-stranger candidate whose thread category is still provisional
 	// (PR-4): wait for the category refinement, bounded, instead of deciding
-	// the bulk rule on the baseline label. Nothing is written meanwhile.
+	// the bulk rule on the baseline label. Only the deferral is recorded.
 	if (loaded.categoryPendingUntil !== undefined) {
-		await ctx.scheduler.runAt(
-			loaded.categoryPendingUntil,
-			internal.mail.interpret.run.interpretMessage,
-			{
-				source: args.source,
-			}
-		);
+		// One deferred job per source and deadline (categoryDefer.ts).
+		await ctx.runMutation(internal.mail.interpret.categoryDefer.deferForCategory, {
+			source: args.source,
+			until: loaded.categoryPendingUntil,
+		});
 		return {
 			status: 'skipped',
 			isReplayed: false,
