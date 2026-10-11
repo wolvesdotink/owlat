@@ -25,7 +25,10 @@ type Price = {
 	prefix: string;
 	inputPerM: number;
 	outputPerM: number;
-	/** Conservative cache-write ceiling for hard admission; reporting uses base rates. */
+	/**
+	 * Conservative cache-write ceiling on input, for admission ESTIMATES only
+	 * ({@link estimateAdmissionCostMicrousd}). Settlement and reporting use list rates.
+	 */
 	admissionInputMultiplier?: number;
 	longContext?: { aboveTokens: number; inputPerM: number; outputPerM: number };
 };
@@ -312,23 +315,48 @@ export function estimateCost(
 	return { costUsd, estimated: match === undefined };
 }
 
+function knownCostMicrousd(
+	endpointProvenance: AdmissionProvenance,
+	modelUsed: string | undefined,
+	usage: TokenUsage,
+	isAdmissionCeiling: boolean
+): number | undefined {
+	const price = admissionPriceForModel(endpointProvenance, modelUsed);
+	if (!price) return undefined;
+	const rates = ratesForUsage(price, usage);
+	const inputMultiplier = isAdmissionCeiling ? (price.admissionInputMultiplier ?? 1) : 1;
+	const input = usage.promptTokens * rates.inputPerM * inputMultiplier;
+	const output = usage.completionTokens * rates.outputPerM;
+	const microusd = Math.ceil(input + output);
+	return Number.isSafeInteger(microusd) && microusd >= 0 ? microusd : undefined;
+}
+
 /**
- * Price a bounded request in integer micro-USD using the same model catalog as
- * dashboard estimates. Unlike reporting, admission control must fail closed:
- * unknown models return undefined instead of using the fallback price.
+ * Price used tokens in integer micro-USD at list rates, from the same model
+ * catalog as dashboard estimates. This is what settlement charges. Unlike
+ * reporting, it fails closed: unknown models return undefined instead of using
+ * the fallback price. `TokenUsage` reports no cache-write tokens yet, so none
+ * are priced here.
  */
 export function estimateKnownCostMicrousd(
 	endpointProvenance: AdmissionProvenance,
 	modelUsed: string | undefined,
 	usage: TokenUsage
 ): number | undefined {
-	const price = admissionPriceForModel(endpointProvenance, modelUsed);
-	if (!price) return undefined;
-	const rates = ratesForUsage(price, usage);
-	const input = usage.promptTokens * rates.inputPerM * (price.admissionInputMultiplier ?? 1);
-	const output = usage.completionTokens * rates.outputPerM;
-	const microusd = Math.ceil(input + output);
-	return Number.isSafeInteger(microusd) && microusd >= 0 ? microusd : undefined;
+	return knownCostMicrousd(endpointProvenance, modelUsed, usage, false);
+}
+
+/**
+ * The upper bound a reservation holds before a call runs: list rates plus the
+ * model's cache-write ceiling on input. Never use it to settle: a call that
+ * wrote no cache would be charged more than its list price.
+ */
+export function estimateAdmissionCostMicrousd(
+	endpointProvenance: AdmissionProvenance,
+	modelUsed: string | undefined,
+	usage: TokenUsage
+): number | undefined {
+	return knownCostMicrousd(endpointProvenance, modelUsed, usage, true);
 }
 
 /** Convenience: just the dollar figure. */
