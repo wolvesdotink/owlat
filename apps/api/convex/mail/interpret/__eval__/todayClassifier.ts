@@ -31,7 +31,7 @@ import {
 	resolveResponseDisposition,
 } from '../../../agent/steps/classify';
 import { BULK_KINDS } from '../../../lib/validators/classification';
-import { estimateCost } from '../../../lib/llm/pricing';
+import { billedUsage } from '../../../lib/decision/dispatch';
 import { buildCategoryPrompt, categoryRefinementSchema } from '../../ai/categoryClassify';
 import { CATEGORY } from '../../ai/transcript';
 import { classifyMailCategory } from '../../category';
@@ -41,9 +41,10 @@ import { bodyText, decisionInputFor, type DecisionEvalInput } from './decisionQu
 import {
 	errorText,
 	evalRootRequestId,
+	pricedColumns,
 	type DecisionPrediction,
 	type DecisionRun,
-} from './decisionRunner';
+} from './decisionRun';
 import type { EvalModelMessage } from './replay';
 import { threadsInSplit } from './splits';
 
@@ -153,27 +154,18 @@ export async function runTodayClassifier(
 		try {
 			response = await generate(request);
 		} catch (caught) {
+			// A failed call's billed usage rides on the dispatch's error.
 			run.rows.push({
 				...base,
-				promptTokens: 0,
-				completionTokens: 0,
-				totalTokens: 0,
-				costUsd: 0,
-				isEstimated: true,
+				...pricedColumns({ ...billedUsage(caught), isLocal: false }),
 				latencyMs: now() - started,
 			});
 			return { error: errorText(caught) };
 		}
 		const { object, usage, modelUsed } = response;
-		const cost = estimateCost(modelUsed, usage);
 		run.rows.push({
 			...base,
-			promptTokens: usage?.promptTokens ?? 0,
-			completionTokens: usage?.completionTokens ?? 0,
-			totalTokens: usage?.totalTokens ?? 0,
-			...(modelUsed ? { modelUsed } : {}),
-			costUsd: cost.costUsd,
-			isEstimated: cost.estimated,
+			...pricedColumns({ usage, ...(modelUsed ? { modelUsed } : {}), isLocal: false }),
 			latencyMs: now() - started,
 		});
 		// A billed answer that does not parse is one row and a failed prediction.

@@ -41,6 +41,38 @@
 			"report": null
 		}
 	],
+	"todayTasks": [
+		{
+			"task": "triage",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "postbox_category",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "team_category",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "disposition",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "necessity",
+			"status": "not_run",
+			"report": null
+		},
+		{
+			"task": "draft_quality",
+			"status": "not_run",
+			"report": null
+		}
+	],
 	"calls": {
 		"decision": null,
 		"today": null,

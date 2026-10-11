@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * One baseline run, end to end: the interpretation eval, the decision tasks
  * through an injected provider, today's classifiers through an injected
@@ -6,19 +8,19 @@
  * providers from the environment; tests supply mocks. Every executor is
  * optional, and a part that did not run stays `not_run` in the report.
  *
- * Pure and isolate-safe: nothing here reaches a network unless an injected
- * executor does.
+ * Nothing here reaches a network unless an injected executor does. `'use node'`
+ * because the decision runner is.
  */
 import { callInventory, type LedgerCallRow } from './callInventory';
 import type { EvalThread } from './corpus';
 import { EVAL_SPLITS, type EvalSplit } from './decisionLabels';
 import {
 	DECISION_EVAL_TASKS,
-	runDecisionEval,
 	type DecisionEvalTask,
 	type DecisionRun,
 	type EvalDecisionProvider,
-} from './decisionRunner';
+} from './decisionRun';
+import { runDecisionEval } from './decisionRunner';
 import { scoreDecisionTask } from './decisionScore';
 import { buildBaselineReport, type BaselineReport } from './baselineReport';
 import { runEval, type EvalModel } from './runEval';
@@ -113,6 +115,10 @@ export async function runBaseline(
 					today: {
 						executor: today.executor,
 						isModelBacked: !!options.isTodayModelBacked,
+						// Scored on their own: today's numbers do not need a candidate.
+						tasks: DECISION_EVAL_TASKS.filter((task) =>
+							today.predictions.some((p) => p.task === task)
+						).map((task) => scoreDecisionTask(corpus, today, task)),
 						calls: callInventory(today.rows, {
 							messageCounts: processedMessageCounts(corpus, today, 'today'),
 						}),
@@ -125,7 +131,7 @@ export async function runBaseline(
 				? `Decision tasks answered by ${options.decisionProvider.name}.`
 				: 'Decision tasks not run: no decision provider configured.',
 			options.isTodayModelBacked
-				? "Today's classifiers ran with a model."
+				? "Today's classifiers ran with a model. Their triage and disposition come from the Team classifier, so Postbox messages count as labelled but unanswered there."
 				: "Today's classifiers ran without a model: the Postbox heuristic only, no Team baseline.",
 			options.interpretationModel
 				? 'Interpretation ran live.'

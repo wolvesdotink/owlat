@@ -5,6 +5,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { classificationSchema } from '../../../../agent/steps/classify';
+import { LlmPartialUsageError } from '../../../../lib/llm/partialUsage';
+import { estimateCost } from '../../../../lib/llm/pricing';
 import { mailCategoryLabelValidator } from '../../../../lib/literalValidators';
 import { POSTBOX_CATEGORIES, TEAM_CATEGORIES } from '../decisionLabels';
 import { decisionInputFor } from '../decisionQuestions';
@@ -115,6 +117,24 @@ describe('runTodayClassifier with a model', () => {
 		const teamRows = run.rows.filter((r) => r.feature === 'agent_classify');
 		const failed = run.predictions.filter((p) => p.outcome === 'failed');
 		expect(failed.length).toBe(teamRows.length * 3);
+	});
+
+	it('prices a failed call off the billed usage its error carries', async () => {
+		const usage = { promptTokens: 2000, completionTokens: 80, totalTokens: 2080 };
+		const generate: TodayGenerate = async () => {
+			throw new LlmPartialUsageError(new Error('schema mismatch'), usage, 'gpt-6-luna');
+		};
+		const run = await runTodayClassifier(corpus, { split: 'heldout', generate });
+		const priced = estimateCost('gpt-6-luna', usage);
+		expect(run.rows.length).toBeGreaterThan(0);
+		for (const row of run.rows) {
+			expect(row).toMatchObject({
+				...usage,
+				modelUsed: 'gpt-6-luna',
+				costUsd: priced.costUsd,
+				isEstimated: priced.estimated,
+			});
+		}
 	});
 });
 

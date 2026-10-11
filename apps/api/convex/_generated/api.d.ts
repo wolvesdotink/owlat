@@ -1202,8 +1202,10 @@ import type * as mail_interpret___eval___callInventory from '../mail/interpret/_
 import type * as mail_interpret___eval___corpus from '../mail/interpret/__eval__/corpus.js';
 import type * as mail_interpret___eval___decisionLabels from '../mail/interpret/__eval__/decisionLabels.js';
 import type * as mail_interpret___eval___decisionQuestions from '../mail/interpret/__eval__/decisionQuestions.js';
+import type * as mail_interpret___eval___decisionRun from '../mail/interpret/__eval__/decisionRun.js';
 import type * as mail_interpret___eval___decisionRunner from '../mail/interpret/__eval__/decisionRunner.js';
 import type * as mail_interpret___eval___decisionScore from '../mail/interpret/__eval__/decisionScore.js';
+import type * as mail_interpret___eval___evalProviders from '../mail/interpret/__eval__/evalProviders.js';
 import type * as mail_interpret___eval___replay from '../mail/interpret/__eval__/replay.js';
 import type * as mail_interpret___eval___reportFile from '../mail/interpret/__eval__/reportFile.js';
 import type * as mail_interpret___eval___runEval from '../mail/interpret/__eval__/runEval.js';
@@ -2820,8 +2822,10 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/__eval__/corpus': typeof mail_interpret___eval___corpus;
 	'mail/interpret/__eval__/decisionLabels': typeof mail_interpret___eval___decisionLabels;
 	'mail/interpret/__eval__/decisionQuestions': typeof mail_interpret___eval___decisionQuestions;
+	'mail/interpret/__eval__/decisionRun': typeof mail_interpret___eval___decisionRun;
 	'mail/interpret/__eval__/decisionRunner': typeof mail_interpret___eval___decisionRunner;
 	'mail/interpret/__eval__/decisionScore': typeof mail_interpret___eval___decisionScore;
+	'mail/interpret/__eval__/evalProviders': typeof mail_interpret___eval___evalProviders;
 	'mail/interpret/__eval__/replay': typeof mail_interpret___eval___replay;
 	'mail/interpret/__eval__/reportFile': typeof mail_interpret___eval___reportFile;
 	'mail/interpret/__eval__/runEval': typeof mail_interpret___eval___runEval;

@@ -12,7 +12,7 @@ import {
 	notRunBaselineReport,
 } from '../baselineReport';
 import { parseBaselineArgs, runBaseline } from '../baselineRun';
-import { DECISION_EVAL_TASKS, type EvalDecisionProvider } from '../decisionRunner';
+import { DECISION_EVAL_TASKS, type EvalDecisionProvider } from '../decisionRun';
 import type { EvalModel } from '../runEval';
 import { runTodayClassifier } from '../todayClassifier';
 import { loadCorpus } from './corpusFixture';
@@ -69,6 +69,17 @@ describe('runBaseline', () => {
 			interpretation: 'oracle',
 		});
 		expect(report.tasks.every((t) => t.status === 'not_run')).toBe(true);
+		// Today's classifier is scored without any candidate provider.
+		const scoredToday = report.todayTasks.filter((t) => t.status === 'scored');
+		expect(scoredToday.map((t) => t.task)).toEqual(['postbox_category']);
+		const category = scoredToday[0]?.report;
+		expect(category).toMatchObject({ probability: 'none', threshold: null, failed: 0 });
+		expect(category?.answered).toBe(category?.labelled);
+		expect(category?.accuracy.n).toBeGreaterThan(0);
+		expect(Object.keys(category?.byLanguage ?? {}).sort()).toEqual(['de', 'en']);
+		expect(category?.perClass['person']?.recall.n).toBeGreaterThan(0);
+		expect(category?.calibration).toMatchObject({ brier: null, adapters: 'none' });
+		expect(category?.baseline).toBeNull();
 		expect(report.interpretation?.recall).toBe(1);
 		// The heuristic made no call: every Postbox message costs zero requests.
 		const postbox = report.calls.today?.paths.find((p) => p.path === 'eval.today.postbox');
@@ -130,6 +141,15 @@ describe('runBaseline', () => {
 		expect(report.status).toBe('complete');
 		expect(report.corpus).toMatchObject({ split: 'calibration', threads: corpus.length });
 		expect(report.tasks.every((t) => t.status === 'scored')).toBe(true);
+		// With a model, today's Team classifier answers triage and disposition too.
+		expect(report.todayTasks.filter((t) => t.status === 'scored').map((t) => t.task)).toEqual([
+			'triage',
+			'postbox_category',
+			'team_category',
+			'disposition',
+		]);
+		const todayDisposition = report.todayTasks.find((t) => t.task === 'disposition')?.report;
+		expect(todayDisposition).toMatchObject({ probability: 'none', threshold: null });
 		const disposition = report.tasks.find((t) => t.task === 'disposition')?.report;
 		// 0.7 < 0.8: every message judged informational at the given threshold.
 		expect(disposition?.threshold).toBe(0.8);
@@ -152,6 +172,8 @@ describe('runBaseline', () => {
 		expect(text).toContain('disposition (noul_probability >= 0.8)');
 		expect(text).toContain('triage (choice_peakedness)');
 		expect(text).toContain('calls (decision):');
+		expect(text).toContain("today's classifiers:");
+		expect(text).toContain('disposition (none)');
 	});
 });
 

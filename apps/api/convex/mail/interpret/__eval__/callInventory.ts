@@ -50,6 +50,8 @@ export interface LedgerCallRow {
 	latencyMs?: number;
 	isEstimated?: boolean;
 	isFallback?: boolean;
+	/** The request ran on the operator's own engine and bills nothing. */
+	isLocalEngine?: boolean;
 	/** The ceiling slice the call drew on; absent ⇒ `standard`. `shadow` is shadow-run overhead. */
 	budgetClass?: BudgetClass;
 }

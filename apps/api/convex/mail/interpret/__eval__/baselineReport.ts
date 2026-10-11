@@ -4,8 +4,12 @@
  * compared against:
  *
  *   - `interpretation`: the interpretation eval (`runEval.ts`), oracle or live;
- *   - `tasks`: one entry per decision task (`decisionScore.ts`), `not_run`
- *     until a provider answered it;
+ *   - `tasks`: one entry per decision task (`decisionScore.ts`) for the
+ *     candidate decision provider, `not_run` until a provider answered it,
+ *     each with today's classifier beside it (baseline accuracy, agreement);
+ *   - `todayTasks`: today's classifiers scored on their own, so a run with no
+ *     decision provider still records today's accuracy, recall and language
+ *     slices (`not_run` for a task today's classifiers did not answer);
  *   - `calls`: the call inventory (`callInventory.ts`) of the decision run, of
  *     today's classifiers, and of an exported production ledger when given;
  *   - `executors`: what produced each part, so two reports are comparable.
@@ -19,7 +23,7 @@
 import { z } from 'zod';
 import type { CallInventory } from './callInventory';
 import { EVAL_SPLITS, type EvalSplit } from './decisionLabels';
-import { DECISION_EVAL_TASKS, type DecisionEvalTask } from './decisionRunner';
+import { DECISION_EVAL_TASKS, type DecisionEvalTask } from './decisionRun';
 import type { DecisionTaskReport } from './decisionScore';
 import type { EvalReport } from './runEval';
 import type { Interval } from './stats';
@@ -47,6 +51,7 @@ export interface BaselineReport {
 	executors: { decision: string | null; today: string | null; interpretation: string | null };
 	interpretation: EvalReport | null;
 	tasks: BaselineTaskEntry[];
+	todayTasks: BaselineTaskEntry[];
 	calls: {
 		decision: CallInventory | null;
 		today: CallInventory | null;
@@ -69,7 +74,7 @@ const taskReportSchema = z
 	.object({
 		task: z.enum(DECISION_EVAL_TASKS),
 		questionType: z.enum(['choice', 'noul']),
-		probability: z.enum(['noul_probability', 'choice_peakedness']),
+		probability: z.enum(['noul_probability', 'choice_peakedness', 'none']),
 		threshold: z.number().nullable(),
 		labelled: z.number(),
 		answered: z.number(),
@@ -102,6 +107,14 @@ const taskReportSchema = z
 	})
 	.strict();
 
+const taskEntrySchema = z
+	.object({
+		task: z.enum(DECISION_EVAL_TASKS),
+		status: z.enum(['not_run', 'scored']),
+		report: taskReportSchema.nullable(),
+	})
+	.strict();
+
 const inventorySchema = z
 	.object({ rows: z.number(), unattributedRows: z.number(), paths: z.array(z.unknown()) })
 	.passthrough();
@@ -129,15 +142,8 @@ export const baselineReportSchema = z
 			})
 			.strict(),
 		interpretation: z.object({ model: z.string(), recall: z.number() }).passthrough().nullable(),
-		tasks: z.array(
-			z
-				.object({
-					task: z.enum(DECISION_EVAL_TASKS),
-					status: z.enum(['not_run', 'scored']),
-					report: taskReportSchema.nullable(),
-				})
-				.strict()
-		),
+		tasks: z.array(taskEntrySchema),
+		todayTasks: z.array(taskEntrySchema),
 		calls: z
 			.object({
 				decision: inventorySchema.nullable(),
@@ -166,6 +172,7 @@ export function notRunBaselineReport(): BaselineReport {
 		executors: { decision: null, today: null, interpretation: null },
 		interpretation: null,
 		tasks: DECISION_EVAL_TASKS.map((task) => ({ task, status: 'not_run', report: null })),
+		todayTasks: DECISION_EVAL_TASKS.map((task) => ({ task, status: 'not_run', report: null })),
 		calls: { decision: null, today: null, ledger: null },
 		notes: [
 			'Not run: no provider has answered yet. Run apps/api/scripts/ai-baseline-eval.ts with a provider configured.',
@@ -179,14 +186,25 @@ export interface BaselineInputs {
 	corpus: NonNullable<BaselineReport['corpus']>;
 	interpretation?: { report: EvalReport; isLive: boolean };
 	decision?: { executor: string; tasks: DecisionTaskReport[]; calls: CallInventory };
-	today?: { executor: string; isModelBacked: boolean; calls: CallInventory };
+	today?: {
+		executor: string;
+		isModelBacked: boolean;
+		tasks: DecisionTaskReport[];
+		calls: CallInventory;
+	};
 	ledger?: CallInventory;
 	notes?: string[];
 }
 
 /** Assemble a report from whatever ran. */
 export function buildBaselineReport(inputs: BaselineInputs): BaselineReport {
-	const scored = new Map(inputs.decision?.tasks.map((t) => [t.task, t]));
+	const entries = (reports: readonly DecisionTaskReport[] = []): BaselineTaskEntry[] => {
+		const scored = new Map(reports.map((t) => [t.task, t]));
+		return DECISION_EVAL_TASKS.map((task) => {
+			const report = scored.get(task) ?? null;
+			return { task, status: report ? 'scored' : 'not_run', report };
+		});
+	};
 	const isComplete =
 		!!inputs.decision && !!inputs.today?.isModelBacked && !!inputs.interpretation?.isLive;
 	const ranAnything = !!inputs.decision || !!inputs.today || !!inputs.interpretation;
@@ -201,10 +219,8 @@ export function buildBaselineReport(inputs: BaselineInputs): BaselineReport {
 			interpretation: inputs.interpretation?.report.model ?? null,
 		},
 		interpretation: inputs.interpretation?.report ?? null,
-		tasks: DECISION_EVAL_TASKS.map((task) => {
-			const report = scored.get(task) ?? null;
-			return { task, status: report ? 'scored' : 'not_run', report };
-		}),
+		tasks: entries(inputs.decision?.tasks),
+		todayTasks: entries(inputs.today?.tasks),
 		calls: {
 			decision: inputs.decision?.calls ?? null,
 			today: inputs.today?.calls ?? null,
@@ -230,11 +246,11 @@ export function formatBaselineReport(report: BaselineReport): string {
 		`today's classifier: ${report.executors.today ?? 'not run'}`,
 		`interpretation: ${report.executors.interpretation ?? 'not run'}`,
 	];
-	for (const entry of report.tasks) {
+	const taskLines = (entry: BaselineTaskEntry) => {
 		const r = entry.report;
 		if (!r) {
 			lines.push(`- ${entry.task}: not run`);
-			continue;
+			return;
 		}
 		lines.push(
 			`- ${entry.task} (${r.probability}${r.threshold === null ? '' : ` >= ${r.threshold}`}): accuracy ${interval(r.accuracy)}, failed ${r.failed}`,
@@ -252,7 +268,11 @@ export function formatBaselineReport(report: BaselineReport): string {
 				`    today (${r.baseline.executor}): accuracy ${interval(r.baseline.accuracy)}; agreement ${interval(r.agreement.rate)}, kappa ${num(r.agreement.kappa)}`
 			);
 		}
-	}
+	};
+	lines.push('decision tasks:');
+	report.tasks.forEach(taskLines);
+	lines.push("today's classifiers:");
+	report.todayTasks.forEach(taskLines);
 	for (const [source, inventory] of Object.entries(report.calls)) {
 		if (!inventory) continue;
 		lines.push(`calls (${source}):`);

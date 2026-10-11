@@ -22,7 +22,7 @@
  */
 import type { EvalThread } from './corpus';
 import type { DecisionLabel, EvalSplit } from './decisionLabels';
-import type { DecisionEvalTask, DecisionPrediction, DecisionRun } from './decisionRunner';
+import type { DecisionEvalTask, DecisionPrediction, DecisionRun } from './decisionRun';
 import { threadsInSplit } from './splits';
 import {
 	brierBinary,
@@ -154,8 +154,12 @@ export interface ConsequentialError {
 export interface DecisionTaskReport extends SliceScore {
 	task: DecisionEvalTask;
 	questionType: 'choice' | 'noul';
-	probability: 'noul_probability' | 'choice_peakedness';
-	/** Noul tasks: the probability at or above which the positive class is predicted. */
+	/**
+	 * The probability scored; `none` when the executor answers with a class and
+	 * no probability (today's classifiers), so there is nothing to calibrate.
+	 */
+	probability: 'noul_probability' | 'choice_peakedness' | 'none';
+	/** Noul tasks with probabilities: the probability at or above which the positive class is predicted. */
 	threshold: number | null;
 	failed: number;
 	byLanguage: Partial<Record<Locale, SliceScore>>;
@@ -278,9 +282,11 @@ export function scoreDecisionTask(
 	options: ScoreOptions = {}
 ): DecisionTaskReport {
 	const spec = TASK_SPECS[task];
-	const threshold = spec.questionType === 'noul' ? (options.thresholds?.[task] ?? 0.5) : null;
 	const cases = casesFor(corpus, run.split, task);
 	const predictions = predictionsFor(run, task);
+	const hasProbabilities = [...predictions.values()].some((p) => p.probability !== undefined);
+	const threshold =
+		spec.questionType === 'noul' && hasProbabilities ? (options.thresholds?.[task] ?? 0.5) : null;
 	const predicted = new Map<string, string>();
 	let failed = 0;
 	for (const c of cases) {
@@ -328,7 +334,11 @@ export function scoreDecisionTask(
 	return {
 		task,
 		questionType: spec.questionType,
-		probability: spec.questionType === 'noul' ? 'noul_probability' : 'choice_peakedness',
+		probability: !hasProbabilities
+			? 'none'
+			: spec.questionType === 'noul'
+				? 'noul_probability'
+				: 'choice_peakedness',
 		threshold,
 		...sliceScore(spec, cases, predicted),
 		failed,

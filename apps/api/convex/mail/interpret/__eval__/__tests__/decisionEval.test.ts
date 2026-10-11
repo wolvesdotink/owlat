@@ -2,21 +2,19 @@
  * The decision runner with mocked providers (no network, no price), and the
  * scorer's arithmetic on a run whose answers are known.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { DecisionAnswer, QuestionSet } from '../../../../lib/decision/questions';
 import type {
-	DecisionProviderAdapter,
+	DecisionEndpointProvenance,
 	DecisionResult,
 	DecisionState,
 } from '../../../../lib/decisionProviders/types';
+import { DecisionWireError } from '../../../../lib/decisionProviders/wire';
+import { LlmPartialUsageError } from '../../../../lib/llm/partialUsage';
+import { estimateCost } from '../../../../lib/llm/pricing';
 import type { EvalThread } from '../corpus';
-import {
-	decisionProviderFromAdapter,
-	runDecisionEval,
-	type DecisionEvalTask,
-	type DecisionRun,
-	type EvalDecisionProvider,
-} from '../decisionRunner';
+import type { DecisionEvalTask, DecisionRun, EvalDecisionProvider } from '../decisionRun';
+import { runDecisionEval } from '../decisionRunner';
 import { scoreDecisionTask } from '../decisionScore';
 import { loadCorpus } from './corpusFixture';
 
@@ -25,16 +23,25 @@ const corpus = loadCorpus();
 /** Answers every question of a set through `pick`, stamped like a native adapter. */
 function mockProvider(
 	pick: (key: string, question: QuestionSet[string], state: DecisionState) => DecisionAnswer,
-	options: { calibrated?: boolean; fail?: (call: number) => boolean } = {}
+	options: {
+		calibrated?: boolean;
+		/** `true` throws a transient 503; an error is thrown as it is. */
+		fail?: (call: number) => boolean | Error;
+		provenance?: DecisionEndpointProvenance;
+		isLocal?: boolean;
+	} = {}
 ): EvalDecisionProvider & { states: DecisionState[]; calls: number } {
 	const provider = {
 		name: 'mock:decide-1',
+		isLocal: options.isLocal ?? false,
 		states: [] as DecisionState[],
 		calls: 0,
 		async ask({ state, questions }: { state: DecisionState; questions: QuestionSet }) {
 			provider.calls++;
 			provider.states.push(state);
-			if (options.fail?.(provider.calls)) throw new Error('503 upstream unavailable');
+			const failure = options.fail?.(provider.calls);
+			if (failure instanceof Error) throw failure;
+			if (failure) throw new Error('503 upstream unavailable');
 			const answers = Object.fromEntries(
 				Object.entries(questions).map(([key, q]) => [key, pick(key, q, state)])
 			);
@@ -42,7 +49,7 @@ function mockProvider(
 				answers,
 				usage: { promptTokens: 400, completionTokens: 20, totalTokens: 420 },
 				modelUsed: 'mock-decide-1',
-				provenance: 'typesafe-native',
+				provenance: options.provenance ?? 'typesafe-native',
 				calibrated: options.calibrated ?? true,
 			} as DecisionResult;
 		},
@@ -159,11 +166,130 @@ describe('runDecisionEval', () => {
 		const report = scoreDecisionTask(small, run, 'disposition');
 		expect(report).toMatchObject({ labelled: 4, answered: 0, failed: 4 });
 		expect(report.accuracy.estimate).toBeNull();
+	});
 
-		// An adapter that retries inside `ask` gets one request per round trip.
-		const selfRetrying = { ...down, handlesRetries: true };
-		const once = await runDecisionEval(small, { provider: selfRetrying, split: 'heldout', sleep });
+	it('prices a failed request off the billed usage its error carries', async () => {
+		const usage = { promptTokens: 900, completionTokens: 40, totalTokens: 940 };
+		const wire = mockProvider(() => ({ kind: 'noul', probability: 1 }), {
+			fail: () =>
+				new DecisionWireError('answer outside the option set', { usage, modelUsed: 'gpt-6-luna' }),
+		});
+		const run = await runDecisionEval(small, {
+			provider: wire,
+			split: 'heldout',
+			sleep: async () => {},
+		});
+		// A codec refusal is terminal, as in the dispatch: one request per round trip.
+		expect(run.rows).toHaveLength(13);
+		const priced = estimateCost('gpt-6-luna', usage);
+		expect(priced.costUsd).toBeGreaterThan(0);
+		for (const row of run.rows) {
+			expect(row).toMatchObject({
+				...usage,
+				modelUsed: 'gpt-6-luna',
+				costUsd: priced.costUsd,
+				isEstimated: priced.estimated,
+			});
+		}
+
+		const partial = mockProvider(() => ({ kind: 'noul', probability: 1 }), {
+			fail: () => new LlmPartialUsageError(new Error('503 overloaded'), usage, 'gpt-6-luna'),
+		});
+		const retried = await runDecisionEval(small, {
+			provider: partial,
+			split: 'heldout',
+			sleep: async () => {},
+		});
+		// Transient, so retried; each billed attempt is its own priced row.
+		expect(retried.rows).toHaveLength(26);
+		expect(retried.rows.every((r) => r.promptTokens === 900 && r.costUsd === priced.costUsd)).toBe(
+			true
+		);
+
+		// Usage the error cannot vouch for is no usage: unknown cost, marked estimated.
+		const garbled = mockProvider(() => ({ kind: 'noul', probability: 1 }), {
+			fail: () =>
+				new DecisionWireError('bad', {
+					usage: { promptTokens: -1, completionTokens: 2, totalTokens: 1 },
+					modelUsed: 'gpt-6-luna',
+				}),
+		});
+		const unknown = await runDecisionEval(small, {
+			provider: garbled,
+			split: 'heldout',
+			sleep: async () => {},
+		});
+		expect(
+			unknown.rows.every((r) => r.promptTokens === 0 && r.costUsd === 0 && r.isEstimated)
+		).toBe(true);
+	});
+
+	it('does not retry a failure the decision dispatch would not retry', async () => {
+		const refused = Object.assign(new Error('redirect refused'), { retriable: false });
+		const terminal = mockProvider(() => ({ kind: 'noul', probability: 1 }), {
+			fail: () => refused,
+		});
+		const sleeps: number[] = [];
+		const run = await runDecisionEval(small, {
+			provider: terminal,
+			split: 'heldout',
+			maxAttempts: 3,
+			sleep: async (ms) => {
+				sleeps.push(ms);
+			},
+		});
+		expect(run.rows).toHaveLength(13);
+		expect(sleeps).toEqual([]);
+		const unauthorized = Object.assign(new Error('Unauthorized'), { status: 401 });
+		const badKey = mockProvider(() => ({ kind: 'noul', probability: 1 }), {
+			fail: () => unauthorized,
+		});
+		const once = await runDecisionEval(small, {
+			provider: badKey,
+			split: 'heldout',
+			maxAttempts: 3,
+		});
 		expect(once.rows).toHaveLength(13);
+	});
+
+	it('records zero provider cost for the operator’s own engine, keeping the tokens', async () => {
+		const local = mockProvider(
+			(_, q) =>
+				q.type === 'choice'
+					? choiceAnswer(Object.keys(q.criteria)[0] as string, 0.5, Object.keys(q.criteria))
+					: { kind: 'noul', probability: 0.5 },
+			{ provenance: 'local', isLocal: true, calibrated: false }
+		);
+		const run = await runDecisionEval(small, { provider: local, split: 'heldout' });
+		expect(run.rows).toHaveLength(13);
+		for (const row of run.rows) {
+			expect(row).toMatchObject({
+				promptTokens: 400,
+				costUsd: 0,
+				isEstimated: false,
+				isLocalEngine: true,
+				endpoint: 'local',
+			});
+		}
+		// A local engine's failed request is free too.
+		const localDown = mockProvider(() => ({ kind: 'noul', probability: 1 }), {
+			isLocal: true,
+			fail: () => true,
+		});
+		const failed = await runDecisionEval(small, {
+			provider: localDown,
+			split: 'heldout',
+			sleep: async () => {},
+		});
+		expect(
+			failed.rows.every((r) => r.costUsd === 0 && r.isLocalEngine === true && !r.isEstimated)
+		).toBe(true);
+		// The answer's own provenance counts even when the provider did not say.
+		const unflagged = mockProvider(() => ({ kind: 'noul', probability: 1 }), {
+			provenance: 'local',
+		});
+		const priced = await runDecisionEval(small, { provider: unflagged, split: 'heldout' });
+		expect(priced.rows.every((r) => r.costUsd === 0)).toBe(true);
 	});
 
 	it('fails a prediction whose answer has the wrong kind', async () => {
@@ -312,38 +438,5 @@ describe('scoreDecisionTask', () => {
 		expect(scoreDecisionTask(small, uncalibrated, 'triage').calibration.adapters).toBe(
 			'uncalibrated'
 		);
-	});
-});
-
-describe('decisionProviderFromAdapter', () => {
-	it('asks the adapter with its config, the pinned model and the language model', async () => {
-		const ask = vi.fn(async () => ({}) as DecisionResult);
-		const adapter = {
-			kind: 'llm',
-			defaultModel: '',
-			handlesRetries: true,
-			ask,
-		} as unknown as DecisionProviderAdapter;
-		const provider = decisionProviderFromAdapter(
-			adapter,
-			{ apiKey: 'k' },
-			{ languageModel: 'gpt-6-luna' }
-		);
-		expect(provider.name).toBe('llm:gpt-6-luna');
-		expect(provider.handlesRetries).toBe(true);
-		await provider.ask({ state: 's', questions: {} });
-		expect(ask).toHaveBeenCalledWith(
-			{ apiKey: 'k' },
-			{ state: 's', questions: {}, model: 'gpt-6-luna' }
-		);
-
-		const native = decisionProviderFromAdapter(
-			{ ...adapter, kind: 'typesafe', defaultModel: 'jev-1' } as DecisionProviderAdapter,
-			{},
-			{ modelId: 'jev-2' }
-		);
-		expect(native.name).toBe('typesafe:jev-2');
-		await native.ask({ state: 's', questions: {} });
-		expect(ask).toHaveBeenLastCalledWith({}, { state: 's', questions: {}, modelId: 'jev-2' });
 	});
 });

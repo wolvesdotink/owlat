@@ -1,31 +1,30 @@
+'use node';
+
 /**
  * The decision eval runner: asks an INJECTED decision provider the eval's
  * question sets (`decisionQuestions.ts`) about every labelled message of one
- * split, and keeps what came back as predictions plus one ledger-shaped row per
- * provider request (`callInventory.ts` reads those rows the way it reads the
- * real ledger).
+ * split, and keeps what came back as predictions plus one priced,
+ * ledger-shaped row per provider request (`decisionRun.ts`), which
+ * `callInventory.ts` reads the way it reads the real ledger.
  *
- * Nothing here reaches a network. A live run wraps a real adapter
- * (`lib/decisionProviders/*`) in {@link decisionProviderFromAdapter} inside the
- * CLI (`apps/api/scripts/ai-baseline-eval.ts`); tests pass a mocked provider.
- * A provider that throws is an outage, not a wrong answer: the attempt is
- * recorded, retried up to `maxAttempts`, and the prediction is kept as
- * `failed` so the report counts it separately from errors of judgment.
+ * Nothing here reaches a network. A live run builds its provider in
+ * `evalProviders.ts`; tests pass a mocked one. The provider contract is one
+ * request per `ask`, so a row is a request.
  *
- * Pure and isolate-safe.
+ * Failures follow the decision dispatch (`lib/decision/dispatch.ts`): a failed
+ * request's billed usage (a rejected answer, a language call whose completions
+ * never fitted) is priced off the error, a failure the dispatch would not retry
+ * (`isRetriableDecisionError`: codec refusals, an adapter's `retriable: false`,
+ * 401/403/422) is not retried, and anything else is retried up to
+ * `maxAttempts` with a growing wait. A round trip that still fails keeps its
+ * predictions as `failed`, which the report counts apart from wrong answers.
+ *
+ * `'use node'` because the dispatch module it shares those rules with is.
  */
-import type { TokenUsage } from '../../../agent/steps/types';
-import type { QuestionSet } from '../../../lib/decision/questions';
-import type { LanguageModel } from 'ai';
 import type { AiTaskName } from '@owlat/shared/aiRouting';
-import type {
-	DecisionProviderAdapter,
-	DecisionRequest,
-	DecisionResult,
-	DecisionState,
-} from '../../../lib/decisionProviders/types';
-import type { ProviderClientConfig } from '../../../lib/llmProviders/types';
-import { estimateCost } from '../../../lib/llm/pricing';
+import { billedUsage, isRetriableDecisionError } from '../../../lib/decision/dispatch';
+import type { QuestionSet } from '../../../lib/decision/questions';
+import type { DecisionResult, DecisionState } from '../../../lib/decisionProviders/types';
 import type { EvalThread } from './corpus';
 import type { DecisionLabel, EvalSplit } from './decisionLabels';
 import {
@@ -37,93 +36,16 @@ import {
 	type DecisionEvalBundles,
 	type DecisionEvalInput,
 } from './decisionQuestions';
-import type { LedgerCallRow } from './callInventory';
+import {
+	errorText,
+	evalRootRequestId,
+	pricedColumns,
+	type DecisionEvalTask,
+	type DecisionPrediction,
+	type DecisionRun,
+	type EvalDecisionProvider,
+} from './decisionRun';
 import { threadsInSplit } from './splits';
-
-/** The tasks the decision report scores. */
-export const DECISION_EVAL_TASKS = [
-	'triage',
-	'postbox_category',
-	'team_category',
-	'disposition',
-	'necessity',
-	'draft_quality',
-] as const;
-export type DecisionEvalTask = (typeof DECISION_EVAL_TASKS)[number];
-
-/** A decision provider the runner can ask. Exactly one request per call. */
-export interface EvalDecisionProvider {
-	readonly name: string;
-	/**
-	 * The adapter retries inside `ask` (the language-backed one does, through
-	 * `runLlmObject`). The runner then makes one request per round trip, as the
-	 * decision dispatch does, and its rows undercount those inner retries.
-	 */
-	readonly handlesRetries?: boolean;
-	ask(request: { state: DecisionState; questions: QuestionSet }): Promise<DecisionResult>;
-}
-
-/**
- * Wrap a registered adapter and its client config (a live run; tests pass a
- * mock provider instead). The language-backed adapter (`llm`) reads the
- * resolved language model off the request, as the decision dispatch supplies
- * it; pass it as `languageModel`.
- */
-export function decisionProviderFromAdapter(
-	adapter: DecisionProviderAdapter,
-	config: ProviderClientConfig,
-	options: { modelId?: string; languageModel?: LanguageModel } = {}
-): EvalDecisionProvider {
-	const { modelId, languageModel } = options;
-	const model =
-		languageModel === undefined
-			? (modelId ?? adapter.defaultModel)
-			: typeof languageModel === 'string'
-				? languageModel
-				: languageModel.modelId;
-	return {
-		name: `${adapter.kind}:${model}`,
-		handlesRetries: adapter.handlesRetries,
-		ask: ({ state, questions }) =>
-			adapter.ask(config, {
-				state,
-				questions,
-				...(modelId ? { modelId } : {}),
-				...(languageModel === undefined ? {} : { model: languageModel }),
-			} as DecisionRequest),
-	};
-}
-
-/** One answer to one task about one message (or one draft). */
-export interface DecisionPrediction {
-	task: DecisionEvalTask;
-	threadId: string;
-	messageId: string;
-	draftId?: string;
-	locale: EvalThread['locale'];
-	outcome: 'answered' | 'failed';
-	/** Choice tasks: the chosen option. Noul tasks derive theirs from `probability`. */
-	value?: string;
-	/**
-	 * Noul tasks: the Noul probability that the statement is true. Choice tasks:
-	 * the Choice confidence (how peaked the distribution is), which is what a
-	 * Choice threshold reads. The report names which one it scored.
-	 */
-	probability?: number;
-	/** Choice tasks: the full distribution over the options sent. */
-	distribution?: Record<string, number>;
-	/** The answering adapter stamped its probabilities calibrated. */
-	isCalibrated?: boolean;
-	error?: string;
-}
-
-export interface DecisionRun {
-	executor: string;
-	split: EvalSplit | 'all';
-	predictions: DecisionPrediction[];
-	/** One row per provider request, in the ledger's own field names. */
-	rows: LedgerCallRow[];
-}
 
 /**
  * The ledger task a round trip records under (the task-policy catalog's
@@ -137,20 +59,11 @@ const LEDGER_TASK = {
 	draft: 'mail.draft_quality',
 } as const satisfies Record<string, AiTaskName>;
 
-/** `eval.<executor>.<surface>`: the call-inventory path of an eval message. */
-export function evalRootRequestId(
-	executor: 'decision' | 'today',
-	input: Pick<DecisionEvalInput, 'mode' | 'threadId' | 'messageId'>
-): string {
-	const surface = input.mode === 'actions' ? 'team' : 'postbox';
-	return `eval.${executor}.${surface}:${input.threadId}/${input.messageId}`;
-}
-
 export interface DecisionRunOptions {
 	provider: EvalDecisionProvider;
 	split: EvalSplit | 'all';
 	bundles?: DecisionEvalBundles;
-	/** Requests per round trip, the first included; 1 when the provider retries itself. */
+	/** Requests per round trip, the first included. */
 	maxAttempts?: number;
 	/** Wall clock for `latencyMs`; injected so tests stay deterministic. */
 	now?: () => number;
@@ -161,25 +74,14 @@ export interface DecisionRunOptions {
 const RETRY_DELAY_MS = 1000;
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** An error as a short, single string for a report. */
-export const errorText = (error: unknown) =>
-	(error instanceof Error ? error.message : String(error)).slice(0, 200);
-
-function tokenRow(usage: TokenUsage | undefined) {
-	return {
-		promptTokens: usage?.promptTokens ?? 0,
-		completionTokens: usage?.completionTokens ?? 0,
-		totalTokens: usage?.totalTokens ?? 0,
-	};
-}
-
 /** Ask every labelled message (and draft) of the split. Sequential: a run is rate-friendly. */
 export async function runDecisionEval(
 	corpus: readonly EvalThread[],
 	options: DecisionRunOptions
 ): Promise<DecisionRun> {
 	const bundles = options.bundles ?? EVAL_DECISION_BUNDLES;
-	const maxAttempts = options.provider.handlesRetries ? 1 : Math.max(1, options.maxAttempts ?? 2);
+	const maxAttempts = Math.max(1, options.maxAttempts ?? 2);
+	const isLocal = options.provider.isLocal === true;
 	const now = options.now ?? Date.now;
 	const sleep = options.sleep ?? realSleep;
 	const run: DecisionRun = {
@@ -212,28 +114,27 @@ export async function runDecisionEval(
 			};
 			try {
 				const result = await options.provider.ask({ state, questions });
-				const cost = estimateCost(result.modelUsed, result.usage);
 				run.rows.push({
 					...base,
-					...tokenRow(result.usage),
-					modelUsed: result.modelUsed,
+					...pricedColumns({
+						usage: result.usage,
+						modelUsed: result.modelUsed,
+						isLocal: isLocal || result.provenance === 'local',
+					}),
 					endpoint: result.provenance,
-					costUsd: cost.costUsd,
-					isEstimated: cost.estimated,
 					latencyMs: now() - started,
 				});
 				return { result };
 			} catch (caught) {
 				error = errorText(caught);
-				// A failed request may still have been billed; with no usage there is
-				// nothing to price, and the row says the cost is not reported usage.
+				// What the failed request was billed for, when the error says.
+				const billed = billedUsage(caught);
 				run.rows.push({
 					...base,
-					...tokenRow(undefined),
-					costUsd: 0,
-					isEstimated: true,
+					...pricedColumns({ ...billed, isLocal }),
 					latencyMs: now() - started,
 				});
+				if (!isRetriableDecisionError(caught)) break;
 			}
 		}
 		return { error };
