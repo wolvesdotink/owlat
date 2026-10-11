@@ -270,7 +270,7 @@ runs as resumable jobs (`purgeRun.ts`, `threadPurgeJobs`).
 
 ## Eval gate
 
-`apps/api/convex/mail/interpret/__eval__/` holds a labelled corpus (71
+`apps/api/convex/mail/interpret/__eval__/` holds a labelled corpus (100
 threads across the slices of plan §14: forwards, inline replies, quoted
 history, German, injection, amounts and deadlines with time zones, team notes
 and more) and a replay harness over the deterministic parts: scope,
@@ -290,6 +290,12 @@ evidence validity, the unsupported rate and cost, without gating. Either way
 it writes the metrics to a report file (`__eval__/reportFile.ts`), by default
 `apps/api/.interpret-eval/report.json`, which is git-ignored, so two runs can
 be compared. The 1,000-thread corpus the plan asks for is follow-up work.
+
+The AI routing plan (ADR-0073) extends the same corpus with decision labels
+(triage, category, reply disposition, clarification necessity, draft
+acceptance) and training, calibration and held-out splits. Its baseline report
+comes from `bun apps/api/scripts/ai-baseline-eval.ts`; the script's header
+lists the switches, and nothing reaches a provider unless they are set.
 
 ## Owner decisions
 

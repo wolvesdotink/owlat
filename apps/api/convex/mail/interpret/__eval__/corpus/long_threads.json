@@ -7,6 +7,7 @@
 			"slices": ["long_threads", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -335,6 +336,14 @@
 						"assertion": "Review section 3",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m15",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person"
+					}
 				]
 			}
 		},
@@ -343,6 +352,7 @@
 			"slices": ["long_threads", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -688,6 +698,31 @@
 						"assertion": "Lies Kapitel 5 gegen",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m17",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hallo Lena,\n\ndanke für Kapitel 17! Ich melde mich dazu.\n\nViele Grüße\nMara",
+								"acceptance": "accept",
+								"reason": "Answers the latest message, not the old chapters, and promises nothing more."
+							},
+							{
+								"id": "d2",
+								"text": "Hallo Lena,\n\ndanke für Kapitel 3! Ich melde mich dazu.\n\nMara",
+								"acceptance": "edit",
+								"reason": "Replies to an old chapter from the quoted history."
+							}
+						]
+					}
 				]
 			}
 		},
@@ -696,6 +731,7 @@
 			"slices": ["long_threads", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -1032,6 +1068,17 @@
 						"assertion": "Confirm receipt of batch 15",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m15",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						}
+					}
 				]
 			}
 		},
@@ -1040,6 +1087,7 @@
 			"slices": ["long_threads", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -1370,6 +1418,14 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m17",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person"
+					}
 				]
 			}
 		},
@@ -1378,6 +1434,7 @@
 			"slices": ["long_threads", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -1713,6 +1770,14 @@
 						"segmentKind": "quoted",
 						"assertion": "Emil schickt den Bericht für Woche 9 am Freitag",
 						"reject": "not_fresh"
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m15",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person"
 					}
 				]
 			}

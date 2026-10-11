@@ -7,6 +7,7 @@
 			"slices": ["automated", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -75,6 +76,15 @@
 						"segmentKind": "fresh",
 						"assertion": "Invoice INV-2231 is EUR 1,250.00"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "receipt",
+						"senderKnown": false
+					}
 				]
 			}
 		},
@@ -83,6 +93,7 @@
 			"slices": ["automated", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -132,6 +143,15 @@
 							"tz": "Europe/Berlin"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "notification",
+						"senderKnown": false
+					}
 				]
 			}
 		},
@@ -140,6 +160,7 @@
 			"slices": ["automated", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -191,6 +212,15 @@
 							"currency": "USD"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "receipt",
+						"senderKnown": false
+					}
 				]
 			}
 		},
@@ -199,6 +229,7 @@
 			"slices": ["automated", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -238,6 +269,15 @@
 						"segmentKind": "fresh",
 						"assertion": "Die Sendung kommt am 6. Oktober zwischen 10 und 14 Uhr"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "receipt",
+						"senderKnown": false
+					}
 				]
 			}
 		},
@@ -246,6 +286,7 @@
 			"slices": ["automated", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -293,6 +334,59 @@
 						"due": {
 							"phrase": "by 16 October 2026"
 						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "notification",
+						"senderKnown": false
+					}
+				]
+			}
+		},
+		{
+			"id": "auto-006",
+			"slices": ["automated", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"split": "heldout",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Shop",
+						"email": "bestellung@shop.example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T13:00:00+02:00",
+					"subject": "Deine Bestellung 4411",
+					"text": "Danke für deine Bestellung!\n\nBestellnummer: 4411\nSumme: 59,90 €\nVoraussichtliche Lieferung: 14. Oktober 2026\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "receipt",
+						"senderKnown": false
 					}
 				]
 			}

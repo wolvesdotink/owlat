@@ -7,6 +7,7 @@
 			"slices": ["clearsigned_trailer", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -70,6 +71,15 @@
 						"assertion": "Wire the deposit to the new account",
 						"reject": "quote_failed"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -78,6 +88,7 @@
 			"slices": ["clearsigned_trailer", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -137,6 +148,18 @@
 						"assertion": "Zugangsdaten bestätigen",
 						"reject": "quote_failed"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -145,6 +168,7 @@
 			"slices": ["clearsigned_trailer", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -204,6 +228,18 @@
 						"assertion": "Check the list gateway",
 						"reject": "quote_failed"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -212,6 +248,7 @@
 			"slices": ["clearsigned_trailer", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -282,6 +319,15 @@
 						"assertion": "Reply with the recovery code",
 						"reject": "quote_failed"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -290,6 +336,7 @@
 			"slices": ["clearsigned_trailer", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -348,6 +395,15 @@
 						"segmentKind": "fresh",
 						"assertion": "Approve Noah's EUR 900 expense report",
 						"reject": "quote_failed"
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
 					}
 				]
 			}

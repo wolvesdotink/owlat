@@ -16,7 +16,7 @@
  * It sends every corpus message through the interpretation prompt
  * (`__eval__/liveModel.ts`) and prints the metrics; it does not gate.
  */
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parseEvalCorpus } from '../convex/mail/interpret/__eval__/corpus';
 import {
@@ -26,24 +26,15 @@ import {
 } from '../convex/mail/interpret/__eval__/runEval';
 import { createLiveEvalModel } from '../convex/mail/interpret/__eval__/liveModel';
 import { evalReportFile } from '../convex/mail/interpret/__eval__/reportFile';
+import { EVAL_CORPUS_DIR, evalLanguageModelFromEnv, readEvalCorpusDir } from './evalSupport';
 
 /** The live model from the environment, or null (then the oracle replays). */
 async function liveModel(): Promise<EvalModel | null> {
-	const modelId = process.env.INTERPRET_EVAL_MODEL;
-	if (!modelId) return null;
+	const live = await evalLanguageModelFromEnv();
+	if (!live) return null;
 	const { generateObject } = await import('ai');
-	let model;
-	if (process.env.ANTHROPIC_API_KEY) {
-		const { createAnthropic } = await import('@ai-sdk/anthropic');
-		model = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })(modelId);
-	} else if (process.env.OPENAI_API_KEY) {
-		const { createOpenAI } = await import('@ai-sdk/openai');
-		model = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })(modelId);
-	} else {
-		return null;
-	}
-	return createLiveEvalModel(modelId, async ({ prompt, schema }) => {
-		const { object } = await generateObject({ model, schema, prompt, temperature: 0 });
+	return createLiveEvalModel(live.modelId, async ({ prompt, schema }) => {
+		const { object } = await generateObject({ model: live.model, schema, prompt, temperature: 0 });
 		return { object };
 	});
 }
@@ -55,13 +46,8 @@ const out =
 		? join(import.meta.dirname, '..', '.interpret-eval', 'report.json')
 		: (args[outAt + 1] ?? '');
 const positional = outAt === -1 ? args : args.filter((_, i) => i !== outAt && i !== outAt + 1);
-const dir =
-	positional[0] ??
-	join(import.meta.dirname, '..', 'convex', 'mail', 'interpret', '__eval__', 'corpus');
-const files = readdirSync(dir)
-	.filter((name) => name.endsWith('.json'))
-	.sort()
-	.map((name) => JSON.parse(readFileSync(join(dir, name), 'utf8')) as unknown);
+const dir = positional[0] ?? EVAL_CORPUS_DIR;
+const files = readEvalCorpusDir(dir);
 
 const model = await liveModel();
 const report = await runEval(parseEvalCorpus(files), model ?? undefined);

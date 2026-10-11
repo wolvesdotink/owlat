@@ -11,7 +11,11 @@
  *   - `traps`: claims a model could plausibly propose that must never become
  *     a TRACKED obligation: rejected outright (an ask from quoted history,
  *     text outside a signature), or kept only as a proposal (an ask in a
- *     forward sent as information, in a signature or a disclaimer).
+ *     forward sent as information, in a signature or a disclaimer);
+ *   - `decisions`: the bounded judgments about an inbound message (triage,
+ *     category, reply disposition, clarification necessity, draft acceptance),
+ *     described in `./decisionLabels.ts`.
+ * Each thread names its split (training, calibration or held-out).
  * Labelled items whose quote lies in a forwarded, signature or disclaimer
  * segment are expected to ground as proposals, never as tracked items.
  *
@@ -21,6 +25,7 @@
  */
 import { z } from 'zod';
 import { ITEM_FACETS, ITEM_INTENTS, MESSAGE_SEGMENT_KINDS } from '@owlat/shared/threadBrief';
+import { EVAL_SPLITS, checkDecisionLabels, decisionLabelSchema } from './decisionLabels';
 
 export const EVAL_SLICES = [
 	'en',
@@ -36,6 +41,10 @@ export const EVAL_SLICES = [
 	'injection',
 	'amounts_deadlines_tz',
 	'team_notes',
+	'team_inbox',
+	'complaints',
+	'incomplete_evidence',
+	'spam',
 ] as const;
 
 const SEGMENT_KINDS = MESSAGE_SEGMENT_KINDS;
@@ -122,6 +131,8 @@ export const evalThreadSchema = z
 		slices: z.array(z.enum(EVAL_SLICES)).min(1),
 		locale: z.enum(['en', 'de']),
 		mode: z.enum(['brief', 'actions']),
+		/** Which split the thread belongs to (`./decisionLabels.ts`, `./splits.ts`). */
+		split: z.enum(EVAL_SPLITS),
 		us: z.array(party).min(1),
 		messages: z.array(message).min(1),
 		internalNotes: z
@@ -134,6 +145,8 @@ export const evalThreadSchema = z
 				items: z.array(itemLabel),
 				facts: z.array(factLabel).optional(),
 				traps: z.array(trapLabel).optional(),
+				/** The bounded judgments (`./decisionLabels.ts`). */
+				decisions: z.array(decisionLabelSchema).min(1),
 			})
 			.strict(),
 	})
@@ -170,6 +183,7 @@ export function parseEvalCorpus(files: readonly unknown[]): EvalThread[] {
 		if (thread.mode === 'actions' && (thread.labels.facts?.length ?? 0) > 0) {
 			throw new Error(`${thread.id}: actions-mode threads carry no facts`);
 		}
+		checkDecisionLabels(thread);
 	}
 	return threads;
 }
