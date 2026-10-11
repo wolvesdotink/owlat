@@ -45,7 +45,8 @@ export const INFORMATIONAL_MIN_CONFIDENCE = 0.6;
  * gets the reply path, whatever the boolean says. */
 const INFORMATIONAL_INTENTS: ReadonlySet<string> = new Set(['information', 'acknowledgment']);
 
-const classificationSchema = z.object({
+/** Exported for the decision eval's today-classifier baseline (`mail/interpret/__eval__`). */
+export const classificationSchema = z.object({
 	category: z
 		.enum([
 			'support',

@@ -5,20 +5,14 @@
  * input, and the metrics must come out perfect. A failure here is a
  * segmentation or grounding defect (or a mislabelled thread), not a model one.
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { EVAL_SLICES, parseEvalCorpus, type EvalThread } from '../corpus';
 import { arrivalOrder, modelInputFor, replayThread } from '../replay';
 import { formatEvalReport, runEval, type EvalModel } from '../runEval';
 import type { EvalModelInput } from '../replay';
+import { loadCorpus } from './corpusFixture';
 
-const CORPUS_DIR = join(import.meta.dirname, '..', 'corpus');
-const files = readdirSync(CORPUS_DIR)
-	.filter((f) => f.endsWith('.json'))
-	.sort()
-	.map((f) => JSON.parse(readFileSync(join(CORPUS_DIR, f), 'utf8')) as unknown);
-const corpus = parseEvalCorpus(files);
+const corpus = loadCorpus();
 const eligible = corpus.filter((t) => !t.expectIneligible);
 
 describe('eval corpus', () => {
