@@ -36,7 +36,7 @@ import { openMessageBody } from '../../lib/messageBody';
 import { rowFactKeyLabel } from './factKeys';
 import { mailboxOwnAddresses } from '../identities';
 import { loadBriefRow, resolveThreadMode } from './briefRow';
-import type { InterpretEligibilitySignals } from './eligibility';
+import { settleCategory, type InterpretEligibilitySignals } from './eligibility';
 import { loadInterpretSource, teamReplyContext } from './sources';
 import {
 	CLOSED_ITEM_LOOKBACK_MS,
@@ -415,7 +415,20 @@ export const loadForInterpretation = internalQuery({
 		// The snapshot taken at enqueue (sources.ts); without one the message is
 		// not interpreted, so a retry can never widen what was eligible.
 		const snapshot = await loadInterpretSource(ctx, args.source);
-		const eligibility: InterpretEligibilitySignals | null = snapshot?.eligibility ?? null;
+		// The category the bulk rule reads is settled at run time (PR-4).
+		let eligibility: InterpretEligibilitySignals | null = snapshot?.eligibility ?? null;
+		let categoryPendingUntil: number | undefined;
+		if (snapshot && eligibility && info.threadRef.kind === 'mail') {
+			const thread = await ctx.db.get(info.threadRef.id);
+			const settled = settleCategory(eligibility, {
+				...(thread?.category ? { threadCategory: thread.category } : {}),
+				capturedAt: snapshot.createdAt,
+				now: Date.now(),
+				direction: info.direction,
+			});
+			if ('pendingUntil' in settled) categoryPendingUntil = settled.pendingUntil;
+			else eligibility = settled.signals;
+		}
 
 		const brief = await loadBriefRow(ctx, info.threadRef);
 		const now = Date.now();
@@ -462,6 +475,7 @@ export const loadForInterpretation = internalQuery({
 			...info,
 			mode,
 			eligibility,
+			...(categoryPendingUntil !== undefined ? { categoryPendingUntil } : {}),
 			brief: {
 				interpretationRevision: brief?.interpretationRevision ?? 0,
 				deletionEpoch: brief?.deletionEpoch ?? 0,

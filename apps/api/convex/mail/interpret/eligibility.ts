@@ -68,6 +68,47 @@ export function isInterpretationEligible(
 	return { isEligible: true };
 }
 
+// ── The category the bulk rule reads (PR review PR-4) ──────────────────────
+
+/** How long a run waits for the category model to refine a provisional label. */
+export const CATEGORY_SETTLE_MS = 10 * 60 * 1000;
+
+/**
+ * The eligibility a run decides on: the snapshot's immutable ingest signals
+ * (live, folder, mute, bulk headers, known sender) with the CATEGORY settled.
+ *
+ * Delivery snapshots eligibility in the transaction that enqueues the run, but
+ * a thread's category may still be the provisional baseline there (`other`,
+ * written by `categoryArrival.enqueueCategoryCheck` while the model refinement
+ * is scheduled). Freezing that would let a stranger's newsletter through the
+ * bulk rule (D2). So, for a bulk-stranger candidate only (bulk header and an
+ * unknown sender, inbound): the thread's category is read again when the run
+ * starts; while it is still provisional and the capture is younger than
+ * {@link CATEGORY_SETTLE_MS}, the run waits (`pendingUntil`); after that, or
+ * once the refinement landed, the thread's label is final. Every other
+ * message decides on the snapshot as captured. Pure.
+ */
+export function settleCategory(
+	signals: InterpretEligibilitySignals,
+	input: {
+		threadCategory?: { label: string; source: string };
+		capturedAt: number;
+		now: number;
+		direction?: 'inbound' | 'outbound';
+	}
+): { signals: InterpretEligibilitySignals } | { pendingUntil: number } {
+	if (input.direction === 'outbound' || !signals.isBulkHeaderPresent || signals.isSenderKnown) {
+		return { signals };
+	}
+	const category = input.threadCategory;
+	const isProvisional =
+		!category || (category.source === 'heuristic' && category.label === 'other');
+	const settlesAt = input.capturedAt + CATEGORY_SETTLE_MS;
+	if (isProvisional && input.now < settlesAt) return { pendingUntil: settlesAt };
+	const label = category?.label ?? signals.category;
+	return { signals: { ...signals, ...(label ? { category: label } : {}) } };
+}
+
 // ── Short and security mail (what a run shows) ─────────────────────────────
 
 /** A fresh part at or under this length, alone in its thread, gets no "Latest update". */
