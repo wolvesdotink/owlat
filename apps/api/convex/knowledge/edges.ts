@@ -28,6 +28,8 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
+import { currentEmbeddingSpaceKey } from '../lib/embeddingSpace';
+import { batchGet } from '../_utils/batchLoader';
 import { contactScopesCanLink } from '../lib/contactScope';
 import { mergeEdgeAttrs, type EdgeAttrs } from '../lib/knowledgeEdges';
 import {
@@ -305,6 +307,29 @@ export const isInferenceEnabled = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<boolean> => {
 		return await isFeatureEnabled(ctx, 'ai.knowledge.autoLink');
+	},
+});
+
+/**
+ * The anchors of an inference pass together with the embedding space their
+ * stored vectors are in, read in ONE transaction. Reading the key separately
+ * could pair an anchor's old-space vector with a space the deployment switched
+ * to in between (the corpus can empty and switch between two reads), and the
+ * retrieval fence (`vectorHitsInCurrentSpace`) would then accept the other
+ * space's hits.
+ */
+export const getAnchorsWithEmbeddingSpace = internalQuery({
+	args: { ids: v.array(v.id('knowledgeEntries')) },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ anchors: Doc<'knowledgeEntries'>[]; embeddingSpaceKey: string }> => {
+		const byId = await batchGet(ctx, args.ids);
+		const anchors = args.ids.flatMap((id) => {
+			const entry = byId.get(id);
+			return entry ? [entry] : [];
+		});
+		return { anchors, embeddingSpaceKey: await currentEmbeddingSpaceKey(ctx.db) };
 	},
 });
 

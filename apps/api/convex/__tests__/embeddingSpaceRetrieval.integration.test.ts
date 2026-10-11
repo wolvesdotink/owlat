@@ -183,3 +183,60 @@ describe('vector search after an in-flight embedding-space switch', () => {
 		expect(current).toHaveLength(1);
 	});
 });
+
+describe('edge inference anchors and their space key', () => {
+	it('pairs an anchor vector with the space it was read in, so a later switch is fenced', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t, undefined); // space A
+		const anchorId = await t.mutation(internal.knowledge.graph.saveEntry, {
+			entryType: 'fact',
+			title: 'Anchor in A',
+			content: 'Anchor in A',
+			sourceType: 'manual',
+			embedding: unit(5),
+			confidence: 0.9,
+			embeddingSpaceKey: await currentKey(t),
+		});
+
+		// inferRelations reads its anchors and their space key in one transaction.
+		const { anchors, embeddingSpaceKey } = await t.query(
+			internal.knowledge.edges.getAnchorsWithEmbeddingSpace,
+			{ ids: [anchorId] }
+		);
+		const anchorVector = anchors[0]!.embedding;
+
+		// Before its search runs: the last A vector goes, the empty corpus switches
+		// to B, and a B vector commits.
+		await t.run((ctx) => ctx.db.delete(anchorId));
+		await configureLocalEmbedder(t, 'mxbai-embed-large');
+		const keyB = await currentKey(t);
+		await t.mutation(internal.knowledge.graph.saveEntry, {
+			entryType: 'fact',
+			title: 'Entry in B',
+			content: 'Entry in B',
+			sourceType: 'manual',
+			embedding: unit(5),
+			confidence: 0.9,
+			embeddingSpaceKey: keyB,
+		});
+
+		// The cached A vector keeps its A key, so the fence drops the B hit.
+		const hits = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embedding: anchorVector,
+			embeddingSpaceKey,
+			scopeToContact: 'org-general-only',
+			includeInboxDerived: true,
+		});
+		expect(hits).toEqual([]);
+		// Labelling it with a key read afterwards (the old two-read pattern) would
+		// have let the B entry through.
+		expect(embeddingSpaceKey).not.toBe(keyB);
+		const mislabelled = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embedding: anchorVector,
+			embeddingSpaceKey: keyB,
+			scopeToContact: 'org-general-only',
+			includeInboxDerived: true,
+		});
+		expect(mislabelled.map((e) => e.title)).toEqual(['Entry in B']);
+	});
+});

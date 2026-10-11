@@ -118,7 +118,11 @@ export const inferRelations = internalAction({
 		if (!(await ctx.runQuery(internal.knowledge.edges.isInferenceEnabled, {}))) return;
 
 		// Load the freshly-ingested anchors.
-		const anchors = await ctx.runQuery(internal.knowledge.graph.getByIds, { ids: args.entryIds });
+		// The anchors and the space their stored vectors are in, read together.
+		const { anchors, embeddingSpaceKey } = await ctx.runQuery(
+			internal.knowledge.edges.getAnchorsWithEmbeddingSpace,
+			{ ids: args.entryIds }
+		);
 		if (anchors.length === 0) return;
 		const anchorIds = new Set(anchors.map((a) => a._id as string));
 
@@ -128,12 +132,6 @@ export const inferRelations = internalAction({
 		// 'org-wide', so a neighbor — and any edge to it — can't bridge to another
 		// contact's data.
 		const candidatesById = new Map<string, Doc<'knowledgeEntries'>>();
-		// The anchors' stored vectors are in the space current now; the search
-		// drops its hits if that changes before it reads them.
-		const embeddingSpaceKey = await ctx.runQuery(
-			internal.aiProviderConfig._currentEmbeddingSpaceKey,
-			{}
-		);
 		for (const anchor of anchors) {
 			if (candidatesById.size >= MAX_CANDIDATES) break;
 			const embedding = anchor.embedding;

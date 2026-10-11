@@ -45,7 +45,6 @@ import { validateOutboundUrl } from './lib/outboundUrlValidation';
 import { envelopeValidator, resolvePlaneSecrets } from './lib/aiProviderSecrets';
 import {
 	assertRemovalKeepsEmbeddingSpace,
-	currentEmbeddingSpaceKey,
 	embeddingSelectionForSave,
 	isEmbeddingSpaceCurrent,
 	isLocalEmbeddingKind,
@@ -270,13 +269,6 @@ export const _isEmbeddingSpaceCurrent = internalQuery({
 	args: { embeddingSpaceKey: v.optional(v.string()) },
 	returns: v.boolean(),
 	handler: async (ctx, args) => await isEmbeddingSpaceCurrent(ctx.db, args.embeddingSpaceKey),
-});
-
-/** The current embedding space key, for a job that searches with stored vectors. */
-export const _currentEmbeddingSpaceKey = internalQuery({
-	args: {},
-	returns: v.string(),
-	handler: async (ctx) => await currentEmbeddingSpaceKey(ctx.db),
 });
 
 /**
