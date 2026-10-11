@@ -112,7 +112,9 @@ export async function embedRetrievalQuery(
 	// error rather than silently returning zero results.
 	const embeddingModel = await resolveEmbeddingModel(ctx);
 	try {
-		const { embedding } = await embed({ model: embeddingModel, value: queryText });
+		// The searches have always embedded the trimmed text; trimmed here once so
+		// every caller's vector matches it.
+		const { embedding } = await embed({ model: embeddingModel, value: queryText.trim() });
 		return { kind: 'vector', embedding: toIndexVector(embedding) };
 	} catch (error) {
 		logInfo(`${logTag} embed failed`, { error: String(error) });

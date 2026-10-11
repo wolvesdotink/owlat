@@ -27,6 +27,9 @@ vi.mock('../../../../lib/llmProvider', async () => ({
 import { contextRetrievalStep } from '../index';
 
 const messageId = 'msg_embed' as Id<'inboundMessages'>;
+// Surrounding whitespace, which the searches have always trimmed before embedding.
+const SUBJECT = '   Can you confirm my order shipped?';
+const BODY = 'Hi, I placed order 123 last week — has it shipped yet?\n\n  ';
 const input = { inboundMessageId: messageId };
 
 function makeCtx(hasVectors: boolean) {
@@ -37,8 +40,8 @@ function makeCtx(hasVectors: boolean) {
 			getMessage: {
 				from: 'sender@example.com',
 				to: 'support@owlat.app',
-				subject: 'Can you confirm my order shipped?',
-				textBody: 'Hi, I placed order 123 last week — has it shipped yet?',
+				subject: SUBJECT,
+				textBody: BODY,
 				receivedAt: Date.now(),
 			},
 			isGraphRetrievalEnabled: false,
@@ -75,6 +78,10 @@ describe('contextRetrievalStep — one query embedding', () => {
 		await contextRetrievalStep.execute(ctx, input);
 
 		expect(mocks.embed).toHaveBeenCalledTimes(1);
+		// The exact text each search embedded before: its query text, trimmed.
+		expect(mocks.embed.mock.calls[0]![0]).toMatchObject({
+			value: `${SUBJECT}\n${BODY}`.slice(0, 2000).trim(),
+		});
 		expect(vectorChecks).toEqual([{ tables: ['knowledgeEntries', 'semanticFiles'] }]);
 		expect(searches.map((s) => s.name)).toEqual(['knowledge', 'files']);
 		const [knowledge, files] = searches;
