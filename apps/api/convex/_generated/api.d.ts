@@ -172,6 +172,7 @@ import type * as agentConfigMutations from '../agentConfigMutations.js';
 import type * as agentHealth from '../agentHealth.js';
 import type * as aiProviderConfig from '../aiProviderConfig.js';
 import type * as aiProviderConfigActions from '../aiProviderConfigActions.js';
+import type * as aiRouting_policy from '../aiRouting/policy.js';
 import type * as analytics_adaptiveDashboard from '../analytics/adaptiveDashboard.js';
 import type * as analytics_cellArmBuckets from '../analytics/cellArmBuckets.js';
 import type * as analytics_complianceTelemetry from '../analytics/complianceTelemetry.js';
@@ -1779,6 +1780,7 @@ declare const fullApi: ApiFromModules<{
 	agentHealth: typeof agentHealth;
 	aiProviderConfig: typeof aiProviderConfig;
 	aiProviderConfigActions: typeof aiProviderConfigActions;
+	'aiRouting/policy': typeof aiRouting_policy;
 	'analytics/adaptiveDashboard': typeof analytics_adaptiveDashboard;
 	'analytics/cellArmBuckets': typeof analytics_cellArmBuckets;
 	'analytics/complianceTelemetry': typeof analytics_complianceTelemetry;
