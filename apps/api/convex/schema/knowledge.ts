@@ -1,12 +1,13 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { literalUnion } from '../lib/literalUnion';
+import { backfillJobStatusValidator } from '../lib/literalValidators';
 import {
-	backfillJobStatusValidator,
-	captureSourceValidator,
-	semanticFileSourceTypeValidator,
-} from '../lib/literalValidators';
+	embeddingProvenanceFields,
+	embeddingSecondarySlotFields,
+} from '../lib/validators/embedding';
 import { knowledgeEntryCommitmentFacets } from './knowledgeCommitmentFacets';
+import { semanticFileTables } from './semanticFiles';
 
 /**
  * The knowledge entry types, as a literal tuple. Single source of truth for both
@@ -163,6 +164,17 @@ export const knowledgeEntriesFields = {
 	embeddingModel: v.optional(v.string()),
 	// When `embedding` was generated; used to schedule re-embedding on stale entries.
 	embeddingGeneratedAt: v.optional(v.number()),
+	// Embedding provenance (ADR-0073): the space `embedding` lives in and where
+	// that assignment came from. Absent space ⇒ unknown: vector search excludes
+	// the entry until the re-embed job stamps it; full-text search still finds it.
+	...embeddingProvenanceFields,
+	// Phase 5's staged-rebuild column (lib/validators/embedding.ts).
+	...embeddingSecondarySlotFields,
+	// Vector filters cannot AND two fields, so the space-and-type filter reads
+	// one composite key per column: `embeddingSpaceEntryKey(spaceId, entryType)`
+	// (lib/aiRouting/embeddingKeys.ts). Written with the space id.
+	embeddingSpaceEntryKey: v.optional(v.string()),
+	secondaryEmbeddingSpaceEntryKey: v.optional(v.string()),
 	// Confidence and maintenance
 	confidence: v.number(), // 0-1
 	lastValidatedAt: v.number(),
@@ -216,6 +228,10 @@ export const knowledgeTables = {
 		.index('by_thread', ['threadId'])
 		.index('by_source', ['sourceType', 'sourceId'])
 		.index('by_content_hash', ['contentHash'])
+		// The re-embed job's walk over unknown (absent) and inactive-space rows,
+		// and an attestation's cohort by the time its vectors were written.
+		.index('by_embedding_space', ['embeddingSpaceId', 'embeddingGeneratedAt'])
+		.index('by_secondary_embedding_space', ['secondaryEmbeddingSpaceId'])
 		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): message bodies are sealed with
 		// the instance data key, but `searchableText` (the full-text search field
 		// derived from body/knowledge text) and `embedding` (the vector derived from
@@ -230,7 +246,12 @@ export const knowledgeTables = {
 		.vectorIndex('vector_knowledge', {
 			vectorField: 'embedding',
 			dimensions: 1536,
-			filterFields: ['entryType'],
+			filterFields: ['entryType', 'embeddingSpaceId', 'embeddingSpaceEntryKey'],
+		})
+		.vectorIndex('vector_knowledge_secondary', {
+			vectorField: 'secondaryEmbedding',
+			dimensions: 1536,
+			filterFields: ['secondaryEmbeddingSpaceId', 'secondaryEmbeddingSpaceEntryKey'],
 		}),
 
 	// Knowledge Entry ↔ Contact junction — an index-able mirror of
@@ -285,101 +306,7 @@ export const knowledgeTables = {
 		.index('by_pair', ['fromEntryId', 'toEntryId'])
 		.index('by_confidence_tag', ['confidenceTag']),
 
-	// Semantic Files - files with embeddings, auto-tags, and version tracking
-	semanticFiles: defineTable({
-		// OPTIONAL because the retention sweep RELEASES BYTES WITHOUT DELETING THE
-		// ROW: past the configured horizon an `email_attachment` file's blob is
-		// deleted and this reference cleared, while `summary`, `extractedText`,
-		// `searchableText` and `embedding` survive so `[RELEVANT FILES]` retrieval
-		// keeps working. Absent ⇒ the bytes are gone; every reader treats that as
-		// a first-class state (no URL, no re-extraction, not offered as an
-		// attachment suggestion).
-		storageId: v.optional(v.id('_storage')),
-		filename: v.string(),
-		mimeType: v.string(),
-		fileSize: v.number(),
-		// Semantic metadata
-		title: v.optional(v.string()),
-		summary: v.optional(v.string()),
-		extractedText: v.optional(v.string()),
-		tags: v.optional(v.array(v.string())),
-		autoTags: v.optional(v.array(v.string())),
-		// Provenance
-		sourceType: semanticFileSourceTypeValidator,
-		sourceMessageId: v.optional(v.string()),
-		uploadedBy: v.optional(v.string()),
-		// Provenance: why/where this version was shared. JSON-stringified
-		// { senderName?, excerpt?, threadSubject?, timestamp? } captured from the
-		// surrounding conversation at upload time.
-		uploadContext: v.optional(v.string()),
-		// Relationships
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		threadId: v.optional(v.id('conversationThreads')),
-		// Versioning
-		version: v.number(),
-		previousVersionId: v.optional(v.id('semanticFiles')),
-		// Human-readable diff vs the previous version (text-based files only),
-		// e.g. "≈3 paragraphs changed". Computed by the processing pipeline.
-		changeSummary: v.optional(v.string()),
-		// Vector embedding for semantic search
-		embedding: v.array(v.float64()),
-		// Model that produced `embedding` (e.g., 'text-embedding-3-small'). Re-embed when this changes.
-		embeddingModel: v.optional(v.string()),
-		// When `embedding` was generated; used to schedule re-embedding on stale entries.
-		embeddingGeneratedAt: v.optional(v.number()),
-		// Full-text search
-		searchableText: v.optional(v.string()),
-		// WHICH inbound route captured this file, set only by `captureAttachments`
-		// (an upload or an agent-generated file leaves it absent). `sourceType`
-		// alone cannot answer this: BOTH inbound routes write
-		// `sourceType: 'email_attachment'`, so a retention horizon configured for
-		// the shared inbox would otherwise also strip the file-library blobs of
-		// personal-mailbox (Postbox) mail, which has its own permanent raw storage
-		// and no horizon at all. The inbound retention sweep scans
-		// `captureSource === 'team_inbox'` and nothing else.
-		captureSource: v.optional(captureSourceValidator),
-		// When the retention sweep released this file's bytes. Set exactly once,
-		// by the sweep, together with clearing `storageId`. It is also the
-		// equality component of `by_attachment_retention`, which is what makes
-		// that sweep self-terminating: a released row falls out of the scanned
-		// range instead of being re-examined on every tick.
-		bytesReleasedAt: v.optional(v.number()),
-		// Timestamps
-		createdAt: v.number(),
-		updatedAt: v.number(),
-	})
-		.index('by_created_at', ['createdAt'])
-		.index('by_thread', ['threadId'])
-		.index('by_attachment_retention', ['captureSource', 'bytesReleasedAt', 'createdAt'])
-		// SEALED-AT-REST EXCEPTION (Sealed Mail E8b): as with knowledge entries,
-		// `searchableText` (full-text) and `embedding` (vector) stay PLAINTEXT-DERIVED
-		// so file search + semantic retrieval keep working — Convex indexes plaintext.
-		// Documented, deliberate exception. See lib/atRestBodies.ts and
-		// apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
-		.searchIndex('search_files', {
-			searchField: 'searchableText',
-			filterFields: [],
-		})
-		.vectorIndex('vector_files', {
-			vectorField: 'embedding',
-			dimensions: 1536,
-			filterFields: [],
-		}),
-
-	// Semantic file ↔ Contact junction — an index-able mirror of
-	// `semanticFiles.contactIds` (an array Convex can't index). One row per
-	// (fileId, contactId); written/cleaned by the same mutations that set/clear
-	// `contactIds` (syncFileContacts). `listByContact` queries `by_contact`
-	// instead of scanning the newest 200 files and filtering the array in JS, so
-	// it stays complete (no silent truncation past 200) and O(matches). Repointed
-	// on contact merge (lib/contactMutations.ts) and torn down with the parent
-	// file on delete / org-wipe. Mirrors `knowledgeEntryContacts`.
-	semanticFileContacts: defineTable({
-		fileId: v.id('semanticFiles'),
-		contactId: v.id('contacts'),
-	})
-		.index('by_contact', ['contactId'])
-		.index('by_file', ['fileId']),
+	...semanticFileTables,
 
 	// Knowledge Edge Backfill Jobs — tracks the one-shot pass that populates
 	// LLM-inferred edges over the EXISTING (sparse) knowledge corpus when

@@ -52,7 +52,8 @@ async function deleteMessageRow({ ctx, budget }: PhaseContext, row: MessageRow):
 /**
  * The agent's work on an erased message is about the message: its step inputs
  * and outputs (the model's reading of the mail and the reply it drafted) and
- * the shadow-mode decision (sender address plus a draft snapshot) are deleted.
+ * the shadow-mode decision (sender address plus a draft snapshot) and the
+ * decision plane's artifacts (ADR-0073) are deleted.
  * Autonomy feedback trains the organization's rules and carries no message
  * content, so it only loses the pointer. Returns whether all of it is done.
  */
@@ -75,6 +76,13 @@ async function eraseInboundMessageDescendants(
 			.take(n)
 	);
 	if (!shadowsGone) return false;
+	const artifactsGone = await deleteAll(phase, (n) =>
+		ctx.db
+			.query('decisionArtifacts')
+			.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', inboundMessageId))
+			.take(n)
+	);
+	if (!artifactsGone) return false;
 	return drainEach(
 		budget,
 		(n) =>

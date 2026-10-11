@@ -27,6 +27,8 @@ export const CONTACT_ERASURE_PHASES = [
 	'knowledge',
 	'semanticFiles',
 	'answerAskSessions',
+	// Team Inbox sender memory (ADR-0073, D12).
+	'senderMemory',
 ] as const;
 
 export type ContactErasurePhase = (typeof CONTACT_ERASURE_PHASES)[number];

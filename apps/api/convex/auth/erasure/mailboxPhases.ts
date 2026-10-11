@@ -421,6 +421,17 @@ export const eraseMailboxRecords: MemberPhaseRunner = (phase) =>
 					.query('mailTriageTallies')
 					.withIndex('by_mailbox_and_sender', (q) => q.eq('mailboxId', id))
 					.take(n),
+			// AI routing records read from the mailbox's mail (ADR-0073).
+			(n) =>
+				ctx.db
+					.query('senderMemory')
+					.withIndex('by_lookup', (q) => q.eq('scope', 'mailbox').eq('mailboxId', id))
+					.take(n),
+			(n) =>
+				ctx.db
+					.query('decisionArtifacts')
+					.withIndex('by_mailbox', (q) => q.eq('mailboxId', id))
+					.take(n),
 			(n) =>
 				ctx.db
 					.query('mailAppPasswords')
