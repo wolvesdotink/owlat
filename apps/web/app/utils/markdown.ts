@@ -36,7 +36,8 @@ const HR = /^\s*([-*_])(\s*\1){2,}\s*$/;
 const BLOCKQUOTE = /^>\s?(.*)$/;
 const FENCE = /^```(.*)$/;
 
-const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*|__[^_]+__)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\([^)\s]+\))/g;
+const INLINE =
+	/(`[^`]+`)|(\*\*[^*]+\*\*|__[^_]+__)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(\[[^\]]+\]\([^)\s]+\))/g;
 
 /** Parse inline spans (code, bold, italic, links) within a line of text. */
 export function parseInlines(text: string): Inline[] {
@@ -143,7 +144,14 @@ export function parseMarkdown(src: string): Block[] {
 		while (i < lines.length) {
 			const l = lines[i] ?? '';
 			if (l.trim() === '') break;
-			if (HEADING.test(l) || HR.test(l) || BLOCKQUOTE.test(l) || LIST_ITEM.test(l) || FENCE.test(l.trim())) break;
+			if (
+				HEADING.test(l) ||
+				HR.test(l) ||
+				BLOCKQUOTE.test(l) ||
+				LIST_ITEM.test(l) ||
+				FENCE.test(l.trim())
+			)
+				break;
 			para.push(l.trim());
 			i++;
 		}

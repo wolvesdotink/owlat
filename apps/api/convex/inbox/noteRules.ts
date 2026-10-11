@@ -131,6 +131,8 @@ export function toNoteView(note: Doc<'threadNotes'>, author: NoteAuthor) {
 		authorImage: author.image,
 		body: isDeleted ? '' : note.body,
 		mentionedUserIds: isDeleted ? [] : note.mentionedUserIds,
+		// The thread brief item the note is about (`#` link), when it has one.
+		threadItemId: isDeleted ? null : (note.threadItemId ?? null),
 		createdAt: note.createdAt,
 		editedAt: note.editedAt ?? null,
 		isDeleted,

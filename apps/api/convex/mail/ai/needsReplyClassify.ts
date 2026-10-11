@@ -7,45 +7,52 @@
  *
  *   1. Deterministic screen over the newest thread messages
  *      (mail/needsReplyHeuristic.ts). Not a candidate → clears the flag and
- *      finishes (no LLM spend).
+ *      finishes (no reply-queue model spend).
  *   2. Candidate → persists the deterministic flag FIRST (source `heuristic`,
- *      urgency `normal`), so a crash or LLM failure anywhere after this point
+ *      urgency `normal`), so a crash or model failure anywhere after this point
  *      still leaves the baseline signal (fail-soft). The baseline keeps the
  *      thread pending: a run that dies before the verdict (an OOM-killed
  *      backend, a restart) is classified again by the reconcile sweep, while
- *      a run that fails on purpose (gate refusal, model error) settles it
+ *      a run that ends without a verdict on purpose (interpretation refused,
+ *      failed or skipped, the result not persisting) settles it
  *      (mail/needsReplyPending.ts).
- *   3. LLM refinement on the cheap "summarize" tier, behind the same aiGate
- *      as the user-triggered Postbox AI (feature flag + rate limit). The
- *      thread body is attacker-controlled inbound mail, so it is framed as
- *      untrusted DATA (SYSTEM_GUARD), mirroring mail/ai/assist.ts. The model
- *      NAMES the message from the closed reply-intent taxonomy (./replyIntent.ts)
- *      and that module — not the model's boolean — decides whether the row
- *      belongs in the queue, so an FYI or a recap full of action items can no
- *      longer promote itself. The result only ever updates the advisory flag —
- *      it never sends or modifies mail.
+ *   3. Interpretation of the newest inbound message (mail/interpret/run.ts,
+ *      SPEC §5 "Postbox") replaces the old reply-intent refinement call: the
+ *      one model pass that fills the thread brief also NAMES the message from
+ *      the closed reply-intent taxonomy (./replyIntent.ts), with urgency and
+ *      any meeting request. The server still decides (`decideNeedsReply`
+ *      through mail/interpret/needsReplyProjection.ts), so an FYI or a recap
+ *      full of action items cannot promote itself, and an actionable item
+ *      alone never implies a reply. Interpretation carries its own gate (the
+ *      `ai` flag and the spend ceiling, mail/interpret/gate.ts) and frames the
+ *      attacker-controlled body as untrusted data. The result only ever updates
+ *      the advisory flag — it never sends or modifies mail.
+ *   4. Clarification (whether a good reply misses a fact only the owner has)
+ *      runs only when the decision needs a reply, behind the Postbox AI gate
+ *      (`ai` flag, advisory budget, rate limit), with answer-memory fills.
+ *
+ * Delivery also hands over the message it just delivered
+ * (`interpretMessageId`): it is interpreted here even when the thread is no
+ * Reply Queue candidate (interpretation is wider than the queue), so the
+ * delivery pipeline never schedules a second run for it.
  */
 
 import { v, type Infer } from 'convex/values';
-import { z } from 'zod';
-import { internalAction } from '../../_generated/server';
+import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { evaluateNeedsReplyCandidate } from '../needsReplyHeuristic';
+import { runInterpretation, type InterpretRunResult } from '../interpret/run';
 import {
-	evaluateNeedsReplyCandidate,
-	isPublishingAddress,
-	isUnattendedAddress,
-} from '../needsReplyHeuristic';
-import {
-	REPLY_INTENTS,
-	buildReplyIntentPrompt,
-	decideNeedsReply,
-	normalizeDueHint,
-	normalizeMeetingIntent,
-} from './replyIntent';
+	needsReplyResultOf,
+	projectNeedsReply,
+	type LatestInbound,
+	type NeedsReplyProjection,
+} from '../interpret/needsReplyProjection';
 import {
 	replySlotsSchema,
 	divergenceSchema,
@@ -54,38 +61,29 @@ import {
 	buildDivergencePrompt,
 	sanitizeClarificationQuestions,
 	splitCandidateSlots,
+	itemIdForSlot,
+	slotItemsOf,
+	type SlotItem,
 	DIVERGENCE_SAMPLES,
 	MIN_SAMPLES_FOR_JUDGMENT,
 	type ReplySlot,
 } from '../../inbox/clarificationSlots';
-import { SYSTEM_GUARD } from './promptGuards';
 import { applyMemoryFills, withAnswerKind } from '../../inbox/clarificationAnswers';
 import { draftClarificationReply } from './needsReplyDraft';
 import { logError } from '../../lib/runtimeLog';
 import type { needsReplyClarificationValidator } from '../../lib/validators/clarification';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
 
-const refinementSchema = z.object({
-	// What the message IS (closed taxonomy, ai/replyIntent.ts). The queue
-	// verdict is decided from this, not from `needsReply` alone.
-	intent: z.enum(REPLY_INTENTS),
-	needsReply: z.boolean(),
-	urgency: z.enum(['high', 'normal', 'low']),
-	// One line: what the sender is asking of the reader. Empty when nothing is.
-	askSummary: z.string().nullable(),
-	// ISO 8601 date (YYYY-MM-DD) when the message states a deadline.
-	dueHint: z.string().nullable(),
-	// Plain-prose scheduling request ("can we meet…"). Null when the message is
-	// not proposing/asking to schedule a meeting.
-	meetingIntent: z
-		.object({
-			isScheduling: z.boolean(),
-			// Verbatim time phrases the sender used ("Tuesday afternoon").
-			proposedTimes: z.array(z.string()),
-			topic: z.string().nullable(),
-		})
-		.nullable(),
-});
+/**
+ * The needs-reply inputs of a run, when the model read the message. A failed,
+ * skipped or vanished run has none: the heuristic baseline then stands.
+ */
+function usableProjection(run: InterpretRunResult): NeedsReplyProjection | undefined {
+	// A reused extraction reports its stored status (`isReplayed`), so the
+	// same rule covers it.
+	if (run.status !== 'complete' && run.status !== 'partial') return undefined;
+	return run.projection;
+}
 
 export const classifyThread = internalAction({
 	args: {
@@ -98,12 +96,25 @@ export const classifyThread = internalAction({
 		autoSubmitted: v.optional(v.string()),
 		/** RFC 2919 List-Id. */
 		listId: v.optional(v.string()),
+		/** The message delivery just landed (live mail only): interpreted by this run. */
+		interpretMessageId: v.optional(v.id('mailMessages')),
 	},
 	handler: async (ctx, args) => {
 		const context = await ctx.runQuery(internal.mail.needsReply.getThreadContext, {
 			threadId: args.threadId,
 		});
 		if (!context) return;
+
+		// Eligibility (live delivery, the ingest-only headers) was snapshotted
+		// when delivery enqueued the message (`interpret/enqueue.ts`); a message
+		// without a snapshot is skipped by the run and the baseline stands.
+		const interpret = (messageId: Id<'mailMessages'>) =>
+			runInterpretation(ctx, { source: { kind: 'mail', id: messageId } });
+		const interpretDelivered = async (alreadyInterpreted?: Id<'mailMessages'>) => {
+			if (args.interpretMessageId && args.interpretMessageId !== alreadyInterpreted) {
+				await interpret(args.interpretMessageId);
+			}
+		};
 
 		const evaluation = evaluateNeedsReplyCandidate({
 			ownerAddresses: context.ownerAddresses,
@@ -119,14 +130,18 @@ export const classifyThread = internalAction({
 				expectedLatestMessageId: context.latestMessageId,
 				needsReply: null,
 			});
+			await interpretDelivered();
 			return;
 		}
 
 		const latestInbound = context.messages[evaluation.latestInboundIndex];
-		if (!latestInbound) return;
+		if (!latestInbound) {
+			await interpretDelivered();
+			return;
+		}
 
-		// Persist the deterministic candidate first — the LLM pass below is a
-		// refinement, and any failure in it must leave this baseline in place.
+		// Persist the deterministic candidate first — the interpretation below is
+		// a refinement, and any failure in it must leave this baseline in place.
 		// The thread stays pending until the refinement ends: if this run is
 		// killed before then, the reconcile sweep runs it again.
 		await ctx.runMutation(internal.mail.needsReply.applyResult, {
@@ -140,113 +155,24 @@ export const classifyThread = internalAction({
 			isBaseline: true,
 		});
 
-		let hasVerdict = false;
-		try {
-			// Same gate as the user-triggered Postbox AI: `ai` feature flag +
-			// rate limit. Throws when disabled/limited → deterministic flag stays.
-			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-
-			const transcript = context.transcript; // side-labelled, built in getThreadContext
-
-			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
-				ctx,
-				'postbox_needs_reply',
-				runLlmObject({
-					// High-volume background classification → cheap "summarize" tier.
-					model: await resolveLanguageModel(ctx, 'summarize'),
-					schema: refinementSchema,
-					prompt: buildReplyIntentPrompt({
-						systemGuard: SYSTEM_GUARD,
-						ownerAddress: context.ownerAddress,
-						transcript,
-						senderLooksAutomated: isPublishingAddress(latestInbound.fromAddress),
-					}),
-					temperature: 0,
-				})
-			);
-			await recordLlmSpend(ctx, 'postbox_needs_reply', tokenUsage, modelUsed);
-
-			// The queue verdict: the model's intent AND its boolean AND a sender who
-			// can receive the reply (ai/replyIntent.ts). An FYI/recap/receipt is
-			// dropped here even when the model's boolean said otherwise.
-			const decision = decideNeedsReply({
-				intent: object.intent,
-				modelNeedsReply: object.needsReply,
-				isUnattendedSender: isUnattendedAddress(latestInbound.fromAddress),
-			});
-
-			// Clarification loop: only when the message genuinely needs a reply do
-			// we spend the extra passes deciding whether a good reply is missing a
-			// fact only the owner can supply. Self-contained fail-soft (returns
-			// undefined on any error) so a clarification failure never downgrades
-			// the refinement above.
-			let clarification = decision.needsReply
-				? await refineClarification(ctx, {
-						transcript,
-						fromAddress: latestInbound.fromAddress,
-					})
-				: undefined;
-
-			// ANSWER-MEMORY: pre-pick any question a stored standing answer (scoped
-			// to this sender's contact, or org-general) already resolves. The
-			// question stays on the card with `answer.source = 'memory'`, shown as
-			// "last time", so a remembered answer is never used silently; the owner
-			// confirms or changes it. Fail-soft: any lookup error leaves the
-			// questions unanswered (ask exactly as today).
-			if (clarification && clarification.questions.length > 0) {
-				try {
-					const { fills } = await ctx.runMutation(internal.inbox.clarificationMemory.resolveFills, {
-						fromAddress: latestInbound.fromAddress,
-						questions: clarification.questions.map((q) => ({
-							id: q.id,
-							slotType: q.slotType,
-							text: q.text,
-						})),
-					});
-					clarification = {
-						...clarification,
-						questions: applyMemoryFills(clarification.questions, fills, Date.now()),
-					};
-				} catch {
-					// Leave the clarification untouched — ask as today.
-				}
-			}
-
-			// Narrow catch, distinct from the outer one: the outer catch also absorbs
-			// the expected aiGate refusal (AI off, rate-limited) and stays silent. A
-			// throw here is a real fault (e.g. the result no longer matching the
-			// applyResult validator), so log it and keep the heuristic flag. Only
-			// the first line: a Convex validation error goes on to print the whole
-			// argument, and that carries the ask summary and question text.
-			try {
-				await ctx.runMutation(internal.mail.needsReply.applyResult, {
+		// Never throws; a replayed run (the sweep, a retry) hands back the stored
+		// projection instead of calling the model again.
+		const projection = usableProjection(await interpret(latestInbound.messageId));
+		const hasVerdict = projection
+			? await applyProjection(ctx, {
 					threadId: args.threadId,
 					expectedLatestMessageId: context.latestMessageId,
-					needsReply: decision.needsReply
-						? {
-								messageId: latestInbound.messageId,
-								source: 'llm',
-								urgency: object.urgency,
-								askSummary: object.askSummary?.trim().slice(0, 120) || undefined,
-								dueHint: normalizeDueHint(object.dueHint),
-								meetingIntent: normalizeMeetingIntent(object.meetingIntent, {
-									hasCalendarInvite: latestInbound.hasCalendarInvite,
-								}),
-								clarification,
-							}
-						: null,
-				});
-				hasVerdict = true;
-			} catch (err) {
-				logError(
-					'[needsReplyClassify] applyResult failed:',
-					err instanceof Error ? err.message.split('\n', 1)[0] : 'non-Error thrown'
-				);
-			}
-		} catch {
-			// Fail-soft (AI disabled, rate-limited, provider down, bad output):
-			// the deterministic candidate flag persisted above stands.
-		}
+					latestInbound: {
+						messageId: latestInbound.messageId,
+						fromAddress: latestInbound.fromAddress,
+						hasCalendarInvite: latestInbound.hasCalendarInvite,
+					},
+					projection,
+					transcript: context.transcript,
+				})
+			: false;
+
+		await interpretDelivered(latestInbound.messageId);
 
 		// Every outcome this run saw end without a verdict would only repeat on a
 		// retry, so it ends the attempt here. Only a run that never gets this far
@@ -260,7 +186,115 @@ export const classifyThread = internalAction({
 	},
 });
 
+/**
+ * The interpretation's verdict, written through `applyResult`: the server's
+ * decision (`needsReplyResultOf`), plus the clarification when that decision
+ * needs a reply. True when the verdict persisted.
+ */
+async function applyProjection(
+	ctx: ActionCtx,
+	args: {
+		threadId: Id<'mailThreads'>;
+		expectedLatestMessageId?: Id<'mailMessages'>;
+		latestInbound: LatestInbound;
+		projection: NeedsReplyProjection;
+		transcript: string;
+	}
+): Promise<boolean> {
+	const { decision } = needsReplyResultOf(args.projection, args.latestInbound);
+	// Clarification loop: only when the message genuinely needs a reply do we
+	// spend the extra passes deciding whether a good reply is missing a fact
+	// only the owner can supply. Self-contained fail-soft (undefined on any
+	// error), so a clarification failure never downgrades the verdict.
+	const clarification = decision.needsReply
+		? await clarifyWithMemory(ctx, {
+				transcript: args.transcript,
+				fromAddress: args.latestInbound.fromAddress,
+				threadId: args.threadId,
+			})
+		: undefined;
+	// A throw here is a real fault (e.g. the result no longer matching the
+	// applyResult validator), so log it and keep the heuristic flag. Only the
+	// first line: a Convex validation error goes on to print the whole argument,
+	// and that carries the ask summary and question text.
+	try {
+		await projectNeedsReply(ctx, {
+			threadId: args.threadId,
+			...(args.expectedLatestMessageId
+				? { expectedLatestMessageId: args.expectedLatestMessageId }
+				: {}),
+			latestInbound: args.latestInbound,
+			projection: args.projection,
+			...(clarification ? { clarification } : {}),
+		});
+		return true;
+	} catch (err) {
+		logError(
+			'[needsReplyClassify] applyResult failed:',
+			err instanceof Error ? err.message.split('\n', 1)[0] : 'non-Error thrown'
+		);
+		return false;
+	}
+}
+
+/**
+ * {@link refineClarification} behind the Postbox AI gate (`ai` flag, advisory
+ * budget, rate limit: the extra passes are model spend interpretation's own
+ * gate did not cover), with ANSWER-MEMORY fills: any question a stored
+ * standing answer (scoped to this sender's contact, or org-general) already
+ * resolves stays on the card with `answer.source = 'memory'`, shown as "last
+ * time", so a remembered answer is never used silently. Fail-soft: a refused
+ * gate asks nothing; a failed memory lookup asks exactly as before.
+ */
+async function clarifyWithMemory(
+	ctx: ActionCtx,
+	opts: { transcript: string; fromAddress: string; threadId: Id<'mailThreads'> }
+): Promise<ClarificationFlag | undefined> {
+	try {
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
+	} catch {
+		return undefined;
+	}
+	const clarification = await refineClarification(ctx, {
+		transcript: opts.transcript,
+		fromAddress: opts.fromAddress,
+		items: await slotItemsFor(ctx, opts.threadId),
+	});
+	if (!clarification || clarification.questions.length === 0) return clarification;
+	try {
+		const { fills } = await ctx.runMutation(internal.inbox.clarificationMemory.resolveFills, {
+			fromAddress: opts.fromAddress,
+			questions: clarification.questions.map((q) => ({
+				id: q.id,
+				slotType: q.slotType,
+				text: q.text,
+			})),
+		});
+		return {
+			...clarification,
+			questions: applyMemoryFills(clarification.questions, fills, Date.now()),
+		};
+	} catch {
+		return clarification; // ask as before
+	}
+}
+
 type SpendCtx = Parameters<typeof recordLlmSpend>[0];
+
+/** The thread's open items, so each question can name the item it fills (SPEC §6). */
+async function slotItemsFor(
+	ctx: ActionCtx,
+	threadId: Id<'mailThreads'>
+): Promise<SlotItem<Id<'threadItems'>>[]> {
+	try {
+		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForDraft, {
+			threadRef: { kind: 'mail', id: threadId },
+		});
+		return slotItemsOf(loaded.items);
+	} catch {
+		return []; // questions without an item link, as before
+	}
+}
 
 /**
  * The clarification refineClarification produces: the persisted
@@ -293,8 +327,13 @@ type ClarificationFlag = Omit<
  */
 export async function refineClarification(
 	ctx: SpendCtx,
-	opts: { transcript: string; fromAddress: string }
+	opts: {
+		transcript: string;
+		fromAddress: string;
+		items?: readonly SlotItem<Id<'threadItems'>>[];
+	}
 ): Promise<ClarificationFlag | undefined> {
+	const items = opts.items ?? [];
 	try {
 		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
 		const slotsResult = await recordSpendOnFailure(
@@ -303,7 +342,7 @@ export async function refineClarification(
 			runLlmObject({
 				model: await resolveLanguageModel(ctx, 'summarize'),
 				schema: replySlotsSchema,
-				prompt: buildSlotPrompt(opts.transcript),
+				prompt: buildSlotPrompt(opts.transcript, items),
 				temperature: 0.2,
 			})
 		);
@@ -322,6 +361,7 @@ export async function refineClarification(
 			slotType: slot.slotType,
 			text: slot.question,
 			options: slot.options,
+			itemId: itemIdForSlot(slot, items),
 		}));
 		if (raw.length === 0) return undefined;
 

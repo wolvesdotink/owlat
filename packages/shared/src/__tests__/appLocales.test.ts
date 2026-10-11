@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_LOCALE_BCP47, APP_LOCALES, isAppLocale } from '../appLocales';
+import { APP_LOCALE_BCP47, APP_LOCALES, appLocaleOf, isAppLocale } from '../appLocales';
 
 describe('appLocales', () => {
 	it('ships English first, the fallback every consumer defaults to', () => {
@@ -19,5 +19,14 @@ describe('appLocales', () => {
 		for (const locale of APP_LOCALES) {
 			expect(APP_LOCALE_BCP47[locale].startsWith(`${locale}-`)).toBe(true);
 		}
+	});
+
+	it('reads a requested tag as its shipped base language, else English', () => {
+		expect(appLocaleOf('de')).toBe('de');
+		expect(appLocaleOf('de-DE')).toBe('de');
+		expect(appLocaleOf(' DE_at ')).toBe('de');
+		expect(appLocaleOf('EN_us')).toBe('en');
+		expect(appLocaleOf('fr')).toBe('en');
+		expect(appLocaleOf('')).toBe('en');
 	});
 });

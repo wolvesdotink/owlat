@@ -126,7 +126,8 @@ const marker = (name: string) =>
 const CHROME = [
 	'Icon',
 	'UiAvatar',
-	'PostboxAiStrip',
+	'PostboxThreadCiteNote',
+	'PostboxThreadOverview',
 	'PostboxAttachmentLightbox',
 	'PostboxCrossSurfaceStrip',
 	'PostboxDeliveryStrip',
@@ -148,6 +149,9 @@ const CHROME = [
 	'PostboxThreadDiscussionToggle',
 	'PostboxThreadHeader',
 	'PostboxTriageSuggestion',
+	'PostboxTeamComposer',
+	'PostboxTeamInterlude',
+	'TeamPinnedItems',
 	'PostboxTrustChip',
 	'PostboxUnsubscribeChip',
 ];

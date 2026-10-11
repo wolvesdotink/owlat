@@ -68,7 +68,7 @@ describe('createAutoRecheckPoller', () => {
 			() =>
 				new Promise<boolean>((r) => {
 					resolve = r;
-				}),
+				})
 		);
 		const poller = createAutoRecheckPoller({ onTick, intervalMs: 30_000 });
 		poller.start();

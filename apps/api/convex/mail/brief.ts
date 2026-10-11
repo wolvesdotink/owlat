@@ -2,11 +2,10 @@
  * Daily Brief card — the per-owner cache behind the small greeting card at the
  * top of the Postbox Today view (PostboxDailyBrief.vue).
  *
- * Mirrors the thread-summary cache architecture (mail/ai/summaryCache.ts):
- * a small persisted cache row (`mailBriefCards`), a reactive read the card
+ * A small persisted cache row (`mailBriefCards`), a reactive read the card
  * subscribes to that serves the cache instantly, and a separate regeneration
  * entry point the client triggers in the background when the read flags the
- * cache stale (stale-while-revalidate). Two deliberate differences:
+ * cache stale (stale-while-revalidate). Two deliberate choices:
  *
  *   - The card is assembled from COUNTS the client templates into sentences —
  *     new inbox mail since the viewer's local midnight, reply drafts the agent

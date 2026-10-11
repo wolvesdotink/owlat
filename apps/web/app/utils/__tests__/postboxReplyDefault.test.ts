@@ -14,7 +14,7 @@ import {
 import { deriveReplyAllExtras } from '../recipientHints';
 
 describe('resolvePrimaryReplyKind', () => {
-	it("defaults to plain reply", () => {
+	it('defaults to plain reply', () => {
 		expect(POSTBOX_REPLY_DEFAULT).toBe('reply');
 	});
 
@@ -27,7 +27,7 @@ describe('resolvePrimaryReplyKind', () => {
 		expect(resolvePrimaryReplyKind('reply-all', true)).toBe('replyAll');
 	});
 
-	it("collapses reply-all to a plain reply on a 1:1 message (adds no one)", () => {
+	it('collapses reply-all to a plain reply on a 1:1 message (adds no one)', () => {
 		expect(resolvePrimaryReplyKind('reply-all', false)).toBe('reply');
 	});
 });

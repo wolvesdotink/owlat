@@ -2,7 +2,7 @@
  * The Team inbox reply as the composer Answer mode's AI pieces work with
  * (`AnswerComposerApi`, the Postbox composer's counterpart): "Draft with AI"
  * streams its text into the reply, settles it, and can take it back out; the
- * catch-up card reads what was written for the ask ticks.
+ * coverage check reads what was written.
  *
  * The team reply is plain text with no draft row of its own (it answers an
  * inbound message), so the row, the follow-up reminder and the attachment

@@ -52,6 +52,7 @@ import {
 	throwNotFound,
 } from '../_utils/errors';
 import type { mailDraftAttachmentValidator } from '../lib/validators/mailContent';
+import { recordFileAddedToDraft } from './interpret/threadEvents';
 
 type AttachExistingSource = Infer<typeof existingAttachmentSourceValidator>;
 type DraftAttachment = Infer<typeof mailDraftAttachmentValidator>;
@@ -229,6 +230,18 @@ export const bindCopiedAttachment = internalMutation({
 			},
 		];
 		await ctx.db.patch(args.draftId, { attachments, lastEditedAt: Date.now() });
+		if (draft.threadId) {
+			await recordFileAddedToDraft(
+				ctx,
+				{ kind: 'mail', id: draft.threadId },
+				{
+					userId: session.userId,
+					draftKey: `mailDraft:${args.draftId}`,
+					fileKey: `${args.copiedFrom.source}:${args.copiedFrom.id}`,
+					filename: args.filename.slice(0, 255),
+				}
+			);
+		}
 		return { attachments, isBound: true };
 	},
 });

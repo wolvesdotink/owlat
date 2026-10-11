@@ -155,7 +155,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 400,
 	},
 
-	// User-triggered Postbox AI (thread summarize / suggested replies). Each
+	// User-triggered Postbox AI (suggested replies, Ask, rewrites). Each
 	// click spends a capable-tier LLM call, so cap per-user to stop a tight loop
 	// from draining the LLM budget while leaving normal interactive use roomy.
 	postboxAiPerUser: {
@@ -207,15 +207,25 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 30,
 	},
 
-	// Answer mode's ask-coverage check (`mail.ai.catchUp.coverage` and the team
-	// twin). The composer calls it, debounced, while the user types, so it gets
-	// its own bucket rather than eating the one the summary and suggested replies
-	// share. One cheap-tier call each.
+	// Answer mode's coverage check (`mail.interpret.coverage.check`). The
+	// composer calls it, debounced, while the user types, so it gets its own
+	// bucket rather than eating the one suggested replies and Ask share. One
+	// cheap-tier call each.
 	answerCoveragePerUser: {
 		kind: 'token bucket',
 		rate: 30,
 		period: MINUTE,
 		capacity: 40,
+	},
+
+	// The thread brief's first-open interpretation (`mail.interpret.lazy.ensure`).
+	// The reader calls it once per older thread it opens; each call schedules
+	// a few cheap-tier runs, so a loop over every thread is capped here.
+	briefEnsurePerUser: {
+		kind: 'token bucket',
+		rate: 60,
+		period: MINUTE,
+		capacity: 60,
 	},
 
 	// Campaign pre-send checks (`emailTemplates/presendChecksActions.run`). One

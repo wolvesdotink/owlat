@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { ThreadView } from '@owlat/shared/threadBrief';
 
 /**
  * The thread header: subject, message count, the follow-up chip, the team badge,
@@ -40,13 +41,23 @@ const props = defineProps<{
 	showMarkRead?: boolean;
 	/** True while the mark-read mutation is in flight. */
 	markingRead?: boolean;
+	/**
+	 * The Overview / Conversation switch of a personal thread (`pending` while
+	 * the opening view is being worked out); absent on shared mailboxes.
+	 */
+	view?: ThreadView | 'pending' | null;
 }>();
 
 const emit = defineEmits<{
 	(e: 'toggle-mute'): void;
 	(e: 'mark-read'): void;
 	(e: 'toggle-alert'): void;
+	(e: 'update:view', view: ThreadView): void;
 }>();
+
+const switchView = computed<ThreadView | null>(() =>
+	props.view == null ? null : props.view === 'pending' ? 'overview' : props.view
+);
 
 const { t } = useI18n();
 
@@ -85,6 +96,13 @@ const ITEM_CLASS =
 				>
 				<template v-else>{{ subjectText }}</template>
 			</h1>
+			<PostboxThreadViewSwitch
+				v-if="switchView"
+				class="max-sm:hidden"
+				:view="switchView"
+				:message-count="messageCount"
+				@update:view="emit('update:view', $event)"
+			/>
 			<!-- Host-owned thread actions (the reader's "Discuss" toggle). -->
 			<slot name="actions" />
 			<!-- The conversation's state, made checkable. -->
@@ -173,6 +191,14 @@ const ITEM_CLASS =
 				</template>
 			</PostboxOverflowMenu>
 		</div>
+		<PostboxThreadViewSwitch
+			v-if="switchView"
+			class="mt-3 sm:hidden"
+			full
+			:view="switchView"
+			:message-count="messageCount"
+			@update:view="emit('update:view', $event)"
+		/>
 		<PostboxFollowUpChip
 			v-if="thread"
 			:thread="thread"

@@ -1,0 +1,1721 @@
+{
+	"version": 1,
+	"slice": "long_threads",
+	"threads": [
+		{
+			"id": "long-001",
+			"slices": ["long_threads", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-11T09:00:00+02:00",
+					"subject": "long-001",
+					"text": "Update 1 on the relaunch: section 1 is drafted.\n"
+				},
+				{
+					"id": "m2",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					],
+					"sentAt": "2026-09-12T10:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 2 on the relaunch: section 2 is drafted.\n\nOn Thu, 11 Sep 2026 at 10:00, Jonas Weber <jonas@example.org> wrote:\n> Update 1 on the relaunch: section 1 is drafted.\n"
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-13T11:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 3 on the relaunch: section 3 is drafted.\n\nOn Thu, 12 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Update 2 on the relaunch: section 2 is drafted.\n"
+				},
+				{
+					"id": "m4",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					],
+					"sentAt": "2026-09-14T12:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 4 on the relaunch: section 4 is drafted.\n\nOn Thu, 13 Sep 2026 at 10:00, Jonas Weber <jonas@example.org> wrote:\n> Update 3 on the relaunch: section 3 is drafted.\n"
+				},
+				{
+					"id": "m5",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-15T13:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 5 on the relaunch: section 5 is drafted.\n\nOn Thu, 14 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Update 4 on the relaunch: section 4 is drafted.\n"
+				},
+				{
+					"id": "m6",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					],
+					"sentAt": "2026-09-16T14:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 6 on the relaunch: section 6 is drafted.\n\nOn Thu, 15 Sep 2026 at 10:00, Jonas Weber <jonas@example.org> wrote:\n> Update 5 on the relaunch: section 5 is drafted.\n"
+				},
+				{
+					"id": "m7",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-17T15:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 7 on the relaunch: section 7 is drafted.\n\nOn Thu, 16 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Update 6 on the relaunch: section 6 is drafted.\n"
+				},
+				{
+					"id": "m8",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					],
+					"sentAt": "2026-09-18T16:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 8 on the relaunch: section 8 is drafted.\n\nOn Thu, 17 Sep 2026 at 10:00, Jonas Weber <jonas@example.org> wrote:\n> Update 7 on the relaunch: section 7 is drafted.\n"
+				},
+				{
+					"id": "m9",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-19T08:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 9 on the relaunch: section 9 is drafted.\n\nOn Thu, 18 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Update 8 on the relaunch: section 8 is drafted.\n"
+				},
+				{
+					"id": "m10",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					],
+					"sentAt": "2026-09-20T09:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 10 on the relaunch: section 10 is drafted.\n\nOn Thu, 19 Sep 2026 at 10:00, Jonas Weber <jonas@example.org> wrote:\n> Update 9 on the relaunch: section 9 is drafted.\n"
+				},
+				{
+					"id": "m11",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-21T10:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 11 on the relaunch: section 11 is drafted.\n\nOn Thu, 20 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Update 10 on the relaunch: section 10 is drafted.\n"
+				},
+				{
+					"id": "m12",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					],
+					"sentAt": "2026-09-22T11:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 12 on the relaunch: section 12 is drafted.\n\nOn Thu, 21 Sep 2026 at 10:00, Jonas Weber <jonas@example.org> wrote:\n> Update 11 on the relaunch: section 11 is drafted.\n"
+				},
+				{
+					"id": "m13",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-23T12:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 13 on the relaunch: section 13 is drafted.\n\nOn Thu, 22 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Update 12 on the relaunch: section 12 is drafted.\n"
+				},
+				{
+					"id": "m14",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					],
+					"sentAt": "2026-09-24T13:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 14 on the relaunch: section 14 is drafted.\n\nOn Thu, 23 Sep 2026 at 10:00, Jonas Weber <jonas@example.org> wrote:\n> Update 13 on the relaunch: section 13 is drafted.\n"
+				},
+				{
+					"id": "m15",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-25T14:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 15 on the relaunch: section 15 is drafted.\n\nOn Thu, 24 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Update 14 on the relaunch: section 14 is drafted.\n"
+				},
+				{
+					"id": "m16",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					],
+					"sentAt": "2026-09-26T15:00:00+02:00",
+					"subject": "Re: long-001",
+					"text": "Update 16 on the relaunch: section 16 is drafted.\n\nOn Thu, 25 Sep 2026 at 10:00, Jonas Weber <jonas@example.org> wrote:\n> Update 15 on the relaunch: section 15 is drafted.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i3",
+						"messageId": "m3",
+						"intent": "request",
+						"facets": ["documentReview"],
+						"responsibility": "us",
+						"quote": "Update 3 on the relaunch: section 3 is drafted.",
+						"segmentKind": "fresh",
+						"assertion": "Review section 3",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i16",
+						"messageId": "m16",
+						"intent": "request",
+						"facets": ["documentReview"],
+						"responsibility": "them",
+						"quote": "Update 16 on the relaunch: section 16 is drafted.",
+						"segmentKind": "fresh",
+						"assertion": "Jonas reviews section 16",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"responsible": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t3",
+						"messageId": "m4",
+						"quote": "Update 3 on the relaunch: section 3 is drafted.",
+						"segmentKind": "quoted",
+						"assertion": "Review section 3",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "long-002",
+			"slices": ["long_threads", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-11T09:00:00+02:00",
+					"subject": "long-002",
+					"text": "Stand 1: Kapitel 1 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m2",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						}
+					],
+					"sentAt": "2026-09-12T10:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 2: Kapitel 2 ist fertig, bitte lies es gegen.\n\nAm 11.09.2026 um 10:00 schrieb Lena Hofmann <lena@example.org>:\n> Stand 1: Kapitel 1 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-13T11:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 3: Kapitel 3 ist fertig, bitte lies es gegen.\n\nAm 12.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Stand 2: Kapitel 2 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m4",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						}
+					],
+					"sentAt": "2026-09-14T12:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 4: Kapitel 4 ist fertig, bitte lies es gegen.\n\nAm 13.09.2026 um 10:00 schrieb Lena Hofmann <lena@example.org>:\n> Stand 3: Kapitel 3 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m5",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-15T13:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 5: Kapitel 5 ist fertig, bitte lies es gegen.\n\nAm 14.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Stand 4: Kapitel 4 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m6",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						}
+					],
+					"sentAt": "2026-09-16T14:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 6: Kapitel 6 ist fertig, bitte lies es gegen.\n\nAm 15.09.2026 um 10:00 schrieb Lena Hofmann <lena@example.org>:\n> Stand 5: Kapitel 5 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m7",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-17T15:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 7: Kapitel 7 ist fertig, bitte lies es gegen.\n\nAm 16.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Stand 6: Kapitel 6 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m8",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						}
+					],
+					"sentAt": "2026-09-18T16:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 8: Kapitel 8 ist fertig, bitte lies es gegen.\n\nAm 17.09.2026 um 10:00 schrieb Lena Hofmann <lena@example.org>:\n> Stand 7: Kapitel 7 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m9",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-19T08:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 9: Kapitel 9 ist fertig, bitte lies es gegen.\n\nAm 18.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Stand 8: Kapitel 8 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m10",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						}
+					],
+					"sentAt": "2026-09-20T09:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 10: Kapitel 10 ist fertig, bitte lies es gegen.\n\nAm 19.09.2026 um 10:00 schrieb Lena Hofmann <lena@example.org>:\n> Stand 9: Kapitel 9 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m11",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-21T10:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 11: Kapitel 11 ist fertig, bitte lies es gegen.\n\nAm 20.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Stand 10: Kapitel 10 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m12",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						}
+					],
+					"sentAt": "2026-09-22T11:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 12: Kapitel 12 ist fertig, bitte lies es gegen.\n\nAm 21.09.2026 um 10:00 schrieb Lena Hofmann <lena@example.org>:\n> Stand 11: Kapitel 11 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m13",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-23T12:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 13: Kapitel 13 ist fertig, bitte lies es gegen.\n\nAm 22.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Stand 12: Kapitel 12 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m14",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						}
+					],
+					"sentAt": "2026-09-24T13:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 14: Kapitel 14 ist fertig, bitte lies es gegen.\n\nAm 23.09.2026 um 10:00 schrieb Lena Hofmann <lena@example.org>:\n> Stand 13: Kapitel 13 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m15",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-25T14:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 15: Kapitel 15 ist fertig, bitte lies es gegen.\n\nAm 24.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Stand 14: Kapitel 14 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m16",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						}
+					],
+					"sentAt": "2026-09-26T15:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 16: Kapitel 16 ist fertig, bitte lies es gegen.\n\nAm 25.09.2026 um 10:00 schrieb Lena Hofmann <lena@example.org>:\n> Stand 15: Kapitel 15 ist fertig, bitte lies es gegen.\n"
+				},
+				{
+					"id": "m17",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-27T16:00:00+02:00",
+					"subject": "Re: long-002",
+					"text": "Stand 17: Kapitel 17 ist fertig, bitte lies es gegen.\n\nAm 26.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Stand 16: Kapitel 16 ist fertig, bitte lies es gegen.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i5",
+						"messageId": "m5",
+						"intent": "request",
+						"facets": ["documentReview"],
+						"responsibility": "us",
+						"quote": "Stand 5: Kapitel 5 ist fertig, bitte lies es gegen.",
+						"segmentKind": "fresh",
+						"assertion": "Lies Kapitel 5 gegen",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i17",
+						"messageId": "m17",
+						"intent": "request",
+						"facets": ["documentReview"],
+						"responsibility": "us",
+						"quote": "Stand 17: Kapitel 17 ist fertig, bitte lies es gegen.",
+						"segmentKind": "fresh",
+						"assertion": "Lies Kapitel 17 gegen",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t5",
+						"messageId": "m6",
+						"quote": "Stand 5: Kapitel 5 ist fertig, bitte lies es gegen.",
+						"segmentKind": "quoted",
+						"assertion": "Lies Kapitel 5 gegen",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "long-003",
+			"slices": ["long_threads", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-11T09:00:00+02:00",
+					"subject": "long-003",
+					"text": "Batch 1 shipped; can you confirm receipt of batch 1?\n"
+				},
+				{
+					"id": "m2",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					],
+					"sentAt": "2026-09-12T10:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 2 shipped; can you confirm receipt of batch 2?\n\nOn Thu, 11 Sep 2026 at 10:00, Tomás Ruiz <tomas@example.net> wrote:\n> Batch 1 shipped; can you confirm receipt of batch 1?\n"
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-13T11:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 3 shipped; can you confirm receipt of batch 3?\n\nOn Thu, 12 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Batch 2 shipped; can you confirm receipt of batch 2?\n"
+				},
+				{
+					"id": "m4",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					],
+					"sentAt": "2026-09-14T12:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 4 shipped; can you confirm receipt of batch 4?\n\nOn Thu, 13 Sep 2026 at 10:00, Tomás Ruiz <tomas@example.net> wrote:\n> Batch 3 shipped; can you confirm receipt of batch 3?\n"
+				},
+				{
+					"id": "m5",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-15T13:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 5 shipped; can you confirm receipt of batch 5?\n\nOn Thu, 14 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Batch 4 shipped; can you confirm receipt of batch 4?\n"
+				},
+				{
+					"id": "m6",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					],
+					"sentAt": "2026-09-16T14:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 6 shipped; can you confirm receipt of batch 6?\n\nOn Thu, 15 Sep 2026 at 10:00, Tomás Ruiz <tomas@example.net> wrote:\n> Batch 5 shipped; can you confirm receipt of batch 5?\n"
+				},
+				{
+					"id": "m7",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-17T15:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 7 shipped; can you confirm receipt of batch 7?\n\nOn Thu, 16 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Batch 6 shipped; can you confirm receipt of batch 6?\n"
+				},
+				{
+					"id": "m8",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					],
+					"sentAt": "2026-09-18T16:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 8 shipped; can you confirm receipt of batch 8?\n\nOn Thu, 17 Sep 2026 at 10:00, Tomás Ruiz <tomas@example.net> wrote:\n> Batch 7 shipped; can you confirm receipt of batch 7?\n"
+				},
+				{
+					"id": "m9",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-19T08:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 9 shipped; can you confirm receipt of batch 9?\n\nOn Thu, 18 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Batch 8 shipped; can you confirm receipt of batch 8?\n"
+				},
+				{
+					"id": "m10",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					],
+					"sentAt": "2026-09-20T09:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 10 shipped; can you confirm receipt of batch 10?\n\nOn Thu, 19 Sep 2026 at 10:00, Tomás Ruiz <tomas@example.net> wrote:\n> Batch 9 shipped; can you confirm receipt of batch 9?\n"
+				},
+				{
+					"id": "m11",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-21T10:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 11 shipped; can you confirm receipt of batch 11?\n\nOn Thu, 20 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Batch 10 shipped; can you confirm receipt of batch 10?\n"
+				},
+				{
+					"id": "m12",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					],
+					"sentAt": "2026-09-22T11:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 12 shipped; can you confirm receipt of batch 12?\n\nOn Thu, 21 Sep 2026 at 10:00, Tomás Ruiz <tomas@example.net> wrote:\n> Batch 11 shipped; can you confirm receipt of batch 11?\n"
+				},
+				{
+					"id": "m13",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-23T12:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 13 shipped; can you confirm receipt of batch 13?\n\nOn Thu, 22 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Batch 12 shipped; can you confirm receipt of batch 12?\n"
+				},
+				{
+					"id": "m14",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					],
+					"sentAt": "2026-09-24T13:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 14 shipped; can you confirm receipt of batch 14?\n\nOn Thu, 23 Sep 2026 at 10:00, Tomás Ruiz <tomas@example.net> wrote:\n> Batch 13 shipped; can you confirm receipt of batch 13?\n"
+				},
+				{
+					"id": "m15",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-25T14:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 15 shipped; can you confirm receipt of batch 15?\n\nOn Thu, 24 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Batch 14 shipped; can you confirm receipt of batch 14?\n"
+				},
+				{
+					"id": "m16",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					],
+					"sentAt": "2026-09-26T15:00:00+02:00",
+					"subject": "Re: long-003",
+					"text": "Batch 16 shipped; can you confirm receipt of batch 16?\n\nOn Thu, 25 Sep 2026 at 10:00, Tomás Ruiz <tomas@example.net> wrote:\n> Batch 15 shipped; can you confirm receipt of batch 15?\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "can you confirm receipt of batch 1?",
+						"segmentKind": "fresh",
+						"assertion": "Confirm receipt of batch 1",
+						"requester": {
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i15",
+						"messageId": "m15",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "can you confirm receipt of batch 15?",
+						"segmentKind": "fresh",
+						"assertion": "Confirm receipt of batch 15",
+						"requester": {
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m2",
+						"quote": "can you confirm receipt of batch 1?",
+						"segmentKind": "quoted",
+						"assertion": "Confirm receipt of batch 1",
+						"reject": "not_fresh"
+					},
+					{
+						"id": "t15",
+						"messageId": "m16",
+						"quote": "can you confirm receipt of batch 15?",
+						"segmentKind": "quoted",
+						"assertion": "Confirm receipt of batch 15",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "long-004",
+			"slices": ["long_threads", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-11T09:00:00+02:00",
+					"subject": "long-004",
+					"text": "Day 1 of the pilot: 3 sign-ups so far.\n"
+				},
+				{
+					"id": "m2",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-09-12T10:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 2 of the pilot: 6 sign-ups so far.\n\nOn Thu, 11 Sep 2026 at 10:00, Aiko Tanaka <aiko@example.net> wrote:\n> Day 1 of the pilot: 3 sign-ups so far.\n"
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-13T11:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 3 of the pilot: 9 sign-ups so far.\n\nOn Thu, 12 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Day 2 of the pilot: 6 sign-ups so far.\n"
+				},
+				{
+					"id": "m4",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-09-14T12:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 4 of the pilot: 12 sign-ups so far.\n\nOn Thu, 13 Sep 2026 at 10:00, Aiko Tanaka <aiko@example.net> wrote:\n> Day 3 of the pilot: 9 sign-ups so far.\n"
+				},
+				{
+					"id": "m5",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-15T13:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 5 of the pilot: 15 sign-ups so far.\n\nOn Thu, 14 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Day 4 of the pilot: 12 sign-ups so far.\n"
+				},
+				{
+					"id": "m6",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-09-16T14:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 6 of the pilot: 18 sign-ups so far.\n\nOn Thu, 15 Sep 2026 at 10:00, Aiko Tanaka <aiko@example.net> wrote:\n> Day 5 of the pilot: 15 sign-ups so far.\n"
+				},
+				{
+					"id": "m7",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-17T15:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 7 of the pilot: 21 sign-ups so far.\n\nOn Thu, 16 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Day 6 of the pilot: 18 sign-ups so far.\n"
+				},
+				{
+					"id": "m8",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-09-18T16:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 8 of the pilot: 24 sign-ups so far.\n\nOn Thu, 17 Sep 2026 at 10:00, Aiko Tanaka <aiko@example.net> wrote:\n> Day 7 of the pilot: 21 sign-ups so far.\n"
+				},
+				{
+					"id": "m9",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-19T08:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 9 of the pilot: 27 sign-ups so far.\n\nOn Thu, 18 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Day 8 of the pilot: 24 sign-ups so far.\n"
+				},
+				{
+					"id": "m10",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-09-20T09:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 10 of the pilot: 30 sign-ups so far.\n\nOn Thu, 19 Sep 2026 at 10:00, Aiko Tanaka <aiko@example.net> wrote:\n> Day 9 of the pilot: 27 sign-ups so far.\n"
+				},
+				{
+					"id": "m11",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-21T10:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 11 of the pilot: 33 sign-ups so far.\n\nOn Thu, 20 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Day 10 of the pilot: 30 sign-ups so far.\n"
+				},
+				{
+					"id": "m12",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-09-22T11:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 12 of the pilot: 36 sign-ups so far.\n\nOn Thu, 21 Sep 2026 at 10:00, Aiko Tanaka <aiko@example.net> wrote:\n> Day 11 of the pilot: 33 sign-ups so far.\n"
+				},
+				{
+					"id": "m13",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-23T12:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 13 of the pilot: 39 sign-ups so far.\n\nOn Thu, 22 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Day 12 of the pilot: 36 sign-ups so far.\n"
+				},
+				{
+					"id": "m14",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-09-24T13:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 14 of the pilot: 42 sign-ups so far.\n\nOn Thu, 23 Sep 2026 at 10:00, Aiko Tanaka <aiko@example.net> wrote:\n> Day 13 of the pilot: 39 sign-ups so far.\n"
+				},
+				{
+					"id": "m15",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-25T14:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 15 of the pilot: 45 sign-ups so far.\n\nOn Thu, 24 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Day 14 of the pilot: 42 sign-ups so far.\n"
+				},
+				{
+					"id": "m16",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-09-26T15:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 16 of the pilot: 48 sign-ups so far.\n\nOn Thu, 25 Sep 2026 at 10:00, Aiko Tanaka <aiko@example.net> wrote:\n> Day 15 of the pilot: 45 sign-ups so far.\n"
+				},
+				{
+					"id": "m17",
+					"direction": "inbound",
+					"from": {
+						"name": "Aiko Tanaka",
+						"email": "aiko@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-27T16:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 17 of the pilot: 51 sign-ups so far.\n\nOn Thu, 26 Sep 2026 at 10:00, Mara Lind <mara@example.com> wrote:\n> Day 16 of the pilot: 48 sign-ups so far.\n"
+				},
+				{
+					"id": "m18",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Aiko Tanaka",
+							"email": "aiko@example.net"
+						}
+					],
+					"sentAt": "2026-09-28T08:00:00+02:00",
+					"subject": "Re: long-004",
+					"text": "Day 18 of the pilot: 54 sign-ups so far.\n\nOn Thu, 27 Sep 2026 at 10:00, Aiko Tanaka <aiko@example.net> wrote:\n> Day 17 of the pilot: 51 sign-ups so far.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i18",
+						"messageId": "m18",
+						"intent": "question",
+						"facets": ["information"],
+						"responsibility": "unclear",
+						"quote": "Day 18 of the pilot: 54 sign-ups so far.",
+						"segmentKind": "fresh",
+						"assertion": "Discuss the pilot numbers",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "long-005",
+			"slices": ["long_threads", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-11T09:00:00+02:00",
+					"subject": "long-005",
+					"text": "Woche 1: ich schicke dir den Bericht für Woche 1 am Freitag.\n"
+				},
+				{
+					"id": "m2",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					],
+					"sentAt": "2026-09-12T10:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 2: ich schicke dir den Bericht für Woche 2 am Freitag.\n\nAm 11.09.2026 um 10:00 schrieb Emil Sander <emil@example.net>:\n> Woche 1: ich schicke dir den Bericht für Woche 1 am Freitag.\n"
+				},
+				{
+					"id": "m3",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-13T11:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 3: ich schicke dir den Bericht für Woche 3 am Freitag.\n\nAm 12.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Woche 2: ich schicke dir den Bericht für Woche 2 am Freitag.\n"
+				},
+				{
+					"id": "m4",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					],
+					"sentAt": "2026-09-14T12:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 4: ich schicke dir den Bericht für Woche 4 am Freitag.\n\nAm 13.09.2026 um 10:00 schrieb Emil Sander <emil@example.net>:\n> Woche 3: ich schicke dir den Bericht für Woche 3 am Freitag.\n"
+				},
+				{
+					"id": "m5",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-15T13:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 5: ich schicke dir den Bericht für Woche 5 am Freitag.\n\nAm 14.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Woche 4: ich schicke dir den Bericht für Woche 4 am Freitag.\n"
+				},
+				{
+					"id": "m6",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					],
+					"sentAt": "2026-09-16T14:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 6: ich schicke dir den Bericht für Woche 6 am Freitag.\n\nAm 15.09.2026 um 10:00 schrieb Emil Sander <emil@example.net>:\n> Woche 5: ich schicke dir den Bericht für Woche 5 am Freitag.\n"
+				},
+				{
+					"id": "m7",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-17T15:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 7: ich schicke dir den Bericht für Woche 7 am Freitag.\n\nAm 16.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Woche 6: ich schicke dir den Bericht für Woche 6 am Freitag.\n"
+				},
+				{
+					"id": "m8",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					],
+					"sentAt": "2026-09-18T16:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 8: ich schicke dir den Bericht für Woche 8 am Freitag.\n\nAm 17.09.2026 um 10:00 schrieb Emil Sander <emil@example.net>:\n> Woche 7: ich schicke dir den Bericht für Woche 7 am Freitag.\n"
+				},
+				{
+					"id": "m9",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-19T08:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 9: ich schicke dir den Bericht für Woche 9 am Freitag.\n\nAm 18.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Woche 8: ich schicke dir den Bericht für Woche 8 am Freitag.\n"
+				},
+				{
+					"id": "m10",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					],
+					"sentAt": "2026-09-20T09:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 10: ich schicke dir den Bericht für Woche 10 am Freitag.\n\nAm 19.09.2026 um 10:00 schrieb Emil Sander <emil@example.net>:\n> Woche 9: ich schicke dir den Bericht für Woche 9 am Freitag.\n"
+				},
+				{
+					"id": "m11",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-21T10:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 11: ich schicke dir den Bericht für Woche 11 am Freitag.\n\nAm 20.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Woche 10: ich schicke dir den Bericht für Woche 10 am Freitag.\n"
+				},
+				{
+					"id": "m12",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					],
+					"sentAt": "2026-09-22T11:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 12: ich schicke dir den Bericht für Woche 12 am Freitag.\n\nAm 21.09.2026 um 10:00 schrieb Emil Sander <emil@example.net>:\n> Woche 11: ich schicke dir den Bericht für Woche 11 am Freitag.\n"
+				},
+				{
+					"id": "m13",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-23T12:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 13: ich schicke dir den Bericht für Woche 13 am Freitag.\n\nAm 22.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Woche 12: ich schicke dir den Bericht für Woche 12 am Freitag.\n"
+				},
+				{
+					"id": "m14",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					],
+					"sentAt": "2026-09-24T13:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 14: ich schicke dir den Bericht für Woche 14 am Freitag.\n\nAm 23.09.2026 um 10:00 schrieb Emil Sander <emil@example.net>:\n> Woche 13: ich schicke dir den Bericht für Woche 13 am Freitag.\n"
+				},
+				{
+					"id": "m15",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-09-25T14:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 15: ich schicke dir den Bericht für Woche 15 am Freitag.\n\nAm 24.09.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Woche 14: ich schicke dir den Bericht für Woche 14 am Freitag.\n"
+				},
+				{
+					"id": "m16",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					],
+					"sentAt": "2026-09-26T15:00:00+02:00",
+					"subject": "Re: long-005",
+					"text": "Woche 16: ich schicke dir den Bericht für Woche 16 am Freitag.\n\nAm 25.09.2026 um 10:00 schrieb Emil Sander <emil@example.net>:\n> Woche 15: ich schicke dir den Bericht für Woche 15 am Freitag.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i2",
+						"messageId": "m2",
+						"intent": "promise",
+						"facets": ["file"],
+						"responsibility": "us",
+						"quote": "ich schicke dir den Bericht für Woche 2 am Freitag.",
+						"segmentKind": "fresh",
+						"assertion": "Schick Emil den Bericht für Woche 2 am Freitag",
+						"requester": {
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					},
+					{
+						"id": "i9",
+						"messageId": "m9",
+						"intent": "promise",
+						"facets": ["file"],
+						"responsibility": "them",
+						"quote": "ich schicke dir den Bericht für Woche 9 am Freitag.",
+						"segmentKind": "fresh",
+						"assertion": "Emil schickt den Bericht für Woche 9 am Freitag",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"responsible": {
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t2",
+						"messageId": "m3",
+						"quote": "ich schicke dir den Bericht für Woche 2 am Freitag.",
+						"segmentKind": "quoted",
+						"assertion": "Schick Emil den Bericht für Woche 2 am Freitag",
+						"reject": "not_fresh"
+					},
+					{
+						"id": "t9",
+						"messageId": "m10",
+						"quote": "ich schicke dir den Bericht für Woche 9 am Freitag.",
+						"segmentKind": "quoted",
+						"assertion": "Emil schickt den Bericht für Woche 9 am Freitag",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		}
+	]
+}

@@ -73,7 +73,7 @@ async function purge(t: Test, messageId: Id<'mailMessages'>): Promise<void> {
 	await t.run(async (ctx) => {
 		const m = await ctx.db.get(messageId);
 		if (!m) throw new Error('message already gone');
-		await purgeMessageRow(ctx, m);
+		await purgeMessageRow(ctx, m, new Map());
 	});
 }
 

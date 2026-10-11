@@ -43,6 +43,7 @@ import {
 	shouldSampleDraftDelta,
 } from '../../inbox/askEagerness';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
+import { loadThreadPlan } from './composeDraftPlan';
 
 const TONE_INSTRUCTION =
 	'\n\nTone: match the owner’s natural, personal style — warm and direct, not corporate.';
@@ -101,6 +102,8 @@ export async function draftClarificationReply(
 			scopeToContact: context.contactId ?? 'org-general-only',
 		});
 
+		// The thread's plan: its open items, an unanswered item-linked slot at `clarify`.
+		const plan = await loadThreadPlan(ctx, args.threadId);
 		const result = await runSharedDraft(ctx, {
 			surface: 'personal',
 			resolveModel: () => resolveLanguageModel(ctx, 'draft'),
@@ -117,6 +120,7 @@ export async function draftClarificationReply(
 			// The service records the draft's spend, on success and on a throw.
 			spendLabels: { draft: 'postbox_clarify_draft', selfCheck: 'postbox_clarify_selfcheck' },
 			strategyScope: { mailboxId: context.mailboxId, classification: 'other' },
+			...(plan ? { responsePlan: plan.prompt } : {}),
 		});
 
 		const body = result.draftBody.trim();

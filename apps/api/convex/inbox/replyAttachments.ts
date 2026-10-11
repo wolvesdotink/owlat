@@ -24,6 +24,8 @@ import { v } from 'convex/values';
 import { internalAction, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
+import { htmlToPlainText } from '@owlat/shared/html';
+import { captureTeamReplySnapshot } from '../mail/interpret/sources';
 import type { Id } from '../_generated/dataModel';
 import { MAX_ATTACHMENT_BYTES, ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { adminMutation, publicQuery } from '../lib/authedFunctions';
@@ -46,6 +48,9 @@ import {
 	replyAttachmentStatus,
 	takeReadyReplyAttachments,
 } from './replyAttachmentStore';
+import { outgoingCoverageHold } from '../mail/interpret/planGate';
+import { interpretationHoldFor } from '../mail/interpret/teamActions';
+import { retirePlansForDraft } from '../mail/interpret/responsePlanState';
 
 const LOG_TAG = '[team reply attachments]';
 
@@ -280,7 +285,11 @@ export const finishCopy = internalMutation({
  */
 export type AgentReplyIntakeOutcome =
 	| NonCampaignIntakeOutcome
-	| { ok: false; reason: 'attachment_copying' | 'attachment_failed'; detail?: undefined };
+	| { ok: false; reason: 'attachment_copying' | 'attachment_failed'; detail?: undefined }
+	// The item_coverage gate enforces and the exact outgoing reply is not covered.
+	| { ok: false; reason: 'item_coverage'; detail: string }
+	// D3: the thread's interpretation is no longer complete (always checked).
+	| { ok: false; reason: 'interpretation_incomplete'; detail: string };
 
 export const intakeAgentReply = internalMutation({
 	args: {
@@ -290,6 +299,8 @@ export const intakeAgentReply = internalMutation({
 		contactId: v.optional(v.id('contacts')),
 		subject: v.string(),
 		html: v.string(),
+		// The draft text `html` was rendered from: what the coverage check binds to.
+		draftText: v.optional(v.string()),
 		from: v.string(),
 		headers: v.optional(v.record(v.string(), v.string())),
 	},
@@ -315,6 +326,20 @@ export const intakeAgentReply = internalMutation({
 			(entry) => replyAttachmentStatus(entry) === 'ready' && include(entry)
 		);
 		const carried = [...(message.replyAttachments ?? []), ...ready];
+		// SPEC §6: an unattended reply goes out only if its coverage was checked
+		// for exactly this text and these files (review D1), in this transaction.
+		if (args.autonomous === true) {
+			// D3 again, whatever the item_coverage mode: a purge or a re-read in the
+			// undo or file-copy window can leave the interpretation incomplete or an
+			// item redacted after the route approved (final review F1).
+			const incomplete = await interpretationHoldFor(ctx, message._id);
+			if (incomplete) return { ok: false, reason: 'interpretation_incomplete', detail: incomplete };
+			const hold = await outgoingCoverageHold(ctx, message, {
+				draftText: args.draftText ?? message.draftResponse ?? '',
+				attachmentIds: carried.map((entry) => entry.id),
+			});
+			if (hold) return { ok: false, reason: 'item_coverage', detail: hold };
+		}
 		const attachmentRefs = await replyAttachmentRefs(ctx, carried);
 
 		const outcome: NonCampaignIntakeOutcome = await ctx.runMutation(
@@ -334,6 +359,25 @@ export const intakeAgentReply = internalMutation({
 		if (outcome.ok && ready.length > 0) {
 			await takeReadyReplyAttachments(ctx, thread, include);
 			await ctx.db.patch(args.inboundMessageId, { replyAttachments: carried });
+		}
+		// The thread brief reads the reply exactly as it was queued (the Send row
+		// keeps no body, and the inbound draft can change afterwards). It is
+		// interpreted once the Send is finalized as sent (`sendActivity.ts`).
+		if (outcome.ok) {
+			// The draft is sent: its response plan is retired, so no late check of
+			// the draft as it was can be stored after the Send.
+			if (message.threadId) {
+				await retirePlansForDraft(
+					ctx,
+					{ kind: 'inboundDraft', id: args.inboundMessageId },
+					message.threadId
+				);
+			}
+			await captureTeamReplySnapshot(ctx, {
+				sendId: outcome.sendId,
+				subject: args.subject,
+				text: htmlToPlainText(args.html, { preserveBreaks: true }),
+			});
 		}
 		return outcome;
 	},

@@ -1,0 +1,344 @@
+{
+	"version": 1,
+	"slice": "inline_replies",
+	"threads": [
+		{
+			"id": "inl-001",
+			"slices": ["inline_replies", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						}
+					],
+					"sentAt": "2026-10-05T09:00:00+02:00",
+					"subject": "Questions",
+					"text": "Hi Jonas,\n\n1. Can you do Tuesday?\n2. What is the budget?\n\nMara\n"
+				},
+				{
+					"id": "m2",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T11:00:00+02:00",
+					"subject": "Re: Questions",
+					"text": "On Mon, 5 Oct 2026 at 09:00, Mara Lind <mara@example.com> wrote:\n> 1. Can you do Tuesday?\n\nYes, Tuesday works.\n\n> 2. What is the budget?\n\nStill EUR 5,000. Can you send the invoice in advance?\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m2",
+						"intent": "request",
+						"facets": ["payment", "file"],
+						"responsibility": "us",
+						"quote": "Can you send the invoice in advance?",
+						"segmentKind": "fresh",
+						"assertion": "Send Jonas the invoice in advance",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"facts": [
+					{
+						"id": "f1",
+						"messageId": "m2",
+						"key": {
+							"entity": "project",
+							"attribute": "budget"
+						},
+						"quote": "Still EUR 5,000.",
+						"segmentKind": "fresh",
+						"assertion": "The budget is still EUR 5,000"
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m2",
+						"quote": "2. What is the budget?",
+						"segmentKind": "quoted",
+						"assertion": "Tell Jonas the budget",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "inl-002",
+			"slices": ["inline_replies", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T15:00:00+02:00",
+					"subject": "AW: Planung",
+					"text": "Am 05.10.2026 um 10:00 schrieb Mara Lind <mara@example.com>:\n> Passt dir der Termin am Freitag?\n\nJa, Freitag passt.\n\n> Bringst du die Unterlagen mit?\n\nKlar. Kannst du bitte den Beamer organisieren?\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["meeting"],
+						"responsibility": "us",
+						"quote": "Kannst du bitte den Beamer organisieren?",
+						"segmentKind": "fresh",
+						"assertion": "Organisiere den Beamer",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Bringst du die Unterlagen mit?",
+						"segmentKind": "quoted",
+						"assertion": "Unterlagen mitbringen",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "inl-003",
+			"slices": ["inline_replies", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T10:00:00+02:00",
+					"subject": "Re: Checklist",
+					"html": "<div dir=\"ltr\">Answers inline.</div><div class=\"gmail_quote\"><div class=\"gmail_attr\">On Mon, Oct 5, 2026 at 4:00 PM Mara Lind &lt;mara@example.com&gt; wrote:<br></div><blockquote class=\"gmail_quote\"><div>Is the NDA signed?</div></blockquote><div>Signed, attached.</div><blockquote class=\"gmail_quote\"><div>Who joins the call?</div></blockquote><div>Me and Sofia. Could you send the dial-in details?</div></div>"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["meeting"],
+						"responsibility": "us",
+						"quote": "Could you send the dial-in details?",
+						"segmentKind": "fresh",
+						"assertion": "Send Tomás the dial-in details",
+						"requester": {
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Who joins the call?",
+						"segmentKind": "quoted",
+						"assertion": "Say who joins the call",
+						"reject": "not_fresh"
+					}
+				]
+			}
+		},
+		{
+			"id": "inl-004",
+			"slices": ["inline_replies", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T12:00:00+01:00",
+					"subject": "Re: Draft",
+					"text": "> Could you review section 3?\n\nDone, two comments in the doc.\n\n> And the timeline?\n\nThe timeline looks fine. Please confirm the print date.\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "Please confirm the print date.",
+						"segmentKind": "fresh",
+						"assertion": "Confirm the print date",
+						"requester": {
+							"name": "Priya Nair",
+							"email": "priya@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "inl-005",
+			"slices": ["inline_replies", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Noah Berg",
+						"email": "noah@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T09:00:00+02:00",
+					"subject": "Re: Order",
+					"text": "On Tue, 6 Oct 2026 at 18:00, Mara Lind <mara@example.com> wrote:\n> Can you ship on Monday?\n\nWe can ship on Monday.\n\n> Can you include the spare parts?\n\nI will include the spare parts at no charge.\n\nNoah\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "promise",
+						"facets": ["file"],
+						"responsibility": "them",
+						"quote": "I will include the spare parts at no charge.",
+						"segmentKind": "fresh",
+						"assertion": "Noah includes the spare parts at no charge",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"responsible": {
+							"name": "Noah Berg",
+							"email": "noah@example.net"
+						}
+					}
+				],
+				"facts": [
+					{
+						"id": "f1",
+						"messageId": "m1",
+						"key": {
+							"entity": "order",
+							"attribute": "ship date"
+						},
+						"quote": "We can ship on Monday.",
+						"segmentKind": "fresh",
+						"assertion": "The order ships on Monday"
+					}
+				]
+			}
+		}
+	]
+}

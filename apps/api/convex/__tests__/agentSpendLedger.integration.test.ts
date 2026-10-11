@@ -1,8 +1,9 @@
 /**
  * The Team Inbox agent's spend reaches the ledger the spend ceiling reads
  * (#1259). The real walker runs one inbound message from `start` through every
- * step up to `route`: guard → quarantined extraction → classify → clarify →
- * draft → self-check. Each billed call must leave exactly one `llmUsageEvents`
+ * step up to `route`: guard → classify → clarify → draft → self-check. (The
+ * context step's interpretation is metered by `mail/interpret/run.ts`; this
+ * message has no Team Inbox thread, so it is not interpreted here.) Each billed call must leave exactly one `llmUsageEvents`
  * row, the budget status must count them, and with a daily ceiling set the
  * agent's own spend alone must withhold autonomous auto-send. Before the fix only
  * the self-check reached the ledger, so the same run stayed under the ceiling.
@@ -61,9 +62,6 @@ function answerObjectCalls() {
 	mocks.runLlmObject.mockImplementation(async ({ prompt }: { prompt: string }) => {
 		if (prompt.includes('security classifier')) {
 			return billed({ object: { isInjection: false, confidence: 0.02, reason: 'benign' } });
-		}
-		if (prompt.includes('QUARANTINED extractor')) {
-			return billed({ object: { facts: ['Asks about a refund'], questions: ['Refund?'] } });
 		}
 		if (prompt.includes('Identify the SLOTS')) return billed({ object: { slots: [] } });
 		if (prompt.includes('strict reviewer')) {
@@ -170,7 +168,6 @@ describe('Team Inbox agent spend in the ledger (#1259)', () => {
 			[
 				'agent_classify',
 				'agent_clarify',
-				'agent_context_retrieval',
 				'agent_draft',
 				'agent_draft_selfcheck',
 				'agent_security_scan',
@@ -190,7 +187,7 @@ describe('Team Inbox agent spend in the ledger (#1259)', () => {
 
 		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '100';
 		const status = await t.query(internal.analytics.spendBudget.getBudgetStatus, {});
-		expect(status.daily.spentUsd).toBeCloseTo(6 * CALL_COST);
+		expect(status.daily.spentUsd).toBeCloseTo(5 * CALL_COST);
 	});
 
 	it('withholds autonomous auto-send once the agent’s own spend crosses the ceiling', async () => {

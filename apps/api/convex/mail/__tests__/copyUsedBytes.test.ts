@@ -79,7 +79,7 @@ describe('mailbox usedBytes across IMAP COPY', () => {
 		await t.run(async (ctx) => {
 			const m = await ctx.db.get(messageId);
 			if (!m) throw new Error('original vanished');
-			await purgeMessageRow(ctx, m);
+			await purgeMessageRow(ctx, m, new Map());
 		});
 		expect(await usedBytes(t, mailboxId)).toBe(0);
 	});

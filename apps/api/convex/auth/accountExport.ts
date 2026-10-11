@@ -1,4 +1,4 @@
-import type { PaginationResult } from 'convex/server';
+import type { FunctionReference, PaginationOptions, PaginationResult } from 'convex/server';
 import { v } from 'convex/values';
 import { literalUnion } from '../lib/literalUnion';
 import {
@@ -34,6 +34,31 @@ const accountExportResourceValidator = literalUnion([
 	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES,
 	...ACCOUNT_EXPORT_PERSONAL_RESOURCES,
 ]);
+
+/** The personal resources that page by user alone (no mailbox, no organization). */
+const USER_SCOPED_EXPORT_QUERIES: Record<
+	| 'externalMailAccounts'
+	| 'savedReplies'
+	| 'chatMessages'
+	| 'threadNotes'
+	| 'deliverabilityAlertRecipientStates'
+	| 'bookingPages'
+	| 'bookings'
+	| 'pushSubscriptions'
+	| 'threadViewerState',
+	FunctionReference<'query', 'internal', { userId: string; paginationOpts: PaginationOptions }>
+> = {
+	externalMailAccounts: internal.auth.accountExportQueries.listPersonalExternalAccounts,
+	savedReplies: internal.auth.accountExportQueries.listPersonalSavedReplies,
+	chatMessages: internal.auth.accountExportQueries.listPersonalChatMessages,
+	threadNotes: internal.auth.accountExportQueries.listPersonalThreadNotes,
+	deliverabilityAlertRecipientStates:
+		internal.auth.accountExportQueries.listDeliverabilityAlertRecipientStates,
+	bookingPages: internal.auth.accountExportBookingQueries.listBookingPages,
+	bookings: internal.auth.accountExportBookingQueries.listBookings,
+	pushSubscriptions: internal.auth.accountExportPushQueries.listPersonalPushSubscriptions,
+	threadViewerState: internal.auth.accountExportThreadBriefQueries.listOwnThreadViewerState,
+};
 
 function isContentResource(resource: string): boolean {
 	return (
@@ -448,52 +473,20 @@ export const exportUserDataPage = authedAction({
 			);
 			return serializeAccountExportPage({ ...result, page });
 		}
-		if (args.resource === 'externalMailAccounts') {
-			const result = (await ctx.runQuery(
-				internal.auth.accountExportQueries.listPersonalExternalAccounts,
-				{ userId: args.userId, paginationOpts }
-			)) as PaginationResult<Record<string, unknown>>;
+		if (args.resource === 'threadBriefs') {
+			if (!args.mailboxId) throwInvalidInput('Thread brief export page requires mailboxId');
+			const query = internal.auth.accountExportThreadBriefQueries.listMailboxThreadBriefs;
+			const result = await ctx.runQuery(query, {
+				userId: args.userId,
+				mailboxId: args.mailboxId,
+				paginationOpts,
+			});
 			return serializeAccountExportPage(result);
 		}
-		if (args.resource === 'savedReplies') {
-			const result = (await ctx.runQuery(
-				internal.auth.accountExportQueries.listPersonalSavedReplies,
-				{ userId: args.userId, paginationOpts }
-			)) as PaginationResult<Doc<'mailSnippets'>>;
-			return serializeAccountExportPage(result);
-		}
-		if (args.resource === 'chatMessages') {
-			const result = (await ctx.runQuery(
-				internal.auth.accountExportQueries.listPersonalChatMessages,
-				{ userId: args.userId, paginationOpts }
-			)) as PaginationResult<Doc<'chatMessages'>>;
-			return serializeAccountExportPage(result);
-		}
-		if (args.resource === 'bookingPages' || args.resource === 'bookings') {
-			const result = (await ctx.runQuery(
-				args.resource === 'bookings'
-					? internal.auth.accountExportBookingQueries.listBookings
-					: internal.auth.accountExportBookingQueries.listBookingPages,
-				{ userId: args.userId, paginationOpts }
-			)) as PaginationResult<Record<string, unknown>>;
-			return serializeAccountExportPage(result);
-		}
-		if (args.resource === 'pushSubscriptions') {
-			const query = internal.auth.accountExportPushQueries.listPersonalPushSubscriptions;
-			const result = await ctx.runQuery(query, { userId: args.userId, paginationOpts });
-			return serializeAccountExportPage(result as PaginationResult<Record<string, unknown>>);
-		}
-		if (args.resource === 'threadNotes') {
-			const result = (await ctx.runQuery(
-				internal.auth.accountExportQueries.listPersonalThreadNotes,
-				{ userId: args.userId, paginationOpts }
-			)) as PaginationResult<Doc<'threadNotes'>>;
-			return serializeAccountExportPage(result);
-		}
-		const result = (await ctx.runQuery(
-			internal.auth.accountExportQueries.listDeliverabilityAlertRecipientStates,
-			{ userId: args.userId, paginationOpts }
-		)) as PaginationResult<Record<string, unknown>>;
+		const result = (await ctx.runQuery(USER_SCOPED_EXPORT_QUERIES[args.resource], {
+			userId: args.userId,
+			paginationOpts,
+		})) as PaginationResult<Record<string, unknown>>;
 		return serializeAccountExportPage(result);
 	},
 });

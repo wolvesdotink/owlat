@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-	defaultPostboxNotifyAbout,
-	resolvePostboxNotifyAbout,
-} from '../postboxNotify';
+import { defaultPostboxNotifyAbout, resolvePostboxNotifyAbout } from '../postboxNotify';
 
 describe('defaultPostboxNotifyAbout', () => {
 	it("defaults to 'people-important' once smart categories are live", () => {

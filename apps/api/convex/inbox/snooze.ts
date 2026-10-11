@@ -23,6 +23,7 @@ import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
 import { getMutationContext } from '../lib/sessionOrganization';
 import { snoozeClockPatch } from './sla/threadClock';
+import { recordTeamSnoozed } from '../mail/interpret/threadEvents';
 
 /**
  * Snooze a thread until a future timestamp. Admin-only (shared inbox), audited.
@@ -53,6 +54,7 @@ export const snoozeThread = adminMutation({
 			resourceId: args.threadId,
 			details: { until: args.until },
 		});
+		await recordTeamSnoozed(ctx, args.threadId, { userId, until: args.until });
 		return { success: true };
 	},
 });

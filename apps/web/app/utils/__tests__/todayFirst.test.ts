@@ -11,12 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { nameFromAddress, resolveInboxIdentities } from '../inboxIdentity';
 import { compareAnswerItems } from '../answerQueue';
-import {
-	buildTodayModel,
-	missingSummaries,
-	parseFromHeader,
-	type MailboxDigest,
-} from '../todayDigest';
+import { buildTodayModel, parseFromHeader, type MailboxDigest } from '../todayDigest';
 import { parsePeekKey, peekKey, threadHref } from '../todayPeek';
 
 const row = (over: Partial<Parameters<typeof resolveInboxIdentities>[0][number]>) => ({
@@ -135,7 +130,6 @@ describe('today model', () => {
 			teamUpdates: [],
 			teamCounts: { promotions: 2, notifications: 1, spam: 0 },
 			since: 0,
-			pickSummary: () => null,
 		});
 		expect(model.newMail).toBe(5);
 		expect(model.worth.map((l) => [l.text, l.isSummary])).toEqual([
@@ -171,7 +165,6 @@ describe('today model', () => {
 			teamUpdates: [],
 			teamCounts: null,
 			since: 0,
-			pickSummary: () => null,
 		});
 		expect(model.worth.map((l) => [l.key, l.reason])).toEqual([['mail:alert', 'alert']]);
 		expect(model.also.map((l) => l.key)).toEqual(['mail:ci']);
@@ -187,7 +180,8 @@ describe('today model', () => {
 				from: 'Northwind Finance <finance@northwind.example>',
 				subject: 'Invoice run',
 				receivedAt: at,
-				classification: { importance, summary: { en: 'Invoice run moves to the 28th.' } },
+				preview: 'The invoice run moves to the 28th.',
+				classification: { importance },
 			},
 		});
 		const model = buildTodayModel({
@@ -195,14 +189,16 @@ describe('today model', () => {
 			teamUpdates: [update('new', 10, 0.8), update('old', 1, 0.9), update('minor', 11, 0.1)],
 			teamCounts: null,
 			since: 5,
-			pickSummary: (s) => s?.['en'] ?? null,
 		});
 		expect(model.worth.map((l) => l.inboundMessageId)).toEqual(['new']);
 		expect(model.also.map((l) => l.inboundMessageId)).toEqual(['minor']);
 		expect(model.worth[0]?.sources[0]).toMatchObject({
 			kind: 'team',
 			fromName: 'Northwind Finance',
+			snippet: 'The invoice run moves to the 28th.',
 		});
+		// D7: the subject, never a classifier summary.
+		expect(model.worth[0]).toMatchObject({ text: 'Invoice run', isSummary: false });
 	});
 
 	it('never drops overflow silently', () => {
@@ -221,59 +217,9 @@ describe('today model', () => {
 			teamUpdates: [],
 			teamCounts: null,
 			since: 0,
-			pickSummary: () => null,
 		});
 		expect(model.also.length + model.alsoHidden).toBe(20);
 		expect(model.alsoHidden).toBeGreaterThan(0);
-	});
-
-	it('asks the summarizer only for lines still showing a subject, newest first', () => {
-		expect(
-			missingSummaries([
-				digest({
-					arrived: [
-						{
-							threadId: 'a',
-							mailboxId: 'mb',
-							subject: 'A',
-							snippet: '',
-							summary: 'done',
-							category: null,
-							lastMessageAt: 5,
-							summaryRequest: { messageId: 'ma', sinceCount: 0 },
-							sources: [],
-						},
-						{
-							threadId: 'b',
-							mailboxId: 'mb',
-							subject: 'B',
-							snippet: '',
-							summary: null,
-							category: null,
-							lastMessageAt: 1,
-							summaryRequest: { messageId: 'mb1', sinceCount: 0 },
-							sources: [],
-						},
-					],
-					changed: [
-						{
-							threadId: 'c',
-							mailboxId: 'mb',
-							subject: 'C',
-							newMessages: 2,
-							lastMessageAt: 9,
-							snippet: '',
-							summary: null,
-							summaryRequest: { messageId: 'mc', sinceCount: 3 },
-							sources: [],
-						},
-					],
-				}),
-			])
-		).toEqual([
-			{ messageId: 'mc', sinceCount: 3 },
-			{ messageId: 'mb1', sinceCount: 0 },
-		]);
 	});
 
 	it('reads a display name out of a From header', () => {

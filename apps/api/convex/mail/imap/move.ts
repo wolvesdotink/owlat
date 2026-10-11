@@ -13,7 +13,12 @@ import type { Id } from '../../_generated/dataModel';
 import { rebuildThreadAggregates } from '../messageActions';
 import { bumpFolderModseq } from '../folders';
 import { indexMessageAttachments, removeMessageAttachments } from '../attachmentIndex';
-import { deleteMessageRowAndBlobs } from '../messagePurge';
+import {
+	deleteMessageRowAndBlobs,
+	notePurgedMessage,
+	purgeThreadBriefsOf,
+	type PurgedMessages,
+} from '../messagePurge';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { recordMessageCounters } from '../messageCounters';
 import { recordFolderMembership } from '../folderMembership';
@@ -231,6 +236,7 @@ export const discardCopies = internalMutation({
 		if (!folder) return { removed: 0 };
 
 		const touchedThreads = new Set<Id<'mailThreads'>>();
+		const purged: PurgedMessages = new Map();
 		let removed = 0;
 		let unseenRemoved = 0;
 		let bytesRemoved = 0;
@@ -247,7 +253,9 @@ export const discardCopies = internalMutation({
 			await removeMessageAttachments(ctx, m._id);
 			// Refcount-aware: the source row still points at the same blobs.
 			await deleteMessageRowAndBlobs(ctx, m);
+			notePurgedMessage(purged, m);
 		}
+		await purgeThreadBriefsOf(ctx, purged);
 		for (const tid of touchedThreads) {
 			await rebuildThreadAggregates(ctx, tid);
 		}
@@ -319,6 +327,7 @@ export const expungeFolder = internalMutation({
 		const uidFilter = args.uidSet ? new Set(args.uidSet) : null;
 		const expungedUids: number[] = [];
 		const touchedThreads = new Set<Id<'mailThreads'>>();
+		const purged: PurgedMessages = new Map();
 		const remote: RemoteChange[] = [];
 		let totalRemoved = 0;
 		let unseenRemoved = 0;
@@ -339,9 +348,11 @@ export const expungeFolder = internalMutation({
 			// still point at the same blobs (see mail/messagePurge.ts). This also
 			// frees the body blobs, which the hand-rolled delete here never did.
 			await deleteMessageRowAndBlobs(ctx, m);
+			notePurgedMessage(purged, m);
 			remote.push({ kind: 'delete', message: m });
 		}
 		await recordRemoteChanges(ctx, remote);
+		await purgeThreadBriefsOf(ctx, purged);
 
 		// Re-derive thread aggregates (incl. latestMessageId) for any thread that
 		// lost a message — otherwise an expunged latest leaves a dangling pointer.

@@ -1,11 +1,7 @@
 import { emailStepEditorModule } from './email';
 import { delayStepEditorModule } from './delay';
 import { conditionStepEditorModule } from './condition';
-import type {
-	StepEditorModule,
-	StepEditorModuleMap,
-	StepKind,
-} from './types';
+import type { StepEditorModule, StepEditorModuleMap, StepKind } from './types';
 
 export const STEP_EDITOR_MODULES: StepEditorModuleMap = {
 	email: emailStepEditorModule,
@@ -13,9 +9,7 @@ export const STEP_EDITOR_MODULES: StepEditorModuleMap = {
 	condition: conditionStepEditorModule,
 };
 
-export function stepEditorModuleFor<K extends StepKind>(
-	kind: K
-): StepEditorModuleMap[K] {
+export function stepEditorModuleFor<K extends StepKind>(kind: K): StepEditorModuleMap[K] {
 	return STEP_EDITOR_MODULES[kind];
 }
 

@@ -7,6 +7,7 @@
  */
 
 import type { TableNames } from '../../_generated/dataModel';
+import { THREAD_BRIEF_MEMBER_DESCENDANTS } from './threadBriefRelations';
 
 export type MemberErasureAction = 'delete' | 'anonymize' | 'retain';
 
@@ -115,6 +116,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc(
 		'mailboxes',
 		'mailAttachmentBackfillJobs',
+		'mailboxId',
+		'delete',
+		'Stopped before the mail goes.'
+	),
+	desc(
+		'mailboxes',
+		'interpretBackfillJobs',
 		'mailboxId',
 		'delete',
 		'Stopped before the mail goes.'
@@ -366,4 +374,5 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		'retain',
 		'The deletion record outlives the profile it deleted.'
 	),
+	...THREAD_BRIEF_MEMBER_DESCENDANTS,
 ];

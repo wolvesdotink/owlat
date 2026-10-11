@@ -20,6 +20,7 @@ import {
 	mailUndoSendSecondsValidator,
 	mailViewModeValidator,
 } from '../lib/validators/mailSettings';
+import { threadViewValidator } from '../lib/validators/threadBrief';
 
 /**
  * Per-user Postbox preferences.
@@ -38,6 +39,12 @@ export const mailSettingsTables = {
 		// reader defaults it ON when the `ai` flag is on (user opt-out within an
 		// AI-enabled deploy).
 		isAutoSummarizeOn: v.optional(v.boolean()),
+		// Which view a personal thread opens on: 'overview' (the thread brief) or
+		// 'conversation' (the messages). Personal mailboxes only; a per-thread
+		// override lives in threadViewerState. Optional so existing rows read as
+		// undefined; the reader defaults it to 'overview', or 'conversation' when
+		// isAutoSummarizeOn is false (D1).
+		threadDefaultView: v.optional(threadViewValidator),
 		// Default reply behavior: whether the primary reply affordance (Reply button
 		// and the `r` shortcut) opens a plain Reply or a Reply-all. Optional so
 		// existing rows read as undefined; the reader defaults it to 'reply'.

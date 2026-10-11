@@ -51,7 +51,7 @@ import { useLocalized } from '~/composables/useLocalized';
  */
 const IS_CLIENT = typeof window !== 'undefined';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -162,7 +162,7 @@ const replyQueueText = useLocalized();
 
 /** The strip's headline — the AI's ask summary, the subject, or the fallback copy. */
 function forYouHeadline(item: ReplyQueueItem): string {
-	return replyQueueText(replyQueueHeadline(item));
+	return replyQueueText(replyQueueHeadline(item, locale.value));
 }
 
 function forYouDetail(item: ReplyQueueItem): string {

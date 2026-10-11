@@ -23,6 +23,7 @@ import { isFeatureEnabled } from '../../lib/featureFlags';
 import { requireMailboxAccess } from '../permissions';
 import { isSharedInboxReader } from '../../inbox/access';
 import { captureStandingAnswers } from '../../inbox/clarificationMemory';
+import { deletePlansForDraft } from '../interpret/responsePlanState';
 import { requireOrgMember, type MutationSessionContext } from '../../lib/sessionOrganization';
 import {
 	answerAskStatusValidator,
@@ -95,10 +96,12 @@ async function canReachTarget(
 	session: MutationSessionContext
 ): Promise<boolean> {
 	if (target.kind === 'teamThread') {
+		const message = target.inboundMessageId ? await ctx.db.get(target.inboundMessageId) : null;
 		return (
 			isSharedInboxReader(session) &&
 			(await isFeatureEnabled(ctx, 'inbox')) &&
-			(await ctx.db.get(target.threadId)) !== null
+			(await ctx.db.get(target.threadId)) !== null &&
+			(!target.inboundMessageId || message?.threadId === target.threadId)
 		);
 	}
 	const draft = await ctx.db.get(target.draftId);
@@ -129,11 +132,27 @@ export const getSession = answerModeQuery({
 	args: { target: answerAskTargetValidator },
 	handler: async (ctx, args, session): Promise<AskSessionView | null> => {
 		const row = await findOwnSession(ctx, args.target, session.userId);
-		if (!row) return null;
+		if (!row || !isSameReplyTarget(row.target, args.target)) return null;
 		if (!(await canReachTarget(ctx, args.target, session))) return null;
 		return toAskSessionView(row);
 	},
 });
+
+/**
+ * Whether a stored session belongs to the reply the caller asks about. A team
+ * session is per thread, but it answers one inbound message: a composer for
+ * another message of the thread never gets it (its questions, context or
+ * stream), and starting there replaces it (review r3 F2).
+ */
+export function isSameReplyTarget(stored: AnswerAskTarget, asked: AnswerAskTarget): boolean {
+	if (stored.kind !== asked.kind) return false;
+	if (stored.kind === 'mailDraft' || asked.kind === 'mailDraft') {
+		return (
+			stored.kind === 'mailDraft' && asked.kind === 'mailDraft' && stored.draftId === asked.draftId
+		);
+	}
+	return stored.threadId === asked.threadId && stored.inboundMessageId === asked.inboundMessageId;
+}
 
 /** Delete a session and the draft stream it owns. */
 async function deleteSessionRow(ctx: MutationCtx, row: Doc<'answerAskSessions'>): Promise<void> {
@@ -156,7 +175,10 @@ export function throwAskSessionClaimed(): never {
 	throwInvalidState('These questions were already answered', { code: 'ASK_SESSION_CLAIMED' });
 }
 
-/** Drop every ask session of a draft (discard, send). */
+/**
+ * Drop every ask session of a draft, and its response plan (SPEC §6): the
+ * draft's Answer mode state goes with the draft (discard, send, teardown).
+ */
 export async function deleteAskSessionsForDraft(
 	ctx: MutationCtx,
 	draftId: Id<'mailDrafts'>
@@ -168,6 +190,7 @@ export async function deleteAskSessionsForDraft(
 		)
 		.take(ASK_SESSION_BATCH); // bounded: one session per person who drafted with AI on this draft
 	for (const row of rows) await deleteSessionRow(ctx, row);
+	await deletePlansForDraft(ctx, { kind: 'mailDraft', id: draftId });
 }
 
 /**

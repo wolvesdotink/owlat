@@ -1,10 +1,12 @@
 /**
  * The refinement contract — stage 2 of the Reply Queue signal (stage 1 is the
  * deterministic screen in mail/needsReplyHeuristic.ts): the reply-intent
- * taxonomy, the prompt that asks for it, the rule that turns the answer into a
- * queue verdict, and the normalizers that bound the model's other fields before
- * they are persisted. All of it pure, so the whole contract unit-tests without
- * a live model; mail/ai/needsReplyClassify.ts keeps only the Convex action.
+ * taxonomy and the guidance that asks for it (INTENT_GUIDE / DECISION_RULES,
+ * which the interpretation prompt in mail/interpret/prompt.ts carries), the
+ * rule that turns the answer into a queue verdict, and the normalizers that
+ * bound the model's other fields before they are persisted. All of it pure, so
+ * the whole contract unit-tests without a live model; the interpretation run
+ * asks the question and mail/interpret/needsReplyProjection.ts applies it.
  *
  * WHY AN INTENT AND NOT A BOOLEAN. The refinement pass used to ask the model a
  * single question — "does this need a reply?" — and trust the answer. A cheap
@@ -19,8 +21,8 @@
  * veto (it may know the reader was only Cc-ed into a question), but it can no
  * longer promote an FYI, a recap or a receipt on its own.
  *
- * Pure (no Convex, no SDK) so the taxonomy, the decision rule and the prompt
- * are all unit-testable without a live model.
+ * Pure (no Convex, no SDK) so the taxonomy and the decision rule are
+ * unit-testable without a live model.
  */
 
 /**
@@ -106,7 +108,7 @@ export function decideNeedsReply(input: {
  * The taxonomy as the model reads it. Kept next to the type so a new intent
  * cannot be added without its one-line definition.
  */
-const INTENT_GUIDE = [
+export const INTENT_GUIDE = [
 	'- direct_question: asks the reader something and is waiting for the answer',
 	'- request_for_action: asks the reader to do, send, review, confirm or fix something',
 	'- approval_or_decision: needs the reader to approve, sign off or choose before the sender can proceed',
@@ -124,7 +126,7 @@ const INTENT_GUIDE = [
  * misclassification the queue shipped: the recap rule is the meeting-notes bug
  * this taxonomy was written for.
  */
-const DECISION_RULES = [
+export const DECISION_RULES = [
 	'- Action items, to-dos or next steps listed INSIDE a recap, summary, meeting-notes or status mail do NOT make it reply-expecting. The reader does that work; they do not answer the mail. Name it informational_update.',
 	'- A message from an unattended address (no-reply, notifications@, a notes/digest robot) is never reply-expecting, even when it lists tasks or asks a rhetorical question.',
 	'- Closing politeness ("let me know if you have questions", "hope this helps", "happy to discuss") is not a request.',
@@ -134,43 +136,6 @@ const DECISION_RULES = [
 	'- When the sender is waiting to RECEIVE something from the reader by email — a document, an invoice, a confirmation, the outcome of what they asked for — it is request_for_action and needsReply is true. That includes a sender who only supplies details the reader asked them for (an address, a booking number, a date) so the reader can finish it: they are waiting for the result. Doing a task rules out a reply only when nothing goes back to the sender.',
 	'- When torn between informational and reply-expecting, ask whether the sender is sitting there waiting for an email back. If not, it is informational.',
 ] as const;
-
-/**
- * Build the refinement prompt. `systemGuard` is prepended verbatim — the thread
- * is attacker-controlled inbound mail and stays framed as untrusted DATA.
- */
-export function buildReplyIntentPrompt(opts: {
-	systemGuard: string;
-	ownerAddress: string;
-	transcript: string;
-	/** The sender looks like a publishing/automated address (weak hint). */
-	senderLooksAutomated: boolean;
-}): string {
-	const senderNote = opts.senderLooksAutomated
-		? `\n\nThe sending address looks like an automated/publishing mailbox rather than a person, so a reply to it may well reach nobody.`
-		: '';
-	return (
-		`${opts.systemGuard}\n\n` +
-		`The reader is ${opts.ownerAddress}. Look at the LAST inbound message in this thread.\n\n` +
-		`First name what that message IS, as exactly one intent:\n${INTENT_GUIDE}\n\n` +
-		`Then set needsReply: true only when the sender is waiting for an email back FROM THE READER ` +
-		`(so only for direct_question, request_for_action, approval_or_decision, scheduling or ` +
-		`personal_message), and the reader — not someone else on the thread — is the one expected to ` +
-		`answer. Reading it, filing it, or doing a task it mentions that sends nothing back to the sender ` +
-		`is not replying.\n\n` +
-		`Rules:\n${DECISION_RULES.join('\n')}\n\n` +
-		`Also give: urgency (high/normal/low); askSummary, a one-line "what they are asking" of at most ` +
-		`120 characters (null unless needsReply is true); dueHint as an ISO date (YYYY-MM-DD) only if the ` +
-		`message states a concrete deadline, else null; and meetingIntent when the sender is trying to ` +
-		`SCHEDULE a meeting/call in prose (isScheduling true), capturing proposedTimes as the sender's ` +
-		`VERBATIM phrases (e.g. "Tuesday afternoon", "after 3pm") plus an optional short topic — null ` +
-		`when the message is not about scheduling.` +
-		senderNote +
-		`\n\nThread:\n\n${opts.transcript}`
-	);
-}
-
-// ─── Bounding the model's other fields ──────────────────────────────────────
 
 /** Keep only a parseable ISO-like date hint; drop hallucinated formats. */
 export function normalizeDueHint(raw: string | null): string | undefined {

@@ -36,7 +36,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { remoteSightingValidator } from '../../lib/validators/mail';
 import { moveMessagesToFolder } from '../messageActions';
 import { applyFlagDelta } from '../flagWrites';
-import { purgeMessageRow } from '../messagePurge';
+import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from '../messagePurge';
 import { dropFolderMembership } from '../folderMembership';
 import { rebuildThreadAggregates } from '../threadAggregates';
 import {
@@ -226,6 +226,7 @@ export const applyRemoteObservations = internalMutation({
 				.first();
 		const inbox = await roleFolder('inbox');
 		const touchedThreads = new Set<Id<'mailThreads'>>();
+		const purged: PurgedMessages = new Map();
 		let pulled = 0;
 		let pushed = 0;
 
@@ -253,7 +254,7 @@ export const applyRemoteObservations = internalMutation({
 				if (obs.isGone && isAligned && local !== undefined) {
 					if (folder.role === 'sent' || folder.role === 'drafts') continue;
 					if (folder.role === 'trash' || folder.role === 'spam') {
-						touchedThreads.add(await purgeMessageRow(ctx, row));
+						touchedThreads.add(await purgeMessageRow(ctx, row, purged));
 						pulled += 1;
 						continue;
 					}
@@ -336,6 +337,7 @@ export const applyRemoteObservations = internalMutation({
 			}
 		}
 
+		await purgeThreadBriefsOf(ctx, purged);
 		for (const threadId of touchedThreads) await rebuildThreadAggregates(ctx, threadId);
 		if (pushed > 0) await nudgeWorker(ctx, account._id);
 		return { pulled, pushed };

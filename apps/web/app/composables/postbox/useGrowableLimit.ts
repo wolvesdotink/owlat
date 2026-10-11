@@ -3,10 +3,7 @@
  * `page` up to `max`, and resets to `page` whenever `resetKey` changes (e.g. a
  * folder switch). Shared by the message list and the conversation list.
  */
-export function useGrowableLimit(
-	resetKey: Ref<unknown>,
-	opts?: { page?: number; max?: number }
-) {
+export function useGrowableLimit(resetKey: Ref<unknown>, opts?: { page?: number; max?: number }) {
 	const page = opts?.page ?? 50;
 	const max = opts?.max ?? 500;
 	const limit = ref(page);

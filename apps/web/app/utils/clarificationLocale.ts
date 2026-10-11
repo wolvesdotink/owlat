@@ -56,15 +56,6 @@ export function canonicalOption(
 	return question.options?.[index] ?? displayed;
 }
 
-/** One-line summary in the reader's language, else English, else nothing. */
-export function localizedSummary(
-	summary: Record<string, string> | undefined,
-	locale: string
-): string | undefined {
-	if (!summary) return undefined;
-	return summary[locale.toLowerCase()] ?? summary['en'] ?? Object.values(summary)[0];
-}
-
 /** Where a question came from, as the server stores it (`origin`). */
 export interface ClarificationOrigin {
 	kind: 'email';

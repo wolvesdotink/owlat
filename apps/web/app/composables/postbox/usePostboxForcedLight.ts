@@ -11,8 +11,7 @@
 const forcedLightMessageIds = ref<Set<string>>(new Set());
 
 export function usePostboxForcedLight() {
-	const isForcedLight = (messageId: string): boolean =>
-		forcedLightMessageIds.value.has(messageId);
+	const isForcedLight = (messageId: string): boolean => forcedLightMessageIds.value.has(messageId);
 
 	const toggleForcedLight = (messageId: string): void => {
 		const next = new Set(forcedLightMessageIds.value);

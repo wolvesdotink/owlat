@@ -4,7 +4,9 @@
 
 Accepted. **Amended 2026-09-17** by [ADR-0060](./0060-decision-plane.md) — see
 [Amendment — where a calibrated probability goes instead](#amendment--where-a-calibrated-probability-goes-instead-2026-09-17)
-at the end of this document. The decision below is unchanged.
+at the end of this document. **Amended 2026-10-07** by the thread brief work — see
+[Amendment — the item coverage gate](#amendment--the-item-coverage-gate-2026-10-07).
+The decision below is unchanged.
 
 ## Context
 
@@ -97,7 +99,7 @@ eleven-step order stands, and no gate ships on that branch — this is written
 down before the first call site migrates, not after.
 
 It exists because an earlier draft of the decision-plane plan got it wrong. That
-draft proposed a three-way router in the gate registry that would *unlock*
+draft proposed a three-way router in the gate registry that would _unlock_
 auto-send above a probability threshold. That is not a gate. The registry has no
 approval result to return (`{ outcome: 'no-objection' } | { outcome: 'objection',
 reason }`), and the host composes those with a restrict-only primitive, so the
@@ -144,3 +146,38 @@ state can move an answer.
   own, rather than a change to the structure every auto-send passes through.
 - A future proposal to route auto-send on a probability is a proposal to reopen
   the restrict-only contract, and has to say so in those words.
+
+## Amendment — the item coverage gate (2026-10-07)
+
+The thread brief work (SPEC §6) gives every Team Inbox draft a response plan:
+the thread's open items, a stance per item, and the self-check's coverage of
+the draft, bound to the draft hash, the thread's interpretation revision and
+every item's revision (`draftResponsePlans`). Two core gates come with it, and
+both join the sequence after `handling_rules` and before the plugin gates:
+
+- `interpretation_incomplete` (D3) holds when the message or the thread's
+  brief was not interpreted completely. It always holds.
+- `item_coverage` objects when an open item of ours is neither addressed nor
+  deliberately skipped, when an item's owner is unclear, when the plan is
+  missing or stale against the draft hash or the item revisions, when the
+  draft makes a commitment no stance authorised, or when it says a file is
+  attached that is not.
+
+The core sequence is now: message exists, spend budget, working hours,
+abandoned clarification, complaint or urgent, inbound guard, recipient lock,
+outbound injection, outbound DLP, draft gaps, handling rules,
+interpretation incomplete, item coverage; then the plugin gates.
+
+**Restrict-only, shadow first.** `item_coverage` can only object. It starts in
+shadow mode: its objection is written to the message's `agentShadowDecisions`
+row (`itemCoverage`) and the send proceeds as before. Setting
+`agentConfig.isItemCoverageEnforced` turns the objection into a hold. Shadow
+mode never relaxes an earlier gate: the gate only runs once every earlier gate
+passed. An unreadable plan state throws and the runner holds, in either mode.
+
+**Revalidated at dispatch.** Coverage is a property of one draft text and one
+state of the thread, both of which can move between route time and the send.
+While the gate enforces, `sendApprovedReply` repeats the core check
+(`mail/interpret/planGate.dispatchHold`) immediately before an autonomous send
+and fails the send on an objection. This is a core recheck, like the
+reference monitor beside it; plugin gates still run once, at route time.

@@ -8,7 +8,7 @@ function mockDoh(body: unknown, ok = true): void {
 		vi.fn(async () => ({
 			ok,
 			json: async () => body,
-		})),
+		}))
 	);
 }
 
@@ -83,7 +83,10 @@ describe('resolveNs', () => {
 	});
 
 	it('returns null (fail-soft) when fetch rejects — never throws', async () => {
-		vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('network'))));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Promise.reject(new Error('network')))
+		);
 		await expect(resolveNs('example.com')).resolves.toBeNull();
 	});
 

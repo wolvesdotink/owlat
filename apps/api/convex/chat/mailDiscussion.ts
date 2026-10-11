@@ -18,11 +18,16 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
-import { getOrThrow, throwForbidden } from '../_utils/errors';
+import { getOrThrow, throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
 import { requireMailboxAccess } from '../mail/permissions';
 import { chatMutation, MAIL_THREAD_DISCUSSION, requireMessageText } from './_helpers';
 import { loadProfileSummary, type ProfileSummary } from '../lib/userProfiles';
 import { insertRoomMessage } from './messageInsert';
+import {
+	readNoteReactions,
+	requireSameThreadItem,
+	toggleNoteReaction,
+} from '../mail/interpret/noteReactions';
 
 /** How many recent messages the panel renders. */
 const DISCUSSION_PAGE_SIZE = 50;
@@ -123,6 +128,12 @@ export const getForThread = authedQuery({
 				body: message.text,
 				createdAt: message.createdAt,
 				isMine: message.authorId === session.userId,
+				threadItemId: message.threadItemId ?? null,
+				reactions: await readNoteReactions(
+					ctx,
+					{ source: 'chatMessage', id: message._id },
+					session.userId
+				),
 			});
 		}
 		return { roomId: room._id, messages, count: room.messageCount };
@@ -135,13 +146,22 @@ export const getForThread = authedQuery({
  * thread's mailbox. Returns the room and the new message.
  */
 export const post = chatMutation({
-	args: { threadId: v.id('mailThreads'), body: v.string() },
+	args: {
+		threadId: v.id('mailThreads'),
+		body: v.string(),
+		// `#` link to a thread brief item of this same thread.
+		threadItemId: v.optional(v.id('threadItems')),
+	},
 	handler: async (ctx, args, session) => {
 		requirePermission(hasPermission(session.role, 'chat:participate'), 'Chat is not available');
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const access = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!access.ok) throwForbidden('You do not have access to this thread');
 		const text = requireMessageText(args.body);
+		const threadItemId = await requireSameThreadItem(ctx, args.threadItemId, {
+			kind: 'mail',
+			id: thread._id,
+		});
 
 		const room = await getOrCreateDiscussionRoom(ctx, thread, session.userId);
 		const messageId = await insertRoomMessage(ctx, {
@@ -149,6 +169,7 @@ export const post = chatMutation({
 			authorId: session.userId,
 			text,
 			authorMembership: null,
+			...(threadItemId ? { threadItemId } : {}),
 		});
 		return { roomId: room._id, messageId };
 	},
@@ -179,5 +200,33 @@ export const markRead = chatMutation({
 			if (mention.roomId !== room._id) continue;
 			await ctx.db.patch(mention._id, { readAt: now });
 		}
+	},
+});
+
+/**
+ * Add an emoji reaction to a discussion message, or take yours back when it
+ * is already there (`mail/interpret/noteReactions.ts`; chat has no reactions
+ * of its own). Same gate as posting: `chat:participate` and read access to
+ * the thread's mailbox. Returns whether your reaction is on afterwards.
+ */
+export const toggleReaction = chatMutation({
+	args: { messageId: v.id('chatMessages'), emoji: v.string() },
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'chat:participate'), 'Chat is not available');
+		const message = await getOrThrow(ctx, args.messageId, 'Message');
+		const room = await ctx.db.get(message.roomId);
+		if (!room || room.purpose !== MAIL_THREAD_DISCUSSION || !room.linkedMailThreadId) {
+			throwNotFound('Thread discussion');
+		}
+		const thread = await getOrThrow(ctx, room.linkedMailThreadId, 'Thread');
+		const access = await requireMailboxAccess(ctx, thread.mailboxId);
+		if (!access.ok) throwForbidden('You do not have access to this thread');
+		if (message.deletedAt !== undefined) throwInvalidState('This message was deleted');
+		return toggleNoteReaction(ctx, {
+			note: { source: 'chatMessage', id: message._id },
+			threadRef: { kind: 'mail', id: thread._id },
+			userId: session.userId,
+			emoji: args.emoji,
+		});
 	},
 });

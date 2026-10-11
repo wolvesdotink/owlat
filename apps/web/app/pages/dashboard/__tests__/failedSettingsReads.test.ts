@@ -269,6 +269,7 @@ function mountForm(Page: Component): VueWrapper {
 			AgentKnowledgeRelationBackfillCard: true,
 			AutonomyAskEagernessDial: true,
 			AutonomyFeedbackStatsCard: true,
+			AutonomyItemCoverage: true,
 			AutonomyLearningControls: true,
 			AutonomyWorkingHours: true,
 			BrandKitLogoPicker: true,

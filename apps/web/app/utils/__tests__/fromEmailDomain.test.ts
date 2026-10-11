@@ -20,7 +20,7 @@ describe('emailDomain', () => {
 describe('unverifiedFromDomainWarning', () => {
 	it('warns when the domain is not among the verified set', () => {
 		expect(unverifiedFromDomainWarning('hello@evil.com', ['good.com'])).toBe(
-			'evil.com is not a verified sending domain.',
+			'evil.com is not a verified sending domain.'
 		);
 	});
 
@@ -41,7 +41,7 @@ describe('unverifiedFromDomainWarning', () => {
 
 	it('warns when there are zero verified domains', () => {
 		expect(unverifiedFromDomainWarning('hello@evil.com', [])).toBe(
-			'evil.com is not a verified sending domain.',
+			'evil.com is not a verified sending domain.'
 		);
 	});
 });

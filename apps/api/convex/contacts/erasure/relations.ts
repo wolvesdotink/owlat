@@ -37,6 +37,7 @@
  */
 
 import type { TableNames } from '../../_generated/dataModel';
+import { THREAD_BRIEF_CONTACT_DESCENDANTS } from './threadBriefRelations';
 
 export type ErasureAction = 'delete' | 'unlink' | 'retain';
 
@@ -301,6 +302,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	},
 	{
 		parent: 'threadNotes',
+		table: 'noteReactions',
+		field: 'threadNoteId',
+		action: 'delete',
+		why: 'An emoji reaction is meaningless without its note.',
+	},
+	{
+		parent: 'threadNotes',
 		table: 'inboxAssignmentNotices',
 		field: 'noteId',
 		action: 'retain',
@@ -476,6 +484,7 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		action: 'retain',
 		why: 'Known gap: an advisory suggestion snapshot on another message copies the file name and id; there is no index from a file to the messages that suggested it.',
 	},
+	...THREAD_BRIEF_CONTACT_DESCENDANTS,
 ];
 
 /** Tables whose rows the erasure may delete — the parents descendants hang off. */

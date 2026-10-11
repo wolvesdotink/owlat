@@ -65,6 +65,12 @@ export const agentConfigFields = {
 	workingHoursStart: v.optional(v.number()),
 	workingHoursEnd: v.optional(v.number()),
 	workingHoursDays: v.optional(v.array(v.number())),
+	// The `item_coverage` auto-send gate (SPEC §6, ADR-0051 amendment): when
+	// true, an auto-approved reply that does not cover the thread's open items
+	// (or claims a missing file, or makes an unauthorised commitment) is held
+	// for human review. Unset/false is SHADOW mode, the default: the gate's
+	// objection is only logged on the message's `agentShadowDecisions` row.
+	isItemCoverageEnforced: v.optional(v.boolean()),
 	// Timestamps
 	createdAt: v.number(),
 	updatedAt: v.number(),
@@ -238,6 +244,11 @@ export const autonomyTables = {
 		confidence: v.number(),
 		draftQualityScore: v.optional(v.number()),
 		shadowDraft: v.string(), // draft snapshot at decision time
+		// What the `item_coverage` gate objected to while it ran in shadow mode
+		// (it let the send through). Absent when it had no objection or enforces.
+		itemCoverage: v.optional(
+			v.object({ objections: v.array(v.string()), reason: v.string(), at: v.number() })
+		),
 		isResolved: v.boolean(), // reconciled against a human action yet?
 		userAction: v.optional(reviewActionValidator),
 		isMatched: v.optional(v.boolean()), // would-have-sent AND human approved unedited

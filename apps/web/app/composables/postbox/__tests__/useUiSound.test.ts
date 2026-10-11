@@ -92,9 +92,7 @@ describe('useUiSound', () => {
 	});
 
 	it('does not play while the tab is hidden', async () => {
-		const hiddenSpy = vi
-			.spyOn(document, 'hidden', 'get')
-			.mockReturnValue(true);
+		const hiddenSpy = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
 		const useUiSound = await loadUseUiSound();
 		const { playSend } = useUiSound(true);
 

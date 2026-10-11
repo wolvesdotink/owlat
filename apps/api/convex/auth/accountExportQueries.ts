@@ -444,6 +444,13 @@ export const getPersonalExportCounts = internalQuery({
 		const pushDevices = await boundedCount(
 			ctx.db.query('pushSubscriptions').withIndex('by_user', (q) => q.eq('userId', args.userId))
 		);
+		// `threadBriefs` is not counted ahead: no index finds a mailbox's briefs
+		// without walking its threads. It is counted as it exports.
+		const viewerStates = await boundedCount(
+			ctx.db
+				.query('threadViewerState')
+				.withIndex('by_user_and_mail_thread', (q) => q.eq('userId', args.userId))
+		);
 
 		return [
 			{ resource: 'mailboxes' as const, count: mailboxes.length, isCapped: false },
@@ -481,6 +488,7 @@ export const getPersonalExportCounts = internalQuery({
 				count: pushDevices.count,
 				isCapped: pushDevices.isCapped,
 			},
+			{ resource: 'threadViewerState' as const, ...viewerStates },
 		];
 	},
 });

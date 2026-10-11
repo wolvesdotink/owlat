@@ -26,6 +26,7 @@ import {
 } from './_helpers';
 import { loadProfileSummary, type ProfileSummary } from '../lib/userProfiles';
 import { insertRoomMessage } from './messageInsert';
+import { clearNoteReactions } from '../mail/interpret/noteReactions';
 import { isChatAttachment } from './attachmentAccess';
 import {
 	assistantToolCallValidator,
@@ -196,7 +197,10 @@ export const deleteMessage = chatMutation({
 			}
 		}
 
-		await ctx.db.patch(args.messageId, { deletedAt: Date.now() });
+		// A deleted discussion message keeps no item link and no reactions
+		// (`noteReactions` rows exist only on discussion messages).
+		await ctx.db.patch(args.messageId, { deletedAt: Date.now(), threadItemId: undefined });
+		await clearNoteReactions(ctx, { source: 'chatMessage', id: args.messageId });
 	},
 });
 

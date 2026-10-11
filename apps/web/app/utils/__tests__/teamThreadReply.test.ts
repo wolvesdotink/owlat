@@ -2,11 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	REPLY_BLOCKER_KEYS,
 	REPLY_NOTICE_KEYS,
-	classificationSummary,
 	hasAgentDraft,
 	isChannelMessage,
 	isFollowUp,
-	latestClassification,
 	needsTakeOver,
 	replyNotice,
 	otherWaitingDrafts,
@@ -161,30 +159,6 @@ describe('hasAgentDraft', () => {
 		expect(hasAgentDraft({ draftResponse: 'Thanks!' })).toBe(true);
 		expect(hasAgentDraft({ draftResponse: '  ' })).toBe(false);
 		expect(hasAgentDraft({})).toBe(false);
-	});
-});
-
-describe('classification line', () => {
-	it('keeps the category and only a priority worth a word', () => {
-		expect(classificationSummary({ category: 'billing', priority: 'urgent' })).toEqual({
-			category: 'billing',
-			priority: 'urgent',
-		});
-		expect(classificationSummary({ category: 'support', priority: 'normal' })).toEqual({
-			category: 'support',
-			priority: null,
-		});
-		expect(classificationSummary(null)).toBeNull();
-	});
-
-	it('summarises the newest classified message', () => {
-		const messages = [
-			{ _creationTime: 1, classification: { category: 'sales', priority: 'low' } },
-			{ _creationTime: 3 },
-			{ _creationTime: 2, classification: { category: 'billing', priority: 'urgent' } },
-		];
-		expect(latestClassification(messages)?.category).toBe('billing');
-		expect(latestClassification([{ _creationTime: 1 }])).toBeNull();
 	});
 });
 

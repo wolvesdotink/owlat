@@ -19,6 +19,7 @@ import { recordAutonomyFeedback, resolveReplyCollisionHold } from './decisionFee
 import { appendDraftRevision } from './draftRevisions';
 import { assertDraftSendable, humanApproveUndoDelayMs, retryFailed } from './retryFailed';
 import { enqueuePush } from '../push/events';
+import { recordTeamAssigned } from '../mail/interpret/threadEvents';
 
 /**
  * Approve an agent-generated draft for sending.
@@ -245,6 +246,11 @@ export const assignThread = adminMutation({
 			input: { kind: 'assignment_change', assignedTo: args.assignedTo, source: 'user' },
 		});
 		if (!outcome.ok) throwNotFound('Thread');
+		await recordTeamAssigned(ctx, args.threadId, {
+			userId: actorId,
+			...(args.assignedTo !== undefined ? { assignedTo: args.assignedTo } : {}),
+			at: Date.now(),
+		});
 
 		// Notify the new assignee, but never on self-assign (claiming a thread for
 		// yourself). One append-only notice row per cross-user assignment; the

@@ -38,7 +38,9 @@ import { cancelActiveMigrationForAccount } from './accountShared';
 import { deleteStoredAccessToken } from './accessTokenStore';
 import { listMailboxesOnAddress } from '../mailbox/addressResolution';
 import type { Doc } from '../../_generated/dataModel';
-import { deleteMailThreadCatchUps } from '../ai/catchUpStore';
+import { deleteMailThreadCatchUps } from '../legacySummaryRows';
+import { deleteBackfill } from '../interpret/backfill';
+import { purgeThreadBrief } from '../interpret/purgeRun';
 import { deleteResourceUploads, mailThreadUploadKey } from '../../storage/uploads';
 import { deleteAskSessionsForDraft } from '../ai/composeDraftStore';
 
@@ -101,6 +103,8 @@ export async function stopExternalAccountSync(
 	if (reason !== 'move') {
 		// Hide from the inbox UI (requireMailboxAccess refuses non-active rows).
 		await ctx.db.patch(account.mailboxId, { status: 'deleted', updatedAt: now });
+		// And stop the thread brief's backfill: nothing more is spent on it.
+		await deleteBackfill(ctx, account.mailboxId);
 	}
 	await ctx.db.insert('mailAuditLog', {
 		mailboxId: account.mailboxId,
@@ -216,6 +220,8 @@ export const _purgeChunk = internalMutation({
 			await deleteMailThreadCatchUps(ctx, t._id);
 			// A Reply Queue answer's upload the thread still holds.
 			await deleteResourceUploads(ctx, mailThreadUploadKey(t._id));
+			// The thread brief: items, facts, activity, plans (a scheduled purge job).
+			await purgeThreadBrief(ctx, { kind: 'mail', id: t._id }, { isInline: false });
 			await ctx.db.delete(t._id);
 		}
 		if (threads.length === PURGE_CHUNK) {
@@ -296,6 +302,7 @@ export const _purgeChunk = internalMutation({
 		for (const mv of moves) await ctx.db.delete(mv._id);
 
 		await ctx.db.delete(args.accountId);
+		await deleteBackfill(ctx, args.mailboxId);
 		await deleteMailboxUsage(ctx, args.mailboxId);
 		await deleteMailboxCounters(ctx, args.mailboxId);
 		await ctx.db.delete(args.mailboxId);

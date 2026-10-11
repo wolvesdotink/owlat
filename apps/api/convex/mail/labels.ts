@@ -20,6 +20,7 @@ import {
 } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 import { applyLabelToMessage, reconcileThreadLabel } from './labelsMembership';
+import { recordMailLabelled } from './interpret/threadEvents';
 import { readLabelUnreadCounts, recordMessageCounters } from './messageCounters';
 import {
 	LABEL_MAX_DEPTH,
@@ -371,7 +372,10 @@ export const toggleOnMessage = postboxMutation({
 
 		const now = Date.now();
 		if (!(await applyLabelToMessage(ctx, message, args.labelId, args.add, now))) return;
-		await reconcileThreadLabel(ctx, message.threadId, args.labelId, now);
+		if (await reconcileThreadLabel(ctx, message.threadId, args.labelId, now)) {
+			const event = { userId: owned.userId, labelId: args.labelId, isAdded: args.add, at: now };
+			await recordMailLabelled(ctx, message.threadId, event);
+		}
 	},
 });
 
@@ -422,8 +426,11 @@ export const setOnMessages = postboxMutation({
 				touchedThreads.add(message.threadId);
 			}
 		}
+		const event = { userId: owned.userId, labelId: args.labelId, isAdded: args.add, at: now };
 		for (const threadId of touchedThreads) {
-			await reconcileThreadLabel(ctx, threadId, args.labelId, now);
+			if (await reconcileThreadLabel(ctx, threadId, args.labelId, now)) {
+				await recordMailLabelled(ctx, threadId, event);
+			}
 		}
 		return { changed };
 	},
@@ -479,9 +486,10 @@ export const toggleOnThread = postboxMutation({
 		} else {
 			threadLabels.delete(args.labelId);
 		}
-		await ctx.db.patch(args.threadId, {
-			labelIds: Array.from(threadLabels),
-			updatedAt: now,
-		});
+		await ctx.db.patch(args.threadId, { labelIds: Array.from(threadLabels), updatedAt: now });
+		if (args.add !== thread.labelIds.includes(args.labelId)) {
+			const event = { userId: owned.userId, labelId: args.labelId, isAdded: args.add, at: now };
+			await recordMailLabelled(ctx, args.threadId, event);
+		}
 	},
 });

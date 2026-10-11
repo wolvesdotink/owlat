@@ -1,7 +1,7 @@
 /**
  * Keeps the message being answered in view when Answer mode opens on a phone
  * or tablet (a conversation above a sheet). Threads read oldest first, so the
- * catch-up card and the older rows can fill the first screen and push the
+ * thread brief and the older rows can fill the first screen and push the
  * newest message, the one being answered, under the fold.
  *
  * The conversation marks that message `data-answer-anchor`. While the column

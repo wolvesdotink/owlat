@@ -38,6 +38,18 @@
 			"types": "./src/answerMode.ts",
 			"import": "./src/answerMode.ts"
 		},
+		"./threadBrief": {
+			"types": "./src/threadBrief.ts",
+			"import": "./src/threadBrief.ts"
+		},
+		"./quoteNormalize": {
+			"types": "./src/quoteNormalize.ts",
+			"import": "./src/quoteNormalize.ts"
+		},
+		"./threadBriefRules": {
+			"types": "./src/threadBriefRules.ts",
+			"import": "./src/threadBriefRules.ts"
+		},
 		"./templateVariables": {
 			"types": "./src/templateVariables.ts",
 			"import": "./src/templateVariables.ts"
@@ -385,6 +397,14 @@
 		"./secureMessage": {
 			"types": "./src/secureMessage.ts",
 			"import": "./src/secureMessage.ts"
+		},
+		"./signedScope": {
+			"types": "./src/signedScope.ts",
+			"import": "./src/signedScope.ts"
+		},
+		"./mailSegments": {
+			"types": "./src/mailSegments.ts",
+			"import": "./src/mailSegments.ts"
 		},
 		"./spfAlignment": {
 			"types": "./src/spfAlignment.ts",

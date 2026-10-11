@@ -6,12 +6,13 @@
  * `[CURRENT MESSAGE]` briefing section:
  *   - `inboundBodyForContext` — the hidden-content-stripped, remote-image-
  *     neutralized body the model is allowed to read, and
- *   - `buildCurrentMessageSection` — the quarantined STRUCTURED extraction
- *     wiring that renders the sender's body as facts + questions rather than raw
- *     prose (fail-soft to the stripped raw body).
+ *   - `buildCurrentMessageSection` — renders the sender's body as the thread's
+ *     structured actions from interpretation (`mail/interpret/`) rather than
+ *     raw prose (fail-soft to the stripped raw body).
  */
 
 import { internal } from '../../../_generated/api';
+import type { Id } from '../../../_generated/dataModel';
 import type { ActionCtx } from '../../../_generated/server';
 import { stripRemoteImages } from '@owlat/shared/postboxTrackers';
 import {
@@ -20,6 +21,7 @@ import {
 } from '../../../lib/messageBodyInbound';
 import type { BlobGet } from '../../../lib/sealedBlob';
 import { stripHiddenContent } from '../security_scan/patterns';
+import { renderBriefingActions } from '../../../mail/interpret/teamActions';
 
 /**
  * The message body the LLM steps should read, with remote images / tracking
@@ -47,33 +49,37 @@ export async function inboundBodyForContext(
 }
 
 /**
- * Build the `[CURRENT MESSAGE]` briefing section — the sender's body rendered as
- * a QUARANTINED STRUCTURED extraction (facts + the sender's actual questions)
- * rather than raw prose, so the draft/clarify steps never consume the sender's
- * free text verbatim in an instruction-adjacent slot. A no-tool quarantined LLM
- * pass produces the structured form; FAIL-SOFT: extraction unavailable (empty
- * body, model error, or a throwing/absent seam in tests) falls back to the
- * hidden-stripped raw body — exactly today's behaviour. Wrapped in try/catch so
- * a guard hiccup never blocks retrieval.
+ * Build the `[CURRENT MESSAGE]` briefing section: the sender's body rendered as
+ * the thread's STRUCTURED actions (SPEC §5 "Team pipeline") rather than raw
+ * prose, so the draft and clarify steps never consume the sender's free text
+ * verbatim in an instruction-adjacent slot.
+ *
+ * The actions come from interpretation in `actions` mode
+ * (`mail/interpret/run.ts`), which grounds every item in a verbatim quote and
+ * screens it for injection. A stored extraction of this message is reused, so
+ * a repeated assembly (a retry, Answer mode) costs no model call; only a
+ * message with no current extraction runs it.
+ *
+ * FAIL-SOFT: interpretation unavailable (empty body, AI off, a failed or
+ * partial run, a throwing seam in tests) falls back to the hidden-stripped raw
+ * body for the DRAFT context. The autonomy hold for the same case is the
+ * `interpretation_incomplete` gate (D3), not this function.
  */
 export async function buildCurrentMessageSection(
 	ctx: ActionCtx,
-	message: { from: string; to: string; subject?: string; receivedAt: number },
+	message: {
+		_id: Id<'inboundMessages'>;
+		from: string;
+		to: string;
+		subject?: string;
+		receivedAt: number;
+	},
 	inboundBody: string | undefined
 ): Promise<string> {
 	let currentMessageBody = inboundBody ?? '(no body)';
 	if (inboundBody != null && inboundBody.trim().length > 0) {
-		try {
-			const structured = await ctx.runAction(
-				internal.agent.steps.context_retrieval.quarantine.extract,
-				{ text: inboundBody }
-			);
-			if (typeof structured === 'string' && structured.trim().length > 0) {
-				currentMessageBody = structured;
-			}
-		} catch {
-			// Fail soft — keep the hidden-stripped raw body.
-		}
+		const structured = await structuredActions(ctx, message._id);
+		if (structured !== null) currentMessageBody = structured;
 	}
 	return (
 		'[CURRENT MESSAGE]\n' +
@@ -83,4 +89,38 @@ export async function buildCurrentMessageSection(
 		`Date: ${new Date(message.receivedAt).toISOString()}\n` +
 		`Body:\n${currentMessageBody}`
 	);
+}
+
+/**
+ * The rendered actions of a completely interpreted message, or null (fall
+ * back to the raw body). Runs interpretation only when the message has no
+ * current extraction, or its extraction is an older extractor's or due for a
+ * repair. Never throws.
+ */
+async function structuredActions(
+	ctx: ActionCtx,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<string | null> {
+	try {
+		let read = await ctx.runQuery(internal.mail.interpret.teamActions.briefingActions, {
+			inboundMessageId,
+		});
+		if (!read.interpretation || read.interpretation.isRerunDue) {
+			const canRun = await ctx.runMutation(internal.mail.interpret.teamActions.captureInbound, {
+				inboundMessageId,
+			});
+			if (!canRun) return null;
+			await ctx.runAction(internal.mail.interpret.run.interpretMessage, {
+				source: { kind: 'inbound', id: inboundMessageId },
+			});
+			read = await ctx.runQuery(internal.mail.interpret.teamActions.briefingActions, {
+				inboundMessageId,
+			});
+		}
+		if (read.interpretation?.status !== 'complete') return null;
+		return renderBriefingActions(read.selection);
+	} catch {
+		// Fail soft — keep the hidden-stripped raw body.
+		return null;
+	}
 }

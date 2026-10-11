@@ -712,6 +712,12 @@
 				"thresholdMin": "0% (all auto)",
 				"todayCount": "Today: {current} / {max}"
 			},
+			"autonomyItemCoverage": {
+				"title": "Hold replies that miss an open item",
+				"subtitle": "An automatic reply waits for review when it leaves an open request unanswered, says a file is attached that is not, or makes a commitment nobody approved. While this is off, Owlat only notes what it would have held.",
+				"operation": "Save the item check",
+				"saved": "Item check saved"
+			},
 			"autonomyWorkingHours": {
 				"daysLabel": "Days",
 				"fromLabel": "From",
@@ -875,6 +881,262 @@
 		"breadcrumbs": {
 			"home": "Home",
 			"label": "Breadcrumb"
+		},
+		"brief": {
+			"view": {
+				"label": "Thread view",
+				"overview": "Overview",
+				"conversation": "Conversation ({count})"
+			},
+			"latest": {
+				"title": "Latest update",
+				"newSince": "new since you last looked"
+			},
+			"standing": {
+				"title": "Where things stand",
+				"versus": "vs",
+				"conflict": "These statements disagree.",
+				"was": "was"
+			},
+			"items": {
+				"forYou": "For you",
+				"forTeam": "For the team",
+				"waiting": "Waiting on others",
+				"unclear": "Unclear who should act",
+				"openCount": "{count} open | {count} open",
+				"empty": "Nothing for you in this thread.",
+				"emptyTeam": "Nothing open for the team in this thread.",
+				"emptyIncomplete": "Nothing found in the part that was read.",
+				"loadingMore": "Loading the rest of the items…",
+				"truncated": "Not every item could be loaded here. The conversation has them all.",
+				"closedTruncated": "Older finished items are not listed.",
+				"pagesLoading": "More items of this thread are still loading.",
+				"pagesTruncated": "This thread has more items than are shown here, possibly including requests to check. The conversation has everything."
+			},
+			"item": {
+				"due": "due {date}",
+				"checkThis": "Check this:",
+				"proposal": "proposal · not tracked yet",
+				"pendingChange": "Check this change:",
+				"pendingOptions": "options: {options}",
+				"confirmChange": "Confirm change",
+				"maybeSettled": "A later message may have settled this",
+				"confirmSettled": "Confirm",
+				"pending": {
+					"removed": "removed: {fields}",
+					"nobody": "nobody yet",
+					"us": "you",
+					"field": {
+						"text": "wording",
+						"requester": "asked by",
+						"responsible": "who does it",
+						"beneficiary": "for",
+						"responsibility": "whose turn",
+						"due": "due",
+						"amount": "amount",
+						"options": "choices"
+					},
+					"responsibility": {
+						"us": "yours",
+						"them": "theirs",
+						"unclear": "unclear"
+					}
+				},
+				"review": "needs a look",
+				"duplicate": "possible duplicate",
+				"new": "new",
+				"undo": "Undo",
+				"track": "Track",
+				"select": "Cover in the reply: {item}",
+				"menu": "More for “{item}”",
+				"menuHint": "Mark done records that you said so. It can be undone."
+			},
+			"state": {
+				"open": "Open",
+				"addressedInDraft": "Addressed in draft",
+				"answeredStillToDo": "Answered, still to do",
+				"markedDoneByYou": "Marked done by you",
+				"done": "Done",
+				"reportedDone": "Reported done",
+				"declined": "Declined",
+				"replaced": "Replaced",
+				"notTracked": "Not tracked"
+			},
+			"intent": {
+				"question": "question",
+				"request": "request",
+				"decision": "decision",
+				"promise": "promise"
+			},
+			"facet": {
+				"payment": "payment",
+				"meeting": "meeting",
+				"documentReview": "document review",
+				"signature": "signature",
+				"file": "file",
+				"access": "access",
+				"information": "information"
+			},
+			"reaction": {
+				"reply": "Reply",
+				"replyWithStance": "Reply",
+				"replyWithUpdate": "Reply with an update",
+				"attach": "Attach",
+				"proposeTimes": "Propose times",
+				"markPaid": "Mark paid",
+				"markDone": "Mark done",
+				"nudge": "Nudge",
+				"markReceived": "Mark received",
+				"decline": "Decline politely",
+				"remind": "Remind me tomorrow",
+				"assign": "Assign to…",
+				"notARequest": "Not a request",
+				"untrack": "Stop tracking"
+			},
+			"activity": {
+				"title": "Activity",
+				"provenance": {
+					"recorded": "recorded",
+					"asserted": "you said",
+					"reported": "from their email"
+				},
+				"type": {
+					"message_received": "A new message arrived.",
+					"reply_sent": "You sent a reply.",
+					"auto_sent": "A reply was sent automatically.",
+					"send_queued": "A reply was queued to send.",
+					"send_held": "A reply was held for review.",
+					"send_cancelled": "A reply was cancelled.",
+					"delivery_failed": "A reply could not be delivered.",
+					"file_added_to_draft": "A file was added to the draft.",
+					"booked": "A meeting was booked.",
+					"item_opened": "A new item was noted.",
+					"item_changed": "An item changed.",
+					"item_closed": "An item was closed.",
+					"item_reopened": "An item was reopened.",
+					"item_replaced": "An item was replaced by a newer ask.",
+					"item_assigned": "An item was assigned.",
+					"item_claimed": "An item was claimed.",
+					"item_reminder_set": "A reminder was set.",
+					"item_corrected": "An item was corrected.",
+					"proposal_confirmed": "A possible request was confirmed.",
+					"clarification_answered": "A question for the reply was answered.",
+					"fact_changed": "A fact changed.",
+					"interpretation_incomplete": "Part of the thread could not be read.",
+					"assigned": "The thread was assigned.",
+					"snoozed": "The thread was snoozed.",
+					"labelled": "A label was added.",
+					"archived": "The thread was archived.",
+					"muted": "The thread was muted."
+				}
+			},
+			"people": {
+				"title": "People",
+				"you": "You",
+				"role": {
+					"from": "wrote",
+					"to": "to",
+					"cc": "on cc",
+					"us": "you"
+				}
+			},
+			"files": {
+				"title": "Files",
+				"you": "you",
+				"attach": "Attach {name} to the reply",
+				"open": "Open the message with {name}"
+			},
+			"elsewhere": {
+				"title": "With {name} elsewhere",
+				"inThread": "in “{subject}”",
+				"forYou": "for you",
+				"theirs": "on their side",
+				"unclear": "unclear who",
+				"due": "due {date}",
+				"showMore": "Show more",
+				"more": "More open items with them in other conversations."
+			},
+			"incomplete": {
+				"partialLead": "Partly read.",
+				"partialCount": "{done} of {total} messages are in this overview.",
+				"partialPlain": "Some of this thread is not in this overview.",
+				"partialReason": {
+					"tooLong": "{done} of {total} messages are in this overview. The rest was too long to process.",
+					"failed": "{done} of {total} messages are in this overview. Reading the rest failed.",
+					"undecryptable": "{done} of {total} messages are in this overview. The rest could not be decrypted.",
+					"pending": "{done} of {total} messages are in this overview. The rest is still being read.",
+					"history": "{done} of {total} messages are in this overview. Some earlier replies were sent before Owlat kept their text, so they are not in it."
+				},
+				"pending": "Reading this thread. The overview fills in shortly.",
+				"none": {
+					"default": "There is no overview for this thread yet. The conversation shows everything.",
+					"aiOff": "AI is off, so there is no overview. The conversation shows everything.",
+					"undecryptable": "This message could not be decrypted, so there is no overview.",
+					"ineligible": "Mail like this is not summarised, so there is no overview.",
+					"failed": "Reading this thread failed, so there is no overview.",
+					"pending": "This thread has not been read yet. The overview fills in shortly."
+				},
+				"short": "Shown as written. There's nothing to summarise.",
+				"securityLead": "Security email.",
+				"security": "Shown as written, never summarised.",
+				"signed": "Only the signed part is summarised.",
+				"openConversation": "Open the conversation"
+			},
+			"conversation": {
+				"read": "Read the whole thread",
+				"span": "{count} email · {from} | {count} emails · {from} to {to}",
+				"open": "Conversation →"
+			},
+			"actions": {
+				"reply": "Reply",
+				"replyAll": "Reply to all {count}",
+				"archive": "Archive",
+				"snooze": "Snooze",
+				"ask": "Ask about this thread"
+			},
+			"meta": {
+				"forYou": "{count} for you | {count} for you",
+				"waiting": "{count} waiting on others | {count} waiting on others"
+			},
+			"cite": {
+				"showing": "Showing the source of “{label}”",
+				"back": "back to the overview",
+				"notLocated": "Couldn't locate the exact passage in this message.",
+				"loading": "loading that message…",
+				"unreachable": "that message isn't in the loaded conversation"
+			},
+			"exactWording": {
+				"title": "Read the exact wording",
+				"hint": "the wording matters here, so the original stays open",
+				"secured": "This message is shown with its security check in the conversation.",
+				"truncated": "More messages here need their exact wording than this list shows."
+			},
+			"phone": {
+				"more": "Where things stand, activity, people, files"
+			},
+			"row": {
+				"forYou": "{count} for you | {count} for you",
+				"toDo": "{count} to do | {count} to do",
+				"waiting": "waiting",
+				"by": "by {date}",
+				"noReplyNeeded": "no reply needed"
+			},
+			"more": "+{count} more",
+			"toast": {
+				"confirmed": "Confirmed. You can undo it.",
+				"markedDone": "Marked done. You can undo it.",
+				"reminder": "You'll be reminded tomorrow morning."
+			},
+			"operations": {
+				"markSeen": "Mark the overview as seen",
+				"saveView": "Save the thread view",
+				"react": "Update the item",
+				"ensure": "Prepare the overview"
+			},
+			"evidence": {
+				"label": "Show the source: {name}, {date}",
+				"unknown": "Show the source"
+			}
 		},
 		"campaigns": {
 			"abTestConfig": {
@@ -4179,12 +4441,7 @@
 				"askFailed": "Couldn't answer that right now. Try again in a moment.",
 				"askOperation": "Ask about this thread",
 				"askPlaceholder": "Ask about this thread…",
-				"less": "less",
-				"more": "more",
-				"summarizeOperation": "Summarize thread",
-				"summaryLabel": "Summary:",
-				"thinking": "Thinking…",
-				"toggleSummaryDetail": "Toggle summary detail"
+				"thinking": "Thinking…"
 			},
 			"postboxAppPasswordCallout": {
 				"heading": "{provider} needs an app password",
@@ -5738,8 +5995,25 @@
 				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
 				"writingSuggestionsLabel": "Writing suggestions",
 				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
-				"autoSummarizeLabel": "Auto-summarize long threads",
-				"autoSummarizeHelp": "Show a one-line AI summary at the top of long conversations. Click it to expand the key points.",
+				"autoSummarizeLabel": "Show overviews",
+				"autoSummarizeHelp": "Open a conversation on what is new, where things stand and what is asked of you, with a link to every source. Personal mailboxes only.",
+				"threadViewLabel": "Open threads on",
+				"threadViewHelp": "Overview or the whole conversation. Switching inside a thread remembers that thread. Personal mailboxes only.",
+				"threadViewConversation": "Conversation",
+				"threadViewOperation": "Save where threads open",
+				"backfillLabel": "Prepare overviews for recent mail",
+				"backfillHelp": "Reads your active conversations from the last 30 days so they open on an overview. Older ones are prepared when you first open them. This uses the AI budget.",
+				"backfillStart": "Prepare",
+				"backfillResume": "Resume",
+				"backfillCancel": "Stop",
+				"backfillRunning": "Preparing… {count} conversation so far | Preparing… {count} conversations so far",
+				"backfillDone": "Done: {count} conversation prepared | Done: {count} conversations prepared",
+				"backfillPausedBudget": "Paused: the AI budget is used up for now.",
+				"backfillPausedOff": "Paused: AI is turned off.",
+				"backfillPausedCap": "Paused after {count} conversations. Resume to continue.",
+				"backfillCancelled": "Stopped. Resume to continue where it left off.",
+				"backfillOperation": "Prepare overviews",
+				"backfillCancelOperation": "Stop preparing overviews",
 				"sendSoundLabel": "Play sound when sending",
 				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
 				"swipeLeftLabel": "Swipe left on a message",
@@ -6196,6 +6470,96 @@
 				"gitSha": "Git SHA"
 			}
 		},
+		"team": {
+			"answer": {
+				"view": {
+					"recent": "Recent",
+					"full": "Full conversation"
+				}
+			},
+			"composer": {
+				"continue": "Continue in Answer mode",
+				"hint": "{'@'} to mention · # to link an action",
+				"itemPicker": "Actions to link",
+				"modeLabel": "Internal note or reply",
+				"note": "Internal note",
+				"notePlaceholder": "Write an internal note to the team… (never sent to {name})",
+				"notePlaceholderNoName": "Write an internal note to the team…",
+				"post": "Add note",
+				"privacy": "Only your team sees this. It never goes to the customer.",
+				"replyHint": "The reply is written and sent in Answer mode.",
+				"replyPlaceholder": "Start your reply to {name}…",
+				"replyTo": "Reply to {name}",
+				"unlink": "Remove the link to this action"
+			},
+			"items": {
+				"askedBy": "asked by {name} {date}",
+				"assignTo": "Assign to",
+				"citeUnreachable": "Couldn't load the cited email.",
+				"claim": "Claim",
+				"closedTitle": "Just closed",
+				"claimed": "It's yours now.",
+				"empty": "Nothing is open for the team.",
+				"formerTeammate": "Former teammate",
+				"me": "Me",
+				"notes": "{count} note | {count} notes",
+				"openCount": "{count} open | {count} open",
+				"operation": "Update the action",
+				"phoneSummary": "{count} open for the team | {count} open for the team",
+				"title": "Open for the team",
+				"unassign": "Unassign",
+				"unassigned": "Unassigned",
+				"unclearOwner": "unclear who should do this",
+				"unclearTitle": "Not clear who owns these",
+				"waitingTitle": "Waiting on the customer"
+			},
+			"note": {
+				"addReaction": "Add a reaction",
+				"ariaLabel": "Internal note from {name}",
+				"delete": "Delete note",
+				"deleted": "Note deleted",
+				"edit": "Edit note",
+				"edited": "(edited)",
+				"formerTeammate": "Former teammate",
+				"internal": "Internal",
+				"on": "on",
+				"operation": "Save the note",
+				"reactWith": "React with {emoji}",
+				"removedItem": "an action that is gone"
+			},
+			"reply": {
+				"email": "email",
+				"label": "Reply from {name}",
+				"status": {
+					"cancelled": "Cancelled",
+					"failed": "Not delivered",
+					"held": "Held",
+					"queued": "Sending",
+					"sent": "Sent"
+				}
+			},
+			"stream": {
+				"cut": "Some older team notes and activity are not loaded yet.",
+				"earlier": "Show earlier",
+				"earlierNotes": "Show earlier team notes",
+				"loadingEarlier": "Loading earlier team notes…",
+				"markSeenOperation": "Remember where you stopped reading",
+				"new": "New",
+				"system": {
+					"item_changed": "“{item}” changed",
+					"item_closed": "Closed “{item}”",
+					"item_closed_declined": "Declined “{item}”",
+					"item_closed_superseded": "Replaced “{item}”",
+					"item_closed_untracked": "Stopped tracking “{item}”",
+					"item_corrected": "Corrected “{item}”",
+					"item_opened": "New action for the team: “{item}”",
+					"item_reopened": "Reopened “{item}”",
+					"item_replaced": "“{item}” was replaced by a newer ask",
+					"openedMany": "{count} new action for the team | {count} new actions for the team",
+					"proposal_confirmed": "Confirmed “{item}”"
+				}
+			}
+		},
 		"transactional": {
 			"recentSendsModal": {
 				"hasMore": "Showing the 25 most recent sends.",
@@ -6506,6 +6870,13 @@
 				"mentionTitle": "#{room}: {preview}",
 				"clearTitleIn": "Nothing in {inbox} needs an answer"
 			},
+			"todo": {
+				"title": "To do, no reply needed · {count}",
+				"titlePlain": "To do, no reply needed",
+				"due": "by {date}",
+				"more": "There is more to do in this inbox.",
+				"openInbox": "Open the inbox"
+			},
 			"changed": {
 				"title": "What changed",
 				"subtitle": "in conversations you already know",
@@ -6654,30 +7025,41 @@
 				"viewLabel": "How much of the conversation to show",
 				"viewShortcut": "Switch with T",
 				"view": {
-					"summary": "Summary",
-					"full": "Full conversation"
+					"summary": "Overview",
+					"full": "Conversation"
 				},
 				"more": "More for this conversation",
 				"openInPostbox": "Open in Postbox",
 				"skipMissing": "Skip to the next item"
 			},
-			"catchUp": {
-				"title": "Catching up",
-				"meta": "{count} message since {date} | {count} messages since {date}",
-				"marker": "Show the message from {sender}, {date}",
-				"loading": "Catching up on this conversation",
-				"asksTitle": "They are asking for",
-				"askCovered": "Covered by your draft:",
-				"askOpen": "Not covered yet:",
-				"filesTitle": "Files in this thread",
-				"attachHint": "Click to attach it to the reply, or drag it into the reply",
-				"attachFile": "Attach {file} to the reply",
+			"threadFiles": {
 				"attachFailed": "The file could not be attached.",
-				"attachOperation": "Attach file",
-				"covered": "{covered} of {total} ask covered | {covered} of {total} asks covered",
-				"asksCount": "{count} ask | {count} asks",
-				"show": "Show",
-				"hide": "Hide"
+				"attachOperation": "Attach file"
+			},
+			"plan": {
+				"title": "Your reply covers",
+				"selected": "{count} of {total} selected",
+				"stanceGroup": "How the reply takes on: {item}",
+				"stance": {
+					"answer": "Answer",
+					"accept": "Accept",
+					"decline": "Decline",
+					"defer": "Defer",
+					"clarify": "Ask"
+				},
+				"writeFailed": "Your choices for the reply could not be saved. Try again.",
+				"fileMissing": "File missing",
+				"status": {
+					"checking": "Checking the draft…",
+					"addressed": "{addressed} of {total} addressed",
+					"needsFile": "{count} needs a file | {count} need a file",
+					"promise": "new promise noted: “{text}”"
+				},
+				"banner": {
+					"title": "One thing before sending.",
+					"body": "The draft says “{claim}”, but no file is attached yet.",
+					"pick": "Pick file"
+				}
 			},
 			"aiBar": {
 				"label": "What should the reply say?",
@@ -15064,8 +15446,12 @@
 					"keywords": "ai, autocomplete, drafting help"
 				},
 				"autoSummarize": {
-					"title": "Auto-summarize long threads",
-					"keywords": "ai, summary, digest"
+					"title": "Show overviews",
+					"keywords": "ai, summary, digest, overview, brief"
+				},
+				"threadView": {
+					"title": "Open threads on",
+					"keywords": "overview, conversation, default view"
 				},
 				"sendSound": {
 					"title": "Play sound when sending",
@@ -16367,7 +16753,9 @@
 			"topics": "Topics",
 			"transactionalEmails": "Transactional emails",
 			"webhooks": "Webhooks",
-			"pushSubscriptions": "Notification devices"
+			"pushSubscriptions": "Notification devices",
+			"threadBriefs": "Thread overviews",
+			"threadViewerState": "Thread view choices"
 		},
 		"archiveImport": {
 			"refused": {

@@ -38,7 +38,7 @@ import { useAnswerModeAssist } from '~/composables/useAnswerModeAssist';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
-import CatchUpCard from '~/components/answer/CatchUpCard.vue';
+import AnswerBriefCard from '~/components/answer/AnswerBriefCard.vue';
 import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
 import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
@@ -152,7 +152,7 @@ function onDraftId(id: string) {
 	});
 }
 
-// Catch-up, "Draft with AI" and thread files (plan §03 to §06)
+// The response plan, "Draft with AI" and thread files (plan §03 to §06)
 const assist = useAnswerModeAssist({
 	message: () => message.value,
 	composer: () => composerRef.value?.answer ?? null,
@@ -161,7 +161,7 @@ const assist = useAnswerModeAssist({
 	messageCount: () => messageCount.value,
 	view,
 });
-const { catchUp, ask } = assist;
+const { ask } = assist;
 // An uploaded file answer is kept in Files only by someone who may add to
 // Files, and only for a known contact, which the page cannot see from here.
 const { canManageOrganization } = usePermissions();
@@ -367,8 +367,6 @@ onBeforeUnmount(() => {
 					v-if="askingThread && message"
 					class="mx-4 mt-4"
 					:message-id="messageId"
-					:warrants-summary="false"
-					ask-only
 					@close="askingThread = false"
 				/>
 				<AnswerConversation
@@ -377,16 +375,14 @@ onBeforeUnmount(() => {
 					:message="message"
 					@count="messageCount = $event"
 				>
-					<template #catch-up="{ view: shown, messages, reveal }">
-						<CatchUpCard
-							v-if="shown === 'summary'"
-							:collapsible="layout === 'phone'"
-							:catch-up="catchUp.catchUp.value"
-							:loading="catchUp.loading.value"
+					<template #brief="{ view: shown, messages, reveal }">
+						<AnswerBriefCard
+							:thread-id="message.threadId"
+							:shown="shown"
+							:layout="layout"
 							:messages="messages"
-							:covered="catchUp.covered.value"
-							:attaching="assist.attaching.value"
 							:can-attach="!!seed"
+							:plan="assist.plan"
 							@reveal="reveal"
 							@attach="assist.attachThreadFile"
 						/>
@@ -446,6 +442,11 @@ onBeforeUnmount(() => {
 							ref="queueAskRef"
 							@visible="queueAskVisible = $event"
 							@use-draft="assist.applyQueueDraft(composer, $event)"
+						/>
+						<AnswerPlanBanner
+							:claims="assist.plan.missingFiles.value"
+							can-attach
+							@files="(list) => composer.addFiles(list).then(assist.plan.recheck)"
 						/>
 						<template v-if="assist.aiEnabled.value && !queueAskVisible">
 							<AskCard

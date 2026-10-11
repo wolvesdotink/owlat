@@ -1,7 +1,8 @@
 /**
  * Every billed call an agent step makes lands in the usage ledger once (#1259):
- * the security-scan guard windows, the quarantined extraction, classify and
- * each clarify call. A failed call records the usage it carries
+ * the security-scan guard windows, classify and each clarify call
+ * (interpretation, which replaced the context step's quarantined extraction,
+ * is metered in `mail/interpret/run.ts`). A failed call records the usage it carries
  * (`partialUsageOf`); one that carries none records nothing. The draft step is
  * covered in `draft/__tests__/draftSpend.test.ts`.
  *
@@ -27,7 +28,6 @@ vi.mock('../../../lib/llmProvider', () => ({
 }));
 
 import { securityScanStep } from '../security_scan';
-import { runQuarantinedExtraction } from '../context_retrieval/quarantine';
 import { classifyStep } from '../classify';
 import { clarifyStep, type ClarifyInput } from '../clarify';
 import { LlmPartialUsageError } from '../../../lib/llm/partialUsage';
@@ -117,32 +117,6 @@ describe('security_scan guard windows', () => {
 		await securityScanStep.execute(ctx, { inboundMessageId: messageId });
 
 		expect(ledger).toEqual([]);
-	});
-});
-
-describe('context_retrieval quarantined extraction', () => {
-	it('records the extraction call', async () => {
-		mocks.runLlmObject.mockResolvedValueOnce({
-			object: { facts: ['Order #4821'], questions: ['Where is it?'] },
-			tokenUsage: usage(7),
-			modelUsed: 'guard-model',
-		});
-		const { ctx, ledger } = makeCtx();
-
-		expect(await runQuarantinedExtraction(ctx, 'Where is order #4821?')).toContain('Order #4821');
-		expect(ledger).toEqual([
-			{ feature: 'agent_context_retrieval', tokenUsage: usage(7), modelUsed: 'guard-model' },
-		]);
-	});
-
-	it('records a failed extraction that carries usage and still falls back', async () => {
-		mocks.runLlmObject.mockRejectedValueOnce(failedWith(5));
-		const { ctx, ledger } = makeCtx();
-
-		expect(await runQuarantinedExtraction(ctx, 'Where is order #4821?')).toBeNull();
-		expect(ledger).toEqual([
-			{ feature: 'agent_context_retrieval', tokenUsage: usage(5), modelUsed: 'model-x' },
-		]);
 	});
 });
 

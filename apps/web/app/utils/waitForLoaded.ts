@@ -13,7 +13,7 @@ import type { Ref, WatchSource } from 'vue';
 export function waitForLoaded(
 	source: WatchSource<unknown>,
 	isDone: (value: unknown) => boolean = (v) => !v,
-	timeoutMs = 5_000,
+	timeoutMs = 5_000
 ): Promise<void> {
 	// Evaluate current value immediately
 	const current = typeof source === 'function' ? source() : (source as Ref).value;
@@ -25,12 +25,16 @@ export function waitForLoaded(
 			resolve();
 		}, timeoutMs);
 
-		const stop = watch(source, (val) => {
-			if (isDone(val)) {
-				clearTimeout(timeoutId);
-				stop();
-				resolve();
-			}
-		}, { immediate: true });
+		const stop = watch(
+			source,
+			(val) => {
+				if (isDone(val)) {
+					clearTimeout(timeoutId);
+					stop();
+					resolve();
+				}
+			},
+			{ immediate: true }
+		);
 	});
 }

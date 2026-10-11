@@ -42,6 +42,7 @@ import { clarificationFileRefValidator } from '../../lib/validators/clarificatio
 import { buildThreadTranscript, CLARIFY_DRAFT } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
 import type { Id } from '../../_generated/dataModel';
+import { recordClarificationAnswered } from '../interpret/threadEvents';
 
 /**
  * Answer the clarification questions on a Reply Queue thread and kick off the
@@ -178,6 +179,15 @@ export const answerClarification = postboxMutation({
 			},
 			updatedAt: now,
 		});
+		await recordClarificationAnswered(
+			ctx,
+			{ kind: 'mail', id: args.threadId },
+			{
+				userId: session.userId,
+				clarificationKey: `${args.threadId}:${clarification.askedAt}`,
+				questions: questions.filter((q) => answerByQuestion.has(q.id)),
+			}
+		);
 
 		// ANSWER-MEMORY: promote the owner's answers to durable standing facts,
 		// scoped to the thread's sender contact, so a later matching thread

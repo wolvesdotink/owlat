@@ -7,7 +7,7 @@
  *   - the composer's first autosave writes the draft id into the URL with a
  *     REPLACE, so Back still leaves Answer mode and a reload lands here again;
  *   - Esc leaves (the draft stays saved and is offered back on the list),
- *     `t` toggles Summary / Full, Cmd/Ctrl+J focuses "Draft with AI";
+ *     `t` toggles Overview / Conversation, Cmd/Ctrl+J focuses "Draft with AI";
  *   - a send goes back where the reply started;
  *   - with AI on, the composer carries "Draft with AI" (or the ask card while
  *     the AI asks), the footer the asks covered, and the resting phone sheet a
@@ -42,7 +42,21 @@ vi.mock('~/composables/useAnswerQueueSession', () => ({
 
 const assist = {
 	aiEnabled: ref(false),
-	catchUp: { catchUp: ref(null), loading: ref(false), covered: ref([]) },
+	// The response plan (useResponsePlan): nothing selected, nothing to flag.
+	plan: {
+		view: {
+			stanceOf: () => 'answer',
+			setStance: vi.fn(),
+			addressed: computed(() => []),
+			fileMissing: computed(() => new Set<string>()),
+		},
+		selected: ref<string[]>([]),
+		setSelected: vi.fn(),
+		missingFiles: ref<string[]>([]),
+		checkCoverage: vi.fn(),
+		recheck: vi.fn(),
+	},
+	planItems: ref([]),
 	statusNote: ref<string | undefined>(undefined),
 	ask: {
 		phase: ref('idle'),
@@ -147,7 +161,7 @@ const LabelDialogStub = defineComponent({
 });
 const AiStripStub = defineComponent({
 	name: 'PostboxAiStrip',
-	props: { messageId: String, warrantsSummary: Boolean, askOnly: Boolean },
+	props: { messageId: String },
 	emits: ['close'],
 	setup: () => () => h('div', { 'data-testid': 'ask-strip' }),
 });
@@ -240,6 +254,7 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 				UiSkeleton: inert('UiSkeleton'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
 				AnswerQueueMailAsk: QueueAskStub,
+				AnswerPlanBanner: inert('AnswerPlanBanner'),
 				AnswerPeekDraft: inert('AnswerPeekDraft'),
 				PostboxLabelPickerDialog: LabelDialogStub,
 				PostboxAiStrip: AiStripStub,
@@ -252,7 +267,7 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 							h('a', { href: props.to }, slots.default?.()),
 				}),
 			},
-			stubs: { Icon: true, AnswerAiBar: AiBarStub, AskCard: AskCardStub, CatchUpCard: true },
+			stubs: { Icon: true, AnswerAiBar: AiBarStub, AskCard: AskCardStub },
 		},
 	});
 	await flushPromises();
@@ -453,7 +468,7 @@ describe('Answer mode page', () => {
 		expect(navigateTo).not.toHaveBeenCalled();
 	});
 
-	it('toggles Summary / Full conversation with t', async () => {
+	it('toggles Overview / Conversation with t', async () => {
 		const w = await mountAt({});
 		expect(w.get('[data-testid="conversation"]').attributes('data-view')).toBe('summary');
 		press({ key: 't' });
@@ -540,7 +555,7 @@ describe('Answer mode page', () => {
 		expect(w.find('[data-testid="ask-strip"]').exists()).toBe(false);
 		await w.get('[data-testid="answer-menu-ask"]').trigger('click');
 		const strip = w.getComponent(AiStripStub);
-		expect(strip.props()).toMatchObject({ messageId: 'msg_1', askOnly: true });
+		expect(strip.props()).toMatchObject({ messageId: 'msg_1' });
 		strip.vm.$emit('close');
 		await flushPromises();
 		expect(w.find('[data-testid="ask-strip"]').exists()).toBe(false);

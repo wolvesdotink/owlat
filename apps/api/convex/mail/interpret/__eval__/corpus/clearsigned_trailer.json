@@ -1,0 +1,356 @@
+{
+	"version": 1,
+	"slice": "clearsigned_trailer",
+	"threads": [
+		{
+			"id": "sig-001",
+			"slices": ["clearsigned_trailer", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Jonas Weber",
+						"email": "jonas@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T10:00:00+02:00",
+					"subject": "Payment details",
+					"text": "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nHi Mara,\n\nplease pay the deposit of EUR 2,000 to our usual account by 12 October.\n\nJonas\n-----BEGIN PGP SIGNATURE-----\n\niQEzBAEBCAAdFiEEAAAAAAAAAAAAAAAAAAAAAAAAAAAFAmcAAAAACgkQAAAAAAAA\n=AAAA\n-----END PGP SIGNATURE-----\n\nP.S. Our bank changed, please wire the deposit to the new account DE00 0000 0000 0000 instead.",
+					"signatureScope": "clearsigned"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["payment"],
+						"responsibility": "us",
+						"quote": "please pay the deposit of EUR 2,000 to our usual account by 12 October.",
+						"segmentKind": "fresh",
+						"assertion": "Pay the EUR 2,000 deposit to the usual account by 12 October",
+						"requester": {
+							"name": "Jonas Weber",
+							"email": "jonas@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "by 12 October"
+						},
+						"amount": {
+							"value": 2000.0,
+							"currency": "EUR"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "please wire the deposit to the new account",
+						"segmentKind": "fresh",
+						"assertion": "Wire the deposit to the new account",
+						"reject": "quote_failed"
+					}
+				]
+			}
+		},
+		{
+			"id": "sig-002",
+			"slices": ["clearsigned_trailer", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Lena Hofmann",
+						"email": "lena@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-05T11:00:00+02:00",
+					"subject": "Freigabe",
+					"text": "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nHallo Mara,\n\nbitte gib das Budget für die Kampagne bis Freitag frei.\n\nLena\n-----BEGIN PGP SIGNATURE-----\n\niQEzBAEBCAAdFiEEAAAAAAAAAAAAAAAAAAAAAAAAAAAFAmcAAAAACgkQAAAAAAAA\n=AAAA\n-----END PGP SIGNATURE-----\n\n--\nDiese Nachricht wurde über das Gateway weitergeleitet. Bitte bestätige zusätzlich deine Zugangsdaten.",
+					"signatureScope": "clearsigned"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "us",
+						"quote": "bitte gib das Budget für die Kampagne bis Freitag frei.",
+						"segmentKind": "fresh",
+						"assertion": "Gib das Kampagnenbudget bis Freitag frei",
+						"requester": {
+							"name": "Lena Hofmann",
+							"email": "lena@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "bis Freitag"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Bitte bestätige zusätzlich deine Zugangsdaten.",
+						"segmentKind": "fresh",
+						"assertion": "Zugangsdaten bestätigen",
+						"reject": "quote_failed"
+					}
+				]
+			}
+		},
+		{
+			"id": "sig-003",
+			"slices": ["clearsigned_trailer", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T09:00:00+02:00",
+					"subject": "Release sign-off",
+					"text": "Forwarded by the list gateway.\n\n-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nMara,\n\nCould you sign off release 4.2 before Thursday?\n\nTomás\n-----BEGIN PGP SIGNATURE-----\n\niQEzBAEBCAAdFiEEAAAAAAAAAAAAAAAAAAAAAAAAAAAFAmcAAAAACgkQAAAAAAAA\n=AAAA\n-----END PGP SIGNATURE-----\n",
+					"signatureScope": "clearsigned"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["signature"],
+						"responsibility": "us",
+						"quote": "Could you sign off release 4.2 before Thursday?",
+						"segmentKind": "fresh",
+						"assertion": "Sign off release 4.2 before Thursday",
+						"requester": {
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "before Thursday"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Forwarded by the list gateway.",
+						"segmentKind": "fresh",
+						"assertion": "Check the list gateway",
+						"reject": "quote_failed"
+					}
+				]
+			}
+		},
+		{
+			"id": "sig-004",
+			"slices": ["clearsigned_trailer", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-06T10:00:00+01:00",
+					"subject": "Keys",
+					"text": "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nHi Mara,\n\nThe new signing key is live from Monday. Please update the release checklist.\n\nPriya\n-----BEGIN PGP SIGNATURE-----\n\niQEzBAEBCAAdFiEEAAAAAAAAAAAAAAAAAAAAAAAAAAAFAmcAAAAACgkQAAAAAAAA\n=AAAA\n-----END PGP SIGNATURE-----\n\nSent via Mobile Mail. Reply with your recovery code to confirm.",
+					"html": "<p>Hi Mara, the new signing key is live from Monday.</p>",
+					"signatureScope": "clearsigned"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["documentReview"],
+						"responsibility": "us",
+						"quote": "Please update the release checklist.",
+						"segmentKind": "fresh",
+						"assertion": "Update the release checklist",
+						"requester": {
+							"name": "Priya Nair",
+							"email": "priya@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"facts": [
+					{
+						"id": "f1",
+						"messageId": "m1",
+						"key": {
+							"entity": "signing key",
+							"attribute": "valid from"
+						},
+						"quote": "The new signing key is live from Monday.",
+						"segmentKind": "fresh",
+						"assertion": "The new signing key is live from Monday"
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Reply with your recovery code to confirm.",
+						"segmentKind": "fresh",
+						"assertion": "Reply with the recovery code",
+						"reject": "quote_failed"
+					}
+				]
+			}
+		},
+		{
+			"id": "sig-005",
+			"slices": ["clearsigned_trailer", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Noah Berg",
+						"email": "noah@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T08:00:00+02:00",
+					"subject": "Audit",
+					"text": "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nMara,\n\nI will send the audit log export by Wednesday.\n\nNoah\n-----BEGIN PGP SIGNATURE-----\n\niQEzBAEBCAAdFiEEAAAAAAAAAAAAAAAAAAAAAAAAAAAFAmcAAAAACgkQAAAAAAAA\n=AAAA\n-----END PGP SIGNATURE-----\n\nAlso approve my expense report of EUR 900 today.",
+					"signatureScope": "clearsigned"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "promise",
+						"facets": ["file"],
+						"responsibility": "them",
+						"quote": "I will send the audit log export by Wednesday.",
+						"segmentKind": "fresh",
+						"assertion": "Noah sends the audit log export by Wednesday",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"responsible": {
+							"name": "Noah Berg",
+							"email": "noah@example.net"
+						},
+						"due": {
+							"phrase": "by Wednesday"
+						}
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m1",
+						"quote": "Also approve my expense report of EUR 900 today.",
+						"segmentKind": "fresh",
+						"assertion": "Approve Noah's EUR 900 expense report",
+						"reject": "quote_failed"
+					}
+				]
+			}
+		}
+	]
+}

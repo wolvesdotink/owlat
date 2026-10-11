@@ -2,10 +2,11 @@
  * Everything Answer mode adds around the Postbox composer (plan §03 to §06),
  * wired for the page:
  *
- *  - the catch-up card's data, and the asks it ticks as the draft covers them
- *    ("2 of 3 asks covered" in the composer footer);
- *  - which conversation view opens: Summary when there is a card; with no card
- *    a short thread opens in full, since there is nothing to summarise;
+ *  - the reply's response plan (SPEC §6): a stance per open item of the
+ *    thread brief, and what the draft addresses ("3 of 4 addressed · 1 needs a
+ *    file" in the composer footer, chips on the items, the file-claim banner);
+ *  - which conversation view opens: Summary when the thread has a brief, the
+ *    full conversation when it has none (nothing interpreted to show);
  *  - "Draft with AI" and its ask session;
  *  - a reply the AI prepared before Answer mode opened, put in the editor of a
  *    fresh reply the person has not written in yet;
@@ -19,7 +20,9 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import { useAnswerAskSession } from '~/composables/useAnswerAskSession';
-import { useAnswerCatchUp } from '~/composables/useAnswerCatchUp';
+import { useThreadBrief } from '~/composables/useThreadBrief';
+import { useResponsePlan } from '~/composables/useResponsePlan';
+import { isPlanItem } from '~/utils/responsePlan';
 import { useAnswerFileUpload } from '~/composables/useAnswerFileUpload';
 import { useAnswerPreparedDraft } from '~/composables/useAnswerPreparedDraft';
 import { useAnswerThreadFiles } from '~/composables/useAnswerThreadFiles';
@@ -44,15 +47,39 @@ export function useAnswerModeAssist(opts: {
 
 	const draftText = computed(() => opts.composer()?.draftText.value ?? '');
 
-	// Catch-up, its footer note and the opening view.
-	const catchUp = useAnswerCatchUp({
-		target: () => {
-			const message = opts.message();
-			return message ? { kind: 'mail', messageId: message._id as Id<'mailMessages'> } : null;
+	// The thread brief: the plan's items, and the opening view. Summary when
+	// the thread has a brief; with none there is nothing to show but the
+	// conversation. Decided once, so it never flips under someone who toggled.
+	const { view: briefView } = useThreadBrief({ threadId: () => opts.message()?.threadId });
+	let viewDecided = false;
+	watch(
+		briefView,
+		(v) => {
+			if (viewDecided || v === undefined) return;
+			viewDecided = true;
+			if (!v || v.completeness === 'none') opts.view.value = 'full';
+		},
+		{ immediate: true }
+	);
+
+	// The response plan over the brief's open items (personal: for you and
+	// unclear; a shared mailbox: for the team and unclear).
+	const plan = useResponsePlan({
+		threadRef: () => {
+			const threadId = opts.message()?.threadId;
+			return threadId ? { kind: 'mail', id: threadId as Id<'mailThreads'> } : null;
+		},
+		draftRef: () => {
+			const draftId = opts.draftId();
+			return draftId ? { kind: 'mailDraft', id: draftId as Id<'mailDrafts'> } : null;
 		},
 		draftText: () => draftText.value,
-		view: opts.view,
-		messageCount: opts.messageCount,
+		items: () => {
+			const v = briefView.value;
+			if (!v) return [];
+			const ours = v.mode === 'brief' ? v.forYou : v.forTeam;
+			return [...ours, ...v.unclear].filter(isPlanItem);
+		},
 	});
 
 	// Draft with AI
@@ -62,8 +89,18 @@ export function useAnswerModeAssist(opts: {
 			return draftId ? { kind: 'mailDraft', draftId: draftId as Id<'mailDrafts'> } : null;
 		},
 		composer: opts.composer,
-		onSettled: () => void catchUp.checkCoverage(),
+		onSettled: () => void plan.checkCoverage(),
+		// The drafter reads the stored stances: write the person's choices first.
+		beforeDraft: async (target) => {
+			if (target.kind === 'mailDraft') await plan.flush({ kind: 'mailDraft', id: target.draftId });
+		},
 	});
+
+	/** The prepared reply's plan moves to the draft it became (review F16). */
+	async function adoptPrepared(composer: AnswerComposerApi) {
+		const draftId = await composer.ensureDraftId();
+		if (draftId) await plan.adoptPreparedPlan(draftId);
+	}
 
 	// A draft the AI prepared earlier.
 	const prepared = useAnswerPreparedDraft({
@@ -83,8 +120,9 @@ export function useAnswerModeAssist(opts: {
 			appliedText = text;
 			void composer
 				.applyAiDraft(text)
+				.then(() => adoptPrepared(composer))
 				.then(() => prepared.attachFiles(composer))
-				.then(() => catchUp.checkCoverage());
+				.then(() => plan.checkCoverage());
 		},
 		{ immediate: true }
 	);
@@ -103,8 +141,9 @@ export function useAnswerModeAssist(opts: {
 		preparedTaken = true;
 		appliedText = text;
 		await composer.applyAiDraft(text);
+		await adoptPrepared(composer);
 		await prepared.attachFiles(composer);
-		void catchUp.checkCoverage();
+		void plan.checkCoverage();
 	}
 
 	// Files from the thread.
@@ -113,7 +152,7 @@ export function useAnswerModeAssist(opts: {
 	});
 	const { upload } = useAnswerFileUpload();
 	const attachExisting = useBackendOperation(api.mail.drafts.attachExisting, {
-		label: () => t('components.answer.catchUp.attachOperation'),
+		label: () => t('components.answer.threadFiles.attachOperation'),
 		type: 'action',
 	});
 	const attaching = ref<string | null>(null);
@@ -138,7 +177,7 @@ export function useAnswerModeAssist(opts: {
 			}
 			const local = await threadFiles.toFile(file);
 			if (local) await composer.addFiles([local]);
-			else showToast(t('components.answer.catchUp.attachFailed'), 'error');
+			else showToast(t('components.answer.threadFiles.attachFailed'), 'error');
 		} finally {
 			attaching.value = null;
 		}
@@ -150,7 +189,7 @@ export function useAnswerModeAssist(opts: {
 		if (indexId) return { source: 'mailAttachment', id: indexId, filename: file.filename };
 		const local = await threadFiles.toFile(file);
 		if (!local) {
-			showToast(t('components.answer.catchUp.attachFailed'), 'error');
+			showToast(t('components.answer.threadFiles.attachFailed'), 'error');
 			return null;
 		}
 		const done = await upload(local);
@@ -165,8 +204,8 @@ export function useAnswerModeAssist(opts: {
 
 	return {
 		aiEnabled,
-		catchUp,
-		statusNote: catchUp.statusNote,
+		plan,
+		statusNote: plan.statusNote,
 		ask,
 		attaching,
 		attachThreadFile,

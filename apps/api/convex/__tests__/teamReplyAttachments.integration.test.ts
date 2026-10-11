@@ -12,6 +12,7 @@ import {
 import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { seedFolder, seedMailbox, seedMessage } from '../mail/__tests__/helpers.testlib';
 import { conversationThreadsStep } from '../workspaces/deletion/steps/teamReplies';
+import { seedCleanInterpretation } from '../mail/interpret/__tests__/interpret.testlib';
 
 // Team replies enqueue on the transactional workpool. Stub it so nothing is
 // dispatched and the envelope the worker would get can be inspected.
@@ -521,6 +522,7 @@ describe('team reply attachments: the send paths', () => {
 				],
 			},
 		});
+		await seedCleanInterpretation(t, threadId, messageId);
 		await t.action(internal.agent.agentPipeline.sendApprovedReply, {
 			inboundMessageId: messageId,
 			autonomous: true,
@@ -535,6 +537,7 @@ describe('team reply attachments: the send paths', () => {
 	it('the autonomous send waits for a file attached for this message to finish copying', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, messageId } = await seedThread(t, 'approved');
+		await seedCleanInterpretation(t, threadId, messageId);
 		vi.advanceTimersByTime(60_000);
 		await t.mutation(api.inbox.replyAttachments.add, {
 			threadId,
@@ -573,6 +576,7 @@ describe('team reply attachments: the send paths', () => {
 		/** An approved message whose send fired while a Files pick is still copying. */
 		async function heldSend(t: Harness) {
 			const { threadId, messageId } = await seedThread(t, 'approved');
+			await seedCleanInterpretation(t, threadId, messageId);
 			vi.advanceTimersByTime(60_000);
 			const { fileId } = await seedFile(t);
 			await t.mutation(api.inbox.replyAttachments.attachExisting, {
@@ -656,6 +660,7 @@ describe('team reply attachments: the send paths', () => {
 	it('the autonomous send stops when a file attached for this message failed to copy', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, messageId } = await seedThread(t, 'approved');
+		await seedCleanInterpretation(t, threadId, messageId);
 		vi.advanceTimersByTime(60_000);
 		const { fileId, storageId } = await seedFile(t);
 		await t.mutation(api.inbox.replyAttachments.attachExisting, {
@@ -682,6 +687,7 @@ describe('team reply attachments: the send paths', () => {
 	it('the autonomous send leaves a file staged before the message arrived; a person sends it', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, messageId } = await seedThread(t, 'approved');
+		await seedCleanInterpretation(t, threadId, messageId);
 		await t.mutation(api.inbox.replyAttachments.add, {
 			threadId,
 			storageId: await upload(t),
@@ -715,7 +721,8 @@ describe('team reply attachments: the send paths', () => {
 
 	it("a file answered to the agent's question leaves with the autonomous reply", async () => {
 		const t = convexTest(schema, modules);
-		const { messageId } = await seedThread(t, 'awaiting_clarification');
+		const { threadId, messageId } = await seedThread(t, 'awaiting_clarification');
+		await seedCleanInterpretation(t, threadId, messageId);
 		await t.run(async (ctx) => {
 			await ctx.db.patch(messageId, {
 				pendingClarification: {

@@ -54,13 +54,17 @@ function context(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-function makeCtx(opts: { context?: unknown; gateThrows?: boolean } = {}) {
+function makeCtx(opts: { context?: unknown; gateThrows?: boolean; plan?: unknown } = {}) {
 	const mutations: { name: string; args: Record<string, unknown> }[] = [];
 	const ctx = {
 		runQuery: vi.fn(async (ref: unknown) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getClarificationContext')) {
 				return opts.context === undefined ? context() : opts.context;
+			}
+			if (name.includes('responsePlanDraft:loadForDraft')) {
+				if (opts.plan === undefined) throw new Error('no plan');
+				return opts.plan;
 			}
 			throw new Error(`unexpected runQuery: ${name}`);
 		}),
@@ -195,5 +199,41 @@ describe('draftClarificationReply', () => {
 		const { ctx } = makeCtx({ context: context({ answers: [] }) });
 		await draftClarificationReply(ctx, { threadId });
 		expect(mocks.runSharedDraft).not.toHaveBeenCalled();
+	});
+});
+
+describe('draftClarificationReply: the thread plan (review F13)', () => {
+	it('drafts to the thread’s plan, an item with an unanswered slot held at clarify', async () => {
+		const plan = {
+			threadRevision: 2,
+			planRevision: 0,
+			isOverflow: false,
+			attachments: [],
+			attachmentSetHash: 'h',
+			completeness: 'complete',
+			items: [
+				{
+					id: 'item_1',
+					revision: 1,
+					intent: 'request',
+					facets: ['file'],
+					responsibility: 'us',
+					text: 'Send the September invoice',
+				},
+			],
+			stances: [{ itemId: 'item_1', stance: 'clarify', source: 'default' }],
+		};
+		const { ctx } = makeCtx({ plan });
+		await draftClarificationReply(ctx, { threadId });
+		const params = mocks.runSharedDraft.mock.calls[0]![1];
+		expect(params.responsePlan.items).toEqual([
+			expect.objectContaining({ ref: 'i1', itemId: 'item_1', stance: 'clarify' }),
+		]);
+	});
+
+	it('drafts without a plan when it cannot be read', async () => {
+		const { ctx } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+		expect(mocks.runSharedDraft.mock.calls[0]![1].responsePlan).toBeUndefined();
 	});
 });

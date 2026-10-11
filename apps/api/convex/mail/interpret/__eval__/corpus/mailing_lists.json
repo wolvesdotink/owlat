@@ -1,0 +1,252 @@
+{
+	"version": 1,
+	"slice": "mailing_lists",
+	"threads": [
+		{
+			"id": "list-001",
+			"slices": ["mailing_lists", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Gadget Weekly",
+						"email": "news@gadgets.example.com"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-01T07:00:00+00:00",
+					"subject": "This week's best gadgets",
+					"text": "Don't miss our autumn sale! Buy now and save 30% on headphones.\n\nUnsubscribe: https://gadgets.example.com/unsubscribe\n",
+					"headers": {
+						"listUnsubscribe": true,
+						"precedence": "bulk"
+					}
+				}
+			],
+			"labels": {
+				"items": []
+			},
+			"expectIneligible": true
+		},
+		{
+			"id": "list-002",
+			"slices": ["mailing_lists", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Gadget Weekly",
+						"email": "news@gadgets.example.com"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-02T07:00:00+00:00",
+					"subject": "Your weekly digest",
+					"text": "Top stories this week: five ways to organize your desk. Click here to read more.\n",
+					"headers": {
+						"listUnsubscribe": true,
+						"precedence": "bulk"
+					}
+				}
+			],
+			"labels": {
+				"items": []
+			},
+			"expectIneligible": true
+		},
+		{
+			"id": "list-003",
+			"slices": ["mailing_lists", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Gadget Weekly",
+						"email": "news@gadgets.example.com"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-03T07:00:00+00:00",
+					"subject": "Last chance: 50% off",
+					"text": "Our biggest sale ends tonight. Upgrade your plan today and get a free mug.\n",
+					"headers": {
+						"listUnsubscribe": true,
+						"precedence": "bulk"
+					}
+				}
+			],
+			"labels": {
+				"items": []
+			},
+			"expectIneligible": true
+		},
+		{
+			"id": "list-004",
+			"slices": ["mailing_lists", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Clara Vogel",
+						"email": "clara@example.org"
+					},
+					"to": [
+						{
+							"name": "Design list",
+							"email": "design-list@lists.example.org"
+						}
+					],
+					"sentAt": "2026-10-05T09:00:00+02:00",
+					"subject": "[design] Icon set review",
+					"text": "Hi everyone,\n\ncould someone on the list review the new icon set before Friday?\n\nClara\n\n--\nYou received this because you are subscribed to design-list.\n",
+					"headers": {
+						"listUnsubscribe": true,
+						"precedence": "list"
+					}
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["documentReview"],
+						"responsibility": "unclear",
+						"quote": "could someone on the list review the new icon set before Friday?",
+						"segmentKind": "fresh",
+						"assertion": "Someone on the list reviews the icon set before Friday",
+						"requester": {
+							"name": "Clara Vogel",
+							"email": "clara@example.org"
+						},
+						"due": {
+							"phrase": "before Friday"
+						}
+					}
+				]
+			}
+		},
+		{
+			"id": "list-005",
+			"slices": ["mailing_lists", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Emil Sander",
+						"email": "emil@example.net"
+					},
+					"to": [
+						{
+							"name": "Verein",
+							"email": "verein@lists.example.net"
+						}
+					],
+					"sentAt": "2026-10-06T19:00:00+02:00",
+					"subject": "[verein] Mitgliederversammlung",
+					"text": "Liebe alle,\n\ndie Mitgliederversammlung findet am 24. Oktober statt. Bitte meldet euch bis 17. Oktober an.\n\nEmil\n",
+					"headers": {
+						"listUnsubscribe": true,
+						"precedence": "list"
+					}
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["meeting"],
+						"responsibility": "us",
+						"quote": "Bitte meldet euch bis 17. Oktober an.",
+						"segmentKind": "fresh",
+						"assertion": "Melde dich bis 17. Oktober zur Mitgliederversammlung an",
+						"requester": {
+							"name": "Emil Sander",
+							"email": "emil@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "bis 17. Oktober"
+						}
+					}
+				],
+				"facts": [
+					{
+						"id": "f1",
+						"messageId": "m1",
+						"key": {
+							"entity": "general meeting",
+							"attribute": "date"
+						},
+						"quote": "die Mitgliederversammlung findet am 24. Oktober statt.",
+						"segmentKind": "fresh",
+						"assertion": "Die Mitgliederversammlung ist am 24. Oktober"
+					}
+				]
+			}
+		}
+	]
+}

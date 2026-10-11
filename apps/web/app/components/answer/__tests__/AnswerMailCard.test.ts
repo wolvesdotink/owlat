@@ -39,6 +39,7 @@ beforeAll(() => {
 		return { run, isLoading: ref(false) };
 	});
 	vi.stubGlobal('navigateTo', navigateTo);
+	vi.stubGlobal('useInboxes', () => ({ byId: { value: new Map() } }));
 });
 
 // Every card listens on window; a card left mounted would answer the next test's keys.

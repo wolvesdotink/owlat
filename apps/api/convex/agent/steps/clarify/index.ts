@@ -75,6 +75,7 @@ import {
 } from '../../../inbox/askEagerness';
 import { detectAttachmentClarification } from './attachment';
 import { boundedOptions } from './options';
+import { loadSlotItems, slotItemLink, type ClarifySlotItem } from './items';
 import { answerKindForSlot } from '../../../inbox/clarificationAnswers';
 import type { AgentStepModule, TokenUsage } from '../types';
 
@@ -176,7 +177,8 @@ const DEFAULT_SELECTION_POLICY: QuestionSelectionPolicy = {
 export function selectQuestions(
 	candidateSlots: ReplySlot[],
 	divergentIndexes: readonly number[],
-	policy: QuestionSelectionPolicy = DEFAULT_SELECTION_POLICY
+	policy: QuestionSelectionPolicy = DEFAULT_SELECTION_POLICY,
+	items: readonly ClarifySlotItem[] = []
 ): ClarificationQuestion[] {
 	const cap = Math.min(policy.maxQuestions, MAX_QUESTIONS);
 	if (cap <= 0) return [];
@@ -195,6 +197,7 @@ export function selectQuestions(
 			answerKind: answerKindForSlot(slot.slotType, options),
 			text: slot.question,
 			...(options ? { options } : {}),
+			...slotItemLink(slot, items),
 		});
 		if (questions.length >= cap) break;
 	}
@@ -278,12 +281,13 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			let tokenUsage: TokenUsage | undefined;
 			let modelUsed: string | undefined;
 
-			// Stage 1 — extract typed reply slots.
+			// Stage 1 — extract typed reply slots, each tied to the open item it fills.
+			const slotItems = await loadSlotItems(ctx, input.inboundMessageId);
 			const slotsResult = await meterAgentCall(ctx, 'agent_clarify', () =>
 				runLlmObject({
 					model,
 					schema: replySlotsSchema,
-					prompt: buildSlotPrompt(input.context),
+					prompt: buildSlotPrompt(input.context, slotItems),
 					temperature: 0.2,
 				})
 			);
@@ -353,7 +357,8 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			const candidateQuestions = selectQuestions(
 				candidateSlots,
 				divergenceResult.object.divergentSlotIndexes,
-				{ maxQuestions: policy.maxQuestions, highStakesOnly: policy.highStakesOnly }
+				{ maxQuestions: policy.maxQuestions, highStakesOnly: policy.highStakesOnly },
+				slotItems
 			);
 
 			// ANSWER-MEMORY: before asking, look up a stored standing answer for each

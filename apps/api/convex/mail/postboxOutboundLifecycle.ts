@@ -4,6 +4,7 @@ import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { recordPostboxOutboundAudit, type PostboxOutboundAuditEvent } from './postboxOutboundAudit';
+import { onPostboxRecipientTransition } from './interpret/sendActivity';
 
 // Postbox outbound lifecycle — the single writer of every
 // `mailMessages.outbound.recipients[].state` and the only producer of the
@@ -16,6 +17,8 @@ import { recordPostboxOutboundAudit, type PostboxOutboundAuditEvent } from './po
 //
 // The direct mutation serves synchronous dispatch failures; MTA-keyed
 // mutations serve webhook transitions and independent acceptance evidence.
+// Every recipient transition also feeds the thread brief: `reply_sent` and the
+// sent message's interpretation, or `delivery_failed` (interpret/sendActivity.ts).
 export type RecipientState = 'queued' | 'sent' | 'bounced' | 'failed';
 export type AggregateState = RecipientState | 'partial';
 
@@ -330,6 +333,10 @@ async function dispatch(
 	};
 
 	await recordPostboxOutboundAudit(ctx, auditEvent);
+	// Thread activity, the sent message's interpretation, failed dispositions.
+	if (result.applied === 'transitioned') {
+		await onPostboxRecipientTransition(ctx, { message, recipient, to: result.to, at: input.at });
+	}
 
 	return {
 		ok: true,
@@ -401,6 +408,7 @@ async function observeRemoteAcceptance(
 			aggregateAfter,
 			at: acceptedAt,
 		});
+		await onPostboxRecipientTransition(ctx, { message, recipient, to: 'sent', at: acceptedAt });
 	}
 
 	return {

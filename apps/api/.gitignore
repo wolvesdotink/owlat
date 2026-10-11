@@ -1,2 +1,5 @@
 
 .env.local
+
+# interpretation eval report (scripts/interpret-eval.ts)
+.interpret-eval/

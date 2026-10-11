@@ -162,6 +162,7 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'savedReplyQuery',
 	'teamInboxAdminMutation',
 	'teamInboxAdminQuery',
+	'threadBriefMutation',
 	'transactionalMutation',
 	'transactionalQuery',
 ];
@@ -204,6 +205,8 @@ const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
 		'the operator view of an account erasure’s progress and last error (`convex run`)',
 	'auth/erasure/lifecycle.ts#retry':
 		'the operator retry of a failed account erasure, ahead of the daily re-arm (`convex run`)',
+	'mail/interpret/outstanding.ts#sweep':
+		'the operator run of the stale-source sweep the needs-reply reconcile cron runs inline (`convex run`)',
 	'mail/imap/serverRegistry.ts#status':
 		'the operator view of which IMAP server releases reported, before a contract step (`convex run`)',
 	'delivery/sendCompletionFailureAdmin.ts#status':
@@ -384,7 +387,10 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
  * or deleted; a listed entry that gains a caller or is deleted fails until its
  * line comes off. Empty, and the empty state is the point (issue #528).
  */
-const UNREACHED_ENTRIES: readonly string[] = [];
+const UNREACHED_ENTRIES: readonly string[] = [
+	// Thread brief: wired by the wiring and web lanes, which delete each line (none may survive).
+	'mail/interpret/scope.ts#loadSourceForScope',
+];
 
 // ─── The checks ─────────────────────────────────────────────────────────────
 

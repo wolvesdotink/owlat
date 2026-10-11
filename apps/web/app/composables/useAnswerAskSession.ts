@@ -53,6 +53,12 @@ export function useAnswerAskSession(opts: {
 	 * Called with the files not reported before.
 	 */
 	onAttachedFiles?: (files: AskSession['attachedFiles']) => void;
+	/**
+	 * Awaited before the server drafts (start, and an answer that resumes the
+	 * draft), once the target exists: the host writes what the drafter reads,
+	 * e.g. the response plan's stances (review F11).
+	 */
+	beforeDraft?: (target: AskTarget) => Promise<void>;
 }) {
 	const { t, locale } = useI18n();
 
@@ -161,6 +167,16 @@ export function useAnswerAskSession(opts: {
 		claim(view);
 	}
 
+	/** The host's pre-draft hook; false when it failed (the host said why). */
+	async function runBeforeDraft(target: AskTarget): Promise<boolean> {
+		try {
+			await opts.beforeDraft?.(target);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
 	async function start(instruction: string) {
 		const composer = opts.composer();
 		if (!composer || busy.value) return;
@@ -170,6 +186,8 @@ export function useAnswerAskSession(opts: {
 		const target: AskTarget | null =
 			known?.kind === 'teamThread' ? known : draftId ? { kind: 'mailDraft', draftId } : null;
 		if (!target) return;
+		// A failed pre-draft write stops the draft: it would read old choices.
+		if (!(await runBeforeDraft(target))) return;
 		const trimmed = instruction.trim();
 		idAtRunStart =
 			sessionQuery.data.value === undefined
@@ -190,6 +208,8 @@ export function useAnswerAskSession(opts: {
 		if (!current || current.status !== 'asking' || answerOp.isLoading.value) return;
 		// What this answer brings (a file, the draft) is this page's from now on.
 		claim(current);
+		const target = opts.target();
+		if (target && !(await runBeforeDraft(target))) return;
 		await ownRun(() =>
 			answerOp.run({
 				sessionId: current.sessionId,

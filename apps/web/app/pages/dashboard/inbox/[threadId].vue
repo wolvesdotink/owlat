@@ -3,29 +3,18 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
 import { teamThreadPreview } from '~/utils/teamThreadPreviews';
-import { capitalize, formatRelativeTime } from '~/utils/formatters';
-import {
-	classificationSummary,
-	latestClassification,
-	otherWaitingDrafts,
-	pickReplyTarget,
-} from '~/utils/teamThreadReply';
+import { formatRelativeTime } from '~/utils/formatters';
+import { otherWaitingDrafts, pickReplyTarget, replySubject } from '~/utils/teamThreadReply';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
-import { countNotesMentioning, interleaveNotes } from '~/utils/threadNotes';
+import { countMentionsOf, type ReplyEntry } from '~/utils/teamStream';
+import { useTeamThread } from '~/composables/team/useTeamThread';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
 import { inboxRetryToast } from '~/utils/inboxRetry';
 
-const { t, te, locale } = useI18n();
+const { t, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.inbox.detail.pageTitle') });
-
-// Classification / processing labels are translated here; the backend enums stay
-// the source of truth, so an unrecognised value renders as stored.
-const classificationLabel = (group: string, value: string): string => {
-	const key = `dashboard.inbox.detail.${group}.${value}`;
-	return te(key) ? t(key) : value;
-};
 
 definePageMeta({
 	layout: 'dashboard',
@@ -41,7 +30,6 @@ const {
 	thread,
 	messages,
 	contact,
-	followUps,
 	threadLoading,
 	threadError,
 	refetchThread,
@@ -74,16 +62,6 @@ setDynamicBreadcrumbs([
 	{ label: 'dashboard.inbox.detail.breadcrumb' },
 ]);
 onBeforeUnmount(clearDynamicBreadcrumbs);
-
-// The header's one-line classification ("Billing · urgent"), from the newest
-// message the agent classified. The detail sits behind the admin disclosure.
-const classificationLine = computed(() => {
-	const summary = classificationSummary(latestClassification(messages.value));
-	if (!summary) return null;
-	const parts = [capitalize(classificationLabel('categories', summary.category))];
-	if (summary.priority) parts.push(classificationLabel('priorities', summary.priority));
-	return parts.join(' · ');
-});
 
 // Snooze picker — reuses the Postbox snooze presets (PostboxSnoozeDialog).
 const showSnoozeDialog = ref(false);
@@ -127,7 +105,7 @@ function onThreadKeydown(event: KeyboardEvent) {
 	event.preventDefault();
 	if (key === 'i') assignToMe();
 	else if (key === 'r') openReply();
-	else if (isAdmin.value) composeBar.value?.openNote();
+	else if (isAdmin.value) composer.value?.focus('note');
 }
 onMounted(() => window.addEventListener('keydown', onThreadKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onThreadKeydown));
@@ -226,9 +204,6 @@ const waitingDraftIds = computed(
 function openReply(messageId?: Id<'inboundMessages'>) {
 	void answerNav.openTeam(threadId.value, { messageId: messageId ?? null });
 }
-function answerMessage(messageId: Id<'inboundMessages'>) {
-	openReply(messageId);
-}
 const replySenderLabel = computed(() => {
 	if (contact.value) {
 		const name = `${contact.value.firstName ?? ''} ${contact.value.lastName ?? ''}`.trim();
@@ -236,64 +211,43 @@ const replySenderLabel = computed(() => {
 	}
 	return replyTarget.value?.from ?? '';
 });
-// A message header names its sender when that sender is the thread's contact;
-// the address stays beside it, muted. Anyone else keeps the bare address.
-function senderName(message: { from: string; contactId?: string }): string | null {
-	const c = contact.value;
-	if (!c) return null;
-	const isContact =
-		message.contactId === c._id || message.from.toLowerCase() === (c.email ?? '').toLowerCase();
-	if (!isContact) return null;
-	return `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || null;
-}
-// The agent's working is only worth a disclosure when there is some: a
-// classification, a recorded decision, or a pipeline stop (failed/quarantined).
-function hasAgentInsight(message: {
-	classification?: unknown;
-	agentDecision?: unknown;
-	processingStatus: string;
-}): boolean {
-	return Boolean(
-		message.classification ||
-		message.agentDecision ||
-		message.processingStatus === 'failed' ||
-		message.processingStatus === 'quarantined'
-	);
-}
-// ── Internal notes: between the messages by time, written under the thread ──
-const threadNotes = useThreadNotes(threadId, { enabled: () => isAdmin.value });
-const noteSlots = computed(() => interleaveNotes(messages.value, threadNotes.notes.value));
+// ── The stream: emails, replies, internal notes and what happened, in one order ──
+const team = useTeamThread({
+	target: () => ({ kind: 'team', id: threadId.value }),
+	enabled: () => isAdmin.value,
+	onReply: () => openReply(),
+});
+const messageById = computed(() => new Map(messages.value.map((m) => [m._id as string, m])));
 // A note mentioning me lands while I have the thread open: I have seen it, so
 // the Mentions badge must not keep counting it until the next visit.
 watch(
-	() => countNotesMentioning(threadNotes.notes.value, user.value?.id),
+	() => countMentionsOf(team.stream.entries.value, user.value?.id),
 	(count, before) => {
 		if (count > (before ?? 0)) markSeen();
 	}
 );
-const composeBar = ref<{ openNote: () => void } | null>(null);
+watch(
+	() => team.stream.entries.value.at(-1)?.key,
+	(key) => key && team.stream.markSeen()
+);
+const composer = ref<{ focus: (mode?: 'note' | 'reply') => void } | null>(null);
+// What is typed in "Reply to …" waits for Answer mode, which picks it up.
+const replyDraft = computed({
+	get: () => keptReply.get(threadId.value)?.body ?? '',
+	set: (body: string) =>
+		keptReply.set(threadId.value, {
+			body,
+			subject: replyTarget.value ? replySubject(replyTarget.value) : '',
+		}),
+});
 
 // "Compose email" (top bar, palette, shortcut) on a thread answers the thread.
 watch(useThreadReplyRequest(), () => openReply());
 
-// ── What the team sent ──
-// The reply that answered each message, and the follow-ups written after it,
-// shown under the message they answer.
-function memberName(userId: string): string {
-	const m = members.value.find((x) => x.userId === userId);
-	return m ? m.user.name || m.user.email : t('dashboard.inbox.detail.outbound.yourTeam');
-}
-function sentReplyAuthor(message: NonNullable<typeof messages.value>[number]): string {
-	return message.approvalSource === 'auto'
-		? t('dashboard.inbox.detail.outbound.agent')
-		: t('dashboard.inbox.detail.outbound.yourTeam');
-}
-function followUpsFor(messageId: Id<'inboundMessages'>) {
-	return followUps.value.filter((f) => f.inReplyToMessageId === messageId);
-}
 const undoingFollowUpId = ref<Id<'inboxFollowUps'> | null>(null);
-async function undoFollowUp(followUpId: Id<'inboxFollowUps'>) {
-	if (undoingFollowUpId.value) return;
+async function undoFollowUp(entry: ReplyEntry) {
+	const followUpId = entry.followUpId;
+	if (!followUpId || undoingFollowUpId.value) return;
 	undoingFollowUpId.value = followUpId;
 	try {
 		const result = await cancelFollowUp(followUpId);
@@ -441,12 +395,6 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								)
 							}}
 						</span>
-						<!-- What the agent made of it, in one line. Detail is admin-only,
-						     behind "Why did the agent do this?" on the message. -->
-						<template v-if="classificationLine">
-							<span aria-hidden="true">·</span>
-							<span data-testid="thread-classification">{{ classificationLine }}</span>
-						</template>
 						<template v-if="isSnoozed && thread.snoozedUntil">
 							<span aria-hidden="true">·</span>
 							<span class="inline-flex items-center gap-1">
@@ -504,166 +452,66 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			<!-- From xl the side column keeps a fixed width instead of a third of an
 			     ever wider page. -->
 			<div class="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_20rem] gap-6">
-				<!-- Messages Timeline -->
-				<div class="lg:col-span-2 xl:col-span-1 space-y-4">
-					<InboxNoteList
-						v-if="noteSlots.leading.length > 0"
-						:items="noteSlots.leading"
-						:notes="threadNotes"
-						:is-admin="isAdmin"
-					/>
-					<template v-for="message in messages" :key="message._id">
-						<div class="card">
-							<!-- Message Header -->
-							<div class="flex items-center gap-3 mb-4">
-								<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="full" />
-								<div class="min-w-0">
-									<p class="truncate text-sm">
-										<template v-if="senderName(message)">
-											<span class="font-medium text-text-primary">{{ senderName(message) }}</span>
-											<span class="ml-1.5 text-xs text-text-tertiary">{{ message.from }}</span>
-										</template>
-										<span v-else class="font-medium text-text-primary">{{ message.from }}</span>
-									</p>
-									<time
-										class="text-xs text-text-tertiary"
-										:datetime="new Date(message._creationTime).toISOString()"
-										:title="absoluteTime(message._creationTime)"
-									>
-										{{ formatRelativeTime(message._creationTime) }}
-									</time>
-								</div>
-							</div>
-
-							<!-- The mirror of the Postbox reader's strip (idea 31): this
-						     message also sits in someone's personal mailbox, and it may
-						     already have been answered there. Read-only; renders nothing
-						     unless the viewer is permitted on both surfaces. -->
-							<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
-
-							<!-- Message Body. A text part too large for its row is fetched
-						     from storage; the component shows its excerpt until then. -->
-							<InboxMessageBody :message="message" />
-
-							<!-- Attachments. getThread returns the row unprojected, so the
-						     list needs no extra query; the component owns the download. -->
-							<InboxMessageAttachments :message="message" />
-
-							<!-- Another message in this thread also has a draft waiting: say so,
-						     and let the person answer or reject it here, in order. -->
-							<div
-								v-if="isAdmin && waitingDraftIds.has(message._id)"
-								class="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 p-3"
-								data-testid="thread-waiting-draft"
-							>
-								<p class="flex-1 text-xs text-text-secondary">
-									{{ t('dashboard.inbox.detail.waitingDraft.notice') }}
-								</p>
-								<UiButton variant="secondary" size="sm" @click="answerMessage(message._id)">
-									<Icon name="lucide:reply" class="w-3.5 h-3.5" />
-									{{ t('dashboard.inbox.detail.waitingDraft.answer') }}
-								</UiButton>
-								<UiButton variant="ghost" size="sm" @click="openRejectModal(message._id)">
-									{{ t('dashboard.inbox.detail.composer.rejectDraft') }}
-								</UiButton>
-							</div>
-
-							<!-- Failure reason + a Retry that says what it does (terminal 'failed' state) -->
-							<InboxFailedNotice
-								v-if="message.processingStatus === 'failed'"
-								:message="message"
+				<!-- The thread as one stream; the open actions pinned above it. -->
+				<div class="lg:col-span-2 xl:col-span-1 space-y-4" data-testid="team-thread-main">
+					<TeamPinnedItems v-if="isAdmin" :team="team" />
+					<TeamThreadStream
+						:entries="team.stream.entries.value"
+						:has-earlier="team.stream.hasEarlier.value"
+						:loading-earlier="team.stream.isLoadingEarlier.value"
+						:seen-position="team.stream.seenPosition.value"
+						:viewer-id="team.viewerId.value"
+						:member-name="team.memberName"
+						:can-edit-note="team.canEditNote"
+						:can-delete-note="(entry) => isAdmin || entry.authorId === user?.id"
+						:can-react="isAdmin"
+						:save-note="team.editNote"
+						:candidates-for="team.candidatesFor"
+						:undoing-follow-up-id="undoingFollowUpId"
+						@load-earlier="team.stream.loadEarlier"
+						@react-note="team.reactNote"
+						@delete-note="team.deleteNote"
+						@undo-follow-up="undoFollowUp"
+					>
+						<template #email="{ entry }">
+							<InboxStreamEmail
+								v-if="messageById.get(entry.source.id)"
+								:message="messageById.get(entry.source.id)!"
+								:contact="contact"
+								:is-admin="isAdmin"
+								:has-waiting-draft="waitingDraftIds.has(entry.source.id as Id<'inboundMessages'>)"
 								:retrying="isRetrying"
-								@retry="onRetry(message._id)"
+								:undoing-auto-send="isUndoingAutoSend"
+								@answer="openReply(entry.source.id as Id<'inboundMessages'>)"
+								@reject="openRejectModal(entry.source.id as Id<'inboundMessages'>)"
+								@retry="onRetry(entry.source.id as Id<'inboundMessages'>)"
+								@cancel-auto-send="cancelAutoSend(entry.source.id as Id<'inboundMessages'>)"
 							/>
+						</template>
+					</TeamThreadStream>
 
-							<!-- The agent's questions are answered where the reply is written. -->
-							<div
-								v-if="
-									isAdmin &&
-									message.processingStatus === 'awaiting_clarification' &&
-									message.pendingClarification
-								"
-								class="mt-4 flex flex-wrap items-center gap-2 rounded-lg border-l-2 border-l-brand/60 surface-2 p-3"
-								data-testid="thread-clarification-pointer"
-							>
-								<p class="flex-1 text-sm text-text-secondary">
-									{{ t('dashboard.inbox.detail.agentNeedsInput') }}
-								</p>
-								<UiButton size="sm" @click="openReply(message._id)">
-									<Icon name="lucide:message-circle-question" class="w-3.5 h-3.5" />
-									{{ t('dashboard.inbox.detail.answerInReply') }}
-								</UiButton>
-							</div>
-
-							<InboxAutoSendCountdown
-								v-if="isAdmin && message.pendingAutoSend"
-								:send-at="message.pendingAutoSend.sendAt"
-								:busy="isUndoingAutoSend"
-								@cancel="cancelAutoSend(message._id)"
-							/>
-
-							<!-- The agent's working, for admins, behind one disclosure. -->
-							<InboxAgentInsight
-								v-if="isAdmin && hasAgentInsight(message)"
-								:inbound-message-id="message._id"
-								:classification="message.classification ?? null"
-								:decision-reason="message.agentDecision?.reason ?? null"
-							/>
-						</div>
-
-						<!-- What the team sent: the reply that answered it, then any follow-ups. -->
-						<InboxThreadOutbound
-							v-if="message.processingStatus === 'sent' && message.draftResponse"
-							:author-label="sentReplyAuthor(message)"
-							:body="message.draftResponse"
-							:at="message.processedAt ?? message._creationTime"
-							status="sent"
-						/>
-						<InboxThreadOutbound
-							v-for="followUp in followUpsFor(message._id)"
-							:key="followUp._id"
-							:author-label="memberName(followUp.createdBy)"
-							:body="followUp.body"
-							:at="followUp.sentAt ?? followUp.createdAt"
-							:status="followUp.status"
-							:send-at="followUp.sendAt"
-							:error-message="followUp.errorMessage ?? null"
-							:undoing="undoingFollowUpId === followUp._id"
-							@undo="undoFollowUp(followUp._id)"
-						/>
-						<!-- The team's internal notes written after this message. -->
-						<InboxNoteList
-							v-if="noteSlots.after.has(message._id)"
-							:items="noteSlots.after.get(message._id) ?? []"
-							:notes="threadNotes"
-							:is-admin="isAdmin"
-						/>
-					</template>
-
-					<!-- Empty messages -->
 					<UiEmptyState
 						v-if="messages.length === 0"
 						icon="lucide:mail"
 						:title="t('dashboard.inbox.detail.noMessages')"
 					/>
 
-					<!-- Every reply is written in Answer mode; this is the way in. Beside
-					     it, an internal note only the team sees. -->
-					<InboxThreadComposeBar
+					<!-- Internal note or Reply to the customer (Answer mode), each with its own draft. -->
+					<TeamNoteComposer
 						v-if="isAdmin"
-						ref="composeBar"
-						:notes="threadNotes"
-						:reply-label="
-							replyTarget
-								? t('dashboard.inbox.detail.composer.replyTo', { name: replySenderLabel })
-								: null
-						"
+						ref="composer"
+						v-model:reply-draft="replyDraft"
+						:draft-key="`team:${threadId}`"
+						:reply-name="replyTarget ? replySenderLabel : null"
+						:items="team.items.value"
+						:candidates-for="team.candidatesFor"
+						:submit-note="team.postNote"
 						@reply="openReply()"
 					/>
 				</div>
 
-				<!-- Sidebar -->
 				<div class="space-y-6">
+					<BriefElsewhere :thread-ref="{ kind: 'team', id: threadId }" class="card" />
 					<!-- Contact Card -->
 					<div v-if="contact" class="card">
 						<h2 class="text-lg font-medium text-text-primary mb-4">
@@ -739,7 +587,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 						</div>
 					</div>
 
-					<!-- Other channels on this thread — renders nothing until one speaks. -->
+					<!-- SMS / WhatsApp on this thread, answerable here; nothing for email-only threads. -->
 					<InboxThreadChannelTimeline :thread-id="threadId" />
 				</div>
 			</div>

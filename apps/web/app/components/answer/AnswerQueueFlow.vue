@@ -22,7 +22,7 @@ import { useLocalized } from '~/composables/useLocalized';
  * one, so this page shows the loading, empty and done states, and the items
  * that stay cards (chat mentions, follow-up reminders).
  */
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const localized = useLocalized();
 const session = useAnswerQueueSession() ?? createAnswerQueueSession();
 const { queue, flow, filter, source } = session;
@@ -41,7 +41,9 @@ const leavingForAnswerMode = computed(
 
 function headline(item: AnswerItem): string {
 	if (item.source === 'mail') {
-		return localized(replyQueueHeadline(item.row));
+		return localized(
+			replyQueueHeadline(item.row, locale.value, { isShared: item.inbox?.scope === 'shared' })
+		);
 	}
 	if (item.source === 'team') return item.entry.message.subject;
 	return `#${item.mention.roomName}: ${item.mention.messagePreview}`;

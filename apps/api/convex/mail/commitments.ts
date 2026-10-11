@@ -23,6 +23,10 @@
  *      into the Reply Queue as a "You're waiting…" item — and flips it to
  *      `reminded` exactly once, so a promise can't lapse unseen.
  *
+ * Each commitment links to the thread brief item for the same obligation
+ * (`threadItemId`, `interpret/commitmentLink.ts`); the reminder state here
+ * stays outside the item's lifecycle.
+ *
  * Advisory only: this never sends or modifies mail.
  */
 
@@ -35,6 +39,7 @@ import { isBulkOrNoReplySender } from './needsReplyHeuristic';
 import { armThreadFollowUp, followUpWaitingOn } from './followUps';
 import { pick } from '../lib/validators/fields';
 import { mailCommitmentsFields } from '../schema/mailAi';
+import { linkCommitmentsForMessage } from './interpret/commitmentLink';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -173,14 +178,18 @@ export const applyCommitment = internalMutation({
 					updatedAt: now,
 				});
 			}
-			return;
+		} else {
+			await ctx.db.insert('mailCommitments', {
+				...args,
+				status: 'open',
+				createdAt: now,
+				updatedAt: now,
+			});
 		}
-		await ctx.db.insert('mailCommitments', {
-			...args,
-			status: 'open',
-			createdAt: now,
-			updatedAt: now,
-		});
+		// The thread brief item for the same promise or deadline, when the
+		// interpretation already landed (else the reducer links it through
+		// commitmentLink.onItemsCreated when its items land).
+		await linkCommitmentsForMessage(ctx, args.messageId);
 	},
 });
 

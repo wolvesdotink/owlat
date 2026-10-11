@@ -65,6 +65,35 @@ describe('compareReplyQueueItems', () => {
 });
 
 describe('replyQueueHeadline', () => {
+	it('never uses the ask summary of a shared mailbox (SPEC §7)', () => {
+		const row = { askSummary: 'Wants a refund', subject: 'Order #4471' };
+		expect(replyQueueHeadline(row, 'en', { isShared: true })).toBe('Order #4471');
+		const actions = {
+			...row,
+			briefTop: { mode: 'actions' as const, forYou: 0, waiting: 0, isReplyNeeded: true },
+		};
+		expect(replyQueueHeadline(actions, 'en')).toBe('Order #4471');
+	});
+
+	it('prefers the brief top item in the UI locale', () => {
+		const row = {
+			askSummary: 'Wants a refund',
+			subject: 'Order #4471',
+			briefTop: {
+				mode: 'brief' as const,
+				forYou: 1,
+				waiting: 0,
+				isReplyNeeded: true,
+				top: {
+					itemId: 'i1' as never,
+					responsibility: 'us' as const,
+					text: { en: 'Refund the order', de: 'Erstatte die Bestellung' },
+				},
+			},
+		};
+		expect(replyQueueHeadline(row, 'de-DE')).toBe('Erstatte die Bestellung');
+	});
+
 	it('uses the AI askSummary when present', () => {
 		expect(replyQueueHeadline({ askSummary: 'Wants the Q3 numbers', subject: 'Re: numbers' })).toBe(
 			'Wants the Q3 numbers'

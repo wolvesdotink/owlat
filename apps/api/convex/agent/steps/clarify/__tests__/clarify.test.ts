@@ -100,6 +100,7 @@ const decisionSlot: ReplySlot = {
 	answerableFromContext: false,
 	decisionRelevant: true,
 	options: [],
+	itemRef: null,
 };
 
 beforeEach(() => {
@@ -302,6 +303,7 @@ describe('clarifyStep.execute — ask-eagerness dial', () => {
 		answerableFromContext: false,
 		decisionRelevant: true,
 		options: [],
+		itemRef: null,
 	};
 
 	/** Slots [high-stakes decision, routine lookup], both divergent. */

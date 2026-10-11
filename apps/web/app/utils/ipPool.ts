@@ -16,7 +16,7 @@
  */
 export function unknownIpPoolWarning(
 	value: string,
-	knownPools: string[] | undefined | null,
+	knownPools: string[] | undefined | null
 ): string | null {
 	const trimmed = value.trim();
 	if (!trimmed) return null;

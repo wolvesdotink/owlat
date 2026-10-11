@@ -25,7 +25,8 @@ export interface QuotedSplitResult {
 	hasQuote: boolean;
 }
 
-const QUOTE_ATTRIBUTION_PATTERNS = [
+/** "On … wrote:" attribution lines (EN / DE / FR), shared with `./mailSegments`. */
+export const QUOTE_ATTRIBUTION_PATTERNS = [
 	/On\s+\w+,?\s+(?:[A-Z][a-z]+\s+\d{1,2}|\d{1,2}\s+[A-Z][a-z]+).*?wrote:/,
 	/^Am\s+\d{1,2}\.\d{1,2}\.\d{2,4}.*?schrieb\s/,
 	/^Le\s+\d{1,2}.*?écrit\s*:/,

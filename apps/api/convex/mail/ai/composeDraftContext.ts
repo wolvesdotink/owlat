@@ -145,18 +145,28 @@ export const loadMailDraftContext = internalQuery({
  * it), its sender and contact, and the ask-eagerness dial.
  */
 export const loadTeamThreadContext = internalQuery({
-	args: { threadId: v.id('conversationThreads') },
+	args: {
+		threadId: v.id('conversationThreads'),
+		// The message the reply answers; the newest one when absent.
+		inboundMessageId: v.optional(v.id('inboundMessages')),
+	},
 	handler: async (ctx, args) => {
 		const session = await requireOrgMember(ctx);
 		if (!isSharedInboxReader(session)) throwForbidden('Only inbox readers can draft here');
 		if (!(await isFeatureEnabled(ctx, 'inbox'))) throwForbidden('The team inbox is turned off');
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread) throwNotFound('Conversation');
-		const latest = await ctx.db
-			.query('inboundMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.order('desc')
-			.first();
+		const chosen = args.inboundMessageId ? await ctx.db.get(args.inboundMessageId) : null;
+		const latest =
+			chosen && chosen.threadId === args.threadId
+				? chosen
+				: args.inboundMessageId
+					? null
+					: await ctx.db
+							.query('inboundMessages')
+							.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
+							.order('desc')
+							.first();
 		if (!latest) throwNotFound('Message');
 		// A query cannot read blobs: a body too large for its row gives its
 		// excerpt, which is longer than the trigger text keeps anyway.

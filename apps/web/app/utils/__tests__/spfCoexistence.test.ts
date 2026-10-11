@@ -9,7 +9,7 @@ function mockDohTxt(txtValues: string[]): void {
 		vi.fn(async () => ({
 			ok: true,
 			json: async () => ({ Answer: answer }),
-		})),
+		}))
 	);
 }
 
@@ -39,7 +39,7 @@ describe('fetchSpfRecords', () => {
 						{ type: 16, data: '"v=spf1 include:_spf.google.com " "include:amazonses.com ~all"' },
 					],
 				}),
-			})),
+			}))
 		);
 		expect(await fetchSpfRecords('example.com')).toEqual([
 			'v=spf1 include:_spf.google.com include:amazonses.com ~all',
@@ -47,7 +47,10 @@ describe('fetchSpfRecords', () => {
 	});
 
 	it('returns [] when fetch rejects', async () => {
-		vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('network'))));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Promise.reject(new Error('network')))
+		);
 		expect(await fetchSpfRecords('example.com')).toEqual([]);
 	});
 });
@@ -55,7 +58,10 @@ describe('fetchSpfRecords', () => {
 describe('computeSpfSuggestion', () => {
 	it('suggests a merged record when a foreign SPF already exists', async () => {
 		mockDohTxt(['v=spf1 include:_spf.google.com ~all']);
-		const suggestion = await computeSpfSuggestion('example.com', 'v=spf1 include:amazonses.com ~all');
+		const suggestion = await computeSpfSuggestion(
+			'example.com',
+			'v=spf1 include:amazonses.com ~all'
+		);
 		expect(suggestion).toEqual({
 			existing: 'v=spf1 include:_spf.google.com ~all',
 			merged: 'v=spf1 include:_spf.google.com include:amazonses.com ~all',
@@ -64,16 +70,25 @@ describe('computeSpfSuggestion', () => {
 
 	it('returns null when no TXT / SPF record is published', async () => {
 		mockDohTxt(['google-site-verification=abc']);
-		expect(await computeSpfSuggestion('example.com', 'v=spf1 include:amazonses.com ~all')).toBeNull();
+		expect(
+			await computeSpfSuggestion('example.com', 'v=spf1 include:amazonses.com ~all')
+		).toBeNull();
 	});
 
 	it('returns null when the existing record already carries our mechanisms', async () => {
 		mockDohTxt(['v=spf1 include:_spf.google.com include:amazonses.com ~all']);
-		expect(await computeSpfSuggestion('example.com', 'v=spf1 include:amazonses.com ~all')).toBeNull();
+		expect(
+			await computeSpfSuggestion('example.com', 'v=spf1 include:amazonses.com ~all')
+		).toBeNull();
 	});
 
 	it('returns null (fail-soft) when fetch rejects', async () => {
-		vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('network'))));
-		expect(await computeSpfSuggestion('example.com', 'v=spf1 include:amazonses.com ~all')).toBeNull();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Promise.reject(new Error('network')))
+		);
+		expect(
+			await computeSpfSuggestion('example.com', 'v=spf1 include:amazonses.com ~all')
+		).toBeNull();
 	});
 });

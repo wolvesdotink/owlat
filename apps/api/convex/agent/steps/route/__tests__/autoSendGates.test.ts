@@ -38,11 +38,27 @@ interface GateFixture {
 		| { readonly restrictsAutoSend: boolean; readonly reasons: readonly string[] }
 		| 'throw';
 	readonly breakers?: readonly { readonly state: string; readonly breakerType: string }[] | 'throw';
+	readonly hold?: { readonly reason: string | null } | 'throw';
+	readonly coverage?:
+		| {
+				readonly objections: readonly string[];
+				readonly reason: string | null;
+				readonly isEnforced: boolean;
+		  }
+		| 'throw';
+	readonly shadowWrite?: 'throw';
 }
 
 function context(fixture: GateFixture = {}) {
 	const calls: string[] = [];
+	const mutations: { name: string; args: Record<string, unknown> }[] = [];
 	const action = {
+		runMutation: async (reference: unknown, args: Record<string, unknown>) => {
+			const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
+			mutations.push({ name, args });
+			if (fixture.shadowWrite === 'throw') throw new Error('fixture write failed');
+			return null;
+		},
 		runQuery: async (reference: unknown) => {
 			const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
 			calls.push(name);
@@ -59,10 +75,14 @@ function context(fixture: GateFixture = {}) {
 				);
 			}
 			if (name.includes('getCircuitBreakersInternal')) return resolve(fixture.breakers ?? []);
+			if (name.includes('interpretationHold')) return resolve(fixture.hold ?? { reason: null });
+			if (name.includes('itemCoverageCheck')) {
+				return resolve(fixture.coverage ?? { objections: [], reason: null, isEnforced: false });
+			}
 			throw new Error(`Unexpected query: ${name}`);
 		},
 	} as unknown as ActionCtx;
-	return { action, calls };
+	return { action, calls, mutations };
 }
 
 function resolve<Value>(value: Value | 'throw'): Value {
@@ -71,10 +91,11 @@ function resolve<Value>(value: Value | 'throw'): Value {
 }
 
 async function finalDecision(fixture: GateFixture = {}) {
-	const { action, calls } = context(fixture);
+	const { action, calls, mutations } = context(fixture);
 	return {
 		decision: await runCoreFinalAutoSendGates(action, inboundMessageId),
 		calls,
+		mutations,
 	};
 }
 
@@ -95,6 +116,8 @@ describe('ordered core auto-send gate registry', () => {
 			'outbound_dlp',
 			'draft_gaps',
 			'handling_rules',
+			'interpretation_incomplete',
+			'item_coverage',
 		]);
 		expect(Object.isFrozen(PRE_AUTONOMY_GATE_IDS)).toBe(true);
 		expect(Object.isFrozen(CORE_FINAL_AUTO_SEND_GATE_IDS)).toBe(true);
@@ -128,6 +151,8 @@ describe('ordered core auto-send gate registry', () => {
 			'getBudgetStatus',
 			'getAgentConfig',
 			'evaluateForMessage',
+			'interpretationHold',
+			'itemCoverageCheck',
 		]);
 	});
 
@@ -227,6 +252,86 @@ describe('ordered core auto-send gate registry', () => {
 			rules: { restrictsAutoSend: true, reasons: ['Manager review required', 'Second'] },
 		});
 		expect(decision).toEqual({ safe: false, reason: 'Manager review required' });
+	});
+
+	it('holds auto-send when interpretation is incomplete (D3)', async () => {
+		const { decision } = await finalDecision({
+			hold: { reason: 'Interpretation of this message is partial; not auto-sending.' },
+		});
+		expect(decision).toEqual({
+			safe: false,
+			reason: 'Interpretation of this message is partial; not auto-sending.',
+		});
+	});
+
+	it('fails closed when the interpretation state cannot be read', async () => {
+		const { decision } = await finalDecision({ hold: 'throw' });
+		expect(decision).toMatchObject({
+			safe: false,
+			reason: expect.stringContaining('interpretation_incomplete'),
+		});
+	});
+
+	describe('item_coverage (SPEC §6)', () => {
+		const objection = {
+			objections: ['not_addressed', 'file_missing'],
+			reason: 'Item coverage: an open item the reply should answer is not addressed',
+		} as const;
+
+		it('lets the send through in shadow mode and logs the objection', async () => {
+			const { decision, mutations } = await finalDecision({
+				coverage: { ...objection, isEnforced: false },
+			});
+			expect(decision).toEqual({ safe: true });
+			expect(mutations).toHaveLength(1);
+			expect(mutations[0]!.name).toContain('planGate:recordShadow');
+			expect(mutations[0]!.args).toEqual({
+				inboundMessageId,
+				objections: ['not_addressed', 'file_missing'],
+				reason: objection.reason,
+			});
+		});
+
+		it('holds the send when enforced, without a shadow log', async () => {
+			const { decision, mutations } = await finalDecision({
+				coverage: { ...objection, isEnforced: true },
+			});
+			expect(decision).toEqual({ safe: false, reason: objection.reason });
+			expect(mutations).toEqual([]);
+		});
+
+		it('passes without writing anything when nothing objects', async () => {
+			const { decision, mutations } = await finalDecision({
+				coverage: { objections: [], reason: null, isEnforced: true },
+			});
+			expect(decision).toEqual({ safe: true });
+			expect(mutations).toEqual([]);
+		});
+
+		it('a failed shadow log never changes the shadow decision', async () => {
+			const { decision } = await finalDecision({
+				coverage: { ...objection, isEnforced: false },
+				shadowWrite: 'throw',
+			});
+			expect(decision).toEqual({ safe: true });
+		});
+
+		it('fails closed when the coverage state cannot be read', async () => {
+			const { decision } = await finalDecision({ coverage: 'throw' });
+			expect(decision).toMatchObject({
+				safe: false,
+				reason: expect.stringContaining('item_coverage'),
+			});
+		});
+
+		it('never runs after an earlier objection (shadow never relaxes a gate)', async () => {
+			const { decision, calls } = await finalDecision({
+				hold: { reason: 'Interpretation of this message is partial' },
+				coverage: { objections: [], reason: null, isEnforced: false },
+			});
+			expect(decision).toMatchObject({ safe: false });
+			expect(calls.map(shortName)).not.toContain('itemCoverageCheck');
+		});
 	});
 
 	it('pins the legacy fail-soft handling-rule read exception', async () => {
@@ -360,6 +465,37 @@ describe('ordered core auto-send gate registry', () => {
 				fixture: { rules: restrictiveRules },
 				reason: 'Handling rule objects',
 				calls: ['getMessage', 'getBudgetStatus', 'getAgentConfig', 'evaluateForMessage'],
+			},
+			{
+				id: 'interpretation_incomplete',
+				fixture: { hold: { reason: 'Interpretation of this message is failed' } },
+				reason: 'Interpretation of this message is failed',
+				calls: [
+					'getMessage',
+					'getBudgetStatus',
+					'getAgentConfig',
+					'evaluateForMessage',
+					'interpretationHold',
+				],
+			},
+			{
+				id: 'item_coverage',
+				fixture: {
+					coverage: {
+						objections: ['stale_draft'],
+						reason: 'Item coverage: the coverage check was made for a different draft text',
+						isEnforced: true,
+					},
+				},
+				reason: 'different draft text',
+				calls: [
+					'getMessage',
+					'getBudgetStatus',
+					'getAgentConfig',
+					'evaluateForMessage',
+					'interpretationHold',
+					'itemCoverageCheck',
+				],
 			},
 		];
 

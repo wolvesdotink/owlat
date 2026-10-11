@@ -17,7 +17,14 @@ const ALLOWED = new Set([
 	'inbox/notes.ts',
 	'inbox/noteMentions.ts',
 	'inbox/noteRules.ts',
+	// The team thread stream: notes beside the emails on the thread page and
+	// in Answer mode, for Team Inbox readers only (never a prompt or a mail).
+	'inbox/teamStreamSources.ts',
 	'schema/inboxCollaboration.ts',
+	// Emoji reactions on notes and the note's `#` item link (thread brief):
+	// stores reactions and checks the link, never reads a note's text.
+	'mail/interpret/noteReactions.ts',
+	'schema/threadBriefFeedback.ts',
 	// The author's own account export (not the contact's data export).
 	'auth/accountExport.ts',
 	'auth/accountExportQueries.ts',
@@ -31,6 +38,11 @@ const ALLOWED = new Set([
 	'workspaces/deletion/steps/_common.ts',
 	'workspaces/deletion/steps/cascadeOrder.ts',
 	'workspaces/deletion/steps/registry.ts',
+	// Thread brief erasure: unlinks a note's `threadItemId` when its item is
+	// purged, and declares those relations (never reads a note body).
+	'auth/erasure/threadBriefRelations.ts',
+	'contacts/erasure/threadBriefRelations.ts',
+	'mail/interpret/purgeLinks.ts',
 ]);
 
 const ROOT = join(__dirname, '..', '..');

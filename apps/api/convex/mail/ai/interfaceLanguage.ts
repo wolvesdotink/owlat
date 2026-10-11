@@ -1,7 +1,7 @@
 /**
  * The language rule for model-written copy shown to the Owlat user in their
- * interface language: catch-up cards, Today summaries, the classifier's
- * per-locale summaries and translated clarification questions.
+ * interface language: the thread brief's display text and translated
+ * clarification questions.
  *
  * Besides naming the language it pins the register the product speaks in.
  * German copy addresses the user with informal lowercase "du"; without being

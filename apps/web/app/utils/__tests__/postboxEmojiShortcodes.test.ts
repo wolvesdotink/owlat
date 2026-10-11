@@ -135,7 +135,7 @@ describe('ASCII conversion is a single reversible step', () => {
 			converted,
 			converted.length - (match.char.length + 1),
 			converted.length,
-			`${match.ascii} `,
+			`${match.ascii} `
 		);
 		expect(restored).toBe('ok :) ');
 	});

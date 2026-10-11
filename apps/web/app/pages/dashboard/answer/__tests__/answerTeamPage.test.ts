@@ -39,15 +39,28 @@ let activeQueueSession: { handleSent: ReturnType<typeof vi.fn> } | null = null;
 vi.mock('~/composables/useAnswerQueueSession', () => ({
 	useAnswerQueueSession: () => activeQueueSession,
 }));
-// Catch-up and Draft with AI have their own suites; here they are a seam the
-// test switches on and off.
+// Draft with AI has its own suite; here it is a seam the test switches on and off.
 const draftWithAi = ref(false);
 vi.mock('~/composables/useAnswerTeamAssist', () => ({
 	useAnswerTeamAssist: () => ({
 		aiEnabled: draftWithAi,
 		draftWithAi,
 		statusNote: ref('1 of 2 asks covered'),
-		catchUp: { catchUp: ref(null), loading: ref(false), covered: ref([]) },
+		// The response plan (useResponsePlan): nothing selected, nothing to flag.
+		plan: {
+			view: {
+				stanceOf: () => 'answer',
+				setStance: vi.fn(),
+				addressed: computed(() => []),
+				fileMissing: computed(() => new Set<string>()),
+			},
+			selected: ref<string[]>([]),
+			setSelected: vi.fn(),
+			missingFiles: ref<string[]>([]),
+			checkCoverage: vi.fn(),
+			recheck: vi.fn(),
+			items: ref([]),
+		},
 		ask: {
 			phase: ref('idle'),
 			session: ref(null),
@@ -58,12 +71,30 @@ vi.mock('~/composables/useAnswerTeamAssist', () => ({
 		},
 	}),
 }));
+// The team stream and its open actions have their own suites (components/team).
+vi.mock('~/composables/team/useTeamThread', () => ({
+	useTeamThread: (opts: { reveal?: (id: string) => boolean }) => ({
+		...((teamOpts.reveal = opts.reveal), {}),
+		stream: {
+			entries: ref([]),
+			isReady: ref(false),
+			hasEarlier: ref(false),
+			isLoadingEarlier: ref(false),
+			loadEarlier: () => {},
+		},
+		viewerId: ref('u_me'),
+		openItems: ref(null),
+	}),
+}));
 vi.mock('~/composables/useOrganization', () => ({
 	useOrganization: () => ({
 		members: ref([{ userId: 'u_priya', user: { name: 'Priya', email: 'priya@example.com' } }]),
 		fetchMembers: async () => {},
 	}),
 }));
+
+const teamOpts: { reveal?: (id: string) => boolean } = {};
+const conversationReveal = vi.fn(() => true);
 
 const route = reactive({
 	path: '/dashboard/answer/t/ct_1',
@@ -199,8 +230,16 @@ async function mountPage() {
 					setup: (props) => () =>
 						h('div', { 'data-testid': 'answer-notes-panel', 'data-active': String(props.active) }),
 				}),
-				AnswerTeamConversation: inert('AnswerTeamConversation'),
+				AnswerTeamConversation: defineComponent({
+					name: 'AnswerTeamConversation',
+					setup: (_p, { expose }) => {
+						expose({ reveal: conversationReveal });
+						return () => h('div');
+					},
+				}),
+				TeamPinnedItems: inert('TeamPinnedItems'),
 				AnswerTeamReusedAnswers: inert('AnswerTeamReusedAnswers'),
+				AnswerTeamPlan: inert('AnswerTeamPlan'),
 				AnswerQueueBar: inert('AnswerQueueBar'),
 				AnswerPeekDraft,
 				AnswerTeamRejectModal,
@@ -438,11 +477,10 @@ describe('Answer mode for a Team inbox thread', () => {
 		expect(wrapper.get('[data-testid="composer-send"]').attributes('disabled')).toBeUndefined();
 	});
 
-	it('offers Draft with AI above the editor when it is on, with the asks covered beside Send', async () => {
+	it('offers Draft with AI above the editor when it is on', async () => {
 		draftWithAi.value = true;
 		const wrapper = await mountPage();
 		expect(wrapper.find('[data-testid="answer-ai-bar"]').exists()).toBe(true);
-		expect(wrapper.get('[data-testid="composer-save-state"]').text()).toBe('1 of 2 asks covered');
 		draftWithAi.value = false;
 	});
 
@@ -551,6 +589,17 @@ describe('Answer mode for a Team inbox thread', () => {
 			source: 'semanticFile',
 			id: 'sf_9',
 		});
+	});
+
+	it('shows a plan citation in the conversation column, on the Conversation tab', async () => {
+		const wrapper = await mountPage();
+		const frame = wrapper.getComponent(AnswerModeFrame);
+		frame.vm.$emit('update:tab', 'reply');
+		await flushPromises();
+		expect(teamOpts.reveal?.('in_1')).toBe(true);
+		expect(conversationReveal).toHaveBeenCalledWith('in_1');
+		await flushPromises();
+		expect(frame.props('tab')).toBe('conversation');
 	});
 
 	it('puts the caret in the reply inside the phone row tap', async () => {

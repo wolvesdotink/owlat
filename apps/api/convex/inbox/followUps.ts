@@ -54,6 +54,7 @@ import {
 	takeReadyReplyAttachments,
 } from './replyAttachmentStore';
 import { assertNoAnswerGaps } from '../mail/ai/composeDraftStore';
+import { captureTeamReplySnapshot } from '../mail/interpret/sources';
 
 type FollowUpStatus = Doc<'inboxFollowUps'>['status'];
 
@@ -288,6 +289,13 @@ export const dispatch = internalMutation({
 			return await fail(err instanceof Error ? err.message : String(err));
 		}
 		if (!outcome.ok) return await fail(REFUSAL_MESSAGE[outcome.reason](outcome.detail));
+		// The immutable text the thread brief interprets once the Send is sent
+		// (mail/interpret/sendActivity.ts): the Send row keeps no body.
+		await captureTeamReplySnapshot(ctx, {
+			sendId: outcome.sendId,
+			subject: followUp.subject,
+			text: followUp.body,
+		});
 
 		await transitionFollowUp(ctx, followUp, 'sending', {
 			sendId: outcome.sendId,

@@ -28,6 +28,7 @@ import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
+import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 
 const props = defineProps<{
@@ -66,6 +67,10 @@ const props = defineProps<{
 	downloadingAttachment?: string | null;
 	/** Mount the body now instead of when it nears the viewport (printing). */
 	eagerBody?: boolean;
+	/** The thread brief's latest-update sentence for this message (personal only). */
+	latestLine?: string | null;
+	/** A cited quote in this message: scroll to it and mark it (an empty quote scrolls only). */
+	citeQuote?: CitedQuote | null;
 	/**
 	 * Answer mode's cut of the card (plan §09): no action row, the trust chip
 	 * only when the sender is not verified, and To/Cc, the unsubscribe chip and
@@ -150,6 +155,26 @@ const showSpamBanner = computed(
 	() => msg.value.spamVerdict === 'spam' || (!props.authEnabled && msg.value.dmarcResult === 'fail')
 );
 
+// A cited quote (plan §4.2): bring the message into view; the body marks the
+// words, or reports that it could not find that exact passage.
+const sectionEl = ref<HTMLElement | null>(null);
+const isCiteMissed = ref(false);
+watch(
+	() => props.citeQuote,
+	() => {
+		isCiteMissed.value = false;
+	}
+);
+watch(
+	() => [props.citeQuote, props.expanded] as const,
+	async ([quote, open]) => {
+		if (quote == null || !open) return;
+		await nextTick();
+		sectionEl.value?.scrollIntoView({ block: 'start', behavior: 'auto' });
+	},
+	{ immediate: true }
+);
+
 const renderToggleLabel = computed(() =>
 	props.forcedLight
 		? t('components.postbox.postboxThreadReader.renderDark')
@@ -162,6 +187,7 @@ const renderToggleLabel = computed(() =>
 	<button
 		v-if="!expanded"
 		type="button"
+		:data-message-id="msg._id"
 		class="w-full flex items-center gap-3 px-4 py-2.5 rounded-md border border-border-subtle bg-bg-elevated text-left hover:bg-bg-surface"
 		@click="emit('toggle-expanded')"
 	>
@@ -176,9 +202,11 @@ const renderToggleLabel = computed(() =>
 		<div class="flex-1 min-w-0">
 			<p class="text-sm truncate">
 				<span class="font-medium text-text-primary">{{ msg.fromName || msg.fromAddress }}</span>
-				<template v-if="msg.snippet && !signedOnly">
+				<template v-if="(latestLine || msg.snippet) && !signedOnly">
 					<span class="text-text-tertiary mx-1.5">·</span>
-					<span class="text-text-tertiary">{{ msg.snippet }}</span>
+					<span class="text-text-tertiary" :data-latest="latestLine ? '' : undefined">{{
+						latestLine || msg.snippet
+					}}</span>
 				</template>
 			</p>
 		</div>
@@ -193,7 +221,10 @@ const renderToggleLabel = computed(() =>
 	<!-- Expanded message -->
 	<section
 		v-else
-		class="pbx-reader-message border border-border-subtle rounded-md bg-bg-elevated px-5 py-4"
+		ref="sectionEl"
+		:data-message-id="msg._id"
+		class="pbx-reader-message border border-border-subtle rounded-md bg-bg-elevated px-5 py-4 scroll-mt-4"
+		:class="{ 'ring-1 ring-brand': citeQuote != null }"
 	>
 		<header class="flex items-start gap-3">
 			<UiAvatar
@@ -355,6 +386,14 @@ const renderToggleLabel = computed(() =>
 		     header) behind `senderAuthBadges`. When the flag is off the legacy
 		     banner still surfaces a DMARC failure so behavior is unchanged; the
 		     spam line always shows. -->
+		<p
+			v-if="citeQuote?.quote && (isCiteMissed || holdBody)"
+			role="status"
+			class="mt-3 rounded bg-bg-surface px-3 py-2 text-xs text-text-secondary"
+			data-testid="cite-not-located"
+		>
+			{{ t('components.brief.cite.notLocated') }}
+		</p>
 		<div
 			v-if="showSpamBanner"
 			class="my-3 px-3 py-2 rounded bg-warning/10 text-warning text-xs flex items-center gap-2"
@@ -403,6 +442,8 @@ const renderToggleLabel = computed(() =>
 				:message="msg"
 				:force-light="forcedLight"
 				:sender-images-allowed="imagesAllowed"
+				:highlight-quote="citeQuote"
+				@cite-located="isCiteMissed = !$event"
 				@trackers="emit('trackers', $event)"
 				@trust-sender="emit('trust-sender', $event)"
 				@untrust-sender="emit('untrust-sender', $event)"

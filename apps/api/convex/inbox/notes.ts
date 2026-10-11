@@ -5,7 +5,9 @@
  * A note sits between the messages of the thread view, in a tinted card that
  * says only the team sees it. It is plain text with `@handle` mentions
  * (`noteMentions.ts`). Its author can edit it; its author or an admin can
- * delete it, which leaves a "Note deleted" tombstone in its place.
+ * delete it, which leaves a "Note deleted" tombstone in its place. A note can
+ * link to one thread brief item of its thread (`threadItemId`, the `#` link)
+ * and carries emoji reactions (`toggleReaction`).
  *
  * Notes never leave Owlat. They live in their own table, and none of the paths
  * that send or export mail read it: outbound replies, quoted replies, follow-ups,
@@ -44,6 +46,12 @@ import {
 	toNoteView,
 } from './noteRules';
 import { clearNoteMentions, resolveNoteMentions, syncNoteMentions } from './noteMentions';
+import {
+	clearNoteReactions,
+	readNoteReactions,
+	requireSameThreadItem,
+	toggleNoteReaction,
+} from '../mail/interpret/noteReactions';
 
 /** A typed body, cleaned and bounded; empty is refused. */
 function acceptBody(raw: string): string {
@@ -102,7 +110,13 @@ export const listForThread = publicQuery({
 				author = await loadProfileSummary(ctx, note.authorId);
 				authors.set(note.authorId, author);
 			}
-			views.push(toNoteView(note, author));
+			views.push({
+				...toNoteView(note, author),
+				reactions:
+					note.deletedAt === undefined
+						? await readNoteReactions(ctx, { source: 'threadNote', id: note._id }, session.userId)
+						: [],
+			});
 		}
 		return views;
 	},
@@ -144,11 +158,17 @@ export const create = adminMutation({
 	args: {
 		threadId: v.id('conversationThreads'),
 		body: v.string(),
+		// `#` link to a thread brief item of this same thread.
+		threadItemId: v.optional(v.id('threadItems')),
 	},
 	handler: async (ctx, args, session) => {
 		await assertFeatureEnabled(ctx, 'inbox');
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const body = acceptBody(args.body);
+		const threadItemId = await requireSameThreadItem(ctx, args.threadItemId, {
+			kind: 'team',
+			id: thread._id,
+		});
 		const now = Date.now();
 		const mentionedUserIds = await resolveNoteMentions(ctx, body, session.userId);
 		const noteId = await ctx.db.insert('threadNotes', {
@@ -156,6 +176,7 @@ export const create = adminMutation({
 			authorId: session.userId,
 			body,
 			mentionedUserIds,
+			...(threadItemId ? { threadItemId } : {}),
 			createdAt: now,
 		});
 		await syncNoteMentions(ctx, { _id: noteId, threadId: thread._id }, [], mentionedUserIds, {
@@ -176,6 +197,9 @@ export const update = adminMutation({
 	args: {
 		noteId: v.id('threadNotes'),
 		body: v.string(),
+		// Change the `#` item link: an item of the same thread, or null to drop it.
+		// Omitted keeps the current link.
+		threadItemId: v.optional(v.union(v.id('threadItems'), v.null())),
 	},
 	handler: async (ctx, args, session) => {
 		await assertFeatureEnabled(ctx, 'inbox');
@@ -183,10 +207,21 @@ export const update = adminMutation({
 		if (note.authorId !== session.userId) throwForbidden('Only its author can edit a note');
 		if (note.deletedAt !== undefined) throwInvalidState('This note was deleted');
 		const body = acceptBody(args.body);
-		if (body === note.body) return { success: true };
+		const link =
+			args.threadItemId === undefined
+				? note.threadItemId
+				: await requireSameThreadItem(ctx, args.threadItemId ?? undefined, {
+						kind: 'team',
+						id: note.threadId,
+					});
+		if (body === note.body && link === note.threadItemId) return { success: true };
+		if (body === note.body) {
+			await ctx.db.patch(note._id, { threadItemId: link });
+			return { success: true };
+		}
 		const now = Date.now();
 		const mentionedUserIds = await resolveNoteMentions(ctx, body, session.userId);
-		await ctx.db.patch(note._id, { body, mentionedUserIds, editedAt: now });
+		await ctx.db.patch(note._id, { body, mentionedUserIds, threadItemId: link, editedAt: now });
 		await syncNoteMentions(ctx, note, note.mentionedUserIds, mentionedUserIds, {
 			subject: await noticeSubject(ctx, note),
 			authorName: await authorName(ctx, session.userId),
@@ -211,8 +246,34 @@ export const remove = adminMutation({
 			'Only its author or an admin can delete a note'
 		);
 		if (note.deletedAt !== undefined) return { success: true };
-		await ctx.db.patch(note._id, { body: '', mentionedUserIds: [], deletedAt: Date.now() });
+		await ctx.db.patch(note._id, {
+			body: '',
+			mentionedUserIds: [],
+			threadItemId: undefined,
+			deletedAt: Date.now(),
+		});
 		await clearNoteMentions(ctx, note._id);
+		await clearNoteReactions(ctx, { source: 'threadNote', id: note._id });
 		return { success: true };
+	},
+});
+
+/**
+ * Add an emoji reaction to a note, or take yours back when it is already
+ * there. Bounded per note and per person (`mail/interpret/noteReactions.ts`).
+ * Returns whether your reaction is on afterwards.
+ */
+export const toggleReaction = adminMutation({
+	args: { noteId: v.id('threadNotes'), emoji: v.string() },
+	handler: async (ctx, args, session) => {
+		await assertFeatureEnabled(ctx, 'inbox');
+		const note = await getOrThrow(ctx, args.noteId, 'Note');
+		if (note.deletedAt !== undefined) throwInvalidState('This note was deleted');
+		return toggleNoteReaction(ctx, {
+			note: { source: 'threadNote', id: note._id },
+			threadRef: { kind: 'team', id: note.threadId },
+			userId: session.userId,
+			emoji: args.emoji,
+		});
 	},
 });

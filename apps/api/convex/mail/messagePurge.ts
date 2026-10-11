@@ -21,6 +21,8 @@ import { recordMessageCounters } from './messageCounters';
 import { recordFolderMembership } from './folderMembership';
 import { deleteMessageBody } from '../lib/messageBodyStore';
 import { deleteMessagePartsForRaw } from './messageParts';
+import { mailMessageSources } from './interpret/purge';
+import { purgeSourcesFromThread } from './interpret/purgeRun';
 
 /** The `mailMessages` columns that hold a storage blob a SIBLING row may share. */
 type SharedBlobColumn = 'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageId';
@@ -135,13 +137,52 @@ export async function deleteMessageRowAndBlobs(
 }
 
 /**
+ * The messages one transaction purged, by thread. The thread brief cleanup
+ * ({@link purgeThreadBriefsOf}) runs once per thread rather than once per
+ * message: it scans the thread's items and facts.
+ */
+export type PurgedMessages = Map<Id<'mailThreads'>, Id<'mailMessages'>[]>;
+
+/** Record one purged message in `purged`. */
+export function notePurgedMessage(
+	purged: PurgedMessages,
+	message: Pick<Doc<'mailMessages'>, '_id' | 'threadId'>
+): void {
+	const ids = purged.get(message.threadId);
+	if (ids) ids.push(message._id);
+	else purged.set(message.threadId, [message._id]);
+}
+
+/**
+ * Remove what the thread brief derived from the purged messages (their
+ * extractions, the evidence and claims they alone held, the activity naming
+ * them; `mail/interpret/purge.ts`). EVERY path that purges single messages out
+ * of a surviving thread calls this, before it rebuilds the thread aggregates
+ * (which purge the whole brief of a thread left empty). The bulk paths that
+ * delete whole threads purge per thread instead.
+ */
+export async function purgeThreadBriefsOf(ctx: MutationCtx, purged: PurgedMessages): Promise<void> {
+	for (const [threadId, messageIds] of purged) {
+		await purgeSourcesFromThread(
+			ctx,
+			{ kind: 'mail', id: threadId },
+			messageIds.flatMap(mailMessageSources)
+		);
+	}
+}
+
+/**
  * Delete `message` for good. Returns the thread it belonged to so the caller can
  * rebuild that thread's aggregates once per batch rather than once per message.
+ * The message is recorded in `purged`; the caller hands that to
+ * {@link purgeThreadBriefsOf} before rebuilding the threads.
  */
 export async function purgeMessageRow(
 	ctx: MutationCtx,
-	message: Doc<'mailMessages'>
+	message: Doc<'mailMessages'>,
+	purged: PurgedMessages
 ): Promise<Id<'mailThreads'>> {
+	notePurgedMessage(purged, message);
 	const folder = await ctx.db.get(message.folderId);
 	if (folder) {
 		// A snoozed unread message isn't in unseenCount; don't decrement it.

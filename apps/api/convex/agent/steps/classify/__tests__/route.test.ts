@@ -8,7 +8,6 @@ import {
 	classifyStep,
 	buildClassifyPrompt,
 	resolveResponseDisposition,
-	sanitizeSummaries,
 	toPersistedClassification,
 	INFORMATIONAL_MIN_CONFIDENCE,
 	type ClassifyOutput,
@@ -29,7 +28,6 @@ function makeOutput(over: Partial<ClassifyOutput> = {}): ClassifyOutput {
 		needsResponse: over.needsResponse ?? true,
 		language: over.language ?? 'en',
 		importance: over.importance ?? 0.5,
-		summary: over.summary ?? { en: 'Asks about billing.', de: 'Fragt zur Abrechnung.' },
 		...(over.handlingRuleArchive !== undefined
 			? { handlingRuleArchive: over.handlingRuleArchive }
 			: {}),
@@ -110,7 +108,6 @@ describe('classifyStep.route', () => {
 			kind: 'personal',
 			language: 'de',
 			importance: 0.5,
-			summary: { en: 'Asks about billing.', de: 'Fragt zur Abrechnung.' },
 		});
 	});
 
@@ -189,50 +186,22 @@ describe('resolveResponseDisposition', () => {
 });
 
 describe('buildClassifyPrompt', () => {
-	it('frames the context as untrusted data and asks for every shipped locale', () => {
-		const prompt = buildClassifyPrompt('INBOUND-XYZ', ['en', 'de']);
+	it('frames the context as untrusted data', () => {
+		const prompt = buildClassifyPrompt('INBOUND-XYZ');
 		expect(prompt).toMatch(/untrusted DATA/i);
 		expect(prompt).toContain('<untrusted_email_content>\nINBOUND-XYZ\n</untrusted_email_content>');
 		expect(prompt).toContain('needsResponse');
 		expect(prompt).toContain('ISO 639-1');
-		expect(prompt).toContain('en, de');
 	});
 
-	it('writes the German summary to the recipient with "du"', () => {
-		const prompt = buildClassifyPrompt('mail', ['en', 'de']);
-		expect(prompt).toContain('In "de" (German): Address the reader informally with lowercase "du"');
-		expect(prompt.indexOf('lowercase "du"')).toBeLessThan(
-			prompt.indexOf('<untrusted_email_content>')
-		);
-		expect(buildClassifyPrompt('mail', ['en'])).not.toContain('"du"');
-	});
-});
-
-describe('sanitizeSummaries', () => {
-	it('keeps only shipped locales, bounded and scrubbed', () => {
-		const out = sanitizeSummaries({
-			en: '  Supplier moved the delivery to Friday.\u0007 ',
-			de: 'x'.repeat(400),
-			fr: 'ignored',
-			es: 42,
-		});
-		expect(out?.['en']).toBe('Supplier moved the delivery to Friday.');
-		expect(out?.['de']?.length).toBe(240);
-		expect(out?.['de']?.endsWith('…')).toBe(true);
-		expect(out && 'fr' in out).toBe(false);
-	});
-
-	it('returns undefined when nothing usable came back', () => {
-		expect(sanitizeSummaries(undefined)).toBeUndefined();
-		expect(sanitizeSummaries({ en: '   ' })).toBeUndefined();
+	it('no longer asks for an Updates summary (D7)', () => {
+		expect(buildClassifyPrompt('mail')).not.toMatch(/summary/i);
 	});
 });
 
 describe('toPersistedClassification', () => {
 	it('drops empty optionals so old-shape consumers see the five classic fields', () => {
-		const persisted = toPersistedClassification(
-			makeOutput({ language: '', summary: { en: '  ', de: '' } })
-		);
+		const persisted = toPersistedClassification(makeOutput({ language: '' }));
 		expect(persisted).toEqual({
 			category: 'support',
 			priority: 'normal',

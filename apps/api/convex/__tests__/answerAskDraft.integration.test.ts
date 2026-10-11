@@ -526,6 +526,56 @@ describe('team thread', () => {
 		expect(prompt).toContain('mention them naturally: invoice-2026-09.pdf');
 	});
 
+	it('keeps one inbound message’s session out of another message’s composer (review r3 F2)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		const [first] = await t.run((ctx) =>
+			ctx.db
+				.query('inboundMessages')
+				.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+				.collect()
+		);
+		const second = await t.run((ctx) =>
+			ctx.db.insert('inboundMessages', {
+				messageId: '<second@example.com>',
+				from: first!.from,
+				to: first!.to,
+				subject: 'Another question',
+				textBody: 'And the October one?',
+				processingStatus: 'received',
+				receivedAt: Date.now(),
+				threadId,
+			})
+		);
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const firstTarget = {
+			kind: 'teamThread' as const,
+			threadId,
+			inboundMessageId: first!._id,
+		};
+		const asked = await t.action(api.mail.ai.composeDraft.start, {
+			target: firstTarget,
+			locale: 'en',
+		});
+		expect(asked.status).toBe('asking');
+		expect(
+			await t.query(api.mail.ai.composeDraftStore.getSession, { target: firstTarget })
+		).not.toBeNull();
+		// The composer for the second message never sees the first one's session.
+		expect(
+			await t.query(api.mail.ai.composeDraftStore.getSession, {
+				target: { kind: 'teamThread', threadId, inboundMessageId: second },
+			})
+		).toBeNull();
+		expect(
+			await t.query(api.mail.ai.composeDraftStore.getSession, {
+				target: { kind: 'teamThread', threadId },
+			})
+		).toBeNull();
+	});
+
 	it('answering builds the pipeline briefing only once', async () => {
 		const t = await makeT();
 		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };

@@ -33,14 +33,12 @@ describe('safeRedirect', () => {
 	});
 
 	describe('rejects protocol-relative & backslash tricks', () => {
-		it.each([
-			['//evil.com'],
-			['///evil.com'],
-			['/\\evil.com'],
-			['/\\\\evil.com'],
-		])('rejects %s', (value) => {
-			expect(safeRedirect(value, FALLBACK)).toBe(FALLBACK);
-		});
+		it.each([['//evil.com'], ['///evil.com'], ['/\\evil.com'], ['/\\\\evil.com']])(
+			'rejects %s',
+			(value) => {
+				expect(safeRedirect(value, FALLBACK)).toBe(FALLBACK);
+			}
+		);
 	});
 
 	describe('rejects whitespace / control chars (smuggling)', () => {
@@ -58,10 +56,7 @@ describe('safeRedirect', () => {
 	describe('rejects scheme-like substrings before query/hash', () => {
 		// Even if the first char is "/", a colon in the path itself is suspicious.
 		// Real Nuxt paths never use a literal colon outside of params.
-		it.each([
-			['/javascript:alert(1)'],
-			['/foo:bar/baz'],
-		])('rejects %s', (value) => {
+		it.each([['/javascript:alert(1)'], ['/foo:bar/baz']])('rejects %s', (value) => {
 			expect(safeRedirect(value, FALLBACK)).toBe(FALLBACK);
 		});
 
@@ -75,15 +70,11 @@ describe('safeRedirect', () => {
 	});
 
 	describe('falls back on empty / non-string', () => {
-		it.each([
-			[undefined],
-			[null],
-			[''],
-			[42],
-			[{}],
-			[[]],
-		] as Array<[unknown]>)('falls back for %j', (value) => {
-			expect(safeRedirect(value, FALLBACK)).toBe(FALLBACK);
-		});
+		it.each([[undefined], [null], [''], [42], [{}], [[]]] as Array<[unknown]>)(
+			'falls back for %j',
+			(value) => {
+				expect(safeRedirect(value, FALLBACK)).toBe(FALLBACK);
+			}
+		);
 	});
 });

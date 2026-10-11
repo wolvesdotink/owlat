@@ -20,18 +20,25 @@ describe('useDashboardRules.normalizeRules', () => {
 	});
 
 	it('omits timeRange unless both ends are set', () => {
-		expect(normalizeRules([ruleWithCards({ timeStart: '09:00', timeEnd: '' })])[0]!.condition.timeRange)
-			.toBeUndefined();
-		expect(normalizeRules([ruleWithCards({ timeStart: '', timeEnd: '17:00' })])[0]!.condition.timeRange)
-			.toBeUndefined();
-		expect(normalizeRules([ruleWithCards({ timeStart: '09:00', timeEnd: '17:00' })])[0]!.condition.timeRange)
-			.toEqual({ start: '09:00', end: '17:00' });
+		expect(
+			normalizeRules([ruleWithCards({ timeStart: '09:00', timeEnd: '' })])[0]!.condition.timeRange
+		).toBeUndefined();
+		expect(
+			normalizeRules([ruleWithCards({ timeStart: '', timeEnd: '17:00' })])[0]!.condition.timeRange
+		).toBeUndefined();
+		expect(
+			normalizeRules([ruleWithCards({ timeStart: '09:00', timeEnd: '17:00' })])[0]!.condition
+				.timeRange
+		).toEqual({ start: '09:00', end: '17:00' });
 	});
 
 	it('includes dayOfWeek only when days are selected, and sorts them', () => {
-		expect(normalizeRules([ruleWithCards({ dayOfWeek: [] })])[0]!.condition.dayOfWeek).toBeUndefined();
-		expect(normalizeRules([ruleWithCards({ dayOfWeek: [5, 1, 3] })])[0]!.condition.dayOfWeek)
-			.toEqual([1, 3, 5]);
+		expect(
+			normalizeRules([ruleWithCards({ dayOfWeek: [] })])[0]!.condition.dayOfWeek
+		).toBeUndefined();
+		expect(
+			normalizeRules([ruleWithCards({ dayOfWeek: [5, 1, 3] })])[0]!.condition.dayOfWeek
+		).toEqual([1, 3, 5]);
 	});
 
 	it('includes role only when a specific role is chosen', () => {

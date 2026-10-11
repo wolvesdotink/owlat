@@ -10,6 +10,8 @@
 
 import { v } from 'convex/values';
 import type { MutationCtx } from '../../../_generated/server';
+import { literalUnion } from '../../../lib/literalUnion';
+import { BRIEF_WIPE_TABLES, type BriefWipeTable } from '../../../schema/threadPurgeJobs';
 
 /**
  * Typed literal union of every table the wipe walks. The walker's
@@ -31,6 +33,7 @@ export type OrganizationDeletionTable =
 	| 'semanticFiles'
 	| 'mailAttachments'
 	| 'mailAttachmentBackfillJobs'
+	| 'interpretBackfillJobs'
 	| 'mailBodySearchBackfillJobs'
 	| 'mailMessageBodies'
 	| 'mailMessages'
@@ -59,6 +62,7 @@ export type OrganizationDeletionTable =
 	| 'threadNotes'
 	| 'inboxFollowUps'
 	| 'threadCatchUps'
+	| BriefWipeTable
 	| 'inboxAssignmentNotices'
 	| 'inboundMessages'
 	| 'conversationThreads'
@@ -233,11 +237,9 @@ export type OrganizationDeletionTable =
 import { TENANT_TABLES } from '../../../lib/tenantTables';
 
 /**
- * Compile-time guard: every table classified as tenant data MUST have an
- * organization-deletion step. Before this guard, 41 tenant tables — including
- * externalMailAccounts (encrypted IMAP/SMTP credentials) — silently survived
- * 'Delete organization'. Adding a table to TENANT_TABLES without extending
- * the union above (and the walker's STEPS/registry) is now a compile error.
+ * Compile-time guard: every TENANT_TABLES entry MUST have a deletion step (41
+ * once survived 'Delete organization', externalMailAccounts among them). A
+ * tenant table missing from the union above is a compile error.
  */
 type TenantTableMissingFromWipe = Exclude<
 	(typeof TENANT_TABLES)[number],
@@ -256,6 +258,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('semanticFiles'),
 	v.literal('mailAttachments'),
 	v.literal('mailAttachmentBackfillJobs'),
+	v.literal('interpretBackfillJobs'),
 	v.literal('mailBodySearchBackfillJobs'),
 	v.literal('mailMessageBodies'),
 	v.literal('mailMessages'),
@@ -284,6 +287,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('threadNotes'),
 	v.literal('inboxFollowUps'),
 	v.literal('threadCatchUps'),
+	...literalUnion(BRIEF_WIPE_TABLES).members,
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),

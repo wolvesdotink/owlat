@@ -10,7 +10,12 @@ import {
 
 const id = (s: string) => s as Id<'contacts'>;
 
-const ada: PickerContact = { _id: id('c1'), email: 'ada@x.com', firstName: 'Ada', lastName: 'Lovelace' };
+const ada: PickerContact = {
+	_id: id('c1'),
+	email: 'ada@x.com',
+	firstName: 'Ada',
+	lastName: 'Lovelace',
+};
 const grace: PickerContact = { _id: id('c2'), email: 'grace@x.com', firstName: 'Grace' };
 const anon: PickerContact = { _id: id('c3'), email: 'anon@x.com' };
 

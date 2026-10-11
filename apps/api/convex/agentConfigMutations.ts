@@ -75,6 +75,7 @@ export const updateConfig = adminMutation({
 			'workingHoursStart',
 			'workingHoursEnd',
 			'workingHoursDays',
+			'isItemCoverageEnforced',
 		])
 	),
 	handler: async (ctx, args) => {
@@ -110,6 +111,8 @@ export const updateConfig = adminMutation({
 				patches.workingHoursEnd = clampMinuteOfDay(args.workingHoursEnd);
 			if (args.workingHoursDays !== undefined)
 				patches.workingHoursDays = normalizeWeekdays(args.workingHoursDays);
+			if (args.isItemCoverageEnforced !== undefined)
+				patches.isItemCoverageEnforced = args.isItemCoverageEnforced;
 
 			await ctx.db.patch(config._id, patches);
 
@@ -144,6 +147,7 @@ export const updateConfig = adminMutation({
 				args.workingHoursEnd === undefined ? undefined : clampMinuteOfDay(args.workingHoursEnd),
 			workingHoursDays:
 				args.workingHoursDays === undefined ? undefined : normalizeWeekdays(args.workingHoursDays),
+			isItemCoverageEnforced: args.isItemCoverageEnforced,
 			createdAt: now,
 			updatedAt: now,
 		});

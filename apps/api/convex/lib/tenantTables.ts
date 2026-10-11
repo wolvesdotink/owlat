@@ -1,4 +1,5 @@
 import type { TableNames } from '../_generated/dataModel';
+import { THREAD_BRIEF_TABLES } from '../schema/threadBrief';
 
 /**
  * The single source of truth for "which tables hold tenant business data".
@@ -173,6 +174,11 @@ export const TENANT_TABLES = [
 	// Answer mode catch-up cards of team and Postbox threads: derived from the
 	// mail, so they go before the threads they summarise.
 	'threadCatchUps',
+	// Thread brief (schema/threadBrief.ts) of team and Postbox threads: derived
+	// from the mail, so it goes before the threads it describes.
+	...THREAD_BRIEF_TABLES,
+	// Resumable thread brief purges (schema/threadPurgeJobs.ts): ids only.
+	'threadPurgeJobs',
 	'inboundMessages',
 	'conversationThreads',
 	'coalesceBatches',
@@ -217,6 +223,9 @@ export const TENANT_TABLES = [
 	// names this org's mailboxes, so it wipes with the mail it walked. (The
 	// excerpt itself is a COLUMN on `mailMessages` and needs no entry here.)
 	'mailBodySearchBackfillJobs',
+	// The thread brief's 30-day backfill walk (mail/interpret/backfill.ts):
+	// bookkeeping over this org's mailboxes, wiped with the mail it walked.
+	'interpretBackfillJobs',
 	// Inline bodies, 1:1 with the message rows below (plan 3.2).
 	'mailMessageBodies',
 	'mailMessages',

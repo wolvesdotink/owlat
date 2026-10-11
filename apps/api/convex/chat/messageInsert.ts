@@ -81,6 +81,8 @@ export async function insertRoomMessage(
 		text: string;
 		attachmentIds?: Array<Id<'mediaAssets'>>;
 		authorMembership: Doc<'chatRoomMembers'> | null;
+		/** Postbox thread discussion only: the item link, already checked against the thread. */
+		threadItemId?: Id<'threadItems'>;
 	}
 ): Promise<Id<'chatMessages'>> {
 	const { room, authorId, text } = args;
@@ -98,6 +100,9 @@ export async function insertRoomMessage(
 		mentions: mentions.length > 0 ? mentions : undefined,
 		attachmentIds:
 			args.attachmentIds && args.attachmentIds.length > 0 ? args.attachmentIds : undefined,
+		...(args.threadItemId && isMailThreadDiscussion(room)
+			? { threadItemId: args.threadItemId }
+			: {}),
 		createdAt: now,
 	});
 

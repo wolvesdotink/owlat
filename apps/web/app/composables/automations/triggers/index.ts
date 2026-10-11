@@ -2,11 +2,7 @@ import { contactCreatedTriggerEditorModule } from './contact_created';
 import { contactUpdatedTriggerEditorModule } from './contact_updated';
 import { eventReceivedTriggerEditorModule } from './event_received';
 import { topicSubscribedTriggerEditorModule } from './topic_subscribed';
-import type {
-	TriggerEditorModule,
-	TriggerEditorModuleMap,
-	TriggerKind,
-} from './types';
+import type { TriggerEditorModule, TriggerEditorModuleMap, TriggerKind } from './types';
 
 export const TRIGGER_EDITOR_MODULES: TriggerEditorModuleMap = {
 	contact_created: contactCreatedTriggerEditorModule,
@@ -15,9 +11,7 @@ export const TRIGGER_EDITOR_MODULES: TriggerEditorModuleMap = {
 	topic_subscribed: topicSubscribedTriggerEditorModule,
 };
 
-export function triggerEditorModuleFor<K extends TriggerKind>(
-	kind: K
-): TriggerEditorModuleMap[K] {
+export function triggerEditorModuleFor<K extends TriggerKind>(kind: K): TriggerEditorModuleMap[K] {
 	return TRIGGER_EDITOR_MODULES[kind];
 }
 

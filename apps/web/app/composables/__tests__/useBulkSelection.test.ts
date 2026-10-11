@@ -114,7 +114,8 @@ describe('useBulkSelection', () => {
 
 	describe('setAllMatching', () => {
 		it('sets all matching ids and enables selectAllMatching', () => {
-			const { setAllMatching, selectedIds, isSelectAllMatching, allMatchingIds } = useBulkSelection();
+			const { setAllMatching, selectedIds, isSelectAllMatching, allMatchingIds } =
+				useBulkSelection();
 			setAllMatching(['id-1', 'id-2', 'id-3']);
 			expect(selectedIds.value.size).toBe(3);
 			expect(isSelectAllMatching.value).toBe(true);
@@ -124,7 +125,15 @@ describe('useBulkSelection', () => {
 
 	describe('clearSelection', () => {
 		it('clears all state', () => {
-			const { select, setAllMatching, clearSelection, selectedIds, isSelectAllMatching, allMatchingIds, hasSelected } = useBulkSelection();
+			const {
+				select,
+				setAllMatching,
+				clearSelection,
+				selectedIds,
+				isSelectAllMatching,
+				allMatchingIds,
+				hasSelected,
+			} = useBulkSelection();
 			select('id-1');
 			setAllMatching(['id-1', 'id-2']);
 

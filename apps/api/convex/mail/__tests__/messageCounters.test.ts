@@ -177,7 +177,7 @@ async function randomOp(w: World, r: Rng): Promise<void> {
 			return;
 		case 5:
 			await t.run(async (ctx) => {
-				await purgeMessageRow(ctx, m);
+				await purgeMessageRow(ctx, m, new Map());
 			});
 			return;
 		case 6:

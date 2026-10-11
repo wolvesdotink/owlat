@@ -112,6 +112,9 @@ export const inboxCollaborationTables = {
 		authorId: v.string(), // BetterAuth user id ('[deleted account]' once erased)
 		body: v.string(),
 		mentionedUserIds: v.array(v.string()),
+		// The thread brief item this note is about (`#` link). Validated to
+		// belong to the same thread on write.
+		threadItemId: v.optional(v.id('threadItems')),
 		createdAt: v.number(),
 		editedAt: v.optional(v.number()),
 		deletedAt: v.optional(v.number()),
@@ -121,7 +124,9 @@ export const inboxCollaborationTables = {
 		// The list's note-count chip: a thread's live (not deleted) notes.
 		.index('by_thread_and_deleted', ['threadId', 'deletedAt'])
 		// Account export and member erasure.
-		.index('by_author', ['authorId']),
+		.index('by_author', ['authorId'])
+		// Erasure (mail/interpret/purge.ts): unlink the notes about a deleted item.
+		.index('by_thread_item', ['threadItemId']),
 
 	// Thread Note Mentions - one row per (note, mentioned person), mirroring a
 	// live note's `mentionedUserIds` so "threads that mention me" is an index

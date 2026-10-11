@@ -105,7 +105,7 @@ describe('optionalFields', () => {
 });
 
 describe('function arguments derived from a table record', () => {
-	it('updateConfig takes the twelve tuning fields, all optional, and never the reply mode', () => {
+	it('updateConfig takes the thirteen tuning fields, all optional, and never the reply mode', () => {
 		const args = argsJson(updateConfig).value;
 		expect(Object.keys(args).sort()).toEqual(
 			[
@@ -113,6 +113,7 @@ describe('function arguments derived from a table record', () => {
 				'coalesceWindowMs',
 				'confidenceThreshold',
 				'humanApproveUndoDelayMs',
+				'isItemCoverageEnforced',
 				'isWorkingHoursEnabled',
 				'maxDailyAutoReplies',
 				'signatureTemplate',
