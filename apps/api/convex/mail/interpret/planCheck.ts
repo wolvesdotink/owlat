@@ -21,6 +21,7 @@
 import { z } from 'zod';
 import type { ResponseStance } from '@owlat/shared/threadBrief';
 import { defuseDelimiters } from './prompt';
+import { utcDayKey } from '../../lib/clock';
 import {
 	normalizeDraftText,
 	type CoverageEntry,
@@ -77,6 +78,14 @@ function flat(text: string, max: number): string {
 function itemTags(item: PlanItem): string {
 	const tags: string[] = [item.intent, ...item.facets];
 	if (item.responsibility === 'unclear') tags.push('owner unclear');
+	// The current structured terms beside the wording, so a stale phrase is
+	// never the only source of a deadline or amount (PR review F2).
+	if (item.dueAt !== undefined) tags.push(`due ${utcDayKey(item.dueAt)}`);
+	else if (item.duePhrase) tags.push(`due "${flat(item.duePhrase, 60)}"`);
+	if (item.amount) tags.push(`amount ${item.amount.value} ${flat(item.amount.currency, 8)}`);
+	if (item.options?.length) {
+		tags.push(`options: ${item.options.map((o) => `"${flat(o, 60)}"`).join(' / ')}`);
+	}
 	return tags.join(', ');
 }
 

@@ -307,3 +307,37 @@ describe('Round 9: a purged stamp resets its field to the neutral value', () => 
 		expect(out?.isWordingPurged).toBe(true);
 	});
 });
+
+describe('PR review F2: an applied newer term rewrites the stored wording', () => {
+	it('EUR 1000 → EUR 120 from a newer verified message: amount, wording and stamps on the row', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, messageId: a, threadId } = await seedMailThread(t);
+		const b = await addMessageToThread(t, { mailboxId, threadId }, { text: '120', receivedAt: T2 });
+		await apply(t, mail(a), threadId, reduceResult({ items: [alice] }));
+		const { _id: itemId } = await itemOf(t, threadId);
+		await apply(
+			t,
+			mail(b),
+			threadId,
+			reduceResult({
+				items: [
+					{
+						...alice,
+						matchItemId: itemId,
+						assertion: 'Send the contract to Alice, the fee is now EUR 120',
+						display: { en: 'Contract to Alice, EUR 120', de: 'Vertrag an Alice, 120 EUR' },
+						amount: { value: 120, currency: 'EUR' },
+						evidence: quote,
+					},
+				],
+			}),
+			{ sourceAt: T2 }
+		);
+		const row = await itemOf(t, threadId);
+		expect(row.amount).toEqual({ value: 120, currency: 'EUR' });
+		expect(row.assertion).toBe('Send the contract to Alice, the fee is now EUR 120');
+		expect(row.display.en).toBe('Contract to Alice, EUR 120');
+		expect(row.fieldSources?.amount?.sourceKey).toBe(`mail:${b}`);
+		expect(row.fieldSources?.wording?.sourceKey).toBe(`mail:${b}`);
+	});
+});
