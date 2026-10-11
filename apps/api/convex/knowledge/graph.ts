@@ -516,7 +516,9 @@ export const saveEntry = internalMutation({
 			'contentHash',
 		]),
 		// The space the job embedded with; a stale vector is dropped (vectorFieldsForCommit).
-		embeddingSpaceKey: v.string(),
+		// Optional for previous-release jobs, whose vector is dropped; required
+		// after release N+1.
+		embeddingSpaceKey: v.optional(v.string()),
 	},
 	handler: async (ctx, { embeddingSpaceKey, ...args }) => {
 		const now = Date.now();

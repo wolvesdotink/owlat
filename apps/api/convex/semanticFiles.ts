@@ -580,7 +580,9 @@ export const updateProcessedMetadata = internalMutation({
 		changeSummary: v.optional(v.string()),
 		// The space the job embedded with; a stale vector is dropped and the file
 		// stays unembedded for the next processing pass (vectorFieldsForCommit).
-		embeddingSpaceKey: v.string(),
+		// Optional for previous-release jobs, whose vector is dropped; required
+		// after release N+1.
+		embeddingSpaceKey: v.optional(v.string()),
 	},
 	handler: async (ctx, { fileId, embeddingSpaceKey, ...updates }) => {
 		const { isStale, ...vector } = await vectorFieldsForCommit(ctx.db, updates, embeddingSpaceKey);

@@ -126,6 +126,8 @@ export const _persistConfig = internalMutation({
 		// so a concurrent embedding save is never overwritten with a stale view).
 		embeddingProviderKind: v.optional(embeddingProviderKindValidator),
 		embeddingModel: v.optional(v.string()),
+		/** Ignored: derived from the kind. A previous-release save still sends it; remove after release N+1. */
+		isEmbeddingLocal: v.optional(v.boolean()),
 		embeddingEnvelope: v.optional(envelopeValidator),
 		// The DECISION plane. Omitting `decisionProviderKind` leaves the plane
 		// untouched (see `lib/aiProviderSecrets`) — it is not a request to clear it.

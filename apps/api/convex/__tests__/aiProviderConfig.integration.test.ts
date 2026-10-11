@@ -992,6 +992,76 @@ describe('vector commits from a stale embedding space', () => {
 	});
 });
 
+describe('previous-release callers (upgrade window)', () => {
+	const vector = [0.1, 0.2, 0.3];
+
+	it('keeps the metadata of a legacy file commit and drops its unverifiable vector', async () => {
+		const t = setup();
+		const now = Date.now();
+		const fileId = await t.run((ctx) =>
+			ctx.db.insert('semanticFiles', {
+				filename: 'invoice.pdf',
+				mimeType: 'application/pdf',
+				fileSize: 13,
+				sourceType: 'email_attachment',
+				version: 1,
+				embedding: [],
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+		// The previous release's processFile sends no embeddingSpaceKey.
+		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+			fileId,
+			summary: 'An invoice',
+			autoTags: ['finance'],
+			embedding: vector,
+			embeddingModel: 'nomic-embed-text',
+			embeddingGeneratedAt: now,
+		});
+		const file = await t.run((ctx) => ctx.db.get(fileId));
+		expect(file).toMatchObject({ summary: 'An invoice', autoTags: ['finance'], embedding: [] });
+		expect(file?.embeddingModel).toBeUndefined();
+	});
+
+	it('stores a legacy knowledge entry without its unverifiable vector', async () => {
+		const t = setup();
+		const entryId = await t.mutation(internal.knowledge.graph.saveEntry, {
+			entryType: 'fact',
+			title: 'fact',
+			content: 'Prefers EUR invoices',
+			sourceType: 'manual',
+			embedding: vector,
+			embeddingModel: 'nomic-embed-text',
+			embeddingGeneratedAt: Date.now(),
+			confidence: 0.9,
+		});
+		const entry = await t.run((ctx) => ctx.db.get(entryId));
+		expect(entry).toMatchObject({ content: 'Prefers EUR invoices', embedding: [] });
+	});
+
+	it('accepts a legacy settings persist that still sends isEmbeddingLocal', async () => {
+		const t = setup();
+		await t.mutation(internal.aiProviderConfig._persistConfig, {
+			languageProviderKind: 'openaiCompatible',
+			languageBaseUrl: 'http://localhost:11434/v1',
+			modelFast: 'qwen3.6:27b',
+			modelCapable: 'qwen3.6:27b',
+			isLanguageLocal: true,
+			embeddingProviderKind: 'local',
+			embeddingModel: 'nomic-embed-text',
+			// Ignored: the mutation derives locality from the kind.
+			isEmbeddingLocal: false,
+		});
+		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+		expect(row).toMatchObject({
+			embeddingProviderKind: 'local',
+			embeddingModel: 'nomic-embed-text',
+		});
+		expect(row?.embeddingSecretCiphertext).toBeUndefined();
+	});
+});
+
 describe('new embedding key binding', () => {
 	const anthropic = {
 		languageProviderKind: 'anthropic' as const,

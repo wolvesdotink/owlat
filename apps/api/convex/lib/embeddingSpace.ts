@@ -283,15 +283,22 @@ export interface VectorFields {
  * writes what this returns. A vector from a space that is no longer current (the
  * settings changed while the job ran, or an isolate used a cached config) is
  * dropped: the row is stored without one (`embedding: []`), so it reads as not
- * yet embedded and the next processing pass embeds it in the current space.
+ * yet embedded and the next processing pass embeds it in the current space. A
+ * commit without a key (a previous-release job) is dropped the same way.
  */
 export async function vectorFieldsForCommit(
 	db: DatabaseReader,
 	vector: VectorFields,
-	jobEmbeddingSpaceKey: string
+	jobEmbeddingSpaceKey: string | undefined
 ): Promise<VectorFields & { isStale: boolean }> {
 	if (vector.embedding.length === 0) return { ...vector, isStale: false };
-	if (jobEmbeddingSpaceKey === (await currentEmbeddingSpaceKey(db))) {
+	// A caller without a key is a job the previous release queued or started: its
+	// vector cannot be verified, so it is dropped like a stale one. Remove the
+	// optional key after release N+1 (see CONVENTIONS "Old clients and workers").
+	if (
+		jobEmbeddingSpaceKey !== undefined &&
+		jobEmbeddingSpaceKey === (await currentEmbeddingSpaceKey(db))
+	) {
 		return { ...vector, isStale: false };
 	}
 	return {
