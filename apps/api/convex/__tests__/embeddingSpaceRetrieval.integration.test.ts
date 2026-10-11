@@ -9,6 +9,7 @@
  */
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as Ai from 'ai';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { embeddingSpaceKey, resolvedEmbeddingSpace } from '../lib/embeddingSpace';
@@ -24,7 +25,7 @@ function unit(at: number): number[] {
 const inFlight = vi.hoisted(() => ({ duringEmbed: null as null | (() => Promise<void>) }));
 
 vi.mock('ai', async () => {
-	const actual = await vi.importActual<typeof import('ai')>('ai');
+	const actual = await vi.importActual<typeof Ai>('ai');
 	return {
 		...actual,
 		embed: vi.fn(async () => {
