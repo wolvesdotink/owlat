@@ -229,6 +229,31 @@ describe('L4: early handling-rule archive', () => {
 		});
 	});
 
+	// Equivalent to today's post-classify `auto_archive`, which archives a
+	// complaint or an urgent message too (classify/__tests__/handlingRulesOverride).
+	it.each([
+		[
+			'a complaint',
+			{ subject: 'Complaint', textBody: 'I am very unhappy, this is a formal complaint.' },
+		],
+		[
+			'an urgent message',
+			{ subject: 'Server down', textBody: 'Our shop is offline, please help.' },
+		],
+	])(
+		'archives %s a matching auto_archive rule covers, as classify-time does',
+		async (_, message) => {
+			const { route } = await runScan({
+				message,
+				policy: { earlyRuleArchive: 'enforce' },
+				rules: { autoArchive: true },
+			});
+			expect(route).toMatchObject({
+				transition: { to: 'archived', reason: 'handling_rule_archive' },
+			});
+		}
+	);
+
 	it('lets no other rule action end the run: categorize and restrictions carry forward', async () => {
 		const { route } = await runScan({
 			message: CLEAN,
