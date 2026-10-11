@@ -30,6 +30,24 @@ describe('current model wire compatibility', () => {
 		}
 	);
 
+	it('keeps a caller-chosen GPT-6 reasoning effort', async () => {
+		let request: Record<string, unknown> | undefined;
+		const client = createOpenAI({
+			apiKey: 'test',
+			fetch: async (_url, init) => {
+				request = JSON.parse(init!.body as string);
+				throw new Error('request captured');
+			},
+		});
+		const model = modelForRequest(client('gpt-6.1-sol'));
+		if (typeof model !== 'object' || model.specificationVersion !== 'v3')
+			throw new Error('v3 expected');
+		await expect(
+			model.doGenerate({ prompt, providerOptions: { openai: { reasoningEffort: 'high' } } })
+		).rejects.toThrow('request captured');
+		expect(request?.['reasoning']).toEqual({ effort: 'high' });
+	});
+
 	it('omits sampling for native Claude 5.5', async () => {
 		let request: Record<string, unknown> | undefined;
 		const client = createAnthropic({
