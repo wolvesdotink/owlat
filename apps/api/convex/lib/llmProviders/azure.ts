@@ -20,6 +20,7 @@
  * embedding plane still resolves independently (local-by-default).
  */
 
+import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import { createAzure } from '@ai-sdk/azure';
 import type { LanguageModel } from 'ai';
 import { hostedCacheKey, memoizeClient } from './clientCache';
@@ -42,7 +43,7 @@ export const azureLanguageAdapter: LanguageProviderAdapter<'azure'> = {
 	isLocal: false,
 	// Deployment names, not canonical model ids — the admin sets these in Azure.
 	// These are common conventions; the effective id is the deployment's name.
-	defaultModels: { fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' },
+	defaultModels: LANGUAGE_MODEL_CATALOG.azure.defaults,
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return azureClient(cfg)(modelId);
 	},

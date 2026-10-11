@@ -67,7 +67,7 @@ describe('llmProviders registry', () => {
 		const adapter = languageProviderFor('openai');
 		expect(adapter.kind).toBe('openai');
 		expect(adapter.isLocal).toBe(false);
-		expect(adapter.defaultModels).toEqual({ fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' });
+		expect(adapter.defaultModels).toEqual({ fast: 'gpt-6-luna', capable: 'gpt-6.1-sol' });
 	});
 
 	it('gives every adapter that lists models a default base URL', () => {

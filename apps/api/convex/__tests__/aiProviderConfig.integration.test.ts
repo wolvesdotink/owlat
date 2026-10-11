@@ -73,7 +73,12 @@ vi.mock('../lib/llmProviders', () => ({
 		dimensions: 1536,
 		// Local + custom-compatible embedders are keyless; openai/google are hosted.
 		isLocal: kind === 'local' || kind === 'openaiCompatible',
-		defaultModel: kind === 'local' ? 'nomic-embed-text' : 'text-embedding-3-small',
+		defaultModel:
+			kind === 'local'
+				? 'nomic-embed-text'
+				: kind === 'google'
+					? 'gemini-embedding-2'
+					: 'text-embedding-3-small',
 		validateCredentials: adapterMocks.validateCredentials,
 	}),
 }));
@@ -291,6 +296,20 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 		expect(result.embeddingModelVersion).toBe(2);
 		// The key survived a keyless re-save.
 		expect(result.isLanguageKeySet).toBe(true);
+	});
+
+	it('materializes the Google default when saving without an explicit embedding ID', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			languageProviderKind: 'anthropic',
+			apiKey: 'sk-ant-secret-key-1234',
+			embeddingProviderKind: 'google',
+			embeddingApiKey: 'google-test-embedding-key',
+		});
+		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		if (!result.configured) throw new Error('unreachable');
+		expect(result.embeddingModel).toBe('gemini-embedding-2');
+		expect(result.embeddingModelVersion).toBe(1);
 	});
 
 	it('bumps embeddingModelVersion when the embedding provider kind changes (re-index flag)', async () => {

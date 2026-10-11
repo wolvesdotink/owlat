@@ -15,6 +15,7 @@
  * local server actually serves instead of free-text only.
  */
 
+import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import type { EmbeddingModel, LanguageModel } from 'ai';
 import { type OpenAICompatibleClient, openAICompatibleClient } from './clientCache';
 import { parseOpenAiModelIds } from './modelListing';
@@ -44,7 +45,7 @@ export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCom
 	docsUrl: 'https://ai-sdk.dev/providers/openai-compatible-providers',
 	defaultBaseUrl: 'http://localhost:11434/v1',
 	isLocal: true,
-	defaultModels: { fast: 'llama3.1', capable: 'llama3.1' },
+	defaultModels: LANGUAGE_MODEL_CATALOG.openaiCompatible.defaults,
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return compatibleClient(cfg)(modelId);
 	},

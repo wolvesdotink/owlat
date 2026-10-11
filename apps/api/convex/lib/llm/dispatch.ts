@@ -27,6 +27,7 @@ import {
 } from 'ai';
 import type { z } from 'zod';
 import type { TokenUsage } from '../../agent/steps/types';
+import { modelForRequest } from './requestPolicy';
 import { withLlmRetry } from './retryPolicy';
 import { withPartialUsage } from './partialUsage';
 import { addTokenUsage } from './tokenUsage';
@@ -157,7 +158,7 @@ export async function runLlmTextWithAttemptMetadata(
 ): Promise<LlmTextAttemptResult> {
 	const sdkArgs =
 		'messages' in opts ? { messages: opts.messages } : { prompt: opts.prompt, system: opts.system };
-	const providerModelIdentity = captureProviderModelIdentity(opts.model);
+	const providerModelIdentity = captureProviderModelIdentity(modelForRequest(opts.model));
 	const dispatched = await withLlmRetry(
 		() =>
 			generateText({
@@ -218,7 +219,7 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 	try {
 		dispatched = await withLlmRetry(() =>
 			generateText({
-				model: opts.model,
+				model: modelForRequest(opts.model),
 				messages: opts.messages,
 				tools: opts.tools,
 				stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
@@ -290,7 +291,7 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 			async () => {
 				try {
 					return await generateObject({
-						model: opts.model,
+						model: modelForRequest(opts.model),
 						schema: opts.schema,
 						prompt: opts.prompt,
 						temperature: opts.temperature,
@@ -408,7 +409,7 @@ function streamUsage(u: NonNullable<RawUsage>): TokenUsage {
  */
 export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamResult> {
 	const result = streamText({
-		model: opts.model,
+		model: modelForRequest(opts.model),
 		...(opts.system !== undefined ? { system: opts.system } : {}),
 		messages: opts.messages,
 		...(opts.tools ? { tools: opts.tools } : {}),

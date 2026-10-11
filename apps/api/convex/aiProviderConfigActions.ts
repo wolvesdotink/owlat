@@ -179,7 +179,11 @@ export const saveConfig = authedAction({
 			isLanguageLocal: adapter.isLocal,
 			languageEnvelope: args.apiKey ? envelopeFor(args.apiKey) : undefined,
 			embeddingProviderKind,
-			embeddingModel: args.embeddingModel?.trim() || undefined,
+			embeddingModel:
+				args.embeddingModel?.trim() ||
+				(embeddingProviderKind === 'google'
+					? embeddingProviderFor('google').defaultModel
+					: undefined),
 			isEmbeddingLocal,
 			embeddingEnvelope: args.embeddingApiKey ? envelopeFor(args.embeddingApiKey) : undefined,
 			decisionProviderKind: decisionKind,

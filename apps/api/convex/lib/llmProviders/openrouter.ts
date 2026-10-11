@@ -20,6 +20,7 @@
  * only a non-reversible hash of the key, never a slice of the raw secret.
  */
 
+import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import type { LanguageModel } from 'ai';
 import { type OpenAICompatibleClient, openAICompatibleClient } from './clientCache';
 import { parseOpenAiModelIds } from './modelListing';
@@ -53,7 +54,7 @@ export const openrouterLanguageAdapter: LanguageProviderAdapter<'openrouter'> = 
 	isLocal: false,
 	// Free-text, provider-prefixed ids; these are sensible starting points a user
 	// can swap for any model the /models listing exposes.
-	defaultModels: { fast: 'deepseek/deepseek-v4-flash', capable: 'anthropic/claude-sonnet-5' },
+	defaultModels: LANGUAGE_MODEL_CATALOG.openrouter.defaults,
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return openrouterClient(cfg)(modelId);
 	},

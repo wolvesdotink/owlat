@@ -12,6 +12,7 @@
  * that file stays a readable list of steps, and under the size ratchet.
  */
 
+import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import { select, password, text, group, isCancel, log } from '@clack/prompts';
 import { validateWithSpinner } from '../lib/progress';
 import { parseComposeProfileList } from '@owlat/shared/composeOverride';
@@ -70,10 +71,10 @@ export async function pickAIProvider(): Promise<EnvMap | null> {
 		// resolves http://ollama:11434/v1 automatically when LLM_PROVIDER=ollama.
 		// The bundled `ollama` service comes up under the same profile as the AI
 		// worker; pull a model into it after boot (e.g. `docker compose exec ollama
-		// ollama pull llama3.1`) and set LLM_MODEL_* to match.
+		// ollama pull <selected-model>`) and set LLM_MODEL_* to match.
 		log.info(
 			'Ollama runs locally on the internal Docker network (ollama:11434). No API key needed.\n' +
-				'After the stack is up, pull a model into it, e.g.: docker compose exec ollama ollama pull llama3.1'
+				`After the stack is up, pull the default model (18–19 GB weights; additional memory needed): docker compose exec ollama ollama pull ${LANGUAGE_MODEL_CATALOG.openaiCompatible.defaults.fast}`
 		);
 		return {
 			LLM_PROVIDER: 'ollama',
@@ -85,11 +86,19 @@ export async function pickAIProvider(): Promise<EnvMap | null> {
 			baseUrl: () =>
 				text({
 					message: 'OpenAI-compatible base URL',
-					placeholder: 'https://api.anthropic.com/v1',
+					placeholder: 'https://openrouter.ai/api/v1',
 				}),
 			apiKey: () => password({ message: 'API key' }),
-			fast: () => text({ message: 'Fast model name', placeholder: 'claude-3-5-haiku' }),
-			capable: () => text({ message: 'Capable model name', placeholder: 'claude-3-5-sonnet' }),
+			fast: () =>
+				text({
+					message: 'Fast model name',
+					placeholder: LANGUAGE_MODEL_CATALOG.openrouter.defaults.fast,
+				}),
+			capable: () =>
+				text({
+					message: 'Capable model name',
+					placeholder: LANGUAGE_MODEL_CATALOG.openrouter.defaults.capable,
+				}),
 		});
 		return {
 			LLM_PROVIDER: 'custom',

@@ -98,6 +98,15 @@ function existingConfig(overrides: Record<string, unknown> = {}) {
 }
 
 describe('useAiProviderForm hosted-embedder key guard', () => {
+	it('hydrates the implicit legacy Google model without selecting a new vector space', () => {
+		config.value = existingConfig({
+			embeddingProviderKind: 'google',
+			embeddingModel: undefined,
+			isEmbeddingKeySet: true,
+		});
+		const state = useAiProviderForm();
+		expect(state.form.embeddingModelChoice).toBe('text-embedding-004');
+	});
 	it('names the embedder in translated copy, not by its message key', async () => {
 		const form = useAiProviderForm();
 		// The language half has to validate first — handleSave returns early on a

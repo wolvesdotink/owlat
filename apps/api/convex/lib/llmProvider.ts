@@ -44,6 +44,7 @@
  *   LOCAL_EMBEDDING_BASE_URL / LOCAL_EMBEDDING_MODEL    local embedder sidecar
  */
 
+import { LEGACY_GOOGLE_EMBEDDING_MODEL } from '@owlat/shared/aiModelCatalog';
 import type { EmbeddingModel, LanguageModel } from 'ai';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -142,11 +143,20 @@ function resolveBaseURL(): string | undefined {
 	}
 }
 
-// The env fallback always resolves to the `openai` adapter — it covers OpenAI,
-// OpenRouter, and Ollama via a resolved base URL, matching this module's prior
-// single-`createOpenAI`-client behavior. Per-org stored config selects other
-// adapters through the same registry.
-const ENV_LANGUAGE_KIND = 'openai' as const;
+// Environment setup must select the same adapter/defaults as stored settings.
+// OpenRouter and local servers speak chat completions, while native GPT-6 uses
+// Responses (including tool calls). A base URL alone cannot choose that wire.
+function envLanguageKind(): LanguageProviderKind {
+	switch (getOptional('LLM_PROVIDER')) {
+		case 'openrouter':
+			return 'openrouter';
+		case 'ollama':
+		case 'custom':
+			return 'openaiCompatible';
+		default:
+			return 'openai';
+	}
+}
 const ENV_EMBEDDING_KIND = 'openai' as const;
 
 /**
@@ -162,7 +172,7 @@ function resolveEnvClientConfig(): ProviderClientConfig {
 }
 
 function modelIdForTier(tier: LLMTier): string {
-	const defaults = languageProviderFor(ENV_LANGUAGE_KIND).defaultModels;
+	const defaults = languageProviderFor(envLanguageKind()).defaultModels;
 	return tier === 'fast'
 		? (getOptional('LLM_MODEL_FAST') ?? getOptional('LLM_MODEL') ?? defaults.fast)
 		: (getOptional('LLM_MODEL_CAPABLE') ?? getOptional('LLM_MODEL') ?? defaults.capable);
@@ -200,7 +210,7 @@ function resolveEnvProviderConfig(): ResolvedProviderConfig {
 	return {
 		source: 'env',
 		language: {
-			kind: ENV_LANGUAGE_KIND,
+			kind: envLanguageKind(),
 			endpointProvenance: classifyEnvLanguageEndpoint(
 				getOptional('LLM_PROVIDER'),
 				Boolean(getOptional('LLM_BASE_URL'))
@@ -242,7 +252,8 @@ export function buildStoredProviderConfig(
 		},
 		embedding: resolveEmbeddingPlane(
 			row.embeddingProviderKind,
-			row.embeddingModel,
+			row.embeddingModel ??
+				(row.embeddingProviderKind === 'google' ? LEGACY_GOOGLE_EMBEDDING_MODEL : undefined),
 			embeddingKey,
 			row.embeddingModelVersion
 		),

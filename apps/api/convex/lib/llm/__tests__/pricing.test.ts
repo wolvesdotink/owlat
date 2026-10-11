@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import {
 	estimateCost,
 	estimateCostUsd,
@@ -72,6 +73,41 @@ describe('estimateCost', () => {
 });
 
 describe('known-model fixed-point admission pricing', () => {
+	it('admits every current hosted default without guessing endpoint identity', () => {
+		const endpoints = {
+			openai: 'openai-native',
+			anthropic: 'anthropic-native',
+			google: 'google-native',
+			openrouter: 'openrouter',
+		} as const;
+		for (const [kind, endpoint] of Object.entries(endpoints)) {
+			const defaults = LANGUAGE_MODEL_CATALOG[kind as keyof typeof endpoints].defaults;
+			for (const modelId of Object.values(defaults)) {
+				expect(estimateCost(modelId, oneMillionEach).estimated, modelId).toBe(false);
+				expect(
+					estimateKnownCostMicrousd(endpoint, modelId, oneMillionEach),
+					modelId
+				).toBeGreaterThan(0);
+			}
+		}
+		expect(estimateKnownCostMicrousd('custom', 'gpt-6-luna', oneMillionEach)).toBeUndefined();
+	});
+
+	it('charges the whole GPT-6 request at long-context rates only above 272k input', () => {
+		const at = { promptTokens: 272_000, completionTokens: 1000, totalTokens: 273_000 };
+		const above = { ...at, promptTokens: 272_001, totalTokens: 273_001 };
+		expect(estimateKnownCostMicrousd('openai-native', 'gpt-6-luna', at)).toBe(27_700);
+		expect(estimateKnownCostMicrousd('openai-native', 'gpt-6-luna', above)).toBe(55_151);
+		expect(estimateCostUsd('openai/gpt-6-luna', above)).toBeCloseTo(0.0551502);
+	});
+
+	it('uses Haiku long-context pricing and reserves the cache-write ceiling', () => {
+		const usage = { promptTokens: 100_001, completionTokens: 1000, totalTokens: 101_001 };
+		expect(estimateCostUsd('claude-haiku-5-5', usage)).toBeCloseTo(0.0525005);
+		expect(estimateKnownCostMicrousd('openrouter', 'anthropic/claude-haiku-5.5', usage)).toBe(
+			102_501
+		);
+	});
 	it('ceil-prices exact models on their trusted native endpoints', () => {
 		expect(
 			estimateKnownCostMicrousd('openai-native', 'gpt-4o-mini', {

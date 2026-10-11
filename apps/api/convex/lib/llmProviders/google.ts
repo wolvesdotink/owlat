@@ -7,14 +7,15 @@
  * `(baseUrl, key-fingerprint)` so repeated resolutions share one client; the
  * cache key never stores the raw key, only a non-reversible hash of it.
  *
- * Gemini's embeddings live on a separate model family (`text-embedding-004`),
+ * Gemini's embeddings live on a separate model family (`gemini-embedding-2`),
  * exposed here as an OPTIONAL hosted embedding override. The two planes stay
  * decoupled: choosing Gemini for language does not select it for embeddings —
  * the embedding plane is local-by-default unless this override is configured.
  */
 
+import { LANGUAGE_MODEL_CATALOG, GOOGLE_EMBEDDING_DEFAULT } from '@owlat/shared/aiModelCatalog';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import type { EmbeddingModel, LanguageModel } from 'ai';
+import { wrapEmbeddingModel, type EmbeddingModel, type LanguageModel } from 'ai';
 import { hostedCacheKey, memoizeClient } from './clientCache';
 import type {
 	EmbeddingClientConfig,
@@ -38,7 +39,7 @@ export const googleLanguageAdapter: LanguageProviderAdapter<'google'> = {
 	label: 'Google (Gemini)',
 	docsUrl: 'https://ai.google.dev/gemini-api/docs',
 	isLocal: false,
-	defaultModels: { fast: 'gemini-3.1-flash-lite', capable: 'gemini-3.5-flash' },
+	defaultModels: LANGUAGE_MODEL_CATALOG.google.defaults,
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return googleClient(cfg)(modelId);
 	},
@@ -52,13 +53,38 @@ export const googleLanguageAdapter: LanguageProviderAdapter<'google'> = {
 export const googleEmbeddingAdapter: EmbeddingProviderAdapter<'google'> = {
 	kind: 'google',
 	label: 'Google (Gemini)',
-	// `text-embedding-004` emits 768-dim vectors; the write-time guard rejects a
-	// vector that won't fit the fixed index, so this is UI/docs metadata only.
-	dimensions: 768,
+	dimensions: GOOGLE_EMBEDDING_DEFAULT.dimensions,
 	isLocal: false,
-	defaultModel: 'text-embedding-004',
+	defaultModel: GOOGLE_EMBEDDING_DEFAULT.model,
 	buildEmbeddingModel(cfg: EmbeddingClientConfig): EmbeddingModel {
-		return googleClient(cfg).textEmbeddingModel(cfg.modelId);
+		const model = googleClient(cfg).textEmbeddingModel(cfg.modelId);
+		if (cfg.modelId !== GOOGLE_EMBEDDING_DEFAULT.model) return model;
+		const bounded = wrapEmbeddingModel({
+			model,
+			middleware: {
+				specificationVersion: 'v3',
+				transformParams: async ({ params }) => ({
+					...params,
+					providerOptions: {
+						...params.providerOptions,
+						google: {
+							...params.providerOptions?.['google'],
+							outputDimensionality: GOOGLE_EMBEDDING_DEFAULT.dimensions,
+						},
+					},
+				}),
+			},
+		});
+		// Keep one vector per input; the SDK's multi-value path uses the legacy
+		// batchEmbedContents endpoint. Embedding 2 supports embedContent instead.
+		return {
+			specificationVersion: bounded.specificationVersion,
+			provider: bounded.provider,
+			modelId: bounded.modelId,
+			maxEmbeddingsPerCall: 1,
+			supportsParallelCalls: bounded.supportsParallelCalls,
+			doEmbed: bounded.doEmbed.bind(bounded),
+		};
 	},
 	validateCredentials(cfg: EmbeddingClientConfig): void {
 		if (!cfg.apiKey) {

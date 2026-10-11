@@ -21,7 +21,14 @@ import type { TokenUsage } from '../../agent/steps/types';
 import type { DecisionEndpointProvenance } from '../decisionProviders/types';
 import type { LanguageEndpointProvenance } from '../llmProviders/types';
 
-type Price = { prefix: string; inputPerM: number; outputPerM: number };
+type Price = {
+	prefix: string;
+	inputPerM: number;
+	outputPerM: number;
+	/** Conservative cache-write ceiling for hard admission; reporting uses base rates. */
+	admissionInputMultiplier?: number;
+	longContext?: { aboveTokens: number; inputPerM: number; outputPerM: number };
+};
 
 /**
  * Catch-all prefix for the decision plane's model family. Exported because
@@ -32,7 +39,28 @@ export const DECISION_MODEL_PRICE_PREFIX = 'jev-';
 
 // Ordered most-specific-first so `gpt-4o-mini` matches before `gpt-4o`.
 const PRICING: Price[] = [
+	// Rates checked 2026-10-11 against official provider pricing. Legacy rows
+	// remain for existing configurations. Google 3.8 uses its post-promotion
+	// ceiling ($1.50/$7.50), avoiding an expired discount in hard admission.
 	// OpenAI
+	{
+		prefix: 'gpt-6-luna',
+		inputPerM: 0.1,
+		outputPerM: 0.5,
+		longContext: { aboveTokens: 272_000, inputPerM: 0.2, outputPerM: 0.75 },
+	},
+	{
+		prefix: 'gpt-6.1-sol',
+		inputPerM: 2,
+		outputPerM: 10,
+		longContext: { aboveTokens: 272_000, inputPerM: 4, outputPerM: 15 },
+	},
+	{
+		prefix: 'gpt-6-astra',
+		inputPerM: 10,
+		outputPerM: 50,
+		longContext: { aboveTokens: 272_000, inputPerM: 20, outputPerM: 75 },
+	},
 	{ prefix: 'gpt-5.6-luna', inputPerM: 1, outputPerM: 6 },
 	{ prefix: 'gpt-5.6-terra', inputPerM: 2.5, outputPerM: 15 },
 	{ prefix: 'gpt-5.6-sol', inputPerM: 5, outputPerM: 30 },
@@ -49,6 +77,25 @@ const PRICING: Price[] = [
 	// list prices differ from the generic `claude-*` fallbacks below — e.g.
 	// claude-opus-4-8 is $5/$25, not the older Opus $15/$75 — so they must
 	// match before the generic prefixes.
+	{
+		prefix: 'claude-haiku-5-5',
+		admissionInputMultiplier: 2,
+		inputPerM: 0.1,
+		outputPerM: 0.5,
+		longContext: { aboveTokens: 100_000, inputPerM: 0.5, outputPerM: 2.5 },
+	},
+	{
+		prefix: 'claude-haiku-5.5',
+		admissionInputMultiplier: 2,
+		inputPerM: 0.1,
+		outputPerM: 0.5,
+		longContext: { aboveTokens: 100_000, inputPerM: 0.5, outputPerM: 2.5 },
+	},
+	{ prefix: 'claude-sonnet-5-5', admissionInputMultiplier: 2, inputPerM: 2, outputPerM: 10 },
+	{ prefix: 'claude-sonnet-5.5', admissionInputMultiplier: 2, inputPerM: 2, outputPerM: 10 },
+	{ prefix: 'claude-opus-5-5', admissionInputMultiplier: 2, inputPerM: 4, outputPerM: 20 },
+	{ prefix: 'claude-opus-5.5', admissionInputMultiplier: 2, inputPerM: 4, outputPerM: 20 },
+	{ prefix: 'claude-fable-5-1', admissionInputMultiplier: 2, inputPerM: 10, outputPerM: 50 },
 	{ prefix: 'claude-fable-5', inputPerM: 10, outputPerM: 50 },
 	{ prefix: 'claude-opus-4-8', inputPerM: 5, outputPerM: 25 },
 	// OpenRouter spells current Anthropic ids with a dot (anthropic/claude-opus-4.8).
@@ -66,6 +113,8 @@ const PRICING: Price[] = [
 	// Google (Gemini) — native ids, and the same ids appear provider-prefixed via
 	// OpenRouter (e.g. `google/gemini-2.5-flash`), where the `includes` fallback
 	// still matches. Most-specific-first: `-lite`/`-8b` variants before the base.
+	{ prefix: 'gemini-3.8-flash', inputPerM: 1.5, outputPerM: 7.5 },
+	{ prefix: 'gemini-3.5-flash-lite', inputPerM: 0.3, outputPerM: 2.5 },
 	{ prefix: 'gemini-3.5-flash', inputPerM: 1.5, outputPerM: 9 },
 	{ prefix: 'gemini-3.1-flash-lite', inputPerM: 0.25, outputPerM: 1.5 },
 	{ prefix: 'gemini-3.1-pro', inputPerM: 2, outputPerM: 12 },
@@ -136,6 +185,9 @@ export type AdmissionProvenance = LanguageEndpointProvenance | DecisionEndpointP
  */
 const ADMISSION_MODELS = {
 	'openai-native': [
+		admissionModel('gpt-6-luna'),
+		admissionModel('gpt-6.1-sol'),
+		admissionModel('gpt-6-astra'),
 		admissionModel('gpt-5.6-luna'),
 		admissionModel('gpt-5.6-terra'),
 		admissionModel('gpt-5.6-sol'),
@@ -149,6 +201,10 @@ const ADMISSION_MODELS = {
 		admissionModel('o3-mini'),
 	],
 	'anthropic-native': [
+		admissionModel('claude-haiku-5-5'),
+		admissionModel('claude-sonnet-5-5'),
+		admissionModel('claude-opus-5-5'),
+		admissionModel('claude-fable-5-1'),
 		admissionModel('claude-fable-5'),
 		admissionModel('claude-opus-4-8'),
 		admissionModel('claude-sonnet-5'),
@@ -160,6 +216,8 @@ const ADMISSION_MODELS = {
 		admissionModel('claude-3-opus'),
 	],
 	'google-native': [
+		admissionModel('gemini-3.5-flash-lite'),
+		admissionModel('gemini-3.8-flash'),
 		admissionModel('gemini-3.5-flash'),
 		admissionModel('gemini-3.1-flash-lite'),
 		admissionModel('gemini-3.1-pro'),
@@ -174,6 +232,12 @@ const ADMISSION_MODELS = {
 		admissionModel('gemini-1.5-pro'),
 	],
 	openrouter: [
+		admissionModel('openai/gpt-6-luna', 'gpt-6-luna'),
+		admissionModel('openai/gpt-6.1-sol', 'gpt-6.1-sol'),
+		admissionModel('anthropic/claude-haiku-5.5', 'claude-haiku-5.5'),
+		admissionModel('anthropic/claude-sonnet-5.5', 'claude-sonnet-5.5'),
+		admissionModel('anthropic/claude-opus-5.5', 'claude-opus-5.5'),
+		admissionModel('google/gemini-3.8-flash', 'gemini-3.8-flash'),
 		admissionModel('anthropic/claude-sonnet-5', 'claude-sonnet-5'),
 		admissionModel('anthropic/claude-opus-4.8', 'claude-opus-4.8'),
 		admissionModel('deepseek/deepseek-v4-flash', 'deepseek-v4-flash'),
@@ -220,6 +284,13 @@ function admissionPriceForModel(
 	return admission ? PRICING.find((price) => price.prefix === admission.pricePrefix) : undefined;
 }
 
+/** Long-context rates apply to the entire request once the input crosses the threshold. */
+function ratesForUsage(price: Price, usage: TokenUsage): Pick<Price, 'inputPerM' | 'outputPerM'> {
+	return price.longContext && usage.promptTokens > price.longContext.aboveTokens
+		? price.longContext
+		: price;
+}
+
 export interface CostEstimate {
 	costUsd: number;
 	/** True when the model id didn't match the table (priced with the default). */
@@ -232,8 +303,9 @@ export function estimateCost(
 ): CostEstimate {
 	if (!usage) return { costUsd: 0, estimated: modelUsed === undefined };
 	const match = priceForModel(modelUsed);
-	const inputPerM = match?.inputPerM ?? DEFAULT_INPUT_PER_M;
-	const outputPerM = match?.outputPerM ?? DEFAULT_OUTPUT_PER_M;
+	const rates = match ? ratesForUsage(match, usage) : undefined;
+	const inputPerM = rates?.inputPerM ?? DEFAULT_INPUT_PER_M;
+	const outputPerM = rates?.outputPerM ?? DEFAULT_OUTPUT_PER_M;
 	const costUsd =
 		(usage.promptTokens / 1_000_000) * inputPerM +
 		(usage.completionTokens / 1_000_000) * outputPerM;
@@ -252,8 +324,9 @@ export function estimateKnownCostMicrousd(
 ): number | undefined {
 	const price = admissionPriceForModel(endpointProvenance, modelUsed);
 	if (!price) return undefined;
-	const input = usage.promptTokens * price.inputPerM;
-	const output = usage.completionTokens * price.outputPerM;
+	const rates = ratesForUsage(price, usage);
+	const input = usage.promptTokens * rates.inputPerM * (price.admissionInputMultiplier ?? 1);
+	const output = usage.completionTokens * rates.outputPerM;
 	const microusd = Math.ceil(input + output);
 	return Number.isSafeInteger(microusd) && microusd >= 0 ? microusd : undefined;
 }

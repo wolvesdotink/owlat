@@ -1,3 +1,4 @@
+import { LEGACY_GOOGLE_EMBEDDING_MODEL } from '@owlat/shared/aiModelCatalog';
 import { computed, reactive, ref, watch } from 'vue';
 import { api } from '@owlat/api';
 import {
@@ -66,12 +67,12 @@ export function useAiProviderForm() {
 		languageProviderKind: 'openai' as LanguageProviderKind,
 		languageBaseUrl: '',
 		apiKey: '',
-		modelFastChoice: 'gpt-5.6-luna',
+		modelFastChoice: languageProviderMeta('openai')!.defaultModels.fast,
 		modelFastCustom: '',
-		modelCapableChoice: 'gpt-5.6-sol',
+		modelCapableChoice: languageProviderMeta('openai')!.defaultModels.capable,
 		modelCapableCustom: '',
 		embeddingProviderKind: 'local' as EmbeddingProviderKind,
-		embeddingModelChoice: 'nomic-embed-text',
+		embeddingModelChoice: embeddingProviderMeta('local')!.defaultModel,
 		embeddingModelCustom: '',
 		embeddingApiKey: '',
 	});
@@ -274,7 +275,12 @@ export function useAiProviderForm() {
 		form.modelCapableCustom = '';
 		form.embeddingProviderKind = c.embeddingProviderKind ?? 'local';
 		const embMeta = embeddingProviderMeta(form.embeddingProviderKind);
-		form.embeddingModelChoice = c.embeddingModel || embMeta?.defaultModel || '';
+		form.embeddingModelChoice =
+			c.embeddingModel ||
+			(c.embeddingProviderKind === 'google'
+				? LEGACY_GOOGLE_EMBEDDING_MODEL
+				: embMeta?.defaultModel) ||
+			'';
 		form.embeddingModelCustom = '';
 		form.embeddingApiKey = '';
 		showLanguageBaseUrl.value =

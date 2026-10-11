@@ -497,6 +497,10 @@
 		"./utils/guards": {
 			"types": "./src/utils/guards.ts",
 			"import": "./src/utils/guards.ts"
+		},
+		"./aiModelCatalog": {
+			"types": "./src/aiModelCatalog.ts",
+			"import": "./src/aiModelCatalog.ts"
 		}
 	},
 	"scripts": {
