@@ -270,9 +270,9 @@ export function formatBaselineReport(report: BaselineReport): string {
 		}
 	};
 	lines.push('decision tasks:');
-	report.tasks.forEach(taskLines);
+	for (const entry of report.tasks) taskLines(entry);
 	lines.push("today's classifiers:");
-	report.todayTasks.forEach(taskLines);
+	for (const entry of report.todayTasks) taskLines(entry);
 	for (const [source, inventory] of Object.entries(report.calls)) {
 		if (!inventory) continue;
 		lines.push(`calls (${source}):`);
