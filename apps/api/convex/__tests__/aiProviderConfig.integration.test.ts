@@ -520,7 +520,8 @@ describe('stored key reuse', () => {
 
 	describe('embedding plane (no stored base URL: the kind is the target)', () => {
 		const hostedOpenAi = {
-			...{ languageProviderKind: 'anthropic' as const, apiKey: 'sk-ant-secret-key-1234' },
+			languageProviderKind: 'anthropic' as const,
+			apiKey: 'sk-ant-secret-key-1234',
 			embeddingProviderKind: 'openai' as const,
 			embeddingModel: 'text-embedding-3-small',
 		};
