@@ -237,9 +237,9 @@
 							},
 							{
 								"id": "d2",
-								"text": "Hi Jonas,\n\nthanks, I'll review the contract and send it back signed by Friday.\n\nMara",
+								"text": "Hi Jonas,\n\nthanks, I'll review the contract and get back to you.\n\nMara",
 								"acceptance": "accept",
-								"reason": "Answers the visible request only."
+								"reason": "Answers the visible request without promising a signature the owner has not given."
 							}
 						]
 					}

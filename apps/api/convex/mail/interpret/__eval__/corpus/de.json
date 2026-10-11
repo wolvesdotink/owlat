@@ -89,8 +89,8 @@
 							{
 								"id": "d1",
 								"text": "Hallo Lena,\n\ndanke dir! Das überarbeitete Angebot bekommst du bis Mittwoch, und Donnerstag um 14 Uhr passt mir gut.\n\nViele Grüße\nMara",
-								"acceptance": "accept",
-								"reason": "Answers both asks in the thread language."
+								"acceptance": "reject",
+								"reason": "Invents the owner's Thursday availability and a delivery commitment the thread does not hold; the owner has to supply both."
 							},
 							{
 								"id": "d2",

@@ -32,6 +32,24 @@ describe('corpus splits', () => {
 		expect(corpus.filter((t) => t.mode === 'actions').length).toBeGreaterThanOrEqual(20);
 	});
 
+	it('accepts no draft that brings a number the thread does not hold', () => {
+		// Invented amounts, dates and times are the commonest unsupported claim a
+		// draft makes; an accepted draft may only repeat what the thread says.
+		const numbers = (text: string) => text.match(/\d+(?:[.,:]\d+)*/g) ?? [];
+		for (const thread of corpus) {
+			const said = new Set(
+				thread.messages.flatMap((m) => numbers(`${m.subject} ${m.text ?? m.html ?? ''}`))
+			);
+			for (const d of thread.labels.decisions) {
+				for (const draft of d.drafts ?? []) {
+					if (draft.acceptance !== 'accept') continue;
+					for (const n of numbers(draft.text))
+						expect(said, `${thread.id}/${draft.id}: ${n}`).toContain(n);
+				}
+			}
+		}
+	});
+
 	it('reports a split that lacks a language, a class or a fair share', () => {
 		const english = corpus.map((t) =>
 			t.split === 'heldout' ? { ...t, locale: 'en' as const } : t

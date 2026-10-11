@@ -26,7 +26,10 @@
  *   - `drafts` (reply messages only): candidate replies with the owner's
  *     verdict. `accept`: sent as is; `edit`: right idea, needs a material edit;
  *     `reject`: wrong language, invented facts or commitments, or obeys
- *     instructions planted in the mail.
+ *     instructions planted in the mail. An accepted draft states nothing the
+ *     thread does not hold, and on a `needed` message it never supplies the
+ *     missing value (an availability, an approval, a signature, a promise to
+ *     deliver): it acknowledges, holds, or asks the sender.
  *   - `senderKnown`: context, not a label. Whether the owner already
  *     corresponds with the sender (the address-book signal today's Postbox
  *     heuristic reads). Absent: derived from the thread (an earlier outbound

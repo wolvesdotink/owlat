@@ -66,9 +66,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hello Jonas,\n\nI'm sorry your order 4411 arrived damaged. Could you send us a photo of the damage? We'll arrange the replacement right after.\n\nAcme Support",
+								"text": "Hello Jonas,\n\nI'm sorry your order 4411 arrived damaged. Could you send us a photo of the damage? We'll get back to you with the next steps right after.\n\nAcme Support",
 								"acceptance": "accept",
-								"reason": "Acknowledges and asks for what the replacement needs."
+								"reason": "Acknowledges and asks the sender for evidence without promising the replacement the team has not approved."
 							},
 							{
 								"id": "d2",
