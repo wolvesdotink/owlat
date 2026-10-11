@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+import { enableFeatures } from '../../__tests__/factories';
 
 // See receiveMessageAuth.test.ts: the `../../**` glob omits the `inbox/` dir it
 // climbed through, so merge a second glob rooted at `inbox/` and re-prefix its keys.
@@ -85,5 +86,38 @@ describe('Team ingest records the MTA spam verdict (L5)', () => {
 		expect(row).not.toBeNull();
 		expect(row?.mtaSpamVerdict).toBeUndefined();
 		expect(row?.mtaSpamScore).toBeUndefined();
+	});
+});
+
+/**
+ * M2 (ADR-0073): outcome sentiment keeps its own consumer policy. A reply that
+ * reply generation suppresses (here: automated mail) still schedules the
+ * outcome classifier, which re-checks inside that the reply answers an
+ * auto-sent message. Reply-generation suppression must not be applied to it.
+ */
+describe('outcome sentiment keeps its own consumer policy (M2)', () => {
+	it('is scheduled for a reply whose own pipeline run is suppressed', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai.agent']);
+
+		await t.mutation(internal.inbox.messages.receiveMessage, {
+			from: 'Alice <alice@customer.example>',
+			to: 'support@org.example',
+			subject: 'Re: your answer',
+			textBody: 'This did not help at all.',
+			headers: JSON.stringify({ 'Auto-Submitted': 'auto-replied' }),
+			messageId: '<reply-1@customer.example>',
+			inReplyTo: '<agent-1@org.example>',
+			timestamp: Date.now(),
+		});
+
+		const scheduled = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		const names = scheduled.map((f) => f.name);
+		expect(
+			names.some((n) => n.includes('outcomeFeedback') && n.includes('classifyReplyOutcome'))
+		).toBe(true);
+		// The reply itself is not handed to the agent pipeline.
+		expect(names.some((n) => n.includes('walker'))).toBe(false);
 	});
 });
