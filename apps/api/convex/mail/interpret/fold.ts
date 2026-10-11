@@ -40,7 +40,7 @@ import {
 } from './reducePlan';
 import type { ReduceEvidence, ReduceFact, ReduceItem, ReduceResult } from './reduceInput';
 import type { PlanHeld } from './reduceHeld';
-import { heldFieldsOf, sourcesOfClaim, type ItemFieldSources } from './heldSources';
+import { heldFieldsOf, KEYS_OF, sourcesOfClaim, type ItemFieldSources } from './heldSources';
 import { applyRefill, type RefilledFields } from './redactedRefill';
 
 /** Evidence in memory: stored (sealed quote) or new (plaintext quote, `isPlain`). */
@@ -79,34 +79,44 @@ export type MemHeld = Omit<PlanHeld, 'addEvidence'> & {
 };
 
 /**
- * A held update merged onto the one already held: newer values win; a newer
- * removal deletes the value it names (round 7 F3); an older removal stays
- * unless a newer value re-sets the field; each field keeps the source of its
- * newest proposal. Pure.
+ * A held update merged onto the one already held (PR review PR-2): each field
+ * (a value or its removal) is resolved by its source's message time, newest
+ * wins, a tie goes to the later applied (`next`); a field without a stamp (a
+ * held update from before stamps) loses to a stamped one. Quotes always merge,
+ * and each kept field keeps its winner's source. Pure.
  */
 export function mergeHeld(prior: MemHeld | undefined, next: MemHeld): MemHeld {
-	const merged: MemHeld = {
-		...prior,
-		...next,
-		evidence: [...(prior?.evidence ?? []), ...next.evidence],
-	};
+	const { removes: _r, fieldSources: _f, ...base } = { ...prior, ...next };
+	const merged: MemHeld = { ...base, evidence: [...(prior?.evidence ?? []), ...next.evidence] };
 	for (const key of Object.keys(next) as Array<keyof MemHeld>) {
 		if (next[key] === undefined && prior?.[key] !== undefined) {
 			(merged as Record<string, unknown>)[key] = prior[key];
 		}
 	}
-	for (const field of next.removes ?? []) delete merged[field];
-	const removes = [...new Set([...(prior?.removes ?? []), ...(next.removes ?? [])])].filter(
-		(key) => next[key] === undefined
-	);
+	const sourceOf = (held: MemHeld | undefined) =>
+		new Map((held?.fieldSources ?? []).map((f) => [f.field, f]));
+	const priorSources = sourceOf(prior);
+	const nextSources = sourceOf(next);
+	const priorFields = new Set(prior ? heldFieldsOf(prior) : []);
+	const nextFields = new Set(heldFieldsOf(next));
+	const removes: NonNullable<MemHeld['removes']> = [];
+	const fieldSources: NonNullable<MemHeld['fieldSources']> = [];
+	for (const field of new Set([...priorFields, ...nextFields])) {
+		const atOf = (stamp: { at?: number } | undefined) => stamp?.at ?? -Infinity;
+		const isNextWinning =
+			nextFields.has(field) &&
+			(!priorFields.has(field) || atOf(nextSources.get(field)) >= atOf(priorSources.get(field)));
+		const winner = isNextWinning ? next : prior!;
+		for (const key of KEYS_OF[field]) {
+			if (winner[key] !== undefined) (merged as Record<string, unknown>)[key] = winner[key];
+			else delete merged[key];
+		}
+		if (winner.removes?.includes(field as 'due')) removes.push(field as 'due');
+		const source = (isNextWinning ? nextSources : priorSources).get(field);
+		if (source) fieldSources.push(source);
+	}
 	if (removes.length > 0) merged.removes = removes;
-	else delete merged.removes;
-	const sources = new Map((prior?.fieldSources ?? []).map((f) => [f.field, f]));
-	for (const f of next.fieldSources ?? []) sources.set(f.field, f);
-	const held = new Set(heldFieldsOf(merged));
-	const fieldSources = [...sources.values()].filter((f) => held.has(f.field));
 	if (fieldSources.length > 0) merged.fieldSources = fieldSources;
-	else delete merged.fieldSources;
 	return merged;
 }
 

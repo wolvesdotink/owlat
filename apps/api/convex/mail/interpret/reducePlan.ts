@@ -72,7 +72,10 @@ export type PlanItem = Pick<
 	| 'redactedFields'
 > &
 	Partial<
-		Pick<Doc<'threadItems'>, 'requester' | 'responsible' | 'beneficiary' | 'responsibility'>
+		Pick<
+			Doc<'threadItems'>,
+			'requester' | 'responsible' | 'beneficiary' | 'responsibility' | 'fieldSources'
+		>
 	> & {
 		evidence: readonly EvidenceRef[];
 		/** Unsealed assertion, for the duplicate check. */
@@ -147,7 +150,7 @@ export interface ReductionPlan {
 	inserts: Array<{ item: ReduceItem; index: number; possibleDuplicateOfId?: Id<'threadItems'> }>;
 	patches: ItemPatch[];
 	facts: FactOp[];
-	dropped: Array<{ kind: 'transition' | 'fact'; index: number; reason: DropReason }>;
+	dropped: Array<{ kind: 'item' | 'transition' | 'fact'; index: number; reason: DropReason }>;
 	/** Transitions on an obligation not seen yet (indexes into `transitions`), kept pending. */
 	unresolved: number[];
 }
@@ -199,6 +202,10 @@ export function advancesStamp(
 ): boolean {
 	if (!stamp) return true;
 	return setBy.at > stamp.at || (setBy.at === stamp.at && setBy.sourceKey !== stamp.sourceKey);
+}
+
+function same(a: unknown, b: unknown): boolean {
+	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 /** Plan one message's changes. Pure. */
@@ -298,10 +305,26 @@ export function planReduction(
 				// A verified re-read of the item's only source updates it in place.
 				p.promoteFrom = proposal;
 			} else {
+				// Another message's claim: it fills what the item lacks, and a
+				// verified one changes a term it states differently when it is
+				// newer than the source that set that term (PR review PR-1;
+				// `fieldSources`, the reducer's per-field order). An older one
+				// is kept as a quote and reported, never applied over a newer.
 				const fill: ItemPatch['fill'] = {};
-				if (!match.due && proposal.due) fill.due = proposal.due;
-				if (!match.amount && proposal.amount) fill.amount = proposal.amount;
-				if (!match.options && proposal.options) fill.options = proposal.options;
+				const setBy = { sourceKey, at: opts.sourceAt };
+				for (const field of ['due', 'amount', 'options'] as const) {
+					const value = proposal[field];
+					if (!value) continue;
+					if (!match[field]) {
+						(fill as Record<string, unknown>)[field] = value;
+					} else if (proposal.verify === 'passed' && !same(value, match[field])) {
+						if (advancesStamp(match.fieldSources?.[field], setBy)) {
+							(fill as Record<string, unknown>)[field] = value;
+						} else {
+							plan.dropped.push({ kind: 'item', index, reason: 'out_of_order' });
+						}
+					}
+				}
 				if (Object.keys(fill).length > 0) p.fill = fill;
 			}
 			// Asked again by ANOTHER message after it was closed: a person looks.

@@ -17,7 +17,7 @@ type FieldSource = NonNullable<Held['fieldSources']>[number];
 export type HeldField = FieldSource['field'];
 
 /** The stored keys a held field stands for. */
-const KEYS_OF: Record<HeldField, ReadonlyArray<keyof HeldValues>> = {
+export const KEYS_OF: Record<HeldField, ReadonlyArray<keyof HeldValues>> = {
 	due: ['due'],
 	amount: ['amount'],
 	options: ['options'],
