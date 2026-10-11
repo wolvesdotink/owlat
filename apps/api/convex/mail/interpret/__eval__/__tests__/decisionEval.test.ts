@@ -130,12 +130,27 @@ describe('runDecisionEval', () => {
 					: { kind: 'noul', probability: 0.5 },
 			{ fail: (call) => call % 2 === 1 }
 		);
-		const recovered = await runDecisionEval(small, { provider: flakyProvider, split: 'heldout' });
+		const sleeps: number[] = [];
+		const sleep = async (ms: number) => {
+			sleeps.push(ms);
+		};
+		const recovered = await runDecisionEval(small, {
+			provider: flakyProvider,
+			split: 'heldout',
+			sleep,
+		});
+		expect(sleeps).toHaveLength(13);
+		expect(sleeps.every((ms) => ms === 1000)).toBe(true);
 		expect(recovered.predictions.every((p) => p.outcome === 'answered')).toBe(true);
 		expect(recovered.rows.filter((r) => r.attempt === 2)).toHaveLength(13);
 
 		const down = mockProvider(() => ({ kind: 'noul', probability: 1 }), { fail: () => true });
-		const run = await runDecisionEval(small, { provider: down, split: 'heldout', maxAttempts: 3 });
+		const run = await runDecisionEval(small, {
+			provider: down,
+			split: 'heldout',
+			maxAttempts: 3,
+			sleep,
+		});
 		expect(run.predictions.every((p) => p.outcome === 'failed')).toBe(true);
 		expect(run.predictions[0]?.error).toContain('503');
 		// Necessity and drafts are still asked: outages do not change the call plan.
@@ -144,6 +159,11 @@ describe('runDecisionEval', () => {
 		const report = scoreDecisionTask(small, run, 'disposition');
 		expect(report).toMatchObject({ labelled: 4, answered: 0, failed: 4 });
 		expect(report.accuracy.estimate).toBeNull();
+
+		// An adapter that retries inside `ask` gets one request per round trip.
+		const selfRetrying = { ...down, handlesRetries: true };
+		const once = await runDecisionEval(small, { provider: selfRetrying, split: 'heldout', sleep });
+		expect(once.rows).toHaveLength(13);
 	});
 
 	it('fails a prediction whose answer has the wrong kind', async () => {
@@ -298,13 +318,19 @@ describe('scoreDecisionTask', () => {
 describe('decisionProviderFromAdapter', () => {
 	it('asks the adapter with its config, the pinned model and the language model', async () => {
 		const ask = vi.fn(async () => ({}) as DecisionResult);
-		const adapter = { kind: 'llm', defaultModel: '', ask } as unknown as DecisionProviderAdapter;
+		const adapter = {
+			kind: 'llm',
+			defaultModel: '',
+			handlesRetries: true,
+			ask,
+		} as unknown as DecisionProviderAdapter;
 		const provider = decisionProviderFromAdapter(
 			adapter,
 			{ apiKey: 'k' },
 			{ languageModel: 'gpt-6-luna' }
 		);
 		expect(provider.name).toBe('llm:gpt-6-luna');
+		expect(provider.handlesRetries).toBe(true);
 		await provider.ask({ state: 's', questions: {} });
 		expect(ask).toHaveBeenCalledWith(
 			{ apiKey: 'k' },

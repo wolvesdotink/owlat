@@ -53,6 +53,12 @@ export type DecisionEvalTask = (typeof DECISION_EVAL_TASKS)[number];
 /** A decision provider the runner can ask. Exactly one request per call. */
 export interface EvalDecisionProvider {
 	readonly name: string;
+	/**
+	 * The adapter retries inside `ask` (the language-backed one does, through
+	 * `runLlmObject`). The runner then makes one request per round trip, as the
+	 * decision dispatch does, and its rows undercount those inner retries.
+	 */
+	readonly handlesRetries?: boolean;
 	ask(request: { state: DecisionState; questions: QuestionSet }): Promise<DecisionResult>;
 }
 
@@ -76,6 +82,7 @@ export function decisionProviderFromAdapter(
 				: languageModel.modelId;
 	return {
 		name: `${adapter.kind}:${model}`,
+		handlesRetries: adapter.handlesRetries,
 		ask: ({ state, questions }) =>
 			adapter.ask(config, {
 				state,
@@ -138,11 +145,16 @@ export interface DecisionRunOptions {
 	provider: EvalDecisionProvider;
 	split: EvalSplit | 'all';
 	bundles?: DecisionEvalBundles;
-	/** Requests per round trip, the first included. */
+	/** Requests per round trip, the first included; 1 when the provider retries itself. */
 	maxAttempts?: number;
 	/** Wall clock for `latencyMs`; injected so tests stay deterministic. */
 	now?: () => number;
+	/** Wait before a retry; injected so tests do not wait. Default: 1 s × the attempt just failed. */
+	sleep?: (ms: number) => Promise<void>;
 }
+
+const RETRY_DELAY_MS = 1000;
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** An error as a short, single string for a report. */
 export const errorText = (error: unknown) =>
@@ -162,8 +174,9 @@ export async function runDecisionEval(
 	options: DecisionRunOptions
 ): Promise<DecisionRun> {
 	const bundles = options.bundles ?? EVAL_DECISION_BUNDLES;
-	const maxAttempts = Math.max(1, options.maxAttempts ?? 2);
+	const maxAttempts = options.provider.handlesRetries ? 1 : Math.max(1, options.maxAttempts ?? 2);
 	const now = options.now ?? Date.now;
+	const sleep = options.sleep ?? realSleep;
 	const run: DecisionRun = {
 		executor: options.provider.name,
 		split: options.split,
@@ -182,6 +195,7 @@ export async function runDecisionEval(
 		const requestId = `${rootRequestId}#${kind}${suffix}`;
 		let error = 'no attempt';
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			if (attempt > 1) await sleep(RETRY_DELAY_MS * (attempt - 1));
 			const started = now();
 			const base = {
 				feature: `eval.${LEDGER_TASK[kind]}`,
