@@ -7,6 +7,7 @@
 			"slices": ["mailing_lists", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -37,7 +38,16 @@
 				}
 			],
 			"labels": {
-				"items": []
+				"items": [],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "newsletter",
+						"senderKnown": false
+					}
+				]
 			},
 			"expectIneligible": true
 		},
@@ -46,6 +56,7 @@
 			"slices": ["mailing_lists", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -76,7 +87,16 @@
 				}
 			],
 			"labels": {
-				"items": []
+				"items": [],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "newsletter",
+						"senderKnown": false
+					}
+				]
 			},
 			"expectIneligible": true
 		},
@@ -85,6 +105,7 @@
 			"slices": ["mailing_lists", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -115,7 +136,16 @@
 				}
 			],
 			"labels": {
-				"items": []
+				"items": [],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "newsletter",
+						"senderKnown": false
+					}
+				]
 			},
 			"expectIneligible": true
 		},
@@ -124,6 +154,7 @@
 			"slices": ["mailing_lists", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -172,6 +203,15 @@
 							"phrase": "before Friday"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "other",
+						"senderKnown": false
+					}
 				]
 			}
 		},
@@ -180,6 +220,7 @@
 			"slices": ["mailing_lists", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -244,6 +285,15 @@
 						"quote": "die Mitgliederversammlung findet am 24. Oktober statt.",
 						"segmentKind": "fresh",
 						"assertion": "Die Mitgliederversammlung ist am 24. Oktober"
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "informational",
+						"postboxCategory": "other",
+						"senderKnown": false
 					}
 				]
 			}

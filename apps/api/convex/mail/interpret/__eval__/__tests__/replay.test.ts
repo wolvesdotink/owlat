@@ -58,7 +58,7 @@ describe('eval corpus', () => {
 		const orphan = {
 			...thread,
 			id: 'x',
-			labels: { items: [{ ...thread.labels.items[0], messageId: 'nope' }] },
+			labels: { ...thread.labels, items: [{ ...thread.labels.items[0], messageId: 'nope' }] },
 		};
 		expect(() => parseEvalCorpus([file([orphan])])).toThrow(/unknown message/);
 		expect(() => parseEvalCorpus([{ version: 2, slice: 'en', threads: [] }])).toThrow();

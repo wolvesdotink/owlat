@@ -7,6 +7,7 @@
 			"slices": ["de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -73,6 +74,32 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true,
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hallo Lena,\n\ndanke dir! Das überarbeitete Angebot bekommst du bis Mittwoch, und Donnerstag um 14 Uhr passt mir gut.\n\nViele Grüße\nMara",
+								"acceptance": "accept",
+								"reason": "Answers both asks in the thread language."
+							},
+							{
+								"id": "d2",
+								"text": "Hi Lena,\n\nI will send the offer soon.\n\nMara",
+								"acceptance": "reject",
+								"reason": "Wrong language, and the call question is ignored."
+							}
+						]
+					}
 				]
 			}
 		},
@@ -81,6 +108,7 @@
 			"slices": ["de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -141,6 +169,18 @@
 						"assertion": "Kontakt zum Amtsgericht aufnehmen",
 						"reject": "proposal"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": false
+					}
 				]
 			}
 		},
@@ -149,6 +189,7 @@
 			"slices": ["de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -245,6 +286,14 @@
 						"segmentKind": "fresh",
 						"assertion": "Die Fotoauswahl ist fertig"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m2",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person"
+					}
 				]
 			}
 		},
@@ -253,6 +302,7 @@
 			"slices": ["de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -308,6 +358,18 @@
 						"assertion": "Raum für Donnerstag reservieren",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -316,6 +378,7 @@
 			"slices": ["de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -363,6 +426,18 @@
 						"due": {
 							"phrase": "bis Montag"
 						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
 					}
 				]
 			}

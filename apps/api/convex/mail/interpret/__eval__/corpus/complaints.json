@@ -1,0 +1,150 @@
+{
+	"version": 1,
+	"slice": "complaints",
+	"threads": [
+		{
+			"id": "cmp-001",
+			"slices": ["complaints", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"split": "train",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Victor Hale",
+						"email": "victor@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T07:00:00+02:00",
+					"subject": "Noise",
+					"text": "Hi Mara,\n\nthe noise from your renovation started at 6:30 again this morning. Please keep to the agreed hours of 8:00 to 18:00.\n\nVictor\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": [],
+						"responsibility": "us",
+						"quote": "Please keep to the agreed hours of 8:00 to 18:00.",
+						"segmentKind": "fresh",
+						"assertion": "Keep the renovation to 8:00 to 18:00",
+						"requester": {
+							"name": "Victor Hale",
+							"email": "victor@example.net"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"senderKnown": false,
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hi Victor,\n\nI'm sorry about this morning. I'll talk to the crew today so they keep to 8:00 to 18:00.\n\nMara",
+								"acceptance": "accept",
+								"reason": "Apologises and answers the complaint."
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"id": "cmp-002",
+			"slices": ["complaints", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"split": "train",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Greta Lorenz",
+						"email": "greta@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T07:30:00+02:00",
+					"subject": "Unvollständige Lieferung",
+					"text": "Hallo Mara,\n\ndie Lieferung war unvollständig: Es fehlen 3 von 10 Kartons. Ich erwarte bis Donnerstag eine Lösung.\n\nGreta\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": [],
+						"responsibility": "us",
+						"quote": "Ich erwarte bis Donnerstag eine Lösung.",
+						"segmentKind": "fresh",
+						"assertion": "Bis Donnerstag eine Lösung für die fehlenden Kartons finden",
+						"requester": {
+							"name": "Greta Lorenz",
+							"email": "greta@example.org"
+						},
+						"responsible": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"due": {
+							"phrase": "bis Donnerstag"
+						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed",
+							"missing": ["when the missing boxes can ship"]
+						},
+						"senderKnown": false
+					}
+				]
+			}
+		}
+	]
+}

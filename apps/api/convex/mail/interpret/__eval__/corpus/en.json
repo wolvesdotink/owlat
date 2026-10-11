@@ -7,6 +7,7 @@
 			"slices": ["en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -86,6 +87,32 @@
 						"segmentKind": "fresh",
 						"assertion": "The launch moved to 14 November"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true,
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hi Jonas,\n\nthanks for the update on the launch date. I'll send the signed contract by Friday.\n\nBest,\nMara",
+								"acceptance": "edit",
+								"reason": "Leaves the question about the Tuesday call unanswered."
+							},
+							{
+								"id": "d2",
+								"text": "Hallo Jonas,\n\ndanke für die Info. Den Vertrag schicke ich dir bis Freitag.\n\nMara",
+								"acceptance": "reject",
+								"reason": "Wrong language for an English thread."
+							}
+						]
+					}
 				]
 			}
 		},
@@ -94,6 +121,7 @@
 			"slices": ["en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -204,6 +232,14 @@
 						"assertion": "Send the report on Friday",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m3",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person"
+					}
 				]
 			}
 		},
@@ -212,6 +248,7 @@
 			"slices": ["en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -260,6 +297,18 @@
 							"phrase": "by Monday"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -268,6 +317,7 @@
 			"slices": ["en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -361,6 +411,14 @@
 						"assertion": "Send a revised quote",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m2",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person"
+					}
 				]
 			}
 		},
@@ -369,6 +427,7 @@
 			"slices": ["en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -424,6 +483,18 @@
 						"assertion": "Book the large meeting room",
 						"reject": "not_fresh"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -432,6 +503,7 @@
 			"slices": ["en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -484,6 +556,15 @@
 							"currency": "EUR"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -492,6 +573,7 @@
 			"slices": ["en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -536,6 +618,148 @@
 							"name": "Mara Lind",
 							"email": "mara@example.com"
 						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
+				]
+			}
+		},
+		{
+			"id": "en-008",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"split": "train",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Priya Nair",
+						"email": "priya@example.org"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T12:00:00+02:00",
+					"subject": "Thanks!",
+					"text": "Hi Mara,\n\nthanks a lot for your help with the workshop yesterday, it went really well.\n\nPriya\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
+				]
+			}
+		},
+		{
+			"id": "en-009",
+			"slices": ["en"],
+			"locale": "en",
+			"mode": "brief",
+			"split": "heldout",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "outbound",
+					"from": {
+						"name": "Mara Lind",
+						"email": "mara@example.com"
+					},
+					"to": [
+						{
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					],
+					"sentAt": "2026-10-07T09:00:00+02:00",
+					"subject": "Venue",
+					"text": "Hi Tomás,\n\ncould you send me the venue address?\n\nMara\n"
+				},
+				{
+					"id": "m2",
+					"direction": "inbound",
+					"from": {
+						"name": "Tomás Ruiz",
+						"email": "tomas@example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T10:00:00+02:00",
+					"subject": "Re: Venue",
+					"text": "Hi Mara,\n\nit's Harbour Hall, Pier 3. Doors open at 18:00.\n\nTomás\n\nOn Wed, 7 Oct 2026 at 09:00, Mara Lind <mara@example.com> wrote:\n> could you send me the venue address?\n"
+				}
+			],
+			"labels": {
+				"items": [
+					{
+						"id": "i1",
+						"messageId": "m1",
+						"intent": "request",
+						"facets": ["information"],
+						"responsibility": "them",
+						"quote": "could you send me the venue address?",
+						"segmentKind": "fresh",
+						"assertion": "Tomás sends the venue address",
+						"requester": {
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						},
+						"responsible": {
+							"name": "Tomás Ruiz",
+							"email": "tomas@example.net"
+						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m2",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person"
+					}
+				],
+				"traps": [
+					{
+						"id": "t1",
+						"messageId": "m2",
+						"quote": "could you send me the venue address?",
+						"segmentKind": "quoted",
+						"assertion": "Send the venue address",
+						"reject": "not_fresh"
 					}
 				]
 			}

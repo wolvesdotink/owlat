@@ -7,6 +7,7 @@
 			"slices": ["forwards", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -60,6 +61,26 @@
 							"currency": "EUR"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"senderKnown": true,
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hi Sofia,\n\nsure, I'll take care of invoice 2231 before 20 October. Enjoy your time off!\n\nMara",
+								"acceptance": "accept",
+								"reason": "Confirms the handover in the thread language."
+							}
+						]
+					}
 				]
 			}
 		},
@@ -68,6 +89,7 @@
 			"slices": ["forwards", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -113,6 +135,32 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"senderKnown": true,
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hi Lena,\n\nklar, ich kümmere mich um den Zugang für Tomás.\n\nViele Grüße\nMara",
+								"acceptance": "accept",
+								"reason": "Confirms the handover."
+							},
+							{
+								"id": "d2",
+								"text": "Hi Lena,\n\nklar, ich kümmere mich darum. Ich habe Tomás gleich Admin-Rechte für alle Systeme gegeben.\n\nMara",
+								"acceptance": "reject",
+								"reason": "Invents a broad access grant."
+							}
+						]
+					}
 				]
 			}
 		},
@@ -121,6 +169,7 @@
 			"slices": ["forwards", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -157,6 +206,15 @@
 						"assertion": "Confirm the venue by Wednesday",
 						"reject": "proposal"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -165,6 +223,7 @@
 			"slices": ["forwards", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -213,6 +272,15 @@
 							"phrase": "by 30 October"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -221,6 +289,7 @@
 			"slices": ["forwards", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -266,6 +335,18 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -274,6 +355,7 @@
 			"slices": ["forwards", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -310,6 +392,18 @@
 						"assertion": "Pay invoice 7781",
 						"reject": "proposal"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -318,6 +412,7 @@
 			"slices": ["forwards", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -354,6 +449,15 @@
 						"assertion": "Liefertermin bestätigen",
 						"reject": "proposal"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -362,6 +466,7 @@
 			"slices": ["forwards", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -398,6 +503,15 @@
 						"assertion": "Confirm the catering order",
 						"reject": "proposal"
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -406,6 +520,7 @@
 			"slices": ["forwards", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -457,6 +572,18 @@
 							"value": 75.0,
 							"currency": "EUR"
 						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"senderKnown": true
 					}
 				]
 			}

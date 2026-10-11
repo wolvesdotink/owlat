@@ -7,6 +7,7 @@
 			"slices": ["cc_not_addressed", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -61,6 +62,15 @@
 							"phrase": "by Thursday"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -69,6 +79,7 @@
 			"slices": ["cc_not_addressed", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -123,6 +134,15 @@
 							"phrase": "before noon"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -131,6 +151,7 @@
 			"slices": ["cc_not_addressed", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -182,6 +203,15 @@
 							"email": "emil@example.net"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -190,6 +220,7 @@
 			"slices": ["cc_not_addressed", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -259,6 +290,18 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -267,6 +310,7 @@
 			"slices": ["cc_not_addressed", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -321,6 +365,15 @@
 							"name": "Noah Berg",
 							"email": "noah@example.net"
 						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "no_work",
+						"disposition": "informational",
+						"postboxCategory": "person",
+						"senderKnown": true
 					}
 				]
 			}
