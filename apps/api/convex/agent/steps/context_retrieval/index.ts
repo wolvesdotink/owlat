@@ -11,6 +11,7 @@ import type { Id } from '../../../_generated/dataModel';
 import type { ActionCtx } from '../../../_generated/server';
 import type { AgentStepModule } from '../types';
 import { openInboundMessageBody } from '../../../lib/messageBodyInbound';
+import { embedRetrievalQuery } from '../../../knowledge/retrieval';
 import {
 	EMERGENCY_BUDGET,
 	activityContentSnippet,
@@ -19,16 +20,12 @@ import {
 } from './emergency';
 import { buildCurrentMessageSection, inboundBodyForContext } from './currentMessage';
 
-// Re-export the pure emergency helpers so existing importers (and tests) that
-// reference them via the step module keep working after the domain-sibling split.
+// Re-export the emergency and current-message helpers so existing importers (and
+// tests) that reference them via the step module keep working after the split.
 export { activityContentSnippet, truncateOneLine } from './emergency';
-// Re-export the current-message helpers so existing importers/tests that
-// reference them via the step module keep working after the domain-sibling split.
 export { inboundBodyForContext, buildCurrentMessageSection } from './currentMessage';
 
-/**
- * Token budget for context (approximate, based on ~4 chars per token).
- */
+/** Token budget for context (approximate, based on ~4 chars per token). */
 const CONTEXT_BUDGET = {
 	maxTokens: 4000,
 	recentMessagesCount: 5,
@@ -108,8 +105,7 @@ export async function assembleInboundBriefing(
 	const emergencyCommitmentLines: string[] = [];
 	const emergencyKnowledgeLines: string[] = [];
 
-	// Coverage tracking — which briefing legs actually produced content.
-	// Cheap booleans/counts derived inline; no extra LLM call.
+	// Coverage tracking — which briefing legs produced content (no extra LLM call).
 	let hasContact = false;
 	let hasThread = false;
 	let hasKnowledge = false;
@@ -252,15 +248,29 @@ export async function assembleInboundBriefing(
 			internal.knowledge.graphTraversal.isGraphRetrievalEnabled,
 			{}
 		);
-		const knowledge = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
+		// L8 + empty-corpus skip (ADR-0073): one query embedding for both searches,
+		// none when neither table holds a vector; the text still feeds both
+		// full-text legs. An embed failure leaves both empty, as it did before.
+		const query = await embedRetrievalQuery(
+			ctx,
+			['knowledgeEntries', 'semanticFiles'],
 			queryText,
-			limit: CONTEXT_BUDGET.knowledgeEntryLimit,
-			scopeToContact,
-			// The briefing grounds a Team Inbox reply that a reader reviews, so
-			// knowledge learned from earlier inbox mail is in scope here.
-			includeInboxDerived: true,
-			expandGraph: graphRetrieval,
-		});
+			'[context_retrieval]'
+		);
+		const embedding = query.kind === 'vector' ? { embedding: query.embedding } : {};
+		const knowledge =
+			query.kind === 'failed'
+				? []
+				: await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
+						queryText,
+						...embedding,
+						limit: CONTEXT_BUDGET.knowledgeEntryLimit,
+						scopeToContact,
+						// The briefing grounds a Team Inbox reply that a reader reviews, so
+						// knowledge learned from earlier inbox mail is in scope here.
+						includeInboxDerived: true,
+						expandGraph: graphRetrieval,
+					});
 		if (knowledge.length > 0) {
 			hasKnowledge = true;
 			knowledgeHitCount = knowledge.length;
@@ -346,11 +356,15 @@ export async function assembleInboundBriefing(
 
 		// 3c. Relevant source documents (the actual contract/invoice/etc.,
 		// not a summary of it).
-		const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
-			queryText,
-			limit: CONTEXT_BUDGET.fileLimit,
-			scopeToContact,
-		});
+		const files =
+			query.kind === 'failed'
+				? []
+				: await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
+						queryText,
+						...embedding,
+						limit: CONTEXT_BUDGET.fileLimit,
+						scopeToContact,
+					});
 		if (files.length > 0) {
 			hasFiles = true;
 			contextParts.push(

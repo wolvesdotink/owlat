@@ -28,6 +28,7 @@ import {
 } from './lib/llmProvider';
 import { AiNotConfiguredError } from './lib/aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
+import { embedRetrievalQuery } from './knowledge/retrieval';
 import { embed } from 'ai';
 import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
@@ -348,19 +349,21 @@ export const semanticSearch = internalAction({
 	): Promise<Array<Doc<'semanticFiles'> & { url: string | null; _score: number }>> => {
 		const queryText = args.queryText?.trim();
 
-		let vector = args.embedding;
-		if (!vector || vector.length === 0) {
+		// A caller's vector is used as given (Team retrieval embeds once for this
+		// search and the knowledge search). Otherwise the query is embedded here,
+		// and only when the table holds a vector to find
+		// (knowledge/vectorCorpus.ts); with none, the full-text leg runs alone.
+		let vector = args.embedding && args.embedding.length > 0 ? args.embedding : undefined;
+		if (!vector) {
 			if (!queryText) return [];
-			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
-			// actionable error rather than silently returning zero results.
-			const embeddingModel = await resolveEmbeddingModel(ctx);
-			try {
-				const { embedding } = await embed({ model: embeddingModel, value: queryText });
-				vector = toIndexVector(embedding);
-			} catch (error) {
-				logInfo('[semantic_file] search embed failed', { error: String(error) });
-				return [];
-			}
+			const query = await embedRetrievalQuery(
+				ctx,
+				['semanticFiles'],
+				queryText,
+				'[semantic_file] search'
+			);
+			if (query.kind === 'failed') return [];
+			if (query.kind === 'vector') vector = query.embedding;
 		}
 
 		const limit = args.limit ?? 10;
@@ -373,10 +376,9 @@ export const semanticSearch = internalAction({
 		const fetchLimit = Math.min(256, Math.max(limit * 5, 50));
 
 		// Leg 1 — semantic vector search (paraphrase / conceptual matches).
-		const hits = await ctx.vectorSearch('semanticFiles', 'vector_files', {
-			vector,
-			limit: fetchLimit,
-		});
+		const hits = vector
+			? await ctx.vectorSearch('semanticFiles', 'vector_files', { vector, limit: fetchLimit })
+			: [];
 		const vectorRanked: Id<'semanticFiles'>[] = hits.map((h) => h._id);
 		const scoreById = new Map<string, number>(hits.map((h) => [h._id as string, h._score]));
 

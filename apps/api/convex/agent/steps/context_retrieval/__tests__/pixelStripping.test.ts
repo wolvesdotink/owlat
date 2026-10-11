@@ -31,6 +31,8 @@ function makeCtx(message: Record<string, unknown>) {
 			getRecentActivities: [],
 			getThreadMessages: [],
 			isGraphRetrievalEnabled: false,
+			// knowledge/vectorCorpus: no table holds a vector, so no query embedding.
+			hasQueryableVectors: false,
 		},
 		actions: { knowledge: [], semanticFileProcessing: [] },
 		mutations: { recordContextTier: null },
