@@ -43,6 +43,11 @@ import { recordAuditLog } from './lib/auditLog';
 import { throwInvalidInput } from './_utils/errors';
 import { validateOutboundUrl } from './lib/outboundUrlValidation';
 import {
+	assertEnvFallbackKeepsEmbeddingSpace,
+	nextEmbeddingModelVersion,
+	resolveStoredEmbeddingModel,
+} from './lib/embeddingSpace';
+import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
@@ -80,6 +85,7 @@ export const getConfig = authedQuery({
 			keyPreview: row.keyPreview,
 			embeddingProviderKind: row.embeddingProviderKind,
 			embeddingModel: row.embeddingModel,
+			resolvedEmbeddingModel: resolveStoredEmbeddingModel(row),
 			embeddingModelVersion: row.embeddingModelVersion,
 			isEmbeddingKeySet: row.embeddingSecretCiphertext !== undefined,
 			embeddingKeyPreview: row.embeddingKeyPreview,
@@ -292,8 +298,8 @@ function resolveDecisionColumns(
  * Admin-gated upsert of the org-singleton config. The calling Node action has
  * already encrypted any newly-entered key into `languageEnvelope` /
  * `embeddingEnvelope`; this mutation enforces the `organization:manage` floor,
- * preserves an unchanged key from disk, bumps the embedding dimension guard on
- * a model/provider change, writes the row, and records the audit log.
+ * preserves an unchanged key from disk, refuses an embedding-space change on a
+ * populated corpus (D8), writes the row, and records the audit log.
  */
 export const _persistConfig = internalMutation({
 	args: {
@@ -369,15 +375,8 @@ export const _persistConfig = internalMutation({
 		});
 		const decision = resolveDecisionColumns(args, existing);
 
-		// Dimension guard: bump the version whenever the embedding model/provider
-		// changes so stale vectors are never silently mixed with new-model ones.
-		const embeddingChanged =
-			!existing ||
-			existing.embeddingProviderKind !== args.embeddingProviderKind ||
-			existing.embeddingModel !== args.embeddingModel;
-		const embeddingModelVersion = existing
-			? existing.embeddingModelVersion + (embeddingChanged ? 1 : 0)
-			: 1;
+		// D8: a populated corpus keeps its embedding space; the version moves with the space.
+		const embeddingModelVersion = await nextEmbeddingModelVersion(ctx.db, existing, args);
 
 		const now = Date.now();
 		// `undefined` on a patch column clears it — this is what drops a stored key
@@ -470,6 +469,8 @@ export const removeConfig = adminMutation({
 	handler: async (ctx, _args, session): Promise<{ removed: boolean }> => {
 		const existing = await getSingleton(ctx);
 		if (!existing) return { removed: false };
+		// D8: falling back to an env embedder in another space would mix vectors.
+		await assertEnvFallbackKeepsEmbeddingSpace(ctx.db, existing);
 
 		await ctx.db.delete(existing._id);
 

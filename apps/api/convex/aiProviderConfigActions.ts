@@ -32,6 +32,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { authedAction } from './lib/authedFunctions';
 import { decryptSecret, encryptSecret } from './lib/credentialCrypto';
 import { embeddingProviderFor, languageProviderFor } from './lib/llmProviders';
+import { embeddingSelectionForSave, resolveStoredEmbeddingModel } from './lib/embeddingSpace';
 import { invalidateAiConfigCache } from './lib/llmProviders/storedConfigCache';
 import { decisionProviderFor } from './lib/decisionProviders';
 import { decisionEnvApiKey, decisionKindNeedsKey } from './lib/decisionProvider';
@@ -112,7 +113,9 @@ export const saveConfig = authedAction({
 		modelCapable: v.optional(v.string()),
 		/** Plaintext language-provider key. Omit to keep the stored key unchanged. */
 		apiKey: v.optional(v.string()),
+		/** Omit to keep the stored embedding kind (`local` when nothing is stored). */
 		embeddingProviderKind: v.optional(embeddingProviderKindValidator),
+		/** Omit to keep the stored model for an unchanged kind. */
 		embeddingModel: v.optional(v.string()),
 		/** Plaintext hosted-embedder key. Omit to keep the stored key unchanged. */
 		embeddingApiKey: v.optional(v.string()),
@@ -139,9 +142,14 @@ export const saveConfig = authedAction({
 			adapter.validateCredentials({ apiKey: args.apiKey, baseUrl: languageBaseUrl });
 		}
 
-		// Local by default; the adapter decides whether it is keyless (local /
-		// custom-compatible) or a hosted embedder that needs a key.
-		const embeddingProviderKind = args.embeddingProviderKind ?? 'local';
+		// An omitted embedding kind or model keeps the stored selection, so a save
+		// that only edits the language plane never moves the vector space (D8);
+		// with no row the plane is local by default. The persist mutation refuses
+		// a space change while the corpus holds vectors.
+		const { embeddingProviderKind, embeddingModel } = embeddingSelectionForSave(
+			{ kind: args.embeddingProviderKind, model: args.embeddingModel },
+			await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {})
+		);
 		const embeddingAdapter = embeddingProviderFor(embeddingProviderKind);
 		const isEmbeddingLocal = embeddingAdapter.isLocal;
 		// Fail fast on a hosted embedder configured with a key but structurally
@@ -149,7 +157,7 @@ export const saveConfig = authedAction({
 		if (!isEmbeddingLocal && args.embeddingApiKey) {
 			embeddingAdapter.validateCredentials({
 				apiKey: args.embeddingApiKey,
-				modelId: args.embeddingModel?.trim() || embeddingAdapter.defaultModel,
+				modelId: resolveStoredEmbeddingModel({ embeddingProviderKind, embeddingModel }),
 			});
 		}
 
@@ -179,11 +187,7 @@ export const saveConfig = authedAction({
 			isLanguageLocal: adapter.isLocal,
 			languageEnvelope: args.apiKey ? envelopeFor(args.apiKey) : undefined,
 			embeddingProviderKind,
-			embeddingModel:
-				args.embeddingModel?.trim() ||
-				(embeddingProviderKind === 'google'
-					? embeddingProviderFor('google').defaultModel
-					: undefined),
+			embeddingModel,
 			isEmbeddingLocal,
 			embeddingEnvelope: args.embeddingApiKey ? envelopeFor(args.embeddingApiKey) : undefined,
 			decisionProviderKind: decisionKind,

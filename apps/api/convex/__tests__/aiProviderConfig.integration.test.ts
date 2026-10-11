@@ -10,6 +10,9 @@
  *   • removeConfig: admin-only, deletes the row and its keys, audits without a
  *     secret, and is a no-op when nothing is stored.
  *   • local providers save with NO key.
+ *   • embedding space (D8): an omitted embedding selection keeps the stored one,
+ *     and neither a save nor a removal may move the resolved space while the
+ *     knowledge or file corpus holds vectors.
  *   • testConnection ok / err paths (adapter mocked; real crypto round-trip).
  *
  * The adapter registry (`lib/llmProviders`) is mocked so no `@ai-sdk/*` client
@@ -20,11 +23,13 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ConvexError } from 'convex/values';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
+import { EMBEDDING_SPACE_LOCKED, VECTOR_PROBE_ROWS } from '../lib/embeddingSpace';
 
 vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
 
@@ -438,6 +443,238 @@ describe('aiProviderConfig.removeConfig', () => {
 		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: false });
 
 		expect(await removalLogs(t)).toHaveLength(1);
+	});
+});
+
+describe('embedding space (D8)', () => {
+	const ENV_KEYS = ['LLM_API_KEY', 'LLM_PROVIDER', 'LLM_BASE_URL', 'LLM_EMBEDDING_MODEL'] as const;
+	afterEach(() => {
+		for (const key of ENV_KEYS) vi.stubEnv(key, undefined);
+	});
+
+	const anthropic = {
+		languageProviderKind: 'anthropic' as const,
+		apiKey: 'sk-ant-secret-key-1234',
+	};
+
+	async function addKnowledgeEntry(t: ReturnType<typeof setup>, embedding: number[]) {
+		const now = Date.now();
+		await t.run((ctx) =>
+			ctx.db.insert('knowledgeEntries', {
+				entryType: 'fact',
+				title: 'fact',
+				content: 'Prefers EUR invoices',
+				sourceType: 'manual',
+				embedding,
+				confidence: 0.9,
+				lastValidatedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+	}
+
+	async function addFile(t: ReturnType<typeof setup>, embedding: number[]) {
+		const now = Date.now();
+		await t.run((ctx) =>
+			ctx.db.insert('semanticFiles', {
+				filename: 'invoice.pdf',
+				mimeType: 'application/pdf',
+				fileSize: 13,
+				sourceType: 'email_attachment',
+				version: 1,
+				embedding,
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+	}
+
+	const storedRow = (t: ReturnType<typeof setup>) =>
+		t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+
+	/** A Google row written before the default moved: no model, so `text-embedding-004`. */
+	async function seedLegacyGoogleRow(t: ReturnType<typeof setup>) {
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			...anthropic,
+			embeddingProviderKind: 'google',
+			embeddingApiKey: 'google-test-embedding-key',
+		});
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('aiProviderConfig').first();
+			await ctx.db.patch(row!._id, { embeddingModel: undefined });
+		});
+	}
+
+	async function expectLocked(promise: Promise<unknown>) {
+		const error = await promise.then(
+			() => undefined,
+			(e: unknown) => e
+		);
+		expect(error).toBeInstanceOf(ConvexError);
+		const data = (error as ConvexError<{ category: string; message: string; data: unknown }>).data;
+		expect(data.category).toBe('conflict');
+		expect(data.message).toMatch(/embedding model can't change/i);
+		expect(data.data).toMatchObject({ reason: EMBEDDING_SPACE_LOCKED });
+	}
+
+	it('keeps the implicit legacy Google model when an API or CLI save omits the model', async () => {
+		const t = setup();
+		await seedLegacyGoogleRow(t);
+		await addKnowledgeEntry(t, [0.1, 0.2]);
+
+		// A language-only save, as the CLI or an API client sends it.
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			languageProviderKind: 'anthropic',
+			modelFast: 'claude-haiku-5-5',
+		});
+		// The same kind without a model.
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			languageProviderKind: 'anthropic',
+			embeddingProviderKind: 'google',
+		});
+
+		const row = await storedRow(t);
+		expect(row?.embeddingProviderKind).toBe('google');
+		expect(row?.embeddingModel).toBeUndefined();
+		expect(row?.embeddingModelVersion).toBe(1);
+		expect(row?.embeddingSecretCiphertext).toBeTruthy();
+		const config = await t.query(api.aiProviderConfig.getConfig, {});
+		if (!config.configured) throw new Error('unreachable');
+		expect(config.resolvedEmbeddingModel).toBe('text-embedding-004');
+	});
+
+	it('accepts the form resubmitting the resolved model without a version bump', async () => {
+		const t = setup();
+		await seedLegacyGoogleRow(t);
+		await addKnowledgeEntry(t, [0.1, 0.2]);
+
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			...anthropic,
+			embeddingProviderKind: 'google',
+			embeddingModel: 'text-embedding-004',
+		});
+
+		const row = await storedRow(t);
+		expect(row?.embeddingModel).toBe('text-embedding-004');
+		expect(row?.embeddingModelVersion).toBe(1);
+	});
+
+	it('refuses a new model or provider while the knowledge corpus holds vectors', async () => {
+		const t = setup();
+		await seedLegacyGoogleRow(t);
+		await addKnowledgeEntry(t, [0.1, 0.2]);
+
+		await expectLocked(
+			t.action(api.aiProviderConfigActions.saveConfig, {
+				...anthropic,
+				embeddingProviderKind: 'google',
+				embeddingModel: 'gemini-embedding-2',
+			})
+		);
+		await expectLocked(
+			t.action(api.aiProviderConfigActions.saveConfig, {
+				...anthropic,
+				embeddingProviderKind: 'local',
+			})
+		);
+
+		const row = await storedRow(t);
+		expect(row?.embeddingProviderKind).toBe('google');
+		expect(row?.embeddingModel).toBeUndefined();
+		expect(row?.embeddingModelVersion).toBe(1);
+	});
+
+	it('refuses a change while only the file library holds vectors', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		await addFile(t, [0.3, 0.4]);
+
+		await expectLocked(
+			t.action(api.aiProviderConfigActions.saveConfig, {
+				...anthropic,
+				embeddingProviderKind: 'local',
+				embeddingModel: 'mxbai-embed-large',
+			})
+		);
+	});
+
+	it('allows a change while no row holds a vector, and bumps the version', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		// Rows the pipeline has not embedded yet, fewer than the probe window.
+		await addKnowledgeEntry(t, []);
+		await addFile(t, []);
+
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			...anthropic,
+			embeddingProviderKind: 'local',
+			embeddingModel: 'mxbai-embed-large',
+		});
+
+		const row = await storedRow(t);
+		expect(row?.embeddingModel).toBe('mxbai-embed-large');
+		expect(row?.embeddingModelVersion).toBe(2);
+	});
+
+	it('fails closed when the newest rows hold no vector but the window is full', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		for (let i = 0; i < VECTOR_PROBE_ROWS; i++) await addKnowledgeEntry(t, []);
+
+		await expectLocked(
+			t.action(api.aiProviderConfigActions.saveConfig, {
+				...anthropic,
+				embeddingProviderKind: 'local',
+				embeddingModel: 'mxbai-embed-large',
+			})
+		);
+	});
+
+	it('compares the first save with the env embedder', async () => {
+		const t = setup();
+		vi.stubEnv('LLM_API_KEY', 'sk-env-key');
+		await addKnowledgeEntry(t, [0.1, 0.2]);
+
+		// The env plane embeds with OpenAI text-embedding-3-small; local is another space.
+		await expectLocked(t.action(api.aiProviderConfigActions.saveConfig, anthropic));
+		expect(await storedRow(t)).toBeNull();
+
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			...anthropic,
+			embeddingProviderKind: 'openai',
+			embeddingModel: 'text-embedding-3-small',
+			embeddingApiKey: 'sk-embed-secret-key-9999',
+		});
+		expect((await storedRow(t))?.embeddingProviderKind).toBe('openai');
+	});
+
+	it('refuses a removal that falls back to an env embedder in another space', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		await addKnowledgeEntry(t, [0.1, 0.2]);
+		vi.stubEnv('LLM_API_KEY', 'sk-env-key');
+
+		await expectLocked(t.mutation(api.aiProviderConfig.removeConfig, {}));
+		expect(await storedRow(t)).not.toBeNull();
+
+		// With no env AI, removing turns AI off: nothing writes vectors in another space.
+		vi.stubEnv('LLM_API_KEY', undefined);
+		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: true });
+	});
+
+	it('allows a removal when the env embedder resolves the same space', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			...anthropic,
+			embeddingProviderKind: 'openai',
+			embeddingModel: 'text-embedding-3-small',
+			embeddingApiKey: 'sk-embed-secret-key-9999',
+		});
+		await addKnowledgeEntry(t, [0.1, 0.2]);
+		vi.stubEnv('LLM_API_KEY', 'sk-env-key');
+
+		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: true });
 	});
 });
 
