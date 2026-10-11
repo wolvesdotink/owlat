@@ -7,6 +7,7 @@ import {
 	ROUTING_SWITCH_KEYS,
 	ROUTING_SWITCHES,
 	routingPolicyProblem,
+	SHADOW_FRACTION_MAXIMA,
 	shadowAllowanceUsd,
 	shadowedSwitches,
 	type RoutingPolicyRow,
@@ -120,6 +121,49 @@ describe('shadowAllowanceUsd (D4)', () => {
 	it('needs the explicit cap without a daily ceiling, and is zero without either', () => {
 		expect(shadowAllowanceUsd({ ...shadowing, shadowCapUsd: 1.5 }, 0)).toBe(1.5);
 		expect(shadowAllowanceUsd(shadowing, 0)).toBe(0);
+	});
+});
+
+describe('D4 shadow maxima', () => {
+	it('are 10% of messages and 5% of the daily ceiling, and the defaults', () => {
+		expect(SHADOW_FRACTION_MAXIMA).toEqual({
+			shadowMaxMessageFraction: 0.1,
+			shadowMaxCeilingFraction: 0.05,
+		});
+		const policy = resolveRoutingPolicy(null);
+		expect(policy.shadowMaxMessageFraction).toBe(0.1);
+		expect(policy.shadowMaxCeilingFraction).toBe(0.05);
+	});
+
+	it.each<[string, RoutingPolicyRow, boolean]>([
+		['the message maximum itself', { shadowMaxMessageFraction: 0.1 }, true],
+		['the ceiling maximum itself', { shadowMaxCeilingFraction: 0.05 }, true],
+		['a lower message share', { shadowMaxMessageFraction: 0.02 }, true],
+		['a lower ceiling share', { shadowMaxCeilingFraction: 0.01 }, true],
+		['just above the message maximum', { shadowMaxMessageFraction: 0.1000001 }, false],
+		['just above the ceiling maximum', { shadowMaxCeilingFraction: 0.0500001 }, false],
+		['a message share of 0.9', { shadowMaxMessageFraction: 0.9 }, false],
+		['a ceiling share of 0.9', { shadowMaxCeilingFraction: 0.9 }, false],
+	])('validation: %s', (_label, row, isValid) => {
+		expect(routingPolicyProblem(row, TEN_A_DAY) === null).toBe(isValid);
+	});
+
+	it('keeps a share within its maximum and reads one above it as the default', () => {
+		expect(
+			resolveRoutingPolicy({ shadowMaxMessageFraction: 0.03, shadowMaxCeilingFraction: 0.02 })
+		).toMatchObject({ shadowMaxMessageFraction: 0.03, shadowMaxCeilingFraction: 0.02 });
+		expect(
+			resolveRoutingPolicy({ shadowMaxMessageFraction: 0.9, shadowMaxCeilingFraction: 0.9 })
+		).toMatchObject({ shadowMaxMessageFraction: 0.1, shadowMaxCeilingFraction: 0.05 });
+	});
+
+	it('never lets a stored 0.9 share spend more than 5% of the daily ceiling', () => {
+		const policy = resolveRoutingPolicy({
+			triageBundle: 'shadow',
+			shadowMaxMessageFraction: 0.9,
+			shadowMaxCeilingFraction: 0.9,
+		});
+		expect(shadowAllowanceUsd(policy, 100)).toBeCloseTo(5);
 	});
 });
 

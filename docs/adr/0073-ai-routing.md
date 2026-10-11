@@ -11,7 +11,7 @@ posture in decision 4.
 
 It extends ADR-0060 (the decision plane) and does not reopen it. Decision 8 of
 ADR-0060 still holds: a calibrated probability belongs in the host's gates only
-through the block-only rule in decision 7 below.
+through the block-only rule in decision 8 below.
 
 ## Context
 

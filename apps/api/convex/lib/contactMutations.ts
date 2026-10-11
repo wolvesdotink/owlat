@@ -31,6 +31,10 @@ const CONTACT_REPOINT_TABLES = [
 	'unifiedMessages',
 	'conversationThreads',
 	'sendCompletionFailures',
+	// Team Inbox sender memory (ADR-0073, D12): keyed by the sender's digest, so
+	// the entry stays valid on the survivor; repointed so the survivor's erasure
+	// finds it.
+	'senderMemory',
 ] as const;
 
 /**

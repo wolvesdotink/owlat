@@ -45,6 +45,10 @@ describe('aiRouting.policy', () => {
 		expect(view.policy.policyVersion).toBe(0);
 		expect(view.shadowedSwitches).toEqual([]);
 		expect(view.shadowAllowanceUsd).toBe(0);
+		expect(view.shadowFractionMaxima).toEqual({
+			shadowMaxMessageFraction: 0.1,
+			shadowMaxCeilingFraction: 0.05,
+		});
 		expect(await t.query(internal.aiRouting.policy.getResolved, {})).toEqual(view.defaults);
 	});
 
@@ -129,6 +133,8 @@ describe('aiRouting.policy', () => {
 
 	it.each([
 		['a fraction out of range', { triageAllowanceFraction: 1.5 }, /fraction/],
+		['a message shadow share above 10%', { shadowMaxMessageFraction: 0.9 }, /at most 0.1/],
+		['a ceiling shadow share above 5%', { shadowMaxCeilingFraction: 0.9 }, /at most 0.05/],
 		['a non-positive shadow cap', { shadowCapUsd: 0 }, /shadowCapUsd/],
 		['a cap that is not a whole number', { knowledgeEntryCapPerMessage: 2.5 }, /whole number/],
 		[

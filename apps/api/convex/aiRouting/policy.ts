@@ -21,6 +21,7 @@ import {
 	ROUTING_CAP_MAX,
 	ROUTING_CAP_MIN,
 	ROUTING_SWITCH_KEYS,
+	SHADOW_FRACTION_MAXIMA,
 	shadowAllowanceUsd,
 	shadowedSwitches,
 	type ResolvedRoutingPolicy,
@@ -74,6 +75,7 @@ export const get = adminQuery({
 			shadowedSwitches: shadowedSwitches(policy),
 			shadowAllowanceUsd: shadowAllowanceUsd(policy, budget.dailyUsd),
 			capBounds: { min: ROUTING_CAP_MIN, max: ROUTING_CAP_MAX },
+			shadowFractionMaxima: SHADOW_FRACTION_MAXIMA,
 		};
 	},
 });

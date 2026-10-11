@@ -61,9 +61,9 @@ export const aiRoutingPolicyFields = {
 	promptCacheTasks: v.optional(v.array(aiTaskNameValidator)),
 	/** D1: share of each ceiling held back for paid guard and classify. Absent ⇒ 0.1. */
 	triageAllowanceFraction: v.optional(v.number()),
-	/** D4: share of eligible messages that may be shadowed. Absent ⇒ 0.1. */
+	/** D4: share of eligible messages that may be shadowed, at most 0.1. Absent ⇒ 0.1. */
 	shadowMaxMessageFraction: v.optional(v.number()),
-	/** D4: share of the daily ceiling shadow traffic may spend. Absent ⇒ 0.05. */
+	/** D4: share of the daily ceiling shadow traffic may spend, at most 0.05. Absent ⇒ 0.05. */
 	shadowMaxCeilingFraction: v.optional(v.number()),
 	/** D4: finite USD cap on shadow spend; required to shadow without a daily ceiling. */
 	shadowCapUsd: v.optional(v.number()),

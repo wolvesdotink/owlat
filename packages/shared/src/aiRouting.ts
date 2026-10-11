@@ -147,14 +147,24 @@ export const ROUTING_SWITCH_KEYS = Object.keys(ROUTING_SWITCHES) as RoutingSwitc
 export const ROUTING_CAP_MIN = 1;
 export const ROUTING_CAP_MAX = 1000;
 
+/**
+ * D4's ceilings on shadow traffic: at most 10% of eligible messages and at most
+ * 5% of the daily ceiling. An admin may lower either share, never raise it, so
+ * the defaults below are these maxima.
+ */
+export const SHADOW_FRACTION_MAXIMA = {
+	shadowMaxMessageFraction: 0.1,
+	shadowMaxCeilingFraction: 0.05,
+} as const;
+
 /** The defaults of the numeric settings. Fractions are of the daily or monthly ceiling. */
 const ROUTING_POLICY_NUMERIC_DEFAULTS = {
 	/** D1: share of each ceiling held back for paid guard and classify calls. */
 	triageAllowanceFraction: 0.1,
 	/** D4: share of eligible messages that may be shadowed. */
-	shadowMaxMessageFraction: 0.1,
+	shadowMaxMessageFraction: SHADOW_FRACTION_MAXIMA.shadowMaxMessageFraction,
 	/** D4: share of the daily ceiling shadow traffic may spend. */
-	shadowMaxCeilingFraction: 0.05,
+	shadowMaxCeilingFraction: SHADOW_FRACTION_MAXIMA.shadowMaxCeilingFraction,
 } as const;
 
 /**
@@ -206,6 +216,14 @@ function isCap(value: unknown): value is number {
 	);
 }
 
+/** A shadow share: a fraction no larger than its D4 maximum. */
+function isShadowFraction(
+	value: unknown,
+	key: keyof typeof SHADOW_FRACTION_MAXIMA
+): value is number {
+	return isFraction(value) && value <= SHADOW_FRACTION_MAXIMA[key];
+}
+
 function isPositiveUsd(value: unknown): value is number {
 	return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
@@ -249,10 +267,16 @@ export function resolveRoutingPolicy(
 		triageAllowanceFraction: isFraction(stored.triageAllowanceFraction)
 			? stored.triageAllowanceFraction
 			: ROUTING_POLICY_NUMERIC_DEFAULTS.triageAllowanceFraction,
-		shadowMaxMessageFraction: isFraction(stored.shadowMaxMessageFraction)
+		shadowMaxMessageFraction: isShadowFraction(
+			stored.shadowMaxMessageFraction,
+			'shadowMaxMessageFraction'
+		)
 			? stored.shadowMaxMessageFraction
 			: ROUTING_POLICY_NUMERIC_DEFAULTS.shadowMaxMessageFraction,
-		shadowMaxCeilingFraction: isFraction(stored.shadowMaxCeilingFraction)
+		shadowMaxCeilingFraction: isShadowFraction(
+			stored.shadowMaxCeilingFraction,
+			'shadowMaxCeilingFraction'
+		)
 			? stored.shadowMaxCeilingFraction
 			: ROUTING_POLICY_NUMERIC_DEFAULTS.shadowMaxCeilingFraction,
 		shadowCapUsd: isPositiveUsd(stored.shadowCapUsd) ? stored.shadowCapUsd : null,
@@ -296,14 +320,14 @@ export function routingPolicyProblem(
 			return `${key} must be one of ${spec.values.join(', ')}.`;
 		}
 	}
-	for (const key of [
-		'triageAllowanceFraction',
-		'shadowMaxMessageFraction',
-		'shadowMaxCeilingFraction',
-	] as const) {
+	const triage = row.triageAllowanceFraction;
+	if (triage !== undefined && !isFraction(triage)) {
+		return 'triageAllowanceFraction must be a fraction between 0 and 1, exclusive.';
+	}
+	for (const key of ['shadowMaxMessageFraction', 'shadowMaxCeilingFraction'] as const) {
 		const value = row[key];
-		if (value !== undefined && !isFraction(value)) {
-			return `${key} must be a fraction between 0 and 1, exclusive.`;
+		if (value !== undefined && !isShadowFraction(value, key)) {
+			return `${key} must be above 0 and at most ${SHADOW_FRACTION_MAXIMA[key]}.`;
 		}
 	}
 	if (row.shadowCapUsd !== undefined && !isPositiveUsd(row.shadowCapUsd)) {
