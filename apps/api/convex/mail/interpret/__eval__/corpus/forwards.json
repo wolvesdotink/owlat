@@ -75,9 +75,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hi Sofia,\n\nsure, I'll take care of invoice 2231 before 20 October. Enjoy your time off!\n\nMara",
+								"text": "Hi Sofia,\n\nthanks, I've got the forward about invoice 2231 and will look into it. Enjoy your time off!\n\nMara",
 								"acceptance": "accept",
-								"reason": "Confirms the handover in the thread language."
+								"reason": "Acknowledges the handover without promising the payment."
 							}
 						]
 					}
@@ -149,9 +149,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hi Lena,\n\nklar, ich kümmere mich um den Zugang für Tomás.\n\nViele Grüße\nMara",
+								"text": "Hi Lena,\n\ndanke, ich schaue mir die Anfrage von Tomás zum Kundenportal an und melde mich.\n\nViele Grüße\nMara",
 								"acceptance": "accept",
-								"reason": "Confirms the handover."
+								"reason": "Acknowledges the handover without promising the access."
 							},
 							{
 								"id": "d2",

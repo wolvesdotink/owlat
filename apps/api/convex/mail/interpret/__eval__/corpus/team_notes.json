@@ -152,9 +152,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hallo Lena,\n\ndanke für deine Nachricht. Wir setzen deinen Zugang zurück und schicken dir gleich einen Link per E-Mail.\n\nViele Grüße\ndein Acme Support",
+								"text": "Hallo Lena,\n\ndanke für deine Nachricht. Wir sehen uns deinen Zugang an und melden uns gleich bei dir.\n\nViele Grüße\ndein Acme Support",
 								"acceptance": "accept",
-								"reason": "Informal du, answers the ask."
+								"reason": "Informal du; acknowledges without claiming the reset happened or promising how."
 							}
 						]
 					}
@@ -232,9 +232,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hi Tomás,\n\nwe've noted your cancellation. Your subscription ends on the last day of this month.\n\nAcme Support",
+								"text": "Hi Tomás,\n\nthanks, we've received your request to cancel your subscription at the end of this month. We'll get back to you about it shortly.\n\nAcme Support",
 								"acceptance": "accept",
-								"reason": "Confirms the request."
+								"reason": "Acknowledges the request without claiming the cancellation was processed."
 							}
 						]
 					}

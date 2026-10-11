@@ -182,9 +182,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hi Lena,\n\nja, ich organisiere den Beamer. Bis Freitag!\n\nMara",
+								"text": "Hi Lena,\n\ndanke dir! Wegen des Beamers melde ich mich noch. Bis Freitag!\n\nMara",
 								"acceptance": "accept",
-								"reason": "Answers the open ask."
+								"reason": "Answers the open ask with a hold; Friday is settled in the thread."
 							}
 						]
 					}

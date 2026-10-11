@@ -67,9 +67,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hi Victor,\n\nI'm sorry about this morning. I'll make sure the work keeps to 8:00 to 18:00.\n\nMara",
+								"text": "Hi Victor,\n\nI'm sorry about this morning, and thanks for letting me know. I'll look into it.\n\nMara",
 								"acceptance": "accept",
-								"reason": "Apologises and answers the complaint."
+								"reason": "Apologises and acknowledges without promising an outcome the owner has not decided."
 							}
 						]
 					}

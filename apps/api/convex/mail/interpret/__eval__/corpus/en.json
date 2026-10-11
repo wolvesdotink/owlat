@@ -101,9 +101,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hi Jonas,\n\nthanks for the update on the launch date. I'll send the signed contract by Friday.\n\nBest,\nMara",
+								"text": "Hi Jonas,\n\nthanks for the update on the launch date. I'll get back to you about the contract shortly.\n\nBest,\nMara",
 								"acceptance": "edit",
-								"reason": "Leaves the question about the Tuesday call unanswered."
+								"reason": "Holds the contract correctly but leaves the question about the Tuesday call unanswered."
 							},
 							{
 								"id": "d2",

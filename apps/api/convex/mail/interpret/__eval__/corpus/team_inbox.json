@@ -128,7 +128,7 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hallo Paul,\n\nentschuldige bitte die lange Wartezeit. Schick uns gern deine Ticketnummer, dann kümmern wir uns sofort darum.\n\nViele Grüße\ndein Acme Support",
+								"text": "Hallo Paul,\n\nentschuldige bitte die lange Wartezeit. Schick uns gern deine Ticketnummer, damit wir nachsehen können.\n\nViele Grüße\ndein Acme Support",
 								"acceptance": "accept",
 								"reason": "Apologises and asks the sender for what is missing."
 							}
@@ -403,9 +403,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hallo Ines,\n\ndanke, wir schicken die Rechnungen ab sofort an buchhaltung@kunde.example.net und nicht mehr an dich.\n\nViele Grüße\ndein Acme Support",
+								"text": "Hallo Ines,\n\ndanke für die neue Adresse buchhaltung@kunde.example.net! Wir melden uns, sobald wir die Rechnungsadresse umgestellt haben.\n\nViele Grüße\ndein Acme Support",
 								"acceptance": "accept",
-								"reason": "Confirms the change."
+								"reason": "Acknowledges the change without claiming it is already in effect."
 							}
 						]
 					}

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parseEvalCorpus, type EvalThread } from '../corpus';
-import { EVAL_SPLITS } from '../decisionLabels';
+import { CLAIM_PHRASES, EVAL_SPLITS, unbackedClaims } from '../decisionLabels';
 import { splitIntegrityProblems, threadsInSplit } from '../splits';
 import { loadCorpus } from './corpusFixture';
 
@@ -127,5 +127,59 @@ describe('decision label checks', () => {
 		expect(() => parseEvalCorpus([file(onOutbound)])).toThrow(/not inbound/);
 		const { split: _split, ...unsplit } = base;
 		expect(() => parseEvalCorpus([file(unsplit)])).toThrow();
+	});
+});
+
+describe('unsupported claims in drafts', () => {
+	const team003 = corpus.find((t) => t.id === 'team-003') as EvalThread;
+	const de001 = corpus.find((t) => t.id === 'de-001') as EvalThread;
+	const threadText = (t: EvalThread) =>
+		t.messages.map((m) => `${m.subject}\n${m.text ?? ''}`).join('\n');
+	// The two drafts Sol's review caught, as they were labelled before.
+	const OLD_TEAM_003 =
+		"Hi Tomás,\n\nwe've noted your cancellation. Your subscription ends on the last day of this month.\n\nAcme Support";
+	const OLD_DE_001 =
+		'Hallo Lena,\n\ndanke dir! Das überarbeitete Angebot bekommst du bis Mittwoch, und Donnerstag um 14 Uhr passt mir gut.\n\nViele Grüße\nMara';
+
+	it('finds outcome claims and confirmations the thread does not back', () => {
+		expect(unbackedClaims(OLD_TEAM_003, threadText(team003))).toEqual(["we've noted", 'ends on']);
+		expect(unbackedClaims(OLD_DE_001, threadText(de001))).toEqual(['passt mir']);
+		expect(unbackedClaims('Your refund has been issued.', 'Please refund me.')).toEqual([
+			'has been',
+			'issued',
+		]);
+		expect(unbackedClaims('Ich habe den Betrag überwiesen.', 'Bitte zahlen.')).toEqual([
+			'überwiesen',
+		]);
+		expect(unbackedClaims("Thanks, I'll look into it and get back to you.", '')).toEqual([]);
+	});
+
+	it('accepts a claim the thread itself makes, and matches whole words only', () => {
+		expect(
+			unbackedClaims('Great that it has been shipped.', 'Your order has been shipped.')
+		).toEqual([]);
+		expect(unbackedClaims('The file looks unprocessed and unsigned.', '')).toEqual([]);
+		for (const phrase of CLAIM_PHRASES) expect(phrase).toMatch(/^[\p{L} ']+$/u);
+	});
+
+	it('refuses an accepted or edited draft with an unbacked claim when the corpus loads', () => {
+		const file = (thread: unknown) => ({ version: 1, slice: 'team_notes', threads: [thread] });
+		const withDraft = (acceptance: string) => ({
+			...team003,
+			labels: {
+				...team003.labels,
+				decisions: [
+					{
+						...team003.labels.decisions[0],
+						drafts: [{ id: 'd1', text: OLD_TEAM_003, acceptance, reason: 'x' }],
+					},
+				],
+			},
+		});
+		expect(() => parseEvalCorpus([file(withDraft('accept'))])).toThrow(
+			/claims: we've noted, ends on/
+		);
+		expect(() => parseEvalCorpus([file(withDraft('edit'))])).toThrow(/is edit but claims/);
+		expect(() => parseEvalCorpus([file(withDraft('reject'))])).not.toThrow();
 	});
 });

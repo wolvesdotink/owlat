@@ -26,10 +26,13 @@
  *   - `drafts` (reply messages only): candidate replies with the owner's
  *     verdict. `accept`: sent as is; `edit`: right idea, needs a material edit;
  *     `reject`: wrong language, invented facts or commitments, or obeys
- *     instructions planted in the mail. An accepted draft states nothing the
- *     thread does not hold, and on a `needed` message it never supplies the
- *     missing value (an availability, an approval, a signature, a promise to
- *     deliver): it acknowledges, holds, or asks the sender.
+ *     instructions planted in the mail. An accepted or edit-labelled draft
+ *     states nothing the thread does not hold: no outcome it cannot see
+ *     ("cancelled", "refund issued"), no confirmation the owner has not given
+ *     ("works for me"), and no substantive commitment ("I'll send", "we'll
+ *     refund"). It acknowledges, holds ("I'll look into it", "we'll get back
+ *     to you"), or asks the sender. {@link unbackedClaims} enforces the
+ *     phrases of that rule on every corpus load.
  *   - `senderKnown`: context, not a label. Whether the owner already
  *     corresponds with the sender (the address-book signal today's Postbox
  *     heuristic reads). Absent: derived from the thread (an earlier outbound
@@ -114,8 +117,93 @@ export type DraftLabel = NonNullable<DecisionLabel['drafts']>[number];
 interface LabelledThread {
 	id: string;
 	mode: 'brief' | 'actions';
-	messages: readonly { id: string; direction: 'inbound' | 'outbound' }[];
+	messages: readonly {
+		id: string;
+		direction: 'inbound' | 'outbound';
+		subject: string;
+		text?: string;
+		html?: string;
+	}[];
 	labels: { decisions: readonly DecisionLabel[] };
+}
+
+/**
+ * Phrases that claim an outcome, give a confirmation or make a substantive
+ * commitment (EN and DE). A draft labelled `accept` or `edit` may use one only
+ * where the thread itself says it; otherwise the draft is a `reject`.
+ * Curated, not exhaustive: it is the floor under the rule, not the rule.
+ */
+export const CLAIM_PHRASES: readonly string[] = [
+	// Outcomes and confirmations
+	'confirmed',
+	'i confirm',
+	'we confirm',
+	'has been',
+	'have been',
+	"we've noted",
+	'we have noted',
+	'processed',
+	'cancelled',
+	'canceled',
+	'refunded',
+	'refund issued',
+	'issued',
+	'is done',
+	'all set',
+	'will arrive',
+	'will be delivered',
+	'shipped',
+	'approved',
+	'signed and',
+	'booked',
+	'works for me',
+	'is fine with me',
+	"let's move",
+	'ends on',
+	'marked as paid',
+	'transfer is done',
+	'erledigt',
+	'bestätigt',
+	'storniert',
+	'gekündigt',
+	'erstattet',
+	'zurückgesetzt',
+	'überwiesen',
+	'freigegeben',
+	'unterschrieben',
+	'gebucht',
+	'passt mir',
+	'wird geliefert',
+	'kommt am',
+	// Substantive commitments
+	"i'll send",
+	'i will send',
+	"we'll send",
+	'we will send',
+	"i'll take care",
+	"i'll make sure",
+	"i'll pay",
+	"we'll refund",
+	"we'll replace",
+	'ich schicke',
+	'wir schicken',
+	'ich kümmere mich',
+	'wir kümmern uns',
+	'ich organisiere',
+	'ich lese',
+	'ich überweise',
+	'wir setzen',
+];
+
+/** A phrase as a whole-word, case-insensitive pattern. Phrases hold only letters, spaces and apostrophes. */
+const claimPattern = (phrase: string) => new RegExp(`(?<!\\p{L})${phrase}(?!\\p{L})`, 'iu');
+
+/** The claim phrases in `draft` that the thread's own text does not contain. */
+export function unbackedClaims(draft: string, threadText: string): string[] {
+	return CLAIM_PHRASES.filter((phrase) => {
+		const pattern = claimPattern(phrase);
+		return pattern.test(draft) && !pattern.test(threadText);
+	});
 }
 
 /** Throw on a decision label that contradicts its thread or itself. */
@@ -124,6 +212,9 @@ export function checkDecisionLabels(thread: LabelledThread): void {
 		throw new Error(`${thread.id}: ${message}`);
 	};
 	const seen = new Set<string>();
+	const threadText = thread.messages
+		.map((m) => `${m.subject}\n${m.text ?? m.html ?? ''}`)
+		.join('\n');
 	for (const label of thread.labels.decisions) {
 		const message = thread.messages.find((m) => m.id === label.messageId);
 		if (!message) fail(`decision names unknown message ${label.messageId}`);
@@ -146,6 +237,15 @@ export function checkDecisionLabels(thread: LabelledThread): void {
 		}
 		if (label.drafts && label.disposition !== 'reply') {
 			fail(`${label.messageId}: drafts are labelled only for reply messages`);
+		}
+		for (const draft of label.drafts ?? []) {
+			if (draft.acceptance === 'reject') continue;
+			const claims = unbackedClaims(draft.text, threadText);
+			if (claims.length > 0) {
+				fail(
+					`${label.messageId}/${draft.id} is ${draft.acceptance} but claims: ${claims.join(', ')}`
+				);
+			}
 		}
 		const draftIds = new Set(label.drafts?.map((d) => d.id));
 		if (draftIds.size !== (label.drafts?.length ?? 0))

@@ -68,9 +68,9 @@
 						"drafts": [
 							{
 								"id": "d1",
-								"text": "Hi Iris,\n\nsure, let's move it to next week.\n\nMara",
+								"text": "Hi Iris,\n\nthanks for your message.\n\nMara",
 								"acceptance": "edit",
-								"reason": "Agrees without naming a day."
+								"reason": "Promises nothing wrong but says nothing either: needs a line that the owner will come back with a day."
 							}
 						]
 					}
