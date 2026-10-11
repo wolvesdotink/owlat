@@ -116,6 +116,6 @@ describe('schema fallback for a chat model without structured outputs', () => {
 		expect(messages[0]!.content).toContain('JSON schema:');
 		expect(messages[0]!.content).toContain('"category"');
 		expect(messages[0]!.content).toContain('"billing"');
-		expect(messages.at(-1)).toMatchObject({ role: 'user', content: 'Classify' });
+		expect(messages[messages.length - 1]).toMatchObject({ role: 'user', content: 'Classify' });
 	});
 });
