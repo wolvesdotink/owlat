@@ -288,7 +288,7 @@ describe('coverage.check', () => {
 		expect(result?.newPromises).toEqual([expect.objectContaining({ itemId: expect.any(String) })]);
 		// The prompt fences the item text and carries the draft as data.
 		const prompt = runLlmObjectMock.mock.calls[0]![0].prompt as string;
-		expect(prompt).toContain('<untrusted_item_text>Send the signed contract</untrusted_item_text>');
+		expect(prompt).toContain('<untrusted_item_text>{"text":"Send the signed contract"');
 		expect(prompt).toContain('<draft_reply>');
 
 		const view = await t.query(api.mail.interpret.responsePlan.get, {
