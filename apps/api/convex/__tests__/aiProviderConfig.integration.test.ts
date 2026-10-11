@@ -23,7 +23,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { ConvexError } from 'convex/values';
+import { ConvexError, type Value } from 'convex/values';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
@@ -512,7 +512,9 @@ describe('embedding space (D8)', () => {
 			(e: unknown) => e
 		);
 		expect(error).toBeInstanceOf(ConvexError);
-		const data = (error as ConvexError<{ category: string; message: string; data: unknown }>).data;
+		const data = (
+			error as ConvexError<{ category: string; message: string; data: Record<string, Value> }>
+		).data;
 		expect(data.category).toBe('conflict');
 		expect(data.message).toMatch(/embedding model can't change/i);
 		expect(data.data).toMatchObject({ reason: EMBEDDING_SPACE_LOCKED });
