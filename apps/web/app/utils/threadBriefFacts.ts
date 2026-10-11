@@ -77,16 +77,16 @@ export function factRows(facts: readonly FactView[], locale: string): FactRow[] 
 	const rows: FactRow[] = [];
 	for (const fact of facts) {
 		if (fact.status !== 'current' || paired.has(fact.id)) continue;
-		const replaced = fact.supersedesId ? byId.get(fact.supersedesId) : undefined;
+		// The server sends the replaced value with the current fact (`previous`);
+		// the superseded row itself is not listed. A listed row still works.
+		const replaced = fact.previous ?? (fact.supersedesId ? byId.get(fact.supersedesId) : undefined);
 		const other = fact.conflictsWithId ? byId.get(fact.conflictsWithId) : undefined;
 		const conflict = other && other.status === 'current' ? other : undefined;
 		if (conflict) paired.add(conflict.id);
 		rows.push({
 			fact,
 			value: factValueText(fact.value, locale),
-			previous: replaced
-				? (factValueText(replaced.value, locale) ?? (replaced.value ? null : replaced.text))
-				: null,
+			previous: replaced ? (factValueText(replaced.value, locale) ?? replaced.text) : null,
 			conflict: conflict ? { fact: conflict, value: factValueText(conflict.value, locale) } : null,
 		});
 	}
