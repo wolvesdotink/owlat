@@ -72,20 +72,18 @@ export function briefView(over: Partial<BriefModeView> = {}): BriefModeView {
 		],
 		standing: {
 			isConflicted: false,
+			// As brief.get sends it: the current fact only, carrying the value it replaced.
 			facts: [
-				fact({
-					id: 'f_old',
-					key: '["launch","date",""]',
-					text: 'Launch on 31 Oct',
-					status: 'superseded',
-					value: { kind: 'date', at: Date.UTC(2026, 9, 31) },
-				}),
 				fact({
 					id: 'f_new',
 					key: '["launch","date",""]',
 					text: 'Launch moved because of the board meeting',
 					supersedesId: 'f_old' as never,
 					value: { kind: 'date', at: Date.UTC(2026, 10, 14) },
+					previous: {
+						text: 'Launch on 31 Oct',
+						value: { kind: 'date', at: Date.UTC(2026, 9, 31) },
+					},
 				}),
 			],
 		},

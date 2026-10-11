@@ -136,25 +136,30 @@ export const latestLineViewValidator = v.object({
 });
 
 /** One "Where things stand" fact. */
+/** A fact's structured value, opened. */
+const factValueViewValidator = v.union(
+	v.object({ kind: v.literal('date'), at: v.number(), tz: v.optional(v.string()) }),
+	v.object({ kind: v.literal('money'), value: v.number(), currency: v.string() }),
+	v.object({
+		kind: v.union(v.literal('ref'), v.literal('url'), v.literal('text')),
+		text: v.string(),
+	})
+);
+
 export const factViewValidator = v.object({
 	id: v.id('threadFacts'),
 	key: v.string(),
 	text: v.string(),
-	value: v.optional(
-		v.union(
-			v.object({ kind: v.literal('date'), at: v.number(), tz: v.optional(v.string()) }),
-			v.object({ kind: v.literal('money'), value: v.number(), currency: v.string() }),
-			v.object({
-				kind: v.union(v.literal('ref'), v.literal('url'), v.literal('text')),
-				text: v.string(),
-			})
-		)
-	),
+	value: v.optional(factValueViewValidator),
 	status: factStatusValidator,
 	provenance: activityProvenanceValidator,
 	evidence: v.array(evidenceViewValidator),
 	supersedesId: v.optional(v.id('threadFacts')),
 	conflictsWithId: v.optional(v.id('threadFacts')),
+	// The direct predecessor a current fact replaced (`supersedesId`), opened:
+	// the Overview shows its value struck through. The superseded row itself
+	// is not listed, so the brief carries what the reader needs of it.
+	previous: v.optional(v.object({ text: v.string(), value: v.optional(factValueViewValidator) })),
 });
 
 /** One activity row. `text` is the rendered detail from the sealed payload, when it has one. */

@@ -98,6 +98,34 @@ describe('factRows', () => {
 		expect(rows[0]!.previous).toBe('31 Oct');
 	});
 
+	it('strikes the previous value the server sends with a current fact', () => {
+		// brief.get lists current facts only; the superseded one comes as `previous`.
+		const rows = factRows(
+			[
+				fact({
+					id: 'mon',
+					key: '["launch","date",""]',
+					text: 'Launch on Monday',
+					supersedesId: 'fri' as never,
+					value: { kind: 'date', at: Date.UTC(2026, 9, 12) },
+					previous: { text: 'Launch on Friday', value: { kind: 'date', at: Date.UTC(2026, 9, 9) } },
+				}),
+				fact({
+					id: 'ref',
+					key: '["invoice","number",""]',
+					text: 'Invoice 2041',
+					supersedesId: 'old' as never,
+					previous: { text: 'Invoice 2040' },
+				}),
+			],
+			'en-GB'
+		);
+		expect(rows.map((r) => [r.value, r.previous])).toEqual([
+			['12 Oct', '9 Oct'],
+			[null, 'Invoice 2040'],
+		]);
+	});
+
 	it('pairs conflicting statements instead of listing both', () => {
 		const rows = factRows(
 			[

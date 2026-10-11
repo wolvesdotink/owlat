@@ -134,7 +134,34 @@ export async function openItem(row: Doc<'threadItems'>, locale: AppLocale): Prom
 	};
 }
 
-/** The current facts of a mail thread, opened in `locale`. */
+/** A stored fact value, opened (ref / url / text payloads are sealed). */
+async function openFactValue(value: Doc<'threadFacts'>['value']): Promise<FactView['value']> {
+	if (!value) return undefined;
+	return value.kind === 'date' || value.kind === 'money'
+		? value
+		: { kind: value.kind, text: await openMessageBody(value.text) };
+}
+
+/**
+ * The value a current fact replaced: its DIRECT predecessor only (one read),
+ * and only when that row belongs to the same thread.
+ */
+async function readPrevious(
+	ctx: ReadCtx,
+	row: Doc<'threadFacts'>,
+	locale: AppLocale
+): Promise<FactView['previous']> {
+	if (!row.supersedesId) return undefined;
+	const before = await ctx.db.get(row.supersedesId);
+	if (!before || before.mailThreadId !== row.mailThreadId) return undefined;
+	const value = await openFactValue(before.value);
+	return { text: await openMessageBody(before.display[locale]), ...(value ? { value } : {}) };
+}
+
+/**
+ * The current facts of a mail thread, opened in `locale`, each with the value
+ * it replaced (`previous`), so the Overview can strike the old value through.
+ */
 export async function readFacts(
 	ctx: ReadCtx,
 	threadId: Id<'mailThreads'>,
@@ -148,13 +175,10 @@ export async function readFacts(
 		.take(FACTS_READ);
 	return Promise.all(
 		rows.map(async (row) => {
-			let value: FactView['value'];
-			if (row.value) {
-				value =
-					row.value.kind === 'date' || row.value.kind === 'money'
-						? row.value
-						: { kind: row.value.kind, text: await openMessageBody(row.value.text) };
-			}
+			const [value, previous] = await Promise.all([
+				openFactValue(row.value),
+				readPrevious(ctx, row, locale),
+			]);
 			return {
 				id: row._id,
 				key: await rowFactKeyLabel(row),
@@ -165,6 +189,7 @@ export async function readFacts(
 				evidence: await openEvidence(row.evidence),
 				...(row.supersedesId ? { supersedesId: row.supersedesId } : {}),
 				...(row.conflictsWithId ? { conflictsWithId: row.conflictsWithId } : {}),
+				...(previous ? { previous } : {}),
 			};
 		})
 	);
