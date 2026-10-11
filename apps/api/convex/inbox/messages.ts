@@ -231,6 +231,8 @@ export const receiveMessage = internalMutation({
 			rawStorageId: args.rawStorageId,
 			rawSize: args.rawSize,
 			virusVerdict: args.virusVerdict,
+			mtaSpamVerdict: args.mtaSpamVerdict,
+			mtaSpamScore: args.mtaSpamScore,
 			// Written here and cleared only by the retention sweep, so the marker
 			// and the blob it stands for have exactly one writer each.
 			isRawRetained: args.rawStorageId ? (true as const) : undefined,
