@@ -172,9 +172,12 @@ function describeSpace(space: EmbeddingSpace): string {
 }
 
 /**
- * Refuse a change of embedding space while the corpus may hold vectors. A side
- * with no resolvable space (no row and no env AI) has nothing to compare, so it
- * is allowed: that is first setup, or turning AI off.
+ * Refuse a change of embedding space while the corpus may hold vectors. With no
+ * current space (no row and no env AI) there is nothing to compare: that is a
+ * first setup. Removal keeps the row while vectors exist
+ * ({@link assertRemovalKeepsEmbeddingSpace}), so Owlat itself never reaches that
+ * state with vectors present; an env fallback unset outside Owlat, or a row
+ * removed before this check existed, still can.
  */
 export async function assertEmbeddingSpaceChangeAllowed(
 	db: DatabaseReader,
@@ -209,10 +212,30 @@ export async function nextEmbeddingModelVersion(
 	return existing.embeddingModelVersion + (current && isSameEmbeddingSpace(current, next) ? 0 : 1);
 }
 
-/** Removing the stored row falls back to the env embedder: refuse that if it moves the space. */
-export async function assertEnvFallbackKeepsEmbeddingSpace(
+/**
+ * Removing the stored row discards the only record of the space its vectors are
+ * in: the env fallback takes over, or, with no env AI, nothing does and the next
+ * save would have no space to compare with. So removal is refused while the
+ * corpus may hold vectors, unless the env fallback resolves the same space.
+ * Turning the AI features off (feature flags) is the way to stop AI without
+ * forgetting the space.
+ */
+export async function assertRemovalKeepsEmbeddingSpace(
 	db: DatabaseReader,
 	row: StoredEmbeddingSelection
 ): Promise<void> {
-	await assertEmbeddingSpaceChangeAllowed(db, storedEmbeddingSpace(row), envEmbeddingSpace());
+	const current = storedEmbeddingSpace(row);
+	const fallback = envEmbeddingSpace();
+	if (fallback) {
+		await assertEmbeddingSpaceChangeAllowed(db, current, fallback);
+		return;
+	}
+	if (!(await corpusMayHoldVectors(db))) return;
+	throwConflict(
+		`The AI provider configuration can't be removed while the knowledge base or file ` +
+			`library holds vectors: it is the only record of the embedding model ` +
+			`(${describeSpace(current)}) those vectors came from. To stop using AI, turn the AI ` +
+			`features off instead.`,
+		{ reason: EMBEDDING_SPACE_LOCKED, current: { ...current }, requested: null }
+	);
 }

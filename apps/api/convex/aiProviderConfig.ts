@@ -44,7 +44,9 @@ import { throwInvalidInput } from './_utils/errors';
 import { validateOutboundUrl } from './lib/outboundUrlValidation';
 import { envelopeValidator, resolvePlaneSecrets } from './lib/aiProviderSecrets';
 import {
-	assertEnvFallbackKeepsEmbeddingSpace,
+	assertRemovalKeepsEmbeddingSpace,
+	embeddingSelectionForSave,
+	isLocalEmbeddingKind,
 	nextEmbeddingModelVersion,
 	resolveStoredEmbeddingModel,
 } from './lib/embeddingSpace';
@@ -119,9 +121,10 @@ export const _persistConfig = internalMutation({
 		modelCapable: v.string(),
 		isLanguageLocal: v.boolean(),
 		languageEnvelope: v.optional(envelopeValidator),
-		embeddingProviderKind: embeddingProviderKindValidator,
+		// Omitted ⇒ the current row's selection (resolved here, not in the action,
+		// so a concurrent embedding save is never overwritten with a stale view).
+		embeddingProviderKind: v.optional(embeddingProviderKindValidator),
 		embeddingModel: v.optional(v.string()),
-		isEmbeddingLocal: v.boolean(),
 		embeddingEnvelope: v.optional(envelopeValidator),
 		// The DECISION plane. Omitting `decisionProviderKind` leaves the plane
 		// untouched (see `lib/aiProviderSecrets`) — it is not a request to clear it.
@@ -172,10 +175,22 @@ export const _persistConfig = internalMutation({
 		const existing = await getSingleton(ctx);
 
 		// A stored key stays only for the same provider kind and base URL (lib/aiProviderSecrets).
-		const { language, embedding, decision } = resolvePlaneSecrets(args, existing);
+		const selection = embeddingSelectionForSave(
+			{ kind: args.embeddingProviderKind, model: args.embeddingModel },
+			existing
+		);
+		const { embeddingProviderKind, embeddingModel } = selection;
+		const { language, embedding, decision } = resolvePlaneSecrets(
+			{
+				...args,
+				embeddingProviderKind,
+				isEmbeddingLocal: isLocalEmbeddingKind(embeddingProviderKind),
+			},
+			existing
+		);
 
 		// D8: a populated corpus keeps its embedding space; the version moves with the space.
-		const embeddingModelVersion = await nextEmbeddingModelVersion(ctx.db, existing, args);
+		const embeddingModelVersion = await nextEmbeddingModelVersion(ctx.db, existing, selection);
 
 		const now = Date.now();
 		// `undefined` on a patch column clears it — this is what drops a stored key
@@ -190,8 +205,8 @@ export const _persistConfig = internalMutation({
 			secretAuthTag: language?.authTag,
 			secretEnvelopeVersion: language?.version,
 			keyPreview: language?.keyPreview,
-			embeddingProviderKind: args.embeddingProviderKind,
-			embeddingModel: args.embeddingModel,
+			embeddingProviderKind,
+			embeddingModel,
 			embeddingModelVersion,
 			embeddingSecretCiphertext: embedding?.ciphertext,
 			embeddingSecretIv: embedding?.iv,
@@ -225,8 +240,8 @@ export const _persistConfig = internalMutation({
 				languageProviderKind: args.languageProviderKind,
 				modelFast: args.modelFast,
 				modelCapable: args.modelCapable,
-				embeddingProviderKind: args.embeddingProviderKind,
-				embeddingModel: args.embeddingModel,
+				embeddingProviderKind,
+				embeddingModel,
 				embeddingModelVersion,
 				isLanguageKeySet: language !== undefined,
 				isEmbeddingKeySet: embedding !== undefined,
@@ -268,8 +283,8 @@ export const removeConfig = adminMutation({
 	handler: async (ctx, _args, session): Promise<{ removed: boolean }> => {
 		const existing = await getSingleton(ctx);
 		if (!existing) return { removed: false };
-		// D8: falling back to an env embedder in another space would mix vectors.
-		await assertEnvFallbackKeepsEmbeddingSpace(ctx.db, existing);
+		// D8: the row is the only record of the space its vectors are in.
+		await assertRemovalKeepsEmbeddingSpace(ctx.db, existing);
 
 		await ctx.db.delete(existing._id);
 

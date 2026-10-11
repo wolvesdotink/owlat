@@ -28,7 +28,7 @@ import { ConvexError, type Value } from 'convex/values';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
 import { EMBEDDING_SPACE_LOCKED, VECTOR_PROBE_ROWS } from '../lib/embeddingSpace';
 import { STORED_KEY_NOT_REUSABLE } from '../lib/aiProviderSecrets';
@@ -673,7 +673,10 @@ describe('embedding space (D8)', () => {
 		});
 	}
 
-	async function expectLocked(promise: Promise<unknown>) {
+	async function expectLocked(
+		promise: Promise<unknown>,
+		message: RegExp = /embedding model can't change/i
+	) {
 		const error = await promise.then(
 			() => undefined,
 			(e: unknown) => e
@@ -683,7 +686,7 @@ describe('embedding space (D8)', () => {
 			error as ConvexError<{ category: string; message: string; data: Record<string, Value> }>
 		).data;
 		expect(data.category).toBe('conflict');
-		expect(data.message).toMatch(/embedding model can't change/i);
+		expect(data.message).toMatch(message);
 		expect(data.data).toMatchObject({ reason: EMBEDDING_SPACE_LOCKED });
 	}
 
@@ -826,10 +829,66 @@ describe('embedding space (D8)', () => {
 
 		await expectLocked(t.mutation(api.aiProviderConfig.removeConfig, {}));
 		expect(await storedRow(t)).not.toBeNull();
+	});
 
-		// With no env AI, removing turns AI off: nothing writes vectors in another space.
-		vi.stubEnv('LLM_API_KEY', undefined);
+	it('refuses a removal with no env fallback, so a later save cannot switch spaces', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		await addKnowledgeEntry(t, [0.1, 0.2]);
+
+		// The row is the only record of the local space the vectors are in.
+		await expectLocked(
+			t.mutation(api.aiProviderConfig.removeConfig, {}),
+			/can't be removed while the knowledge base or file library holds vectors/
+		);
+		expect(await storedRow(t)).not.toBeNull();
+		// So the follow-up save still compares against it and refuses another space.
+		await expectLocked(
+			t.action(api.aiProviderConfigActions.saveConfig, {
+				...anthropic,
+				embeddingProviderKind: 'openai',
+				embeddingModel: 'text-embedding-3-small',
+				embeddingApiKey: 'sk-embed-secret-key-9999',
+			})
+		);
+		expect((await storedRow(t))?.embeddingProviderKind).toBe('local');
+	});
+
+	it('allows a removal with no env fallback once the corpus holds no vector', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		await addKnowledgeEntry(t, []);
+
 		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: true });
+	});
+
+	it('resolves an omitted embedding selection against the row the mutation writes', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		// A language-only save reads the row (local) in its action. Before its
+		// persist mutation runs, a concurrent save switches the embedder.
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			...anthropic,
+			embeddingProviderKind: 'openai',
+			embeddingModel: 'text-embedding-3-small',
+			embeddingApiKey: 'sk-embed-secret-key-9999',
+		});
+		await addKnowledgeEntry(t, [0.1, 0.2]);
+		// The language-only persist then lands with its embedding fields omitted,
+		// exactly as saveConfig forwards them.
+		await t.mutation(internal.aiProviderConfig._persistConfig, {
+			languageProviderKind: 'anthropic',
+			modelFast: 'claude-haiku-5-5',
+			modelCapable: 'claude-sonnet-5-5',
+			isLanguageLocal: false,
+		});
+
+		// Neither restored to the stale local model nor refused on the populated corpus.
+		const row = await storedRow(t);
+		expect(row?.embeddingProviderKind).toBe('openai');
+		expect(row?.embeddingModel).toBe('text-embedding-3-small');
+		expect(row?.embeddingModelVersion).toBe(2);
+		expect(row?.embeddingSecretCiphertext).toBeTruthy();
 	});
 
 	it('allows a removal when the env embedder resolves the same space', async () => {

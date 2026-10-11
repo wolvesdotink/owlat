@@ -142,23 +142,21 @@ export const saveConfig = authedAction({
 			adapter.validateCredentials({ apiKey: args.apiKey, baseUrl: languageBaseUrl });
 		}
 
-		// An omitted embedding kind or model keeps the stored selection, so a save
-		// that only edits the language plane never moves the vector space (D8);
-		// with no row the plane is local by default. The persist mutation refuses
-		// a space change while the corpus holds vectors.
-		const { embeddingProviderKind, embeddingModel } = embeddingSelectionForSave(
-			{ kind: args.embeddingProviderKind, model: args.embeddingModel },
-			await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {})
-		);
-		const embeddingAdapter = embeddingProviderFor(embeddingProviderKind);
-		const isEmbeddingLocal = embeddingAdapter.isLocal;
-		// Fail fast on a hosted embedder configured with a key but structurally
-		// invalid, before persisting anything.
-		if (!isEmbeddingLocal && args.embeddingApiKey) {
-			embeddingAdapter.validateCredentials({
-				apiKey: args.embeddingApiKey,
-				modelId: resolveStoredEmbeddingModel({ embeddingProviderKind, embeddingModel }),
-			});
+		// Fail fast on a structurally invalid hosted-embedder key. This reads the row
+		// only to pick the adapter; the persist mutation resolves an omitted
+		// embedding kind or model against the row it actually writes (D8).
+		if (args.embeddingApiKey) {
+			const selection = embeddingSelectionForSave(
+				{ kind: args.embeddingProviderKind, model: args.embeddingModel },
+				await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {})
+			);
+			const embeddingAdapter = embeddingProviderFor(selection.embeddingProviderKind);
+			if (!embeddingAdapter.isLocal) {
+				embeddingAdapter.validateCredentials({
+					apiKey: args.embeddingApiKey,
+					modelId: resolveStoredEmbeddingModel(selection),
+				});
+			}
 		}
 
 		// The decision plane, when (and only when) this save names one. A newly
@@ -186,9 +184,8 @@ export const saveConfig = authedAction({
 			modelCapable,
 			isLanguageLocal: adapter.isLocal,
 			languageEnvelope: args.apiKey ? envelopeFor(args.apiKey) : undefined,
-			embeddingProviderKind,
-			embeddingModel,
-			isEmbeddingLocal,
+			embeddingProviderKind: args.embeddingProviderKind,
+			embeddingModel: args.embeddingModel?.trim() || undefined,
 			embeddingEnvelope: args.embeddingApiKey ? envelopeFor(args.embeddingApiKey) : undefined,
 			decisionProviderKind: decisionKind,
 			decisionModel: args.decisionModel?.trim() || undefined,
