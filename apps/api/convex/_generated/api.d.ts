@@ -63,6 +63,7 @@ import type * as mail_interpret_reduceInput from '../mail/interpret/reduceInput.
 import type * as mail_interpret_reducePlan from '../mail/interpret/reducePlan.js';
 import type * as mail_interpret_reducePlanFacts from '../mail/interpret/reducePlanFacts.js';
 import type * as mail_interpret_reduceState from '../mail/interpret/reduceState.js';
+import type * as mail_interpret_reduceTerms from '../mail/interpret/reduceTerms.js';
 import type * as mail_interpret_reduceWrite from '../mail/interpret/reduceWrite.js';
 import type * as mail_interpret_responsePlan from '../mail/interpret/responsePlan.js';
 import type * as mail_interpret_responsePlanDraft from '../mail/interpret/responsePlanDraft.js';
@@ -1667,6 +1668,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/reducePlan': typeof mail_interpret_reducePlan;
 	'mail/interpret/reducePlanFacts': typeof mail_interpret_reducePlanFacts;
 	'mail/interpret/reduceState': typeof mail_interpret_reduceState;
+	'mail/interpret/reduceTerms': typeof mail_interpret_reduceTerms;
 	'mail/interpret/reduceWrite': typeof mail_interpret_reduceWrite;
 	'mail/interpret/responsePlan': typeof mail_interpret_responsePlan;
 	'mail/interpret/responsePlanDraft': typeof mail_interpret_responsePlanDraft;

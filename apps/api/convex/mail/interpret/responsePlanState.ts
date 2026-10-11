@@ -56,6 +56,7 @@ async function toPlanItem(row: Doc<'threadItems'>): Promise<PlanItem<ItemId>> {
 		responsibility: row.responsibility,
 		text: await openMessageBody(row.assertion),
 		...(row.due ? { duePhrase: row.due.phrase } : {}),
+		...(row.due?.at !== undefined ? { dueAt: row.due.at } : {}),
 		...(row.amount ? { amount: row.amount } : {}),
 		...(row.options?.length ? { options: row.options } : {}),
 	};

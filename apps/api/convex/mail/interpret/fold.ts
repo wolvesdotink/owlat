@@ -346,6 +346,19 @@ export function applyPlan(
 			item.fieldSources = sourcesOfClaim(claim, setBy);
 		}
 		if (patch.refill) applyRefill(item, patch.refill.claim, patch.refill.fields, setBy);
+		for (const field of patch.restamp ?? []) {
+			item.fieldSources = { ...item.fieldSources, [field]: setBy };
+		}
+		if (patch.reword) {
+			// Newer terms came with this claim: its wording states them (PR review F2).
+			item.assertionText = patch.reword.assertion;
+			item.refilled = {
+				...item.refilled,
+				assertion: patch.reword.assertion,
+				display: patch.reword.display,
+			};
+			item.fieldSources = { ...item.fieldSources, wording: setBy };
+		}
 		if (patch.matched?.length) {
 			item.lineageKeys = [
 				...new Set([

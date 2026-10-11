@@ -49,6 +49,8 @@ export interface PlanItem<Id extends string = string> {
 	/** The item in the mail's words (unsealed `assertion`): untrusted. */
 	text: string;
 	duePhrase?: string;
+	/** The resolved deadline (when the phrase resolved to one). */
+	dueAt?: number;
 	amount?: { value: number; currency: string };
 	options?: string[];
 }

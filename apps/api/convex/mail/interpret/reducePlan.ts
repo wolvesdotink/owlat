@@ -50,6 +50,9 @@ export type { FactOp, PlanFact } from './reducePlanFacts';
 import { planFacts, type FactOp, type PlanFact } from './reducePlanFacts';
 import { newEvidence, type EvidenceRef } from './evidence';
 import { heldUpdateOf, type PlanHeld } from './reduceHeld';
+import { advancesStamp, applyTermUpdates } from './reduceTerms';
+
+export { advancesStamp } from './reduceTerms';
 
 /** The item fields the plan reads. */
 export type PlanItem = Pick<
@@ -113,6 +116,12 @@ export type ItemPatch = {
 	isReviewNeeded?: boolean;
 	/** The proposals that matched this item (their claim keys join its lineage). */
 	matched?: ReduceItem[];
+	/** Terms a newer verified claim reaffirmed: their stamps move to it. */
+	restamp?: Array<'due' | 'amount' | 'options'>;
+	/** The claim whose newer terms were applied: the item takes its wording too. */
+	reword?: ReduceItem;
+	/** Set while planning: a term was older than its stamp (reported, then cleared). */
+	dropped?: boolean;
 	/** A verified claim promoting a proposal item: its text, parties, due, amount and options replace the item's. */
 	promoteFrom?: ReduceItem;
 	/** A verified claim refilling the fields a purge redacted (`redactedRefill.ts`). */
@@ -190,22 +199,6 @@ export function textSimilarity(a: string, b: string): number {
 function isStatusLocked(item: PlanItem): boolean {
 	if (item.completion === 'recorded' || item.completion === 'asserted') return true;
 	return !!item.correction && STATUS_LOCKING_CORRECTIONS.has(item.correction.kind);
-}
-
-/**
- * Does a reaffirmation from `setBy` take a field's stamp? A newer message
- * does; on a tie of message times the later applied other source does.
- */
-export function advancesStamp(
-	stamp: { sourceKey: string; at: number } | undefined,
-	setBy: { sourceKey: string; at: number }
-): boolean {
-	if (!stamp) return true;
-	return setBy.at > stamp.at || (setBy.at === stamp.at && setBy.sourceKey !== stamp.sourceKey);
-}
-
-function same(a: unknown, b: unknown): boolean {
-	return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 /** Plan one message's changes. Pure. */
@@ -297,41 +290,37 @@ export function planReduction(
 			) {
 				// A message purge redacted fields (purgeClaims.ts): a verified claim
 				// refills exactly those it states, nothing else (redactedRefill.ts).
-				p.refill = {
-					claim: proposal,
-					fields: refillableFields(match.redactedFields ?? [], proposal),
-				};
+				const fields = refillableFields(match.redactedFields ?? [], proposal);
+				p.refill = { claim: proposal, fields };
+				// Surviving terms it states differently follow the per-field order
+				// in the same pass (PR review F3); refilled ones are its already.
+				applyTermUpdates(p, match, proposal, { sourceKey, at: opts.sourceAt }, fields);
+				if (p.dropped) plan.dropped.push({ kind: 'item', index, reason: 'out_of_order' });
+				delete p.dropped;
 			} else if (proposal.verify === 'passed' && isOwnReread) {
 				// A verified re-read of the item's only source updates it in place.
 				p.promoteFrom = proposal;
 			} else {
 				// Another message's claim: it fills what the item lacks, and a
-				// verified one changes a term it states differently when it is
-				// newer than the source that set that term (PR review PR-1;
-				// `fieldSources`, the reducer's per-field order). An older one
-				// is kept as a quote and reported, never applied over a newer.
-				const fill: ItemPatch['fill'] = {};
-				const setBy = { sourceKey, at: opts.sourceAt };
-				for (const field of ['due', 'amount', 'options'] as const) {
-					const value = proposal[field];
-					if (!value) continue;
-					if (!match[field]) {
-						(fill as Record<string, unknown>)[field] = value;
-					} else if (proposal.verify === 'passed' && !same(value, match[field])) {
-						if (advancesStamp(match.fieldSources?.[field], setBy)) {
-							(fill as Record<string, unknown>)[field] = value;
-						} else {
-							plan.dropped.push({ kind: 'item', index, reason: 'out_of_order' });
-						}
-					}
-				}
-				if (Object.keys(fill).length > 0) p.fill = fill;
+				// verified one changes or reaffirms the terms it states, ordered
+				// per field (`applyTermUpdates`).
+				applyTermUpdates(p, match, proposal, { sourceKey, at: opts.sourceAt }, []);
+				if (p.dropped) plan.dropped.push({ kind: 'item', index, reason: 'out_of_order' });
+				delete p.dropped;
 			}
 			// Asked again by ANOTHER message after it was closed: a person looks.
 			if ((match.status !== 'open' && !isSeenSource) || proposal.isReviewNeeded) {
 				p.isReviewNeeded = true;
 			}
-			if (added.length > 0 || p.fill || p.verify || p.promoteFrom || p.refill || p.pendingUpdate) {
+			if (
+				added.length > 0 ||
+				p.fill ||
+				p.reword ||
+				p.verify ||
+				p.promoteFrom ||
+				p.refill ||
+				p.pendingUpdate
+			) {
 				p.activity ??= { type: 'item_changed' };
 			}
 			continue;

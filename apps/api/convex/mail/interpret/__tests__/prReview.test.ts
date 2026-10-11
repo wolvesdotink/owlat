@@ -10,6 +10,7 @@ import type { Id, TableNames } from '../../../_generated/dataModel';
 import { planReduction, type PlanItem, type PlanOptions } from '../reducePlan';
 import type { ReduceItem, ReduceResult } from '../reduceInput';
 import { applyPlan, mergeHeld, type MemItem, type MemState } from '../fold';
+import { buildResponsePlanSection } from '../planCheck';
 
 const id = <T extends TableNames>(s: string) => s as Id<T>;
 const FRIDAY = { phrase: 'by Friday', at: Date.UTC(2026, 9, 9), isAmbiguous: false };
@@ -209,5 +210,83 @@ describe('PR-2: held field changes merge by their sources', () => {
 		expect(merged.amount).toEqual({ value: 200, currency: 'EUR' });
 		expect(merged.due).toEqual(MONDAY);
 		expect(merged.evidence).toHaveLength(2);
+	});
+});
+
+const mem = (item: PlanItem): MemItem =>
+	({ ...item, isNew: false, askedAt: 1 }) as unknown as MemItem;
+function fold(item: MemItem, items: ReduceItem[], sourceAt: number, sourceKey: string) {
+	const options = {
+		...at(sourceAt),
+		source: { kind: 'mail' as const, id: id<'mailMessages'>(sourceKey.slice(5)) },
+	};
+	const plan = planReduction({ items: [item], facts: [] }, result(items), 'r', options);
+	const state: MemState = { items: new Map([[item._id, item]]), facts: new Map() };
+	applyPlan(state, plan, { source: options.source, sourceKey, contentRevision: 'r', sourceAt });
+	return plan;
+}
+
+describe('Sol follow-ups on PR-1', () => {
+	it('F1: Friday@1000, reaffirmed Friday@3000, then a late Monday@2000 stays Friday', () => {
+		const item = mem(tracked({ amount: undefined, fieldSources: { due: OLD } }));
+		fold(item, [claim({ due: FRIDAY })], 3000, 'mail:m3');
+		expect(item.fieldSources?.due).toEqual({ sourceKey: 'mail:m3', at: 3000 });
+		const late = fold(item, [claim({ due: MONDAY })], 2000, 'mail:m2');
+		expect(item.due).toEqual(FRIDAY);
+		expect(late.dropped).toContainEqual({ kind: 'item', index: 0, reason: 'out_of_order' });
+	});
+
+	it('F2: EUR 100/Friday → EUR 120/Monday takes the newer claim’s wording too', () => {
+		const item = mem(tracked());
+		fold(item, [claim({ due: MONDAY, amount: { value: 120, currency: 'EUR' } })], 2000, 'mail:m2');
+		expect(item.due).toEqual(MONDAY);
+		expect(item.amount).toEqual({ value: 120, currency: 'EUR' });
+		expect(item.assertionText).toBe('Actually, send it Monday instead');
+		expect(item.refilled?.display).toEqual({ en: 'Send it Monday', de: 'Schick es Montag' });
+		expect(item.fieldSources?.wording).toEqual({ sourceKey: 'mail:m2', at: 2000 });
+	});
+
+	it('F2: the drafting plan names the current terms beside the wording', () => {
+		const section = buildResponsePlanSection([
+			{
+				ref: 'i1',
+				itemId: 'x',
+				stance: 'answer',
+				item: {
+					id: 'x',
+					revision: 1,
+					intent: 'request',
+					facets: ['payment'],
+					responsibility: 'us',
+					text: 'Pay EUR 100 by Friday',
+					duePhrase: 'Monday instead',
+					dueAt: MONDAY.at,
+					amount: { value: 120, currency: 'EUR' },
+				},
+			},
+		]);
+		expect(section).toContain('due 2026-10-12');
+		expect(section).toContain('amount 120 EUR');
+	});
+
+	it('F3: a newer verified refill also takes the surviving terms it changes; an older one does not', () => {
+		const redacted = () =>
+			mem(tracked({ redactedFields: ['assertion', 'display'] as never, amount: undefined }));
+		const newer = redacted();
+		fold(newer, [claim({ due: MONDAY })], 2000, 'mail:m2');
+		expect(newer.due).toEqual(MONDAY);
+		expect(newer.refilled?.assertion).toBe('Actually, send it Monday instead');
+		expect(newer.redactedFields).toBeUndefined();
+		const older = mem(
+			tracked({
+				redactedFields: ['assertion', 'display'] as never,
+				amount: undefined,
+				fieldSources: { due: { sourceKey: 'mail:m9', at: 5000 } },
+			})
+		);
+		const plan = fold(older, [claim({ due: MONDAY })], 2000, 'mail:m2');
+		expect(older.due).toEqual(FRIDAY);
+		expect(older.refilled?.assertion).toBe('Actually, send it Monday instead');
+		expect(plan.dropped).toContainEqual({ kind: 'item', index: 0, reason: 'out_of_order' });
 	});
 });
