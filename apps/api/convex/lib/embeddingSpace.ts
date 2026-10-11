@@ -19,7 +19,8 @@ import {
 	GOOGLE_EMBEDDING_DEFAULT,
 	LEGACY_GOOGLE_EMBEDDING_MODEL,
 } from '@owlat/shared/aiModelCatalog';
-import type { DatabaseReader } from '../_generated/server';
+import { internal } from '../_generated/api';
+import type { ActionCtx, DatabaseReader } from '../_generated/server';
 import { throwConflict, throwInvalidInput } from '../_utils/errors';
 import { isEnvAiProviderConfigured } from './aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './constants';
@@ -264,10 +265,23 @@ export function embeddingSpaceKey(space: EmbeddingSpace | null): string {
 		: NO_EMBEDDING_SPACE_KEY;
 }
 
-/** The deployment's current space key, read in the committing transaction. */
-async function currentEmbeddingSpaceKey(db: DatabaseReader): Promise<string> {
+/** The deployment's current space key, read in the calling transaction. */
+export async function currentEmbeddingSpaceKey(db: DatabaseReader): Promise<string> {
 	const row = await db.query('aiProviderConfig').first(); // bounded: org singleton
 	return embeddingSpaceKey(resolvedEmbeddingSpace(row));
+}
+
+/**
+ * Whether work keyed to `spaceKey` is still in the current space. Shared by the
+ * commit check ({@link vectorFieldsForCommit}) and the retrieval check
+ * ({@link vectorHitsInCurrentSpace}). A missing key (a previous-release caller)
+ * cannot be verified and counts as not current.
+ */
+export async function isEmbeddingSpaceCurrent(
+	db: DatabaseReader,
+	spaceKey: string | undefined
+): Promise<boolean> {
+	return spaceKey !== undefined && spaceKey === (await currentEmbeddingSpaceKey(db));
 }
 
 /** The vector columns a corpus row carries. */
@@ -295,10 +309,7 @@ export async function vectorFieldsForCommit(
 	// A caller without a key is a job the previous release queued or started: its
 	// vector cannot be verified, so it is dropped like a stale one. Remove the
 	// optional key after release N+1 (see CONVENTIONS "Old clients and workers").
-	if (
-		jobEmbeddingSpaceKey !== undefined &&
-		jobEmbeddingSpaceKey === (await currentEmbeddingSpaceKey(db))
-	) {
+	if (await isEmbeddingSpaceCurrent(db, jobEmbeddingSpaceKey)) {
 		return { ...vector, isStale: false };
 	}
 	return {
@@ -307,4 +318,29 @@ export async function vectorFieldsForCommit(
 		embeddingGeneratedAt: undefined,
 		isStale: true,
 	};
+}
+
+// ── Vector retrieval ───────────────────────────────────────────────────────
+
+/**
+ * THE retrieval check, the read-side counterpart of {@link vectorFieldsForCommit}.
+ * A search passes the hits of its vector leg and the space key its query vector
+ * was embedded in. The space is re-read AFTER the vector search: if it changed
+ * while the query ran, the hits may hold vectors of the new space, so they are
+ * dropped (the caller's lexical leg still answers). If it did not change, no
+ * vector of another space can have been committed before the search, because
+ * the commit check refuses those. A missing key (a previous-release caller with a
+ * precomputed vector) drops the hits too. Phase 0 stand-in: the embed lane
+ * replaces it with a space-filtered vector search on `embeddingSpaceId`.
+ */
+export async function vectorHitsInCurrentSpace<H>(
+	ctx: Pick<ActionCtx, 'runQuery'>,
+	hits: H[],
+	queryEmbeddingSpaceKey: string | undefined
+): Promise<H[]> {
+	if (hits.length === 0) return hits;
+	const isCurrent = await ctx.runQuery(internal.aiProviderConfig._isEmbeddingSpaceCurrent, {
+		embeddingSpaceKey: queryEmbeddingSpaceKey,
+	});
+	return isCurrent ? hits : [];
 }

@@ -128,12 +128,19 @@ export const inferRelations = internalAction({
 		// 'org-wide', so a neighbor — and any edge to it — can't bridge to another
 		// contact's data.
 		const candidatesById = new Map<string, Doc<'knowledgeEntries'>>();
+		// The anchors' stored vectors are in the space current now; the search
+		// drops its hits if that changes before it reads them.
+		const embeddingSpaceKey = await ctx.runQuery(
+			internal.aiProviderConfig._currentEmbeddingSpaceKey,
+			{}
+		);
 		for (const anchor of anchors) {
 			if (candidatesById.size >= MAX_CANDIDATES) break;
 			const embedding = anchor.embedding;
 			if (!embedding || embedding.length === 0) continue; // no stored vector → no neighbors
 			const hits = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 				embedding,
+				embeddingSpaceKey,
 				scopeToContact: scopeForAnchor(anchor),
 				// The linker writes edges, not reads for a person; every read of an
 				// edge re-applies the reader rule to both ends.

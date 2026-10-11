@@ -468,6 +468,7 @@ describe('retrieval leaves inbox-derived entries out unless asked for them', () 
 		await seed(t);
 
 		const member = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			queryText: 'boundarytoken',
 			embedding: unit(4),
 			scopeToContact: 'org-wide',
@@ -477,6 +478,7 @@ describe('retrieval leaves inbox-derived entries out unless asked for them', () 
 		expect(titles(member)).toEqual(['open fact']);
 
 		const expanded = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			queryText: 'boundarytoken',
 			embedding: unit(4),
 			scopeToContact: 'org-wide',
@@ -488,6 +490,7 @@ describe('retrieval leaves inbox-derived entries out unless asked for them', () 
 		expect(expanded[0]?._via ?? []).toEqual([]);
 
 		const reader = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			queryText: 'boundarytoken',
 			embedding: unit(4),
 			scopeToContact: 'org-wide',

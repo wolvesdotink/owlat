@@ -28,7 +28,7 @@ import { v } from 'convex/values';
 import { embed } from 'ai';
 import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
-import { resolveEmbeddingModel, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
+import { resolveIndexEmbedder, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
 import { runLlmText } from './lib/llm/dispatch';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
@@ -100,9 +100,10 @@ export const ask = authedAction({
 		let embedding: number[] | undefined;
 		// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
 		// error; only a transient embed() failure falls soft to no-vector recall.
-		const embeddingModel = await resolveEmbeddingModel(ctx);
+		const embedder = await resolveIndexEmbedder(ctx);
+		const { embeddingSpaceKey } = embedder;
 		try {
-			const res = await embed({ model: embeddingModel, value: question });
+			const res = await embed({ model: embedder.model, value: question });
 			embedding = toIndexVector(res.embedding);
 		} catch (error) {
 			logInfo('[quickQuery] embed failed', { error: String(error) });
@@ -114,6 +115,7 @@ export const ask = authedAction({
 			ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 				queryText: question,
 				embedding,
+				embeddingSpaceKey,
 				scopeToContact: 'org-wide',
 				includeInboxDerived: canReadInbox,
 				limit: PER_SOURCE_LIMIT,
@@ -121,6 +123,7 @@ export const ask = authedAction({
 			ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
 				queryText: question,
 				embedding,
+				embeddingSpaceKey,
 				scopeToContact: 'org-wide',
 				limit: PER_SOURCE_LIMIT,
 			}),
