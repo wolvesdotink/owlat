@@ -23,6 +23,7 @@
  * `'use node'` because the classify step module is.
  */
 import type { z } from 'zod';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
 import type { TokenUsage } from '../../../agent/steps/types';
 import {
 	buildClassifyPrompt,
@@ -45,6 +46,9 @@ import {
 } from './decisionRunner';
 import type { EvalModelMessage } from './replay';
 import { threadsInSplit } from './splits';
+
+/** Both of today's classifiers are the catalog's `mail.classify`. */
+const TODAY_TASK: AiTaskName = 'mail.classify';
 
 /** One structured model call, as `runLlmObject` makes it. */
 export type TodayGenerate = (request: {
@@ -142,7 +146,7 @@ export async function runTodayClassifier(
 			plane: 'language' as const,
 			rootRequestId,
 			requestId: `${rootRequestId}#classify`,
-			task: 'mail.classify',
+			task: TODAY_TASK,
 			attempt: 1,
 		};
 		let response: Awaited<ReturnType<TodayGenerate>>;

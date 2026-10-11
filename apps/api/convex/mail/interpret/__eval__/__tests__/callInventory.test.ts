@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { Doc } from '../../../../_generated/dataModel';
 import {
 	callInventory,
 	compareInventories,
@@ -102,9 +103,23 @@ describe('callInventory', () => {
 		]);
 	});
 
-	it('reports a missing task under its feature', () => {
-		const inventory = callInventory([row({ rootRequestId: 'team:m9', feature: 'agent_draft' })]);
-		expect(Object.keys(inventory.paths[0]?.byTask ?? {})).toEqual(['feature:agent_draft']);
+	it('files a row without a task under the catalog task of its feature, else the feature', () => {
+		const inventory = callInventory([
+			row({ rootRequestId: 'team:m9', feature: 'agent_draft' }),
+			row({ rootRequestId: 'team:m9', feature: 'plugin:acme' }),
+			row({ rootRequestId: 'team:m9', feature: 'eval.unknown' }),
+		]);
+		expect(Object.keys(inventory.paths[0]?.byTask ?? {})).toEqual([
+			'feature:eval.unknown',
+			'mail.draft',
+			'plugin.invoke',
+		]);
+	});
+
+	it('reads the ledger’s own row shape: every field it names exists on llmUsageEvents', () => {
+		// A ledger document is a row as it is, and the row invents no column.
+		expectTypeOf<Doc<'llmUsageEvents'>>().toExtend<LedgerCallRow>();
+		expectTypeOf<keyof LedgerCallRow>().toExtend<keyof Doc<'llmUsageEvents'>>();
 	});
 });
 

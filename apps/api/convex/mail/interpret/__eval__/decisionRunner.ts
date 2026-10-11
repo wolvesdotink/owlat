@@ -17,6 +17,7 @@
 import type { TokenUsage } from '../../../agent/steps/types';
 import type { QuestionSet } from '../../../lib/decision/questions';
 import type { LanguageModel } from 'ai';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
 import type {
 	DecisionProviderAdapter,
 	DecisionRequest,
@@ -124,13 +125,17 @@ export interface DecisionRun {
 	rows: LedgerCallRow[];
 }
 
-/** The ledger task a round trip records under (the task-policy catalog's names). */
+/**
+ * The ledger task a round trip records under (the task-policy catalog's
+ * names). The category bundle carries the disposition question too, and one
+ * row has one task: it records as `mail.category`.
+ */
 const LEDGER_TASK = {
 	triage: 'mail.triage',
 	message: 'mail.category',
 	necessity: 'mail.necessity',
 	draft: 'mail.draft_quality',
-} as const;
+} as const satisfies Record<string, AiTaskName>;
 
 /** `eval.<executor>.<surface>`: the call-inventory path of an eval message. */
 export function evalRootRequestId(

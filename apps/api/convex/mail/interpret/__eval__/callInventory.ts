@@ -22,12 +22,20 @@
  *
  * Pure and isolate-safe.
  */
+import type { AiTaskName } from '@owlat/shared/aiRouting';
+import { taskForFeature } from '../../../lib/llm/taskPolicy';
+import type { LlmUsagePlane } from '../../../lib/llmUsageTags';
+import type { BudgetClass } from '../../../lib/validators/aiRouting';
 import { mean, quantile } from './stats';
 
-/** The ledger fields the inventory reads: a structural subset of an `llmUsageEvents` row. */
+/**
+ * The ledger fields the inventory reads: a structural subset of an
+ * `llmUsageEvents` row, under the same names and types (a type test holds the
+ * two together), so an exported ledger document is a valid row as it is.
+ */
 export interface LedgerCallRow {
 	feature: string;
-	plane?: 'language' | 'embedding' | 'decision';
+	plane?: LlmUsagePlane;
 	modelUsed?: string;
 	promptTokens: number;
 	completionTokens: number;
@@ -36,14 +44,14 @@ export interface LedgerCallRow {
 	requestId?: string;
 	rootRequestId?: string;
 	parentCallId?: string;
-	task?: string;
+	task?: AiTaskName;
 	attempt?: number;
 	endpoint?: string;
 	latencyMs?: number;
 	isEstimated?: boolean;
 	isFallback?: boolean;
 	/** The ceiling slice the call drew on; absent ⇒ `standard`. `shadow` is shadow-run overhead. */
-	budgetClass?: 'standard' | 'triage' | 'shadow';
+	budgetClass?: BudgetClass;
 }
 
 export interface Spread {
@@ -96,7 +104,10 @@ export interface CallInventory {
 export interface CallInventoryOptions {
 	/** The path a root belongs to. Default {@link defaultPathOf}. */
 	pathOf?: (rootRequestId: string, rows: readonly LedgerCallRow[]) => string;
-	/** The task a row counts under. Default: `task`, else `feature:<feature>`. */
+	/**
+	 * The task a row counts under. Default: the row's `task`, else the catalog's
+	 * task for its feature (`taskForFeature`), else `feature:<feature>`.
+	 */
 	taskOf?: (row: LedgerCallRow) => string;
 	/** Messages processed per path, zero-call messages included. */
 	messageCounts?: Readonly<Record<string, number>>;
@@ -127,7 +138,8 @@ export function defaultPathOf(rootRequestId: string, rows: readonly LedgerCallRo
 	return 'other';
 }
 
-const defaultTaskOf = (row: LedgerCallRow) => row.task ?? `feature:${row.feature}`;
+const defaultTaskOf = (row: LedgerCallRow): string =>
+	row.task ?? taskForFeature(row.feature) ?? `feature:${row.feature}`;
 
 function spread(values: readonly number[]): Spread {
 	return {
