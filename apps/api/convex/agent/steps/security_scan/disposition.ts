@@ -130,3 +130,35 @@ export function guardBlocksStep(
 ): boolean {
 	return kind !== 'security_scan' && guardRequirement(message?.securityFlags) === 'guard_not_run';
 }
+
+/**
+ * Where a stored Team message stands before a generative consumer outside the
+ * pipeline reads it (knowledge extraction, thread interpretation, a briefing's
+ * conversation history):
+ *   - `rejected`: the scan or a late guard already held it back: quarantined,
+ *     malware, a malicious URL, or an injection at quarantine confidence. Keyed
+ *     on the persisted status and flags, so it holds after a late guard has
+ *     cleared the D13 marker and for a deterministic quarantine with no marker
+ *     at all (#1339).
+ *   - `needs_guard`: its scan skipped the model guard (D13); run it first.
+ *   - `clear`: anything else, including a message never scanned (store-only
+ *     mail), which these consumers read before D13 too.
+ */
+export type GuardStanding = 'rejected' | 'needs_guard' | 'clear';
+
+export function guardStanding(message: {
+	processingStatus?: string;
+	virusVerdict?: string;
+	securityFlags?: Infer<typeof securityFlagsValidator>;
+}): GuardStanding {
+	const flags = message.securityFlags;
+	if (
+		message.processingStatus === 'quarantined' ||
+		message.virusVerdict === 'infected' ||
+		flags?.phishingDetected === true ||
+		(flags?.injectionDetected === true && flags.confidence >= INJECTION_CONFIDENCE_THRESHOLD)
+	) {
+		return 'rejected';
+	}
+	return guardRequirement(flags) === 'guard_not_run' ? 'needs_guard' : 'clear';
+}

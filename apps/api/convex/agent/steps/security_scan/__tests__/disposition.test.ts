@@ -9,6 +9,7 @@ import { resolveRoutingPolicy } from '@owlat/shared/aiRouting';
 import {
 	guardBlocksStep,
 	guardSkipReason,
+	guardStanding,
 	isDeterministicQuarantine,
 	isMtaVerdictTerminal,
 	scanDisposition,
@@ -115,5 +116,41 @@ describe('guardBlocksStep', () => {
 		expect(guardBlocksStep({ securityFlags: ran }, 'draft')).toBe(false);
 		expect(guardBlocksStep({}, 'draft')).toBe(false);
 		expect(guardBlocksStep(null, 'draft')).toBe(false);
+	});
+});
+
+describe('guardStanding', () => {
+	const flags = { injectionDetected: false, confidence: 0, scanTimestamp: 1 };
+
+	it('rejects on persisted status and flags, marker or not (#1339)', () => {
+		expect(guardStanding({ processingStatus: 'quarantined' })).toBe('rejected');
+		expect(guardStanding({ processingStatus: 'received', virusVerdict: 'infected' })).toBe(
+			'rejected'
+		);
+		expect(guardStanding({ securityFlags: { ...flags, phishingDetected: true } })).toBe('rejected');
+		expect(
+			guardStanding({ securityFlags: { ...flags, injectionDetected: true, confidence: 0.85 } })
+		).toBe('rejected');
+		// Rejection wins over a marker still present.
+		expect(
+			guardStanding({
+				processingStatus: 'quarantined',
+				securityFlags: { ...flags, guardNotRun: { reason: 'agent_disabled', at: 1 } },
+			})
+		).toBe('rejected');
+	});
+
+	it('asks for the guard while the marker is set, and clears everything else', () => {
+		expect(
+			guardStanding({
+				securityFlags: { ...flags, guardNotRun: { reason: 'spam_archived', at: 1 } },
+			})
+		).toBe('needs_guard');
+		// A weak pattern below the quarantine threshold is not a rejection.
+		expect(
+			guardStanding({ securityFlags: { ...flags, injectionDetected: true, confidence: 0.5 } })
+		).toBe('clear');
+		expect(guardStanding({ processingStatus: 'archived', securityFlags: flags })).toBe('clear');
+		expect(guardStanding({ processingStatus: 'received' })).toBe('clear');
 	});
 });

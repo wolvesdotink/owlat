@@ -24,7 +24,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internalQuery } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import { guardRequirement } from '../lib/aiRouting/guardRecord';
+import { guardStanding } from '../agent/steps/security_scan/disposition';
 import {
 	contextCoverageValidator,
 	draftQualityValidator,
@@ -191,15 +191,22 @@ export const recordLateGuard = internalMutation({
 });
 
 /**
- * D13: the Team message when its scan skipped the model guard, else null (the
- * guard ran, the message was never scanned, or it is gone). The cheap check a
- * consumer outside the pipeline (thread interpretation) makes before it pays
- * for anything.
+ * D13 and #1339: where a Team message stands before thread interpretation reads
+ * it (agent/steps/security_scan/disposition.ts `guardStanding`). The message
+ * rides along only when its guard still has to run, so the caller can run it.
  */
-export const messageAwaitingGuard = internalQuery({
+export const guardStandingOf = internalQuery({
 	args: { inboundMessageId: v.id('inboundMessages') },
-	handler: async (ctx, args): Promise<Doc<'inboundMessages'> | null> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<
+		| { standing: 'rejected' | 'clear' }
+		| { standing: 'needs_guard'; message: Doc<'inboundMessages'> }
+	> => {
 		const message = await ctx.db.get(args.inboundMessageId);
-		return message && guardRequirement(message.securityFlags) === 'guard_not_run' ? message : null;
+		if (!message) return { standing: 'clear' };
+		const standing = guardStanding(message);
+		return standing === 'needs_guard' ? { standing, message } : { standing };
 	},
 });

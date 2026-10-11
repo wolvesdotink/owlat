@@ -23,12 +23,12 @@ import type { Doc } from '../../../_generated/dataModel';
 import type { interpretationSourceValidator } from '../../../lib/validators/threadBrief';
 import type { ActionCtx } from '../../../_generated/server';
 import type { securityFlagsValidator } from '../../../lib/convexValidators';
-import { guardRequirement } from '../../../lib/aiRouting/guardRecord';
 import { openInboundMessageBody } from '../../../lib/messageBodyInbound';
 import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject } from '../../../lib/llm/dispatch';
 import { meterAgentCall } from '../../shared/agentSpend';
 import { stripHiddenContent } from './patterns';
+import { guardStanding } from './disposition';
 
 type SecurityFlags = Infer<typeof securityFlagsValidator>;
 
@@ -234,44 +234,66 @@ export function flagsAfterLateGuard(
 }
 
 /**
- * D13's "guard required before autonomy" for a guarded consumer that runs
- * outside the pipeline (knowledge extraction, including the first-enable
- * backfill). A message whose scan skipped the model guard gets it now: the
- * result is recorded on the message (clearing the marker), and the consumer
- * may proceed only when the guard did not flag the message. A message whose
- * guard already ran, or that was never scanned at all (store-only mail, rows
- * older than D13), passes through unchanged. Fails open on a model error the
- * way the step does, with `guardUnavailable` recorded.
+ * D13's "guard required before autonomy" for a generative consumer that reads
+ * a stored Team message outside the pipeline: knowledge extraction (including
+ * the first-enable backfill), thread interpretation, and a briefing's
+ * conversation history. See {@link guardStanding}:
+ *   - a message the scan or a late guard already rejected (quarantine,
+ *     malware, a malicious URL, an injection at quarantine confidence) never
+ *     proceeds, with no model call (#1339);
+ *   - a message whose scan skipped the model guard gets it now: the result is
+ *     recorded on the message (clearing the marker, and leaving the injection
+ *     flags that reject it from then on), and it proceeds only when the guard
+ *     did not flag it. A model error fails open, the way the step does, with
+ *     `guardUnavailable` recorded;
+ *   - anything else proceeds.
  */
 export async function runGuardBeforeAutonomy(
 	ctx: ActionCtx,
 	message: Doc<'inboundMessages'>
 ): Promise<{ mayProceed: boolean }> {
-	const flags = message.securityFlags;
-	if (!flags || guardRequirement(flags) !== 'guard_not_run') return { mayProceed: true };
+	const standing = guardStanding(message);
+	if (standing === 'rejected') return { mayProceed: false };
+	if (standing === 'clear' || !message.securityFlags) return { mayProceed: true };
 	const { text, html } = await openInboundMessageBody(message, ctx.storage);
 	const sample = buildGuardSample(message.subject, text, html);
 	const scan = await runModelGuard(ctx, sample);
 	await ctx.runMutation(internal.inbox.stepOutputs.recordLateGuard, {
 		inboundMessageId: message._id,
-		securityFlags: flagsAfterLateGuard(flags, scan, sample, Date.now()),
+		securityFlags: flagsAfterLateGuard(message.securityFlags, scan, sample, Date.now()),
 	});
 	return { mayProceed: !isGuardFlagged(scan.verdict) };
 }
 
 /**
- * The same requirement for thread interpretation, which reads Team inbound
- * messages outside the pipeline (a thread's history on first open, the brief
- * backfill). Only a Team inbound source can carry the marker; every other
- * source, and a message that is gone (the run's own load reports that), passes.
+ * The same requirement for thread interpretation, whose Team sources are read
+ * by id. Only a Team `inbound` source is checked; a reply of ours passes. A
+ * gone message passes too: the run's own load reports that.
  */
 export async function guardAllowsInterpretation(
 	ctx: ActionCtx,
 	source: Infer<typeof interpretationSourceValidator>
 ): Promise<boolean> {
 	if (source.kind !== 'inbound') return true;
-	const message = await ctx.runQuery(internal.inbox.stepOutputs.messageAwaitingGuard, {
+	const check = await ctx.runQuery(internal.inbox.stepOutputs.guardStandingOf, {
 		inboundMessageId: source.id,
 	});
-	return message ? (await runGuardBeforeAutonomy(ctx, message)).mayProceed : true;
+	if (check.standing !== 'needs_guard') return check.standing === 'clear';
+	return (await runGuardBeforeAutonomy(ctx, check.message)).mayProceed;
+}
+
+/**
+ * A briefing's conversation history, less what the guard rejects: a message
+ * already rejected is dropped, and one whose scan skipped the guard is guarded
+ * first and kept only when the guard passes it. Order is kept.
+ */
+export async function guardedHistory<M extends Doc<'inboundMessages'>>(
+	ctx: ActionCtx,
+	messages: readonly M[]
+): Promise<M[]> {
+	const kept: M[] = [];
+	for (const message of messages) {
+		if ((await runGuardBeforeAutonomy(ctx, message)).mayProceed) kept.push(message);
+	}
+	return kept;
 }

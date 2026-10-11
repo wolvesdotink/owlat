@@ -1,17 +1,23 @@
+'use node';
+
 /**
  * `context_retrieval` Agent step (module) — see ADR-0014.
  *
  * Builds the briefing string the LLM steps consume: contact profile,
  * recent activities, thread history, current message. Token-budgeted
- * with three compaction tiers (normal / compacted / emergency).
+ * with three compaction tiers (normal / compacted / emergency). Node-only:
+ * the history runs the late guard (D13); every caller is Node already.
  */
 
+import type { Infer } from 'convex/values';
 import { internal } from '../../../_generated/api';
+import type { contextCoverageValidator } from '../../../lib/convexValidators';
 import type { Id } from '../../../_generated/dataModel';
 import type { ActionCtx } from '../../../_generated/server';
 import type { AgentStepModule } from '../types';
 import { openInboundMessageBody } from '../../../lib/messageBodyInbound';
 import { embedRetrievalQuery } from '../../../knowledge/retrieval';
+import { guardedHistory } from '../security_scan/guard';
 import {
 	EMERGENCY_BUDGET,
 	activityContentSnippet,
@@ -43,21 +49,12 @@ interface ContextRetrievalInput {
 }
 
 /**
- * Advisory retrieval-coverage / grounding signal. Derived cheaply from
- * what retrieval already computed (NO extra LLM call). Persisted on the
- * inbound message alongside `contextTier`. Changes NO routing today — it
- * exists so the future clarify step and the draft-quality gate have a
- * cheap "is the AI replying blind?" trigger.
+ * Advisory retrieval-coverage / grounding signal, derived from what retrieval
+ * already computed (no extra LLM call) and persisted beside `contextTier`. It
+ * changes no routing; it is the cheap "is the AI replying blind?" trigger. The
+ * shape is the stored validator's (lib/convexValidators.ts).
  */
-interface ContextCoverage {
-	contact: boolean;
-	thread: boolean;
-	knowledge: boolean;
-	files: boolean;
-	knowledgeHitCount: number;
-	topScore?: number;
-	lowCoverage: boolean;
-}
+type ContextCoverage = Infer<typeof contextCoverageValidator>;
 
 /**
  * A single provenance entry: one prior email or knowledge entry that was
@@ -113,10 +110,8 @@ export async function assembleInboundBriefing(
 	let knowledgeHitCount = 0;
 	let topScore: number | undefined;
 
-	// Provenance — the exact prior emails + knowledge entries fed into the
-	// briefing below. Only sources that were actually appended are recorded,
-	// so this list can never name a source the draft wasn't grounded in, and
-	// (because retrieval is contact-scoped) never a cross-contact source.
+	// Provenance — the exact prior emails + knowledge entries fed into the briefing
+	// below: only what was appended, so never an ungrounded or cross-contact source.
 	const groundingSources: GroundingSource[] = [];
 
 	// 1. Contact profile
@@ -194,13 +189,18 @@ export async function assembleInboundBriefing(
 		}
 	}
 
-	// 3. Thread history (previous messages in this conversation)
+	// 3. Thread history (previous messages in this conversation). D13 / #1339: a
+	// message the guard rejected is left out; one whose guard was skipped is
+	// guarded first (security_scan/guard.ts `guardedHistory`).
 	if (message.threadId) {
-		const threadMessages = await ctx.runQuery(internal.agent.agentPipeline.getThreadMessages, {
-			threadId: message.threadId,
-			limit: CONTEXT_BUDGET.recentMessagesCount,
-			excludeMessageId: inboundMessageId,
-		});
+		const threadMessages = await guardedHistory(
+			ctx,
+			await ctx.runQuery(internal.agent.agentPipeline.getThreadMessages, {
+				threadId: message.threadId,
+				limit: CONTEXT_BUDGET.recentMessagesCount,
+				excludeMessageId: inboundMessageId,
+			})
+		);
 		if (threadMessages.length > 0) {
 			hasThread = true;
 			for (const m of threadMessages) {
