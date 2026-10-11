@@ -17,6 +17,7 @@ import type * as mail_interpret_briefProject from '../mail/interpret/briefProjec
 import type * as mail_interpret_briefRead from '../mail/interpret/briefRead.js';
 import type * as mail_interpret_briefRow from '../mail/interpret/briefRow.js';
 import type * as mail_interpret_clamp from '../mail/interpret/clamp.js';
+import type * as mail_interpret_categoryDefer from '../mail/interpret/categoryDefer.js';
 import type * as mail_interpret_commitmentLink from '../mail/interpret/commitmentLink.js';
 import type * as mail_interpret_counters from '../mail/interpret/counters.js';
 import type * as mail_interpret_coverage from '../mail/interpret/coverage.js';
@@ -1621,6 +1622,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/briefRead': typeof mail_interpret_briefRead;
 	'mail/interpret/briefRow': typeof mail_interpret_briefRow;
 	'mail/interpret/clamp': typeof mail_interpret_clamp;
+	'mail/interpret/categoryDefer': typeof mail_interpret_categoryDefer;
 	'mail/interpret/commitmentLink': typeof mail_interpret_commitmentLink;
 	'mail/interpret/counters': typeof mail_interpret_counters;
 	'mail/interpret/coverage': typeof mail_interpret_coverage;

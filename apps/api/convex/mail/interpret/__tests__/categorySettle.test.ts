@@ -107,7 +107,7 @@ describe('owner’s repro: provisional category, List-Id capture, newsletter ref
 		});
 	});
 
-	it('the run waits instead of reading the provisional label', async () => {
+	it('the run waits instead of reading the provisional label, with one deferred job however often it is called', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedMailThread(t);
 		const source = { kind: 'mail' as const, id: messageId };
@@ -117,13 +117,28 @@ describe('owner’s repro: provisional category, List-Id capture, newsletter ref
 			});
 			await captureInterpretSource(ctx, { source, isLive: true, listId: '<news.acme.test>' });
 		});
-		const result = await t.action(internal.mail.interpret.run.interpretMessage, { source });
-		expect(result).toMatchObject({ status: 'skipped', errorCode: 'category_pending' });
+		// Repeated and concurrent calls (a re-run, the stale sweep, two jobs).
+		const results = await Promise.all([
+			t.action(internal.mail.interpret.run.interpretMessage, { source }),
+			t.action(internal.mail.interpret.run.interpretMessage, { source }),
+		]);
+		results.push(await t.action(internal.mail.interpret.run.interpretMessage, { source }));
+		for (const result of results) {
+			expect(result).toMatchObject({ status: 'skipped', errorCode: 'category_pending' });
+		}
 		const scheduled = await t.run(async (ctx) =>
 			(await ctx.db.system.query('_scheduled_functions').collect()).filter((f) =>
 				f.name.includes('interpretMessage')
 			)
 		);
-		expect(scheduled.map((f) => f.scheduledTime)).toContain(NOW + CATEGORY_SETTLE_MS);
+		// One deferred job for the source, at the settle time; recorded on its snapshot.
+		expect(scheduled.map((f) => f.scheduledTime)).toEqual([NOW + CATEGORY_SETTLE_MS]);
+		const row = await t.run(async (ctx) =>
+			ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${messageId}`))
+				.first()
+		);
+		expect(row?.categoryDeferredUntil).toBe(NOW + CATEGORY_SETTLE_MS);
 	});
 });
