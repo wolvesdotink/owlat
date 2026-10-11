@@ -26,6 +26,7 @@ import { recordSpendOnFailure } from '../analytics/failedLlmSpend';
 import { ENTRY_TYPES } from '../schema/knowledge';
 import { normalizeForHash } from '../lib/knowledgeEdges';
 import { detectInjection, detectSmuggling } from '../agent/steps/security_scan/patterns';
+import { runGuardBeforeAutonomy } from '../agent/steps/security_scan/guard';
 
 /**
  * Guard knowledge extraction against prompt injection planted in untrusted
@@ -173,6 +174,16 @@ export const extractFromMessage = internalAction({
 			sourceId: args.inboundMessageId,
 		});
 		if (already > 0) return;
+
+		// D13 (ADR-0073): a message whose scan skipped the model guard (spam
+		// archive, agent off) gets it before its first generative consumer — this
+		// one, which the first-enable backfill reaches for mail that arrived while
+		// the agent was off. A guard that flags the message ends extraction.
+		const guard = await runGuardBeforeAutonomy(ctx, message);
+		if (!guard.mayProceed) {
+			logInfo('[knowledge.extract] skipped: the late injection guard flagged the message');
+			return;
+		}
 
 		try {
 			// ── Step 1: Extract knowledge using LLM ──

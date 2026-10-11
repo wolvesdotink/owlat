@@ -3,7 +3,7 @@
  * result onto its `inboundMessage` WITHOUT changing `processingStatus`.
  *
  * Split out of `./processingLifecycle.ts` (the status dispatcher) once that file
- * crossed the ~500 LOC size cap. These three writers share one shape: an Agent
+ * crossed the ~500 LOC size cap. These writers share one shape: an Agent
  * step (`context_retrieval` / `route` / `draft`) calls them after its execute()
  * completes, still inside its current processingStatus, so the review UI can
  * read the step's output. They are deliberately NOT part of `transition()`'s
@@ -11,16 +11,25 @@
  * change NO routing on their own. FAIL-SOFT: callers wrap these so a persistence
  * failure degrades to "no metadata shown" and never wedges the walker.
  *
+ * The two D13 writers at the end (`recordSecurityScan`, `recordLateGuard`) are
+ * the exception to "fail-soft": they store the `guardNotRun` marker and its
+ * clearing, which later autonomous paths read, so their callers let a failure
+ * surface.
+ *
  * See docs/adr/0010-inbox-processing-lifecycle-module.md and
  * docs/adr/0014-agent-step-module.md.
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
+import { internalQuery } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+import { guardRequirement } from '../lib/aiRouting/guardRecord';
 import {
 	contextCoverageValidator,
 	draftQualityValidator,
 	groundingSourceValidator,
+	securityFlagsValidator,
 } from '../lib/convexValidators';
 import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { contextTierValidator } from '../lib/literalValidators';
@@ -138,5 +147,59 @@ export const recordDraftOutput = internalMutation({
 			// re-drafts over a person's reply, #1220.)
 			...NO_SAVED_EDITS,
 		});
+	},
+});
+
+/**
+ * D13 (ADR-0073): persist the scan of a message that arrived while the agent
+ * was off. That path ends the run in `security_check` without a transition, so
+ * before D13 its scan was never stored; now it carries the `guardNotRun` marker
+ * every later autonomous consumer checks. Written only while the message is
+ * still in `security_check` and nobody has taken it over, so a late write can
+ * never overwrite a later scan or a person's reply.
+ */
+export const recordSecurityScan = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		securityFlags: securityFlagsValidator,
+	},
+	handler: async (ctx, args) => {
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message || message.processingStatus !== 'security_check') return;
+		if (message.manualTakeoverAt !== undefined) return;
+		await ctx.db.patch(args.inboundMessageId, { securityFlags: args.securityFlags });
+	},
+});
+
+/**
+ * D13: record the model guard that ran late, the first time a guarded consumer
+ * reached a message whose scan skipped it (agent/steps/security_scan/guard.ts
+ * `runGuardBeforeAutonomy`). Applied only while the stored scan still carries
+ * the marker: a pipeline re-run that rescanned the message in the meantime
+ * wins. The processing status is untouched.
+ */
+export const recordLateGuard = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		securityFlags: securityFlagsValidator,
+	},
+	handler: async (ctx, args) => {
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message?.securityFlags?.guardNotRun) return;
+		await ctx.db.patch(args.inboundMessageId, { securityFlags: args.securityFlags });
+	},
+});
+
+/**
+ * D13: the Team message when its scan skipped the model guard, else null (the
+ * guard ran, the message was never scanned, or it is gone). The cheap check a
+ * consumer outside the pipeline (thread interpretation) makes before it pays
+ * for anything.
+ */
+export const messageAwaitingGuard = internalQuery({
+	args: { inboundMessageId: v.id('inboundMessages') },
+	handler: async (ctx, args): Promise<Doc<'inboundMessages'> | null> => {
+		const message = await ctx.db.get(args.inboundMessageId);
+		return message && guardRequirement(message.securityFlags) === 'guard_not_run' ? message : null;
 	},
 });
