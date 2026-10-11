@@ -439,6 +439,32 @@ describe('llmProvider', () => {
 			expect(cfg.language.clientConfig.apiKey).toBe('env-key');
 		});
 
+		it('serves the re-read row even when a same-millisecond save kept updatedAt', async () => {
+			vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'http://ollama:11434/v1');
+			const { resolveIndexEmbedder } = await import('../llmProvider');
+			const { ctx, runQuery } = makeCtx(storedRow({ embeddingProviderKind: 'local' }));
+			const first = await resolveIndexEmbedder(ctx);
+			// Same _id and updatedAt (123): the fingerprint cannot tell the rows apart.
+			runQuery.mockResolvedValue(
+				storedRow({ embeddingProviderKind: 'local', embeddingModel: 'mxbai-embed-large' })
+			);
+			const second = await resolveIndexEmbedder(ctx);
+			expect(mockCompatTextEmbedding).toHaveBeenLastCalledWith('mxbai-embed-large');
+			expect(second.embeddingSpaceKey).not.toBe(first.embeddingSpaceKey);
+		});
+
+		it('decrypts again when a same-millisecond save replaced the key envelope', async () => {
+			const { resolveEmbeddingModel } = await import('../llmProvider');
+			const { ctx, runQuery, runAction } = makeCtx(twoKeyRow());
+			await resolveEmbeddingModel(ctx);
+			await resolveEmbeddingModel(ctx);
+			// Unchanged envelope: the decrypted key is reused.
+			expect(decrypted(runAction)).toEqual(['emb-ct']);
+			runQuery.mockResolvedValue(twoKeyRow({ embeddingSecretCiphertext: 'emb-ct-2' }));
+			await resolveEmbeddingModel(ctx);
+			expect(decrypted(runAction)).toEqual(['emb-ct', 'emb-ct-2']);
+		});
+
 		it('invalidateAiConfigCache makes the next call re-read the row', async () => {
 			const { resolveLanguageModel, invalidateAiConfigCache } = await import('../llmProvider');
 			const { ctx, runQuery } = makeCtx(twoKeyRow());
