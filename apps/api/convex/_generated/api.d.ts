@@ -824,6 +824,7 @@ import type * as knowledge_visibility from '../knowledge/visibility.js';
 import type * as lib_readBody from '../lib/readBody.js';
 import type * as lib_adminRequests from '../lib/adminRequests.js';
 import type * as lib_aiNotConfigured from '../lib/aiNotConfigured.js';
+import type * as lib_aiProviderSecrets from '../lib/aiProviderSecrets.js';
 import type * as lib_aiRouting_embeddingKeys from '../lib/aiRouting/embeddingKeys.js';
 import type * as lib_aiRouting_guardRecord from '../lib/aiRouting/guardRecord.js';
 import type * as lib_aiRouting_spendPeriods from '../lib/aiRouting/spendPeriods.js';
@@ -877,6 +878,7 @@ import type * as lib_emailProviders_domainVerification from '../lib/emailProvide
 import type * as lib_emailProviders_mtaIdentity from '../lib/emailProviders/mtaIdentity.js';
 import type * as lib_emailProviders_sesIdentity from '../lib/emailProviders/sesIdentity.js';
 import type * as lib_emailTranslations from '../lib/emailTranslations.js';
+import type * as lib_embeddingSpace from '../lib/embeddingSpace.js';
 import type * as lib_env from '../lib/env.js';
 import type * as lib_existingAttachments from '../lib/existingAttachments.js';
 import type * as lib_featureFlags from '../lib/featureFlags.js';
@@ -907,6 +909,7 @@ import type * as lib_llm_dispatch from '../lib/llm/dispatch.js';
 import type * as lib_llm_partialUsage from '../lib/llm/partialUsage.js';
 import type * as lib_llm_pricing from '../lib/llm/pricing.js';
 import type * as lib_llm_promptCache from '../lib/llm/promptCache.js';
+import type * as lib_llm_requestPolicy from '../lib/llm/requestPolicy.js';
 import type * as lib_llm_retryPolicy from '../lib/llm/retryPolicy.js';
 import type * as lib_llm_streamFlusher from '../lib/llm/streamFlusher.js';
 import type * as lib_llm_taskPolicy from '../lib/llm/taskPolicy.js';
@@ -2444,6 +2447,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/readBody': typeof lib_readBody;
 	'lib/adminRequests': typeof lib_adminRequests;
 	'lib/aiNotConfigured': typeof lib_aiNotConfigured;
+	'lib/aiProviderSecrets': typeof lib_aiProviderSecrets;
 	'lib/aiRouting/embeddingKeys': typeof lib_aiRouting_embeddingKeys;
 	'lib/aiRouting/guardRecord': typeof lib_aiRouting_guardRecord;
 	'lib/aiRouting/spendPeriods': typeof lib_aiRouting_spendPeriods;
@@ -2497,6 +2501,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/emailProviders/mtaIdentity': typeof lib_emailProviders_mtaIdentity;
 	'lib/emailProviders/sesIdentity': typeof lib_emailProviders_sesIdentity;
 	'lib/emailTranslations': typeof lib_emailTranslations;
+	'lib/embeddingSpace': typeof lib_embeddingSpace;
 	'lib/env': typeof lib_env;
 	'lib/existingAttachments': typeof lib_existingAttachments;
 	'lib/featureFlags': typeof lib_featureFlags;
@@ -2527,6 +2532,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llm/partialUsage': typeof lib_llm_partialUsage;
 	'lib/llm/pricing': typeof lib_llm_pricing;
 	'lib/llm/promptCache': typeof lib_llm_promptCache;
+	'lib/llm/requestPolicy': typeof lib_llm_requestPolicy;
 	'lib/llm/retryPolicy': typeof lib_llm_retryPolicy;
 	'lib/llm/streamFlusher': typeof lib_llm_streamFlusher;
 	'lib/llm/taskPolicy': typeof lib_llm_taskPolicy;

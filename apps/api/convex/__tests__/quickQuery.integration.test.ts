@@ -89,6 +89,11 @@ vi.mock('../lib/llmProvider', async () => {
 		...actual,
 		resolveLanguageModel: vi.fn(() => 'test-model'),
 		resolveEmbeddingModel: vi.fn(() => 'test-embedding-model'),
+		// No AI config in this test, so the current embedding space is "none".
+		resolveIndexEmbedder: vi.fn(async () => ({
+			model: 'test-embedding-model',
+			embeddingSpaceKey: 'none',
+		})),
 	};
 });
 

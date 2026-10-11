@@ -16,6 +16,7 @@
 import { LANGUAGE_MODEL_CATALOG, GOOGLE_EMBEDDING_DEFAULT } from '@owlat/shared/aiModelCatalog';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { wrapEmbeddingModel, type EmbeddingModel, type LanguageModel } from 'ai';
+import { requestedEmbeddingDimensions } from '../embeddingSpace';
 import { hostedCacheKey, memoizeClient } from './clientCache';
 import type {
 	EmbeddingClientConfig,
@@ -58,7 +59,9 @@ export const googleEmbeddingAdapter: EmbeddingProviderAdapter<'google'> = {
 	defaultModel: GOOGLE_EMBEDDING_DEFAULT.model,
 	buildEmbeddingModel(cfg: EmbeddingClientConfig): EmbeddingModel {
 		const model = googleClient(cfg).textEmbeddingModel(cfg.modelId);
-		if (cfg.modelId !== GOOGLE_EMBEDDING_DEFAULT.model) return model;
+		// The same width the settings save treats as part of the embedding space.
+		const outputDimensionality = requestedEmbeddingDimensions('google', cfg.modelId);
+		if (outputDimensionality === 'native') return model;
 		const bounded = wrapEmbeddingModel({
 			model,
 			middleware: {
@@ -69,7 +72,7 @@ export const googleEmbeddingAdapter: EmbeddingProviderAdapter<'google'> = {
 						...params.providerOptions,
 						google: {
 							...params.providerOptions?.['google'],
-							outputDimensionality: GOOGLE_EMBEDDING_DEFAULT.dimensions,
+							outputDimensionality,
 						},
 					},
 				}),

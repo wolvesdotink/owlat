@@ -1,4 +1,3 @@
-import { LEGACY_GOOGLE_EMBEDDING_MODEL } from '@owlat/shared/aiModelCatalog';
 import { computed, reactive, ref, watch } from 'vue';
 import { api } from '@owlat/api';
 import {
@@ -148,7 +147,7 @@ export function useAiProviderForm() {
 		if (!c) return false;
 		return (
 			form.embeddingProviderKind !== c.embeddingProviderKind ||
-			effectiveEmbeddingModel.value !== (c.embeddingModel ?? '')
+			effectiveEmbeddingModel.value !== c.resolvedEmbeddingModel
 		);
 	});
 
@@ -275,12 +274,9 @@ export function useAiProviderForm() {
 		form.modelCapableCustom = '';
 		form.embeddingProviderKind = c.embeddingProviderKind ?? 'local';
 		const embMeta = embeddingProviderMeta(form.embeddingProviderKind);
-		form.embeddingModelChoice =
-			c.embeddingModel ||
-			(c.embeddingProviderKind === 'google'
-				? LEGACY_GOOGLE_EMBEDDING_MODEL
-				: embMeta?.defaultModel) ||
-			'';
+		// The server's resolution of an absent model (legacy Google, LOCAL_EMBEDDING_MODEL),
+		// so an unrelated save resubmits the stored embedding space unchanged.
+		form.embeddingModelChoice = c.resolvedEmbeddingModel;
 		form.embeddingModelCustom = '';
 		form.embeddingApiKey = '';
 		showLanguageBaseUrl.value =

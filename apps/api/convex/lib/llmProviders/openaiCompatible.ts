@@ -35,8 +35,13 @@ function requireBaseUrl(cfg: ProviderClientConfig): string {
 	return cfg.baseUrl;
 }
 
+// Ollama, vLLM, llama.cpp and LM Studio all accept `response_format: json_schema`.
+// Without the flag every `runLlmObject` call (classification, extraction) went
+// out as a schema-less `json_object` request.
 function compatibleClient(cfg: ProviderClientConfig): OpenAICompatibleClient {
-	return openAICompatibleClient(clientCache, 'openai-compatible', requireBaseUrl(cfg), cfg.apiKey);
+	return openAICompatibleClient(clientCache, 'openai-compatible', requireBaseUrl(cfg), cfg.apiKey, {
+		supportsStructuredOutputs: true,
+	});
 }
 
 export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCompatible'> = {

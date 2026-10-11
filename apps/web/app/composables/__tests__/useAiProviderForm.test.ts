@@ -93,19 +93,34 @@ function existingConfig(overrides: Record<string, unknown> = {}) {
 		modelCapable: 'gpt-5.6-sol',
 		isLanguageKeySet: true,
 		embeddingProviderKind: 'local',
+		resolvedEmbeddingModel: 'nomic-embed-text',
 		...overrides,
 	};
 }
 
 describe('useAiProviderForm hosted-embedder key guard', () => {
-	it('hydrates the implicit legacy Google model without selecting a new vector space', () => {
+	it('hydrates the implicit legacy Google model without selecting a new vector space', async () => {
 		config.value = existingConfig({
 			embeddingProviderKind: 'google',
 			embeddingModel: undefined,
+			resolvedEmbeddingModel: 'text-embedding-004',
 			isEmbeddingKeySet: true,
 		});
 		const state = useAiProviderForm();
 		expect(state.form.embeddingModelChoice).toBe('text-embedding-004');
+		expect(state.embeddingChanged.value).toBe(false);
+		await state.handleSave();
+		expect(saveCalls.at(-1)).toMatchObject({
+			embeddingProviderKind: 'google',
+			embeddingModel: 'text-embedding-004',
+		});
+	});
+
+	it('hydrates the model the server resolved for an absent local model', () => {
+		config.value = existingConfig({ resolvedEmbeddingModel: 'mxbai-embed-large' });
+		const state = useAiProviderForm();
+		expect(state.form.embeddingModelChoice).toBe('mxbai-embed-large');
+		expect(state.embeddingChanged.value).toBe(false);
 	});
 	it('names the embedder in translated copy, not by its message key', async () => {
 		const form = useAiProviderForm();

@@ -22,6 +22,7 @@ import { createTestContact, enableFeatures } from '../../__tests__/factories';
 import { getOpenCommitmentsByContact } from '../graph';
 import { KNOWLEDGE_ENTRY_JUNCTION, repointContactJunction } from '../../lib/contactJunctions';
 import type * as SessionOrganization from '../../lib/sessionOrganization';
+import { NO_EMBEDDING_SPACE_KEY } from '../../lib/embeddingSpace';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof SessionOrganization>('../../lib/sessionOrganization');
@@ -90,6 +91,7 @@ async function save(
 	// One second per write, so every entry has its own createdAt.
 	vi.setSystemTime(Date.now() + 1_000);
 	return t.mutation(internal.knowledge.graph.saveEntry, {
+		embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 		entryType: fields.entryType,
 		title: fields.title,
 		content: `${fields.title} (content)`,

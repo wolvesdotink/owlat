@@ -23,11 +23,12 @@ import type { Doc, Id } from './_generated/dataModel';
 import {
 	resolveAiConfig,
 	resolveLanguageModel,
-	resolveEmbeddingModel,
+	resolveIndexEmbedder,
 	toIndexVector,
 } from './lib/llmProvider';
 import { AiNotConfiguredError } from './lib/aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
+import { NO_EMBEDDING_SPACE_KEY, vectorHitsInCurrentSpace } from './lib/embeddingSpace';
 import { embed } from 'ai';
 import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
@@ -106,6 +107,7 @@ export const processFile = internalAction({
 			await ctx.runMutation(internal.semanticFiles.updateProcessedMetadata, {
 				fileId: args.fileId,
 				embedding: [],
+				embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 				searchableText: buildFileSearchableText({
 					filename: file.filename,
 					tags: file.tags,
@@ -194,16 +196,18 @@ ${textForAI}`,
 
 		// 3. Generate embedding
 		let embedding: number[] = [];
+		let embeddingSpaceKey = NO_EMBEDDING_SPACE_KEY;
 		const embeddingText = [title, summary, extractedText.slice(0, 2000)].filter(Boolean).join(' ');
 
 		if (aiConfigured && embeddingText.length > 10) {
 			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
 			// actionable error instead of being swallowed into a silent empty vector;
 			// only a transient embed() failure fails soft (metadata without search).
-			const embeddingModel = await resolveEmbeddingModel(ctx);
+			const embedder = await resolveIndexEmbedder(ctx);
+			embeddingSpaceKey = embedder.embeddingSpaceKey;
 			try {
 				const embeddingResult = await embed({
-					model: embeddingModel,
+					model: embedder.model,
 					value: embeddingText,
 				});
 				embedding = toIndexVector(embeddingResult.embedding);
@@ -262,6 +266,7 @@ ${textForAI}`,
 			embedding,
 			embeddingModel: embedding.length > 0 ? CURRENT_EMBEDDING_MODEL : undefined,
 			embeddingGeneratedAt: embedding.length > 0 ? Date.now() : undefined,
+			embeddingSpaceKey,
 			searchableText,
 			changeSummary,
 		});
@@ -338,6 +343,9 @@ export const semanticSearch = internalAction({
 	args: {
 		queryText: v.optional(v.string()),
 		embedding: v.optional(v.array(v.float64())),
+		// The space a precomputed `embedding` is in. Without it (a previous-release
+		// caller) its vector hits are dropped (vectorHitsInCurrentSpace).
+		embeddingSpaceKey: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out.
 		scopeToContact: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
@@ -349,13 +357,15 @@ export const semanticSearch = internalAction({
 		const queryText = args.queryText?.trim();
 
 		let vector = args.embedding;
+		let spaceKey = args.embeddingSpaceKey;
 		if (!vector || vector.length === 0) {
 			if (!queryText) return [];
 			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
 			// actionable error rather than silently returning zero results.
-			const embeddingModel = await resolveEmbeddingModel(ctx);
+			const embedder = await resolveIndexEmbedder(ctx);
+			spaceKey = embedder.embeddingSpaceKey;
 			try {
-				const { embedding } = await embed({ model: embeddingModel, value: queryText });
+				const { embedding } = await embed({ model: embedder.model, value: queryText });
 				vector = toIndexVector(embedding);
 			} catch (error) {
 				logInfo('[semantic_file] search embed failed', { error: String(error) });
@@ -373,10 +383,12 @@ export const semanticSearch = internalAction({
 		const fetchLimit = Math.min(256, Math.max(limit * 5, 50));
 
 		// Leg 1 — semantic vector search (paraphrase / conceptual matches).
-		const hits = await ctx.vectorSearch('semanticFiles', 'vector_files', {
-			vector,
-			limit: fetchLimit,
-		});
+		// Dropped if the embedding space changed while this query ran.
+		const hits = await vectorHitsInCurrentSpace(
+			ctx,
+			await ctx.vectorSearch('semanticFiles', 'vector_files', { vector, limit: fetchLimit }),
+			spaceKey
+		);
 		const vectorRanked: Id<'semanticFiles'>[] = hits.map((h) => h._id);
 		const scoreById = new Map<string, number>(hits.map((h) => [h._id as string, h._score]));
 
