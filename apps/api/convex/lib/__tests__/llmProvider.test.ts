@@ -606,6 +606,25 @@ describe('llmProvider', () => {
 			expect(runAction).not.toHaveBeenCalled();
 		});
 
+		it('re-reads the row on every embedding resolution, so a switch is never served stale', async () => {
+			vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'http://ollama:11434/v1');
+			const { resolveIndexEmbedder } = await import('../llmProvider');
+			const { ctx, runQuery } = makeCtx(storedRow({ embeddingProviderKind: 'local' }));
+			const first = await resolveIndexEmbedder(ctx);
+			// Saved in another isolate, within the 30 s language-plane recheck window.
+			runQuery.mockResolvedValue(
+				storedRow({
+					embeddingProviderKind: 'local',
+					embeddingModel: 'mxbai-embed-large',
+					updatedAt: 456,
+				})
+			);
+			const second = await resolveIndexEmbedder(ctx);
+			expect(runQuery).toHaveBeenCalledTimes(2);
+			expect(mockCompatTextEmbedding).toHaveBeenLastCalledWith('mxbai-embed-large');
+			expect(second.embeddingSpaceKey).not.toBe(first.embeddingSpaceKey);
+		});
+
 		it('honors LOCAL_EMBEDDING_MODEL for the local plane', async () => {
 			vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'http://ollama:11434/v1');
 			vi.stubEnv('LOCAL_EMBEDDING_MODEL', 'mxbai-embed-large');

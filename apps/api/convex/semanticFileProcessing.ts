@@ -24,10 +24,12 @@ import {
 	resolveAiConfig,
 	resolveLanguageModel,
 	resolveEmbeddingModel,
+	resolveIndexEmbedder,
 	toIndexVector,
 } from './lib/llmProvider';
 import { AiNotConfiguredError } from './lib/aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
+import { NO_EMBEDDING_SPACE_KEY } from './lib/embeddingSpace';
 import { embed } from 'ai';
 import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
@@ -106,6 +108,7 @@ export const processFile = internalAction({
 			await ctx.runMutation(internal.semanticFiles.updateProcessedMetadata, {
 				fileId: args.fileId,
 				embedding: [],
+				embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 				searchableText: buildFileSearchableText({
 					filename: file.filename,
 					tags: file.tags,
@@ -194,16 +197,18 @@ ${textForAI}`,
 
 		// 3. Generate embedding
 		let embedding: number[] = [];
+		let embeddingSpaceKey = NO_EMBEDDING_SPACE_KEY;
 		const embeddingText = [title, summary, extractedText.slice(0, 2000)].filter(Boolean).join(' ');
 
 		if (aiConfigured && embeddingText.length > 10) {
 			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
 			// actionable error instead of being swallowed into a silent empty vector;
 			// only a transient embed() failure fails soft (metadata without search).
-			const embeddingModel = await resolveEmbeddingModel(ctx);
+			const embedder = await resolveIndexEmbedder(ctx);
+			embeddingSpaceKey = embedder.embeddingSpaceKey;
 			try {
 				const embeddingResult = await embed({
-					model: embeddingModel,
+					model: embedder.model,
 					value: embeddingText,
 				});
 				embedding = toIndexVector(embeddingResult.embedding);
@@ -262,6 +267,7 @@ ${textForAI}`,
 			embedding,
 			embeddingModel: embedding.length > 0 ? CURRENT_EMBEDDING_MODEL : undefined,
 			embeddingGeneratedAt: embedding.length > 0 ? Date.now() : undefined,
+			embeddingSpaceKey,
 			searchableText,
 			changeSummary,
 		});

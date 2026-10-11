@@ -32,7 +32,11 @@ import type { Doc, Id } from './_generated/dataModel';
 import { authedAction } from './lib/authedFunctions';
 import { decryptSecret, encryptSecret } from './lib/credentialCrypto';
 import { embeddingProviderFor, languageProviderFor } from './lib/llmProviders';
-import { embeddingSelectionForSave, resolveStoredEmbeddingModel } from './lib/embeddingSpace';
+import {
+	embeddingSelectionForSave,
+	resolveStoredEmbeddingModel,
+	throwEmbeddingKindRequired,
+} from './lib/embeddingSpace';
 import { invalidateAiConfigCache } from './lib/llmProviders/storedConfigCache';
 import { decisionProviderFor } from './lib/decisionProviders';
 import { decisionEnvApiKey, decisionKindNeedsKey } from './lib/decisionProvider';
@@ -113,7 +117,10 @@ export const saveConfig = authedAction({
 		modelCapable: v.optional(v.string()),
 		/** Plaintext language-provider key. Omit to keep the stored key unchanged. */
 		apiKey: v.optional(v.string()),
-		/** Omit to keep the stored embedding kind (`local` when nothing is stored). */
+		/**
+		 * Omit to keep the stored embedding kind (`local` when nothing is stored).
+		 * Required with `embeddingApiKey`: a new key is bound to the kind named here.
+		 */
 		embeddingProviderKind: v.optional(embeddingProviderKindValidator),
 		/** Omit to keep the stored model for an unchanged kind. */
 		embeddingModel: v.optional(v.string()),
@@ -142,19 +149,19 @@ export const saveConfig = authedAction({
 			adapter.validateCredentials({ apiKey: args.apiKey, baseUrl: languageBaseUrl });
 		}
 
-		// Fail fast on a structurally invalid hosted-embedder key. This reads the row
-		// only to pick the adapter; the persist mutation resolves an omitted
-		// embedding kind or model against the row it actually writes (D8).
+		// A newly entered embedding key belongs to the embedder named beside it: the
+		// kind is never inferred from the row, which may change before the persist
+		// mutation runs. Fail fast on a structurally invalid hosted-embedder key.
 		if (args.embeddingApiKey) {
-			const selection = embeddingSelectionForSave(
-				{ kind: args.embeddingProviderKind, model: args.embeddingModel },
-				await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {})
-			);
-			const embeddingAdapter = embeddingProviderFor(selection.embeddingProviderKind);
+			const embeddingKind = args.embeddingProviderKind;
+			if (embeddingKind === undefined) throwEmbeddingKindRequired();
+			const embeddingAdapter = embeddingProviderFor(embeddingKind);
 			if (!embeddingAdapter.isLocal) {
 				embeddingAdapter.validateCredentials({
 					apiKey: args.embeddingApiKey,
-					modelId: resolveStoredEmbeddingModel(selection),
+					modelId: resolveStoredEmbeddingModel(
+						embeddingSelectionForSave({ kind: embeddingKind, model: args.embeddingModel }, null)
+					),
 				});
 			}
 		}

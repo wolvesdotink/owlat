@@ -36,12 +36,20 @@ function rowFingerprint(row: Doc<'aiProviderConfig'> | null): string {
 	return row ? `${row._id}:${row.updatedAt}` : 'env';
 }
 
-/** The cached row entry, re-reading the row once the recheck window has passed. */
-export async function loadConfigEntry(ctx: ActionCtx): Promise<ConfigCacheEntry> {
+/**
+ * The cached row entry, re-reading the row once the recheck window has passed.
+ * `isFresh` re-reads it on every call (keys stay cached while the row is
+ * unchanged): the embedding plane needs it, because a vector embedded with a
+ * config another isolate has already replaced lands in the wrong space.
+ */
+export async function loadConfigEntry(
+	ctx: ActionCtx,
+	options: { isFresh?: boolean } = {}
+): Promise<ConfigCacheEntry> {
 	const cached = configCache;
 	const now = Date.now();
 	const live = cached !== null && cached.expiresAt > now;
-	if (live && now - cached.checkedAt < AI_CONFIG_RECHECK_MS) return cached;
+	if (live && !options.isFresh && now - cached.checkedAt < AI_CONFIG_RECHECK_MS) return cached;
 	const row = await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {});
 	const fingerprint = rowFingerprint(row);
 	if (live && cached.fingerprint === fingerprint) {

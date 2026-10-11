@@ -20,7 +20,7 @@ import {
 	LEGACY_GOOGLE_EMBEDDING_MODEL,
 } from '@owlat/shared/aiModelCatalog';
 import type { DatabaseReader } from '../_generated/server';
-import { throwConflict } from '../_utils/errors';
+import { throwConflict, throwInvalidInput } from '../_utils/errors';
 import { isEnvAiProviderConfigured } from './aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './constants';
 import { getOptional } from './env';
@@ -136,6 +136,13 @@ export function embeddingSelectionForSave(
 	return { embeddingProviderKind: kind, embeddingModel: stored.embeddingModel };
 }
 
+/** A new embedding key needs the kind it belongs to; never the row's, which may change. */
+export function throwEmbeddingKindRequired(): never {
+	throwInvalidInput('Choose the embedding provider this API key belongs to.', {
+		reason: 'embedding_kind_required',
+	});
+}
+
 /**
  * Newest rows read per corpus table. Rows wait with an empty `embedding` until
  * the pipeline fills them, so a window holding no vector is inconclusive when it
@@ -238,4 +245,59 @@ export async function assertRemovalKeepsEmbeddingSpace(
 			`features off instead.`,
 		{ reason: EMBEDDING_SPACE_LOCKED, current: { ...current }, requested: null }
 	);
+}
+
+// ── Vector commits ─────────────────────────────────────────────────────────
+
+/** The key of "no resolvable space": no stored row and no env AI. */
+export const NO_EMBEDDING_SPACE_KEY = 'none';
+
+/**
+ * A stable key for a resolved space. An embedding job captures it when it
+ * resolves its model (`resolveIndexEmbedder`) and hands it to the mutation that
+ * commits the vector. Phase 0 stand-in: the embed lane replaces it with the
+ * contract's `embeddingSpaceId`, behind {@link vectorFieldsForCommit}.
+ */
+export function embeddingSpaceKey(space: EmbeddingSpace | null): string {
+	return space
+		? JSON.stringify([space.provider, space.modelId, space.dimensions])
+		: NO_EMBEDDING_SPACE_KEY;
+}
+
+/** The deployment's current space key, read in the committing transaction. */
+async function currentEmbeddingSpaceKey(db: DatabaseReader): Promise<string> {
+	const row = await db.query('aiProviderConfig').first(); // bounded: org singleton
+	return embeddingSpaceKey(resolvedEmbeddingSpace(row));
+}
+
+/** The vector columns a corpus row carries. */
+export interface VectorFields {
+	embedding: number[];
+	embeddingModel?: string;
+	embeddingGeneratedAt?: number;
+}
+
+/**
+ * THE vector-commit check. Every mutation that writes a vector into the
+ * knowledge or file corpus passes the space key its job embedded with, and
+ * writes what this returns. A vector from a space that is no longer current (the
+ * settings changed while the job ran, or an isolate used a cached config) is
+ * dropped: the row is stored without one (`embedding: []`), so it reads as not
+ * yet embedded and the next processing pass embeds it in the current space.
+ */
+export async function vectorFieldsForCommit(
+	db: DatabaseReader,
+	vector: VectorFields,
+	jobEmbeddingSpaceKey: string
+): Promise<VectorFields & { isStale: boolean }> {
+	if (vector.embedding.length === 0) return { ...vector, isStale: false };
+	if (jobEmbeddingSpaceKey === (await currentEmbeddingSpaceKey(db))) {
+		return { ...vector, isStale: false };
+	}
+	return {
+		embedding: [],
+		embeddingModel: undefined,
+		embeddingGeneratedAt: undefined,
+		isStale: true,
+	};
 }

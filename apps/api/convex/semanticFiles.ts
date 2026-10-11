@@ -29,6 +29,8 @@ import {
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { isAiProviderConfigured } from './lib/aiNotConfigured';
+import { vectorFieldsForCommit } from './lib/embeddingSpace';
+import { logInfo } from './lib/runtimeLog';
 import type { Id, Doc } from './_generated/dataModel';
 import {
 	captureSourceValidator,
@@ -576,11 +578,17 @@ export const updateProcessedMetadata = internalMutation({
 		embeddingGeneratedAt: v.optional(v.number()),
 		searchableText: v.optional(v.string()),
 		changeSummary: v.optional(v.string()),
+		// The space the job embedded with; a stale vector is dropped and the file
+		// stays unembedded for the next processing pass (vectorFieldsForCommit).
+		embeddingSpaceKey: v.string(),
 	},
-	handler: async (ctx, args) => {
-		const { fileId, ...updates } = args;
+	handler: async (ctx, { fileId, embeddingSpaceKey, ...updates }) => {
+		const { isStale, ...vector } = await vectorFieldsForCommit(ctx.db, updates, embeddingSpaceKey);
+		if (isStale)
+			logInfo('[semanticFiles] stale embedding space, stored without vector', { fileId });
 		await ctx.db.patch(fileId, {
 			...updates,
+			...vector,
 			updatedAt: Date.now(),
 		});
 	},

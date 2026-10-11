@@ -49,6 +49,7 @@ import {
 	isLocalEmbeddingKind,
 	nextEmbeddingModelVersion,
 	resolveStoredEmbeddingModel,
+	throwEmbeddingKindRequired,
 } from './lib/embeddingSpace';
 import {
 	decisionProviderKindValidator,
@@ -175,6 +176,10 @@ export const _persistConfig = internalMutation({
 		const existing = await getSingleton(ctx);
 
 		// A stored key stays only for the same provider kind and base URL (lib/aiProviderSecrets).
+		// A new embedding key is bound to the kind the save names, never to the row's.
+		if (args.embeddingEnvelope && args.embeddingProviderKind === undefined) {
+			throwEmbeddingKindRequired();
+		}
 		const selection = embeddingSelectionForSave(
 			{ kind: args.embeddingProviderKind, model: args.embeddingModel },
 			existing

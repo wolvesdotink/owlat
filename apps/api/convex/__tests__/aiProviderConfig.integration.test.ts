@@ -11,6 +11,8 @@
  *     secret, and is a no-op when nothing is stored.
  *   • local providers save with NO key.
  *   • a stored key is reused only for the same provider kind and base URL.
+ *   • a new embedding key is bound to the embedding kind the save names.
+ *   • a vector embedded in a space that is no longer current is not committed.
  *   • embedding space (D8): an omitted embedding selection keeps the stored one,
  *     and neither a save nor a removal may move the resolved space while the
  *     knowledge or file corpus holds vectors.
@@ -30,7 +32,12 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
-import { EMBEDDING_SPACE_LOCKED, VECTOR_PROBE_ROWS } from '../lib/embeddingSpace';
+import {
+	EMBEDDING_SPACE_LOCKED,
+	VECTOR_PROBE_ROWS,
+	embeddingSpaceKey,
+	resolvedEmbeddingSpace,
+} from '../lib/embeddingSpace';
 import { STORED_KEY_NOT_REUSABLE } from '../lib/aiProviderSecrets';
 
 vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
@@ -904,6 +911,148 @@ describe('embedding space (D8)', () => {
 		vi.stubEnv('LLM_API_KEY', 'sk-env-key');
 
 		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: true });
+	});
+});
+
+describe('vector commits from a stale embedding space', () => {
+	const anthropic = {
+		languageProviderKind: 'anthropic' as const,
+		apiKey: 'sk-ant-secret-key-1234',
+	};
+	const vector = [0.1, 0.2, 0.3];
+
+	/** What an embedding job captures when it resolves its model (`resolveIndexEmbedder`). */
+	const jobSpaceKey = (t: ReturnType<typeof setup>) =>
+		t.run(async (ctx) =>
+			embeddingSpaceKey(resolvedEmbeddingSpace(await ctx.db.query('aiProviderConfig').first()))
+		);
+
+	it('drops the vector a job embedded before the space switched, and keeps the row', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		const now = Date.now();
+		const fileId = await t.run((ctx) =>
+			ctx.db.insert('semanticFiles', {
+				filename: 'invoice.pdf',
+				mimeType: 'application/pdf',
+				fileSize: 13,
+				sourceType: 'email_attachment',
+				version: 1,
+				embedding: [],
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+		// Two jobs resolve the local nomic space and start embedding.
+		const staleKey = await jobSpaceKey(t);
+		// The corpus is still empty, so the admin may switch to mxbai.
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			...anthropic,
+			embeddingProviderKind: 'local',
+			embeddingModel: 'mxbai-embed-large',
+		});
+		expect(await jobSpaceKey(t)).not.toBe(staleKey);
+
+		// The late nomic vectors commit.
+		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+			fileId,
+			summary: 'An invoice',
+			embedding: vector,
+			embeddingModel: 'nomic-embed-text',
+			embeddingGeneratedAt: now,
+			embeddingSpaceKey: staleKey,
+		});
+		const entryId = await t.mutation(internal.knowledge.graph.saveEntry, {
+			entryType: 'fact',
+			title: 'fact',
+			content: 'Prefers EUR invoices',
+			sourceType: 'manual',
+			embedding: vector,
+			embeddingModel: 'nomic-embed-text',
+			embeddingGeneratedAt: now,
+			confidence: 0.9,
+			embeddingSpaceKey: staleKey,
+		});
+
+		// The rows keep everything but the vector, so they read as not yet embedded.
+		const file = await t.run((ctx) => ctx.db.get(fileId));
+		expect(file).toMatchObject({ summary: 'An invoice', embedding: [] });
+		expect(file?.embeddingModel).toBeUndefined();
+		const entry = await t.run((ctx) => ctx.db.get(entryId));
+		expect(entry).toMatchObject({ title: 'fact', embedding: [] });
+		expect(entry?.embeddingGeneratedAt).toBeUndefined();
+
+		// A job in the current space commits normally.
+		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+			fileId,
+			embedding: vector,
+			embeddingSpaceKey: await jobSpaceKey(t),
+		});
+		expect((await t.run((ctx) => ctx.db.get(fileId)))?.embedding).toEqual(vector);
+	});
+});
+
+describe('new embedding key binding', () => {
+	const anthropic = {
+		languageProviderKind: 'anthropic' as const,
+		apiKey: 'sk-ant-secret-key-1234',
+	};
+	const envelope = {
+		ciphertext: 'c',
+		iv: 'i',
+		authTag: 'a',
+		version: 1,
+		keyPreview: 'goo…9999',
+	};
+
+	it('refuses a new embedding key without the kind it belongs to', async () => {
+		const t = setup();
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			...anthropic,
+			embeddingProviderKind: 'openai',
+			embeddingModel: 'text-embedding-3-small',
+			embeddingApiKey: 'sk-embed-secret-key-9999',
+		});
+		const before = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+
+		await expect(
+			t.action(api.aiProviderConfigActions.saveConfig, {
+				...anthropic,
+				embeddingApiKey: 'google-new-key-1234',
+			})
+		).rejects.toThrow(/embedding provider this API key belongs to/);
+		expect(await t.run((ctx) => ctx.db.query('aiProviderConfig').first())).toEqual(before);
+	});
+
+	it('binds the key to the named kind even if the row switched before the mutation', async () => {
+		const t = setup();
+		// The admin validated a Google key; a concurrent save switched the row to OpenAI.
+		await t.action(api.aiProviderConfigActions.saveConfig, {
+			...anthropic,
+			embeddingProviderKind: 'openai',
+			embeddingModel: 'text-embedding-3-small',
+			embeddingApiKey: 'sk-embed-secret-key-9999',
+		});
+		const persist = {
+			languageProviderKind: 'anthropic' as const,
+			modelFast: 'claude-haiku-5-5',
+			modelCapable: 'claude-sonnet-5-5',
+			isLanguageLocal: false,
+			embeddingEnvelope: envelope,
+		};
+
+		// Without a kind the mutation refuses rather than attaching the key to OpenAI.
+		await expect(t.mutation(internal.aiProviderConfig._persistConfig, persist)).rejects.toThrow(
+			/embedding provider this API key belongs to/
+		);
+
+		await t.mutation(internal.aiProviderConfig._persistConfig, {
+			...persist,
+			embeddingProviderKind: 'google',
+		});
+		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+		expect(row?.embeddingProviderKind).toBe('google');
+		expect(row?.embeddingKeyPreview).toBe('goo…9999');
 	});
 });
 

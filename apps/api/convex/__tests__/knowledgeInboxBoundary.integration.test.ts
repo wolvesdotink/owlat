@@ -17,6 +17,7 @@ import {
 	enableFeatures,
 } from './factories';
 import type * as SessionOrganization from '../lib/sessionOrganization';
+import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
 
 const sess = vi.hoisted(() => ({ role: 'editor' as 'owner' | 'admin' | 'editor' }));
 
@@ -395,11 +396,13 @@ describe('knowledge sources a client may set', () => {
 			contentHash: 'hash-1',
 		};
 		const visible = await t.mutation(internal.knowledge.graph.saveEntry, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			...base,
 			sourceType: 'file',
 			sourceId: 'file-1',
 		});
 		const extracted = await t.mutation(internal.knowledge.graph.saveEntry, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			...base,
 			sourceType: 'agent_extracted',
 			sourceId: 'inbound-1',
