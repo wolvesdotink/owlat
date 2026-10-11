@@ -209,7 +209,7 @@
 						"messageId": "m1",
 						"triage": "no_work",
 						"disposition": "informational",
-						"postboxCategory": "other",
+						"postboxCategory": "newsletter",
 						"senderKnown": false
 					}
 				]
@@ -292,7 +292,7 @@
 						"messageId": "m1",
 						"triage": "needs_work",
 						"disposition": "informational",
-						"postboxCategory": "other",
+						"postboxCategory": "newsletter",
 						"senderKnown": false
 					}
 				]

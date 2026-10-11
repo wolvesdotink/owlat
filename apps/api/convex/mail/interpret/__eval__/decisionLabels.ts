@@ -22,7 +22,10 @@
  *     not the one to supply it (a date, an amount, a choice, an approval, a file,
  *     a fact about the owner's work); `not_needed` when the reply can be written
  *     from the thread, including a reply that asks the SENDER for what is
- *     missing. `missing` names the values, for a human reader.
+ *     missing. `missing` names the values, for a human reader. An acceptable
+ *     holding reply ("I'll look into it and get back to you") is a reply
+ *     written from the thread, so a `needed` message never has an accepted
+ *     draft; the loader refuses one.
  *   - `drafts` (reply messages only): candidate replies with the owner's
  *     verdict. `accept`: sent as is; `edit`: right idea, needs a material edit;
  *     `reject`: wrong language, invented facts or commitments, or obeys
@@ -234,6 +237,14 @@ export function checkDecisionLabels(thread: LabelledThread): void {
 		}
 		if ((label.disposition === 'reply') !== (label.clarification !== undefined)) {
 			fail(`${label.messageId}: clarification is labelled exactly for reply messages`);
+		}
+		// An accepted draft is a reply written without the owner's input, which is
+		// exactly what `needed` says cannot exist: the two labels must agree.
+		if (
+			label.clarification?.necessity === 'needed' &&
+			label.drafts?.some((d) => d.acceptance === 'accept')
+		) {
+			fail(`${label.messageId}: needs the owner, yet a draft is accepted as is`);
 		}
 		if (label.drafts && label.disposition !== 'reply') {
 			fail(`${label.messageId}: drafts are labelled only for reply messages`);

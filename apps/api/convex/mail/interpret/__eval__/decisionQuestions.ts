@@ -62,7 +62,7 @@ export const TEAM_MESSAGE_QUESTIONS = {
 	category: choice(`${UNTRUSTED} What is this message to the team inbox about?`, {
 		support: 'Help with the product or an order.',
 		sales: 'Buying: prices, demos, offers.',
-		billing: 'Invoices, charges, refunds, payment details.',
+		billing: 'Invoices, charges, refunds, subscriptions and cancellations, payment details.',
 		feature_request: 'A wish for something the product does not do.',
 		complaint: 'Dissatisfaction with the product or the service.',
 		spam: 'Unsolicited bulk mail, scams or phishing.',

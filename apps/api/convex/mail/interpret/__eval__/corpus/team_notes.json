@@ -61,7 +61,7 @@
 						"disposition": "reply",
 						"teamCategory": "support",
 						"clarification": {
-							"necessity": "needed"
+							"necessity": "not_needed"
 						},
 						"drafts": [
 							{
@@ -377,7 +377,7 @@
 						"messageId": "m1",
 						"triage": "needs_work",
 						"disposition": "reply",
-						"teamCategory": "support",
+						"teamCategory": "other",
 						"clarification": {
 							"necessity": "needed"
 						},

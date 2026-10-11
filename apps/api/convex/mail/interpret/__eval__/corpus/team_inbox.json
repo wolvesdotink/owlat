@@ -1158,7 +1158,7 @@
 						"messageId": "m1",
 						"triage": "needs_work",
 						"disposition": "reply",
-						"teamCategory": "feature_request",
+						"teamCategory": "support",
 						"clarification": {
 							"necessity": "needed",
 							"missing": ["whether a CSV export exists"]

@@ -72,7 +72,7 @@
 						"disposition": "reply",
 						"postboxCategory": "person",
 						"clarification": {
-							"necessity": "needed"
+							"necessity": "not_needed"
 						},
 						"senderKnown": false,
 						"drafts": [
@@ -225,7 +225,7 @@
 						"disposition": "reply",
 						"postboxCategory": "person",
 						"clarification": {
-							"necessity": "needed"
+							"necessity": "not_needed"
 						},
 						"senderKnown": true,
 						"drafts": [
@@ -390,7 +390,7 @@
 						"disposition": "reply",
 						"postboxCategory": "person",
 						"clarification": {
-							"necessity": "needed"
+							"necessity": "not_needed"
 						},
 						"senderKnown": true,
 						"drafts": [

@@ -218,7 +218,7 @@
 						"messageId": "m1",
 						"triage": "automated",
 						"disposition": "informational",
-						"postboxCategory": "notification",
+						"postboxCategory": "receipt",
 						"senderKnown": false
 					}
 				]
@@ -275,7 +275,7 @@
 						"messageId": "m1",
 						"triage": "automated",
 						"disposition": "informational",
-						"postboxCategory": "notification",
+						"postboxCategory": "receipt",
 						"senderKnown": false
 					}
 				]

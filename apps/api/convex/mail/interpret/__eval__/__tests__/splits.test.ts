@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseEvalCorpus, type EvalThread } from '../corpus';
 import { CLAIM_PHRASES, EVAL_SPLITS, unbackedClaims } from '../decisionLabels';
+import { POSTBOX_MESSAGE_QUESTIONS, TEAM_MESSAGE_QUESTIONS } from '../decisionQuestions';
 import { splitIntegrityProblems, threadsInSplit } from '../splits';
 import { loadCorpus } from './corpusFixture';
 
@@ -181,5 +182,76 @@ describe('unsupported claims in drafts', () => {
 		);
 		expect(() => parseEvalCorpus([file(withDraft('edit'))])).toThrow(/is edit but claims/);
 		expect(() => parseEvalCorpus([file(withDraft('reject'))])).not.toThrow();
+	});
+});
+
+describe('labels agree with the rules they are scored against', () => {
+	const file = (thread: unknown) => ({ version: 1, slice: 'team_notes', threads: [thread] });
+
+	it('refuses a message that needs the owner yet has a draft accepted as is', () => {
+		const team001 = corpus.find((t) => t.id === 'team-001') as EvalThread;
+		const decision = team001.labels.decisions[0];
+		expect(decision?.clarification?.necessity).toBe('not_needed');
+		const needed = {
+			...team001,
+			labels: {
+				...team001.labels,
+				decisions: [{ ...decision, clarification: { necessity: 'needed' } }],
+			},
+		};
+		expect(() => parseEvalCorpus([file(needed)])).toThrow(
+			/needs the owner, yet a draft is accepted/
+		);
+		for (const thread of corpus) {
+			for (const d of thread.labels.decisions) {
+				if (d.clarification?.necessity !== 'needed') continue;
+				expect(d.drafts?.some((x) => x.acceptance === 'accept') ?? false, thread.id).toBe(false);
+			}
+		}
+	});
+
+	// Automated mail about an order, an invoice, a payment or a delivery: the
+	// Postbox question puts all of it under `receipt`.
+	const RECEIPT_WORDS =
+		/\b(invoice|your order|order confirmation|renews|payment received|rechnung|bestellung|bestellnummer|sendung|zugestellt|lieferung|shipment|shipped)\b/i;
+	const textOf = (t: EvalThread, messageId: string) => {
+		const m = t.messages.find((x) => x.id === messageId);
+		return `${m?.subject ?? ''}\n${m?.text ?? m?.html ?? ''}`;
+	};
+
+	it('labels automated order, invoice, payment and shipping mail as receipt', () => {
+		expect(POSTBOX_MESSAGE_QUESTIONS.category.criteria['receipt']).toMatch(/shipping notice/);
+		const auto004 = corpus.find((t) => t.id === 'auto-004') as EvalThread;
+		expect(auto004.labels.decisions[0]?.postboxCategory).toBe('receipt');
+		for (const t of corpus.filter((x) => x.mode === 'brief')) {
+			for (const d of t.labels.decisions) {
+				if (d.triage !== 'automated') continue;
+				const isReceiptMail = RECEIPT_WORDS.test(textOf(t, d.messageId));
+				expect(d.postboxCategory === 'receipt', `${t.id}: ${d.postboxCategory}`).toBe(
+					isReceiptMail
+				);
+			}
+		}
+	});
+
+	it('labels other list mail newsletter: a broadcast the owner signed up for', () => {
+		for (const t of corpus.filter((x) => x.mode === 'brief')) {
+			for (const d of t.labels.decisions) {
+				const m = t.messages.find((x) => x.id === d.messageId);
+				if (!m?.headers?.listUnsubscribe || d.postboxCategory === 'receipt') continue;
+				expect(d.postboxCategory, t.id).toBe('newsletter');
+			}
+		}
+	});
+
+	it('labels Team mail internal exactly when a colleague from the same organization sent it', () => {
+		expect(TEAM_MESSAGE_QUESTIONS.category.criteria['internal']).toMatch(/colleague/);
+		for (const t of corpus.filter((x) => x.mode === 'actions')) {
+			const ours = new Set(t.us.map((u) => u.email.split('@')[1]));
+			for (const d of t.labels.decisions) {
+				const from = t.messages.find((x) => x.id === d.messageId)?.from.email ?? '';
+				expect(d.teamCategory === 'internal', t.id).toBe(ours.has(from.split('@')[1]));
+			}
+		}
 	});
 });
