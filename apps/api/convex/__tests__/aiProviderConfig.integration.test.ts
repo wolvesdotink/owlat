@@ -10,6 +10,7 @@
  *   • removeConfig: admin-only, deletes the row and its keys, audits without a
  *     secret, and is a no-op when nothing is stored.
  *   • local providers save with NO key.
+ *   • a stored key is reused only for the same provider kind and base URL.
  *   • embedding space (D8): an omitted embedding selection keeps the stored one,
  *     and neither a save nor a removal may move the resolved space while the
  *     knowledge or file corpus holds vectors.
@@ -30,6 +31,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
 import { EMBEDDING_SPACE_LOCKED, VECTOR_PROBE_ROWS } from '../lib/embeddingSpace';
+import { STORED_KEY_NOT_REUSABLE } from '../lib/aiProviderSecrets';
 
 vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
 
@@ -443,6 +445,171 @@ describe('aiProviderConfig.removeConfig', () => {
 		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: false });
 
 		expect(await removalLogs(t)).toHaveLength(1);
+	});
+});
+
+describe('stored key reuse', () => {
+	type T = ReturnType<typeof setup>;
+	const storedRow = (t: T) => t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+
+	async function expectNewKeyRequired(promise: Promise<unknown>, plane: string) {
+		const error = await promise.then(
+			() => undefined,
+			(e: unknown) => e
+		);
+		expect(error).toBeInstanceOf(ConvexError);
+		const data = (
+			error as ConvexError<{ category: string; message: string; data: Record<string, Value> }>
+		).data;
+		expect(data.category).toBe('invalid_input');
+		expect(data.message).toMatch(new RegExp(`${plane} provider or its base URL changed`));
+		expect(data.data).toEqual({ reason: STORED_KEY_NOT_REUSABLE, plane });
+	}
+
+	describe('language plane', () => {
+		const proxied = {
+			languageProviderKind: 'openai' as const,
+			languageBaseUrl: 'https://proxy.example.com/v1',
+		};
+
+		it('keeps the stored key for the same provider and an equivalent base URL', async () => {
+			const t = setup();
+			await t.action(api.aiProviderConfigActions.saveConfig, { ...proxied, apiKey: 'sk-openai-1' });
+			const before = await storedRow(t);
+			await t.action(api.aiProviderConfigActions.saveConfig, {
+				...proxied,
+				languageBaseUrl: 'https://PROXY.example.com:443/v1/',
+				modelFast: 'gpt-6-luna',
+			});
+			expect((await storedRow(t))?.secretCiphertext).toBe(before?.secretCiphertext);
+		});
+
+		it('requires a new key when the provider kind changes', async () => {
+			const t = setup();
+			await t.action(api.aiProviderConfigActions.saveConfig, { ...proxied, apiKey: 'sk-openai-1' });
+			const before = await storedRow(t);
+			await expectNewKeyRequired(
+				t.action(api.aiProviderConfigActions.saveConfig, { languageProviderKind: 'anthropic' }),
+				'language'
+			);
+			expect(await storedRow(t)).toEqual(before);
+			// With the new provider's key, the save goes through.
+			await t.action(api.aiProviderConfigActions.saveConfig, {
+				languageProviderKind: 'anthropic',
+				apiKey: 'sk-ant-secret-key-1234',
+			});
+			expect((await storedRow(t))?.keyPreview).toBe('sk-…1234');
+		});
+
+		it('requires a new key when the base URL changes or is removed', async () => {
+			const t = setup();
+			await t.action(api.aiProviderConfigActions.saveConfig, { ...proxied, apiKey: 'sk-openai-1' });
+			await expectNewKeyRequired(
+				t.action(api.aiProviderConfigActions.saveConfig, {
+					...proxied,
+					languageBaseUrl: 'https://other.example.com/v1',
+				}),
+				'language'
+			);
+			await expectNewKeyRequired(
+				t.action(api.aiProviderConfigActions.saveConfig, { languageProviderKind: 'openai' }),
+				'language'
+			);
+		});
+	});
+
+	describe('embedding plane (no stored base URL: the kind is the target)', () => {
+		const hostedOpenAi = {
+			...{ languageProviderKind: 'anthropic' as const, apiKey: 'sk-ant-secret-key-1234' },
+			embeddingProviderKind: 'openai' as const,
+			embeddingModel: 'text-embedding-3-small',
+		};
+
+		it('keeps the stored key while the embedder kind is unchanged', async () => {
+			const t = setup();
+			await t.action(api.aiProviderConfigActions.saveConfig, {
+				...hostedOpenAi,
+				embeddingApiKey: 'sk-embed-secret-key-9999',
+			});
+			const before = await storedRow(t);
+			await t.action(api.aiProviderConfigActions.saveConfig, hostedOpenAi);
+			expect((await storedRow(t))?.embeddingSecretCiphertext).toBe(
+				before?.embeddingSecretCiphertext
+			);
+		});
+
+		it('requires a new key when the embedder kind changes', async () => {
+			const t = setup();
+			await t.action(api.aiProviderConfigActions.saveConfig, {
+				...hostedOpenAi,
+				embeddingApiKey: 'sk-embed-secret-key-9999',
+			});
+			await expectNewKeyRequired(
+				t.action(api.aiProviderConfigActions.saveConfig, {
+					...hostedOpenAi,
+					embeddingProviderKind: 'google',
+					embeddingModel: undefined,
+				}),
+				'embedding'
+			);
+		});
+	});
+
+	describe('decision plane', () => {
+		const typesafe = {
+			languageProviderKind: 'anthropic' as const,
+			apiKey: 'sk-ant-secret-key-1234',
+			decisionProviderKind: 'typesafe' as const,
+			decisionBaseUrl: 'https://decide.example.com',
+		};
+
+		it('keeps the stored key for the same provider and base URL', async () => {
+			const t = setup();
+			await t.action(api.aiProviderConfigActions.saveConfig, {
+				...typesafe,
+				decisionApiKey: 'ts-decision-key-5678',
+			});
+			const before = await storedRow(t);
+			await t.action(api.aiProviderConfigActions.saveConfig, {
+				...typesafe,
+				decisionBaseUrl: 'https://decide.example.com/',
+			});
+			expect((await storedRow(t))?.decisionSecretCiphertext).toBe(before?.decisionSecretCiphertext);
+		});
+
+		it('requires a new key when the base URL changes', async () => {
+			const t = setup();
+			await t.action(api.aiProviderConfigActions.saveConfig, {
+				...typesafe,
+				decisionApiKey: 'ts-decision-key-5678',
+			});
+			await expectNewKeyRequired(
+				t.action(api.aiProviderConfigActions.saveConfig, {
+					...typesafe,
+					decisionBaseUrl: 'https://elsewhere.example.com',
+				}),
+				'decision'
+			);
+		});
+
+		it('never carries the key across a kind change', async () => {
+			const t = setup();
+			await t.action(api.aiProviderConfigActions.saveConfig, {
+				...typesafe,
+				decisionApiKey: 'ts-decision-key-5678',
+			});
+			// To a keyless kind: all five columns clear.
+			await t.action(api.aiProviderConfigActions.saveConfig, {
+				...typesafe,
+				decisionProviderKind: 'llm',
+				decisionBaseUrl: undefined,
+			});
+			expect((await storedRow(t))?.decisionSecretCiphertext).toBeUndefined();
+			// And back: the old key is gone, so a new one is required.
+			await expect(t.action(api.aiProviderConfigActions.saveConfig, typesafe)).rejects.toThrow(
+				/requires an API key/
+			);
+		});
 	});
 });
 
