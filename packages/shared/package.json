@@ -501,6 +501,10 @@
 		"./aiModelCatalog": {
 			"types": "./src/aiModelCatalog.ts",
 			"import": "./src/aiModelCatalog.ts"
+		},
+		"./aiRouting": {
+			"types": "./src/aiRouting.ts",
+			"import": "./src/aiRouting.ts"
 		}
 	},
 	"scripts": {
