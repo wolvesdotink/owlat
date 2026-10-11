@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { threadRefFields } from '../lib/validators/threadRef';
 import { threadBriefFeedbackTables } from './threadBriefFeedback';
+import { interpretSourceTables } from './interpretSources';
 import {
 	activityActorValidator,
 	activityDeltaValidator,
@@ -10,7 +11,6 @@ import {
 	activityTypeValidator,
 	activityVisibilityValidator,
 	briefCompletenessValidator,
-	claimIdValidator,
 	itemCountsValidator,
 	sourceCountsValidator,
 	draftRefKindValidator,
@@ -341,38 +341,7 @@ export const threadBriefTables = {
 		.index('by_item', ['itemId'])
 		.index('by_op_ref', ['opRef.id']),
 
-	// One row per source message, written at enqueue (mail/interpret/sources.ts):
-	// the eligibility signals every retry reuses, a team reply's sent text.
-	interpretSources: defineTable({
-		...threadRefFields,
-		source: interpretationSourceValidator,
-		sourceKey: v.string(),
-		eligibility: interpretEligibilitySignalsValidator,
-		// Team replies: the sent content, captured at send finalization. Sealed.
-		snapshot: v.optional(
-			v.object({ subject: v.string(), text: v.string(), capturedAt: v.number() })
-		),
-		// The source's lineage record (mail/interpret/reduceIdentity.ts).
-		claimIds: v.optional(v.array(claimIdValidator)),
-		isClaimRecordFull: v.optional(v.boolean()),
-		// Enqueued, not yet recorded (outstanding.ts; threadBriefs.pendingSources);
-		// since when, the stale sweep's re-runs so far; `isUnread`: the sweep gave
-		// up on it (threadBriefs.unreadSources) until an outcome lands.
-		isOutstanding: v.optional(v.boolean()),
-		outstandingSince: v.optional(v.number()),
-		outstandingTries: v.optional(v.number()),
-		isUnread: v.optional(v.boolean()),
-		// A run waiting for the category refinement (mail/interpret/categoryDefer.ts).
-		categoryDeferredUntil: v.optional(v.number()),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-	})
-		.index('by_source_key', ['sourceKey'])
-		// The stale-source sweep (mail/interpret/outstanding.ts).
-		.index('by_outstanding', ['isOutstanding', 'outstandingSince'])
-		// Thread erasure (mail/interpret/purgeRows.ts threadBriefRanges).
-		.index('by_mail_thread', ['mailThreadId'])
-		.index('by_conversation_thread', ['conversationThreadId']),
+	...interpretSourceTables,
 
 	// One row per thread: the reducer's revision, checkpoint and completeness.
 	threadBriefs: defineTable({
@@ -425,6 +394,9 @@ export const threadBriefTables = {
 		// up on (outstanding.ts): never complete while either is above zero.
 		pendingSources: v.optional(v.number()),
 		unreadSources: v.optional(v.number()),
+		// D10: sources deferred until the thread is opened (`interpretSources.isDeferred`).
+		// The reader shows the brief's deferred state while above zero.
+		deferredSources: v.optional(v.number()),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.
 		overview: v.optional(
 			v.object({

@@ -118,6 +118,7 @@ export const dataVariablesSchemaValidator = v.record(v.string(), fieldTypeValida
 
 import { webhookEventValidator } from '../webhooks/events';
 import { fieldTypeValidator } from './literalValidators';
+import { guardNotRunValidator } from './validators/aiRouting';
 export { webhookEventValidator };
 
 // Container the row stores. `data` is the inner event payload — kept as
@@ -355,6 +356,10 @@ export const securityFlagsValidator = v.object({
 	// but the route step refuses to AUTO-SEND without a clean guard pass
 	// (fail closed on the auto-send path only).
 	guardUnavailable: v.optional(v.boolean()),
+	// D13 (ADR-0073): the deterministic layers ran but the model guard was
+	// skipped (spam-score archive, agent off). Required before any later
+	// autonomous processing: lib/aiRouting/guardRecord.ts. Absent ⇒ it ran.
+	guardNotRun: v.optional(guardNotRunValidator),
 	scanTimestamp: v.number(),
 });
 

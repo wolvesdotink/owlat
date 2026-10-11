@@ -135,6 +135,8 @@ export const AUDIT_ACTION_LITERALS = [
 	action('ai_provider_config.updated'),
 	// The admin removed the stored config and its keys; AI falls back to the env.
 	action('ai_provider_config.removed'),
+	// AI routing policy saved (aiRouting/policy.ts `update`, ADR-0073).
+	action('ai_routing_policy.updated'),
 	action('team_member.invited'),
 	action('team_member.removed'),
 	action('team_member.role_changed'),
@@ -365,6 +367,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'automation',
 	'settings',
 	'ai_provider_config',
+	'ai_routing_policy',
 	'team_member',
 	'api_key',
 	'webhook',

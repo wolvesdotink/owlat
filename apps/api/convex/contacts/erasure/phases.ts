@@ -325,6 +325,13 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 			}
 		),
 	}),
+	// Team Inbox sender memory learned from the person's mail (ADR-0073, D12).
+	senderMemory: deleteByIndex(({ ctx, contactId }, n) =>
+		ctx.db
+			.query('senderMemory')
+			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+			.take(n)
+	),
 };
 
 export const FIRST_ERASURE_PHASE: ContactErasurePhase = CONTACT_ERASURE_PHASES[0];

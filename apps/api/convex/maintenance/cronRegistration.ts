@@ -26,6 +26,12 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 		{}
 	);
 	crons.interval(
+		'retention: ai routing records',
+		{ hours: 24 },
+		internal.maintenance.retention.sweepAiRoutingRecords,
+		{}
+	);
+	crons.interval(
 		'retention: agent metrics',
 		{ hours: 24 },
 		internal.maintenance.retention.sweepAgentMetrics,

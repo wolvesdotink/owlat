@@ -390,6 +390,12 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
 const UNREACHED_ENTRIES: readonly string[] = [
 	// Thread brief: wired by the wiring and web lanes, which delete each line (none may survive).
 	'mail/interpret/scope.ts#loadSourceForScope',
+	// AI routing (ADR-0073): `get` and `update` are wired by the web lane (the
+	// routing-policy panel), `getResolved` by the first backend lane that reads the
+	// policy from an action. Each lane deletes its line; none may survive the branch.
+	'aiRouting/policy.ts#get',
+	'aiRouting/policy.ts#getResolved',
+	'aiRouting/policy.ts#update',
 ];
 
 // ─── The checks ─────────────────────────────────────────────────────────────
