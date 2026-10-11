@@ -122,6 +122,46 @@ describe('handlingRules CRUD + evaluation', () => {
 		expect(restrictAutonomy(true, out).allowed).toBe(false);
 	});
 
+	it('pre-classify evaluation (L4) reads only rules with no category facet, and no category', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.autonomy']);
+		await t.withIdentity(asUser).mutation(api.mail.handlingRules.create, {
+			instruction: 'archive acme sales mail',
+			matcher: { senders: ['acme.com'], categories: ['sales'] },
+			action: { type: 'auto_archive' },
+		});
+		await t.withIdentity(asUser).mutation(api.mail.handlingRules.create, {
+			instruction: 'never auto-send to acme',
+			matcher: { senders: ['acme.com'] },
+			action: { type: 'never_auto_send' },
+		});
+		// A classification left on the row by an earlier run.
+		const msg = await insertMessage(t, {
+			from: 'Jane <jane@acme.com>',
+			classification: {
+				category: 'sales',
+				priority: 'normal',
+				sentiment: 'neutral',
+				intent: 'other',
+				confidence: 0.9,
+			},
+		});
+
+		const early = await t.query(internal.mail.handlingRules.evaluateForMessage, {
+			inboundMessageId: msg,
+			isPreClassify: true,
+		});
+		expect(early.autoArchive).toBe(false);
+		expect(early.restrictsAutoSend).toBe(true);
+		expect(early.matchedInstructions).toEqual(['never auto-send to acme']);
+
+		// The classify-time evaluation is unchanged: the category rule fires.
+		const late = await t.query(internal.mail.handlingRules.evaluateForMessage, {
+			inboundMessageId: msg,
+		});
+		expect(late.autoArchive).toBe(true);
+	});
+
 	it('a rule cannot widen auto-send', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);

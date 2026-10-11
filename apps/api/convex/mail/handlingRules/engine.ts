@@ -119,6 +119,15 @@ export function matchHandlingRule(rule: HandlingRuleLike, target: HandlingRuleTa
 	return true;
 }
 
+/**
+ * L4 (ADR-0073): a rule that can be decided before classification — one with no
+ * non-empty `categories` facet. Its other facets read only the sender, subject
+ * and body, so evaluating it early sees exactly what classify time would.
+ */
+export function isPreClassifyRule(rule: HandlingRuleLike): boolean {
+	return (rule.matcher.categories?.length ?? 0) === 0;
+}
+
 export interface HandlingRuleOutcome {
 	/** Instructions of the rules that matched (for the audit reason). */
 	matchedInstructions: string[];
