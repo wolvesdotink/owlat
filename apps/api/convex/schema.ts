@@ -55,6 +55,8 @@ import { imapServerTables } from './schema/imapServers';
 import { threadBriefTables } from './schema/threadBrief';
 import { interpretBackfillTables } from './schema/interpretBackfill';
 import { threadPurgeJobTables } from './schema/threadPurgeJobs';
+import { aiRoutingTables } from './schema/aiRouting';
+import { embeddingSpaceTables } from './schema/embeddingSpaces';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -115,4 +117,6 @@ export default defineSchema({
 	...threadBriefTables,
 	...interpretBackfillTables,
 	...threadPurgeJobTables,
+	...aiRoutingTables,
+	...embeddingSpaceTables,
 });

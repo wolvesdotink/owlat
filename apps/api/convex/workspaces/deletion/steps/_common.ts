@@ -12,16 +12,15 @@ import { v } from 'convex/values';
 import type { MutationCtx } from '../../../_generated/server';
 import { literalUnion } from '../../../lib/literalUnion';
 import { BRIEF_WIPE_TABLES, type BriefWipeTable } from '../../../schema/threadPurgeJobs';
+import { AI_ROUTING_TABLES, type AiRoutingTable } from '../../../schema/aiRouting';
 
 /**
- * Typed literal union of every table the wipe walks. The walker's
- * `runStep` validator is built off this union — a typo (e.g.
- * `'campaign'` vs `'campaigns'`) is a compile error, not a silent
- * runtime no-op. Closes drift #5 from ADR-0025.
- *
- * The list is intentionally exhaustive across the schema. Any new
- * `defineTable(...)` in `convex/schema/*` that holds per-organization
- * data must add a literal here and a sibling step module.
+ * Typed literal union of every table the wipe walks. The walker's `runStep`
+ * validator is built off this union — a typo (e.g. `'campaign'` vs
+ * `'campaigns'`) is a compile error, not a silent runtime no-op. Closes drift
+ * #5 from ADR-0025. The list is intentionally exhaustive across the schema. Any
+ * new `defineTable(...)` in `convex/schema/*` that holds per-organization data
+ * must add a literal here and a sibling step module.
  */
 export type OrganizationDeletionTable =
 	| 'storageUploads'
@@ -219,6 +218,7 @@ export type OrganizationDeletionTable =
 	| 'aiDraftStreams'
 	| 'answerAskSessions'
 	| 'aiProviderConfig'
+	| AiRoutingTable
 	| 'coalesceBatches'
 	| 'visualizations'
 	| 'dashboardLayouts'
@@ -288,6 +288,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('inboxFollowUps'),
 	v.literal('threadCatchUps'),
 	...literalUnion(BRIEF_WIPE_TABLES).members,
+	...literalUnion(AI_ROUTING_TABLES).members,
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),

@@ -60,6 +60,23 @@ export function utcDayKey(now: number): string {
 	return new Date(utcDayStart(now)).toISOString().slice(0, 10);
 }
 
+/** Start of the UTC month containing `now`, or `0` for a non-finite clock. */
+export function utcMonthStart(now: number): number {
+	if (!Number.isFinite(now)) return 0;
+	const day = new Date(now);
+	return Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 1);
+}
+
+/**
+ * The `YYYY-MM` key of the UTC month containing `now`: the month bucket of the
+ * spend-period aggregates (`llmSpendPeriods`). Same non-finite policy as
+ * {@link utcDayKey}: an unusable clock yields `''`.
+ */
+export function utcMonthKey(now: number): string {
+	if (!Number.isFinite(now)) return '';
+	return utcDayKey(now).slice(0, 7);
+}
+
 /**
  * A dense `days`-long daily series ending on the UTC day of `now`, oldest first.
  *
