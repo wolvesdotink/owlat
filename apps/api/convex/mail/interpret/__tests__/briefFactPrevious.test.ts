@@ -2,7 +2,8 @@
  * "Where things stand" strikes through the value a later message replaced
  * (plan §4.1). The brief lists current facts only, so each current fact
  * carries its direct predecessor (`previous`), opened in the viewer's locale,
- * read from the same thread only.
+ * read from the same thread only, and never while a purge of the thread is
+ * unfinished (the superseded row may still hold erased text).
  */
 
 import { convexTest } from 'convex-test';
@@ -143,5 +144,62 @@ describe('brief.get: the value a current fact replaced', () => {
 		const facts = await standing(t, threadId);
 		expect(facts[0]?.text).toBe('Launch on Monday');
 		expect(facts[0]?.previous).toBeUndefined();
+	});
+
+	it('sends no previous value while a purge of the thread is unfinished', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+			source: { kind: 'mail', id: messageId },
+			threadRef: { kind: 'mail', id: threadId },
+			mode: 'brief',
+			contentRevision: 'rev-1',
+			extractorVersion: 1,
+			expectedRevision: 0,
+			deletionEpoch: 0,
+			sourceAt: SENT,
+			direction: 'inbound',
+			status: 'complete',
+			result: reduceResult({ facts: [] }),
+		});
+		await t.run(async (ctx) => {
+			const friday = await insertFact(ctx, threadId, {
+				status: 'superseded',
+				at: FRIDAY,
+				en: 'Launch on Friday',
+				de: 'Start am Freitag',
+			});
+			await insertFact(ctx, threadId, {
+				status: 'current',
+				at: MONDAY,
+				en: 'Launch on Monday',
+				de: 'Start am Montag',
+				supersedesId: friday,
+			});
+		});
+		expect((await standing(t, threadId))[0]?.previous?.text).toBe('Launch on Friday');
+
+		// The source is deleted and its purge job started; the slice that would
+		// redact the facts has not run yet.
+		await t.run(async (ctx) => {
+			await ctx.db.delete(messageId);
+			await ctx.db.insert('threadPurgeJobs', {
+				threadKind: 'mail',
+				mailThreadId: threadId,
+				kind: 'sources',
+				sources: [{ kind: 'mail', id: messageId }],
+				rangeIndex: 0,
+				isInterpreted: false,
+				isItemDeleted: false,
+				isClaimChanged: false,
+				isSurvivorChanged: false,
+				createdAt: SENT,
+				updatedAt: SENT,
+			});
+		});
+		const facts = await standing(t, threadId);
+		expect(facts[0]?.text).toBe('Launch on Monday');
+		expect(facts[0]?.previous).toBeUndefined();
+		expect(JSON.stringify(facts)).not.toContain('Friday');
 	});
 });

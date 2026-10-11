@@ -14,6 +14,7 @@ import type { AppLocale } from '@owlat/shared/appLocales';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { rowFactKeyLabel } from './factKeys';
+import { isPurgeActive } from './purgeActive';
 import { mailboxOwnAddresses } from '../identities';
 import { readResult, recentlyClosedItems } from './load';
 import type { EXACT_WORDING_REASONS } from './schema';
@@ -161,6 +162,9 @@ async function readPrevious(
 /**
  * The current facts of a mail thread, opened in `locale`, each with the value
  * it replaced (`previous`), so the Overview can strike the old value through.
+ * While a purge of the thread is unfinished (`purgeActive.ts`), no `previous`
+ * is sent: the purge deletes a message before its budgeted slices reach the
+ * facts, so a superseded row may still hold erased text.
  */
 export async function readFacts(
 	ctx: ReadCtx,
@@ -173,11 +177,12 @@ export async function readFacts(
 			q.eq('mailThreadId', threadId).eq('status', 'current')
 		)
 		.take(FACTS_READ);
+	const isPurging = await isPurgeActive(ctx, { kind: 'mail', id: threadId });
 	return Promise.all(
 		rows.map(async (row) => {
 			const [value, previous] = await Promise.all([
 				openFactValue(row.value),
-				readPrevious(ctx, row, locale),
+				isPurging ? undefined : readPrevious(ctx, row, locale),
 			]);
 			return {
 				id: row._id,
