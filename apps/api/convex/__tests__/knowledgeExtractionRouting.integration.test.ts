@@ -470,7 +470,7 @@ describe('Sol r2 F3: an extraction a spend refusal interrupted resumes', () => {
 				sourceType: 'email',
 				sourceId: mailMessageId,
 			})
-		).toEqual({ isDone: false, pendingEntries: extracted });
+		).toEqual({ isDone: false, isPartial: true, pendingEntries: extracted });
 
 		// The deferred run: no second model call, one embedding (the unsaved entry).
 		mocks.embed.mockClear();
@@ -501,7 +501,7 @@ describe('Sol r2 F3: an extraction a spend refusal interrupted resumes', () => {
 				sourceType: 'email',
 				sourceId,
 			});
-		expect(await ask('m-legacy')).toEqual({ isDone: false });
+		expect(await ask('m-legacy')).toEqual({ isDone: false, isPartial: false });
 		await t.mutation(internal.knowledge.graph.saveEntry, {
 			entryType: 'fact',
 			title: 'Legacy',
@@ -511,13 +511,13 @@ describe('Sol r2 F3: an extraction a spend refusal interrupted resumes', () => {
 			embedding: [],
 			confidence: 0.9,
 		});
-		expect(await ask('m-legacy')).toEqual({ isDone: true });
+		expect(await ask('m-legacy')).toEqual({ isDone: true, isPartial: false });
 		// A marker decides over the entries: started is not done.
 		await t.mutation(internal.knowledge.extractionProgress.markExtraction, {
 			sourceType: 'email',
 			sourceId: 'm-legacy',
 			status: 'in_progress',
 		});
-		expect(await ask('m-legacy')).toEqual({ isDone: false });
+		expect(await ask('m-legacy')).toEqual({ isDone: false, isPartial: true });
 	});
 });
