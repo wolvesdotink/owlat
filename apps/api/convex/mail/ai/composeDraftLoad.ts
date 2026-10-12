@@ -15,6 +15,7 @@ import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { logError } from '../../lib/runtimeLog';
+import { rethrowAdmissionRefusal } from '../../lib/llm/admissionPort';
 import type {
 	AnswerAskTarget,
 	AnswerDraftContext,
@@ -133,6 +134,9 @@ export async function loadAnswerContext(
 	try {
 		context = (await assembleInboundBriefing(ctx, loaded.inboundMessageId)).context;
 	} catch (err) {
+		// A spend refusal (D1), a cached interpretation's included, is the
+		// caller's budget error: no clarification or draft from the raw mail.
+		rethrowAdmissionRefusal(err);
 		logError('[composeDraft] team briefing failed, drafting from the message:', err);
 	}
 	const agentConfig = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
