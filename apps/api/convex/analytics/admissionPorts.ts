@@ -188,7 +188,8 @@ export function dispatchAdmissionPort(
 				task,
 				plane: target.plane ?? estimate.plane,
 				budgetClass,
-				priority: target.priority ?? policy.priority,
+				// The caller's, else the root's (a nested call is its root's work), else the task's.
+				priority: target.priority ?? target.root?.priority ?? policy.priority,
 				root: target.root,
 				microusd: estimate.microusd,
 				maxRequests: estimate.maxRequests,

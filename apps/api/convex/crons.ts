@@ -26,6 +26,15 @@ crons.interval(
 	{}
 );
 
+// Provider batch items (ADR-0073, L14): read the results of batches that
+// ended. Starts the poller only when an item is due.
+crons.interval(
+	'poll provider batch items',
+	{ minutes: 5 },
+	internal.aiRouting.batchItems.kickPoller,
+	{}
+);
+
 crons.interval(
 	'reconcile MTA suppressions',
 	{ hours: 24 },

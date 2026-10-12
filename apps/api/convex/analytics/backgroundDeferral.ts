@@ -45,7 +45,9 @@ export async function deferFileForBudget(
 	fileId: Id<'semanticFiles'>,
 	deferrals: number | undefined,
 	/** The stages this run owes; the later run owes the same. */
-	stages?: readonly FileStage[]
+	stages?: readonly FileStage[],
+	/** A summary this run was handed (a provider batch result, L14): the later run keeps it. */
+	batchedSummary?: BatchedFileSummary
 ): Promise<boolean> {
 	if (await backgroundHasHeadroom(ctx)) return false;
 	const done = deferrals ?? 0;
@@ -54,10 +56,19 @@ export async function deferFileForBudget(
 			fileId,
 			deferrals: done + 1,
 			...(stages ? { stages: [...stages] } : {}),
+			...(batchedSummary ? { batchedSummary } : {}),
 		});
 	}
 	return true;
 }
+
+/** A file summary that came back from a provider batch (`aiRouting/batchItems.ts`, L14). */
+export const batchedFileSummaryValidator = v.object({
+	title: v.string(),
+	summary: v.string(),
+	tags: v.array(v.string()),
+});
+export type BatchedFileSummary = Infer<typeof batchedFileSummaryValidator>;
 
 /** The paid stages of processing one file. */
 export const FILE_STAGES = ['summary', 'embedding'] as const;

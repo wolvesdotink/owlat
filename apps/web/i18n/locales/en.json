@@ -8164,7 +8164,7 @@
 								"label": "Skip attachments from spam and automated mail"
 							},
 							"batchApi": {
-								"help": "Background work such as knowledge extraction, file summaries and the backfill of older mail goes through the provider's cheaper batch API, where it offers one. Results arrive later.",
+								"help": "Knowledge extraction from mail and files, and file and attachment summaries, go through the provider's batch API instead of running right away. Only OpenAI and Anthropic connected directly (no custom base URL) qualify; everything else runs as today. Results arrive later, within the provider's batch window of up to 24 hours, and are billed at the batch rate: half the usual price.",
 								"label": "Provider batch processing"
 							},
 							"categoryDisplayBundle": {

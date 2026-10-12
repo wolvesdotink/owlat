@@ -90,6 +90,11 @@ describe('AiRoutingPolicyCard', () => {
 		expect(w.text()).toContain('Off (default)');
 		expect(w.text()).toContain('It records its answer and changes nothing.');
 		expect(w.text()).toContain('the safety checks, the AI check included, still run.');
+		// L14: what is batched, which providers qualify, when results arrive, the rate.
+		expect(w.text()).toContain('Provider batch processing');
+		expect(w.text()).toContain('Only OpenAI and Anthropic connected directly');
+		expect(w.text()).toContain("within the provider's batch window of up to 24 hours");
+		expect(w.text()).toContain('billed at the batch rate: half the usual price.');
 		expect(w.text()).toContain('Daily AI spend ceiling: $25.00.');
 		expect(w.get('[data-testid="ai-routing-shadow-allowance"]').text()).toBe(
 			'No switch is in shadow, so shadow runs spend nothing.'

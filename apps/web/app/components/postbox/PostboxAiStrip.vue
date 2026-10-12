@@ -138,7 +138,8 @@ watch(
 					<Icon name="lucide:wallet" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
 					<p>
 						<span class="font-medium text-text-primary">{{ t('shared.aiBudget.title') }}</span>
-						<span class="text-text-secondary"> {{ t(BUDGET_REASON_KEYS[budgetReason]) }}</span>
+						{{ ' ' }}
+						<span class="text-text-secondary">{{ t(BUDGET_REASON_KEYS[budgetReason]) }}</span>
 					</p>
 				</div>
 				<p v-else-if="askErrored" class="text-xs text-text-tertiary">

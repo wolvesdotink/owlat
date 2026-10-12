@@ -264,6 +264,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	answerAskSessions: makeSweepStep('answerAskSessions'),
 	aiProviderConfig: makeSweepStep('aiProviderConfig'),
 	aiRoutingPolicy: makeSweepStep('aiRoutingPolicy'),
+	llmBatchItems: makeSweepStep('llmBatchItems'),
 	llmReservations: makeSweepStep('llmReservations'),
 	llmSpendPeriods: makeSweepStep('llmSpendPeriods'),
 	llmSpendAggregateState: makeSweepStep('llmSpendAggregateState'),

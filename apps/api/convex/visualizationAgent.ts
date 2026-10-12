@@ -23,6 +23,7 @@ import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { getCachedContactCount } from './lib/contactCountHelpers';
 import { readDailyStats } from './lib/sendDailyStats';
 import { utcDayKey } from './lib/clock';
+import { budgetRefusalValidator } from './lib/validators/aiRouting';
 
 // ============================================================
 // Live-data allowlist
@@ -229,12 +230,15 @@ export const updateGenerated = internalMutation({
 		// Allowlisted dataset key the viz was built from (for refresh), or
 		// undefined when illustrative sample data was used.
 		dataQuery: v.optional(datasetKeyValidator),
+		// A budget refusal (D1), as its code and reason; absent clears an old one.
+		budgetRefusal: v.optional(budgetRefusalValidator),
 	},
 	handler: async (ctx, args) => {
 		await ctx.db.patch(args.id, {
 			title: args.title,
 			html: args.html,
 			dataQuery: args.dataQuery,
+			budgetRefusal: args.budgetRefusal,
 			updatedAt: Date.now(),
 		});
 	},

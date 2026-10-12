@@ -285,6 +285,96 @@ Production does not ask it (D9). Feeding it later takes a calibration report,
 a revision per language, the task in `AUTO_SEND_VERDICT_TASKS`, enforced item
 coverage, and the route step passing admitted scores.
 
+### 12. The assistant, nested tools and provider batches (Phase 5)
+
+**Per-turn caps.** The catalog entry carries `maxToolRounds` and
+`maxRetrievalCalls`. Both are null for every task except `assistant.answer`,
+where both are 8, the step limit every turn already ran with. The dispatch
+stops a tool loop or a tool-calling stream at the tighter of the caller's step
+limit and the task's rounds (`lib/llm/taskLimits.ts` `toolRoundLimit`). The
+tool host gives each turn one retrieval allowance, shared by the knowledge
+and file searches (each one a paid query embedding). The count is taken when
+a call starts, so parallel calls in one round cannot overshoot it. A call
+past the allowance is refused before it searches, and the model reads the
+refusal as the tool's result. The knowledge search is offered only while
+`ai.knowledge` is on, as Quick Query refuses it otherwise (#1335).
+
+**The root's priority.** A root may carry an admission priority
+(`LlmRootContext.priority`), and every call under it is admitted at that
+priority unless its own target names one. The assistant turn and Quick Query
+roots are `interactive`. Without this, a nested retrieval embedding was
+admitted at its catalog priority, `pipeline`, which may spend past the
+advisory reserve that stops the turn itself: a user could buy through a tool
+what the turn could not buy. Roots that set no priority (Team, files, Postbox)
+keep each call's own priority.
+
+**Holds are per request.** Each request of the turn and of its nested tools
+is reserved before it leaves, under the turn's root, with the turn's request
+as the parent (§2). One hold for the whole turn would need a bound on the
+whole tool loop. That bound does not exist: tool results are unbounded, so the
+input of each later round is too. A Stop, noticed on the next row write or by
+a once-a-second check while no stream event comes, aborts the stream and every
+nested draft still running. Their requests are written anyway, so billed usage
+is kept, and unknown usage is settled at the request's own bound.
+
+**Budget refusals are codes.** An assistant answer, an @assistant reply or a
+visualization refused for budget stores
+`budgetRefusal: { code: 'AI_BUDGET_EXHAUSTED', reason }`, never the English
+sentence. The web says it in the reader's language.
+
+**Provider batch APIs (L14, `batchApi`, default `off`).**
+
+- _Scope._ Non-interactive structured calls: knowledge extraction from a Team
+  message, a file and a Postbox message (which the backfills and the mailbox
+  import run), and file summaries (attachments are semantic files).
+- _Providers._ Only adapters with a batch API Owlat speaks: the native OpenAI
+  endpoint (Batch API) and the native Anthropic endpoint (Message Batches).
+  Azure, Google, OpenRouter, compatible and local servers, and any explicit
+  base URL stay real-time.
+- _One request per provider batch._ The provider holds the prompt; Owlat stores
+  ids and states only (`llmBatchItems`). The batch request is captured from the
+  real-time structured call on the adapter's own model with an in-process
+  `fetch`, and the result is read back through the same call. The wire body
+  and the parse are therefore the real-time call's.
+- _Reserve at full price, settle once._ The item and its hold are written in
+  one mutation. The item stores the request's bound at the full real-time
+  price (`requestBoundMicrousd`), and the hold, when a ceiling is configured,
+  is that bound and lives for the 24-hour completion window plus a grace.
+  Every terminal transition writes the request's one ledger row and settles
+  the hold, if there is one, in the same mutation:
+  - a result: its reported usage;
+  - zero, only when the request's own result record says it was not billed
+    (an error response, or a per-request expired or cancelled record), or the
+    provider refused the submission outright;
+  - the full bound whenever billing is unknown: an ambiguous submission, no
+    result by expiry, or an ended batch whose output has no usable line for
+    the request (a batch's own `expired` or `cancelled` status is not
+    evidence about one request).
+
+  The bound is on the item, so this holds with no ceiling configured, when
+  nothing is reserved.
+
+- _Price._ OpenAI's Batch API and Anthropic's Message Batches API each bill at
+  50% of the standard price (confirmed for both). A batch row's endpoint is
+  marked `+batch` and priced at half the list rate (`BATCH_PRICE_FACTOR`).
+  Holds stay at the full price, so they always cover the row.
+- _Not batched._ Assistant and other interactive calls, Team pipeline steps,
+  interpretation and its history backfill (one run hold covers the extraction
+  and its verifier), and embeddings.
+- _Fallback._ With the switch off, or an adapter without a batch API, the
+  call is the real-time one. One batch attempt is made per source. A
+  definite refusal of the submission sends the call real-time at once. A
+  result that is unbilled, unparseable or cut off hands the source back to the
+  real-time path once. A usable result continues through the existing paths:
+  the extraction's resume marker, or file processing re-run with the summary.
+- _Guards at resume._ A result is kept only if the live path would still read
+  its source now: `ai.knowledge` on, a Team message not held back by the guard
+  since, Postbox mail not moved to Spam, Trash, Sent or Drafts. The check runs
+  in the transaction that would keep the result, and the mail resume runs it
+  again. A refusal drops the result; the item still writes its row and
+  settles, because the batch was billed. Only mail in an extractable folder is
+  batched, so imported Sent or Trash mail stays real-time.
+
 ## Consequences
 
 - Upgrading changes no route. The new columns are optional, the policy defaults

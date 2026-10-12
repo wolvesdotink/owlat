@@ -147,3 +147,13 @@ export function dispatchLimits(opts: {
 		abortSignal: callSignal(opts.abortSignal, callDeadlineMs(opts.task, opts.deadlineAt)),
 	};
 }
+
+/**
+ * The step limit of a tool loop or a tool-calling stream (ADR-0073, Phase 5):
+ * the caller's, never past the task's `maxToolRounds`. A task without one
+ * keeps the caller's limit, as today.
+ */
+export function toolRoundLimit(task: AiTaskName | undefined, requested: number): number {
+	const cap = task === undefined ? null : taskPolicy(task).maxToolRounds;
+	return cap === null ? requested : Math.max(1, Math.min(requested, cap));
+}

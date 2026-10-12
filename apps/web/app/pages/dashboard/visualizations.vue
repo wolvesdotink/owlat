@@ -87,6 +87,7 @@ const {
 				:pinned="viz.pinned"
 				:created-at="viz.createdAt"
 				:data-query="viz.dataQuery"
+				:budget-refusal="viz.budgetRefusal"
 			/>
 		</div>
 	</div>

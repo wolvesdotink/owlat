@@ -21,6 +21,7 @@
 import type { AiTaskName } from '@owlat/shared/aiRouting';
 import type { TokenUsage } from '../../agent/steps/types';
 import type { LlmUsagePlane } from '../llmUsageTags';
+import type { AdmissionPriority } from '../validators/aiRouting';
 
 /**
  * The outermost request a call serves, and the call that issued it. The id is
@@ -33,6 +34,14 @@ export interface LlmRootContext {
 	readonly parentCallId?: string;
 	/** Absolute epoch ms after which no call under this root may still run. */
 	readonly deadlineAt?: number;
+	/**
+	 * Who waits on the whole request (ADR-0073, Phase 5). Every call under the
+	 * root is admitted at this priority, whatever its own task's: a nested
+	 * retrieval embedding under an assistant turn is the turn's interactive
+	 * work, not pipeline work that may spend past the advisory reserve. Absent:
+	 * each call's own priority (its target's, else its task's).
+	 */
+	readonly priority?: AdmissionPriority;
 }
 
 /**

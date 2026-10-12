@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ASSISTANT_CUT_OFF_MESSAGE } from '@owlat/shared/aiRouting';
 import type { AssistantToolCall } from './AssistantToolCalls.vue';
+import { budgetRefusalReason } from '~/utils/aiBudget';
 
 export interface AssistantMessageData {
 	_id: string;
@@ -9,6 +10,8 @@ export interface AssistantMessageData {
 	status: 'streaming' | 'complete' | 'stopped' | 'error';
 	toolCalls: AssistantToolCall[];
 	errorMessage: string | null;
+	/** The turn's paid call was refused for budget (D1): a code and reason, never a sentence. */
+	budgetRefusal?: { code: string; reason: string } | null;
 	model?: string | null;
 	createdAt: number;
 }
@@ -28,6 +31,8 @@ const isCutOff = computed(
 		props.message.errorMessage === ASSISTANT_CUT_OFF_MESSAGE &&
 		hasText.value
 );
+// Refused for budget (D1): the stored code and reason, said in the reader's language.
+const isBudgetRefused = computed(() => budgetRefusalReason(props.message.budgetRefusal) !== null);
 // Typing indicator only before any text or tool activity has surfaced.
 const showTyping = computed(
 	() => isStreaming.value && !hasText.value && props.message.toolCalls.length === 0
@@ -93,6 +98,11 @@ const showTyping = computed(
 			>
 				{{ t('components.assistant.assistantMessage.cutOff') }}
 			</p>
+			<!-- Refused for budget (D1): said in the reader's language from its reason. -->
+			<AiBudgetRefusal
+				v-else-if="message.status === 'error' && isBudgetRefused"
+				:refusal="message.budgetRefusal"
+			/>
 			<p v-else-if="message.status === 'error'" class="mt-1 text-xs text-error">
 				{{ message.errorMessage || t('components.assistant.assistantMessage.genericError') }}
 			</p>

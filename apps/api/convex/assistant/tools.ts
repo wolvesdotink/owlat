@@ -39,6 +39,7 @@ import {
 	hasFlaggedModule,
 	selectAssistantToolModules,
 	withHostScrub,
+	withRetrievalAllowance,
 	type AssistantAudience,
 	type HostedAssistantToolModule,
 } from './toolRegistry';
@@ -218,7 +219,9 @@ function buildDraftEmailReply(
 			contact: z.string().describe('The recipient — a name or email to look up.'),
 			intent: z.string().describe('What the email should say or accomplish.'),
 		}),
-		execute: async ({ contact, intent }) => {
+		// The turn's signal: a Stop ends this nested call too, which keeps the
+		// usage it was billed for (its rows are written either way).
+		execute: async ({ contact, intent }, { abortSignal }) => {
 			const found = await ctx.runQuery(internal.assistant.insights.findContact, {
 				query: contact,
 			});
@@ -235,6 +238,7 @@ function buildDraftEmailReply(
 							'You draft a single professional email reply. Output ONLY the email body — no preamble, no commentary, no subject line unless explicitly asked. Keep it concise and ready for the user to review and edit.',
 						prompt: `Recipient: ${recipient}\n\nWrite an email that accomplishes: ${clampText(intent, 1500)}`,
 						temperature: 0.4,
+						...(abortSignal ? { abortSignal } : {}),
 					})
 			);
 			return {
@@ -260,7 +264,7 @@ function buildDraftCampaignCopy(
 			brief: z.string().describe('What the campaign is about, the goal, tone, key points.'),
 			audience: z.string().optional().describe('Who the campaign is for (optional).'),
 		}),
-		execute: async ({ brief, audience }) => {
+		execute: async ({ brief, audience }, { abortSignal }) => {
 			const model = await resolveLanguageModelForUserText(ctx, 'assistant.tool_draft', brief);
 			const result = await meterLlmCall(
 				ctx,
@@ -273,6 +277,7 @@ function buildDraftCampaignCopy(
 							'You are an expert email-marketing copywriter. Draft compelling campaign email copy from the brief. Output Markdown: a "**Subject:**" line, then the email body. Keep it ready for the user to review and edit.',
 						prompt: `Brief: ${clampText(brief, 2000)}${audience ? `\n\nAudience: ${clampText(audience, 500)}` : ''}`,
 						temperature: 0.6,
+						...(abortSignal ? { abortSignal } : {}),
 					})
 			);
 			return { draft: result.text.trim(), isComplete: result.isTruncated !== true };
@@ -283,16 +288,20 @@ function buildDraftCampaignCopy(
 /**
  * The built-in assistant tools, in the order the assembler emits them. This is
  * the single source of truth for built-in membership and metadata; the same set
- * powers both the personal assistant and @assistant-in-chat. No built-in gates
- * on a per-tool `flag` (the assistant is gated as a whole by `ai.assistant`); no
- * built-in writes or sends.
+ * powers both the personal assistant and @assistant-in-chat. The assistant is
+ * gated as a whole by `ai.assistant`; `searchKnowledge` is also gated by
+ * `ai.knowledge` (#1335), like Quick Query. No built-in writes or sends.
  */
 export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze([
 	{
 		name: 'searchKnowledge',
+		// #1335: the knowledge graph is read only while `ai.knowledge` is on, as
+		// Quick Query refuses it otherwise. Off: the tool is not offered at all.
+		flag: 'ai.knowledge',
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: true,
 		build: buildSearchKnowledge,
 	},
 	{
@@ -300,6 +309,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: true,
 		build: buildSearchFiles,
 	},
 	{
@@ -307,6 +317,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildSearchEverything,
 	},
 	{
@@ -314,6 +325,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildGetCampaignStats,
 	},
 	{
@@ -321,6 +333,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildGetEmailStats,
 	},
 	{
@@ -328,6 +341,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:draft',
 		spend: ASSISTANT_TOOL_DRAFT_SPEND,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildDraftEmailReply,
 	},
 	{
@@ -335,15 +349,23 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:draft',
 		spend: ASSISTANT_TOOL_DRAFT_SPEND,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildDraftCampaignCopy,
 	},
 ] satisfies readonly HostedAssistantToolModule[]);
+
+/** The per-turn limits the host enforces on the tools (the task's policy). */
+export interface AssistantToolLimits {
+	/** Retrieval calls the whole turn may make; `null`: no cap. */
+	readonly maxRetrievalCalls: number | null;
+}
 
 /**
  * Assemble the AI-SDK tool set from the hosted registry, closing over the
  * runner's action context and the turn's audience. Flag-gates membership (a tool whose `flag` is OFF is
  * omitted — feature-off ⇒ the model never sees it), then wraps each tool so the
- * host injection-scrubs its output before it can reach a prompt.
+ * host injection-scrubs its output before it can reach a prompt. Retrieval
+ * tools also share the turn's retrieval allowance (`limits`, ADR-0073 Phase 5).
  *
  * When no module declares a flag (the built-in set), no flag I/O happens, so the
  * assembled set is exactly the built-ins in declaration order. `modules` is
@@ -353,15 +375,21 @@ export async function buildAssistantTools(
 	ctx: ActionCtx,
 	audience: AssistantAudience,
 	modules: readonly HostedAssistantToolModule[] = TOOL_MODULES,
-	root?: LlmRootContext
+	root?: LlmRootContext,
+	limits: AssistantToolLimits = { maxRetrievalCalls: null }
 ): Promise<ToolSet> {
 	const flags = hasFlaggedModule(modules)
 		? await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {})
 		: {};
+	// One allowance for the whole turn, shared by every retrieval tool.
+	const allowance =
+		limits.maxRetrievalCalls === null ? null : { remaining: limits.maxRetrievalCalls };
 	const set: ToolSet = {};
 	for (const module of selectAssistantToolModules(modules, flags)) {
 		const built = module.build(ctx, audience, root);
-		set[module.name] = module.scrubOutput ? withHostScrub(built) : built;
+		const counted =
+			module.isRetrieval && allowance ? withRetrievalAllowance(built, allowance) : built;
+		set[module.name] = module.scrubOutput ? withHostScrub(counted) : counted;
 	}
 	return set;
 }

@@ -8164,7 +8164,7 @@
 								"label": "Anhänge aus Spam und automatischen Mails überspringen"
 							},
 							"batchApi": {
-								"help": "Hintergrundarbeit wie das Auslesen von Wissen, Dateizusammenfassungen und das Nachholen älterer Mails läuft über die günstigere Batch-API des Anbieters, wo es eine gibt. Die Ergebnisse kommen später.",
+								"help": "Das Auslesen von Wissen aus Mails und Dateien und die Zusammenfassungen von Dateien und Anhängen laufen über die Batch-API des Anbieters, statt sofort zu laufen. Das gilt nur für OpenAI und Anthropic, direkt verbunden (ohne eigene Basis-URL); alles andere läuft wie bisher. Die Ergebnisse kommen später, innerhalb des Batch-Fensters des Anbieters von bis zu 24 Stunden, und werden zum Batch-Tarif abgerechnet: zum halben üblichen Preis.",
 								"label": "Stapelverarbeitung beim Anbieter"
 							},
 							"categoryDisplayBundle": {
