@@ -23,6 +23,7 @@ import { admitDispatch, isWrappableModel, type DispatchHold } from './dispatchAd
 
 import { meterStreamModel, STREAM_SETTLE_MS } from './streamMetering';
 import { isLengthStop } from './truncation';
+import { toolRoundLimit } from './taskLimits';
 
 /**
  * Default ceiling on agentic steps (one LLM call + its tool round-trip) per
@@ -109,6 +110,11 @@ interface LlmStreamResult {
  * usage of the finished steps, and an aborted stream returns that usage
  * (#1256): those steps were billed either way.
  */
+/** The stream's step limit: the caller's, capped by its task's tool rounds (Phase 5). */
+function maxStepsOf(opts: LlmStreamOptions): number {
+	return toolRoundLimit(opts.meter?.task, opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS);
+}
+
 export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamResult> {
 	const call = callShape(opts);
 	// Spend admission before the opening request (ADR-0073, Phase 1b): every
@@ -120,7 +126,7 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 			messages: opts.messages,
 			...(opts.tools ? { tools: opts.tools } : {}),
 		}),
-		steps: opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS,
+		steps: maxStepsOf(opts),
 		retries: 'opening_only',
 		isIncremental: isWrappableModel(requestModel),
 	});
@@ -150,7 +156,7 @@ async function streamOnce(
 		...(opts.system !== undefined ? { system: opts.system } : {}),
 		messages: opts.messages,
 		...(opts.tools ? { tools: opts.tools } : {}),
-		stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
+		stopWhen: stepCountIs(maxStepsOf(opts)),
 		temperature: opts.temperature,
 		// The SDK's retry re-sends only the opening request, before any token
 		// exists; the task's attempt allowance bounds it, and each re-send is

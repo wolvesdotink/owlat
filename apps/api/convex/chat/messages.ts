@@ -28,6 +28,7 @@ import { loadProfileSummary, type ProfileSummary } from '../lib/userProfiles';
 import { insertRoomMessage } from './messageInsert';
 import { clearNoteReactions } from '../mail/interpret/noteReactions';
 import { isChatAttachment } from './attachmentAccess';
+import { budgetRefusalValidator } from '../lib/validators/aiRouting';
 import {
 	assistantToolCallValidator,
 	assistantMessageStatusValidator,
@@ -368,6 +369,8 @@ export const finalizeAssistantChatMessage = internalMutation({
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		errorMessage: v.optional(v.string()),
+		/** A budget refusal (D1): stored as its code and reason, for the web to localize. */
+		budgetRefusal: v.optional(budgetRefusalValidator),
 		toolCalls: v.optional(v.array(assistantToolCallValidator)),
 	},
 	handler: async (ctx, args) => {
@@ -383,6 +386,7 @@ export const finalizeAssistantChatMessage = internalMutation({
 			aiStatus: status,
 			model: args.model,
 			tokenUsage: args.tokenUsage,
+			budgetRefusal: args.budgetRefusal,
 			...(args.toolCalls ? { toolCalls: args.toolCalls } : {}),
 		});
 	},

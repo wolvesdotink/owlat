@@ -75,6 +75,12 @@ export interface HostedAssistantToolModule {
 	/** When true, the host injection-scrubs the tool's output before it reaches the model. */
 	readonly scrubOutput: boolean;
 	/**
+	 * A retrieval tool (a knowledge or file search, each one a paid query
+	 * embedding): it counts against the turn's retrieval allowance, which the
+	 * host enforces (`maxRetrievalCalls` in `lib/llm/taskPolicy.ts`).
+	 */
+	readonly isRetrieval: boolean;
+	/**
 	 * `root` is the assistant turn's root request with the turn's call as the
 	 * parent (ADR-0073), so a tool's own model and embedding calls group under
 	 * the turn in the ledger.
@@ -169,6 +175,33 @@ export function withHostScrub(built: Tool): Tool {
 		const result = original(input, options);
 		if (isAsyncIterable(result)) return scrubAsyncIterable(result);
 		return Promise.resolve(result).then(scrubToolOutput);
+	};
+	return { ...built, execute } as Tool;
+}
+
+/** How many more retrieval calls a turn may make: one shared count across its tools. */
+export interface RetrievalAllowance {
+	remaining: number;
+}
+
+/** What the model reads when the turn's retrieval allowance is spent. */
+export const RETRIEVAL_LIMIT_MESSAGE =
+	'The search limit for this answer is reached. Answer from the results you already have.';
+
+/**
+ * Wrap a retrieval tool so the host counts its calls against the turn's
+ * allowance (ADR-0073, Phase 5). A call past it rejects before the tool runs,
+ * so no search and no query embedding happen; the SDK hands the error to the
+ * model as the tool's result, and the turn goes on. The count is taken when
+ * the call starts, so parallel calls in one round cannot overshoot it.
+ */
+export function withRetrievalAllowance(built: Tool, allowance: RetrievalAllowance): Tool {
+	const original = built.execute;
+	if (typeof original !== 'function') return built;
+	const execute: ToolExecuteFunction<unknown, unknown> = (input, options) => {
+		if (allowance.remaining <= 0) return Promise.reject(new Error(RETRIEVAL_LIMIT_MESSAGE));
+		allowance.remaining -= 1;
+		return original(input, options);
 	};
 	return { ...built, execute } as Tool;
 }

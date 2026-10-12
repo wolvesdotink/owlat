@@ -21,6 +21,7 @@ import { internal } from '../_generated/api';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
 import { isSharedInboxReader } from '../inbox/access';
+import { budgetRefusalValidator } from '../lib/validators/aiRouting';
 import {
 	throwInvalidInput,
 	throwNotFound,
@@ -328,6 +329,8 @@ export const finalizeAssistantMessage = internalMutation({
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		errorMessage: v.optional(v.string()),
+		/** A budget refusal (D1): stored as its code and reason, for the web to localize. */
+		budgetRefusal: v.optional(budgetRefusalValidator),
 		toolCalls: v.optional(v.array(assistantToolCallValidator)),
 	},
 	handler: async (ctx, args) => {
@@ -341,6 +344,7 @@ export const finalizeAssistantMessage = internalMutation({
 			model: args.model,
 			tokenUsage: args.tokenUsage,
 			errorMessage: args.errorMessage,
+			budgetRefusal: args.budgetRefusal,
 			...(args.toolCalls ? { toolCalls: args.toolCalls } : {}),
 		});
 		const now = Date.now();

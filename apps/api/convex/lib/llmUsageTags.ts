@@ -24,6 +24,7 @@
 import { v } from 'convex/values';
 import { literalUnion } from './literalUnion';
 import {
+	admissionPriorityValidator,
 	aiTaskNameValidator,
 	budgetClassValidator,
 	qualityResultValidator,
@@ -134,6 +135,8 @@ export const llmRootContextValidator = v.object({
 	rootRequestId: v.string(),
 	parentCallId: v.optional(v.string()),
 	deadlineAt: v.optional(v.number()),
+	/** The root's admission priority (`lib/llm/requestMeter.ts` `LlmRootContext.priority`). */
+	priority: v.optional(admissionPriorityValidator),
 });
 
 /**

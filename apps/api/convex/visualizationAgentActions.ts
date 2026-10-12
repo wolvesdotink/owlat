@@ -21,11 +21,27 @@ import { meterLlmCall } from './analytics/meteredSpend';
 import { rootRequest } from './lib/llm/requestMeter';
 import { datasetKeyValidator, isDatasetKey, type DatasetKey } from './visualizationAgent';
 import { anchorActionDeadline } from './lib/llm/actionDeadline';
-import { admissionRefusalOf, budgetRefusalMessage } from './lib/llm/admissionPort';
+import { admissionRefusalOf } from './lib/llm/admissionPort';
 
 // ============================================================
 // Internal Action: Generate Visualization
 // ============================================================
+
+/** The page a failed generation stores; `reason` is shown when the failure has one to show. */
+function generationFailedHtml(reason?: string): string {
+	const detail =
+		reason === undefined
+			? ''
+			: `<p>${escapeHtml(reason)}</p>
+<p style="color:#666;">Try rephrasing your request.</p>
+`;
+	return `<!DOCTYPE html>
+<html>
+<body style="padding:20px;font-family:system-ui;">
+<h3 style="color:#EF4444;">Generation Failed</h3>
+${detail}</body>
+</html>`;
+}
 
 /**
  * Generate a visualization from a natural language prompt.
@@ -133,26 +149,16 @@ Respond with ONLY the title, no quotes or explanation.`,
 				dataQuery: liveData ? (datasetKey ?? undefined) : undefined,
 			});
 		} catch (error) {
-			// Update with error state; a budget refusal reads as one (D1).
+			// A budget refusal (D1) is stored as its stable code and reason, which
+			// the web says in the reader's language; the page carries no sentence.
 			const refusal = admissionRefusalOf(error);
-			const reason = refusal
-				? budgetRefusalMessage(refusal.reason)
-				: error instanceof Error
-					? error.message
-					: 'Unknown error';
-			const errorHtml = `<!DOCTYPE html>
-<html>
-<body style="padding:20px;font-family:system-ui;">
-<h3 style="color:#EF4444;">Generation Failed</h3>
-<p>${escapeHtml(reason)}</p>
-<p style="color:#666;">Try rephrasing your request.</p>
-</body>
-</html>`;
-
 			await ctx.runMutation(internal.visualizationAgent.updateGenerated, {
 				id: args.visualizationId,
 				title: 'Error',
-				html: errorHtml,
+				html: refusal
+					? generationFailedHtml()
+					: generationFailedHtml(error instanceof Error ? error.message : 'Unknown error'),
+				...(refusal ? { budgetRefusal: { code: refusal.code, reason: refusal.reason } } : {}),
 			});
 		}
 	},

@@ -8,6 +8,7 @@
 
 import { v, type Infer } from 'convex/values';
 import {
+	AI_BUDGET_ERROR_CODE,
 	AI_TASK_NAMES,
 	BUDGET_HOLD_REASONS,
 	GUARD_NOT_RUN_REASONS,
@@ -113,6 +114,17 @@ export const budgetHoldValidator = v.object({
 	at: v.number(),
 });
 export type BudgetHold = Infer<typeof budgetHoldValidator>;
+
+/**
+ * D1 on a user-facing AI result (an assistant answer, a visualization): the
+ * paid call was refused for budget. The stable code and reason, never the
+ * English sentence, so the web can say it in the reader's language.
+ */
+export const budgetRefusalValidator = v.object({
+	code: v.literal(AI_BUDGET_ERROR_CODE),
+	reason: literalUnion(BUDGET_HOLD_REASONS),
+});
+export type BudgetRefusal = Infer<typeof budgetRefusalValidator>;
 
 // ── Decision artifacts and sender memory ──────────────────────────────────
 

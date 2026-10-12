@@ -5,6 +5,7 @@ import {
 	assistantToolCallValidator,
 	assistantMessageStatusValidator,
 } from '../lib/convexValidators';
+import { budgetRefusalValidator } from '../lib/validators/aiRouting';
 import { chatMemberRoleValidator, chatRoomVisibilityValidator } from '../lib/literalValidators';
 
 /**
@@ -117,6 +118,9 @@ export const chatTables = {
 		// Model + token accounting for the reply.
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
+		// The reply's paid call was refused for budget (D1): the stable code and
+		// reason the web localizes.
+		budgetRefusal: v.optional(budgetRefusalValidator),
 		// The human message whose @assistant mention triggered this reply
 		// (observability / threading of the request→reply pair).
 		aiPromptMessageId: v.optional(v.id('chatMessages')),

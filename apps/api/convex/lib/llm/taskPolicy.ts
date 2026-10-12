@@ -98,6 +98,18 @@ export interface TaskPolicyEntry {
 	readonly deadlineMs: number | null;
 	/** Provider requests per call, the first included. */
 	readonly maxAttempts: number;
+	/**
+	 * Model rounds a tool loop or a tool-calling stream may take (ADR-0073,
+	 * Phase 5): the dispatch stops the loop there, whatever the caller asked
+	 * for. `null`: the caller's own step limit, as today.
+	 */
+	readonly maxToolRounds: number | null;
+	/**
+	 * Retrieval tool calls (knowledge and file searches, each one a paid query
+	 * embedding) one call of the task may make across all its rounds; the
+	 * tool host refuses the rest. `null`: no retrieval tools, or no cap.
+	 */
+	readonly maxRetrievalCalls: number | null;
 	readonly fallback: TaskFallback;
 	readonly budgetClass: TaskBudgetClass;
 	readonly priority: TaskPriority;
@@ -110,18 +122,33 @@ export interface TaskPolicyEntry {
 	readonly features: readonly string[];
 }
 
-type EntryInput = Omit<
-	TaskPolicyEntry,
-	'task' | 'maxInputTokens' | 'maxOutputTokens' | 'maxReasoningTokens' | 'evalVersion' | 'fallback'
-> &
-	Partial<
-		Pick<
-			TaskPolicyEntry,
-			'maxInputTokens' | 'maxOutputTokens' | 'maxReasoningTokens' | 'evalVersion' | 'fallback'
-		>
-	>;
+/** The fields an entry may leave out: they default to {@link UNLIMITED}, `none` and 0. */
+type DefaultedField =
+	| 'maxInputTokens'
+	| 'maxOutputTokens'
+	| 'maxReasoningTokens'
+	| 'maxToolRounds'
+	| 'maxRetrievalCalls'
+	| 'evalVersion'
+	| 'fallback';
 
-const UNLIMITED = { maxInputTokens: null, maxOutputTokens: null, maxReasoningTokens: null };
+type EntryInput = Omit<TaskPolicyEntry, 'task' | DefaultedField> &
+	Partial<Pick<TaskPolicyEntry, DefaultedField>>;
+
+const UNLIMITED = {
+	maxInputTokens: null,
+	maxOutputTokens: null,
+	maxReasoningTokens: null,
+	maxToolRounds: null,
+	maxRetrievalCalls: null,
+};
+
+/**
+ * The assistant turn's tool rounds: `DEFAULT_MAX_TOOL_STEPS` in
+ * `./dispatchStream.ts`, the step limit every turn ran with before this
+ * catalog (a test pins the two equal).
+ */
+const ASSISTANT_TOOL_ROUNDS = 8;
 
 /** A verdict, a score or a one-line answer: a few hundred tokens today. */
 const SMALL_OUTPUT = { maxOutputTokens: 1_024, maxReasoningTokens: 4_096 } as const;
@@ -346,6 +373,10 @@ const ENTRIES = {
 		tiers: ['capable', 'fast'],
 		...interactive,
 		...loop,
+		// One retrieval per round: a turn that searches once a round, as turns
+		// do, is never refused; parallel searches past it are (Phase 5).
+		maxToolRounds: ASSISTANT_TOOL_ROUNDS,
+		maxRetrievalCalls: ASSISTANT_TOOL_ROUNDS,
 		features: ['assistant_chat', 'chat_assistant'],
 	}),
 	'assistant.tool_draft': language({

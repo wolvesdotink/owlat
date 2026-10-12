@@ -36,6 +36,7 @@ function fixtureModule(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: false,
 		...overrides,
 		build: () =>
 			tool({

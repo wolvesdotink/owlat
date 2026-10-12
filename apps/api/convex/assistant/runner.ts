@@ -40,7 +40,9 @@ import { buildAssistantTools } from './tools';
 import type { AssistantAudience } from './toolRegistry';
 import { buildAssistantSystemPrompt, clampText, type AssistantSurface } from './prompt';
 import { assistantToolCallValidator } from '../lib/convexValidators';
-import { admissionRefusalOf, budgetRefusalMessage } from '../lib/llm/admissionPort';
+import { admissionRefusalOf } from '../lib/llm/admissionPort';
+import { taskPolicy } from '../lib/llm/taskPolicy';
+import type { BudgetRefusal } from '../lib/validators/aiRouting';
 
 type ToolCall = Infer<typeof assistantToolCallValidator>;
 type Status = 'complete' | 'stopped' | 'error';
@@ -95,8 +97,13 @@ interface FinalizeArgs {
 	model?: string;
 	tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 	errorMessage?: string;
+	/** The turn's paid call was refused for budget (D1): the code and reason, no sentence. */
+	budgetRefusal?: BudgetRefusal;
 	toolCalls?: ToolCall[];
 }
+
+/** The task every assistant turn runs as (`lib/llm/taskPolicy.ts`). */
+const TURN_TASK = 'assistant.answer';
 
 /**
  * The shared streaming loop. Surface-specific persistence is injected via
@@ -121,14 +128,21 @@ async function streamAssistantTurn(
 ): Promise<void> {
 	// The turn's calls and its tools' nested searches share this action's clock.
 	anchorActionDeadline(ctx);
-	const target: LlmSpendTarget = { feature: opts.feature, root: boundedRoot(ctx, opts.root) };
+	const target: LlmSpendTarget = {
+		feature: opts.feature,
+		task: TURN_TASK,
+		root: boundedRoot(ctx, opts.root),
+	};
 	const meter = meterFor(ctx, target);
-	// Tools that call a model run under the turn's root, with the turn as parent.
+	// Tools that call a model run under the turn's root, with the turn as parent,
+	// so their calls are admitted as the turn's interactive work (Phase 5), and
+	// the turn's retrieval allowance bounds how often they search.
 	const tools = await buildAssistantTools(
 		ctx,
 		opts.audience,
 		undefined,
-		childCall(target.root, meter.requestId)
+		childCall(target.root, meter.requestId),
+		{ maxRetrievalCalls: taskPolicy(TURN_TASK).maxRetrievalCalls }
 	);
 	const toolCalls: ToolCall[] = [];
 	// Every write carries the tool cards too; a tool event flushes at once.
@@ -144,6 +158,7 @@ async function streamAssistantTurn(
 			system: opts.system,
 			messages: opts.messages,
 			tools,
+			// The dispatch caps this at the task's tool rounds (`maxToolRounds`).
 			maxSteps: DEFAULT_MAX_TOOL_STEPS,
 			temperature: 0.3,
 			abortSignal: stream.signal,
@@ -194,17 +209,32 @@ async function streamAssistantTurn(
 		await opts.finalize({
 			text: stream.text,
 			status: 'error',
-			errorMessage: turnErrorMessage(error),
+			...turnError(error),
 			toolCalls: toolCalls.length ? toolCalls : undefined,
 		});
 	}
 }
 
-/** What a failed turn tells the person; a budget refusal reads as one (D1). */
-function turnErrorMessage(error: unknown): string {
+/**
+ * What a failed turn stores: a budget refusal as its stable code and reason
+ * (D1), which the web says in the reader's language; any other failure as its
+ * message.
+ */
+function turnError(error: unknown): Pick<FinalizeArgs, 'errorMessage' | 'budgetRefusal'> {
 	const refusal = admissionRefusalOf(error);
-	if (refusal) return budgetRefusalMessage(refusal.reason);
-	return clampText(String((error as { message?: unknown })?.message ?? error), 300);
+	if (refusal) return { budgetRefusal: { code: refusal.code, reason: refusal.reason } };
+	return {
+		errorMessage: clampText(String((error as { message?: unknown })?.message ?? error), 300),
+	};
+}
+
+/**
+ * A turn's root: one per assistant message (ADR-0073). Someone waits on it, so
+ * every call under it, the tools' nested searches included, is admitted as
+ * interactive work.
+ */
+function assistantRoot(assistantMessageId: string): LlmRootContext {
+	return { ...rootRequest('assistant', assistantMessageId), priority: 'interactive' };
 }
 
 /** Personal assistant — drive a `/dashboard/assistant` conversation turn. */
@@ -242,7 +272,7 @@ export const run = internalAction({
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',
 			feature: 'assistant_chat',
-			root: rootRequest('assistant', args.assistantMessageId),
+			root: assistantRoot(args.assistantMessageId),
 			patch: (text, toolCalls) =>
 				ctx.runMutation(internal.assistant.conversations.patchAssistantMessage, {
 					messageId: args.assistantMessageId,
@@ -290,7 +320,7 @@ export const runForChat = internalAction({
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',
 			feature: 'chat_assistant',
-			root: rootRequest('assistant', args.assistantMessageId),
+			root: assistantRoot(args.assistantMessageId),
 			patch: (text, toolCalls) =>
 				ctx.runMutation(internal.chat.messages.patchAssistantChatMessage, {
 					messageId: args.assistantMessageId,
