@@ -93,13 +93,19 @@ export function revisionFromOllamaTags(body: unknown, model: string): ProbedRevi
 async function fetchRevision(baseUrl: string, model: string): Promise<ProbedRevision> {
 	const root = ollamaApiRoot(baseUrl);
 	const server = endpointIdentity(root);
-	let response: Response;
-	try {
-		response = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-	} catch (error) {
-		const kind = error instanceof Error ? error.name : 'Error';
-		throw new Error(`The embedding server ${server} did not answer the revision probe (${kind}).`);
+	// The rejection becomes a value, so the thrown error deliberately has no cause.
+	const answer = await fetch(`${root}/api/tags`, {
+		signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+	}).then(
+		(response) => ({ response }),
+		(error: unknown) => ({ failure: error instanceof Error ? error.name : 'Error' })
+	);
+	if ('failure' in answer) {
+		throw new Error(
+			`The embedding server ${server} did not answer the revision probe (${answer.failure}).`
+		);
 	}
+	const { response } = answer;
 	if (response.status >= 500) {
 		throw new Error(`The embedding server ${server} failed the revision probe.`);
 	}
