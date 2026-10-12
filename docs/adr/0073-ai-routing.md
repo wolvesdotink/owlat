@@ -312,9 +312,10 @@ keep each call's own priority.
 is reserved before it leaves, under the turn's root, with the turn's request
 as the parent (§2). One hold for the whole turn would need a bound on the
 whole tool loop. That bound does not exist: tool results are unbounded, so the
-input of each later round is too. A Stop aborts the stream and every nested
-draft still running. Their requests are written anyway, so billed usage is
-kept, and unknown usage is settled at the request's own bound.
+input of each later round is too. A Stop, noticed on the next row write or by
+a once-a-second check while no stream event comes, aborts the stream and every
+nested draft still running. Their requests are written anyway, so billed usage
+is kept, and unknown usage is settled at the request's own bound.
 
 **Budget refusals are codes.** An assistant answer, an @assistant reply or a
 visualization refused for budget stores
@@ -336,13 +337,23 @@ sentence. The web says it in the reader's language.
   `fetch`, and the result is read back through the same call. The wire body
   and the parse are therefore the real-time call's.
 - _Reserve at full price, settle once._ The item and its hold are written in
-  one mutation. The hold is the request's bound at the full real-time price
-  and lives for the 24-hour completion window plus a grace. Only the
-  transition out of `submitted` writes the request's ledger row and settles
-  the hold, in the same mutation. A request the provider did not bill
-  (errored, expired, cancelled) releases it. When billing is unknown (an
-  ambiguous submission, a lost result), the hold is left for the expiry sweep
-  to charge in full.
+  one mutation. The item stores the request's bound at the full real-time
+  price (`requestBoundMicrousd`), and the hold, when a ceiling is configured,
+  is that bound and lives for the 24-hour completion window plus a grace.
+  Every terminal transition writes the request's one ledger row and settles
+  the hold, if there is one, in the same mutation:
+  - a result: its reported usage;
+  - zero, only when the request's own result record says it was not billed
+    (an error response, or a per-request expired or cancelled record), or the
+    provider refused the submission outright;
+  - the full bound whenever billing is unknown: an ambiguous submission, no
+    result by expiry, or an ended batch whose output has no usable line for
+    the request (a batch's own `expired` or `cancelled` status is not
+    evidence about one request).
+
+  The bound is on the item, so this holds with no ceiling configured, when
+  nothing is reserved.
+
 - _Price._ OpenAI's Batch API and Anthropic's Message Batches API each bill at
   50% of the standard price (confirmed for both). A batch row's endpoint is
   marked `+batch` and priced at half the list rate (`BATCH_PRICE_FACTOR`).

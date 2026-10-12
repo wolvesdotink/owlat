@@ -11,15 +11,19 @@
  *     real-time price, so a batch can never spend past the ceiling. A source
  *     with a live item gets no second one; a source whose item is over goes
  *     back to the real-time path.
- *   - Only the transition out of `submitted` writes the request's ledger row
- *     and settles its hold ({@link completeItem}), or releases it when the
- *     provider billed nothing ({@link failItem}), and the transition is the
- *     status check in the same mutation, so a second poll changes nothing.
- *     `writeRequestBatch` is idempotent by request id too.
- *   - A submission the provider may or may not have taken, or a result that
- *     never came, is `abandoned`: its hold stays held and the expiry sweep
- *     charges it in full (`aiRouting/admission.ts`). A late row is offset
- *     against that charge (`reconcileLateRow`).
+ *   - EVERY terminal transition writes the request's ONE ledger row, and then
+ *     settles its hold when there is one, in the same mutation
+ *     ({@link writeItemRow}): the reported usage when the provider ran it
+ *     ({@link completeItem}); zero when the request's own record says it was
+ *     not billed ({@link failItem}, a submission the provider refused); and the
+ *     item's full bound, `requestBoundMicrousd`, when whether it was billed is
+ *     unknown (a submission the provider may have taken, a result that never
+ *     came, a result line that is missing or malformed: {@link abandonItem}).
+ *     The bound is stored on the item, so this holds with no ceiling
+ *     configured, when admission held nothing. The transition is the status
+ *     check in the same mutation, so a second poll changes nothing, and the
+ *     row is idempotent by request id and attempt too. A hold the expiry
+ *     sweep already charged is offset by the row (`reconcileLateRow`).
  *
  * The work itself continues through the paths that already exist: a result
  * becomes the extraction's `in_progress` marker, which the re-run extraction
@@ -48,7 +52,8 @@ import {
 	batchEndpoint,
 	batchItemKey,
 } from '../lib/aiRouting/batchConsumers';
-import { meteredRequestValidator, writeRequestBatch } from '../analytics/llmUsage';
+import { meteredRequestValidator, type MeteredRequest } from '../analytics/llmUsage';
+import { insertLlmUsage, ZERO_USAGE } from '../analytics/ledgerInsert';
 import { extractedEntryValidator } from '../schema/aiRouting';
 import {
 	readExtractionProgress,
@@ -61,7 +66,7 @@ import {
 	type BatchedFileSummary,
 } from '../analytics/backgroundDeferral';
 import { reserveInMutation } from './admission';
-import { settleReservation } from './settlement';
+import { reconcileLateRow, settleReservation } from './settlement';
 
 const LIVE_STATUSES = new Set(['submitting', 'submitted']);
 
@@ -143,6 +148,7 @@ export const admitItem = internalMutation({
 			rootRequestId: args.root.rootRequestId,
 			...(args.root.parentCallId ? { parentCallId: args.root.parentCallId } : {}),
 			policyVersion: policy.policyVersion,
+			requestBoundMicrousd: args.holdMicrousd,
 			// No ceiling configured: admission held nothing, and the row alone is written.
 			...(verdict.isHeld ? { reservationId: args.reservationId } : {}),
 			status: 'submitting',
@@ -188,8 +194,8 @@ export const confirmSubmitted = internalMutation({
 
 /**
  * The submission failed. `isDefinite`: the provider created nothing, so the
- * hold is released; otherwise the batch may exist and the hold is left for
- * the sweep. The caller goes real-time itself.
+ * request's row is zero; otherwise the batch may exist and the row is the
+ * item's full bound. The caller goes real-time itself.
  */
 export const refuseSubmission = internalMutation({
 	args: { itemId: v.id('llmBatchItems'), isDefinite: v.boolean() },
@@ -197,9 +203,10 @@ export const refuseSubmission = internalMutation({
 		const item = await ctx.db.get(args.itemId);
 		if (!item || item.status !== 'submitting') return;
 		if (args.isDefinite) {
-			await releaseHold(ctx, item);
+			await writeItemRow(ctx, item, { kind: 'unbilled' });
 			await close(ctx, item, 'failed', 'errored');
 		} else {
+			await writeItemRow(ctx, item, { kind: 'unknown' });
 			await close(ctx, item, 'abandoned', 'lost');
 		}
 	},
@@ -272,31 +279,11 @@ export const completeItem = internalMutation({
 	handler: async (ctx, args) => {
 		const item = await ctx.db.get(args.itemId);
 		if (!item || item.status !== 'submitted') return false;
-		const now = Date.now();
-		const { feature } = BATCH_CONSUMER_SPECS[item.consumer];
-		await writeRequestBatch(ctx, {
-			feature,
-			task: item.task,
-			requestId: item.requestId,
-			rootRequestId: item.rootRequestId,
-			...(item.parentCallId ? { parentCallId: item.parentCallId } : {}),
-			policyVersion: item.policyVersion,
-			plane: 'language',
-			...(item.reservationId ? { reservationId: item.reservationId } : {}),
-			requests: [
-				{
-					...args.request,
-					attempt: 1,
-					// The request's turnaround through the batch.
-					latencyMs: Math.max(0, now - item.createdAt),
-					modelUsed: args.request?.modelUsed ?? item.modelId,
-					endpoint: batchEndpoint(item.provider),
-				},
-			],
-			...(item.reservationId
-				? { settlements: [{ reservationId: item.reservationId, expectedRequests: 1 }] }
-				: {}),
-		});
+		await writeItemRow(
+			ctx,
+			item,
+			args.request?.usage ? { kind: 'reported', request: args.request } : { kind: 'unknown' }
+		);
 		await close(ctx, item, 'completed', args.outcome);
 		if (args.outcome !== 'succeeded') {
 			await handBack(ctx, item);
@@ -307,7 +294,11 @@ export const completeItem = internalMutation({
 	},
 });
 
-/** The provider ran nothing it bills for (errored, expired, cancelled): release and go real-time. */
+/**
+ * The request's own result record says it was not billed (errored, expired,
+ * cancelled): a zero row, the hold settled at zero, and the source goes
+ * real-time.
+ */
 export const failItem = internalMutation({
 	args: {
 		itemId: v.id('llmBatchItems'),
@@ -317,7 +308,7 @@ export const failItem = internalMutation({
 	handler: async (ctx, args) => {
 		const item = await ctx.db.get(args.itemId);
 		if (!item || item.status !== 'submitted') return false;
-		await releaseHold(ctx, item);
+		await writeItemRow(ctx, item, { kind: 'unbilled' });
 		await close(ctx, item, 'failed', args.outcome);
 		await handBack(ctx, item);
 		return true;
@@ -326,9 +317,9 @@ export const failItem = internalMutation({
 
 /**
  * Owlat lost track of the item: a submission never confirmed, no result by its
- * expiry, or an ended batch without its line. Whether the provider billed it
- * is unknown, so its hold is left for the expiry sweep to charge in full, and
- * the source goes back to the real-time path.
+ * expiry, or an ended batch without a usable line for it. Whether the provider
+ * billed it is unknown, so its row charges the item's full bound, and the
+ * source goes back to the real-time path.
  */
 export const abandonItem = internalMutation({
 	args: { itemId: v.id('llmBatchItems') },
@@ -336,6 +327,7 @@ export const abandonItem = internalMutation({
 	handler: async (ctx, args) => {
 		const item = await ctx.db.get(args.itemId);
 		if (!item || !LIVE_STATUSES.has(item.status)) return false;
+		await writeItemRow(ctx, item, { kind: 'unknown' });
 		await close(ctx, item, 'abandoned', 'lost');
 		await handBack(ctx, item);
 		return true;
@@ -351,10 +343,62 @@ async function close(
 	await ctx.db.patch(item._id, { status, outcome, updatedAt: Date.now() });
 }
 
-/** Release the item's hold: the provider billed nothing for it. */
-async function releaseHold(ctx: MutationCtx, item: Doc<'llmBatchItems'>): Promise<void> {
+/**
+ * What one item's request came to: `reported` usage; `unbilled`, by the
+ * provider's own evidence; or `unknown`, charged at the item's full bound.
+ */
+type ItemCharge =
+	| { readonly kind: 'reported'; readonly request: MeteredRequest }
+	| { readonly kind: 'unbilled' }
+	| { readonly kind: 'unknown' };
+
+/**
+ * Write the item's one ledger row, then settle its hold (when admission held
+ * one) against it. Idempotent: a row already written for the request is kept.
+ */
+async function writeItemRow(
+	ctx: MutationCtx,
+	item: Doc<'llmBatchItems'>,
+	charge: ItemCharge
+): Promise<void> {
+	const existing = await ctx.db
+		.query('llmUsageEvents')
+		.withIndex('by_request_id_and_attempt', (q) =>
+			q.eq('requestId', item.requestId).eq('attempt', 1)
+		)
+		.first();
+	if (!existing) {
+		const request = charge.kind === 'reported' ? charge.request : undefined;
+		const { usage, modelUsed, attempt: _attempt, latencyMs: _latency, ...details } = request ?? {};
+		const inserted = await insertLlmUsage(
+			ctx,
+			BATCH_CONSUMER_SPECS[item.consumer].feature,
+			usage ?? ZERO_USAGE,
+			modelUsed ?? item.modelId,
+			undefined,
+			{
+				...details,
+				plane: 'language',
+				task: item.task,
+				requestId: item.requestId,
+				attempt: 1,
+				rootRequestId: item.rootRequestId,
+				...(item.parentCallId ? { parentCallId: item.parentCallId } : {}),
+				policyVersion: item.policyVersion,
+				endpoint: batchEndpoint(item.provider),
+				// The request's turnaround through the batch.
+				latencyMs: Math.max(0, Date.now() - item.createdAt),
+				...(item.reservationId ? { reservationId: item.reservationId } : {}),
+				...(charge.kind === 'unknown'
+					? { settledEstimateMicrousd: item.requestBoundMicrousd }
+					: { isEstimated: false }),
+			}
+		);
+		// A hold the expiry sweep already charged takes the row against its charge.
+		if (item.reservationId) await reconcileLateRow(ctx, item.reservationId, inserted);
+	}
 	if (item.reservationId) {
-		await settleReservation(ctx, item.reservationId, { mode: 'call_end', expectedRequests: 0 });
+		await settleReservation(ctx, item.reservationId, { mode: 'call_end', expectedRequests: 1 });
 	}
 }
 

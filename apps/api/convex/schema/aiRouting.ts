@@ -212,6 +212,12 @@ export const aiRoutingTables = {
 		rootRequestId: v.string(),
 		parentCallId: v.optional(v.string()),
 		policyVersion: v.number(),
+		/**
+		 * The request's bound, integer micro-USD at the full real-time price: what
+		 * its ledger row charges when whether it was billed is unknown, with or
+		 * without a hold.
+		 */
+		requestBoundMicrousd: v.number(),
 		/** Absent when admission held nothing (no ceiling configured). */
 		reservationId: v.optional(v.string()),
 		status: batchItemStatusValidator,

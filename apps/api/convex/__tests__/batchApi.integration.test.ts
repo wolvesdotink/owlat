@@ -71,8 +71,10 @@ const json = (value: unknown, status = 200) =>
 function fakeOpenAi() {
 	const state = {
 		status: 'in_progress',
-		/** The output file's text once the batch completed. */
-		output: '',
+		/** The output file's text once the batch ended (absent: no output file). */
+		output: '' as string | undefined,
+		/** The error file's text (absent: no error file). */
+		errors: undefined as string | undefined,
 		uploads: [] as string[],
 		createStatus: 200,
 		calls: [] as { method: string; url: string }[],
@@ -95,11 +97,19 @@ function fakeOpenAi() {
 			return json({
 				id: 'batch_1',
 				status: state.status,
-				...(state.status === 'completed' ? { output_file_id: 'file-out' } : {}),
+				...(state.status !== 'in_progress' && state.output !== undefined
+					? { output_file_id: 'file-out' }
+					: {}),
+				...(state.status !== 'in_progress' && state.errors !== undefined
+					? { error_file_id: 'file-err' }
+					: {}),
 			});
 		}
 		if (method === 'GET' && url.endsWith('/v1/files/file-out/content')) {
-			return new Response(state.output);
+			return new Response(state.output ?? '');
+		}
+		if (method === 'GET' && url.endsWith('/v1/files/file-err/content')) {
+			return new Response(state.errors ?? '');
 		}
 		if (method === 'DELETE') return json({ deleted: true });
 		throw new Error(`unexpected request ${method} ${url}`);
@@ -336,7 +346,7 @@ describe('batch API on', () => {
 		expect(await holds(t)).toHaveLength(0);
 	});
 
-	it('releases the hold when the provider definitely refused the batch, and goes real-time', async () => {
+	it('settles at zero when the provider definitely refused the batch, and goes real-time', async () => {
 		const { t, ctx, openai } = await setup({ dailyUsd: '10', batchApi: 'enforce' });
 		openai.state.createStatus = 400;
 
@@ -346,35 +356,48 @@ describe('batch API on', () => {
 			expect.objectContaining({ status: 'failed', outcome: 'errored' }),
 		]);
 		expect(await holds(t)).toEqual([
-			expect.objectContaining({ status: 'released', heldMicrousd: expect.any(Number) }),
+			expect.objectContaining({ status: 'settled', settledMicrousd: 0 }),
+		]);
+		expect(await rows(t)).toEqual([
+			expect.objectContaining({ costMicrousd: 0, endpoint: 'openai-native+batch' }),
 		]);
 	});
 
-	it('leaves the hold for the sweep when the batch may exist, and charges it in full', async () => {
+	it('charges the full bound once when the batch may exist (an ambiguous submission)', async () => {
 		const { t, ctx, openai } = await setup({ dailyUsd: '10', batchApi: 'enforce' });
 		openai.state.createStatus = 503;
 
 		expect(await sendThroughBatch(ctx, candidate(await seedMessage(t)))).toBe(false);
 
-		expect(await items(t)).toEqual([
-			expect.objectContaining({ status: 'abandoned', outcome: 'lost' }),
-		]);
+		const [item] = await items(t);
+		expect(item).toMatchObject({ status: 'abandoned', outcome: 'lost' });
 		const [hold] = await holds(t);
-		expect(hold?.status).toBe('held');
+		expect(hold).toMatchObject({ status: 'settled', settledMicrousd: item!.requestBoundMicrousd });
+		expect(hold!.heldMicrousd).toBe(item!.requestBoundMicrousd);
+		const [row, ...more] = await rows(t);
+		expect(more).toHaveLength(0);
+		expect(row).toMatchObject({ costMicrousd: item!.requestBoundMicrousd, isEstimated: true });
+		// The sweep and a second abandonment add nothing.
 		await t.run((c) => c.db.patch(hold!._id, { expiresAt: Date.now() - 1 }));
 		await t.mutation(internal.aiRouting.admission.sweepExpiredHolds, {});
-		expect((await holds(t))[0]).toMatchObject({
-			status: 'expired',
-			settledMicrousd: hold!.heldMicrousd,
-		});
+		expect(await t.mutation(internal.aiRouting.batchItems.abandonItem, { itemId: item!._id })).toBe(
+			false
+		);
+		expect(await rows(t)).toHaveLength(1);
 	});
 
-	it('releases an unbilled result (expired) once, and hands the source back', async () => {
+	it('settles an unbilled result (its own expired record) at zero once, and hands the source back', async () => {
 		const { t, ctx, openai } = await setup({ dailyUsd: '10', batchApi: 'enforce' });
 		const messageId = await seedMessage(t);
 		await sendThroughBatch(ctx, candidate(messageId));
 		const [item] = await items(t);
 		openai.state.status = 'expired';
+		openai.state.output = undefined;
+		openai.state.errors = `${JSON.stringify({
+			custom_id: item!.requestId,
+			response: null,
+			error: { code: 'batch_expired', message: 'expired' },
+		})}\n`;
 		await t.run((c) => c.db.patch(item!._id, { nextPollAt: Date.now() - 1 }));
 
 		await t.action(internal.aiRouting.batchPoller.poll, {});
@@ -386,8 +409,8 @@ describe('batch API on', () => {
 		).toBe(false);
 
 		expect((await items(t))[0]).toMatchObject({ status: 'failed', outcome: 'expired' });
-		expect((await holds(t))[0]).toMatchObject({ status: 'released' });
-		expect(await rows(t)).toHaveLength(0);
+		expect((await holds(t))[0]).toMatchObject({ status: 'settled', settledMicrousd: 0 });
+		expect(await rows(t)).toEqual([expect.objectContaining({ costMicrousd: 0 })]);
 		const jobs = await scheduled(t);
 		expect(jobs.filter((job) => job.name.includes('extractFromMessage'))).toHaveLength(1);
 		// The re-run goes real-time: one batch attempt per source.
@@ -433,7 +456,7 @@ describe('batch API on', () => {
 		);
 	});
 
-	it('abandons an item that never got a result by its expiry, and leaves its hold to the sweep', async () => {
+	it('abandons an item that never got a result by its expiry, charging its bound once', async () => {
 		const { t, ctx } = await setup({ dailyUsd: '10', batchApi: 'enforce' });
 		await sendThroughBatch(ctx, candidate(await seedMessage(t)));
 		const [item] = await items(t);
@@ -444,7 +467,78 @@ describe('batch API on', () => {
 		await t.action(internal.aiRouting.batchPoller.poll, {});
 
 		expect((await items(t))[0]).toMatchObject({ status: 'abandoned', outcome: 'lost' });
-		expect((await holds(t))[0]?.status).toBe('held');
+		expect((await holds(t))[0]).toMatchObject({
+			status: 'settled',
+			settledMicrousd: item!.requestBoundMicrousd,
+		});
+		expect(await rows(t)).toHaveLength(1);
+	});
+
+	it.each(['expired', 'cancelled'])(
+		'charges the full bound for a %s batch without a usable line for the request (Sol r1 F3)',
+		async (status) => {
+			const { t, ctx, openai } = await setup({ dailyUsd: '10', batchApi: 'enforce' });
+			await sendThroughBatch(ctx, candidate(await seedMessage(t)));
+			const [item] = await items(t);
+			openai.state.status = status;
+			openai.state.output = 'not json\n';
+			openai.state.errors = undefined;
+			await t.run((c) => c.db.patch(item!._id, { nextPollAt: Date.now() - 1 }));
+
+			await t.action(internal.aiRouting.batchPoller.poll, {});
+
+			expect((await items(t))[0]).toMatchObject({ status: 'abandoned', outcome: 'lost' });
+			expect(await rows(t)).toEqual([
+				expect.objectContaining({ costMicrousd: item!.requestBoundMicrousd, isEstimated: true }),
+			]);
+			expect((await holds(t))[0]).toMatchObject({
+				status: 'settled',
+				settledMicrousd: item!.requestBoundMicrousd,
+			});
+		}
+	);
+
+	describe('with no ceiling configured (nothing held) (Sol r1 F2)', () => {
+		it('charges an ambiguous submission its bound, once', async () => {
+			const { t, ctx, openai } = await setup({ batchApi: 'enforce' });
+			openai.state.createStatus = 503;
+
+			expect(await sendThroughBatch(ctx, candidate(await seedMessage(t)))).toBe(false);
+
+			const [item] = await items(t);
+			expect(item).toMatchObject({ status: 'abandoned', outcome: 'lost' });
+			expect(item?.reservationId).toBeUndefined();
+			expect(item!.requestBoundMicrousd).toBeGreaterThan(0);
+			expect(await holds(t)).toHaveLength(0);
+			expect(await rows(t)).toEqual([
+				expect.objectContaining({
+					costMicrousd: item!.requestBoundMicrousd,
+					isEstimated: true,
+					requestId: item!.requestId,
+					attempt: 1,
+				}),
+			]);
+		});
+
+		it('charges an item with no result by its expiry its bound, once', async () => {
+			const { t, ctx } = await setup({ batchApi: 'enforce' });
+			await sendThroughBatch(ctx, candidate(await seedMessage(t)));
+			const [item] = await items(t);
+			await t.run((c) =>
+				c.db.patch(item!._id, { nextPollAt: Date.now() - 1, expiresAt: Date.now() - 1 })
+			);
+
+			await t.action(internal.aiRouting.batchPoller.poll, {});
+			expect(
+				await t.mutation(internal.aiRouting.batchItems.abandonItem, { itemId: item!._id })
+			).toBe(false);
+
+			expect((await items(t))[0]).toMatchObject({ status: 'abandoned', outcome: 'lost' });
+			expect(await holds(t)).toHaveLength(0);
+			expect(await rows(t)).toEqual([
+				expect.objectContaining({ costMicrousd: item!.requestBoundMicrousd, isEstimated: true }),
+			]);
+		});
 	});
 
 	it('records the row alone with no ceiling configured: nothing is held, as today', async () => {
@@ -480,6 +574,7 @@ describe('batch API on', () => {
 				requestId: 'req-file',
 				rootRequestId: `file:${fileId}`,
 				policyVersion: 3,
+				requestBoundMicrousd: 1_000,
 				status: 'submitted',
 				providerBatchId: 'batch_1',
 				nextPollAt: now,
@@ -519,6 +614,7 @@ describe('retention', () => {
 					requestId: status,
 					rootRequestId: `team:${status}`,
 					policyVersion: 0,
+					requestBoundMicrousd: 1_000,
 					status,
 					nextPollAt: old,
 					expiresAt: old,

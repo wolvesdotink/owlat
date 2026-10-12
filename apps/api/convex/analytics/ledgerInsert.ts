@@ -65,10 +65,11 @@ export interface LlmUsageTags {
 	readonly budgetClass?: BudgetClass;
 	readonly reservationId?: string;
 	/**
-	 * Admission settlement only (`aiRouting/settlement.ts`): the row's cost is
-	 * this conservative estimate in integer micro-USD, not a price of usage, or
-	 * a negative adjustment that offsets part of an earlier estimate. The row
-	 * is marked `isEstimated`.
+	 * A conservative estimate in integer micro-USD that is the row's cost, not
+	 * a price of usage: admission settlement (`aiRouting/settlement.ts`; or a
+	 * negative adjustment that offsets part of an earlier estimate), and a
+	 * provider batch request whose billing is unknown, charged at its full
+	 * bound (`aiRouting/batchItems.ts`). The row is marked `isEstimated`.
 	 */
 	readonly settledEstimateMicrousd?: number;
 }
