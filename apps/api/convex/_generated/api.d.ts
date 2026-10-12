@@ -1009,6 +1009,7 @@ import type * as lib_llm_requestPolicy from '../lib/llm/requestPolicy.js';
 import type * as lib_llm_retryPolicy from '../lib/llm/retryPolicy.js';
 import type * as lib_llm_streamFlusher from '../lib/llm/streamFlusher.js';
 import type * as lib_llm_taskPolicy from '../lib/llm/taskPolicy.js';
+import type * as lib_llm_taskPolicyTypes from '../lib/llm/taskPolicyTypes.js';
 import type * as lib_llm_taskRouting from '../lib/llm/taskRouting.js';
 import type * as lib_llm_tokenUsage from '../lib/llm/tokenUsage.js';
 import type * as lib_llm_toolMarkup from '../lib/llm/toolMarkup.js';
@@ -2741,6 +2742,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llm/retryPolicy': typeof lib_llm_retryPolicy;
 	'lib/llm/streamFlusher': typeof lib_llm_streamFlusher;
 	'lib/llm/taskPolicy': typeof lib_llm_taskPolicy;
+	'lib/llm/taskPolicyTypes': typeof lib_llm_taskPolicyTypes;
 	'lib/llm/taskRouting': typeof lib_llm_taskRouting;
 	'lib/llm/tokenUsage': typeof lib_llm_tokenUsage;
 	'lib/llm/toolMarkup': typeof lib_llm_toolMarkup;
