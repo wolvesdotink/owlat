@@ -38,6 +38,12 @@ describe('InboxGuardNotRunNotice', () => {
 		expectFullyLocalized(w);
 	});
 
+	it('names the AI spend budget as the reason', () => {
+		const w = mountNotice('budget_refused');
+		expect(w.text()).toContain('the AI spend budget was used up');
+		expectFullyLocalized(w);
+	});
+
 	it('has a sentence for every recorded reason', () => {
 		for (const reason of GUARD_NOT_RUN_REASONS) {
 			expect(mountNotice(reason).text()).not.toContain('components.inbox');

@@ -16,4 +16,5 @@ export interface GuardNotRunMarker {
 export const GUARD_NOT_RUN_REASON_KEYS: Record<GuardNotRunReason, string> = {
 	spam_archived: 'components.inbox.guardNotRun.reason.spamArchived',
 	agent_disabled: 'components.inbox.guardNotRun.reason.agentDisabled',
+	budget_refused: 'components.inbox.guardNotRun.reason.budgetRefused',
 };

@@ -4189,10 +4189,18 @@
 			"guardNotRun": {
 				"reason": {
 					"agentDisabled": "The pattern checks ran, but the AI check was skipped because the agent was off when this message arrived. It runs before the agent does anything with the message.",
+					"budgetRefused": "The pattern checks ran, but the AI check was skipped because the AI spend budget was used up. It runs before the agent does anything with the message.",
 					"spamArchived": "The pattern checks ran, but the AI check was skipped because this message was archived as spam. It runs before the agent does anything with the message."
 				},
 				"recordedAt": "Recorded {date}.",
 				"title": "AI safety check not run"
+			},
+			"budgetHold": {
+				"missing": "The AI skipped {steps}.",
+				"retry": "Try the AI again",
+				"retryHint": "Runs the skipped steps once the budget has room.",
+				"since": "Held {date}. Auto-send stays off for this message.",
+				"title": "Waiting for a person: AI budget reached"
 			}
 		},
 		"keyboardShortcutsHelp": {

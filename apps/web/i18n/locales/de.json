@@ -4189,10 +4189,18 @@
 			"guardNotRun": {
 				"reason": {
 					"agentDisabled": "Die Musterprüfungen sind gelaufen, die KI-Prüfung wurde aber übersprungen, weil der Agent aus war, als diese Nachricht ankam. Sie läuft, bevor der Agent etwas mit der Nachricht macht.",
+					"budgetRefused": "Die Musterprüfungen sind gelaufen, die KI-Prüfung wurde aber übersprungen, weil das KI-Ausgabenbudget aufgebraucht war. Sie läuft, bevor der Agent etwas mit der Nachricht macht.",
 					"spamArchived": "Die Musterprüfungen sind gelaufen, die KI-Prüfung wurde aber übersprungen, weil diese Nachricht als Spam archiviert wurde. Sie läuft, bevor der Agent etwas mit der Nachricht macht."
 				},
 				"recordedAt": "Festgehalten am {date}.",
 				"title": "KI-Sicherheitsprüfung nicht gelaufen"
+			},
+			"budgetHold": {
+				"missing": "Die KI hat {steps} übersprungen.",
+				"retry": "KI erneut versuchen",
+				"retryHint": "Führt die übersprungenen Schritte aus, sobald das Budget wieder Platz hat.",
+				"since": "Zurückgehalten am {date}. Für diese Nachricht bleibt das automatische Senden aus.",
+				"title": "Wartet auf eine Person: KI-Budget erreicht"
 			}
 		},
 		"keyboardShortcutsHelp": {
