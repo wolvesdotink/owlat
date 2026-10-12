@@ -271,3 +271,25 @@ describe('queryErrorCopy (#721)', () => {
 		).toEqual({ key: FALLBACK });
 	});
 });
+
+describe('operationCopy — AI budget refusal (U5)', () => {
+	it('says which budget refused the call, by its stable code and reason', () => {
+		const refusal = (reason: string) => ({
+			category: 'forbidden' as const,
+			message: 'AI budget reached (daily_ceiling).',
+			data: { code: 'AI_BUDGET_EXHAUSTED', reason, limit: 5 },
+		});
+		expect(copyFor(refusal('daily_ceiling'))).toContain('for today is used up');
+		expect(copyFor(refusal('monthly_ceiling'))).toContain('for this month is used up');
+		expect(copyFor(refusal('spend_unverifiable'))).toContain("can't be checked right now");
+	});
+
+	it('keeps the forbidden copy for a refusal that is not the budget', () => {
+		const copy = copyFor({
+			category: 'forbidden',
+			message: 'No access',
+			data: { code: 'OTHER', reason: 'daily_ceiling' },
+		});
+		expect(copy).not.toContain('budget');
+	});
+});

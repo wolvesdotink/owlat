@@ -17212,6 +17212,22 @@
 				"hours": "überfällig {hours} Std.",
 				"minutes": "überfällig {minutes} Min."
 			}
+		},
+		"aiBudget": {
+			"generic": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb hat die KI das nicht geschrieben.",
+			"judgment": {
+				"clarify": "Rückfragen an dich",
+				"classify": "das Sortieren",
+				"draft": "den Entwurf",
+				"guard": "die Sicherheitsprüfung",
+				"interpret": "das Lesen des Verlaufs"
+			},
+			"reason": {
+				"dailyCeiling": "Das KI-Ausgabenbudget für heute ist aufgebraucht. KI-Aktionen gibt es morgen wieder.",
+				"monthlyCeiling": "Das KI-Ausgabenbudget für diesen Monat ist aufgebraucht. KI-Aktionen gibt es nächsten Monat wieder oder sobald ein Admin das Budget erhöht.",
+				"spendUnverifiable": "Die KI-Ausgaben lassen sich gerade nicht prüfen, deshalb läuft kein kostenpflichtiger KI-Aufruf. Versuch es in ein paar Minuten erneut."
+			},
+			"title": "KI-Budget erreicht."
 		}
 	},
 	"sharedPkg": {

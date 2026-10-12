@@ -17212,6 +17212,22 @@
 				"hours": "overdue {hours}h",
 				"minutes": "overdue {minutes}m"
 			}
+		},
+		"aiBudget": {
+			"generic": "The AI spend budget is used up for now, so the AI did not write this.",
+			"judgment": {
+				"clarify": "questions to you",
+				"classify": "sorting",
+				"draft": "the draft",
+				"guard": "the safety check",
+				"interpret": "reading the thread"
+			},
+			"reason": {
+				"dailyCeiling": "The AI spend budget for today is used up. AI actions are back tomorrow.",
+				"monthlyCeiling": "The AI spend budget for this month is used up. AI actions are back next month, or once an admin raises the budget.",
+				"spendUnverifiable": "AI spend can't be checked right now, so no paid AI call is made. Try again in a few minutes."
+			},
+			"title": "AI budget reached."
 		}
 	},
 	"sharedPkg": {
