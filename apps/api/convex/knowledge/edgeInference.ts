@@ -121,7 +121,11 @@ export const inferRelations = internalAction({
 		if (!(await ctx.runQuery(internal.knowledge.edges.isInferenceEnabled, {}))) return;
 
 		// Load the freshly-ingested anchors.
-		const anchors = await ctx.runQuery(internal.knowledge.graph.getByIds, { ids: args.entryIds });
+		// The anchors and the space their stored vectors are in, read together.
+		const { anchors, embeddingSpaceKey } = await ctx.runQuery(
+			internal.knowledge.edges.getAnchorsWithEmbeddingSpace,
+			{ ids: args.entryIds }
+		);
 		if (anchors.length === 0) return;
 		const anchorIds = new Set(anchors.map((a) => a._id as string));
 
@@ -137,6 +141,7 @@ export const inferRelations = internalAction({
 			if (!embedding || embedding.length === 0) continue; // no stored vector → no neighbors
 			const hits = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 				embedding,
+				embeddingSpaceKey,
 				scopeToContact: scopeForAnchor(anchor),
 				// The linker writes edges, not reads for a person; every read of an
 				// edge re-applies the reader rule to both ends.

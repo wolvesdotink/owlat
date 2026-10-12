@@ -18,7 +18,7 @@ import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
 import type { EmbeddingModel } from 'ai';
 import { z } from 'zod';
-import { resolveLanguageModel, resolveEmbeddingModel, toIndexVector } from '../lib/llmProvider';
+import { resolveLanguageModel, resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { meterLlmCall } from '../analytics/meteredSpend';
@@ -89,7 +89,7 @@ const extractionSchema = z.object({
  */
 async function persistExtractedEntries(
 	ctx: ActionCtx,
-	embeddingModel: EmbeddingModel,
+	embedder: { model: EmbeddingModel; embeddingSpaceKey: string },
 	entries: ExtractedEntry[],
 	source: {
 		sourceType: 'agent_extracted' | 'file' | 'email';
@@ -102,7 +102,7 @@ async function persistExtractedEntries(
 	const entryIds: Id<'knowledgeEntries'>[] = [];
 	for (const entry of entries) {
 		const { embedding } = await meterLlmCall(ctx, { feature: 'embedding_knowledge', root }, (meter) =>
-			runEmbedding({ meter, model: embeddingModel, value: `${entry.title}: ${entry.content}` })
+			runEmbedding({ meter, model: embedder.model, value: `${entry.title}: ${entry.content}` })
 		);
 
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
@@ -122,6 +122,8 @@ async function persistExtractedEntries(
 			embedding: toIndexVector(embedding),
 			embeddingModel: CURRENT_EMBEDDING_MODEL,
 			embeddingGeneratedAt: Date.now(),
+			// saveEntry drops the vector if the space changed while this job ran.
+			embeddingSpaceKey: embedder.embeddingSpaceKey,
 			confidence: entry.confidence,
 			tags: entry.tags,
 			contentHash,
@@ -218,8 +220,8 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
 			// ── Step 2: Generate embeddings and store ──
-			const embeddingModel = await resolveEmbeddingModel(ctx);
-			await persistExtractedEntries(ctx, embeddingModel, extraction.entries, {
+			const embedder = await resolveIndexEmbedder(ctx);
+			await persistExtractedEntries(ctx, embedder, extraction.entries, {
 				sourceType: 'agent_extracted',
 				sourceId: args.inboundMessageId,
 				contactIds: message.contactId ? [message.contactId] : undefined,
@@ -300,8 +302,8 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
-			const embeddingModel = await resolveEmbeddingModel(ctx);
-			await persistExtractedEntries(ctx, embeddingModel, extraction.entries, {
+			const embedder = await resolveIndexEmbedder(ctx);
+			await persistExtractedEntries(ctx, embedder, extraction.entries, {
 				sourceType: 'file',
 				sourceId: args.fileId,
 				contactIds: file.contactIds ?? undefined,
@@ -405,8 +407,8 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
-			const embeddingModel = await resolveEmbeddingModel(ctx);
-			await persistExtractedEntries(ctx, embeddingModel, extraction.entries, {
+			const embedder = await resolveIndexEmbedder(ctx);
+			await persistExtractedEntries(ctx, embedder, extraction.entries, {
 				sourceType: 'email',
 				sourceId: args.mailMessageId,
 				contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,

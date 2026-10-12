@@ -10,7 +10,7 @@ import {
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { MAX_LLM_ATTEMPTS, runLlmTextWithAttemptMetadata } from '../lib/llm/dispatch';
-import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
+import { estimateAdmissionCostMicrousd } from '../lib/llm/pricing';
 import { resolveLanguageModelWithProvenance } from '../lib/llmProvider';
 import { PLUGIN_LLM_MAX_OUTPUT_TOKENS, validatePluginLlmRequest } from './llmRequest';
 
@@ -114,7 +114,7 @@ function bindBundledPluginLlm(
 					request.tier === 'fast' ? 'summarize' : 'draft'
 				);
 				perAttemptMicrousd =
-					estimateKnownCostMicrousd(resolvedModel.endpointProvenance, resolvedModel.modelId, {
+					estimateAdmissionCostMicrousd(resolvedModel.endpointProvenance, resolvedModel.modelId, {
 						promptTokens: request.inputTokensUpperBound,
 						completionTokens: PLUGIN_LLM_MAX_OUTPUT_TOKENS,
 						totalTokens: request.inputTokensUpperBound + PLUGIN_LLM_MAX_OUTPUT_TOKENS,

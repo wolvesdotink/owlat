@@ -27,7 +27,7 @@ import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { v } from 'convex/values';
 import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
-import { resolveEmbeddingModel, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
+import { resolveIndexEmbedder, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
 import { runLlmText } from './lib/llm/dispatch';
 import { runEmbedding } from './lib/llm/embed';
 import { newRootRequest } from './lib/llm/requestMeter';
@@ -102,12 +102,13 @@ export const ask = authedAction({
 		let embedding: number[] | undefined;
 		// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
 		// error; only a transient embed() failure falls soft to no-vector recall.
-		const embeddingModel = await resolveEmbeddingModel(ctx);
+		const embedder = await resolveIndexEmbedder(ctx);
+		const { embeddingSpaceKey } = embedder;
 		// One question is one user action: every call it makes groups under one root.
 		const root = newRootRequest('assistant');
 		try {
 			const res = await meterLlmCall(ctx, { feature: 'embedding_quick_query', root }, (meter) =>
-				runEmbedding({ meter, model: embeddingModel, value: question })
+				runEmbedding({ meter, model: embedder.model, value: question })
 			);
 			embedding = toIndexVector(res.embedding);
 		} catch (error) {
@@ -120,6 +121,7 @@ export const ask = authedAction({
 			ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 				queryText: question,
 				embedding,
+				embeddingSpaceKey,
 				scopeToContact: 'org-wide',
 				includeInboxDerived: canReadInbox,
 				limit: PER_SOURCE_LIMIT,
@@ -128,6 +130,7 @@ export const ask = authedAction({
 			ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
 				queryText: question,
 				embedding,
+				embeddingSpaceKey,
 				scopeToContact: 'org-wide',
 				limit: PER_SOURCE_LIMIT,
 				root,

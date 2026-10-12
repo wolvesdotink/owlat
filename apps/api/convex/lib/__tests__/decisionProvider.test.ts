@@ -411,7 +411,6 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 		isLanguageLocal: false,
 		languageEnvelope: { ...encryptSecret('sk-language-key'), keyPreview: 'sk-…-key' },
 		embeddingProviderKind: 'local' as const,
-		isEmbeddingLocal: true,
 	};
 
 	function decisionEnvelope() {
@@ -467,7 +466,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 				decisionProviderKind: 'llm',
 				isDecisionKeyless: false,
 			})
-		).rejects.toThrow(/requires an API key/);
+		).rejects.toThrow(/decision provider or its base URL changed/);
 	});
 
 	it('keeps an unchanged key from disk rather than asking for it again', async () => {
@@ -590,7 +589,6 @@ describe('aiProviderConfig.getConfig — the projection carries no secret', () =
 			isLanguageLocal: false,
 			languageEnvelope: { ...encryptSecret('sk-language-key'), keyPreview: 'sk-…-key' },
 			embeddingProviderKind: 'local',
-			isEmbeddingLocal: true,
 			decisionProviderKind: 'typesafe',
 			decisionModel: 'jev-1.13.0',
 			isDecisionFallbackEnabled: false,
@@ -627,7 +625,6 @@ describe('aiProviderConfig.getConfig — the projection carries no secret', () =
 			isLanguageLocal: false,
 			languageEnvelope: { ...encryptSecret('sk-language-key'), keyPreview: 'sk-…-key' },
 			embeddingProviderKind: 'local',
-			isEmbeddingLocal: true,
 		});
 		const config = await t.query(api.aiProviderConfig.getConfig, {});
 		expect(config).toMatchObject({ configured: true, isDecisionKeySet: false });

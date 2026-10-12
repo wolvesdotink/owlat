@@ -220,6 +220,27 @@ describe('plugin LLM accounting', () => {
 		});
 	});
 
+	it('settles at list price × tokens, without the admission cache-write ceiling', async () => {
+		const t = convexTest(schema, modules);
+		await grant(t);
+		const id = reservationId(32);
+		await reserve(t, id, 300, 'claude-sonnet-5-5', 'anthropic-native');
+		await t.mutation(internal.plugins.llmAccounting.settleSuccess, {
+			reservationId: id,
+			actorMode: 'authenticated_actor',
+			modelUsed: 'claude-sonnet-5-5',
+			tokenUsage: { promptTokens: 20, completionTokens: 5, totalTokens: 25 },
+			attempts: 1,
+		});
+
+		await t.run(async (ctx) => {
+			const daily = await ctx.db.query('pluginLlmDailyUsage').unique();
+			// Sonnet 5.5 list: $2/M input, $10/M output ⇒ 20 × 2 + 5 × 10 = 90 micro-USD.
+			// The 2× admission ceiling would make it 130, over the 100 per-attempt hold.
+			expect(daily).toMatchObject({ chargedMicrousd: 90, actualMicrousd: 90 });
+		});
+	});
+
 	it('retains the full reservation and skips usage persistence for malformed accounting', async () => {
 		const t = convexTest(schema, modules);
 		await grant(t);

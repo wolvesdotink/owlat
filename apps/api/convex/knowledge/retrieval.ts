@@ -24,7 +24,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { meterLlmCall } from '../analytics/meteredSpend';
 import { runEmbedding } from '../lib/llm/embed';
 import { llmRootContextValidator } from '../lib/llmUsageTags';
-import { resolveEmbeddingModel, toIndexVector } from '../lib/llmProvider';
+import { resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
+import { vectorHitsInCurrentSpace } from '../lib/embeddingSpace';
 import { entryTypeValidator } from '../schema/knowledge';
 import { logInfo } from '../lib/runtimeLog';
 import { isContactScopeVisible } from '../lib/contactScope';
@@ -98,6 +99,9 @@ export const semanticSearch = internalAction({
 	args: {
 		queryText: v.optional(v.string()),
 		embedding: v.optional(v.array(v.float64())),
+		// The space a precomputed `embedding` is in. Without it (a previous-release
+		// caller) its vector hits are dropped (vectorHitsInCurrentSpace).
+		embeddingSpaceKey: v.optional(v.string()),
 		entryType: v.optional(entryTypeValidator),
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out; any
@@ -121,16 +125,18 @@ export const semanticSearch = internalAction({
 		const queryText = args.queryText?.trim();
 
 		let vector = args.embedding;
+		let spaceKey = args.embeddingSpaceKey;
 		if (!vector || vector.length === 0) {
 			if (!queryText) return [];
 			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
 			// actionable error rather than silently returning zero results.
-			const embeddingModel = await resolveEmbeddingModel(ctx);
+			const embedder = await resolveIndexEmbedder(ctx);
+			spaceKey = embedder.embeddingSpaceKey;
 			try {
 				const { embedding } = await meterLlmCall(
 					ctx,
 					{ feature: 'embedding_knowledge_search', ...(args.root ? { root: args.root } : {}) },
-					(meter) => runEmbedding({ meter, model: embeddingModel, value: queryText })
+					(meter) => runEmbedding({ meter, model: embedder.model, value: queryText })
 				);
 				vector = toIndexVector(embedding);
 			} catch (error) {
@@ -150,11 +156,16 @@ export const semanticSearch = internalAction({
 		const fetchLimit = Math.min(256, Math.max(limit * 5, 50));
 
 		// Leg 1 — semantic vector search (paraphrase / conceptual matches).
-		const hits = await ctx.vectorSearch('knowledgeEntries', 'vector_knowledge', {
-			vector,
-			limit: fetchLimit,
-			filter: entryType ? (q) => q.eq('entryType', entryType) : undefined,
-		});
+		// Dropped if the embedding space changed while this query ran.
+		const hits = await vectorHitsInCurrentSpace(
+			ctx,
+			await ctx.vectorSearch('knowledgeEntries', 'vector_knowledge', {
+				vector,
+				limit: fetchLimit,
+				filter: entryType ? (q) => q.eq('entryType', entryType) : undefined,
+			}),
+			spaceKey
+		);
 		const vectorRanked: Id<'knowledgeEntries'>[] = hits.map((h) => h._id);
 		const scoreById = new Map<string, number>(hits.map((h) => [h._id as string, h._score]));
 
