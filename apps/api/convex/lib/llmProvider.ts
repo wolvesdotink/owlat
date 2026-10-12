@@ -265,19 +265,20 @@ async function resolveLanguagePlane(ctx: ActionCtx): Promise<ResolvedLanguagePla
 }
 
 /**
- * The embedding plane alone: never decrypts the language key. Always reads the
- * current row, and returns the target it resolved from that same read, so a
- * vector's provenance names the configuration that made it.
+ * One read of the current configuration (never the language key): its
+ * embedding target now, and its plane, credential included, built from that
+ * same read only when asked. What a caller checks is what it embeds with.
  */
-async function resolveEmbeddingPlaneConfig(
+export async function readEmbeddingConfigSnapshot(
 	ctx: ActionCtx
-): Promise<{ plane: ResolvedEmbeddingPlane; target: EmbeddingTarget | null }> {
+): Promise<{ target: EmbeddingTarget | null; plane: () => Promise<ResolvedEmbeddingPlane> }> {
 	const entry = await loadConfigEntry(ctx, { isFresh: true });
-	const target = configuredEmbeddingTarget(entry.row);
-	if (!entry.row) return { plane: resolveEnvProviderConfig().embedding, target };
-	const embeddingKey = await planeKey(ctx, entry, 'embedding');
-	const plane = buildStoredProviderConfig(entry.row, undefined, embeddingKey).embedding;
-	return { plane, target };
+	const plane = async () =>
+		entry.row
+			? buildStoredProviderConfig(entry.row, undefined, await planeKey(ctx, entry, 'embedding'))
+					.embedding
+			: resolveEnvProviderConfig().embedding;
+	return { target: configuredEmbeddingTarget(entry.row), plane };
 }
 
 /** Test-only: drop the in-process config cache so a fresh resolution runs. */
@@ -448,10 +449,10 @@ export function buildIndexEmbedder(
 
 /** The configured embedder and its target (stored row, else the env fallback). */
 export async function resolveIndexEmbedder(ctx: ActionCtx): Promise<IndexEmbedder> {
-	const { plane, target } = await resolveEmbeddingPlaneConfig(ctx);
-	// The env plane throws AiNotConfiguredError above when nothing is set up.
+	const { plane, target } = await readEmbeddingConfigSnapshot(ctx);
+	// No target: neither a stored row nor an env configuration.
 	if (!target) throw new AiNotConfiguredError();
-	return buildIndexEmbedder(plane, target);
+	return buildIndexEmbedder(await plane(), target);
 }
 
 /**

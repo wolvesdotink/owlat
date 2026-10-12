@@ -47,6 +47,7 @@ import { DEFAULT_DECISION_DEADLINE_MS } from '../../decisionProviders/typesafe';
 import { DecisionWireError } from '../../decisionProviders/wire';
 import { LlmPartialUsageError } from '../../llm/partialUsage';
 import type { DecisionRequest, DecisionResult } from '../../decisionProviders/types';
+import type { LlmCallMeter } from '../../llm/requestMeter';
 import { errorStatus } from '../../llm/retryPolicy';
 import { AdmissionRefusedError } from '../../llm/admissionPort';
 import { DecisionProviderUnavailable } from '../contract';
@@ -496,7 +497,7 @@ describe('fallback', () => {
 		// The language adapter's first request was billed and failed its schema;
 		// admission then refused the extension for its inner retry.
 		adapters.llm.mockImplementation(async (_config: unknown, request: DecisionRequest) => {
-			const meter = (request as { meter: import('../../llm/requestMeter').LlmCallMeter }).meter;
+			const meter = (request as { meter: LlmCallMeter }).meter;
 			meter.openHold('hold-1', 1);
 			meter.record({
 				latencyMs: 40,
