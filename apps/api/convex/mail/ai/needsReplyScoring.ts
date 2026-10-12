@@ -11,35 +11,24 @@
  * known; a first-time sender with no address-book row scores as a stranger.
  */
 
+import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
 import {
 	computePriorityScore,
-	isScreenedOut,
 	senderSignalFromContact,
 	type PriorityUrgency,
-	type SenderSignal,
 } from './priorityScore';
+import { isHeldOutByScreener, loadSenderContact, senderEvidenceOf } from '../senderEvidence';
 
 /**
- * Deterministic sender-importance signal for the Reply Queue priority score:
- * the personal address-book row (VIP flag, frecency, accepted) for `email`. A
- * first-time sender with no row scores as a stranger (empty signal).
+ * The personal address-book row of the sender, the one lookup both the
+ * priority score (VIP flag, frecency, accepted) and the screener read. A
+ * first-time sender has no row and scores as a stranger.
  */
-async function loadSenderSignal(
-	ctx: QueryCtx,
-	mailboxId: Id<'mailboxes'>,
-	email: string,
-	now: number
-): Promise<SenderSignal> {
-	const contact = await ctx.db
-		.query('mailContacts')
-		.withIndex('by_mailbox_and_email', (q) =>
-			q.eq('mailboxId', mailboxId).eq('email', normalizeEmail(email))
-		)
-		.first();
-	return senderSignalFromContact(contact, now);
+function loadSenderRow(ctx: QueryCtx, mailboxId: Id<'mailboxes'>, email: string) {
+	return loadSenderContact(ctx, mailboxId, normalizeEmail(email));
 }
 
 /**
@@ -82,14 +71,36 @@ export async function scoreAndScreenResult<
 	}
 ): Promise<T | null> {
 	const now = Date.now();
-	const sender = await loadSenderSignal(ctx, opts.mailbox._id, opts.message.fromAddress, now);
+	const contact = await loadSenderRow(ctx, opts.mailbox._id, opts.message.fromAddress);
 	const screenerEnabled = await resolveScreenerEnabled(ctx, opts.mailbox);
-	if (isScreenedOut({ screenerEnabled, sender })) {
+	if (isHeldOutByScreener({ screenerEnabled, sender: senderEvidenceOf(contact) })) {
 		// Screener held this first-time sender out of the queue entirely.
 		return null;
 	}
+	const sender = senderSignalFromContact(contact, now);
 	return {
 		...opts.resolved,
 		priorityScore: computePriorityScore({ urgency: opts.resolved.urgency, sender }),
 	};
 }
+
+/**
+ * L3: would the screener hold this message's sender out of the Reply Queue?
+ * The classifier asks before the Postbox clarification passes, so a thread
+ * `applyResult` is going to drop anyway never pays for them. The same rule
+ * as {@link scoreAndScreenResult}; false when the thread, its mailbox or the
+ * message is gone (the clarification then runs as before).
+ */
+export const isHeldOutBeforeClarification = internalQuery({
+	args: { threadId: v.id('mailThreads'), messageId: v.id('mailMessages') },
+	handler: async (ctx, args): Promise<boolean> => {
+		const thread = await ctx.db.get(args.threadId);
+		const message = await ctx.db.get(args.messageId);
+		const mailbox = thread ? await ctx.db.get(thread.mailboxId) : null;
+		if (!thread || !message || !mailbox) return false;
+		const screenerEnabled = await resolveScreenerEnabled(ctx, mailbox);
+		if (!screenerEnabled) return false;
+		const contact = await loadSenderRow(ctx, mailbox._id, message.fromAddress);
+		return isHeldOutByScreener({ screenerEnabled, sender: senderEvidenceOf(contact) });
+	},
+});

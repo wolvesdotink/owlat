@@ -197,6 +197,23 @@ describe('runLlmObject', () => {
 		});
 	});
 
+	it('sends messages instead of a prompt when given them (L9 cache split)', async () => {
+		const schema = z.object({ a: z.number() });
+		generateObjectMock.mockResolvedValueOnce({ object: { a: 1 } });
+		const messages = [
+			{
+				role: 'system' as const,
+				content: 'stable',
+				providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' as const } } },
+			},
+			{ role: 'user' as const, content: 'message' },
+		];
+		await runLlmObject({ model: fakeModel, schema, messages });
+		const sdkArgs = generateObjectMock.mock.calls[0]?.[0] as Record<string, unknown>;
+		expect(sdkArgs['messages']).toBe(messages);
+		expect('prompt' in sdkArgs).toBe(false);
+	});
+
 	it('returns undefined tokenUsage when SDK omits usage', async () => {
 		generateObjectMock.mockResolvedValueOnce({
 			object: { a: 1 },

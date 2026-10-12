@@ -32,6 +32,7 @@ import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import type { InboundAttachmentPart, UnclearedLeaves } from './attachmentParts';
 import type { CaptureSource } from '../../lib/literalValidators';
 import type { DmarcOverride } from './routing';
+import type { AttachmentGateSkip } from './captureGate';
 import {
 	ingestStoredPart,
 	scopeAndChargeBudget,
@@ -71,9 +72,15 @@ export type AttachmentCaptureOutcome = {
 	 *   · `too_large` — over `MAX_AI_INGEST_ATTACHMENT_BYTES`;
 	 *   · `unsupported_type` — the file-type allowlist refused it.
 	 *
+	 *   · `spam` / `automated` — the `attachmentGates` routing switch (L6) kept
+	 *     the message out: Spam, an MTA spam verdict, or a newsletter or
+	 *     automated mail (`captureGate.ts`). Off by default.
+	 *
 	 * At most one is reported, in the order {@link decideSkipReason} applies.
 	 */
 	skippedReason?:
+		| 'spam'
+		| 'automated'
 		| 'unverified'
 		| 'budget'
 		| 'unscanned'
@@ -121,6 +128,8 @@ export type CaptureAttachmentsInput = {
 	 * anything here is indexed at all — see {@link isFromVerified}.
 	 */
 	auth: InboundFromAuth;
+	/** L6: the gate that keeps this message out, when `attachmentGates` is on. */
+	gateSkip?: AttachmentGateSkip | null;
 };
 
 /**
@@ -390,7 +399,10 @@ export async function captureAttachments(
  * webhook and leave the I/O to a scheduled mutation (`deferredCapture.ts`).
  */
 export function planCapture(
-	input: Pick<CaptureAttachmentsInput, 'parts' | 'withheld' | 'messageId' | 'from' | 'auth'>
+	input: Pick<
+		CaptureAttachmentsInput,
+		'parts' | 'withheld' | 'messageId' | 'from' | 'auth' | 'gateSkip'
+	>
 ):
 	| { outcome: AttachmentCaptureOutcome }
 	| {
@@ -406,6 +418,10 @@ export function planCapture(
 	// arrives from a domain with no DMARC record.
 	const { eligible, skippedReason } = selectIngestible(input.parts, input.withheld);
 	if (eligible.length === 0 && !skippedReason && !anyWithheld) return { outcome: { indexed: 0 } };
+
+	// L6: the message is kept out of the file library as a whole, before any
+	// staging or budget charge, and the reader is told why.
+	if (input.gateSkip) return { outcome: { indexed: 0, skippedReason: input.gateSkip } };
 
 	// An unverifiable sender is refused before any of the size/type work: there
 	// is no scope this message's files could safely be filed under, so the
