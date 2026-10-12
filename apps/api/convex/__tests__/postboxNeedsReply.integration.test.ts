@@ -357,8 +357,10 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		// The newest inbound message is what gets interpreted (its eligibility
 		// snapshot was taken at delivery).
 		expect(runInterpretationMock).toHaveBeenCalledTimes(1);
+		// The classifier continues itself while D10 predecessors remain.
 		expect(runInterpretationMock.mock.calls[0]?.[1]).toEqual({
 			source: { kind: 'mail', id: messageId },
+			isContinuedByCaller: true,
 		});
 	});
 
