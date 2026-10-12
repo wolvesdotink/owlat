@@ -101,7 +101,8 @@ export const sweepPluginLlmAccounting = internalMutation({
  * own `expiresAt` (every row carries one), and admission reservations that
  * reached a terminal state more than the audit window ago. A `held` reservation
  * is never swept here; the admission expiry sweep settles it first. The D4
- * shadow quota rows go after a week.
+ * shadow quota rows go after a week. Terminal provider batch items (L14) go
+ * after the audit window, like the holds they carried.
  */
 export const sweepAiRoutingRecords = internalMutation({
 	args: {},
@@ -147,7 +148,27 @@ export const sweepAiRoutingRecords = internalMutation({
 						.take(BATCH)
 				),
 			]);
-		const pages = [artifacts, memory, quotaEntries, quotaDays, extractionProgress, ...reservations];
+		// Provider batch items (L14) once terminal: their holds are settled or left
+		// to the expiry sweep, and a new item may be made for the source again.
+		const batchItems = await Promise.all(
+			(['completed', 'failed', 'abandoned'] as const).map((status) =>
+				ctx.db
+					.query('llmBatchItems')
+					.withIndex('by_status_and_updated_at', (q) =>
+						q.eq('status', status).lt('updatedAt', terminalCutoff)
+					)
+					.take(BATCH)
+			)
+		);
+		const pages = [
+			artifacts,
+			memory,
+			quotaEntries,
+			quotaDays,
+			extractionProgress,
+			...reservations,
+			...batchItems,
+		];
 		for (const row of pages.flat()) await ctx.db.delete(row._id);
 		if (pages.some((page) => page.length === BATCH)) {
 			await ctx.scheduler.runAfter(0, internal.maintenance.retention.sweepAiRoutingRecords, {});

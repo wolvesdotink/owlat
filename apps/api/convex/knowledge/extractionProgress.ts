@@ -34,7 +34,7 @@ const sourceTypeValidator = v.union(
 
 const sourceArgs = { sourceType: sourceTypeValidator, sourceId: v.string() };
 
-type ExtractionSourceType = Infer<typeof sourceTypeValidator>;
+export type ExtractionSourceType = Infer<typeof sourceTypeValidator>;
 type ExtractedEntryShape = Infer<typeof extractedEntryValidator>;
 
 /** Whether the source is done, and the entries a resumed run saves when it is not. */
@@ -81,29 +81,34 @@ export const markExtraction = internalMutation({
 		status: v.union(v.literal('in_progress'), v.literal('complete')),
 		entries: v.optional(v.array(extractedEntryValidator)),
 	},
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		const fields = {
-			status: args.status,
-			entries: args.status === 'in_progress' ? args.entries : undefined,
-			updatedAt: now,
-		};
-		const marker = await ctx.db
-			.query('knowledgeExtractionProgress')
-			.withIndex('by_source', (q) =>
-				q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId)
-			)
-			.first();
-		if (marker) await ctx.db.patch(marker._id, fields);
-		else {
-			await ctx.db.insert('knowledgeExtractionProgress', {
-				sourceType: args.sourceType,
-				sourceId: args.sourceId,
-				...fields,
-			});
-		}
-	},
+	handler: (ctx, args) =>
+		writeExtractionMarker(ctx, args.sourceType, args.sourceId, args.status, args.entries),
 });
+
+/**
+ * {@link markExtraction}, in the caller's mutation: a provider batch item's
+ * result (`aiRouting/batchItems.ts`, L14) becomes the `in_progress` marker a
+ * resumed extraction saves, in the transaction that closes the item.
+ */
+export async function writeExtractionMarker(
+	ctx: MutationCtx,
+	sourceType: ExtractionSourceType,
+	sourceId: string,
+	status: 'in_progress' | 'complete',
+	entries?: ExtractedEntryShape[]
+): Promise<void> {
+	const fields = {
+		status,
+		entries: status === 'in_progress' ? entries : undefined,
+		updatedAt: Date.now(),
+	};
+	const marker = await ctx.db
+		.query('knowledgeExtractionProgress')
+		.withIndex('by_source', (q) => q.eq('sourceType', sourceType).eq('sourceId', sourceId))
+		.first();
+	if (marker) await ctx.db.patch(marker._id, fields);
+	else await ctx.db.insert('knowledgeExtractionProgress', { sourceType, sourceId, ...fields });
+}
 
 /**
  * A source was deleted: its marker goes with it, unfinished or not (Sol r3 F2).

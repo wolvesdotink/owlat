@@ -68,7 +68,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'agentActions',
 	'agentMetrics',
 	'llmUsageEvents',
-	// Admission's holds and the ledger-derived period aggregate (ADR-0073).
+	// Admission's holds and the ledger-derived period aggregate (ADR-0073), and
+	// the provider batch items whose requests those holds cover (L14).
+	'llmBatchItems',
 	'llmReservations',
 	'llmSpendPeriods',
 	'llmSpendAggregateState',

@@ -30,7 +30,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import type { QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
 import { tokenUsageValidator } from '../lib/convexValidators';
@@ -151,47 +151,47 @@ export type RequestBatchArgs = Infer<ReturnType<typeof v.object<typeof recordReq
 
 export const recordRequests = internalMutation({
 	args: recordRequestsArgs,
-	handler: async (ctx, args) => {
-		const { feature, requests, settlements, ...tags } = args;
-		if (requests.length > MAX_METERED_REQUESTS_PER_WRITE) {
-			throw new Error('Too many metered requests in one write');
-		}
-		for (const request of requests) {
-			if (tags.requestId !== undefined) {
-				const existing = await ctx.db
-					.query('llmUsageEvents')
-					.withIndex('by_request_id_and_attempt', (q) =>
-						q.eq('requestId', tags.requestId).eq('attempt', request.attempt)
-					)
-					.first();
-				if (existing) continue;
-			}
-			const { usage, modelUsed, ...requestTags } = request;
-			const inserted = await insertLlmUsage(
-				ctx,
-				feature,
-				usage ?? ZERO_USAGE,
-				modelUsed,
-				undefined,
-				{
-					...tags,
-					...requestTags,
-					isEstimated: usage === undefined,
-				}
-			);
-			// A row of a hold that already closed (it arrived after the sweep) is
-			// charged against the estimate it replaces, in this mutation.
-			const reservationId = request.reservationId ?? tags.reservationId;
-			if (reservationId) await reconcileLateRow(ctx, reservationId, inserted);
-		}
-		for (const settlement of settlements ?? []) {
-			await settleReservation(ctx, settlement.reservationId, {
-				mode: 'call_end',
-				expectedRequests: settlement.expectedRequests,
-			});
-		}
-	},
+	handler: (ctx, args) => writeRequestBatch(ctx, args),
 });
+
+/**
+ * {@link recordRequests}, in the caller's mutation: a provider batch item's
+ * completion (`aiRouting/batchItems.ts`) writes its request and settles its
+ * hold in the same transaction that closes the item.
+ */
+export async function writeRequestBatch(ctx: MutationCtx, args: RequestBatchArgs): Promise<void> {
+	const { feature, requests, settlements, ...tags } = args;
+	if (requests.length > MAX_METERED_REQUESTS_PER_WRITE) {
+		throw new Error('Too many metered requests in one write');
+	}
+	for (const request of requests) {
+		if (tags.requestId !== undefined) {
+			const existing = await ctx.db
+				.query('llmUsageEvents')
+				.withIndex('by_request_id_and_attempt', (q) =>
+					q.eq('requestId', tags.requestId).eq('attempt', request.attempt)
+				)
+				.first();
+			if (existing) continue;
+		}
+		const { usage, modelUsed, ...requestTags } = request;
+		const inserted = await insertLlmUsage(ctx, feature, usage ?? ZERO_USAGE, modelUsed, undefined, {
+			...tags,
+			...requestTags,
+			isEstimated: usage === undefined,
+		});
+		// A row of a hold that already closed (it arrived after the sweep) is
+		// charged against the estimate it replaces, in this mutation.
+		const reservationId = request.reservationId ?? tags.reservationId;
+		if (reservationId) await reconcileLateRow(ctx, reservationId, inserted);
+	}
+	for (const settlement of settlements ?? []) {
+		await settleReservation(ctx, settlement.reservationId, {
+			mode: 'call_end',
+			expectedRequests: settlement.expectedRequests,
+		});
+	}
+}
 
 type SpendTotals = { totalTokens: number; costUsd: number; calls: number };
 

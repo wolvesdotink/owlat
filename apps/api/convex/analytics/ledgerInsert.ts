@@ -17,7 +17,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { TokenUsage } from '../agent/steps/types';
 import type { AiTaskName } from '@owlat/shared/aiRouting';
-import { estimateCost, PRICE_VERSION } from '../lib/llm/pricing';
+import { batchPriceFactor, estimateCost, PRICE_VERSION } from '../lib/llm/pricing';
 import type { LlmUsagePlane } from '../lib/llmUsageTags';
 import type { BudgetClass, QualityResult } from '../lib/validators/aiRouting';
 import { taskForFeature, taskPolicy } from '../lib/llm/taskPolicy';
@@ -104,7 +104,8 @@ function rowCost(
 	// fallback, and the row says the cost is an estimate.
 	const isLocal = tags?.isLocalEngine === true;
 	const priced = isLocal ? undefined : estimateCost(modelUsed, tokenUsage, pricedPlane);
-	const costUsd = priced?.costUsd ?? 0;
+	// A provider batch request (L14) is billed at its batch rate.
+	const costUsd = (priced?.costUsd ?? 0) * batchPriceFactor(tags?.endpoint);
 	const isPriceUnknown = priced?.estimated === true && tokenUsage.totalTokens > 0;
 	const isEstimated = tags?.isEstimated === true || isPriceUnknown ? true : tags?.isEstimated;
 	return { costUsd, costMicrousd: usdToMicrousd(costUsd), isEstimated };

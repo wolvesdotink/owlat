@@ -126,6 +126,58 @@ export const budgetRefusalValidator = v.object({
 });
 export type BudgetRefusal = Infer<typeof budgetRefusalValidator>;
 
+// ── Provider batch items (L14) ────────────────────────────────────────────
+
+/**
+ * The non-interactive model calls that may go through a provider batch API
+ * (ADR-0073, Phase 5): knowledge extraction from a Team message, a file or a
+ * Postbox message, and a file's (an attachment's) summary.
+ */
+export const BATCH_CONSUMERS = [
+	'knowledge_message',
+	'knowledge_file',
+	'knowledge_mail',
+	'file_summary',
+] as const;
+export type BatchConsumer = (typeof BATCH_CONSUMERS)[number];
+export const batchConsumerValidator = literalUnion(BATCH_CONSUMERS);
+
+/** The endpoints whose adapters have a batch API Owlat speaks: native OpenAI and Anthropic only. */
+export const BATCH_PROVIDERS = ['openai-native', 'anthropic-native'] as const;
+export type BatchProvider = (typeof BATCH_PROVIDERS)[number];
+export const batchProviderValidator = literalUnion(BATCH_PROVIDERS);
+
+/**
+ * `submitting`: held and recorded, the provider has not confirmed it yet;
+ * `submitted`: the provider accepted it and it is polled; `completed`: its
+ * result was read and its ledger row written; `failed`: the provider ran it
+ * and billed nothing (errored, expired, cancelled); `abandoned`: Owlat lost
+ * track of it (an unconfirmed submission, or no result by its expiry), and
+ * its hold is left for the expiry sweep to charge in full.
+ */
+export const BATCH_ITEM_STATUSES = [
+	'submitting',
+	'submitted',
+	'completed',
+	'failed',
+	'abandoned',
+] as const;
+export type BatchItemStatus = (typeof BATCH_ITEM_STATUSES)[number];
+export const batchItemStatusValidator = literalUnion(BATCH_ITEM_STATUSES);
+
+/** What a terminal item's request came to. */
+export const BATCH_ITEM_OUTCOMES = [
+	'succeeded',
+	'truncated',
+	'invalid',
+	'errored',
+	'expired',
+	'canceled',
+	'lost',
+] as const;
+export type BatchItemOutcome = (typeof BATCH_ITEM_OUTCOMES)[number];
+export const batchItemOutcomeValidator = literalUnion(BATCH_ITEM_OUTCOMES);
+
 // ── Decision artifacts and sender memory ──────────────────────────────────
 
 /** `advisory`: a verdict a surface may display or advise with. `shadow`: an observation only. */
