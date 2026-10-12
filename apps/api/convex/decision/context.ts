@@ -7,7 +7,7 @@
 
 import { v } from 'convex/values';
 import type { ResolvedRoutingPolicy } from '@owlat/shared/aiRouting';
-import { internalQuery, type QueryCtx } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadRoutingPolicy } from '../aiRouting/policy';
 import { isLocalDecisionEngine } from '../lib/decision/configIdentity';

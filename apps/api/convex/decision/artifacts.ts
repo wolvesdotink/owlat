@@ -26,12 +26,16 @@ import {
 	decisionArtifactKindValidator,
 	decisionProvenanceValidator,
 } from '../lib/validators/aiRouting';
-import { DECISION_ARTIFACT_TTL_MS, DECISION_LEASE_MS } from '../lib/decision/routing';
+import {
+	DECISION_ARTIFACT_TTL_MS,
+	DECISION_LEASE_MS,
+	planMessageBundle,
+	planTriage,
+} from '../lib/decision/routing';
 import { observeAndLearn, subjectSender } from './senderMemory';
 import { isExcludedFromHostedDecisions, type ExclusionScope } from './exclusion';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadRoutingPolicy } from '../aiRouting/policy';
-import { planMessageBundle, planTriage } from '../lib/decision/routing';
 
 /** Version of the stored `answers` and `baseline` JSON shapes. */
 export const DECISION_ANSWERS_VERSION = 1;
