@@ -5,7 +5,7 @@
  * records whether it would have settled a message and what it would have said.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
@@ -16,7 +16,7 @@ import { senderDigest } from '../senderMemory';
 import { invalidateArtifactsOf } from '../artifacts';
 import { SENDER_MEMORY_TTL_MS } from '../../lib/decision/routing';
 
-type T = ReturnType<typeof convexTest>;
+type T = TestConvex<typeof schema>;
 
 const PROVENANCE = {
 	provider: 'typesafe' as const,

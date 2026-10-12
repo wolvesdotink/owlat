@@ -32,8 +32,6 @@ vi.mock('../../lib/sessionOrganization', async () => ({
 	getBetterAuthSessionWithRole: vi.fn(async () => session),
 }));
 
-type T = ReturnType<typeof convexTest>;
-
 function memoryRow(
 	scope: { scope: 'team_inbox' } | { scope: 'mailbox'; mailboxId: Id<'mailboxes'> },
 	address: string
@@ -56,7 +54,11 @@ function memoryRow(
 	};
 }
 
-function artifactRow(subject: Record<string, unknown>) {
+type ArtifactSubject =
+	| { subjectKind: 'inbound_message'; inboundMessageId: Id<'inboundMessages'> }
+	| { subjectKind: 'mail_message'; mailMessageId: Id<'mailMessages'>; mailboxId: Id<'mailboxes'> };
+
+function artifactRow(subject: ArtifactSubject) {
 	return {
 		artifactKey: `k-${JSON.stringify(subject)}`,
 		task: 'mail.category' as const,

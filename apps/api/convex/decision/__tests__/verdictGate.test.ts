@@ -77,7 +77,8 @@ async function evaluate(
 	inboundMessageId: Id<'inboundMessages'>,
 	tasks = ['mail.draft_quality'] as const
 ) {
-	const runQuery = vi.fn((reference: never, args: never) => t.query(reference, args));
+	const query = t.query as (reference: unknown, args: unknown) => Promise<unknown>;
+	const runQuery = vi.fn((reference: unknown, args: unknown) => query(reference, args));
 	const decision = await decisionVerdictGate([...tasks], REGISTRY).evaluate({
 		action: { runQuery } as unknown as ActionCtx,
 		inboundMessageId,
@@ -92,7 +93,9 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe('the registered decision verdict gate', () => {
 	it('is the last core final gate and, with nothing feeding a verdict, reads nothing', async () => {
-		expect(CORE_FINAL_AUTO_SEND_GATE_IDS.at(-1)).toBe('decision_verdict');
+		expect(CORE_FINAL_AUTO_SEND_GATE_IDS[CORE_FINAL_AUTO_SEND_GATE_IDS.length - 1]).toBe(
+			'decision_verdict'
+		);
 		expect(AUTO_SEND_VERDICT_TASKS).toEqual([]);
 		const { t, inboundMessageId } = await setup();
 		await t.run((ctx) =>
