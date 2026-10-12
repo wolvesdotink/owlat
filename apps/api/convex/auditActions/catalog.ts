@@ -137,6 +137,21 @@ export const AUDIT_ACTION_LITERALS = [
 	action('ai_provider_config.removed'),
 	// AI routing policy saved (aiRouting/policy.ts `update`, ADR-0073).
 	action('ai_routing_policy.updated'),
+	// Embedding provenance (ADR-0073, Phase 1a and Phase 5): a legacy cohort
+	// recorded or revoked (aiRouting/embeddingAttestations.ts), a sample check
+	// that corroborates and never establishes (aiRouting/embeddingSampleCheck.ts),
+	// the re-embed job's admin controls (aiRouting/embeddingReembedJobs.ts) and
+	// the staged rebuild (aiRouting/embeddingRebuildState.ts).
+	action('embedding_cohort.attested'),
+	action('embedding_cohort.revoked'),
+	action('embedding_cohort.sample_checked'),
+	action('embedding_reembed.started'),
+	action('embedding_reembed.resumed'),
+	action('embedding_reembed.cancelled'),
+	action('embedding_space.staged'),
+	action('embedding_space.activated'),
+	action('embedding_space.rolled_back'),
+	action('embedding_space.rebuild_cancelled'),
 	action('team_member.invited'),
 	action('team_member.removed'),
 	action('team_member.role_changed'),
@@ -368,6 +383,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'settings',
 	'ai_provider_config',
 	'ai_routing_policy',
+	'embedding_space',
 	'team_member',
 	'api_key',
 	'webhook',

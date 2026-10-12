@@ -176,6 +176,13 @@ Each embedding table has two vector columns. A staged rebuild writes the new
 space into the column the active space does not use, activation flips the
 active space in one write, and rollback flips it back.
 
+The active space is the configured one. A settings or environment switch is
+allowed on a populated corpus: the new space registers and activates with its
+first committed vector, in the column the previous space does not use, so the
+previous vectors survive for a switch back. A vector committed under a
+configuration that has since changed is dropped. Activating a staged rebuild
+also switches the stored embedding selection, in the same transaction.
+
 ### 10. Guard placement (D13)
 
 The deterministic injection, smuggling and URL checks run on every Team
