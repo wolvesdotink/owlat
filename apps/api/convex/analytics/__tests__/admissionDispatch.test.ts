@@ -25,6 +25,7 @@ import { stampModelEndpoint } from '../../lib/llm/modelEndpoint';
 import { AdmissionRefusedError, admissionRefusalOf } from '../../lib/llm/admissionPort';
 import { meterFor, meterLlmCall, persistMeteredSpend } from '../meteredSpend';
 import { admitEmbeddingBatch } from '../embeddingBatchAdmission';
+import { runAdmittedEmbedding } from '../../lib/aiRouting/embeddingDispatch';
 import {
 	admitPaidEmbeddingBatch,
 	isPaidEmbeddingAdmissionAvailable,
@@ -257,7 +258,7 @@ describe('admission at the dispatch', () => {
 		for (const value of ['one', 'two']) {
 			await meterLlmCall(ctx, target, (meter) => runEmbedding({ model: embedder, value, meter }));
 		}
-		await batch.settle({ dispatchedCalls: 2, inputTokens: undefined });
+		await batch.settle({ dispatchedCalls: 2, providerRequests: 2, inputTokens: undefined });
 
 		const holds = await t.run((c) => c.db.query('llmReservations').collect());
 		expect(holds).toEqual([
@@ -265,6 +266,92 @@ describe('admission at the dispatch', () => {
 		]);
 		const ledger = await t.run((c) => c.db.query('llmUsageEvents').collect());
 		expect(ledger.every((row) => row.reservationId === batch.reservationId)).toBe(true);
+	});
+
+	it('settles a batch once every provider request is in, retries included (Sol r2 F5)', async () => {
+		const { t, ctx } = await setup('10');
+		// One call retried once, then a second call: three provider requests.
+		sdk.embed
+			.mockRejectedValueOnce(Object.assign(new Error('overloaded'), { statusCode: 529 }))
+			.mockResolvedValue({ embedding: [0.1, 0.2], usage: { tokens: 12 } });
+		const embedder = {
+			model: stampModelEndpoint(
+				{ modelId: 'text-embedding-3-small', specificationVersion: 'v2' } as never,
+				'embedding:openai'
+			),
+			target: { isLocal: false, provider: 'openai', model: 'text-embedding-3-small' },
+		} as never;
+		const outcome = await runAdmittedEmbedding(
+			ctx,
+			embedder,
+			{
+				rootRequestId: 'reembed:job-4',
+				task: 'embedding.index',
+				jobKind: 'reembed',
+				items: 2,
+				inputChars: 6,
+			},
+			async (counter) => {
+				const target = {
+					feature: 'embedding_knowledge' as const,
+					root: { rootRequestId: 'reembed:job-4' },
+					...(counter.reservationId ? { reservationId: counter.reservationId } : {}),
+				};
+				for (const value of ['one', 'two']) {
+					counter.dispatched += 1;
+					await meterLlmCall(ctx, target, async (meter) => {
+						try {
+							return await runEmbedding({
+								model: (embedder as { model: never }).model,
+								value,
+								meter,
+							});
+						} finally {
+							counter.providerRequests += meter.requests.length;
+						}
+					});
+				}
+				return counter.providerRequests;
+			}
+		);
+		expect(outcome).toEqual({ isAdmitted: true, value: 3 });
+		const [hold] = await t.run((c) => c.db.query('llmReservations').collect());
+		expect(hold).toMatchObject({ status: 'settled' });
+		const rows = await t.run((c) => c.db.query('llmUsageEvents').collect());
+		expect(rows.filter((row) => row.feature === 'embedding_knowledge')).toHaveLength(3);
+	});
+
+	it('keeps a batch held while one of its provider requests is still on its way', async () => {
+		const { t, ctx } = await setup('10');
+		const batch = await admitEmbeddingBatch(ctx, {
+			rootRequestId: 'reembed:job-5',
+			task: 'embedding.index',
+			jobKind: 'reembed',
+			provider: 'openai',
+			model: 'text-embedding-3-small',
+			items: 2,
+			inputChars: 6,
+		});
+		if (!batch.isAdmitted) throw new Error('refused');
+		// Two calls, three requests (one retried), only two rows written so far.
+		await t.mutation(internal.analytics.llmUsage.recordRequests, {
+			feature: 'embedding_knowledge',
+			requestId: 'call-a',
+			reservationId: batch.reservationId!,
+			requests: [
+				{ attempt: 1, latencyMs: 1, modelUsed: 'text-embedding-3-small' },
+				{
+					attempt: 2,
+					latencyMs: 1,
+					modelUsed: 'text-embedding-3-small',
+					usage: { promptTokens: 4, completionTokens: 0, totalTokens: 4 },
+				},
+			],
+		});
+		await batch.settle({ dispatchedCalls: 2, providerRequests: 3, inputTokens: undefined });
+		expect((await t.run((c) => c.db.query('llmReservations').collect()))[0]).toMatchObject({
+			status: 'held',
+		});
 	});
 
 	it('fills the embed lane’s seam: paid batches go through spend admission', async () => {
@@ -280,7 +367,7 @@ describe('admission at the dispatch', () => {
 			inputChars: 100,
 		});
 		if (!batch.isAdmitted) throw new Error('refused');
-		await batch.settle({ dispatchedCalls: 0, inputTokens: undefined });
+		await batch.settle({ dispatchedCalls: 0, providerRequests: 0, inputTokens: undefined });
 		const holds = await t.run((c) => c.db.query('llmReservations').collect());
 		expect(holds).toEqual([expect.objectContaining({ status: 'released', plane: 'embedding' })]);
 	});

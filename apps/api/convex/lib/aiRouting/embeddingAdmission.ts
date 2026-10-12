@@ -43,12 +43,14 @@ export type PaidEmbeddingAdmissionResult =
 			/**
 			 * Settle the hold, exactly once, after the batch. It must NOT write a
 			 * ledger row: the meter already wrote one per request. `dispatchedCalls`
-			 * counts every call that was started, whether it succeeded or not
-			 * (conservative: a failed call may still be billed); zero releases the
-			 * hold.
+			 * counts every call that was started; `providerRequests` counts the
+			 * provider requests they made, retries included, which is the number of
+			 * rows the settlement waits for. Zero requests releases the hold.
 			 */
 			readonly settle: (usage: {
 				readonly dispatchedCalls: number;
+				/** Provider requests the calls made, retries included: one ledger row each. */
+				readonly providerRequests: number;
 				readonly inputTokens: number | undefined;
 			}) => Promise<void>;
 	  }

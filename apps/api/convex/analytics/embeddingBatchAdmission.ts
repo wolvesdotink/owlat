@@ -42,6 +42,7 @@ export type EmbeddingBatchAdmission =
 			readonly reservationId?: string;
 			readonly settle: (usage: {
 				readonly dispatchedCalls: number;
+				readonly providerRequests: number;
 				readonly inputTokens: number | undefined;
 			}) => Promise<void>;
 	  }
@@ -114,16 +115,19 @@ export async function admitEmbeddingBatch(
 	return {
 		isAdmitted: true,
 		reservationId,
-		settle: async ({ dispatchedCalls }) => {
+		settle: async ({ providerRequests }) => {
 			if (isSettled) return;
 			isSettled = true;
-			if (dispatchedCalls === 0) {
+			// No request left the deployment: nothing was billed.
+			if (providerRequests === 0) {
 				await ctx.runMutation(internal.aiRouting.admission.release, { reservationId });
 				return;
 			}
 			await ctx.runMutation(internal.aiRouting.admission.settle, {
 				reservationId,
-				expectedRequests: dispatchedCalls,
+				// One ledger row per provider request, retries included: the hold
+				// settles once every one of them is in (Sol r2 F5).
+				expectedRequests: providerRequests,
 			});
 		},
 	};
