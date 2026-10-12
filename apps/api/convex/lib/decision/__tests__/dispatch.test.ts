@@ -48,6 +48,8 @@ import { DecisionWireError } from '../../decisionProviders/wire';
 import { LlmPartialUsageError } from '../../llm/partialUsage';
 import type { DecisionRequest, DecisionResult } from '../../decisionProviders/types';
 import { errorStatus } from '../../llm/retryPolicy';
+import { AdmissionRefusedError } from '../../llm/admissionPort';
+import { DecisionProviderUnavailable } from '../contract';
 
 // The registry, mocked: the dispatch's whole job is what it does AROUND `ask`,
 // and both real adapters are covered by their own suites.
@@ -142,6 +144,8 @@ function run(h: Harness, overrides: Record<string, unknown> = {}) {
 		// that are about something else do not have to, and the ones that are
 		// about the breaker override it.
 		breaker: openableBreaker(),
+		// And with spend admission (D3): a port that admits without a hold.
+		admission: { admit: async () => null, extend: async () => {}, release: async () => {} },
 		// Mid-range, so a jittered delay is neither its floor nor its ceiling.
 		random: () => 0.5,
 		sleep: async (ms: number) => {
@@ -423,6 +427,47 @@ describe('fallback', () => {
 		}
 	);
 
+	it('refuses the hop, and makes no language call, for a provider that cannot answer (D3)', async () => {
+		const h = harness();
+		adapters.typesafe.mockRejectedValue(
+			new DecisionProviderUnavailable('typesafe', {
+				code: 'missing_credentials',
+				reason: 'No API key.',
+			})
+		);
+
+		await expect(run(h, { fallbackTo })).rejects.toBeInstanceOf(DecisionProviderUnavailable);
+
+		expect(adapters.typesafe).toHaveBeenCalledTimes(1);
+		expect(adapters.llm).not.toHaveBeenCalled();
+	});
+
+	it('refuses the hop, without retry, when spend admission refused (D3: exhausted caps)', async () => {
+		const h = harness();
+		adapters.typesafe.mockRejectedValue(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+
+		await expect(run(h, { fallbackTo })).rejects.toBeInstanceOf(AdmissionRefusedError);
+
+		expect(adapters.typesafe).toHaveBeenCalledTimes(1);
+		expect(adapters.llm).not.toHaveBeenCalled();
+	});
+
+	it('reserves a native paid attempt through the admission port, and a refusal sends nothing', async () => {
+		const h = harness();
+		const admit = vi.fn(async (_estimate: unknown): Promise<null> => {
+			throw new AdmissionRefusedError('monthly_ceiling', 'ceiling');
+		});
+
+		await expect(
+			run(h, { fallbackTo, admission: { admit, extend: async () => {}, release: async () => {} } })
+		).rejects.toBeInstanceOf(AdmissionRefusedError);
+
+		expect(admit).toHaveBeenCalledTimes(1);
+		expect(admit.mock.calls[0]?.[0]).toMatchObject({ plane: 'decision', maxRequests: 1 });
+		expect(adapters.typesafe).not.toHaveBeenCalled();
+		expect(adapters.llm).not.toHaveBeenCalled();
+	});
+
 	it('refuses the hop after a codec refusal', async () => {
 		const h = harness();
 		adapters.typesafe.mockRejectedValue(new DecisionWireError('answered a question nobody asked'));
@@ -479,6 +524,7 @@ describe('fallback', () => {
 		// spend on a model that costs 24 to 50 times more.
 		await expect(run(h, { fallbackTo, breaker: undefined })).rejects.toThrow('circuit breaker');
 		await expect(run(h, { fallbackTo, recordUsage: undefined })).rejects.toThrow('usage recorder');
+		await expect(run(h, { fallbackTo, admission: undefined })).rejects.toThrow('spend admission');
 		expect(adapters.typesafe).not.toHaveBeenCalled();
 	});
 

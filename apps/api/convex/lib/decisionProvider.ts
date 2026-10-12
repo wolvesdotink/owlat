@@ -31,13 +31,16 @@
  * migrated onto. Nothing leaves a deployment until an operator enters their own
  * key, and there is no path through this module that auto-enables one.
  *
- * DEGRADATION, not an exception. A stored `typesafe` config whose key has been
- * cleared (or whose base URL is unusable) resolves to the language-backed
- * adapter with {@link ResolvedDecisionPlane.degradedFrom} set, rather than
- * throwing on the inbound path. The settings card reads that field to say so in
- * words — a decision plane that refused to answer would take the whole agent
- * pipeline down with it, and a mail server does not get to stop reading mail
- * because a vendor key expired.
+ * UNAVAILABLE IS TERMINAL (ADR-0073, owner decision D3). An explicitly
+ * configured provider whose credential is missing, malformed or cannot be
+ * decrypted, or whose config is invalid, resolves to ITSELF with
+ * {@link ResolvedDecisionPlane.unavailable} set. It is never relabelled as the
+ * language-backed adapter: that silent re-route bypassed the operator's
+ * fallback opt-in and the breaker, and put a paid language call on a path fed
+ * by strangers' email. {@link resolveDecisionProvider} throws
+ * {@link DecisionProviderUnavailable} for it, so the caller's own fail-soft
+ * decides (no decision, never a language call), {@link resolveDecisionFallback}
+ * offers no hop, and the settings card shows the reason in words.
  *
  * THE CACHE IS KEYED ON THE ROW'S OWN VERSION, not on a clock. The language
  * plane's cache is a 30 s TTL with no invalidation on save, so an admin who
@@ -70,7 +73,11 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
-import type { ResolvedDecisionProvider } from './decision/contract';
+import {
+	DecisionProviderUnavailable,
+	type DecisionUnavailable,
+	type ResolvedDecisionProvider,
+} from './decision/contract';
 import {
 	DECISION_PROVIDER_KINDS,
 	DEFAULT_DECISION_KIND,
@@ -116,14 +123,12 @@ export interface ResolvedDecisionPlane {
 	readonly deadlineMs: number;
 	readonly source: DecisionConfigSource;
 	/**
-	 * The kind that WAS configured, when it could not produce a working client
-	 * and this resolution degraded to the language-backed adapter. Absent on the
-	 * ordinary path — including the ordinary "nobody configured anything" path,
-	 * which is a `default` source and not a degradation.
+	 * Set when the configured provider cannot answer (D3): its credential is
+	 * missing, malformed or undecryptable, or its config is invalid. `kind`
+	 * stays the configured one. Absent on the ordinary path, including the
+	 * "nobody configured anything" path, which is the `default` source.
 	 */
-	readonly degradedFrom?: DecisionProviderKind;
-	/** Why it degraded, in the adapter's own words. Never contains the key. */
-	readonly degradedReason?: string;
+	readonly unavailable?: DecisionUnavailable;
 	/**
 	 * The operator's master switch for the fallback hop (`isDecisionFallbackEnabled`).
 	 * OFF unless stored true: the hop re-routes onto a model that costs 24 to 50
@@ -223,7 +228,7 @@ function decryptEnvelope(ctx: ActionCtx, envelope: DecisionKeyEnvelope): Promise
 function languageBackedPlane(
 	source: DecisionConfigSource,
 	isFallbackEnabled: boolean,
-	extra: Pick<ResolvedDecisionPlane, 'degradedFrom' | 'degradedReason' | 'updatedAt'> = {}
+	extra: Pick<ResolvedDecisionPlane, 'updatedAt'> = {}
 ): ResolvedDecisionPlane {
 	const adapter = decisionProviderFor('llm');
 	return {
@@ -241,18 +246,25 @@ function languageBackedPlane(
 
 /**
  * Whether this config can actually run, asked of the adapter itself rather than
- * guessed at here. Returns the adapter's own message so the degraded state can
+ * guessed at here. Returns the adapter's own message so the unavailable state can
  * be read by a human; adapters state the mistake, never the credential.
  */
 function credentialFailure(
 	kind: DecisionProviderKind,
 	clientConfig: ProviderClientConfig
-): string | undefined {
+): DecisionUnavailable | undefined {
 	try {
 		decisionProviderFor(kind).validateCredentials(clientConfig);
 		return undefined;
 	} catch (error) {
-		return error instanceof Error ? error.message : 'The decision provider is not configured.';
+		const reason =
+			error instanceof Error ? error.message : 'The decision provider is not configured.';
+		const needsKey = decisionKindNeedsKey(kind);
+		return {
+			code:
+				needsKey && clientConfig.apiKey === undefined ? 'missing_credentials' : 'invalid_config',
+			reason,
+		};
 	}
 }
 
@@ -297,6 +309,8 @@ function planeFor(input: {
 	storedBaseUrl: string | undefined;
 	isFallbackEnabled: boolean;
 	updatedAt: number | undefined;
+	/** The stored key could not be decrypted (D3: terminal, never a language call). */
+	decryptFailure?: DecisionUnavailable;
 }): ResolvedDecisionPlane {
 	const { kind, source, isFallbackEnabled, updatedAt } = input;
 	// Only the language-backed adapter delegates its model and endpoint to that plane.
@@ -307,18 +321,13 @@ function planeFor(input: {
 	const adapter = decisionProviderFor(kind);
 	const clientConfig = decisionClientConfigFor(kind, input.storedKey, input.storedBaseUrl);
 
-	const failure = credentialFailure(kind, clientConfig);
-	if (failure !== undefined) {
-		return languageBackedPlane(source, isFallbackEnabled, {
-			degradedFrom: kind,
-			degradedReason: failure,
-			updatedAt,
-		});
-	}
+	const failure = input.decryptFailure ?? credentialFailure(kind, clientConfig);
 
 	return {
 		kind,
-		clientConfig,
+		// An unavailable plane carries no client: nothing may be sent with it.
+		clientConfig: failure === undefined ? clientConfig : {},
+		...(failure === undefined ? {} : { unavailable: failure }),
 		modelId: input.storedModel ?? decisionEnv('DECISION_MODEL') ?? adapter.defaultModel,
 		// An origin override turns a HOSTED endpoint into an unknown third party;
 		// a local engine is the operator's own wherever its origin points.
@@ -378,11 +387,21 @@ async function buildPlane(
 		// credential to decrypt. The plaintext builds a client config and is
 		// discarded with it; it never reaches a query result or the client.
 		const envelope = decisionKindNeedsKey(storedKind) ? decisionKeyEnvelope(row) : undefined;
-		const storedKey = envelope ? await decryptEnvelope(ctx, envelope) : undefined;
+		let storedKey: string | undefined;
+		let decryptFailure: DecisionUnavailable | undefined;
+		try {
+			storedKey = envelope ? await decryptEnvelope(ctx, envelope) : undefined;
+		} catch {
+			decryptFailure = {
+				code: 'undecryptable',
+				reason: 'The stored decision provider key cannot be decrypted. Enter the key again.',
+			};
+		}
 		return planeFor({
 			kind: storedKind,
 			source: 'stored',
 			storedKey,
+			...(decryptFailure ? { decryptFailure } : {}),
 			storedModel: row.decisionModel,
 			storedBaseUrl: row.decisionBaseUrl,
 			isFallbackEnabled,
@@ -424,6 +443,9 @@ async function buildPlane(
  */
 export async function resolveDecisionProvider(ctx: ActionCtx): Promise<ResolvedDecisionProvider> {
 	const plane = await resolveDecisionConfig(ctx);
+	// D3: an explicit provider that cannot answer is terminal. Nothing is
+	// resolved on the language plane for it.
+	if (plane.unavailable) throw new DecisionProviderUnavailable(plane.kind, plane.unavailable);
 	return {
 		kind: plane.kind,
 		config: plane.clientConfig,
@@ -440,10 +462,10 @@ export async function resolveDecisionProvider(ctx: ActionCtx): Promise<ResolvedD
 
 /**
  * The fallback plane to hand `runDecision`, or `undefined` — and `undefined` is
- * the default, because ABSENT MEANS NO HOP. Three ways to get there: the
+ * the default, because ABSENT MEANS NO HOP. Four ways to get there: the
  * operator never turned the hop on, the primary already IS the language plane
  * (hopping to itself would only double the bill of a failure), or the plane
- * degraded, in which case the same reasoning applies.
+ * cannot answer at all (D3: terminal, so there is no failure for a hop to cover).
  *
  * A caller that must never hop — the high-volume background classifiers, where
  * an outage becomes a bill rather than an incident — simply does not call this.
@@ -452,7 +474,9 @@ export async function resolveDecisionFallback(
 	ctx: ActionCtx
 ): Promise<ResolvedDecisionProvider | undefined> {
 	const plane = await resolveDecisionConfig(ctx);
-	if (!plane.isFallbackEnabled || plane.kind === 'llm') return undefined;
+	// D3: no hop for a provider that cannot answer at all; the hop is for an
+	// operational failure of a working provider.
+	if (!plane.isFallbackEnabled || plane.kind === 'llm' || plane.unavailable) return undefined;
 	return {
 		kind: 'llm',
 		config: {},
