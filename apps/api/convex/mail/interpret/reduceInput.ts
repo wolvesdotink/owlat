@@ -180,9 +180,8 @@ export const applyInterpretationArgs = {
 	sourceVersion: v.optional(v.string()),
 	// Set on a repair attempt of an incomplete extraction (retry.ts).
 	retryCount: v.optional(v.number()),
-	// A verifier spend admission refused (Sol r3 F4): the validated model output
-	// (JSON) the retry verifies, and the consecutive deferrals so far.
-	budgetDeferral: v.optional(v.object({ output: v.string(), deferrals: v.number() })),
+	// The run's hold was refused: consecutive deferrals so far (retry.ts backoff, Sol r4).
+	budgetDeferrals: v.optional(v.number()),
 };
 
 export type ReduceEvidence = Infer<typeof reduceEvidenceValidator>;

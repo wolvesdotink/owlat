@@ -7,10 +7,10 @@
  *     repairs the extraction and the reducer replays the thread.
  *   - A gate refusal (`ai_off`, `budget`) costs nothing to re-check, so it is
  *     due on every call and never runs out.
- *   - A verifier spend admission refused (`budget` with `budgetDeferrals`,
- *     Sol r3 F4) is paid work: it backs off from 5 minutes, doubling to 6
- *     hours, for at most {@link MAX_BUDGET_DEFERRALS} deferrals. Its retry
- *     verifies the stored output; it does not extract again.
+ *   - A run whose one spend hold was refused (`budget` with
+ *     `budgetDeferrals`, Sol r4) spent nothing, but the hold is the run's whole
+ *     paid path: it backs off from 5 minutes, doubling to 6 hours, for at most
+ *     {@link MAX_BUDGET_DEFERRALS} deferrals.
  *   - Deterministic outcomes (overflow, grounding, the replay budget,
  *     eligibility) are not retried.
  */
@@ -28,11 +28,11 @@ const BACKOFF_CODES: ReadonlySet<string> = new Set([
 ]);
 const GATE_CODES: ReadonlySet<string> = new Set(['ai_off', 'budget']);
 
-/** Verifier budget deferrals of one revision before it waits for a new trigger. */
+/** Hold refusals of one revision before it waits for a new trigger. */
 export const MAX_BUDGET_DEFERRALS = 24;
 const BUDGET_BACKOFF_MAX_MS = 6 * 60 * 60 * 1000;
 
-/** Backoff before the verifier retry that follows deferral `deferrals` (1-based). */
+/** Backoff before the run that follows deferral `deferrals` (1-based). */
 export function budgetBackoffMs(deferrals: number): number {
 	return Math.min(BUDGET_BACKOFF_MAX_MS, BASE_BACKOFF_MS * 2 ** Math.max(0, deferrals - 1));
 }

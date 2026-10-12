@@ -13,8 +13,10 @@
  *   5. dedupe    an applied extraction of this revision + extractor is reused,
  *                unless it is incomplete and its retry is due (`retry.ts`)
  *   6. gate      `ai` flag and the spend ceiling (`gate.ts`)
+ *   6b. hold     one spend hold for the extraction and the verifier's maximum
+ *                (`runHold.ts`); refused, the run defers, backed off, unspent
  *   7. model     `runLlmObject` on the `extract` tier, temperature 0, metered
- *                as `interpret`
+ *                as `interpret`, drawing on the hold
  *   8. ground    every claim's quotes verbatim in the named segment
  *   9. verify    consequential claims on the `guard` tier (`verify.ts`)
  *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale;
@@ -39,7 +41,9 @@ import {
 } from '../../lib/validators/threadBrief';
 import { INTERPRET_EXTRACTOR_VERSION } from './schema';
 import { renderSegments } from './prompt';
-import { extractOutput, storedDeferredOutput } from './extractOutput';
+import { extractOutput, prepareExtraction } from './extractOutput';
+import { admitInterpretRun, type InterpretRunHold } from './runHold';
+import { resolveLanguageModel } from '../../lib/llmProvider';
 import { predecessorRoot, predecessorsPending, runDeferredPredecessors } from './defer';
 import {
 	finish,
@@ -103,7 +107,7 @@ async function apply(
 			...(record.result ? { result: record.result } : {}),
 			...(record.sourceVersion ? { sourceVersion: record.sourceVersion } : {}),
 			...(record.retryCount !== undefined ? { retryCount: record.retryCount } : {}),
-			...(record.budgetDeferral ? { budgetDeferral: record.budgetDeferral } : {}),
+			...(record.budgetDeferrals !== undefined ? { budgetDeferrals: record.budgetDeferrals } : {}),
 			...(state.threadAssigneeUserId ? { threadAssigneeUserId: state.threadAssigneeUserId } : {}),
 		});
 		if (outcome.outcome !== 'stale') return outcome;
@@ -215,6 +219,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 
 	let contentRevision = 'unread';
 	let retryCount: number | undefined;
+	// The run's one spend hold, settled however the run ends (`runHold.ts`).
+	let hold: InterpretRunHold | undefined;
 	try {
 		const scoped = await scopeForInterpretation(ctx, args.source);
 		if (!scoped) return { status: 'gone' };
@@ -292,18 +298,9 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 		};
 
 		const gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
-		// A verifier budget deferral of this revision is due: its retry verifies the
-		// stored output and never pays for the extraction again (Sol r3 F4).
-		const stored =
-			counted && isExact && counted.hasDeferredOutput
-				? await storedDeferredOutput(ctx, counted.interpretationId)
-				: null;
-		const gateRefusal =
-			!gate.isAllowed && gate.code === 'budget'
-				? { reason: gate.reason, limit: gate.limit }
-				: undefined;
-		// Over the budget with a stored output: deferred again, with no verifier call.
-		if (!gate.isAllowed && !(stored && gateRefusal)) {
+		if (!gate.isAllowed) {
+			const gateRefusal =
+				gate.code === 'budget' ? { reason: gate.reason, limit: gate.limit } : undefined;
 			return finish(
 				await apply(ctx, args, loaded, {
 					contentRevision,
@@ -337,7 +334,31 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 		// holds stop at the advisory reserve like its gate; actions mode feeds
 		// the Team pipeline.
 		const priority = mode === 'brief' ? 'background' : 'pipeline';
-		const output = stored ?? (await extractOutput(ctx, { input, mode, root, priority }));
+		const prepared = await prepareExtraction(ctx, input, mode);
+		const verifyModel = await resolveLanguageModel(ctx, 'guard');
+		// One hold for the extraction and the verifier's maximum, before anything
+		// is bought (Sol r4): refused, the whole run defers, backed off, with no
+		// retry spent; admitted, no call of the run can be refused halfway.
+		try {
+			hold = await admitInterpretRun(ctx, { extract: prepared, verifyModel, root, priority });
+		} catch (error) {
+			const refusal = admissionRefusalOf(error);
+			if (!refusal) throw error;
+			const deferrals = (isExact ? (counted?.budgetDeferrals ?? 0) : 0) + 1;
+			return finish(
+				await apply(ctx, args, loaded, {
+					contentRevision,
+					status: 'failed',
+					errorCode: 'budget',
+					sourceManifest,
+					...(sourceVersion ? { sourceVersion } : {}),
+					retryCount: priorAttempts,
+					budgetDeferrals: deferrals,
+				}),
+				{ errorCode: 'budget', budgetRefusal: { reason: refusal.reason, limit: refusal.limit } }
+			);
+		}
+		const output = await extractOutput(ctx, prepared, { root, priority, hold });
 		const grounding = groundProposals(output, segmented);
 		const ownAddresses = new Set(loaded.ownAddresses);
 
@@ -349,9 +370,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			itemText: (id) => itemText.get(id),
 			factText: (id) => factText.get(id),
 		});
-		const verified = gateRefusal
-			? { verdicts: new Map(), isIncomplete: true, isBudgetDeferred: true, refusal: gateRefusal }
-			: await verifyClaims(ctx, claims, root, priority);
+		const verified = await verifyClaims(ctx, claims, { root, priority, model: verifyModel, hold });
 
 		const freshText = segmented.segments
 			.filter((s) => s.kind === 'fresh')
@@ -390,10 +409,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			isBodyIncomplete: scoped.omitted.includes('body_unavailable'),
 			isBodyTruncated: isTruncated,
 		});
-		// A verifier batch refused by spend admission is a budget deferral (D1):
-		// re-checked like a gate refusal, never spending a retry.
-		const runErrorCode =
-			verified.isBudgetDeferred && run.errorCode === 'verify' ? 'budget' : run.errorCode;
+		const runErrorCode = run.errorCode;
 		const outcome = await apply(ctx, args, loaded, {
 			contentRevision,
 			status: run.status,
@@ -406,23 +422,14 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			},
 			result,
 			...attempt,
-			// A verifier refused by spend admission spends no retry (Sol r2 F2), and
-			// a retry that verified the stored output made no model call.
-			...(verified.isBudgetDeferred || stored ? { retryCount: priorAttempts } : {}),
-			// The output is stored for the verifier's retry, backed off (Sol r3 F4).
-			...(verified.isBudgetDeferred
-				? {
-						budgetDeferral: {
-							output: JSON.stringify(output),
-							deferrals: (stored ? (counted?.budgetDeferrals ?? 0) : 0) + 1,
-						},
-					}
-				: {}),
 		});
 		return finish(outcome, {
 			projection: needsReplyProjectionOf(result, loaded.ownerLocale),
 			...(runErrorCode ? { errorCode: runErrorCode } : {}),
-			...(runErrorCode === 'budget' && verified.refusal
+			// Not expected under the run's hold; when it happens the verification is
+			// an ordinary incomplete one, and the refusal is still reported, whatever
+			// else the run found incomplete (Sol r4 F2).
+			...(verified.refusal
 				? { budgetRefusal: { reason: verified.refusal.reason, limit: verified.refusal.limit } }
 				: {}),
 		});
@@ -459,6 +466,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 				...(budgetRefusal ? { budgetRefusal } : {}),
 			};
 		}
+	} finally {
+		await hold?.settle();
 	}
 }
 

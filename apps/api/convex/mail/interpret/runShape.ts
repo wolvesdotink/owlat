@@ -65,8 +65,8 @@ export type RunRecord = {
 	result?: ReduceResult;
 	sourceVersion?: string;
 	retryCount?: number;
-	/** A verifier spend admission refused: the output its retry verifies (Sol r3 F4). */
-	budgetDeferral?: { output: string; deferrals: number };
+	/** The run's hold was refused: consecutive deferrals, which back the retry off (Sol r4). */
+	budgetDeferrals?: number;
 };
 
 /** The run must start over: the body or the thread's mode changed under it. */

@@ -15,7 +15,12 @@
  *     this", not tracked until confirmed); a transition or supersession is
  *     not applied. A failed call also marks the run `partial`.
  *
- * Metered as `interpret_verify` in the usage ledger.
+ * Metered as `interpret_verify` in the usage ledger. The calls draw on the
+ * run's one hold (`runHold.ts`), which was admitted for the verifier's
+ * schema-bounded maximum before the extraction was bought, so spend admission
+ * cannot refuse them halfway (Sol r4). The prompt is bounded for that: each
+ * statement to {@link VERIFY_STATEMENT_CHARS}, each claim to
+ * {@link MAX_QUOTES_PER_CLAIM} quotes of at most the schema's quote limit.
  */
 
 import { z } from 'zod';
@@ -30,11 +35,21 @@ import type { InterpretationSource } from '../../lib/validators/threadBrief';
 import { SYSTEM_GUARD } from '../ai/promptGuards';
 import { defuseDelimiters } from './prompt';
 import type { VerifyClaim, VerifyVerdict } from './pipeline';
+import { INTERPRET_TEXT_LIMITS, MAX_QUOTES_PER_CLAIM } from './schema';
+import type { InterpretRunHold } from './runHold';
 
 export const VERIFY_BATCH_SIZE = 3;
 export const VERIFY_FEATURE = 'interpret_verify';
 
-const verdictSchema = z.object({
+/** A claim statement's length in the prompt (an item's or fact's two clamped assertions and framing). */
+export const VERIFY_STATEMENT_CHARS = 2 * INTERPRET_TEXT_LIMITS.assertion + 200;
+
+/** Cut to `max` UTF-16 units, marking the cut. */
+function clip(text: string, max: number): string {
+	return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+export const verdictSchema = z.object({
 	verdicts: z.array(
 		z.object({
 			claimId: z.string(),
@@ -48,8 +63,11 @@ export function buildVerifyPrompt(claims: readonly VerifyClaim[]): string {
 	const blocks = claims
 		.map(
 			(c) =>
-				`CLAIM ${c.id}: ${defuseDelimiters(c.statement)}\nQUOTES:\n` +
-				c.quotes.map((q) => `- "${defuseDelimiters(q)}"`).join('\n')
+				`CLAIM ${c.id}: ${defuseDelimiters(clip(c.statement, VERIFY_STATEMENT_CHARS))}\nQUOTES:\n` +
+				c.quotes
+					.slice(0, MAX_QUOTES_PER_CLAIM)
+					.map((q) => `- "${defuseDelimiters(clip(q, INTERPRET_TEXT_LIMITS.quote))}"`)
+					.join('\n')
 		)
 		.join('\n\n');
 	return (
@@ -71,42 +89,58 @@ export function batchClaims<T>(claims: readonly T[], size = VERIFY_BATCH_SIZE): 
 }
 
 /**
- * Check every claim. Returns the verdicts that came back and whether any
- * batch failed (its claims get no verdict and stay unverified).
+ * Check every claim. Returns the verdicts that came back, whether any batch
+ * failed (its claims get no verdict and stay unverified), and a spend refusal
+ * if one stopped a batch: not expected under the run's hold, and then an
+ * ordinary incomplete verification, whose refusal the run still reports.
  */
 export async function verifyClaims(
 	ctx: ActionCtx,
 	claims: readonly VerifyClaim[],
-	root?: LlmRootContext,
-	/** Spend admission priority: brief mode is background work (ADR-0073, D1). */
-	priority?: AdmissionPriority
+	opts: {
+		root?: LlmRootContext;
+		/** Spend admission priority: brief mode is background work (ADR-0073, D1). */
+		priority?: AdmissionPriority;
+		/** The guard-tier model the run's hold was sized for. */
+		model?: Awaited<ReturnType<typeof resolveLanguageModel>>;
+		/** The run's hold: every batch draws on it (`runHold.ts`). */
+		hold?: InterpretRunHold;
+	} = {}
 ): Promise<{
 	verdicts: Map<string, VerifyVerdict>;
 	isIncomplete: boolean;
-	/** A batch was refused by spend admission: the run records `budget`, not `verify`. */
-	isBudgetDeferred: boolean;
 	/** The refusal's reason and limit, for a caller that holds on it (Sol r3 F5). */
 	refusal?: AdmissionRefusalData;
 }> {
 	const verdicts = new Map<string, VerifyVerdict>();
 	let isIncomplete = false;
-	let isBudgetDeferred = false;
 	let refusal: AdmissionRefusalData | undefined;
-	if (claims.length === 0) return { verdicts, isIncomplete, isBudgetDeferred };
-	const model = await resolveLanguageModel(ctx, 'guard');
+	if (claims.length === 0) return { verdicts, isIncomplete };
+	const model = opts.model ?? (await resolveLanguageModel(ctx, 'guard'));
+	const target = {
+		feature: VERIFY_FEATURE,
+		...(opts.root ? { root: opts.root } : {}),
+		...(opts.priority ? { priority: opts.priority } : {}),
+		...opts.hold?.target,
+	};
 	for (const batch of batchClaims(claims)) {
 		try {
 			const { object } = await meterLlmCall(
 				ctx,
-				{ feature: VERIFY_FEATURE, ...(root ? { root } : {}), ...(priority ? { priority } : {}) },
-				(meter) =>
-					runLlmObject({
-						meter,
-						model,
-						schema: verdictSchema,
-						prompt: buildVerifyPrompt(batch),
-						temperature: 0,
-					}),
+				target,
+				async (meter) => {
+					try {
+						return await runLlmObject({
+							meter,
+							model,
+							schema: verdictSchema,
+							prompt: buildVerifyPrompt(batch),
+							temperature: 0,
+						});
+					} finally {
+						opts.hold?.count(meter.requests.length);
+					}
+				},
 				// A lost ledger row under-counts; failing verification over it would drop claims.
 				{ onWriteError: 'ignore' }
 			);
@@ -117,16 +151,12 @@ export async function verifyClaims(
 			if (batch.some((c) => !verdicts.has(c.id))) isIncomplete = true;
 		} catch (error) {
 			isIncomplete = true;
-			// Spend admission refused the batch (ADR-0073, D1): not a verification
-			// failure. The rest would be refused too; the run defers instead.
+			// A refusal stops the rest too: they would be refused the same way.
 			refusal = admissionRefusalOf(error) ?? undefined;
-			if (refusal) {
-				isBudgetDeferred = true;
-				break;
-			}
+			if (refusal) break;
 		}
 	}
-	return { verdicts, isIncomplete, isBudgetDeferred, ...(refusal ? { refusal } : {}) };
+	return { verdicts, isIncomplete, ...(refusal ? { refusal } : {}) };
 }
 
 /**

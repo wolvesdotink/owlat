@@ -147,12 +147,8 @@ export const threadBriefTables = {
 		// Retryable partial or failed runs: attempts so far and when the next is due.
 		retryCount: v.optional(v.number()),
 		nextRetryAt: v.optional(v.number()),
-		// A verifier refused by spend admission (D1, Sol r3 F4): the validated
-		// model output it could not check, sealed, so the retry verifies it
-		// without paying for the extraction again; and the consecutive budget
-		// deferrals, which back `nextRetryAt` off (`retry.ts`). Cleared by the
-		// next write of the row.
-		budgetDeferredOutput: v.optional(v.string()),
+		// Consecutive runs deferred because spend admission refused the run's
+		// one hold (D1, Sol r4): they back `nextRetryAt` off (`retry.ts`).
 		budgetDeferrals: v.optional(v.number()),
 		// Transitions (indexes into the payload's `transitions`) on an obligation
 		// not seen yet, waiting for the item that its delayed request creates.

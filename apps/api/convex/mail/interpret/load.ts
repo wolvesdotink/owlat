@@ -400,7 +400,6 @@ function extractionSummary(row: Doc<'messageInterpretations'>) {
 		nextRetryAt: row.nextRetryAt,
 		errorCode: row.errorCode,
 		budgetDeferrals: row.budgetDeferrals,
-		hasDeferredOutput: row.budgetDeferredOutput !== undefined,
 	};
 }
 

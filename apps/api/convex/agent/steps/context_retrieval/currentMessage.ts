@@ -138,6 +138,7 @@ async function structuredActions(
 
 /** Throw the spend refusal an interpretation run answered with, if it met one. */
 export function throwRunBudgetRefusal(run: InterpretRunResult): void {
-	if (run.status === 'gone' || run.errorCode !== 'budget' || !run.budgetRefusal) return;
+	// Whatever else the run recorded (Sol r4 F2): a refusal is a refusal.
+	if (run.status === 'gone' || !run.budgetRefusal) return;
 	throw new AdmissionRefusedError(run.budgetRefusal.reason, run.budgetRefusal.limit);
 }
