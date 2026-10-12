@@ -31,7 +31,11 @@ import {
 	type IndexEmbedder,
 } from '../llmProvider';
 import { loadConfigEntry, planeKey } from '../llmProviders/storedConfigCache';
-import { measuredEmbeddingSpace } from './embeddingProbe';
+import {
+	EmbeddingRevisionChangedError,
+	measuredEmbeddingSpace,
+	probeEmbeddingRevision,
+} from './embeddingProbe';
 import {
 	identityOf,
 	isIdentityOfTarget,
@@ -89,19 +93,56 @@ export async function resolveEmbedderForSpace(
 	return embedder && isIdentityOfTarget(identity, embedder.target) ? embedder : null;
 }
 
+/** One text's padded vector and raw vector, or null when its call failed. */
+export type EmbeddedText = { vector: number[]; raw: number[] } | null;
+
 /**
- * Embed one text for the index: the padded vector and the space it is in.
- * The ledger lane meters this call (task `embedding.index`) where it wires
- * `runEmbedding`; it is the only embedding call the embed lane's jobs make.
+ * Embed texts for the index, bracketed by the revision probe: the served
+ * revision is read before the first call and after the last, and the batch's
+ * vectors are kept only when both reads agree (`measuredEmbeddingSpace`). A
+ * single failed call leaves its slot null; a changed revision fails the whole
+ * batch. `space` is the identity every kept vector is in.
+ *
+ * The ledger lane meters these calls (task `embedding.index`) where it wires
+ * `runEmbedding`; they are the only embedding calls the embed lane's jobs make.
  */
+export async function embedTextsForIndex(
+	embedder: IndexEmbedder,
+	texts: readonly string[]
+): Promise<{ vectors: EmbeddedText[]; space: MeasuredSpace | null }> {
+	const before = await probeEmbeddingRevision(embedder.target);
+	const vectors: EmbeddedText[] = [];
+	let width: number | null = null;
+	for (const text of texts) {
+		try {
+			const { embedding } = await embed({ model: embedder.model, value: text });
+			const raw = Array.from(embedding);
+			if (width !== null && raw.length !== width) throw new Error('Inconsistent vector width.');
+			width = raw.length;
+			vectors.push({ vector: toIndexVector(raw), raw });
+		} catch {
+			vectors.push(null);
+		}
+	}
+	if (width === null) return { vectors, space: null };
+	try {
+		const space = await measuredEmbeddingSpace(embedder.target, { length: width }, before);
+		return { vectors, space };
+	} catch (error) {
+		if (error instanceof EmbeddingRevisionChangedError) {
+			return { vectors: vectors.map(() => null), space: null };
+		}
+		throw error;
+	}
+}
+
+/** Embed one text for the index; throws when the call fails or the model changed. */
 export async function embedForIndex(
 	embedder: IndexEmbedder,
 	text: string
 ): Promise<{ vector: number[]; raw: number[]; space: MeasuredSpace }> {
-	const { embedding } = await embed({ model: embedder.model, value: text });
-	return {
-		vector: toIndexVector(embedding),
-		raw: Array.from(embedding),
-		space: await measuredEmbeddingSpace(embedder.target, embedding),
-	};
+	const { vectors, space } = await embedTextsForIndex(embedder, [text]);
+	const [embedded] = vectors;
+	if (!embedded || !space) throw new Error('The embedding call failed.');
+	return { ...embedded, space };
 }

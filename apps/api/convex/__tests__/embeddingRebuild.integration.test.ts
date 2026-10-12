@@ -33,29 +33,42 @@ vi.mock('ai', async () => {
 	const actual = await vi.importActual<typeof Ai>('ai');
 	return {
 		...actual,
-		embed: vi.fn(async ({ model, value }: { model: { modelId: string }; value: string }) => ({
-			embedding: vectorFor(model.modelId, value),
-			usage: { tokens: 1 },
-		})),
+		embed: vi.fn(async ({ model, value }: { model: { modelId: string }; value: string }) => {
+			embedCalls.count += 1;
+			return { embedding: vectorFor(model.modelId, value), usage: { tokens: 1 } };
+		}),
 	};
 });
 
+const session = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'editor' }));
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<object>('../lib/sessionOrganization');
-	const admin = async () => ({ userId: 'admin-1', role: 'owner', activeOrganizationId: 'org-1' });
+	const member = async () => ({
+		userId: 'admin-1',
+		role: session.role,
+		activeOrganizationId: 'org-1',
+	});
+	const admin = async () => {
+		if (session.role !== 'owner') throw new Error('forbidden');
+		return member();
+	};
 	return {
 		...actual,
 		requireOrgPermission: vi.fn(admin),
 		requireAdminContext: vi.fn(admin),
-		requireOrgMember: vi.fn(admin),
+		requireOrgMember: vi.fn(member),
 	};
 });
+
+const embedCalls = vi.hoisted(() => ({ count: 0 }));
 
 const modules = import.meta.glob('../**/*.*s');
 type T = ReturnType<typeof convexTest>;
 
 beforeEach(() => {
 	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	session.role = 'owner';
+	embedCalls.count = 0;
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async () => new Response('not found', { status: 404 }))
@@ -225,5 +238,109 @@ describe('staged rebuild', () => {
 		});
 		const [job] = await t.run((ctx) => ctx.db.query('embeddingReembedJobs').collect());
 		expect(job?.status).toBe('cancelled');
+	});
+
+	it('refuses a non-admin before any provider call (F2)', async () => {
+		const t = convexTest(schema, modules);
+		await nomicDeployment(t);
+		session.role = 'editor';
+		await expect(
+			t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+				embeddingProviderKind: 'local',
+				embeddingModel: 'mxbai-embed-large',
+			})
+		).rejects.toThrow(/forbidden/);
+		await expect(t.action(api.aiRouting.embeddingRebuild.validateStaged, {})).rejects.toThrow(
+			/forbidden/
+		);
+		await expect(t.action(api.aiRouting.embeddingRebuild.activateStaged, {})).rejects.toThrow(
+			/forbidden/
+		);
+		expect(embedCalls.count).toBe(0);
+	});
+
+	it('refuses a staged move between a hosted and a local embedder (F8)', async () => {
+		const t = convexTest(schema, modules);
+		await nomicDeployment(t);
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('aiProviderConfig').first();
+			await ctx.db.patch(row!._id, { embeddingProviderKind: 'openai', embeddingModel: undefined });
+		});
+		await expect(
+			t.action(api.aiRouting.embeddingRebuild.startRebuild, { embeddingProviderKind: 'local' })
+		).rejects.toThrow(/to or from a hosted provider/);
+		expect(embedCalls.count).toBe(0);
+	});
+
+	it('rolls back to the recorded predecessor, not the newest retired space (F7)', async () => {
+		const t = convexTest(schema, modules);
+		await nomicDeployment(t);
+		const stageAndActivate = async (model: string) => {
+			await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+				embeddingProviderKind: 'local',
+				embeddingModel: model,
+			});
+			await flush(t);
+			await t.action(api.aiRouting.embeddingRebuild.activateStaged, {});
+			await flush(t);
+		};
+		await stageAndActivate('mxbai-embed-large');
+		await stageAndActivate('all-minilm');
+		const byModel = async () =>
+			Object.fromEntries(
+				(await t.run((ctx) => ctx.db.query('embeddingSpaces').collect())).map((space) => [
+					space.model,
+					space,
+				])
+			);
+		const spaces = await byModel();
+		expect(spaces['all-minilm']!.predecessorSpaceId).toBe(spaces['mxbai-embed-large']!._id);
+
+		// Stage and cancel a rebuild of the previously activated nomic space: it
+		// is now the most recently retired space that was ever active.
+		await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+			embeddingProviderKind: 'local',
+			embeddingModel: 'nomic-embed-text',
+		});
+		await t.mutation(api.aiRouting.embeddingRebuildState.cancelRebuild, {});
+		await flush(t);
+
+		const status = await t.query(api.aiRouting.embeddingSpaces.status, {});
+		expect(status.rollbackTo?.model).toBe('mxbai-embed-large');
+		await t.mutation(api.aiRouting.embeddingRebuildState.rollback, {});
+		expect((await byModel())['mxbai-embed-large']!.state).toBe('active');
+	});
+
+	it('refuses activation while rows written during the rebuild lack the new vector (F6)', async () => {
+		const t = convexTest(schema, modules);
+		await nomicDeployment(t);
+		await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+			embeddingProviderKind: 'local',
+			embeddingModel: 'mxbai-embed-large',
+		});
+		await flush(t);
+		// A fact extracted after the walk passed: the active space only.
+		const job = (await t.run((ctx) => ctx.db.query('embeddingReembedJobs').collect()))[0]!;
+		await t.run((ctx) =>
+			ctx.db.insert('knowledgeEntries', {
+				entryType: 'fact',
+				title: 'Late fact',
+				content: 'Late fact',
+				sourceType: 'manual',
+				embedding: [],
+				confidence: 0.9,
+				lastValidatedAt: Date.now(),
+				searchableText: 'Late fact',
+				createdAt: job.startedAt + 1,
+				updatedAt: job.startedAt + 1,
+			})
+		);
+		await expect(t.action(api.aiRouting.embeddingRebuild.activateStaged, {})).rejects.toThrow(
+			/arrived during the rebuild/
+		);
+		await t.mutation(api.aiRouting.embeddingRebuildState.catchUpRebuild, {});
+		await flush(t);
+		await t.action(api.aiRouting.embeddingRebuild.activateStaged, {});
+		expect((await states(t)).spaces['mxbai-embed-large']).toBe('active/secondary');
 	});
 });

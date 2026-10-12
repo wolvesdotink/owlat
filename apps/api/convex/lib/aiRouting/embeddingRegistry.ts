@@ -110,6 +110,20 @@ export function isIdentityOfTarget(
 	);
 }
 
+/**
+ * The space vector search may use: the active space, and only while the
+ * configuration still names it. After a switch the old space stays `active`
+ * until the new one's first vector lands, but nothing may search it: a query
+ * embedded now is in the new space, and a stored vector of the old one belongs
+ * to a corpus the configuration has left.
+ */
+export async function readSearchableSpace(db: DatabaseReader): Promise<SpaceDoc | null> {
+	const active = await readActiveSpace(db);
+	if (!active) return null;
+	const target = await readConfiguredTarget(db);
+	return target && isIdentityOfTarget(identityOf(active), target) ? active : null;
+}
+
 /** End the running or paused re-embed jobs that `keep` rejects. */
 async function cancelJobs(
 	ctx: MutationCtx,
@@ -135,11 +149,45 @@ async function cancelJobs(
 }
 
 /**
+ * The configured target moved (a settings save or removal): end every
+ * re-embed job, so no batch an old generation scheduled writes into a space the
+ * configuration has left. A staged rebuild keeps running; it targets its own
+ * space, and activating it rewrites the configuration anyway.
+ */
+export async function endReembedJobs(ctx: MutationCtx): Promise<void> {
+	await cancelJobs(ctx, (job) => job.kind !== 'reembed', Date.now());
+}
+
+/**
+ * Put a space's vectors in `slot`. Its rows keep their vectors in the other
+ * column until the bounded copy (`aiRouting/embeddingSlotMigration.ts`) moves
+ * them, with their provenance; the re-embed job leaves those rows to the copy.
+ * Nothing is overwritten that belongs to the space now using the other column.
+ */
+export async function reslotSpace(
+	ctx: MutationCtx,
+	space: SpaceDoc,
+	slot: EmbeddingSlot
+): Promise<void> {
+	if (space.slot === slot) return;
+	await ctx.db.patch(space._id, { slot, updatedAt: Date.now() });
+	await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingSlotMigration.migratePage, {
+		spaceId: space._id,
+		table: 'knowledgeEntries',
+		cursor: null,
+	});
+}
+
+/**
  * Make a space the active one, atomically: the previous active space is
- * retired (its vectors stay in its column for rollback), a staged rebuild for
- * any other space ends, and jobs that target a space no longer active or staged
- * are cancelled. `existing` reactivates or promotes a known space; `identity`
- * registers a new one in the slot the active space does not use.
+ * retired with its vectors intact and recorded as the new space's
+ * `predecessorSpaceId` (the rollback target), a staged rebuild for any other
+ * space ends, and jobs that target a space no longer active or staged are
+ * cancelled. The incoming space always takes the column the outgoing one does
+ * not use: a known space in the same column is re-slotted and its vectors
+ * copied over (`reslotSpace`), so the outgoing space's vectors are never
+ * re-embedded over. `existing` reactivates or promotes a known space;
+ * `identity` registers a new one.
  */
 export async function activateSpace(
 	ctx: MutationCtx,
@@ -149,18 +197,23 @@ export async function activateSpace(
 	const active = await readActiveSpace(ctx.db);
 	const staged = await readStagedSpace(ctx.db);
 	const existing = 'existing' in space ? space.existing : null;
-	if (active && active._id !== existing?._id) {
-		await ctx.db.patch(active._id, { state: 'retired', retiredAt: now, updatedAt: now });
+	const outgoing = active && active._id !== existing?._id ? active : null;
+	if (outgoing) {
+		await ctx.db.patch(outgoing._id, { state: 'retired', retiredAt: now, updatedAt: now });
 	}
 	if (staged && staged._id !== existing?._id) {
 		await ctx.db.patch(staged._id, { state: 'retired', retiredAt: now, updatedAt: now });
 	}
 	let spaceId: SpaceId;
 	if (existing) {
+		if (outgoing && existing.slot === outgoing.slot) {
+			await reslotSpace(ctx, existing, otherSlot(outgoing.slot));
+		}
 		await ctx.db.patch(existing._id, {
 			state: 'active',
 			activatedAt: now,
 			retiredAt: undefined,
+			...(outgoing ? { predecessorSpaceId: outgoing._id } : {}),
 			updatedAt: now,
 		});
 		spaceId = existing._id;
@@ -172,6 +225,7 @@ export async function activateSpace(
 			source,
 			state: 'active',
 			slot: active ? otherSlot(active.slot) : 'primary',
+			...(active ? { predecessorSpaceId: active._id } : {}),
 			configVersion: (space as { configVersion?: number }).configVersion,
 			activatedAt: now,
 			createdAt: now,
@@ -216,8 +270,14 @@ export async function ensureConfiguredSpace(
 export interface VectorColumns {
 	embedding: number[];
 	embeddingSpaceId?: SpaceId;
+	embeddingGeneratedAt?: number;
+	embeddingProvenance?: EmbeddingProvenanceSource;
+	embeddingAttestationId?: Id<'embeddingAttestations'>;
 	secondaryEmbedding?: number[];
 	secondaryEmbeddingSpaceId?: SpaceId;
+	secondaryEmbeddingGeneratedAt?: number;
+	secondaryEmbeddingProvenance?: EmbeddingProvenanceSource;
+	secondaryEmbeddingAttestationId?: Id<'embeddingAttestations'>;
 }
 
 /** The row's vector in `ref`'s space, or null: never a vector of another space. */
@@ -257,25 +317,27 @@ export function entryKeysForType(
 	};
 }
 
-/** The columns that put `vector` into `space`'s slot, stamped `provenance`. */
+/** The columns that put `vector` into `space`'s slot, stamped with its provenance. */
 export function slotFields(
-	space: SpaceDoc,
+	space: Pick<SpaceDoc, '_id' | 'slot' | 'model'>,
 	vector: number[],
 	options: {
 		now: number;
 		entryType?: EntryType;
 		provenance?: EmbeddingProvenanceSource;
+		attestationId?: Id<'embeddingAttestations'>;
 	}
 ): Record<string, unknown> {
 	const { now, entryType } = options;
+	const provenance = options.provenance ?? 'measured';
 	if (space.slot === 'primary') {
 		return {
 			embedding: vector,
 			embeddingModel: space.model,
 			embeddingGeneratedAt: now,
 			embeddingSpaceId: space._id,
-			embeddingProvenance: options.provenance ?? 'measured',
-			embeddingAttestationId: undefined,
+			embeddingProvenance: provenance,
+			embeddingAttestationId: options.attestationId,
 			...(entryType
 				? { embeddingSpaceEntryKey: embeddingSpaceEntryKey(space._id, entryType) }
 				: {}),
@@ -285,10 +347,34 @@ export function slotFields(
 		secondaryEmbedding: vector,
 		secondaryEmbeddingSpaceId: space._id,
 		secondaryEmbeddingGeneratedAt: now,
+		secondaryEmbeddingProvenance: provenance,
+		secondaryEmbeddingAttestationId: options.attestationId,
 		...(entryType
 			? { secondaryEmbeddingSpaceEntryKey: embeddingSpaceEntryKey(space._id, entryType) }
 			: {}),
 	};
+}
+
+/**
+ * The columns that copy a row's vector of `space` from the other column into
+ * `space`'s slot, keeping when and how it was made. Null when the other column
+ * holds no vector of that space.
+ */
+export function copyFieldsIntoSlot(
+	row: VectorColumns,
+	space: Pick<SpaceDoc, '_id' | 'slot' | 'model'>,
+	entryType?: EntryType
+): Record<string, unknown> | null {
+	const from = otherSlot(space.slot);
+	const vector = vectorInSpace(row, { spaceId: space._id, slot: from });
+	if (!vector) return null;
+	const isPrimary = from === 'primary';
+	return slotFields(space, vector, {
+		now: (isPrimary ? row.embeddingGeneratedAt : row.secondaryEmbeddingGeneratedAt) ?? Date.now(),
+		entryType,
+		provenance: isPrimary ? row.embeddingProvenance : row.secondaryEmbeddingProvenance,
+		attestationId: isPrimary ? row.embeddingAttestationId : row.secondaryEmbeddingAttestationId,
+	});
 }
 
 /** Every vector column cleared (a row stored without a vector). */
@@ -308,6 +394,8 @@ function clearedFields(mode: 'insert' | 'patch', entryType?: EntryType): Record<
 		secondaryEmbedding: undefined,
 		secondaryEmbeddingSpaceId: undefined,
 		secondaryEmbeddingGeneratedAt: undefined,
+		secondaryEmbeddingProvenance: undefined,
+		secondaryEmbeddingAttestationId: undefined,
 		...(entryType ? { secondaryEmbeddingSpaceEntryKey: undefined } : {}),
 	};
 }
@@ -349,8 +437,9 @@ export async function vectorFieldsForCommit(
 
 /**
  * The space and column a vector search filters on: the space named by id, or
- * the space registered for `identity`. Only the active space unless
- * `allowStaged` (the rebuild's validation). Null means the vector leg has
+ * the space registered for `identity`. Only the searchable space (active AND
+ * still the configured target, `readSearchableSpace`), or the staged space
+ * when `allowStaged` (the rebuild's validation). Null means the vector leg has
  * nothing comparable to search.
  */
 export async function resolveSearchTarget(
@@ -363,8 +452,7 @@ export async function resolveSearchTarget(
 			? await readSpaceByIdentity(db, query.identity)
 			: null;
 	if (!space) return null;
-	if (space.state === 'active' || (query.allowStaged && space.state === 'staged')) {
-		return spaceRefOf(space);
-	}
-	return null;
+	if (query.allowStaged && space.state === 'staged') return spaceRefOf(space);
+	const searchable = await readSearchableSpace(db);
+	return searchable?._id === space._id ? spaceRefOf(searchable) : null;
 }

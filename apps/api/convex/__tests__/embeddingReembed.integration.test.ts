@@ -24,12 +24,23 @@ import {
 
 const DIMS = 64;
 const embedCalls = vi.hoisted(() => ({ texts: [] as string[] }));
+/** Texts whose embedding call fails (a provider error); `count` per text. */
+const embedFailures = vi.hoisted(() => ({
+	texts: [] as string[],
+	remaining: new Map<string, number>(),
+}));
 
 vi.mock('ai', async () => {
 	const actual = await vi.importActual<typeof Ai>('ai');
 	return {
 		...actual,
 		embed: vi.fn(async ({ model, value }: { model: { modelId: string }; value: string }) => {
+			const left = embedFailures.remaining.get(value) ?? 0;
+			if (left > 0) {
+				embedFailures.remaining.set(value, left - 1);
+				embedFailures.texts.push(value);
+				throw new Error('provider error');
+			}
 			embedCalls.texts.push(value);
 			const vector = Array.from({ length: 64 }, () => 0);
 			let hash = 0;
@@ -47,7 +58,18 @@ vi.mock('../lib/sessionOrganization', async () => {
 		if (session.role !== 'owner') throw new Error('forbidden');
 		return { userId: 'admin-1', role: session.role, activeOrganizationId: 'org-1' };
 	};
-	return { ...actual, requireOrgPermission: vi.fn(current), requireAdminContext: vi.fn(current) };
+	const member = async () => ({
+		userId: 'admin-1',
+		role: session.role,
+		activeOrganizationId: 'org-1',
+	});
+	return {
+		...actual,
+		requireOrgPermission: vi.fn(current),
+		requireAdminContext: vi.fn(current),
+		// Any member passes the action floor; the admin floor is checked inside.
+		requireOrgMember: vi.fn(member),
+	};
 });
 
 const modules = import.meta.glob('../**/*.*s');
@@ -59,6 +81,8 @@ const NOMIC = { ...TEST_LOCAL_SPACE, dimensions: DIMS };
 beforeEach(() => {
 	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 	embedCalls.texts = [];
+	embedFailures.texts = [];
+	embedFailures.remaining.clear();
 	session.role = 'owner';
 	vi.stubGlobal(
 		'fetch',
@@ -182,11 +206,13 @@ describe('local re-embed', () => {
 		expect(rows.pending!.embeddingSpaceId).toBeUndefined();
 		// One probe, then each candidate exactly once.
 		expect(embedCalls.texts).toHaveLength(5);
+		expect(embedFailures.texts).toEqual([]);
 
-		// The finished job leaves a coverage count on the space.
-		const space = await t.run((ctx) => ctx.db.get(active));
-		expect(space?.coverage?.knowledgeEntries).toMatchObject({ active: 4, unembedded: 1 });
-		expect(space?.coverage?.semanticFiles).toMatchObject({ active: 1, unembedded: 1 });
+		// The finished job leaves a coverage count against the searchable space.
+		const coverage = await t.run((ctx) => ctx.db.query('embeddingCoverage').first());
+		expect(coverage?.searchableSpaceId).toBe(active);
+		expect(coverage?.knowledgeEntries).toMatchObject({ active: 4, unembedded: 1 });
+		expect(coverage?.semanticFiles).toMatchObject({ active: 1, unembedded: 1 });
 	});
 
 	it('registers and activates the configured space when none is active', async () => {
@@ -268,6 +294,126 @@ describe('local re-embed', () => {
 		expect((await t.run((ctx) => ctx.db.get(active)))?.state).toBe('retired');
 	});
 
+	it('retries a page whose calls failed, and completes only when every row landed (F6)', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t);
+		const active = await seedEmbeddingSpace(t, { identity: NOMIC });
+		await insertEntry(t, 'steady', { embedding: padded(3), embeddingGeneratedAt: 1 });
+		const flaky = await insertEntry(t, 'flaky', { embedding: padded(4), embeddingGeneratedAt: 1 });
+		embedFailures.remaining.set('flaky: flaky content', 1);
+		await t.mutation(internal.aiRouting.embeddingReembedJobs.startLocalReembed, {
+			spaceId: active,
+			isForced: true,
+		});
+		await flush(t);
+		const [job] = await jobs(t);
+		expect(job).toMatchObject({ status: 'completed', embeddedCount: 2, failedCount: 1 });
+		expect((await t.run((ctx) => ctx.db.get(flaky)))?.embeddingSpaceId).toBe(active);
+	});
+
+	it('pauses when a page keeps failing, keeping its cursor for a resume (F6)', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t);
+		const active = await seedEmbeddingSpace(t, { identity: NOMIC });
+		const broken = await insertEntry(t, 'broken', {
+			embedding: padded(4),
+			embeddingGeneratedAt: 1,
+		});
+		embedFailures.remaining.set('broken: broken content', 99);
+		await t.mutation(internal.aiRouting.embeddingReembedJobs.startLocalReembed, {
+			spaceId: active,
+			isForced: true,
+		});
+		await flush(t);
+		const [job] = await jobs(t);
+		expect(job).toMatchObject({
+			status: 'paused',
+			pausedReason: 'provider_unavailable',
+			phase: 'knowledgeEntries',
+		});
+		expect(job!.cursor).toBeUndefined();
+		expect(embedFailures.texts).toHaveLength(3);
+		expect((await t.run((ctx) => ctx.db.get(broken)))?.embeddingSpaceId).toBeUndefined();
+
+		// The provider recovers: the kickoff's resume finishes the job.
+		embedFailures.remaining.clear();
+		expect(
+			await t.mutation(internal.aiRouting.embeddingReembedJobs.startLocalReembed, {
+				spaceId: active,
+				isForced: false,
+			})
+		).toBe('resumed');
+		await flush(t);
+		expect((await jobs(t))[0]).toMatchObject({ status: 'completed' });
+		expect((await t.run((ctx) => ctx.db.get(broken)))?.embeddingSpaceId).toBe(active);
+	});
+
+	it('a settings save ends the jobs of the old space at once (F5)', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t);
+		const active = await seedEmbeddingSpace(t, { identity: NOMIC });
+		await insertEntry(t, 'legacy', { embedding: padded(3), embeddingGeneratedAt: 1 });
+		await t.mutation(internal.aiRouting.embeddingReembedJobs.startLocalReembed, {
+			spaceId: active,
+			isForced: true,
+		});
+		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
+		await t.mutation(internal.aiProviderConfig._persistConfig, {
+			languageProviderKind: row!.languageProviderKind,
+			languageBaseUrl: row!.languageBaseUrl,
+			modelFast: row!.modelFast,
+			modelCapable: row!.modelCapable,
+			isLanguageLocal: true,
+			embeddingProviderKind: 'local',
+			embeddingModel: 'mxbai-embed-large',
+		});
+		const [job] = await jobs(t);
+		expect(job).toMatchObject({ status: 'cancelled', pausedReason: 'space_changed' });
+		// A batch the old generation scheduled writes nothing.
+		await t.action(internal.aiRouting.embeddingReembed.runBatch, {
+			jobId: job!._id,
+			generation: 1,
+		});
+		const rows = await t.run((ctx) => ctx.db.query('knowledgeEntries').collect());
+		expect(rows.every((r) => r.embeddingSpaceId === undefined)).toBe(true);
+	});
+
+	it('reactivating a space that shares the outgoing column moves it, keeping both (F4)', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t); // names nomic: A
+		const a = await seedEmbeddingSpace(t, { identity: NOMIC, state: 'retired' });
+		const c = await seedEmbeddingSpace(t, {
+			identity: { ...NOMIC, model: 'all-minilm' },
+			state: 'active',
+			slot: 'primary',
+		});
+		const aRow = await insertEntry(t, 'a row', { embedding: padded(3), ...stampedIn(a, 'fact') });
+		const cRow = await insertEntry(t, 'c row', { embedding: padded(4), ...stampedIn(c, 'fact') });
+
+		// The configuration names A again; a commit (here: the switch path) activates it.
+		await t.mutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
+			space: measuredLocalSpace(DIMS),
+		});
+		await flush(t);
+
+		const spaces = await t.run(async (ctx) => ({ a: await ctx.db.get(a), c: await ctx.db.get(c) }));
+		expect(spaces.a).toMatchObject({ state: 'active', slot: 'secondary', predecessorSpaceId: c });
+		expect(spaces.c).toMatchObject({ state: 'retired', slot: 'primary' });
+		const rows = await t.run(async (ctx) => ({
+			a: await ctx.db.get(aRow),
+			c: await ctx.db.get(cRow),
+		}));
+		// A's vector moved to its new column with its provenance; C's stays put.
+		expect(rows.a).toMatchObject({
+			secondaryEmbeddingSpaceId: a,
+			secondaryEmbeddingProvenance: 'measured',
+			secondaryEmbedding: padded(3),
+		});
+		expect(rows.c).toMatchObject({ embeddingSpaceId: c, embedding: padded(4) });
+		// The move copied A's vector rather than re-embedding it.
+		expect(embedCalls.texts).not.toContain('a row: a row content');
+	});
+
 	it('runs nothing by default without an AI configuration', async () => {
 		const t = convexTest(schema, modules);
 		await insertEntry(t, 'legacy', { embedding: padded(3), embeddingGeneratedAt: 1 });
@@ -303,10 +449,35 @@ describe('paid re-embed (hosted embedder)', () => {
 		const t = convexTest(schema, modules);
 		await configureOpenAi(t);
 		await seedEmbeddingSpace(t, { identity: OPENAI });
-		await expect(t.mutation(api.aiRouting.embeddingReembedJobs.startReembed, {})).rejects.toThrow(
+		await expect(t.action(api.aiRouting.embeddingReembed.startReembed, {})).rejects.toThrow(
 			/spend admission/
 		);
 		expect(await jobs(t)).toEqual([]);
+	});
+
+	it('counts unknown vectors on a first upgrade with nothing searchable (F9)', async () => {
+		const t = convexTest(schema, modules);
+		await configureOpenAi(t);
+		await insertEntry(t, 'legacy', { embedding: padded(3), embeddingGeneratedAt: 1 });
+		await t.action(internal.aiRouting.embeddingReembed.kickoff, { isForced: true });
+		await flush(t);
+		const coverage = await t.run((ctx) => ctx.db.query('embeddingCoverage').first());
+		expect(coverage?.searchableSpaceId).toBeUndefined();
+		expect(coverage?.knowledgeEntries).toMatchObject({ active: 0, unknown: 1 });
+	});
+
+	it('counts a pending switch against nothing, as retrieval does (F9)', async () => {
+		const t = convexTest(schema, modules);
+		await configureOpenAi(t);
+		const old = await seedEmbeddingSpace(t, {
+			identity: { ...OPENAI, model: 'text-embedding-ada-002' },
+		});
+		await insertEntry(t, 'ada row', { embedding: padded(3), ...stampedIn(old, 'fact') });
+		await t.mutation(internal.aiRouting.embeddingCoverage.requestScan, { isForced: true });
+		await flush(t);
+		const coverage = await t.run((ctx) => ctx.db.query('embeddingCoverage').first());
+		expect(coverage?.searchableSpaceId).toBeUndefined();
+		expect(coverage?.knowledgeEntries).toMatchObject({ active: 0, inactive: 1 });
 	});
 
 	it('is never started by the kickoff', async () => {
@@ -352,8 +523,9 @@ describe('paid re-embed (hosted embedder)', () => {
 	it('refuses a non-admin', async () => {
 		const t = convexTest(schema, modules);
 		session.role = 'editor';
-		await expect(t.mutation(api.aiRouting.embeddingReembedJobs.startReembed, {})).rejects.toThrow(
+		await expect(t.action(api.aiRouting.embeddingReembed.startReembed, {})).rejects.toThrow(
 			/forbidden/
 		);
+		expect(embedCalls.texts).toEqual([]);
 	});
 });

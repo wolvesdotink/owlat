@@ -138,13 +138,11 @@ export const AUDIT_ACTION_LITERALS = [
 	// AI routing policy saved (aiRouting/policy.ts `update`, ADR-0073).
 	action('ai_routing_policy.updated'),
 	// Embedding provenance (ADR-0073, Phase 1a and Phase 5): a legacy cohort
-	// recorded or revoked (aiRouting/embeddingAttestations.ts), a sample check
-	// that corroborates and never establishes (aiRouting/embeddingSampleCheck.ts),
-	// the re-embed job's admin controls (aiRouting/embeddingReembedJobs.ts) and
+	// recorded or revoked (aiRouting/embeddingAttestations.ts), the re-embed
+	// job's admin controls (aiRouting/embeddingReembedJobs.ts) and
 	// the staged rebuild (aiRouting/embeddingRebuildState.ts).
 	action('embedding_cohort.attested'),
 	action('embedding_cohort.revoked'),
-	action('embedding_cohort.sample_checked'),
 	action('embedding_reembed.started'),
 	action('embedding_reembed.resumed'),
 	action('embedding_reembed.cancelled'),

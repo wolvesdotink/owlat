@@ -8,12 +8,7 @@
 
 import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../_generated/server';
-import {
-	identityOf,
-	isIdentityOfTarget,
-	readActiveSpace,
-	readConfiguredTarget,
-} from '../lib/aiRouting/embeddingRegistry';
+import { readSearchableSpace } from '../lib/aiRouting/embeddingRegistry';
 
 export type VectorTable = 'knowledgeEntries' | 'semanticFiles';
 
@@ -36,10 +31,8 @@ const vectorTableValidator = v.union(v.literal('knowledgeEntries'), v.literal('s
  * and do not count.
  */
 async function tableHasVectors(ctx: QueryCtx, table: VectorTable): Promise<boolean> {
-	const active = await readActiveSpace(ctx.db);
+	const active = await readSearchableSpace(ctx.db);
 	if (!active) return false;
-	const target = await readConfiguredTarget(ctx.db);
-	if (!target || !isIdentityOfTarget(identityOf(active), target)) return false;
 	const row =
 		active.slot === 'primary'
 			? await ctx.db

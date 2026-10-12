@@ -81,6 +81,13 @@ export const embeddingSecondarySlotFields = {
 	secondaryEmbedding: v.optional(v.array(v.float64())),
 	secondaryEmbeddingSpaceId: v.optional(v.id('embeddingSpaces')),
 	secondaryEmbeddingGeneratedAt: v.optional(v.number()),
+	/**
+	 * The secondary column's provenance, as `embeddingProvenance` is the primary's
+	 * (embed lane): a vector copied between columns keeps where it came from, so a
+	 * revoked attestation clears its copies too.
+	 */
+	secondaryEmbeddingProvenance: v.optional(embeddingProvenanceSourceValidator),
+	secondaryEmbeddingAttestationId: v.optional(v.id('embeddingAttestations')),
 };
 
 /** The cohort an attestation (or a deployment record) assigns to a space. */
@@ -106,16 +113,12 @@ const embeddingCoverageCountsValidator = v.object({
 	unembedded: v.number(),
 });
 
-/**
- * The last completed coverage count of the active space (`embeddingSpaces.coverage`),
- * from a bounded paged walk (`aiRouting/embeddingCoverage.ts`): Convex cannot count
- * rows without reading them, so the settings page reads this snapshot.
- */
-export const embeddingCoverageValidator = v.object({
+/** The coverage counts the walk stores (`embeddingCoverage`) and the settings page reads. */
+export const embeddingCoverageFields = {
 	knowledgeEntries: embeddingCoverageCountsValidator,
 	semanticFiles: embeddingCoverageCountsValidator,
 	measuredAt: v.number(),
-});
+};
 
 /**
  * A space as a job measured it (`lib/aiRouting/embeddingProbe.ts`): the

@@ -180,7 +180,7 @@ import type * as aiRouting_embeddingRebuild from '../aiRouting/embeddingRebuild.
 import type * as aiRouting_embeddingRebuildState from '../aiRouting/embeddingRebuildState.js';
 import type * as aiRouting_embeddingReembed from '../aiRouting/embeddingReembed.js';
 import type * as aiRouting_embeddingReembedJobs from '../aiRouting/embeddingReembedJobs.js';
-import type * as aiRouting_embeddingSampleCheck from '../aiRouting/embeddingSampleCheck.js';
+import type * as aiRouting_embeddingSlotMigration from '../aiRouting/embeddingSlotMigration.js';
 import type * as aiRouting_embeddingSpaces from '../aiRouting/embeddingSpaces.js';
 import type * as aiRouting_policy from '../aiRouting/policy.js';
 import type * as analytics_adaptiveDashboard from '../analytics/adaptiveDashboard.js';
@@ -1820,7 +1820,7 @@ declare const fullApi: ApiFromModules<{
 	'aiRouting/embeddingRebuildState': typeof aiRouting_embeddingRebuildState;
 	'aiRouting/embeddingReembed': typeof aiRouting_embeddingReembed;
 	'aiRouting/embeddingReembedJobs': typeof aiRouting_embeddingReembedJobs;
-	'aiRouting/embeddingSampleCheck': typeof aiRouting_embeddingSampleCheck;
+	'aiRouting/embeddingSlotMigration': typeof aiRouting_embeddingSlotMigration;
 	'aiRouting/embeddingSpaces': typeof aiRouting_embeddingSpaces;
 	'aiRouting/policy': typeof aiRouting_policy;
 	'analytics/adaptiveDashboard': typeof analytics_adaptiveDashboard;

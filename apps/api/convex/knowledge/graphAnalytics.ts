@@ -30,7 +30,7 @@
  * endpoint detail.
  */
 
-import { readActiveSpace, spaceRefOf, vectorInSpace } from '../lib/aiRouting/embeddingRegistry';
+import { readSearchableSpace, spaceRefOf, vectorInSpace } from '../lib/aiRouting/embeddingRegistry';
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -153,7 +153,7 @@ export const getEmbeddingsByIds = internalQuery({
 		const byId = await batchGet(ctx, args.ids);
 		const out: { id: Id<'knowledgeEntries'>; embedding: number[] }[] = [];
 		// Only active-space vectors, so every distance compares one space (ADR-0073).
-		const active = await readActiveSpace(ctx.db);
+		const active = await readSearchableSpace(ctx.db);
 		if (!active) return out;
 		const ref = spaceRefOf(active);
 		for (const id of args.ids) {

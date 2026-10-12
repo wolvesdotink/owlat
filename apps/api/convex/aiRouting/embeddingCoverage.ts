@@ -1,13 +1,18 @@
 /**
- * Coverage of the active embedding space (ADR-0073, D8): how many knowledge
- * entries and files vector search can find, and how many wait as unknown
- * (written before provenance), inactive (another space only) or unembedded.
+ * Embedding coverage (ADR-0073, D8): how many knowledge entries and files
+ * vector search can find, and how many wait as unknown (written before
+ * provenance), inactive (another space only) or unembedded.
+ *
+ * Counted against the space retrieval really searches (`readSearchableSpace`:
+ * active AND still configured), or against none: with no searchable space (a
+ * first upgrade, or a switch whose first vector has not landed) every vector
+ * counts as not findable, which is exactly what retrieval does.
  *
  * Convex cannot count rows without reading them, and a row carries up to two
  * 1536-wide vectors, so a live count would not fit a query. A bounded paged
- * walk counts instead and stores the result on the space
- * (`embeddingSpaces.coverage`), which the settings page reads (`status`). It
- * runs after a switch, an attestation or a finished re-embed, and at most daily
+ * walk counts instead and stores the result in the `embeddingCoverage`
+ * singleton, which the settings page reads (`status`). It runs after a switch,
+ * an attestation, a slot move or a finished re-embed, and at most daily
  * otherwise. The counts are a snapshot: rows written since are not in them.
  */
 
@@ -16,11 +21,14 @@ import { internal } from '../_generated/api';
 import { internalAction, internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { adminMutation } from '../lib/authedFunctions';
-import { readActiveSpace, rowCoverage, type SpaceRef } from '../lib/aiRouting/embeddingRegistry';
-import { embeddingCoverageValidator, embeddingTableValidator } from '../lib/validators/embedding';
+import {
+	readSearchableSpace,
+	rowCoverage,
+	type SpaceRef,
+} from '../lib/aiRouting/embeddingRegistry';
+import { embeddingCoverageFields, embeddingTableValidator } from '../lib/validators/embedding';
 
-type Coverage = Infer<typeof embeddingCoverageValidator>;
-type Counts = Coverage['knowledgeEntries'];
+type Counts = Infer<typeof embeddingCoverageFields.knowledgeEntries>;
 
 const COVERAGE_PAGE_SIZE = 64;
 /** Pages one action invocation walks before it reschedules itself. */
@@ -37,15 +45,15 @@ const countsValidator = v.object({
 
 const zero = (): Counts => ({ active: 0, unknown: 0, inactive: 0, unembedded: 0 });
 
-/** One page of a table, counted against the active space. */
+/** One page of a table, counted against the searchable space (or none). */
 export const coveragePage = internalQuery({
 	args: {
 		table: embeddingTableValidator,
 		cursor: v.union(v.string(), v.null()),
-		spaceId: v.id('embeddingSpaces'),
+		spaceId: v.optional(v.id('embeddingSpaces')),
 	},
 	handler: async (ctx, args) => {
-		const space = await ctx.db.get(args.spaceId);
+		const space = args.spaceId ? await ctx.db.get(args.spaceId) : null;
 		const ref: SpaceRef | null = space ? { spaceId: space._id, slot: space.slot } : null;
 		const page = await ctx.db
 			.query(args.table)
@@ -56,10 +64,11 @@ export const coveragePage = internalQuery({
 	},
 });
 
-/** Walk both tables and store the counts on the space. Resumes itself in slices. */
+/** Walk both tables and store the counts. Resumes itself in slices. */
 export const scan = internalAction({
 	args: {
-		spaceId: v.id('embeddingSpaces'),
+		spaceId: v.optional(v.id('embeddingSpaces')),
+		startedAt: v.number(),
 		table: embeddingTableValidator,
 		cursor: v.union(v.string(), v.null()),
 		knowledgeEntries: countsValidator,
@@ -87,13 +96,14 @@ export const scan = internalAction({
 				continue;
 			}
 			await ctx.runMutation(internal.aiRouting.embeddingCoverage.saveCoverage, {
-				spaceId: args.spaceId,
-				coverage: { ...totals, measuredAt: Date.now() },
+				...totals,
+				searchableSpaceId: args.spaceId,
+				measuredAt: args.startedAt,
 			});
 			return;
 		}
 		await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingCoverage.scan, {
-			spaceId: args.spaceId,
+			...args,
 			table,
 			cursor,
 			...totals,
@@ -101,24 +111,36 @@ export const scan = internalAction({
 	},
 });
 
+/** The stored count, or null before the first walk finished. */
+export async function readCoverage(db: MutationCtx['db']) {
+	return db.query('embeddingCoverage').first(); // bounded: singleton
+}
+
 export const saveCoverage = internalMutation({
-	args: { spaceId: v.id('embeddingSpaces'), coverage: embeddingCoverageValidator },
+	args: {
+		...embeddingCoverageFields,
+		searchableSpaceId: v.optional(v.id('embeddingSpaces')),
+	},
 	handler: async (ctx, args) => {
-		const space = await ctx.db.get(args.spaceId);
-		if (!space) return;
-		// Concurrent scans: the newest snapshot wins.
-		if (space.coverage && space.coverage.measuredAt > args.coverage.measuredAt) return;
-		await ctx.db.patch(space._id, { coverage: args.coverage, updatedAt: Date.now() });
+		const stored = await readCoverage(ctx.db);
+		// Concurrent walks: the one that started last wins.
+		if (stored && stored.measuredAt > args.measuredAt) return;
+		if (stored) await ctx.db.replace(stored._id, args);
+		else await ctx.db.insert('embeddingCoverage', args);
 	},
 });
 
 async function scheduleScan(ctx: MutationCtx, isForced: boolean): Promise<boolean> {
-	const active = await readActiveSpace(ctx.db);
-	if (!active) return false;
-	const age = active.coverage ? Date.now() - active.coverage.measuredAt : Infinity;
-	if (!isForced && age < COVERAGE_MAX_AGE_MS) return false;
+	const searchable = await readSearchableSpace(ctx.db);
+	const stored = await readCoverage(ctx.db);
+	const isCurrent =
+		stored !== null &&
+		stored.searchableSpaceId === searchable?._id &&
+		Date.now() - stored.measuredAt < COVERAGE_MAX_AGE_MS;
+	if (!isForced && isCurrent) return false;
 	await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingCoverage.scan, {
-		spaceId: active._id,
+		...(searchable ? { spaceId: searchable._id } : {}),
+		startedAt: Date.now(),
 		table: 'knowledgeEntries',
 		cursor: null,
 		knowledgeEntries: zero(),
@@ -127,7 +149,7 @@ async function scheduleScan(ctx: MutationCtx, isForced: boolean): Promise<boolea
 	return true;
 }
 
-/** Count the active space's coverage now (`isForced`), or when the snapshot is a day old. */
+/** Count coverage now (`isForced`), or when the count is a day old or the searchable space moved. */
 export const requestScan = internalMutation({
 	args: { isForced: v.boolean() },
 	handler: async (ctx, args): Promise<boolean> => scheduleScan(ctx, args.isForced),

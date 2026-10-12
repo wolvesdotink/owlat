@@ -53,6 +53,7 @@ import {
 	storedEmbeddingTarget,
 	throwEmbeddingKindRequired,
 } from './lib/embeddingSpace';
+import { endReembedJobs } from './lib/aiRouting/embeddingRegistry';
 import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
@@ -248,6 +249,8 @@ export const _persistConfig = internalMutation({
 		// The new target's space activates with its first vector; a local embedder
 		// is measured and re-embeds the corpus right away (aiRouting/embeddingReembed).
 		if (isEmbeddingTargetChanged) {
+			// Jobs embedding into the old space stop; the kickoff starts the new one's.
+			await endReembedJobs(ctx);
 			await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
 				isForced: true,
 			});
@@ -310,6 +313,7 @@ export const removeConfig = adminMutation({
 		// so removal no longer loses them. The env fallback's target, if any, is a
 		// switch like any other.
 		await ctx.db.delete(existing._id);
+		await endReembedJobs(ctx);
 		await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
 			isForced: true,
 		});

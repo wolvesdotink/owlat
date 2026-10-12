@@ -15,14 +15,25 @@
  *     never held env overrides or digests), so an operator cites them here.
  *   - `attestation`: an operator attests to those facts.
  *
- * A sample re-embed (`embeddingSampleCheck.ts`) may corroborate a cohort but
- * never establishes one: a deployment that switched A → B → A passes a sample of
- * A rows. Applying a cohort stamps its unknown rows with the space and the
- * evidence row (`embeddingProvenance` = the source, `embeddingAttestationId`);
- * revoking it clears exactly those stamps again. Both walks are bounded pages.
+ * A sample re-embed is deliberately not offered: it could only corroborate, never
+ * establish (a deployment that switched A → B → A passes a sample of A rows),
+ * and a legacy row keeps no exact record of the input its vector was made from.
+ * Applying a cohort assigns its unknown rows to the space, stamped with the
+ * evidence (`embeddingProvenance` = the source, `embeddingAttestationId`):
  *
- * Only primary-column vectors exist from before provenance, so the attested
- * space must keep its vectors in the primary column.
+ *   - Legacy vectors are all in the primary column. When the attested space
+ *     keeps its vectors there, they are stamped in place; when it uses the
+ *     secondary column, they are copied there with the same stamps
+ *     (`secondaryEmbedding*`), and the primary column keeps them unknown.
+ *   - A space that is not the active one takes the column the active space does
+ *     not use (`reslotSpace` moves an existing one), so attesting never puts it
+ *     where re-embedding the active space would overwrite it, or the reverse.
+ *   - When the attested space is the configured target and nothing is
+ *     searchable yet (a hosted deployment's first upgrade), it is activated: the
+ *     cohort becomes searchable as it is applied.
+ *
+ * Revoking clears exactly the stamps (and copies) that attestation made, in both
+ * columns. Every walk is bounded pages.
  */
 
 import { v } from 'convex/values';
@@ -33,16 +44,36 @@ import { internalMutation } from '../lib/writeFence';
 import { adminMutation } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
-import { embeddingSpaceEntryKey, embeddingSpaceIdentityKey } from '../lib/aiRouting/embeddingKeys';
-import { readSpaceByIdentity } from '../lib/aiRouting/embeddingRegistry';
+import {
+	embeddingSpaceEntryKey,
+	embeddingSpaceIdentityKey,
+	type EmbeddingSpaceIdentity,
+} from '../lib/aiRouting/embeddingKeys';
+import {
+	activateSpace,
+	identityOf,
+	isIdentityOfTarget,
+	otherSlot,
+	readActiveSpace,
+	readConfiguredTarget,
+	readSearchableSpace,
+	readSpaceByIdentity,
+	readStagedSpace,
+	reslotSpace,
+	slotFields,
+	type SpaceDoc,
+} from '../lib/aiRouting/embeddingRegistry';
 import { EMBEDDING_DIMENSIONS } from '../lib/constants';
 import {
 	embeddingCohortValidator,
+	embeddingSlotValidator,
 	embeddingSpaceIdentityFields,
+	embeddingTableValidator,
 } from '../lib/validators/embedding';
 
 type Attestation = Doc<'embeddingAttestations'>;
 type EmbeddingTable = Attestation['cohort']['tables'][number];
+type EntryType = Doc<'knowledgeEntries'>['entryType'];
 
 const ATTESTATION_PAGE_SIZE = 64;
 const STATEMENT_MAX_CHARS = 2000;
@@ -58,19 +89,14 @@ export function fitsAttestedWidth(vector: readonly number[], dimensions: number)
 	return true;
 }
 
-/** The index range of one cohort table: unknown rows (or the attested space's) in the period. */
-function cohortPage(
-	ctx: MutationCtx,
-	table: EmbeddingTable,
-	spaceId: Id<'embeddingSpaces'> | undefined,
-	attestation: Attestation
-) {
+/** The unknown primary-column rows of one cohort table, in the cohort's period. */
+function cohortPage(ctx: MutationCtx, table: EmbeddingTable, attestation: Attestation) {
 	const { writtenFrom, writtenUntil } = attestation.cohort;
 	return ctx.db
 		.query(table)
 		.withIndex('by_embedding_space', (q) =>
 			q
-				.eq('embeddingSpaceId', spaceId)
+				.eq('embeddingSpaceId', undefined)
 				.gte('embeddingGeneratedAt', writtenFrom ?? 0)
 				.lt('embeddingGeneratedAt', writtenUntil)
 		)
@@ -85,10 +111,54 @@ function nextPhase(attestation: Attestation): EmbeddingTable | undefined {
 }
 
 /**
+ * The space a cohort is attested to, placed so it shares no column with the
+ * active space (unless it is the active space) and never takes a staged
+ * rebuild's column.
+ */
+async function placeAttestedSpace(
+	ctx: MutationCtx,
+	args: {
+		spaceId?: Id<'embeddingSpaces'>;
+		identity?: EmbeddingSpaceIdentity;
+		source: 'record' | 'attestation';
+	}
+): Promise<SpaceDoc> {
+	const active = await readActiveSpace(ctx.db);
+	const staged = await readStagedSpace(ctx.db);
+	const known = args.spaceId
+		? await getOrThrow(ctx, args.spaceId, 'Embedding space')
+		: await readSpaceByIdentity(ctx.db, args.identity!);
+	if (known && (known.state === 'active' || known.state === 'staged')) return known;
+	if (staged) {
+		throwInvalidState(
+			'A staged rebuild uses the other vector column. Attest to the active or the staged space, or cancel the rebuild first.'
+		);
+	}
+	const slot = active ? otherSlot(active.slot) : 'primary';
+	if (known) {
+		await reslotSpace(ctx, known, slot);
+		return (await ctx.db.get(known._id))!;
+	}
+	const identity = args.identity!;
+	const now = Date.now();
+	const spaceId = await ctx.db.insert('embeddingSpaces', {
+		...identity,
+		identityKey: embeddingSpaceIdentityKey(identity),
+		source: args.source,
+		state: 'retired',
+		slot,
+		createdAt: now,
+		updatedAt: now,
+	});
+	return (await ctx.db.get(spaceId))!;
+}
+
+/**
  * Record a cohort and start assigning it. The space is an existing one
- * (`spaceId`) or an identity the evidence names, registered as a retired
- * space; rows of a space that is not active stay out of vector search until
- * re-embedded, but their provenance is known.
+ * (`spaceId`) or an identity the evidence names, registered here. When it is
+ * the configured target and nothing is searchable yet, it becomes the active
+ * space (the first-upgrade path); otherwise rows of a space that is not active
+ * stay out of vector search until re-embedded, but their provenance is known.
  */
 export const attest = adminMutation({
 	args: {
@@ -114,34 +184,18 @@ export const attest = adminMutation({
 		if ((args.spaceId === undefined) === (args.identity === undefined)) {
 			throwInvalidInput('Name the space either by id or by its identity.');
 		}
-
-		let space: Doc<'embeddingSpaces'>;
-		if (args.spaceId) {
-			space = await getOrThrow(ctx, args.spaceId, 'Embedding space');
-		} else {
-			const identity = args.identity!;
-			if (identity.dimensions < 1 || identity.dimensions > EMBEDDING_DIMENSIONS) {
-				throwInvalidInput(`The width must be between 1 and ${EMBEDDING_DIMENSIONS}.`);
-			}
-			const known = await readSpaceByIdentity(ctx.db, identity);
-			space =
-				known ??
-				(await ctx.db.get(
-					await ctx.db.insert('embeddingSpaces', {
-						...identity,
-						identityKey: embeddingSpaceIdentityKey(identity),
-						source: args.source,
-						state: 'retired',
-						slot: 'primary',
-						createdAt: now,
-						updatedAt: now,
-					})
-				))!;
+		if (
+			args.identity &&
+			(args.identity.dimensions < 1 || args.identity.dimensions > EMBEDDING_DIMENSIONS)
+		) {
+			throwInvalidInput(`The width must be between 1 and ${EMBEDDING_DIMENSIONS}.`);
 		}
-		if (space.slot !== 'primary') {
-			throwInvalidState(
-				'Vectors from before provenance are in the primary column, but this space keeps its vectors in the other one. Re-embed instead.'
-			);
+
+		let space = await placeAttestedSpace(ctx, args);
+		const target = await readConfiguredTarget(ctx.db);
+		const isConfigured = target !== null && isIdentityOfTarget(identityOf(space), target);
+		if (isConfigured && space.state !== 'active' && !(await readSearchableSpace(ctx.db))) {
+			space = await activateSpace(ctx, { existing: space });
 		}
 
 		const attestationId = await ctx.db.insert('embeddingAttestations', {
@@ -168,6 +222,7 @@ export const attest = adminMutation({
 				tables: tables.join(','),
 				writtenFrom: writtenFrom ?? 0,
 				writtenUntil,
+				isActivated: space.state === 'active',
 			},
 			detailsBlob: JSON.stringify({ statement, cohort: args.cohort }),
 		});
@@ -178,6 +233,31 @@ export const attest = adminMutation({
 	},
 });
 
+/** The columns that assign a legacy primary vector to `space`, in `space`'s column. */
+function assignFields(
+	row: { embedding: number[]; embeddingGeneratedAt?: number },
+	space: SpaceDoc,
+	attestation: Attestation,
+	entryType: EntryType | undefined
+): Record<string, unknown> {
+	if (space.slot === 'primary') {
+		return {
+			embeddingSpaceId: space._id,
+			embeddingProvenance: attestation.source,
+			embeddingAttestationId: attestation._id,
+			...(entryType
+				? { embeddingSpaceEntryKey: embeddingSpaceEntryKey(space._id, entryType) }
+				: {}),
+		};
+	}
+	return slotFields(space, row.embedding, {
+		now: row.embeddingGeneratedAt ?? attestation.attestedAt,
+		entryType,
+		provenance: attestation.source,
+		attestationId: attestation._id,
+	});
+}
+
 /** Assign one page of a cohort's unknown rows to its space. */
 export const applyPage = internalMutation({
 	args: { attestationId: v.id('embeddingAttestations') },
@@ -187,23 +267,17 @@ export const applyPage = internalMutation({
 		const space = await ctx.db.get(attestation.spaceId);
 		if (!space) return;
 		const table = attestation.phase;
-		const page = await cohortPage(ctx, table, undefined, attestation);
+		const page = await cohortPage(ctx, table, attestation);
 		const stamp = attestation.cohort.legacyModelStamp;
 		let assigned = 0;
 		for (const row of page.page) {
 			if (row.embedding.length === 0) continue;
 			if (stamp !== undefined && row.embeddingModel !== stamp) continue;
 			if (!fitsAttestedWidth(row.embedding, space.dimensions)) continue;
+			if (row.secondaryEmbeddingAttestationId === attestation._id) continue; // copied already
 			const entryType =
 				table === 'knowledgeEntries' ? (row as Doc<'knowledgeEntries'>).entryType : undefined;
-			await ctx.db.patch(row._id, {
-				embeddingSpaceId: space._id,
-				embeddingProvenance: attestation.source,
-				embeddingAttestationId: attestation._id,
-				...(entryType
-					? { embeddingSpaceEntryKey: embeddingSpaceEntryKey(space._id, entryType) }
-					: {}),
-			});
+			await ctx.db.patch(row._id, assignFields(row, space, attestation, entryType));
 			assigned += 1;
 		}
 		const now = Date.now();
@@ -236,8 +310,8 @@ export const applyPage = internalMutation({
 });
 
 /**
- * Revoke a cohort: its rows return to unknown (out of vector search) and the
- * re-embed job brings them back with measured provenance.
+ * Revoke a cohort: its rows return to unknown (out of vector search), in both
+ * columns, and the re-embed job brings them back with measured provenance.
  */
 export const revoke = adminMutation({
 	args: { attestationId: v.id('embeddingAttestations') },
@@ -249,7 +323,7 @@ export const revoke = adminMutation({
 			status: 'revoked',
 			revokedAt: now,
 			revokedBy: session.userId,
-			phase: attestation.cohort.tables[0],
+			phase: undefined,
 			cursor: undefined,
 			updatedAt: now,
 		});
@@ -261,40 +335,91 @@ export const revoke = adminMutation({
 			resourceId: attestation.spaceId,
 			details: { attestationId: attestation._id, rowsAssigned: attestation.rowsAssigned },
 		});
-		await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingAttestations.revokePage, args);
+		await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingAttestations.revokePage, {
+			attestationId: attestation._id,
+			table: 'knowledgeEntries',
+			column: 'primary',
+			cursor: null,
+		});
 	},
 });
 
-/** Clear one page of a revoked cohort's stamps (only rows this attestation assigned). */
+const REVOKE_STEPS = [
+	['knowledgeEntries', 'primary'],
+	['knowledgeEntries', 'secondary'],
+	['semanticFiles', 'primary'],
+	['semanticFiles', 'secondary'],
+] as const;
+
+/**
+ * Clear one page of a revoked cohort's stamps: every row (in either column) that
+ * carries this attestation, wherever a slot move copied it.
+ */
 export const revokePage = internalMutation({
-	args: { attestationId: v.id('embeddingAttestations') },
+	args: {
+		attestationId: v.id('embeddingAttestations'),
+		table: embeddingTableValidator,
+		column: embeddingSlotValidator,
+		cursor: v.union(v.string(), v.null()),
+	},
 	handler: async (ctx, args) => {
 		const attestation = await ctx.db.get(args.attestationId);
-		if (!attestation || attestation.status !== 'revoked' || !attestation.phase) return;
-		const table = attestation.phase;
-		const page = await cohortPage(ctx, table, attestation.spaceId, attestation);
+		if (!attestation || attestation.status !== 'revoked') return;
+		const spaceId = attestation.spaceId;
+		const isKnowledge = args.table === 'knowledgeEntries';
+		const page =
+			args.column === 'primary'
+				? await ctx.db
+						.query(args.table)
+						.withIndex('by_embedding_space', (q) => q.eq('embeddingSpaceId', spaceId))
+						.paginate({ cursor: args.cursor, numItems: ATTESTATION_PAGE_SIZE })
+				: await ctx.db
+						.query(args.table)
+						.withIndex('by_secondary_embedding_space', (q) =>
+							q.eq('secondaryEmbeddingSpaceId', spaceId)
+						)
+						.paginate({ cursor: args.cursor, numItems: ATTESTATION_PAGE_SIZE });
 		for (const row of page.page) {
-			if (row.embeddingAttestationId !== attestation._id) continue;
-			await ctx.db.patch(row._id, {
-				embeddingSpaceId: undefined,
-				embeddingProvenance: undefined,
-				embeddingAttestationId: undefined,
-				...(table === 'knowledgeEntries' ? { embeddingSpaceEntryKey: undefined } : {}),
-			});
-		}
-		const now = Date.now();
-		if (!page.isDone) {
-			await ctx.db.patch(attestation._id, { cursor: page.continueCursor, updatedAt: now });
-		} else {
-			const phase = nextPhase(attestation);
-			await ctx.db.patch(attestation._id, { cursor: undefined, phase, updatedAt: now });
-			if (!phase) {
-				await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
-					isForced: true,
+			if (args.column === 'primary' && row.embeddingAttestationId === attestation._id) {
+				await ctx.db.patch(row._id, {
+					embeddingSpaceId: undefined,
+					embeddingProvenance: undefined,
+					embeddingAttestationId: undefined,
+					...(isKnowledge ? { embeddingSpaceEntryKey: undefined } : {}),
 				});
-				return;
+			} else if (
+				args.column === 'secondary' &&
+				row.secondaryEmbeddingAttestationId === attestation._id
+			) {
+				await ctx.db.patch(row._id, {
+					secondaryEmbedding: undefined,
+					secondaryEmbeddingSpaceId: undefined,
+					secondaryEmbeddingGeneratedAt: undefined,
+					secondaryEmbeddingProvenance: undefined,
+					secondaryEmbeddingAttestationId: undefined,
+					...(isKnowledge ? { secondaryEmbeddingSpaceEntryKey: undefined } : {}),
+				});
 			}
 		}
-		await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingAttestations.revokePage, args);
+		const step = REVOKE_STEPS.findIndex(([t, c]) => t === args.table && c === args.column);
+		const next = page.isDone ? REVOKE_STEPS[step + 1] : undefined;
+		if (!page.isDone) {
+			await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingAttestations.revokePage, {
+				...args,
+				cursor: page.continueCursor,
+			});
+		} else if (next) {
+			await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingAttestations.revokePage, {
+				attestationId: args.attestationId,
+				table: next[0],
+				column: next[1],
+				cursor: null,
+			});
+		} else {
+			await ctx.db.patch(attestation._id, { updatedAt: Date.now() });
+			await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
+				isForced: true,
+			});
+		}
 	},
 });

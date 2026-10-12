@@ -226,6 +226,20 @@ describe('a query embedded here searches its own space', () => {
 		]);
 	});
 
+	it('a pending switch stops precomputed searches of the old space at once (F5)', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t);
+		const nomic = await seedEmbeddingSpace(t);
+		await insertEntry(t, 'nomic fact', unit(5), stampedIn(nomic, 'fact'));
+		expect(await search(t, { embedding: unit(5), embeddingSpaceId: nomic })).toHaveLength(1);
+
+		// Saved, but no mxbai vector has landed: nomic is still `active` by state.
+		await configureLocalEmbedder(t, 'mxbai-embed-large');
+		expect(await search(t, { embedding: unit(5), embeddingSpaceId: nomic })).toEqual([]);
+		const status = await t.run((ctx) => ctx.db.get(nomic));
+		expect(status?.state).toBe('active');
+	});
+
 	it('A → B → A: the first space comes back with its vectors, by record not by sample', async () => {
 		const t = convexTest(schema, modules);
 		const commit = (title: string, model: string, at: number) =>

@@ -6,8 +6,11 @@
  * activate it in ONE mutation: the staged space becomes active, the previous
  * active space retires with its vectors intact in its own column, and the
  * stored configuration switches to the staged embedder. Rollback is the same
- * flip back. A staged rebuild needs a stored configuration, because activation
- * rewrites it; an env-only deployment switches through its environment (D8).
+ * flip back to the recorded predecessor. A staged rebuild needs a stored
+ * configuration, because activation rewrites it; an env-only deployment switches
+ * through its environment (D8). Activation needs a completed rebuild (every
+ * page landed) and no row written during the rebuild still lacking its vector
+ * (`catchUpRebuild` walks again).
  */
 
 import { v } from 'convex/values';
@@ -19,6 +22,8 @@ import { recordAuditLog } from '../lib/auditLog';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { throwConflict, throwInvalidState } from '../_utils/errors';
 import { isLocalEmbeddingKind, storedEmbeddingTarget } from '../lib/embeddingSpace';
+import type { EmbeddingProviderKind } from '../lib/llmProviders/types';
+import { isPaidEmbeddingAdmissionAvailable } from '../lib/aiRouting/embeddingAdmission';
 import { embeddingSpaceIdentityKey } from '../lib/aiRouting/embeddingKeys';
 import {
 	activateSpace,
@@ -26,14 +31,18 @@ import {
 	isIdentityOfTarget,
 	otherSlot,
 	readActiveSpace,
+	readSearchableSpace,
 	readSpaceByIdentity,
 	readStagedSpace,
+	reslotSpace,
 	retireStagedSpace,
+	spaceRefOf,
+	vectorInSpace,
 	type SpaceDoc,
 } from '../lib/aiRouting/embeddingRegistry';
 import { fileEmbeddingInput, knowledgeEmbeddingInput } from '../lib/aiRouting/embeddingInputs';
 import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
-import { readOpenJob, startJob } from './embeddingReembedJobs';
+import { PAID_EMBEDDING_REFUSAL, readOpenJob, rowInput, startJob } from './embeddingReembedJobs';
 import { readRollbackSpace } from './embeddingSpaces';
 
 /** The minimum share of sampled rows whose own text must find them (top 5). */
@@ -52,8 +61,26 @@ async function requireStoredConfig(ctx: MutationCtx): Promise<ConfigRow> {
 }
 
 /**
- * Point the stored configuration at `space`'s embedder. A stored hosted key
- * belongs to its kind, so it is cleared when the kind changes.
+ * Whether a staged rebuild (and its rollback) may move the stored embedder from
+ * `from` to `to` without a new secret: between local kinds, or between models
+ * of one provider kind, whose stored key stays valid. Any other move (hosted to
+ * local, local to hosted, one hosted provider to another) would drop or need a
+ * key, which would leave the rollback without credentials; it goes through the
+ * settings instead (the D8 switch path).
+ */
+export function isStagedTransitionAllowed(
+	from: EmbeddingProviderKind,
+	to: EmbeddingProviderKind
+): boolean {
+	return from === to || (isLocalEmbeddingKind(from) && isLocalEmbeddingKind(to));
+}
+
+export const STAGED_TRANSITION_REFUSAL =
+	'A staged rebuild can move between local embedders, or between models of the stored hosted provider. To change to or from a hosted provider, select it in the settings.';
+
+/**
+ * Point the stored configuration at `space`'s embedder. Only a transition
+ * `isStagedTransitionAllowed` accepts, so the stored key (if any) stays valid.
  */
 async function switchConfigTo(ctx: MutationCtx, row: ConfigRow, space: SpaceDoc): Promise<void> {
 	const selection = { embeddingProviderKind: space.provider, embeddingModel: space.model };
@@ -63,19 +90,12 @@ async function switchConfigTo(ctx: MutationCtx, row: ConfigRow, space: SpaceDoc)
 	) {
 		throwInvalidState('This embedding space cannot be selected in the stored configuration.');
 	}
-	const isKindChanged = row.embeddingProviderKind !== space.provider;
+	if (!isStagedTransitionAllowed(row.embeddingProviderKind, space.provider)) {
+		throwInvalidState(STAGED_TRANSITION_REFUSAL);
+	}
 	await ctx.db.patch(row._id, {
 		...selection,
 		embeddingModelVersion: row.embeddingModelVersion + 1,
-		...(isKindChanged
-			? {
-					embeddingSecretCiphertext: undefined,
-					embeddingSecretIv: undefined,
-					embeddingSecretAuthTag: undefined,
-					embeddingSecretEnvelopeVersion: undefined,
-					embeddingKeyPreview: undefined,
-				}
-			: {}),
 		updatedAt: Date.now(),
 	});
 }
@@ -85,10 +105,13 @@ export const stageSpace = internalMutation({
 	args: { space: measuredEmbeddingSpaceValidator, isPaid: v.boolean() },
 	handler: async (ctx, args): Promise<Id<'embeddingSpaces'>> => {
 		const session = await requireOrgPermission(ctx, 'organization:manage');
-		await requireStoredConfig(ctx);
-		const active = await readActiveSpace(ctx.db);
+		const row = await requireStoredConfig(ctx);
+		const active = await readSearchableSpace(ctx.db);
 		if (!active) {
 			throwInvalidState('There is no active embedding space to rebuild from yet.');
+		}
+		if (!isStagedTransitionAllowed(row.embeddingProviderKind, args.space.provider)) {
+			throwInvalidState(STAGED_TRANSITION_REFUSAL);
 		}
 		if (await readStagedSpace(ctx.db)) throwConflict('A staged rebuild already exists.');
 		if (await readOpenJob(ctx)) {
@@ -103,12 +126,10 @@ export const stageSpace = internalMutation({
 		const known = await readSpaceByIdentity(ctx.db, identity);
 		let spaceId: Id<'embeddingSpaces'>;
 		if (known) {
-			await ctx.db.patch(known._id, {
-				state: 'staged',
-				slot,
-				retiredAt: undefined,
-				updatedAt: now,
-			});
+			// Its earlier vectors move to the staged column; the rebuild copies
+			// the rest rather than re-embedding them.
+			await reslotSpace(ctx, known, slot);
+			await ctx.db.patch(known._id, { state: 'staged', retiredAt: undefined, updatedAt: now });
 			spaceId = known._id;
 		} else {
 			spaceId = await ctx.db.insert('embeddingSpaces', {
@@ -198,6 +219,13 @@ export const activateStagedSpace = internalMutation({
 		if (job?.kind !== 'rebuild' || job.status !== 'completed') {
 			throwInvalidState('The staged rebuild has not completed yet.');
 		}
+		const pending = await countRebuildStragglers(ctx, staged, job.startedAt);
+		if (pending > 0) {
+			throwInvalidState(
+				`${pending} item(s) arrived during the rebuild and have no vector in the new model yet. Run the rebuild's catch-up, then activate.`,
+				{ pending }
+			);
+		}
 		const previous = await readActiveSpace(ctx.db);
 		await switchConfigTo(ctx, row, staged);
 		await activateSpace(ctx, { existing: staged });
@@ -218,6 +246,68 @@ export const activateStagedSpace = internalMutation({
 	},
 });
 
+/** Rows created since `since` checked per table; more than this is treated as pending. */
+const STRAGGLER_SCAN = 200;
+
+/**
+ * Rows written after the rebuild started that the walk may have passed: any
+ * with an input and no staged vector is pending. Bounded: more new rows than
+ * the scan reads count as pending too (fail closed).
+ */
+async function countRebuildStragglers(
+	ctx: MutationCtx,
+	staged: SpaceDoc,
+	since: number
+): Promise<number> {
+	const ref = spaceRefOf(staged);
+	const now = Date.now();
+	let pending = 0;
+	for (const table of ['knowledgeEntries', 'semanticFiles'] as const) {
+		const rows = await ctx.db
+			.query(table)
+			.withIndex('by_created_at', (q) => q.gt('createdAt', since))
+			.take(STRAGGLER_SCAN + 1);
+		if (rows.length > STRAGGLER_SCAN) return STRAGGLER_SCAN + 1;
+		for (const row of rows) {
+			if (!vectorInSpace(row, ref) && rowInput(table, row, now)) pending += 1;
+		}
+	}
+	return pending;
+}
+
+/** Walk the corpus again into the staged space (rows written during the rebuild). */
+export const catchUpRebuild = adminMutation({
+	args: {},
+	handler: async (ctx, _args, session) => {
+		const staged = await readStagedSpace(ctx.db);
+		if (!staged) throwInvalidState('There is no staged embedding space.');
+		if (await readOpenJob(ctx)) {
+			throwConflict('A re-embed or rebuild is already running. Wait for it, or cancel it first.');
+		}
+		const last = await ctx.db
+			.query('embeddingReembedJobs')
+			.withIndex('by_target_space', (q) => q.eq('targetSpaceId', staged._id))
+			.order('desc')
+			.first();
+		const isPaid = last?.isPaid ?? !isLocalEmbeddingKind(staged.provider);
+		if (isPaid && !isPaidEmbeddingAdmissionAvailable()) throwInvalidState(PAID_EMBEDDING_REFUSAL);
+		const jobId = await startJob(ctx, {
+			kind: 'rebuild',
+			targetSpaceId: staged._id,
+			isPaid,
+			startedBy: session.userId,
+		});
+		await recordAuditLog(ctx, {
+			userId: session.userId,
+			organizationId: session.activeOrganizationId,
+			action: 'embedding_reembed.started',
+			resource: 'embedding_space',
+			resourceId: staged._id,
+			details: { jobId, kind: 'rebuild', isPaid },
+		});
+	},
+});
+
 /**
  * Roll back to the space the active one replaced: its vectors are still in
  * their column, so it is searchable at once (rows written since are re-embedded
@@ -231,12 +321,9 @@ export const rollback = adminMutation({
 		const previous = active ? await readRollbackSpace(ctx) : null;
 		if (!active || !previous)
 			throwInvalidState('There is no previous embedding space to roll back to.');
-		if (
-			!isLocalEmbeddingKind(previous.provider) &&
-			previous.provider !== row.embeddingProviderKind
-		) {
+		if (!isStagedTransitionAllowed(row.embeddingProviderKind, previous.provider)) {
 			throwInvalidState(
-				'The previous embedding space uses a hosted provider whose key is not stored. Select it again in the settings, with its key.'
+				'The previous embedding space uses another provider, whose key is not stored. Select it again in the settings, with its key.'
 			);
 		}
 		await switchConfigTo(ctx, row, previous);

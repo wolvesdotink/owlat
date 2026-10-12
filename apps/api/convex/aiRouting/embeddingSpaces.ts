@@ -14,12 +14,14 @@ import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
+import { requireOrgPermission } from '../lib/sessionOrganization';
 import {
 	ensureConfiguredSpace,
 	identityOf,
 	isIdentityOfTarget,
 	readActiveSpace,
 	readConfiguredTarget,
+	readSearchableSpace,
 	readStagedSpace,
 	resolveSearchTarget,
 	type SpaceDoc,
@@ -64,6 +66,19 @@ export const searchTarget = internalQuery({
 });
 
 /**
+ * The admin floor of this lane's admin actions (`organization:manage`). Each
+ * action calls it FIRST, before it resolves a credential, asks for admission or
+ * calls a provider, so a member who is not an admin causes no provider call.
+ */
+export const assertAdmin = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<null> => {
+		await requireOrgPermission(ctx, 'organization:manage');
+		return null;
+	},
+});
+
+/**
  * Register and activate the configured space a job measured (the D8 switch
  * path), or null when the configuration no longer names it.
  */
@@ -72,39 +87,55 @@ export const ensureConfigured = internalMutation({
 	handler: async (ctx, args): Promise<SpaceDoc | null> => ensureConfiguredSpace(ctx, args.space),
 });
 
-/** The active and staged spaces, and whether the active one is the configured one. */
+/**
+ * The active and staged spaces, whether the active one is the configured one
+ * (searchable), the stored embedding kind (null: env configuration), and
+ * whether the configured embedder is local. Read before any credential.
+ */
 export const getSpaces = internalQuery({
 	args: {},
 	handler: async (
 		ctx
-	): Promise<{ active: SpaceDoc | null; staged: SpaceDoc | null; isActiveConfigured: boolean }> => {
+	): Promise<{
+		active: SpaceDoc | null;
+		staged: SpaceDoc | null;
+		isActiveConfigured: boolean;
+		storedEmbeddingKind: Doc<'aiProviderConfig'>['embeddingProviderKind'] | null;
+		/** Whether the configured embedder is local (free); null when none is configured. */
+		isConfiguredLocal: boolean | null;
+	}> => {
 		const active = await readActiveSpace(ctx.db);
 		const staged = await readStagedSpace(ctx.db);
 		const target = await readConfiguredTarget(ctx.db);
 		const isActiveConfigured =
 			active !== null && target !== null && isIdentityOfTarget(identityOf(active), target);
-		return { active, staged, isActiveConfigured };
+		const row = await ctx.db.query('aiProviderConfig').first(); // bounded: org singleton
+		return {
+			active,
+			staged,
+			isActiveConfigured,
+			storedEmbeddingKind: row?.embeddingProviderKind ?? null,
+			isConfiguredLocal: target?.isLocal ?? null,
+		};
 	},
 });
 
-/** The space a rollback restores: the one the active space replaced. */
+/**
+ * The space a rollback restores: the one the active space replaced, as recorded
+ * when it was activated (`predecessorSpaceId`). Null when there is none, or it
+ * is no longer retired (it was re-staged, or reactivated and replaced since).
+ */
 export async function readRollbackSpace(ctx: Pick<QueryCtx, 'db'>): Promise<SpaceDoc | null> {
-	const retired = await ctx.db
-		.query('embeddingSpaces')
-		.withIndex('by_state', (q) => q.eq('state', 'retired'))
-		.take(50);
-	let latest: SpaceDoc | null = null;
-	for (const space of retired) {
-		if (space.activatedAt === undefined || space.retiredAt === undefined) continue;
-		if (!latest || space.retiredAt > (latest.retiredAt ?? 0)) latest = space;
-	}
-	return latest;
+	const active = await readActiveSpace(ctx.db);
+	if (!active?.predecessorSpaceId) return null;
+	const predecessor = await ctx.db.get(active.predecessorSpaceId);
+	return predecessor?.state === 'retired' ? predecessor : null;
 }
 
-/** A space without its coverage snapshot (the overview returns that once). */
+/** A space without its internal identity key. */
 function spaceView(space: SpaceDoc | null) {
 	if (!space) return null;
-	const { coverage: _coverage, identityKey: _key, ...view } = space;
+	const { identityKey: _key, ...view } = space;
 	return view;
 }
 
@@ -126,7 +157,9 @@ export const status = adminQuery({
 	handler: async (ctx) => {
 		const active = await readActiveSpace(ctx.db);
 		const staged = await readStagedSpace(ctx.db);
-		const rollbackTo = active ? await readRollbackSpace(ctx) : null;
+		const rollbackTo = await readRollbackSpace(ctx);
+		const coverage = await ctx.db.query('embeddingCoverage').first(); // bounded: singleton
+		const searchable = await readSearchableSpace(ctx.db);
 		const target = await readConfiguredTarget(ctx.db);
 		const hasStoredConfig = (await ctx.db.query('aiProviderConfig').first()) !== null; // bounded: org singleton
 
@@ -160,13 +193,20 @@ export const status = adminQuery({
 						isActive: active !== null && isIdentityOfTarget(identityOf(active), target),
 					}
 				: null,
-			coverage: active?.coverage ?? null,
+			/**
+			 * The last completed count, against `searchableSpaceId` (absent: no
+			 * space was searchable). `isCurrent` false: the searchable space has
+			 * changed since, and a new count is on its way.
+			 */
+			coverage: coverage
+				? { ...coverage, isCurrent: coverage.searchableSpaceId === searchable?._id }
+				: null,
 			jobs: jobs.map(jobView),
 			attestations,
 			/** A hosted re-embed or rebuild needs spend admission (D8); absent until it lands. */
 			isPaidEmbeddingAvailable: isPaidEmbeddingAdmissionAvailable(),
 			/** A staged rebuild and its activation rewrite the stored configuration. */
-			canStageRebuild: hasStoredConfig && staged === null && active !== null,
+			canStageRebuild: hasStoredConfig && staged === null && searchable !== null,
 		};
 	},
 });

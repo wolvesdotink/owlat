@@ -22,7 +22,12 @@ export const TEST_LOCAL_SPACE: EmbeddingSpaceIdentity = {
 	dimensions: 1536,
 };
 
-/** Insert an embedding space (active, primary column unless told otherwise). */
+/**
+ * Insert an embedding space (active, primary column unless told otherwise).
+ * Vector search reads only the active space the configuration names, so an
+ * active local space also stores the matching local configuration when none
+ * is stored yet (`isConfigured: false` skips that).
+ */
 export async function seedEmbeddingSpace(
 	t: T,
 	options: {
@@ -31,10 +36,23 @@ export async function seedEmbeddingSpace(
 		slot?: 'primary' | 'secondary';
 		activatedAt?: number;
 		retiredAt?: number;
+		isConfigured?: boolean;
 	} = {}
 ): Promise<Id<'embeddingSpaces'>> {
 	const identity = options.identity ?? TEST_LOCAL_SPACE;
 	const now = Date.now();
+	const isActive = (options.state ?? 'active') === 'active';
+	if (isActive && identity.provider === 'local' && options.isConfigured !== false) {
+		const hasConfig = await t.run(
+			async (ctx) => (await ctx.db.query('aiProviderConfig').first()) !== null
+		);
+		if (!hasConfig) {
+			await configureLocalEmbedder(
+				t,
+				identity.model === TEST_LOCAL_SPACE.model ? undefined : identity.model
+			);
+		}
+	}
 	return t.run((ctx) =>
 		ctx.db.insert('embeddingSpaces', {
 			...identity,

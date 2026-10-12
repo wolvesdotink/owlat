@@ -28,7 +28,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { readActiveSpace, spaceRefOf, type SpaceRef } from '../lib/aiRouting/embeddingRegistry';
+import { readSearchableSpace, spaceRefOf, type SpaceRef } from '../lib/aiRouting/embeddingRegistry';
 import { batchGet } from '../_utils/batchLoader';
 import { contactScopesCanLink } from '../lib/contactScope';
 import { mergeEdgeAttrs, type EdgeAttrs } from '../lib/knowledgeEdges';
@@ -327,7 +327,7 @@ export const getAnchorsWithEmbeddingSpace = internalQuery({
 			const entry = byId.get(id);
 			return entry ? [entry] : [];
 		});
-		const active = await readActiveSpace(ctx.db);
+		const active = await readSearchableSpace(ctx.db);
 		return { anchors, activeSpace: active ? spaceRefOf(active) : null };
 	},
 });

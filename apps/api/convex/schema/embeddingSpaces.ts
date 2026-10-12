@@ -2,7 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	embeddingCohortValidator,
-	embeddingCoverageValidator,
+	embeddingCoverageFields,
 	embeddingSlotValidator,
 	embeddingSpaceIdentityFields,
 	embeddingSpaceSourceValidator,
@@ -41,8 +41,11 @@ export const embeddingSpaceTables = {
 		configVersion: v.optional(v.number()),
 		activatedAt: v.optional(v.number()),
 		retiredAt: v.optional(v.number()),
-		/** The last completed coverage count while this space was active (embed lane). */
-		coverage: v.optional(embeddingCoverageValidator),
+		/**
+		 * The space this one replaced when it was activated: the rollback target.
+		 * Recorded at activation, never inferred from timestamps.
+		 */
+		predecessorSpaceId: v.optional(v.id('embeddingSpaces')),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -72,6 +75,17 @@ export const embeddingSpaceTables = {
 	})
 		.index('by_space', ['spaceId'])
 		.index('by_status', ['status']),
+
+	// The last completed coverage count (a singleton; `.first()`): how many rows
+	// vector search can find in the searchable space, and how many wait as
+	// unknown, inactive or unembedded. Counted by a bounded paged walk
+	// (aiRouting/embeddingCoverage.ts), because Convex cannot count rows without
+	// reading them. `searchableSpaceId` is the space the count was taken against
+	// (absent: no space was searchable, so every vector counted as not found).
+	embeddingCoverage: defineTable({
+		...embeddingCoverageFields,
+		searchableSpaceId: v.optional(v.id('embeddingSpaces')),
+	}),
 
 	// The re-embed walk. `reembed`: unknown and inactive-space rows into the
 	// active space's column (local runs now; a paid one is admin-started and

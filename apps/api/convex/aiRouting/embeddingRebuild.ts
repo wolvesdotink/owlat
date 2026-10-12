@@ -23,29 +23,40 @@ import { embeddingSpaceIdentityKey } from '../lib/aiRouting/embeddingKeys';
 import { embeddingProviderKindValidator } from '../lib/validators/aiProviderConfig';
 import { searchSpaceVectors } from '../knowledge/vectorSearch';
 import { SPACE_PROBE_TEXT } from './embeddingReembed';
-import { REBUILD_VALIDATION_PASS_RATE } from './embeddingRebuildState';
+import {
+	isStagedTransitionAllowed,
+	REBUILD_VALIDATION_PASS_RATE,
+	STAGED_TRANSITION_REFUSAL,
+} from './embeddingRebuildState';
 
 const VALIDATION_SAMPLE = 5;
 /** A sampled row passes when its own text finds it among this many hits. */
 const VALIDATION_TOP_K = 5;
 
 /** Start a staged rebuild into the embedder `embeddingProviderKind` / `embeddingModel`. */
-// authz: admin-only; stageSpace requires organization:manage before anything is stored
+// authz: admin-only; assertAdmin runs before any credential, admission or provider call
 export const startRebuild = authedAction({
 	args: {
 		embeddingProviderKind: embeddingProviderKindValidator,
 		embeddingModel: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'embeddingSpaces'>> => {
+		await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
+		const { storedEmbeddingKind } = await ctx.runQuery(
+			internal.aiRouting.embeddingSpaces.getSpaces,
+			{}
+		);
+		if (
+			!storedEmbeddingKind ||
+			!isStagedTransitionAllowed(storedEmbeddingKind, args.embeddingProviderKind)
+		) {
+			throwInvalidState(STAGED_TRANSITION_REFUSAL);
+		}
 		const embedder = await resolveEmbedderForSelection(ctx, {
 			embeddingProviderKind: args.embeddingProviderKind,
 			embeddingModel: args.embeddingModel?.trim() || undefined,
 		});
-		if (!embedder) {
-			throwInvalidState(
-				'A staged rebuild can use a local embedder or another model of the stored hosted provider. To move to another hosted provider, select it in the settings with its key.'
-			);
-		}
+		if (!embedder) throwInvalidState(STAGED_TRANSITION_REFUSAL);
 		const isPaid = !embedder.target.isLocal;
 		let settle: ((usage: { inputTokens: number | undefined }) => Promise<void>) | undefined;
 		if (isPaid) {
@@ -83,6 +94,7 @@ export interface RebuildValidation {
  * the staged model, must find that row among the top hits of the staged index.
  */
 async function validateStagedSpace(ctx: ActionCtx): Promise<RebuildValidation> {
+	await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
 	const { staged } = await ctx.runQuery(internal.aiRouting.embeddingSpaces.getSpaces, {});
 	if (!staged) throwInvalidState('There is no staged embedding space.');
 	const embedder = await resolveEmbedderForSpace(ctx, staged);
@@ -128,14 +140,14 @@ async function validateStagedSpace(ctx: ActionCtx): Promise<RebuildValidation> {
 }
 
 /** Validate the staged space without activating it. */
-// authz: admin-only; stagedSample requires organization:manage
+// authz: admin-only; assertAdmin runs before any credential or provider call
 export const validateStaged = authedAction({
 	args: {},
 	handler: async (ctx): Promise<RebuildValidation> => validateStagedSpace(ctx),
 });
 
 /** Validate, then activate the staged space atomically. Refused when validation fails. */
-// authz: admin-only; stagedSample and activateStagedSpace require organization:manage
+// authz: admin-only; assertAdmin runs first, activateStagedSpace checks again
 export const activateStaged = authedAction({
 	args: {},
 	handler: async (ctx): Promise<RebuildValidation> => {

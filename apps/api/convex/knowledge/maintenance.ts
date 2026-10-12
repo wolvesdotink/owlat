@@ -17,7 +17,7 @@
  * - Action Item: fast (5% per day, ~7 day half-life)
  */
 
-import { readActiveSpace, spaceRefOf, vectorInSpace } from '../lib/aiRouting/embeddingRegistry';
+import { readSearchableSpace, spaceRefOf, vectorInSpace } from '../lib/aiRouting/embeddingRegistry';
 import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -269,7 +269,7 @@ export const dedupeContactEntries = internalMutation({
 		const loaded = await Promise.all(links.map((l) => ctx.db.get(l.entryId)));
 		// Only vectors of the active space are compared, never two spaces
 		// (ADR-0073); an entry without one is left alone.
-		const active = await readActiveSpace(ctx.db);
+		const active = await readSearchableSpace(ctx.db);
 		if (!active) return { merged: 0 };
 		const ref = spaceRefOf(active);
 		const entries = loaded.filter(

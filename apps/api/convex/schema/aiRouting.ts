@@ -45,6 +45,7 @@ export const AI_ROUTING_TABLES = [
 	'aiRoutingPolicy',
 	'embeddingReembedJobs',
 	'embeddingAttestations',
+	'embeddingCoverage',
 	'embeddingSpaces',
 ] as const;
 
