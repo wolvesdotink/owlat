@@ -914,6 +914,7 @@ import type * as lib_llm_dispatch from '../lib/llm/dispatch.js';
 import type * as lib_llm_partialUsage from '../lib/llm/partialUsage.js';
 import type * as lib_llm_pricing from '../lib/llm/pricing.js';
 import type * as lib_llm_promptCache from '../lib/llm/promptCache.js';
+import type * as lib_llm_promptCacheInput from '../lib/llm/promptCacheInput.js';
 import type * as lib_llm_requestPolicy from '../lib/llm/requestPolicy.js';
 import type * as lib_llm_retryPolicy from '../lib/llm/retryPolicy.js';
 import type * as lib_llm_streamFlusher from '../lib/llm/streamFlusher.js';
@@ -2547,6 +2548,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llm/partialUsage': typeof lib_llm_partialUsage;
 	'lib/llm/pricing': typeof lib_llm_pricing;
 	'lib/llm/promptCache': typeof lib_llm_promptCache;
+	'lib/llm/promptCacheInput': typeof lib_llm_promptCacheInput;
 	'lib/llm/requestPolicy': typeof lib_llm_requestPolicy;
 	'lib/llm/retryPolicy': typeof lib_llm_retryPolicy;
 	'lib/llm/streamFlusher': typeof lib_llm_streamFlusher;

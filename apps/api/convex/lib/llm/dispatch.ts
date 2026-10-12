@@ -237,10 +237,17 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 	return { text, tokenUsage: spent ?? normalizeUsage(totalUsage), modelUsed };
 }
 
-export interface LlmObjectOptions<S extends z.ZodTypeAny> {
+export type LlmObjectOptions<S extends z.ZodTypeAny> = LlmObjectInput & LlmObjectSettings<S>;
+
+/**
+ * One prompt, or messages: a prompt split into a cache-marked system message
+ * and the per-message content (`promptCache.ts`, L9).
+ */
+type LlmObjectInput = { prompt: string } | { messages: ModelMessage[] };
+
+interface LlmObjectSettings<S extends z.ZodTypeAny> {
 	model: LanguageModel;
 	schema: S;
-	prompt: string;
 	temperature?: number;
 	/**
 	 * Cancel the call (and the backoff between its retries) mid-flight. The
@@ -293,7 +300,7 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 					return await generateObject({
 						model: modelForRequest(opts.model),
 						schema: opts.schema,
-						prompt: opts.prompt,
+						...('messages' in opts ? { messages: opts.messages } : { prompt: opts.prompt }),
 						temperature: opts.temperature,
 						maxRetries: SDK_MAX_RETRIES,
 						...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),

@@ -52,7 +52,8 @@ import {
 	interpretOutputSchemaFor,
 	type InterpretOutput,
 } from './schema';
-import { buildInterpretPrompt, renderSegments } from './prompt';
+import { buildInterpretPromptParts, renderSegments } from './prompt';
+import { cachedPromptInput } from '../../lib/llm/promptCacheInput';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
 import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
@@ -375,15 +376,17 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			locales: loaded.locales,
 		});
 		const { truncatedSegmentIds } = renderSegments(input.message.segments);
+		const model = await resolveLanguageModel(ctx, 'extract');
+		const prompt = await cachedPromptInput(
+			ctx,
+			'mail.extract',
+			model,
+			buildInterpretPromptParts(input)
+		);
 		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
 			ctx,
 			INTERPRET_FEATURE,
-			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'extract'),
-				schema: interpretOutputSchemaFor(mode),
-				prompt: buildInterpretPrompt(input),
-				temperature: 0,
-			})
+			runLlmObject({ model, schema: interpretOutputSchemaFor(mode), ...prompt, temperature: 0 })
 		);
 		try {
 			await recordLlmSpend(ctx, INTERPRET_FEATURE, tokenUsage, modelUsed);
