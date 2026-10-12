@@ -56,10 +56,16 @@ import { calibrationRevisionFor } from '../lib/decision/calibration';
 import { stateContentHash, type BuiltDecisionState } from '../lib/decision/evidence';
 import { resolveEndpointLocality } from '../lib/llm/endpointLocality';
 import { resolvedPlaneIdentity } from '../lib/decision/configIdentity';
-import { artifactKeyOf, decisionRung, type BundlePlan } from '../lib/decision/routing';
+import {
+	artifactKeyOf,
+	decisionRung,
+	type BundlePlan,
+	type DecisionRung,
+} from '../lib/decision/routing';
 import { admitBundle, type BundleAdmission } from './bundleAdmission';
 import type { RoutingContext } from './context';
 import type { Id } from '../_generated/dataModel';
+import type { AdmissionPriority } from '../lib/validators/aiRouting';
 
 /** Same state, same questions, same answer: a decision is no place for sampling. */
 const DECISION_TEMPERATURE = 0;
@@ -74,6 +80,23 @@ export type BundleSubject =
 
 export interface BundleRun<Q extends QuestionSet> {
 	readonly bundle: DecisionBundle<Q>;
+	/**
+	 * The rung and plane the caller already resolved for this routing context
+	 * (`resolveBundleRung`), for a caller asking many bundles at once (one claim
+	 * check per claim). Absent: resolved here. The claim checks the snapshot
+	 * either way.
+	 */
+	readonly resolved?: ResolvedRung;
+	/** The master gate, when it is not the subject's default (Answer mode: `ai`). */
+	readonly masterGate?: 'ai' | 'ai.agent';
+	/** The admission priority of an advisory call; background when absent. */
+	readonly priority?: AdmissionPriority;
+	/**
+	 * Called with a failed call's error after its lease is released, for an
+	 * inline caller that must not swallow it (a spend refusal holds, defers or
+	 * surfaces, D1). Throwing from it rethrows out of `runBundle`.
+	 */
+	readonly onCallError?: (error: unknown) => void;
 	readonly plan: BundlePlan;
 	readonly routing: RoutingContext;
 	readonly subject: BundleSubject;
@@ -87,13 +110,23 @@ export interface BundleRun<Q extends QuestionSet> {
 }
 
 export type BundleRunOutcome =
-	| { readonly hasRun: true; readonly status: 'complete' | 'abstained' | 'failed' }
+	| {
+			readonly hasRun: true;
+			readonly status: 'complete' | 'abstained' | 'failed';
+			/** The answer's labels; absent when the call failed. */
+			readonly labels?: DecisionLabels;
+	  }
+	| {
+			readonly hasRun: false;
+			readonly why: 'settled';
+			/** The stored answer's labels, when the key holds a valid one. */
+			readonly labels?: DecisionLabels;
+	  }
 	| {
 			readonly hasRun: false;
 			readonly why:
 				| 'language_rung'
 				| 'provider_unavailable'
-				| 'settled'
 				| 'busy'
 				| 'gone'
 				| 'excluded'
@@ -184,28 +217,46 @@ async function askLanguageRung<Q extends QuestionSet>(
 	};
 }
 
-/** Ask `run.bundle` about one message and store the artifact. Never throws for a provider failure. */
-export async function runBundle<Q extends QuestionSet>(
+/** The ladder rung for a routing context, and the one plane resolution it was decided on. */
+export interface ResolvedRung {
+	readonly rung: DecisionRung;
+	readonly plane: ResolvedDecisionPlane | null;
+}
+
+/**
+ * Resolve the decision plane ONCE for a routing context and pick the rung.
+ * `stale` when the resolution read another configuration than the routing
+ * read saw: the rung would be decided on one config and the provider on
+ * another.
+ */
+export async function resolveBundleRung(
 	ctx: ActionCtx,
-	run: BundleRun<Q>
-): Promise<BundleRunOutcome> {
-	const { routing, plan, bundle } = run;
+	routing: RoutingContext
+): Promise<ResolvedRung | 'stale'> {
 	// A plane that cannot even be resolved (an undecryptable key, say) is the
 	// D3 case too: terminal, never a language call in its place.
 	const plane = routing.isDecisionPlaneOn
 		? await resolveDecisionConfig(ctx).catch(() => null)
 		: null;
-	// The resolution must come from the configuration the routing read saw;
-	// otherwise the rung was decided on one config and the provider on another.
-	if (plane !== null && plane.updatedAt !== routing.configUpdatedAt) {
-		return { hasRun: false, why: 'stale' };
-	}
+	if (plane !== null && plane.updatedAt !== routing.configUpdatedAt) return 'stale';
 	const rung = decisionRung({
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
 		kind: plane?.kind ?? 'llm',
 		isUnavailable:
 			routing.isDecisionPlaneOn && (plane === null || plane.degradedFrom !== undefined),
 	});
+	return { rung, plane };
+}
+
+/** Ask `run.bundle` about one message and store the artifact. Never throws for a provider failure. */
+export async function runBundle<Q extends QuestionSet>(
+	ctx: ActionCtx,
+	run: BundleRun<Q>
+): Promise<BundleRunOutcome> {
+	const { routing, plan, bundle } = run;
+	const resolved = run.resolved ?? (await resolveBundleRung(ctx, routing));
+	if (resolved === 'stale') return { hasRun: false, why: 'stale' };
+	const { rung, plane } = resolved;
 	if (rung === 'unavailable') return { hasRun: false, why: 'provider_unavailable' };
 	if (rung === 'language' && !bundle.runsOnLanguageRung) {
 		return { hasRun: false, why: 'language_rung' };
@@ -218,6 +269,7 @@ export async function runBundle<Q extends QuestionSet>(
 		feature: DECISION_FEATURE[plan.task],
 		root: run.root,
 		policyVersion: routing.policy.policyVersion,
+		...(run.priority ? { priority: run.priority } : {}),
 	});
 	if (!admitted.isAdmitted) return { hasRun: false, why: admitted.why };
 
@@ -255,7 +307,12 @@ export async function runBundle<Q extends QuestionSet>(
 		policyVersion: routing.policy.policyVersion,
 		rootRequestId: run.root.rootRequestId,
 		endpoint,
+		...(run.masterGate ? { masterGate: run.masterGate } : {}),
 	});
+	if (claim.outcome === 'settled') {
+		const labels = await ctx.runQuery(internal.decision.artifacts.answeredLabels, { artifactKey });
+		return { hasRun: false, why: 'settled', ...(labels ? { labels } : {}) };
+	}
 	if (claim.outcome !== 'claimed') return { hasRun: false, why: claim.outcome };
 	const lease = { artifactKey, leaseExpiresAt: claim.leaseExpiresAt };
 
@@ -290,7 +347,7 @@ export async function runBundle<Q extends QuestionSet>(
 			...(isAgreement === undefined ? {} : { isAgreement }),
 			...(run.built.isComplete ? { memoryKey: run.built.contentFingerprint } : {}),
 		});
-		return { hasRun: true, status };
+		return { hasRun: true, status, labels };
 	} catch (error) {
 		console.warn(`[decision] ${bundle.id} for ${run.subject.kind} failed`, errorName(error));
 		try {
@@ -298,6 +355,7 @@ export async function runBundle<Q extends QuestionSet>(
 		} catch {
 			// The lease lapses on its own; a later run may take the key.
 		}
+		run.onCallError?.(error);
 		return { hasRun: true, status: 'failed' };
 	}
 }

@@ -15,7 +15,13 @@
 
 import type { AiTaskName } from '@owlat/shared/aiRouting';
 import type { DecisionResult } from '../decisionProviders/types';
-import { POSTBOX_MESSAGE_QUESTIONS, TEAM_MESSAGE_QUESTIONS, TRIAGE_QUESTIONS } from './catalog';
+import {
+	CLAIM_CHECK_QUESTIONS,
+	NECESSITY_QUESTIONS,
+	POSTBOX_MESSAGE_QUESTIONS,
+	TEAM_MESSAGE_QUESTIONS,
+	TRIAGE_QUESTIONS,
+} from './catalog';
 import type { ChoiceAnswer, NoulAnswer, QuestionSet } from './questions';
 import { UNKNOWN_LABEL, type ThresholdReading } from './fieldMappings';
 
@@ -24,7 +30,12 @@ export type DecisionLabels = Readonly<Record<string, string>>;
 
 export interface DecisionBundle<Q extends QuestionSet = QuestionSet> {
 	/** The catalog id (`./catalog.ts`), also the artifact's `questionSetId`. */
-	readonly id: 'mail.triage' | 'mail.message.team' | 'mail.message.postbox';
+	readonly id:
+		| 'mail.triage'
+		| 'mail.message.team'
+		| 'mail.message.postbox'
+		| 'mail.necessity'
+		| 'mail.claim_check';
 	/** Bumped whenever the questions, the state or the label rules change. */
 	readonly version: number;
 	readonly questions: Q;
@@ -106,6 +117,44 @@ export const POSTBOX_MESSAGE_BUNDLE: DecisionBundle<typeof POSTBOX_MESSAGE_QUEST
 	project: projectMessage,
 };
 
+/**
+ * D5: the necessity Noul read at one cut, `needed` at or above it. No
+ * abstention band: the answer gates a question the owner can skip, and the
+ * provisional cut is the plain reading of the probability. Not calibrated.
+ */
+export const NECESSITY_THRESHOLD = { reads: 'noul_probability', needed: 0.5 } as const satisfies {
+	reads: ThresholdReading;
+	needed: number;
+};
+
+/** Labels: `needed` or `not_needed`. */
+export const NECESSITY_BUNDLE: DecisionBundle<typeof NECESSITY_QUESTIONS> = {
+	id: 'mail.necessity',
+	version: 1,
+	questions: NECESSITY_QUESTIONS,
+	// The ladder's language rung is ONE fast-tier call: it replaces the sampled
+	// replies and the divergence judge (capable on Postbox) with that one call.
+	runsOnLanguageRung: true,
+	project: (answers) => ({
+		necessity:
+			answers.necessity.probability >= NECESSITY_THRESHOLD.needed ? 'needed' : 'not_needed',
+	}),
+};
+
+/**
+ * Labels: `supported`, `contradicted`, `insufficient`, or `unknown` when the
+ * Choice is not peaked enough. Only `supported` lets a claim through.
+ */
+export const CLAIM_CHECK_BUNDLE: DecisionBundle<typeof CLAIM_CHECK_QUESTIONS> = {
+	id: 'mail.claim_check',
+	version: 1,
+	questions: CLAIM_CHECK_QUESTIONS,
+	// On the language rung today's verifier IS the rung (three claims per
+	// guard-tier call); a second language call per claim would double it.
+	runsOnLanguageRung: false,
+	project: (answers) => ({ verdict: choiceLabel(answers.verdict) }),
+};
+
 /** Whether every label is `unknown`: the artifact is then `abstained`, not `complete`. */
 export function isAbstention(labels: DecisionLabels): boolean {
 	return Object.values(labels).every((label) => label === UNKNOWN_LABEL);
@@ -129,11 +178,16 @@ export function agreementWith(
 
 /** The ledger feature each decision task records under (`lib/llm/taskPolicy.ts`). */
 export const DECISION_FEATURE: Readonly<
-	Record<'mail.triage' | 'mail.category' | 'mail.disposition', string>
+	Record<
+		'mail.triage' | 'mail.category' | 'mail.disposition' | 'mail.necessity' | 'mail.claim_check',
+		string
+	>
 > = {
 	'mail.triage': 'decision_triage',
 	'mail.category': 'decision_category',
 	'mail.disposition': 'decision_disposition',
+	'mail.necessity': 'decision_necessity',
+	'mail.claim_check': 'decision_claim_check',
 };
 
 export type DecisionBundleTask = keyof typeof DECISION_FEATURE & AiTaskName;

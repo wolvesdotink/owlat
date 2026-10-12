@@ -49,6 +49,67 @@ export function planMessageBundle(
 	return null;
 }
 
+/** A Phase 3 switch's plan: `shadow` observes beside today's path, `enforce` replaces it. */
+function planPhase3(
+	task: 'mail.necessity' | 'mail.claim_check',
+	value: 'off' | 'shadow' | 'enforce'
+): BundlePlan | null {
+	if (value === 'enforce') return { task, mode: 'advisory' };
+	if (value === 'shadow') return { task, mode: 'shadow' };
+	return null;
+}
+
+/** D5: the necessity judgment. `off` keeps the sampled divergence check (the kill switch). */
+export function planNecessity(
+	policy: Pick<ResolvedRoutingPolicy, 'clarifyNecessity'>
+): BundlePlan | null {
+	return planPhase3('mail.necessity', policy.clarifyNecessity);
+}
+
+/** Phase 3: claim checks as decision questions. `off` keeps the language verifier. */
+export function planClaimCheck(
+	policy: Pick<ResolvedRoutingPolicy, 'claimVerification'>
+): BundlePlan | null {
+	return planPhase3('mail.claim_check', policy.claimVerification);
+}
+
+/** The plan the CURRENT policy makes for a task (the claim's policy check). */
+export function planFor(
+	task: DecisionBundleTask,
+	policy: Pick<
+		ResolvedRoutingPolicy,
+		| 'triageBundle'
+		| 'categoryDisplayBundle'
+		| 'dispositionAdvisoryBundle'
+		| 'clarifyNecessity'
+		| 'claimVerification'
+	>
+): BundlePlan | null {
+	switch (task) {
+		case 'mail.triage':
+			return planTriage(policy);
+		case 'mail.category':
+		case 'mail.disposition':
+			return planMessageBundle(policy);
+		case 'mail.necessity':
+			return planNecessity(policy);
+		case 'mail.claim_check':
+			return planClaimCheck(policy);
+	}
+}
+
+/**
+ * The tasks whose labels an owner correction of the message overrides
+ * (Phase 2: category, disposition, triage). A corrected message is never
+ * judged on them again; Phase 3 judgments are not labels of the message and
+ * stay available after a correction.
+ */
+export const CORRECTED_BY_OWNER: ReadonlySet<DecisionBundleTask> = new Set([
+	'mail.triage',
+	'mail.category',
+	'mail.disposition',
+]);
+
 /**
  * The ladder rung a bundle is asked on.
  *

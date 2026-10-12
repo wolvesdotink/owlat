@@ -17,7 +17,7 @@
 
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import {
 	aiSubjectKindValidator,
@@ -27,11 +27,13 @@ import {
 	decisionProvenanceValidator,
 } from '../lib/validators/aiRouting';
 import {
+	CORRECTED_BY_OWNER,
 	DECISION_ARTIFACT_TTL_MS,
 	DECISION_LEASE_MS,
-	planMessageBundle,
-	planTriage,
+	planFor,
 } from '../lib/decision/routing';
+import { DECISION_FEATURE, type DecisionBundleTask, type DecisionLabels } from '../lib/decision/bundles';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
 import { observeAndLearn, subjectSender } from './senderMemory';
 import { isExcludedFromHostedDecisions, type ExclusionScope } from './exclusion';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -40,7 +42,7 @@ import { loadRoutingPolicy } from '../aiRouting/policy';
 /** Version of the stored `answers` and `baseline` JSON shapes. */
 export const DECISION_ANSWERS_VERSION = 1;
 
-/** Artifacts one subject can hold: a task per bundle per policy version. Bounded. */
+/** One bounded read of a subject's artifacts (per task where a task is named). */
 const SUBJECT_ARTIFACT_BATCH = 64;
 
 const labelsValidator = v.record(v.string(), v.string());
@@ -116,11 +118,13 @@ async function liveSubject(
  * check that must hold right before the call:
  *
  * - `gone`: the message, or its mailbox, no longer exists (F7);
- * - `settled`: the owner has corrected this message (it is never judged
- *   after a correction), a complete or abstained answer exists, or the key
- *   was invalidated (a re-lease must not wipe that);
- * - `disabled`: the master gate today's classifier honours is off (`ai.agent`
- *   for the Team Inbox, `ai` for Postbox), or the decision plane is off for a
+ * - `settled`: the owner has corrected this message's labels and the task
+ *   judges them (it is never judged after a correction), a complete or
+ *   abstained answer exists, or the key was invalidated (a re-lease must not
+ *   wipe that);
+ * - `disabled`: the master gate the caller honours is off (by default the one
+ *   today's classifier honours: `ai.agent` for the Team Inbox, `ai` for
+ *   Postbox; Answer mode passes `ai`), or the decision plane is off for a
  *   decision-rung call;
  * - `policy_changed`: the routing policy is no longer the one the worker
  *   planned under, or no longer plans this task in this mode (a switch was
@@ -146,16 +150,18 @@ export const claim = internalMutation({
 		policyVersion: v.number(),
 		rootRequestId: v.optional(v.string()),
 		endpoint: endpointValidator,
+		/** The master gate, when it is not the subject's default (Answer mode: `ai`). */
+		masterGate: v.optional(v.union(v.literal('ai'), v.literal('ai.agent'))),
 	},
 	handler: async (ctx, args): Promise<ClaimOutcome> => {
-		const { endpoint, ...fields } = args;
+		const { endpoint, masterGate, ...fields } = args;
 		const subject = await liveSubject(ctx, fields);
 		if (!subject) return { outcome: 'gone' };
-		if (subject.correctedAt !== undefined) return { outcome: 'settled' };
+		if (isCorrectedFor(fields.task, subject.correctedAt)) return { outcome: 'settled' };
 		// The routing policy NOW: a worker that planned under an older policy (a
 		// switch turned off or moved since) never calls. Any save bumps the version.
 		const policy = await loadRoutingPolicy(ctx);
-		const plan = fields.task === 'mail.triage' ? planTriage(policy) : planMessageBundle(policy);
+		const plan = isBundleTask(fields.task) ? planFor(fields.task, policy) : null;
 		if (
 			policy.policyVersion !== fields.policyVersion ||
 			plan?.task !== fields.task ||
@@ -165,7 +171,7 @@ export const claim = internalMutation({
 		}
 		// The gates today's classifier calls honour, read again right before the
 		// call: the Team Inbox's agent (which requires `ai`), Postbox's `ai`.
-		const gate = subject.exclusion.kind === 'team_inbox' ? 'ai.agent' : 'ai';
+		const gate = masterGate ?? (subject.exclusion.kind === 'team_inbox' ? 'ai.agent' : 'ai');
 		if (!(await isFeatureEnabled(ctx, gate))) return { outcome: 'disabled' };
 		const isDecisionPlaneOn = await isFeatureEnabled(ctx, 'ai.decisionPlane');
 		const config = await ctx.db.query('aiProviderConfig').first(); // bounded: singleton
@@ -213,6 +219,36 @@ export const claim = internalMutation({
 			updatedAt: now,
 		});
 		return { outcome: 'claimed', leaseExpiresAt };
+	},
+});
+
+function isBundleTask(task: AiTaskName): task is DecisionBundleTask {
+	return task in DECISION_FEATURE;
+}
+
+/** Whether an owner correction (at `correctedAt`) settles `task` for the message. */
+function isCorrectedFor(task: AiTaskName, correctedAt: number | undefined): boolean {
+	return correctedAt !== undefined && isBundleTask(task) && CORRECTED_BY_OWNER.has(task);
+}
+
+/**
+ * The labels a settled key holds, for an inline caller that found it
+ * `settled` (Phase 3): only a complete or abstained answer, not invalidated
+ * and not expired. Null otherwise (a correction, an invalidation, an expiry).
+ */
+export const answeredLabels = internalQuery({
+	args: { artifactKey: v.string() },
+	handler: async (ctx, args): Promise<DecisionLabels | null> => {
+		const row = await ctx.db
+			.query('decisionArtifacts')
+			.withIndex('by_artifact_key', (q) => q.eq('artifactKey', args.artifactKey))
+			.first();
+		if (!row || (row.status !== 'complete' && row.status !== 'abstained')) return null;
+		if (row.invalidatedAt !== undefined || row.expiresAt <= Date.now() || !row.answers) {
+			return null;
+		}
+		const stored = JSON.parse(row.answers) as { labels?: DecisionLabels };
+		return stored.labels ?? null;
 	},
 });
 
@@ -267,7 +303,8 @@ export const complete = internalMutation({
 		const now = Date.now();
 		// A correction made at any point before now (even before the claim, by a
 		// worker that started late) leaves the answer invalid and unlearned.
-		const isCorrected = subject.correctedAt !== undefined || row.invalidatedAt !== undefined;
+		const isCorrected =
+			isCorrectedFor(row.task, subject.correctedAt) || row.invalidatedAt !== undefined;
 		const isLearnable = args.status === 'complete' && !isCorrected && args.memoryKey !== undefined;
 		const sender = isLearnable ? await subjectSender(ctx, row) : null;
 		const senderMemory =
@@ -346,6 +383,36 @@ async function artifactsOfSubject(
 }
 
 /**
+ * The artifacts of the tasks a correction overrides, task by task, so the
+ * per-claim Phase 3 artifacts of the same message can never crowd them out
+ * of the bounded read.
+ */
+async function correctableArtifactsOf(
+	ctx: { db: MutationCtx['db'] },
+	subject: { inboundMessageId: Id<'inboundMessages'> } | { mailMessageId: Id<'mailMessages'> }
+): Promise<Doc<'decisionArtifacts'>[]> {
+	const rows: Doc<'decisionArtifacts'>[] = [];
+	for (const task of CORRECTED_BY_OWNER) {
+		rows.push(
+			...('inboundMessageId' in subject
+				? await ctx.db
+						.query('decisionArtifacts')
+						.withIndex('by_inbound_message', (q) =>
+							q.eq('inboundMessageId', subject.inboundMessageId).eq('task', task)
+						)
+						.take(SUBJECT_ARTIFACT_BATCH)
+				: await ctx.db
+						.query('decisionArtifacts')
+						.withIndex('by_mail_message', (q) =>
+							q.eq('mailMessageId', subject.mailMessageId).eq('task', task)
+						)
+						.take(SUBJECT_ARTIFACT_BATCH))
+		);
+	}
+	return rows;
+}
+
+/**
  * An owner corrected a decision about this message: mark the message (a later
  * or in-flight job never judges it, keeps its answer or learns from it), and
  * invalidate every artifact it already has.
@@ -359,7 +426,7 @@ export async function recordOwnerCorrection(
 		'inboundMessageId' in subject ? subject.inboundMessageId : subject.mailMessageId,
 		{ decisionCorrectedAt: now }
 	);
-	for (const row of await artifactsOfSubject(ctx, subject)) {
+	for (const row of await correctableArtifactsOf(ctx, subject)) {
 		if (row.invalidatedAt !== undefined) continue;
 		await ctx.db.patch(row._id, {
 			invalidatedAt: now,

@@ -28,6 +28,7 @@ import type { LlmRootContext } from '../lib/llm/requestMeter';
 import type { QuestionSet } from '../lib/decision/questions';
 import type { BundleMode } from '../lib/decision/routing';
 import type { DecisionBundleTask } from '../lib/decision/bundles';
+import type { AdmissionPriority } from '../lib/validators/aiRouting';
 
 /** What `runDecision` takes from admission: the usage recorder (and, merged, the port). */
 export type AdmittedDecisionOptions = Pick<RunDecisionOptions<QuestionSet>, 'recordUsage'>;
@@ -53,6 +54,11 @@ export interface BundleAdmissionRequest {
 	readonly feature: string;
 	readonly root: LlmRootContext;
 	readonly policyVersion: number;
+	/**
+	 * The priority an advisory call is held at: background unless the caller
+	 * waits on it (Answer mode's necessity judgment is `interactive`).
+	 */
+	readonly priority?: AdmissionPriority;
 }
 
 export async function admitBundle(
