@@ -24,7 +24,8 @@ import { stripHiddenContent } from '../security_scan/patterns';
 import { renderBriefingActions } from '../../../mail/interpret/teamActions';
 import { teamRoot } from '../../shared/agentSpend';
 import { boundedRoot } from '../../../lib/llm/actionDeadline';
-import { rethrowAdmissionRefusal } from '../../../lib/llm/admissionPort';
+import { AdmissionRefusedError, rethrowAdmissionRefusal } from '../../../lib/llm/admissionPort';
+import type { InterpretRunResult } from '../../../mail/interpret/runShape';
 
 /**
  * The message body the LLM steps should read, with remote images / tracking
@@ -113,11 +114,15 @@ async function structuredActions(
 				inboundMessageId,
 			});
 			if (!canRun) return null;
-			await ctx.runAction(internal.mail.interpret.run.interpretMessage, {
+			const run = await ctx.runAction(internal.mail.interpret.run.interpretMessage, {
 				source: { kind: 'inbound', id: inboundMessageId },
 				// Awaited: the interpretation spends from this step's clock (ADR-0073).
 				root: boundedRoot(ctx, teamRoot(inboundMessageId)),
 			});
+			// The run answers a spend refusal instead of throwing it: thrown here, it
+			// reaches the walker, which records the missing judgments and holds the
+			// message rather than drafting from the raw body (D1, Sol r3 F5).
+			throwRunBudgetRefusal(run);
 			read = await ctx.runQuery(internal.mail.interpret.teamActions.briefingActions, {
 				inboundMessageId,
 			});
@@ -129,4 +134,10 @@ async function structuredActions(
 		// Fail soft — keep the hidden-stripped raw body.
 		return null;
 	}
+}
+
+/** Throw the spend refusal an interpretation run answered with, if it met one. */
+export function throwRunBudgetRefusal(run: InterpretRunResult): void {
+	if (run.status === 'gone' || run.errorCode !== 'budget' || !run.budgetRefusal) return;
+	throw new AdmissionRefusedError(run.budgetRefusal.reason, run.budgetRefusal.limit);
 }
