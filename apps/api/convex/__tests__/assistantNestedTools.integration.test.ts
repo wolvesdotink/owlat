@@ -15,6 +15,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolExecutionOptions, ToolSet } from 'ai';
+import { getFunctionName } from 'convex/server';
 import { MockLanguageModelV3 } from 'ai/test';
 import type * as LlmProviderModule from '../lib/llmProvider';
 
@@ -40,6 +41,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { newHarness } from './testModules';
+import { enableFeatures } from './factories';
 import { TOOL_MODULES, buildAssistantTools } from '../assistant/tools';
 import { RETRIEVAL_LIMIT_MESSAGE } from '../assistant/toolRegistry';
 import { stampModelEndpoint } from '../lib/llm/modelEndpoint';
@@ -115,7 +117,13 @@ afterEach(() => {
 describe('retrieval per the task policy', () => {
 	function fakeCtx() {
 		return {
-			runQuery: vi.fn(async () => ({ contacts: [], emails: [], campaigns: [] })),
+			// Flags (ai.knowledge on), graph retrieval, and the full-text lookup.
+			runQuery: vi.fn(async (ref: unknown) => {
+				const name = getFunctionName(ref as never);
+				if (name.endsWith('getResolvedFlags')) return { 'ai.knowledge': true };
+				if (name.endsWith('isGraphRetrievalEnabled')) return false;
+				return { contacts: [], emails: [], campaigns: [] };
+			}),
 			runAction: vi.fn(async () => []),
 		};
 	}
@@ -173,6 +181,19 @@ describe('retrieval per the task policy', () => {
 				scopeToContact: 'org-wide',
 			});
 		}
+	});
+});
+
+describe('ai.knowledge (#1335)', () => {
+	it('offers the knowledge search only while ai.knowledge is on, like Quick Query', async () => {
+		const { t, ctx } = await setup();
+		const off = await buildAssistantTools(ctx, { canReadInbox: true }, TOOL_MODULES, turnRoot);
+		expect(Object.keys(off)).not.toContain('searchKnowledge');
+		expect(Object.keys(off)).toContain('searchFiles');
+
+		await enableFeatures(t, ['ai.knowledge']);
+		const on = await buildAssistantTools(ctx, { canReadInbox: true }, TOOL_MODULES, turnRoot);
+		expect(Object.keys(on)).toContain('searchKnowledge');
 	});
 });
 

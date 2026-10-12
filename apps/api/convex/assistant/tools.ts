@@ -288,13 +288,16 @@ function buildDraftCampaignCopy(
 /**
  * The built-in assistant tools, in the order the assembler emits them. This is
  * the single source of truth for built-in membership and metadata; the same set
- * powers both the personal assistant and @assistant-in-chat. No built-in gates
- * on a per-tool `flag` (the assistant is gated as a whole by `ai.assistant`); no
- * built-in writes or sends.
+ * powers both the personal assistant and @assistant-in-chat. The assistant is
+ * gated as a whole by `ai.assistant`; `searchKnowledge` is also gated by
+ * `ai.knowledge` (#1335), like Quick Query. No built-in writes or sends.
  */
 export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze([
 	{
 		name: 'searchKnowledge',
+		// #1335: the knowledge graph is read only while `ai.knowledge` is on, as
+		// Quick Query refuses it otherwise. Off: the tool is not offered at all.
+		flag: 'ai.knowledge',
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,

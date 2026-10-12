@@ -7,10 +7,10 @@
  *
  *   - `flag`   — an optional feature flag; when set and OFF, the host omits the
  *                tool from the assembled set (feature-off ⇒ the tool does not
- *                exist for the model). Every built-in leaves this undefined:
- *                the whole assistant is already gated by `ai.assistant` upstream
- *                and no built-in has an independent flag today. The field is the
- *                seam plugin-contributed tool packs gate on.
+ *                exist for the model). The whole assistant is gated by
+ *                `ai.assistant` upstream; `searchKnowledge` also carries
+ *                `ai.knowledge` (#1335), and the field is the seam
+ *                plugin-contributed tool packs gate on.
  *   - `scope`  — the data-access class the tool operates in. Built-ins are read
  *                (`workspace:read`) or draft-generation (`workspace:draft`). The
  *                union deliberately has no write/send member, so a conformance
