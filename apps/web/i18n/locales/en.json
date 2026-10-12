@@ -4183,6 +4183,14 @@
 				},
 				"tooLong": "{count} character too long | {count} characters too long",
 				"updateOperation": "Save the note"
+			},
+			"guardNotRun": {
+				"reason": {
+					"agentDisabled": "The pattern checks ran, but the AI check was skipped because the agent was off when this message arrived. It runs before the agent does anything with the message.",
+					"spamArchived": "The pattern checks ran, but the AI check was skipped because this message was archived as spam. It runs before the agent does anything with the message."
+				},
+				"recordedAt": "Recorded {date}.",
+				"title": "AI safety check not run"
 			}
 		},
 		"keyboardShortcutsHelp": {

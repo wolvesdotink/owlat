@@ -4183,6 +4183,14 @@
 				},
 				"tooLong": "{count} Zeichen zu lang | {count} Zeichen zu lang",
 				"updateOperation": "Notiz speichern"
+			},
+			"guardNotRun": {
+				"reason": {
+					"agentDisabled": "Die Musterprüfungen sind gelaufen, die KI-Prüfung wurde aber übersprungen, weil der Agent aus war, als diese Nachricht ankam. Sie läuft, bevor der Agent etwas mit der Nachricht macht.",
+					"spamArchived": "Die Musterprüfungen sind gelaufen, die KI-Prüfung wurde aber übersprungen, weil diese Nachricht als Spam archiviert wurde. Sie läuft, bevor der Agent etwas mit der Nachricht macht."
+				},
+				"recordedAt": "Festgehalten am {date}.",
+				"title": "KI-Sicherheitsprüfung nicht gelaufen"
 			}
 		},
 		"keyboardShortcutsHelp": {
