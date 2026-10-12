@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
 	generate: vi.fn(),
 	llmGenerate: vi.fn(),
 	executionSignals: [] as AbortSignal[],
+	roots: [] as unknown[],
 }));
 
 vi.mock('../../../plugins/draftStrategyCatalog.generated', () => ({
@@ -28,8 +29,14 @@ vi.mock('../../../plugins/draftStrategyModules.generated', () => ({
 	]),
 }));
 vi.mock('../../../plugins/llm', () => ({
-	bindSystemBundledPluginLlm: (_ctx: unknown, _pluginId: unknown, signal: AbortSignal) => {
+	bindSystemBundledPluginLlm: (
+		_ctx: unknown,
+		_pluginId: unknown,
+		signal: AbortSignal,
+		root?: unknown
+	) => {
 		mocks.executionSignals.push(signal);
+		mocks.roots.push(root);
 		return Object.freeze({
 			generate: async (request: unknown) => {
 				if (signal.aborted) throw new Error('execution revoked');
@@ -72,6 +79,7 @@ beforeEach(() => {
 	mocks.generate.mockReset();
 	mocks.llmGenerate.mockReset();
 	mocks.executionSignals.length = 0;
+	mocks.roots.length = 0;
 });
 
 describe('hosted draft strategy boundary', () => {
@@ -93,6 +101,14 @@ describe('hosted draft strategy boundary', () => {
 			outcome: 'completed',
 		});
 		expect(JSON.stringify(calls)).not.toContain(source.context);
+	});
+
+	it('binds the plugin LLM service to the host-owned root request', async () => {
+		mocks.generate.mockResolvedValue({ draftBody: 'Approved custom draft' });
+		const root = { rootRequestId: 'team:inbound-1', parentCallId: 'call-1' };
+		const { ctx } = fakeCtx();
+		await runHostedDraftStrategy(ctx, 'plugin.draft-pack.legal', source, root);
+		expect(mocks.roots).toEqual([root]);
 	});
 
 	it('does not invoke code when last-moment authorization is denied', async () => {

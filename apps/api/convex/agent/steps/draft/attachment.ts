@@ -16,6 +16,7 @@
  * failure resolves to `{}` (no suggestion), exactly today's behaviour.
  */
 
+import type { LlmRootContext } from '../../../lib/llm/requestMeter';
 import type { ActionCtx } from '../../../_generated/server';
 import type { Id } from '../../../_generated/dataModel';
 import {
@@ -38,11 +39,12 @@ export async function draftAttachmentPatch(
 	ctx: DraftAttachmentCtx,
 	context: string,
 	contactId: Id<'contacts'> | undefined,
-	ownerAttachment?: AttachmentSuggestions | null
+	ownerAttachment?: AttachmentSuggestions | null,
+	root?: LlmRootContext
 ): Promise<{ attachmentSuggestions: AttachmentSuggestions } | Record<string, never>> {
 	if (ownerAttachment !== undefined) {
 		return ownerAttachment ? { attachmentSuggestions: ownerAttachment } : {};
 	}
-	const suggestions = await computeAttachmentSuggestions(ctx, { context, contactId });
+	const suggestions = await computeAttachmentSuggestions(ctx, { context, contactId, root });
 	return suggestions ? { attachmentSuggestions: suggestions } : {};
 }

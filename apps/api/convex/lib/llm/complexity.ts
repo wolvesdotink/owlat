@@ -7,6 +7,8 @@
  *      drops on a borderline request; only obviously-trivial text downgrades.
  */
 
+import type { ClassifyIntent } from '../../agent/steps/classify/intents';
+
 /** Complexity in [0, 1]: 0 = trivial ("thanks!"), 1 = involved (code, multi-part). */
 export function scoreComplexity(text: string): number {
 	const t = text.trim();
@@ -71,12 +73,36 @@ export interface ClassificationSignals {
 export const TRIVIAL_CLASSIFICATION_CONFIDENCE = 0.8;
 
 /**
- * Intents whose replies are formulaic enough for the fast tier — a thank-you,
- * an acknowledgement, or an unsubscribe confirmation needs no capable-tier
- * reasoning. Anything that asks a question, lodges a complaint, or is otherwise
- * substantive stays on the capable tier.
+ * Intents whose replies are formulaic enough for the fast tier, in the
+ * classifier's REAL domain (#1332). The set used to name `praise`,
+ * `informational` and `unsubscribe`, which the classifier never emits, so only
+ * `acknowledgment` ever matched. Corrected, an acknowledgement or a plain
+ * piece of information is the formulaic reply; a question, a request, a
+ * complaint or an escalation stays on the capable tier.
+ *
+ * This is the PROPOSED eligible set, typed against the domain so it cannot
+ * drift again. It does not route anything on its own: see
+ * {@link ACTIVE_TRIVIAL_INTENTS}.
  */
-const TRIVIAL_INTENTS = new Set(['praise', 'informational', 'acknowledgment', 'unsubscribe']);
+export const TRIVIAL_INTENTS: ReadonlySet<ClassifyIntent> = new Set<ClassifyIntent>([
+	'acknowledgment',
+	'information',
+]);
+
+/**
+ * The intents that actually route to the fast tier today: exactly the one the
+ * old set matched. Newly eligible intents are NOT active (plan Phase 1a):
+ * under `LLM_COMPLEXITY_ROUTING=1` they would send more autonomous drafts to
+ * the fast writer before any safety evaluation. Phase 4 widens this allowlist
+ * for reviewed drafts, from {@link TRIVIAL_INTENTS} only.
+ */
+export const ACTIVE_TRIVIAL_INTENTS: ReadonlySet<ClassifyIntent> = new Set<ClassifyIntent>([
+	'acknowledgment',
+]);
+
+function isActiveTrivialIntent(intent: string): boolean {
+	return (ACTIVE_TRIVIAL_INTENTS as ReadonlySet<string>).has(intent);
+}
 
 /** Priorities that must always keep the capable tier regardless of intent. */
 const NON_DOWNGRADEABLE_PRIORITIES = new Set(['urgent', 'high', 'critical']);
@@ -92,5 +118,5 @@ const NON_DOWNGRADEABLE_PRIORITIES = new Set(['urgent', 'high', 'critical']);
 export function isTrivialClassifiedMessage(signals: ClassificationSignals): boolean {
 	if (signals.confidence < TRIVIAL_CLASSIFICATION_CONFIDENCE) return false;
 	if (NON_DOWNGRADEABLE_PRIORITIES.has(signals.priority)) return false;
-	return TRIVIAL_INTENTS.has(signals.intent);
+	return isActiveTrivialIntent(signals.intent);
 }

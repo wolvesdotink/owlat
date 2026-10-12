@@ -276,6 +276,19 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 240,
 	},
 
+	// Decision-plane provider ATTEMPTS (lib/decision/ports.ts), keyed by provider
+	// kind. The bucket above is charged once per logical call at the gate; this
+	// one once per round trip, so retries and the fallback hop each charge. A
+	// logical call makes at most three attempts plus the hop, so three times the
+	// per-call rate keeps a healthy plane clear of it; a retry storm is what it
+	// stops.
+	decisionPlaneAttempt: {
+		kind: 'token bucket',
+		rate: 360,
+		period: MINUTE,
+		capacity: 720,
+	},
+
 	// The decision plane's FAILURE budget — the circuit breaker in
 	// decision/breaker.ts, not a limit anyone calls directly. Each failure on
 	// the decision plane charges one token; while the budget is gone the breaker

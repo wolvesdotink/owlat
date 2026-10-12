@@ -12,7 +12,9 @@
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { embed } from 'ai';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import { runEmbedding } from '../lib/llm/embed';
+import type { LlmRootContext } from '../lib/llm/requestMeter';
 import { resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
 import { measuredEmbeddingSpace, probeEmbeddingRevision } from '../lib/aiRouting/embeddingProbe';
 import { embeddingSpaceEntryKey } from '../lib/aiRouting/embeddingKeys';
@@ -58,7 +60,9 @@ export async function embedRetrievalQuery(
 	ctx: ActionCtx,
 	tables: readonly VectorTable[],
 	queryText: string,
-	logTag: string
+	logTag: string,
+	/** The caller's root request: the query embedding's ledger row groups under it. */
+	root?: LlmRootContext
 ): Promise<RetrievalQueryVector> {
 	const hasVectors = await ctx.runQuery(internal.knowledge.vectorCorpus.hasQueryableVectors, {
 		tables: [...tables],
@@ -73,7 +77,17 @@ export async function embedRetrievalQuery(
 		// The searches have always embedded the trimmed text; trimmed here once so
 		// every caller's vector matches it.
 		const before = await probeEmbeddingRevision(embedder.target);
-		const result = await embed({ model: embedder.model, value: queryText.trim() });
+		// One metered request per query (ADR-0073): an embedding row in the ledger.
+		const feature = tables.includes('knowledgeEntries')
+			? 'embedding_knowledge_search'
+			: 'embedding_file_search';
+		const result = await meterLlmCall(
+			ctx,
+			{ feature, ...(root ? { root } : {}) },
+			(meter) => runEmbedding({ meter, model: embedder.model, value: queryText.trim() }),
+			// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+			{ onWriteError: 'ignore' }
+		);
 		embedding = toIndexVector(result.embedding);
 		measured = await measuredEmbeddingSpace(embedder.target, result.embedding, before);
 	} catch (error) {

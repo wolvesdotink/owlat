@@ -259,6 +259,32 @@ describe('quickQuery.ask — cross-source synthesis + citations', () => {
 		expect(userMsg).toContain('rollout-plan.pdf');
 	});
 
+	it('flags an answer that stopped at its output limit as truncated', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai.knowledge']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					title: 'Q3 Budget',
+					content: 'The marketing budget for Q3 is forty thousand euro.',
+					searchableText: 'Q3 Budget marketing forty thousand euro',
+					embedding: unit(5),
+				})
+			);
+		});
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'The Q3 budget is forty',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+			isTruncated: true,
+		});
+		const res = await t.action(api.quickQuery.ask, { question: 'budget' });
+		expect(res.isTruncated).toBe(true);
+		expect(res.answer).toBe('The Q3 budget is forty');
+	});
+
 	it('returns the no-match message (and never calls the model) when nothing is retrieved', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);

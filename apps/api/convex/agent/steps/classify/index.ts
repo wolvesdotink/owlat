@@ -32,6 +32,7 @@ import { runLlmObject } from '../../../lib/llm/dispatch';
 import { meterAgentCall } from '../../shared/agentSpend';
 import { SYSTEM_GUARD } from '../../../mail/ai/promptGuards';
 import { ALLOWED_KINDS, BULK_KINDS, safeEnum, safeLanguage } from '../draft/sanitize';
+import { CLASSIFY_INTENTS } from './intents';
 
 /**
  * Below this classifier confidence a "no response needed" verdict is not
@@ -63,9 +64,7 @@ export const classificationSchema = z.object({
 	sentiment: z
 		.enum(['positive', 'neutral', 'negative'])
 		.describe('The emotional tone of the message'),
-	intent: z
-		.enum(['question', 'complaint', 'request', 'information', 'escalation', 'acknowledgment'])
-		.describe('What the sender is trying to do'),
+	intent: z.enum(CLASSIFY_INTENTS).describe('What the sender is trying to do'),
 	confidence: z
 		.number()
 		.min(0)
@@ -183,13 +182,18 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 
 		// The usage also rides back to the walker for the step's agentActions
 		// row, which is a reporting view; the ledger row is the one that counts.
-		const { object, tokenUsage, modelUsed } = await meterAgentCall(ctx, 'agent_classify', () =>
-			runLlmObject({
-				model,
-				schema: classificationSchema,
-				prompt: buildClassifyPrompt(input.context),
-				temperature: 0.2,
-			})
+		const { object, tokenUsage, modelUsed } = await meterAgentCall(
+			ctx,
+			'agent_classify',
+			input.inboundMessageId,
+			(meter) =>
+				runLlmObject({
+					meter,
+					model,
+					schema: classificationSchema,
+					prompt: buildClassifyPrompt(input.context),
+					temperature: 0.2,
+				})
 		);
 
 		// Everything the model wrote that reaches a user or another prompt is

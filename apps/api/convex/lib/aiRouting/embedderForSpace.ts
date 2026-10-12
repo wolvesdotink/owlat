@@ -16,7 +16,9 @@
  */
 
 import type { ActionCtx } from '../../_generated/server';
-import { embed } from 'ai';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { runEmbedding } from '../llm/embed';
+import type { LlmRootContext } from '../llm/requestMeter';
 import { AiNotConfiguredError } from '../aiNotConfigured';
 import {
 	isLocalEmbeddingKind,
@@ -97,6 +99,13 @@ export async function resolveEmbedderForSpace(
 /** One text's padded vector and raw vector, or null when its call failed. */
 export type EmbeddedText = { vector: number[]; raw: number[] } | null;
 
+/** Where the ledger records an embed-lane call: its feature, task and root. */
+export interface EmbeddingSpend {
+	readonly feature: 'embedding_knowledge' | 'embedding_file' | 'embedding_knowledge_search';
+	readonly task: 'embedding.index' | 'embedding.query';
+	readonly root: LlmRootContext;
+}
+
 /**
  * Embed texts for the index, bracketed by the revision probe: the served
  * revision is read before the first call and after the last, and the batch's
@@ -104,12 +113,15 @@ export type EmbeddedText = { vector: number[]; raw: number[] } | null;
  * single failed call leaves its slot null; a changed revision fails the whole
  * batch. `space` is the identity every kept vector is in.
  *
- * The ledger lane meters these calls (task `embedding.index`) where it wires
- * `runEmbedding`; they are the only embedding calls the embed lane's jobs make.
+ * Every call is metered exactly once (`meterLlmCall` + `runEmbedding`, the
+ * ledger's one path), under `spend.root` and the admission hold the batch runs
+ * under (`counter.reservationId`), so a paid row names its reservation.
  */
 export async function embedTextsForIndex(
+	ctx: ActionCtx,
 	embedder: IndexEmbedder,
 	texts: readonly string[],
+	spend: EmbeddingSpend,
 	counter: DispatchCounter = { dispatched: 0 }
 ): Promise<{ vectors: EmbeddedText[]; space: MeasuredSpace | null }> {
 	const before = await probeEmbeddingRevision(embedder.target);
@@ -118,7 +130,16 @@ export async function embedTextsForIndex(
 	for (const text of texts) {
 		counter.dispatched += 1;
 		try {
-			const { embedding } = await embed({ model: embedder.model, value: text });
+			const { embedding } = await meterLlmCall(
+				ctx,
+				{
+					...spend,
+					...(counter.reservationId ? { reservationId: counter.reservationId } : {}),
+				},
+				(meter) => runEmbedding({ meter, model: embedder.model, value: text }),
+				// A lost ledger row under-counts; failing the batch over it is worse.
+				{ onWriteError: 'ignore' }
+			);
 			const raw = Array.from(embedding);
 			if (width !== null && raw.length !== width) throw new Error('Inconsistent vector width.');
 			width = raw.length;
@@ -141,11 +162,13 @@ export async function embedTextsForIndex(
 
 /** Embed one text for the index; throws when the call fails or the model changed. */
 export async function embedForIndex(
+	ctx: ActionCtx,
 	embedder: IndexEmbedder,
 	text: string,
+	spend: EmbeddingSpend,
 	counter?: DispatchCounter
 ): Promise<{ vector: number[]; raw: number[]; space: MeasuredSpace }> {
-	const { vectors, space } = await embedTextsForIndex(embedder, [text], counter);
+	const { vectors, space } = await embedTextsForIndex(ctx, embedder, [text], spend, counter);
 	const [embedded] = vectors;
 	if (!embedded || !space) throw new Error('The embedding call failed.');
 	return { ...embedded, space };

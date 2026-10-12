@@ -117,3 +117,14 @@ export const llmUsageTagFields = {
 	isLocalEngine: v.optional(v.boolean()),
 	...llmUsageRoutingFields,
 };
+
+/**
+ * An `LlmRootContext` (`lib/llm/requestMeter.ts`) passed as an argument into an
+ * action that makes model calls on the caller's behalf (a retrieval search, a
+ * nested assistant tool), so its rows group under the caller's root request.
+ */
+export const llmRootContextValidator = v.object({
+	rootRequestId: v.string(),
+	parentCallId: v.optional(v.string()),
+	deadlineAt: v.optional(v.number()),
+});

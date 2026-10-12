@@ -11,9 +11,14 @@ import type { ActionCtx } from '../../_generated/server';
 import type { IndexEmbedder } from '../llmProvider';
 import { admitPaidEmbeddingBatch, type PaidEmbeddingBatch } from './embeddingAdmission';
 
-/** Counts the embedding calls a batch started (`embedTextsForIndex` raises it). */
+/**
+ * Counts the embedding calls a batch started (`embedTextsForIndex` raises it),
+ * and carries the admission hold the batch runs under, so every metered ledger
+ * row names it (`reservationId`).
+ */
 export interface DispatchCounter {
 	dispatched: number;
+	reservationId?: string;
 }
 
 /**
@@ -40,6 +45,7 @@ export async function runAdmittedEmbedding<T>(
 		model: embedder.target.model,
 	});
 	if (!admission.isAdmitted) return admission;
+	if (admission.reservationId) counter.reservationId = admission.reservationId;
 	try {
 		return { isAdmitted: true, value: await run(counter) };
 	} finally {

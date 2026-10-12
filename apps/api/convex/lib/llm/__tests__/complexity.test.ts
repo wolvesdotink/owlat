@@ -5,7 +5,11 @@ import {
 	COMPLEXITY_DOWNGRADE_THRESHOLD,
 	isTrivialClassifiedMessage,
 	TRIVIAL_CLASSIFICATION_CONFIDENCE,
+	TRIVIAL_INTENTS,
+	ACTIVE_TRIVIAL_INTENTS,
 } from '../complexity';
+import { CLASSIFY_INTENTS } from '../../../agent/steps/classify/intents';
+import { classificationSchema } from '../../../agent/steps/classify';
 
 describe('scoreComplexity', () => {
 	it('scores trivial acknowledgements at/below the downgrade threshold', () => {
@@ -45,16 +49,19 @@ describe('isTrivialUserText', () => {
 });
 
 describe('isTrivialClassifiedMessage', () => {
-	const trivial = { category: 'other', intent: 'praise', priority: 'low', confidence: 0.95 };
+	const trivial = {
+		category: 'other',
+		intent: 'acknowledgment',
+		priority: 'low',
+		confidence: 0.95,
+	};
 
-	it('downgrades a high-confidence, low-stakes, formulaic-intent message', () => {
+	it('downgrades a high-confidence, low-stakes acknowledgement', () => {
 		expect(isTrivialClassifiedMessage(trivial)).toBe(true);
-		expect(isTrivialClassifiedMessage({ ...trivial, intent: 'informational' })).toBe(true);
-		expect(isTrivialClassifiedMessage({ ...trivial, intent: 'unsubscribe' })).toBe(true);
 	});
 
 	it('keeps the capable tier for substantive intents', () => {
-		for (const intent of ['question', 'request', 'complaint', 'urgent']) {
+		for (const intent of ['question', 'request', 'complaint', 'escalation']) {
 			expect(isTrivialClassifiedMessage({ ...trivial, intent })).toBe(false);
 		}
 	});
@@ -80,5 +87,30 @@ describe('isTrivialClassifiedMessage', () => {
 		// capable. Triviality is fully determined by the sanitized signals.
 		expect(isTrivialClassifiedMessage({ ...trivial, intent: 'question' })).toBe(false);
 		expect(isTrivialClassifiedMessage(trivial)).toBe(true);
+	});
+});
+
+describe('trivial intents (#1332)', () => {
+	const signals = { category: 'other', priority: 'low', confidence: 0.95 };
+
+	it('types the intent sets against the classifier’s real domain', () => {
+		expect(classificationSchema.shape.intent.options).toEqual([...CLASSIFY_INTENTS]);
+		for (const intent of TRIVIAL_INTENTS) expect(CLASSIFY_INTENTS).toContain(intent);
+		for (const intent of ACTIVE_TRIVIAL_INTENTS) expect(TRIVIAL_INTENTS.has(intent)).toBe(true);
+	});
+
+	it('corrects the domain: `information` is eligible, the names the classifier never emits are gone', () => {
+		expect([...TRIVIAL_INTENTS].sort()).toEqual(['acknowledgment', 'information']);
+		for (const stale of ['praise', 'informational', 'unsubscribe']) {
+			expect((TRIVIAL_INTENTS as ReadonlySet<string>).has(stale)).toBe(false);
+		}
+	});
+
+	it('keeps today’s routing: only `acknowledgment` downgrades, newly eligible intents stay capable', () => {
+		const routed = CLASSIFY_INTENTS.filter((intent) =>
+			isTrivialClassifiedMessage({ ...signals, intent })
+		);
+		expect(routed).toEqual(['acknowledgment']);
+		expect(isTrivialClassifiedMessage({ ...signals, intent: 'information' })).toBe(false);
 	});
 });

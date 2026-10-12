@@ -6,6 +6,7 @@
  */
 
 import { LlmPartialUsageError } from './partialUsage';
+import { LlmTruncatedError } from './truncation';
 
 /** Shared one-shot dispatch ceiling; runtime-neutral for V8 budget accounting. */
 export const MAX_LLM_ATTEMPTS = 3;
@@ -109,6 +110,8 @@ export function errorStatus(error: unknown): number | undefined {
  * retriable (treated as a transient network blip).
  */
 export function isRetriableLlmError(error: unknown): boolean {
+	// Output cut at its ceiling: the same request would stop at the same place.
+	if (providerError(error) instanceof LlmTruncatedError) return false;
 	const status = errorStatus(error);
 	if (status !== undefined) {
 		if (status === 408 || status === 409 || status === 429) return true;

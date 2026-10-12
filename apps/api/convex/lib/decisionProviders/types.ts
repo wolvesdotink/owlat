@@ -38,6 +38,7 @@ import type { EnvKey } from '../env';
 import type { TokenUsage } from '../../agent/steps/types';
 import type { ProviderClientConfig } from '../llmProviders/types';
 import type { AnswersFor, QuestionSet } from '../decision/questions';
+import type { LlmCallMeter } from '../llm/requestMeter';
 
 /**
  * The decision provider kinds, as a runtime tuple so both the
@@ -125,6 +126,13 @@ export interface DecisionRequest<Q extends QuestionSet = QuestionSet> {
 	 * back and then not sent is the worst of both.
 	 */
 	readonly modelId?: string;
+	/**
+	 * The decision's meter (ADR-0073). An adapter that makes its provider
+	 * requests through the language dispatch (the language-backed one) passes it
+	 * on, so each of its inner retries is a ledger row. The native adapters make
+	 * one request per ask and leave it alone: the dispatch records that request.
+	 */
+	readonly meter?: LlmCallMeter;
 }
 
 /**

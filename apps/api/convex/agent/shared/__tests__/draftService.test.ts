@@ -36,25 +36,26 @@ const runLlmObjectMock = vi.fn(async (_a: unknown) => ({
 	modelUsed: 'mock-model',
 }));
 
-vi.mock('../../../lib/llm/dispatch', () => ({
-	runLlmText: (a: unknown) => runLlmTextMock(a as never),
-	runLlmTextWithTools: (a: unknown) => runLlmTextWithToolsMock(a as never),
-	runLlmObject: (a: unknown) => runLlmObjectMock(a as never),
-}));
+vi.mock('../../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
+	return {
+		runLlmText: metered((a: unknown) => runLlmTextMock(a as never)),
+		runLlmTextWithTools: metered((a: unknown) => runLlmTextWithToolsMock(a as never)),
+		runLlmObject: metered((a: unknown) => runLlmObjectMock(a as never)),
+	};
+});
 vi.mock('../../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
 	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
-}));
-vi.mock('../../../analytics/llmUsage', () => ({
-	recordLlmSpend: vi.fn(async () => {}),
 }));
 const runHostedDraftStrategyMock = vi.fn();
 vi.mock('../draftStrategyHost', () => ({
 	runHostedDraftStrategy: (...args: unknown[]) => runHostedDraftStrategyMock(...args),
 }));
 
-import { recordLlmSpend } from '../../../analytics/llmUsage';
+import { ledgerRows } from '../../../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../../../lib/llm/partialUsage';
+import { LlmTruncatedError } from '../../../lib/llm/truncation';
 import {
 	runSharedDraft,
 	buildDraftMessages,
@@ -62,7 +63,14 @@ import {
 	type SharedDraftParams,
 } from '../draftService';
 
-const fakeCtx = {} as never;
+/** The ledger write goes through `runMutation`; the rows are read back from it. */
+const ledgerWrite = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
+const fakeCtx = { runMutation: ledgerWrite } as never;
+/** The rows written under `label`, in the shape the old per-call writer received. */
+const spendUnder = (label: string) =>
+	ledgerRows(ledgerWrite)
+		.filter((row) => row.feature === label)
+		.map((row) => [fakeCtx, row.feature, row.usage, row.modelUsed]);
 
 /** Base params for a shared inbound message. */
 function baseParams(overrides: Partial<SharedDraftParams> = {}): SharedDraftParams {
@@ -92,7 +100,7 @@ beforeEach(() => {
 	runLlmObjectMock.mockClear();
 	resolveDefaultModelMock.mockClear();
 	runHostedDraftStrategyMock.mockReset();
-	vi.mocked(recordLlmSpend).mockClear();
+	ledgerWrite.mockClear();
 	runLlmObjectMock.mockResolvedValue({
 		object: { score: 0.72, complete: true, grounded: true, flags: [] },
 		tokenUsage: undefined,
@@ -112,6 +120,24 @@ describe('runSharedDraft — one pipeline, both entry points', () => {
 		expect(resolveDefaultModelMock).not.toHaveBeenCalled();
 		expect(runLlmTextMock).not.toHaveBeenCalled();
 		expect(runLlmObjectMock).toHaveBeenCalledTimes(1); // host-owned self-check
+	});
+
+	it('hands the plugin strategy the draft root as a child of the draft call', async () => {
+		runHostedDraftStrategyMock.mockResolvedValue('CUSTOM PRIMARY');
+		const ctx = { runQuery: vi.fn(async () => 'plugin.draft-pack.legal') };
+		await runSharedDraft(
+			ctx as never,
+			baseParams({
+				strategyScope: { classification: 'support' },
+				root: { rootRequestId: 'team:inbound-1', deadlineAt: 9_999_999_999_999 },
+			})
+		);
+		const root = runHostedDraftStrategyMock.mock.calls[0]![3];
+		expect(root).toMatchObject({
+			rootRequestId: 'team:inbound-1',
+			parentCallId: expect.any(String),
+			deadlineAt: 9_999_999_999_999,
+		});
 	});
 
 	it('falls back exactly once to default when a selected strategy is unavailable', async () => {
@@ -429,8 +455,7 @@ describe('runSharedDraft — unfinished markup and the spend of rejected drafts'
 	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
 	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
 	const tooled = () => baseParams({ tools: { recallKnowledge: {} as never } });
-	const draftSpend = () =>
-		vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'dr');
+	const draftSpend = () => spendUnder('dr');
 
 	it('retries a draft cut off inside a tool tag', async () => {
 		runLlmTextWithToolsMock.mockResolvedValueOnce({
@@ -462,7 +487,7 @@ describe('runSharedDraft — unfinished markup and the spend of rejected drafts'
 		]);
 	});
 
-	it('records the rejected attempt when the retry itself fails', async () => {
+	it('records the rejected attempt, and the failed retry, when the retry itself fails', async () => {
 		runLlmTextWithToolsMock.mockResolvedValueOnce({
 			text: '<invoke name="recallKnowledge">',
 			tokenUsage: usage(10) as never,
@@ -470,7 +495,10 @@ describe('runSharedDraft — unfinished markup and the spend of rejected drafts'
 		});
 		runLlmTextMock.mockRejectedValueOnce(new Error('provider down'));
 		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toThrow('provider down');
-		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(10), 'model-a']]);
+		expect(draftSpend()).toEqual([
+			[fakeCtx, 'dr', usage(10), 'model-a'],
+			[fakeCtx, 'dr', undefined, undefined],
+		]);
 	});
 });
 
@@ -496,8 +524,7 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
 	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
 	const tooled = () => baseParams({ tools: { recallKnowledge: {} as never } });
-	const draftSpend = () =>
-		vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'dr');
+	const draftSpend = () => spendUnder('dr');
 	/** A tool loop that paid for a step, then the provider failed. */
 	const failedAfterToolStep = () =>
 		new LlmPartialUsageError(new Error('provider down'), usage(6) as never, 'model-a');
@@ -510,10 +537,10 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
 	});
 
-	it('records nothing for a failure that carries no usage', async () => {
+	it('records a failure that carries no usage as a request with no reported usage', async () => {
 		runLlmTextWithToolsMock.mockRejectedValueOnce(new Error('401 unauthorized'));
 		await expect(runSharedDraft(fakeCtx, tooled())).rejects.toThrow('401');
-		expect(draftSpend()).toEqual([]);
+		expect(draftSpend()).toEqual([[fakeCtx, 'dr', undefined, undefined]]);
 	});
 
 	it('records a successful draft once, and still returns its usage', async () => {
@@ -527,7 +554,7 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(9), 'model-a']]);
 	});
 
-	it('records a draft rescued by the markup retry once, with both attempts', async () => {
+	it('records a draft rescued by the markup retry once, one row per attempt', async () => {
 		runLlmTextWithToolsMock.mockResolvedValueOnce({
 			text: 'Hi,\n<tool_call>{}</tool_call>',
 			tokenUsage: usage(10) as never,
@@ -539,7 +566,10 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 			modelUsed: 'model-b',
 		});
 		await runSharedDraft(fakeCtx, tooled());
-		expect(draftSpend()).toEqual([[fakeCtx, 'dr', usage(14), 'model-b']]);
+		expect(draftSpend()).toEqual([
+			[fakeCtx, 'dr', usage(10), 'model-a'],
+			[fakeCtx, 'dr', usage(4), 'model-b'],
+		]);
 	});
 
 	it('still records each rejected attempt once when both are markup', async () => {
@@ -561,7 +591,7 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 	});
 
 	it('keeps the draft when the ledger write fails', async () => {
-		vi.mocked(recordLlmSpend).mockRejectedValueOnce(new Error('ledger down'));
+		ledgerWrite.mockRejectedValueOnce(new Error('ledger down'));
 		runLlmTextWithToolsMock.mockResolvedValueOnce({
 			text: REPLY,
 			tokenUsage: usage(9) as never,
@@ -575,8 +605,7 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 describe('runSharedDraft — the spend of a failed self-check (#1260)', () => {
 	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
 	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
-	const selfCheckSpend = () =>
-		vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'sc');
+	const selfCheckSpend = () => spendUnder('sc');
 
 	beforeEach(() => {
 		runLlmTextMock.mockResolvedValue({ text: REPLY, tokenUsage: undefined, modelUsed: 'm' });
@@ -594,13 +623,13 @@ describe('runSharedDraft — the spend of a failed self-check (#1260)', () => {
 		expect(selfCheckSpend()).toEqual([[fakeCtx, 'sc', usage(12), 'cheap-model']]);
 	});
 
-	it('records nothing for a self-check failure that was never billed', async () => {
+	it('records a self-check failure that was never billed as a request with no usage', async () => {
 		runLlmObjectMock.mockRejectedValueOnce(new Error('401 unauthorized'));
 
 		const out = await runSharedDraft(fakeCtx, baseParams());
 
 		expect(out.draftQuality).toBeNull();
-		expect(selfCheckSpend()).toEqual([]);
+		expect(selfCheckSpend()).toEqual([[fakeCtx, 'sc', undefined, undefined]]);
 	});
 
 	it('records a passing self-check once', async () => {
@@ -614,5 +643,22 @@ describe('runSharedDraft — the spend of a failed self-check (#1260)', () => {
 
 		expect(out.draftQuality?.score).toBe(0.9);
 		expect(selfCheckSpend()).toEqual([[fakeCtx, 'sc', usage(5), 'cheap-model']]);
+	});
+});
+
+describe('runSharedDraft — a draft cut off at its output limit (ADR-0073)', () => {
+	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
+
+	it('fails the draft instead of returning the cut-off text, and keeps its spend', async () => {
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'Hi John,\n\nThanks for the question. The price for',
+			tokenUsage: usage(9) as never,
+			modelUsed: 'model-a',
+			isTruncated: true,
+		} as never);
+		await expect(runSharedDraft(fakeCtx, baseParams())).rejects.toBeInstanceOf(LlmTruncatedError);
+		expect(spendUnder('dr')).toEqual([[fakeCtx, 'dr', usage(9), 'model-a']]);
+		// No self-check is spent on a draft that will not be stored.
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
 	});
 });

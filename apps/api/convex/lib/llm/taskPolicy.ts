@@ -16,9 +16,21 @@
  *     the Team Inbox samples on fast, Postbox on capable, Answer mode by the
  *     eagerness dial) or can be downgraded by `LLM_COMPLEXITY_ROUTING`
  *     (`lib/llmProvider.ts`).
- *   - `null` limits mean "no limit today". Phase 1a gives every dispatch mode
- *     an output and reasoning limit and a root deadline; that lane replaces
- *     these nulls, not the call sites.
+ *   - OUTPUT AND REASONING CEILINGS bound every generative task, sized from
+ *     its prompt and schema with room above anything it produces today:
+ *     verdicts and scores ({@link SMALL_OUTPUT}), lists and short replies
+ *     ({@link MEDIUM_OUTPUT}), drafts and long extractions
+ *     ({@link LARGE_OUTPUT}), whole documents ({@link DOCUMENT_OUTPUT}). The
+ *     reasoning share is generous because a reasoning model spends it before
+ *     it writes. The dispatch sends output + reasoning, clamped to what the
+ *     model accepts (`./modelOutputLimits.ts`), so no ceiling here can exceed
+ *     a model's own maximum. Embeddings produce no text: null. `null` input
+ *     limits mean "no limit today".
+ *   - Deadlines are today's effective bounds: a one-shot call already fails
+ *     at the runtime's 300 s response-header timeout, and a tool loop or
+ *     stream at the 10-minute action limit, so the catalog says so and the
+ *     call fails as itself, recorded, rather than as a killed action. Every
+ *     call also spends from its action's budget (`./actionDeadline.ts`).
  *   - `maxAttempts` is the attempt budget the dispatch gives the call today:
  *     `MAX_LLM_ATTEMPTS` for one-shot and streamed calls (a stream's SDK
  *     retries re-send its opening request), `INTERACTIVE_LLM_ATTEMPTS` where
@@ -67,9 +79,20 @@ export interface TaskPolicyEntry {
 	readonly tiers: readonly [LlmTier, ...LlmTier[]];
 	/** Max input tokens per request. `null`: no limit today. */
 	readonly maxInputTokens: number | null;
-	/** Max output tokens per request, reasoning excluded. `null`: no limit today. */
+	/**
+	 * Max output tokens per request, reasoning excluded. `null`: no limit.
+	 * Enforced on its own for the `anthropic` and `openai` (non-reasoning)
+	 * families; elsewhere output and reasoning share one wire field, and this
+	 * split is ADVISORY (`./taskLimits.ts` `OUTPUT_SPLIT_BY_FAMILY`).
+	 */
 	readonly maxOutputTokens: number | null;
-	/** Max billed reasoning tokens per request. `null`: no limit today. */
+	/**
+	 * Max billed reasoning tokens per request. `null`: no limit. The
+	 * `anthropic` and `openai` families spend none (thinking is not enabled; the
+	 * model does not reason). `openai-reasoning` bounds it with the reasoning
+	 * effort and the combined field; `combined` providers with the combined field
+	 * only: for them the split is advisory.
+	 */
 	readonly maxReasoningTokens: number | null;
 	/** Deadline for the whole call, every attempt included. `null`: none today (adapter default). */
 	readonly deadlineMs: number | null;
@@ -99,9 +122,22 @@ type EntryInput = Omit<
 	>;
 
 const UNLIMITED = { maxInputTokens: null, maxOutputTokens: null, maxReasoningTokens: null };
-const REPLY_MS = INTERACTIVE_LLM_DEADLINE_MS.reply;
 
-/** One-shot language call with today's defaults: full attempt budget, no deadline. */
+/** A verdict, a score or a one-line answer: a few hundred tokens today. */
+const SMALL_OUTPUT = { maxOutputTokens: 1_024, maxReasoningTokens: 4_096 } as const;
+/** A list (slots, relations, coverage), a short reply or a few options. */
+const MEDIUM_OUTPUT = { maxOutputTokens: 4_096, maxReasoningTokens: 4_096 } as const;
+/** A draft, an assistant answer, or a long structured extraction. */
+const LARGE_OUTPUT = { maxOutputTokens: 8_192, maxReasoningTokens: 8_192 } as const;
+/** A whole document: a translated batch, a generated HTML page. */
+const DOCUMENT_OUTPUT = { maxOutputTokens: 16_384, maxReasoningTokens: 8_192 } as const;
+const REPLY_MS = INTERACTIVE_LLM_DEADLINE_MS.reply;
+/** A one-shot request: the runtime's fetch gives up on response headers after 300 s. */
+const ONE_SHOT_DEADLINE_MS = 300_000;
+/** A tool loop or a stream: inside the 10-minute action limit, with a margin to record. */
+const LOOP_DEADLINE_MS = 540_000;
+
+/** A language call with today's defaults: no output ceiling, no evaluation. */
 function language(input: Omit<EntryInput, 'plane'>): Omit<TaskPolicyEntry, 'task'> {
 	return { ...UNLIMITED, fallback: 'none', evalVersion: 0, plane: 'language', ...input };
 }
@@ -131,7 +167,7 @@ function embedding(
 		evalVersion: 0,
 		plane: 'embedding',
 		tiers: ['fast'],
-		deadlineMs: null,
+		deadlineMs: ONE_SHOT_DEADLINE_MS,
 		maxAttempts: MAX_LLM_ATTEMPTS,
 		budgetClass: 'standard',
 		...input,
@@ -142,35 +178,41 @@ const background = { priority: 'background', budgetClass: 'standard' } as const;
 const pipeline = { priority: 'pipeline', budgetClass: 'standard' } as const;
 const interactive = { priority: 'interactive', budgetClass: 'standard' } as const;
 const triage = { priority: 'pipeline', budgetClass: 'triage' } as const;
-const oneShot = { deadlineMs: null, maxAttempts: MAX_LLM_ATTEMPTS } as const;
+const oneShot = { deadlineMs: ONE_SHOT_DEADLINE_MS, maxAttempts: MAX_LLM_ATTEMPTS } as const;
+const loop = { deadlineMs: LOOP_DEADLINE_MS, maxAttempts: MAX_LLM_ATTEMPTS } as const;
 const replySurface = { deadlineMs: REPLY_MS, maxAttempts: INTERACTIVE_LLM_ATTEMPTS } as const;
 
 const ENTRIES = {
 	'mail.guard': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...triage,
 		...oneShot,
 		features: ['agent_security_scan'],
 	}),
 	'mail.classify': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...triage,
 		...oneShot,
 		features: ['agent_classify', 'postbox_category'],
 	}),
 	'mail.extract': language({
+		...LARGE_OUTPUT,
 		tiers: ['fast'],
 		...pipeline,
 		...oneShot,
 		features: ['interpret', 'postbox_commitment'],
 	}),
 	'mail.verify': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...pipeline,
 		...oneShot,
 		features: ['interpret_verify'],
 	}),
 	'mail.clarify': language({
+		...MEDIUM_OUTPUT,
 		tiers: ['fast', 'capable'],
 		...pipeline,
 		...oneShot,
@@ -185,42 +227,49 @@ const ENTRIES = {
 		],
 	}),
 	'mail.draft': language({
+		...LARGE_OUTPUT,
 		tiers: ['capable', 'fast'],
 		...pipeline,
-		...oneShot,
+		...loop,
 		features: ['agent_draft', 'postbox_draft', 'postbox_clarify_draft', 'postbox_clarify_delta'],
 	}),
 	'mail.draft_check': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...pipeline,
 		...oneShot,
 		features: ['agent_draft_selfcheck', 'postbox_draft_selfcheck', 'postbox_clarify_selfcheck'],
 	}),
 	'mail.outcome_sentiment': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...background,
 		...oneShot,
 		features: ['agent_outcome_sentiment'],
 	}),
 	'mail.voice_profile': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...background,
 		...oneShot,
 		features: ['postbox_voice_profile'],
 	}),
 	'mail.compose': language({
+		...LARGE_OUTPUT,
 		tiers: ['capable', 'fast'],
 		...interactive,
-		...oneShot,
+		...loop,
 		features: ['postbox_answer_draft', 'postbox_revise_draft'],
 	}),
 	'mail.plan_coverage': language({
+		...MEDIUM_OUTPUT,
 		tiers: ['fast'],
 		...interactive,
 		...replySurface,
 		features: ['answer_plan_coverage'],
 	}),
 	'mail.suggest': language({
+		...MEDIUM_OUTPUT,
 		tiers: ['fast'],
 		...interactive,
 		deadlineMs: REPLY_MS,
@@ -228,6 +277,7 @@ const ENTRIES = {
 		features: ['postbox_suggest_replies'],
 	}),
 	'mail.complete': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...interactive,
 		deadlineMs: INTERACTIVE_LLM_DEADLINE_MS.completion,
@@ -235,36 +285,42 @@ const ENTRIES = {
 		features: ['postbox_complete_draft'],
 	}),
 	'mail.ask': language({
+		...MEDIUM_OUTPUT,
 		tiers: ['capable'],
 		...interactive,
 		...replySurface,
 		features: ['postbox_ask_thread'],
 	}),
 	'mail.rewrite': language({
+		...MEDIUM_OUTPUT,
 		tiers: ['capable', 'fast'],
 		...interactive,
 		...replySurface,
 		features: ['postbox_rewrite_selection'],
 	}),
 	'mail.coach': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...interactive,
 		...replySurface,
 		features: ['postbox_coach_draft'],
 	}),
 	'mail.translate': language({
+		...DOCUMENT_OUTPUT,
 		tiers: ['fast'],
 		...interactive,
 		...oneShot,
 		features: ['translate'],
 	}),
 	'mail.rule_compile': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...interactive,
 		...oneShot,
 		features: ['handling_rule_compile'],
 	}),
 	'knowledge.extract': language({
+		...LARGE_OUTPUT,
 		tiers: ['fast'],
 		...background,
 		deadlineMs: 180_000,
@@ -272,43 +328,49 @@ const ENTRIES = {
 		features: ['knowledge_extract_message', 'knowledge_extract_file', 'knowledge_extract_mail'],
 	}),
 	'knowledge.relate': language({
+		...MEDIUM_OUTPUT,
 		tiers: ['fast'],
 		...background,
 		...oneShot,
 		features: ['knowledge_autolink'],
 	}),
 	'file.summarize': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...background,
 		...oneShot,
 		features: ['semantic_file'],
 	}),
 	'assistant.answer': language({
+		...LARGE_OUTPUT,
 		tiers: ['capable', 'fast'],
 		...interactive,
-		...oneShot,
+		...loop,
 		features: ['assistant_chat', 'chat_assistant'],
 	}),
 	'assistant.tool_draft': language({
+		...LARGE_OUTPUT,
 		tiers: ['capable', 'fast'],
 		...interactive,
 		...oneShot,
 		features: ['assistant_tool_draft'],
 	}),
-	// Records no ledger row today (quickQuery.ts); the ledger lane adds one.
 	'assistant.quick_query': language({
+		...MEDIUM_OUTPUT,
 		tiers: ['capable'],
 		...interactive,
 		...oneShot,
-		features: [],
+		features: ['assistant_quick_query'],
 	}),
 	'analytics.visualize': language({
+		...DOCUMENT_OUTPUT,
 		tiers: ['capable'],
 		...interactive,
 		...oneShot,
 		features: ['visualization'],
 	}),
 	'analytics.visualize_title': language({
+		...SMALL_OUTPUT,
 		tiers: ['fast'],
 		...interactive,
 		...oneShot,
@@ -324,19 +386,55 @@ const ENTRIES = {
 		features: [],
 	}),
 	'decision.connection_probe': decision({
+		...SMALL_OUTPUT,
 		...interactive,
 		maxAttempts: 1,
 		features: ['settings.decision_connection_test'],
 	}),
-	'mail.triage': decision({ ...triage, maxAttempts: MAX_LLM_ATTEMPTS, features: [] }),
-	'mail.category': decision({ ...triage, maxAttempts: MAX_LLM_ATTEMPTS, features: [] }),
-	'mail.disposition': decision({ ...triage, maxAttempts: MAX_LLM_ATTEMPTS, features: [] }),
-	'mail.claim_check': decision({ ...pipeline, maxAttempts: MAX_LLM_ATTEMPTS, features: [] }),
-	'mail.necessity': decision({ ...pipeline, maxAttempts: MAX_LLM_ATTEMPTS, features: [] }),
-	'mail.draft_quality': decision({ ...pipeline, maxAttempts: MAX_LLM_ATTEMPTS, features: [] }),
-	// Embedding calls write no ledger row today; the ledger lane adds them.
-	'embedding.index': embedding({ priority: 'background', features: [] }),
-	'embedding.query': embedding({ priority: 'pipeline', features: [] }),
+	'mail.triage': decision({
+		...SMALL_OUTPUT,
+		...triage,
+		maxAttempts: MAX_LLM_ATTEMPTS,
+		features: [],
+	}),
+	'mail.category': decision({
+		...SMALL_OUTPUT,
+		...triage,
+		maxAttempts: MAX_LLM_ATTEMPTS,
+		features: [],
+	}),
+	'mail.disposition': decision({
+		...SMALL_OUTPUT,
+		...triage,
+		maxAttempts: MAX_LLM_ATTEMPTS,
+		features: [],
+	}),
+	'mail.claim_check': decision({
+		...SMALL_OUTPUT,
+		...pipeline,
+		maxAttempts: MAX_LLM_ATTEMPTS,
+		features: [],
+	}),
+	'mail.necessity': decision({
+		...SMALL_OUTPUT,
+		...pipeline,
+		maxAttempts: MAX_LLM_ATTEMPTS,
+		features: [],
+	}),
+	'mail.draft_quality': decision({
+		...SMALL_OUTPUT,
+		...pipeline,
+		maxAttempts: MAX_LLM_ATTEMPTS,
+		features: [],
+	}),
+	'embedding.index': embedding({
+		priority: 'background',
+		features: ['embedding_knowledge', 'embedding_file'],
+	}),
+	'embedding.query': embedding({
+		priority: 'pipeline',
+		features: ['embedding_knowledge_search', 'embedding_file_search', 'embedding_quick_query'],
+	}),
 } satisfies Record<AiTaskName, Omit<TaskPolicyEntry, 'task'>>;
 
 /** The catalog, frozen. Keyed by task name; every name has exactly one entry. */

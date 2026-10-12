@@ -21,6 +21,7 @@
  * `isContactScopeVisible` re-check every traversal must perform.
  */
 
+import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -224,6 +225,8 @@ export const linkStructural = internalMutation({
 		threadId: v.optional(v.id('conversationThreads')),
 		sourceType: sourceTypeValidator,
 		sourceId: v.optional(v.string()),
+		/** The extraction's root request, handed to the inference pass (ADR-0073). */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args) => {
 		if (!(await isFeatureEnabled(ctx, 'ai.knowledge'))) return;
@@ -286,6 +289,7 @@ export const linkStructural = internalMutation({
 		if (await isFeatureEnabled(ctx, 'ai.knowledge.autoLink')) {
 			await ctx.scheduler.runAfter(0, internal.knowledge.edgeInference.inferRelations, {
 				entryIds: batchIds,
+				...(args.root ? { root: args.root } : {}),
 			});
 		}
 	},

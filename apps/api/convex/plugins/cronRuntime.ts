@@ -17,6 +17,7 @@ import { bindSystemBundledPluginLlm } from './llm';
 import { pluginCronDefinition } from './cronCatalog';
 import { BUNDLED_PLUGIN_CRON_MODULES } from './cronModules.generated';
 import { snapshotHostedModule } from './hostedModuleSnapshot';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 interface GeneratedCronModule {
 	readonly kind: string;
@@ -41,6 +42,8 @@ type FailureReason = 'cron_failed' | 'cron_invalid' | 'cron_timeout';
 export const runPluginCron = internalAction({
 	args: { pluginId: v.string(), cronKind: v.string() },
 	handler: async (ctx, args): Promise<void> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		try {
 			await runPluginCronTick(ctx, args.pluginId, args.cronKind);
 		} catch {

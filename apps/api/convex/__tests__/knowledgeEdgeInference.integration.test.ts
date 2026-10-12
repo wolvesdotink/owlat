@@ -35,7 +35,8 @@ vi.mock('../lib/llmProvider', async () => {
 
 vi.mock('../lib/llm/dispatch', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
-	return { ...actual, runLlmObject: runLlmObjectMock };
+	const { metered } = await import('../analytics/__tests__/meteredDispatch.testlib');
+	return { ...actual, runLlmObject: metered((opts: unknown) => runLlmObjectMock(opts)) };
 });
 
 // AWS-SDK / heavy node-only modules aren't on the path under test; drop them.
@@ -155,6 +156,42 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		expect(usage).toHaveLength(1);
 		expect(usage[0]!.feature).toBe('knowledge_autolink');
 		expect(usage[0]!.modelUsed).toBe('test-model');
+	});
+
+	it('records under the extraction’s root, handed on by the structural linker', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge.autoLink']);
+		const [a0, a1] = await t.run(async (ctx) => {
+			const x = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A0', embedding: unit(5) })
+			);
+			const y = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({ title: 'A1', embedding: unit(5) })
+			);
+			return [x, y];
+		});
+
+		await t.mutation(internal.knowledge.edges.linkStructural, {
+			entryIds: [a0, a1],
+			sourceType: 'agent_extracted',
+			sourceId: 'msg-1',
+			root: { rootRequestId: 'team:msg-1' },
+		});
+		const scheduled = await t.run(async (ctx) =>
+			ctx.db.system.query('_scheduled_functions').collect()
+		);
+		const inference = scheduled.find((job) => job.name.includes('inferRelations'));
+		expect(inference?.args[0]).toMatchObject({ root: { rootRequestId: 'team:msg-1' } });
+
+		mockRelations([{ from: 0, to: 1, relationType: 'supports', confidence: 0.8 }]);
+		await t.action(internal.knowledge.edgeInference.inferRelations, {
+			entryIds: [a0, a1],
+			root: { rootRequestId: 'team:msg-1' },
+		});
+		const usage = await t.run(async (ctx) => ctx.db.query('llmUsageEvents').collect());
+		expect(usage.map((row) => row.rootRequestId)).toEqual(['team:msg-1']);
 	});
 
 	it('does not write a second row for a pair that already has an edge', async () => {

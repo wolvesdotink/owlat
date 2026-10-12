@@ -21,6 +21,7 @@ import { internalAction } from '../_generated/server';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
+import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { embedRetrievalQuery, searchSpaceVectors } from './vectorSearch';
 import { entryTypeValidator } from '../schema/knowledge';
 import { logInfo } from '../lib/runtimeLog';
@@ -34,6 +35,7 @@ import {
 	type GraphRankNeighbor,
 	type RelationType,
 } from '../lib/graphRank';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /**
  * One typed relationship a result entry participates in, for rendering the
@@ -107,6 +109,8 @@ export const semanticSearch = internalAction({
 		// Required, like the contact scope: whether Team Inbox-derived entries
 		// may be returned (see above).
 		includeInboxDerived: v.boolean(),
+		/** The caller's root request, so the query embedding's ledger row groups under it. */
+		root: v.optional(llmRootContextValidator),
 		// Graph-augmented retrieval (seed-then-expand). Default/omitted ⇒ today's
 		// flat behaviour. When true, the top visible seeds are expanded along the
 		// knowledge-graph edges (per-hop scope-re-checked in graphTraversal.ts),
@@ -117,6 +121,8 @@ export const semanticSearch = internalAction({
 		neighborBudget: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ScoredKnowledgeEntry[]> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const queryText = args.queryText?.trim();
 
 		// A caller's vector is used as given, with the space it was embedded in
@@ -132,7 +138,8 @@ export const semanticSearch = internalAction({
 				ctx,
 				['knowledgeEntries'],
 				queryText,
-				'[knowledge.retrieval]'
+				'[knowledge.retrieval]',
+				args.root
 			);
 			if (query.kind === 'failed') return [];
 			if (query.kind === 'vector') {

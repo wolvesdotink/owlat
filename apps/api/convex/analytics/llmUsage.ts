@@ -1,15 +1,24 @@
 /**
  * Deployment-wide LLM usage + estimated spend.
  *
- * Every feature that calls an LLM (Postbox AI, the knowledge assistant,
- * translate, knowledge extraction, semantic-file processing, visualization, and
- * each step of the Team Inbox agent under an `agent_*` feature) records one row
- * per billed call here, so spend can be reported per feature. This ledger is the
- * one store the enforced spend ceiling reads (`analytics/spendBudget.ts`). The
- * inbound-agent step view in `agentHealth.getCostByStep` reads the usage the
- * walker also keeps on `agentActions`; that is a per-step reporting view of
- * calls already counted here, not a second money store (#1259).
- * `recordLlmSpend` is the helper action callers invoke after each LLM call.
+ * Every feature that calls a model (Postbox AI, the knowledge assistant,
+ * translate, knowledge extraction, semantic-file processing, visualization,
+ * embeddings, the decision plane, and each step of the Team Inbox agent under
+ * an `agent_*` feature) records here, so spend can be reported per feature.
+ * This ledger is the one store the enforced spend ceiling reads
+ * (`analytics/spendBudget.ts`). The inbound-agent step view in
+ * `agentHealth.getCostByStep` reads the usage the walker also keeps on
+ * `agentActions`; that is a per-step reporting view of calls already counted
+ * here, not a second money store (#1259).
+ *
+ * ONE ROW PER PROVIDER REQUEST (ADR-0073). A retried call, a tool loop and a
+ * stream write one row per request they made, each with its `attempt` number
+ * under the call's `requestId`. The dispatch records the requests on an
+ * `LlmCallMeter`; `analytics/meteredSpend.ts` and the decision plane's
+ * recorder (`lib/decision/ports.ts`) write them through {@link recordRequests}.
+ * {@link insertLlmUsage} is the only code that inserts a row, and it adds the
+ * row to the spend-period aggregate in the same mutation
+ * (`lib/aiRouting/spendPeriodWrites.ts`), so every row is counted once.
  *
  * The ledger spans all three planes. A row's `plane` tag is optional and absent
  * means `language`, which is what every row written before the decision plane
@@ -20,22 +29,31 @@
  * {@link summarizeDecisionPlane}.
  */
 
-import { v } from 'convex/values';
-import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+import { v, type Infer } from 'convex/values';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
-import { internal } from '../_generated/api';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import type { TokenUsage } from '../agent/steps/types';
-import { estimateCostUsd, providerLabelForModel } from '../lib/llm/pricing';
+import { estimateCost, PRICE_VERSION, providerLabelForModel } from '../lib/llm/pricing';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { llmUsagePlaneValidator, type LlmUsagePlane } from '../lib/llmUsageTags';
+import {
+	llmUsagePlaneValidator,
+	llmUsageRoutingFields,
+	type LlmUsagePlane,
+} from '../lib/llmUsageTags';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
+import type { BudgetClass, QualityResult } from '../lib/validators/aiRouting';
+import { taskForFeature, taskPolicy } from '../lib/llm/taskPolicy';
+import { usdToMicrousd } from '../lib/aiRouting/spendPeriods';
+import { addLedgerRowToSpendPeriods } from '../lib/aiRouting/spendPeriodWrites';
 
 /**
  * Per-row annotations beyond feature and cost, mirroring the table's optional
  * tag columns (`lib/llmUsageTags.ts`). `plane` applies to every plane; the
  * three flags below it are the DECISION plane's and are absent elsewhere. All
- * optional, so a caller that knows none of them writes exactly today's row.
+ * optional, so a caller that knows none of them writes exactly today's row
+ * (plus the price version, and the task its feature maps to).
  */
 export interface LlmUsageTags {
 	readonly plane?: LlmUsagePlane;
@@ -49,14 +67,52 @@ export interface LlmUsageTags {
 	readonly isThrottled?: boolean;
 	/** Ran on the operator's own hardware: priced at zero and labelled `Local`. */
 	readonly isLocalEngine?: boolean;
+	// AI routing columns (ADR-0073); meanings in `lib/llmUsageTags.ts`.
+	readonly rootRequestId?: string;
+	readonly parentCallId?: string;
+	/** Defaults to the task the feature maps to (`taskForFeature`). */
+	readonly task?: AiTaskName;
+	readonly policyVersion?: number;
+	readonly attempt?: number;
+	readonly endpoint?: string;
+	readonly cacheReadTokens?: number;
+	readonly cacheWriteTokens?: number;
+	readonly reasoningTokens?: number;
+	readonly latencyMs?: number;
+	readonly qualityResult?: QualityResult;
+	/** No usage was reported: the cost is an estimate (zero when nothing is known). */
+	readonly isEstimated?: boolean;
+	/** Defaults to the task's budget class; a shadow call passes `shadow`. */
+	readonly budgetClass?: BudgetClass;
+	readonly reservationId?: string;
 }
 
+/** The writer-supplied routing columns: everything but the three it computes. */
+const {
+	priceVersion: _priceVersion,
+	costMicrousd: _costMicrousd,
+	...routingArgs
+} = llmUsageRoutingFields;
+
+/** The tag arguments every ledger mutation accepts. */
+const tagArgs = {
+	plane: v.optional(llmUsagePlaneValidator),
+	requestId: v.optional(v.string()),
+	isFallback: v.optional(v.boolean()),
+	isCalibrated: v.optional(v.boolean()),
+	isThrottled: v.optional(v.boolean()),
+	isLocalEngine: v.optional(v.boolean()),
+	...routingArgs,
+};
+
 /**
- * Persist one LLM call's token usage + priced cost. No-ops when usage is absent
- * AND the row is untagged — a call that produced nothing and says nothing about
- * itself is not worth a row. A TAGGED row is written even with no usage, because
- * a throttled or failed decision attempt is precisely what the 429/529 counter
- * is counting, and one that only counts successes hides the outage.
+ * COMPATIBILITY: the previous release's single-row writer, kept with its exact
+ * arguments so spend writes already scheduled against it, and actions still
+ * running the previous release, land in the ledger after the deploy instead of
+ * failing. New code writes through {@link recordRequests}. Behaves as before:
+ * no usage and no plane writes nothing; a tagged row without usage is a
+ * zero-cost estimate. Remove once a release has shipped without callers
+ * (`scripts/check-entry-wiring.ts` PREVIOUS_RELEASE_ENTRIES).
  */
 export const record = internalMutation({
 	args: {
@@ -71,17 +127,81 @@ export const record = internalMutation({
 		isLocalEngine: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const tags: LlmUsageTags = {
-			plane: args.plane,
-			requestId: args.requestId,
-			isFallback: args.isFallback,
-			isCalibrated: args.isCalibrated,
-			isThrottled: args.isThrottled,
-			isLocalEngine: args.isLocalEngine,
-		};
-		const usage = args.tokenUsage;
-		if (!usage && args.plane === undefined) return;
-		await insertLlmUsage(ctx, args.feature, usage ?? ZERO_USAGE, args.modelUsed, undefined, tags);
+		const { feature, modelUsed, tokenUsage, ...tags } = args;
+		if (!tokenUsage && args.plane === undefined) return;
+		await insertLlmUsage(ctx, feature, tokenUsage ?? ZERO_USAGE, modelUsed, undefined, {
+			...tags,
+			...(tokenUsage ? {} : { isEstimated: true }),
+		});
+	},
+});
+
+/** One provider request of a metered call (`lib/llm/requestMeter.ts` `LlmRequestRecord`). */
+export const meteredRequestValidator = v.object({
+	attempt: v.number(),
+	usage: v.optional(tokenUsageValidator),
+	cacheReadTokens: v.optional(v.number()),
+	cacheWriteTokens: v.optional(v.number()),
+	reasoningTokens: v.optional(v.number()),
+	latencyMs: v.number(),
+	modelUsed: v.optional(v.string()),
+	endpoint: v.optional(v.string()),
+	isThrottled: v.optional(v.boolean()),
+	isLocalEngine: v.optional(v.boolean()),
+	isFallback: v.optional(v.boolean()),
+	isCalibrated: v.optional(v.boolean()),
+});
+
+export type MeteredRequest = Infer<typeof meteredRequestValidator>;
+
+/** Requests per write: a tool loop's steps times its attempts, with room to spare. */
+export const MAX_METERED_REQUESTS_PER_WRITE = 64;
+
+/**
+ * Write one row per provider request of one logical call, in one mutation. The
+ * call-level tags apply to every row; each request brings its own attempt,
+ * usage, latency and model. A request with no reported usage writes a zero-cost
+ * row marked `isEstimated`: it was made, and a ledger that hides it under-counts
+ * attempts.
+ *
+ * IDEMPOTENT by `(requestId, attempt)`: a request whose row already exists is
+ * skipped, so a writer that retries a batch after an ambiguous failure (the
+ * mutation committed, the reply was lost) writes nothing twice.
+ */
+/** The arguments of {@link recordRequests}: one call's tags and its requests. */
+const recordRequestsArgs = {
+	feature: v.string(),
+	...tagArgs,
+	requests: v.array(meteredRequestValidator),
+};
+
+/** One batch as {@link recordRequests} takes it (typed off the validator, not the api). */
+export type RequestBatchArgs = Infer<ReturnType<typeof v.object<typeof recordRequestsArgs>>>;
+
+export const recordRequests = internalMutation({
+	args: recordRequestsArgs,
+	handler: async (ctx, args) => {
+		const { feature, requests, ...tags } = args;
+		if (requests.length > MAX_METERED_REQUESTS_PER_WRITE) {
+			throw new Error('Too many metered requests in one write');
+		}
+		for (const request of requests) {
+			if (tags.requestId !== undefined) {
+				const existing = await ctx.db
+					.query('llmUsageEvents')
+					.withIndex('by_request_id_and_attempt', (q) =>
+						q.eq('requestId', tags.requestId).eq('attempt', request.attempt)
+					)
+					.first();
+				if (existing) continue;
+			}
+			const { usage, modelUsed, ...requestTags } = request;
+			await insertLlmUsage(ctx, feature, usage ?? ZERO_USAGE, modelUsed, undefined, {
+				...tags,
+				...requestTags,
+				isEstimated: usage === undefined,
+			});
+		}
 	},
 });
 
@@ -93,7 +213,18 @@ interface LlmUsageAttribution {
 	readonly pluginId: string;
 }
 
-/** Shared mutation-local writer so plugin settlement and its audit stay atomic. */
+/** The budget class a row counts under: the caller's, else its task's, else standard. */
+function rowBudgetClass(tags: LlmUsageTags | undefined, task: AiTaskName | undefined): BudgetClass {
+	if (tags?.budgetClass) return tags.budgetClass;
+	return task ? taskPolicy(task).budgetClass : 'standard';
+}
+
+/**
+ * The one ledger insert. Shared mutation-local writer so plugin settlement and
+ * its audit stay atomic. Stamps the price version and the integer cost, fills
+ * the task from the feature when the caller gave none, and adds the row to the
+ * spend-period aggregate in the same mutation.
+ */
 export async function insertLlmUsage(
 	ctx: MutationCtx,
 	feature: string,
@@ -102,6 +233,22 @@ export async function insertLlmUsage(
 	attribution?: LlmUsageAttribution,
 	tags?: LlmUsageTags
 ): Promise<void> {
+	const task = tags?.task ?? taskForFeature(feature);
+	// A local engine bills nothing, whatever its model id would price at. A
+	// model the price table does not know is priced at its plane's conservative
+	// fallback, and the row says the cost is an estimate.
+	const isLocal = tags?.isLocalEngine === true;
+	// The row's plane: the caller's, else its task's (an embedding row is one
+	// whoever wrote it). Absent still reads as language.
+	const pricedPlane = tags?.plane ?? (task ? taskPolicy(task).plane : 'language');
+	const plane = tags?.plane ?? (pricedPlane === 'language' ? undefined : pricedPlane);
+	const priced = isLocal ? undefined : estimateCost(modelUsed, tokenUsage, pricedPlane);
+	const costUsd = priced?.costUsd ?? 0;
+	const isPriceUnknown = priced?.estimated === true && tokenUsage.totalTokens > 0;
+	const isEstimated = tags?.isEstimated === true || isPriceUnknown ? true : tags?.isEstimated;
+	const costMicrousd = usdToMicrousd(costUsd);
+	const budgetClass = rowBudgetClass(tags, task);
+	const createdAt = Date.now();
 	await ctx.db.insert('llmUsageEvents', {
 		feature,
 		organizationId: attribution?.organizationId,
@@ -110,81 +257,37 @@ export async function insertLlmUsage(
 		promptTokens: tokenUsage.promptTokens,
 		completionTokens: tokenUsage.completionTokens,
 		totalTokens: tokenUsage.totalTokens,
-		// A local engine bills nothing, whatever its model id would price at.
-		costUsd: tags?.isLocalEngine === true ? 0 : estimateCostUsd(modelUsed, tokenUsage),
-		createdAt: Date.now(),
-		plane: tags?.plane,
+		costUsd,
+		createdAt,
+		plane,
 		requestId: tags?.requestId,
 		isFallback: tags?.isFallback,
 		isCalibrated: tags?.isCalibrated,
 		isThrottled: tags?.isThrottled,
 		isLocalEngine: tags?.isLocalEngine,
+		rootRequestId: tags?.rootRequestId,
+		parentCallId: tags?.parentCallId,
+		task,
+		policyVersion: tags?.policyVersion,
+		attempt: tags?.attempt,
+		endpoint: tags?.endpoint,
+		cacheReadTokens: tags?.cacheReadTokens,
+		cacheWriteTokens: tags?.cacheWriteTokens,
+		reasoningTokens: tags?.reasoningTokens,
+		latencyMs: tags?.latencyMs,
+		qualityResult: tags?.qualityResult,
+		priceVersion: PRICE_VERSION,
+		isEstimated,
+		costMicrousd,
+		budgetClass,
+		reservationId: tags?.reservationId,
 	});
-}
-
-/**
- * Helper for action callers: record one LLM call's spend under a feature tag.
- * Best-effort — never throws on the caller's critical path is the caller's job
- * (this awaits a cheap internal mutation).
- */
-export async function recordLlmSpend(
-	ctx: ActionCtx,
-	feature: string,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined
-): Promise<void> {
-	if (!tokenUsage) return;
-	await ctx.runMutation(internal.analytics.llmUsage.record, { feature, modelUsed, tokenUsage });
-}
-
-/**
- * {@link recordLlmSpend} for interactive surfaces: schedules the ledger write
- * instead of running it, so the user's answer is not held for a mutation round
- * trip. The row lands moments later. The advisory budget gate
- * (mail/ai/gate.ts) is the only reader on these paths, and it only needs the
- * row before the next call, not before this one returns.
- */
-export async function scheduleLlmSpend(
-	ctx: ActionCtx,
-	feature: string,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined
-): Promise<void> {
-	if (!tokenUsage) return;
-	await ctx.scheduler.runAfter(0, internal.analytics.llmUsage.record, {
-		feature,
-		modelUsed,
-		tokenUsage,
-	});
-}
-
-/**
- * The decision plane's writer. Separate from {@link recordLlmSpend} only so no
- * call site has to remember the plane tag or the three flags: the dispatch hands
- * over one attempt record, this turns it into one row, and the row lands BEFORE
- * the answer is used so the enforced ceiling sees the spend it authorised.
- *
- * A failed or throttled attempt is recorded too (using reported usage, if available), because the
- * counters read from these rows are about what the plane DID, not about what it
- * returned.
- */
-export async function recordDecisionSpend(
-	ctx: ActionCtx,
-	feature: string,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined,
-	tags: Omit<LlmUsageTags, 'plane'> = {}
-): Promise<void> {
-	await ctx.runMutation(internal.analytics.llmUsage.record, {
-		feature,
-		modelUsed,
-		tokenUsage,
-		plane: 'decision',
-		requestId: tags.requestId,
-		isFallback: tags.isFallback,
-		isCalibrated: tags.isCalibrated,
-		isThrottled: tags.isThrottled,
-		isLocalEngine: tags.isLocalEngine,
+	await addLedgerRowToSpendPeriods(ctx, {
+		plane: pricedPlane,
+		budgetClass,
+		microusd: costMicrousd,
+		isEstimated: isEstimated === true,
+		at: createdAt,
 	});
 }
 

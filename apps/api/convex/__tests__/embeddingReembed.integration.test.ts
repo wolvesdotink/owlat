@@ -39,7 +39,7 @@ vi.mock('ai', async () => {
 			if (left > 0) {
 				embedFailures.remaining.set(value, left - 1);
 				embedFailures.texts.push(value);
-				throw new Error('provider error');
+				throw Object.assign(new Error('provider error'), { statusCode: 400 }); // not retried by the ledger's policy
 			}
 			embedCalls.texts.push(value);
 			const vector = Array.from({ length: 64 }, () => 0);

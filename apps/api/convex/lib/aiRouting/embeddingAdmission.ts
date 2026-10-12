@@ -33,9 +33,18 @@ export type PaidEmbeddingAdmissionResult =
 	| {
 			readonly isAdmitted: true;
 			/**
-			 * Settle the hold, exactly once, after the batch: `dispatchedCalls` counts
-			 * every call that was started, whether it succeeded or not (conservative:
-			 * a failed call may still be billed). Zero releases the hold.
+			 * The hold's id. Every call of the batch is metered by the ledger
+			 * (`meterLlmCall`) with this `reservationId` on its row, so the
+			 * settlement reads the batch's real spend from the ledger
+			 * (`by_reservation_id`).
+			 */
+			readonly reservationId?: string;
+			/**
+			 * Settle the hold, exactly once, after the batch. It must NOT write a
+			 * ledger row: the meter already wrote one per request. `dispatchedCalls`
+			 * counts every call that was started, whether it succeeded or not
+			 * (conservative: a failed call may still be billed); zero releases the
+			 * hold.
 			 */
 			readonly settle: (usage: {
 				readonly dispatchedCalls: number;

@@ -22,6 +22,8 @@ import {
 import type { BlobGet } from '../../../lib/sealedBlob';
 import { stripHiddenContent } from '../security_scan/patterns';
 import { renderBriefingActions } from '../../../mail/interpret/teamActions';
+import { teamRoot } from '../../shared/agentSpend';
+import { boundedRoot } from '../../../lib/llm/actionDeadline';
 
 /**
  * The message body the LLM steps should read, with remote images / tracking
@@ -112,6 +114,8 @@ async function structuredActions(
 			if (!canRun) return null;
 			await ctx.runAction(internal.mail.interpret.run.interpretMessage, {
 				source: { kind: 'inbound', id: inboundMessageId },
+				// Awaited: the interpretation spends from this step's clock (ADR-0073).
+				root: boundedRoot(ctx, teamRoot(inboundMessageId)),
 			});
 			read = await ctx.runQuery(internal.mail.interpret.teamActions.briefingActions, {
 				inboundMessageId,

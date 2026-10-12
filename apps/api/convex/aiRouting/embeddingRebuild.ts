@@ -12,6 +12,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { authedAction } from '../lib/authedFunctions';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import { throwInvalidState } from '../_utils/errors';
 import {
 	embedForIndex,
@@ -41,6 +42,8 @@ export const startRebuild = authedAction({
 		embeddingModel: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'embeddingSpaces'>> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
 		const { storedEmbeddingKind } = await ctx.runQuery(
 			internal.aiRouting.embeddingSpaces.getSpaces,
@@ -57,19 +60,27 @@ export const startRebuild = authedAction({
 			embeddingModel: args.embeddingModel?.trim() || undefined,
 		});
 		if (!embedder) throwInvalidState(STAGED_TRANSITION_REFUSAL);
+		const rootRequestId = `embedding:stage:${crypto.randomUUID()}`;
 		// One call measures the staged space (width, digest) before anything is
 		// written; admitted when the resolved embedder is hosted, settled once.
 		const probe = await runAdmittedEmbedding(
 			ctx,
 			embedder,
 			{
-				rootRequestId: `embedding:stage:${Date.now()}`,
+				rootRequestId,
 				task: 'embedding.index',
 				jobKind: 'probe',
 				items: 1,
 				inputChars: SPACE_PROBE_TEXT.length,
 			},
-			(counter) => embedForIndex(embedder, SPACE_PROBE_TEXT, counter)
+			(counter) =>
+				embedForIndex(
+					ctx,
+					embedder,
+					SPACE_PROBE_TEXT,
+					{ feature: 'embedding_knowledge', task: 'embedding.index', root: { rootRequestId } },
+					counter
+				)
 		);
 		if (!probe.isAdmitted) throwInvalidState(probe.reason);
 		// The job's payment is derived from the staged space's own endpoint.
@@ -91,6 +102,7 @@ export interface RebuildValidation {
  * the staged model, must find that row among the top hits of the staged index.
  */
 async function validateStagedSpace(ctx: ActionCtx): Promise<RebuildValidation> {
+	anchorActionDeadline(ctx);
 	await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
 	const { staged } = await ctx.runQuery(internal.aiRouting.embeddingSpaces.getSpaces, {});
 	if (!staged) throwInvalidState('There is no staged embedding space.');
@@ -115,7 +127,17 @@ async function validateStagedSpace(ctx: ActionCtx): Promise<RebuildValidation> {
 		async (counter) => {
 			let found = 0;
 			for (const row of sample) {
-				const fresh = await embedForIndex(embedder, row.text, counter);
+				const fresh = await embedForIndex(
+					ctx,
+					embedder,
+					row.text,
+					{
+						feature: 'embedding_knowledge_search',
+						task: 'embedding.query',
+						root: { rootRequestId: `embedding:validate:${staged._id}` },
+					},
+					counter
+				);
 				if (embeddingSpaceIdentityKey(fresh.space) !== staged.identityKey) continue;
 				const hits = await searchSpaceVectors(ctx, row.table, {
 					vector: fresh.vector,
@@ -151,6 +173,8 @@ export const validateStaged = authedAction({
 export const activateStaged = authedAction({
 	args: {},
 	handler: async (ctx): Promise<RebuildValidation> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const validation = await validateStagedSpace(ctx);
 		if (!validation.isPassing) {
 			throwInvalidState(

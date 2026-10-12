@@ -28,13 +28,15 @@ async function seedCaptured(
 	return seeded;
 }
 
-const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), spend: vi.fn() }));
+const llm = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
 
-vi.mock('../../../lib/llm/dispatch', () => ({ runLlmObject: llm.runLlmObject }));
+vi.mock('../../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
+	return { runLlmObject: metered((opts: unknown) => llm.runLlmObject(opts)) };
+});
 vi.mock('../../../lib/llmProvider', () => ({
 	resolveLanguageModel: vi.fn(async () => ({ modelId: 'stub-model' })),
 }));
-vi.mock('../../../analytics/llmUsage', () => ({ recordLlmSpend: llm.spend }));
 
 const TEXT = 'Could you send me the signed contract by Friday?';
 
@@ -81,19 +83,18 @@ function modelOutput(segmentId: string) {
 
 beforeEach(() => {
 	llm.runLlmObject.mockReset();
-	llm.spend.mockReset();
 	llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
 		if (schema === briefModelSchema) {
 			return {
 				object: modelOutput('s0'),
-				tokenUsage: { totalTokens: 10 },
+				tokenUsage: { promptTokens: 10, completionTokens: 0, totalTokens: 10 },
 				modelUsed: 'stub-model',
 			};
 		}
 		// The verifier: support every claim it is asked about.
 		return {
 			object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] },
-			tokenUsage: { totalTokens: 2 },
+			tokenUsage: { promptTokens: 2, completionTokens: 0, totalTokens: 2 },
 			modelUsed: 'stub-model',
 		};
 	});
@@ -123,7 +124,11 @@ describe('interpretMessage', () => {
 			verify: 'passed',
 			responsibility: 'us',
 		});
-		expect(llm.spend.mock.calls.map((c) => c[1])).toEqual(['interpret', 'interpret_verify']);
+		const rows = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
+		expect(rows.map((row) => [row.feature, row.rootRequestId])).toEqual([
+			['interpret', `postbox:${messageId}`],
+			['interpret_verify', `postbox:${messageId}`],
+		]);
 		// The verifier read the claim and its quote, nothing else.
 		const verifyPrompt = llm.runLlmObject.mock.calls[1]?.[0]?.prompt as string;
 		expect(verifyPrompt).toContain('CLAIM item:0');

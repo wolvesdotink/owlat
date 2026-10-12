@@ -25,6 +25,7 @@
 
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { stepModuleFor } from './steps';
@@ -251,6 +252,8 @@ async function scheduleAfterPluginStep(
 export const start = internalAction({
 	args: { inboundMessageId: v.id('inboundMessages') },
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Advance `received → security_check` before the scan runs. The
 		// `security_scan` step's route emits `classifying` / `quarantined` /
 		// `archived`, which are legal edges only from `security_check`. Without
@@ -295,6 +298,8 @@ export const start = internalAction({
 export const resumeDraft = internalAction({
 	args: { inboundMessageId: v.id('inboundMessages') },
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});
@@ -371,6 +376,8 @@ export const runStep = internalAction({
 		coreStep: v.optional(continuationValidator),
 	},
 	handler: async (ctx, args) => {
+		// Every model call of this step spends from one action budget (ADR-0073).
+		anchorActionDeadline(ctx);
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});

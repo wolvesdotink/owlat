@@ -25,6 +25,8 @@ import type { Id } from '../_generated/dataModel';
 import { authedAction } from '../lib/authedFunctions';
 import { throwInvalidState } from '../_utils/errors';
 import { logInfo } from '../lib/runtimeLog';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
+import { rootRequest } from '../lib/llm/requestMeter';
 import {
 	configuredEmbedderOrNull,
 	embedForIndex,
@@ -43,6 +45,8 @@ export const SPACE_PROBE_TEXT = 'Owlat embedding space probe';
 export const kickoff = internalAction({
 	args: { isForced: v.optional(v.boolean()) },
 	handler: async (ctx, args): Promise<void> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.aiRouting.embeddingCoverage.requestScan, {
 			isForced: args.isForced ?? false,
 		});
@@ -50,7 +54,13 @@ export const kickoff = internalAction({
 		try {
 			const embedder = await configuredEmbedderOrNull(ctx);
 			if (!embedder || !embedder.target.isLocal) return;
-			space = (await embedForIndex(embedder, SPACE_PROBE_TEXT)).space;
+			space = (
+				await embedForIndex(ctx, embedder, SPACE_PROBE_TEXT, {
+					feature: 'embedding_knowledge',
+					task: 'embedding.index',
+					root: { rootRequestId: `embedding:kickoff:${crypto.randomUUID()}` },
+				})
+			).space;
 		} catch (error) {
 			// A misconfigured embedder fails loudly where it is used; the local
 			// server may just be down. Either way the next cron run tries again.
@@ -85,6 +95,8 @@ export const kickoff = internalAction({
 export const startReembed = authedAction({
 	args: {},
 	handler: async (ctx): Promise<Id<'embeddingReembedJobs'>> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
 		const { isActiveConfigured, isConfiguredLocal } = await ctx.runQuery(
 			internal.aiRouting.embeddingSpaces.getSpaces,
@@ -99,17 +111,25 @@ export const startReembed = authedAction({
 		if (!isActiveConfigured) {
 			const embedder = await configuredEmbedderOrNull(ctx);
 			if (!embedder) throwInvalidState('No embedding model is configured.');
+			const rootRequestId = `embedding:bootstrap:${crypto.randomUUID()}`;
 			const probe = await runAdmittedEmbedding(
 				ctx,
 				embedder,
 				{
-					rootRequestId: `embedding:bootstrap:${Date.now()}`,
+					rootRequestId,
 					task: 'embedding.index',
 					jobKind: 'probe',
 					items: 1,
 					inputChars: SPACE_PROBE_TEXT.length,
 				},
-				(counter) => embedForIndex(embedder, SPACE_PROBE_TEXT, counter)
+				(counter) =>
+					embedForIndex(
+						ctx,
+						embedder,
+						SPACE_PROBE_TEXT,
+						{ feature: 'embedding_knowledge', task: 'embedding.index', root: { rootRequestId } },
+						counter
+					)
 			);
 			if (!probe.isAdmitted) throwInvalidState(probe.reason);
 			const active = await ctx.runMutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
@@ -128,13 +148,19 @@ export const startReembed = authedAction({
 export const reembedRow = internalAction({
 	args: { table: embeddingTableValidator, id: v.string() },
 	handler: async (ctx, args): Promise<void> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const row = await ctx.runQuery(internal.aiRouting.embeddingRowReembed.rowForReembed, args);
 		if (!row) return;
 		try {
 			const embedder = await configuredEmbedderOrNull(ctx);
 			// Classified from the embedder about to be called: never a paid call here.
 			if (!embedder || !embedder.target.isLocal) return;
-			const { vector, space } = await embedForIndex(embedder, row.text);
+			const { vector, space } = await embedForIndex(ctx, embedder, row.text, {
+				feature: args.table === 'knowledgeEntries' ? 'embedding_knowledge' : 'embedding_file',
+				task: 'embedding.index',
+				root: rootRequest(args.table === 'knowledgeEntries' ? 'knowledge' : 'file', args.id),
+			});
 			await ctx.runMutation(internal.aiRouting.embeddingRowReembed.commitRowVector, {
 				...args,
 				fingerprint: row.fingerprint,
@@ -159,6 +185,8 @@ export const runBatch = internalAction({
 		attempt: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<void> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const job = { jobId: args.jobId, generation: args.generation };
 		const attempt = args.attempt ?? 1;
 		const page = await ctx.runQuery(internal.aiRouting.embeddingReembedJobs.reembedPage, job);
@@ -189,7 +217,17 @@ export const runBatch = internalAction({
 			const texts = page.items.map((item) => item.text);
 			const runBatchCalls = async (counter: DispatchCounter) => {
 				try {
-					return await embedTextsForIndex(resolved, texts, counter);
+					return await embedTextsForIndex(
+						ctx,
+						resolved,
+						texts,
+						{
+							feature: page.phase === 'knowledgeEntries' ? 'embedding_knowledge' : 'embedding_file',
+							task: 'embedding.index',
+							root: { rootRequestId: page.rootRequestId },
+						},
+						counter
+					);
 				} catch (error) {
 					// The revision probe could not reach the server: the whole page failed.
 					logInfo('[embedding.reembed] revision probe failed', { error: String(error) });

@@ -4,6 +4,7 @@ import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import type { LlmTextResult } from '../../lib/llm/dispatch';
 import { runHostedDraftStrategy } from './draftStrategyHost';
+import type { LlmRootContext } from '../../lib/llm/requestMeter';
 
 interface StrategySelectionScope {
 	readonly mailboxId?: string;
@@ -31,7 +32,9 @@ export async function runSelectedDraftStrategy(
 	ctx: ActionCtx,
 	scope: StrategySelectionScope | undefined,
 	source: StrategySource,
-	runDefault: () => Promise<LlmTextResult>
+	runDefault: () => Promise<LlmTextResult>,
+	/** The draft's root request, handed to a plugin strategy's model calls (ADR-0073). */
+	root?: LlmRootContext
 ): Promise<{
 	draftBody: string;
 	tokenUsage: LlmTextResult['tokenUsage'];
@@ -43,7 +46,7 @@ export async function runSelectedDraftStrategy(
 				.catch(() => 'default')
 		: 'default';
 	if (strategyKind !== 'default') {
-		const customDraft = await runHostedDraftStrategy(ctx, strategyKind, source);
+		const customDraft = await runHostedDraftStrategy(ctx, strategyKind, source, root);
 		if (customDraft !== null)
 			return { draftBody: customDraft, tokenUsage: undefined, modelUsed: undefined };
 	}

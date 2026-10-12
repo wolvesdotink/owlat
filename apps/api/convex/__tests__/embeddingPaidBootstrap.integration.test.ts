@@ -28,6 +28,7 @@ vi.mock('../lib/aiRouting/embeddingAdmission', async (importOriginal) => {
 		if (!admission.isAdmitting) return { isAdmitted: false, reason: 'over the daily ceiling' };
 		return {
 			isAdmitted: true,
+			reservationId: `res-${admission.batches.length}`,
 			settle: async (usage: { dispatchedCalls: number }) => {
 				admission.settled += 1;
 				admission.dispatched.push(usage.dispatchedCalls);
@@ -48,7 +49,8 @@ vi.mock('ai', async () => {
 		...actual,
 		embed: vi.fn(async () => {
 			embedCalls.count += 1;
-			if (embedCalls.isFailing) throw new Error('provider error');
+			if (embedCalls.isFailing)
+				throw Object.assign(new Error('provider error'), { statusCode: 400 }); // not retried by the ledger's policy
 			return { embedding: Array.from({ length: 1536 }, (_, i) => (i === 7 ? 1 : 0)) };
 		}),
 	};
@@ -137,6 +139,16 @@ describe('paid re-embed bootstrap', () => {
 		expect(admission.settled).toBe(2);
 		expect(admission.dispatched).toEqual([1, 3]);
 		expect(embedCalls.count).toBe(4);
+
+		// The ledger: exactly one row per call, under its root and its hold. The
+		// settlements wrote none (the meter is the only writer).
+		const ledger = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
+		expect(ledger).toHaveLength(4);
+		expect(ledger.every((row) => row.task === 'embedding.index')).toBe(true);
+		const byReservation = ledger.map((row) => row.reservationId).sort();
+		expect(byReservation).toEqual(['res-1', 'res-2', 'res-2', 'res-2']);
+		expect(new Set(ledger.map((row) => row.rootRequestId)).size).toBe(2);
+		expect(ledger.every((row) => row.rootRequestId?.startsWith('embedding:'))).toBe(true);
 	});
 
 	it('settles the admitted probe exactly once when the call fails (F15)', async () => {
