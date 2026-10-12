@@ -79,6 +79,9 @@ function context(fixture: GateFixture = {}) {
 			if (name.includes('itemCoverageCheck')) {
 				return resolve(fixture.coverage ?? { objections: [], reason: null, isEnforced: false });
 			}
+			if (name.includes('appliedVerdictInputs')) {
+				return { applied: [], isTruncated: false, isItemCoverageEnforced: false, current: null };
+			}
 			throw new Error(`Unexpected query: ${name}`);
 		},
 	} as unknown as ActionCtx;
@@ -119,6 +122,7 @@ describe('ordered core auto-send gate registry', () => {
 			'handling_rules',
 			'interpretation_incomplete',
 			'item_coverage',
+			'applied_decision',
 			'decision_verdict',
 		]);
 		expect(Object.isFrozen(PRE_AUTONOMY_GATE_IDS)).toBe(true);
@@ -155,6 +159,7 @@ describe('ordered core auto-send gate registry', () => {
 			'evaluateForMessage',
 			'interpretationHold',
 			'itemCoverageCheck',
+			'appliedVerdictInputs',
 		]);
 	});
 
@@ -537,8 +542,12 @@ describe('ordered core auto-send gate registry', () => {
 		// `decision_verdict` blocks only verdicts that feed auto-send, and none
 		// does in this release, so the registry's instance has no blocking
 		// fixture; `decisionVerdictGate.test.ts` drives both of its paths.
+		// `applied_decision` needs stored artifacts and the plane's identity:
+		// `decision/__tests__/appliedDecisionGate.test.ts` drives it.
 		expect(cases.map(({ id }) => id)).toEqual(
-			CORE_FINAL_AUTO_SEND_GATE_IDS.filter((id) => id !== 'decision_verdict')
+			CORE_FINAL_AUTO_SEND_GATE_IDS.filter(
+				(id) => id !== 'decision_verdict' && id !== 'applied_decision'
+			)
 		);
 		for (const testCase of cases) {
 			const { decision, calls } = await finalDecision(testCase.fixture);

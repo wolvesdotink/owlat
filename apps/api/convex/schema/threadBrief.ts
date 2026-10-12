@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { threadRefFields } from '../lib/validators/threadRef';
+import { runBudgetRefusalValidator } from '../lib/validators/aiRouting';
 import { threadBriefFeedbackTables } from './threadBriefFeedback';
 import { interpretSourceTables } from './interpretSources';
 import {
@@ -150,6 +151,9 @@ export const threadBriefTables = {
 		// Consecutive runs deferred because spend admission refused the run's
 		// one hold (D1, Sol r4): they back `nextRetryAt` off (`retry.ts`).
 		budgetDeferrals: v.optional(v.number()),
+		// A spend refusal the run met (D1): a replay reports it, so a caller that
+		// defers or holds on a refusal does so again (clarify lane, Sol r2 F1).
+		budgetRefusal: v.optional(runBudgetRefusalValidator),
 		// Transitions (indexes into the payload's `transitions`) on an obligation
 		// not seen yet, waiting for the item that its delayed request creates.
 		pendingTransitions: v.optional(v.array(v.number())),

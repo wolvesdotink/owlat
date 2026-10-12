@@ -14,9 +14,9 @@ import type { ResolvedDecisionProvider, RunDecisionOptions } from './contract';
 import type { QuestionSet } from './questions';
 
 /** Output a native decision answer may bill: labels and probabilities, never text. */
-const NATIVE_DECISION_OUTPUT_TOKENS = 4_096;
+export const NATIVE_DECISION_OUTPUT_TOKENS = 4_096;
 /** The wire codec frames the state and questions; its body is at most this many times their JSON. */
-const NATIVE_WIRE_EXPANSION = 2;
+export const NATIVE_WIRE_EXPANSION = 2;
 
 /**
  * Reserve one native paid attempt. The language-backed adapter (`llm`) is

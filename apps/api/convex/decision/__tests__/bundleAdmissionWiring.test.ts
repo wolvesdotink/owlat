@@ -242,6 +242,16 @@ describe('admitBundle, wired to admission', () => {
 		});
 	});
 
+	it('holds an advisory call at the priority its caller waits at (Answer mode: interactive)', async () => {
+		const { ctx } = await setup('10');
+		const admitted = await admitBundle(ctx, {
+			...request('m-int', 'advisory', 'language'),
+			priority: 'interactive',
+		});
+		if (!admitted.isAdmitted) throw new Error('advisory admission refused up front');
+		expect(admitted.target).toMatchObject({ priority: 'interactive' });
+	});
+
 	describe('a hold the ceiling refuses makes no call', () => {
 		it('on the language rung', async () => {
 			// $0.0001 a day: the gate-sized probe fits, a real request's hold does not.

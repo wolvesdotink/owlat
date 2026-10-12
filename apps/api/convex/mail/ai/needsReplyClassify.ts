@@ -38,13 +38,10 @@
  * delivery pipeline never schedules a second run for it.
  */
 
-import { v, type Infer, type ObjectType } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { resolveLanguageModel } from '../../lib/llmProvider';
-import { runLlmObject } from '../../lib/llm/dispatch';
-import { meterLlmCall, type LlmSpendTarget } from '../../analytics/meteredSpend';
 import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { evaluateNeedsReplyCandidate } from '../needsReplyHeuristic';
 import { runInterpretation, type InterpretRunResult } from '../interpret/run';
@@ -54,22 +51,13 @@ import {
 	type LatestInbound,
 	type NeedsReplyProjection,
 } from '../interpret/needsReplyProjection';
-import {
-	replySlotsSchema,
-	buildSlotPrompt,
-	sanitizeClarificationQuestions,
-	splitCandidateSlots,
-	itemIdForSlot,
-	slotItemsOf,
-	type SlotItem,
-} from '../../inbox/clarificationSlots';
-import { applyMemoryFills, withAnswerKind } from '../../inbox/clarificationAnswers';
+import { slotItemsOf, type SlotItem } from '../../inbox/clarificationSlots';
+import type { BundleSubject } from '../../decision/bundleRunner';
+import { applyMemoryFills } from '../../inbox/clarificationAnswers';
 import { draftClarificationReply } from './needsReplyDraft';
 import { continuesLater, isDeferredUntilOpen, isHeldOutByScreener } from './needsReplyGates';
+import { refineClarification, type ClarificationFlag } from './needsReplyRefine';
 import { logError } from '../../lib/runtimeLog';
-import type { needsReplyClarificationValidator } from '../../lib/validators/clarification';
-import { localizeQuestions } from '../../inbox/clarificationLocalize';
-import { divergentSlots } from './needsReplyDivergence';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 import {
 	BudgetDeferral,
@@ -87,6 +75,12 @@ function usableProjection(run: InterpretRunResult): NeedsReplyProjection | undef
 	// same rule covers it.
 	if (run.status !== 'complete' && run.status !== 'partial') return undefined;
 	return run.projection;
+}
+
+/** Whether spend admission refused any call of the run (its code, or a reported refusal). */
+export function isBudgetRefused(run: InterpretRunResult): boolean {
+	if (run.status === 'gone' || !('errorCode' in run)) return false;
+	return run.errorCode === 'budget' || run.budgetRefusal !== undefined;
 }
 
 /** This action, for its own budget deferral (ADR-0073, D1). */
@@ -183,11 +177,17 @@ export const classifyThread = internalAction({
 				predecessors: 'caller_continues',
 			});
 			if (await continuesLater(ctx, run, args)) return;
-			if ('errorCode' in run && run.errorCode === 'budget') throw new BudgetDeferral(); // stays pending, defers (D1)
+			// A spend refusal anywhere in the run (the gate, the model call, a
+			// verifier batch or a claim check) defers the whole classification
+			// BEFORE its projection is applied: a projection from a run that could
+			// not finish its checks must not settle the thread (D1). It stays
+			// pending and runs again.
+			if (isBudgetRefused(run)) throw new BudgetDeferral();
 			const projection = usableProjection(run);
 			const hasVerdict = projection
 				? await applyProjection(ctx, {
 						threadId: args.threadId,
+						mailboxId: context.mailboxId,
 						expectedLatestMessageId: context.latestMessageId,
 						latestInbound: {
 							messageId: latestInbound.messageId,
@@ -223,6 +223,7 @@ async function applyProjection(
 	ctx: ActionCtx,
 	args: {
 		threadId: Id<'mailThreads'>;
+		mailboxId: Id<'mailboxes'>;
 		expectedLatestMessageId?: Id<'mailMessages'>;
 		latestInbound: LatestInbound;
 		projection: NeedsReplyProjection;
@@ -243,6 +244,11 @@ async function applyProjection(
 					fromAddress: args.latestInbound.fromAddress,
 					threadId: args.threadId,
 					root: rootRequest('postbox', args.latestInbound.messageId),
+					subject: {
+						kind: 'mail_message',
+						mailMessageId: args.latestInbound.messageId,
+						mailboxId: args.mailboxId,
+					},
 				})
 			: undefined;
 	// A throw here is a real fault (e.g. the result no longer matching the
@@ -285,6 +291,7 @@ async function clarifyWithMemory(
 		fromAddress: string;
 		threadId: Id<'mailThreads'>;
 		root: LlmRootContext;
+		subject: BundleSubject;
 	}
 ): Promise<ClarificationFlag | undefined> {
 	try {
@@ -298,6 +305,7 @@ async function clarifyWithMemory(
 		fromAddress: opts.fromAddress,
 		items: await slotItemsFor(ctx, opts.threadId),
 		root: opts.root,
+		subject: opts.subject,
 	});
 	if (!clarification || clarification.questions.length === 0) return clarification;
 	try {
@@ -319,8 +327,6 @@ async function clarifyWithMemory(
 	}
 }
 
-type SpendCtx = ActionCtx;
-
 /** The thread's open items, so each question can name the item it fills (SPEC §6). */
 async function slotItemsFor(
 	ctx: ActionCtx,
@@ -333,96 +339,6 @@ async function slotItemsFor(
 		return slotItemsOf(loaded.items);
 	} catch {
 		return []; // questions without an item link, as before
-	}
-}
-
-/**
- * The clarification refineClarification produces: the persisted
- * `needsReply.clarification` shape (lib/validators/clarification.ts) before
- * the owner answers, so without `answeredAt` and `draft`.
- */
-type ClarificationFlag = Omit<
-	Infer<typeof needsReplyClarificationValidator>,
-	'answeredAt' | 'draft'
->;
-
-/**
- * Decide whether a good reply to this thread is missing a fact only the owner
- * can supply, and if so return the sanitized clarification questions.
- *
- * REUSES the shared slot taxonomy + prompt module (inbox/clarificationSlots.ts)
- * that the inbound agent `clarify` step uses — no fork. Two stages:
- *   1. cheap-tier slot extraction (the 'summarize' tier) → candidate
- *      slots that are BOTH unanswerable from context AND decision-relevant,
- *      plus every file the reply must carry that the context lacks.
- *   2. capable-tier divergence confirmation (the 'draft' tier), run ONLY
- *      when stage 1 flagged a non-file candidate: sample a few independent
- *      replies and keep only the slots they genuinely disagree on. A
- *      converging slot is a safe assumption and is dropped. A file request
- *      skips this stage (splitCandidateSlots): the samples all "attach" it.
- * Every survivor is deterministically sanitized (credential/OTP solicitations
- * dropped, attributed to the sender). FAIL-SOFT: any error returns undefined so
- * the needs-reply refinement is never downgraded by a clarification failure;
- * a failed divergence stage still asks for the files.
- */
-export async function refineClarification(
-	ctx: SpendCtx,
-	opts: {
-		transcript: string;
-		fromAddress: string;
-		items?: readonly SlotItem<Id<'threadItems'>>[];
-		/** The message the clarification is for (ADR-0073). */
-		root?: LlmRootContext;
-	}
-): Promise<ClarificationFlag | undefined> {
-	const root = opts.root;
-	const spend = (feature: string): LlmSpendTarget => ({ feature, ...(root ? { root } : {}) });
-	const items = opts.items ?? [];
-	try {
-		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
-		const slotModel = await resolveLanguageModel(ctx, 'mail.clarify');
-		const slotsResult = await meterLlmCall(ctx, spend('postbox_clarify_slots'), (meter) =>
-			runLlmObject({
-				meter,
-				model: slotModel,
-				schema: replySlotsSchema,
-				prompt: buildSlotPrompt(opts.transcript, items),
-				temperature: 0.2,
-			})
-		);
-
-		const { owed, toJudge } = splitCandidateSlots(slotsResult.object.slots);
-		if (owed.length === 0 && toJudge.length === 0) return undefined;
-
-		// Files first: they are what the reply cannot go out without.
-		const raw = [
-			...owed,
-			...(await divergentSlots(ctx, opts.transcript, toJudge, spend('postbox_clarify_diverge'))),
-		].map((slot) => ({
-			slotType: slot.slotType,
-			text: slot.question,
-			options: slot.options,
-			itemId: itemIdForSlot(slot, items),
-		}));
-		if (raw.length === 0) return undefined;
-
-		// Deterministic safety filter: drop credential/OTP solicitations, attribute
-		// each survivor to the sender ("Owlat will never ask for your password").
-		// Each survivor gets the input its slot kind calls for (answerKind).
-		const sanitized = sanitizeClarificationQuestions(raw, opts.fromAddress).map(withAnswerKind);
-		if (sanitized.length === 0) return undefined;
-
-		// Ask the owner in their own language: translate the surviving questions
-		// into every other interface locale. Fail-soft to the English copy.
-		const localizeModel = await resolveLanguageModel(ctx, 'mail.clarify');
-		const localized = await meterLlmCall(ctx, spend('postbox_clarify_localize'), (meter) =>
-			localizeQuestions(localizeModel, sanitized, undefined, meter)
-		);
-
-		return { isNeeded: true, questions: localized.questions, askedAt: Date.now() };
-	} catch (error) {
-		rethrowAdmissionRefusal(error);
-		return undefined;
 	}
 }
 

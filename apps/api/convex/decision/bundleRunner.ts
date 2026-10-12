@@ -42,7 +42,8 @@ import type {
 	DecisionProviderKind,
 } from '../lib/decisionProviders/types';
 import { runLlmObject } from '../lib/llm/dispatch';
-import { resolveLanguageModel } from '../lib/llmProvider';
+import { resolveLanguageModelWithProvenance } from '../lib/llmProvider';
+import type { LanguageModel } from 'ai';
 import type { LlmRootContext } from '../lib/llm/requestMeter';
 import type { AnswersFor, DecisionAnswer, QuestionSet } from '../lib/decision/questions';
 import {
@@ -56,10 +57,22 @@ import { calibrationRevisionFor } from '../lib/decision/calibration';
 import { stateContentHash, type BuiltDecisionState } from '../lib/decision/evidence';
 import { resolveEndpointLocality } from '../lib/llm/endpointLocality';
 import { resolvedPlaneIdentity } from '../lib/decision/configIdentity';
-import { artifactKeyOf, decisionRung, type BundlePlan } from '../lib/decision/routing';
-import { admitBundle, type BundleAdmission } from './bundleAdmission';
+import {
+	artifactKeyOf,
+	decisionRung,
+	type BundlePlan,
+	type DecisionRung,
+} from '../lib/decision/routing';
+import {
+	admitBundle,
+	admitUnderOuterHold,
+	type BundleAdmission,
+	type OuterHold,
+} from './bundleAdmission';
 import type { RoutingContext } from './context';
 import type { Id } from '../_generated/dataModel';
+import { boundedRoot } from '../lib/llm/actionDeadline';
+import type { AdmissionPriority } from '../lib/validators/aiRouting';
 
 /** Same state, same questions, same answer: a decision is no place for sampling. */
 const DECISION_TEMPERATURE = 0;
@@ -74,6 +87,28 @@ export type BundleSubject =
 
 export interface BundleRun<Q extends QuestionSet> {
 	readonly bundle: DecisionBundle<Q>;
+	/**
+	 * The rung and plane the caller already resolved for this routing context
+	 * (`resolveBundleRung`), for a caller asking many bundles at once (one claim
+	 * check per claim). Absent: resolved here. The claim checks the snapshot
+	 * either way.
+	 */
+	readonly resolved?: ResolvedRung;
+	/** The master gate, when it is not the subject's default (Answer mode: `ai`). */
+	readonly masterGate?: 'ai' | 'ai.agent';
+	/** The admission priority of an advisory call; background when absent. */
+	readonly priority?: AdmissionPriority;
+	/**
+	 * The caller's own hold that already covers this advisory call (an
+	 * interpretation run's claim checks): no admission of its own.
+	 */
+	readonly outerHold?: OuterHold;
+	/**
+	 * Called with a failed call's error after its lease is released, for an
+	 * inline caller that must not swallow it (a spend refusal holds, defers or
+	 * surfaces, D1). Throwing from it rethrows out of `runBundle`.
+	 */
+	readonly onCallError?: (error: unknown) => void;
 	readonly plan: BundlePlan;
 	readonly routing: RoutingContext;
 	readonly subject: BundleSubject;
@@ -87,18 +122,30 @@ export interface BundleRun<Q extends QuestionSet> {
 }
 
 export type BundleRunOutcome =
-	| { readonly hasRun: true; readonly status: 'complete' | 'abstained' | 'failed' }
+	| {
+			readonly hasRun: true;
+			readonly status: 'complete' | 'abstained' | 'failed';
+			/** The answer's labels; absent when the call failed. */
+			readonly labels?: DecisionLabels;
+	  }
+	| {
+			readonly hasRun: false;
+			readonly why: 'settled';
+			/** The stored answer's labels, when the key holds a valid one. */
+			readonly labels?: DecisionLabels;
+	  }
 	| {
 			readonly hasRun: false;
 			readonly why:
 				| 'language_rung'
 				| 'provider_unavailable'
-				| 'settled'
 				| 'busy'
 				| 'gone'
 				| 'excluded'
 				| 'disabled'
 				| 'stale'
+				/** The action's model budget is spent: no call could finish and be recorded in time. */
+				| 'deadline'
 				| 'policy_changed'
 				| Extract<BundleAdmission, { isAdmitted: false }>['why'];
 	  };
@@ -159,21 +206,27 @@ async function askDecisionPlane<Q extends QuestionSet>(
 async function askLanguageRung<Q extends QuestionSet>(
 	ctx: ActionCtx,
 	run: BundleRun<Q>,
-	admitted: Extract<BundleAdmission, { isAdmitted: true }>
+	admitted: Extract<BundleAdmission, { isAdmitted: true }>,
+	/** The model the claim checked: resolved ONCE, before the claim, never again. */
+	model: LanguageModel
 ): Promise<Answered<Q>> {
-	const model = await resolveLanguageModel(ctx, run.plan.task);
 	const { object, modelUsed } = await meterLlmCall(
 		ctx,
 		{ ...admitted.target, task: run.plan.task, root: run.root, plane: 'language' },
-		(meter) =>
-			runLlmObject({
-				meter,
-				model,
-				schema: renderDecisionSchema(run.bundle.questions),
-				prompt: renderDecisionPrompt(run.built.state, run.bundle.questions),
-				temperature: DECISION_TEMPERATURE,
-				abortSignal: AbortSignal.timeout(DEFAULT_LANGUAGE_DECISION_DEADLINE_MS),
-			})
+		async (meter) => {
+			try {
+				return await runLlmObject({
+					meter,
+					model,
+					schema: renderDecisionSchema(run.bundle.questions),
+					prompt: renderDecisionPrompt(run.built.state, run.bundle.questions),
+					temperature: DECISION_TEMPERATURE,
+					abortSignal: AbortSignal.timeout(DEFAULT_LANGUAGE_DECISION_DEADLINE_MS),
+				});
+			} finally {
+				run.outerHold?.count(meter.requests.length);
+			}
+		}
 	);
 	return {
 		answers: mapAnswers(run.bundle.questions, object) as AnswersFor<Q>,
@@ -184,42 +237,96 @@ async function askLanguageRung<Q extends QuestionSet>(
 	};
 }
 
-/** Ask `run.bundle` about one message and store the artifact. Never throws for a provider failure. */
-export async function runBundle<Q extends QuestionSet>(
+/** The ladder rung for a routing context, and the one plane resolution it was decided on. */
+export interface ResolvedRung {
+	readonly rung: DecisionRung;
+	readonly plane: ResolvedDecisionPlane | null;
+}
+
+/**
+ * Resolve the decision plane ONCE for a routing context and pick the rung.
+ * `stale` when the resolution read another configuration than the routing
+ * read saw: the rung would be decided on one config and the provider on
+ * another.
+ */
+export async function resolveBundleRung(
 	ctx: ActionCtx,
-	run: BundleRun<Q>
-): Promise<BundleRunOutcome> {
-	const { routing, plan, bundle } = run;
+	routing: RoutingContext
+): Promise<ResolvedRung | 'stale'> {
 	// A plane that cannot even be resolved (an undecryptable key, say) is the
 	// D3 case too: terminal, never a language call in its place.
 	const plane = routing.isDecisionPlaneOn
 		? await resolveDecisionConfig(ctx).catch(() => null)
 		: null;
-	// The resolution must come from the configuration the routing read saw;
-	// otherwise the rung was decided on one config and the provider on another.
-	if (plane !== null && plane.updatedAt !== routing.configUpdatedAt) {
-		return { hasRun: false, why: 'stale' };
-	}
+	if (plane !== null && plane.updatedAt !== routing.configUpdatedAt) return 'stale';
 	const rung = decisionRung({
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
 		kind: plane?.kind ?? 'llm',
 		isUnavailable: routing.isDecisionPlaneOn && (plane === null || plane.unavailable !== undefined),
 	});
+	return { rung, plane };
+}
+
+/**
+ * Ask `run.bundle` about one message and store the artifact. Never throws for
+ * a provider failure.
+ *
+ * The root is bounded by the calling action's model budget first (ADR-0073):
+ * a caller's root (Team, Postbox) may carry no deadline, and the decision
+ * rung's dispatch takes its deadline from the root alone. A call that cannot
+ * start inside the budget is not admitted and not claimed (`deadline`), so a
+ * caller asking many bundles in one action (one claim check per claim) never
+ * runs past the point where its ledger writes still land.
+ */
+export async function runBundle<Q extends QuestionSet>(
+	ctx: ActionCtx,
+	callerRun: BundleRun<Q>
+): Promise<BundleRunOutcome> {
+	const run: BundleRun<Q> = { ...callerRun, root: boundedRoot(ctx, callerRun.root) };
+	if ((run.root.deadlineAt ?? Infinity) <= Date.now()) return { hasRun: false, why: 'deadline' };
+	const { routing, plan, bundle } = run;
+	const resolved = run.resolved ?? (await resolveBundleRung(ctx, routing));
+	if (resolved === 'stale') return { hasRun: false, why: 'stale' };
+	const { rung, plane } = resolved;
 	if (rung === 'unavailable') return { hasRun: false, why: 'provider_unavailable' };
 	if (rung === 'language' && !bundle.runsOnLanguageRung) {
 		return { hasRun: false, why: 'language_rung' };
 	}
 
-	const admitted = await admitBundle(ctx, {
+	// The identity the answer is stamped with, from ONE resolution: the decision
+	// plane above, or on the language rung the model the call will use (its
+	// provider, model and endpoint), resolved here once and dispatched as is.
+	// The claim reclaims a stored answer stamped with any other (Sol r3 F2, r4 F1).
+	let language: Awaited<ReturnType<typeof resolveLanguageModelWithProvenance>> | null = null;
+	if (rung !== 'decision') {
+		try {
+			language = await resolveLanguageModelWithProvenance(ctx, plan.task);
+		} catch {
+			// No language model resolves now: no call can be made, nothing is claimed.
+			return { hasRun: false, why: 'provider_unavailable' };
+		}
+	}
+	const contextVersion =
+		language === null ? resolvedPlaneIdentity(plane, true) : `language|${language.identity}`;
+	const request = {
 		task: plan.task,
-		mode: plan.mode,
-		subjectKey: subjectId(run.subject),
 		feature: DECISION_FEATURE[plan.task],
 		root: run.root,
 		policyVersion: routing.policy.policyVersion,
 		// The selected rung's plane, for the hold and the rows alike (Sol r7 F1).
-		plane: rung === 'decision' ? 'decision' : 'language',
-	});
+		plane: rung === 'decision' ? ('decision' as const) : ('language' as const),
+	};
+	// A shadow observation always takes its own D4 admission; an advisory call
+	// the caller's hold covers takes none.
+	const admitted =
+		run.outerHold && plan.mode === 'advisory'
+			? admitUnderOuterHold(ctx, request, run.outerHold)
+			: await admitBundle(ctx, {
+					...request,
+					mode: plan.mode,
+					subjectKey: subjectId(run.subject),
+					...(run.priority ? { priority: run.priority } : {}),
+				});
 	if (!admitted.isAdmitted) return { hasRun: false, why: admitted.why };
 
 	// The endpoint this call will use, from the ONE resolution above: its rung,
@@ -256,15 +363,23 @@ export async function runBundle<Q extends QuestionSet>(
 		policyVersion: routing.policy.policyVersion,
 		rootRequestId: run.root.rootRequestId,
 		endpoint,
+		...(run.masterGate ? { masterGate: run.masterGate } : {}),
+		contextVersion,
 	});
+	if (claim.outcome === 'settled') {
+		const labels = await ctx.runQuery(internal.decision.artifacts.answeredLabels, {
+			artifactKey,
+			contextVersion,
+		});
+		return { hasRun: false, why: 'settled', ...(labels ? { labels } : {}) };
+	}
 	if (claim.outcome !== 'claimed') return { hasRun: false, why: claim.outcome };
 	const lease = { artifactKey, leaseExpiresAt: claim.leaseExpiresAt };
 
 	try {
-		const answered =
-			rung === 'decision' && plane !== null
-				? await askDecisionPlane(ctx, run, admitted, plane)
-				: await askLanguageRung(ctx, run, admitted);
+		const answered = language
+			? await askLanguageRung(ctx, run, admitted, language.model)
+			: await askDecisionPlane(ctx, run, admitted, plane as ResolvedDecisionPlane);
 		const labels = bundle.project(answered.answers);
 		const status = isAbstention(labels) ? 'abstained' : 'complete';
 		const isAgreement = agreementWith(labels, run.baseline);
@@ -286,12 +401,12 @@ export async function runBundle<Q extends QuestionSet>(
 				...(revision ? { calibrationRevision: revision } : {}),
 				...(run.language ? { language: run.language } : {}),
 			},
-			contextVersion: rung === 'decision' ? resolvedPlaneIdentity(plane, true) : 'language',
+			contextVersion,
 			...(run.baseline ? { baseline: { ...run.baseline } } : {}),
 			...(isAgreement === undefined ? {} : { isAgreement }),
 			...(run.built.isComplete ? { memoryKey: run.built.contentFingerprint } : {}),
 		});
-		return { hasRun: true, status };
+		return { hasRun: true, status, labels };
 	} catch (error) {
 		console.warn(`[decision] ${bundle.id} for ${run.subject.kind} failed`, errorName(error));
 		try {
@@ -299,6 +414,7 @@ export async function runBundle<Q extends QuestionSet>(
 		} catch {
 			// The lease lapses on its own; a later run may take the key.
 		}
+		run.onCallError?.(error);
 		return { hasRun: true, status: 'failed' };
 	}
 }

@@ -102,6 +102,8 @@ function tierTwoRouteFixture(options: { readonly auditFails?: boolean } = {}) {
 			if (name.includes('interpretationHold')) return { reason: null };
 			if (name.includes('itemCoverageCheck'))
 				return { objections: [], reason: null, isEnforced: false };
+			if (name.includes('appliedVerdictInputs'))
+				return { applied: [], isTruncated: false, isItemCoverageEnforced: false, current: null };
 			if (name.includes('getAgentConfig')) return null;
 			if (name.includes('evaluateForMessage')) {
 				return { restrictsAutoSend: false, reasons: [] };

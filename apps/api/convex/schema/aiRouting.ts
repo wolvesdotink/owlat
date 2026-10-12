@@ -322,7 +322,9 @@ export const aiRoutingTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_artifact_key', ['artifactKey'])
-		.index('by_inbound_message', ['inboundMessageId', 'task'])
+		// `kind` last: a reader of the applied (advisory) verdicts of a task
+		// skips the shadow observations in the index (clarify lane, Sol r4 F2).
+		.index('by_inbound_message', ['inboundMessageId', 'task', 'kind'])
 		.index('by_mail_message', ['mailMessageId', 'task'])
 		.index('by_mailbox', ['mailboxId'])
 		// Shadow agreement and calibration reports, per task, over time.

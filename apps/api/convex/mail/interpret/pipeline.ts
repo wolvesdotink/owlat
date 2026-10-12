@@ -419,7 +419,9 @@ function factValueOf(value: InterpretFactProposal['value']): ReduceFact['value']
 /**
  * Whether the run read everything it should have: `partial` when grounding
  * found a gap, the model or the prompt overflowed, a segment was cut, a
- * verification call failed, or only part of the body could be read. Pure.
+ * verification call failed, a claim went unverified (too long to send, past
+ * the per-message cap, or no decision provider to ask), or only part of the
+ * body could be read. Pure.
  */
 export function runStatusOf(input: {
 	grounding: Pick<GroundingResult<InterpretOutput>, 'coverage'>;
@@ -430,6 +432,10 @@ export function runStatusOf(input: {
 	isVerifyIncomplete: boolean;
 	/** Some claims were too long to send to the verifier: unverified, never retried. */
 	isVerifyUnsendable?: boolean;
+	/** Claims past the per-message verify cap were not checked: unverified, never retried. */
+	isVerifyCapped?: boolean;
+	/** Claim checks are enforced and the decision provider cannot answer (D3): never retried. */
+	isVerifyUnavailable?: boolean;
 	/** Scoping could not load the whole body (an excerpt stood in). */
 	isBodyIncomplete?: boolean;
 	/** The body ran past the hidden-content scanner's cap (its tail was not read). */
@@ -450,5 +456,9 @@ export function runStatusOf(input: {
 	// A transient verifier failure is retried; it wins over unsendable claims.
 	if (input.isVerifyIncomplete) return { status: 'partial', errorCode: 'verify' };
 	if (input.isVerifyUnsendable) return { status: 'partial', errorCode: 'verify_unsendable' };
+	// A claim the cap or an unavailable provider left unverified is never applied,
+	// and `partial` holds auto-send for a person; a retry would only repeat it.
+	if (input.isVerifyUnavailable) return { status: 'partial', errorCode: 'verify_unavailable' };
+	if (input.isVerifyCapped) return { status: 'partial', errorCode: 'verify_capped' };
 	return { status: 'complete' };
 }

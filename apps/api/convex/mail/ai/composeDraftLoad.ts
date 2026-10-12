@@ -24,6 +24,7 @@ import { assembleInboundBriefing } from '../../agent/steps/context_retrieval';
 import { guardAllowsInboundMessage } from '../../agent/steps/security_scan/guard';
 import { throwInvalidState } from '../../_utils/errors';
 import type { EagernessMode } from '../../inbox/askEagerness';
+import type { BundleSubject } from '../../decision/bundleRunner';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
 /**
@@ -46,6 +47,8 @@ interface AnswerContext extends AnswerDraftContext {
 	/** Where the automatic file search may look in the mailbox (Postbox only). */
 	mailboxScope?: MailboxAttachmentScope | undefined;
 	eagerness?: EagernessMode | undefined;
+	/** The message answered, for the necessity judgment (D5); absent for a fresh draft. */
+	decisionSubject?: BundleSubject | undefined;
 }
 
 const PERSONAL_TONE =
@@ -94,6 +97,15 @@ export async function loadAnswerContext(
 			mailboxId: loaded.mailboxId,
 			mailboxScope: loaded.mailboxScope,
 			eagerness: loaded.eagerness,
+			...(loaded.triggerMessageId
+				? {
+						decisionSubject: {
+							kind: 'mail_message' as const,
+							mailMessageId: loaded.triggerMessageId,
+							mailboxId: loaded.mailboxId,
+						},
+					}
+				: {}),
 			audience: `the mailbox owner (${loaded.ownerAddress}), answering the last message in the thread, which the other party sent`,
 			styleReference: "the owner's",
 			toneInstruction: PERSONAL_TONE,
@@ -132,6 +144,7 @@ export async function loadAnswerContext(
 		contactId: loaded.contact?.contactId,
 		language: loaded.contact?.language,
 		eagerness: loaded.eagerness,
+		decisionSubject: { kind: 'inbound_message', inboundMessageId: loaded.inboundMessageId },
 		audience: 'an organization',
 		styleReference: "the organization's",
 		toneInstruction: agentConfig?.toneDescription

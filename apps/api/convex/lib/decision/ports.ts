@@ -64,8 +64,16 @@ export function decisionBreakerPort(ctx: ActionCtx): DecisionFallbackBreaker {
  */
 export function decisionUsageRecorder(
 	ctx: ActionCtx,
-	/** `shadow` for a shadow judgment (D4): its rows count against the shadow allowance. */
-	options: { readonly budgetClass?: BudgetClass } = {}
+	options: {
+		/** `shadow` for a shadow judgment (D4): its rows count against the shadow allowance. */
+		readonly budgetClass?: BudgetClass;
+		/**
+		 * A hold the caller already holds (an interpretation run's, which was
+		 * sized for its claim checks): every row carries it, so the hold settles
+		 * against them and no hold of the attempt's own is taken.
+		 */
+		readonly reservationId?: string;
+	} = {}
 ): DecisionUsageRecorder {
 	return async (record: DecisionAttemptRecord) => {
 		if (record.requests.length === 0 && !record.settlements?.length) return;
@@ -75,6 +83,7 @@ export function decisionUsageRecorder(
 			plane: 'decision',
 			requestId: record.requestId,
 			...(options.budgetClass ? { budgetClass: options.budgetClass } : {}),
+			...(options.reservationId ? { reservationId: options.reservationId } : {}),
 			...(record.task ? { task: record.task } : {}),
 			...(record.root?.rootRequestId ? { rootRequestId: record.root.rootRequestId } : {}),
 			...(record.root?.parentCallId ? { parentCallId: record.root.parentCallId } : {}),

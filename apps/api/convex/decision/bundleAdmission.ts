@@ -34,11 +34,12 @@ import type { LlmUsagePlane } from '../lib/llmUsageTags';
 import type { QuestionSet } from '../lib/decision/questions';
 import type { BundleMode } from '../lib/decision/routing';
 import type { DecisionBundleTask } from '../lib/decision/bundles';
+import type { AdmissionPriority } from '../lib/validators/aiRouting';
 
 /** What `runDecision` takes from admission: the usage recorder and the admission port. */
 export type AdmittedDecisionOptions = Pick<
 	RunDecisionOptions<QuestionSet>,
-	'recordUsage' | 'admission'
+	'recordUsage' | 'admission' | 'requestId'
 >;
 
 export type BundleAdmission =
@@ -67,6 +68,63 @@ export interface BundleAdmissionRequest {
 	 * the language rung. Headroom, holds, caps and ledger rows all use it (Sol r7 F1).
 	 */
 	readonly plane: LlmUsagePlane;
+	/**
+	 * The priority an advisory call is held at: background unless the caller
+	 * waits on it (Answer mode's necessity judgment is `interactive`).
+	 */
+	readonly priority?: AdmissionPriority;
+}
+
+/**
+ * A caller's own hold, sized before it bought anything for the calls this
+ * bundle will make (an interpretation run's hold covers its claim checks):
+ * the call carries the hold's id and its pre-assigned request id, reserves
+ * nothing of its own and so cannot be refused halfway, and reports every
+ * provider request it makes so the hold settles against them (`count`).
+ */
+export interface OuterHold {
+	readonly reservationId: string;
+	readonly requestId: string;
+	count(requests: number): void;
+}
+
+/** An advisory call under the caller's {@link OuterHold}: admitted, nothing more reserved. */
+export function admitUnderOuterHold(
+	ctx: ActionCtx,
+	request: Omit<BundleAdmissionRequest, 'mode' | 'subjectKey' | 'priority'>,
+	hold: OuterHold
+): Extract<BundleAdmission, { isAdmitted: true }> {
+	const recorder = decisionUsageRecorder(ctx, { reservationId: hold.reservationId });
+	// Each provider request counts ONCE: a batch whose write failed stays
+	// pending on the dispatch and is sent again with the next attempt's, so the
+	// same (request, attempt) can reach the recorder twice (Sol r4 F3).
+	const counted = new Set<string>();
+	return {
+		isAdmitted: true,
+		target: {
+			feature: request.feature,
+			task: request.task,
+			root: request.root,
+			policyVersion: request.policyVersion,
+			plane: request.plane,
+			reservationId: hold.reservationId,
+			requestId: hold.requestId,
+		},
+		decision: {
+			requestId: hold.requestId,
+			recordUsage: async (record) => {
+				let fresh = 0;
+				for (const request of record.requests) {
+					const key = `${record.requestId}:${request.attempt}`;
+					if (counted.has(key)) continue;
+					counted.add(key);
+					fresh += 1;
+				}
+				if (fresh > 0) hold.count(fresh);
+				await recorder(record);
+			},
+		},
+	};
 }
 
 export async function admitBundle(
@@ -92,8 +150,13 @@ export async function admitBundle(
 			},
 		};
 	}
-	// Advisory: an ordinary hold, at background priority, on the task's own class.
-	const shape = { root: request.root, priority: 'background' as const, plane: request.plane };
+	// Advisory: an ordinary hold on the task's own class, at background priority
+	// unless the caller waits on it (Answer mode's necessity judgment).
+	const shape = {
+		root: request.root,
+		priority: request.priority ?? ('background' as const),
+		plane: request.plane,
+	};
 	const admission = dispatchAdmissionPort(ctx, shape, request.task, request.root.deadlineAt);
 	return {
 		isAdmitted: true,

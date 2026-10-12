@@ -78,6 +78,7 @@ import {
 	type ProviderClientConfig,
 	type ResolvedLanguageModel,
 } from './llmProviders';
+import { languageModelIdentity } from './llm/languageIdentity';
 import type { StoredEmbeddingProviderKind } from './validators/aiProviderConfig';
 import {
 	invalidateAiConfigCache,
@@ -292,17 +293,16 @@ function resolveLanguageModelFromPlane(
 	const modelId = tier === 'fast' ? language.models.fast : language.models.capable;
 	const adapter = languageProviderFor(language.kind);
 	return Object.freeze({
-		// Stamped so every ledger row this model writes names its endpoint, and a
-		// model on the operator's own network costs nothing (ADR-0073).
+		// Stamped with its endpoint (ledger rows; a model on our network costs nothing)
+		// and its tier (the dispatch refuses it for a task not allowed it). ADR-0073.
 		model: stampModelEndpoint(
 			adapter.buildChatModel(language.clientConfig, modelId),
 			language.endpointProvenance,
-			// The tier too: the dispatch refuses the model for a task whose catalog
-			// entry does not allow it (`./llm/callShape.ts`).
 			{ isLocal: isLocalEndpoint(language.kind, language.clientConfig.baseUrl, adapter), tier }
 		),
 		modelId,
 		endpointProvenance: language.endpointProvenance,
+		identity: languageModelIdentity(language.kind, modelId, language.clientConfig.baseUrl),
 	});
 }
 

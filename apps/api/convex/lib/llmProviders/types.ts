@@ -62,6 +62,13 @@ export interface ResolvedLanguageModel {
 	readonly model: LanguageModel;
 	readonly modelId: string;
 	readonly endpointProvenance: LanguageEndpointProvenance;
+	/**
+	 * The secret-free execution identity (`../llm/languageIdentity.ts`):
+	 * provider kind, model and endpoint identity. Two resolutions answer alike
+	 * only when this is equal; a stored answer stamped with another is not
+	 * reused (clarify lane, Sol r4 F1, r5 F1).
+	 */
+	readonly identity: string;
 }
 
 /** Classify the endpoint selected by the deployment-level compatibility config. */

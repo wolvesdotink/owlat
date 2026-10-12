@@ -195,6 +195,17 @@ const ENTRIES = {
 			'postbox_answer_localize',
 		],
 	}),
+	// The sampled candidate replies of the divergence check, on the same route
+	// as `mail.clarify`. They keep their surface's feature and carry this task
+	// explicitly, so the ledger counts samples and their cost apart (ADR-0073,
+	// Phase 3). No feature maps here.
+	'mail.clarify_sample': language({
+		...MEDIUM_OUTPUT,
+		tiers: ['fast', 'capable'],
+		...pipeline,
+		...oneShot,
+		features: [],
+	}),
 	'mail.draft': language({
 		...LARGE_OUTPUT,
 		tiers: ['capable', 'fast'],
@@ -386,13 +397,13 @@ const ENTRIES = {
 		...SMALL_OUTPUT,
 		...pipeline,
 		maxAttempts: MAX_LLM_ATTEMPTS,
-		features: [],
+		features: ['decision_claim_check'],
 	}),
 	'mail.necessity': decision({
 		...SMALL_OUTPUT,
 		...pipeline,
 		maxAttempts: MAX_LLM_ATTEMPTS,
-		features: [],
+		features: ['decision_necessity'],
 	}),
 	'mail.draft_quality': decision({
 		...SMALL_OUTPUT,

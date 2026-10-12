@@ -153,8 +153,8 @@ const INVENTORY: readonly CallSite[] = [
 	// The language rung of a decision bundle: the bundle's decision task.
 	{
 		file: 'decision/bundleRunner.ts',
-		fn: 'resolveLanguageModel',
-		args: 'ctx, run.plan.task',
+		fn: 'resolveLanguageModelWithProvenance',
+		args: 'ctx, plan.task',
 		tasks: DECISION_TASKS,
 		branches: [[undefined, 'classify']],
 	},
@@ -171,39 +171,34 @@ const INVENTORY: readonly CallSite[] = [
 		'resolveLanguageModelForUserText'
 	),
 	site('mail/ai/draftOnArrival.ts', "ctx, 'mail.draft'", 'draft'),
+	// Answer mode's localization; its slots, samples and judge resolve through
+	// the shared clarification service below.
 	site('mail/ai/composeDraftGap.ts', "ctx, 'mail.clarify'", 'summarize'),
+	// The shared clarification service (ADR-0073, Phase 3): one call for every
+	// stage, with the surface's task and tier. Each surface's choices pin
+	// today's tier: Team every stage fast (it passes its own `mail.clarify`
+	// model, `classify` before); Postbox slots fast (`summarize`), samples and
+	// judge capable (`draft`); Answer mode slots fast, samples fast or capable
+	// by the dial (`summarize`/`draft`), judge capable (`draft`). The goldens
+	// (`inbox/__tests__/clarifyGolden.test.ts`) pin each stage's tier.
 	{
-		file: 'mail/ai/composeDraftGap.ts',
+		file: 'inbox/clarifyJudge.ts',
 		fn: 'resolveLanguageModel',
-		args: "ctx, 'mail.clarify', { tier: eagerness === 'cautious' ? 'capable' : 'fast' }",
-		tasks: ['mail.clarify'],
+		args: 'ctx, choice.task, choice',
+		tasks: ['mail.clarify', 'mail.clarify_sample'],
 		branches: [
-			['capable', 'draft'],
+			[undefined, 'summarize'],
 			['fast', 'summarize'],
+			['capable', 'draft'],
 		],
 	},
-	{
-		file: 'mail/ai/composeDraftGap.ts',
-		fn: 'resolveLanguageModel',
-		args: "ctx, 'mail.clarify', { tier: 'capable' }",
-		tasks: ['mail.clarify'],
-		branches: [['capable', 'draft']],
-	},
-	site('mail/ai/composeDraftGap.ts', "ctx, 'mail.clarify'", 'summarize'),
 	site('mail/ai/commitmentExtract.ts', "ctx, 'mail.extract'", 'summarize'),
 	site('mail/ai/voiceProfileActions.ts', "ctx, 'mail.voice_profile'", 'extract'),
-	...[0, 1].map((): CallSite => ({
-		file: 'mail/ai/needsReplyDivergence.ts',
-		fn: 'resolveLanguageModel',
-		args: "ctx, 'mail.clarify', { tier: 'capable' }",
-		tasks: ['mail.clarify'],
-		branches: [['capable', 'draft']],
-	})),
 	site('mail/ai/composeDraftWrite.ts', "ctx, 'mail.compose'", 'draft'),
 	site('mail/ai/coach.ts', "ctx, 'mail.coach'", 'classify'),
 	site('mail/ai/categoryClassify.ts', "ctx, 'mail.classify'", 'summarize'),
-	site('mail/ai/needsReplyClassify.ts', "ctx, 'mail.clarify'", 'summarize'),
-	site('mail/ai/needsReplyClassify.ts', "ctx, 'mail.clarify'", 'summarize'),
+	// Postbox localization; its slots go through the shared service.
+	site('mail/ai/needsReplyRefine.ts', "ctx, 'mail.clarify'", 'summarize'),
 	site('mail/ai/assist.ts', "ctx, 'mail.ask'", 'draft'),
 	site('mail/ai/assist.ts', "ctx, 'mail.complete'", 'summarize'),
 	site(

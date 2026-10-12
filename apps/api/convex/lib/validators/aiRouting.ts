@@ -116,6 +116,16 @@ export const budgetHoldValidator = v.object({
 export type BudgetHold = Infer<typeof budgetHoldValidator>;
 
 /**
+ * D1: a spend refusal an interpretation run met (the gate, its hold, a model
+ * call, a verifier batch or a claim check), stored on the run's
+ * `messageInterpretations` row so a replay reports it like the run did.
+ */
+export const runBudgetRefusalValidator = v.object({
+	reason: literalUnion(BUDGET_HOLD_REASONS),
+	limit: v.string(),
+});
+
+/**
  * D1 on a user-facing AI result (an assistant answer, a visualization): the
  * paid call was refused for budget. The stable code and reason, never the
  * English sentence, so the web can say it in the reader's language.

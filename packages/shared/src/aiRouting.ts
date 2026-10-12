@@ -70,6 +70,8 @@ export const AI_TASK_NAMES = [
 	// Embedding plane
 	'embedding.index',
 	'embedding.query',
+	// Language plane: the clarification samples, apart from `mail.clarify` (Phase 3)
+	'mail.clarify_sample',
 ] as const;
 
 export type AiTaskName = (typeof AI_TASK_NAMES)[number];

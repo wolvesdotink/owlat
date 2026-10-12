@@ -14,6 +14,7 @@ import {
 	verdictBlockReason,
 } from '../../../lib/decision/calibration';
 import { decisionAutonomyProblem } from '../../../lib/decision/autoSendContract';
+import { appliedDecisionGate } from './appliedDecisionGate';
 
 export type AutoSendGateDecision =
 	| { readonly safe: true }
@@ -316,6 +317,8 @@ const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	handlingRulesGate,
 	interpretationIncompleteGate,
 	itemCoverageGate,
+	// Applied Phase 3 verdicts hold the send unless the auto-send contract admits them.
+	appliedDecisionGate(),
 	decisionVerdictGate(AUTO_SEND_VERDICT_TASKS),
 ]);
 

@@ -73,6 +73,8 @@ function makeExecuteCtx(message: FakeMessage, mutationNames: string[] = []) {
 			if (name.includes('interpretationHold')) return { reason: null };
 			if (name.includes('itemCoverageCheck'))
 				return { objections: [], reason: null, isEnforced: false };
+			if (name.includes('appliedVerdictInputs'))
+				return { applied: [], isTruncated: false, isItemCoverageEnforced: false, current: null };
 			if (name.includes('getShadowMode')) return { enabled: false };
 			throw new Error(`unexpected runQuery: ${name}`);
 		},

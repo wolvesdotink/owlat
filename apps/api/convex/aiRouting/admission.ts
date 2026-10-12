@@ -176,6 +176,51 @@ export const reserve = internalMutation({
 });
 
 /**
+ * Admit one run's whole path as several allocations, atomically (Sol r3 F1,
+ * clarify lane): each allocation is decided by the same rule as
+ * {@link reserve} against its OWN plane's capacity, the shared ceiling and
+ * every hold already outstanding, the earlier allocations of this call
+ * included (one transaction reads its own writes). If any allocation is
+ * refused, the ones already inserted in this call are deleted, so nothing is
+ * admitted. Each allocation is an ordinary hold that settles on its own plane.
+ * Idempotent by the allocations' `reservationId`s.
+ */
+export const reserveRun = internalMutation({
+	args: { allocations: v.array(v.object(reserveArgs)) },
+	returns: v.union(
+		v.object({ isAdmitted: v.literal(true), heldReservationIds: v.array(v.string()) }),
+		refusalValidator
+	),
+	handler: async (ctx, args) => {
+		const inserted: string[] = [];
+		const held: string[] = [];
+		for (const allocation of args.allocations) {
+			const isNew =
+				(await ctx.db
+					.query('llmReservations')
+					.withIndex('by_reservation_id', (q) => q.eq('reservationId', allocation.reservationId))
+					.first()) === null;
+			const result = await reserveInMutation(ctx, allocation);
+			if (!result.isAdmitted) {
+				for (const reservationId of inserted) {
+					const row = await ctx.db
+						.query('llmReservations')
+						.withIndex('by_reservation_id', (q) => q.eq('reservationId', reservationId))
+						.first();
+					if (row) await ctx.db.delete(row._id);
+				}
+				return result;
+			}
+			if (result.isHeld) {
+				held.push(allocation.reservationId);
+				if (isNew) inserted.push(allocation.reservationId);
+			}
+		}
+		return { isAdmitted: true as const, heldReservationIds: held };
+	},
+});
+
+/**
  * Grow a held reservation by one more provider request before it is sent (a
  * retry, a tool round, a stream step), under the same rule as a new hold: the
  * hold itself already counts as outstanding, so only the increment is asked

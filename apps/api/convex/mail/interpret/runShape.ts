@@ -67,6 +67,8 @@ export type RunRecord = {
 	retryCount?: number;
 	/** The run's hold was refused: consecutive deferrals, which back the retry off (Sol r4). */
 	budgetDeferrals?: number;
+	/** A spend refusal the run met, stored so a replay reports it (Sol r2 F1). */
+	budgetRefusal?: RunBudgetRefusal;
 };
 
 /** The run must start over: the body or the thread's mode changed under it. */

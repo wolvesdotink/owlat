@@ -28,7 +28,7 @@ vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModel: vi.fn(() => 'moc
 
 import { ledgerRows } from '../../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
-import { refineClarification } from '../ai/needsReplyClassify';
+import { refineClarification } from '../ai/needsReplyRefine';
 
 const ctx = { runMutation: mocks.runMutation } as never;
 const billed = { promptTokens: 30, completionTokens: 15, totalTokens: 45 };
