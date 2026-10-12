@@ -45,7 +45,7 @@ vi.mock('../../lib/llmProvider', async () => ({
 }));
 vi.mock('../../lib/decisionProvider', async () => ({
 	...(await vi.importActual<object>('../../lib/decisionProvider')),
-	resolveDecisionConfig: vi.fn(async () => ({ ...mocks.plane })),
+	resolveDecisionConfig: vi.fn(async () => ({ ...mocks.plane, clientConfig: {} })),
 	resolveDecisionProvider: vi.fn(async () => ({ kind: mocks.plane.kind, config: {} })),
 }));
 vi.mock('../../lib/decision/dispatch', async () => ({
@@ -379,6 +379,97 @@ describe('the message bundle', () => {
 		expect(mocks.runLlmObject).not.toHaveBeenCalled();
 		expect(mocks.runDecision).not.toHaveBeenCalled();
 		expect(mocks.admitBundle).not.toHaveBeenCalled();
+	});
+});
+
+describe('the opt-out from hosted decisions (ADR-0060 §9)', () => {
+	const baseline = { category: 'support', disposition: 'reply' };
+
+	async function excludeTeamInbox(t: T) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('agentConfig', {
+				isAutoReplyEnabled: false,
+				confidenceThreshold: 0.8,
+				isExcludedFromHostedDecisions: true,
+				createdAt: 1,
+				updatedAt: 1,
+			});
+		});
+	}
+
+	it('refuses a hosted provider for the excluded Team Inbox at dispatch', async () => {
+		mocks.plane.kind = 'typesafe';
+		mocks.admitBundle.mockResolvedValue(admitted('advisory'));
+		const t = await setup({ categoryDisplayBundle: 'enforce', triageBundle: 'shadow' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		await excludeTeamInbox(t);
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamMessage, { inboundMessageId, baseline });
+		await t.action(internal.decision.bundleActions.teamTriage, { inboundMessageId });
+		expect(mocks.runDecision).not.toHaveBeenCalled();
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+		expect(await artifacts(t)).toEqual([]);
+	});
+
+	it('refuses the language rung for it too: that model is hosted as well', async () => {
+		const t = await setup({ triageBundle: 'shadow' });
+		await excludeTeamInbox(t);
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamTriage, { inboundMessageId });
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+	});
+
+	it('lets the local decision engine judge it', async () => {
+		mocks.plane.kind = 'local';
+		mocks.admitBundle.mockResolvedValue(admitted('advisory'));
+		const t = await setup({ categoryDisplayBundle: 'enforce' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		await excludeTeamInbox(t);
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamMessage, { inboundMessageId, baseline });
+		expect(mocks.runDecision).toHaveBeenCalledTimes(1);
+	});
+
+	it('refuses a hosted provider for an excluded Postbox mailbox, and only that one', async () => {
+		mocks.plane.kind = 'typesafe';
+		mocks.admitBundle.mockResolvedValue(admitted('advisory'));
+		const t = await setup({ categoryDisplayBundle: 'enforce' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		const excluded = await seedMailbox(t, { address: 'me@example.com' });
+		await seedFolder(t, excluded, 'inbox');
+		const excludedMessage = await seedMessage(t, excluded, { fromAddress: 'a@shop.example' });
+		const other = await seedMailbox(t, { address: 'you@example.com' });
+		await seedFolder(t, other, 'inbox');
+		const otherMessage = await seedMessage(t, other, { fromAddress: 'b@shop.example' });
+		const threads = await t.run(async (ctx) => {
+			await ctx.db.patch(excluded, { isExcludedFromHostedDecisions: true });
+			const ids = [];
+			for (const id of [excludedMessage, otherMessage]) {
+				const message = await ctx.db.get(id);
+				await ctx.db.patch(message!.threadId, { latestMessageId: id });
+				ids.push(message!.threadId);
+			}
+			return ids;
+		});
+		for (const threadId of threads) {
+			await t.action(internal.decision.bundleActions.postboxMessage, {
+				threadId,
+				baseline: { category: 'other' },
+			});
+		}
+		expect(mocks.runDecision).toHaveBeenCalledTimes(1);
+		const [artifact] = await artifacts(t);
+		expect(artifact).toMatchObject({ mailMessageId: otherMessage });
+	});
+});
+
+describe('a corrected message (D12)', () => {
+	it('is never judged once the owner corrected it, however late the job runs', async () => {
+		const t = await setup({ triageBundle: 'shadow' });
+		const inboundMessageId = await seedTeamMessage(t, { decisionCorrectedAt: Date.now() });
+		await t.action(internal.decision.bundleActions.teamTriage, { inboundMessageId });
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+		expect(await artifacts(t)).toEqual([]);
 	});
 });
 

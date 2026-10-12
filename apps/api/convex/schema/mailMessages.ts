@@ -160,6 +160,10 @@ export const mailMessagesTables = {
 		// nothing to capture, synced or imported mail, or a message older than
 		// the marker.
 		attachmentIndexing: v.optional(attachmentIndexingValidator),
+		// D12 (ADR-0073): when an owner last corrected a decision about this
+		// message. A decision bundle never judges, keeps or learns from a
+		// corrected message (`decision/artifacts.ts`). Absent ⇒ never corrected.
+		decisionCorrectedAt: v.optional(v.number()),
 		spfResult: v.optional(v.string()),
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),

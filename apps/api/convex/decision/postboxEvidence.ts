@@ -18,7 +18,7 @@ export interface PostboxSubject {
 	readonly mailMessageId: Id<'mailMessages'>;
 	readonly mailboxId: Id<'mailboxes'>;
 	/** Everything but the body, which the action adds. */
-	readonly evidence: Omit<DecisionEvidence, 'segments'>;
+	readonly evidence: Omit<DecisionEvidence, 'segments' | 'isScopeComplete'>;
 }
 
 /**

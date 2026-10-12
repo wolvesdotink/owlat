@@ -39,7 +39,6 @@ import {
 import type {
 	DecisionEndpointProvenance,
 	DecisionProviderKind,
-	DecisionState,
 } from '../lib/decisionProviders/types';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { resolveLanguageModel } from '../lib/llmProvider';
@@ -53,7 +52,8 @@ import {
 	type DecisionLabels,
 } from '../lib/decision/bundles';
 import { calibrationRevisionFor } from '../lib/decision/calibration';
-import { stateContentHash } from '../lib/decision/evidence';
+import { stateContentHash, type BuiltDecisionState } from '../lib/decision/evidence';
+import { resolveEndpointLocality } from '../lib/llm/endpointLocality';
 import { artifactKeyOf, decisionRung, type BundlePlan } from '../lib/decision/routing';
 import { admitBundle, type BundleAdmission } from './bundleAdmission';
 import type { RoutingContext } from './context';
@@ -75,7 +75,8 @@ export interface BundleRun<Q extends QuestionSet> {
 	readonly plan: BundlePlan;
 	readonly routing: RoutingContext;
 	readonly subject: BundleSubject;
-	readonly state: DecisionState;
+	/** The redacted state, whether it is complete, and the message fingerprint. */
+	readonly built: BuiltDecisionState;
 	readonly root: LlmRootContext;
 	/** Today's source, in the bundle's label domain, for the shadow comparison. */
 	readonly baseline?: DecisionLabels;
@@ -92,6 +93,8 @@ export type BundleRunOutcome =
 				| 'provider_unavailable'
 				| 'settled'
 				| 'busy'
+				| 'gone'
+				| 'excluded'
 				| Extract<BundleAdmission, { isAdmitted: false }>['why'];
 	  };
 
@@ -119,7 +122,7 @@ async function askDecisionPlane<Q extends QuestionSet>(
 		feature: DECISION_FEATURE[run.plan.task],
 		task: run.plan.task,
 		root: run.root,
-		state: run.state,
+		state: run.built.state,
 		questions: run.bundle.questions,
 		provider,
 		allowance,
@@ -154,7 +157,7 @@ async function askLanguageRung<Q extends QuestionSet>(
 				meter,
 				model,
 				schema: renderDecisionSchema(run.bundle.questions),
-				prompt: renderDecisionPrompt(run.state, run.bundle.questions),
+				prompt: renderDecisionPrompt(run.built.state, run.bundle.questions),
 				temperature: DECISION_TEMPERATURE,
 				abortSignal: AbortSignal.timeout(DEFAULT_LANGUAGE_DECISION_DEADLINE_MS),
 			})
@@ -200,7 +203,13 @@ export async function runBundle<Q extends QuestionSet>(
 	});
 	if (!admitted.isAdmitted) return { hasRun: false, why: admitted.why };
 
-	const contentHash = stateContentHash(run.state);
+	// ADR-0060 §9: whether the endpoint this call will use is the operator's
+	// own. The claim refuses a hosted call for an excluded mailbox.
+	const isLocalEndpoint =
+		rung === 'decision' &&
+		plane !== null &&
+		resolveEndpointLocality(plane.kind, plane.clientConfig.baseUrl) === 'local';
+	const contentHash = stateContentHash(run.built.state);
 	const artifactKey = artifactKeyOf({
 		task: plan.task,
 		subject: { kind: run.subject.kind, id: subjectId(run.subject) },
@@ -220,6 +229,7 @@ export async function runBundle<Q extends QuestionSet>(
 		contentHash,
 		policyVersion: routing.policy.policyVersion,
 		rootRequestId: run.root.rootRequestId,
+		isLocalEndpoint,
 	});
 	if (claim.outcome !== 'claimed') return { hasRun: false, why: claim.outcome };
 	const lease = { artifactKey, leaseExpiresAt: claim.leaseExpiresAt };
@@ -253,6 +263,7 @@ export async function runBundle<Q extends QuestionSet>(
 			contextVersion: routing.decisionConfigIdentity,
 			...(run.baseline ? { baseline: { ...run.baseline } } : {}),
 			...(isAgreement === undefined ? {} : { isAgreement }),
+			...(run.built.isComplete ? { memoryKey: run.built.contentFingerprint } : {}),
 		});
 		return { hasRun: true, status };
 	} catch (error) {

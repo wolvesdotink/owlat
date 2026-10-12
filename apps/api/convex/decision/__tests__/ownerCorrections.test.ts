@@ -131,6 +131,7 @@ describe('owner corrections', () => {
 			expect((await ctx.db.get(otherSender))?.invalidatedAt).toBeUndefined();
 			const [artifact] = await ctx.db.query('decisionArtifacts').collect();
 			expect(artifact).toMatchObject({ invalidationReason: 'owner_correction' });
+			expect((await ctx.db.get(inboundMessageId))?.decisionCorrectedAt).toEqual(expect.any(Number));
 		});
 	});
 
@@ -171,29 +172,79 @@ describe('owner corrections', () => {
 			expect((await ctx.db.get(elsewhere))?.invalidatedAt).toBeUndefined();
 			const [artifact] = await ctx.db.query('decisionArtifacts').collect();
 			expect(artifact).toMatchObject({ invalidationReason: 'owner_correction' });
+			expect((await ctx.db.get(messageId))?.decisionCorrectedAt).toEqual(expect.any(Number));
 		});
 	});
 });
 
 describe('purging a Postbox message', () => {
-	it('deletes its decision artifacts with it', async () => {
+	it('deletes its decision artifacts and the sender memory learned from them', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, { address: 'me@example.com' });
 		await seedFolder(t, mailboxId, 'inbox');
 		const messageId = await seedMessage(t, mailboxId);
 		const keptId = await seedMessage(t, mailboxId, { subject: 'kept' });
+		const purged = artifactRow({
+			subjectKind: 'mail_message',
+			mailMessageId: messageId,
+			mailboxId,
+		});
+		const kept = artifactRow({ subjectKind: 'mail_message', mailMessageId: keptId, mailboxId });
 		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'decisionArtifacts',
-				artifactRow({ subjectKind: 'mail_message', mailMessageId: messageId, mailboxId })
-			);
-			await ctx.db.insert(
-				'decisionArtifacts',
-				artifactRow({ subjectKind: 'mail_message', mailMessageId: keptId, mailboxId })
-			);
+			await ctx.db.insert('decisionArtifacts', purged);
+			await ctx.db.insert('decisionArtifacts', kept);
+			await ctx.db.insert('senderMemory', {
+				...memoryRow({ scope: 'mailbox', mailboxId }, 'someone@example.com'),
+				sourceArtifactKey: purged.artifactKey,
+			});
+			await ctx.db.insert('senderMemory', {
+				...memoryRow({ scope: 'mailbox', mailboxId }, 'other@example.com'),
+				sourceArtifactKey: kept.artifactKey,
+			});
 			await deleteMessageRowAndBlobs(ctx, (await ctx.db.get(messageId))!);
 		});
 		const left = await t.run((ctx) => ctx.db.query('decisionArtifacts').collect());
 		expect(left.map((row) => row.mailMessageId)).toEqual([keptId]);
+		const learned = await t.run((ctx) => ctx.db.query('senderMemory').collect());
+		expect(learned.map((row) => row.sourceArtifactKey)).toEqual([kept.artifactKey]);
+	});
+});
+
+describe('excluding a mailbox from hosted decisions (ADR-0060 §9)', () => {
+	it('sets the Team Inbox and a mailbox apart, audited, and writes nothing when unchanged', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { address: 'me@example.com' });
+		await t.mutation(api.decision.exclusion.setHostedDecisionExclusion, {
+			target: { kind: 'team_inbox' },
+			isExcluded: true,
+		});
+		await t.mutation(api.decision.exclusion.setHostedDecisionExclusion, {
+			target: { kind: 'mailbox', mailboxId },
+			isExcluded: true,
+		});
+		await t.mutation(api.decision.exclusion.setHostedDecisionExclusion, {
+			target: { kind: 'mailbox', mailboxId },
+			isExcluded: true,
+		});
+		await t.run(async (ctx) => {
+			expect((await ctx.db.query('agentConfig').first())?.isExcludedFromHostedDecisions).toBe(true);
+			expect((await ctx.db.get(mailboxId))?.isExcludedFromHostedDecisions).toBe(true);
+			const audits = await ctx.db.query('auditLogs').collect();
+			expect(
+				audits
+					.filter((row) => row.action === 'ai_decision_exclusion.updated')
+					.map((row) => [row.resourceId, row.details])
+			).toEqual([
+				['team_inbox', { target: 'team_inbox', isExcluded: true }],
+				[mailboxId, { target: 'mailbox', isExcluded: true }],
+			]);
+		});
+		await t.mutation(api.decision.exclusion.setHostedDecisionExclusion, {
+			target: { kind: 'mailbox', mailboxId },
+			isExcluded: false,
+		});
+		expect((await t.run((ctx) => ctx.db.get(mailboxId)))?.isExcludedFromHostedDecisions).toBe(
+			false
+		);
 	});
 });

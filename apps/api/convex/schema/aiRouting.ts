@@ -242,5 +242,7 @@ export const aiRoutingTables = {
 		// erasure reads the `scope: 'mailbox', mailboxId` prefix.
 		.index('by_lookup', ['scope', 'mailboxId', 'senderDigest', 'task', 'matchKind', 'matchKey'])
 		.index('by_contact', ['contactId'])
+		// A purged message's artifacts take what memory learned from them along.
+		.index('by_source_artifact', ['sourceArtifactKey'])
 		.index('by_expires_at', ['expiresAt']),
 };

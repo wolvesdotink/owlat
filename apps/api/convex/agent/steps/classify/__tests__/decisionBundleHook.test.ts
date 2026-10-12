@@ -32,7 +32,9 @@ function fakeCtx(policy: ResolvedRoutingPolicy) {
 	const scheduled: { name: string; args: unknown }[] = [];
 	const ctx = {
 		runQuery: vi.fn(async (reference: unknown) =>
-			getFunctionName(reference as never).includes('getResolved') ? policy : inert
+			getFunctionName(reference as never).includes('schedulingGate')
+				? { policy, isAllowed: true }
+				: inert
 		),
 		scheduler: {
 			runAfter: vi.fn(async (_delay: number, reference: unknown, args: unknown) => {

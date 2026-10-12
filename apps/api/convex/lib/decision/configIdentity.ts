@@ -13,6 +13,7 @@
  */
 
 import { getOptional } from '../env';
+import { resolveEndpointLocality } from '../llm/endpointLocality';
 import {
 	DECISION_PROVIDER_KINDS,
 	DEFAULT_DECISION_KIND,
@@ -30,18 +31,47 @@ function env(key: 'DECISION_PROVIDER' | 'DECISION_MODEL' | 'DECISION_BASE_URL'):
 	return getOptional(key)?.trim() ?? '';
 }
 
+/** The decision plane as configured (kind, model, origin), or null while it is off. */
+export function configuredDecisionPlane(
+	row: DecisionConfigColumns | null,
+	isDecisionPlaneOn: boolean
+): { kind: DecisionProviderKind; model: string; baseUrl: string } | null {
+	if (!isDecisionPlaneOn) return null;
+	if (row?.decisionProviderKind !== undefined) {
+		return {
+			kind: row.decisionProviderKind,
+			model: row.decisionModel ?? '',
+			baseUrl: row.decisionBaseUrl ?? '',
+		};
+	}
+	const envKind = DECISION_PROVIDER_KINDS.find((kind) => kind === env('DECISION_PROVIDER'));
+	if (envKind !== undefined) {
+		return { kind: envKind, model: env('DECISION_MODEL'), baseUrl: env('DECISION_BASE_URL') };
+	}
+	return { kind: DEFAULT_DECISION_KIND, model: '', baseUrl: '' };
+}
+
 /** `off` when the plane is off; otherwise `<kind>|<model>|<origin>` as configured. */
 export function decisionConfigIdentity(
 	row: DecisionConfigColumns | null,
 	isDecisionPlaneOn: boolean
 ): string {
-	if (!isDecisionPlaneOn) return 'off';
-	if (row?.decisionProviderKind !== undefined) {
-		return [row.decisionProviderKind, row.decisionModel ?? '', row.decisionBaseUrl ?? ''].join('|');
-	}
-	const envKind = DECISION_PROVIDER_KINDS.find((kind) => kind === env('DECISION_PROVIDER'));
-	if (envKind !== undefined) {
-		return [envKind, env('DECISION_MODEL'), env('DECISION_BASE_URL')].join('|');
-	}
-	return [DEFAULT_DECISION_KIND, '', ''].join('|');
+	const plane = configuredDecisionPlane(row, isDecisionPlaneOn);
+	return plane ? [plane.kind, plane.model, plane.baseUrl].join('|') : 'off';
+}
+
+/**
+ * Whether the configured decision plane runs on the operator's own hardware
+ * (`lib/llm/endpointLocality.ts`, the ledger's locality rule): only then may
+ * a mailbox excluded from hosted decisions be judged (ADR-0060 §9). The
+ * language-backed adapter and TypeSafe are hosted; unknown is hosted.
+ */
+export function isLocalDecisionEngine(
+	row: DecisionConfigColumns | null,
+	isDecisionPlaneOn: boolean
+): boolean {
+	const plane = configuredDecisionPlane(row, isDecisionPlaneOn);
+	return (
+		plane !== null && resolveEndpointLocality(plane.kind, plane.baseUrl || undefined) === 'local'
+	);
 }

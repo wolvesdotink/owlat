@@ -35,7 +35,7 @@ import { htmlToPlainText } from '@owlat/shared/html';
 import { splitQuotedText } from '@owlat/shared/quotedText';
 import { truncateCodePoints } from '@owlat/shared/unicode';
 import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
-import { invalidateArtifactsOf } from '../decision/artifacts';
+import { recordOwnerCorrection } from '../decision/artifacts';
 
 /**
  * The dashboard's tabs. `updates` is mail a human wrote that needs no reply;
@@ -278,7 +278,7 @@ export const requestReply = adminMutation({
 		// D12: the owner overruled the classifier; nothing decided about this
 		// sender's mail may be reused (advisory decision data only).
 		await invalidateSenderMemoryForCorrection(ctx, { scope: 'team_inbox' }, message.from);
-		await invalidateArtifactsOf(ctx, { inboundMessageId: args.inboundMessageId });
+		await recordOwnerCorrection(ctx, { inboundMessageId: args.inboundMessageId });
 		await ctx.scheduler.runAfter(0, internal.agent.walker.resumeDraft, {
 			inboundMessageId: args.inboundMessageId,
 		});

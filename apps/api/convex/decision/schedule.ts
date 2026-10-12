@@ -3,8 +3,10 @@
  * hook schedules a separate action and returns: a bundle never runs inside a
  * pipeline step, so its answer, its latency and its failure cannot change the
  * step's outcome (D9). Every hook checks its routing switch first, so with
- * every switch off (the default) nothing is scheduled at all. Every hook is
- * fail-soft: a scheduling failure is logged and the pipeline continues.
+ * every switch off (the default) nothing is scheduled at all, and a mailbox
+ * excluded from hosted decisions gets nothing unless the decision plane is the
+ * local engine (ADR-0060 §9). Every hook is fail-soft: a scheduling failure is
+ * logged and the pipeline continues.
  *
  * Runtime-neutral: called from the Team steps and the Postbox category action.
  */
@@ -16,7 +18,6 @@ import type { ActionCtx } from '../_generated/server';
 import type { DecisionLabels } from '../lib/decision/bundles';
 import { planMessageBundle, planTriage } from '../lib/decision/routing';
 
-type ScheduleCtx = Pick<ActionCtx, 'scheduler'>;
 type ReadScheduleCtx = Pick<ActionCtx, 'scheduler' | 'runQuery'>;
 
 function logFailure(hook: string, error: unknown): void {
@@ -29,12 +30,14 @@ function logFailure(hook: string, error: unknown): void {
  * the message-only triage shadow. The scan already holds the policy.
  */
 export async function scheduleTeamTriage(
-	ctx: ScheduleCtx,
+	ctx: ReadScheduleCtx,
 	policy: Pick<ResolvedRoutingPolicy, 'triageBundle'>,
 	inboundMessageId: Id<'inboundMessages'>
 ): Promise<void> {
 	if (!planTriage(policy)) return;
 	try {
+		const gate = await ctx.runQuery(internal.decision.context.schedulingGate, {});
+		if (!gate.isAllowed || !planTriage(gate.policy)) return;
 		await ctx.scheduler.runAfter(0, internal.decision.bundleActions.teamTriage, {
 			inboundMessageId,
 		});
@@ -50,8 +53,8 @@ export async function scheduleTeamMessageBundle(
 	today: { readonly baseline: DecisionLabels; readonly language?: string }
 ): Promise<void> {
 	try {
-		const policy = await ctx.runQuery(internal.aiRouting.policy.getResolved, {});
-		if (!planMessageBundle(policy)) return;
+		const gate = await ctx.runQuery(internal.decision.context.schedulingGate, {});
+		if (!gate.isAllowed || !planMessageBundle(gate.policy)) return;
 		await ctx.scheduler.runAfter(0, internal.decision.bundleActions.teamMessage, {
 			inboundMessageId,
 			baseline: { ...today.baseline },
@@ -76,8 +79,10 @@ export async function schedulePostboxMessageBundle(
 	}
 ): Promise<void> {
 	try {
-		const policy = await ctx.runQuery(internal.aiRouting.policy.getResolved, {});
-		if (!planMessageBundle(policy)) return;
+		const gate = await ctx.runQuery(internal.decision.context.schedulingGate, {
+			threadId: thread.threadId,
+		});
+		if (!gate.isAllowed || !planMessageBundle(gate.policy)) return;
 		await ctx.scheduler.runAfter(0, internal.decision.bundleActions.postboxMessage, {
 			threadId: thread.threadId,
 			...(thread.expectedLatestMessageId

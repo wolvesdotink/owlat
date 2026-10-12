@@ -9,31 +9,33 @@
  * thing. That is the measurement an approved later phase would need before
  * memory may settle anything.
  *
- * - Exact matches only: `matchKind: 'exact'`, `matchKey` = the artifact's
- *   content hash. A template fingerprint must be evaluated first, so none is
- *   written in this release.
+ * - Exact matches only: `matchKind: 'exact'`, `matchKey` = the fingerprint of
+ *   the complete scoped message (`lib/decision/evidence.ts`), never of the cut
+ *   state; a message that was incomplete or cut is not remembered. A template
+ *   fingerprint must be evaluated first, so none is written in this release.
  * - Scoped to the mailbox (Postbox) or the Team Inbox, the authenticated sender
  *   (a digest of the address, DMARC pass), the task, the thread state (a new
  *   thread or a reply), the policy version, the model identity and the
  *   question-set version. Any difference is no match.
  * - Expiry: {@link SENDER_MEMORY_TTL_MS} after it was learned.
  * - Invalidation: an owner correction (`mail/category.ts` `recategorize`,
- *   `inbox/updates.ts` `requestReply`) or mail from the sender that does not
- *   pass DMARC invalidates every entry of the sender in the scope.
+ *   `inbox/updates.ts` `requestReply`) or mail from the sender that fails
+ *   DMARC (observed at ingestion) invalidates every entry of the sender in the
+ *   scope, and such an entry is never revived before it expires. A corrected
+ *   message is never learned from (`./artifacts.ts`).
+ * - A purged Postbox message takes the entries learned from it along.
  *
  * A Team entry carries the sender's contact, so the contact's erasure deletes
  * it; without a contact nothing is written.
  */
 
-import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { internalMutation } from '../lib/writeFence';
 import { sha256Hex } from '../lib/aiRouting/routeDigest';
 import { extractEmail } from '../lib/emailAddress';
 import { SENDER_MEMORY_TTL_MS } from '../lib/decision/routing';
-import { senderMemoryScopeValidator, type SENDER_AUTH_BASES } from '../lib/validators/aiRouting';
+import type { SENDER_AUTH_BASES } from '../lib/validators/aiRouting';
 import type { AiTaskName } from '@owlat/shared/aiRouting';
 
 /** Entries one mutation invalidates before it schedules the rest. */
@@ -122,7 +124,7 @@ export async function invalidateSenderMemory(
 		await ctx.db.patch(row._id, { invalidatedAt: at, invalidationReason: reason, updatedAt: at });
 	}
 	if (!page.isDone) {
-		await ctx.scheduler.runAfter(0, internal.decision.senderMemory.invalidateRest, {
+		await ctx.scheduler.runAfter(0, internal.decision.senderMemoryPages.invalidateRest, {
 			scope: key.scope,
 			...(key.mailboxId ? { mailboxId: key.mailboxId } : {}),
 			senderDigest: key.senderDigest,
@@ -132,22 +134,6 @@ export async function invalidateSenderMemory(
 		});
 	}
 }
-
-/** The scheduled continuation of {@link invalidateSenderMemory}. */
-export const invalidateRest = internalMutation({
-	args: {
-		scope: senderMemoryScopeValidator,
-		mailboxId: v.optional(v.id('mailboxes')),
-		senderDigest: v.string(),
-		reason: v.union(v.literal('owner_correction'), v.literal('auth_failure')),
-		at: v.number(),
-		cursor: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const { reason, at, cursor, ...key } = args;
-		await invalidateSenderMemory(ctx, key, reason, at, cursor);
-	},
-});
 
 /**
  * An owner corrected a verdict about `address`'s mail: nothing remembered
@@ -167,23 +153,38 @@ export async function invalidateSenderMemoryForCorrection(
 }
 
 /**
- * Mail from a sender that does not pass DMARC invalidates what is remembered
- * about that address in the scope. Called for every message a bundle
- * considers, sampled or not, before anything is admitted.
+ * An authentication failure: the MTA reported a DMARC result and it is not
+ * `pass`. An absent result (an older MTA, a disabled check, a synced copy) is
+ * unknown, not a failure; such mail is never remembered either.
  */
-export const observeSenderAuth = internalMutation({
-	args: {
-		inboundMessageId: v.optional(v.id('inboundMessages')),
-		mailMessageId: v.optional(v.id('mailMessages')),
-	},
-	handler: async (ctx, args): Promise<null> => {
-		const sender = await subjectSender(ctx, args);
-		if (sender && sender.authBasis === null) {
-			await invalidateSenderMemory(ctx, sender, 'auth_failure', Date.now());
-		}
-		return null;
-	},
-});
+export function isAuthFailure(dmarcResult: string | undefined): boolean {
+	const result = dmarcResult?.trim().toLowerCase();
+	return result !== undefined && result !== '' && result !== 'pass';
+}
+
+/**
+ * Called at ingestion (Team `inbox/messages.ts receiveMessage`, Postbox
+ * `mail/deliveryPipeline/insert.ts`), for every message whatever the bundles'
+ * switches and sampling: mail from an address that fails DMARC invalidates
+ * what is remembered about that address in the scope. One indexed `first()`
+ * when nothing is remembered, which is the usual case.
+ */
+export async function invalidateSenderMemoryOnAuthFailure(
+	ctx: MutationCtx,
+	scope: { scope: 'team_inbox' } | { scope: 'mailbox'; mailboxId: Id<'mailboxes'> },
+	address: string,
+	dmarcResult: string | undefined
+): Promise<void> {
+	if (!isAuthFailure(dmarcResult)) return;
+	const key: SenderKey = { ...scope, senderDigest: senderDigest(address) };
+	const remembered = await ctx.db
+		.query('senderMemory')
+		.withIndex('by_lookup', (q) =>
+			q.eq('scope', key.scope).eq('mailboxId', key.mailboxId).eq('senderDigest', key.senderDigest)
+		)
+		.first();
+	if (remembered) await invalidateSenderMemory(ctx, key, 'auth_failure', Date.now());
+}
 
 /** What memory said about a message its bundle has just answered. */
 export type SenderMemoryObservation =
@@ -249,6 +250,16 @@ export async function observeAndLearn(
 				.eq('matchKey', learned.matchKey)
 		)
 		.first();
+	// An entry an owner correction or an authentication failure invalidated is
+	// never brought back by a later answer: it stays invalid until it expires.
+	if (
+		existing &&
+		existing.expiresAt > now &&
+		(existing.invalidationReason === 'owner_correction' ||
+			existing.invalidationReason === 'auth_failure')
+	) {
+		return { kind: 'not_applicable' };
+	}
 	if (existing && isLiveMatch(existing, sender, learned, now)) {
 		if (existing.outcome === learned.outcome) {
 			await ctx.db.patch(existing._id, {

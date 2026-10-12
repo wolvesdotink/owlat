@@ -10,7 +10,8 @@ import type { ResolvedRoutingPolicy } from '@owlat/shared/aiRouting';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadRoutingPolicy } from '../aiRouting/policy';
-import { decisionConfigIdentity } from '../lib/decision/configIdentity';
+import { decisionConfigIdentity, isLocalDecisionEngine } from '../lib/decision/configIdentity';
+import { isExcludedFromHostedDecisions } from './exclusion';
 import type { StoredVerdict } from '../lib/decision/calibration';
 import { aiTaskNameValidator } from '../lib/validators/aiRouting';
 
@@ -18,7 +19,7 @@ import { aiTaskNameValidator } from '../lib/validators/aiRouting';
 const VERDICTS_PER_TASK = 32;
 
 async function configIdentity(ctx: { db: QueryCtx['db'] }, isDecisionPlaneOn: boolean) {
-	const row = await ctx.db.query('aiProviderConfig').first();
+	const row = await ctx.db.query('aiProviderConfig').first(); // bounded: singleton
 	return decisionConfigIdentity(row, isDecisionPlaneOn);
 }
 
@@ -39,6 +40,33 @@ export const routingContext = internalQuery({
 			isDecisionPlaneOn,
 			decisionConfigIdentity: await configIdentity(ctx, isDecisionPlaneOn),
 		};
+	},
+});
+
+/**
+ * The scheduling check (ADR-0060 §9): the policy, and whether a bundle may be
+ * scheduled for this message's mailbox at all. An excluded mailbox, or the
+ * excluded Team Inbox, may only be judged by the local decision engine; every
+ * other plane is hosted. `./artifacts.ts claim` checks again at dispatch.
+ */
+export const schedulingGate = internalQuery({
+	args: { threadId: v.optional(v.id('mailThreads')) },
+	handler: async (ctx, args): Promise<{ policy: ResolvedRoutingPolicy; isAllowed: boolean }> => {
+		const policy = await loadRoutingPolicy(ctx);
+		let mailboxId;
+		if (args.threadId !== undefined) {
+			const thread = await ctx.db.get(args.threadId);
+			if (!thread) return { policy, isAllowed: false };
+			mailboxId = thread.mailboxId;
+		}
+		const isExcluded = await isExcludedFromHostedDecisions(
+			ctx,
+			mailboxId === undefined ? { kind: 'team_inbox' } : { kind: 'mailbox', mailboxId }
+		);
+		if (!isExcluded) return { policy, isAllowed: true };
+		const isDecisionPlaneOn = await isFeatureEnabled(ctx, 'ai.decisionPlane');
+		const row = await ctx.db.query('aiProviderConfig').first(); // bounded: singleton
+		return { policy, isAllowed: isLocalDecisionEngine(row, isDecisionPlaneOn) };
 	},
 });
 

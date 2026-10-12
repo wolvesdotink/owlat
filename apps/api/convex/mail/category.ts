@@ -43,7 +43,7 @@ import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
-import { invalidateArtifactsOf } from '../decision/artifacts';
+import { recordOwnerCorrection } from '../decision/artifacts';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -385,7 +385,7 @@ export const recategorize = postboxMutation({
 				{ scope: 'mailbox', mailboxId: thread.mailboxId },
 				latestInbound.fromAddress
 			);
-			await invalidateArtifactsOf(ctx, { mailMessageId: latestInbound._id });
+			await recordOwnerCorrection(ctx, { mailMessageId: latestInbound._id });
 		}
 
 		const previous = thread.category?.label;

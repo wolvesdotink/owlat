@@ -20,10 +20,13 @@ import { admitBundle } from '../bundleAdmission';
 const inboundMessageId = 'm1' as Id<'inboundMessages'>;
 const threadId = 't1' as Id<'mailThreads'>;
 
-function fakeCtx(policy: ResolvedRoutingPolicy, opts: { scheduleThrows?: boolean } = {}) {
+function fakeCtx(
+	policy: ResolvedRoutingPolicy,
+	opts: { scheduleThrows?: boolean; isAllowed?: boolean } = {}
+) {
 	const scheduled: { name: string; args: unknown }[] = [];
 	const ctx = {
-		runQuery: vi.fn(async () => policy),
+		runQuery: vi.fn(async () => ({ policy, isAllowed: opts.isAllowed ?? true })),
 		scheduler: {
 			runAfter: vi.fn(async (_delay: number, reference: unknown, args: unknown) => {
 				if (opts.scheduleThrows) throw new Error('scheduler down');
@@ -85,6 +88,18 @@ describe('pipeline hooks', () => {
 				args: { threadId, baseline: { category: 'other' } },
 			},
 		]);
+	});
+
+	it('schedule nothing for a mailbox excluded from hosted decisions (ADR-0060 §9)', async () => {
+		const { ctx, scheduled } = fakeCtx(ON, { isAllowed: false });
+		await scheduleTeamTriage(ctx, ON, inboundMessageId);
+		await scheduleTeamMessageBundle(ctx, inboundMessageId, { baseline: { category: 'support' } });
+		await schedulePostboxMessageBundle(ctx, {
+			threadId,
+			expectedLatestMessageId: undefined,
+			baseline: { category: 'other' },
+		});
+		expect(scheduled).toEqual([]);
 	});
 
 	it('never let a scheduling failure escape into the pipeline', async () => {

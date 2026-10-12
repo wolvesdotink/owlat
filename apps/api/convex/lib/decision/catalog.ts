@@ -100,8 +100,8 @@ export const CONNECTION_PROBE_FEATURE = 'settings.decision_connection_test';
 // The production question sets the decisions lane asks, and the exact sets the
 // decision eval measures (`mail/interpret/__eval__/decisionQuestions.ts`
 // imports them from here), so a calibration report describes what production
-// asks. The state each is asked about is `./evidence.ts` `decisionMessageState`:
-// the message alone, bounded, never a later message or a label. Every
+// asks. The state each is asked about is `./evidence.ts` `buildDecisionState`:
+// the message alone, redacted and bounded, never a later message or a label. Every
 // instruction says the state is untrusted mail.
 //
 // Changing an instruction, an option or its wording changes what was measured:

@@ -28,7 +28,7 @@ import {
 	TRIAGE_BUNDLE,
 } from '../lib/decision/bundles';
 import {
-	decisionMessageState,
+	buildDecisionState,
 	evidenceSegments,
 	type DecisionEvidence,
 	type EvidenceSegment,
@@ -47,10 +47,14 @@ const labelsValidator = v.record(v.string(), v.string());
 async function scopedSegments(
 	ctx: ActionCtx,
 	source: InterpretationSource
-): Promise<EvidenceSegment[] | null> {
+): Promise<{ segments: EvidenceSegment[]; isScopeComplete: boolean } | null> {
 	const scoped = await scopeForInterpretation(ctx, source);
 	if (!scoped?.ok) return null;
-	return evidenceSegments(segmentScoped(scoped).segmented);
+	const segmentation = segmentScoped(scoped);
+	return {
+		segments: evidenceSegments(segmentation.segmented),
+		isScopeComplete: scoped.omitted.length === 0 && !segmentation.isTruncated,
+	};
 }
 
 /**
@@ -67,8 +71,8 @@ async function teamEvidence(
 		{ inboundMessageId }
 	);
 	if (!message || guardStanding(message) !== 'clear') return null;
-	const segments = await scopedSegments(ctx, { kind: 'inbound', id: inboundMessageId });
-	if (!segments) return null;
+	const body = await scopedSegments(ctx, { kind: 'inbound', id: inboundMessageId });
+	if (!body) return null;
 	const headers = headerEvidenceFromStoredJson(message.headers);
 	return {
 		surface: 'team',
@@ -77,7 +81,7 @@ async function teamEvidence(
 		cc: [],
 		ownAddresses: [extractEmail(message.to)],
 		subject: message.subject,
-		segments,
+		...body,
 		bulkHeaders: headers.hasListUnsubscribe || isBulkPrecedenceForCategory(headers),
 	};
 }
@@ -90,7 +94,6 @@ export const teamTriage = internalAction({
 		const routing = await ctx.runQuery(internal.decision.context.routingContext, {});
 		const plan = planTriage(routing.policy);
 		if (!plan) return null;
-		await ctx.runMutation(internal.decision.senderMemory.observeSenderAuth, args);
 		const evidence = await teamEvidence(ctx, args.inboundMessageId);
 		if (!evidence) return null;
 		await runBundle(ctx, {
@@ -98,7 +101,7 @@ export const teamTriage = internalAction({
 			plan,
 			routing,
 			subject: { kind: 'inbound_message', inboundMessageId: args.inboundMessageId },
-			state: decisionMessageState(evidence),
+			built: buildDecisionState(evidence),
 			root: teamRoot(args.inboundMessageId),
 		});
 		return null;
@@ -117,9 +120,6 @@ export const teamMessage = internalAction({
 		const routing = await ctx.runQuery(internal.decision.context.routingContext, {});
 		const plan = planMessageBundle(routing.policy);
 		if (!plan) return null;
-		await ctx.runMutation(internal.decision.senderMemory.observeSenderAuth, {
-			inboundMessageId: args.inboundMessageId,
-		});
 		const evidence = await teamEvidence(ctx, args.inboundMessageId);
 		if (!evidence) return null;
 		await runBundle(ctx, {
@@ -127,7 +127,7 @@ export const teamMessage = internalAction({
 			plan,
 			routing,
 			subject: { kind: 'inbound_message', inboundMessageId: args.inboundMessageId },
-			state: decisionMessageState(evidence),
+			built: buildDecisionState(evidence),
 			root: teamRoot(args.inboundMessageId),
 			baseline: args.baseline,
 			...(args.language ? { language: args.language } : {}),
@@ -155,11 +155,8 @@ export const postboxMessage = internalAction({
 				: {}),
 		});
 		if (!subject) return null;
-		await ctx.runMutation(internal.decision.senderMemory.observeSenderAuth, {
-			mailMessageId: subject.mailMessageId,
-		});
-		const segments = await scopedSegments(ctx, { kind: 'mail', id: subject.mailMessageId });
-		if (!segments) return null;
+		const body = await scopedSegments(ctx, { kind: 'mail', id: subject.mailMessageId });
+		if (!body) return null;
 		await runBundle(ctx, {
 			bundle: POSTBOX_MESSAGE_BUNDLE,
 			plan,
@@ -169,7 +166,7 @@ export const postboxMessage = internalAction({
 				mailMessageId: subject.mailMessageId,
 				mailboxId: subject.mailboxId,
 			},
-			state: decisionMessageState({ ...subject.evidence, segments }),
+			built: buildDecisionState({ ...subject.evidence, ...body }),
 			root: postboxRoot(args.threadId, subject.mailMessageId),
 			baseline: args.baseline,
 		});

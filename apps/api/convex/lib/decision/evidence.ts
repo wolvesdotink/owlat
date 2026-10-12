@@ -13,10 +13,16 @@
  * still be waiting for the D13 guard, which would turn a shadow observation
  * into paid guard calls.
  *
- * Redaction follows ADR-0060 §9: the body is interpretation's scoped,
- * segmented text ({@link evidenceSegments}), so quoted history and signatures
- * arrive labelled rather than as the sender's own words, hidden HTML is gone,
- * and the whole body is capped. Attachments never enter a state.
+ * Redaction follows ADR-0060 §9:
+ * - the body is interpretation's scoped, segmented text
+ *   ({@link evidenceSegments}): HTML reduced to visible text with the
+ *   injection scan's hidden-content strip, a clearsigned message read inside
+ *   its signed block, an encrypted body never read;
+ * - quoted history, signatures and disclaimers are removed
+ *   ({@link REDACTED_SEGMENT_KINDS});
+ * - attachments never enter a state (no field carries them);
+ * - the whole state is capped ({@link STATE_MAX_CHARS}), metadata field by
+ *   field and the body keeping its head and tail.
  *
  * Pure and isolate-safe.
  */
@@ -25,8 +31,25 @@ import type { SegmentedMessage } from '@owlat/shared/mailSegments';
 import type { DecisionState } from '../decisionProviders/types';
 import { sha256Hex } from '../aiRouting/routeDigest';
 
-/** Characters of body in a state. Matches the eval's measured bound. */
+/**
+ * The redaction budget (ADR-0060 §9). The whole state stays within
+ * {@link STATE_MAX_CHARS} of JSON: metadata is capped field by field, and the
+ * body gets what is left, at most {@link STATE_BODY_CHARS}, head and tail kept.
+ */
+export const STATE_MAX_CHARS = 6000;
 export const STATE_BODY_CHARS = 4000;
+export const STATE_SUBJECT_CHARS = 300;
+export const STATE_ADDRESS_CHARS = 254;
+export const STATE_ADDRESSES = 5;
+/** Between the kept head and tail of a cut text. */
+export const CUT_MARKER = '\n[…]\n';
+
+/** Segment kinds a state never carries: earlier mail, signatures, legal footers. */
+export const REDACTED_SEGMENT_KINDS: ReadonlySet<string> = new Set([
+	'quoted',
+	'signature',
+	'disclaimer',
+]);
 
 export type DecisionSurface = 'team' | 'postbox';
 
@@ -53,6 +76,12 @@ export interface DecisionEvidence {
 	 * sender), and then left out of the state rather than guessed.
 	 */
 	readonly senderKnown?: boolean;
+	/**
+	 * Whether scoping read the whole message: nothing omitted (an unavailable
+	 * body, text outside a signed block) and the HTML within the scanner's cap.
+	 * An incomplete message is never an exact sender-memory match.
+	 */
+	readonly isScopeComplete: boolean;
 }
 
 /**
@@ -69,30 +98,107 @@ export function evidenceSegments(segmented: SegmentedMessage): EvidenceSegment[]
 	}));
 }
 
-/** Segments as one text: fresh text as is, everything else under its kind, then capped. */
-export function evidenceBody(
-	segments: readonly EvidenceSegment[],
-	limit: number = STATE_BODY_CHARS
-): string {
-	return segments
-		.map((s) => (s.kind === 'fresh' ? s.text : `[${s.kind}] ${s.text}`))
-		.join('\n\n')
-		.slice(0, limit);
+/** `text` within `max` characters: unchanged, or its head and tail around {@link CUT_MARKER}. */
+export function capHeadTail(text: string, max: number): { text: string; isCut: boolean } {
+	if (text.length <= max) return { text, isCut: false };
+	if (max <= CUT_MARKER.length) return { text: text.slice(0, Math.max(0, max)), isCut: true };
+	const room = max - CUT_MARKER.length;
+	const head = Math.ceil((room * 2) / 3);
+	const tail = room - head;
+	return {
+		text: `${text.slice(0, head)}${CUT_MARKER}${text.slice(text.length - tail)}`,
+		isCut: true,
+	};
 }
 
-/** The bounded, message-only state every Phase 2 mail bundle is asked about. */
-export function decisionMessageState(evidence: DecisionEvidence): DecisionState {
+/**
+ * The body a state carries: the sender's own text and anything they forwarded
+ * (labelled), never quoted history, signatures or disclaimers.
+ */
+export function redactedBody(segments: readonly EvidenceSegment[]): string {
+	return segments
+		.filter((segment) => !REDACTED_SEGMENT_KINDS.has(segment.kind))
+		.map((segment) =>
+			segment.kind === 'fresh' ? segment.text : `[${segment.kind}] ${segment.text}`
+		)
+		.join('\n\n');
+}
+
+function capAddresses(addresses: readonly string[]): { list: string[]; isCut: boolean } {
+	const list = addresses
+		.slice(0, STATE_ADDRESSES)
+		.map((address) => address.slice(0, STATE_ADDRESS_CHARS));
+	const isCut =
+		addresses.length > STATE_ADDRESSES ||
+		addresses.some((address) => address.length > STATE_ADDRESS_CHARS);
+	return { list, isCut };
+}
+
+/** A state, whether it carries the whole redacted message, and the message's fingerprint. */
+export interface BuiltDecisionState {
+	readonly state: DecisionState;
+	/** Nothing was cut and scoping read the whole message. */
+	readonly isComplete: boolean;
+	/**
+	 * SHA-256 over the complete scoped message (every segment, uncut) and its
+	 * addressing: the sender-memory exact-match key. Two messages that agree on
+	 * their first 4,000 characters and differ after them never share it.
+	 */
+	readonly contentFingerprint: string;
+}
+
+/** The bounded, redacted, message-only state every Phase 2 mail bundle is asked about. */
+export function buildDecisionState(evidence: DecisionEvidence): BuiltDecisionState {
 	const own = new Set(evidence.ownAddresses.map((address) => address.toLowerCase()));
-	return {
+	const from = capHeadTail(evidence.from, STATE_ADDRESS_CHARS);
+	const to = capAddresses(evidence.to);
+	const cc = capAddresses(evidence.cc);
+	const subject = capHeadTail(evidence.subject, STATE_SUBJECT_CHARS);
+	const metadata = {
 		mailbox: evidence.surface === 'team' ? 'team inbox' : 'personal mailbox',
-		from: evidence.from,
-		to: [...evidence.to],
-		cc: [...evidence.cc],
+		from: from.text,
+		to: to.list,
+		cc: cc.list,
 		addressedToOwner: evidence.to.some((address) => own.has(address.toLowerCase())),
 		...(evidence.senderKnown === undefined ? {} : { senderKnown: evidence.senderKnown }),
 		bulkHeaders: evidence.bulkHeaders,
-		subject: evidence.subject,
-		body: evidenceBody(evidence.segments),
+		subject: subject.text,
+	};
+	const room = STATE_MAX_CHARS - JSON.stringify({ ...metadata, body: '' }).length;
+	// JSON escapes can lengthen the body; shrink until the whole state fits.
+	let budget = Math.min(STATE_BODY_CHARS, Math.max(0, room));
+	let body = capHeadTail(redactedBody(evidence.segments), budget);
+	let state = { ...metadata, body: body.text };
+	while (JSON.stringify(state).length > STATE_MAX_CHARS && budget > 0) {
+		budget = Math.max(0, budget - Math.max(64, JSON.stringify(state).length - STATE_MAX_CHARS));
+		body = capHeadTail(redactedBody(evidence.segments), budget);
+		state = { ...metadata, body: body.text };
+	}
+	// Only metadata full of characters JSON escapes can still be over: then the
+	// recipient lists go and the subject shrinks, which always fits.
+	const isOversize = JSON.stringify(state).length > STATE_MAX_CHARS;
+	if (isOversize) {
+		state = {
+			...metadata,
+			to: [],
+			cc: [],
+			subject: capHeadTail(evidence.subject, 64).text,
+			body: '',
+		};
+	}
+	const isCut = isOversize || from.isCut || to.isCut || cc.isCut || subject.isCut || body.isCut;
+	return {
+		state,
+		isComplete: evidence.isScopeComplete && !isCut,
+		contentFingerprint: sha256Hex(
+			JSON.stringify([
+				evidence.from,
+				evidence.to,
+				evidence.cc,
+				evidence.subject,
+				evidence.segments.map((segment) => [segment.kind, segment.text]),
+			])
+		),
 	};
 }
 

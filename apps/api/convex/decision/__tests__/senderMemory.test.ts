@@ -12,8 +12,8 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact, createTestInboundMessage } from '../../__tests__/factories';
 import { modules } from '../../mail/__tests__/helpers.testlib';
-import { senderDigest } from '../senderMemory';
-import { invalidateArtifactsOf } from '../artifacts';
+import { recordOwnerCorrection } from '../artifacts';
+import { invalidateSenderMemoryOnAuthFailure, senderDigest } from '../senderMemory';
 import { SENDER_MEMORY_TTL_MS } from '../../lib/decision/routing';
 
 type T = TestConvex<typeof schema>;
@@ -75,6 +75,7 @@ async function answer(
 		inboundMessageId,
 		contentHash: opts.contentHash ?? 'same',
 		policyVersion,
+		isLocalEndpoint: false,
 	});
 	if (claim.outcome !== 'claimed') throw new Error(claim.outcome);
 	await t.mutation(internal.decision.artifacts.complete, {
@@ -86,6 +87,7 @@ async function answer(
 		provenance: PROVENANCE,
 		calibration: { isAdapterCalibrated: true },
 		contextVersion: 'typesafe|jev-1.13.0|',
+		memoryKey: opts.contentHash ?? 'same',
 	});
 	const row = await t.run((ctx) =>
 		ctx.db
@@ -206,14 +208,22 @@ describe('sender memory', () => {
 	it('is invalidated by mail from the sender that fails DMARC', async () => {
 		const t = convexTest(schema, modules);
 		await answer(t, await teamMessage(t));
-		const spoof = await teamMessage(t, { dmarcResult: 'fail' });
-		await t.mutation(internal.decision.senderMemory.observeSenderAuth, { inboundMessageId: spoof });
+		await t.run((ctx) =>
+			invalidateSenderMemoryOnAuthFailure(
+				ctx,
+				{ scope: 'team_inbox' },
+				'Ada <ada@example.com>',
+				'fail'
+			)
+		);
 		const [row] = await memory(t);
 		expect(row).toMatchObject({
 			invalidationReason: 'auth_failure',
 			invalidatedAt: expect.any(Number),
 		});
-		expect(await answer(t, await teamMessage(t))).toEqual({ kind: 'learned' });
+		// A later authentic answer does not revive it before it expires.
+		expect(await answer(t, await teamMessage(t))).toEqual({ kind: 'not_applicable' });
+		expect(await memory(t)).toEqual([row]);
 	});
 
 	it('invalidates every page of a sender’s entries', async () => {
@@ -241,10 +251,9 @@ describe('sender memory', () => {
 					});
 				}
 			});
-			const spoof = await teamMessage(t, { dmarcResult: 'fail' });
-			await t.mutation(internal.decision.senderMemory.observeSenderAuth, {
-				inboundMessageId: spoof,
-			});
+			await t.run((ctx) =>
+				invalidateSenderMemoryOnAuthFailure(ctx, { scope: 'team_inbox' }, 'ada@example.com', 'fail')
+			);
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 			const rows = await memory(t);
 			expect(rows.filter((row) => row.invalidatedAt === undefined)).toEqual([]);
@@ -274,9 +283,10 @@ describe('sender memory', () => {
 			inboundMessageId,
 			contentHash: 'same',
 			policyVersion: 1,
+			isLocalEndpoint: false,
 		});
 		if (claim.outcome !== 'claimed') throw new Error(claim.outcome);
-		await t.run((ctx) => invalidateArtifactsOf(ctx, { inboundMessageId }));
+		await t.run((ctx) => recordOwnerCorrection(ctx, { inboundMessageId }));
 		await t.mutation(internal.decision.artifacts.complete, {
 			artifactKey,
 			leaseExpiresAt: claim.leaseExpiresAt,
@@ -303,6 +313,7 @@ describe('sender memory', () => {
 			inboundMessageId,
 			contentHash: 'same',
 			policyVersion: 1,
+			isLocalEndpoint: false,
 		});
 		expect(again).toEqual({ outcome: 'settled' });
 	});
@@ -318,6 +329,7 @@ describe('sender memory', () => {
 			inboundMessageId,
 			contentHash: 'same',
 			policyVersion: 1,
+			isLocalEndpoint: false,
 		};
 		const first = await t.mutation(internal.decision.artifacts.claim, args);
 		if (first.outcome !== 'claimed') throw new Error(first.outcome);

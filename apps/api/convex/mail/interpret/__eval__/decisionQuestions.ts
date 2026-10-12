@@ -29,11 +29,7 @@ import {
 	TEAM_MESSAGE_QUESTIONS,
 	TRIAGE_QUESTIONS,
 } from '../../../lib/decision/catalog';
-import {
-	decisionMessageState,
-	evidenceBody,
-	STATE_BODY_CHARS,
-} from '../../../lib/decision/evidence';
+import { buildDecisionState, STATE_BODY_CHARS } from '../../../lib/decision/evidence';
 import type { EvalThread } from './corpus';
 import type { DecisionLabel } from './decisionLabels';
 import { modelInputFor, type EvalModelMessage } from './replay';
@@ -135,16 +131,20 @@ export function decisionInputFor(
 
 /** Segments as one text: fresh text as is, everything else under its kind. */
 export function bodyText(message: EvalModelMessage, limit = STATE_BODY_CHARS): string {
-	return evidenceBody(message.segments, limit);
+	return message.segments
+		.map((s) => (s.kind === 'fresh' ? s.text : `[${s.kind}] ${s.text}`))
+		.join('\n\n')
+		.slice(0, limit);
 }
 
 /**
- * The production state for a labelled message. Team mail carries no
- * `senderKnown`, as in production, where every Team sender has a contact.
+ * The production state for a labelled message, redacted exactly as production
+ * redacts it. Team mail carries no `senderKnown`, as in production, where
+ * every Team sender has a contact.
  */
 function messageState(input: DecisionEvalInput): DecisionState {
 	const { message } = input;
-	return decisionMessageState({
+	return buildDecisionState({
 		surface: input.mode === 'actions' ? 'team' : 'postbox',
 		from: message.from.email,
 		to: message.to.map((p) => p.email),
@@ -154,7 +154,8 @@ function messageState(input: DecisionEvalInput): DecisionState {
 		segments: message.segments,
 		bulkHeaders: input.bulkHeaders,
 		...(input.mode === 'actions' ? {} : { senderKnown: input.senderKnown }),
-	});
+		isScopeComplete: true,
+	}).state;
 }
 
 /**

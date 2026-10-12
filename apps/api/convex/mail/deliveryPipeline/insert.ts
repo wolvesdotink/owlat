@@ -36,6 +36,7 @@ import type { SenderHeuristics } from '../senderHeuristics';
 import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
 import type { VirusVerdict } from '../../lib/literalValidators';
+import { invalidateSenderMemoryOnAuthFailure } from '../../decision/senderMemory';
 
 function extractName(field: string): string | undefined {
 	const match = field.match(/^([^<]+?)\s*<[^>]+>$/);
@@ -351,6 +352,13 @@ export async function insertDeliveredMessage(
 		createdAt: now,
 		updatedAt: now,
 	});
+	// D12: a DMARC failure invalidates what is remembered about the sender here.
+	await invalidateSenderMemoryOnAuthFailure(
+		ctx,
+		{ scope: 'mailbox', mailboxId: mailbox._id },
+		fromAddress,
+		params.dmarcResult
+	);
 	// Inline bodies live in their own table (plan 3.2), sealed as before.
 	await insertMessageBody(ctx.db, messageId, {
 		text: params.textBodyInline,

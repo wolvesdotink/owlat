@@ -44,6 +44,7 @@ async function scan(
 				getMessage: { htmlBody: null, ...message },
 				isAgentEnabled: agentEnabled,
 				getResolved: resolveRoutingPolicy(policy),
+				schedulingGate: { policy: resolveRoutingPolicy(policy), isAllowed: true },
 			},
 			mutations: { recordSecurityScan: null },
 		}),
