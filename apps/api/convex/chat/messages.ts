@@ -377,8 +377,10 @@ export const finalizeAssistantChatMessage = internalMutation({
 		const msg = await ctx.db.get(args.messageId);
 		if (!msg || msg.deletedAt) return;
 		const status = msg.aiStatus === 'streaming' ? args.status : (msg.aiStatus ?? args.status);
+		// A budget refusal keeps its empty text: the web says why, in the reader's
+		// language, from `budgetRefusal`.
 		const finalText =
-			args.status === 'error' && !args.text.trim()
+			args.status === 'error' && !args.text.trim() && !args.budgetRefusal
 				? '⚠️ The assistant could not complete this reply.'
 				: args.text;
 		await ctx.db.patch(args.messageId, {

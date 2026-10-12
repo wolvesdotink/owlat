@@ -461,6 +461,8 @@ describe('the assistant turn', () => {
 			code: AI_BUDGET_ERROR_CODE,
 			reason: 'monthly_ceiling',
 		});
+		// No English stand-in text: the web says why from the code and reason.
+		expect(message?.text).toBe('');
 	});
 });
 

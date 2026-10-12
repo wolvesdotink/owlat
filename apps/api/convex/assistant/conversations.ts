@@ -149,6 +149,8 @@ export const listMessages = assistantQuery({
 			status: m.status,
 			toolCalls: m.toolCalls ?? [],
 			errorMessage: m.errorMessage ?? null,
+			// A budget refusal (D1): the code and reason the web says in the reader's language.
+			budgetRefusal: m.budgetRefusal ?? null,
 			model: m.model ?? null,
 			tokenUsage: m.tokenUsage ?? null,
 			createdAt: m.createdAt,

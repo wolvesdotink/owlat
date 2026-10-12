@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatDate } from '~/utils/formatters';
+import { budgetRefusalReason } from '~/utils/aiBudget';
 
 const props = defineProps<{
 	id: Id<'visualizations'>;
@@ -14,6 +15,8 @@ const props = defineProps<{
 	// account data. Undefined for illustrative sample-data charts (not
 	// refreshable).
 	dataQuery?: string | null;
+	/** Generation was refused for budget (D1): shown in place of the page, localized. */
+	budgetRefusal?: unknown;
 }>();
 
 const emit = defineEmits<{
@@ -37,6 +40,7 @@ const { run: regenerate } = useBackendOperation(api.visualizationAgent.regenerat
 const createdAtLabel = computed(() => formatDate(props.createdAt, 'medium', locale.value));
 
 const isLiveData = computed(() => !!props.dataQuery);
+const isBudgetRefused = computed(() => budgetRefusalReason(props.budgetRefusal) !== null);
 
 const isTogglingPin = ref(false);
 const isRemoving = ref(false);
@@ -131,8 +135,9 @@ const handleRemove = async () => {
 			</div>
 		</div>
 
-		<!-- Visualization iframe -->
-		<VisualizationsVisualizationRenderer :html="html" min-height="250px" />
+		<!-- Visualization iframe, or why there is none -->
+		<AiBudgetRefusal v-if="isBudgetRefused" :refusal="budgetRefusal" variant="panel" />
+		<VisualizationsVisualizationRenderer v-else :html="html" min-height="250px" />
 
 		<!-- Remove confirmation -->
 		<Teleport to="body">
