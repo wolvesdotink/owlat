@@ -37,6 +37,7 @@ import {
 import { threadRefFromFields } from '../../lib/validators/threadRef';
 import { ensureBriefRow, loadBriefRow } from './briefRow';
 import { briefCompleteness } from './purgeRepairs';
+import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
 
 /** A source outstanding this long without an outcome has lost its run. */
 export const STALE_MS = 30 * 60_000;
@@ -111,7 +112,11 @@ export async function markOutstanding(ctx: MutationCtx, sourceKey: string): Prom
  * is counted in `threadBriefs.deferredSources` instead of `pendingSources`.
  * The history backfill skips it like any captured source.
  */
-export async function deferSource(ctx: MutationCtx, sourceKey: string): Promise<void> {
+export async function deferSource(
+	ctx: MutationCtx,
+	sourceKey: string,
+	reason: InterpretDeferReason
+): Promise<void> {
 	const snapshot = await snapshotOf(ctx, sourceKey);
 	if (!snapshot || snapshot.isDeferred === true) return;
 	const wasPending = snapshot.isOutstanding === true;
@@ -121,7 +126,7 @@ export async function deferSource(ctx: MutationCtx, sourceKey: string): Promise<
 		outstandingTries: undefined,
 		isDeferred: true,
 		deferredAt: Date.now(),
-		deferReason: 'display_only',
+		deferReason: reason,
 	});
 	const brief = await ensureBriefRow(ctx, threadRefFromFields(snapshot));
 	if (brief)

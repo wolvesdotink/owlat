@@ -36,8 +36,12 @@ import { loadBriefRow, markBriefPending } from './briefRow';
 import { deferSource, markOutstanding, runOf } from './outstanding';
 import { loadInterpretSource } from './sources';
 import { RUN_SPACING_MS } from './backfillSources';
+import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
+
+/** The one reason today: the reader display is the only consumer left. */
+const DISPLAY_ONLY: InterpretDeferReason = 'display_only';
 
 /** Deferred sources one thread open starts at most; the rest wait for the next ask. */
 export const RESUME_BATCH = 25;
@@ -86,7 +90,7 @@ export async function deferIfDisplayOnly(
 	message: Doc<'mailMessages'>
 ): Promise<boolean> {
 	if (!(await isDisplayOnlyInterpretation(ctx, message))) return false;
-	await deferSource(ctx, interpretationSourceKey({ kind: 'mail', id: message._id }));
+	await deferSource(ctx, interpretationSourceKey({ kind: 'mail', id: message._id }), DISPLAY_ONLY);
 	return true;
 }
 
