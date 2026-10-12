@@ -203,6 +203,8 @@ export interface LearnedOutcome {
 	readonly outcome: string;
 	readonly outcomeVersion: number;
 	readonly sourceArtifactKey: string;
+	/** Postbox: the message learned from, indexed so its purge finds the entry. */
+	readonly sourceMailMessageId?: Id<'mailMessages'>;
 }
 
 function isLiveMatch(
@@ -285,6 +287,7 @@ export async function observeAndLearn(
 		outcome: learned.outcome,
 		outcomeVersion: learned.outcomeVersion,
 		sourceArtifactKey: learned.sourceArtifactKey,
+		...(learned.sourceMailMessageId ? { sourceMailMessageId: learned.sourceMailMessageId } : {}),
 		hitCount: 0,
 		expiresAt: now + SENDER_MEMORY_TTL_MS,
 		createdAt: now,

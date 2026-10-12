@@ -42,6 +42,7 @@ import {
 	type DecisionEvidence,
 } from '../evidence';
 import { scopeBody, segmentScoped } from '../../../mail/interpret/scope';
+import { scopedEvidence } from '../../../decision/scopedEvidence';
 import { choice } from '../questions';
 import type { ChoiceAnswer } from '../questions';
 import {
@@ -354,6 +355,40 @@ describe('the redacted evidence state (ADR-0060 §9)', () => {
 		expect(a.contentFingerprint).not.toBe(b.contentFingerprint);
 		expect(buildDecisionState(evidence).contentFingerprint).toBe(
 			buildDecisionState(evidence).contentFingerprint
+		);
+	});
+
+	it('fingerprints every metadata value the model reads', () => {
+		const base = buildDecisionState(evidence).contentFingerprint;
+		for (const variant of [
+			{ bulkHeaders: true },
+			{ senderKnown: false },
+			{ ownAddresses: ['someone-else@example.com'] },
+			{ surface: 'team' as const },
+		]) {
+			expect(buildDecisionState({ ...evidence, ...variant }).contentFingerprint).not.toBe(base);
+		}
+	});
+
+	it('is incomplete when the text alternative is at odds with the HTML', () => {
+		const html = '<p>Hello, see you on Friday for lunch.</p>';
+		const consistent = scopeBody({
+			text: 'Hello, see you on Friday for lunch.',
+			html,
+			subject: 'Lunch',
+			attachments: [],
+		});
+		const conflicting = scopeBody({
+			text: 'Transfer the remaining balance of 4800 euros to the new account today please',
+			html,
+			subject: 'Lunch',
+			attachments: [],
+		});
+		if (!consistent.ok || !conflicting.ok) throw new Error('scoped');
+		expect(scopedEvidence(consistent).isScopeComplete).toBe(true);
+		expect(scopedEvidence(conflicting).isScopeComplete).toBe(false);
+		expect(buildDecisionState({ ...evidence, ...scopedEvidence(conflicting) }).isComplete).toBe(
+			false
 		);
 	});
 

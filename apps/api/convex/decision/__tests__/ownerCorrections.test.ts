@@ -8,7 +8,7 @@
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact, createTestInboundMessage } from '../../__tests__/factories';
 import {
@@ -178,7 +178,7 @@ describe('owner corrections', () => {
 });
 
 describe('purging a Postbox message', () => {
-	it('deletes its decision artifacts and the sender memory learned from them', async () => {
+	it('deletes its decision artifacts and the sender memory learned from it', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, { address: 'me@example.com' });
 		await seedFolder(t, mailboxId, 'inbox');
@@ -196,17 +196,45 @@ describe('purging a Postbox message', () => {
 			await ctx.db.insert('senderMemory', {
 				...memoryRow({ scope: 'mailbox', mailboxId }, 'someone@example.com'),
 				sourceArtifactKey: purged.artifactKey,
+				sourceMailMessageId: messageId,
 			});
 			await ctx.db.insert('senderMemory', {
 				...memoryRow({ scope: 'mailbox', mailboxId }, 'other@example.com'),
 				sourceArtifactKey: kept.artifactKey,
+				sourceMailMessageId: keptId,
 			});
 			await deleteMessageRowAndBlobs(ctx, (await ctx.db.get(messageId))!);
 		});
 		const left = await t.run((ctx) => ctx.db.query('decisionArtifacts').collect());
 		expect(left.map((row) => row.mailMessageId)).toEqual([keptId]);
 		const learned = await t.run((ctx) => ctx.db.query('senderMemory').collect());
-		expect(learned.map((row) => row.sourceArtifactKey)).toEqual([kept.artifactKey]);
+		expect(learned.map((row) => row.sourceMailMessageId)).toEqual([keptId]);
+	});
+
+	it('still finds the memory after retention deleted the artifact first', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { address: 'me@example.com' });
+		await seedFolder(t, mailboxId, 'inbox');
+		const messageId = await seedMessage(t, mailboxId);
+		const artifact = {
+			...artifactRow({ subjectKind: 'mail_message', mailMessageId: messageId, mailboxId }),
+			expiresAt: Date.now() - 1,
+		};
+		await t.run(async (ctx) => {
+			await ctx.db.insert('decisionArtifacts', artifact);
+			await ctx.db.insert('senderMemory', {
+				...memoryRow({ scope: 'mailbox', mailboxId }, 'someone@example.com'),
+				sourceArtifactKey: artifact.artifactKey,
+				sourceMailMessageId: messageId,
+			});
+		});
+		await t.mutation(internal.maintenance.retention.sweepAiRoutingRecords, {});
+		expect(await t.run((ctx) => ctx.db.query('decisionArtifacts').collect())).toEqual([]);
+		expect(await t.run((ctx) => ctx.db.query('senderMemory').collect())).toHaveLength(1);
+		await t.run(async (ctx) => {
+			await deleteMessageRowAndBlobs(ctx, (await ctx.db.get(messageId))!);
+		});
+		expect(await t.run((ctx) => ctx.db.query('senderMemory').collect())).toEqual([]);
 	});
 });
 

@@ -29,6 +29,8 @@ import {
 import { DECISION_ARTIFACT_TTL_MS, DECISION_LEASE_MS } from '../lib/decision/routing';
 import { observeAndLearn, subjectSender } from './senderMemory';
 import { isExcludedFromHostedDecisions, type ExclusionScope } from './exclusion';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { decisionConfigIdentity } from '../lib/decision/configIdentity';
 
 /** Version of the stored `answers` and `baseline` JSON shapes. */
 export const DECISION_ANSWERS_VERSION = 1;
@@ -39,11 +41,30 @@ const SUBJECT_ARTIFACT_BATCH = 64;
 const labelsValidator = v.record(v.string(), v.string());
 
 export type ClaimOutcome =
-	| { readonly outcome: 'claimed'; readonly leaseExpiresAt: number }
+	| {
+			readonly outcome: 'claimed';
+			readonly leaseExpiresAt: number;
+			/** The decision plane identity the claim verified, stamped on the answer. */
+			readonly contextVersion: string;
+	  }
 	| { readonly outcome: 'settled' }
 	| { readonly outcome: 'busy' }
 	| { readonly outcome: 'gone' }
-	| { readonly outcome: 'excluded' };
+	| { readonly outcome: 'excluded' }
+	| { readonly outcome: 'disabled' }
+	| { readonly outcome: 'stale' };
+
+/**
+ * The endpoint the call will use, as the action resolved it ONCE: the rung,
+ * the decision kind, whether it runs on the operator's own hardware, and the
+ * `aiProviderConfig.updatedAt` the resolution read. The action dispatches to
+ * exactly this endpoint, and the claim checks it is still the configured one.
+ */
+const endpointValidator = v.object({
+	rung: v.union(v.literal('decision'), v.literal('language')),
+	isLocal: v.boolean(),
+	configUpdatedAt: v.optional(v.number()),
+});
 
 type SubjectRef = {
 	readonly inboundMessageId?: Id<'inboundMessages'>;
@@ -92,6 +113,11 @@ async function liveSubject(
  * - `settled`: the owner has corrected this message (it is never judged
  *   after a correction), a complete or abstained answer exists, or the key
  *   was invalidated (a re-lease must not wipe that);
+ * - `disabled`: the master gate today's classifier honours is off (`ai.agent`
+ *   for the Team Inbox, `ai` for Postbox), or the decision plane is off for a
+ *   decision-rung call;
+ * - `stale`: the decision configuration changed since the action resolved
+ *   the provider it is about to call;
  * - `excluded`: the mailbox is excluded from hosted decisions and the call
  *   is about to use a hosted endpoint (ADR-0060 §9);
  * - `busy`: another worker's lease is live.
@@ -110,17 +136,30 @@ export const claim = internalMutation({
 		contentHash: v.string(),
 		policyVersion: v.number(),
 		rootRequestId: v.optional(v.string()),
-		/** The endpoint the call will use runs on the operator's own hardware. */
-		isLocalEndpoint: v.boolean(),
+		endpoint: endpointValidator,
 	},
 	handler: async (ctx, args): Promise<ClaimOutcome> => {
-		const { isLocalEndpoint, ...fields } = args;
+		const { endpoint, ...fields } = args;
 		const subject = await liveSubject(ctx, fields);
 		if (!subject) return { outcome: 'gone' };
 		if (subject.correctedAt !== undefined) return { outcome: 'settled' };
-		if (!isLocalEndpoint && (await isExcludedFromHostedDecisions(ctx, subject.exclusion))) {
+		// The gates today's classifier calls honour, read again right before the
+		// call: the Team Inbox's agent (which requires `ai`), Postbox's `ai`.
+		const gate = subject.exclusion.kind === 'team_inbox' ? 'ai.agent' : 'ai';
+		if (!(await isFeatureEnabled(ctx, gate))) return { outcome: 'disabled' };
+		const isDecisionPlaneOn = await isFeatureEnabled(ctx, 'ai.decisionPlane');
+		const config = await ctx.db.query('aiProviderConfig').first(); // bounded: singleton
+		if (endpoint.rung === 'decision') {
+			if (!isDecisionPlaneOn) return { outcome: 'disabled' };
+			// The configuration the action resolved must still be the current
+			// one, or the provider it is about to call is not what was checked.
+			if (config?.updatedAt !== endpoint.configUpdatedAt) return { outcome: 'stale' };
+		}
+		if (!endpoint.isLocal && (await isExcludedFromHostedDecisions(ctx, subject.exclusion))) {
 			return { outcome: 'excluded' };
 		}
+		const contextVersion =
+			endpoint.rung === 'decision' ? decisionConfigIdentity(config, isDecisionPlaneOn) : 'language';
 		const now = Date.now();
 		const leaseExpiresAt = now + DECISION_LEASE_MS;
 		const existing = await ctx.db
@@ -142,7 +181,7 @@ export const claim = internalMutation({
 				createdAt: existing.createdAt,
 				updatedAt: now,
 			});
-			return { outcome: 'claimed', leaseExpiresAt };
+			return { outcome: 'claimed', leaseExpiresAt, contextVersion };
 		}
 		await ctx.db.insert('decisionArtifacts', {
 			...fields,
@@ -152,7 +191,7 @@ export const claim = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
-		return { outcome: 'claimed', leaseExpiresAt };
+		return { outcome: 'claimed', leaseExpiresAt, contextVersion };
 	},
 });
 
@@ -223,6 +262,7 @@ export const complete = internalMutation({
 							outcome: JSON.stringify(args.labels),
 							outcomeVersion: args.provenance.questionSetVersion,
 							sourceArtifactKey: row.artifactKey,
+							...(row.mailMessageId ? { sourceMailMessageId: row.mailMessageId } : {}),
 						},
 						now
 					)
@@ -309,26 +349,27 @@ export async function recordOwnerCorrection(
 }
 
 /**
- * Delete a purged Postbox message's artifacts with it, and what sender memory
- * learned from them (contract §12, D12). Called from `mail/messagePurge.ts`
+ * Delete a purged Postbox message's artifacts with it, and the sender memory
+ * learned from it (contract §12, D12). Called from `mail/messagePurge.ts`
  * `deleteMessageRowAndBlobs`, the one way a `mailMessages` row is destroyed.
- * A message holds a handful of artifacts, each the source of at most one
- * memory entry.
+ * Memory is found through its own index on the source message, so an artifact
+ * that retention already deleted cannot hide it.
  */
 export async function deleteMailMessageArtifacts(
 	ctx: MutationCtx,
 	mailMessageId: Id<'mailMessages'>
 ): Promise<void> {
 	for (;;) {
+		const learned = await ctx.db
+			.query('senderMemory')
+			.withIndex('by_source_mail_message', (q) => q.eq('sourceMailMessageId', mailMessageId))
+			.take(SUBJECT_ARTIFACT_BATCH);
+		for (const memory of learned) await ctx.db.delete(memory._id);
+		if (learned.length < SUBJECT_ARTIFACT_BATCH) break;
+	}
+	for (;;) {
 		const rows = await artifactsOfSubject(ctx, { mailMessageId });
-		for (const row of rows) {
-			const learned = await ctx.db
-				.query('senderMemory')
-				.withIndex('by_source_artifact', (q) => q.eq('sourceArtifactKey', row.artifactKey))
-				.take(SUBJECT_ARTIFACT_BATCH);
-			for (const memory of learned) await ctx.db.delete(memory._id);
-			await ctx.db.delete(row._id);
-		}
+		for (const row of rows) await ctx.db.delete(row._id);
 		if (rows.length < SUBJECT_ARTIFACT_BATCH) return;
 	}
 }

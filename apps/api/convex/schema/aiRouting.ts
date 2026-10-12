@@ -230,6 +230,8 @@ export const aiRoutingTables = {
 		outcomeVersion: v.number(),
 		/** The artifact the entry was learned from (`decisionArtifacts.artifactKey`). */
 		sourceArtifactKey: v.optional(v.string()),
+		/** Postbox: the message the entry was learned from, so its purge deletes the entry. */
+		sourceMailMessageId: v.optional(v.id('mailMessages')),
 		hitCount: v.number(),
 		lastHitAt: v.optional(v.number()),
 		invalidatedAt: v.optional(v.number()),
@@ -242,7 +244,7 @@ export const aiRoutingTables = {
 		// erasure reads the `scope: 'mailbox', mailboxId` prefix.
 		.index('by_lookup', ['scope', 'mailboxId', 'senderDigest', 'task', 'matchKind', 'matchKey'])
 		.index('by_contact', ['contactId'])
-		// A purged message's artifacts take what memory learned from them along.
-		.index('by_source_artifact', ['sourceArtifactKey'])
+		// A purged Postbox message takes what memory learned from it along.
+		.index('by_source_mail_message', ['sourceMailMessageId'])
 		.index('by_expires_at', ['expiresAt']),
 };

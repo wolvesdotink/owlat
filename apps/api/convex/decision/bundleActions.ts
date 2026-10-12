@@ -15,7 +15,8 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
-import { scopeForInterpretation, segmentScoped } from '../mail/interpret/scope';
+import { scopeForInterpretation } from '../mail/interpret/scope';
+import { scopedEvidence } from './scopedEvidence';
 import type { InterpretationSource } from '../lib/validators/threadBrief';
 import { guardStanding } from '../agent/steps/security_scan/disposition';
 import { headerEvidenceFromStoredJson, isBulkPrecedenceForCategory } from '../lib/mailEvidence';
@@ -29,7 +30,6 @@ import {
 } from '../lib/decision/bundles';
 import {
 	buildDecisionState,
-	evidenceSegments,
 	type DecisionEvidence,
 	type EvidenceSegment,
 } from '../lib/decision/evidence';
@@ -49,12 +49,7 @@ async function scopedSegments(
 	source: InterpretationSource
 ): Promise<{ segments: EvidenceSegment[]; isScopeComplete: boolean } | null> {
 	const scoped = await scopeForInterpretation(ctx, source);
-	if (!scoped?.ok) return null;
-	const segmentation = segmentScoped(scoped);
-	return {
-		segments: evidenceSegments(segmentation.segmented),
-		isScopeComplete: scoped.omitted.length === 0 && !segmentation.isTruncated,
-	};
+	return scoped?.ok ? scopedEvidence(scoped) : null;
 }
 
 /**

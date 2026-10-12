@@ -12,7 +12,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { createTestContact, createTestInboundMessage } from '../../__tests__/factories';
+import {
+	createTestContact,
+	createTestInboundMessage,
+	enableFeatures,
+} from '../../__tests__/factories';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
 import {
 	modules,
@@ -24,6 +28,13 @@ import { senderDigest } from '../senderMemory';
 import { insertDeliveredMessage } from '../../mail/deliveryPipeline/insert';
 
 type T = TestConvex<typeof schema>;
+
+/** A test deployment with the gates today's classifiers honour switched on. */
+async function newT(): Promise<T> {
+	const t = convexTest(schema, modules);
+	await enableFeatures(t, ['ai.agent', 'ai']);
+	return t;
+}
 
 const PROVENANCE = {
 	provider: 'typesafe' as const,
@@ -66,7 +77,10 @@ function claimArgs(
 	subject:
 		| { inboundMessageId: Id<'inboundMessages'> }
 		| { mailMessageId: Id<'mailMessages'>; mailboxId: Id<'mailboxes'> },
-	isLocalEndpoint = false
+	endpoint: { rung: 'decision' | 'language'; isLocal: boolean } = {
+		rung: 'language',
+		isLocal: false,
+	}
 ) {
 	return {
 		artifactKey: `k-${JSON.stringify(subject)}`,
@@ -77,7 +91,7 @@ function claimArgs(
 		...subject,
 		contentHash: 'hash',
 		policyVersion: 1,
-		isLocalEndpoint,
+		endpoint,
 	};
 }
 
@@ -100,7 +114,7 @@ const memory = (t: T) => t.run((ctx) => ctx.db.query('senderMemory').collect());
 
 describe('claim and completion guards', () => {
 	it('never claims a Team message deleted after its evidence was read (F7)', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const inboundMessageId = await teamMessage(t);
 		await t.run((ctx) => ctx.db.delete(inboundMessageId));
 		const claim = await t.mutation(
@@ -112,7 +126,7 @@ describe('claim and completion guards', () => {
 	});
 
 	it('never claims Postbox mail whose message or mailbox is gone (F7)', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const mailboxId = await seedMailbox(t, { address: 'me@example.com' });
 		await seedFolder(t, mailboxId, 'inbox');
 		const mailMessageId = await seedMessage(t, mailboxId);
@@ -131,7 +145,7 @@ describe('claim and completion guards', () => {
 	});
 
 	it('keeps nothing when the message is deleted while the call runs (F7)', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const inboundMessageId = await teamMessage(t);
 		const args = claimArgs({ inboundMessageId });
 		const claim = await t.mutation(internal.decision.artifacts.claim, args);
@@ -147,7 +161,7 @@ describe('claim and completion guards', () => {
 	});
 
 	it('never judges a message the owner corrected before the job claimed it (F4)', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const inboundMessageId = await teamMessage(t, { decisionCorrectedAt: Date.now() });
 		expect(
 			await t.mutation(internal.decision.artifacts.claim, claimArgs({ inboundMessageId }))
@@ -156,7 +170,7 @@ describe('claim and completion guards', () => {
 	});
 
 	it('neither keeps nor learns an answer the owner corrected while it was in flight (F4)', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const inboundMessageId = await teamMessage(t);
 		const args = claimArgs({ inboundMessageId });
 		const claim = await t.mutation(internal.decision.artifacts.claim, args);
@@ -173,10 +187,11 @@ describe('claim and completion guards', () => {
 	});
 
 	it('refuses a hosted endpoint for an excluded mailbox and admits the local engine (F1)', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const mailboxId = await seedMailbox(t, { address: 'me@example.com' });
 		await seedFolder(t, mailboxId, 'inbox');
 		const mailMessageId = await seedMessage(t, mailboxId);
+		await enableFeatures(t, ['ai.decisionPlane']);
 		await t.run((ctx) => ctx.db.patch(mailboxId, { isExcludedFromHostedDecisions: true }));
 		expect(
 			await t.mutation(internal.decision.artifacts.claim, claimArgs({ mailMessageId, mailboxId }))
@@ -184,9 +199,66 @@ describe('claim and completion guards', () => {
 		expect(
 			await t.mutation(
 				internal.decision.artifacts.claim,
-				claimArgs({ mailMessageId, mailboxId }, true)
+				claimArgs({ mailMessageId, mailboxId }, { rung: 'decision', isLocal: true })
 			)
 		).toMatchObject({ outcome: 'claimed' });
+	});
+});
+
+describe('the gates and the endpoint snapshot, right before the call', () => {
+	async function disable(t: T, flag: 'ai' | 'ai.agent' | 'ai.decisionPlane') {
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, {
+				featureFlags: { ...settings!.featureFlags, [flag]: false },
+			});
+		});
+	}
+
+	it('refuses once the Team agent or the master ai flag is off (after scheduling)', async () => {
+		for (const flag of ['ai.agent', 'ai'] as const) {
+			const t = await newT();
+			const inboundMessageId = await teamMessage(t);
+			await disable(t, flag);
+			expect(
+				await t.mutation(internal.decision.artifacts.claim, claimArgs({ inboundMessageId }))
+			).toEqual({ outcome: 'disabled' });
+		}
+	});
+
+	it('refuses Postbox mail once the master ai flag is off', async () => {
+		const t = await newT();
+		const mailboxId = await seedMailbox(t, { address: 'me@example.com' });
+		await seedFolder(t, mailboxId, 'inbox');
+		const mailMessageId = await seedMessage(t, mailboxId);
+		await disable(t, 'ai');
+		expect(
+			await t.mutation(internal.decision.artifacts.claim, claimArgs({ mailMessageId, mailboxId }))
+		).toEqual({ outcome: 'disabled' });
+	});
+
+	it('refuses a decision-rung call once the plane is off or its configuration changed', async () => {
+		const t = await newT();
+		const inboundMessageId = await teamMessage(t);
+		expect(
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs({ inboundMessageId }, { rung: 'decision', isLocal: true })
+			)
+		).toEqual({ outcome: 'disabled' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		expect(
+			await t.mutation(internal.decision.artifacts.claim, {
+				...claimArgs({ inboundMessageId }, { rung: 'decision', isLocal: true }),
+				endpoint: { rung: 'decision' as const, isLocal: true, configUpdatedAt: 123 },
+			})
+		).toEqual({ outcome: 'stale' });
+		expect(
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs({ inboundMessageId }, { rung: 'decision', isLocal: true })
+			)
+		).toMatchObject({ outcome: 'claimed', contextVersion: 'llm||' });
 	});
 });
 
@@ -215,7 +287,7 @@ describe('DMARC failures at ingestion (F5)', () => {
 	}
 
 	it('a Team message that fails DMARC invalidates the sender’s memory, with every switch off', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		rateLimiterTest.register(t);
 		await t.run((ctx) => ctx.db.insert('senderMemory', remembered({ scope: 'team_inbox' })));
 		const base = {
@@ -239,7 +311,7 @@ describe('DMARC failures at ingestion (F5)', () => {
 	});
 
 	it('Postbox mail that fails DMARC invalidates the sender’s memory in that mailbox', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const mailboxId = await seedMailbox(t, { address: 'me@example.com' });
 		const folderId = await seedFolder(t, mailboxId, 'inbox');
 		await t.run(async (ctx) => {

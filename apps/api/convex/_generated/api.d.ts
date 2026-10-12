@@ -462,6 +462,7 @@ import type * as decision_context from '../decision/context.js';
 import type * as decision_exclusion from '../decision/exclusion.js';
 import type * as decision_postboxEvidence from '../decision/postboxEvidence.js';
 import type * as decision_schedule from '../decision/schedule.js';
+import type * as decision_scopedEvidence from '../decision/scopedEvidence.js';
 import type * as decision_senderMemory from '../decision/senderMemory.js';
 import type * as decision_senderMemoryPages from '../decision/senderMemoryPages.js';
 import type * as delivery_contactToken from '../delivery/contactToken.js';
@@ -2151,6 +2152,7 @@ declare const fullApi: ApiFromModules<{
 	'decision/exclusion': typeof decision_exclusion;
 	'decision/postboxEvidence': typeof decision_postboxEvidence;
 	'decision/schedule': typeof decision_schedule;
+	'decision/scopedEvidence': typeof decision_scopedEvidence;
 	'decision/senderMemory': typeof decision_senderMemory;
 	'decision/senderMemoryPages': typeof decision_senderMemoryPages;
 	'delivery/contactToken': typeof delivery_contactToken;

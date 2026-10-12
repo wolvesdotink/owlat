@@ -140,9 +140,10 @@ export interface BuiltDecisionState {
 	/** Nothing was cut and scoping read the whole message. */
 	readonly isComplete: boolean;
 	/**
-	 * SHA-256 over the complete scoped message (every segment, uncut) and its
-	 * addressing: the sender-memory exact-match key. Two messages that agree on
-	 * their first 4,000 characters and differ after them never share it.
+	 * SHA-256 over every input of the state, uncut: the complete scoped message
+	 * (every segment) and all its metadata. The sender-memory exact-match key:
+	 * two messages that agree on their first 4,000 characters and differ after
+	 * them, or differ in any metadata the model reads, never share it.
 	 */
 	readonly contentFingerprint: string;
 }
@@ -190,11 +191,19 @@ export function buildDecisionState(evidence: DecisionEvidence): BuiltDecisionSta
 	return {
 		state,
 		isComplete: evidence.isScopeComplete && !isCut,
+		// Every value the state is built from, uncut: the metadata a model reads
+		// (surface, addressing, bulk headers, sender familiarity) and the whole
+		// scoped body, so two messages share a fingerprint only when every input
+		// to their states is identical.
 		contentFingerprint: sha256Hex(
 			JSON.stringify([
+				metadata.mailbox,
 				evidence.from,
 				evidence.to,
 				evidence.cc,
+				metadata.addressedToOwner,
+				evidence.senderKnown ?? null,
+				evidence.bulkHeaders,
 				evidence.subject,
 				evidence.segments.map((segment) => [segment.kind, segment.text]),
 			])

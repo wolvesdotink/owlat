@@ -27,7 +27,8 @@
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { meterLlmCall } from '../analytics/meteredSpend';
-import { resolveDecisionConfig, resolveDecisionProvider } from '../lib/decisionProvider';
+import { resolveDecisionConfig, type ResolvedDecisionPlane } from '../lib/decisionProvider';
+import type { ResolvedDecisionProvider } from '../lib/decision/contract';
 import { runDecision } from '../lib/decision/dispatch';
 import { decisionRateLimiterPort } from '../lib/decision/ports';
 import {
@@ -95,6 +96,8 @@ export type BundleRunOutcome =
 				| 'busy'
 				| 'gone'
 				| 'excluded'
+				| 'disabled'
+				| 'stale'
 				| Extract<BundleAdmission, { isAdmitted: false }>['why'];
 	  };
 
@@ -114,10 +117,18 @@ function subjectId(subject: BundleSubject): string {
 async function askDecisionPlane<Q extends QuestionSet>(
 	ctx: ActionCtx,
 	run: BundleRun<Q>,
-	admitted: Extract<BundleAdmission, { isAdmitted: true }>
+	admitted: Extract<BundleAdmission, { isAdmitted: true }>,
+	plane: ResolvedDecisionPlane
 ): Promise<Answered<Q>> {
 	const allowance = await ctx.runMutation(internal.decision.gate.assertDecisionAllowed, {});
-	const provider = await resolveDecisionProvider(ctx);
+	// Exactly the provider the claim checked: built from the one resolution,
+	// never resolved again (the configuration may have changed since).
+	const provider: ResolvedDecisionProvider = {
+		kind: plane.kind,
+		config: plane.clientConfig,
+		deadlineMs: plane.deadlineMs,
+		...(plane.modelId ? { modelId: plane.modelId } : {}),
+	};
 	const result = await runDecision({
 		feature: DECISION_FEATURE[run.plan.task],
 		task: run.plan.task,
@@ -203,12 +214,17 @@ export async function runBundle<Q extends QuestionSet>(
 	});
 	if (!admitted.isAdmitted) return { hasRun: false, why: admitted.why };
 
-	// ADR-0060 §9: whether the endpoint this call will use is the operator's
-	// own. The claim refuses a hosted call for an excluded mailbox.
-	const isLocalEndpoint =
-		rung === 'decision' &&
-		plane !== null &&
-		resolveEndpointLocality(plane.kind, plane.clientConfig.baseUrl) === 'local';
+	// The endpoint this call will use, from the ONE resolution above: its rung,
+	// whether it is the operator's own (ADR-0060 §9) and the configuration it
+	// was read from. The claim checks all three; the call uses exactly it.
+	const endpoint = {
+		rung: rung === 'decision' ? ('decision' as const) : ('language' as const),
+		isLocal:
+			rung === 'decision' &&
+			plane !== null &&
+			resolveEndpointLocality(plane.kind, plane.clientConfig.baseUrl) === 'local',
+		...(plane?.updatedAt === undefined ? {} : { configUpdatedAt: plane.updatedAt }),
+	};
 	const contentHash = stateContentHash(run.built.state);
 	const artifactKey = artifactKeyOf({
 		task: plan.task,
@@ -229,15 +245,15 @@ export async function runBundle<Q extends QuestionSet>(
 		contentHash,
 		policyVersion: routing.policy.policyVersion,
 		rootRequestId: run.root.rootRequestId,
-		isLocalEndpoint,
+		endpoint,
 	});
 	if (claim.outcome !== 'claimed') return { hasRun: false, why: claim.outcome };
 	const lease = { artifactKey, leaseExpiresAt: claim.leaseExpiresAt };
 
 	try {
 		const answered =
-			rung === 'decision'
-				? await askDecisionPlane(ctx, run, admitted)
+			rung === 'decision' && plane !== null
+				? await askDecisionPlane(ctx, run, admitted, plane)
 				: await askLanguageRung(ctx, run, admitted);
 		const labels = bundle.project(answered.answers);
 		const status = isAbstention(labels) ? 'abstained' : 'complete';
@@ -260,7 +276,7 @@ export async function runBundle<Q extends QuestionSet>(
 				...(revision ? { calibrationRevision: revision } : {}),
 				...(run.language ? { language: run.language } : {}),
 			},
-			contextVersion: routing.decisionConfigIdentity,
+			contextVersion: claim.contextVersion,
 			...(run.baseline ? { baseline: { ...run.baseline } } : {}),
 			...(isAgreement === undefined ? {} : { isAgreement }),
 			...(run.built.isComplete ? { memoryKey: run.built.contentFingerprint } : {}),

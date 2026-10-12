@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
 	plane: {
 		kind: 'llm' as string,
 		degradedFrom: undefined as string | undefined,
+		updatedAt: undefined as number | undefined,
 	},
 }));
 
@@ -45,7 +46,11 @@ vi.mock('../../lib/llmProvider', async () => ({
 }));
 vi.mock('../../lib/decisionProvider', async () => ({
 	...(await vi.importActual<object>('../../lib/decisionProvider')),
-	resolveDecisionConfig: vi.fn(async () => ({ ...mocks.plane, clientConfig: {} })),
+	resolveDecisionConfig: vi.fn(async () => ({
+		...mocks.plane,
+		clientConfig: {},
+		...(mocks.plane.updatedAt === undefined ? {} : { updatedAt: mocks.plane.updatedAt }),
+	})),
 	resolveDecisionProvider: vi.fn(async () => ({ kind: mocks.plane.kind, config: {} })),
 }));
 vi.mock('../../lib/decision/dispatch', async () => ({
@@ -84,6 +89,7 @@ function admitted(mode: 'shadow' | 'advisory' = 'shadow') {
 async function setup(policy: Record<string, unknown> | null): Promise<T> {
 	const t = convexTest(schema, modules);
 	rateLimiterTest.register(t);
+	await enableFeatures(t, ['ai.agent', 'ai']);
 	if (policy) {
 		await t.run(async (ctx) => {
 			await ctx.db.insert('aiRoutingPolicy', {
@@ -149,6 +155,7 @@ const artifacts = (t: T) => t.run((ctx) => ctx.db.query('decisionArtifacts').col
 beforeEach(() => {
 	mocks.plane.kind = 'llm';
 	mocks.plane.degradedFrom = undefined;
+	mocks.plane.updatedAt = undefined;
 	mocks.admitBundle.mockResolvedValue(admitted());
 	mocks.runLlmObject.mockResolvedValue({
 		object: { triage: 'needs_work' },
@@ -460,6 +467,60 @@ describe('the opt-out from hosted decisions (ADR-0060 §9)', () => {
 		expect(mocks.runDecision).toHaveBeenCalledTimes(1);
 		const [artifact] = await artifacts(t);
 		expect(artifact).toMatchObject({ mailMessageId: otherMessage });
+	});
+});
+
+describe('dispatch races (Sol r2)', () => {
+	const baseline = { category: 'support', disposition: 'reply' };
+
+	it('dispatches exactly the provider it resolved and checked, never a second resolution', async () => {
+		mocks.plane.kind = 'local';
+		mocks.admitBundle.mockResolvedValue(admitted('advisory'));
+		const t = await setup({ categoryDisplayBundle: 'enforce' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamMessage, { inboundMessageId, baseline });
+		const { resolveDecisionConfig, resolveDecisionProvider } =
+			await import('../../lib/decisionProvider');
+		expect(vi.mocked(resolveDecisionConfig)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(resolveDecisionProvider)).not.toHaveBeenCalled();
+		const options = mocks.runDecision.mock.calls[0]![0] as { provider: { kind: string } };
+		expect(options.provider.kind).toBe('local');
+	});
+
+	it('sends nothing when the configuration changed after it was resolved (local → hosted)', async () => {
+		// The excluded Team Inbox's provider resolved as the local engine from a
+		// configuration that is no longer the stored one.
+		mocks.plane.kind = 'local';
+		mocks.plane.updatedAt = 1;
+		mocks.admitBundle.mockResolvedValue(admitted('advisory'));
+		const t = await setup({ categoryDisplayBundle: 'enforce' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('agentConfig', {
+				isAutoReplyEnabled: false,
+				confidenceThreshold: 0.8,
+				isExcludedFromHostedDecisions: true,
+				createdAt: 1,
+				updatedAt: 1,
+			});
+		});
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamMessage, { inboundMessageId, baseline });
+		expect(mocks.runDecision).not.toHaveBeenCalled();
+		expect(await artifacts(t)).toEqual([]);
+	});
+
+	it('stops a queued triage job once the master ai flag is turned off', async () => {
+		const t = await setup({ triageBundle: 'shadow' });
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, { featureFlags: { ...settings!.featureFlags, ai: false } });
+		});
+		await t.action(internal.decision.bundleActions.teamTriage, { inboundMessageId });
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+		expect(await artifacts(t)).toEqual([]);
 	});
 });
 

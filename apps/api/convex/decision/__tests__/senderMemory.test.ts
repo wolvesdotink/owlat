@@ -10,13 +10,24 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { createTestContact, createTestInboundMessage } from '../../__tests__/factories';
+import {
+	createTestContact,
+	createTestInboundMessage,
+	enableFeatures,
+} from '../../__tests__/factories';
 import { modules } from '../../mail/__tests__/helpers.testlib';
 import { recordOwnerCorrection } from '../artifacts';
 import { invalidateSenderMemoryOnAuthFailure, senderDigest } from '../senderMemory';
 import { SENDER_MEMORY_TTL_MS } from '../../lib/decision/routing';
 
 type T = TestConvex<typeof schema>;
+
+/** A test deployment with the gates today's classifiers honour switched on. */
+async function newT(): Promise<T> {
+	const t = convexTest(schema, modules);
+	await enableFeatures(t, ['ai.agent', 'ai']);
+	return t;
+}
 
 const PROVENANCE = {
 	provider: 'typesafe' as const,
@@ -75,7 +86,7 @@ async function answer(
 		inboundMessageId,
 		contentHash: opts.contentHash ?? 'same',
 		policyVersion,
-		isLocalEndpoint: false,
+		endpoint: { rung: 'language' as const, isLocal: false },
 	});
 	if (claim.outcome !== 'claimed') throw new Error(claim.outcome);
 	await t.mutation(internal.decision.artifacts.complete, {
@@ -102,7 +113,7 @@ const memory = (t: T) => t.run((ctx) => ctx.db.query('senderMemory').collect());
 
 describe('sender memory', () => {
 	it('keys a digest of the bare lowercased address, never the address', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		await answer(t, await teamMessage(t));
 		const [row] = await memory(t);
 		expect(row).toMatchObject({
@@ -120,7 +131,7 @@ describe('sender memory', () => {
 	});
 
 	it('records that an identical authenticated message would have been settled the same way', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		expect(await answer(t, await teamMessage(t))).toEqual({ kind: 'learned' });
 		expect(await answer(t, await teamMessage(t))).toEqual({ kind: 'agreed' });
 		const [row] = await memory(t);
@@ -128,7 +139,7 @@ describe('sender memory', () => {
 	});
 
 	it('records a disagreement and what memory would have said', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		await answer(t, await teamMessage(t));
 		const observed = await answer(t, await teamMessage(t), {
 			labels: { category: 'billing', disposition: 'reply' },
@@ -146,13 +157,13 @@ describe('sender memory', () => {
 		['another thread state', { inReplyTo: '<earlier@example.com>' }, {}],
 		['another sender', { from: 'eve@example.com' }, {}],
 	])('does not match %s', async (_name, message, opts) => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		await answer(t, await teamMessage(t));
 		expect(await answer(t, await teamMessage(t, message), opts)).toEqual({ kind: 'learned' });
 	});
 
 	it('does not match once the entry has expired', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		await answer(t, await teamMessage(t));
 		await t.run(async (ctx) => {
 			const [row] = await ctx.db.query('senderMemory').collect();
@@ -162,7 +173,7 @@ describe('sender memory', () => {
 	});
 
 	it('keeps the Team Inbox and a mailbox apart', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		await answer(t, await teamMessage(t));
 		const mailboxId = await t.run((ctx) =>
 			ctx.db.insert('mailboxes', {
@@ -192,7 +203,7 @@ describe('sender memory', () => {
 	});
 
 	it('learns nothing from an unauthenticated sender or a Team sender without a contact', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		expect(await answer(t, await teamMessage(t, { dmarcResult: 'fail' }))).toEqual({
 			kind: 'not_applicable',
 		});
@@ -206,7 +217,7 @@ describe('sender memory', () => {
 	});
 
 	it('is invalidated by mail from the sender that fails DMARC', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		await answer(t, await teamMessage(t));
 		await t.run((ctx) =>
 			invalidateSenderMemoryOnAuthFailure(
@@ -229,7 +240,7 @@ describe('sender memory', () => {
 	it('invalidates every page of a sender’s entries', async () => {
 		vi.useFakeTimers();
 		try {
-			const t = convexTest(schema, modules);
+			const t = await newT();
 			const digest = senderDigest('ada@example.com');
 			await t.run(async (ctx) => {
 				for (let i = 0; i < 230; i++) {
@@ -263,7 +274,7 @@ describe('sender memory', () => {
 	});
 
 	it('changes no routing: the message is untouched by learning and matching', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const first = await teamMessage(t, { processingStatus: 'drafting' });
 		const before = await t.run((ctx) => ctx.db.get(first));
 		await answer(t, first);
@@ -272,7 +283,7 @@ describe('sender memory', () => {
 	});
 
 	it('learns nothing from an answer the owner corrected while it was in flight', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const inboundMessageId = await teamMessage(t);
 		const artifactKey = 'in-flight';
 		const claim = await t.mutation(internal.decision.artifacts.claim, {
@@ -283,7 +294,7 @@ describe('sender memory', () => {
 			inboundMessageId,
 			contentHash: 'same',
 			policyVersion: 1,
-			isLocalEndpoint: false,
+			endpoint: { rung: 'language' as const, isLocal: false },
 		});
 		if (claim.outcome !== 'claimed') throw new Error(claim.outcome);
 		await t.run((ctx) => recordOwnerCorrection(ctx, { inboundMessageId }));
@@ -313,13 +324,13 @@ describe('sender memory', () => {
 			inboundMessageId,
 			contentHash: 'same',
 			policyVersion: 1,
-			isLocalEndpoint: false,
+			endpoint: { rung: 'language' as const, isLocal: false },
 		});
 		expect(again).toEqual({ outcome: 'settled' });
 	});
 
 	it('drops a completion from a lease that lapsed and was taken over', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newT();
 		const inboundMessageId = await teamMessage(t);
 		const args = {
 			artifactKey: 'taken-over',
@@ -329,7 +340,7 @@ describe('sender memory', () => {
 			inboundMessageId,
 			contentHash: 'same',
 			policyVersion: 1,
-			isLocalEndpoint: false,
+			endpoint: { rung: 'language' as const, isLocal: false },
 		};
 		const first = await t.mutation(internal.decision.artifacts.claim, args);
 		if (first.outcome !== 'claimed') throw new Error(first.outcome);

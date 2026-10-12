@@ -26,19 +26,15 @@ async function configIdentity(ctx: { db: QueryCtx['db'] }, isDecisionPlaneOn: bo
 export interface RoutingContext {
 	readonly policy: ResolvedRoutingPolicy;
 	readonly isDecisionPlaneOn: boolean;
-	/** The identity an artifact answered now is stamped with. */
-	readonly decisionConfigIdentity: string;
 }
 
 /** Everything a bundle run decides its plan and rung on, in one read. */
 export const routingContext = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<RoutingContext> => {
-		const isDecisionPlaneOn = await isFeatureEnabled(ctx, 'ai.decisionPlane');
 		return {
 			policy: await loadRoutingPolicy(ctx),
-			isDecisionPlaneOn,
-			decisionConfigIdentity: await configIdentity(ctx, isDecisionPlaneOn),
+			isDecisionPlaneOn: await isFeatureEnabled(ctx, 'ai.decisionPlane'),
 		};
 	},
 });
@@ -53,6 +49,10 @@ export const schedulingGate = internalQuery({
 	args: { threadId: v.optional(v.id('mailThreads')) },
 	handler: async (ctx, args): Promise<{ policy: ResolvedRoutingPolicy; isAllowed: boolean }> => {
 		const policy = await loadRoutingPolicy(ctx);
+		// The gate today's classifier honours: the Team Inbox's agent (which
+		// requires `ai`), or Postbox's `ai`. `./artifacts.ts claim` reads it again.
+		const gate = args.threadId === undefined ? 'ai.agent' : 'ai';
+		if (!(await isFeatureEnabled(ctx, gate))) return { policy, isAllowed: false };
 		let mailboxId;
 		if (args.threadId !== undefined) {
 			const thread = await ctx.db.get(args.threadId);
