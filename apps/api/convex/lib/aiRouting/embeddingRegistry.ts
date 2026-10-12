@@ -187,6 +187,21 @@ export function assertExpectedSpace(
 	});
 }
 
+/**
+ * {@link assertExpectedSpace} for the configured target, by its key
+ * (`embeddingTargetKey`): the target an action would embed in now must be the
+ * one the caller confirmed (a switch may still have no space to name).
+ */
+export function assertExpectedTarget(
+	currentKey: string | null,
+	expectedKey: string | undefined
+): void {
+	if (expectedKey === undefined || currentKey === expectedKey) return;
+	throwConflict('The embedding model changed since you confirmed. Reload and try again.', {
+		reason: EMBEDDING_TARGET_CHANGED,
+	});
+}
+
 // ── The two vector columns of a row ─────────────────────────────────────────
 
 /** The vector columns and stamps of a `knowledgeEntries` or `semanticFiles` row. */

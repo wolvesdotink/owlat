@@ -258,12 +258,22 @@ export function configuredEmbeddingTarget(
 }
 
 export function isSameEmbeddingTarget(a: EmbeddingTarget, b: EmbeddingTarget): boolean {
-	return (
-		a.provider === b.provider &&
-		a.endpoint === b.endpoint &&
-		a.model === b.model &&
-		a.requestedDimensions === b.requestedDimensions
-	);
+	return embeddingTargetKey(a) === embeddingTargetKey(b);
+}
+
+/**
+ * The canonical key of a configured target: the configured half of a space's
+ * identity (provider, secret-free endpoint, model, requested width), a JSON
+ * array like `embeddingSpaceIdentityKey`. Two targets are the same exactly
+ * when their keys are. Holds no credential: the endpoint is its identity.
+ */
+export function embeddingTargetKey(target: EmbeddingTarget): string {
+	return JSON.stringify([
+		target.provider,
+		target.endpoint,
+		target.model,
+		target.requestedDimensions,
+	]);
 }
 
 /**

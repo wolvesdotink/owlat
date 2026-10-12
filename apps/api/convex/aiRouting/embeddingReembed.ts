@@ -38,7 +38,11 @@ import { PAID_EMBEDDING_REFUSAL, REEMBED_PAGE_ATTEMPTS } from './embeddingReembe
 import { isPaidEmbeddingAdmissionAvailable } from '../lib/aiRouting/embeddingAdmission';
 import { runAdmittedEmbedding, type DispatchCounter } from '../lib/aiRouting/embeddingDispatch';
 import { embeddingTableValidator } from '../lib/validators/embedding';
-import { assertExpectedSpace, type MeasuredSpace } from '../lib/aiRouting/embeddingRegistry';
+import {
+	assertExpectedSpace,
+	assertExpectedTarget,
+	type MeasuredSpace,
+} from '../lib/aiRouting/embeddingRegistry';
 
 /** The text a local embedder is measured with (dimensions, digest). Never stored. */
 export const SPACE_PROBE_TEXT = 'Owlat embedding space probe';
@@ -96,18 +100,25 @@ export const kickoff = internalAction({
  */
 // authz: admin-only; assertAdmin runs first, startReembedJob checks again
 export const startReembed = authedAction({
-	/** `expectedSpaceId`: the searchable space the caller confirmed re-embedding into. */
-	args: { expectedSpaceId: v.optional(v.id('embeddingSpaces')) },
+	/**
+	 * `expectedSpaceId`: the searchable space the caller confirmed re-embedding
+	 * into. `expectedTargetKey`: the configured target confirmed
+	 * (`status.configured.targetKey`), for a switch with no space to name yet.
+	 */
+	args: {
+		expectedSpaceId: v.optional(v.id('embeddingSpaces')),
+		expectedTargetKey: v.optional(v.string()),
+	},
 	handler: async (ctx, args): Promise<Id<'embeddingReembedJobs'>> => {
 		// One model budget for this action, from its start (ADR-0073).
 		anchorActionDeadline(ctx);
 		await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
-		const { active, isActiveConfigured, isConfiguredLocal } = await ctx.runQuery(
-			internal.aiRouting.embeddingSpaces.getSpaces,
-			{}
-		);
-		// Before any credential or provider call: the space confirmed is the searchable one.
+		const { active, isActiveConfigured, isConfiguredLocal, configuredTargetKey } =
+			await ctx.runQuery(internal.aiRouting.embeddingSpaces.getSpaces, {});
+		// Before any credential or provider call: the space and the target confirmed
+		// are the searchable space and the configured target.
 		assertExpectedSpace(isActiveConfigured ? active : null, args.expectedSpaceId);
+		assertExpectedTarget(configuredTargetKey, args.expectedTargetKey);
 		if (isConfiguredLocal === null) throwInvalidState('No embedding model is configured.');
 		// An early refusal, before any credential is read; the dispatch below and
 		// the job's own derivation decide again from what they really use.
@@ -145,6 +156,7 @@ export const startReembed = authedAction({
 		}
 		return await ctx.runMutation(internal.aiRouting.embeddingReembedJobs.startReembedJob, {
 			expectedSpaceId: args.expectedSpaceId,
+			expectedTargetKey: args.expectedTargetKey,
 		});
 	},
 });

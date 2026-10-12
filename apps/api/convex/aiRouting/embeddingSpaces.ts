@@ -16,7 +16,11 @@ import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { ensureConfiguredSpace, isSpaceLocal } from '../lib/aiRouting/embeddingActivation';
-import { storedEmbeddingTarget, type EmbeddingTarget } from '../lib/embeddingSpace';
+import {
+	embeddingTargetKey,
+	storedEmbeddingTarget,
+	type EmbeddingTarget,
+} from '../lib/embeddingSpace';
 import { EMBEDDING_PROVIDER_KINDS } from '../lib/llmProviders/types';
 import {
 	attestationBlocker,
@@ -108,6 +112,8 @@ export const getSpaces = internalQuery({
 		storedEmbeddingKind: Doc<'aiProviderConfig'>['embeddingProviderKind'] | null;
 		/** Whether the configured embedder is local (free); null when none is configured. */
 		isConfiguredLocal: boolean | null;
+		/** The configured target's `embeddingTargetKey`; null when none is configured. */
+		configuredTargetKey: string | null;
 	}> => {
 		const active = await readActiveSpace(ctx.db);
 		const staged = await readStagedSpace(ctx.db);
@@ -121,6 +127,7 @@ export const getSpaces = internalQuery({
 			isActiveConfigured,
 			storedEmbeddingKind: row?.embeddingProviderKind ?? null,
 			isConfiguredLocal: target?.isLocal ?? null,
+			configuredTargetKey: target ? embeddingTargetKey(target) : null,
 		};
 	},
 });
@@ -239,6 +246,8 @@ export const status = adminQuery({
 						source: target.source,
 						isLocal: target.isLocal,
 						isActive: active !== null && isIdentityOfTarget(identityOf(active), target),
+						/** Pass back as `startReembed`'s `expectedTargetKey`; no credential in it. */
+						targetKey: embeddingTargetKey(target),
 					}
 				: null,
 			/**
