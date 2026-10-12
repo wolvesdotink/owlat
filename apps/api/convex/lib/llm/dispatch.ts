@@ -41,6 +41,7 @@ import { isLengthStop, LlmTruncatedError } from './truncation';
 import { DEFAULT_MAX_TOOL_STEPS } from './dispatchStream';
 import { admissionRefusalOf, dispatchRequestSize } from './admissionPort';
 import { admitDispatch, isWrappableModel } from './dispatchAdmission';
+import { toolRoundLimit } from './taskLimits';
 
 export { MAX_LLM_ATTEMPTS, errorStatus, isRetriableLlmError, retryAfterMs } from './retryPolicy';
 export { normalizeUsage } from './providerUsage';
@@ -249,7 +250,8 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 	const call = callShape(opts);
 	let spent: TokenUsage | undefined;
 	let dispatched;
-	const maxSteps = opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS;
+	// The caller's step limit, capped by the task's tool rounds (Phase 5).
+	const maxSteps = toolRoundLimit(opts.meter?.task, opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS);
 	const requestModel = modelForRequest(opts.model);
 	const hold = await admitDispatch(opts.meter, call, {
 		size: dispatchRequestSize({ messages: opts.messages, tools: opts.tools }),

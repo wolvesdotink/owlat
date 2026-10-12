@@ -30,6 +30,8 @@ import {
 	type DeferrableAction,
 } from '../analytics/backgroundDeferral';
 import { entriesToSave, extractionSchema, persistExtractedEntries } from './extractedEntries';
+import { sendThroughBatch } from '../lib/llm/batch/submit';
+import { EXTRACTION_TEMPERATURE } from '../lib/llm/batch/calls';
 
 /**
  * Guard knowledge extraction against prompt injection planted in untrusted
@@ -127,19 +129,7 @@ export const extractFromMessage = internalAction({
 				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
 				const entries = await entriesToSave(progress.pendingEntries, async () => {
 					const model = await resolveLanguageModel(ctx, 'knowledge.extract');
-					const {
-						object: extraction,
-						tokenUsage,
-						modelUsed,
-					} = await meterLlmCall(
-						ctx,
-						{ feature: 'knowledge_extract_message', root: extractRoot },
-						(meter) =>
-							runLlmObject({
-								meter,
-								model,
-								schema: extractionSchema,
-								prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+					const prompt = `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${message.from}
 Subject: ${message.subject}
@@ -155,8 +145,27 @@ Extract any:
 - Relationships: connections between people
 - Action Items: commitments or tasks mentioned
 
-Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-								temperature: 0.1,
+Only extract knowledge you are confident about. Skip trivial greetings or small talk.`;
+					// L14: through the provider's batch API when the switch allows; the
+					// result resumes this extraction later (aiRouting/batchItems.ts).
+					const candidate = { sourceId: args.inboundMessageId, model, prompt, root: extractRoot };
+					if (await sendThroughBatch(ctx, { consumer: 'knowledge_message', ...candidate })) {
+						return [];
+					}
+					const {
+						object: extraction,
+						tokenUsage,
+						modelUsed,
+					} = await meterLlmCall(
+						ctx,
+						{ feature: 'knowledge_extract_message', root: extractRoot },
+						(meter) =>
+							runLlmObject({
+								meter,
+								model,
+								schema: extractionSchema,
+								prompt,
+								temperature: EXTRACTION_TEMPERATURE,
 								abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
 							})
 					);
@@ -243,6 +252,17 @@ export const extractFromFile = internalAction({
 				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
 				const entries = await entriesToSave(progress.pendingEntries, async () => {
 					const model = await resolveLanguageModel(ctx, 'knowledge.extract');
+					const prompt = `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
+
+Filename: ${file.filename}
+Title: ${file.title ?? file.filename}
+${file.summary ? `Summary: ${file.summary}\n` : ''}Content:
+${textContent}
+
+Extract any facts, decisions, events, preferences, goals, relationships, or action items. Skip boilerplate and formatting noise.`;
+					// L14: through the provider's batch API when the switch allows.
+					const candidate = { sourceId: args.fileId, model, prompt, root: extractRoot };
+					if (await sendThroughBatch(ctx, { consumer: 'knowledge_file', ...candidate })) return [];
 					const {
 						object: extraction,
 						tokenUsage,
@@ -255,15 +275,8 @@ export const extractFromFile = internalAction({
 								meter,
 								model,
 								schema: extractionSchema,
-								prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
-
-Filename: ${file.filename}
-Title: ${file.title ?? file.filename}
-${file.summary ? `Summary: ${file.summary}\n` : ''}Content:
-${textContent}
-
-Extract any facts, decisions, events, preferences, goals, relationships, or action items. Skip boilerplate and formatting noise.`,
-								temperature: 0.1,
+								prompt,
+								temperature: EXTRACTION_TEMPERATURE,
 								abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
 							})
 					);
@@ -367,19 +380,7 @@ export const extractFromMailMessage = internalAction({
 				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
 				const entries = await entriesToSave(progress.pendingEntries, async () => {
 					const model = await resolveLanguageModel(ctx, 'knowledge.extract');
-					const {
-						object: extraction,
-						tokenUsage,
-						modelUsed,
-					} = await meterLlmCall(
-						ctx,
-						{ feature: 'knowledge_extract_mail', root: extractRoot },
-						(meter) =>
-							runLlmObject({
-								meter,
-								model,
-								schema: extractionSchema,
-								prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+					const prompt = `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${msg.fromName ? `${msg.fromName} <${msg.fromAddress}>` : msg.fromAddress}
 Subject: ${msg.subject}
@@ -395,8 +396,36 @@ Extract any:
 - Relationships: connections between people
 - Action Items: commitments or tasks mentioned
 
-Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-								temperature: 0.1,
+Only extract knowledge you are confident about. Skip trivial greetings or small talk.`;
+					// L14: through the provider's batch API when the switch allows; the
+					// result resumes through `knowledge/batchedMail.ts`, which scopes it
+					// to the sender's contact as both callers do.
+					// Only mail in a folder live mail is extracted from goes out (an
+					// imported Sent or Trash message stays real-time, as before).
+					const isEligible = () =>
+						ctx.runQuery(internal.mail.liveKnowledge.isInExtractableFolder, {
+							mailMessageId: args.mailMessageId,
+						});
+					const candidate = { sourceId: args.mailMessageId, model, prompt, root: extractRoot };
+					if (
+						await sendThroughBatch(ctx, { consumer: 'knowledge_mail', ...candidate, isEligible })
+					) {
+						return [];
+					}
+					const {
+						object: extraction,
+						tokenUsage,
+						modelUsed,
+					} = await meterLlmCall(
+						ctx,
+						{ feature: 'knowledge_extract_mail', root: extractRoot },
+						(meter) =>
+							runLlmObject({
+								meter,
+								model,
+								schema: extractionSchema,
+								prompt,
+								temperature: EXTRACTION_TEMPERATURE,
 								abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
 							})
 					);

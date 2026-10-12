@@ -20,7 +20,13 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalQuery, type MutationCtx } from '../_generated/server';
+import {
+	internalAction,
+	internalQuery,
+	type MutationCtx,
+	type QueryCtx,
+} from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isAutomatedMail } from '../lib/inboundClassification';
@@ -43,13 +49,23 @@ const NON_KNOWLEDGE_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent
  */
 export const isInExtractableFolder = internalQuery({
 	args: { mailMessageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<boolean> => {
-		const message = await ctx.db.get(args.mailMessageId);
-		if (!message) return false;
-		const folder = await ctx.db.get(message.folderId);
-		return !(folder?.role !== undefined && NON_KNOWLEDGE_ROLES.has(folder.role));
-	},
+	handler: (ctx, args): Promise<boolean> => isInKnowledgeFolder(ctx, args.mailMessageId),
 });
+
+/**
+ * {@link isInExtractableFolder} for a query or mutation that has `ctx.db`: a
+ * provider batch result is checked here in the transaction that would keep it
+ * (`aiRouting/batchContinuation.ts`, L14).
+ */
+export async function isInKnowledgeFolder(
+	ctx: Pick<QueryCtx, 'db'>,
+	mailMessageId: Id<'mailMessages'>
+): Promise<boolean> {
+	const message = await ctx.db.get(mailMessageId);
+	if (!message) return false;
+	const folder = await ctx.db.get(message.folderId);
+	return !(folder?.role !== undefined && NON_KNOWLEDGE_ROLES.has(folder.role));
+}
 
 /**
  * Whether one live inbound message should be extracted into the knowledge

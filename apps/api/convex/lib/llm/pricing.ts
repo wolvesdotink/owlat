@@ -39,7 +39,26 @@ type Price = {
  * a rate never reprices history. Bump this with any rate change, to the date
  * the new rates were checked.
  */
-export const PRICE_VERSION = '2026-10-12';
+export const PRICE_VERSION = '2026-10-12.batch';
+
+/**
+ * Marks the ledger `endpoint` of a request sent through a provider batch API
+ * (ADR-0073, L14): `openai-native+batch`, `anthropic-native+batch`.
+ */
+export const BATCH_ENDPOINT_SUFFIX = '+batch';
+
+/**
+ * What a batch request costs against the list price. OpenAI's Batch API and
+ * Anthropic's Message Batches both bill input and output at half the
+ * real-time rate (their pricing pages, checked 2026-10-12). Only the native
+ * endpoints have a batch path, so the factor is one number.
+ */
+export const BATCH_PRICE_FACTOR = 0.5;
+
+/** The price factor of a request recorded under `endpoint`: half for a batch request, else 1. */
+export function batchPriceFactor(endpoint: string | undefined): number {
+	return endpoint?.endsWith(BATCH_ENDPOINT_SUFFIX) === true ? BATCH_PRICE_FACTOR : 1;
+}
 
 /**
  * Catch-all prefix for the decision plane's model family. Exported because

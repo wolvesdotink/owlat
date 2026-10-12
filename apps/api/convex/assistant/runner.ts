@@ -10,7 +10,8 @@
  * the streaming assistant row in place (throttled row-append) so the reactive
  * subscription renders tokens + tool-call cards as they arrive. Natural finish
  * records spend + marks complete; a user Stop / deletion (detected via the patch
- * mutation's `stop` signal) aborts and leaves the partial text terminal; any
+ * mutation's `stop` signal, or a once-a-second check while no event comes)
+ * aborts the turn and its nested calls and leaves the partial text terminal; any
  * error leaves the partial text errored and records the spend of the steps that
  * finished before it (#1261).
  *
@@ -40,8 +41,10 @@ import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import { buildAssistantTools } from './tools';
 import type { AssistantAudience } from './toolRegistry';
 import { buildAssistantSystemPrompt, clampText, type AssistantSurface } from './prompt';
-import { assistantToolCallValidator } from '../lib/convexValidators';
-import { admissionRefusalOf, budgetRefusalMessage } from '../lib/llm/admissionPort';
+import type { assistantToolCallValidator } from '../lib/convexValidators';
+import { admissionRefusalOf } from '../lib/llm/admissionPort';
+import { taskPolicy } from '../lib/llm/taskPolicy';
+import type { BudgetRefusal } from '../lib/validators/aiRouting';
 
 type ToolCall = Infer<typeof assistantToolCallValidator>;
 type Status = 'complete' | 'stopped' | 'error';
@@ -52,6 +55,12 @@ type Status = 'complete' | 'stopped' | 'error';
  * coarser than the composer's revise stream (mail/ai/reviseDraft.ts).
  */
 const FLUSH_INTERVAL_MS = 250;
+/**
+ * How often a running turn checks for Stop on its own (Sol r1 F1). A Stop is
+ * otherwise noticed only on a flush, and no flush happens while a nested tool
+ * waits on its provider; this bounds that wait to about a second.
+ */
+export const STOP_POLL_MS = 1000;
 const MAX_TOOL_RESULT_JSON = 4000;
 const MAX_TOOL_ARGS_JSON = 1000;
 
@@ -96,8 +105,13 @@ interface FinalizeArgs {
 	model?: string;
 	tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 	errorMessage?: string;
+	/** The turn's paid call was refused for budget (D1): the code and reason, no sentence. */
+	budgetRefusal?: BudgetRefusal;
 	toolCalls?: ToolCall[];
 }
+
+/** The task every assistant turn runs as (`lib/llm/taskPolicy.ts`). */
+const TURN_TASK = 'assistant.answer';
 
 /**
  * The shared streaming loop. Surface-specific persistence is injected via
@@ -117,19 +131,28 @@ async function streamAssistantTurn(
 		/** The turn's root request: one per assistant message (ADR-0073). */
 		root: LlmRootContext;
 		patch: (text: string, toolCalls: ToolCall[] | undefined) => Promise<{ stop: boolean }>;
+		/** Whether the person stopped the turn (read without writing). */
+		isStopped: () => Promise<boolean>;
 		finalize: (args: FinalizeArgs) => Promise<void>;
 	}
 ): Promise<void> {
 	// The turn's calls and its tools' nested searches share this action's clock.
 	anchorActionDeadline(ctx);
-	const target: LlmSpendTarget = { feature: opts.feature, root: boundedRoot(ctx, opts.root) };
+	const target: LlmSpendTarget = {
+		feature: opts.feature,
+		task: TURN_TASK,
+		root: boundedRoot(ctx, opts.root),
+	};
 	const meter = meterFor(ctx, target);
-	// Tools that call a model run under the turn's root, with the turn as parent.
+	// Tools that call a model run under the turn's root, with the turn as parent,
+	// so their calls are admitted as the turn's interactive work (Phase 5), and
+	// the turn's retrieval allowance bounds how often they search.
 	const tools = await buildAssistantTools(
 		ctx,
 		opts.audience,
 		undefined,
-		childCall(target.root, meter.requestId)
+		childCall(target.root, meter.requestId),
+		{ maxRetrievalCalls: taskPolicy(TURN_TASK).maxRetrievalCalls }
 	);
 	const toolCalls: ToolCall[] = [];
 	// Every write carries the tool cards too; a tool event flushes at once.
@@ -138,6 +161,24 @@ async function streamAssistantTurn(
 		patch: (text) => opts.patch(text, toolCalls.length ? toolCalls : undefined),
 	});
 
+	// Watch for Stop apart from stream events, for the turn's lifetime only: a
+	// Stop aborts the shared signal, which ends the stream and every nested
+	// call that holds it. One check at a time; cleared in `finally`.
+	let isChecking = false;
+	const stopWatch = setInterval(() => {
+		if (isChecking || stream.stopRequested) return;
+		isChecking = true;
+		opts
+			.isStopped()
+			.then((isStopped) => {
+				if (isStopped) stream.stop();
+			})
+			.catch(() => undefined)
+			.finally(() => {
+				isChecking = false;
+			});
+	}, STOP_POLL_MS);
+
 	try {
 		const result = await runLlmStream({
 			meter,
@@ -145,6 +186,7 @@ async function streamAssistantTurn(
 			system: opts.system,
 			messages: opts.messages,
 			tools,
+			// The dispatch caps this at the task's tool rounds (`maxToolRounds`).
 			maxSteps: DEFAULT_MAX_TOOL_STEPS,
 			temperature: 0.3,
 			abortSignal: stream.signal,
@@ -195,17 +237,34 @@ async function streamAssistantTurn(
 		await opts.finalize({
 			text: stream.text,
 			status: 'error',
-			errorMessage: turnErrorMessage(error),
+			...turnError(error),
 			toolCalls: toolCalls.length ? toolCalls : undefined,
 		});
+	} finally {
+		clearInterval(stopWatch);
 	}
 }
 
-/** What a failed turn tells the person; a budget refusal reads as one (D1). */
-function turnErrorMessage(error: unknown): string {
+/**
+ * What a failed turn stores: a budget refusal as its stable code and reason
+ * (D1), which the web says in the reader's language; any other failure as its
+ * message.
+ */
+function turnError(error: unknown): Pick<FinalizeArgs, 'errorMessage' | 'budgetRefusal'> {
 	const refusal = admissionRefusalOf(error);
-	if (refusal) return budgetRefusalMessage(refusal.reason);
-	return clampText(String((error as { message?: unknown })?.message ?? error), 300);
+	if (refusal) return { budgetRefusal: { code: refusal.code, reason: refusal.reason } };
+	return {
+		errorMessage: clampText(String((error as { message?: unknown })?.message ?? error), 300),
+	};
+}
+
+/**
+ * A turn's root: one per assistant message (ADR-0073). Someone waits on it, so
+ * every call under it, the tools' nested searches included, is admitted as
+ * interactive work.
+ */
+function assistantRoot(assistantMessageId: string): LlmRootContext {
+	return { ...rootRequest('assistant', assistantMessageId), priority: 'interactive' };
 }
 
 /** Personal assistant — drive a `/dashboard/assistant` conversation turn. */
@@ -243,12 +302,16 @@ export const run = internalAction({
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',
 			feature: 'assistant_chat',
-			root: rootRequest('assistant', args.assistantMessageId),
+			root: assistantRoot(args.assistantMessageId),
 			patch: (text, toolCalls) =>
 				ctx.runMutation(internal.assistant.conversations.patchAssistantMessage, {
 					messageId: args.assistantMessageId,
 					text,
 					toolCalls,
+				}),
+			isStopped: () =>
+				ctx.runQuery(internal.assistant.conversations.isTurnStopped, {
+					messageId: args.assistantMessageId,
 				}),
 			finalize: async (a) => {
 				await ctx.runMutation(internal.assistant.conversations.finalizeAssistantMessage, {
@@ -291,12 +354,16 @@ export const runForChat = internalAction({
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',
 			feature: 'chat_assistant',
-			root: rootRequest('assistant', args.assistantMessageId),
+			root: assistantRoot(args.assistantMessageId),
 			patch: (text, toolCalls) =>
 				ctx.runMutation(internal.chat.messages.patchAssistantChatMessage, {
 					messageId: args.assistantMessageId,
 					text,
 					toolCalls,
+				}),
+			isStopped: () =>
+				ctx.runQuery(internal.chat.messages.isAssistantReplyStopped, {
+					messageId: args.assistantMessageId,
 				}),
 			finalize: async (a) => {
 				await ctx.runMutation(internal.chat.messages.finalizeAssistantChatMessage, {

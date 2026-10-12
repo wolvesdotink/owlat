@@ -5,6 +5,10 @@ import { entryTypeValidator } from './knowledge';
 import {
 	admissionPriorityValidator,
 	aiInvalidationReasonValidator,
+	batchConsumerValidator,
+	batchItemOutcomeValidator,
+	batchItemStatusValidator,
+	batchProviderValidator,
 	aiSubjectKindValidator,
 	aiTaskNameValidator,
 	budgetClassValidator,
@@ -49,6 +53,7 @@ export const extractedEntryValidator = v.object({
 export const AI_ROUTING_TABLES = [
 	'decisionArtifacts',
 	'senderMemory',
+	'llmBatchItems',
 	'llmReservations',
 	'llmSpendPeriods',
 	'llmSpendAggregateState',
@@ -183,6 +188,53 @@ export const aiRoutingTables = {
 		.index('by_status_and_plane', ['status', 'plane', 'budgetClass'])
 		// The expiry sweep: held rows past `expiresAt`.
 		.index('by_status_and_expires_at', ['status', 'expiresAt'])
+		// Retention: terminal rows past the audit window.
+		.index('by_status_and_updated_at', ['status', 'updatedAt']),
+
+	// L14 (Phase 5): one non-interactive model request sent through a provider's
+	// batch API instead of in real time, while `batchApi` is `enforce` (assistant
+	// lane, `aiRouting/batchItems.ts`). One request per provider batch, so no
+	// prompt is stored here (the provider holds it): ids and states only.
+	// `reservationId` is the request's admission hold, settled exactly once in
+	// the mutation that writes its ledger row. Terminal rows go after the audit
+	// window (`maintenance/retention.ts`).
+	llmBatchItems: defineTable({
+		/** `${consumer}:${sourceId}`: a source has at most one live item. */
+		itemKey: v.string(),
+		consumer: batchConsumerValidator,
+		/** The source's id (an inbound message, a semantic file, a mail message). */
+		sourceId: v.string(),
+		task: aiTaskNameValidator,
+		provider: batchProviderValidator,
+		modelId: v.string(),
+		/** The ledger row's request id; the request is its attempt 1. */
+		requestId: v.string(),
+		rootRequestId: v.string(),
+		parentCallId: v.optional(v.string()),
+		policyVersion: v.number(),
+		/**
+		 * The request's bound, integer micro-USD at the full real-time price: what
+		 * its ledger row charges when whether it was billed is unknown, with or
+		 * without a hold.
+		 */
+		requestBoundMicrousd: v.number(),
+		/** Absent when admission held nothing (no ceiling configured). */
+		reservationId: v.optional(v.string()),
+		status: batchItemStatusValidator,
+		providerBatchId: v.optional(v.string()),
+		/** OpenAI only: the uploaded request file. */
+		providerFileId: v.optional(v.string()),
+		/** When the poller next asks the provider about it. */
+		nextPollAt: v.number(),
+		/** The provider's completion window plus a grace; past it the item is abandoned. */
+		expiresAt: v.number(),
+		outcome: v.optional(batchItemOutcomeValidator),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index('by_item_key', ['itemKey'])
+		// The poller: submitted items due for a poll, unconfirmed submissions by age.
+		.index('by_status_and_next_poll', ['status', 'nextPollAt'])
 		// Retention: terminal rows past the audit window.
 		.index('by_status_and_updated_at', ['status', 'updatedAt']),
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { budgetRefusalReason } from '~/utils/aiBudget';
 
 const { t } = useI18n();
 
@@ -10,6 +11,7 @@ interface Visualization {
 	title: string;
 	html?: string;
 	description?: string;
+	budgetRefusal?: unknown;
 }
 
 const pinnedList = computed<Visualization[]>(() => {
@@ -17,6 +19,10 @@ const pinnedList = computed<Visualization[]>(() => {
 });
 
 const firstVisualization = computed(() => pinnedList.value[0] ?? null);
+// Generation refused for budget (D1): said in the reader's language, not the page.
+const isFirstBudgetRefused = computed(
+	() => budgetRefusalReason(firstVisualization.value?.budgetRefusal) !== null
+);
 </script>
 
 <template>
@@ -53,8 +59,13 @@ const firstVisualization = computed(() => pinnedList.value[0] ?? null);
 				<p class="text-sm font-medium text-text-primary mb-2 truncate">
 					{{ firstVisualization.title }}
 				</p>
+				<AiBudgetRefusal
+					v-if="isFirstBudgetRefused"
+					:refusal="firstVisualization.budgetRefusal"
+					variant="panel"
+				/>
 				<div
-					v-if="firstVisualization.html"
+					v-else-if="firstVisualization.html"
 					class="rounded-lg overflow-hidden border border-border-subtle"
 				>
 					<VisualizationsVisualizationRenderer :html="firstVisualization.html" min-height="180px" />

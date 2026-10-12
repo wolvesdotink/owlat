@@ -117,8 +117,9 @@ export const ask = authedAction({
 		// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
 		// error; only a transient embed() failure falls soft to no-vector recall.
 		const embedder = await resolveIndexEmbedder(ctx);
-		// One question is one user action: every call it makes groups under one root.
-		const root = boundedRoot(ctx, newRootRequest('assistant'));
+		// One question is one user action: every call it makes groups under one
+		// root, and is admitted as the asker's interactive work (Phase 5).
+		const root = boundedRoot(ctx, { ...newRootRequest('assistant'), priority: 'interactive' });
 		try {
 			const before = await probeEmbeddingRevision(embedder.target);
 			const res = await meterLlmCall(

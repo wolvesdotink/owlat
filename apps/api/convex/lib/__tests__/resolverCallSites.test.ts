@@ -97,6 +97,8 @@ const INVENTORY: readonly CallSite[] = [
 		tasks: DECISION_TASKS,
 		branches: [[undefined, 'classify']],
 	},
+	// The summary's batch path (L14) resolves the real-time call's model first.
+	site('lib/semanticFileAi.ts', "ctx, 'file.summarize'", 'summarize'),
 	site('lib/semanticFileAi.ts', "ctx, 'file.summarize'", 'summarize'),
 	{
 		file: 'plugins/llm.ts',

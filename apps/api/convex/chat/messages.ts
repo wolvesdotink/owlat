@@ -28,6 +28,7 @@ import { loadProfileSummary, type ProfileSummary } from '../lib/userProfiles';
 import { insertRoomMessage } from './messageInsert';
 import { clearNoteReactions } from '../mail/interpret/noteReactions';
 import { isChatAttachment } from './attachmentAccess';
+import { budgetRefusalValidator } from '../lib/validators/aiRouting';
 import {
 	assistantToolCallValidator,
 	assistantMessageStatusValidator,
@@ -356,6 +357,19 @@ export const patchAssistantChatMessage = internalMutation({
 });
 
 /**
+ * Whether the @assistant reply should stop: deleted, finalized, or gone. The
+ * runner asks this on a timer (Sol r1 F1), as `patchAssistantChatMessage`
+ * would answer it on a write.
+ */
+export const isAssistantReplyStopped = internalQuery({
+	args: { messageId: v.id('chatMessages') },
+	handler: async (ctx, args): Promise<boolean> => {
+		const msg = await ctx.db.get(args.messageId);
+		return !msg || !!msg.deletedAt || msg.aiStatus !== 'streaming';
+	},
+});
+
+/**
  * Finalize the @assistant reply. On error with no streamed text, leaves a short
  * visible fallback (chatMessages has no errorMessage column). A deletion/stop in
  * flight is preserved over a natural finish.
@@ -368,14 +382,18 @@ export const finalizeAssistantChatMessage = internalMutation({
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		errorMessage: v.optional(v.string()),
+		/** A budget refusal (D1): stored as its code and reason, for the web to localize. */
+		budgetRefusal: v.optional(budgetRefusalValidator),
 		toolCalls: v.optional(v.array(assistantToolCallValidator)),
 	},
 	handler: async (ctx, args) => {
 		const msg = await ctx.db.get(args.messageId);
 		if (!msg || msg.deletedAt) return;
 		const status = msg.aiStatus === 'streaming' ? args.status : (msg.aiStatus ?? args.status);
+		// A budget refusal keeps its empty text: the web says why, in the reader's
+		// language, from `budgetRefusal`.
 		const finalText =
-			args.status === 'error' && !args.text.trim()
+			args.status === 'error' && !args.text.trim() && !args.budgetRefusal
 				? '⚠️ The assistant could not complete this reply.'
 				: args.text;
 		await ctx.db.patch(args.messageId, {
@@ -383,6 +401,7 @@ export const finalizeAssistantChatMessage = internalMutation({
 			aiStatus: status,
 			model: args.model,
 			tokenUsage: args.tokenUsage,
+			budgetRefusal: args.budgetRefusal,
 			...(args.toolCalls ? { toolCalls: args.toolCalls } : {}),
 		});
 	},
