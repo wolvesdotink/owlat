@@ -468,6 +468,28 @@ describe('fallback', () => {
 		expect(adapters.llm).not.toHaveBeenCalled();
 	});
 
+	it('stamps a native paid attempt with its hold and settles it with the rows', async () => {
+		const h = harness();
+		adapters.typesafe.mockResolvedValue(NATIVE_ANSWER);
+		const admit = vi.fn(async () => ({ reservationId: 'hold-1' }));
+
+		await run(h, { admission: { admit, extend: async () => {}, release: async () => {} } });
+
+		expect(h.records).toHaveLength(1);
+		expect(h.records[0]?.requests).toEqual([expect.objectContaining({ reservationId: 'hold-1' })]);
+		expect(h.records[0]?.settlements).toEqual([{ reservationId: 'hold-1', expectedRequests: 1 }]);
+	});
+
+	it('records no request for an attempt admission refused', async () => {
+		const h = harness();
+		adapters.llm.mockRejectedValue(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+
+		await expect(run(h, { provider: fallbackTo })).rejects.toBeInstanceOf(AdmissionRefusedError);
+
+		expect(h.records).toHaveLength(0);
+		expect(adapters.llm).toHaveBeenCalledTimes(1);
+	});
+
 	it('refuses the hop after a codec refusal', async () => {
 		const h = harness();
 		adapters.typesafe.mockRejectedValue(new DecisionWireError('answered a question nobody asked'));

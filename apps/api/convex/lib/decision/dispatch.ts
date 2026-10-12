@@ -74,6 +74,7 @@ export { billedUsage } from './attemptRequests';
 import { taskForFeature } from '../llm/taskPolicy';
 import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
 import { admitDispatch, type DispatchHold } from '../llm/dispatchAdmission';
+import { admissionRefusalOf } from '../llm/admissionPort';
 import type {
 	DecisionFallbackBreaker,
 	DecisionRateLimiter,
@@ -212,8 +213,11 @@ async function askOnce<Q extends QuestionSet>(
 	try {
 		result = await decisionProviderFor(provider.kind).ask(provider.config, request);
 	} catch (error) {
-		await hold.end();
-		const settlements = holdSettlements(ctx.meter);
+		// Admission refused the attempt's request: nothing was sent or billed.
+		if (admissionRefusalOf(error)) {
+			await hold.end();
+			throw error;
+		}
 		const durationMs = elapsed();
 		const billed = billedUsage(error);
 		const requests = attemptRequests(
@@ -224,6 +228,9 @@ async function askOnce<Q extends QuestionSet>(
 			error,
 			{ isFallback: fallback, ...localTag(provider) }
 		);
+		// Closed after the attempt's request is on the meter, so it carries the hold.
+		await hold.end();
+		const settlements = holdSettlements(ctx.meter);
 		try {
 			await ctx.recordUsage({
 				...base,
@@ -242,9 +249,6 @@ async function askOnce<Q extends QuestionSet>(
 		}
 		throw error;
 	}
-	await hold.end();
-	const settlements = holdSettlements(ctx.meter);
-
 	const durationMs = elapsed();
 	const requests = attemptRequests(
 		ctx.meter,
@@ -259,6 +263,8 @@ async function askOnce<Q extends QuestionSet>(
 		undefined,
 		{ isFallback: fallback, isCalibrated: result.calibrated, ...localTag(provider) }
 	);
+	await hold.end();
+	const settlements = holdSettlements(ctx.meter);
 	try {
 		await ctx.recordUsage({
 			...base,
@@ -411,6 +417,11 @@ export async function runDecision<Q extends QuestionSet>(
 		);
 	}
 	if (fallbackTo) assertFallbackShape(options);
+	if (options.admission && !options.recordUsage) {
+		throw new Error(
+			'A decision under spend admission needs its usage recorder: holds settle with the rows.'
+		);
+	}
 
 	const random = options.random ?? Math.random;
 	const sleep = options.sleep ?? realSleep;

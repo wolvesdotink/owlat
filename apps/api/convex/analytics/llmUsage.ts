@@ -42,7 +42,7 @@ import {
 	type LlmUsagePlane,
 } from '../lib/llmUsageTags';
 import { insertLlmUsage, ZERO_USAGE } from './ledgerInsert';
-import { settleReservation } from '../aiRouting/settlement';
+import { SETTLEMENT_FEATURE, settleReservation } from '../aiRouting/settlement';
 
 export { insertLlmUsage, type LlmUsageTags } from './ledgerInsert';
 
@@ -274,6 +274,8 @@ export const getSpendByProvider = adminQuery({
 /** The fields the decision counters read. Structural, so it is testable with plain rows. */
 export interface DecisionCountableEvent {
 	readonly plane?: LlmUsagePlane;
+	/** Absent in older callers; a settlement estimate row is not counted as an attempt. */
+	readonly feature?: string;
 	readonly isFallback?: boolean;
 	readonly isCalibrated?: boolean;
 	readonly isThrottled?: boolean;
@@ -317,11 +319,13 @@ export function summarizeDecisionPlane(
 	events: readonly DecisionCountableEvent[]
 ): DecisionPlaneCounters {
 	const decisions = events.filter((event) => event.plane === 'decision');
-	const attempts = decisions.length;
-	const fallbackAttempts = decisions.filter((event) => event.isFallback === true).length;
-	const calibrationReported = decisions.filter((event) => event.isCalibrated !== undefined).length;
-	const uncalibratedAttempts = decisions.filter((event) => event.isCalibrated === false).length;
-	const throttledAttempts = decisions.filter((event) => event.isThrottled === true).length;
+	// A settlement estimate (admission) is spend, not an attempt.
+	const requests = decisions.filter((event) => event.feature !== SETTLEMENT_FEATURE);
+	const attempts = requests.length;
+	const fallbackAttempts = requests.filter((event) => event.isFallback === true).length;
+	const calibrationReported = requests.filter((event) => event.isCalibrated !== undefined).length;
+	const uncalibratedAttempts = requests.filter((event) => event.isCalibrated === false).length;
+	const throttledAttempts = requests.filter((event) => event.isThrottled === true).length;
 	const rate = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
 	return {
 		attempts,

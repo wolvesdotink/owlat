@@ -226,4 +226,12 @@ describe('summarizeDecisionPlane', () => {
 			costUsd: 0,
 		});
 	});
+
+	it('counts an admission settlement estimate as spend, not as an attempt', () => {
+		const counters = summarizeDecisionPlane([
+			{ plane: 'decision', feature: 'inbound_triage', isThrottled: true, costUsd: 1 },
+			{ plane: 'decision', feature: 'admission_settlement', costUsd: 2 },
+		]);
+		expect(counters).toMatchObject({ attempts: 1, throttledRate: 1, costUsd: 3 });
+	});
 });
