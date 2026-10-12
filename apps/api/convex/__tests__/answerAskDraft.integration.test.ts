@@ -25,6 +25,7 @@ import { deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
 import { runLlmObject, runLlmStream, runLlmText } from '../lib/llm/dispatch';
 import { assembleInboundBriefing } from '../agent/steps/context_retrieval';
 import { NOT_READY_OPTION } from '../inbox/clarificationAnswers';
+import { INTERPRET_EXTRACTOR_VERSION } from '../mail/interpret/schema';
 import { CUSTOMER, ORG, seedCustomer, seedFile, seedRequest } from './helpers/answerAsk';
 
 import type * as SessionOrganizationModule from '../lib/sessionOrganization';
@@ -610,6 +611,64 @@ describe('team thread', () => {
 		expect(res.status).toBe('ready');
 		expect(vi.mocked(assembleInboundBriefing)).toHaveBeenCalledTimes(1);
 		expect(lastDraftPrompt()).toContain('Jonas asks for the September invoice');
+	});
+
+	it('returns the budget error for a cached interpretation refusal, with no model call (final r2 F1)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		// The interpretation met a spend refusal; its retry is not due yet, so the
+		// briefing reuses the stored result instead of running it again.
+		await t.run(async (ctx) => {
+			const message = (await ctx.db
+				.query('inboundMessages')
+				.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+				.first())!;
+			await ctx.db.insert('messageInterpretations', {
+				threadKind: 'team',
+				conversationThreadId: threadId,
+				source: { kind: 'inbound', id: message._id },
+				sourceKey: `inbound:${message._id}`,
+				contentRevision: 'rev-1',
+				extractorVersion: INTERPRET_EXTRACTOR_VERSION,
+				mode: 'actions',
+				status: 'failed',
+				errorCode: 'budget',
+				budgetRefusal: { reason: 'monthly_ceiling', limit: 'ceiling' },
+				nextRetryAt: Date.now() + 60 * 60 * 1000,
+				deletionEpoch: 1,
+				isCounted: true,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		// The real briefing, so the stored refusal is what it meets.
+		const actual = await vi.importActual<typeof ContextRetrievalModule>(
+			'../agent/steps/context_retrieval'
+		);
+		vi.mocked(assembleInboundBriefing).mockImplementationOnce(actual.assembleInboundBriefing);
+		vi.mocked(runLlmObject).mockClear();
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, {
+				target: { kind: 'teamThread', threadId },
+				locale: 'en',
+			})
+		).rejects.toMatchObject({
+			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
+		});
+		expect(vi.mocked(assembleInboundBriefing)).toHaveBeenCalledTimes(1);
+		// No gap check, clarification or draft followed.
+		expect(vi.mocked(runLlmObject)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmText)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(
+			await t.query(api.mail.ai.composeDraftStore.getSession, {
+				target: { kind: 'teamThread', threadId },
+			})
+		).toBeNull();
 	});
 
 	it('works on a team-only instance, and not once the team inbox is off', async () => {

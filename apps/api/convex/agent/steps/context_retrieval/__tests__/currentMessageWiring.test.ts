@@ -36,6 +36,7 @@ type Read = {
 	interpretation: {
 		status: 'complete' | 'partial' | 'failed' | 'skipped';
 		isRerunDue?: boolean;
+		budgetRefusal?: { reason: 'monthly_ceiling'; limit: string };
 	} | null;
 	items: BriefingItem[];
 };
@@ -188,6 +189,24 @@ describe('contextRetrievalStep.execute — structured current message', () => {
 			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
 		});
 		expect(runs).toHaveLength(1);
+	});
+
+	it('holds on a stored refusal when the cached read is not yet due for a retry (final F1)', async () => {
+		const { ctx, runs } = makeCtx([
+			{
+				interpretation: {
+					status: 'failed',
+					budgetRefusal: { reason: 'monthly_ceiling', limit: 'ceiling' },
+				},
+				items: [],
+			},
+		]);
+		await expect(contextRetrievalStep.execute(ctx, input)).rejects.toMatchObject({
+			reason: 'monthly_ceiling',
+			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
+		});
+		// The stored result is reused, never run again before its retry.
+		expect(runs).toEqual([]);
 	});
 
 	it('still falls back to the raw body for a failed run that met no refusal', async () => {

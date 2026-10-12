@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => ({
 	plane: {
 		kind: 'llm' as string,
 		unavailable: undefined as { code: string; reason: string } | undefined,
-		updatedAt: undefined as number | undefined,
+		configVersion: undefined as string | undefined,
 	},
 }));
 
@@ -55,7 +55,9 @@ vi.mock('../../lib/decisionProvider', async () => ({
 	resolveDecisionConfig: vi.fn(async () => ({
 		...mocks.plane,
 		clientConfig: {},
-		...(mocks.plane.updatedAt === undefined ? {} : { updatedAt: mocks.plane.updatedAt }),
+		...(mocks.plane.configVersion === undefined
+			? {}
+			: { configVersion: mocks.plane.configVersion }),
 	})),
 	resolveDecisionProvider: vi.fn(async () => ({ kind: mocks.plane.kind, config: {} })),
 }));
@@ -164,7 +166,7 @@ const artifacts = (t: T) => t.run((ctx) => ctx.db.query('decisionArtifacts').col
 beforeEach(() => {
 	mocks.plane.kind = 'llm';
 	mocks.plane.unavailable = undefined;
-	mocks.plane.updatedAt = undefined;
+	mocks.plane.configVersion = undefined;
 	mocks.admitBundle.mockResolvedValue(admitted());
 	mocks.runLlmObject.mockResolvedValue({
 		object: { triage: 'needs_work' },
@@ -509,7 +511,7 @@ describe('dispatch races (Sol r2)', () => {
 		// The excluded Team Inbox's provider resolved as the local engine from a
 		// configuration that is no longer the stored one.
 		mocks.plane.kind = 'local';
-		mocks.plane.updatedAt = 1;
+		mocks.plane.configVersion = 'cfg:1';
 		mocks.admitBundle.mockResolvedValue(admitted('advisory'));
 		const t = await setup({ categoryDisplayBundle: 'enforce' });
 		await enableFeatures(t, ['ai.decisionPlane']);
@@ -522,6 +524,32 @@ describe('dispatch races (Sol r2)', () => {
 				updatedAt: 1,
 			});
 		});
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamMessage, { inboundMessageId, baseline });
+		expect(mocks.runDecision).not.toHaveBeenCalled();
+		expect(await artifacts(t)).toEqual([]);
+	});
+
+	it('sends nothing when the plane was resolved from an earlier save in the same millisecond (final F3)', async () => {
+		// The row is at revision 2; the resolution came from revision 1 with the
+		// same `updatedAt` (a cached plane from the save before).
+		mocks.plane.kind = 'local';
+		mocks.admitBundle.mockResolvedValue(admitted('advisory'));
+		const t = await setup({ categoryDisplayBundle: 'enforce' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		const configId = await t.run((ctx) =>
+			ctx.db.insert('aiProviderConfig', {
+				languageProviderKind: 'openai',
+				modelFast: 'fast',
+				modelCapable: 'capable',
+				embeddingProviderKind: 'local',
+				embeddingModelVersion: 1,
+				decisionProviderKind: 'local',
+				configRevision: 2,
+				updatedAt: 1,
+			})
+		);
+		mocks.plane.configVersion = `${configId}:1`;
 		const inboundMessageId = await seedTeamMessage(t);
 		await t.action(internal.decision.bundleActions.teamMessage, { inboundMessageId, baseline });
 		expect(mocks.runDecision).not.toHaveBeenCalled();

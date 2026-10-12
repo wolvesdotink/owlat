@@ -235,6 +235,7 @@ export const _persistConfig = internalMutation({
 			embeddingSecretEnvelopeVersion: embedding?.version,
 			embeddingKeyPreview: embedding?.keyPreview,
 			...decision,
+			configRevision: (existing?.configRevision ?? 0) + 1,
 			updatedAt: now,
 		};
 

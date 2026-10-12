@@ -101,6 +101,7 @@ async function switchConfigTo(ctx: MutationCtx, row: ConfigRow, space: SpaceDoc)
 	await ctx.db.patch(row._id, {
 		...selection,
 		embeddingModelVersion: row.embeddingModelVersion + 1,
+		configRevision: (row.configRevision ?? 0) + 1,
 		updatedAt: Date.now(),
 	});
 }

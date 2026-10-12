@@ -127,6 +127,10 @@ async function structuredActions(
 				inboundMessageId,
 			});
 		}
+		// A stored refusal holds a cached read too: until its retry is due the run
+		// is not called, and the raw body must not carry the paid steps on (D1).
+		const stored = read.interpretation?.budgetRefusal;
+		if (stored) throw new AdmissionRefusedError(stored.reason, stored.limit);
 		if (read.interpretation?.status !== 'complete') return null;
 		return renderBriefingActions(read.selection);
 	} catch (error) {
