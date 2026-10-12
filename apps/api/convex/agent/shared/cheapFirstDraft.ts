@@ -371,7 +371,8 @@ export async function runCheapFirstDraft(
 		};
 	} finally {
 		// Every request is written once, on every exit, before the hold settles.
-		for (const meter of [...unwritten.keys()]) await writeRows(meter);
+		// (Deleting the current key while iterating a Map is safe.)
+		for (const meter of unwritten.keys()) await writeRows(meter);
 		await hold.settle();
 	}
 }
