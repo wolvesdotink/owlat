@@ -37,6 +37,9 @@ describe('InboxBudgetHoldNotice', () => {
 		expect(w.get('[data-testid="thread-budget-hold"]').attributes('data-reason')).toBe(
 			'daily_ceiling'
 		);
+		// Auto-send is blocked only while held; trying again restores automation.
+		expect(w.text()).toContain('Nothing is sent automatically while the message is held.');
+		expect(w.text()).toContain('normal automation, so its reply can be sent on its own');
 		expectFullyLocalized(w);
 
 		await w.get('button').trigger('click');

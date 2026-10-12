@@ -4198,8 +4198,8 @@
 			"budgetHold": {
 				"missing": "The AI skipped {steps}.",
 				"retry": "Try the AI again",
-				"retryHint": "Runs the skipped steps once the budget has room.",
-				"since": "Held {date}. Auto-send stays off for this message.",
+				"retryHint": "Trying again runs the message through the agent with normal automation, so its reply can be sent on its own.",
+				"since": "Held {date}. Nothing is sent automatically while the message is held.",
 				"title": "Waiting for a person: AI budget reached"
 			}
 		},

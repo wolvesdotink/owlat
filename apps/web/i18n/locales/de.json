@@ -4198,8 +4198,8 @@
 			"budgetHold": {
 				"missing": "Die KI hat {steps} übersprungen.",
 				"retry": "KI erneut versuchen",
-				"retryHint": "Führt die übersprungenen Schritte aus, sobald das Budget wieder Platz hat.",
-				"since": "Zurückgehalten am {date}. Für diese Nachricht bleibt das automatische Senden aus.",
+				"retryHint": "Ein neuer Versuch lässt den Agenten die Nachricht mit der normalen Automatik bearbeiten, sodass seine Antwort von selbst gesendet werden kann.",
+				"since": "Zurückgehalten am {date}. Solange die Nachricht zurückgehalten wird, wird nichts automatisch gesendet.",
 				"title": "Wartet auf eine Person: KI-Budget erreicht"
 			}
 		},

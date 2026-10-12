@@ -4,7 +4,8 @@
  * (D1, U3). The pipeline ran none of its paid steps, so there is no draft:
  * the notice says why (which budget), what the AI did not do for it (the
  * skipped judgments), and offers Retry, which runs them once there is room.
- * Auto-send stays blocked for it. Shown in place of the generic failed notice:
+ * Auto-send is blocked while it is held; Retry clears the hold and reruns the
+ * normal pipeline, which may send on its own. Shown in place of the failed notice:
  * the message is `failed` with `budgetHold` set.
  */
 import type { BudgetHold } from '~/utils/aiBudget';
