@@ -7948,7 +7948,7 @@
 								"label": "Kategorien vom Entscheidungsanbieter"
 							},
 							"cheapFirstWriter": {
-								"help": "Entwürfe, die vor dem Senden jemand prüft, beginnen mit dem schnellen Modell und wechseln nur zum leistungsfähigen, wenn der erste Versuch nicht reicht.",
+								"help": "Geeignete Entwürfe, die vor dem Senden jemand prüft, beginnen mit dem schnellen Modell und wechseln höchstens einmal zum leistungsfähigen, wenn der erste Versuch nicht reicht. Komplexe Fälle gehen weiterhin direkt an das leistungsfähige Modell.",
 								"label": "Schnelles Modell zuerst für geprüfte Entwürfe"
 							},
 							"claimVerification": {
@@ -7978,7 +7978,7 @@
 						},
 						"title": "KI-Routing",
 						"triage": {
-							"help": "Anteil an der Tages- und Monatsobergrenze, der für die KI-Sicherheitsprüfung und das Sortieren zurückgehalten wird. Andere KI-Arbeit kann ihn nicht ausgeben, deshalb laufen beide weiter, bis die Obergrenze selbst erreicht ist.",
+							"help": "Anteil an der Tages- und Monatsobergrenze, der für die KI-Sicherheitsprüfung und das Sortieren zurückgehalten wird. Andere KI-Arbeit kann ihn nicht ausgeben.",
 							"label": "Reserve für die Vorsortierung (%)"
 						},
 						"values": {

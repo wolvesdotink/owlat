@@ -7948,7 +7948,7 @@
 								"label": "Categories from the decision provider"
 							},
 							"cheapFirstWriter": {
-								"help": "Drafts a person reviews before sending start on the fast model, and move to the capable one only when the first try falls short.",
+								"help": "Eligible drafts a person reviews before sending start on the fast model, with at most one move to the capable model when the first try falls short. Complex cases still go straight to the capable model.",
 								"label": "Fast model first for reviewed drafts"
 							},
 							"claimVerification": {
@@ -7978,7 +7978,7 @@
 						},
 						"title": "AI routing",
 						"triage": {
-							"help": "Share of the daily and monthly ceiling held back for the AI safety check and sorting. Other AI work cannot spend it, so these keep running until the ceiling itself is reached.",
+							"help": "Share of the daily and monthly ceiling held back for the AI safety check and sorting. Other AI work cannot spend it.",
 							"label": "Triage allowance (%)"
 						},
 						"values": {
