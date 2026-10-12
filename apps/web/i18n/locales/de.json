@@ -8172,7 +8172,7 @@
 								"label": "Kategorien vom Entscheidungsanbieter"
 							},
 							"cheapFirstWriter": {
-								"help": "Geeignete Entwürfe, die vor dem Senden jemand prüft, beginnen mit dem schnellen Modell und wechseln höchstens einmal zum leistungsfähigen, wenn der erste Versuch nicht reicht. Komplexe Fälle gehen weiterhin direkt an das leistungsfähige Modell.",
+								"help": "Gilt nur, solange KI-Antworten auf „Nur entwerfen“ stehen. Geeignete Entwürfe beginnen mit dem schnellen Modell und wechseln höchstens einmal zum leistungsfähigen, wenn der erste Versuch nicht reicht. Diese Entwürfe werden nie automatisch gesendet: Jemand prüft jeden, bevor er rausgeht. Komplexe Fälle gehen weiterhin direkt an das leistungsfähige Modell.",
 								"label": "Schnelles Modell zuerst für geprüfte Entwürfe"
 							},
 							"claimVerification": {

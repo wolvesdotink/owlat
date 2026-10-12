@@ -8172,7 +8172,7 @@
 								"label": "Categories from the decision provider"
 							},
 							"cheapFirstWriter": {
-								"help": "Eligible drafts a person reviews before sending start on the fast model, with at most one move to the capable model when the first try falls short. Complex cases still go straight to the capable model.",
+								"help": "Applies only while AI replies are set to “Draft only”. Eligible drafts start on the fast model, with at most one move to the capable model when the first try falls short. These drafts are never sent automatically: a person reviews each one before it goes out. Complex cases still go straight to the capable model.",
 								"label": "Fast model first for reviewed drafts"
 							},
 							"claimVerification": {
