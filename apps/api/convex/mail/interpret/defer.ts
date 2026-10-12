@@ -36,7 +36,12 @@
 
 import { v } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
-import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
+import {
+	internalQuery,
+	type ActionCtx,
+	type MutationCtx,
+	type QueryCtx,
+} from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
 import {
@@ -50,7 +55,6 @@ import { isInterpretationEligible } from './eligibility';
 import { loadBriefRow, markBriefPending } from './briefRow';
 import { deferSource, markOutstanding, runOf } from './outstanding';
 import { loadInterpretSource } from './sources';
-import { RUN_SPACING_MS } from './backfillSources';
 import { CLOSED_STATUSES, recentlyClosedItems, threadItemsWithStatus } from './load';
 import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
 
@@ -58,9 +62,6 @@ type ReadCtx = Pick<QueryCtx, 'db'>;
 
 /** The one reason today: the reader display is the only consumer left. */
 const DISPLAY_ONLY: InterpretDeferReason = 'display_only';
-
-/** Deferred sources one thread open starts at most; the rest wait for the next ask. */
-export const RESUME_BATCH = 25;
 
 /**
  * Whether the thread holds an item this message could move (D10 keeps
@@ -138,30 +139,29 @@ export const deferDeliveredIfDisplayOnly = internalMutation({
 });
 
 /**
- * Opening a thread runs its deferred sources (`lazy.ts`), whatever its history
- * state: each becomes outstanding again (`markOutstanding`) and is scheduled,
- * {@link RUN_SPACING_MS} apart. Returns how many were scheduled.
+ * Opening a thread reads its deferred sources (`lazy.ts`), whatever its history
+ * state. Only the NEWEST deferred source is scheduled, made outstanding (so the
+ * stale sweep re-runs it if its run is lost); its run reads every older
+ * deferred source first, oldest first ({@link runDeferredPredecessors}), and
+ * then itself. Deferred sources are never scheduled side by side, so they are
+ * always read in thread order. Returns how many runs were scheduled (0 or 1).
  */
 export async function resumeDeferredSources(
 	ctx: MutationCtx,
 	ref: Extract<ThreadRef, { kind: 'mail' }>
 ): Promise<number> {
-	const deferred = await ctx.db
-		.query('interpretSources')
-		.withIndex('by_mail_thread_and_deferred', (q) =>
-			q.eq('mailThreadId', ref.id).eq('isDeferred', true)
-		)
-		.take(RESUME_BATCH);
-	let scheduled = 0;
-	for (const snapshot of deferred) {
-		await markOutstanding(ctx, snapshot.sourceKey);
-		await ctx.scheduler.runAfter(scheduled * RUN_SPACING_MS, runOf(snapshot.source), {
-			source: snapshot.source,
-		});
-		scheduled++;
+	let newest: { snapshot: Doc<'interpretSources'>; order: [number, number] } | null = null;
+	for await (const snapshot of deferredOf(ctx, ref.id)) {
+		const order = await orderOf(ctx, snapshot.source);
+		if (order && (!newest || isBefore(newest.order, order))) newest = { snapshot, order };
 	}
-	if (scheduled > 0) await markBriefPending(ctx, ref);
-	return scheduled;
+	if (!newest) return 0;
+	await markOutstanding(ctx, newest.snapshot.sourceKey);
+	await ctx.scheduler.runAfter(0, runOf(newest.snapshot.source), {
+		source: newest.snapshot.source,
+	});
+	await markBriefPending(ctx, ref);
+	return 1;
 }
 
 /** Whether a mail thread has deferred sources waiting for an open. */
@@ -169,78 +169,122 @@ export function hasDeferredSources(brief: Pick<Doc<'threadBriefs'>, 'deferredSou
 	return (brief?.deferredSources ?? 0) > 0;
 }
 
-/** Deferred predecessors one eager run reads first, at most. */
-export const PREDECESSOR_BATCH = 50;
+/**
+ * Deferred predecessors one action reads before it hands the rest to a
+ * rescheduled run of the same source (Sol r3 F1): the action's time limit
+ * bounds what one run can do, not the thread.
+ */
+export const PREDECESSOR_BUDGET = 10;
 
-/** A Postbox message's place in its thread: arrival time, then creation. */
-function threadOrder(message: Doc<'mailMessages'>): [number, number] {
-	return [message.receivedAt, message._creationTime];
+/** How long a run waits before it looks again at a predecessor whose own run did not settle it. */
+export const PREDECESSOR_RETRY_MS = 60_000;
+
+/**
+ * What a run returns when it rescheduled itself because earlier deferred
+ * messages are still being read: nothing recorded, no projection (the Reply
+ * Queue keeps its baseline), and the source stays outstanding.
+ */
+export function predecessorsPending() {
+	return {
+		status: 'skipped' as const,
+		isReplayed: false,
+		createdItemIds: [] as never[],
+		errorCode: 'predecessors_pending',
+	};
 }
 
+/** A Postbox message's place in its thread: arrival time, then creation. */
 function isBefore(a: [number, number], b: [number, number]): boolean {
 	return a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
 }
 
+function deferredOf(ctx: ReadCtx, threadId: Doc<'mailThreads'>['_id']) {
+	return ctx.db
+		.query('interpretSources')
+		.withIndex('by_mail_thread_and_deferred', (q) =>
+			q.eq('mailThreadId', threadId).eq('isDeferred', true)
+		);
+}
+
+/** A Postbox source's thread order, or null when its message is gone (never blocks anything). */
+async function orderOf(
+	ctx: ReadCtx,
+	source: InterpretationSource
+): Promise<[number, number] | null> {
+	if (source.kind !== 'mail' && source.kind !== 'outboundMail') return null;
+	const row = await ctx.db.get(source.id);
+	return row ? [row.receivedAt, row._creationTime] : null;
+}
+
 /**
- * Sol r2 F1: a source turning eager promotes every EARLIER deferred source of
- * its thread. An earlier message (an invoice) can hold the item a later one
- * cancels or completes; the later run reads only items that exist, so the
- * earlier message must be folded first. Each promoted source becomes
- * outstanding again (so a run that dies is re-run by the sweep) and is
- * returned oldest first, for the caller to interpret in that order before
- * its own source. Inbound and outbound (sent) Postbox sources alike; Team
- * Inbox threads never defer.
+ * The OLDEST deferred source of the thread that arrived before `source`, or
+ * null. Reads every deferred source of the thread (the index has no time
+ * order): a thread's deferred mail, never its whole history.
  */
-export const promoteDeferredPredecessors = internalMutation({
+export const oldestDeferredBefore = internalQuery({
 	args: { source: interpretationSourceValidator },
-	handler: async (ctx, args): Promise<InterpretationSource[]> => {
-		if (args.source.kind !== 'mail' && args.source.kind !== 'outboundMail') return [];
+	handler: async (ctx, args): Promise<InterpretationSource | null> => {
+		if (args.source.kind !== 'mail' && args.source.kind !== 'outboundMail') return null;
 		const message = await ctx.db.get(args.source.id);
-		if (!message) return [];
-		const deferred = await ctx.db
-			.query('interpretSources')
-			.withIndex('by_mail_thread_and_deferred', (q) =>
-				q.eq('mailThreadId', message.threadId).eq('isDeferred', true)
-			)
-			.take(PREDECESSOR_BATCH);
-		const ownKey = interpretationSourceKey(args.source);
-		const earlier: { source: InterpretationSource; order: [number, number] }[] = [];
-		for (const snapshot of deferred) {
-			if (snapshot.sourceKey === ownKey) continue;
-			if (snapshot.source.kind !== 'mail' && snapshot.source.kind !== 'outboundMail') continue;
-			const row = await ctx.db.get(snapshot.source.id);
-			if (!row || !isBefore(threadOrder(row), threadOrder(message))) continue;
-			await markOutstanding(ctx, snapshot.sourceKey);
-			earlier.push({ source: snapshot.source, order: threadOrder(row) });
+		if (!message) return null;
+		const own: [number, number] = [message.receivedAt, message._creationTime];
+		let oldest: { source: InterpretationSource; order: [number, number] } | null = null;
+		for await (const snapshot of deferredOf(ctx, message.threadId)) {
+			const order = await orderOf(ctx, snapshot.source);
+			if (!order || !isBefore(order, own)) continue;
+			if (!oldest || isBefore(order, oldest.order)) oldest = { source: snapshot.source, order };
 		}
-		if (earlier.length > 0) await markBriefPending(ctx, { kind: 'mail', id: message.threadId });
-		return earlier
-			.sort((a, b) => (isBefore(a.order, b.order) ? -1 : isBefore(b.order, a.order) ? 1 : 0))
-			.map((e) => e.source);
+		return oldest?.source ?? null;
 	},
 });
 
 /**
- * Before an eager interpretation of `source`: promote its thread's earlier
- * deferred sources and interpret them, oldest first, with `run` (the run
- * itself; passed in so this module never imports the Node runtime). Fail-soft:
- * a failed promotion interprets the source as before, and a promoted source
- * whose run fails stays outstanding for the sweep.
+ * D10 ordering (Sol r2 F1, r3): before a Postbox source is interpreted, every
+ * EARLIER deferred source of its thread is read, oldest first. An earlier
+ * message (an invoice) can hold the item a later one cancels or completes,
+ * and a run reads only the items that exist.
+ *
+ * Crash-safe by construction, with no state of its own: each step takes the
+ * oldest remaining deferred predecessor and runs it as it is; its deferred
+ * state is cleared only when that run commits (`outstanding.settleSource`). A
+ * run that dies leaves the rest deferred, in place, and the source's retry
+ * (or the stale sweep, which re-runs the outstanding source and never a
+ * deferred one) resumes at the next. A predecessor is never made
+ * outstanding here, so nothing runs it out of order on its own.
+ *
+ * True when no earlier deferred source remains: the caller runs its source.
+ * False when the budget ran out, or a predecessor's run did not settle it (it
+ * waits for its category, or failed to commit): the source's run is
+ * rescheduled to resume the loop, and the caller returns without running it.
+ * `run` is the interpretation run itself, passed in so this module never
+ * imports the Node runtime.
  */
 export async function runDeferredPredecessors(
-	ctx: Pick<ActionCtx, 'runMutation'>,
+	ctx: Pick<ActionCtx, 'runQuery' | 'scheduler'>,
 	source: InterpretationSource,
-	run: (source: InterpretationSource) => Promise<unknown>
-): Promise<void> {
+	run: (source: InterpretationSource) => Promise<unknown>,
+	opts: { budget?: number } = {}
+): Promise<boolean> {
 	// Team Inbox threads never defer: no round trip for them.
-	if (source.kind !== 'mail' && source.kind !== 'outboundMail') return;
-	let earlier: InterpretationSource[] = [];
-	try {
-		earlier = await ctx.runMutation(internal.mail.interpret.defer.promoteDeferredPredecessors, {
-			source,
-		});
-	} catch {
-		return;
+	if (source.kind !== 'mail' && source.kind !== 'outboundMail') return true;
+	const comeBack = async (delayMs: number) => {
+		await ctx.scheduler.runAfter(delayMs, runOf(source), { source });
+		return false;
+	};
+	let previous: string | null = null;
+	for (let step = 0; ; step++) {
+		let next: InterpretationSource | null;
+		try {
+			next = await ctx.runQuery(internal.mail.interpret.defer.oldestDeferredBefore, { source });
+		} catch {
+			return comeBack(PREDECESSOR_RETRY_MS);
+		}
+		if (!next) return true;
+		const key = interpretationSourceKey(next);
+		// Its run did not settle it: look again later rather than spin.
+		if (key === previous) return comeBack(PREDECESSOR_RETRY_MS);
+		if (step >= (opts.budget ?? PREDECESSOR_BUDGET)) return comeBack(0);
+		await run(next);
+		previous = key;
 	}
-	for (const predecessor of earlier) await run(predecessor);
 }

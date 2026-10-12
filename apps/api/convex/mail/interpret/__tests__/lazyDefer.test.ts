@@ -185,6 +185,57 @@ describe('D10: display-only interpretation is deferred', () => {
 		});
 	});
 
+	it('opening a thread with several deferred messages schedules only the newest (Sol r3)', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const mailboxId = await seed(t);
+		const first = await deliverToArchive(t, mailboxId, '<o1@shop.test>');
+		const second = await t.run(async (ctx) => {
+			const mailbox = (await ctx.db.get(mailboxId))!;
+			const folder = (await ctx.db.get(first.folderId))!;
+			const id = await insertDeliveredMessage(ctx, {
+				mailbox,
+				folder,
+				rawStorageId: await ctx.storage.store(new Blob(['raw'])),
+				rawSize: 3,
+				from: 'Shop <orders@shop.test>',
+				to: [mailbox.address],
+				cc: [],
+				bcc: [],
+				subject: 'Re: Your order shipped',
+				textBodyInline: 'It is out for delivery.',
+				messageId: '<o2@shop.test>',
+				inReplyTo: '<o1@shop.test>',
+				receivedAt: Date.now() + 1000,
+				attachments: [],
+				inboundOrigin: 'sync',
+			});
+			await runPostInsertInboundEffects(ctx, { messageId: id, folder, origin: 'sync' });
+			return (await ctx.db.get(id))!;
+		});
+		expect(second.threadId).toBe(first.threadId);
+		expect((await state(t, first)).snapshot?.isDeferred).toBe(true);
+		expect((await state(t, second)).snapshot?.isDeferred).toBe(true);
+
+		const threadRef = { kind: 'mail' as const, id: first.threadId };
+		expect(await t.mutation(api.mail.interpret.lazy.ensure, { threadRef })).toEqual({
+			isEnqueued: true,
+			runs: 1,
+		});
+		// The newest runs (and reads the older one first, in its run); the older
+		// one stays deferred until that run takes it.
+		const { runs } = await state(t, second);
+		expect(runs).toEqual([{ source: { kind: 'mail', id: second._id } }]);
+		expect((await state(t, second)).snapshot).toMatchObject({ isOutstanding: true });
+		expect((await state(t, first)).snapshot?.isDeferred).toBe(true);
+		// A second open while that run is in flight starts no second reader.
+		expect(await t.mutation(api.mail.interpret.lazy.ensure, { threadRef })).toEqual({
+			isEnqueued: false,
+			reason: 'running',
+		});
+	});
+
 	it('an open with AI off leaves it deferred', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);

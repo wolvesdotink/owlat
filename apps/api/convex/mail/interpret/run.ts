@@ -54,7 +54,7 @@ import {
 } from './schema';
 import { buildInterpretPromptParts, renderSegments } from './prompt';
 import { cachedPromptInput } from '../../lib/llm/promptCacheInput';
-import { runDeferredPredecessors } from './defer';
+import { predecessorsPending, runDeferredPredecessors } from './defer';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
 import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
@@ -201,8 +201,9 @@ export async function runInterpretation(
 	ctx: ActionCtx,
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
-	// D10: earlier deferred messages of the thread are read first (defer.ts).
-	await runDeferredPredecessors(ctx, args.source, (source) => runInterpretation(ctx, { source }));
+	// D10: earlier deferred messages are read first; if some remain, this run is rescheduled.
+	const readFirst = (source: InterpretationSource) => runInterpretation(ctx, { source });
+	if (!(await runDeferredPredecessors(ctx, args.source, readFirst))) return predecessorsPending();
 	let reason: Restart['restart'] = 'sourceChanged';
 	for (let attempt = 0; attempt < MAX_RUN_ATTEMPTS; attempt++) {
 		const out = await runOnce(ctx, args);

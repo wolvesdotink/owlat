@@ -8,9 +8,11 @@
  * `pending`, then fills in through the live `brief.get` subscription.
  *
  * D10: a mail thread whose sources were deferred until it is opened
- * (`defer.ts`; `brief.get` reports `deferredSources`) has them run here, also
- * when its history was read through long ago, behind the same gate and rate
- * limit.
+ * (`defer.ts`; `brief.get` reports `deferredSources`) has them read here,
+ * also when its history was read through long ago, behind the same gate and
+ * rate limit: the newest deferred source is scheduled, and its run reads the
+ * older ones first, in order. While another run of the thread is in flight
+ * the answer is `running` (that run reads them, or the next ask does).
  *
  * Idempotent: a history read through (`has_brief`) or still moving
  * (`running`) is left alone, and a stalled one resumes from its cursor. It
@@ -46,6 +48,9 @@ export const ensure = threadBriefMutation({
 		// D10: sources deferred until an open run now, even when the history was
 		// read through long ago.
 		if (args.threadRef.kind === 'mail' && hasDeferredSources(brief)) {
+			// A run already in flight reads the deferred sources before it (defer.ts);
+			// starting a second reader beside it would read them twice.
+			if ((brief?.pendingSources ?? 0) > 0) return { isEnqueued: false, reason: 'running' };
 			const mode = await activeModeOf(ctx, args.threadRef);
 			const gate = mode ? await interpretGate(ctx, mode) : null;
 			if (gate && !gate.isAllowed) return { isEnqueued: false, reason: gate.code };

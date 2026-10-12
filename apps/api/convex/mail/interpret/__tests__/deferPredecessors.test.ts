@@ -15,7 +15,8 @@ import { enableFeatures } from '../../../__tests__/factories';
 import { briefModelSchema } from '../schema';
 import { addMessageToThread, modules, seedMailThread, type Test } from './interpret.testlib';
 import { captureInterpretSource } from '../sources';
-import { deferSource } from '../outstanding';
+import { STALE_MS, deferSource } from '../outstanding';
+import { PREDECESSOR_RETRY_MS, runDeferredPredecessors } from '../defer';
 import type { InterpretationSource } from '../../../lib/validators/threadBrief';
 
 const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), spend: vi.fn() }));
@@ -206,33 +207,167 @@ describe('D10: an eager run reads its deferred predecessors first (Sol r2 F1)', 
 		expect((await snapshotOf(t, { kind: 'mail', id: laterId }))?.isDeferred).toBe(true);
 	});
 
-	it('promotes several, oldest first', async () => {
+	it('runs nothing out of order on a thread with no deferred mail', async () => {
 		const t = convexTest(schema, modules);
-		const { mailboxId, threadId, messageId: a } = await seedDeferredInvoice(t);
-		const b = await addMessageToThread(
-			t,
-			{ mailboxId, threadId },
-			{ text: INVOICE, receivedAt: T0 + 30_000 }
-		);
-		const c = await addMessageToThread(
-			t,
-			{ mailboxId, threadId },
-			{ text: CANCEL, receivedAt: T0 + 60_000 }
-		);
-		await t.run(async (ctx) => {
-			await captureInterpretSource(ctx, { source: { kind: 'mail', id: b }, isLive: true });
-			await deferSource(ctx, `mail:${b}`, 'display_only');
-			await captureInterpretSource(ctx, { source: { kind: 'mail', id: c }, isLive: true });
-		});
-		const promoted = await t.mutation(internal.mail.interpret.defer.promoteDeferredPredecessors, {
-			source: { kind: 'mail', id: c },
-		});
-		expect(promoted).toEqual([
-			{ kind: 'mail', id: a },
-			{ kind: 'mail', id: b },
-		]);
-		for (const id of [a, b] as Id<'mailMessages'>[]) {
-			expect(await snapshotOf(t, { kind: 'mail', id })).toMatchObject({ isOutstanding: true });
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedMailThread(t, { text: INVOICE });
+		const only = { kind: 'mail' as const, id: messageId };
+		await capture(t, only);
+		await t.action(internal.mail.interpret.run.interpretMessage, { source: only });
+		expect(readOrder()).toEqual(['invoice']);
+	});
+});
+
+/**
+ * Sol r3: the loop takes the OLDEST remaining deferred predecessor, reads it,
+ * and only its committed run clears its deferral. Bounded per action, with a
+ * reschedule of the eager source; crash-safe because what was not read is
+ * still deferred, in place.
+ */
+describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
+	const TAG = /\[(\w)\]/;
+	const readTags = () =>
+		llm.runLlmObject.mock.calls
+			.filter(([opts]) => (opts as { schema: unknown }).schema === briefModelSchema)
+			.map(([opts]) => JSON.stringify(opts).match(TAG)?.[1] ?? '?');
+	const text = (tag: string) => `[${tag}] could you send me the signed contract by Friday?`;
+
+	/** Three deferred messages a < b < c, then the eager message d (captured outstanding). */
+	async function seedChain(t: Test) {
+		const { mailboxId, threadId, messageId: a } = await seedMailThread(t, { text: text('a') });
+		const ids: Record<string, Id<'mailMessages'>> = { a };
+		for (const [i, tag] of ['b', 'c', 'd'].entries()) {
+			ids[tag] = await addMessageToThread(
+				t,
+				{ mailboxId, threadId },
+				{ text: text(tag), receivedAt: T0 + (i + 1) * 60_000 }
+			);
 		}
+		await t.run(async (ctx) => {
+			for (const tag of ['a', 'b', 'c']) {
+				await captureInterpretSource(ctx, {
+					source: { kind: 'mail', id: ids[tag]! },
+					isLive: true,
+				});
+				await deferSource(ctx, `mail:${ids[tag]}`, 'display_only');
+			}
+			await captureInterpretSource(ctx, { source: { kind: 'mail', id: ids['d']! }, isLive: true });
+		});
+		return { ids, threadId, eager: { kind: 'mail' as const, id: ids['d']! } };
+	}
+
+	const deferredTags = async (t: Test, ids: Record<string, Id<'mailMessages'>>) => {
+		const out: string[] = [];
+		for (const tag of ['a', 'b', 'c']) {
+			if ((await snapshotOf(t, { kind: 'mail', id: ids[tag]! }))?.isDeferred) out.push(tag);
+		}
+		return out;
+	};
+
+	/** The loop as `runInterpretation` drives it, with an injected budget and runner. */
+	function loop(
+		t: Test,
+		source: InterpretationSource,
+		run: (s: InterpretationSource) => Promise<unknown>,
+		budget?: number
+	) {
+		const scheduled: { delayMs: number; args: unknown }[] = [];
+		const ctx = {
+			runQuery: (ref: never, args: never) => t.query(ref, args),
+			scheduler: {
+				runAfter: async (delayMs: number, _ref: unknown, args: unknown) => {
+					scheduled.push({ delayMs, args });
+				},
+			},
+		} as unknown as Parameters<typeof runDeferredPredecessors>[0];
+		const done = runDeferredPredecessors(ctx, source, run, budget ? { budget } : {});
+		return { done, scheduled };
+	}
+
+	const realRun = (t: Test) => (s: InterpretationSource) =>
+		t.action(internal.mail.interpret.run.interpretMessage, { source: s });
+
+	it('more predecessors than the budget: reads the oldest ones, reschedules, then the rest', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { ids, eager } = await seedChain(t);
+
+		const first = loop(t, eager, realRun(t), 2);
+		expect(await first.done).toBe(false);
+		expect(readTags()).toEqual(['a', 'b']);
+		expect(await deferredTags(t, ids)).toEqual(['c']);
+		// The eager source's own run is rescheduled to resume the loop.
+		expect(first.scheduled).toEqual([{ delayMs: 0, args: { source: eager } }]);
+
+		const second = loop(t, eager, realRun(t), 2);
+		expect(await second.done).toBe(true);
+		expect(readTags()).toEqual(['a', 'b', 'c']);
+		expect(await deferredTags(t, ids)).toEqual([]);
+	});
+
+	it('a crash after one predecessor completes: the retry resumes at the next', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { ids, eager } = await seedChain(t);
+		let calls = 0;
+		const dying = (s: InterpretationSource) => {
+			calls++;
+			if (calls === 2) throw new Error('action killed');
+			return realRun(t)(s);
+		};
+		await expect(loop(t, eager, dying).done).rejects.toThrow('action killed');
+		expect(readTags()).toEqual(['a']);
+		expect(await deferredTags(t, ids)).toEqual(['b', 'c']);
+
+		// The retry of the eager source (the real run) resumes in order, then reads itself.
+		await t.action(internal.mail.interpret.run.interpretMessage, { source: eager });
+		expect(readTags()).toEqual(['a', 'b', 'c', 'd']);
+		expect(await deferredTags(t, ids)).toEqual([]);
+	});
+
+	it('a crash before any completes: nothing moved, the stale sweep re-runs only the eager source', async () => {
+		vi.useFakeTimers();
+		try {
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['ai']);
+			const { ids, eager } = await seedChain(t);
+			const dead = async () => {
+				throw new Error('action killed');
+			};
+			await expect(loop(t, eager, dead).done).rejects.toThrow('action killed');
+			expect(readTags()).toEqual([]);
+			expect(await deferredTags(t, ids)).toEqual(['a', 'b', 'c']);
+
+			vi.advanceTimersByTime(STALE_MS * 2);
+			expect(await t.mutation(internal.mail.interpret.outstanding.sweep, {})).toEqual({
+				rerun: 1,
+				unread: 0,
+			});
+			const rerun = await t.run(async (ctx) =>
+				(await ctx.db.system.query('_scheduled_functions').collect())
+					.filter((job) => job.state.kind === 'pending' && job.name.includes('interpretMessage'))
+					.map((job) => job.args[0])
+			);
+			// Never a deferred predecessor on its own.
+			expect(rerun).toEqual([{ source: eager }]);
+		} finally {
+			vi.useRealTimers();
+		}
+		const t2 = convexTest(schema, modules);
+		await enableFeatures(t2, ['ai']);
+		const chain = await seedChain(t2);
+		await t2.action(internal.mail.interpret.run.interpretMessage, { source: chain.eager });
+		expect(readTags()).toEqual(['a', 'b', 'c', 'd']);
+	});
+
+	it('a predecessor its own run did not settle: look again later, do not spin', async () => {
+		const t = convexTest(schema, modules);
+		const { ids, eager } = await seedChain(t);
+		const noop = vi.fn(async () => undefined);
+		const { done, scheduled } = loop(t, eager, noop);
+		expect(await done).toBe(false);
+		expect(noop).toHaveBeenCalledTimes(1);
+		expect(scheduled).toEqual([{ delayMs: PREDECESSOR_RETRY_MS, args: { source: eager } }]);
+		expect(await deferredTags(t, ids)).toEqual(['a', 'b', 'c']);
 	});
 });
