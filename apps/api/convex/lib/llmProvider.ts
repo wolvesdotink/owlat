@@ -296,7 +296,9 @@ function resolveLanguageModelFromPlane(
 		model: stampModelEndpoint(
 			adapter.buildChatModel(language.clientConfig, modelId),
 			language.endpointProvenance,
-			{ isLocal: isLocalEndpoint(language.kind, language.clientConfig.baseUrl, adapter) }
+			// The tier too: the dispatch refuses the model for a task whose catalog
+			// entry does not allow it (`./llm/callShape.ts`).
+			{ isLocal: isLocalEndpoint(language.kind, language.clientConfig.baseUrl, adapter), tier }
 		),
 		modelId,
 		endpointProvenance: language.endpointProvenance,

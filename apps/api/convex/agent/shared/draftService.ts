@@ -25,16 +25,9 @@
  */
 
 import type { ActionCtx } from '../../_generated/server';
-import { meterFor } from '../../analytics/meteredSpend';
-import { markReviewerNotes } from './draftGaps';
-import type { PrimaryDraft } from './draftMarkup';
 import {
 	assertNoContextInjection,
-	checkDraft,
-	draftChildRoot,
-	draftSpendTarget,
-	generatePrimary,
-	recordAdvisorySpend,
+	runSinglePassDraft,
 	type SharedDraftParams,
 	type SharedDraftResult,
 } from './draftGeneration';
@@ -94,7 +87,8 @@ export function buildConfirmedContext(
 /**
  * THE shared draft pipeline every drafting surface runs: defense-in-depth
  * injection re-scan of the assembled context → primary generation (with
- * optional recall tools) → the host's quality check. Answer mode streams the
+ * optional recall tools) → the host's quality check (`./draftGeneration.ts`
+ * `runSinglePassDraft`). Answer mode streams the
  * generation into the owner's view and skips the check (no `selfCheck`
  * label); a reviewed Team draft may be written cheap-first (`writer`,
  * `./cheapFirstDraft.ts`).
@@ -113,38 +107,5 @@ export async function runSharedDraft(
 	assertNoContextInjection(params.context);
 	if (params.writer) return runCheapFirstDraft(ctx, params, params.writer);
 
-	// Every provider request of the primary generation is recorded in the
-	// ledger exactly once, on every outcome: a throw after finished tool steps,
-	// the rejected attempts of the markup gate (./draftMarkup.ts), or the
-	// successful draft. Both generations (with tools, and the markup retry) run
-	// on one meter, which hands each request out once, so flushing it on every
-	// path cannot double-count. The successful draft's usage is also returned;
-	// the Team Inbox walker keeps it on the step's agentActions row, a reporting
-	// view the spend ceiling does not read (#1259). It is written before the
-	// caller persists anything, so a write that fails after the generation
-	// cannot lose it.
-	const target = draftSpendTarget(params);
-	const meter = meterFor(ctx, target);
-	const recordDraftSpend = () => recordAdvisorySpend(ctx, target, meter);
-	let primary: PrimaryDraft;
-	try {
-		({ primary } = await generatePrimary(ctx, params, meter, recordDraftSpend));
-	} catch (error) {
-		await recordDraftSpend();
-		throw error;
-	}
-	await recordDraftSpend();
-	// A reviewer note the model wrote anyway becomes a placeholder the send
-	// guard counts (agent/shared/draftGaps.ts). A streamed draft keeps the text
-	// the owner watched being written.
-	const draftBody = params.stream ? primary.draftBody : markReviewerNotes(primary.draftBody);
-	// The self-check judges this draft: it runs under the same root, the
-	// generation as its parent call.
-	const checked = await checkDraft(ctx, params, draftBody, draftChildRoot(params, meter));
-	return {
-		draftBody,
-		...checked,
-		tokenUsage: primary.tokenUsage,
-		modelUsed: primary.modelUsed,
-	};
+	return runSinglePassDraft(ctx, params);
 }

@@ -4,7 +4,8 @@
  * model whose tier the call's task does not allow, before any request.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ActionCtx } from '../../../_generated/server';
 import { MockLanguageModelV3 } from 'ai/test';
 import { AI_TASK_NAMES } from '@owlat/shared/aiRouting';
 import { TASK_POLICIES } from '../taskPolicy';
@@ -13,6 +14,8 @@ import { stampModelEndpoint } from '../modelEndpoint';
 import { LlmCallMeter } from '../requestMeter';
 import { callShape } from '../callShape';
 import { runLlmText } from '../dispatch';
+import { resolveLanguageModel } from '../../llmProvider';
+import { __resetAiConfigCacheForTests } from '../../llmProvider';
 
 describe('taskTier', () => {
 	it('is the usual tier (the first listed) of every language and decision task', () => {
@@ -50,6 +53,28 @@ describe('taskTier', () => {
 });
 
 describe('dispatch model eligibility', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.restoreAllMocks();
+		__resetAiConfigCacheForTests();
+	});
+
+	it('refuses a model the resolver produced for a fast task when the call is a capable-only task', async () => {
+		vi.stubEnv('OPENAI_API_KEY', 'sk-test');
+		const fetchSpy = vi.spyOn(globalThis, 'fetch');
+		const ctx = { runQuery: vi.fn(async () => null) } as unknown as ActionCtx;
+		const fast = await resolveLanguageModel(ctx, 'mail.classify');
+		const meter = new LlmCallMeter({ task: 'mail.ask' });
+		await expect(runLlmText({ meter, model: fast, prompt: 'p', maxAttempts: 1 })).rejects.toThrow(
+			TaskTierNotEligibleError
+		);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(meter.requests).toHaveLength(0);
+		// The same resolver's capable model passes the check (and reaches the transport).
+		const capable = await resolveLanguageModel(ctx, 'mail.ask');
+		expect(() => callShape({ model: capable, meter })).not.toThrow();
+	});
+
 	function model(): MockLanguageModelV3 {
 		return new MockLanguageModelV3({
 			modelId: 'm',

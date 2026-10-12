@@ -5,6 +5,7 @@
  * `LLM_COMPLEXITY_ROUTING` (today's downgrade) and the routing policy's
  * `cheapFirstWriter` switch (`lib/llmProvider.ts` `classifiedDraftRouteOf`).
  * Cheap-first applies only to a REVIEWED draft: one no auto-send can follow.
+ * It drafts without the recall tool (`agent/shared/cheapFirstDraft.ts`).
  * The step knows that for certain only while shadow mode ("Draft only") is
  * on, since then the route step sends nothing. The step also marks the draft
  * (`isCheapFirstDraft`), and the `cheap_first_draft` auto-send gate refuses

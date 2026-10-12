@@ -224,23 +224,26 @@ means a Team Inbox draft written while shadow mode ("Draft only") is on,
 because then the route step sends nothing. The routing policy's
 `cheapFirstWriter` switch is off by default. With it at `reviewed`, a message
 the corrected intent allowlist (`TRIVIAL_INTENTS`) finds formulaic, with the
-existing certainty and priority guards, starts on the fast writer. The host's
-quality check scores the draft. A draft that is not complete, grounded and at
-0.8 or above, or a fast pass that failed, gets exactly one escalation: the
-capable writer drafts once from the same context plus the facts the fast pass
-looked up, without tools. The escalated draft is kept whatever its score, and
-a failed escalation leaves the fast draft. A person reviews either one.
+existing certainty and priority guards, starts on the fast writer, without
+tools. The host's quality check scores the draft. When the draft is unusable
+(tool-call markup, or cut off at its ceiling) or the check returns a verdict
+below the bar (complete, grounded, 0.8 or above), the capable writer drafts
+exactly once from the same messages, and that draft is checked and kept
+whatever its score. An unknown verdict keeps the fast draft. A provider or
+configuration failure of the fast pass ends the writer with that error, as it
+ends today's single pass, and buys no escalation. A person reviews every
+draft this path writes. With a plugin strategy selected, the single pass runs.
 
-The plan's rule is to reserve the whole allowed path first. The escalation is
-one request with a prompt of known maximum size, so the writer holds its
-worst case before the fast pass starts. The fast pass is then admitted request
-by request, against a headroom that already counts the escalation. The
-escalation runs under that hold and cannot be refused halfway. The writer
-settles the hold against the escalation's own requests, or releases it when
-there was no escalation. A refused hold refuses the draft before anything is
-spent. Each pass writes one ledger row per request, with its quality result
-(`passed` or `escalated` for the fast pass; `passed`, `failed` or `abstained`
-for the escalation, whose parent call is the fast pass).
+The plan's rule is to reserve the whole allowed path first, so the writer
+holds the worst case of all four calls (both drafts, both checks) before the
+first one. Each request is bounded before it exists: a draft's prompt is the
+draft's own messages, and a check's prompt is the context, the plan and a
+draft of at most 64 KiB (a longer draft is not checked). Every call runs under
+that one hold, so none can be refused after paid work. The writer settles the
+hold once against the requests the path made. A refused hold refuses the draft
+before any paid call. Each call writes one ledger row per request, with its
+quality result (`passed` or `escalated` for the fast draft; `passed`, `failed`
+or `abstained` for the escalation, whose parent call is the fast draft).
 
 A cheap-first draft never auto-sends. The draft step stores
 `inboundMessages.isCheapFirstDraft` in the same mutation as the draft, the next

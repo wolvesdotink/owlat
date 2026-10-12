@@ -6,85 +6,105 @@
  * The caller chose it for a draft a person reviews whatever it says
  * (`lib/llm/complexity.ts` `classifiedDraftRoute`); the draft step also marks
  * the draft so it can never be auto-sent (`isCheapFirstDraft`, the
- * `cheap_first_draft` auto-send gate). Here:
+ * `cheap_first_draft` auto-send gate). The path is four calls at most, all
+ * without tools, so each one is bounded before anything is sent:
  *
- *   1. The fast writer drafts, exactly as the default strategy does (tools,
- *      markup gate), and the host's quality check scores the draft.
- *   2. A draft that passes ({@link passesCheapFirst}) is kept.
- *   3. Otherwise, or when the fast pass failed, ONE escalation: the capable
- *      writer drafts once from the same grounding (the same context, plus the
- *      facts the fast pass looked up), without tools, and is checked. It is
- *      kept whatever its quality: the draft goes to a person either way.
- *   4. An escalation that fails leaves the fast draft for the owner's review.
+ *   1. the fast writer drafts the reply (one generation, no markup retry);
+ *   2. the host's quality check scores it;
+ *   3. ONE escalation, only when the fast draft was unusable (tool-call
+ *      markup, or cut off at its ceiling) or its check returned a verdict that
+ *      does not pass ({@link failsCheapFirst}): the capable writer drafts once
+ *      from the same messages;
+ *   4. the quality check scores the escalated draft, which is kept whatever
+ *      it says. A person reviews either draft.
  *
- * MONEY. The plan reserves the complete allowed path before dispatch. The
- * escalation is bounded up front (one request, a prompt of known size, the
- * task's output ceiling and attempts), so before the fast pass the writer
- * holds the escalation's worst case ({@link reserveEscalation}); the fast pass
- * is admitted request by request like every draft, against a headroom that
- * already counts the escalation. The escalation then runs under that hold
- * (its rows carry it, and the dispatch reserves nothing more), so it cannot be
- * refused after the fast pass was paid, and the hold is settled once against
- * its requests (none: released). A refused hold refuses the draft before any
- * spend (D1: the Team Inbox holds the message).
+ * A provider failure is NOT a quality failure: the fast pass's error
+ * (an authentication, configuration or transport failure) ends the writer
+ * with that error, as it ends today's single pass, and buys no escalation.
+ * An unknown verdict (the check failed, or the draft was too long to check)
+ * keeps the fast draft for the owner's review. A failed escalation leaves the
+ * usable fast draft.
  *
- * Every request is metered once: the fast pass on its meter (written once its
- * quality is known, `qualityResult` `passed` or `escalated`, and on every
- * other exit), the escalation on its own (`passed`, `failed` or `abstained`),
- * under the fast pass as its parent call.
+ * MONEY. The plan reserves the complete allowed path before dispatch. Before
+ * the first call the writer holds the worst case of all four (each request's
+ * exact prompt or its bounded maximum, the task's output ceiling, every
+ * attempt the task allows; {@link reservePath}). Every call runs under that
+ * one hold (its rows carry it; the dispatch reserves nothing more), so no
+ * call can be refused after paid work, and the hold settles once against the
+ * requests the path made (none: released). A refused hold refuses the draft
+ * before any paid call (D1: the Team Inbox holds the message). With a plugin
+ * strategy selected the writer is not cheap-first: the single pass runs.
+ *
+ * Every request is metered once, with its quality result: the fast draft
+ * `passed` or `escalated`, the escalation `passed`, `failed` or `abstained`
+ * (its parent call is the fast draft).
  */
 
-import type { LanguageModel, ToolSet } from 'ai';
+import { zodSchema, type LanguageModel, type ModelMessage } from 'ai';
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { meterFor, type LlmSpendTarget } from '../../analytics/meteredSpend';
 import { reserveHold } from '../../analytics/admissionPorts';
+import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmText } from '../../lib/llm/dispatch';
 import { callShape } from '../../lib/llm/callShape';
 import { callDeadlineAt } from '../../lib/llm/actionDeadline';
-import { LlmCallMeter, type LlmRootContext } from '../../lib/llm/requestMeter';
+import {
+	childCall,
+	LlmCallMeter,
+	type LlmRootContext,
+	type RequestBound,
+} from '../../lib/llm/requestMeter';
 import { modelMaxOutputTokens } from '../../lib/llm/modelOutputLimits';
 import { MAX_LLM_ATTEMPTS } from '../../lib/llm/retryPolicy';
 import { taskPolicy } from '../../lib/llm/taskPolicy';
 import { addTokenUsage } from '../../lib/llm/tokenUsage';
 import { stripLeakedToolMarkup } from '../../lib/llm/toolMarkup';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
 import {
-	admissionRefusalOf,
 	dispatchHoldMicrousd,
 	FALLBACK_OUTPUT_TOKENS,
 	serializedBytes,
+	utf8Bytes,
 } from '../../lib/llm/admissionPort';
 import type { QualityResult } from '../../lib/validators/aiRouting';
-import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
 import { markReviewerNotes } from './draftGaps';
-import type { PrimaryDraft } from './draftMarkup';
-import type { DraftQuality } from './draftSelfCheck';
+import { selectedDraftStrategy } from './draftStrategyRunner';
+import {
+	buildPlanSelfCheckPrompt,
+	buildSelfCheckPrompt,
+	draftQualitySchema,
+	draftQualityWithPlanSchema,
+	type DraftQuality,
+} from './draftSelfCheck';
 import {
 	checkDraft,
-	draftChildRoot,
 	draftMessages,
 	draftSpendTarget,
-	generatePrimary,
 	recordAdvisorySpend,
+	runSinglePassDraft,
 	type CheapFirstWriter,
 	type SharedDraftParams,
 	type SharedDraftResult,
 } from './draftGeneration';
 
-const TASK = 'mail.draft' as const;
+const DRAFT_TASK = 'mail.draft' as const;
+const CHECK_TASK = 'mail.draft_check' as const;
 
 /** The quality a fast draft must reach to be kept without escalation (the default auto-send bar). */
 export const CHEAP_FIRST_ACCEPT_SCORE = 0.8;
 
-/** UTF-16 units of looked-up facts the escalation's prompt carries at most. */
-export const ESCALATION_FACTS_UNITS = 12_000;
-/** Serialized bytes one UTF-16 unit can take at most (`\uXXXX`). */
-const MAX_BYTES_PER_UNIT = 6;
-/** Provider parameters beside the messages (temperature, output ceiling, options). */
-const REQUEST_PARAMS_BYTES = 1_024;
-const FACTS_HEADING = '\n\n[Facts looked up while drafting this reply]\n';
+/**
+ * UTF-8 bytes of a draft the quality check reads at most. The check's prompt
+ * is the context, the plan and the draft, so this bounds it before the draft
+ * exists. A longer draft is not checked (its quality is unknown).
+ */
+export const CHECKED_DRAFT_BYTES = 65_536;
 
-/** Whether a fast draft's quality check lets it stand without escalation. */
+/** Provider parameters beside the prompt (temperature, output ceiling, options). */
+const REQUEST_PARAMS_BYTES = 1_024;
+
+/** Whether a fast draft's verdict lets it stand without escalation. */
 export function passesCheapFirst(quality: DraftQuality | null): boolean {
 	return (
 		quality !== null &&
@@ -94,120 +114,133 @@ export function passesCheapFirst(quality: DraftQuality | null): boolean {
 	);
 }
 
+/** Whether the check returned a verdict that the fast draft does not pass (unknown: no). */
+export function failsCheapFirst(quality: DraftQuality | null): boolean {
+	return quality !== null && !passesCheapFirst(quality);
+}
+
 /** The ledger's quality result for a checked escalation. */
 function escalationQuality(quality: DraftQuality | null): QualityResult {
 	if (quality === null) return 'abstained';
 	return passesCheapFirst(quality) ? 'passed' : 'failed';
 }
 
-/** The tool set with every result also recorded in `facts`, for the escalation's grounding. */
-function recordingTools(tools: ToolSet, facts: string[]): ToolSet {
-	const recorded: ToolSet = {};
-	for (const [name, tool] of Object.entries(tools)) {
-		const execute = tool.execute as ((input: unknown, options: unknown) => unknown) | undefined;
-		recorded[name] = execute
-			? {
-					...tool,
-					execute: async (input: unknown, options: unknown) => {
-						const output: unknown = await execute(input, options);
-						try {
-							facts.push(`${name}: ${JSON.stringify(output)}`);
-						} catch {
-							// an output that cannot be serialized adds no grounding
-						}
-						return output;
-					},
-				}
-			: tool;
-	}
-	return recorded;
+/** The calls of the path, each with its own request id and per-attempt bound. */
+const PATH_CALLS = ['fastDraft', 'fastCheck', 'capableDraft', 'capableCheck'] as const;
+type PathCall = (typeof PATH_CALLS)[number];
+
+/** One call's worst case: every attempt its task allows, each at its output ceiling. */
+function callBound(
+	model: LanguageModel,
+	task: AiTaskName,
+	request: { readonly bytes: number; readonly messages: number }
+) {
+	const shape = callShape({ model, meter: new LlmCallMeter({ task }) });
+	const endpoint = shape.requestBase.endpoint;
+	const bound = shape.requestBase.isLocalEngine
+		? { microusd: 0, maxRequests: 0, maxRequestMicrousd: 0 }
+		: dispatchHoldMicrousd({
+				modelId: shape.modelUsed,
+				plane: 'language',
+				...(endpoint ? { endpoint } : {}),
+				bytes: request.bytes + REQUEST_PARAMS_BYTES,
+				messages: request.messages,
+				outputTokens:
+					shape.maxOutputTokens ?? modelMaxOutputTokens(shape.modelUsed) ?? FALLBACK_OUTPUT_TOKENS,
+				steps: 1,
+				attempts: shape.maxAttempts ?? MAX_LLM_ATTEMPTS,
+				retries: 'every_step',
+			});
+	return { ...bound, modelId: shape.modelUsed, ...(endpoint ? { endpoint } : {}) };
+}
+
+/** The largest quality-check request this draft's path can send. */
+function checkRequestBytes(params: SharedDraftParams): number {
+	const plan = params.responsePlan;
+	const prompt = plan
+		? buildPlanSelfCheckPrompt({ context: params.context, draft: '', plan: plan.items })
+		: buildSelfCheckPrompt({ context: params.context, draft: '' });
+	const schema = plan ? draftQualityWithPlanSchema : draftQualitySchema;
+	return utf8Bytes(prompt) + CHECKED_DRAFT_BYTES + serializedBytes(zodSchema(schema).jsonSchema);
+}
+
+/** The path's hold, while the writer runs. */
+export interface PathHold {
+	/** Spread into a call's spend target: it draws on the hold under its own request id. */
+	target(call: PathCall): Pick<LlmSpendTarget, 'reservationId' | 'requestId'>;
+	/** Count a call's provider requests (its meter's, retries included). */
+	count(requests: number): void;
+	/** Settle against the counted requests, or release when none was sent. Once. */
+	settle(): Promise<void>;
 }
 
 /**
- * The escalation's context: the draft's own, plus what the fast pass looked
- * up (untrusted retrieved text, so it stays inside the untrusted block),
- * clamped to {@link ESCALATION_FACTS_UNITS}. Facts that read as an injection
- * attempt are left out.
+ * Hold the worst case of the whole path before its first call, or throw the
+ * admission refusal (nothing is spent). Every call gets its request id now,
+ * so each attempt has its own bound on the hold. No ceiling configured, or
+ * local models only: nothing is held, and the calls are admitted as usual.
  */
-export function escalationContext(context: string, facts: readonly string[]): string {
-	const looked = facts.join('\n').slice(0, ESCALATION_FACTS_UNITS);
-	if (looked.trim().length === 0) return context;
-	const injection = detectInjection(looked);
-	if (injection.detected && injection.confidence >= INJECTION_CONFIDENCE_THRESHOLD) return context;
-	return `${context}${FACTS_HEADING}${looked}`;
-}
-
-/** The escalation's hold, while the writer runs. */
-interface EscalationHold {
-	/** Spread into the escalation's spend target: it draws on this hold. */
-	readonly target: Pick<LlmSpendTarget, 'reservationId' | 'requestId'>;
-	/** Settle against the escalation's requests, or release when none was sent. Once. */
-	settle(requests: number): Promise<void>;
-}
-
-const NO_HOLD: EscalationHold = Object.freeze({ target: {}, settle: async () => {} });
-
-/**
- * Hold the escalation's worst case before the fast pass: its largest prompt
- * (the draft's messages plus the full facts allowance), the task's output
- * ceiling for the capable model, every attempt the task allows. Throws the
- * admission refusal (nothing is spent). No ceiling configured, or a local
- * model: nothing is held.
- */
-export async function reserveEscalation(
+export async function reservePath(
 	ctx: ActionCtx,
 	params: SharedDraftParams,
-	model: LanguageModel,
-	root: LlmRootContext | undefined
-): Promise<EscalationHold> {
-	const shape = callShape({ model, meter: new LlmCallMeter({ task: TASK }) });
-	if (shape.requestBase.isLocalEngine) return NO_HOLD;
-	const largest = draftMessages({ ...params, context: `${params.context}${FACTS_HEADING}` }, false);
-	const endpoint = shape.requestBase.endpoint;
-	const bound = dispatchHoldMicrousd({
-		modelId: shape.modelUsed,
-		plane: 'language',
-		...(endpoint ? { endpoint } : {}),
-		bytes:
-			serializedBytes(largest) + ESCALATION_FACTS_UNITS * MAX_BYTES_PER_UNIT + REQUEST_PARAMS_BYTES,
-		messages: largest.length,
-		outputTokens:
-			shape.maxOutputTokens ?? modelMaxOutputTokens(shape.modelUsed) ?? FALLBACK_OUTPUT_TOKENS,
-		steps: 1,
-		attempts: shape.maxAttempts ?? MAX_LLM_ATTEMPTS,
-		retries: 'every_step',
-	});
-	if (bound.microusd === 0) return NO_HOLD;
-	// Each attempt of the escalation has its own bound, keyed by its request id.
-	const requestId = globalThis.crypto.randomUUID();
-	const [first, ...rest] = Array.from({ length: bound.maxRequests }, (_, index) => ({
-		requestId,
-		attempt: index + 1,
-		microusd: bound.maxRequestMicrousd,
-	}));
-	if (!first) return NO_HOLD;
-	const held = await reserveHold(ctx, {
-		task: TASK,
-		plane: 'language',
-		budgetClass: taskPolicy(TASK).budgetClass,
-		priority: taskPolicy(TASK).priority,
-		root,
-		microusd: bound.microusd,
-		maxRequests: bound.maxRequests,
-		requestBound: first,
-		requestBounds: rest,
-		modelId: shape.modelUsed,
-		...(endpoint ? { endpoint } : {}),
-		deadlineAt: callDeadlineAt(ctx, root),
-	});
-	if (!held) return NO_HOLD;
-	const { reservationId } = held;
+	models: {
+		readonly fast: LanguageModel;
+		readonly capable: LanguageModel;
+		readonly check: LanguageModel;
+	},
+	messages: readonly ModelMessage[]
+): Promise<PathHold> {
+	const draftRequest = { bytes: serializedBytes(messages), messages: messages.length };
+	const checkRequest = { bytes: checkRequestBytes(params), messages: 1 };
+	const bounds: Record<PathCall, ReturnType<typeof callBound>> = {
+		fastDraft: callBound(models.fast, DRAFT_TASK, draftRequest),
+		fastCheck: callBound(models.check, CHECK_TASK, checkRequest),
+		capableDraft: callBound(models.capable, DRAFT_TASK, draftRequest),
+		capableCheck: callBound(models.check, CHECK_TASK, checkRequest),
+	};
+	const requestIds = Object.fromEntries(
+		PATH_CALLS.map((call) => [call, globalThis.crypto.randomUUID()])
+	) as Record<PathCall, string>;
+	const keyed: RequestBound[] = PATH_CALLS.flatMap((call) =>
+		Array.from({ length: bounds[call].maxRequests }, (_, index) => ({
+			requestId: requestIds[call],
+			attempt: index + 1,
+			microusd: bounds[call].maxRequestMicrousd,
+		}))
+	);
+	const microusd = PATH_CALLS.reduce((total, call) => total + bounds[call].microusd, 0);
+	const [first, ...rest] = keyed;
+	const held =
+		microusd > 0 && first
+			? await reserveHold(ctx, {
+					task: DRAFT_TASK,
+					plane: 'language',
+					budgetClass: taskPolicy(DRAFT_TASK).budgetClass,
+					priority: taskPolicy(DRAFT_TASK).priority,
+					root: params.root,
+					microusd,
+					maxRequests: keyed.length,
+					requestBound: first,
+					requestBounds: rest,
+					modelId: bounds.capableDraft.modelId,
+					...(bounds.capableDraft.endpoint ? { endpoint: bounds.capableDraft.endpoint } : {}),
+					deadlineAt: callDeadlineAt(ctx, params.root),
+				})
+			: null;
+	let requests = 0;
 	let isSettled = false;
 	return {
-		target: { reservationId, requestId },
-		settle: async (requests) => {
-			if (isSettled) return;
+		target: (call) => ({
+			requestId: requestIds[call],
+			...(held ? { reservationId: held.reservationId } : {}),
+		}),
+		count: (n) => {
+			requests += n;
+		},
+		settle: async () => {
+			if (isSettled || !held) return;
 			isSettled = true;
+			const { reservationId } = held;
 			// One ledger row per provider request: the hold settles once all are in.
 			const done =
 				requests === 0
@@ -221,26 +254,12 @@ export async function reserveEscalation(
 	};
 }
 
-/** Write a draft call's rows with its quality result (never fails the draft). */
-function writeRows(
-	ctx: ActionCtx,
-	target: LlmSpendTarget,
-	meter: LlmCallMeter,
-	qualityResult?: QualityResult
-): Promise<void> {
-	return recordAdvisorySpend(ctx, qualityResult ? { ...target, qualityResult } : target, meter);
-}
-
-/** The draft as the pipeline returns it, checked. */
-async function checked(
-	ctx: ActionCtx,
-	params: SharedDraftParams,
-	draft: PrimaryDraft,
-	checkRoot: LlmRootContext | undefined
-): Promise<SharedDraftResult> {
-	const draftBody = markReviewerNotes(draft.draftBody);
-	const check = await checkDraft(ctx, params, draftBody, checkRoot);
-	return { draftBody, ...check, tokenUsage: draft.tokenUsage, modelUsed: draft.modelUsed };
+/** A generation of the path: its meter, and the usable draft if there is one. */
+interface Generated {
+	readonly meter: LlmCallMeter;
+	readonly target: LlmSpendTarget;
+	readonly draft: { draftBody: string; tokenUsage: SharedDraftResult['tokenUsage'] } | null;
+	readonly modelUsed: string | undefined;
 }
 
 /** Run the cheap-first writer (see the module comment). The injection re-scan already ran. */
@@ -249,90 +268,110 @@ export async function runCheapFirstDraft(
 	params: SharedDraftParams,
 	writer: CheapFirstWriter
 ): Promise<SharedDraftResult> {
-	const capable = await writer.resolveCapable();
-	const facts: string[] = [];
-	const fastTarget = draftSpendTarget(params);
-	const fastMeter = meterFor(ctx, fastTarget);
-	const escalationRoot = draftChildRoot(params, fastMeter);
-	const hold = await reserveEscalation(ctx, params, capable, escalationRoot);
-	let escalationMeter: LlmCallMeter | undefined;
-	try {
-		// 1. The fast pass, recording what its tools looked up.
-		const tools = params.tools;
-		const fastParams: SharedDraftParams = tools
-			? {
-					...params,
-					tools: (draftCallRoot) =>
-						recordingTools(typeof tools === 'function' ? tools(draftCallRoot) : tools, facts),
-				}
-			: params;
-		let fast: PrimaryDraft | undefined;
-		let isDefaultStrategy = false;
-		let fastResult: SharedDraftResult | undefined;
-		try {
-			({ primary: fast, isDefaultStrategy } = await generatePrimary(
-				ctx,
-				fastParams,
-				fastMeter,
-				async () => {}
-			));
-			fastResult = await checked(ctx, params, fast, draftChildRoot(params, fastMeter));
-		} catch (error) {
-			// D1: a refusal is the caller's (the walker holds the message).
-			if (admissionRefusalOf(error)) {
-				await writeRows(ctx, fastTarget, fastMeter);
-				throw error;
-			}
-		}
-		// 2. A plugin strategy's draft, or a fast draft that passes, is kept.
-		if (fastResult && (!isDefaultStrategy || passesCheapFirst(fastResult.draftQuality))) {
-			await writeRows(ctx, fastTarget, fastMeter, isDefaultStrategy ? 'passed' : undefined);
-			return fastResult;
-		}
-		await writeRows(ctx, fastTarget, fastMeter, fastResult ? 'escalated' : undefined);
-
-		// 3. The one escalation, under the hold taken before the fast pass.
-		const escalationTarget: LlmSpendTarget = {
-			...fastTarget,
-			...(escalationRoot ? { root: escalationRoot } : {}),
-			...hold.target,
+	// A plugin strategy writes with its own model and reservation: not cheap-first.
+	if ((await selectedDraftStrategy(ctx, params.strategyScope)) !== 'default') {
+		return runSinglePassDraft(ctx, params);
+	}
+	// Resolving first: a configuration failure ends the writer before any hold or call.
+	const models = {
+		fast: await params.resolveModel(),
+		capable: await writer.resolveCapable(),
+		check: await resolveLanguageModel(ctx, CHECK_TASK),
+	};
+	// No tools on either draft: the grounding both share is the draft's own
+	// messages, which is what keeps every request of the path bounded.
+	const messages = draftMessages(params, false);
+	const hold = await reservePath(ctx, params, models, messages);
+	const unwritten = new Map<LlmCallMeter, LlmSpendTarget>();
+	const writeRows = async (meter: LlmCallMeter, quality?: QualityResult) => {
+		const target = unwritten.get(meter);
+		if (!target) return;
+		unwritten.delete(meter);
+		hold.count(meter.requests.length);
+		await recordAdvisorySpend(ctx, quality ? { ...target, qualityResult: quality } : target, meter);
+	};
+	const generate = async (
+		model: LanguageModel,
+		call: 'fastDraft' | 'capableDraft',
+		root: LlmRootContext | undefined
+	): Promise<Generated> => {
+		const target: LlmSpendTarget = {
+			...draftSpendTarget(params),
+			...(root ? { root } : {}),
+			...hold.target(call),
 		};
-		escalationMeter = meterFor(ctx, escalationTarget);
-		let quality: QualityResult | undefined;
-		try {
-			const generated = await runLlmText({
-				meter: escalationMeter,
-				model: capable,
-				messages: draftMessages(
-					{ ...params, context: escalationContext(params.context, facts) },
-					false
-				),
-				temperature: params.temperature ?? 0.4,
-			});
-			const text = stripLeakedToolMarkup(generated.text);
-			if (generated.isTruncated === true || text.kind === 'unusable') {
-				throw new Error('The escalated draft was unusable.');
-			}
-			const escalated = await checked(
-				ctx,
-				params,
-				{
-					draftBody: text.text,
-					tokenUsage: addTokenUsage(fast?.tokenUsage, generated.tokenUsage),
-					modelUsed: generated.modelUsed,
-				},
-				draftChildRoot(params, escalationMeter)
-			);
-			quality = escalationQuality(escalated.draftQuality);
-			return escalated;
-		} catch (error) {
-			// 4. A failed escalation leaves the fast draft for the owner's review.
-			if (admissionRefusalOf(error) || !fastResult) throw error;
-			return fastResult;
-		} finally {
-			await writeRows(ctx, escalationTarget, escalationMeter, quality);
+		const meter = meterFor(ctx, target);
+		unwritten.set(meter, target);
+		const generated = await runLlmText({
+			meter,
+			model,
+			messages: [...messages],
+			temperature: params.temperature ?? 0.4,
+		});
+		const text = stripLeakedToolMarkup(generated.text);
+		const isUsable = generated.isTruncated !== true && text.kind !== 'unusable';
+		return {
+			meter,
+			target,
+			modelUsed: generated.modelUsed,
+			draft: isUsable
+				? { draftBody: markReviewerNotes(text.text), tokenUsage: generated.tokenUsage }
+				: null,
+		};
+	};
+	/** A call made for `parent`'s output groups under the draft's root, `parent` its parent call. */
+	const under = (parent: LlmCallMeter) =>
+		params.root ? childCall(params.root, parent.requestId) : undefined;
+	const check = (draftBody: string, call: 'fastCheck' | 'capableCheck', parent: LlmCallMeter) =>
+		utf8Bytes(draftBody) > CHECKED_DRAFT_BYTES
+			? Promise.resolve({ draftQuality: null, planCoverage: null })
+			: checkDraft(ctx, params, draftBody, under(parent), {
+					model: models.check,
+					target: hold.target(call),
+					onRequests: hold.count,
+				});
+
+	try {
+		// 1–2. The fast draft and its verdict. A provider failure ends the writer.
+		const fast = await generate(models.fast, 'fastDraft', params.root);
+		let fastResult: SharedDraftResult | null = null;
+		if (fast.draft) {
+			fastResult = {
+				...fast.draft,
+				...(await check(fast.draft.draftBody, 'fastCheck', fast.meter)),
+				modelUsed: fast.modelUsed,
+			};
 		}
+		if (fastResult && !failsCheapFirst(fastResult.draftQuality)) {
+			await writeRows(fast.meter, fastResult.draftQuality ? 'passed' : undefined);
+			return fastResult;
+		}
+		await writeRows(fast.meter, 'escalated');
+
+		// 3–4. The one escalation, under the same hold.
+		let capable: Generated;
+		try {
+			capable = await generate(models.capable, 'capableDraft', under(fast.meter));
+		} catch (error) {
+			// A failed escalation leaves the usable fast draft for the owner's review.
+			if (fastResult) return fastResult;
+			throw error;
+		}
+		if (!capable.draft) {
+			if (fastResult) return fastResult;
+			throw new Error('Draft generation returned an unusable draft twice.');
+		}
+		const checked = await check(capable.draft.draftBody, 'capableCheck', capable.meter);
+		await writeRows(capable.meter, escalationQuality(checked.draftQuality));
+		return {
+			draftBody: capable.draft.draftBody,
+			...checked,
+			tokenUsage: addTokenUsage(fast.draft?.tokenUsage, capable.draft.tokenUsage),
+			modelUsed: capable.modelUsed,
+		};
 	} finally {
-		await hold.settle(escalationMeter?.requests.length ?? 0);
+		// Every request is written once, on every exit, before the hold settles.
+		for (const meter of [...unwritten.keys()]) await writeRows(meter);
+		await hold.settle();
 	}
 }

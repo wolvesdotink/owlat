@@ -21,12 +21,18 @@ import { withoutToolMarkup, type PrimaryDraft } from './draftMarkup';
 import { LlmTruncatedError } from '../../lib/llm/truncation';
 import { stripLeakedToolMarkup } from '../../lib/llm/toolMarkup';
 import { addTokenUsage } from '../../lib/llm/tokenUsage';
-import { persistMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { meterFor, persistMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { markReviewerNotes } from './draftGaps';
 import { childCall, type LlmCallMeter, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
 import type { ActionCtx } from '../../_generated/server';
 import { runSelectedDraftStrategy } from './draftStrategyRunner';
-import { runDraftSelfCheck, runPlanSelfCheck, type DraftQuality } from './draftSelfCheck';
+import {
+	runDraftSelfCheck,
+	runPlanSelfCheck,
+	type DraftQuality,
+	type HeldSelfCheck,
+} from './draftSelfCheck';
 import {
 	buildResponsePlanSection,
 	parsePlanCheck,
@@ -268,27 +274,21 @@ export async function checkDraft(
 	ctx: ActionCtx,
 	params: SharedDraftParams,
 	draftBody: string,
-	checkRoot: LlmRootContext | undefined
+	checkRoot: LlmRootContext | undefined,
+	held?: HeldSelfCheck
 ): Promise<{ draftQuality: DraftQuality | null; planCoverage: PlanCoverage | null }> {
 	const spendLabel = params.spendLabels.selfCheck;
 	if (spendLabel === undefined) return { draftQuality: null, planCoverage: null };
 	const plan = params.responsePlan;
-	if (!plan) {
-		const draftQuality = await runDraftSelfCheck(ctx, {
-			context: params.context,
-			draft: draftBody,
-			spendLabel,
-			...(checkRoot ? { root: checkRoot } : {}),
-		});
-		return { draftQuality, planCoverage: null };
-	}
-	const checked = await runPlanSelfCheck(ctx, {
+	const common = {
 		context: params.context,
 		draft: draftBody,
 		spendLabel,
-		plan: plan.items,
 		...(checkRoot ? { root: checkRoot } : {}),
-	});
+		...(held ? { held } : {}),
+	};
+	if (!plan) return { draftQuality: await runDraftSelfCheck(ctx, common), planCoverage: null };
+	const checked = await runPlanSelfCheck(ctx, { ...common, plan: plan.items });
 	return {
 		draftQuality: checked?.quality ?? null,
 		planCoverage: checked
@@ -404,4 +404,48 @@ async function streamDefaultDraft(
 	if (draft.kind === 'unusable') throw new DraftUnusableError(draft.reason);
 	if (result.isTruncated === true) throw new DraftUnusableError('stopped at the output limit');
 	return { draftBody: draft.text, tokenUsage, modelUsed: result.modelUsed };
+}
+
+/**
+ * One generation and its quality check: the pipeline's usual path (and the
+ * cheap-first writer's, when a plugin strategy is selected).
+ */
+export async function runSinglePassDraft(
+	ctx: ActionCtx,
+	params: SharedDraftParams
+): Promise<SharedDraftResult> {
+	// Every provider request of the primary generation is recorded in the
+	// ledger exactly once, on every outcome: a throw after finished tool steps,
+	// the rejected attempts of the markup gate (./draftMarkup.ts), or the
+	// successful draft. Both generations (with tools, and the markup retry) run
+	// on one meter, which hands each request out once, so flushing it on every
+	// path cannot double-count. The successful draft's usage is also returned;
+	// the Team Inbox walker keeps it on the step's agentActions row, a reporting
+	// view the spend ceiling does not read (#1259). It is written before the
+	// caller persists anything, so a write that fails after the generation
+	// cannot lose it.
+	const target = draftSpendTarget(params);
+	const meter = meterFor(ctx, target);
+	const recordDraftSpend = () => recordAdvisorySpend(ctx, target, meter);
+	let primary: PrimaryDraft;
+	try {
+		({ primary } = await generatePrimary(ctx, params, meter, recordDraftSpend));
+	} catch (error) {
+		await recordDraftSpend();
+		throw error;
+	}
+	await recordDraftSpend();
+	// A reviewer note the model wrote anyway becomes a placeholder the send
+	// guard counts (agent/shared/draftGaps.ts). A streamed draft keeps the text
+	// the owner watched being written.
+	const draftBody = params.stream ? primary.draftBody : markReviewerNotes(primary.draftBody);
+	// The self-check judges this draft: it runs under the same root, the
+	// generation as its parent call.
+	const checked = await checkDraft(ctx, params, draftBody, draftChildRoot(params, meter));
+	return {
+		draftBody,
+		...checked,
+		tokenUsage: primary.tokenUsage,
+		modelUsed: primary.modelUsed,
+	};
 }

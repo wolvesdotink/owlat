@@ -114,6 +114,15 @@ const INVENTORY: readonly CallSite[] = [
 	site('knowledge/extraction.ts', "ctx, 'knowledge.extract'", 'extract'),
 	site('agent/outcomeFeedback.ts', "ctx, 'mail.outcome_sentiment'", 'classify'),
 	site('agent/shared/draftSelfCheck.ts', "ctx, 'mail.draft_check'", 'classify'),
+	// NEW, only behind the policy's `cheapFirstWriter`: the cheap-first path's
+	// checks, resolved up front to price its hold, on the self-check's tier.
+	{
+		file: 'agent/shared/cheapFirstDraft.ts',
+		fn: 'resolveLanguageModel',
+		args: 'ctx, CHECK_TASK',
+		tasks: ['mail.draft_check'],
+		branches: [[undefined, 'classify']],
+	},
 	// The draft step's writer (./agent/steps/draft/writerRoute.ts). `capable`
 	// is today's route; `fast` was `resolveLanguageModelForClassifiedDraft`'s
 	// downgrade (`LLM_COMPLEXITY_ROUTING`), and is also the cheap-first pass.
