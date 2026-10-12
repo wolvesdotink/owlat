@@ -11,6 +11,9 @@
  *     Otherwise live mail that could be eligible is scheduled on its own. The
  *     pre-check is cheap and conservative (folder, mute); the run decides on
  *     the full signals, snapshotted here (`sources.captureInterpretSource`).
+ *     A message whose only consumer is the reader display is deferred until
+ *     the thread is opened instead (D10, `defer.ts`); the classify run makes
+ *     the same call for a delivered message that is no reply candidate.
  *   - {@link enqueueSentInterpretation}: a send we made reached its recipient
  *     (Postbox transport `sent`, team Send finalized). Once per send: the
  *     caller only enqueues when its `reply_sent` activity was new.
@@ -29,6 +32,7 @@ import { captureInterpretSource } from './sources';
 import { markOutstanding } from './outstanding';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import type { OutboundSource } from './sendFailure';
+import { deferIfDisplayOnly } from './defer';
 
 /**
  * The part of eligibility known at delivery: live mail outside spam, trash,
@@ -78,6 +82,9 @@ export async function enqueueDeliveredInterpretation(
 	});
 	if (!captured) return false;
 	if (!opts.isInterpretedByClassify) {
+		// D10: no Reply Queue check was queued for it, so the reader display may
+		// be its only consumer; then it waits for the thread to be opened.
+		if (await deferIfDisplayOnly(ctx, message)) return true;
 		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, { source });
 	}
 	await markBriefPending(ctx, ref);

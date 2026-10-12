@@ -23,6 +23,7 @@ import type { ActionCtx } from '../../_generated/server';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
 import { meterLlmCall } from '../../analytics/meteredSpend';
+import type { AdmissionPriority } from '../../lib/validators/aiRouting';
 import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
 import { SYSTEM_GUARD } from '../ai/promptGuards';
@@ -75,7 +76,9 @@ export function batchClaims<T>(claims: readonly T[], size = VERIFY_BATCH_SIZE): 
 export async function verifyClaims(
 	ctx: ActionCtx,
 	claims: readonly VerifyClaim[],
-	root?: LlmRootContext
+	root?: LlmRootContext,
+	/** Spend admission priority: brief mode is background work (ADR-0073, D1). */
+	priority?: AdmissionPriority
 ): Promise<{ verdicts: Map<string, VerifyVerdict>; isIncomplete: boolean }> {
 	const verdicts = new Map<string, VerifyVerdict>();
 	let isIncomplete = false;
@@ -85,7 +88,7 @@ export async function verifyClaims(
 		try {
 			const { object } = await meterLlmCall(
 				ctx,
-				{ feature: VERIFY_FEATURE, ...(root ? { root } : {}) },
+				{ feature: VERIFY_FEATURE, ...(root ? { root } : {}), ...(priority ? { priority } : {}) },
 				(meter) =>
 					runLlmObject({
 						meter,

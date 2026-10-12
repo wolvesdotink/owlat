@@ -37,6 +37,9 @@ import {
 } from './capture';
 import { ingestStoredPart, scopeAndChargeBudget, type IndexedPart } from './captureIndex';
 import { dropStagedBlobs } from './insert';
+import { captureSkipReasonValidator, indexingMarkerOf } from './captureMarker';
+import { logError } from '../../lib/runtimeLog';
+import type { Id } from '../../_generated/dataModel';
 
 /** Arguments of `internal.mail.delivery.captureStagedAttachments`. */
 export const stagedCaptureArgs = {
@@ -45,6 +48,19 @@ export const stagedCaptureArgs = {
 	/** The raw `From:` header, resolved to a contact for scoping. */
 	from: v.string(),
 	captureSource: captureSourceValidator,
+	/**
+	 * The delivered message, whose `attachmentIndexing` marker records what the
+	 * scheduled step did. Optional for jobs a previous release scheduled
+	 * (remove after release N+1): those record nothing, as before.
+	 */
+	mailMessageId: v.optional(v.id('mailMessages')),
+	/**
+	 * Why the webhook's plan left some of the message's parts out (capped,
+	 * refused, too large) while staging the rest: the scheduled step's outcome
+	 * keeps it, so one accepted file never marks the message fully read.
+	 * Optional for jobs a previous release scheduled (remove after N+1).
+	 */
+	skippedReason: v.optional(captureSkipReasonValidator),
 	/** The eligible parts, already in storage, in capture order. */
 	parts: v.array(
 		v.object({
@@ -67,11 +83,25 @@ export type StagedCaptureArgs = ObjectType<typeof stagedCaptureArgs>;
  * caller's best-effort catch never leaves orphaned blobs behind.
  */
 export async function scheduleStagedCapture(
-	ctx: Pick<ActionCtx, 'storage' | 'scheduler'>,
-	input: CaptureAttachmentsInput
+	ctx: Pick<ActionCtx, 'storage' | 'scheduler' | 'runMutation'>,
+	input: CaptureAttachmentsInput & { mailMessageId?: Id<'mailMessages'> }
 ): Promise<{ scheduled: number }> {
 	const plan = planCapture(input);
-	if ('outcome' in plan) return { scheduled: 0 };
+	if ('outcome' in plan) {
+		// Settled here (a gate, an unverifiable sender, nothing indexable):
+		// the message says so, as the Team Inbox row does.
+		const marker = indexingMarkerOf(plan.outcome);
+		if (marker && input.mailMessageId) {
+			await ctx.runMutation(
+				internal.mail.deliveryPipeline.captureMarker.setMailAttachmentIndexing,
+				{
+					mailMessageId: input.mailMessageId,
+					attachmentIndexing: marker,
+				}
+			);
+		}
+		return { scheduled: 0 };
+	}
 
 	const settled = await Promise.allSettled(
 		plan.eligible.map((part) =>
@@ -86,6 +116,8 @@ export async function scheduleStagedCapture(
 			messageId: input.messageId,
 			from: input.from,
 			captureSource: input.captureSource,
+			...(input.mailMessageId ? { mailMessageId: input.mailMessageId } : {}),
+			...(plan.skippedReason ? { skippedReason: plan.skippedReason } : {}),
 			parts: plan.eligible.map((part, i) => ({
 				storageId: storageIds[i]!,
 				filename: part.filename,
@@ -109,11 +141,25 @@ export async function indexStagedAttachments(
 	ctx: MutationCtx,
 	args: StagedCaptureArgs
 ): Promise<AttachmentCaptureOutcome> {
+	const outcome = await indexStaged(ctx, args);
+	const marker = indexingMarkerOf(outcome);
+	if (marker && args.mailMessageId && (await ctx.db.get(args.mailMessageId))) {
+		await ctx.db.patch(args.mailMessageId, { attachmentIndexing: marker });
+	}
+	return outcome;
+}
+
+async function indexStaged(
+	ctx: MutationCtx,
+	args: StagedCaptureArgs
+): Promise<AttachmentCaptureOutcome> {
 	const present: StagedCaptureArgs['parts'] = [];
 	for (const part of args.parts) {
 		if (await ctx.db.system.get(part.storageId)) present.push(part);
 	}
-	if (present.length === 0) return { indexed: 0 };
+	if (present.length === 0) {
+		return { indexed: 0, ...(args.skippedReason ? { skippedReason: args.skippedReason } : {}) };
+	}
 
 	const scope = await scopeAndChargeBudget(ctx, {
 		from: args.from,
@@ -138,5 +184,24 @@ export async function indexStagedAttachments(
 			})
 		);
 	}
-	return summarizeCapture(results, undefined);
+	return summarizeCapture(results, args.skippedReason);
+}
+
+/**
+ * The webhook's capture threw after the message was stored: say so on the
+ * message rather than leave it looking fully indexed. Never throws (the
+ * delivery already succeeded).
+ */
+export async function markCaptureFailed(
+	ctx: Pick<ActionCtx, 'runMutation'>,
+	mailMessageId: Id<'mailMessages'>
+): Promise<void> {
+	try {
+		await ctx.runMutation(internal.mail.deliveryPipeline.captureMarker.setMailAttachmentIndexing, {
+			mailMessageId,
+			attachmentIndexing: 'skipped_failed',
+		});
+	} catch (err) {
+		logError('[Mail Webhook] could not record attachment indexing', err);
+	}
 }

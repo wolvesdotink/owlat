@@ -23,6 +23,8 @@
  *     stays a candidate, and so does a colleague sending "Notes from today".
  */
 
+import { isBulkPrecedenceForReply, isMachineGeneratedForReply } from '../lib/mailEvidence';
+
 // ─── Sender-name screens ─────────────────────────────────────────────────────
 
 /**
@@ -150,9 +152,6 @@ export function isInformationalSubject(subject: string | undefined): boolean {
 
 // ─── Header screens ──────────────────────────────────────────────────────────
 
-/** Precedence header values that mark bulk/automated mail (RFC 2076 §3.9). */
-const BULK_PRECEDENCE = new Set(['bulk', 'list', 'junk', 'auto_reply']);
-
 /** Ingest-time headers of the triggering message — none are persisted on the row. */
 export interface NeedsReplyHeaders {
 	/** RFC 3834 Auto-Submitted; anything but `no` means machine-generated. */
@@ -170,14 +169,11 @@ export interface NeedsReplyHeaders {
  * counts `X-Owlat-Forwarded`, which is right for auto-reply loop prevention but
  * wrong here — a human's message forwarded by another Owlat mailbox still wants
  * a reply. Precedence keeps living in {@link isBulkOrNoReplySender} so the
- * existing `bulk_sender` verdict is unchanged.
+ * existing `bulk_sender` verdict is unchanged. Both header predicates live in
+ * `lib/mailEvidence.ts` beside the other consumers' (gap L2).
  */
 export function isAutomatedByHeaders(headers: NeedsReplyHeaders): boolean {
-	const autoSubmitted = headers.autoSubmitted?.trim().toLowerCase();
-	// RFC 3834 §5: `auto-generated`, `auto-replied`, `auto-notified`, … — only
-	// the explicit `no` means a human pressed send.
-	if (autoSubmitted && autoSubmitted !== 'no') return true;
-	return (headers.listId?.trim().length ?? 0) > 0;
+	return isMachineGeneratedForReply(headers);
 }
 
 /** True when the sender looks like bulk/no-reply mail nobody should answer. */
@@ -190,8 +186,7 @@ export function isBulkOrNoReplySender(msg: {
 	replyToAddress?: string;
 }): boolean {
 	if (msg.hasListUnsubscribe) return true;
-	const precedence = msg.precedence?.trim().toLowerCase();
-	if (precedence && BULK_PRECEDENCE.has(precedence)) return true;
+	if (isBulkPrecedenceForReply(msg)) return true;
 	// A Reply-To pointing at an unattended mailbox is the sender telling us
 	// outright that answers go nowhere — it outranks a friendly From address.
 	if (msg.replyToAddress && isUnattendedAddress(msg.replyToAddress)) return true;

@@ -302,10 +302,19 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 	};
 }
 
-export interface LlmObjectOptions<S extends z.ZodTypeAny> {
+export type LlmObjectOptions<S extends z.ZodTypeAny> = LlmObjectInput & LlmObjectSettings<S>;
+
+/**
+ * One prompt, or messages: a prompt split into a cache-marked system message
+ * and the per-message content (`promptCache.ts`, L9).
+ */
+type LlmObjectInput =
+	| { prompt: string; messages?: never }
+	| { messages: ModelMessage[]; prompt?: never };
+
+interface LlmObjectSettings<S extends z.ZodTypeAny> {
 	model: LanguageModel;
 	schema: S;
-	prompt: string;
 	temperature?: number;
 	/** Output ceiling (reasoning included); the task's ceiling applies when it is lower. */
 	maxOutputTokens?: number;
@@ -371,7 +380,7 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 					const generated = await generateObject({
 						model: objectModel,
 						schema: opts.schema,
-						prompt: opts.prompt,
+						...(opts.messages ? { messages: opts.messages } : { prompt: opts.prompt }),
 						temperature: opts.temperature,
 						maxRetries: SDK_MAX_RETRIES,
 						...limitArgs(call),

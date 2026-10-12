@@ -5,16 +5,7 @@
  * (`inbox/messages.ts`) and a Node action (`mail/deliveryHooks.ts`) alike.
  */
 
-/**
- * Lowercase every header key once so callers may pass either a raw header map
- * (mixed case, as parsed off the wire) or an already-normalized one. RFC 5322
- * header field names are case-insensitive.
- */
-function lowerKeys(headers: Record<string, string>): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const [k, value] of Object.entries(headers)) out[k.toLowerCase()] = value;
-	return out;
-}
+import { headerEvidenceFromMap, isLoopSuppressedMail } from './mailEvidence';
 
 /**
  * RFC 3834 anti-loop / bulk-mail detection. Returns true when the message looks
@@ -26,24 +17,22 @@ function lowerKeys(headers: Record<string, string>): Record<string, string> {
  *   - List-Id header → mailing-list traffic
  *   - Precedence: bulk/list/junk → bulk-mail signals
  *   - X-Owlat-Forwarded header → already touched by another Owlat mailbox
+ *
+ * Header keys may be in any case (RFC 5322 field names are case-insensitive).
+ * The predicate itself is `lib/mailEvidence.ts` `isLoopSuppressedMail`, next
+ * to the other consumers' header predicates.
  */
 export function isAutomatedMail(headers: Record<string, string>): boolean {
-	const h = lowerKeys(headers);
-	const norm = (s: string) => s.toLowerCase().trim();
-	const autoSubmitted = h['auto-submitted'];
-	if (autoSubmitted && norm(autoSubmitted) !== 'no') return true;
-	if (h['list-id']) return true;
-	const precedence = h['precedence'];
-	if (precedence) {
-		const p = norm(precedence);
-		if (p === 'bulk' || p === 'list' || p === 'junk') return true;
-	}
-	if (h['x-owlat-forwarded']) return true;
-	return false;
+	return isLoopSuppressedMail(headerEvidenceFromMap(headers));
 }
 
 /** The only headers isAutomatedMail() consults — keep the parsed map tiny. */
-const ANTI_LOOP_HEADER_NAMES = new Set(['auto-submitted', 'list-id', 'precedence', 'x-owlat-forwarded']);
+const ANTI_LOOP_HEADER_NAMES = new Set([
+	'auto-submitted',
+	'list-id',
+	'precedence',
+	'x-owlat-forwarded',
+]);
 
 /**
  * Extract just the anti-loop headers from a raw RFC 822 message. Parses only the

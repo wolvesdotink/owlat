@@ -31,6 +31,7 @@ import {
 	reconcileSpend,
 } from '../../aiRouting/__tests__/spend.testlib';
 import { SETTLEMENT_FEATURE } from '../../aiRouting/settlement';
+import { insertLlmUsage } from '../ledgerInsert';
 
 const model = stampModelEndpoint(
 	{ modelId: 'gpt-4o', specificationVersion: 'v2' } as never,
@@ -96,6 +97,35 @@ describe('admission at the dispatch', () => {
 		});
 		expect(sdk.generateText).not.toHaveBeenCalled();
 		expect(await t.run((c) => c.db.query('llmReservations').collect())).toHaveLength(0);
+	});
+
+	it('holds a call at the priority its target names: brief-mode interpretation is background work', async () => {
+		const { t, ctx } = await setup('10');
+		// $7.10 settled: past background work's line ($10 less the $2 advisory
+		// reserve and the unused $1 triage allowance), inside the pipeline's.
+		await t.run((c) =>
+			insertLlmUsage(
+				c,
+				'agent_draft',
+				{ promptTokens: 2_840_000, completionTokens: 0, totalTokens: 2_840_000 },
+				'gpt-4o'
+			)
+		);
+		sdk.generateText.mockResolvedValue({ text: 'ok', usage: usage(10, 5), finishReason: 'stop' });
+
+		const brief = await meterLlmCall(
+			ctx,
+			{ feature: 'interpret', priority: 'background' },
+			(meter) => runLlmText({ model, prompt: 'hi', meter })
+		).catch((e: unknown) => e);
+		expect(admissionRefusalOf(brief)).toMatchObject({ reason: 'daily_ceiling' });
+		expect((brief as AdmissionRefusedError).limit).toBe('advisory_reserve');
+
+		// The same task without the override runs at its catalog priority (pipeline).
+		await meterLlmCall(ctx, { feature: 'interpret' }, (meter) =>
+			runLlmText({ model, prompt: 'hi', meter })
+		);
+		expect(sdk.generateText).toHaveBeenCalledTimes(1);
 	});
 
 	it('refuses while the spend state cannot be verified (#1333)', async () => {

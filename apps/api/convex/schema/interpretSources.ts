@@ -46,6 +46,11 @@ export const interpretSourceTables = {
 		isDeferred: v.optional(v.boolean()),
 		deferredAt: v.optional(v.number()),
 		deferReason: v.optional(interpretDeferReasonValidator),
+		// Postbox sources: the message's place in its thread, sortable
+		// (mail/interpret/sourceOrder.ts). Written at capture and, for older
+		// rows, when deferred. Absent sorts first, so a legacy deferred row is
+		// read as the oldest.
+		sourceOrderKey: v.optional(v.string()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
@@ -55,6 +60,7 @@ export const interpretSourceTables = {
 		// Thread erasure (mail/interpret/purgeRows.ts threadBriefRanges).
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId'])
-		// Opening a mail thread finds its deferred sources (D10).
-		.index('by_mail_thread_and_deferred', ['mailThreadId', 'isDeferred']),
+		// D10: a thread's deferred sources in thread order: the oldest
+		// predecessor of an eager source, the newest one an open reads.
+		.index('by_mail_thread_deferred_order', ['mailThreadId', 'isDeferred', 'sourceOrderKey']),
 };

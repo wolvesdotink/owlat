@@ -55,6 +55,7 @@ const MAIL_LIST_ROW_KEYS = [
 	'snippet',
 	'attachments',
 	'hasAttachments',
+	'attachmentIndexing',
 	'flagSeen',
 	'flagFlagged',
 	'flagAnswered',

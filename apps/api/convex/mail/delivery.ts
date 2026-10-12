@@ -46,6 +46,7 @@ import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { prepareInboundMessage } from './deliveryPipeline/ingest';
 import {
 	indexStagedAttachments,
+	markCaptureFailed,
 	scheduleStagedCapture,
 	stagedCaptureArgs,
 } from './deliveryPipeline/deferredCapture';
@@ -68,6 +69,16 @@ import {
 	resolveSpamVerdict,
 } from './deliveryPipeline/routing';
 import { virusVerdictValidator } from '../lib/literalValidators';
+import {
+	mailboxGateSignals,
+	resolveAttachmentGate,
+	type SettledRouting,
+} from './deliveryPipeline/captureGate';
+
+/** `deliverToMailbox`'s answer, with the routing it settled for the capture step. */
+type DeliveryResult =
+	| ({ messageId: Id<'mailMessages'>; dmarcOverride?: DmarcOverride } & SettledRouting)
+	| { skipped: true };
 
 /**
  * Action: download raw MIME from MTA Redis stage and store in ctx.storage.
@@ -118,9 +129,7 @@ export const ingestFromWebhook = internalAction({
 				? await stageMessageParts(ctx, prepared.rawBinary, prepared.scan.leaves ?? [])
 				: undefined;
 
-		const result:
-			| { messageId: Id<'mailMessages'>; dmarcOverride?: DmarcOverride }
-			| { skipped: true } = await ctx.runMutation(internal.mail.delivery.deliverToMailbox, {
+		const result: DeliveryResult = await ctx.runMutation(internal.mail.delivery.deliverToMailbox, {
 			rawStorageId: prepared.rawStorageId,
 			rawSize: prepared.rawSize,
 			antiLoopHeaders: prepared.antiLoopHeaders,
@@ -192,7 +201,11 @@ export const ingestFromWebhook = internalAction({
 			// is a perfectly defined `'skipped'` with nothing cleared, and this
 			// route quietly stopped capturing anything at all.
 			const { parts, withheld } = mailboxIndexableParts(prepared.scan);
+			// L6, behind `attachmentGates` (off by default).
+			const gateSkip = await resolveAttachmentGate(ctx, mailboxGateSignals(result, prepared));
 			await scheduleStagedCapture(ctx, {
+				mailMessageId: result.messageId,
+				gateSkip,
 				parts,
 				withheld,
 				messageId: args.messageId,
@@ -220,6 +233,7 @@ export const ingestFromWebhook = internalAction({
 			});
 		} catch (err) {
 			logError('[Mail Webhook] attachment capture failed', err);
+			await markCaptureFailed(ctx, result.messageId);
 		}
 
 		return result;
@@ -279,12 +293,7 @@ export const deliverToMailbox = internalMutation({
 		// action (and when staging failed): the reader then uses the raw `.eml`.
 		storedParts: v.optional(mailMessageStoredPartsValidator),
 	},
-	handler: async (
-		ctx,
-		args
-	): Promise<
-		{ messageId: Id<'mailMessages'>; dmarcOverride?: DmarcOverride } | { skipped: true }
-	> => {
+	handler: async (ctx, args): Promise<DeliveryResult> => {
 		const recipient = extractEmail(args.recipientAddress);
 		const fromAddress = extractEmail(args.from);
 
@@ -474,6 +483,11 @@ export const deliverToMailbox = internalMutation({
 		// `dmarcOverride` travels back so the capture step in the ingest action
 		// gates on the SAME settled verdict this mutation routed on, rather than
 		// re-deciding the ARC rescue against a second read of the allow-list.
-		return { messageId, dmarcOverride };
+		return {
+			messageId,
+			dmarcOverride,
+			...(folder.role ? { folderRole: folder.role } : {}),
+			...(spamVerdict ? { spamVerdict } : {}),
+		};
 	},
 });
