@@ -25,7 +25,7 @@ import type { Id } from '../_generated/dataModel';
 import { authedAction } from '../lib/authedFunctions';
 import { throwInvalidState } from '../_utils/errors';
 import { logInfo } from '../lib/runtimeLog';
-import { secretFreeErrorText } from '../lib/embeddingSpace';
+import { embeddingTargetKey, secretFreeErrorText } from '../lib/embeddingSpace';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import { rootRequest } from '../lib/llm/requestMeter';
 import {
@@ -34,6 +34,7 @@ import {
 	embedTextsForIndex,
 	resolveEmbedderForSpace,
 } from '../lib/aiRouting/embedderForSpace';
+import { buildIndexEmbedder, readEmbeddingConfigSnapshot } from '../lib/llmProvider';
 import { PAID_EMBEDDING_REFUSAL, REEMBED_PAGE_ATTEMPTS } from './embeddingReembedJobs';
 import { isPaidEmbeddingAdmissionAvailable } from '../lib/aiRouting/embeddingAdmission';
 import { runAdmittedEmbedding, type DispatchCounter } from '../lib/aiRouting/embeddingDispatch';
@@ -41,6 +42,8 @@ import { embeddingTableValidator } from '../lib/validators/embedding';
 import {
 	assertExpectedSpace,
 	assertExpectedTarget,
+	identityOf,
+	isIdentityOfTarget,
 	type MeasuredSpace,
 } from '../lib/aiRouting/embeddingRegistry';
 
@@ -113,21 +116,26 @@ export const startReembed = authedAction({
 		// One model budget for this action, from its start (ADR-0073).
 		anchorActionDeadline(ctx);
 		await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
-		const { active, isActiveConfigured, isConfiguredLocal, configuredTargetKey } =
-			await ctx.runQuery(internal.aiRouting.embeddingSpaces.getSpaces, {});
-		// Before any credential or provider call: the space and the target confirmed
-		// are the searchable space and the configured target.
+		const { active } = await ctx.runQuery(internal.aiRouting.embeddingSpaces.getSpaces, {});
+		// The configuration is read ONCE: this snapshot's target is the one checked
+		// against the confirmation, judged for payment and searchability, and the
+		// one whose endpoint and credential (from the same read) the bootstrap uses.
+		const snapshot = await readEmbeddingConfigSnapshot(ctx);
+		const target = snapshot.target;
+		// Before any credential or provider call: the target and the space
+		// confirmed are the configured target and its searchable space.
+		assertExpectedTarget(target ? embeddingTargetKey(target) : null, args.expectedTargetKey);
+		const isActiveConfigured =
+			active !== null && target !== null && isIdentityOfTarget(identityOf(active), target);
 		assertExpectedSpace(isActiveConfigured ? active : null, args.expectedSpaceId);
-		assertExpectedTarget(configuredTargetKey, args.expectedTargetKey);
-		if (isConfiguredLocal === null) throwInvalidState('No embedding model is configured.');
-		// An early refusal, before any credential is read; the dispatch below and
-		// the job's own derivation decide again from what they really use.
-		if (!isConfiguredLocal && !isPaidEmbeddingAdmissionAvailable()) {
+		if (!target) throwInvalidState('No embedding model is configured.');
+		// The dispatch below and the job's own derivation decide again from what
+		// they really use; this refuses early.
+		if (!target.isLocal && !isPaidEmbeddingAdmissionAvailable()) {
 			throwInvalidState(PAID_EMBEDDING_REFUSAL);
 		}
 		if (!isActiveConfigured) {
-			const embedder = await configuredEmbedderOrNull(ctx);
-			if (!embedder) throwInvalidState('No embedding model is configured.');
+			const embedder = buildIndexEmbedder(await snapshot.plane(), target);
 			const rootRequestId = `embedding:bootstrap:${crypto.randomUUID()}`;
 			const probe = await runAdmittedEmbedding(
 				ctx,
@@ -149,8 +157,11 @@ export const startReembed = authedAction({
 					)
 			);
 			if (!probe.isAdmitted) throwInvalidState(probe.reason);
+			// Activated only while the configuration still names the confirmed
+			// target (refused in the transaction when it was confirmed).
 			const active = await ctx.runMutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
 				space: probe.value.space,
+				expectedTargetKey: args.expectedTargetKey,
 			});
 			if (!active) throwInvalidState('The embedding configuration changed. Try again.');
 		}

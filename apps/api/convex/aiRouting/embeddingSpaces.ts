@@ -23,6 +23,7 @@ import {
 } from '../lib/embeddingSpace';
 import { EMBEDDING_PROVIDER_KINDS } from '../lib/llmProviders/types';
 import {
+	assertExpectedTarget,
 	attestationBlocker,
 	identityOf,
 	isIdentityOfTarget,
@@ -89,17 +90,25 @@ export const assertAdmin = internalQuery({
 
 /**
  * Register and activate the configured space a job measured (the D8 switch
- * path), or null when the configuration no longer names it.
+ * path), or null when the configuration no longer names it. With
+ * `expectedTargetKey` (the target the caller confirmed and embedded with), a
+ * configuration that moved since is refused with `embedding_target_changed`
+ * in this transaction, so nothing is activated and no kickoff is scheduled.
  */
 export const ensureConfigured = internalMutation({
-	args: { space: measuredEmbeddingSpaceValidator },
-	handler: async (ctx, args): Promise<SpaceDoc | null> => ensureConfiguredSpace(ctx, args.space),
+	args: { space: measuredEmbeddingSpaceValidator, expectedTargetKey: v.optional(v.string()) },
+	handler: async (ctx, args): Promise<SpaceDoc | null> => {
+		if (args.expectedTargetKey !== undefined) {
+			const target = await readConfiguredTarget(ctx.db);
+			assertExpectedTarget(target ? embeddingTargetKey(target) : null, args.expectedTargetKey);
+		}
+		return ensureConfiguredSpace(ctx, args.space);
+	},
 });
 
 /**
- * The active and staged spaces, whether the active one is the configured one
- * (searchable), the stored embedding kind (null: env configuration), and
- * whether the configured embedder is local. Read before any credential.
+ * The active and staged spaces and the stored embedding kind (null: env
+ * configuration). Read before any credential.
  */
 export const getSpaces = internalQuery({
 	args: {},
@@ -108,27 +117,12 @@ export const getSpaces = internalQuery({
 	): Promise<{
 		active: SpaceDoc | null;
 		staged: SpaceDoc | null;
-		isActiveConfigured: boolean;
 		storedEmbeddingKind: Doc<'aiProviderConfig'>['embeddingProviderKind'] | null;
-		/** Whether the configured embedder is local (free); null when none is configured. */
-		isConfiguredLocal: boolean | null;
-		/** The configured target's `embeddingTargetKey`; null when none is configured. */
-		configuredTargetKey: string | null;
 	}> => {
 		const active = await readActiveSpace(ctx.db);
 		const staged = await readStagedSpace(ctx.db);
-		const target = await readConfiguredTarget(ctx.db);
-		const isActiveConfigured =
-			active !== null && target !== null && isIdentityOfTarget(identityOf(active), target);
 		const row = await ctx.db.query('aiProviderConfig').first(); // bounded: org singleton
-		return {
-			active,
-			staged,
-			isActiveConfigured,
-			storedEmbeddingKind: row?.embeddingProviderKind ?? null,
-			isConfiguredLocal: target?.isLocal ?? null,
-			configuredTargetKey: target ? embeddingTargetKey(target) : null,
-		};
+		return { active, staged, storedEmbeddingKind: row?.embeddingProviderKind ?? null };
 	},
 });
 
