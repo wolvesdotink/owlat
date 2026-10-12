@@ -167,6 +167,16 @@ describe('TodayFiledAway', () => {
 });
 
 describe('TodayScopeHeader', () => {
+	// The ⋯ menu renders inline so its items are in the tree.
+	const headerStubs = {
+		...stubs,
+		UiButton: { template: '<button><slot /></button>' },
+		UiSkeleton: true,
+		UiDropdownMenu: {
+			template: '<div><slot name="trigger" /><div role="menu"><slot /></div></div>',
+		},
+		UiDropdownMenuItem: { template: '<button role="menuitem"><slot /></button>' },
+	};
 	const props = {
 		name: 'Support',
 		slot: 1,
@@ -185,7 +195,7 @@ describe('TodayScopeHeader', () => {
 			props,
 			global: {
 				plugins: [createTestI18n()],
-				stubs: { ...stubs, UiButton: { template: '<button><slot /></button>' }, UiSkeleton: true },
+				stubs: headerStubs,
 			},
 		});
 		expect(w.find('h2').text()).toBe('Support');
@@ -197,7 +207,46 @@ describe('TodayScopeHeader', () => {
 			['moved', '#workbench-changed'],
 			['filed', '#workbench-filed'],
 		]);
-		expect(stats[0]!.text()).toBe('23new emails');
+		expect(stats[0]!.text()).toBe('23 new emails');
+	});
+
+	it('leaves zeros out, and says so when nothing is new', () => {
+		const mountWith = (stats: typeof props.stats) =>
+			mount(TodayScopeHeader, {
+				props: { ...props, stats },
+				global: { plugins: [createTestI18n()], stubs: headerStubs },
+			});
+		const some = mountWith({
+			newMail: 4,
+			isNewMailCapped: false,
+			important: 0,
+			moved: 0,
+			filed: 1,
+		});
+		expect(some.findAll('[data-scope-stat]').map((s) => s.attributes('data-scope-stat'))).toEqual([
+			'new',
+			'filed',
+		]);
+		const none = mountWith({
+			newMail: 0,
+			isNewMailCapped: false,
+			important: 0,
+			moved: 0,
+			filed: 0,
+		});
+		expect(none.findAll('[data-scope-stat]')).toHaveLength(0);
+		expect(none.text()).toContain('nothing new');
+	});
+
+	it('keeps "Open inbox" and "Write" one click away in its menu', () => {
+		const w = mount(TodayScopeHeader, {
+			props,
+			global: { plugins: [createTestI18n()], stubs: headerStubs },
+		});
+		expect(w.findAll('[role="menuitem"]').map((item) => item.text())).toEqual([
+			'Open inbox',
+			'Write',
+		]);
 	});
 
 	it('leaves "new email" and "moved" out on the team inbox', () => {
@@ -210,7 +259,7 @@ describe('TodayScopeHeader', () => {
 			},
 			global: {
 				plugins: [createTestI18n()],
-				stubs: { ...stubs, UiButton: { template: '<button><slot /></button>' }, UiSkeleton: true },
+				stubs: headerStubs,
 			},
 		});
 		expect(w.findAll('[data-scope-stat]').map((s) => s.attributes('data-scope-stat'))).toEqual([
@@ -222,7 +271,15 @@ describe('TodayScopeHeader', () => {
 	it('has no axe violations', async () => {
 		const violations = await auditA11y(TodayScopeHeader, {
 			props,
-			global: { plugins: [createTestI18n()] },
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					UiDropdownMenu: {
+						template: '<div><slot name="trigger" /><div role="menu"><slot /></div></div>',
+					},
+					UiDropdownMenuItem: { template: '<button role="menuitem"><slot /></button>' },
+				},
+			},
 		});
 		expect(violations).toEqual([]);
 	});

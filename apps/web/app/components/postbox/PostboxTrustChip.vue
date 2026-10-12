@@ -83,6 +83,9 @@ const chip = computed(() =>
 );
 
 const toneClasses = computed(() => TRUST_CHIP_TONE_CLASSES[chip.value.tone]);
+// All clear: just the shield, its words kept for the tooltip and screen readers.
+// Anything to look at (a warning, a danger) keeps the full labelled chip.
+const quiet = computed(() => chip.value.tone === 'ok');
 
 /** Registry keys in, sentences out — this component is the render boundary. */
 const localized = useLocalized();
@@ -118,16 +121,19 @@ useEscapeToClose(open);
 	>
 		<button
 			type="button"
-			class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-			:class="toneClasses.chip"
+			class="inline-flex items-center gap-1.5 rounded text-xs border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+			:class="
+				quiet ? 'border-transparent p-1 hover:bg-bg-surface' : ['px-2 py-0.5', toneClasses.chip]
+			"
 			:aria-expanded="open"
 			:title="label"
 			data-testid="trust-chip-toggle"
 			@click="open = !open"
 		>
 			<Icon :name="chip.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
-			<span data-testid="trust-chip-summary">{{ label }}</span>
+			<span data-testid="trust-chip-summary" :class="{ 'sr-only': quiet }">{{ label }}</span>
 			<Icon
+				v-if="!quiet"
 				:name="open ? 'lucide:chevron-up' : 'lucide:chevron-down'"
 				class="w-3 h-3 text-text-tertiary"
 			/>

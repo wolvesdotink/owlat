@@ -4,6 +4,7 @@ import { routePaletteTargets } from '~/lib/commandPaletteRoutes';
 import { quickCreateEntriesFor, type QuickCreateId } from '~/lib/quickCreate';
 import { parseKeywords, settingsControlTargets } from '~/lib/settingsRegistry';
 import { useAdminEnvironment } from '~/composables/useAdminEnvironment';
+import { useZenMode } from '~/composables/useZenMode';
 
 /**
  * Static item providers for the app-wide command palette (AppCommandPalette):
@@ -57,6 +58,7 @@ export function useCommandPaletteProviders() {
 	const { role } = usePermissions();
 	const { openCompose, openNewContact } = useQuickCreate();
 	const { showToggle: hasSidebarContexts, activeContext, switchContext } = useSidebarContext();
+	const { isZen, toggleZen } = useZenMode();
 	// The admin registry's own gates, for the Administration pages the route
 	// provider offers. Subscribed only for someone who can open those pages.
 	const { environment: adminEnvironment } = useAdminEnvironment(
@@ -96,6 +98,13 @@ export function useCommandPaletteProviders() {
 				run: () => window.dispatchEvent(new Event('owlat:open-knowledge-query')),
 			});
 		}
+		verbs.push({
+			id: 'verb:zen',
+			label: isZen.value ? t('components.shell.zen.exit') : t('components.shell.zen.enter'),
+			subtitle: t('components.shell.zen.paletteSubtitle'),
+			icon: isZen.value ? 'lucide:minimize-2' : 'lucide:maximize-2',
+			run: toggleZen,
+		});
 		if (isDesktop.value) {
 			verbs.push({
 				id: 'verb:check-updates',

@@ -22,6 +22,8 @@ const props = defineProps<{
 	failedCount: number;
 	/** When the served offline-cache snapshot was persisted (ms), if any. */
 	cachedAt?: number | null;
+	/** The folder rail, with its Answer queue count, is on screen. */
+	railOnScreen: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -34,6 +36,7 @@ const { active } = usePostboxBannerSlot({
 	failedCount: computed(() => props.failedCount),
 	mailboxId: computed(() => props.mailboxId),
 	folderRole: computed(() => props.folderRole),
+	railOnScreen: computed(() => props.railOnScreen),
 });
 </script>
 
@@ -52,5 +55,6 @@ const { active } = usePostboxBannerSlot({
 		v-else-if="active === 'replyQueue'"
 		:mailbox-id="mailboxId"
 		:folder-role="folderRole"
+		:rail-on-screen="railOnScreen"
 	/>
 </template>

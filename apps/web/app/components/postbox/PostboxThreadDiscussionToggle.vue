@@ -8,7 +8,7 @@
 const props = defineProps<{ threadId: string }>();
 
 const { t } = useI18n();
-const { isAvailable, isOpen, toggle } = usePostboxThreadDiscussionPanel();
+const { isAvailable, isOpen, toggle } = usePostboxThreadDiscussionPanel(() => props.threadId);
 const { discussion, count } = usePostboxThreadDiscussionData(() => props.threadId);
 </script>
 

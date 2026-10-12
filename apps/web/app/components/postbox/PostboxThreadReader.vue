@@ -523,8 +523,10 @@ const threadCounterpart = computed(() => {
 
 // Team discussion (chat/mailDiscussion.ts): the internal panel beside (xl) or
 // below the conversation, and whom its composer is NOT writing to.
-const { articleClass: discussionArticleClass } = usePostboxThreadDiscussionPanel();
 const discussionThreadId = computed(() => readerThread.value?._id ?? props.message.threadId);
+const { articleClass: discussionArticleClass } = usePostboxThreadDiscussionPanel(
+	() => discussionThreadId.value
+);
 const discussionCounterparty = computed(() =>
 	discussionCounterpartyLabel(allMessages.value, ownAddresses.value)
 );

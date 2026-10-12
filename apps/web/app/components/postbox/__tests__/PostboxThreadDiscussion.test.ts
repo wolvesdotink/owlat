@@ -105,7 +105,13 @@ function mountPanel(counterpartyLabel = 'Harborline Ops') {
 }
 
 describe('PostboxThreadDiscussion', () => {
-	it('renders the empty state and a composer addressed to the team', () => {
+	it('stays closed on a wide screen while there is nothing to discuss', () => {
+		expect(mountPanel().find('[data-testid="thread-discussion-empty"]').exists()).toBe(false);
+	});
+
+	it('renders the empty state and a composer addressed to the team once opened', () => {
+		// "Discuss" was pressed: the choice outranks the empty-thread default.
+		state.set('postbox-thread-discussion-open', ref(true));
 		const wrapper = mountPanel();
 		expect(wrapper.text()).toContain('Team discussion');
 		expect(wrapper.text()).toContain('internal');
@@ -154,6 +160,7 @@ describe('PostboxThreadDiscussion', () => {
 	});
 
 	it('posts on Enter and clears the draft; Shift+Enter keeps typing', async () => {
+		state.set('postbox-thread-discussion-open', ref(true));
 		const wrapper = mountPanel();
 		const input = wrapper.find('[data-testid="thread-discussion-input"]');
 		await input.setValue('@ada can you send them the merged record?');
@@ -171,6 +178,7 @@ describe('PostboxThreadDiscussion', () => {
 	});
 
 	it('does not post an empty message', async () => {
+		state.set('postbox-thread-discussion-open', ref(true));
 		const wrapper = mountPanel();
 		await wrapper.find('[data-testid="thread-discussion-input"]').setValue('   ');
 		await wrapper.find('form').trigger('submit');
@@ -178,6 +186,7 @@ describe('PostboxThreadDiscussion', () => {
 	});
 
 	it('falls back to "the sender" when there is no external correspondent', () => {
+		state.set('postbox-thread-discussion-open', ref(true));
 		const wrapper = mountPanel('');
 		expect(wrapper.find('[data-testid="thread-discussion-input"]').attributes('placeholder')).toBe(
 			'Write to the team… (not sent to the sender)'

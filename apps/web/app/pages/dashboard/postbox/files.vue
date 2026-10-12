@@ -27,7 +27,7 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
 <template>
 	<!-- flex-col so the guard's loading and no-mailbox states fill the frame. -->
-	<div class="h-[calc(100vh-4rem)] overflow-auto bg-bg-base flex flex-col">
+	<div class="h-[calc(100vh-var(--shell-chrome-h,4rem))] overflow-auto bg-bg-base flex flex-col">
 		<PostboxMailboxGuard
 			:mailbox-id="mailboxId"
 			:loading="mailboxesLoading"

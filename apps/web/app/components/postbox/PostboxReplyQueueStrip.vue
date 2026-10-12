@@ -12,13 +12,15 @@ import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	folderRole: string;
+	railOnScreen: boolean;
 }>();
 
 const { t } = useI18n();
 
 const { count, dismissed, visible } = usePostboxReplyQueueBanner(
 	computed(() => props.mailboxId),
-	computed(() => props.folderRole)
+	computed(() => props.folderRole),
+	computed(() => props.railOnScreen)
 );
 </script>
 

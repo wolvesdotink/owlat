@@ -2,11 +2,12 @@
 import { INBOX_SLOT_SWATCH } from '~/utils/inboxIdentity';
 
 /**
- * The top of one Workbench tab: which inbox this is, what happened in it since
- * the viewer last looked, and four numbers that each jump to their band —
- * new mail, important, conversations that moved, and what was filed away.
- * The actions stay with the inbox they act on: open it, write from it, mark
- * this Workbench as seen.
+ * The top of one Workbench tab, two quiet lines: which inbox this is (its name
+ * opens it), then what happened since the viewer last looked as a sentence of
+ * links, each jumping to its band: new mail, important, conversations that
+ * moved, what was filed away. Numbers that are zero are left out; when all are,
+ * the line says so. "Mark all as seen" shows only when there is something to
+ * mark, and the rarer actions (open the inbox, write from it) wait in ⋯.
  */
 const props = defineProps<{
 	name: string;
@@ -37,7 +38,7 @@ const swatch = computed(() =>
 	props.slot === null ? 'bg-text-tertiary' : (INBOX_SLOT_SWATCH[props.slot] ?? 'bg-text-tertiary')
 );
 
-const tiles = computed(() => [
+const allTiles = computed(() => [
 	...(props.stats.newMail === null
 		? []
 		: [
@@ -73,68 +74,78 @@ const tiles = computed(() => [
 		href: '#workbench-filed',
 	},
 ]);
+// Zero says nothing worth a link; an all-zero summary says "nothing new".
+const tiles = computed(() => allTiles.value.filter((tile) => tile.value !== '0'));
+const kindLabel = computed(() =>
+	props.kind === 'personal' ? null : t(`components.today.scope.kind.${props.kind}`)
+);
 </script>
 
 <template>
-	<!-- A size container: the stat tiles follow the card's own width, so they
-	     stay two across when the Workbench puts this card in its side column. -->
-	<section
-		class="@container rounded-2xl border border-border-subtle bg-bg-elevated px-5 py-4"
-		aria-labelledby="workbench-scope-name"
-	>
-		<div class="flex flex-wrap items-start gap-3">
-			<div class="min-w-0 flex-1">
-				<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-					<Icon v-if="kind === 'team'" name="lucide:bot" class="size-4 text-text-tertiary" />
-					<span v-else class="size-2.5 shrink-0 rounded-[3px]" :class="swatch" aria-hidden="true" />
-					<h2 id="workbench-scope-name" class="text-base font-medium text-text-primary">
-						{{ name }}
-					</h2>
-					<span v-if="address" class="truncate text-xs text-text-tertiary">{{ address }}</span>
-					<span
-						class="rounded-full bg-bg-surface px-2 py-px text-2xs font-medium text-text-secondary"
-						>{{ t(`components.today.scope.kind.${kind}`) }}</span
-					>
-				</div>
-				<UiSkeleton v-if="isLoading && !sinceLabel" class="mt-1.5 h-4 w-56" />
-				<p v-else class="mt-1 text-sm text-text-secondary">{{ sinceLabel }}</p>
-			</div>
-			<div class="flex flex-wrap items-center gap-2">
-				<UiButton variant="ghost" size="sm" :to="inboxHref">
-					<template #iconLeft><Icon name="lucide:inbox" class="size-4" /></template>
-					{{ t('components.today.scope.openInbox') }}
-				</UiButton>
-				<UiButton v-if="composeHref" variant="ghost" size="sm" :to="composeHref">
-					<template #iconLeft><Icon name="lucide:pen-line" class="size-4" /></template>
-					{{ t('components.today.scope.write') }}
-				</UiButton>
-				<UiButton v-if="canMarkSeen" variant="secondary" size="sm" @click="emit('markSeen')">
+	<section aria-labelledby="workbench-scope-name">
+		<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+			<Icon v-if="kind === 'team'" name="lucide:bot" class="size-4 text-text-tertiary" />
+			<span v-else class="size-2.5 shrink-0 rounded-[3px]" :class="swatch" aria-hidden="true" />
+			<h2 id="workbench-scope-name" class="text-base font-medium text-text-primary">
+				<NuxtLink
+					:to="inboxHref"
+					class="hover:underline"
+					:title="t('components.today.scope.openInbox')"
+					>{{ name }}</NuxtLink
+				>
+			</h2>
+			<span v-if="address" class="hidden truncate text-xs text-text-tertiary sm:inline">{{
+				address
+			}}</span>
+			<span
+				v-if="kindLabel"
+				class="rounded-full bg-bg-surface px-2 py-px text-2xs font-medium text-text-secondary"
+				>{{ kindLabel }}</span
+			>
+			<div class="ml-auto flex items-center gap-1">
+				<UiButton v-if="canMarkSeen" variant="ghost" size="sm" @click="emit('markSeen')">
 					<template #iconLeft><Icon name="lucide:check-check" class="size-4" /></template>
 					{{ t('dashboard.today.markAllSeen') }}
 				</UiButton>
+				<UiDropdownMenu position="right">
+					<template #trigger>
+						<UiButton
+							variant="ghost"
+							size="sm"
+							class="w-8 px-0"
+							:aria-label="t('components.today.scope.more', { inbox: name })"
+						>
+							<Icon name="lucide:ellipsis" class="size-4" />
+						</UiButton>
+					</template>
+					<UiDropdownMenuItem icon="lucide:inbox" @click="navigateTo(inboxHref)">
+						{{ t('components.today.scope.openInbox') }}
+					</UiDropdownMenuItem>
+					<UiDropdownMenuItem
+						v-if="composeHref"
+						icon="lucide:pen-line"
+						@click="navigateTo(composeHref)"
+					>
+						{{ t('components.today.scope.write') }}
+					</UiDropdownMenuItem>
+				</UiDropdownMenu>
 			</div>
 		</div>
 
-		<ul
-			class="mt-4 grid grid-cols-2 gap-2"
-			:class="['', '', '@lg:grid-cols-2', '@lg:grid-cols-3', '@lg:grid-cols-4'][tiles.length]"
-		>
-			<li v-for="tile in tiles" :key="tile.id">
-				<a
+		<UiSkeleton v-if="isLoading && !sinceLabel" class="mt-1.5 h-4 w-72" />
+		<p v-else class="mt-1 text-sm text-text-secondary">
+			{{ sinceLabel }}<template v-if="sinceLabel">: </template>
+			<UiSkeleton v-if="isLoading" class="inline-block h-3.5 w-40 align-middle" />
+			<template v-else-if="tiles.length === 0">{{ t('components.today.scope.allClear') }}</template>
+			<template v-for="(tile, index) in tiles" v-else :key="tile.id"
+				><template v-if="index > 0"> · </template
+				><a
 					:href="tile.href"
-					class="flex h-full flex-col rounded-xl bg-bg-surface/60 px-3 py-2 transition-colors hover:bg-bg-surface"
+					class="text-text-primary underline decoration-border-default underline-offset-2 hover:decoration-text-primary"
 					:data-scope-stat="tile.id"
-				>
-					<UiSkeleton v-if="isLoading" class="my-1 h-5 w-8" />
-					<span
-						v-else
-						class="text-xl font-medium tabular-nums"
-						:class="tile.value === '0' ? 'text-text-tertiary' : 'text-text-primary'"
-						>{{ tile.value }}</span
-					>
-					<span class="text-xs text-text-secondary">{{ tile.label }}</span>
-				</a>
-			</li>
-		</ul>
+					><span class="tabular-nums">{{ tile.value }}</span> {{ tile.label }}</a
+				></template
+			>
+		</p>
 	</section>
 </template>

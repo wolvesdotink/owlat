@@ -143,7 +143,7 @@ async function confirmSave() {
 </script>
 
 <template>
-	<div class="flex h-[calc(100vh-4rem)]">
+	<div class="flex h-[calc(100vh-var(--shell-chrome-h,4rem))]">
 		<PostboxMailboxGuard
 			:mailbox-id="mailboxId"
 			:loading="mailboxesLoading"

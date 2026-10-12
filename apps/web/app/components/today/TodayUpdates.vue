@@ -36,14 +36,18 @@ const isEmpty = computed(() => props.model.worth.length === 0 && props.model.als
 </script>
 
 <template>
-	<section id="workbench-updates" aria-labelledby="today-updates">
+	<!-- The key hint waits until the band is hovered or focused: it is for the
+	     person about to use it, and on the "?" sheet for everyone else. -->
+	<section id="workbench-updates" class="group" aria-labelledby="today-updates">
 		<h3
 			id="today-updates"
 			class="mb-2 mt-8 flex items-baseline gap-2 text-2xs font-medium uppercase tracking-wider text-text-tertiary"
 		>
 			{{ t('components.today.updates.title') }}
 			<span class="normal-case tracking-normal">{{ t('components.today.updates.subtitle') }}</span>
-			<span class="ml-auto hidden normal-case tracking-normal md:inline">
+			<span
+				class="ml-auto hidden normal-case tracking-normal opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 md:inline"
+			>
 				<kbd class="font-mono">j</kbd> <kbd class="font-mono">k</kbd>
 				{{ t('components.today.updates.keysMove') }} · <kbd class="font-mono">d</kbd>
 				{{ t('components.today.line.done') }} · <kbd class="font-mono">r</kbd>

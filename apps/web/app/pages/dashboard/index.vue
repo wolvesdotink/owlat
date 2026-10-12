@@ -5,6 +5,7 @@ import { answerCounts } from '~/composables/useAnswerQueue';
 import { answerItemMatches } from '~/utils/answerQueue';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useWorkbenchKeyboard } from '~/composables/useWorkbenchKeyboard';
+import { useZenMode } from '~/composables/useZenMode';
 import type { TodayChange, TodayLine, TodaySource } from '~/utils/todayDigest';
 import { TODAY_PEEK, peekKey, threadHref } from '~/utils/todayPeek';
 import {
@@ -48,6 +49,7 @@ const answer = useAnswerQueue();
 const choice = useWorkbenchInboxChoice();
 const { level: deliveryLevel, reason: deliveryReason } = useDeliveryHealth();
 const { showToast } = useToast();
+const { isZen, exitZen } = useZenMode();
 
 // ── Which tab ──────────────────────────────────────────────────────────────
 const teamOn = computed(() => isAdmin.value && isEnabled('inbox'));
@@ -185,7 +187,7 @@ let enteredAt = Date.now();
 // flip `hasAnything` at all.
 const hadAnything = new Set<WorkbenchScope>();
 watch(
-	() => [scope.value, hasAnything.value && !workbench.isStale.value] as const,
+	() => [scope.value, hasAnything.value && !workbench.isStale.value && !isZen.value] as const,
 	([current, showing]) => {
 		if (current && showing) hadAnything.add(current);
 	},
@@ -196,6 +198,7 @@ function leaveScope(previous: WorkbenchScope | null) {
 		void workbench.markSeen(previous);
 	if (previous) hadAnything.delete(previous);
 }
+watch(isZen, (on) => !on && (enteredAt = Date.now()));
 watch(scope, (_next, previous) => {
 	leaveScope(previous ?? null);
 	enteredAt = Date.now();
@@ -293,7 +296,7 @@ function replyAnywayFromPeek(source: TodaySource) {
 
 // ── Keyboard: j/k between lines, Enter opens, d done, r reply anyway ───────
 useWorkbenchKeyboard({
-	lines: () => allLines.value,
+	lines: () => (isZen.value ? [] : allLines.value),
 	peekOpen: () => !!route.query['peek'],
 	open: (line) => openPeek(line.sources),
 	done: (line) => void doneLine(line),
@@ -305,7 +308,7 @@ useWorkbenchKeyboard({
 	<div class="mx-auto w-full max-w-4xl px-6 pb-16 pt-8 lg:px-10 2xl:max-w-page">
 		<!-- One reading column up to 2xl; from there the page grows to the shared
 		     page cap and the panel below splits into two columns. -->
-		<header>
+		<header v-if="!isZen">
 			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
 				<I18nT
 					v-if="firstName"
@@ -319,7 +322,6 @@ useWorkbenchKeyboard({
 				</I18nT>
 				<template v-else>{{ t(`dashboard.today.greeting.${greetingKey}`) }}</template>
 			</h1>
-			<p class="mt-1 text-sm text-text-secondary">{{ t('dashboard.today.intro') }}</p>
 		</header>
 
 		<!-- Only when something is actually broken, and only for admins. -->
@@ -336,7 +338,7 @@ useWorkbenchKeyboard({
 			<DashboardAccessRequests v-if="hasActiveOrganization && isAdmin" />
 			<DashboardMailboxRequests v-if="hasActiveOrganization && isAdmin" />
 			<DashboardGettingStarted
-				v-if="hasActiveOrganization && userId"
+				v-if="hasActiveOrganization && userId && !isZen"
 				:user-id="userId"
 				:is-admin="isAdmin"
 				compact
@@ -374,6 +376,7 @@ useWorkbenchKeyboard({
 
 		<template v-else>
 			<TodayWorkbenchTabs
+				v-if="!isZen"
 				class="mt-8"
 				:tabs="tabs"
 				:selected="scope"
@@ -401,14 +404,14 @@ useWorkbenchKeyboard({
 			<div
 				id="workbench-panel"
 				:key="scope"
-				role="tabpanel"
-				:aria-labelledby="`workbench-tab-${scope}`"
+				v-bind="isZen ? {} : { role: 'tabpanel', 'aria-labelledby': `workbench-tab-${scope}` }"
 				class="pt-6 2xl:grid 2xl:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-rows-[auto_1fr] 2xl:items-start 2xl:gap-x-8"
 			>
 				<!-- From 2xl the inbox summary and "Filed away" sit in a side column
 				     beside what needs doing (answer, what changed, updates). The DOM
 				     order stays the single-column reading order. -->
 				<TodayScopeHeader
+					v-if="!isZen"
 					class="2xl:col-start-2 2xl:row-start-1"
 					:name="scopeName"
 					:slot="inbox?.slot ?? null"
@@ -430,6 +433,7 @@ useWorkbenchKeyboard({
 				/>
 
 				<div class="mt-4 2xl:col-start-1 2xl:row-span-2 2xl:row-start-1 2xl:mt-0">
+					<h1 v-if="isZen" class="mb-3 text-sm font-medium text-text-secondary">{{ scopeName }}</h1>
 					<TodayAnswerCard
 						:items="scopedAnswer"
 						:counts="scopedCounts"
@@ -439,27 +443,35 @@ useWorkbenchKeyboard({
 					/>
 					<TodayToDo v-if="!isTeam && scope" :mailbox-id="scope" />
 
-					<TodayChanges
-						:changes="model.changed"
-						:hidden="model.changedHidden"
-						:more-href="moreHref"
-						@done="doneLine"
+					<!-- Zen keeps only what needs an answer (and says what it left out). -->
+					<TodayZenMore
+						v-if="isZen"
+						:inbox-name="scopeName"
+						:count="allLines.length"
+						@show="exitZen"
 					/>
-
-					<div v-if="workbench.isLoading.value && !hasAnything" class="mt-8 space-y-2">
-						<UiSkeleton class="h-3 w-24" />
-						<UiSkeleton class="h-24 w-full rounded-xl" />
-					</div>
-					<TodayUpdates
-						v-else
-						:model="model"
-						:more-href="moreHref"
-						@done="doneLine"
-						@reply-anyway="replyAnyway"
-					/>
+					<template v-else>
+						<TodayChanges
+							:changes="model.changed"
+							:hidden="model.changedHidden"
+							:more-href="moreHref"
+							@done="doneLine"
+						/>
+						<div v-if="workbench.isLoading.value && !hasAnything" class="mt-8 space-y-2">
+							<UiSkeleton class="h-3 w-24" />
+							<UiSkeleton class="h-24 w-full rounded-xl" />
+						</div>
+						<TodayUpdates
+							v-else
+							:model="model"
+							:more-href="moreHref"
+							@done="doneLine"
+							@reply-anyway="replyAnyway"
+						/>
+					</template>
 				</div>
 				<TodayFiledAway
-					v-if="!(workbench.isLoading.value && !hasAnything)"
+					v-if="!isZen && !(workbench.isLoading.value && !hasAnything)"
 					class="2xl:col-start-2 2xl:row-start-2"
 					:model="model"
 					:scope="scope"

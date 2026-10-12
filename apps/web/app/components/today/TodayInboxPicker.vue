@@ -22,8 +22,9 @@ const hiddenSet = computed(() => new Set<string>(props.hidden));
 const shownCount = computed(
 	() => props.inboxes.filter((inbox) => !hiddenSet.value.has(inbox.mailboxId)).length
 );
+const allShown = computed(() => shownCount.value === props.inboxes.length);
 const triggerLabel = computed(() =>
-	shownCount.value === props.inboxes.length
+	allShown.value
 		? t('components.today.inboxPicker.all')
 		: t('components.today.inboxPicker.some', {
 				shown: shownCount.value,
@@ -35,13 +36,17 @@ const triggerLabel = computed(() =>
 <template>
 	<UiDropdownMenu v-model:open="open" position="right">
 		<template #trigger>
+			<!-- Just the icon while every inbox has its tab; the count only when
+			     some are left out, since that is worth seeing. -->
 			<UiButton
-				variant="secondary"
+				variant="ghost"
 				size="sm"
+				:class="allShown ? 'w-8 px-0' : ''"
+				:title="triggerLabel"
 				:aria-label="`${t('components.today.inboxPicker.label')}: ${triggerLabel}`"
 			>
-				<template #iconLeft><Icon name="lucide:sliders-horizontal" class="size-4" /></template>
-				{{ triggerLabel }}
+				<Icon name="lucide:sliders-horizontal" class="size-4" />
+				<span v-if="!allShown" class="ml-1.5">{{ triggerLabel }}</span>
 			</UiButton>
 		</template>
 		<div class="px-3 pb-1 pt-2 text-2xs font-medium text-text-tertiary">

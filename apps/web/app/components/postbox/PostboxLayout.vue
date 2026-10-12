@@ -44,6 +44,8 @@ const {
 	setSortOrder,
 } = usePostboxSettings();
 
+// Zen: no rail, and the reader alone once a message is open (saved prefs untouched).
+const zen = usePostboxZen(readingPane);
 const {
 	geometry,
 	listPaneBorder,
@@ -54,7 +56,7 @@ const {
 	commitListSize,
 	paneStyle,
 } = usePostboxReadingPane({
-	readingPane,
+	readingPane: zen.readingPane,
 	listWidth,
 	listHeight,
 	setListSize,
@@ -252,7 +254,7 @@ const advanceIds = computed(() =>
 	<div
 		class="flex w-full min-w-0"
 		:data-density="density"
-		:data-reading-pane="readingPane"
+		:data-reading-pane="zen.readingPane.value"
 		:style="paneStyle"
 	>
 		<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
@@ -262,6 +264,7 @@ const advanceIds = computed(() =>
 		     reach in both Priority and All mail. -->
 		<PostboxFolderDrawer
 			v-model:open="railOpen"
+			:zen="zen.isZen.value"
 			:mailbox-id="mailboxId"
 			:folder-role="folderRole"
 			:folder-id="folderId"
@@ -284,7 +287,7 @@ const advanceIds = computed(() =>
 			<!-- The list + reader split. Its own flex container so the reading
 			     pane can flip it to a column ('bottom') without taking the folder
 			     rail with it. -->
-			<div v-else class="flex w-full min-w-0">
+			<div v-else class="flex w-full min-w-0" :class="{ 'mx-auto max-w-4xl': zen.isZen.value }">
 				<div class="pbx-pane-split flex flex-1 min-w-0 min-h-0">
 					<!-- Pane 2: thread/message list — the whole width below lg, and hidden
 			     entirely once a message is open (the reader takes over). Its lg
@@ -303,6 +306,7 @@ const advanceIds = computed(() =>
 							:queued-count="queuedSendCount"
 							:failed-count="failedSendCount"
 							:cached-at="cachedAt"
+							:rail-on-screen="zen.railOnScreen.value"
 							@retry="() => void retryQueuedSends()"
 						/>
 						<PostboxListHeader
@@ -451,18 +455,16 @@ const advanceIds = computed(() =>
 						class="pbx-pane-reader @container flex-1 min-w-0 min-h-0 overflow-auto bg-bg-base"
 						:class="readerPaneVisibility"
 					>
-						<!-- Drill-in back navigation (mobile only; on lg the list is still
-					     on screen beside the reader). py-3 puts the full-width bar past
-					     the 44px touch target — it is the only way out of the reader. -->
-						<button
+						<!-- Drill-in back (mobile; and in Zen, with previous/next). -->
+						<PostboxReaderBackBar
 							v-if="activeMessageId"
-							type="button"
-							class="lg:hidden sticky top-0 z-10 w-full flex items-center gap-1.5 border-b border-border-subtle bg-bg-base px-3 py-3 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-							@click="backToList"
-						>
-							<Icon name="lucide:arrow-left" class="w-4 h-4" />
-							<span class="capitalize truncate">{{ currentFolderName }}</span>
-						</button>
+							:folder-name="currentFolderName"
+							:folder-path="String(folderId ?? folderRole)"
+							:active-message-id="activeMessageId"
+							:ordered-ids="advanceIds"
+							:zen="zen.isZen.value"
+							@back="backToList"
+						/>
 
 						<!-- Keyed, enter-only swap (postbox-motion.css): the next thread
 						     mounts in the same frame the previous one goes. -->

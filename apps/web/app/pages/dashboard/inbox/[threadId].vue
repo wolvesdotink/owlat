@@ -8,11 +8,14 @@ import { otherWaitingDrafts, pickReplyTarget, replySubject } from '~/utils/teamT
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { countMentionsOf, type ReplyEntry } from '~/utils/teamStream';
 import { useTeamThread } from '~/composables/team/useTeamThread';
+import { useZenMode } from '~/composables/useZenMode';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
 import { inboxRetryToast } from '~/utils/inboxRetry';
 
 const { t, locale } = useI18n();
+// Zen: the conversation and the reply only; the side cards wait outside.
+const { isZen } = useZenMode();
 
 useHead({ title: () => t('dashboard.inbox.detail.pageTitle') });
 
@@ -339,9 +342,11 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 </script>
 
 <template>
-	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
-		<!-- Back Navigation -->
+	<div class="mx-auto w-full p-6 lg:p-8" :class="isZen ? 'max-w-4xl' : 'max-w-page'">
+		<!-- Back navigation, in Zen only: elsewhere the breadcrumb trail above
+		     already leads back to the team inbox. -->
 		<NuxtLink
+			v-if="isZen"
 			to="/dashboard/inbox"
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
@@ -451,9 +456,16 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 
 			<!-- From xl the side column keeps a fixed width instead of a third of an
 			     ever wider page. -->
-			<div class="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_20rem] gap-6">
+			<div
+				class="grid grid-cols-1 gap-6"
+				:class="isZen ? '' : 'lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_20rem]'"
+			>
 				<!-- The thread as one stream; the open actions pinned above it. -->
-				<div class="lg:col-span-2 xl:col-span-1 space-y-4" data-testid="team-thread-main">
+				<div
+					class="space-y-4"
+					:class="isZen ? '' : 'lg:col-span-2 xl:col-span-1'"
+					data-testid="team-thread-main"
+				>
 					<TeamPinnedItems v-if="isAdmin" :team="team" />
 					<TeamThreadStream
 						:entries="team.stream.entries.value"
@@ -510,7 +522,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					/>
 				</div>
 
-				<div class="space-y-6">
+				<div v-if="!isZen" class="space-y-6">
 					<BriefElsewhere :thread-ref="{ kind: 'team', id: threadId }" class="card" />
 					<!-- Contact Card -->
 					<div v-if="contact" class="card">
