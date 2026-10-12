@@ -21,6 +21,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { CURRENT_ATTACHMENT_META_VERSION } from '../lib/constants';
 import { virusVerdictValidator, type VirusVerdict } from '../lib/literalValidators';
+import { spamVerdictValidator } from '../lib/convexValidators';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { clearsignedSignatureMirror } from '../webhooks/inboundSignatureMirror';
 import type { InboundEmailMessage } from '../webhooks/adapters/inboundRegistry';
@@ -78,6 +79,11 @@ export const inboundMessageArgs = {
 	rawStorageId: v.optional(v.id('_storage')),
 	rawSize: v.optional(v.number()),
 	virusVerdict: v.optional(virusVerdictValidator),
+	// L5 (ADR-0073): the MTA's spam verdict and score, only ever from the
+	// authenticated MTA delivery (see `inboundEmailMessageValidator`). Recorded
+	// always; terminal only behind the `mtaVerdictTerminal` routing switch.
+	mtaSpamVerdict: v.optional(spamVerdictValidator),
+	mtaSpamScore: v.optional(v.number()),
 } as const;
 
 /**
@@ -165,6 +171,8 @@ export async function receiveInboundMail(
 		dkimResult: input.dkimResult,
 		dmarcResult: input.dmarcResult,
 		dmarcPolicy: input.dmarcPolicy,
+		mtaSpamVerdict: input.mtaSpamVerdict,
+		mtaSpamScore: input.mtaSpamScore,
 		...extras,
 	};
 

@@ -29,6 +29,7 @@ import {
 import { AiNotConfiguredError } from './lib/aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
 import { NO_EMBEDDING_SPACE_KEY, vectorHitsInCurrentSpace } from './lib/embeddingSpace';
+import { embedRetrievalQuery } from './knowledge/retrieval';
 import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
@@ -361,24 +362,26 @@ export const semanticSearch = internalAction({
 	): Promise<Array<Doc<'semanticFiles'> & { url: string | null; _score: number }>> => {
 		const queryText = args.queryText?.trim();
 
-		let vector = args.embedding;
+		// A caller's vector is used as given, with the space it was embedded in
+		// (Team retrieval embeds once for this search and the knowledge search).
+		// Otherwise the query is embedded here, and only when the table holds a
+		// vector to find (knowledge/vectorCorpus.ts); with none, the full-text leg
+		// runs alone.
+		let vector = args.embedding && args.embedding.length > 0 ? args.embedding : undefined;
 		let spaceKey = args.embeddingSpaceKey;
-		if (!vector || vector.length === 0) {
+		if (!vector) {
 			if (!queryText) return [];
-			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
-			// actionable error rather than silently returning zero results.
-			const embedder = await resolveIndexEmbedder(ctx);
-			spaceKey = embedder.embeddingSpaceKey;
-			try {
-				const { embedding } = await meterLlmCall(
-					ctx,
-					{ feature: 'embedding_file_search', ...(args.root ? { root: args.root } : {}) },
-					(meter) => runEmbedding({ meter, model: embedder.model, value: queryText })
-				);
-				vector = toIndexVector(embedding);
-			} catch (error) {
-				logInfo('[semantic_file] search embed failed', { error: String(error) });
-				return [];
+			const query = await embedRetrievalQuery(
+				ctx,
+				['semanticFiles'],
+				queryText,
+				'[semantic_file] search',
+				args.root
+			);
+			if (query.kind === 'failed') return [];
+			if (query.kind === 'vector') {
+				vector = query.embedding;
+				spaceKey = query.embeddingSpaceKey;
 			}
 		}
 
@@ -393,11 +396,13 @@ export const semanticSearch = internalAction({
 
 		// Leg 1 — semantic vector search (paraphrase / conceptual matches).
 		// Dropped if the embedding space changed while this query ran.
-		const hits = await vectorHitsInCurrentSpace(
-			ctx,
-			await ctx.vectorSearch('semanticFiles', 'vector_files', { vector, limit: fetchLimit }),
-			spaceKey
-		);
+		const hits = vector
+			? await vectorHitsInCurrentSpace(
+					ctx,
+					await ctx.vectorSearch('semanticFiles', 'vector_files', { vector, limit: fetchLimit }),
+					spaceKey
+				)
+			: [];
 		const vectorRanked: Id<'semanticFiles'>[] = hits.map((h) => h._id);
 		const scoreById = new Map<string, number>(hits.map((h) => [h._id as string, h._score]));
 

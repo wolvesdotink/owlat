@@ -49,6 +49,7 @@ import type {
 } from './steps/types';
 import type { NextStep } from './steps/types';
 import { runHostedPluginStep } from './hostedStepRunner';
+import { GUARD_REQUIRED_ERROR, guardBlocksStep } from './steps/security_scan/disposition';
 
 const continuationValidator = v.object({ kind: agentStepKindValidator, input: v.any() });
 
@@ -180,6 +181,14 @@ async function loadRunContext(
 	return { inboundMessageId, agentConfig };
 }
 
+/** D13: fail the message; a retry restarts the pipeline at the scan, which runs the guard. */
+async function failForGuard(ctx: ActionCtx, inboundMessageId: Id<'inboundMessages'>) {
+	await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+		inboundMessageId,
+		input: { to: 'failed', at: Date.now(), errorMessage: GUARD_REQUIRED_ERROR },
+	});
+}
+
 async function scheduleStep(
 	ctx: ActionCtx,
 	inboundMessageId: Id<'inboundMessages'>,
@@ -294,6 +303,11 @@ export const resumeDraft = internalAction({
 		// re-running the draft step against a stale state would produce an illegal
 		// edge downstream.
 		if (!message || message.processingStatus !== 'drafting') return;
+		// D13: never draft on a message whose model guard was skipped.
+		if (guardBlocksStep(message, 'draft')) {
+			await failForGuard(ctx, args.inboundMessageId);
+			return;
+		}
 
 		// Rebuild the retrieval briefing. FAIL-SOFT: if retrieval throws, draft on
 		// an empty base context rather than wedging the message in `drafting`.
@@ -357,6 +371,14 @@ export const runStep = internalAction({
 		coreStep: v.optional(continuationValidator),
 	},
 	handler: async (ctx, args) => {
+		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+			inboundMessageId: args.inboundMessageId,
+		});
+		// D13: no step after the scan runs before the model guard has.
+		if (guardBlocksStep(message, args.kind)) {
+			await failForGuard(ctx, args.inboundMessageId);
+			return;
+		}
 		if (isPluginAgentStepKind(args.kind)) {
 			const continuation = {
 				remainingPluginSteps: args.remainingPluginSteps ?? [],
@@ -385,9 +407,6 @@ export const runStep = internalAction({
 		// A person took the reply over (inbox/manualReply.ts): the pipeline stops
 		// here rather than draft or route a message someone is already answering.
 		// A step already in flight is stopped by the lifecycle instead.
-		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
-			inboundMessageId: args.inboundMessageId,
-		});
 		if (message?.manualTakeoverAt !== undefined) return;
 
 		// Begin the agentAction row up front so a crash inside `execute`

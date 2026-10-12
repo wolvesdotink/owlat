@@ -67,12 +67,53 @@ afterEach(() => {
 	inFlight.duringEmbed = null;
 });
 
+/**
+ * One vector already in space A. A search over an empty corpus makes no query
+ * embedding at all (the empty-corpus skip, knowledge/vectorCorpus.ts), so the
+ * race needs a corpus that holds a vector. (D8 refuses that switch through
+ * settings; `configureLocalEmbedder` writes the row directly, as the race would.)
+ */
+async function seedSpaceAVector(t: T, table: 'knowledgeEntries' | 'semanticFiles') {
+	if (table === 'knowledgeEntries') {
+		await t.mutation(internal.knowledge.graph.saveEntry, {
+			entryType: 'fact',
+			title: 'Office hours are nine to five',
+			content: 'Office hours are nine to five',
+			sourceType: 'manual',
+			embedding: unit(9),
+			confidence: 0.9,
+			embeddingSpaceKey: await currentKey(t),
+		});
+		return;
+	}
+	const now = Date.now();
+	const fileId = await t.run((ctx) =>
+		ctx.db.insert('semanticFiles', {
+			filename: 'hours.txt',
+			mimeType: 'text/plain',
+			fileSize: 5,
+			sourceType: 'upload',
+			version: 1,
+			embedding: [],
+			searchableText: 'hours.txt',
+			createdAt: now,
+			updatedAt: now,
+		})
+	);
+	await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+		fileId,
+		embedding: unit(9),
+		embeddingSpaceKey: await currentKey(t),
+	});
+}
+
 describe('vector search after an in-flight embedding-space switch', () => {
 	it('drops knowledge vector hits from the new space and keeps lexical hits', async () => {
 		const t = convexTest(schema, modules);
 		await configureLocalEmbedder(t, undefined); // space A: nomic
+		await seedSpaceAVector(t, 'knowledgeEntries');
 		inFlight.duringEmbed = async () => {
-			// Allowed: the corpus is empty. Then a B vector commits.
+			// The switch, then a B vector commits.
 			await configureLocalEmbedder(t, 'mxbai-embed-large');
 			await t.mutation(internal.knowledge.graph.saveEntry, {
 				entryType: 'fact',
@@ -99,7 +140,7 @@ describe('vector search after an in-flight embedding-space switch', () => {
 			scopeToContact: 'org-wide',
 			includeInboxDerived: true,
 		});
-		expect(inB.map((e) => e.title)).toEqual(['Invoices go out in EUR']);
+		expect(inB[0]!.title).toBe('Invoices go out in EUR');
 		expect(inB[0]!._score).toBeGreaterThan(0);
 
 		// A stale A query still gets a lexical match, with no vector score.
@@ -118,6 +159,7 @@ describe('vector search after an in-flight embedding-space switch', () => {
 	it('drops file vector hits from the new space', async () => {
 		const t = convexTest(schema, modules);
 		await configureLocalEmbedder(t, undefined);
+		await seedSpaceAVector(t, 'semanticFiles');
 		inFlight.duringEmbed = async () => {
 			await configureLocalEmbedder(t, 'mxbai-embed-large');
 			const now = Date.now();
@@ -152,7 +194,7 @@ describe('vector search after an in-flight embedding-space switch', () => {
 			queryText: 'currency preference',
 			scopeToContact: 'org-wide',
 		});
-		expect(inB.map((f) => f.filename)).toEqual(['rates.txt']);
+		expect(inB[0]!.filename).toBe('rates.txt');
 	});
 
 	it('drops the vector hits of a previous-release caller that sends no space key', async () => {

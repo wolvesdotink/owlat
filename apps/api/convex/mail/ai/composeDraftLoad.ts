@@ -21,8 +21,19 @@ import type {
 	MailboxAttachmentScope,
 } from '../../lib/validators/answerAsk';
 import { assembleInboundBriefing } from '../../agent/steps/context_retrieval';
+import { guardAllowsInboundMessage } from '../../agent/steps/security_scan/guard';
+import { throwInvalidState } from '../../_utils/errors';
 import type { EagernessMode } from '../../inbox/askEagerness';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
+
+/**
+ * Answer mode's refusal for a team message the injection guard held back
+ * (quarantine, malware, a malicious URL, a flagged injection). The web reads
+ * `data.code`.
+ */
+const GUARD_REFUSAL_CODE = 'MESSAGE_HELD_BY_GUARD';
+const GUARD_REFUSAL_MESSAGE =
+	'This message was held back as unsafe, so AI drafting is not available for it.';
 
 /** Everything the gap check and the drafter need about a target. */
 interface AnswerContext extends AnswerDraftContext {
@@ -97,8 +108,15 @@ export async function loadAnswerContext(
 		threadId: target.threadId,
 		...(target.inboundMessageId ? { inboundMessageId: target.inboundMessageId } : {}),
 	});
+	// D13 / #1339: the message this reply answers reaches the gap check and the
+	// drafter only after the injection guard passes it (a skipped guard runs
+	// now). A message the guard rejected is refused outright: no briefing, and
+	// no fallback to its raw text.
+	if (!(await guardAllowsInboundMessage(ctx, loaded.inboundMessageId))) {
+		throwInvalidState(GUARD_REFUSAL_MESSAGE, { code: GUARD_REFUSAL_CODE });
+	}
 	// The pipeline's own briefing (contact, commitments, knowledge, files,
-	// history, the quarantined current message), without re-recording it.
+	// history, the hidden-stripped current message), without re-recording it.
 	let context = loaded.triggerText;
 	try {
 		context = (await assembleInboundBriefing(ctx, loaded.inboundMessageId)).context;

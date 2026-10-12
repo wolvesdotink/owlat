@@ -22,6 +22,7 @@
 
 import { v, type Infer } from 'convex/values';
 import { logWarn } from '../../lib/runtimeLog';
+import { spamVerdictValidator } from '../../lib/convexValidators';
 
 /**
  * Canonical inbound email shape consumed by `internal.inbound.receiveMessage`.
@@ -93,6 +94,15 @@ export const inboundEmailMessageValidator = v.object({
 	arcCv: v.optional(v.string()),
 	arcSealerDomain: v.optional(v.string()),
 	arcAttestsOriginalPass: v.optional(v.boolean()),
+	/**
+	 * L5 (ADR-0073): THE MTA'S spam verdict and score, as the authenticated
+	 * delivery webhook carried them. Named for their provenance: only the MTA
+	 * adapter sets them, never from a header the sender wrote. Recorded on the
+	 * row always; they end a Team run only behind the `mtaVerdictTerminal`
+	 * routing switch. Absent on an MTA that sends none.
+	 */
+	mtaSpamVerdict: v.optional(spamVerdictValidator),
+	mtaSpamScore: v.optional(v.number()),
 });
 
 export type InboundEmailMessage = Infer<typeof inboundEmailMessageValidator>;
@@ -140,7 +150,28 @@ export interface MtaInboundWirePayload {
 		arcCv?: string;
 		arcSealerDomain?: string;
 		arcAttestsOriginalPass?: boolean;
+		/** The MTA's spam verdict, the same fields the mailbox payload carries. */
+		spamScore?: number;
+		spamVerdict?: string;
 	};
+}
+
+const MTA_SPAM_VERDICTS: ReadonlySet<string> = new Set(['ham', 'spam', 'quarantine']);
+
+/**
+ * The wire's spam verdict, kept only when it is one the validator knows. A
+ * value outside the three is dropped rather than thrown on, for the same
+ * reason as `storableHeaders`: a throw here would 500 a delivery the MTA
+ * retries into the DLQ.
+ */
+function mtaSpamVerdictOf(raw: unknown): InboundEmailMessage['mtaSpamVerdict'] {
+	return typeof raw === 'string' && MTA_SPAM_VERDICTS.has(raw)
+		? (raw as InboundEmailMessage['mtaSpamVerdict'])
+		: undefined;
+}
+
+function mtaSpamScoreOf(raw: unknown): number | undefined {
+	return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
 }
 
 /**
@@ -320,6 +351,10 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 				typeof input.arcAttestsOriginalPass === 'boolean'
 					? input.arcAttestsOriginalPass
 					: undefined,
+			// L5: the verdict this HMAC-verified MTA delivery carries — the only
+			// trusted source of it on this path.
+			mtaSpamVerdict: mtaSpamVerdictOf(input.spamVerdict),
+			mtaSpamScore: mtaSpamScoreOf(input.spamScore),
 		};
 	}
 }

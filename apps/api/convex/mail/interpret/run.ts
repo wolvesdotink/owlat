@@ -62,6 +62,7 @@ import { interpretRoot, verifyClaims } from './verify';
 import { isRetryDue } from './retry';
 import type { ReduceResult } from './reduceInput';
 import type { ApplyOutcome } from './reduce';
+import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
 
 export const INTERPRET_FEATURE = 'interpret';
 /** Reducer attempts against a moving revision before the run gives up as partial. */
@@ -255,6 +256,14 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			}),
 			{ errorCode: eligible.detail }
 		);
+	}
+
+	// D13 (ADR-0073): a Team message whose scan skipped the model guard gets it
+	// before this generative consumer; one it flags is not interpreted.
+	if (!(await guardAllowsInterpretation(ctx, args.source))) {
+		const skip = { skipReason: 'security' as const, errorCode: 'guard_flagged' };
+		const record = { contentRevision: 'skip', status: 'skipped' as const, ...skip };
+		return finish(await apply(ctx, args, loaded, record), { errorCode: skip.errorCode });
 	}
 
 	let contentRevision = 'unread';

@@ -51,6 +51,8 @@ function makeCtx(openCommitments: OpenCommitment[]) {
 			getOpenCommitments: openCommitments,
 			getThreadMessages: [],
 			isGraphRetrievalEnabled: false,
+			// knowledge/vectorCorpus: no table holds a vector, so no query embedding.
+			hasQueryableVectors: false,
 		},
 		// Semantic knowledge + file legs find nothing tied to this inbound.
 		actions: { knowledge: [], semanticFileProcessing: [] },

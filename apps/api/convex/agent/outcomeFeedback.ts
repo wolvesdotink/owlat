@@ -30,8 +30,9 @@
 
 import { z } from 'zod';
 import { v } from 'convex/values';
-import { internalAction } from '../_generated/server';
+import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { meterLlmCall } from '../analytics/meteredSpend';
@@ -52,6 +53,26 @@ const outcomeSchema = z.object({
 				'ambiguous. When unsure, answer "neutral".'
 		),
 });
+
+/**
+ * The admission hook point for this call (ADR-0073, task
+ * `mail.outcome_sentiment`, background priority, standard budget class). The
+ * admission lane fills it: reserve before the call, settle after, and refuse
+ * (`null`) when the ceiling or an unverifiable spend state says no. Until then
+ * it admits every call, which is today's behaviour.
+ *
+ * Its consumer policy is its own: it runs on replies to AUTO-sent messages
+ * whatever the reply-generation suppression (blocklist, automated mail) decides
+ * for the reply itself, because a complaint from a blocked or automated-looking
+ * sender is still the outcome the loop learns from.
+ */
+export async function withOutcomeSentimentAdmission<T>(
+	_ctx: ActionCtx,
+	_subject: { replyMessageId: Id<'inboundMessages'> },
+	call: () => Promise<T>
+): Promise<T | null> {
+	return await call();
+}
 
 /** Bounded plaintext for the classifier prompt. */
 function clampReply(text: string): string {
@@ -85,25 +106,34 @@ export const classifyReplyOutcome = internalAction({
 
 		let sentiment: 'negative' | 'neutral' | 'positive';
 		try {
-			const model = await resolveLanguageModel(ctx, 'classify');
-			const { object } = await meterLlmCall(
+			const verdict = await withOutcomeSentimentAdmission(
 				ctx,
-				{ feature: 'agent_outcome_sentiment', root: teamRoot(args.replyMessageId) },
-				(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: outcomeSchema,
-					prompt:
-						`${SYSTEM_GUARD}\n\n` +
-						'You are calibrating an autonomous email agent. The message below is a ' +
-						'reply the agent received AFTER it auto-sent a response. Classify how the ' +
-						'sender feels about the response they got.\n\nReply:\n\n' +
-						text,
-					temperature: 0,
-				})
+				{ replyMessageId: args.replyMessageId },
+				async () => {
+					const model = await resolveLanguageModel(ctx, 'classify');
+					const { object } = await meterLlmCall(
+						ctx,
+						{ feature: 'agent_outcome_sentiment', root: teamRoot(args.replyMessageId) },
+						(meter) =>
+							runLlmObject({
+								meter,
+								model,
+								schema: outcomeSchema,
+								prompt:
+									`${SYSTEM_GUARD}\n\n` +
+									'You are calibrating an autonomous email agent. The message below is a ' +
+									'reply the agent received AFTER it auto-sent a response. Classify how the ' +
+									'sender feels about the response they got.\n\nReply:\n\n' +
+									text,
+								temperature: 0,
+							})
+					);
+					return object.sentiment;
+				}
 			);
-			sentiment = object.sentiment;
+			// Not admitted: record nothing, exactly like a failed classification.
+			if (verdict === null) return null;
+			sentiment = verdict;
 		} catch {
 			// Fail-soft: a classification failure records NOTHING — the loop keeps
 			// its prior behaviour rather than guessing.
