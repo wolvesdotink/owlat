@@ -48,7 +48,10 @@ vi.mock('../../lib/llmProvider', async () => ({
 		return 'mock-model';
 	}),
 }));
-vi.mock('../bundleAdmission', () => ({ admitBundle: mocks.admitBundle }));
+vi.mock('../bundleAdmission', async () => ({
+	...(await vi.importActual<object>('../bundleAdmission')),
+	admitBundle: mocks.admitBundle,
+}));
 
 import { runBundle } from '../bundleRunner';
 import { CLAIM_CHECK_BUNDLE, NECESSITY_BUNDLE } from '../../lib/decision/bundles';
@@ -291,6 +294,22 @@ describe('the necessity judgment through the runner', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	it('an advisory call under the caller’s hold asks no admission and reports its requests', async () => {
+		const t = await setup({ clarifyNecessity: 'enforce' });
+		const id = await seedTeamMessage(t);
+		const count = vi.fn();
+		const outcome = await necessityRun(t, await routing(t), id, {
+			outerHold: { reservationId: 'run-hold', requestId: 'req-1', count },
+		});
+		expect(outcome).toMatchObject({ hasRun: true, status: 'complete' });
+		expect(mocks.admitBundle).not.toHaveBeenCalled();
+		expect(count).toHaveBeenCalledWith(1);
+		const rows = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
+		expect(rows.filter((r) => r.feature === 'decision_necessity')).toEqual([
+			expect.objectContaining({ reservationId: 'run-hold', requestId: 'req-1' }),
+		]);
 	});
 
 	it('runs nothing without admission', async () => {

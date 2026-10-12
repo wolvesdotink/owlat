@@ -19,7 +19,7 @@ import { addMessageToThread, modules, seedMailThread, type Test } from './interp
 import { captureInterpretSource } from '../sources';
 import { isBudgetRefused } from '../../ai/needsReplyClassify';
 
-const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), refused: true }));
+const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), refused: true, verified: 0 }));
 
 vi.mock('../../../lib/llm/dispatch', async () => {
 	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
@@ -34,16 +34,23 @@ vi.mock('../../../lib/llmProvider', async () => ({
 }));
 // The claim checks were refused by spend admission: no verdict, and the refusal.
 vi.mock('../verifyRoute', () => ({
-	verifyRouted: vi.fn(async () => ({
-		verdicts: new Map(),
-		isIncomplete: true,
-		isUnsendable: false,
-		isCapped: false,
-		isUnavailable: false,
-		...(llm.refused
-			? { refusal: { code: 'AI_BUDGET_EXHAUSTED', reason: 'daily_ceiling', limit: '$1.00' } }
-			: {}),
-	})),
+	planVerification: vi.fn(async () => ({ cap: null, path: 'language' })),
+	verifyHoldPlanOf: vi.fn(() => ({ kind: 'language', claims: Number.POSITIVE_INFINITY })),
+	verifyRouted: vi.fn(
+		async () => (
+			llm.verified++,
+			{
+				verdicts: new Map(),
+				isIncomplete: true,
+				isUnsendable: false,
+				isCapped: false,
+				isUnavailable: false,
+				...(llm.refused
+					? { refusal: { code: 'AI_BUDGET_EXHAUSTED', reason: 'daily_ceiling', limit: '$1.00' } }
+					: {}),
+			}
+		)
+	),
 }));
 
 const TEXT = 'Could you send me the signed contract by Friday?';
@@ -85,6 +92,7 @@ async function pendingJobs(t: Test, fragment: string) {
 }
 
 async function classify(t: Test) {
+	llm.verified = 0;
 	llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
 		if (schema === briefModelSchema) return { object: OUTPUT, modelUsed: 'stub-model' };
 		throw new Error('no other model call is expected');
@@ -120,6 +128,39 @@ describe('the Reply Queue classification and a refused verification (Sol r1 F2)'
 			expect(await pendingJobs(t, 'needsReplyClassify')).toEqual([
 				expect.objectContaining({ threadId, deferrals: 1 }),
 			]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('defers again on a replay before the retry is due (the refusal is stored, Sol r2 F1)', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			llm.refused = true;
+			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
+			const { threadId } = await classify(t);
+			const row = await t.run((ctx) => ctx.db.query('messageInterpretations').first());
+			expect(row).toMatchObject({
+				status: 'partial',
+				errorCode: 'verify',
+				budgetRefusal: { reason: 'daily_ceiling', limit: '$1.00' },
+			});
+			expect(row?.nextRetryAt).toBeGreaterThan(Date.now());
+
+			// The classification runs again (the deferred job, the sweep) before the
+			// retry is due: the run replays the stored partial, refusal included.
+			await t.action(internal.mail.ai.needsReplyClassify.classifyThread, {
+				threadId,
+				deferrals: 1,
+			});
+			expect(llm.verified).toBe(1); // replayed, not verified again
+			const thread = await t.run((ctx) => ctx.db.get(threadId));
+			expect(thread?.needsReplyPendingAt).toBeDefined();
+			expect(thread?.needsReply).toMatchObject({ source: 'heuristic' });
+			expect(await pendingJobs(t, 'needsReplyClassify')).toContainEqual(
+				expect.objectContaining({ threadId, deferrals: 2 })
+			);
 		} finally {
 			vi.useRealTimers();
 		}

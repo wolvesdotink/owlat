@@ -239,6 +239,7 @@ export const applyInterpretation = internalMutation({
 			...(args.sourceVersion ? { sourceVersion: args.sourceVersion } : {}),
 			...(args.retryCount !== undefined ? { retryCount: args.retryCount } : {}),
 			...(args.budgetDeferrals !== undefined ? { budgetDeferrals: args.budgetDeferrals } : {}),
+			...(args.budgetRefusal ? { budgetRefusal: args.budgetRefusal } : {}),
 			sourceAt: args.sourceAt,
 			isCurrent: !isKeepingPrevious,
 			isCounted: true,

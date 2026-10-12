@@ -114,6 +114,16 @@ export const budgetHoldValidator = v.object({
 });
 export type BudgetHold = Infer<typeof budgetHoldValidator>;
 
+/**
+ * D1: a spend refusal an interpretation run met (the gate, its hold, a model
+ * call, a verifier batch or a claim check), stored on the run's
+ * `messageInterpretations` row so a replay reports it like the run did.
+ */
+export const runBudgetRefusalValidator = v.object({
+	reason: literalUnion(BUDGET_HOLD_REASONS),
+	limit: v.string(),
+});
+
 // ── Decision artifacts and sender memory ──────────────────────────────────
 
 /** `advisory`: a verdict a surface may display or advise with. `shadow`: an observation only. */

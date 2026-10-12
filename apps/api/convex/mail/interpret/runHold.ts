@@ -11,10 +11,19 @@
  *
  *   - the extraction: its actual prompt and schema, the task's output
  *     ceiling, every attempt the task allows;
- *   - the verifier's maximum: one call per {@link VERIFY_BATCH_SIZE} of the
- *     most claims the output schema allows ({@link MAX_VERIFY_CLAIMS}), each
- *     bounded by the verify prompt's own bounds (`verify.ts`), the task's
- *     output ceiling and attempts.
+ *   - the verification path that will actually run (`verifyRoute.ts
+ *     planVerification`, decided before the extraction), for the most claims
+ *     it may check (the schema's {@link MAX_VERIFY_CLAIMS}, or the policy's
+ *     per-message cap when lower):
+ *     - the language verifier: one call per {@link VERIFY_BATCH_SIZE} claims,
+ *       each bounded by the verify prompt's own bounds (`verify.ts`), the
+ *       task's output ceiling and attempts;
+ *     - claim checks on the decision rung: one decision call per claim, each
+ *       bounded by the largest claim state, the native output ceiling and the
+ *       task's attempts (free on a local engine);
+ *     - nothing, when no verification call can run (an unavailable provider).
+ *   Each path is sized on its own; the run never holds for a path it will
+ *   not take, and a claim check never asks for a hold of its own.
  *
  * A refused hold defers the whole run before anything is spent (`run.ts`).
  * An admitted one is drawn on by every call of the run: their spend targets
@@ -41,6 +50,16 @@ import {
 import type { AdmissionPriority } from '../../lib/validators/aiRouting';
 import { reserveHold } from '../../analytics/admissionPorts';
 import { INTERPRET_TEXT_LIMITS, MAX_QUOTES_PER_CLAIM } from './schema';
+import { CLAIM_STATEMENT_CHARS } from './claimCheck';
+import { CLAIM_CHECK_QUESTIONS } from '../../lib/decision/catalog';
+import {
+	NATIVE_DECISION_OUTPUT_TOKENS,
+	NATIVE_WIRE_EXPANSION,
+} from '../../lib/decision/attemptAdmission';
+import { DEFAULT_DECISION_ATTEMPTS } from '../../lib/decision/dispatch';
+import { decisionProviderFor } from '../../lib/decisionProviders';
+import type { ResolvedDecisionPlane } from '../../lib/decisionProvider';
+import { taskPolicy } from '../../lib/llm/taskPolicy';
 import {
 	buildVerifyPrompt,
 	MAX_VERIFY_CLAIMS,
@@ -54,6 +73,14 @@ const MAX_BYTES_PER_UNIT = 3;
 /** A claim's id and framing in the verify prompt, beyond its statement and quotes. */
 const CLAIM_FRAMING_UNITS = 64;
 const QUOTE_FRAMING_UNITS = 8;
+/** The most bytes JSON writes for one character. */
+const JSON_ESCAPE_BYTES = 6;
+
+/** The verification path the run will take, as the hold sizes it. */
+export type VerifyHoldPlan =
+	| { readonly kind: 'language'; readonly claims: number }
+	| { readonly kind: 'decision'; readonly claims: number; readonly plane: ResolvedDecisionPlane }
+	| { readonly kind: 'none' };
 
 /** A call's spend target fields under the run's hold. */
 type HoldTarget = { readonly reservationId?: string; readonly requestId?: string };
@@ -64,6 +91,8 @@ export interface InterpretRunHold {
 	readonly extractTarget: HoldTarget;
 	/** Spread into verify batch `batch`'s spend target (0-based). */
 	verifyTarget(batch: number): HoldTarget;
+	/** Claim check `index`'s hold and request id (0-based), on the decision path. */
+	claimCheckTarget(index: number): HoldTarget;
 	/** Count a call's provider requests (its meter's, retries included). */
 	count(requests: number): void;
 	/** Settle against the counted requests, or release when none was sent. Once. */
@@ -73,6 +102,7 @@ export interface InterpretRunHold {
 const NO_RUN_HOLD: InterpretRunHold = Object.freeze({
 	extractTarget: {},
 	verifyTarget: () => ({}),
+	claimCheckTarget: () => ({}),
 	count: () => {},
 	settle: async () => {},
 });
@@ -102,6 +132,42 @@ function callBound(
 	return { ...bound, modelId: shape.modelUsed, ...(endpoint ? { endpoint } : {}) };
 }
 
+/** The bytes of the largest claim-check request: the largest claim state and the questions, on the wire. */
+export function claimCheckRequestBytes(): number {
+	const state = {
+		claim: 'x'.repeat(CLAIM_STATEMENT_CHARS),
+		quotes: Array.from({ length: MAX_QUOTES_PER_CLAIM }, () =>
+			'x'.repeat(INTERPRET_TEXT_LIMITS.quote)
+		),
+	};
+	// JSON escapes a character into at most six bytes (`\u0000`).
+	return (
+		NATIVE_WIRE_EXPANSION *
+		JSON_ESCAPE_BYTES *
+		serializedBytes({ state, questions: CLAIM_CHECK_QUESTIONS })
+	);
+}
+
+/** One claim check's worst case on the decision plane, or nothing on a local engine. */
+function claimCheckBound(plane: ResolvedDecisionPlane) {
+	const adapter = decisionProviderFor(plane.kind);
+	if (adapter.isLocal) return { microusd: 0, maxRequests: 0, maxRequestMicrousd: 0 };
+	const modelId = plane.modelId || adapter.defaultModel;
+	return {
+		...dispatchHoldMicrousd({
+			modelId,
+			plane: 'decision',
+			bytes: claimCheckRequestBytes(),
+			messages: 1,
+			outputTokens: NATIVE_DECISION_OUTPUT_TOKENS,
+			steps: 1,
+			attempts: Math.max(taskPolicy('mail.claim_check').maxAttempts, DEFAULT_DECISION_ATTEMPTS),
+			retries: 'every_step',
+		}),
+		modelId,
+	};
+}
+
 /** The bytes of the largest verify request the prompt's bounds allow. */
 export function verifyRequestBytes(): number {
 	const claimUnits =
@@ -128,6 +194,8 @@ export async function admitInterpretRun(
 			readonly schema: Parameters<typeof zodSchema>[0];
 		};
 		readonly verifyModel: LanguageModel;
+		/** The verification path planned before the extraction (`verifyRoute.ts`). */
+		readonly verify: VerifyHoldPlan;
 		readonly root: LlmRootContext;
 		readonly priority: AdmissionPriority;
 	}
@@ -137,11 +205,14 @@ export async function admitInterpretRun(
 		bytes: extractSize.bytes + serializedBytes(zodSchema(opts.extract.schema).jsonSchema),
 		messages: extractSize.messages,
 	});
-	const verify = callBound(opts.verifyModel, 'mail.verify', {
-		bytes: verifyRequestBytes(),
-		messages: 1,
-	});
-	const verifyCalls = Math.ceil(MAX_VERIFY_CLAIMS / VERIFY_BATCH_SIZE);
+	const plan = opts.verify;
+	const claims = plan.kind === 'none' ? 0 : Math.min(plan.claims, MAX_VERIFY_CLAIMS);
+	// One bound per call of the path the run will take, and that many calls.
+	const verify =
+		plan.kind === 'decision'
+			? claimCheckBound(plan.plane)
+			: callBound(opts.verifyModel, 'mail.verify', { bytes: verifyRequestBytes(), messages: 1 });
+	const verifyCalls = plan.kind === 'language' ? Math.ceil(claims / VERIFY_BATCH_SIZE) : claims;
 	const microusd = extract.microusd + verifyCalls * verify.microusd;
 	if (microusd === 0) return NO_RUN_HOLD;
 	// Every call of the run gets its request id now, so each of its attempts has
@@ -182,7 +253,11 @@ export async function admitInterpretRun(
 	return {
 		extractTarget: { reservationId, requestId: extractRequestId },
 		verifyTarget: (batch) => {
-			const requestId = verifyRequestIds[batch];
+			const requestId = plan.kind === 'language' ? verifyRequestIds[batch] : undefined;
+			return requestId ? { reservationId, requestId } : { reservationId };
+		},
+		claimCheckTarget: (index) => {
+			const requestId = plan.kind === 'decision' ? verifyRequestIds[index] : undefined;
 			return requestId ? { reservationId, requestId } : { reservationId };
 		},
 		count: (n) => {

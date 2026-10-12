@@ -62,7 +62,12 @@ import {
 	type BundlePlan,
 	type DecisionRung,
 } from '../lib/decision/routing';
-import { admitBundle, type BundleAdmission } from './bundleAdmission';
+import {
+	admitBundle,
+	admitUnderOuterHold,
+	type BundleAdmission,
+	type OuterHold,
+} from './bundleAdmission';
 import type { RoutingContext } from './context';
 import type { Id } from '../_generated/dataModel';
 import { boundedRoot } from '../lib/llm/actionDeadline';
@@ -92,6 +97,11 @@ export interface BundleRun<Q extends QuestionSet> {
 	readonly masterGate?: 'ai' | 'ai.agent';
 	/** The admission priority of an advisory call; background when absent. */
 	readonly priority?: AdmissionPriority;
+	/**
+	 * The caller's own hold that already covers this advisory call (an
+	 * interpretation run's claim checks): no admission of its own.
+	 */
+	readonly outerHold?: OuterHold;
 	/**
 	 * Called with a failed call's error after its lease is released, for an
 	 * inline caller that must not swallow it (a spend refusal holds, defers or
@@ -201,15 +211,20 @@ async function askLanguageRung<Q extends QuestionSet>(
 	const { object, modelUsed } = await meterLlmCall(
 		ctx,
 		{ ...admitted.target, task: run.plan.task, root: run.root, plane: 'language' },
-		(meter) =>
-			runLlmObject({
-				meter,
-				model,
-				schema: renderDecisionSchema(run.bundle.questions),
-				prompt: renderDecisionPrompt(run.built.state, run.bundle.questions),
-				temperature: DECISION_TEMPERATURE,
-				abortSignal: AbortSignal.timeout(DEFAULT_LANGUAGE_DECISION_DEADLINE_MS),
-			})
+		async (meter) => {
+			try {
+				return await runLlmObject({
+					meter,
+					model,
+					schema: renderDecisionSchema(run.bundle.questions),
+					prompt: renderDecisionPrompt(run.built.state, run.bundle.questions),
+					temperature: DECISION_TEMPERATURE,
+					abortSignal: AbortSignal.timeout(DEFAULT_LANGUAGE_DECISION_DEADLINE_MS),
+				});
+			} finally {
+				run.outerHold?.count(meter.requests.length);
+			}
+		}
 	);
 	return {
 		answers: mapAnswers(run.bundle.questions, object) as AnswersFor<Q>,
@@ -276,17 +291,25 @@ export async function runBundle<Q extends QuestionSet>(
 		return { hasRun: false, why: 'language_rung' };
 	}
 
-	const admitted = await admitBundle(ctx, {
+	const request = {
 		task: plan.task,
-		mode: plan.mode,
-		subjectKey: subjectId(run.subject),
 		feature: DECISION_FEATURE[plan.task],
 		root: run.root,
 		policyVersion: routing.policy.policyVersion,
 		// The selected rung's plane, for the hold and the rows alike (Sol r7 F1).
-		plane: rung === 'decision' ? 'decision' : 'language',
-		...(run.priority ? { priority: run.priority } : {}),
-	});
+		plane: rung === 'decision' ? ('decision' as const) : ('language' as const),
+	};
+	// A shadow observation always takes its own D4 admission; an advisory call
+	// the caller's hold covers takes none.
+	const admitted =
+		run.outerHold && plan.mode === 'advisory'
+			? admitUnderOuterHold(ctx, request, run.outerHold)
+			: await admitBundle(ctx, {
+					...request,
+					mode: plan.mode,
+					subjectKey: subjectId(run.subject),
+					...(run.priority ? { priority: run.priority } : {}),
+				});
 	if (!admitted.isAdmitted) return { hasRun: false, why: admitted.why };
 
 	// The endpoint this call will use, from the ONE resolution above: its rung,

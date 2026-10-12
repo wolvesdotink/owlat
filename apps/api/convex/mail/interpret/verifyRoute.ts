@@ -44,7 +44,8 @@ import type { RoutingContext } from '../../decision/context';
 import { verifyClaims } from './verify';
 import { admissionRefusalOf, type AdmissionRefusalData } from '../../lib/llm/admissionPort';
 import type { AdmissionPriority } from '../../lib/validators/aiRouting';
-import type { InterpretRunHold } from './runHold';
+import type { InterpretRunHold, VerifyHoldPlan } from './runHold';
+import type { OuterHold } from '../../decision/bundleAdmission';
 import { claimCheckState, labelOfVerdict, verdictOfLabel } from './claimCheck';
 import type { VerifyClaim, VerifyVerdict } from './pipeline';
 
@@ -83,13 +84,65 @@ async function readRouting(ctx: ActionCtx): Promise<RoutingContext | null> {
 	}
 }
 
-/** Verify an interpretation's claims under the routing policy. */
+/**
+ * The verification path of a run, decided ONCE before its extraction is
+ * bought, so the run's one hold (`runHold.ts`) covers exactly the path that
+ * will run, for at most as many claims as the cap allows (Sol r2 F2).
+ */
+export interface VerifyPlan {
+	readonly cap: number | null;
+	/**
+	 * `language`: today's verifier. `decision`: one claim check per claim.
+	 * `unavailable`: claim checks are enforced and the provider cannot answer
+	 * (D3), nothing runs. `stale`: the configuration moved under the plan,
+	 * nothing runs and a retry asks again.
+	 */
+	readonly path: 'language' | 'decision' | 'unavailable' | 'stale';
+	/** The decision rung's run, for enforced checks and for shadow observations. */
+	readonly claimRun?: Omit<ClaimRun, 'root'>;
+	readonly mode?: 'advisory' | 'shadow';
+}
+
+export async function planVerification(
+	ctx: ActionCtx,
+	opts: { source: InterpretationSource; mailboxId?: Id<'mailboxes'> }
+): Promise<VerifyPlan> {
+	const routing = await readRouting(ctx);
+	const cap = routing?.policy.verifyClaimCapPerMessage ?? null;
+	const plan = routing ? planClaimCheck(routing.policy) : null;
+	const subject = subjectOf(opts.source, opts.mailboxId);
+	if (!routing || !plan || !subject) return { cap, path: 'language' };
+	// A resolution that throws is treated like a moved configuration: nothing is
+	// verified now and a retry asks again; never the language verifier instead.
+	const resolved = await resolveBundleRung(ctx, routing).catch(() => 'stale' as const);
+	const isDecision = resolved !== 'stale' && resolved.rung === 'decision';
+	const claimRun = isDecision ? { routing, plan, subject, resolved } : undefined;
+	if (plan.mode === 'shadow') {
+		return { cap, path: 'language', mode: 'shadow', ...(claimRun ? { claimRun } : {}) };
+	}
+	if (resolved === 'stale') return { cap, path: 'stale', mode: 'advisory' };
+	if (resolved.rung === 'unavailable') return { cap, path: 'unavailable', mode: 'advisory' };
+	return claimRun
+		? { cap, path: 'decision', mode: 'advisory', claimRun }
+		: { cap, path: 'language', mode: 'advisory' };
+}
+
+/** What the run's hold must cover for this plan (`runHold.ts`). */
+export function verifyHoldPlanOf(plan: VerifyPlan): VerifyHoldPlan {
+	const claims = plan.cap ?? Number.POSITIVE_INFINITY;
+	if (plan.path === 'language') return { kind: 'language', claims };
+	if (plan.path === 'decision' && plan.claimRun?.resolved.plane) {
+		return { kind: 'decision', claims, plane: plan.claimRun.resolved.plane };
+	}
+	return { kind: 'none' };
+}
+
+/** Verify an interpretation's claims along the planned path. */
 export async function verifyRouted(
 	ctx: ActionCtx,
 	claims: readonly VerifyClaim[],
+	plan: VerifyPlan,
 	opts: {
-		source: InterpretationSource;
-		mailboxId?: Id<'mailboxes'>;
 		/** The run's root request: every call of the run groups under it. */
 		root: LlmRootContext;
 		/** The language verifier's admission priority, model and the run's hold (`runHold.ts`). */
@@ -100,32 +153,20 @@ export async function verifyRouted(
 ): Promise<RoutedVerification> {
 	const none = { isUnsendable: false, isCapped: false, isUnavailable: false };
 	if (claims.length === 0) return { verdicts: new Map(), isIncomplete: false, ...none };
-	const routing = await readRouting(ctx);
-	const cap = routing?.policy.verifyClaimCapPerMessage ?? null;
-	const sent = cap === null ? claims : claims.slice(0, cap);
+	const sent = plan.cap === null ? claims : claims.slice(0, plan.cap);
 	const isCapped = sent.length < claims.length;
-	const plan = routing ? planClaimCheck(routing.policy) : null;
-	const subject = subjectOf(opts.source, opts.mailboxId);
-	// A resolution that throws is treated like a moved configuration: nothing is
-	// verified now and a retry asks again; never the language verifier instead.
-	const resolved =
-		routing && plan && subject
-			? await resolveBundleRung(ctx, routing).catch(() => 'stale' as const)
-			: null;
 	const root = opts.root;
 
-	if (routing && plan?.mode === 'advisory' && subject && resolved !== null) {
-		if (resolved === 'stale') {
-			// The configuration moved under the run: nothing is verified now, a retry asks again.
-			return { verdicts: new Map(), isIncomplete: true, ...none, isCapped };
-		}
-		if (resolved.rung === 'unavailable') {
-			return { verdicts: new Map(), isIncomplete: false, ...none, isCapped, isUnavailable: true };
-		}
-		if (resolved.rung === 'decision') {
-			const checked = await checkClaims(ctx, sent, { routing, plan, subject, resolved, root });
-			return { ...checked, isCapped, isUnavailable: false };
-		}
+	if (plan.path === 'stale') {
+		// The configuration moved under the run: nothing is verified now, a retry asks again.
+		return { verdicts: new Map(), isIncomplete: true, ...none, isCapped };
+	}
+	if (plan.path === 'unavailable') {
+		return { verdicts: new Map(), isIncomplete: false, ...none, isCapped, isUnavailable: true };
+	}
+	if (plan.path === 'decision' && plan.claimRun) {
+		const checked = await checkClaims(ctx, sent, { ...plan.claimRun, root }, opts.hold);
+		return { ...checked, isCapped, isUnavailable: false };
 	}
 
 	const verified = await verifyClaims(ctx, sent, {
@@ -134,14 +175,10 @@ export async function verifyRouted(
 		...(opts.model ? { model: opts.model } : {}),
 		...(opts.hold ? { hold: opts.hold } : {}),
 	});
-	if (routing && plan?.mode === 'shadow' && subject && isDecisionRung(resolved)) {
-		await shadowClaims(ctx, sent, verified.verdicts, { routing, plan, subject, resolved, root });
+	if (plan.mode === 'shadow' && plan.claimRun) {
+		await shadowClaims(ctx, sent, verified.verdicts, { ...plan.claimRun, root });
 	}
 	return { ...verified, isCapped, isUnavailable: false };
-}
-
-function isDecisionRung(resolved: ResolvedRung | 'stale' | null): resolved is ResolvedRung {
-	return resolved !== null && resolved !== 'stale' && resolved.rung === 'decision';
 }
 
 interface ClaimRun {
@@ -157,7 +194,11 @@ function askClaim(
 	ctx: ActionCtx,
 	run: ClaimRun,
 	claim: VerifyClaim,
-	extra: { baseline?: { verdict: string }; onCallError?: (error: unknown) => void } = {}
+	extra: {
+		baseline?: { verdict: string };
+		onCallError?: (error: unknown) => void;
+		outerHold?: OuterHold;
+	} = {}
 ) {
 	const built = claimCheckState(claim);
 	if (!built) return null;
@@ -181,7 +222,9 @@ function isOutOfTime(outcome: { hasRun: boolean; why?: string }): boolean {
 async function checkClaims(
 	ctx: ActionCtx,
 	claims: readonly VerifyClaim[],
-	run: ClaimRun
+	run: ClaimRun,
+	/** The run's hold, sized for these checks: each draws on it, none asks for its own. */
+	hold: InterpretRunHold | undefined
 ): Promise<Pick<RoutedVerification, 'verdicts' | 'isIncomplete' | 'isUnsendable' | 'refusal'>> {
 	const verdicts = new Map<string, VerifyVerdict>();
 	let isIncomplete = false;
@@ -192,8 +235,13 @@ async function checkClaims(
 	const onCallError = (error: unknown) => {
 		refusal ??= admissionRefusalOf(error) ?? undefined;
 	};
-	for (const claim of claims) {
-		const pending = askClaim(ctx, run, claim, { onCallError });
+	for (const [index, claim] of claims.entries()) {
+		const target = hold?.claimCheckTarget(index);
+		const outerHold =
+			hold && target?.reservationId && target.requestId
+				? { reservationId: target.reservationId, requestId: target.requestId, count: hold.count }
+				: undefined;
+		const pending = askClaim(ctx, run, claim, { onCallError, ...(outerHold ? { outerHold } : {}) });
 		if (pending === null) {
 			isUnsendable = true;
 			continue;

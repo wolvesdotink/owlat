@@ -19,10 +19,24 @@ vi.mock('../../../decision/bundleRunner', () => ({
 	resolveBundleRung: mocks.resolveBundleRung,
 }));
 
-import { verifyRouted } from '../verifyRoute';
+import { planVerification, verifyHoldPlanOf, verifyRouted } from '../verifyRoute';
 import { AdmissionRefusedError } from '../../../lib/llm/admissionPort';
 import type { VerifyClaim } from '../pipeline';
 import type { Id } from '../../../_generated/dataModel';
+
+/** Plan, then verify, as the run does (the plan is made before the extraction). */
+async function routed(
+	ctx: Parameters<typeof verifyRouted>[0],
+	claims: readonly VerifyClaim[],
+	opts: {
+		source: Parameters<typeof planVerification>[1]['source'];
+		mailboxId?: Id<'mailboxes'>;
+	} & Parameters<typeof verifyRouted>[3]
+) {
+	const { source: from, mailboxId, ...rest } = opts;
+	const plan = await planVerification(ctx, { source: from, ...(mailboxId ? { mailboxId } : {}) });
+	return verifyRouted(ctx, claims, plan, rest);
+}
 
 const claim = (id: string, statement = `Claim ${id}`): VerifyClaim => ({
 	id,
@@ -62,7 +76,7 @@ beforeEach(() => {
 
 describe('claim verification off (the default)', () => {
 	it('sends every claim to the language verifier and asks no decision', async () => {
-		const out = await verifyRouted(ctxWith({}), CLAIMS, { source, root });
+		const out = await routed(ctxWith({}), CLAIMS, { source, root });
 		expect(mocks.verifyClaims).toHaveBeenCalledWith(expect.anything(), CLAIMS, { root });
 		expect(mocks.resolveBundleRung).not.toHaveBeenCalled();
 		expect(mocks.runBundle).not.toHaveBeenCalled();
@@ -70,13 +84,10 @@ describe('claim verification off (the default)', () => {
 		expect(out.verdicts.size).toBe(3);
 	});
 
-	it('reads nothing when there is nothing to verify', async () => {
-		const ctx = ctxWith({});
-		await verifyRouted(ctx, [], { source, root });
-		expect(
-			(ctx as unknown as { runQuery: ReturnType<typeof vi.fn> }).runQuery
-		).not.toHaveBeenCalled();
+	it('calls nothing when there is nothing to verify', async () => {
+		await routed(ctxWith({}), [], { source, root });
 		expect(mocks.verifyClaims).not.toHaveBeenCalled();
+		expect(mocks.runBundle).not.toHaveBeenCalled();
 	});
 });
 
@@ -91,7 +102,7 @@ describe('claim checks enforced', () => {
 				labels: { verdict: 'contradicted' },
 			})
 			.mockResolvedValueOnce({ hasRun: false, why: 'settled', labels: { verdict: 'unknown' } });
-		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+		const out = await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source,
 			root,
 		});
@@ -116,7 +127,7 @@ describe('claim checks enforced', () => {
 	it('leaves a claim without an answer unverified, and the run retries', async () => {
 		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
 		mocks.runBundle.mockResolvedValue({ hasRun: false, why: 'admission_unavailable' });
-		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+		const out = await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source,
 			root,
 		});
@@ -134,7 +145,7 @@ describe('claim checks enforced', () => {
 				return { hasRun: true, status: 'failed' };
 			}
 		);
-		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+		const out = await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source,
 			root,
 		});
@@ -148,7 +159,7 @@ describe('claim checks enforced', () => {
 		mocks.runBundle
 			.mockResolvedValueOnce({ hasRun: true, status: 'complete', labels: { verdict: 'supported' } })
 			.mockResolvedValue({ hasRun: false, why: 'deadline' });
-		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+		const out = await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source,
 			root,
 		});
@@ -160,13 +171,13 @@ describe('claim checks enforced', () => {
 	it('stops shadow observations once the budget is spent', async () => {
 		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
 		mocks.runBundle.mockResolvedValue({ hasRun: false, why: 'deadline' });
-		await verifyRouted(ctxWith({ claimVerification: 'shadow' }), CLAIMS, { source, root });
+		await routed(ctxWith({ claimVerification: 'shadow' }), CLAIMS, { source, root });
 		expect(mocks.runBundle).toHaveBeenCalledTimes(1);
 	});
 
 	it('passes the run hold, model and priority to the language verifier', async () => {
 		const hold = { marker: 'hold' } as never;
-		await verifyRouted(ctxWith({}), CLAIMS, {
+		await routed(ctxWith({}), CLAIMS, {
 			source,
 			root,
 			priority: 'background',
@@ -189,7 +200,7 @@ describe('claim checks enforced', () => {
 			labels: { verdict: 'supported' },
 		});
 		const long = claim('item:9', 'x'.repeat(5_000));
-		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), [long], {
+		const out = await routed(ctxWith({ claimVerification: 'enforce' }), [long], {
 			source,
 			root,
 		});
@@ -200,7 +211,7 @@ describe('claim checks enforced', () => {
 
 	it('keeps the language verifier on the language rung (it IS that rung)', async () => {
 		mocks.resolveBundleRung.mockResolvedValue(rung('language'));
-		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+		const out = await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source,
 			root,
 		});
@@ -211,7 +222,7 @@ describe('claim checks enforced', () => {
 
 	it('verifies nothing, with no language call, when the provider cannot answer (D3)', async () => {
 		mocks.resolveBundleRung.mockResolvedValue(rung('unavailable'));
-		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+		const out = await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source,
 			root,
 		});
@@ -226,7 +237,7 @@ describe('claim checks enforced', () => {
 		['threw', async () => Promise.reject(new Error('decrypt failed'))],
 	])('retries later, with no language call, when the configuration %s', async (_, resolve) => {
 		mocks.resolveBundleRung.mockImplementation(resolve);
-		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+		const out = await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source,
 			root,
 		});
@@ -235,7 +246,7 @@ describe('claim checks enforced', () => {
 	});
 
 	it('uses the language verifier for a Team reply, which no artifact can be about', async () => {
-		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+		const out = await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source: { kind: 'teamReply', id: 'ts_1' as Id<'transactionalSends'> },
 			root,
 		});
@@ -256,7 +267,7 @@ describe('claim checks in shadow', () => {
 			]),
 			isIncomplete: true,
 		});
-		const out = await verifyRouted(ctxWith({ claimVerification: 'shadow' }), CLAIMS, {
+		const out = await routed(ctxWith({ claimVerification: 'shadow' }), CLAIMS, {
 			source: {
 				kind: 'mail',
 				id: 'm_1' as Id<'mailMessages'>,
@@ -281,7 +292,7 @@ describe('claim checks in shadow', () => {
 
 	it('asks no shadow off the decision rung', async () => {
 		mocks.resolveBundleRung.mockResolvedValue(rung('language'));
-		await verifyRouted(ctxWith({ claimVerification: 'shadow' }), CLAIMS, { source, root });
+		await routed(ctxWith({ claimVerification: 'shadow' }), CLAIMS, { source, root });
 		expect(mocks.runBundle).not.toHaveBeenCalled();
 	});
 });
@@ -294,7 +305,7 @@ describe('the cap with claim checks', () => {
 			status: 'complete',
 			labels: { verdict: 'supported' },
 		});
-		const out = await verifyRouted(
+		const out = await routed(
 			ctxWith({ claimVerification: 'enforce', verifyClaimCapPerMessage: 2 }),
 			CLAIMS,
 			{ source, root }
@@ -302,5 +313,76 @@ describe('the cap with claim checks', () => {
 		expect(mocks.runBundle).toHaveBeenCalledTimes(2);
 		expect([...out.verdicts.keys()]).toEqual(['item:0', 'item:1']);
 		expect(out.isCapped).toBe(true);
+	});
+});
+
+describe('the hold plan (Sol r2 F2): one hold sized for the path that runs', () => {
+	const plane = { kind: 'typesafe' } as never;
+
+	it.each([
+		[
+			{ cap: null, path: 'language' as const },
+			{ kind: 'language', claims: Infinity },
+		],
+		[
+			{ cap: 2, path: 'language' as const },
+			{ kind: 'language', claims: 2 },
+		],
+		[
+			{ cap: 4, path: 'decision' as const, claimRun: { resolved: { rung: 'decision', plane } } },
+			{ kind: 'decision', claims: 4, plane },
+		],
+		[{ cap: null, path: 'unavailable' as const }, { kind: 'none' }],
+		[{ cap: null, path: 'stale' as const }, { kind: 'none' }],
+	])('%o → %o', (plan, expected) => {
+		expect(verifyHoldPlanOf(plan as never)).toEqual(expected);
+	});
+
+	it('plans the decision path before extraction, from one resolution', async () => {
+		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
+		const plan = await planVerification(
+			ctxWith({ claimVerification: 'enforce', verifyClaimCapPerMessage: 3 }),
+			{ source }
+		);
+		expect(plan).toMatchObject({ cap: 3, path: 'decision', mode: 'advisory' });
+		expect(mocks.resolveBundleRung).toHaveBeenCalledTimes(1);
+	});
+
+	it('asks each claim check under the run hold, with its keyed request id', async () => {
+		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
+		mocks.runBundle.mockResolvedValue({
+			hasRun: true,
+			status: 'complete',
+			labels: { verdict: 'supported' },
+		});
+		const count = vi.fn();
+		const hold = {
+			claimCheckTarget: (index: number) => ({
+				reservationId: 'run-hold',
+				requestId: `req-${index}`,
+			}),
+			count,
+		} as never;
+		await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS.slice(0, 2), {
+			source,
+			root,
+			hold,
+		});
+		expect(mocks.runBundle.mock.calls.map((call) => call[1].outerHold)).toEqual([
+			{ reservationId: 'run-hold', requestId: 'req-0', count },
+			{ reservationId: 'run-hold', requestId: 'req-1', count },
+		]);
+	});
+
+	it('asks without an outer hold when the run held nothing (no ceiling)', async () => {
+		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
+		mocks.runBundle.mockResolvedValue({ hasRun: false, why: 'busy' });
+		const hold = { claimCheckTarget: () => ({}), count: vi.fn() } as never;
+		await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS.slice(0, 1), {
+			source,
+			root,
+			hold,
+		});
+		expect(mocks.runBundle.mock.calls[0]![1]).not.toHaveProperty('outerHold');
 	});
 });

@@ -92,6 +92,7 @@ import type * as mail_interpret_responsePlanRules from '../mail/interpret/respon
 import type * as mail_interpret_responsePlanState from '../mail/interpret/responsePlanState.js';
 import type * as mail_interpret_retry from '../mail/interpret/retry.js';
 import type * as mail_interpret_run from '../mail/interpret/run.js';
+import type * as mail_interpret_runApply from '../mail/interpret/runApply.js';
 import type * as mail_interpret_scope from '../mail/interpret/scope.js';
 import type * as mail_interpret_scopeChange from '../mail/interpret/scopeChange.js';
 import type * as mail_interpret_sendActivity from '../mail/interpret/sendActivity.js';
@@ -1823,6 +1824,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/responsePlanState': typeof mail_interpret_responsePlanState;
 	'mail/interpret/retry': typeof mail_interpret_retry;
 	'mail/interpret/run': typeof mail_interpret_run;
+	'mail/interpret/runApply': typeof mail_interpret_runApply;
 	'mail/interpret/scope': typeof mail_interpret_scope;
 	'mail/interpret/scopeChange': typeof mail_interpret_scopeChange;
 	'mail/interpret/sendActivity': typeof mail_interpret_sendActivity;

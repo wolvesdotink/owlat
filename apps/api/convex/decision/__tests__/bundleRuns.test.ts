@@ -57,7 +57,10 @@ vi.mock('../../lib/decision/dispatch', async () => ({
 	...(await vi.importActual<object>('../../lib/decision/dispatch')),
 	runDecision: (opts: unknown) => mocks.runDecision(opts),
 }));
-vi.mock('../bundleAdmission', () => ({ admitBundle: mocks.admitBundle }));
+vi.mock('../bundleAdmission', async () => ({
+	...(await vi.importActual<object>('../bundleAdmission')),
+	admitBundle: mocks.admitBundle,
+}));
 
 const rootGlob = import.meta.glob('../../**/*.*s');
 const decisionGlob = Object.fromEntries(

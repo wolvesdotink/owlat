@@ -39,7 +39,7 @@ import type { AdmissionPriority } from '../lib/validators/aiRouting';
 /** What `runDecision` takes from admission: the usage recorder and the admission port. */
 export type AdmittedDecisionOptions = Pick<
 	RunDecisionOptions<QuestionSet>,
-	'recordUsage' | 'admission'
+	'recordUsage' | 'admission' | 'requestId'
 >;
 
 export type BundleAdmission =
@@ -73,6 +73,47 @@ export interface BundleAdmissionRequest {
 	 * waits on it (Answer mode's necessity judgment is `interactive`).
 	 */
 	readonly priority?: AdmissionPriority;
+}
+
+/**
+ * A caller's own hold, sized before it bought anything for the calls this
+ * bundle will make (an interpretation run's hold covers its claim checks):
+ * the call carries the hold's id and its pre-assigned request id, reserves
+ * nothing of its own and so cannot be refused halfway, and reports every
+ * provider request it makes so the hold settles against them (`count`).
+ */
+export interface OuterHold {
+	readonly reservationId: string;
+	readonly requestId: string;
+	count(requests: number): void;
+}
+
+/** An advisory call under the caller's {@link OuterHold}: admitted, nothing more reserved. */
+export function admitUnderOuterHold(
+	ctx: ActionCtx,
+	request: Omit<BundleAdmissionRequest, 'mode' | 'subjectKey' | 'priority'>,
+	hold: OuterHold
+): Extract<BundleAdmission, { isAdmitted: true }> {
+	const recorder = decisionUsageRecorder(ctx, { reservationId: hold.reservationId });
+	return {
+		isAdmitted: true,
+		target: {
+			feature: request.feature,
+			task: request.task,
+			root: request.root,
+			policyVersion: request.policyVersion,
+			plane: request.plane,
+			reservationId: hold.reservationId,
+			requestId: hold.requestId,
+		},
+		decision: {
+			requestId: hold.requestId,
+			recordUsage: async (record) => {
+				hold.count(record.requests.length);
+				await recorder(record);
+			},
+		},
+	};
 }
 
 export async function admitBundle(
