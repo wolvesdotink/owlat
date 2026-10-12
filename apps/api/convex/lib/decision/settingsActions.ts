@@ -134,7 +134,7 @@ export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; 
 			feature: CONNECTION_PROBE_FEATURE,
 			state: CONNECTION_PROBE_STATE,
 			questions: CONNECTION_PROBE_QUESTIONS,
-			provider: await resolveDecisionProvider(ctx),
+			provider: await resolveDecisionProvider(ctx, 'decision.connection_probe'),
 			allowance,
 			maxAttempts: 1,
 			task: 'decision.connection_probe',

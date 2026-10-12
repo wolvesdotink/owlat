@@ -46,7 +46,7 @@ vi.mock('../../../lib/llm/dispatch', async () => {
 });
 vi.mock('../../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
-	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
+	classifiedDraftRouteOf: () => 'capable',
 }));
 const runHostedDraftStrategyMock = vi.fn();
 vi.mock('../draftStrategyHost', () => ({

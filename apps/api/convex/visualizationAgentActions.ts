@@ -71,7 +71,7 @@ export const generate = internalAction({
 			const system = liveData ? buildLiveSystemPrompt(liveData) : ILLUSTRATIVE_SYSTEM_PROMPT;
 
 			const root = rootRequest('analytics', args.visualizationId);
-			const model = await resolveLanguageModel(ctx, 'draft');
+			const model = await resolveLanguageModel(ctx, 'analytics.visualize');
 			const result = await meterLlmCall(ctx, { feature: 'visualization', root }, (meter) =>
 				runLlmText({ meter, model, system, prompt: args.prompt })
 			);
@@ -103,7 +103,7 @@ export const generate = internalAction({
 			}
 
 			// Generate a proper title from the prompt
-			const titleModel = await resolveLanguageModel(ctx, 'summarize');
+			const titleModel = await resolveLanguageModel(ctx, 'analytics.visualize_title');
 			const titleResult = await meterLlmCall(
 				ctx,
 				{ feature: 'visualization_title', root },

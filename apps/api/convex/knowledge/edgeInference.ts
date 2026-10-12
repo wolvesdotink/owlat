@@ -210,7 +210,7 @@ export const inferRelations = internalAction({
 					.map((n, i) => `[${i}] (${n.entryType}) ${n.title}: ${n.content}`)
 					.join('\n');
 
-				const model = await resolveLanguageModel(ctx, 'extract');
+				const model = await resolveLanguageModel(ctx, 'knowledge.relate');
 				const { object, tokenUsage, modelUsed } = await meterLlmCall(
 					ctx,
 					{

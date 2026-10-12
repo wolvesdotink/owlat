@@ -14,6 +14,7 @@ import { isLocalDecisionEngine } from '../lib/decision/configIdentity';
 import { isExcludedFromHostedDecisions } from './exclusion';
 import type { StoredVerdict } from '../lib/decision/calibration';
 import { aiTaskNameValidator } from '../lib/validators/aiRouting';
+import { isItemCoverageEnforced } from '../mail/interpret/planGate';
 
 /** Verdicts one message can hold per task: one per policy version. Bounded. */
 const VERDICTS_PER_TASK = 32;
@@ -77,7 +78,8 @@ export const schedulingGate = internalQuery({
  * The gate's inputs: every artifact of `tasks` about the message, of any kind
  * and state (a stale one blocks too), plus what they are compared with now.
  * `isTruncated`: more than the bound exist, and the gate holds rather than
- * judge a partial set.
+ * judge a partial set. `isItemCoverageEnforced`: the prerequisite of any
+ * decision-driven autonomous input (`lib/decision/autoSendContract.ts`).
  */
 export const autoSendVerdictInputs = internalQuery({
 	args: { inboundMessageId: v.id('inboundMessages'), tasks: v.array(aiTaskNameValidator) },
@@ -94,11 +96,15 @@ export const autoSendVerdictInputs = internalQuery({
 			isTruncated ||= rows.length > VERDICTS_PER_TASK;
 			verdicts.push(...rows.slice(0, VERDICTS_PER_TASK));
 		}
-		if (verdicts.length === 0) return { verdicts, isTruncated, current: null };
+		const isCoverageEnforced = await isItemCoverageEnforced(ctx);
+		if (verdicts.length === 0) {
+			return { verdicts, isTruncated, isItemCoverageEnforced: isCoverageEnforced, current: null };
+		}
 		const message = await ctx.db.get(args.inboundMessageId);
 		return {
 			verdicts,
 			isTruncated,
+			isItemCoverageEnforced: isCoverageEnforced,
 			current: {
 				policyVersion: (await loadRoutingPolicy(ctx)).policyVersion,
 				isDecisionPlaneOn: await isFeatureEnabled(ctx, 'ai.decisionPlane'),

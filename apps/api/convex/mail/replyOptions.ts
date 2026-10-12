@@ -170,7 +170,7 @@ export async function streamReplyOptions(
 	const abortSignal = args.abortSignal
 		? AbortSignal.any([args.abortSignal, flusher.signal])
 		: flusher.signal;
-	const model = await resolveLanguageModel(ctx, 'suggest');
+	const model = await resolveLanguageModel(ctx, 'mail.suggest');
 	try {
 		const result = await runLlmStream({
 			...(args.meter ? { meter: args.meter } : {}),

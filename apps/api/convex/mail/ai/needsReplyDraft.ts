@@ -113,7 +113,7 @@ export async function draftClarificationReply(
 		const plan = await loadThreadPlan(ctx, args.threadId);
 		const result = await runSharedDraft(ctx, {
 			surface: 'personal',
-			resolveModel: () => resolveLanguageModel(ctx, 'draft'),
+			resolveModel: () => resolveLanguageModel(ctx, 'mail.draft'),
 			audience,
 			styleReference: "the owner's",
 			context: context.transcript,
@@ -158,7 +158,7 @@ export async function draftClarificationReply(
 				try {
 					// The same prompt structure minus the confirmed answers — what Owlat
 					// would have drafted WITHOUT asking. No tools: a single cheap pass.
-					const baselineModel = await resolveLanguageModel(ctx, 'draft');
+					const baselineModel = await resolveLanguageModel(ctx, 'mail.draft');
 					const baseline = await meterLlmCall(
 						ctx,
 						{ feature: 'postbox_clarify_delta', root },

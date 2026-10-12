@@ -23,7 +23,7 @@ import { LlmCallMeter, type LlmRequestRecord, type LlmRootContext } from '../lib
 import { taskForFeature, taskPolicy } from '../lib/llm/taskPolicy';
 import { callDeadlineAt } from '../lib/llm/actionDeadline';
 import type { LlmUsagePlane } from '../lib/llmUsageTags';
-import type { AdmissionPriority, BudgetClass } from '../lib/validators/aiRouting';
+import type { AdmissionPriority, BudgetClass, QualityResult } from '../lib/validators/aiRouting';
 import { dispatchAdmissionPort } from './admissionPorts';
 import {
 	MAX_METERED_REQUESTS_PER_WRITE,
@@ -58,6 +58,12 @@ export interface LlmSpendTarget {
 	 */
 	readonly requestId?: string;
 	readonly policyVersion?: number;
+	/**
+	 * The quality assessment of what the call produced (a cheap-first draft:
+	 * `passed`, `escalated`; its escalation: `passed`, `failed`, `abstained`).
+	 * Absent: not assessed.
+	 */
+	readonly qualityResult?: QualityResult;
 	/** Rows of a decision attempt carry the plane's flags. */
 	readonly isFallback?: boolean;
 	readonly isCalibrated?: boolean;
@@ -132,6 +138,7 @@ function callTags(target: LlmSpendTarget, meter: LlmCallMeter) {
 		...(target.budgetClass ? { budgetClass: target.budgetClass } : {}),
 		...(target.reservationId ? { reservationId: target.reservationId } : {}),
 		...(target.policyVersion === undefined ? {} : { policyVersion: target.policyVersion }),
+		...(target.qualityResult ? { qualityResult: target.qualityResult } : {}),
 		...(target.isFallback === undefined ? {} : { isFallback: target.isFallback }),
 		...(target.isCalibrated === undefined ? {} : { isCalibrated: target.isCalibrated }),
 		...(target.isLocalEngine === undefined ? {} : { isLocalEngine: target.isLocalEngine }),

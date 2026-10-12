@@ -72,6 +72,7 @@
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
 import { decisionEnvProblem, envDecisionKind } from './decisionEnvKind';
@@ -440,7 +441,11 @@ async function buildPlane(
  * one, and resolving it for the native adapter would decrypt the language key on
  * every decision for nothing.
  */
-export async function resolveDecisionProvider(ctx: ActionCtx): Promise<ResolvedDecisionProvider> {
+export async function resolveDecisionProvider(
+	ctx: ActionCtx,
+	/** The decision task asked: the `llm` adapter's model is resolved for it (fast tier). */
+	task: AiTaskName
+): Promise<ResolvedDecisionProvider> {
 	const plane = await resolveDecisionConfig(ctx);
 	// D3: an explicit provider that cannot answer is terminal. Nothing is
 	// resolved on the language plane for it.
@@ -455,7 +460,7 @@ export async function resolveDecisionProvider(ctx: ActionCtx): Promise<ResolvedD
 		// language-backed plane has none of its own — the LANGUAGE plane owns that
 		// answer — so an empty id travels as absent.
 		...(plane.modelId ? { modelId: plane.modelId } : {}),
-		...(plane.kind === 'llm' ? { model: await resolveLanguageModel(ctx, 'classify') } : {}),
+		...(plane.kind === 'llm' ? { model: await resolveLanguageModel(ctx, task) } : {}),
 	};
 }
 
@@ -470,7 +475,9 @@ export async function resolveDecisionProvider(ctx: ActionCtx): Promise<ResolvedD
  * an outage becomes a bill rather than an incident — simply does not call this.
  */
 export async function resolveDecisionFallback(
-	ctx: ActionCtx
+	ctx: ActionCtx,
+	/** The decision task asked: the hop's language model is resolved for it (fast tier). */
+	task: AiTaskName
 ): Promise<ResolvedDecisionProvider | undefined> {
 	const plane = await resolveDecisionConfig(ctx);
 	// D3: no hop for a provider that cannot answer at all; the hop is for an
@@ -480,7 +487,7 @@ export async function resolveDecisionFallback(
 		kind: 'llm',
 		config: {},
 		deadlineMs: deadlineForKind('llm'),
-		model: await resolveLanguageModel(ctx, 'classify'),
+		model: await resolveLanguageModel(ctx, task),
 	};
 }
 

@@ -311,7 +311,9 @@ describe('decisionProvider — an explicit provider that cannot answer is termin
 
 	it('refuses to hand out a provider, and resolves no language model, when unavailable', async () => {
 		const { ctx, runAction } = makeCtx(storedRow({ decisionProviderKind: 'typesafe' }));
-		await expect(resolveDecisionProvider(ctx)).rejects.toBeInstanceOf(DecisionProviderUnavailable);
+		await expect(resolveDecisionProvider(ctx, 'mail.triage')).rejects.toBeInstanceOf(
+			DecisionProviderUnavailable
+		);
 		// No language model was resolved for it (that would decrypt the language key).
 		expect(runAction).not.toHaveBeenCalled();
 	});
@@ -323,7 +325,9 @@ describe('decisionProvider — an explicit provider that cannot answer is termin
 		expect(plane.source).toBe('env');
 		expect(plane.unavailable?.code).toBe('invalid_config');
 		expect(plane.unavailable?.reason).toContain("'typesaf'");
-		await expect(resolveDecisionProvider(ctx)).rejects.toBeInstanceOf(DecisionProviderUnavailable);
+		await expect(resolveDecisionProvider(ctx, 'mail.triage')).rejects.toBeInstanceOf(
+			DecisionProviderUnavailable
+		);
 		const { resolveLanguageModel } = await import('../llmProvider');
 		expect(resolveLanguageModel).not.toHaveBeenCalled();
 	});
@@ -347,7 +351,7 @@ describe('decisionProvider — an explicit provider that cannot answer is termin
 		const { ctx } = makeCtx(
 			storedRow({ decisionProviderKind: 'typesafe', isDecisionFallbackEnabled: true })
 		);
-		expect(await resolveDecisionFallback(ctx)).toBeUndefined();
+		expect(await resolveDecisionFallback(ctx, 'mail.triage')).toBeUndefined();
 	});
 
 	it('knows which kinds carry a key of their own', () => {
@@ -418,14 +422,14 @@ describe('decisionProvider — the dispatch-shaped resolution', () => {
 		const { ctx: native } = makeCtx(
 			storedRow({ decisionProviderKind: 'typesafe', ...decisionEnvelopeColumns() })
 		);
-		const nativeProvider = await resolveDecisionProvider(native);
+		const nativeProvider = await resolveDecisionProvider(native, 'mail.triage');
 		expect(nativeProvider.kind).toBe('typesafe');
 		expect(nativeProvider.model).toBeUndefined();
 		expect(nativeProvider.deadlineMs).toBeGreaterThan(0);
 
 		__resetDecisionPlaneCacheForTests();
 		const { ctx: language } = makeCtx(null);
-		const languageProvider = await resolveDecisionProvider(language);
+		const languageProvider = await resolveDecisionProvider(language, 'mail.triage');
 		expect(languageProvider.kind).toBe('llm');
 		expect(languageProvider.model).toBe(LANGUAGE_MODEL);
 	});
@@ -434,7 +438,7 @@ describe('decisionProvider — the dispatch-shaped resolution', () => {
 		const { ctx } = makeCtx(
 			storedRow({ decisionProviderKind: 'typesafe', ...decisionEnvelopeColumns() })
 		);
-		expect(await resolveDecisionFallback(ctx)).toBeUndefined();
+		expect(await resolveDecisionFallback(ctx, 'mail.triage')).toBeUndefined();
 	});
 
 	it('offers the hop when it is on and the primary is not already the language plane', async () => {
@@ -445,7 +449,7 @@ describe('decisionProvider — the dispatch-shaped resolution', () => {
 				...decisionEnvelopeColumns(),
 			})
 		);
-		const fallback = await resolveDecisionFallback(ctx);
+		const fallback = await resolveDecisionFallback(ctx, 'mail.triage');
 		expect(fallback?.kind).toBe('llm');
 		expect(fallback?.model).toBe(LANGUAGE_MODEL);
 	});
@@ -454,7 +458,7 @@ describe('decisionProvider — the dispatch-shaped resolution', () => {
 		const { ctx } = makeCtx(
 			storedRow({ decisionProviderKind: 'llm', isDecisionFallbackEnabled: true })
 		);
-		expect(await resolveDecisionFallback(ctx)).toBeUndefined();
+		expect(await resolveDecisionFallback(ctx, 'mail.triage')).toBeUndefined();
 	});
 });
 

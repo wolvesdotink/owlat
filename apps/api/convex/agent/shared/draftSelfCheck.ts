@@ -17,7 +17,7 @@ import { z } from 'zod';
 import type { LanguageModel } from 'ai';
 import { runLlmObject } from '../../lib/llm/dispatch';
 import { resolveLanguageModel } from '../../lib/llmProvider';
-import { meterLlmCall } from '../../analytics/meteredSpend';
+import { meterLlmCall, type LlmSpendTarget } from '../../analytics/meteredSpend';
 import type { ActionCtx } from '../../_generated/server';
 import type { LlmCallMeter, LlmRootContext } from '../../lib/llm/requestMeter';
 import { logError } from '../../lib/runtimeLog';
@@ -93,13 +93,26 @@ export function buildSelfCheckPrompt(args: { context: string; draft: string }): 
 	);
 }
 
+/**
+ * A self-check that runs inside a caller's reservation (the cheap-first
+ * writer, `./cheapFirstDraft.ts`): the model the reservation was priced on,
+ * the hold and request id its rows carry, and a count of its provider
+ * requests for the caller's settlement. Absent: the check resolves its own
+ * model and is admitted at the dispatch.
+ */
+export interface HeldSelfCheck {
+	readonly model: LanguageModel;
+	readonly target: Pick<LlmSpendTarget, 'reservationId' | 'requestId'>;
+	readonly onRequests: (requests: number) => void;
+}
+
 /** The self-check's answer when the draft was written to a response plan. */
 export interface PlanSelfCheck {
 	quality: DraftQuality;
 	planCheck: PlanCheckOutput;
 }
 
-const draftQualityWithPlanSchema = draftQualitySchema.extend(planCheckShape);
+export const draftQualityWithPlanSchema = draftQualitySchema.extend(planCheckShape);
 
 /** The self-check prompt with the plan's items and the coverage task added. */
 export function buildPlanSelfCheckPrompt(args: {
@@ -119,9 +132,15 @@ export function buildPlanSelfCheckPrompt(args: {
  */
 export async function runDraftSelfCheck(
 	ctx: SpendCtx,
-	args: { context: string; draft: string; spendLabel: string; root?: LlmRootContext }
+	args: {
+		context: string;
+		draft: string;
+		spendLabel: string;
+		root?: LlmRootContext;
+		held?: HeldSelfCheck;
+	}
 ): Promise<DraftQuality | null> {
-	const object = await selfCheckCall(ctx, args.spendLabel, args.root, (model, meter) =>
+	const object = await selfCheckCall(ctx, args, (model, meter) =>
 		runLlmObject({
 			meter,
 			model,
@@ -146,9 +165,10 @@ export async function runPlanSelfCheck(
 		spendLabel: string;
 		plan: readonly PlanPromptItem[];
 		root?: LlmRootContext;
+		held?: HeldSelfCheck;
 	}
 ): Promise<PlanSelfCheck | null> {
-	const object = await selfCheckCall(ctx, args.spendLabel, args.root, (model, meter) =>
+	const object = await selfCheckCall(ctx, args, (model, meter) =>
 		runLlmObject({
 			meter,
 			model,
@@ -174,16 +194,22 @@ function qualityOf(object: z.infer<typeof draftQualitySchema>): DraftQuality {
 /** One metered, fail-soft self-check call on the cheap tier. */
 async function selfCheckCall<T>(
 	ctx: SpendCtx,
-	spendLabel: string,
-	root: LlmRootContext | undefined,
+	args: { spendLabel: string; root?: LlmRootContext; held?: HeldSelfCheck },
 	run: (model: LanguageModel, meter: LlmCallMeter) => Promise<{ object: T }>
 ): Promise<T | null> {
+	const { held, root } = args;
 	try {
-		const model = await resolveLanguageModel(ctx, 'classify'); // cheap / fast tier
+		const model = held?.model ?? (await resolveLanguageModel(ctx, 'mail.draft_check'));
 		const { object } = await meterLlmCall(
 			ctx,
-			{ feature: spendLabel, ...(root ? { root } : {}) },
-			(meter) => run(model, meter),
+			{ feature: args.spendLabel, ...(root ? { root } : {}), ...held?.target },
+			async (meter) => {
+				try {
+					return await run(model, meter);
+				} finally {
+					held?.onRequests(meter.requests.length);
+				}
+			},
 			// A lost row under-counts; the self-check is advisory and must not fail.
 			{ onWriteError: 'ignore' }
 		);

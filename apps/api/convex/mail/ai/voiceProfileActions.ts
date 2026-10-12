@@ -72,7 +72,7 @@ export const refresh = internalAction({
 				.slice(0, 16000);
 
 			// Cheap/fast tier: style extraction, not reply drafting.
-			const model = await resolveLanguageModel(ctx, 'extract');
+			const model = await resolveLanguageModel(ctx, 'mail.voice_profile');
 			const { object } = await meterLlmCall(
 				ctx,
 				{ feature: 'postbox_voice_profile', root: rootRequest('voice_profile', args.mailboxId) },

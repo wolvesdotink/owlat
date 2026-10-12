@@ -101,7 +101,7 @@ describe('the resolver stamps locality on both planes', () => {
 	])('language: an OpenAI-compatible server at %s is local: %s', async (url, isLocal) => {
 		const { resolveLanguageModel } = await import('../llmProvider');
 		const { isLocalModel } = await import('../llm/modelEndpoint');
-		const model = await resolveLanguageModel(makeCtx({ languageBaseUrl: url }), 'classify');
+		const model = await resolveLanguageModel(makeCtx({ languageBaseUrl: url }), 'mail.classify');
 		expect(isLocalModel(model)).toBe(isLocal);
 	});
 
@@ -134,7 +134,7 @@ describe('the resolver stamps locality on both planes', () => {
 			const { resolveLanguageModel, resolveIndexEmbedder } = await import('../llmProvider');
 			const { isLocalModel } = await import('../llm/modelEndpoint');
 			const ctx = { runQuery: vi.fn(async () => null) } as unknown as ActionCtx;
-			expect(isLocalModel(await resolveLanguageModel(ctx, 'classify'))).toBe(isLocal);
+			expect(isLocalModel(await resolveLanguageModel(ctx, 'mail.classify'))).toBe(isLocal);
 			const { model } = await resolveIndexEmbedder(ctx);
 			expect(isLocalModel(model)).toBe(isLocal);
 		}

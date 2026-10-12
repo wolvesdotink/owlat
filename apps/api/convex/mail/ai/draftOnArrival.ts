@@ -96,7 +96,7 @@ export async function generateDraftOnArrival(
 	try {
 		const result = await runSharedDraft(ctx, {
 			surface: 'personal',
-			resolveModel: () => resolveLanguageModel(ctx, 'draft'), // capable tier, lazy for custom strategies
+			resolveModel: () => resolveLanguageModel(ctx, 'mail.draft'), // lazy for custom strategies
 			// Name the owner's address so the model knows which side of the
 			// labelled transcript it writes for (loadForDraft marks both sides).
 			audience: `the mailbox owner (${loaded.ownerAddress}), answering the last message in the thread, which the other party sent`,

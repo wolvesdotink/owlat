@@ -87,7 +87,7 @@ describe('llmProvider', () => {
 				vi.stubEnv('LLM_API_KEY', 'env-test');
 				const { resolveLanguageModel } = await import('../llmProvider');
 				const { ctx } = makeCtx(null);
-				await resolveLanguageModel(ctx, 'classify');
+				await resolveLanguageModel(ctx, 'mail.classify');
 				expect(mockCompatClient).toHaveBeenCalledWith(modelId);
 				expect(mockCreateOpenAICompatible).toHaveBeenCalledWith(
 					expect.objectContaining({ baseURL: baseUrl })
@@ -99,7 +99,7 @@ describe('llmProvider', () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
-			const model = await resolveLanguageModel(ctx, 'classify');
+			const model = await resolveLanguageModel(ctx, 'mail.classify');
 			expect(model).toBeDefined();
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-6-luna');
 		});
@@ -108,29 +108,29 @@ describe('llmProvider', () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
-			const model = await resolveLanguageModel(ctx, 'draft');
+			const model = await resolveLanguageModel(ctx, 'mail.draft');
 			expect(model).toBeDefined();
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-6.1-sol');
 		});
 
-		it('routes classify/extract/guard/summarize/suggest to the fast tier', async () => {
+		it('routes a task whose usual tier is fast to the fast tier', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			vi.stubEnv('LLM_MODEL_FAST', 'gpt-4o-mini-test');
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
-			for (const task of ['classify', 'extract', 'guard', 'summarize', 'suggest'] as const) {
+			for (const task of ['mail.classify', 'mail.extract', 'mail.guard', 'mail.suggest'] as const) {
 				mockOpenAIFactory.mockClear();
 				await resolveLanguageModel(ctx, task);
 				expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-mini-test');
 			}
 		});
 
-		it('routes draft/plan to the capable tier', async () => {
+		it('routes a task whose usual tier is capable to the capable tier', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			vi.stubEnv('LLM_MODEL_CAPABLE', 'gpt-4o-test');
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
-			for (const task of ['draft', 'plan'] as const) {
+			for (const task of ['mail.draft', 'mail.ask', 'analytics.visualize'] as const) {
 				mockOpenAIFactory.mockClear();
 				await resolveLanguageModel(ctx, task);
 				expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-4o-test');
@@ -143,7 +143,9 @@ describe('llmProvider', () => {
 			delete process.env['OPENAI_API_KEY'];
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
-			await expect(resolveLanguageModel(ctx, 'classify')).rejects.toThrow('LLM API not configured');
+			await expect(resolveLanguageModel(ctx, 'mail.classify')).rejects.toThrow(
+				'LLM API not configured'
+			);
 		});
 
 		it('does not throw for ollama even without an API key', async () => {
@@ -153,7 +155,7 @@ describe('llmProvider', () => {
 			delete process.env['OPENAI_API_KEY'];
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
-			await expect(resolveLanguageModel(ctx, 'classify')).resolves.toBeDefined();
+			await expect(resolveLanguageModel(ctx, 'mail.classify')).resolves.toBeDefined();
 		});
 
 		it('prefers LLM_API_KEY over OPENAI_API_KEY', async () => {
@@ -161,18 +163,33 @@ describe('llmProvider', () => {
 			vi.stubEnv('OPENAI_API_KEY', 'fallback-key');
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
-			await resolveLanguageModel(ctx, 'classify');
+			await resolveLanguageModel(ctx, 'mail.classify');
 			expect(mockCreateOpenAI).toHaveBeenCalledWith(
 				expect.objectContaining({ apiKey: 'primary-key' })
 			);
 		});
 
-		it('defaults to the draft task when none is specified', async () => {
+		it('resolves a tier the task allows when the call site names it', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
-			await resolveLanguageModel(ctx);
+			await resolveLanguageModel(ctx, 'mail.clarify', { tier: 'capable' });
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-6.1-sol');
+		});
+
+		it('refuses a tier the task-policy catalog does not allow, before any client is built', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'test-key');
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { TaskTierNotEligibleError } = await import('../llm/taskRouting');
+			const { ctx, runQuery } = makeCtx(null);
+			await expect(resolveLanguageModel(ctx, 'mail.guard', { tier: 'capable' })).rejects.toThrow(
+				TaskTierNotEligibleError
+			);
+			await expect(resolveLanguageModel(ctx, 'embedding.index')).rejects.toThrow(
+				TaskTierNotEligibleError
+			);
+			expect(runQuery).not.toHaveBeenCalled();
+			expect(mockOpenAIFactory).not.toHaveBeenCalled();
 		});
 	});
 
@@ -183,7 +200,7 @@ describe('llmProvider', () => {
 			const { resolveLanguageModelWithProvenance } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
 
-			await expect(resolveLanguageModelWithProvenance(ctx, 'summarize')).resolves.toMatchObject({
+			await expect(resolveLanguageModelWithProvenance(ctx, 'mail.clarify')).resolves.toMatchObject({
 				modelId: 'gpt-4o-mini',
 				endpointProvenance: 'openai-native',
 			});
@@ -196,7 +213,7 @@ describe('llmProvider', () => {
 			const { resolveLanguageModelWithProvenance } = await import('../llmProvider');
 			const { ctx } = makeCtx(null);
 
-			await expect(resolveLanguageModelWithProvenance(ctx, 'summarize')).resolves.toMatchObject({
+			await expect(resolveLanguageModelWithProvenance(ctx, 'mail.clarify')).resolves.toMatchObject({
 				modelId: 'gpt-4o-mini',
 				endpointProvenance: 'custom',
 			});
@@ -214,7 +231,9 @@ describe('llmProvider', () => {
 				const { resolveLanguageModelWithProvenance } = await import('../llmProvider');
 				const { ctx } = makeCtx(null);
 
-				await expect(resolveLanguageModelWithProvenance(ctx, 'summarize')).resolves.toMatchObject({
+				await expect(
+					resolveLanguageModelWithProvenance(ctx, 'mail.clarify')
+				).resolves.toMatchObject({
 					modelId,
 					endpointProvenance,
 				});
@@ -361,7 +380,7 @@ describe('llmProvider', () => {
 		it('a text call decrypts only the language key', async () => {
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx, runAction } = makeCtx(twoKeyRow());
-			await resolveLanguageModel(ctx, 'draft');
+			await resolveLanguageModel(ctx, 'mail.draft');
 			expect(decrypted(runAction)).toEqual(['lang-ct']);
 		});
 
@@ -395,19 +414,19 @@ describe('llmProvider', () => {
 			vi.setSystemTime(new Date('2026-09-29T10:00:00Z'));
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx, runQuery, runAction } = makeCtx(twoKeyRow());
-			await resolveLanguageModel(ctx, 'draft');
+			await resolveLanguageModel(ctx, 'mail.draft');
 			// Inside the 30 s recheck window: no row read, no decrypt.
 			vi.setSystemTime(new Date('2026-09-29T10:00:20Z'));
-			await resolveLanguageModel(ctx, 'draft');
+			await resolveLanguageModel(ctx, 'mail.draft');
 			expect(runQuery).toHaveBeenCalledTimes(1);
 			// Past the recheck: the row is read again, but an unchanged row keeps the key.
 			vi.setSystemTime(new Date('2026-09-29T10:04:00Z'));
-			await resolveLanguageModel(ctx, 'draft');
+			await resolveLanguageModel(ctx, 'mail.draft');
 			expect(runQuery).toHaveBeenCalledTimes(2);
 			expect(runAction).toHaveBeenCalledTimes(1);
 			// Past the five-minute TTL the key is decrypted afresh.
 			vi.setSystemTime(new Date('2026-09-29T10:05:30Z'));
-			await resolveLanguageModel(ctx, 'draft');
+			await resolveLanguageModel(ctx, 'mail.draft');
 			expect(runAction).toHaveBeenCalledTimes(2);
 		});
 
@@ -468,9 +487,9 @@ describe('llmProvider', () => {
 		it('invalidateAiConfigCache makes the next call re-read the row', async () => {
 			const { resolveLanguageModel, invalidateAiConfigCache } = await import('../llmProvider');
 			const { ctx, runQuery } = makeCtx(twoKeyRow());
-			await resolveLanguageModel(ctx, 'draft');
+			await resolveLanguageModel(ctx, 'mail.draft');
 			invalidateAiConfigCache();
-			await resolveLanguageModel(ctx, 'draft');
+			await resolveLanguageModel(ctx, 'mail.draft');
 			expect(runQuery).toHaveBeenCalledTimes(2);
 		});
 
@@ -478,47 +497,81 @@ describe('llmProvider', () => {
 			const { resolveLanguageModel } = await import('../llmProvider');
 			const { ctx, runAction } = makeCtx(twoKeyRow());
 			runAction.mockRejectedValueOnce(new Error('decrypt failed'));
-			await expect(resolveLanguageModel(ctx, 'draft')).rejects.toThrow('decrypt failed');
-			await resolveLanguageModel(ctx, 'draft');
+			await expect(resolveLanguageModel(ctx, 'mail.draft')).rejects.toThrow('decrypt failed');
+			await resolveLanguageModel(ctx, 'mail.draft');
 			expect(runAction).toHaveBeenCalledTimes(2);
 		});
 	});
 
-	// ============ resolveLanguageModelForClassifiedDraft ============
+	// ============ classifiedDraftRouteOf (the draft step's route) ============
 
-	describe('resolveLanguageModelForClassifiedDraft', () => {
+	describe('classifiedDraftRouteOf', () => {
 		const trivial = {
 			category: 'other',
 			intent: 'acknowledgment',
 			priority: 'low',
 			confidence: 0.95,
 		};
+		const information = { ...trivial, intent: 'information' };
 		const complex = { category: 'support', intent: 'question', priority: 'high', confidence: 0.95 };
+		const reviewedCheapFirst = { cheapFirstWriter: 'reviewed', isReviewedDraft: true } as const;
+
+		/** The model the draft step resolves for `route`, exactly as the step does. */
+		async function draftModelFor(route: string): Promise<void> {
+			const { resolveLanguageModel } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			await resolveLanguageModel(ctx, 'mail.draft', {
+				tier: route === 'fast' ? 'fast' : 'capable',
+			});
+		}
 
 		it('keeps the capable tier when complexity routing is off (default)', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
-			const { resolveLanguageModelForClassifiedDraft } = await import('../llmProvider');
-			const { ctx } = makeCtx(null);
-			await resolveLanguageModelForClassifiedDraft(ctx, trivial);
+			const { classifiedDraftRouteOf } = await import('../llmProvider');
+			const route = classifiedDraftRouteOf(trivial);
+			expect(route).toBe('capable');
+			await draftModelFor(route);
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-6.1-sol');
 		});
 
 		it('downgrades a trivial message to the fast tier when routing is on', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			vi.stubEnv('LLM_COMPLEXITY_ROUTING', '1');
-			const { resolveLanguageModelForClassifiedDraft } = await import('../llmProvider');
-			const { ctx } = makeCtx(null);
-			await resolveLanguageModelForClassifiedDraft(ctx, trivial);
+			const { classifiedDraftRouteOf } = await import('../llmProvider');
+			const route = classifiedDraftRouteOf(trivial);
+			expect(route).toBe('fast');
+			await draftModelFor(route);
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-6-luna');
 		});
 
 		it('keeps a complex message on the capable tier even when routing is on', async () => {
 			vi.stubEnv('OPENAI_API_KEY', 'test-key');
 			vi.stubEnv('LLM_COMPLEXITY_ROUTING', '1');
-			const { resolveLanguageModelForClassifiedDraft } = await import('../llmProvider');
-			const { ctx } = makeCtx(null);
-			await resolveLanguageModelForClassifiedDraft(ctx, complex);
+			const { classifiedDraftRouteOf } = await import('../llmProvider');
+			const route = classifiedDraftRouteOf(complex);
+			expect(route).toBe('capable');
+			await draftModelFor(route);
 			expect(mockOpenAIFactory).toHaveBeenCalledWith('gpt-6.1-sol');
+		});
+
+		it('activates a newly eligible intent only cheap-first, only for a reviewed draft', async () => {
+			vi.stubEnv('LLM_COMPLEXITY_ROUTING', '1');
+			const { classifiedDraftRouteOf } = await import('../llmProvider');
+			// The auto-sendable route never reads the widened allowlist.
+			expect(classifiedDraftRouteOf(information)).toBe('capable');
+			expect(
+				classifiedDraftRouteOf(information, { cheapFirstWriter: 'off', isReviewedDraft: true })
+			).toBe('capable');
+			expect(
+				classifiedDraftRouteOf(information, {
+					cheapFirstWriter: 'reviewed',
+					isReviewedDraft: false,
+				})
+			).toBe('capable');
+			expect(classifiedDraftRouteOf(information, reviewedCheapFirst)).toBe('cheap_first');
+			// Today's downgrade keeps its own route; a complex message never goes cheap-first.
+			expect(classifiedDraftRouteOf(trivial, reviewedCheapFirst)).toBe('fast');
+			expect(classifiedDraftRouteOf(complex, reviewedCheapFirst)).toBe('capable');
 		});
 	});
 

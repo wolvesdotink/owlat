@@ -225,6 +225,11 @@ export const inboxTables = {
 		// confidenceScore; the route step gates auto-send on this, not on the
 		// classifier confidence. Absent when the self-check failed.
 		draftQuality: v.optional(draftQualityValidator),
+		// The draft was written cheap-first (ADR-0073, D2): a REVIEWED draft. It
+		// has had no safety evaluation of its own, so the `cheap_first_draft`
+		// auto-send gate never sends it. Written with the draft it describes
+		// (`inbox/stepOutputs.recordDraftOutput`), and cleared by the next draft.
+		isCheapFirstDraft: v.optional(v.boolean()),
 		// Context compaction tier used (for transparency in review queue)
 		contextTier: v.optional(contextTierValidator),
 		// Retrieval coverage / grounding signal from context_retrieval —

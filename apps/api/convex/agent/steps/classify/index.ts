@@ -179,7 +179,7 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 	llm: { tier: 'fast' },
 
 	async execute(ctx, input) {
-		const model = await resolveLanguageModel(ctx, 'classify');
+		const model = await resolveLanguageModel(ctx, 'mail.classify');
 
 		// The usage also rides back to the walker for the step's agentActions
 		// row, which is a reporting view; the ledger row is the one that counts.
