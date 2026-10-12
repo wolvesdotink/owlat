@@ -3,6 +3,7 @@ import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import {
 	estimateCost,
 	estimateCostUsd,
+	estimateAdmissionCostMicrousd,
 	estimateKnownCostMicrousd,
 	providerLabelForModel,
 } from '../pricing';
@@ -104,8 +105,26 @@ describe('known-model fixed-point admission pricing', () => {
 	it('uses Haiku long-context pricing and reserves the cache-write ceiling', () => {
 		const usage = { promptTokens: 100_001, completionTokens: 1000, totalTokens: 101_001 };
 		expect(estimateCostUsd('claude-haiku-5-5', usage)).toBeCloseTo(0.0525005);
-		expect(estimateKnownCostMicrousd('openrouter', 'anthropic/claude-haiku-5.5', usage)).toBe(
+		expect(estimateAdmissionCostMicrousd('openrouter', 'anthropic/claude-haiku-5.5', usage)).toBe(
 			102_501
+		);
+	});
+
+	it('settles at list price: the cache-write ceiling is for admission only', () => {
+		// 1M input × $2 + 1M output × $10 at Sonnet 5.5 list rates.
+		const listMicrousd = 2_000_000 + 10_000_000;
+		for (const [endpoint, modelId] of [
+			['anthropic-native', 'claude-sonnet-5-5'],
+			['openrouter', 'anthropic/claude-sonnet-5.5'],
+		] as const) {
+			expect(estimateKnownCostMicrousd(endpoint, modelId, oneMillionEach)).toBe(listMicrousd);
+			expect(estimateAdmissionCostMicrousd(endpoint, modelId, oneMillionEach)).toBe(
+				listMicrousd + 2_000_000
+			);
+		}
+		// A model without a ceiling reserves exactly its list price.
+		expect(estimateAdmissionCostMicrousd('openai-native', 'gpt-6-luna', oneMillionEach)).toBe(
+			estimateKnownCostMicrousd('openai-native', 'gpt-6-luna', oneMillionEach)
 		);
 	});
 	it('ceil-prices exact models on their trusted native endpoints', () => {

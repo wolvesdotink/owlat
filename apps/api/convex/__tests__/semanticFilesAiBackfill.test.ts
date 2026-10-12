@@ -78,7 +78,6 @@ const saveProvider = (t: T) =>
 		isLanguageLocal: false,
 		languageEnvelope: { ...encryptSecret('sk-language-key'), keyPreview: 'sk-…-key' },
 		embeddingProviderKind: 'local',
-		isEmbeddingLocal: true,
 	});
 
 beforeEach(() => {

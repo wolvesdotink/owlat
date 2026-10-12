@@ -7,6 +7,7 @@
 			"slices": ["team_notes", "en"],
 			"locale": "en",
 			"mode": "actions",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Acme Support",
@@ -52,6 +53,31 @@
 							"email": "support@acme.example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"teamCategory": "support",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hello Jonas,\n\nI'm sorry your order 4411 arrived damaged. Could you send us a photo of the damage? We'll get back to you with the next steps right after.\n\nAcme Support",
+								"acceptance": "accept",
+								"reason": "Acknowledges and asks the sender for evidence without promising the replacement the team has not approved."
+							},
+							{
+								"id": "d2",
+								"text": "Hello Jonas,\n\nwe have refunded your order in full (EUR 380).\n\nAcme Support",
+								"acceptance": "reject",
+								"reason": "Invents a refund and an amount, against the team note."
+							}
+						]
+					}
 				]
 			},
 			"internalNotes": [
@@ -67,6 +93,7 @@
 			"slices": ["team_notes", "de"],
 			"locale": "de",
 			"mode": "actions",
+			"split": "train",
 			"us": [
 				{
 					"name": "Acme Support",
@@ -112,6 +139,25 @@
 							"email": "support@acme.example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"teamCategory": "support",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hallo Lena,\n\ndanke für deine Nachricht. Wir sehen uns deinen Zugang an und melden uns gleich bei dir.\n\nViele Grüße\ndein Acme Support",
+								"acceptance": "accept",
+								"reason": "Informal du; acknowledges without claiming the reset happened or promising how."
+							}
+						]
+					}
 				]
 			},
 			"internalNotes": [
@@ -127,6 +173,7 @@
 			"slices": ["team_notes", "en"],
 			"locale": "en",
 			"mode": "actions",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Acme Support",
@@ -172,6 +219,25 @@
 							"email": "support@acme.example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"teamCategory": "billing",
+						"clarification": {
+							"necessity": "not_needed"
+						},
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hi Tomás,\n\nthanks, we've received your request to cancel your subscription at the end of this month. We'll get back to you about it shortly.\n\nAcme Support",
+								"acceptance": "accept",
+								"reason": "Acknowledges the request without claiming the cancellation was processed."
+							}
+						]
+					}
 				]
 			},
 			"internalNotes": [
@@ -187,6 +253,7 @@
 			"slices": ["team_notes", "en"],
 			"locale": "en",
 			"mode": "actions",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Acme Support",
@@ -232,6 +299,17 @@
 							"email": "support@acme.example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"teamCategory": "billing",
+						"clarification": {
+							"necessity": "needed"
+						}
+					}
 				]
 			},
 			"internalNotes": [
@@ -247,6 +325,7 @@
 			"slices": ["team_notes", "en"],
 			"locale": "en",
 			"mode": "actions",
+			"split": "train",
 			"us": [
 				{
 					"name": "Acme Support",
@@ -291,6 +370,25 @@
 							"name": "Acme Support",
 							"email": "support@acme.example.com"
 						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"teamCategory": "other",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"drafts": [
+							{
+								"id": "d1",
+								"text": "Hi Noah,\n\nwe're open around the clock over the holidays!\n\nAcme Support",
+								"acceptance": "reject",
+								"reason": "Invents opening hours."
+							}
+						]
 					}
 				]
 			},

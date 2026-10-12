@@ -31,9 +31,9 @@
  *     stored hosted embedder (decrypted key) → stored local default → env.
  *
  * A misconfigured hosted embedder surfaces an actionable error at resolve time
- * (never a silent empty/zero vector); changing the embedder bumps the stored
- * `embeddingModelVersion` so a re-index can be prompted, and every vector is
- * fitted to the index width by `toIndexVector` (narrower ones zero-padded).
+ * (never a silent empty/zero vector). The settings save refuses to change the
+ * embedding space while the corpus holds vectors (`./embeddingSpace`), and every
+ * vector is fitted to the index width by `toIndexVector` (narrower ones zero-padded).
  *
  * Environment (fallback only):
  *   LLM_PROVIDER        openai (default) | openrouter | ollama
@@ -44,7 +44,6 @@
  *   LOCAL_EMBEDDING_BASE_URL / LOCAL_EMBEDDING_MODEL    local embedder sidecar
  */
 
-import { LEGACY_GOOGLE_EMBEDDING_MODEL } from '@owlat/shared/aiModelCatalog';
 import type { EmbeddingModel, LanguageModel } from 'ai';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -55,7 +54,13 @@ import {
 	isTrivialClassifiedMessage,
 	type ClassificationSignals,
 } from './llm/complexity';
-import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from './constants';
+import { EMBEDDING_DIMENSIONS } from './constants';
+import {
+	embeddingSpaceKey,
+	envEmbeddingModel,
+	resolvedEmbeddingSpace,
+	resolveStoredEmbeddingModel,
+} from './embeddingSpace';
 import {
 	classifyEnvLanguageEndpoint,
 	classifyStoredLanguageEndpoint,
@@ -119,12 +124,6 @@ interface ResolvedProviderConfig {
 	/** The stored row's `updatedAt`, when resolved from stored config. */
 	readonly updatedAt?: number;
 }
-
-// The default embedding model is the one stamped on rows as provenance
-// (CURRENT_EMBEDDING_MODEL). Single-sourcing it here keeps the resolved model
-// and the stamped model from drifting, preserving the schema's "re-embed when
-// the model changes" invariant.
-const DEFAULT_EMBEDDING_MODEL = CURRENT_EMBEDDING_MODEL;
 
 function taskTier(task: LLMTask): LLMTier {
 	return task === 'draft' || task === 'plan' ? 'capable' : 'fast';
@@ -193,13 +192,14 @@ function resolveEmbeddingPlane(
 	modelVersion: number | undefined
 ): ResolvedEmbeddingPlane {
 	const adapter = embeddingProviderFor(kind);
-	const modelDefault = adapter.isLocal
-		? (getOptional('LOCAL_EMBEDDING_MODEL') ?? adapter.defaultModel)
-		: adapter.defaultModel;
 	const clientConfig: ProviderClientConfig = adapter.isLocal
 		? { baseUrl: getOptional('LOCAL_EMBEDDING_BASE_URL') ?? adapter.defaultBaseUrl }
 		: { apiKey: hostedKey };
-	return { kind, modelId: storedModel ?? modelDefault, clientConfig, modelVersion };
+	const modelId = resolveStoredEmbeddingModel({
+		embeddingProviderKind: kind,
+		embeddingModel: storedModel,
+	});
+	return { kind, modelId, clientConfig, modelVersion };
 }
 
 /** Resolve both planes from the env `LLM_*` fallback (no stored row present). */
@@ -220,7 +220,7 @@ function resolveEnvProviderConfig(): ResolvedProviderConfig {
 		},
 		embedding: {
 			kind: ENV_EMBEDDING_KIND,
-			modelId: getOptional('LLM_EMBEDDING_MODEL') ?? DEFAULT_EMBEDDING_MODEL,
+			modelId: envEmbeddingModel(),
 			clientConfig,
 		},
 	};
@@ -252,8 +252,7 @@ export function buildStoredProviderConfig(
 		},
 		embedding: resolveEmbeddingPlane(
 			row.embeddingProviderKind,
-			row.embeddingModel ??
-				(row.embeddingProviderKind === 'google' ? LEGACY_GOOGLE_EMBEDDING_MODEL : undefined),
+			row.embeddingModel,
 			embeddingKey,
 			row.embeddingModelVersion
 		),
@@ -285,12 +284,22 @@ async function resolveLanguagePlane(ctx: ActionCtx): Promise<ResolvedLanguagePla
 	return buildStoredProviderConfig(entry.row, languageKey, undefined).language;
 }
 
-/** The embedding plane alone: never decrypts the language key. */
-async function resolveEmbeddingPlaneConfig(ctx: ActionCtx): Promise<ResolvedEmbeddingPlane> {
-	const entry = await loadConfigEntry(ctx);
-	if (!entry.row) return resolveEnvProviderConfig().embedding;
+/**
+ * The embedding plane alone: never decrypts the language key. Always reads the
+ * current row, and returns the key of the space it resolved, so a vector can be
+ * checked against the space current when it is committed.
+ */
+async function resolveEmbeddingPlaneConfig(
+	ctx: ActionCtx
+): Promise<{ plane: ResolvedEmbeddingPlane; embeddingSpaceKey: string }> {
+	const entry = await loadConfigEntry(ctx, { isFresh: true });
+	const spaceKey = embeddingSpaceKey(resolvedEmbeddingSpace(entry.row));
+	if (!entry.row) {
+		return { plane: resolveEnvProviderConfig().embedding, embeddingSpaceKey: spaceKey };
+	}
 	const embeddingKey = await planeKey(ctx, entry, 'embedding');
-	return buildStoredProviderConfig(entry.row, undefined, embeddingKey).embedding;
+	const plane = buildStoredProviderConfig(entry.row, undefined, embeddingKey).embedding;
+	return { plane, embeddingSpaceKey: spaceKey };
 }
 
 /** Test-only: drop the in-process config cache so a fresh resolution runs. */
@@ -403,13 +412,28 @@ function assertKnownEmbeddingWidth(modelId: string): void {
  * try/catch so a misconfiguration surfaces rather than being swallowed.
  */
 export async function resolveEmbeddingModel(ctx: ActionCtx): Promise<EmbeddingModel> {
-	const { kind, modelId, clientConfig } = await resolveEmbeddingPlaneConfig(ctx);
+	return (await resolveIndexEmbedder(ctx)).model;
+}
+
+/**
+ * The embedding model plus the key of the space it writes. A job that commits
+ * vectors passes `embeddingSpaceKey` to its commit mutation, which drops the
+ * vector if the space changed meanwhile (`vectorFieldsForCommit`).
+ */
+export async function resolveIndexEmbedder(
+	ctx: ActionCtx
+): Promise<{ model: EmbeddingModel; embeddingSpaceKey: string }> {
+	const { plane, embeddingSpaceKey: spaceKey } = await resolveEmbeddingPlaneConfig(ctx);
+	const { kind, modelId, clientConfig } = plane;
 	assertKnownEmbeddingWidth(modelId);
 	const adapter = embeddingProviderFor(kind);
 	// Surface an unusable config (missing hosted key / local base URL) as an
 	// actionable error before building the model.
 	adapter.validateCredentials({ ...clientConfig, modelId });
-	return adapter.buildEmbeddingModel({ ...clientConfig, modelId });
+	return {
+		model: adapter.buildEmbeddingModel({ ...clientConfig, modelId }),
+		embeddingSpaceKey: spaceKey,
+	};
 }
 
 /**
@@ -450,7 +474,7 @@ export function getLLMConfig() {
 		provider: getOptional('LLM_PROVIDER') ?? 'openai',
 		modelFast: modelIdForTier('fast'),
 		modelCapable: modelIdForTier('capable'),
-		embeddingModel: getOptional('LLM_EMBEDDING_MODEL') ?? DEFAULT_EMBEDDING_MODEL,
+		embeddingModel: envEmbeddingModel(),
 		baseURL: resolveBaseURL(),
 		hasApiKey: !!envLlmApiKey(),
 	};

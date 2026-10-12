@@ -28,6 +28,8 @@ import {
 import { batchGet } from '../_utils/batchLoader';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { sameContactScope } from '../lib/contactScope';
+import { vectorFieldsForCommit } from '../lib/embeddingSpace';
+import { logInfo } from '../lib/runtimeLog';
 import {
 	entryTypeValidator,
 	sourceTypeValidator,
@@ -496,23 +498,29 @@ export const saveEntry = internalMutation({
 	// `contentHash` (computed by the 'use node' extraction action) enables the
 	// cross-source write-dedup leg below and the deterministic linker's
 	// exact-dup lookups.
-	args: pick(knowledgeEntriesFields, [
-		'entryType',
-		'title',
-		'content',
-		'sourceType',
-		'sourceId',
-		'contactIds',
-		'threadId',
-		'embedding',
-		'embeddingModel',
-		'embeddingGeneratedAt',
-		'confidence',
-		'tags',
-		'expiresAt',
-		'contentHash',
-	]),
-	handler: async (ctx, args) => {
+	args: {
+		...pick(knowledgeEntriesFields, [
+			'entryType',
+			'title',
+			'content',
+			'sourceType',
+			'sourceId',
+			'contactIds',
+			'threadId',
+			'embedding',
+			'embeddingModel',
+			'embeddingGeneratedAt',
+			'confidence',
+			'tags',
+			'expiresAt',
+			'contentHash',
+		]),
+		// The space the job embedded with; a stale vector is dropped (vectorFieldsForCommit).
+		// Optional for previous-release jobs, whose vector is dropped; required
+		// after release N+1.
+		embeddingSpaceKey: v.optional(v.string()),
+	},
+	handler: async (ctx, { embeddingSpaceKey, ...args }) => {
 		const now = Date.now();
 		// Write-level idempotency, leg 1 — same source: if an entry from the same
 		// source already exists with this title, return it instead of inserting a
@@ -556,8 +564,11 @@ export const saveEntry = internalMutation({
 			);
 			if (dup) return dup._id;
 		}
+		const { isStale, ...vector } = await vectorFieldsForCommit(ctx.db, args, embeddingSpaceKey);
+		if (isStale) logInfo('[knowledge.saveEntry] stale embedding space, stored without vector');
 		const entry = {
 			...args,
+			...vector,
 			searchableText: `${args.title} ${args.content}`,
 			lastValidatedAt: now,
 			createdAt: now,

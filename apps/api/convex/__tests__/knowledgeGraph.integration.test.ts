@@ -4,6 +4,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { createTestContact, createTestKnowledgeEntry, enableFeatures } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -716,6 +717,7 @@ describe('knowledgeGraph.getByContact', () => {
 		});
 
 		await t.mutation(internal.knowledge.graph.saveEntry, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			entryType: 'goal',
 			title: 'Agent Goal',
 			content: 'extracted goal',
@@ -846,6 +848,7 @@ describe('knowledgeGraph.saveEntry', () => {
 		const embedding = Array.from({ length: 10 }, (_, i) => i * 0.1);
 
 		const entryId = await t.mutation(internal.knowledge.graph.saveEntry, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			entryType: 'goal',
 			title: 'Agent-extracted Goal',
 			content: 'Complete project by Q2.',
@@ -892,6 +895,7 @@ describe('knowledgeGraph.saveEntry', () => {
 		});
 
 		const entryId = await t.mutation(internal.knowledge.graph.saveEntry, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			entryType: 'fact',
 			title: 'Thread Fact',
 			content: 'Fact from a thread.',

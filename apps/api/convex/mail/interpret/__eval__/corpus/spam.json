@@ -1,0 +1,138 @@
+{
+	"version": 1,
+	"slice": "spam",
+	"threads": [
+		{
+			"id": "spam-001",
+			"slices": ["spam", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"split": "heldout",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Claims Department",
+						"email": "claims@lotto-win.example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T08:00:00+02:00",
+					"subject": "You have won!",
+					"text": "Congratulations!\n\nYour email address has won EUR 850,000 in our international draw. Send your full name, bank details and a copy of your passport to claim your prize.\n\nClaims Department\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "spam",
+						"disposition": "informational",
+						"postboxCategory": "spam",
+						"senderKnown": false
+					}
+				]
+			}
+		},
+		{
+			"id": "spam-002",
+			"slices": ["spam", "de"],
+			"locale": "de",
+			"mode": "brief",
+			"split": "heldout",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "Paketservice",
+						"email": "info@zoll-gebuehr.example.net"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T08:30:00+02:00",
+					"subject": "Ihr Paket wartet",
+					"text": "Ihr Paket konnte nicht zugestellt werden. Bitte zahlen Sie die Zollgebühr von 1,99 € unter http://zoll-gebuehr.example.net, sonst geht die Sendung zurück.\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "spam",
+						"disposition": "informational",
+						"postboxCategory": "spam",
+						"senderKnown": false
+					}
+				]
+			}
+		},
+		{
+			"id": "spam-003",
+			"slices": ["spam", "en"],
+			"locale": "en",
+			"mode": "brief",
+			"split": "train",
+			"us": [
+				{
+					"name": "Mara Lind",
+					"email": "mara@example.com"
+				}
+			],
+			"messages": [
+				{
+					"id": "m1",
+					"direction": "inbound",
+					"from": {
+						"name": "The Shop",
+						"email": "offers@shop.example.com"
+					},
+					"to": [
+						{
+							"name": "Mara Lind",
+							"email": "mara@example.com"
+						}
+					],
+					"sentAt": "2026-10-07T09:00:00+02:00",
+					"subject": "Exclusive offer: 20% off your next order",
+					"text": "Hi Mara,\n\nas a valued customer you get 20% off your next order until Sunday. Use code AUTUMN20 at checkout.\n\nThe Shop Team\n"
+				}
+			],
+			"labels": {
+				"items": [],
+				"decisions": [
+					{
+						"messageId": "m1",
+						"triage": "automated",
+						"disposition": "informational",
+						"postboxCategory": "promotion",
+						"senderKnown": false
+					}
+				]
+			}
+		}
+	]
+}

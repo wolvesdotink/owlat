@@ -11,17 +11,22 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeStepCtx } from '../../__tests__/stepCtx';
+import { embeddingSpaceKey, resolvedEmbeddingSpace } from '../../../../lib/embeddingSpace';
 import type { Id } from '../../../../_generated/dataModel';
 
 const mocks = vi.hoisted(() => ({
 	embed: vi.fn(),
-	resolveEmbeddingModel: vi.fn(async () => 'mock-embedder'),
+	// The embedder for the space the deployment is in (no stored config here).
+	resolveIndexEmbedder: vi.fn(async () => ({
+		model: 'mock-embedder',
+		embeddingSpaceKey: embeddingSpaceKey(resolvedEmbeddingSpace(null)),
+	})),
 }));
 
 vi.mock('ai', async () => ({ ...(await vi.importActual<object>('ai')), embed: mocks.embed }));
 vi.mock('../../../../lib/llmProvider', async () => ({
 	...(await vi.importActual<object>('../../../../lib/llmProvider')),
-	resolveEmbeddingModel: mocks.resolveEmbeddingModel,
+	resolveIndexEmbedder: mocks.resolveIndexEmbedder,
 }));
 
 import { contextRetrievalStep } from '../index';
@@ -68,7 +73,7 @@ function makeCtx(hasVectors: boolean) {
 beforeEach(() => {
 	mocks.embed.mockReset();
 	mocks.embed.mockResolvedValue({ embedding: [0.25, 0.5, 0.75] });
-	mocks.resolveEmbeddingModel.mockClear();
+	mocks.resolveIndexEmbedder.mockClear();
 });
 
 describe('contextRetrievalStep — one query embedding', () => {
@@ -98,7 +103,7 @@ describe('contextRetrievalStep — one query embedding', () => {
 		await contextRetrievalStep.execute(ctx, input);
 
 		expect(mocks.embed).not.toHaveBeenCalled();
-		expect(mocks.resolveEmbeddingModel).not.toHaveBeenCalled();
+		expect(mocks.resolveIndexEmbedder).not.toHaveBeenCalled();
 		expect(searches).toHaveLength(2);
 		for (const search of searches) {
 			expect(search.args['embedding']).toBeUndefined();

@@ -22,7 +22,8 @@ import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { embed } from 'ai';
-import { resolveEmbeddingModel, toIndexVector } from '../lib/llmProvider';
+import { resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
+import { vectorHitsInCurrentSpace } from '../lib/embeddingSpace';
 import type { VectorTable } from './vectorCorpus';
 import { entryTypeValidator } from '../schema/knowledge';
 import { logInfo } from '../lib/runtimeLog';
@@ -94,7 +95,7 @@ export type ScoredKnowledgeEntry = Doc<'knowledgeEntries'> & {
  *     did when each search embedded for itself.
  */
 export type RetrievalQueryVector =
-	| { kind: 'vector'; embedding: number[] }
+	| { kind: 'vector'; embedding: number[]; embeddingSpaceKey: string }
 	| { kind: 'no_vectors' }
 	| { kind: 'failed' };
 
@@ -110,12 +111,17 @@ export async function embedRetrievalQuery(
 	if (!hasVectors) return { kind: 'no_vectors' };
 	// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
 	// error rather than silently returning zero results.
-	const embeddingModel = await resolveEmbeddingModel(ctx);
+	const embedder = await resolveIndexEmbedder(ctx);
 	try {
 		// The searches have always embedded the trimmed text; trimmed here once so
 		// every caller's vector matches it.
-		const { embedding } = await embed({ model: embeddingModel, value: queryText.trim() });
-		return { kind: 'vector', embedding: toIndexVector(embedding) };
+		const { embedding } = await embed({ model: embedder.model, value: queryText.trim() });
+		return {
+			kind: 'vector',
+			embedding: toIndexVector(embedding),
+			// The space the vector is in, which each search's fence checks.
+			embeddingSpaceKey: embedder.embeddingSpaceKey,
+		};
 	} catch (error) {
 		logInfo(`${logTag} embed failed`, { error: String(error) });
 		return { kind: 'failed' };
@@ -154,6 +160,9 @@ export const semanticSearch = internalAction({
 	args: {
 		queryText: v.optional(v.string()),
 		embedding: v.optional(v.array(v.float64())),
+		// The space a precomputed `embedding` is in. Without it (a previous-release
+		// caller) its vector hits are dropped (vectorHitsInCurrentSpace).
+		embeddingSpaceKey: v.optional(v.string()),
 		entryType: v.optional(entryTypeValidator),
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out; any
@@ -174,11 +183,13 @@ export const semanticSearch = internalAction({
 	handler: async (ctx, args): Promise<ScoredKnowledgeEntry[]> => {
 		const queryText = args.queryText?.trim();
 
-		// A caller's vector is used as given (Team retrieval embeds once for this
-		// search and the file search). Otherwise the query is embedded here, and
-		// only when the table holds a vector to find (knowledge/vectorCorpus.ts);
-		// with none, the full-text leg runs alone.
+		// A caller's vector is used as given, with the space it was embedded in
+		// (Team retrieval embeds once for this search and the file search).
+		// Otherwise the query is embedded here, and only when the table holds a
+		// vector to find (knowledge/vectorCorpus.ts); with none, the full-text leg
+		// runs alone.
 		let vector = args.embedding && args.embedding.length > 0 ? args.embedding : undefined;
+		let spaceKey = args.embeddingSpaceKey;
 		if (!vector) {
 			if (!queryText) return [];
 			const query = await embedRetrievalQuery(
@@ -188,7 +199,10 @@ export const semanticSearch = internalAction({
 				'[knowledge.retrieval]'
 			);
 			if (query.kind === 'failed') return [];
-			if (query.kind === 'vector') vector = query.embedding;
+			if (query.kind === 'vector') {
+				vector = query.embedding;
+				spaceKey = query.embeddingSpaceKey;
+			}
 		}
 
 		const limit = args.limit ?? 10;
@@ -202,12 +216,17 @@ export const semanticSearch = internalAction({
 		const fetchLimit = Math.min(256, Math.max(limit * 5, 50));
 
 		// Leg 1 — semantic vector search (paraphrase / conceptual matches).
+		// Dropped if the embedding space changed while this query ran.
 		const hits = vector
-			? await ctx.vectorSearch('knowledgeEntries', 'vector_knowledge', {
-					vector,
-					limit: fetchLimit,
-					filter: entryType ? (q) => q.eq('entryType', entryType) : undefined,
-				})
+			? await vectorHitsInCurrentSpace(
+					ctx,
+					await ctx.vectorSearch('knowledgeEntries', 'vector_knowledge', {
+						vector,
+						limit: fetchLimit,
+						filter: entryType ? (q) => q.eq('entryType', entryType) : undefined,
+					}),
+					spaceKey
+				)
 			: [];
 		const vectorRanked: Id<'knowledgeEntries'>[] = hits.map((h) => h._id);
 		const scoreById = new Map<string, number>(hits.map((h) => [h._id as string, h._score]));

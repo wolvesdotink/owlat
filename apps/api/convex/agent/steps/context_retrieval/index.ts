@@ -223,18 +223,15 @@ export async function assembleInboundBriefing(
 		}
 	}
 
-	// The inbound body the model reads, with remote images / tracking pixels
-	// neutralized (privacy: the agent reads every inbound automatically).
+	// The inbound body the model reads, remote images / tracking pixels neutralized.
 	const inboundBody = await inboundBodyForContext(message, ctx.storage);
 
 	// Query text for semantic retrieval: the inbound subject + body.
 	const queryText = `${message.subject ?? ''}\n${inboundBody ?? ''}`.slice(0, 2000);
 
 	if (queryText.trim().length > 10) {
-		// Contact-scope retrieval so a draft for this contact can only draw on
-		// org-general knowledge/files OR knowledge/files linked to this same
-		// contact — never another contact's confidential data. When the inbound
-		// has no resolved contact we fail closed to org-general only.
+		// Contact-scope retrieval: org-general knowledge/files or ones linked to this
+		// contact, never another contact's; no resolved contact fails closed.
 		const scopeToContact: Id<'contacts'> | 'org-general-only' =
 			message.contactId ?? 'org-general-only';
 
@@ -248,16 +245,19 @@ export async function assembleInboundBriefing(
 			internal.knowledge.graphTraversal.isGraphRetrievalEnabled,
 			{}
 		);
-		// L8 + empty-corpus skip (ADR-0073): one query embedding for both searches,
-		// none when neither table holds a vector; the text still feeds both
-		// full-text legs. An embed failure leaves both empty, as it did before.
+		// L8 + empty-corpus skip (ADR-0073): one query embedding (and its space key)
+		// for both searches, none when neither table holds a vector; the text still
+		// feeds both full-text legs. An embed failure leaves both empty, as before.
 		const query = await embedRetrievalQuery(
 			ctx,
 			['knowledgeEntries', 'semanticFiles'],
 			queryText,
 			'[context_retrieval]'
 		);
-		const embedding = query.kind === 'vector' ? { embedding: query.embedding } : {};
+		const embedding =
+			query.kind === 'vector'
+				? { embedding: query.embedding, embeddingSpaceKey: query.embeddingSpaceKey }
+				: {};
 		const knowledge =
 			query.kind === 'failed'
 				? []

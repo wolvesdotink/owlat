@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
 
 /**
  * Graph-augmented retrieval — the per-hop contact-scope gate (leak surface #1)
@@ -259,6 +260,7 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 		await relate(t, newer, older, 'supersedes'); // newer SUPERSEDES older
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			includeInboxDerived: true,
 			embedding: unit(4),
 			scopeToContact: 'org-wide',
@@ -286,6 +288,7 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 		await relate(t, a, b, 'contradicts');
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			includeInboxDerived: true,
 			embedding: unit(6),
 			scopeToContact: 'org-wide',
@@ -305,12 +308,14 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 		await relate(t, a, b, 'supersedes');
 
 		const flat = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			includeInboxDerived: true,
 			embedding: unit(5),
 			scopeToContact: 'org-wide',
 			limit: 10,
 		});
 		const off = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			includeInboxDerived: true,
 			embedding: unit(5),
 			scopeToContact: 'org-wide',
