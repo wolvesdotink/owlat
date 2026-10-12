@@ -43,12 +43,10 @@ import { internalMutation } from '../lib/writeFence';
 import { adminMutation } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import type { EmbeddingSpaceIdentity } from '../lib/aiRouting/embeddingKeys';
+import { activateSpace, claimColumn, patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
 import {
-	embeddingSpaceEntryKey,
-	type EmbeddingSpaceIdentity,
-} from '../lib/aiRouting/embeddingKeys';
-import { activateSpace, claimColumn } from '../lib/aiRouting/embeddingActivation';
-import {
+	attestedStampFields,
 	columnOwnerOf,
 	identityOf,
 	isIdentityOfTarget,
@@ -57,6 +55,7 @@ import {
 	readConfiguredTarget,
 	readSearchableSpace,
 	readSpaceByIdentity,
+	revokedStampFields,
 	type SpaceDoc,
 } from '../lib/aiRouting/embeddingRegistry';
 import { EMBEDDING_DIMENSIONS } from '../lib/constants';
@@ -247,14 +246,7 @@ export const applyPage = internalMutation({
 			if (!fitsAttestedWidth(row.embedding, space.dimensions)) continue;
 			const entryType =
 				table === 'knowledgeEntries' ? (row as Doc<'knowledgeEntries'>).entryType : undefined;
-			await ctx.db.patch(row._id, {
-				embeddingSpaceId: space._id,
-				embeddingProvenance: attestation.source,
-				embeddingAttestationId: attestation._id,
-				...(entryType
-					? { embeddingSpaceEntryKey: embeddingSpaceEntryKey(space._id, entryType) }
-					: {}),
-			});
+			await patchCorpusRow(ctx, table, row, attestedStampFields(space._id, attestation, entryType));
 			assigned += 1;
 		}
 		const now = Date.now();
@@ -337,12 +329,14 @@ export const revokePage = internalMutation({
 			.paginate({ cursor: args.cursor, numItems: ATTESTATION_PAGE_SIZE });
 		for (const row of page.page) {
 			if (row.embeddingAttestationId !== attestation._id) continue;
-			await ctx.db.patch(row._id, {
-				embeddingSpaceId: undefined,
-				embeddingProvenance: undefined,
-				embeddingAttestationId: undefined,
-				...(args.table === 'knowledgeEntries' ? { embeddingSpaceEntryKey: undefined } : {}),
-			});
+			// Through the one corpus writer: a revoked stamp that a staged rebuild
+			// reused marks it, so it cannot activate with the row missing.
+			await patchCorpusRow(
+				ctx,
+				args.table,
+				row,
+				revokedStampFields({ isKnowledge: args.table === 'knowledgeEntries' })
+			);
 		}
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingAttestations.revokePage, {

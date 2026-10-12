@@ -59,6 +59,7 @@ import {
 	configuredEmbeddingTarget,
 	envEmbeddingModel,
 	envLlmBaseUrl,
+	localEmbeddingBaseUrl,
 	resolveStoredEmbeddingModel,
 	type EmbeddingTarget,
 } from './embeddingSpace';
@@ -181,7 +182,8 @@ export function resolveEmbeddingPlane(
 ): ResolvedEmbeddingPlane {
 	const adapter = embeddingProviderFor(kind);
 	const clientConfig: ProviderClientConfig = adapter.isLocal
-		? { baseUrl: getOptional('LOCAL_EMBEDDING_BASE_URL') ?? adapter.defaultBaseUrl }
+		? // The canonical base URL its identity names (lib/embeddingSpace.ts).
+			{ baseUrl: localEmbeddingBaseUrl(kind as 'local' | 'openaiCompatible') }
 		: { apiKey: hostedKey };
 	const modelId = resolveStoredEmbeddingModel({
 		embeddingProviderKind: kind,

@@ -41,7 +41,7 @@ import { adminMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { throwConflict, throwInvalidState, throwNotFound } from '../_utils/errors';
-import { isSpaceLocal } from '../lib/aiRouting/embeddingActivation';
+import { isSpaceLocal, patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
 import {
 	ownsColumn,
 	readSearchableSpace,
@@ -51,11 +51,7 @@ import {
 	type SpaceDoc,
 } from '../lib/aiRouting/embeddingRegistry';
 import { embeddingSpaceIdentityKey } from '../lib/aiRouting/embeddingKeys';
-import {
-	fileEmbeddingInput,
-	inputFingerprint,
-	knowledgeEmbeddingInput,
-} from '../lib/aiRouting/embeddingInputs';
+import { corpusRowInput, inputFingerprint } from '../lib/aiRouting/embeddingInputs';
 import { isPaidEmbeddingAdmissionAvailable } from '../lib/aiRouting/embeddingAdmission';
 import {
 	embeddingTableValidator,
@@ -95,21 +91,13 @@ async function liveTarget(
 	return target && (await ownsColumn(db, target)) ? target : null;
 }
 
-/** The input a row is embedded from, or null when it has none (or is expired). */
+/** The input a row is embedded from, or null when it is not eligible (`corpusRowInput`). */
 export function rowInput(
 	table: EmbeddingTable,
 	row: Doc<'knowledgeEntries'> | Doc<'semanticFiles'>,
 	now: number
 ): string | null {
-	if (table === 'knowledgeEntries') {
-		const entry = row as Doc<'knowledgeEntries'>;
-		if (entry.expiresAt !== undefined && entry.expiresAt <= now) return null;
-		return knowledgeEmbeddingInput(entry);
-	}
-	const file = row as Doc<'semanticFiles'>;
-	// A file processing has not reached yet is embedded by its own pipeline.
-	if (file.extractedText === undefined) return null;
-	return fileEmbeddingInput(file);
+	return corpusRowInput(table, row, now);
 }
 
 /** The next page of a running job: the candidates and the target to embed them in. */
@@ -228,9 +216,12 @@ export const reembedCommit = internalMutation({
 				unresolved += 1;
 				continue;
 			}
-			await ctx.db.patch(
-				row._id,
-				slotFields(target, result.vector, { now, entryType: entryTypeOf(row) })
+			await patchCorpusRow(
+				ctx,
+				job.phase,
+				row,
+				slotFields(target, result.vector, { now, entryType: entryTypeOf(row) }),
+				{ written: target.slot }
 			);
 			embedded += 1;
 		}

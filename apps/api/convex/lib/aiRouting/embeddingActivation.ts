@@ -15,12 +15,13 @@
  */
 
 import { internal } from '../../_generated/api';
-import type { Doc, Id } from '../../_generated/dataModel';
+import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { Infer } from 'convex/values';
 import type { entryTypeValidator } from '../../schema/knowledge';
 import { resolveEndpointLocality } from '../llm/endpointLocality';
 import { embeddingSpaceIdentityKey, type EmbeddingSpaceIdentity } from './embeddingKeys';
+import { corpusRowInput, embeddingInputText, type CorpusTable } from './embeddingInputs';
 import {
 	columnOwnerOf,
 	identityOf,
@@ -33,6 +34,7 @@ import {
 	readSpaceByIdentity,
 	readStagedSpace,
 	slotFields,
+	vectorInSpace,
 	type EmbeddingSlot,
 	type MeasuredSpace,
 	type SpaceDoc,
@@ -250,31 +252,105 @@ export async function ensureConfiguredSpace(
 }
 
 /**
- * Record that an embedding input changed or a row was added: a staged rebuild
- * that started before now may have missed it, so its activation waits for a
- * catch-up pass (`embeddingRebuildState.activateStagedSpace`).
+ * Record that a staged rebuild may have missed a row: its activation waits for
+ * a pass that starts after now (`embeddingRebuildState.activateStagedSpace`).
  */
 export async function markCorpusChanged(ctx: MutationCtx): Promise<void> {
 	const staged = await readStagedSpace(ctx.db);
 	if (staged) await ctx.db.patch(staged._id, { inputChangedAt: Date.now() });
 }
 
+type CorpusRow = Doc<'knowledgeEntries'> | Doc<'semanticFiles'>;
+
 /**
- * After a mutation changed a row's embedding input without embedding it (an
- * edit): mark the change, and let a local embedder re-embed the row at once.
- * The caller has already cleared the row's columns (`inputChangeFields(null)`).
+ * Mark a staged rebuild when a write left a row eligible for vector search but
+ * without a staged vector in a way the rebuild's walk cannot have accounted
+ * for: the row is new, it just became eligible (an expired entry revived, a
+ * file processed), it lost its staged vector (an input change, a revoked
+ * stamp), or its input changed. A row that was eligible and unembedded before
+ * is still the walk's to embed.
  */
-export async function afterInputChange(
+async function noteCorpusWrite(
 	ctx: MutationCtx,
-	row:
-		| { table: 'knowledgeEntries'; id: Id<'knowledgeEntries'> }
-		| { table: 'semanticFiles'; id: Id<'semanticFiles'> }
+	table: CorpusTable,
+	before: CorpusRow | null,
+	next: CorpusRow,
+	isInputChanged: boolean
 ): Promise<void> {
-	await markCorpusChanged(ctx);
+	const staged = await readStagedSpace(ctx.db);
+	if (!staged) return;
+	const now = Date.now();
+	const ref = { spaceId: staged._id, slot: staged.slot };
+	if (corpusRowInput(table, next, now) === null || vectorInSpace(next, ref)) return;
+	const wasEligible = before !== null && corpusRowInput(table, before, now) !== null;
+	const hadStaged = before !== null && vectorInSpace(before, ref) !== null;
+	if (!wasEligible || hadStaged || isInputChanged) await markCorpusChanged(ctx);
+}
+
+async function scheduleRowReembed(
+	ctx: MutationCtx,
+	table: CorpusTable,
+	id: CorpusRow['_id']
+): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.reembedRow, {
-		table: row.table,
-		id: row.id,
+		table,
+		id,
 	});
+}
+
+/**
+ * THE writer of a corpus row's embedding-relevant fields: its input (title,
+ * content, summary, extracted text), its eligibility (expiry, processing) and
+ * its vector stamps. Every such write goes through here, so none can forget:
+ *
+ *   - the input-change rule: a changed input clears every column except
+ *     `written` (the column this write fills with a fresh vector);
+ *   - a staged rebuild is marked changed when the write leaves the row
+ *     eligible without a staged vector in a way its walk cannot have seen;
+ *   - a row that became eligible, or whose input changed, with no fresh vector
+ *     in this write is re-embedded at once by a local embedder.
+ */
+export async function patchCorpusRow(
+	ctx: MutationCtx,
+	table: CorpusTable,
+	row: CorpusRow,
+	patch: Record<string, unknown>,
+	options: { written?: EmbeddingSlot | null } = {}
+): Promise<void> {
+	const now = Date.now();
+	const draft = { ...row, ...patch } as CorpusRow;
+	const isInputChanged = embeddingInputText(table, row) !== embeddingInputText(table, draft);
+	const isKnowledge = table === 'knowledgeEntries';
+	const fields = isInputChanged
+		? { ...inputChangeFields(options.written ?? null, { isKnowledge }), ...patch }
+		: patch;
+	await ctx.db.patch(row._id, fields);
+	const next = { ...row, ...fields } as CorpusRow;
+	await noteCorpusWrite(ctx, table, row, next, isInputChanged);
+	const wasEligible = corpusRowInput(table, row, now) !== null;
+	const isEligible = corpusRowInput(table, next, now) !== null;
+	if (!options.written && isEligible && (isInputChanged || !wasEligible)) {
+		await scheduleRowReembed(ctx, table, row._id);
+	}
+}
+
+/**
+ * After a corpus row was inserted: mark a staged rebuild when the new row is
+ * eligible without a staged vector, and let a local embedder embed a row that
+ * arrived without a vector.
+ */
+export async function noteCorpusInsert(
+	ctx: MutationCtx,
+	table: CorpusTable,
+	id: CorpusRow['_id']
+): Promise<void> {
+	const row = (await ctx.db.get(id)) as CorpusRow | null;
+	if (!row) return;
+	await noteCorpusWrite(ctx, table, null, row, true);
+	const hasVector = row.embedding.length > 0 || (row.secondaryEmbedding?.length ?? 0) > 0;
+	if (!hasVector && corpusRowInput(table, row, Date.now()) !== null) {
+		await scheduleRowReembed(ctx, table, id);
+	}
 }
 
 /**
@@ -283,7 +359,9 @@ export async function afterInputChange(
  * writes the fields this returns. The vector lands in the active space's
  * column, stamped with its space and `measured` provenance and the model that
  * made it, and every other column is cleared (the input-change rule: the row
- * was just (re)processed). The corpus is marked changed for a staged rebuild.
+ * was just (re)processed). The caller writes the fields through
+ * `patchCorpusRow` (with `written`), or inserts them and calls
+ * `noteCorpusInsert`.
  *
  * An empty vector clears every column. A vector without a measured space (a
  * previous-release job) or from a target the configuration no longer names is
@@ -294,20 +372,22 @@ export async function vectorFieldsForCommit(
 	ctx: MutationCtx,
 	commit: { embedding: number[]; space: MeasuredSpace | undefined },
 	options: { entryType?: EntryType }
-): Promise<{ fields: Record<string, unknown>; isStale: boolean }> {
+): Promise<{ fields: Record<string, unknown>; isStale: boolean; written: EmbeddingSlot | null }> {
 	const isKnowledge = options.entryType !== undefined;
-	await markCorpusChanged(ctx);
 	if (commit.embedding.length === 0) {
-		return { fields: inputChangeFields(null, { isKnowledge }), isStale: false };
+		return { fields: inputChangeFields(null, { isKnowledge }), isStale: false, written: null };
 	}
 	// Remove the optional space after release N+1 (CONVENTIONS "Old clients and workers").
 	const space = commit.space ? await ensureConfiguredSpace(ctx, commit.space) : null;
-	if (!space) return { fields: inputChangeFields(null, { isKnowledge }), isStale: true };
+	if (!space) {
+		return { fields: inputChangeFields(null, { isKnowledge }), isStale: true, written: null };
+	}
 	return {
 		fields: {
 			...inputChangeFields(space.slot, { isKnowledge }),
 			...slotFields(space, commit.embedding, { now: Date.now(), entryType: options.entryType }),
 		},
 		isStale: false,
+		written: space.slot,
 	};
 }

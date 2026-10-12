@@ -146,18 +146,20 @@ describe('embedding target', () => {
 		expect(isSameEmbeddingTarget(envEmbeddingTarget()!, stored)).toBe(false);
 
 		vi.stubEnv('LLM_PROVIDER', 'ollama');
-		// Probed for its revision, but hosted for payment: the env plane uses the
-		// OpenAI adapter, which the ledger's locality rule always prices.
+		// Probed for its revision, and local (free) by the ledger's rule: its host
+		// is a single-label compose service.
 		expect(envEmbeddingTarget()).toMatchObject({
 			endpoint: OLLAMA_V1,
-			isLocal: false,
+			isLocal: true,
 			probeBaseUrl: 'http://ollama:11434/v1',
 		});
 	});
 
 	it('never keeps a credential of a base URL in the endpoint identity', () => {
 		const identity = endpointIdentity('https://user:secret@Example.com:8443/v1?key=abc#frag');
-		expect(identity).toBe(endpointIdentity('https://Example.com:8443/v1'));
+		// Userinfo and query are sent, so they are part of the endpoint, but only
+		// as a digest: no credential is readable in the identity.
+		expect(identity).toMatch(/^https:\/\/example\.com:8443\/~[0-9a-f]{32}$/);
 		expect(identity).not.toMatch(/secret|user|key=abc|frag|\/v1/);
 		expect(endpointIdentity('https://example.com/')).toBe('https://example.com');
 		expect(endpointIdentity('not a url')).toBe('invalid');

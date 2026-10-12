@@ -88,7 +88,7 @@ export const LOCAL_EMBEDDING_DEFAULT_BASE_URLS = {
 /** The env plane's base URL: the explicit override, else the provider's default. */
 export function envLlmBaseUrl(): string | undefined {
 	const explicit = getOptional('LLM_BASE_URL');
-	if (explicit) return explicit;
+	if (explicit) return canonicalBaseUrl(explicit);
 	switch (getOptional('LLM_PROVIDER')) {
 		case 'openrouter':
 			return 'https://openrouter.ai/api/v1';
@@ -101,26 +101,53 @@ export function envLlmBaseUrl(): string | undefined {
 
 /** The base URL a local embedding kind reaches (`LOCAL_EMBEDDING_BASE_URL`, else the default). */
 export function localEmbeddingBaseUrl(kind: 'local' | 'openaiCompatible'): string {
-	return getOptional('LOCAL_EMBEDDING_BASE_URL') ?? LOCAL_EMBEDDING_DEFAULT_BASE_URLS[kind];
+	return canonicalBaseUrl(
+		getOptional('LOCAL_EMBEDDING_BASE_URL') ?? LOCAL_EMBEDDING_DEFAULT_BASE_URLS[kind]
+	);
 }
 
 /**
- * The secret-free identity of an endpoint: its origin (scheme, host, port) and,
- * when it has one, a digest of its base path. Two services on one origin under
- * different paths (`/a/v1`, `/b/v1`) are different endpoints, but a path may
- * carry a credential, so only a SHA-256 prefix of the normalized path is kept.
- * Userinfo, query and fragment never enter it.
+ * THE canonical form of an endpoint base URL, used both to dispatch (the SDK
+ * client is built with it) and to name the endpoint (`endpointIdentity`), so
+ * the identity always describes exactly where requests go: repeated slashes in
+ * the path collapse, a trailing slash goes, the fragment (never sent) goes;
+ * scheme, userinfo, host, port, path and query are kept as sent. An unparsable
+ * URL is returned unchanged (the call fails, and its identity is `invalid`).
  */
-export function endpointIdentity(url: string): string {
+export function canonicalBaseUrl(url: string): string {
 	let parsed: URL;
 	try {
 		parsed = new URL(url);
 	} catch {
+		return url;
+	}
+	const path = parsed.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+	const userinfo = parsed.username
+		? `${parsed.username}${parsed.password ? `:${parsed.password}` : ''}@`
+		: '';
+	return `${parsed.protocol}//${userinfo}${parsed.host}${path}${parsed.search}`;
+}
+
+/**
+ * The secret-free identity of an endpoint: its origin (scheme, host, port) and,
+ * when requests carry more, a digest of the rest of its canonical base URL
+ * (`canonicalBaseUrl`: userinfo, path, query). Two services on one origin under
+ * different paths (`/a/v1`, `/b/v1`) are different endpoints; any of those
+ * parts may carry a credential, so only a SHA-256 prefix of them is kept. The
+ * same canonical URL is what the client dispatches to.
+ */
+export function endpointIdentity(url: string): string {
+	let parsed: URL;
+	try {
+		parsed = new URL(canonicalBaseUrl(url));
+	} catch {
 		return 'invalid';
 	}
 	const origin = parsed.origin.toLowerCase();
-	const path = parsed.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
-	return path === '' ? origin : `${origin}/~${sha256Hex(path).slice(0, 32)}`;
+	// Everything after the origin that requests carry: userinfo, path, query.
+	const userinfo = parsed.username ? `${parsed.username}:${parsed.password}@` : '';
+	const route = `${userinfo}${parsed.pathname === '/' ? '' : parsed.pathname}${parsed.search}`;
+	return route === '' ? origin : `${origin}/~${sha256Hex(route).slice(0, 32)}`;
 }
 
 /**
@@ -181,7 +208,7 @@ export function storedEmbeddingTarget(selection: StoredEmbeddingSelection): Embe
  * The env fallback's target, or null when the environment configures no AI.
  * The env plane always uses the OpenAI adapter; its endpoint tells the native
  * API, OpenRouter, Ollama and a custom server apart. Only env Ollama is probed
- * for a revision; none is local for payment (the ledger's rule).
+ * for a revision; locality (payment) follows the ledger's rule on its URL.
  */
 export function envEmbeddingTarget(): EmbeddingTarget | null {
 	if (!isEnvAiProviderConfigured()) return null;
@@ -193,8 +220,9 @@ export function envEmbeddingTarget(): EmbeddingTarget | null {
 		model: envEmbeddingModel(),
 		requestedDimensions: 'native',
 		source: 'env',
-		// The env plane uses the OpenAI adapter, which the ledger's rule prices as
-		// hosted wherever it points (an env Ollama included).
+		// The env plane uses the OpenAI adapter; the ledger's rule decides by where
+		// it points: an env Ollama is local, the native API and any public host
+		// are hosted.
 		isLocal: embeddingEndpointLocality('openai', baseUrl) === 'local',
 		...(isOllama && baseUrl ? { probeBaseUrl: baseUrl } : {}),
 	};

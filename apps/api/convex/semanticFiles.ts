@@ -29,8 +29,7 @@ import {
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { isAiProviderConfigured } from './lib/aiNotConfigured';
-import { afterInputChange, vectorFieldsForCommit } from './lib/aiRouting/embeddingActivation';
-import { inputChangeFields } from './lib/aiRouting/embeddingRegistry';
+import { patchCorpusRow, vectorFieldsForCommit } from './lib/aiRouting/embeddingActivation';
 import { measuredEmbeddingSpaceValidator } from './lib/validators/embedding';
 import { logInfo } from './lib/runtimeLog';
 import type { Id, Doc } from './_generated/dataModel';
@@ -601,18 +600,24 @@ export const updateProcessedMetadata = internalMutation({
 			...updates
 		}
 	) => {
-		const { isStale, fields } = await vectorFieldsForCommit(
+		const file = await ctx.db.get(fileId);
+		if (!file) return;
+		const { isStale, fields, written } = await vectorFieldsForCommit(
 			ctx,
 			{ embedding, space: embeddingSpace },
 			{}
 		);
 		if (isStale)
 			logInfo('[semanticFiles] stale embedding space, stored without vector', { fileId });
-		await ctx.db.patch(fileId, {
-			...updates,
-			...fields,
-			updatedAt: Date.now(),
-		});
+		// Through the one corpus writer (ADR-0073): processing changes the input
+		// and the file's eligibility, so a staged rebuild learns of it.
+		await patchCorpusRow(
+			ctx,
+			'semanticFiles',
+			file,
+			{ ...updates, ...fields, updatedAt: Date.now() },
+			{ written }
+		);
 	},
 });
 
@@ -665,13 +670,9 @@ export const update = authedMutation({
 			});
 		}
 
-		// The input-change rule (ADR-0073): the title is part of the embedding
-		// input, so a new one leaves no vector of the old one in any column.
-		const isInputChanged = updates.title !== undefined && updates.title !== file.title;
-		if (isInputChanged)
-			Object.assign(cleanUpdates, inputChangeFields(null, { isKnowledge: false }));
-		await ctx.db.patch(fileId, cleanUpdates);
-		if (isInputChanged) await afterInputChange(ctx, { table: 'semanticFiles', id: fileId });
+		// Through the one corpus writer (ADR-0073): the title is part of the
+		// embedding input, so a new one leaves no vector of the old one.
+		await patchCorpusRow(ctx, 'semanticFiles', file, cleanUpdates);
 
 		// Keep the junction in sync when the contactIds array is edited in place.
 		if (updates.contactIds !== undefined) {

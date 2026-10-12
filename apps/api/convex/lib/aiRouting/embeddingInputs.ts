@@ -41,3 +41,41 @@ export function inputFingerprint(text: string): string {
 	}
 	return `${text.length}:${hash.toString(16)}`;
 }
+
+/** The two embedding-bearing tables. */
+export type CorpusTable = 'knowledgeEntries' | 'semanticFiles';
+
+/** The fields of a corpus row its embedding input and eligibility are read from. */
+export interface CorpusRowFields {
+	title?: string;
+	content?: string;
+	summary?: string;
+	extractedText?: string;
+	expiresAt?: number;
+}
+
+/** A row's embedding input as written, whether or not the row is eligible now. */
+export function embeddingInputText(table: CorpusTable, row: CorpusRowFields): string | null {
+	if (table === 'knowledgeEntries') {
+		return knowledgeEmbeddingInput({ title: row.title ?? '', content: row.content ?? '' });
+	}
+	return fileEmbeddingInput(row);
+}
+
+/**
+ * The input a row is embedded from when it is eligible for vector search, or
+ * null: an expired knowledge entry, a file its pipeline has not processed yet
+ * (that pipeline embeds it), or a file with too little text.
+ */
+export function corpusRowInput(
+	table: CorpusTable,
+	row: CorpusRowFields,
+	now: number
+): string | null {
+	if (table === 'knowledgeEntries') {
+		if (row.expiresAt !== undefined && row.expiresAt <= now) return null;
+		return embeddingInputText(table, row);
+	}
+	if (row.extractedText === undefined) return null;
+	return embeddingInputText(table, row);
+}

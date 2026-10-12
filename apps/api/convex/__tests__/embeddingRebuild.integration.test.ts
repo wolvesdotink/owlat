@@ -13,6 +13,7 @@ import type * as Ai from 'ai';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { enableFeatures } from './factories';
 import {
 	configureLocalEmbedder,
 	seedEmbeddingSpace,
@@ -57,6 +58,10 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi.fn(admin),
 		requireAdminContext: vi.fn(admin),
 		requireOrgMember: vi.fn(member),
+		// The knowledge edit paths (authedMutation's floor).
+		getMutationContext: vi.fn(member),
+		getBetterAuthSessionWithRole: vi.fn(member),
+		isActiveOrgMember: vi.fn(async () => true),
 	};
 });
 
@@ -439,4 +444,58 @@ describe('staged rebuild', () => {
 		expect(file?.secondaryEmbedding).toBeUndefined();
 		expect(file?.secondaryEmbeddingSpaceId).toBeUndefined();
 	});
+
+	it.each(['updateEntry', 'createPolicyEntry'] as const)(
+		'an expired entry revived through %s after the walk blocks activation (F6)',
+		async (path) => {
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['ai.knowledge']);
+			await nomicDeployment(t);
+			const now = Date.now();
+			// Expired while the rebuild walks: not eligible, so not embedded.
+			const entryId = await t.run((ctx) =>
+				ctx.db.insert('knowledgeEntries', {
+					entryType: 'faq',
+					title: 'Opening hours',
+					content: 'We open at nine.',
+					sourceType: 'curated',
+					isAuthoritative: true,
+					embedding: [],
+					confidence: 1,
+					expiresAt: now - 1_000,
+					lastValidatedAt: now,
+					searchableText: 'Opening hours We open at nine.',
+					createdAt: now,
+					updatedAt: now,
+				})
+			);
+			await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+				embeddingProviderKind: 'local',
+				embeddingModel: 'mxbai-embed-large',
+			});
+			await flush(t);
+			expect((await t.run((ctx) => ctx.db.get(entryId)))?.secondaryEmbedding).toBeUndefined();
+
+			// An expiry-only edit makes it live again.
+			const later = Date.now() + 86_400_000;
+			if (path === 'updateEntry') {
+				await t.mutation(api.knowledge.graph.updateEntry, { entryId, expiresAt: later });
+			} else {
+				await t.mutation(api.knowledge.graph.createPolicyEntry, {
+					entryId,
+					entryType: 'faq',
+					title: 'Opening hours',
+					content: 'We open at nine.',
+					expiresAt: later,
+				});
+			}
+			await expect(t.action(api.aiRouting.embeddingRebuild.activateStaged, {})).rejects.toThrow(
+				/changed during the rebuild/
+			);
+			await t.mutation(api.aiRouting.embeddingRebuildState.catchUpRebuild, {});
+			await flush(t);
+			await t.action(api.aiRouting.embeddingRebuild.activateStaged, {});
+			expect((await t.run((ctx) => ctx.db.get(entryId)))?.secondaryEmbedding).toBeDefined();
+		}
+	);
 });

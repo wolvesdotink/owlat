@@ -22,6 +22,7 @@ import {
 	vectorInSpace,
 } from '../lib/aiRouting/embeddingRegistry';
 import { inputFingerprint } from '../lib/aiRouting/embeddingInputs';
+import { patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
 import {
 	embeddingTableValidator,
 	measuredEmbeddingSpaceValidator,
@@ -66,9 +67,12 @@ export const commitRowVector = internalMutation({
 		if (!text || inputFingerprint(text) !== args.fingerprint) return false;
 		const entryType =
 			args.table === 'knowledgeEntries' ? (row as Doc<'knowledgeEntries'>).entryType : undefined;
-		await ctx.db.patch(
-			row._id,
-			slotFields(searchable, args.vector, { now: Date.now(), entryType })
+		await patchCorpusRow(
+			ctx,
+			args.table,
+			row,
+			slotFields(searchable, args.vector, { now: Date.now(), entryType }),
+			{ written: searchable.slot }
 		);
 		return true;
 	},

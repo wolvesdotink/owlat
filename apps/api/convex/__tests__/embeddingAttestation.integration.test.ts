@@ -359,6 +359,60 @@ describe('first upgrade and column placement', () => {
 	});
 });
 
+describe('revocation and a staged rebuild', () => {
+	it('revoking a cohort the staged space reuses blocks its activation (F17)', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t);
+		// The active nomic space is in the secondary column; a staged mxbai space
+		// owns the primary column, where the legacy vectors are.
+		await seedEmbeddingSpace(t, { slot: 'secondary' });
+		const staged = await seedEmbeddingSpace(t, {
+			identity: { ...TEST_LOCAL_SPACE, model: 'mxbai-embed-large' },
+			state: 'staged',
+			slot: 'primary',
+		});
+		const entry = await legacyEntry(t, 'legacy', 1_000);
+		const attestationId = await t.mutation(api.aiRouting.embeddingAttestations.attest, {
+			spaceId: staged,
+			source: 'attestation',
+			cohort: { tables: ['knowledgeEntries'], writtenUntil: 5_000 },
+			statement: 'mxbai since install.',
+		});
+		await flush(t);
+		expect((await t.run((ctx) => ctx.db.get(entry)))?.embeddingSpaceId).toBe(staged);
+
+		// The rebuild completes with the attested rows counted as done.
+		await t.run((ctx) =>
+			ctx.db.insert('embeddingReembedJobs', {
+				kind: 'rebuild',
+				targetSpaceId: staged,
+				status: 'completed',
+				isPaid: false,
+				generation: 1,
+				phase: 'semanticFiles',
+				scannedCount: 1,
+				embeddedCount: 0,
+				skippedCount: 0,
+				failedCount: 0,
+				startedAt: Date.now() - 1,
+				updatedAt: Date.now(),
+				finishedAt: Date.now(),
+			})
+		);
+
+		await t.mutation(api.aiRouting.embeddingAttestations.revoke, { attestationId });
+		await flush(t);
+		expect((await t.run((ctx) => ctx.db.get(entry)))?.embeddingSpaceId).toBeUndefined();
+		await expect(
+			t.mutation(internal.aiRouting.embeddingRebuildState.activateStagedSpace, {
+				spaceId: staged,
+				sampled: 1,
+				passed: 1,
+			})
+		).rejects.toThrow(/changed during the rebuild/);
+	});
+});
+
 describe('fitsAttestedWidth', () => {
 	it('refuses only vectors with non-zero components past the width', () => {
 		expect(fitsAttestedWidth([1, 0, 0, 0], 2)).toBe(true);

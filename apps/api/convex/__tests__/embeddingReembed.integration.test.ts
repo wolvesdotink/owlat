@@ -467,6 +467,34 @@ describe('local re-embed', () => {
 		expect(embedCalls.texts).toContain('a row: a row content');
 	});
 
+	it('recovers an env Ollama deployment on its own, and re-embeds an edit (F16)', async () => {
+		const t = convexTest(schema, modules);
+		// No stored row: the env plane, pointed at the compose Ollama service.
+		vi.stubEnv('LLM_PROVIDER', 'ollama');
+		const legacy = await insertEntry(t, 'legacy', {
+			embedding: padded(3),
+			embeddingGeneratedAt: 1,
+		});
+
+		await t.action(internal.aiRouting.embeddingReembed.kickoff, { isForced: true });
+		await flush(t);
+
+		const [space] = await t.run((ctx) => ctx.db.query('embeddingSpaces').collect());
+		expect(space).toMatchObject({ provider: 'openai', source: 'env', state: 'active' });
+		expect(space!.endpoint.startsWith('http://ollama:11434/~')).toBe(true);
+		const [job] = await jobs(t);
+		expect(job).toMatchObject({ status: 'completed', isPaid: false, embeddedCount: 1 });
+		expect((await t.run((ctx) => ctx.db.get(legacy)))?.embeddingSpaceId).toBe(space!._id);
+
+		// An edit clears the row's vectors; the local re-embed restores it at once.
+		const edited = await insertEntry(t, 'edited');
+		await t.action(internal.aiRouting.embeddingReembed.reembedRow, {
+			table: 'knowledgeEntries',
+			id: edited,
+		});
+		expect((await t.run((ctx) => ctx.db.get(edited)))?.embeddingSpaceId).toBe(space!._id);
+	});
+
 	it('runs nothing by default without an AI configuration', async () => {
 		const t = convexTest(schema, modules);
 		await insertEntry(t, 'legacy', { embedding: padded(3), embeddingGeneratedAt: 1 });

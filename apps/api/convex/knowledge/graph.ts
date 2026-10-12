@@ -28,8 +28,12 @@ import {
 import { batchGet } from '../_utils/batchLoader';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { sameContactScope } from '../lib/contactScope';
-import { entryKeysForType, inputChangeFields } from '../lib/aiRouting/embeddingRegistry';
-import { afterInputChange, vectorFieldsForCommit } from '../lib/aiRouting/embeddingActivation';
+import { entryKeysForType } from '../lib/aiRouting/embeddingRegistry';
+import {
+	noteCorpusInsert,
+	patchCorpusRow,
+	vectorFieldsForCommit,
+} from '../lib/aiRouting/embeddingActivation';
 import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
 import { logInfo } from '../lib/runtimeLog';
 import {
@@ -354,7 +358,7 @@ export const createEntry = knowledgeMutation({
 		// Mirror contactIds into the index-able junction (powers getByContact).
 		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
 		// A new embedding input: a local embedder embeds it now (ADR-0073).
-		await afterInputChange(ctx, { table: 'knowledgeEntries', id: entryId });
+		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
 
 		return entryId;
 	},
@@ -419,14 +423,12 @@ export const updateEntry = knowledgeMutation({
 		const nextTitle = args.title ?? entry.title;
 		const nextContent = args.content ?? entry.content;
 		patch.searchableText = `${nextTitle} ${nextContent}`;
-		// The input-change rule (ADR-0073): an edited title or content leaves no
-		// vector of the old text in any column; a local embedder re-embeds it.
-		const isInputChanged = nextTitle !== entry.title || nextContent !== entry.content;
-		if (isInputChanged) Object.assign(patch, inputChangeFields(null, { isKnowledge: true }));
 
-		await ctx.db.patch(args.entryId, patch);
-		if (isInputChanged)
-			await afterInputChange(ctx, { table: 'knowledgeEntries', id: args.entryId });
+		// Through the one corpus writer (ADR-0073): an edited title or content
+		// clears every vector column, and an edit that changes eligibility (an
+		// expired entry revived) marks a staged rebuild; either way a local
+		// embedder re-embeds the entry.
+		await patchCorpusRow(ctx, 'knowledgeEntries', entry, patch);
 
 		// Reconcile the index-able junction when contactIds is edited in place;
 		// otherwise re-project its open-commitment facets (type / expiry edits).
@@ -595,6 +597,8 @@ export const saveEntry = internalMutation({
 			updatedAt: now,
 		};
 		const entryId = await ctx.db.insert('knowledgeEntries', entry);
+		// A new row: a staged rebuild learns it may lack its vector (ADR-0073).
+		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
 
 		// Mirror contactIds into the index-able junction (powers getByContact).
 		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
@@ -729,12 +733,11 @@ export const createPolicyEntry = knowledgeAdminMutation({
 		if (args.entryId) {
 			const existing = await ctx.db.get(args.entryId);
 			if (!existing) return null;
-			const isInputChanged = existing.title !== args.title || existing.content !== args.content;
-			await ctx.db.patch(args.entryId, {
+			// Through the one corpus writer (ADR-0073): input and eligibility
+			// (expiry) changes clear the stale vectors and mark a staged rebuild.
+			await patchCorpusRow(ctx, 'knowledgeEntries', existing, {
 				entryType,
 				...entryKeysForType(existing, entryType),
-				// The input-change rule (ADR-0073).
-				...(isInputChanged ? inputChangeFields(null, { isKnowledge: true }) : {}),
 				title: args.title,
 				content: args.content,
 				sourceType: 'curated',
@@ -752,9 +755,6 @@ export const createPolicyEntry = knowledgeAdminMutation({
 				entryType,
 				expiresAt: args.expiresAt,
 			});
-			if (isInputChanged) {
-				await afterInputChange(ctx, { table: 'knowledgeEntries', id: args.entryId });
-			}
 			return args.entryId;
 		}
 
@@ -773,7 +773,7 @@ export const createPolicyEntry = knowledgeAdminMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
-		await afterInputChange(ctx, { table: 'knowledgeEntries', id: policyId });
+		await noteCorpusInsert(ctx, 'knowledgeEntries', policyId);
 		return policyId;
 	},
 });

@@ -233,6 +233,33 @@ export function slotFields(
 	};
 }
 
+/**
+ * The stamps an attestation puts on a legacy primary-column vector (no vector
+ * is written: the one already there is the attested space's), and the stamps
+ * that revoke them. Only `patchCorpusRow` writes them.
+ */
+export function attestedStampFields(
+	spaceId: SpaceId,
+	attestation: { _id: Id<'embeddingAttestations'>; source: 'record' | 'attestation' },
+	entryType: EntryType | undefined
+): Record<string, unknown> {
+	return {
+		embeddingSpaceId: spaceId,
+		embeddingProvenance: attestation.source,
+		embeddingAttestationId: attestation._id,
+		...(entryType ? { embeddingSpaceEntryKey: embeddingSpaceEntryKey(spaceId, entryType) } : {}),
+	};
+}
+
+export function revokedStampFields(options: { isKnowledge: boolean }): Record<string, unknown> {
+	return {
+		embeddingSpaceId: undefined,
+		embeddingProvenance: undefined,
+		embeddingAttestationId: undefined,
+		...(options.isKnowledge ? { embeddingSpaceEntryKey: undefined } : {}),
+	};
+}
+
 /** The fields that clear one column of a row (and its filter key, for knowledge). */
 export function clearColumnFields(
 	slot: EmbeddingSlot,
