@@ -169,7 +169,11 @@ export async function admitDispatch(
 	let isUnbounded = false;
 	const beforeRequest = async (size: RequestSize) => {
 		if (isUnbounded) return;
-		const bound = { requestId: meter.requestId, attempt: meter.nextAttempt, microusd: priced(size) };
+		const bound = {
+			requestId: meter.requestId,
+			attempt: meter.nextAttempt,
+			microusd: priced(size),
+		};
 		if (reservationId !== undefined) {
 			await port.extend(reservationId, bound);
 			return;

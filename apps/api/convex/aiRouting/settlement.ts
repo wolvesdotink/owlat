@@ -104,9 +104,7 @@ export async function settleReservation(
 			await ctx.db.patch(hold._id, { status: 'released', settledMicrousd: 0, updatedAt: now });
 			return 'released';
 		}
-		charge = rows
-			.filter(isUnknownUsage)
-			.reduce((sum, row) => sum + requestBoundOf(hold, row), 0);
+		charge = rows.filter(isUnknownUsage).reduce((sum, row) => sum + requestBoundOf(hold, row), 0);
 		status = 'settled';
 	} else {
 		charge = Math.max(0, hold.heldMicrousd - reported);

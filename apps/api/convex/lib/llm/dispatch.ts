@@ -57,7 +57,6 @@ const SDK_MAX_RETRIES = 0;
 
 const MAX_PROVIDER_MODEL_ID_LENGTH = 256;
 
-
 function hasAsciiControlCharacter(value: string): boolean {
 	return Array.from(value).some((character) => {
 		const codePoint = character.codePointAt(0);

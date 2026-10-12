@@ -166,11 +166,18 @@ export const recordRequests = internalMutation({
 				if (existing) continue;
 			}
 			const { usage, modelUsed, ...requestTags } = request;
-			const inserted = await insertLlmUsage(ctx, feature, usage ?? ZERO_USAGE, modelUsed, undefined, {
-				...tags,
-				...requestTags,
-				isEstimated: usage === undefined,
-			});
+			const inserted = await insertLlmUsage(
+				ctx,
+				feature,
+				usage ?? ZERO_USAGE,
+				modelUsed,
+				undefined,
+				{
+					...tags,
+					...requestTags,
+					isEstimated: usage === undefined,
+				}
+			);
 			// A row of a hold that already closed (it arrived after the sweep) is
 			// charged against the estimate it replaces, in this mutation.
 			const reservationId = request.reservationId ?? tags.reservationId;
