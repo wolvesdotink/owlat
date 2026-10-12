@@ -7893,7 +7893,7 @@
 						"description": "Welche neuen KI-Wege laufen und wie viel von der Ausgabenobergrenze Vorsortierung und Schattenläufe nutzen dürfen. Jeder Schalter steht anfangs auf Aus, so arbeitet Owlat heute. Jede Änderung wird im Audit-Protokoll festgehalten.",
 						"discard": "Änderungen verwerfen",
 						"groups": {
-							"budget": "Budget",
+							"budget": "Ausgabenrahmen",
 							"decisions": "Entscheidungsanfragen",
 							"files": "Anhänge und Wissen",
 							"shadow": "Schattenläufe",
