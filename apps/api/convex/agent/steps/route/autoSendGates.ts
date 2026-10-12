@@ -50,11 +50,19 @@ const messageExistsGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
+// D1 (ADR-0073): the ceiling read from the complete period aggregate; a spend
+// state that cannot be verified holds the send. A message the ceiling held
+// (`budgetHold`) is never auto-sent, whatever the budget reads now.
 const spendBudgetGate: CoreAutoSendGate = Object.freeze({
 	id: 'spend_budget',
-	async evaluate({ action }: AutoSendGateContext) {
+	async evaluate({ action, getMessage }: AutoSendGateContext) {
+		if ((await getMessage())?.budgetHold) {
+			return unsafe(
+				'Paid model judgments were skipped at the AI spend ceiling; routing to human review.'
+			);
+		}
 		try {
-			const budget = await action.runQuery(internal.analytics.spendBudget.getBudgetStatus, {});
+			const budget = await action.runQuery(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
 			return budget.autonomousAutoSendAllowed
 				? safe()
 				: unsafe(

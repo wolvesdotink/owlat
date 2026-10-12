@@ -189,6 +189,20 @@ describe('ordered core auto-send gate registry', () => {
 		expect(result.calls.map(shortName)).toEqual(['getMessage', 'getBudgetStatus']);
 	});
 
+	it('holds a message the spend ceiling held (D1), without reading the budget', async () => {
+		const result = await finalDecision({
+			message: {
+				...cleanMessage,
+				budgetHold: { reason: 'daily_ceiling', missingJudgments: ['draft'], at: 1 },
+			} as never,
+		});
+		expect(result.decision).toEqual({
+			safe: false,
+			reason: 'Paid model judgments were skipped at the AI spend ceiling; routing to human review.',
+		});
+		expect(result.calls.map(shortName)).toEqual(['getMessage']);
+	});
+
 	it('fails closed when spend-budget status is unavailable', async () => {
 		const { decision } = await finalDecision({ budget: 'throw' });
 		expect(decision).toEqual({

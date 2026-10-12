@@ -46,6 +46,7 @@ import { scrubTags, slugifyTag, truncateForLLM } from './lib/semanticFileText';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
 import { anchorActionDeadline } from './lib/llm/actionDeadline';
 import { boundedRoot } from './lib/llm/actionDeadline';
+import { deferFileForBudget } from './analytics/backgroundDeferral';
 
 /**
  * Whether any AI provider is set up. AI is optional: without one a file still
@@ -68,7 +69,11 @@ async function aiProviderConfigured(ctx: ActionCtx): Promise<boolean> {
  * create tags, and compute embedding vector.
  */
 export const processFile = internalAction({
-	args: { fileId: v.id('semanticFiles') },
+	args: {
+		fileId: v.id('semanticFiles'),
+		/** Runs this file already deferred at the spend ceiling (ADR-0073, D1). */
+		deferrals: v.optional(v.number()),
+	},
 	handler: async (ctx, args) => {
 		// One model budget for this action, from its start (ADR-0073).
 		anchorActionDeadline(ctx);
@@ -141,9 +146,12 @@ export const processFile = internalAction({
 		// Without a provider this action used to throw at the embedding step, so
 		// the file never got its extracted text stored, and the backfill re-ran it
 		// into the same error for two hours.
-		const aiConfigured = await aiProviderConfigured(ctx);
+		// D1 (ADR-0073): at the spend ceiling the paid steps defer to a later run.
+		const aiConfigured =
+			(await aiProviderConfigured(ctx)) &&
+			!(await deferFileForBudget(ctx, args.fileId, args.deferrals));
 		if (!aiConfigured) {
-			logInfo('[semantic_file] no AI provider configured; storing text without AI metadata', {
+			logInfo('[semantic_file] no AI provider, or deferred at the spend ceiling; text only', {
 				fileId: args.fileId,
 			});
 		}
