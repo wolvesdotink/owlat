@@ -37,6 +37,7 @@ function hold(id: string, heldMicrousd: number, over: Record<string, unknown> = 
 		priority: 'pipeline' as const,
 		heldMicrousd,
 		maxRequests: 2,
+		requestBound: { microusd: Math.ceil(heldMicrousd / 2) },
 		modelId: 'gpt-4o',
 		expiresAt: Date.now() + 60_000,
 		...over,
@@ -95,9 +96,10 @@ describe('aiRouting.admission.reserve', () => {
 		const t = await ready('1000000');
 		await t.run(async (ctx) => {
 			for (let index = 0; index <= MAX_OUTSTANDING_HOLDS; index++) {
-				const { maxRequests: _maxRequests, ...row } = hold(`bulk${index}`, 1);
+				const { maxRequests: _maxRequests, requestBound, ...row } = hold(`bulk${index}`, 1);
 				await ctx.db.insert('llmReservations', {
 					...row,
+					requestBounds: [requestBound],
 					maxAttempts: 1,
 					status: 'held',
 					policyVersion: 0,
@@ -236,5 +238,106 @@ describe('settling a hold', () => {
 		await t.mutation(internal.aiRouting.admission.reserve, hold('live', USD));
 		await t.mutation(internal.aiRouting.admission.sweepExpiredHolds, {});
 		expect((await holds(t))[0]).toMatchObject({ status: 'held' });
+	});
+});
+
+describe('per-request bounds and late rows (Sol r1 F2, F3)', () => {
+	const recordRows = (
+		t: ReturnType<typeof newHarness>,
+		reservationId: string,
+		requests: {
+			attempt: number;
+			usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+		}[]
+	) =>
+		t.mutation(internal.analytics.llmUsage.recordRequests, {
+			feature: 'postbox_ask_thread',
+			requestId: 'call-1',
+			requests: requests.map((request) => ({
+				attempt: request.attempt,
+				latencyMs: 1,
+				modelUsed: 'gpt-4o',
+				reservationId,
+				...(request.usage ? { usage: request.usage } : {}),
+			})),
+		});
+
+	it('charges a request with unknown usage at its own bound, not the average', async () => {
+		const t = await ready('10');
+		await t.mutation(internal.aiRouting.admission.reserve, {
+			...hold('bounded', 0.1 * USD),
+			maxRequests: 1,
+			requestBound: { requestId: 'call-1', attempt: 1, microusd: 0.1 * USD },
+		});
+		await t.mutation(internal.aiRouting.admission.extend, {
+			reservationId: 'bounded',
+			requestBound: { requestId: 'call-1', attempt: 2, microusd: 0.9 * USD },
+		});
+		// Request 1 reported $0.35; request 2 (the $0.90 one) reported nothing.
+		await recordRows(t, 'bounded', [
+			{
+				attempt: 1,
+				usage: { promptTokens: 100_000, completionTokens: 10_000, totalTokens: 110_000 },
+			},
+			{ attempt: 2 },
+		]);
+		await t.mutation(internal.aiRouting.admission.settle, {
+			reservationId: 'bounded',
+			expectedRequests: 2,
+		});
+		const [row] = await holds(t);
+		expect(row).toMatchObject({ status: 'settled', settledMicrousd: 350_000 + 900_000 });
+		expect((await aggregateTotals(t)).day).toBe(1_250_000);
+	});
+
+	it('charges a request that arrives after the sweep against the estimate: max(estimate, reported)', async () => {
+		const t = await ready('10');
+		await t.mutation(
+			internal.aiRouting.admission.reserve,
+			hold('late', USD, { expiresAt: Date.now() - 1 })
+		);
+		await t.mutation(internal.aiRouting.admission.sweepExpiredHolds, {});
+		expect((await aggregateTotals(t)).day).toBe(USD);
+
+		// A $0.35 request lands after the $1 estimate: the estimate already covers it.
+		await recordRows(t, 'late', [
+			{
+				attempt: 1,
+				usage: { promptTokens: 100_000, completionTokens: 10_000, totalTokens: 110_000 },
+			},
+		]);
+		expect((await aggregateTotals(t)).day).toBe(USD);
+		// A second, $0.70 request: only the part above what is left of the estimate counts.
+		await recordRows(t, 'late', [
+			{
+				attempt: 2,
+				usage: { promptTokens: 200_000, completionTokens: 20_000, totalTokens: 220_000 },
+			},
+		]);
+		expect((await aggregateTotals(t)).day).toBe(1_050_000);
+		const [row] = await holds(t);
+		expect(row).toMatchObject({
+			status: 'expired',
+			settledMicrousd: 1_050_000,
+			estimateRemainingMicrousd: 0,
+		});
+		// The aggregate is still derivable from the ledger alone.
+		await t.run(async (ctx) => {
+			const state = await ctx.db.query('llmSpendAggregateState').first();
+			await ctx.db.patch(state!._id, { status: 'unreconciled' });
+		});
+		await reconcileSpend(t);
+		expect((await aggregateTotals(t)).day).toBe(1_050_000);
+	});
+
+	it('adds nothing for a late row whose usage is unknown', async () => {
+		const t = await ready('10');
+		await t.mutation(
+			internal.aiRouting.admission.reserve,
+			hold('late-unknown', USD, { expiresAt: Date.now() - 1 })
+		);
+		await t.mutation(internal.aiRouting.admission.sweepExpiredHolds, {});
+		await recordRows(t, 'late-unknown', [{ attempt: 1 }]);
+		expect((await aggregateTotals(t)).day).toBe(USD);
 	});
 });

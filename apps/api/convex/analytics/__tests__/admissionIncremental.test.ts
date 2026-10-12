@@ -131,3 +131,57 @@ describe('admission before every provider request', () => {
 		expect(model.doGenerateCalls).toHaveLength(2);
 	});
 });
+
+describe('hold sizing bounds what is billed (Sol r1 F1)', () => {
+	it('keeps parallel non-Latin calls under the ceiling, however the provider tokenizes them', async () => {
+		const { t, ctx } = await setup('0.1');
+		// A provider that bills the most it could: one token per UTF-8 byte of
+		// everything it was sent, and its whole output ceiling.
+		const model = stampModelEndpoint(
+			new MockLanguageModelV3({
+				modelId: 'gpt-4o-mini',
+				doGenerate: async (options) => {
+					const bytes = new TextEncoder().encode(JSON.stringify(options.prompt)).length;
+					return {
+						content: [{ type: 'text', text: '好' }],
+						finishReason: { unified: 'stop', raw: undefined },
+						usage: {
+							inputTokens: {
+								total: bytes,
+								noCache: bytes,
+								cacheRead: undefined,
+								cacheWrite: undefined,
+							},
+							outputTokens: {
+								total: options.maxOutputTokens ?? 0,
+								text: options.maxOutputTokens ?? 0,
+								reasoning: undefined,
+							},
+						},
+						warnings: [],
+					};
+				},
+			}),
+			'openai-native'
+		);
+		const prompt = '請把簽好的合約寄給我，謝謝。🙂'.repeat(4_000);
+
+		const outcomes = await Promise.allSettled(
+			Array.from({ length: 6 }, () =>
+				meterLlmCall(ctx, { feature: 'agent_draft' }, (meter) =>
+					runLlmText({ model, meter, prompt })
+				)
+			)
+		);
+
+		const spent = (await t.run((c) => c.db.query('llmUsageEvents').collect())).reduce(
+			(sum, row) => sum + (row.costMicrousd ?? 0),
+			0
+		);
+		expect(spent).toBeGreaterThan(0);
+		expect(spent).toBeLessThanOrEqual(100_000);
+		// Some calls were refused before they were sent.
+		expect(outcomes.some((outcome) => outcome.status === 'rejected')).toBe(true);
+		expect(model.doGenerateCalls.length).toBeLessThan(6);
+	});
+});

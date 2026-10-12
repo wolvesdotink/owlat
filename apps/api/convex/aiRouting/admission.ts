@@ -57,6 +57,15 @@ const refusalValidator = v.object({
 /** Holds swept per run; the sweep reschedules itself while more are due. */
 const SWEEP_BATCH = 100;
 
+const requestBoundValidator = v.object({
+	requestId: v.optional(v.string()),
+	attempt: v.optional(v.number()),
+	microusd: v.number(),
+});
+
+/** The most request bounds one hold records (a tool loop's steps times its attempts, with room). */
+export const MAX_REQUEST_BOUNDS = 128;
+
 const reserveArgs = {
 	reservationId: v.string(),
 	rootRequestId: v.string(),
@@ -69,6 +78,8 @@ const reserveArgs = {
 	heldMicrousd: v.number(),
 	/** The provider requests the hold covers (attempts × steps). */
 	maxRequests: v.number(),
+	/** The bound of the request the hold opens with. */
+	requestBound: requestBoundValidator,
 	modelId: v.optional(v.string()),
 	endpoint: v.optional(v.string()),
 	expiresAt: v.number(),
@@ -95,7 +106,12 @@ export async function reserveInMutation(
 		.first();
 	// A retried reserve (the first committed, its reply was lost) finds its hold.
 	if (existing) return { isAdmitted: true, isHeld: existing.status === 'held' };
-	if (!Number.isSafeInteger(args.heldMicrousd) || args.heldMicrousd < 0) {
+	if (
+		!Number.isSafeInteger(args.heldMicrousd) ||
+		args.heldMicrousd < 0 ||
+		!Number.isSafeInteger(args.requestBound.microusd) ||
+		args.requestBound.microusd < 0
+	) {
 		return { isAdmitted: false, reason: 'spend_unverifiable', limit: 'unverifiable' };
 	}
 
@@ -133,6 +149,7 @@ export async function reserveInMutation(
 		...(args.modelId ? { modelId: args.modelId } : {}),
 		...(args.endpoint ? { endpoint: args.endpoint } : {}),
 		maxAttempts: Math.max(1, Math.floor(args.maxRequests)),
+		requestBounds: [args.requestBound],
 		policyVersion: context.policy.policyVersion,
 		expiresAt: args.expiresAt,
 		createdAt: now,
@@ -157,7 +174,7 @@ export const reserve = internalMutation({
  * for. A hold that is no longer `held` cannot grow.
  */
 export const extend = internalMutation({
-	args: { reservationId: v.string(), addMicrousd: v.number() },
+	args: { reservationId: v.string(), requestBound: requestBoundValidator },
 	returns: v.union(v.object({ isAdmitted: v.literal(true) }), refusalValidator),
 	handler: async (ctx, args) => {
 		const hold = await ctx.db
@@ -171,7 +188,13 @@ export const extend = internalMutation({
 				limit: 'unverifiable' as const,
 			};
 		}
-		if (!Number.isSafeInteger(args.addMicrousd) || args.addMicrousd < 0) {
+		const addMicrousd = args.requestBound.microusd;
+		const bounds = hold.requestBounds ?? [];
+		if (
+			!Number.isSafeInteger(addMicrousd) ||
+			addMicrousd < 0 ||
+			bounds.length >= MAX_REQUEST_BOUNDS
+		) {
 			return {
 				isAdmitted: false as const,
 				reason: 'spend_unverifiable' as const,
@@ -187,14 +210,15 @@ export const extend = internalMutation({
 				plane: hold.plane,
 				budgetClass: hold.budgetClass,
 				priority: hold.priority,
-				microusd: args.addMicrousd,
+				microusd: addMicrousd,
 			},
 			now
 		);
 		if (!verdict.isAdmitted) return verdict;
 		await ctx.db.patch(hold._id, {
-			heldMicrousd: hold.heldMicrousd + args.addMicrousd,
+			heldMicrousd: hold.heldMicrousd + addMicrousd,
 			maxAttempts: hold.maxAttempts + 1,
+			requestBounds: [...bounds, args.requestBound],
 			updatedAt: now,
 		});
 		return { isAdmitted: true as const };

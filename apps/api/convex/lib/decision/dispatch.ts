@@ -74,7 +74,7 @@ export { billedUsage } from './attemptRequests';
 import { taskForFeature } from '../llm/taskPolicy';
 import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
 import { admitDispatch, type DispatchHold } from '../llm/dispatchAdmission';
-import { admissionRefusalOf } from '../llm/admissionPort';
+import { admissionRefusalOf, serializedBytes } from '../llm/admissionPort';
 import type {
 	DecisionFallbackBreaker,
 	DecisionRateLimiter,
@@ -286,7 +286,9 @@ async function askOnce<Q extends QuestionSet>(
 }
 
 /** Output a native decision answer may bill: labels and probabilities, never text. */
-const NATIVE_DECISION_OUTPUT_TOKENS = 256;
+const NATIVE_DECISION_OUTPUT_TOKENS = 4_096;
+/** The wire codec frames the state and questions; its body is at most this many times their JSON. */
+const NATIVE_WIRE_EXPANSION = 2;
 
 /**
  * Reserve one native paid attempt. The language-backed adapter (`llm`) is
@@ -311,8 +313,13 @@ async function admitNativeAttempt<Q extends QuestionSet>(
 		},
 		{
 			plane: 'decision',
-			inputChars: JSON.stringify({ state: options.state, questions: options.questions }).length,
 			isIncremental: false,
+			size: {
+				bytes:
+					NATIVE_WIRE_EXPANSION *
+					serializedBytes({ state: options.state, questions: options.questions }),
+				messages: 1,
+			},
 		}
 	);
 }

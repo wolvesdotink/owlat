@@ -39,7 +39,7 @@ import { startRequest, type LlmCallMeter } from './requestMeter';
 import { callShape, limitArgs } from './callShape';
 import { isLengthStop, LlmTruncatedError } from './truncation';
 import { DEFAULT_MAX_TOOL_STEPS } from './dispatchStream';
-import { admissionRefusalOf, promptChars } from './admissionPort';
+import { admissionRefusalOf, dispatchRequestSize } from './admissionPort';
 import { admitDispatch, isWrappableModel } from './dispatchAdmission';
 
 export { MAX_LLM_ATTEMPTS, errorStatus, isRetriableLlmError, retryAfterMs } from './retryPolicy';
@@ -57,8 +57,6 @@ const SDK_MAX_RETRIES = 0;
 
 const MAX_PROVIDER_MODEL_ID_LENGTH = 256;
 
-/** What one tool definition adds to a request's input, for the admission estimate. */
-const TOOL_DEFINITION_CHARS = 1_500;
 
 function hasAsciiControlCharacter(value: string): boolean {
 	return Array.from(value).some((character) => {
@@ -170,8 +168,8 @@ export async function runLlmTextWithAttemptMetadata(
 	// Spend admission before each provider request (ADR-0073, Phase 1b).
 	const requestModel = modelForRequest(opts.model);
 	const hold = await admitDispatch(opts.meter, call, {
-		inputChars: promptChars(opts),
 		isIncremental: isWrappableModel(requestModel),
+		size: dispatchRequestSize(opts),
 	});
 	const providerModelIdentity = captureProviderModelIdentity(hold.wrap(requestModel));
 	let dispatched;
@@ -255,7 +253,7 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 	const maxSteps = opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS;
 	const requestModel = modelForRequest(opts.model);
 	const hold = await admitDispatch(opts.meter, call, {
-		inputChars: promptChars(opts) + Object.keys(opts.tools).length * TOOL_DEFINITION_CHARS,
+		size: dispatchRequestSize({ messages: opts.messages, tools: opts.tools }),
 		steps: maxSteps,
 		isIncremental: isWrappableModel(requestModel),
 	});
@@ -368,8 +366,8 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 	let dispatched;
 	const requestModel = modelForRequest(opts.model);
 	const hold = await admitDispatch(opts.meter, call, {
-		inputChars: promptChars(opts),
 		isIncremental: isWrappableModel(requestModel),
+		size: dispatchRequestSize({ prompt: opts.prompt, schema: opts.schema }),
 	});
 	const objectModel = hold.wrap(requestModel);
 	try {

@@ -18,11 +18,9 @@ import { addTokenUsage } from './tokenUsage';
 import { streamUsage, usageDetails } from './providerUsage';
 import type { LlmCallMeter } from './requestMeter';
 import { callShape, limitArgs, type CallShape } from './callShape';
-import { promptChars } from './admissionPort';
+import { dispatchRequestSize } from './admissionPort';
 import { admitDispatch, isWrappableModel, type DispatchHold } from './dispatchAdmission';
 
-/** What one tool definition adds to a request's input, for the admission estimate. */
-const TOOL_DEFINITION_CHARS = 1_500;
 import { meterStreamModel, STREAM_SETTLE_MS } from './streamMetering';
 import { isLengthStop } from './truncation';
 
@@ -117,7 +115,11 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 	// step, and the re-sends of the opening request the SDK may make.
 	const requestModel = modelForRequest(opts.model);
 	const hold = await admitDispatch(opts.meter, call, {
-		inputChars: promptChars(opts) + Object.keys(opts.tools ?? {}).length * TOOL_DEFINITION_CHARS,
+		size: dispatchRequestSize({
+			...(opts.system !== undefined ? { system: opts.system } : {}),
+			messages: opts.messages,
+			...(opts.tools ? { tools: opts.tools } : {}),
+		}),
 		steps: opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS,
 		retries: 'opening_only',
 		isIncremental: isWrappableModel(requestModel),

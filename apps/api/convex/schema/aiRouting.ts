@@ -138,6 +138,26 @@ export const aiRoutingTables = {
 		modelId: v.optional(v.string()),
 		endpoint: v.optional(v.string()),
 		maxAttempts: v.number(),
+		/**
+		 * Each request's own bound, keyed by the meter's request id and attempt
+		 * (admission lane): a request whose usage is unknown is charged at its
+		 * own bound. An entry without a key bounds any request of the hold.
+		 */
+		requestBounds: v.optional(
+			v.array(
+				v.object({
+					requestId: v.optional(v.string()),
+					attempt: v.optional(v.number()),
+					microusd: v.number(),
+				})
+			)
+		),
+		/**
+		 * The part of a settlement estimate not yet offset by a request row that
+		 * arrived after the hold closed (admission lane). Such a row is charged
+		 * against it first, so the final charge is max(estimate, reported).
+		 */
+		estimateRemainingMicrousd: v.optional(v.number()),
 		policyVersion: v.number(),
 		expiresAt: v.number(),
 		createdAt: v.number(),

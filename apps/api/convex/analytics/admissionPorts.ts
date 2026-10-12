@@ -20,7 +20,7 @@ import {
 	type DispatchEstimate,
 } from '../lib/llm/admissionPort';
 import { taskPolicy } from '../lib/llm/taskPolicy';
-import type { LlmRootContext } from '../lib/llm/requestMeter';
+import type { LlmRootContext, RequestBound } from '../lib/llm/requestMeter';
 import type { LlmUsagePlane } from '../lib/llmUsageTags';
 import type { AdmissionPriority, BudgetClass } from '../lib/validators/aiRouting';
 
@@ -48,6 +48,8 @@ export interface HoldRequest {
 	readonly root: LlmRootContext | undefined;
 	readonly microusd: number;
 	readonly maxRequests: number;
+	/** The bound of the request the hold opens with. */
+	readonly requestBound: RequestBound;
 	readonly modelId?: string;
 	readonly endpoint?: string;
 	/** Absolute ms by which the call is over (its deadline); the hold expires a grace period later. */
@@ -83,6 +85,7 @@ export async function reserveHold(
 			priority: request.priority,
 			heldMicrousd: request.microusd,
 			maxRequests: request.maxRequests,
+			requestBound: request.requestBound,
 			...(request.modelId ? { modelId: request.modelId } : {}),
 			...(request.endpoint ? { endpoint: request.endpoint } : {}),
 			expiresAt: Math.max(deadlineAt, now) + HOLD_GRACE_MS,
@@ -132,12 +135,13 @@ export function dispatchAdmissionPort(
 				root: target.root,
 				microusd: estimate.microusd,
 				maxRequests: estimate.maxRequests,
+				requestBound: estimate.requestBound,
 				modelId: estimate.modelId,
 				...(estimate.endpoint ? { endpoint: estimate.endpoint } : {}),
 				...(deadlineAt === undefined ? {} : { deadlineAt }),
 			});
 		},
-		extend: (reservationId: string, microusd: number) => extendHold(ctx, reservationId, microusd),
+		extend: (reservationId: string, bound: RequestBound) => extendHold(ctx, reservationId, bound),
 		release: (reservationId: string) => releaseHold(ctx, reservationId),
 	};
 }
@@ -146,14 +150,14 @@ export function dispatchAdmissionPort(
 export async function extendHold(
 	ctx: object,
 	reservationId: string,
-	microusd: number
+	requestBound: RequestBound
 ): Promise<void> {
 	if (!hasRunMutation(ctx)) throw new AdmissionRefusedError('spend_unverifiable', 'unverifiable');
 	let verdict;
 	try {
 		verdict = await ctx.runMutation(internal.aiRouting.admission.extend, {
 			reservationId,
-			addMicrousd: microusd,
+			requestBound,
 		});
 	} catch {
 		throw new AdmissionRefusedError('spend_unverifiable', 'unverifiable');

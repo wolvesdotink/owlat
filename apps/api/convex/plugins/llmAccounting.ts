@@ -4,6 +4,7 @@ import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { insertLlmUsage, type MeteredRequest } from '../analytics/llmUsage';
+import { reconcileLateRow } from '../aiRouting/settlement';
 import {
 	insertPluginRequestRows,
 	meteredCallArgs,
@@ -303,7 +304,7 @@ async function applySuccess(
 			validTokenUsage
 		);
 	} else if (acceptedUsage && cost.isUsageAccounted) {
-		await insertLlmUsage(
+		const inserted = await insertLlmUsage(
 			ctx,
 			`plugin:${reservation.pluginId}`,
 			acceptedUsage,
@@ -314,6 +315,7 @@ async function applySuccess(
 			},
 			{ reservationId: reservation.reservationId }
 		);
+		await reconcileLateRow(ctx, reservation.reservationId, inserted);
 	}
 	await settleDeploymentHold(ctx, reservation.reservationId, args.requests);
 	await recordHostedPluginAudit(ctx, auditScope(reservation), 'llm.generate', 'completed', {

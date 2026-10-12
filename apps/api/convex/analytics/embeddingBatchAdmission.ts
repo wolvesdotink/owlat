@@ -16,10 +16,12 @@
 
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { AdmissionRefusedError, inputTokensFor } from '../lib/llm/admissionPort';
-import { estimateCost } from '../lib/llm/pricing';
+import {
+	AdmissionRefusedError,
+	costMicrousd,
+	inputTokenBound,
+} from '../lib/llm/admissionPort';
 import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
-import { usdToMicrousd } from '../lib/aiRouting/spendPeriods';
 import { reserveHold } from './admissionPorts';
 
 /** How long a batch may run before its hold is presumed dead. */
@@ -49,20 +51,37 @@ export type EmbeddingBatchAdmission =
 	  }
 	| { readonly isAdmitted: false; readonly reason: string };
 
-/** The batch's worst case: every text sent up to the attempt allowance. */
+/**
+ * UTF-8 bytes per UTF-16 code unit at most (a BMP character is up to three
+ * bytes in one unit; an astral one is four bytes in two), so the batch's
+ * characters bound its bytes, and bytes bound its tokens (`lib/llm/admissionPort.ts`).
+ */
+const MAX_BYTES_PER_CHAR = 3;
+
+/**
+ * The batch's worst case: every text sent up to the attempt allowance. Each
+ * request is bounded by the whole batch's text (any one text is at most all of it).
+ */
 export function embeddingBatchHold(batch: EmbeddingBatchRequest): {
 	microusd: number;
 	maxRequests: number;
+	maxRequestMicrousd: number;
 } {
 	const items = Math.max(1, Math.floor(batch.items));
-	const promptTokens =
-		(inputTokensFor(batch.inputChars) + (items - 1) * inputTokensFor(0)) * MAX_LLM_ATTEMPTS;
-	const usd = estimateCost(
-		batch.model,
-		{ promptTokens, completionTokens: 0, totalTokens: promptTokens },
-		'embedding'
-	).costUsd;
-	return { microusd: usdToMicrousd(usd), maxRequests: items * MAX_LLM_ATTEMPTS };
+	const bytes = Math.max(0, batch.inputChars) * MAX_BYTES_PER_CHAR;
+	const price = (promptTokens: number) =>
+		costMicrousd(
+			batch.model,
+			{ promptTokens, completionTokens: 0, totalTokens: promptTokens },
+			'embedding'
+		);
+	// Every text once, each request with its own framing, every attempt.
+	const onePass = bytes + items * inputTokenBound(0, 1);
+	return {
+		microusd: price(onePass * MAX_LLM_ATTEMPTS),
+		maxRequests: items * MAX_LLM_ATTEMPTS,
+		maxRequestMicrousd: price(inputTokenBound(bytes, 1)),
+	};
 }
 
 /** Admit one paid batch, or refuse it with the reason the job shows. */
@@ -82,6 +101,7 @@ export async function admitEmbeddingBatch(
 			root: { rootRequestId: batch.rootRequestId },
 			microusd: hold.microusd,
 			maxRequests: hold.maxRequests,
+			requestBound: { microusd: hold.maxRequestMicrousd },
 			modelId: batch.model,
 			endpoint: `embedding:${batch.provider}`,
 			deadlineAt: Date.now() + BATCH_DEADLINE_MS,

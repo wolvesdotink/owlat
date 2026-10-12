@@ -17,7 +17,7 @@ import type { TokenUsage } from '../agent/steps/types';
 import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
 import { taskPolicy } from '../lib/llm/taskPolicy';
 import { reserveInMutation } from '../aiRouting/admission';
-import { settleReservation } from '../aiRouting/settlement';
+import { reconcileLateRow, settleReservation } from '../aiRouting/settlement';
 
 /** The provider requests of one plugin call, as the dispatch metered them (ADR-0073). */
 export const meteredCallArgs = {
@@ -53,7 +53,7 @@ export async function insertPluginRequestRows(
 	if (requests.length > MAX_LLM_ATTEMPTS) throw new Error('Plugin LLM settlement denied');
 	for (const request of requests) {
 		const usage = validTokenUsage(request.usage) ? request.usage : undefined;
-		await insertLlmUsage(
+		const inserted = await insertLlmUsage(
 			ctx,
 			`plugin:${reservation.pluginId}`,
 			usage ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
@@ -80,6 +80,8 @@ export async function insertPluginRequestRows(
 					: { reasoningTokens: request.reasoningTokens }),
 			}
 		);
+		// The deployment hold may have expired before the plugin settled.
+		await reconcileLateRow(ctx, reservation.reservationId, inserted);
 	}
 }
 
@@ -112,6 +114,8 @@ export async function reserveDeploymentHold(
 		priority: policy.priority,
 		heldMicrousd: args.reservedMicrousd,
 		maxRequests: MAX_LLM_ATTEMPTS,
+		// The plugin host prices each attempt at the same bound (`plugins/llm.ts`).
+		requestBound: { microusd: Math.ceil(args.reservedMicrousd / MAX_LLM_ATTEMPTS) },
 		modelId: args.modelId,
 		endpoint: args.endpointProvenance,
 		expiresAt: Date.now() + PLUGIN_HOLD_TTL_MS,

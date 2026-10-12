@@ -42,7 +42,7 @@ import {
 	type LlmUsagePlane,
 } from '../lib/llmUsageTags';
 import { insertLlmUsage, ZERO_USAGE } from './ledgerInsert';
-import { SETTLEMENT_FEATURE, settleReservation } from '../aiRouting/settlement';
+import { reconcileLateRow, SETTLEMENT_FEATURE, settleReservation } from '../aiRouting/settlement';
 
 export { insertLlmUsage, type LlmUsageTags } from './ledgerInsert';
 
@@ -166,11 +166,15 @@ export const recordRequests = internalMutation({
 				if (existing) continue;
 			}
 			const { usage, modelUsed, ...requestTags } = request;
-			await insertLlmUsage(ctx, feature, usage ?? ZERO_USAGE, modelUsed, undefined, {
+			const inserted = await insertLlmUsage(ctx, feature, usage ?? ZERO_USAGE, modelUsed, undefined, {
 				...tags,
 				...requestTags,
 				isEstimated: usage === undefined,
 			});
+			// A row of a hold that already closed (it arrived after the sweep) is
+			// charged against the estimate it replaces, in this mutation.
+			const reservationId = request.reservationId ?? tags.reservationId;
+			if (reservationId) await reconcileLateRow(ctx, reservationId, inserted);
 		}
 		for (const settlement of settlements ?? []) {
 			await settleReservation(ctx, settlement.reservationId, {

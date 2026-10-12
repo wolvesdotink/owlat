@@ -9,7 +9,13 @@
 import { ConvexError } from 'convex/values';
 import { AI_BUDGET_ERROR_CODE, type BudgetHoldReason } from '@owlat/shared/aiRouting';
 import type { TokenUsage } from '../../agent/steps/types';
-import { estimateCost } from './pricing';
+import {
+	estimateAdmissionCostMicrousd,
+	estimateCost,
+	type AdmissionProvenance,
+} from './pricing';
+import { LANGUAGE_ENDPOINT_PROVENANCES } from '../llmProviders/types';
+import { DECISION_ENDPOINT_PROVENANCES } from '../decisionProviders/types';
 import { usdToMicrousd } from '../aiRouting/spendPeriods';
 import type { LlmUsagePlane } from '../llmUsageTags';
 
@@ -89,88 +95,106 @@ export function admissionRefusalOf(error: unknown): AdmissionRefusalData | null 
 	};
 }
 
-/** Characters per token for the input estimate: low, so the estimate errs high. */
-const CHARS_PER_TOKEN = 3;
-/** Per-request framing the prompt text does not show (roles, schema, tool definitions). */
-const REQUEST_OVERHEAD_TOKENS = 1_000;
-/** What one tool round may add to the next round's input. */
-const TOOL_RESULT_TOKENS = 2_000;
+/**
+ * HOLD SIZING (ADR-0073, Phase 1b). A hold must be an upper bound on what the
+ * request can be billed, or concurrent calls overshoot the ceiling.
+ *
+ * - INPUT: the UTF-8 byte length of the whole serialized request (system,
+ *   messages, tool definitions, the structured-output schema). Byte-level BPE
+ *   and SentencePiece with byte fallback never produce more tokens than bytes,
+ *   so bytes bound the input tokens in any script, where characters do not (a
+ *   CJK character or an emoji is one character and up to four tokens). Each
+ *   message adds a fixed allowance for the role and separator tokens the
+ *   provider inserts, and the request a fixed allowance on top.
+ * - OUTPUT: the request's output ceiling (finite for every generative task),
+ *   which the provider enforces on everything it bills as output.
+ * - PRICE: the larger of the ledger's own price (`estimateCost`, which prices
+ *   the settled row, with the plane's fallback for an unknown model) and the
+ *   admission price where the endpoint and model are in the admission catalog
+ *   (list rates plus the cache-write ceiling on input).
+ *
+ * Inputs this does not bound: image and file parts priced by the provider
+ * per image. No call site sends them today.
+ */
+
+/** Tokens the provider may add per message (role, separators). */
+const PER_MESSAGE_TOKENS = 16;
+/** Tokens the provider may add per request (the reply priming, a system frame). */
+const PER_REQUEST_TOKENS = 64;
+/** What one tool round may add to the next round's input, for the worst-case (unwrapped) hold. */
+const TOOL_RESULT_BYTES = 16_384;
 /** The output ceiling when neither the task nor the model names one. */
 export const FALLBACK_OUTPUT_TOKENS = 8_192;
+/** A value that cannot be serialized counts as this many bytes. */
+const UNSERIALIZABLE_BYTES = 65_536;
 
-/** Input tokens a text of `chars` characters may count as. */
-export function inputTokensFor(chars: number): number {
-	return Math.ceil(Math.max(0, chars) / CHARS_PER_TOKEN) + REQUEST_OVERHEAD_TOKENS;
+const encoder = new TextEncoder();
+
+/** UTF-8 bytes of a string. */
+export function utf8Bytes(text: string): number {
+	return encoder.encode(text).length;
 }
 
-/** The characters of a prompt, a system text and a message list, as the model reads them. */
-export function promptChars(input: {
+/** UTF-8 bytes of a value serialized as JSON (an abort signal or a function counts as nothing). */
+export function serializedBytes(value: unknown): number {
+	try {
+		const json = JSON.stringify(value, (key, inner: unknown) =>
+			key === 'abortSignal' || typeof inner === 'function' ? undefined : inner
+		);
+		return json === undefined ? 0 : utf8Bytes(json);
+	} catch {
+		return UNSERIALIZABLE_BYTES;
+	}
+}
+
+/** The input-token upper bound of a request of `bytes` serialized bytes and `messages` messages. */
+export function inputTokenBound(bytes: number, messages: number): number {
+	return Math.max(0, Math.ceil(bytes)) + Math.max(1, messages) * PER_MESSAGE_TOKENS + PER_REQUEST_TOKENS;
+}
+
+/** The size of a dispatch's request before the provider parameters exist (an unwrapped model). */
+export function dispatchRequestSize(input: {
 	readonly prompt?: string;
 	readonly system?: string;
 	readonly messages?: readonly unknown[];
-}): number {
-	let chars = (input.prompt?.length ?? 0) + (input.system?.length ?? 0);
-	for (const message of input.messages ?? []) {
-		try {
-			chars += JSON.stringify(message)?.length ?? 0;
-		} catch {
-			chars += 4_000;
-		}
-	}
-	return chars;
+	readonly tools?: unknown;
+	readonly schema?: unknown;
+}): { bytes: number; messages: number } {
+	const bytes =
+		utf8Bytes(input.prompt ?? '') +
+		utf8Bytes(input.system ?? '') +
+		serializedBytes(input.messages ?? []) +
+		(input.tools === undefined ? 0 : serializedBytes(input.tools)) +
+		(input.schema === undefined ? 0 : UNSERIALIZABLE_BYTES);
+	const messages = (input.messages?.length ?? 0) + (input.prompt !== undefined ? 1 : 0) + (input.system ? 1 : 0);
+	return { bytes, messages };
 }
 
-export function costMicrousd(modelId: string, usage: TokenUsage, plane: LlmUsagePlane): number {
-	return usdToMicrousd(estimateCost(modelId, usage, plane).costUsd);
+/** The price of `usage`: the larger of the ledger's price and the admission catalog's. */
+export function costMicrousd(
+	modelId: string,
+	usage: TokenUsage,
+	plane: LlmUsagePlane,
+	endpoint?: string
+): number {
+	const ledger = usdToMicrousd(estimateCost(modelId, usage, plane).costUsd);
+	const admission =
+		endpoint !== undefined && isAdmissionProvenance(endpoint)
+			? estimateAdmissionCostMicrousd(endpoint, modelId, usage)
+			: undefined;
+	return Math.max(ledger, admission ?? 0);
 }
 
-/**
- * The worst case of one dispatch in integer micro-USD: `steps` rounds whose
- * input grows by the previous output and a tool result each round, each sent
- * up to `attempts` times (`attemptsPerStep`), or only the opening request
- * retried (`openingOnly`, a stream).
- */
-export function dispatchHoldMicrousd(opts: {
-	readonly modelId: string;
-	readonly plane: LlmUsagePlane;
-	readonly inputTokens: number;
-	readonly outputTokens: number;
-	readonly steps: number;
-	readonly attempts: number;
-	readonly retries: 'every_step' | 'opening_only';
-}): { microusd: number; maxRequests: number } {
-	const steps = Math.max(1, Math.floor(opts.steps));
-	const attempts = Math.max(1, Math.floor(opts.attempts));
-	let perPass = 0;
-	let opening = 0;
-	for (let step = 0; step < steps; step++) {
-		const promptTokens = opts.inputTokens + step * (opts.outputTokens + TOOL_RESULT_TOKENS);
-		const cost = costMicrousd(
-			opts.modelId,
-			{
-				promptTokens,
-				completionTokens: opts.outputTokens,
-				totalTokens: promptTokens + opts.outputTokens,
-			},
-			opts.plane
-		);
-		if (step === 0) opening = cost;
-		perPass += cost;
-	}
-	if (opts.retries === 'every_step') {
-		return { microusd: perPass * attempts, maxRequests: steps * attempts };
-	}
-	return { microusd: perPass + opening * (attempts - 1), maxRequests: steps + attempts - 1 };
-}
-
-/** One request's worst case: `inputChars` of prompt and `outputTokens` of output. */
+/** One request's bound: input from its serialized size, output at its ceiling. */
 export function requestHoldMicrousd(opts: {
 	readonly modelId: string;
 	readonly plane: LlmUsagePlane;
-	readonly inputChars: number;
+	readonly endpoint?: string;
+	readonly bytes: number;
+	readonly messages: number;
 	readonly outputTokens: number;
 }): number {
-	const promptTokens = inputTokensFor(opts.inputChars);
+	const promptTokens = inputTokenBound(opts.bytes, opts.messages);
 	return costMicrousd(
 		opts.modelId,
 		{
@@ -178,6 +202,64 @@ export function requestHoldMicrousd(opts: {
 			completionTokens: opts.outputTokens,
 			totalTokens: promptTokens + opts.outputTokens,
 		},
-		opts.plane
+		opts.plane,
+		opts.endpoint
 	);
+}
+
+/**
+ * The worst case of one dispatch whose requests cannot be seen one by one (a
+ * model the admission middleware cannot wrap): `steps` rounds whose input
+ * grows by the previous output and a tool result each round, each sent up to
+ * `attempts` times, or only the opening request retried (a stream). Also the
+ * bound of its costliest single request, which unknown usage is charged at.
+ */
+export function dispatchHoldMicrousd(opts: {
+	readonly modelId: string;
+	readonly plane: LlmUsagePlane;
+	readonly endpoint?: string;
+	readonly bytes: number;
+	readonly messages: number;
+	readonly outputTokens: number;
+	readonly steps: number;
+	readonly attempts: number;
+	readonly retries: 'every_step' | 'opening_only';
+}): { microusd: number; maxRequests: number; maxRequestMicrousd: number } {
+	const steps = Math.max(1, Math.floor(opts.steps));
+	const attempts = Math.max(1, Math.floor(opts.attempts));
+	let perPass = 0;
+	let opening = 0;
+	let costliest = 0;
+	for (let step = 0; step < steps; step++) {
+		const cost = requestHoldMicrousd({
+			...opts,
+			// Each round adds the previous output (at most four bytes a token) and a tool result.
+			bytes: opts.bytes + step * (opts.outputTokens * 4 + TOOL_RESULT_BYTES),
+			messages: opts.messages + step * 2,
+		});
+		if (step === 0) opening = cost;
+		perPass += cost;
+		costliest = Math.max(costliest, cost);
+	}
+	if (opts.retries === 'every_step') {
+		return {
+			microusd: perPass * attempts,
+			maxRequests: steps * attempts,
+			maxRequestMicrousd: costliest,
+		};
+	}
+	return {
+		microusd: perPass + opening * (attempts - 1),
+		maxRequests: steps + attempts - 1,
+		maxRequestMicrousd: costliest,
+	};
+}
+
+const ADMISSION_PROVENANCES: ReadonlySet<string> = new Set<string>([
+	...LANGUAGE_ENDPOINT_PROVENANCES,
+	...DECISION_ENDPOINT_PROVENANCES,
+]);
+
+function isAdmissionProvenance(endpoint: string): endpoint is AdmissionProvenance {
+	return ADMISSION_PROVENANCES.has(endpoint);
 }

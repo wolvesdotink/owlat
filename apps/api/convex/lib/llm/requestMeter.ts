@@ -152,6 +152,19 @@ export interface DispatchEstimate {
 	readonly microusd: number;
 	/** Provider requests the call may make. */
 	readonly maxRequests: number;
+	/** The bound of the request the hold opens with (unknown usage is charged at it). */
+	readonly requestBound: RequestBound;
+}
+
+/**
+ * What one provider request may cost, keyed by the meter's request id and the
+ * attempt number it will be recorded under. Without a key, the bound of any
+ * request of the hold (a worst-case hold, a batch).
+ */
+export interface RequestBound {
+	readonly requestId?: string;
+	readonly attempt?: number;
+	readonly microusd: number;
 }
 
 /** The meter's line to admission, installed by `analytics/meteredSpend.ts` `meterFor` in an action. */
@@ -162,7 +175,7 @@ export interface AdmissionPort {
 	 * Grow a hold by one more provider request of `microusd` before it is sent
 	 * (a retry, a tool round, a stream step), or throw `AdmissionRefusedError`.
 	 */
-	extend(reservationId: string, microusd: number): Promise<void>;
+	extend(reservationId: string, bound: RequestBound): Promise<void>;
 	/** Release a hold whose dispatch sent nothing. Best effort: the sweep settles what it misses. */
 	release(reservationId: string): Promise<void>;
 }
@@ -223,6 +236,11 @@ export class LlmCallMeter {
 		if (hold) hold.isClosed = true;
 		if (this.openReservationId === reservationId) this.openReservationId = undefined;
 		return this.requestsUnder(reservationId);
+	}
+
+	/** The attempt number the next recorded request will get. */
+	get nextAttempt(): number {
+		return this.records.length + 1;
 	}
 
 	/** Requests recorded under `reservationId`. */

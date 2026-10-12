@@ -65,9 +65,10 @@ export interface LlmUsageTags {
 	readonly budgetClass?: BudgetClass;
 	readonly reservationId?: string;
 	/**
-	 * Admission settlement only (`aiRouting/admission.ts`): the row's cost is
-	 * this conservative estimate in integer micro-USD, not a price of usage.
-	 * The row is marked `isEstimated`.
+	 * Admission settlement only (`aiRouting/settlement.ts`): the row's cost is
+	 * this conservative estimate in integer micro-USD, not a price of usage, or
+	 * a negative adjustment that offsets part of an earlier estimate. The row
+	 * is marked `isEstimated`.
 	 */
 	readonly settledEstimateMicrousd?: number;
 }
@@ -94,7 +95,8 @@ function rowCost(
 	pricedPlane: LlmUsagePlane
 ): { costUsd: number; costMicrousd: number; isEstimated: boolean | undefined } {
 	const given = tags?.settledEstimateMicrousd;
-	if (given !== undefined && Number.isSafeInteger(given) && given >= 0) {
+	// Negative only for an adjustment that offsets an earlier estimate.
+	if (given !== undefined && Number.isSafeInteger(given)) {
 		return { costUsd: given / 1_000_000, costMicrousd: given, isEstimated: true };
 	}
 	// A local engine bills nothing, whatever its model id would price at. A
@@ -121,7 +123,7 @@ export async function insertLlmUsage(
 	modelUsed: string | undefined,
 	attribution?: LlmUsageAttribution,
 	tags?: LlmUsageTags
-): Promise<void> {
+): Promise<InsertedLedgerRow> {
 	const task = tags?.task ?? taskForFeature(feature);
 	// The row's plane: the caller's, else its task's (an embedding row is one
 	// whoever wrote it). Absent still reads as language.
@@ -176,4 +178,15 @@ export async function insertLlmUsage(
 		},
 		spendGeneration
 	);
+	return {
+		costMicrousd,
+		isUnknownUsage: isEstimated === true && costMicrousd === 0 && tags?.isLocalEngine !== true,
+	};
+}
+
+/** What one insert wrote: its integer cost, and whether its usage is unknown. */
+export interface InsertedLedgerRow {
+	readonly costMicrousd: number;
+	/** No usage was reported and nothing was priced: a request whose cost is unknown. */
+	readonly isUnknownUsage: boolean;
 }
