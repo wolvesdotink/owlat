@@ -23,6 +23,7 @@ import {
 	type RoutingPolicyField,
 } from '~/utils/aiRoutingPolicy';
 import { formatDateTime } from '~/utils/formatters';
+import { useLocalized } from '~/composables/useLocalized';
 import { SHADOW_FRACTION_MAXIMA } from '@owlat/shared/aiRouting';
 
 const emit = defineEmits<{ dirty: [isDirty: boolean] }>();
@@ -48,9 +49,10 @@ const formatUsd = (value: number) =>
 const switchOptions = (key: Parameters<typeof routingSwitchOptions>[0]) =>
 	routingSwitchOptions(key).map((option) => ({ ...option, label: t(option.label) }));
 
+const localized = useLocalized();
 const problemText = (field: RoutingPolicyField) => {
 	const problem = problems.value[field];
-	return problem ? t(problem.key, problem.params ?? {}) : undefined;
+	return problem ? localized(problem) : undefined;
 };
 
 /** The allowance line: what shadow runs may spend, or why nothing. */

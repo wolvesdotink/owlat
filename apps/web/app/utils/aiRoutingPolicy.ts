@@ -19,6 +19,7 @@
  */
 import type { FunctionArgs } from 'convex/server';
 import type { api } from '@owlat/api';
+import type { LocalizedText } from '~/utils/localizedText';
 import {
 	ROUTING_CAP_MAX,
 	ROUTING_CAP_MIN,
@@ -83,11 +84,8 @@ export type RoutingPolicyField = Exclude<
 	'switches' | 'isInterpretationCached'
 >;
 
-/** A translatable sentence: a key and its values. */
-export interface RoutingPolicyText {
-	key: string;
-	params?: Record<string, string | number>;
-}
+/** A field problem: a catalog key with the values it names. */
+export type RoutingPolicyText = Extract<LocalizedText, { key: string }>;
 
 /** A select option per value of a switch; the default value says so. */
 export function routingSwitchOptions(key: RoutingSwitchKey): { value: string; label: string }[] {
