@@ -40,23 +40,14 @@ import {
 } from '../../lib/llm/admissionPort';
 import type { AdmissionPriority } from '../../lib/validators/aiRouting';
 import { reserveHold } from '../../analytics/admissionPorts';
-import {
-	INTERPRET_TEXT_LIMITS,
-	MAX_INTERPRET_FACTS,
-	MAX_INTERPRET_ITEMS,
-	MAX_INTERPRET_TRANSITIONS,
-	MAX_QUOTES_PER_CLAIM,
-} from './schema';
+import { INTERPRET_TEXT_LIMITS, MAX_QUOTES_PER_CLAIM } from './schema';
 import {
 	buildVerifyPrompt,
+	MAX_VERIFY_CLAIMS,
 	VERIFY_BATCH_SIZE,
 	VERIFY_STATEMENT_CHARS,
 	verdictSchema,
 } from './verify';
-
-/** Every item, transition and fact the output schema allows can become a claim. */
-export const MAX_VERIFY_CLAIMS =
-	MAX_INTERPRET_ITEMS + MAX_INTERPRET_TRANSITIONS + MAX_INTERPRET_FACTS;
 
 /** UTF-8 bytes per UTF-16 unit at most (`analytics/embeddingBatchAdmission.ts`). */
 const MAX_BYTES_PER_UNIT = 3;
@@ -64,10 +55,15 @@ const MAX_BYTES_PER_UNIT = 3;
 const CLAIM_FRAMING_UNITS = 64;
 const QUOTE_FRAMING_UNITS = 8;
 
+/** A call's spend target fields under the run's hold. */
+type HoldTarget = { readonly reservationId?: string; readonly requestId?: string };
+
 /** The run's hold, while it runs. */
 export interface InterpretRunHold {
-	/** Spread into every call's spend target: the call draws on this hold. */
-	readonly target: { readonly reservationId?: string };
+	/** Spread into the extraction's spend target: it draws on this hold. */
+	readonly extractTarget: HoldTarget;
+	/** Spread into verify batch `batch`'s spend target (0-based). */
+	verifyTarget(batch: number): HoldTarget;
 	/** Count a call's provider requests (its meter's, retries included). */
 	count(requests: number): void;
 	/** Settle against the counted requests, or release when none was sent. Once. */
@@ -75,7 +71,8 @@ export interface InterpretRunHold {
 }
 
 const NO_RUN_HOLD: InterpretRunHold = Object.freeze({
-	target: {},
+	extractTarget: {},
+	verifyTarget: () => ({}),
 	count: () => {},
 	settle: async () => {},
 });
@@ -147,6 +144,24 @@ export async function admitInterpretRun(
 	const verifyCalls = Math.ceil(MAX_VERIFY_CLAIMS / VERIFY_BATCH_SIZE);
 	const microusd = extract.microusd + verifyCalls * verify.microusd;
 	if (microusd === 0) return NO_RUN_HOLD;
+	// Every call of the run gets its request id now, so each of its attempts has
+	// its own bound on the hold: unknown usage is charged at the extraction's or
+	// the verifier's own bound, never one at the other's (Sol r5 F2).
+	const extractRequestId = globalThis.crypto.randomUUID();
+	const verifyRequestIds = Array.from({ length: verifyCalls }, () =>
+		globalThis.crypto.randomUUID()
+	);
+	const keyed = (requestId: string, call: { maxRequests: number; maxRequestMicrousd: number }) =>
+		Array.from({ length: call.maxRequests }, (_, index) => ({
+			requestId,
+			attempt: index + 1,
+			microusd: call.maxRequestMicrousd,
+		}));
+	const [first, ...rest] = [
+		...keyed(extractRequestId, extract),
+		...verifyRequestIds.flatMap((requestId) => keyed(requestId, verify)),
+	];
+	if (!first) return NO_RUN_HOLD;
 	const held = await reserveHold(ctx, {
 		task: 'mail.extract',
 		plane: 'language',
@@ -155,7 +170,8 @@ export async function admitInterpretRun(
 		root: opts.root,
 		microusd,
 		maxRequests: extract.maxRequests + verifyCalls * verify.maxRequests,
-		requestBound: { microusd: Math.max(extract.maxRequestMicrousd, verify.maxRequestMicrousd) },
+		requestBound: first,
+		requestBounds: rest,
 		...('modelId' in extract ? { modelId: extract.modelId } : {}),
 		...('endpoint' in extract && extract.endpoint ? { endpoint: extract.endpoint } : {}),
 	});
@@ -164,7 +180,11 @@ export async function admitInterpretRun(
 	let requests = 0;
 	let isSettled = false;
 	return {
-		target: { reservationId },
+		extractTarget: { reservationId, requestId: extractRequestId },
+		verifyTarget: (batch) => {
+			const requestId = verifyRequestIds[batch];
+			return requestId ? { reservationId, requestId } : { reservationId };
+		},
 		count: (n) => {
 			requests += n;
 		},

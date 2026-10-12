@@ -50,6 +50,8 @@ export interface HoldRequest {
 	readonly maxRequests: number;
 	/** The bound of the request the hold opens with. */
 	readonly requestBound: RequestBound;
+	/** Further requests' own bounds, keyed (a hold over several calls). */
+	readonly requestBounds?: readonly RequestBound[];
 	readonly modelId?: string;
 	readonly endpoint?: string;
 	/** Absolute ms by which the call is over (its deadline); the hold expires a grace period later. */
@@ -86,6 +88,7 @@ export async function reserveHold(
 			heldMicrousd: request.microusd,
 			maxRequests: request.maxRequests,
 			requestBound: request.requestBound,
+			...(request.requestBounds?.length ? { requestBounds: [...request.requestBounds] } : {}),
 			...(request.modelId ? { modelId: request.modelId } : {}),
 			...(request.endpoint ? { endpoint: request.endpoint } : {}),
 			expiresAt: Math.max(deadlineAt, now) + HOLD_GRACE_MS,

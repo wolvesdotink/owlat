@@ -52,6 +52,11 @@ export interface LlmSpendTarget {
 	 * writer escalation): the rows carry it and the dispatch reserves nothing.
 	 */
 	readonly reservationId?: string;
+	/**
+	 * The call's request id, when the caller's hold keyed its requests' bounds
+	 * by it (`mail/interpret/runHold.ts`). Absent: a fresh one.
+	 */
+	readonly requestId?: string;
 	readonly policyVersion?: number;
 	/** Rows of a decision attempt carry the plane's flags. */
 	readonly isFallback?: boolean;
@@ -92,6 +97,7 @@ export function meterFor(ctx: object, target: LlmSpendTarget): LlmCallMeter {
 	const task = target.task ?? taskForFeature(target.feature);
 	const deadlineAt = callDeadlineAt(ctx, target.root);
 	return new LlmCallMeter({
+		...(target.requestId ? { requestId: target.requestId } : {}),
 		task,
 		root: target.root,
 		deadlineAt,

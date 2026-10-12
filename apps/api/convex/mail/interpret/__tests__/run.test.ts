@@ -137,6 +137,36 @@ describe('interpretMessage', () => {
 		expect(verifyPrompt).toContain('send me the signed contract by Friday');
 	});
 
+	it('never verifies a claim whose quote the verify prompt would clip (Sol r5 F1)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const long =
+			'Could you send me the signed contract by Friday, ' +
+			'together with every appendix, every schedule and the cover letter we went through on the call last week, '.repeat(
+				4
+			) +
+			'but do not send anything until I confirm.';
+		expect(long.length).toBeGreaterThan(400);
+		const { messageId } = await seedCaptured(t, { text: long });
+		const output = modelOutput('s0');
+		output.items[0]!.quotes = [{ segmentId: 's0', text: long }];
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			if (schema === briefModelSchema) return { object: output };
+			return { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } };
+		});
+
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: messageId },
+		});
+
+		// The extraction only: the clipped claim never reached the verifier.
+		expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
+		expect(out).toMatchObject({ status: 'partial', errorCode: 'verify' });
+		const items = await t.run(async (ctx) => ctx.db.query('threadItems').collect());
+		expect(items).toHaveLength(1);
+		expect(items[0]?.verify).not.toBe('passed');
+	});
+
 	it('reuses an applied revision instead of calling the model again', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai']);
@@ -271,6 +301,22 @@ describe('interpretMessage', () => {
 			]);
 			const [hold] = await t.run((ctx) => ctx.db.query('llmReservations').collect());
 			expect(hold).toMatchObject({ status: 'settled' });
+			// Neither call reported usage: each is charged at its own keyed bound,
+			// the verifier's far below the extraction's, the total within the hold
+			// (Sol r5 F2).
+			const requestRows = (await t.run((ctx) => ctx.db.query('llmUsageEvents').collect())).filter(
+				(r) => r.reservationId === hold?.reservationId && r.feature !== 'admission_settlement'
+			);
+			const boundOf = (r: { requestId?: string; attempt?: number }) =>
+				hold?.requestBounds?.find((b) => b.requestId === r.requestId && b.attempt === r.attempt)
+					?.microusd;
+			const extractBound = boundOf(requestRows.find((r) => r.feature === 'interpret')!);
+			const verifyBound = boundOf(requestRows.find((r) => r.feature === 'interpret_verify')!);
+			expect(extractBound).toBeGreaterThan(0);
+			expect(verifyBound).toBeGreaterThan(0);
+			expect(verifyBound!).toBeLessThan(extractBound!);
+			expect(hold?.settledMicrousd).toBe(extractBound! + verifyBound!);
+			expect(hold!.settledMicrousd!).toBeLessThanOrEqual(hold!.heldMicrousd);
 			const rows = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
 			expect(
 				rows.filter(

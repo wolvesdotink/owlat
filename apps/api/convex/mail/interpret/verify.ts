@@ -18,9 +18,11 @@
  * Metered as `interpret_verify` in the usage ledger. The calls draw on the
  * run's one hold (`runHold.ts`), which was admitted for the verifier's
  * schema-bounded maximum before the extraction was bought, so spend admission
- * cannot refuse them halfway (Sol r4). The prompt is bounded for that: each
- * statement to {@link VERIFY_STATEMENT_CHARS}, each claim to
- * {@link MAX_QUOTES_PER_CLAIM} quotes of at most the schema's quote limit.
+ * cannot refuse them halfway (Sol r4). The prompt is bounded for that: a claim
+ * is sent only when its statement fits {@link VERIFY_STATEMENT_CHARS} and it
+ * has at most {@link MAX_QUOTES_PER_CLAIM} quotes within the schema's quote
+ * limit; any other claim stays unverified and the verification incomplete
+ * (Sol r5 F1), which keeps automation held.
  */
 
 import { z } from 'zod';
@@ -35,7 +37,13 @@ import type { InterpretationSource } from '../../lib/validators/threadBrief';
 import { SYSTEM_GUARD } from '../ai/promptGuards';
 import { defuseDelimiters } from './prompt';
 import type { VerifyClaim, VerifyVerdict } from './pipeline';
-import { INTERPRET_TEXT_LIMITS, MAX_QUOTES_PER_CLAIM } from './schema';
+import {
+	INTERPRET_TEXT_LIMITS,
+	MAX_INTERPRET_FACTS,
+	MAX_INTERPRET_ITEMS,
+	MAX_INTERPRET_TRANSITIONS,
+	MAX_QUOTES_PER_CLAIM,
+} from './schema';
 import type { InterpretRunHold } from './runHold';
 
 export const VERIFY_BATCH_SIZE = 3;
@@ -44,7 +52,24 @@ export const VERIFY_FEATURE = 'interpret_verify';
 /** A claim statement's length in the prompt (an item's or fact's two clamped assertions and framing). */
 export const VERIFY_STATEMENT_CHARS = 2 * INTERPRET_TEXT_LIMITS.assertion + 200;
 
-/** Cut to `max` UTF-16 units, marking the cut. */
+/** The most claims one run verifies: every item, transition and fact the output schema allows. */
+export const MAX_VERIFY_CLAIMS =
+	MAX_INTERPRET_ITEMS + MAX_INTERPRET_TRANSITIONS + MAX_INTERPRET_FACTS;
+
+/**
+ * Whether the verifier would see `claim` whole. A clipped statement or quote
+ * could lose the condition or contradiction that decides it ("do not send
+ * anything until I confirm"), so such a claim is never sent (Sol r5 F1).
+ */
+export function fitsVerifyPrompt(claim: VerifyClaim): boolean {
+	return (
+		claim.statement.length <= VERIFY_STATEMENT_CHARS &&
+		claim.quotes.length <= MAX_QUOTES_PER_CLAIM &&
+		claim.quotes.every((quote) => quote.length <= INTERPRET_TEXT_LIMITS.quote)
+	);
+}
+
+/** Cut to `max` UTF-16 units, marking the cut. A bound only: no clipped claim is sent. */
 function clip(text: string, max: number): string {
 	return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
@@ -117,17 +142,21 @@ export async function verifyClaims(
 	let refusal: AdmissionRefusalData | undefined;
 	if (claims.length === 0) return { verdicts, isIncomplete };
 	const model = opts.model ?? (await resolveLanguageModel(ctx, 'guard'));
-	const target = {
-		feature: VERIFY_FEATURE,
-		...(opts.root ? { root: opts.root } : {}),
-		...(opts.priority ? { priority: opts.priority } : {}),
-		...opts.hold?.target,
-	};
-	for (const batch of batchClaims(claims)) {
+	// Only what the verifier can see whole is checked (Sol r5 F1): a claim whose
+	// statement or quotes the prompt would clip, or one past the most the run's
+	// hold covers, stays unverified and leaves the verification incomplete.
+	const checkable = claims.filter(fitsVerifyPrompt).slice(0, MAX_VERIFY_CLAIMS);
+	if (checkable.length < claims.length) isIncomplete = true;
+	for (const [index, batch] of batchClaims(checkable).entries()) {
 		try {
 			const { object } = await meterLlmCall(
 				ctx,
-				target,
+				{
+					feature: VERIFY_FEATURE,
+					...(opts.root ? { root: opts.root } : {}),
+					...(opts.priority ? { priority: opts.priority } : {}),
+					...opts.hold?.verifyTarget(index),
+				},
 				async (meter) => {
 					try {
 						return await runLlmObject({

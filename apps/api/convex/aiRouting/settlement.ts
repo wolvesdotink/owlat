@@ -104,7 +104,13 @@ export async function settleReservation(
 			await ctx.db.patch(hold._id, { status: 'released', settledMicrousd: 0, updatedAt: now });
 			return 'released';
 		}
-		charge = rows.filter(isUnknownUsage).reduce((sum, row) => sum + requestBoundOf(hold, row), 0);
+		// Each unknown request at its own bound, the total never above the hold:
+		// a request without a keyed bound falls back to the hold's largest, which
+		// over several calls of different sizes could otherwise exceed it (Sol r5 F2).
+		const unknown = rows
+			.filter(isUnknownUsage)
+			.reduce((sum, row) => sum + requestBoundOf(hold, row), 0);
+		charge = Math.min(unknown, hold.heldMicrousd);
 		status = 'settled';
 	} else {
 		charge = Math.max(0, hold.heldMicrousd - reported);

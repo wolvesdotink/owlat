@@ -80,6 +80,12 @@ const reserveArgs = {
 	maxRequests: v.number(),
 	/** The bound of the request the hold opens with. */
 	requestBound: requestBoundValidator,
+	/**
+	 * Further requests' own bounds, keyed by request id and attempt, for a hold
+	 * that covers several calls of different sizes (an interpretation run's
+	 * extraction and verifier, Sol r5 F2): unknown usage is charged at its own.
+	 */
+	requestBounds: v.optional(v.array(requestBoundValidator)),
 	modelId: v.optional(v.string()),
 	endpoint: v.optional(v.string()),
 	expiresAt: v.number(),
@@ -109,8 +115,10 @@ export async function reserveInMutation(
 	if (
 		!Number.isSafeInteger(args.heldMicrousd) ||
 		args.heldMicrousd < 0 ||
-		!Number.isSafeInteger(args.requestBound.microusd) ||
-		args.requestBound.microusd < 0
+		![args.requestBound, ...(args.requestBounds ?? [])].every(
+			(bound) => Number.isSafeInteger(bound.microusd) && bound.microusd >= 0
+		) ||
+		1 + (args.requestBounds?.length ?? 0) > MAX_REQUEST_BOUNDS
 	) {
 		return { isAdmitted: false, reason: 'spend_unverifiable', limit: 'unverifiable' };
 	}
@@ -149,7 +157,7 @@ export async function reserveInMutation(
 		...(args.modelId ? { modelId: args.modelId } : {}),
 		...(args.endpoint ? { endpoint: args.endpoint } : {}),
 		maxAttempts: Math.max(1, Math.floor(args.maxRequests)),
-		requestBounds: [args.requestBound],
+		requestBounds: [args.requestBound, ...(args.requestBounds ?? [])],
 		policyVersion: context.policy.policyVersion,
 		expiresAt: args.expiresAt,
 		createdAt: now,

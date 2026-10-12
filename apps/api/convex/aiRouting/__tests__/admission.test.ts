@@ -290,6 +290,81 @@ describe('per-request bounds and late rows (Sol r1 F2, F3)', () => {
 		expect((await aggregateTotals(t)).day).toBe(1_250_000);
 	});
 
+	it('charges each call of a joint hold at its own keyed bound, the total never above the hold (Sol r5 F2)', async () => {
+		const t = await ready('10');
+		// An interpretation run: one $0.50 extraction request, two $0.05 verifier requests.
+		await t.mutation(internal.aiRouting.admission.reserve, {
+			...hold('joint', 0.6 * USD),
+			maxRequests: 3,
+			requestBound: { requestId: 'extract', attempt: 1, microusd: 0.5 * USD },
+			requestBounds: [
+				{ requestId: 'verify-0', attempt: 1, microusd: 0.05 * USD },
+				{ requestId: 'verify-1', attempt: 1, microusd: 0.05 * USD },
+			],
+		});
+		const row = (
+			requestId: string,
+			usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
+		) =>
+			t.mutation(internal.analytics.llmUsage.recordRequests, {
+				feature: requestId === 'extract' ? 'interpret' : 'interpret_verify',
+				requestId,
+				requests: [
+					{
+						attempt: 1,
+						latencyMs: 1,
+						modelUsed: 'gpt-4o',
+						reservationId: 'joint',
+						...(usage ? { usage } : {}),
+					},
+				],
+			});
+		// The extraction reported $0.35; both verifier requests reported nothing.
+		await row('extract', { promptTokens: 100_000, completionTokens: 10_000, totalTokens: 110_000 });
+		await row('verify-0');
+		await row('verify-1');
+		await t.mutation(internal.aiRouting.admission.settle, {
+			reservationId: 'joint',
+			expectedRequests: 3,
+		});
+		// Each verifier request at its own $0.05, not the extraction's $0.50.
+		const [settled] = await holds(t);
+		expect(settled).toMatchObject({ status: 'settled', settledMicrousd: 350_000 + 100_000 });
+		expect(settled!.settledMicrousd).toBeLessThanOrEqual(settled!.heldMicrousd);
+	});
+
+	it('caps the unknown-usage estimate at the hold when a request has no keyed bound', async () => {
+		const t = await ready('10');
+		await t.mutation(internal.aiRouting.admission.reserve, {
+			...hold('capped', 0.6 * USD),
+			maxRequests: 3,
+			requestBound: { requestId: 'extract', attempt: 1, microusd: 0.5 * USD },
+		});
+		// Three unkeyed requests of unknown usage would be 3 × $0.50 at the largest bound.
+		for (const requestId of ['a', 'b', 'c']) {
+			await t.mutation(internal.analytics.llmUsage.recordRequests, {
+				feature: 'interpret_verify',
+				requestId,
+				requests: [{ attempt: 1, latencyMs: 1, modelUsed: 'gpt-4o', reservationId: 'capped' }],
+			});
+		}
+		await t.mutation(internal.aiRouting.admission.settle, {
+			reservationId: 'capped',
+			expectedRequests: 3,
+		});
+		const [settled] = await holds(t);
+		expect(settled).toMatchObject({ status: 'settled', settledMicrousd: 0.6 * USD });
+	});
+
+	it('refuses a hold whose keyed bounds are not whole micro-USD', async () => {
+		const t = await ready('10');
+		const result = await t.mutation(internal.aiRouting.admission.reserve, {
+			...hold('bad', 0.6 * USD),
+			requestBounds: [{ requestId: 'v', attempt: 1, microusd: 0.5 }],
+		});
+		expect(result).toMatchObject({ isAdmitted: false, reason: 'spend_unverifiable' });
+	});
+
 	it('charges a request that arrives after the sweep against the estimate: max(estimate, reported)', async () => {
 		const t = await ready('10');
 		await t.mutation(

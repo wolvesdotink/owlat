@@ -53,7 +53,12 @@ export async function extractOutput(
 ): Promise<InterpretOutput> {
 	const { object } = await meterLlmCall(
 		ctx,
-		{ feature: INTERPRET_FEATURE, root: opts.root, priority: opts.priority, ...opts.hold.target },
+		{
+			feature: INTERPRET_FEATURE,
+			root: opts.root,
+			priority: opts.priority,
+			...opts.hold.extractTarget,
+		},
 		async (meter) => {
 			try {
 				return await runLlmObject({
