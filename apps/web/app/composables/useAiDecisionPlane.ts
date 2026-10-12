@@ -23,6 +23,7 @@ import {
 	validateDecisionConfig,
 	type DecisionFormSnapshot,
 } from '~/utils/aiDecisionPlane';
+import { isStoredKeyStranded, storedKeyApplies } from '~/utils/aiProviderKeyReuse';
 
 /**
  * The DECISION plane's half of the AI-provider form — the third card's state,
@@ -108,7 +109,25 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 		return c?.configured ? c : null;
 	});
 	const storedDecisionKind = computed(() => stored.value?.decisionProviderKind);
-	const storedDecisionKeySet = computed(() => stored.value?.isDecisionKeySet ?? false);
+	// The stored key counts only while the plane keeps its vendor and origin; a
+	// save across either needs a new key (`stored_key_not_reusable`), unless
+	// the deployment supplies it through its environment.
+	const decisionKeyFacts = computed(() =>
+		stored.value
+			? {
+					isKeySet: stored.value.isDecisionKeySet ?? false,
+					kind: stored.value.decisionProviderKind,
+					baseUrl: stored.value.decisionBaseUrl,
+				}
+			: null
+	);
+	const decisionTarget = () => ({ kind: decisionForm.kind, baseUrl: decisionForm.baseUrl });
+	const storedDecisionKeySet = computed(() =>
+		storedKeyApplies(decisionKeyFacts.value, decisionTarget())
+	);
+	const isDecisionKeyStranded = computed(() =>
+		isStoredKeyStranded(decisionKeyFacts.value, decisionTarget())
+	);
 	const decisionKeyPreview = computed(() => stored.value?.decisionKeyPreview);
 
 	const decisionMeta = computed(() => decisionProviderMeta(decisionForm.kind));
@@ -129,6 +148,7 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 		enabled: decisionEnabled.value,
 		kind: decisionForm.kind,
 		hasStoredKey: storedDecisionKeySet.value,
+		hasStrandedKey: isDecisionKeyStranded.value,
 		apiKey: decisionForm.apiKey,
 		consented: decisionConsent.value,
 		storedKind: storedDecisionKind.value,
@@ -270,6 +290,11 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 		return decisionError.value !== null;
 	}
 
+	/** The server refused to carry the stored key to a new vendor or origin. */
+	function showStoredKeyRefusal() {
+		decisionError.value = 'shared.aiProviders.decision.validation.storedKeyNotReusable';
+	}
+
 	/** Never keep a plaintext key in memory once it is persisted. */
 	function afterDecisionSave() {
 		decisionForm.apiKey = '';
@@ -331,6 +356,7 @@ export function useAiDecisionPlane(options: UseAiDecisionPlaneOptions) {
 		resetDecision,
 		decisionSaveArgs,
 		decisionSaveBlocked,
+		showStoredKeyRefusal,
 		afterDecisionSave,
 		handleDecisionTest,
 	};

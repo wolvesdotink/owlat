@@ -27,7 +27,9 @@ import type { FunctionArgs, FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
-import { isAlreadyAnsweredRefusal, ownerTimeZone } from '~/utils/answerDraft';
+import { isAlreadyAnsweredRefusal, isHeldByGuardRefusal, ownerTimeZone } from '~/utils/answerDraft';
+import type { OperationError } from '@owlat/shared/operationError';
+import { budgetReasonOf, isBudgetStreamError } from '~/utils/aiBudget';
 
 export type AskSession = NonNullable<
 	FunctionReturnType<typeof api.mail.ai.composeDraftStore.getSession>
@@ -38,7 +40,19 @@ export type AskAnswer = FunctionArgs<typeof api.mail.ai.composeDraft.answer>['an
 
 type AttachmentRow = { storageId: string; filename: string; contentType: string; size: number };
 
-export type AskPhase = 'idle' | 'checking' | 'asking' | 'drafting' | 'ready' | 'error';
+/**
+ * `held`: the safety check held the message back, so there is no AI draft for it.
+ * `budget`: the AI spend budget refused the gap check or the draft (U5).
+ */
+export type AskPhase =
+	| 'idle'
+	| 'checking'
+	| 'asking'
+	| 'drafting'
+	| 'ready'
+	| 'error'
+	| 'held'
+	| 'budget';
 
 export function useAnswerAskSession(opts: {
 	/** The draft the session hangs off, once it exists. */
@@ -76,17 +90,46 @@ export function useAnswerAskSession(opts: {
 		return mine.updatedAt > live.updatedAt ? mine : live;
 	});
 
+	/**
+	 * The server refused because the safety check held the message back (D13,
+	 * #1339). The bar says so in place of a toast, until the target changes.
+	 */
+	const isHeldByGuard = ref(false);
+	/**
+	 * The spend budget refused the start or an answer (U5). Not a phase of its
+	 * own while the questions are open: the card and its answers stay, and
+	 * the notice sits alongside. Cleared by the next try and a target change.
+	 */
+	const isBudgetRefused = ref(false);
+	function claimHeldByGuard(op: OperationError): boolean {
+		if (budgetReasonOf(op)) {
+			isBudgetRefused.value = true;
+			return true;
+		}
+		if (!isHeldByGuardRefusal(op)) return false;
+		isHeldByGuard.value = true;
+		return true;
+	}
+	watch(
+		() => JSON.stringify(opts.target()),
+		() => {
+			isHeldByGuard.value = false;
+			isBudgetRefused.value = false;
+		}
+	);
+
 	const startOp = useBackendOperation(api.mail.ai.composeDraft.start, {
 		label: () => t('components.answer.aiBar.operation'),
 		type: 'action',
 		announce: false,
+		onError: claimHeldByGuard,
 	});
 	const answerOp = useBackendOperation(api.mail.ai.composeDraft.answer, {
 		label: () => t('components.answer.askCard.operation'),
 		type: 'action',
 		announce: false,
 		// A double submit: the first one is already drafting. No error for that.
-		onError: isAlreadyAnsweredRefusal,
+		onError: (op) => isAlreadyAnsweredRefusal(op) || claimHeldByGuard(op),
 	});
 
 	const streamId = computed(() => session.value?.streamId ?? null);
@@ -101,10 +144,19 @@ export function useAnswerAskSession(opts: {
 	});
 
 	const phase = computed<AskPhase>(() => {
-		if (startOp.isLoading.value && !session.value) return 'checking';
+		if (isHeldByGuard.value) return 'held';
 		const current = session.value;
+		if (isBudgetRefused.value && current?.status !== 'asking') return 'budget';
+		if (startOp.isLoading.value && !current) return 'checking';
 		if (!current) return startOp.isLoading.value ? 'checking' : 'idle';
 		if (current.status === 'drafting' && stream.value?.status === 'complete') return 'ready';
+		// A draft the budget refused: the stream carries the code, before the
+		// session settles (`drafting`) and after (`error`), also on a reload.
+		const endedOnBudget =
+			stream.value?.status === 'error' && isBudgetStreamError(stream.value.errorMessage);
+		if ((current.status === 'drafting' || current.status === 'error') && endedOnBudget) {
+			return 'budget';
+		}
 		if (current.status === 'drafting' && stream.value?.status === 'error') return 'error';
 		// `drafting` with no stream yet: the answers are being applied (a file
 		// answer copying) before the draft starts. Busy, not a missing stream.
@@ -180,6 +232,8 @@ export function useAnswerAskSession(opts: {
 	async function start(instruction: string) {
 		const composer = opts.composer();
 		if (!composer || busy.value) return;
+		// A new try: the budget may have room again (a recount, the next day).
+		isBudgetRefused.value = false;
 		// A team thread is its own target; a Postbox reply needs its draft row.
 		const known = opts.target();
 		const draftId = known?.kind === 'teamThread' ? null : await composer.ensureDraftId();
@@ -206,6 +260,8 @@ export function useAnswerAskSession(opts: {
 	async function answer(answers: AskAnswer[], skip = false) {
 		const current = session.value;
 		if (!current || current.status !== 'asking' || answerOp.isLoading.value) return;
+		// A new try: the budget may have room again.
+		isBudgetRefused.value = false;
 		// What this answer brings (a file, the draft) is this page's from now on.
 		claim(current);
 		const target = opts.target();
@@ -333,6 +389,8 @@ export function useAnswerAskSession(opts: {
 		busy,
 		/** The stream flagged instructions from the mail in the draft. */
 		injectionFlagged: computed(() => stream.value?.injectionFlagged === true),
+		/** The budget refused the last start or answer; the ask card says so (U5). */
+		isBudgetRefused: computed(() => isBudgetRefused.value),
 		start,
 		answer,
 	};

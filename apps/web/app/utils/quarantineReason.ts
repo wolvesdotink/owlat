@@ -22,6 +22,8 @@
  * evidence, not copy, and the page renders it as such.
  */
 
+import { GUARD_NOT_RUN_REASON_KEYS, type GuardNotRunMarker } from '~/utils/guardNotRun';
+
 /** A translatable sentence: a bare catalog key, or a key plus its values. */
 export type QuarantineText = string | { key: string; params?: Record<string, string | number> };
 
@@ -35,6 +37,8 @@ export interface QuarantineSecurityFlags {
 	phishingDetected?: boolean;
 	/** The guard-tier classifier could not run at all (model error / empty sample). */
 	guardUnavailable?: boolean;
+	/** D13: the model guard was skipped (spam archive, agent off), and why. */
+	guardNotRun?: GuardNotRunMarker;
 	scanTimestamp?: number;
 }
 
@@ -129,6 +133,7 @@ export function deriveQuarantineReason(
 	if (flags.phishingDetected === true) reasons.push(PHISHING.reason);
 	if (injectionCopy) reasons.push(injectionCopy.reason);
 	if (flags.guardUnavailable === true) reasons.push(GUARD_UNAVAILABLE.reason);
+	if (flags.guardNotRun) reasons.push(GUARD_NOT_RUN_REASON_KEYS[flags.guardNotRun.reason]);
 	if ((flags.spamScore ?? 0) >= QUARANTINE_SPAM_SCORE_NOTABLE) {
 		reasons.push('dashboard.inbox.quarantine.outcomes.spam.reason');
 	}

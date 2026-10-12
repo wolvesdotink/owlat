@@ -278,6 +278,19 @@ describe('coverage', () => {
 		expect(plan.addressed.value).toEqual([]);
 	});
 
+	it('U5: says the check is partial when the AI budget refused part of it', async () => {
+		const { plan } = host({ text: ref('Hi') });
+		action.mockResolvedValueOnce(
+			await result('Hi', { isIncomplete: true, budgetRefusal: 'daily_ceiling' })
+		);
+		await plan.checkCoverage();
+		await vi.waitFor(() =>
+			expect(plan.statusNote.value).toMatch(
+				/^Only partly checked: the AI budget is used up · 1 of 2 addressed/
+			)
+		);
+	});
+
 	it('does not count a skipped item', async () => {
 		const { plan } = host({ text: ref('Hi') });
 		plan.setSelected(['contract']);

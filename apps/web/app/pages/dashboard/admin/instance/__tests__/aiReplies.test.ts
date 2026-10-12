@@ -102,6 +102,7 @@ function mountPage() {
 			AutonomyAskEagernessDial: true,
 			AutonomyFeedbackStatsCard: true,
 			AutonomyLearningControls: true,
+			SettingsHostedDecisionExclusion: true,
 			AgentKnowledgeBackfillCard: true,
 			AgentKnowledgeRelationBackfillCard: true,
 			UiCard: { template: '<div><slot /></div>' },

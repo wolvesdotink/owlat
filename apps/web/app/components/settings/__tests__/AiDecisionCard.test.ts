@@ -138,3 +138,26 @@ describe('the local engine', () => {
 		expect(wrapper.text()).toContain('The service is running and the model is loaded.');
 	});
 });
+
+describe('decision environment problem', () => {
+	it('names the invalid deployment setting with the server detail', () => {
+		const detail =
+			"DECISION_PROVIDER is set to 'jev', which is not a decision provider (typesafe, local). Decisions are refused until it is corrected.";
+		const wrapper = mountCard('enabled', { envProblem: detail });
+		const alert = wrapper.get('[data-testid="ai-decision-env-problem"]');
+		expect(alert.text()).toContain("The deployment's decision provider setting is invalid");
+		expect(alert.text()).toContain('no fallback to the language model');
+		expect(alert.text()).toContain(detail);
+	});
+
+	it('shows nothing when the environment is fine', () => {
+		expect(mountCard('enabled').find('[data-testid="ai-decision-env-problem"]').exists()).toBe(
+			false
+		);
+		expect(
+			mountCard('enabled', { envProblem: null })
+				.find('[data-testid="ai-decision-env-problem"]')
+				.exists()
+		).toBe(false);
+	});
+});

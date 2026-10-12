@@ -20,6 +20,7 @@
 
 import { v } from 'convex/values';
 import type { Infer } from 'convex/values';
+import { ASSISTANT_CUT_OFF_MESSAGE } from '@owlat/shared/aiRouting';
 import type { ModelMessage } from 'ai';
 import type { ActionCtx } from '../_generated/server';
 import { internalAction } from '../_generated/server';
@@ -185,7 +186,7 @@ async function streamAssistantTurn(
 			model: result.modelUsed,
 			tokenUsage: result.tokenUsage,
 			toolCalls: toolCalls.length ? toolCalls : undefined,
-			...(isCutOff ? { errorMessage: 'The answer was cut off at its length limit.' } : {}),
+			...(isCutOff ? { errorMessage: ASSISTANT_CUT_OFF_MESSAGE } : {}),
 		});
 	} catch (error) {
 		// Steps that finished before the failure were billed and are on the

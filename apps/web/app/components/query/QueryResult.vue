@@ -6,6 +6,8 @@ type QuerySource =
 defineProps<{
 	answer: string;
 	sources: QuerySource[];
+	/** The answer stopped at its length limit; say so under it. */
+	isTruncated?: boolean;
 }>();
 
 const { t } = useI18n();
@@ -17,6 +19,9 @@ const { t } = useI18n();
 		<div class="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">
 			{{ answer }}
 		</div>
+		<p v-if="isTruncated" class="text-xs text-text-tertiary" data-testid="query-result-cut-off">
+			{{ t('components.query.queryResult.cutOff') }}
+		</p>
 
 		<!-- Sources -->
 		<div v-if="sources.length > 0" class="pt-3 border-t border-border-subtle">

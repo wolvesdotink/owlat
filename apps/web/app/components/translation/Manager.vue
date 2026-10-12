@@ -3,6 +3,7 @@ import { parseStoredBlocks, UnsavedChangesDialog } from '@owlat/email-builder';
 import { api } from '@owlat/api';
 import { languageOptions } from '~/data/languageOptions';
 import { translationBlockRows } from '~/utils/translationRows';
+import { budgetCopyKeyOfError } from '~/utils/aiBudget';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	buildLanguageAdd,
@@ -371,7 +372,12 @@ const autoTranslateColumn = async (targetLanguage: string) => {
 			})
 		);
 	} catch (error) {
-		showToast(t('components.translation.manager.autoTranslateFailed'), 'error');
+		// U5: a budget refusal says which budget, not that translating failed.
+		const budgetKey = budgetCopyKeyOfError(error);
+		showToast(
+			budgetKey ? t(budgetKey) : t('components.translation.manager.autoTranslateFailed'),
+			'error'
+		);
 	} finally {
 		isTranslating.value = null;
 	}

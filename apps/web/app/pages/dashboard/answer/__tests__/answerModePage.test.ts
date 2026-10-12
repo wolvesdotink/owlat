@@ -63,6 +63,7 @@ const assist = {
 		busy: ref(false),
 		session: ref<Record<string, unknown> | null>(null),
 		injectionFlagged: ref(false),
+		isBudgetRefused: ref(false),
 		start: vi.fn(),
 		answer: vi.fn(),
 	},
@@ -197,7 +198,15 @@ const AiBarStub = defineComponent({
 });
 const AskCardStub = defineComponent({
 	name: 'AskCard',
-	props: ['questions', 'round', 'submitting', 'mailboxId', 'resolveThreadFile', 'copyPolicy'],
+	props: [
+		'questions',
+		'round',
+		'submitting',
+		'budgetRefused',
+		'mailboxId',
+		'resolveThreadFile',
+		'copyPolicy',
+	],
 	emits: ['answer', 'skip'],
 	setup: () => () => h('div', { 'data-testid': 'ask-card' }),
 });
@@ -518,6 +527,20 @@ describe('Answer mode page', () => {
 			[[{ questionId: 'q1', value: 'Yes' }]],
 			[[], true],
 		]);
+	});
+
+	it('keeps the ask card, with the budget notice, when the budget refuses an answer (U5)', async () => {
+		assist.aiEnabled.value = true;
+		assist.ask.phase.value = 'asking';
+		assist.ask.isBudgetRefused.value = true;
+		assist.ask.session.value = { sessionId: 's1', round: 1, questions: [{ id: 'q1' }] };
+		try {
+			const w = await mountAt({ draft: 'draft_1' });
+			expect(w.find('[data-testid="ai-bar"]').exists()).toBe(false);
+			expect(w.getComponent(AskCardStub).props('budgetRefused')).toBe(true);
+		} finally {
+			assist.ask.isBudgetRefused.value = false;
+		}
 	});
 
 	it('puts the caret in the reply body through the composer when the phone row is tapped', async () => {
