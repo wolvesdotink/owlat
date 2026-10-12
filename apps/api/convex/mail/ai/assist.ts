@@ -16,7 +16,8 @@ import { internal } from '../../_generated/api';
 import { resolveLanguageModel, resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmText } from '../../lib/llm/dispatch';
 import { interactiveLlmPolicy } from '../../lib/llm/retryPolicy';
-import { scheduleLlmSpend } from '../../analytics/llmUsage';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { newRootRequest } from '../../lib/llm/requestMeter';
 import { gateAndLoadThread, gatedInParallel } from './gate';
 import { buildSchedulingReplyInstruction } from '../availability';
 import { REPLY_OPTIONS_LIST_FORMAT, streamReplyOptions } from '../replyOptions';
@@ -142,12 +143,18 @@ export const suggestReplies = authedAction({
 					})
 				: undefined,
 		]);
-		const { replies, tokenUsage, modelUsed } = await streamReplyOptions(ctx, {
-			...buildSuggestRepliesPrompt({ instruction, transcript, voiceGuidance }),
-			...(args.streamId ? { streamId: args.streamId } : {}),
-			abortSignal: interactiveLlmPolicy('reply').abortSignal,
-		});
-		await scheduleLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);
+		const { replies } = await meterLlmCall(
+			ctx,
+			{ feature: 'postbox_suggest_replies', root: newRootRequest('postbox_action') },
+			(meter) =>
+				streamReplyOptions(ctx, {
+					...buildSuggestRepliesPrompt({ instruction, transcript, voiceGuidance }),
+					...(args.streamId ? { streamId: args.streamId } : {}),
+					abortSignal: interactiveLlmPolicy('reply').abortSignal,
+					meter,
+				}),
+			{ write: 'schedule', rethrow: 'as_is' }
+		);
 		return { replies };
 	},
 });
@@ -219,14 +226,20 @@ export const askThread = authedAction({
 			question: args.question,
 			history: args.history,
 		});
-		const { text, tokenUsage, modelUsed } = await runLlmText({
-			model,
-			system,
-			prompt,
-			temperature: 0.2,
-			...interactiveLlmPolicy('reply'),
-		});
-		await scheduleLlmSpend(ctx, 'postbox_ask_thread', tokenUsage, modelUsed);
+		const { text } = await meterLlmCall(
+			ctx,
+			{ feature: 'postbox_ask_thread', root: newRootRequest('postbox_action') },
+			(meter) =>
+				runLlmText({
+					meter,
+					model,
+					system,
+					prompt,
+					temperature: 0.2,
+					...interactiveLlmPolicy('reply'),
+				}),
+			{ write: 'schedule', rethrow: 'as_is' }
+		);
 		return { answer: text.trim() };
 	},
 });
@@ -253,15 +266,21 @@ export const completeDraft = authedAction({
 		// the gate runs.
 		const model = await gatedInParallel(ctx, resolveLanguageModel(ctx, 'summarize'));
 		const { system, prompt } = buildCompletePrompt(args);
-		const { text, tokenUsage, modelUsed } = await runLlmText({
-			model,
-			system,
-			prompt,
-			temperature: 0.3,
-			// A ghost suggestion that arrives after the user typed on is useless.
-			...interactiveLlmPolicy('completion'),
-		});
-		await scheduleLlmSpend(ctx, 'postbox_complete_draft', tokenUsage, modelUsed);
+		const { text } = await meterLlmCall(
+			ctx,
+			{ feature: 'postbox_complete_draft', root: newRootRequest('postbox_action') },
+			(meter) =>
+				runLlmText({
+					meter,
+					model,
+					system,
+					prompt,
+					temperature: 0.3,
+					// A ghost suggestion that arrives after the user typed on is useless.
+					...interactiveLlmPolicy('completion'),
+				}),
+			{ write: 'schedule', rethrow: 'as_is' }
+		);
 		return { completion: postProcessCompletion(text) };
 	},
 });
@@ -379,14 +398,20 @@ export const rewriteSelection = authedAction({
 			surroundingContext: args.surroundingContext ?? '',
 			voiceGuidance,
 		});
-		const { text, tokenUsage, modelUsed } = await runLlmText({
-			model,
-			system,
-			prompt,
-			temperature: 0.4,
-			...interactiveLlmPolicy('reply'),
-		});
-		await scheduleLlmSpend(ctx, 'postbox_rewrite_selection', tokenUsage, modelUsed);
+		const { text } = await meterLlmCall(
+			ctx,
+			{ feature: 'postbox_rewrite_selection', root: newRootRequest('postbox_action') },
+			(meter) =>
+				runLlmText({
+					meter,
+					model,
+					system,
+					prompt,
+					temperature: 0.4,
+					...interactiveLlmPolicy('reply'),
+				}),
+			{ write: 'schedule', rethrow: 'as_is' }
+		);
 		return { rewritten: text.trim() };
 	},
 });

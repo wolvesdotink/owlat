@@ -35,8 +35,7 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall } from '../../analytics/meteredSpend';
 import { logWarn } from '../../lib/runtimeLog';
 import type { InterpretMode, InterpretationStatus } from '@owlat/shared/threadBrief';
 import {
@@ -59,7 +58,7 @@ import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scop
 import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from './pipeline';
 import { clampOutput } from './clamp';
 import { needsReplyProjectionOf, type NeedsReplyProjection } from './needsReplyProjection';
-import { verifyClaims } from './verify';
+import { interpretRoot, verifyClaims } from './verify';
 import { isRetryDue } from './retry';
 import type { ReduceResult } from './reduceInput';
 import type { ApplyOutcome } from './reduce';
@@ -366,21 +365,22 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			locales: loaded.locales,
 		});
 		const { truncatedSegmentIds } = renderSegments(input.message.segments);
-		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+		const root = interpretRoot(args.source);
+		const model = await resolveLanguageModel(ctx, 'extract');
+		const { object } = await meterLlmCall(
 			ctx,
-			INTERPRET_FEATURE,
-			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'extract'),
-				schema: interpretOutputSchemaFor(mode),
-				prompt: buildInterpretPrompt(input),
-				temperature: 0,
-			})
-		);
-		try {
-			await recordLlmSpend(ctx, INTERPRET_FEATURE, tokenUsage, modelUsed);
-		} catch {
+			{ feature: INTERPRET_FEATURE, root },
+			(meter) =>
+				runLlmObject({
+					meter,
+					model,
+					schema: interpretOutputSchemaFor(mode),
+					prompt: buildInterpretPrompt(input),
+					temperature: 0,
+				}),
 			// A lost ledger row under-counts; dropping the interpretation over it would be worse.
-		}
+			{ onWriteError: 'ignore' }
+		);
 
 		// Validate with the lenient parse schema (the model schema only shapes the request).
 		const output = clampOutput(interpretOutputSchema.parse(object) as InterpretOutput);
@@ -395,7 +395,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			itemText: (id) => itemText.get(id),
 			factText: (id) => factText.get(id),
 		});
-		const verified = await verifyClaims(ctx, claims);
+		const verified = await verifyClaims(ctx, claims, root);
 
 		const freshText = segmented.segments
 			.filter((s) => s.kind === 'fresh')

@@ -23,8 +23,8 @@ import { internalAction } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { rootRequest } from '../../lib/llm/requestMeter';
 import { clampDescription, dueHintToTimestamp } from '../commitments';
 import { messageDirectionValidator } from '../../lib/literalValidators';
 
@@ -67,11 +67,14 @@ export const extractCommitment = internalAction({
 					? `The sender is the mailbox owner (${context.ownerAddress}). Extract the single most concrete PROMISE the owner makes about something THEY will do (e.g. "I'll send the report Friday").`
 					: `The mailbox owner is ${context.ownerAddress}. Extract the single most concrete DEADLINE the sender imposes on the owner (e.g. "please reply by Friday").`;
 
-			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			const model = await resolveLanguageModel(ctx, 'summarize');
+			const { object } = await meterLlmCall(
 				ctx,
-				'postbox_commitment',
+				{ feature: 'postbox_commitment', root: rootRequest('postbox', args.messageId) },
+				(meter) =>
 				runLlmObject({
-					model: await resolveLanguageModel(ctx, 'summarize'),
+					meter,
+					model,
 					schema: commitmentSchema,
 					prompt:
 						`${SYSTEM_GUARD}\n\n${who} Set hasCommitment=false when the message states ` +
@@ -85,7 +88,6 @@ export const extractCommitment = internalAction({
 					temperature: 0,
 				})
 			);
-			await recordLlmSpend(ctx, 'postbox_commitment', tokenUsage, modelUsed);
 
 			if (!object.hasCommitment) return;
 			const description = clampDescription(object.description);

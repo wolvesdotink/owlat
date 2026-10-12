@@ -22,8 +22,9 @@ import { z } from 'zod';
 import type { ActionCtx } from '../../_generated/server';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
+import type { InterpretationSource } from '../../lib/validators/threadBrief';
 import { SYSTEM_GUARD } from '../ai/promptGuards';
 import { defuseDelimiters } from './prompt';
 import type { VerifyClaim, VerifyVerdict } from './pipeline';
@@ -73,7 +74,8 @@ export function batchClaims<T>(claims: readonly T[], size = VERIFY_BATCH_SIZE): 
  */
 export async function verifyClaims(
 	ctx: ActionCtx,
-	claims: readonly VerifyClaim[]
+	claims: readonly VerifyClaim[],
+	root?: LlmRootContext
 ): Promise<{ verdicts: Map<string, VerifyVerdict>; isIncomplete: boolean }> {
 	const verdicts = new Map<string, VerifyVerdict>();
 	let isIncomplete = false;
@@ -81,21 +83,20 @@ export async function verifyClaims(
 	const model = await resolveLanguageModel(ctx, 'guard');
 	for (const batch of batchClaims(claims)) {
 		try {
-			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			const { object } = await meterLlmCall(
 				ctx,
-				VERIFY_FEATURE,
-				runLlmObject({
-					model,
-					schema: verdictSchema,
-					prompt: buildVerifyPrompt(batch),
-					temperature: 0,
-				})
-			);
-			try {
-				await recordLlmSpend(ctx, VERIFY_FEATURE, tokenUsage, modelUsed);
-			} catch {
+				{ feature: VERIFY_FEATURE, ...(root ? { root } : {}) },
+				(meter) =>
+					runLlmObject({
+						meter,
+						model,
+						schema: verdictSchema,
+						prompt: buildVerifyPrompt(batch),
+						temperature: 0,
+					}),
 				// A lost ledger row under-counts; failing verification over it would drop claims.
-			}
+				{ onWriteError: 'ignore' }
+			);
 			const ids = new Set(batch.map((c) => c.id));
 			for (const { claimId, verdict } of object.verdicts) {
 				if (ids.has(claimId) && !verdicts.has(claimId)) verdicts.set(claimId, verdict);
@@ -106,4 +107,16 @@ export async function verifyClaims(
 		}
 	}
 	return { verdicts, isIncomplete };
+}
+
+/**
+ * The root request an interpretation's calls group under (ADR-0073): the
+ * message it reads. A Team Inbox message (and a team reply) is `team:`, a
+ * Postbox message, received or sent, is `postbox:`.
+ */
+export function interpretRoot(source: InterpretationSource): LlmRootContext {
+	return rootRequest(
+		source.kind === 'inbound' || source.kind === 'teamReply' ? 'team' : 'postbox',
+		source.id
+	);
 }

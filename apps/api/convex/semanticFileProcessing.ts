@@ -28,12 +28,13 @@ import {
 } from './lib/llmProvider';
 import { AiNotConfiguredError } from './lib/aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
-import { embed } from 'ai';
 import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
-import { recordLlmSpend } from './analytics/llmUsage';
-import { recordSpendOnFailure } from './analytics/failedLlmSpend';
+import { meterLlmCall } from './analytics/meteredSpend';
+import { runEmbedding } from './lib/llm/embed';
+import { rootRequest } from './lib/llm/requestMeter';
+import { llmRootContextValidator } from './lib/llmUsageTags';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
 import { buildFileSearchableText } from './lib/fileSearchText';
@@ -68,6 +69,8 @@ export const processFile = internalAction({
 		// Get file metadata
 		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
 		if (!file) return;
+		// Every model call processing this file groups under one root (ADR-0073).
+		const fileRoot = rootRequest('file', args.fileId);
 
 		// Resolve the conversation/contact context this file was shared in, so
 		// tags can be inherited and a version diff computed.
@@ -153,11 +156,11 @@ export const processFile = internalAction({
 			title = title || file.filename;
 		} else if (textForAI.length > 50) {
 			try {
-				const result = await recordSpendOnFailure(
-					ctx,
-					'semantic_file',
+				const model = await resolveLanguageModel(ctx, 'summarize');
+				const result = await meterLlmCall(ctx, { feature: 'semantic_file', root: fileRoot }, (meter) =>
 					runLlmObject({
-						model: await resolveLanguageModel(ctx, 'summarize'),
+						meter,
+						model,
 						schema: z.object({
 							title: z.string().describe('Short descriptive title for the file'),
 							summary: z.string().describe('2-3 sentence summary of the file content'),
@@ -176,7 +179,6 @@ ${textForAI}`,
 					tokenUsage: result.tokenUsage,
 					modelUsed: result.modelUsed,
 				});
-				await recordLlmSpend(ctx, 'semantic_file', result.tokenUsage, result.modelUsed);
 
 				title = title || result.object.title;
 				summary = result.object.summary;
@@ -202,10 +204,11 @@ ${textForAI}`,
 			// only a transient embed() failure fails soft (metadata without search).
 			const embeddingModel = await resolveEmbeddingModel(ctx);
 			try {
-				const embeddingResult = await embed({
-					model: embeddingModel,
-					value: embeddingText,
-				});
+				const embeddingResult = await meterLlmCall(
+					ctx,
+					{ feature: 'embedding_file', root: fileRoot },
+					(meter) => runEmbedding({ meter, model: embeddingModel, value: embeddingText })
+				);
 				embedding = toIndexVector(embeddingResult.embedding);
 			} catch (error) {
 				logError('[semantic_file] embedding generation failed', {
@@ -341,6 +344,8 @@ export const semanticSearch = internalAction({
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out.
 		scopeToContact: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
+		/** The caller's root request, so the query embedding's ledger row groups under it. */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (
 		ctx,
@@ -355,7 +360,11 @@ export const semanticSearch = internalAction({
 			// actionable error rather than silently returning zero results.
 			const embeddingModel = await resolveEmbeddingModel(ctx);
 			try {
-				const { embedding } = await embed({ model: embeddingModel, value: queryText });
+				const { embedding } = await meterLlmCall(
+					ctx,
+					{ feature: 'embedding_file_search', ...(args.root ? { root: args.root } : {}) },
+					(meter) => runEmbedding({ meter, model: embeddingModel, value: queryText })
+				);
 				vector = toIndexVector(embedding);
 			} catch (error) {
 				logInfo('[semantic_file] search embed failed', { error: String(error) });

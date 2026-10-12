@@ -21,7 +21,9 @@ import { internalAction } from '../_generated/server';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { embed } from 'ai';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import { runEmbedding } from '../lib/llm/embed';
+import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { resolveEmbeddingModel, toIndexVector } from '../lib/llmProvider';
 import { entryTypeValidator } from '../schema/knowledge';
 import { logInfo } from '../lib/runtimeLog';
@@ -104,6 +106,8 @@ export const semanticSearch = internalAction({
 		// Required, like the contact scope: whether Team Inbox-derived entries
 		// may be returned (see above).
 		includeInboxDerived: v.boolean(),
+		/** The caller's root request, so the query embedding's ledger row groups under it. */
+		root: v.optional(llmRootContextValidator),
 		// Graph-augmented retrieval (seed-then-expand). Default/omitted ⇒ today's
 		// flat behaviour. When true, the top visible seeds are expanded along the
 		// knowledge-graph edges (per-hop scope-re-checked in graphTraversal.ts),
@@ -123,7 +127,11 @@ export const semanticSearch = internalAction({
 			// actionable error rather than silently returning zero results.
 			const embeddingModel = await resolveEmbeddingModel(ctx);
 			try {
-				const { embedding } = await embed({ model: embeddingModel, value: queryText });
+				const { embedding } = await meterLlmCall(
+					ctx,
+					{ feature: 'embedding_knowledge_search', ...(args.root ? { root: args.root } : {}) },
+					(meter) => runEmbedding({ meter, model: embeddingModel, value: queryText })
+				);
 				vector = toIndexVector(embedding);
 			} catch (error) {
 				logInfo('[knowledge.retrieval] embed failed', { error: String(error) });

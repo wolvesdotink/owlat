@@ -16,13 +16,14 @@ import type { Id } from '../_generated/dataModel';
 import { readMailMessageText } from '../lib/messageBody';
 import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
-import { embed, type EmbeddingModel } from 'ai';
+import type { EmbeddingModel } from 'ai';
 import { z } from 'zod';
 import { resolveLanguageModel, resolveEmbeddingModel, toIndexVector } from '../lib/llmProvider';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import { recordSpendOnFailure } from '../analytics/failedLlmSpend';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import { runEmbedding } from '../lib/llm/embed';
+import { rootRequest, type LlmRootContext } from '../lib/llm/requestMeter';
 import { ENTRY_TYPES } from '../schema/knowledge';
 import { normalizeForHash } from '../lib/knowledgeEdges';
 import { detectInjection, detectSmuggling } from '../agent/steps/security_scan/patterns';
@@ -95,14 +96,14 @@ async function persistExtractedEntries(
 		sourceId: string;
 		contactIds?: Id<'contacts'>[];
 		threadId?: Id<'conversationThreads'>;
-	}
+	},
+	root: LlmRootContext
 ): Promise<void> {
 	const entryIds: Id<'knowledgeEntries'>[] = [];
 	for (const entry of entries) {
-		const { embedding } = await embed({
-			model: embeddingModel,
-			value: `${entry.title}: ${entry.content}`,
-		});
+		const { embedding } = await meterLlmCall(ctx, { feature: 'embedding_knowledge', root }, (meter) =>
+			runEmbedding({ meter, model: embeddingModel, value: `${entry.title}: ${entry.content}` })
+		);
 
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
 		// content-hash leg can dedup the same fact restated across sources.
@@ -177,15 +178,18 @@ export const extractFromMessage = internalAction({
 		try {
 			// ── Step 1: Extract knowledge using LLM ──
 			const model = await resolveLanguageModel(ctx, 'extract');
+			const extractRoot = rootRequest('team', args.inboundMessageId);
 
 			const {
 				object: extraction,
 				tokenUsage,
 				modelUsed,
-			} = await recordSpendOnFailure(
+			} = await meterLlmCall(
 				ctx,
-				'knowledge_extract_message',
+				{ feature: 'knowledge_extract_message', root: extractRoot },
+				(meter) =>
 				runLlmObject({
+					meter,
 					model,
 					schema: extractionSchema,
 					prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
@@ -210,7 +214,6 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 				})
 			);
 			logInfo('[knowledge.extract] llm call', { tokenUsage, modelUsed });
-			await recordLlmSpend(ctx, 'knowledge_extract_message', tokenUsage, modelUsed);
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
@@ -221,7 +224,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 				sourceId: args.inboundMessageId,
 				contactIds: message.contactId ? [message.contactId] : undefined,
 				threadId: message.threadId ?? undefined,
-			});
+			}, extractRoot);
 		} catch (error) {
 			// Fail soft — extraction is best-effort enrichment, never the reason a
 			// message fails to process. Name the source so the gap is traceable.
@@ -268,14 +271,17 @@ export const extractFromFile = internalAction({
 
 		try {
 			const model = await resolveLanguageModel(ctx, 'extract');
+			const extractRoot = rootRequest('file', args.fileId);
 			const {
 				object: extraction,
 				tokenUsage,
 				modelUsed,
-			} = await recordSpendOnFailure(
+			} = await meterLlmCall(
 				ctx,
-				'knowledge_extract_file',
+				{ feature: 'knowledge_extract_file', root: extractRoot },
+				(meter) =>
 				runLlmObject({
+					meter,
 					model,
 					schema: extractionSchema,
 					prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
@@ -291,7 +297,6 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 				})
 			);
 			logInfo('[knowledge.extractFile] llm call', { tokenUsage, modelUsed });
-			await recordLlmSpend(ctx, 'knowledge_extract_file', tokenUsage, modelUsed);
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
@@ -301,7 +306,7 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 				sourceId: args.fileId,
 				contactIds: file.contactIds ?? undefined,
 				threadId: file.threadId ?? undefined,
-			});
+			}, extractRoot);
 		} catch (error) {
 			logError('[knowledge.extractFromFile] failed', { fileId: args.fileId, error });
 		}
@@ -362,14 +367,17 @@ export const extractFromMailMessage = internalAction({
 
 		try {
 			const model = await resolveLanguageModel(ctx, 'extract');
+			const extractRoot = rootRequest('postbox', args.mailMessageId);
 			const {
 				object: extraction,
 				tokenUsage,
 				modelUsed,
-			} = await recordSpendOnFailure(
+			} = await meterLlmCall(
 				ctx,
-				'knowledge_extract_mail',
+				{ feature: 'knowledge_extract_mail', root: extractRoot },
+				(meter) =>
 				runLlmObject({
+					meter,
 					model,
 					schema: extractionSchema,
 					prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
@@ -394,7 +402,6 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 				})
 			);
 			logInfo('[knowledge.extractMail] llm call', { tokenUsage, modelUsed });
-			await recordLlmSpend(ctx, 'knowledge_extract_mail', tokenUsage, modelUsed);
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
@@ -403,7 +410,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 				sourceType: 'email',
 				sourceId: args.mailMessageId,
 				contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,
-			});
+			}, extractRoot);
 		} catch (error) {
 			logError('[knowledge.extractFromMailMessage] failed', {
 				mailMessageId: args.mailMessageId,

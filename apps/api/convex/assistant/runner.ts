@@ -26,10 +26,14 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { runLlmStream, DEFAULT_MAX_TOOL_STEPS } from '../lib/llm/dispatch';
 import { resolveLanguageModelForUserText } from '../lib/llmProvider';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import { partialUsageOf } from '../lib/llm/partialUsage';
+import { meterFor, writeMeteredSpend, type LlmSpendTarget } from '../analytics/meteredSpend';
+import {
+	childCall,
+	rootRequest,
+	type LlmCallMeter,
+	type LlmRootContext,
+} from '../lib/llm/requestMeter';
 import { logWarn } from '../lib/runtimeLog';
-import type { TokenUsage } from '../agent/steps/types';
 import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import { buildAssistantTools } from './tools';
 import type { AssistantAudience } from './toolRegistry';
@@ -66,19 +70,20 @@ function toModelMessage(m: { role: 'user' | 'assistant'; text: string }): ModelM
 }
 
 /**
- * Write a turn's spend to the ledger without letting a failed write decide the
- * turn's status: the answer stands (or the original error does) either way.
+ * Write the turn's provider requests to the ledger, one row each, without
+ * letting a failed write decide the turn's status: the answer stands (or the
+ * original error does) either way. The meter hands each request out once, so
+ * the success and failure paths can both call this.
  */
 async function recordTurnSpend(
 	ctx: ActionCtx,
-	feature: string,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined
+	target: LlmSpendTarget,
+	meter: LlmCallMeter
 ): Promise<void> {
 	try {
-		await recordLlmSpend(ctx, feature, tokenUsage, modelUsed);
+		await writeMeteredSpend(ctx, target, meter);
 	} catch (error) {
-		logWarn('[assistant] spend not recorded:', feature, error);
+		logWarn('[assistant] spend not recorded:', target.feature, error);
 	}
 }
 
@@ -106,11 +111,21 @@ async function streamAssistantTurn(
 		messages: ModelMessage[];
 		lastUserText: string;
 		feature: string;
+		/** The turn's root request: one per assistant message (ADR-0073). */
+		root: LlmRootContext;
 		patch: (text: string, toolCalls: ToolCall[] | undefined) => Promise<{ stop: boolean }>;
 		finalize: (args: FinalizeArgs) => Promise<void>;
 	}
 ): Promise<void> {
-	const tools = await buildAssistantTools(ctx, opts.audience);
+	const target: LlmSpendTarget = { feature: opts.feature, root: opts.root };
+	const meter = meterFor(target);
+	// Tools that call a model run under the turn's root, with the turn as parent.
+	const tools = await buildAssistantTools(
+		ctx,
+		opts.audience,
+		undefined,
+		childCall(opts.root, meter.requestId)
+	);
 	const toolCalls: ToolCall[] = [];
 	// Every write carries the tool cards too; a tool event flushes at once.
 	const stream = createThrottledStreamFlusher({
@@ -120,6 +135,7 @@ async function streamAssistantTurn(
 
 	try {
 		const result = await runLlmStream({
+			meter,
 			model: await resolveLanguageModelForUserText(ctx, 'draft', opts.lastUserText),
 			system: opts.system,
 			messages: opts.messages,
@@ -155,7 +171,7 @@ async function streamAssistantTurn(
 			},
 		});
 
-		await recordTurnSpend(ctx, opts.feature, result.tokenUsage, result.modelUsed);
+		await recordTurnSpend(ctx, target, meter);
 		await opts.finalize({
 			text: result.text || stream.text,
 			status: stream.stopRequested || result.aborted ? 'stopped' : 'complete',
@@ -164,10 +180,9 @@ async function streamAssistantTurn(
 			toolCalls: toolCalls.length ? toolCalls : undefined,
 		});
 	} catch (error) {
-		// Steps that finished before the failure were billed. Only the stream's
-		// own error carries them, so a finalize failure above never records twice.
-		const partial = partialUsageOf(error);
-		if (partial) await recordTurnSpend(ctx, opts.feature, partial.tokenUsage, partial.modelUsed);
+		// Steps that finished before the failure were billed and are on the
+		// meter; a finalize failure above already wrote them, so this adds none.
+		await recordTurnSpend(ctx, target, meter);
 		await opts.finalize({
 			text: stream.text,
 			status: 'error',
@@ -210,6 +225,7 @@ export const run = internalAction({
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',
 			feature: 'assistant_chat',
+			root: rootRequest('assistant', args.assistantMessageId),
 			patch: (text, toolCalls) =>
 				ctx.runMutation(internal.assistant.conversations.patchAssistantMessage, {
 					messageId: args.assistantMessageId,
@@ -255,6 +271,7 @@ export const runForChat = internalAction({
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',
 			feature: 'chat_assistant',
+			root: rootRequest('assistant', args.assistantMessageId),
 			patch: (text, toolCalls) =>
 				ctx.runMutation(internal.chat.messages.patchAssistantChatMessage, {
 					messageId: args.assistantMessageId,

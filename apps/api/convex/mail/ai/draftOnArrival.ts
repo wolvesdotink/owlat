@@ -33,6 +33,7 @@ import {
 } from '../../inbox/clarificationAnswers';
 import { ensureGapPlaceholders } from './composeDraftPolicy';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
+import { rootRequest } from '../../lib/llm/requestMeter';
 
 /** Map the personal-mail urgency bucket onto the shared draft block's priority vocabulary. */
 function priorityForUrgency(urgency: 'high' | 'normal' | 'low'): string {
@@ -114,6 +115,7 @@ export async function generateDraftOnArrival(
 			// service records it under its own label, next to the self-check's,
 			// on success and on a throw.
 			spendLabels: { draft: 'postbox_draft', selfCheck: 'postbox_draft_selfcheck' },
+			root: rootRequest('postbox_thread', args.threadId),
 			...(plan ? { responsePlan: plan.prompt } : {}),
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});

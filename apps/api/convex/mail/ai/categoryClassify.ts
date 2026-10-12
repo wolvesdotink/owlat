@@ -26,8 +26,8 @@ import { internalAction } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { postboxRoot } from '../../lib/llm/requestMeter';
 import { classifyMailCategory, resolveCategory, type MailCategory } from '../category';
 
 const SYSTEM_GUARD =
@@ -125,18 +125,23 @@ export const classifyThread = internalAction({
 			// rate limit. Throws when disabled/limited → the `other` baseline stays.
 			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
-			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			// High-volume background classification → cheap "summarize" tier.
+			const model = await resolveLanguageModel(ctx, 'summarize');
+			const { object } = await meterLlmCall(
 				ctx,
-				'postbox_category',
+				{
+					feature: 'postbox_category',
+					root: postboxRoot(args.threadId, context.latestMessageId ?? undefined),
+				},
+				(meter) =>
 				runLlmObject({
-					// High-volume background classification → cheap "summarize" tier.
-					model: await resolveLanguageModel(ctx, 'summarize'),
+					meter,
+					model,
 					schema: categoryRefinementSchema,
 					prompt: buildCategoryPrompt(context.transcript),
 					temperature: 0,
 				})
 			);
-			await recordLlmSpend(ctx, 'postbox_category', tokenUsage, modelUsed);
 
 			const llm: MailCategory = object.category;
 			const resolved = resolveCategory({ llm });

@@ -40,8 +40,8 @@ import { resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmStream } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import type { TokenUsage } from '../../agent/steps/types';
+import { meterFor, writeMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { newRootRequest, type LlmCallMeter } from '../../lib/llm/requestMeter';
 import type { ActionCtx } from '../../_generated/server';
 import { logWarn } from '../../lib/runtimeLog';
 import {
@@ -52,18 +52,18 @@ import { SYSTEM_GUARD } from './promptGuards';
 import { draftSurfaceValidator } from '../../lib/literalValidators';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 
+/** One revision is one user action: its own root request (ADR-0073). */
+const REVISE_SPEND: LlmSpendTarget = { feature: 'postbox_revise_draft' };
+
 /**
- * Record a revision's spend after its buffer has settled. A failed ledger write
- * is logged, never thrown: the catch below would otherwise settle a finished
- * revision as `error`.
+ * Record a revision's provider requests after its buffer has settled. A failed
+ * ledger write is logged, never thrown: the catch below would otherwise settle
+ * a finished revision as `error`. The meter hands each request out once, so
+ * the success and failure paths can both call this.
  */
-async function recordReviseSpend(
-	ctx: ActionCtx,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined
-): Promise<void> {
+async function recordReviseSpend(ctx: ActionCtx, meter: LlmCallMeter): Promise<void> {
 	try {
-		await recordLlmSpend(ctx, 'postbox_revise_draft', tokenUsage, modelUsed);
+		await writeMeteredSpend(ctx, REVISE_SPEND, meter);
 	} catch (error) {
 		logWarn('[reviseDraft] spend not recorded:', error);
 	}
@@ -198,8 +198,10 @@ export const reviseDraft = authedAction({
 				}),
 		});
 
+		const meter = meterFor({ ...REVISE_SPEND, root: newRootRequest('postbox_action') });
 		try {
 			const result = await runLlmStream({
+				meter,
 				// The draft + instruction are the caller's OWN trusted text, a safe
 				// complexity signal; fail-soft routing keeps the capable 'draft'
 				// tier for anything non-trivial (today's quality).
@@ -219,7 +221,7 @@ export const reviseDraft = authedAction({
 					status: 'error',
 					errorMessage: 'The revision came back as tool-call markup. Try again.',
 				});
-				await recordReviseSpend(ctx, result.tokenUsage, result.modelUsed);
+				await recordReviseSpend(ctx, meter);
 				return { text: '', injectionFlagged: false, status: 'error' };
 			}
 			const finalText = revised.text.trim();
@@ -237,11 +239,13 @@ export const reviseDraft = authedAction({
 				model: result.modelUsed,
 				tokenUsage: result.tokenUsage,
 			});
-			await recordReviseSpend(ctx, result.tokenUsage, result.modelUsed);
+			await recordReviseSpend(ctx, meter);
 			return { text: finalText, injectionFlagged, status: 'complete' };
 		} catch (error) {
 			// FAIL-SOFT: settle the buffer as errored; the client keeps whatever
 			// draft the human already had. Never rethrow into the caller's UI flow.
+			// Steps the stream finished before the failure were billed.
+			await recordReviseSpend(ctx, meter);
 			const message = error instanceof Error ? error.message : 'Revise failed';
 			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 				streamId: args.streamId,

@@ -18,6 +18,7 @@ import {
 	truncateOneLine,
 } from './emergency';
 import { buildCurrentMessageSection, inboundBodyForContext } from './currentMessage';
+import { teamRoot } from '../../shared/agentSpend';
 
 // Re-export the pure emergency helpers so existing importers (and tests) that
 // reference them via the step module keep working after the domain-sibling split.
@@ -260,6 +261,7 @@ export async function assembleInboundBriefing(
 			// knowledge learned from earlier inbox mail is in scope here.
 			includeInboxDerived: true,
 			expandGraph: graphRetrieval,
+			root: teamRoot(inboundMessageId),
 		});
 		if (knowledge.length > 0) {
 			hasKnowledge = true;
@@ -350,6 +352,7 @@ export async function assembleInboundBriefing(
 			queryText,
 			limit: CONTEXT_BUDGET.fileLimit,
 			scopeToContact,
+			root: teamRoot(inboundMessageId),
 		});
 		if (files.length > 0) {
 			hasFiles = true;

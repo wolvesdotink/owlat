@@ -26,6 +26,7 @@
  * translation is a cosmetic gap, never a blocked reply.
  */
 
+import type { LlmCallMeter } from '../lib/llm/requestMeter';
 import { z } from 'zod';
 import type { LanguageModel } from 'ai';
 import { APP_LOCALES } from '../lib/convexValidators';
@@ -233,7 +234,9 @@ function sumUsage(
 export async function localizeQuestions<Q extends LocalizableQuestion>(
 	model: LanguageModel,
 	questions: readonly Q[],
-	locales: readonly string[] = APP_LOCALES
+	locales: readonly string[] = APP_LOCALES,
+	/** Records each provider request of both calls, one ledger row each (ADR-0073). */
+	meter?: LlmCallMeter
 ): Promise<{
 	questions: (Q & { translations?: QuestionTranslation[] })[];
 	tokenUsage?: LlmTextResult['tokenUsage'];
@@ -248,6 +251,7 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 	let modelUsed: LlmTextResult['modelUsed'];
 	try {
 		const first = await runLlmObject({
+			...(meter ? { meter } : {}),
 			model,
 			schema: questionTranslationsSchema,
 			prompt: buildLocalizePrompt(questions, targets),
@@ -276,6 +280,7 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 	const retryTargets = targets.filter((t) => missing.some((m) => m.locale === t));
 	try {
 		const retry = await runLlmObject({
+			...(meter ? { meter } : {}),
 			model,
 			schema: questionTranslationsSchema,
 			prompt: buildLocalizePrompt(retryQuestions, retryTargets),

@@ -27,6 +27,7 @@ import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmStream } from '../lib/llm/dispatch';
+import type { LlmCallMeter } from '../lib/llm/requestMeter';
 import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import type { TokenUsage } from '../agent/steps/types';
 
@@ -122,7 +123,7 @@ export function encodeReplyOptions(replies: string[]): string {
  * call still streams internally but writes nothing.
  *
  * Throws on a model failure (after settling the buffer `error`); spend is left
- * to the caller.
+ * to the caller, through the `meter` it passes.
  */
 export async function streamReplyOptions(
 	ctx: ActionCtx,
@@ -133,6 +134,8 @@ export async function streamReplyOptions(
 		temperature?: number;
 		/** The interactive deadline (`interactiveLlmPolicy('reply').abortSignal`). */
 		abortSignal?: AbortSignal;
+		/** Records each stream step, one ledger row each (the caller writes them). */
+		meter?: LlmCallMeter;
 	}
 ): Promise<ReplyOptionsResult> {
 	const streamId = args.streamId;
@@ -168,6 +171,7 @@ export async function streamReplyOptions(
 	const model = await resolveLanguageModel(ctx, 'suggest');
 	try {
 		const result = await runLlmStream({
+			...(args.meter ? { meter: args.meter } : {}),
 			model,
 			system: args.system,
 			messages: [{ role: 'user', content: args.prompt }],

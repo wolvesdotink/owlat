@@ -43,8 +43,8 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { evaluateNeedsReplyCandidate } from '../needsReplyHeuristic';
 import { runInterpretation, type InterpretRunResult } from '../interpret/run';
 import {
@@ -211,6 +211,7 @@ async function applyProjection(
 				transcript: args.transcript,
 				fromAddress: args.latestInbound.fromAddress,
 				threadId: args.threadId,
+				root: rootRequest('postbox', args.latestInbound.messageId),
 			})
 		: undefined;
 	// A throw here is a real fault (e.g. the result no longer matching the
@@ -248,7 +249,12 @@ async function applyProjection(
  */
 async function clarifyWithMemory(
 	ctx: ActionCtx,
-	opts: { transcript: string; fromAddress: string; threadId: Id<'mailThreads'> }
+	opts: {
+		transcript: string;
+		fromAddress: string;
+		threadId: Id<'mailThreads'>;
+		root: LlmRootContext;
+	}
 ): Promise<ClarificationFlag | undefined> {
 	try {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
@@ -259,6 +265,7 @@ async function clarifyWithMemory(
 		transcript: opts.transcript,
 		fromAddress: opts.fromAddress,
 		items: await slotItemsFor(ctx, opts.threadId),
+		root: opts.root,
 	});
 	if (!clarification || clarification.questions.length === 0) return clarification;
 	try {
@@ -279,7 +286,7 @@ async function clarifyWithMemory(
 	}
 }
 
-type SpendCtx = Parameters<typeof recordLlmSpend>[0];
+type SpendCtx = ActionCtx;
 
 /** The thread's open items, so each question can name the item it fills (SPEC §6). */
 async function slotItemsFor(
@@ -331,33 +338,31 @@ export async function refineClarification(
 		transcript: string;
 		fromAddress: string;
 		items?: readonly SlotItem<Id<'threadItems'>>[];
+		/** The message the clarification is for (ADR-0073). */
+		root?: LlmRootContext;
 	}
 ): Promise<ClarificationFlag | undefined> {
+	const root = opts.root;
+	const spend = (feature: string): LlmSpendTarget => ({ feature, ...(root ? { root } : {}) });
 	const items = opts.items ?? [];
 	try {
 		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
-		const slotsResult = await recordSpendOnFailure(
-			ctx,
-			'postbox_clarify_slots',
+		const slotModel = await resolveLanguageModel(ctx, 'summarize');
+		const slotsResult = await meterLlmCall(ctx, spend('postbox_clarify_slots'), (meter) =>
 			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'summarize'),
+				meter,
+				model: slotModel,
 				schema: replySlotsSchema,
 				prompt: buildSlotPrompt(opts.transcript, items),
 				temperature: 0.2,
 			})
-		);
-		await recordLlmSpend(
-			ctx,
-			'postbox_clarify_slots',
-			slotsResult.tokenUsage,
-			slotsResult.modelUsed
 		);
 
 		const { owed, toJudge } = splitCandidateSlots(slotsResult.object.slots);
 		if (owed.length === 0 && toJudge.length === 0) return undefined;
 
 		// Files first: they are what the reply cannot go out without.
-		const raw = [...owed, ...(await divergentSlots(ctx, opts.transcript, toJudge))].map((slot) => ({
+		const raw = [...owed, ...(await divergentSlots(ctx, opts.transcript, toJudge, spend('postbox_clarify_diverge')))].map((slot) => ({
 			slotType: slot.slotType,
 			text: slot.question,
 			options: slot.options,
@@ -373,18 +378,10 @@ export async function refineClarification(
 
 		// Ask the owner in their own language: translate the surviving questions
 		// into every other interface locale. Fail-soft to the English copy.
-		const localized = await localizeQuestions(
-			await resolveLanguageModel(ctx, 'summarize'),
-			sanitized
+		const localizeModel = await resolveLanguageModel(ctx, 'summarize');
+		const localized = await meterLlmCall(ctx, spend('postbox_clarify_localize'), (meter) =>
+			localizeQuestions(localizeModel, sanitized, undefined, meter)
 		);
-		if (localized.tokenUsage) {
-			await recordLlmSpend(
-				ctx,
-				'postbox_clarify_localize',
-				localized.tokenUsage,
-				localized.modelUsed
-			);
-		}
 
 		return { isNeeded: true, questions: localized.questions, askedAt: Date.now() };
 	} catch {
@@ -401,43 +398,39 @@ export async function refineClarification(
 async function divergentSlots(
 	ctx: SpendCtx,
 	transcript: string,
-	candidates: readonly ReplySlot[]
+	candidates: readonly ReplySlot[],
+	target: LlmSpendTarget
 ): Promise<ReplySlot[]> {
 	if (candidates.length === 0) return [];
 	try {
 		const drafts: string[] = [];
 		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 			try {
-				const draft = await runLlmText({
-					model: await resolveLanguageModel(ctx, 'draft'),
-					prompt: buildCandidatePrompt(transcript),
-					temperature: 0.9,
-				});
-				if (draft.text.trim().length > 0) {
-					drafts.push(draft.text);
-					await recordLlmSpend(ctx, 'postbox_clarify_diverge', draft.tokenUsage, draft.modelUsed);
-				}
+				const model = await resolveLanguageModel(ctx, 'draft');
+				const draft = await meterLlmCall(ctx, target, (meter) =>
+					runLlmText({
+						meter,
+						model,
+						prompt: buildCandidatePrompt(transcript),
+						temperature: 0.9,
+					})
+				);
+				if (draft.text.trim().length > 0) drafts.push(draft.text);
 			} catch {
 				// One failed sample doesn't abort the check — judge on the rest.
 			}
 		}
 		if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) return [];
 
-		const divergenceResult = await recordSpendOnFailure(
-			ctx,
-			'postbox_clarify_diverge',
+		const judgeModel = await resolveLanguageModel(ctx, 'draft');
+		const divergenceResult = await meterLlmCall(ctx, target, (meter) =>
 			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'draft'),
+				meter,
+				model: judgeModel,
 				schema: divergenceSchema,
 				prompt: buildDivergencePrompt([...candidates], drafts),
 				temperature: 0.1,
 			})
-		);
-		await recordLlmSpend(
-			ctx,
-			'postbox_clarify_diverge',
-			divergenceResult.tokenUsage,
-			divergenceResult.modelUsed
 		);
 		const divergent = new Set(divergenceResult.object.divergentSlotIndexes);
 		return candidates.filter((_, index) => divergent.has(index));

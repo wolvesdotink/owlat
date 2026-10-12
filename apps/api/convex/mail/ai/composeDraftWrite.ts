@@ -32,10 +32,9 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmStream } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { addTokenUsage } from '../../lib/llm/tokenUsage';
-import { partialUsageOf } from '../../lib/llm/partialUsage';
-import type { TokenUsage } from '../../agent/steps/types';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
-import { recordLlmSpend } from '../../analytics/llmUsage';
+import { meterFor, writeMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { childCall, newRootRequest } from '../../lib/llm/requestMeter';
 import { logError } from '../../lib/runtimeLog';
 import {
 	detectInjection,
@@ -162,20 +161,22 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 				text: visibleDraftStreamText(text),
 			}),
 	});
-	// Usage of finished attempts not yet in the ledger, settled on every exit:
-	// a retry that throws must not lose the attempt before it, and a stream
-	// that fails after a finished tool step carries that step's usage (#1256).
-	let spent: TokenUsage | undefined;
-	let spentModel: string | undefined;
-	const settleSpend = async (): Promise<void> => {
-		const usage = spent;
-		spent = undefined;
-		await recordLlmSpend(ctx, 'postbox_answer_draft', usage, spentModel);
+	// Both streams (with the recall tool, and the markup retry) record their
+	// provider requests on one meter, settled on every exit: a retry that throws
+	// must not lose the attempt before it, and a stream that fails after a
+	// finished tool step was billed for it (#1256). The meter hands each request
+	// out once, so settling twice writes nothing twice.
+	const spendTarget: LlmSpendTarget = {
+		feature: 'postbox_answer_draft',
+		root: newRootRequest('postbox_action'),
 	};
+	const meter = meterFor(spendTarget);
+	const settleSpend = (): Promise<void> => writeMeteredSpend(ctx, spendTarget, meter);
 	try {
 		const model = await resolveLanguageModel(ctx, 'draft');
 		const streamDraft = (withTools: boolean) =>
 			runLlmStream({
+				meter,
 				model,
 				messages: buildMessages(withTools),
 				...(withTools
@@ -184,6 +185,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 								recallKnowledge: buildRecallKnowledgeTool({
 									runAction: ctx.runAction,
 									scopeToContact: input.contactId ?? 'org-general-only',
+									root: childCall(spendTarget.root, meter.requestId),
 								}),
 							},
 							maxSteps: MAX_RECALL_CALLS + 2,
@@ -200,8 +202,6 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			});
 		let result = await streamDraft(true);
 		let draft = stripLeakedToolMarkup(result.text);
-		spent = result.tokenUsage;
-		spentModel = result.modelUsed;
 		let tokenUsage = result.tokenUsage;
 		if (draft.kind === 'unusable' && !result.aborted && !stream.stopRequested) {
 			// Typed-out tool markup, not a reply. Clear the editor and write the
@@ -211,8 +211,6 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			result = await streamDraft(false);
 			draft = stripLeakedToolMarkup(result.text);
 			tokenUsage = addTokenUsage(tokenUsage, result.tokenUsage);
-			spent = tokenUsage;
-			spentModel = result.modelUsed;
 		}
 		if (draft.kind === 'unusable') {
 			logError('[composeDraft] draft was tool-call markup:', draft.reason);
@@ -246,11 +244,6 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			'[composeDraft] drafting failed:',
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
-		const partial = partialUsageOf(error);
-		if (partial) {
-			spent = addTokenUsage(spent, partial.tokenUsage);
-			spentModel = partial.modelUsed ?? spentModel;
-		}
 		await settleSpend().catch(() => undefined);
 		await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 			streamId,

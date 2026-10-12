@@ -23,8 +23,8 @@ import {
 	draftQualitySchema,
 	type DraftQuality,
 } from '../../agent/steps/draft/index';
-import { scheduleLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { newRootRequest } from '../../lib/llm/requestMeter';
 import { gatedInParallel, readThreadMessages } from './gate';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 
@@ -149,10 +149,12 @@ export const coachDraft = authedAction({
 			if (thread && thread.messages.length > 0) {
 				context = await buildThreadTranscript(thread.messages, THREAD_SUMMARY);
 			}
-			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			const { object } = await meterLlmCall(
 				ctx,
-				'postbox_coach_draft',
+				{ feature: 'postbox_coach_draft', root: newRootRequest('postbox_action') },
+				(meter) =>
 				runLlmObject({
+					meter,
 					model,
 					schema: draftQualitySchema,
 					prompt: buildSelfCheckPrompt({
@@ -162,14 +164,9 @@ export const coachDraft = authedAction({
 					temperature: 0.1,
 					...interactiveLlmPolicy('reply'),
 				}),
-				scheduleLlmSpend
+				// Best-effort spend accounting — never let it break the coach.
+				{ write: 'schedule', onWriteError: 'ignore' }
 			);
-			// Best-effort spend accounting — never let it break the coach.
-			try {
-				await scheduleLlmSpend(ctx, 'postbox_coach_draft', tokenUsage, modelUsed);
-			} catch {
-				// ignore — spend accounting is advisory
-			}
 			return {
 				suggestions: toCoachSuggestions({
 					score: object.score,

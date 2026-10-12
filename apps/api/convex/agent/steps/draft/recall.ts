@@ -29,6 +29,7 @@ import { z } from 'zod';
 import type { ActionCtx } from '../../../_generated/server';
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
+import type { LlmRootContext } from '../../../lib/llm/requestMeter';
 import { scrubForInjection, clampText } from '../../../assistant/prompt';
 
 /** Max live knowledge retrievals the model may make while drafting one reply. */
@@ -44,6 +45,8 @@ interface RecallToolArgs {
 	 * or 'org-general-only' when the inbound has no resolved contact. Never
 	 * 'org-wide' on the drafting path. */
 	scopeToContact: Id<'contacts'> | 'org-general-only';
+	/** The draft's root request, so each recall's query embedding groups under it. */
+	root?: LlmRootContext;
 }
 
 /**
@@ -89,6 +92,7 @@ export function buildRecallKnowledgeTool(args: RecallToolArgs) {
 					includeInboxDerived: true,
 					// Flat retrieval — the tool is a targeted fetch-more, not a graph walk.
 					expandGraph: false,
+					...(args.root ? { root: args.root } : {}),
 				});
 				return {
 					facts: entries.map((e) => ({

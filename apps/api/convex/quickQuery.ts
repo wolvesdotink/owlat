@@ -25,11 +25,13 @@ import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
  */
 
 import { v } from 'convex/values';
-import { embed } from 'ai';
 import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { resolveEmbeddingModel, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
 import { runLlmText } from './lib/llm/dispatch';
+import { runEmbedding } from './lib/llm/embed';
+import { newRootRequest } from './lib/llm/requestMeter';
+import { meterLlmCall } from './analytics/meteredSpend';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
 import { throwInvalidInput } from './_utils/errors';
@@ -101,8 +103,12 @@ export const ask = authedAction({
 		// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
 		// error; only a transient embed() failure falls soft to no-vector recall.
 		const embeddingModel = await resolveEmbeddingModel(ctx);
+		// One question is one user action: every call it makes groups under one root.
+		const root = newRootRequest('assistant');
 		try {
-			const res = await embed({ model: embeddingModel, value: question });
+			const res = await meterLlmCall(ctx, { feature: 'embedding_quick_query', root }, (meter) =>
+				runEmbedding({ meter, model: embeddingModel, value: question })
+			);
 			embedding = toIndexVector(res.embedding);
 		} catch (error) {
 			logInfo('[quickQuery] embed failed', { error: String(error) });
@@ -117,12 +123,14 @@ export const ask = authedAction({
 				scopeToContact: 'org-wide',
 				includeInboxDerived: canReadInbox,
 				limit: PER_SOURCE_LIMIT,
+				root,
 			}),
 			ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
 				queryText: question,
 				embedding,
 				scopeToContact: 'org-wide',
 				limit: PER_SOURCE_LIMIT,
+				root,
 			}),
 		]);
 
@@ -183,14 +191,18 @@ export const ask = authedAction({
 		let answer: string;
 		try {
 			const model = await resolveLanguageModel(ctx, 'draft');
-			const result = await runLlmText({
-				model,
-				messages: [
-					{ role: 'system', content: systemPrompt },
-					{ role: 'user', content: userPrompt },
-				],
-				temperature: 0.2,
-			});
+			// Recorded since Phase 1a: this synthesis wrote no ledger row before.
+			const result = await meterLlmCall(ctx, { feature: 'assistant_quick_query', root }, (meter) =>
+				runLlmText({
+					meter,
+					model,
+					messages: [
+						{ role: 'system', content: systemPrompt },
+						{ role: 'user', content: userPrompt },
+					],
+					temperature: 0.2,
+				})
+			);
 			answer = result.text.trim();
 			if (!answer) {
 				// Model returned nothing usable — fall back to the raw grounded context

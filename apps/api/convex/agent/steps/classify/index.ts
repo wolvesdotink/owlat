@@ -183,9 +183,14 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 
 		// The usage also rides back to the walker for the step's agentActions
 		// row, which is a reporting view; the ledger row is the one that counts.
-		const { object, tokenUsage, modelUsed } = await meterAgentCall(ctx, 'agent_classify', () =>
-			runLlmObject({
-				model,
+		const { object, tokenUsage, modelUsed } = await meterAgentCall(
+			ctx,
+			'agent_classify',
+			input.inboundMessageId,
+			(meter) =>
+				runLlmObject({
+					meter,
+					model,
 				schema: classificationSchema,
 				prompt: buildClassifyPrompt(input.context),
 				temperature: 0.2,

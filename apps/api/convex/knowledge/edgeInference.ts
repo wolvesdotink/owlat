@@ -32,8 +32,9 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { z } from 'zod';
 import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import { recordSpendOnFailure } from '../analytics/failedLlmSpend';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import { rootRequest } from '../lib/llm/requestMeter';
+import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { logInfo } from '../lib/runtimeLog';
 import { RELATION_TYPES } from '../schema/knowledge';
 import { tagForInferredConfidence } from '../lib/knowledgeEdges';
@@ -111,6 +112,8 @@ function scopeForAnchor(anchor: Doc<'knowledgeEntries'>): Id<'contacts'> | 'org-
 export const inferRelations = internalAction({
 	args: {
 		entryIds: v.array(v.id('knowledgeEntries')),
+		/** The root request of the extraction that wrote the entries (ADR-0073). */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args): Promise<void> => {
 		// Authoritative, defense-in-depth flag gate (the schedule already gated, but
@@ -173,10 +176,12 @@ export const inferRelations = internalAction({
 				.join('\n');
 
 			const model = await resolveLanguageModel(ctx, 'extract');
-			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			const { object, tokenUsage, modelUsed } = await meterLlmCall(
 				ctx,
-				'knowledge_autolink',
+				{ feature: 'knowledge_autolink', root: args.root ?? rootRequest('knowledge', args.entryIds[0] ?? 'autolink') },
+				(meter) =>
 				runLlmObject({
+					meter,
 					model,
 					schema: inferenceSchema,
 					prompt: `You are building a knowledge graph. Below is a numbered list of knowledge entries. Identify meaningful TYPED relations between them, referencing each entry by its [index].
@@ -197,7 +202,6 @@ ${numbered}`,
 				})
 			);
 			logInfo('[knowledge.autolink] llm call', { tokenUsage, modelUsed, nodeCount: nodes.length });
-			await recordLlmSpend(ctx, 'knowledge_autolink', tokenUsage, modelUsed);
 
 			let written = 0;
 			for (const rel of object.relations) {

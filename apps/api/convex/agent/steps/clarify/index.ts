@@ -283,8 +283,9 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 
 			// Stage 1 — extract typed reply slots, each tied to the open item it fills.
 			const slotItems = await loadSlotItems(ctx, input.inboundMessageId);
-			const slotsResult = await meterAgentCall(ctx, 'agent_clarify', () =>
+			const slotsResult = await meterAgentCall(ctx, 'agent_clarify', input.inboundMessageId, (meter) =>
 				runLlmObject({
+					meter,
 					model,
 					schema: replySlotsSchema,
 					prompt: buildSlotPrompt(input.context, slotItems),
@@ -317,8 +318,9 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			const drafts: string[] = [];
 			for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 				try {
-					const draft = await meterAgentCall(ctx, 'agent_clarify', () =>
+					const draft = await meterAgentCall(ctx, 'agent_clarify', input.inboundMessageId, (meter) =>
 						runLlmText({
+							meter,
 							model,
 							prompt: buildCandidatePrompt(input.context),
 							// High temperature so independent samples actually diverge where
@@ -344,9 +346,14 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				};
 			}
 
-			const divergenceResult = await meterAgentCall(ctx, 'agent_clarify', () =>
-				runLlmObject({
-					model,
+			const divergenceResult = await meterAgentCall(
+				ctx,
+				'agent_clarify',
+				input.inboundMessageId,
+				(meter) =>
+					runLlmObject({
+						meter,
+						model,
 					schema: divergenceSchema,
 					prompt: buildDivergencePrompt(candidateSlots, drafts),
 					temperature: 0.1,
@@ -404,8 +411,8 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// we ACTUALLY ask (never the memory-filled ones) into every other
 			// interface locale. One cheap call; fail-soft to the English copy.
 			if (questions.length > 0) {
-				const localized = await meterAgentCall(ctx, 'agent_clarify', () =>
-					localizeQuestions(model, questions)
+				const localized = await meterAgentCall(ctx, 'agent_clarify', input.inboundMessageId, (meter) =>
+					localizeQuestions(model, questions, undefined, meter)
 				);
 				questions = localized.questions;
 				tokenUsage = addTokenUsage(tokenUsage, localized.tokenUsage);
