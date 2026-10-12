@@ -7725,6 +7725,7 @@
 						"description": "Einmaliger Durchlauf durch deinen eingehenden Mail-Verlauf, um den KI-Agenten mit Kontext zu versorgen.",
 						"errors": "Fehler",
 						"extracted": "Extrahiert",
+						"partial": "{count} Nachrichten sind erst teilweise gelesen, meist weil das KI-Ausgabenbudget erreicht war. Sie werden später von selbst fertig.",
 						"progress": "{scanned} / {total} Nachrichten",
 						"progressLabel": "Fortschritt der Wissens-Nachverarbeitung",
 						"skipped": "Übersprungen",
@@ -7858,6 +7859,10 @@
 							"loading": "Der Status der Entscheidungsanfragen wird geprüft…",
 							"error": "Der Funktionsstatus konnte nicht geprüft werden. Tests sind erst nach der Bestätigung des Status verfügbar.",
 							"manage": "Unter Funktionen verwalten"
+						},
+						"envProblem": {
+							"body": "Entscheidungen werden abgelehnt, ohne Ausweichen auf das Sprachmodell, bis die Umgebungsvariable einen Entscheidungsanbieter nennt.",
+							"title": "Die Einstellung für den Entscheidungsanbieter im Deployment ist ungültig"
 						}
 					},
 					"embeddingSpace": {

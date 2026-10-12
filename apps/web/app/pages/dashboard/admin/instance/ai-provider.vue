@@ -407,6 +407,7 @@ watch(
 					:is-saving="isSaving"
 					:can-test="canTest"
 					:feature-state="decisionFeatureState"
+					:env-problem="config?.decisionEnvProblem"
 					@test="handleDecisionTest"
 				/>
 

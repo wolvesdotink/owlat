@@ -7725,6 +7725,7 @@
 						"description": "One-time scan of your inbound mail history to seed the AI agent with context.",
 						"errors": "Errors",
 						"extracted": "Extracted",
+						"partial": "{count} messages are only partly read so far, usually because the AI spend budget was reached. They finish on their own later.",
 						"progress": "{scanned} / {total} messages",
 						"progressLabel": "Knowledge backfill progress",
 						"skipped": "Skipped",
@@ -7858,6 +7859,10 @@
 							"loading": "Checking whether decision requests are enabled…",
 							"error": "Could not check the feature status. Testing is unavailable until the status is confirmed.",
 							"manage": "Manage in Features"
+						},
+						"envProblem": {
+							"body": "Decisions are refused, with no fallback to the language model, until the environment variable names a decision provider.",
+							"title": "The deployment's decision provider setting is invalid"
 						}
 					},
 					"embeddingSpace": {

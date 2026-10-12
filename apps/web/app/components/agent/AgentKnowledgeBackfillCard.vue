@@ -143,6 +143,18 @@ const backfillStatusVariant = computed(() => {
 					</div>
 				</div>
 			</div>
+			<!-- D1: extractions the spend budget paused; a later run resumes them. -->
+			<p
+				v-if="(backfillJob.partialCount ?? 0) > 0"
+				class="text-xs text-text-tertiary"
+				data-testid="knowledge-backfill-partial"
+			>
+				{{
+					t('dashboard.admin.instance.agent.backfill.partial', {
+						count: backfillJob.partialCount ?? 0,
+					})
+				}}
+			</p>
 
 			<!-- Cancel (only when running/pending) -->
 			<div v-if="backfillJob.status === 'running' || backfillJob.status === 'pending'" class="pt-2">
