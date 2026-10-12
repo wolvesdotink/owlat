@@ -15,12 +15,16 @@ import { internalQuery, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { ensureConfiguredSpace } from '../lib/aiRouting/embeddingActivation';
+import { ensureConfiguredSpace, isSpaceLocal } from '../lib/aiRouting/embeddingActivation';
+import { storedEmbeddingTarget, type EmbeddingTarget } from '../lib/embeddingSpace';
+import { EMBEDDING_PROVIDER_KINDS } from '../lib/llmProviders/types';
 import {
+	attestationBlocker,
 	identityOf,
 	isIdentityOfTarget,
 	ownsColumn,
 	readActiveSpace,
+	readColumnOwner,
 	readConfiguredTarget,
 	readSearchableSpace,
 	readStagedSpace,
@@ -136,11 +140,51 @@ export async function readRollbackSpace(ctx: Pick<QueryCtx, 'db'>): Promise<Spac
 	return (await ownsColumn(ctx.db, predecessor)) ? predecessor : null;
 }
 
-/** A space without its internal identity key. */
+/**
+ * A space without its internal identity key, with whether it is local: free
+ * to re-embed or rebuild into, by the rule its jobs are paid by
+ * (`isSpaceLocal`, the ledger's locality rule); paid otherwise.
+ */
 function spaceView(space: SpaceDoc | null) {
 	if (!space) return null;
 	const { identityKey: _key, ...view } = space;
-	return view;
+	return { ...view, isLocal: isSpaceLocal(space) };
+}
+
+/**
+ * Whether each embedding kind, as a staged rebuild target, is local (free) or
+ * hosted (paid): the endpoint `startRebuild` resolves for the kind
+ * (`storedEmbeddingTarget`; the model never changes it), judged by the rule the
+ * rebuild job is paid by (`isSpaceLocal`).
+ */
+function rebuildTargetViews() {
+	return EMBEDDING_PROVIDER_KINDS.map((kind) => ({
+		kind,
+		isLocal: isSpaceLocal(storedEmbeddingTarget({ embeddingProviderKind: kind })),
+	}));
+}
+
+/**
+ * Whether a cohort of vectors from before provenance can be attested to the
+ * configured target, by the rule `attest` enforces (`attestationBlocker`). The
+ * subject is the target's registered space: the active space when it is the
+ * configured one, else the primary column's owner when it is; else a new
+ * registration. `spaceId` names the subject, to attest by id.
+ */
+async function configuredAttestation(
+	ctx: Pick<QueryCtx, 'db'>,
+	target: EmbeddingTarget | null,
+	active: SpaceDoc | null
+) {
+	if (!target) {
+		return { canAttest: false, reason: 'not_configured' as const, spaceId: null };
+	}
+	const owner = await readColumnOwner(ctx.db, 'primary');
+	const ofTarget = (space: SpaceDoc | null) =>
+		space !== null && isIdentityOfTarget(identityOf(space), target) ? space : null;
+	const subject = ofTarget(active) ?? ofTarget(owner);
+	const reason = await attestationBlocker(ctx.db, subject);
+	return { canAttest: reason === null, reason, spaceId: subject?._id ?? null };
 }
 
 function jobView(job: Doc<'embeddingReembedJobs'>) {
@@ -211,6 +255,10 @@ export const status = adminQuery({
 			isPaidEmbeddingAvailable: isPaidEmbeddingAdmissionAvailable(),
 			/** A staged rebuild and its activation rewrite the stored configuration. */
 			canStageRebuild: hasStoredConfig && staged === null && searchable !== null,
+			/** Per embedding kind, whether a rebuild into it is local (free) or paid. */
+			rebuildTargets: rebuildTargetViews(),
+			/** Whether the configured target can take an attested cohort, and why not. */
+			attestation: await configuredAttestation(ctx, target, active),
 		};
 	},
 });

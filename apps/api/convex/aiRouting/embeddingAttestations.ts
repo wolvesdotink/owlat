@@ -46,11 +46,11 @@ import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/erro
 import type { EmbeddingSpaceIdentity } from '../lib/aiRouting/embeddingKeys';
 import { activateSpace, claimColumn, patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
 import {
+	attestationBlocker,
 	attestedStampFields,
 	identityOf,
 	isIdentityOfTarget,
 	ownsColumn,
-	readColumnOwner,
 	readConfiguredTarget,
 	readSearchableSpace,
 	readSpaceByIdentity,
@@ -119,13 +119,13 @@ async function placeAttestedSpace(
 	const known = args.spaceId
 		? await getOrThrow(ctx, args.spaceId, 'Embedding space')
 		: await readSpaceByIdentity(ctx.db, args.identity!);
-	const owner = await readColumnOwner(ctx.db, 'primary');
-	if (owner && owner._id !== known?._id) {
+	const blocker = await attestationBlocker(ctx.db, known);
+	if (blocker === 'primary_owned_by_other_space') {
 		throwInvalidState(
 			'The vectors from before provenance are in a column another embedding space now uses. Re-embed them instead.'
 		);
 	}
-	if (known && known.slot !== 'primary') {
+	if (blocker === 'secondary_column') {
 		throwInvalidState(
 			'This embedding space keeps its vectors in the other column, not where the vectors from before provenance are. Re-embed them instead.'
 		);
