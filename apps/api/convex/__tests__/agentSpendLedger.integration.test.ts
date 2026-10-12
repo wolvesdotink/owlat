@@ -26,12 +26,15 @@ const mocks = vi.hoisted(() => ({
 	runLlmTextWithTools: vi.fn(),
 }));
 
-vi.mock('../lib/llm/dispatch', async () => ({
-	...(await vi.importActual<object>('../lib/llm/dispatch')),
-	runLlmObject: mocks.runLlmObject,
-	runLlmText: mocks.runLlmText,
-	runLlmTextWithTools: mocks.runLlmTextWithTools,
-}));
+vi.mock('../lib/llm/dispatch', async () => {
+	const { metered } = await import('../analytics/__tests__/meteredDispatch.testlib');
+	return {
+		...(await vi.importActual<object>('../lib/llm/dispatch')),
+		runLlmObject: metered((opts: unknown) => mocks.runLlmObject(opts)),
+		runLlmText: metered((opts: unknown) => mocks.runLlmText(opts)),
+		runLlmTextWithTools: metered((opts: unknown) => mocks.runLlmTextWithTools(opts)),
+	};
+});
 vi.mock('../lib/llmProvider', async () => ({
 	...(await vi.importActual<object>('../lib/llmProvider')),
 	resolveLanguageModel: vi.fn(async () => 'mock-model'),

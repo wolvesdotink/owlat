@@ -21,7 +21,10 @@ import { internalAction } from '../_generated/server';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { embed } from 'ai';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import { runEmbedding } from '../lib/llm/embed';
+import type { LlmRootContext } from '../lib/llm/requestMeter';
+import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
 import { vectorHitsInCurrentSpace } from '../lib/embeddingSpace';
 import type { VectorTable } from './vectorCorpus';
@@ -37,6 +40,7 @@ import {
 	type GraphRankNeighbor,
 	type RelationType,
 } from '../lib/graphRank';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /**
  * One typed relationship a result entry participates in, for rendering the
@@ -103,7 +107,9 @@ export async function embedRetrievalQuery(
 	ctx: ActionCtx,
 	tables: readonly VectorTable[],
 	queryText: string,
-	logTag: string
+	logTag: string,
+	/** The caller's root request: the query embedding's ledger row groups under it. */
+	root?: LlmRootContext
 ): Promise<RetrievalQueryVector> {
 	const hasVectors = await ctx.runQuery(internal.knowledge.vectorCorpus.hasQueryableVectors, {
 		tables: [...tables],
@@ -115,7 +121,17 @@ export async function embedRetrievalQuery(
 	try {
 		// The searches have always embedded the trimmed text; trimmed here once so
 		// every caller's vector matches it.
-		const { embedding } = await embed({ model: embedder.model, value: queryText.trim() });
+		// One metered request per query (ADR-0073): an embedding row in the ledger.
+		const feature = tables.includes('knowledgeEntries')
+			? 'embedding_knowledge_search'
+			: 'embedding_file_search';
+		const { embedding } = await meterLlmCall(
+			ctx,
+			{ feature, ...(root ? { root } : {}) },
+			(meter) => runEmbedding({ meter, model: embedder.model, value: queryText.trim() }),
+			// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+			{ onWriteError: 'ignore' }
+		);
 		return {
 			kind: 'vector',
 			embedding: toIndexVector(embedding),
@@ -171,6 +187,8 @@ export const semanticSearch = internalAction({
 		// Required, like the contact scope: whether Team Inbox-derived entries
 		// may be returned (see above).
 		includeInboxDerived: v.boolean(),
+		/** The caller's root request, so the query embedding's ledger row groups under it. */
+		root: v.optional(llmRootContextValidator),
 		// Graph-augmented retrieval (seed-then-expand). Default/omitted ⇒ today's
 		// flat behaviour. When true, the top visible seeds are expanded along the
 		// knowledge-graph edges (per-hop scope-re-checked in graphTraversal.ts),
@@ -181,6 +199,8 @@ export const semanticSearch = internalAction({
 		neighborBudget: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ScoredKnowledgeEntry[]> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const queryText = args.queryText?.trim();
 
 		// A caller's vector is used as given, with the space it was embedded in
@@ -196,7 +216,8 @@ export const semanticSearch = internalAction({
 				ctx,
 				['knowledgeEntries'],
 				queryText,
-				'[knowledge.retrieval]'
+				'[knowledge.retrieval]',
+				args.root
 			);
 			if (query.kind === 'failed') return [];
 			if (query.kind === 'vector') {

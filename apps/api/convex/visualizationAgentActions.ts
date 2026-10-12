@@ -16,8 +16,11 @@ import { internal } from './_generated/api';
 import { resolveLanguageModel } from './lib/llmProvider';
 import { logInfo, logWarn } from './lib/runtimeLog';
 import { runLlmText } from './lib/llm/dispatch';
-import { recordLlmSpend } from './analytics/llmUsage';
+import { LlmTruncatedError } from './lib/llm/truncation';
+import { meterLlmCall } from './analytics/meteredSpend';
+import { rootRequest } from './lib/llm/requestMeter';
 import { datasetKeyValidator, isDatasetKey, type DatasetKey } from './visualizationAgent';
+import { anchorActionDeadline } from './lib/llm/actionDeadline';
 
 // ============================================================
 // Internal Action: Generate Visualization
@@ -36,6 +39,8 @@ export const generate = internalAction({
 		dataset: v.optional(datasetKeyValidator),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		try {
 			// Step 1: Use live account data only when the caller explicitly opts in
 			// with an allowlisted `dataset` key. Free-form prompts are NOT inferred
@@ -64,23 +69,24 @@ export const generate = internalAction({
 			// numbers"; the iframe sandbox model is unchanged either way.
 			const system = liveData ? buildLiveSystemPrompt(liveData) : ILLUSTRATIVE_SYSTEM_PROMPT;
 
-			const result = await runLlmText({
-				model: await resolveLanguageModel(ctx, 'draft'),
-				system,
-				prompt: args.prompt,
-			});
+			const root = rootRequest('analytics', args.visualizationId);
+			const model = await resolveLanguageModel(ctx, 'draft');
+			const result = await meterLlmCall(ctx, { feature: 'visualization', root }, (meter) =>
+				runLlmText({ meter, model, system, prompt: args.prompt })
+			);
 			logInfo('[visualization] llm call', {
 				tokenUsage: result.tokenUsage,
 				modelUsed: result.modelUsed,
 				datasetKey,
 				usedLiveData: liveData !== null,
 			});
-			await recordLlmSpend(ctx, 'visualization', result.tokenUsage, result.modelUsed);
 
 			// Extract HTML from the response. Models wrap output inconsistently
 			// (```html / ```HTML / bare ``` / prose around it), so try a
 			// case-insensitive generic fence first, then fall back to slicing
 			// the actual <!DOCTYPE…</html> document out of any surrounding text.
+			// A page cut off at its output ceiling is broken HTML: fail the generation.
+			if (result.isTruncated === true) throw new LlmTruncatedError('visualization');
 			let html = result.text.trim();
 			const fenceMatch = html.match(/```[a-zA-Z]*\s*\n([\s\S]*?)```/);
 			if (fenceMatch?.[1]) {
@@ -96,21 +102,22 @@ export const generate = internalAction({
 			}
 
 			// Generate a proper title from the prompt
-			const titleResult = await runLlmText({
-				model: await resolveLanguageModel(ctx, 'summarize'),
-				prompt: `Generate a short (3-8 word) title for this visualization request: "${args.prompt}"
+			const titleModel = await resolveLanguageModel(ctx, 'summarize');
+			const titleResult = await meterLlmCall(
+				ctx,
+				{ feature: 'visualization_title', root },
+				(meter) =>
+					runLlmText({
+						meter,
+						model: titleModel,
+						prompt: `Generate a short (3-8 word) title for this visualization request: "${args.prompt}"
 Respond with ONLY the title, no quotes or explanation.`,
-			});
+					})
+			);
 			logInfo('[visualization] llm call', {
 				tokenUsage: titleResult.tokenUsage,
 				modelUsed: titleResult.modelUsed,
 			});
-			await recordLlmSpend(
-				ctx,
-				'visualization_title',
-				titleResult.tokenUsage,
-				titleResult.modelUsed
-			);
 
 			const title = titleResult.text.trim().slice(0, 100);
 

@@ -29,8 +29,9 @@ import { MAX_ASK_QUESTIONS } from '@owlat/shared/answerMode';
 import { isAppLocale } from '@owlat/shared/appLocales';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { newRootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
+import { boundedRoot } from '../../lib/llm/actionDeadline';
 import {
 	DIVERGENCE_SAMPLES,
 	MIN_SAMPLES_FOR_JUDGMENT,
@@ -117,22 +118,22 @@ async function findOpenSlots(
 	ctx: ActionCtx,
 	context: string,
 	eagerness: EagernessMode | undefined,
-	items: readonly SlotItem[]
+	items: readonly SlotItem[],
+	root: LlmRootContext
 ): Promise<ReplySlot[]> {
 	// Files owed survive a failed divergence stage: they were never judged by it.
 	let owed: ReplySlot[] = [];
 	try {
-		const extracted = await recordSpendOnFailure(
-			ctx,
-			'postbox_answer_slots',
+		const slotModel = await resolveLanguageModel(ctx, 'summarize');
+		const extracted = await meterLlmCall(ctx, { feature: 'postbox_answer_slots', root }, (meter) =>
 			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'summarize'),
+				meter,
+				model: slotModel,
 				schema: replySlotsSchema,
 				prompt: buildSlotPrompt(context, items),
 				temperature: 0.2,
 			})
 		);
-		await recordLlmSpend(ctx, 'postbox_answer_slots', extracted.tokenUsage, extracted.modelUsed);
 		const split = splitCandidateSlots(extracted.object.slots);
 		owed = split.owed;
 		const candidates = split.toJudge;
@@ -145,30 +146,34 @@ async function findOpenSlots(
 		const samples: string[] = [];
 		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 			try {
-				const sample = await runLlmText({
-					model: sampleModel,
-					prompt: buildCandidatePrompt(context),
-					temperature: 0.9,
-				});
+				const sample = await meterLlmCall(
+					ctx,
+					{ feature: 'postbox_answer_diverge', root },
+					(meter) =>
+						runLlmText({
+							meter,
+							model: sampleModel,
+							prompt: buildCandidatePrompt(context),
+							temperature: 0.9,
+						})
+				);
 				if (sample.text.trim().length === 0) continue;
 				samples.push(sample.text);
-				await recordLlmSpend(ctx, 'postbox_answer_diverge', sample.tokenUsage, sample.modelUsed);
 			} catch {
 				// One failed sample does not end the check; judge on the rest.
 			}
 		}
 		if (samples.length < MIN_SAMPLES_FOR_JUDGMENT) return owed;
-		const judged = await recordSpendOnFailure(
-			ctx,
-			'postbox_answer_diverge',
+		const judgeModel = await resolveLanguageModel(ctx, 'draft');
+		const judged = await meterLlmCall(ctx, { feature: 'postbox_answer_diverge', root }, (meter) =>
 			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'draft'),
+				meter,
+				model: judgeModel,
 				schema: divergenceSchema,
 				prompt: buildDivergencePrompt(candidates, samples),
 				temperature: 0.1,
 			})
 		);
-		await recordLlmSpend(ctx, 'postbox_answer_diverge', judged.tokenUsage, judged.modelUsed);
 		const divergent = new Set(judged.object.divergentSlotIndexes);
 		return [...owed, ...candidates.filter((_, index) => divergent.has(index))];
 	} catch {
@@ -200,17 +205,14 @@ async function applyMemory(
 export async function localizeForOwner(
 	ctx: ActionCtx,
 	questions: AskQuestion[],
-	locale: string
+	locale: string,
+	root: LlmRootContext = newRootRequest('postbox_action')
 ): Promise<AskQuestion[]> {
 	if (questions.length === 0 || !isAppLocale(locale) || locale === 'en') return questions;
-	const localized = await localizeQuestions(
-		await resolveLanguageModel(ctx, 'summarize'),
-		questions,
-		['en', locale]
+	const model = await resolveLanguageModel(ctx, 'summarize');
+	const localized = await meterLlmCall(ctx, { feature: 'postbox_answer_localize', root }, (meter) =>
+		localizeQuestions(model, questions, ['en', locale], meter)
 	);
-	if (localized.tokenUsage) {
-		await recordLlmSpend(ctx, 'postbox_answer_localize', localized.tokenUsage, localized.modelUsed);
-	}
 	return localized.questions;
 }
 
@@ -225,7 +227,9 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 		? `${input.context}\n\n(The recipient's note on what to answer: ${input.instruction})`
 		: input.context;
 	const items = input.slotItems ?? [];
-	let slots = await findOpenSlots(ctx, slotContext, input.eagerness, items);
+	// One "Draft with AI" gap check is one user action (ADR-0073).
+	const root = boundedRoot(ctx, newRootRequest('postbox_action'));
+	let slots = await findOpenSlots(ctx, slotContext, input.eagerness, items, root);
 
 	// A file request: the phrasing in the email, or a slot of type attachment.
 	let request = detectAttachmentRequest(input.triggerText);
@@ -250,6 +254,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 			query,
 			contactId: input.contactId,
 			mailboxScope: input.mailboxScope,
+			root,
 		});
 		const outcome = decideFileOutcome(rankFoundFiles(query, found));
 		fileRequest = { questionId: FILE_QUESTION_ID, label };
@@ -285,7 +290,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 	}
 	const remembered = await applyMemory(ctx, capped, input);
 	return {
-		questions: await localizeForOwner(ctx, remembered, input.locale),
+		questions: await localizeForOwner(ctx, remembered, input.locale, root),
 		mayAsk: policy.enabled,
 		...(autoAttach ? { autoAttach } : {}),
 		...(fileRequest ? { fileRequest } : {}),

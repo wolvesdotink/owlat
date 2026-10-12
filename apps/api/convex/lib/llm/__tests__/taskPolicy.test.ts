@@ -80,10 +80,27 @@ describe('task-policy catalog', () => {
 	});
 
 	it('keeps today’s attempt budgets and deadlines', () => {
-		expect(taskPolicy('mail.draft')).toMatchObject({
-			maxAttempts: MAX_LLM_ATTEMPTS,
-			deadlineMs: null,
-		});
+		// Today's effective bounds: a one-shot request dies at the runtime's 300 s
+		// header timeout, a tool loop or a stream at the 10-minute action limit.
+		for (const task of ['mail.draft', 'mail.compose', 'assistant.answer'] as const) {
+			expect(taskPolicy(task), task).toMatchObject({
+				maxAttempts: MAX_LLM_ATTEMPTS,
+				deadlineMs: 540_000,
+			});
+		}
+		for (const task of [
+			'mail.classify',
+			'mail.guard',
+			'embedding.index',
+			'plugin.invoke',
+		] as const) {
+			expect(taskPolicy(task), task).toMatchObject({
+				maxAttempts: MAX_LLM_ATTEMPTS,
+				deadlineMs: 300_000,
+			});
+		}
+		// The decision plane keeps its adapters' own deadlines.
+		expect(taskPolicy('mail.category').deadlineMs).toBeNull();
 		expect(taskPolicy('mail.complete')).toMatchObject({
 			maxAttempts: INTERACTIVE_LLM_ATTEMPTS,
 			deadlineMs: INTERACTIVE_LLM_DEADLINE_MS.completion,
@@ -98,13 +115,29 @@ describe('task-policy catalog', () => {
 		expect(taskPolicy('decision.connection_probe').maxAttempts).toBe(1);
 	});
 
-	it('limits nothing today except the plugin host’s output cap', () => {
+	it('bounds the output and reasoning of every generative task, and nothing else', () => {
 		for (const entry of Object.values(TASK_POLICIES)) {
 			expect(entry.maxInputTokens, entry.task).toBeNull();
-			expect(entry.maxReasoningTokens, entry.task).toBeNull();
-			if (entry.task !== 'plugin.invoke') expect(entry.maxOutputTokens, entry.task).toBeNull();
+			if (entry.plane === 'embedding') {
+				expect(entry.maxOutputTokens, entry.task).toBeNull();
+				expect(entry.maxReasoningTokens, entry.task).toBeNull();
+				continue;
+			}
+			expect(entry.maxOutputTokens, entry.task).toBeGreaterThanOrEqual(1_024);
+			if (entry.task !== 'plugin.invoke') {
+				expect(entry.maxReasoningTokens, entry.task).toBeGreaterThanOrEqual(4_096);
+			}
 		}
-		expect(taskPolicy('plugin.invoke').maxOutputTokens).toBe(PLUGIN_LLM_MAX_OUTPUT_TOKENS);
+		// The plugin host's cap is the one its reservation is priced on: no reasoning on top.
+		expect(taskPolicy('plugin.invoke')).toMatchObject({
+			maxOutputTokens: PLUGIN_LLM_MAX_OUTPUT_TOKENS,
+			maxReasoningTokens: null,
+		});
+		// Sized by what each task writes today.
+		expect(taskPolicy('mail.classify').maxOutputTokens).toBe(1_024);
+		expect(taskPolicy('mail.draft').maxOutputTokens).toBe(8_192);
+		expect(taskPolicy('mail.extract').maxOutputTokens).toBe(8_192);
+		expect(taskPolicy('mail.translate').maxOutputTokens).toBe(16_384);
 	});
 
 	it('gives no task a paid fallback and no evaluation yet', () => {

@@ -40,6 +40,7 @@ const input = { inboundMessageId: messageId };
 function makeCtx(hasVectors: boolean) {
 	const searches: Array<{ name: 'knowledge' | 'files'; args: Record<string, unknown> }> = [];
 	const vectorChecks: unknown[] = [];
+	const ledger: Array<Record<string, unknown>> = [];
 	const ctx = makeStepCtx<Parameters<typeof contextRetrievalStep.execute>[0]>({
 		queries: {
 			getMessage: {
@@ -65,9 +66,15 @@ function makeCtx(hasVectors: boolean) {
 				return [];
 			},
 		},
-		mutations: { recordContextTier: null },
+		mutations: {
+			recordContextTier: null,
+			llmUsage: (args) => {
+				ledger.push(args as Record<string, unknown>);
+				return null;
+			},
+		},
 	});
-	return { ctx, searches, vectorChecks };
+	return { ctx, searches, vectorChecks, ledger };
 }
 
 beforeEach(() => {
@@ -78,11 +85,21 @@ beforeEach(() => {
 
 describe('contextRetrievalStep — one query embedding', () => {
 	it('embeds once and shares the vector with both searches, query text included', async () => {
-		const { ctx, searches, vectorChecks } = makeCtx(true);
+		const { ctx, searches, vectorChecks, ledger } = makeCtx(true);
 
 		await contextRetrievalStep.execute(ctx, input);
 
 		expect(mocks.embed).toHaveBeenCalledTimes(1);
+		// The one embedding is one metered request, under the message's root (ADR-0073).
+		expect(ledger).toEqual([
+			expect.objectContaining({
+				feature: 'embedding_knowledge_search',
+				task: 'embedding.query',
+				plane: 'embedding',
+				rootRequestId: `team:${messageId}`,
+				requests: [expect.objectContaining({ attempt: 1 })],
+			}),
+		]);
 		// The exact text each search embedded before: its query text, trimmed.
 		expect(mocks.embed.mock.calls[0]![0]).toMatchObject({
 			value: `${SUBJECT}\n${BODY}`.slice(0, 2000).trim(),
@@ -112,12 +129,16 @@ describe('contextRetrievalStep — one query embedding', () => {
 	});
 
 	it('leaves both searches out when the one embedding fails, as each did before', async () => {
-		mocks.embed.mockRejectedValue(new Error('embedder down'));
-		const { ctx, searches } = makeCtx(true);
+		// Not retriable, so one request (a transient failure retries through the
+		// shared policy, as the SDK's own retry did before).
+		mocks.embed.mockRejectedValue(Object.assign(new Error('embedder down'), { statusCode: 401 }));
+		const { ctx, searches, ledger } = makeCtx(true);
 
 		const { output } = await contextRetrievalStep.execute(ctx, input);
 
 		expect(mocks.embed).toHaveBeenCalledTimes(1);
+		// The failed request is still a row.
+		expect(ledger).toHaveLength(1);
 		expect(searches).toEqual([]);
 		expect(output.coverage.knowledge).toBe(false);
 		expect(output.coverage.files).toBe(false);

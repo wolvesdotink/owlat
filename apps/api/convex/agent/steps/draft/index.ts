@@ -20,6 +20,8 @@ import { buildReplySubject } from '../../../lib/emailAddress';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from './recall';
+import { teamRoot } from '../../shared/agentSpend';
+import { boundedRoot } from '../../../lib/llm/actionDeadline';
 import { draftAttachmentPatch } from './attachment';
 import { loadDraftPlan, recordDraftPlan } from './plan';
 import type { AttachmentSuggestions } from '../../../inbox/attachmentSuggest';
@@ -140,9 +142,13 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// bounded (see recall.ts): retrieval errors ⇒ no facts; capped call count.
 		const recallScope: Id<'contacts'> | 'org-general-only' =
 			message?.contactId ?? 'org-general-only';
+		// The message's root, on this action's clock: the draft, its self-check, the
+		// recall searches and the attachment search all group under it (ADR-0073).
+		const root = boundedRoot(ctx, teamRoot(input.inboundMessageId));
 		const recallKnowledge = buildRecallKnowledgeTool({
 			runAction: ctx.runAction,
 			scopeToContact: recallScope,
+			root,
 		});
 
 		// Natural-language handling rules — a matching `draft_with_stance` rule
@@ -208,6 +214,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 				// the one store the spend ceiling reads (#1259). The usage it returns
 				// goes onto the step's agentActions row, the cost-by-step view only.
 				spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
+				root,
 				replyLanguage,
 				...(plan ? { responsePlan: plan.prompt } : {}),
 				strategyScope: {
@@ -233,7 +240,8 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 				ctx,
 				input.context,
 				message?.contactId,
-				input.ownerAttachment
+				input.ownerAttachment,
+				root
 			)),
 		});
 

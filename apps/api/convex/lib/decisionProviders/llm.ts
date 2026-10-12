@@ -376,6 +376,8 @@ export const llmDecisionAdapter: DecisionProviderAdapter<'llm'> = {
 			prompt: renderDecisionPrompt(req.state, req.questions),
 			temperature: DECISION_TEMPERATURE,
 			...(signal ? { abortSignal: signal } : {}),
+			// Each inner retry is a billed request: the meter makes it a ledger row.
+			...(req.meter ? { meter: req.meter } : {}),
 		});
 		const usage = dispatched.tokenUsage ?? NO_USAGE;
 		const modelUsed = dispatched.modelUsed ?? languageModelId(model);

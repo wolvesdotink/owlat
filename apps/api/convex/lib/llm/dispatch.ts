@@ -3,22 +3,25 @@
 /**
  * Shared LLM dispatch for every LLM call in the deployment. Owns the one
  * mapping between the AI SDK's `usage` shape and the lifecycle's TokenUsage
- * validator — adding or rotating SDKs touches one file.
+ * validator (`./providerUsage.ts`) — adding or rotating SDKs touches one place.
  *
  * Per ADR-0029: lifted from agent/steps/shared/llm.ts (ADR-0014 seam) to a
  * shared location so non-agent callers (translate, knowledge/extraction,
  * semanticFileProcessing, visualizationAgent) can use the same surface.
  *
- * AI SDK field-name history: 4.x had `promptTokens/completionTokens`;
- * 5.x rotated to `inputTokens/outputTokens`. normalizeUsage() is the
- * single site that absorbs any future rotation.
+ * METERING (ADR-0073). Every helper takes an optional {@link LlmCallMeter} and
+ * records each PROVIDER REQUEST into it: every retry attempt, every tool round,
+ * every stream step, failed ones included. The caller's spend helper
+ * (`analytics/meteredSpend.ts`) turns those records into ledger rows, one per
+ * request. The meter's task sets the limits this file enforces
+ * (`./taskLimits.ts`): an output ceiling covering reasoning, a deadline for
+ * the whole call, and the attempt allowance.
  */
 
 import {
 	generateObject,
 	generateText,
 	NoObjectGeneratedError,
-	streamText,
 	stepCountIs,
 	wrapLanguageModel,
 	type LanguageModel,
@@ -31,34 +34,24 @@ import { modelForRequest } from './requestPolicy';
 import { withLlmRetry } from './retryPolicy';
 import { withPartialUsage } from './partialUsage';
 import { addTokenUsage } from './tokenUsage';
+import { normalizeUsage, usageDetails, type RawUsage } from './providerUsage';
+import { startRequest, type LlmCallMeter } from './requestMeter';
+import { callShape, limitArgs } from './callShape';
+import { isLengthStop, LlmTruncatedError } from './truncation';
+import { DEFAULT_MAX_TOOL_STEPS } from './dispatchStream';
 
 export { MAX_LLM_ATTEMPTS, errorStatus, isRetriableLlmError, retryAfterMs } from './retryPolicy';
+export { normalizeUsage } from './providerUsage';
+export { DEFAULT_MAX_TOOL_STEPS, runLlmStream } from './dispatchStream';
 
 /**
  * The AI SDK retries every call twice on its own by default. This module is
  * the one retry choke point, so each SDK call is told not to: otherwise one
  * dispatch attempt hides up to three HTTP requests (nine per call in total),
  * which breaks both deadlines and the per-attempt budget arithmetic. Streams
- * are the exception (see {@link runLlmStream}).
+ * are the exception (see `./dispatchStream.ts`).
  */
 const SDK_MAX_RETRIES = 0;
-
-type RawUsage =
-	| {
-			inputTokens?: number;
-			outputTokens?: number;
-			totalTokens?: number;
-	  }
-	| undefined;
-
-export function normalizeUsage(usage: RawUsage): TokenUsage | undefined {
-	if (!usage) return undefined;
-	return {
-		promptTokens: usage.inputTokens ?? 0,
-		completionTokens: usage.outputTokens ?? 0,
-		totalTokens: usage.totalTokens ?? 0,
-	};
-}
 
 const MAX_PROVIDER_MODEL_ID_LENGTH = 256;
 
@@ -119,6 +112,12 @@ function captureProviderModelIdentity(model: LanguageModel): ProviderModelIdenti
 	};
 }
 
+/** What one finished provider request reported, as a meter record's fields. */
+function reported(usage: RawUsage) {
+	const tokenUsage = normalizeUsage(usage);
+	return { ...(tokenUsage ? { usage: tokenUsage } : {}), ...usageDetails(usage) };
+}
+
 export type LlmTextInput = { messages: ModelMessage[] } | { prompt: string; system?: string };
 
 export type LlmTextOptions = LlmTextInput & {
@@ -132,12 +131,16 @@ export type LlmTextOptions = LlmTextInput & {
 	 * surfaces pass `INTERACTIVE_LLM_ATTEMPTS` (one retry at most).
 	 */
 	maxAttempts?: number;
+	/** Records each provider request; its task sets the call's limits. */
+	meter?: LlmCallMeter;
 };
 
 export interface LlmTextResult {
 	text: string;
 	tokenUsage: TokenUsage | undefined;
 	modelUsed: string | undefined;
+	/** The output stopped at its ceiling: the text is incomplete (`./truncation.ts`). */
+	isTruncated?: boolean;
 }
 
 export async function runLlmText(opts: LlmTextOptions): Promise<LlmTextResult> {
@@ -158,21 +161,30 @@ export async function runLlmTextWithAttemptMetadata(
 ): Promise<LlmTextAttemptResult> {
 	const sdkArgs =
 		'messages' in opts ? { messages: opts.messages } : { prompt: opts.prompt, system: opts.system };
+	const call = callShape(opts);
 	const providerModelIdentity = captureProviderModelIdentity(modelForRequest(opts.model));
 	const dispatched = await withLlmRetry(
-		() =>
-			generateText({
-				model: providerModelIdentity.model,
-				temperature: opts.temperature,
-				maxRetries: SDK_MAX_RETRIES,
-				...(opts.maxOutputTokens === undefined ? {} : { maxOutputTokens: opts.maxOutputTokens }),
-				...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
-				...sdkArgs,
-			}),
-		opts.abortSignal,
-		opts.maxAttempts
+		async () => {
+			const finish = startRequest(opts.meter);
+			try {
+				const generated = await generateText({
+					model: providerModelIdentity.model,
+					temperature: opts.temperature,
+					maxRetries: SDK_MAX_RETRIES,
+					...limitArgs(call),
+					...sdkArgs,
+				});
+				finish({ ...call.requestBase, outcome: 'ok', ...reported(generated.usage) });
+				return generated;
+			} catch (error) {
+				finish({ ...call.requestBase, outcome: 'failed' });
+				throw error;
+			}
+		},
+		call.abortSignal,
+		call.maxAttempts
 	);
-	const { text, usage } = dispatched.value;
+	const { text, usage, finishReason } = dispatched.value;
 	const providerModelUsed = providerModelIdentity.read();
 	return {
 		attempts: dispatched.attempts,
@@ -183,7 +195,8 @@ export async function runLlmTextWithAttemptMetadata(
 			// Core attribution follows the requested model id, matching the object,
 			// tools and stream dispatch paths. Provider echoes remain separate so
 			// budget enforcement can detect reroutes without blanking core usage.
-			modelUsed: typeof opts.model === 'string' ? opts.model : opts.model.modelId,
+			modelUsed: call.modelUsed,
+			isTruncated: isLengthStop(finishReason),
 		},
 	};
 }
@@ -197,44 +210,68 @@ type LlmTextWithToolsOptions = {
 	/** Max agentic steps before a forced stop. Defaults to {@link DEFAULT_MAX_TOOL_STEPS}. */
 	maxSteps?: number;
 	temperature?: number;
+	maxOutputTokens?: number;
+	abortSignal?: AbortSignal;
+	/** Records each tool round as its own provider request. */
+	meter?: LlmCallMeter;
 };
 
 /**
  * One-shot (non-streaming) tool-calling counterpart to {@link runLlmText}: the
  * model may call the supplied tools across up to `maxSteps` agentic steps, then
  * returns the final text. Same bounded-retry + usage normalization as the other
- * one-shot helpers. Use this (not {@link runLlmStream}) when you want a bounded
+ * one-shot helpers. Use this (not `runLlmStream`) when you want a bounded
  * fetch-more loop but do NOT need token streaming to a user — e.g. the draft
  * step's `recallKnowledge` loop.
  *
  * Usage is the sum of every step that finished, in every attempt: the SDK's
  * `usage` is the last step's only, and a retried attempt paid for the steps it
  * finished before it failed. When the loop fails after a finished step, the
- * error is an `LlmPartialUsageError` carrying that usage (#1256).
+ * error is an `LlmPartialUsageError` carrying that usage (#1256). Each step is
+ * one provider request on the meter; the step a failure interrupted is
+ * recorded as a failed request with no reported usage.
  */
 export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promise<LlmTextResult> {
-	const modelUsed = typeof opts.model === 'string' ? opts.model : opts.model.modelId;
+	const call = callShape(opts);
 	let spent: TokenUsage | undefined;
 	let dispatched;
 	try {
-		dispatched = await withLlmRetry(() =>
-			generateText({
-				model: modelForRequest(opts.model),
-				messages: opts.messages,
-				tools: opts.tools,
-				stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
-				temperature: opts.temperature,
-				maxRetries: SDK_MAX_RETRIES,
-				onStepFinish: (step) => {
-					spent = addTokenUsage(spent, normalizeUsage(step.usage));
-				},
-			})
+		dispatched = await withLlmRetry(
+			async () => {
+				let finishStep = startRequest(opts.meter);
+				try {
+					return await generateText({
+						model: modelForRequest(opts.model),
+						messages: opts.messages,
+						tools: opts.tools,
+						stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
+						temperature: opts.temperature,
+						maxRetries: SDK_MAX_RETRIES,
+						...limitArgs(call),
+						onStepFinish: (step) => {
+							spent = addTokenUsage(spent, normalizeUsage(step.usage));
+							finishStep({ ...call.requestBase, outcome: 'ok', ...reported(step.usage) });
+							finishStep = startRequest(opts.meter);
+						},
+					});
+				} catch (error) {
+					finishStep({ ...call.requestBase, outcome: 'failed' });
+					throw error;
+				}
+			},
+			call.abortSignal,
+			call.maxAttempts
 		);
 	} catch (error) {
-		throw withPartialUsage(error, spent, modelUsed);
+		throw withPartialUsage(error, spent, call.modelUsed);
 	}
-	const { text, totalUsage } = dispatched.value;
-	return { text, tokenUsage: spent ?? normalizeUsage(totalUsage), modelUsed };
+	const { text, totalUsage, finishReason } = dispatched.value;
+	return {
+		text,
+		tokenUsage: spent ?? normalizeUsage(totalUsage),
+		modelUsed: call.modelUsed,
+		isTruncated: isLengthStop(finishReason),
+	};
 }
 
 export interface LlmObjectOptions<S extends z.ZodTypeAny> {
@@ -242,6 +279,8 @@ export interface LlmObjectOptions<S extends z.ZodTypeAny> {
 	schema: S;
 	prompt: string;
 	temperature?: number;
+	/** Output ceiling (reasoning included); the task's ceiling applies when it is lower. */
+	maxOutputTokens?: number;
 	/**
 	 * Cancel the call (and the backoff between its retries) mid-flight. The
 	 * structured-output path was the one dispatch helper that could not honour a
@@ -251,6 +290,8 @@ export interface LlmObjectOptions<S extends z.ZodTypeAny> {
 	abortSignal?: AbortSignal;
 	/** Lower the attempt ceiling below {@link MAX_LLM_ATTEMPTS} (see {@link LlmTextOptions}). */
 	maxAttempts?: number;
+	/** Records each attempt as its own provider request. */
+	meter?: LlmCallMeter;
 }
 
 export interface LlmObjectResult<S extends z.ZodTypeAny> {
@@ -265,8 +306,8 @@ export interface LlmObjectResult<S extends z.ZodTypeAny> {
  * `NoObjectGeneratedError` with the usage of the call that returned it; every
  * other failure (a provider rejection, a network error, an abort) has none.
  */
-function billedUsageOf(error: unknown): TokenUsage | undefined {
-	return NoObjectGeneratedError.isInstance(error) ? normalizeUsage(error.usage) : undefined;
+function billedUsageOf(error: unknown): RawUsage {
+	return NoObjectGeneratedError.isInstance(error) ? error.usage : undefined;
 }
 
 /**
@@ -278,209 +319,53 @@ function billedUsageOf(error: unknown): TokenUsage | undefined {
  * When the call fails for good after a billed attempt, the error is an
  * `LlmPartialUsageError` carrying that usage, with the last error as its cause
  * and message; a failure before any attempt was billed rethrows the original
- * error as is.
+ * error as is. Each attempt is one request on the meter, with its own usage.
+ * An object that stopped at its output ceiling throws an `LlmTruncatedError`
+ * (wrapped with its usage), never a result.
  */
 export async function runLlmObject<S extends z.ZodTypeAny>(
 	opts: LlmObjectOptions<S>
 ): Promise<LlmObjectResult<S>> {
-	const modelUsed = typeof opts.model === 'string' ? opts.model : opts.model.modelId;
+	const call = callShape(opts);
 	let spent: TokenUsage | undefined;
 	let dispatched;
 	try {
 		dispatched = await withLlmRetry(
 			async () => {
+				const finish = startRequest(opts.meter);
 				try {
-					return await generateObject({
+					const generated = await generateObject({
 						model: modelForRequest(opts.model),
 						schema: opts.schema,
 						prompt: opts.prompt,
 						temperature: opts.temperature,
 						maxRetries: SDK_MAX_RETRIES,
-						...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+						...limitArgs(call),
 					});
+					finish({ ...call.requestBase, outcome: 'ok', ...reported(generated.usage) });
+					return generated;
 				} catch (error) {
-					spent = addTokenUsage(spent, billedUsageOf(error));
+					const billed = billedUsageOf(error);
+					spent = addTokenUsage(spent, normalizeUsage(billed));
+					finish({ ...call.requestBase, outcome: 'failed', ...reported(billed) });
 					throw error;
 				}
 			},
-			opts.abortSignal,
-			opts.maxAttempts
+			call.abortSignal,
+			call.maxAttempts
 		);
 	} catch (error) {
-		throw withPartialUsage(error, spent, modelUsed);
+		throw withPartialUsage(error, spent, call.modelUsed);
 	}
-	const { object, usage } = dispatched.value;
-	return {
-		object: object as z.infer<S>,
-		tokenUsage: addTokenUsage(spent, normalizeUsage(usage)),
-		modelUsed,
-	};
-}
-
-/**
- * Default ceiling on agentic steps (one LLM call + its tool round-trip) per
- * streamed turn. Caps runaway tool loops and bounds per-turn spend — the engine
- * passes its own value but never above a sane hard limit.
- */
-export const DEFAULT_MAX_TOOL_STEPS = 8;
-
-interface LlmStreamToolCall {
-	toolCallId: string;
-	toolName: string;
-	input: unknown;
-}
-interface LlmStreamToolResult {
-	toolCallId: string;
-	toolName: string;
-	output: unknown;
-}
-interface LlmStreamToolError {
-	toolCallId: string;
-	toolName: string;
-	error: unknown;
-}
-
-interface LlmStreamOptions {
-	model: LanguageModel;
-	system?: string;
-	messages: ModelMessage[];
-	/** AI SDK tool set (built via `tool({...})`). Omit for a tool-free turn. */
-	tools?: ToolSet;
-	/** Max agentic steps before forced stop. Defaults to {@link DEFAULT_MAX_TOOL_STEPS}. */
-	maxSteps?: number;
-	temperature?: number;
-	/** Abort the stream mid-flight (user "stop generating"). */
-	abortSignal?: AbortSignal;
-	/**
-	 * Keep only the text of the final step, the way `generateText().text` does,
-	 * for a caller whose result is a document body rather than a chat
-	 * transcript. Without it, narration the model writes before a tool call
-	 * ("Let me check availability…") is joined to the reply after it. The
-	 * accumulated text is reset when a step starts and when a tool call arrives,
-	 * and `onTextDelta` then fires with the empty text so a live view drops it.
-	 */
-	finalStepOnly?: boolean;
-	/** Called for each text chunk with the FULL accumulated text and the delta. */
-	onTextDelta?: (fullText: string, delta: string) => void | Promise<void>;
-	/** Called when the model requests a tool (before it executes). */
-	onToolCall?: (call: LlmStreamToolCall) => void | Promise<void>;
-	/** Called when a tool returns a result. */
-	onToolResult?: (result: LlmStreamToolResult) => void | Promise<void>;
-	/** Called when a tool's execute throws (non-fatal; the model may recover). */
-	onToolError?: (error: LlmStreamToolError) => void | Promise<void>;
-}
-
-interface LlmStreamResult {
-	text: string;
-	tokenUsage: TokenUsage | undefined;
-	modelUsed: string | undefined;
-	finishReason: string | undefined;
-	/** True when the caller's abortSignal ended the stream before a natural finish. */
-	aborted: boolean;
-}
-
-/** A stream part's usage; a missing total is the sum of its two halves. */
-function streamUsage(u: NonNullable<RawUsage>): TokenUsage {
-	const input = u.inputTokens ?? 0;
-	const output = u.outputTokens ?? 0;
-	return {
-		promptTokens: input,
-		completionTokens: output,
-		totalTokens: u.totalTokens ?? input + output,
-	};
-}
-
-/**
- * Streaming, tool-calling counterpart to {@link runLlmText} — the single seam
- * the AI assistant + @assistant-in-chat engine drives. Consumes the AI SDK
- * `fullStream`, accumulating text and surfacing tool calls/results to the caller
- * via callbacks so it can persist partial state (throttled row-append) and tool
- * cards as they happen. Returns the final text + usage on a natural finish.
- *
- * Not retried: unlike the one-shot helpers, a stream may already have emitted
- * tokens to the user, so a silent retry would duplicate output and double-charge.
- * The SDK's default retry is kept here on purpose: it only re-sends the opening
- * request, before any token exists, and it is the stream's only retry.
- * Stream errors surface as a thrown error (after any prior text deltas were
- * delivered) for the caller to persist as a `error`/`stopped` message. A
- * failure after a finished step throws an `LlmPartialUsageError` carrying the
- * usage of the finished steps, and an aborted stream returns that usage
- * (#1256): those steps were billed either way.
- */
-export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamResult> {
-	const result = streamText({
-		model: modelForRequest(opts.model),
-		...(opts.system !== undefined ? { system: opts.system } : {}),
-		messages: opts.messages,
-		...(opts.tools ? { tools: opts.tools } : {}),
-		stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
-		temperature: opts.temperature,
-		...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
-	});
-
-	const modelUsed = typeof opts.model === 'string' ? opts.model : opts.model.modelId;
-	let text = '';
-	let tokenUsage: TokenUsage | undefined;
-	// Finished steps only; the `finish` part's total replaces it on a natural end.
-	let stepsSpent: TokenUsage | undefined;
-	let finishReason: string | undefined;
-	let aborted = false;
-	const resetText = async (): Promise<void> => {
-		if (!opts.finalStepOnly || text === '') return;
-		text = '';
-		await opts.onTextDelta?.(text, '');
-	};
-
-	try {
-		for await (const part of result.fullStream) {
-			switch (part.type) {
-				case 'start-step':
-					await resetText();
-					break;
-				case 'text-delta':
-					text += part.text;
-					await opts.onTextDelta?.(text, part.text);
-					break;
-				case 'tool-call':
-					await resetText();
-					await opts.onToolCall?.({
-						toolCallId: part.toolCallId,
-						toolName: part.toolName,
-						input: part.input,
-					});
-					break;
-				case 'tool-result':
-					await opts.onToolResult?.({
-						toolCallId: part.toolCallId,
-						toolName: part.toolName,
-						output: part.output,
-					});
-					break;
-				case 'tool-error':
-					await opts.onToolError?.({
-						toolCallId: part.toolCallId,
-						toolName: part.toolName,
-						error: part.error,
-					});
-					break;
-				case 'finish-step':
-					stepsSpent = addTokenUsage(stepsSpent, streamUsage(part.usage));
-					break;
-				case 'finish':
-					finishReason = part.finishReason;
-					tokenUsage = streamUsage(part.totalUsage);
-					break;
-				case 'abort':
-					aborted = true;
-					break;
-				case 'error':
-					// Surface the failure once any preceding text has been delivered.
-					throw part.error;
-			}
-		}
-	} catch (error) {
-		throw withPartialUsage(error, stepsSpent, modelUsed);
+	const { object, usage, finishReason } = dispatched.value;
+	const tokenUsage = addTokenUsage(spent, normalizeUsage(usage));
+	// A schema-valid object that stopped at its output ceiling is incomplete: a
+	// verdict, a score or a list cut short. It is never returned as a result.
+	// Thrown after the request is on the meter, as a failure every structured
+	// caller already handles; the error carries the billed usage. Not retried:
+	// the same request would stop at the same ceiling.
+	if (isLengthStop(finishReason)) {
+		throw withPartialUsage(new LlmTruncatedError('structured output'), tokenUsage, call.modelUsed);
 	}
-
-	return { text, tokenUsage: tokenUsage ?? stepsSpent, modelUsed, finishReason, aborted };
+	return { object: object as z.infer<S>, tokenUsage, modelUsed: call.modelUsed };
 }

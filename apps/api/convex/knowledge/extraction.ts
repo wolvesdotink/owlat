@@ -16,17 +16,21 @@ import type { Id } from '../_generated/dataModel';
 import { readMailMessageText } from '../lib/messageBody';
 import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
-import { embed, type EmbeddingModel } from 'ai';
+import type { EmbeddingModel } from 'ai';
 import { z } from 'zod';
 import { resolveLanguageModel, resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import { recordSpendOnFailure } from '../analytics/failedLlmSpend';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import { runEmbedding } from '../lib/llm/embed';
+import { rootRequest, type LlmRootContext } from '../lib/llm/requestMeter';
+import { scheduledRoot } from '../lib/llm/actionDeadline';
+import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { ENTRY_TYPES } from '../schema/knowledge';
 import { normalizeForHash } from '../lib/knowledgeEdges';
 import { detectInjection, detectSmuggling } from '../agent/steps/security_scan/patterns';
 import { runGuardBeforeAutonomy } from '../agent/steps/security_scan/guard';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /**
  * Guard knowledge extraction against prompt injection planted in untrusted
@@ -96,14 +100,19 @@ async function persistExtractedEntries(
 		sourceId: string;
 		contactIds?: Id<'contacts'>[];
 		threadId?: Id<'conversationThreads'>;
-	}
+	},
+	root: LlmRootContext
 ): Promise<void> {
 	const entryIds: Id<'knowledgeEntries'>[] = [];
 	for (const entry of entries) {
-		const { embedding } = await embed({
-			model: embedder.model,
-			value: `${entry.title}: ${entry.content}`,
-		});
+		const { embedding } = await meterLlmCall(
+			ctx,
+			{ feature: 'embedding_knowledge', root },
+			(meter) =>
+				runEmbedding({ meter, model: embedder.model, value: `${entry.title}: ${entry.content}` }),
+			// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+			{ onWriteError: 'ignore' }
+		);
 
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
 		// content-hash leg can dedup the same fact restated across sources.
@@ -141,6 +150,8 @@ async function persistExtractedEntries(
 			threadId: source.threadId,
 			sourceType: source.sourceType,
 			sourceId: source.sourceId,
+			// The inference pass runs later, in its own action: the root, not the deadline.
+			root: scheduledRoot(root),
 		});
 	}
 }
@@ -151,8 +162,12 @@ async function persistExtractedEntries(
 export const extractFromMessage = internalAction({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
+		/** An awaiting caller's root, deadline included (ADR-0073). */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});
@@ -181,7 +196,8 @@ export const extractFromMessage = internalAction({
 		// archive, agent off) gets it before its first generative consumer — this
 		// one, which the first-enable backfill reaches for mail that arrived while
 		// the agent was off. A guard that flags the message ends extraction.
-		const guard = await runGuardBeforeAutonomy(ctx, message);
+		// On the awaiting caller's clock when it passed one (ADR-0073).
+		const guard = await runGuardBeforeAutonomy(ctx, message, args.root?.deadlineAt);
 		if (!guard.mayProceed) {
 			logInfo('[knowledge.extract] skipped: the late injection guard flagged the message');
 			return;
@@ -190,18 +206,21 @@ export const extractFromMessage = internalAction({
 		try {
 			// ── Step 1: Extract knowledge using LLM ──
 			const model = await resolveLanguageModel(ctx, 'extract');
+			const extractRoot = args.root ?? rootRequest('team', args.inboundMessageId);
 
 			const {
 				object: extraction,
 				tokenUsage,
 				modelUsed,
-			} = await recordSpendOnFailure(
+			} = await meterLlmCall(
 				ctx,
-				'knowledge_extract_message',
-				runLlmObject({
-					model,
-					schema: extractionSchema,
-					prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+				{ feature: 'knowledge_extract_message', root: extractRoot },
+				(meter) =>
+					runLlmObject({
+						meter,
+						model,
+						schema: extractionSchema,
+						prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${message.from}
 Subject: ${message.subject}
@@ -218,23 +237,28 @@ Extract any:
 - Action Items: commitments or tasks mentioned
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-					temperature: 0.1,
-					abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-				})
+						temperature: 0.1,
+						abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+					})
 			);
 			logInfo('[knowledge.extract] llm call', { tokenUsage, modelUsed });
-			await recordLlmSpend(ctx, 'knowledge_extract_message', tokenUsage, modelUsed);
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
 			// ── Step 2: Generate embeddings and store ──
 			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(ctx, embedder, extraction.entries, {
-				sourceType: 'agent_extracted',
-				sourceId: args.inboundMessageId,
-				contactIds: message.contactId ? [message.contactId] : undefined,
-				threadId: message.threadId ?? undefined,
-			});
+			await persistExtractedEntries(
+				ctx,
+				embedder,
+				extraction.entries,
+				{
+					sourceType: 'agent_extracted',
+					sourceId: args.inboundMessageId,
+					contactIds: message.contactId ? [message.contactId] : undefined,
+					threadId: message.threadId ?? undefined,
+				},
+				extractRoot
+			);
 		} catch (error) {
 			// Fail soft — extraction is best-effort enrichment, never the reason a
 			// message fails to process. Name the source so the gap is traceable.
@@ -256,8 +280,12 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 export const extractFromFile = internalAction({
 	args: {
 		fileId: v.id('semanticFiles'),
+		/** An awaiting caller's root, deadline included (ADR-0073). */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
 		if (!file) return;
 
@@ -281,17 +309,20 @@ export const extractFromFile = internalAction({
 
 		try {
 			const model = await resolveLanguageModel(ctx, 'extract');
+			const extractRoot = args.root ?? rootRequest('file', args.fileId);
 			const {
 				object: extraction,
 				tokenUsage,
 				modelUsed,
-			} = await recordSpendOnFailure(
+			} = await meterLlmCall(
 				ctx,
-				'knowledge_extract_file',
-				runLlmObject({
-					model,
-					schema: extractionSchema,
-					prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
+				{ feature: 'knowledge_extract_file', root: extractRoot },
+				(meter) =>
+					runLlmObject({
+						meter,
+						model,
+						schema: extractionSchema,
+						prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
 
 Filename: ${file.filename}
 Title: ${file.title ?? file.filename}
@@ -299,22 +330,27 @@ ${file.summary ? `Summary: ${file.summary}\n` : ''}Content:
 ${textContent}
 
 Extract any facts, decisions, events, preferences, goals, relationships, or action items. Skip boilerplate and formatting noise.`,
-					temperature: 0.1,
-					abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-				})
+						temperature: 0.1,
+						abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+					})
 			);
 			logInfo('[knowledge.extractFile] llm call', { tokenUsage, modelUsed });
-			await recordLlmSpend(ctx, 'knowledge_extract_file', tokenUsage, modelUsed);
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
 			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(ctx, embedder, extraction.entries, {
-				sourceType: 'file',
-				sourceId: args.fileId,
-				contactIds: file.contactIds ?? undefined,
-				threadId: file.threadId ?? undefined,
-			});
+			await persistExtractedEntries(
+				ctx,
+				embedder,
+				extraction.entries,
+				{
+					sourceType: 'file',
+					sourceId: args.fileId,
+					contactIds: file.contactIds ?? undefined,
+					threadId: file.threadId ?? undefined,
+				},
+				extractRoot
+			);
 		} catch (error) {
 			logError('[knowledge.extractFromFile] failed', { fileId: args.fileId, error });
 		}
@@ -341,8 +377,12 @@ export const extractFromMailMessage = internalAction({
 		// Sender contact(s) the entries are scoped to (resolved by the indexer).
 		// Empty/undefined ⇒ org-general (visible to every contact's retrieval).
 		contactIds: v.optional(v.array(v.id('contacts'))),
+		/** An awaiting caller's root, deadline included (ADR-0073). */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const msg = await ctx.runQuery(internal.mail.migrationIndexing.getMessageForExtraction, {
 			mailMessageId: args.mailMessageId,
 		});
@@ -375,17 +415,20 @@ export const extractFromMailMessage = internalAction({
 
 		try {
 			const model = await resolveLanguageModel(ctx, 'extract');
+			const extractRoot = args.root ?? rootRequest('postbox', args.mailMessageId);
 			const {
 				object: extraction,
 				tokenUsage,
 				modelUsed,
-			} = await recordSpendOnFailure(
+			} = await meterLlmCall(
 				ctx,
-				'knowledge_extract_mail',
-				runLlmObject({
-					model,
-					schema: extractionSchema,
-					prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+				{ feature: 'knowledge_extract_mail', root: extractRoot },
+				(meter) =>
+					runLlmObject({
+						meter,
+						model,
+						schema: extractionSchema,
+						prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${msg.fromName ? `${msg.fromName} <${msg.fromAddress}>` : msg.fromAddress}
 Subject: ${msg.subject}
@@ -402,21 +445,26 @@ Extract any:
 - Action Items: commitments or tasks mentioned
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-					temperature: 0.1,
-					abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-				})
+						temperature: 0.1,
+						abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+					})
 			);
 			logInfo('[knowledge.extractMail] llm call', { tokenUsage, modelUsed });
-			await recordLlmSpend(ctx, 'knowledge_extract_mail', tokenUsage, modelUsed);
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
 			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(ctx, embedder, extraction.entries, {
-				sourceType: 'email',
-				sourceId: args.mailMessageId,
-				contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,
-			});
+			await persistExtractedEntries(
+				ctx,
+				embedder,
+				extraction.entries,
+				{
+					sourceType: 'email',
+					sourceId: args.mailMessageId,
+					contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,
+				},
+				extractRoot
+			);
 		} catch (error) {
 			logError('[knowledge.extractFromMailMessage] failed', {
 				mailMessageId: args.mailMessageId,

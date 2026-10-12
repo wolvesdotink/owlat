@@ -25,14 +25,18 @@ import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
  */
 
 import { v } from 'convex/values';
-import { embed } from 'ai';
 import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { resolveIndexEmbedder, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
 import { runLlmText } from './lib/llm/dispatch';
+import { runEmbedding } from './lib/llm/embed';
+import { newRootRequest } from './lib/llm/requestMeter';
+import { boundedRoot } from './lib/llm/actionDeadline';
+import { meterLlmCall } from './analytics/meteredSpend';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
 import { throwInvalidInput } from './_utils/errors';
+import { anchorActionDeadline } from './lib/llm/actionDeadline';
 
 // How many results to pull from EACH source before synthesis, and how much of
 // each result's body to feed the model (bounded so one huge file can't dominate
@@ -62,7 +66,13 @@ export const ask = authedAction({
 	args: {
 		question: v.string(),
 	},
-	handler: async (ctx, args): Promise<{ answer: string; sources: QuerySource[] }> => {
+	// `isTruncated`: the answer stopped at its output limit; the UI marks it cut off.
+	handler: async (
+		ctx,
+		args
+	): Promise<{ answer: string; sources: QuerySource[]; isTruncated: boolean }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		validateStringLength(args.question, STRING_LIMITS.QUESTION, 'question');
 
 		// authz: gate enforced in quickQueryGate.assertKnowledgeReadAccess via
@@ -78,7 +88,7 @@ export const ask = authedAction({
 
 		const question = args.question.trim();
 		if (!question) {
-			return { answer: 'Please enter a question.', sources: [] };
+			return { answer: 'Please enter a question.', sources: [], isTruncated: false };
 		}
 		// Clamp the question length BEFORE spending any embed/synthesis call.
 		if (question.length > MAX_QUICK_QUERY_QUESTION_CHARS) {
@@ -102,8 +112,16 @@ export const ask = authedAction({
 		// error; only a transient embed() failure falls soft to no-vector recall.
 		const embedder = await resolveIndexEmbedder(ctx);
 		const { embeddingSpaceKey } = embedder;
+		// One question is one user action: every call it makes groups under one root.
+		const root = boundedRoot(ctx, newRootRequest('assistant'));
 		try {
-			const res = await embed({ model: embedder.model, value: question });
+			const res = await meterLlmCall(
+				ctx,
+				{ feature: 'embedding_quick_query', root },
+				(meter) => runEmbedding({ meter, model: embedder.model, value: question }),
+				// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+				{ onWriteError: 'ignore' }
+			);
 			embedding = toIndexVector(res.embedding);
 		} catch (error) {
 			logInfo('[quickQuery] embed failed', { error: String(error) });
@@ -119,6 +137,7 @@ export const ask = authedAction({
 				scopeToContact: 'org-wide',
 				includeInboxDerived: canReadInbox,
 				limit: PER_SOURCE_LIMIT,
+				root,
 			}),
 			ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
 				queryText: question,
@@ -126,6 +145,7 @@ export const ask = authedAction({
 				embeddingSpaceKey,
 				scopeToContact: 'org-wide',
 				limit: PER_SOURCE_LIMIT,
+				root,
 			}),
 		]);
 
@@ -161,7 +181,7 @@ export const ask = authedAction({
 		}
 
 		if (sources.length === 0) {
-			return { answer: NO_MATCH_ANSWER, sources: [] };
+			return { answer: NO_MATCH_ANSWER, sources: [], isTruncated: false };
 		}
 
 		// Synthesize a grounded, cited answer. The retrieved content is untrusted
@@ -184,17 +204,23 @@ export const ask = authedAction({
 		const userPrompt = `<question>\n${question}\n</question>\n\n<sources>\n${contextBlocks.join('\n\n')}\n</sources>`;
 
 		let answer: string;
+		let isTruncated = false;
 		try {
 			const model = await resolveLanguageModel(ctx, 'draft');
-			const result = await runLlmText({
-				model,
-				messages: [
-					{ role: 'system', content: systemPrompt },
-					{ role: 'user', content: userPrompt },
-				],
-				temperature: 0.2,
-			});
+			// Recorded since Phase 1a: this synthesis wrote no ledger row before.
+			const result = await meterLlmCall(ctx, { feature: 'assistant_quick_query', root }, (meter) =>
+				runLlmText({
+					meter,
+					model,
+					messages: [
+						{ role: 'system', content: systemPrompt },
+						{ role: 'user', content: userPrompt },
+					],
+					temperature: 0.2,
+				})
+			);
 			answer = result.text.trim();
+			isTruncated = result.isTruncated === true;
 			if (!answer) {
 				// Model returned nothing usable — fall back to the raw grounded context
 				// rather than an empty panel.
@@ -207,6 +233,6 @@ export const ask = authedAction({
 			answer = contextBlocks.join('\n\n');
 		}
 
-		return { answer, sources };
+		return { answer, sources, isTruncated };
 	},
 });

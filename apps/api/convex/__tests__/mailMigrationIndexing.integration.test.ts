@@ -72,6 +72,8 @@ const modulesWithExtractorStub = {
 			args: {
 				mailMessageId: v.id('mailMessages'),
 				contactIds: v.optional(v.array(v.id('contacts'))),
+				// The caller's root request (ADR-0073).
+				root: v.optional(v.any()),
 			},
 			handler: async (_ctx, args) => {
 				extracted.push(args.mailMessageId);

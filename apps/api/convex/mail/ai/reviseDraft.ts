@@ -40,8 +40,8 @@ import { resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmStream } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import type { TokenUsage } from '../../agent/steps/types';
+import { meterFor, persistMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { newRootRequest, type LlmCallMeter } from '../../lib/llm/requestMeter';
 import type { ActionCtx } from '../../_generated/server';
 import { logWarn } from '../../lib/runtimeLog';
 import {
@@ -51,19 +51,20 @@ import {
 import { SYSTEM_GUARD } from './promptGuards';
 import { draftSurfaceValidator } from '../../lib/literalValidators';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+
+/** One revision is one user action: its own root request (ADR-0073). */
+const REVISE_SPEND: LlmSpendTarget = { feature: 'postbox_revise_draft' };
 
 /**
- * Record a revision's spend after its buffer has settled. A failed ledger write
- * is logged, never thrown: the catch below would otherwise settle a finished
- * revision as `error`.
+ * Record a revision's provider requests after its buffer has settled. A failed
+ * ledger write is logged, never thrown: the catch below would otherwise settle
+ * a finished revision as `error`. The meter hands each request out once, so
+ * the success and failure paths can both call this.
  */
-async function recordReviseSpend(
-	ctx: ActionCtx,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined
-): Promise<void> {
+async function recordReviseSpend(ctx: ActionCtx, meter: LlmCallMeter): Promise<void> {
 	try {
-		await recordLlmSpend(ctx, 'postbox_revise_draft', tokenUsage, modelUsed);
+		await persistMeteredSpend(ctx, REVISE_SPEND, meter);
 	} catch (error) {
 		logWarn('[reviseDraft] spend not recorded:', error);
 	}
@@ -149,6 +150,8 @@ export const reviseDraft = authedAction({
 		 */
 		errorCode?: typeof DRAFT_HAS_TOOL_MARKUP;
 	}> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		// Ownership check + reset the buffer to a clean streaming state.
 		await ctx.runMutation(internal.mail.draftStreamStore.beginDraftStream, {
@@ -198,8 +201,10 @@ export const reviseDraft = authedAction({
 				}),
 		});
 
+		const meter = meterFor(ctx, { ...REVISE_SPEND, root: newRootRequest('postbox_action') });
 		try {
 			const result = await runLlmStream({
+				meter,
 				// The draft + instruction are the caller's OWN trusted text, a safe
 				// complexity signal; fail-soft routing keeps the capable 'draft'
 				// tier for anything non-trivial (today's quality).
@@ -212,14 +217,18 @@ export const reviseDraft = authedAction({
 			});
 
 			const revised = stripLeakedToolMarkup(result.text || stream.text);
-			if (revised.kind === 'unusable') {
+			// Markup, or a revision cut off at its output ceiling: never a finished draft.
+			if (revised.kind === 'unusable' || result.isTruncated === true) {
 				await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 					streamId: args.streamId,
 					text: '',
 					status: 'error',
-					errorMessage: 'The revision came back as tool-call markup. Try again.',
+					errorMessage:
+						revised.kind === 'unusable'
+							? 'The revision came back as tool-call markup. Try again.'
+							: 'The revision was too long and was cut off. Try a shorter instruction.',
 				});
-				await recordReviseSpend(ctx, result.tokenUsage, result.modelUsed);
+				await recordReviseSpend(ctx, meter);
 				return { text: '', injectionFlagged: false, status: 'error' };
 			}
 			const finalText = revised.text.trim();
@@ -237,11 +246,13 @@ export const reviseDraft = authedAction({
 				model: result.modelUsed,
 				tokenUsage: result.tokenUsage,
 			});
-			await recordReviseSpend(ctx, result.tokenUsage, result.modelUsed);
+			await recordReviseSpend(ctx, meter);
 			return { text: finalText, injectionFlagged, status: 'complete' };
 		} catch (error) {
 			// FAIL-SOFT: settle the buffer as errored; the client keeps whatever
 			// draft the human already had. Never rethrow into the caller's UI flow.
+			// Steps the stream finished before the failure were billed.
+			await recordReviseSpend(ctx, meter);
 			const message = error instanceof Error ? error.message : 'Revise failed';
 			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 				streamId: args.streamId,

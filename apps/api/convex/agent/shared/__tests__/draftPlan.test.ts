@@ -18,7 +18,6 @@ vi.mock('../../../lib/llm/dispatch', () => ({
 vi.mock('../../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
 }));
-vi.mock('../../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 const runHostedDraftStrategyMock = vi.fn();
 vi.mock('../draftStrategyHost', () => ({
 	runHostedDraftStrategy: (...args: unknown[]) => runHostedDraftStrategyMock(...args),

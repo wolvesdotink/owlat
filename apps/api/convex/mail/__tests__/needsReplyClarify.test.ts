@@ -35,7 +35,7 @@ import {
 } from '../../inbox/clarificationSlots';
 import { refineClarification } from '../ai/needsReplyClassify';
 
-// recordLlmSpend short-circuits on undefined tokenUsage, so ctx is never read.
+// The mocked dispatch records no provider request, so no ledger write reads ctx.
 const ctx = {} as never;
 const opts = { transcript: 'Customer: can you approve the refund?', fromAddress: 'ann@acme.com' };
 

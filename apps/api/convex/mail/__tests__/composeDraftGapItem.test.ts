@@ -11,7 +11,6 @@ vi.mock('../../lib/llm/dispatch', () => ({
 	runLlmText: vi.fn(),
 }));
 vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModel: () => 'model' }));
-vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 vi.mock('../../inbox/attachmentSuggest', () => ({ searchFilesForRequest: vi.fn(async () => []) }));
 
 const { runGapCheck } = await import('../ai/composeDraftGap');

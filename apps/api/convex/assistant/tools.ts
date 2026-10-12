@@ -31,7 +31,8 @@ import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { runLlmText } from '../lib/llm/dispatch';
 import { resolveLanguageModelForUserText } from '../lib/llmProvider';
-import { recordLlmSpend } from '../analytics/llmUsage';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import type { LlmRootContext } from '../lib/llm/requestMeter';
 import { scrubForInjection, clampText } from './prompt';
 import {
 	ASSISTANT_TOOL_DRAFT_SPEND,
@@ -49,7 +50,11 @@ const MAX_KNOWLEDGE_CONTENT = 1200;
 const MAX_FILE_EXCERPT = 1000;
 const MAX_RELATED_TITLE = 200;
 
-function buildSearchKnowledge(ctx: ActionCtx, audience: AssistantAudience): Tool {
+function buildSearchKnowledge(
+	ctx: ActionCtx,
+	audience: AssistantAudience,
+	root?: LlmRootContext
+): Tool {
 	return tool({
 		description:
 			'Search the workspace knowledge graph (facts, decisions, and preferences extracted from the team’s conversations and files) for information relevant to a question. Use this first for anything about what the team or its contacts know, decided, or prefer.',
@@ -72,6 +77,7 @@ function buildSearchKnowledge(ctx: ActionCtx, audience: AssistantAudience): Tool
 				// Knowledge learned from Team Inbox mail only for a reader.
 				includeInboxDerived: audience.canReadInbox,
 				expandGraph: graphRetrieval,
+				...(root ? { root } : {}),
 			});
 			return {
 				results: entries.map((e) => ({
@@ -94,7 +100,11 @@ function buildSearchKnowledge(ctx: ActionCtx, audience: AssistantAudience): Tool
 	});
 }
 
-function buildSearchFiles(ctx: ActionCtx): Tool {
+function buildSearchFiles(
+	ctx: ActionCtx,
+	_audience: AssistantAudience,
+	root?: LlmRootContext
+): Tool {
 	return tool({
 		description:
 			'Semantic search over files uploaded to the workspace (PDFs, documents, notes). Returns the most relevant files with a short excerpt. Use when the answer is likely in an uploaded document.',
@@ -107,6 +117,7 @@ function buildSearchFiles(ctx: ActionCtx): Tool {
 				queryText: query,
 				limit: clampInt(limit, 1, 8, 5),
 				scopeToContact: 'org-wide',
+				...(root ? { root } : {}),
 			});
 			return {
 				results: files.map((f) => ({
@@ -195,7 +206,11 @@ function buildGetEmailStats(ctx: ActionCtx): Tool {
 	});
 }
 
-function buildDraftEmailReply(ctx: ActionCtx): Tool {
+function buildDraftEmailReply(
+	ctx: ActionCtx,
+	_audience: AssistantAudience,
+	root?: LlmRootContext
+): Tool {
 	return tool({
 		description:
 			'Draft a professional email reply to a contact. Returns the draft text only — it does NOT send anything. Use when the user asks you to write/compose an email to someone.',
@@ -208,20 +223,36 @@ function buildDraftEmailReply(ctx: ActionCtx): Tool {
 				query: contact,
 			});
 			const recipient = found ? `${found.name ?? found.email} <${found.email}>` : contact;
-			const result = await runLlmText({
-				model: await resolveLanguageModelForUserText(ctx, 'draft', intent),
-				system:
-					'You draft a single professional email reply. Output ONLY the email body — no preamble, no commentary, no subject line unless explicitly asked. Keep it concise and ready for the user to review and edit.',
-				prompt: `Recipient: ${recipient}\n\nWrite an email that accomplishes: ${clampText(intent, 1500)}`,
-				temperature: 0.4,
-			});
-			await recordLlmSpend(ctx, ASSISTANT_TOOL_DRAFT_SPEND, result.tokenUsage, result.modelUsed);
-			return { recipient, contactFound: !!found, draft: result.text.trim() };
+			const model = await resolveLanguageModelForUserText(ctx, 'draft', intent);
+			const result = await meterLlmCall(
+				ctx,
+				{ feature: ASSISTANT_TOOL_DRAFT_SPEND, ...(root ? { root } : {}) },
+				(meter) =>
+					runLlmText({
+						meter,
+						model,
+						system:
+							'You draft a single professional email reply. Output ONLY the email body — no preamble, no commentary, no subject line unless explicitly asked. Keep it concise and ready for the user to review and edit.',
+						prompt: `Recipient: ${recipient}\n\nWrite an email that accomplishes: ${clampText(intent, 1500)}`,
+						temperature: 0.4,
+					})
+			);
+			return {
+				recipient,
+				contactFound: !!found,
+				draft: result.text.trim(),
+				// Cut off at the output limit: the model is told, not handed it as finished.
+				isComplete: result.isTruncated !== true,
+			};
 		},
 	});
 }
 
-function buildDraftCampaignCopy(ctx: ActionCtx): Tool {
+function buildDraftCampaignCopy(
+	ctx: ActionCtx,
+	_audience: AssistantAudience,
+	root?: LlmRootContext
+): Tool {
 	return tool({
 		description:
 			'Draft marketing campaign email copy (subject line + body) from a brief. Returns the draft text only — it does NOT create or send a campaign. Use when the user asks you to write campaign or newsletter copy.',
@@ -230,15 +261,21 @@ function buildDraftCampaignCopy(ctx: ActionCtx): Tool {
 			audience: z.string().optional().describe('Who the campaign is for (optional).'),
 		}),
 		execute: async ({ brief, audience }) => {
-			const result = await runLlmText({
-				model: await resolveLanguageModelForUserText(ctx, 'draft', brief),
-				system:
-					'You are an expert email-marketing copywriter. Draft compelling campaign email copy from the brief. Output Markdown: a "**Subject:**" line, then the email body. Keep it ready for the user to review and edit.',
-				prompt: `Brief: ${clampText(brief, 2000)}${audience ? `\n\nAudience: ${clampText(audience, 500)}` : ''}`,
-				temperature: 0.6,
-			});
-			await recordLlmSpend(ctx, ASSISTANT_TOOL_DRAFT_SPEND, result.tokenUsage, result.modelUsed);
-			return { draft: result.text.trim() };
+			const model = await resolveLanguageModelForUserText(ctx, 'draft', brief);
+			const result = await meterLlmCall(
+				ctx,
+				{ feature: ASSISTANT_TOOL_DRAFT_SPEND, ...(root ? { root } : {}) },
+				(meter) =>
+					runLlmText({
+						meter,
+						model,
+						system:
+							'You are an expert email-marketing copywriter. Draft compelling campaign email copy from the brief. Output Markdown: a "**Subject:**" line, then the email body. Keep it ready for the user to review and edit.',
+						prompt: `Brief: ${clampText(brief, 2000)}${audience ? `\n\nAudience: ${clampText(audience, 500)}` : ''}`,
+						temperature: 0.6,
+					})
+			);
+			return { draft: result.text.trim(), isComplete: result.isTruncated !== true };
 		},
 	});
 }
@@ -315,14 +352,15 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 export async function buildAssistantTools(
 	ctx: ActionCtx,
 	audience: AssistantAudience,
-	modules: readonly HostedAssistantToolModule[] = TOOL_MODULES
+	modules: readonly HostedAssistantToolModule[] = TOOL_MODULES,
+	root?: LlmRootContext
 ): Promise<ToolSet> {
 	const flags = hasFlaggedModule(modules)
 		? await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {})
 		: {};
 	const set: ToolSet = {};
 	for (const module of selectAssistantToolModules(modules, flags)) {
-		const built = module.build(ctx, audience);
+		const built = module.build(ctx, audience, root);
 		set[module.name] = module.scrubOutput ? withHostScrub(built) : built;
 	}
 	return set;

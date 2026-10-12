@@ -23,10 +23,11 @@ import {
 	draftQualitySchema,
 	type DraftQuality,
 } from '../../agent/steps/draft/index';
-import { scheduleLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { newRootRequest } from '../../lib/llm/requestMeter';
 import { gatedInParallel, readThreadMessages } from './gate';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 /**
  * Categories the flat self-check flags are bucketed into for inline display
@@ -133,6 +134,8 @@ export const coachDraft = authedAction({
 		threadContext: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ suggestions: CoachSuggestion[] }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const draft = args.draftText.trim();
 		if (!draft) return { suggestions: [] };
 		try {
@@ -149,27 +152,24 @@ export const coachDraft = authedAction({
 			if (thread && thread.messages.length > 0) {
 				context = await buildThreadTranscript(thread.messages, THREAD_SUMMARY);
 			}
-			const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+			const { object } = await meterLlmCall(
 				ctx,
-				'postbox_coach_draft',
-				runLlmObject({
-					model,
-					schema: draftQualitySchema,
-					prompt: buildSelfCheckPrompt({
-						context,
-						draft: draft.slice(0, COACH_MAX_DRAFT_CHARS),
+				{ feature: 'postbox_coach_draft', root: newRootRequest('postbox_action') },
+				(meter) =>
+					runLlmObject({
+						meter,
+						model,
+						schema: draftQualitySchema,
+						prompt: buildSelfCheckPrompt({
+							context,
+							draft: draft.slice(0, COACH_MAX_DRAFT_CHARS),
+						}),
+						temperature: 0.1,
+						...interactiveLlmPolicy('reply'),
 					}),
-					temperature: 0.1,
-					...interactiveLlmPolicy('reply'),
-				}),
-				scheduleLlmSpend
+				// Best-effort spend accounting — never let it break the coach.
+				{ write: 'schedule', onWriteError: 'ignore' }
 			);
-			// Best-effort spend accounting — never let it break the coach.
-			try {
-				await scheduleLlmSpend(ctx, 'postbox_coach_draft', tokenUsage, modelUsed);
-			} catch {
-				// ignore — spend accounting is advisory
-			}
 			return {
 				suggestions: toCoachSuggestions({
 					score: object.score,
