@@ -7,35 +7,48 @@
  * Pipeline: entity extraction → fact extraction → deduplication → contradiction check → store.
  */
 
-import { createHash } from 'node:crypto';
 import { v, type ObjectType } from 'convex/values';
 import { htmlToPlainText } from '@owlat/shared/html';
-import { internalAction, type ActionCtx } from '../_generated/server';
+import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
 import { readMailMessageText } from '../lib/messageBody';
 import { openInboundMessageBody } from '../lib/messageBodyInbound';
-import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
-import type { EmbeddingModel } from 'ai';
-import { resolveLanguageModel, resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
+import { resolveLanguageModel, resolveIndexEmbedder } from '../lib/llmProvider';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { secretFreeErrorText } from '../lib/embeddingSpace';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { meterLlmCall } from '../analytics/meteredSpend';
-import { runEmbedding } from '../lib/llm/embed';
-import { rootRequest, type LlmRootContext } from '../lib/llm/requestMeter';
-import { anchorActionDeadline, scheduledRoot } from '../lib/llm/actionDeadline';
+import { rootRequest } from '../lib/llm/requestMeter';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import { llmRootContextValidator } from '../lib/llmUsageTags';
-import { normalizeForHash } from '../lib/knowledgeEdges';
+import { detectInjection, detectSmuggling } from '../agent/steps/security_scan/patterns';
 import { runGuardBeforeAutonomy } from '../agent/steps/security_scan/guard';
 import { capPerMessage, isKnowledgeOn } from './extractionPolicy';
-import { extractionSchema, injectionRisk, type ExtractedEntry } from './extractionSchema';
 import {
 	deferredHandler,
 	rethrowAdmissionRefusal,
 	type DeferrableAction,
 } from '../analytics/backgroundDeferral';
+import { extractionSchema, persistExtractedEntries } from './extractedEntries';
 
-export { injectionRisk } from './extractionSchema';
+/**
+ * Guard knowledge extraction against prompt injection planted in untrusted
+ * inbound content. The extractor interpolates raw From/Subject/Body into an LLM
+ * prompt, and the extracted facts later surface to users + the assistant — so a
+ * planted instruction in an imported/backfilled email could poison the
+ * knowledge graph and reach the model's output. The live agent pipeline runs
+ * these guards on receive, but the migration + file backfill paths don't, so we
+ * re-check here before building the prompt. Deterministic patterns only — no
+ * extra LLM call/cost. Returns a reason string when extraction should be
+ * skipped, else null.
+ */
+export function injectionRisk(text: string, html?: string): string | null {
+	const injection = detectInjection(text);
+	if (injection.detected) return `injection:${injection.pattern}`;
+	const smuggling = detectSmuggling(html);
+	if (smuggling.detected) return `smuggling:${smuggling.type}`;
+	return null;
+}
 
 /**
  * Deadline for one extraction's LLM dispatch, all attempts included. Without
@@ -52,100 +65,9 @@ const EXTRACTION_LLM_DEADLINE_MS = 180_000;
  */
 const INBOUND_EXTRACTION_BODY_CHARS = 100_000;
 
-/**
- * For each extracted entry, compute its embedding and persist it via
- * `knowledge.graph.saveEntry`. Shared by `extractFromMessage` (source
- * `agent_extracted`) and `extractFromFile` (source `file`) — the only
- * difference between the two call sites is the source/contact/thread
- * provenance, threaded through `source`.
- */
-async function persistExtractedEntries(
-	ctx: ActionCtx,
-	embedder: { model: EmbeddingModel; embeddingSpaceKey: string },
-	entries: ExtractedEntry[],
-	source: {
-		sourceType: 'agent_extracted' | 'file' | 'email';
-		sourceId: string;
-		contactIds?: Id<'contacts'>[];
-		threadId?: Id<'conversationThreads'>;
-	},
-	root: LlmRootContext
-): Promise<void> {
-	const entryIds: Id<'knowledgeEntries'>[] = [];
-	for (const entry of entries) {
-		// Deterministic fingerprint of the normalized title+content, so saveEntry's
-		// content-hash leg can dedup the same fact restated across sources.
-		const contentHash = createHash('sha256')
-			.update(normalizeForHash(entry.title, entry.content))
-			.digest('hex');
-
-		// M4: an entry saveEntry would answer with an existing row is not embedded
-		// (knowledge/entryDedupe.ts). Asked per entry, in order, so a repeat
-		// within this batch finds the row its first occurrence just wrote.
-		const existing = await ctx.runQuery(internal.knowledge.entryDedupe.findExistingEntry, {
-			sourceType: source.sourceType,
-			sourceId: source.sourceId,
-			title: entry.title,
-			contentHash,
-			contactIds: source.contactIds,
-			threadId: source.threadId,
-		});
-		if (existing) {
-			entryIds.push(existing);
-			continue;
-		}
-
-		const { embedding } = await meterLlmCall(
-			ctx,
-			{ feature: 'embedding_knowledge', root },
-			(meter) =>
-				runEmbedding({ meter, model: embedder.model, value: `${entry.title}: ${entry.content}` }),
-			// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
-			{ onWriteError: 'ignore' }
-		);
-
-		const entryId = await ctx.runMutation(internal.knowledge.graph.saveEntry, {
-			entryType: entry.type,
-			title: entry.title,
-			content: entry.content,
-			sourceType: source.sourceType,
-			sourceId: source.sourceId,
-			contactIds: source.contactIds,
-			threadId: source.threadId,
-			embedding: toIndexVector(embedding),
-			embeddingModel: CURRENT_EMBEDDING_MODEL,
-			embeddingGeneratedAt: Date.now(),
-			// saveEntry drops the vector if the space changed while this job ran.
-			embeddingSpaceKey: embedder.embeddingSpaceKey,
-			confidence: entry.confidence,
-			tags: entry.tags,
-			contentHash,
-		});
-		entryIds.push(entryId);
-	}
-
-	// Hand the freshly-persisted batch to the deterministic structural linker
-	// (clique among siblings + same-thread fan-out). Fire-and-forget so edge
-	// construction never sits on the extraction action's critical path; the
-	// mutation self-gates on `ai.knowledge` and is idempotent via upsertEdge.
-	if (entryIds.length > 0) {
-		await ctx.scheduler.runAfter(0, internal.knowledge.edges.linkStructural, {
-			entryIds,
-			threadId: source.threadId,
-			sourceType: source.sourceType,
-			sourceId: source.sourceId,
-			// The inference pass runs later, in its own action: the root, not the deadline.
-			root: scheduledRoot(root),
-		});
-	}
-}
-
 /** This action, for its own budget deferral (ADR-0073, D1). */
 const deferFromMessage = (): DeferrableAction => internal.knowledge.extraction.extractFromMessage;
 
-/**
- * Extract knowledge from a processed inbound message
- */
 const extractFromMessageArgs = {
 	inboundMessageId: v.id('inboundMessages'),
 	/** An awaiting caller's root, deadline included (ADR-0073). */
@@ -153,6 +75,9 @@ const extractFromMessageArgs = {
 	deferrals: v.optional(v.number()),
 };
 
+/**
+ * Extract knowledge from a processed inbound message
+ */
 export const extractFromMessage = internalAction({
 	args: extractFromMessageArgs,
 	handler: deferredHandler<ObjectType<typeof extractFromMessageArgs>>(
@@ -258,7 +183,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 				// message fails to process. Name the source so the gap is traceable.
 				logError('[knowledge.extractFromMessage] failed', {
 					inboundMessageId: args.inboundMessageId,
-					error,
+					error: secretFreeErrorText(error),
 				});
 			}
 		}
@@ -268,13 +193,6 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 /** This action, for its own budget deferral (ADR-0073, D1). */
 const deferFromFile = (): DeferrableAction => internal.knowledge.extraction.extractFromFile;
 
-/**
- * Extract knowledge from a processed semantic file (files → knowledge graph).
- *
- * Mirrors `extractFromMessage` but reads the file's extracted text/summary.
- * Scheduled by `semanticFileProcessing.processFile` once a file has real
- * extracted text. Entries are stored with `sourceType: 'file'`.
- */
 const extractFromFileArgs = {
 	fileId: v.id('semanticFiles'),
 	/** An awaiting caller's root, deadline included (ADR-0073). */
@@ -282,6 +200,13 @@ const extractFromFileArgs = {
 	deferrals: v.optional(v.number()),
 };
 
+/**
+ * Extract knowledge from a processed semantic file (files → knowledge graph).
+ *
+ * Mirrors `extractFromMessage` but reads the file's extracted text/summary.
+ * Scheduled by `semanticFileProcessing.processFile` once a file has real
+ * extracted text. Entries are stored with `sourceType: 'file'`.
+ */
 export const extractFromFile = internalAction({
 	args: extractFromFileArgs,
 	handler: deferredHandler<ObjectType<typeof extractFromFileArgs>>(
@@ -357,7 +282,10 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 				);
 			} catch (error) {
 				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
-				logError('[knowledge.extractFromFile] failed', { fileId: args.fileId, error });
+				logError('[knowledge.extractFromFile] failed', {
+					fileId: args.fileId,
+					error: secretFreeErrorText(error),
+				});
 			}
 		}
 	),
@@ -366,6 +294,16 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 /** This action, for its own budget deferral (ADR-0073, D1). */
 const deferFromMailMessage = (): DeferrableAction =>
 	internal.knowledge.extraction.extractFromMailMessage;
+
+const extractFromMailMessageArgs = {
+	mailMessageId: v.id('mailMessages'),
+	// Sender contact(s) the entries are scoped to (resolved by the indexer).
+	// Empty/undefined ⇒ org-general (visible to every contact's retrieval).
+	contactIds: v.optional(v.array(v.id('contacts'))),
+	/** An awaiting caller's root, deadline included (ADR-0073). */
+	root: v.optional(llmRootContextValidator),
+	deferrals: v.optional(v.number()),
+};
 
 /**
  * Extract knowledge from an imported Postbox message (mailMessages → knowledge
@@ -381,16 +319,6 @@ const deferFromMailMessage = (): DeferrableAction =>
  * already produced entries. Best-effort: a single message's failure never
  * derails the indexing sweep.
  */
-const extractFromMailMessageArgs = {
-	mailMessageId: v.id('mailMessages'),
-	// Sender contact(s) the entries are scoped to (resolved by the indexer).
-	// Empty/undefined ⇒ org-general (visible to every contact's retrieval).
-	contactIds: v.optional(v.array(v.id('contacts'))),
-	/** An awaiting caller's root, deadline included (ADR-0073). */
-	root: v.optional(llmRootContextValidator),
-	deferrals: v.optional(v.number()),
-};
-
 export const extractFromMailMessage = internalAction({
 	args: extractFromMailMessageArgs,
 	handler: deferredHandler<ObjectType<typeof extractFromMailMessageArgs>>(
@@ -485,7 +413,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
 				logError('[knowledge.extractFromMailMessage] failed', {
 					mailMessageId: args.mailMessageId,
-					error,
+					error: secretFreeErrorText(error),
 				});
 			}
 		}

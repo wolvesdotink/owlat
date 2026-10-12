@@ -25,6 +25,7 @@
  * every retrieval traversal performs.
  */
 
+import { vectorInSpace } from '../lib/aiRouting/embeddingRegistry';
 import { v, type ObjectType } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -106,6 +107,14 @@ function scopeForAnchor(anchor: Doc<'knowledgeEntries'>): Id<'contacts'> | 'org-
 /** This action, for its own budget deferral (ADR-0073, D1). */
 const deferThisRun = (): DeferrableAction => internal.knowledge.edgeInference.inferRelations;
 
+const inferRelationsArgs = {
+	entryIds: v.array(v.id('knowledgeEntries')),
+	/** The root request of the extraction that wrote the entries (ADR-0073). */
+	root: v.optional(llmRootContextValidator),
+	/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+	deferrals: v.optional(v.number()),
+};
+
 /**
  * Infer typed edges for a freshly-ingested batch of knowledge entries.
  *
@@ -119,14 +128,6 @@ const deferThisRun = (): DeferrableAction => internal.knowledge.edgeInference.in
  * Errors are swallowed (mirrors extraction) — edge inference is best-effort and
  * must never derail ingestion.
  */
-const inferRelationsArgs = {
-	entryIds: v.array(v.id('knowledgeEntries')),
-	/** The root request of the extraction that wrote the entries (ADR-0073). */
-	root: v.optional(llmRootContextValidator),
-	/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
-	deferrals: v.optional(v.number()),
-};
-
 export const inferRelations = internalAction({
 	args: inferRelationsArgs,
 	handler: deferredHandler<ObjectType<typeof inferRelationsArgs>>(
@@ -140,7 +141,7 @@ export const inferRelations = internalAction({
 
 			// Load the freshly-ingested anchors.
 			// The anchors and the space their stored vectors are in, read together.
-			const { anchors, embeddingSpaceKey } = await ctx.runQuery(
+			const { anchors, activeSpace } = await ctx.runQuery(
 				internal.knowledge.edges.getAnchorsWithEmbeddingSpace,
 				{ ids: args.entryIds }
 			);
@@ -155,11 +156,12 @@ export const inferRelations = internalAction({
 			const candidatesById = new Map<string, Doc<'knowledgeEntries'>>();
 			for (const anchor of anchors) {
 				if (candidatesById.size >= MAX_CANDIDATES) break;
-				const embedding = anchor.embedding;
-				if (!embedding || embedding.length === 0) continue; // no stored vector → no neighbors
+				// Only the anchor's vector in the active space, searched in that space.
+				const embedding = activeSpace ? vectorInSpace(anchor, activeSpace) : null;
+				if (!activeSpace || !embedding) continue; // no comparable stored vector → no neighbors
 				const hits = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 					embedding,
-					embeddingSpaceKey,
+					embeddingSpaceId: activeSpace.spaceId,
 					scopeToContact: scopeForAnchor(anchor),
 					// The linker writes edges, not reads for a person; every read of an
 					// edge re-applies the reader rule to both ends.

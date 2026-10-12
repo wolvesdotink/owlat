@@ -26,6 +26,10 @@ import { AdmissionRefusedError, admissionRefusalOf } from '../../lib/llm/admissi
 import { meterFor, meterLlmCall, persistMeteredSpend } from '../meteredSpend';
 import { admitEmbeddingBatch } from '../embeddingBatchAdmission';
 import {
+	admitPaidEmbeddingBatch,
+	isPaidEmbeddingAdmissionAvailable,
+} from '../../lib/aiRouting/embeddingAdmission';
+import {
 	actionCtxOver,
 	aggregateTotals,
 	reconcileSpend,
@@ -261,6 +265,24 @@ describe('admission at the dispatch', () => {
 		]);
 		const ledger = await t.run((c) => c.db.query('llmUsageEvents').collect());
 		expect(ledger.every((row) => row.reservationId === batch.reservationId)).toBe(true);
+	});
+
+	it('fills the embed lane’s seam: paid batches go through spend admission', async () => {
+		expect(isPaidEmbeddingAdmissionAvailable()).toBe(true);
+		const { t, ctx } = await setup('10');
+		const batch = await admitPaidEmbeddingBatch(ctx, {
+			rootRequestId: 'reembed:job-3',
+			task: 'embedding.index',
+			jobKind: 'reembed',
+			provider: 'openai',
+			model: 'text-embedding-3-small',
+			items: 1,
+			inputChars: 100,
+		});
+		if (!batch.isAdmitted) throw new Error('refused');
+		await batch.settle({ dispatchedCalls: 0, inputTokens: undefined });
+		const holds = await t.run((c) => c.db.query('llmReservations').collect());
+		expect(holds).toEqual([expect.objectContaining({ status: 'released', plane: 'embedding' })]);
 	});
 
 	it('refuses a paid embedding batch over the embedding plane’s share', async () => {

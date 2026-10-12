@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
+import { activeSpaceId, stampedIn } from './helpers/embeddingSpaces';
 
 /**
  * knowledge/retrieval.ts semanticSearch. Uses convex-test's in-memory
@@ -41,9 +41,11 @@ async function insertEntry(
 	spec: EntrySpec
 ): Promise<Id<'knowledgeEntries'>> {
 	const now = Date.now();
+	const spaceId = await activeSpaceId(t);
 	return await t.run(async (ctx) =>
 		ctx.db.insert('knowledgeEntries', {
 			entryType: 'fact',
+			...stampedIn(spaceId, 'fact'),
 			title: spec.title,
 			content: spec.title,
 			sourceType: 'email',
@@ -67,7 +69,7 @@ describe('semanticSearch — expiresAt filtering', () => {
 		await insertEntry(t, { title: 'expired fact', embedAt: 5, expiresAt: now - 1_000 });
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpaceId: await activeSpaceId(t),
 			includeInboxDerived: true,
 			embedding: unit(5),
 			scopeToContact: 'org-wide',
@@ -102,7 +104,7 @@ describe('semanticSearch — hybrid (vector + FTS) recall', () => {
 		});
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpaceId: await activeSpaceId(t),
 			includeInboxDerived: true,
 			queryText: 'ABC-12345',
 			embedding: unit(7),
@@ -123,7 +125,7 @@ describe('semanticSearch — hybrid (vector + FTS) recall', () => {
 		});
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpaceId: await activeSpaceId(t),
 			includeInboxDerived: true,
 			queryText: 'zzzznomatch',
 			embedding: unit(3),

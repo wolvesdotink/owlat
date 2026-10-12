@@ -29,7 +29,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { currentEmbeddingSpaceKey } from '../lib/embeddingSpace';
+import { readSearchableSpace, spaceRefOf, type SpaceRef } from '../lib/aiRouting/embeddingRegistry';
 import { batchGet } from '../_utils/batchLoader';
 import { contactScopesCanLink } from '../lib/contactScope';
 import { mergeEdgeAttrs, type EdgeAttrs } from '../lib/knowledgeEdges';
@@ -315,25 +315,24 @@ export const isInferenceEnabled = internalQuery({
 });
 
 /**
- * The anchors of an inference pass together with the embedding space their
- * stored vectors are in, read in ONE transaction. Reading the key separately
- * could pair an anchor's old-space vector with a space the deployment switched
- * to in between (the corpus can empty and switch between two reads), and the
- * retrieval fence (`vectorHitsInCurrentSpace`) would then accept the other
- * space's hits.
+ * The anchors of an inference pass together with the active embedding space,
+ * read in ONE transaction, so each anchor's vector is taken from the active
+ * space's column (`vectorInSpace`) and searched in that space only. An anchor
+ * with no vector in the active space has no neighbours to find.
  */
 export const getAnchorsWithEmbeddingSpace = internalQuery({
 	args: { ids: v.array(v.id('knowledgeEntries')) },
 	handler: async (
 		ctx,
 		args
-	): Promise<{ anchors: Doc<'knowledgeEntries'>[]; embeddingSpaceKey: string }> => {
+	): Promise<{ anchors: Doc<'knowledgeEntries'>[]; activeSpace: SpaceRef | null }> => {
 		const byId = await batchGet(ctx, args.ids);
 		const anchors = args.ids.flatMap((id) => {
 			const entry = byId.get(id);
 			return entry ? [entry] : [];
 		});
-		return { anchors, embeddingSpaceKey: await currentEmbeddingSpaceKey(ctx.db) };
+		const active = await readSearchableSpace(ctx.db);
+		return { anchors, activeSpace: active ? spaceRefOf(active) : null };
 	},
 });
 

@@ -58,10 +58,12 @@ import { stampModelEndpoint } from './llm/modelEndpoint';
 import { isLocalEndpoint } from './llm/endpointLocality';
 import { EMBEDDING_DIMENSIONS } from './constants';
 import {
-	embeddingSpaceKey,
+	configuredEmbeddingTarget,
 	envEmbeddingModel,
-	resolvedEmbeddingSpace,
+	envLlmBaseUrl,
+	localEmbeddingBaseUrl,
 	resolveStoredEmbeddingModel,
+	type EmbeddingTarget,
 } from './embeddingSpace';
 import {
 	classifyEnvLanguageEndpoint,
@@ -108,7 +110,7 @@ interface ResolvedLanguagePlane {
  * carries the local sidecar base URL or the decrypted hosted-embedder key;
  * `modelVersion` is the stored dimension-guard version (absent for env fallback).
  */
-interface ResolvedEmbeddingPlane {
+export interface ResolvedEmbeddingPlane {
 	readonly kind: StoredEmbeddingProviderKind;
 	readonly modelId: string;
 	/** Base URL (local sidecar) / decrypted key (hosted). Empty for env-keyless. */
@@ -129,19 +131,6 @@ interface ResolvedProviderConfig {
 
 function taskTier(task: LLMTask): LLMTier {
 	return task === 'draft' || task === 'plan' ? 'capable' : 'fast';
-}
-
-function resolveBaseURL(): string | undefined {
-	const explicit = getOptional('LLM_BASE_URL');
-	if (explicit) return explicit;
-	switch (getOptional('LLM_PROVIDER')) {
-		case 'openrouter':
-			return 'https://openrouter.ai/api/v1';
-		case 'ollama':
-			return 'http://ollama:11434/v1';
-		default:
-			return undefined;
-	}
 }
 
 // Environment setup must select the same adapter/defaults as stored settings.
@@ -169,7 +158,7 @@ const ENV_EMBEDDING_KIND = 'openai' as const;
 function resolveEnvClientConfig(): ProviderClientConfig {
 	if (!isEnvAiProviderConfigured()) throw new AiNotConfiguredError();
 	const apiKey = envLlmApiKey();
-	return { apiKey: apiKey ?? 'ollama', baseUrl: resolveBaseURL() };
+	return { apiKey: apiKey ?? 'ollama', baseUrl: envLlmBaseUrl() };
 }
 
 function modelIdForTier(tier: LLMTier): string {
@@ -187,7 +176,7 @@ function modelIdForTier(tier: LLMTier): string {
  * their model from `LOCAL_EMBEDDING_MODEL`; hosted embedders carry the decrypted
  * `hostedKey`. `storedModel` (the admin's explicit choice) always wins.
  */
-function resolveEmbeddingPlane(
+export function resolveEmbeddingPlane(
 	kind: StoredEmbeddingProviderKind,
 	storedModel: string | undefined,
 	hostedKey: string | undefined,
@@ -195,7 +184,8 @@ function resolveEmbeddingPlane(
 ): ResolvedEmbeddingPlane {
 	const adapter = embeddingProviderFor(kind);
 	const clientConfig: ProviderClientConfig = adapter.isLocal
-		? { baseUrl: getOptional('LOCAL_EMBEDDING_BASE_URL') ?? adapter.defaultBaseUrl }
+		? // The canonical base URL its identity names (lib/embeddingSpace.ts).
+			{ baseUrl: localEmbeddingBaseUrl(kind as 'local' | 'openaiCompatible') }
 		: { apiKey: hostedKey };
 	const modelId = resolveStoredEmbeddingModel({
 		embeddingProviderKind: kind,
@@ -288,20 +278,18 @@ async function resolveLanguagePlane(ctx: ActionCtx): Promise<ResolvedLanguagePla
 
 /**
  * The embedding plane alone: never decrypts the language key. Always reads the
- * current row, and returns the key of the space it resolved, so a vector can be
- * checked against the space current when it is committed.
+ * current row, and returns the target it resolved from that same read, so a
+ * vector's provenance names the configuration that made it.
  */
 async function resolveEmbeddingPlaneConfig(
 	ctx: ActionCtx
-): Promise<{ plane: ResolvedEmbeddingPlane; embeddingSpaceKey: string }> {
+): Promise<{ plane: ResolvedEmbeddingPlane; target: EmbeddingTarget | null }> {
 	const entry = await loadConfigEntry(ctx, { isFresh: true });
-	const spaceKey = embeddingSpaceKey(resolvedEmbeddingSpace(entry.row));
-	if (!entry.row) {
-		return { plane: resolveEnvProviderConfig().embedding, embeddingSpaceKey: spaceKey };
-	}
+	const target = configuredEmbeddingTarget(entry.row);
+	if (!entry.row) return { plane: resolveEnvProviderConfig().embedding, target };
 	const embeddingKey = await planeKey(ctx, entry, 'embedding');
 	const plane = buildStoredProviderConfig(entry.row, undefined, embeddingKey).embedding;
-	return { plane, embeddingSpaceKey: spaceKey };
+	return { plane, target };
 }
 
 /** Test-only: drop the in-process config cache so a fresh resolution runs. */
@@ -425,14 +413,20 @@ export async function resolveEmbeddingModel(ctx: ActionCtx): Promise<EmbeddingMo
 }
 
 /**
- * The embedding model plus the key of the space it writes. A job that commits
- * vectors passes `embeddingSpaceKey` to its commit mutation, which drops the
- * vector if the space changed meanwhile (`vectorFieldsForCommit`).
+ * An embedding model with the target it embeds in. A caller that stores or
+ * searches a vector completes the target into the vector's space identity with
+ * `measuredEmbeddingSpace` (`lib/aiRouting/embeddingProbe.ts`), after the call.
  */
-export async function resolveIndexEmbedder(
-	ctx: ActionCtx
-): Promise<{ model: EmbeddingModel; embeddingSpaceKey: string }> {
-	const { plane, embeddingSpaceKey: spaceKey } = await resolveEmbeddingPlaneConfig(ctx);
+export interface IndexEmbedder {
+	readonly model: EmbeddingModel;
+	readonly target: EmbeddingTarget;
+}
+
+/** Build an embedder for a resolved plane. Throws an actionable error on an unusable config. */
+export function buildIndexEmbedder(
+	plane: Pick<ResolvedEmbeddingPlane, 'kind' | 'modelId' | 'clientConfig'>,
+	target: EmbeddingTarget
+): IndexEmbedder {
 	const { kind, modelId, clientConfig } = plane;
 	assertKnownEmbeddingWidth(modelId);
 	const adapter = embeddingProviderFor(kind);
@@ -447,8 +441,16 @@ export async function resolveIndexEmbedder(
 			`embedding:${kind}`,
 			{ isLocal: isLocalEndpoint(kind, clientConfig.baseUrl, adapter) }
 		),
-		embeddingSpaceKey: spaceKey,
+		target,
 	};
+}
+
+/** The configured embedder and its target (stored row, else the env fallback). */
+export async function resolveIndexEmbedder(ctx: ActionCtx): Promise<IndexEmbedder> {
+	const { plane, target } = await resolveEmbeddingPlaneConfig(ctx);
+	// The env plane throws AiNotConfiguredError above when nothing is set up.
+	if (!target) throw new AiNotConfiguredError();
+	return buildIndexEmbedder(plane, target);
 }
 
 /**
@@ -490,7 +492,7 @@ export function getLLMConfig() {
 		modelFast: modelIdForTier('fast'),
 		modelCapable: modelIdForTier('capable'),
 		embeddingModel: envEmbeddingModel(),
-		baseURL: resolveBaseURL(),
+		baseURL: envLlmBaseUrl(),
 		hasApiKey: !!envLlmApiKey(),
 	};
 }

@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
+import { activeSpaceId, stampedIn } from './helpers/embeddingSpaces';
 
 /**
  * semanticFileProcessing.ts semanticSearch — now hybrid (vector + FTS via RRF),
@@ -37,6 +37,7 @@ async function insertFile(
 	const storageId = await t.run((ctx) =>
 		ctx.storage.store(new Blob([spec.searchableText ?? spec.filename]))
 	);
+	const spaceId = await activeSpaceId(t);
 	return await t.run((ctx) =>
 		ctx.db.insert('semanticFiles', {
 			storageId,
@@ -47,6 +48,7 @@ async function insertFile(
 			contactIds: spec.contactIds,
 			version: 1,
 			embedding: unit(spec.embedAt),
+			...stampedIn(spaceId),
 			searchableText: spec.searchableText ?? spec.filename,
 			createdAt: now,
 			updatedAt: now,
@@ -87,7 +89,7 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 		});
 
 		const results = await t.action(internal.semanticFileProcessing.semanticSearch, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'ABC-12345',
 			embedding: unit(7),
 			scopeToContact: 'org-wide',
@@ -107,7 +109,7 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 		});
 
 		const results = await t.action(internal.semanticFileProcessing.semanticSearch, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'zzzznomatch',
 			embedding: unit(3),
 			scopeToContact: 'org-wide',
@@ -140,7 +142,7 @@ describe('semanticFileProcessing.semanticSearch — contact-scope post-filter', 
 		});
 
 		const results = await t.action(internal.semanticFileProcessing.semanticSearch, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'SKU-777',
 			embedding: unit(4),
 			scopeToContact: contactA,

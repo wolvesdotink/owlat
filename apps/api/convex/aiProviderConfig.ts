@@ -44,14 +44,16 @@ import { throwInvalidInput } from './_utils/errors';
 import { validateOutboundUrl } from './lib/outboundUrlValidation';
 import { envelopeValidator, resolvePlaneSecrets } from './lib/aiProviderSecrets';
 import {
-	assertRemovalKeepsEmbeddingSpace,
+	configuredEmbeddingTarget,
 	embeddingSelectionForSave,
-	isEmbeddingSpaceCurrent,
 	isLocalEmbeddingKind,
+	isSameEmbeddingTarget,
 	nextEmbeddingModelVersion,
 	resolveStoredEmbeddingModel,
+	storedEmbeddingTarget,
 	throwEmbeddingKindRequired,
 } from './lib/embeddingSpace';
+import { endReembedJobs } from './lib/aiRouting/embeddingActivation';
 import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
@@ -117,8 +119,9 @@ export const getConfig = authedQuery({
  * Admin-gated upsert of the org-singleton config. The calling Node action has
  * already encrypted any newly-entered key into `languageEnvelope` /
  * `embeddingEnvelope`; this mutation enforces the `organization:manage` floor,
- * preserves an unchanged key from disk, refuses an embedding-space change on a
- * populated corpus (D8), writes the row, and records the audit log.
+ * preserves an unchanged key from disk, writes the row, and records the audit
+ * log. An embedding switch is allowed (D8, post-provenance) and schedules the
+ * re-embed kickoff.
  */
 export const _persistConfig = internalMutation({
 	args: {
@@ -202,8 +205,13 @@ export const _persistConfig = internalMutation({
 			existing
 		);
 
-		// D8: a populated corpus keeps its embedding space; the version moves with the space.
-		const embeddingModelVersion = await nextEmbeddingModelVersion(ctx.db, existing, selection);
+		// D8, post-provenance: a switch is allowed on a populated corpus. Vectors of
+		// the old space drop out of vector search until they are re-embedded; the
+		// version moves with the target.
+		const embeddingModelVersion = nextEmbeddingModelVersion(existing, selection);
+		const previousTarget = configuredEmbeddingTarget(existing);
+		const isEmbeddingTargetChanged =
+			!previousTarget || !isSameEmbeddingTarget(previousTarget, storedEmbeddingTarget(selection));
 
 		const now = Date.now();
 		// `undefined` on a patch column clears it — this is what drops a stored key
@@ -243,6 +251,16 @@ export const _persistConfig = internalMutation({
 			}
 		}
 
+		// The new target's space activates with its first vector; a local embedder
+		// is measured and re-embeds the corpus right away (aiRouting/embeddingReembed).
+		if (isEmbeddingTargetChanged) {
+			// Jobs embedding into the old space stop; the kickoff starts the new one's.
+			await endReembedJobs(ctx);
+			await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
+				isForced: true,
+			});
+		}
+
 		await recordAuditLog(ctx, {
 			userId,
 			action: 'ai_provider_config.updated',
@@ -267,13 +285,6 @@ export const _persistConfig = internalMutation({
 
 		return configId;
 	},
-});
-
-/** Whether `embeddingSpaceKey` is the current embedding space (`vectorHitsInCurrentSpace`). */
-export const _isEmbeddingSpaceCurrent = internalQuery({
-	args: { embeddingSpaceKey: v.optional(v.string()) },
-	returns: v.boolean(),
-	handler: async (ctx, args) => await isEmbeddingSpaceCurrent(ctx.db, args.embeddingSpaceKey),
 });
 
 /**
@@ -303,10 +314,14 @@ export const removeConfig = adminMutation({
 	handler: async (ctx, _args, session): Promise<{ removed: boolean }> => {
 		const existing = await getSingleton(ctx);
 		if (!existing) return { removed: false };
-		// D8: the row is the only record of the space its vectors are in.
-		await assertRemovalKeepsEmbeddingSpace(ctx.db, existing);
-
+		// D8, post-provenance: the vectors' spaces are recorded in `embeddingSpaces`,
+		// so removal no longer loses them. The env fallback's target, if any, is a
+		// switch like any other.
 		await ctx.db.delete(existing._id);
+		await endReembedJobs(ctx);
+		await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
+			isForced: true,
+		});
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,

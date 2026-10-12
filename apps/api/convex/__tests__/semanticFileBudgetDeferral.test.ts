@@ -21,6 +21,10 @@ vi.mock('../lib/semanticFileAi', () => ({
 vi.mock('../lib/llm/embed', () => ({
 	runEmbedding: (...args: unknown[]) => mocks.runEmbedding(...args),
 }));
+vi.mock('../lib/aiRouting/embeddingProbe', () => ({
+	probeEmbeddingRevision: vi.fn(async () => undefined),
+	measuredEmbeddingSpace: vi.fn(async () => undefined),
+}));
 vi.mock('../lib/llmProvider', async (importOriginal) => ({
 	...(await importOriginal<object>()),
 	resolveIndexEmbedder: vi.fn(async () => ({

@@ -272,6 +272,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	embeddingSpaces: makeSweepStep('embeddingSpaces'),
 	embeddingAttestations: makeSweepStep('embeddingAttestations'),
 	embeddingReembedJobs: makeSweepStep('embeddingReembedJobs'),
+	embeddingCoverage: makeSweepStep('embeddingCoverage'),
 	decisionArtifacts: makeSweepStep('decisionArtifacts'),
 	senderMemory: makeSweepStep('senderMemory'),
 	coalesceBatches: makeSweepStep('coalesceBatches'),
