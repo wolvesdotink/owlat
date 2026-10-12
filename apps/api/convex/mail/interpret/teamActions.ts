@@ -51,6 +51,7 @@ import { loadBriefRow } from './briefRow';
 import { isPurgeActive } from './purgeActive';
 import { threadItemsWithStatus } from './load';
 import { captureInterpretSource, loadInterpretSource } from './sources';
+import type { RunBudgetRefusal } from './runShape';
 
 /** Open items read for one briefing; more than this is an overflow (held). */
 export const BRIEFING_ITEM_READ = 200;
@@ -82,6 +83,8 @@ export interface BriefingInterpretation {
 	skipReason?: InterpretationSkipReason;
 	/** Run it again: an older extractor wrote it, or its scheduled repair is due. */
 	isRerunDue?: boolean;
+	/** The spend refusal it met (D1): a cached read holds on it as the run's replay does. */
+	budgetRefusal?: RunBudgetRefusal;
 }
 
 /** What the briefing renders, and what it had to leave out. */
@@ -120,6 +123,7 @@ function toInterpretation(row: Doc<'messageInterpretations'>, now: number): Brie
 		status: row.status,
 		...(row.skipReason ? { skipReason: row.skipReason } : {}),
 		...(isRerunDue ? { isRerunDue: true } : {}),
+		...(row.budgetRefusal ? { budgetRefusal: row.budgetRefusal } : {}),
 	};
 }
 

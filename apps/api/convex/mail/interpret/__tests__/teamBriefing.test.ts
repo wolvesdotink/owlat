@@ -12,6 +12,7 @@ import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { sealBodyAtWrite } from '../../../lib/messageBody';
 import { BRIEFING_ITEM_READ } from '../teamActions';
+import { INTERPRET_EXTRACTOR_VERSION } from '../schema';
 import { modules, seedTeamThread, type Test } from './interpret.testlib';
 
 const AT = Date.UTC(2026, 9, 7, 9, 0);
@@ -149,5 +150,36 @@ describe('team briefing read', () => {
 			inboundMessageId: inboundId,
 		});
 		expect(hold.reason).toContain('needs review');
+	});
+
+	it('exposes a stored spend refusal on a cached read, so the context step holds before the retry (final F1)', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, inboundId } = await seedTeamThread(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('messageInterpretations', {
+				threadKind: 'team',
+				conversationThreadId: threadId,
+				source: { kind: 'inbound', id: inboundId },
+				sourceKey: `inbound:${inboundId}`,
+				contentRevision: 'rev-1',
+				extractorVersion: INTERPRET_EXTRACTOR_VERSION,
+				mode: 'actions',
+				status: 'failed',
+				errorCode: 'budget',
+				budgetRefusal: { reason: 'monthly_ceiling', limit: 'ceiling' },
+				nextRetryAt: Date.now() + 60 * 60 * 1000,
+				deletionEpoch: 1,
+				isCounted: true,
+				createdAt: AT,
+				updatedAt: AT,
+			});
+		});
+		const read = await t.query(internal.mail.interpret.teamActions.briefingActions, {
+			inboundMessageId: inboundId,
+		});
+		expect(read.interpretation).toEqual({
+			status: 'failed',
+			budgetRefusal: { reason: 'monthly_ceiling', limit: 'ceiling' },
+		});
 	});
 });
