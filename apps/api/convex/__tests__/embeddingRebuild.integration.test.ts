@@ -8,7 +8,7 @@
  * models disagree; the local server answers no revision probe.
  */
 import { convexTest } from 'convex-test';
-import { ConvexError } from 'convex/values';
+import { ConvexError, type Value } from 'convex/values';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Ai from 'ai';
 import schema from '../schema';
@@ -510,7 +510,7 @@ describe('a confirmation names its space (expectedSpaceId)', () => {
 			(caught: unknown) => caught
 		);
 		expect(error).toBeInstanceOf(ConvexError);
-		expect((error as ConvexError<Record<string, unknown>>).data).toMatchObject({
+		expect((error as ConvexError<Value>).data).toMatchObject({
 			category: 'conflict',
 			data: { reason: EMBEDDING_TARGET_CHANGED },
 		});
