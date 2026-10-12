@@ -42,14 +42,24 @@ import { requireOrgPermission } from './lib/sessionOrganization';
 import { recordAuditLog } from './lib/auditLog';
 import { throwInvalidInput } from './_utils/errors';
 import { validateOutboundUrl } from './lib/outboundUrlValidation';
+import { envelopeValidator, resolvePlaneSecrets } from './lib/aiProviderSecrets';
+import {
+	configuredEmbeddingTarget,
+	embeddingSelectionForSave,
+	isLocalEmbeddingKind,
+	isSameEmbeddingTarget,
+	nextEmbeddingModelVersion,
+	resolveStoredEmbeddingModel,
+	storedEmbeddingTarget,
+	throwEmbeddingKindRequired,
+} from './lib/embeddingSpace';
+import { endReembedJobs } from './lib/aiRouting/embeddingActivation';
 import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
 } from './lib/validators/aiProviderConfig';
-// Type-only, and from the PURE types module rather than the registry index, so
-// this v8 file never reaches the Node-only adapter files behind it.
-import type { DecisionProviderKind } from './lib/decisionProviders/types';
+import { decisionEnvProblem } from './lib/decisionEnvKind';
 
 /** The org-singleton config row, or null. Single-org-per-deployment ⇒ `first()`. */
 async function getSingleton(ctx: QueryCtx | MutationCtx): Promise<Doc<'aiProviderConfig'> | null> {
@@ -69,7 +79,10 @@ export const getConfig = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		const row = await getSingleton(ctx);
-		if (!row) return { configured: false as const };
+		// D3 (ADR-0073): an invalid DECISION_PROVIDER refuses decisions; the card says why.
+		const envProblem = decisionEnvProblem();
+		const decisionEnv = envProblem ? { decisionEnvProblem: envProblem } : {};
+		if (!row) return { configured: false as const, ...decisionEnv };
 		return {
 			configured: true as const,
 			languageProviderKind: row.languageProviderKind,
@@ -80,6 +93,7 @@ export const getConfig = authedQuery({
 			keyPreview: row.keyPreview,
 			embeddingProviderKind: row.embeddingProviderKind,
 			embeddingModel: row.embeddingModel,
+			resolvedEmbeddingModel: resolveStoredEmbeddingModel(row),
 			embeddingModelVersion: row.embeddingModelVersion,
 			isEmbeddingKeySet: row.embeddingSecretCiphertext !== undefined,
 			embeddingKeyPreview: row.embeddingKeyPreview,
@@ -93,6 +107,7 @@ export const getConfig = authedQuery({
 			isDecisionFallbackEnabled: row.isDecisionFallbackEnabled,
 			isDecisionKeySet: row.decisionSecretCiphertext !== undefined,
 			decisionKeyPreview: row.decisionKeyPreview,
+			...decisionEnv,
 			updatedAt: row.updatedAt,
 		};
 	},
@@ -100,200 +115,13 @@ export const getConfig = authedQuery({
 
 // ── Internal write / raw-read path ─────────────────────────────────────────
 
-/** A freshly-encrypted key envelope handed over by the Node save action. */
-const envelopeValidator = v.object({
-	ciphertext: v.string(),
-	iv: v.string(),
-	authTag: v.string(),
-	version: v.number(),
-	keyPreview: v.string(),
-});
-
-type Envelope = {
-	ciphertext: string;
-	iv: string;
-	authTag: string;
-	version: number;
-	keyPreview: string;
-};
-
-/** A possibly-incomplete envelope read back off an existing row. */
-interface StoredEnvelope {
-	ciphertext?: string;
-	iv?: string;
-	authTag?: string;
-	version?: number;
-	keyPreview?: string;
-}
-
-/**
- * Map the stored envelope columns of one plane off an existing config row. The
- * language and embedding planes use identically-shaped column sets that differ
- * only by the `embedding` prefix, so this single mapper feeds both
- * `resolveSecret({ existing })` call sites. Returns `undefined` when there is no
- * row yet.
- */
-function storedEnvelopeOf(
-	row: Doc<'aiProviderConfig'> | null,
-	plane: 'language' | 'embedding' | 'decision'
-): StoredEnvelope | undefined {
-	if (!row) return undefined;
-	switch (plane) {
-		case 'language':
-			return {
-				ciphertext: row.secretCiphertext,
-				iv: row.secretIv,
-				authTag: row.secretAuthTag,
-				version: row.secretEnvelopeVersion,
-				keyPreview: row.keyPreview,
-			};
-		case 'embedding':
-			return {
-				ciphertext: row.embeddingSecretCiphertext,
-				iv: row.embeddingSecretIv,
-				authTag: row.embeddingSecretAuthTag,
-				version: row.embeddingSecretEnvelopeVersion,
-				keyPreview: row.embeddingKeyPreview,
-			};
-		case 'decision':
-			return {
-				ciphertext: row.decisionSecretCiphertext,
-				iv: row.decisionSecretIv,
-				authTag: row.decisionSecretAuthTag,
-				version: row.decisionSecretEnvelopeVersion,
-				keyPreview: row.decisionKeyPreview,
-			};
-	}
-}
-
-/**
- * Decide the final stored key envelope for one plane. A freshly-entered key
- * wins; otherwise the stored envelope is kept (secrets never round-trip through
- * the client, so an unchanged key is re-persisted from disk). A local, keyless
- * provider clears any stored key. A hosted provider with neither a new nor a
- * stored key is rejected — we never persist a hosted config that can't run.
- *
- * `isKeyRequired` is that last rule, made optional for the one case where it is
- * wrong: a deployment that supplies the DECISION key through its environment
- * has a working config with nothing in these columns, and rejecting the save
- * would make the settings page unusable on exactly the installs that configured
- * themselves the self-hosted way. It defaults to the strict behaviour, so the
- * language and embedding planes are unchanged.
- */
-function resolveSecret(input: {
-	isLocal: boolean;
-	isKeyRequired?: boolean;
-	envelope?: Envelope;
-	existing?: StoredEnvelope;
-	label: string;
-}): Envelope | undefined {
-	if (input.isLocal) return undefined;
-	if (input.envelope) return input.envelope;
-	const e = input.existing;
-	if (
-		e &&
-		e.ciphertext !== undefined &&
-		e.iv !== undefined &&
-		e.authTag !== undefined &&
-		e.version !== undefined &&
-		e.keyPreview !== undefined
-	) {
-		return {
-			ciphertext: e.ciphertext,
-			iv: e.iv,
-			authTag: e.authTag,
-			version: e.version,
-			keyPreview: e.keyPreview,
-		};
-	}
-	if (input.isKeyRequired === false) return undefined;
-	throwInvalidInput(`The ${input.label} provider requires an API key.`);
-}
-
-/** The DECISION plane's nine columns, as written onto the row. */
-interface DecisionColumns {
-	decisionProviderKind?: DecisionProviderKind;
-	decisionModel?: string;
-	decisionBaseUrl?: string;
-	isDecisionFallbackEnabled?: boolean;
-	decisionSecretCiphertext?: string;
-	decisionSecretIv?: string;
-	decisionSecretAuthTag?: string;
-	decisionSecretEnvelopeVersion?: number;
-	decisionKeyPreview?: string;
-}
-
-/**
- * The decision columns a save should write.
- *
- * TWO BRANCHES, and the first one is the important one. A save that names no
- * decision kind — every caller written before this plane existed, and any
- * settings save that only touches the language or embedding cards — carries the
- * existing columns forward verbatim. `ctx.db.patch` treats `undefined` as a
- * CLEAR, so omitting them would quietly switch a configured decision plane off
- * and throw the key away with it.
- *
- * The second branch writes the plane, with the five secret columns resolved in
- * lockstep by {@link resolveSecret}: a keyless adapter clears all five, a newly
- * entered key replaces all five, and an unchanged one is re-persisted from disk.
- */
-function resolveDecisionColumns(
-	args: {
-		decisionProviderKind?: DecisionProviderKind;
-		decisionModel?: string;
-		decisionBaseUrl?: string;
-		isDecisionFallbackEnabled?: boolean;
-		isDecisionKeyless?: boolean;
-		hasDecisionEnvKey?: boolean;
-		decisionEnvelope?: Envelope;
-	},
-	existing: Doc<'aiProviderConfig'> | null
-): DecisionColumns {
-	if (args.decisionProviderKind === undefined) {
-		return {
-			decisionProviderKind: existing?.decisionProviderKind,
-			decisionModel: existing?.decisionModel,
-			decisionBaseUrl: existing?.decisionBaseUrl,
-			isDecisionFallbackEnabled: existing?.isDecisionFallbackEnabled,
-			decisionSecretCiphertext: existing?.decisionSecretCiphertext,
-			decisionSecretIv: existing?.decisionSecretIv,
-			decisionSecretAuthTag: existing?.decisionSecretAuthTag,
-			decisionSecretEnvelopeVersion: existing?.decisionSecretEnvelopeVersion,
-			decisionKeyPreview: existing?.decisionKeyPreview,
-		};
-	}
-	const secret = resolveSecret({
-		isLocal: args.isDecisionKeyless === true,
-		// A key the deployment already supplies through TYPESAFE_API_KEY is a
-		// working config with empty columns — see `resolveSecret`.
-		isKeyRequired: args.hasDecisionEnvKey !== true,
-		envelope: args.decisionEnvelope,
-		// Credentials belong to a provider, never to whichever provider is chosen next.
-		existing:
-			existing?.decisionProviderKind === args.decisionProviderKind
-				? storedEnvelopeOf(existing, 'decision')
-				: undefined,
-		label: 'decision',
-	});
-	return {
-		decisionProviderKind: args.decisionProviderKind,
-		decisionModel: args.decisionModel,
-		decisionBaseUrl: args.decisionBaseUrl,
-		isDecisionFallbackEnabled: args.isDecisionFallbackEnabled,
-		decisionSecretCiphertext: secret?.ciphertext,
-		decisionSecretIv: secret?.iv,
-		decisionSecretAuthTag: secret?.authTag,
-		decisionSecretEnvelopeVersion: secret?.version,
-		decisionKeyPreview: secret?.keyPreview,
-	};
-}
-
 /**
  * Admin-gated upsert of the org-singleton config. The calling Node action has
  * already encrypted any newly-entered key into `languageEnvelope` /
  * `embeddingEnvelope`; this mutation enforces the `organization:manage` floor,
- * preserves an unchanged key from disk, bumps the embedding dimension guard on
- * a model/provider change, writes the row, and records the audit log.
+ * preserves an unchanged key from disk, writes the row, and records the audit
+ * log. An embedding switch is allowed (D8, post-provenance) and schedules the
+ * re-embed kickoff.
  */
 export const _persistConfig = internalMutation({
 	args: {
@@ -303,12 +131,15 @@ export const _persistConfig = internalMutation({
 		modelCapable: v.string(),
 		isLanguageLocal: v.boolean(),
 		languageEnvelope: v.optional(envelopeValidator),
-		embeddingProviderKind: embeddingProviderKindValidator,
+		// Omitted ⇒ the current row's selection (resolved here, not in the action,
+		// so a concurrent embedding save is never overwritten with a stale view).
+		embeddingProviderKind: v.optional(embeddingProviderKindValidator),
 		embeddingModel: v.optional(v.string()),
-		isEmbeddingLocal: v.boolean(),
+		/** Ignored: derived from the kind. A previous-release save still sends it; remove after release N+1. */
+		isEmbeddingLocal: v.optional(v.boolean()),
 		embeddingEnvelope: v.optional(envelopeValidator),
 		// The DECISION plane. Omitting `decisionProviderKind` leaves the plane
-		// untouched (see `resolveDecisionColumns`) — it is not a request to clear it.
+		// untouched (see `lib/aiProviderSecrets`) — it is not a request to clear it.
 		decisionProviderKind: v.optional(decisionProviderKindValidator),
 		decisionModel: v.optional(v.string()),
 		decisionBaseUrl: v.optional(v.string()),
@@ -355,29 +186,32 @@ export const _persistConfig = internalMutation({
 
 		const existing = await getSingleton(ctx);
 
-		const language = resolveSecret({
-			isLocal: args.isLanguageLocal,
-			envelope: args.languageEnvelope,
-			existing: storedEnvelopeOf(existing, 'language'),
-			label: 'language',
-		});
-		const embedding = resolveSecret({
-			isLocal: args.isEmbeddingLocal,
-			envelope: args.embeddingEnvelope,
-			existing: storedEnvelopeOf(existing, 'embedding'),
-			label: 'embedding',
-		});
-		const decision = resolveDecisionColumns(args, existing);
+		// A stored key stays only for the same provider kind and base URL (lib/aiProviderSecrets).
+		// A new embedding key is bound to the kind the save names, never to the row's.
+		if (args.embeddingEnvelope && args.embeddingProviderKind === undefined) {
+			throwEmbeddingKindRequired();
+		}
+		const selection = embeddingSelectionForSave(
+			{ kind: args.embeddingProviderKind, model: args.embeddingModel },
+			existing
+		);
+		const { embeddingProviderKind, embeddingModel } = selection;
+		const { language, embedding, decision } = resolvePlaneSecrets(
+			{
+				...args,
+				embeddingProviderKind,
+				isEmbeddingLocal: isLocalEmbeddingKind(embeddingProviderKind),
+			},
+			existing
+		);
 
-		// Dimension guard: bump the version whenever the embedding model/provider
-		// changes so stale vectors are never silently mixed with new-model ones.
-		const embeddingChanged =
-			!existing ||
-			existing.embeddingProviderKind !== args.embeddingProviderKind ||
-			existing.embeddingModel !== args.embeddingModel;
-		const embeddingModelVersion = existing
-			? existing.embeddingModelVersion + (embeddingChanged ? 1 : 0)
-			: 1;
+		// D8, post-provenance: a switch is allowed on a populated corpus. Vectors of
+		// the old space drop out of vector search until they are re-embedded; the
+		// version moves with the target.
+		const embeddingModelVersion = nextEmbeddingModelVersion(existing, selection);
+		const previousTarget = configuredEmbeddingTarget(existing);
+		const isEmbeddingTargetChanged =
+			!previousTarget || !isSameEmbeddingTarget(previousTarget, storedEmbeddingTarget(selection));
 
 		const now = Date.now();
 		// `undefined` on a patch column clears it — this is what drops a stored key
@@ -392,8 +226,8 @@ export const _persistConfig = internalMutation({
 			secretAuthTag: language?.authTag,
 			secretEnvelopeVersion: language?.version,
 			keyPreview: language?.keyPreview,
-			embeddingProviderKind: args.embeddingProviderKind,
-			embeddingModel: args.embeddingModel,
+			embeddingProviderKind,
+			embeddingModel,
 			embeddingModelVersion,
 			embeddingSecretCiphertext: embedding?.ciphertext,
 			embeddingSecretIv: embedding?.iv,
@@ -401,6 +235,7 @@ export const _persistConfig = internalMutation({
 			embeddingSecretEnvelopeVersion: embedding?.version,
 			embeddingKeyPreview: embedding?.keyPreview,
 			...decision,
+			configRevision: (existing?.configRevision ?? 0) + 1,
 			updatedAt: now,
 		};
 
@@ -417,6 +252,16 @@ export const _persistConfig = internalMutation({
 			}
 		}
 
+		// The new target's space activates with its first vector; a local embedder
+		// is measured and re-embeds the corpus right away (aiRouting/embeddingReembed).
+		if (isEmbeddingTargetChanged) {
+			// Jobs embedding into the old space stop; the kickoff starts the new one's.
+			await endReembedJobs(ctx);
+			await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
+				isForced: true,
+			});
+		}
+
 		await recordAuditLog(ctx, {
 			userId,
 			action: 'ai_provider_config.updated',
@@ -427,8 +272,8 @@ export const _persistConfig = internalMutation({
 				languageProviderKind: args.languageProviderKind,
 				modelFast: args.modelFast,
 				modelCapable: args.modelCapable,
-				embeddingProviderKind: args.embeddingProviderKind,
-				embeddingModel: args.embeddingModel,
+				embeddingProviderKind,
+				embeddingModel,
 				embeddingModelVersion,
 				isLanguageKeySet: language !== undefined,
 				isEmbeddingKeySet: embedding !== undefined,
@@ -470,8 +315,14 @@ export const removeConfig = adminMutation({
 	handler: async (ctx, _args, session): Promise<{ removed: boolean }> => {
 		const existing = await getSingleton(ctx);
 		if (!existing) return { removed: false };
-
+		// D8, post-provenance: the vectors' spaces are recorded in `embeddingSpaces`,
+		// so removal no longer loses them. The env fallback's target, if any, is a
+		// switch like any other.
 		await ctx.db.delete(existing._id);
+		await endReembedJobs(ctx);
+		await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
+			isForced: true,
+		});
 
 		await recordAuditLog(ctx, {
 			userId: session.userId,

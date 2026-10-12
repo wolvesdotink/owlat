@@ -3,7 +3,7 @@
  * result onto its `inboundMessage` WITHOUT changing `processingStatus`.
  *
  * Split out of `./processingLifecycle.ts` (the status dispatcher) once that file
- * crossed the ~500 LOC size cap. These three writers share one shape: an Agent
+ * crossed the ~500 LOC size cap. These writers share one shape: an Agent
  * step (`context_retrieval` / `route` / `draft`) calls them after its execute()
  * completes, still inside its current processingStatus, so the review UI can
  * read the step's output. They are deliberately NOT part of `transition()`'s
@@ -11,16 +11,29 @@
  * change NO routing on their own. FAIL-SOFT: callers wrap these so a persistence
  * failure degrades to "no metadata shown" and never wedges the walker.
  *
+ * The two D13 writers at the end (`recordSecurityScan`, `recordLateGuard`) are
+ * the exception to "fail-soft": they store the `guardNotRun` marker and its
+ * clearing, which later autonomous paths read, so their callers let a failure
+ * surface.
+ *
  * See docs/adr/0010-inbox-processing-lifecycle-module.md and
  * docs/adr/0014-agent-step-module.md.
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
+import { internalQuery } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+import {
+	guardStanding,
+	mergeLateGuard,
+	type GuardStanding,
+} from '../agent/steps/security_scan/disposition';
 import {
 	contextCoverageValidator,
 	draftQualityValidator,
 	groundingSourceValidator,
+	securityFlagsValidator,
 } from '../lib/convexValidators';
 import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { contextTierValidator } from '../lib/literalValidators';
@@ -114,6 +127,8 @@ export const recordDraftOutput = internalMutation({
 		// Advisory attachment suggestion (see lib/validators/attachment.ts). Absent unless
 		// the inbound asked for a document and a contact-scoped file matched.
 		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
+		// The draft was written cheap-first (D2): never auto-sent.
+		isCheapFirstDraft: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		// A person took the reply over while this draft was being written: their
@@ -133,10 +148,89 @@ export const recordDraftOutput = internalMutation({
 			// an earlier run left, which no longer match the draft.
 			draftOptions: undefined,
 			...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
+			// Bound to this draft: set for a cheap-first draft, cleared by any other.
+			isCheapFirstDraft: args.isCheapFirstDraft === true ? true : undefined,
 			// Edits a person saved over an earlier draft are not edits of this
 			// one: the next save seeds this draft as revision 0. (A Retry never
 			// re-drafts over a person's reply, #1220.)
 			...NO_SAVED_EDITS,
 		});
+	},
+});
+
+/**
+ * D13 (ADR-0073): persist the scan of a message that arrived while the agent
+ * was off. That path ends the run in `security_check` without a transition, so
+ * before D13 its scan was never stored; now it carries the `guardNotRun` marker
+ * every later autonomous consumer checks. Written only while the message is
+ * still in `security_check` and nobody has taken it over, so a late write can
+ * never overwrite a later scan or a person's reply.
+ */
+export const recordSecurityScan = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		securityFlags: securityFlagsValidator,
+	},
+	handler: async (ctx, args) => {
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message || message.processingStatus !== 'security_check') return;
+		if (message.manualTakeoverAt !== undefined) return;
+		await ctx.db.patch(args.inboundMessageId, { securityFlags: args.securityFlags });
+	},
+});
+
+/**
+ * D13: record a model guard that ran late, the first time a generative
+ * consumer reached a message whose scan skipped it (agent/steps/security_scan/
+ * guard.ts `runGuardBeforeAutonomy`), and answer with the message's
+ * AUTHORITATIVE standing, which the caller acts on instead of its own verdict.
+ *
+ * Late guards can overlap (extraction, interpretation, a briefing's history),
+ * so the result is merged, never written over: `mergeLateGuard` is monotonic
+ * within one scan generation (`scanTimestamp`), so a rejection that landed
+ * first is kept and one that lands second still applies after a benign run
+ * cleared the marker. A result for an older generation (the pipeline rescanned
+ * the message meanwhile) is dropped, and the newer scan's standing answers. A
+ * gone message answers `rejected`: nothing may read it. The processing status
+ * is untouched.
+ */
+export const recordLateGuard = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		generation: v.number(),
+		verdict: v.object({
+			flagged: v.optional(v.object({ confidence: v.number(), reason: v.string() })),
+			isIncomplete: v.boolean(),
+		}),
+	},
+	handler: async (ctx, args): Promise<GuardStanding> => {
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message) return 'rejected';
+		const flags = message.securityFlags;
+		if (!flags || flags.scanTimestamp !== args.generation) return guardStanding(message);
+		const merged = mergeLateGuard(flags, args.verdict);
+		await ctx.db.patch(args.inboundMessageId, { securityFlags: merged });
+		return guardStanding({ ...message, securityFlags: merged });
+	},
+});
+
+/**
+ * D13 and #1339: where a Team message stands before thread interpretation reads
+ * it (agent/steps/security_scan/disposition.ts `guardStanding`). The message
+ * rides along only when its guard still has to run, so the caller can run it.
+ */
+export const guardStandingOf = internalQuery({
+	args: { inboundMessageId: v.id('inboundMessages') },
+	handler: async (
+		ctx,
+		args
+	): Promise<
+		| { standing: 'rejected' | 'clear' }
+		| { standing: 'needs_guard'; message: Doc<'inboundMessages'> }
+	> => {
+		const message = await ctx.db.get(args.inboundMessageId);
+		if (!message) return { standing: 'clear' };
+		const standing = guardStanding(message);
+		return standing === 'needs_guard' ? { standing, message } : { standing };
 	},
 });

@@ -13,184 +13,73 @@
  *   5. dedupe    an applied extraction of this revision + extractor is reused,
  *                unless it is incomplete and its retry is due (`retry.ts`)
  *   6. gate      `ai` flag and the spend ceiling (`gate.ts`)
+ *   6b. hold     one spend hold for the extraction and the verifier's maximum
+ *                (`runHold.ts`); refused, the run defers, backed off, unspent
  *   7. model     `runLlmObject` on the `extract` tier, temperature 0, metered
- *                as `interpret`
+ *                as `interpret`, drawing on the hold
  *   8. ground    every claim's quotes verbatim in the named segment
- *   9. verify    consequential claims on the `guard` tier (`verify.ts`)
+ *   9. verify    consequential claims on the `guard` tier (`verify.ts`), capped and
+ *               routed by the policy (`verifyRoute.ts`)
  *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale;
  *                a changed body or mode starts the run over once
  *
- * FAIL-SOFT: a refusal or any failure records a `failed` extraction, so the
- * brief says it is incomplete; it never deletes items and never reads as
- * "nothing to do". Never throws.
- *
- * `runInterpretation` is the plain core the wiring calls inside its own
- * actions (the Postbox needs-reply classifier, the team context step);
- * `interpretMessage` is the schedulable internal action around it.
+ * FAIL-SOFT: any refusal or failure records a `failed` extraction, so the brief says
+ * it is incomplete. Never deletes items, never reads as "nothing to do", never throws.
+ * `runInterpretation` is the plain core the wiring calls inside its own actions
+ * (needs-reply, the team context step); `interpretMessage` is its action.
  */
 
-import { v, type Infer } from 'convex/values';
+import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import type { Id } from '../../_generated/dataModel';
-import { resolveLanguageModel } from '../../lib/llmProvider';
-import { runLlmObject } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { admissionRefusalOf } from '../../lib/llm/admissionPort';
 import { logWarn } from '../../lib/runtimeLog';
-import type { InterpretMode, InterpretationStatus } from '@owlat/shared/threadBrief';
+import type { InterpretMode } from '@owlat/shared/threadBrief';
 import {
 	interpretModeValidator,
 	interpretationSourceValidator,
 	type InterpretationSource,
-	type interpretCoverageValidator,
-	type sourceManifestValidator,
 } from '../../lib/validators/threadBrief';
+import { INTERPRET_EXTRACTOR_VERSION } from './schema';
+import { renderSegments } from './prompt';
+import { extractOutput, prepareExtraction } from './extractOutput';
+import { admitInterpretRun, type InterpretRunHold } from './runHold';
+import { resolveLanguageModel } from '../../lib/llmProvider';
+import { predecessorRoot, predecessorsPending, runDeferredPredecessors } from './defer';
 import {
-	INTERPRET_EXTRACTOR_VERSION,
-	interpretOutputSchema,
-	interpretOutputSchemaFor,
-	type InterpretOutput,
-} from './schema';
-import { buildInterpretPrompt, renderSegments } from './prompt';
+	finish,
+	type InterpretArgs,
+	type InterpretRunResult,
+	type Restart,
+	type RunRecord,
+} from './runShape';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
 import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
 import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from './pipeline';
-import { clampOutput } from './clamp';
-import { needsReplyProjectionOf, type NeedsReplyProjection } from './needsReplyProjection';
-import { verifyClaims } from './verify';
+import { needsReplyProjectionOf } from './needsReplyProjection';
+import { interpretRoot } from './verify';
+import { planVerification, verifyHoldPlanOf, verifyRouted } from './verifyRoute';
+import { apply as applyRecord } from './runApply';
 import { isRetryDue } from './retry';
-import type { ReduceResult } from './reduceInput';
-import type { ApplyOutcome } from './reduce';
+import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import { llmRootContextValidator } from '../../lib/llmUsageTags';
 
-export const INTERPRET_FEATURE = 'interpret';
-/** Reducer attempts against a moving revision before the run gives up as partial. */
-const MAX_APPLY_ATTEMPTS = 3;
+export type { InterpretArgs, InterpretRunResult } from './runShape';
+
 /** Whole-run attempts when the body or the thread's mode changed under it. */
 const MAX_RUN_ATTEMPTS = 2;
 
-export interface InterpretArgs {
-	source: InterpretationSource;
-	/** Ignored: the mode is the thread's current one, rechecked by the reducer. */
-	mode?: InterpretMode;
-	/** Ignored: eligibility comes from the snapshot taken at enqueue (`sources.ts`). */
-	isLive?: boolean;
-	precedence?: string;
-	listId?: string;
-}
-
-export type InterpretRunResult =
-	| {
-			/** The stored extraction's status, also when it was reused. */
-			status: InterpretationStatus;
-			/** The extraction was reused (dedupe or the reducer's replay check). */
-			isReplayed: boolean;
-			interpretationId?: Id<'messageInterpretations'>;
-			createdItemIds: Id<'threadItems'>[];
-			/** The Postbox needs-reply inputs, when the model read the message. */
-			projection?: NeedsReplyProjection;
-			errorCode?: string;
-			/** An incomplete extraction will be repaired by a run at or after this time. */
-			retryAt?: number;
-	  }
-	/** The source or its thread is gone, or a purge ran meanwhile: nothing written. */
-	| { status: 'gone' };
-
 type Loaded = NonNullable<Awaited<ReturnType<typeof loadState>>>;
-type RunRecord = {
-	contentRevision: string;
-	status: InterpretationStatus;
-	skipReason?: 'short' | 'bulk' | 'security' | 'undecryptable' | 'ineligible';
-	errorCode?: string;
-	sourceManifest?: Infer<typeof sourceManifestValidator>;
-	coverage?: Infer<typeof interpretCoverageValidator>;
-	result?: ReduceResult;
-	sourceVersion?: string;
-	retryCount?: number;
-};
 
 function loadState(ctx: ActionCtx, args: InterpretArgs) {
 	return ctx.runQuery(internal.mail.interpret.load.loadForInterpretation, { source: args.source });
 }
 
-/** Apply through the reducer, reloading the revision while it is stale. */
-async function apply(
-	ctx: ActionCtx,
-	args: InterpretArgs,
-	loaded: Loaded,
-	record: RunRecord
-): Promise<ApplyOutcome> {
-	let state = loaded;
-	let outcome: ApplyOutcome = { outcome: 'gone' };
-	for (let attempt = 0; attempt < MAX_APPLY_ATTEMPTS; attempt++) {
-		outcome = await ctx.runMutation(internal.mail.interpret.reduce.applyInterpretation, {
-			source: args.source,
-			threadRef: state.threadRef,
-			// The extraction is bound to the mode it was made in, whatever a reload says.
-			mode: loaded.mode,
-			contentRevision: record.contentRevision,
-			extractorVersion: INTERPRET_EXTRACTOR_VERSION,
-			expectedRevision: state.brief.interpretationRevision,
-			deletionEpoch: state.brief.deletionEpoch,
-			sourceAt: state.sourceAt,
-			direction: state.direction,
-			status: record.status,
-			...(record.skipReason ? { skipReason: record.skipReason } : {}),
-			...(record.errorCode ? { errorCode: record.errorCode } : {}),
-			...(state.eligibility ? { eligibility: state.eligibility } : {}),
-			...(record.sourceManifest ? { sourceManifest: record.sourceManifest } : {}),
-			...(record.coverage ? { coverage: record.coverage } : {}),
-			...(record.result ? { result: record.result } : {}),
-			...(record.sourceVersion ? { sourceVersion: record.sourceVersion } : {}),
-			...(record.retryCount !== undefined ? { retryCount: record.retryCount } : {}),
-			...(state.threadAssigneeUserId ? { threadAssigneeUserId: state.threadAssigneeUserId } : {}),
-		});
-		if (outcome.outcome !== 'stale') return outcome;
-		const reloaded = await loadState(ctx, args);
-		if (!reloaded) return { outcome: 'gone' };
-		// A purge between the load and the write is not a retry: the content is gone.
-		if (reloaded.brief.deletionEpoch !== state.brief.deletionEpoch) return { outcome: 'erased' };
-		// The scope changed: this extraction (its latest lines and facts, or their
-		// absence) belongs to the old mode. Extract again.
-		if (reloaded.mode !== loaded.mode) return { outcome: 'modeChanged' };
-		state = reloaded;
-	}
-	return outcome;
-}
-
-/** The run's answer from the reducer's; `restart` when the run must start over. */
-function finish(
-	outcome: ApplyOutcome,
-	extra: { projection?: NeedsReplyProjection; errorCode?: string } = {}
-): InterpretRunResult | Restart {
-	switch (outcome.outcome) {
-		case 'gone':
-		case 'erased':
-			return { status: 'gone' };
-		case 'modeChanged':
-		case 'sourceChanged':
-			return { restart: outcome.outcome };
-		case 'stale':
-			// The revision kept moving: nothing applied this time; the next message retries.
-			return {
-				status: 'failed',
-				isReplayed: false,
-				createdItemIds: [],
-				...extra,
-				errorCode: 'stale',
-			};
-		case 'applied':
-		case 'replayed':
-			return {
-				status: outcome.status,
-				isReplayed: outcome.outcome === 'replayed',
-				interpretationId: outcome.interpretationId,
-				createdItemIds: outcome.createdItemIds,
-				...extra,
-				...(outcome.nextRetryAt !== undefined ? { retryAt: outcome.nextRetryAt } : {}),
-			};
-	}
+/** Write the run's record through the reducer (`./runApply.ts`), reloading while stale. */
+function apply(ctx: ActionCtx, args: InterpretArgs, loaded: Loaded, record: RunRecord) {
+	return applyRecord(ctx, args, loaded, record, () => loadState(ctx, args));
 }
 
 /** Interpret one message (see the module doc). Never throws. */
@@ -198,6 +87,17 @@ export async function runInterpretation(
 	ctx: ActionCtx,
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
+	anchorActionDeadline(ctx); // one model budget per action, from here (ADR-0073)
+	// D10: earlier deferred mail of the thread first, under the caller's deadline (defer.ts).
+	const deadlineAt = args.root?.deadlineAt;
+	const readFirst = (source: InterpretationSource) =>
+		runInterpretation(ctx, {
+			source,
+			predecessors: 'already_read',
+			...predecessorRoot(source, deadlineAt),
+		});
+	const pending = await runDeferredPredecessors(ctx, args.source, readFirst, args);
+	if (pending) return predecessorsPending(pending);
 	let reason: Restart['restart'] = 'sourceChanged';
 	for (let attempt = 0; attempt < MAX_RUN_ATTEMPTS; attempt++) {
 		const out = await runOnce(ctx, args);
@@ -217,9 +117,6 @@ export async function runInterpretation(
 		? { status: 'failed', isReplayed: false, createdItemIds: [], errorCode }
 		: out;
 }
-
-/** The run must start over: the body or the thread's mode changed under it. */
-type Restart = { restart: 'modeChanged' | 'sourceChanged' };
 
 async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRunResult | Restart> {
 	const loaded = await loadState(ctx, args);
@@ -258,8 +155,32 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 		);
 	}
 
+	// D13 (ADR-0073): a Team message whose scan skipped the model guard gets it
+	// before this generative consumer; one it flags is not interpreted.
+	let isGuardClear: boolean;
+	try {
+		isGuardClear = await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt);
+	} catch (error) {
+		// The late guard was refused by spend admission: a budget deferral (D1).
+		const refusal = admissionRefusalOf(error);
+		if (!refusal) throw error;
+		const budgetRefusal = { reason: refusal.reason, limit: refusal.limit };
+		const deferred = { contentRevision: 'unread', status: 'failed' as const, errorCode: 'budget' };
+		return finish(await apply(ctx, args, loaded, { ...deferred, budgetRefusal }), {
+			errorCode: 'budget',
+			budgetRefusal,
+		});
+	}
+	if (!isGuardClear) {
+		const skip = { skipReason: 'security' as const, errorCode: 'guard_flagged' };
+		const record = { contentRevision: 'skip', status: 'skipped' as const, ...skip };
+		return finish(await apply(ctx, args, loaded, record), { errorCode: skip.errorCode });
+	}
+
 	let contentRevision = 'unread';
 	let retryCount: number | undefined;
+	// The run's one spend hold, settled however the run ends (`runHold.ts`).
+	let hold: InterpretRunHold | undefined;
 	try {
 		const scoped = await scopeForInterpretation(ctx, args.source);
 		if (!scoped) return { status: 'gone' };
@@ -327,6 +248,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 					...(stored ? { projection: needsReplyProjectionOf(stored, loaded.ownerLocale) } : {}),
 					...(counted.errorCode ? { errorCode: counted.errorCode } : {}),
 					...(counted.nextRetryAt !== undefined ? { retryAt: counted.nextRetryAt } : {}),
+					// The stored refusal: a caller that defers or holds on it does so again.
+					...(counted.budgetRefusal ? { budgetRefusal: counted.budgetRefusal } : {}),
 				};
 			}
 		}
@@ -338,6 +261,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 
 		const gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
 		if (!gate.isAllowed) {
+			const gateRefusal =
+				gate.code === 'budget' ? { reason: gate.reason, limit: gate.limit } : undefined;
 			return finish(
 				await apply(ctx, args, loaded, {
 					contentRevision,
@@ -347,8 +272,9 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 					...(sourceVersion ? { sourceVersion } : {}),
 					// A refusal is not an admitted attempt: the count stays.
 					retryCount: priorAttempts,
+					...(gateRefusal ? { budgetRefusal: gateRefusal } : {}),
 				}),
-				{ errorCode: gate.code }
+				{ errorCode: gate.code, ...(gateRefusal ? { budgetRefusal: gateRefusal } : {}) }
 			);
 		}
 
@@ -366,24 +292,52 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			locales: loaded.locales,
 		});
 		const { truncatedSegmentIds } = renderSegments(input.message.segments);
-		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
-			ctx,
-			INTERPRET_FEATURE,
-			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'extract'),
-				schema: interpretOutputSchemaFor(mode),
-				prompt: buildInterpretPrompt(input),
-				temperature: 0,
-			})
-		);
+		const root = args.root ?? interpretRoot(args.source);
+		// Spend admission (ADR-0073, D1): brief mode is background work, so its
+		// holds stop at the advisory reserve like its gate; actions mode feeds
+		// the Team pipeline.
+		const priority = mode === 'brief' ? 'background' : 'pipeline';
+		const prepared = await prepareExtraction(ctx, input, mode);
+		const verifyModel = await resolveLanguageModel(ctx, 'mail.verify');
+		// The verification path (cap, language verifier or claim checks), decided
+		// now so the hold below covers exactly it (`./verifyRoute.ts`, Sol r2 F2).
+		const source = {
+			source: args.source,
+			...(loaded.mailboxId ? { mailboxId: loaded.mailboxId } : {}),
+		};
+		const verifyPlan = await planVerification(ctx, source);
+		// One hold for the extraction and that verification, before anything
+		// is bought (Sol r4): refused, the whole run defers, backed off, with no
+		// retry spent; admitted, no call of the run can be refused halfway.
 		try {
-			await recordLlmSpend(ctx, INTERPRET_FEATURE, tokenUsage, modelUsed);
-		} catch {
-			// A lost ledger row under-counts; dropping the interpretation over it would be worse.
+			const verify = verifyHoldPlanOf(verifyPlan);
+			hold = await admitInterpretRun(ctx, {
+				extract: prepared,
+				verifyModel,
+				verify,
+				root,
+				priority,
+			});
+		} catch (error) {
+			const refusal = admissionRefusalOf(error);
+			if (!refusal) throw error;
+			const budgetRefusal = { reason: refusal.reason, limit: refusal.limit };
+			const deferrals = (isExact ? (counted?.budgetDeferrals ?? 0) : 0) + 1;
+			return finish(
+				await apply(ctx, args, loaded, {
+					contentRevision,
+					status: 'failed',
+					errorCode: 'budget',
+					sourceManifest,
+					...(sourceVersion ? { sourceVersion } : {}),
+					retryCount: priorAttempts,
+					budgetDeferrals: deferrals,
+					budgetRefusal,
+				}),
+				{ errorCode: 'budget', budgetRefusal }
+			);
 		}
-
-		// Validate with the lenient parse schema (the model schema only shapes the request).
-		const output = clampOutput(interpretOutputSchema.parse(object) as InterpretOutput);
+		const output = await extractOutput(ctx, prepared, { root, priority, hold });
 		const grounding = groundProposals(output, segmented);
 		const ownAddresses = new Set(loaded.ownAddresses);
 
@@ -395,7 +349,13 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			itemText: (id) => itemText.get(id),
 			factText: (id) => factText.get(id),
 		});
-		const verified = await verifyClaims(ctx, claims);
+		// The routing policy's claim cap and claim-check switch (`./verifyRoute.ts`).
+		const verified = await verifyRouted(ctx, claims, verifyPlan, {
+			root,
+			priority,
+			model: verifyModel,
+			hold,
+		});
 
 		const freshText = segmented.segments
 			.filter((s) => s.kind === 'fresh')
@@ -431,13 +391,23 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			isFactsOverflow: loaded.isFactsOverflow,
 			truncatedSegmentIds,
 			isVerifyIncomplete: verified.isIncomplete,
+			isVerifyUnsendable: verified.isUnsendable,
+			isVerifyCapped: verified.isCapped,
+			isVerifyUnavailable: verified.isUnavailable,
 			isBodyIncomplete: scoped.omitted.includes('body_unavailable'),
 			isBodyTruncated: isTruncated,
 		});
+		const runErrorCode = run.errorCode;
+		// Not expected under the run's hold; when it happens the verification is an
+		// ordinary incomplete one, and the refusal is reported (Sol r4 F2) and
+		// stored, so a replay reports it too (Sol r2 F1).
+		const verifyRefusal = verified.refusal
+			? { reason: verified.refusal.reason, limit: verified.refusal.limit }
+			: undefined;
 		const outcome = await apply(ctx, args, loaded, {
 			contentRevision,
 			status: run.status,
-			...(run.errorCode ? { errorCode: run.errorCode } : {}),
+			...(runErrorCode ? { errorCode: runErrorCode } : {}),
 			sourceManifest,
 			coverage: {
 				segmentsRead: output.coverage.segmentsRead.slice(0, 50),
@@ -446,30 +416,49 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			},
 			result,
 			...attempt,
+			...(verifyRefusal ? { budgetRefusal: verifyRefusal } : {}),
 		});
 		return finish(outcome, {
 			projection: needsReplyProjectionOf(result, loaded.ownerLocale),
-			...(run.errorCode ? { errorCode: run.errorCode } : {}),
+			...(runErrorCode ? { errorCode: runErrorCode } : {}),
+			...(verifyRefusal ? { budgetRefusal: verifyRefusal } : {}),
 		});
 	} catch (error) {
+		// Spend admission refused the model call after the gate passed (the
+		// request did not fit, or another call took the headroom): a budget
+		// deferral like the gate's, not a model error, and no retry is spent.
+		const refusal = admissionRefusalOf(error);
+		const isBudget = refusal !== null;
+		const errorCode = isBudget ? 'budget' : 'model_error';
+		const budgetRefusal = refusal ? { reason: refusal.reason, limit: refusal.limit } : undefined;
 		// Only the first line: a validation error goes on to print its argument.
 		logWarn(
 			'[interpret] run failed:',
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
 		try {
+			const attempts = isBudget && retryCount !== undefined ? retryCount - 1 : retryCount;
 			return finish(
 				await apply(ctx, args, loaded, {
 					contentRevision,
 					status: 'failed',
-					errorCode: 'model_error',
-					...(retryCount !== undefined ? { retryCount } : {}),
+					errorCode,
+					...(attempts !== undefined ? { retryCount: attempts } : {}),
+					...(budgetRefusal ? { budgetRefusal } : {}),
 				}),
-				{ errorCode: 'model_error' }
+				{ errorCode, ...(budgetRefusal ? { budgetRefusal } : {}) }
 			);
 		} catch {
-			return { status: 'failed', isReplayed: false, createdItemIds: [], errorCode: 'model_error' };
+			return {
+				status: 'failed',
+				isReplayed: false,
+				createdItemIds: [],
+				errorCode,
+				...(budgetRefusal ? { budgetRefusal } : {}),
+			};
 		}
+	} finally {
+		await hold?.settle();
 	}
 }
 
@@ -482,6 +471,7 @@ export const interpretMessage = internalAction({
 		isLive: v.optional(v.boolean()),
 		precedence: v.optional(v.string()),
 		listId: v.optional(v.string()),
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args): Promise<InterpretRunResult> => runInterpretation(ctx, args),
 });

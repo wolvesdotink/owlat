@@ -21,6 +21,7 @@
  * `isContactScopeVisible` re-check every traversal must perform.
  */
 
+import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -28,6 +29,8 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
+import { readSearchableSpace, spaceRefOf, type SpaceRef } from '../lib/aiRouting/embeddingRegistry';
+import { batchGet } from '../_utils/batchLoader';
 import { contactScopesCanLink } from '../lib/contactScope';
 import { mergeEdgeAttrs, type EdgeAttrs } from '../lib/knowledgeEdges';
 import {
@@ -222,6 +225,8 @@ export const linkStructural = internalMutation({
 		threadId: v.optional(v.id('conversationThreads')),
 		sourceType: sourceTypeValidator,
 		sourceId: v.optional(v.string()),
+		/** The extraction's root request, handed to the inference pass (ADR-0073). */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args) => {
 		if (!(await isFeatureEnabled(ctx, 'ai.knowledge'))) return;
@@ -284,6 +289,7 @@ export const linkStructural = internalMutation({
 		if (await isFeatureEnabled(ctx, 'ai.knowledge.autoLink')) {
 			await ctx.scheduler.runAfter(0, internal.knowledge.edgeInference.inferRelations, {
 				entryIds: batchIds,
+				...(args.root ? { root: args.root } : {}),
 			});
 		}
 	},
@@ -305,6 +311,28 @@ export const isInferenceEnabled = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<boolean> => {
 		return await isFeatureEnabled(ctx, 'ai.knowledge.autoLink');
+	},
+});
+
+/**
+ * The anchors of an inference pass together with the active embedding space,
+ * read in ONE transaction, so each anchor's vector is taken from the active
+ * space's column (`vectorInSpace`) and searched in that space only. An anchor
+ * with no vector in the active space has no neighbours to find.
+ */
+export const getAnchorsWithEmbeddingSpace = internalQuery({
+	args: { ids: v.array(v.id('knowledgeEntries')) },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ anchors: Doc<'knowledgeEntries'>[]; activeSpace: SpaceRef | null }> => {
+		const byId = await batchGet(ctx, args.ids);
+		const anchors = args.ids.flatMap((id) => {
+			const entry = byId.get(id);
+			return entry ? [entry] : [];
+		});
+		const active = await readSearchableSpace(ctx.db);
+		return { anchors, activeSpace: active ? spaceRefOf(active) : null };
 	},
 });
 

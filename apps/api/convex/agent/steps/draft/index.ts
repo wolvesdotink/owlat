@@ -15,11 +15,14 @@
  */
 
 import { internal } from '../../../_generated/api';
-import { resolveLanguageModelForClassifiedDraft } from '../../../lib/llmProvider';
+import { resolveLanguageModel } from '../../../lib/llmProvider';
+import { draftWriterRoute } from './writerRoute';
 import { buildReplySubject } from '../../../lib/emailAddress';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from './recall';
+import { teamRoot } from '../../shared/agentSpend';
+import { boundedRoot } from '../../../lib/llm/actionDeadline';
 import { draftAttachmentPatch } from './attachment';
 import { loadDraftPlan, recordDraftPlan } from './plan';
 import type { AttachmentSuggestions } from '../../../inbox/attachmentSuggest';
@@ -140,9 +143,13 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// bounded (see recall.ts): retrieval errors ⇒ no facts; capped call count.
 		const recallScope: Id<'contacts'> | 'org-general-only' =
 			message?.contactId ?? 'org-general-only';
+		// The message's root, on this action's clock: the draft, its self-check, the
+		// recall searches and the attachment search all group under it (ADR-0073).
+		const root = boundedRoot(ctx, teamRoot(input.inboundMessageId));
 		const recallKnowledge = buildRecallKnowledgeTool({
 			runAction: ctx.runAction,
 			scopeToContact: recallScope,
+			root,
 		});
 
 		// Natural-language handling rules — a matching `draft_with_stance` rule
@@ -175,17 +182,30 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// self-check. Personal Postbox (mail/ai/draftOnArrival.ts) runs the exact
 		// same service so both surfaces produce identical output for the same
 		// inbound message.
+		// The writer's route (./writerRoute.ts): today's single tier, or for a
+		// reviewed draft with the policy's switch on, the fast writer first and
+		// at most one escalation to the capable one (D2).
+		const route = await draftWriterRoute(ctx, {
+			category: safeCategory,
+			intent: safeIntent,
+			priority: safePriority,
+			confidence: input.classification.confidence,
+		});
 		const { draftBody, draftQuality, planCoverage, tokenUsage, modelUsed } = await runSharedDraft(
 			ctx,
 			{
 				surface: 'organization',
 				resolveModel: () =>
-					resolveLanguageModelForClassifiedDraft(ctx, {
-						category: safeCategory,
-						intent: safeIntent,
-						priority: safePriority,
-						confidence: input.classification.confidence,
+					resolveLanguageModel(ctx, 'mail.draft', {
+						tier: route === 'capable' ? 'capable' : 'fast',
 					}),
+				...(route === 'cheap_first'
+					? {
+							writer: {
+								resolveCapable: () => resolveLanguageModel(ctx, 'mail.draft', { tier: 'capable' }),
+							},
+						}
+					: {}),
 				audience: 'an organization',
 				styleReference: "the organization's",
 				context: input.context,
@@ -208,6 +228,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 				// the one store the spend ceiling reads (#1259). The usage it returns
 				// goes onto the step's agentActions row, the cost-by-step view only.
 				spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
+				root,
 				replyLanguage,
 				...(plan ? { responsePlan: plan.prompt } : {}),
 				strategyScope: {
@@ -229,11 +250,14 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			draftSubject: replySubject,
 			confidenceScore: input.classification.confidence,
 			...(draftQuality ? { draftQuality } : {}),
+			// A cheap-first draft is for review only (the `cheap_first_draft` gate).
+			...(route === 'cheap_first' ? { isCheapFirstDraft: true } : {}),
 			...(await draftAttachmentPatch(
 				ctx,
 				input.context,
 				message?.contactId,
-				input.ownerAttachment
+				input.ownerAttachment,
+				root
 			)),
 		});
 

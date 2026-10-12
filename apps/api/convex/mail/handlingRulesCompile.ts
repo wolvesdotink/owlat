@@ -25,9 +25,10 @@ import { authedAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmObject } from '../lib/llm/dispatch';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import { recordSpendOnFailure } from '../analytics/failedLlmSpend';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import { newRootRequest } from '../lib/llm/requestMeter';
 import { throwInvalidInput } from '../_utils/errors';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /** The compiled rule shape the model must return. */
 const compiledRuleSchema = z.object({
@@ -137,24 +138,27 @@ function boundFacet(entries: string[] | undefined): string[] | undefined {
 export const compile = authedAction({
 	args: { instruction: v.string() },
 	handler: async (ctx, args): Promise<CompiledRule & { compiledModel?: string }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const instruction = args.instruction.trim();
 		if (!instruction) throwInvalidInput('Rule text is required');
 
 		// Flag / budget / rate-limit gate, shared with the advisory Postbox AI.
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
-		const model = await resolveLanguageModel(ctx, 'classify'); // cheap tier — this is a light extraction
-		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+		const model = await resolveLanguageModel(ctx, 'mail.rule_compile'); // fast tier — a light extraction
+		const { object, modelUsed } = await meterLlmCall(
 			ctx,
-			'handling_rule_compile',
-			runLlmObject({
-				model,
-				schema: compiledRuleSchema,
-				prompt: buildCompilePrompt(instruction),
-				temperature: 0,
-			})
+			{ feature: 'handling_rule_compile', root: newRootRequest('rules') },
+			(meter) =>
+				runLlmObject({
+					meter,
+					model,
+					schema: compiledRuleSchema,
+					prompt: buildCompilePrompt(instruction),
+					temperature: 0,
+				})
 		);
-		await recordLlmSpend(ctx, 'handling_rule_compile', tokenUsage, modelUsed);
 
 		// Bound the compiled facets defensively (the model output is structured but
 		// still model-authored) before it is shown for review / saved.

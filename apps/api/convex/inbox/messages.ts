@@ -38,6 +38,7 @@ import {
 	inboundReceiveResultValidator,
 	type InboundReceiveResult,
 } from './receiveInbound';
+import { invalidateSenderMemoryOnAuthFailure } from '../decision/senderMemory';
 
 // Re-exported for existing importers of this module.
 export { extractEmail, normalizeSubject };
@@ -231,6 +232,8 @@ export const receiveMessage = internalMutation({
 			rawStorageId: args.rawStorageId,
 			rawSize: args.rawSize,
 			virusVerdict: args.virusVerdict,
+			mtaSpamVerdict: args.mtaSpamVerdict,
+			mtaSpamScore: args.mtaSpamScore,
 			// Written here and cleared only by the retention sweep, so the marker
 			// and the blob it stands for have exactly one writer each.
 			isRawRetained: args.rawStorageId ? (true as const) : undefined,
@@ -246,6 +249,13 @@ export const receiveMessage = internalMutation({
 			inboundSignerFingerprint: args.inboundSignerFingerprint,
 		});
 		await applyInboxStatsDelta(ctx, null, 'received');
+		// D12: a DMARC failure invalidates what is remembered about the sender.
+		await invalidateSenderMemoryOnAuthFailure(
+			ctx,
+			{ scope: 'team_inbox' },
+			args.from,
+			args.dmarcResult
+		);
 		// A quarantined arrival needs no reply, but the thread write above started
 		// a response clock for it (inbox/sla/clock.ts); it never passes through the
 		// lifecycle edge that would stop it.

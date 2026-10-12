@@ -129,15 +129,26 @@ const {
 	setHasChanges,
 } = useUnsavedChanges({
 	onSave: async () => {
-		await handleSave();
-		// `useAiProviderForm.handleSave` clears `isDirty` only once the write
-		// lands; a validation stop or a refused mutation leaves it set, so a
-		// still-dirty form means the save failed and the operator stays here.
-		if (isDirty.value) throw new Error('Save failed');
+		if (isDirty.value) await handleSave();
+		// The routing card says whether its save landed: a version conflict
+		// reloads the newer policy and clears its dirty flag, so only the
+		// answer tells a refused save apart from a saved one.
+		const isRoutingSaved = !routingDirty.value || (await routingCard.value?.save()) === true;
+		// handleSave clears `isDirty` only once the write lands; a still-dirty
+		// form, or a refused routing save, keeps the operator here.
+		if (isDirty.value || !isRoutingSaved) throw new Error('Save failed');
 	},
 });
 
-watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
+// The routing policy card saves on its own (a separate, versioned record), but
+// leaving the page with its edits unsaved is guarded the same way.
+const routingCard = ref<{ save: () => Promise<boolean> } | null>(null);
+const routingDirty = ref(false);
+watch(
+	() => isDirty.value || routingDirty.value,
+	(dirty) => setHasChanges(dirty),
+	{ immediate: true }
+);
 </script>
 
 <template>
@@ -396,6 +407,7 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					:is-saving="isSaving"
 					:can-test="canTest"
 					:feature-state="decisionFeatureState"
+					:env-problem="config?.decisionEnvProblem"
 					@test="handleDecisionTest"
 				/>
 
@@ -445,6 +457,15 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					</UiButton>
 				</div>
 			</form>
+
+			<!-- Outside the form: it has controls and a form of its own. -->
+			<SettingsAiEmbeddingSpaceCard class="mt-6 max-w-3xl" />
+
+			<SettingsAiRoutingPolicyCard
+				ref="routingCard"
+				class="mt-6 max-w-3xl"
+				@dirty="routingDirty = $event"
+			/>
 
 			<!-- Only a stored row can be removed; env-only installs have nothing here. -->
 			<SettingsAiRemoveConfigCard

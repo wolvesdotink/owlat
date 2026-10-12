@@ -93,6 +93,11 @@ export const mailboxesTables = {
 		// mail/sendingSwitch.ts::setSendingPreference, never assumed here.
 		outboundPreference: v.optional(v.union(v.literal('external'), v.literal('instance'))),
 		status: v.union(v.literal('active'), v.literal('suspended'), v.literal('deleted')),
+		// ADR-0060 §9: keep this mailbox's mail away from every hosted decision
+		// provider. Absent ⇒ not excluded. Set by
+		// `decision/exclusion.ts setHostedDecisionExclusion` (admin, audited); an
+		// excluded mailbox is judged by a local decision engine only.
+		isExcludedFromHostedDecisions: v.optional(v.boolean()),
 		quotaBytes: v.optional(v.number()), // null = unlimited (always unset for external)
 		// DEPRECATED (plan 2.4): the live byte count and its CAS revision moved to
 		// the 1:1 `mailboxUsage` row (`mail/mailboxUsage.ts`), so a delivery no

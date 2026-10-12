@@ -40,6 +40,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailAttachmentBackfillJobs',
 	'interpretBackfillJobs',
 	'mailBodySearchBackfillJobs',
+	// AI routing records that point at messages, mailboxes and contacts
+	// (ADR-0073): before every parent they name.
+	'decisionArtifacts',
+	'senderMemory',
 	// Inline bodies (plan 3.2), 1:1 with mailMessages: swept before their rows
 	// like the attachment index, so no body outlives its message.
 	'mailMessageBodies',
@@ -64,6 +68,15 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'agentActions',
 	'agentMetrics',
 	'llmUsageEvents',
+	// Admission's holds and the ledger-derived period aggregate (ADR-0073), and
+	// the provider batch items whose requests those holds cover (L14).
+	'llmBatchItems',
+	'llmReservations',
+	'llmSpendPeriods',
+	'llmSpendAggregateState',
+	'shadowQuotaEntries',
+	'shadowQuotaDays',
+	'knowledgeExtractionProgress',
 	'agentCircuitBreakers',
 	'agentConfig',
 	'autonomyFeedback',
@@ -220,6 +233,12 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'knowledgeBackfillJobs',
 	'knowledgeEdgeBackfillJobs',
 	'knowledgeGraphStats',
+	// Embedding provenance (ADR-0073): after the knowledge and file rows that
+	// reference a space or an attestation, jobs and evidence before spaces.
+	'embeddingReembedJobs',
+	'embeddingAttestations',
+	'embeddingCoverage',
+	'embeddingSpaces',
 
 	// Domain stack — reputation before domains. The domains step clears BOTH
 	// identity siblings and schedules both external provider deletions, so it
@@ -266,6 +285,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// workspace (#1101). Nothing above reads it; the deployment's LLM_* env
 	// fallback is what any later AI call resolves.
 	'aiProviderConfig',
+	// The AI routing policy (ADR-0073); nothing above reads it.
+	'aiRoutingPolicy',
 
 	// Independent feature state
 	'coalesceBatches',

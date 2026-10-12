@@ -12,6 +12,7 @@
  * plane resolves independently (local-by-default), per the two-plane brief.
  */
 
+import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import type { LanguageModel } from 'ai';
 import { hostedCacheKey, memoizeClient } from './clientCache';
@@ -32,7 +33,7 @@ export const anthropicLanguageAdapter: LanguageProviderAdapter<'anthropic'> = {
 	label: 'Anthropic (Claude)',
 	docsUrl: 'https://docs.claude.com/en/api',
 	isLocal: false,
-	defaultModels: { fast: 'claude-haiku-4-5', capable: 'claude-opus-4-8' },
+	defaultModels: LANGUAGE_MODEL_CATALOG.anthropic.defaults,
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return anthropicClient(cfg)(modelId);
 	},

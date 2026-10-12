@@ -36,6 +36,7 @@ function fixtureModule(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: false,
 		...overrides,
 		build: () =>
 			tool({
@@ -80,12 +81,12 @@ describe('built-in tool registry conformance', () => {
 		}
 	});
 
-	it('scrubs the output of every built-in and gates none behind a per-tool flag', () => {
+	it('scrubs the output of every built-in and gates only the knowledge search on ai.knowledge', () => {
 		for (const module of TOOL_MODULES) {
 			expect(module.scrubOutput).toBe(true);
-			expect(module.flag).toBeUndefined();
+			expect(module.flag).toBe(module.name === 'searchKnowledge' ? 'ai.knowledge' : undefined);
 		}
-		expect(hasFlaggedModule(TOOL_MODULES)).toBe(false);
+		expect(hasFlaggedModule(TOOL_MODULES)).toBe(true);
 	});
 });
 
@@ -232,8 +233,8 @@ describe('withHostScrub', () => {
 const READER = { canReadInbox: true };
 
 describe('buildAssistantTools', () => {
-	it('assembles exactly the built-in set, in order, with no flag I/O', async () => {
-		const runQuery = vi.fn();
+	it('assembles exactly the built-in set, in order, with ai.knowledge on', async () => {
+		const runQuery = vi.fn(async () => ({ 'ai.knowledge': true }));
 		const ctx = { runQuery } as unknown as ActionCtx;
 		const set = await buildAssistantTools(ctx, READER);
 		expect(Object.keys(set)).toEqual([
@@ -245,8 +246,26 @@ describe('buildAssistantTools', () => {
 			'draftEmailReply',
 			'draftCampaignCopy',
 		]);
-		// No module declares a flag, so the assembler must not query flag state.
-		expect(runQuery).not.toHaveBeenCalled();
+		// One flag read for the whole turn.
+		expect(runQuery).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not offer the knowledge search while ai.knowledge is off (#1335), as Quick Query refuses it', async () => {
+		for (const flags of [{ 'ai.knowledge': false }, {}]) {
+			const runQuery = vi.fn(async () => flags);
+			const runAction = vi.fn(async () => []);
+			const ctx = { runQuery, runAction } as unknown as ActionCtx;
+			const set = await buildAssistantTools(ctx, READER);
+			expect(Object.keys(set)).toEqual([
+				'searchFiles',
+				'searchEverything',
+				'getCampaignStats',
+				'getEmailStats',
+				'draftEmailReply',
+				'draftCampaignCopy',
+			]);
+			expect(runAction).not.toHaveBeenCalled();
+		}
 	});
 
 	it('omits a tool whose flag is off, resolving flags through the host', async () => {
@@ -272,7 +291,12 @@ describe('buildAssistantTools', () => {
 	it('asks retrieval for Team Inbox knowledge only on behalf of a reader', async () => {
 		for (const canReadInbox of [false, true]) {
 			const runAction = vi.fn(async () => []);
-			const ctx = { runQuery: vi.fn(async () => false), runAction } as unknown as ActionCtx;
+			// The flag map first (ai.knowledge on), then graph retrieval (off).
+			const runQuery = vi
+				.fn()
+				.mockResolvedValueOnce({ 'ai.knowledge': true })
+				.mockResolvedValue(false);
+			const ctx = { runQuery, runAction } as unknown as ActionCtx;
 			const set = await buildAssistantTools(ctx, { canReadInbox });
 			await set['searchKnowledge']?.execute?.({ query: 'refund policy' }, options);
 			expect(runAction).toHaveBeenCalledWith(

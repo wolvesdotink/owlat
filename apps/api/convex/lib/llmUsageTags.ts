@@ -23,6 +23,12 @@
 
 import { v } from 'convex/values';
 import { literalUnion } from './literalUnion';
+import {
+	admissionPriorityValidator,
+	aiTaskNameValidator,
+	budgetClassValidator,
+	qualityResultValidator,
+} from './validators/aiRouting';
 
 /**
  * The planes a row's spend can belong to, as a runtime tuple so the type and
@@ -37,6 +43,54 @@ export const LLM_USAGE_PLANES = ['language', 'embedding', 'decision'] as const;
 export type LlmUsagePlane = (typeof LLM_USAGE_PLANES)[number];
 
 export const llmUsagePlaneValidator = literalUnion(LLM_USAGE_PLANES);
+
+/**
+ * The AI routing columns (ADR-0073, Phase 1a and 1b). All optional: a row
+ * written before them, or by a caller that knows none of them, is exactly
+ * today's row. One row is still one provider request, and the ledger is still
+ * the single source of settled spend; these columns say which logical request
+ * the row belongs to and what it cost in detail.
+ *
+ * Only `reservationId` is indexed (settling a crashed reservation needs the rows
+ * it already wrote); reports read a bounded slice and group in memory, as the
+ * comment above explains for the tags.
+ */
+export const llmUsageRoutingFields = {
+	/** The outermost request this call serves (one inbound message's run, one user action). */
+	rootRequestId: v.optional(v.string()),
+	/** The call that issued this one (a nested assistant tool, a quality escalation). */
+	parentCallId: v.optional(v.string()),
+	/** The task-policy catalog name (`lib/llm/taskPolicy.ts`). */
+	task: v.optional(aiTaskNameValidator),
+	/** `aiRoutingPolicy.policyVersion` the call was routed under. */
+	policyVersion: v.optional(v.number()),
+	/** 1-based provider request number within the logical call (`requestId`). */
+	attempt: v.optional(v.number()),
+	/**
+	 * Secret-free identity of the endpoint that answered: a language
+	 * `LanguageEndpointProvenance`, a decision `DecisionEndpointProvenance`, or
+	 * `embedding:<provider kind>`. Never a URL with credentials, never a key.
+	 */
+	endpoint: v.optional(v.string()),
+	/** Billed usage the three token totals above do not break out. */
+	cacheReadTokens: v.optional(v.number()),
+	cacheWriteTokens: v.optional(v.number()),
+	reasoningTokens: v.optional(v.number()),
+	/** Wall time of this provider request, in ms. */
+	latencyMs: v.optional(v.number()),
+	/** The quality assessment of what this call produced (Phase 4). Absent ⇒ not assessed. */
+	qualityResult: v.optional(qualityResultValidator),
+	/** The pricing catalog revision `costUsd` was computed with. Rows are never repriced. */
+	priceVersion: v.optional(v.string()),
+	/** `costUsd` is a conservative estimate (usage missing, cancelled, crashed), not reported usage. */
+	isEstimated: v.optional(v.boolean()),
+	/** `costUsd` in integer micro-USD, rounded up: what the period aggregate adds. */
+	costMicrousd: v.optional(v.number()),
+	/** The ceiling slice the call drew on. Absent ⇒ `standard`. */
+	budgetClass: v.optional(budgetClassValidator),
+	/** The admission reservation the call ran under (`llmReservations.reservationId`). */
+	reservationId: v.optional(v.string()),
+};
 
 /** Spread into `defineTable` beside the priced columns. */
 export const llmUsageTagFields = {
@@ -62,4 +116,38 @@ export const llmUsageTagFields = {
 	 * and an operator's own fine-tune has an id no price table will ever know.
 	 */
 	isLocalEngine: v.optional(v.boolean()),
+	...llmUsageRoutingFields,
+	/**
+	 * The spend-aggregate generation the row was counted under at insert
+	 * (`analytics/ledgerInsert.ts`). A rebuild counts the rows older than its
+	 * own generation; absent (rows from before the field) reads as older.
+	 * Written by the insert only, never by a caller.
+	 */
+	spendGeneration: v.optional(v.number()),
 };
+
+/**
+ * An `LlmRootContext` (`lib/llm/requestMeter.ts`) passed as an argument into an
+ * action that makes model calls on the caller's behalf (a retrieval search, a
+ * nested assistant tool), so its rows group under the caller's root request.
+ */
+export const llmRootContextValidator = v.object({
+	rootRequestId: v.string(),
+	parentCallId: v.optional(v.string()),
+	deadlineAt: v.optional(v.number()),
+	/** The root's admission priority (`lib/llm/requestMeter.ts` `LlmRootContext.priority`). */
+	priority: v.optional(admissionPriorityValidator),
+});
+
+/**
+ * The feature tag of a hold's settlement rows (`aiRouting/settlement.ts`): an
+ * estimate for unknown usage, or a late row's offset of it. They carry spend
+ * but are not provider requests, so every call or request count leaves them
+ * out (Sol r6 F1).
+ */
+export const SETTLEMENT_FEATURE = 'admission_settlement';
+
+/** Whether a ledger row is a provider request (not a settlement adjustment). */
+export function isProviderRequestRow(row: { readonly feature?: string }): boolean {
+	return row.feature !== SETTLEMENT_FEATURE;
+}

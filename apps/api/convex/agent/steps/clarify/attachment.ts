@@ -17,6 +17,8 @@
  *     any weak match as a near candidate and "It isn't ready yet" as a chip.
  */
 
+import { teamRoot } from '../../shared/agentSpend';
+import { boundedRoot } from '../../../lib/llm/actionDeadline';
 import { internal } from '../../../_generated/api';
 import type { ActionCtx } from '../../../_generated/server';
 import type { Infer } from 'convex/values';
@@ -233,6 +235,7 @@ export async function detectAttachmentClarification(
 		const suggestions = await computeAttachmentSuggestions(watched, {
 			context: input.context,
 			contactId: message?.contactId,
+			root: boundedRoot(ctx, teamRoot(input.inboundMessageId)),
 		});
 		if (searchFailed) return null;
 		if (suggestions?.ambiguous) {

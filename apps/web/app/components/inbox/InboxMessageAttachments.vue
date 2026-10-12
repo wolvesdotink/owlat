@@ -3,6 +3,7 @@ import type { Doc } from '@owlat/api/dataModel';
 import { formatCompactFileSize } from '~/utils/formatters';
 import { parseInboundAttachmentMeta } from '~/utils/inboundAttachmentMeta';
 import { loadInboundRawEml } from '~/composables/loadInboundRawEml';
+import { notIndexedNoticeKey } from '~/utils/attachmentIndexing';
 import { useMimePartDownload } from '~/composables/useMimePartDownload';
 
 /**
@@ -88,28 +89,6 @@ const isRawGone = computed(() => !props.message.rawStorageId);
 const isBlocked = computed(() => props.message.virusVerdict === 'infected');
 
 /**
- * Every marker that is not a plain `indexed`, and the line it renders.
- *
- * TOTAL OVER THE UNION, not `Record<string, string>`: the marker comes from
- * `attachmentIndexingValidator`, and an untyped table let a new member compile
- * everywhere and then render as nothing — a row that looks exactly like a file
- * the assistant read, which is the defect these lines exist to close.
- */
-type NotIndexedMarker = Exclude<NonNullable<InboxMessageFiles['attachmentIndexing']>, 'indexed'>;
-
-const NOT_INDEXED_KEYS: Record<NotIndexedMarker, string> = {
-	indexed_placeholder: 'notIndexedPlaceholder',
-	skipped_unscanned: 'notScanned',
-	skipped_unverified: 'notIndexedUnverified',
-	skipped_budget: 'notIndexedBudget',
-	skipped_cap: 'notIndexedCap',
-	skipped_refused_type: 'notIndexedRefusedType',
-	skipped_too_large: 'notIndexedTooLarge',
-	skipped_unsupported: 'notIndexedUnsupported',
-	skipped_failed: 'notIndexedFailed',
-};
-
-/**
  * The line above the rows. At most one state shows, ordered by how much it
  * changes what the reader can do: blocked, then gone, then not-indexed.
  *
@@ -142,11 +121,10 @@ const notice = computed<{ text: string[]; tone: 'warning' | 'muted'; testId: str
 				: [];
 			return { text: [base, ...size], tone: 'muted', testId: 'inbox-attachments-gone' };
 		}
-		const marker = props.message.attachmentIndexing;
-		const notIndexedKey = marker && marker !== 'indexed' ? NOT_INDEXED_KEYS[marker] : undefined;
+		const notIndexedKey = notIndexedNoticeKey(props.message.attachmentIndexing);
 		if (notIndexedKey) {
 			return {
-				text: [t(`components.inbox.inboxMessageAttachments.${notIndexedKey}`)],
+				text: [t(notIndexedKey)],
 				tone: 'muted',
 				testId: 'inbox-attachments-not-indexed',
 			};

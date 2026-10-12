@@ -15,6 +15,7 @@
  */
 
 import { ref } from 'vue';
+import { budgetCopyKeyOfError } from '~/utils/aiBudget';
 
 /** The fixed set of one-tap rewrite intents. Mirrors the backend union. */
 export type RewriteIntent = 'shorter' | 'friendlier' | 'formal' | 'grammar' | 'translate';
@@ -107,13 +108,17 @@ export function usePostboxSelectionRewrite(options: UsePostboxSelectionRewriteOp
 		let result = '';
 		try {
 			result = await options.requestRewrite(input, controller.signal);
-		} catch {
+		} catch (error) {
 			result = '';
 			if (controller.signal.aborted || activeController !== controller) return;
 			activeController = null;
 			status.value = 'idle';
 			activeIntent.value = null;
-			options.onError?.(t('shared.postbox.usePostboxSelectionRewrite.failed'));
+			// U5: a budget refusal says which budget, not "try again".
+			const budgetKey = budgetCopyKeyOfError(error);
+			options.onError?.(
+				budgetKey ? t(budgetKey) : t('shared.postbox.usePostboxSelectionRewrite.failed')
+			);
 			return;
 		}
 		// Reject stale/aborted responses: a newer request (or a reset) replaced us.

@@ -26,6 +26,7 @@
  * translation is a cosmetic gap, never a blocked reply.
  */
 
+import type { LlmCallMeter } from '../lib/llm/requestMeter';
 import { z } from 'zod';
 import type { LanguageModel } from 'ai';
 import { APP_LOCALES } from '../lib/convexValidators';
@@ -33,6 +34,7 @@ import { runLlmObject, type LlmTextResult } from '../lib/llm/dispatch';
 import { partialUsageOf } from '../lib/llm/partialUsage';
 import { isCredentialSolicitation } from './clarificationSlots';
 import { interfaceRegisterRules } from '../mail/ai/interfaceLanguage';
+import { rethrowAdmissionRefusal } from '../lib/llm/admissionPort';
 
 /** Canonical question copy is English; every other shipped locale is a target. */
 export const CANONICAL_QUESTION_LOCALE = 'en';
@@ -233,7 +235,9 @@ function sumUsage(
 export async function localizeQuestions<Q extends LocalizableQuestion>(
 	model: LanguageModel,
 	questions: readonly Q[],
-	locales: readonly string[] = APP_LOCALES
+	locales: readonly string[] = APP_LOCALES,
+	/** Records each provider request of both calls, one ledger row each (ADR-0073). */
+	meter?: LlmCallMeter
 ): Promise<{
 	questions: (Q & { translations?: QuestionTranslation[] })[];
 	tokenUsage?: LlmTextResult['tokenUsage'];
@@ -248,6 +252,7 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 	let modelUsed: LlmTextResult['modelUsed'];
 	try {
 		const first = await runLlmObject({
+			...(meter ? { meter } : {}),
 			model,
 			schema: questionTranslationsSchema,
 			prompt: buildLocalizePrompt(questions, targets),
@@ -257,6 +262,8 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		tokenUsage = first.tokenUsage;
 		modelUsed = first.modelUsed;
 	} catch (error) {
+		// A budget refusal holds the Team message or defers the Postbox run (D1).
+		rethrowAdmissionRefusal(error);
 		// A completion that failed the schema was still billed.
 		const billed = partialUsageOf(error);
 		return {
@@ -276,6 +283,7 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 	const retryTargets = targets.filter((t) => missing.some((m) => m.locale === t));
 	try {
 		const retry = await runLlmObject({
+			...(meter ? { meter } : {}),
 			model,
 			schema: questionTranslationsSchema,
 			prompt: buildLocalizePrompt(retryQuestions, retryTargets),
@@ -288,6 +296,7 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		tokenUsage = sumUsage(tokenUsage, retry.tokenUsage);
 		modelUsed = modelUsed ?? retry.modelUsed;
 	} catch (error) {
+		rethrowAdmissionRefusal(error); // a refusal is not a gap (D1)
 		// Keep the first pass; the gap is logged below.
 		const billed = partialUsageOf(error);
 		tokenUsage = sumUsage(tokenUsage, billed?.tokenUsage);

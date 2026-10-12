@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { activeSpaceId, stampedIn } from './helpers/embeddingSpaces';
 
 /**
  * semanticFileProcessing.ts semanticSearch — now hybrid (vector + FTS via RRF),
@@ -28,9 +29,15 @@ type FileSpec = {
 	contactIds?: Id<'contacts'>[];
 };
 
-async function insertFile(t: ReturnType<typeof convexTest>, spec: FileSpec): Promise<Id<'semanticFiles'>> {
+async function insertFile(
+	t: ReturnType<typeof convexTest>,
+	spec: FileSpec
+): Promise<Id<'semanticFiles'>> {
 	const now = Date.now();
-	const storageId = await t.run((ctx) => ctx.storage.store(new Blob([spec.searchableText ?? spec.filename])));
+	const storageId = await t.run((ctx) =>
+		ctx.storage.store(new Blob([spec.searchableText ?? spec.filename]))
+	);
+	const spaceId = await activeSpaceId(t);
 	return await t.run((ctx) =>
 		ctx.db.insert('semanticFiles', {
 			storageId,
@@ -41,10 +48,11 @@ async function insertFile(t: ReturnType<typeof convexTest>, spec: FileSpec): Pro
 			contactIds: spec.contactIds,
 			version: 1,
 			embedding: unit(spec.embedAt),
+			...stampedIn(spaceId),
 			searchableText: spec.searchableText ?? spec.filename,
 			createdAt: now,
 			updatedAt: now,
-		}),
+		})
 	);
 }
 
@@ -56,7 +64,7 @@ async function insertContact(t: ReturnType<typeof convexTest>): Promise<Id<'cont
 			doiStatus: 'not_required',
 			createdAt: now,
 			updatedAt: now,
-		}),
+		})
 	);
 }
 
@@ -68,7 +76,11 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 		// that embedding (orthogonal, embedAt 999) — pure vector ranks it last/out
 		// — but its searchableText carries the exact order number we query for.
 		for (let i = 0; i < 60; i++) {
-			await insertFile(t, { filename: `decoy-${i}.txt`, embedAt: 7, searchableText: `unrelated chatter ${i}` });
+			await insertFile(t, {
+				filename: `decoy-${i}.txt`,
+				embedAt: 7,
+				searchableText: `unrelated chatter ${i}`,
+			});
 		}
 		await insertFile(t, {
 			filename: 'invoice.pdf',
@@ -77,6 +89,7 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 		});
 
 		const results = await t.action(internal.semanticFileProcessing.semanticSearch, {
+			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'ABC-12345',
 			embedding: unit(7),
 			scopeToContact: 'org-wide',
@@ -89,9 +102,14 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 
 	it('still returns vector hits when there is no FTS match (graceful degrade)', async () => {
 		const t = convexTest(schema, modules);
-		await insertFile(t, { filename: 'concept.txt', embedAt: 3, searchableText: 'totally different words' });
+		await insertFile(t, {
+			filename: 'concept.txt',
+			embedAt: 3,
+			searchableText: 'totally different words',
+		});
 
 		const results = await t.action(internal.semanticFileProcessing.semanticSearch, {
+			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'zzzznomatch',
 			embedding: unit(3),
 			scopeToContact: 'org-wide',
@@ -124,6 +142,7 @@ describe('semanticFileProcessing.semanticSearch — contact-scope post-filter', 
 		});
 
 		const results = await t.action(internal.semanticFileProcessing.semanticSearch, {
+			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'SKU-777',
 			embedding: unit(4),
 			scopeToContact: contactA,

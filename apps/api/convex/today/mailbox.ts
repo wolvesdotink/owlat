@@ -27,6 +27,7 @@ import { requireMailboxAccess } from '../mail/permissions';
 import { loadThreadVisit, visitDelta } from '../mail/threadVisits';
 import { classifyMailCategory } from '../mail/category';
 import { isFromMailboxOwner } from '../mail/needsReplyHeuristic';
+import { loadSenderContact, senderEvidenceOf } from '../mail/senderEvidence';
 import { loadState, resolveWatermark } from './state';
 import { countFolderArrivalsSince } from '../mail/messageCounters';
 import { modeOfMailbox, openBriefTop } from '../mail/interpret/briefTop';
@@ -106,19 +107,14 @@ async function categoryOf(
 	if (thread.category) return { stored: thread.category, heuristic: null };
 	// A reply from the mailbox itself says nothing about what kind of mail this is.
 	if (latest.outbound !== undefined) return { stored: null, heuristic: null };
-	const contact = await ctx.db
-		.query('mailContacts')
-		.withIndex('by_mailbox_and_email', (q) =>
-			q.eq('mailboxId', thread.mailboxId).eq('email', latest.fromAddress.toLowerCase())
-		)
-		.first();
+	const contact = await loadSenderContact(ctx, thread.mailboxId, latest.fromAddress.toLowerCase());
 	return {
 		stored: null,
 		heuristic: classifyMailCategory({
 			fromAddress: latest.fromAddress,
 			subject: latest.subject,
 			hasListUnsubscribe: latest.unsubscribe !== undefined,
-			isKnownCorrespondent: contact !== null,
+			isKnownCorrespondent: senderEvidenceOf(contact).isInAddressBook,
 		}),
 	};
 }

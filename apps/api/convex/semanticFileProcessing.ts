@@ -17,57 +17,58 @@
 import { v } from 'convex/values';
 import { htmlToPlainText } from '@owlat/shared/html';
 import { internalAction } from './_generated/server';
-import type { ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import {
-	resolveAiConfig,
-	resolveLanguageModel,
-	resolveEmbeddingModel,
-	toIndexVector,
-} from './lib/llmProvider';
-import { AiNotConfiguredError } from './lib/aiNotConfigured';
-import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
-import { embed } from 'ai';
-import { z } from 'zod';
+import { resolveIndexEmbedder, toIndexVector } from './lib/llmProvider';
+import { measuredEmbeddingSpace, probeEmbeddingRevision } from './lib/aiRouting/embeddingProbe';
+import { fileEmbeddingInput } from './lib/aiRouting/embeddingInputs';
+import type { MeasuredSpace } from './lib/aiRouting/embeddingRegistry';
+import { embedRetrievalQuery, searchSpaceVectors } from './knowledge/vectorSearch';
 import { logError, logInfo } from './lib/runtimeLog';
-import { runLlmObject } from './lib/llm/dispatch';
-import { recordLlmSpend } from './analytics/llmUsage';
-import { recordSpendOnFailure } from './analytics/failedLlmSpend';
+import { secretFreeErrorText } from './lib/embeddingSpace';
+import { meterLlmCall } from './analytics/meteredSpend';
+import { runEmbedding } from './lib/llm/embed';
+import { rootRequest } from './lib/llm/requestMeter';
+import { llmRootContextValidator } from './lib/llmUsageTags';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
-import { detectInjection } from './agent/steps/security_scan/patterns';
+import { scrubTags, slugifyTag, truncateForLLM } from './lib/semanticFileText';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
-
-/**
- * Whether any AI provider is set up. AI is optional: without one a file still
- * gets its extracted text, tags and search text, only no summary, embedding or
- * knowledge entries. A provider that is set up but unusable still throws, so a
- * misconfiguration stays visible instead of silently producing no vectors.
- */
-async function aiProviderConfigured(ctx: ActionCtx): Promise<boolean> {
-	try {
-		await resolveAiConfig(ctx);
-		return true;
-	} catch (error) {
-		if (error instanceof AiNotConfiguredError) return false;
-		throw error;
-	}
-}
+import { anchorActionDeadline, boundedRoot } from './lib/llm/actionDeadline';
+import {
+	batchedFileSummaryValidator,
+	deferFileForBudget,
+	fileStageValidator,
+	owedFileStages,
+	reusableSummary,
+} from './analytics/backgroundDeferral';
+import { aiProviderConfigured, sendSummaryThroughBatch, summarizeFile } from './lib/semanticFileAi';
 
 /**
  * Process a newly uploaded file: extract text, generate summary,
  * create tags, and compute embedding vector.
  */
 export const processFile = internalAction({
-	args: { fileId: v.id('semanticFiles') },
+	args: {
+		fileId: v.id('semanticFiles'),
+		/** Runs this file already deferred at the spend ceiling (ADR-0073, D1). */
+		deferrals: v.optional(v.number()),
+		/** The paid stages a deferred run still owes; absent: all of them. */
+		stages: v.optional(v.array(fileStageValidator)),
+		/** The summary a provider batch returned (L14): used instead of asking the model. */
+		batchedSummary: v.optional(batchedFileSummaryValidator),
+	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Get file metadata
 		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
 		if (!file) return;
+		// Every model call processing this file groups under one root (ADR-0073).
+		const fileRoot = rootRequest('file', args.fileId);
 
 		// Resolve the conversation/contact context this file was shared in, so
 		// tags can be inherited and a version diff computed.
@@ -131,9 +132,18 @@ export const processFile = internalAction({
 		// Without a provider this action used to throw at the embedding step, so
 		// the file never got its extracted text stored, and the backfill re-ran it
 		// into the same error for two hours.
-		const aiConfigured = await aiProviderConfigured(ctx);
+		// D1 (ADR-0073): at the spend ceiling the paid steps defer to a later run.
+		const aiConfigured =
+			(await aiProviderConfigured(ctx)) &&
+			!(await deferFileForBudget(
+				ctx,
+				args.fileId,
+				args.deferrals,
+				args.stages,
+				args.batchedSummary
+			));
 		if (!aiConfigured) {
-			logInfo('[semantic_file] no AI provider configured; storing text without AI metadata', {
+			logInfo('[semantic_file] no AI provider, or deferred at the spend ceiling; text only', {
 				fileId: args.fileId,
 			});
 		}
@@ -143,50 +153,50 @@ export const processFile = internalAction({
 		let summary = '';
 		let autoTags: string[] = [];
 		let title = file.title;
+		// Paid stages spend admission refuses are owed to a later run (D1, ADR-0073).
+		const owed = owedFileStages(ctx, args.fileId, args.deferrals);
+		const reused = reusableSummary(file, args.stages);
+		// The summary went to a provider batch: the embedding and the graph wait for it.
+		let isSummaryBatched = false;
 
 		if (injectionReason) {
 			// Poisoned extracted text: don't hand it to the model. Keep filename-only
 			// metadata so the file is still searchable without an AI round-trip.
 			title = title || file.filename;
+		} else if (reused) {
+			// A deferred run whose summary already landed: only the embedding is owed.
+			({ title, summary, autoTags } = reused);
+		} else if (args.batchedSummary) {
+			// L14: the summary came back from the provider's batch API.
+			title = title || args.batchedSummary.title;
+			summary = args.batchedSummary.summary;
+			autoTags = args.batchedSummary.tags;
 		} else if (textForAI.length > 50 && !aiConfigured) {
 			// No model to ask: the same fallback as a failed call below.
 			title = title || file.filename;
 		} else if (textForAI.length > 50) {
 			try {
-				const result = await recordSpendOnFailure(
-					ctx,
-					'semantic_file',
-					runLlmObject({
-						model: await resolveLanguageModel(ctx, 'summarize'),
-						schema: z.object({
-							title: z.string().describe('Short descriptive title for the file'),
-							summary: z.string().describe('2-3 sentence summary of the file content'),
-							tags: z.array(z.string()).describe('5-10 relevant tags for categorization'),
-						}),
-						prompt: `Analyze this file and provide a title, summary, and tags.
-
-Filename: ${file.filename}
-MIME type: ${file.mimeType}${fileCtx.threadSubject ? `\nShared in conversation: "${fileCtx.threadSubject}"` : ''}${fileCtx.contactNames.length ? `\nRelated contacts: ${fileCtx.contactNames.join(', ')}` : ''}
-
-Content:
-${textForAI}`,
-					})
-				);
-				logInfo('[semantic_file] llm call', {
-					tokenUsage: result.tokenUsage,
-					modelUsed: result.modelUsed,
+				const summaryInput = { file, fileCtx, textForAI, root: fileRoot };
+				// L14: out to the provider's batch API when the switch allows; this
+				// file is processed again with the summary once it is back.
+				isSummaryBatched = await sendSummaryThroughBatch(ctx, {
+					...summaryInput,
+					fileId: args.fileId,
 				});
-				await recordLlmSpend(ctx, 'semantic_file', result.tokenUsage, result.modelUsed);
-
-				title = title || result.object.title;
-				summary = result.object.summary;
-				autoTags = result.object.tags;
+				if (!isSummaryBatched) {
+					const result = await summarizeFile(ctx, summaryInput);
+					title = title || result.title;
+					summary = result.summary;
+					autoTags = result.tags;
+				}
 			} catch (error) {
 				logError('[semantic_file] summarize/tag call failed', {
 					fileId: args.fileId,
 					filename: file.filename,
 					error,
 				});
+				// D1: a refused call is owed, with the embedding that reads its summary.
+				owed.note(error, ['summary', 'embedding']);
 				// Fallback: use filename as title
 				title = title || file.filename;
 			}
@@ -194,25 +204,32 @@ ${textForAI}`,
 
 		// 3. Generate embedding
 		let embedding: number[] = [];
-		const embeddingText = [title, summary, extractedText.slice(0, 2000)].filter(Boolean).join(' ');
+		let embeddingSpace: MeasuredSpace | undefined;
+		const embeddingText = fileEmbeddingInput({ title, summary, extractedText });
 
-		if (aiConfigured && embeddingText.length > 10) {
+		if (aiConfigured && embeddingText && !isSummaryBatched) {
 			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
 			// actionable error instead of being swallowed into a silent empty vector;
 			// only a transient embed() failure fails soft (metadata without search).
-			const embeddingModel = await resolveEmbeddingModel(ctx);
+			const embedder = await resolveIndexEmbedder(ctx);
 			try {
-				const embeddingResult = await embed({
-					model: embeddingModel,
-					value: embeddingText,
-				});
-				embedding = toIndexVector(embeddingResult.embedding);
+				const before = await probeEmbeddingRevision(embedder.target);
+				const result = await meterLlmCall(
+					ctx,
+					{ feature: 'embedding_file', root: fileRoot },
+					(meter) => runEmbedding({ meter, model: embedder.model, value: embeddingText }),
+					// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+					{ onWriteError: 'ignore' }
+				);
+				embeddingSpace = await measuredEmbeddingSpace(embedder.target, result.embedding, before);
+				embedding = toIndexVector(result.embedding);
 			} catch (error) {
 				logError('[semantic_file] embedding generation failed', {
 					fileId: args.fileId,
 					filename: file.filename,
-					error,
+					error: secretFreeErrorText(error),
 				});
+				owed.note(error, ['embedding']);
 			}
 		}
 
@@ -260,8 +277,9 @@ ${textForAI}`,
 			extractedText: extractedText.slice(0, 50000), // Cap stored text
 			autoTags,
 			embedding,
-			embeddingModel: embedding.length > 0 ? CURRENT_EMBEDDING_MODEL : undefined,
-			embeddingGeneratedAt: embedding.length > 0 ? Date.now() : undefined,
+			// Stamped with the measured space and its model, or dropped when the
+			// configuration moved on (updateProcessedMetadata).
+			embeddingSpace,
 			searchableText,
 			changeSummary,
 		});
@@ -271,36 +289,22 @@ ${textForAI}`,
 		// text (binary stubs like "[PDF file: …]"), or no model to extract with.
 		if (
 			aiConfigured &&
+			!isSummaryBatched &&
+			// A run that owes only the embedding already fed the graph.
+			(args.stages === undefined || args.stages.includes('summary')) &&
 			extractedText &&
 			!extractedText.startsWith('[') &&
 			extractedText.length > 80
 		) {
 			await ctx.runAction(internal.knowledge.extraction.extractFromFile, {
 				fileId: args.fileId,
+				// Awaited: the extraction spends from this action's clock (ADR-0073).
+				root: boundedRoot(ctx, fileRoot),
 			});
 		}
+		await owed.schedule();
 	},
 });
-
-/**
- * Drop any tag that carries a prompt-injection attempt. Auto-tags are derived by
- * the LLM from untrusted extracted file content, so a planted instruction could
- * otherwise be persisted into `autoTags` / `searchableText` and reach a model via
- * retrieval. Deterministic pattern match — no extra LLM cost. Exported for unit
- * tests.
- */
-export function scrubTags(tags: string[]): string[] {
-	return tags.filter((tag) => !detectInjection(tag).detected);
-}
-
-/** Normalize a phrase into a lowercase kebab tag (e.g. "Q3 Financials" → "q3-financials"). */
-function slugifyTag(input: string): string {
-	return input
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		.slice(0, 40);
-}
 
 /**
  * Semantic file search (hybrid vector + full-text).
@@ -338,28 +342,44 @@ export const semanticSearch = internalAction({
 	args: {
 		queryText: v.optional(v.string()),
 		embedding: v.optional(v.array(v.float64())),
+		// The space a precomputed `embedding` is in (`embedRetrievalQuery`). Without
+		// it the vector leg is skipped: a vector is only ever compared within its
+		// own space (searchSpaceVectors).
+		embeddingSpaceId: v.optional(v.id('embeddingSpaces')),
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out.
 		scopeToContact: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
+		/** The caller's root request, so the query embedding's ledger row groups under it. */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (
 		ctx,
 		args
 	): Promise<Array<Doc<'semanticFiles'> & { url: string | null; _score: number }>> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const queryText = args.queryText?.trim();
 
-		let vector = args.embedding;
-		if (!vector || vector.length === 0) {
+		// A caller's vector is used as given, with the space it was embedded in
+		// (Team retrieval embeds once for this search and the knowledge search).
+		// Otherwise the query is embedded here, and only when the table holds a
+		// vector to find (knowledge/vectorCorpus.ts); with none, the full-text leg
+		// runs alone.
+		let vector = args.embedding && args.embedding.length > 0 ? args.embedding : undefined;
+		let spaceId = args.embeddingSpaceId;
+		if (!vector) {
 			if (!queryText) return [];
-			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
-			// actionable error rather than silently returning zero results.
-			const embeddingModel = await resolveEmbeddingModel(ctx);
-			try {
-				const { embedding } = await embed({ model: embeddingModel, value: queryText });
-				vector = toIndexVector(embedding);
-			} catch (error) {
-				logInfo('[semantic_file] search embed failed', { error: String(error) });
-				return [];
+			const query = await embedRetrievalQuery(
+				ctx,
+				['semanticFiles'],
+				queryText,
+				'[semantic_file] search',
+				args.root
+			);
+			if (query.kind === 'failed') return [];
+			if (query.kind === 'vector') {
+				vector = query.embedding;
+				spaceId = query.embeddingSpaceId;
 			}
 		}
 
@@ -372,11 +392,15 @@ export const semanticSearch = internalAction({
 		// at `limit`.
 		const fetchLimit = Math.min(256, Math.max(limit * 5, 50));
 
-		// Leg 1 — semantic vector search (paraphrase / conceptual matches).
-		const hits = await ctx.vectorSearch('semanticFiles', 'vector_files', {
-			vector,
-			limit: fetchLimit,
-		});
+		// Leg 1 — semantic vector search (paraphrase / conceptual matches), in the
+		// query vector's own space only.
+		const hits = vector
+			? await searchSpaceVectors(ctx, 'semanticFiles', {
+					vector,
+					embeddingSpaceId: spaceId,
+					limit: fetchLimit,
+				})
+			: [];
 		const vectorRanked: Id<'semanticFiles'>[] = hits.map((h) => h._id);
 		const scoreById = new Map<string, number>(hits.map((h) => [h._id as string, h._score]));
 
@@ -467,10 +491,4 @@ export async function extractText(blob: Blob, mimeType: string, filename: string
 	// external libraries or a processing service, so the file is ingested under
 	// its own name and nothing else.
 	return extractionPlaceholder(format, filename);
-}
-
-// Exported for unit tests.
-export function truncateForLLM(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	return text.slice(0, maxChars) + '\n\n[Content truncated...]';
 }

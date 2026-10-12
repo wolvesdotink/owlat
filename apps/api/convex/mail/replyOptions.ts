@@ -27,8 +27,11 @@ import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { resolveLanguageModel } from '../lib/llmProvider';
 import { runLlmStream } from '../lib/llm/dispatch';
+import type { LlmCallMeter } from '../lib/llm/requestMeter';
 import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import type { TokenUsage } from '../agent/steps/types';
+import { admissionRefusalOf } from '../lib/llm/admissionPort';
+import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 
 /** Hard cap on how many reply variants we ever surface. */
 export const MAX_REPLY_OPTIONS = 3;
@@ -122,7 +125,7 @@ export function encodeReplyOptions(replies: string[]): string {
  * call still streams internally but writes nothing.
  *
  * Throws on a model failure (after settling the buffer `error`); spend is left
- * to the caller.
+ * to the caller, through the `meter` it passes.
  */
 export async function streamReplyOptions(
 	ctx: ActionCtx,
@@ -133,6 +136,8 @@ export async function streamReplyOptions(
 		temperature?: number;
 		/** The interactive deadline (`interactiveLlmPolicy('reply').abortSignal`). */
 		abortSignal?: AbortSignal;
+		/** Records each stream step, one ledger row each (the caller writes them). */
+		meter?: LlmCallMeter;
 	}
 ): Promise<ReplyOptionsResult> {
 	const streamId = args.streamId;
@@ -165,9 +170,10 @@ export async function streamReplyOptions(
 	const abortSignal = args.abortSignal
 		? AbortSignal.any([args.abortSignal, flusher.signal])
 		: flusher.signal;
-	const model = await resolveLanguageModel(ctx, 'suggest');
+	const model = await resolveLanguageModel(ctx, 'mail.suggest');
 	try {
 		const result = await runLlmStream({
+			...(args.meter ? { meter: args.meter } : {}),
 			model,
 			system: args.system,
 			messages: [{ role: 'user', content: args.prompt }],
@@ -197,7 +203,12 @@ export async function streamReplyOptions(
 				modelUsed: undefined,
 			};
 		}
-		const message = error instanceof Error ? error.message : 'Suggest replies failed';
+		// A budget refusal carries the stable code the web reads (D1).
+		const message = admissionRefusalOf(error)
+			? AI_BUDGET_ERROR_CODE
+			: error instanceof Error
+				? error.message
+				: 'Suggest replies failed';
 		// Settling the buffer is best-effort; the model error is what surfaces.
 		await finalize([], 'error', { errorMessage: message.slice(0, 500) }).catch(() => undefined);
 		throw error;

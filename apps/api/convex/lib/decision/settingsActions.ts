@@ -40,7 +40,10 @@ import type { ProviderClientConfig } from '../llmProviders/types';
 import { fetchGuarded } from '../ssrfGuard';
 import { validateOutboundUrl } from '../outboundUrlValidation';
 import { runDecision } from './dispatch';
-import { decisionBreakerPort, decisionUsageRecorder } from './ports';
+import { decisionBreakerPort, decisionRateLimiterPort, decisionUsageRecorder } from './ports';
+import { newRootRequest } from '../llm/requestMeter';
+import { boundedRoot } from '../llm/actionDeadline';
+import { dispatchAdmissionPort } from '../../analytics/admissionPorts';
 import {
 	CONNECTION_PROBE_FEATURE,
 	CONNECTION_PROBE_QUESTIONS,
@@ -102,17 +105,15 @@ function decisionClientConfig(
  * Four things it refuses to do. It never hops to the language plane — a test
  * that passes because the FALLBACK worked is a test that lies. It never retries
  * (`maxAttempts: 1`), because an operator pressing a button wants an answer, not
- * a backoff curve. It returns the plane's degraded reason rather than probing,
- * when the stored config cannot produce a client. And it persists nothing and
+ * a backoff curve. It returns the plane's unavailable reason rather than probing,
+ * when the stored config cannot produce a client (D3). And it persists nothing and
  * returns no key.
  */
 export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; error?: string }> {
 	// Resolved, not read off the row: this is the config that would answer a real
 	// decision, including a key the deployment supplies through its environment.
 	const plane = await resolveDecisionConfig(ctx);
-	if (plane.degradedFrom !== undefined) {
-		return { ok: false, error: plane.degradedReason ?? 'The decision provider is not configured.' };
-	}
+	if (plane.unavailable !== undefined) return { ok: false, error: plane.unavailable.reason };
 	if (plane.kind === DEFAULT_DECISION_KIND) {
 		return { ok: false, error: 'No decision provider is configured yet.' };
 	}
@@ -128,14 +129,20 @@ export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; 
 	}
 
 	try {
+		const root = boundedRoot(ctx, newRootRequest('settings'));
 		const decided = await runDecision({
 			feature: CONNECTION_PROBE_FEATURE,
 			state: CONNECTION_PROBE_STATE,
 			questions: CONNECTION_PROBE_QUESTIONS,
-			provider: await resolveDecisionProvider(ctx),
+			provider: await resolveDecisionProvider(ctx, 'decision.connection_probe'),
 			allowance,
 			maxAttempts: 1,
+			task: 'decision.connection_probe',
+			root,
+			// A paid probe is reserved like any decision (ADR-0073).
+			admission: dispatchAdmissionPort(ctx, { root }, 'decision.connection_probe', root.deadlineAt),
 			breaker: decisionBreakerPort(ctx),
+			rateLimiter: decisionRateLimiterPort(ctx),
 			recordUsage: decisionUsageRecorder(ctx),
 		});
 		// An answer that came back uncalibrated FROM A CALIBRATED ADAPTER means the

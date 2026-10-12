@@ -165,6 +165,8 @@ export const applyInterpretation = internalMutation({
 		if (
 			existing?.appliedAt !== undefined &&
 			(existing.retryCount ?? 0) === (args.retryCount ?? 0) &&
+			// Another refused hold is a new deferral: written, so its backoff moves on.
+			existing.budgetDeferrals === args.budgetDeferrals &&
 			existing.status === args.status &&
 			existing.mode === mode &&
 			existing.isCounted !== false &&
@@ -236,6 +238,8 @@ export const applyInterpretation = internalMutation({
 				: {}),
 			...(args.sourceVersion ? { sourceVersion: args.sourceVersion } : {}),
 			...(args.retryCount !== undefined ? { retryCount: args.retryCount } : {}),
+			...(args.budgetDeferrals !== undefined ? { budgetDeferrals: args.budgetDeferrals } : {}),
+			...(args.budgetRefusal ? { budgetRefusal: args.budgetRefusal } : {}),
 			sourceAt: args.sourceAt,
 			isCurrent: !isKeepingPrevious,
 			isCounted: true,
@@ -298,7 +302,15 @@ export const applyInterpretation = internalMutation({
 			fold = { ...writeBase, after: loaded.state, rows: loaded.rows, factRows: loaded.factRows };
 		}
 
-		const nextRetryAt = nextRetryAtOf({ status, errorCode, retryCount: args.retryCount }, now);
+		const nextRetryAt = nextRetryAtOf(
+			{
+				status,
+				errorCode,
+				retryCount: args.retryCount,
+				budgetDeferrals: args.budgetDeferrals,
+			},
+			now
+		);
 		if (nextRetryAt !== undefined) await ctx.db.patch(interpretationId, { nextRetryAt });
 		const stored = { status, skipReason: args.skipReason };
 		const sourceCounts = shiftCount(

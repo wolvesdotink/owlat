@@ -153,8 +153,7 @@ const assist = useAnswerTeamAssist({
 		if (attachmentsAllowed.value) void files.attachAnswerFile(file);
 	},
 });
-// The agent's questions carry the clarification question shape the ask card
-// takes (lib/validators/clarification.ts).
+// The agent's questions carry the ask card's shape (lib/validators/clarification.ts).
 const clarificationQuestions = computed(
 	() => (reply.clarification.value?.questions ?? []) as unknown as AskQuestion[]
 );
@@ -440,6 +439,7 @@ onBeforeUnmount(() => {
 									:round="assist.ask.session.value.round"
 									:copy-policy="copyPolicy"
 									:submitting="assist.ask.busy.value"
+									:budget-refused="assist.ask.isBudgetRefused.value"
 									@answer="assist.ask.answer($event)"
 									@skip="assist.ask.answer($event, true)"
 								/>

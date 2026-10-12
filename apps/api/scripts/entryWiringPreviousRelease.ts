@@ -6,7 +6,7 @@
  * functions"). Nothing in this release calls them, which is the point. Each
  * line names why it stays; the next release deletes the entry and its line.
  * `check-entry-wiring.ts` holds it exact in both directions, like its
- * UNREACHED_ENTRIES ledger. Kept in its own file so the release that
+ * UNREACHED_ENTRIES ledger (`entryWiringUnreached.ts`). Kept in its own file so the release that
  * deletes these entries edits data, not the walk.
  */
 export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
@@ -49,4 +49,6 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'mail/snippets.ts#remove': 'the previous snippets page, in tabs opened before the deploy',
 	'mail/needsReply.ts#getDraftSlot':
 		'the previous Answer queue card, in tabs opened before the deploy (#1188)',
+	'analytics/llmUsage.ts#record':
+		'spend writes the previous release scheduled, and its actions mid-run (ADR-0073 ledger)',
 };

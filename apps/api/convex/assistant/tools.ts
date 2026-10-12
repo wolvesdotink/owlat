@@ -31,13 +31,15 @@ import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { runLlmText } from '../lib/llm/dispatch';
 import { resolveLanguageModelForUserText } from '../lib/llmProvider';
-import { recordLlmSpend } from '../analytics/llmUsage';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import type { LlmRootContext } from '../lib/llm/requestMeter';
 import { scrubForInjection, clampText } from './prompt';
 import {
 	ASSISTANT_TOOL_DRAFT_SPEND,
 	hasFlaggedModule,
 	selectAssistantToolModules,
 	withHostScrub,
+	withRetrievalAllowance,
 	type AssistantAudience,
 	type HostedAssistantToolModule,
 } from './toolRegistry';
@@ -49,7 +51,11 @@ const MAX_KNOWLEDGE_CONTENT = 1200;
 const MAX_FILE_EXCERPT = 1000;
 const MAX_RELATED_TITLE = 200;
 
-function buildSearchKnowledge(ctx: ActionCtx, audience: AssistantAudience): Tool {
+function buildSearchKnowledge(
+	ctx: ActionCtx,
+	audience: AssistantAudience,
+	root?: LlmRootContext
+): Tool {
 	return tool({
 		description:
 			'Search the workspace knowledge graph (facts, decisions, and preferences extracted from the team’s conversations and files) for information relevant to a question. Use this first for anything about what the team or its contacts know, decided, or prefer.',
@@ -72,6 +78,7 @@ function buildSearchKnowledge(ctx: ActionCtx, audience: AssistantAudience): Tool
 				// Knowledge learned from Team Inbox mail only for a reader.
 				includeInboxDerived: audience.canReadInbox,
 				expandGraph: graphRetrieval,
+				...(root ? { root } : {}),
 			});
 			return {
 				results: entries.map((e) => ({
@@ -94,7 +101,11 @@ function buildSearchKnowledge(ctx: ActionCtx, audience: AssistantAudience): Tool
 	});
 }
 
-function buildSearchFiles(ctx: ActionCtx): Tool {
+function buildSearchFiles(
+	ctx: ActionCtx,
+	_audience: AssistantAudience,
+	root?: LlmRootContext
+): Tool {
 	return tool({
 		description:
 			'Semantic search over files uploaded to the workspace (PDFs, documents, notes). Returns the most relevant files with a short excerpt. Use when the answer is likely in an uploaded document.',
@@ -107,6 +118,7 @@ function buildSearchFiles(ctx: ActionCtx): Tool {
 				queryText: query,
 				limit: clampInt(limit, 1, 8, 5),
 				scopeToContact: 'org-wide',
+				...(root ? { root } : {}),
 			});
 			return {
 				results: files.map((f) => ({
@@ -195,7 +207,11 @@ function buildGetEmailStats(ctx: ActionCtx): Tool {
 	});
 }
 
-function buildDraftEmailReply(ctx: ActionCtx): Tool {
+function buildDraftEmailReply(
+	ctx: ActionCtx,
+	_audience: AssistantAudience,
+	root?: LlmRootContext
+): Tool {
 	return tool({
 		description:
 			'Draft a professional email reply to a contact. Returns the draft text only — it does NOT send anything. Use when the user asks you to write/compose an email to someone.',
@@ -203,25 +219,44 @@ function buildDraftEmailReply(ctx: ActionCtx): Tool {
 			contact: z.string().describe('The recipient — a name or email to look up.'),
 			intent: z.string().describe('What the email should say or accomplish.'),
 		}),
-		execute: async ({ contact, intent }) => {
+		// The turn's signal: a Stop ends this nested call too, which keeps the
+		// usage it was billed for (its rows are written either way).
+		execute: async ({ contact, intent }, { abortSignal }) => {
 			const found = await ctx.runQuery(internal.assistant.insights.findContact, {
 				query: contact,
 			});
 			const recipient = found ? `${found.name ?? found.email} <${found.email}>` : contact;
-			const result = await runLlmText({
-				model: await resolveLanguageModelForUserText(ctx, 'draft', intent),
-				system:
-					'You draft a single professional email reply. Output ONLY the email body — no preamble, no commentary, no subject line unless explicitly asked. Keep it concise and ready for the user to review and edit.',
-				prompt: `Recipient: ${recipient}\n\nWrite an email that accomplishes: ${clampText(intent, 1500)}`,
-				temperature: 0.4,
-			});
-			await recordLlmSpend(ctx, ASSISTANT_TOOL_DRAFT_SPEND, result.tokenUsage, result.modelUsed);
-			return { recipient, contactFound: !!found, draft: result.text.trim() };
+			const model = await resolveLanguageModelForUserText(ctx, 'assistant.tool_draft', intent);
+			const result = await meterLlmCall(
+				ctx,
+				{ feature: ASSISTANT_TOOL_DRAFT_SPEND, ...(root ? { root } : {}) },
+				(meter) =>
+					runLlmText({
+						meter,
+						model,
+						system:
+							'You draft a single professional email reply. Output ONLY the email body — no preamble, no commentary, no subject line unless explicitly asked. Keep it concise and ready for the user to review and edit.',
+						prompt: `Recipient: ${recipient}\n\nWrite an email that accomplishes: ${clampText(intent, 1500)}`,
+						temperature: 0.4,
+						...(abortSignal ? { abortSignal } : {}),
+					})
+			);
+			return {
+				recipient,
+				contactFound: !!found,
+				draft: result.text.trim(),
+				// Cut off at the output limit: the model is told, not handed it as finished.
+				isComplete: result.isTruncated !== true,
+			};
 		},
 	});
 }
 
-function buildDraftCampaignCopy(ctx: ActionCtx): Tool {
+function buildDraftCampaignCopy(
+	ctx: ActionCtx,
+	_audience: AssistantAudience,
+	root?: LlmRootContext
+): Tool {
 	return tool({
 		description:
 			'Draft marketing campaign email copy (subject line + body) from a brief. Returns the draft text only — it does NOT create or send a campaign. Use when the user asks you to write campaign or newsletter copy.',
@@ -229,16 +264,23 @@ function buildDraftCampaignCopy(ctx: ActionCtx): Tool {
 			brief: z.string().describe('What the campaign is about, the goal, tone, key points.'),
 			audience: z.string().optional().describe('Who the campaign is for (optional).'),
 		}),
-		execute: async ({ brief, audience }) => {
-			const result = await runLlmText({
-				model: await resolveLanguageModelForUserText(ctx, 'draft', brief),
-				system:
-					'You are an expert email-marketing copywriter. Draft compelling campaign email copy from the brief. Output Markdown: a "**Subject:**" line, then the email body. Keep it ready for the user to review and edit.',
-				prompt: `Brief: ${clampText(brief, 2000)}${audience ? `\n\nAudience: ${clampText(audience, 500)}` : ''}`,
-				temperature: 0.6,
-			});
-			await recordLlmSpend(ctx, ASSISTANT_TOOL_DRAFT_SPEND, result.tokenUsage, result.modelUsed);
-			return { draft: result.text.trim() };
+		execute: async ({ brief, audience }, { abortSignal }) => {
+			const model = await resolveLanguageModelForUserText(ctx, 'assistant.tool_draft', brief);
+			const result = await meterLlmCall(
+				ctx,
+				{ feature: ASSISTANT_TOOL_DRAFT_SPEND, ...(root ? { root } : {}) },
+				(meter) =>
+					runLlmText({
+						meter,
+						model,
+						system:
+							'You are an expert email-marketing copywriter. Draft compelling campaign email copy from the brief. Output Markdown: a "**Subject:**" line, then the email body. Keep it ready for the user to review and edit.',
+						prompt: `Brief: ${clampText(brief, 2000)}${audience ? `\n\nAudience: ${clampText(audience, 500)}` : ''}`,
+						temperature: 0.6,
+						...(abortSignal ? { abortSignal } : {}),
+					})
+			);
+			return { draft: result.text.trim(), isComplete: result.isTruncated !== true };
 		},
 	});
 }
@@ -246,16 +288,20 @@ function buildDraftCampaignCopy(ctx: ActionCtx): Tool {
 /**
  * The built-in assistant tools, in the order the assembler emits them. This is
  * the single source of truth for built-in membership and metadata; the same set
- * powers both the personal assistant and @assistant-in-chat. No built-in gates
- * on a per-tool `flag` (the assistant is gated as a whole by `ai.assistant`); no
- * built-in writes or sends.
+ * powers both the personal assistant and @assistant-in-chat. The assistant is
+ * gated as a whole by `ai.assistant`; `searchKnowledge` is also gated by
+ * `ai.knowledge` (#1335), like Quick Query. No built-in writes or sends.
  */
 export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze([
 	{
 		name: 'searchKnowledge',
+		// #1335: the knowledge graph is read only while `ai.knowledge` is on, as
+		// Quick Query refuses it otherwise. Off: the tool is not offered at all.
+		flag: 'ai.knowledge',
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: true,
 		build: buildSearchKnowledge,
 	},
 	{
@@ -263,6 +309,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: true,
 		build: buildSearchFiles,
 	},
 	{
@@ -270,6 +317,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildSearchEverything,
 	},
 	{
@@ -277,6 +325,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildGetCampaignStats,
 	},
 	{
@@ -284,6 +333,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:read',
 		spend: null,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildGetEmailStats,
 	},
 	{
@@ -291,6 +341,7 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:draft',
 		spend: ASSISTANT_TOOL_DRAFT_SPEND,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildDraftEmailReply,
 	},
 	{
@@ -298,15 +349,23 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scope: 'workspace:draft',
 		spend: ASSISTANT_TOOL_DRAFT_SPEND,
 		scrubOutput: true,
+		isRetrieval: false,
 		build: buildDraftCampaignCopy,
 	},
 ] satisfies readonly HostedAssistantToolModule[]);
+
+/** The per-turn limits the host enforces on the tools (the task's policy). */
+export interface AssistantToolLimits {
+	/** Retrieval calls the whole turn may make; `null`: no cap. */
+	readonly maxRetrievalCalls: number | null;
+}
 
 /**
  * Assemble the AI-SDK tool set from the hosted registry, closing over the
  * runner's action context and the turn's audience. Flag-gates membership (a tool whose `flag` is OFF is
  * omitted — feature-off ⇒ the model never sees it), then wraps each tool so the
- * host injection-scrubs its output before it can reach a prompt.
+ * host injection-scrubs its output before it can reach a prompt. Retrieval
+ * tools also share the turn's retrieval allowance (`limits`, ADR-0073 Phase 5).
  *
  * When no module declares a flag (the built-in set), no flag I/O happens, so the
  * assembled set is exactly the built-ins in declaration order. `modules` is
@@ -315,15 +374,22 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 export async function buildAssistantTools(
 	ctx: ActionCtx,
 	audience: AssistantAudience,
-	modules: readonly HostedAssistantToolModule[] = TOOL_MODULES
+	modules: readonly HostedAssistantToolModule[] = TOOL_MODULES,
+	root?: LlmRootContext,
+	limits: AssistantToolLimits = { maxRetrievalCalls: null }
 ): Promise<ToolSet> {
 	const flags = hasFlaggedModule(modules)
 		? await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {})
 		: {};
+	// One allowance for the whole turn, shared by every retrieval tool.
+	const allowance =
+		limits.maxRetrievalCalls === null ? null : { remaining: limits.maxRetrievalCalls };
 	const set: ToolSet = {};
 	for (const module of selectAssistantToolModules(modules, flags)) {
-		const built = module.build(ctx, audience);
-		set[module.name] = module.scrubOutput ? withHostScrub(built) : built;
+		const built = module.build(ctx, audience, root);
+		const counted =
+			module.isRetrieval && allowance ? withRetrievalAllowance(built, allowance) : built;
+		set[module.name] = module.scrubOutput ? withHostScrub(counted) : counted;
 	}
 	return set;
 }

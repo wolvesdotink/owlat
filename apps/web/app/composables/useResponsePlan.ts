@@ -355,9 +355,15 @@ export function useResponsePlan(opts: {
 	);
 	const statusNote = computed(() => {
 		if (isChecking.value) return t('components.answer.plan.status.checking');
+		// U5: the spend budget refused part of the check; what shows is partial.
+		const current = coverage.value;
+		const budget =
+			current && 'budgetRefusal' in current && current.budgetRefusal
+				? t('components.answer.plan.status.budget')
+				: undefined;
 		const s = status.value;
-		if (!s) return undefined;
-		const parts: string[] = [];
+		if (!s) return budget;
+		const parts: string[] = budget ? [budget] : [];
 		if (s.total > 0) {
 			parts.push(
 				t('components.answer.plan.status.addressed', { addressed: s.addressed, total: s.total })

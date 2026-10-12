@@ -159,6 +159,8 @@ const aiTyping = computed(
 							class="inline-block w-1.5 h-4 align-text-bottom bg-text-secondary animate-pulse motion-reduce:animate-none ml-0.5"
 						/>
 					</div>
+					<!-- Refused for budget (D1): said in the reader's language. -->
+					<AiBudgetRefusal v-if="message.budgetRefusal" :refusal="message.budgetRefusal" />
 				</div>
 				<div
 					v-else

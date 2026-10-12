@@ -70,6 +70,8 @@ function makeCtx(legs: Legs) {
 			getThreadMessages: legs.threadMessages ?? [],
 			getOpenCommitments: legs.openCommitments ?? [],
 			isGraphRetrievalEnabled: false,
+			// knowledge/vectorCorpus: no table holds a vector, so no query embedding.
+			hasQueryableVectors: false,
 		},
 		actions: {
 			// knowledge/retrieval.semanticSearch

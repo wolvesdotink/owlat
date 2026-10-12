@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { activeSpaceId, stampedIn } from './helpers/embeddingSpaces';
 
 /**
  * Graph-augmented retrieval — the per-hop contact-scope gate (leak surface #1)
@@ -43,9 +44,11 @@ async function insertEntry(
 	spec: EntrySpec
 ): Promise<Id<'knowledgeEntries'>> {
 	const now = Date.now();
+	const spaceId = await activeSpaceId(t);
 	return await t.run(async (ctx) =>
 		ctx.db.insert('knowledgeEntries', {
 			entryType: spec.entryType ?? 'fact',
+			...(spec.embedAt === undefined ? {} : stampedIn(spaceId, spec.entryType ?? 'fact')),
 			title: spec.title,
 			content: spec.title,
 			sourceType: 'email',
@@ -259,6 +262,7 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 		await relate(t, newer, older, 'supersedes'); // newer SUPERSEDES older
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceId: await activeSpaceId(t),
 			includeInboxDerived: true,
 			embedding: unit(4),
 			scopeToContact: 'org-wide',
@@ -286,6 +290,7 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 		await relate(t, a, b, 'contradicts');
 
 		const results = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceId: await activeSpaceId(t),
 			includeInboxDerived: true,
 			embedding: unit(6),
 			scopeToContact: 'org-wide',
@@ -305,12 +310,14 @@ describe('semanticSearch — graph-augmented annotations + kill switch', () => {
 		await relate(t, a, b, 'supersedes');
 
 		const flat = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceId: await activeSpaceId(t),
 			includeInboxDerived: true,
 			embedding: unit(5),
 			scopeToContact: 'org-wide',
 			limit: 10,
 		});
 		const off = await t.action(internal.knowledge.retrieval.semanticSearch, {
+			embeddingSpaceId: await activeSpaceId(t),
 			includeInboxDerived: true,
 			embedding: unit(5),
 			scopeToContact: 'org-wide',

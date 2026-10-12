@@ -29,7 +29,9 @@ import { z } from 'zod';
 import type { ActionCtx } from '../../../_generated/server';
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
+import type { LlmRootContext } from '../../../lib/llm/requestMeter';
 import { scrubForInjection, clampText } from '../../../assistant/prompt';
+import { rethrowAdmissionRefusal } from '../../../lib/llm/admissionPort';
 
 /** Max live knowledge retrievals the model may make while drafting one reply. */
 export const MAX_RECALL_CALLS = 3;
@@ -44,6 +46,8 @@ interface RecallToolArgs {
 	 * or 'org-general-only' when the inbound has no resolved contact. Never
 	 * 'org-wide' on the drafting path. */
 	scopeToContact: Id<'contacts'> | 'org-general-only';
+	/** The draft's root request, so each recall's query embedding groups under it. */
+	root?: LlmRootContext;
 }
 
 /**
@@ -89,6 +93,7 @@ export function buildRecallKnowledgeTool(args: RecallToolArgs) {
 					includeInboxDerived: true,
 					// Flat retrieval — the tool is a targeted fetch-more, not a graph walk.
 					expandGraph: false,
+					...(args.root ? { root: args.root } : {}),
 				});
 				return {
 					facts: entries.map((e) => ({
@@ -101,7 +106,10 @@ export function buildRecallKnowledgeTool(args: RecallToolArgs) {
 						content: scrubForInjection(clampText(e.content, RECALL_CONTENT_CHARS)),
 					})),
 				};
-			} catch {
+			} catch (error) {
+				// A budget refusal is not "no facts": it reaches the model as a tool
+				// error, and the draft's own next request is admitted on its own (D1).
+				rethrowAdmissionRefusal(error);
 				// FAIL-SOFT: retrieval failure ⇒ no facts. The model drafts with what it
 				// has; the self-check + route gate still guard auto-send.
 				return { facts: [] };

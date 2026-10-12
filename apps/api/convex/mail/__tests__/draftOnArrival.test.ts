@@ -30,20 +30,22 @@ const runLlmObjectMock = vi.fn(async (_a: unknown) => ({
 	tokenUsage: undefined,
 	modelUsed: 'mock-model',
 }));
-vi.mock('../../lib/llm/dispatch', () => ({
-	runLlmText: (a: unknown) => runLlmTextMock(a as never),
-	runLlmTextWithTools: (a: unknown) => runLlmTextMock(a as never),
-	runLlmObject: (a: unknown) => runLlmObjectMock(a as never),
-}));
+vi.mock('../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../analytics/__tests__/meteredDispatch.testlib');
+	return {
+		runLlmText: metered((a: unknown) => runLlmTextMock(a as never)),
+		runLlmTextWithTools: metered((a: unknown) => runLlmTextMock(a as never)),
+		runLlmObject: metered((a: unknown) => runLlmObjectMock(a as never)),
+	};
+});
 vi.mock('../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
-	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
+	classifiedDraftRouteOf: () => 'capable',
 }));
-vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 
 import { findDraftGaps } from '@owlat/shared/answerMode';
 import { generateDraftOnArrival } from '../ai/draftOnArrival';
-import { recordLlmSpend } from '../../analytics/llmUsage';
+import { ledgerRows } from '../../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
 
 type Persisted = { draft: string; confidence: number; quality?: unknown; options?: string[] };
@@ -119,14 +121,17 @@ describe('generateDraftOnArrival', () => {
 			tokenUsage: usage as never,
 			modelUsed: 'mock-model',
 		});
-		vi.mocked(recordLlmSpend).mockClear();
 		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
-		expect(recordLlmSpend).toHaveBeenCalledWith(h.ctx, 'postbox_draft', usage, 'mock-model');
 		// Once: the shared service records it, the caller no longer does (#1256).
-		expect(
-			vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'postbox_draft')
-		).toHaveLength(1);
+		expect(ledgerRows(h.runMutation).filter((row) => row.feature === 'postbox_draft')).toEqual([
+			expect.objectContaining({
+				usage,
+				modelUsed: 'mock-model',
+				attempt: 1,
+				rootRequestId: 'postbox_thread:thr1',
+			}),
+		]);
 	});
 
 	it('records the spend of a generation that fails after a paid step (#1256)', async () => {
@@ -134,13 +139,12 @@ describe('generateDraftOnArrival', () => {
 		runLlmTextMock.mockRejectedValueOnce(
 			new LlmPartialUsageError(new Error('provider down'), usage, 'mock-model')
 		);
-		vi.mocked(recordLlmSpend).mockClear();
 		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(h.persisted).toHaveLength(0);
-		expect(vi.mocked(recordLlmSpend).mock.calls).toEqual([
-			[h.ctx, 'postbox_draft', usage, 'mock-model'],
-		]);
+		expect(ledgerRows(h.runMutation).map((row) => [row.feature, row.usage, row.modelUsed])).toEqual(
+			[['postbox_draft', usage, 'mock-model']]
+		);
 	});
 
 	it('happy path: persists exactly one review slot with the quality score as confidence', async () => {

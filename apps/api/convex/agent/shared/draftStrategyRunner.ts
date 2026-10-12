@@ -4,6 +4,7 @@ import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import type { LlmTextResult } from '../../lib/llm/dispatch';
 import { runHostedDraftStrategy } from './draftStrategyHost';
+import type { LlmRootContext } from '../../lib/llm/requestMeter';
 
 interface StrategySelectionScope {
 	readonly mailboxId?: string;
@@ -27,23 +28,32 @@ interface StrategySource {
 	readonly voiceSection: string;
 }
 
+/** The strategy the scope selects: `default` without a scope, or when the selection cannot be read. */
+export async function selectedDraftStrategy(
+	ctx: ActionCtx,
+	scope: StrategySelectionScope | undefined
+): Promise<string> {
+	if (!scope) return 'default';
+	return ctx
+		.runQuery(internal.plugins.draftStrategySelections.resolveForDraft, scope)
+		.catch(() => 'default');
+}
+
 export async function runSelectedDraftStrategy(
 	ctx: ActionCtx,
 	scope: StrategySelectionScope | undefined,
 	source: StrategySource,
-	runDefault: () => Promise<LlmTextResult>
+	runDefault: () => Promise<LlmTextResult>,
+	/** The draft's root request, handed to a plugin strategy's model calls (ADR-0073). */
+	root?: LlmRootContext
 ): Promise<{
 	draftBody: string;
 	tokenUsage: LlmTextResult['tokenUsage'];
 	modelUsed: LlmTextResult['modelUsed'];
 }> {
-	const strategyKind = scope
-		? await ctx
-				.runQuery(internal.plugins.draftStrategySelections.resolveForDraft, scope)
-				.catch(() => 'default')
-		: 'default';
+	const strategyKind = await selectedDraftStrategy(ctx, scope);
 	if (strategyKind !== 'default') {
-		const customDraft = await runHostedDraftStrategy(ctx, strategyKind, source);
+		const customDraft = await runHostedDraftStrategy(ctx, strategyKind, source, root);
 		if (customDraft !== null)
 			return { draftBody: customDraft, tokenUsage: undefined, modelUsed: undefined };
 	}

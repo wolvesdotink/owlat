@@ -50,3 +50,54 @@ export type CacheableSystemMessage = {
 export function cacheableSystemMessage(content: string): CacheableSystemMessage {
 	return { role: 'system', content, providerOptions: cacheBreakpointProviderOptions };
 }
+
+// ── L9: cache markers per task (AI routing plan) ──────────────────────────
+
+/** A prompt split into its stable instructions and the per-message content. */
+export interface PromptParts {
+	/** Identical across calls of one task (and one deployment's languages). */
+	stable: string;
+	/** The message and its thread state: different every call. */
+	variable: string;
+}
+
+/** The prompt exactly as a single string, the shape every call sends today. */
+export function joinPromptParts(parts: PromptParts): string {
+	return `${parts.stable}\n\n${parts.variable}`;
+}
+
+/**
+ * Whether a call carries a cache marker: its task is on the routing policy's
+ * `promptCacheTasks` list (empty by default) AND the model is served by the
+ * native Anthropic adapter, the only transport where the marker is known to
+ * take effect. OpenRouter and the OpenAI-shaped adapters never get one: their
+ * caching, where it exists, is automatic, and the Anthropic marker is not
+ * assumed to pass through them. Pure.
+ */
+export function isPromptCacheMarked(
+	model: unknown,
+	task: string,
+	cacheTasks: readonly string[]
+): boolean {
+	if (!cacheTasks.includes(task)) return false;
+	if (typeof model !== 'object' || model === null || !('provider' in model)) return false;
+	const provider = (model as { provider: unknown }).provider;
+	return typeof provider === 'string' && provider.startsWith('anthropic.');
+}
+
+/**
+ * The dispatch input for a split prompt. Unmarked, it is the joined prompt,
+ * byte for byte what the call sent before the split. Marked, the stable part
+ * becomes a cache-breakpoint system message and the per-message part the user
+ * message. Never padded: a prefix under the provider's minimum is simply not
+ * cached.
+ */
+export function promptInputOf(
+	parts: PromptParts,
+	isMarked: boolean
+): { prompt: string } | { messages: [CacheableSystemMessage, { role: 'user'; content: string }] } {
+	if (!isMarked) return { prompt: joinPromptParts(parts) };
+	return {
+		messages: [cacheableSystemMessage(parts.stable), { role: 'user', content: parts.variable }],
+	};
+}

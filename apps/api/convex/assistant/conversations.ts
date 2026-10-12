@@ -21,6 +21,7 @@ import { internal } from '../_generated/api';
 import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
 import { isSharedInboxReader } from '../inbox/access';
+import { budgetRefusalValidator } from '../lib/validators/aiRouting';
 import {
 	throwInvalidInput,
 	throwNotFound,
@@ -148,6 +149,8 @@ export const listMessages = assistantQuery({
 			status: m.status,
 			toolCalls: m.toolCalls ?? [],
 			errorMessage: m.errorMessage ?? null,
+			// A budget refusal (D1): the code and reason the web says in the reader's language.
+			budgetRefusal: m.budgetRefusal ?? null,
 			model: m.model ?? null,
 			tokenUsage: m.tokenUsage ?? null,
 			createdAt: m.createdAt,
@@ -317,6 +320,20 @@ export const patchAssistantMessage = internalMutation({
 });
 
 /**
+ * Whether the turn should stop: the user pressed Stop, the row was finalized,
+ * or it is gone. The runner asks this on a timer (Sol r1 F1), so a Stop is
+ * noticed while no stream event comes, a nested tool waiting on its provider
+ * included.
+ */
+export const isTurnStopped = internalQuery({
+	args: { messageId: v.id('aiMessages') },
+	handler: async (ctx, args): Promise<boolean> => {
+		const msg = await ctx.db.get(args.messageId);
+		return !msg || msg.status !== 'streaming';
+	},
+});
+
+/**
  * Finalize the assistant turn. Preserves a user-set terminal status (`stopped`)
  * over the runner's natural finish, but always writes the final text + usage.
  */
@@ -328,6 +345,8 @@ export const finalizeAssistantMessage = internalMutation({
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		errorMessage: v.optional(v.string()),
+		/** A budget refusal (D1): stored as its code and reason, for the web to localize. */
+		budgetRefusal: v.optional(budgetRefusalValidator),
 		toolCalls: v.optional(v.array(assistantToolCallValidator)),
 	},
 	handler: async (ctx, args) => {
@@ -341,6 +360,7 @@ export const finalizeAssistantMessage = internalMutation({
 			model: args.model,
 			tokenUsage: args.tokenUsage,
 			errorMessage: args.errorMessage,
+			budgetRefusal: args.budgetRefusal,
 			...(args.toolCalls ? { toolCalls: args.toolCalls } : {}),
 		});
 		const now = Date.now();

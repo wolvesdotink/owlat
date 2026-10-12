@@ -47,6 +47,8 @@ export const RESOURCE_FILTER_OPTIONS: ResourceFilterOption[] = [
 	{ value: 'blocklist', label: `${FILTERS}.blocklist` },
 	{ value: 'segment', label: `${FILTERS}.segment` },
 	{ value: 'ai_provider_config', label: `${FILTERS}.aiProviderConfig` },
+	{ value: 'ai_routing_policy', label: `${FILTERS}.aiRoutingPolicy` },
+	{ value: 'embedding_space', label: `${FILTERS}.embeddingSpace` },
 	{ value: 'plugin', label: `${FILTERS}.plugin` },
 	{ value: 'connected_app', label: `${FILTERS}.connectedApp` },
 ];
@@ -95,7 +97,17 @@ const ACTION_GROUP_SPECS: readonly ActionGroupSpec[] = [
 	{ label: `${GROUPS}.knowledgeGraph`, prefixes: ['knowledge'] },
 	{ label: `${GROUPS}.platformAdmin`, prefixes: ['platform_admin'] },
 	{ label: `${GROUPS}.abuse`, prefixes: ['abuse_status_changed'] },
-	{ label: `${GROUPS}.aiProviders`, prefixes: ['ai_provider_config'] },
+	{
+		label: `${GROUPS}.aiProviders`,
+		prefixes: [
+			'ai_provider_config',
+			'ai_routing_policy',
+			'ai_decision_exclusion',
+			'embedding_cohort',
+			'embedding_reembed',
+			'embedding_space',
+		],
+	},
 	{ label: `${GROUPS}.plugins`, prefixes: ['plugin'] },
 	{ label: `${GROUPS}.connectedApps`, prefixes: ['connected_app'] },
 ];

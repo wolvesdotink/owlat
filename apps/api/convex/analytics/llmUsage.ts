@@ -1,15 +1,24 @@
 /**
  * Deployment-wide LLM usage + estimated spend.
  *
- * Every feature that calls an LLM (Postbox AI, the knowledge assistant,
- * translate, knowledge extraction, semantic-file processing, visualization, and
- * each step of the Team Inbox agent under an `agent_*` feature) records one row
- * per billed call here, so spend can be reported per feature. This ledger is the
- * one store the enforced spend ceiling reads (`analytics/spendBudget.ts`). The
- * inbound-agent step view in `agentHealth.getCostByStep` reads the usage the
- * walker also keeps on `agentActions`; that is a per-step reporting view of
- * calls already counted here, not a second money store (#1259).
- * `recordLlmSpend` is the helper action callers invoke after each LLM call.
+ * Every feature that calls a model (Postbox AI, the knowledge assistant,
+ * translate, knowledge extraction, semantic-file processing, visualization,
+ * embeddings, the decision plane, and each step of the Team Inbox agent under
+ * an `agent_*` feature) records here, so spend can be reported per feature.
+ * This ledger is the one store the enforced spend ceiling reads
+ * (`analytics/spendBudget.ts`). The inbound-agent step view in
+ * `agentHealth.getCostByStep` reads the usage the walker also keeps on
+ * `agentActions`; that is a per-step reporting view of calls already counted
+ * here, not a second money store (#1259).
+ *
+ * ONE ROW PER PROVIDER REQUEST (ADR-0073). A retried call, a tool loop and a
+ * stream write one row per request they made, each with its `attempt` number
+ * under the call's `requestId`. The dispatch records the requests on an
+ * `LlmCallMeter`; `analytics/meteredSpend.ts` and the decision plane's
+ * recorder (`lib/decision/ports.ts`) write them through {@link recordRequests}.
+ * {@link insertLlmUsage} is the only code that inserts a row, and it adds the
+ * row to the spend-period aggregate in the same mutation
+ * (`lib/aiRouting/spendPeriodWrites.ts`), so every row is counted once.
  *
  * The ledger spans all three planes. A row's `plane` tag is optional and absent
  * means `language`, which is what every row written before the decision plane
@@ -20,43 +29,50 @@
  * {@link summarizeDecisionPlane}.
  */
 
-import { v } from 'convex/values';
-import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+import { v, type Infer } from 'convex/values';
+import type { QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
-import { internal } from '../_generated/api';
 import { tokenUsageValidator } from '../lib/convexValidators';
-import type { TokenUsage } from '../agent/steps/types';
-import { estimateCostUsd, providerLabelForModel } from '../lib/llm/pricing';
+import { providerLabelForModel } from '../lib/llm/pricing';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { llmUsagePlaneValidator, type LlmUsagePlane } from '../lib/llmUsageTags';
+import {
+	llmUsagePlaneValidator,
+	llmUsageRoutingFields,
+	type LlmUsagePlane,
+	isProviderRequestRow,
+} from '../lib/llmUsageTags';
+import { insertLlmUsage, ZERO_USAGE } from './ledgerInsert';
+import { reconcileLateRow, SETTLEMENT_FEATURE, settleReservation } from '../aiRouting/settlement';
+
+export { insertLlmUsage, type LlmUsageTags } from './ledgerInsert';
+
+/** The writer-supplied routing columns: everything but the three it computes. */
+const {
+	priceVersion: _priceVersion,
+	costMicrousd: _costMicrousd,
+	...routingArgs
+} = llmUsageRoutingFields;
+
+/** The tag arguments every ledger mutation accepts. */
+const tagArgs = {
+	plane: v.optional(llmUsagePlaneValidator),
+	requestId: v.optional(v.string()),
+	isFallback: v.optional(v.boolean()),
+	isCalibrated: v.optional(v.boolean()),
+	isThrottled: v.optional(v.boolean()),
+	isLocalEngine: v.optional(v.boolean()),
+	...routingArgs,
+};
 
 /**
- * Per-row annotations beyond feature and cost, mirroring the table's optional
- * tag columns (`lib/llmUsageTags.ts`). `plane` applies to every plane; the
- * three flags below it are the DECISION plane's and are absent elsewhere. All
- * optional, so a caller that knows none of them writes exactly today's row.
- */
-export interface LlmUsageTags {
-	readonly plane?: LlmUsagePlane;
-	/** The dispatch's id for one logical call, repeated across its retries and its hop. */
-	readonly requestId?: string;
-	/** The attempt ran on the language-backed fallback hop, not the native plane. */
-	readonly isFallback?: boolean;
-	/** The answering adapter's probabilities are calibrated across groups. */
-	readonly isCalibrated?: boolean;
-	/** Upstream pushed back: 429, or 529 (their overload code). */
-	readonly isThrottled?: boolean;
-	/** Ran on the operator's own hardware: priced at zero and labelled `Local`. */
-	readonly isLocalEngine?: boolean;
-}
-
-/**
- * Persist one LLM call's token usage + priced cost. No-ops when usage is absent
- * AND the row is untagged — a call that produced nothing and says nothing about
- * itself is not worth a row. A TAGGED row is written even with no usage, because
- * a throttled or failed decision attempt is precisely what the 429/529 counter
- * is counting, and one that only counts successes hides the outage.
+ * COMPATIBILITY: the previous release's single-row writer, kept with its exact
+ * arguments so spend writes already scheduled against it, and actions still
+ * running the previous release, land in the ledger after the deploy instead of
+ * failing. New code writes through {@link recordRequests}. Behaves as before:
+ * no usage and no plane writes nothing; a tagged row without usage is a
+ * zero-cost estimate. Remove once a release has shipped without callers
+ * (`scripts/check-entry-wiring.ts` PREVIOUS_RELEASE_ENTRIES).
  */
 export const record = internalMutation({
 	args: {
@@ -71,132 +87,122 @@ export const record = internalMutation({
 		isLocalEngine: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const tags: LlmUsageTags = {
-			plane: args.plane,
-			requestId: args.requestId,
-			isFallback: args.isFallback,
-			isCalibrated: args.isCalibrated,
-			isThrottled: args.isThrottled,
-			isLocalEngine: args.isLocalEngine,
-		};
-		const usage = args.tokenUsage;
-		if (!usage && args.plane === undefined) return;
-		await insertLlmUsage(ctx, args.feature, usage ?? ZERO_USAGE, args.modelUsed, undefined, tags);
+		const { feature, modelUsed, tokenUsage, ...tags } = args;
+		if (!tokenUsage && args.plane === undefined) return;
+		await insertLlmUsage(ctx, feature, tokenUsage ?? ZERO_USAGE, modelUsed, undefined, {
+			...tags,
+			...(tokenUsage ? {} : { isEstimated: true }),
+		});
 	},
 });
 
-/** No reported usage: an unknown spend, or a request refused before billing. */
-const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+/** One provider request of a metered call (`lib/llm/requestMeter.ts` `LlmRequestRecord`). */
+export const meteredRequestValidator = v.object({
+	attempt: v.number(),
+	usage: v.optional(tokenUsageValidator),
+	cacheReadTokens: v.optional(v.number()),
+	cacheWriteTokens: v.optional(v.number()),
+	reasoningTokens: v.optional(v.number()),
+	latencyMs: v.number(),
+	modelUsed: v.optional(v.string()),
+	endpoint: v.optional(v.string()),
+	isThrottled: v.optional(v.boolean()),
+	isLocalEngine: v.optional(v.boolean()),
+	isFallback: v.optional(v.boolean()),
+	isCalibrated: v.optional(v.boolean()),
+	/** The admission hold the request ran under, when it differs per request (one meter, several dispatches). */
+	reservationId: v.optional(v.string()),
+});
 
-interface LlmUsageAttribution {
-	readonly organizationId: string;
-	readonly pluginId: string;
-}
+export type MeteredRequest = Infer<typeof meteredRequestValidator>;
 
-/** Shared mutation-local writer so plugin settlement and its audit stay atomic. */
-export async function insertLlmUsage(
-	ctx: MutationCtx,
-	feature: string,
-	tokenUsage: TokenUsage,
-	modelUsed: string | undefined,
-	attribution?: LlmUsageAttribution,
-	tags?: LlmUsageTags
-): Promise<void> {
-	await ctx.db.insert('llmUsageEvents', {
-		feature,
-		organizationId: attribution?.organizationId,
-		pluginId: attribution?.pluginId,
-		modelUsed,
-		promptTokens: tokenUsage.promptTokens,
-		completionTokens: tokenUsage.completionTokens,
-		totalTokens: tokenUsage.totalTokens,
-		// A local engine bills nothing, whatever its model id would price at.
-		costUsd: tags?.isLocalEngine === true ? 0 : estimateCostUsd(modelUsed, tokenUsage),
-		createdAt: Date.now(),
-		plane: tags?.plane,
-		requestId: tags?.requestId,
-		isFallback: tags?.isFallback,
-		isCalibrated: tags?.isCalibrated,
-		isThrottled: tags?.isThrottled,
-		isLocalEngine: tags?.isLocalEngine,
-	});
-}
+/** Requests per write: a tool loop's steps times its attempts, with room to spare. */
+export const MAX_METERED_REQUESTS_PER_WRITE = 64;
 
 /**
- * Helper for action callers: record one LLM call's spend under a feature tag.
- * Best-effort — never throws on the caller's critical path is the caller's job
- * (this awaits a cheap internal mutation).
- */
-export async function recordLlmSpend(
-	ctx: ActionCtx,
-	feature: string,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined
-): Promise<void> {
-	if (!tokenUsage) return;
-	await ctx.runMutation(internal.analytics.llmUsage.record, { feature, modelUsed, tokenUsage });
-}
-
-/**
- * {@link recordLlmSpend} for interactive surfaces: schedules the ledger write
- * instead of running it, so the user's answer is not held for a mutation round
- * trip. The row lands moments later. The advisory budget gate
- * (mail/ai/gate.ts) is the only reader on these paths, and it only needs the
- * row before the next call, not before this one returns.
- */
-export async function scheduleLlmSpend(
-	ctx: ActionCtx,
-	feature: string,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined
-): Promise<void> {
-	if (!tokenUsage) return;
-	await ctx.scheduler.runAfter(0, internal.analytics.llmUsage.record, {
-		feature,
-		modelUsed,
-		tokenUsage,
-	});
-}
-
-/**
- * The decision plane's writer. Separate from {@link recordLlmSpend} only so no
- * call site has to remember the plane tag or the three flags: the dispatch hands
- * over one attempt record, this turns it into one row, and the row lands BEFORE
- * the answer is used so the enforced ceiling sees the spend it authorised.
+ * Write one row per provider request of one logical call, in one mutation. The
+ * call-level tags apply to every row; each request brings its own attempt,
+ * usage, latency and model. A request with no reported usage writes a zero-cost
+ * row marked `isEstimated`: it was made, and a ledger that hides it under-counts
+ * attempts.
  *
- * A failed or throttled attempt is recorded too (using reported usage, if available), because the
- * counters read from these rows are about what the plane DID, not about what it
- * returned.
+ * IDEMPOTENT by `(requestId, attempt)`: a request whose row already exists is
+ * skipped, so a writer that retries a batch after an ambiguous failure (the
+ * mutation committed, the reply was lost) writes nothing twice.
  */
-export async function recordDecisionSpend(
-	ctx: ActionCtx,
-	feature: string,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined,
-	tags: Omit<LlmUsageTags, 'plane'> = {}
-): Promise<void> {
-	await ctx.runMutation(internal.analytics.llmUsage.record, {
-		feature,
-		modelUsed,
-		tokenUsage,
-		plane: 'decision',
-		requestId: tags.requestId,
-		isFallback: tags.isFallback,
-		isCalibrated: tags.isCalibrated,
-		isThrottled: tags.isThrottled,
-		isLocalEngine: tags.isLocalEngine,
-	});
-}
+/** The arguments of {@link recordRequests}: one call's tags and its requests. */
+const recordRequestsArgs = {
+	feature: v.string(),
+	...tagArgs,
+	requests: v.array(meteredRequestValidator),
+	/**
+	 * Admission holds whose dispatch is over, settled in this mutation once its
+	 * rows are in (`aiRouting/settlement.ts`). `expectedRequests` is every
+	 * request the hold covered; a hold whose rows are not all in the ledger yet
+	 * stays held, and the expiry sweep settles it.
+	 */
+	settlements: v.optional(
+		v.array(v.object({ reservationId: v.string(), expectedRequests: v.number() }))
+	),
+};
+
+/** One batch as {@link recordRequests} takes it (typed off the validator, not the api). */
+export type RequestBatchArgs = Infer<ReturnType<typeof v.object<typeof recordRequestsArgs>>>;
+
+export const recordRequests = internalMutation({
+	args: recordRequestsArgs,
+	handler: async (ctx, args) => {
+		const { feature, requests, settlements, ...tags } = args;
+		if (requests.length > MAX_METERED_REQUESTS_PER_WRITE) {
+			throw new Error('Too many metered requests in one write');
+		}
+		for (const request of requests) {
+			if (tags.requestId !== undefined) {
+				const existing = await ctx.db
+					.query('llmUsageEvents')
+					.withIndex('by_request_id_and_attempt', (q) =>
+						q.eq('requestId', tags.requestId).eq('attempt', request.attempt)
+					)
+					.first();
+				if (existing) continue;
+			}
+			const { usage, modelUsed, ...requestTags } = request;
+			const inserted = await insertLlmUsage(
+				ctx,
+				feature,
+				usage ?? ZERO_USAGE,
+				modelUsed,
+				undefined,
+				{
+					...tags,
+					...requestTags,
+					isEstimated: usage === undefined,
+				}
+			);
+			// A row of a hold that already closed (it arrived after the sweep) is
+			// charged against the estimate it replaces, in this mutation.
+			const reservationId = request.reservationId ?? tags.reservationId;
+			if (reservationId) await reconcileLateRow(ctx, reservationId, inserted);
+		}
+		for (const settlement of settlements ?? []) {
+			await settleReservation(ctx, settlement.reservationId, {
+				mode: 'call_end',
+				expectedRequests: settlement.expectedRequests,
+			});
+		}
+	},
+});
 
 type SpendTotals = { totalTokens: number; costUsd: number; calls: number };
 
 /**
  * Group priced usage events by a caller-chosen key, summing tokens/cost/calls
+ * (settlement rows add their spend and no call)
  * and returning the groups sorted by cost (desc) plus the window total. The
  * per-feature and per-provider spend queries share this shape and differ only in
  * the grouping key, so both delegate here and rename `key` to their own label.
  */
-function groupSpend<E extends { totalTokens: number; costUsd: number }>(
+function groupSpend<E extends { feature: string; totalTokens: number; costUsd: number }>(
 	events: E[],
 	keyOf: (event: E) => string
 ): { groups: Array<SpendTotals & { key: string }>; totalCostUsd: number } {
@@ -206,7 +212,8 @@ function groupSpend<E extends { totalTokens: number; costUsd: number }>(
 		const acc = byKey.get(key) ?? { key, totalTokens: 0, costUsd: 0, calls: 0 };
 		acc.totalTokens += event.totalTokens;
 		acc.costUsd += event.costUsd;
-		acc.calls += 1;
+		// A settlement estimate or offset carries spend, not a call (Sol r6 F1).
+		if (isProviderRequestRow(event)) acc.calls += 1;
 		byKey.set(key, acc);
 	}
 	const groups = [...byKey.values()].sort((a, b) => b.costUsd - a.costUsd);
@@ -281,6 +288,8 @@ export const getSpendByProvider = adminQuery({
 /** The fields the decision counters read. Structural, so it is testable with plain rows. */
 export interface DecisionCountableEvent {
 	readonly plane?: LlmUsagePlane;
+	/** Absent in older callers; a settlement estimate row is not counted as an attempt. */
+	readonly feature?: string;
 	readonly isFallback?: boolean;
 	readonly isCalibrated?: boolean;
 	readonly isThrottled?: boolean;
@@ -324,11 +333,13 @@ export function summarizeDecisionPlane(
 	events: readonly DecisionCountableEvent[]
 ): DecisionPlaneCounters {
 	const decisions = events.filter((event) => event.plane === 'decision');
-	const attempts = decisions.length;
-	const fallbackAttempts = decisions.filter((event) => event.isFallback === true).length;
-	const calibrationReported = decisions.filter((event) => event.isCalibrated !== undefined).length;
-	const uncalibratedAttempts = decisions.filter((event) => event.isCalibrated === false).length;
-	const throttledAttempts = decisions.filter((event) => event.isThrottled === true).length;
+	// A settlement estimate (admission) is spend, not an attempt.
+	const requests = decisions.filter((event) => event.feature !== SETTLEMENT_FEATURE);
+	const attempts = requests.length;
+	const fallbackAttempts = requests.filter((event) => event.isFallback === true).length;
+	const calibrationReported = requests.filter((event) => event.isCalibrated !== undefined).length;
+	const uncalibratedAttempts = requests.filter((event) => event.isCalibrated === false).length;
+	const throttledAttempts = requests.filter((event) => event.isThrottled === true).length;
 	const rate = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
 	return {
 		attempts,

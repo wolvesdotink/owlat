@@ -6,11 +6,12 @@ import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
-import { recordLlmSpend } from './analytics/llmUsage';
-import { recordSpendOnFailure } from './analytics/failedLlmSpend';
+import { meterLlmCall } from './analytics/meteredSpend';
+import { newRootRequest } from './lib/llm/requestMeter';
 import { resolveLanguageModel } from './lib/llmProvider';
 import { requireAuthenticatedIdentity } from './lib/sessionOrganization';
 import { throwInvalidInput } from './_utils/errors';
+import { anchorActionDeadline } from './lib/llm/actionDeadline';
 
 // Input caps so a single call can't be looped into an unbounded LLM spend: the
 // batch size and the combined character volume fed to the model are both
@@ -59,6 +60,8 @@ export const translateBatch = authedAction({
 		targetLanguage: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ translations: TranslatedItem[] }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Require authentication to prevent unauthorized API quota consumption
 		await requireAuthenticatedIdentity(ctx);
 
@@ -90,18 +93,20 @@ export const translateBatch = authedAction({
 		// dispatch). generateObject validates the shape, so a malformed response
 		// throws through runLlmObject's normal path instead of silently yielding
 		// zero translations the way the old fence-stripping parser did.
-		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+		const model = await resolveLanguageModel(ctx, 'mail.translate');
+		const { object, tokenUsage, modelUsed } = await meterLlmCall(
 			ctx,
-			'translate',
-			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'summarize'), // Translation is a fast-tier task
-				schema: translationSchema,
-				prompt,
-				temperature: 0.3,
-			})
+			{ feature: 'translate', root: newRootRequest('translate') },
+			(meter) =>
+				runLlmObject({
+					meter,
+					model,
+					schema: translationSchema,
+					prompt,
+					temperature: 0.3,
+				})
 		);
 		logInfo('[translate] llm call', { tokenUsage, modelUsed });
-		await recordLlmSpend(ctx, 'translate', tokenUsage, modelUsed);
 
 		// Map each translation back to its original item id via the index.
 		const translations: TranslatedItem[] = object.translations.map((t) => ({

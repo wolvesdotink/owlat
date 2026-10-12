@@ -16,14 +16,16 @@ import { internal } from '../../_generated/api';
 import { resolveLanguageModel, resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmText } from '../../lib/llm/dispatch';
 import { interactiveLlmPolicy } from '../../lib/llm/retryPolicy';
-import { scheduleLlmSpend } from '../../analytics/llmUsage';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { newRootRequest } from '../../lib/llm/requestMeter';
 import { gateAndLoadThread, gatedInParallel } from './gate';
 import { buildSchedulingReplyInstruction } from '../availability';
 import { REPLY_OPTIONS_LIST_FORMAT, streamReplyOptions } from '../replyOptions';
 import { SYSTEM_GUARD } from './promptGuards';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
-import { throwNotFound } from '../../_utils/errors';
+import { throwInvalidState, throwNotFound } from '../../_utils/errors';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 /** Hard cap on an inline completion — Superhuman-style, one short continuation. */
 const MAX_COMPLETION_CHARS = 140;
@@ -116,6 +118,8 @@ export const suggestReplies = authedAction({
 		streamId: v.optional(v.id('aiDraftStreams')),
 	},
 	handler: async (ctx, args): Promise<{ replies: string[] }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
 		// The prompt parts and the buffer's ownership check are independent, so
@@ -142,12 +146,18 @@ export const suggestReplies = authedAction({
 					})
 				: undefined,
 		]);
-		const { replies, tokenUsage, modelUsed } = await streamReplyOptions(ctx, {
-			...buildSuggestRepliesPrompt({ instruction, transcript, voiceGuidance }),
-			...(args.streamId ? { streamId: args.streamId } : {}),
-			abortSignal: interactiveLlmPolicy('reply').abortSignal,
-		});
-		await scheduleLlmSpend(ctx, 'postbox_suggest_replies', tokenUsage, modelUsed);
+		const { replies } = await meterLlmCall(
+			ctx,
+			{ feature: 'postbox_suggest_replies', root: newRootRequest('postbox_action') },
+			(meter) =>
+				streamReplyOptions(ctx, {
+					...buildSuggestRepliesPrompt({ instruction, transcript, voiceGuidance }),
+					...(args.streamId ? { streamId: args.streamId } : {}),
+					abortSignal: interactiveLlmPolicy('reply').abortSignal,
+					meter,
+				}),
+			{ write: 'schedule', rethrow: 'as_is' }
+		);
 		return { replies };
 	},
 });
@@ -207,11 +217,14 @@ export const askThread = authedAction({
 		question: v.string(),
 		history: v.optional(v.array(v.object({ question: v.string(), answer: v.string() }))),
 	},
-	handler: async (ctx, args): Promise<{ answer: string }> => {
+	// `isTruncated`: the answer stopped at its output limit; the UI marks it cut off.
+	handler: async (ctx, args): Promise<{ answer: string; isTruncated: boolean }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
 		const [model, transcript] = await Promise.all([
-			resolveLanguageModel(ctx, 'draft'),
+			resolveLanguageModel(ctx, 'mail.ask'),
 			buildThreadTranscript(thread.messages, THREAD_SUMMARY),
 		]);
 		const { system, prompt } = buildAskThreadPrompt({
@@ -219,15 +232,21 @@ export const askThread = authedAction({
 			question: args.question,
 			history: args.history,
 		});
-		const { text, tokenUsage, modelUsed } = await runLlmText({
-			model,
-			system,
-			prompt,
-			temperature: 0.2,
-			...interactiveLlmPolicy('reply'),
-		});
-		await scheduleLlmSpend(ctx, 'postbox_ask_thread', tokenUsage, modelUsed);
-		return { answer: text.trim() };
+		const { text, isTruncated } = await meterLlmCall(
+			ctx,
+			{ feature: 'postbox_ask_thread', root: newRootRequest('postbox_action') },
+			(meter) =>
+				runLlmText({
+					meter,
+					model,
+					system,
+					prompt,
+					temperature: 0.2,
+					...interactiveLlmPolicy('reply'),
+				}),
+			{ write: 'schedule', rethrow: 'as_is' }
+		);
+		return { answer: text.trim(), isTruncated: isTruncated === true };
 	},
 });
 
@@ -248,20 +267,28 @@ export const completeDraft = authedAction({
 		cursorSentence: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ completion: string }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Fast/cheap tier: inline completions are high-volume and must be cheap;
 		// 'summarize' maps to the fast tier in the task router. Resolved while
 		// the gate runs.
-		const model = await gatedInParallel(ctx, resolveLanguageModel(ctx, 'summarize'));
+		const model = await gatedInParallel(ctx, resolveLanguageModel(ctx, 'mail.complete'));
 		const { system, prompt } = buildCompletePrompt(args);
-		const { text, tokenUsage, modelUsed } = await runLlmText({
-			model,
-			system,
-			prompt,
-			temperature: 0.3,
-			// A ghost suggestion that arrives after the user typed on is useless.
-			...interactiveLlmPolicy('completion'),
-		});
-		await scheduleLlmSpend(ctx, 'postbox_complete_draft', tokenUsage, modelUsed);
+		const { text } = await meterLlmCall(
+			ctx,
+			{ feature: 'postbox_complete_draft', root: newRootRequest('postbox_action') },
+			(meter) =>
+				runLlmText({
+					meter,
+					model,
+					system,
+					prompt,
+					temperature: 0.3,
+					// A ghost suggestion that arrives after the user typed on is useless.
+					...interactiveLlmPolicy('completion'),
+				}),
+			{ write: 'schedule', rethrow: 'as_is' }
+		);
 		return { completion: postProcessCompletion(text) };
 	},
 });
@@ -358,6 +385,8 @@ export const rewriteSelection = authedAction({
 		mailboxId: v.optional(v.id('mailboxes')),
 	},
 	handler: async (ctx, args): Promise<{ rewritten: string }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const [voiceGuidance, model] = await gatedInParallel(
 			ctx,
 			Promise.all([
@@ -369,7 +398,7 @@ export const rewriteSelection = authedAction({
 				// a clearly-trivial selection may downgrade to the fast tier when
 				// complexity routing is enabled. FAIL-SOFT: routing off / any
 				// non-trivial selection keeps the capable tier (today's behaviour).
-				resolveLanguageModelForUserText(ctx, 'draft', args.selection),
+				resolveLanguageModelForUserText(ctx, 'mail.rewrite', args.selection),
 			])
 		);
 		const { system, prompt } = buildRewritePrompt({
@@ -379,14 +408,23 @@ export const rewriteSelection = authedAction({
 			surroundingContext: args.surroundingContext ?? '',
 			voiceGuidance,
 		});
-		const { text, tokenUsage, modelUsed } = await runLlmText({
-			model,
-			system,
-			prompt,
-			temperature: 0.4,
-			...interactiveLlmPolicy('reply'),
-		});
-		await scheduleLlmSpend(ctx, 'postbox_rewrite_selection', tokenUsage, modelUsed);
+		const { text, isTruncated } = await meterLlmCall(
+			ctx,
+			{ feature: 'postbox_rewrite_selection', root: newRootRequest('postbox_action') },
+			(meter) =>
+				runLlmText({
+					meter,
+					model,
+					system,
+					prompt,
+					temperature: 0.4,
+					...interactiveLlmPolicy('reply'),
+				}),
+			{ write: 'schedule', rethrow: 'as_is' }
+		);
+		// A rewrite replaces the owner's selection: a cut-off one must not.
+		if (isTruncated === true)
+			throwInvalidState('The rewrite was cut off. Try a shorter selection.');
 		return { rewritten: text.trim() };
 	},
 });

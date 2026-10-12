@@ -78,6 +78,8 @@ const props = withDefaults(
 		waitingForFiles?: boolean;
 		/** The draft is written and still has gaps these questions fill. */
 		draftWritten?: boolean;
+		/** The AI budget refused the last answer; the answers stay to try again (U5). */
+		budgetRefused?: boolean;
 	}>(),
 	{
 		requireAll: false,
@@ -322,6 +324,15 @@ const subline = computed(() => {
 						{{ skipLabel ?? t('components.answer.askCard.skip') }}
 					</UiButton>
 				</div>
+				<p
+					v-if="budgetRefused"
+					class="mt-3 flex items-start gap-1.5 text-xs text-warning"
+					role="status"
+					data-testid="ask-budget"
+				>
+					<Icon name="lucide:wallet" class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+					{{ t('components.answer.askCard.budgetRefused') }}
+				</p>
 				<ClarificationTrustLine class="mt-3" :questions="questions" test-id="ask-trust" />
 			</template>
 		</ClarificationQuestions>

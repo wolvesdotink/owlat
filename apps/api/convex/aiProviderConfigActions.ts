@@ -32,6 +32,11 @@ import type { Doc, Id } from './_generated/dataModel';
 import { authedAction } from './lib/authedFunctions';
 import { decryptSecret, encryptSecret } from './lib/credentialCrypto';
 import { embeddingProviderFor, languageProviderFor } from './lib/llmProviders';
+import {
+	embeddingSelectionForSave,
+	resolveStoredEmbeddingModel,
+	throwEmbeddingKindRequired,
+} from './lib/embeddingSpace';
 import { invalidateAiConfigCache } from './lib/llmProviders/storedConfigCache';
 import { decisionProviderFor } from './lib/decisionProviders';
 import { decisionEnvApiKey, decisionKindNeedsKey } from './lib/decisionProvider';
@@ -45,6 +50,7 @@ import {
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
 } from './lib/validators/aiProviderConfig';
+import { anchorActionDeadline } from './lib/llm/actionDeadline';
 
 /** Which plane a test / discovery call is about. Absent ⇒ `language`, as before. */
 const planeValidator = v.optional(v.union(v.literal('language'), v.literal('decision')));
@@ -112,7 +118,12 @@ export const saveConfig = authedAction({
 		modelCapable: v.optional(v.string()),
 		/** Plaintext language-provider key. Omit to keep the stored key unchanged. */
 		apiKey: v.optional(v.string()),
+		/**
+		 * Omit to keep the stored embedding kind (`local` when nothing is stored).
+		 * Required with `embeddingApiKey`: a new key is bound to the kind named here.
+		 */
 		embeddingProviderKind: v.optional(embeddingProviderKindValidator),
+		/** Omit to keep the stored model for an unchanged kind. */
 		embeddingModel: v.optional(v.string()),
 		/** Plaintext hosted-embedder key. Omit to keep the stored key unchanged. */
 		embeddingApiKey: v.optional(v.string()),
@@ -127,6 +138,8 @@ export const saveConfig = authedAction({
 		decisionApiKey: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'aiProviderConfig'>> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const adapter = languageProviderFor(args.languageProviderKind);
 		const modelFast = args.modelFast?.trim() || adapter.defaultModels.fast;
 		const modelCapable = args.modelCapable?.trim() || adapter.defaultModels.capable;
@@ -139,18 +152,21 @@ export const saveConfig = authedAction({
 			adapter.validateCredentials({ apiKey: args.apiKey, baseUrl: languageBaseUrl });
 		}
 
-		// Local by default; the adapter decides whether it is keyless (local /
-		// custom-compatible) or a hosted embedder that needs a key.
-		const embeddingProviderKind = args.embeddingProviderKind ?? 'local';
-		const embeddingAdapter = embeddingProviderFor(embeddingProviderKind);
-		const isEmbeddingLocal = embeddingAdapter.isLocal;
-		// Fail fast on a hosted embedder configured with a key but structurally
-		// invalid, before persisting anything.
-		if (!isEmbeddingLocal && args.embeddingApiKey) {
-			embeddingAdapter.validateCredentials({
-				apiKey: args.embeddingApiKey,
-				modelId: args.embeddingModel?.trim() || embeddingAdapter.defaultModel,
-			});
+		// A newly entered embedding key belongs to the embedder named beside it: the
+		// kind is never inferred from the row, which may change before the persist
+		// mutation runs. Fail fast on a structurally invalid hosted-embedder key.
+		if (args.embeddingApiKey) {
+			const embeddingKind = args.embeddingProviderKind;
+			if (embeddingKind === undefined) throwEmbeddingKindRequired();
+			const embeddingAdapter = embeddingProviderFor(embeddingKind);
+			if (!embeddingAdapter.isLocal) {
+				embeddingAdapter.validateCredentials({
+					apiKey: args.embeddingApiKey,
+					modelId: resolveStoredEmbeddingModel(
+						embeddingSelectionForSave({ kind: embeddingKind, model: args.embeddingModel }, null)
+					),
+				});
+			}
 		}
 
 		// The decision plane, when (and only when) this save names one. A newly
@@ -178,9 +194,8 @@ export const saveConfig = authedAction({
 			modelCapable,
 			isLanguageLocal: adapter.isLocal,
 			languageEnvelope: args.apiKey ? envelopeFor(args.apiKey) : undefined,
-			embeddingProviderKind,
+			embeddingProviderKind: args.embeddingProviderKind,
 			embeddingModel: args.embeddingModel?.trim() || undefined,
-			isEmbeddingLocal,
 			embeddingEnvelope: args.embeddingApiKey ? envelopeFor(args.embeddingApiKey) : undefined,
 			decisionProviderKind: decisionKind,
 			decisionModel: args.decisionModel?.trim() || undefined,
@@ -213,6 +228,8 @@ export const saveConfig = authedAction({
 export const testConnection = authedAction({
 	args: { plane: planeValidator },
 	handler: async (ctx, args): Promise<{ ok: boolean; error?: string }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Admin floor — actions can't run requireOrgPermission directly, so
 		// assert through the internal query that inherits our identity.
 		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
@@ -280,6 +297,8 @@ export const testConnection = authedAction({
 export const listModels = authedAction({
 	args: { plane: planeValidator },
 	handler: async (ctx, args): Promise<{ supported: boolean; models: string[]; error?: string }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Admin floor — see testConnection.
 		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
 

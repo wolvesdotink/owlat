@@ -5,11 +5,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import { STRUCTURAL_THREAD_FANOUT } from '../knowledge/edges';
 import { normalizeForHash } from '../lib/knowledgeEdges';
-import {
-	createTestContact,
-	createTestKnowledgeEntry,
-	enableFeatures,
-} from './factories';
+import { createTestContact, createTestKnowledgeEntry, enableFeatures } from './factories';
 import type { Doc, Id } from '../_generated/dataModel';
 
 // Heavy action / LLM modules aren't needed for the structural-linker mutations
@@ -17,27 +13,28 @@ import type { Doc, Id } from '../_generated/dataModel';
 // (same idiom as knowledgeGraph.integration.test.ts).
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
 async function allRelations(
-	t: ReturnType<typeof convexTest>,
+	t: ReturnType<typeof convexTest>
 ): Promise<Doc<'knowledgeRelations'>[]> {
 	return await t.run(async (ctx) => ctx.db.query('knowledgeRelations').collect());
 }
@@ -91,14 +88,14 @@ describe('knowledge.edges.linkStructural', () => {
 			for (let i = 0; i < STRUCTURAL_THREAD_FANOUT + 3; i++) {
 				await ctx.db.insert(
 					'knowledgeEntries',
-					createTestKnowledgeEntry({ title: `pre-${i}`, threadId }),
+					createTestKnowledgeEntry({ title: `pre-${i}`, threadId })
 				);
 			}
 			// The freshly-ingested entry carries no threadId of its own — the fan-out
 			// is driven by the threadId arg, so it never self-links.
 			const batchId = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({ title: 'new' }),
+				createTestKnowledgeEntry({ title: 'new' })
 			);
 			return { threadId, batchId };
 		});
@@ -151,11 +148,11 @@ describe('knowledge.edges.linkStructural', () => {
 			const contactB = await ctx.db.insert('contacts', createTestContact());
 			const a = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({ title: 'A', contactIds: [contactA] }),
+				createTestKnowledgeEntry({ title: 'A', contactIds: [contactA] })
 			);
 			const b = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({ title: 'B', contactIds: [contactB] }),
+				createTestKnowledgeEntry({ title: 'B', contactIds: [contactB] })
 			);
 			return [a, b] as Id<'knowledgeEntries'>[];
 		});
@@ -227,9 +224,7 @@ describe('knowledge.graph.saveEntry content-hash dedup', () => {
 
 		expect(secondId).toBe(firstId); // deduped via by_content_hash
 
-		const entries = await t.run(async (ctx) =>
-			ctx.db.query('knowledgeEntries').collect(),
-		);
+		const entries = await t.run(async (ctx) => ctx.db.query('knowledgeEntries').collect());
 		expect(entries).toHaveLength(1);
 		expect(entries[0]!.contentHash).toBe(hash);
 	});
@@ -241,9 +236,7 @@ describe('knowledge.graph.saveEntry content-hash dedup', () => {
 		const content = 'Identical content body.';
 		const hash = createHash('sha256').update(normalizeForHash(title, content)).digest('hex');
 
-		const contactId = await t.run(async (ctx) =>
-			ctx.db.insert('contacts', createTestContact()),
-		);
+		const contactId = await t.run(async (ctx) => ctx.db.insert('contacts', createTestContact()));
 
 		const orgGeneralId = await t.mutation(internal.knowledge.graph.saveEntry, {
 			entryType: 'fact',
@@ -270,9 +263,7 @@ describe('knowledge.graph.saveEntry content-hash dedup', () => {
 
 		// Different contact scope ⇒ NOT deduped (dedup would widen visibility).
 		expect(contactScopedId).not.toBe(orgGeneralId);
-		const entries = await t.run(async (ctx) =>
-			ctx.db.query('knowledgeEntries').collect(),
-		);
+		const entries = await t.run(async (ctx) => ctx.db.query('knowledgeEntries').collect());
 		expect(entries).toHaveLength(2);
 	});
 });

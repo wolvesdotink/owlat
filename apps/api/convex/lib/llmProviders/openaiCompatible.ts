@@ -15,6 +15,7 @@
  * local server actually serves instead of free-text only.
  */
 
+import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import type { EmbeddingModel, LanguageModel } from 'ai';
 import { type OpenAICompatibleClient, openAICompatibleClient } from './clientCache';
 import { parseOpenAiModelIds } from './modelListing';
@@ -34,8 +35,13 @@ function requireBaseUrl(cfg: ProviderClientConfig): string {
 	return cfg.baseUrl;
 }
 
+// Ollama, vLLM, llama.cpp and LM Studio all accept `response_format: json_schema`.
+// Without the flag every `runLlmObject` call (classification, extraction) went
+// out as a schema-less `json_object` request.
 function compatibleClient(cfg: ProviderClientConfig): OpenAICompatibleClient {
-	return openAICompatibleClient(clientCache, 'openai-compatible', requireBaseUrl(cfg), cfg.apiKey);
+	return openAICompatibleClient(clientCache, 'openai-compatible', requireBaseUrl(cfg), cfg.apiKey, {
+		supportsStructuredOutputs: true,
+	});
 }
 
 export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCompatible'> = {
@@ -44,7 +50,7 @@ export const openaiCompatibleLanguageAdapter: LanguageProviderAdapter<'openaiCom
 	docsUrl: 'https://ai-sdk.dev/providers/openai-compatible-providers',
 	defaultBaseUrl: 'http://localhost:11434/v1',
 	isLocal: true,
-	defaultModels: { fast: 'llama3.1', capable: 'llama3.1' },
+	defaultModels: LANGUAGE_MODEL_CATALOG.openaiCompatible.defaults,
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return compatibleClient(cfg)(modelId);
 	},

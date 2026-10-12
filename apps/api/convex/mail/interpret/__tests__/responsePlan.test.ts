@@ -15,6 +15,7 @@ import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { enableFeatures } from '../../../__tests__/factories';
 import type * as LlmDispatch from '../../../lib/llm/dispatch';
+import { AdmissionRefusedError } from '../../../lib/llm/admissionPort';
 import {
 	modules,
 	reduceItem,
@@ -259,6 +260,18 @@ describe('responsePlan.setStances', () => {
 describe('coverage.check', () => {
 	const draft =
 		'Hi Jonas,\nthe signed contract follows tomorrow. Tuesday at 10:00 works for the call. I’ve attached the agenda.';
+
+	it('reports a spend-admission refusal instead of reading it as a model fault (D1)', async () => {
+		const t = harness();
+		const s = await setup(t);
+		runLlmObjectMock.mockRejectedValueOnce(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+		const result = await t.action(api.mail.interpret.coverage.check, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			draftText: draft,
+		});
+		expect(result).toMatchObject({ isChecked: false, budgetRefusal: 'daily_ceiling' });
+	});
 
 	it('checks the draft against the plan, stores it sealed and get reads it', async () => {
 		const t = harness();

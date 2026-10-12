@@ -1,8 +1,11 @@
+import { getFunctionName } from 'convex/server';
+import { PRICE_VERSION } from '../../lib/llm/pricing';
 import { convexTest } from 'convex-test';
 import { MockLanguageModelV3 } from 'ai/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import schema from '../../schema';
+import { internal } from '../../_generated/api';
 import {
 	bindAuthenticatedBundledPluginLlm,
 	bindSystemBundledPluginLlm,
@@ -64,6 +67,7 @@ beforeEach(() => {
 			}),
 			modelId: 'gpt-4o-mini',
 			endpointProvenance: 'openai-native',
+			identity: 'openai|gpt-4o-mini|',
 		});
 	providerGenerate
 		.mockReset()
@@ -86,6 +90,148 @@ async function setup() {
 	} as unknown as ActionCtx;
 	return { t, actionCtx, service: bindAuthenticatedBundledPluginLlm(actionCtx, 'alpha') };
 }
+
+describe('hosted plugin LLM settlement, durably (ADR-0073)', () => {
+	/** A ctx whose settlement mutations fail `failures` times, with a scheduler that queues. */
+	async function flakySettlement(failures: number) {
+		const base = await setup();
+		let failed = 0;
+		const scheduled: Array<{ ref: unknown; args: Record<string, unknown> }> = [];
+		const actionCtx = {
+			runQuery: base.t.query as unknown as ActionCtx['runQuery'],
+			runMutation: (async (ref: Parameters<typeof base.t.mutation>[0], args: never) => {
+				const name = getFunctionName(ref as never);
+				if (/settle(Success|Failure)$/.test(name) && failed < failures) {
+					failed += 1;
+					throw new Error('transient');
+				}
+				return base.t.mutation(ref, args);
+			}) as unknown as ActionCtx['runMutation'],
+			scheduler: {
+				runAfter: async (_delay: number, ref: unknown, args: Record<string, unknown>) => {
+					scheduled.push({ ref, args });
+					return 'job';
+				},
+			},
+		} as unknown as ActionCtx;
+		return { t: base.t, actionCtx, scheduled };
+	}
+
+	it('retries a transient settlement once and writes the ledger rows', async () => {
+		const { t, actionCtx, scheduled } = await flakySettlement(1);
+		await bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({ tier: 'fast', prompt: 'hi' });
+		expect(scheduled).toEqual([]);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				status: 'completed',
+			});
+			expect(await ctx.db.query('llmUsageEvents').collect()).toHaveLength(1);
+		});
+	});
+
+	it('hands a settlement that keeps failing to a scheduled recovery carrying its requests', async () => {
+		const { t, actionCtx, scheduled } = await flakySettlement(2);
+		const result = await bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+			tier: 'fast',
+			prompt: 'hi',
+		});
+		expect(result.text).toBe('safe result');
+		expect(scheduled).toHaveLength(1);
+		expect(getFunctionName(scheduled[0]!.ref as never)).toContain('recoverSettlement');
+		expect(scheduled[0]!.args).toMatchObject({
+			outcome: 'success',
+			requests: [expect.objectContaining({ attempt: 1 })],
+		});
+
+		// The scheduled job runs: the plugin budget settles and the ledger gets its row.
+		await t.mutation(internal.plugins.llmAccounting.recoverSettlement, scheduled[0]!.args as never);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				status: 'completed',
+			});
+			expect(await ctx.db.query('llmUsageEvents').collect()).toEqual([
+				expect.objectContaining({ feature: 'plugin:alpha', attempt: 1 }),
+			]);
+		});
+		// Idempotent: running it again changes nothing.
+		await t.mutation(internal.plugins.llmAccounting.recoverSettlement, scheduled[0]!.args as never);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('llmUsageEvents').collect()).toHaveLength(1);
+		});
+	});
+
+	it.each([
+		['settled directly', 0, false],
+		['recovered by the scheduler', 2, false],
+		['recovered after a provider failure', 2, true],
+	])(
+		'tags the rows of a host-rooted call with its root request when %s',
+		async (_label, failures, providerFails) => {
+			const { t, actionCtx, scheduled } = await flakySettlement(failures);
+			const root = {
+				rootRequestId: 'team:inbound-1',
+				parentCallId: 'draft-call-1',
+				deadlineAt: Date.now() + 60_000,
+			};
+			const service = bindSystemBundledPluginLlm(actionCtx, 'alpha', undefined, root);
+			if (providerFails) {
+				providerGenerate.mockRejectedValueOnce({ statusCode: 401, message: 'bad key' });
+				await expect(service.generate({ tier: 'fast', prompt: 'hi' })).rejects.toMatchObject({
+					code: 'provider_failure',
+				});
+			} else {
+				await service.generate({ tier: 'fast', prompt: 'hi' });
+			}
+			if (failures > 0) {
+				expect(scheduled[0]!.args).toMatchObject({
+					rootRequestId: 'team:inbound-1',
+					parentCallId: 'draft-call-1',
+				});
+				await t.mutation(
+					internal.plugins.llmAccounting.recoverSettlement,
+					scheduled[0]!.args as never
+				);
+			}
+			await t.run(async (ctx) => {
+				const rows = await ctx.db.query('llmUsageEvents').collect();
+				expect(rows.length).toBeGreaterThan(0);
+				for (const row of rows) {
+					expect(row).toMatchObject({
+						feature: 'plugin:alpha',
+						rootRequestId: 'team:inbound-1',
+						parentCallId: 'draft-call-1',
+					});
+				}
+			});
+		}
+	);
+
+	it('leaves the root tags off an unrooted call', async () => {
+		const { t, actionCtx } = await flakySettlement(0);
+		await bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({ tier: 'fast', prompt: 'hi' });
+		await t.run(async (ctx) => {
+			const [row] = await ctx.db.query('llmUsageEvents').collect();
+			expect(row!.rootRequestId).toBeUndefined();
+			expect(row!.parentCallId).toBeUndefined();
+		});
+	});
+
+	it('recovers a failed call’s settlement with its requests too', async () => {
+		const { t, actionCtx, scheduled } = await flakySettlement(2);
+		providerGenerate.mockRejectedValueOnce({ statusCode: 401, message: 'bad key' });
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({ tier: 'fast', prompt: 'hi' })
+		).rejects.toMatchObject({ code: 'provider_failure' });
+		expect(scheduled[0]!.args).toMatchObject({ outcome: 'failure' });
+		await t.mutation(internal.plugins.llmAccounting.recoverSettlement, scheduled[0]!.args as never);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				status: 'failed',
+			});
+			expect((await ctx.db.query('llmUsageEvents').collect()).length).toBeGreaterThan(0);
+		});
+	});
+});
 
 describe('hosted plugin LLM service', () => {
 	it('supports background strategy dispatch with system attribution and the same budget gate', async () => {
@@ -155,7 +301,16 @@ describe('hosted plugin LLM service', () => {
 				status: 'failed',
 				actorUserId: 'system:bundled_plugin',
 			});
-			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+			// The aborted request reached the provider: one zero-cost estimated row.
+			expect(await ctx.db.query('llmUsageEvents').collect()).toEqual([
+				expect.objectContaining({
+					feature: 'plugin:alpha',
+					attempt: 1,
+					costUsd: 0,
+					isEstimated: true,
+					task: 'plugin.invoke',
+				}),
+			]);
 		});
 	});
 
@@ -239,7 +394,13 @@ describe('hosted plugin LLM service', () => {
 			modelUsed: 'gpt-4o-mini',
 			usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
 		});
-		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledWith(expect.anything(), 'summarize');
+		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledWith(
+			expect.anything(),
+			'plugin.invoke',
+			{
+				tier: 'fast',
+			}
+		);
 		expect(providerGenerate).toHaveBeenCalledWith(
 			expect.objectContaining({ maxOutputTokens: 2048 })
 		);
@@ -252,7 +413,14 @@ describe('hosted plugin LLM service', () => {
 				status: 'completed',
 				tier: 'fast',
 			});
-			expect(await ctx.db.query('llmUsageEvents').unique()).toMatchObject({ pluginId: 'alpha' });
+			expect(await ctx.db.query('llmUsageEvents').unique()).toMatchObject({
+				pluginId: 'alpha',
+				attempt: 1,
+				task: 'plugin.invoke',
+				endpoint: 'openai-native',
+				isEstimated: false,
+				priceVersion: PRICE_VERSION,
+			});
 			expect(await ctx.db.query('pluginLlmDailyUsage').unique()).toMatchObject({
 				chargedMicrousd: reservation?.chargedMicrousd,
 				actualMicrousd: reservation?.actualMicrousd,
@@ -280,7 +448,15 @@ describe('hosted plugin LLM service', () => {
 				chargedMicrousd: reservation?.reservedMicrousd,
 				actualMicrousd: 0,
 			});
-			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+			// The deployment ledger keeps the request, at the model the provider
+			// reported, marked as an estimate.
+			expect(await ctx.db.query('llmUsageEvents').collect()).toEqual([
+				expect.objectContaining({
+					modelUsed: 'gpt-4o-mini-provider-alias',
+					totalTokens: 15,
+					isEstimated: true,
+				}),
+			]);
 			const audits = await ctx.db.query('auditLogs').take(5);
 			expect(JSON.stringify(audits)).not.toContain('gpt-4o-mini-provider-alias');
 		});
@@ -307,7 +483,11 @@ describe('hosted plugin LLM service', () => {
 				chargedMicrousd: reservation?.reservedMicrousd,
 				actualMicrousd: 0,
 			});
-			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+			const rows = await ctx.db.query('llmUsageEvents').collect();
+			expect(rows).toEqual([
+				expect.objectContaining({ modelUsed: 'gpt-4o-mini', totalTokens: 15, isEstimated: true }),
+			]);
+			expect(JSON.stringify(rows)).not.toContain('provider-secret-alias');
 			expect(JSON.stringify(await ctx.db.query('auditLogs').take(5))).not.toContain(
 				'provider-secret-alias'
 			);
@@ -342,6 +522,7 @@ describe('hosted plugin LLM service', () => {
 				model: 'gpt-4o-mini' as never,
 				modelId: 'gpt-4o-mini',
 				endpointProvenance: 'openai-native',
+				identity: 'openai|gpt-4o-mini|',
 			};
 		});
 		await expect(service.generate({ tier: 'fast', prompt: 'safe' })).rejects.toMatchObject({
@@ -381,6 +562,7 @@ describe('hosted plugin LLM service', () => {
 			model: 'gpt-4o-mini' as never,
 			modelId: 'gpt-4o-mini',
 			endpointProvenance: 'custom',
+			identity: 'openaiCompatible|gpt-4o-mini|https://llm.internal.test',
 		});
 		await expect(service.generate({ tier: 'fast', prompt: 'hello' })).rejects.toMatchObject({
 			code: 'access_denied',

@@ -174,6 +174,7 @@ export const get = publicQuery({
 							: ('stalled' as const),
 					}
 				: {}),
+			...(brief?.deferredSources ? { deferredSources: brief.deferredSources } : {}),
 			isNoReplyNeeded: checkpointResult
 				? !isReplyExpectingIntent(checkpointResult.replyIntent as ReplyIntent)
 				: false,
@@ -253,20 +254,26 @@ export const setViewOverride = threadBriefMutation({
 	},
 });
 /**
- * What the brief does not cover yet: history still being read or sources
- * enqueued and not yet recorded (`pending`, `backfillSources.ts`,
- * `sources.ts`), or history that cannot be read back (`history`). Either keeps
+ * What the brief does not cover yet: history still being read, sources
+ * enqueued and not yet recorded, or sources deferred until the thread is
+ * opened (`pending`, `backfillSources.ts`, `sources.ts`, `defer.ts`), or history that cannot be read back (`history`). Either keeps
  * a complete brief partial; null when the whole history is in. Pure.
  */
 export function historyGapOf(
 	brief: Pick<
 		Doc<'threadBriefs'>,
-		'historyState' | 'isHistoryIncomplete' | 'pendingSources' | 'unreadSources'
+		'historyState' | 'isHistoryIncomplete' | 'pendingSources' | 'unreadSources' | 'deferredSources'
 	> | null
 ): 'pending' | 'history' | 'failed' | null {
 	if ((brief?.unreadSources ?? 0) > 0) return 'failed';
 	if (brief?.isHistoryIncomplete) return 'history';
-	if (brief?.historyState === 'pending' || (brief?.pendingSources ?? 0) > 0) return 'pending';
+	if (
+		brief?.historyState === 'pending' ||
+		(brief?.pendingSources ?? 0) > 0 ||
+		(brief?.deferredSources ?? 0) > 0
+	) {
+		return 'pending';
+	}
 	return null;
 }
 

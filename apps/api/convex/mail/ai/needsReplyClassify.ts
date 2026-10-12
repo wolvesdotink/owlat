@@ -28,8 +28,9 @@
  *      attacker-controlled body as untrusted data. The result only ever updates
  *      the advisory flag — it never sends or modifies mail.
  *   4. Clarification (whether a good reply misses a fact only the owner has)
- *      runs only when the decision needs a reply, behind the Postbox AI gate
- *      (`ai` flag, advisory budget, rate limit), with answer-memory fills.
+ *      runs only when the decision needs a reply and the sender screener lets
+ *      the sender into the queue (L3), behind the Postbox AI gate (`ai` flag,
+ *      advisory budget, rate limit), with answer-memory fills.
  *
  * Delivery also hands over the message it just delivered
  * (`interpretMessageId`): it is interpreted here even when the thread is no
@@ -37,14 +38,11 @@
  * delivery pipeline never schedules a second run for it.
  */
 
-import { v, type Infer } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { resolveLanguageModel } from '../../lib/llmProvider';
-import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { evaluateNeedsReplyCandidate } from '../needsReplyHeuristic';
 import { runInterpretation, type InterpretRunResult } from '../interpret/run';
 import {
@@ -53,26 +51,20 @@ import {
 	type LatestInbound,
 	type NeedsReplyProjection,
 } from '../interpret/needsReplyProjection';
-import {
-	replySlotsSchema,
-	divergenceSchema,
-	buildSlotPrompt,
-	buildCandidatePrompt,
-	buildDivergencePrompt,
-	sanitizeClarificationQuestions,
-	splitCandidateSlots,
-	itemIdForSlot,
-	slotItemsOf,
-	type SlotItem,
-	DIVERGENCE_SAMPLES,
-	MIN_SAMPLES_FOR_JUDGMENT,
-	type ReplySlot,
-} from '../../inbox/clarificationSlots';
-import { applyMemoryFills, withAnswerKind } from '../../inbox/clarificationAnswers';
+import { slotItemsOf, type SlotItem } from '../../inbox/clarificationSlots';
+import type { BundleSubject } from '../../decision/bundleRunner';
+import { applyMemoryFills } from '../../inbox/clarificationAnswers';
 import { draftClarificationReply } from './needsReplyDraft';
+import { continuesLater, isDeferredUntilOpen, isHeldOutByScreener } from './needsReplyGates';
+import { refineClarification, type ClarificationFlag } from './needsReplyRefine';
 import { logError } from '../../lib/runtimeLog';
-import type { needsReplyClarificationValidator } from '../../lib/validators/clarification';
-import { localizeQuestions } from '../../inbox/clarificationLocalize';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import {
+	BudgetDeferral,
+	deferredHandler,
+	rethrowAdmissionRefusal,
+	type DeferrableAction,
+} from '../../analytics/backgroundDeferral';
 
 /**
  * The needs-reply inputs of a run, when the model read the message. A failed,
@@ -85,105 +77,141 @@ function usableProjection(run: InterpretRunResult): NeedsReplyProjection | undef
 	return run.projection;
 }
 
+/** Whether spend admission refused any call of the run (its code, or a reported refusal). */
+export function isBudgetRefused(run: InterpretRunResult): boolean {
+	if (run.status === 'gone' || !('errorCode' in run)) return false;
+	return run.errorCode === 'budget' || run.budgetRefusal !== undefined;
+}
+
+/** This action, for its own budget deferral (ADR-0073, D1). */
+const deferClassify = (): DeferrableAction => internal.mail.ai.needsReplyClassify.classifyThread;
+
+const classifyThreadArgs = {
+	threadId: v.id('mailThreads'),
+	// Ingest-time headers of the triggering message — only available on the
+	// ingest trigger (none of them are persisted on the row, so the reconcile
+	// sweep re-classifies without them and leans on the sender screens).
+	precedence: v.optional(v.string()),
+	/** RFC 3834 Auto-Submitted. */
+	autoSubmitted: v.optional(v.string()),
+	/** RFC 2919 List-Id. */
+	listId: v.optional(v.string()),
+	/** The message delivery just landed (live mail only): interpreted by this run. */
+	interpretMessageId: v.optional(v.id('mailMessages')),
+	/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+	deferrals: v.optional(v.number()),
+};
+
 export const classifyThread = internalAction({
-	args: {
-		threadId: v.id('mailThreads'),
-		// Ingest-time headers of the triggering message — only available on the
-		// ingest trigger (none of them are persisted on the row, so the reconcile
-		// sweep re-classifies without them and leans on the sender screens).
-		precedence: v.optional(v.string()),
-		/** RFC 3834 Auto-Submitted. */
-		autoSubmitted: v.optional(v.string()),
-		/** RFC 2919 List-Id. */
-		listId: v.optional(v.string()),
-		/** The message delivery just landed (live mail only): interpreted by this run. */
-		interpretMessageId: v.optional(v.id('mailMessages')),
-	},
-	handler: async (ctx, args) => {
-		const context = await ctx.runQuery(internal.mail.needsReply.getThreadContext, {
-			threadId: args.threadId,
-		});
-		if (!context) return;
+	args: classifyThreadArgs,
+	handler: deferredHandler<ObjectType<typeof classifyThreadArgs>>(
+		deferClassify,
+		async (ctx, args) => {
+			// One model budget for this action, from its start (ADR-0073).
+			anchorActionDeadline(ctx);
+			const context = await ctx.runQuery(internal.mail.needsReply.getThreadContext, {
+				threadId: args.threadId,
+			});
+			if (!context) return;
 
-		// Eligibility (live delivery, the ingest-only headers) was snapshotted
-		// when delivery enqueued the message (`interpret/enqueue.ts`); a message
-		// without a snapshot is skipped by the run and the baseline stands.
-		const interpret = (messageId: Id<'mailMessages'>) =>
-			runInterpretation(ctx, { source: { kind: 'mail', id: messageId } });
-		const interpretDelivered = async (alreadyInterpreted?: Id<'mailMessages'>) => {
-			if (args.interpretMessageId && args.interpretMessageId !== alreadyInterpreted) {
-				await interpret(args.interpretMessageId);
+			// Eligibility (live delivery, the ingest-only headers) was snapshotted
+			// when delivery enqueued the message (`interpret/enqueue.ts`); a message
+			// without a snapshot is skipped by the run and the baseline stands.
+			const interpret = (messageId: Id<'mailMessages'>) =>
+				runInterpretation(ctx, { source: { kind: 'mail', id: messageId } });
+			const interpretDelivered = async (alreadyInterpreted?: Id<'mailMessages'>) => {
+				if (args.interpretMessageId && args.interpretMessageId !== alreadyInterpreted) {
+					await interpret(args.interpretMessageId);
+				}
+			};
+
+			const evaluation = evaluateNeedsReplyCandidate({
+				ownerAddresses: context.ownerAddresses,
+				messages: context.messages,
+				precedence: args.precedence,
+				autoSubmitted: args.autoSubmitted,
+				listId: args.listId,
+			});
+
+			if (!evaluation.candidate) {
+				await ctx.runMutation(internal.mail.needsReply.applyResult, {
+					threadId: args.threadId,
+					expectedLatestMessageId: context.latestMessageId,
+					needsReply: null,
+				});
+				// D10: with no reply to decide, the reader display may be the only
+				// consumer left; then the message waits for the thread to be opened.
+				if (args.interpretMessageId && (await isDeferredUntilOpen(ctx, args.interpretMessageId)))
+					return;
+				await interpretDelivered();
+				return;
 			}
-		};
 
-		const evaluation = evaluateNeedsReplyCandidate({
-			ownerAddresses: context.ownerAddresses,
-			messages: context.messages,
-			precedence: args.precedence,
-			autoSubmitted: args.autoSubmitted,
-			listId: args.listId,
-		});
+			const latestInbound = context.messages[evaluation.latestInboundIndex];
+			if (!latestInbound) {
+				await interpretDelivered();
+				return;
+			}
 
-		if (!evaluation.candidate) {
+			// Persist the deterministic candidate first — the interpretation below is
+			// a refinement, and any failure in it must leave this baseline in place.
+			// The thread stays pending until the refinement ends: if this run is
+			// killed before then, the reconcile sweep runs it again.
 			await ctx.runMutation(internal.mail.needsReply.applyResult, {
 				threadId: args.threadId,
 				expectedLatestMessageId: context.latestMessageId,
-				needsReply: null,
+				needsReply: {
+					messageId: latestInbound.messageId,
+					source: 'heuristic',
+					urgency: 'normal',
+				},
+				isBaseline: true,
 			});
-			await interpretDelivered();
-			return;
-		}
 
-		const latestInbound = context.messages[evaluation.latestInboundIndex];
-		if (!latestInbound) {
-			await interpretDelivered();
-			return;
-		}
+			// Never throws; a replayed run (the sweep, a retry) hands back the stored
+			// projection instead of calling the model again. While the thread's
+			// earlier deferred mail is still being read (D10), this classification
+			// continues later and the thread stays pending (needsReplyGates.ts).
+			const run = await runInterpretation(ctx, {
+				source: { kind: 'mail', id: latestInbound.messageId },
+				predecessors: 'caller_continues',
+			});
+			if (await continuesLater(ctx, run, args)) return;
+			// A spend refusal anywhere in the run (the gate, the model call, a
+			// verifier batch or a claim check) defers the whole classification
+			// BEFORE its projection is applied: a projection from a run that could
+			// not finish its checks must not settle the thread (D1). It stays
+			// pending and runs again.
+			if (isBudgetRefused(run)) throw new BudgetDeferral();
+			const projection = usableProjection(run);
+			const hasVerdict = projection
+				? await applyProjection(ctx, {
+						threadId: args.threadId,
+						mailboxId: context.mailboxId,
+						expectedLatestMessageId: context.latestMessageId,
+						latestInbound: {
+							messageId: latestInbound.messageId,
+							fromAddress: latestInbound.fromAddress,
+							hasCalendarInvite: latestInbound.hasCalendarInvite,
+						},
+						projection,
+						transcript: context.transcript,
+					})
+				: false;
 
-		// Persist the deterministic candidate first — the interpretation below is
-		// a refinement, and any failure in it must leave this baseline in place.
-		// The thread stays pending until the refinement ends: if this run is
-		// killed before then, the reconcile sweep runs it again.
-		await ctx.runMutation(internal.mail.needsReply.applyResult, {
-			threadId: args.threadId,
-			expectedLatestMessageId: context.latestMessageId,
-			needsReply: {
-				messageId: latestInbound.messageId,
-				source: 'heuristic',
-				urgency: 'normal',
-			},
-			isBaseline: true,
-		});
+			await interpretDelivered(latestInbound.messageId);
 
-		// Never throws; a replayed run (the sweep, a retry) hands back the stored
-		// projection instead of calling the model again.
-		const projection = usableProjection(await interpret(latestInbound.messageId));
-		const hasVerdict = projection
-			? await applyProjection(ctx, {
+			// Every outcome this run saw end without a verdict would only repeat on a
+			// retry, so it ends the attempt here. Only a run that never gets this far
+			// (killed, timed out) is left pending for the sweep.
+			if (!hasVerdict) {
+				await ctx.runMutation(internal.mail.needsReplyPending.settlePending, {
 					threadId: args.threadId,
 					expectedLatestMessageId: context.latestMessageId,
-					latestInbound: {
-						messageId: latestInbound.messageId,
-						fromAddress: latestInbound.fromAddress,
-						hasCalendarInvite: latestInbound.hasCalendarInvite,
-					},
-					projection,
-					transcript: context.transcript,
-				})
-			: false;
-
-		await interpretDelivered(latestInbound.messageId);
-
-		// Every outcome this run saw end without a verdict would only repeat on a
-		// retry, so it ends the attempt here. Only a run that never gets this far
-		// (killed, timed out) is left pending for the sweep.
-		if (!hasVerdict) {
-			await ctx.runMutation(internal.mail.needsReplyPending.settlePending, {
-				threadId: args.threadId,
-				expectedLatestMessageId: context.latestMessageId,
-			});
+				});
+			}
 		}
-	},
+	),
 });
 
 /**
@@ -195,6 +223,7 @@ async function applyProjection(
 	ctx: ActionCtx,
 	args: {
 		threadId: Id<'mailThreads'>;
+		mailboxId: Id<'mailboxes'>;
 		expectedLatestMessageId?: Id<'mailMessages'>;
 		latestInbound: LatestInbound;
 		projection: NeedsReplyProjection;
@@ -204,15 +233,24 @@ async function applyProjection(
 	const { decision } = needsReplyResultOf(args.projection, args.latestInbound);
 	// Clarification loop: only when the message genuinely needs a reply do we
 	// spend the extra passes deciding whether a good reply is missing a fact
-	// only the owner can supply. Self-contained fail-soft (undefined on any
+	// only the owner can supply, and only for a sender the screener lets into
+	// the queue (L3): `applyResult` drops a held-out sender's result, the
+	// clarification with it. Self-contained fail-soft (undefined on any
 	// error), so a clarification failure never downgrades the verdict.
-	const clarification = decision.needsReply
-		? await clarifyWithMemory(ctx, {
-				transcript: args.transcript,
-				fromAddress: args.latestInbound.fromAddress,
-				threadId: args.threadId,
-			})
-		: undefined;
+	const clarification =
+		decision.needsReply && !(await isHeldOutByScreener(ctx, args))
+			? await clarifyWithMemory(ctx, {
+					transcript: args.transcript,
+					fromAddress: args.latestInbound.fromAddress,
+					threadId: args.threadId,
+					root: rootRequest('postbox', args.latestInbound.messageId),
+					subject: {
+						kind: 'mail_message',
+						mailMessageId: args.latestInbound.messageId,
+						mailboxId: args.mailboxId,
+					},
+				})
+			: undefined;
 	// A throw here is a real fault (e.g. the result no longer matching the
 	// applyResult validator), so log it and keep the heuristic flag. Only the
 	// first line: a Convex validation error goes on to print the whole argument,
@@ -248,17 +286,26 @@ async function applyProjection(
  */
 async function clarifyWithMemory(
 	ctx: ActionCtx,
-	opts: { transcript: string; fromAddress: string; threadId: Id<'mailThreads'> }
+	opts: {
+		transcript: string;
+		fromAddress: string;
+		threadId: Id<'mailThreads'>;
+		root: LlmRootContext;
+		subject: BundleSubject;
+	}
 ): Promise<ClarificationFlag | undefined> {
 	try {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error);
 		return undefined;
 	}
 	const clarification = await refineClarification(ctx, {
 		transcript: opts.transcript,
 		fromAddress: opts.fromAddress,
 		items: await slotItemsFor(ctx, opts.threadId),
+		root: opts.root,
+		subject: opts.subject,
 	});
 	if (!clarification || clarification.questions.length === 0) return clarification;
 	try {
@@ -274,12 +321,11 @@ async function clarifyWithMemory(
 			...clarification,
 			questions: applyMemoryFills(clarification.questions, fills, Date.now()),
 		};
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error);
 		return clarification; // ask as before
 	}
 }
-
-type SpendCtx = Parameters<typeof recordLlmSpend>[0];
 
 /** The thread's open items, so each question can name the item it fills (SPEC §6). */
 async function slotItemsFor(
@@ -297,156 +343,6 @@ async function slotItemsFor(
 }
 
 /**
- * The clarification refineClarification produces: the persisted
- * `needsReply.clarification` shape (lib/validators/clarification.ts) before
- * the owner answers, so without `answeredAt` and `draft`.
- */
-type ClarificationFlag = Omit<
-	Infer<typeof needsReplyClarificationValidator>,
-	'answeredAt' | 'draft'
->;
-
-/**
- * Decide whether a good reply to this thread is missing a fact only the owner
- * can supply, and if so return the sanitized clarification questions.
- *
- * REUSES the shared slot taxonomy + prompt module (inbox/clarificationSlots.ts)
- * that the inbound agent `clarify` step uses — no fork. Two stages:
- *   1. cheap-tier slot extraction (the 'summarize' tier) → candidate
- *      slots that are BOTH unanswerable from context AND decision-relevant,
- *      plus every file the reply must carry that the context lacks.
- *   2. capable-tier divergence confirmation (the 'draft' tier), run ONLY
- *      when stage 1 flagged a non-file candidate: sample a few independent
- *      replies and keep only the slots they genuinely disagree on. A
- *      converging slot is a safe assumption and is dropped. A file request
- *      skips this stage (splitCandidateSlots): the samples all "attach" it.
- * Every survivor is deterministically sanitized (credential/OTP solicitations
- * dropped, attributed to the sender). FAIL-SOFT: any error returns undefined so
- * the needs-reply refinement is never downgraded by a clarification failure;
- * a failed divergence stage still asks for the files.
- */
-export async function refineClarification(
-	ctx: SpendCtx,
-	opts: {
-		transcript: string;
-		fromAddress: string;
-		items?: readonly SlotItem<Id<'threadItems'>>[];
-	}
-): Promise<ClarificationFlag | undefined> {
-	const items = opts.items ?? [];
-	try {
-		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
-		const slotsResult = await recordSpendOnFailure(
-			ctx,
-			'postbox_clarify_slots',
-			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'summarize'),
-				schema: replySlotsSchema,
-				prompt: buildSlotPrompt(opts.transcript, items),
-				temperature: 0.2,
-			})
-		);
-		await recordLlmSpend(
-			ctx,
-			'postbox_clarify_slots',
-			slotsResult.tokenUsage,
-			slotsResult.modelUsed
-		);
-
-		const { owed, toJudge } = splitCandidateSlots(slotsResult.object.slots);
-		if (owed.length === 0 && toJudge.length === 0) return undefined;
-
-		// Files first: they are what the reply cannot go out without.
-		const raw = [...owed, ...(await divergentSlots(ctx, opts.transcript, toJudge))].map((slot) => ({
-			slotType: slot.slotType,
-			text: slot.question,
-			options: slot.options,
-			itemId: itemIdForSlot(slot, items),
-		}));
-		if (raw.length === 0) return undefined;
-
-		// Deterministic safety filter: drop credential/OTP solicitations, attribute
-		// each survivor to the sender ("Owlat will never ask for your password").
-		// Each survivor gets the input its slot kind calls for (answerKind).
-		const sanitized = sanitizeClarificationQuestions(raw, opts.fromAddress).map(withAnswerKind);
-		if (sanitized.length === 0) return undefined;
-
-		// Ask the owner in their own language: translate the surviving questions
-		// into every other interface locale. Fail-soft to the English copy.
-		const localized = await localizeQuestions(
-			await resolveLanguageModel(ctx, 'summarize'),
-			sanitized
-		);
-		if (localized.tokenUsage) {
-			await recordLlmSpend(
-				ctx,
-				'postbox_clarify_localize',
-				localized.tokenUsage,
-				localized.modelUsed
-			);
-		}
-
-		return { isNeeded: true, questions: localized.questions, askedAt: Date.now() };
-	} catch {
-		return undefined;
-	}
-}
-
-/**
- * Stage 2 of {@link refineClarification}: sample independent replies on the
- * capable tier and keep the candidate slots they genuinely disagree on. Empty
- * when there is nothing to judge, too few samples came back to judge at all
- * (don't invent questions), or the judgment failed.
- */
-async function divergentSlots(
-	ctx: SpendCtx,
-	transcript: string,
-	candidates: readonly ReplySlot[]
-): Promise<ReplySlot[]> {
-	if (candidates.length === 0) return [];
-	try {
-		const drafts: string[] = [];
-		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
-			try {
-				const draft = await runLlmText({
-					model: await resolveLanguageModel(ctx, 'draft'),
-					prompt: buildCandidatePrompt(transcript),
-					temperature: 0.9,
-				});
-				if (draft.text.trim().length > 0) {
-					drafts.push(draft.text);
-					await recordLlmSpend(ctx, 'postbox_clarify_diverge', draft.tokenUsage, draft.modelUsed);
-				}
-			} catch {
-				// One failed sample doesn't abort the check — judge on the rest.
-			}
-		}
-		if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) return [];
-
-		const divergenceResult = await recordSpendOnFailure(
-			ctx,
-			'postbox_clarify_diverge',
-			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'draft'),
-				schema: divergenceSchema,
-				prompt: buildDivergencePrompt([...candidates], drafts),
-				temperature: 0.1,
-			})
-		);
-		await recordLlmSpend(
-			ctx,
-			'postbox_clarify_diverge',
-			divergenceResult.tokenUsage,
-			divergenceResult.modelUsed
-		);
-		const divergent = new Set(divergenceResult.object.divergentSlotIndexes);
-		return candidates.filter((_, index) => divergent.has(index));
-	} catch {
-		return [];
-	}
-}
-
-/**
  * Produce the starter reply for an answered clarification card, so it flips
  * from "Needs your input" to "Draft ready".
  *
@@ -457,6 +353,16 @@ async function divergentSlots(
  * starter draft — the plain "Draft reply" button still works.
  */
 export const draftWithAnswers = internalAction({
-	args: { threadId: v.id('mailThreads') },
-	handler: (ctx, args) => draftClarificationReply(ctx, args),
+	args: { threadId: v.id('mailThreads'), deferrals: v.optional(v.number()) },
+	handler: deferredHandler<{ threadId: Id<'mailThreads'>; deferrals?: number }>(
+		deferDraft,
+		async (ctx, args) => {
+			anchorActionDeadline(ctx);
+			await draftClarificationReply(ctx, { threadId: args.threadId });
+		}
+	),
 });
+
+function deferDraft(): DeferrableAction {
+	return internal.mail.ai.needsReplyClassify.draftWithAnswers;
+}

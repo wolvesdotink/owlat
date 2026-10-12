@@ -5,6 +5,7 @@ import {
 	assistantToolCallValidator,
 	assistantMessageStatusValidator,
 } from '../lib/convexValidators';
+import { budgetRefusalValidator } from '../lib/validators/aiRouting';
 
 /**
  * Personal AI assistant — the private, multi-turn, streaming, tool-calling chat
@@ -57,6 +58,9 @@ export const assistantTables = {
 		toolCalls: v.optional(v.array(assistantToolCallValidator)),
 		// Set when status === 'error'.
 		errorMessage: v.optional(v.string()),
+		// Set instead of `errorMessage` when the turn's paid call was refused for
+		// budget (D1): the stable code and reason the web localizes.
+		budgetRefusal: v.optional(budgetRefusalValidator),
 		// Model + token accounting for assistant turns (per-conversation cost UI).
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),

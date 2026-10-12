@@ -135,6 +135,24 @@ export const AUDIT_ACTION_LITERALS = [
 	action('ai_provider_config.updated'),
 	// The admin removed the stored config and its keys; AI falls back to the env.
 	action('ai_provider_config.removed'),
+	// AI routing policy saved (aiRouting/policy.ts `update`, ADR-0073).
+	action('ai_routing_policy.updated'),
+	// A mailbox or the Team Inbox excluded from (or readmitted to) hosted
+	// decision providers (decision/exclusion.ts, ADR-0060 §9).
+	action('ai_decision_exclusion.updated'),
+	// Embedding provenance (ADR-0073, Phase 1a and Phase 5): a legacy cohort
+	// recorded or revoked (aiRouting/embeddingAttestations.ts), the re-embed
+	// job's admin controls (aiRouting/embeddingReembedJobs.ts) and
+	// the staged rebuild (aiRouting/embeddingRebuildState.ts).
+	action('embedding_cohort.attested'),
+	action('embedding_cohort.revoked'),
+	action('embedding_reembed.started'),
+	action('embedding_reembed.resumed'),
+	action('embedding_reembed.cancelled'),
+	action('embedding_space.staged'),
+	action('embedding_space.activated'),
+	action('embedding_space.rolled_back'),
+	action('embedding_space.rebuild_cancelled'),
 	action('team_member.invited'),
 	action('team_member.removed'),
 	action('team_member.role_changed'),
@@ -365,6 +383,8 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'automation',
 	'settings',
 	'ai_provider_config',
+	'ai_routing_policy',
+	'embedding_space',
 	'team_member',
 	'api_key',
 	'webhook',

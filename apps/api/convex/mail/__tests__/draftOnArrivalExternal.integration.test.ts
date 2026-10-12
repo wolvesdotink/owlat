@@ -85,13 +85,12 @@ vi.mock('../../lib/llm/dispatch', () => ({
 }));
 vi.mock('../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
-	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
+	classifiedDraftRouteOf: () => 'capable',
 }));
 vi.mock('../interpret/run', async () => {
 	const actual = await vi.importActual<typeof InterpretRun>('../interpret/run');
 	return { ...actual, runInterpretation: llm.runInterpretation };
 });
-vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 
 beforeEach(() => {
 	llm.runLlmText.mockClear();

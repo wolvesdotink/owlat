@@ -3,9 +3,8 @@
  *
  * The shapes `runDecision` is called with and answers in, and the three ports it
  * is given instead of a Convex ctx: the usage recorder, the rate limiter and the
- * fallback breaker. Two of the three have a ctx-bound implementation today; see
- * the header of `./ports.ts` for why the attempt limiter is named there and not
- * yet built. They live beside the dispatch rather than inside it because
+ * fallback breaker. `./ports.ts` builds the ctx-bound implementation of each.
+ * They live beside the dispatch rather than inside it because
  * `./dispatch.ts` is `'use node'` (it reaches the adapters, and through them the
  * AI SDK) while a contract is nothing but types — a call site, a test fake or a
  * ctx-bound port builder can read this file without pulling a Node runtime in
@@ -19,7 +18,9 @@
  */
 
 import type { LanguageModel } from 'ai';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
 import type { TokenUsage } from '../../agent/steps/types';
+import type { AdmissionPort, LlmRequestRecord, LlmRootContext } from '../llm/requestMeter';
 import type {
 	DecisionAllowance,
 	DecisionEndpointProvenance,
@@ -80,6 +81,21 @@ export interface DecisionAttemptRecord {
 	 * storing a raw cause chain.
 	 */
 	readonly error?: unknown;
+	/**
+	 * The provider requests this attempt made, one ledger row each (ADR-0073).
+	 * One for the native and local adapters; the language-backed adapter retries
+	 * inside `runLlmObject`, so one attempt there can be up to three requests.
+	 * Each carries its own usage, so a recorder writes these, not `usage`.
+	 */
+	readonly requests: readonly LlmRequestRecord[];
+	/**
+	 * Admission holds whose dispatch ended in this attempt, settled in the same
+	 * write as its rows (ADR-0073, Phase 1b). Absent when nothing was held.
+	 */
+	readonly settlements?: readonly { reservationId: string; expectedRequests: number }[];
+	/** The task-policy entry and root request the caller passed. */
+	readonly task?: AiTaskName;
+	readonly root?: LlmRootContext;
 }
 
 /**
@@ -98,10 +114,37 @@ export class DecisionAccountingFailure extends Error {
 	}
 }
 
+/** Why an explicitly configured decision provider cannot answer (D3). */
+export interface DecisionUnavailable {
+	readonly code: 'missing_credentials' | 'invalid_config' | 'undecryptable';
+	/** In the adapter's own words; never contains a key. */
+	readonly reason: string;
+}
+
+/**
+ * The configured decision provider cannot answer at all (D3, ADR-0073): its
+ * credential is missing, malformed or undecryptable, or its config is invalid.
+ * Terminal: never retried, never a fallback hop, never relabelled as the
+ * language-backed adapter. The caller's own fail-soft decides what a missing
+ * decision means.
+ */
+export class DecisionProviderUnavailable extends Error {
+	readonly retriable = false;
+	readonly provider: DecisionProviderKind;
+	readonly unavailable: DecisionUnavailable;
+
+	constructor(provider: DecisionProviderKind, unavailable: DecisionUnavailable) {
+		super(`The ${provider} decision provider cannot answer: ${unavailable.reason}`);
+		this.name = 'DecisionProviderUnavailable';
+		this.provider = provider;
+		this.unavailable = unavailable;
+	}
+}
+
 /** An attempt limiter, injected. Consumed once per ATTEMPT, since an attempt is
  * a request upstream — which is what makes it a different reading from the one
  * `decision/gate.ts` takes on `decisionPlaneGlobal`, one token per LOGICAL call
- * at admission. Nothing injects one yet (see `./ports.ts`). Throw (or reject) to refuse — a
+ * at admission. `./ports.ts` builds the ctx-bound one. Throw (or reject) to refuse — a
  * refusal is a hard stop, not a retriable failure, and the dispatch enforces
  * that by wrapping whatever is thrown in {@link DecisionRateLimitRefusal}. */
 export interface DecisionRateLimiter {
@@ -173,9 +216,20 @@ export interface RunDecisionOptions<Q extends QuestionSet> {
 	 * of the same work too; otherwise a UUID is generated per call.
 	 */
 	readonly requestId?: string;
+	/** The task-policy entry (`mail.category`, …), stamped on every ledger row. */
+	readonly task?: AiTaskName;
+	/** The inbound message or user action this decision serves. */
+	readonly root?: LlmRootContext;
 	readonly recordUsage?: DecisionUsageRecorder;
 	readonly rateLimiter?: DecisionRateLimiter;
 	readonly breaker?: DecisionFallbackBreaker;
+	/**
+	 * Spend admission (ADR-0073, Phase 1b): every paid attempt, and the hop, is
+	 * reserved through it before its request (`analytics/meteredSpend.ts`
+	 * `decisionAdmissionPort`). Required alongside `fallbackTo`: the hop is a
+	 * paid language call and goes through the breaker and admission.
+	 */
+	readonly admission?: AdmissionPort;
 	/** Injected so the jitter is deterministic under test. Defaults to `Math.random`. */
 	readonly random?: () => number;
 	/** Injected so tests observe the computed backoff without waiting it out. */

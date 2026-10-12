@@ -23,6 +23,7 @@ import {
 } from '../../lib/validators/threadBrief';
 import { threadRefToFields, type ThreadRef } from '../../lib/validators/threadRef';
 import { markOutstanding } from './outstanding';
+import { sourceOrderKey } from './sourceOrder';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import {
 	loadInboundEligibilitySignals,
@@ -114,6 +115,13 @@ async function signalsOf(
 	};
 }
 
+/** A Postbox source's thread order key (`sourceOrder.ts`), or undefined. */
+async function orderKeyOf(ctx: ReadCtx, source: InterpretationSource): Promise<string | undefined> {
+	if (source.kind !== 'mail' && source.kind !== 'outboundMail') return undefined;
+	const row = await ctx.db.get(source.id);
+	return row ? sourceOrderKey(row) : undefined;
+}
+
 /**
  * Snapshot a source's eligibility at enqueue (first call wins), and mark it
  * outstanding: every caller enqueues its interpretation next. Null when it
@@ -132,10 +140,12 @@ export async function captureInterpretSource(
 	const eligibility = await signalsOf(ctx, args.source, args);
 	if (!ref || !eligibility) return null;
 	const now = Date.now();
+	const orderKey = await orderKeyOf(ctx, args.source);
 	const id = await ctx.db.insert('interpretSources', {
 		...threadRefToFields(ref),
 		source: args.source,
 		sourceKey: interpretationSourceKey(args.source),
+		...(orderKey ? { sourceOrderKey: orderKey } : {}),
 		eligibility,
 		createdAt: now,
 		updatedAt: now,

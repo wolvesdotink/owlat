@@ -16,6 +16,7 @@
  * autonomous send path never consumes any of this.
  */
 
+import type { LlmRootContext } from '../lib/llm/requestMeter';
 import type { Infer } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
@@ -28,6 +29,7 @@ import {
 	pickAttachmentSuggestion,
 	MAX_CANDIDATES,
 } from './attachmentMatch';
+import { rethrowAdmissionRefusal } from '../lib/llm/admissionPort';
 
 export type AttachmentSuggestions = Infer<typeof attachmentSuggestionsValidator>;
 type PersistedCandidate = AttachmentSuggestions['candidates'][number];
@@ -47,7 +49,12 @@ const MAX_QUERY_CHARS = 400;
  */
 export async function computeAttachmentSuggestions(
 	ctx: SuggestCtx,
-	args: { context: string; contactId?: Id<'contacts'> | undefined }
+	args: {
+		context: string;
+		contactId?: Id<'contacts'> | undefined;
+		/** The message's root request: the search's query embedding groups under it. */
+		root?: LlmRootContext | undefined;
+	}
 ): Promise<AttachmentSuggestions | null> {
 	try {
 		const { requested, query } = detectAttachmentRequest(args.context);
@@ -63,6 +70,7 @@ export async function computeAttachmentSuggestions(
 			queryText,
 			scopeToContact,
 			limit: MAX_CANDIDATES + 2,
+			...(args.root ? { root: args.root } : {}),
 		});
 		if (files.length === 0) return null;
 
@@ -88,7 +96,8 @@ export async function computeAttachmentSuggestions(
 		if (picked.candidates.length === 0) return null;
 
 		return { query, ambiguous: picked.ambiguous, candidates: picked.candidates };
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error); // held, deferred or shown by the caller (D1)
 		// Fail-soft: no suggestion, no ask — today's behaviour.
 		return null;
 	}
@@ -130,6 +139,8 @@ export async function searchFilesForRequest(
 		query: string;
 		contactId?: Id<'contacts'> | undefined;
 		mailboxScope?: MailboxAttachmentScope | undefined;
+		/** The action's root request: the search's query embedding groups under it. */
+		root?: LlmRootContext | undefined;
 	}
 ): Promise<FoundFile[]> {
 	const queryText = args.query.slice(0, MAX_QUERY_CHARS).trim();
@@ -140,6 +151,7 @@ export async function searchFilesForRequest(
 			queryText,
 			scopeToContact: args.contactId ?? 'org-general-only',
 			limit: MAX_FOUND_PER_SOURCE,
+			...(args.root ? { root: args.root } : {}),
 		});
 		for (const file of files) {
 			// Released bytes cannot be attached (see computeAttachmentSuggestions).
@@ -154,7 +166,8 @@ export async function searchFilesForRequest(
 				score: file._score,
 			});
 		}
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error); // held, deferred or shown by the caller (D1)
 		// Fail-soft: no Files hits.
 	}
 	if (args.mailboxScope) {

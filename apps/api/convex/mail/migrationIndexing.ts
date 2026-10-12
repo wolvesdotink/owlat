@@ -40,6 +40,8 @@ import { markOnboardingStep } from '../auth/userOnboarding';
 import { normalizeEmail } from '@owlat/shared';
 import { logError } from '../lib/runtimeLog';
 import { loadExtractableMail } from './knowledgeScreen';
+import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
+import { rootRequest } from '../lib/llm/requestMeter';
 
 // Tunables. Pacing comes from the concurrency cap: at most this many
 // extractions (LLM calls) in flight per sweep.
@@ -335,11 +337,11 @@ async function indexOneMessage(
 	try {
 		// Idempotency: a message already swept (migration restart / retry) is
 		// counted but not re-extracted — saves a redundant LLM call.
-		const already = await ctx.runQuery(internal.knowledge.graph.countBySource, {
-			sourceType: 'email',
-			sourceId: msg._id,
-		});
-		if (already > 0) return;
+		const progress = await ctx.runQuery(
+			internal.knowledge.extractionProgress.extractionProgressOf,
+			{ sourceType: 'email', sourceId: msg._id }
+		);
+		if (progress.isDone) return;
 
 		// Phishing and spoofed mail never feeds the graph (and its sender never
 		// becomes a contact). Still counted; the cursor advances.
@@ -358,6 +360,8 @@ async function indexOneMessage(
 		await ctx.runAction(internal.knowledge.extraction.extractFromMailMessage, {
 			mailMessageId: msg._id,
 			contactIds: [contactId],
+			// Awaited: it spends from this action's clock (ADR-0073).
+			root: boundedRoot(ctx, rootRequest('postbox', msg._id)),
 		});
 	} catch (err) {
 		// The migration id and message id make the gap traceable afterwards.
@@ -384,6 +388,8 @@ export const runIndexChunk = internalAction({
 		interChunkDelayMs: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const interChunkDelay = args.interChunkDelayMs ?? INTER_CHUNK_DELAY_MS;
 		try {
 			const migration = await ctx.runQuery(internal.mail.migrationIndexing.loadMigration, {

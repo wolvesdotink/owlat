@@ -25,14 +25,21 @@ import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
  */
 
 import { v } from 'convex/values';
-import { embed } from 'ai';
 import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
-import { resolveEmbeddingModel, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
+import type { Id } from './_generated/dataModel';
+import { resolveIndexEmbedder, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
+import { measuredEmbeddingSpace, probeEmbeddingRevision } from './lib/aiRouting/embeddingProbe';
 import { runLlmText } from './lib/llm/dispatch';
+import { runEmbedding } from './lib/llm/embed';
+import { newRootRequest } from './lib/llm/requestMeter';
+import { anchorActionDeadline, boundedRoot } from './lib/llm/actionDeadline';
+import { meterLlmCall } from './analytics/meteredSpend';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
+import { secretFreeErrorText } from './lib/embeddingSpace';
 import { throwInvalidInput } from './_utils/errors';
+import { rethrowAdmissionRefusal } from './lib/llm/admissionPort';
 
 // How many results to pull from EACH source before synthesis, and how much of
 // each result's body to feed the model (bounded so one huge file can't dominate
@@ -62,7 +69,13 @@ export const ask = authedAction({
 	args: {
 		question: v.string(),
 	},
-	handler: async (ctx, args): Promise<{ answer: string; sources: QuerySource[] }> => {
+	// `isTruncated`: the answer stopped at its output limit; the UI marks it cut off.
+	handler: async (
+		ctx,
+		args
+	): Promise<{ answer: string; sources: QuerySource[]; isTruncated: boolean }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		validateStringLength(args.question, STRING_LIMITS.QUESTION, 'question');
 
 		// authz: gate enforced in quickQueryGate.assertKnowledgeReadAccess via
@@ -78,7 +91,7 @@ export const ask = authedAction({
 
 		const question = args.question.trim();
 		if (!question) {
-			return { answer: 'Please enter a question.', sources: [] };
+			return { answer: 'Please enter a question.', sources: [], isTruncated: false };
 		}
 		// Clamp the question length BEFORE spending any embed/synthesis call.
 		if (question.length > MAX_QUICK_QUERY_QUESTION_CHARS) {
@@ -98,14 +111,33 @@ export const ask = authedAction({
 		// Fail-soft: on any embed error we fall through with no vector and each seam
 		// re-embeds from `queryText` itself (or degrades to no vector recall).
 		let embedding: number[] | undefined;
+		// The active space the vector is in; absent ⇒ the seams skip their vector
+		// legs (a vector is only compared within its own space, ADR-0073).
+		let embeddingSpaceId: Id<'embeddingSpaces'> | undefined;
 		// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
 		// error; only a transient embed() failure falls soft to no-vector recall.
-		const embeddingModel = await resolveEmbeddingModel(ctx);
+		const embedder = await resolveIndexEmbedder(ctx);
+		// One question is one user action: every call it makes groups under one
+		// root, and is admitted as the asker's interactive work (Phase 5).
+		const root = boundedRoot(ctx, { ...newRootRequest('assistant'), priority: 'interactive' });
 		try {
-			const res = await embed({ model: embeddingModel, value: question });
+			const before = await probeEmbeddingRevision(embedder.target);
+			const res = await meterLlmCall(
+				ctx,
+				{ feature: 'embedding_quick_query', root },
+				(meter) => runEmbedding({ meter, model: embedder.model, value: question }),
+				// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+				{ onWriteError: 'ignore' }
+			);
+			const space = await measuredEmbeddingSpace(embedder.target, res.embedding, before);
 			embedding = toIndexVector(res.embedding);
+			const target = await ctx.runQuery(internal.aiRouting.embeddingSpaces.searchTarget, {
+				identity: space,
+			});
+			embeddingSpaceId = target?.spaceId;
 		} catch (error) {
-			logInfo('[quickQuery] embed failed', { error: String(error) });
+			rethrowAdmissionRefusal(error); // shown to the user (D1)
+			logInfo('[quickQuery] embed failed', { error: secretFreeErrorText(error) });
 			embedding = undefined;
 		}
 
@@ -114,15 +146,19 @@ export const ask = authedAction({
 			ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 				queryText: question,
 				embedding,
+				embeddingSpaceId,
 				scopeToContact: 'org-wide',
 				includeInboxDerived: canReadInbox,
 				limit: PER_SOURCE_LIMIT,
+				root,
 			}),
 			ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
 				queryText: question,
 				embedding,
+				embeddingSpaceId,
 				scopeToContact: 'org-wide',
 				limit: PER_SOURCE_LIMIT,
+				root,
 			}),
 		]);
 
@@ -158,7 +194,7 @@ export const ask = authedAction({
 		}
 
 		if (sources.length === 0) {
-			return { answer: NO_MATCH_ANSWER, sources: [] };
+			return { answer: NO_MATCH_ANSWER, sources: [], isTruncated: false };
 		}
 
 		// Synthesize a grounded, cited answer. The retrieved content is untrusted
@@ -181,29 +217,36 @@ export const ask = authedAction({
 		const userPrompt = `<question>\n${question}\n</question>\n\n<sources>\n${contextBlocks.join('\n\n')}\n</sources>`;
 
 		let answer: string;
+		let isTruncated = false;
 		try {
-			const model = await resolveLanguageModel(ctx, 'draft');
-			const result = await runLlmText({
-				model,
-				messages: [
-					{ role: 'system', content: systemPrompt },
-					{ role: 'user', content: userPrompt },
-				],
-				temperature: 0.2,
-			});
+			const model = await resolveLanguageModel(ctx, 'assistant.quick_query');
+			// Recorded since Phase 1a: this synthesis wrote no ledger row before.
+			const result = await meterLlmCall(ctx, { feature: 'assistant_quick_query', root }, (meter) =>
+				runLlmText({
+					meter,
+					model,
+					messages: [
+						{ role: 'system', content: systemPrompt },
+						{ role: 'user', content: userPrompt },
+					],
+					temperature: 0.2,
+				})
+			);
 			answer = result.text.trim();
+			isTruncated = result.isTruncated === true;
 			if (!answer) {
 				// Model returned nothing usable — fall back to the raw grounded context
 				// rather than an empty panel.
 				answer = contextBlocks.join('\n\n');
 			}
 		} catch (error) {
+			rethrowAdmissionRefusal(error); // shown to the user (D1)
 			// Synthesis failed — degrade to the retrieved snippets so the user still
 			// gets their cross-source results (and the citations still resolve).
 			logInfo('[quickQuery] synthesis failed', { error: String(error) });
 			answer = contextBlocks.join('\n\n');
 		}
 
-		return { answer, sources };
+		return { answer, sources, isTruncated };
 	},
 });

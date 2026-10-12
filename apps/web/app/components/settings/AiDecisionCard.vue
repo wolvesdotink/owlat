@@ -77,6 +77,11 @@ const props = defineProps<{
 	canTest: boolean;
 	/** Live flag state, including its AI dependency; separate from saved credentials. */
 	featureState: 'loading' | 'error' | 'enabled' | 'disabled';
+	/**
+	 * D3: the deployment's DECISION_PROVIDER names no provider, so decisions are
+	 * refused (`getConfig.decisionEnvProblem`, the server's own detail).
+	 */
+	envProblem?: string | null;
 }>();
 
 const emit = defineEmits<{ test: [] }>();
@@ -123,6 +128,23 @@ watch(baseUrl, (value) => {
 		<p class="text-sm text-text-secondary mb-4">
 			{{ t('dashboard.admin.instance.aiProvider.decision.description') }}
 		</p>
+		<div
+			v-if="envProblem"
+			class="mb-4 flex items-start gap-3 rounded-lg border border-border-subtle bg-error-subtle/50 p-4 text-sm"
+			role="alert"
+			data-testid="ai-decision-env-problem"
+		>
+			<Icon name="lucide:alert-octagon" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+			<div class="min-w-0">
+				<p class="text-text-primary font-medium">
+					{{ t('dashboard.admin.instance.aiProvider.decision.envProblem.title') }}
+				</p>
+				<p class="text-text-secondary mt-0.5">
+					{{ t('dashboard.admin.instance.aiProvider.decision.envProblem.body') }}
+				</p>
+				<p class="mt-1 font-mono text-xs text-text-tertiary break-words">{{ envProblem }}</p>
+			</div>
+		</div>
 		<div
 			class="rounded-lg border border-border-subtle bg-bg-surface-hover p-4 text-sm"
 			role="status"

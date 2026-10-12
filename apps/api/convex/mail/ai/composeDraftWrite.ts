@@ -3,18 +3,19 @@
 /**
  * Answer mode: write the draft once the questions are answered or skipped.
  *
- * One prompt structure with the pipeline drafters: the system prompt and the
- * message array come from the shared draft service (`buildDraftSystemPrompt`,
- * `buildDraftMessages`), so the owner's answers, attached files, promised date,
- * open gaps and own instruction sit in the TRUSTED `[CONFIRMED BY OWNER]` block
- * outside the `<untrusted_email_content>` tags, and the assembled context gets
- * the same injection re-scan before it reaches the model. The model may fetch
- * missing facts through the same contact-scoped `recallKnowledge` tool the
- * inbound agent drafts with.
+ * The same writer as the pipeline drafters: the shared draft service
+ * (`runSharedDraft`, agent/shared/draftService.ts) builds the prompt, so the
+ * owner's answers, attached files, promised date, open gaps and own
+ * instruction sit in the TRUSTED `[CONFIRMED BY OWNER]` block outside the
+ * `<untrusted_email_content>` tags, re-scans the assembled context for
+ * injection before it reaches the model, and records every request it makes.
+ * The model may fetch missing facts through the same contact-scoped
+ * `recallKnowledge` tool the inbound agent drafts with.
  *
- * Unlike the pipeline, the owner is watching: the draft streams into an
- * owner-private `aiDraftStreams` buffer the way Revise does
- * (mail/ai/reviseDraft.ts). Nothing here sends; the injection scan of the
+ * Unlike the pipeline, the owner is watching: the service streams the draft
+ * into an owner-private `aiDraftStreams` buffer the way Revise does
+ * (mail/ai/reviseDraft.ts), and runs no self-check, since the owner reviews
+ * the draft in the composer. Nothing here sends; the injection scan of the
  * final text is advisory and flags the buffer.
  *
  * Tool-call markup the model types into its reply instead of calling the tool
@@ -29,20 +30,21 @@ import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
-import { runLlmStream } from '../../lib/llm/dispatch';
-import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
-import { addTokenUsage } from '../../lib/llm/tokenUsage';
-import { partialUsageOf } from '../../lib/llm/partialUsage';
-import type { TokenUsage } from '../../agent/steps/types';
+import { visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
-import { recordLlmSpend } from '../../analytics/llmUsage';
+import { newRootRequest } from '../../lib/llm/requestMeter';
+import { boundedRoot } from '../../lib/llm/actionDeadline';
 import { logError } from '../../lib/runtimeLog';
 import {
 	detectInjection,
 	INJECTION_CONFIDENCE_THRESHOLD,
 } from '../../agent/steps/security_scan/patterns';
-import { buildDraftMessages, buildDraftSystemPrompt } from '../../agent/shared/draftService';
-import { buildResponsePlanSection, type PlanPromptItem } from '../interpret/planCheck';
+import {
+	DraftInjectionError,
+	DraftUnusableError,
+	runSharedDraft,
+} from '../../agent/shared/draftService';
+import type { PlanPromptItem } from '../interpret/planCheck';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from '../../agent/steps/draft/recall';
 import { safeLanguage } from '../../agent/steps/draft/sanitize';
 import {
@@ -52,9 +54,19 @@ import {
 	type AskFileRef,
 	type AskQuestion,
 } from './composeDraftPolicy';
+import { admissionRefusalOf, budgetRefusalMessage } from '../../lib/llm/admissionPort';
+import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 
 /** How often partial text is written to the buffer (matches Revise). */
 const FLUSH_INTERVAL_MS = 120;
+
+/** Answer mode has no classifier verdict of its own: the shared block's neutral one. */
+const ANSWER_CLASSIFICATION = {
+	category: 'other',
+	intent: 'question',
+	sentiment: 'neutral',
+	priority: 'medium',
+} as const;
 
 export interface AnswerDraftInput {
 	sessionId: Id<'answerAskSessions'>;
@@ -93,6 +105,24 @@ async function failSession(
 	});
 }
 
+/** Finalize the buffer as failed with `text`, then the session. */
+async function failDraft(
+	ctx: ActionCtx,
+	input: AnswerDraftInput,
+	streamId: Id<'aiDraftStreams'>,
+	failure: { text: string; errorMessage: string; sessionMessage: string }
+): Promise<void> {
+	await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
+		streamId,
+		text: failure.text,
+		status: 'error',
+		errorMessage: failure.errorMessage,
+	});
+	await failSession(ctx, input.sessionId, failure.sessionMessage);
+}
+
+const DRAFT_FAILED = 'The draft could not be written. Try again.';
+
 /**
  * Stream the draft into a fresh buffer on the session and settle the session
  * `ready` (or `error`). Never throws for a model failure.
@@ -102,24 +132,6 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 		internal.mail.ai.composeDraftStore.openSessionStream,
 		{ sessionId: input.sessionId }
 	);
-
-	// Same defense-in-depth as runSharedDraft: an assembled context that reads
-	// as an injection attempt is not drafted automatically.
-	const injection = detectInjection(input.context);
-	if (injection.detected && injection.confidence >= INJECTION_CONFIDENCE_THRESHOLD) {
-		await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
-			streamId,
-			text: '',
-			status: 'error',
-			errorMessage: 'injection_suspected',
-		});
-		await failSession(
-			ctx,
-			input.sessionId,
-			'This email contains text that tries to instruct the AI, so it was not drafted automatically.'
-		);
-		return;
-	}
 
 	const placeholders = openGapPlaceholders(input.questions, input.fileLabel);
 	const confirmedContext = buildAnswerConfirmedContext({
@@ -131,29 +143,6 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 		instruction: input.instruction,
 		timeZone: input.timeZone,
 	});
-	const responsePlan = input.responsePlan ? buildResponsePlanSection(input.responsePlan) : '';
-	const buildMessages = (hasRecallTool: boolean) =>
-		buildDraftMessages({
-			systemPrompt: buildDraftSystemPrompt({
-				audience: input.audience,
-				styleReference: input.styleReference,
-				toneInstruction: input.toneInstruction,
-				signatureInstruction: input.signatureInstruction,
-				voiceSection: input.voiceSection,
-				replyLanguage: safeLanguage(input.language),
-				hasRecallTool,
-			}),
-			classification: {
-				category: 'other',
-				intent: 'question',
-				sentiment: 'neutral',
-				priority: 'medium',
-			},
-			context: input.context,
-			...(confirmedContext ? { confirmedContext } : {}),
-			...(responsePlan ? { responsePlan } : {}),
-		});
-
 	const stream = createThrottledStreamFlusher({
 		intervalMs: FLUSH_INTERVAL_MS,
 		patch: (text) =>
@@ -162,102 +151,93 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 				text: visibleDraftStreamText(text),
 			}),
 	});
-	// Usage of finished attempts not yet in the ledger, settled on every exit:
-	// a retry that throws must not lose the attempt before it, and a stream
-	// that fails after a finished tool step carries that step's usage (#1256).
-	let spent: TokenUsage | undefined;
-	let spentModel: string | undefined;
-	const settleSpend = async (): Promise<void> => {
-		const usage = spent;
-		spent = undefined;
-		await recordLlmSpend(ctx, 'postbox_answer_draft', usage, spentModel);
-	};
 	try {
-		const model = await resolveLanguageModel(ctx, 'draft');
-		const streamDraft = (withTools: boolean) =>
-			runLlmStream({
-				model,
-				messages: buildMessages(withTools),
-				...(withTools
-					? {
-							tools: {
-								recallKnowledge: buildRecallKnowledgeTool({
-									runAction: ctx.runAction,
-									scopeToContact: input.contactId ?? 'org-general-only',
-								}),
-							},
-							maxSteps: MAX_RECALL_CALLS + 2,
-						}
-					: {}),
-				// The result is the draft body: narration before a tool call is not.
-				finalStepOnly: true,
-				temperature: 0.4,
-				abortSignal: stream.signal,
-				onTextDelta: stream.onText,
-				// The text before the call was just dropped: clear it from the
-				// editor now, not at the next throttled write.
+		// The service writes every provider request of both streams (with the
+		// recall tool, and the markup retry) to the ledger on every exit (#1256).
+		const draft = await runSharedDraft(ctx, {
+			surface: 'personal',
+			resolveModel: () => resolveLanguageModel(ctx, 'mail.compose'),
+			audience: input.audience,
+			styleReference: input.styleReference,
+			context: input.context,
+			...(confirmedContext ? { confirmedContext } : {}),
+			classification: ANSWER_CLASSIFICATION,
+			toneInstruction: input.toneInstruction,
+			signatureInstruction: input.signatureInstruction,
+			voiceSection: input.voiceSection,
+			tools: (draftCallRoot) => ({
+				recallKnowledge: buildRecallKnowledgeTool({
+					runAction: ctx.runAction,
+					scopeToContact: input.contactId ?? 'org-general-only',
+					root: draftCallRoot,
+				}),
+			}),
+			maxSteps: MAX_RECALL_CALLS + 2,
+			temperature: 0.4,
+			// No self-check label: the owner reviews the draft in the composer.
+			spendLabels: { draft: 'postbox_answer_draft' },
+			root: boundedRoot(ctx, newRootRequest('postbox_action')),
+			replyLanguage: safeLanguage(input.language),
+			...(input.responsePlan
+				? { responsePlan: { items: input.responsePlan, attachments: [] } }
+				: {}),
+			stream: {
+				signal: stream.signal,
+				onText: (full) => stream.onText(full),
 				onToolCall: () => stream.flush(true),
-			});
-		let result = await streamDraft(true);
-		let draft = stripLeakedToolMarkup(result.text);
-		spent = result.tokenUsage;
-		spentModel = result.modelUsed;
-		let tokenUsage = result.tokenUsage;
-		if (draft.kind === 'unusable' && !result.aborted && !stream.stopRequested) {
-			// Typed-out tool markup, not a reply. Clear the editor and write the
-			// draft once more without the tool, by a prompt that names none.
-			await stream.onText('');
-			await stream.flush(true);
-			result = await streamDraft(false);
-			draft = stripLeakedToolMarkup(result.text);
-			tokenUsage = addTokenUsage(tokenUsage, result.tokenUsage);
-			spent = tokenUsage;
-			spentModel = result.modelUsed;
-		}
-		if (draft.kind === 'unusable') {
-			logError('[composeDraft] draft was tool-call markup:', draft.reason);
-			await settleSpend();
-			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
-				streamId,
-				text: '',
-				status: 'error',
-				errorMessage: 'draft_failed',
-			});
-			await failSession(ctx, input.sessionId, 'The draft could not be written. Try again.');
-			return;
-		}
-		const text = ensureGapPlaceholders(draft.text.trim(), placeholders);
+				onRetry: async () => {
+					await stream.onText('');
+					await stream.flush(true);
+				},
+				isStopRequested: () => stream.stopRequested,
+			},
+		});
+		const text = ensureGapPlaceholders(draft.draftBody.trim(), placeholders);
 		const outbound = detectInjection(text);
 		await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 			streamId,
 			text,
 			status: 'complete',
 			injectionFlagged: outbound.detected && outbound.confidence >= INJECTION_CONFIDENCE_THRESHOLD,
-			model: result.modelUsed,
-			tokenUsage,
+			model: draft.modelUsed,
+			tokenUsage: draft.tokenUsage,
 		});
-		await settleSpend();
 		await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
 			sessionId: input.sessionId,
 			status: 'ready',
 		});
 	} catch (error) {
+		// An assembled context that reads as an injection attempt is not drafted
+		// automatically (the service's defense-in-depth re-scan).
+		if (error instanceof DraftInjectionError) {
+			await failDraft(ctx, input, streamId, {
+				text: '',
+				errorMessage: 'injection_suspected',
+				sessionMessage:
+					'This email contains text that tries to instruct the AI, so it was not drafted automatically.',
+			});
+			return;
+		}
+		// Markup twice over, or cut off at its output ceiling: not a draft.
+		if (error instanceof DraftUnusableError) {
+			logError('[composeDraft] draft unusable:', error.reason);
+			await failDraft(ctx, input, streamId, {
+				text: '',
+				errorMessage: 'draft_failed',
+				sessionMessage: DRAFT_FAILED,
+			});
+			return;
+		}
 		logError(
 			'[composeDraft] drafting failed:',
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
-		const partial = partialUsageOf(error);
-		if (partial) {
-			spent = addTokenUsage(spent, partial.tokenUsage);
-			spentModel = partial.modelUsed ?? spentModel;
-		}
-		await settleSpend().catch(() => undefined);
-		await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
-			streamId,
+		// D1: a budget refusal says so, with the stable code the web reads.
+		const refusal = admissionRefusalOf(error);
+		await failDraft(ctx, input, streamId, {
 			text: visibleDraftStreamText(stream.text).trim(),
-			status: 'error',
-			errorMessage: 'draft_failed',
+			errorMessage: refusal ? AI_BUDGET_ERROR_CODE : 'draft_failed',
+			sessionMessage: refusal ? budgetRefusalMessage(refusal.reason) : DRAFT_FAILED,
 		});
-		await failSession(ctx, input.sessionId, 'The draft could not be written. Try again.');
 	}
 }

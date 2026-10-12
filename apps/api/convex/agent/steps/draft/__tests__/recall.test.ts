@@ -17,6 +17,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getFunctionName } from 'convex/server';
+import { ConvexError } from 'convex/values';
 import type { Id } from '../../../../_generated/dataModel';
 
 const contactId = 'contact_1' as Id<'contacts'>;
@@ -108,6 +109,24 @@ describe('buildRecallKnowledgeTool', () => {
 		expect(over.note).toBeTruthy();
 	});
 
+	it('rethrows a spend admission refusal rather than answering "no facts" (Sol r2 F6)', async () => {
+		const runAction: RunAction = async () => {
+			// As a child action's refusal arrives: a ConvexError carrying the code.
+			throw new ConvexError({
+				category: 'forbidden',
+				message: 'over budget',
+				data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'daily_ceiling', limit: 'ceiling' },
+			});
+		};
+		const tool = buildRecallKnowledgeTool({
+			runAction: runAction as never,
+			scopeToContact: contactId,
+		});
+		await expect(toolExecute(tool, { query: 'anything' })).rejects.toMatchObject({
+			data: { data: { code: 'AI_BUDGET_EXHAUSTED' } },
+		});
+	});
+
 	it('fails soft: a retrieval error yields an empty fact list, never throws', async () => {
 		const runAction: RunAction = async () => {
 			throw new Error('retrieval boom');
@@ -136,7 +155,7 @@ vi.mock('../../../../lib/llm/dispatch', () => ({
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
 	resolveLanguageModel: mocks.resolveLanguageModel,
-	resolveLanguageModelForClassifiedDraft: mocks.resolveLanguageModel,
+	classifiedDraftRouteOf: () => 'capable',
 }));
 
 import { draftStep, type DraftInput } from '../index';

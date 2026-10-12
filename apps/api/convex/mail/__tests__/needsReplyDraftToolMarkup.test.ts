@@ -17,17 +17,19 @@ const mocks = vi.hoisted(() => ({
 	sampleDelta: false,
 }));
 
-vi.mock('../../lib/llm/dispatch', () => ({
-	runLlmTextWithTools: mocks.runLlmTextWithTools,
-	runLlmText: mocks.runLlmText,
-	runLlmObject: mocks.runLlmObject,
-}));
+vi.mock('../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../analytics/__tests__/meteredDispatch.testlib');
+	return {
+		runLlmTextWithTools: metered((opts: unknown) => mocks.runLlmTextWithTools(opts)),
+		runLlmText: metered((opts: unknown) => mocks.runLlmText(opts)),
+		runLlmObject: metered((opts: unknown) => mocks.runLlmObject(opts)),
+	};
+});
 vi.mock('../../agent/steps/draft/recall', () => ({
 	MAX_RECALL_CALLS: 3,
 	buildRecallKnowledgeTool: vi.fn(() => ({ tool: 'recallKnowledge' })),
 }));
 vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModel: vi.fn(async () => 'mock-model') }));
-vi.mock('../../analytics/llmUsage', () => ({ recordLlmSpend: vi.fn(async () => {}) }));
 vi.mock('../ai/voiceGuidance', () => ({
 	loadVoiceGuidance: vi.fn(async () => null),
 	formatVoiceSection: vi.fn(() => ''),
@@ -38,7 +40,7 @@ vi.mock('../../inbox/askEagerness', async (importActual) => ({
 }));
 
 import { draftClarificationReply } from '../ai/needsReplyDraft';
-import { recordLlmSpend } from '../../analytics/llmUsage';
+import { ledgerRows } from '../../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
 import type { Id } from '../../_generated/dataModel';
 
@@ -92,6 +94,12 @@ function makeCtx() {
 	return { ctx: ctx as unknown as Parameters<typeof draftClarificationReply>[0], mutations };
 }
 
+/** The ledger rows written under the clarification draft's feature, as [ctx, feature, usage, model]. */
+const draftRowsOf = (ctx: ReturnType<typeof makeCtx>['ctx']) =>
+	ledgerRows((ctx as unknown as { runMutation: Parameters<typeof ledgerRows>[0] }).runMutation)
+		.filter((row) => row.feature === 'postbox_clarify_draft')
+		.map((row) => [ctx, row.feature, row.usage, row.modelUsed] as const);
+
 const storedDraft = (mutations: ReturnType<typeof makeCtx>['mutations']) =>
 	mutations.find((m) => m.name.includes('persistClarificationDraft'))?.args['draft'];
 
@@ -99,7 +107,6 @@ beforeEach(() => {
 	mocks.runLlmTextWithTools.mockReset();
 	mocks.runLlmText.mockReset();
 	mocks.runLlmObject.mockReset();
-	vi.mocked(recordLlmSpend).mockClear();
 	mocks.sampleDelta = false;
 	mocks.runLlmObject.mockResolvedValue({
 		object: { score: 0.8, complete: true, grounded: true, flags: [] },
@@ -150,10 +157,7 @@ describe('draftClarificationReply — leaked tool-call markup', () => {
 		mocks.runLlmText.mockResolvedValueOnce(text(MARKUP, 4));
 		const { ctx } = makeCtx();
 		await draftClarificationReply(ctx, { threadId });
-		const draftRows = vi
-			.mocked(recordLlmSpend)
-			.mock.calls.filter(([, label]) => label === 'postbox_clarify_draft');
-		expect(draftRows.map(([, , usage]) => usage?.totalTokens)).toEqual([20, 8]);
+		expect(draftRowsOf(ctx).map(([, , usage]) => usage?.totalTokens)).toEqual([20, 8]);
 	});
 
 	it('measures the comparison draft without its markup prefix', async () => {
@@ -202,9 +206,6 @@ describe('draftClarificationReply — leaked tool-call markup', () => {
 });
 
 describe('draftClarificationReply — the draft spend, recorded once (#1256)', () => {
-	const draftRows = () =>
-		vi.mocked(recordLlmSpend).mock.calls.filter(([, label]) => label === 'postbox_clarify_draft');
-
 	it('records the paid tool steps of a draft that fails partway', async () => {
 		const usage = { promptTokens: 6, completionTokens: 3, totalTokens: 9 };
 		mocks.runLlmTextWithTools.mockRejectedValueOnce(
@@ -213,7 +214,7 @@ describe('draftClarificationReply — the draft spend, recorded once (#1256)', (
 		const { ctx, mutations } = makeCtx();
 		await draftClarificationReply(ctx, { threadId });
 		expect(storedDraft(mutations)).toBeUndefined();
-		expect(draftRows()).toEqual([[ctx, 'postbox_clarify_draft', usage, 'mock-model']]);
+		expect(draftRowsOf(ctx)).toEqual([[ctx, 'postbox_clarify_draft', usage, 'mock-model']]);
 	});
 
 	it('records a successful draft exactly once', async () => {
@@ -221,6 +222,6 @@ describe('draftClarificationReply — the draft spend, recorded once (#1256)', (
 		const { ctx, mutations } = makeCtx();
 		await draftClarificationReply(ctx, { threadId });
 		expect(storedDraft(mutations)).toBe(REPLY);
-		expect(draftRows().map(([, , usage]) => usage?.totalTokens)).toEqual([10]);
+		expect(draftRowsOf(ctx).map(([, , usage]) => usage?.totalTokens)).toEqual([10]);
 	});
 });

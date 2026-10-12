@@ -35,11 +35,15 @@ import { postboxMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { isBulkOrNoReplySender } from './needsReplyHeuristic';
+import { isBulkPrecedenceForCategory } from '../lib/mailEvidence';
+import { loadSenderContact, senderEvidenceOf } from './senderEvidence';
 import { buildThreadTranscript, CATEGORY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
+import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
+import { recordOwnerCorrection } from '../decision/artifacts';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -92,7 +96,7 @@ export interface MailCategoryInput {
 export function classifyMailCategory(input: MailCategoryInput): MailCategory | null {
 	// Newsletter: List-Unsubscribe or Precedence: bulk/list — the strongest
 	// "this is broadcast mail" signal.
-	if (input.hasListUnsubscribe || isBulkPrecedence(input.precedence)) {
+	if (input.hasListUnsubscribe || isBulkPrecedenceForCategory(input)) {
 		return 'newsletter';
 	}
 
@@ -117,12 +121,6 @@ export function classifyMailCategory(input: MailCategoryInput): MailCategory | n
 
 	// Ambiguous — let the LLM decide (fail-soft `other` at the call site).
 	return null;
-}
-
-/** Precedence header values that mark bulk/list broadcast mail. */
-function isBulkPrecedence(precedence?: string): boolean {
-	const p = precedence?.trim().toLowerCase();
-	return p === 'bulk' || p === 'list';
 }
 
 /**
@@ -204,12 +202,7 @@ export async function loadCategorySignals(
 	// Known human correspondent: in the personal address book, or the owner
 	// has previously written to them (both stored in mailContacts, which is
 	// populated as the user composes/replies).
-	const contact = await ctx.db
-		.query('mailContacts')
-		.withIndex('by_mailbox_and_email', (q) =>
-			q.eq('mailboxId', thread.mailboxId).eq('email', senderEmail)
-		)
-		.first();
+	const contact = await loadSenderContact(ctx, thread.mailboxId, senderEmail);
 
 	const override = await ctx.db
 		.query('mailSenderCategoryOverrides')
@@ -225,7 +218,7 @@ export async function loadCategorySignals(
 			fromAddress: latestInbound.fromAddress,
 			subject: latestInbound.subject,
 			hasListUnsubscribe: latestInbound.unsubscribe !== undefined,
-			isKnownCorrespondent: contact !== null,
+			isKnownCorrespondent: senderEvidenceOf(contact).isInAddressBook,
 		},
 	};
 }
@@ -385,6 +378,14 @@ export const recategorize = postboxMutation({
 					updatedAt: now,
 				});
 			}
+			// D12: an owner correction invalidates what decision artifacts and
+			// sender memory hold about this sender's mail here (advisory data).
+			await invalidateSenderMemoryForCorrection(
+				ctx,
+				{ scope: 'mailbox', mailboxId: thread.mailboxId },
+				latestInbound.fromAddress
+			);
+			await recordOwnerCorrection(ctx, { mailMessageId: latestInbound._id });
 		}
 
 		const previous = thread.category?.label;

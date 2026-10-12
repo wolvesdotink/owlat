@@ -16,10 +16,13 @@ import { internalAction } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { interpretationSourceValidator } from '../../lib/validators/threadBrief';
 import { runInterpretation, type InterpretRunResult } from './run';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 export const interpretSent = internalAction({
 	args: { source: interpretationSourceValidator },
 	handler: async (ctx, args): Promise<InterpretRunResult> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const result = await runInterpretation(ctx, { source: args.source });
 		if (result.status === 'complete' || result.status === 'partial') {
 			await ctx.runMutation(internal.mail.interpret.sendFailure.reconcile, {

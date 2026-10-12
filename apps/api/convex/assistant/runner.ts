@@ -10,7 +10,8 @@
  * the streaming assistant row in place (throttled row-append) so the reactive
  * subscription renders tokens + tool-call cards as they arrive. Natural finish
  * records spend + marks complete; a user Stop / deletion (detected via the patch
- * mutation's `stop` signal) aborts and leaves the partial text terminal; any
+ * mutation's `stop` signal, or a once-a-second check while no event comes)
+ * aborts the turn and its nested calls and leaves the partial text terminal; any
  * error leaves the partial text errored and records the spend of the steps that
  * finished before it (#1261).
  *
@@ -20,21 +21,30 @@
 
 import { v } from 'convex/values';
 import type { Infer } from 'convex/values';
+import { ASSISTANT_CUT_OFF_MESSAGE } from '@owlat/shared/aiRouting';
 import type { ModelMessage } from 'ai';
 import type { ActionCtx } from '../_generated/server';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { runLlmStream, DEFAULT_MAX_TOOL_STEPS } from '../lib/llm/dispatch';
 import { resolveLanguageModelForUserText } from '../lib/llmProvider';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import { partialUsageOf } from '../lib/llm/partialUsage';
+import { meterFor, persistMeteredSpend, type LlmSpendTarget } from '../analytics/meteredSpend';
+import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
+import {
+	childCall,
+	rootRequest,
+	type LlmCallMeter,
+	type LlmRootContext,
+} from '../lib/llm/requestMeter';
 import { logWarn } from '../lib/runtimeLog';
-import type { TokenUsage } from '../agent/steps/types';
 import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import { buildAssistantTools } from './tools';
 import type { AssistantAudience } from './toolRegistry';
 import { buildAssistantSystemPrompt, clampText, type AssistantSurface } from './prompt';
-import { assistantToolCallValidator } from '../lib/convexValidators';
+import type { assistantToolCallValidator } from '../lib/convexValidators';
+import { admissionRefusalOf } from '../lib/llm/admissionPort';
+import { taskPolicy } from '../lib/llm/taskPolicy';
+import type { BudgetRefusal } from '../lib/validators/aiRouting';
 
 type ToolCall = Infer<typeof assistantToolCallValidator>;
 type Status = 'complete' | 'stopped' | 'error';
@@ -45,6 +55,12 @@ type Status = 'complete' | 'stopped' | 'error';
  * coarser than the composer's revise stream (mail/ai/reviseDraft.ts).
  */
 const FLUSH_INTERVAL_MS = 250;
+/**
+ * How often a running turn checks for Stop on its own (Sol r1 F1). A Stop is
+ * otherwise noticed only on a flush, and no flush happens while a nested tool
+ * waits on its provider; this bounds that wait to about a second.
+ */
+export const STOP_POLL_MS = 1000;
 const MAX_TOOL_RESULT_JSON = 4000;
 const MAX_TOOL_ARGS_JSON = 1000;
 
@@ -66,19 +82,20 @@ function toModelMessage(m: { role: 'user' | 'assistant'; text: string }): ModelM
 }
 
 /**
- * Write a turn's spend to the ledger without letting a failed write decide the
- * turn's status: the answer stands (or the original error does) either way.
+ * Write the turn's provider requests to the ledger, one row each, without
+ * letting a failed write decide the turn's status: the answer stands (or the
+ * original error does) either way. The meter hands each request out once, so
+ * the success and failure paths can both call this.
  */
 async function recordTurnSpend(
 	ctx: ActionCtx,
-	feature: string,
-	tokenUsage: TokenUsage | undefined,
-	modelUsed: string | undefined
+	target: LlmSpendTarget,
+	meter: LlmCallMeter
 ): Promise<void> {
 	try {
-		await recordLlmSpend(ctx, feature, tokenUsage, modelUsed);
+		await persistMeteredSpend(ctx, target, meter);
 	} catch (error) {
-		logWarn('[assistant] spend not recorded:', feature, error);
+		logWarn('[assistant] spend not recorded:', target.feature, error);
 	}
 }
 
@@ -88,8 +105,13 @@ interface FinalizeArgs {
 	model?: string;
 	tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 	errorMessage?: string;
+	/** The turn's paid call was refused for budget (D1): the code and reason, no sentence. */
+	budgetRefusal?: BudgetRefusal;
 	toolCalls?: ToolCall[];
 }
+
+/** The task every assistant turn runs as (`lib/llm/taskPolicy.ts`). */
+const TURN_TASK = 'assistant.answer';
 
 /**
  * The shared streaming loop. Surface-specific persistence is injected via
@@ -106,11 +128,32 @@ async function streamAssistantTurn(
 		messages: ModelMessage[];
 		lastUserText: string;
 		feature: string;
+		/** The turn's root request: one per assistant message (ADR-0073). */
+		root: LlmRootContext;
 		patch: (text: string, toolCalls: ToolCall[] | undefined) => Promise<{ stop: boolean }>;
+		/** Whether the person stopped the turn (read without writing). */
+		isStopped: () => Promise<boolean>;
 		finalize: (args: FinalizeArgs) => Promise<void>;
 	}
 ): Promise<void> {
-	const tools = await buildAssistantTools(ctx, opts.audience);
+	// The turn's calls and its tools' nested searches share this action's clock.
+	anchorActionDeadline(ctx);
+	const target: LlmSpendTarget = {
+		feature: opts.feature,
+		task: TURN_TASK,
+		root: boundedRoot(ctx, opts.root),
+	};
+	const meter = meterFor(ctx, target);
+	// Tools that call a model run under the turn's root, with the turn as parent,
+	// so their calls are admitted as the turn's interactive work (Phase 5), and
+	// the turn's retrieval allowance bounds how often they search.
+	const tools = await buildAssistantTools(
+		ctx,
+		opts.audience,
+		undefined,
+		childCall(target.root, meter.requestId),
+		{ maxRetrievalCalls: taskPolicy(TURN_TASK).maxRetrievalCalls }
+	);
 	const toolCalls: ToolCall[] = [];
 	// Every write carries the tool cards too; a tool event flushes at once.
 	const stream = createThrottledStreamFlusher({
@@ -118,12 +161,32 @@ async function streamAssistantTurn(
 		patch: (text) => opts.patch(text, toolCalls.length ? toolCalls : undefined),
 	});
 
+	// Watch for Stop apart from stream events, for the turn's lifetime only: a
+	// Stop aborts the shared signal, which ends the stream and every nested
+	// call that holds it. One check at a time; cleared in `finally`.
+	let isChecking = false;
+	const stopWatch = setInterval(() => {
+		if (isChecking || stream.stopRequested) return;
+		isChecking = true;
+		opts
+			.isStopped()
+			.then((isStopped) => {
+				if (isStopped) stream.stop();
+			})
+			.catch(() => undefined)
+			.finally(() => {
+				isChecking = false;
+			});
+	}, STOP_POLL_MS);
+
 	try {
 		const result = await runLlmStream({
-			model: await resolveLanguageModelForUserText(ctx, 'draft', opts.lastUserText),
+			meter,
+			model: await resolveLanguageModelForUserText(ctx, 'assistant.answer', opts.lastUserText),
 			system: opts.system,
 			messages: opts.messages,
 			tools,
+			// The dispatch caps this at the task's tool rounds (`maxToolRounds`).
 			maxSteps: DEFAULT_MAX_TOOL_STEPS,
 			temperature: 0.3,
 			abortSignal: stream.signal,
@@ -155,26 +218,53 @@ async function streamAssistantTurn(
 			},
 		});
 
-		await recordTurnSpend(ctx, opts.feature, result.tokenUsage, result.modelUsed);
+		await recordTurnSpend(ctx, target, meter);
+		// An answer cut off at its output ceiling keeps its text but is not
+		// reported complete.
+		const isCutOff = result.isTruncated === true && !stream.stopRequested && !result.aborted;
 		await opts.finalize({
 			text: result.text || stream.text,
-			status: stream.stopRequested || result.aborted ? 'stopped' : 'complete',
+			status: stream.stopRequested || result.aborted ? 'stopped' : isCutOff ? 'error' : 'complete',
 			model: result.modelUsed,
 			tokenUsage: result.tokenUsage,
 			toolCalls: toolCalls.length ? toolCalls : undefined,
+			...(isCutOff ? { errorMessage: ASSISTANT_CUT_OFF_MESSAGE } : {}),
 		});
 	} catch (error) {
-		// Steps that finished before the failure were billed. Only the stream's
-		// own error carries them, so a finalize failure above never records twice.
-		const partial = partialUsageOf(error);
-		if (partial) await recordTurnSpend(ctx, opts.feature, partial.tokenUsage, partial.modelUsed);
+		// Steps that finished before the failure were billed and are on the
+		// meter; a finalize failure above already wrote them, so this adds none.
+		await recordTurnSpend(ctx, target, meter);
 		await opts.finalize({
 			text: stream.text,
 			status: 'error',
-			errorMessage: clampText(String((error as { message?: unknown })?.message ?? error), 300),
+			...turnError(error),
 			toolCalls: toolCalls.length ? toolCalls : undefined,
 		});
+	} finally {
+		clearInterval(stopWatch);
 	}
+}
+
+/**
+ * What a failed turn stores: a budget refusal as its stable code and reason
+ * (D1), which the web says in the reader's language; any other failure as its
+ * message.
+ */
+function turnError(error: unknown): Pick<FinalizeArgs, 'errorMessage' | 'budgetRefusal'> {
+	const refusal = admissionRefusalOf(error);
+	if (refusal) return { budgetRefusal: { code: refusal.code, reason: refusal.reason } };
+	return {
+		errorMessage: clampText(String((error as { message?: unknown })?.message ?? error), 300),
+	};
+}
+
+/**
+ * A turn's root: one per assistant message (ADR-0073). Someone waits on it, so
+ * every call under it, the tools' nested searches included, is admitted as
+ * interactive work.
+ */
+function assistantRoot(assistantMessageId: string): LlmRootContext {
+	return { ...rootRequest('assistant', assistantMessageId), priority: 'interactive' };
 }
 
 /** Personal assistant — drive a `/dashboard/assistant` conversation turn. */
@@ -189,6 +279,8 @@ export const run = internalAction({
 		includeInboxDerived: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const runCtx = await ctx.runQuery(internal.assistant.conversations.getRunContext, {
 			conversationId: args.conversationId,
 			assistantMessageId: args.assistantMessageId,
@@ -210,11 +302,16 @@ export const run = internalAction({
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',
 			feature: 'assistant_chat',
+			root: assistantRoot(args.assistantMessageId),
 			patch: (text, toolCalls) =>
 				ctx.runMutation(internal.assistant.conversations.patchAssistantMessage, {
 					messageId: args.assistantMessageId,
 					text,
 					toolCalls,
+				}),
+			isStopped: () =>
+				ctx.runQuery(internal.assistant.conversations.isTurnStopped, {
+					messageId: args.assistantMessageId,
 				}),
 			finalize: async (a) => {
 				await ctx.runMutation(internal.assistant.conversations.finalizeAssistantMessage, {
@@ -234,6 +331,8 @@ export const runForChat = internalAction({
 		promptMessageId: v.id('chatMessages'),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const runCtx = await ctx.runQuery(internal.chat.messages.getAssistantChatContext, {
 			roomId: args.roomId,
 			assistantMessageId: args.assistantMessageId,
@@ -255,11 +354,16 @@ export const runForChat = internalAction({
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',
 			feature: 'chat_assistant',
+			root: assistantRoot(args.assistantMessageId),
 			patch: (text, toolCalls) =>
 				ctx.runMutation(internal.chat.messages.patchAssistantChatMessage, {
 					messageId: args.assistantMessageId,
 					text,
 					toolCalls,
+				}),
+			isStopped: () =>
+				ctx.runQuery(internal.chat.messages.isAssistantReplyStopped, {
+					messageId: args.assistantMessageId,
 				}),
 			finalize: async (a) => {
 				await ctx.runMutation(internal.chat.messages.finalizeAssistantChatMessage, {

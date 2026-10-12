@@ -53,6 +53,8 @@ export interface ProjectionInput {
 	};
 	gap: { interpretedMessages: number; totalMessages: number; reason?: GapReason };
 	history?: 'running' | 'stalled';
+	/** D10: sources waiting for the thread to be opened (`defer.ts`). */
+	deferredSources?: number;
 	/** The thread needs no reply: payment items offer "Mark paid" first. */
 	isNoReplyNeeded?: boolean;
 	/** The viewer's per-thread Overview / Conversation choice (brief mode). */
@@ -133,6 +135,7 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 		completeness: input.completeness,
 		...(showGap ? { gap: input.gap } : {}),
 		...(input.history ? { history: input.history } : {}),
+		...(input.deferredSources ? { deferredSources: input.deferredSources } : {}),
 		waitingOnOthers,
 		unclear,
 		activity: input.activity,

@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	securityFlagsValidator,
+	spamVerdictValidator,
 	contextCoverageValidator,
 	draftQualityValidator,
 	groundingSourceValidator,
@@ -10,6 +11,7 @@ import {
 } from '../lib/convexValidators';
 import { classificationValidator } from '../lib/validators/classification';
 import { pendingClarificationValidator } from '../lib/validators/clarification';
+import { budgetHoldValidator } from '../lib/validators/aiRouting';
 import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { teamReplyAttachmentsValidator } from '../lib/validators/teamReplyAttachment';
 import { draftRevisionValidator } from '../lib/validators/draftRevision';
@@ -119,6 +121,10 @@ export const inboxTables = {
 		// message with no eligible attachments and on every row that predates the
 		// marker. Patched after the insert, because capture runs after it.
 		attachmentIndexing: v.optional(attachmentIndexingValidator),
+		// D12 (ADR-0073): when an owner last corrected a decision about this
+		// message. A decision bundle never judges, keeps or learns from a
+		// corrected message (`decision/artifacts.ts`). Absent ⇒ never corrected.
+		decisionCorrectedAt: v.optional(v.number()),
 		// RFC 8601 inbound authentication verdicts, computed by the MTA over the
 		// raw bytes at ingest (SPF on MAIL FROM, DKIM on the d= signature, DMARC
 		// binding the two to the From domain via alignment). The AI-inbox path
@@ -182,6 +188,16 @@ export const inboxTables = {
 		archiveReason: v.optional(v.string()),
 		// Security filter results
 		securityFlags: v.optional(securityFlagsValidator),
+		// L5 (ADR-0073): the MTA's spam verdict and score, passed through ingest
+		// from the authenticated delivery webhook. Recorded always; terminal only
+		// behind the `mtaVerdictTerminal` routing switch. Absent: an older MTA.
+		mtaSpamVerdict: v.optional(spamVerdictValidator),
+		mtaSpamScore: v.optional(v.number()),
+		// D1 (ADR-0073): the spend ceiling (or unverifiable spend state) stopped
+		// the model path; the message waits for a person, auto-send is blocked,
+		// and the reason and the missing judgments are shown. Cleared when the
+		// pipeline re-runs with headroom.
+		budgetHold: v.optional(budgetHoldValidator),
 		// Agent classification result
 		classification: v.optional(classificationValidator),
 		// Agent-generated draft
@@ -209,6 +225,11 @@ export const inboxTables = {
 		// confidenceScore; the route step gates auto-send on this, not on the
 		// classifier confidence. Absent when the self-check failed.
 		draftQuality: v.optional(draftQualityValidator),
+		// The draft was written cheap-first (ADR-0073, D2): a REVIEWED draft. It
+		// has had no safety evaluation of its own, so the `cheap_first_draft`
+		// auto-send gate never sends it. Written with the draft it describes
+		// (`inbox/stepOutputs.recordDraftOutput`), and cleared by the next draft.
+		isCheapFirstDraft: v.optional(v.boolean()),
 		// Context compaction tier used (for transparency in review queue)
 		contextTier: v.optional(contextTierValidator),
 		// Retrieval coverage / grounding signal from context_retrieval —
@@ -366,6 +387,8 @@ export const inboxTables = {
 		extractedCount: v.number(),
 		skippedCount: v.number(),
 		errorCount: v.number(),
+		/** Messages whose extraction started but is not complete (a budget deferral resumes it). */
+		partialCount: v.optional(v.number()),
 		// Resumable cursor (compound: receivedAt then _id for stable ordering)
 		cursorReceivedAt: v.optional(v.number()),
 		cursorId: v.optional(v.id('inboundMessages')),
@@ -410,7 +433,12 @@ export const inboxTables = {
 			'organizationId',
 			'pluginId',
 			'createdAt',
-		]),
+		])
+		// Settling a reservation whose action died reads the rows it already wrote.
+		.index('by_reservation_id', ['reservationId'])
+		// A metered write is idempotent per provider request (ADR-0073): a retried
+		// batch skips the requests already stored.
+		.index('by_request_id_and_attempt', ['requestId', 'attempt']),
 
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is

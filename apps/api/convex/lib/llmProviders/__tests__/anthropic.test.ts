@@ -24,8 +24,8 @@ describe('anthropicLanguageAdapter', () => {
 		expect(anthropicLanguageAdapter.kind).toBe('anthropic');
 		expect(anthropicLanguageAdapter.isLocal).toBe(false);
 		expect(anthropicLanguageAdapter.defaultModels).toEqual({
-			fast: 'claude-haiku-4-5',
-			capable: 'claude-opus-4-8',
+			fast: 'claude-haiku-5-5',
+			capable: 'claude-sonnet-5-5',
 		});
 	});
 

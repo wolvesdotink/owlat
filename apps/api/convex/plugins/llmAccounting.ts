@@ -3,7 +3,14 @@ import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { insertLlmUsage } from '../analytics/llmUsage';
+import { insertLlmUsage, type MeteredRequest } from '../analytics/llmUsage';
+import { reconcileLateRow } from '../aiRouting/settlement';
+import {
+	insertPluginRequestRows,
+	meteredCallArgs,
+	reserveDeploymentHold,
+	settleDeploymentHold,
+} from './llmLedgerRows';
 import type { TokenUsage } from '../agent/steps/types';
 import { languageEndpointProvenanceValidator } from '../lib/validators/aiProviderConfig';
 import { utcDayKey } from '../lib/clock';
@@ -87,6 +94,8 @@ export const reserve = internalMutation({
 		modelId: v.string(),
 		endpointProvenance: languageEndpointProvenanceValidator,
 		actorMode: pluginLlmActorModeValidator,
+		/** The host's root request, so the deployment hold groups with it. */
+		rootRequestId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		assertReservationInput(args.reservationId, args.reservedMicrousd);
@@ -137,6 +146,16 @@ export const reserve = internalMutation({
 		) {
 			throw new Error('Plugin LLM denied');
 		}
+		// The deployment ceiling admits the call too (ADR-0073, D1), in this
+		// transaction, under the same id.
+		const isAdmitted = await reserveDeploymentHold(ctx, {
+			reservationId: args.reservationId,
+			reservedMicrousd: args.reservedMicrousd,
+			modelId: args.modelId,
+			endpointProvenance: args.endpointProvenance,
+			...(args.rootRequestId ? { rootRequestId: args.rootRequestId } : {}),
+		});
+		if (!isAdmitted) throw new Error('Plugin LLM denied');
 
 		const now = Date.now();
 		await ctx.db.insert('pluginLlmReservations', {
@@ -173,86 +192,159 @@ export const reserve = internalMutation({
 	},
 });
 
+const successArgs = {
+	modelUsed: v.optional(v.string()),
+	tokenUsage: v.optional(tokenUsageValidator),
+	attempts: v.number(),
+	...meteredCallArgs,
+};
+
 export const settleSuccess = internalMutation({
-	args: {
-		reservationId: v.string(),
-		modelUsed: v.optional(v.string()),
-		tokenUsage: v.optional(tokenUsageValidator),
-		attempts: v.number(),
-		actorMode: pluginLlmActorModeValidator,
-	},
+	args: { reservationId: v.string(), actorMode: pluginLlmActorModeValidator, ...successArgs },
 	handler: async (ctx, args) => {
 		const reservation = await pendingActorReservation(ctx, args.reservationId, args.actorMode);
 		if (reservation.status === 'completed') return settlementResult(reservation);
 		if (reservation.status !== 'pending') throw new Error('Plugin LLM settlement denied');
-		if (
-			!Number.isSafeInteger(args.attempts) ||
-			args.attempts < 1 ||
-			args.attempts > MAX_LLM_ATTEMPTS
-		) {
-			throw new Error('Plugin LLM settlement denied');
-		}
-
-		const acceptedUsage = validTokenUsage(args.tokenUsage) ? args.tokenUsage : undefined;
-		const cost = successCost(reservation, args.modelUsed, acceptedUsage, args.attempts);
-		const daily = await requiredDailyUsage(ctx, reservation);
-		const nextDailyCharge = daily.chargedMicrousd - reservation.reservedMicrousd + cost.charged;
-		const nextActual = daily.actualMicrousd + cost.actual;
-		if (!isMoney(nextDailyCharge) || !isMoney(nextActual)) {
-			throw new Error('Plugin LLM settlement denied');
-		}
-		const now = Date.now();
-		await ctx.db.patch(daily._id, {
-			chargedMicrousd: nextDailyCharge,
-			actualMicrousd: nextActual,
-			updatedAt: now,
-		});
-		await ctx.db.patch(reservation._id, {
-			status: 'completed',
-			chargedMicrousd: cost.charged,
-			actualMicrousd: cost.actual,
-			completedAt: now,
-		});
-		if (acceptedUsage && cost.isUsageAccounted) {
-			await insertLlmUsage(
-				ctx,
-				`plugin:${reservation.pluginId}`,
-				acceptedUsage,
-				reservation.modelId,
-				{
-					organizationId: reservation.organizationId,
-					pluginId: reservation.pluginId,
-				}
-			);
-		}
-		await recordHostedPluginAudit(ctx, auditScope(reservation), 'llm.generate', 'completed', {
-			attempts: args.attempts,
-			usageAvailable: acceptedUsage !== undefined && cost.isUsageAccounted,
-			chargedMicrousd: cost.charged,
-			actualMicrousd: cost.actual,
-		});
-		return { chargedMicrousd: cost.charged, actualMicrousd: cost.actual };
+		return applySuccess(ctx, reservation, args);
 	},
 });
 
 export const settleFailure = internalMutation({
-	args: { reservationId: v.string(), actorMode: pluginLlmActorModeValidator },
+	args: {
+		reservationId: v.string(),
+		actorMode: pluginLlmActorModeValidator,
+		...meteredCallArgs,
+	},
 	handler: async (ctx, args) => {
 		const reservation = await pendingActorReservation(ctx, args.reservationId, args.actorMode);
 		if (reservation.status === 'failed') return null;
 		if (reservation.status !== 'pending') throw new Error('Plugin LLM settlement denied');
-		await ctx.db.patch(reservation._id, {
-			status: 'failed',
-			chargedMicrousd: reservation.reservedMicrousd,
-			completedAt: Date.now(),
-		});
-		await recordHostedPluginAudit(ctx, auditScope(reservation), 'llm.generate', 'failed', {
-			reasonCode: 'provider_dispatch_failed',
-			chargedMicrousd: reservation.reservedMicrousd,
-		});
+		await applyFailure(ctx, reservation, args);
 		return null;
 	},
 });
+
+/**
+ * DURABLE RECOVERY of a settlement the action could not write (ADR-0073):
+ * `plugins/llm.ts` retries `settleSuccess` / `settleFailure`, then schedules
+ * this with the same arguments, metered requests included, so neither the
+ * plugin budget nor the deployment ledger loses the call. Internal and
+ * scheduled only by the action that holds the reservation, which already
+ * proved its actor; a scheduled job has no session to prove it again.
+ * Idempotent: a reservation already settled either way is left alone.
+ */
+export const recoverSettlement = internalMutation({
+	args: {
+		reservationId: v.string(),
+		outcome: v.union(v.literal('success'), v.literal('failure')),
+		...successArgs,
+		attempts: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		if (!RESERVATION_ID.test(args.reservationId)) return null;
+		const reservation = await reservationById(ctx, args.reservationId);
+		if (!reservation || reservation.status !== 'pending') return null;
+		if (args.outcome === 'failure') {
+			await applyFailure(ctx, reservation, args);
+			return null;
+		}
+		await applySuccess(ctx, reservation, { ...args, attempts: args.attempts ?? MAX_LLM_ATTEMPTS });
+		return null;
+	},
+});
+
+type MeteredArgs = {
+	requestId?: string;
+	rootRequestId?: string;
+	parentCallId?: string;
+	requests?: MeteredRequest[];
+};
+
+async function applySuccess(
+	ctx: MutationCtx,
+	reservation: Doc<'pluginLlmReservations'>,
+	args: MeteredArgs & { modelUsed?: string; tokenUsage?: TokenUsage; attempts: number }
+): Promise<{ chargedMicrousd: number; actualMicrousd: number }> {
+	if (
+		!Number.isSafeInteger(args.attempts) ||
+		args.attempts < 1 ||
+		args.attempts > MAX_LLM_ATTEMPTS
+	) {
+		throw new Error('Plugin LLM settlement denied');
+	}
+	const acceptedUsage = validTokenUsage(args.tokenUsage) ? args.tokenUsage : undefined;
+	const cost = successCost(reservation, args.modelUsed, acceptedUsage, args.attempts);
+	const daily = await requiredDailyUsage(ctx, reservation);
+	const nextDailyCharge = daily.chargedMicrousd - reservation.reservedMicrousd + cost.charged;
+	const nextActual = daily.actualMicrousd + cost.actual;
+	if (!isMoney(nextDailyCharge) || !isMoney(nextActual)) {
+		throw new Error('Plugin LLM settlement denied');
+	}
+	const now = Date.now();
+	await ctx.db.patch(daily._id, {
+		chargedMicrousd: nextDailyCharge,
+		actualMicrousd: nextActual,
+		updatedAt: now,
+	});
+	await ctx.db.patch(reservation._id, {
+		status: 'completed',
+		chargedMicrousd: cost.charged,
+		actualMicrousd: cost.actual,
+		completedAt: now,
+	});
+	if (args.requests !== undefined) {
+		// A settlement whose usage could not be accounted (no, malformed or a
+		// rerouted provider model) charged the plugin its whole hold; the
+		// deployment ledger keeps the requests, priced at the model the provider
+		// reported and marked as estimates.
+		await insertPluginRequestRows(
+			ctx,
+			reservation,
+			{ ...args, ...(cost.isUsageAccounted ? {} : { isEstimate: true }) },
+			validTokenUsage
+		);
+	} else if (acceptedUsage && cost.isUsageAccounted) {
+		const inserted = await insertLlmUsage(
+			ctx,
+			`plugin:${reservation.pluginId}`,
+			acceptedUsage,
+			reservation.modelId,
+			{
+				organizationId: reservation.organizationId,
+				pluginId: reservation.pluginId,
+			},
+			{ reservationId: reservation.reservationId }
+		);
+		await reconcileLateRow(ctx, reservation.reservationId, inserted);
+	}
+	await settleDeploymentHold(ctx, reservation.reservationId, args.requests);
+	await recordHostedPluginAudit(ctx, auditScope(reservation), 'llm.generate', 'completed', {
+		attempts: args.attempts,
+		usageAvailable: acceptedUsage !== undefined && cost.isUsageAccounted,
+		chargedMicrousd: cost.charged,
+		actualMicrousd: cost.actual,
+	});
+	return { chargedMicrousd: cost.charged, actualMicrousd: cost.actual };
+}
+
+async function applyFailure(
+	ctx: MutationCtx,
+	reservation: Doc<'pluginLlmReservations'>,
+	args: MeteredArgs
+): Promise<void> {
+	// The failed call's requests were made; the deployment ledger sees them too.
+	await insertPluginRequestRows(ctx, reservation, args, validTokenUsage);
+	await settleDeploymentHold(ctx, reservation.reservationId, args.requests);
+	await ctx.db.patch(reservation._id, {
+		status: 'failed',
+		chargedMicrousd: reservation.reservedMicrousd,
+		completedAt: Date.now(),
+	});
+	await recordHostedPluginAudit(ctx, auditScope(reservation), 'llm.generate', 'failed', {
+		reasonCode: 'provider_dispatch_failed',
+		chargedMicrousd: reservation.reservedMicrousd,
+	});
+}
 
 export const recordDenied = internalMutation({
 	args: { pluginId: v.string() },

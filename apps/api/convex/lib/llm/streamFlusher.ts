@@ -20,8 +20,10 @@ export interface ThrottledStreamFlusher {
 	flush(force: boolean): Promise<void>;
 	/** The latest full text seen. */
 	readonly text: string;
-	/** A patch reported `stop` and the stream was aborted. */
+	/** A patch reported `stop` (or {@link stop} was called) and the stream was aborted. */
 	readonly stopRequested: boolean;
+	/** Abort as a `stop` patch would: the surface learned of a Stop another way. */
+	stop(): void;
 }
 
 export function createThrottledStreamFlusher(opts: {
@@ -33,15 +35,17 @@ export function createThrottledStreamFlusher(opts: {
 	let lastFlushAt = 0;
 	let stopRequested = false;
 
+	const stop = (): void => {
+		stopRequested = true;
+		controller.abort();
+	};
+
 	const flush = async (force: boolean): Promise<void> => {
 		const now = Date.now();
 		if (!force && now - lastFlushAt < opts.intervalMs) return;
 		lastFlushAt = now;
 		const res = await opts.patch(text);
-		if (res.stop) {
-			stopRequested = true;
-			controller.abort();
-		}
+		if (res.stop) stop();
 	};
 
 	return {
@@ -51,6 +55,7 @@ export function createThrottledStreamFlusher(opts: {
 			await flush(false);
 		},
 		flush,
+		stop,
 		get text() {
 			return text;
 		},

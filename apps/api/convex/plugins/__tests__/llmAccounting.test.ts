@@ -220,6 +220,27 @@ describe('plugin LLM accounting', () => {
 		});
 	});
 
+	it('settles at list price × tokens, without the admission cache-write ceiling', async () => {
+		const t = convexTest(schema, modules);
+		await grant(t);
+		const id = reservationId(32);
+		await reserve(t, id, 300, 'claude-sonnet-5-5', 'anthropic-native');
+		await t.mutation(internal.plugins.llmAccounting.settleSuccess, {
+			reservationId: id,
+			actorMode: 'authenticated_actor',
+			modelUsed: 'claude-sonnet-5-5',
+			tokenUsage: { promptTokens: 20, completionTokens: 5, totalTokens: 25 },
+			attempts: 1,
+		});
+
+		await t.run(async (ctx) => {
+			const daily = await ctx.db.query('pluginLlmDailyUsage').unique();
+			// Sonnet 5.5 list: $2/M input, $10/M output ⇒ 20 × 2 + 5 × 10 = 90 micro-USD.
+			// The 2× admission ceiling would make it 130, over the 100 per-attempt hold.
+			expect(daily).toMatchObject({ chargedMicrousd: 90, actualMicrousd: 90 });
+		});
+	});
+
 	it('retains the full reservation and skips usage persistence for malformed accounting', async () => {
 		const t = convexTest(schema, modules);
 		await grant(t);
@@ -284,6 +305,69 @@ describe('plugin LLM accounting', () => {
 			});
 		} finally {
 			vi.useRealTimers();
+		}
+	});
+});
+
+describe('plugin LLM calls and the deployment ceiling (ADR-0073, D1)', () => {
+	const reconciled = async (t: ReturnType<typeof convexTest>) => {
+		const { reconcileSpend } = await import('../../aiRouting/__tests__/spend.testlib');
+		await reconcileSpend(t);
+	};
+
+	it('takes a deployment hold under the same id, and settles it with the call’s rows', async () => {
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
+		try {
+			const t = convexTest(schema, modules);
+			await reconciled(t);
+			await grant(t);
+			const id = reservationId(70);
+			await reserve(t, id);
+			const held = await t.run((ctx) => ctx.db.query('llmReservations').unique());
+			expect(held).toMatchObject({
+				reservationId: id,
+				status: 'held',
+				task: 'plugin.invoke',
+				heldMicrousd: 300,
+			});
+			await t.mutation(internal.plugins.llmAccounting.settleSuccess, {
+				reservationId: id,
+				actorMode: 'authenticated_actor',
+				modelUsed: 'gpt-4o-mini',
+				tokenUsage: { promptTokens: 100, completionTokens: 100, totalTokens: 200 },
+				attempts: 1,
+				requestId: 'plugin-call-70',
+				requests: [
+					{
+						attempt: 1,
+						latencyMs: 5,
+						modelUsed: 'gpt-4o-mini',
+						usage: { promptTokens: 100, completionTokens: 100, totalTokens: 200 },
+					},
+				],
+			});
+			const settled = await t.run((ctx) => ctx.db.query('llmReservations').unique());
+			expect(settled).toMatchObject({ status: 'settled' });
+			const rows = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
+			expect(rows.every((row) => row.reservationId === id)).toBe(true);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it('denies the call, before any provider request, when the deployment ceiling has no room', async () => {
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '0.0001');
+		try {
+			const t = convexTest(schema, modules);
+			await reconciled(t);
+			await grant(t);
+			await expect(reserve(t, reservationId(71))).rejects.toThrow('Plugin LLM denied');
+			await t.run(async (ctx) => {
+				expect(await ctx.db.query('pluginLlmReservations').collect()).toHaveLength(0);
+				expect(await ctx.db.query('llmReservations').collect()).toHaveLength(0);
+			});
+		} finally {
+			vi.unstubAllEnvs();
 		}
 	});
 });

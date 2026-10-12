@@ -36,6 +36,7 @@ import {
 	sourceManifestValidator,
 } from '../../lib/validators/threadBrief';
 import { threadRefValidator } from '../../lib/validators/threadRef';
+import { runBudgetRefusalValidator } from '../../lib/validators/aiRouting';
 
 /** A grounded quote: where it sits in the segmented message, and its words. */
 export const reduceEvidenceValidator = v.object({
@@ -180,6 +181,10 @@ export const applyInterpretationArgs = {
 	sourceVersion: v.optional(v.string()),
 	// Set on a repair attempt of an incomplete extraction (retry.ts).
 	retryCount: v.optional(v.number()),
+	// The run's hold was refused: consecutive deferrals so far (retry.ts backoff, Sol r4).
+	budgetDeferrals: v.optional(v.number()),
+	// A spend refusal the run met (D1), stored so a replay reports it.
+	budgetRefusal: v.optional(runBudgetRefusalValidator),
 };
 
 export type ReduceEvidence = Infer<typeof reduceEvidenceValidator>;

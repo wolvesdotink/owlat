@@ -17,6 +17,24 @@ crons.interval(
 	{}
 );
 
+// Spend admission (ADR-0073, Phase 1b): settle holds whose action died, and
+// keep the spend-period aggregate reconciled with the ledger.
+crons.interval(
+	'settle expired spend holds',
+	{ minutes: 5 },
+	internal.aiRouting.admission.sweepExpiredHolds,
+	{}
+);
+
+// Provider batch items (ADR-0073, L14): read the results of batches that
+// ended. Starts the poller only when an item is due.
+crons.interval(
+	'poll provider batch items',
+	{ minutes: 5 },
+	internal.aiRouting.batchItems.kickPoller,
+	{}
+);
+
 crons.interval(
 	'reconcile MTA suppressions',
 	{ hours: 24 },
@@ -239,6 +257,16 @@ crons.interval(
 	'backfill unprocessed files',
 	{ minutes: 15 },
 	internal.semanticFiles.backfillUnprocessed,
+	{}
+);
+
+// Embedding provenance (ADR-0073): measure the configured local embedder, keep
+// its space active, resume a stalled re-embed and run the daily local re-embed
+// pass; refresh the coverage count. A hosted embedder only gets the count.
+crons.interval(
+	'embedding re-embed kickoff',
+	{ hours: 1 },
+	internal.aiRouting.embeddingReembed.kickoff,
 	{}
 );
 

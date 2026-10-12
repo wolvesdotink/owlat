@@ -21,8 +21,8 @@ import { internalAction } from '../_generated/server';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { embed } from 'ai';
-import { resolveEmbeddingModel, toIndexVector } from '../lib/llmProvider';
+import { llmRootContextValidator } from '../lib/llmUsageTags';
+import { embedRetrievalQuery, searchSpaceVectors } from './vectorSearch';
 import { entryTypeValidator } from '../schema/knowledge';
 import { logInfo } from '../lib/runtimeLog';
 import { isContactScopeVisible } from '../lib/contactScope';
@@ -35,6 +35,7 @@ import {
 	type GraphRankNeighbor,
 	type RelationType,
 } from '../lib/graphRank';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /**
  * One typed relationship a result entry participates in, for rendering the
@@ -96,6 +97,10 @@ export const semanticSearch = internalAction({
 	args: {
 		queryText: v.optional(v.string()),
 		embedding: v.optional(v.array(v.float64())),
+		// The space a precomputed `embedding` is in (`embedRetrievalQuery`, or a
+		// stored vector's column). Without it the vector leg is skipped: a vector
+		// is only ever compared within its own space (searchSpaceVectors).
+		embeddingSpaceId: v.optional(v.id('embeddingSpaces')),
 		entryType: v.optional(entryTypeValidator),
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out; any
@@ -104,6 +109,8 @@ export const semanticSearch = internalAction({
 		// Required, like the contact scope: whether Team Inbox-derived entries
 		// may be returned (see above).
 		includeInboxDerived: v.boolean(),
+		/** The caller's root request, so the query embedding's ledger row groups under it. */
+		root: v.optional(llmRootContextValidator),
 		// Graph-augmented retrieval (seed-then-expand). Default/omitted ⇒ today's
 		// flat behaviour. When true, the top visible seeds are expanded along the
 		// knowledge-graph edges (per-hop scope-re-checked in graphTraversal.ts),
@@ -114,20 +121,30 @@ export const semanticSearch = internalAction({
 		neighborBudget: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ScoredKnowledgeEntry[]> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const queryText = args.queryText?.trim();
 
-		let vector = args.embedding;
-		if (!vector || vector.length === 0) {
+		// A caller's vector is used as given, with the space it was embedded in
+		// (Team retrieval embeds once for this search and the file search).
+		// Otherwise the query is embedded here, and only when the table holds a
+		// vector to find (knowledge/vectorCorpus.ts); with none, the full-text leg
+		// runs alone.
+		let vector = args.embedding && args.embedding.length > 0 ? args.embedding : undefined;
+		let spaceId = args.embeddingSpaceId;
+		if (!vector) {
 			if (!queryText) return [];
-			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
-			// actionable error rather than silently returning zero results.
-			const embeddingModel = await resolveEmbeddingModel(ctx);
-			try {
-				const { embedding } = await embed({ model: embeddingModel, value: queryText });
-				vector = toIndexVector(embedding);
-			} catch (error) {
-				logInfo('[knowledge.retrieval] embed failed', { error: String(error) });
-				return [];
+			const query = await embedRetrievalQuery(
+				ctx,
+				['knowledgeEntries'],
+				queryText,
+				'[knowledge.retrieval]',
+				args.root
+			);
+			if (query.kind === 'failed') return [];
+			if (query.kind === 'vector') {
+				vector = query.embedding;
+				spaceId = query.embeddingSpaceId;
 			}
 		}
 
@@ -141,12 +158,16 @@ export const semanticSearch = internalAction({
 		// 256. The final slice keeps the returned count at `limit` regardless.
 		const fetchLimit = Math.min(256, Math.max(limit * 5, 50));
 
-		// Leg 1 — semantic vector search (paraphrase / conceptual matches).
-		const hits = await ctx.vectorSearch('knowledgeEntries', 'vector_knowledge', {
-			vector,
-			limit: fetchLimit,
-			filter: entryType ? (q) => q.eq('entryType', entryType) : undefined,
-		});
+		// Leg 1 — semantic vector search (paraphrase / conceptual matches), in the
+		// query vector's own space only.
+		const hits = vector
+			? await searchSpaceVectors(ctx, 'knowledgeEntries', {
+					vector,
+					embeddingSpaceId: spaceId,
+					limit: fetchLimit,
+					entryType,
+				})
+			: [];
 		const vectorRanked: Id<'knowledgeEntries'>[] = hits.map((h) => h._id);
 		const scoreById = new Map<string, number>(hits.map((h) => [h._id as string, h._score]));
 

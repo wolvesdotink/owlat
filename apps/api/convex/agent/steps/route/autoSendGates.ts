@@ -6,19 +6,28 @@ import { detectSecretLeak } from '../../../lib/secretLeakScan';
 import { isWithinWorkingHours } from '../../../lib/workingHours';
 import { deriveAuthenticatedRecipient } from '../../referenceMonitor';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
+import { guardRequirement } from '../../../lib/aiRouting/guardRecord';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
+import {
+	AUTO_SEND_VERDICT_TASKS,
+	CALIBRATION_REVISIONS,
+	verdictBlockReason,
+} from '../../../lib/decision/calibration';
+import { decisionAutonomyProblem } from '../../../lib/decision/autoSendContract';
+import { appliedDecisionGate } from './appliedDecisionGate';
 
 export type AutoSendGateDecision =
 	| { readonly safe: true }
 	| { readonly safe: false; readonly reason: string };
 
-interface AutoSendGateContext {
+export interface AutoSendGateContext {
 	readonly action: ActionCtx;
 	readonly inboundMessageId: Id<'inboundMessages'>;
 	readonly now: () => number;
 	readonly getMessage: () => Promise<Doc<'inboundMessages'> | null>;
 }
 
-interface CoreAutoSendGate {
+export interface CoreAutoSendGate {
 	readonly id: string;
 	evaluate(context: AutoSendGateContext): Promise<AutoSendGateDecision> | AutoSendGateDecision;
 }
@@ -49,11 +58,19 @@ const messageExistsGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
+// D1 (ADR-0073): the ceiling read from the complete period aggregate; a spend
+// state that cannot be verified holds the send. A message the ceiling held
+// (`budgetHold`) is never auto-sent, whatever the budget reads now.
 const spendBudgetGate: CoreAutoSendGate = Object.freeze({
 	id: 'spend_budget',
-	async evaluate({ action }: AutoSendGateContext) {
+	async evaluate({ action, getMessage }: AutoSendGateContext) {
+		if ((await getMessage())?.budgetHold) {
+			return unsafe(
+				'Paid model judgments were skipped at the AI spend ceiling; routing to human review.'
+			);
+		}
 		try {
-			const budget = await action.runQuery(internal.analytics.spendBudget.getBudgetStatus, {});
+			const budget = await action.runQuery(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
 			return budget.autonomousAutoSendAllowed
 				? safe()
 				: unsafe(
@@ -107,11 +124,18 @@ const complaintOrUrgentGate: CoreAutoSendGate = messageGate('complaint_or_urgent
 		: safe();
 });
 
-const inboundGuardGate: CoreAutoSendGate = messageGate('inbound_guard', (message) =>
-	message.securityFlags?.guardUnavailable
-		? unsafe('Inbound injection guard was unavailable; not auto-sending — routing to human review.')
-		: safe()
-);
+// D13 (ADR-0073): a scan that skipped the model guard (`guardNotRun`) has no
+// semantic injection verdict, so it is held exactly like a guard that failed.
+const inboundGuardGate: CoreAutoSendGate = messageGate('inbound_guard', (message) => {
+	if (message.securityFlags?.guardUnavailable) {
+		return unsafe(
+			'Inbound injection guard was unavailable; not auto-sending — routing to human review.'
+		);
+	}
+	return guardRequirement(message.securityFlags) === 'guard_not_run'
+		? unsafe('Inbound injection guard has not run; not auto-sending — routing to human review.')
+		: safe();
+});
 
 const recipientLockGate: CoreAutoSendGate = messageGate('recipient_lock', (message) =>
 	deriveAuthenticatedRecipient(message.from ?? '')
@@ -144,6 +168,15 @@ const outboundDlpGate: CoreAutoSendGate = messageGate('outbound_dlp', (message) 
 const draftGapsGate: CoreAutoSendGate = messageGate('draft_gaps', (message) =>
 	hasDraftGaps(message.draftResponse ?? '')
 		? unsafe('Draft still has a placeholder for a missing fact; routing to human review.')
+		: safe()
+);
+
+// D2 (ADR-0073): a draft written cheap-first is a reviewed draft. The fast
+// writer has had no safety evaluation of its own, so the draft goes to a
+// person whatever its quality score says. The flag is written with the draft.
+const cheapFirstDraftGate: CoreAutoSendGate = messageGate('cheap_first_draft', (message) =>
+	message.isCheapFirstDraft === true
+		? unsafe('This draft was written cheap-first and is for review only; routing to human review.')
 		: safe()
 );
 
@@ -209,6 +242,65 @@ const itemCoverageGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
+/**
+ * ADR-0060 §8, ADR-0073 §8: the block-only gate for decision verdicts. A
+ * verdict of a task in `tasks` that would feed the auto-send path must be a
+ * complete, valid, advisory answer from the decision plane configured now,
+ * under the current policy, with a calibration stamp that names the checked-in
+ * revision for its task and the message's language. Anything else holds the
+ * send, and so does any feeding task while item coverage is not enforced (the
+ * prerequisite of decision-driven autonomous input,
+ * `lib/decision/autoSendContract.ts`). It can only block. Nothing feeds a
+ * verdict today (`AUTO_SEND_VERDICT_TASKS` is empty), so it reads nothing and
+ * blocks nothing.
+ */
+export function decisionVerdictGate(
+	tasks: readonly AiTaskName[],
+	registry: typeof CALIBRATION_REVISIONS = CALIBRATION_REVISIONS
+): CoreAutoSendGate {
+	return Object.freeze({
+		id: 'decision_verdict',
+		async evaluate({ action, inboundMessageId, now }: AutoSendGateContext) {
+			if (tasks.length === 0) return safe();
+			const inputs = await action.runQuery(internal.decision.context.autoSendVerdictInputs, {
+				inboundMessageId,
+				tasks: [...tasks],
+			});
+			const prerequisite = decisionAutonomyProblem({
+				verdictTasks: tasks,
+				isItemCoverageEnforced: inputs.isItemCoverageEnforced,
+			});
+			if (prerequisite) return unsafe(`${prerequisite}; routing to human review.`);
+			if (inputs.isTruncated) {
+				return unsafe('Too many decision verdicts to check; routing to human review.');
+			}
+			if (!inputs.current) return safe();
+			// The plane as it resolves now (the resolver's own output), which every
+			// verdict must have been answered by.
+			const decisionConfigIdentity = await action.runAction(
+				internal.decision.planeIdentity.resolvedIdentity,
+				{ isDecisionPlaneOn: inputs.current.isDecisionPlaneOn }
+			);
+			const current = {
+				policyVersion: inputs.current.policyVersion,
+				language: inputs.current.language,
+				decisionConfigIdentity,
+				now: now(),
+				registry,
+			};
+			for (const verdict of inputs.verdicts) {
+				const reason = verdictBlockReason(verdict, current);
+				if (reason) {
+					return unsafe(
+						`A ${verdict.task} decision verdict cannot feed auto-send: ${reason}. Routing to human review.`
+					);
+				}
+			}
+			return safe();
+		},
+	});
+}
+
 const PRE_AUTONOMY_GATES = Object.freeze([circuitBreakersGate]);
 const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	messageExistsGate,
@@ -221,9 +313,13 @@ const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	outboundInjectionGate,
 	outboundDlpGate,
 	draftGapsGate,
+	cheapFirstDraftGate,
 	handlingRulesGate,
 	interpretationIncompleteGate,
 	itemCoverageGate,
+	// Applied Phase 3 verdicts hold the send unless the auto-send contract admits them.
+	appliedDecisionGate(),
+	decisionVerdictGate(AUTO_SEND_VERDICT_TASKS),
 ]);
 
 export const PRE_AUTONOMY_GATE_IDS = gateIds(PRE_AUTONOMY_GATES);

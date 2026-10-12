@@ -15,7 +15,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { publicQuery } from '../lib/authedFunctions';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import type { MutationSessionContext } from '../lib/sessionOrganization';
-import { isInboxDerivedKnowledge, isSharedInboxReader } from '../inbox/access';
+import { isSharedInboxReader } from '../inbox/access';
 import {
 	isKnowledgeEntryVisible,
 	knowledgeAdminMutation,
@@ -27,10 +27,17 @@ import {
 } from './visibility';
 import { batchGet } from '../_utils/batchLoader';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
-import { sameContactScope } from '../lib/contactScope';
+import { entryKeysForType } from '../lib/aiRouting/embeddingRegistry';
+import {
+	noteCorpusInsert,
+	patchCorpusRow,
+	vectorFieldsForCommit,
+} from '../lib/aiRouting/embeddingActivation';
+import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
+import { logInfo } from '../lib/runtimeLog';
+import { findDuplicateEntry } from './entryDedupe';
 import {
 	entryTypeValidator,
-	sourceTypeValidator,
 	relationTypeValidator,
 	commitmentStatusValidator,
 	POLICY_ENTRY_TYPES,
@@ -349,6 +356,8 @@ export const createEntry = knowledgeMutation({
 
 		// Mirror contactIds into the index-able junction (powers getByContact).
 		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
+		// A new embedding input: a local embedder embeds it now (ADR-0073).
+		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
 
 		return entryId;
 	},
@@ -396,7 +405,11 @@ export const updateEntry = knowledgeMutation({
 			updatedAt: now,
 			lastValidatedAt: now,
 		};
-		if (args.entryType !== undefined) patch.entryType = args.entryType;
+		if (args.entryType !== undefined) {
+			patch.entryType = args.entryType;
+			// The space-and-type vector filter key follows the type (ADR-0073).
+			Object.assign(patch, entryKeysForType(entry, args.entryType));
+		}
 		if (args.title !== undefined) patch.title = args.title;
 		if (args.content !== undefined) patch.content = args.content;
 		if (args.contactIds !== undefined) patch.contactIds = args.contactIds;
@@ -410,7 +423,11 @@ export const updateEntry = knowledgeMutation({
 		const nextContent = args.content ?? entry.content;
 		patch.searchableText = `${nextTitle} ${nextContent}`;
 
-		await ctx.db.patch(args.entryId, patch);
+		// Through the one corpus writer (ADR-0073): an edited title or content
+		// clears every vector column, and an edit that changes eligibility (an
+		// expired entry revived) marks a staged rebuild; either way a local
+		// embedder re-embeds the entry.
+		await patchCorpusRow(ctx, 'knowledgeEntries', entry, patch);
 
 		// Reconcile the index-able junction when contactIds is edited in place;
 		// otherwise re-project its open-commitment facets (type / expiry edits).
@@ -496,74 +513,59 @@ export const saveEntry = internalMutation({
 	// `contentHash` (computed by the 'use node' extraction action) enables the
 	// cross-source write-dedup leg below and the deterministic linker's
 	// exact-dup lookups.
-	args: pick(knowledgeEntriesFields, [
-		'entryType',
-		'title',
-		'content',
-		'sourceType',
-		'sourceId',
-		'contactIds',
-		'threadId',
-		'embedding',
-		'embeddingModel',
-		'embeddingGeneratedAt',
-		'confidence',
-		'tags',
-		'expiresAt',
-		'contentHash',
-	]),
-	handler: async (ctx, args) => {
+	args: {
+		...pick(knowledgeEntriesFields, [
+			'entryType',
+			'title',
+			'content',
+			'sourceType',
+			'sourceId',
+			'contactIds',
+			'threadId',
+			'embedding',
+			'embeddingModel',
+			'embeddingGeneratedAt',
+			'confidence',
+			'tags',
+			'expiresAt',
+			'contentHash',
+		]),
+		// The space the job measured for `embedding`; the vector is stamped with it,
+		// or dropped when the configuration moved on (vectorFieldsForCommit).
+		// Optional for previous-release jobs, whose vector is dropped; required
+		// after release N+1.
+		embeddingSpace: v.optional(measuredEmbeddingSpaceValidator),
+	},
+	handler: async (ctx, { embeddingSpace, ...args }) => {
 		const now = Date.now();
-		// Write-level idempotency, leg 1 — same source: if an entry from the same
-		// source already exists with this title, return it instead of inserting a
-		// duplicate. This closes the cross-action race where two extractions of the
-		// same message/file (e.g. a cron retry that overlaps the first run) both
-		// pass their `countBySource` pre-check and then both write — the second
-		// writer's reads conflict with the first's committed inserts under Convex
-		// OCC, so it sees them here and no-ops.
-		if (args.sourceId) {
-			const fromSource = await ctx.db
-				.query('knowledgeEntries')
-				.withIndex('by_source', (q) =>
-					q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId)
-				)
-				.collect(); // bounded: entries extracted from a single source (small)
-			const dup = fromSource.find((e) => e.title === args.title);
-			// The duplicate already carries its junction rows from its first
-			// insert, so no junction write is needed on this no-op return.
-			if (dup) return dup._id;
-		}
-		// Write-level idempotency, leg 2 — cross-source exact content: if a
-		// byte-identical entry (same normalized title+content → same contentHash)
-		// already exists with the SAME contact scope, return it instead of writing
-		// a second copy. Caught via the `by_content_hash` index, this dedups the
-		// same fact restated in a different message/file. The scope match
-		// (sameContactScope) is mandatory: folding an org-general write into a
-		// contact-A row (or vice versa) would silently widen/narrow the fact's
-		// contact visibility, so cross-scope hashes are kept as distinct rows. For
-		// the same reason a Team Inbox-derived write never folds into a
-		// member-visible row or the reverse (inbox/access.ts).
-		if (args.contentHash) {
-			const byHash = await ctx.db
-				.query('knowledgeEntries')
-				.withIndex('by_content_hash', (q) => q.eq('contentHash', args.contentHash))
-				.collect(); // bounded: entries sharing one content hash (this dedup keeps it ~1)
-			const inboxDerived = isInboxDerivedKnowledge(args);
-			const dup = byHash.find(
-				(e) =>
-					sameContactScope(e.contactIds, args.contactIds) &&
-					isInboxDerivedKnowledge(e) === inboxDerived
-			);
-			if (dup) return dup._id;
-		}
+		// Write-level idempotency (knowledge/entryDedupe.ts): an entry from the
+		// same source with this title, or one with the same normalized content
+		// under the same contact scope, is returned instead of a duplicate. The
+		// extraction asks the same question before it embeds (M4); this check in
+		// the transaction is what closes the race between two extractions of one
+		// source: the second writer's reads conflict with the first's committed
+		// insert under Convex OCC, so it sees it here and no-ops. The duplicate
+		// already carries its junction rows, so none are written.
+		const dup = await findDuplicateEntry(ctx, args);
+		if (dup) return dup;
+		const { embedding, embeddingModel: _model, embeddingGeneratedAt: _at, ...fields } = args;
+		const { isStale, fields: vector } = await vectorFieldsForCommit(
+			ctx,
+			{ embedding, space: embeddingSpace },
+			{ entryType: args.entryType }
+		);
+		if (isStale) logInfo('[knowledge.saveEntry] stale embedding space, stored without vector');
 		const entry = {
-			...args,
+			...fields,
+			...(vector as { embedding: number[] }),
 			searchableText: `${args.title} ${args.content}`,
 			lastValidatedAt: now,
 			createdAt: now,
 			updatedAt: now,
 		};
 		const entryId = await ctx.db.insert('knowledgeEntries', entry);
+		// A new row: a staged rebuild learns it may lack its vector (ADR-0073).
+		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
 
 		// Mirror contactIds into the index-able junction (powers getByContact).
 		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
@@ -698,8 +700,11 @@ export const createPolicyEntry = knowledgeAdminMutation({
 		if (args.entryId) {
 			const existing = await ctx.db.get(args.entryId);
 			if (!existing) return null;
-			await ctx.db.patch(args.entryId, {
+			// Through the one corpus writer (ADR-0073): input and eligibility
+			// (expiry) changes clear the stale vectors and mark a staged rebuild.
+			await patchCorpusRow(ctx, 'knowledgeEntries', existing, {
 				entryType,
+				...entryKeysForType(existing, entryType),
 				title: args.title,
 				content: args.content,
 				sourceType: 'curated',
@@ -720,7 +725,7 @@ export const createPolicyEntry = knowledgeAdminMutation({
 			return args.entryId;
 		}
 
-		return await ctx.db.insert('knowledgeEntries', {
+		const policyId = await ctx.db.insert('knowledgeEntries', {
 			entryType,
 			title: args.title,
 			content: args.content,
@@ -735,6 +740,8 @@ export const createPolicyEntry = knowledgeAdminMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await noteCorpusInsert(ctx, 'knowledgeEntries', policyId);
+		return policyId;
 	},
 });
 
@@ -812,28 +819,6 @@ export const setCommitmentStatus = knowledgeMutation({
 // ============================================================
 // Internal Queries (for agent pipeline)
 // ============================================================
-
-/**
- * Count knowledge entries already extracted from a given source. Lets the
- * live extractors (`extraction.extractFromMessage` / `extractFromFile`) be
- * idempotent — a message re-run through the pipeline (cron retry) or a file
- * reprocessed by the backfill cron won't duplicate its knowledge entries.
- */
-export const countBySource = internalQuery({
-	args: {
-		sourceType: sourceTypeValidator,
-		sourceId: v.string(),
-	},
-	handler: async (ctx, args): Promise<number> => {
-		const existing = await ctx.db
-			.query('knowledgeEntries')
-			.withIndex('by_source', (q) =>
-				q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId)
-			)
-			.take(1);
-		return existing.length;
-	},
-});
 
 /**
  * Fetch knowledge entries by a list of ids, preserving the input order.

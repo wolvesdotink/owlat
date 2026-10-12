@@ -58,15 +58,23 @@
 
 import { randomUUID } from 'node:crypto';
 import type { LanguageModel } from 'ai';
-import type { TokenUsage } from '../../agent/steps/types';
 import { decisionProviderFor } from '../decisionProviders';
 import type { DecisionRequest, DecisionResult } from '../decisionProviders/types';
 export { DEFAULT_LANGUAGE_DECISION_DEADLINE_MS } from '../decisionProviders/llm';
-import { DecisionWireError } from '../decisionProviders/wire';
-import { errorStatus, isRetriableLlmError } from '../llm/dispatch';
-import { partialUsageOf } from '../llm/partialUsage';
 import { MAX_LLM_ATTEMPTS } from '../llm/retryPolicy';
+import { LlmCallMeter } from '../llm/requestMeter';
+import {
+	attemptRequests,
+	billedUsage,
+	localTag,
+	withinRoot,
+	withRootDeadline,
+} from './attemptRequests';
+export { billedUsage } from './attemptRequests';
+import { taskForFeature } from '../llm/taskPolicy';
 import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
+import { admissionRefusalOf } from '../llm/admissionPort';
+import { admitNativeAttempt, holdSettlements } from './attemptAdmission';
 import type {
 	DecisionFallbackBreaker,
 	DecisionRateLimiter,
@@ -80,7 +88,28 @@ import type { AnswersFor, QuestionSet } from './questions';
 // One import for a call site: the contract next door is re-exported here, so
 // nothing downstream has to know the plane's types and its dispatch are two
 // files (they are two because this one is `'use node'` and a contract is not).
-export { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
+export {
+	DecisionAccountingFailure,
+	DecisionProviderUnavailable,
+	DecisionRateLimitRefusal,
+} from './contract';
+export {
+	backoffDelayMs,
+	DECISION_BACKOFF_BASE_MS,
+	isRetriableDecisionError,
+	MAX_DECISION_BACKOFF_MS,
+	MAX_HONOURED_RETRY_AFTER_MS,
+	mayFallBack,
+	NO_FALLBACK_STATUSES,
+	RETRY_AFTER_JITTER_MS,
+} from './retryRules';
+import {
+	backoffDelayMs,
+	isRetriableDecisionError,
+	mayFallBack,
+	realSleep,
+	retryAfterOf,
+} from './retryRules';
 export type {
 	DecisionAttemptRecord,
 	DecisionFallbackBreaker,
@@ -94,27 +123,6 @@ export type {
 /** Attempts per logical call, shared with the language plane so one number moves both. */
 export const DEFAULT_DECISION_ATTEMPTS = MAX_LLM_ATTEMPTS;
 
-/**
- * The backoff curve and the two bounds around a `Retry-After`: a small first step
- * (this plane is sold on sub-second answers), a cap before jitter, a spread so a
- * rate-limited fleet does not come back in lockstep, and the longest wait we will
- * hold a surface open for — past that the vendor is naming a time the caller
- * cannot afford, and coming back sooner is the storm the header exists to stop.
- */
-export const DECISION_BACKOFF_BASE_MS = 250;
-export const MAX_DECISION_BACKOFF_MS = 4_000;
-export const RETRY_AFTER_JITTER_MS = 1_000;
-export const MAX_HONOURED_RETRY_AFTER_MS = 20_000;
-
-/**
- * Statuses that must never produce a fallback hop. A wrong or expired key
- * (401/403) and a question set the provider rejects (422) are OUR config or OUR
- * bug; answering them on the language plane would hide the mistake for as long as
- * the deployment runs, and pay the cost difference to do it. They are not
- * retriable either — this list is only about the hop.
- */
-export const NO_FALLBACK_STATUSES: readonly number[] = [401, 403, 422];
-
 const NO_OP_RATE_LIMITER: DecisionRateLimiter = { reserve: () => {} };
 
 /**
@@ -127,93 +135,6 @@ const NO_HOP_BREAKER: DecisionFallbackBreaker = {
 	isOpen: () => false,
 	recordFailure: () => {},
 };
-
-/** Best-effort `Retry-After` off an adapter error shape; the status reader is
- * `lib/llm/dispatch.ts`'s, imported rather than re-spelled. */
-function retryAfterOf(error: unknown): number | undefined {
-	const value = (error as { retryAfterMs?: unknown } | null)?.retryAfterMs;
-	return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
-/**
- * Whether an attempt is worth repeating. Three sources, in order: a codec refusal
- * never is (re-asking a provider that disagreed with our question set only spends
- * money to disagree again); an adapter's own `retriable` verdict wins where it
- * set one, since it knows a refused redirect from a timeout and neither has a
- * status; everything else goes to the repo's one classifier.
- */
-export function isRetriableDecisionError(error: unknown): boolean {
-	if (error instanceof DecisionAccountingFailure) return false;
-	// Our own ceiling, not the provider's: the bucket a retry would charge is the
-	// one that just said no, so a retry is three requests' worth of waiting for
-	// the same answer.
-	if (error instanceof DecisionRateLimitRefusal) return false;
-	if (error instanceof DecisionWireError) return false;
-	const stated = (error as { retriable?: unknown } | null)?.retriable;
-	if (typeof stated === 'boolean') return stated;
-	return isRetriableLlmError(error);
-}
-
-/**
- * Whether this failure may hop to the language plane. Narrower than "is not
- * retriable" on purpose: a hop is a spend decision, so anything pointing at our
- * own key, question set or codec stays an error the operator has to see.
- */
-export function mayFallBack(error: unknown): boolean {
-	if (error instanceof DecisionAccountingFailure) return false;
-	// A refused call is not a failed provider. Hopping here would answer the
-	// volume we just declined to serve on a model that costs 24 to 50 times more.
-	if (error instanceof DecisionRateLimitRefusal) return false;
-	if (error instanceof DecisionWireError) return false;
-	const status = errorStatus(error);
-	return status === undefined || !NO_FALLBACK_STATUSES.includes(status);
-}
-
-// ─── Timing ────────────────────────────────────────────────────────────────
-
-/**
- * How long before the next attempt.
- *
- * Our own curve is exponential, capped, and EQUAL-JITTERED: half the computed
- * delay is a floor and the other half is spread. The floor keeps a struggling
- * upstream from being hit again immediately, the spread stops a batch of
- * messages that arrived together from retrying together, and unlike full jitter
- * it cannot collapse a whole fleet back onto ~0 ms.
- *
- * A `Retry-After` replaces that curve outright — only the vendor knows when its
- * bucket refills — and is spread UPWARD only, since coming back before the time
- * we were given is worse than useless. Undefined means the wait is longer than
- * a surface can be held open for.
- */
-export function backoffDelayMs(
-	attemptIndex: number,
-	retryAfterMs: number | undefined,
-	random: () => number
-): number | undefined {
-	if (retryAfterMs !== undefined) {
-		if (retryAfterMs > MAX_HONOURED_RETRY_AFTER_MS) return undefined;
-		return Math.round(retryAfterMs + random() * RETRY_AFTER_JITTER_MS);
-	}
-	const curve = Math.min(DECISION_BACKOFF_BASE_MS * 2 ** attemptIndex, MAX_DECISION_BACKOFF_MS);
-	return Math.round(curve / 2 + random() * (curve / 2));
-}
-
-/** The backoff wait, cancellable: a caller who gives up does not wait it out. */
-function realSleep(ms: number, abortSignal?: AbortSignal): Promise<void> {
-	if (!abortSignal) return new Promise((resolve) => setTimeout(resolve, ms));
-	assertNotAborted(abortSignal);
-	return new Promise((resolve, reject) => {
-		const onAbort = () => {
-			clearTimeout(timer);
-			reject(abortSignal.reason ?? new Error('Decision dispatch aborted'));
-		};
-		const timer = setTimeout(() => {
-			abortSignal.removeEventListener('abort', onAbort);
-			resolve();
-		}, ms);
-		abortSignal.addEventListener('abort', onAbort, { once: true });
-	});
-}
 
 function assertNotAborted(abortSignal: AbortSignal | undefined): void {
 	if (abortSignal?.aborted) throw abortSignal.reason ?? new Error('Decision dispatch aborted');
@@ -237,18 +158,8 @@ interface AttemptContext<Q extends QuestionSet> {
 	readonly requestId: string;
 	readonly recordUsage: DecisionUsageRecorder;
 	readonly rateLimiter: DecisionRateLimiter;
-}
-
-/**
- * What a failed attempt was billed for: a response the codec rejected
- * (`DecisionWireError`), or a language call whose billed completions never
- * fitted the schema (`LlmPartialUsageError`, #1260). Anything else bills
- * nothing we can see.
- */
-function billedUsage(error: unknown): { usage?: TokenUsage; modelUsed?: string } {
-	if (error instanceof DecisionWireError) return { usage: error.usage, modelUsed: error.modelUsed };
-	const partial = partialUsageOf(error);
-	return partial ? { usage: partial.tokenUsage, modelUsed: partial.modelUsed } : {};
+	/** Every provider request of the logical call, the hop included, numbered in order. */
+	readonly meter: LlmCallMeter;
 }
 
 /**
@@ -275,51 +186,102 @@ async function askOnce<Q extends QuestionSet>(
 	const request: DispatchedRequest = {
 		state: options.state,
 		questions: options.questions,
-		deadlineMs: deadlineFor(provider, options.deadlineMs),
+		deadlineMs: withinRoot(deadlineFor(provider, options.deadlineMs), options.root),
 		requestId: ctx.requestId,
+		meter: ctx.meter,
 		...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
 		...(provider.model === undefined ? {} : { model: provider.model }),
 		...(provider.modelId ? { modelId: provider.modelId } : {}),
 	};
 	const startedAt = Date.now();
 	const elapsed = () => Date.now() - startedAt;
+	const recordedBefore = ctx.meter.requests.length;
 	const base = {
 		feature: options.feature,
 		requestId: ctx.requestId,
 		provider: provider.kind,
 		attempt,
 		fallback,
+		...(options.task ? { task: options.task } : {}),
+		...(options.root ? { root: options.root } : {}),
 	} as const;
 
+	// Spend admission (ADR-0073): a native paid adapter's request is reserved
+	// here; the language-backed adapter's are reserved inside its `runLlmObject`.
+	const hold = await admitNativeAttempt(ctx.meter, provider, options);
 	let result: DecisionResult;
 	try {
 		result = await decisionProviderFor(provider.kind).ask(provider.config, request);
 	} catch (error) {
+		// Admission refused a request before it was sent. When that was the
+		// attempt's first request nothing was billed, so nothing is recorded; when
+		// an adapter's inner retry was refused, the requests it already made are
+		// recorded below, and no row is made up for the refused one (Sol r2 F1).
+		if (admissionRefusalOf(error) && ctx.meter.requests.length === recordedBefore) {
+			await hold.end();
+			throw error;
+		}
+		const durationMs = elapsed();
+		const billed = billedUsage(error);
+		const requests = attemptRequests(
+			ctx.meter,
+			recordedBefore,
+			{ outcome: 'failed', ...billed },
+			durationMs,
+			error,
+			{ isFallback: fallback, ...localTag(provider) }
+		);
+		// Closed after the attempt's request is on the meter, so it carries the hold.
+		await hold.end();
+		const settlements = holdSettlements(ctx.meter);
 		try {
 			await ctx.recordUsage({
 				...base,
 				outcome: 'failed',
-				durationMs: elapsed(),
+				durationMs,
 				error,
-				...billedUsage(error),
+				...billed,
+				requests,
+				...settlements.args,
 			});
+			ctx.meter.acknowledge(requests);
+			settlements.markSent();
 		} catch {
 			// Swallowed: a failing recorder must not replace the vendor's error,
 			// which is the one the operator needs to read.
 		}
 		throw error;
 	}
-
+	const durationMs = elapsed();
+	const requests = attemptRequests(
+		ctx.meter,
+		recordedBefore,
+		{
+			outcome: 'ok',
+			usage: result.usage,
+			modelUsed: result.modelUsed,
+			endpoint: result.provenance,
+		},
+		durationMs,
+		undefined,
+		{ isFallback: fallback, isCalibrated: result.calibrated, ...localTag(provider) }
+	);
+	await hold.end();
+	const settlements = holdSettlements(ctx.meter);
 	try {
 		await ctx.recordUsage({
 			...base,
 			outcome: 'answered',
-			durationMs: elapsed(),
+			durationMs,
 			usage: result.usage,
 			modelUsed: result.modelUsed,
 			provenance: result.provenance,
 			calibrated: result.calibrated,
+			requests,
+			...settlements.args,
 		});
+		ctx.meter.acknowledge(requests);
+		settlements.markSent();
 	} catch (error) {
 		throw new DecisionAccountingFailure(error);
 	}
@@ -378,6 +340,12 @@ function assertFallbackShape<Q extends QuestionSet>(options: RunDecisionOptions<
 				'llmUsageEvents ledger the spend ceiling reads, or it is unbounded spend.'
 		);
 	}
+	if (options.admission === undefined) {
+		throw new Error(
+			'The decision fallback needs spend admission: the hop is a paid language call and ' +
+				'is reserved before it runs (D3, ADR-0073). Pass the ctx-bound admission port.'
+		);
+	}
 }
 
 /**
@@ -386,8 +354,11 @@ function assertFallbackShape<Q extends QuestionSet>(options: RunDecisionOptions<
  * answer: a decision nobody could make belongs to the caller's own fail-soft.
  */
 export async function runDecision<Q extends QuestionSet>(
-	options: RunDecisionOptions<Q>
+	callerOptions: RunDecisionOptions<Q>
 ): Promise<RunDecisionResult<Q>> {
+	// The root's deadline binds every attempt, the backoff and the hop, whatever
+	// adapter answers: it joins the caller's signal (ADR-0073).
+	const options = withRootDeadline(callerOptions);
 	const { abortSignal, allowance, fallbackTo, provider } = options;
 	// Defensive, and cheap: the gate returns this shape and nothing else does,
 	// but a hand-built object is the one way a call site could route around the
@@ -399,15 +370,27 @@ export async function runDecision<Q extends QuestionSet>(
 		);
 	}
 	if (fallbackTo) assertFallbackShape(options);
+	if (options.admission && !options.recordUsage) {
+		throw new Error(
+			'A decision under spend admission needs its usage recorder: holds settle with the rows.'
+		);
+	}
 
 	const random = options.random ?? Math.random;
 	const sleep = options.sleep ?? realSleep;
 	const breaker = options.breaker ?? NO_HOP_BREAKER;
+	const requestId = options.requestId ?? randomUUID();
 	const ctx: AttemptContext<Q> = {
 		options,
-		requestId: options.requestId ?? randomUUID(),
+		requestId,
 		recordUsage: options.recordUsage ?? (() => {}),
 		rateLimiter: options.rateLimiter ?? NO_OP_RATE_LIMITER,
+		meter: new LlmCallMeter({
+			requestId,
+			task: options.task ?? taskForFeature(options.feature),
+			...(options.root ? { root: options.root } : {}),
+			...(options.admission ? { admission: options.admission } : {}),
+		}),
 	};
 
 	const budget = Math.max(1, options.maxAttempts ?? DEFAULT_DECISION_ATTEMPTS);
@@ -439,6 +422,8 @@ export async function runDecision<Q extends QuestionSet>(
 	// and ends here: charging it would let a busy minute drive the breaker open
 	// and refuse the hop for the five minutes of real failures that follow.
 	if (lastError instanceof DecisionRateLimitRefusal) throw lastError;
+	// Our own spend admission said no: not a provider failure either (D3).
+	if (admissionRefusalOf(lastError)) throw lastError;
 
 	// Reported before the hop is considered, so a failure that trips the breaker
 	// refuses its own hop. That is the conservative direction for a lever whose

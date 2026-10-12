@@ -9,6 +9,7 @@
  * key never stores the raw key, only a non-reversible hash of it.
  */
 
+import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { EmbeddingModel, LanguageModel } from 'ai';
 import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from '../constants';
@@ -35,7 +36,7 @@ export const openaiLanguageAdapter: LanguageProviderAdapter<'openai'> = {
 	label: 'OpenAI',
 	docsUrl: 'https://platform.openai.com/docs/api-reference',
 	isLocal: false,
-	defaultModels: { fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' },
+	defaultModels: LANGUAGE_MODEL_CATALOG.openai.defaults,
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return openaiClient(cfg)(modelId);
 	},

@@ -7,6 +7,7 @@
 			"slices": ["out_of_order", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "calibration",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -125,6 +126,18 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m3",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -133,6 +146,7 @@
 			"slices": ["out_of_order", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -251,6 +265,18 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m3",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -259,6 +285,7 @@
 			"slices": ["out_of_order", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "train",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -377,6 +404,18 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m3",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -385,6 +424,7 @@
 			"slices": ["out_of_order", "de"],
 			"locale": "de",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -503,6 +543,18 @@
 							"email": "mara@example.com"
 						}
 					}
+				],
+				"decisions": [
+					{
+						"messageId": "m3",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
+					}
 				]
 			}
 		},
@@ -511,6 +563,7 @@
 			"slices": ["out_of_order", "en"],
 			"locale": "en",
 			"mode": "brief",
+			"split": "heldout",
 			"us": [
 				{
 					"name": "Mara Lind",
@@ -628,6 +681,18 @@
 							"name": "Mara Lind",
 							"email": "mara@example.com"
 						}
+					}
+				],
+				"decisions": [
+					{
+						"messageId": "m3",
+						"triage": "needs_work",
+						"disposition": "reply",
+						"postboxCategory": "person",
+						"clarification": {
+							"necessity": "needed"
+						},
+						"senderKnown": true
 					}
 				]
 			}

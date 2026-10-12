@@ -21,7 +21,44 @@ import type { TokenUsage } from '../../agent/steps/types';
 import type { DecisionEndpointProvenance } from '../decisionProviders/types';
 import type { LanguageEndpointProvenance } from '../llmProviders/types';
 
-type Price = { prefix: string; inputPerM: number; outputPerM: number };
+type Price = {
+	prefix: string;
+	inputPerM: number;
+	outputPerM: number;
+	/**
+	 * Conservative cache-write ceiling on input, for admission ESTIMATES only
+	 * ({@link estimateAdmissionCostMicrousd}). Settlement and reporting use list rates.
+	 */
+	admissionInputMultiplier?: number;
+	longContext?: { aboveTokens: number; inputPerM: number; outputPerM: number };
+};
+
+/**
+ * The revision of the price table below, stamped on every ledger row as
+ * `priceVersion` (ADR-0073). A row keeps the cost it was written with; changing
+ * a rate never reprices history. Bump this with any rate change, to the date
+ * the new rates were checked.
+ */
+export const PRICE_VERSION = '2026-10-12.batch';
+
+/**
+ * Marks the ledger `endpoint` of a request sent through a provider batch API
+ * (ADR-0073, L14): `openai-native+batch`, `anthropic-native+batch`.
+ */
+export const BATCH_ENDPOINT_SUFFIX = '+batch';
+
+/**
+ * What a batch request costs against the list price. OpenAI's Batch API and
+ * Anthropic's Message Batches both bill input and output at half the
+ * real-time rate (their pricing pages, checked 2026-10-12). Only the native
+ * endpoints have a batch path, so the factor is one number.
+ */
+export const BATCH_PRICE_FACTOR = 0.5;
+
+/** The price factor of a request recorded under `endpoint`: half for a batch request, else 1. */
+export function batchPriceFactor(endpoint: string | undefined): number {
+	return endpoint?.endsWith(BATCH_ENDPOINT_SUFFIX) === true ? BATCH_PRICE_FACTOR : 1;
+}
 
 /**
  * Catch-all prefix for the decision plane's model family. Exported because
@@ -32,7 +69,28 @@ export const DECISION_MODEL_PRICE_PREFIX = 'jev-';
 
 // Ordered most-specific-first so `gpt-4o-mini` matches before `gpt-4o`.
 const PRICING: Price[] = [
+	// Rates checked 2026-10-11 against official provider pricing. Legacy rows
+	// remain for existing configurations. Google 3.8 uses its post-promotion
+	// ceiling ($1.50/$7.50), avoiding an expired discount in hard admission.
 	// OpenAI
+	{
+		prefix: 'gpt-6-luna',
+		inputPerM: 0.1,
+		outputPerM: 0.5,
+		longContext: { aboveTokens: 272_000, inputPerM: 0.2, outputPerM: 0.75 },
+	},
+	{
+		prefix: 'gpt-6.1-sol',
+		inputPerM: 2,
+		outputPerM: 10,
+		longContext: { aboveTokens: 272_000, inputPerM: 4, outputPerM: 15 },
+	},
+	{
+		prefix: 'gpt-6-astra',
+		inputPerM: 10,
+		outputPerM: 50,
+		longContext: { aboveTokens: 272_000, inputPerM: 20, outputPerM: 75 },
+	},
 	{ prefix: 'gpt-5.6-luna', inputPerM: 1, outputPerM: 6 },
 	{ prefix: 'gpt-5.6-terra', inputPerM: 2.5, outputPerM: 15 },
 	{ prefix: 'gpt-5.6-sol', inputPerM: 5, outputPerM: 30 },
@@ -49,6 +107,25 @@ const PRICING: Price[] = [
 	// list prices differ from the generic `claude-*` fallbacks below — e.g.
 	// claude-opus-4-8 is $5/$25, not the older Opus $15/$75 — so they must
 	// match before the generic prefixes.
+	{
+		prefix: 'claude-haiku-5-5',
+		admissionInputMultiplier: 2,
+		inputPerM: 0.1,
+		outputPerM: 0.5,
+		longContext: { aboveTokens: 100_000, inputPerM: 0.5, outputPerM: 2.5 },
+	},
+	{
+		prefix: 'claude-haiku-5.5',
+		admissionInputMultiplier: 2,
+		inputPerM: 0.1,
+		outputPerM: 0.5,
+		longContext: { aboveTokens: 100_000, inputPerM: 0.5, outputPerM: 2.5 },
+	},
+	{ prefix: 'claude-sonnet-5-5', admissionInputMultiplier: 2, inputPerM: 2, outputPerM: 10 },
+	{ prefix: 'claude-sonnet-5.5', admissionInputMultiplier: 2, inputPerM: 2, outputPerM: 10 },
+	{ prefix: 'claude-opus-5-5', admissionInputMultiplier: 2, inputPerM: 4, outputPerM: 20 },
+	{ prefix: 'claude-opus-5.5', admissionInputMultiplier: 2, inputPerM: 4, outputPerM: 20 },
+	{ prefix: 'claude-fable-5-1', admissionInputMultiplier: 2, inputPerM: 10, outputPerM: 50 },
 	{ prefix: 'claude-fable-5', inputPerM: 10, outputPerM: 50 },
 	{ prefix: 'claude-opus-4-8', inputPerM: 5, outputPerM: 25 },
 	// OpenRouter spells current Anthropic ids with a dot (anthropic/claude-opus-4.8).
@@ -66,6 +143,8 @@ const PRICING: Price[] = [
 	// Google (Gemini) — native ids, and the same ids appear provider-prefixed via
 	// OpenRouter (e.g. `google/gemini-2.5-flash`), where the `includes` fallback
 	// still matches. Most-specific-first: `-lite`/`-8b` variants before the base.
+	{ prefix: 'gemini-3.8-flash', inputPerM: 1.5, outputPerM: 7.5 },
+	{ prefix: 'gemini-3.5-flash-lite', inputPerM: 0.3, outputPerM: 2.5 },
 	{ prefix: 'gemini-3.5-flash', inputPerM: 1.5, outputPerM: 9 },
 	{ prefix: 'gemini-3.1-flash-lite', inputPerM: 0.25, outputPerM: 1.5 },
 	{ prefix: 'gemini-3.1-pro', inputPerM: 2, outputPerM: 12 },
@@ -79,11 +158,23 @@ const PRICING: Price[] = [
 	{ prefix: 'gemini-1.5-pro', inputPerM: 1.25, outputPerM: 5 },
 	// Popular OpenRouter upstreams (curated in the settings model picker). The ids
 	// arrive provider-prefixed (deepseek/deepseek-v4-flash) and match via `includes`.
-	{ prefix: 'deepseek-v4-flash', inputPerM: 0.077, outputPerM: 0.154 },
-	{ prefix: 'deepseek-v4-pro', inputPerM: 0.435, outputPerM: 0.87 },
+	// DeepSeek rates from the OpenRouter catalog (openrouter.ai/api/v1/models),
+	// checked 2026-10-12. The v4-pro row used to carry MiMo's rates by mistake.
+	{ prefix: 'deepseek-v4-flash', inputPerM: 0.0131, outputPerM: 1.28 },
+	{ prefix: 'deepseek-v4-pro', inputPerM: 0.9483, outputPerM: 1.8966 },
 	{ prefix: 'minimax-m3', inputPerM: 0.3, outputPerM: 1.2 },
 	{ prefix: 'mimo-v2.5-pro', inputPerM: 0.435, outputPerM: 0.87 },
 	{ prefix: 'kimi-k2.6', inputPerM: 0.66, outputPerM: 3.41 },
+	// EMBEDDING plane: input only, output is not billed. OpenAI
+	// (developers.openai.com/api/docs/pricing) and Google
+	// (ai.google.dev/gemini-api/docs/pricing), checked 2026-10-12.
+	// `text-embedding-004` and `gemini-embedding-001` are no longer listed: they
+	// price as unknown (an estimate). A self-hosted embedder costs nothing; its
+	// rows say so (`isLocalEngine`), whatever the model id.
+	{ prefix: 'text-embedding-3-small', inputPerM: 0.02, outputPerM: 0 },
+	{ prefix: 'text-embedding-3-large', inputPerM: 0.13, outputPerM: 0 },
+	{ prefix: 'text-embedding-ada-002', inputPerM: 0.1, outputPerM: 0 },
+	{ prefix: 'gemini-embedding-2', inputPerM: 0.2, outputPerM: 0 },
 	// TypeSafe (the DECISION plane). Input only: output tokens ARE returned and
 	// nonzero — a decision answer carries its probabilities — they are simply not
 	// charged, so the zero is written down rather than left to the absence of a
@@ -98,6 +189,14 @@ const PRICING: Price[] = [
 // Conservative fallback (≈ a mid-tier model) — never price an unknown model $0.
 const DEFAULT_INPUT_PER_M = 3;
 const DEFAULT_OUTPUT_PER_M = 12;
+/**
+ * An unknown EMBEDDING model prices at the dearest listed embedding rate: a
+ * chat model's fallback would over-report an embedding 15 to 150 times.
+ */
+const DEFAULT_EMBEDDING_INPUT_PER_M = 0.2;
+
+/** Which fallback an unknown model gets: a chat model's, or an embedding model's. */
+export type PricedPlane = 'language' | 'embedding' | 'decision';
 
 function priceForModel(modelUsed: string | undefined): Price | undefined {
 	const id = (modelUsed ?? '').toLowerCase();
@@ -136,6 +235,9 @@ export type AdmissionProvenance = LanguageEndpointProvenance | DecisionEndpointP
  */
 const ADMISSION_MODELS = {
 	'openai-native': [
+		admissionModel('gpt-6-luna'),
+		admissionModel('gpt-6.1-sol'),
+		admissionModel('gpt-6-astra'),
 		admissionModel('gpt-5.6-luna'),
 		admissionModel('gpt-5.6-terra'),
 		admissionModel('gpt-5.6-sol'),
@@ -149,6 +251,10 @@ const ADMISSION_MODELS = {
 		admissionModel('o3-mini'),
 	],
 	'anthropic-native': [
+		admissionModel('claude-haiku-5-5'),
+		admissionModel('claude-sonnet-5-5'),
+		admissionModel('claude-opus-5-5'),
+		admissionModel('claude-fable-5-1'),
 		admissionModel('claude-fable-5'),
 		admissionModel('claude-opus-4-8'),
 		admissionModel('claude-sonnet-5'),
@@ -160,6 +266,8 @@ const ADMISSION_MODELS = {
 		admissionModel('claude-3-opus'),
 	],
 	'google-native': [
+		admissionModel('gemini-3.5-flash-lite'),
+		admissionModel('gemini-3.8-flash'),
 		admissionModel('gemini-3.5-flash'),
 		admissionModel('gemini-3.1-flash-lite'),
 		admissionModel('gemini-3.1-pro'),
@@ -174,6 +282,12 @@ const ADMISSION_MODELS = {
 		admissionModel('gemini-1.5-pro'),
 	],
 	openrouter: [
+		admissionModel('openai/gpt-6-luna', 'gpt-6-luna'),
+		admissionModel('openai/gpt-6.1-sol', 'gpt-6.1-sol'),
+		admissionModel('anthropic/claude-haiku-5.5', 'claude-haiku-5.5'),
+		admissionModel('anthropic/claude-sonnet-5.5', 'claude-sonnet-5.5'),
+		admissionModel('anthropic/claude-opus-5.5', 'claude-opus-5.5'),
+		admissionModel('google/gemini-3.8-flash', 'gemini-3.8-flash'),
 		admissionModel('anthropic/claude-sonnet-5', 'claude-sonnet-5'),
 		admissionModel('anthropic/claude-opus-4.8', 'claude-opus-4.8'),
 		admissionModel('deepseek/deepseek-v4-flash', 'deepseek-v4-flash'),
@@ -220,6 +334,13 @@ function admissionPriceForModel(
 	return admission ? PRICING.find((price) => price.prefix === admission.pricePrefix) : undefined;
 }
 
+/** Long-context rates apply to the entire request once the input crosses the threshold. */
+function ratesForUsage(price: Price, usage: TokenUsage): Pick<Price, 'inputPerM' | 'outputPerM'> {
+	return price.longContext && usage.promptTokens > price.longContext.aboveTokens
+		? price.longContext
+		: price;
+}
+
 export interface CostEstimate {
 	costUsd: number;
 	/** True when the model id didn't match the table (priced with the default). */
@@ -228,34 +349,64 @@ export interface CostEstimate {
 
 export function estimateCost(
 	modelUsed: string | undefined,
-	usage: TokenUsage | undefined
+	usage: TokenUsage | undefined,
+	plane: PricedPlane = 'language'
 ): CostEstimate {
 	if (!usage) return { costUsd: 0, estimated: modelUsed === undefined };
 	const match = priceForModel(modelUsed);
-	const inputPerM = match?.inputPerM ?? DEFAULT_INPUT_PER_M;
-	const outputPerM = match?.outputPerM ?? DEFAULT_OUTPUT_PER_M;
+	const rates = match ? ratesForUsage(match, usage) : undefined;
+	const isEmbedding = plane === 'embedding';
+	const inputPerM =
+		rates?.inputPerM ?? (isEmbedding ? DEFAULT_EMBEDDING_INPUT_PER_M : DEFAULT_INPUT_PER_M);
+	const outputPerM = rates?.outputPerM ?? (isEmbedding ? 0 : DEFAULT_OUTPUT_PER_M);
 	const costUsd =
 		(usage.promptTokens / 1_000_000) * inputPerM +
 		(usage.completionTokens / 1_000_000) * outputPerM;
 	return { costUsd, estimated: match === undefined };
 }
 
+function knownCostMicrousd(
+	endpointProvenance: AdmissionProvenance,
+	modelUsed: string | undefined,
+	usage: TokenUsage,
+	isAdmissionCeiling: boolean
+): number | undefined {
+	const price = admissionPriceForModel(endpointProvenance, modelUsed);
+	if (!price) return undefined;
+	const rates = ratesForUsage(price, usage);
+	const inputMultiplier = isAdmissionCeiling ? (price.admissionInputMultiplier ?? 1) : 1;
+	const input = usage.promptTokens * rates.inputPerM * inputMultiplier;
+	const output = usage.completionTokens * rates.outputPerM;
+	const microusd = Math.ceil(input + output);
+	return Number.isSafeInteger(microusd) && microusd >= 0 ? microusd : undefined;
+}
+
 /**
- * Price a bounded request in integer micro-USD using the same model catalog as
- * dashboard estimates. Unlike reporting, admission control must fail closed:
- * unknown models return undefined instead of using the fallback price.
+ * Price used tokens in integer micro-USD at list rates, from the same model
+ * catalog as dashboard estimates. This is what settlement charges. Unlike
+ * reporting, it fails closed: unknown models return undefined instead of using
+ * the fallback price. `TokenUsage` reports no cache-write tokens yet, so none
+ * are priced here.
  */
 export function estimateKnownCostMicrousd(
 	endpointProvenance: AdmissionProvenance,
 	modelUsed: string | undefined,
 	usage: TokenUsage
 ): number | undefined {
-	const price = admissionPriceForModel(endpointProvenance, modelUsed);
-	if (!price) return undefined;
-	const input = usage.promptTokens * price.inputPerM;
-	const output = usage.completionTokens * price.outputPerM;
-	const microusd = Math.ceil(input + output);
-	return Number.isSafeInteger(microusd) && microusd >= 0 ? microusd : undefined;
+	return knownCostMicrousd(endpointProvenance, modelUsed, usage, false);
+}
+
+/**
+ * The upper bound a reservation holds before a call runs: list rates plus the
+ * model's cache-write ceiling on input. Never use it to settle: a call that
+ * wrote no cache would be charged more than its list price.
+ */
+export function estimateAdmissionCostMicrousd(
+	endpointProvenance: AdmissionProvenance,
+	modelUsed: string | undefined,
+	usage: TokenUsage
+): number | undefined {
+	return knownCostMicrousd(endpointProvenance, modelUsed, usage, true);
 }
 
 /** Convenience: just the dollar figure. */

@@ -23,7 +23,13 @@
  *      is a genuine open question; a slot they converge on is a safe assumption
  *      and is dropped. This is the expensive stage, so it is skipped entirely
  *      when the context-coverage signal says the AI is well-grounded (and it is
- *      never reached at all when stage 1 found no candidate slots).
+ *      never reached at all when stage 1 found no candidate slots). When the
+ *      routing policy enforces D5 (`clarifyNecessity`), one necessity judgment
+ *      replaces the samples and the judge: if the owner must be asked, every
+ *      candidate slot is asked (capped by the dial), else none.
+ *
+ *   Both stages are the shared clarification service (inbox/clarifyJudge.ts,
+ *   ./judge.ts), which Postbox and Answer mode use too.
  *
  * Routing:
  *   - one or more open questions  → `awaiting_clarification` (the owner answers
@@ -31,11 +37,10 @@
  *   - nothing missing             → `drafting` (today's behaviour), scheduling
  *     the draft step exactly as classify did before.
  *
- * FAIL-SOFT is sacred: EVERY failure inside `execute` (LLM error, malformed
- * object, missing provider, unreadable coverage) is caught internally and
- * degrades to zero questions → `drafting`. The step never throws (a throw would
- * be translated by the walker into `failed`), never blocks ingest, and never
- * emits a question on uncertainty about its own machinery.
+ * FAIL-SOFT: every failure inside `execute` (LLM error, malformed object,
+ * missing provider, unreadable coverage) degrades to zero questions →
+ * `drafting`, and never a question on uncertainty about its own machinery. The
+ * one throw is a spend-admission refusal: the walker holds the message (D1).
  *
  * Complaint / urgent mail is forked through here too (classify used to skip it
  * straight to a blank human-review box). It runs with CAUTIOUS eagerness — the
@@ -47,25 +52,15 @@
 
 import { internal } from '../../../_generated/api';
 import { resolveLanguageModel } from '../../../lib/llmProvider';
-import { runLlmObject, runLlmText } from '../../../lib/llm/dispatch';
 import { addTokenUsage } from '../../../lib/llm/tokenUsage';
 import { meterAgentCall } from '../../shared/agentSpend';
+import type { LlmCallMeter } from '../../../lib/llm/requestMeter';
 import type { Id } from '../../../_generated/dataModel';
 import type { Infer } from 'convex/values';
 import type { clarificationQuestionValidator } from '../../../lib/validators/clarification';
 import type { classificationValidator } from '../../../lib/validators/classification';
 import { localizeQuestions } from '../../../inbox/clarificationLocalize';
-import {
-	DIVERGENCE_SAMPLES,
-	MIN_SAMPLES_FOR_JUDGMENT,
-	MAX_QUESTIONS,
-	replySlotsSchema,
-	divergenceSchema,
-	buildSlotPrompt,
-	buildCandidatePrompt,
-	buildDivergencePrompt,
-	type ReplySlot,
-} from '../../../inbox/clarificationSlots';
+import { MAX_QUESTIONS, type ReplySlot } from '../../../inbox/clarificationSlots';
 import {
 	resolveEagernessPolicy,
 	isHighStakesSlot,
@@ -77,7 +72,9 @@ import { detectAttachmentClarification } from './attachment';
 import { boundedOptions } from './options';
 import { loadSlotItems, slotItemLink, type ClarifySlotItem } from './items';
 import { answerKindForSlot } from '../../../inbox/clarificationAnswers';
-import type { AgentStepModule, TokenUsage } from '../types';
+import type { AgentStepModule } from '../types';
+import { teamClarifySurface, teamOpenSlots } from './judge';
+import { rethrowAdmissionRefusal } from '../../../analytics/backgroundDeferral';
 
 // The slot taxonomy + untrusted-data prompt module is SHARED with the personal
 // -mail Reply Queue refinement (mail/ai/needsReplyClassify.ts) — see
@@ -116,6 +113,8 @@ export type ClarifyOutput = {
 		| 'no_candidate_slots'
 		| 'converged'
 		| 'insufficient_samples'
+		/** D5 enforced, and the necessity judgment gave no answer: nothing is asked. */
+		| 'necessity_unavailable'
 		| 'questions_emitted'
 		| 'memory_filled'
 		| 'attachment_ambiguous'
@@ -274,89 +273,33 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				}
 			}
 
-			const model = await resolveLanguageModel(ctx, 'classify'); // cheap / fast tier
-			// Each call below writes its own ledger row as it returns or throws
-			// (meterAgentCall), so the fail-soft returns lose no spend. The sum
-			// kept here is only the step's agentActions reporting figure.
-			let tokenUsage: TokenUsage | undefined;
-			let modelUsed: string | undefined;
+			const model = await resolveLanguageModel(ctx, 'mail.clarify');
+			// Each call below writes its own ledger row as it returns or throws, so
+			// the fail-soft returns lose no spend. The sum kept here is only the
+			// step's agentActions reporting figure.
+			const clarifyCall = <R>(call: (meter: LlmCallMeter) => Promise<R>) =>
+				meterAgentCall(ctx, 'agent_clarify', input.inboundMessageId, call);
 
-			// Stage 1 — extract typed reply slots, each tied to the open item it fills.
+			// Stage 1 (typed reply slots, each tied to the open item it fills) and
+			// stage 2 (which open slots to ask): the shared service, on the fast
+			// tier. Stage 2 is today's sampled divergence check, or the necessity
+			// judgment when the routing policy enforces it (D5).
 			const slotItems = await loadSlotItems(ctx, input.inboundMessageId);
-			const slotsResult = await meterAgentCall(ctx, 'agent_clarify', () =>
-				runLlmObject({
-					model,
-					schema: replySlotsSchema,
-					prompt: buildSlotPrompt(input.context, slotItems),
-					temperature: 0.2,
-				})
-			);
-			tokenUsage = addTokenUsage(tokenUsage, slotsResult.tokenUsage);
-			modelUsed = slotsResult.modelUsed;
-
-			// Candidate slots: the ones we actually need to ask about — unanswerable
-			// from context AND decision-relevant. A converging assumption on an
-			// answerable/irrelevant slot is not worth a question.
-			const candidateSlots: ReplySlot[] = [];
-			for (const slot of slotsResult.object.slots) {
-				if (!slot.answerableFromContext && slot.decisionRelevant) {
-					candidateSlots.push(slot);
-				}
-			}
-			if (candidateSlots.length === 0) {
+			const surface = teamClarifySurface(ctx, input.inboundMessageId, model);
+			const found = await teamOpenSlots(ctx, surface, input.context, slotItems);
+			let tokenUsage = found.tokenUsage;
+			const modelUsed = found.modelUsed;
+			if (found.outcome.kind !== 'judged') {
 				return {
-					output: { questions: [], memoryAnswers: [], resolution: 'no_candidate_slots' },
+					output: { questions: [], memoryAnswers: [], resolution: found.outcome.kind },
 					tokenUsage,
 					modelUsed,
 				};
 			}
-
-			// Stage 2 — divergence check. Sample a few candidate replies; a slot the
-			// variants disagree on is a real question, one they converge on is a safe
-			// assumption to drop.
-			const drafts: string[] = [];
-			for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
-				try {
-					const draft = await meterAgentCall(ctx, 'agent_clarify', () =>
-						runLlmText({
-							model,
-							prompt: buildCandidatePrompt(input.context),
-							// High temperature so independent samples actually diverge where
-							// the answer is genuinely open.
-							temperature: 0.9,
-						})
-					);
-					if (draft.text.trim().length > 0) {
-						drafts.push(draft.text);
-						tokenUsage = addTokenUsage(tokenUsage, draft.tokenUsage);
-					}
-				} catch {
-					// One failed sample doesn't abort the check — we judge on the rest.
-				}
-			}
-
-			if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) {
-				// Can't judge divergence → don't invent questions; draft as today.
-				return {
-					output: { questions: [], memoryAnswers: [], resolution: 'insufficient_samples' },
-					tokenUsage,
-					modelUsed,
-				};
-			}
-
-			const divergenceResult = await meterAgentCall(ctx, 'agent_clarify', () =>
-				runLlmObject({
-					model,
-					schema: divergenceSchema,
-					prompt: buildDivergencePrompt(candidateSlots, drafts),
-					temperature: 0.1,
-				})
-			);
-			tokenUsage = addTokenUsage(tokenUsage, divergenceResult.tokenUsage);
 
 			const candidateQuestions = selectQuestions(
-				candidateSlots,
-				divergenceResult.object.divergentSlotIndexes,
+				found.outcome.candidates,
+				found.outcome.keep,
 				{ maxQuestions: policy.maxQuestions, highStakesOnly: policy.highStakesOnly },
 				slotItems
 			);
@@ -380,7 +323,8 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 						})),
 					});
 					fills = result.fills;
-				} catch {
+				} catch (error) {
+					rethrowAdmissionRefusal(error);
 					fills = [];
 				}
 			}
@@ -404,8 +348,8 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// we ACTUALLY ask (never the memory-filled ones) into every other
 			// interface locale. One cheap call; fail-soft to the English copy.
 			if (questions.length > 0) {
-				const localized = await meterAgentCall(ctx, 'agent_clarify', () =>
-					localizeQuestions(model, questions)
+				const localized = await clarifyCall((meter) =>
+					localizeQuestions(model, questions, undefined, meter)
 				);
 				questions = localized.questions;
 				tokenUsage = addTokenUsage(tokenUsage, localized.tokenUsage);
@@ -443,8 +387,8 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				tokenUsage,
 				modelUsed,
 			};
-		} catch {
-			// Fail-soft: degrade to today's behaviour (draft), never block.
+		} catch (error) {
+			rethrowAdmissionRefusal(error); // D1: the walker holds; any other fault drafts as today
 			return { output: { questions: [], memoryAnswers: [], resolution: 'fail_soft' } };
 		}
 	},

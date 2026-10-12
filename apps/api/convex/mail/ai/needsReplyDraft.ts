@@ -21,7 +21,9 @@ import { internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmText } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup } from '../../lib/llm/toolMarkup';
-import { recordLlmSpend } from '../../analytics/llmUsage';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { postboxRoot } from '../../lib/llm/requestMeter';
+import { boundedRoot } from '../../lib/llm/actionDeadline';
 import { logError } from '../../lib/runtimeLog';
 import {
 	buildConfirmedContext,
@@ -44,6 +46,7 @@ import {
 } from '../../inbox/askEagerness';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { loadThreadPlan } from './composeDraftPlan';
+import { rethrowAdmissionRefusal } from '../../analytics/backgroundDeferral';
 
 const TONE_INSTRUCTION =
 	'\n\nTone: match the owner’s natural, personal style — warm and direct, not corporate.';
@@ -69,7 +72,8 @@ export async function draftClarificationReply(
 	// refusal (AI off, rate-limited) is expected and stays silent.
 	try {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error);
 		return;
 	}
 
@@ -97,16 +101,19 @@ export async function draftClarificationReply(
 
 		// Contact-scoped recall, the same isolation gate as the team draft step:
 		// the sender's contact, or org-general knowledge only. Never org-wide.
+		// Every model call of this clarification draft groups under the message it answers.
+		const root = boundedRoot(ctx, postboxRoot(args.threadId, context.latestMessageId));
 		const recallKnowledge = buildRecallKnowledgeTool({
 			runAction: ctx.runAction,
 			scopeToContact: context.contactId ?? 'org-general-only',
+			root,
 		});
 
 		// The thread's plan: its open items, an unanswered item-linked slot at `clarify`.
 		const plan = await loadThreadPlan(ctx, args.threadId);
 		const result = await runSharedDraft(ctx, {
 			surface: 'personal',
-			resolveModel: () => resolveLanguageModel(ctx, 'draft'),
+			resolveModel: () => resolveLanguageModel(ctx, 'mail.draft'),
 			audience,
 			styleReference: "the owner's",
 			context: context.transcript,
@@ -119,6 +126,7 @@ export async function draftClarificationReply(
 			maxSteps: MAX_RECALL_CALLS + 2,
 			// The service records the draft's spend, on success and on a throw.
 			spendLabels: { draft: 'postbox_clarify_draft', selfCheck: 'postbox_clarify_selfcheck' },
+			root,
 			strategyScope: { mailboxId: context.mailboxId, classification: 'other' },
 			...(plan ? { responsePlan: plan.prompt } : {}),
 		});
@@ -150,27 +158,28 @@ export async function draftClarificationReply(
 				try {
 					// The same prompt structure minus the confirmed answers — what Owlat
 					// would have drafted WITHOUT asking. No tools: a single cheap pass.
-					const baseline = await runLlmText({
-						model: await resolveLanguageModel(ctx, 'draft'),
-						messages: buildDraftMessages({
-							systemPrompt: buildDraftSystemPrompt({
-								audience,
-								styleReference: "the owner's",
-								toneInstruction: TONE_INSTRUCTION,
-								signatureInstruction: '',
-								voiceSection,
-								hasRecallTool: false,
-							}),
-							classification: CLASSIFICATION,
-							context: context.transcript,
-						}),
-						temperature: 0.4,
-					});
-					await recordLlmSpend(
+					const baselineModel = await resolveLanguageModel(ctx, 'mail.draft');
+					const baseline = await meterLlmCall(
 						ctx,
-						'postbox_clarify_delta',
-						baseline.tokenUsage,
-						baseline.modelUsed
+						{ feature: 'postbox_clarify_delta', root },
+						(meter) =>
+							runLlmText({
+								meter,
+								model: baselineModel,
+								messages: buildDraftMessages({
+									systemPrompt: buildDraftSystemPrompt({
+										audience,
+										styleReference: "the owner's",
+										toneInstruction: TONE_INSTRUCTION,
+										signatureInstruction: '',
+										voiceSection,
+										hasRecallTool: false,
+									}),
+									classification: CLASSIFICATION,
+									context: context.transcript,
+								}),
+								temperature: 0.4,
+							})
 					);
 					// The comparison draft goes through the same markup check as the
 					// real one (#1254); markup would read as divergence it is not.
@@ -180,8 +189,8 @@ export async function draftClarificationReply(
 						isDraftChanged = delta.changed;
 						draftDivergence = delta.divergence;
 					}
-				} catch {
-					// Sampling is best-effort; log the ask without the delta.
+				} catch (error) {
+					rethrowAdmissionRefusal(error); // Sampling is best-effort, a refusal is not.
 				}
 			}
 			await ctx.runMutation(internal.inbox.clarificationLog.recordClarificationAsk, {
@@ -197,6 +206,7 @@ export async function draftClarificationReply(
 			// Observability only — never affects the draft or the card.
 		}
 	} catch (err) {
+		rethrowAdmissionRefusal(err);
 		// Fail-soft: answers stay recorded; no starter draft is persisted. First
 		// line only: a model error can quote the prompt, which quotes mail.
 		logError(

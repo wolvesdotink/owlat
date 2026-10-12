@@ -33,6 +33,9 @@ import {
 } from '../../inbox/clarificationAnswers';
 import { ensureGapPlaceholders } from './composeDraftPolicy';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
+import { rootRequest } from '../../lib/llm/requestMeter';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import { deferRefusedRun, rethrowAdmissionRefusal } from '../../analytics/backgroundDeferral';
 
 /** Map the personal-mail urgency bucket onto the shared draft block's priority vocabulary. */
 function priorityForUrgency(urgency: 'high' | 'normal' | 'low'): string {
@@ -59,7 +62,8 @@ export async function generateDraftOnArrival(
 	// (and every other failure below) degrades to no slot.
 	try {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error);
 		return;
 	}
 
@@ -92,7 +96,7 @@ export async function generateDraftOnArrival(
 	try {
 		const result = await runSharedDraft(ctx, {
 			surface: 'personal',
-			resolveModel: () => resolveLanguageModel(ctx, 'draft'), // capable tier, lazy for custom strategies
+			resolveModel: () => resolveLanguageModel(ctx, 'mail.draft'), // lazy for custom strategies
 			// Name the owner's address so the model knows which side of the
 			// labelled transcript it writes for (loadForDraft marks both sides).
 			audience: `the mailbox owner (${loaded.ownerAddress}), answering the last message in the thread, which the other party sent`,
@@ -114,6 +118,7 @@ export async function generateDraftOnArrival(
 			// service records it under its own label, next to the self-check's,
 			// on success and on a throw.
 			spendLabels: { draft: 'postbox_draft', selfCheck: 'postbox_draft_selfcheck' },
+			root: rootRequest('postbox_thread', args.threadId),
 			...(plan ? { responsePlan: plan.prompt } : {}),
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
@@ -134,6 +139,7 @@ export async function generateDraftOnArrival(
 		// The prepared reply's plan, bound to its text (review F16).
 		if (plan) await recordArrivalPlan(ctx, args.threadId, plan, draft, result.planCoverage);
 	} catch (err) {
+		rethrowAdmissionRefusal(err);
 		// Injection re-scan / LLM error → no slot; the thread still shows for
 		// manual reply. Never wedge the caller.
 		logError('[draftOnArrival] generation failed:', err);
@@ -141,6 +147,16 @@ export async function generateDraftOnArrival(
 }
 
 export const generateForThread = internalAction({
-	args: { threadId: v.id('mailThreads') },
-	handler: (ctx, args) => generateDraftOnArrival(ctx, args),
+	args: {
+		threadId: v.id('mailThreads'),
+		/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+		deferrals: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		anchorActionDeadline(ctx);
+		// At the spend ceiling the draft defers to a later run (ADR-0073, D1).
+		await deferRefusedRun(ctx, internal.mail.ai.draftOnArrival.generateForThread, args, () =>
+			generateDraftOnArrival(ctx, { threadId: args.threadId })
+		);
+	},
 });

@@ -32,6 +32,8 @@ import { runLlmObject } from '../../../lib/llm/dispatch';
 import { meterAgentCall } from '../../shared/agentSpend';
 import { SYSTEM_GUARD } from '../../../mail/ai/promptGuards';
 import { ALLOWED_KINDS, BULK_KINDS, safeEnum, safeLanguage } from '../draft/sanitize';
+import { CLASSIFY_INTENTS } from './intents';
+import { scheduleTeamMessageBundle } from '../../../decision/schedule';
 
 /**
  * Below this classifier confidence a "no response needed" verdict is not
@@ -45,7 +47,8 @@ export const INFORMATIONAL_MIN_CONFIDENCE = 0.6;
  * gets the reply path, whatever the boolean says. */
 const INFORMATIONAL_INTENTS: ReadonlySet<string> = new Set(['information', 'acknowledgment']);
 
-const classificationSchema = z.object({
+/** Exported for the decision eval's today-classifier baseline (`mail/interpret/__eval__`). */
+export const classificationSchema = z.object({
 	category: z
 		.enum([
 			'support',
@@ -62,9 +65,7 @@ const classificationSchema = z.object({
 	sentiment: z
 		.enum(['positive', 'neutral', 'negative'])
 		.describe('The emotional tone of the message'),
-	intent: z
-		.enum(['question', 'complaint', 'request', 'information', 'escalation', 'acknowledgment'])
-		.describe('What the sender is trying to do'),
+	intent: z.enum(CLASSIFY_INTENTS).describe('What the sender is trying to do'),
 	confidence: z
 		.number()
 		.min(0)
@@ -178,17 +179,22 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 	llm: { tier: 'fast' },
 
 	async execute(ctx, input) {
-		const model = await resolveLanguageModel(ctx, 'classify');
+		const model = await resolveLanguageModel(ctx, 'mail.classify');
 
 		// The usage also rides back to the walker for the step's agentActions
 		// row, which is a reporting view; the ledger row is the one that counts.
-		const { object, tokenUsage, modelUsed } = await meterAgentCall(ctx, 'agent_classify', () =>
-			runLlmObject({
-				model,
-				schema: classificationSchema,
-				prompt: buildClassifyPrompt(input.context),
-				temperature: 0.2,
-			})
+		const { object, tokenUsage, modelUsed } = await meterAgentCall(
+			ctx,
+			'agent_classify',
+			input.inboundMessageId,
+			(meter) =>
+				runLlmObject({
+					meter,
+					model,
+					schema: classificationSchema,
+					prompt: buildClassifyPrompt(input.context),
+					temperature: 0.2,
+				})
 		);
 
 		// Everything the model wrote that reaches a user or another prompt is
@@ -230,6 +236,20 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 		} catch {
 			// swallowed: rules are additive; the LLM classification stands.
 		}
+
+		// Phase 2: the category and disposition bundle runs BESIDE this
+		// classifier, scheduled and compared with what it decided; nothing it
+		// answers reaches `route` (D9). Off by default: nothing is scheduled.
+		await scheduleTeamMessageBundle(ctx, input.inboundMessageId, {
+			baseline: {
+				category: output.category,
+				disposition:
+					output.category === 'spam' || output.handlingRuleArchive
+						? 'informational'
+						: resolveResponseDisposition(output),
+			},
+			...(output.language ? { language: output.language } : {}),
+		});
 
 		return { output, tokenUsage, modelUsed };
 	},

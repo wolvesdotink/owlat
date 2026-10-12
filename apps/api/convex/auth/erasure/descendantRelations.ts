@@ -174,6 +174,8 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	),
 	desc('mailboxes', 'mailSenderImageAllowlist', 'mailboxId', 'delete', 'Per-sender preferences.'),
 	desc('mailboxes', 'mailTriageTallies', 'mailboxId', 'delete', 'Per-sender reading behaviour.'),
+	desc('mailboxes', 'senderMemory', 'mailboxId', 'delete', 'Learned from the member’s mail.'),
+	desc('mailboxes', 'decisionArtifacts', 'mailboxId', 'delete', 'Read from the member’s mail.'),
 	desc('mailboxes', 'mailContactStyleOverrides', 'mailboxId', 'delete', 'Learned writing style.'),
 	desc('mailboxes', 'mailVoiceProfiles', 'mailboxId', 'delete', 'Learned writing style.'),
 	desc('mailboxes', 'mailCommitments', 'mailboxId', 'delete', 'Extracted from the member’s mail.'),
@@ -210,6 +212,8 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		'The inline body; deleted with its message.'
 	),
 	desc('mailMessages', 'mailThreads', 'latestMessageId', 'delete', SAME_MAILBOX),
+	desc('mailMessages', 'decisionArtifacts', 'mailMessageId', 'delete', SAME_MAILBOX),
+	desc('mailMessages', 'senderMemory', 'sourceMailMessageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailThreads', 'latestReply.messageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailThreads', 'needsReply.messageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailThreads', 'followUp.messageId', 'delete', SAME_MAILBOX),

@@ -16,11 +16,8 @@ import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
-import {
-	recordDecisionSpend,
-	summarizeDecisionPlane,
-	type DecisionCountableEvent,
-} from '../llmUsage';
+import { summarizeDecisionPlane, type DecisionCountableEvent } from '../llmUsage';
+import type { TokenUsage } from '../../agent/steps/types';
 
 /** The plane's pinned model id, spelled out rather than imported: this file is
  * about the ledger, and the adapter that owns the constant is a `'use node'`
@@ -62,11 +59,29 @@ const modules = Object.fromEntries(
 	)
 );
 
+/** Call-level tags (`plane`, the decision flags), as `recordRequests` takes them. */
+type RecordArgs = Record<string, unknown>;
+
+/** One provider request through the ledger writer, with call-level tags. */
+async function recordOne(
+	t: ReturnType<typeof convexTest>,
+	call: { feature: string; modelUsed: string; tokenUsage?: TokenUsage } & RecordArgs
+) {
+	const { feature, modelUsed, tokenUsage, ...tags } = call;
+	await t.mutation(internal.analytics.llmUsage.recordRequests, {
+		feature,
+		...tags,
+		requests: [
+			{ attempt: 1, latencyMs: 5, modelUsed, ...(tokenUsage ? { usage: tokenUsage } : {}) },
+		],
+	} as never);
+}
+
 describe('the plane tag on llmUsageEvents', () => {
 	it('round-trips the decision tag and its flags, and prices output at zero', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.analytics.llmUsage.record, {
+		await recordOne(t, {
 			feature: 'agent_security_scan',
 			modelUsed: PINNED_DECISION_MODEL,
 			tokenUsage: { promptTokens: 1_000_000, completionTokens: 4_000, totalTokens: 1_004_000 },
@@ -93,7 +108,7 @@ describe('the plane tag on llmUsageEvents', () => {
 
 		// An operator's own checkpoint: no price table knows this id, and its
 		// org-prefixed shape would otherwise read as OpenRouter.
-		await t.mutation(internal.analytics.llmUsage.record, {
+		await recordOne(t, {
 			feature: 'inbound_triage',
 			modelUsed: 'someone/custom-finetune',
 			tokenUsage: { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 },
@@ -115,7 +130,7 @@ describe('the plane tag on llmUsageEvents', () => {
 	it('leaves an untagged row exactly as it was before the plane existed', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.analytics.llmUsage.record, {
+		await recordOne(t, {
 			feature: 'assistant_ask',
 			modelUsed: 'gpt-4o',
 			tokenUsage: { promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 },
@@ -131,20 +146,19 @@ describe('the plane tag on llmUsageEvents', () => {
 		});
 	});
 
-	it('records a refused attempt at zero cost, and still no-ops on an untagged empty call', async () => {
+	it('records a refused attempt at zero cost, marked estimated, and writes nothing for no requests', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.analytics.llmUsage.record, {
+		await recordOne(t, {
 			feature: 'agent_classify',
 			modelUsed: PINNED_DECISION_MODEL,
 			tokenUsage: undefined,
 			plane: 'decision',
 			isThrottled: true,
 		});
-		await t.mutation(internal.analytics.llmUsage.record, {
+		await t.mutation(internal.analytics.llmUsage.recordRequests, {
 			feature: 'assistant_ask',
-			modelUsed: 'gpt-4o',
-			tokenUsage: undefined,
+			requests: [],
 		});
 
 		await t.run(async (ctx) => {
@@ -153,6 +167,7 @@ describe('the plane tag on llmUsageEvents', () => {
 			expect(rows[0]?.isThrottled).toBe(true);
 			expect(rows[0]?.costUsd).toBe(0);
 			expect(rows[0]?.totalTokens).toBe(0);
+			expect(rows[0]?.isEstimated).toBe(true);
 		});
 	});
 
@@ -211,29 +226,12 @@ describe('summarizeDecisionPlane', () => {
 			costUsd: 0,
 		});
 	});
-});
 
-describe('recordDecisionSpend', () => {
-	it('tags the plane for the caller and passes the flags through verbatim', async () => {
-		const runMutation = vi.fn(async () => undefined);
-		const ctx = { runMutation } as unknown as Parameters<typeof recordDecisionSpend>[0];
-
-		await recordDecisionSpend(
-			ctx,
-			'agent_security_scan',
-			{ promptTokens: 10, completionTokens: 2, totalTokens: 12 },
-			PINNED_DECISION_MODEL,
-			{ isFallback: true, isCalibrated: false }
-		);
-
-		expect(runMutation).toHaveBeenCalledWith(internal.analytics.llmUsage.record, {
-			feature: 'agent_security_scan',
-			modelUsed: PINNED_DECISION_MODEL,
-			tokenUsage: { promptTokens: 10, completionTokens: 2, totalTokens: 12 },
-			plane: 'decision',
-			isFallback: true,
-			isCalibrated: false,
-			isThrottled: undefined,
-		});
+	it('counts an admission settlement estimate as spend, not as an attempt', () => {
+		const counters = summarizeDecisionPlane([
+			{ plane: 'decision', feature: 'inbound_triage', isThrottled: true, costUsd: 1 },
+			{ plane: 'decision', feature: 'admission_settlement', costUsd: 2 },
+		]);
+		expect(counters).toMatchObject({ attempts: 1, throttledRate: 1, costUsd: 3 });
 	});
 });

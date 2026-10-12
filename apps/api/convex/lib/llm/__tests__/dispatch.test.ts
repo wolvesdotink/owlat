@@ -68,11 +68,8 @@ describe('normalizeUsage', () => {
 			completionTokens: 7,
 			totalTokens: 0,
 		});
-		expect(normalizeUsage({})).toEqual({
-			promptTokens: 0,
-			completionTokens: 0,
-			totalTokens: 0,
-		});
+		// Nothing reported at all is unknown usage, not a reported zero.
+		expect(normalizeUsage({})).toBeUndefined();
 	});
 });
 
@@ -108,6 +105,7 @@ describe('runLlmText input discriminator', () => {
 			text: 'hello',
 			tokenUsage: { promptTokens: 11, completionTokens: 22, totalTokens: 33 },
 			modelUsed: 'fake-model-id',
+			isTruncated: false,
 		});
 	});
 
@@ -197,6 +195,23 @@ describe('runLlmObject', () => {
 			tokenUsage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
 			modelUsed: 'fake-model-id',
 		});
+	});
+
+	it('sends messages instead of a prompt when given them (L9 cache split)', async () => {
+		const schema = z.object({ a: z.number() });
+		generateObjectMock.mockResolvedValueOnce({ object: { a: 1 } });
+		const messages = [
+			{
+				role: 'system' as const,
+				content: 'stable',
+				providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' as const } } },
+			},
+			{ role: 'user' as const, content: 'message' },
+		];
+		await runLlmObject({ model: fakeModel, schema, messages });
+		const sdkArgs = generateObjectMock.mock.calls[0]?.[0] as Record<string, unknown>;
+		expect(sdkArgs['messages']).toBe(messages);
+		expect('prompt' in sdkArgs).toBe(false);
 	});
 
 	it('returns undefined tokenUsage when SDK omits usage', async () => {

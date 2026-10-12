@@ -9,6 +9,7 @@
  * Convex query/action/mutation seams are mocked — no live backend.
  */
 
+import { ACTION_MODEL_BUDGET_MS } from '../../../../lib/llm/actionDeadline';
 import { describe, it, expect } from 'vitest';
 import { makeStepCtx } from '../../__tests__/stepCtx';
 import { contextRetrievalStep } from '../index';
@@ -35,6 +36,7 @@ type Read = {
 	interpretation: {
 		status: 'complete' | 'partial' | 'failed' | 'skipped';
 		isRerunDue?: boolean;
+		budgetRefusal?: { reason: 'monthly_ceiling'; limit: string };
 	} | null;
 	items: BriefingItem[];
 };
@@ -52,7 +54,10 @@ const toRead = (read: Read) => ({
 });
 
 /** ctx serving one contact-less/thread-less inbound; retrieval legs empty. */
-function makeCtx(reads: Array<Read | 'throw'>, opts: { canRun?: boolean } = {}) {
+function makeCtx(
+	reads: Array<Read | 'throw'>,
+	opts: { canRun?: boolean; runResult?: Record<string, unknown> } = {}
+) {
 	const message = {
 		_id: messageId,
 		from: 'sender@example.com',
@@ -72,6 +77,8 @@ function makeCtx(reads: Array<Read | 'throw'>, opts: { canRun?: boolean } = {}) 
 			getThreadMessages: [],
 			getOpenCommitments: [],
 			isGraphRetrievalEnabled: false,
+			// knowledge/vectorCorpus: no table holds a vector, so no query embedding.
+			hasQueryableVectors: false,
 			briefingActions: () => {
 				const read = reads[Math.min(readIndex++, reads.length - 1)];
 				if (read === undefined) throw new Error('no read fixture');
@@ -82,7 +89,7 @@ function makeCtx(reads: Array<Read | 'throw'>, opts: { canRun?: boolean } = {}) 
 		actions: {
 			interpretMessage: (args: unknown) => {
 				runs.push(args);
-				return { status: 'complete', createdItemIds: [] };
+				return opts.runResult ?? { status: 'complete', createdItemIds: [] };
 			},
 			knowledge: [],
 			semanticFileProcessing: [],
@@ -118,7 +125,17 @@ describe('contextRetrievalStep.execute — structured current message', () => {
 		const { output } = await contextRetrievalStep.execute(ctx, input);
 		// The eligibility snapshot is taken before the first run.
 		expect(captures).toEqual([messageId]);
-		expect(runs).toEqual([{ source: { kind: 'inbound', id: messageId } }]);
+		// Awaited, so it runs on this step's clock: the message's root, with the
+		// action's deadline (ADR-0073).
+		expect(runs).toEqual([
+			{
+				source: { kind: 'inbound', id: messageId },
+				root: { rootRequestId: `team:${messageId}`, deadlineAt: expect.any(Number) },
+			},
+		]);
+		const deadlineAt = (runs[0] as { root: { deadlineAt: number } }).root.deadlineAt;
+		expect(deadlineAt).toBeGreaterThan(Date.now());
+		expect(deadlineAt).toBeLessThanOrEqual(Date.now() + ACTION_MODEL_BUDGET_MS);
 		expect(output.context).toContain('Tell the customer where order 4821 is.');
 		expect(output.context).not.toContain('RAWBODYSENTINEL');
 	});
@@ -154,6 +171,54 @@ describe('contextRetrievalStep.execute — structured current message', () => {
 		const { ctx } = makeCtx(['throw']);
 		const { output } = await contextRetrievalStep.execute(ctx, input);
 		expect(output.context).toContain('[CURRENT MESSAGE]');
+		expect(output.context).toContain('RAWBODYSENTINEL');
+	});
+
+	it('passes a budget refusal the run answered with on to the walker (Sol r3 F5)', async () => {
+		const { ctx, runs } = makeCtx([{ interpretation: null, items: [] }], {
+			runResult: {
+				status: 'failed',
+				isReplayed: false,
+				createdItemIds: [],
+				errorCode: 'budget',
+				budgetRefusal: { reason: 'monthly_ceiling', limit: 'ceiling' },
+			},
+		});
+		await expect(contextRetrievalStep.execute(ctx, input)).rejects.toMatchObject({
+			reason: 'monthly_ceiling',
+			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
+		});
+		expect(runs).toHaveLength(1);
+	});
+
+	it('holds on a stored refusal when the cached read is not yet due for a retry (final F1)', async () => {
+		const { ctx, runs } = makeCtx([
+			{
+				interpretation: {
+					status: 'failed',
+					budgetRefusal: { reason: 'monthly_ceiling', limit: 'ceiling' },
+				},
+				items: [],
+			},
+		]);
+		await expect(contextRetrievalStep.execute(ctx, input)).rejects.toMatchObject({
+			reason: 'monthly_ceiling',
+			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
+		});
+		// The stored result is reused, never run again before its retry.
+		expect(runs).toEqual([]);
+	});
+
+	it('still falls back to the raw body for a failed run that met no refusal', async () => {
+		const { ctx } = makeCtx([{ interpretation: null, items: [] }], {
+			runResult: {
+				status: 'failed',
+				isReplayed: false,
+				createdItemIds: [],
+				errorCode: 'model_error',
+			},
+		});
+		const { output } = await contextRetrievalStep.execute(ctx, input);
 		expect(output.context).toContain('RAWBODYSENTINEL');
 	});
 });

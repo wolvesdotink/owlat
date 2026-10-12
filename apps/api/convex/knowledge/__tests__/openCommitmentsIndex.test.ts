@@ -11,6 +11,10 @@
  * the projection in step.
  */
 
+import {
+	configureLocalEmbedder,
+	measuredLocalSpace,
+} from '../../__tests__/helpers/embeddingSpaces';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
@@ -96,6 +100,7 @@ async function save(
 		sourceType: 'agent_extracted',
 		contactIds,
 		embedding: fields.embedding ?? [],
+		...(fields.embedding ? { embeddingSpace: measuredLocalSpace(fields.embedding.length) } : {}),
 		confidence: fields.confidence ?? 0.8,
 		expiresAt: fields.expiresAt,
 	});
@@ -384,6 +389,8 @@ describe('open-commitments recall reads the junction projection', () => {
 		const t = convexTest(schema, modules);
 		// The public knowledge functions follow the `ai.knowledge` flag.
 		await enableFeatures(t, ['ai.knowledge']);
+		// Dedup compares vectors of the active space only (ADR-0073).
+		await configureLocalEmbedder(t);
 		const contactA = await newContact(t);
 		const contactB = await newContact(t);
 		const same = [1, 0, 0];

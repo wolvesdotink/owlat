@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { ASSISTANT_CUT_OFF_MESSAGE } from '@owlat/shared/aiRouting';
 import type { AssistantToolCall } from './AssistantToolCalls.vue';
+import { budgetRefusalReason } from '~/utils/aiBudget';
 
 export interface AssistantMessageData {
 	_id: string;
@@ -8,6 +10,8 @@ export interface AssistantMessageData {
 	status: 'streaming' | 'complete' | 'stopped' | 'error';
 	toolCalls: AssistantToolCall[];
 	errorMessage: string | null;
+	/** The turn's paid call was refused for budget (D1): a code and reason, never a sentence. */
+	budgetRefusal?: { code: string; reason: string } | null;
 	model?: string | null;
 	createdAt: number;
 }
@@ -19,9 +23,19 @@ const { t } = useI18n();
 const isUser = computed(() => props.message.role === 'user');
 const isStreaming = computed(() => props.message.status === 'streaming');
 const hasText = computed(() => props.message.text.trim().length > 0);
+// Stopped at its length limit: the text is kept and is the answer, so the
+// line under it is a quiet note in the reader's language, not a failure.
+const isCutOff = computed(
+	() =>
+		props.message.status === 'error' &&
+		props.message.errorMessage === ASSISTANT_CUT_OFF_MESSAGE &&
+		hasText.value
+);
+// Refused for budget (D1): the stored code and reason, said in the reader's language.
+const isBudgetRefused = computed(() => budgetRefusalReason(props.message.budgetRefusal) !== null);
 // Typing indicator only before any text or tool activity has surfaced.
 const showTyping = computed(
-	() => isStreaming.value && !hasText.value && props.message.toolCalls.length === 0,
+	() => isStreaming.value && !hasText.value && props.message.toolCalls.length === 0
 );
 </script>
 
@@ -55,9 +69,18 @@ const showTyping = computed(
 				class="flex items-center gap-1 py-1"
 				:aria-label="t('components.assistant.assistantMessage.typing')"
 			>
-				<span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 0ms" />
-				<span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 150ms" />
-				<span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 300ms" />
+				<span
+					class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
+					style="animation-delay: 0ms"
+				/>
+				<span
+					class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
+					style="animation-delay: 150ms"
+				/>
+				<span
+					class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
+					style="animation-delay: 300ms"
+				/>
 			</div>
 
 			<div v-else-if="hasText" class="relative">
@@ -68,7 +91,19 @@ const showTyping = computed(
 				/>
 			</div>
 
-			<p v-if="message.status === 'error'" class="mt-1 text-xs text-error">
+			<p
+				v-if="isCutOff"
+				class="mt-1 text-xs text-text-tertiary"
+				data-testid="assistant-message-cut-off"
+			>
+				{{ t('components.assistant.assistantMessage.cutOff') }}
+			</p>
+			<!-- Refused for budget (D1): said in the reader's language from its reason. -->
+			<AiBudgetRefusal
+				v-else-if="message.status === 'error' && isBudgetRefused"
+				:refusal="message.budgetRefusal"
+			/>
+			<p v-else-if="message.status === 'error'" class="mt-1 text-xs text-error">
 				{{ message.errorMessage || t('components.assistant.assistantMessage.genericError') }}
 			</p>
 			<p v-else-if="message.status === 'stopped'" class="mt-1 text-xs text-text-tertiary italic">

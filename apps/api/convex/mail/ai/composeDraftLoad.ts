@@ -15,14 +15,27 @@ import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { logError } from '../../lib/runtimeLog';
+import { rethrowAdmissionRefusal } from '../../lib/llm/admissionPort';
 import type {
 	AnswerAskTarget,
 	AnswerDraftContext,
 	MailboxAttachmentScope,
 } from '../../lib/validators/answerAsk';
 import { assembleInboundBriefing } from '../../agent/steps/context_retrieval';
+import { guardAllowsInboundMessage } from '../../agent/steps/security_scan/guard';
+import { throwInvalidState } from '../../_utils/errors';
 import type { EagernessMode } from '../../inbox/askEagerness';
+import type { BundleSubject } from '../../decision/bundleRunner';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
+
+/**
+ * Answer mode's refusal for a team message the injection guard held back
+ * (quarantine, malware, a malicious URL, a flagged injection). The web reads
+ * `data.code`.
+ */
+const GUARD_REFUSAL_CODE = 'MESSAGE_HELD_BY_GUARD';
+const GUARD_REFUSAL_MESSAGE =
+	'This message was held back as unsafe, so AI drafting is not available for it.';
 
 /** Everything the gap check and the drafter need about a target. */
 interface AnswerContext extends AnswerDraftContext {
@@ -35,6 +48,8 @@ interface AnswerContext extends AnswerDraftContext {
 	/** Where the automatic file search may look in the mailbox (Postbox only). */
 	mailboxScope?: MailboxAttachmentScope | undefined;
 	eagerness?: EagernessMode | undefined;
+	/** The message answered, for the necessity judgment (D5); absent for a fresh draft. */
+	decisionSubject?: BundleSubject | undefined;
 }
 
 const PERSONAL_TONE =
@@ -83,6 +98,15 @@ export async function loadAnswerContext(
 			mailboxId: loaded.mailboxId,
 			mailboxScope: loaded.mailboxScope,
 			eagerness: loaded.eagerness,
+			...(loaded.triggerMessageId
+				? {
+						decisionSubject: {
+							kind: 'mail_message' as const,
+							mailMessageId: loaded.triggerMessageId,
+							mailboxId: loaded.mailboxId,
+						},
+					}
+				: {}),
 			audience: `the mailbox owner (${loaded.ownerAddress}), answering the last message in the thread, which the other party sent`,
 			styleReference: "the owner's",
 			toneInstruction: PERSONAL_TONE,
@@ -97,12 +121,22 @@ export async function loadAnswerContext(
 		threadId: target.threadId,
 		...(target.inboundMessageId ? { inboundMessageId: target.inboundMessageId } : {}),
 	});
+	// D13 / #1339: the message this reply answers reaches the gap check and the
+	// drafter only after the injection guard passes it (a skipped guard runs
+	// now). A message the guard rejected is refused outright: no briefing, and
+	// no fallback to its raw text.
+	if (!(await guardAllowsInboundMessage(ctx, loaded.inboundMessageId))) {
+		throwInvalidState(GUARD_REFUSAL_MESSAGE, { code: GUARD_REFUSAL_CODE });
+	}
 	// The pipeline's own briefing (contact, commitments, knowledge, files,
-	// history, the quarantined current message), without re-recording it.
+	// history, the hidden-stripped current message), without re-recording it.
 	let context = loaded.triggerText;
 	try {
 		context = (await assembleInboundBriefing(ctx, loaded.inboundMessageId)).context;
 	} catch (err) {
+		// A spend refusal (D1), a cached interpretation's included, is the
+		// caller's budget error: no clarification or draft from the raw mail.
+		rethrowAdmissionRefusal(err);
 		logError('[composeDraft] team briefing failed, drafting from the message:', err);
 	}
 	const agentConfig = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
@@ -114,6 +148,7 @@ export async function loadAnswerContext(
 		contactId: loaded.contact?.contactId,
 		language: loaded.contact?.language,
 		eagerness: loaded.eagerness,
+		decisionSubject: { kind: 'inbound_message', inboundMessageId: loaded.inboundMessageId },
 		audience: 'an organization',
 		styleReference: "the organization's",
 		toneInstruction: agentConfig?.toneDescription

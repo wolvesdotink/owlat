@@ -22,18 +22,21 @@ import {
 } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
 import { deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
-import { runLlmStream, runLlmText } from '../lib/llm/dispatch';
+import { runLlmObject, runLlmStream, runLlmText } from '../lib/llm/dispatch';
 import { assembleInboundBriefing } from '../agent/steps/context_retrieval';
 import { NOT_READY_OPTION } from '../inbox/clarificationAnswers';
+import { INTERPRET_EXTRACTOR_VERSION } from '../mail/interpret/schema';
 import { CUSTOMER, ORG, seedCustomer, seedFile, seedRequest } from './helpers/answerAsk';
 
 import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 import type * as LlmProviderModule from '../lib/llmProvider';
+import type * as TaskRoutingModule from '../lib/llm/taskRouting';
 import type * as DispatchModule from '../lib/llm/dispatch';
 import type * as AttachmentSuggestModule from '../inbox/attachmentSuggest';
 
 type FoundFile = AttachmentSuggestModule.FoundFile;
 import type * as ContextRetrievalModule from '../agent/steps/context_retrieval';
+import type * as ComposeDraftPlanModule from '../mail/ai/composeDraftPlan';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -50,6 +53,10 @@ const llm = vi.hoisted(() => ({
 	}>,
 	draft: 'Hi Jonas,\n\nthanks for your note.\n\nBest,\nAda',
 	files: [] as FoundFile[],
+	// The late injection guard's verdict (D13), for a message whose scan skipped it.
+	guard: { isInjection: false, confidence: 0.02, reason: 'benign' },
+	// A failure before the draft opens its stream (the response plan's load).
+	planFailure: null as Error | null,
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -67,8 +74,14 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
+	const { taskTier } = await vi.importActual<typeof TaskRoutingModule>('../lib/llm/taskRouting');
 	// The tier is the model name, so a test can tell which tier a call used.
-	return { ...actual, resolveLanguageModel: vi.fn((_ctx: unknown, tier: string) => tier) };
+	return {
+		...actual,
+		resolveLanguageModel: vi.fn((_ctx: unknown, ...route: Parameters<typeof taskTier>) =>
+			taskTier(...route)
+		),
+	};
 });
 vi.mock('../lib/llm/dispatch', async () => {
 	const actual = await vi.importActual<typeof DispatchModule>('../lib/llm/dispatch');
@@ -77,6 +90,7 @@ vi.mock('../lib/llm/dispatch', async () => {
 		...actual,
 		runLlmObject: vi.fn(async (opts: { prompt?: string }) => {
 			const prompt = String(opts.prompt ?? '');
+			if (prompt.includes('security classifier')) return { object: llm.guard, ...result };
 			if (prompt.includes('Identify the SLOTS')) return { object: { slots: llm.slots }, ...result };
 			if (prompt.includes('DISAGREE')) {
 				return { object: { divergentSlotIndexes: llm.slots.map((_, i) => i) }, ...result };
@@ -92,6 +106,18 @@ vi.mock('../inbox/attachmentSuggest', async () => {
 		'../inbox/attachmentSuggest'
 	);
 	return { ...actual, searchFilesForRequest: vi.fn(async () => llm.files) };
+});
+vi.mock('../mail/ai/composeDraftPlan', async () => {
+	const actual = await vi.importActual<typeof ComposeDraftPlanModule>(
+		'../mail/ai/composeDraftPlan'
+	);
+	return {
+		...actual,
+		loadAnswerPlan: vi.fn(async (...args: Parameters<typeof actual.loadAnswerPlan>) => {
+			if (llm.planFailure) throw llm.planFailure;
+			return actual.loadAnswerPlan(...args);
+		}),
+	};
 });
 vi.mock('../agent/steps/context_retrieval', async () => {
 	const actual = await vi.importActual<typeof ContextRetrievalModule>(
@@ -154,6 +180,8 @@ beforeEach(() => {
 	llm.slots = [];
 	llm.files = [];
 	llm.draft = 'Hi Jonas,\n\nthanks for your note.\n\nBest,\nAda';
+	llm.guard = { isInjection: false, confidence: 0.02, reason: 'benign' };
+	llm.planFailure = null;
 	vi.mocked(runLlmStream).mockReset();
 	vi.mocked(runLlmText).mockClear();
 	vi.mocked(assembleInboundBriefing).mockClear();
@@ -384,14 +412,14 @@ describe('answer', () => {
 		const { target } = await replyDraft(t);
 		await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
 		const tiers = () => vi.mocked(runLlmText).mock.calls.map(([opts]) => opts.model);
-		expect(tiers()).toEqual(['summarize', 'summarize', 'summarize']);
+		expect(tiers()).toEqual(['fast', 'fast', 'fast']);
 
 		vi.mocked(runLlmText).mockClear();
 		await t.run(async (ctx) => {
 			await ctx.db.insert('askEagernessSettings', { mode: 'cautious', updatedAt: Date.now() });
 		});
 		await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
-		expect(tiers()).toEqual(['draft', 'draft', 'draft']);
+		expect(tiers()).toEqual(['capable', 'capable', 'capable']);
 	});
 
 	it('remembers a typed answer for the contact', async () => {
@@ -475,7 +503,11 @@ describe('privacy', () => {
 });
 
 describe('team thread', () => {
-	async function seedTeamThread(t: Tx, contactId: Id<'contacts'>) {
+	async function seedTeamThread(
+		t: Tx,
+		contactId: Id<'contacts'>,
+		message: Record<string, unknown> = {}
+	) {
 		await enableFeatures(t, ['inbox']);
 		return await t.run(async (ctx) => {
 			const { updatedAt: _unused, ...thread } = createTestConversationThread({
@@ -491,6 +523,7 @@ describe('team thread', () => {
 					from: CUSTOMER,
 					subject: 'September invoice',
 					textBody: 'Could you send us the invoice for September?',
+					...message,
 				})
 			);
 			return threadId;
@@ -596,6 +629,168 @@ describe('team thread', () => {
 		expect(lastDraftPrompt()).toContain('Jonas asks for the September invoice');
 	});
 
+	/**
+	 * The thread's message met a spend refusal in interpretation, and its retry
+	 * is not due yet, so the briefing reuses the stored result instead of
+	 * running it again. The next briefing is the real one, so the stored
+	 * refusal is what it meets.
+	 */
+	async function briefOnCachedRefusal(t: Tx, threadId: Id<'conversationThreads'>) {
+		await t.run(async (ctx) => {
+			const message = (await ctx.db
+				.query('inboundMessages')
+				.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+				.first())!;
+			await ctx.db.insert('messageInterpretations', {
+				threadKind: 'team',
+				conversationThreadId: threadId,
+				source: { kind: 'inbound', id: message._id },
+				sourceKey: `inbound:${message._id}`,
+				contentRevision: 'rev-1',
+				extractorVersion: INTERPRET_EXTRACTOR_VERSION,
+				mode: 'actions',
+				status: 'failed',
+				errorCode: 'budget',
+				budgetRefusal: { reason: 'monthly_ceiling', limit: 'ceiling' },
+				nextRetryAt: Date.now() + 60 * 60 * 1000,
+				deletionEpoch: 1,
+				isCounted: true,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		const actual = await vi.importActual<typeof ContextRetrievalModule>(
+			'../agent/steps/context_retrieval'
+		);
+		vi.mocked(assembleInboundBriefing).mockImplementationOnce(actual.assembleInboundBriefing);
+	}
+
+	it('returns the budget error for a cached interpretation refusal, with no model call (final r2 F1)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		await briefOnCachedRefusal(t, threadId);
+		vi.mocked(runLlmObject).mockClear();
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, {
+				target: { kind: 'teamThread', threadId },
+				locale: 'en',
+			})
+		).rejects.toMatchObject({
+			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
+		});
+		expect(vi.mocked(assembleInboundBriefing)).toHaveBeenCalledTimes(1);
+		// No gap check, clarification or draft followed.
+		expect(vi.mocked(runLlmObject)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmText)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(
+			await t.query(api.mail.ai.composeDraftStore.getSession, {
+				target: { kind: 'teamThread', threadId },
+			})
+		).toBeNull();
+	});
+
+	it('an answer that must rebuild the briefing hands the questions back on a cached refusal (final r3 F1)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const target = { kind: 'teamThread' as const, threadId };
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(asked.status).toBe('asking');
+		const payment = asked.questions.find((q) => q.slotType === 'date_time')!;
+		// A context too large to keep: `answer` builds the briefing again.
+		await t.run((ctx) => ctx.db.patch(asked.sessionId, { draftContext: undefined }));
+		await briefOnCachedRefusal(t, threadId);
+		vi.mocked(runLlmObject).mockClear();
+		vi.mocked(runLlmText).mockClear();
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId: asked.sessionId,
+				answers: [{ questionId: payment.id, value: 'Friday' }],
+			})
+		).rejects.toMatchObject({
+			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
+		});
+		expect(vi.mocked(runLlmObject)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmText)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		// Not stuck busy: back to the questions, the answer kept.
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('asking');
+		expect(session?.questions.find((q) => q.id === payment.id)?.answer?.value).toBe('Friday');
+
+		// And it can be sent again once the briefing goes through.
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [],
+		});
+		expect(res.status).toBe('ready');
+		expect(lastDraftPrompt()).toContain('Friday');
+	});
+
+	it('a start that fails before its draft stream opens is not left drafting (final r3 sweep)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		// The requested file is found, so nothing is asked and the draft starts.
+		const fileId = await seedFile(t, { filename: 'invoice-2026-09.pdf', contactIds: [contactId] });
+		llm.files = [
+			{
+				source: 'semanticFile',
+				id: fileId,
+				filename: 'invoice-2026-09.pdf',
+				mimeType: 'application/pdf',
+				size: 20,
+				score: 0.8,
+			},
+		];
+		const target = { kind: 'teamThread' as const, threadId };
+		llm.planFailure = new Error('plan read failed');
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' })
+		).rejects.toThrow('plan read failed');
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('error');
+
+		// A new start replaces it and drafts.
+		llm.planFailure = null;
+		const res = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(res.status).toBe('ready');
+	});
+
+	it('an answer that fails before its draft stream opens hands the questions back (final r3 sweep)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const target = { kind: 'teamThread' as const, threadId };
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		const payment = asked.questions.find((q) => q.slotType === 'date_time')!;
+		llm.planFailure = new Error('plan read failed');
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId: asked.sessionId,
+				answers: [{ questionId: payment.id, value: 'Friday' }],
+			})
+		).rejects.toThrow('plan read failed');
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('asking');
+		expect(session?.questions.find((q) => q.id === payment.id)?.answer?.value).toBe('Friday');
+	});
+
 	it('works on a team-only instance, and not once the team inbox is off', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
@@ -633,6 +828,98 @@ describe('team thread', () => {
 		await expect(
 			t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' })
 		).rejects.toMatchObject({ data: { category: 'forbidden' } });
+	});
+
+	// D13 / #1339 (Sol r2 F2): the message being answered is guarded before its
+	// briefing, its trigger text or the gap check reach a model, and a held-back
+	// message is refused with no raw-text fallback.
+	const SKIPPED_SCAN = {
+		injectionDetected: false,
+		confidence: 0,
+		spamScore: 0,
+		phishingDetected: false,
+		guardUnavailable: false,
+		guardNotRun: { reason: 'agent_disabled' as const, at: 1 },
+		scanTimestamp: 1,
+	};
+	const guardCalls = () =>
+		vi
+			.mocked(runLlmObject)
+			.mock.calls.filter(([opts]) => String(opts.prompt ?? '').includes('security classifier'))
+			.length;
+	const HELD = { data: { category: 'invalid_state', data: { code: 'MESSAGE_HELD_BY_GUARD' } } };
+
+	it.each([
+		[
+			'a quarantined injection',
+			{
+				processingStatus: 'quarantined',
+				securityFlags: {
+					...SKIPPED_SCAN,
+					guardNotRun: undefined,
+					injectionDetected: true,
+					confidence: 0.9,
+				},
+			},
+		],
+		['malware', { processingStatus: 'quarantined', virusVerdict: 'infected' }],
+	])('refuses to draft for %s, with no model call', async (_, message) => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const threadId = await seedTeamThread(t, await seedCustomer(t), message);
+		vi.mocked(runLlmObject).mockClear();
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, {
+				target: { kind: 'teamThread', threadId },
+				locale: 'en',
+			})
+		).rejects.toMatchObject(HELD);
+		expect(vi.mocked(assembleInboundBriefing)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmObject)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+	});
+
+	it('guards a message whose scan skipped the guard, and refuses it when flagged', async () => {
+		llm.guard = { isInjection: true, confidence: 0.95, reason: 'manipulation attempt' };
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const threadId = await seedTeamThread(t, await seedCustomer(t), {
+			processingStatus: 'security_check',
+			securityFlags: SKIPPED_SCAN,
+		});
+		vi.mocked(runLlmObject).mockClear();
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, {
+				target: { kind: 'teamThread', threadId },
+				locale: 'en',
+			})
+		).rejects.toMatchObject(HELD);
+		expect(guardCalls()).toBe(1);
+		expect(vi.mocked(runLlmObject)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(assembleInboundBriefing)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+	});
+
+	it('drafts on a message whose late guard passes it', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const threadId = await seedTeamThread(t, await seedCustomer(t), {
+			processingStatus: 'security_check',
+			securityFlags: SKIPPED_SCAN,
+		});
+		vi.mocked(runLlmObject).mockClear();
+
+		const res = await t.action(api.mail.ai.composeDraft.start, {
+			target: { kind: 'teamThread', threadId },
+			locale: 'en',
+		});
+
+		// Not refused: the session opens on the briefing (asking or drafting).
+		expect(res.sessionId).toBeDefined();
+		expect(guardCalls()).toBe(1);
+		expect(vi.mocked(assembleInboundBriefing)).toHaveBeenCalledTimes(1);
 	});
 
 	it('refuses a member who cannot read the shared inbox', async () => {

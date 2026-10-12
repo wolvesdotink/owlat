@@ -16,12 +16,32 @@ import { internal } from './_generated/api';
 import { resolveLanguageModel } from './lib/llmProvider';
 import { logInfo, logWarn } from './lib/runtimeLog';
 import { runLlmText } from './lib/llm/dispatch';
-import { recordLlmSpend } from './analytics/llmUsage';
+import { LlmTruncatedError } from './lib/llm/truncation';
+import { meterLlmCall } from './analytics/meteredSpend';
+import { rootRequest } from './lib/llm/requestMeter';
 import { datasetKeyValidator, isDatasetKey, type DatasetKey } from './visualizationAgent';
+import { anchorActionDeadline } from './lib/llm/actionDeadline';
+import { admissionRefusalOf } from './lib/llm/admissionPort';
 
 // ============================================================
 // Internal Action: Generate Visualization
 // ============================================================
+
+/** The page a failed generation stores; `reason` is shown when the failure has one to show. */
+function generationFailedHtml(reason?: string): string {
+	const detail =
+		reason === undefined
+			? ''
+			: `<p>${escapeHtml(reason)}</p>
+<p style="color:#666;">Try rephrasing your request.</p>
+`;
+	return `<!DOCTYPE html>
+<html>
+<body style="padding:20px;font-family:system-ui;">
+<h3 style="color:#EF4444;">Generation Failed</h3>
+${detail}</body>
+</html>`;
+}
 
 /**
  * Generate a visualization from a natural language prompt.
@@ -36,6 +56,8 @@ export const generate = internalAction({
 		dataset: v.optional(datasetKeyValidator),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		try {
 			// Step 1: Use live account data only when the caller explicitly opts in
 			// with an allowlisted `dataset` key. Free-form prompts are NOT inferred
@@ -64,23 +86,24 @@ export const generate = internalAction({
 			// numbers"; the iframe sandbox model is unchanged either way.
 			const system = liveData ? buildLiveSystemPrompt(liveData) : ILLUSTRATIVE_SYSTEM_PROMPT;
 
-			const result = await runLlmText({
-				model: await resolveLanguageModel(ctx, 'draft'),
-				system,
-				prompt: args.prompt,
-			});
+			const root = rootRequest('analytics', args.visualizationId);
+			const model = await resolveLanguageModel(ctx, 'analytics.visualize');
+			const result = await meterLlmCall(ctx, { feature: 'visualization', root }, (meter) =>
+				runLlmText({ meter, model, system, prompt: args.prompt })
+			);
 			logInfo('[visualization] llm call', {
 				tokenUsage: result.tokenUsage,
 				modelUsed: result.modelUsed,
 				datasetKey,
 				usedLiveData: liveData !== null,
 			});
-			await recordLlmSpend(ctx, 'visualization', result.tokenUsage, result.modelUsed);
 
 			// Extract HTML from the response. Models wrap output inconsistently
 			// (```html / ```HTML / bare ``` / prose around it), so try a
 			// case-insensitive generic fence first, then fall back to slicing
 			// the actual <!DOCTYPE…</html> document out of any surrounding text.
+			// A page cut off at its output ceiling is broken HTML: fail the generation.
+			if (result.isTruncated === true) throw new LlmTruncatedError('visualization');
 			let html = result.text.trim();
 			const fenceMatch = html.match(/```[a-zA-Z]*\s*\n([\s\S]*?)```/);
 			if (fenceMatch?.[1]) {
@@ -96,21 +119,22 @@ export const generate = internalAction({
 			}
 
 			// Generate a proper title from the prompt
-			const titleResult = await runLlmText({
-				model: await resolveLanguageModel(ctx, 'summarize'),
-				prompt: `Generate a short (3-8 word) title for this visualization request: "${args.prompt}"
+			const titleModel = await resolveLanguageModel(ctx, 'analytics.visualize_title');
+			const titleResult = await meterLlmCall(
+				ctx,
+				{ feature: 'visualization_title', root },
+				(meter) =>
+					runLlmText({
+						meter,
+						model: titleModel,
+						prompt: `Generate a short (3-8 word) title for this visualization request: "${args.prompt}"
 Respond with ONLY the title, no quotes or explanation.`,
-			});
+					})
+			);
 			logInfo('[visualization] llm call', {
 				tokenUsage: titleResult.tokenUsage,
 				modelUsed: titleResult.modelUsed,
 			});
-			await recordLlmSpend(
-				ctx,
-				'visualization_title',
-				titleResult.tokenUsage,
-				titleResult.modelUsed
-			);
 
 			const title = titleResult.text.trim().slice(0, 100);
 
@@ -125,20 +149,16 @@ Respond with ONLY the title, no quotes or explanation.`,
 				dataQuery: liveData ? (datasetKey ?? undefined) : undefined,
 			});
 		} catch (error) {
-			// Update with error state
-			const errorHtml = `<!DOCTYPE html>
-<html>
-<body style="padding:20px;font-family:system-ui;">
-<h3 style="color:#EF4444;">Generation Failed</h3>
-<p>${error instanceof Error ? escapeHtml(error.message) : 'Unknown error'}</p>
-<p style="color:#666;">Try rephrasing your request.</p>
-</body>
-</html>`;
-
+			// A budget refusal (D1) is stored as its stable code and reason, which
+			// the web says in the reader's language; the page carries no sentence.
+			const refusal = admissionRefusalOf(error);
 			await ctx.runMutation(internal.visualizationAgent.updateGenerated, {
 				id: args.visualizationId,
 				title: 'Error',
-				html: errorHtml,
+				html: refusal
+					? generationFailedHtml()
+					: generationFailedHtml(error instanceof Error ? error.message : 'Unknown error'),
+				...(refusal ? { budgetRefusal: { code: refusal.code, reason: refusal.reason } } : {}),
 			});
 		}
 	},

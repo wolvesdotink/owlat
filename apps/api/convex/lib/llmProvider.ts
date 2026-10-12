@@ -12,12 +12,10 @@
  *   • ENV `LLM_*` is the deployment fallback when no row exists — self-hosters
  *     who set `LLM_*` keep working with zero UI.
  *
- * The config row is memoized in-process (`./llmProviders/storedConfigCache`) and
- * each plane's key is decrypted only when that plane is asked for (a text call
- * never decrypts the embedding key), then kept for five minutes. The row itself
- * is re-read every 30 s, and a changed row drops the cached keys. Both
- * paths resolve through the provider-adapter registry (`./llmProviders`), where
- * a `kind` selects the adapter that builds the client.
+ * The row is memoized in-process (`./llmProviders/storedConfigCache`), re-read
+ * every 30 s (or at once, `isFresh`); each plane's key is decrypted only when
+ * that plane is asked for, kept five minutes, and dropped when the row changes.
+ * A `kind` selects the adapter (`./llmProviders`) that builds the client.
  *
  * Language models and embeddings resolve through the same `resolveAiConfig(ctx)`
  * point, while the two planes remain decoupled:
@@ -30,10 +28,8 @@
  *     deployment fallback when no stored row exists — resolution order is:
  *     stored hosted embedder (decrypted key) → stored local default → env.
  *
- * A misconfigured hosted embedder surfaces an actionable error at resolve time
- * (never a silent empty/zero vector); changing the embedder bumps the stored
- * `embeddingModelVersion` so a re-index can be prompted, and every vector is
- * fitted to the index width by `toIndexVector` (narrower ones zero-padded).
+ * A misconfigured hosted embedder throws an actionable error at resolve time (never
+ * a silent zero vector); `toIndexVector` fits every vector to the index width.
  *
  * Environment (fallback only):
  *   LLM_PROVIDER        openai (default) | openrouter | ollama
@@ -49,12 +45,25 @@ import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
 import { AiNotConfiguredError, envLlmApiKey, isEnvAiProviderConfigured } from './aiNotConfigured';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
 import {
-	isTrivialUserText,
-	isTrivialClassifiedMessage,
+	classifiedDraftRoute,
 	type ClassificationSignals,
+	type ClassifiedDraftRoute,
+	type ClassifiedDraftRouteOptions,
 } from './llm/complexity';
-import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from './constants';
+import { taskTier, userTextTier, type LlmTier, type TierChoice } from './llm/taskRouting';
+import { stampModelEndpoint } from './llm/modelEndpoint';
+import { isLocalEndpoint } from './llm/endpointLocality';
+import { EMBEDDING_DIMENSIONS } from './constants';
+import {
+	configuredEmbeddingTarget,
+	envEmbeddingModel,
+	envLlmBaseUrl,
+	localEmbeddingBaseUrl,
+	resolveStoredEmbeddingModel,
+	type EmbeddingTarget,
+} from './embeddingSpace';
 import {
 	classifyEnvLanguageEndpoint,
 	classifyStoredLanguageEndpoint,
@@ -65,6 +74,8 @@ import {
 	type ProviderClientConfig,
 	type ResolvedLanguageModel,
 } from './llmProviders';
+import { languageModelIdentity } from './llm/languageIdentity';
+import { configVersionOf } from './decision/configIdentity';
 import type { StoredEmbeddingProviderKind } from './validators/aiProviderConfig';
 import {
 	invalidateAiConfigCache,
@@ -73,17 +84,7 @@ import {
 } from './llmProviders/storedConfigCache';
 
 export { invalidateAiConfigCache } from './llmProviders/storedConfigCache';
-
-/**
- * Task types map to a model tier:
- * - fast: classification, extraction, guardrails, summarization, short
- *   suggested-reply options (a user is waiting on them, and 1–2 sentence
- *   replies do not need the capable model)
- * - capable: drafting replies, planning multi-step actions
- */
-export type LLMTask = 'classify' | 'extract' | 'guard' | 'summarize' | 'suggest' | 'draft' | 'plan';
-/** Model tiers exposed to callers. */
-type LLMTier = 'fast' | 'capable';
+type Fresh = { isFresh?: boolean };
 
 /** The resolved language plane — kind + secret-bearing client + per-tier models. */
 interface ResolvedLanguagePlane {
@@ -92,6 +93,8 @@ interface ResolvedLanguagePlane {
 	/** Decrypted client config (apiKey present only for hosted providers). */
 	readonly clientConfig: ProviderClientConfig;
 	readonly models: { readonly fast: string; readonly capable: string };
+	/** The stored row's version (`configVersionOf`); absent under the env fallback. */
+	readonly configVersion?: string;
 }
 
 /**
@@ -100,7 +103,7 @@ interface ResolvedLanguagePlane {
  * carries the local sidecar base URL or the decrypted hosted-embedder key;
  * `modelVersion` is the stored dimension-guard version (absent for env fallback).
  */
-interface ResolvedEmbeddingPlane {
+export interface ResolvedEmbeddingPlane {
 	readonly kind: StoredEmbeddingProviderKind;
 	readonly modelId: string;
 	/** Base URL (local sidecar) / decrypted key (hosted). Empty for env-keyless. */
@@ -115,38 +118,22 @@ interface ResolvedProviderConfig {
 	readonly embedding: ResolvedEmbeddingPlane;
 	/** Whether the config came from the stored per-org row or the env fallback. */
 	readonly source: 'stored' | 'env';
-	/** The stored row's `updatedAt`, when resolved from stored config. */
-	readonly updatedAt?: number;
 }
 
-// The default embedding model is the one stamped on rows as provenance
-// (CURRENT_EMBEDDING_MODEL). Single-sourcing it here keeps the resolved model
-// and the stamped model from drifting, preserving the schema's "re-embed when
-// the model changes" invariant.
-const DEFAULT_EMBEDDING_MODEL = CURRENT_EMBEDDING_MODEL;
-
-function taskTier(task: LLMTask): LLMTier {
-	return task === 'draft' || task === 'plan' ? 'capable' : 'fast';
-}
-
-function resolveBaseURL(): string | undefined {
-	const explicit = getOptional('LLM_BASE_URL');
-	if (explicit) return explicit;
+// Environment setup must select the same adapter/defaults as stored settings.
+// OpenRouter and local servers speak chat completions, while native GPT-6 uses
+// Responses (including tool calls). A base URL alone cannot choose that wire.
+function envLanguageKind(): LanguageProviderKind {
 	switch (getOptional('LLM_PROVIDER')) {
 		case 'openrouter':
-			return 'https://openrouter.ai/api/v1';
+			return 'openrouter';
 		case 'ollama':
-			return 'http://ollama:11434/v1';
+		case 'custom':
+			return 'openaiCompatible';
 		default:
-			return undefined;
+			return 'openai';
 	}
 }
-
-// The env fallback always resolves to the `openai` adapter — it covers OpenAI,
-// OpenRouter, and Ollama via a resolved base URL, matching this module's prior
-// single-`createOpenAI`-client behavior. Per-org stored config selects other
-// adapters through the same registry.
-const ENV_LANGUAGE_KIND = 'openai' as const;
 const ENV_EMBEDDING_KIND = 'openai' as const;
 
 /**
@@ -158,11 +145,11 @@ const ENV_EMBEDDING_KIND = 'openai' as const;
 function resolveEnvClientConfig(): ProviderClientConfig {
 	if (!isEnvAiProviderConfigured()) throw new AiNotConfiguredError();
 	const apiKey = envLlmApiKey();
-	return { apiKey: apiKey ?? 'ollama', baseUrl: resolveBaseURL() };
+	return { apiKey: apiKey ?? 'ollama', baseUrl: envLlmBaseUrl() };
 }
 
-function modelIdForTier(tier: LLMTier): string {
-	const defaults = languageProviderFor(ENV_LANGUAGE_KIND).defaultModels;
+function modelIdForTier(tier: LlmTier): string {
+	const defaults = languageProviderFor(envLanguageKind()).defaultModels;
 	return tier === 'fast'
 		? (getOptional('LLM_MODEL_FAST') ?? getOptional('LLM_MODEL') ?? defaults.fast)
 		: (getOptional('LLM_MODEL_CAPABLE') ?? getOptional('LLM_MODEL') ?? defaults.capable);
@@ -176,20 +163,22 @@ function modelIdForTier(tier: LLMTier): string {
  * their model from `LOCAL_EMBEDDING_MODEL`; hosted embedders carry the decrypted
  * `hostedKey`. `storedModel` (the admin's explicit choice) always wins.
  */
-function resolveEmbeddingPlane(
+export function resolveEmbeddingPlane(
 	kind: StoredEmbeddingProviderKind,
 	storedModel: string | undefined,
 	hostedKey: string | undefined,
 	modelVersion: number | undefined
 ): ResolvedEmbeddingPlane {
 	const adapter = embeddingProviderFor(kind);
-	const modelDefault = adapter.isLocal
-		? (getOptional('LOCAL_EMBEDDING_MODEL') ?? adapter.defaultModel)
-		: adapter.defaultModel;
 	const clientConfig: ProviderClientConfig = adapter.isLocal
-		? { baseUrl: getOptional('LOCAL_EMBEDDING_BASE_URL') ?? adapter.defaultBaseUrl }
+		? // The canonical base URL its identity names (lib/embeddingSpace.ts).
+			{ baseUrl: localEmbeddingBaseUrl(kind as 'local' | 'openaiCompatible') }
 		: { apiKey: hostedKey };
-	return { kind, modelId: storedModel ?? modelDefault, clientConfig, modelVersion };
+	const modelId = resolveStoredEmbeddingModel({
+		embeddingProviderKind: kind,
+		embeddingModel: storedModel,
+	});
+	return { kind, modelId, clientConfig, modelVersion };
 }
 
 /** Resolve both planes from the env `LLM_*` fallback (no stored row present). */
@@ -200,7 +189,7 @@ function resolveEnvProviderConfig(): ResolvedProviderConfig {
 	return {
 		source: 'env',
 		language: {
-			kind: ENV_LANGUAGE_KIND,
+			kind: envLanguageKind(),
 			endpointProvenance: classifyEnvLanguageEndpoint(
 				getOptional('LLM_PROVIDER'),
 				Boolean(getOptional('LLM_BASE_URL'))
@@ -210,7 +199,7 @@ function resolveEnvProviderConfig(): ResolvedProviderConfig {
 		},
 		embedding: {
 			kind: ENV_EMBEDDING_KIND,
-			modelId: getOptional('LLM_EMBEDDING_MODEL') ?? DEFAULT_EMBEDDING_MODEL,
+			modelId: envEmbeddingModel(),
 			clientConfig,
 		},
 	};
@@ -230,8 +219,8 @@ export function buildStoredProviderConfig(
 	const adapter = languageProviderFor(row.languageProviderKind);
 	return {
 		source: 'stored',
-		updatedAt: row.updatedAt,
 		language: {
+			configVersion: configVersionOf(row),
 			kind: row.languageProviderKind,
 			endpointProvenance: classifyStoredLanguageEndpoint(
 				row.languageProviderKind,
@@ -267,19 +256,28 @@ export async function resolveAiConfig(ctx: ActionCtx): Promise<ResolvedProviderC
 }
 
 /** The language plane alone: never decrypts the embedding key. */
-async function resolveLanguagePlane(ctx: ActionCtx): Promise<ResolvedLanguagePlane> {
-	const entry = await loadConfigEntry(ctx);
+async function resolveLanguagePlane(ctx: ActionCtx, options: Fresh = {}) {
+	const entry = await loadConfigEntry(ctx, options);
 	if (!entry.row) return resolveEnvProviderConfig().language;
 	const languageKey = await planeKey(ctx, entry, 'language');
 	return buildStoredProviderConfig(entry.row, languageKey, undefined).language;
 }
 
-/** The embedding plane alone: never decrypts the language key. */
-async function resolveEmbeddingPlaneConfig(ctx: ActionCtx): Promise<ResolvedEmbeddingPlane> {
-	const entry = await loadConfigEntry(ctx);
-	if (!entry.row) return resolveEnvProviderConfig().embedding;
-	const embeddingKey = await planeKey(ctx, entry, 'embedding');
-	return buildStoredProviderConfig(entry.row, undefined, embeddingKey).embedding;
+/**
+ * One read of the current configuration (never the language key): its
+ * embedding target now, and its plane, credential included, built from that
+ * same read only when asked. What a caller checks is what it embeds with.
+ */
+export async function readEmbeddingConfigSnapshot(
+	ctx: ActionCtx
+): Promise<{ target: EmbeddingTarget | null; plane: () => Promise<ResolvedEmbeddingPlane> }> {
+	const entry = await loadConfigEntry(ctx, { isFresh: true });
+	const plane = async () =>
+		entry.row
+			? buildStoredProviderConfig(entry.row, undefined, await planeKey(ctx, entry, 'embedding'))
+					.embedding
+			: resolveEnvProviderConfig().embedding;
+	return { target: configuredEmbeddingTarget(entry.row), plane };
 }
 
 /** Test-only: drop the in-process config cache so a fresh resolution runs. */
@@ -288,72 +286,93 @@ export const __resetAiConfigCacheForTests = invalidateAiConfigCache;
 /** Build a model together with the trusted, secret-free resolution metadata. */
 function resolveLanguageModelFromPlane(
 	language: ResolvedLanguagePlane,
-	tier: LLMTier
+	tier: LlmTier
 ): ResolvedLanguageModel {
 	const modelId = tier === 'fast' ? language.models.fast : language.models.capable;
+	const adapter = languageProviderFor(language.kind);
 	return Object.freeze({
-		model: languageProviderFor(language.kind).buildChatModel(language.clientConfig, modelId),
+		// Stamped with its endpoint (ledger rows; a model on our network costs nothing)
+		// and its tier (the dispatch refuses it for a task not allowed it). ADR-0073.
+		model: stampModelEndpoint(
+			adapter.buildChatModel(language.clientConfig, modelId),
+			language.endpointProvenance,
+			{ isLocal: isLocalEndpoint(language.kind, language.clientConfig.baseUrl, adapter), tier }
+		),
 		modelId,
 		endpointProvenance: language.endpointProvenance,
+		identity: languageModelIdentity(language.kind, modelId, language.clientConfig.baseUrl),
+		...(language.configVersion ? { configVersion: language.configVersion } : {}),
 	});
 }
 
-/** Resolve a language model with endpoint identity for hard-budget consumers. */
+/**
+ * Resolve the language model for one call of `task`, with its endpoint
+ * identity (hard-budget consumers price it). The tier is the task's
+ * (`./llm/taskRouting.ts`, from the task-policy catalog): its usual tier, or
+ * the one `choice` names when allowed. `isFresh` re-reads the row (a bundle's claim).
+ */
 export async function resolveLanguageModelWithProvenance(
 	ctx: ActionCtx,
-	task: LLMTask = 'draft'
+	task: AiTaskName,
+	choice?: TierChoice,
+	options: Fresh = {}
 ): Promise<ResolvedLanguageModel> {
-	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx), taskTier(task));
+	const tier = taskTier(task, choice);
+	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx, options), tier);
 }
 
-/** Resolve the language model for a given task (plugs into the AI SDK helpers). */
+/** Resolve the language model for one call of `task` (plugs into the AI SDK helpers). */
 export async function resolveLanguageModel(
 	ctx: ActionCtx,
-	task: LLMTask = 'draft'
+	task: AiTaskName,
+	choice?: TierChoice
 ): Promise<LanguageModel> {
-	return (await resolveLanguageModelWithProvenance(ctx, task)).model;
+	return (await resolveLanguageModelWithProvenance(ctx, task, choice)).model;
+}
+
+/** `LLM_COMPLEXITY_ROUTING=1` (default off): downgrade clearly trivial work to the fast tier. */
+function isComplexityRoutingOn(): boolean {
+	return getOptional('LLM_COMPLEXITY_ROUTING') === '1';
 }
 
 /**
- * Resolve a model for a *user-facing* task, optionally downgrading the capable
+ * Resolve a model for a *user-facing* task, optionally downgrading its capable
  * tier to fast when the user's input is clearly trivial and complexity routing
- * is enabled (`LLM_COMPLEXITY_ROUTING=1`, default off). Only capable-tier tasks
- * downgrade, and only obviously-trivial input does — ambiguous text keeps the
- * capable model so quality never silently drops. `userText` must be the
- * user-controlled text ONLY (never the system prompt / assembled context).
+ * is enabled (`LLM_COMPLEXITY_ROUTING=1`, default off). Only a capable-tier
+ * task whose catalog entry allows `fast` downgrades, and only obviously-trivial
+ * input does — ambiguous text keeps the capable model so quality never
+ * silently drops. `userText` must be the user-controlled text ONLY (never the
+ * system prompt / assembled context).
  */
 export async function resolveLanguageModelForUserText(
 	ctx: ActionCtx,
-	task: LLMTask,
+	task: AiTaskName,
 	userText: string
 ): Promise<LanguageModel> {
-	const language = await resolveLanguagePlane(ctx);
-	const downgrade =
-		getOptional('LLM_COMPLEXITY_ROUTING') === '1' &&
-		taskTier(task) === 'capable' &&
-		isTrivialUserText(userText);
-	return resolveLanguageModelFromPlane(language, downgrade ? 'fast' : taskTier(task)).model;
+	const tier = userTextTier(task, userText, isComplexityRoutingOn());
+	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx), tier).model;
 }
 
 /**
- * Resolve the model for the inbound agent's `draft` step, downgrading the
- * capable tier to fast when the message is clearly trivial AND complexity
- * routing is enabled (`LLM_COMPLEXITY_ROUTING=1`, default off). Unlike
- * {@link resolveLanguageModelForUserText}, triviality is judged from the
- * TRUSTED, sanitized classifier signals only — never the attacker-controlled
- * email body — so a crafted "thanks!"-looking inbound can't force a cheaper,
- * lower-quality draft. Ambiguous / important / low-confidence messages keep the
- * capable tier, and when routing is off this is exactly today's single-tier
- * behaviour.
+ * How the inbound agent's `draft` step writes its reply (`./llm/complexity.ts`
+ * `classifiedDraftRoute`), from the TRUSTED, sanitized classifier signals only
+ * (never the attacker-controlled email body, so a crafted "thanks!" cannot
+ * force a cheaper draft): `fast` under `LLM_COMPLEXITY_ROUTING=1` for a
+ * clearly trivial message, as before; `cheap_first` for an eligible REVIEWED
+ * draft with the policy's `cheapFirstWriter` on (D2); else `capable`. With
+ * both off (the defaults) this is exactly today's single-tier behaviour.
  */
-export async function resolveLanguageModelForClassifiedDraft(
-	ctx: ActionCtx,
-	signals: ClassificationSignals
-): Promise<LanguageModel> {
-	const language = await resolveLanguagePlane(ctx);
-	const downgrade =
-		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && isTrivialClassifiedMessage(signals);
-	return resolveLanguageModelFromPlane(language, downgrade ? 'fast' : 'capable').model;
+export function classifiedDraftRouteOf(
+	signals: ClassificationSignals,
+	writer: Omit<ClassifiedDraftRouteOptions, 'isComplexityRoutingOn'> = {
+		cheapFirstWriter: 'off',
+		isReviewedDraft: false,
+	}
+): ClassifiedDraftRoute {
+	return classifiedDraftRoute(signals, {
+		...writer,
+		isComplexityRoutingOn: isComplexityRoutingOn(),
+	});
 }
 
 // Known embedding models and their native output width. Used to fail fast when
@@ -392,13 +411,48 @@ function assertKnownEmbeddingWidth(modelId: string): void {
  * try/catch so a misconfiguration surfaces rather than being swallowed.
  */
 export async function resolveEmbeddingModel(ctx: ActionCtx): Promise<EmbeddingModel> {
-	const { kind, modelId, clientConfig } = await resolveEmbeddingPlaneConfig(ctx);
+	return (await resolveIndexEmbedder(ctx)).model;
+}
+
+/**
+ * An embedding model with the target it embeds in. A caller that stores or
+ * searches a vector completes the target into the vector's space identity with
+ * `measuredEmbeddingSpace` (`lib/aiRouting/embeddingProbe.ts`), after the call.
+ */
+export interface IndexEmbedder {
+	readonly model: EmbeddingModel;
+	readonly target: EmbeddingTarget;
+}
+
+/** Build an embedder for a resolved plane. Throws an actionable error on an unusable config. */
+export function buildIndexEmbedder(
+	plane: Pick<ResolvedEmbeddingPlane, 'kind' | 'modelId' | 'clientConfig'>,
+	target: EmbeddingTarget
+): IndexEmbedder {
+	const { kind, modelId, clientConfig } = plane;
 	assertKnownEmbeddingWidth(modelId);
 	const adapter = embeddingProviderFor(kind);
 	// Surface an unusable config (missing hosted key / local base URL) as an
 	// actionable error before building the model.
 	adapter.validateCredentials({ ...clientConfig, modelId });
-	return adapter.buildEmbeddingModel({ ...clientConfig, modelId });
+	return {
+		// Stamped so the embedding's ledger row names its endpoint, and a
+		// self-hosted embedder's rows cost nothing (ADR-0073).
+		model: stampModelEndpoint(
+			adapter.buildEmbeddingModel({ ...clientConfig, modelId }),
+			`embedding:${kind}`,
+			{ isLocal: isLocalEndpoint(kind, clientConfig.baseUrl, adapter) }
+		),
+		target,
+	};
+}
+
+/** The configured embedder and its target (stored row, else the env fallback). */
+export async function resolveIndexEmbedder(ctx: ActionCtx): Promise<IndexEmbedder> {
+	const { plane, target } = await readEmbeddingConfigSnapshot(ctx);
+	// No target: neither a stored row nor an env configuration.
+	if (!target) throw new AiNotConfiguredError();
+	return buildIndexEmbedder(await plane(), target);
 }
 
 /**
@@ -439,8 +493,8 @@ export function getLLMConfig() {
 		provider: getOptional('LLM_PROVIDER') ?? 'openai',
 		modelFast: modelIdForTier('fast'),
 		modelCapable: modelIdForTier('capable'),
-		embeddingModel: getOptional('LLM_EMBEDDING_MODEL') ?? DEFAULT_EMBEDDING_MODEL,
-		baseURL: resolveBaseURL(),
+		embeddingModel: envEmbeddingModel(),
+		baseURL: envLlmBaseUrl(),
 		hasApiKey: !!envLlmApiKey(),
 	};
 }

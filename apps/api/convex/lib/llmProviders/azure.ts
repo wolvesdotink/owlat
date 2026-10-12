@@ -9,6 +9,16 @@
  * resource endpoint, so the two default ids below are only common conventions —
  * the effective id is always whatever the deployment is named.
  *
+ * KNOWN LIMIT: Owlat stores no canonical model identity for a deployment. The
+ * GPT-6 request handling (`lib/llm/requestPolicy.ts`) and list-price reporting
+ * (`lib/llm/pricing.ts`) both read the model id, so they apply only to a
+ * deployment named after its model (`gpt-6-luna`, or a name that starts with it,
+ * such as `gpt-6-luna-eu`). A GPT-6 deployment named `mail-fast` gets neither:
+ * sampling parameters are sent unchanged and spend is reported at the
+ * unknown-model default. Hard-budget admission never prices Azure either way
+ * (its endpoint provenance is `custom`). `lib/llm/__tests__/azureDeploymentIdentity.test.ts`
+ * pins this.
+ *
  * Config is a resource base URL (`https://<resource>.openai.azure.com/openai` —
  * the SDK appends `/v1` to it) plus an encrypted API key. The underlying client
  * is memoized per
@@ -20,6 +30,7 @@
  * embedding plane still resolves independently (local-by-default).
  */
 
+import { LANGUAGE_MODEL_CATALOG } from '@owlat/shared/aiModelCatalog';
 import { createAzure } from '@ai-sdk/azure';
 import type { LanguageModel } from 'ai';
 import { hostedCacheKey, memoizeClient } from './clientCache';
@@ -42,7 +53,7 @@ export const azureLanguageAdapter: LanguageProviderAdapter<'azure'> = {
 	isLocal: false,
 	// Deployment names, not canonical model ids — the admin sets these in Azure.
 	// These are common conventions; the effective id is the deployment's name.
-	defaultModels: { fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' },
+	defaultModels: LANGUAGE_MODEL_CATALOG.azure.defaults,
 	buildChatModel(cfg: ProviderClientConfig, modelId: string): LanguageModel {
 		return azureClient(cfg)(modelId);
 	},

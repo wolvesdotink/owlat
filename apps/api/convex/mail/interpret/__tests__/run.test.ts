@@ -5,13 +5,15 @@
  */
 
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
 import { enableFeatures } from '../../../__tests__/factories';
 import { actionsModelSchema, briefModelSchema } from '../schema';
 import { modules, seedMailThread, type Test } from './interpret.testlib';
 import { captureInterpretSource } from '../sources';
+import { AdmissionRefusedError } from '../../../lib/llm/admissionPort';
+import { reconcileSpend } from '../../../aiRouting/__tests__/spend.testlib';
 
 /** Seed a message and take its enqueue-time snapshot, as delivery does. */
 async function seedCaptured(
@@ -28,13 +30,15 @@ async function seedCaptured(
 	return seeded;
 }
 
-const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), spend: vi.fn() }));
+const llm = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
 
-vi.mock('../../../lib/llm/dispatch', () => ({ runLlmObject: llm.runLlmObject }));
+vi.mock('../../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
+	return { runLlmObject: metered((opts: unknown) => llm.runLlmObject(opts)) };
+});
 vi.mock('../../../lib/llmProvider', () => ({
 	resolveLanguageModel: vi.fn(async () => ({ modelId: 'stub-model' })),
 }));
-vi.mock('../../../analytics/llmUsage', () => ({ recordLlmSpend: llm.spend }));
 
 const TEXT = 'Could you send me the signed contract by Friday?';
 
@@ -81,19 +85,18 @@ function modelOutput(segmentId: string) {
 
 beforeEach(() => {
 	llm.runLlmObject.mockReset();
-	llm.spend.mockReset();
 	llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
 		if (schema === briefModelSchema) {
 			return {
 				object: modelOutput('s0'),
-				tokenUsage: { totalTokens: 10 },
+				tokenUsage: { promptTokens: 10, completionTokens: 0, totalTokens: 10 },
 				modelUsed: 'stub-model',
 			};
 		}
 		// The verifier: support every claim it is asked about.
 		return {
 			object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] },
-			tokenUsage: { totalTokens: 2 },
+			tokenUsage: { promptTokens: 2, completionTokens: 0, totalTokens: 2 },
 			modelUsed: 'stub-model',
 		};
 	});
@@ -123,11 +126,86 @@ describe('interpretMessage', () => {
 			verify: 'passed',
 			responsibility: 'us',
 		});
-		expect(llm.spend.mock.calls.map((c) => c[1])).toEqual(['interpret', 'interpret_verify']);
+		const rows = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
+		expect(rows.map((row) => [row.feature, row.rootRequestId])).toEqual([
+			['interpret', `postbox:${messageId}`],
+			['interpret_verify', `postbox:${messageId}`],
+		]);
 		// The verifier read the claim and its quote, nothing else.
 		const verifyPrompt = llm.runLlmObject.mock.calls[1]?.[0]?.prompt as string;
 		expect(verifyPrompt).toContain('CLAIM item:0');
 		expect(verifyPrompt).toContain('send me the signed contract by Friday');
+	});
+
+	describe('a claim too long to send the verifier (Sol r5 F1)', () => {
+		const long =
+			'Could you send me the signed contract by Friday, ' +
+			'together with every appendix, every schedule and the cover letter we went through on the call last week, '.repeat(
+				4
+			) +
+			'but do not send anything until I confirm.';
+		const seedLong = async (t: Test) => {
+			await enableFeatures(t, ['ai']);
+			const { messageId } = await seedCaptured(t, { text: long });
+			const output = modelOutput('s0');
+			output.items[0]!.quotes = [{ segmentId: 's0', text: long }];
+			return { source: { kind: 'mail' as const, id: messageId }, output };
+		};
+
+		it('is never verified, and the run is partial with no retry and no further extraction', async () => {
+			expect(long.length).toBeGreaterThan(400);
+			const t = convexTest(schema, modules);
+			const { source, output } = await seedLong(t);
+			llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+				if (schema === briefModelSchema) return { object: output };
+				return { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } };
+			});
+
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+
+			// The extraction only: the clipped claim never reached the verifier.
+			expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
+			expect(out).toMatchObject({ status: 'partial', errorCode: 'verify_unsendable' });
+			if (out.status === 'gone') throw new Error('unreachable');
+			expect(out.retryAt).toBeUndefined();
+			const items = await t.run(async (ctx) => ctx.db.query('threadItems').collect());
+			expect(items).toHaveLength(1);
+			expect(items[0]?.verify).not.toBe('passed');
+			const row = (await t.run((ctx) => ctx.db.query('messageInterpretations').collect())).find(
+				(r) => r.isCounted
+			);
+			expect(row).toMatchObject({ status: 'partial', errorCode: 'verify_unsendable' });
+			expect(row?.nextRetryAt).toBeUndefined();
+
+			// Asked again: answered from the stored extraction, nothing bought.
+			llm.runLlmObject.mockClear();
+			const again = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(again).toMatchObject({
+				status: 'partial',
+				isReplayed: true,
+				errorCode: 'verify_unsendable',
+			});
+			expect(llm.runLlmObject).not.toHaveBeenCalled();
+		});
+
+		it('lets a transient verifier failure in the same run win, so the run retries', async () => {
+			const t = convexTest(schema, modules);
+			const { source, output } = await seedLong(t);
+			// A second, sendable claim whose verify call fails.
+			const short = modelOutput('s0').items[0]!;
+			short.quotes = [{ segmentId: 's0', text: 'send me the signed contract by Friday' }];
+			output.items.push(short);
+			llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+				if (schema === briefModelSchema) return { object: output };
+				throw new Error('verifier down');
+			});
+
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+
+			expect(out).toMatchObject({ status: 'partial', errorCode: 'verify' });
+			if (out.status === 'gone') throw new Error('unreachable');
+			expect(out.retryAt).toBeGreaterThan(Date.now());
+		});
 	});
 
 	it('reuses an applied revision instead of calling the model again', async () => {
@@ -164,6 +242,182 @@ describe('interpretMessage', () => {
 				.first()
 		);
 		expect(brief?.completeness).toBe('partial');
+	});
+
+	it('defers, without spending a retry, when spend admission refuses the model call (Sol r1 F7)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedCaptured(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		llm.runLlmObject.mockRejectedValue(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+
+		for (let run = 0; run < 5; run++) {
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(out).toMatchObject({ status: 'failed', errorCode: 'budget' });
+		}
+		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
+		const counted = rows.find((r) => r.isCounted);
+		// No admitted attempt was spent, and the next call may try again at once.
+		expect(counted?.retryCount ?? 0).toBe(0);
+		expect(counted?.nextRetryAt).toBeDefined();
+	});
+
+	describe("the run's one spend hold (Sol r4)", () => {
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
+		const counted = (t: Test) =>
+			t.run(async (ctx) =>
+				(await ctx.db.query('messageInterpretations').collect()).find((row) => row.isCounted)
+			);
+
+		it('a refused hold makes no call and defers the whole run, backed off, with no retry spent', async () => {
+			// A ceiling the gate's smallest probe fits under and the run's hold does not.
+			vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '0.01');
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['ai']);
+			await reconcileSpend(t);
+			const { messageId } = await seedCaptured(t, { text: TEXT });
+			const source = { kind: 'mail' as const, id: messageId };
+
+			const before = Date.now();
+			const first = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(first).toMatchObject({
+				status: 'failed',
+				errorCode: 'budget',
+				budgetRefusal: { reason: 'daily_ceiling' },
+			});
+			if (first.status === 'gone') throw new Error('unreachable');
+			expect(first.retryAt).toBeGreaterThanOrEqual(before + 5 * 60 * 1000);
+			expect(llm.runLlmObject).not.toHaveBeenCalled();
+			expect(await counted(t)).toMatchObject({ retryCount: 0, budgetDeferrals: 1 });
+			expect(await t.run((ctx) => ctx.db.query('llmReservations').collect())).toEqual([]);
+
+			// Not due: answered from the row. Due: refused again, the backoff grows.
+			const early = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(early).toMatchObject({ isReplayed: true });
+			const row = await counted(t);
+			if (row) await t.run((ctx) => ctx.db.patch(row._id, { nextRetryAt: 0 }));
+			const second = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			if (second.status === 'gone') throw new Error('unreachable');
+			expect(second.retryAt).toBeGreaterThanOrEqual(Date.now() + 9 * 60 * 1000);
+			expect(await counted(t)).toMatchObject({ retryCount: 0, budgetDeferrals: 2 });
+			expect(llm.runLlmObject).not.toHaveBeenCalled();
+		});
+
+		it('an admitted run draws every call on its hold, so the verifier cannot be refused', async () => {
+			vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['ai']);
+			await reconcileSpend(t);
+			const { messageId } = await seedCaptured(t, { text: TEXT });
+			const meters: { hasOuterHold: boolean; hasPort: boolean }[] = [];
+			llm.runLlmObject.mockImplementation(
+				async (opts: {
+					schema: unknown;
+					meter: { hasOuterHold: boolean; admission?: unknown };
+				}) => {
+					meters.push({ hasOuterHold: opts.meter.hasOuterHold, hasPort: !!opts.meter.admission });
+					// While the run runs, its one hold is outstanding.
+					const holds = await t.run((ctx) => ctx.db.query('llmReservations').collect());
+					expect(holds).toEqual([
+						expect.objectContaining({ status: 'held', task: 'mail.extract' }),
+					]);
+					return opts.schema === briefModelSchema
+						? { object: modelOutput('s0') }
+						: { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } };
+				}
+			);
+
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+				source: { kind: 'mail', id: messageId },
+			});
+
+			expect(out).toMatchObject({ status: 'complete' });
+			// The extraction and the verifier: neither reserves on its own, so
+			// neither can be refused once the run is admitted.
+			expect(meters).toEqual([
+				{ hasOuterHold: true, hasPort: false },
+				{ hasOuterHold: true, hasPort: false },
+			]);
+			const [hold] = await t.run((ctx) => ctx.db.query('llmReservations').collect());
+			expect(hold).toMatchObject({ status: 'settled' });
+			// Neither call reported usage: each is charged at its own keyed bound,
+			// the verifier's far below the extraction's, the total within the hold
+			// (Sol r5 F2).
+			const requestRows = (await t.run((ctx) => ctx.db.query('llmUsageEvents').collect())).filter(
+				(r) => r.reservationId === hold?.reservationId && r.feature !== 'admission_settlement'
+			);
+			const boundOf = (r: { requestId?: string; attempt?: number }) =>
+				hold?.requestBounds?.find((b) => b.requestId === r.requestId && b.attempt === r.attempt)
+					?.microusd;
+			const extractBound = boundOf(requestRows.find((r) => r.feature === 'interpret')!);
+			const verifyBound = boundOf(requestRows.find((r) => r.feature === 'interpret_verify')!);
+			expect(extractBound).toBeGreaterThan(0);
+			expect(verifyBound).toBeGreaterThan(0);
+			expect(verifyBound!).toBeLessThan(extractBound!);
+			expect(hold?.settledMicrousd).toBe(extractBound! + verifyBound!);
+			expect(hold!.settledMicrousd!).toBeLessThanOrEqual(hold!.heldMicrousd);
+			const rows = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
+			expect(
+				rows.filter(
+					(r) => r.reservationId === hold?.reservationId && r.feature !== 'admission_settlement'
+				)
+			).toHaveLength(2);
+		});
+
+		it('an AI-off gate counts no attempt', async () => {
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['ai']);
+			const { messageId } = await seedCaptured(t, { text: TEXT });
+			const source = { kind: 'mail' as const, id: messageId };
+			// One admitted attempt that failed: retryCount 1, a repair due later.
+			llm.runLlmObject.mockRejectedValue(new Error('provider down'));
+			await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(await counted(t)).toMatchObject({ retryCount: 1 });
+
+			// AI turned off; the repair comes due: refused at the gate, no call, no attempt.
+			await t.run(async (ctx) => {
+				const settings = await ctx.db.query('instanceSettings').first();
+				if (settings) {
+					await ctx.db.patch(settings._id, {
+						featureFlags: { ...settings.featureFlags, ai: false },
+					});
+				}
+				const flags = await ctx.db.query('featureFlagSettings').first();
+				if (flags) {
+					await ctx.db.patch(flags._id, { featureFlags: { ...flags.featureFlags, ai: false } });
+				}
+				const row = (await ctx.db.query('messageInterpretations').collect()).find(
+					(r) => r.isCounted
+				);
+				if (row) await ctx.db.patch(row._id, { nextRetryAt: 0 });
+			});
+			llm.runLlmObject.mockClear();
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(out).toMatchObject({ status: 'failed', errorCode: 'ai_off' });
+			expect(llm.runLlmObject).not.toHaveBeenCalled();
+			expect(await counted(t)).toMatchObject({ retryCount: 1 });
+		});
+
+		it('reports a verifier refusal as an ordinary incomplete run, with the refusal (Sol r4 F2)', async () => {
+			const t = convexTest(schema, modules);
+			await enableFeatures(t, ['ai']);
+			const { messageId } = await seedCaptured(t, { text: TEXT });
+			llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+				if (schema === briefModelSchema) return { object: modelOutput('s0') };
+				throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+			});
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+				source: { kind: 'mail', id: messageId },
+			});
+			expect(out).toMatchObject({
+				status: 'partial',
+				errorCode: 'verify',
+				budgetRefusal: { reason: 'daily_ceiling', limit: 'ceiling' },
+			});
+			expect(await counted(t)).toMatchObject({ retryCount: 1 });
+		});
 	});
 
 	it('fails soft when the model throws', async () => {

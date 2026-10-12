@@ -4,8 +4,8 @@
  *
  * A presentational MIRROR of the backend adapter registry
  * (`apps/api/convex/lib/llmProviders/*`). The page runs in the browser and can't
- * import the Node / AI-SDK adapters, so the labels, "get a key" links, and the
- * default model ids the form reveals live here. The backend stays the single
+ * import the Node / AI-SDK adapters, so the labels and "get a key" links live here. Model defaults and picker IDs
+ * come from the browser-safe shared model catalog. The backend stays the single
  * source of truth for provider *behaviour*; this module is only the copy +
  * defaults the UI shows. Adding a provider is one entry here + one adapter file
  * there (per the 2026-07-10 pluggable-AI-providers plan, locked decision 4).
@@ -22,6 +22,7 @@
  * (`__tests__/aiProviders.test.ts`) — no component mount needed.
  */
 
+import { LANGUAGE_MODEL_CATALOG, GOOGLE_EMBEDDING_DEFAULT } from '@owlat/shared/aiModelCatalog';
 import type { LocalizedText } from '~/utils/localizedText';
 
 /** Message-key root for this module; see `i18n/locales/en.json`. */
@@ -150,8 +151,8 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		label: `${K}.providers.openai.label`,
 		isLocal: false,
 		docsUrl: 'https://platform.openai.com/api-keys',
-		defaultModels: { fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' },
-		curatedModels: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'],
+		defaultModels: LANGUAGE_MODEL_CATALOG.openai.defaults,
+		curatedModels: LANGUAGE_MODEL_CATALOG.openai.models,
 		hint: `${K}.providers.openai.hint`,
 	},
 	{
@@ -159,8 +160,8 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		label: `${K}.providers.anthropic.label`,
 		isLocal: false,
 		docsUrl: 'https://console.anthropic.com/settings/keys',
-		defaultModels: { fast: 'claude-haiku-4-5', capable: 'claude-opus-4-8' },
-		curatedModels: ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
+		defaultModels: LANGUAGE_MODEL_CATALOG.anthropic.defaults,
+		curatedModels: LANGUAGE_MODEL_CATALOG.anthropic.models,
 		hint: `${K}.providers.anthropic.hint`,
 	},
 	{
@@ -168,13 +169,8 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		label: `${K}.providers.google.label`,
 		isLocal: false,
 		docsUrl: 'https://aistudio.google.com/app/apikey',
-		defaultModels: { fast: 'gemini-3.1-flash-lite', capable: 'gemini-3.5-flash' },
-		curatedModels: [
-			'gemini-3.5-flash',
-			'gemini-3.1-pro-preview',
-			'gemini-3.1-flash-lite',
-			'gemini-2.5-flash',
-		],
+		defaultModels: LANGUAGE_MODEL_CATALOG.google.defaults,
+		curatedModels: LANGUAGE_MODEL_CATALOG.google.models,
 		hint: `${K}.providers.google.hint`,
 	},
 	{
@@ -184,8 +180,8 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		docsUrl: 'https://learn.microsoft.com/azure/ai-services/openai/',
 		requiresBaseUrl: true,
 		defaultBaseUrl: 'https://<resource>.openai.azure.com/openai',
-		defaultModels: { fast: 'gpt-5.6-luna', capable: 'gpt-5.6-sol' },
-		curatedModels: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'],
+		defaultModels: LANGUAGE_MODEL_CATALOG.azure.defaults,
+		curatedModels: LANGUAGE_MODEL_CATALOG.azure.models,
 		hint: `${K}.providers.azure.hint`,
 	},
 	{
@@ -193,21 +189,8 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		label: `${K}.providers.openrouter.label`,
 		isLocal: false,
 		docsUrl: 'https://openrouter.ai/keys',
-		defaultModels: { fast: 'deepseek/deepseek-v4-flash', capable: 'anthropic/claude-sonnet-5' },
-		// The platform's most-used models (per openrouter.ai/rankings), most popular
-		// first within each tier — not a mirror of the native provider catalogs.
-		curatedModels: [
-			'anthropic/claude-sonnet-5',
-			'anthropic/claude-opus-4.8',
-			'deepseek/deepseek-v4-flash',
-			'deepseek/deepseek-v4-pro',
-			'openai/gpt-5.6-sol',
-			'openai/gpt-5.6-luna',
-			'google/gemini-3.5-flash',
-			'minimax/minimax-m3',
-			'xiaomi/mimo-v2.5-pro',
-			'moonshotai/kimi-k2.6',
-		],
+		defaultModels: LANGUAGE_MODEL_CATALOG.openrouter.defaults,
+		curatedModels: LANGUAGE_MODEL_CATALOG.openrouter.models,
 		supportsModelListing: true,
 		hint: `${K}.providers.openrouter.hint`,
 	},
@@ -216,8 +199,8 @@ export const LANGUAGE_PROVIDERS: readonly LanguageProviderMeta[] = [
 		label: `${K}.providers.openaiCompatible.label`,
 		isLocal: true,
 		defaultBaseUrl: 'http://localhost:11434/v1',
-		defaultModels: { fast: 'llama3.1', capable: 'llama3.1' },
-		curatedModels: ['llama3.1', 'llama3.3', 'qwen3', 'gemma3', 'mistral'],
+		defaultModels: LANGUAGE_MODEL_CATALOG.openaiCompatible.defaults,
+		curatedModels: LANGUAGE_MODEL_CATALOG.openaiCompatible.models,
 		supportsModelListing: true,
 		hint: `${K}.providers.openaiCompatible.hint`,
 	},
@@ -250,8 +233,8 @@ export const EMBEDDING_PROVIDERS: readonly EmbeddingProviderMeta[] = [
 		label: `${K}.embedders.google.label`,
 		isLocal: false,
 		dimensions: 768,
-		defaultModel: 'text-embedding-004',
-		curatedModels: ['text-embedding-004'],
+		defaultModel: GOOGLE_EMBEDDING_DEFAULT.model,
+		curatedModels: [GOOGLE_EMBEDDING_DEFAULT.model],
 	},
 	{
 		kind: 'openaiCompatible',
@@ -432,7 +415,10 @@ export function resolveModelId(choice: string, custom: string): string {
  */
 export function validateLanguageConfig(input: {
 	kind: string;
+	/** A stored key that still applies (same provider kind and base URL). */
 	hasStoredKey: boolean;
+	/** A key is stored, but for another provider or address, so the save drops it. */
+	hasStrandedKey?: boolean;
 	apiKey: string;
 	baseUrl?: string;
 }): string | null {
@@ -443,6 +429,7 @@ export function validateLanguageConfig(input: {
 	}
 	if (!languageProviderRequiresKey(input.kind)) return null;
 	if (input.hasStoredKey || input.apiKey.trim().length > 0) return null;
+	if (input.hasStrandedKey) return `${K}.validation.storedKeyNotReusable`;
 	return `${K}.validation.apiKeyRequired.${provider}`;
 }
 

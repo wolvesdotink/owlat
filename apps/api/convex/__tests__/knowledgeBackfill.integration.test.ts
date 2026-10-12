@@ -1,4 +1,6 @@
 import { convexTest } from 'convex-test';
+import { v } from 'convex/values';
+import { internalAction } from '../_generated/server';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
@@ -783,5 +785,93 @@ describe('agent/knowledgeBackfill shim', () => {
 		await t.run(async (ctx) => {
 			expect((await ctx.db.get(jobId))!.status).toBe('cancelled');
 		});
+	});
+});
+
+// =====================================================================
+// Sol r3 F3: an interrupted extraction is resumed, and counted apart
+// =====================================================================
+
+describe('knowledgeBackfill.runChunk — an extraction a budget refusal interrupted', () => {
+	const resumed: string[] = [];
+	let completes: string | undefined;
+	// A stand-in extractor: it completes one message and leaves the other deferred.
+	const modulesWithExtractorStub = {
+		...modules,
+		'../knowledge/extraction.ts': async () => ({
+			extractFromMessage: internalAction({
+				args: { inboundMessageId: v.id('inboundMessages'), root: v.optional(v.any()) },
+				handler: async (ctx, args) => {
+					resumed.push(args.inboundMessageId);
+					if (args.inboundMessageId !== completes) return;
+					await ctx.runMutation(internal.knowledge.extractionProgress.markExtraction, {
+						sourceType: 'agent_extracted',
+						sourceId: args.inboundMessageId,
+						status: 'complete',
+					});
+				},
+			}),
+		}),
+	};
+
+	it('resumes an in-progress message instead of skipping it, and counts partial progress apart', async () => {
+		resumed.length = 0;
+		const t = convexTest(schema, modulesWithExtractorStub);
+		await enableFeatures(t, ['ai.agent']);
+		let jobId!: Id<'knowledgeBackfillJobs'>;
+		let finished!: Id<'inboundMessages'>;
+		let deferred!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			// Done the old way: an entry and no marker.
+			const legacy = await ctx.db.insert('inboundMessages', msgData({ receivedAt: 1000 }));
+			await ctx.db.insert('knowledgeEntries', preExtractedEntry(legacy));
+			// Both interrupted after their first entry was saved.
+			finished = await ctx.db.insert('inboundMessages', msgData({ receivedAt: 2000 }));
+			deferred = await ctx.db.insert('inboundMessages', msgData({ receivedAt: 3000 }));
+			for (const id of [finished, deferred]) {
+				await ctx.db.insert('knowledgeEntries', preExtractedEntry(id));
+				await ctx.db.insert('knowledgeExtractionProgress', {
+					sourceType: 'agent_extracted',
+					sourceId: id,
+					status: 'in_progress',
+					updatedAt: Date.now(),
+				});
+			}
+			jobId = await ctx.db.insert('knowledgeBackfillJobs', {
+				status: 'running',
+				triggeredBy: 'test',
+				totalCount: 3,
+				scannedCount: 0,
+				extractedCount: 0,
+				skippedCount: 0,
+				errorCount: 0,
+				startedAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		completes = finished;
+
+		await t.action(internal.knowledge.messageBackfill.runChunk, { jobId, chunkSize: 30 });
+
+		expect(resumed).toEqual([finished, deferred]);
+		const job = await t.run((ctx) => ctx.db.get(jobId));
+		expect(job).toMatchObject({
+			scannedCount: 3,
+			skippedCount: 1,
+			extractedCount: 1,
+			partialCount: 1,
+			errorCount: 0,
+		});
+		// The old query, re-exported for the previous release, answers the same way.
+		expect(
+			await t.query(internal.knowledge.messageBackfill.hasExtraction, {
+				inboundMessageId: deferred,
+			})
+		).toBe(false);
+		expect(
+			await t.query(internal.knowledge.messageBackfill.hasExtraction, {
+				inboundMessageId: finished,
+			})
+		).toBe(true);
 	});
 });
