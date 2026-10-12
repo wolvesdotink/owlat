@@ -72,9 +72,12 @@ export async function batchRouteFor(
 
 /** The model the adapters build for `route`, with `fetchImpl` in place of the network. */
 function routeModel(route: BatchRoute, fetchImpl: Fetch): LanguageModel {
+	// The SDKs call it as a plain fetch; runtimes whose `fetch` type carries
+	// extras (Bun's `preconnect`) need the cast.
+	const fetch = fetchImpl as typeof globalThis.fetch;
 	return route.provider === 'openai-native'
-		? createOpenAI({ apiKey: route.apiKey, fetch: fetchImpl })(route.modelId)
-		: createAnthropic({ apiKey: route.apiKey, fetch: fetchImpl })(route.modelId);
+		? createOpenAI({ apiKey: route.apiKey, fetch })(route.modelId)
+		: createAnthropic({ apiKey: route.apiKey, fetch })(route.modelId);
 }
 
 /** What one structured call sends: everything but the model. */
