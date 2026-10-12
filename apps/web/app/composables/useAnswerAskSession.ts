@@ -146,9 +146,14 @@ export function useAnswerAskSession(opts: {
 		const current = session.value;
 		if (!current) return startOp.isLoading.value ? 'checking' : 'idle';
 		if (current.status === 'drafting' && stream.value?.status === 'complete') return 'ready';
-		if (current.status === 'drafting' && stream.value?.status === 'error') {
-			return isBudgetStreamError(stream.value.errorMessage) ? 'budget' : 'error';
+		// A draft the budget refused: the stream carries the code, before the
+		// session settles (`drafting`) and after (`error`), also on a reload.
+		const endedOnBudget =
+			stream.value?.status === 'error' && isBudgetStreamError(stream.value.errorMessage);
+		if ((current.status === 'drafting' || current.status === 'error') && endedOnBudget) {
+			return 'budget';
 		}
+		if (current.status === 'drafting' && stream.value?.status === 'error') return 'error';
 		// `drafting` with no stream yet: the answers are being applied (a file
 		// answer copying) before the draft starts. Busy, not a missing stream.
 		return current.status;

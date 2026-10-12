@@ -262,6 +262,37 @@ describe('useAnswerAskSession', () => {
 		expect(api.phase.value).toBe('error');
 	});
 
+	it('keeps the budget state once the server settles the session as error, and on a reload', async () => {
+		const refused = {
+			_id: 'ds1',
+			status: 'error',
+			text: '',
+			errorMessage: 'AI_BUDGET_EXHAUSTED',
+		};
+		data['getSession']!.value = session({ status: 'drafting', streamId: 'ds1' });
+		data['getDraftStream']!.value = { _id: 'ds1', status: 'streaming', text: '' };
+		const { api } = host(composerMock());
+		data['getDraftStream']!.value = refused;
+		await nextTick();
+		expect(api.phase.value).toBe('budget');
+		// writeAnswerDraft settles the session `error` with an English sentence.
+		data['getSession']!.value = session({
+			status: 'error',
+			streamId: 'ds1',
+			errorMessage: 'The AI spend budget for today is used up.',
+		});
+		await nextTick();
+		expect(api.phase.value).toBe('budget');
+
+		// A reload finds the settled session and its stream.
+		const reloaded = host(composerMock());
+		expect(reloaded.api.phase.value).toBe('budget');
+
+		// Any other settled failure stays a failure.
+		data['getDraftStream']!.value = { ...refused, errorMessage: 'draft_failed' };
+		expect(reloaded.api.phase.value).toBe('error');
+	});
+
 	it('streams into the editor, then settles the draft, the follow-up and the files once', async () => {
 		const composer = composerMock();
 		const { api, onSettled } = host(composer);
