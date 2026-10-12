@@ -17,6 +17,15 @@ crons.interval(
 	{}
 );
 
+// Spend admission (ADR-0073, Phase 1b): settle holds whose action died, and
+// keep the spend-period aggregate reconciled with the ledger.
+crons.interval(
+	'settle expired spend holds',
+	{ minutes: 5 },
+	internal.aiRouting.admission.sweepExpiredHolds,
+	{}
+);
+
 crons.interval(
 	'reconcile MTA suppressions',
 	{ hours: 24 },

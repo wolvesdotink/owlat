@@ -20,6 +20,7 @@
 
 import type { AiTaskName } from '@owlat/shared/aiRouting';
 import type { TokenUsage } from '../../agent/steps/types';
+import type { LlmUsagePlane } from '../llmUsageTags';
 
 /**
  * The outermost request a call serves, and the call that issued it. The id is
@@ -113,9 +114,11 @@ export interface LlmRequestRecord {
 	readonly isFallback?: boolean;
 	/** Decision rows: the adapter that answered is calibrated. Each request keeps its own. */
 	readonly isCalibrated?: boolean;
+	/** The admission hold the request ran under (stamped by the meter, never by a dispatch). */
+	readonly reservationId?: string;
 }
 
-export type LlmRequestInput = Omit<LlmRequestRecord, 'attempt'>;
+export type LlmRequestInput = Omit<LlmRequestRecord, 'attempt' | 'reservationId'>;
 
 export interface LlmCallMeterInit {
 	readonly task?: AiTaskName;
@@ -127,6 +130,52 @@ export interface LlmCallMeterInit {
 	 * (`./actionDeadline.ts`). Every dispatch enforces the time left.
 	 */
 	readonly deadlineAt?: number;
+	/**
+	 * Admission for the call's dispatches (`./admissionPort.ts`), installed by
+	 * `analytics/meteredSpend.ts` `meterFor` in an action. Absent: no admission.
+	 */
+	readonly admission?: AdmissionPort;
+	/**
+	 * The call runs under a hold its caller took and settles (an embedding
+	 * batch, a writer escalation): the dispatch reserves nothing more.
+	 */
+	readonly hasOuterHold?: boolean;
+}
+
+/** What one dispatch asks admission for (`./admissionPort.ts` computes it). */
+export interface DispatchEstimate {
+	readonly task: AiTaskName | undefined;
+	readonly plane: LlmUsagePlane;
+	readonly modelId: string;
+	readonly endpoint?: string;
+	/** Integer micro-USD the whole call may cost. */
+	readonly microusd: number;
+	/** Provider requests the call may make. */
+	readonly maxRequests: number;
+}
+
+/** The meter's line to admission, installed by `analytics/meteredSpend.ts` `meterFor` in an action. */
+export interface AdmissionPort {
+	/** Reserve, or throw `AdmissionRefusedError`. Null: admitted with nothing held. */
+	admit(estimate: DispatchEstimate): Promise<{ readonly reservationId: string } | null>;
+	/**
+	 * Grow a hold by one more provider request of `microusd` before it is sent
+	 * (a retry, a tool round, a stream step), or throw `AdmissionRefusedError`.
+	 */
+	extend(reservationId: string, microusd: number): Promise<void>;
+	/** Release a hold whose dispatch sent nothing. Best effort: the sweep settles what it misses. */
+	release(reservationId: string): Promise<void>;
+}
+
+/** One admission hold a dispatch of this meter opened. */
+export interface MeterHold {
+	readonly reservationId: string;
+	/** The requests the hold covers. */
+	readonly maxRequests: number;
+	/** The dispatch that opened it has ended. */
+	isClosed: boolean;
+	/** Its settlement has been sent (or it was released). */
+	isSettled: boolean;
 }
 
 /** Collects the provider requests of one logical call. */
@@ -135,21 +184,60 @@ export class LlmCallMeter {
 	readonly task: AiTaskName | undefined;
 	readonly root: LlmRootContext | undefined;
 	readonly deadlineAt: number | undefined;
+	readonly admission: AdmissionPort | undefined;
+	readonly hasOuterHold: boolean;
 	private readonly records: LlmRequestRecord[] = [];
 	private readonly persisted = new Set<number>();
+	private readonly holdList: MeterHold[] = [];
+	private openReservationId: string | undefined;
 
 	constructor(init: LlmCallMeterInit = {}) {
 		this.requestId = init.requestId ?? newRequestId();
 		this.task = init.task;
 		this.root = init.root;
 		this.deadlineAt = tighterDeadline(init.deadlineAt, init.root?.deadlineAt);
+		this.admission = init.admission;
+		this.hasOuterHold = init.hasOuterHold === true;
 	}
 
 	/** Record one provider request. Its attempt number is its position in the call. */
 	record(input: LlmRequestInput): LlmRequestRecord {
-		const record = Object.freeze({ ...input, attempt: this.records.length + 1 });
+		const record = Object.freeze({
+			...input,
+			...(this.openReservationId ? { reservationId: this.openReservationId } : {}),
+			attempt: this.records.length + 1,
+		});
 		this.records.push(record);
 		return record;
+	}
+
+	/** A dispatch was admitted under `reservationId`: its requests carry the id until it closes. */
+	openHold(reservationId: string, maxRequests: number): void {
+		this.holdList.push({ reservationId, maxRequests, isClosed: false, isSettled: false });
+		this.openReservationId = reservationId;
+	}
+
+	/** The dispatch of `reservationId` ended. Returns the requests it recorded. */
+	closeHold(reservationId: string): number {
+		const hold = this.holdList.find((candidate) => candidate.reservationId === reservationId);
+		if (hold) hold.isClosed = true;
+		if (this.openReservationId === reservationId) this.openReservationId = undefined;
+		return this.requestsUnder(reservationId);
+	}
+
+	/** Requests recorded under `reservationId`. */
+	requestsUnder(reservationId: string): number {
+		return this.records.filter((record) => record.reservationId === reservationId).length;
+	}
+
+	/** Holds whose dispatch has ended and whose settlement is not sent yet. */
+	closedUnsettledHolds(): readonly MeterHold[] {
+		return this.holdList.filter((hold) => hold.isClosed && !hold.isSettled);
+	}
+
+	markHoldSettled(reservationId: string): void {
+		const hold = this.holdList.find((candidate) => candidate.reservationId === reservationId);
+		if (hold) hold.isSettled = true;
 	}
 
 	/** Amend a recorded request that is not persisted yet (a throttle flag learned later). */

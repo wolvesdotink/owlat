@@ -375,6 +375,21 @@ export const MISSING_JUDGMENTS = ['guard', 'classify', 'interpret', 'clarify', '
 export type MissingJudgment = (typeof MISSING_JUDGMENTS)[number];
 
 /**
+ * D1 / U5: the stable code a spend-admission refusal carries. A refused paid
+ * call throws `ConvexError({ category: 'forbidden', message, data: { code,
+ * reason } })`, where `reason` is a {@link BudgetHoldReason}; the web reads
+ * `error.data.data.code` to show the budget state instead of a generic error.
+ */
+export const AI_BUDGET_ERROR_CODE = 'AI_BUDGET_EXHAUSTED';
+
+/**
+ * D1 / U3: the error text a Team message held by the ceiling fails with. The
+ * reason and the missing judgments are on the message's `budgetHold`.
+ */
+export const BUDGET_HOLD_ERROR_MESSAGE =
+	'AI spend budget reached: the message waits for a person (no paid model calls ran).';
+
+/**
  * Where an embedding row's space assignment came from. `measured`: stamped by
  * the writer from the space it embedded with. `record`: a backfill from retained
  * deployment or configuration records. `attestation`: an operator attested to

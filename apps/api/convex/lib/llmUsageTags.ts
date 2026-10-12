@@ -116,6 +116,13 @@ export const llmUsageTagFields = {
 	 */
 	isLocalEngine: v.optional(v.boolean()),
 	...llmUsageRoutingFields,
+	/**
+	 * The spend-aggregate generation the row was counted under at insert
+	 * (`analytics/ledgerInsert.ts`). A rebuild counts the rows older than its
+	 * own generation; absent (rows from before the field) reads as older.
+	 * Written by the insert only, never by a caller.
+	 */
+	spendGeneration: v.optional(v.number()),
 };
 
 /**

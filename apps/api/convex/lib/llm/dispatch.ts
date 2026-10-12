@@ -39,6 +39,8 @@ import { startRequest, type LlmCallMeter } from './requestMeter';
 import { callShape, limitArgs } from './callShape';
 import { isLengthStop, LlmTruncatedError } from './truncation';
 import { DEFAULT_MAX_TOOL_STEPS } from './dispatchStream';
+import { admissionRefusalOf, promptChars } from './admissionPort';
+import { admitDispatch, isWrappableModel } from './dispatchAdmission';
 
 export { MAX_LLM_ATTEMPTS, errorStatus, isRetriableLlmError, retryAfterMs } from './retryPolicy';
 export { normalizeUsage } from './providerUsage';
@@ -54,6 +56,9 @@ export { DEFAULT_MAX_TOOL_STEPS, runLlmStream } from './dispatchStream';
 const SDK_MAX_RETRIES = 0;
 
 const MAX_PROVIDER_MODEL_ID_LENGTH = 256;
+
+/** What one tool definition adds to a request's input, for the admission estimate. */
+const TOOL_DEFINITION_CHARS = 1_500;
 
 function hasAsciiControlCharacter(value: string): boolean {
 	return Array.from(value).some((character) => {
@@ -162,28 +167,40 @@ export async function runLlmTextWithAttemptMetadata(
 	const sdkArgs =
 		'messages' in opts ? { messages: opts.messages } : { prompt: opts.prompt, system: opts.system };
 	const call = callShape(opts);
-	const providerModelIdentity = captureProviderModelIdentity(modelForRequest(opts.model));
-	const dispatched = await withLlmRetry(
-		async () => {
-			const finish = startRequest(opts.meter);
-			try {
-				const generated = await generateText({
-					model: providerModelIdentity.model,
-					temperature: opts.temperature,
-					maxRetries: SDK_MAX_RETRIES,
-					...limitArgs(call),
-					...sdkArgs,
-				});
-				finish({ ...call.requestBase, outcome: 'ok', ...reported(generated.usage) });
-				return generated;
-			} catch (error) {
-				finish({ ...call.requestBase, outcome: 'failed' });
-				throw error;
-			}
-		},
-		call.abortSignal,
-		call.maxAttempts
-	);
+	// Spend admission before each provider request (ADR-0073, Phase 1b).
+	const requestModel = modelForRequest(opts.model);
+	const hold = await admitDispatch(opts.meter, call, {
+		inputChars: promptChars(opts),
+		isIncremental: isWrappableModel(requestModel),
+	});
+	const providerModelIdentity = captureProviderModelIdentity(hold.wrap(requestModel));
+	let dispatched;
+	try {
+		dispatched = await withLlmRetry(
+			async () => {
+				const finish = startRequest(opts.meter);
+				try {
+					const generated = await generateText({
+						model: providerModelIdentity.model,
+						temperature: opts.temperature,
+						maxRetries: SDK_MAX_RETRIES,
+						...limitArgs(call),
+						...sdkArgs,
+					});
+					finish({ ...call.requestBase, outcome: 'ok', ...reported(generated.usage) });
+					return generated;
+				} catch (error) {
+					// A request admission refused was never sent.
+					if (!admissionRefusalOf(error)) finish({ ...call.requestBase, outcome: 'failed' });
+					throw error;
+				}
+			},
+			call.abortSignal,
+			call.maxAttempts
+		);
+	} finally {
+		await hold.end();
+	}
 	const { text, usage, finishReason } = dispatched.value;
 	const providerModelUsed = providerModelIdentity.read();
 	return {
@@ -235,16 +252,24 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 	const call = callShape(opts);
 	let spent: TokenUsage | undefined;
 	let dispatched;
+	const maxSteps = opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS;
+	const requestModel = modelForRequest(opts.model);
+	const hold = await admitDispatch(opts.meter, call, {
+		inputChars: promptChars(opts) + Object.keys(opts.tools).length * TOOL_DEFINITION_CHARS,
+		steps: maxSteps,
+		isIncremental: isWrappableModel(requestModel),
+	});
+	const toolModel = hold.wrap(requestModel);
 	try {
 		dispatched = await withLlmRetry(
 			async () => {
 				let finishStep = startRequest(opts.meter);
 				try {
 					return await generateText({
-						model: modelForRequest(opts.model),
+						model: toolModel,
 						messages: opts.messages,
 						tools: opts.tools,
-						stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
+						stopWhen: stepCountIs(maxSteps),
 						temperature: opts.temperature,
 						maxRetries: SDK_MAX_RETRIES,
 						...limitArgs(call),
@@ -255,7 +280,8 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 						},
 					});
 				} catch (error) {
-					finishStep({ ...call.requestBase, outcome: 'failed' });
+					// A step admission refused was never sent.
+					if (!admissionRefusalOf(error)) finishStep({ ...call.requestBase, outcome: 'failed' });
 					throw error;
 				}
 			},
@@ -264,6 +290,8 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 		);
 	} catch (error) {
 		throw withPartialUsage(error, spent, call.modelUsed);
+	} finally {
+		await hold.end();
 	}
 	const { text, totalUsage, finishReason } = dispatched.value;
 	return {
@@ -329,13 +357,19 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 	const call = callShape(opts);
 	let spent: TokenUsage | undefined;
 	let dispatched;
+	const requestModel = modelForRequest(opts.model);
+	const hold = await admitDispatch(opts.meter, call, {
+		inputChars: promptChars(opts),
+		isIncremental: isWrappableModel(requestModel),
+	});
+	const objectModel = hold.wrap(requestModel);
 	try {
 		dispatched = await withLlmRetry(
 			async () => {
 				const finish = startRequest(opts.meter);
 				try {
 					const generated = await generateObject({
-						model: modelForRequest(opts.model),
+						model: objectModel,
 						schema: opts.schema,
 						prompt: opts.prompt,
 						temperature: opts.temperature,
@@ -345,6 +379,8 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 					finish({ ...call.requestBase, outcome: 'ok', ...reported(generated.usage) });
 					return generated;
 				} catch (error) {
+					// A request admission refused was never sent.
+					if (admissionRefusalOf(error)) throw error;
 					const billed = billedUsageOf(error);
 					spent = addTokenUsage(spent, normalizeUsage(billed));
 					finish({ ...call.requestBase, outcome: 'failed', ...reported(billed) });
@@ -356,6 +392,8 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 		);
 	} catch (error) {
 		throw withPartialUsage(error, spent, call.modelUsed);
+	} finally {
+		await hold.end();
 	}
 	const { object, usage, finishReason } = dispatched.value;
 	const tokenUsage = addTokenUsage(spent, normalizeUsage(usage));
