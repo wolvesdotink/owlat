@@ -395,19 +395,19 @@ const ENTRIES = {
 		...SMALL_OUTPUT,
 		...triage,
 		maxAttempts: MAX_LLM_ATTEMPTS,
-		features: [],
+		features: ['decision_triage'],
 	}),
 	'mail.category': decision({
 		...SMALL_OUTPUT,
 		...triage,
 		maxAttempts: MAX_LLM_ATTEMPTS,
-		features: [],
+		features: ['decision_category'],
 	}),
 	'mail.disposition': decision({
 		...SMALL_OUTPUT,
 		...triage,
 		maxAttempts: MAX_LLM_ATTEMPTS,
-		features: [],
+		features: ['decision_disposition'],
 	}),
 	'mail.claim_check': decision({
 		...SMALL_OUTPUT,

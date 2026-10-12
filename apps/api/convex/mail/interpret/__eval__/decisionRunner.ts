@@ -179,7 +179,7 @@ export async function runDecisionEval(
 		const message = await ask(
 			input,
 			'message',
-			threadState(input),
+			triageState(input),
 			isTeam ? bundles.teamMessage : bundles.postboxMessage
 		);
 		record(input, isTeam ? 'team_category' : 'postbox_category', message, (answers) =>

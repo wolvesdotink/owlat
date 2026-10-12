@@ -50,6 +50,7 @@ import {
 	isMtaVerdictTerminal,
 	scanDisposition,
 } from './disposition';
+import { scheduleTeamTriage } from '../../../decision/schedule';
 
 // The guard helpers moved to ./guard.ts; re-exported so existing importers keep
 // one import surface.
@@ -290,6 +291,11 @@ export const securityScanStep: AgentStepModule<
 		const disposition = scanDisposition(output);
 		if (disposition === 'continue' && policy.earlyRuleArchive === 'enforce') {
 			output.isEarlyRuleArchive = await earlyRuleArchives(ctx, input.inboundMessageId);
+		}
+		// D11: the guard passed and nothing ends the run before retrieval, so
+		// the message-only triage shadow may observe it (only at `shadow`).
+		if (scanDisposition(output) === 'continue') {
+			await scheduleTeamTriage(ctx, policy, input.inboundMessageId);
 		}
 		// The agent-off path ends without a transition, so the scan (and its
 		// D13 marker) is stored here. Not fail-soft: the marker is what later

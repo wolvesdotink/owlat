@@ -42,6 +42,8 @@ import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
+import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
+import { invalidateArtifactsOf } from '../decision/artifacts';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -376,6 +378,14 @@ export const recategorize = postboxMutation({
 					updatedAt: now,
 				});
 			}
+			// D12: an owner correction invalidates what decision artifacts and
+			// sender memory hold about this sender's mail here (advisory data).
+			await invalidateSenderMemoryForCorrection(
+				ctx,
+				{ scope: 'mailbox', mailboxId: thread.mailboxId },
+				latestInbound.fromAddress
+			);
+			await invalidateArtifactsOf(ctx, { mailMessageId: latestInbound._id });
 		}
 
 		const previous = thread.category?.label;

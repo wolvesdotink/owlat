@@ -33,6 +33,7 @@ import { meterAgentCall } from '../../shared/agentSpend';
 import { SYSTEM_GUARD } from '../../../mail/ai/promptGuards';
 import { ALLOWED_KINDS, BULK_KINDS, safeEnum, safeLanguage } from '../draft/sanitize';
 import { CLASSIFY_INTENTS } from './intents';
+import { scheduleTeamMessageBundle } from '../../../decision/schedule';
 
 /**
  * Below this classifier confidence a "no response needed" verdict is not
@@ -235,6 +236,20 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 		} catch {
 			// swallowed: rules are additive; the LLM classification stands.
 		}
+
+		// Phase 2: the category and disposition bundle runs BESIDE this
+		// classifier, scheduled and compared with what it decided; nothing it
+		// answers reaches `route` (D9). Off by default: nothing is scheduled.
+		await scheduleTeamMessageBundle(ctx, input.inboundMessageId, {
+			baseline: {
+				category: output.category,
+				disposition:
+					output.category === 'spam' || output.handlingRuleArchive
+						? 'informational'
+						: resolveResponseDisposition(output),
+			},
+			...(output.language ? { language: output.language } : {}),
+		});
 
 		return { output, tokenUsage, modelUsed };
 	},
