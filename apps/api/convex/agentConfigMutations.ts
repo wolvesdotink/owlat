@@ -16,6 +16,7 @@ import { requireAdminContext, isActiveOrgMember } from './lib/sessionOrganizatio
 import { clampHumanApproveUndoDelayMs } from './inbox/processingLifecycle/effects';
 import { optionalFields, pick } from './lib/validators/fields';
 import { agentConfigFields } from './schema/autonomy';
+import { AGENT_CONFIG_INSERT_DEFAULTS } from './lib/agentConfigDefaults';
 
 /** Clamp a minute-of-day into [0, 1439] so a bad client value can't wedge the window. */
 function clampMinuteOfDay(minute: number): number {
@@ -203,9 +204,7 @@ export const setReplyMode = adminMutation({
 		} else {
 			await ctx.db.insert('agentConfig', {
 				...patch,
-				confidenceThreshold: 0.8,
-				maxDailyAutoReplies: 100,
-				coalesceWindowMs: 30000,
+				...AGENT_CONFIG_INSERT_DEFAULTS,
 				createdAt: now,
 			});
 		}

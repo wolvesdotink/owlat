@@ -43,6 +43,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { throwConflict, throwInvalidState, throwNotFound } from '../_utils/errors';
 import { isSpaceLocal, patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
 import {
+	assertExpectedSpace,
 	ownsColumn,
 	readSearchableSpace,
 	slotFields,
@@ -386,10 +387,11 @@ export const startLocalReembed = internalMutation({
  * space was searchable yet) measured and activated the configured one.
  */
 export const startReembedJob = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<Id<'embeddingReembedJobs'>> => {
+	args: { expectedSpaceId: v.optional(v.id('embeddingSpaces')) },
+	handler: async (ctx, args): Promise<Id<'embeddingReembedJobs'>> => {
 		const session = await requireOrgPermission(ctx, 'organization:manage');
 		const active = await readSearchableSpace(ctx.db);
+		assertExpectedSpace(active, args.expectedSpaceId);
 		if (!active) {
 			throwInvalidState('The configured embedding model has no active space yet.');
 		}

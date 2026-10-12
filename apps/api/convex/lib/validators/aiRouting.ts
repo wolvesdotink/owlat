@@ -168,6 +168,8 @@ export const AI_INVALIDATION_REASONS = [
 	'model_change',
 	'settings_change',
 	'superseded',
+	/** D12: mail from the remembered sender failed DMARC, so its memory no longer applies. */
+	'auth_failure',
 ] as const;
 export const aiInvalidationReasonValidator = literalUnion(AI_INVALIDATION_REASONS);
 

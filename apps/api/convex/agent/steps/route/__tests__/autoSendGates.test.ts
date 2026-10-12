@@ -118,6 +118,7 @@ describe('ordered core auto-send gate registry', () => {
 			'handling_rules',
 			'interpretation_incomplete',
 			'item_coverage',
+			'decision_verdict',
 		]);
 		expect(Object.isFrozen(PRE_AUTONOMY_GATE_IDS)).toBe(true);
 		expect(Object.isFrozen(CORE_FINAL_AUTO_SEND_GATE_IDS)).toBe(true);
@@ -509,7 +510,12 @@ describe('ordered core auto-send gate registry', () => {
 			},
 		];
 
-		expect(cases.map(({ id }) => id)).toEqual(CORE_FINAL_AUTO_SEND_GATE_IDS);
+		// `decision_verdict` blocks only verdicts that feed auto-send, and none
+		// does in this release, so the registry's instance has no blocking
+		// fixture; `decisionVerdictGate.test.ts` drives both of its paths.
+		expect(cases.map(({ id }) => id)).toEqual(
+			CORE_FINAL_AUTO_SEND_GATE_IDS.filter((id) => id !== 'decision_verdict')
+		);
 		for (const testCase of cases) {
 			const { decision, calls } = await finalDecision(testCase.fixture);
 			expect(decision, testCase.id).toMatchObject({

@@ -8,12 +8,14 @@
  * models disagree; the local server answers no revision probe.
  */
 import { convexTest } from 'convex-test';
+import { ConvexError, type Value } from 'convex/values';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Ai from 'ai';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
+import { EMBEDDING_TARGET_CHANGED } from '../lib/aiRouting/embeddingRegistry';
 import {
 	configureLocalEmbedder,
 	seedEmbeddingSpace,
@@ -498,4 +500,138 @@ describe('staged rebuild', () => {
 			expect((await t.run((ctx) => ctx.db.get(entryId)))?.secondaryEmbedding).toBeDefined();
 		}
 	);
+});
+
+describe('a confirmation names its space (expectedSpaceId)', () => {
+	/** The rejection's payload: `conflict` with the stable reason, or a failure. */
+	async function targetChanged(call: Promise<unknown>) {
+		const error = await call.then(
+			() => null,
+			(caught: unknown) => caught
+		);
+		expect(error).toBeInstanceOf(ConvexError);
+		expect((error as ConvexError<Value>).data).toMatchObject({
+			category: 'conflict',
+			data: { reason: EMBEDDING_TARGET_CHANGED },
+		});
+	}
+
+	/** Admin 1 confirms staged A; admin 2 cancels it and stages B meanwhile. */
+	async function replacedStaging(t: T) {
+		await nomicDeployment(t);
+		const stage = async (model: string) => {
+			const id = await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+				embeddingProviderKind: 'local',
+				embeddingModel: model,
+			});
+			await flush(t);
+			return id;
+		};
+		const confirmed = await stage('mxbai-embed-large');
+		await t.mutation(api.aiRouting.embeddingRebuildState.cancelRebuild, {});
+		const current = await stage('all-minilm');
+		return { confirmed, current };
+	}
+
+	it('refuses validate, activate, catch-up and cancel on a replaced staged space', async () => {
+		const t = convexTest(schema, modules);
+		const { confirmed, current } = await replacedStaging(t);
+		const before = await states(t);
+		const calls = embedCalls.count;
+		const expected = { expectedSpaceId: confirmed };
+
+		await targetChanged(t.action(api.aiRouting.embeddingRebuild.validateStaged, expected));
+		await targetChanged(t.action(api.aiRouting.embeddingRebuild.activateStaged, expected));
+		await targetChanged(t.mutation(api.aiRouting.embeddingRebuildState.catchUpRebuild, expected));
+		await targetChanged(t.mutation(api.aiRouting.embeddingRebuildState.cancelRebuild, expected));
+		// Nothing embedded, staged, activated or cancelled.
+		expect(embedCalls.count).toBe(calls);
+		expect(await states(t)).toEqual(before);
+
+		// The space actually staged is accepted.
+		const validation = await t.action(api.aiRouting.embeddingRebuild.validateStaged, {
+			expectedSpaceId: current,
+		});
+		expect(validation.spaceId).toBe(current);
+		await t.mutation(api.aiRouting.embeddingRebuildState.cancelRebuild, {
+			expectedSpaceId: current,
+		});
+		expect((await states(t)).spaces['all-minilm']).toBe('retired/secondary');
+	});
+
+	it('refuses a cancel whose staged space is already gone', async () => {
+		const t = convexTest(schema, modules);
+		const { current } = await replacedStaging(t);
+		await t.mutation(api.aiRouting.embeddingRebuildState.cancelRebuild, {});
+		await targetChanged(
+			t.mutation(api.aiRouting.embeddingRebuildState.cancelRebuild, { expectedSpaceId: current })
+		);
+	});
+
+	it('refuses a rollback to another space than the one confirmed', async () => {
+		const t = convexTest(schema, modules);
+		const nomic = await nomicDeployment(t);
+		const mxbai = await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+			embeddingProviderKind: 'local',
+			embeddingModel: 'mxbai-embed-large',
+		});
+		await flush(t);
+		await t.action(api.aiRouting.embeddingRebuild.activateStaged, { expectedSpaceId: mxbai });
+		await flush(t);
+		const before = await states(t);
+		await targetChanged(
+			t.mutation(api.aiRouting.embeddingRebuildState.rollback, { expectedSpaceId: mxbai })
+		);
+		expect(await states(t)).toEqual(before);
+		await t.mutation(api.aiRouting.embeddingRebuildState.rollback, { expectedSpaceId: nomic });
+		expect((await states(t)).spaces['nomic-embed-text']).toBe('active/primary');
+	});
+
+	it('refuses an activation whose staged space changed after its validation', async () => {
+		const t = convexTest(schema, modules);
+		const { confirmed } = await replacedStaging(t);
+		// The race inside activateStaged: validated A, but B is staged when it commits.
+		await targetChanged(
+			t.mutation(internal.aiRouting.embeddingRebuildState.activateStagedSpace, {
+				spaceId: confirmed,
+				sampled: 3,
+				passed: 3,
+			})
+		);
+		expect((await states(t)).spaces['all-minilm']).toBe('staged/secondary');
+	});
+
+	it('refuses a re-embed before its bootstrap call when nothing confirmed is searchable', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t);
+		const confirmed = await seedEmbeddingSpace(t, {
+			identity: { ...TEST_LOCAL_SPACE, model: 'all-minilm', dimensions: DIMS },
+			state: 'retired',
+		});
+		const calls = embedCalls.count;
+		await targetChanged(
+			t.action(api.aiRouting.embeddingReembed.startReembed, { expectedSpaceId: confirmed })
+		);
+		// No provider call measured and activated the configured space.
+		expect(embedCalls.count).toBe(calls);
+		expect((await states(t)).spaces).toEqual({ 'all-minilm': 'retired/primary' });
+	});
+
+	it('refuses a re-embed into another space than the searchable one', async () => {
+		const t = convexTest(schema, modules);
+		const nomic = await nomicDeployment(t);
+		const other = await seedEmbeddingSpace(t, {
+			identity: { ...TEST_LOCAL_SPACE, model: 'all-minilm', dimensions: DIMS },
+			state: 'retired',
+			slot: 'secondary',
+		});
+		await targetChanged(
+			t.action(api.aiRouting.embeddingReembed.startReembed, { expectedSpaceId: other })
+		);
+		expect(await t.run((ctx) => ctx.db.query('embeddingReembedJobs').collect())).toEqual([]);
+		const jobId = await t.action(api.aiRouting.embeddingReembed.startReembed, {
+			expectedSpaceId: nomic,
+		});
+		expect((await t.run((ctx) => ctx.db.get(jobId)))?.targetSpaceId).toBe(nomic);
+	});
 });
