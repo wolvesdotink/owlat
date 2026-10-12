@@ -13,6 +13,7 @@ import {
 	CALIBRATION_REVISIONS,
 	verdictBlockReason,
 } from '../../../lib/decision/calibration';
+import { decisionAutonomyProblem } from '../../../lib/decision/autoSendContract';
 
 export type AutoSendGateDecision =
 	| { readonly safe: true }
@@ -246,8 +247,11 @@ const itemCoverageGate: CoreAutoSendGate = Object.freeze({
  * complete, valid, advisory answer from the decision plane configured now,
  * under the current policy, with a calibration stamp that names the checked-in
  * revision for its task and the message's language. Anything else holds the
- * send. It can only block. Nothing feeds a verdict today
- * (`AUTO_SEND_VERDICT_TASKS` is empty), so it reads nothing and blocks nothing.
+ * send, and so does any feeding task while item coverage is not enforced (the
+ * prerequisite of decision-driven autonomous input,
+ * `lib/decision/autoSendContract.ts`). It can only block. Nothing feeds a
+ * verdict today (`AUTO_SEND_VERDICT_TASKS` is empty), so it reads nothing and
+ * blocks nothing.
  */
 export function decisionVerdictGate(
 	tasks: readonly AiTaskName[],
@@ -261,6 +265,11 @@ export function decisionVerdictGate(
 				inboundMessageId,
 				tasks: [...tasks],
 			});
+			const prerequisite = decisionAutonomyProblem({
+				verdictTasks: tasks,
+				isItemCoverageEnforced: inputs.isItemCoverageEnforced,
+			});
+			if (prerequisite) return unsafe(`${prerequisite}; routing to human review.`);
 			if (inputs.isTruncated) {
 				return unsafe('Too many decision verdicts to check; routing to human review.');
 			}

@@ -28,11 +28,21 @@ const REGISTRY = { 'mail.draft_quality': { en: 'baseline-2026-11' } };
 /** The resolved TypeSafe plane: env kind and key, the adapter's pinned model, no proxy. */
 const IDENTITY = `typesafe|${PINNED_DECISION_MODEL}|`;
 
-async function setup() {
+async function setup({ isItemCoverageEnforced = true } = {}) {
 	const t = convexTest(schema, modules);
 	vi.stubEnv('DECISION_PROVIDER', 'typesafe');
 	vi.stubEnv('TYPESAFE_API_KEY', 'ts-live-0123456789abcdef');
 	await enableFeatures(t, ['ai.decisionPlane']);
+	// Decision-driven autonomous input needs item coverage enforced (the plan's prerequisite).
+	await t.run((ctx) =>
+		ctx.db.insert('agentConfig', {
+			isAutoReplyEnabled: false,
+			confidenceThreshold: 0.8,
+			isItemCoverageEnforced,
+			createdAt: NOW,
+			updatedAt: NOW,
+		})
+	);
 	const inboundMessageId = await t.run((ctx) =>
 		ctx.db.insert(
 			'inboundMessages',
@@ -126,6 +136,14 @@ describe('the registered decision verdict gate', () => {
 });
 
 describe('a verdict gate for a task that feeds auto-send', () => {
+	it('holds every send while item coverage is not enforced, verdict or none', async () => {
+		const { t, inboundMessageId } = await setup({ isItemCoverageEnforced: false });
+		const reason = expect.stringMatching(/only while item coverage is enforced/);
+		expect((await evaluate(t, inboundMessageId)).decision).toMatchObject({ safe: false, reason });
+		await t.run((ctx) => ctx.db.insert('decisionArtifacts', verdict(inboundMessageId)));
+		expect((await evaluate(t, inboundMessageId)).decision).toMatchObject({ safe: false, reason });
+	});
+
 	it('lets the send through when the message has no verdict', async () => {
 		const { t, inboundMessageId } = await setup();
 		expect((await evaluate(t, inboundMessageId)).decision).toEqual({ safe: true });

@@ -931,6 +931,7 @@ import type * as lib_cors from '../lib/cors.js';
 import type * as lib_credentialCrypto from '../lib/credentialCrypto.js';
 import type * as lib_crypto from '../lib/crypto.js';
 import type * as lib_decision_attemptAdmission from '../lib/decision/attemptAdmission.js';
+import type * as lib_decision_autoSendContract from '../lib/decision/autoSendContract.js';
 import type * as lib_decision_catalog from '../lib/decision/catalog.js';
 import type * as lib_decision_contract from '../lib/decision/contract.js';
 import type * as lib_decision_dispatch from '../lib/decision/dispatch.js';
@@ -2652,6 +2653,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/credentialCrypto': typeof lib_credentialCrypto;
 	'lib/crypto': typeof lib_crypto;
 	'lib/decision/attemptAdmission': typeof lib_decision_attemptAdmission;
+	'lib/decision/autoSendContract': typeof lib_decision_autoSendContract;
 	'lib/decision/catalog': typeof lib_decision_catalog;
 	'lib/decision/contract': typeof lib_decision_contract;
 	'lib/decision/dispatch': typeof lib_decision_dispatch;

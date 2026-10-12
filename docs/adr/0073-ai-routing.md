@@ -210,6 +210,78 @@ mail that arrives while the agent is off. The skip is recorded
 (`securityFlags.guardNotRun`), and `lib/aiRouting/guardRecord.ts` requires the
 guard before any later autonomous processing of that message.
 
+### 11. Task routing, the cheap-first writer and the auto-send contract (Phase 4)
+
+**Task routing.** Every resolver call names its catalog task. The resolver
+takes the tier from the task's `tiers` (`lib/llm/taskRouting.ts`) and refuses
+a tier the catalog does not list for it. The resolver stamps the tier on the
+model, and the dispatch refuses a model whose tier the call's task does not
+allow, before any request. A test pins every resolver call in the backend
+against the tier it resolved before the catalog existed, so no route moved.
+
+**Cheap-first writer (D2).** It applies only to a reviewed draft. Today that
+means a Team Inbox draft written while shadow mode ("Draft only") is on,
+because then the route step sends nothing. The routing policy's
+`cheapFirstWriter` switch is off by default. With it at `reviewed`, a message
+the corrected intent allowlist (`TRIVIAL_INTENTS`) finds formulaic, with the
+existing certainty and priority guards, starts on the fast writer. The host's
+quality check scores the draft. A draft that is not complete, grounded and at
+0.8 or above, or a fast pass that failed, gets exactly one escalation: the
+capable writer drafts once from the same context plus the facts the fast pass
+looked up, without tools. The escalated draft is kept whatever its score, and
+a failed escalation leaves the fast draft. A person reviews either one.
+
+The plan's rule is to reserve the whole allowed path first. The escalation is
+one request with a prompt of known maximum size, so the writer holds its
+worst case before the fast pass starts. The fast pass is then admitted request
+by request, against a headroom that already counts the escalation. The
+escalation runs under that hold and cannot be refused halfway. The writer
+settles the hold against the escalation's own requests, or releases it when
+there was no escalation. A refused hold refuses the draft before anything is
+spent. Each pass writes one ledger row per request, with its quality result
+(`passed` or `escalated` for the fast pass; `passed`, `failed` or `abstained`
+for the escalation, whose parent call is the fast pass).
+
+A cheap-first draft never auto-sends. The draft step stores
+`inboundMessages.isCheapFirstDraft` in the same mutation as the draft, the next
+draft clears it, and the `cheap_first_draft` gate in
+`CORE_FINAL_AUTO_SEND_GATES` refuses it. Turning shadow mode off between the
+draft and the route step therefore cannot send it. Postbox and Answer mode
+drafts are reviewed too, but they have no trusted classifier signals to judge
+eligibility from, so they keep today's writer.
+
+**Answer mode.** `mail/ai/composeDraftWrite.ts` now runs on `runSharedDraft`,
+streamed into the owner's buffer and without a self-check. It keeps its
+injection refusal, its markup retry, its handling of a draft cut off at the
+output limit, and its budget error. Ledger writes follow the shared service:
+it writes every request on every exit, and a failed ledger write no longer
+fails a finished draft.
+
+**The auto-send contract.** A decision verdict may enter
+`resolveAutoApproveScore` only as an admitted score
+(`lib/decision/autoSendContract.ts`), and only to lower it: the route compares
+the minimum of the draft's score and every admitted verdict. A verdict is
+admitted only when all four hold:
+
+1. its task is listed in `AUTO_SEND_VERDICT_TASKS`;
+2. item coverage is enforced (`agentConfig.isItemCoverageEnforced`);
+3. it passes the block-only rule of decision 8: a complete, current advisory
+   answer from the decision plane configured now, from a calibrated adapter,
+   with the checked-in calibration revision for its task and the message's
+   language;
+4. its score is a probability.
+
+Item coverage is the plan's prerequisite for any decision-driven autonomous
+input. While any task feeds auto-send and coverage is not enforced, the
+`decision_verdict` gate holds every send, and the agent settings refuse to
+switch coverage off. `AUTO_SEND_VERDICT_TASKS` and `CALIBRATION_REVISIONS` are
+empty in this release, so no verdict reaches the score and the route passes
+none. Draft quality (`mail.draft_quality`) is registered in the question-set
+catalog so the eval and the conformance suite use the production wording.
+Production does not ask it (D9). Feeding it later takes a calibration report,
+a revision per language, the task in `AUTO_SEND_VERDICT_TASKS`, enforced item
+coverage, and the route step passing admitted scores.
+
 ## Consequences
 
 - Upgrading changes no route. The new columns are optional, the policy defaults
