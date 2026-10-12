@@ -450,7 +450,7 @@ describe('llmProvider', () => {
 			);
 			const second = await resolveIndexEmbedder(ctx);
 			expect(mockCompatTextEmbedding).toHaveBeenLastCalledWith('mxbai-embed-large');
-			expect(second.embeddingSpaceKey).not.toBe(first.embeddingSpaceKey);
+			expect(second.target.model).not.toBe(first.target.model);
 		});
 
 		it('decrypts again when a same-millisecond save replaced the key envelope', async () => {
@@ -648,7 +648,7 @@ describe('llmProvider', () => {
 			const second = await resolveIndexEmbedder(ctx);
 			expect(runQuery).toHaveBeenCalledTimes(2);
 			expect(mockCompatTextEmbedding).toHaveBeenLastCalledWith('mxbai-embed-large');
-			expect(second.embeddingSpaceKey).not.toBe(first.embeddingSpaceKey);
+			expect(second.target.model).not.toBe(first.target.model);
 		});
 
 		it('honors LOCAL_EMBEDDING_MODEL for the local plane', async () => {

@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	EMBEDDING_DEFAULT_MODELS,
+	LOCAL_EMBEDDING_DEFAULT_BASE_URLS,
+	configuredEmbeddingTarget,
 	embeddingSelectionForSave,
-	envEmbeddingSpace,
+	endpointIdentity,
+	envEmbeddingTarget,
 	isLocalEmbeddingKind,
-	isSameEmbeddingSpace,
+	isSameEmbeddingTarget,
+	nextEmbeddingModelVersion,
 	resolveStoredEmbeddingModel,
-	storedEmbeddingSpace,
+	storedEmbeddingTarget,
 } from '../embeddingSpace';
 import { embeddingProviderFor } from '../llmProviders';
 import { EMBEDDING_PROVIDER_KINDS } from '../llmProviders/types';
@@ -19,6 +23,7 @@ const ENV_KEYS = [
 	'LLM_BASE_URL',
 	'LLM_EMBEDDING_MODEL',
 	'LOCAL_EMBEDDING_MODEL',
+	'LOCAL_EMBEDDING_BASE_URL',
 ] as const;
 
 afterEach(() => {
@@ -30,6 +35,9 @@ describe('embedding defaults', () => {
 		const adapter = embeddingProviderFor(kind);
 		expect(EMBEDDING_DEFAULT_MODELS[kind]).toBe(adapter.defaultModel);
 		expect(isLocalEmbeddingKind(kind)).toBe(adapter.isLocal);
+		if (kind === 'local' || kind === 'openaiCompatible') {
+			expect(LOCAL_EMBEDDING_DEFAULT_BASE_URLS[kind]).toBe(adapter.defaultBaseUrl);
+		}
 	});
 });
 
@@ -57,26 +65,31 @@ describe('resolveStoredEmbeddingModel', () => {
 	});
 });
 
-describe('embedding space identity', () => {
+describe('embedding target', () => {
 	it('includes the width Owlat requests from Google', () => {
-		expect(
-			storedEmbeddingSpace({
-				embeddingProviderKind: 'google',
-				embeddingModel: 'gemini-embedding-2',
-			})
-		).toEqual({ provider: 'google', modelId: 'gemini-embedding-2', dimensions: 768 });
-		expect(storedEmbeddingSpace({ embeddingProviderKind: 'google' })).toEqual({
+		const target = storedEmbeddingTarget({
+			embeddingProviderKind: 'google',
+			embeddingModel: 'gemini-embedding-2',
+		});
+		expect(target).toMatchObject({
 			provider: 'google',
-			modelId: 'text-embedding-004',
-			dimensions: 'native',
+			endpoint: 'native',
+			model: 'gemini-embedding-2',
+			requestedDimensions: 768,
+			source: 'stored_config',
+			isLocal: false,
+		});
+		expect(storedEmbeddingTarget({ embeddingProviderKind: 'google' })).toMatchObject({
+			model: 'text-embedding-004',
+			requestedDimensions: 'native',
 		});
 	});
 
-	it('treats an absent model and its resolved value as the same space', () => {
+	it('treats an absent model and its resolved value as the same target', () => {
 		expect(
-			isSameEmbeddingSpace(
-				storedEmbeddingSpace({ embeddingProviderKind: 'google' }),
-				storedEmbeddingSpace({
+			isSameEmbeddingTarget(
+				storedEmbeddingTarget({ embeddingProviderKind: 'google' }),
+				storedEmbeddingTarget({
 					embeddingProviderKind: 'google',
 					embeddingModel: 'text-embedding-004',
 				})
@@ -84,22 +97,84 @@ describe('embedding space identity', () => {
 		).toBe(true);
 	});
 
-	it('has no env space when the environment configures no AI', () => {
-		expect(envEmbeddingSpace()).toBeNull();
+	it('names a local embedder by the origin it is served from, and probes it', () => {
+		expect(storedEmbeddingTarget({ embeddingProviderKind: 'local' })).toMatchObject({
+			provider: 'local',
+			endpoint: 'http://ollama:11434',
+			model: 'nomic-embed-text',
+			isLocal: true,
+			probeBaseUrl: 'http://ollama:11434/v1',
+		});
+	});
+
+	it('detects env overrides as a new target: LOCAL_EMBEDDING_MODEL and LOCAL_EMBEDDING_BASE_URL', () => {
+		const before = storedEmbeddingTarget({ embeddingProviderKind: 'local' });
+		vi.stubEnv('LOCAL_EMBEDDING_MODEL', 'mxbai-embed-large');
+		const otherModel = storedEmbeddingTarget({ embeddingProviderKind: 'local' });
+		expect(isSameEmbeddingTarget(before, otherModel)).toBe(false);
+		vi.stubEnv('LOCAL_EMBEDDING_MODEL', undefined);
+		vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'http://gpu-box:11434/v1');
+		const otherServer = storedEmbeddingTarget({ embeddingProviderKind: 'local' });
+		expect(otherServer.endpoint).toBe('http://gpu-box:11434');
+		expect(isSameEmbeddingTarget(before, otherServer)).toBe(false);
+	});
+
+	it('detects LLM_EMBEDDING_MODEL as a new env target', () => {
+		vi.stubEnv('LLM_API_KEY', 'sk-env');
+		const before = envEmbeddingTarget()!;
+		vi.stubEnv('LLM_EMBEDDING_MODEL', 'text-embedding-ada-002');
+		expect(isSameEmbeddingTarget(before, envEmbeddingTarget()!)).toBe(false);
+	});
+
+	it('has no env target when the environment configures no AI', () => {
+		expect(envEmbeddingTarget()).toBeNull();
+		expect(configuredEmbeddingTarget(null)).toBeNull();
 	});
 
 	it('matches a stored OpenAI embedder only through the native OpenAI endpoint', () => {
 		vi.stubEnv('LLM_API_KEY', 'sk-env');
-		const stored = storedEmbeddingSpace({ embeddingProviderKind: 'openai' });
-		expect(isSameEmbeddingSpace(envEmbeddingSpace()!, stored)).toBe(true);
+		const stored = storedEmbeddingTarget({ embeddingProviderKind: 'openai' });
+		const env = envEmbeddingTarget()!;
+		expect(env.source).toBe('env');
+		expect(isSameEmbeddingTarget(env, stored)).toBe(true);
 
 		vi.stubEnv('LLM_PROVIDER', 'openrouter');
-		expect(envEmbeddingSpace()?.provider).toBe('env:openrouter');
-		expect(isSameEmbeddingSpace(envEmbeddingSpace()!, stored)).toBe(false);
+		expect(envEmbeddingTarget()?.endpoint).toBe('https://openrouter.ai');
+		expect(envEmbeddingTarget()?.isLocal).toBe(false);
+		expect(isSameEmbeddingTarget(envEmbeddingTarget()!, stored)).toBe(false);
 
-		vi.stubEnv('LLM_PROVIDER', undefined);
-		vi.stubEnv('LLM_EMBEDDING_MODEL', 'text-embedding-3-large');
-		expect(isSameEmbeddingSpace(envEmbeddingSpace()!, stored)).toBe(false);
+		vi.stubEnv('LLM_PROVIDER', 'ollama');
+		expect(envEmbeddingTarget()).toMatchObject({
+			endpoint: 'http://ollama:11434',
+			isLocal: true,
+			probeBaseUrl: 'http://ollama:11434/v1',
+		});
+	});
+
+	it('never keeps a credential of a base URL in the endpoint identity', () => {
+		expect(endpointIdentity('https://user:secret@Example.com:8443/v1?key=abc')).toBe(
+			'https://example.com:8443'
+		);
+		expect(endpointIdentity('not a url')).toBe('invalid');
+	});
+});
+
+describe('nextEmbeddingModelVersion', () => {
+	it('moves only when the target moves', () => {
+		const google = { embeddingProviderKind: 'google' as const, embeddingModelVersion: 3 };
+		expect(nextEmbeddingModelVersion(null, google)).toBe(1);
+		expect(
+			nextEmbeddingModelVersion(google, {
+				embeddingProviderKind: 'google',
+				embeddingModel: 'text-embedding-004',
+			})
+		).toBe(3);
+		expect(
+			nextEmbeddingModelVersion(google, {
+				embeddingProviderKind: 'google',
+				embeddingModel: 'gemini-embedding-2',
+			})
+		).toBe(4);
 	});
 });
 
