@@ -12,12 +12,10 @@
  *   • ENV `LLM_*` is the deployment fallback when no row exists — self-hosters
  *     who set `LLM_*` keep working with zero UI.
  *
- * The config row is memoized in-process (`./llmProviders/storedConfigCache`) and
- * each plane's key is decrypted only when that plane is asked for (a text call
- * never decrypts the embedding key), then kept for five minutes. The row itself
- * is re-read every 30 s, and a changed row drops the cached keys. Both
- * paths resolve through the provider-adapter registry (`./llmProviders`), where
- * a `kind` selects the adapter that builds the client.
+ * The row is memoized in-process (`./llmProviders/storedConfigCache`), re-read
+ * every 30 s (or at once, `isFresh`); each plane's key is decrypted only when
+ * that plane is asked for, kept five minutes, and dropped when the row changes.
+ * A `kind` selects the adapter (`./llmProviders`) that builds the client.
  *
  * Language models and embeddings resolve through the same `resolveAiConfig(ctx)`
  * point, while the two planes remain decoupled:
@@ -30,10 +28,8 @@
  *     deployment fallback when no stored row exists — resolution order is:
  *     stored hosted embedder (decrypted key) → stored local default → env.
  *
- * A misconfigured hosted embedder surfaces an actionable error at resolve time
- * (never a silent empty/zero vector). The settings save refuses to change the
- * embedding space while the corpus holds vectors (`./embeddingSpace`), and every
- * vector is fitted to the index width by `toIndexVector` (narrower ones zero-padded).
+ * A misconfigured hosted embedder throws an actionable error at resolve time (never
+ * a silent zero vector); `toIndexVector` fits every vector to the index width.
  *
  * Environment (fallback only):
  *   LLM_PROVIDER        openai (default) | openrouter | ollama
@@ -79,6 +75,7 @@ import {
 	type ResolvedLanguageModel,
 } from './llmProviders';
 import { languageModelIdentity } from './llm/languageIdentity';
+import { configVersionOf } from './decision/configIdentity';
 import type { StoredEmbeddingProviderKind } from './validators/aiProviderConfig';
 import {
 	invalidateAiConfigCache,
@@ -87,6 +84,7 @@ import {
 } from './llmProviders/storedConfigCache';
 
 export { invalidateAiConfigCache } from './llmProviders/storedConfigCache';
+type Fresh = { isFresh?: boolean };
 
 /** The resolved language plane — kind + secret-bearing client + per-tier models. */
 interface ResolvedLanguagePlane {
@@ -95,6 +93,8 @@ interface ResolvedLanguagePlane {
 	/** Decrypted client config (apiKey present only for hosted providers). */
 	readonly clientConfig: ProviderClientConfig;
 	readonly models: { readonly fast: string; readonly capable: string };
+	/** The stored row's version (`configVersionOf`); absent under the env fallback. */
+	readonly configVersion?: string;
 }
 
 /**
@@ -118,8 +118,6 @@ interface ResolvedProviderConfig {
 	readonly embedding: ResolvedEmbeddingPlane;
 	/** Whether the config came from the stored per-org row or the env fallback. */
 	readonly source: 'stored' | 'env';
-	/** The stored row's `updatedAt`, when resolved from stored config. */
-	readonly updatedAt?: number;
 }
 
 // Environment setup must select the same adapter/defaults as stored settings.
@@ -221,8 +219,8 @@ export function buildStoredProviderConfig(
 	const adapter = languageProviderFor(row.languageProviderKind);
 	return {
 		source: 'stored',
-		updatedAt: row.updatedAt,
 		language: {
+			configVersion: configVersionOf(row),
 			kind: row.languageProviderKind,
 			endpointProvenance: classifyStoredLanguageEndpoint(
 				row.languageProviderKind,
@@ -258,8 +256,8 @@ export async function resolveAiConfig(ctx: ActionCtx): Promise<ResolvedProviderC
 }
 
 /** The language plane alone: never decrypts the embedding key. */
-async function resolveLanguagePlane(ctx: ActionCtx): Promise<ResolvedLanguagePlane> {
-	const entry = await loadConfigEntry(ctx);
+async function resolveLanguagePlane(ctx: ActionCtx, options: Fresh = {}) {
+	const entry = await loadConfigEntry(ctx, options);
 	if (!entry.row) return resolveEnvProviderConfig().language;
 	const languageKey = await planeKey(ctx, entry, 'language');
 	return buildStoredProviderConfig(entry.row, languageKey, undefined).language;
@@ -303,6 +301,7 @@ function resolveLanguageModelFromPlane(
 		modelId,
 		endpointProvenance: language.endpointProvenance,
 		identity: languageModelIdentity(language.kind, modelId, language.clientConfig.baseUrl),
+		...(language.configVersion ? { configVersion: language.configVersion } : {}),
 	});
 }
 
@@ -310,15 +309,16 @@ function resolveLanguageModelFromPlane(
  * Resolve the language model for one call of `task`, with its endpoint
  * identity (hard-budget consumers price it). The tier is the task's
  * (`./llm/taskRouting.ts`, from the task-policy catalog): its usual tier, or
- * the one `choice` names when the catalog allows it for the task.
+ * the one `choice` names when allowed. `isFresh` re-reads the row (a bundle's claim).
  */
 export async function resolveLanguageModelWithProvenance(
 	ctx: ActionCtx,
 	task: AiTaskName,
-	choice?: TierChoice
+	choice?: TierChoice,
+	options: Fresh = {}
 ): Promise<ResolvedLanguageModel> {
 	const tier = taskTier(task, choice);
-	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx), tier);
+	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx, options), tier);
 }
 
 /** Resolve the language model for one call of `task` (plugs into the AI SDK helpers). */

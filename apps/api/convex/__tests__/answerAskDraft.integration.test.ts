@@ -36,6 +36,7 @@ import type * as AttachmentSuggestModule from '../inbox/attachmentSuggest';
 
 type FoundFile = AttachmentSuggestModule.FoundFile;
 import type * as ContextRetrievalModule from '../agent/steps/context_retrieval';
+import type * as ComposeDraftPlanModule from '../mail/ai/composeDraftPlan';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -54,6 +55,8 @@ const llm = vi.hoisted(() => ({
 	files: [] as FoundFile[],
 	// The late injection guard's verdict (D13), for a message whose scan skipped it.
 	guard: { isInjection: false, confidence: 0.02, reason: 'benign' },
+	// A failure before the draft opens its stream (the response plan's load).
+	planFailure: null as Error | null,
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -103,6 +106,18 @@ vi.mock('../inbox/attachmentSuggest', async () => {
 		'../inbox/attachmentSuggest'
 	);
 	return { ...actual, searchFilesForRequest: vi.fn(async () => llm.files) };
+});
+vi.mock('../mail/ai/composeDraftPlan', async () => {
+	const actual = await vi.importActual<typeof ComposeDraftPlanModule>(
+		'../mail/ai/composeDraftPlan'
+	);
+	return {
+		...actual,
+		loadAnswerPlan: vi.fn(async (...args: Parameters<typeof actual.loadAnswerPlan>) => {
+			if (llm.planFailure) throw llm.planFailure;
+			return actual.loadAnswerPlan(...args);
+		}),
+	};
 });
 vi.mock('../agent/steps/context_retrieval', async () => {
 	const actual = await vi.importActual<typeof ContextRetrievalModule>(
@@ -166,6 +181,7 @@ beforeEach(() => {
 	llm.files = [];
 	llm.draft = 'Hi Jonas,\n\nthanks for your note.\n\nBest,\nAda';
 	llm.guard = { isInjection: false, confidence: 0.02, reason: 'benign' };
+	llm.planFailure = null;
 	vi.mocked(runLlmStream).mockReset();
 	vi.mocked(runLlmText).mockClear();
 	vi.mocked(assembleInboundBriefing).mockClear();
@@ -613,14 +629,13 @@ describe('team thread', () => {
 		expect(lastDraftPrompt()).toContain('Jonas asks for the September invoice');
 	});
 
-	it('returns the budget error for a cached interpretation refusal, with no model call (final r2 F1)', async () => {
-		const t = await makeT();
-		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
-		const contactId = await seedCustomer(t);
-		const threadId = await seedTeamThread(t, contactId);
-		llm.slots = [slot('date_time', 'When will payment arrive?')];
-		// The interpretation met a spend refusal; its retry is not due yet, so the
-		// briefing reuses the stored result instead of running it again.
+	/**
+	 * The thread's message met a spend refusal in interpretation, and its retry
+	 * is not due yet, so the briefing reuses the stored result instead of
+	 * running it again. The next briefing is the real one, so the stored
+	 * refusal is what it meets.
+	 */
+	async function briefOnCachedRefusal(t: Tx, threadId: Id<'conversationThreads'>) {
 		await t.run(async (ctx) => {
 			const message = (await ctx.db
 				.query('inboundMessages')
@@ -644,11 +659,19 @@ describe('team thread', () => {
 				updatedAt: Date.now(),
 			});
 		});
-		// The real briefing, so the stored refusal is what it meets.
 		const actual = await vi.importActual<typeof ContextRetrievalModule>(
 			'../agent/steps/context_retrieval'
 		);
 		vi.mocked(assembleInboundBriefing).mockImplementationOnce(actual.assembleInboundBriefing);
+	}
+
+	it('returns the budget error for a cached interpretation refusal, with no model call (final r2 F1)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		await briefOnCachedRefusal(t, threadId);
 		vi.mocked(runLlmObject).mockClear();
 
 		await expect(
@@ -669,6 +692,103 @@ describe('team thread', () => {
 				target: { kind: 'teamThread', threadId },
 			})
 		).toBeNull();
+	});
+
+	it('an answer that must rebuild the briefing hands the questions back on a cached refusal (final r3 F1)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const target = { kind: 'teamThread' as const, threadId };
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(asked.status).toBe('asking');
+		const payment = asked.questions.find((q) => q.slotType === 'date_time')!;
+		// A context too large to keep: `answer` builds the briefing again.
+		await t.run((ctx) => ctx.db.patch(asked.sessionId, { draftContext: undefined }));
+		await briefOnCachedRefusal(t, threadId);
+		vi.mocked(runLlmObject).mockClear();
+		vi.mocked(runLlmText).mockClear();
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId: asked.sessionId,
+				answers: [{ questionId: payment.id, value: 'Friday' }],
+			})
+		).rejects.toMatchObject({
+			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
+		});
+		expect(vi.mocked(runLlmObject)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmText)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		// Not stuck busy: back to the questions, the answer kept.
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('asking');
+		expect(session?.questions.find((q) => q.id === payment.id)?.answer?.value).toBe('Friday');
+
+		// And it can be sent again once the briefing goes through.
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [],
+		});
+		expect(res.status).toBe('ready');
+		expect(lastDraftPrompt()).toContain('Friday');
+	});
+
+	it('a start that fails before its draft stream opens is not left drafting (final r3 sweep)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		// The requested file is found, so nothing is asked and the draft starts.
+		const fileId = await seedFile(t, { filename: 'invoice-2026-09.pdf', contactIds: [contactId] });
+		llm.files = [
+			{
+				source: 'semanticFile',
+				id: fileId,
+				filename: 'invoice-2026-09.pdf',
+				mimeType: 'application/pdf',
+				size: 20,
+				score: 0.8,
+			},
+		];
+		const target = { kind: 'teamThread' as const, threadId };
+		llm.planFailure = new Error('plan read failed');
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' })
+		).rejects.toThrow('plan read failed');
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('error');
+
+		// A new start replaces it and drafts.
+		llm.planFailure = null;
+		const res = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(res.status).toBe('ready');
+	});
+
+	it('an answer that fails before its draft stream opens hands the questions back (final r3 sweep)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const target = { kind: 'teamThread' as const, threadId };
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		const payment = asked.questions.find((q) => q.slotType === 'date_time')!;
+		llm.planFailure = new Error('plan read failed');
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId: asked.sessionId,
+				answers: [{ questionId: payment.id, value: 'Friday' }],
+			})
+		).rejects.toThrow('plan read failed');
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('asking');
+		expect(session?.questions.find((q) => q.id === payment.id)?.answer?.value).toBe('Friday');
 	});
 
 	it('works on a team-only instance, and not once the team inbox is off', async () => {

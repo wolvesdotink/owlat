@@ -300,11 +300,17 @@ export async function runBundle<Q extends QuestionSet>(
 	let language: Awaited<ReturnType<typeof resolveLanguageModelWithProvenance>> | null = null;
 	if (rung !== 'decision') {
 		try {
-			language = await resolveLanguageModelWithProvenance(ctx, plan.task);
+			// Read fresh, not from the language cache: the call must go to the
+			// configuration the rung was decided on (final review r4 F1).
+			language = await resolveLanguageModelWithProvenance(ctx, plan.task, undefined, {
+				isFresh: true,
+			});
 		} catch {
 			// No language model resolves now: no call can be made, nothing is claimed.
 			return { hasRun: false, why: 'provider_unavailable' };
 		}
+		// Saved since the routing read: stale, as the decision rung treats it.
+		if (language.configVersion !== routing.configVersion) return { hasRun: false, why: 'stale' };
 	}
 	const contextVersion =
 		language === null ? resolvedPlaneIdentity(plane, true) : `language|${language.identity}`;
@@ -332,7 +338,10 @@ export async function runBundle<Q extends QuestionSet>(
 	// The endpoint this call will use, from the ONE resolution above: its rung,
 	// whether it is the operator's own (ADR-0060 §9), and the flag and
 	// configuration snapshot it was decided on. The claim checks them all, on
-	// either rung; the call uses exactly this endpoint.
+	// either rung; the call uses exactly this endpoint. The configuration is
+	// the version the dispatched snapshot was resolved from (equal to the
+	// routing read's, checked above).
+	const configVersion = language !== null ? language.configVersion : plane?.configVersion;
 	const endpoint = {
 		rung: rung === 'decision' ? ('decision' as const) : ('language' as const),
 		isLocal:
@@ -340,7 +349,7 @@ export async function runBundle<Q extends QuestionSet>(
 			plane !== null &&
 			resolveEndpointLocality(plane.kind, plane.clientConfig.baseUrl) === 'local',
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
-		...(routing.configVersion === undefined ? {} : { configVersion: routing.configVersion }),
+		...(configVersion === undefined ? {} : { configVersion }),
 	};
 	const contentHash = stateContentHash(run.built.state);
 	const artifactKey = artifactKeyOf({

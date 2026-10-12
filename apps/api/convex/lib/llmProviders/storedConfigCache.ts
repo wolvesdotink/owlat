@@ -12,12 +12,15 @@ import { internal } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
 import type { ActionCtx } from '../../_generated/server';
 import { embeddingProviderFor, languageProviderFor } from './index';
+import { configVersionOf } from '../decision/configIdentity';
 
 // In-process cache. Decrypting a key is a Node action round trip, the slow part
 // of resolving, so the row and its decrypted keys live for the full TTL. The row
 // read is cheap and repeats every AI_CONFIG_RECHECK_MS: when the admin saves new
-// settings, `updatedAt` moves and every isolate drops its cached keys on its
-// next recheck (the saving isolate drops them at once, see invalidateAiConfigCache).
+// settings, the row's `configRevision` moves and every isolate drops its cached
+// keys on its next recheck (the saving isolate drops them at once, see
+// invalidateAiConfigCache). A caller that stamps the version it dispatched under
+// reads the row fresh (`isFresh`) and compares `configVersionOf(row)`.
 const AI_CONFIG_CACHE_TTL_MS = 5 * 60_000;
 const AI_CONFIG_RECHECK_MS = 30_000;
 
@@ -39,7 +42,9 @@ export interface ConfigCacheEntry {
 let configCache: ConfigCacheEntry | null = null;
 
 function rowFingerprint(row: Doc<'aiProviderConfig'> | null): string {
-	return row ? `${row._id}:${row.updatedAt}` : 'env';
+	// `<rowId>:<revision>`, as the decision plane keys its cache; `updatedAt`
+	// as well for a row written before the revision column.
+	return row ? `${configVersionOf(row)}:${row.updatedAt}` : 'env';
 }
 
 /**

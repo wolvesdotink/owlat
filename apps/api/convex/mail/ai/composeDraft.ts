@@ -164,6 +164,33 @@ function followUpFor(
 	return { value: date.answer.value, ...(at !== undefined ? { at } : {}) };
 }
 
+const DRAFT_NOT_STARTED = 'The draft could not be started. Try again.';
+
+/**
+ * Put a session this call left `drafting` back where the owner can go on: an
+ * answered session to `asking` (its answers kept, so the same answers can be
+ * sent again), a started one to `error` (the state a failed draft settles in,
+ * from which a new start runs). A session that moved on meanwhile (a draft
+ * opened its stream and settled) is left alone. Never throws: the caller
+ * rethrows the failure that got it here, a budget refusal included.
+ */
+async function releaseSession(
+	ctx: ActionCtx,
+	sessionId: Id<'answerAskSessions'>,
+	status: 'asking' | 'error'
+): Promise<void> {
+	try {
+		await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
+			sessionId,
+			status,
+			expectStatus: 'drafting',
+			...(status === 'error' ? { errorMessage: DRAFT_NOT_STARTED } : {}),
+		});
+	} catch (err) {
+		logError('[composeDraft] releasing the session failed:', err);
+	}
+}
+
 /** Write the draft for a session and return the settled view. */
 async function draftNow(
 	ctx: ActionCtx,
@@ -295,7 +322,13 @@ export const start = authedAction({
 			...(timeZone ? { timeZone } : {}),
 		});
 		if (isAsking) return toAskSessionView(session);
-		return await draftNow(ctx, session, context);
+		try {
+			return await draftNow(ctx, session, context);
+		} catch (err) {
+			// Before its stream settles the session would stay busy for good.
+			await releaseSession(ctx, session._id, 'error');
+			throw err;
+		}
 	},
 });
 
@@ -400,38 +433,49 @@ export const answer = authedAction({
 			expectStatus: 'asking',
 		});
 		const timeZone = normalizeTimeZone(args.timeZone) ?? session.timeZone;
-		let applied: Awaited<ReturnType<typeof applyAnswers>>;
 		try {
-			applied = await applyAnswers(ctx, session, args.answers, args.skip === true, timeZone);
+			return await answerClaimed(ctx, session, args, timeZone);
 		} catch (err) {
-			// Hand the questions back so the owner can fix the answer and retry.
-			await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
-				sessionId: session._id,
-				status: 'asking',
-				expectStatus: 'drafting',
-			});
+			// Hand the questions back, with the answers already stored, so the
+			// owner can fix an answer or send them again: a failed file answer, a
+			// briefing refused for budget, a draft that never opened its stream.
+			await releaseSession(ctx, session._id, 'asking');
 			throw err;
 		}
-		const { questions, attachedFiles, answered, opensRoundTwo } = applied;
-
-		const updated = await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
-			sessionId: session._id,
-			status: opensRoundTwo ? 'asking' : 'drafting',
-			expectStatus: 'drafting',
-			round: opensRoundTwo ? session.round + 1 : session.round,
-			questions,
-			attachedFiles,
-			...(timeZone ? { timeZone } : {}),
-		});
-		if (answered.length > 0) {
-			await ctx.runMutation(internal.mail.ai.composeDraftStore.captureSessionAnswers, {
-				sessionId: session._id,
-				questionIds: answered,
-			});
-		}
-		if (opensRoundTwo) return toAskSessionView(updated);
-		// The context `start` built; rebuilt only for a session that has none.
-		const context = updated.draftContext ?? (await loadAnswerContext(ctx, session.target));
-		return await draftNow(ctx, updated, context);
 	},
 });
+
+/** `answer` past its claim: apply the answers, then round 2 or the draft. */
+async function answerClaimed(
+	ctx: ActionCtx,
+	session: Doc<'answerAskSessions'>,
+	args: { answers: ReadonlyArray<Infer<typeof givenAnswerValidator>>; skip?: boolean },
+	timeZone: string | undefined
+): Promise<AskSessionView> {
+	const { questions, attachedFiles, answered, opensRoundTwo } = await applyAnswers(
+		ctx,
+		session,
+		args.answers,
+		args.skip === true,
+		timeZone
+	);
+	const updated = await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
+		sessionId: session._id,
+		status: opensRoundTwo ? 'asking' : 'drafting',
+		expectStatus: 'drafting',
+		round: opensRoundTwo ? session.round + 1 : session.round,
+		questions,
+		attachedFiles,
+		...(timeZone ? { timeZone } : {}),
+	});
+	if (answered.length > 0) {
+		await ctx.runMutation(internal.mail.ai.composeDraftStore.captureSessionAnswers, {
+			sessionId: session._id,
+			questionIds: answered,
+		});
+	}
+	if (opensRoundTwo) return toAskSessionView(updated);
+	// The context `start` built; rebuilt only for a session that has none.
+	const context = updated.draftContext ?? (await loadAnswerContext(ctx, session.target));
+	return await draftNow(ctx, updated, context);
+}
