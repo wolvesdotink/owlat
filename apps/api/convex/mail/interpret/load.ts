@@ -51,7 +51,7 @@ import type { ReduceResult } from './reduceInput';
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
 /** Statuses read as "recently closed" for the prompt. */
-const CLOSED_STATUSES = ['done', 'declined', 'superseded', 'untracked'] as const;
+export const CLOSED_STATUSES = ['done', 'declined', 'superseded', 'untracked'] as const;
 /** Items per closed status read within the lookback. */
 const CLOSED_SCAN = 100;
 

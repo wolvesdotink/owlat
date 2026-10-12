@@ -108,7 +108,10 @@ describe('delivery → interpretation', () => {
 
 	it('live mail outside the inbox is scheduled on its own, with the ingest headers', async () => {
 		const t = convexTest(schema, modules);
-		const mailboxId = await seed(t, ['inbox', 'archive']);
+		// A shared mailbox (actions mode): a personal one would defer this
+		// display-only message until the thread is opened (D10, lazyDefer.test.ts).
+		const mailboxId = await seedMailbox(t, { address: 'me@owlat.test', scope: 'shared' });
+		for (const role of ['inbox', 'archive'] as const) await seedFolder(t, mailboxId, role);
 		const message = await t.run(async (ctx) =>
 			deliver(ctx, mailboxId, {
 				origin: 'sync',

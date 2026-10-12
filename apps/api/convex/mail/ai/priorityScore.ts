@@ -14,6 +14,7 @@
  */
 
 import { DAY_MS } from '../../lib/constants';
+import { isHeldOutByScreener } from '../senderEvidence';
 
 export type PriorityUrgency = 'high' | 'normal' | 'low';
 
@@ -130,10 +131,15 @@ export function computePriorityScore(opts: {
  * screener OFF this is a no-op, so it never changes today's behaviour.
  */
 export function isScreenedOut(opts: { screenerEnabled: boolean; sender: SenderSignal }): boolean {
-	if (!opts.screenerEnabled) return false;
 	const s = opts.sender;
-	if (s.isVip || s.accepted || s.isKnownContact) return false;
-	return true;
+	return isHeldOutByScreener({
+		screenerEnabled: opts.screenerEnabled,
+		sender: {
+			isInAddressBook: s.isKnownContact === true,
+			isVip: s.isVip === true,
+			isScreenerAccepted: s.accepted === true,
+		},
+	});
 }
 
 /** Fallback score for a row without a persisted priorityScore (pre-migration

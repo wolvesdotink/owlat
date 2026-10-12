@@ -244,6 +244,10 @@ const sharedViewFields = {
 	// `stalled` when it stopped (spend gate, AI off, a lost chain); the reader
 	// asks `lazy.ensure` to resume a stalled one.
 	history: v.optional(v.union(v.literal('running'), v.literal('stalled'))),
+	// D10: messages whose reading waits for the thread to be opened (the brief
+	// reads `pending` or partial meanwhile). While it is above zero the reader
+	// asks `lazy.ensure`, which reads them.
+	deferredSources: v.optional(v.number()),
 	waitingOnOthers: v.array(briefItemViewValidator),
 	unclear: v.array(briefItemViewValidator),
 	// Latest 5 substance rows, newest first.

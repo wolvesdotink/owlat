@@ -10,7 +10,9 @@
  * that gets hashed, so it stays runtime-agnostic.
  */
 
+import type { Id } from '../_generated/dataModel';
 import { EDGE_CONFIDENCE_TAGS, EDGE_PROVENANCES } from '../schema/knowledge';
+import { contactScopesCanLink } from './contactScope';
 
 /** How sure we are an edge is real. Derived from the schema's single source. */
 export type EdgeConfidenceTag = (typeof EDGE_CONFIDENCE_TAGS)[number];
@@ -131,4 +133,26 @@ export function tagForInferredConfidence(
 export function normalizeForHash(title: string, content: string): string {
 	const norm = (s: string): string => s.replace(/\s+/g, ' ').trim().toLowerCase();
 	return `${norm(title)}\n${norm(content)}`;
+}
+
+/**
+ * Whether relation inference could write any edge between these nodes (#1335,
+ * AI routing plan missed call M6): an ordered pair of two different nodes
+ * whose contact scopes may link and that carries no edge yet
+ * (`existing` holds `from:to` keys). The inference pass persists nothing
+ * else, so without such a pair its model call cannot change the graph and is
+ * skipped. Pure.
+ */
+export function hasLinkablePair(
+	nodes: readonly { _id: string; contactIds?: Id<'contacts'>[] }[],
+	existing: ReadonlySet<string>
+): boolean {
+	for (const from of nodes) {
+		for (const to of nodes) {
+			if (from._id === to._id) continue;
+			if (!contactScopesCanLink(from.contactIds, to.contactIds)) continue;
+			if (!existing.has(`${from._id}:${to._id}`)) return true;
+		}
+	}
+	return false;
 }

@@ -15,7 +15,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { publicQuery } from '../lib/authedFunctions';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import type { MutationSessionContext } from '../lib/sessionOrganization';
-import { isInboxDerivedKnowledge, isSharedInboxReader } from '../inbox/access';
+import { isSharedInboxReader } from '../inbox/access';
 import {
 	isKnowledgeEntryVisible,
 	knowledgeAdminMutation,
@@ -27,7 +27,6 @@ import {
 } from './visibility';
 import { batchGet } from '../_utils/batchLoader';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
-import { sameContactScope } from '../lib/contactScope';
 import { entryKeysForType } from '../lib/aiRouting/embeddingRegistry';
 import {
 	noteCorpusInsert,
@@ -36,6 +35,7 @@ import {
 } from '../lib/aiRouting/embeddingActivation';
 import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
 import { logInfo } from '../lib/runtimeLog';
+import { findDuplicateEntry } from './entryDedupe';
 import {
 	entryTypeValidator,
 	sourceTypeValidator,
@@ -539,48 +539,16 @@ export const saveEntry = internalMutation({
 	},
 	handler: async (ctx, { embeddingSpace, ...args }) => {
 		const now = Date.now();
-		// Write-level idempotency, leg 1 — same source: if an entry from the same
-		// source already exists with this title, return it instead of inserting a
-		// duplicate. This closes the cross-action race where two extractions of the
-		// same message/file (e.g. a cron retry that overlaps the first run) both
-		// pass their `countBySource` pre-check and then both write — the second
-		// writer's reads conflict with the first's committed inserts under Convex
-		// OCC, so it sees them here and no-ops.
-		if (args.sourceId) {
-			const fromSource = await ctx.db
-				.query('knowledgeEntries')
-				.withIndex('by_source', (q) =>
-					q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId)
-				)
-				.collect(); // bounded: entries extracted from a single source (small)
-			const dup = fromSource.find((e) => e.title === args.title);
-			// The duplicate already carries its junction rows from its first
-			// insert, so no junction write is needed on this no-op return.
-			if (dup) return dup._id;
-		}
-		// Write-level idempotency, leg 2 — cross-source exact content: if a
-		// byte-identical entry (same normalized title+content → same contentHash)
-		// already exists with the SAME contact scope, return it instead of writing
-		// a second copy. Caught via the `by_content_hash` index, this dedups the
-		// same fact restated in a different message/file. The scope match
-		// (sameContactScope) is mandatory: folding an org-general write into a
-		// contact-A row (or vice versa) would silently widen/narrow the fact's
-		// contact visibility, so cross-scope hashes are kept as distinct rows. For
-		// the same reason a Team Inbox-derived write never folds into a
-		// member-visible row or the reverse (inbox/access.ts).
-		if (args.contentHash) {
-			const byHash = await ctx.db
-				.query('knowledgeEntries')
-				.withIndex('by_content_hash', (q) => q.eq('contentHash', args.contentHash))
-				.collect(); // bounded: entries sharing one content hash (this dedup keeps it ~1)
-			const inboxDerived = isInboxDerivedKnowledge(args);
-			const dup = byHash.find(
-				(e) =>
-					sameContactScope(e.contactIds, args.contactIds) &&
-					isInboxDerivedKnowledge(e) === inboxDerived
-			);
-			if (dup) return dup._id;
-		}
+		// Write-level idempotency (knowledge/entryDedupe.ts): an entry from the
+		// same source with this title, or one with the same normalized content
+		// under the same contact scope, is returned instead of a duplicate. The
+		// extraction asks the same question before it embeds (M4); this check in
+		// the transaction is what closes the race between two extractions of one
+		// source: the second writer's reads conflict with the first's committed
+		// insert under Convex OCC, so it sees it here and no-ops. The duplicate
+		// already carries its junction rows, so none are written.
+		const dup = await findDuplicateEntry(ctx, args);
+		if (dup) return dup;
 		const { embedding, embeddingModel: _model, embeddingGeneratedAt: _at, ...fields } = args;
 		const { isStale, fields: vector } = await vectorFieldsForCommit(
 			ctx,

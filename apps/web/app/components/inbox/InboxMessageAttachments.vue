@@ -107,6 +107,8 @@ const NOT_INDEXED_KEYS: Record<NotIndexedMarker, string> = {
 	skipped_too_large: 'notIndexedTooLarge',
 	skipped_unsupported: 'notIndexedUnsupported',
 	skipped_failed: 'notIndexedFailed',
+	skipped_spam: 'notIndexedSpam',
+	skipped_automated: 'notIndexedAutomated',
 };
 
 /**

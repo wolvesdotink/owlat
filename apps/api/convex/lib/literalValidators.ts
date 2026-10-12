@@ -141,7 +141,10 @@ export const virusVerdictValidator = v.union(
 export type VirusVerdict = Infer<typeof virusVerdictValidator>;
 
 /**
- * What attachment capture did with a received message's files.
+ * What attachment capture did with a received message's files. Carried by
+ * the Team Inbox row (`inboundMessages.attachmentIndexing`) and by hosted MX
+ * Postbox mail (`mailMessages.attachmentIndexing`); both routes map a capture
+ * outcome through `mail/deliveryPipeline/captureMarker.ts`.
  *
  * Absent means "no attachment leaves at all, or this message predates the
  * marker". Every OTHER outcome is spelled, because the silent ones are the
@@ -185,7 +188,12 @@ export const attachmentIndexingValidator = v.union(
 	v.literal('skipped_refused_type'),
 	v.literal('skipped_too_large'),
 	v.literal('skipped_unsupported'),
-	v.literal('skipped_failed')
+	v.literal('skipped_failed'),
+	// L6 (`attachmentGates`, off by default): `skipped_spam` for a Spam or
+	// Junk folder or an MTA spam/quarantine verdict, `skipped_automated` for
+	// newsletters and automated mail (`mail/deliveryPipeline/captureGate.ts`).
+	v.literal('skipped_spam'),
+	v.literal('skipped_automated')
 );
 
 export type AttachmentIndexing = Infer<typeof attachmentIndexingValidator>;

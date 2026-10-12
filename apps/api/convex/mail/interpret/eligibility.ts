@@ -29,6 +29,12 @@ import type { QueryCtx } from '../../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
 import type { InterpretationSkipReason } from '@owlat/shared/threadBrief';
 import type { interpretEligibilitySignalsValidator } from '../../lib/validators/threadBrief';
+import {
+	headerEvidenceFromStoredJson,
+	headerEvidenceOf,
+	isBulkHeaderForInterpretation,
+} from '../../lib/mailEvidence';
+import { loadSenderContact, senderEvidenceOf } from '../senderEvidence';
 
 export type InterpretEligibilitySignals = Infer<typeof interpretEligibilitySignalsValidator>;
 
@@ -152,11 +158,6 @@ export function isSecurityMail(input: { subject?: string; freshText: string }): 
 
 // ── Loaders ────────────────────────────────────────────────────────────────
 
-/** Precedence values that mark list or bulk mail. */
-function isBulkPrecedence(precedence: string | undefined): boolean {
-	return !!precedence && /^\s*(?:bulk|list|junk)\b/i.test(precedence);
-}
-
 /**
  * Signals of a Postbox message. `isLive` and the ingest-only headers come from
  * the caller (the delivery pipeline knows whether this is live delivery and
@@ -171,52 +172,27 @@ export async function loadMailEligibilitySignals(
 		ctx.db.get(message.folderId),
 		ctx.db.get(message.threadId),
 	]);
-	const contact = await ctx.db
-		.query('mailContacts')
-		.withIndex('by_mailbox_and_email', (q) =>
-			q.eq('mailboxId', message.mailboxId).eq('email', normalizeEmail(message.fromAddress))
-		)
-		.first();
+	const contact = await loadSenderContact(
+		ctx,
+		message.mailboxId,
+		normalizeEmail(message.fromAddress)
+	);
 	const category = thread?.category?.label;
 	return {
 		isLive: opts.isLive,
 		...(folder?.role ? { folder: folder.role } : {}),
 		isThreadMuted: thread?.mutedAt !== undefined,
-		isBulkHeaderPresent:
-			message.unsubscribe !== undefined || isBulkPrecedence(opts.precedence) || !!opts.listId,
-		isSenderKnown: (contact?.useCount ?? 0) > 0,
+		isBulkHeaderPresent: isBulkHeaderForInterpretation(
+			headerEvidenceOf({
+				...(opts.precedence !== undefined ? { precedence: opts.precedence } : {}),
+				...(opts.listId !== undefined ? { listId: opts.listId } : {}),
+				hasListUnsubscribe: message.unsubscribe !== undefined,
+			}),
+			'non_empty'
+		),
+		isSenderKnown: senderEvidenceOf(contact).hasCorresponded,
 		...(category ? { category } : {}),
 	};
-}
-
-/** Header lookup in the stored inbound `headers` JSON (array of pairs or an object). */
-function inboundHeader(headersJson: string | undefined, name: string): string | undefined {
-	if (!headersJson) return undefined;
-	try {
-		const parsed: unknown = JSON.parse(headersJson);
-		const lower = name.toLowerCase();
-		if (Array.isArray(parsed)) {
-			for (const entry of parsed) {
-				if (Array.isArray(entry) && String(entry[0]).toLowerCase() === lower) {
-					return String(entry[1]);
-				}
-				if (entry && typeof entry === 'object' && 'key' in entry && 'value' in entry) {
-					const pair = entry as { key: unknown; value: unknown };
-					if (String(pair.key).toLowerCase() === lower) return String(pair.value);
-				}
-			}
-			return undefined;
-		}
-		if (parsed && typeof parsed === 'object') {
-			for (const [key, value] of Object.entries(parsed)) {
-				if (key.toLowerCase() === lower)
-					return Array.isArray(value) ? String(value[0]) : String(value);
-			}
-		}
-	} catch {
-		// Unparseable headers read as absent.
-	}
-	return undefined;
 }
 
 /** Bound on the sent-reply scan that decides whether the team knows a contact. */
@@ -227,11 +203,10 @@ export async function loadInboundEligibilitySignals(
 	ctx: Pick<QueryCtx, 'db'>,
 	message: Doc<'inboundMessages'>
 ): Promise<InterpretEligibilitySignals> {
-	const precedence = inboundHeader(message.headers, 'precedence');
-	const isBulkHeaderPresent =
-		inboundHeader(message.headers, 'list-unsubscribe') !== undefined ||
-		inboundHeader(message.headers, 'list-id') !== undefined ||
-		isBulkPrecedence(precedence);
+	const isBulkHeaderPresent = isBulkHeaderForInterpretation(
+		headerEvidenceFromStoredJson(message.headers),
+		'present'
+	);
 	let isSenderKnown = false;
 	if (message.contactId) {
 		const prior = await ctx.db

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { SYSTEM_GUARD } from '../../ai/promptGuards';
 import {
 	buildInterpretPrompt,
+	buildInterpretPromptParts,
 	defuseDelimiters,
 	MAX_SEGMENT_PROMPT_CHARS,
 	renderSegments,
@@ -62,6 +63,22 @@ function input(overrides: Partial<InterpretInput> = {}): InterpretInput {
 }
 
 describe('buildInterpretPrompt', () => {
+	it('splits into stable instructions and the message without changing a byte (L9)', () => {
+		for (const mode of ['brief', 'actions'] as const) {
+			const parts = buildInterpretPromptParts(input({ mode }));
+			expect(buildInterpretPrompt(input({ mode }))).toBe(`${parts.stable}\n\n${parts.variable}`);
+			// Nothing of the message is in the cacheable half.
+			expect(parts.stable).not.toContain('untrusted_email_content');
+			expect(parts.stable).not.toContain('Could you send the signed contract');
+			expect(parts.variable.startsWith('<untrusted_email_content>')).toBe(true);
+		}
+		// Two different messages share the stable half.
+		const other = buildInterpretPromptParts(
+			input({ message: { ...input().message, sentAt: input().message.sentAt + 1 } })
+		);
+		expect(other.stable).toBe(buildInterpretPromptParts(input()).stable);
+	});
+
 	it('puts SYSTEM_GUARD first and the mail inside the untrusted delimiters, after the rules', () => {
 		const prompt = buildInterpretPrompt(input());
 		expect(prompt.startsWith(SYSTEM_GUARD)).toBe(true);

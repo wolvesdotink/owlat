@@ -38,7 +38,7 @@ import { rootRequest } from '../lib/llm/requestMeter';
 import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { logInfo } from '../lib/runtimeLog';
 import { RELATION_TYPES } from '../schema/knowledge';
-import { tagForInferredConfidence } from '../lib/knowledgeEdges';
+import { hasLinkablePair, tagForInferredConfidence } from '../lib/knowledgeEdges';
 import { contactScopesCanLink } from '../lib/contactScope';
 import { injectionRisk } from './extraction';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
@@ -105,7 +105,8 @@ function scopeForAnchor(anchor: Doc<'knowledgeEntries'>): Id<'contacts'> | 'org-
  * 1. Re-check the `ai.knowledge.autoLink` flag (bail if off).
  * 2. Load the anchors and, for each, pull its nearest neighbors from a
  *    CONTACT-SCOPED vector search (the anchor's stored embedding — no re-embed).
- * 3. Prune pairs that already carry an edge; bail on any injection risk.
+ * 3. Prune pairs that already carry an edge; bail when no linkable pair is left
+ *    (M6) or on any injection risk.
  * 4. ONE LLM call proposes typed relations by index; persist each through the
  *    shared `upsertInferred` merge (provenance `'llm'`, weight = confidence).
  * Errors are swallowed (mirrors extraction) — edge inference is best-effort and
@@ -172,6 +173,16 @@ export const inferRelations = internalAction({
 				ids: nodes.map((n) => n._id),
 			})
 		);
+
+		// M6 (#1335): every pair is already linked, or may not be linked across
+		// contact scopes. Nothing the model proposes could be written, so it is
+		// not asked.
+		if (!hasLinkablePair(nodes, existing)) {
+			logInfo('[knowledge.autolink] skipped: no unlinked pair to relate', {
+				nodeCount: nodes.length,
+			});
+			return;
+		}
 
 		// Defense in depth: never feed prompt-injected content into the inference LLM.
 		const risk = injectionRisk(nodes.map((n) => `${n.title}\n${n.content}`).join('\n\n'));

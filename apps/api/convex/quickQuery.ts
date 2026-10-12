@@ -33,12 +33,11 @@ import { measuredEmbeddingSpace, probeEmbeddingRevision } from './lib/aiRouting/
 import { runLlmText } from './lib/llm/dispatch';
 import { runEmbedding } from './lib/llm/embed';
 import { newRootRequest } from './lib/llm/requestMeter';
-import { boundedRoot } from './lib/llm/actionDeadline';
+import { anchorActionDeadline, boundedRoot } from './lib/llm/actionDeadline';
 import { meterLlmCall } from './analytics/meteredSpend';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
 import { throwInvalidInput } from './_utils/errors';
-import { anchorActionDeadline } from './lib/llm/actionDeadline';
 
 // How many results to pull from EACH source before synthesis, and how much of
 // each result's body to feed the model (bounded so one huge file can't dominate
