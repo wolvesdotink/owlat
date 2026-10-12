@@ -14,6 +14,8 @@
  * singleton, which the settings page reads (`status`). It runs after a switch,
  * an attestation, a slot move or a finished re-embed, and at most daily
  * otherwise. The counts are a snapshot: rows written since are not in them.
+ * Of the rows outside the space it also counts the re-embed candidates (rows
+ * the job embeds, by its own rule) apart from the rows the job skips.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -26,7 +28,12 @@ import {
 	rowCoverage,
 	type SpaceRef,
 } from '../lib/aiRouting/embeddingRegistry';
-import { embeddingCoverageFields, embeddingTableValidator } from '../lib/validators/embedding';
+import {
+	embeddingCoverageCountsValidator,
+	embeddingCoverageFields,
+	embeddingTableValidator,
+} from '../lib/validators/embedding';
+import { corpusRowInput } from '../lib/aiRouting/embeddingInputs';
 
 type Counts = Infer<typeof embeddingCoverageFields.knowledgeEntries>;
 
@@ -36,14 +43,21 @@ const PAGES_PER_RUN = 50;
 /** A snapshot older than this is refreshed by the kickoff. */
 const COVERAGE_MAX_AGE_MS = 24 * 60 * 60_000;
 
-const countsValidator = v.object({
-	active: v.number(),
-	unknown: v.number(),
-	inactive: v.number(),
-	unembedded: v.number(),
+type FullCounts = Required<Counts>;
+
+const zero = (): FullCounts => ({
+	active: 0,
+	unknown: 0,
+	inactive: 0,
+	unembedded: 0,
+	reembedCandidates: 0,
+	reembedSkipped: 0,
 });
 
-const zero = (): Counts => ({ active: 0, unknown: 0, inactive: 0, unembedded: 0 });
+/** Whether a walk's running totals carry every count (one scheduled before the candidate counts did not). */
+function isFull(counts: Counts): counts is FullCounts {
+	return counts.reembedCandidates !== undefined && counts.reembedSkipped !== undefined;
+}
 
 /** One page of a table, counted against the searchable space (or none). */
 export const coveragePage = internalQuery({
@@ -59,7 +73,16 @@ export const coveragePage = internalQuery({
 			.query(args.table)
 			.paginate({ cursor: args.cursor, numItems: COVERAGE_PAGE_SIZE });
 		const counts = zero();
-		for (const row of page.page) counts[rowCoverage(row, ref)] += 1;
+		const now = Date.now();
+		for (const row of page.page) {
+			const coverage = rowCoverage(row, ref);
+			counts[coverage] += 1;
+			if (coverage === 'active') continue;
+			// The re-embed job's rule (`reembedPage`): outside the space, embedded
+			// when the row has an input, skipped otherwise.
+			if (corpusRowInput(args.table, row, now) !== null) counts.reembedCandidates += 1;
+			else counts.reembedSkipped += 1;
+		}
 		return { counts, continueCursor: page.continueCursor, isDone: page.isDone };
 	},
 });
@@ -71,13 +94,20 @@ export const scan = internalAction({
 		startedAt: v.number(),
 		table: embeddingTableValidator,
 		cursor: v.union(v.string(), v.null()),
-		knowledgeEntries: countsValidator,
-		semanticFiles: countsValidator,
+		knowledgeEntries: embeddingCoverageCountsValidator,
+		semanticFiles: embeddingCoverageCountsValidator,
 	},
 	handler: async (ctx, args): Promise<void> => {
-		const totals = { knowledgeEntries: args.knowledgeEntries, semanticFiles: args.semanticFiles };
-		let table = args.table;
-		let cursor = args.cursor;
+		// A walk scheduled before the candidate counts existed starts over, so
+		// every stored count covers the same rows.
+		const isResumable = isFull(args.knowledgeEntries) && isFull(args.semanticFiles);
+		const totals = {
+			knowledgeEntries:
+				isFull(args.knowledgeEntries) && isResumable ? args.knowledgeEntries : zero(),
+			semanticFiles: isFull(args.semanticFiles) && isResumable ? args.semanticFiles : zero(),
+		};
+		let table = isResumable ? args.table : 'knowledgeEntries';
+		let cursor = isResumable ? args.cursor : null;
 		for (let pages = 0; pages < PAGES_PER_RUN; pages++) {
 			const page = await ctx.runQuery(internal.aiRouting.embeddingCoverage.coveragePage, {
 				table,
@@ -85,7 +115,7 @@ export const scan = internalAction({
 				spaceId: args.spaceId,
 			});
 			const sum = totals[table];
-			for (const key of Object.keys(sum) as (keyof Counts)[]) sum[key] += page.counts[key];
+			for (const key of Object.keys(sum) as (keyof FullCounts)[]) sum[key] += page.counts[key];
 			if (!page.isDone) {
 				cursor = page.continueCursor;
 				continue;

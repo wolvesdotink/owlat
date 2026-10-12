@@ -146,6 +146,26 @@ export async function ownsColumn(db: DatabaseReader, space: SpaceDoc): Promise<b
 	return (await readColumnOwner(db, space.slot))?._id === space._id;
 }
 
+/** Why a cohort cannot be attested to a space; see {@link attestationBlocker}. */
+export type AttestationBlocker = 'primary_owned_by_other_space' | 'secondary_column';
+
+/**
+ * Why a cohort cannot be attested to `known` (an existing space, or null for an
+ * identity not registered yet), or null when it can. The legacy vectors are in
+ * the primary column: refused while any other space owns it (a retired one
+ * included), or when `known` keeps its vectors in the secondary column. The
+ * one rule `attest` enforces and the settings page reads (`status`).
+ */
+export async function attestationBlocker(
+	db: DatabaseReader,
+	known: SpaceDoc | null
+): Promise<AttestationBlocker | null> {
+	const owner = await readColumnOwner(db, 'primary');
+	if (owner && owner._id !== known?._id) return 'primary_owned_by_other_space';
+	if (known && known.slot !== 'primary') return 'secondary_column';
+	return null;
+}
+
 // ── The two vector columns of a row ─────────────────────────────────────────
 
 /** The vector columns and stamps of a `knowledgeEntries` or `semanticFiles` row. */
