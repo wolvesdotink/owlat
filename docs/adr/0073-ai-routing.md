@@ -195,7 +195,11 @@ activates only after a pass that started after the last such mark. An
 endpoint's identity is its origin plus a digest of the rest of its canonical
 base URL, the same URL the client dispatches to, and whether it is paid
 follows the ledger's locality rule (an OpenAI-wire endpoint on a private host
-is local), decided again from the embedder about to be called.
+is local), decided again from the embedder about to be called. The same
+locality decides the revision probe: every local endpoint, whatever its kind
+or `LLM_PROVIDER`, is asked for the model's revision before and after each
+call, and a server without Ollama's tags API leaves it unknown, which is an
+identity of its own.
 
 ### 10. Guard placement (D13)
 

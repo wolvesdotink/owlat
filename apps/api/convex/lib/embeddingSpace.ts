@@ -193,8 +193,29 @@ export interface EmbeddingTarget {
 	 * costs nothing. Decided again from the resolved embedder before each dispatch.
 	 */
 	readonly isLocal: boolean;
-	/** The base URL whose server may report an artifact revision (Ollama). */
+	/**
+	 * Set exactly when `isLocal`: the base URL whose server is asked for the
+	 * model's artifact revision (Ollama's tags API; any other server leaves the
+	 * revision unknown). A hosted endpoint is never probed.
+	 */
 	readonly probeBaseUrl?: string;
+}
+
+/**
+ * A target's endpoint fields from ONE locality decision (the ledger's rule):
+ * a local endpoint is both free and probed for its revision, whatever the
+ * kind or `LLM_PROVIDER`, so payment and revision tracking cannot drift apart.
+ */
+function endpointFields(
+	kind: EmbeddingProviderKind,
+	baseUrl: string | undefined
+): Pick<EmbeddingTarget, 'endpoint' | 'isLocal' | 'probeBaseUrl'> {
+	const isLocal = embeddingEndpointLocality(kind, baseUrl) === 'local';
+	return {
+		endpoint: baseUrl ? endpointIdentity(baseUrl) : 'native',
+		isLocal,
+		...(isLocal && baseUrl ? { probeBaseUrl: baseUrl } : {}),
+	};
 }
 
 export function storedEmbeddingTarget(selection: StoredEmbeddingSelection): EmbeddingTarget {
@@ -206,39 +227,26 @@ export function storedEmbeddingTarget(selection: StoredEmbeddingSelection): Embe
 		requestedDimensions: requestedEmbeddingDimensions(kind, model),
 		source: 'stored_config' as const,
 	};
-	if (kind === 'local' || kind === 'openaiCompatible') {
-		const baseUrl = localEmbeddingBaseUrl(kind);
-		return {
-			...base,
-			endpoint: endpointIdentity(baseUrl),
-			isLocal: embeddingEndpointLocality(kind, baseUrl) === 'local',
-			probeBaseUrl: baseUrl,
-		};
-	}
-	return { ...base, endpoint: 'native', isLocal: false };
+	const baseUrl =
+		kind === 'local' || kind === 'openaiCompatible' ? localEmbeddingBaseUrl(kind) : undefined;
+	return { ...base, ...endpointFields(kind, baseUrl) };
 }
 
 /**
  * The env fallback's target, or null when the environment configures no AI.
  * The env plane always uses the OpenAI adapter; its endpoint tells the native
- * API, OpenRouter, Ollama and a custom server apart. Only env Ollama is probed
- * for a revision; locality (payment) follows the ledger's rule on its URL.
+ * API, OpenRouter, Ollama and a custom server apart. Locality and the revision
+ * probe follow the ledger's rule on that URL, not `LLM_PROVIDER`: a local
+ * Ollama behind `LLM_PROVIDER=openai` is local and probed all the same.
  */
 export function envEmbeddingTarget(): EmbeddingTarget | null {
 	if (!isEnvAiProviderConfigured()) return null;
-	const baseUrl = envLlmBaseUrl();
-	const isOllama = getOptional('LLM_PROVIDER') === 'ollama';
 	return {
 		provider: 'openai',
-		endpoint: baseUrl ? endpointIdentity(baseUrl) : 'native',
 		model: envEmbeddingModel(),
 		requestedDimensions: 'native',
 		source: 'env',
-		// The env plane uses the OpenAI adapter; the ledger's rule decides by where
-		// it points: an env Ollama is local, the native API and any public host
-		// are hosted.
-		isLocal: embeddingEndpointLocality('openai', baseUrl) === 'local',
-		...(isOllama && baseUrl ? { probeBaseUrl: baseUrl } : {}),
+		...endpointFields('openai', envLlmBaseUrl()),
 	};
 }
 

@@ -156,6 +156,43 @@ describe('embedding target', () => {
 		});
 	});
 
+	it('probes the revision exactly when the endpoint is local, whatever the kind (F20)', () => {
+		const targets = [];
+		for (const url of ['http://10.0.0.5:11434/v1', 'https://embeddings.example.com/v1']) {
+			vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', url);
+			for (const kind of EMBEDDING_PROVIDER_KINDS) {
+				targets.push(storedEmbeddingTarget({ embeddingProviderKind: kind }));
+			}
+		}
+		vi.stubEnv('LLM_API_KEY', 'sk-env');
+		for (const [provider, baseUrl] of [
+			['openai', undefined],
+			['openai', 'http://localhost:11434/v1'],
+			['openai', 'https://api.example.com/v1'],
+			['openrouter', undefined],
+			['ollama', undefined],
+		] as const) {
+			vi.stubEnv('LLM_PROVIDER', provider);
+			vi.stubEnv('LLM_BASE_URL', baseUrl);
+			targets.push(envEmbeddingTarget()!);
+		}
+		for (const target of targets) {
+			expect(target.probeBaseUrl !== undefined, JSON.stringify(target)).toBe(target.isLocal);
+		}
+		// Sol's case: the OpenAI adapter pointed at a local Ollama.
+		vi.stubEnv('LLM_PROVIDER', 'openai');
+		vi.stubEnv('LLM_BASE_URL', 'http://localhost:11434/v1');
+		expect(envEmbeddingTarget()).toMatchObject({
+			isLocal: true,
+			probeBaseUrl: 'http://localhost:11434/v1',
+		});
+		// A hosted OpenAI-compatible endpoint is neither free nor probed.
+		vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'https://embeddings.example.com/v1');
+		const hosted = storedEmbeddingTarget({ embeddingProviderKind: 'openaiCompatible' });
+		expect(hosted.isLocal).toBe(false);
+		expect(hosted.probeBaseUrl).toBeUndefined();
+	});
+
 	it('never keeps a credential of a base URL in the endpoint identity', () => {
 		const identity = endpointIdentity('https://user:secret@Example.com:8443/v1?key=abc#frag');
 		// Userinfo and query are sent, so they are part of the endpoint, but only

@@ -495,6 +495,101 @@ describe('local re-embed', () => {
 		expect((await t.run((ctx) => ctx.db.get(edited)))?.embeddingSpaceId).toBe(space!._id);
 	});
 
+	/**
+	 * The OpenAI adapter pointed at a local Ollama (`LLM_PROVIDER=openai`): local
+	 * by its URL, so probed for its revision whatever LLM_PROVIDER says. The
+	 * served digest is whatever `served.digest` holds when a probe arrives.
+	 */
+	function serveEnvOllamaBehindOpenAi() {
+		vi.stubEnv('LLM_PROVIDER', 'openai');
+		vi.stubEnv('LLM_API_KEY', 'unused-by-ollama');
+		vi.stubEnv('LLM_BASE_URL', 'http://localhost:11434/v1');
+		vi.stubEnv('LLM_EMBEDDING_MODEL', 'nomic-embed-text');
+		const served = { digest: 'a'.repeat(64) };
+		const probes: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				probes.push(String(url));
+				const models = [{ name: 'nomic-embed-text:latest', digest: served.digest, details: {} }];
+				return new Response(JSON.stringify({ models }), { status: 200 });
+			})
+		);
+		return { served, probes };
+	}
+
+	it('splits an env Ollama behind LLM_PROVIDER=openai by its served digest (F20)', async () => {
+		const t = convexTest(schema, modules);
+		const { served, probes } = serveEnvOllamaBehindOpenAi();
+		const legacy = await insertEntry(t, 'legacy');
+
+		await t.action(internal.aiRouting.embeddingReembed.kickoff, { isForced: true });
+		await flush(t);
+		expect(probes.length).toBeGreaterThan(0);
+		expect(probes.every((url) => url === 'http://localhost:11434/api/tags')).toBe(true);
+		const [first] = await t.run((ctx) => ctx.db.query('embeddingSpaces').collect());
+		expect(first).toMatchObject({ source: 'env', state: 'active', revision: served.digest });
+		expect((await t.run((ctx) => ctx.db.get(legacy)))?.embeddingSpaceId).toBe(first!._id);
+
+		// `ollama pull` swaps the weights under the same name.
+		served.digest = 'b'.repeat(64);
+		const edited = await insertEntry(t, 'edited');
+		await t.action(internal.aiRouting.embeddingReembed.reembedRow, {
+			table: 'knowledgeEntries',
+			id: edited,
+		});
+		const spaces = await t.run((ctx) => ctx.db.query('embeddingSpaces').collect());
+		const second = spaces.find((space) => space.revision === served.digest)!;
+		expect(second._id).not.toBe(first!._id);
+		expect(second.identityKey).not.toBe(first!.identityKey);
+		expect(second.state).toBe('active');
+		expect(spaces.find((space) => space._id === first!._id)?.state).toBe('retired');
+		// The new space takes the other column; the old digest's vector is not
+		// its own, so the row is out of its search until the re-embed the
+		// activation scheduled embeds it there.
+		expect(second.slot).not.toBe(first!.slot);
+		const spacesOf = async (id: Id<'knowledgeEntries'>) => {
+			const row = (await t.run((ctx) => ctx.db.get(id)))!;
+			return [row.embeddingSpaceId, row.secondaryEmbeddingSpaceId];
+		};
+		expect(await spacesOf(legacy)).toEqual([first!._id, undefined]);
+		expect(await spacesOf(edited)).toContain(second._id);
+		await flush(t);
+		expect(await spacesOf(legacy)).toContain(second._id);
+		expect(embedCalls.texts.filter((text) => text === 'legacy: legacy content')).toHaveLength(2);
+	});
+
+	it('moves the local re-embed to the new digest once a job measures it (F20)', async () => {
+		const t = convexTest(schema, modules);
+		const { served } = serveEnvOllamaBehindOpenAi();
+		const legacy = await insertEntry(t, 'legacy');
+		await t.action(internal.aiRouting.embeddingReembed.kickoff, { isForced: true });
+		await flush(t);
+		const [first] = await t.run((ctx) => ctx.db.query('embeddingSpaces').collect());
+
+		// Only the job notices the new digest: an unembedded row, then a forced pass.
+		served.digest = 'b'.repeat(64);
+		const added = await insertEntry(t, 'added');
+		await t.action(internal.aiRouting.embeddingReembed.kickoff, { isForced: true });
+		await flush(t);
+
+		const spaces = await t.run((ctx) => ctx.db.query('embeddingSpaces').collect());
+		const second = spaces.find((space) => space.revision === served.digest)!;
+		expect(second).toMatchObject({ state: 'active' });
+		expect(second._id).not.toBe(first!._id);
+		for (const id of [legacy, added]) {
+			const row = (await t.run((ctx) => ctx.db.get(id)))!;
+			expect([row.embeddingSpaceId, row.secondaryEmbeddingSpaceId]).toContain(second._id);
+		}
+		// The old space's job ended once (its page measured the new digest), and the
+		// kickoff it scheduled measured and activated the new space: no job loops.
+		const ended = (await jobs(t)).filter((job) => job.targetSpaceId === first!._id);
+		expect(ended.filter((job) => job.status === 'cancelled').length).toBeLessThanOrEqual(1);
+		expect(
+			embedCalls.texts.filter((text) => text === 'added: added content').length
+		).toBeLessThanOrEqual(2);
+	});
+
 	it('runs nothing by default without an AI configuration', async () => {
 		const t = convexTest(schema, modules);
 		await insertEntry(t, 'legacy', { embedding: padded(3), embeddingGeneratedAt: 1 });

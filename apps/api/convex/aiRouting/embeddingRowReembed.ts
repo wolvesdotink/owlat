@@ -13,7 +13,6 @@ import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { embeddingSpaceIdentityKey } from '../lib/aiRouting/embeddingKeys';
 import {
 	ownsColumn,
 	readSearchableSpace,
@@ -22,7 +21,7 @@ import {
 	vectorInSpace,
 } from '../lib/aiRouting/embeddingRegistry';
 import { inputFingerprint } from '../lib/aiRouting/embeddingInputs';
-import { patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
+import { ensureConfiguredSpace, patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
 import {
 	embeddingTableValidator,
 	measuredEmbeddingSpaceValidator,
@@ -56,10 +55,11 @@ export const commitRowVector = internalMutation({
 		space: measuredEmbeddingSpaceValidator,
 	},
 	handler: async (ctx, args): Promise<boolean> => {
-		const searchable = await readSearchableSpace(ctx.db);
+		// The space the vector is in, by the commit path's rule: a new identity of
+		// the configured target (the served model's revision moved) becomes the
+		// active space here, and its activation re-embeds the rest.
+		const searchable = await ensureConfiguredSpace(ctx, args.space);
 		if (!searchable || !(await ownsColumn(ctx.db, searchable))) return false;
-		const { source: _source, ...identity } = args.space;
-		if (embeddingSpaceIdentityKey(identity) !== searchable.identityKey) return false;
 		const id = ctx.db.normalizeId(args.table, args.id);
 		const row = id ? await ctx.db.get(id) : null;
 		if (!row || vectorInSpace(row, spaceRefOf(searchable))) return false;
