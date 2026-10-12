@@ -34,8 +34,11 @@ const { t } = useI18n();
 const instruction = ref('');
 const inputEl = ref<HTMLInputElement | null>(null);
 
+// The safety check held the message back: no AI draft for it.
+const isHeld = computed(() => props.phase === 'held');
+
 function submit() {
-	if (props.busy) return;
+	if (props.busy || isHeld.value) return;
 	emit('draft', instruction.value);
 }
 
@@ -46,6 +49,7 @@ const statusLine = computed(() => {
 	if (props.phase === 'checking') return t('components.answer.aiBar.checking');
 	if (props.phase === 'drafting') return t('components.answer.aiBar.drafting');
 	if (props.phase === 'error') return t('components.answer.aiBar.failed');
+	if (isHeld.value) return t('components.answer.aiBar.heldByGuard');
 	return '';
 });
 
@@ -77,7 +81,7 @@ const inputId = useId();
 				size="sm"
 				variant="secondary"
 				class="shrink-0"
-				:disabled="busy"
+				:disabled="busy || isHeld"
 				:title="t('components.answer.aiBar.shortcut')"
 				data-testid="answer-ai-draft"
 			>
@@ -93,7 +97,7 @@ const inputId = useId();
 		<p
 			v-if="statusLine"
 			class="mt-1 text-xs"
-			:class="phase === 'error' ? 'text-error' : 'text-text-tertiary'"
+			:class="phase === 'error' ? 'text-error' : isHeld ? 'text-warning' : 'text-text-tertiary'"
 			role="status"
 			data-testid="answer-ai-status"
 		>

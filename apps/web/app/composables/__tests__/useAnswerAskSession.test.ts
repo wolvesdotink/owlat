@@ -185,6 +185,29 @@ describe('useAnswerAskSession', () => {
 		).toBe(false);
 	});
 
+	it('reads the guard refusal as held, with no toast, until the target changes (D13)', async () => {
+		const draftId = ref<string | null>('d1');
+		const { api } = host(composerMock(), draftId);
+		const held = {
+			category: 'invalid_state',
+			message: 'This message was held back as unsafe.',
+			data: { code: 'MESSAGE_HELD_BY_GUARD' },
+		};
+		runs['start'] = vi.fn(async () => {
+			expect(onErrors['start']!(held)).toBe(true);
+			return { ok: false };
+		});
+		await api.start('');
+		expect(api.phase.value).toBe('held');
+		expect(api.busy.value).toBe(false);
+		// The same refusal on an answer is claimed too; other start failures are not.
+		expect(onErrors['answer']!(held)).toBe(true);
+		expect(onErrors['start']!({ category: 'forbidden', message: 'No' })).toBe(false);
+		draftId.value = 'd2';
+		await nextTick();
+		expect(api.phase.value).toBe('idle');
+	});
+
 	it('streams into the editor, then settles the draft, the follow-up and the files once', async () => {
 		const composer = composerMock();
 		const { api, onSettled } = host(composer);

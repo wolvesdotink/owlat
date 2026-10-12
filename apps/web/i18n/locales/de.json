@@ -7090,7 +7090,8 @@
 				"peekDraft": "Entwerfen",
 				"readyKept": "Der KI-Entwurf ist fertig. Dein Text bleibt stehen, bis du den Entwurf übernimmst.",
 				"useDraft": "Entwurf übernehmen",
-				"preparedFileFailed": "{filename} aus der vorbereiteten Antwort konnte nicht angehängt werden. Hänge die Datei erneut an, falls die Antwort sie braucht."
+				"preparedFileFailed": "{filename} aus der vorbereiteten Antwort konnte nicht angehängt werden. Hänge die Datei erneut an, falls die Antwort sie braucht.",
+				"heldByGuard": "Die Sicherheitsprüfung hat diese Nachricht zurückgehalten, deshalb gibt es dafür keinen KI-Entwurf. Du kannst die Antwort trotzdem selbst schreiben."
 			},
 			"askCard": {
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",

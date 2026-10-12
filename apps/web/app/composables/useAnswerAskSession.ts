@@ -27,7 +27,8 @@ import type { FunctionArgs, FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
-import { isAlreadyAnsweredRefusal, ownerTimeZone } from '~/utils/answerDraft';
+import { isAlreadyAnsweredRefusal, isHeldByGuardRefusal, ownerTimeZone } from '~/utils/answerDraft';
+import type { OperationError } from '@owlat/shared/operationError';
 
 export type AskSession = NonNullable<
 	FunctionReturnType<typeof api.mail.ai.composeDraftStore.getSession>
@@ -38,7 +39,8 @@ export type AskAnswer = FunctionArgs<typeof api.mail.ai.composeDraft.answer>['an
 
 type AttachmentRow = { storageId: string; filename: string; contentType: string; size: number };
 
-export type AskPhase = 'idle' | 'checking' | 'asking' | 'drafting' | 'ready' | 'error';
+/** `held`: the safety check held the message back, so there is no AI draft for it. */
+export type AskPhase = 'idle' | 'checking' | 'asking' | 'drafting' | 'ready' | 'error' | 'held';
 
 export function useAnswerAskSession(opts: {
 	/** The draft the session hangs off, once it exists. */
@@ -76,17 +78,35 @@ export function useAnswerAskSession(opts: {
 		return mine.updatedAt > live.updatedAt ? mine : live;
 	});
 
+	/**
+	 * The server refused because the safety check held the message back (D13,
+	 * #1339). The bar says so in place of a toast, until the target changes.
+	 */
+	const isHeldByGuard = ref(false);
+	function claimHeldByGuard(op: OperationError): boolean {
+		if (!isHeldByGuardRefusal(op)) return false;
+		isHeldByGuard.value = true;
+		return true;
+	}
+	watch(
+		() => JSON.stringify(opts.target()),
+		() => {
+			isHeldByGuard.value = false;
+		}
+	);
+
 	const startOp = useBackendOperation(api.mail.ai.composeDraft.start, {
 		label: () => t('components.answer.aiBar.operation'),
 		type: 'action',
 		announce: false,
+		onError: claimHeldByGuard,
 	});
 	const answerOp = useBackendOperation(api.mail.ai.composeDraft.answer, {
 		label: () => t('components.answer.askCard.operation'),
 		type: 'action',
 		announce: false,
 		// A double submit: the first one is already drafting. No error for that.
-		onError: isAlreadyAnsweredRefusal,
+		onError: (op) => isAlreadyAnsweredRefusal(op) || claimHeldByGuard(op),
 	});
 
 	const streamId = computed(() => session.value?.streamId ?? null);
@@ -101,6 +121,7 @@ export function useAnswerAskSession(opts: {
 	});
 
 	const phase = computed<AskPhase>(() => {
+		if (isHeldByGuard.value) return 'held';
 		if (startOp.isLoading.value && !session.value) return 'checking';
 		const current = session.value;
 		if (!current) return startOp.isLoading.value ? 'checking' : 'idle';
