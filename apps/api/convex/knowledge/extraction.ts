@@ -102,8 +102,13 @@ async function persistExtractedEntries(
 ): Promise<void> {
 	const entryIds: Id<'knowledgeEntries'>[] = [];
 	for (const entry of entries) {
-		const { embedding } = await meterLlmCall(ctx, { feature: 'embedding_knowledge', root }, (meter) =>
-			runEmbedding({ meter, model: embedder.model, value: `${entry.title}: ${entry.content}` })
+		const { embedding } = await meterLlmCall(
+			ctx,
+			{ feature: 'embedding_knowledge', root },
+			(meter) =>
+				runEmbedding({ meter, model: embedder.model, value: `${entry.title}: ${entry.content}` }),
+			// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+			{ onWriteError: 'ignore' }
 		);
 
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
@@ -201,11 +206,11 @@ export const extractFromMessage = internalAction({
 				ctx,
 				{ feature: 'knowledge_extract_message', root: extractRoot },
 				(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: extractionSchema,
-					prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+					runLlmObject({
+						meter,
+						model,
+						schema: extractionSchema,
+						prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${message.from}
 Subject: ${message.subject}
@@ -222,9 +227,9 @@ Extract any:
 - Action Items: commitments or tasks mentioned
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-					temperature: 0.1,
-					abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-				})
+						temperature: 0.1,
+						abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+					})
 			);
 			logInfo('[knowledge.extract] llm call', { tokenUsage, modelUsed });
 
@@ -232,12 +237,18 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 
 			// ── Step 2: Generate embeddings and store ──
 			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(ctx, embedder, extraction.entries, {
-				sourceType: 'agent_extracted',
-				sourceId: args.inboundMessageId,
-				contactIds: message.contactId ? [message.contactId] : undefined,
-				threadId: message.threadId ?? undefined,
-			}, extractRoot);
+			await persistExtractedEntries(
+				ctx,
+				embedder,
+				extraction.entries,
+				{
+					sourceType: 'agent_extracted',
+					sourceId: args.inboundMessageId,
+					contactIds: message.contactId ? [message.contactId] : undefined,
+					threadId: message.threadId ?? undefined,
+				},
+				extractRoot
+			);
 		} catch (error) {
 			// Fail soft — extraction is best-effort enrichment, never the reason a
 			// message fails to process. Name the source so the gap is traceable.
@@ -293,11 +304,11 @@ export const extractFromFile = internalAction({
 				ctx,
 				{ feature: 'knowledge_extract_file', root: extractRoot },
 				(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: extractionSchema,
-					prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
+					runLlmObject({
+						meter,
+						model,
+						schema: extractionSchema,
+						prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
 
 Filename: ${file.filename}
 Title: ${file.title ?? file.filename}
@@ -305,21 +316,27 @@ ${file.summary ? `Summary: ${file.summary}\n` : ''}Content:
 ${textContent}
 
 Extract any facts, decisions, events, preferences, goals, relationships, or action items. Skip boilerplate and formatting noise.`,
-					temperature: 0.1,
-					abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-				})
+						temperature: 0.1,
+						abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+					})
 			);
 			logInfo('[knowledge.extractFile] llm call', { tokenUsage, modelUsed });
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
 			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(ctx, embedder, extraction.entries, {
-				sourceType: 'file',
-				sourceId: args.fileId,
-				contactIds: file.contactIds ?? undefined,
-				threadId: file.threadId ?? undefined,
-			}, extractRoot);
+			await persistExtractedEntries(
+				ctx,
+				embedder,
+				extraction.entries,
+				{
+					sourceType: 'file',
+					sourceId: args.fileId,
+					contactIds: file.contactIds ?? undefined,
+					threadId: file.threadId ?? undefined,
+				},
+				extractRoot
+			);
 		} catch (error) {
 			logError('[knowledge.extractFromFile] failed', { fileId: args.fileId, error });
 		}
@@ -389,11 +406,11 @@ export const extractFromMailMessage = internalAction({
 				ctx,
 				{ feature: 'knowledge_extract_mail', root: extractRoot },
 				(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: extractionSchema,
-					prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+					runLlmObject({
+						meter,
+						model,
+						schema: extractionSchema,
+						prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${msg.fromName ? `${msg.fromName} <${msg.fromAddress}>` : msg.fromAddress}
 Subject: ${msg.subject}
@@ -410,20 +427,26 @@ Extract any:
 - Action Items: commitments or tasks mentioned
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-					temperature: 0.1,
-					abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-				})
+						temperature: 0.1,
+						abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+					})
 			);
 			logInfo('[knowledge.extractMail] llm call', { tokenUsage, modelUsed });
 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
 			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(ctx, embedder, extraction.entries, {
-				sourceType: 'email',
-				sourceId: args.mailMessageId,
-				contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,
-			}, extractRoot);
+			await persistExtractedEntries(
+				ctx,
+				embedder,
+				extraction.entries,
+				{
+					sourceType: 'email',
+					sourceId: args.mailMessageId,
+					contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,
+				},
+				extractRoot
+			);
 		} catch (error) {
 			logError('[knowledge.extractFromMailMessage] failed', {
 				mailMessageId: args.mailMessageId,

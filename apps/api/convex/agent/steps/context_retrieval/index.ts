@@ -41,10 +41,6 @@ const CONTEXT_BUDGET = {
 	charsPerToken: 4,
 };
 
-function estimateTokens(text: string): number {
-	return Math.ceil(text.length / CONTEXT_BUDGET.charsPerToken);
-}
-
 interface ContextRetrievalInput {
 	inboundMessageId: Id<'inboundMessages'>;
 }
@@ -272,7 +268,6 @@ export async function assembleInboundBriefing(
 						// knowledge learned from earlier inbox mail is in scope here.
 						includeInboxDerived: true,
 						expandGraph: graphRetrieval,
-						root: teamRoot(inboundMessageId),
 					});
 		if (knowledge.length > 0) {
 			hasKnowledge = true;
@@ -366,7 +361,6 @@ export async function assembleInboundBriefing(
 						queryText,
 						...embedding,
 						limit: CONTEXT_BUDGET.fileLimit,
-						root: teamRoot(inboundMessageId),
 						scopeToContact,
 					});
 		if (files.length > 0) {
@@ -392,7 +386,7 @@ export async function assembleInboundBriefing(
 
 	// ── Compile and compact ──
 	const fullContext = contextParts.join('\n\n');
-	const estimatedTokens = estimateTokens(fullContext);
+	const estimatedTokens = Math.ceil(fullContext.length / CONTEXT_BUDGET.charsPerToken);
 
 	let tier: ContextRetrievalOutput['tier'];
 	let finalContext: string;

@@ -7,8 +7,9 @@
  * the step's `agentActions` row as the cost-by-step view; the walker writes no
  * ledger row of its own, so nothing is counted twice.
  *
- * The LLM dispatch seam and the provider factory are mocked; the spend helper
- * is real, so the ledger write is the `analytics/llmUsage:record` mutation.
+ * The LLM dispatch seam and the provider factory are mocked (each mocked call
+ * records one request on its meter); the spend helper is real, so a ledger row
+ * is one request of the `analytics/llmUsage:recordRequests` mutation.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -21,11 +22,14 @@ const mocks = vi.hoisted(() => ({
 	resolveLanguageModel: vi.fn(() => 'mock-model'),
 }));
 
-vi.mock('../../../../lib/llm/dispatch', () => ({
-	runLlmText: mocks.runLlmText,
-	runLlmTextWithTools: mocks.runLlmTextWithTools,
-	runLlmObject: mocks.runLlmObject,
-}));
+vi.mock('../../../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../../../analytics/__tests__/meteredDispatch.testlib');
+	return {
+		runLlmText: metered((opts: unknown) => mocks.runLlmText(opts)),
+		runLlmTextWithTools: metered((opts: unknown) => mocks.runLlmTextWithTools(opts)),
+		runLlmObject: metered((opts: unknown) => mocks.runLlmObject(opts)),
+	};
+});
 vi.mock('../../../../lib/llmProvider', () => ({
 	resolveLanguageModel: mocks.resolveLanguageModel,
 	resolveLanguageModelForClassifiedDraft: mocks.resolveLanguageModel,
@@ -61,7 +65,17 @@ function makeCtx(recordDraftOutput: () => unknown = () => undefined) {
 		mutations: {
 			recordDraftOutput,
 			llmUsage: (args) => {
-				ledger.push(args as (typeof ledger)[number]);
+				const call = args as {
+					feature: string;
+					requests: Array<{ usage?: unknown; modelUsed?: unknown }>;
+				};
+				for (const request of call.requests) {
+					ledger.push({
+						feature: call.feature,
+						tokenUsage: request.usage,
+						modelUsed: request.modelUsed,
+					});
+				}
 				return undefined;
 			},
 		},

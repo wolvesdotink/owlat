@@ -17,6 +17,7 @@ import type * as lib_llm_providerUsage from '../lib/llm/providerUsage.js';
 import type * as lib_llm_requestMeter from '../lib/llm/requestMeter.js';
 import type * as lib_llm_taskLimits from '../lib/llm/taskLimits.js';
 import type * as lib_rowCounters from '../lib/rowCounters.js';
+import type * as lib_semanticFileText from '../lib/semanticFileText.js';
 import type * as mail_interpret___eval___liveModel from '../mail/interpret/__eval__/liveModel.js';
 import type * as mail_interpret_activity from '../mail/interpret/activity.js';
 import type * as mail_interpret_backfill from '../mail/interpret/backfill.js';
@@ -1662,6 +1663,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llm/requestMeter': typeof lib_llm_requestMeter;
 	'lib/llm/taskLimits': typeof lib_llm_taskLimits;
 	'lib/rowCounters': typeof lib_rowCounters;
+	'lib/semanticFileText': typeof lib_semanticFileText;
 	'mail/interpret/__eval__/liveModel': typeof mail_interpret___eval___liveModel;
 	'mail/interpret/activity': typeof mail_interpret_activity;
 	'mail/interpret/backfill': typeof mail_interpret_backfill;

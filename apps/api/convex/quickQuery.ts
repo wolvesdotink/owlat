@@ -107,8 +107,12 @@ export const ask = authedAction({
 		// One question is one user action: every call it makes groups under one root.
 		const root = newRootRequest('assistant');
 		try {
-			const res = await meterLlmCall(ctx, { feature: 'embedding_quick_query', root }, (meter) =>
-				runEmbedding({ meter, model: embedder.model, value: question })
+			const res = await meterLlmCall(
+				ctx,
+				{ feature: 'embedding_quick_query', root },
+				(meter) => runEmbedding({ meter, model: embedder.model, value: question }),
+				// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+				{ onWriteError: 'ignore' }
 			);
 			embedding = toIndexVector(res.embedding);
 		} catch (error) {

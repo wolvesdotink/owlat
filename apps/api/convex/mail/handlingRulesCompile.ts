@@ -144,17 +144,17 @@ export const compile = authedAction({
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
 		const model = await resolveLanguageModel(ctx, 'classify'); // cheap tier — this is a light extraction
-		const { object, tokenUsage, modelUsed } = await meterLlmCall(
+		const { object, modelUsed } = await meterLlmCall(
 			ctx,
 			{ feature: 'handling_rule_compile', root: newRootRequest('rules') },
 			(meter) =>
-			runLlmObject({
-				meter,
-				model,
-				schema: compiledRuleSchema,
-				prompt: buildCompilePrompt(instruction),
-				temperature: 0,
-			})
+				runLlmObject({
+					meter,
+					model,
+					schema: compiledRuleSchema,
+					prompt: buildCompilePrompt(instruction),
+					temperature: 0,
+				})
 		);
 
 		// Bound the compiled facets defensively (the model output is structured but

@@ -1,3 +1,4 @@
+import { PRICE_VERSION } from '../../lib/llm/pricing';
 import { convexTest } from 'convex-test';
 import { MockLanguageModelV3 } from 'ai/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -155,7 +156,16 @@ describe('hosted plugin LLM service', () => {
 				status: 'failed',
 				actorUserId: 'system:bundled_plugin',
 			});
-			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+			// The aborted request reached the provider: one zero-cost estimated row.
+			expect(await ctx.db.query('llmUsageEvents').collect()).toEqual([
+				expect.objectContaining({
+					feature: 'plugin:alpha',
+					attempt: 1,
+					costUsd: 0,
+					isEstimated: true,
+					task: 'plugin.invoke',
+				}),
+			]);
 		});
 	});
 
@@ -252,7 +262,14 @@ describe('hosted plugin LLM service', () => {
 				status: 'completed',
 				tier: 'fast',
 			});
-			expect(await ctx.db.query('llmUsageEvents').unique()).toMatchObject({ pluginId: 'alpha' });
+			expect(await ctx.db.query('llmUsageEvents').unique()).toMatchObject({
+				pluginId: 'alpha',
+				attempt: 1,
+				task: 'plugin.invoke',
+				endpoint: 'openai-native',
+				isEstimated: false,
+				priceVersion: PRICE_VERSION,
+			});
 			expect(await ctx.db.query('pluginLlmDailyUsage').unique()).toMatchObject({
 				chargedMicrousd: reservation?.chargedMicrousd,
 				actualMicrousd: reservation?.actualMicrousd,
@@ -280,7 +297,15 @@ describe('hosted plugin LLM service', () => {
 				chargedMicrousd: reservation?.reservedMicrousd,
 				actualMicrousd: 0,
 			});
-			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+			// The deployment ledger keeps the request, at the model the provider
+			// reported, marked as an estimate.
+			expect(await ctx.db.query('llmUsageEvents').collect()).toEqual([
+				expect.objectContaining({
+					modelUsed: 'gpt-4o-mini-provider-alias',
+					totalTokens: 15,
+					isEstimated: true,
+				}),
+			]);
 			const audits = await ctx.db.query('auditLogs').take(5);
 			expect(JSON.stringify(audits)).not.toContain('gpt-4o-mini-provider-alias');
 		});
@@ -307,7 +332,11 @@ describe('hosted plugin LLM service', () => {
 				chargedMicrousd: reservation?.reservedMicrousd,
 				actualMicrousd: 0,
 			});
-			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+			const rows = await ctx.db.query('llmUsageEvents').collect();
+			expect(rows).toEqual([
+				expect.objectContaining({ modelUsed: 'gpt-4o-mini', totalTokens: 15, isEstimated: true }),
+			]);
+			expect(JSON.stringify(rows)).not.toContain('provider-secret-alias');
 			expect(JSON.stringify(await ctx.db.query('auditLogs').take(5))).not.toContain(
 				'provider-secret-alias'
 			);

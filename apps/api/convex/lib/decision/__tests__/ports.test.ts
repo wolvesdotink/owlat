@@ -4,16 +4,17 @@
  * Small surface, two properties worth pinning. The breaker port must read
  * "open" the way the dispatch asks the question (`isOpen`, from a status that
  * says `fallbackAllowed`) — an inversion here would turn the guard on the
- * expensive hop into permission for it. And the usage recorder must turn an
- * attempt into a row that says what happened without saying what the vendor
- * said: a 429 becomes a throttle FLAG, and the error itself is not persisted,
- * because an adapter's message can quote a vendor body and a ledger row is not
- * where anyone should discover that.
+ * expensive hop into permission for it. And the usage recorder must turn each
+ * provider request of an attempt into a row that says what happened without
+ * saying what the vendor said: a 429 is a throttle FLAG on the request
+ * (`../attemptRequests.ts`, tested beside it), and the error itself is not
+ * persisted, because an adapter's message can quote a vendor body and a ledger
+ * row is not where anyone should discover that.
  */
 
 import { describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../../_generated/server';
-import { decisionBreakerPort, decisionUsageRecorder } from '../ports';
+import { decisionBreakerPort, decisionRateLimiterPort, decisionUsageRecorder } from '../ports';
 import type { DecisionAttemptRecord } from '../contract';
 
 function fakeCtx() {
@@ -39,6 +40,17 @@ const ATTEMPT: DecisionAttemptRecord = {
 	usage: { promptTokens: 1200, completionTokens: 8, totalTokens: 1208 },
 	modelUsed: 'jev-1.13.0',
 	calibrated: true,
+	requests: [
+		{
+			attempt: 1,
+			outcome: 'ok',
+			latencyMs: 180,
+			usage: { promptTokens: 1200, completionTokens: 8, totalTokens: 1208 },
+			modelUsed: 'jev-1.13.0',
+		},
+	],
+	task: 'mail.triage',
+	root: { rootRequestId: 'team:msg-1' },
 };
 
 describe('decisionBreakerPort', () => {
@@ -81,12 +93,35 @@ describe('decisionUsageRecorder', () => {
 		});
 	});
 
-	it.each([
-		[429, true],
-		[529, true],
-		[500, false],
-		[401, false],
-	])('reads HTTP %i as throttled: %s', async (status, throttled) => {
+	it('writes one row per provider request of the attempt, with the routing context', async () => {
+		const { ctx, runMutation } = fakeCtx();
+
+		// The language-backed adapter retried inside one attempt: two requests.
+		await decisionUsageRecorder(ctx)({
+			...ATTEMPT,
+			provider: 'llm',
+			requests: [
+				{ attempt: 1, outcome: 'failed', latencyMs: 30, isThrottled: true },
+				{ ...ATTEMPT.requests[0]!, attempt: 2 },
+			],
+		});
+
+		expect(runMutation).toHaveBeenCalledTimes(1);
+		const args = runMutation.mock.calls[0]?.[1] as Record<string, unknown>;
+		expect(args).toMatchObject({
+			plane: 'decision',
+			task: 'mail.triage',
+			rootRequestId: 'team:msg-1',
+			requests: [
+				{ attempt: 1, latencyMs: 30, isThrottled: true },
+				{ attempt: 2, usage: ATTEMPT.usage, modelUsed: 'jev-1.13.0' },
+			],
+		});
+		// The dispatch's own outcome field is not a ledger column.
+		expect(JSON.stringify(args)).not.toContain('outcome');
+	});
+
+	it('keeps the vendor error out of a failed attempt’s row', async () => {
 		const { ctx, runMutation } = fakeCtx();
 
 		await decisionUsageRecorder(ctx)({
@@ -94,17 +129,22 @@ describe('decisionUsageRecorder', () => {
 			outcome: 'failed',
 			usage: undefined,
 			calibrated: undefined,
-			error: Object.assign(new Error(`HTTP ${status}`), { status }),
+			error: Object.assign(new Error('HTTP 429 quoted vendor body'), { status: 429 }),
+			requests: [{ attempt: 1, outcome: 'failed', latencyMs: 12, isThrottled: true }],
 		});
 
 		const args = (runMutation.mock.calls[0]?.[1] ?? {}) as Record<string, unknown>;
-		expect(args['isThrottled']).toBe(throttled);
 		// A failed attempt is still a row: the counters are about what the plane
 		// DID, and a ledger that only sees answers cannot show an outage.
 		expect(args['plane']).toBe('decision');
 		expect(args['isCalibrated']).toBeUndefined();
-		// The vendor's error never reaches the row.
 		expect(JSON.stringify(args)).not.toContain('HTTP');
+	});
+
+	it('writes nothing for an attempt that made no request', async () => {
+		const { ctx, runMutation } = fakeCtx();
+		await decisionUsageRecorder(ctx)({ ...ATTEMPT, requests: [] });
+		expect(runMutation).not.toHaveBeenCalled();
 	});
 
 	it('marks every local-engine attempt free, whatever checkpoint answered', async () => {
@@ -140,5 +180,20 @@ describe('decisionUsageRecorder', () => {
 		for (const call of runMutation.mock.calls) {
 			expect(((call[1] ?? {}) as Record<string, unknown>)['isLocalEngine']).toBeUndefined();
 		}
+	});
+});
+
+describe('decisionRateLimiterPort', () => {
+	it('charges one attempt token per reserve, keyed by provider kind', async () => {
+		const { ctx, runMutation } = fakeCtx();
+		await decisionRateLimiterPort(ctx).reserve('typesafe');
+		expect(runMutation).toHaveBeenCalledTimes(1);
+		expect(runMutation.mock.calls[0]?.[1]).toEqual({ provider: 'typesafe' });
+	});
+
+	it('lets a refusal through as a throw, for the dispatch to make terminal', async () => {
+		const { ctx, runMutation } = fakeCtx();
+		runMutation.mockRejectedValueOnce(new Error('rate limited'));
+		await expect(decisionRateLimiterPort(ctx).reserve('local')).rejects.toThrow('rate limited');
 	});
 });

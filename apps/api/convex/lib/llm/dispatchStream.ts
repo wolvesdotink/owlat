@@ -113,10 +113,24 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 	const requestBase = { modelUsed, ...(endpoint ? { endpoint } : {}) };
 	let finishStep = startRequest(opts.meter);
 	let stepOpen = true;
+	// A finished step that asked for tool results makes the SDK send the next
+	// request before any part of it arrives, so a failure then is that
+	// request's. Until its first part arrives the step is tentative: a stream
+	// that ends there (the step limit) made no such request.
+	let isTentative = false;
 	const closeStep = (input: Parameters<typeof finishStep>[0]) => {
 		if (!stepOpen) return;
 		stepOpen = false;
 		finishStep(input);
+	};
+	const openStep = (tentative: boolean) => {
+		if (stepOpen) {
+			isTentative = isTentative && tentative;
+			return;
+		}
+		finishStep = startRequest(opts.meter);
+		stepOpen = true;
+		isTentative = tentative;
 	};
 	const result = streamText({
 		model: modelForRequest(opts.model),
@@ -145,10 +159,7 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 		for await (const part of result.fullStream) {
 			switch (part.type) {
 				case 'start-step':
-					if (!stepOpen) {
-						finishStep = startRequest(opts.meter);
-						stepOpen = true;
-					}
+					openStep(false);
 					await resetText();
 					break;
 				case 'text-delta':
@@ -185,6 +196,7 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 						usage: streamUsage(part.usage),
 						...usageDetails(part.usage),
 					});
+					if (part.finishReason === 'tool-calls') openStep(true);
 					break;
 				case 'finish':
 					finishReason = part.finishReason;
@@ -204,7 +216,7 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 	}
 	// An abort ends the stream without an error; the step it cut short was a
 	// request too, with no usage the provider reported.
-	closeStep({ ...requestBase, outcome: aborted ? 'failed' : 'ok' });
+	if (!isTentative || aborted) closeStep({ ...requestBase, outcome: aborted ? 'failed' : 'ok' });
 
 	return { text, tokenUsage: tokenUsage ?? stepsSpent, modelUsed, finishReason, aborted };
 }

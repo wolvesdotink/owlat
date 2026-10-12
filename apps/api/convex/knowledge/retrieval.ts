@@ -124,8 +124,12 @@ export async function embedRetrievalQuery(
 		const feature = tables.includes('knowledgeEntries')
 			? 'embedding_knowledge_search'
 			: 'embedding_file_search';
-		const { embedding } = await meterLlmCall(ctx, { feature, ...(root ? { root } : {}) }, (meter) =>
-			runEmbedding({ meter, model: embedder.model, value: queryText.trim() })
+		const { embedding } = await meterLlmCall(
+			ctx,
+			{ feature, ...(root ? { root } : {}) },
+			(meter) => runEmbedding({ meter, model: embedder.model, value: queryText.trim() }),
+			// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+			{ onWriteError: 'ignore' }
 		);
 		return {
 			kind: 'vector',

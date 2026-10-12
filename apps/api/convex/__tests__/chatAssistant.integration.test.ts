@@ -6,6 +6,7 @@ import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
+import { metered } from '../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../lib/llm/partialUsage';
 import { ASSISTANT_AUTHOR_ID } from '../chat/_helpers';
 
@@ -182,7 +183,7 @@ describe('chat @assistant — runner reply (mocked LLM)', () => {
 		const assistantId = before.messages.find((m) => m.isAssistant)!._id as Id<'chatMessages'>;
 		const promptId = before.messages.find((m) => !m.isAssistant)!._id as Id<'chatMessages'>;
 
-		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
+		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
 			await opts.onTextDelta?.('Here is', 'Here is');
 			await opts.onTextDelta?.('Here is the summary.', ' the summary.');
 			return {
@@ -192,7 +193,7 @@ describe('chat @assistant — runner reply (mocked LLM)', () => {
 				finishReason: 'stop',
 				aborted: false,
 			};
-		});
+		}));
 
 		await t.action(internal.assistant.runner.runForChat, {
 			roomId,
@@ -219,9 +220,9 @@ describe('chat @assistant — runner reply (mocked LLM)', () => {
 		const assistantId = before.messages.find((m) => m.isAssistant)!._id as Id<'chatMessages'>;
 		const promptId = before.messages.find((m) => !m.isAssistant)!._id as Id<'chatMessages'>;
 
-		vi.mocked(runLlmStream).mockImplementation(async () => {
+		vi.mocked(runLlmStream).mockImplementation(metered(async () => {
 			throw new Error('boom');
-		});
+		}));
 
 		await t.action(internal.assistant.runner.runForChat, {
 			roomId,
@@ -244,7 +245,7 @@ describe('chat @assistant — runner reply (mocked LLM)', () => {
 		const assistantId = before.messages.find((m) => m.isAssistant)!._id as Id<'chatMessages'>;
 		const promptId = before.messages.find((m) => !m.isAssistant)!._id as Id<'chatMessages'>;
 
-		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
+		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
 			await opts.onToolCall?.({ toolCallId: 'tc1', toolName: 'searchKnowledge', input: {} });
 			await opts.onToolResult?.({ toolCallId: 'tc1', toolName: 'searchKnowledge', output: {} });
 			throw new LlmPartialUsageError(
@@ -252,7 +253,7 @@ describe('chat @assistant — runner reply (mocked LLM)', () => {
 				{ promptTokens: 21, completionTokens: 4, totalTokens: 25 },
 				'test-model'
 			);
-		});
+		}));
 
 		await t.action(internal.assistant.runner.runForChat, {
 			roomId,

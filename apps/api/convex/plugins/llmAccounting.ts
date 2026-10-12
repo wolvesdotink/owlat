@@ -225,7 +225,14 @@ export const settleSuccess = internalMutation({
 			completedAt: now,
 		});
 		if (args.requests !== undefined) {
-			await insertPluginRequestRows(ctx, reservation, args);
+			// A settlement whose usage could not be accounted (no, malformed or a
+			// rerouted provider model) charged the plugin its whole hold; the
+			// deployment ledger keeps the requests, priced at the model the
+			// provider reported and marked as estimates.
+			await insertPluginRequestRows(ctx, reservation, {
+				...args,
+				...(cost.isUsageAccounted ? {} : { isEstimate: true }),
+			});
 		} else if (acceptedUsage && cost.isUsageAccounted) {
 			await insertLlmUsage(
 				ctx,
@@ -419,14 +426,20 @@ async function requiredDailyUsage(ctx: MutationCtx, row: Doc<'pluginLlmReservati
 /**
  * One ledger row per provider request of a plugin call (ADR-0073), written in
  * the settlement mutation so the plugin budget and the deployment ledger move
- * together. Rows are priced at the reserved model's list price; a request with
- * no valid reported usage writes a zero-cost row marked `isEstimated`. At most
+ * together. A row is priced at the model the provider reported, else the
+ * reserved one; a request with no valid reported usage writes a zero-cost row,
+ * and every row of an unaccounted settlement is marked `isEstimated`. At most
  * {@link MAX_LLM_ATTEMPTS} requests: a plugin call is one-shot text.
  */
 async function insertPluginRequestRows(
 	ctx: MutationCtx,
 	reservation: Doc<'pluginLlmReservations'>,
-	args: { requestId?: string; requests?: MeteredRequest[] }
+	args: {
+		requestId?: string;
+		requests?: MeteredRequest[];
+		modelUsed?: string;
+		isEstimate?: boolean;
+	}
 ): Promise<void> {
 	const requests = args.requests ?? [];
 	if (requests.length > MAX_LLM_ATTEMPTS) throw new Error('Plugin LLM settlement denied');
@@ -436,14 +449,14 @@ async function insertPluginRequestRows(
 			ctx,
 			`plugin:${reservation.pluginId}`,
 			usage ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-			reservation.modelId,
+			args.modelUsed ?? reservation.modelId,
 			{ organizationId: reservation.organizationId, pluginId: reservation.pluginId },
 			{
 				...(args.requestId ? { requestId: args.requestId } : {}),
 				attempt: request.attempt,
 				latencyMs: request.latencyMs,
 				endpoint: reservation.endpointProvenance,
-				isEstimated: usage === undefined,
+				isEstimated: usage === undefined || args.isEstimate === true,
 				...(request.cacheReadTokens === undefined
 					? {}
 					: { cacheReadTokens: request.cacheReadTokens }),

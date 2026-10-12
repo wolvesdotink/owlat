@@ -42,7 +42,7 @@ import { isContactScopeVisible } from './lib/contactScope';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
-import { detectInjection } from './agent/steps/security_scan/patterns';
+import { scrubTags, slugifyTag, truncateForLLM } from './lib/semanticFileText';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
 
 /**
@@ -160,23 +160,26 @@ export const processFile = internalAction({
 		} else if (textForAI.length > 50) {
 			try {
 				const model = await resolveLanguageModel(ctx, 'summarize');
-				const result = await meterLlmCall(ctx, { feature: 'semantic_file', root: fileRoot }, (meter) =>
-					runLlmObject({
-						meter,
-						model,
-						schema: z.object({
-							title: z.string().describe('Short descriptive title for the file'),
-							summary: z.string().describe('2-3 sentence summary of the file content'),
-							tags: z.array(z.string()).describe('5-10 relevant tags for categorization'),
-						}),
-						prompt: `Analyze this file and provide a title, summary, and tags.
+				const result = await meterLlmCall(
+					ctx,
+					{ feature: 'semantic_file', root: fileRoot },
+					(meter) =>
+						runLlmObject({
+							meter,
+							model,
+							schema: z.object({
+								title: z.string().describe('Short descriptive title for the file'),
+								summary: z.string().describe('2-3 sentence summary of the file content'),
+								tags: z.array(z.string()).describe('5-10 relevant tags for categorization'),
+							}),
+							prompt: `Analyze this file and provide a title, summary, and tags.
 
 Filename: ${file.filename}
 MIME type: ${file.mimeType}${fileCtx.threadSubject ? `\nShared in conversation: "${fileCtx.threadSubject}"` : ''}${fileCtx.contactNames.length ? `\nRelated contacts: ${fileCtx.contactNames.join(', ')}` : ''}
 
 Content:
 ${textForAI}`,
-					})
+						})
 				);
 				logInfo('[semantic_file] llm call', {
 					tokenUsage: result.tokenUsage,
@@ -212,7 +215,9 @@ ${textForAI}`,
 				const embeddingResult = await meterLlmCall(
 					ctx,
 					{ feature: 'embedding_file', root: fileRoot },
-					(meter) => runEmbedding({ meter, model: embedder.model, value: embeddingText })
+					(meter) => runEmbedding({ meter, model: embedder.model, value: embeddingText }),
+					// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+					{ onWriteError: 'ignore' }
 				);
 				embedding = toIndexVector(embeddingResult.embedding);
 			} catch (error) {
@@ -290,26 +295,6 @@ ${textForAI}`,
 		}
 	},
 });
-
-/**
- * Drop any tag that carries a prompt-injection attempt. Auto-tags are derived by
- * the LLM from untrusted extracted file content, so a planted instruction could
- * otherwise be persisted into `autoTags` / `searchableText` and reach a model via
- * retrieval. Deterministic pattern match — no extra LLM cost. Exported for unit
- * tests.
- */
-export function scrubTags(tags: string[]): string[] {
-	return tags.filter((tag) => !detectInjection(tag).detected);
-}
-
-/** Normalize a phrase into a lowercase kebab tag (e.g. "Q3 Financials" → "q3-financials"). */
-function slugifyTag(input: string): string {
-	return input
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		.slice(0, 40);
-}
 
 /**
  * Semantic file search (hybrid vector + full-text).
@@ -493,10 +478,4 @@ export async function extractText(blob: Blob, mimeType: string, filename: string
 	// external libraries or a processing service, so the file is ingested under
 	// its own name and nothing else.
 	return extractionPlaceholder(format, filename);
-}
-
-// Exported for unit tests.
-export function truncateForLLM(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	return text.slice(0, maxChars) + '\n\n[Content truncated...]';
 }

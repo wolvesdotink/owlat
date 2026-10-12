@@ -25,7 +25,6 @@
  * the breaker's verdict back to the caller and lets the dispatch decide.
  */
 
-import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { rateLimiter } from '../lib/rateLimiter';

@@ -6,8 +6,9 @@ import { api, internal } from '../_generated/api';
 import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
 import { LlmPartialUsageError } from '../lib/llm/partialUsage';
-import { recordLlmSpend } from '../analytics/llmUsage';
-import type * as LlmUsageModule from '../analytics/llmUsage';
+import { writeMeteredSpend } from '../analytics/meteredSpend';
+import type * as MeteredSpendModule from '../analytics/meteredSpend';
+import { metered } from '../analytics/__tests__/meteredDispatch.testlib';
 
 /**
  * Conversation runner orchestration with a MOCKED LLM stream: it must drive the
@@ -49,9 +50,9 @@ vi.mock('../lib/llm/dispatch', async () => {
 });
 
 // The ledger helper, real by default; a test makes one write throw.
-vi.mock('../analytics/llmUsage', async () => {
-	const actual = await vi.importActual<typeof LlmUsageModule>('../analytics/llmUsage');
-	return { ...actual, recordLlmSpend: vi.fn(actual.recordLlmSpend) };
+vi.mock('../analytics/meteredSpend', async () => {
+	const actual = await vi.importActual<typeof MeteredSpendModule>('../analytics/meteredSpend');
+	return { ...actual, writeMeteredSpend: vi.fn(actual.writeMeteredSpend) };
 });
 
 function makeT() {
@@ -74,7 +75,7 @@ async function startTurn(t: ReturnType<typeof makeT>) {
 beforeEach(() => {
 	sess.user = { userId: 'user-a', role: 'owner' };
 	vi.mocked(runLlmStream).mockReset();
-	vi.mocked(recordLlmSpend).mockClear();
+	vi.mocked(writeMeteredSpend).mockClear();
 });
 
 const STEP_USAGE = { promptTokens: 30, completionTokens: 7, totalTokens: 37 };
@@ -99,7 +100,7 @@ describe('assistant runner', () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
 
-		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
+		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
 			await opts.onToolCall?.({
 				toolCallId: 'tc1',
 				toolName: 'searchKnowledge',
@@ -119,7 +120,7 @@ describe('assistant runner', () => {
 				finishReason: 'stop',
 				aborted: false,
 			};
-		});
+		}));
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -148,10 +149,10 @@ describe('assistant runner', () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
 
-		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
+		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
 			await opts.onTextDelta?.('Half a thought', 'Half a thought');
 			throw new Error('model overloaded');
-		});
+		}));
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -170,7 +171,7 @@ describe('assistant runner', () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
 
-		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
+		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
 			await opts.onTextDelta?.('Starting…', 'Starting…');
 			return {
 				text: 'Starting…',
@@ -179,7 +180,7 @@ describe('assistant runner', () => {
 				finishReason: undefined,
 				aborted: true,
 			};
-		});
+		}));
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -194,7 +195,7 @@ describe('assistant runner', () => {
 	it('records the finished steps of a failed turn once, under the turn feature', async () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
-		vi.mocked(runLlmStream).mockImplementation(failAfterOneToolStep);
+		vi.mocked(runLlmStream).mockImplementation(metered(failAfterOneToolStep));
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -237,8 +238,8 @@ describe('assistant runner', () => {
 	it('keeps the original error when the partial-spend write also fails', async () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
-		vi.mocked(runLlmStream).mockImplementation(failAfterOneToolStep);
-		vi.mocked(recordLlmSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
+		vi.mocked(runLlmStream).mockImplementation(metered(failAfterOneToolStep));
+		vi.mocked(writeMeteredSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -256,7 +257,7 @@ describe('assistant runner', () => {
 	it('finalizes a finished answer as complete when the spend write throws', async () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
-		vi.mocked(runLlmStream).mockImplementation(async (opts) => {
+		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
 			await opts.onTextDelta?.('Done.', 'Done.');
 			return {
 				text: 'Done.',
@@ -265,8 +266,8 @@ describe('assistant runner', () => {
 				finishReason: 'stop',
 				aborted: false,
 			};
-		});
-		vi.mocked(recordLlmSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
+		}));
+		vi.mocked(writeMeteredSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -279,6 +280,6 @@ describe('assistant runner', () => {
 		expect(assistant?.status).toBe('complete');
 		expect(assistant?.text).toBe('Done.');
 		expect(assistant?.errorMessage).toBeNull();
-		expect(recordLlmSpend).toHaveBeenCalledTimes(1);
+		expect(writeMeteredSpend).toHaveBeenCalledTimes(1);
 	});
 });

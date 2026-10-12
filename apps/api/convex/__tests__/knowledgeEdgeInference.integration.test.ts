@@ -34,7 +34,8 @@ vi.mock('../lib/llmProvider', async () => {
 
 vi.mock('../lib/llm/dispatch', async () => {
 	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
-	return { ...actual, runLlmObject: runLlmObjectMock };
+	const { metered } = await import('../analytics/__tests__/meteredDispatch.testlib');
+	return { ...actual, runLlmObject: metered((opts: unknown) => runLlmObjectMock(opts)) };
 });
 
 // AWS-SDK / heavy node-only modules aren't on the path under test; drop them.
