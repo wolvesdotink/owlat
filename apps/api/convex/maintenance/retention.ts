@@ -128,10 +128,15 @@ export const sweepAiRoutingRecords = internalMutation({
 					.query('shadowQuotaDays')
 					.withIndex('by_updated_at', (q) => q.lt('updatedAt', shadowCutoff))
 					.take(BATCH),
-				// Past the extraction deferral window: completion falls back to the entries.
+				// Completed extraction markers only: without its marker a complete
+				// source still reads as done from its entries. An unfinished one is
+				// kept until it completes or its source is deleted, however long a
+				// budget refusal lasts, or its unsaved entries would be lost (Sol r3 F2).
 				ctx.db
 					.query('knowledgeExtractionProgress')
-					.withIndex('by_updated_at', (q) => q.lt('updatedAt', shadowCutoff))
+					.withIndex('by_status_and_updated_at', (q) =>
+						q.eq('status', 'complete').lt('updatedAt', shadowCutoff)
+					)
 					.take(BATCH),
 				...(['settled', 'released', 'expired'] as const).map((status) =>
 					ctx.db

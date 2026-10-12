@@ -226,7 +226,8 @@ export const aiRoutingTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_source', ['sourceType', 'sourceId'])
-		.index('by_updated_at', ['updatedAt']),
+		// Retention ages out `complete` markers only (Sol r3 F2).
+		.index('by_status_and_updated_at', ['status', 'updatedAt']),
 
 	// Decision artifacts (Phase 2, D9, D11): a bundle's typed answers for one
 	// message, keyed by task, message, content hash and policy version
