@@ -217,6 +217,8 @@ describe('D13: re-processing requires the guard', () => {
 
 	it('knowledge extraction runs the guard first, records it, then extracts', async () => {
 		const t = convexTest(schema, modules);
+		// #1335: extraction runs only with the knowledge graph on.
+		await enableFeatures(t, ['ai.knowledge']);
 		const id = await insertMessage(t, {
 			processingStatus: 'security_check',
 			securityFlags: AGENT_OFF_FLAGS,
@@ -239,6 +241,8 @@ describe('D13: re-processing requires the guard', () => {
 	it('knowledge extraction stops when the late guard flags the message', async () => {
 		guardFlags = true;
 		const t = convexTest(schema, modules);
+		// #1335: extraction runs only with the knowledge graph on.
+		await enableFeatures(t, ['ai.knowledge']);
 		const id = await insertMessage(t, {
 			processingStatus: 'archived',
 			securityFlags: { ...AGENT_OFF_FLAGS, guardNotRun: { reason: 'spam_archived', at: 1 } },
@@ -259,6 +263,8 @@ describe('D13: re-processing requires the guard', () => {
 
 	it('knowledge extraction leaves a message whose guard ran alone', async () => {
 		const t = convexTest(schema, modules);
+		// #1335: extraction runs only with the knowledge graph on.
+		await enableFeatures(t, ['ai.knowledge']);
 		const { guardNotRun: _skip, ...ranFlags } = AGENT_OFF_FLAGS;
 		const id = await insertMessage(t, { processingStatus: 'draft_ready', securityFlags: ranFlags });
 
@@ -344,6 +350,8 @@ describe('D13: thread interpretation requires the guard', () => {
 	it('repeated extraction after a flagged late guard makes no further model call', async () => {
 		guardFlags = true;
 		const t = convexTest(schema, modules);
+		// #1335: extraction runs only with the knowledge graph on.
+		await enableFeatures(t, ['ai.knowledge']);
 		const id = await insertMessage(t, {
 			processingStatus: 'security_check',
 			securityFlags: AGENT_OFF_FLAGS,
@@ -386,7 +394,8 @@ describe('#1339: what the scan rejected never reaches extraction or interpretati
 	it('the first-enable backfill extracts the clean message and none of the rejected ones', async () => {
 		vi.useRealTimers();
 		const t = convexTest(schema, modules);
-		await enableFeatures(t, ['ai.agent']);
+		// #1335: the backfill's extractions run only with the knowledge graph on.
+		await enableFeatures(t, ['ai.agent', 'ai.knowledge']);
 		await insertMessage(t, { processingStatus: 'draft_ready', securityFlags: CLEAN_FLAGS });
 		for (const [, fields] of REJECTED) {
 			await insertMessage(t, { processingStatus: 'quarantined', ...fields });
@@ -647,6 +656,8 @@ describe('D13: overlapping late guards merge monotonically (Sol r2 F1)', () => {
 
 	it('a consumer acts on the persisted standing, not on its own benign verdict', async () => {
 		const t = convexTest(schema, modules);
+		// #1335: extraction runs only with the knowledge graph on.
+		await enableFeatures(t, ['ai.knowledge']);
 		const id = await insertMessage(t, {
 			processingStatus: 'security_check',
 			securityFlags: AGENT_OFF_FLAGS,

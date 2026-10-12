@@ -27,6 +27,7 @@ import { ENTRY_TYPES } from '../schema/knowledge';
 import { normalizeForHash } from '../lib/knowledgeEdges';
 import { detectInjection, detectSmuggling } from '../agent/steps/security_scan/patterns';
 import { runGuardBeforeAutonomy } from '../agent/steps/security_scan/guard';
+import { capPerMessage, isKnowledgeOn } from './extractionPolicy';
 
 /**
  * Guard knowledge extraction against prompt injection planted in untrusted
@@ -100,16 +101,32 @@ async function persistExtractedEntries(
 ): Promise<void> {
 	const entryIds: Id<'knowledgeEntries'>[] = [];
 	for (const entry of entries) {
-		const { embedding } = await embed({
-			model: embedder.model,
-			value: `${entry.title}: ${entry.content}`,
-		});
-
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
 		// content-hash leg can dedup the same fact restated across sources.
 		const contentHash = createHash('sha256')
 			.update(normalizeForHash(entry.title, entry.content))
 			.digest('hex');
+
+		// M4: an entry saveEntry would answer with an existing row is not embedded
+		// (knowledge/entryDedupe.ts). Asked per entry, in order, so a repeat
+		// within this batch finds the row its first occurrence just wrote.
+		const existing = await ctx.runQuery(internal.knowledge.entryDedupe.findExistingEntry, {
+			sourceType: source.sourceType,
+			sourceId: source.sourceId,
+			title: entry.title,
+			contentHash,
+			contactIds: source.contactIds,
+			threadId: source.threadId,
+		});
+		if (existing) {
+			entryIds.push(existing);
+			continue;
+		}
+
+		const { embedding } = await embed({
+			model: embedder.model,
+			value: `${entry.title}: ${entry.content}`,
+		});
 
 		const entryId = await ctx.runMutation(internal.knowledge.graph.saveEntry, {
 			entryType: entry.type,
@@ -153,6 +170,7 @@ export const extractFromMessage = internalAction({
 		inboundMessageId: v.id('inboundMessages'),
 	},
 	handler: async (ctx, args) => {
+		if (!(await isKnowledgeOn(ctx, '[knowledge.extract]'))) return;
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});
@@ -229,7 +247,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 
 			// ── Step 2: Generate embeddings and store ──
 			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(ctx, embedder, extraction.entries, {
+			await persistExtractedEntries(ctx, embedder, await capPerMessage(ctx, extraction.entries), {
 				sourceType: 'agent_extracted',
 				sourceId: args.inboundMessageId,
 				contactIds: message.contactId ? [message.contactId] : undefined,
@@ -258,6 +276,7 @@ export const extractFromFile = internalAction({
 		fileId: v.id('semanticFiles'),
 	},
 	handler: async (ctx, args) => {
+		if (!(await isKnowledgeOn(ctx, '[knowledge.extractFile]'))) return;
 		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
 		if (!file) return;
 
@@ -343,6 +362,7 @@ export const extractFromMailMessage = internalAction({
 		contactIds: v.optional(v.array(v.id('contacts'))),
 	},
 	handler: async (ctx, args) => {
+		if (!(await isKnowledgeOn(ctx, '[knowledge.extractMail]'))) return;
 		const msg = await ctx.runQuery(internal.mail.migrationIndexing.getMessageForExtraction, {
 			mailMessageId: args.mailMessageId,
 		});
@@ -412,7 +432,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 			if (!extraction.entries || extraction.entries.length === 0) return;
 
 			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(ctx, embedder, extraction.entries, {
+			await persistExtractedEntries(ctx, embedder, await capPerMessage(ctx, extraction.entries), {
 				sourceType: 'email',
 				sourceId: args.mailMessageId,
 				contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,

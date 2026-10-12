@@ -813,7 +813,9 @@ import type * as knowledge_commitmentFacets from '../knowledge/commitmentFacets.
 import type * as knowledge_edgeBackfill from '../knowledge/edgeBackfill.js';
 import type * as knowledge_edgeInference from '../knowledge/edgeInference.js';
 import type * as knowledge_edges from '../knowledge/edges.js';
+import type * as knowledge_entryDedupe from '../knowledge/entryDedupe.js';
 import type * as knowledge_extraction from '../knowledge/extraction.js';
+import type * as knowledge_extractionPolicy from '../knowledge/extractionPolicy.js';
 import type * as knowledge_graph from '../knowledge/graph.js';
 import type * as knowledge_graphAnalytics from '../knowledge/graphAnalytics.js';
 import type * as knowledge_graphAnalyticsRecompute from '../knowledge/graphAnalyticsRecompute.js';
@@ -2441,7 +2443,9 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/edgeBackfill': typeof knowledge_edgeBackfill;
 	'knowledge/edgeInference': typeof knowledge_edgeInference;
 	'knowledge/edges': typeof knowledge_edges;
+	'knowledge/entryDedupe': typeof knowledge_entryDedupe;
 	'knowledge/extraction': typeof knowledge_extraction;
+	'knowledge/extractionPolicy': typeof knowledge_extractionPolicy;
 	'knowledge/graph': typeof knowledge_graph;
 	'knowledge/graphAnalytics': typeof knowledge_graphAnalytics;
 	'knowledge/graphAnalyticsRecompute': typeof knowledge_graphAnalyticsRecompute;

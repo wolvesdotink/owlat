@@ -20,11 +20,34 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, type MutationCtx } from '../_generated/server';
+import { internalAction, internalQuery, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { loadExtractableMail } from './knowledgeScreen';
+
+/**
+ * Folders whose mail never feeds the graph: the delivery tail does not
+ * schedule it (`deliveryPipeline/afterInsert.ts`), and the scheduled run
+ * checks the folder the message is in NOW, so mail moved to Spam or Trash
+ * between delivery and the run is not extracted either.
+ */
+const NON_KNOWLEDGE_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent', 'drafts']);
+
+/**
+ * The folder recheck when the scheduled extraction runs (AI routing plan,
+ * gap L7): false when the message is gone or now sits in a folder delivery
+ * would not have extracted from.
+ */
+export const isInExtractableFolder = internalQuery({
+	args: { mailMessageId: v.id('mailMessages') },
+	handler: async (ctx, args): Promise<boolean> => {
+		const message = await ctx.db.get(args.mailMessageId);
+		if (!message) return false;
+		const folder = await ctx.db.get(message.folderId);
+		return !(folder?.role !== undefined && NON_KNOWLEDGE_ROLES.has(folder.role));
+	},
+});
 
 /**
  * Whether one live inbound message should be extracted into the knowledge
@@ -54,6 +77,8 @@ export async function shouldExtractLiveMessage(
 export const extractLiveMessage = internalAction({
 	args: { mailMessageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
+		// Moved to Spam, Trash, Sent or Drafts since delivery: not extracted.
+		if (!(await ctx.runQuery(internal.mail.liveKnowledge.isInExtractableFolder, args))) return;
 		// Gone, or phishing/spoofed mail that must not feed the graph.
 		const msg = await loadExtractableMail(ctx, args.mailMessageId);
 		if (!msg) return;
