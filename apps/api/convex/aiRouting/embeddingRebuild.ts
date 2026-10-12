@@ -18,7 +18,7 @@ import {
 	resolveEmbedderForSelection,
 	resolveEmbedderForSpace,
 } from '../lib/aiRouting/embedderForSpace';
-import { admitPaidEmbeddingBatch } from '../lib/aiRouting/embeddingAdmission';
+import { runAdmittedEmbedding } from '../lib/aiRouting/embeddingDispatch';
 import { embeddingSpaceIdentityKey } from '../lib/aiRouting/embeddingKeys';
 import { embeddingProviderKindValidator } from '../lib/validators/aiProviderConfig';
 import { searchSpaceVectors } from '../knowledge/vectorSearch';
@@ -57,27 +57,24 @@ export const startRebuild = authedAction({
 			embeddingModel: args.embeddingModel?.trim() || undefined,
 		});
 		if (!embedder) throwInvalidState(STAGED_TRANSITION_REFUSAL);
-		const isPaid = !embedder.target.isLocal;
-		let settle: ((usage: { inputTokens: number | undefined }) => Promise<void>) | undefined;
-		if (isPaid) {
-			const admission = await admitPaidEmbeddingBatch(ctx, {
+		// One call measures the staged space (width, digest) before anything is
+		// written; admitted when the resolved embedder is hosted, settled once.
+		const probe = await runAdmittedEmbedding(
+			ctx,
+			embedder,
+			{
 				rootRequestId: `embedding:stage:${Date.now()}`,
 				task: 'embedding.index',
 				jobKind: 'probe',
-				provider: embedder.target.provider,
-				model: embedder.target.model,
 				items: 1,
 				inputChars: SPACE_PROBE_TEXT.length,
-			});
-			if (!admission.isAdmitted) throwInvalidState(admission.reason);
-			settle = admission.settle;
-		}
-		// One call measures the staged space (width, digest) before anything is written.
-		const { space } = await embedForIndex(embedder, SPACE_PROBE_TEXT);
-		await settle?.({ inputTokens: undefined });
+			},
+			(counter) => embedForIndex(embedder, SPACE_PROBE_TEXT, counter)
+		);
+		if (!probe.isAdmitted) throwInvalidState(probe.reason);
+		// The job's payment is derived from the staged space's own endpoint.
 		return await ctx.runMutation(internal.aiRouting.embeddingRebuildState.stageSpace, {
-			space,
-			isPaid,
+			space: probe.value.space,
 		});
 	},
 });
@@ -103,33 +100,36 @@ async function validateStagedSpace(ctx: ActionCtx): Promise<RebuildValidation> {
 		spaceId: staged._id,
 		size: VALIDATION_SAMPLE,
 	});
-	let settle: ((usage: { inputTokens: number | undefined }) => Promise<void>) | undefined;
-	if (!embedder.target.isLocal) {
-		const admission = await admitPaidEmbeddingBatch(ctx, {
+	// Admitted when the resolved embedder is hosted, and settled exactly once with
+	// the calls started, even when an embedding or a search throws midway.
+	const outcome = await runAdmittedEmbedding(
+		ctx,
+		embedder,
+		{
 			rootRequestId: `embedding:validate:${staged._id}`,
 			task: 'embedding.index',
 			jobKind: 'rebuild',
-			provider: staged.provider,
-			model: staged.model,
 			items: sample.length,
 			inputChars: sample.reduce((sum, row) => sum + row.text.length, 0),
-		});
-		if (!admission.isAdmitted) throwInvalidState(admission.reason);
-		settle = admission.settle;
-	}
-	let passed = 0;
-	for (const row of sample) {
-		const fresh = await embedForIndex(embedder, row.text);
-		if (embeddingSpaceIdentityKey(fresh.space) !== staged.identityKey) continue;
-		const hits = await searchSpaceVectors(ctx, row.table, {
-			vector: fresh.vector,
-			embeddingSpaceId: staged._id,
-			limit: VALIDATION_TOP_K,
-			allowStaged: true,
-		});
-		if (hits.some((hit) => hit._id === row.id)) passed += 1;
-	}
-	await settle?.({ inputTokens: undefined });
+		},
+		async (counter) => {
+			let found = 0;
+			for (const row of sample) {
+				const fresh = await embedForIndex(embedder, row.text, counter);
+				if (embeddingSpaceIdentityKey(fresh.space) !== staged.identityKey) continue;
+				const hits = await searchSpaceVectors(ctx, row.table, {
+					vector: fresh.vector,
+					embeddingSpaceId: staged._id,
+					limit: VALIDATION_TOP_K,
+					allowStaged: true,
+				});
+				if (hits.some((hit) => hit._id === row.id)) found += 1;
+			}
+			return found;
+		}
+	);
+	if (!outcome.isAdmitted) throwInvalidState(outcome.reason);
+	const passed = outcome.value;
 	const sampled = sample.length;
 	return {
 		spaceId: staged._id,

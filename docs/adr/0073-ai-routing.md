@@ -183,6 +183,17 @@ previous vectors survive for a switch back. A vector committed under a
 configuration that has since changed is dropped. Activating a staged rebuild
 also switches the stored embedding selection, in the same transaction.
 
+Each column has one owner, the space that claimed it last (`columnClaim`), and
+only the owner writes it. A space's stored vectors are reused (a reactivation,
+a rollback to the recorded predecessor, a re-stage) only while it still owns
+their column; a space that lost its column is superseded and re-embedded.
+Vectors are never copied between columns. Any change to a row's embedding
+input clears every column the same mutation does not write, and a staged
+rebuild activates only after a pass that started after the last such change.
+An endpoint's identity includes a digest of its base path, and whether it is
+paid follows the ledger's locality rule, decided again from the embedder
+about to be called.
+
 ### 10. Guard placement (D13)
 
 The deterministic injection, smuggling and URL checks run on every Team

@@ -46,6 +46,18 @@ export const embeddingSpaceTables = {
 		 * Recorded at activation, never inferred from timestamps.
 		 */
 		predecessorSpaceId: v.optional(v.id('embeddingSpaces')),
+		/**
+		 * Raised every time this space takes its column (registered, activated,
+		 * staged, attested, reused). The space with the highest claim in a column
+		 * owns it; only the owner may write it, and stored vectors are reused only
+		 * by their column's owner (lib/aiRouting/embeddingActivation.ts).
+		 */
+		columnClaim: v.optional(v.number()),
+		/**
+		 * Staged spaces: when an embedding input last changed or a row was added.
+		 * Activation needs a rebuild pass that started after it.
+		 */
+		inputChangedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

@@ -31,6 +31,7 @@ import {
 	type IndexEmbedder,
 } from '../llmProvider';
 import { loadConfigEntry, planeKey } from '../llmProviders/storedConfigCache';
+import type { DispatchCounter } from './embeddingDispatch';
 import {
 	EmbeddingRevisionChangedError,
 	measuredEmbeddingSpace,
@@ -108,12 +109,14 @@ export type EmbeddedText = { vector: number[]; raw: number[] } | null;
  */
 export async function embedTextsForIndex(
 	embedder: IndexEmbedder,
-	texts: readonly string[]
+	texts: readonly string[],
+	counter: DispatchCounter = { dispatched: 0 }
 ): Promise<{ vectors: EmbeddedText[]; space: MeasuredSpace | null }> {
 	const before = await probeEmbeddingRevision(embedder.target);
 	const vectors: EmbeddedText[] = [];
 	let width: number | null = null;
 	for (const text of texts) {
+		counter.dispatched += 1;
 		try {
 			const { embedding } = await embed({ model: embedder.model, value: text });
 			const raw = Array.from(embedding);
@@ -139,9 +142,10 @@ export async function embedTextsForIndex(
 /** Embed one text for the index; throws when the call fails or the model changed. */
 export async function embedForIndex(
 	embedder: IndexEmbedder,
-	text: string
+	text: string,
+	counter?: DispatchCounter
 ): Promise<{ vector: number[]; raw: number[]; space: MeasuredSpace }> {
-	const { vectors, space } = await embedTextsForIndex(embedder, [text]);
+	const { vectors, space } = await embedTextsForIndex(embedder, [text], counter);
 	const [embedded] = vectors;
 	if (!embedded || !space) throw new Error('The embedding call failed.');
 	return { ...embedded, space };

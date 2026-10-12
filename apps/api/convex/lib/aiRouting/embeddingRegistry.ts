@@ -1,30 +1,32 @@
 /**
  * Embedding spaces in the database (ADR-0073, Phase 1a provenance, D8 and the
- * Phase 5 rebuild): which space is active, how a vector is stamped when it is
- * committed, and which vector of a row belongs to which space.
+ * Phase 5 rebuild): the reads, and which vector of a row belongs to which
+ * space. The writes (activation, column claims, commits) are in
+ * `embeddingActivation.ts`.
  *
  * The rules every reader and writer shares:
  *
  *   - A row's `embedding` column belongs to `embeddingSpaceId`, its
- *     `secondaryEmbedding` column to `secondaryEmbeddingSpaceId`. No column is
- *     ever compared with a vector of another space: retrieval filters each
- *     vector index by the space id of the query vector (`knowledge/retrieval.ts`).
- *   - A space's `slot` names the column its new vectors are written to and the
- *     index retrieval searches for it. A new space takes the slot the active one
- *     does not use, so the previous space's vectors survive a switch (rollback,
- *     and A → B → A without re-embedding).
- *   - The active space is the configured one. A commit whose space matches the
- *     configuration activates that space when it is not active yet; a commit
- *     from a job that embedded under an older configuration is stale and its
- *     vector is dropped. A row with no space is unknown: lexical search only.
+ *     `secondaryEmbedding` column to `secondaryEmbeddingSpaceId`, each stamped in
+ *     the same write as its vector. No column is ever compared with a vector of
+ *     another space: retrieval filters each vector index by the space id of the
+ *     query vector (`knowledge/vectorSearch.ts`).
+ *   - A space's `slot` names the column its vectors are in. Each column has one
+ *     owner: the space with that slot and the highest `columnClaim`. Only the
+ *     owner may write a column, and a space's stored vectors are reused (on a
+ *     reactivation or a rollback) only while it still owns their column; a
+ *     space that lost its column is superseded and re-embedded.
+ *   - The searchable space is the active one while the configuration names it.
+ *     A row with no space is unknown: lexical search only.
+ *   - A change to a row's embedding input clears every column the same
+ *     mutation does not write, so no column keeps a vector of old content.
  *
  * v8-safe: commit mutations, retrieval queries and the jobs share it.
  */
 
 import type { EmbeddingProvenanceSource } from '@owlat/shared/aiRouting';
-import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type { DatabaseReader, MutationCtx } from '../../_generated/server';
+import type { DatabaseReader } from '../../_generated/server';
 import type { entryTypeValidator } from '../../schema/knowledge';
 import type { Infer } from 'convex/values';
 import { configuredEmbeddingTarget, type EmbeddingTarget } from '../embeddingSpace';
@@ -124,144 +126,24 @@ export async function readSearchableSpace(db: DatabaseReader): Promise<SpaceDoc 
 	return target && isIdentityOfTarget(identityOf(active), target) ? active : null;
 }
 
-/** End the running or paused re-embed jobs that `keep` rejects. */
-async function cancelJobs(
-	ctx: MutationCtx,
-	keep: (job: Doc<'embeddingReembedJobs'>) => boolean,
-	now: number
-): Promise<void> {
-	for (const status of ['running', 'paused'] as const) {
-		const jobs = await ctx.db
-			.query('embeddingReembedJobs')
-			.withIndex('by_status', (q) => q.eq('status', status))
-			.take(20);
-		for (const job of jobs) {
-			if (keep(job)) continue;
-			await ctx.db.patch(job._id, {
-				status: 'cancelled',
-				pausedReason: 'space_changed',
-				generation: job.generation + 1,
-				finishedAt: now,
-				updatedAt: now,
-			});
-		}
+/** Every space, for the column-ownership reads (a handful of rows). */
+export async function readAllSpaces(db: DatabaseReader): Promise<SpaceDoc[]> {
+	return db.query('embeddingSpaces').take(500); // bounded: one row per space ever configured
+}
+
+/** The space that owns `slot`: the one there with the highest claim, or null. */
+export function columnOwnerOf(spaces: readonly SpaceDoc[], slot: EmbeddingSlot): SpaceDoc | null {
+	let owner: SpaceDoc | null = null;
+	for (const space of spaces) {
+		if (space.slot !== slot) continue;
+		if (!owner || (space.columnClaim ?? 0) > (owner.columnClaim ?? 0)) owner = space;
 	}
+	return owner;
 }
 
-/**
- * The configured target moved (a settings save or removal): end every
- * re-embed job, so no batch an old generation scheduled writes into a space the
- * configuration has left. A staged rebuild keeps running; it targets its own
- * space, and activating it rewrites the configuration anyway.
- */
-export async function endReembedJobs(ctx: MutationCtx): Promise<void> {
-	await cancelJobs(ctx, (job) => job.kind !== 'reembed', Date.now());
-}
-
-/**
- * Put a space's vectors in `slot`. Its rows keep their vectors in the other
- * column until the bounded copy (`aiRouting/embeddingSlotMigration.ts`) moves
- * them, with their provenance; the re-embed job leaves those rows to the copy.
- * Nothing is overwritten that belongs to the space now using the other column.
- */
-export async function reslotSpace(
-	ctx: MutationCtx,
-	space: SpaceDoc,
-	slot: EmbeddingSlot
-): Promise<void> {
-	if (space.slot === slot) return;
-	await ctx.db.patch(space._id, { slot, updatedAt: Date.now() });
-	await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingSlotMigration.migratePage, {
-		spaceId: space._id,
-		table: 'knowledgeEntries',
-		cursor: null,
-	});
-}
-
-/**
- * Make a space the active one, atomically: the previous active space is
- * retired with its vectors intact and recorded as the new space's
- * `predecessorSpaceId` (the rollback target), a staged rebuild for any other
- * space ends, and jobs that target a space no longer active or staged are
- * cancelled. The incoming space always takes the column the outgoing one does
- * not use: a known space in the same column is re-slotted and its vectors
- * copied over (`reslotSpace`), so the outgoing space's vectors are never
- * re-embedded over. `existing` reactivates or promotes a known space;
- * `identity` registers a new one.
- */
-export async function activateSpace(
-	ctx: MutationCtx,
-	space: { existing: SpaceDoc } | { identity: MeasuredSpace; configVersion?: number }
-): Promise<SpaceDoc> {
-	const now = Date.now();
-	const active = await readActiveSpace(ctx.db);
-	const staged = await readStagedSpace(ctx.db);
-	const existing = 'existing' in space ? space.existing : null;
-	const outgoing = active && active._id !== existing?._id ? active : null;
-	if (outgoing) {
-		await ctx.db.patch(outgoing._id, { state: 'retired', retiredAt: now, updatedAt: now });
-	}
-	if (staged && staged._id !== existing?._id) {
-		await ctx.db.patch(staged._id, { state: 'retired', retiredAt: now, updatedAt: now });
-	}
-	let spaceId: SpaceId;
-	if (existing) {
-		if (outgoing && existing.slot === outgoing.slot) {
-			await reslotSpace(ctx, existing, otherSlot(outgoing.slot));
-		}
-		await ctx.db.patch(existing._id, {
-			state: 'active',
-			activatedAt: now,
-			retiredAt: undefined,
-			...(outgoing ? { predecessorSpaceId: outgoing._id } : {}),
-			updatedAt: now,
-		});
-		spaceId = existing._id;
-	} else {
-		const { source, ...identity } = (space as { identity: MeasuredSpace }).identity;
-		spaceId = await ctx.db.insert('embeddingSpaces', {
-			...identity,
-			identityKey: embeddingSpaceIdentityKey(identity),
-			source,
-			state: 'active',
-			slot: active ? otherSlot(active.slot) : 'primary',
-			...(active ? { predecessorSpaceId: active._id } : {}),
-			configVersion: (space as { configVersion?: number }).configVersion,
-			activatedAt: now,
-			createdAt: now,
-			updatedAt: now,
-		});
-	}
-	await cancelJobs(ctx, (job) => job.targetSpaceId === spaceId && job.kind === 'reembed', now);
-	// A local embedder re-embeds right away; a hosted one waits for an admin (D8).
-	await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, { isForced: true });
-	return (await ctx.db.get(spaceId))!;
-}
-
-/** End a staged rebuild: the staged space retires and its job is cancelled. */
-export async function retireStagedSpace(ctx: MutationCtx, staged: SpaceDoc): Promise<void> {
-	const now = Date.now();
-	await ctx.db.patch(staged._id, { state: 'retired', retiredAt: now, updatedAt: now });
-	await cancelJobs(ctx, (job) => job.targetSpaceId !== staged._id, now);
-}
-
-/**
- * The active space for a vector a job measured, registering and activating it
- * when the configuration names it (the D8 switch path). Null when the job's
- * target is no longer the configured one: its vector is stale.
- */
-export async function ensureConfiguredSpace(
-	ctx: MutationCtx,
-	measured: MeasuredSpace
-): Promise<SpaceDoc | null> {
-	const target = await readConfiguredTarget(ctx.db);
-	if (!target || !isIdentityOfTarget(measured, target)) return null;
-	const existing = await readSpaceByIdentity(ctx.db, measured);
-	if (existing?.state === 'active') return existing;
-	const config = await ctx.db.query('aiProviderConfig').first(); // bounded: org singleton
-	return existing
-		? activateSpace(ctx, { existing })
-		: activateSpace(ctx, { identity: measured, configVersion: config?.embeddingModelVersion });
+/** Whether `space` still owns its column (its stored vectors there are its own). */
+export async function ownsColumn(db: DatabaseReader, space: SpaceDoc): Promise<boolean> {
+	return columnOwnerOf(await readAllSpaces(db), space.slot)?._id === space._id;
 }
 
 // ── The two vector columns of a row ─────────────────────────────────────────
@@ -276,8 +158,6 @@ export interface VectorColumns {
 	secondaryEmbedding?: number[];
 	secondaryEmbeddingSpaceId?: SpaceId;
 	secondaryEmbeddingGeneratedAt?: number;
-	secondaryEmbeddingProvenance?: EmbeddingProvenanceSource;
-	secondaryEmbeddingAttestationId?: Id<'embeddingAttestations'>;
 }
 
 /** The row's vector in `ref`'s space, or null: never a vector of another space. */
@@ -347,92 +227,50 @@ export function slotFields(
 		secondaryEmbedding: vector,
 		secondaryEmbeddingSpaceId: space._id,
 		secondaryEmbeddingGeneratedAt: now,
-		secondaryEmbeddingProvenance: provenance,
-		secondaryEmbeddingAttestationId: options.attestationId,
 		...(entryType
 			? { secondaryEmbeddingSpaceEntryKey: embeddingSpaceEntryKey(space._id, entryType) }
 			: {}),
 	};
 }
 
-/**
- * The columns that copy a row's vector of `space` from the other column into
- * `space`'s slot, keeping when and how it was made. Null when the other column
- * holds no vector of that space.
- */
-export function copyFieldsIntoSlot(
-	row: VectorColumns,
-	space: Pick<SpaceDoc, '_id' | 'slot' | 'model'>,
-	entryType?: EntryType
-): Record<string, unknown> | null {
-	const from = otherSlot(space.slot);
-	const vector = vectorInSpace(row, { spaceId: space._id, slot: from });
-	if (!vector) return null;
-	const isPrimary = from === 'primary';
-	return slotFields(space, vector, {
-		now: (isPrimary ? row.embeddingGeneratedAt : row.secondaryEmbeddingGeneratedAt) ?? Date.now(),
-		entryType,
-		provenance: isPrimary ? row.embeddingProvenance : row.secondaryEmbeddingProvenance,
-		attestationId: isPrimary ? row.embeddingAttestationId : row.secondaryEmbeddingAttestationId,
-	});
-}
-
-/** Every vector column cleared (a row stored without a vector). */
-function clearedFields(mode: 'insert' | 'patch', entryType?: EntryType): Record<string, unknown> {
-	const primary = {
-		embedding: [],
-		embeddingModel: undefined,
-		embeddingGeneratedAt: undefined,
-		embeddingSpaceId: undefined,
-		embeddingProvenance: undefined,
-		embeddingAttestationId: undefined,
-		...(entryType ? { embeddingSpaceEntryKey: undefined } : {}),
-	};
-	if (mode === 'insert') return primary;
+/** The fields that clear one column of a row (and its filter key, for knowledge). */
+export function clearColumnFields(
+	slot: EmbeddingSlot,
+	options: { isKnowledge: boolean }
+): Record<string, unknown> {
+	if (slot === 'primary') {
+		return {
+			embedding: [],
+			embeddingModel: undefined,
+			embeddingGeneratedAt: undefined,
+			embeddingSpaceId: undefined,
+			embeddingProvenance: undefined,
+			embeddingAttestationId: undefined,
+			...(options.isKnowledge ? { embeddingSpaceEntryKey: undefined } : {}),
+		};
+	}
 	return {
-		...primary,
 		secondaryEmbedding: undefined,
 		secondaryEmbeddingSpaceId: undefined,
 		secondaryEmbeddingGeneratedAt: undefined,
-		secondaryEmbeddingProvenance: undefined,
-		secondaryEmbeddingAttestationId: undefined,
-		...(entryType ? { secondaryEmbeddingSpaceEntryKey: undefined } : {}),
+		...(options.isKnowledge ? { secondaryEmbeddingSpaceEntryKey: undefined } : {}),
 	};
 }
 
 /**
- * THE vector-commit step. Every mutation that writes a freshly embedded vector
- * into the knowledge or file corpus passes the space the job measured and
- * writes the fields this returns (`insert` for a new row, `patch` for an
- * update). The vector lands in the active space's column, stamped with its
- * space and `measured` provenance, and with the model that really made it.
- *
- * An empty vector clears the row's vectors (today's "no vector" state). A
- * vector without a measured space (a previous-release job) or from a target the
- * configuration no longer names (the settings changed while the job ran) is
- * dropped the same way: the row reads as not yet embedded, and the next pass or
- * the re-embed job embeds it in the current space.
+ * THE input-change rule: the fields that clear every column of a row except
+ * `written` (the column the same mutation writes a fresh vector into, if any).
+ * Every mutation that changes a row's embedding input (title, content, summary,
+ * extracted text) applies it, so no column ever holds a vector of old content.
  */
-export async function vectorFieldsForCommit(
-	ctx: MutationCtx,
-	commit: { embedding: number[]; space: MeasuredSpace | undefined },
-	options: { mode: 'insert' | 'patch'; entryType?: EntryType }
-): Promise<{ fields: Record<string, unknown>; isStale: boolean }> {
-	if (commit.embedding.length === 0) {
-		return { fields: clearedFields(options.mode, options.entryType), isStale: false };
-	}
-	// Remove the optional space after release N+1 (CONVENTIONS "Old clients and workers").
-	const space = commit.space ? await ensureConfiguredSpace(ctx, commit.space) : null;
-	if (!space) return { fields: clearedFields(options.mode, options.entryType), isStale: true };
-	const fields = slotFields(space, commit.embedding, {
-		now: Date.now(),
-		entryType: options.entryType,
-	});
-	// A new row in the secondary slot still needs its (empty) primary column.
-	if (options.mode === 'insert' && space.slot === 'secondary') {
-		return { fields: { ...clearedFields('insert', options.entryType), ...fields }, isStale: false };
-	}
-	return { fields, isStale: false };
+export function inputChangeFields(
+	written: EmbeddingSlot | null,
+	options: { isKnowledge: boolean }
+): Record<string, unknown> {
+	return {
+		...(written === 'primary' ? {} : clearColumnFields('primary', options)),
+		...(written === 'secondary' ? {} : clearColumnFields('secondary', options)),
+	};
 }
 
 /**

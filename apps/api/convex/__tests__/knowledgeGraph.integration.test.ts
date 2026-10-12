@@ -4,7 +4,12 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { createTestContact, createTestKnowledgeEntry, enableFeatures } from './factories';
 import type { Id } from '../_generated/dataModel';
-import { configureLocalEmbedder, measuredLocalSpace } from './helpers/embeddingSpaces';
+import {
+	configureLocalEmbedder,
+	measuredLocalSpace,
+	seedEmbeddingSpace,
+	stampedIn,
+} from './helpers/embeddingSpaces';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -164,6 +169,53 @@ describe('knowledgeGraph.createEntry', () => {
 // ============ knowledgeGraph.updateEntry ============
 
 describe('knowledgeGraph.updateEntry', () => {
+	it('clears every vector column when the title or content changes, not on other edits (F14)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		const asUser = t.withIdentity(testUser);
+		const entryId = await asUser.mutation(api.knowledge.graph.createEntry, {
+			entryType: 'fact',
+			title: 'Refunds',
+			content: 'Refunds take a week.',
+			sourceType: 'manual',
+			confidence: 0.8,
+		});
+		const a = await seedEmbeddingSpace(t, { isConfigured: false });
+		const b = await seedEmbeddingSpace(t, {
+			state: 'staged',
+			slot: 'secondary',
+			isConfigured: false,
+		});
+		const vector = [1, 0, 0];
+		const stampBoth = () =>
+			t.run((ctx) =>
+				ctx.db.patch(entryId, {
+					embedding: vector,
+					...stampedIn(a, 'fact'),
+					secondaryEmbedding: vector,
+					secondaryEmbeddingSpaceId: b,
+				})
+			);
+		await stampBoth();
+
+		await asUser.mutation(api.knowledge.graph.updateEntry, { entryId, tags: ['billing'] });
+		let entry = await t.run((ctx) => ctx.db.get(entryId));
+		expect(entry).toMatchObject({ embeddingSpaceId: a, secondaryEmbeddingSpaceId: b });
+
+		await asUser.mutation(api.knowledge.graph.updateEntry, {
+			entryId,
+			content: 'Refunds take three days.',
+		});
+		entry = await t.run((ctx) => ctx.db.get(entryId));
+		expect(entry!.embedding).toEqual([]);
+		expect(entry!.embeddingSpaceId).toBeUndefined();
+		expect(entry!.secondaryEmbedding).toBeUndefined();
+		expect(entry!.secondaryEmbeddingSpaceId).toBeUndefined();
+		// The staged rebuild learns the corpus changed (its activation waits).
+		const staged = await t.run((ctx) => ctx.db.get(b));
+		expect(staged?.inputChangedAt).toBeTypeOf('number');
+	});
+
 	it('edits user-authored fields and recomputes searchableText', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.knowledge']);

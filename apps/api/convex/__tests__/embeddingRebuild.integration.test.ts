@@ -305,13 +305,18 @@ describe('staged rebuild', () => {
 		await t.mutation(api.aiRouting.embeddingRebuildState.cancelRebuild, {});
 		await flush(t);
 
+		// The predecessor is mxbai, not the most recently retired nomic. But that
+		// staged nomic took mxbai's column, so mxbai's vectors there are no longer
+		// all its own: no rollback is offered, and none runs.
 		const status = await t.query(api.aiRouting.embeddingSpaces.status, {});
-		expect(status.rollbackTo?.model).toBe('mxbai-embed-large');
-		await t.mutation(api.aiRouting.embeddingRebuildState.rollback, {});
-		expect((await byModel())['mxbai-embed-large']!.state).toBe('active');
+		expect(status.rollbackTo).toBeNull();
+		await expect(t.mutation(api.aiRouting.embeddingRebuildState.rollback, {})).rejects.toThrow(
+			/no previous embedding space/
+		);
+		expect((await byModel())['all-minilm']!.state).toBe('active');
 	});
 
-	it('refuses activation while rows written during the rebuild lack the new vector (F6)', async () => {
+	it('rolls back to the predecessor while it still owns its column (F7)', async () => {
 		const t = convexTest(schema, modules);
 		await nomicDeployment(t);
 		await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
@@ -319,28 +324,119 @@ describe('staged rebuild', () => {
 			embeddingModel: 'mxbai-embed-large',
 		});
 		await flush(t);
-		// A fact extracted after the walk passed: the active space only.
-		const job = (await t.run((ctx) => ctx.db.query('embeddingReembedJobs').collect()))[0]!;
-		await t.run((ctx) =>
-			ctx.db.insert('knowledgeEntries', {
-				entryType: 'fact',
-				title: 'Late fact',
-				content: 'Late fact',
-				sourceType: 'manual',
-				embedding: [],
-				confidence: 0.9,
-				lastValidatedAt: Date.now(),
-				searchableText: 'Late fact',
-				createdAt: job.startedAt + 1,
-				updatedAt: job.startedAt + 1,
-			})
-		);
+		await t.action(api.aiRouting.embeddingRebuild.activateStaged, {});
+		await flush(t);
+		const status = await t.query(api.aiRouting.embeddingSpaces.status, {});
+		expect(status.rollbackTo?.model).toBe('nomic-embed-text');
+		await t.mutation(api.aiRouting.embeddingRebuildState.rollback, {});
+		expect((await states(t)).spaces['nomic-embed-text']).toBe('active/primary');
+	});
+
+	it('refuses activation while an entry added during the rebuild lacks the new vector (F6)', async () => {
+		const t = convexTest(schema, modules);
+		await nomicDeployment(t);
+		await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+			embeddingProviderKind: 'local',
+			embeddingModel: 'mxbai-embed-large',
+		});
+		await flush(t);
+		// A fact extracted after the walk passed: its commit marks the change.
+		await t.mutation(internal.knowledge.graph.saveEntry, {
+			entryType: 'fact',
+			title: 'Late fact',
+			content: 'Late fact',
+			sourceType: 'manual',
+			embedding: [],
+			confidence: 0.9,
+		});
 		await expect(t.action(api.aiRouting.embeddingRebuild.activateStaged, {})).rejects.toThrow(
-			/arrived during the rebuild/
+			/changed during the rebuild/
 		);
 		await t.mutation(api.aiRouting.embeddingRebuildState.catchUpRebuild, {});
 		await flush(t);
 		await t.action(api.aiRouting.embeddingRebuild.activateStaged, {});
 		expect((await states(t)).spaces['mxbai-embed-large']).toBe('active/secondary');
+		const late = (await t.run((ctx) => ctx.db.query('knowledgeEntries').collect())).find(
+			(row) => row.title === 'Late fact'
+		);
+		expect(late?.secondaryEmbedding).toBeDefined();
+	});
+
+	it('a pending file that finishes processing after its page blocks activation (F6)', async () => {
+		const t = convexTest(schema, modules);
+		await nomicDeployment(t);
+		const now = Date.now();
+		// Pending (not yet processed) when the rebuild walks past it.
+		const fileId = await t.run((ctx) =>
+			ctx.db.insert('semanticFiles', {
+				filename: 'plan.txt',
+				mimeType: 'text/plain',
+				fileSize: 5,
+				sourceType: 'upload',
+				version: 1,
+				embedding: [],
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+		await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+			embeddingProviderKind: 'local',
+			embeddingModel: 'mxbai-embed-large',
+		});
+		await flush(t);
+		// Processing finishes now, with a vector in the active (nomic) space only.
+		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+			fileId,
+			title: 'Plan',
+			extractedText: 'The quarterly plan, in full.',
+			embedding: vectorFor('nomic-embed-text', 'x', 1536),
+			embeddingSpace: { ...TEST_LOCAL_SPACE, dimensions: DIMS, source: 'stored_config' },
+		});
+		await expect(t.action(api.aiRouting.embeddingRebuild.activateStaged, {})).rejects.toThrow(
+			/changed during the rebuild/
+		);
+		await t.mutation(api.aiRouting.embeddingRebuildState.catchUpRebuild, {});
+		await flush(t);
+		await t.action(api.aiRouting.embeddingRebuild.activateStaged, {});
+		const file = await t.run((ctx) => ctx.db.get(fileId));
+		expect(file?.secondaryEmbedding).toBeDefined();
+	});
+
+	it('a content change clears the other column, so no stale vector is reused (F14)', async () => {
+		const t = convexTest(schema, modules);
+		await nomicDeployment(t);
+		const now = Date.now();
+		const fileId = await t.run((ctx) =>
+			ctx.db.insert('semanticFiles', {
+				filename: 'plan.txt',
+				mimeType: 'text/plain',
+				fileSize: 5,
+				sourceType: 'upload',
+				version: 1,
+				title: 'Plan',
+				extractedText: 'Version one of the plan.',
+				embedding: [],
+				createdAt: now,
+				updatedAt: now,
+			})
+		);
+		await t.action(api.aiRouting.embeddingRebuild.startRebuild, {
+			embeddingProviderKind: 'local',
+			embeddingModel: 'mxbai-embed-large',
+		});
+		await flush(t);
+		expect((await t.run((ctx) => ctx.db.get(fileId)))?.secondaryEmbedding).toBeDefined();
+		// Reprocessed with new content: the active column gets the new vector, and
+		// the staged column's vector of the old content is cleared.
+		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+			fileId,
+			extractedText: 'Version two, rewritten.',
+			embedding: vectorFor('nomic-embed-text', 'v2', 1536),
+			embeddingSpace: { ...TEST_LOCAL_SPACE, dimensions: DIMS, source: 'stored_config' },
+		});
+		const file = await t.run((ctx) => ctx.db.get(fileId));
+		expect(file?.embeddingSpaceId).toBeDefined();
+		expect(file?.secondaryEmbedding).toBeUndefined();
+		expect(file?.secondaryEmbeddingSpaceId).toBeUndefined();
 	});
 });

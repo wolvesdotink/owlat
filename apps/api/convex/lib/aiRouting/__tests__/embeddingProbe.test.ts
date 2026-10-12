@@ -6,10 +6,11 @@ import {
 	probeEmbeddingRevision,
 	revisionFromOllamaTags,
 } from '../embeddingProbe';
-import { storedEmbeddingTarget } from '../../embeddingSpace';
+import { endpointIdentity, storedEmbeddingTarget } from '../../embeddingSpace';
 import { embeddingSpaceIdentityKey } from '../embeddingKeys';
 import { inputFingerprint, fileEmbeddingInput } from '../embeddingInputs';
-import { rowCoverage, vectorInSpace } from '../embeddingRegistry';
+import { inputChangeFields, rowCoverage, vectorInSpace } from '../embeddingRegistry';
+import { sha256Hex } from '../routeDigest';
 import type { Id } from '../../../_generated/dataModel';
 
 /** An `/api/tags` body as Ollama serves it. */
@@ -74,7 +75,7 @@ describe('measuredEmbeddingSpace', () => {
 		expect(fetchMock).toHaveBeenCalledWith('http://ollama:11434/api/tags', expect.anything());
 		expect(space).toEqual({
 			provider: 'local',
-			endpoint: 'http://ollama:11434',
+			endpoint: endpointIdentity('http://ollama:11434/v1'),
 			model: 'nomic-embed-text',
 			dimensions: 768,
 			revision: TAGS.models[0]!.digest,
@@ -191,5 +192,33 @@ describe('embedding inputs', () => {
 	it('fingerprints the exact text', () => {
 		expect(inputFingerprint('a')).toBe(inputFingerprint('a'));
 		expect(inputFingerprint('a')).not.toBe(inputFingerprint('b'));
+	});
+});
+
+describe('sha256Hex', () => {
+	it('matches node:crypto', async () => {
+		const { createHash } = await import('node:crypto');
+		for (const text of ['', 'abc', '/a/v1', 'ü'.repeat(100), 'x'.repeat(1000)]) {
+			expect(sha256Hex(text)).toBe(createHash('sha256').update(text).digest('hex'));
+		}
+	});
+});
+
+describe('inputChangeFields', () => {
+	it('clears every column the mutation does not write', () => {
+		expect(inputChangeFields(null, { isKnowledge: true })).toMatchObject({
+			embedding: [],
+			embeddingSpaceId: undefined,
+			embeddingSpaceEntryKey: undefined,
+			secondaryEmbedding: undefined,
+			secondaryEmbeddingSpaceId: undefined,
+			secondaryEmbeddingSpaceEntryKey: undefined,
+		});
+		const keepPrimary = inputChangeFields('primary', { isKnowledge: false });
+		expect('embedding' in keepPrimary).toBe(false);
+		expect(keepPrimary).toHaveProperty('secondaryEmbedding', undefined);
+		const keepSecondary = inputChangeFields('secondary', { isKnowledge: false });
+		expect('secondaryEmbedding' in keepSecondary).toBe(false);
+		expect(keepSecondary).toHaveProperty('embedding', []);
 	});
 });

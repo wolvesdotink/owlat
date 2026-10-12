@@ -81,13 +81,6 @@ export const embeddingSecondarySlotFields = {
 	secondaryEmbedding: v.optional(v.array(v.float64())),
 	secondaryEmbeddingSpaceId: v.optional(v.id('embeddingSpaces')),
 	secondaryEmbeddingGeneratedAt: v.optional(v.number()),
-	/**
-	 * The secondary column's provenance, as `embeddingProvenance` is the primary's
-	 * (embed lane): a vector copied between columns keeps where it came from, so a
-	 * revoked attestation clears its copies too.
-	 */
-	secondaryEmbeddingProvenance: v.optional(embeddingProvenanceSourceValidator),
-	secondaryEmbeddingAttestationId: v.optional(v.id('embeddingAttestations')),
 };
 
 /** The cohort an attestation (or a deployment record) assigns to a space. */

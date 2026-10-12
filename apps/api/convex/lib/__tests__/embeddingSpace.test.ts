@@ -15,6 +15,8 @@ import {
 import { embeddingProviderFor } from '../llmProviders';
 import { EMBEDDING_PROVIDER_KINDS } from '../llmProviders/types';
 
+const OLLAMA_V1 = endpointIdentity('http://ollama:11434/v1');
+
 const ENV_KEYS = [
 	'LLM_API_KEY',
 	'OPENROUTER_API_KEY',
@@ -100,7 +102,7 @@ describe('embedding target', () => {
 	it('names a local embedder by the origin it is served from, and probes it', () => {
 		expect(storedEmbeddingTarget({ embeddingProviderKind: 'local' })).toMatchObject({
 			provider: 'local',
-			endpoint: 'http://ollama:11434',
+			endpoint: OLLAMA_V1,
 			model: 'nomic-embed-text',
 			isLocal: true,
 			probeBaseUrl: 'http://ollama:11434/v1',
@@ -115,7 +117,7 @@ describe('embedding target', () => {
 		vi.stubEnv('LOCAL_EMBEDDING_MODEL', undefined);
 		vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'http://gpu-box:11434/v1');
 		const otherServer = storedEmbeddingTarget({ embeddingProviderKind: 'local' });
-		expect(otherServer.endpoint).toBe('http://gpu-box:11434');
+		expect(otherServer.endpoint).toMatch(/^http:\/\/gpu-box:11434\/~[0-9a-f]{32}$/);
 		expect(isSameEmbeddingTarget(before, otherServer)).toBe(false);
 	});
 
@@ -139,23 +141,46 @@ describe('embedding target', () => {
 		expect(isSameEmbeddingTarget(env, stored)).toBe(true);
 
 		vi.stubEnv('LLM_PROVIDER', 'openrouter');
-		expect(envEmbeddingTarget()?.endpoint).toBe('https://openrouter.ai');
+		expect(envEmbeddingTarget()?.endpoint).toBe(endpointIdentity('https://openrouter.ai/api/v1'));
 		expect(envEmbeddingTarget()?.isLocal).toBe(false);
 		expect(isSameEmbeddingTarget(envEmbeddingTarget()!, stored)).toBe(false);
 
 		vi.stubEnv('LLM_PROVIDER', 'ollama');
+		// Probed for its revision, but hosted for payment: the env plane uses the
+		// OpenAI adapter, which the ledger's locality rule always prices.
 		expect(envEmbeddingTarget()).toMatchObject({
-			endpoint: 'http://ollama:11434',
-			isLocal: true,
+			endpoint: OLLAMA_V1,
+			isLocal: false,
 			probeBaseUrl: 'http://ollama:11434/v1',
 		});
 	});
 
 	it('never keeps a credential of a base URL in the endpoint identity', () => {
-		expect(endpointIdentity('https://user:secret@Example.com:8443/v1?key=abc')).toBe(
-			'https://example.com:8443'
-		);
+		const identity = endpointIdentity('https://user:secret@Example.com:8443/v1?key=abc#frag');
+		expect(identity).toBe(endpointIdentity('https://Example.com:8443/v1'));
+		expect(identity).not.toMatch(/secret|user|key=abc|frag|\/v1/);
+		expect(endpointIdentity('https://example.com/')).toBe('https://example.com');
 		expect(endpointIdentity('not a url')).toBe('invalid');
+	});
+
+	it('tells two services on one origin apart by their base path (F13)', () => {
+		const a = endpointIdentity('http://gateway:8080/a/v1');
+		const b = endpointIdentity('http://gateway:8080/b/v1');
+		expect(a).not.toBe(b);
+		expect(a.startsWith('http://gateway:8080/~')).toBe(true);
+		// Normalized: a trailing or doubled slash is the same route.
+		expect(endpointIdentity('http://gateway:8080//a/v1/')).toBe(a);
+	});
+
+	it('prices endpoints by the ledger rule: local kind, private hosts; else hosted (F12)', () => {
+		vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'https://embeddings.example.com/v1');
+		expect(storedEmbeddingTarget({ embeddingProviderKind: 'openaiCompatible' }).isLocal).toBe(
+			false
+		);
+		vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'http://10.0.0.5:11434/v1');
+		expect(storedEmbeddingTarget({ embeddingProviderKind: 'openaiCompatible' }).isLocal).toBe(true);
+		expect(storedEmbeddingTarget({ embeddingProviderKind: 'local' }).isLocal).toBe(true);
+		expect(storedEmbeddingTarget({ embeddingProviderKind: 'openai' }).isLocal).toBe(false);
 	});
 });
 

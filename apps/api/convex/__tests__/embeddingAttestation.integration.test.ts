@@ -295,67 +295,52 @@ describe('first upgrade and column placement', () => {
 		expect(spaces.map((s) => s.state)).toEqual(['retired']);
 	});
 
-	it('puts a historical space in the column the active space does not use (F4)', async () => {
+	it('refuses a cohort whose column another space owns (F4)', async () => {
 		const t = convexTest(schema, modules);
 		await configureLocalEmbedder(t);
-		const active = await seedEmbeddingSpace(t);
-		const current = await legacyEntry(t, 'current', 1_000, {
-			embeddingSpaceId: active,
-			embeddingProvenance: 'measured',
-			embeddingSpaceEntryKey: `${active}:fact`,
-		});
-		const legacy = await legacyEntry(t, 'legacy', 2_000);
-		const legacyVector = (await t.run((ctx) => ctx.db.get(legacy)))!.embedding;
-		await t.mutation(api.aiRouting.embeddingAttestations.attest, {
-			identity: { ...OPENAI, dimensions: 700 },
-			source: 'record',
-			cohort: { tables: ['knowledgeEntries'], writtenUntil: 5_000 },
-			statement: 'Manifest pins OpenAI for 2025.',
-		});
-		await flush(t);
-		const historical = await t.run(async (ctx) =>
-			(await ctx.db.query('embeddingSpaces').collect()).find((s) => s._id !== active)
-		);
-		expect(historical).toMatchObject({ state: 'retired', slot: 'secondary' });
-		const rows = await t.run(async (ctx) => ({
-			current: await ctx.db.get(current),
-			legacy: await ctx.db.get(legacy),
-		}));
-		// The legacy vector is copied into the historical space's column, stamped.
-		expect(rows.legacy).toMatchObject({
-			secondaryEmbeddingSpaceId: historical!._id,
-			secondaryEmbeddingProvenance: 'record',
-		});
-		expect(rows.legacy!.secondaryEmbedding).toEqual(legacyVector);
-		// The primary column belongs to the active local space, whose re-embed
-		// (run by the kickoff) replaced the unknown vector there.
-		expect(rows.legacy!.embeddingSpaceId).toBe(active);
-		// The active space's vectors are untouched.
-		expect(rows.current!.embeddingSpaceId).toBe(active);
-		expect(rows.current!.secondaryEmbeddingSpaceId).toBeUndefined();
-	});
-
-	it('revocation clears the copies too', async () => {
-		const t = convexTest(schema, modules);
-		await configureLocalEmbedder(t);
+		// The active local space owns the primary column, where legacy vectors are.
 		await seedEmbeddingSpace(t);
 		const legacy = await legacyEntry(t, 'legacy', 2_000);
-		const attestationId = await t.mutation(api.aiRouting.embeddingAttestations.attest, {
-			identity: { ...OPENAI, dimensions: 700 },
-			source: 'attestation',
-			cohort: { tables: ['knowledgeEntries'], writtenUntil: 5_000 },
-			statement: 'OpenAI for 2025.',
-		});
-		await flush(t);
-		await t.mutation(api.aiRouting.embeddingAttestations.revoke, { attestationId });
-		await flush(t);
+		await expect(
+			t.mutation(api.aiRouting.embeddingAttestations.attest, {
+				identity: { ...OPENAI, dimensions: 700 },
+				source: 'record',
+				cohort: { tables: ['knowledgeEntries'], writtenUntil: 5_000 },
+				statement: 'Manifest pins OpenAI for 2025.',
+			})
+		).rejects.toThrow(/another embedding space now uses/);
 		const row = await t.run((ctx) => ctx.db.get(legacy));
-		expect(row?.secondaryEmbeddingSpaceId).toBeUndefined();
+		expect(row?.embeddingAttestationId).toBeUndefined();
 		expect(row?.secondaryEmbedding).toBeUndefined();
-		expect(row?.secondaryEmbeddingAttestationId).toBeUndefined();
 	});
 
-	it('refuses a historical space while a staged rebuild holds the other column', async () => {
+	it('stops applying once another space takes the column (F4)', async () => {
+		const t = convexTest(schema, modules);
+		// Nothing configured: no re-embed interferes.
+		for (let i = 0; i < 70; i++) await legacyEntry(t, `legacy ${i}`, 1_000 + i);
+		const attestationId = await t.mutation(api.aiRouting.embeddingAttestations.attest, {
+			identity: OPENAI,
+			source: 'attestation',
+			cohort: { tables: ['knowledgeEntries'], writtenUntil: 5_000 },
+			statement: 'OpenAI since install.',
+		});
+		// Before the first page runs, another space claims the primary column.
+		await seedEmbeddingSpace(t, {
+			identity: { ...OPENAI, model: 'text-embedding-ada-002' },
+			state: 'retired',
+			slot: 'primary',
+			isConfigured: false,
+		});
+		await flush(t);
+		const rows = await t.run((ctx) => ctx.db.query('knowledgeEntries').collect());
+		expect(rows.every((row) => row.embeddingAttestationId === undefined)).toBe(true);
+		expect(await t.run((ctx) => ctx.db.get(attestationId))).toMatchObject({
+			status: 'applied',
+			rowsAssigned: 0,
+		});
+	});
+
+	it('refuses a historical space while another space holds the primary column', async () => {
 		const t = convexTest(schema, modules);
 		await seedEmbeddingSpace(t);
 		await seedEmbeddingSpace(t, {
@@ -370,7 +355,7 @@ describe('first upgrade and column placement', () => {
 				cohort: { tables: ['knowledgeEntries'], writtenUntil: 5_000 },
 				statement: 'x',
 			})
-		).rejects.toThrow(/staged rebuild/);
+		).rejects.toThrow(/another embedding space now uses/);
 	});
 });
 

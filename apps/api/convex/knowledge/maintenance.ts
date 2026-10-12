@@ -17,7 +17,13 @@
  * - Action Item: fast (5% per day, ~7 day half-life)
  */
 
-import { readSearchableSpace, spaceRefOf, vectorInSpace } from '../lib/aiRouting/embeddingRegistry';
+import {
+	inputChangeFields,
+	readSearchableSpace,
+	spaceRefOf,
+	vectorInSpace,
+} from '../lib/aiRouting/embeddingRegistry';
+import { afterInputChange } from '../lib/aiRouting/embeddingActivation';
 import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -188,13 +194,20 @@ async function mergeEntryInto(
 	const mergedContent = mergeContent(survivor.content, loser.content);
 	const mergedContactIds = nonEmpty(unionDistinct(survivor.contactIds, loser.contactIds));
 	const mergedTags = nonEmpty(unionDistinct(survivor.tags, loser.tags));
+	const isInputChanged = mergedContent !== survivor.content;
 	await ctx.db.patch(survivor._id, {
+		// The input-change rule (ADR-0073): folded-in content makes the
+		// survivor's vectors stale in every column; a local embedder re-embeds it.
+		...(isInputChanged ? inputChangeFields(null, { isKnowledge: true }) : {}),
 		content: mergedContent,
 		searchableText: `${survivor.title} ${mergedContent}`,
 		contactIds: mergedContactIds,
 		tags: mergedTags,
 		updatedAt: now,
 	});
+	if (isInputChanged) {
+		await afterInputChange(ctx, { table: 'knowledgeEntries', id: survivor._id });
+	}
 	survivor.content = mergedContent;
 	survivor.contactIds = mergedContactIds;
 	survivor.tags = mergedTags;

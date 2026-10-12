@@ -10,6 +10,7 @@ import {
 	embeddingSpaceIdentityKey,
 } from '../../lib/aiRouting/embeddingKeys';
 import type { EmbeddingSpaceIdentity } from '../../lib/aiRouting/embeddingKeys';
+import { endpointIdentity, LOCAL_EMBEDDING_DEFAULT_BASE_URLS } from '../../lib/embeddingSpace';
 
 type T = ReturnType<typeof convexTest>;
 type EntryType = Parameters<typeof embeddingSpaceEntryKey>[1];
@@ -17,7 +18,7 @@ type EntryType = Parameters<typeof embeddingSpaceEntryKey>[1];
 /** The local default's space as a test registers it (no digest: an unprobed server). */
 export const TEST_LOCAL_SPACE: EmbeddingSpaceIdentity = {
 	provider: 'local',
-	endpoint: 'http://ollama:11434',
+	endpoint: endpointIdentity(LOCAL_EMBEDDING_DEFAULT_BASE_URLS.local),
 	model: 'nomic-embed-text',
 	dimensions: 1536,
 };
@@ -53,9 +54,15 @@ export async function seedEmbeddingSpace(
 			);
 		}
 	}
-	return t.run((ctx) =>
+	return t.run(async (ctx) =>
 		ctx.db.insert('embeddingSpaces', {
 			...identity,
+			// Each seeded space takes its column after every earlier one (owner).
+			columnClaim:
+				(await ctx.db.query('embeddingSpaces').collect()).reduce(
+					(max, space) => Math.max(max, space.columnClaim ?? 0),
+					0
+				) + 1,
 			identityKey: embeddingSpaceIdentityKey(identity),
 			source: 'stored_config',
 			state: options.state ?? 'active',

@@ -53,7 +53,7 @@ import {
 	storedEmbeddingTarget,
 	throwEmbeddingKindRequired,
 } from './lib/embeddingSpace';
-import { endReembedJobs } from './lib/aiRouting/embeddingRegistry';
+import { endReembedJobs } from './lib/aiRouting/embeddingActivation';
 import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,

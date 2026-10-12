@@ -92,6 +92,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+	vi.unstubAllEnvs();
 });
 
 const flush = (t: T) => t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -146,6 +147,7 @@ describe('local re-embed', () => {
 		const active = await seedEmbeddingSpace(t, { identity: NOMIC });
 		const retired = await seedEmbeddingSpace(t, {
 			state: 'retired',
+			slot: 'secondary',
 			identity: { ...NOMIC, model: 'all-minilm' },
 		});
 		const legacy = await insertEntry(t, 'legacy', {
@@ -378,40 +380,91 @@ describe('local re-embed', () => {
 		expect(rows.every((r) => r.embeddingSpaceId === undefined)).toBe(true);
 	});
 
-	it('reactivating a space that shares the outgoing column moves it, keeping both (F4)', async () => {
+	it('reactivating a space that still owns its column reuses its vectors (F4)', async () => {
 		const t = convexTest(schema, modules);
 		await configureLocalEmbedder(t); // names nomic: A
-		const a = await seedEmbeddingSpace(t, { identity: NOMIC, state: 'retired' });
+		const a = await seedEmbeddingSpace(t, { identity: NOMIC, state: 'retired', slot: 'primary' });
 		const c = await seedEmbeddingSpace(t, {
 			identity: { ...NOMIC, model: 'all-minilm' },
 			state: 'active',
-			slot: 'primary',
+			slot: 'secondary',
 		});
 		const aRow = await insertEntry(t, 'a row', { embedding: padded(3), ...stampedIn(a, 'fact') });
-		const cRow = await insertEntry(t, 'c row', { embedding: padded(4), ...stampedIn(c, 'fact') });
 
-		// The configuration names A again; a commit (here: the switch path) activates it.
 		await t.mutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
 			space: measuredLocalSpace(DIMS),
 		});
 		await flush(t);
 
 		const spaces = await t.run(async (ctx) => ({ a: await ctx.db.get(a), c: await ctx.db.get(c) }));
-		expect(spaces.a).toMatchObject({ state: 'active', slot: 'secondary', predecessorSpaceId: c });
-		expect(spaces.c).toMatchObject({ state: 'retired', slot: 'primary' });
+		expect(spaces.a).toMatchObject({ state: 'active', slot: 'primary', predecessorSpaceId: c });
+		expect((await t.run((ctx) => ctx.db.get(aRow)))?.embedding).toEqual(padded(3));
+		expect(embedCalls.texts).not.toContain('a row: a row content');
+	});
+
+	it('a space that lost its column is superseded and re-embedded, never copied (F4)', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t); // names nomic: A
+		const a = await seedEmbeddingSpace(t, { identity: NOMIC, state: 'retired', slot: 'primary' });
+		const aRow = await insertEntry(t, 'a row', { embedding: padded(3), ...stampedIn(a, 'fact') });
+		// C took the primary column after A (a higher claim), and is active there.
+		const c = await seedEmbeddingSpace(t, {
+			identity: { ...NOMIC, model: 'all-minilm' },
+			state: 'active',
+			slot: 'primary',
+		});
+		const cRow = await insertEntry(t, 'c row', { embedding: padded(4), ...stampedIn(c, 'fact') });
+
+		await t.mutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
+			space: measuredLocalSpace(DIMS),
+		});
+		await flush(t);
+
+		const spaces = await t.run((ctx) => ctx.db.query('embeddingSpaces').collect());
+		const fresh = spaces.find((space) => space.model === NOMIC.model && space.state === 'active')!;
+		expect(fresh._id).not.toBe(a);
+		expect(fresh.slot).toBe('secondary');
+		expect(spaces.find((space) => space._id === a)?.identityKey).toContain('#superseded:');
 		const rows = await t.run(async (ctx) => ({
 			a: await ctx.db.get(aRow),
 			c: await ctx.db.get(cRow),
 		}));
-		// A's vector moved to its new column with its provenance; C's stays put.
-		expect(rows.a).toMatchObject({
-			secondaryEmbeddingSpaceId: a,
-			secondaryEmbeddingProvenance: 'measured',
-			secondaryEmbedding: padded(3),
-		});
+		// C's column is untouched; A's row was re-embedded into the fresh space.
 		expect(rows.c).toMatchObject({ embeddingSpaceId: c, embedding: padded(4) });
-		// The move copied A's vector rather than re-embedding it.
-		expect(embedCalls.texts).not.toContain('a row: a row content');
+		expect(rows.a?.secondaryEmbeddingSpaceId).toBe(fresh._id);
+		expect(embedCalls.texts).toContain('a row: a row content');
+	});
+
+	it('a space that lost its column to a third one is superseded, not reused (F4)', async () => {
+		const t = convexTest(schema, modules);
+		await configureLocalEmbedder(t); // names nomic: A
+		const a = await seedEmbeddingSpace(t, { identity: NOMIC, state: 'retired', slot: 'primary' });
+		const aRow = await insertEntry(t, 'a row', { embedding: padded(3), ...stampedIn(a, 'fact') });
+		// B wrote the primary column after A, then retired; C is active in the other one.
+		await seedEmbeddingSpace(t, {
+			identity: { ...NOMIC, model: 'mxbai-embed-large' },
+			state: 'retired',
+			slot: 'primary',
+		});
+		await seedEmbeddingSpace(t, {
+			identity: { ...NOMIC, model: 'all-minilm' },
+			state: 'active',
+			slot: 'secondary',
+		});
+
+		await t.mutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
+			space: measuredLocalSpace(DIMS),
+		});
+		await flush(t);
+
+		const fresh = (await t.run((ctx) => ctx.db.query('embeddingSpaces').collect())).find(
+			(space) => space.model === NOMIC.model && space.state === 'active'
+		)!;
+		expect(fresh._id).not.toBe(a);
+		expect(fresh.slot).toBe('primary');
+		// A's leftover vector was not trusted: the row was re-embedded.
+		expect((await t.run((ctx) => ctx.db.get(aRow)))?.embeddingSpaceId).toBe(fresh._id);
+		expect(embedCalls.texts).toContain('a row: a row content');
 	});
 
 	it('runs nothing by default without an AI configuration', async () => {
@@ -480,6 +533,17 @@ describe('paid re-embed (hosted embedder)', () => {
 		expect(coverage?.knowledgeEntries).toMatchObject({ active: 0, inactive: 1 });
 	});
 
+	it('derives a job as paid from its target space, in the starting transaction (F12)', async () => {
+		const t = convexTest(schema, modules);
+		await configureOpenAi(t);
+		await seedEmbeddingSpace(t, { identity: OPENAI });
+		// Called directly: no earlier read of the configuration can vouch for it.
+		await expect(
+			t.mutation(internal.aiRouting.embeddingReembedJobs.startReembedJob, {})
+		).rejects.toThrow(/spend admission/);
+		expect(await jobs(t)).toEqual([]);
+	});
+
 	it('is never started by the kickoff', async () => {
 		const t = convexTest(schema, modules);
 		await configureOpenAi(t);
@@ -493,8 +557,10 @@ describe('paid re-embed (hosted embedder)', () => {
 
 	it('pauses a running paid job for budget before any call', async () => {
 		const t = convexTest(schema, modules);
-		await configureOpenAi(t);
+		// The env plane: hosted OpenAI embeddings with a key, so only admission refuses.
+		vi.stubEnv('LLM_API_KEY', 'sk-test-env');
 		const active = await seedEmbeddingSpace(t, { identity: OPENAI });
+		await t.run((ctx) => ctx.db.patch(active, { source: 'env' }));
 		await insertEntry(t, 'legacy', { embedding: padded(3), embeddingGeneratedAt: 1 });
 		const jobId = await t.run((ctx) =>
 			ctx.db.insert('embeddingReembedJobs', {
@@ -518,6 +584,42 @@ describe('paid re-embed (hosted embedder)', () => {
 			pausedReason: 'budget',
 		});
 		expect(embedCalls.texts).toEqual([]);
+	});
+
+	it('admits a batch by the embedder it resolves, not by the job flag (F12)', async () => {
+		const t = convexTest(schema, modules);
+		// The env plane: hosted OpenAI embeddings.
+		vi.stubEnv('LLM_API_KEY', 'sk-test-env');
+		const active = await seedEmbeddingSpace(t, {
+			identity: OPENAI,
+			isConfigured: false,
+		});
+		await t.run((ctx) => ctx.db.patch(active, { source: 'env' }));
+		await insertEntry(t, 'legacy', { embedding: padded(3), embeddingGeneratedAt: 1 });
+		const jobId = await t.run((ctx) =>
+			ctx.db.insert('embeddingReembedJobs', {
+				kind: 'reembed',
+				targetSpaceId: active,
+				status: 'running',
+				// A job recorded as free (a stale flag): the dispatch must not trust it.
+				isPaid: false,
+				generation: 1,
+				phase: 'knowledgeEntries',
+				scannedCount: 0,
+				embeddedCount: 0,
+				skippedCount: 0,
+				failedCount: 0,
+				startedAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+		await t.action(internal.aiRouting.embeddingReembed.runBatch, { jobId, generation: 1 });
+		expect(await t.run((ctx) => ctx.db.get(jobId))).toMatchObject({
+			status: 'paused',
+			pausedReason: 'budget',
+		});
+		expect(embedCalls.texts).toEqual([]);
+		vi.unstubAllEnvs();
 	});
 
 	it('refuses a non-admin', async () => {

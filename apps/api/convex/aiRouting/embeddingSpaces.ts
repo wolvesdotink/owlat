@@ -15,10 +15,11 @@ import { internalQuery, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
+import { ensureConfiguredSpace } from '../lib/aiRouting/embeddingActivation';
 import {
-	ensureConfiguredSpace,
 	identityOf,
 	isIdentityOfTarget,
+	ownsColumn,
 	readActiveSpace,
 	readConfiguredTarget,
 	readSearchableSpace,
@@ -122,14 +123,17 @@ export const getSpaces = internalQuery({
 
 /**
  * The space a rollback restores: the one the active space replaced, as recorded
- * when it was activated (`predecessorSpaceId`). Null when there is none, or it
- * is no longer retired (it was re-staged, or reactivated and replaced since).
+ * when it was activated (`predecessorSpaceId`), and only while it still owns
+ * its column, so its vectors there are its own and current. Null otherwise:
+ * no predecessor, it is no longer retired, or another space has taken its
+ * column since (a staged rebuild, even a cancelled one).
  */
 export async function readRollbackSpace(ctx: Pick<QueryCtx, 'db'>): Promise<SpaceDoc | null> {
 	const active = await readActiveSpace(ctx.db);
 	if (!active?.predecessorSpaceId) return null;
 	const predecessor = await ctx.db.get(active.predecessorSpaceId);
-	return predecessor?.state === 'retired' ? predecessor : null;
+	if (predecessor?.state !== 'retired') return null;
+	return (await ownsColumn(ctx.db, predecessor)) ? predecessor : null;
 }
 
 /** A space without its internal identity key. */

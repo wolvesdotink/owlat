@@ -25,6 +25,8 @@ import { isEnvAiProviderConfigured } from './aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './constants';
 import { getOptional } from './env';
 import { type EmbeddingProviderKind } from './llmProviders/types';
+import { resolveEndpointLocality, type EndpointLocality } from './llm/endpointLocality';
+import { sha256Hex } from './aiRouting/routeDigest';
 
 /** Each embedding adapter's default model. The adapters read theirs from here. */
 export const EMBEDDING_DEFAULT_MODELS = {
@@ -103,15 +105,35 @@ export function localEmbeddingBaseUrl(kind: 'local' | 'openaiCompatible'): strin
 }
 
 /**
- * The secret-free identity of an endpoint: its origin (scheme, host, port).
- * Never a path, query or userinfo, which may carry a credential.
+ * The secret-free identity of an endpoint: its origin (scheme, host, port) and,
+ * when it has one, a digest of its base path. Two services on one origin under
+ * different paths (`/a/v1`, `/b/v1`) are different endpoints, but a path may
+ * carry a credential, so only a SHA-256 prefix of the normalized path is kept.
+ * Userinfo, query and fragment never enter it.
  */
 export function endpointIdentity(url: string): string {
+	let parsed: URL;
 	try {
-		return new URL(url).origin.toLowerCase();
+		parsed = new URL(url);
 	} catch {
 		return 'invalid';
 	}
+	const origin = parsed.origin.toLowerCase();
+	const path = parsed.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+	return path === '' ? origin : `${origin}/~${sha256Hex(path).slice(0, 32)}`;
+}
+
+/**
+ * Whether an embedding endpoint is local (free) or hosted (paid), by the
+ * ledger's one rule (`lib/llm/endpointLocality.ts`): the `local` kind, or an
+ * OpenAI-compatible endpoint on a loopback, private or single-label host. Every
+ * other endpoint, an unparsable one included, is hosted.
+ */
+export function embeddingEndpointLocality(
+	kind: EmbeddingProviderKind,
+	baseUrl: string | undefined
+): EndpointLocality {
+	return resolveEndpointLocality(kind, baseUrl);
 }
 
 /** Where a target was resolved from. */
@@ -125,7 +147,10 @@ export interface EmbeddingTarget {
 	readonly model: string;
 	readonly requestedDimensions: number | 'native';
 	readonly source: EmbeddingTargetSource;
-	/** Served by the deployment itself, so re-embedding costs nothing. */
+	/**
+	 * Local by the ledger's rule (`embeddingEndpointLocality`), so re-embedding
+	 * costs nothing. Decided again from the resolved embedder before each dispatch.
+	 */
 	readonly isLocal: boolean;
 	/** The base URL whose server may report an artifact revision (Ollama). */
 	readonly probeBaseUrl?: string;
@@ -142,7 +167,12 @@ export function storedEmbeddingTarget(selection: StoredEmbeddingSelection): Embe
 	};
 	if (kind === 'local' || kind === 'openaiCompatible') {
 		const baseUrl = localEmbeddingBaseUrl(kind);
-		return { ...base, endpoint: endpointIdentity(baseUrl), isLocal: true, probeBaseUrl: baseUrl };
+		return {
+			...base,
+			endpoint: endpointIdentity(baseUrl),
+			isLocal: embeddingEndpointLocality(kind, baseUrl) === 'local',
+			probeBaseUrl: baseUrl,
+		};
 	}
 	return { ...base, endpoint: 'native', isLocal: false };
 }
@@ -150,8 +180,8 @@ export function storedEmbeddingTarget(selection: StoredEmbeddingSelection): Embe
 /**
  * The env fallback's target, or null when the environment configures no AI.
  * The env plane always uses the OpenAI adapter; its endpoint tells the native
- * API, OpenRouter, Ollama and a custom server apart. Only env Ollama is local
- * (and probed): a custom base URL may be a paid service.
+ * API, OpenRouter, Ollama and a custom server apart. Only env Ollama is probed
+ * for a revision; none is local for payment (the ledger's rule).
  */
 export function envEmbeddingTarget(): EmbeddingTarget | null {
 	if (!isEnvAiProviderConfigured()) return null;
@@ -163,7 +193,9 @@ export function envEmbeddingTarget(): EmbeddingTarget | null {
 		model: envEmbeddingModel(),
 		requestedDimensions: 'native',
 		source: 'env',
-		isLocal: isOllama,
+		// The env plane uses the OpenAI adapter, which the ledger's rule prices as
+		// hosted wherever it points (an env Ollama included).
+		isLocal: embeddingEndpointLocality('openai', baseUrl) === 'local',
 		...(isOllama && baseUrl ? { probeBaseUrl: baseUrl } : {}),
 	};
 }

@@ -32,10 +32,9 @@ import {
 	resolveEmbedderForSpace,
 } from '../lib/aiRouting/embedderForSpace';
 import { PAID_EMBEDDING_REFUSAL, REEMBED_PAGE_ATTEMPTS } from './embeddingReembedJobs';
-import {
-	admitPaidEmbeddingBatch,
-	isPaidEmbeddingAdmissionAvailable,
-} from '../lib/aiRouting/embeddingAdmission';
+import { isPaidEmbeddingAdmissionAvailable } from '../lib/aiRouting/embeddingAdmission';
+import { runAdmittedEmbedding, type DispatchCounter } from '../lib/aiRouting/embeddingDispatch';
+import { embeddingTableValidator } from '../lib/validators/embedding';
 import type { MeasuredSpace } from '../lib/aiRouting/embeddingRegistry';
 
 /** The text a local embedder is measured with (dimensions, digest). Never stored. */
@@ -79,6 +78,8 @@ export const kickoff = internalAction({
  * is refused while admission is absent. When no space is searchable yet (a
  * hosted deployment's first upgrade, with no new content since), it first
  * measures the configured space with one admitted call and activates it.
+ * Payment is decided by the embedder about to be called, never by an earlier
+ * configuration read; the job itself derives it from its target space.
  */
 // authz: admin-only; assertAdmin runs first, startReembedJob checks again
 export const startReembed = authedAction({
@@ -90,36 +91,60 @@ export const startReembed = authedAction({
 			{}
 		);
 		if (isConfiguredLocal === null) throwInvalidState('No embedding model is configured.');
-		// Refused before any credential is read or any provider is called.
-		const isPaid = !isConfiguredLocal;
-		if (isPaid && !isPaidEmbeddingAdmissionAvailable()) throwInvalidState(PAID_EMBEDDING_REFUSAL);
+		// An early refusal, before any credential is read; the dispatch below and
+		// the job's own derivation decide again from what they really use.
+		if (!isConfiguredLocal && !isPaidEmbeddingAdmissionAvailable()) {
+			throwInvalidState(PAID_EMBEDDING_REFUSAL);
+		}
 		if (!isActiveConfigured) {
 			const embedder = await configuredEmbedderOrNull(ctx);
 			if (!embedder) throwInvalidState('No embedding model is configured.');
-			let settle: ((usage: { inputTokens: number | undefined }) => Promise<void>) | undefined;
-			if (isPaid) {
-				const admission = await admitPaidEmbeddingBatch(ctx, {
+			const probe = await runAdmittedEmbedding(
+				ctx,
+				embedder,
+				{
 					rootRequestId: `embedding:bootstrap:${Date.now()}`,
 					task: 'embedding.index',
 					jobKind: 'probe',
-					provider: embedder.target.provider,
-					model: embedder.target.model,
 					items: 1,
 					inputChars: SPACE_PROBE_TEXT.length,
-				});
-				if (!admission.isAdmitted) throwInvalidState(admission.reason);
-				settle = admission.settle;
-			}
-			const { space } = await embedForIndex(embedder, SPACE_PROBE_TEXT);
-			await settle?.({ inputTokens: undefined });
+				},
+				(counter) => embedForIndex(embedder, SPACE_PROBE_TEXT, counter)
+			);
+			if (!probe.isAdmitted) throwInvalidState(probe.reason);
 			const active = await ctx.runMutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
-				space,
+				space: probe.value.space,
 			});
 			if (!active) throwInvalidState('The embedding configuration changed. Try again.');
 		}
-		return await ctx.runMutation(internal.aiRouting.embeddingReembedJobs.startReembedJob, {
-			isPaid,
-		});
+		return await ctx.runMutation(internal.aiRouting.embeddingReembedJobs.startReembedJob, {});
+	},
+});
+
+/**
+ * Re-embed one row whose input an edit changed (it has no vector in any column
+ * now). Local embedders only: a hosted one waits for the admin re-embed.
+ */
+export const reembedRow = internalAction({
+	args: { table: embeddingTableValidator, id: v.string() },
+	handler: async (ctx, args): Promise<void> => {
+		const row = await ctx.runQuery(internal.aiRouting.embeddingRowReembed.rowForReembed, args);
+		if (!row) return;
+		try {
+			const embedder = await configuredEmbedderOrNull(ctx);
+			// Classified from the embedder about to be called: never a paid call here.
+			if (!embedder || !embedder.target.isLocal) return;
+			const { vector, space } = await embedForIndex(embedder, row.text);
+			await ctx.runMutation(internal.aiRouting.embeddingRowReembed.commitRowVector, {
+				...args,
+				fingerprint: row.fingerprint,
+				vector,
+				space,
+			});
+		} catch (error) {
+			// The daily local pass embeds it instead.
+			logInfo('[embedding.reembedRow] failed', { error: String(error) });
+		}
 	},
 });
 
@@ -149,24 +174,6 @@ export const runBatch = internalAction({
 		let failed = 0;
 		let space: MeasuredSpace | undefined;
 		if (page.items.length > 0) {
-			// Admission first: a refused paid batch touches no provider and no secret.
-			let settle: ((usage: { inputTokens: number | undefined }) => Promise<void>) | undefined;
-			if (page.isPaid) {
-				const admission = await admitPaidEmbeddingBatch(ctx, {
-					rootRequestId: page.rootRequestId,
-					task: 'embedding.index',
-					jobKind: page.jobKind,
-					provider: page.target.provider,
-					model: page.target.model,
-					items: page.items.length,
-					inputChars: page.items.reduce((sum, item) => sum + item.text.length, 0),
-				});
-				if (!admission.isAdmitted) {
-					await pause('budget', admission.reason);
-					return;
-				}
-				settle = admission.settle;
-			}
 			let embedder: Awaited<ReturnType<typeof resolveEmbedderForSpace>>;
 			try {
 				embedder = await resolveEmbedderForSpace(ctx, page.target);
@@ -175,22 +182,38 @@ export const runBatch = internalAction({
 				logInfo('[embedding.reembed] embedder unavailable', { error: String(error) });
 			}
 			if (!embedder) {
-				await settle?.({ inputTokens: 0 });
 				await pause('provider_unavailable', 'No embedder can be built for the target space.');
 				return;
 			}
-			let batch: Awaited<ReturnType<typeof embedTextsForIndex>>;
-			try {
-				batch = await embedTextsForIndex(
-					embedder,
-					page.items.map((item) => item.text)
-				);
-			} catch (error) {
-				// The revision probe could not reach the server: the whole page failed.
-				logInfo('[embedding.reembed] revision probe failed', { error: String(error) });
-				batch = { vectors: page.items.map(() => null), space: null };
+			const resolved = embedder;
+			const texts = page.items.map((item) => item.text);
+			const runBatchCalls = async (counter: DispatchCounter) => {
+				try {
+					return await embedTextsForIndex(resolved, texts, counter);
+				} catch (error) {
+					// The revision probe could not reach the server: the whole page failed.
+					logInfo('[embedding.reembed] revision probe failed', { error: String(error) });
+					return { vectors: texts.map(() => null), space: null };
+				}
+			};
+			const batchRequest = {
+				rootRequestId: page.rootRequestId,
+				task: 'embedding.index' as const,
+				jobKind: page.jobKind,
+				items: texts.length,
+				inputChars: texts.reduce((sum, text) => sum + text.length, 0),
+			};
+			// Admitted when the job is paid OR the embedder about to be called is
+			// hosted (`runAdmittedEmbedding` classifies it); settled once, whatever
+			// happens, with the calls started.
+			const outcome = await runAdmittedEmbedding(ctx, resolved, batchRequest, runBatchCalls, {
+				isPaid: page.isPaid,
+			});
+			if (!outcome.isAdmitted) {
+				await pause('budget', outcome.reason);
+				return;
 			}
-			await settle?.({ inputTokens: undefined });
+			const batch = outcome.value;
 			space = batch.space ?? undefined;
 			for (const [index, item] of page.items.entries()) {
 				const embedded = batch.vectors[index];
@@ -210,7 +233,6 @@ export const runBatch = internalAction({
 			scanned: page.scanned,
 			failed,
 			space,
-			copies: page.copies,
 			results,
 		});
 		if (commit.outcome === 'continue') {

@@ -16,29 +16,39 @@ const admission = vi.hoisted(() => ({
 	isAdmitting: true,
 	batches: [] as PaidEmbeddingBatch[],
 	settled: 0,
+	dispatched: [] as number[],
 }));
 
-vi.mock('../lib/aiRouting/embeddingAdmission', () => ({
-	isPaidEmbeddingAdmissionAvailable: () => true,
-	admitPaidEmbeddingBatch: vi.fn(async (_ctx: unknown, batch: PaidEmbeddingBatch) => {
+// Only the admission decision is mocked; `runAdmittedEmbedding` (the
+// classify / admit / settle-once wrapper) is the real one.
+vi.mock('../lib/aiRouting/embeddingAdmission', async (importOriginal) => {
+	const actual = await importOriginal<object>();
+	const admitPaidEmbeddingBatch = vi.fn(async (_ctx: unknown, batch: PaidEmbeddingBatch) => {
 		admission.batches.push(batch);
 		if (!admission.isAdmitting) return { isAdmitted: false, reason: 'over the daily ceiling' };
 		return {
 			isAdmitted: true,
-			settle: async () => {
+			settle: async (usage: { dispatchedCalls: number }) => {
 				admission.settled += 1;
+				admission.dispatched.push(usage.dispatchedCalls);
 			},
 		};
-	}),
-}));
+	});
+	return {
+		...actual,
+		isPaidEmbeddingAdmissionAvailable: () => true,
+		admitPaidEmbeddingBatch,
+	};
+});
 
-const embedCalls = vi.hoisted(() => ({ count: 0 }));
+const embedCalls = vi.hoisted(() => ({ count: 0, isFailing: false }));
 vi.mock('ai', async () => {
 	const actual = await vi.importActual<typeof Ai>('ai');
 	return {
 		...actual,
 		embed: vi.fn(async () => {
 			embedCalls.count += 1;
+			if (embedCalls.isFailing) throw new Error('provider error');
 			return { embedding: Array.from({ length: 1536 }, (_, i) => (i === 7 ? 1 : 0)) };
 		}),
 	};
@@ -65,7 +75,9 @@ beforeEach(() => {
 	admission.isAdmitting = true;
 	admission.batches = [];
 	admission.settled = 0;
+	admission.dispatched = [];
 	embedCalls.count = 0;
+	embedCalls.isFailing = false;
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -123,7 +135,18 @@ describe('paid re-embed bootstrap', () => {
 			['reembed', 3],
 		]);
 		expect(admission.settled).toBe(2);
+		expect(admission.dispatched).toEqual([1, 3]);
 		expect(embedCalls.count).toBe(4);
+	});
+
+	it('settles the admitted probe exactly once when the call fails (F15)', async () => {
+		const t = convexTest(schema, modules);
+		await legacyEntries(t, 1);
+		embedCalls.isFailing = true;
+		await expect(t.action(api.aiRouting.embeddingReembed.startReembed, {})).rejects.toThrow();
+		// The failed call may still be billed: it counts as dispatched.
+		expect(admission.settled).toBe(1);
+		expect(admission.dispatched).toEqual([1]);
 	});
 
 	it('makes no provider call when admission refuses the probe', async () => {

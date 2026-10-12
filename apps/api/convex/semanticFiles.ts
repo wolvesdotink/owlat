@@ -29,7 +29,8 @@ import {
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { isAiProviderConfigured } from './lib/aiNotConfigured';
-import { vectorFieldsForCommit } from './lib/aiRouting/embeddingRegistry';
+import { afterInputChange, vectorFieldsForCommit } from './lib/aiRouting/embeddingActivation';
+import { inputChangeFields } from './lib/aiRouting/embeddingRegistry';
 import { measuredEmbeddingSpaceValidator } from './lib/validators/embedding';
 import { logInfo } from './lib/runtimeLog';
 import type { Id, Doc } from './_generated/dataModel';
@@ -603,7 +604,7 @@ export const updateProcessedMetadata = internalMutation({
 		const { isStale, fields } = await vectorFieldsForCommit(
 			ctx,
 			{ embedding, space: embeddingSpace },
-			{ mode: 'patch' }
+			{}
 		);
 		if (isStale)
 			logInfo('[semanticFiles] stale embedding space, stored without vector', { fileId });
@@ -664,7 +665,13 @@ export const update = authedMutation({
 			});
 		}
 
+		// The input-change rule (ADR-0073): the title is part of the embedding
+		// input, so a new one leaves no vector of the old one in any column.
+		const isInputChanged = updates.title !== undefined && updates.title !== file.title;
+		if (isInputChanged)
+			Object.assign(cleanUpdates, inputChangeFields(null, { isKnowledge: false }));
 		await ctx.db.patch(fileId, cleanUpdates);
+		if (isInputChanged) await afterInputChange(ctx, { table: 'semanticFiles', id: fileId });
 
 		// Keep the junction in sync when the contactIds array is edited in place.
 		if (updates.contactIds !== undefined) {

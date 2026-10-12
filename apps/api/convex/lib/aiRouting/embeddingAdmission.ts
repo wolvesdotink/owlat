@@ -32,8 +32,15 @@ export interface PaidEmbeddingBatch {
 export type PaidEmbeddingAdmissionResult =
 	| {
 			readonly isAdmitted: true;
-			/** Settle the hold with what the batch really used, or release it. */
-			readonly settle: (usage: { readonly inputTokens: number | undefined }) => Promise<void>;
+			/**
+			 * Settle the hold, exactly once, after the batch: `dispatchedCalls` counts
+			 * every call that was started, whether it succeeded or not (conservative:
+			 * a failed call may still be billed). Zero releases the hold.
+			 */
+			readonly settle: (usage: {
+				readonly dispatchedCalls: number;
+				readonly inputTokens: number | undefined;
+			}) => Promise<void>;
 	  }
 	| { readonly isAdmitted: false; readonly reason: string };
 

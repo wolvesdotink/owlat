@@ -20,8 +20,11 @@
  * call failed, the model changed mid-call, a row was edited meanwhile) keeps
  * its cursor and is retried, a bounded number of times, and the job pauses when
  * the retries run out. A job reaches `completed` only when every page landed.
- * A row whose target-space vector sits in the other column (a space being
- * re-slotted) is copied, not re-embedded.
+ * Every page is fenced by column ownership: a job writes only while its target
+ * still owns its column (`ownsColumn`), so it never overwrites a space that took
+ * the column since. Whether a job is paid is derived from its target space's
+ * endpoint (the ledger's locality rule), never from a caller's flag, and each
+ * batch classifies the embedder it resolved again before dispatching.
  */
 
 import type {
@@ -38,9 +41,9 @@ import { adminMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { throwConflict, throwInvalidState, throwNotFound } from '../_utils/errors';
+import { isSpaceLocal } from '../lib/aiRouting/embeddingActivation';
 import {
-	copyFieldsIntoSlot,
-	otherSlot,
+	ownsColumn,
 	readSearchableSpace,
 	slotFields,
 	spaceRefOf,
@@ -80,13 +83,16 @@ async function liveTarget(
 	db: DatabaseReader,
 	job: Pick<Job, 'kind' | 'targetSpaceId'>
 ): Promise<SpaceDoc | null> {
+	let target: SpaceDoc | null;
 	if (job.kind === 'rebuild') {
-		const target = await db.get(job.targetSpaceId);
+		const staged = await db.get(job.targetSpaceId);
 		const expected: EmbeddingSpaceState = 'staged';
-		return target?.state === expected ? target : null;
+		target = staged?.state === expected ? staged : null;
+	} else {
+		const searchable = await readSearchableSpace(db);
+		target = searchable?._id === job.targetSpaceId ? searchable : null;
 	}
-	const searchable = await readSearchableSpace(db);
-	return searchable?._id === job.targetSpaceId ? searchable : null;
+	return target && (await ownsColumn(db, target)) ? target : null;
 }
 
 /** The input a row is embedded from, or null when it has none (or is expired). */
@@ -117,31 +123,24 @@ export const reembedPage = internalQuery({
 		const target = await liveTarget(ctx.db, job);
 		if (!target) return { kind: 'stop' as const };
 		const ref = spaceRefOf(target);
-		const elsewhere = { spaceId: target._id, slot: otherSlot(target.slot) };
 		const now = Date.now();
 		const page = await ctx.db
 			.query(job.phase)
 			.paginate({ cursor: job.cursor ?? null, numItems: REEMBED_PAGE_SIZE });
 		const items: { id: string; text: string; fingerprint: string }[] = [];
-		const copies: string[] = [];
 		for (const row of page.page) {
 			if (vectorInSpace(row, ref)) continue;
-			if (vectorInSpace(row, elsewhere)) {
-				copies.push(row._id);
-				continue;
-			}
 			const text = rowInput(job.phase, row, now);
 			if (text) items.push({ id: row._id, text, fingerprint: inputFingerprint(text) });
 		}
 		return {
 			kind: 'page' as const,
 			phase: job.phase,
-			isPaid: job.isPaid,
+			isPaid: job.isPaid || !isSpaceLocal(target),
 			jobKind: job.kind,
 			rootRequestId: job.rootRequestId ?? `embedding:${job._id}`,
 			target,
 			items,
-			copies,
 			scanned: page.page.length,
 			continueCursor: page.continueCursor,
 			isDone: page.isDone,
@@ -168,7 +167,7 @@ async function endJob(
 
 /**
  * Commit one page: write each fresh vector into the target space's column,
- * copy the rows whose target vector is in the other column, then either advance
+ * then either advance
  * (every candidate landed) or keep the cursor for a retry (`unresolved`: a
  * call failed, or a row was edited since the page was read). A finished table
  * moves to the next; the last one completes the job. A vector measured in
@@ -185,7 +184,6 @@ export const reembedCommit = internalMutation({
 		scanned: v.number(),
 		failed: v.number(),
 		space: v.optional(measuredEmbeddingSpaceValidator),
-		copies: v.optional(v.array(v.string())),
 		results: v.array(
 			v.object({ id: v.string(), vector: v.array(v.float64()), fingerprint: v.string() })
 		),
@@ -235,13 +233,6 @@ export const reembedCommit = internalMutation({
 				slotFields(target, result.vector, { now, entryType: entryTypeOf(row) })
 			);
 			embedded += 1;
-		}
-		for (const copyId of args.copies ?? []) {
-			const id = ctx.db.normalizeId(job.phase, copyId);
-			const row = id ? await ctx.db.get(id) : null;
-			if (!row || vectorInSpace(row, ref)) continue;
-			const fields = copyFieldsIntoSlot(row, target, entryTypeOf(row));
-			if (fields) await ctx.db.patch(row._id, fields);
 		}
 
 		const counters = {
@@ -379,7 +370,8 @@ export const startLocalReembed = internalMutation({
 			return 'busy';
 		}
 		const active = await readSearchableSpace(ctx.db);
-		if (!active || active._id !== args.spaceId) return 'skipped';
+		// Never a paid job from here: only a target that is local by the ledger's rule.
+		if (!active || active._id !== args.spaceId || !isSpaceLocal(active)) return 'skipped';
 		if (!args.isForced) {
 			const last = await ctx.db
 				.query('embeddingReembedJobs')
@@ -403,8 +395,8 @@ export const startLocalReembed = internalMutation({
  * space was searchable yet) measured and activated the configured one.
  */
 export const startReembedJob = internalMutation({
-	args: { isPaid: v.boolean() },
-	handler: async (ctx, args): Promise<Id<'embeddingReembedJobs'>> => {
+	args: {},
+	handler: async (ctx): Promise<Id<'embeddingReembedJobs'>> => {
 		const session = await requireOrgPermission(ctx, 'organization:manage');
 		const active = await readSearchableSpace(ctx.db);
 		if (!active) {
@@ -413,13 +405,15 @@ export const startReembedJob = internalMutation({
 		if (await readOpenJob(ctx)) {
 			throwConflict('A re-embed or rebuild is already running. Wait for it, or cancel it first.');
 		}
-		if (args.isPaid && !isPaidEmbeddingAdmissionAvailable()) {
+		// Paid or not is the target's own endpoint, read in this transaction.
+		const isPaid = !isSpaceLocal(active);
+		if (isPaid && !isPaidEmbeddingAdmissionAvailable()) {
 			throwInvalidState(PAID_EMBEDDING_REFUSAL);
 		}
 		const jobId = await startJob(ctx, {
 			kind: 'reembed',
 			targetSpaceId: active._id,
-			isPaid: args.isPaid,
+			isPaid,
 			startedBy: session.userId,
 		});
 		await recordAuditLog(ctx, {
@@ -428,7 +422,7 @@ export const startReembedJob = internalMutation({
 			action: 'embedding_reembed.started',
 			resource: 'embedding_space',
 			resourceId: active._id,
-			details: { jobId, kind: 'reembed', isPaid: args.isPaid },
+			details: { jobId, kind: 'reembed', isPaid },
 		});
 		return jobId;
 	},
