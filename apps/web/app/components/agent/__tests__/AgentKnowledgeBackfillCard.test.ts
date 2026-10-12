@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 /**
- * The knowledge backfill card counts the messages only partly read so far
- * (D1: the AI spend budget paused them; their deferral finishes them), and
- * says nothing about it while there are none.
+ * The knowledge backfill card reports how many messages the run left partly
+ * read at the AI spend budget (D1). The count only grows, so the copy reads it
+ * as history and promises no completion; nothing is said while it is zero.
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -46,10 +46,10 @@ function mountCard(over: Record<string, unknown> = {}) {
 }
 
 describe('AgentKnowledgeBackfillCard', () => {
-	it('counts the messages the budget left partly read', () => {
+	it('reports the messages the run left partly read, as a count that only grows', () => {
 		const w = mountCard({ partialCount: 2 });
 		expect(w.get('[data-testid="knowledge-backfill-partial"]').text()).toBe(
-			'2 messages are only partly read so far, usually because the AI spend budget was reached. They finish on their own later.'
+			'2 messages were only partly read during this backfill because the AI spend budget was reached. This count does not go down when they are finished later, and some may stay unfinished.'
 		);
 		expectFullyLocalized(w);
 	});

@@ -7725,7 +7725,7 @@
 						"description": "One-time scan of your inbound mail history to seed the AI agent with context.",
 						"errors": "Errors",
 						"extracted": "Extracted",
-						"partial": "{count} messages are only partly read so far, usually because the AI spend budget was reached. They finish on their own later.",
+						"partial": "{count} messages were only partly read during this backfill because the AI spend budget was reached. This count does not go down when they are finished later, and some may stay unfinished.",
 						"progress": "{scanned} / {total} messages",
 						"progressLabel": "Knowledge backfill progress",
 						"skipped": "Skipped",

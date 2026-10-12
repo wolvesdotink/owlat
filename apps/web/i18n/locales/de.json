@@ -7725,7 +7725,7 @@
 						"description": "Einmaliger Durchlauf durch deinen eingehenden Mail-Verlauf, um den KI-Agenten mit Kontext zu versorgen.",
 						"errors": "Fehler",
 						"extracted": "Extrahiert",
-						"partial": "{count} Nachrichten sind erst teilweise gelesen, meist weil das KI-Ausgabenbudget erreicht war. Sie werden später von selbst fertig.",
+						"partial": "{count} Nachrichten wurden bei diesem Durchlauf nur teilweise gelesen, weil das KI-Ausgabenbudget erreicht war. Die Zahl sinkt nicht, wenn sie später fertig werden, und manche bleiben womöglich unfertig.",
 						"progress": "{scanned} / {total} Nachrichten",
 						"progressLabel": "Fortschritt der Wissens-Nachverarbeitung",
 						"skipped": "Übersprungen",
