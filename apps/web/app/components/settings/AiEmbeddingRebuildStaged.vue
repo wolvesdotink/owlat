@@ -1,0 +1,199 @@
+<script setup lang="ts">
+/**
+ * A staged rebuild in progress (U1, ADR-0073 Phase 5): its job, the last
+ * validation, and the controls that finish or abandon it.
+ *
+ * Every control that embeds is gated on what the server says it costs: the
+ * staged space's rebuild job carries `isPaid` (derived from the space's
+ * endpoint), and without a job to tell, the work counts as paid. Paid work
+ * waits for spend admission (`isPaidEmbeddingAvailable`) and is confirmed
+ * first:
+ *   - Validate and Activate embed a few sample items with the staged model;
+ *   - Embed changes starts another pass over the corpus;
+ *   - Resume continues a paused pass (its own job's `isPaid`).
+ * Cancelling retires the staged space for good, so it is always confirmed.
+ */
+import { computed } from 'vue';
+import type { useEmbeddingSpaces } from '~/composables/useEmbeddingSpaces';
+import { useEmbeddingConfirm } from '~/composables/useEmbeddingConfirm';
+import {
+	jobPayment,
+	jobStateKey,
+	paidBlocker,
+	rebuildJob,
+	resumeBlocker,
+	stagedPayment,
+	type EmbeddingSpaceView,
+	type EmbeddingStatus,
+} from '~/utils/embeddingSpaces';
+import { formatNumber } from '~/utils/formatters';
+
+const props = defineProps<{
+	spaces: ReturnType<typeof useEmbeddingSpaces>;
+	status: EmbeddingStatus;
+	staged: EmbeddingSpaceView;
+}>();
+
+const { t } = useI18n();
+const K = 'dashboard.admin.instance.aiProvider.embeddingSpace.rebuild';
+
+const job = computed(() => rebuildJob(props.status));
+const isJobOpen = computed(() => job.value?.status === 'running' || job.value?.status === 'paused');
+const isPaused = computed(() => job.value?.status === 'paused');
+const isFilled = computed(() => job.value?.status === 'completed');
+const validation = computed(() =>
+	props.spaces.validation.value?.spaceId === props.staged._id ? props.spaces.validation.value : null
+);
+
+const isPaid = computed(() => stagedPayment(props.status) === 'paid');
+const paidBlock = computed(() => paidBlocker(props.status, stagedPayment(props.status)));
+const resumeBlock = computed(() => (job.value ? resumeBlocker(props.status, job.value) : null));
+const blocker = computed(() => (isPaused.value ? resumeBlock.value : paidBlock.value));
+
+const confirmation = useEmbeddingConfirm();
+const model = () => props.staged.model;
+
+function validate() {
+	void confirmation.ask(isPaid.value, {
+		title: t(`${K}.confirmPaidTitle`),
+		body: t(`${K}.paidValidateBody`, { model: model() }),
+		confirmText: t(`${K}.validate`),
+		run: props.spaces.validate,
+	});
+}
+function activate() {
+	void confirmation.ask(isPaid.value, {
+		title: t(`${K}.confirmPaidTitle`),
+		body: t(`${K}.paidActivateBody`, { model: model() }),
+		confirmText: t(`${K}.activate`),
+		run: props.spaces.activate,
+	});
+}
+function catchUp() {
+	void confirmation.ask(isPaid.value, {
+		title: t(`${K}.confirmPaidTitle`),
+		body: t(`${K}.paidCatchUpBody`, { model: model() }),
+		confirmText: t(`${K}.catchUp`),
+		run: props.spaces.catchUp,
+	});
+}
+function resume() {
+	const paused = job.value;
+	if (!paused) return;
+	void confirmation.ask(jobPayment(paused) === 'paid', {
+		title: t(`${K}.confirmPaidTitle`),
+		body: t(`${K}.paidResumeBody`, { model: model() }),
+		confirmText: t(`${K}.resume`),
+		run: () => props.spaces.resume(paused),
+	});
+}
+function cancel() {
+	void confirmation.ask(true, {
+		title: t(`${K}.cancelTitle`),
+		body: t(`${K}.cancelBody`, { model: model() }),
+		confirmText: t(`${K}.cancel`),
+		isDanger: true,
+		run: props.spaces.cancelRebuild,
+	});
+}
+</script>
+
+<template>
+	<div
+		class="mt-3 space-y-3 rounded-lg border border-border-subtle p-4 text-sm"
+		data-testid="ai-embedding-rebuild-staged"
+	>
+		<p class="text-text-primary font-medium">
+			{{ t(`${K}.staged`, { model: staged.model, dimensions: staged.dimensions }) }}
+		</p>
+		<p v-if="job" class="text-text-secondary" :data-status="job.status">
+			{{ t(jobStateKey(job)) }} ·
+			{{
+				t(`${K}.progress`, {
+					embedded: formatNumber(job.embeddedCount),
+					scanned: formatNumber(job.scannedCount),
+				})
+			}}
+		</p>
+		<p
+			v-if="validation"
+			:class="validation.isPassing ? 'text-success' : 'text-error'"
+			role="status"
+			data-testid="ai-embedding-rebuild-validation"
+		>
+			{{
+				t(validation.isPassing ? `${K}.validation.passed` : `${K}.validation.failed`, {
+					passed: validation.passed,
+					sampled: validation.sampled,
+				})
+			}}
+		</p>
+		<div class="flex flex-wrap gap-2">
+			<UiButton
+				v-if="isPaused"
+				type="button"
+				variant="secondary"
+				size="sm"
+				:disabled="spaces.isBusy.value || resumeBlock !== null"
+				data-testid="ai-embedding-rebuild-resume"
+				@click="resume"
+			>
+				{{ t(`${K}.resume`) }}
+			</UiButton>
+			<UiButton
+				type="button"
+				variant="secondary"
+				size="sm"
+				:disabled="spaces.isBusy.value || !isFilled || paidBlock !== null"
+				data-testid="ai-embedding-rebuild-validate"
+				@click="validate"
+			>
+				{{ t(`${K}.validate`) }}
+			</UiButton>
+			<UiButton
+				type="button"
+				size="sm"
+				:disabled="spaces.isBusy.value || !isFilled || paidBlock !== null"
+				data-testid="ai-embedding-rebuild-activate"
+				@click="activate"
+			>
+				{{ t(`${K}.activate`) }}
+			</UiButton>
+			<UiButton
+				type="button"
+				variant="ghost"
+				size="sm"
+				:disabled="spaces.isBusy.value || isJobOpen || paidBlock !== null"
+				data-testid="ai-embedding-rebuild-catch-up"
+				@click="catchUp"
+			>
+				{{ t(`${K}.catchUp`) }}
+			</UiButton>
+			<UiButton
+				type="button"
+				variant="ghost"
+				size="sm"
+				:disabled="spaces.isBusy.value"
+				data-testid="ai-embedding-rebuild-cancel"
+				@click="cancel"
+			>
+				{{ t(`${K}.cancel`) }}
+			</UiButton>
+		</div>
+		<p v-if="blocker" class="text-xs text-text-tertiary" data-testid="ai-embedding-rebuild-blocker">
+			{{ t(blocker) }}
+		</p>
+		<p class="text-xs text-text-tertiary">{{ t(`${K}.activateHint`) }}</p>
+
+		<UiConfirmationDialog
+			:open="confirmation.pending.value !== null"
+			:variant="confirmation.pending.value?.isDanger ? 'danger' : 'default'"
+			:title="confirmation.pending.value?.title"
+			:description="confirmation.pending.value?.body"
+			:confirm-text="confirmation.pending.value?.confirmText"
+			:is-loading="spaces.isBusy.value"
+			@update:open="confirmation.dismiss"
+			@confirm="confirmation.confirm"
+		/>
+	</div>
+</template>

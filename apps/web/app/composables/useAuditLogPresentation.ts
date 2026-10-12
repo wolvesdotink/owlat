@@ -120,6 +120,12 @@ const ACTION_VERB_LABELS: Record<string, string> = {
 	completed: `${ACTIONS}.completed`,
 	failed: `${ACTIONS}.failed`,
 	denied: `${ACTIONS}.denied`,
+	attested: `${ACTIONS}.attested`,
+	started: `${ACTIONS}.started`,
+	resumed: `${ACTIONS}.resumed`,
+	staged: `${ACTIONS}.staged`,
+	rolled_back: `${ACTIONS}.rolledBack`,
+	rebuild_cancelled: `${ACTIONS}.rebuildCancelled`,
 };
 
 const ACTION_VERB_ICONS: Record<string, string> = {
@@ -142,6 +148,12 @@ const ACTION_VERB_ICONS: Record<string, string> = {
 	activated: 'lucide:play',
 	paused: 'lucide:pause',
 	invited: 'lucide:mail',
+	attested: 'lucide:badge-check',
+	started: 'lucide:play',
+	resumed: 'lucide:play',
+	staged: 'lucide:layers',
+	rolled_back: 'lucide:undo-2',
+	rebuild_cancelled: 'lucide:x',
 };
 
 const ACTION_VERB_COLORS: Record<string, string> = {
@@ -164,6 +176,12 @@ const ACTION_VERB_COLORS: Record<string, string> = {
 	imported: 'text-brand bg-brand/10',
 	paused: 'text-warning bg-warning/10',
 	invited: 'text-warning bg-warning/10',
+	attested: 'text-success bg-success/10',
+	started: 'text-brand bg-brand/10',
+	resumed: 'text-brand bg-brand/10',
+	staged: 'text-brand bg-brand/10',
+	rolled_back: 'text-warning bg-warning/10',
+	rebuild_cancelled: 'text-error bg-error/10',
 };
 
 const HOSTED_PLUGIN_ACTIONS: ReadonlySet<string> = new Set(

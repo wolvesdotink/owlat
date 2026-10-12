@@ -7845,6 +7845,10 @@
 					},
 					"embeddingSpace": {
 						"attest": {
+							"blocked": {
+								"columnTaken": "Ein anderes Embedding-Modell nutzt jetzt die Stelle, an der die älteren Vektoren liegen, deshalb kann eine Bestätigung sie nicht zurückbringen. Bette sie stattdessen neu ein.",
+								"secondaryColumn": "Das eingerichtete Modell legt seine Vektoren an einer anderen Stelle ab als die älteren Vektoren, deshalb kann eine Bestätigung sie nicht zurückbringen. Bette sie stattdessen neu ein."
+							},
 							"confirm": "Ich bestätige, dass {model} diese Vektoren geschrieben hat.",
 							"description": "Owlat hat vor dieser Version nicht festgehalten, welches Modell die Vektoren geschrieben hat. Wenn du weißt, dass das eingerichtete Modell sie geschrieben hat, kannst du das bestätigen, und sie kehren ohne Neueinbetten in die Vektorsuche zurück. Bestätige nur, was du sicher weißt: Vektoren eines anderen Modells machen die Suchergebnisse falsch.",
 							"entry": {
@@ -7910,6 +7914,8 @@
 							},
 							"progress": "Bisher {embedded} eingebettet, {scanned} geprüft ({table})",
 							"resume": "Fortsetzen",
+							"resumeBody": "Der Rest dieses Auftrags geht an den Anbieter und zählt zu deinen KI-Ausgaben.",
+							"resumeTitle": "Kostenpflichtiges Neueinbetten fortsetzen?",
 							"status": {
 								"cancelled": "Abgebrochen",
 								"completed": "Abgeschlossen",
@@ -7932,28 +7938,39 @@
 							"startReembed": "Neueinbetten starten",
 							"validate": "Neuaufbau prüfen"
 						},
+						"paid": {
+							"unavailable": "Kostenpflichtige Embedding-Arbeit braucht die Ausgabenfreigabe, die diese Installation noch nicht hat."
+						},
 						"rebuild": {
 							"activate": "Aktivieren",
 							"activateHint": "Die Aktivierung prüft erneut eine Stichprobe und stellt dann Suche und Embedding-Einstellungen in einem Schritt um. Elemente, die während des Neuaufbaus hinzukamen oder sich änderten, brauchen vorher „Änderungen einbetten“.",
 							"blocked": {
 								"jobOpen": "Ein Neueinbetten oder ein Neuaufbau läuft bereits.",
 								"noModel": "Wähle ein Modell.",
-								"paidUnavailable": "Ein kostenpflichtiger Neuaufbau braucht die Ausgabenfreigabe, die diese Installation noch nicht hat.",
 								"sameModel": "Die Vektorsuche nutzt dieses Modell bereits."
 							},
 							"cancel": "Neuaufbau abbrechen",
+							"cancelBody": "Das bereitgestellte {model} wird verworfen, und sein Lauf lässt sich nicht fortsetzen; ein neuer Neuaufbau beginnt von vorn. Die Vektorsuche behält das aktive Modell.",
+							"cancelTitle": "Diesen Neuaufbau abbrechen?",
 							"catchUp": "Änderungen einbetten",
 							"confirmPaidBody": "Jedes Element wird mit {model} eingebettet und zählt zu deinen KI-Ausgaben. Die Suche nutzt das aktive Modell weiter, bis du den Neuaufbau aktivierst.",
-							"confirmPaidTitle": "Kostenpflichtigen Neuaufbau starten?",
+							"confirmPaidTitle": "Das ist kostenpflichtige Embedding-Arbeit",
 							"costHosted": "Kostenpflichtig: Jedes Element geht an den Anbieter und zählt zu deinen KI-Ausgaben.",
 							"costLocal": "Kostenlos: läuft auf deinem Server.",
+							"costUnknown": "Wird als kostenpflichtig behandelt: Owlat kann von hier nicht erkennen, ob der Endpunkt dieses Anbieters auf deinem Server läuft.",
 							"description": "Bettet alles mit dem neuen Modell neben dem aktiven ein, damit die Suche während des Wechsels weiter funktioniert. Möglich zwischen lokalen Modellen oder zwischen Modellen desselben gehosteten Anbieters; jeder andere Wechsel läuft über die Embedding-Einstellungen oben.",
 							"modelLabel": "Modell",
+							"paidActivateBody": "Die Aktivierung prüft zuerst erneut und bettet dafür einige Stichproben mit {model} beim Anbieter ein; das zählt zu deinen KI-Ausgaben.",
+							"paidCatchUpBody": "Jedes Element, das seit dem Start des Neuaufbaus hinzukam oder sich änderte, wird mit {model} beim Anbieter eingebettet und zählt zu deinen KI-Ausgaben.",
+							"paidResumeBody": "Der Rest des Neuaufbaus wird mit {model} beim Anbieter eingebettet und zählt zu deinen KI-Ausgaben.",
+							"paidValidateBody": "Die Prüfung bettet einige Stichproben mit {model} beim Anbieter ein; das zählt zu deinen KI-Ausgaben.",
 							"progress": "{embedded} eingebettet, {scanned} geprüft",
 							"providerLabel": "Embedding-Anbieter",
+							"resume": "Fortsetzen",
 							"rollback": "Zurücksetzen",
 							"rollbackAvailable": "{model} lässt sich wiederherstellen: Seine Vektoren sind noch gespeichert.",
-							"rollbackBody": "Vektorsuche und Embedding-Einstellungen wechseln sofort zurück. Seither hinzugekommene Elemente werden damit neu eingebettet.",
+							"rollbackBodyHosted": "Vektorsuche und Embedding-Einstellungen wechseln sofort zurück. Seither hinzugekommene Elemente bleiben außerhalb der Vektorsuche, bis du ein Neueinbetten startest; mit einem gehosteten Embedder kostet das Geld.",
+							"rollbackBodyLocal": "Vektorsuche und Embedding-Einstellungen wechseln sofort zurück. Seither hinzugekommene Elemente werden von selbst und kostenlos neu eingebettet.",
 							"rollbackTitle": "Auf {model} zurücksetzen?",
 							"staged": "{model} ({dimensions} Dimensionen) wird neben dem aktiven Modell aufgebaut.",
 							"start": "Neuaufbau starten",
@@ -7967,16 +7984,15 @@
 						"reembed": {
 							"blocked": {
 								"jobOpen": "Ein Neueinbetten oder ein Neuaufbau läuft bereits.",
-								"noEmbedder": "Kein Embedding-Modell eingerichtet.",
-								"paidUnavailable": "Kostenpflichtiges Neueinbetten braucht die Ausgabenfreigabe, die diese Installation noch nicht hat."
+								"noEmbedder": "Kein Embedding-Modell eingerichtet."
 							},
 							"confirm": "Neueinbetten starten",
-							"confirmBody": "Etwa {count} Elemente gehen an {provider} und zählen zu deinen KI-Ausgaben. Du kannst es abbrechen, solange es läuft.",
+							"confirmBody": "Bis zu {count} Elemente gehen an {provider} und zählen zu deinen KI-Ausgaben; Elemente mit zu wenig Text werden übersprungen. Du kannst es abbrechen, solange es läuft.",
 							"confirmTitle": "Kostenpflichtiges Neueinbetten starten?",
 							"hosted": "Dein Embedding-Modell wird gehostet, deshalb kostet das Neueinbetten Geld: Jedes Element geht an den Anbieter und zählt zu deinen KI-Ausgaben. Es läuft nur, wenn du es startest.",
 							"local": "Dein Embedding-Modell läuft auf deinem Server, deshalb kostet das Neueinbetten nichts. Es läuft außerdem einmal am Tag von selbst.",
-							"nothing": "Alles mit einem Vektor ist in der Vektorsuche.",
-							"start": "{count} Elemente neu einbetten",
+							"nothing": "Jedes Element hat bereits einen Vektor in der Vektorsuche.",
+							"start": "Bis zu {count} Elemente neu einbetten",
 							"title": "Neu einbetten"
 						},
 						"state": {
@@ -16289,6 +16305,7 @@
 			"actions": {
 				"activated": "Aktiviert",
 				"added": "Hinzugefügt",
+				"attested": "Bestätigt",
 				"cancelled": "Abgebrochen",
 				"completed": "Abgeschlossen",
 				"created": "Erstellt",
@@ -16299,11 +16316,16 @@
 				"invited": "Eingeladen",
 				"paused": "Pausiert",
 				"published": "Veröffentlicht",
+				"rebuildCancelled": "Neuaufbau abgebrochen",
 				"removed": "Entfernt",
+				"resumed": "Fortgesetzt",
 				"revoked": "Widerrufen",
 				"roleChanged": "Rolle geändert",
+				"rolledBack": "Zurückgesetzt",
 				"scheduled": "Geplant",
 				"sent": "Gesendet",
+				"staged": "Bereitgestellt",
+				"started": "Gestartet",
 				"updated": "Aktualisiert",
 				"verified": "Verifiziert"
 			},

@@ -13,9 +13,10 @@
  * attestations are listed with their state, and each can be revoked, which
  * returns its rows to unknown.
  */
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { useEmbeddingSpaces } from '~/composables/useEmbeddingSpaces';
 import {
+	attestationBlocker,
 	attestationSubject,
 	cohortEnd,
 	isAttestationOffered,
@@ -35,6 +36,8 @@ const STATEMENT_MAX = 2000;
 
 const subject = computed(() => attestationSubject(props.status));
 const isOffered = computed(() => isAttestationOffered(props.status));
+/** The server would refuse it (the space is not where the old vectors are). */
+const blocker = computed(() => attestationBlocker(props.status));
 const unknown = computed(() => unknownRows(props.status.coverage));
 
 const today = () => {
@@ -45,11 +48,34 @@ const today = () => {
 
 const source = ref<'attestation' | 'record'>('attestation');
 const writtenBefore = ref(today());
-const dimensions = ref(
-	subject.value?.kind === 'identity' ? String(subject.value.suggestedDimensions ?? '') : ''
-);
+const suggestedWidth = () =>
+	subject.value?.kind === 'identity' ? String(subject.value.suggestedDimensions ?? '') : '';
+const dimensions = ref(suggestedWidth());
 const statement = ref('');
-const isConfirmed = ref(false);
+
+/**
+ * The confirmation is given to ONE statement: this space or identity, this
+ * period, this width, this basis. It is stored with that statement's key and
+ * counts only while the form still says exactly that, so a settings change by
+ * another admin (a new configured model arriving through the subscription),
+ * or an edit of the period or the width, takes it back at once.
+ */
+const subjectKey = computed(() => JSON.stringify(subject.value));
+const consentKey = computed(() =>
+	JSON.stringify([subjectKey.value, writtenBefore.value, dimensions.value.trim(), source.value])
+);
+const confirmedKey = ref<string | null>(null);
+const isConfirmed = computed({
+	get: () => confirmedKey.value !== null && confirmedKey.value === consentKey.value,
+	set: (value: boolean) => {
+		confirmedKey.value = value ? consentKey.value : null;
+	},
+});
+// Another subject: its own suggested width, and no confirmation carried over.
+watch(subjectKey, () => {
+	dimensions.value = suggestedWidth();
+	confirmedKey.value = null;
+});
 
 const sourceOptions = computed(() => [
 	{ value: 'attestation', label: t(`${K}.sources.attestation`) },
@@ -117,8 +143,15 @@ async function confirmRevoke() {
 		<h3 class="text-sm font-medium text-text-primary">{{ t(`${K}.title`) }}</h3>
 		<p class="mt-1 text-xs text-text-tertiary">{{ t(`${K}.description`) }}</p>
 
+		<p
+			v-if="isOffered && subject && blocker"
+			class="mt-3 rounded-lg border border-border-subtle p-3 text-sm text-text-secondary"
+			data-testid="ai-embedding-attest-blocked"
+		>
+			{{ t(blocker) }}
+		</p>
 		<form
-			v-if="isOffered && subject"
+			v-else-if="isOffered && subject"
 			class="mt-3 space-y-4 rounded-lg border border-border-subtle p-4"
 			data-testid="ai-embedding-attest-form"
 			@submit.prevent="submit"

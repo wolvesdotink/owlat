@@ -18,7 +18,7 @@
  * The section owns its read and its controls (`useEmbeddingSpaces`); the
  * attestation and the rebuild are their own components.
  */
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useEmbeddingSpaces } from '~/composables/useEmbeddingSpaces';
 import {
 	coverageRows,
@@ -27,9 +27,14 @@ import {
 	jobStateKey,
 	lastFinishedJob,
 	openJob,
+	jobPayment,
 	reembedBlocker,
-	rowsOutOfSearch,
+	reembedCandidates,
+	reembedPayment,
+	resumeBlocker,
+	type EmbeddingJob,
 } from '~/utils/embeddingSpaces';
+import { useEmbeddingConfirm } from '~/composables/useEmbeddingConfirm';
 import { formatDateTime, formatNumber } from '~/utils/formatters';
 import { embeddingProviderMeta } from '~/utils/aiProviders';
 
@@ -41,7 +46,7 @@ const status = computed(() => spaces.status.value ?? null);
 
 const searchState = computed(() => (status.value ? embeddingSearchState(status.value) : 'none'));
 const rows = computed(() => coverageRows(status.value?.coverage ?? null));
-const outOfSearch = computed(() => rowsOutOfSearch(status.value?.coverage ?? null));
+const candidates = computed(() => reembedCandidates(status.value?.coverage ?? null));
 const reembedJob = computed(() => (status.value ? openJob(status.value.jobs, 'reembed') : null));
 const lastReembed = computed(() =>
 	status.value ? lastFinishedJob(status.value.jobs, 'reembed') : null
@@ -49,13 +54,32 @@ const lastReembed = computed(() =>
 const blocker = computed(() => (status.value ? reembedBlocker(status.value) : null));
 const isLocal = computed(() => status.value?.configured?.isLocal === true);
 
-const confirmPaidReembed = ref(false);
+const resumeBlock = computed(() =>
+	status.value && reembedJob.value ? resumeBlocker(status.value, reembedJob.value) : null
+);
+
+// Paid work (the server's locality of the configured endpoint, a job's own
+// `isPaid`) is confirmed before it starts; free work starts at once.
+const confirmation = useEmbeddingConfirm();
 function startReembed() {
-	if (isLocal.value) void spaces.startReembed();
-	else confirmPaidReembed.value = true;
+	if (!status.value) return;
+	void confirmation.ask(reembedPayment(status.value) === 'paid', {
+		title: t(`${K}.reembed.confirmTitle`),
+		body: t(`${K}.reembed.confirmBody`, {
+			count: formatNumber(candidates.value),
+			provider: providerLabel(status.value.configured?.provider),
+		}),
+		confirmText: t(`${K}.reembed.confirm`),
+		run: spaces.startReembed,
+	});
 }
-async function confirmReembed() {
-	if (await spaces.startReembed()) confirmPaidReembed.value = false;
+function resume(job: EmbeddingJob) {
+	void confirmation.ask(jobPayment(job) === 'paid', {
+		title: t(`${K}.job.resumeTitle`),
+		body: t(`${K}.job.resumeBody`),
+		confirmText: t(`${K}.job.resume`),
+		run: () => spaces.resume(job),
+	});
 }
 
 const COUNT_COLUMNS = ['active', 'unknown', 'inactive', 'unembedded'] as const;
@@ -215,8 +239,9 @@ const providerLabel = (kind: string | undefined) => {
 								type="button"
 								variant="secondary"
 								size="sm"
-								:disabled="spaces.isBusy.value"
-								@click="spaces.resume(reembedJob)"
+								:disabled="spaces.isBusy.value || resumeBlock !== null"
+								data-testid="ai-embedding-reembed-resume"
+								@click="resume(reembedJob)"
 							>
 								{{ t(`${K}.job.resume`) }}
 							</UiButton>
@@ -230,6 +255,13 @@ const providerLabel = (kind: string | undefined) => {
 								{{ t(`${K}.job.cancel`) }}
 							</UiButton>
 						</div>
+						<p
+							v-if="reembedJob.status === 'paused' && resumeBlock"
+							class="mt-2 text-xs text-text-tertiary"
+							data-testid="ai-embedding-reembed-resume-blocker"
+						>
+							{{ t(resumeBlock) }}
+						</p>
 					</div>
 
 					<div v-else class="mt-3 flex flex-wrap items-center gap-3">
@@ -237,11 +269,11 @@ const providerLabel = (kind: string | undefined) => {
 							type="button"
 							variant="secondary"
 							size="sm"
-							:disabled="spaces.isBusy.value || blocker !== null || outOfSearch === 0"
+							:disabled="spaces.isBusy.value || blocker !== null || candidates === 0"
 							data-testid="ai-embedding-reembed-start"
 							@click="startReembed"
 						>
-							{{ t(`${K}.reembed.start`, { count: formatNumber(outOfSearch) }) }}
+							{{ t(`${K}.reembed.start`, { count: formatNumber(candidates) }) }}
 						</UiButton>
 						<p
 							v-if="blocker"
@@ -250,7 +282,7 @@ const providerLabel = (kind: string | undefined) => {
 						>
 							{{ t(blocker) }}
 						</p>
-						<p v-else-if="outOfSearch === 0" class="text-xs text-text-tertiary">
+						<p v-else-if="candidates === 0" class="text-xs text-text-tertiary">
 							{{ t(`${K}.reembed.nothing`) }}
 						</p>
 					</div>
@@ -284,17 +316,13 @@ const providerLabel = (kind: string | undefined) => {
 		</UiQueryBoundary>
 
 		<UiConfirmationDialog
-			v-model:open="confirmPaidReembed"
-			:title="t(`${K}.reembed.confirmTitle`)"
-			:description="
-				t(`${K}.reembed.confirmBody`, {
-					count: formatNumber(outOfSearch),
-					provider: providerLabel(status?.configured?.provider),
-				})
-			"
-			:confirm-text="t(`${K}.reembed.confirm`)"
+			:open="confirmation.pending.value !== null"
+			:title="confirmation.pending.value?.title"
+			:description="confirmation.pending.value?.body"
+			:confirm-text="confirmation.pending.value?.confirmText"
 			:is-loading="spaces.isBusy.value"
-			@confirm="confirmReembed"
+			@update:open="confirmation.dismiss"
+			@confirm="confirmation.confirm"
 		/>
 	</UiCard>
 </template>

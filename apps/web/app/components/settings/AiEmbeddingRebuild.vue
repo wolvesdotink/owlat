@@ -11,10 +11,13 @@
  * A rebuild moves between local embedders, or between models of the stored
  * hosted provider, so no key changes hands; any other change is a settings
  * change (the switch path, with the coverage gap the card above explains). A
- * hosted rebuild is paid work through spend admission and says so first.
+ * rebuild whose endpoint the server does not report as local is paid work
+ * through spend admission and says so first. The staged state is
+ * `AiEmbeddingRebuildStaged`.
  */
 import { computed, ref, watch } from 'vue';
 import type { useEmbeddingSpaces } from '~/composables/useEmbeddingSpaces';
+import { useEmbeddingConfirm } from '~/composables/useEmbeddingConfirm';
 import {
 	embeddingProviderMeta,
 	modelOptions,
@@ -23,12 +26,11 @@ import {
 } from '~/utils/aiProviders';
 import {
 	hasOpenJob,
-	jobStateKey,
-	rebuildJob,
+	paidBlocker,
 	rebuildKinds,
+	rebuildTargetPayment,
 	type EmbeddingStatus,
 } from '~/utils/embeddingSpaces';
-import { formatNumber } from '~/utils/formatters';
 
 const props = defineProps<{
 	spaces: ReturnType<typeof useEmbeddingSpaces>;
@@ -59,7 +61,20 @@ watch(kind, () => {
 const options = computed(() => modelOptions(meta.value?.curatedModels ?? [], modelChoice.value));
 const model = computed(() => resolveModelId(modelChoice.value, modelCustom.value));
 
-const isPaid = computed(() => meta.value?.isLocal === false);
+/**
+ * Free only where the server reported the endpoint local (the configured
+ * kind); another kind's endpoint is not exposed, so it counts as paid, and
+ * the cost line says why instead of claiming either.
+ */
+const payment = computed(() => rebuildTargetPayment(props.status, kind.value));
+const costKey = computed(() => {
+	if (payment.value === 'free') return `${K}.costLocal`;
+	const configured = props.status.configured;
+	const isKnownHosted =
+		meta.value?.isLocal === false ||
+		(configured?.provider === kind.value && configured.isLocal === false);
+	return isKnownHosted ? `${K}.costHosted` : `${K}.costUnknown`;
+});
 const isSameAsActive = computed(
 	() =>
 		props.status.configured?.provider === kind.value &&
@@ -69,39 +84,42 @@ const startBlocker = computed(() => {
 	if (hasOpenJob(props.status.jobs)) return `${K}.blocked.jobOpen`;
 	if (!model.value) return `${K}.blocked.noModel`;
 	if (isSameAsActive.value) return `${K}.blocked.sameModel`;
-	if (isPaid.value && !props.status.isPaidEmbeddingAvailable) return `${K}.blocked.paidUnavailable`;
-	return null;
+	return paidBlocker(props.status, payment.value);
 });
 
-const confirmPaid = ref(false);
-async function start() {
+const confirmation = useEmbeddingConfirm();
+function start() {
 	if (startBlocker.value) return;
-	if (isPaid.value && !confirmPaid.value) {
-		confirmPaid.value = true;
-		return;
-	}
-	const isStarted = await props.spaces.startRebuild({
-		embeddingProviderKind: kind.value,
-		embeddingModel: model.value,
+	const target = { embeddingProviderKind: kind.value, embeddingModel: model.value };
+	void confirmation.ask(payment.value === 'paid', {
+		title: t(`${K}.confirmPaidTitle`),
+		body: t(`${K}.confirmPaidBody`, { model: model.value }),
+		confirmText: t(`${K}.start`),
+		run: () => props.spaces.startRebuild(target),
 	});
-	if (isStarted) confirmPaid.value = false;
+}
+
+/**
+ * Rolling back is free and instant; what follows is not the same everywhere.
+ * With the configured kind on a local endpoint (the server's locality), items
+ * added since are re-embedded on their own; otherwise they wait for a re-embed
+ * an admin starts, which a hosted embedder charges for.
+ */
+function rollback() {
+	const target = props.status.rollbackTo;
+	if (!target) return;
+	const isLocalRecovery =
+		props.status.configured?.isLocal === true &&
+		props.status.configured.provider === target.provider;
+	void confirmation.ask(true, {
+		title: t(`${K}.rollbackTitle`, { model: target.model }),
+		body: t(isLocalRecovery ? `${K}.rollbackBodyLocal` : `${K}.rollbackBodyHosted`),
+		confirmText: t(`${K}.rollback`),
+		run: props.spaces.rollback,
+	});
 }
 
 const staged = computed(() => props.status.staged);
-const job = computed(() => rebuildJob(props.status));
-const isJobOpen = computed(() => job.value?.status === 'running' || job.value?.status === 'paused');
-const isFilled = computed(() => job.value?.status === 'completed');
-const validation = computed(() =>
-	props.spaces.validation.value?.spaceId === staged.value?._id
-		? props.spaces.validation.value
-		: null
-);
-
-const confirmRollback = ref(false);
-async function rollback() {
-	if (await props.spaces.rollback()) confirmRollback.value = false;
-}
-
 const isShown = computed(
 	() => props.status.canStageRebuild || staged.value !== null || props.status.rollbackTo !== null
 );
@@ -112,76 +130,12 @@ const isShown = computed(
 		<h3 class="text-sm font-medium text-text-primary">{{ t(`${K}.title`) }}</h3>
 		<p class="mt-1 text-xs text-text-tertiary">{{ t(`${K}.description`) }}</p>
 
-		<div
+		<SettingsAiEmbeddingRebuildStaged
 			v-if="staged"
-			class="mt-3 space-y-3 rounded-lg border border-border-subtle p-4 text-sm"
-			data-testid="ai-embedding-rebuild-staged"
-		>
-			<p class="text-text-primary font-medium">
-				{{ t(`${K}.staged`, { model: staged.model, dimensions: staged.dimensions }) }}
-			</p>
-			<p v-if="job" class="text-text-secondary" :data-status="job.status">
-				{{ t(jobStateKey(job)) }} ·
-				{{
-					t(`${K}.progress`, {
-						embedded: formatNumber(job.embeddedCount),
-						scanned: formatNumber(job.scannedCount),
-					})
-				}}
-			</p>
-			<p
-				v-if="validation"
-				:class="validation.isPassing ? 'text-success' : 'text-error'"
-				role="status"
-				data-testid="ai-embedding-rebuild-validation"
-			>
-				{{
-					t(validation.isPassing ? `${K}.validation.passed` : `${K}.validation.failed`, {
-						passed: validation.passed,
-						sampled: validation.sampled,
-					})
-				}}
-			</p>
-			<div class="flex flex-wrap gap-2">
-				<UiButton
-					type="button"
-					variant="secondary"
-					size="sm"
-					:disabled="spaces.isBusy.value || !isFilled"
-					@click="spaces.validate"
-				>
-					{{ t(`${K}.validate`) }}
-				</UiButton>
-				<UiButton
-					type="button"
-					size="sm"
-					:disabled="spaces.isBusy.value || !isFilled"
-					data-testid="ai-embedding-rebuild-activate"
-					@click="spaces.activate"
-				>
-					{{ t(`${K}.activate`) }}
-				</UiButton>
-				<UiButton
-					type="button"
-					variant="ghost"
-					size="sm"
-					:disabled="spaces.isBusy.value || isJobOpen"
-					@click="spaces.catchUp"
-				>
-					{{ t(`${K}.catchUp`) }}
-				</UiButton>
-				<UiButton
-					type="button"
-					variant="ghost"
-					size="sm"
-					:disabled="spaces.isBusy.value"
-					@click="spaces.cancelRebuild"
-				>
-					{{ t(`${K}.cancel`) }}
-				</UiButton>
-			</div>
-			<p class="text-xs text-text-tertiary">{{ t(`${K}.activateHint`) }}</p>
-		</div>
+			:spaces="spaces"
+			:status="status"
+			:staged="staged"
+		/>
 
 		<div
 			v-else-if="status.canStageRebuild"
@@ -205,7 +159,7 @@ const isShown = computed(
 				/>
 			</div>
 			<p class="text-xs text-text-tertiary">
-				{{ t(isPaid ? `${K}.costHosted` : `${K}.costLocal`) }}
+				{{ t(costKey) }}
 			</p>
 			<div class="flex flex-wrap items-center gap-3">
 				<UiButton
@@ -236,27 +190,20 @@ const isShown = computed(
 				size="sm"
 				class="shrink-0"
 				:disabled="spaces.isBusy.value"
-				@click="confirmRollback = true"
+				@click="rollback"
 			>
 				{{ t(`${K}.rollback`) }}
 			</UiButton>
 		</div>
 
 		<UiConfirmationDialog
-			v-model:open="confirmPaid"
-			:title="t(`${K}.confirmPaidTitle`)"
-			:description="t(`${K}.confirmPaidBody`, { model })"
-			:confirm-text="t(`${K}.start`)"
+			:open="confirmation.pending.value !== null"
+			:title="confirmation.pending.value?.title"
+			:description="confirmation.pending.value?.body"
+			:confirm-text="confirmation.pending.value?.confirmText"
 			:is-loading="spaces.isBusy.value"
-			@confirm="start"
-		/>
-		<UiConfirmationDialog
-			v-model:open="confirmRollback"
-			:title="t(`${K}.rollbackTitle`, { model: status.rollbackTo?.model ?? '' })"
-			:description="t(`${K}.rollbackBody`)"
-			:confirm-text="t(`${K}.rollback`)"
-			:is-loading="spaces.isBusy.value"
-			@confirm="rollback"
+			@update:open="confirmation.dismiss"
+			@confirm="confirmation.confirm"
 		/>
 	</section>
 </template>

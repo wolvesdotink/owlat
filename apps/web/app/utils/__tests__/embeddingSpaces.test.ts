@@ -17,7 +17,14 @@ import {
 	rebuildJob,
 	rebuildKinds,
 	reembedBlocker,
-	rowsOutOfSearch,
+	reembedCandidates,
+	reembedPayment,
+	jobPayment,
+	stagedPayment,
+	rebuildTargetPayment,
+	paidBlocker,
+	resumeBlocker,
+	attestationBlocker,
 	unknownRows,
 } from '../embeddingSpaces';
 import { embeddingStatus, job, space, T0 } from './embeddingStatusFixtures';
@@ -42,9 +49,17 @@ describe('search state and coverage', () => {
 			['knowledgeEntries', 246],
 			['semanticFiles', 43],
 		]);
-		expect(rowsOutOfSearch(status.coverage)).toBe(275);
+		// Unembedded rows are candidates too: a hosted edit can leave a row with none.
+		expect(reembedCandidates(status.coverage)).toBe(279);
 		expect(unknownRows(status.coverage)).toBe(271);
-		expect(rowsOutOfSearch(null)).toBe(0);
+		expect(reembedCandidates(null)).toBe(0);
+		const onlyUnembedded = embeddingStatus();
+		onlyUnembedded.coverage = {
+			...onlyUnembedded.coverage!,
+			knowledgeEntries: { active: 9, unknown: 0, inactive: 0, unembedded: 2 },
+			semanticFiles: { active: 3, unknown: 0, inactive: 0, unembedded: 0 },
+		};
+		expect(reembedCandidates(onlyUnembedded.coverage)).toBe(2);
 	});
 });
 
@@ -73,7 +88,7 @@ describe('jobs', () => {
 
 describe('reembedBlocker', () => {
 	it('refuses paid work until spend admission exists, never local work', () => {
-		expect(reembedBlocker(embeddingStatus())).toBe(`${K}.reembed.blocked.paidUnavailable`);
+		expect(reembedBlocker(embeddingStatus())).toBe(`${K}.paid.unavailable`);
 		expect(reembedBlocker(embeddingStatus({ isPaidEmbeddingAvailable: true }))).toBeNull();
 		const local = embeddingStatus();
 		local.configured = { ...local.configured!, provider: 'local', isLocal: true };
@@ -158,5 +173,72 @@ describe('staged rebuild', () => {
 		});
 		expect(rebuildJob(status)).toBe(own);
 		expect(rebuildJob(embeddingStatus())).toBeNull();
+	});
+});
+
+describe('payment, from what the server says', () => {
+	it('reads the configured endpoint locality, not the catalog kind (Sol r5 F4)', () => {
+		const publicCompatible = embeddingStatus();
+		publicCompatible.configured = {
+			...publicCompatible.configured!,
+			provider: 'openaiCompatible',
+			endpoint: 'https://embeddings.example.com',
+			isLocal: false,
+		};
+		expect(reembedPayment(publicCompatible)).toBe('paid');
+		expect(rebuildTargetPayment(publicCompatible, 'openaiCompatible')).toBe('paid');
+		const local = embeddingStatus();
+		local.configured = { ...local.configured!, provider: 'local', isLocal: true };
+		expect(reembedPayment(local)).toBe('free');
+		expect(rebuildTargetPayment(local, 'local')).toBe('free');
+		// Another kind's endpoint is not exposed: paid until the server says otherwise.
+		expect(rebuildTargetPayment(local, 'openaiCompatible')).toBe('paid');
+		expect(reembedPayment(embeddingStatus({ configured: null }))).toBe('paid');
+	});
+
+	it('takes a job and a staged space from the job the server derived', () => {
+		expect(jobPayment(job({ isPaid: false }))).toBe('free');
+		expect(jobPayment(job())).toBe('paid');
+		const staged = space({ _id: 'sp_staged' as never, state: 'staged' });
+		expect(stagedPayment(embeddingStatus({ staged }))).toBe('paid');
+		expect(
+			stagedPayment(
+				embeddingStatus({
+					staged,
+					jobs: [job({ kind: 'rebuild', targetSpaceId: 'sp_staged' as never, isPaid: false })],
+				})
+			)
+		).toBe('free');
+	});
+
+	it('blocks paid work on the server admission flag, never free work', () => {
+		expect(paidBlocker(embeddingStatus(), 'paid')).toBe(`${K}.paid.unavailable`);
+		expect(paidBlocker(embeddingStatus({ isPaidEmbeddingAvailable: true }), 'paid')).toBeNull();
+		expect(paidBlocker(embeddingStatus(), 'free')).toBeNull();
+		const budget = job({ status: 'paused', pausedReason: 'budget' });
+		expect(resumeBlocker(embeddingStatus(), budget)).toBe(`${K}.paid.unavailable`);
+		expect(resumeBlocker(embeddingStatus(), { ...budget, isPaid: false })).toBeNull();
+	});
+});
+
+describe('attestationBlocker (Sol r5 F6)', () => {
+	it('allows the configured space in the primary column', () => {
+		expect(attestationBlocker(embeddingStatus())).toBeNull();
+	});
+
+	it('refuses a configured space that lives in the secondary column', () => {
+		const status = embeddingStatus({ active: space({ slot: 'secondary' }) });
+		expect(attestationBlocker(status)).toBe(`${K}.attest.blocked.secondaryColumn`);
+	});
+
+	it('refuses an identity while another known space holds the primary column', () => {
+		const base = embeddingStatus({ active: space({ _id: 'sp_old' as never, model: 'ada' }) });
+		const status = {
+			...base,
+			configured: { ...base.configured!, model: 'text-embedding-3-large', isActive: false },
+		};
+		expect(attestationBlocker(status)).toBe(`${K}.attest.blocked.columnTaken`);
+		const free = { ...status, active: space({ _id: 'sp_old' as never, slot: 'secondary' }) };
+		expect(attestationBlocker(free)).toBeNull();
 	});
 });

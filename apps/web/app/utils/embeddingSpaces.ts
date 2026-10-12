@@ -47,10 +47,17 @@ export function coverageRows(coverage: EmbeddingStatus['coverage']): CoverageRow
 	});
 }
 
-/** Rows a re-embed would bring back into vector search: unknown and other-space vectors. */
-export function rowsOutOfSearch(coverage: EmbeddingStatus['coverage']): number {
+/**
+ * The most rows a re-embed would embed: every row without a vector in the
+ * active space, the ones with no vector at all included (a hosted edit can
+ * leave a row with none). An upper bound: the job skips rows with too little
+ * text, expired entries and files still being processed, which the coverage
+ * count does not separate (see the notes: the exact candidate count is not
+ * exposed).
+ */
+export function reembedCandidates(coverage: EmbeddingStatus['coverage']): number {
 	return coverageRows(coverage).reduce(
-		(sum, row) => sum + row.counts.unknown + row.counts.inactive,
+		(sum, row) => sum + row.counts.unknown + row.counts.inactive + row.counts.unembedded,
 		0
 	);
 }
@@ -107,18 +114,64 @@ export function jobStateKey(job: EmbeddingJob): string {
 	return STATUS_KEYS[job.status];
 }
 
+// ── Payment ────────────────────────────────────────────────────────────────
+
+/**
+ * Whether a piece of embedding work costs money. Read from what the server
+ * says (the configured target's endpoint locality, a job's `isPaid`), and
+ * `paid` whenever it says nothing about the target in question: paid work is
+ * confirmed first and waits for spend admission, so a wrong `paid` costs a
+ * click, a wrong `free` costs money.
+ */
+export type EmbeddingPayment = 'free' | 'paid';
+
+/** A re-embed into the configured space: the server's locality of its endpoint. */
+export function reembedPayment(status: EmbeddingStatus): EmbeddingPayment {
+	return status.configured?.isLocal === true ? 'free' : 'paid';
+}
+
+/** An existing job: the server derived `isPaid` from its target space. */
+export function jobPayment(job: EmbeddingJob): EmbeddingPayment {
+	return job.isPaid ? 'paid' : 'free';
+}
+
+/** The staged space: its rebuild job's `isPaid`; with no job to tell, paid. */
+export function stagedPayment(status: EmbeddingStatus): EmbeddingPayment {
+	return rebuildJob(status)?.isPaid === false ? 'free' : 'paid';
+}
+
+/**
+ * A rebuild into `kind`: free only for the configured kind on a local
+ * endpoint, whose locality the server reported. Another kind's endpoint is not
+ * exposed, so it counts as paid.
+ */
+export function rebuildTargetPayment(
+	status: EmbeddingStatus,
+	kind: EmbeddingProviderKind
+): EmbeddingPayment {
+	const configured = status.configured;
+	return configured?.isLocal === true && configured.provider === kind ? 'free' : 'paid';
+}
+
+/** Why paid work cannot start: no spend admission on the server (its own flag). */
+export function paidBlocker(status: EmbeddingStatus, payment: EmbeddingPayment): string | null {
+	return payment === 'paid' && !status.isPaidEmbeddingAvailable ? `${K}.paid.unavailable` : null;
+}
+
 /**
  * Why a re-embed cannot start now, as a message key, or null when it can. A
  * local embedder re-embeds for free on this server; a hosted one is paid work
- * and needs spend admission (D8), and the server refuses it until then.
+ * and needs spend admission (D8), which the server's flag reports.
  */
 export function reembedBlocker(status: EmbeddingStatus): string | null {
 	if (!status.configured) return `${K}.reembed.blocked.noEmbedder`;
 	if (hasOpenJob(status.jobs)) return `${K}.reembed.blocked.jobOpen`;
-	if (!status.configured.isLocal && !status.isPaidEmbeddingAvailable) {
-		return `${K}.reembed.blocked.paidUnavailable`;
-	}
-	return null;
+	return paidBlocker(status, reembedPayment(status));
+}
+
+/** Why a job cannot be resumed, or null. */
+export function resumeBlocker(status: EmbeddingStatus, job: EmbeddingJob): string | null {
+	return paidBlocker(status, jobPayment(job));
 }
 
 // ── Attestation ────────────────────────────────────────────────────────────
@@ -156,7 +209,7 @@ export function attestationSubject(status: EmbeddingStatus): AttestationSubject 
 }
 
 /**
- * Whether the form should offer an attestation at all: a hosted embedder (a
+ * Whether the section shows the attestation at all: a hosted embedder (a
  * local one re-embeds for free, and its measured identity carries a digest an
  * attestation cannot state) with unknown vectors waiting.
  */
@@ -164,6 +217,29 @@ export function isAttestationOffered(status: EmbeddingStatus): boolean {
 	return (
 		status.configured !== null && !status.configured.isLocal && unknownRows(status.coverage) > 0
 	);
+}
+
+/**
+ * Why the server would refuse an attestation for the configured embedder, as
+ * a message key, or null. The vectors from before provenance are all in the
+ * primary column, so the attested space must hold that column: a configured
+ * space that lives in the secondary one is refused, and so is any while
+ * another known space holds the primary one. (The server knows the column's
+ * owner exactly; the status exposes only the active, staged and rollback
+ * spaces, so this can miss a refusal, never invent one. See the notes.)
+ */
+export function attestationBlocker(status: EmbeddingStatus): string | null {
+	const subject = attestationSubject(status);
+	if (!subject) return null;
+	const subjectId = subject.kind === 'space' ? subject.spaceId : null;
+	if (subject.kind === 'space' && status.active?.slot !== 'primary') {
+		return `${K}.attest.blocked.secondaryColumn`;
+	}
+	const others = [status.active, status.staged, status.rollbackTo].filter(
+		(known) => known !== null && known._id !== subjectId
+	);
+	if (others.some((known) => known?.slot === 'primary')) return `${K}.attest.blocked.columnTaken`;
+	return null;
 }
 
 /** The end of the attested period: the chosen day's end, never later than now. */

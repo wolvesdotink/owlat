@@ -7845,6 +7845,10 @@
 					},
 					"embeddingSpace": {
 						"attest": {
+							"blocked": {
+								"columnTaken": "Another embedding model now uses the place where the older vectors are, so an attestation can't put them back. Re-embed them instead.",
+								"secondaryColumn": "The configured model keeps its vectors in a different place than the older vectors, so an attestation can't put them back. Re-embed them instead."
+							},
 							"confirm": "I attest that {model} wrote these vectors.",
 							"description": "Owlat did not record which model wrote the vectors from before this version. If you know the configured model wrote them, you can attest to it, and they return to vector search without re-embedding. Attest only to what you know: vectors from another model make search results wrong.",
 							"entry": {
@@ -7910,6 +7914,8 @@
 							},
 							"progress": "{embedded} embedded, {scanned} checked so far ({table})",
 							"resume": "Resume",
+							"resumeBody": "The rest of this job is sent to the provider and counted against your AI spend.",
+							"resumeTitle": "Resume paid re-embedding?",
 							"status": {
 								"cancelled": "Cancelled",
 								"completed": "Finished",
@@ -7932,28 +7938,39 @@
 							"startReembed": "Start re-embedding",
 							"validate": "Validate rebuild"
 						},
+						"paid": {
+							"unavailable": "Paid embedding work needs spend admission, which this deployment doesn't have yet."
+						},
 						"rebuild": {
 							"activate": "Activate",
 							"activateHint": "Activation checks a sample again, then switches search and the embedding settings in one step. Items added or changed during the rebuild need Embed changes first.",
 							"blocked": {
 								"jobOpen": "A re-embed or rebuild is already running.",
 								"noModel": "Choose a model.",
-								"paidUnavailable": "A paid rebuild needs spend admission, which this deployment doesn't have yet.",
 								"sameModel": "Vector search already uses this model."
 							},
 							"cancel": "Cancel rebuild",
+							"cancelBody": "The staged {model} is abandoned and its run can't be resumed; a new rebuild starts from the beginning. Vector search keeps the active model.",
+							"cancelTitle": "Cancel this rebuild?",
 							"catchUp": "Embed changes",
 							"confirmPaidBody": "Every item is embedded with {model} and counted against your AI spend. Search keeps using the active model until you activate the rebuild.",
-							"confirmPaidTitle": "Start a paid rebuild?",
+							"confirmPaidTitle": "This is paid embedding work",
 							"costHosted": "Paid: every item is sent to the provider and counted against your AI spend.",
 							"costLocal": "Free: runs on your server.",
+							"costUnknown": "Treated as paid: Owlat can't tell from here whether this provider's endpoint runs on your server.",
 							"description": "Embeds everything with the new model beside the active one, so search keeps working during the change. Possible between local models, or between models of the same hosted provider; any other change goes through the embedding settings above.",
 							"modelLabel": "Model",
+							"paidActivateBody": "Activation validates again first, which embeds a few sample items with {model} at the provider, counted against your AI spend.",
+							"paidCatchUpBody": "Every item added or changed since the rebuild started is embedded with {model} at the provider and counted against your AI spend.",
+							"paidResumeBody": "The rest of the rebuild is embedded with {model} at the provider and counted against your AI spend.",
+							"paidValidateBody": "Validation embeds a few sample items with {model} at the provider, counted against your AI spend.",
 							"progress": "{embedded} embedded, {scanned} checked",
 							"providerLabel": "Embedding provider",
+							"resume": "Resume",
 							"rollback": "Roll back",
 							"rollbackAvailable": "{model} can be restored: its vectors are still stored.",
-							"rollbackBody": "Vector search and the embedding settings switch back at once. Items added since are re-embedded with it.",
+							"rollbackBodyHosted": "Vector search and the embedding settings switch back at once. Items added since stay out of vector search until you start a re-embed, which is paid with a hosted embedder.",
+							"rollbackBodyLocal": "Vector search and the embedding settings switch back at once. Items added since are re-embedded on their own, for free.",
 							"rollbackTitle": "Roll back to {model}?",
 							"staged": "Building {model} ({dimensions} dimensions) beside the active model.",
 							"start": "Start rebuild",
@@ -7967,16 +7984,15 @@
 						"reembed": {
 							"blocked": {
 								"jobOpen": "A re-embed or rebuild is already running.",
-								"noEmbedder": "No embedding model is configured.",
-								"paidUnavailable": "Paid re-embedding needs spend admission, which this deployment doesn't have yet."
+								"noEmbedder": "No embedding model is configured."
 							},
 							"confirm": "Start re-embedding",
-							"confirmBody": "About {count} items are sent to {provider} and counted against your AI spend. You can cancel it while it runs.",
+							"confirmBody": "Up to {count} items are sent to {provider} and counted against your AI spend; items with too little text are skipped. You can cancel it while it runs.",
 							"confirmTitle": "Start a paid re-embed?",
 							"hosted": "Your embedding model is hosted, so re-embedding is paid: every item is sent to the provider and counted against your AI spend. It runs only when you start it.",
 							"local": "Your embedding model runs on your server, so re-embedding is free. It also runs on its own once a day.",
-							"nothing": "Everything with a vector is in vector search.",
-							"start": "Re-embed {count} items",
+							"nothing": "Every item already has a vector in vector search.",
+							"start": "Re-embed up to {count} items",
 							"title": "Re-embed"
 						},
 						"state": {
@@ -16289,6 +16305,7 @@
 			"actions": {
 				"activated": "Activated",
 				"added": "Added",
+				"attested": "Attested",
 				"cancelled": "Cancelled",
 				"completed": "Completed",
 				"created": "Created",
@@ -16299,11 +16316,16 @@
 				"invited": "Invited",
 				"paused": "Paused",
 				"published": "Published",
+				"rebuildCancelled": "Rebuild cancelled",
 				"removed": "Removed",
+				"resumed": "Resumed",
 				"revoked": "Revoked",
 				"roleChanged": "Role changed",
+				"rolledBack": "Rolled back",
 				"scheduled": "Scheduled",
 				"sent": "Sent",
+				"staged": "Staged",
+				"started": "Started",
 				"updated": "Updated",
 				"verified": "Verified"
 			},
