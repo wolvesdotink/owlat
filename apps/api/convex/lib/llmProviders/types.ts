@@ -69,6 +69,12 @@ export interface ResolvedLanguageModel {
 	 * reused (clarify lane, Sol r4 F1, r5 F1).
 	 */
 	readonly identity: string;
+	/**
+	 * The `aiProviderConfig` version (`<rowId>:<revision>`) it was resolved
+	 * from; absent under the env fallback. A caller that stamps the
+	 * configuration it dispatched under stamps this one.
+	 */
+	readonly configVersion?: string;
 }
 
 /** Classify the endpoint selected by the deployment-level compatibility config. */

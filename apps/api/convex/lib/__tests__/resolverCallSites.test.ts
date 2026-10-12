@@ -150,11 +150,12 @@ const INVENTORY: readonly CallSite[] = [
 	site('agent/steps/clarify/index.ts', "ctx, 'mail.clarify'", 'classify'),
 	site('agent/steps/security_scan/guard.ts', "ctx, 'mail.guard'", 'guard'),
 	site('agent/steps/classify/index.ts', "ctx, 'mail.classify'", 'classify'),
-	// The language rung of a decision bundle: the bundle's decision task.
+	// The language rung of a decision bundle: the bundle's decision task, read
+	// fresh (no tier choice) so the claim carries the version it dispatches.
 	{
 		file: 'decision/bundleRunner.ts',
 		fn: 'resolveLanguageModelWithProvenance',
-		args: 'ctx, plan.task',
+		args: 'ctx, plan.task, undefined, { isFresh: true }',
 		tasks: DECISION_TASKS,
 		branches: [[undefined, 'classify']],
 	},

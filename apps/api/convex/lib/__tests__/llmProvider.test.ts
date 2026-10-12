@@ -484,6 +484,34 @@ describe('llmProvider', () => {
 			expect(runAction).toHaveBeenCalledTimes(4);
 		});
 
+		it('names the row version it resolved from, and a fresh read sees a same-millisecond save (final r4 F1)', async () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date('2026-09-29T10:00:00Z'));
+			const { resolveLanguageModelWithProvenance } = await import('../llmProvider');
+			const { ctx, runQuery } = makeCtx(twoKeyRow({ configRevision: 1 }));
+			const first = await resolveLanguageModelWithProvenance(ctx, 'mail.necessity');
+			expect(first.configVersion).toBe('cfg1:1');
+			// Another isolate saves within the recheck window, keeping `updatedAt`.
+			runQuery.mockResolvedValue(twoKeyRow({ configRevision: 2, modelFast: 'saved-fast' }));
+			const cached = await resolveLanguageModelWithProvenance(ctx, 'mail.necessity');
+			expect(cached.configVersion).toBe('cfg1:1');
+			const fresh = await resolveLanguageModelWithProvenance(ctx, 'mail.necessity', undefined, {
+				isFresh: true,
+			});
+			expect(fresh).toMatchObject({ configVersion: 'cfg1:2', modelId: 'saved-fast' });
+			// The fresh read replaced the cache entry: the next cached read agrees.
+			const after = await resolveLanguageModelWithProvenance(ctx, 'mail.necessity');
+			expect(after.configVersion).toBe('cfg1:2');
+		});
+
+		it('omits the version under the env fallback', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'env-key');
+			const { resolveLanguageModelWithProvenance } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+			const env = await resolveLanguageModelWithProvenance(ctx, 'mail.necessity');
+			expect(env.configVersion).toBeUndefined();
+		});
+
 		it('drops the cached keys and falls back to env once the row is removed', async () => {
 			vi.useFakeTimers({ toFake: ['Date'] });
 			vi.setSystemTime(new Date('2026-09-29T10:00:00Z'));
