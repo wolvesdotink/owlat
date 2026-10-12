@@ -213,8 +213,11 @@ async function askOnce<Q extends QuestionSet>(
 	try {
 		result = await decisionProviderFor(provider.kind).ask(provider.config, request);
 	} catch (error) {
-		// Admission refused the attempt's request: nothing was sent or billed.
-		if (admissionRefusalOf(error)) {
+		// Admission refused a request before it was sent. When that was the
+		// attempt's first request nothing was billed, so nothing is recorded; when
+		// an adapter's inner retry was refused, the requests it already made are
+		// recorded below, and no row is made up for the refused one (Sol r2 F1).
+		if (admissionRefusalOf(error) && ctx.meter.requests.length === recordedBefore) {
 			await hold.end();
 			throw error;
 		}
@@ -419,6 +422,8 @@ export async function runDecision<Q extends QuestionSet>(
 	// and ends here: charging it would let a busy minute drive the breaker open
 	// and refuse the hop for the five minutes of real failures that follow.
 	if (lastError instanceof DecisionRateLimitRefusal) throw lastError;
+	// Our own spend admission said no: not a provider failure either (D3).
+	if (admissionRefusalOf(lastError)) throw lastError;
 
 	// Reported before the hop is considered, so a failure that trips the breaker
 	// refuses its own hop. That is the conservative direction for a lever whose

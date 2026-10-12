@@ -490,6 +490,42 @@ describe('fallback', () => {
 		expect(adapters.llm).toHaveBeenCalledTimes(1);
 	});
 
+	it('records the billed requests of an inner retry admission refused, and nothing for the refused one (Sol r2 F1)', async () => {
+		const h = harness();
+		const breaker = openableBreaker();
+		// The language adapter's first request was billed and failed its schema;
+		// admission then refused the extension for its inner retry.
+		adapters.llm.mockImplementation(async (_config: unknown, request: DecisionRequest) => {
+			const meter = (request as { meter: import('../../llm/requestMeter').LlmCallMeter }).meter;
+			meter.openHold('hold-1', 1);
+			meter.record({
+				latencyMs: 40,
+				outcome: 'failed',
+				modelUsed: 'gpt-4.1-mini',
+				usage: { promptTokens: 900, completionTokens: 30, totalTokens: 930 },
+			});
+			meter.closeHold('hold-1');
+			throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+		});
+
+		await expect(run(h, { provider: fallbackTo, breaker })).rejects.toBeInstanceOf(
+			AdmissionRefusedError
+		);
+
+		expect(adapters.llm).toHaveBeenCalledTimes(1);
+		expect(h.records).toHaveLength(1);
+		expect(h.records[0]?.requests).toEqual([
+			expect.objectContaining({
+				attempt: 1,
+				reservationId: 'hold-1',
+				usage: { promptTokens: 900, completionTokens: 30, totalTokens: 930 },
+			}),
+		]);
+		expect(h.records[0]?.settlements).toEqual([{ reservationId: 'hold-1', expectedRequests: 1 }]);
+		// A refusal is not the provider's failure: the breaker is not charged.
+		expect(breaker.recordFailure).not.toHaveBeenCalled();
+	});
+
 	it('refuses the hop after a codec refusal', async () => {
 		const h = harness();
 		adapters.typesafe.mockRejectedValue(new DecisionWireError('answered a question nobody asked'));
