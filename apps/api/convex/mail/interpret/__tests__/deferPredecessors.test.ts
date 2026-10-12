@@ -273,11 +273,8 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 	) {
 		const scheduled: { delayMs: number; args: unknown }[] = [];
 		const ctx = {
-			runQuery: (
-				ref: typeof internal.mail.interpret.defer.oldestDeferredBefore,
-				args: { source: InterpretationSource }
-			) => t.query(ref, args),
-			runMutation: (ref: never, args: never) => t.mutation(ref, args),
+			runQuery: t.query,
+			runMutation: t.mutation,
 			scheduler: {
 				runAfter: async (delayMs: number, _ref: unknown, args: unknown) => {
 					scheduled.push({ delayMs, args });
@@ -396,8 +393,8 @@ describe('D10: indexed thread order (Sol r4 F2)', () => {
 		budget: number
 	) {
 		const ctx = {
-			runQuery: (ref: never, args: never) => t.query(ref, args),
-			runMutation: (ref: never, args: never) => t.mutation(ref, args),
+			runQuery: t.query,
+			runMutation: t.mutation,
 			scheduler: { runAfter: async () => undefined },
 		} as unknown as Parameters<typeof runDeferredPredecessors>[0];
 		return runDeferredPredecessors(ctx, source, run, { budget });
