@@ -381,7 +381,7 @@ describe('interpretMessage', () => {
 				const settings = await ctx.db.query('instanceSettings').first();
 				if (settings) {
 					await ctx.db.patch(settings._id, {
-						featureFlags: { ...(settings.featureFlags ?? {}), ai: false },
+						featureFlags: { ...settings.featureFlags, ai: false },
 					});
 				}
 				const flags = await ctx.db.query('featureFlagSettings').first();
