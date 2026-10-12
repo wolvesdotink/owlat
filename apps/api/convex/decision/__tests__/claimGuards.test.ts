@@ -95,7 +95,7 @@ function claimArgs(
 		rung: 'decision' | 'language';
 		isLocal: boolean;
 		isDecisionPlaneOn?: boolean;
-		configUpdatedAt?: number;
+		configVersion?: string;
 	} = { rung: 'language', isLocal: false }
 ) {
 	return {
@@ -290,7 +290,7 @@ describe('the gates and the endpoint snapshot, right before the call', () => {
 				internal.decision.artifacts.claim,
 				claimArgs(
 					{ inboundMessageId },
-					{ rung: 'decision', isLocal: true, isDecisionPlaneOn: true, configUpdatedAt: 123 }
+					{ rung: 'decision', isLocal: true, isDecisionPlaneOn: true, configVersion: 'cfg:123' }
 				)
 			)
 		).toEqual({ outcome: 'stale' });
@@ -303,6 +303,44 @@ describe('the gates and the endpoint snapshot, right before the call', () => {
 				)
 			)
 		).toMatchObject({ outcome: 'claimed' });
+	});
+
+	it('refuses a claim resolved from a save in the same millisecond as the current one (final F3)', async () => {
+		const t = await newT();
+		const inboundMessageId = await teamMessage(t);
+		await enableFeatures(t, ['ai.decisionPlane']);
+		const config = { ...typesafeWithoutKey(), decisionProviderKind: 'local' as const };
+		const configId = await t.run((ctx) =>
+			ctx.db.insert('aiProviderConfig', { ...config, configRevision: 1 })
+		);
+		// A second save at the same `updatedAt`: only the revision moved.
+		await t.run((ctx) =>
+			ctx.db.patch(configId, { decisionBaseUrl: 'http://other', configRevision: 2 })
+		);
+		const endpoint = { rung: 'decision' as const, isLocal: true, isDecisionPlaneOn: true };
+		expect(
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs({ inboundMessageId }, { ...endpoint, configVersion: `${configId}:1` })
+			)
+		).toEqual({ outcome: 'stale' });
+		expect(
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs({ inboundMessageId }, { ...endpoint, configVersion: `${configId}:2` })
+			)
+		).toMatchObject({ outcome: 'claimed' });
+		// Removed and saved again: the revision restarts, the row id does not repeat.
+		await t.run(async (ctx) => {
+			await ctx.db.delete(configId);
+			await ctx.db.insert('aiProviderConfig', { ...config, configRevision: 2 });
+		});
+		expect(
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs({ inboundMessageId }, { ...endpoint, configVersion: `${configId}:2` })
+			)
+		).toEqual({ outcome: 'stale' });
 	});
 
 	it('refuses a language-rung call once a decision provider was configured since (Sol r4)', async () => {

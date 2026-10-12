@@ -57,6 +57,19 @@ export function resolvedPlaneIdentity(
 	return [plane.kind, plane.modelId, baseUrl ? exactEndpointIdentity(baseUrl) : ''].join('|');
 }
 
+/**
+ * The configuration version of the `aiProviderConfig` row: its id and its
+ * `configRevision` (bumped by every save; a row written before the column
+ * reads as 0), or undefined without a row. The snapshot the decision plane's
+ * cache, its rung and the bundle claim compare: two saves in one millisecond
+ * share `updatedAt`, never this, and a removed and re-created row has a new id.
+ */
+export function configVersionOf(
+	row: { readonly _id: string; readonly configRevision?: number } | null
+): string | undefined {
+	return row ? `${row._id}:${row.configRevision ?? 0}` : undefined;
+}
+
 /** The decision provider KIND as configured: a stored kind, else `DECISION_PROVIDER`, else the default. */
 function configuredKind(
 	row: {

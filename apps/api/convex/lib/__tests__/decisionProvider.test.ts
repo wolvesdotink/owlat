@@ -401,6 +401,31 @@ describe('decisionProvider — the cache is keyed on the stored version', () => 
 		expect(plane.clientConfig.apiKey).toBe('the-corrected-key');
 	});
 
+	it('re-decrypts after a save in the same millisecond: the revision moved (final F3)', async () => {
+		const columns = decisionEnvelopeColumns();
+		let row = storedRow({ decisionProviderKind: 'typesafe', ...columns, configRevision: 1 });
+		const runQuery = vi.fn(async () => row);
+		const runAction = vi.fn(async () => DECISION_KEY);
+		const ctx = { runQuery, runAction } as unknown as ActionCtx;
+		expect((await resolveDecisionConfig(ctx)).configVersion).toBe('cfg1:1');
+
+		// Same `updatedAt`, a new key and origin: only the revision tells them apart.
+		row = storedRow({
+			decisionProviderKind: 'typesafe',
+			...columns,
+			decisionBaseUrl: 'https://jev.proxy.example',
+			configRevision: 2,
+		});
+		runAction.mockImplementation(async () => 'the-corrected-key');
+		const plane = await resolveDecisionConfig(ctx);
+		expect(runAction).toHaveBeenCalledTimes(2);
+		expect(plane.clientConfig).toEqual({
+			apiKey: 'the-corrected-key',
+			baseUrl: 'https://jev.proxy.example',
+		});
+		expect(plane.configVersion).toBe('cfg1:2');
+	});
+
 	it('does not serve a stored plane to a deployment whose row was deleted', async () => {
 		const { ctx: stored } = makeCtx(
 			storedRow({ decisionProviderKind: 'typesafe', ...decisionEnvelopeColumns() })

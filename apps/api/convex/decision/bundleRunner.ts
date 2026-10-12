@@ -258,7 +258,7 @@ export async function resolveBundleRung(
 	const plane = routing.isDecisionPlaneOn
 		? await resolveDecisionConfig(ctx).catch(() => null)
 		: null;
-	if (plane !== null && plane.updatedAt !== routing.configUpdatedAt) return 'stale';
+	if (plane !== null && plane.configVersion !== routing.configVersion) return 'stale';
 	const rung = decisionRung({
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
 		kind: plane?.kind ?? 'llm',
@@ -340,7 +340,7 @@ export async function runBundle<Q extends QuestionSet>(
 			plane !== null &&
 			resolveEndpointLocality(plane.kind, plane.clientConfig.baseUrl) === 'local',
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
-		...(routing.configUpdatedAt === undefined ? {} : { configUpdatedAt: routing.configUpdatedAt }),
+		...(routing.configVersion === undefined ? {} : { configVersion: routing.configVersion }),
 	};
 	const contentHash = stateContentHash(run.built.state);
 	const artifactKey = artifactKeyOf({

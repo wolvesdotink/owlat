@@ -469,6 +469,10 @@ export const instanceTables = {
 		decisionSecretEnvelopeVersion: v.optional(v.number()),
 		// Non-secret masked preview of the decision key for the UI.
 		decisionKeyPreview: v.optional(v.string()),
+		// Bumped by every write of the row (absent on rows written before it:
+		// read as 0). The decision plane's cache, rung and claim compare it, not
+		// `updatedAt`, which two saves in one millisecond share.
+		configRevision: v.optional(v.number()),
 		updatedAt: v.number(),
 	}),
 };

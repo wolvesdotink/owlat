@@ -48,8 +48,9 @@
  * a miss decrypt three envelopes over three Node round trips. Here the cheap
  * half (one singleton query) runs every time and the expensive half (the Node
  * decrypt round trip, plus resolving a language model we may not need) is what
- * the cache holds, keyed by `updatedAt`. A save bumps that column, so the very
- * next resolution re-decrypts — invalidation on write, without pretending a
+ * the cache holds, keyed by the row's `configRevision`. Every save bumps it (one
+ * millisecond can hold two saves, so not `updatedAt`), and the very next
+ * resolution re-decrypts — invalidation on write, without pretending a
  * function call can reach another isolate's memory.
  *
  * Environment (fallback only):
@@ -76,6 +77,7 @@ import type { AiTaskName } from '@owlat/shared/aiRouting';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
 import { decisionEnvProblem, envDecisionKind } from './decisionEnvKind';
+import { configVersionOf } from './decision/configIdentity';
 import {
 	DecisionProviderUnavailable,
 	type DecisionUnavailable,
@@ -137,8 +139,8 @@ export interface ResolvedDecisionPlane {
 	 * times more, on a path fed by strangers sending us email.
 	 */
 	readonly isFallbackEnabled: boolean;
-	/** The stored row's `updatedAt`, when resolved from stored config. */
-	readonly updatedAt?: number;
+	/** The row's version (`configVersionOf`) it was resolved from; absent without a row. */
+	readonly configVersion?: string;
 }
 
 /**
@@ -218,7 +220,7 @@ function decryptEnvelope(ctx: ActionCtx, envelope: DecisionKeyEnvelope): Promise
 function languageBackedPlane(
 	source: DecisionConfigSource,
 	isFallbackEnabled: boolean,
-	extra: Pick<ResolvedDecisionPlane, 'updatedAt' | 'unavailable'> = {}
+	extra: Pick<ResolvedDecisionPlane, 'configVersion' | 'unavailable'> = {}
 ): ResolvedDecisionPlane {
 	const adapter = decisionProviderFor('llm');
 	return {
@@ -298,15 +300,15 @@ function planeFor(input: {
 	storedModel: string | undefined;
 	storedBaseUrl: string | undefined;
 	isFallbackEnabled: boolean;
-	updatedAt: number | undefined;
+	configVersion: string | undefined;
 	/** The stored key could not be decrypted (D3: terminal, never a language call). */
 	decryptFailure?: DecisionUnavailable;
 }): ResolvedDecisionPlane {
-	const { kind, source, isFallbackEnabled, updatedAt } = input;
+	const { kind, source, isFallbackEnabled, configVersion } = input;
 	// Only the language-backed adapter delegates its model and endpoint to that plane.
 	// A future keyless decision engine must still resolve its own configuration.
 	if (kind === 'llm') {
-		return languageBackedPlane(source, isFallbackEnabled, { updatedAt });
+		return languageBackedPlane(source, isFallbackEnabled, { configVersion });
 	}
 	const adapter = decisionProviderFor(kind);
 	const clientConfig = decisionClientConfigFor(kind, input.storedKey, input.storedBaseUrl);
@@ -329,18 +331,18 @@ function planeFor(input: {
 		deadlineMs: deadlineForKind(kind),
 		source,
 		isFallbackEnabled,
-		updatedAt,
+		configVersion,
 	};
 }
 
 // The resolved plane, keyed by the version of the config it was built from — see
-// the header. `stored:<updatedAt>` changes on every save, and a row that is
+// the header. `stored:<configVersion>` changes on every save, and a row that is
 // deleted (or never written) collapses onto the one env signature, so the only
 // way to read a stale plane is to not have changed anything.
 let planeCache: { signature: string; plane: ResolvedDecisionPlane } | null = null;
 
 function signatureOf(row: Doc<'aiProviderConfig'> | null): string {
-	return row ? `stored:${row._id}:${row.updatedAt}` : 'env';
+	return row ? `stored:${configVersionOf(row)}:${row.updatedAt}` : 'env';
 }
 
 /**
@@ -395,7 +397,7 @@ async function buildPlane(
 			storedModel: row.decisionModel,
 			storedBaseUrl: row.decisionBaseUrl,
 			isFallbackEnabled,
-			updatedAt: row.updatedAt,
+			configVersion: configVersionOf(row),
 		});
 	}
 
@@ -403,7 +405,7 @@ async function buildPlane(
 	if (envKind && 'invalid' in envKind) {
 		// An explicit choice nobody can honour: terminal, not the default.
 		return languageBackedPlane('env', isFallbackEnabled, {
-			updatedAt: row?.updatedAt,
+			configVersion: configVersionOf(row),
 			unavailable: {
 				code: 'invalid_config',
 				reason: decisionEnvProblem() ?? 'Invalid DECISION_PROVIDER.',
@@ -418,7 +420,7 @@ async function buildPlane(
 			storedModel: undefined,
 			storedBaseUrl: undefined,
 			isFallbackEnabled,
-			updatedAt: row?.updatedAt,
+			configVersion: configVersionOf(row),
 		});
 	}
 
@@ -431,7 +433,7 @@ async function buildPlane(
 		storedModel: undefined,
 		storedBaseUrl: undefined,
 		isFallbackEnabled,
-		updatedAt: row?.updatedAt,
+		configVersion: configVersionOf(row),
 	});
 }
 

@@ -10,7 +10,7 @@ import type { ResolvedRoutingPolicy } from '@owlat/shared/aiRouting';
 import { internalQuery } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadRoutingPolicy } from '../aiRouting/policy';
-import { isLocalDecisionEngine } from '../lib/decision/configIdentity';
+import { configVersionOf, isLocalDecisionEngine } from '../lib/decision/configIdentity';
 import { isExcludedFromHostedDecisions } from './exclusion';
 import type { StoredVerdict } from '../lib/decision/calibration';
 import { aiTaskNameValidator } from '../lib/validators/aiRouting';
@@ -23,11 +23,12 @@ export interface RoutingContext {
 	readonly policy: ResolvedRoutingPolicy;
 	readonly isDecisionPlaneOn: boolean;
 	/**
-	 * `aiProviderConfig.updatedAt` in the same read (absent without a row): the
-	 * configuration the rung is decided on. The run refuses a resolution read
-	 * from any other one, and the claim refuses once it has changed.
+	 * The `aiProviderConfig` row's version (`configVersionOf`) in the same read
+	 * (absent without a row): the configuration the rung is decided on. The run
+	 * refuses a resolution read from any other one, and the claim refuses once
+	 * it has changed.
 	 */
-	readonly configUpdatedAt?: number;
+	readonly configVersion?: string;
 }
 
 /** Everything a bundle run decides its plan and rung on, in one read. */
@@ -38,7 +39,7 @@ export const routingContext = internalQuery({
 		return {
 			policy: await loadRoutingPolicy(ctx),
 			isDecisionPlaneOn: await isFeatureEnabled(ctx, 'ai.decisionPlane'),
-			...(config ? { configUpdatedAt: config.updatedAt } : {}),
+			...(config ? { configVersion: configVersionOf(config) } : {}),
 		};
 	},
 });

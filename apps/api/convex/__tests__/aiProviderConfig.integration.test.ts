@@ -307,6 +307,21 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 		expect(result.isLanguageKeySet).toBe(true);
 	});
 
+	it('bumps configRevision on every save, even two in one millisecond (final F3)', async () => {
+		const t = setup();
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(Date.UTC(2026, 9, 12, 9, 0));
+			const save = { languageProviderKind: 'anthropic' as const, apiKey: 'sk-ant-secret-key-1234' };
+			await t.action(api.aiProviderConfigActions.saveConfig, save);
+			await t.action(api.aiProviderConfigActions.saveConfig, { ...save, modelFast: 'other' });
+		} finally {
+			vi.useRealTimers();
+		}
+		const [row] = await t.run((ctx) => ctx.db.query('aiProviderConfig').collect());
+		expect(row!.configRevision).toBe(2);
+	});
+
 	it('materializes the Google default when saving without an explicit embedding ID', async () => {
 		const t = setup();
 		await t.action(api.aiProviderConfigActions.saveConfig, {

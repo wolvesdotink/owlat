@@ -42,6 +42,7 @@ import { observeAndLearn, subjectSender } from './senderMemory';
 import { isExcludedFromHostedDecisions, type ExclusionScope } from './exclusion';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadRoutingPolicy } from '../aiRouting/policy';
+import { configVersionOf } from '../lib/decision/configIdentity';
 
 /** Version of the stored `answers` and `baseline` JSON shapes. */
 export const DECISION_ANSWERS_VERSION = 1;
@@ -65,7 +66,7 @@ export type ClaimOutcome =
  * The endpoint the call will use, as the action decided it ONCE: the rung,
  * whether it runs on the operator's own hardware, and the snapshot the rung
  * was decided on (the `ai.decisionPlane` flag and the
- * `aiProviderConfig.updatedAt` the resolution read). The action dispatches to
+ * `aiProviderConfig` version, `configVersionOf`, the resolution read). The action dispatches to
  * exactly this endpoint; the claim refuses (`stale`) on EITHER rung once the
  * flag or the configuration is no longer the snapshot, since either can change
  * which rung, and which provider, the call should have had (a provider
@@ -75,7 +76,7 @@ const endpointValidator = v.object({
 	rung: v.union(v.literal('decision'), v.literal('language')),
 	isLocal: v.boolean(),
 	isDecisionPlaneOn: v.boolean(),
-	configUpdatedAt: v.optional(v.number()),
+	configVersion: v.optional(v.string()),
 });
 
 type SubjectRef = {
@@ -190,7 +191,7 @@ export const claim = internalMutation({
 		// the current one, on either rung, or the call is not the one checked.
 		if (
 			isDecisionPlaneOn !== endpoint.isDecisionPlaneOn ||
-			config?.updatedAt !== endpoint.configUpdatedAt
+			configVersionOf(config) !== endpoint.configVersion
 		) {
 			return { outcome: 'stale' };
 		}
