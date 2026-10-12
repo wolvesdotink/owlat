@@ -72,7 +72,7 @@ provideChatShell({
 	     sum #main-content uses; subtracting more left a dead strip under the
 	     composer. -->
 	<div
-		class="flex h-[calc(100dvh-10.25rem-1px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] lg:h-[calc(100dvh-var(--titlebar-h,0px)-var(--shell-chrome-h,4rem))]"
+		class="flex h-[calc(100dvh-var(--shell-chrome-mobile-h))] lg:h-[calc(100dvh-var(--titlebar-h,0px)-var(--shell-chrome-h,4rem))]"
 	>
 		<!-- Sidebar: a column at md, an off-canvas drawer below it -->
 		<UiRailDrawer

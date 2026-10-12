@@ -236,18 +236,18 @@ const activeMessage = activeRead.message;
 
 // Auto-advance context for the reader: the flat list's visual row order
 // (optimistic-hide filtered, via the template ref below). In every grouped
-// renderer the flat order doesn't match what's on screen, so an empty list
-// makes every triage fall back to back-to-list there.
+// renderer triage falls back to back-to-list (an empty list) instead.
 const threadListRef = ref<{ visibleIds: string[] } | null>(null);
 const advanceIds = computed(() =>
 	grouped.value
 		? []
 		: // The raw-messages fallback only applies while the list component is
-			// unmounted (e.g. the search overlay covers it); it skips the
-			// optimistic-hide filter, but any hidden row is mid-mutation and about
-			// to leave `messages` anyway, so the order is at worst one row stale.
+			// unmounted (e.g. the search overlay covers it); a hidden row is
+			// mid-mutation and about to leave `messages`, so at worst one row stale.
 			(threadListRef.value?.visibleIds ?? messages.value.map((m) => m._id))
 );
+// Previous/next in Zen: whichever renderer is on screen, in its own row order.
+const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.value);
 </script>
 
 <template>
@@ -369,6 +369,7 @@ const advanceIds = computed(() =>
 										<UiQueryBoundary v-if="listError" :error="listError" @retry="retryList" />
 										<PostboxThreadCategoryList
 											v-else-if="categoriesEnabled"
+											ref="threadListRef"
 											:sections="categories.sections.value"
 											:collapsed="categories.collapsed.value"
 											:loading="categories.isLoading.value"
@@ -381,6 +382,7 @@ const advanceIds = computed(() =>
 										/>
 										<PostboxThreadGroupList
 											v-else-if="conversationsEnabled"
+											ref="threadListRef"
 											:threads="conversations.threads.value"
 											:loading="conversations.isLoading.value"
 											:folder-role="folderRole"
@@ -390,6 +392,7 @@ const advanceIds = computed(() =>
 										/>
 										<PostboxThreadBundleList
 											v-else-if="bundlesEnabled"
+											ref="threadListRef"
 											:entries="bundles.entries.value"
 											:expanded="bundles.expanded.value"
 											:loading="isLoading && !showingCached"
@@ -406,6 +409,7 @@ const advanceIds = computed(() =>
 										/>
 										<PostboxThreadSectionList
 											v-else-if="sectionsEnabled"
+											ref="threadListRef"
 											:sections="sections.sections.value"
 											:collapsed="sections.collapsed.value"
 											:loading="sections.isLoading.value"
@@ -461,7 +465,7 @@ const advanceIds = computed(() =>
 							:folder-name="currentFolderName"
 							:folder-path="String(folderId ?? folderRole)"
 							:active-message-id="activeMessageId"
-							:ordered-ids="advanceIds"
+							:ordered-ids="stepIds"
 							:zen="zen.isZen.value"
 							@back="backToList"
 						/>

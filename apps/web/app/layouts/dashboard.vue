@@ -114,8 +114,14 @@ const pageOwnsEscape = computed(() => isAnswerMode.value || isEditorFocusMode.va
 const showZenBar = computed(() => isZen.value && !pageOwnsEscape.value);
 const shellChromeHeight = computed(() => {
 	if (!isFocusMode.value) return '4rem';
-	return showZenBar.value ? '2.75rem' : '0px';
+	return showZenBar.value ? 'calc(2.75rem + env(safe-area-inset-top, 0px))' : '0px';
 });
+// Below lg the shell is taller: bar, breadcrumb strip, hairline and tab bar.
+const shellChromeMobileHeight = computed(() =>
+	isFocusMode.value
+		? `calc(${shellChromeHeight.value} + env(safe-area-inset-bottom, 0px))`
+		: 'calc(10.25rem + 1px + env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px))'
+);
 
 // Desktop runtime — gates the workspace switcher rail + native chrome.
 const { isDesktop, isMac, isWindows } = useDesktopContext();
@@ -439,10 +445,14 @@ const sidebarDesktopClass = computed(() => {
 	<div
 		class="min-h-dvh bg-bg-base"
 		:class="{ 'has-desktop-chrome': isDesktop }"
-		:style="{ '--shell-chrome-h': shellChromeHeight }"
+		:style="{
+			'--shell-chrome-h': shellChromeHeight,
+			'--shell-chrome-mobile-h': shellChromeMobileHeight,
+		}"
 	>
-		<!-- --shell-chrome-h: the height of the shell header above the page, for
-		     full-height pages that size against it (Zen's slim bar, or 0). -->
+		<!-- --shell-chrome-h / --shell-chrome-mobile-h: the shell chrome around the
+		     page, for full-height pages that size against it (from lg / below
+		     lg). In Zen it is the slim bar, in a chrome-less page 0. -->
 		<!-- Skip link: first tab stop, visible only when focused -->
 		<a
 			href="#main-content"

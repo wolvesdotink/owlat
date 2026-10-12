@@ -2,6 +2,7 @@
 import { isOverlayOpen, isZenChord, zenTakesEscape } from '~/utils/zenMode';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { useZenMode } from '~/composables/useZenMode';
+import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 
 /**
  * Zen mode's keyboard and its one visible control. Mounted once by the
@@ -36,20 +37,24 @@ watch(isZen, async (on) => {
 		document.getElementById('main-content')?.focus({ preventScroll: true });
 });
 
-// Capture phase: Zen hears Esc before any page handler does.
-function onKeydownCapture(event: KeyboardEvent) {
-	if (event.key !== 'Escape' || !isZen.value) return;
-	const takes = zenTakesEscape({
-		composing: event.isComposing,
-		editable: isEditableTarget(event.target),
-		overlayOpen: isOverlayOpen(),
-		pageOwnsEscape: props.pageOwnsEscape,
-	});
-	if (!takes) return;
-	event.preventDefault();
-	event.stopImmediatePropagation();
-	exitZen();
-}
+// Zen is the base layer of the shared Escape stack: any dialog, menu or popover
+// opened on top of it closes first, and the press reaches the page only once
+// Zen has declined it (utils/zenMode.ts).
+useEscapeLayer(
+	() => isZen.value && !props.pageOwnsEscape,
+	(event) => {
+		if (!isZen.value) return false;
+		const takes = zenTakesEscape({
+			composing: event.isComposing,
+			editable: isEditableTarget(event.target),
+			overlayOpen: isOverlayOpen(),
+			pageOwnsEscape: props.pageOwnsEscape,
+		});
+		if (!takes) return false;
+		exitZen();
+	},
+	{ base: true }
+);
 
 // Bubble phase: a surface with its own Cmd/Ctrl+Shift+F wins the press.
 function onKeydown(event: KeyboardEvent) {
@@ -58,14 +63,8 @@ function onKeydown(event: KeyboardEvent) {
 	if (!event.repeat) toggleZen();
 }
 
-onMounted(() => {
-	window.addEventListener('keydown', onKeydownCapture, true);
-	window.addEventListener('keydown', onKeydown);
-});
-onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onKeydownCapture, true);
-	window.removeEventListener('keydown', onKeydown);
-});
+onMounted(() => window.addEventListener('keydown', onKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 </script>
 
 <template>

@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 /**
- * Esc on an open popover closes it and claims the key, so the page's own Esc
- * (Answer mode leaving for the list, the reader closing its conversation)
- * does not run on the same press. The pages check `defaultPrevented`; the
- * shortcut dispatcher listens on the document in the bubble phase and was
- * registered first, so the popover's listener has to run in the capture phase.
+ * Esc on an open popover closes it and ends the press there, so the page's own
+ * Esc (Answer mode leaving for the list, the reader closing its conversation,
+ * Zen mode letting go) does not run on the same press. The popover is a layer
+ * of the shared Escape stack, a window capture listener, so it runs before the
+ * shortcut dispatcher even though that was registered first.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 describe('useEscapeToClose', () => {
-	it('closes the open popover and claims the press before the page handlers see it', async () => {
+	it('closes the open popover, and the page handlers never see the press', async () => {
 		const { open, wrapper } = setup();
 		open.value = true;
 		await nextTick();
@@ -54,10 +54,7 @@ describe('useEscapeToClose', () => {
 		pressEsc();
 
 		expect(open.value).toBe(false);
-		expect(seen).toEqual([
-			{ where: 'document', prevented: true },
-			{ where: 'window', prevented: true },
-		]);
+		expect(seen).toEqual([]);
 		wrapper.unmount();
 	});
 

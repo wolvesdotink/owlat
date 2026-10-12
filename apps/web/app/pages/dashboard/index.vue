@@ -6,6 +6,7 @@ import { answerItemMatches } from '~/utils/answerQueue';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useWorkbenchKeyboard } from '~/composables/useWorkbenchKeyboard';
 import { useZenMode } from '~/composables/useZenMode';
+import { useWorkbenchDwell } from '~/composables/useWorkbenchDwell';
 import type { TodayChange, TodayLine, TodaySource } from '~/utils/todayDigest';
 import { TODAY_PEEK, peekKey, threadHref } from '~/utils/todayPeek';
 import {
@@ -179,32 +180,12 @@ async function markAllSeen() {
 		action: { label: t('common.undo'), onAction: () => void workbench.undoMarkSeen(target) },
 	});
 }
-const DWELL_MS = 30_000;
-let enteredAt = Date.now();
-// The tabs that showed anything of their own while open; cleared on leaving.
-// Tracked per tab: the previous tab stays on screen while the next one loads
-// (`isStale`, which does not count), and two tabs that both have content never
-// flip `hasAnything` at all.
-const hadAnything = new Set<WorkbenchScope>();
-watch(
-	() => [scope.value, hasAnything.value && !workbench.isStale.value && !isZen.value] as const,
-	([current, showing]) => {
-		if (current && showing) hadAnything.add(current);
-	},
-	{ immediate: true }
-);
-function leaveScope(previous: WorkbenchScope | null) {
-	if (previous && hadAnything.has(previous) && Date.now() - enteredAt >= DWELL_MS)
-		void workbench.markSeen(previous);
-	if (previous) hadAnything.delete(previous);
-}
-watch(isZen, (on) => !on && (enteredAt = Date.now()));
-watch(scope, (_next, previous) => {
-	leaveScope(previous ?? null);
-	enteredAt = Date.now();
-	hidden.value = new Set();
+useWorkbenchDwell({
+	scope,
+	showing: computed(() => hasAnything.value && !workbench.isStale.value && !isZen.value),
+	markSeen: (tab) => void workbench.markSeen(tab),
 });
-onBeforeUnmount(() => leaveScope(scope.value));
+watch(scope, () => (hidden.value = new Set()));
 
 // ── Actions on lines ────────────────────────────────────────────────────────
 const answerNav = useAnswerModeNav();

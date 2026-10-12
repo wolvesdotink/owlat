@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 
 // Pane 1's responsive shell: a static column at lg+, an off-canvas drawer below
 // it (same pattern as the dashboard shell's mobile sidebar). The rail itself is
@@ -24,6 +25,11 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 // this needs its own viewport check rather than the shell's condition.)
 const isDesktopViewport = useMediaQuery('(min-width: 1024px)');
 const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
+// The open drawer is one layer of the shared Escape stack, above Zen mode.
+useEscapeLayer(
+	() => props.open,
+	() => emit('update:open', false)
+);
 </script>
 
 <template>

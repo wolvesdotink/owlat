@@ -167,13 +167,16 @@ describe('TodayFiledAway', () => {
 });
 
 describe('TodayScopeHeader', () => {
-	// The ⋯ menu renders inline so its items are in the tree.
+	// A controlled ⋯ menu, like the real one: it opens only through `open`.
 	const headerStubs = {
 		...stubs,
 		UiButton: { template: '<button><slot /></button>' },
 		UiSkeleton: true,
 		UiDropdownMenu: {
-			template: '<div><slot name="trigger" /><div role="menu"><slot /></div></div>',
+			props: ['open'],
+			emits: ['update:open'],
+			template:
+				'<div><span data-trigger @click="$emit(\'update:open\', !open)"><slot name="trigger" /></span><div v-if="open" role="menu"><slot /></div></div>',
 		},
 		UiDropdownMenuItem: { template: '<button role="menuitem"><slot /></button>' },
 	};
@@ -238,11 +241,13 @@ describe('TodayScopeHeader', () => {
 		expect(none.text()).toContain('nothing new');
 	});
 
-	it('keeps "Open inbox" and "Write" one click away in its menu', () => {
+	it('keeps "Open inbox" and "Write" one click away in its menu', async () => {
 		const w = mount(TodayScopeHeader, {
 			props,
 			global: { plugins: [createTestI18n()], stubs: headerStubs },
 		});
+		expect(w.find('[role="menu"]').exists()).toBe(false);
+		await w.find('[data-trigger]').trigger('click');
 		expect(w.findAll('[role="menuitem"]').map((item) => item.text())).toEqual([
 			'Open inbox',
 			'Write',

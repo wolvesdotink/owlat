@@ -52,9 +52,9 @@ const SECTIONS: PostboxInboxSection[] = [
 	},
 ];
 
-function mountSections() {
+function mountSections(collapsed: Record<string, boolean> = {}) {
 	return mount(PostboxThreadSectionList, {
-		props: { sections: SECTIONS, collapsed: {}, loading: false, folderRole: 'inbox' },
+		props: { sections: SECTIONS, collapsed, loading: false, folderRole: 'inbox' },
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxSectionedThreadList, PostboxThreadListSkeleton, PostboxEmptyState },
@@ -83,5 +83,12 @@ describe('PostboxThreadSectionList', () => {
 		expect(buttons.map((b) => b.text())).toEqual(['Load more in Clients']);
 		await buttons[0]!.trigger('click');
 		expect(w.emitted('load-more')).toEqual([['Clients']]);
+	});
+
+	it('hands Zen its rows in order, leaving collapsed sections out', () => {
+		const ids = (w: ReturnType<typeof mountSections>) =>
+			(w.vm as unknown as { visibleIds: string[] }).visibleIds;
+		expect(ids(mountSections())).toEqual(['m1', 'm2']);
+		expect(ids(mountSections({ Clients: true }))).toEqual(['m2']);
 	});
 });

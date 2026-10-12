@@ -1,7 +1,14 @@
 import { onScopeDispose, watch, type Ref } from 'vue';
 
+/**
+ * A layer's Escape handler. Returning `false` declines the press: it goes on
+ * to the page untouched (no layer underneath gets it either), for a layer that
+ * only wants Escape in some states (Zen mode leaves text fields their Escape).
+ */
+type EscapeHandler = (event: KeyboardEvent) => boolean | void;
+
 interface EscapeLayer {
-	onEscape?: () => void;
+	onEscape?: EscapeHandler;
 }
 
 // Open layers in the order they opened: the last one is the innermost.
@@ -18,9 +25,9 @@ function handleKeydown(event: KeyboardEvent) {
 	// A layer without a handler (a dialog that handles Escape itself) lets the
 	// press through, and still keeps it from the layers underneath.
 	if (!top?.onEscape) return;
+	if (top.onEscape(event) === false) return;
 	event.preventDefault();
 	event.stopImmediatePropagation();
-	top.onEscape();
 }
 
 function remove(layer: EscapeLayer) {
@@ -37,10 +44,14 @@ function remove(layer: EscapeLayer) {
  * A menu opened inside a modal is newer than the modal, so the first Escape
  * closes the menu and the second the modal; the press never reaches page-level
  * shortcuts while a layer handles it.
+ *
+ * `base` puts the layer underneath every other one, whenever it opened: a mode
+ * that wraps the whole app (Zen) is left only once nothing above it is open.
  */
 export function useEscapeLayer(
 	active: Ref<boolean> | (() => boolean),
-	onEscape?: () => void
+	onEscape?: EscapeHandler,
+	options: { base?: boolean } = {}
 ): void {
 	if (typeof window === 'undefined') return;
 	const layer: EscapeLayer = { onEscape };
@@ -53,7 +64,8 @@ export function useEscapeLayer(
 			}
 			if (layers.includes(layer)) return;
 			if (layers.length === 0) window.addEventListener('keydown', handleKeydown, true);
-			layers.push(layer);
+			if (options.base) layers.unshift(layer);
+			else layers.push(layer);
 		},
 		{ immediate: true }
 	);

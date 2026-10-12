@@ -46,6 +46,14 @@ function rowClass(msg: PostboxThreadRowMessage) {
 	return { 'pbx-row-danger': senderRowMarkerOf(msg, trustMarkers.value) !== null };
 }
 
+// Every row in order, skipping collapsed sections: previous/next in Zen walk this.
+const visibleIds = computed(() =>
+	props.sections
+		.filter((section) => !props.collapsed[section.key])
+		.flatMap((section) => section.messages.map((msg) => String(msg._id)))
+);
+defineExpose({ visibleIds });
+
 // The header badge is the server's unread count, a floor when capped ("99+").
 const listSections = computed<PostboxThreadListSection<PostboxThreadRowMessage>[]>(() =>
 	props.sections.map((section) => ({

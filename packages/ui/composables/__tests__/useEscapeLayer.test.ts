@@ -4,10 +4,14 @@ import { useEscapeLayer } from '../useEscapeLayer';
 
 const scopes: EffectScope[] = [];
 
-function layer(onEscape?: () => void, initiallyOpen = true) {
+function layer(
+	onEscape?: (event: KeyboardEvent) => boolean | void,
+	initiallyOpen = true,
+	options: { base?: boolean } = {}
+) {
 	const open = ref(initiallyOpen);
 	const scope = effectScope();
-	scope.run(() => useEscapeLayer(open, onEscape));
+	scope.run(() => useEscapeLayer(open, onEscape, options));
 	scopes.push(scope);
 	return { open, scope };
 }
@@ -97,6 +101,35 @@ describe('useEscapeLayer', () => {
 
 			press();
 			expect(onEscape).not.toHaveBeenCalled();
+			expect(pageShortcut).toHaveBeenCalledTimes(1);
+		} finally {
+			window.removeEventListener('keydown', pageShortcut);
+		}
+	});
+
+	it('keeps a base layer under every other one, even one that opened before it', async () => {
+		const popover = vi.fn();
+		const zen = vi.fn();
+		layer(popover);
+		const base = layer(zen, false, { base: true });
+		base.open.value = true;
+		await nextTick();
+
+		press();
+		expect(popover).toHaveBeenCalledTimes(1);
+		expect(zen).not.toHaveBeenCalled();
+	});
+
+	it('lets a declined press through to the page, untouched', () => {
+		const pageShortcut = vi.fn();
+		window.addEventListener('keydown', pageShortcut);
+		try {
+			const below = vi.fn();
+			layer(below);
+			layer(() => false);
+			const event = press();
+			expect(event.defaultPrevented).toBe(false);
+			expect(below).not.toHaveBeenCalled();
 			expect(pageShortcut).toHaveBeenCalledTimes(1);
 		} finally {
 			window.removeEventListener('keydown', pageShortcut);

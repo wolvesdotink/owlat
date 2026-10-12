@@ -76,6 +76,7 @@ const allTiles = computed(() => [
 ]);
 // Zero says nothing worth a link; an all-zero summary says "nothing new".
 const tiles = computed(() => allTiles.value.filter((tile) => tile.value !== '0'));
+const menuOpen = ref(false);
 const kindLabel = computed(() =>
 	props.kind === 'personal' ? null : t(`components.today.scope.kind.${props.kind}`)
 );
@@ -107,7 +108,7 @@ const kindLabel = computed(() =>
 					<template #iconLeft><Icon name="lucide:check-check" class="size-4" /></template>
 					{{ t('dashboard.today.markAllSeen') }}
 				</UiButton>
-				<UiDropdownMenu position="right">
+				<UiDropdownMenu v-model:open="menuOpen" position="right">
 					<template #trigger>
 						<UiButton
 							variant="ghost"

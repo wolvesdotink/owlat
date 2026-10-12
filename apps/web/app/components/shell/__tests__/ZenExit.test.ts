@@ -6,8 +6,10 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
+import { defineComponent, h, nextTick, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useZenMode } from '~/composables/useZenMode';
+import { useEscapeToClose } from '~/composables/useEscapeToClose';
 import ZenExit from '../ZenExit.vue';
 
 beforeAll(() => {
@@ -67,19 +69,22 @@ describe('ZenExit', () => {
 		expect(useZenMode().isZen.value).toBe(false);
 	});
 
-	it('takes the first Esc for itself; the page only hears the next one', () => {
+	it('takes the first Esc for itself; the page only hears the next one', async () => {
 		mountExit();
 		useZenMode().enterZen();
+		await nextTick();
 		press({ key: 'Escape' });
 		expect(useZenMode().isZen.value).toBe(false);
 		expect(pageEscape).not.toHaveBeenCalled();
+		await nextTick();
 		press({ key: 'Escape' });
 		expect(pageEscape).toHaveBeenCalledTimes(1);
 	});
 
-	it('leaves Esc to an open dialog, a text field and a page that owns it', () => {
+	it('leaves Esc to an open dialog, a text field and a page that owns it', async () => {
 		mountExit();
 		useZenMode().enterZen();
+		await nextTick();
 
 		const dialog = document.createElement('div');
 		dialog.setAttribute('role', 'dialog');
@@ -96,8 +101,35 @@ describe('ZenExit', () => {
 
 		wrapper?.unmount();
 		mountExit({ pageOwnsEscape: true });
+		await nextTick();
 		press({ key: 'Escape' });
 		expect(useZenMode().isZen.value).toBe(true);
+	});
+
+	it('lets a popover opened in Zen close first, and leaves Zen on the next press', async () => {
+		mountExit();
+		useZenMode().enterZen();
+		await nextTick();
+		const open = ref(false);
+		const popover = mount(
+			defineComponent({
+				setup() {
+					useEscapeToClose(open);
+					return () => h('div');
+				},
+			})
+		);
+		open.value = true;
+		await nextTick();
+
+		press({ key: 'Escape' });
+		expect(open.value).toBe(false);
+		expect(useZenMode().isZen.value).toBe(true);
+		await nextTick();
+		press({ key: 'Escape' });
+		expect(useZenMode().isZen.value).toBe(false);
+		expect(pageEscape).not.toHaveBeenCalled();
+		popover.unmount();
 	});
 
 	it('shows "Exit Zen" only in Zen, and it leaves Zen', async () => {
