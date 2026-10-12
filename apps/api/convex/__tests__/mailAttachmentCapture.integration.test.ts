@@ -44,6 +44,7 @@ const modules = import.meta.glob('../**/*.*s');
 let originalFetch: typeof globalThis.fetch;
 
 beforeEach(() => {
+	vi.useFakeTimers();
 	originalFetch = globalThis.fetch;
 	globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
 		const url = typeof input === 'string' ? input : input.toString();
@@ -56,21 +57,24 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	globalThis.fetch = originalFetch;
 	vi.restoreAllMocks();
 });
 
 /**
- * Run the capture `ingestFromWebhook` scheduled.
+ * Run the capture `ingestFromWebhook` scheduled, and everything else it set
+ * off, to the end.
  *
  * The webhook only stages the eligible parts and schedules the indexing with
  * no delay (plan E2): the MTA gives the notifier 10 s and re-POSTs the whole
  * message on a timeout, so the file rows appear once that zero-delay mutation
- * has run, not when the action returns.
+ * has run, not when the action returns. The file runs on fake timers, so
+ * this waits for every scheduled function rather than one zero-delay tick,
+ * which a loaded machine could outrun before the capture had started.
  */
 async function drainCapture(t: ReturnType<typeof convexTest>): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	await t.finishInProgressScheduledFunctions();
+	await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 /**
