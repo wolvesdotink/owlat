@@ -123,8 +123,7 @@ export async function deferIfDisplayOnly(
 	message: Doc<'mailMessages'>
 ): Promise<boolean> {
 	if (!(await isDisplayOnlyInterpretation(ctx, message))) return false;
-	await deferSource(ctx, interpretationSourceKey({ kind: 'mail', id: message._id }), DISPLAY_ONLY);
-	return true;
+	return deferSource(ctx, interpretationSourceKey({ kind: 'mail', id: message._id }), DISPLAY_ONLY);
 }
 
 /**
@@ -192,6 +191,15 @@ export function predecessorsPending(pending: { retryAt: number }) {
 /** The `errorCode` of {@link predecessorsPending}. */
 export const PREDECESSORS_PENDING = 'predecessors_pending';
 
+/**
+ * How a run treats its thread's earlier deferred mail (`InterpretArgs.predecessors`):
+ * absent reads them first and reschedules itself while some remain;
+ * `caller_continues` reads them first but leaves the reschedule to the caller
+ * (the Reply Queue classifier); `already_read` reads none (the loop selected
+ * this source as the oldest left).
+ */
+export type PredecessorMode = 'caller_continues' | 'already_read';
+
 /** A thread's deferred sources, in thread order (`sourceOrder.ts`; a legacy row without a key first). */
 function deferredInOrder(ctx: ReadCtx, threadId: Doc<'mailThreads'>['_id']) {
 	return ctx.db
@@ -211,14 +219,20 @@ export const oldestDeferredBefore = internalQuery({
 		if (args.source.kind !== 'mail' && args.source.kind !== 'outboundMail') return null;
 		const message = await ctx.db.get(args.source.id);
 		if (!message) return null;
-		const own = sourceOrderKey(message);
-		const oldest = await ctx.db
+		const ownKey = interpretationSourceKey(args.source);
+		// The source itself is never its own predecessor, even as a keyless
+		// (pre-key) deferred row, which sorts before every key: of the first
+		// two rows below its key, the first that is not itself.
+		const candidates = await ctx.db
 			.query('interpretSources')
 			.withIndex('by_mail_thread_deferred_order', (q) =>
-				q.eq('mailThreadId', message.threadId).eq('isDeferred', true).lt('sourceOrderKey', own)
+				q
+					.eq('mailThreadId', message.threadId)
+					.eq('isDeferred', true)
+					.lt('sourceOrderKey', sourceOrderKey(message))
 			)
-			.first();
-		return oldest?.source ?? null;
+			.take(2);
+		return candidates.find((row) => row.sourceKey !== ownKey)?.source ?? null;
 	},
 });
 
@@ -256,8 +270,10 @@ export const releaseGoneDeferred = internalMutation({
  * settle it (it waits for its category): the caller returns without running
  * its source, and the loop resumes at `retryAt`. By default this schedules
  * the source's own run; a caller that continues itself instead (the Reply
- * Queue classifier, which must apply the verdict) passes
- * `isContinuedByCaller`. A predecessor whose message is gone is released.
+ * Queue classifier, which must apply the verdict) passes `caller_continues`.
+ * `run` reads each selected predecessor in `already_read` mode, so it never
+ * re-enters this selection (Sol r5). A predecessor whose message is gone is
+ * released.
  * `run` is the interpretation run itself, passed in so this module never
  * imports the Node runtime.
  */
@@ -265,12 +281,16 @@ export async function runDeferredPredecessors(
 	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation' | 'scheduler'>,
 	source: InterpretationSource,
 	run: (source: InterpretationSource) => Promise<unknown>,
-	opts: { budget?: number; isContinuedByCaller?: boolean } = {}
+	opts: { budget?: number; predecessors?: PredecessorMode } = {}
 ): Promise<{ retryAt: number } | null> {
-	// Team Inbox threads never defer: no round trip for them.
+	// Team Inbox threads never defer: no round trip for them. A predecessor the
+	// loop selected is the oldest left: nothing older to read before it.
 	if (source.kind !== 'mail' && source.kind !== 'outboundMail') return null;
+	if (opts.predecessors === 'already_read') return null;
 	const comeBack = async (delayMs: number) => {
-		if (!opts.isContinuedByCaller) await ctx.scheduler.runAfter(delayMs, runOf(source), { source });
+		if (opts.predecessors !== 'caller_continues') {
+			await ctx.scheduler.runAfter(delayMs, runOf(source), { source });
+		}
 		return { retryAt: Date.now() + delayMs };
 	};
 	const budget = opts.budget ?? PREDECESSOR_BUDGET;

@@ -493,3 +493,106 @@ describe('D10: indexed thread order (Sol r4 F2)', () => {
 		}
 	});
 });
+
+/**
+ * Sol r5: a keyless deferred row (written before the order key) never matches
+ * its own predecessor lookup, a predecessor the loop selected is read without
+ * re-entering the selection, and every row deferral writes carries a key.
+ */
+describe('D10: keyless rows and predecessor mode (Sol r5)', () => {
+	it('a keyless deferred row and a later eager source settle with the real runner, no self-recursion', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { mailboxId, threadId, messageId: legacyId } = await seedMailThread(t, { text: INVOICE });
+		const legacy = { kind: 'mail' as const, id: legacyId };
+		// A deferred row as a release before the key wrote it: inserted directly.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('interpretSources', {
+				threadKind: 'mail',
+				mailThreadId: threadId,
+				source: legacy,
+				sourceKey: `mail:${legacyId}`,
+				eligibility: {
+					isLive: true,
+					isThreadMuted: false,
+					isBulkHeaderPresent: false,
+					isSenderKnown: true,
+				},
+				isDeferred: true,
+				deferredAt: now,
+				deferReason: 'display_only',
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+		// Its own lookup never returns itself.
+		expect(
+			await t.query(internal.mail.interpret.defer.oldestDeferredBefore, { source: legacy })
+		).toBeNull();
+
+		const cancelId = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{
+				text: CANCEL,
+				receivedAt: T0 + 60_000,
+			}
+		);
+		const cancel = { kind: 'mail' as const, id: cancelId };
+		await capture(t, cancel);
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, { source: cancel });
+
+		expect(out.status).toBe('complete');
+		expect(readOrder()).toEqual(['invoice', 'cancel']);
+		expect((await snapshotOf(t, legacy))?.isDeferred).toBeUndefined();
+	});
+
+	it('a predecessor read in already_read mode never re-enters the selection', async () => {
+		const runQuery = vi.fn();
+		const ctx = {
+			runQuery,
+			runMutation: vi.fn(),
+			scheduler: { runAfter: vi.fn() },
+		} as unknown as Parameters<typeof runDeferredPredecessors>[0];
+		const run = vi.fn();
+		const source = { kind: 'mail' as const, id: 'm1' as Id<'mailMessages'> };
+		expect(
+			await runDeferredPredecessors(ctx, source, run, { predecessors: 'already_read' })
+		).toBeNull();
+		expect(runQuery).not.toHaveBeenCalled();
+		expect(run).not.toHaveBeenCalled();
+	});
+
+	it('every deferred row carries its order key, and a source without one is not deferred', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, threadId, messageId } = await seedMailThread(t, { text: INVOICE });
+		const goneId = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{
+				text: CANCEL,
+				receivedAt: T0 + 60_000,
+			}
+		);
+		const results = await t.run(async (ctx) => {
+			await captureInterpretSource(ctx, { source: { kind: 'mail', id: messageId }, isLive: true });
+			await captureInterpretSource(ctx, { source: { kind: 'mail', id: goneId }, isLive: true });
+			// A legacy capture without a key, then its message gone.
+			const goneRow = await ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${goneId}`))
+				.first();
+			await ctx.db.patch(goneRow!._id, { sourceOrderKey: undefined });
+			await ctx.db.delete(goneId);
+			return {
+				kept: await deferSource(ctx, `mail:${messageId}`, 'display_only'),
+				gone: await deferSource(ctx, `mail:${goneId}`, 'display_only'),
+			};
+		});
+		expect(results).toEqual({ kept: true, gone: false });
+		const kept = await snapshotOf(t, { kind: 'mail', id: messageId });
+		expect(kept).toMatchObject({ isDeferred: true, sourceOrderKey: expect.any(String) });
+		expect((await snapshotOf(t, { kind: 'mail', id: goneId }))?.isDeferred).toBeUndefined();
+	});
+});

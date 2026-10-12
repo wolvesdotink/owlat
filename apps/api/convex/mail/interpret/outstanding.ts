@@ -127,18 +127,20 @@ export async function deferSource(
 	ctx: MutationCtx,
 	sourceKey: string,
 	reason: InterpretDeferReason
-): Promise<void> {
+): Promise<boolean> {
 	const snapshot = await snapshotOf(ctx, sourceKey);
-	if (!snapshot || snapshot.isDeferred === true) return;
-	const wasPending = snapshot.isOutstanding === true;
-	// A row captured before the order key existed gets it now: every deferred
-	// row is read in thread order (`defer.ts`).
+	if (!snapshot || snapshot.isDeferred === true) return false;
+	// Every deferred row carries its thread order (`defer.ts` reads deferred
+	// rows by it), written in this same mutation. A source without one (its
+	// message is gone, or it is no Postbox message) is not deferred.
 	const orderKey = snapshot.sourceOrderKey ?? (await orderKeyOfSnapshot(ctx, snapshot));
+	if (!orderKey) return false;
+	const wasPending = snapshot.isOutstanding === true;
 	await ctx.db.patch(snapshot._id, {
 		isOutstanding: undefined,
 		outstandingSince: undefined,
 		outstandingTries: undefined,
-		...(orderKey ? { sourceOrderKey: orderKey } : {}),
+		sourceOrderKey: orderKey,
 		isDeferred: true,
 		deferredAt: Date.now(),
 		deferReason: reason,
@@ -146,6 +148,7 @@ export async function deferSource(
 	const brief = await ensureBriefRow(ctx, threadRefFromFields(snapshot));
 	if (brief)
 		await shiftCounts(ctx, brief, { pending: wasPending ? -1 : 0, unread: 0, deferred: 1 });
+	return true;
 }
 
 /** The source has an outcome (see the module doc for the kinds). */

@@ -167,7 +167,7 @@ export const classifyThread = internalAction({
 		// continues later and the thread stays pending (needsReplyGates.ts).
 		const run = await runInterpretation(ctx, {
 			source: { kind: 'mail', id: latestInbound.messageId },
-			isContinuedByCaller: true,
+			predecessors: 'caller_continues',
 		});
 		if (await continuesLater(ctx, run, args)) return;
 		const projection = usableProjection(run);

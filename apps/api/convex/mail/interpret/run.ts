@@ -54,7 +54,7 @@ import {
 } from './schema';
 import { buildInterpretPromptParts, renderSegments } from './prompt';
 import { cachedPromptInput } from '../../lib/llm/promptCacheInput';
-import { predecessorsPending, runDeferredPredecessors } from './defer';
+import { predecessorsPending, runDeferredPredecessors, type PredecessorMode } from './defer';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
 import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
@@ -75,13 +75,12 @@ const MAX_RUN_ATTEMPTS = 2;
 
 export interface InterpretArgs {
 	source: InterpretationSource;
-	/** Ignored: the mode is the thread's current one, rechecked by the reducer. */
+	/** Ignored: the thread's current mode and the enqueue-time snapshot (`sources.ts`) decide. */
 	mode?: InterpretMode;
-	/** Ignored: eligibility comes from the snapshot taken at enqueue (`sources.ts`). */
 	isLive?: boolean;
 	precedence?: string;
 	listId?: string;
-	isContinuedByCaller?: boolean; // the caller resumes itself while D10 predecessors remain
+	predecessors?: PredecessorMode; // D10: how earlier deferred mail is handled (defer.ts)
 }
 
 export type InterpretRunResult =
@@ -202,7 +201,8 @@ export async function runInterpretation(
 	ctx: ActionCtx,
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
-	const readFirst = (source: InterpretationSource) => runInterpretation(ctx, { source });
+	const readFirst = (source: InterpretationSource) =>
+		runInterpretation(ctx, { source, predecessors: 'already_read' });
 	const pending = await runDeferredPredecessors(ctx, args.source, readFirst, args);
 	if (pending) return predecessorsPending(pending);
 	let reason: Restart['restart'] = 'sourceChanged';

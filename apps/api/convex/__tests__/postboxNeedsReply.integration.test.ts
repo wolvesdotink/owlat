@@ -360,7 +360,7 @@ describe('mail.needsReplyClassify.classifyThread', () => {
 		// The classifier continues itself while D10 predecessors remain.
 		expect(runInterpretationMock.mock.calls[0]?.[1]).toEqual({
 			source: { kind: 'mail', id: messageId },
-			isContinuedByCaller: true,
+			predecessors: 'caller_continues',
 		});
 	});
 
