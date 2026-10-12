@@ -25,9 +25,8 @@ import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { loadExtractableMail } from './knowledgeScreen';
-import { boundedRoot } from '../lib/llm/actionDeadline';
+import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
 import { rootRequest } from '../lib/llm/requestMeter';
-import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /**
  * Folders whose mail never feeds the graph: the delivery tail does not
