@@ -45,6 +45,12 @@ function makeCtx(shadowEnabled: boolean, recorded: Recorded[]) {
 			getBudgetStatus: { autonomousAutoSendAllowed: true },
 			interpretationHold: { reason: null },
 			itemCoverageCheck: { objections: [], reason: null, isEnforced: false },
+			appliedVerdictInputs: {
+				applied: [],
+				isTruncated: false,
+				isItemCoverageEnforced: false,
+				current: null,
+			},
 			getCircuitBreakersInternal: [],
 			checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
 			getMessage: {
@@ -102,6 +108,8 @@ describe('routeStep.execute — shadow mode', () => {
 				if (name.includes('interpretationHold')) return { reason: null };
 				if (name.includes('itemCoverageCheck'))
 					return { objections: [], reason: null, isEnforced: false };
+				if (name.includes('appliedVerdictInputs'))
+					return { applied: [], isTruncated: false, isItemCoverageEnforced: false, current: null };
 				if (name.includes('getCircuitBreakersInternal')) return [];
 				if (name.includes('checkPermissionInternal'))
 					return { mode: 'enabled', allowed: false, reason: 'below threshold' };
@@ -141,6 +149,12 @@ describe('routeStep.execute — shadow mode', () => {
 				getBudgetStatus: { autonomousAutoSendAllowed: true },
 				interpretationHold: { reason: null },
 				itemCoverageCheck: { objections: [], reason: null, isEnforced: false },
+				appliedVerdictInputs: {
+					applied: [],
+					isTruncated: false,
+					isItemCoverageEnforced: false,
+					current: null,
+				},
 				getCircuitBreakersInternal: [],
 				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
 				getMessage: {
@@ -170,6 +184,12 @@ describe('routeStep.execute — shadow mode', () => {
 				getBudgetStatus: { autonomousAutoSendAllowed: true },
 				interpretationHold: { reason: null },
 				itemCoverageCheck: { objections: [], reason: null, isEnforced: false },
+				appliedVerdictInputs: {
+					applied: [],
+					isTruncated: false,
+					isItemCoverageEnforced: false,
+					current: null,
+				},
 				getCircuitBreakersInternal: [],
 				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
 				getMessage: {
@@ -202,6 +222,12 @@ describe('routeStep.execute — shadow mode', () => {
 				getBudgetStatus: { autonomousAutoSendAllowed: true },
 				interpretationHold: { reason: null },
 				itemCoverageCheck: { objections: [], reason: null, isEnforced: false },
+				appliedVerdictInputs: {
+					applied: [],
+					isTruncated: false,
+					isItemCoverageEnforced: false,
+					current: null,
+				},
 				getCircuitBreakersInternal: [],
 				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
 				getMessage: {

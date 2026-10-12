@@ -113,3 +113,45 @@ export const autoSendVerdictInputs = internalQuery({
 		};
 	},
 });
+
+/** Artifacts of one task one message's read covers when looking for applied verdicts. Bounded. */
+const APPLIED_SCAN = 256;
+
+/**
+ * The applied-decision gate's inputs (`agent/steps/route/appliedDecisionGate.ts`):
+ * the ADVISORY artifacts of `tasks` about the message (enforced verdicts that
+ * were applied; shadow observations are left out), and what they are compared
+ * with now. `isTruncated`: more artifacts than the bound, and the gate holds.
+ */
+export const appliedVerdictInputs = internalQuery({
+	args: { inboundMessageId: v.id('inboundMessages'), tasks: v.array(aiTaskNameValidator) },
+	handler: async (ctx, args) => {
+		const applied: StoredVerdict[] = [];
+		let isTruncated = false;
+		for (const task of args.tasks) {
+			const rows = await ctx.db
+				.query('decisionArtifacts')
+				.withIndex('by_inbound_message', (q) =>
+					q.eq('inboundMessageId', args.inboundMessageId).eq('task', task)
+				)
+				.take(APPLIED_SCAN + 1);
+			isTruncated ||= rows.length > APPLIED_SCAN;
+			applied.push(...rows.slice(0, APPLIED_SCAN).filter((row) => row.kind === 'advisory'));
+		}
+		const isCoverageEnforced = await isItemCoverageEnforced(ctx);
+		if (applied.length === 0) {
+			return { applied, isTruncated, isItemCoverageEnforced: isCoverageEnforced, current: null };
+		}
+		const message = await ctx.db.get(args.inboundMessageId);
+		return {
+			applied,
+			isTruncated,
+			isItemCoverageEnforced: isCoverageEnforced,
+			current: {
+				policyVersion: (await loadRoutingPolicy(ctx)).policyVersion,
+				isDecisionPlaneOn: await isFeatureEnabled(ctx, 'ai.decisionPlane'),
+				language: message?.classification?.language,
+			},
+		};
+	},
+});

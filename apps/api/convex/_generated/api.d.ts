@@ -186,6 +186,7 @@ import type * as agent_steps_draft_recall from '../agent/steps/draft/recall.js';
 import type * as agent_steps_draft_sanitize from '../agent/steps/draft/sanitize.js';
 import type * as agent_steps_draft_writerRoute from '../agent/steps/draft/writerRoute.js';
 import type * as agent_steps_index from '../agent/steps/index.js';
+import type * as agent_steps_route_appliedDecisionGate from '../agent/steps/route/appliedDecisionGate.js';
 import type * as agent_steps_route_autoSendGates from '../agent/steps/route/autoSendGates.js';
 import type * as agent_steps_route_index from '../agent/steps/route/index.js';
 import type * as agent_steps_route_pluginAutoSendGates from '../agent/steps/route/pluginAutoSendGates.js';
@@ -1914,6 +1915,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/draft/sanitize': typeof agent_steps_draft_sanitize;
 	'agent/steps/draft/writerRoute': typeof agent_steps_draft_writerRoute;
 	'agent/steps/index': typeof agent_steps_index;
+	'agent/steps/route/appliedDecisionGate': typeof agent_steps_route_appliedDecisionGate;
 	'agent/steps/route/autoSendGates': typeof agent_steps_route_autoSendGates;
 	'agent/steps/route/index': typeof agent_steps_route_index;
 	'agent/steps/route/pluginAutoSendGates': typeof agent_steps_route_pluginAutoSendGates;
