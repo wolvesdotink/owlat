@@ -39,6 +39,7 @@ import { logError, logWarn } from '../lib/runtimeLog';
 import { deleteBlobQuietly } from '../lib/storageBlobs';
 import { receiveInboundMail } from './receiveInbound';
 import { resolveAttachmentGate } from '../mail/deliveryPipeline/captureGate';
+import { indexingMarkerOf } from '../mail/deliveryPipeline/captureMarker';
 import { headerEvidenceFromMap } from '../lib/mailEvidence';
 
 /** A staged raw message: sealed into storage, decoded, and scanned. */
@@ -303,29 +304,6 @@ async function dropStagedBlob(
 }
 
 /**
- * The marker each skip reason renders as.
- *
- * A TOTAL table, not a ternary chain: `satisfies` makes a new
- * `AttachmentCaptureOutcome['skippedReason']` member a compile error here
- * instead of a row that silently renders as though the assistant had read the
- * file — the exact defect these markers exist to close.
- */
-const SKIP_MARKERS = {
-	spam: 'skipped_spam',
-	automated: 'skipped_automated',
-	unverified: 'skipped_unverified',
-	budget: 'skipped_budget',
-	unscanned: 'skipped_unscanned',
-	cap: 'skipped_cap',
-	refused_type: 'skipped_refused_type',
-	too_large: 'skipped_too_large',
-	unsupported_type: 'skipped_unsupported',
-} as const satisfies Record<
-	NonNullable<AttachmentCaptureOutcome['skippedReason']>,
-	AttachmentIndexing
->;
-
-/**
  * Turn what capture did into the marker the thread view reads.
  *
  * EVERY outcome is recorded, not just the budget one: a part refused for its
@@ -337,22 +315,8 @@ async function recordCaptureOutcome(
 	inboundMessageId: Id<'inboundMessages'>,
 	outcome: AttachmentCaptureOutcome
 ): Promise<void> {
-	const marker = pickIndexingMarker(outcome);
+	const marker = indexingMarkerOf(outcome);
 	if (marker) await markIndexing(ctx, inboundMessageId, marker);
-}
-
-/**
- * Which single line this outcome renders as, or none.
- *
- * A skip outranks the placeholder note: "the assistant has not read some of
- * these" is the stronger sentence, and only one line is rendered. An if-ladder
- * rather than a three-level ternary, because the ORDER is the policy and a
- * reader should not have to re-associate `?:` to see it.
- */
-function pickIndexingMarker(outcome: AttachmentCaptureOutcome): AttachmentIndexing | undefined {
-	if (outcome.skippedReason) return SKIP_MARKERS[outcome.skippedReason];
-	if (outcome.indexed === 0) return undefined;
-	return outcome.namesOnly ? 'indexed_placeholder' : 'indexed';
 }
 
 /** Record the capture outcome on the row; never fails the ingest. */

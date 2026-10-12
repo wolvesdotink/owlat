@@ -46,6 +46,7 @@ import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { prepareInboundMessage } from './deliveryPipeline/ingest';
 import {
 	indexStagedAttachments,
+	markCaptureFailed,
 	scheduleStagedCapture,
 	stagedCaptureArgs,
 } from './deliveryPipeline/deferredCapture';
@@ -203,6 +204,7 @@ export const ingestFromWebhook = internalAction({
 			// L6, behind `attachmentGates` (off by default).
 			const gateSkip = await resolveAttachmentGate(ctx, mailboxGateSignals(result, prepared));
 			await scheduleStagedCapture(ctx, {
+				mailMessageId: result.messageId,
 				gateSkip,
 				parts,
 				withheld,
@@ -231,6 +233,7 @@ export const ingestFromWebhook = internalAction({
 			});
 		} catch (err) {
 			logError('[Mail Webhook] attachment capture failed', err);
+			await markCaptureFailed(ctx, result.messageId);
 		}
 
 		return result;

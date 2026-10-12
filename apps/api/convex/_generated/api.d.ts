@@ -1146,6 +1146,7 @@ import type * as mail_deliveryPipeline_attachmentParts from '../mail/deliveryPip
 import type * as mail_deliveryPipeline_capture from '../mail/deliveryPipeline/capture.js';
 import type * as mail_deliveryPipeline_captureGate from '../mail/deliveryPipeline/captureGate.js';
 import type * as mail_deliveryPipeline_captureIndex from '../mail/deliveryPipeline/captureIndex.js';
+import type * as mail_deliveryPipeline_captureMarker from '../mail/deliveryPipeline/captureMarker.js';
 import type * as mail_deliveryPipeline_deferredCapture from '../mail/deliveryPipeline/deferredCapture.js';
 import type * as mail_deliveryPipeline_ingest from '../mail/deliveryPipeline/ingest.js';
 import type * as mail_deliveryPipeline_ingestFields from '../mail/deliveryPipeline/ingestFields.js';
@@ -2780,6 +2781,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/deliveryPipeline/capture': typeof mail_deliveryPipeline_capture;
 	'mail/deliveryPipeline/captureGate': typeof mail_deliveryPipeline_captureGate;
 	'mail/deliveryPipeline/captureIndex': typeof mail_deliveryPipeline_captureIndex;
+	'mail/deliveryPipeline/captureMarker': typeof mail_deliveryPipeline_captureMarker;
 	'mail/deliveryPipeline/deferredCapture': typeof mail_deliveryPipeline_deferredCapture;
 	'mail/deliveryPipeline/ingest': typeof mail_deliveryPipeline_ingest;
 	'mail/deliveryPipeline/ingestFields': typeof mail_deliveryPipeline_ingestFields;

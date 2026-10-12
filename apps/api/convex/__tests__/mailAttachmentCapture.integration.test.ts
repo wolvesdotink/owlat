@@ -768,3 +768,136 @@ describe('mail.delivery.captureStagedAttachments', () => {
 		expect(await t.run((ctx) => ctx.storage.get(storageId))).toBeNull();
 	});
 });
+
+/**
+ * The Postbox capture marker (`mailMessages.attachmentIndexing`, Sol r1 F3):
+ * what capture did with a hosted MX message's files is on the message, for
+ * the L6 gates as for every other reason, and the list rows carry it.
+ */
+describe('mail.delivery.ingestFromWebhook — the attachment marker', () => {
+	async function deliver(
+		t: ReturnType<typeof setupTest>,
+		id: string,
+		extra: { raw?: string; dmarcResult?: string } = {}
+	) {
+		const result = await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: id,
+			rawBytesBase64: Buffer.from(extra.raw ?? buildRawEml(), 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: `<${id}@example.com>`,
+			attachments: [{ filename: 'notes.txt', contentType: 'text/plain', size: 42, partIndex: '0' }],
+			...(extra.dmarcResult ? { dmarcResult: extra.dmarcResult, dmarcPolicy: 'none' } : {}),
+		});
+		await drainCapture(t);
+		if (!('messageId' in result)) throw new Error('not delivered');
+		const message = await t.run((ctx) => ctx.db.get(result.messageId));
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		return { marker: message?.attachmentIndexing, files };
+	}
+
+	async function enforceGates(t: ReturnType<typeof setupTest>) {
+		await t.run((ctx) =>
+			ctx.db.insert('aiRoutingPolicy', {
+				attachmentGates: 'enforce',
+				policyVersion: 1,
+				updatedAt: Date.now(),
+				updatedBy: 'admin',
+			})
+		);
+	}
+
+	/** The same message, sent to a mailing list. */
+	const listMail = () =>
+		buildRawEml().replace(
+			'Subject: with attachment',
+			'Subject: with attachment\r\nList-Id: <news.example.com>'
+		);
+
+	it('marks a captured message indexed', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const { marker, files } = await deliver(t, 'mark-indexed');
+		expect(marker).toBe('indexed');
+		expect(files).toHaveLength(1);
+	});
+
+	it('gates off: a mailing-list message is captured and marked indexed, as before', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const { marker, files } = await deliver(t, 'mark-list-off', { raw: listMail() });
+		expect(marker).toBe('indexed');
+		expect(files).toHaveLength(1);
+	});
+
+	it('gates on: a mailing-list message is not captured, and the message says so', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		await enforceGates(t);
+		const { marker, files } = await deliver(t, 'mark-list-on', { raw: listMail() });
+		expect(marker).toBe('skipped_automated');
+		expect(files).toHaveLength(0);
+		// The reader's list rows carry the marker beside the attachments.
+		const row = await t.run(async (ctx) => {
+			const { toMailListRow } = await import('../mail/mailbox/rowThreadState');
+			const message = await ctx.db.query('mailMessages').first();
+			return toMailListRow(message!);
+		});
+		expect(row.attachmentIndexing).toBe('skipped_automated');
+	});
+
+	it('records the existing skip reasons too: an unverifiable sender', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const { marker, files } = await deliver(t, 'mark-dmarc', { dmarcResult: 'fail' });
+		expect(marker).toBe('skipped_unverified');
+		expect(files).toHaveLength(0);
+	});
+});
+
+describe('mail.delivery.captureStagedAttachments — the attachment marker', () => {
+	it('records the scheduled outcome on the message, and nothing for a previous-release job', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const { messageId } = (await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'staged-marker',
+			rawBytesBase64: Buffer.from(buildRawEml(), 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: '<staged-marker@example.com>',
+			attachments: [],
+		})) as { messageId: Id<'mailMessages'> };
+		await drainCapture(t);
+		// Start from an unmarked message (its own capture marked it already).
+		await t.run((ctx) => ctx.db.patch(messageId, { attachmentIndexing: undefined }));
+		const blob = () =>
+			t.run((ctx) => ctx.storage.store(new Blob(['a staged document'], { type: 'text/plain' })));
+		const base = {
+			messageId: '<staged-marker@example.com>',
+			from: 'Bob <bob@example.com>',
+			captureSource: 'mailbox' as const,
+		};
+		// A job scheduled by the previous release carries no message id.
+		await t.mutation(internal.mail.delivery.captureStagedAttachments, {
+			...base,
+			parts: [{ storageId: await blob(), filename: 'a.txt', contentType: 'text/plain', size: 17 }],
+		});
+		expect((await t.run((ctx) => ctx.db.get(messageId)))?.attachmentIndexing).toBeUndefined();
+		await t.mutation(internal.mail.delivery.captureStagedAttachments, {
+			...base,
+			mailMessageId: messageId,
+			parts: [{ storageId: await blob(), filename: 'b.txt', contentType: 'text/plain', size: 17 }],
+		});
+		expect((await t.run((ctx) => ctx.db.get(messageId)))?.attachmentIndexing).toBe('indexed');
+	});
+});

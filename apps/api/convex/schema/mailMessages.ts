@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
 import { spamVerdictValidator } from '../lib/convexValidators';
-import { virusVerdictValidator } from '../lib/literalValidators';
+import { attachmentIndexingValidator, virusVerdictValidator } from '../lib/literalValidators';
 import {
 	mailMessageAttachmentValidator,
 	mailUnsubscribeValidator,
@@ -153,6 +153,13 @@ export const mailMessagesTables = {
 		spamScore: v.optional(v.number()),
 		spamVerdict: v.optional(spamVerdictValidator),
 		virusVerdict: v.optional(virusVerdictValidator),
+		// What attachment capture did with this message's files (indexed, names
+		// only, or why they were left out): the same marker the Team Inbox row
+		// carries (`inboundMessages.attachmentIndexing`), written by the hosted
+		// MX capture (`mail/deliveryPipeline/deferredCapture.ts`). Absent means
+		// nothing to capture, synced or imported mail, or a message older than
+		// the marker.
+		attachmentIndexing: v.optional(attachmentIndexingValidator),
 		spfResult: v.optional(v.string()),
 		dkimResult: v.optional(v.string()),
 		dmarcResult: v.optional(v.string()),
