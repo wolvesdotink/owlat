@@ -25,6 +25,13 @@
  *   Each path is sized on its own; the run never holds for a path it will
  *   not take, and a claim check never asks for a hold of its own.
  *
+ * The language calls (the extraction, the language verifier) are one
+ * allocation on the language plane; the claim checks are a second on the
+ * decision plane (Sol r3 F1). Both are admitted in ONE admission mutation
+ * (`aiRouting/admission.ts reserveRun`), each against its own plane's
+ * capacity and the shared ceiling: either both hold or neither does. Each
+ * settles on its own plane, its unknown-usage estimates included.
+ *
  * A refused hold defers the whole run before anything is spent (`run.ts`).
  * An admitted one is drawn on by every call of the run: their spend targets
  * carry its id, so the dispatch reserves nothing more and cannot refuse
@@ -48,7 +55,7 @@ import {
 	utf8Bytes,
 } from '../../lib/llm/admissionPort';
 import type { AdmissionPriority } from '../../lib/validators/aiRouting';
-import { reserveHold } from '../../analytics/admissionPorts';
+import { reserveHolds } from '../../analytics/admissionPorts';
 import { INTERPRET_TEXT_LIMITS, MAX_QUOTES_PER_CLAIM } from './schema';
 import { CLAIM_STATEMENT_CHARS } from './claimCheck';
 import { CLAIM_CHECK_QUESTIONS } from '../../lib/decision/catalog';
@@ -93,8 +100,10 @@ export interface InterpretRunHold {
 	verifyTarget(batch: number): HoldTarget;
 	/** Claim check `index`'s hold and request id (0-based), on the decision path. */
 	claimCheckTarget(index: number): HoldTarget;
-	/** Count a call's provider requests (its meter's, retries included). */
+	/** Count a language call's provider requests (its meter's, retries included). */
 	count(requests: number): void;
+	/** Count a claim check's provider requests, on the decision allocation. */
+	countClaimChecks(requests: number): void;
 	/** Settle against the counted requests, or release when none was sent. Once. */
 	settle(): Promise<void>;
 }
@@ -104,6 +113,7 @@ const NO_RUN_HOLD: InterpretRunHold = Object.freeze({
 	verifyTarget: () => ({}),
 	claimCheckTarget: () => ({}),
 	count: () => {},
+	countClaimChecks: () => {},
 	settle: async () => {},
 });
 
@@ -207,64 +217,125 @@ export async function admitInterpretRun(
 	});
 	const plan = opts.verify;
 	const claims = plan.kind === 'none' ? 0 : Math.min(plan.claims, MAX_VERIFY_CLAIMS);
-	// One bound per call of the path the run will take, and that many calls.
+	// The path the run will take: the language verifier's calls on the
+	// language allocation, or the claim checks on a decision allocation of
+	// their own (Sol r3 F1). One bound per call, and that many calls.
 	const verify =
-		plan.kind === 'decision'
-			? claimCheckBound(plan.plane)
-			: callBound(opts.verifyModel, 'mail.verify', { bytes: verifyRequestBytes(), messages: 1 });
-	const verifyCalls = plan.kind === 'language' ? Math.ceil(claims / VERIFY_BATCH_SIZE) : claims;
-	const microusd = extract.microusd + verifyCalls * verify.microusd;
-	if (microusd === 0) return NO_RUN_HOLD;
+		plan.kind === 'language'
+			? callBound(opts.verifyModel, 'mail.verify', { bytes: verifyRequestBytes(), messages: 1 })
+			: undefined;
+	const checks = plan.kind === 'decision' ? claimCheckBound(plan.plane) : undefined;
+	const verifyCalls = verify ? Math.ceil(claims / VERIFY_BATCH_SIZE) : 0;
+	const checkCalls = checks ? claims : 0;
 	// Every call of the run gets its request id now, so each of its attempts has
-	// its own bound on the hold: unknown usage is charged at the extraction's or
-	// the verifier's own bound, never one at the other's (Sol r5 F2).
+	// its own bound on its allocation: unknown usage is charged at that call's
+	// own bound, never at another's (Sol r5 F2).
 	const extractRequestId = globalThis.crypto.randomUUID();
 	const verifyRequestIds = Array.from({ length: verifyCalls }, () =>
 		globalThis.crypto.randomUUID()
 	);
+	const checkRequestIds = Array.from({ length: checkCalls }, () => globalThis.crypto.randomUUID());
 	const keyed = (requestId: string, call: { maxRequests: number; maxRequestMicrousd: number }) =>
 		Array.from({ length: call.maxRequests }, (_, index) => ({
 			requestId,
 			attempt: index + 1,
 			microusd: call.maxRequestMicrousd,
 		}));
-	const [first, ...rest] = [
+	const languageBounds = [
 		...keyed(extractRequestId, extract),
-		...verifyRequestIds.flatMap((requestId) => keyed(requestId, verify)),
+		...(verify ? verifyRequestIds.flatMap((requestId) => keyed(requestId, verify)) : []),
 	];
-	if (!first) return NO_RUN_HOLD;
-	const held = await reserveHold(ctx, {
-		task: 'mail.extract',
-		plane: 'language',
-		budgetClass: 'standard',
-		priority: opts.priority,
-		root: opts.root,
-		microusd,
-		maxRequests: extract.maxRequests + verifyCalls * verify.maxRequests,
+	const decisionBounds = checks
+		? checkRequestIds.flatMap((requestId) => keyed(requestId, checks))
+		: [];
+	const languageMicrousd = extract.microusd + verifyCalls * (verify?.microusd ?? 0);
+	const decisionMicrousd = checkCalls * (checks?.microusd ?? 0);
+	const allocations = [
+		allocation({
+			task: 'mail.extract',
+			plane: 'language',
+			microusd: languageMicrousd,
+			maxRequests: extract.maxRequests + verifyCalls * (verify?.maxRequests ?? 0),
+			bounds: languageBounds,
+			call: extract,
+		}),
+		checks
+			? allocation({
+					task: 'mail.claim_check',
+					plane: 'decision',
+					microusd: decisionMicrousd,
+					maxRequests: checkCalls * checks.maxRequests,
+					bounds: decisionBounds,
+					call: checks,
+				})
+			: null,
+	];
+	const wanted = allocations.filter((a): a is NonNullable<typeof a> => a !== null);
+	if (wanted.length === 0) return NO_RUN_HOLD;
+	// Both allocations in ONE admission mutation: refused, nothing is held.
+	const ids = await reserveHolds(
+		ctx,
+		wanted.map((a) => ({
+			...a,
+			budgetClass: 'standard' as const,
+			priority: opts.priority,
+			root: opts.root,
+		}))
+	);
+	const languageId = wanted[0]?.plane === 'language' ? (ids[0] ?? undefined) : undefined;
+	const decisionIndex = wanted.findIndex((a) => a.plane === 'decision');
+	const decisionId = decisionIndex >= 0 ? (ids[decisionIndex] ?? undefined) : undefined;
+	if (!languageId && !decisionId) return NO_RUN_HOLD;
+	const language = settleable(ctx, languageId);
+	const decision = settleable(ctx, decisionId);
+	const target = (reservationId: string | undefined, requestId: string | undefined) =>
+		reservationId ? (requestId ? { reservationId, requestId } : { reservationId }) : {};
+	return {
+		extractTarget: target(languageId, extractRequestId),
+		verifyTarget: (batch) => target(languageId, verifyRequestIds[batch]),
+		claimCheckTarget: (index) => target(decisionId, checkRequestIds[index]),
+		count: language.count,
+		countClaimChecks: decision.count,
+		settle: async () => {
+			await Promise.all([language.settle(), decision.settle()]);
+		},
+	};
+}
+
+/** One allocation of the run's path, or null when it costs nothing (a local engine). */
+function allocation(opts: {
+	readonly task: AiTaskName;
+	readonly plane: 'language' | 'decision';
+	readonly microusd: number;
+	readonly maxRequests: number;
+	readonly bounds: readonly { requestId: string; attempt: number; microusd: number }[];
+	readonly call: object;
+}) {
+	const call = opts.call as { readonly modelId?: string; readonly endpoint?: string };
+	const [first, ...rest] = opts.bounds;
+	if (opts.microusd === 0 || !first) return null;
+	return {
+		task: opts.task,
+		plane: opts.plane,
+		microusd: opts.microusd,
+		maxRequests: opts.maxRequests,
 		requestBound: first,
 		requestBounds: rest,
-		...('modelId' in extract ? { modelId: extract.modelId } : {}),
-		...('endpoint' in extract && extract.endpoint ? { endpoint: extract.endpoint } : {}),
-	});
-	if (!held) return NO_RUN_HOLD;
-	const { reservationId } = held;
+		...(call.modelId ? { modelId: call.modelId } : {}),
+		...(call.endpoint ? { endpoint: call.endpoint } : {}),
+	};
+}
+
+/** One allocation's request count, and its settlement (released when nothing was sent). Once. */
+function settleable(ctx: ActionCtx, reservationId: string | undefined) {
 	let requests = 0;
 	let isSettled = false;
 	return {
-		extractTarget: { reservationId, requestId: extractRequestId },
-		verifyTarget: (batch) => {
-			const requestId = plan.kind === 'language' ? verifyRequestIds[batch] : undefined;
-			return requestId ? { reservationId, requestId } : { reservationId };
-		},
-		claimCheckTarget: (index) => {
-			const requestId = plan.kind === 'decision' ? verifyRequestIds[index] : undefined;
-			return requestId ? { reservationId, requestId } : { reservationId };
-		},
-		count: (n) => {
+		count: (n: number) => {
 			requests += n;
 		},
 		settle: async () => {
-			if (isSettled) return;
+			if (!reservationId || isSettled) return;
 			isSettled = true;
 			if (requests === 0) {
 				await ctx
@@ -272,7 +343,7 @@ export async function admitInterpretRun(
 					.catch(() => undefined);
 				return;
 			}
-			// One ledger row per provider request: the hold settles once all are in.
+			// One ledger row per provider request: the allocation settles once all are in.
 			await ctx
 				.runMutation(internal.aiRouting.admission.settle, {
 					reservationId,

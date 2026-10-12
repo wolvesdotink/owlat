@@ -101,6 +101,54 @@ export async function reserveHold(
 	return verdict.isHeld ? { reservationId } : null;
 }
 
+/**
+ * Reserve several allocations of one run at once, or throw
+ * {@link AdmissionRefusedError} with nothing held (`aiRouting/admission.ts
+ * reserveRun`). Returns each allocation's hold id, or null where nothing
+ * needed holding (no ceiling, a $0 allocation).
+ */
+export async function reserveHolds(
+	ctx: object,
+	requests: readonly HoldRequest[]
+): Promise<(string | null)[]> {
+	const applies = requests.map((request) => admissionApplies(request.budgetClass));
+	if (!applies.some(Boolean)) return requests.map(() => null);
+	if (!hasRunMutation(ctx)) throw new AdmissionRefusedError('spend_unverifiable', 'unverifiable');
+	const now = Date.now();
+	const allocations = requests.map((request) => {
+		const reservationId = globalThis.crypto.randomUUID();
+		const deadlineAt = request.deadlineAt ?? now + ACTION_LIMIT_MS;
+		return {
+			reservationId,
+			rootRequestId: request.root?.rootRequestId ?? `call:${reservationId}`,
+			...(request.root?.parentCallId ? { parentCallId: request.root.parentCallId } : {}),
+			plane: request.plane,
+			task: request.task,
+			budgetClass: request.budgetClass,
+			priority: request.priority,
+			heldMicrousd: request.microusd,
+			maxRequests: request.maxRequests,
+			requestBound: request.requestBound,
+			...(request.requestBounds?.length ? { requestBounds: [...request.requestBounds] } : {}),
+			...(request.modelId ? { modelId: request.modelId } : {}),
+			...(request.endpoint ? { endpoint: request.endpoint } : {}),
+			expiresAt: Math.max(deadlineAt, now) + HOLD_GRACE_MS,
+		};
+	});
+	let verdict;
+	try {
+		verdict = await ctx.runMutation(internal.aiRouting.admission.reserveRun, { allocations });
+	} catch {
+		// The reservation state could not be written or read: refuse (D1).
+		throw new AdmissionRefusedError('spend_unverifiable', 'unverifiable');
+	}
+	if (!verdict.isAdmitted) throw new AdmissionRefusedError(verdict.reason, verdict.limit);
+	const held = new Set(verdict.heldReservationIds);
+	return allocations.map((allocation) =>
+		held.has(allocation.reservationId) ? allocation.reservationId : null
+	);
+}
+
 /** Release a hold that spent nothing. Best effort: the expiry sweep settles a hold this misses. */
 export async function releaseHold(ctx: object, reservationId: string): Promise<void> {
 	if (!hasRunMutation(ctx)) return;

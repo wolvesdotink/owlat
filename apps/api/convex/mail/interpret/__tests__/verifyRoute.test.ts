@@ -361,7 +361,9 @@ describe('the hold plan (Sol r2 F2): one hold sized for the path that runs', () 
 				reservationId: 'run-hold',
 				requestId: `req-${index}`,
 			}),
-			count,
+			// The language counter is not the claim checks' (their own allocation).
+			count: vi.fn(),
+			countClaimChecks: count,
 		} as never;
 		await routed(ctxWith({ claimVerification: 'enforce' }), CLAIMS.slice(0, 2), {
 			source,

@@ -239,7 +239,11 @@ async function checkClaims(
 		const target = hold?.claimCheckTarget(index);
 		const outerHold =
 			hold && target?.reservationId && target.requestId
-				? { reservationId: target.reservationId, requestId: target.requestId, count: hold.count }
+				? {
+						reservationId: target.reservationId,
+						requestId: target.requestId,
+						count: hold.countClaimChecks,
+					}
 				: undefined;
 		const pending = askClaim(ctx, run, claim, { onCallError, ...(outerHold ? { outerHold } : {}) });
 		if (pending === null) {
