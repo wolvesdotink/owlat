@@ -7813,7 +7813,7 @@
 						},
 						"degraded": {
 							"breakerOpen": "Die Ebene ist so oft ausgefallen, dass sie vorerst abgeschaltet wurde. Bis sie sich erholt, laufen die Entscheidungen so wie vor ihrer Einrichtung.",
-							"keyMissing": "Für diesen Anbieter ist kein Schlüssel hinterlegt. Sofern die Installation nicht TYPESAFE_API_KEY in ihrer Umgebung bereitstellt, beantwortet stattdessen dein Sprachmodell jede Entscheidung.",
+							"keyMissing": "Für diesen Anbieter ist kein Schlüssel hinterlegt. Sofern die Installation nicht TYPESAFE_API_KEY in ihrer Umgebung bereitstellt, werden Entscheidungen abgelehnt, ohne Ausweichen auf das Sprachmodell, bis ein gültiger Schlüssel vorliegt.",
 							"languageBacked": "Dein Sprachmodell beantwortet diese Entscheidungen. Es liefert ein Label ohne kalibrierte Wahrscheinlichkeit; eine Zahl, die hier nach Konfidenz aussieht, ist die Selbsteinschätzung des Modells.",
 							"localUncalibrated": "Das lokale Modell läuft auf deinem Server und liefert echte Wahrscheinlichkeiten, aber noch hat niemand gemessen, wie gut sie zur Wirklichkeit passen. Bis dahin liest kein Schwellenwert sie aus.",
 							"testFailed": "Der letzte Schlüsseltest endete mit einem Fehler, die gespeicherte Konfiguration ist also möglicherweise nicht lauffähig.",
@@ -13292,7 +13292,7 @@
 						"label": "Klassifikatoren im Hintergrund"
 					}
 				},
-				"keyFromEnvironment": "Hier ist noch kein Schlüssel hinterlegt. Das Speichern gelingt trotzdem, wenn die Installation TYPESAFE_API_KEY in ihrer Umgebung bereitstellt; andernfalls löst die Ebene auf dein Sprachmodell auf.",
+				"keyFromEnvironment": "Hier ist noch kein Schlüssel hinterlegt. Das Speichern gelingt trotzdem, wenn die Installation TYPESAFE_API_KEY in ihrer Umgebung bereitstellt; andernfalls werden Entscheidungen abgelehnt, bis ein gültiger Schlüssel vorliegt.",
 				"providers": {
 					"llm": {
 						"hint": "Kein Dritter. Dieselben Fragen gehen an dein konfiguriertes Sprachmodell, das sie ohne kalibrierte Wahrscheinlichkeiten beantwortet.",

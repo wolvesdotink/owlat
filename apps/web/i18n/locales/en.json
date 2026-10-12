@@ -7813,7 +7813,7 @@
 						},
 						"degraded": {
 							"breakerOpen": "The plane has failed often enough to be cut off for the moment. Until it recovers, judgements run the way they did before it was configured.",
-							"keyMissing": "No key is stored for this provider. Unless this deployment supplies TYPESAFE_API_KEY in its environment, every judgement resolves to your language model instead.",
+							"keyMissing": "No key is stored for this provider. Unless this deployment supplies TYPESAFE_API_KEY in its environment, decisions are refused, with no fallback to the language model, until a valid key is in place.",
 							"languageBacked": "Your language model is answering these judgements. It returns a label without a calibrated probability, so a number that looks like confidence here is the model's own guess about itself.",
 							"localUncalibrated": "The local model runs on your server and returns real probabilities, but nobody has measured how well they match reality yet. No threshold reads them until that has been done.",
 							"testFailed": "The last key test came back with an error, so the stored configuration may not be able to run.",
@@ -13292,7 +13292,7 @@
 						"label": "Background classifiers"
 					}
 				},
-				"keyFromEnvironment": "No key here yet. Saving still works if this deployment supplies TYPESAFE_API_KEY in its environment; otherwise the plane resolves to your language model.",
+				"keyFromEnvironment": "No key here yet. Saving still works if this deployment supplies TYPESAFE_API_KEY in its environment; otherwise decisions are refused until a valid key is in place.",
 				"providers": {
 					"llm": {
 						"hint": "No third party. The same questions go to your configured language model, which answers them without calibrated probabilities.",
