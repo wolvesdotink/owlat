@@ -16168,6 +16168,7 @@
 			},
 			"resourceFilters": {
 				"aiProviderConfig": "AI providers",
+				"aiRoutingPolicy": "AI routing",
 				"all": "All resources",
 				"apiKey": "API keys",
 				"automation": "Automations",
@@ -16186,6 +16187,7 @@
 			},
 			"resources": {
 				"aiProviderConfig": "AI provider",
+				"aiRoutingPolicy": "AI routing policy",
 				"apiKey": "API key",
 				"automation": "Automation",
 				"blocklist": "Blocklist",

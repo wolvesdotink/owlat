@@ -16168,6 +16168,7 @@
 			},
 			"resourceFilters": {
 				"aiProviderConfig": "KI-Anbieter",
+				"aiRoutingPolicy": "KI-Routing",
 				"all": "Alle Ressourcen",
 				"apiKey": "API-Schlüssel",
 				"automation": "Automationen",
@@ -16186,6 +16187,7 @@
 			},
 			"resources": {
 				"aiProviderConfig": "KI-Anbieter",
+				"aiRoutingPolicy": "KI-Routing-Richtlinie",
 				"apiKey": "API-Schlüssel",
 				"automation": "Automation",
 				"blocklist": "Sperrliste",
