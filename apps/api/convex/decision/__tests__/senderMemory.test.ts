@@ -100,7 +100,7 @@ async function answer(
 		inboundMessageId,
 		contentHash: opts.contentHash ?? 'same',
 		policyVersion,
-		endpoint: { rung: 'language' as const, isLocal: false },
+		endpoint: { rung: 'language' as const, isLocal: false, isDecisionPlaneOn: false },
 	});
 	if (claim.outcome !== 'claimed') throw new Error(claim.outcome);
 	await t.mutation(internal.decision.artifacts.complete, {
@@ -315,7 +315,7 @@ describe('sender memory', () => {
 			inboundMessageId,
 			contentHash: 'same',
 			policyVersion: 1,
-			endpoint: { rung: 'language' as const, isLocal: false },
+			endpoint: { rung: 'language' as const, isLocal: false, isDecisionPlaneOn: false },
 		});
 		if (claim.outcome !== 'claimed') throw new Error(claim.outcome);
 		await t.run((ctx) => recordOwnerCorrection(ctx, { inboundMessageId }));
@@ -345,7 +345,7 @@ describe('sender memory', () => {
 			inboundMessageId,
 			contentHash: 'same',
 			policyVersion: 1,
-			endpoint: { rung: 'language' as const, isLocal: false },
+			endpoint: { rung: 'language' as const, isLocal: false, isDecisionPlaneOn: false },
 		});
 		expect(again).toEqual({ outcome: 'settled' });
 	});
@@ -361,7 +361,7 @@ describe('sender memory', () => {
 			inboundMessageId,
 			contentHash: 'same',
 			policyVersion: 1,
-			endpoint: { rung: 'language' as const, isLocal: false },
+			endpoint: { rung: 'language' as const, isLocal: false, isDecisionPlaneOn: false },
 		};
 		const first = await t.mutation(internal.decision.artifacts.claim, args);
 		if (first.outcome !== 'claimed') throw new Error(first.outcome);

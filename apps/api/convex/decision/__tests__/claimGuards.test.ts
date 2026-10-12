@@ -91,10 +91,12 @@ function claimArgs(
 	subject:
 		| { inboundMessageId: Id<'inboundMessages'> }
 		| { mailMessageId: Id<'mailMessages'>; mailboxId: Id<'mailboxes'> },
-	endpoint: { rung: 'decision' | 'language'; isLocal: boolean } = {
-		rung: 'language',
-		isLocal: false,
-	}
+	endpoint: {
+		rung: 'decision' | 'language';
+		isLocal: boolean;
+		isDecisionPlaneOn?: boolean;
+		configUpdatedAt?: number;
+	} = { rung: 'language', isLocal: false }
 ) {
 	return {
 		artifactKey: `k-${JSON.stringify(subject)}`,
@@ -105,7 +107,7 @@ function claimArgs(
 		...subject,
 		contentHash: 'hash',
 		policyVersion: 1,
-		endpoint,
+		endpoint: { isDecisionPlaneOn: false, ...endpoint },
 	};
 }
 
@@ -120,6 +122,19 @@ function completeArgs(artifactKey: string, leaseExpiresAt: number) {
 		calibration: { isAdapterCalibrated: true },
 		contextVersion: 'typesafe||',
 		memoryKey: 'fingerprint',
+	};
+}
+
+/** A stored provider config naming TypeSafe, with no key stored. */
+function typesafeWithoutKey() {
+	return {
+		languageProviderKind: 'openai' as const,
+		modelFast: 'fast',
+		modelCapable: 'capable',
+		embeddingProviderKind: 'local' as const,
+		embeddingModelVersion: 1,
+		decisionProviderKind: 'typesafe' as const,
+		updatedAt: Date.now(),
 	};
 }
 
@@ -208,12 +223,21 @@ describe('claim and completion guards', () => {
 		await enableFeatures(t, ['ai.decisionPlane']);
 		await t.run((ctx) => ctx.db.patch(mailboxId, { isExcludedFromHostedDecisions: true }));
 		expect(
-			await t.mutation(internal.decision.artifacts.claim, claimArgs({ mailMessageId, mailboxId }))
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs(
+					{ mailMessageId, mailboxId },
+					{ rung: 'language', isLocal: false, isDecisionPlaneOn: true }
+				)
+			)
 		).toEqual({ outcome: 'excluded' });
 		expect(
 			await t.mutation(
 				internal.decision.artifacts.claim,
-				claimArgs({ mailMessageId, mailboxId }, { rung: 'decision', isLocal: true })
+				claimArgs(
+					{ mailMessageId, mailboxId },
+					{ rung: 'decision', isLocal: true, isDecisionPlaneOn: true }
+				)
 			)
 		).toMatchObject({ outcome: 'claimed' });
 	});
@@ -262,17 +286,69 @@ describe('the gates and the endpoint snapshot, right before the call', () => {
 		).toEqual({ outcome: 'disabled' });
 		await enableFeatures(t, ['ai.decisionPlane']);
 		expect(
-			await t.mutation(internal.decision.artifacts.claim, {
-				...claimArgs({ inboundMessageId }, { rung: 'decision', isLocal: true }),
-				endpoint: { rung: 'decision' as const, isLocal: true, configUpdatedAt: 123 },
-			})
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs(
+					{ inboundMessageId },
+					{ rung: 'decision', isLocal: true, isDecisionPlaneOn: true, configUpdatedAt: 123 }
+				)
+			)
 		).toEqual({ outcome: 'stale' });
 		expect(
 			await t.mutation(
 				internal.decision.artifacts.claim,
-				claimArgs({ inboundMessageId }, { rung: 'decision', isLocal: true })
+				claimArgs(
+					{ inboundMessageId },
+					{ rung: 'decision', isLocal: true, isDecisionPlaneOn: true }
+				)
 			)
 		).toMatchObject({ outcome: 'claimed' });
+	});
+
+	it('refuses a language-rung call once a decision provider was configured since (Sol r4)', async () => {
+		const t = await newT();
+		const inboundMessageId = await teamMessage(t);
+		await enableFeatures(t, ['ai.decisionPlane']);
+		// Resolved to the language rung (`llm`, no stored config); then TypeSafe is
+		// configured, with no key: D3 makes that terminal, so no language call.
+		await t.run((ctx) => ctx.db.insert('aiProviderConfig', typesafeWithoutKey()));
+		expect(
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs(
+					{ inboundMessageId },
+					{ rung: 'language', isLocal: false, isDecisionPlaneOn: true }
+				)
+			)
+		).toEqual({ outcome: 'stale' });
+		expect(await rows(t)).toEqual([]);
+	});
+
+	it('refuses a language-rung call once the decision plane flag moved since (Sol r4)', async () => {
+		const t = await newT();
+		const inboundMessageId = await teamMessage(t);
+		await enableFeatures(t, ['ai.decisionPlane']);
+		await disable(t, 'ai.decisionPlane');
+		expect(
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs(
+					{ inboundMessageId },
+					{ rung: 'language', isLocal: false, isDecisionPlaneOn: true }
+				)
+			)
+		).toEqual({ outcome: 'stale' });
+		// And the other way round: decided with the plane off, then it is turned on.
+		await enableFeatures(t, ['ai.decisionPlane']);
+		expect(
+			await t.mutation(
+				internal.decision.artifacts.claim,
+				claimArgs(
+					{ inboundMessageId },
+					{ rung: 'language', isLocal: false, isDecisionPlaneOn: false }
+				)
+			)
+		).toEqual({ outcome: 'stale' });
 	});
 });
 

@@ -21,15 +21,23 @@ const VERDICTS_PER_TASK = 32;
 export interface RoutingContext {
 	readonly policy: ResolvedRoutingPolicy;
 	readonly isDecisionPlaneOn: boolean;
+	/**
+	 * `aiProviderConfig.updatedAt` in the same read (absent without a row): the
+	 * configuration the rung is decided on. The run refuses a resolution read
+	 * from any other one, and the claim refuses once it has changed.
+	 */
+	readonly configUpdatedAt?: number;
 }
 
 /** Everything a bundle run decides its plan and rung on, in one read. */
 export const routingContext = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<RoutingContext> => {
+		const config = await ctx.db.query('aiProviderConfig').first(); // bounded: singleton
 		return {
 			policy: await loadRoutingPolicy(ctx),
 			isDecisionPlaneOn: await isFeatureEnabled(ctx, 'ai.decisionPlane'),
+			...(config ? { configUpdatedAt: config.updatedAt } : {}),
 		};
 	},
 });

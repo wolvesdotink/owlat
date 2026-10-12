@@ -56,14 +56,19 @@ export type ClaimOutcome =
 	| { readonly outcome: 'policy_changed' };
 
 /**
- * The endpoint the call will use, as the action resolved it ONCE: the rung,
- * the decision kind, whether it runs on the operator's own hardware, and the
- * `aiProviderConfig.updatedAt` the resolution read. The action dispatches to
- * exactly this endpoint, and the claim checks it is still the configured one.
+ * The endpoint the call will use, as the action decided it ONCE: the rung,
+ * whether it runs on the operator's own hardware, and the snapshot the rung
+ * was decided on (the `ai.decisionPlane` flag and the
+ * `aiProviderConfig.updatedAt` the resolution read). The action dispatches to
+ * exactly this endpoint; the claim refuses (`stale`) on EITHER rung once the
+ * flag or the configuration is no longer the snapshot, since either can change
+ * which rung, and which provider, the call should have had (a provider
+ * configured without a usable key is terminal, D3).
  */
 const endpointValidator = v.object({
 	rung: v.union(v.literal('decision'), v.literal('language')),
 	isLocal: v.boolean(),
+	isDecisionPlaneOn: v.boolean(),
 	configUpdatedAt: v.optional(v.number()),
 });
 
@@ -120,8 +125,8 @@ async function liveSubject(
  * - `policy_changed`: the routing policy is no longer the one the worker
  *   planned under, or no longer plans this task in this mode (a switch was
  *   turned off or moved);
- * - `stale`: the decision configuration changed since the action resolved
- *   the provider it is about to call;
+ * - `stale`: the `ai.decisionPlane` flag or the provider configuration changed
+ *   since the action decided its rung and resolved its provider (either rung);
  * - `excluded`: the mailbox is excluded from hosted decisions and the call
  *   is about to use a hosted endpoint (ADR-0060 §9);
  * - `busy`: another worker's lease is live.
@@ -164,12 +169,15 @@ export const claim = internalMutation({
 		if (!(await isFeatureEnabled(ctx, gate))) return { outcome: 'disabled' };
 		const isDecisionPlaneOn = await isFeatureEnabled(ctx, 'ai.decisionPlane');
 		const config = await ctx.db.query('aiProviderConfig').first(); // bounded: singleton
-		if (endpoint.rung === 'decision') {
-			if (!isDecisionPlaneOn) return { outcome: 'disabled' };
-			// The configuration the action resolved must still be the current
-			// one, or the provider it is about to call is not what was checked.
-			if (config?.updatedAt !== endpoint.configUpdatedAt) return { outcome: 'stale' };
+		// The snapshot the rung and the provider were decided on must still be
+		// the current one, on either rung, or the call is not the one checked.
+		if (
+			isDecisionPlaneOn !== endpoint.isDecisionPlaneOn ||
+			config?.updatedAt !== endpoint.configUpdatedAt
+		) {
+			return { outcome: 'stale' };
 		}
+		if (endpoint.rung === 'decision' && !isDecisionPlaneOn) return { outcome: 'disabled' };
 		if (!endpoint.isLocal && (await isExcludedFromHostedDecisions(ctx, subject.exclusion))) {
 			return { outcome: 'excluded' };
 		}

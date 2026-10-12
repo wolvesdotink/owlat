@@ -195,6 +195,11 @@ export async function runBundle<Q extends QuestionSet>(
 	const plane = routing.isDecisionPlaneOn
 		? await resolveDecisionConfig(ctx).catch(() => null)
 		: null;
+	// The resolution must come from the configuration the routing read saw;
+	// otherwise the rung was decided on one config and the provider on another.
+	if (plane !== null && plane.updatedAt !== routing.configUpdatedAt) {
+		return { hasRun: false, why: 'stale' };
+	}
 	const rung = decisionRung({
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
 		kind: plane?.kind ?? 'llm',
@@ -217,15 +222,17 @@ export async function runBundle<Q extends QuestionSet>(
 	if (!admitted.isAdmitted) return { hasRun: false, why: admitted.why };
 
 	// The endpoint this call will use, from the ONE resolution above: its rung,
-	// whether it is the operator's own (ADR-0060 §9) and the configuration it
-	// was read from. The claim checks all three; the call uses exactly it.
+	// whether it is the operator's own (ADR-0060 §9), and the flag and
+	// configuration snapshot it was decided on. The claim checks them all, on
+	// either rung; the call uses exactly this endpoint.
 	const endpoint = {
 		rung: rung === 'decision' ? ('decision' as const) : ('language' as const),
 		isLocal:
 			rung === 'decision' &&
 			plane !== null &&
 			resolveEndpointLocality(plane.kind, plane.clientConfig.baseUrl) === 'local',
-		...(plane?.updatedAt === undefined ? {} : { configUpdatedAt: plane.updatedAt }),
+		isDecisionPlaneOn: routing.isDecisionPlaneOn,
+		...(routing.configUpdatedAt === undefined ? {} : { configUpdatedAt: routing.configUpdatedAt }),
 	};
 	const contentHash = stateContentHash(run.built.state);
 	const artifactKey = artifactKeyOf({

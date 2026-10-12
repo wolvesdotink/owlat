@@ -538,6 +538,50 @@ describe('dispatch races (Sol r2)', () => {
 		expect(await artifacts(t)).toEqual([]);
 	});
 
+	it('sends no language call when TypeSafe without a key is configured after resolving to llm (D3)', async () => {
+		mocks.plane.kind = 'llm';
+		const t = await setup({ triageBundle: 'shadow' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		mocks.admitBundle.mockImplementation(async () => {
+			await t.run(async (ctx) => {
+				await ctx.db.insert('aiProviderConfig', {
+					languageProviderKind: 'openai',
+					modelFast: 'fast',
+					modelCapable: 'capable',
+					embeddingProviderKind: 'local',
+					embeddingModelVersion: 1,
+					decisionProviderKind: 'typesafe',
+					updatedAt: Date.now(),
+				});
+			});
+			return admitted();
+		});
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamTriage, { inboundMessageId });
+		expect(mocks.admitBundle).toHaveBeenCalledTimes(1);
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+		expect(await artifacts(t)).toEqual([]);
+	});
+
+	it('sends no language call when the decision plane flag moved after resolving', async () => {
+		mocks.plane.kind = 'llm';
+		const t = await setup({ triageBundle: 'shadow' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		mocks.admitBundle.mockImplementation(async () => {
+			await t.run(async (ctx) => {
+				const settings = await ctx.db.query('instanceSettings').first();
+				await ctx.db.patch(settings!._id, {
+					featureFlags: { ...settings!.featureFlags, 'ai.decisionPlane': false },
+				});
+			});
+			return admitted();
+		});
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamTriage, { inboundMessageId });
+		expect(mocks.admitBundle).toHaveBeenCalledTimes(1);
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+	});
+
 	it('stops a queued triage job once the master ai flag is turned off', async () => {
 		const t = await setup({ triageBundle: 'shadow' });
 		const inboundMessageId = await seedTeamMessage(t);
