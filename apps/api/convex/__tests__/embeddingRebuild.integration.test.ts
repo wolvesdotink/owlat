@@ -84,6 +84,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+	vi.unstubAllEnvs();
 });
 
 const flush = (t: T) => t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -615,6 +616,49 @@ describe('a confirmation names its space (expectedSpaceId)', () => {
 		// No provider call measured and activated the configured space.
 		expect(embedCalls.count).toBe(calls);
 		expect((await states(t)).spaces).toEqual({ 'all-minilm': 'retired/primary' });
+	});
+
+	it('refuses a pending-switch re-embed whose configured target was replaced (expectedTargetKey)', async () => {
+		const t = convexTest(schema, modules);
+		// A switch with no space yet: the confirmation can only name the target,
+		// whose key holds no credential of its base URL.
+		vi.stubEnv('LOCAL_EMBEDDING_BASE_URL', 'http://ops:hunter2@ollama:11434/tok-s3cret/v1?key=k3y');
+		await configureLocalEmbedder(t);
+		const confirmed = (await t.query(api.aiRouting.embeddingSpaces.status, {})).configured!
+			.targetKey;
+		for (const secret of ['ops', 'hunter2', 'tok-s3cret', 'k3y']) {
+			expect(confirmed).not.toContain(secret);
+		}
+		// Another admin selects another model before the request runs.
+		await configureLocalEmbedder(t, 'all-minilm');
+		const fetchMock = vi.mocked(globalThis.fetch);
+		fetchMock.mockClear();
+		const calls = embedCalls.count;
+
+		await targetChanged(
+			t.action(api.aiRouting.embeddingReembed.startReembed, { expectedTargetKey: confirmed })
+		);
+		// Zero provider calls: no revision probe, no embedding; nothing registered or started.
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(embedCalls.count).toBe(calls);
+		expect(await t.run((ctx) => ctx.db.query('embeddingSpaces').collect())).toEqual([]);
+		expect(await t.run((ctx) => ctx.db.query('embeddingReembedJobs').collect())).toEqual([]);
+
+		// The job's own transaction checks it too (a switch during the bootstrap call).
+		await targetChanged(
+			t.mutation(internal.aiRouting.embeddingReembedJobs.startReembedJob, {
+				expectedTargetKey: confirmed,
+			})
+		);
+
+		// The current target is accepted: bootstrap, then the job.
+		const current = (await t.query(api.aiRouting.embeddingSpaces.status, {})).configured!.targetKey;
+		const jobId = await t.action(api.aiRouting.embeddingReembed.startReembed, {
+			expectedTargetKey: current,
+		});
+		const job = await t.run((ctx) => ctx.db.get(jobId));
+		const space = job ? await t.run((ctx) => ctx.db.get(job.targetSpaceId)) : null;
+		expect(space?.model).toBe('all-minilm');
 	});
 
 	it('refuses a re-embed into another space than the searchable one', async () => {

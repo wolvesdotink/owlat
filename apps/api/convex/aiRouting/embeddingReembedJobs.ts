@@ -44,7 +44,9 @@ import { throwConflict, throwInvalidState, throwNotFound } from '../_utils/error
 import { isSpaceLocal, patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
 import {
 	assertExpectedSpace,
+	assertExpectedTarget,
 	ownsColumn,
+	readConfiguredTarget,
 	readSearchableSpace,
 	slotFields,
 	spaceRefOf,
@@ -52,6 +54,7 @@ import {
 	type SpaceDoc,
 } from '../lib/aiRouting/embeddingRegistry';
 import { embeddingSpaceIdentityKey } from '../lib/aiRouting/embeddingKeys';
+import { embeddingTargetKey } from '../lib/embeddingSpace';
 import { corpusRowInput, inputFingerprint } from '../lib/aiRouting/embeddingInputs';
 import { isPaidEmbeddingAdmissionAvailable } from '../lib/aiRouting/embeddingAdmission';
 import {
@@ -387,11 +390,16 @@ export const startLocalReembed = internalMutation({
  * space was searchable yet) measured and activated the configured one.
  */
 export const startReembedJob = internalMutation({
-	args: { expectedSpaceId: v.optional(v.id('embeddingSpaces')) },
+	args: {
+		expectedSpaceId: v.optional(v.id('embeddingSpaces')),
+		expectedTargetKey: v.optional(v.string()),
+	},
 	handler: async (ctx, args): Promise<Id<'embeddingReembedJobs'>> => {
 		const session = await requireOrgPermission(ctx, 'organization:manage');
 		const active = await readSearchableSpace(ctx.db);
 		assertExpectedSpace(active, args.expectedSpaceId);
+		const target = await readConfiguredTarget(ctx.db);
+		assertExpectedTarget(target ? embeddingTargetKey(target) : null, args.expectedTargetKey);
 		if (!active) {
 			throwInvalidState('The configured embedding model has no active space yet.');
 		}
