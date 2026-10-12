@@ -165,6 +165,7 @@ import type * as agent_shared_replyLanguage from '../agent/shared/replyLanguage.
 import type * as agent_steps_clarify_attachment from '../agent/steps/clarify/attachment.js';
 import type * as agent_steps_clarify_index from '../agent/steps/clarify/index.js';
 import type * as agent_steps_clarify_items from '../agent/steps/clarify/items.js';
+import type * as agent_steps_clarify_judge from '../agent/steps/clarify/judge.js';
 import type * as agent_steps_catalog from '../agent/steps/catalog.js';
 import type * as agent_steps_clarify_options from '../agent/steps/clarify/options.js';
 import type * as agent_steps_classify_index from '../agent/steps/classify/index.js';
@@ -790,6 +791,7 @@ import type * as inbox_clarificationLocalize from '../inbox/clarificationLocaliz
 import type * as inbox_clarificationMemory from '../inbox/clarificationMemory.js';
 import type * as inbox_clarificationMemoryMatch from '../inbox/clarificationMemoryMatch.js';
 import type * as inbox_clarificationSlots from '../inbox/clarificationSlots.js';
+import type * as inbox_clarifyJudge from '../inbox/clarifyJudge.js';
 import type * as inbox_decisionFeedback from '../inbox/decisionFeedback.js';
 import type * as inbox_draftRevisions from '../inbox/draftRevisions.js';
 import type * as inbox_inboundIngest from '../inbox/inboundIngest.js';
@@ -921,6 +923,7 @@ import type * as lib_decision_calibration from '../lib/decision/calibration.js';
 import type * as lib_decision_configIdentity from '../lib/decision/configIdentity.js';
 import type * as lib_decision_evidence from '../lib/decision/evidence.js';
 import type * as lib_decision_fieldMappings from '../lib/decision/fieldMappings.js';
+import type * as lib_decision_necessityState from '../lib/decision/necessityState.js';
 import type * as lib_decision_routing from '../lib/decision/routing.js';
 import type * as lib_decisionProvider from '../lib/decisionProvider.js';
 import type * as lib_decisionProviders_index from '../lib/decisionProviders/index.js';
@@ -1856,6 +1859,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/clarify/attachment': typeof agent_steps_clarify_attachment;
 	'agent/steps/clarify/index': typeof agent_steps_clarify_index;
 	'agent/steps/clarify/items': typeof agent_steps_clarify_items;
+	'agent/steps/clarify/judge': typeof agent_steps_clarify_judge;
 	'agent/steps/catalog': typeof agent_steps_catalog;
 	'agent/steps/clarify/options': typeof agent_steps_clarify_options;
 	'agent/steps/classify/index': typeof agent_steps_classify_index;
@@ -2481,6 +2485,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/clarificationMemory': typeof inbox_clarificationMemory;
 	'inbox/clarificationMemoryMatch': typeof inbox_clarificationMemoryMatch;
 	'inbox/clarificationSlots': typeof inbox_clarificationSlots;
+	'inbox/clarifyJudge': typeof inbox_clarifyJudge;
 	'inbox/decisionFeedback': typeof inbox_decisionFeedback;
 	'inbox/draftRevisions': typeof inbox_draftRevisions;
 	'inbox/inboundIngest': typeof inbox_inboundIngest;
@@ -2612,6 +2617,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/decision/configIdentity': typeof lib_decision_configIdentity;
 	'lib/decision/evidence': typeof lib_decision_evidence;
 	'lib/decision/fieldMappings': typeof lib_decision_fieldMappings;
+	'lib/decision/necessityState': typeof lib_decision_necessityState;
 	'lib/decision/routing': typeof lib_decision_routing;
 	'lib/decisionProvider': typeof lib_decisionProvider;
 	'lib/decisionProviders/index': typeof lib_decisionProviders_index;

@@ -181,6 +181,7 @@ export const getThreadContext = internalQuery({
 		// alias as the customer's.
 		const ownAddresses = await mailboxOwnAddresses(ctx, mailbox);
 		return {
+			mailboxId: thread.mailboxId,
 			ownerAddress,
 			ownerAddresses: [...ownAddresses],
 			latestMessageId: thread.latestMessageId,

@@ -128,6 +128,8 @@ export const loadMailDraftContext = internalQuery({
 		return {
 			mailboxId: draft.mailboxId,
 			mailboxScope,
+			// The message answered, when the draft replies to one of this mailbox's.
+			...(trigger ? { triggerMessageId: trigger._id } : {}),
 			ownerAddress: mailbox.address,
 			subject: trigger?.subject ?? draft.subject,
 			transcript,

@@ -14,7 +14,7 @@
  * Every model call is mocked; nothing reaches a provider.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeStepCtx } from '../../agent/steps/__tests__/stepCtx';
 
 interface CallLog {
@@ -71,7 +71,7 @@ vi.mock('../../analytics/meteredSpend', async () => {
 				...(opts ? { opts } : {}),
 			});
 			mocks.log.tasks.push(target.task);
-			return call(actual.meterFor(ctx, target));
+			return call(actual.meterFor(ctx, target as Parameters<typeof actual.meterFor>[1]));
 		},
 	};
 });
@@ -146,11 +146,20 @@ function answer(options: { divergent?: number[]; failedSamples?: number; judgeFa
 	});
 }
 
+afterEach(() => {
+	vi.useRealTimers();
+});
+
 function logged(): CallLog {
 	return { calls: [...mocks.log.calls], tasks: [...mocks.log.tasks] };
 }
 
+/** Memory answers are stamped with the time; the goldens were recorded at this one. */
+const RECORDED_AT = Date.parse('2026-10-12T00:00:00Z');
+
 beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(RECORDED_AT);
 	mocks.log.calls.length = 0;
 	mocks.log.tasks.length = 0;
 	mocks.runLlmText.mockReset();
@@ -298,5 +307,36 @@ describe('golden: Answer mode gap check, necessity off', () => {
 		await expect({ result, log: logged().calls }).toMatchFileSnapshot(
 			'./__golden__/answer-cautious.golden'
 		);
+	});
+});
+
+// ── Accounting: samples are counted apart (task `mail.clarify_sample`) ─────
+
+describe('sample accounting', () => {
+	const SAMPLE = 'mail.clarify_sample';
+
+	it('records each Team sample under the sample task, nothing else', async () => {
+		answer({ divergent: [0] });
+		await clarifyStep.execute(teamCtx().ctx, teamInput());
+		// slots, three samples, the judge, the translation
+		expect(logged().tasks).toEqual([undefined, SAMPLE, SAMPLE, SAMPLE, undefined, undefined]);
+	});
+
+	it('records each Postbox and Answer mode sample under the sample task', async () => {
+		answer({ divergent: [0] });
+		await refineClarification(postboxCtx(), {
+			transcript: 'Them: can you approve it?',
+			fromAddress: 'ada@acme.test',
+		});
+		expect(logged().tasks).toEqual([undefined, SAMPLE, SAMPLE, SAMPLE, undefined, undefined]);
+		mocks.log.tasks.length = 0;
+		answer({ divergent: [0] });
+		await runGapCheck(answerCtx(), {
+			context: 'Them: can you approve it?',
+			triggerText: 'Can you approve it?',
+			subject: 'Approval',
+			locale: 'de',
+		});
+		expect(logged().tasks).toEqual([undefined, SAMPLE, SAMPLE, SAMPLE, undefined, undefined]);
 	});
 });

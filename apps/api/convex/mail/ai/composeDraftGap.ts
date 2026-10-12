@@ -5,10 +5,11 @@
  * reply needs that only the owner knows.
  *
  * Reuses the background clarification machinery rather than forking it:
- *  - the shared slot taxonomy and prompts (inbox/clarificationSlots.ts):
+ *  - the shared clarification service (inbox/clarifyJudge.ts):
  *    cheap-tier slot extraction, then sampled candidate replies (cheap tier
  *    unless the dial is `cautious`) and a divergence judgment, so only a slot
- *    the samples disagree on is asked;
+ *    the samples disagree on is asked; or, when the routing policy enforces
+ *    D5, one necessity judgment instead of the samples and the judgment;
  *  - the deterministic safety filter (`sanitizeClarificationQuestions`,
  *    credential solicitations dropped, every question attributed to the email);
  *  - attachment-request detection and ranking (inbox/attachmentMatch.ts) over
@@ -28,19 +29,11 @@ import type { Id } from '../../_generated/dataModel';
 import { MAX_ASK_QUESTIONS } from '@owlat/shared/answerMode';
 import { isAppLocale } from '@owlat/shared/appLocales';
 import { resolveLanguageModel } from '../../lib/llmProvider';
-import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
 import { meterLlmCall } from '../../analytics/meteredSpend';
 import { newRootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { boundedRoot } from '../../lib/llm/actionDeadline';
 import {
-	DIVERGENCE_SAMPLES,
-	MIN_SAMPLES_FOR_JUDGMENT,
-	buildCandidatePrompt,
-	buildDivergencePrompt,
-	buildSlotPrompt,
-	divergenceSchema,
 	emailProvenance,
-	replySlotsSchema,
 	itemIdForSlot,
 	sanitizeClarificationQuestions,
 	splitCandidateSlots,
@@ -58,6 +51,13 @@ import { searchFilesForRequest } from '../../inbox/attachmentSuggest';
 import type { MailboxAttachmentScope } from '../../lib/validators/answerAsk';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
 import { answerKindForSlot, applyMemoryFills } from '../../inbox/clarificationAnswers';
+import {
+	extractReplySlots,
+	judgeOpenSlots,
+	keptSlots,
+	type ClarifySurface,
+} from '../../inbox/clarifyJudge';
+import type { BundleSubject } from '../../decision/bundleRunner';
 import {
 	FILE_QUESTION_ID,
 	buildFileQuestion,
@@ -85,6 +85,8 @@ export interface GapCheckInput {
 	locale: string;
 	/** The thread's open items: each question names the item it fills (SPEC §6). */
 	slotItems?: readonly SlotItem<Id<'threadItems'>>[] | undefined;
+	/** The message being answered, the necessity judgment's subject (D5); absent for a fresh draft. */
+	decisionSubject?: BundleSubject | undefined;
 }
 
 export interface GapCheckResult {
@@ -104,78 +106,62 @@ export function attributionFor(counterpartAddress: string | undefined): Question
 }
 
 /**
- * Stage 1 (cheap tier) and stage 2 (sampled replies + divergence judgment) of
- * the shared slot check. Returns the slots a good reply needs, that the context
- * does not answer, and that the samples fill differently, plus any file the
- * reply must carry, which skips the divergence judgment (splitCandidateSlots).
- *
- * The background loop runs this once per inbound message; here it runs on
- * every "Draft with AI" click, so the three samples use the cheap tier the
- * slot extraction uses. Only the `cautious` dial, which asks for the most
- * thorough check, pays for capable-tier samples. The judgment stays capable.
+ * Answer mode's surface of the shared clarification service
+ * (inbox/clarifyJudge.ts). The background loop runs the check once per inbound
+ * message; here it runs on every "Draft with AI" click, so the three samples
+ * use the cheap tier the slot extraction uses. Only the `cautious` dial, which
+ * asks for the most thorough check, pays for capable-tier samples. The judgment
+ * stays capable. The necessity judgment (D5) is asked about the message being
+ * answered, under the Postbox `ai` gate, at interactive priority.
+ */
+function answerClarifySurface(
+	ctx: ActionCtx,
+	eagerness: EagernessMode | undefined,
+	root: LlmRootContext,
+	subject: BundleSubject | undefined
+): ClarifySurface {
+	return {
+		features: {
+			slots: 'postbox_answer_slots',
+			samples: 'postbox_answer_diverge',
+			judge: 'postbox_answer_diverge',
+		},
+		roles: {
+			slots: 'summarize',
+			samples: eagerness === 'cautious' ? 'draft' : 'summarize',
+			judge: 'draft',
+		},
+		meter: (feature, task, call) =>
+			meterLlmCall(ctx, { feature, root, ...(task ? { task } : {}) }, call),
+		...(subject ? { subject } : {}),
+		root,
+		masterGate: 'ai',
+		priority: 'interactive',
+	};
+}
+
+/**
+ * Stage 1 (slot extraction) and stage 2 (which open slots to ask) of the
+ * shared check. Returns the slots a good reply needs, that the context does
+ * not answer, and that must be asked, plus any file the reply must carry,
+ * which skips stage 2 (splitCandidateSlots).
  */
 async function findOpenSlots(
 	ctx: ActionCtx,
 	context: string,
-	eagerness: EagernessMode | undefined,
-	items: readonly SlotItem[],
-	root: LlmRootContext
+	surface: ClarifySurface,
+	items: readonly SlotItem[]
 ): Promise<ReplySlot[]> {
-	// Files owed survive a failed divergence stage: they were never judged by it.
+	// Files owed survive a failed stage 2: they were never judged by it.
 	let owed: ReplySlot[] = [];
 	try {
-		const slotModel = await resolveLanguageModel(ctx, 'summarize');
-		const extracted = await meterLlmCall(ctx, { feature: 'postbox_answer_slots', root }, (meter) =>
-			runLlmObject({
-				meter,
-				model: slotModel,
-				schema: replySlotsSchema,
-				prompt: buildSlotPrompt(context, items),
-				temperature: 0.2,
-			})
-		);
-		const split = splitCandidateSlots(extracted.object.slots);
+		const extracted = await extractReplySlots(ctx, surface, context, items);
+		const split = splitCandidateSlots(extracted.slots);
 		owed = split.owed;
 		const candidates = split.toJudge;
 		if (candidates.length === 0) return owed;
-
-		const sampleModel = await resolveLanguageModel(
-			ctx,
-			eagerness === 'cautious' ? 'draft' : 'summarize'
-		);
-		const samples: string[] = [];
-		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
-			try {
-				const sample = await meterLlmCall(
-					ctx,
-					{ feature: 'postbox_answer_diverge', root },
-					(meter) =>
-						runLlmText({
-							meter,
-							model: sampleModel,
-							prompt: buildCandidatePrompt(context),
-							temperature: 0.9,
-						})
-				);
-				if (sample.text.trim().length === 0) continue;
-				samples.push(sample.text);
-			} catch {
-				// One failed sample does not end the check; judge on the rest.
-			}
-		}
-		if (samples.length < MIN_SAMPLES_FOR_JUDGMENT) return owed;
-		const judgeModel = await resolveLanguageModel(ctx, 'draft');
-		const judged = await meterLlmCall(ctx, { feature: 'postbox_answer_diverge', root }, (meter) =>
-			runLlmObject({
-				meter,
-				model: judgeModel,
-				schema: divergenceSchema,
-				prompt: buildDivergencePrompt(candidates, samples),
-				temperature: 0.1,
-			})
-		);
-		const divergent = new Set(judged.object.divergentSlotIndexes);
-		return [...owed, ...candidates.filter((_, index) => divergent.has(index))];
+		const { judgment } = await judgeOpenSlots(ctx, surface, context, candidates);
+		return [...owed, ...keptSlots(judgment, candidates)];
 	} catch {
 		return owed;
 	}
@@ -229,7 +215,8 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 	const items = input.slotItems ?? [];
 	// One "Draft with AI" gap check is one user action (ADR-0073).
 	const root = boundedRoot(ctx, newRootRequest('postbox_action'));
-	let slots = await findOpenSlots(ctx, slotContext, input.eagerness, items, root);
+	const surface = answerClarifySurface(ctx, input.eagerness, root, input.decisionSubject);
+	let slots = await findOpenSlots(ctx, slotContext, surface, items);
 
 	// A file request: the phrasing in the email, or a slot of type attachment.
 	let request = detectAttachmentRequest(input.triggerText);

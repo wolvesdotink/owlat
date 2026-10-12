@@ -245,6 +245,7 @@ export const start = authedAction({
 			instruction,
 			locale,
 			slotItems: await loadSlotItems(ctx, args.target),
+			decisionSubject: context.decisionSubject,
 		});
 
 		let questions = gap.questions;

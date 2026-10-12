@@ -43,9 +43,8 @@ import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
-import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
 import { meterLlmCall, type LlmSpendTarget } from '../../analytics/meteredSpend';
-import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
+import { newRootRequest, rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { evaluateNeedsReplyCandidate } from '../needsReplyHeuristic';
 import { runInterpretation, type InterpretRunResult } from '../interpret/run';
 import {
@@ -55,20 +54,20 @@ import {
 	type NeedsReplyProjection,
 } from '../interpret/needsReplyProjection';
 import {
-	replySlotsSchema,
-	divergenceSchema,
-	buildSlotPrompt,
-	buildCandidatePrompt,
-	buildDivergencePrompt,
 	sanitizeClarificationQuestions,
 	splitCandidateSlots,
 	itemIdForSlot,
 	slotItemsOf,
 	type SlotItem,
-	DIVERGENCE_SAMPLES,
-	MIN_SAMPLES_FOR_JUDGMENT,
 	type ReplySlot,
 } from '../../inbox/clarificationSlots';
+import {
+	extractReplySlots,
+	judgeOpenSlots,
+	keptSlots,
+	type ClarifySurface,
+} from '../../inbox/clarifyJudge';
+import type { BundleSubject } from '../../decision/bundleRunner';
 import { applyMemoryFills, withAnswerKind } from '../../inbox/clarificationAnswers';
 import { draftClarificationReply } from './needsReplyDraft';
 import { continuesLater, isDeferredUntilOpen, isHeldOutByScreener } from './needsReplyGates';
@@ -177,6 +176,7 @@ export const classifyThread = internalAction({
 		const hasVerdict = projection
 			? await applyProjection(ctx, {
 					threadId: args.threadId,
+					mailboxId: context.mailboxId,
 					expectedLatestMessageId: context.latestMessageId,
 					latestInbound: {
 						messageId: latestInbound.messageId,
@@ -211,6 +211,7 @@ async function applyProjection(
 	ctx: ActionCtx,
 	args: {
 		threadId: Id<'mailThreads'>;
+		mailboxId: Id<'mailboxes'>;
 		expectedLatestMessageId?: Id<'mailMessages'>;
 		latestInbound: LatestInbound;
 		projection: NeedsReplyProjection;
@@ -231,6 +232,11 @@ async function applyProjection(
 					fromAddress: args.latestInbound.fromAddress,
 					threadId: args.threadId,
 					root: rootRequest('postbox', args.latestInbound.messageId),
+					subject: {
+						kind: 'mail_message',
+						mailMessageId: args.latestInbound.messageId,
+						mailboxId: args.mailboxId,
+					},
 				})
 			: undefined;
 	// A throw here is a real fault (e.g. the result no longer matching the
@@ -273,6 +279,7 @@ async function clarifyWithMemory(
 		fromAddress: string;
 		threadId: Id<'mailThreads'>;
 		root: LlmRootContext;
+		subject: BundleSubject;
 	}
 ): Promise<ClarificationFlag | undefined> {
 	try {
@@ -285,6 +292,7 @@ async function clarifyWithMemory(
 		fromAddress: opts.fromAddress,
 		items: await slotItemsFor(ctx, opts.threadId),
 		root: opts.root,
+		subject: opts.subject,
 	});
 	if (!clarification || clarification.questions.length === 0) return clarification;
 	try {
@@ -346,6 +354,8 @@ type ClarificationFlag = Omit<
  *      replies and keep only the slots they genuinely disagree on. A
  *      converging slot is a safe assumption and is dropped. A file request
  *      skips this stage (splitCandidateSlots): the samples all "attach" it.
+ *      When the routing policy enforces D5, one necessity judgment replaces
+ *      the samples and the judge (inbox/clarifyJudge.ts): no capable call.
  * Every survivor is deterministically sanitized (credential/OTP solicitations
  * dropped, attributed to the sender). FAIL-SOFT: any error returns undefined so
  * the needs-reply refinement is never downgraded by a clarification failure;
@@ -359,37 +369,30 @@ export async function refineClarification(
 		items?: readonly SlotItem<Id<'threadItems'>>[];
 		/** The message the clarification is for (ADR-0073). */
 		root?: LlmRootContext;
+		/** The same message as the necessity judgment's subject (D5). */
+		subject?: BundleSubject;
 	}
 ): Promise<ClarificationFlag | undefined> {
 	const root = opts.root;
 	const spend = (feature: string): LlmSpendTarget => ({ feature, ...(root ? { root } : {}) });
 	const items = opts.items ?? [];
 	try {
-		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
-		const slotModel = await resolveLanguageModel(ctx, 'summarize');
-		const slotsResult = await meterLlmCall(ctx, spend('postbox_clarify_slots'), (meter) =>
-			runLlmObject({
-				meter,
-				model: slotModel,
-				schema: replySlotsSchema,
-				prompt: buildSlotPrompt(opts.transcript, items),
-				temperature: 0.2,
-			})
-		);
+		// Stage 1 — cheap-tier reply-slot extraction (the shared service).
+		const surface = postboxClarifySurface(ctx, opts);
+		const extracted = await extractReplySlots(ctx, surface, opts.transcript, items);
 
-		const { owed, toJudge } = splitCandidateSlots(slotsResult.object.slots);
+		const { owed, toJudge } = splitCandidateSlots(extracted.slots);
 		if (owed.length === 0 && toJudge.length === 0) return undefined;
 
 		// Files first: they are what the reply cannot go out without.
-		const raw = [
-			...owed,
-			...(await divergentSlots(ctx, opts.transcript, toJudge, spend('postbox_clarify_diverge'))),
-		].map((slot) => ({
-			slotType: slot.slotType,
-			text: slot.question,
-			options: slot.options,
-			itemId: itemIdForSlot(slot, items),
-		}));
+		const raw = [...owed, ...(await openSlotsToAsk(ctx, surface, opts.transcript, toJudge))].map(
+			(slot) => ({
+				slotType: slot.slotType,
+				text: slot.question,
+				options: slot.options,
+				itemId: itemIdForSlot(slot, items),
+			})
+		);
 		if (raw.length === 0) return undefined;
 
 		// Deterministic safety filter: drop credential/OTP solicitations, attribute
@@ -412,50 +415,49 @@ export async function refineClarification(
 }
 
 /**
- * Stage 2 of {@link refineClarification}: sample independent replies on the
- * capable tier and keep the candidate slots they genuinely disagree on. Empty
- * when there is nothing to judge, too few samples came back to judge at all
- * (don't invent questions), or the judgment failed.
+ * Postbox's surface of the shared clarification service: slots on the cheap
+ * tier; today's samples and divergence judge on the capable tier, both under
+ * `postbox_clarify_diverge` (samples record as `mail.clarify_sample`).
  */
-async function divergentSlots(
+function postboxClarifySurface(
 	ctx: SpendCtx,
+	opts: { root?: LlmRootContext; subject?: BundleSubject }
+): ClarifySurface {
+	const root = opts.root ?? newRootRequest('postbox');
+	return {
+		features: {
+			slots: 'postbox_clarify_slots',
+			samples: 'postbox_clarify_diverge',
+			judge: 'postbox_clarify_diverge',
+		},
+		roles: { slots: 'summarize', samples: 'draft', judge: 'draft' },
+		meter: (feature, task, call) =>
+			meterLlmCall(
+				ctx,
+				{ feature, ...(opts.root ? { root: opts.root } : {}), ...(task ? { task } : {}) },
+				call
+			),
+		...(opts.subject ? { subject: opts.subject } : {}),
+		root,
+	};
+}
+
+/**
+ * Stage 2 of {@link refineClarification}: the open, relevant slots that must
+ * be asked (`inbox/clarifyJudge.ts`). Empty when there is nothing to judge,
+ * too few samples came back to judge at all (don't invent questions), the
+ * necessity judgment gave no answer, or the judgment failed.
+ */
+async function openSlotsToAsk(
+	ctx: SpendCtx,
+	surface: ClarifySurface,
 	transcript: string,
-	candidates: readonly ReplySlot[],
-	target: LlmSpendTarget
+	candidates: readonly ReplySlot[]
 ): Promise<ReplySlot[]> {
 	if (candidates.length === 0) return [];
 	try {
-		const drafts: string[] = [];
-		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
-			try {
-				const model = await resolveLanguageModel(ctx, 'draft');
-				const draft = await meterLlmCall(ctx, target, (meter) =>
-					runLlmText({
-						meter,
-						model,
-						prompt: buildCandidatePrompt(transcript),
-						temperature: 0.9,
-					})
-				);
-				if (draft.text.trim().length > 0) drafts.push(draft.text);
-			} catch {
-				// One failed sample doesn't abort the check — judge on the rest.
-			}
-		}
-		if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) return [];
-
-		const judgeModel = await resolveLanguageModel(ctx, 'draft');
-		const divergenceResult = await meterLlmCall(ctx, target, (meter) =>
-			runLlmObject({
-				meter,
-				model: judgeModel,
-				schema: divergenceSchema,
-				prompt: buildDivergencePrompt([...candidates], drafts),
-				temperature: 0.1,
-			})
-		);
-		const divergent = new Set(divergenceResult.object.divergentSlotIndexes);
-		return candidates.filter((_, index) => divergent.has(index));
+		const { judgment } = await judgeOpenSlots(ctx, surface, transcript, candidates);
+		return keptSlots(judgment, candidates);
 	} catch {
 		return [];
 	}
