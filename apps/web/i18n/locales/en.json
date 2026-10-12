@@ -7840,8 +7840,8 @@
 						"localTitle": "Local (bundled) — no setup needed",
 						"modelLabel": "Embedding model",
 						"providerLabel": "Embedding provider",
-						"reindexBody": "New and old vectors aren't comparable. After saving, re-index your knowledge so search stays accurate.",
-						"reindexTitle": "Changing embeddings needs a re-index",
+						"reindexBody": "Vectors from two models can't be compared, and Owlat can't re-embed them yet. If your knowledge or files already hold vectors, this change is refused on save and the current model stays.",
+						"reindexTitle": "The embedding model changes only while nothing is indexed",
 						"title": "Embeddings"
 					},
 					"language": {
@@ -7868,7 +7868,7 @@
 					"remove": {
 						"button": "Remove configuration",
 						"confirm": "Remove configuration",
-						"confirmBody": "The stored API keys are deleted and can't be recovered. AI falls back to the deployment's environment variables, or turns off if none are set. If the environment uses a different embedding model, re-index your knowledge afterwards.",
+						"confirmBody": "The stored API keys are deleted and can't be recovered. AI falls back to the deployment's environment variables, or turns off if none are set. While your knowledge or files hold vectors, removing is refused unless the environment uses the same embedding model.",
 						"confirmTitle": "Remove the AI provider configuration?",
 						"description": "Deletes the settings and API keys stored on this page. AI then uses the deployment's environment variables, or turns off if none are set.",
 						"title": "Remove provider configuration"
@@ -13071,6 +13071,7 @@
 						"label": "TypeSafe Jev (recommended)"
 					}
 				},
+				"storedKeyNotReusable": "The saved key belongs to the previous provider or address, so it doesn't carry over. Paste the key for this one, unless this deployment supplies TYPESAFE_API_KEY in its environment.",
 				"thresholds": {
 					"choice": {
 						"body": "Judged by the confidence the provider returns alongside the chosen option, which describes how peaked the distribution across the options is.",
@@ -13082,7 +13083,8 @@
 					}
 				},
 				"validation": {
-					"consentRequired": "Read what leaves this deployment and tick the box before enabling a third-party decision provider."
+					"consentRequired": "Read what leaves this deployment and tick the box before enabling a third-party decision provider.",
+					"storedKeyNotReusable": "The saved key belongs to the previous provider or address. Paste the key for this one, then save again."
 				}
 			},
 			"embedders": {
@@ -13138,7 +13140,8 @@
 				"baseUrlRequired": {
 					"azure": "Azure OpenAI needs its resource base URL. Add it above to continue.",
 					"unknown": "this provider needs its resource base URL. Add it above to continue."
-				}
+				},
+				"storedKeyNotReusable": "The saved key belongs to the previous provider or address, so it doesn't carry over. Paste the key for this one to continue."
 			}
 		},
 		"automations": {
@@ -16058,10 +16061,12 @@
 		},
 		"useAiProviderForm": {
 			"embeddingKeyRequired": "{provider} needs an API key.",
+			"embeddingSpaceLocked": "Your knowledge and files already hold vectors from the current embedding model, so it stays. Vectors from two models can't be compared, and Owlat can't re-embed them yet.",
 			"listModelsOperation": "Load available models",
 			"modelsEmpty": "No models returned — keep using a custom id.",
 			"modelsLoadFailed": "Could not load models.",
 			"modelsUnsupported": "This provider does not support listing models.",
+			"removeLocked": "The configuration stays: it is the only record of which embedding model made your vectors. To stop using AI, turn the AI features off in Features.",
 			"removeOperation": "Remove AI provider configuration",
 			"removed": "AI provider configuration removed",
 			"saveOperation": "Save AI provider",

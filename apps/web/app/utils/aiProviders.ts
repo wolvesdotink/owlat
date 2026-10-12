@@ -415,7 +415,10 @@ export function resolveModelId(choice: string, custom: string): string {
  */
 export function validateLanguageConfig(input: {
 	kind: string;
+	/** A stored key that still applies (same provider kind and base URL). */
 	hasStoredKey: boolean;
+	/** A key is stored, but for another provider or address, so the save drops it. */
+	hasStrandedKey?: boolean;
 	apiKey: string;
 	baseUrl?: string;
 }): string | null {
@@ -426,6 +429,7 @@ export function validateLanguageConfig(input: {
 	}
 	if (!languageProviderRequiresKey(input.kind)) return null;
 	if (input.hasStoredKey || input.apiKey.trim().length > 0) return null;
+	if (input.hasStrandedKey) return `${K}.validation.storedKeyNotReusable`;
 	return `${K}.validation.apiKeyRequired.${provider}`;
 }
 

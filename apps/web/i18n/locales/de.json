@@ -7840,8 +7840,8 @@
 						"localTitle": "Lokal (mitgeliefert) — keine Einrichtung nötig",
 						"modelLabel": "Embedding-Modell",
 						"providerLabel": "Embedding-Anbieter",
-						"reindexBody": "Neue und alte Vektoren sind nicht vergleichbar. Indiziere dein Wissen nach dem Speichern neu, damit die Suche genau bleibt.",
-						"reindexTitle": "Ein Wechsel der Embeddings erfordert eine Neuindizierung",
+						"reindexBody": "Vektoren zweier Modelle sind nicht vergleichbar, und Owlat kann sie noch nicht neu berechnen. Enthalten dein Wissen oder deine Dateien schon Vektoren, wird diese Änderung beim Speichern abgelehnt und das aktuelle Modell bleibt.",
+						"reindexTitle": "Das Embedding-Modell lässt sich nur wechseln, solange nichts indiziert ist",
 						"title": "Embeddings"
 					},
 					"language": {
@@ -7868,7 +7868,7 @@
 					"remove": {
 						"button": "Konfiguration entfernen",
 						"confirm": "Konfiguration entfernen",
-						"confirmBody": "Die gespeicherten API-Schlüssel werden gelöscht und lassen sich nicht wiederherstellen. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist. Verwendet die Umgebung ein anderes Embedding-Modell, indiziere dein Wissen danach neu.",
+						"confirmBody": "Die gespeicherten API-Schlüssel werden gelöscht und lassen sich nicht wiederherstellen. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist. Solange dein Wissen oder deine Dateien Vektoren enthalten, wird das Entfernen abgelehnt, außer die Umgebung nutzt dasselbe Embedding-Modell.",
 						"confirmTitle": "KI-Anbieterkonfiguration entfernen?",
 						"description": "Löscht die auf dieser Seite gespeicherten Einstellungen und API-Schlüssel. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist.",
 						"title": "Anbieterkonfiguration entfernen"
@@ -13071,6 +13071,7 @@
 						"label": "TypeSafe Jev (empfohlen)"
 					}
 				},
+				"storedKeyNotReusable": "Der gespeicherte Schlüssel gehört zum vorherigen Anbieter oder zur vorherigen Adresse und wird nicht übernommen. Füge den Schlüssel für diesen ein, außer die Installation stellt TYPESAFE_API_KEY in ihrer Umgebung bereit.",
 				"thresholds": {
 					"choice": {
 						"body": "Beurteilt anhand der Konfidenz, die der Anbieter zur gewählten Option mitliefert; sie beschreibt, wie ausgeprägt die Verteilung über die Optionen ist.",
@@ -13082,7 +13083,8 @@
 					}
 				},
 				"validation": {
-					"consentRequired": "Lies, was diese Installation verlässt, und setze den Haken, bevor du einen fremden Entscheidungsanbieter aktivierst."
+					"consentRequired": "Lies, was diese Installation verlässt, und setze den Haken, bevor du einen fremden Entscheidungsanbieter aktivierst.",
+					"storedKeyNotReusable": "Der gespeicherte Schlüssel gehört zum vorherigen Anbieter oder zur vorherigen Adresse. Füge den Schlüssel für diesen ein und speichere erneut."
 				}
 			},
 			"embedders": {
@@ -13138,7 +13140,8 @@
 				"baseUrlRequired": {
 					"azure": "Azure OpenAI benötigt die Basis-URL seiner Ressource. Füge sie oben hinzu, um fortzufahren.",
 					"unknown": "dieser Anbieter benötigt die Basis-URL seiner Ressource. Füge sie oben hinzu, um fortzufahren."
-				}
+				},
+				"storedKeyNotReusable": "Der gespeicherte Schlüssel gehört zum vorherigen Anbieter oder zur vorherigen Adresse und wird nicht übernommen. Füge den Schlüssel für diesen ein, um fortzufahren."
 			}
 		},
 		"automations": {
@@ -16058,10 +16061,12 @@
 		},
 		"useAiProviderForm": {
 			"embeddingKeyRequired": "{provider} benötigt einen API-Schlüssel.",
+			"embeddingSpaceLocked": "Dein Wissen und deine Dateien enthalten bereits Vektoren des aktuellen Embedding-Modells, deshalb bleibt es. Vektoren zweier Modelle sind nicht vergleichbar, und Owlat kann sie noch nicht neu berechnen.",
 			"listModelsOperation": "Verfügbare Modelle laden",
 			"modelsEmpty": "Keine Modelle zurückgegeben — verwende weiterhin eine eigene ID.",
 			"modelsLoadFailed": "Modelle konnten nicht geladen werden.",
 			"modelsUnsupported": "Dieser Anbieter unterstützt das Auflisten von Modellen nicht.",
+			"removeLocked": "Die Konfiguration bleibt: Nur sie hält fest, welches Embedding-Modell deine Vektoren erzeugt hat. Wenn du keine KI mehr nutzen willst, schalte die KI-Funktionen unter Funktionen aus.",
 			"removeOperation": "KI-Anbieterkonfiguration entfernen",
 			"removed": "KI-Anbieterkonfiguration entfernt",
 			"saveOperation": "KI-Anbieter speichern",

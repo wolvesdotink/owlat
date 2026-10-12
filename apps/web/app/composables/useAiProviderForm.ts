@@ -16,6 +16,8 @@ import {
 	type TestConnectionState,
 } from '~/utils/aiProviders';
 import { useAiDecisionPlane } from './useAiDecisionPlane';
+import { useAiProviderKeys } from './useAiProviderKeys';
+import { STORED_KEY_NOT_REUSABLE_KEY } from '~/utils/aiProviderKeyReuse';
 
 /**
  * The AI-provider settings form as a self-contained state machine: the reactive
@@ -42,7 +44,13 @@ export function useAiProviderForm() {
 
 	const { run: runSave, isLoading: isSaving } = useBackendOperation(
 		api.aiProviderConfigActions.saveConfig,
-		{ label: () => t('shared.useAiProviderForm.saveOperation'), type: 'action' }
+		{
+			label: () => t('shared.useAiProviderForm.saveOperation'),
+			type: 'action',
+			// A changed provider that needs a new key, and the D8 embedding lock,
+			// belong on their field rather than in a toast.
+			onError: (op) => keys.claimSaveRefusal(op),
+		}
 	);
 	const { run: runTest, isLoading: isTesting } = useBackendOperation(
 		api.aiProviderConfigActions.testConnection,
@@ -54,7 +62,10 @@ export function useAiProviderForm() {
 	);
 	const { run: runRemove, isLoading: isRemoving } = useBackendOperation(
 		api.aiProviderConfig.removeConfig,
-		{ label: () => t('shared.useAiProviderForm.removeOperation') }
+		{
+			label: () => t('shared.useAiProviderForm.removeOperation'),
+			onError: (op) => keys.claimRemoveRefusal(op),
+		}
 	);
 
 	const providerOptions = languageProviderOptions();
@@ -77,8 +88,6 @@ export function useAiProviderForm() {
 	});
 	const form = reactive(initialForm());
 
-	const languageError = ref<string | null>(null);
-	const embeddingError = ref<string | null>(null);
 	const showLanguageBaseUrl = ref(false);
 	const showHostedEmbedder = ref(false);
 	const hydrating = ref(false);
@@ -137,8 +146,26 @@ export function useAiProviderForm() {
 		const c = config.value;
 		return c?.configured ? c : null;
 	});
-	const storedLanguageKeySet = computed(() => saved.value?.isLanguageKeySet ?? false);
-	const storedEmbeddingKeySet = computed(() => saved.value?.isEmbeddingKeySet ?? false);
+	const keys = useAiProviderKeys({
+		saved: () => saved.value,
+		form,
+		requiresKey,
+		embeddingRequiresKey,
+		onEmbeddingLocked: () => {
+			showHostedEmbedder.value = true;
+		},
+		onDecisionKeyRefused: () => decision.showStoredKeyRefusal(),
+	});
+	const {
+		languageSaveError,
+		embeddingSaveError,
+		storedLanguageKeySet,
+		storedEmbeddingKeySet,
+		isLanguageKeyStranded,
+		isEmbeddingKeyStranded,
+		languageError,
+		embeddingError,
+	} = keys;
 	const keyPreview = computed(() => saved.value?.keyPreview);
 	const embeddingKeyPreview = computed(() => saved.value?.embeddingKeyPreview);
 	// Changing the embedding provider/model needs a re-index (embeddingModelVersion bump); warn first.
@@ -155,6 +182,7 @@ export function useAiProviderForm() {
 		validateLanguageConfig({
 			kind: form.languageProviderKind,
 			hasStoredKey: storedLanguageKeySet.value,
+			hasStrandedKey: isLanguageKeyStranded.value,
 			apiKey: form.apiKey,
 			baseUrl: form.languageBaseUrl,
 		})
@@ -168,7 +196,7 @@ export function useAiProviderForm() {
 		form.modelCapableChoice = meta.defaultModels.capable;
 		form.modelFastCustom = '';
 		form.modelCapableCustom = '';
-		languageError.value = null;
+		languageSaveError.value = null;
 		testState.value = { status: 'idle' };
 		// A live catalog belongs to one provider — drop it when the backend changes.
 		liveModels.value = [];
@@ -190,7 +218,7 @@ export function useAiProviderForm() {
 		if (!meta) return;
 		form.embeddingModelChoice = meta.defaultModel;
 		form.embeddingModelCustom = '';
-		embeddingError.value = null;
+		embeddingSaveError.value = null;
 		if (meta.isLocal) form.embeddingApiKey = '';
 	}
 
@@ -237,8 +265,8 @@ export function useAiProviderForm() {
 		hydrating.value = true;
 		Object.assign(form, initialForm());
 		hydrating.value = false;
-		languageError.value = null;
-		embeddingError.value = null;
+		languageSaveError.value = null;
+		embeddingSaveError.value = null;
 		showLanguageBaseUrl.value = false;
 		showHostedEmbedder.value = false;
 		testState.value = { status: 'idle' };
@@ -305,11 +333,11 @@ export function useAiProviderForm() {
 		// cannot translate), so translate before it reaches an input's error slot —
 		// otherwise the admin reads a key path where a sentence belongs.
 		const languageKey = liveLanguageError.value;
-		languageError.value = languageKey ? t(languageKey) : null;
-		if (languageError.value) return;
+		languageSaveError.value = languageKey ? t(languageKey) : null;
+		if (languageSaveError.value) return;
 
-		// A hosted embedder needs a key too (stored or freshly typed).
-		embeddingError.value = null;
+		// A hosted embedder needs a key too (stored for this provider, or freshly typed).
+		embeddingSaveError.value = null;
 		if (
 			embeddingRequiresKey.value &&
 			!storedEmbeddingKeySet.value &&
@@ -319,11 +347,13 @@ export function useAiProviderForm() {
 			// `utils/aiProviders`), so it has to be translated before it lands in the
 			// inline error — otherwise the admin reads
 			// "shared.aiProviders.embedders.openai.label needs an API key."
-			embeddingError.value = t('shared.useAiProviderForm.embeddingKeyRequired', {
-				provider: embeddingMeta.value
-					? t(embeddingMeta.value.label)
-					: t('shared.useAiProviderForm.thisEmbedder'),
-			});
+			embeddingSaveError.value = isEmbeddingKeyStranded.value
+				? t(STORED_KEY_NOT_REUSABLE_KEY)
+				: t('shared.useAiProviderForm.embeddingKeyRequired', {
+						provider: embeddingMeta.value
+							? t(embeddingMeta.value.label)
+							: t('shared.useAiProviderForm.thisEmbedder'),
+					});
 			return;
 		}
 
