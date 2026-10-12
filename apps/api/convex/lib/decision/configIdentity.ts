@@ -21,6 +21,7 @@
 
 import { getOptional } from '../env';
 import { resolveEndpointLocality } from '../llm/endpointLocality';
+import { exactEndpointIdentity } from '../llm/languageIdentity';
 import {
 	DECISION_PROVIDER_KINDS,
 	DEFAULT_DECISION_KIND,
@@ -38,8 +39,12 @@ export interface ResolvedPlaneIdentityInput {
 
 /**
  * `off` while the plane is off, `unavailable:<kind>` when the configured
- * provider cannot answer, otherwise `<kind>|<model>|<origin>` of the resolved
- * plane. Secret free.
+ * provider cannot answer, otherwise `<kind>|<model>|<endpoint>` of the resolved
+ * plane. Secret free: the endpoint is {@link exactEndpointIdentity} of the base
+ * URL the adapter is given (its origin and a digest of the string), because an
+ * accepted path or query may carry a credential and the identity is stored on
+ * every decision artifact. It changes whenever the URL the adapter dispatches
+ * to changes; the adapter's default endpoint (no base URL) is the empty part.
  */
 export function resolvedPlaneIdentity(
 	plane: ResolvedPlaneIdentityInput | null,
@@ -48,7 +53,8 @@ export function resolvedPlaneIdentity(
 	if (!isDecisionPlaneOn) return 'off';
 	if (plane === null) return 'unavailable';
 	if (plane.unavailable !== undefined) return `unavailable:${plane.kind}`;
-	return [plane.kind, plane.modelId, plane.clientConfig.baseUrl ?? ''].join('|');
+	const { baseUrl } = plane.clientConfig;
+	return [plane.kind, plane.modelId, baseUrl ? exactEndpointIdentity(baseUrl) : ''].join('|');
 }
 
 /** The decision provider KIND as configured: a stored kind, else `DECISION_PROVIDER`, else the default. */

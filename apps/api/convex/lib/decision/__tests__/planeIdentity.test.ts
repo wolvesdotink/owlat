@@ -11,6 +11,7 @@ import type { Doc } from '../../../_generated/dataModel';
 import { __resetDecisionPlaneCacheForTests, resolveDecisionConfig } from '../../decisionProvider';
 import { resolvedPlaneIdentity } from '../configIdentity';
 import { PINNED_DECISION_MODEL } from '../../decisionProviders/typesafe';
+import { exactEndpointIdentity } from '../../llm/languageIdentity';
 
 vi.mock('../../llmProvider', () => ({
 	resolveLanguageModel: vi.fn(async () => ({ modelId: 'language-model', provider: 'openai' })),
@@ -51,7 +52,7 @@ describe('the identity of a stored provider kind with env fallbacks', () => {
 		vi.stubEnv('DECISION_MODEL', 'jev-1.14.0');
 		vi.stubEnv('DECISION_BASE_URL', 'https://jev.proxy.example');
 		expect(await identityOf(ctxWithStoredKind())).toBe(
-			'typesafe|jev-1.14.0|https://jev.proxy.example'
+			`typesafe|jev-1.14.0|${exactEndpointIdentity('https://jev.proxy.example')}`
 		);
 	});
 
@@ -77,7 +78,22 @@ describe('the identity of a stored provider kind with env fallbacks', () => {
 					decisionBaseUrl: 'https://stored.proxy.example',
 				})
 			)
-		).toBe('typesafe|jev-stored|https://stored.proxy.example');
+		).toBe(`typesafe|jev-stored|${exactEndpointIdentity('https://stored.proxy.example')}`);
+	});
+
+	it('never holds a credential from the base URL in clear text, and changes with it (final F2)', async () => {
+		vi.stubEnv('TYPESAFE_API_KEY', 'ts-live-0123456789abcdef');
+		const at = (decisionBaseUrl: string) => identityOf(ctxWithStoredKind({ decisionBaseUrl }));
+		const withPathKey = await at('https://jev.proxy.example/key-SECRETPATH/v1');
+		const withQueryKey = await at('https://jev.proxy.example/v1?token=SECRETQUERY');
+		const otherQueryKey = await at('https://jev.proxy.example/v1?token=OTHERQUERY');
+		for (const identity of [withPathKey, withQueryKey, otherQueryKey]) {
+			expect(identity).not.toMatch(/SECRET|OTHER|token|key-/);
+			expect(
+				identity.startsWith(`typesafe|${PINNED_DECISION_MODEL}|https://jev.proxy.example/~`)
+			).toBe(true);
+		}
+		expect(new Set([withPathKey, withQueryKey, otherQueryKey]).size).toBe(3);
 	});
 
 	it('names a stored provider without a usable key as unavailable', async () => {

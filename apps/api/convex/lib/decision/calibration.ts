@@ -80,7 +80,7 @@ export function verdictBlockReason(verdict: StoredVerdict, context: VerdictConte
 		return 'the verdict predates the current routing policy';
 	}
 	// The identity the answer was stamped with, AND the adapter that actually
-	// answered, must both be the plane configured now (`kind|model|origin`).
+	// answered, must both be the plane configured now (`kind|model|endpoint`).
 	const configuredKind = context.decisionConfigIdentity.split('|')[0];
 	if (
 		verdict.provenance === undefined ||

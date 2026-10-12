@@ -21,6 +21,7 @@ import {
 	type VerdictContext,
 } from '../calibration';
 import { isLocalDecisionEngine, resolvedPlaneIdentity } from '../configIdentity';
+import { exactEndpointIdentity } from '../../llm/languageIdentity';
 
 const DEFAULTS = resolveRoutingPolicy(null);
 const NOW = Date.UTC(2026, 9, 12);
@@ -220,7 +221,7 @@ describe('the decision plane identity and locality', () => {
 		).toBe('unavailable:typesafe');
 		expect(
 			resolvedPlaneIdentity({ ...plane, clientConfig: { baseUrl: 'https://p.example' } }, true)
-		).toBe('typesafe|jev-1.13.0|https://p.example');
+		).toBe(`typesafe|jev-1.13.0|${exactEndpointIdentity('https://p.example')}`);
 	});
 
 	it('treats only the local engine as local, from the stored kind or the environment', () => {
