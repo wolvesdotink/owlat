@@ -47,7 +47,7 @@ vi.mock('../attachmentSuggest', () => ({ searchFilesForRequest: vi.fn(async () =
 
 import { replySlotsSchema, divergenceSchema, type ReplySlot } from '../clarificationSlots';
 import { clarifyStep, type ClarifyInput } from '../../agent/steps/clarify';
-import { refineClarification } from '../../mail/ai/needsReplyClassify';
+import { refineClarification } from '../../mail/ai/needsReplyRefine';
 import { runGapCheck } from '../../mail/ai/composeDraftGap';
 import type { Id } from '../../_generated/dataModel';
 import { AdmissionRefusedError } from '../../lib/llm/admissionPort';

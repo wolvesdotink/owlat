@@ -33,7 +33,7 @@ import {
 	sanitizeClarificationQuestions,
 	isCredentialSolicitation,
 } from '../../inbox/clarificationSlots';
-import { refineClarification } from '../ai/needsReplyClassify';
+import { refineClarification } from '../ai/needsReplyRefine';
 
 // The mocked dispatch records no provider request, so no ledger write reads ctx.
 const ctx = {} as never;
