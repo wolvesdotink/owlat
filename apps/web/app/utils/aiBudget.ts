@@ -58,6 +58,16 @@ export function budgetReasonOfError(error: unknown): BudgetHoldReason | null {
 	return budgetRefusalReason((error as { data?: { data?: unknown } } | null)?.data?.data);
 }
 
+/**
+ * The catalog key for a thrown error that is the budget refusal (the reason's
+ * sentence), or null for any other failure. For the client call sites that
+ * call a paid action directly and catch it themselves.
+ */
+export function budgetCopyKeyOfError(error: unknown): string | null {
+	const reason = budgetReasonOfError(error);
+	return reason ? BUDGET_REASON_KEYS[reason] : null;
+}
+
 /** A draft stream (compose, revise) that ended on the budget. */
 export function isBudgetStreamError(errorMessage: string | null | undefined): boolean {
 	return errorMessage === AI_BUDGET_ERROR_CODE;

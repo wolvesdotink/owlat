@@ -19,7 +19,7 @@
  */
 
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
-import { BUDGET_GENERIC_KEY } from '~/utils/aiBudget';
+import { BUDGET_GENERIC_KEY, budgetCopyKeyOfError } from '~/utils/aiBudget';
 import { ref, computed, type Ref } from 'vue';
 
 export type ReviseStatus = 'idle' | 'streaming' | 'done' | 'error';
@@ -128,9 +128,12 @@ export function useDraftRevise(deps: DraftReviseDeps) {
 			result.value = res.text;
 			injectionFlagged.value = res.injectionFlagged;
 			status.value = 'done';
-		} catch {
+		} catch (error) {
 			status.value = 'error';
-			deps.onError?.(t('shared.postbox.useDraftRevise.failed'));
+			// U5: admission refuses before the action's stream catch, so the
+			// refusal arrives thrown, with its reason.
+			const budgetKey = budgetCopyKeyOfError(error);
+			deps.onError?.(budgetKey ? t(budgetKey) : t('shared.postbox.useDraftRevise.failed'));
 			await cleanup();
 		}
 	}

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { ConvexError } from 'convex/values';
 import {
 	usePostboxCoach,
 	isCoachEligible,
@@ -155,5 +156,24 @@ describe('usePostboxCoach lifecycle', () => {
 		expect(coach.suggestions.value).toEqual([]);
 		expect(onError).toHaveBeenCalledTimes(1);
 		expect(onError).toHaveBeenCalledWith('Could not coach this draft. Try again.');
+	});
+
+	it('says which budget refused the coach (U5)', async () => {
+		const c = deferredCoach();
+		const onError = vi.fn();
+		const coach = usePostboxCoach({ requestCoach: c.fn, onError });
+		const p = coach.run('A legally-sensitive reply we do not want to auto-send.');
+		await c.rejectWith(
+			new ConvexError({
+				category: 'forbidden',
+				message: 'AI budget reached.',
+				data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling', limit: 5 },
+			})
+		);
+		await p;
+		expect(coach.status.value).toBe('idle');
+		expect(onError).toHaveBeenCalledWith(
+			expect.stringContaining('The AI spend budget for this month is used up.')
+		);
 	});
 });

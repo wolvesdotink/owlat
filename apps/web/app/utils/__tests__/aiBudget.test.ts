@@ -10,6 +10,7 @@ import {
 	BUDGET_REASON_KEYS,
 	MISSING_JUDGMENT_KEYS,
 	budgetReasonOf,
+	budgetCopyKeyOfError,
 	budgetReasonOfError,
 	budgetRefusalReason,
 	isBudgetStreamError,
@@ -45,6 +46,10 @@ describe('budgetRefusalReason', () => {
 		).toBe('monthly_ceiling');
 		expect(budgetReasonOfError(new Error('AI_BUDGET_EXHAUSTED'))).toBeNull();
 		expect(budgetReasonOfError(null)).toBeNull();
+		expect(
+			budgetCopyKeyOfError(new ConvexError({ category: 'forbidden', message: 'x', data }))
+		).toBe(BUDGET_REASON_KEYS.monthly_ceiling);
+		expect(budgetCopyKeyOfError(new Error('boom'))).toBeNull();
 	});
 });
 

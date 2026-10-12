@@ -18,6 +18,7 @@
 
 import { ref } from 'vue';
 import { countWords } from './usePostboxSelectionRewrite';
+import { budgetCopyKeyOfError } from '~/utils/aiBudget';
 
 /** Mirrors the backend `CoachCategory` union in mail/ai/assist.ts. */
 export type CoachCategory = 'tone' | 'ambiguity' | 'clarity' | 'missing-answer';
@@ -98,12 +99,14 @@ export function usePostboxCoach(options: UsePostboxCoachOptions) {
 		let result: CoachSuggestion[] = [];
 		try {
 			result = await options.requestCoach(draftText, controller.signal);
-		} catch {
+		} catch (error) {
 			if (controller.signal.aborted || activeController !== controller) return;
 			activeController = null;
 			status.value = 'idle';
 			suggestions.value = [];
-			options.onError?.(t('shared.postbox.usePostboxCoach.failed'));
+			// U5: a budget refusal says which budget, not "try again".
+			const budgetKey = budgetCopyKeyOfError(error);
+			options.onError?.(budgetKey ? t(budgetKey) : t('shared.postbox.usePostboxCoach.failed'));
 			return;
 		}
 		// Reject stale/aborted responses: a newer run (or a reset) replaced us.
