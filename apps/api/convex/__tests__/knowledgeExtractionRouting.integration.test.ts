@@ -60,6 +60,10 @@ beforeEach(() => {
 		embedding: [0.1, 0.2, 0.3],
 		usage: { tokens: 1 },
 	}));
+	// Scheduled work stays queued: the first write into the local space
+	// activates it and schedules its re-embed kickoff (ADR-0073), whose embedding
+	// calls are not this suite's subject and would race the counts below.
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 	// The local embedding server answers no revision probe (ADR-0073).
 	vi.stubGlobal(
 		'fetch',
@@ -67,6 +71,7 @@ beforeEach(() => {
 	);
 });
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 });
 
