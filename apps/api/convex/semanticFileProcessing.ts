@@ -44,8 +44,7 @@ import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
 import { scrubTags, slugifyTag, truncateForLLM } from './lib/semanticFileText';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
-import { anchorActionDeadline } from './lib/llm/actionDeadline';
-import { boundedRoot } from './lib/llm/actionDeadline';
+import { anchorActionDeadline, boundedRoot } from './lib/llm/actionDeadline';
 
 /**
  * Whether any AI provider is set up. AI is optional: without one a file still

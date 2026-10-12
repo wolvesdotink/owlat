@@ -29,9 +29,8 @@ import { internal } from '../_generated/api';
 import { isActiveOrgMember } from '../lib/sessionOrganization';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { cancelLatestJob, createCappedJob, latestJob } from './backfillJobs';
-import { boundedRoot } from '../lib/llm/actionDeadline';
+import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
 import { rootRequest } from '../lib/llm/requestMeter';
-import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 // Tunables
 /** Messages per `runChunk` invocation; the flag toggle starts the walk with it. */

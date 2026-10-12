@@ -40,9 +40,8 @@ import { markOnboardingStep } from '../auth/userOnboarding';
 import { normalizeEmail } from '@owlat/shared';
 import { logError } from '../lib/runtimeLog';
 import { loadExtractableMail } from './knowledgeScreen';
-import { boundedRoot } from '../lib/llm/actionDeadline';
+import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
 import { rootRequest } from '../lib/llm/requestMeter';
-import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 // Tunables. Pacing comes from the concurrency cap: at most this many
 // extractions (LLM calls) in flight per sweep.
