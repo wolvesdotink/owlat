@@ -40,7 +40,7 @@ import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import { buildAssistantTools } from './tools';
 import type { AssistantAudience } from './toolRegistry';
 import { buildAssistantSystemPrompt, clampText, type AssistantSurface } from './prompt';
-import { assistantToolCallValidator } from '../lib/convexValidators';
+import type { assistantToolCallValidator } from '../lib/convexValidators';
 import { admissionRefusalOf } from '../lib/llm/admissionPort';
 import { taskPolicy } from '../lib/llm/taskPolicy';
 import type { BudgetRefusal } from '../lib/validators/aiRouting';

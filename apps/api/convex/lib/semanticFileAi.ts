@@ -7,15 +7,17 @@
  * the call runs the shared LLM dispatch.
  */
 
-import { z } from 'zod';
+import type { z } from 'zod';
 import type { ActionCtx } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { LlmRootContext } from './llm/requestMeter';
 import { resolveAiConfig, resolveLanguageModel } from './llmProvider';
 import { AiNotConfiguredError } from './aiNotConfigured';
 import { runLlmObject } from './llm/dispatch';
 import { meterLlmCall } from '../analytics/meteredSpend';
 import { logInfo } from './runtimeLog';
+import { sendThroughBatch } from './llm/batch/submit';
+import { summarySchema } from './semanticFileSummary';
 
 /**
  * Whether any AI provider is set up. AI is optional: without one a file still
@@ -33,36 +35,56 @@ export async function aiProviderConfigured(ctx: ActionCtx): Promise<boolean> {
 	}
 }
 
-const summarySchema = z.object({
-	title: z.string().describe('Short descriptive title for the file'),
-	summary: z.string().describe('2-3 sentence summary of the file content'),
-	tags: z.array(z.string()).describe('5-10 relevant tags for categorization'),
-});
+interface SummaryInput {
+	readonly file: Pick<Doc<'semanticFiles'>, 'filename' | 'mimeType'>;
+	readonly fileCtx: { readonly threadSubject?: string | null; readonly contactNames: string[] };
+	readonly textForAI: string;
+	readonly root: LlmRootContext;
+}
+
+function summaryPrompt({ file, fileCtx, textForAI }: SummaryInput): string {
+	return `Analyze this file and provide a title, summary, and tags.
+
+Filename: ${file.filename}
+MIME type: ${file.mimeType}${fileCtx.threadSubject ? `\nShared in conversation: "${fileCtx.threadSubject}"` : ''}${fileCtx.contactNames.length ? `\nRelated contacts: ${fileCtx.contactNames.join(', ')}` : ''}
+
+Content:
+${textForAI}`;
+}
+
+/**
+ * L14: send the summary call through the provider's batch API when the
+ * routing policy and the adapter allow it (`lib/llm/batch/submit.ts`). True:
+ * it is out, and the file is processed again with the summary once it is
+ * back. False: summarize in real time. Throws a spend refusal as the
+ * real-time call would.
+ */
+export async function sendSummaryThroughBatch(
+	ctx: ActionCtx,
+	input: SummaryInput & { readonly fileId: Id<'semanticFiles'> }
+): Promise<boolean> {
+	const model = await resolveLanguageModel(ctx, 'summarize');
+	return sendThroughBatch(ctx, {
+		consumer: 'file_summary',
+		sourceId: input.fileId,
+		model,
+		prompt: summaryPrompt(input),
+		root: input.root,
+	});
+}
 
 /** One metered summary call. Throws on failure (an admission refusal included). */
 export async function summarizeFile(
 	ctx: ActionCtx,
-	input: {
-		readonly file: Pick<Doc<'semanticFiles'>, 'filename' | 'mimeType'>;
-		readonly fileCtx: { readonly threadSubject?: string | null; readonly contactNames: string[] };
-		readonly textForAI: string;
-		readonly root: LlmRootContext;
-	}
+	input: SummaryInput
 ): Promise<z.infer<typeof summarySchema>> {
-	const { file, fileCtx, textForAI } = input;
 	const model = await resolveLanguageModel(ctx, 'summarize');
 	const result = await meterLlmCall(ctx, { feature: 'semantic_file', root: input.root }, (meter) =>
 		runLlmObject({
 			meter,
 			model,
 			schema: summarySchema,
-			prompt: `Analyze this file and provide a title, summary, and tags.
-
-Filename: ${file.filename}
-MIME type: ${file.mimeType}${fileCtx.threadSubject ? `\nShared in conversation: "${fileCtx.threadSubject}"` : ''}${fileCtx.contactNames.length ? `\nRelated contacts: ${fileCtx.contactNames.join(', ')}` : ''}
-
-Content:
-${textForAI}`,
+			prompt: summaryPrompt(input),
 		})
 	);
 	logInfo('[semantic_file] llm call', {

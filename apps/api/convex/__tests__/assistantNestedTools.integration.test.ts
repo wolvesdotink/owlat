@@ -16,6 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolExecutionOptions, ToolSet } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
+import type * as LlmProviderModule from '../lib/llmProvider';
 
 const llm = vi.hoisted(() => ({ model: undefined as unknown }));
 const sdk = vi.hoisted(() => ({ embed: vi.fn() }));
@@ -26,7 +27,7 @@ vi.mock('ai', async () => ({
 }));
 
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return {
 		...actual,
 		resolveLanguageModel: vi.fn(async () => llm.model),

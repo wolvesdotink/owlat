@@ -39,12 +39,13 @@ import { scrubTags, slugifyTag, truncateForLLM } from './lib/semanticFileText';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
 import { anchorActionDeadline, boundedRoot } from './lib/llm/actionDeadline';
 import {
+	batchedFileSummaryValidator,
 	deferFileForBudget,
 	fileStageValidator,
 	owedFileStages,
 	reusableSummary,
 } from './analytics/backgroundDeferral';
-import { aiProviderConfigured, summarizeFile } from './lib/semanticFileAi';
+import { aiProviderConfigured, sendSummaryThroughBatch, summarizeFile } from './lib/semanticFileAi';
 
 /**
  * Process a newly uploaded file: extract text, generate summary,
@@ -57,6 +58,8 @@ export const processFile = internalAction({
 		deferrals: v.optional(v.number()),
 		/** The paid stages a deferred run still owes; absent: all of them. */
 		stages: v.optional(v.array(fileStageValidator)),
+		/** The summary a provider batch returned (L14): used instead of asking the model. */
+		batchedSummary: v.optional(batchedFileSummaryValidator),
 	},
 	handler: async (ctx, args) => {
 		// One model budget for this action, from its start (ADR-0073).
@@ -132,7 +135,13 @@ export const processFile = internalAction({
 		// D1 (ADR-0073): at the spend ceiling the paid steps defer to a later run.
 		const aiConfigured =
 			(await aiProviderConfigured(ctx)) &&
-			!(await deferFileForBudget(ctx, args.fileId, args.deferrals, args.stages));
+			!(await deferFileForBudget(
+				ctx,
+				args.fileId,
+				args.deferrals,
+				args.stages,
+				args.batchedSummary
+			));
 		if (!aiConfigured) {
 			logInfo('[semantic_file] no AI provider, or deferred at the spend ceiling; text only', {
 				fileId: args.fileId,
@@ -147,6 +156,8 @@ export const processFile = internalAction({
 		// Paid stages spend admission refuses are owed to a later run (D1, ADR-0073).
 		const owed = owedFileStages(ctx, args.fileId, args.deferrals);
 		const reused = reusableSummary(file, args.stages);
+		// The summary went to a provider batch: the embedding and the graph wait for it.
+		let isSummaryBatched = false;
 
 		if (injectionReason) {
 			// Poisoned extracted text: don't hand it to the model. Keep filename-only
@@ -155,15 +166,29 @@ export const processFile = internalAction({
 		} else if (reused) {
 			// A deferred run whose summary already landed: only the embedding is owed.
 			({ title, summary, autoTags } = reused);
+		} else if (args.batchedSummary) {
+			// L14: the summary came back from the provider's batch API.
+			title = title || args.batchedSummary.title;
+			summary = args.batchedSummary.summary;
+			autoTags = args.batchedSummary.tags;
 		} else if (textForAI.length > 50 && !aiConfigured) {
 			// No model to ask: the same fallback as a failed call below.
 			title = title || file.filename;
 		} else if (textForAI.length > 50) {
 			try {
-				const result = await summarizeFile(ctx, { file, fileCtx, textForAI, root: fileRoot });
-				title = title || result.title;
-				summary = result.summary;
-				autoTags = result.tags;
+				const summaryInput = { file, fileCtx, textForAI, root: fileRoot };
+				// L14: out to the provider's batch API when the switch allows; this
+				// file is processed again with the summary once it is back.
+				isSummaryBatched = await sendSummaryThroughBatch(ctx, {
+					...summaryInput,
+					fileId: args.fileId,
+				});
+				if (!isSummaryBatched) {
+					const result = await summarizeFile(ctx, summaryInput);
+					title = title || result.title;
+					summary = result.summary;
+					autoTags = result.tags;
+				}
 			} catch (error) {
 				logError('[semantic_file] summarize/tag call failed', {
 					fileId: args.fileId,
@@ -182,7 +207,7 @@ export const processFile = internalAction({
 		let embeddingSpace: MeasuredSpace | undefined;
 		const embeddingText = fileEmbeddingInput({ title, summary, extractedText });
 
-		if (aiConfigured && embeddingText) {
+		if (aiConfigured && embeddingText && !isSummaryBatched) {
 			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
 			// actionable error instead of being swallowed into a silent empty vector;
 			// only a transient embed() failure fails soft (metadata without search).
@@ -264,6 +289,7 @@ export const processFile = internalAction({
 		// text (binary stubs like "[PDF file: …]"), or no model to extract with.
 		if (
 			aiConfigured &&
+			!isSummaryBatched &&
 			// A run that owes only the embedding already fed the graph.
 			(args.stages === undefined || args.stages.includes('summary')) &&
 			extractedText &&
