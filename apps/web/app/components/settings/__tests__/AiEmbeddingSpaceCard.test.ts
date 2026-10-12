@@ -105,7 +105,12 @@ function mountCard() {
 					template:
 						'<div v-if="open" data-testid="dialog"><p>{{ title }}</p><p>{{ description }}</p><button data-testid="dialog-confirm" @click="$emit(\'confirm\')">{{ confirmText }}</button><button data-testid="dialog-dismiss" @click="$emit(\'update:open\', false)">x</button></div>',
 				},
-				SettingsAiModelPicker: { props: ['label'], template: '<div>{{ label }}</div>' },
+				SettingsAiModelPicker: {
+					props: ['label', 'choice'],
+					emits: ['update:choice'],
+					template:
+						'<label>{{ label }}<input data-testid="model-choice" :value="choice" @input="$emit(\'update:choice\', $event.target.value)" /></label>',
+				},
 			},
 		},
 	});
@@ -593,6 +598,94 @@ describe('AiEmbeddingSpaceCard', () => {
 			const summary = mountCard().get('[data-testid="ai-embedding-attest-identity"]').text();
 			expect(summary).toContain('text-embedding-3-large');
 			expect(summary).toContain('Enter it above');
+		});
+	});
+
+	describe('Sol round 7', () => {
+		const staged = space({
+			_id: 'sp_a' as never,
+			model: 'model-a',
+			state: 'staged',
+			slot: 'secondary',
+		});
+		const withJobs = (...jobs: ReturnType<typeof job>[]) =>
+			embeddingStatus({ staged, isPaidEmbeddingAvailable: true, jobs });
+		const completed = job({
+			_id: 'job_fill' as never,
+			kind: 'rebuild',
+			targetSpaceId: 'sp_a' as never,
+			status: 'completed',
+		});
+		const catchUp = job({
+			_id: 'job_catch' as never,
+			kind: 'rebuild',
+			targetSpaceId: 'sp_a' as never,
+			status: 'running',
+		});
+
+		it.each([
+			['activate', 'activate'],
+			['validate', 'validate'],
+		] as const)(
+			'F2: a %s dialog lapses when a catch-up starts on the same staged space',
+			async (button, operation) => {
+				status.value = withJobs(completed);
+				const w = mountCard();
+				await w.get(`[data-testid="ai-embedding-rebuild-${button}"]`).trigger('click');
+				const confirmButton = w.get('[data-testid="dialog-confirm"]');
+				// Same staged space, but a catch-up pass is now running.
+				status.value = withJobs(catchUp, completed);
+				await confirmButton.trigger('click');
+				await flushPromises();
+				expect(spaces[operation]).not.toHaveBeenCalled();
+				expect(spaces.validate).not.toHaveBeenCalled();
+				expect(w.find('[data-testid="dialog"]').exists()).toBe(false);
+				expect(
+					w.get(`[data-testid="ai-embedding-rebuild-${button}"]`).attributes('disabled')
+				).toBeDefined();
+				expect(w.get('[data-testid="ai-embedding-rebuild-blocker"]').text()).toContain(
+					'already running'
+				);
+			}
+		);
+
+		it('F2: an embed-changes dialog lapses when another job opens', async () => {
+			status.value = withJobs(completed);
+			const w = mountCard();
+			await w.get('[data-testid="ai-embedding-rebuild-catch-up"]').trigger('click');
+			const confirmButton = w.get('[data-testid="dialog-confirm"]');
+			status.value = withJobs(catchUp, completed);
+			await confirmButton.trigger('click');
+			await flushPromises();
+			expect(spaces.catchUp).not.toHaveBeenCalled();
+		});
+
+		it('F2: activation waits for a filled rebuild and says so', () => {
+			status.value = withJobs(
+				job({ kind: 'rebuild', targetSpaceId: 'sp_a' as never, status: 'cancelled' })
+			);
+			const w = mountCard();
+			expect(
+				w.get('[data-testid="ai-embedding-rebuild-activate"]').attributes('disabled')
+			).toBeDefined();
+			expect(
+				w.get('[data-testid="ai-embedding-rebuild-catch-up"]').attributes('disabled')
+			).toBeUndefined();
+			expect(w.get('[data-testid="ai-embedding-rebuild-blocker"]').text()).toContain(
+				"hasn't finished"
+			);
+		});
+
+		it('F2: a rebuild-start dialog lapses when a staged space appears', async () => {
+			status.value = embeddingStatus({ isPaidEmbeddingAvailable: true });
+			const w = mountCard();
+			await w.get('[data-testid="model-choice"]').setValue('text-embedding-3-large');
+			await w.get('[data-testid="ai-embedding-rebuild-start"]').trigger('click');
+			const confirmButton = w.get('[data-testid="dialog-confirm"]');
+			status.value = { ...status.value!, staged };
+			await confirmButton.trigger('click');
+			await flushPromises();
+			expect(spaces.startRebuild).not.toHaveBeenCalled();
 		});
 	});
 });

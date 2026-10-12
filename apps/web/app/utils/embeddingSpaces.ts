@@ -362,3 +362,23 @@ export function pausedJobKey(status: EmbeddingStatus | null, jobId: string): str
 	const job = status?.jobs.find((candidate) => candidate._id === jobId);
 	return job?.status === 'paused' ? JSON.stringify([job._id, 'paused']) : null;
 }
+
+/** What a staged action needs before it may run. */
+export type StagedAction = 'validate' | 'activate' | 'catchUp';
+
+/**
+ * Why a staged action may not run now, or null. Read against the LIVE status
+ * both to enable the button and while its confirmation is open: validation
+ * and activation need the rebuild filled and no job running (a catch-up
+ * started meanwhile would make Confirm pay for a validation the activation
+ * then refuses); a catch-up needs no job running; and paid work needs spend
+ * admission.
+ */
+export function stagedActionBlocker(status: EmbeddingStatus, action: StagedAction): string | null {
+	if (!status.staged) return null;
+	if (hasOpenJob(status.jobs)) return `${K}.rebuild.blocked.jobOpen`;
+	if (action !== 'catchUp' && rebuildJob(status)?.status !== 'completed') {
+		return `${K}.rebuild.blocked.notFilled`;
+	}
+	return paidBlocker(status, stagedPayment(status));
+}

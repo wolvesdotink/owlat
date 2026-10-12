@@ -7959,6 +7959,7 @@
 							"blocked": {
 								"jobOpen": "Ein Neueinbetten oder ein Neuaufbau läuft bereits.",
 								"noModel": "Wähle ein Modell.",
+								"notFilled": "Der Neuaufbau ist noch nicht fertig eingebettet.",
 								"sameModel": "Die Vektorsuche nutzt dieses Modell bereits."
 							},
 							"cancel": "Neuaufbau abbrechen",

@@ -77,17 +77,17 @@ const costKey = computed(() => {
 		(configured?.provider === kind.value && configured.isLocal === false);
 	return isKnownHosted ? `${K}.costHosted` : `${K}.costUnknown`;
 });
-const isSameAsActive = computed(
-	() =>
-		props.status.configured?.provider === kind.value &&
-		props.status.configured?.model === model.value
-);
-const startBlocker = computed(() => {
-	if (hasOpenJob(props.status.jobs)) return `${K}.blocked.jobOpen`;
+/** Why a rebuild cannot start against `status`; read live again at Confirm. */
+function startBlockerOf(status: EmbeddingStatus | null): string | null {
+	if (!status) return null;
+	if (hasOpenJob(status.jobs) || status.staged) return `${K}.blocked.jobOpen`;
 	if (!model.value) return `${K}.blocked.noModel`;
-	if (isSameAsActive.value) return `${K}.blocked.sameModel`;
-	return paidBlocker(props.status, payment.value);
-});
+	if (status.configured?.provider === kind.value && status.configured.model === model.value) {
+		return `${K}.blocked.sameModel`;
+	}
+	return paidBlocker(status, rebuildTargetPayment(status, kind.value));
+}
+const startBlocker = computed(() => startBlockerOf(props.status));
 
 const confirmation = useEmbeddingConfirm();
 // The live read, not the prop: a prop catches up only on the next render.
@@ -102,7 +102,7 @@ function start() {
 		// Bound to the configuration the form was filled against.
 		targetKey: configuredKey(props.status) ?? '',
 		currentKey: () => configuredKey(live()),
-		blocker: () => startBlocker.value,
+		blocker: () => startBlockerOf(live()),
 		run: () => props.spaces.startRebuild(target),
 	});
 }

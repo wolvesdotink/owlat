@@ -19,12 +19,13 @@ import { useEmbeddingConfirm } from '~/composables/useEmbeddingConfirm';
 import {
 	jobPayment,
 	jobStateKey,
-	paidBlocker,
 	pausedJobKey,
 	rebuildJob,
 	resumeBlocker,
+	stagedActionBlocker,
 	stagedKey,
 	stagedPayment,
+	type StagedAction,
 	type EmbeddingSpaceView,
 	type EmbeddingStatus,
 } from '~/utils/embeddingSpaces';
@@ -40,17 +41,27 @@ const { t } = useI18n();
 const K = 'dashboard.admin.instance.aiProvider.embeddingSpace.rebuild';
 
 const job = computed(() => rebuildJob(props.status));
-const isJobOpen = computed(() => job.value?.status === 'running' || job.value?.status === 'paused');
 const isPaused = computed(() => job.value?.status === 'paused');
-const isFilled = computed(() => job.value?.status === 'completed');
 const validation = computed(() =>
 	props.spaces.validation.value?.spaceId === props.staged._id ? props.spaces.validation.value : null
 );
 
 const isPaid = computed(() => stagedPayment(props.status) === 'paid');
-const paidBlock = computed(() => paidBlocker(props.status, stagedPayment(props.status)));
+// The live read, not the prop: a prop catches up only on the next render.
+const live = () => props.spaces.status.value ?? null;
+/** Each action's own prerequisites, against the live status. */
+const actionBlocker = (action: StagedAction) => {
+	const status = live();
+	return status ? stagedActionBlocker(status, action) : null;
+};
+const validateBlock = computed(() => actionBlocker('validate'));
+const activateBlock = computed(() => actionBlocker('activate'));
+const catchUpBlock = computed(() => actionBlocker('catchUp'));
 const resumeBlock = computed(() => (job.value ? resumeBlocker(props.status, job.value) : null));
-const blocker = computed(() => (isPaused.value ? resumeBlock.value : paidBlock.value));
+/** The line under the buttons: why the next step cannot happen yet. */
+const blocker = computed(() =>
+	isPaused.value ? resumeBlock.value : (activateBlock.value ?? catchUpBlock.value)
+);
 
 const confirmation = useEmbeddingConfirm();
 const model = () => props.staged.model;
@@ -59,15 +70,10 @@ const model = () => props.staged.model;
  * is staged when they run, so the confirmation is bound to it and lapses if
  * another admin replaces or cancels it meanwhile.
  */
-// The live read, not the prop: a prop catches up only on the next render.
-const live = () => props.spaces.status.value ?? null;
-const onStaged = () => ({
+const onStaged = (action: StagedAction) => ({
 	targetKey: stagedKey(props.status) ?? '',
 	currentKey: () => stagedKey(live()),
-	blocker: () => {
-		const status = live();
-		return status ? paidBlocker(status, stagedPayment(status)) : null;
-	},
+	blocker: () => actionBlocker(action),
 });
 
 function validate() {
@@ -75,7 +81,7 @@ function validate() {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidValidateBody`, { model: model() }),
 		confirmText: t(`${K}.validate`),
-		...onStaged(),
+		...onStaged('validate'),
 		run: props.spaces.validate,
 	});
 }
@@ -84,7 +90,7 @@ function activate() {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidActivateBody`, { model: model() }),
 		confirmText: t(`${K}.activate`),
-		...onStaged(),
+		...onStaged('activate'),
 		run: props.spaces.activate,
 	});
 }
@@ -93,7 +99,7 @@ function catchUp() {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidCatchUpBody`, { model: model() }),
 		confirmText: t(`${K}.catchUp`),
-		...onStaged(),
+		...onStaged('catchUp'),
 		run: props.spaces.catchUp,
 	});
 }
@@ -172,7 +178,7 @@ function cancel() {
 				type="button"
 				variant="secondary"
 				size="sm"
-				:disabled="spaces.isBusy.value || !isFilled || paidBlock !== null"
+				:disabled="spaces.isBusy.value || validateBlock !== null"
 				data-testid="ai-embedding-rebuild-validate"
 				@click="validate"
 			>
@@ -181,7 +187,7 @@ function cancel() {
 			<UiButton
 				type="button"
 				size="sm"
-				:disabled="spaces.isBusy.value || !isFilled || paidBlock !== null"
+				:disabled="spaces.isBusy.value || activateBlock !== null"
 				data-testid="ai-embedding-rebuild-activate"
 				@click="activate"
 			>
@@ -191,7 +197,7 @@ function cancel() {
 				type="button"
 				variant="ghost"
 				size="sm"
-				:disabled="spaces.isBusy.value || isJobOpen || paidBlock !== null"
+				:disabled="spaces.isBusy.value || catchUpBlock !== null"
 				data-testid="ai-embedding-rebuild-catch-up"
 				@click="catchUp"
 			>

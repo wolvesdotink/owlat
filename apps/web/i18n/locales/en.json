@@ -7959,6 +7959,7 @@
 							"blocked": {
 								"jobOpen": "A re-embed or rebuild is already running.",
 								"noModel": "Choose a model.",
+								"notFilled": "The rebuild hasn't finished embedding yet.",
 								"sameModel": "Vector search already uses this model."
 							},
 							"cancel": "Cancel rebuild",

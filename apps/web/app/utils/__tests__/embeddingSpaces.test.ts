@@ -26,6 +26,7 @@ import {
 	resumeBlocker,
 	attestationBlocker,
 	attestationIdentity,
+	stagedActionBlocker,
 	endpointOrigin,
 	stagedKey,
 	rollbackKey,
@@ -288,5 +289,31 @@ describe('confirmation target keys (Sol r6 F1)', () => {
 		const paused = job({ status: 'paused' });
 		expect(pausedJobKey(embeddingStatus({ jobs: [paused] }), paused._id)).not.toBeNull();
 		expect(pausedJobKey(embeddingStatus({ jobs: [job()] }), paused._id)).toBeNull();
+	});
+});
+
+describe('stagedActionBlocker (Sol r7 F2)', () => {
+	const staged = space({ _id: 'sp_a' as never, state: 'staged' });
+	const rebuild = (status: 'running' | 'completed' | 'cancelled') =>
+		job({ kind: 'rebuild', targetSpaceId: 'sp_a' as never, status, isPaid: false });
+
+	it('needs a filled rebuild and no running job for validate and activate', () => {
+		const filled = embeddingStatus({ staged, jobs: [rebuild('completed')] });
+		expect(stagedActionBlocker(filled, 'activate')).toBeNull();
+		expect(stagedActionBlocker(filled, 'validate')).toBeNull();
+		const running = embeddingStatus({ staged, jobs: [rebuild('running'), rebuild('completed')] });
+		expect(stagedActionBlocker(running, 'activate')).toBe(`${K}.rebuild.blocked.jobOpen`);
+		const cancelled = embeddingStatus({ staged, jobs: [rebuild('cancelled')] });
+		expect(stagedActionBlocker(cancelled, 'activate')).toBe(`${K}.rebuild.blocked.notFilled`);
+		expect(stagedActionBlocker(cancelled, 'catchUp')).toBeNull();
+	});
+
+	it('needs spend admission for paid staged work', () => {
+		const paid = embeddingStatus({
+			staged,
+			jobs: [job({ kind: 'rebuild', targetSpaceId: 'sp_a' as never, status: 'completed' })],
+		});
+		expect(stagedActionBlocker(paid, 'validate')).toBe(`${K}.paid.unavailable`);
+		expect(stagedActionBlocker({ ...paid, isPaidEmbeddingAvailable: true }, 'validate')).toBeNull();
 	});
 });
