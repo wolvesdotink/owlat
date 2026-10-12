@@ -36,9 +36,7 @@ import { withPartialUsage } from './partialUsage';
 import { addTokenUsage } from './tokenUsage';
 import { normalizeUsage, usageDetails, type RawUsage } from './providerUsage';
 import { startRequest, type LlmCallMeter } from './requestMeter';
-import { dispatchLimits, tighterLimit } from './taskLimits';
-import { taskPolicy } from './taskPolicy';
-import { modelEndpoint } from './modelEndpoint';
+import { callShape, limitArgs } from './callShape';
 import { DEFAULT_MAX_TOOL_STEPS } from './dispatchStream';
 
 export { MAX_LLM_ATTEMPTS, errorStatus, isRetriableLlmError, retryAfterMs } from './retryPolicy';
@@ -110,55 +108,6 @@ function captureProviderModelIdentity(model: LanguageModel): ProviderModelIdenti
 			},
 		}),
 		read: () => validProviderReportedModelId(rawModelId),
-	};
-}
-
-function requestedModelId(model: LanguageModel): string {
-	return typeof model === 'string' ? model : model.modelId;
-}
-
-/** The attempt allowance: the caller's, never above the task's. */
-function attemptAllowance(
-	meter: LlmCallMeter | undefined,
-	maxAttempts: number | undefined
-): number | undefined {
-	return tighterLimit(maxAttempts, meter?.task ? taskPolicy(meter.task).maxAttempts : undefined);
-}
-
-/** The limits one call runs under, plus what every request record of it shares. */
-function callShape(opts: {
-	readonly model: LanguageModel;
-	readonly meter?: LlmCallMeter;
-	readonly maxOutputTokens?: number;
-	readonly abortSignal?: AbortSignal;
-	readonly maxAttempts?: number;
-}) {
-	const limits = dispatchLimits({
-		task: opts.meter?.task,
-		root: opts.meter?.root,
-		maxOutputTokens: opts.maxOutputTokens,
-		abortSignal: opts.abortSignal,
-	});
-	const endpoint = modelEndpoint(opts.model);
-	return {
-		...limits,
-		maxAttempts: attemptAllowance(opts.meter, opts.maxAttempts),
-		modelUsed: requestedModelId(opts.model),
-		requestBase: {
-			modelUsed: requestedModelId(opts.model),
-			...(endpoint ? { endpoint } : {}),
-		},
-	};
-}
-
-/** The SDK option spread for an output ceiling and a signal, each only when set. */
-function limitArgs(limits: {
-	maxOutputTokens: number | undefined;
-	abortSignal: AbortSignal | undefined;
-}): { maxOutputTokens?: number; abortSignal?: AbortSignal } {
-	return {
-		...(limits.maxOutputTokens === undefined ? {} : { maxOutputTokens: limits.maxOutputTokens }),
-		...(limits.abortSignal ? { abortSignal: limits.abortSignal } : {}),
 	};
 }
 

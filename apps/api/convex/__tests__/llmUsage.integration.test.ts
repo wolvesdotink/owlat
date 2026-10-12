@@ -180,6 +180,129 @@ describe('analytics.llmUsage.recordRequests', () => {
 		});
 	});
 
+	it('writes a request once, however often its batch is retried', async () => {
+		const t = convexTest(schema, modules);
+		const batch = {
+			feature: 'agent_draft',
+			requestId: 'req-retried',
+			requests: [
+				{
+					attempt: 1,
+					latencyMs: 1,
+					modelUsed: 'gpt-4o',
+					usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+				},
+			],
+		};
+		await t.mutation(internal.analytics.llmUsage.recordRequests, batch);
+		await t.mutation(internal.analytics.llmUsage.recordRequests, {
+			...batch,
+			requests: [...batch.requests, { ...batch.requests[0]!, attempt: 2 }],
+		});
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('llmUsageEvents').collect();
+			expect(rows.map((row) => row.attempt).sort()).toEqual([1, 2]);
+			const days = (await ctx.db.query('llmSpendPeriods').collect()).filter(
+				(b) => b.periodKind === 'day'
+			);
+			expect(days.reduce((sum, b) => sum + b.eventCount, 0)).toBe(2);
+		});
+	});
+
+	it('prices a local embedder at zero and a hosted one at its listed rate, and marks an unknown price', async () => {
+		const t = convexTest(schema, modules);
+		const write = (requestId: string, modelUsed: string, isLocalEngine?: boolean) =>
+			t.mutation(internal.analytics.llmUsage.recordRequests, {
+				feature: 'embedding_knowledge',
+				requestId,
+				requests: [
+					{
+						attempt: 1,
+						latencyMs: 1,
+						modelUsed,
+						...(isLocalEngine ? { isLocalEngine } : {}),
+						usage: { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 },
+					},
+				],
+			});
+		await write('local', 'nomic-embed-text', true);
+		await write('openai', 'text-embedding-3-small');
+		await write('google-legacy', 'text-embedding-004');
+		await write('chat-unknown', 'qwen3.6:27b');
+
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('llmUsageEvents').collect();
+			const by = (id: string) => rows.find((row) => row.requestId === id)!;
+			expect(by('local')).toMatchObject({ costUsd: 0, isLocalEngine: true, isEstimated: false });
+			expect(by('local').plane).toBe('embedding');
+			expect(by('openai')).toMatchObject({ costMicrousd: 20_000, isEstimated: false });
+			// Unlisted: the dearest embedding rate, never a chat model's, and an estimate.
+			expect(by('google-legacy')).toMatchObject({ costMicrousd: 200_000, isEstimated: true });
+			// The embedding task, whatever model id: priced as an embedding.
+			expect(by('chat-unknown')).toMatchObject({ costMicrousd: 200_000, isEstimated: true });
+		});
+	});
+
+	it('marks a language row priced at the unknown-model fallback as an estimate', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(internal.analytics.llmUsage.recordRequests, {
+			feature: 'agent_draft',
+			requestId: 'unknown-chat',
+			requests: [
+				{
+					attempt: 1,
+					latencyMs: 1,
+					modelUsed: 'qwen3.6:27b',
+					usage: { promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 },
+				},
+			],
+		});
+		await t.run(async (ctx) => {
+			const [row] = await ctx.db.query('llmUsageEvents').collect();
+			expect(row).toMatchObject({ isEstimated: true });
+			expect(row!.costUsd).toBeGreaterThan(0);
+		});
+	});
+
+	it('keeps the previous release’s single-row writer working', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(internal.analytics.llmUsage.record, {
+			feature: 'assistant_ask',
+			modelUsed: 'gpt-4o',
+			tokenUsage: { promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 },
+		});
+		// No usage and no plane: nothing, as before.
+		await t.mutation(internal.analytics.llmUsage.record, {
+			feature: 'assistant_ask',
+			modelUsed: 'gpt-4o',
+			tokenUsage: undefined,
+		});
+		// A tagged decision attempt without usage: a zero-cost estimate.
+		await t.mutation(internal.analytics.llmUsage.record, {
+			feature: 'agent_classify',
+			modelUsed: 'jev-1.13.0',
+			plane: 'decision',
+			isThrottled: true,
+		});
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('llmUsageEvents').collect();
+			expect(rows).toHaveLength(2);
+			const priced = rows.find((row) => row.feature === 'assistant_ask')!;
+			expect(priced.costUsd).toBeGreaterThan(0);
+			expect(priced.priceVersion).toBe(PRICE_VERSION);
+			expect(rows.find((row) => row.plane === 'decision')).toMatchObject({
+				costUsd: 0,
+				isEstimated: true,
+				isThrottled: true,
+			});
+			// Both rows reached the spend aggregate.
+			const days = (await ctx.db.query('llmSpendPeriods').collect()).filter(
+				(b) => b.periodKind === 'day'
+			);
+			expect(days.reduce((sum, b) => sum + b.eventCount, 0)).toBe(2);
+		});
+	});
+
 	it('refuses an unbounded batch', async () => {
 		const t = convexTest(schema, modules);
 		const requests = Array.from({ length: MAX_METERED_REQUESTS_PER_WRITE + 1 }, (_, i) => ({

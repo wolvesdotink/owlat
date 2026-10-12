@@ -198,7 +198,7 @@ export const reviseDraft = authedAction({
 				}),
 		});
 
-		const meter = meterFor({ ...REVISE_SPEND, root: newRootRequest('postbox_action') });
+		const meter = meterFor(ctx, { ...REVISE_SPEND, root: newRootRequest('postbox_action') });
 		try {
 			const result = await runLlmStream({
 				meter,

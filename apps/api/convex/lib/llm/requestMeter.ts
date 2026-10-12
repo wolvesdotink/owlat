@@ -107,6 +107,8 @@ export interface LlmRequestRecord {
 	readonly endpoint?: string;
 	/** Upstream pushed back (429/529). Decision rows only. */
 	readonly isThrottled?: boolean;
+	/** Ran on the operator's own hardware (a local embedder or decision engine): costs nothing. */
+	readonly isLocalEngine?: boolean;
 }
 
 export type LlmRequestInput = Omit<LlmRequestRecord, 'attempt'>;
@@ -115,6 +117,12 @@ export interface LlmCallMeterInit {
 	readonly task?: AiTaskName;
 	readonly root?: LlmRootContext;
 	readonly requestId?: string;
+	/**
+	 * Absolute epoch ms by which every request of this call must be done: the
+	 * tighter of the root's deadline and the running action's own budget
+	 * (`./actionDeadline.ts`). Every dispatch enforces the time left.
+	 */
+	readonly deadlineAt?: number;
 }
 
 /** Collects the provider requests of one logical call. */
@@ -122,13 +130,15 @@ export class LlmCallMeter {
 	readonly requestId: string;
 	readonly task: AiTaskName | undefined;
 	readonly root: LlmRootContext | undefined;
+	readonly deadlineAt: number | undefined;
 	private readonly records: LlmRequestRecord[] = [];
-	private written = 0;
+	private readonly persisted = new Set<number>();
 
 	constructor(init: LlmCallMeterInit = {}) {
 		this.requestId = init.requestId ?? newRequestId();
 		this.task = init.task;
 		this.root = init.root;
+		this.deadlineAt = tighterDeadline(init.deadlineAt, init.root?.deadlineAt);
 	}
 
 	/** Record one provider request. Its attempt number is its position in the call. */
@@ -138,17 +148,42 @@ export class LlmCallMeter {
 		return record;
 	}
 
+	/** Amend a recorded request that is not persisted yet (a throttle flag learned later). */
+	amend(attempt: number, patch: Partial<LlmRequestInput>): void {
+		const index = attempt - 1;
+		const record = this.records[index];
+		if (!record || this.persisted.has(attempt)) return;
+		this.records[index] = Object.freeze({ ...record, ...patch, attempt });
+	}
+
 	/** Every request recorded so far. */
 	get requests(): readonly LlmRequestRecord[] {
 		return this.records;
 	}
 
-	/** The requests not handed out yet, marked handed out: each is written once. */
-	takeUnwritten(): LlmRequestRecord[] {
-		const pending = this.records.slice(this.written);
-		this.written = this.records.length;
-		return pending;
+	/**
+	 * The requests not persisted yet, in order. Reading them marks nothing: a
+	 * writer calls {@link acknowledge} only once a batch is stored, so a failed
+	 * write leaves its requests here for the next flush.
+	 */
+	pendingWrites(): LlmRequestRecord[] {
+		return this.records.filter((record) => !this.persisted.has(record.attempt));
 	}
+
+	/** Mark requests as stored in the ledger. */
+	acknowledge(records: readonly Pick<LlmRequestRecord, 'attempt'>[]): void {
+		for (const record of records) this.persisted.add(record.attempt);
+	}
+}
+
+/** The earlier of two optional absolute deadlines. */
+export function tighterDeadline(
+	left: number | undefined,
+	right: number | undefined
+): number | undefined {
+	if (left === undefined) return right;
+	if (right === undefined) return left;
+	return Math.min(left, right);
 }
 
 /** Start timing one provider request; the returned function records it. */

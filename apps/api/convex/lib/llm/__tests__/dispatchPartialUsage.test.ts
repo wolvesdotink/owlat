@@ -158,7 +158,7 @@ describe('runLlmStream — usage of finished steps', () => {
 		expect((error as Error).message).toBe('scripted model has no step 1');
 	});
 
-	it('returns the usage of the finished steps when the stream is aborted', async () => {
+	it('returns the usage the provider reported when the stream is aborted', async () => {
 		const controller = new AbortController();
 		const result = await runLlmStream({
 			model: scriptedStreamModel([
@@ -174,7 +174,10 @@ describe('runLlmStream — usage of finished steps', () => {
 		});
 
 		expect(result.aborted).toBe(true);
-		expect(result.tokenUsage).toEqual(STEP_USAGE);
+		// The scripted provider sends each step whole, so step 2 had already
+		// finished, and reported its usage, when the reader aborted: both steps
+		// were billed (ADR-0073, provider-level stream metering).
+		expect(result.tokenUsage).toEqual({ promptTokens: 20, completionTokens: 10, totalTokens: 30 });
 	});
 });
 

@@ -24,6 +24,7 @@ import { runLlmObject } from '../lib/llm/dispatch';
 import { meterLlmCall } from '../analytics/meteredSpend';
 import { runEmbedding } from '../lib/llm/embed';
 import { rootRequest, type LlmRootContext } from '../lib/llm/requestMeter';
+import { scheduledRoot } from '../lib/llm/actionDeadline';
 import { ENTRY_TYPES } from '../schema/knowledge';
 import { normalizeForHash } from '../lib/knowledgeEdges';
 import { detectInjection, detectSmuggling } from '../agent/steps/security_scan/patterns';
@@ -147,6 +148,8 @@ async function persistExtractedEntries(
 			threadId: source.threadId,
 			sourceType: source.sourceType,
 			sourceId: source.sourceId,
+			// The inference pass runs later, in its own action: the root, not the deadline.
+			root: scheduledRoot(root),
 		});
 	}
 }

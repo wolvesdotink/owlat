@@ -42,6 +42,7 @@ import { validateOutboundUrl } from '../outboundUrlValidation';
 import { runDecision } from './dispatch';
 import { decisionBreakerPort, decisionRateLimiterPort, decisionUsageRecorder } from './ports';
 import { newRootRequest } from '../llm/requestMeter';
+import { boundedRoot } from '../llm/actionDeadline';
 import {
 	CONNECTION_PROBE_FEATURE,
 	CONNECTION_PROBE_QUESTIONS,
@@ -137,7 +138,7 @@ export async function testDecisionPlane(ctx: ActionCtx): Promise<{ ok: boolean; 
 			allowance,
 			maxAttempts: 1,
 			task: 'decision.connection_probe',
-			root: newRootRequest('settings'),
+			root: boundedRoot(ctx, newRootRequest('settings')),
 			breaker: decisionBreakerPort(ctx),
 			rateLimiter: decisionRateLimiterPort(ctx),
 			recordUsage: decisionUsageRecorder(ctx),

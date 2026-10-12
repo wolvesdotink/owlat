@@ -35,7 +35,7 @@ import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import type { TokenUsage } from '../agent/steps/types';
-import { estimateCostUsd, PRICE_VERSION, providerLabelForModel } from '../lib/llm/pricing';
+import { estimateCost, PRICE_VERSION, providerLabelForModel } from '../lib/llm/pricing';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import {
 	llmUsagePlaneValidator,
@@ -105,6 +105,37 @@ const tagArgs = {
 	...routingArgs,
 };
 
+/**
+ * COMPATIBILITY: the previous release's single-row writer, kept with its exact
+ * arguments so spend writes already scheduled against it, and actions still
+ * running the previous release, land in the ledger after the deploy instead of
+ * failing. New code writes through {@link recordRequests}. Behaves as before:
+ * no usage and no plane writes nothing; a tagged row without usage is a
+ * zero-cost estimate. Remove once a release has shipped without callers
+ * (`scripts/check-entry-wiring.ts` PREVIOUS_RELEASE_ENTRIES).
+ */
+export const record = internalMutation({
+	args: {
+		feature: v.string(),
+		modelUsed: v.optional(v.string()),
+		tokenUsage: v.optional(tokenUsageValidator),
+		plane: v.optional(llmUsagePlaneValidator),
+		requestId: v.optional(v.string()),
+		isFallback: v.optional(v.boolean()),
+		isCalibrated: v.optional(v.boolean()),
+		isThrottled: v.optional(v.boolean()),
+		isLocalEngine: v.optional(v.boolean()),
+	},
+	handler: async (ctx, args) => {
+		const { feature, modelUsed, tokenUsage, ...tags } = args;
+		if (!tokenUsage && args.plane === undefined) return;
+		await insertLlmUsage(ctx, feature, tokenUsage ?? ZERO_USAGE, modelUsed, undefined, {
+			...tags,
+			...(tokenUsage ? {} : { isEstimated: true }),
+		});
+	},
+});
+
 /** One provider request of a metered call (`lib/llm/requestMeter.ts` `LlmRequestRecord`). */
 export const meteredRequestValidator = v.object({
 	attempt: v.number(),
@@ -116,6 +147,7 @@ export const meteredRequestValidator = v.object({
 	modelUsed: v.optional(v.string()),
 	endpoint: v.optional(v.string()),
 	isThrottled: v.optional(v.boolean()),
+	isLocalEngine: v.optional(v.boolean()),
 });
 
 export type MeteredRequest = Infer<typeof meteredRequestValidator>;
@@ -129,6 +161,10 @@ export const MAX_METERED_REQUESTS_PER_WRITE = 64;
  * usage, latency and model. A request with no reported usage writes a zero-cost
  * row marked `isEstimated`: it was made, and a ledger that hides it under-counts
  * attempts.
+ *
+ * IDEMPOTENT by `(requestId, attempt)`: a request whose row already exists is
+ * skipped, so a writer that retries a batch after an ambiguous failure (the
+ * mutation committed, the reply was lost) writes nothing twice.
  */
 export const recordRequests = internalMutation({
 	args: {
@@ -142,6 +178,15 @@ export const recordRequests = internalMutation({
 			throw new Error('Too many metered requests in one write');
 		}
 		for (const request of requests) {
+			if (tags.requestId !== undefined) {
+				const existing = await ctx.db
+					.query('llmUsageEvents')
+					.withIndex('by_request_id_and_attempt', (q) =>
+						q.eq('requestId', tags.requestId).eq('attempt', request.attempt)
+					)
+					.first();
+				if (existing) continue;
+			}
 			const { usage, modelUsed, ...requestTags } = request;
 			await insertLlmUsage(ctx, feature, usage ?? ZERO_USAGE, modelUsed, undefined, {
 				...tags,
@@ -180,10 +225,20 @@ export async function insertLlmUsage(
 	attribution?: LlmUsageAttribution,
 	tags?: LlmUsageTags
 ): Promise<void> {
-	// A local engine bills nothing, whatever its model id would price at.
-	const costUsd = tags?.isLocalEngine === true ? 0 : estimateCostUsd(modelUsed, tokenUsage);
-	const costMicrousd = usdToMicrousd(costUsd);
 	const task = tags?.task ?? taskForFeature(feature);
+	// A local engine bills nothing, whatever its model id would price at. A
+	// model the price table does not know is priced at its plane's conservative
+	// fallback, and the row says the cost is an estimate.
+	const isLocal = tags?.isLocalEngine === true;
+	// The row's plane: the caller's, else its task's (an embedding row is one
+	// whoever wrote it). Absent still reads as language.
+	const pricedPlane = tags?.plane ?? (task ? taskPolicy(task).plane : 'language');
+	const plane = tags?.plane ?? (pricedPlane === 'language' ? undefined : pricedPlane);
+	const priced = isLocal ? undefined : estimateCost(modelUsed, tokenUsage, pricedPlane);
+	const costUsd = priced?.costUsd ?? 0;
+	const isPriceUnknown = priced?.estimated === true && tokenUsage.totalTokens > 0;
+	const isEstimated = tags?.isEstimated === true || isPriceUnknown ? true : tags?.isEstimated;
+	const costMicrousd = usdToMicrousd(costUsd);
 	const budgetClass = rowBudgetClass(tags, task);
 	const createdAt = Date.now();
 	await ctx.db.insert('llmUsageEvents', {
@@ -196,7 +251,7 @@ export async function insertLlmUsage(
 		totalTokens: tokenUsage.totalTokens,
 		costUsd,
 		createdAt,
-		plane: tags?.plane,
+		plane,
 		requestId: tags?.requestId,
 		isFallback: tags?.isFallback,
 		isCalibrated: tags?.isCalibrated,
@@ -214,16 +269,16 @@ export async function insertLlmUsage(
 		latencyMs: tags?.latencyMs,
 		qualityResult: tags?.qualityResult,
 		priceVersion: PRICE_VERSION,
-		isEstimated: tags?.isEstimated,
+		isEstimated,
 		costMicrousd,
 		budgetClass,
 		reservationId: tags?.reservationId,
 	});
 	await addLedgerRowToSpendPeriods(ctx, {
-		plane: tags?.plane ?? 'language',
+		plane: pricedPlane,
 		budgetClass,
 		microusd: costMicrousd,
-		isEstimated: tags?.isEstimated === true,
+		isEstimated: isEstimated === true,
 		at: createdAt,
 	});
 }

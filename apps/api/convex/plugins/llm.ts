@@ -13,6 +13,7 @@ import { MAX_LLM_ATTEMPTS, runLlmTextWithAttemptMetadata } from '../lib/llm/disp
 import { estimateAdmissionCostMicrousd } from '../lib/llm/pricing';
 import { resolveLanguageModelWithProvenance } from '../lib/llmProvider';
 import { LlmCallMeter } from '../lib/llm/requestMeter';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import type { MeteredRequest } from '../analytics/llmUsage';
 import { PLUGIN_LLM_MAX_OUTPUT_TOKENS, validatePluginLlmRequest } from './llmRequest';
 
@@ -157,10 +158,15 @@ function bindBundledPluginLlm(
 			}
 
 			// Every provider request lands in the deployment ledger at settlement.
-			const meter = new LlmCallMeter({ task: 'plugin.invoke' });
+			// The settlement mutation writes these rows once (it is idempotent per
+			// reservation), so reading the pending requests needs no acknowledgement.
+			const meter = new LlmCallMeter({
+				task: 'plugin.invoke',
+				deadlineAt: anchorActionDeadline(ctx),
+			});
 			const metered = () => ({
 				requestId: meter.requestId,
-				requests: meter.takeUnwritten().map(({ outcome: _outcome, ...request }) => request),
+				requests: meter.pendingWrites().map(({ outcome: _outcome, ...request }) => request),
 			});
 			let dispatched;
 			try {

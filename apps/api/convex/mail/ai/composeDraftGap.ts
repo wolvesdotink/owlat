@@ -31,6 +31,7 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject, runLlmText } from '../../lib/llm/dispatch';
 import { meterLlmCall } from '../../analytics/meteredSpend';
 import { newRootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
+import { boundedRoot } from '../../lib/llm/actionDeadline';
 import {
 	DIVERGENCE_SAMPLES,
 	MIN_SAMPLES_FOR_JUDGMENT,
@@ -227,7 +228,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 		: input.context;
 	const items = input.slotItems ?? [];
 	// One "Draft with AI" gap check is one user action (ADR-0073).
-	const root = newRootRequest('postbox_action');
+	const root = boundedRoot(ctx, newRootRequest('postbox_action'));
 	let slots = await findOpenSlots(ctx, slotContext, input.eagerness, items, root);
 
 	// A file request: the phrasing in the email, or a slot of type attachment.
@@ -253,6 +254,7 @@ export async function runGapCheck(ctx: ActionCtx, input: GapCheckInput): Promise
 			query,
 			contactId: input.contactId,
 			mailboxScope: input.mailboxScope,
+			root,
 		});
 		const outcome = decideFileOutcome(rankFoundFiles(query, found));
 		fileRequest = { questionId: FILE_QUESTION_ID, label };

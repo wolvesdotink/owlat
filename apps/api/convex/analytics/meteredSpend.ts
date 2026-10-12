@@ -3,12 +3,14 @@
  * write one `llmUsageEvents` row per provider request it made.
  *
  * {@link meterLlmCall} is the single owner of a call's rows. It builds the
- * call's `LlmCallMeter` (task, root request), hands it to the dispatch, and
- * writes whatever the meter recorded, on success and on failure alike. A meter
- * hands each request out once, so the two paths can never write the same
- * request twice, and a failure the dispatch raises after billed work (an
- * `LlmPartialUsageError`) needs no separate recording: its requests are on the
- * meter already.
+ * call's `LlmCallMeter` (task, root request, and the action's deadline), hands
+ * it to the dispatch, and writes what the meter recorded, on success and on
+ * failure alike. A request is acknowledged on the meter only once its batch is
+ * stored, so a failed write keeps it for the next flush, and the ledger skips a
+ * request it already holds (`recordRequests` is idempotent by request id and
+ * attempt), so a retried batch writes nothing twice. A failure the dispatch
+ * raises after billed work (an `LlmPartialUsageError`) needs no separate
+ * recording: its requests are on the meter already.
  *
  * Runtime-neutral (no 'use node'), so V8 steps and Node actions share it.
  */
@@ -19,6 +21,7 @@ import type { AiTaskName } from '@owlat/shared/aiRouting';
 import { LlmPartialUsageError } from '../lib/llm/partialUsage';
 import { LlmCallMeter, type LlmRequestRecord, type LlmRootContext } from '../lib/llm/requestMeter';
 import { taskForFeature, taskPolicy } from '../lib/llm/taskPolicy';
+import { callDeadlineAt } from '../lib/llm/actionDeadline';
 import type { LlmUsagePlane } from '../lib/llmUsageTags';
 import type { BudgetClass } from '../lib/validators/aiRouting';
 import { MAX_METERED_REQUESTS_PER_WRITE, type MeteredRequest } from './llmUsage';
@@ -70,11 +73,15 @@ export interface MeterLlmCallOptions {
 	readonly rethrow?: 'cause' | 'as_is';
 }
 
-/** The meter a call under `target` records into. */
-export function meterFor(target: LlmSpendTarget): LlmCallMeter {
+/**
+ * The meter a call under `target` records into, in the action `ctx` runs:
+ * its deadline is the tighter of the root's and the action's model budget.
+ */
+export function meterFor(ctx: object, target: LlmSpendTarget): LlmCallMeter {
 	return new LlmCallMeter({
 		task: target.task ?? taskForFeature(target.feature),
 		root: target.root,
+		deadlineAt: callDeadlineAt(ctx, target.root),
 	});
 }
 
@@ -109,8 +116,10 @@ function callTags(target: LlmSpendTarget, meter: LlmCallMeter) {
 }
 
 /**
- * Write the requests `meter` has not written yet, one row each. Writes nothing
- * when there are none (a call that never reached a provider).
+ * Write the requests `meter` has not stored yet, one row each, in batches.
+ * Each batch is acknowledged only after it is stored (or scheduled); a failure
+ * throws and leaves that batch and the later ones pending for the next flush.
+ * Writes nothing when there are none (a call that never reached a provider).
  */
 export async function writeMeteredSpend(
 	ctx: SpendCtx,
@@ -118,17 +127,16 @@ export async function writeMeteredSpend(
 	meter: LlmCallMeter,
 	write: 'await' | 'schedule' = 'await'
 ): Promise<void> {
-	const pending = meter.takeUnwritten().map(toMeteredRequest);
+	const pending = meter.pendingWrites();
 	for (let start = 0; start < pending.length; start += MAX_METERED_REQUESTS_PER_WRITE) {
-		const args = {
-			...callTags(target, meter),
-			requests: pending.slice(start, start + MAX_METERED_REQUESTS_PER_WRITE),
-		};
+		const batch = pending.slice(start, start + MAX_METERED_REQUESTS_PER_WRITE);
+		const args = { ...callTags(target, meter), requests: batch.map(toMeteredRequest) };
 		if (write === 'schedule') {
 			await ctx.scheduler.runAfter(0, internal.analytics.llmUsage.recordRequests, args);
 		} else {
 			await ctx.runMutation(internal.analytics.llmUsage.recordRequests, args);
 		}
+		meter.acknowledge(batch);
 	}
 }
 
@@ -143,13 +151,13 @@ export async function meterLlmCall<R>(
 	run: (meter: LlmCallMeter) => Promise<R>,
 	options: MeterLlmCallOptions = {}
 ): Promise<R> {
-	const meter = meterFor(target);
+	const meter = meterFor(ctx, target);
 	let result: R;
 	try {
 		result = await run(meter);
 	} catch (error) {
 		try {
-			await writeMeteredSpend(ctx, target, meter, options.write);
+			await persistMeteredSpend(ctx, target, meter, options.write);
 		} catch {
 			// ignore — spend accounting must not replace the provider's error
 		}
@@ -157,9 +165,33 @@ export async function meterLlmCall<R>(
 		throw error;
 	}
 	try {
-		await writeMeteredSpend(ctx, target, meter, options.write);
+		await persistMeteredSpend(ctx, target, meter, options.write);
 	} catch (error) {
 		if (options.onWriteError !== 'ignore') throw error;
 	}
 	return result;
+}
+
+/** Writes per flush before a call gives up: a transient failure gets one more try. */
+const FLUSH_TRIES = 2;
+
+/**
+ * {@link writeMeteredSpend}, retried once: the requests a failed write left
+ * pending go again, and the ledger's idempotency means one that did land in
+ * an ambiguous failure is not written twice.
+ */
+export async function persistMeteredSpend(
+	ctx: SpendCtx,
+	target: LlmSpendTarget,
+	meter: LlmCallMeter,
+	write: 'await' | 'schedule' = 'await'
+): Promise<void> {
+	for (let tryNumber = 1; ; tryNumber++) {
+		try {
+			await writeMeteredSpend(ctx, target, meter, write);
+			return;
+		} catch (error) {
+			if (tryNumber >= FLUSH_TRIES) throw error;
+		}
+	}
 }

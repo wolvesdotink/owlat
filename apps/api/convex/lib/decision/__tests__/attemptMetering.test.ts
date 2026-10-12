@@ -24,7 +24,10 @@ const questions = { needsReply: noul('Does this need a reply?') };
 const usage = { inputTokens: 100, outputTokens: 4, totalTokens: 104 };
 const overloaded = () => Object.assign(new Error('overloaded'), { statusCode: 503 });
 
-beforeEach(() => sdk.generateObject.mockReset());
+// A block body: a function returned from beforeEach would run as a teardown.
+beforeEach(() => {
+	sdk.generateObject.mockReset();
+});
 
 describe('decision metering', () => {
 	it('records each inner retry of the language-backed adapter as its own request', async () => {
@@ -57,6 +60,58 @@ describe('decision metering', () => {
 		]);
 	}, 15_000);
 
+	it('enforces the root deadline on every adapter: an expired root reaches no provider', async () => {
+		const ask = vi.fn();
+		await expect(
+			runDecision({
+				feature: 'inbound_triage',
+				root: { rootRequestId: 'team:m1', deadlineAt: Date.now() - 1 },
+				state: 'Subject: hello',
+				questions,
+				provider: { kind: 'llm', config: {}, model: 'gpt-4.1-mini' },
+				allowance: { allowed: true, fallbackAllowed: false },
+				recordUsage: ask,
+			})
+		).rejects.toThrow();
+		expect(sdk.generateObject).not.toHaveBeenCalled();
+	});
+
+	it('cancels a request that outlives the root deadline, and records it', async () => {
+		sdk.generateObject.mockImplementation(
+			({ abortSignal }: { abortSignal: AbortSignal }) =>
+				new Promise((_resolve, reject) =>
+					abortSignal.addEventListener('abort', () => reject(abortSignal.reason), { once: true })
+				)
+		);
+		const records: DecisionAttemptRecord[] = [];
+		await expect(
+			runDecision({
+				feature: 'inbound_triage',
+				root: { rootRequestId: 'team:m1', deadlineAt: Date.now() + 40 },
+				state: 'Subject: hello',
+				questions,
+				provider: { kind: 'llm', config: {}, model: 'gpt-4.1-mini' },
+				allowance: { allowed: true, fallbackAllowed: false },
+				recordUsage: (record) => {
+					records.push(record);
+				},
+			})
+		).rejects.toThrow();
+		expect(records).toHaveLength(1);
+		expect(records[0]!.requests).toEqual([expect.objectContaining({ outcome: 'failed' })]);
+	});
+
+	it('keeps a request whose row write failed for the next attempt’s write', async () => {
+		sdk.generateObject.mockResolvedValue({ object: { needsReply: 0.8 }, usage });
+		const meter = new LlmCallMeter();
+		const pending = attemptRequests(meter, 0, { outcome: 'failed' }, 5);
+		// Not acknowledged (the write failed): still pending at the next attempt.
+		expect(attemptRequests(meter, 1, { outcome: 'ok' }, 5).map((r) => r.attempt)).toEqual([
+			pending[0]!.attempt,
+			2,
+		]);
+	});
+
 	it('records one request per native attempt, the throttled one flagged', () => {
 		const meter = new LlmCallMeter();
 		const throttled = attemptRequests(
@@ -66,6 +121,7 @@ describe('decision metering', () => {
 			40,
 			Object.assign(new Error('slow down'), { status: 429 })
 		);
+		meter.acknowledge(throttled);
 		const answered = attemptRequests(
 			meter,
 			1,

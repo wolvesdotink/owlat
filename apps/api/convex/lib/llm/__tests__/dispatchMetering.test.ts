@@ -6,7 +6,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NoObjectGeneratedError, tool } from 'ai';
+import { APICallError, NoObjectGeneratedError, tool } from 'ai';
+import { MockLanguageModelV3 } from 'ai/test';
 import { z } from 'zod';
 
 const sdk = vi.hoisted(() => ({
@@ -25,8 +26,10 @@ vi.mock('ai', async () => ({
 import { runLlmObject, runLlmStream, runLlmText, runLlmTextWithTools } from '../dispatch';
 import { runEmbedding } from '../embed';
 import { LlmCallMeter } from '../requestMeter';
-import { callDeadlineMs, taskOutputCeiling } from '../taskLimits';
+import { callDeadlineMs, taskOutputCeiling, wireOutputCeiling } from '../taskLimits';
+import { DEFAULT_MODEL_MAX_OUTPUT_TOKENS, modelMaxOutputTokens } from '../modelOutputLimits';
 import { stampModelEndpoint } from '../modelEndpoint';
+import { LlmPartialUsageError } from '../partialUsage';
 import { scriptedStreamModel } from './streamModel.testlib';
 
 const model = stampModelEndpoint(
@@ -95,13 +98,13 @@ describe('runLlmText', () => {
 		expect(sdk.generateText.mock.calls[1]![0]).toMatchObject({ maxOutputTokens: 100 });
 	});
 
-	it('keeps today’s request when the task sets no ceiling (no meter, no limit)', async () => {
+	it('sends no ceiling without a task or a caller ceiling, and the clamped one with a task', async () => {
 		sdk.generateText.mockResolvedValue({ text: 'ok', usage: sdkUsage(1, 1) });
-		await runLlmText({ model, prompt: 'hi', meter: new LlmCallMeter({ task: 'mail.ask' }) });
 		await runLlmText({ model, prompt: 'hi' });
-		for (const [args] of sdk.generateText.mock.calls) {
-			expect(args).not.toHaveProperty('maxOutputTokens');
-		}
+		await runLlmText({ model, prompt: 'hi', meter: new LlmCallMeter({ task: 'mail.translate' }) });
+		expect(sdk.generateText.mock.calls[0]![0]).not.toHaveProperty('maxOutputTokens');
+		// gpt-4o-mini accepts 16 384; translate asks for 24 576.
+		expect(sdk.generateText.mock.calls[1]![0]).toMatchObject({ maxOutputTokens: 16_384 });
 	});
 
 	it('cancels a call that outlives its root deadline, and records the request', async () => {
@@ -242,7 +245,115 @@ describe('runLlmStream', () => {
 	});
 });
 
+describe('runLlmStream — every provider request, at the provider boundary', () => {
+	const recall = () =>
+		tool({
+			description: 'r',
+			inputSchema: z.object({ q: z.string() }),
+			execute: async () => ({ facts: [] as string[] }),
+		});
+	/** `inner`, except its first `failures` stream requests are refused with a 503. */
+	function flaky(inner: MockLanguageModelV3, failures: number) {
+		let refused = 0;
+		return new MockLanguageModelV3({
+			modelId: 'gpt-4o-mini',
+			doStream: async (options) => {
+				if (refused < failures) {
+					refused += 1;
+					throw new APICallError({
+						message: 'overloaded',
+						url: 'https://provider.test',
+						requestBodyValues: {},
+						statusCode: 503,
+						isRetryable: true,
+					});
+				}
+				return inner.doStream(options);
+			},
+		});
+	}
+
+	it('records a re-sent opening request: a 503, then the stream that answered', async () => {
+		const meter = new LlmCallMeter({ task: 'assistant.answer' });
+		await runLlmStream({
+			model: flaky(scriptedStreamModel([{ text: ['Done.'] }]), 1),
+			messages: [{ role: 'user', content: 'hi' }],
+			meter,
+		});
+		expect(meter.requests.map((r) => [r.attempt, r.outcome, r.usage?.totalTokens])).toEqual([
+			[1, 'failed', undefined],
+			[2, 'ok', 15],
+		]);
+	}, 20_000);
+
+	it('stops re-sending at the task’s attempt allowance', async () => {
+		const meter = new LlmCallMeter({ task: 'mail.ask' }); // 2 attempts
+		await expect(
+			runLlmStream({
+				model: flaky(scriptedStreamModel([{ text: ['Done.'] }]), 5),
+				messages: [{ role: 'user', content: 'hi' }],
+				meter,
+			})
+		).rejects.toThrow();
+		expect(meter.requests.map((r) => r.outcome)).toEqual(['failed', 'failed']);
+	}, 20_000);
+
+	it('keeps the billed usage when the reader’s callback throws mid-stream', async () => {
+		const meter = new LlmCallMeter({ task: 'assistant.answer' });
+		const failure = new Error('could not persist the tool card');
+		const error = await runLlmStream({
+			model: scriptedStreamModel([
+				{ text: ['Let me check.'], toolCall: { toolName: 'recall', input: { q: 'x' } } },
+				{ text: ['Done.'] },
+			]),
+			messages: [{ role: 'user', content: 'hi' }],
+			tools: { recall: recall() },
+			onToolResult: () => {
+				throw failure;
+			},
+			meter,
+		}).catch((caught: unknown) => caught);
+
+		// The first request finished and reported 15 tokens before the callback threw.
+		expect(meter.requests[0]).toMatchObject({ attempt: 1, outcome: 'ok' });
+		expect(meter.requests[0]!.usage?.totalTokens).toBe(15);
+		expect(meter.requests.every((r) => r.attempt <= 2)).toBe(true);
+		// The caller's error carries that usage too.
+		expect(error).toBeInstanceOf(LlmPartialUsageError);
+		expect((error as LlmPartialUsageError).tokenUsage.totalTokens).toBe(15);
+		expect((error as LlmPartialUsageError).cause).toBe(failure);
+	});
+
+	it('sends the clamped ceiling and the task deadline on the stream request', async () => {
+		const model = scriptedStreamModel([{ text: ['Done.'] }]);
+		await runLlmStream({
+			model,
+			messages: [{ role: 'user', content: 'hi' }],
+			meter: new LlmCallMeter({ task: 'assistant.answer' }),
+		});
+		// scripted-model is unknown: the default every chat model takes.
+		expect(model.doStreamCalls[0]).toMatchObject({ maxOutputTokens: 4_096 });
+		expect(model.doStreamCalls[0]!.abortSignal).toBeDefined();
+	});
+});
+
 describe('runEmbedding', () => {
+	it('marks a self-hosted embedder’s request as local, so it costs nothing', async () => {
+		const local = stampModelEndpoint(
+			{ modelId: 'nomic-embed-text', specificationVersion: 'v2' } as never,
+			'embedding:local',
+			{ isLocal: true }
+		);
+		sdk.embed.mockResolvedValueOnce({ embedding: [0.1], usage: { tokens: 100 } });
+		const meter = new LlmCallMeter({ task: 'embedding.index' });
+		await runEmbedding({ model: local, value: 'v', meter });
+		expect(meter.requests[0]).toMatchObject({
+			isLocalEngine: true,
+			endpoint: 'embedding:local',
+			usage: { promptTokens: 100, completionTokens: 0, totalTokens: 100 },
+		});
+	});
+
 	it('records an embedding request with its input tokens, through the shared retry', async () => {
 		const embeddingModel = stampModelEndpoint(
 			{ modelId: 'text-embedding-3-small', specificationVersion: 'v2' } as never,
@@ -271,19 +382,39 @@ describe('runEmbedding', () => {
 });
 
 describe('task limits', () => {
-	it('adds the reasoning ceiling to the output ceiling, and sends none without one', () => {
+	it('gives every generative task a finite ceiling (output plus reasoning), embeddings none', () => {
 		expect(taskOutputCeiling('plugin.invoke')).toBe(2048);
-		expect(taskOutputCeiling('mail.draft')).toBeUndefined();
+		expect(taskOutputCeiling('mail.classify')).toBe(1_024 + 4_096);
+		expect(taskOutputCeiling('mail.draft')).toBe(8_192 + 8_192);
+		expect(taskOutputCeiling('embedding.index')).toBeUndefined();
 		expect(taskOutputCeiling(undefined)).toBeUndefined();
 	});
 
-	it('takes the tighter of the task deadline and the root deadline', () => {
+	it('clamps the ceiling to the model’s maximum, with a safe default for an unknown model', () => {
+		expect(wireOutputCeiling({ task: 'mail.translate', modelId: 'gpt-4o' })).toBe(16_384);
+		expect(wireOutputCeiling({ task: 'mail.translate', modelId: 'openai/gpt-4o-mini' })).toBe(
+			16_384
+		);
+		expect(wireOutputCeiling({ task: 'mail.draft', modelId: 'claude-3-haiku-20240307' })).toBe(
+			4_096
+		);
+		expect(wireOutputCeiling({ task: 'mail.draft', modelId: 'gpt-6.1-sol' })).toBe(16_384);
+		// An Azure deployment name, a local model: the default every chat model takes.
+		expect(wireOutputCeiling({ task: 'mail.draft', modelId: 'mail-fast' })).toBe(
+			DEFAULT_MODEL_MAX_OUTPUT_TOKENS
+		);
+		expect(wireOutputCeiling({ maxOutputTokens: 100_000, modelId: 'qwen3.6:27b' })).toBe(
+			DEFAULT_MODEL_MAX_OUTPUT_TOKENS
+		);
+		expect(wireOutputCeiling({ modelId: 'gpt-4o' })).toBeUndefined();
+		expect(modelMaxOutputTokens('anthropic/claude-sonnet-5.5')).toBe(32_000);
+	});
+
+	it('takes the tighter of the task deadline and the call’s absolute deadline', () => {
 		const now = 1_000_000;
 		expect(callDeadlineMs('mail.classify', undefined, now)).toBe(300_000);
-		expect(
-			callDeadlineMs('mail.classify', { rootRequestId: 'r', deadlineAt: now + 5_000 }, now)
-		).toBe(5_000);
+		expect(callDeadlineMs('mail.classify', now + 5_000, now)).toBe(5_000);
 		expect(callDeadlineMs('mail.category', undefined, now)).toBeUndefined();
-		expect(callDeadlineMs(undefined, { rootRequestId: 'r', deadlineAt: now - 1 }, now)).toBe(0);
+		expect(callDeadlineMs(undefined, now - 1, now)).toBe(0);
 	});
 });

@@ -25,6 +25,7 @@
 
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { stepModuleFor } from './steps';
@@ -371,6 +372,8 @@ export const runStep = internalAction({
 		coreStep: v.optional(continuationValidator),
 	},
 	handler: async (ctx, args) => {
+		// Every model call of this step spends from one action budget (ADR-0073).
+		anchorActionDeadline(ctx);
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});

@@ -65,7 +65,7 @@ import { DecisionWireError } from '../decisionProviders/wire';
 import { errorStatus, isRetriableLlmError } from '../llm/dispatch';
 import { MAX_LLM_ATTEMPTS } from '../llm/retryPolicy';
 import { LlmCallMeter } from '../llm/requestMeter';
-import { attemptRequests, billedUsage } from './attemptRequests';
+import { attemptRequests, billedUsage, withinRoot, withRootDeadline } from './attemptRequests';
 export { billedUsage } from './attemptRequests';
 import { taskForFeature } from '../llm/taskPolicy';
 import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
@@ -267,7 +267,7 @@ async function askOnce<Q extends QuestionSet>(
 	const request: DispatchedRequest = {
 		state: options.state,
 		questions: options.questions,
-		deadlineMs: deadlineFor(provider, options.deadlineMs),
+		deadlineMs: withinRoot(deadlineFor(provider, options.deadlineMs), options.root),
 		requestId: ctx.requestId,
 		meter: ctx.meter,
 		...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
@@ -293,21 +293,16 @@ async function askOnce<Q extends QuestionSet>(
 	} catch (error) {
 		const durationMs = elapsed();
 		const billed = billedUsage(error);
+		const requests = attemptRequests(
+			ctx.meter,
+			recordedBefore,
+			{ outcome: 'failed', ...billed },
+			durationMs,
+			error
+		);
 		try {
-			await ctx.recordUsage({
-				...base,
-				outcome: 'failed',
-				durationMs,
-				error,
-				...billed,
-				requests: attemptRequests(
-					ctx.meter,
-					recordedBefore,
-					{ outcome: 'failed', ...billed },
-					durationMs,
-					error
-				),
-			});
+			await ctx.recordUsage({ ...base, outcome: 'failed', durationMs, error, ...billed, requests });
+			ctx.meter.acknowledge(requests);
 		} catch {
 			// Swallowed: a failing recorder must not replace the vendor's error,
 			// which is the one the operator needs to read.
@@ -316,6 +311,17 @@ async function askOnce<Q extends QuestionSet>(
 	}
 
 	const durationMs = elapsed();
+	const requests = attemptRequests(
+		ctx.meter,
+		recordedBefore,
+		{
+			outcome: 'ok',
+			usage: result.usage,
+			modelUsed: result.modelUsed,
+			endpoint: result.provenance,
+		},
+		durationMs
+	);
 	try {
 		await ctx.recordUsage({
 			...base,
@@ -325,18 +331,9 @@ async function askOnce<Q extends QuestionSet>(
 			modelUsed: result.modelUsed,
 			provenance: result.provenance,
 			calibrated: result.calibrated,
-			requests: attemptRequests(
-				ctx.meter,
-				recordedBefore,
-				{
-					outcome: 'ok',
-					usage: result.usage,
-					modelUsed: result.modelUsed,
-					endpoint: result.provenance,
-				},
-				durationMs
-			),
+			requests,
 		});
+		ctx.meter.acknowledge(requests);
 	} catch (error) {
 		throw new DecisionAccountingFailure(error);
 	}
@@ -403,8 +400,11 @@ function assertFallbackShape<Q extends QuestionSet>(options: RunDecisionOptions<
  * answer: a decision nobody could make belongs to the caller's own fail-soft.
  */
 export async function runDecision<Q extends QuestionSet>(
-	options: RunDecisionOptions<Q>
+	callerOptions: RunDecisionOptions<Q>
 ): Promise<RunDecisionResult<Q>> {
+	// The root's deadline binds every attempt, the backoff and the hop, whatever
+	// adapter answers: it joins the caller's signal (ADR-0073).
+	const options = withRootDeadline(callerOptions);
 	const { abortSignal, allowance, fallbackTo, provider } = options;
 	// Defensive, and cheap: the gate returns this shape and nothing else does,
 	// but a hand-built object is the one way a call site could route around the

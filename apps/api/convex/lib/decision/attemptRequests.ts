@@ -1,5 +1,6 @@
 /**
- * Decision plane — which provider requests one attempt made (ADR-0073).
+ * Decision plane — which provider requests one attempt made, and the root
+ * deadline every attempt runs under (ADR-0073).
  *
  * The ledger holds one row per provider request. A decision attempt is one
  * request for the native and local adapters, but the language-backed adapter
@@ -12,6 +13,9 @@ import type { TokenUsage } from '../../agent/steps/types';
 import { DecisionWireError } from '../decisionProviders/wire';
 import { partialUsageOf } from '../llm/partialUsage';
 import { errorStatus } from '../llm/retryPolicy';
+import { callSignal } from '../llm/taskLimits';
+import type { QuestionSet } from './questions';
+import type { RunDecisionOptions } from './contract';
 import type { LlmCallMeter, LlmRequestInput, LlmRequestRecord } from '../llm/requestMeter';
 
 /** Upstream pushing back: 429, and 529 — the overload code their API uses. */
@@ -23,10 +27,13 @@ export function isThrottledError(error: unknown): boolean {
 }
 
 /**
- * The provider requests one attempt made. An adapter that metered its own
- * (the language-backed one, which retries inside `runLlmObject`) left them on
- * the meter; for any other adapter the attempt was one request, recorded here
- * from what the attempt returned. A throttled failure marks its last request.
+ * The provider requests one attempt made, not yet stored. An adapter that
+ * metered its own (the language-backed one, which retries inside
+ * `runLlmObject`) left them on the meter; for any other adapter the attempt
+ * was one request, recorded here from what the attempt returned. A throttled
+ * failure marks its last request. Nothing is acknowledged here: the dispatch
+ * acknowledges the requests once the recorder has stored them, so a failed
+ * write leaves them for the next attempt's row write.
  */
 export function attemptRequests(
 	meter: LlmCallMeter,
@@ -36,12 +43,10 @@ export function attemptRequests(
 	error?: unknown
 ): LlmRequestRecord[] {
 	if (meter.requests.length === recordedBefore) meter.record({ ...single, latencyMs: durationMs });
-	const requests = meter.takeUnwritten();
-	if (error === undefined || !isThrottledError(error) || requests.length === 0) return requests;
-	const last = requests.length - 1;
-	return requests.map((request, index) =>
-		index === last ? { ...request, isThrottled: true } : request
-	);
+	if (error !== undefined && isThrottledError(error)) {
+		meter.amend(meter.requests.length, { isThrottled: true });
+	}
+	return meter.pendingWrites();
 }
 
 /**
@@ -54,4 +59,23 @@ export function billedUsage(error: unknown): { usage?: TokenUsage; modelUsed?: s
 	if (error instanceof DecisionWireError) return { usage: error.usage, modelUsed: error.modelUsed };
 	const partial = partialUsageOf(error);
 	return partial ? { usage: partial.tokenUsage, modelUsed: partial.modelUsed } : {};
+}
+
+/** `options` with the root's remaining time joined to its abort signal. */
+export function withRootDeadline<Q extends QuestionSet>(
+	options: RunDecisionOptions<Q>
+): RunDecisionOptions<Q> {
+	const deadlineAt = options.root?.deadlineAt;
+	if (deadlineAt === undefined) return options;
+	const signal = callSignal(options.abortSignal, Math.max(0, deadlineAt - Date.now()));
+	return signal ? { ...options, abortSignal: signal } : options;
+}
+
+/** An adapter deadline never past the root's: the request must end in time to be recorded. */
+export function withinRoot(
+	deadlineMs: number,
+	root: RunDecisionOptions<QuestionSet>['root']
+): number {
+	if (root?.deadlineAt === undefined) return deadlineMs;
+	return Math.max(0, Math.min(deadlineMs, root.deadlineAt - Date.now()));
 }

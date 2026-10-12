@@ -14,9 +14,7 @@ import { embed, type EmbeddingModel } from 'ai';
 import type { TokenUsage } from '../../agent/steps/types';
 import { withLlmRetry } from './retryPolicy';
 import { startRequest, type LlmCallMeter } from './requestMeter';
-import { dispatchLimits } from './taskLimits';
-import { taskPolicy } from './taskPolicy';
-import { modelEndpoint } from './modelEndpoint';
+import { callShape } from './callShape';
 
 const SDK_MAX_RETRIES = 0;
 
@@ -34,10 +32,6 @@ export interface EmbeddingResult {
 	readonly modelUsed: string;
 }
 
-function embeddingModelId(model: EmbeddingModel): string {
-	return typeof model === 'string' ? model : model.modelId;
-}
-
 /** Input tokens as the ledger's usage triple; an embedding has no output. */
 function embeddingUsage(tokens: number | undefined): TokenUsage | undefined {
 	if (typeof tokens !== 'number' || !Number.isFinite(tokens) || tokens < 0) return undefined;
@@ -46,15 +40,13 @@ function embeddingUsage(tokens: number | undefined): TokenUsage | undefined {
 
 /** Embed one value, metering every provider request. */
 export async function runEmbedding(opts: EmbeddingOptions): Promise<EmbeddingResult> {
-	const limits = dispatchLimits({
-		task: opts.meter?.task,
-		root: opts.meter?.root,
-		abortSignal: opts.abortSignal,
+	// An embedding has no output to cap; the shape gives the deadline, the
+	// attempt allowance, and the request fields (a local embedder is free).
+	const call = callShape({
+		model: opts.model,
+		...(opts.meter ? { meter: opts.meter } : {}),
+		...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
 	});
-	const modelUsed = embeddingModelId(opts.model);
-	const endpoint = modelEndpoint(opts.model);
-	const requestBase = { modelUsed, ...(endpoint ? { endpoint } : {}) };
-	const maxAttempts = opts.meter?.task ? taskPolicy(opts.meter.task).maxAttempts : undefined;
 	const dispatched = await withLlmRetry(
 		async () => {
 			const finish = startRequest(opts.meter);
@@ -63,22 +55,22 @@ export async function runEmbedding(opts: EmbeddingOptions): Promise<EmbeddingRes
 					model: opts.model,
 					value: opts.value,
 					maxRetries: SDK_MAX_RETRIES,
-					...(limits.abortSignal ? { abortSignal: limits.abortSignal } : {}),
+					...(call.abortSignal ? { abortSignal: call.abortSignal } : {}),
 				});
 				const usage = embeddingUsage(result.usage?.tokens);
-				finish({ ...requestBase, outcome: 'ok', ...(usage ? { usage } : {}) });
+				finish({ ...call.requestBase, outcome: 'ok', ...(usage ? { usage } : {}) });
 				return result;
 			} catch (error) {
-				finish({ ...requestBase, outcome: 'failed' });
+				finish({ ...call.requestBase, outcome: 'failed' });
 				throw error;
 			}
 		},
-		limits.abortSignal,
-		maxAttempts
+		call.abortSignal,
+		call.maxAttempts
 	);
 	return {
 		embedding: dispatched.value.embedding,
 		tokenUsage: embeddingUsage(dispatched.value.usage?.tokens),
-		modelUsed,
+		modelUsed: call.modelUsed,
 	};
 }

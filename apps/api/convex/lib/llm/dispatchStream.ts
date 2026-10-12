@@ -2,21 +2,23 @@
 
 /**
  * The streaming, tool-calling dispatch (split out of `./dispatch.ts`, which
- * re-exports it). Each stream STEP is one provider request on the meter: a
- * finished step is recorded with its usage, and the step an error or an abort
- * interrupted is recorded as a failed request with no reported usage. The
- * meter's task sets the output ceiling and the deadline (`./taskLimits.ts`).
+ * re-exports it). Metering is at the provider boundary (`./streamMetering.ts`):
+ * every request the SDK makes, a re-sent opening request and each tool round
+ * included, is one request on the meter, with the usage the provider reported
+ * whether or not the reader's callbacks got that far. The meter's task sets
+ * the output ceiling, the deadline and the retry allowance (`./callShape.ts`).
  */
 
 import { streamText, stepCountIs, type LanguageModel, type ModelMessage, type ToolSet } from 'ai';
 import type { TokenUsage } from '../../agent/steps/types';
 import { modelForRequest } from './requestPolicy';
+import { MAX_LLM_ATTEMPTS } from './retryPolicy';
 import { withPartialUsage } from './partialUsage';
 import { addTokenUsage } from './tokenUsage';
 import { streamUsage, usageDetails } from './providerUsage';
-import { startRequest, type LlmCallMeter } from './requestMeter';
-import { dispatchLimits } from './taskLimits';
-import { modelEndpoint } from './modelEndpoint';
+import type { LlmCallMeter } from './requestMeter';
+import { callShape, limitArgs } from './callShape';
+import { meterStreamModel, STREAM_SETTLE_MS } from './streamMetering';
 
 /**
  * Default ceiling on agentic steps (one LLM call + its tool round-trip) per
@@ -102,50 +104,31 @@ interface LlmStreamResult {
  * (#1256): those steps were billed either way.
  */
 export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamResult> {
-	const limits = dispatchLimits({
-		task: opts.meter?.task,
-		root: opts.meter?.root,
-		maxOutputTokens: opts.maxOutputTokens,
-		abortSignal: opts.abortSignal,
-	});
-	const modelUsed = typeof opts.model === 'string' ? opts.model : opts.model.modelId;
-	const endpoint = modelEndpoint(opts.model);
-	const requestBase = { modelUsed, ...(endpoint ? { endpoint } : {}) };
-	let finishStep = startRequest(opts.meter);
-	let stepOpen = true;
-	// A finished step that asked for tool results makes the SDK send the next
-	// request before any part of it arrives, so a failure then is that
-	// request's. Until its first part arrives the step is tentative: a stream
-	// that ends there (the step limit) made no such request.
-	let isTentative = false;
-	const closeStep = (input: Parameters<typeof finishStep>[0]) => {
-		if (!stepOpen) return;
-		stepOpen = false;
-		finishStep(input);
-	};
-	const openStep = (tentative: boolean) => {
-		if (stepOpen) {
-			isTentative = isTentative && tentative;
-			return;
-		}
-		finishStep = startRequest(opts.meter);
-		stepOpen = true;
-		isTentative = tentative;
-	};
+	const call = callShape(opts);
+	const metered = meterStreamModel(modelForRequest(opts.model), opts.meter, call.requestBase);
+	// Ends the provider stream when the read stops early (a callback threw), so
+	// nothing is generated, and billed, for a reader that has gone.
+	const readerGone = new AbortController();
+	const signal = call.abortSignal
+		? AbortSignal.any([call.abortSignal, readerGone.signal])
+		: readerGone.signal;
 	const result = streamText({
-		model: modelForRequest(opts.model),
+		model: metered.model,
 		...(opts.system !== undefined ? { system: opts.system } : {}),
 		messages: opts.messages,
 		...(opts.tools ? { tools: opts.tools } : {}),
 		stopWhen: stepCountIs(opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS),
 		temperature: opts.temperature,
-		...(limits.maxOutputTokens === undefined ? {} : { maxOutputTokens: limits.maxOutputTokens }),
-		...(limits.abortSignal ? { abortSignal: limits.abortSignal } : {}),
+		// The SDK's retry re-sends only the opening request, before any token
+		// exists; the task's attempt allowance bounds it, and each re-send is
+		// metered above.
+		maxRetries: (call.maxAttempts ?? MAX_LLM_ATTEMPTS) - 1,
+		...limitArgs({ maxOutputTokens: call.maxOutputTokens, abortSignal: signal }),
 	});
 
 	let text = '';
 	let tokenUsage: TokenUsage | undefined;
-	// Finished steps only; the `finish` part's total replaces it on a natural end.
+	// Finished steps as the reader saw them (a model the meter cannot wrap).
 	let stepsSpent: TokenUsage | undefined;
 	let finishReason: string | undefined;
 	let aborted = false;
@@ -154,12 +137,13 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 		text = '';
 		await opts.onTextDelta?.(text, '');
 	};
+	/** What the provider billed so far: its own reports when metered at the boundary. */
+	const billed = () => (metered.isProviderLevel ? metered.spent() : stepsSpent);
 
 	try {
 		for await (const part of result.fullStream) {
 			switch (part.type) {
 				case 'start-step':
-					openStep(false);
 					await resetText();
 					break;
 				case 'text-delta':
@@ -190,13 +174,15 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 					break;
 				case 'finish-step':
 					stepsSpent = addTokenUsage(stepsSpent, streamUsage(part.usage));
-					closeStep({
-						...requestBase,
-						outcome: 'ok',
-						usage: streamUsage(part.usage),
-						...usageDetails(part.usage),
-					});
-					if (part.finishReason === 'tool-calls') openStep(true);
+					if (!metered.isProviderLevel) {
+						opts.meter?.record({
+							...call.requestBase,
+							outcome: 'ok',
+							latencyMs: 0,
+							usage: streamUsage(part.usage),
+							...usageDetails(part.usage),
+						});
+					}
 					break;
 				case 'finish':
 					finishReason = part.finishReason;
@@ -211,12 +197,25 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 			}
 		}
 	} catch (error) {
-		closeStep({ ...requestBase, outcome: 'failed' });
-		throw withPartialUsage(error, stepsSpent, modelUsed);
+		// Let a request the provider already finished report its usage, then stop
+		// the stream nobody reads.
+		await metered.settle(STREAM_SETTLE_MS);
+		readerGone.abort();
+		metered.closeOpen();
+		if (!metered.isProviderLevel) {
+			opts.meter?.record({ ...call.requestBase, outcome: 'failed', latencyMs: 0 });
+		}
+		throw withPartialUsage(error, billed(), call.modelUsed);
 	}
-	// An abort ends the stream without an error; the step it cut short was a
-	// request too, with no usage the provider reported.
-	if (!isTentative || aborted) closeStep({ ...requestBase, outcome: aborted ? 'failed' : 'ok' });
+	// A request an abort cut short was made too, with no usage reported.
+	await metered.settle(STREAM_SETTLE_MS);
+	metered.closeOpen();
 
-	return { text, tokenUsage: tokenUsage ?? stepsSpent, modelUsed, finishReason, aborted };
+	return {
+		text,
+		tokenUsage: tokenUsage ?? billed(),
+		modelUsed: call.modelUsed,
+		finishReason,
+		aborted,
+	};
 }

@@ -27,6 +27,7 @@ import { internal } from '../_generated/api';
 import { runLlmStream, DEFAULT_MAX_TOOL_STEPS } from '../lib/llm/dispatch';
 import { resolveLanguageModelForUserText } from '../lib/llmProvider';
 import { meterFor, writeMeteredSpend, type LlmSpendTarget } from '../analytics/meteredSpend';
+import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
 import {
 	childCall,
 	rootRequest,
@@ -117,14 +118,16 @@ async function streamAssistantTurn(
 		finalize: (args: FinalizeArgs) => Promise<void>;
 	}
 ): Promise<void> {
-	const target: LlmSpendTarget = { feature: opts.feature, root: opts.root };
-	const meter = meterFor(target);
+	// The turn's calls and its tools' nested searches share this action's clock.
+	anchorActionDeadline(ctx);
+	const target: LlmSpendTarget = { feature: opts.feature, root: boundedRoot(ctx, opts.root) };
+	const meter = meterFor(ctx, target);
 	// Tools that call a model run under the turn's root, with the turn as parent.
 	const tools = await buildAssistantTools(
 		ctx,
 		opts.audience,
 		undefined,
-		childCall(opts.root, meter.requestId)
+		childCall(target.root, meter.requestId)
 	);
 	const toolCalls: ToolCall[] = [];
 	// Every write carries the tool cards too; a tool event flushes at once.

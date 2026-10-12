@@ -298,7 +298,7 @@ export async function runSharedDraft(
 		feature: params.spendLabels.draft,
 		...(params.root ? { root: params.root } : {}),
 	};
-	const meter = meterFor(target);
+	const meter = meterFor(ctx, target);
 	const recordDraftSpend = () => recordAdvisorySpend(ctx, target, meter);
 	let selected: PrimaryDraft;
 	try {

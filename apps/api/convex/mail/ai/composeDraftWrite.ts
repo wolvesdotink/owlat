@@ -35,6 +35,7 @@ import { addTokenUsage } from '../../lib/llm/tokenUsage';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
 import { meterFor, writeMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
 import { childCall, newRootRequest } from '../../lib/llm/requestMeter';
+import { boundedRoot } from '../../lib/llm/actionDeadline';
 import { logError } from '../../lib/runtimeLog';
 import {
 	detectInjection,
@@ -168,9 +169,9 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 	// out once, so settling twice writes nothing twice.
 	const spendTarget: LlmSpendTarget = {
 		feature: 'postbox_answer_draft',
-		root: newRootRequest('postbox_action'),
+		root: boundedRoot(ctx, newRootRequest('postbox_action')),
 	};
-	const meter = meterFor(spendTarget);
+	const meter = meterFor(ctx, spendTarget);
 	const settleSpend = (): Promise<void> => writeMeteredSpend(ctx, spendTarget, meter);
 	try {
 		const model = await resolveLanguageModel(ctx, 'draft');

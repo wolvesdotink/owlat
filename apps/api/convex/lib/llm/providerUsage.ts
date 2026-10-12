@@ -63,3 +63,35 @@ export function usageDetails(usage: RawUsage): UsageDetails {
 		...(reasoningTokens === undefined ? {} : { reasoningTokens }),
 	};
 }
+
+/**
+ * The usage a PROVIDER reports on its own stream (`LanguageModelV3` `finish`
+ * part), before the SDK reshapes it: nested input and output totals.
+ */
+export interface ProviderUsageV3 {
+	readonly inputTokens?: {
+		readonly total?: number;
+		readonly cacheRead?: number;
+		readonly cacheWrite?: number;
+	};
+	readonly outputTokens?: { readonly total?: number; readonly reasoning?: number };
+}
+
+/** A provider-level usage report as the ledger's usage triple and its details. */
+export function providerReportedUsage(
+	usage: ProviderUsageV3 | undefined
+): { usage: TokenUsage; details: UsageDetails } | undefined {
+	if (!usage) return undefined;
+	const input = count(usage.inputTokens?.total) ?? 0;
+	const output = count(usage.outputTokens?.total) ?? 0;
+	return {
+		usage: { promptTokens: input, completionTokens: output, totalTokens: input + output },
+		details: usageDetails({
+			inputTokenDetails: {
+				cacheReadTokens: usage.inputTokens?.cacheRead,
+				cacheWriteTokens: usage.inputTokens?.cacheWrite,
+			},
+			outputTokenDetails: { reasoningTokens: usage.outputTokens?.reasoning },
+		}),
+	};
+}

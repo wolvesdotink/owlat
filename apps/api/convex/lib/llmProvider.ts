@@ -436,10 +436,12 @@ export async function resolveIndexEmbedder(
 	// actionable error before building the model.
 	adapter.validateCredentials({ ...clientConfig, modelId });
 	return {
-		// Stamped so the embedding's ledger row names its endpoint (ADR-0073).
+		// Stamped so the embedding's ledger row names its endpoint, and a
+		// self-hosted embedder's rows cost nothing (ADR-0073).
 		model: stampModelEndpoint(
 			adapter.buildEmbeddingModel({ ...clientConfig, modelId }),
-			`embedding:${kind}`
+			`embedding:${kind}`,
+			{ isLocal: adapter.isLocal }
 		),
 		embeddingSpaceKey: spaceKey,
 	};

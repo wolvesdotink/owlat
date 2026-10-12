@@ -31,6 +31,7 @@ import { resolveIndexEmbedder, resolveLanguageModel, toIndexVector } from './lib
 import { runLlmText } from './lib/llm/dispatch';
 import { runEmbedding } from './lib/llm/embed';
 import { newRootRequest } from './lib/llm/requestMeter';
+import { boundedRoot } from './lib/llm/actionDeadline';
 import { meterLlmCall } from './analytics/meteredSpend';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
@@ -105,7 +106,7 @@ export const ask = authedAction({
 		const embedder = await resolveIndexEmbedder(ctx);
 		const { embeddingSpaceKey } = embedder;
 		// One question is one user action: every call it makes groups under one root.
-		const root = newRootRequest('assistant');
+		const root = boundedRoot(ctx, newRootRequest('assistant'));
 		try {
 			const res = await meterLlmCall(
 				ctx,

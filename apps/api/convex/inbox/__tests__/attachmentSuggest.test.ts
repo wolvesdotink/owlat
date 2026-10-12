@@ -45,6 +45,23 @@ function makeCtx(files: unknown[], onSearch?: (args: SearchArgs) => void) {
 
 const CONTACT = 'contact_abc' as Id<'contacts'>;
 
+describe('the attachment searches’ root request (ADR-0073)', () => {
+	it('hands the caller’s root to the file search, so its embedding groups under it', async () => {
+		const root = { rootRequestId: 'team:msg-1', deadlineAt: 123 };
+		const suggest = makeCtx([fileRow('best', 0.95)]);
+		await computeAttachmentSuggestions(suggest.ctx, {
+			context: 'Can you send me the signed contract?',
+			contactId: CONTACT,
+			root,
+		});
+		expect(suggest.calls[0]!.args).toMatchObject({ root });
+
+		const found = makeCtx([]);
+		await searchFilesForRequest(found.ctx as never, { query: 'the invoice', root });
+		expect(found.calls[0]!.args).toMatchObject({ root });
+	});
+});
+
 describe('computeAttachmentSuggestions', () => {
 	it('scopes the file search to the resolved contact and surfaces the best match', async () => {
 		const { ctx, calls } = makeCtx([fileRow('best', 0.95), fileRow('other', 0.1)]);
