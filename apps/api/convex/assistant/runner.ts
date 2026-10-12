@@ -10,7 +10,8 @@
  * the streaming assistant row in place (throttled row-append) so the reactive
  * subscription renders tokens + tool-call cards as they arrive. Natural finish
  * records spend + marks complete; a user Stop / deletion (detected via the patch
- * mutation's `stop` signal) aborts and leaves the partial text terminal; any
+ * mutation's `stop` signal, or a once-a-second check while no event comes)
+ * aborts the turn and its nested calls and leaves the partial text terminal; any
  * error leaves the partial text errored and records the spend of the steps that
  * finished before it (#1261).
  *
@@ -54,6 +55,12 @@ type Status = 'complete' | 'stopped' | 'error';
  * coarser than the composer's revise stream (mail/ai/reviseDraft.ts).
  */
 const FLUSH_INTERVAL_MS = 250;
+/**
+ * How often a running turn checks for Stop on its own (Sol r1 F1). A Stop is
+ * otherwise noticed only on a flush, and no flush happens while a nested tool
+ * waits on its provider; this bounds that wait to about a second.
+ */
+export const STOP_POLL_MS = 1000;
 const MAX_TOOL_RESULT_JSON = 4000;
 const MAX_TOOL_ARGS_JSON = 1000;
 
@@ -124,6 +131,8 @@ async function streamAssistantTurn(
 		/** The turn's root request: one per assistant message (ADR-0073). */
 		root: LlmRootContext;
 		patch: (text: string, toolCalls: ToolCall[] | undefined) => Promise<{ stop: boolean }>;
+		/** Whether the person stopped the turn (read without writing). */
+		isStopped: () => Promise<boolean>;
 		finalize: (args: FinalizeArgs) => Promise<void>;
 	}
 ): Promise<void> {
@@ -151,6 +160,24 @@ async function streamAssistantTurn(
 		intervalMs: FLUSH_INTERVAL_MS,
 		patch: (text) => opts.patch(text, toolCalls.length ? toolCalls : undefined),
 	});
+
+	// Watch for Stop apart from stream events, for the turn's lifetime only: a
+	// Stop aborts the shared signal, which ends the stream and every nested
+	// call that holds it. One check at a time; cleared in `finally`.
+	let isChecking = false;
+	const stopWatch = setInterval(() => {
+		if (isChecking || stream.stopRequested) return;
+		isChecking = true;
+		opts
+			.isStopped()
+			.then((isStopped) => {
+				if (isStopped) stream.stop();
+			})
+			.catch(() => undefined)
+			.finally(() => {
+				isChecking = false;
+			});
+	}, STOP_POLL_MS);
 
 	try {
 		const result = await runLlmStream({
@@ -213,6 +240,8 @@ async function streamAssistantTurn(
 			...turnError(error),
 			toolCalls: toolCalls.length ? toolCalls : undefined,
 		});
+	} finally {
+		clearInterval(stopWatch);
 	}
 }
 
@@ -280,6 +309,10 @@ export const run = internalAction({
 					text,
 					toolCalls,
 				}),
+			isStopped: () =>
+				ctx.runQuery(internal.assistant.conversations.isTurnStopped, {
+					messageId: args.assistantMessageId,
+				}),
 			finalize: async (a) => {
 				await ctx.runMutation(internal.assistant.conversations.finalizeAssistantMessage, {
 					messageId: args.assistantMessageId,
@@ -327,6 +360,10 @@ export const runForChat = internalAction({
 					messageId: args.assistantMessageId,
 					text,
 					toolCalls,
+				}),
+			isStopped: () =>
+				ctx.runQuery(internal.chat.messages.isAssistantReplyStopped, {
+					messageId: args.assistantMessageId,
 				}),
 			finalize: async (a) => {
 				await ctx.runMutation(internal.chat.messages.finalizeAssistantChatMessage, {

@@ -44,6 +44,7 @@ import { newHarness } from './testModules';
 import { enableFeatures } from './factories';
 import { TOOL_MODULES, buildAssistantTools } from '../assistant/tools';
 import { RETRIEVAL_LIMIT_MESSAGE } from '../assistant/toolRegistry';
+import { STOP_POLL_MS } from '../assistant/runner';
 import { stampModelEndpoint } from '../lib/llm/modelEndpoint';
 import { admissionRefusalOf } from '../lib/llm/admissionPort';
 import { runEmbedding } from '../lib/llm/embed';
@@ -424,6 +425,61 @@ describe('the assistant turn', () => {
 		expect(draftRows).toEqual([
 			expect.objectContaining({ totalTokens: 15, parentCallId: turnRows[0]!.requestId }),
 		]);
+	}, 20_000);
+
+	it('notices a Stop while a nested draft waits on its provider, with no stream event (Sol r1 F1)', async () => {
+		const { t } = await setup('10');
+		const { conversationId, assistantMessageId } = await seedTurn(t);
+		let draftAbortedAt: number | undefined;
+		let stoppedAt: number | undefined;
+		llm.model = stampModelEndpoint(
+			new MockLanguageModelV3({
+				modelId: 'gpt-4o',
+				doStream: async () => ({
+					stream: streamOf([
+						{ type: 'stream-start', warnings: [] },
+						{
+							type: 'tool-call',
+							toolCallId: 'tc1',
+							toolName: 'draftCampaignCopy',
+							input: JSON.stringify({ brief: 'spring sale' }),
+						},
+						{ type: 'finish', finishReason: { unified: 'tool-calls', raw: undefined }, usage },
+					]),
+				}),
+				// The draft is blocked until it is cancelled. The person presses Stop
+				// once it has started; nothing else happens on the stream.
+				doGenerate: async (options) => {
+					await t.run((c) => c.db.patch(assistantMessageId, { status: 'stopped' }));
+					stoppedAt = Date.now();
+					await new Promise((_, reject) =>
+						options.abortSignal?.addEventListener('abort', () => {
+							draftAbortedAt = Date.now();
+							reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+						})
+					);
+					throw new Error('unreachable');
+				},
+			}),
+			'openai-native'
+		);
+
+		await t.action(internal.assistant.runner.run, {
+			conversationId,
+			assistantMessageId,
+			ownerId: 'user-a',
+		});
+
+		// Aborted within about one stop check, not at the call's deadline.
+		expect(draftAbortedAt).toBeDefined();
+		expect(draftAbortedAt! - stoppedAt!).toBeLessThan(STOP_POLL_MS * 3);
+		expect((await t.run((c) => c.db.get(assistantMessageId)))?.status).toBe('stopped');
+		// The aborted draft's request is on the ledger and every hold is settled.
+		const draftRows = (await rowsOf(t)).filter((r) => r.feature === 'assistant_tool_draft');
+		expect(draftRows).toHaveLength(1);
+		const holds = await holdsOf(t);
+		expect(holds.length).toBeGreaterThanOrEqual(2);
+		expect(holds.every((hold) => hold.status === 'settled')).toBe(true);
 	}, 20_000);
 
 	it('stores a budget refusal as its code and reason, not as a sentence', async () => {

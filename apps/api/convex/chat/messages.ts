@@ -357,6 +357,19 @@ export const patchAssistantChatMessage = internalMutation({
 });
 
 /**
+ * Whether the @assistant reply should stop: deleted, finalized, or gone. The
+ * runner asks this on a timer (Sol r1 F1), as `patchAssistantChatMessage`
+ * would answer it on a write.
+ */
+export const isAssistantReplyStopped = internalQuery({
+	args: { messageId: v.id('chatMessages') },
+	handler: async (ctx, args): Promise<boolean> => {
+		const msg = await ctx.db.get(args.messageId);
+		return !msg || !!msg.deletedAt || msg.aiStatus !== 'streaming';
+	},
+});
+
+/**
  * Finalize the @assistant reply. On error with no streamed text, leaves a short
  * visible fallback (chatMessages has no errorMessage column). A deletion/stop in
  * flight is preserved over a natural finish.

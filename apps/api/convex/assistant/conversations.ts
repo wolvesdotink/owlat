@@ -320,6 +320,20 @@ export const patchAssistantMessage = internalMutation({
 });
 
 /**
+ * Whether the turn should stop: the user pressed Stop, the row was finalized,
+ * or it is gone. The runner asks this on a timer (Sol r1 F1), so a Stop is
+ * noticed while no stream event comes, a nested tool waiting on its provider
+ * included.
+ */
+export const isTurnStopped = internalQuery({
+	args: { messageId: v.id('aiMessages') },
+	handler: async (ctx, args): Promise<boolean> => {
+		const msg = await ctx.db.get(args.messageId);
+		return !msg || msg.status !== 'streaming';
+	},
+});
+
+/**
  * Finalize the assistant turn. Preserves a user-set terminal status (`stopped`)
  * over the runner's natural finish, but always writes the final text + usage.
  */
