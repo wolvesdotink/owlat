@@ -221,7 +221,12 @@ export const getReplyOutcomeContext = internalQuery({
 	handler: async (
 		ctx,
 		args
-	): Promise<{ wasAutoSent: boolean; originalMessageId: Id<'inboundMessages'> } | null> => {
+	): Promise<{
+		wasAutoSent: boolean;
+		originalMessageId: Id<'inboundMessages'>;
+		/** The pipeline's security scan of the reply has landed (`securityFlags`). */
+		isScanned: boolean;
+	} | null> => {
 		const reply = await ctx.db.get(args.replyMessageId);
 		if (!reply?.threadId) return null;
 
@@ -238,7 +243,11 @@ export const getReplyOutcomeContext = internalQuery({
 			if (prior._id === reply._id) continue;
 			if (prior.receivedAt >= reply.receivedAt) continue; // must precede the reply
 			if (prior.processingStatus === 'sent' && prior.agentDecision?.decision === 'auto_approve') {
-				return { wasAutoSent: true, originalMessageId: prior._id };
+				return {
+					wasAutoSent: true,
+					originalMessageId: prior._id,
+					isScanned: reply.securityFlags !== undefined,
+				};
 			}
 		}
 		return null;
