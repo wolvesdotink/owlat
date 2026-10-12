@@ -144,6 +144,32 @@ describe('the registered applied-decision gate', () => {
 		expect(await evaluate(t, inboundMessageId)).toEqual({ safe: true });
 	});
 
+	it('stays inert past the read bound when every row is a shadow observation (Sol r4 F2)', async () => {
+		const { t, inboundMessageId } = await setup();
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 300; i++) {
+				await ctx.db.insert(
+					'decisionArtifacts',
+					artifact(inboundMessageId, 'mail.claim_check', { kind: 'shadow' })
+				);
+			}
+		});
+		expect(await evaluate(t, inboundMessageId)).toEqual({ safe: true });
+	});
+
+	it('still holds when the APPLIED verdicts overflow the read bound', async () => {
+		const { t, inboundMessageId } = await setup();
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 257; i++) {
+				await ctx.db.insert('decisionArtifacts', artifact(inboundMessageId, 'mail.claim_check'));
+			}
+		});
+		expect(await evaluate(t, inboundMessageId)).toMatchObject({
+			safe: false,
+			reason: expect.stringContaining('Too many decision verdicts'),
+		});
+	});
+
 	it.each(['mail.claim_check', 'mail.necessity'] as const)(
 		'holds auto-send for an applied %s verdict, even a calibrated one: nothing feeds auto-send',
 		async (task) => {

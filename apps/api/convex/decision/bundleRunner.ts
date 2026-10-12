@@ -42,7 +42,8 @@ import type {
 	DecisionProviderKind,
 } from '../lib/decisionProviders/types';
 import { runLlmObject } from '../lib/llm/dispatch';
-import { resolveLanguageModel } from '../lib/llmProvider';
+import { resolveLanguageModelWithProvenance } from '../lib/llmProvider';
+import type { LanguageModel } from 'ai';
 import type { LlmRootContext } from '../lib/llm/requestMeter';
 import type { AnswersFor, DecisionAnswer, QuestionSet } from '../lib/decision/questions';
 import {
@@ -205,9 +206,10 @@ async function askDecisionPlane<Q extends QuestionSet>(
 async function askLanguageRung<Q extends QuestionSet>(
 	ctx: ActionCtx,
 	run: BundleRun<Q>,
-	admitted: Extract<BundleAdmission, { isAdmitted: true }>
+	admitted: Extract<BundleAdmission, { isAdmitted: true }>,
+	/** The model the claim checked: resolved ONCE, before the claim, never again. */
+	model: LanguageModel
 ): Promise<Answered<Q>> {
-	const model = await resolveLanguageModel(ctx, run.plan.task);
 	const { object, modelUsed } = await meterLlmCall(
 		ctx,
 		{ ...admitted.target, task: run.plan.task, root: run.root, plane: 'language' },
@@ -291,6 +293,21 @@ export async function runBundle<Q extends QuestionSet>(
 		return { hasRun: false, why: 'language_rung' };
 	}
 
+	// The identity the answer is stamped with, from ONE resolution: the decision
+	// plane above, or on the language rung the model the call will use (its
+	// provider, model and endpoint), resolved here once and dispatched as is.
+	// The claim reclaims a stored answer stamped with any other (Sol r3 F2, r4 F1).
+	let language: Awaited<ReturnType<typeof resolveLanguageModelWithProvenance>> | null = null;
+	if (rung !== 'decision') {
+		try {
+			language = await resolveLanguageModelWithProvenance(ctx, plan.task);
+		} catch {
+			// No language model resolves now: no call can be made, nothing is claimed.
+			return { hasRun: false, why: 'provider_unavailable' };
+		}
+	}
+	const contextVersion =
+		language === null ? resolvedPlaneIdentity(plane, true) : `language|${language.identity}`;
 	const request = {
 		task: plan.task,
 		feature: DECISION_FEATURE[plan.task],
@@ -325,9 +342,6 @@ export async function runBundle<Q extends QuestionSet>(
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
 		...(routing.configUpdatedAt === undefined ? {} : { configUpdatedAt: routing.configUpdatedAt }),
 	};
-	// The identity the answer is stamped with, from the ONE resolution above:
-	// the claim reclaims a stored answer stamped with any other (Sol r3 F2).
-	const contextVersion = rung === 'decision' ? resolvedPlaneIdentity(plane, true) : 'language';
 	const contentHash = stateContentHash(run.built.state);
 	const artifactKey = artifactKeyOf({
 		task: plan.task,
@@ -363,10 +377,9 @@ export async function runBundle<Q extends QuestionSet>(
 	const lease = { artifactKey, leaseExpiresAt: claim.leaseExpiresAt };
 
 	try {
-		const answered =
-			rung === 'decision' && plane !== null
-				? await askDecisionPlane(ctx, run, admitted, plane)
-				: await askLanguageRung(ctx, run, admitted);
+		const answered = language
+			? await askLanguageRung(ctx, run, admitted, language.model)
+			: await askDecisionPlane(ctx, run, admitted, plane as ResolvedDecisionPlane);
 		const labels = bundle.project(answered.answers);
 		const status = isAbstention(labels) ? 'abstained' : 'complete';
 		const isAgreement = agreementWith(labels, run.baseline);

@@ -67,6 +67,7 @@ beforeEach(() => {
 			}),
 			modelId: 'gpt-4o-mini',
 			endpointProvenance: 'openai-native',
+			identity: 'openai|gpt-4o-mini|',
 		});
 	providerGenerate
 		.mockReset()
@@ -521,6 +522,7 @@ describe('hosted plugin LLM service', () => {
 				model: 'gpt-4o-mini' as never,
 				modelId: 'gpt-4o-mini',
 				endpointProvenance: 'openai-native',
+				identity: 'openai|gpt-4o-mini|',
 			};
 		});
 		await expect(service.generate({ tier: 'fast', prompt: 'safe' })).rejects.toMatchObject({
@@ -560,6 +562,7 @@ describe('hosted plugin LLM service', () => {
 			model: 'gpt-4o-mini' as never,
 			modelId: 'gpt-4o-mini',
 			endpointProvenance: 'custom',
+			identity: 'openaiCompatible|gpt-4o-mini|https://llm.internal.test',
 		});
 		await expect(service.generate({ tier: 'fast', prompt: 'hello' })).rejects.toMatchObject({
 			code: 'access_denied',

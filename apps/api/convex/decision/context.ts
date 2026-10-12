@@ -132,11 +132,12 @@ export const appliedVerdictInputs = internalQuery({
 			const rows = await ctx.db
 				.query('decisionArtifacts')
 				.withIndex('by_inbound_message', (q) =>
-					q.eq('inboundMessageId', args.inboundMessageId).eq('task', task)
+					q.eq('inboundMessageId', args.inboundMessageId).eq('task', task).eq('kind', 'advisory')
 				)
 				.take(APPLIED_SCAN + 1);
+			// Shadow observations are never read, so they never count toward the bound.
 			isTruncated ||= rows.length > APPLIED_SCAN;
-			applied.push(...rows.slice(0, APPLIED_SCAN).filter((row) => row.kind === 'advisory'));
+			applied.push(...rows.slice(0, APPLIED_SCAN));
 		}
 		const isCoverageEnforced = await isItemCoverageEnforced(ctx);
 		if (applied.length === 0) {

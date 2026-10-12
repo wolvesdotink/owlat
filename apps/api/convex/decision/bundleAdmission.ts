@@ -95,6 +95,10 @@ export function admitUnderOuterHold(
 	hold: OuterHold
 ): Extract<BundleAdmission, { isAdmitted: true }> {
 	const recorder = decisionUsageRecorder(ctx, { reservationId: hold.reservationId });
+	// Each provider request counts ONCE: a batch whose write failed stays
+	// pending on the dispatch and is sent again with the next attempt's, so the
+	// same (request, attempt) can reach the recorder twice (Sol r4 F3).
+	const counted = new Set<string>();
 	return {
 		isAdmitted: true,
 		target: {
@@ -109,7 +113,14 @@ export function admitUnderOuterHold(
 		decision: {
 			requestId: hold.requestId,
 			recordUsage: async (record) => {
-				hold.count(record.requests.length);
+				let fresh = 0;
+				for (const request of record.requests) {
+					const key = `${record.requestId}:${request.attempt}`;
+					if (counted.has(key)) continue;
+					counted.add(key);
+					fresh += 1;
+				}
+				if (fresh > 0) hold.count(fresh);
 				await recorder(record);
 			},
 		},

@@ -32,6 +32,8 @@ const mocks = vi.hoisted(() => ({
 	runLlmObject: vi.fn(),
 	admitBundle: vi.fn(),
 	roles: [] as string[],
+	/** The language plane the rung resolves (kind and fast model). */
+	language: { kind: 'openai', modelId: 'gpt-6-luna' },
 }));
 
 vi.mock('../../lib/llm/dispatch', async () => {
@@ -47,6 +49,15 @@ vi.mock('../../lib/llmProvider', async () => ({
 		mocks.roles.push(role);
 		return 'mock-model';
 	}),
+	resolveLanguageModelWithProvenance: vi.fn(async (_ctx: unknown, task: string) => {
+		mocks.roles.push(task);
+		return {
+			model: 'mock-model',
+			modelId: mocks.language.modelId,
+			endpointProvenance: 'openai-native',
+			identity: `${mocks.language.kind}|${mocks.language.modelId}|`,
+		};
+	}),
 }));
 vi.mock('../bundleAdmission', async () => ({
 	...(await vi.importActual<object>('../bundleAdmission')),
@@ -58,6 +69,8 @@ import { CLAIM_CHECK_BUNDLE, NECESSITY_BUNDLE } from '../../lib/decision/bundles
 import { necessityState } from '../../lib/decision/necessityState';
 import { recordOwnerCorrection } from '../artifacts';
 import type { RoutingContext } from '../context';
+import { admitUnderOuterHold } from '../bundleAdmission';
+import { reconcileSpend } from '../../aiRouting/__tests__/spend.testlib';
 import { ACTION_MODEL_BUDGET_MS, anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 const rootGlob = import.meta.glob('../../**/*.*s');
@@ -149,6 +162,7 @@ const ADMITTED = {
 
 beforeEach(() => {
 	mocks.roles.length = 0;
+	mocks.language = { kind: 'openai', modelId: 'gpt-6-luna' };
 	mocks.admitBundle.mockResolvedValue(ADMITTED);
 	mocks.runLlmObject.mockResolvedValue({
 		object: { necessity: 0.9 },
@@ -193,23 +207,49 @@ describe('the necessity judgment through the runner', () => {
 		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
 	});
 
-	it('re-asks when the stored answer came from another provider (Sol r3 F2)', async () => {
+	it.each([
+		['the language provider changes', { kind: 'anthropic', modelId: 'gpt-6-luna' }],
+		['the fast model changes', { kind: 'openai', modelId: 'gpt-6-sol-mini' }],
+	])('re-asks on the language rung when %s (Sol r4 F1)', async (_label, next) => {
 		const t = await setup({ clarifyNecessity: 'enforce' });
 		const id = await seedTeamMessage(t);
 		const routed = await routing(t);
 		await necessityRun(t, routed, id);
-		// The answer was stamped by the language rung; say it came from TypeSafe instead.
+		const [first] = await t.run((ctx) => ctx.db.query('decisionArtifacts').collect());
+		expect(first).toMatchObject({ contextVersion: 'language|openai|gpt-6-luna|' });
+		// Same configuration again: the stored answer is reused, nothing is asked.
+		expect(await necessityRun(t, routed, id)).toMatchObject({ hasRun: false, why: 'settled' });
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
+
+		mocks.language = next;
+		const again = await necessityRun(t, routed, id);
+		expect(again).toMatchObject({ hasRun: true, status: 'complete' });
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(2);
+		const [row] = await t.run((ctx) => ctx.db.query('decisionArtifacts').collect());
+		expect(row).toMatchObject({ contextVersion: `language|${next.kind}|${next.modelId}|` });
+	});
+
+	it('re-asks when the stored answer came from another plane (Sol r3 F2)', async () => {
+		const t = await setup({ clarifyNecessity: 'enforce' });
+		const id = await seedTeamMessage(t);
+		const routed = await routing(t);
+		await necessityRun(t, routed, id);
 		await t.run(async (ctx) => {
 			const [row] = await ctx.db.query('decisionArtifacts').collect();
 			await ctx.db.patch(row!._id, {
 				contextVersion: 'typesafe|jev-1.13.0|https://api.typesafe.ai',
 			});
 		});
-		const again = await necessityRun(t, routed, id);
-		expect(again).toMatchObject({ hasRun: true, status: 'complete' });
+		expect(await necessityRun(t, routed, id)).toMatchObject({ hasRun: true, status: 'complete' });
 		expect(mocks.runLlmObject).toHaveBeenCalledTimes(2);
-		const [row] = await t.run((ctx) => ctx.db.query('decisionArtifacts').collect());
-		expect(row).toMatchObject({ contextVersion: 'language', status: 'complete' });
+	});
+
+	it('the dispatched model is the one the identity was resolved from (resolved once)', async () => {
+		const t = await setup({ clarifyNecessity: 'enforce' });
+		const id = await seedTeamMessage(t);
+		await necessityRun(t, await routing(t), id);
+		expect(mocks.roles).toEqual(['mail.necessity']);
+		expect(mocks.runLlmObject.mock.calls[0]![0]).toMatchObject({ model: 'mock-model' });
 	});
 
 	it('reclaims at the claim on a model change, and never hands back another model’s labels', async () => {
@@ -446,5 +486,87 @@ describe('owner corrections with many claim checks', () => {
 			invalidationReason: 'owner_correction',
 		});
 		expect(rows.filter((row) => row.invalidatedAt !== undefined)).toHaveLength(1);
+	});
+});
+
+describe('a claim check under the run hold, when its usage write fails (Sol r4 F3)', () => {
+	it('counts each request once across the failed write and its replay, and settles exactly', async () => {
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
+		try {
+			const t = await setup({ claimVerification: 'enforce' });
+			await reconcileSpend(t);
+			await t.mutation(internal.aiRouting.admission.reserve, {
+				reservationId: 'run-dec',
+				rootRequestId: 'team:m',
+				plane: 'decision',
+				task: 'mail.claim_check',
+				budgetClass: 'standard',
+				priority: 'pipeline',
+				heldMicrousd: 1_000,
+				maxRequests: 2,
+				requestBound: { requestId: 'req-1', attempt: 1, microusd: 500 },
+				requestBounds: [{ requestId: 'req-1', attempt: 2, microusd: 500 }],
+				expiresAt: Date.now() + 600_000,
+			});
+			// The first batch cannot be written at all: both direct tries and both
+			// scheduled tries fail. Later batches go through.
+			let failures = 4;
+			const base = actionCtx(t);
+			const ctx = {
+				...base,
+				runMutation: (ref: never, args: never) =>
+					failures-- > 2 ? Promise.reject(new Error('write failed')) : base.runMutation(ref, args),
+				scheduler: {
+					runAfter: () =>
+						failures-- > 0 ? Promise.reject(new Error('schedule failed')) : Promise.resolve(),
+				},
+			} as unknown as ActionCtx;
+			let counted = 0;
+			const admitted = admitUnderOuterHold(
+				ctx,
+				{
+					task: 'mail.claim_check',
+					feature: 'decision_claim_check',
+					root: { rootRequestId: 'team:m' },
+					policyVersion: 4,
+					plane: 'decision',
+				},
+				{ reservationId: 'run-dec', requestId: 'req-1', count: (n) => (counted += n) }
+			);
+			const record = (requests: { attempt: number }[]) => ({
+				feature: 'decision_claim_check',
+				requestId: 'req-1',
+				provider: 'typesafe' as const,
+				attempt: requests.length,
+				fallback: false,
+				outcome: 'failed' as const,
+				durationMs: 5,
+				requests: requests.map((r) => ({
+					...r,
+					outcome: 'failed' as const,
+					latencyMs: 5,
+					modelUsed: 'jev-1.13.0',
+				})),
+			});
+			const recordUsage = admitted.decision.recordUsage!;
+			// Attempt 1's write fails; its request stays pending and rides with attempt 2's.
+			await expect(recordUsage(record([{ attempt: 1 }]) as never)).rejects.toThrow();
+			await recordUsage(record([{ attempt: 1 }, { attempt: 2 }]) as never);
+			expect(counted).toBe(2);
+			const rows = (await t.run((c) => c.db.query('llmUsageEvents').collect())).filter(
+				(r) => r.reservationId === 'run-dec' && r.feature === 'decision_claim_check'
+			);
+			expect(rows.map((r) => r.attempt).sort()).toEqual([1, 2]);
+			await t.mutation(internal.aiRouting.admission.settle, {
+				reservationId: 'run-dec',
+				expectedRequests: counted,
+			});
+			const hold = (await t.run((c) => c.db.query('llmReservations').collect())).find(
+				(row) => row.reservationId === 'run-dec'
+			);
+			expect(hold).toMatchObject({ status: 'settled' });
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 });

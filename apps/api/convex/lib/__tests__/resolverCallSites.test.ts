@@ -151,8 +151,8 @@ const INVENTORY: readonly CallSite[] = [
 	// The language rung of a decision bundle: the bundle's decision task.
 	{
 		file: 'decision/bundleRunner.ts',
-		fn: 'resolveLanguageModel',
-		args: 'ctx, run.plan.task',
+		fn: 'resolveLanguageModelWithProvenance',
+		args: 'ctx, plan.task',
 		tasks: DECISION_TASKS,
 		branches: [[undefined, 'classify']],
 	},

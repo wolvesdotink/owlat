@@ -43,6 +43,12 @@ vi.mock('../../lib/llm/dispatch', async () => {
 vi.mock('../../lib/llmProvider', async () => ({
 	...(await vi.importActual<object>('../../lib/llmProvider')),
 	resolveLanguageModel: vi.fn(async () => 'mock-model'),
+	resolveLanguageModelWithProvenance: vi.fn(async () => ({
+		model: 'mock-model',
+		modelId: 'gpt-6-luna',
+		endpointProvenance: 'openai-native',
+		identity: 'openai|gpt-6-luna|',
+	})),
 }));
 vi.mock('../../lib/decisionProvider', async () => ({
 	...(await vi.importActual<object>('../../lib/decisionProvider')),

@@ -77,6 +77,7 @@ import {
 	type LanguageProviderKind,
 	type ProviderClientConfig,
 	type ResolvedLanguageModel,
+	endpointOrigin,
 } from './llmProviders';
 import type { StoredEmbeddingProviderKind } from './validators/aiProviderConfig';
 import {
@@ -303,6 +304,7 @@ function resolveLanguageModelFromPlane(
 		),
 		modelId,
 		endpointProvenance: language.endpointProvenance,
+		identity: [language.kind, modelId, endpointOrigin(language.clientConfig.baseUrl)].join('|'),
 	});
 }
 
