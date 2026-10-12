@@ -50,7 +50,7 @@ export async function summarizeFile(
 	}
 ): Promise<z.infer<typeof summarySchema>> {
 	const { file, fileCtx, textForAI } = input;
-	const model = await resolveLanguageModel(ctx, 'summarize');
+	const model = await resolveLanguageModel(ctx, 'file.summarize');
 	const result = await meterLlmCall(ctx, { feature: 'semantic_file', root: input.root }, (meter) =>
 		runLlmObject({
 			meter,

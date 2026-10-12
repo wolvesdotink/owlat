@@ -179,7 +179,7 @@ async function selfCheckCall<T>(
 	run: (model: LanguageModel, meter: LlmCallMeter) => Promise<{ object: T }>
 ): Promise<T | null> {
 	try {
-		const model = await resolveLanguageModel(ctx, 'classify'); // cheap / fast tier
+		const model = await resolveLanguageModel(ctx, 'mail.draft_check');
 		const { object } = await meterLlmCall(
 			ctx,
 			{ feature: spendLabel, ...(root ? { root } : {}) },

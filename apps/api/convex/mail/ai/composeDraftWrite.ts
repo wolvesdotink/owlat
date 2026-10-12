@@ -176,7 +176,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 	const meter = meterFor(ctx, spendTarget);
 	const settleSpend = (): Promise<void> => persistMeteredSpend(ctx, spendTarget, meter);
 	try {
-		const model = await resolveLanguageModel(ctx, 'draft');
+		const model = await resolveLanguageModel(ctx, 'mail.compose');
 		const streamDraft = (withTools: boolean) =>
 			runLlmStream({
 				meter,

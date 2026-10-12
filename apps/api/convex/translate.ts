@@ -93,7 +93,7 @@ export const translateBatch = authedAction({
 		// dispatch). generateObject validates the shape, so a malformed response
 		// throws through runLlmObject's normal path instead of silently yielding
 		// zero translations the way the old fence-stripping parser did.
-		const model = await resolveLanguageModel(ctx, 'summarize'); // Translation is a fast-tier task
+		const model = await resolveLanguageModel(ctx, 'mail.translate');
 		const { object, tokenUsage, modelUsed } = await meterLlmCall(
 			ctx,
 			{ feature: 'translate', root: newRootRequest('translate') },

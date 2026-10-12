@@ -210,7 +210,7 @@ export const reviseDraft = authedAction({
 				// The draft + instruction are the caller's OWN trusted text, a safe
 				// complexity signal; fail-soft routing keeps the capable 'draft'
 				// tier for anything non-trivial (today's quality).
-				model: await resolveLanguageModelForUserText(ctx, 'draft', args.instruction),
+				model: await resolveLanguageModelForUserText(ctx, 'mail.compose', args.instruction),
 				system,
 				messages: [{ role: 'user', content: prompt }],
 				temperature: 0.4,

@@ -140,7 +140,7 @@ async function streamAssistantTurn(
 	try {
 		const result = await runLlmStream({
 			meter,
-			model: await resolveLanguageModelForUserText(ctx, 'draft', opts.lastUserText),
+			model: await resolveLanguageModelForUserText(ctx, 'assistant.answer', opts.lastUserText),
 			system: opts.system,
 			messages: opts.messages,
 			tools,

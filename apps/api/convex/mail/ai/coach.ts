@@ -146,7 +146,7 @@ export const coachDraft = authedAction({
 				ctx,
 				Promise.all([
 					args.messageId ? readThreadMessages(ctx, args.messageId) : null,
-					resolveLanguageModel(ctx, 'classify'), // cheap / fast tier, same as the agent self-check
+					resolveLanguageModel(ctx, 'mail.coach'),
 				])
 			);
 			let context = (args.threadContext ?? '').slice(0, COACH_MAX_CONTEXT_CHARS);

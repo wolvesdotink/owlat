@@ -84,7 +84,7 @@ export const extractCommitment = internalAction({
 						? `The sender is the mailbox owner (${context.ownerAddress}). Extract the single most concrete PROMISE the owner makes about something THEY will do (e.g. "I'll send the report Friday").`
 						: `The mailbox owner is ${context.ownerAddress}. Extract the single most concrete DEADLINE the sender imposes on the owner (e.g. "please reply by Friday").`;
 
-				const model = await resolveLanguageModel(ctx, 'summarize');
+				const model = await resolveLanguageModel(ctx, 'mail.extract');
 				const { object } = await meterLlmCall(
 					ctx,
 					{ feature: 'postbox_commitment', root: rootRequest('postbox', args.messageId) },

@@ -15,7 +15,7 @@
  */
 
 import { internal } from '../../../_generated/api';
-import { resolveLanguageModelForClassifiedDraft } from '../../../lib/llmProvider';
+import { classifiedDraftRouteOf, resolveLanguageModel } from '../../../lib/llmProvider';
 import { buildReplySubject } from '../../../lib/emailAddress';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
@@ -181,17 +181,18 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// self-check. Personal Postbox (mail/ai/draftOnArrival.ts) runs the exact
 		// same service so both surfaces produce identical output for the same
 		// inbound message.
+		const route = classifiedDraftRouteOf({
+			category: safeCategory,
+			intent: safeIntent,
+			priority: safePriority,
+			confidence: input.classification.confidence,
+		});
 		const { draftBody, draftQuality, planCoverage, tokenUsage, modelUsed } = await runSharedDraft(
 			ctx,
 			{
 				surface: 'organization',
 				resolveModel: () =>
-					resolveLanguageModelForClassifiedDraft(ctx, {
-						category: safeCategory,
-						intent: safeIntent,
-						priority: safePriority,
-						confidence: input.classification.confidence,
-					}),
+					resolveLanguageModel(ctx, 'mail.draft', { tier: route === 'fast' ? 'fast' : 'capable' }),
 				audience: 'an organization',
 				styleReference: "the organization's",
 				context: input.context,

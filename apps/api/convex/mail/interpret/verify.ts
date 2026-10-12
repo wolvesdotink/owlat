@@ -147,7 +147,7 @@ export async function verifyClaims(
 	let isIncomplete = false;
 	let refusal: AdmissionRefusalData | undefined;
 	if (claims.length === 0) return { verdicts, isIncomplete, isUnsendable: false };
-	const model = opts.model ?? (await resolveLanguageModel(ctx, 'guard'));
+	const model = opts.model ?? (await resolveLanguageModel(ctx, 'mail.verify'));
 	// Only what the verifier can see whole is checked (Sol r5 F1): a claim whose
 	// statement or quotes the prompt would clip, or one past the most the run's
 	// hold covers, stays unverified, and the run is `partial` without a retry.
