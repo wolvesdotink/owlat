@@ -37,7 +37,7 @@ describe('useWorkbenchDwell', () => {
 		t.advance(WORKBENCH_DWELL_MS);
 		t.scope.value = 'team';
 		await nextTick();
-		expect(t.markSeen).toHaveBeenCalledWith('ada');
+		expect(t.markSeen).toHaveBeenCalledWith('ada', WORKBENCH_DWELL_MS);
 	});
 
 	it('leaves a short visit alone', async () => {
@@ -68,7 +68,17 @@ describe('useWorkbenchDwell', () => {
 		await nextTick();
 		t.advance(10_000);
 		t.wrapper.unmount();
-		expect(t.markSeen).toHaveBeenCalledWith('ada');
+		expect(t.markSeen).toHaveBeenCalledWith('ada', 90_000);
+	});
+
+	it('stops the watermark where the summary was last on screen', async () => {
+		const t = setup({ scope: 'ada', showing: true });
+		t.advance(WORKBENCH_DWELL_MS);
+		t.showing.value = false; // into Zen; new mail can arrive out of view
+		await nextTick();
+		t.advance(60_000);
+		t.wrapper.unmount(); // left while still in Zen
+		expect(t.markSeen).toHaveBeenCalledWith('ada', WORKBENCH_DWELL_MS);
 	});
 
 	it('starts each tab from zero', async () => {

@@ -183,7 +183,7 @@ async function markAllSeen() {
 useWorkbenchDwell({
 	scope,
 	showing: computed(() => hasAnything.value && !workbench.isStale.value && !isZen.value),
-	markSeen: (tab) => void workbench.markSeen(tab),
+	markSeen: (tab, at) => void workbench.markSeen(tab, at),
 });
 watch(scope, () => (hidden.value = new Set()));
 

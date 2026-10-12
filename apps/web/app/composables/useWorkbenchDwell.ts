@@ -9,28 +9,37 @@ export const WORKBENCH_DWELL_MS = 30_000;
  * page). Only time the tab's own summary was actually on screen counts: not
  * while the previous tab is still showing as the next one loads, not while the
  * tab has nothing to show, and not while Zen mode hides the bands. Hidden
- * updates are never acknowledged.
+ * updates are never acknowledged: the watermark moves only as far as the last
+ * moment the summary was on screen, so mail that arrived while it was hidden
+ * stays new.
  */
 export function useWorkbenchDwell<S extends string>(opts: {
 	scope: Ref<S | null>;
 	/** This tab's summary is on screen and has something in it. */
 	showing: Ref<boolean>;
-	markSeen: (scope: S) => void;
+	/** `at`: the last moment the summary was on screen. */
+	markSeen: (scope: S, at: number) => void;
 	now?: () => number;
 }) {
 	const now = opts.now ?? Date.now;
 	let shownMs = 0;
 	let shownSince: number | null = null;
+	let lastShownAt: number | null = null;
 
 	function pause() {
-		if (shownSince !== null) shownMs += now() - shownSince;
+		if (shownSince !== null) {
+			lastShownAt = now();
+			shownMs += lastShownAt - shownSince;
+		}
 		shownSince = null;
 	}
 
 	function leave(scope: S | null) {
 		pause();
-		if (scope && shownMs >= WORKBENCH_DWELL_MS) opts.markSeen(scope);
+		if (scope && lastShownAt !== null && shownMs >= WORKBENCH_DWELL_MS)
+			opts.markSeen(scope, lastShownAt);
 		shownMs = 0;
+		lastShownAt = null;
 	}
 
 	watch(

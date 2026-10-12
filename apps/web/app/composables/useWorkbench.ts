@@ -132,9 +132,16 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 		 */
 		isStale,
 		teamOn,
-		/** Mark a tab as seen; the open one unless told otherwise (leaving a tab). */
-		markSeen: (target: WorkbenchScope | null = scope.value) =>
-			markSeenRun(target ? { scope: target as Id<'mailboxes'> | 'team' } : {}),
+		/**
+		 * Mark a tab as seen; the open one unless told otherwise (leaving a tab).
+		 * `at` stops the watermark at the moment the viewer last saw the tab, so
+		 * mail that arrived after that (out of view) stays new.
+		 */
+		markSeen: (target: WorkbenchScope | null = scope.value, at?: number) =>
+			markSeenRun({
+				...(target ? { scope: target as Id<'mailboxes'> | 'team' } : {}),
+				...(at === undefined ? {} : { at }),
+			}),
 		undoMarkSeen: (target: WorkbenchScope | null = scope.value) =>
 			undoMarkSeenRun(target ? { scope: target as Id<'mailboxes'> | 'team' } : {}),
 	};
