@@ -1080,7 +1080,8 @@
 				"securityLead": "Security email.",
 				"security": "Shown as written, never summarised.",
 				"signed": "Only the signed part is summarised.",
-				"openConversation": "Open the conversation"
+				"openConversation": "Open the conversation",
+				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the overview fills in shortly."
 			},
 			"conversation": {
 				"read": "Read the whole thread",

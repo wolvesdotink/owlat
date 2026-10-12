@@ -92,12 +92,14 @@ export function useThreadBrief(opts: {
 		return 'available';
 	});
 
-	// An older thread with nothing interpreted yet (D5): ask for its
-	// interpretation once; the Conversation shows until the brief arrives.
+	// An older thread with nothing interpreted yet (D5), or messages whose
+	// reading waited for this open (D10): ask for their interpretation; the
+	// Conversation shows until a brief with nothing in it yet fills in.
 	useBriefEnsure({
 		threadRef: () => threadRef.value,
 		completeness: () => view.value?.completeness,
 		history: () => view.value?.history,
+		deferredSources: () => view.value?.deferredSources,
 	});
 
 	const markSeenOp = useBackendOperation(api.mail.interpret.brief.markSeen, {

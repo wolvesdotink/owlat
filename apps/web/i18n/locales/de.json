@@ -1080,7 +1080,8 @@
 				"securityLead": "Sicherheits-E-Mail.",
 				"security": "Wird so angezeigt, wie geschrieben, und nie zusammengefasst.",
 				"signed": "Nur der signierte Teil ist zusammengefasst.",
-				"openConversation": "E-Mail-Verlauf öffnen"
+				"openConversation": "E-Mail-Verlauf öffnen",
+				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich der Überblick gleich."
 			},
 			"conversation": {
 				"read": "Den ganzen Verlauf lesen",
