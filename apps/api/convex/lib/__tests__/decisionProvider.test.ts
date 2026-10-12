@@ -39,6 +39,7 @@ import {
 	resolveDecisionProvider,
 } from '../decisionProvider';
 import { DecisionProviderUnavailable } from '../decision/contract';
+import { decisionEnvProblem } from '../decisionEnvKind';
 
 vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
 
@@ -174,13 +175,14 @@ describe('decisionProvider — resolution order', () => {
 		expect(plane.source).toBe('stored');
 	});
 
-	it('ignores an unrecognised DECISION_PROVIDER rather than failing the call', async () => {
+	it('marks an unrecognised DECISION_PROVIDER unavailable rather than answering through the default (D3)', async () => {
 		vi.stubEnv('DECISION_PROVIDER', 'typesaef');
 		vi.stubEnv('TYPESAFE_API_KEY', 'env-key');
 		const { ctx } = makeCtx(null);
 		const plane = await resolveDecisionConfig(ctx);
-		expect(plane.kind).toBe('llm');
-		expect(plane.source).toBe('default');
+		expect(plane.source).toBe('env');
+		expect(plane.unavailable?.code).toBe('invalid_config');
+		expect(plane.clientConfig).toEqual({});
 	});
 
 	it('marks an explicitly configured origin as a custom endpoint', async () => {
@@ -312,6 +314,33 @@ describe('decisionProvider — an explicit provider that cannot answer is termin
 		await expect(resolveDecisionProvider(ctx)).rejects.toBeInstanceOf(DecisionProviderUnavailable);
 		// No language model was resolved for it (that would decrypt the language key).
 		expect(runAction).not.toHaveBeenCalled();
+	});
+
+	it('refuses an explicit DECISION_PROVIDER that is not a provider, instead of the default (Sol r1 F5)', async () => {
+		vi.stubEnv('DECISION_PROVIDER', 'typesaf');
+		const { ctx } = makeCtx(null);
+		const plane = await resolveDecisionConfig(ctx);
+		expect(plane.source).toBe('env');
+		expect(plane.unavailable?.code).toBe('invalid_config');
+		expect(plane.unavailable?.reason).toContain("'typesaf'");
+		await expect(resolveDecisionProvider(ctx)).rejects.toBeInstanceOf(DecisionProviderUnavailable);
+		const { resolveLanguageModel } = await import('../llmProvider');
+		expect(resolveLanguageModel).not.toHaveBeenCalled();
+	});
+
+	it('states the problem for the settings status', () => {
+		vi.stubEnv('DECISION_PROVIDER', 'typesaf');
+		expect(decisionEnvProblem()).toContain("'typesaf'");
+		vi.stubEnv('DECISION_PROVIDER', 'local');
+		expect(decisionEnvProblem()).toBeUndefined();
+	});
+
+	it('keeps a blank DECISION_PROVIDER as no choice: the default plane', async () => {
+		vi.stubEnv('DECISION_PROVIDER', '  ');
+		const { ctx } = makeCtx(null);
+		const plane = await resolveDecisionConfig(ctx);
+		expect(plane).toMatchObject({ kind: 'llm', source: 'default' });
+		expect(plane.unavailable).toBeUndefined();
 	});
 
 	it('offers no fallback hop for an unavailable provider, even with the hop enabled', async () => {

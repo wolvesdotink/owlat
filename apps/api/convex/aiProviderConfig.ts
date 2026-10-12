@@ -57,6 +57,7 @@ import {
 	embeddingProviderKindValidator,
 	languageProviderKindValidator,
 } from './lib/validators/aiProviderConfig';
+import { decisionEnvProblem } from './lib/decisionEnvKind';
 
 /** The org-singleton config row, or null. Single-org-per-deployment ⇒ `first()`. */
 async function getSingleton(ctx: QueryCtx | MutationCtx): Promise<Doc<'aiProviderConfig'> | null> {
@@ -76,7 +77,10 @@ export const getConfig = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		const row = await getSingleton(ctx);
-		if (!row) return { configured: false as const };
+		// D3 (ADR-0073): an invalid DECISION_PROVIDER refuses decisions; the card says why.
+		const envProblem = decisionEnvProblem();
+		const decisionEnv = envProblem ? { decisionEnvProblem: envProblem } : {};
+		if (!row) return { configured: false as const, ...decisionEnv };
 		return {
 			configured: true as const,
 			languageProviderKind: row.languageProviderKind,
@@ -101,6 +105,7 @@ export const getConfig = authedQuery({
 			isDecisionFallbackEnabled: row.isDecisionFallbackEnabled,
 			isDecisionKeySet: row.decisionSecretCiphertext !== undefined,
 			decisionKeyPreview: row.decisionKeyPreview,
+			...decisionEnv,
 			updatedAt: row.updatedAt,
 		};
 	},

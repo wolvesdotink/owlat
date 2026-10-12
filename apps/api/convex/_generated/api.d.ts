@@ -899,6 +899,7 @@ import type * as lib_decision_dispatch from '../lib/decision/dispatch.js';
 import type * as lib_decision_ports from '../lib/decision/ports.js';
 import type * as lib_decision_pricing from '../lib/decision/pricing.js';
 import type * as lib_decision_settingsActions from '../lib/decision/settingsActions.js';
+import type * as lib_decisionEnvKind from '../lib/decisionEnvKind.js';
 import type * as lib_decision_questions from '../lib/decision/questions.js';
 import type * as lib_decision_retryRules from '../lib/decision/retryRules.js';
 import type * as lib_decisionProvider from '../lib/decisionProvider.js';
@@ -2570,6 +2571,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/decision/ports': typeof lib_decision_ports;
 	'lib/decision/pricing': typeof lib_decision_pricing;
 	'lib/decision/settingsActions': typeof lib_decision_settingsActions;
+	'lib/decisionEnvKind': typeof lib_decisionEnvKind;
 	'lib/decision/questions': typeof lib_decision_questions;
 	'lib/decision/retryRules': typeof lib_decision_retryRules;
 	'lib/decisionProvider': typeof lib_decisionProvider;

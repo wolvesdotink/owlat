@@ -74,8 +74,52 @@ export function mayFallBack(error: unknown): boolean {
 	// D3: a provider that cannot answer, or an exhausted spend cap, is terminal.
 	if (error instanceof DecisionProviderUnavailable) return false;
 	if (admissionRefusalOf(error)) return false;
+	return isOperationalFailure(error);
+}
+
+/**
+ * D3 (ADR-0073): only a clearly OPERATIONAL failure of a working provider may
+ * hop: a timeout, a 408 or 429, a 5xx, or a dropped connection. Everything
+ * else is terminal, whatever its shape: a 4xx or a redirect (our key, our
+ * request, our base URL), a guard or configuration refusal without a status,
+ * an unreachable or unresolvable host, and anything unrecognized. A hop is a
+ * paid language call; an error nobody can classify does not buy one.
+ */
+export function isOperationalFailure(error: unknown): boolean {
 	const status = errorStatus(error);
-	return status === undefined || !NO_FALLBACK_STATUSES.includes(status);
+	if (status !== undefined) {
+		return (
+			!NO_FALLBACK_STATUSES.includes(status) && (status === 408 || status === 429 || status >= 500)
+		);
+	}
+	// No status: an adapter's transport failure. Look through it to what failed.
+	for (let current: unknown = error, depth = 0; current && depth < 5; depth++) {
+		if (isTimeout(current) || isConnectionReset(current)) return true;
+		current = (current as { cause?: unknown }).cause;
+	}
+	return false;
+}
+
+/** Codes of a connection that was established, or being established, and dropped or timed out. */
+const RESET_CODES: ReadonlySet<string> = new Set([
+	'ECONNRESET',
+	'ECONNABORTED',
+	'EPIPE',
+	'ETIMEDOUT',
+	'EAI_AGAIN',
+	'UND_ERR_SOCKET',
+	'UND_ERR_CONNECT_TIMEOUT',
+	'UND_ERR_HEADERS_TIMEOUT',
+	'UND_ERR_BODY_TIMEOUT',
+]);
+
+function isTimeout(error: unknown): boolean {
+	return error instanceof Error && error.name === 'TimeoutError';
+}
+
+function isConnectionReset(error: unknown): boolean {
+	const code = (error as { code?: unknown } | null)?.code;
+	return typeof code === 'string' && RESET_CODES.has(code);
 }
 
 // ─── Timing ────────────────────────────────────────────────────────────────

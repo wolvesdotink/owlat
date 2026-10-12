@@ -53,7 +53,8 @@
  * function call can reach another isolate's memory.
  *
  * Environment (fallback only):
- *   DECISION_PROVIDER   typesafe | local | llm — unrecognised values are ignored
+ *   DECISION_PROVIDER   typesafe | local | llm — any other value makes the plane
+ *                       unavailable (D3), never the default
  *   TYPESAFE_API_KEY    the TypeSafe (Jev) key
  *   DECISION_MODEL      model id override — SENT as the model id. Unset ⇒ the
  *                       adapter's pinned version. An answer the provider
@@ -73,13 +74,13 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
+import { decisionEnvProblem, envDecisionKind } from './decisionEnvKind';
 import {
 	DecisionProviderUnavailable,
 	type DecisionUnavailable,
 	type ResolvedDecisionProvider,
 } from './decision/contract';
 import {
-	DECISION_PROVIDER_KINDS,
 	DEFAULT_DECISION_KIND,
 	decisionProviderFor,
 	type DecisionEndpointProvenance,
@@ -167,18 +168,6 @@ export function decisionEnvApiKey(kind: DecisionProviderKind): string | undefine
 	return key === undefined ? undefined : getOptional(key)?.trim() || undefined;
 }
 
-/**
- * The kind named by `DECISION_PROVIDER`, or `undefined`. An unrecognised value
- * is IGNORED rather than thrown on, matching how `LLM_PROVIDER` is read one
- * module over: a typo in a deployment variable degrades to the language plane
- * (today's behaviour) instead of taking the inbound path down, and the settings
- * card shows which adapter actually resolved.
- */
-function envDecisionKind(): DecisionProviderKind | undefined {
-	const configured = decisionEnv('DECISION_PROVIDER');
-	return DECISION_PROVIDER_KINDS.find((kind) => kind === configured);
-}
-
 /** The per-request budget for a kind: a chat model needs far more than the native endpoint. */
 function deadlineForKind(kind: DecisionProviderKind): number {
 	return decisionProviderFor(kind).defaultDeadlineMs;
@@ -228,7 +217,7 @@ function decryptEnvelope(ctx: ActionCtx, envelope: DecisionKeyEnvelope): Promise
 function languageBackedPlane(
 	source: DecisionConfigSource,
 	isFallbackEnabled: boolean,
-	extra: Pick<ResolvedDecisionPlane, 'updatedAt'> = {}
+	extra: Pick<ResolvedDecisionPlane, 'updatedAt' | 'unavailable'> = {}
 ): ResolvedDecisionPlane {
 	const adapter = decisionProviderFor('llm');
 	return {
@@ -410,9 +399,19 @@ async function buildPlane(
 	}
 
 	const envKind = envDecisionKind();
+	if (envKind && 'invalid' in envKind) {
+		// An explicit choice nobody can honour: terminal, not the default.
+		return languageBackedPlane('env', isFallbackEnabled, {
+			updatedAt: row?.updatedAt,
+			unavailable: {
+				code: 'invalid_config',
+				reason: decisionEnvProblem() ?? 'Invalid DECISION_PROVIDER.',
+			},
+		});
+	}
 	if (envKind !== undefined) {
 		return planeFor({
-			kind: envKind,
+			kind: envKind.kind,
 			source: 'env',
 			storedKey: undefined,
 			storedModel: undefined,
