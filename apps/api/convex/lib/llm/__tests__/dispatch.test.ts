@@ -68,11 +68,8 @@ describe('normalizeUsage', () => {
 			completionTokens: 7,
 			totalTokens: 0,
 		});
-		expect(normalizeUsage({})).toEqual({
-			promptTokens: 0,
-			completionTokens: 0,
-			totalTokens: 0,
-		});
+		// Nothing reported at all is unknown usage, not a reported zero.
+		expect(normalizeUsage({})).toBeUndefined();
 	});
 });
 
@@ -108,6 +105,7 @@ describe('runLlmText input discriminator', () => {
 			text: 'hello',
 			tokenUsage: { promptTokens: 11, completionTokens: 22, totalTokens: 33 },
 			modelUsed: 'fake-model-id',
+			isTruncated: false,
 		});
 	});
 
@@ -196,6 +194,7 @@ describe('runLlmObject', () => {
 			object: { greeting: 'hi' },
 			tokenUsage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
 			modelUsed: 'fake-model-id',
+			isTruncated: false,
 		});
 	});
 

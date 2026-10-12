@@ -26,10 +26,16 @@ vi.mock('ai', async () => ({
 import { runLlmObject, runLlmStream, runLlmText, runLlmTextWithTools } from '../dispatch';
 import { runEmbedding } from '../embed';
 import { LlmCallMeter } from '../requestMeter';
-import { callDeadlineMs, taskOutputCeiling, wireOutputCeiling } from '../taskLimits';
-import { DEFAULT_MODEL_MAX_OUTPUT_TOKENS, modelMaxOutputTokens } from '../modelOutputLimits';
+import {
+	callDeadlineMs,
+	outputControlFamily,
+	taskOutputCeiling,
+	wireOutputCeiling,
+} from '../taskLimits';
+import { modelMaxOutputTokens } from '../modelOutputLimits';
 import { stampModelEndpoint } from '../modelEndpoint';
 import { LlmPartialUsageError } from '../partialUsage';
+import { normalizeUsage, providerReportedUsage, streamUsage } from '../providerUsage';
 import { scriptedStreamModel } from './streamModel.testlib';
 
 const model = stampModelEndpoint(
@@ -120,6 +126,67 @@ describe('runLlmText', () => {
 		});
 		await expect(runLlmText({ model, prompt: 'hi', meter })).rejects.toThrow();
 		expect(meter.requests).toEqual([expect.objectContaining({ attempt: 1, outcome: 'failed' })]);
+	});
+});
+
+describe('truncation and unreported usage', () => {
+	it('reports a length stop as truncated on text and structured output', async () => {
+		sdk.generateText.mockResolvedValueOnce({
+			text: 'Dear John, about your',
+			usage: sdkUsage(10, 4),
+			finishReason: 'length',
+		});
+		const text = await runLlmText({ model, prompt: 'hi' });
+		expect(text.isTruncated).toBe(true);
+		sdk.generateText.mockResolvedValueOnce({
+			text: 'ok',
+			usage: sdkUsage(1, 1),
+			finishReason: 'stop',
+		});
+		expect((await runLlmText({ model, prompt: 'hi' })).isTruncated).toBe(false);
+
+		sdk.generateObject.mockResolvedValueOnce({
+			object: {},
+			usage: sdkUsage(1, 1),
+			finishReason: 'length',
+		});
+		const object = await runLlmObject({ model, schema: z.object({}), prompt: 'p' });
+		expect(object.isTruncated).toBe(true);
+	});
+
+	it('keeps a usage report with no counts as unknown, not as zero', async () => {
+		// The SDK's shape when the provider sent no usage: every total undefined.
+		const unreported = {
+			inputTokens: undefined,
+			outputTokens: undefined,
+			totalTokens: undefined,
+			inputTokenDetails: {
+				noCacheTokens: undefined,
+				cacheReadTokens: undefined,
+				cacheWriteTokens: undefined,
+			},
+			outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+		};
+		expect(normalizeUsage(unreported)).toBeUndefined();
+		expect(streamUsage(unreported)).toBeUndefined();
+		expect(providerReportedUsage({ inputTokens: {}, outputTokens: {} })).toBeUndefined();
+		// A genuine zero, or one half reported, is still a report.
+		expect(normalizeUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 })).toEqual({
+			promptTokens: 0,
+			completionTokens: 0,
+			totalTokens: 0,
+		});
+		expect(providerReportedUsage({ inputTokens: { total: 5 }, outputTokens: {} })?.usage).toEqual({
+			promptTokens: 5,
+			completionTokens: 0,
+			totalTokens: 5,
+		});
+
+		sdk.generateText.mockResolvedValueOnce({ text: 'ok', usage: unreported });
+		const meter = new LlmCallMeter({ task: 'mail.ask' });
+		const result = await runLlmText({ model, prompt: 'hi', meter });
+		expect(result.tokenUsage).toBeUndefined();
+		expect(meter.requests[0]!.usage).toBeUndefined();
 	});
 });
 
@@ -331,8 +398,8 @@ describe('runLlmStream — every provider request, at the provider boundary', ()
 			messages: [{ role: 'user', content: 'hi' }],
 			meter: new LlmCallMeter({ task: 'assistant.answer' }),
 		});
-		// scripted-model is unknown: the default every chat model takes.
-		expect(model.doStreamCalls[0]).toMatchObject({ maxOutputTokens: 4_096 });
+		// scripted-model is unknown: the task's own ceiling (assistant.answer).
+		expect(model.doStreamCalls[0]).toMatchObject({ maxOutputTokens: 8_192 + 8_192 });
 		expect(model.doStreamCalls[0]!.abortSignal).toBeDefined();
 	});
 });
@@ -382,32 +449,67 @@ describe('runEmbedding', () => {
 });
 
 describe('task limits', () => {
-	it('gives every generative task a finite ceiling (output plus reasoning), embeddings none', () => {
+	it('gives every generative task a finite ceiling, embeddings none', () => {
 		expect(taskOutputCeiling('plugin.invoke')).toBe(2048);
 		expect(taskOutputCeiling('mail.classify')).toBe(1_024 + 4_096);
+		expect(taskOutputCeiling('mail.classify', 'anthropic')).toBe(1_024);
 		expect(taskOutputCeiling('mail.draft')).toBe(8_192 + 8_192);
 		expect(taskOutputCeiling('embedding.index')).toBeUndefined();
 		expect(taskOutputCeiling(undefined)).toBeUndefined();
 	});
 
-	it('clamps the ceiling to the model’s maximum, with a safe default for an unknown model', () => {
-		expect(wireOutputCeiling({ task: 'mail.translate', modelId: 'gpt-4o' })).toBe(16_384);
-		expect(wireOutputCeiling({ task: 'mail.translate', modelId: 'openai/gpt-4o-mini' })).toBe(
-			16_384
-		);
-		expect(wireOutputCeiling({ task: 'mail.draft', modelId: 'claude-3-haiku-20240307' })).toBe(
-			4_096
-		);
-		expect(wireOutputCeiling({ task: 'mail.draft', modelId: 'gpt-6.1-sol' })).toBe(16_384);
-		// An Azure deployment name, a local model: the default every chat model takes.
-		expect(wireOutputCeiling({ task: 'mail.draft', modelId: 'mail-fast' })).toBe(
-			DEFAULT_MODEL_MAX_OUTPUT_TOKENS
-		);
-		expect(wireOutputCeiling({ maxOutputTokens: 100_000, modelId: 'qwen3.6:27b' })).toBe(
-			DEFAULT_MODEL_MAX_OUTPUT_TOKENS
-		);
+	it('names the provider family that decides how output and reasoning are capped', () => {
+		expect(outputControlFamily('anthropic.messages', 'claude-sonnet-5-5')).toBe('anthropic');
+		expect(outputControlFamily('openai.chat', 'gpt-4o')).toBe('openai');
+		expect(outputControlFamily('openai.responses', 'gpt-6-luna')).toBe('openai-reasoning');
+		expect(outputControlFamily('openai.responses', 'o4-mini')).toBe('openai-reasoning');
+		for (const provider of [
+			'google.generative-ai',
+			'azure.responses',
+			'openrouter.chat',
+			'openai-compatible.chat',
+			undefined,
+		]) {
+			expect(outputControlFamily(provider, 'x')).toBe('combined');
+		}
+	});
+
+	it('enforces output on its own where the family separates it, and output + reasoning elsewhere', () => {
+		// mail.classify: 1 024 output, 4 096 reasoning.
+		const classify = (provider: string, modelId: string) =>
+			wireOutputCeiling({ task: 'mail.classify', provider, modelId });
+		expect(classify('anthropic.messages', 'claude-haiku-5-5')).toBe(1_024);
+		expect(classify('openai.chat', 'gpt-4o-mini')).toBe(1_024);
+		expect(classify('openai.responses', 'gpt-6-luna')).toBe(1_024 + 4_096);
+		expect(classify('google.generative-ai', 'gemini-3.5-flash-lite')).toBe(1_024 + 4_096);
+	});
+
+	it('clamps a known model to its maximum, and sends an unknown model the task’s own ceiling', () => {
+		const translate = (provider: string, modelId: string) =>
+			wireOutputCeiling({ task: 'mail.translate', provider, modelId });
+		expect(translate('openai.chat', 'gpt-4o')).toBe(16_384);
+		expect(translate('openrouter.chat', 'openai/gpt-4o-mini')).toBe(16_384);
+		expect(
+			wireOutputCeiling({
+				task: 'mail.draft',
+				provider: 'anthropic.messages',
+				modelId: 'claude-3-haiku-20240307',
+			})
+		).toBe(4_096);
+		// An Azure deployment name, a local Qwen: no known maximum, the task's ceiling.
+		expect(
+			wireOutputCeiling({ task: 'mail.draft', provider: 'azure.responses', modelId: 'mail-fast' })
+		).toBe(8_192 + 8_192);
+		expect(
+			wireOutputCeiling({
+				task: 'mail.draft',
+				provider: 'openai-compatible.chat',
+				modelId: 'qwen3.6:27b',
+			})
+		).toBe(8_192 + 8_192);
 		expect(wireOutputCeiling({ modelId: 'gpt-4o' })).toBeUndefined();
 		expect(modelMaxOutputTokens('anthropic/claude-sonnet-5.5')).toBe(32_000);
+		expect(modelMaxOutputTokens('qwen3.6:27b')).toBeUndefined();
 	});
 
 	it('takes the tighter of the task deadline and the call’s absolute deadline', () => {

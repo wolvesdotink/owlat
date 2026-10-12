@@ -19,6 +19,7 @@ import { streamUsage, usageDetails } from './providerUsage';
 import type { LlmCallMeter } from './requestMeter';
 import { callShape, limitArgs } from './callShape';
 import { meterStreamModel, STREAM_SETTLE_MS } from './streamMetering';
+import { isLengthStop } from './truncation';
 
 /**
  * Default ceiling on agentic steps (one LLM call + its tool round-trip) per
@@ -84,6 +85,8 @@ interface LlmStreamResult {
 	finishReason: string | undefined;
 	/** True when the caller's abortSignal ended the stream before a natural finish. */
 	aborted: boolean;
+	/** The output stopped at its ceiling: the text is incomplete (`./truncation.ts`). */
+	isTruncated?: boolean;
 }
 
 /**
@@ -175,11 +178,12 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 				case 'finish-step':
 					stepsSpent = addTokenUsage(stepsSpent, streamUsage(part.usage));
 					if (!metered.isProviderLevel) {
+						const stepUsage = streamUsage(part.usage);
 						opts.meter?.record({
 							...call.requestBase,
 							outcome: 'ok',
 							latencyMs: 0,
-							usage: streamUsage(part.usage),
+							...(stepUsage ? { usage: stepUsage } : {}),
 							...usageDetails(part.usage),
 						});
 					}
@@ -217,5 +221,6 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 		modelUsed: call.modelUsed,
 		finishReason,
 		aborted,
+		isTruncated: isLengthStop(finishReason),
 	};
 }

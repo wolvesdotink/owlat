@@ -33,7 +33,7 @@ import { runLlmStream } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { addTokenUsage } from '../../lib/llm/tokenUsage';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
-import { meterFor, writeMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { meterFor, persistMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
 import { childCall, newRootRequest } from '../../lib/llm/requestMeter';
 import { boundedRoot } from '../../lib/llm/actionDeadline';
 import { logError } from '../../lib/runtimeLog';
@@ -172,7 +172,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 		root: boundedRoot(ctx, newRootRequest('postbox_action')),
 	};
 	const meter = meterFor(ctx, spendTarget);
-	const settleSpend = (): Promise<void> => writeMeteredSpend(ctx, spendTarget, meter);
+	const settleSpend = (): Promise<void> => persistMeteredSpend(ctx, spendTarget, meter);
 	try {
 		const model = await resolveLanguageModel(ctx, 'draft');
 		const streamDraft = (withTools: boolean) =>
@@ -213,8 +213,12 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			draft = stripLeakedToolMarkup(result.text);
 			tokenUsage = addTokenUsage(tokenUsage, result.tokenUsage);
 		}
-		if (draft.kind === 'unusable') {
-			logError('[composeDraft] draft was tool-call markup:', draft.reason);
+		// A draft cut off at its output ceiling is incomplete: it fails like markup.
+		if (draft.kind === 'unusable' || result.isTruncated === true) {
+			logError(
+				'[composeDraft] draft unusable:',
+				draft.kind === 'unusable' ? draft.reason : 'stopped at the output limit'
+			);
 			await settleSpend();
 			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 				streamId,

@@ -55,6 +55,7 @@ vi.mock('../draftStrategyHost', () => ({
 
 import { ledgerRows } from '../../../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../../../lib/llm/partialUsage';
+import { LlmTruncatedError } from '../../../lib/llm/truncation';
 import {
 	runSharedDraft,
 	buildDraftMessages,
@@ -624,5 +625,22 @@ describe('runSharedDraft — the spend of a failed self-check (#1260)', () => {
 
 		expect(out.draftQuality?.score).toBe(0.9);
 		expect(selfCheckSpend()).toEqual([[fakeCtx, 'sc', usage(5), 'cheap-model']]);
+	});
+});
+
+describe('runSharedDraft — a draft cut off at its output limit (ADR-0073)', () => {
+	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
+
+	it('fails the draft instead of returning the cut-off text, and keeps its spend', async () => {
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'Hi John,\n\nThanks for the question. The price for',
+			tokenUsage: usage(9) as never,
+			modelUsed: 'model-a',
+			isTruncated: true,
+		} as never);
+		await expect(runSharedDraft(fakeCtx, baseParams())).rejects.toBeInstanceOf(LlmTruncatedError);
+		expect(spendUnder('dr')).toEqual([[fakeCtx, 'dr', usage(9), 'model-a']]);
+		// No self-check is spent on a draft that will not be stored.
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
 	});
 });

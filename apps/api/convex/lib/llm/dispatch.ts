@@ -37,6 +37,7 @@ import { addTokenUsage } from './tokenUsage';
 import { normalizeUsage, usageDetails, type RawUsage } from './providerUsage';
 import { startRequest, type LlmCallMeter } from './requestMeter';
 import { callShape, limitArgs } from './callShape';
+import { isLengthStop } from './truncation';
 import { DEFAULT_MAX_TOOL_STEPS } from './dispatchStream';
 
 export { MAX_LLM_ATTEMPTS, errorStatus, isRetriableLlmError, retryAfterMs } from './retryPolicy';
@@ -138,6 +139,8 @@ export interface LlmTextResult {
 	text: string;
 	tokenUsage: TokenUsage | undefined;
 	modelUsed: string | undefined;
+	/** The output stopped at its ceiling: the text is incomplete (`./truncation.ts`). */
+	isTruncated?: boolean;
 }
 
 export async function runLlmText(opts: LlmTextOptions): Promise<LlmTextResult> {
@@ -181,7 +184,7 @@ export async function runLlmTextWithAttemptMetadata(
 		call.abortSignal,
 		call.maxAttempts
 	);
-	const { text, usage } = dispatched.value;
+	const { text, usage, finishReason } = dispatched.value;
 	const providerModelUsed = providerModelIdentity.read();
 	return {
 		attempts: dispatched.attempts,
@@ -193,6 +196,7 @@ export async function runLlmTextWithAttemptMetadata(
 			// tools and stream dispatch paths. Provider echoes remain separate so
 			// budget enforcement can detect reroutes without blanking core usage.
 			modelUsed: call.modelUsed,
+			isTruncated: isLengthStop(finishReason),
 		},
 	};
 }
@@ -261,8 +265,13 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 	} catch (error) {
 		throw withPartialUsage(error, spent, call.modelUsed);
 	}
-	const { text, totalUsage } = dispatched.value;
-	return { text, tokenUsage: spent ?? normalizeUsage(totalUsage), modelUsed: call.modelUsed };
+	const { text, totalUsage, finishReason } = dispatched.value;
+	return {
+		text,
+		tokenUsage: spent ?? normalizeUsage(totalUsage),
+		modelUsed: call.modelUsed,
+		isTruncated: isLengthStop(finishReason),
+	};
 }
 
 export interface LlmObjectOptions<S extends z.ZodTypeAny> {
@@ -289,6 +298,8 @@ export interface LlmObjectResult<S extends z.ZodTypeAny> {
 	object: z.infer<S>;
 	tokenUsage: TokenUsage | undefined;
 	modelUsed: string | undefined;
+	/** The output stopped at its ceiling (a schema-valid but cut-off object). */
+	isTruncated?: boolean;
 }
 
 /**
@@ -346,10 +357,11 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 	} catch (error) {
 		throw withPartialUsage(error, spent, call.modelUsed);
 	}
-	const { object, usage } = dispatched.value;
+	const { object, usage, finishReason } = dispatched.value;
 	return {
 		object: object as z.infer<S>,
 		tokenUsage: addTokenUsage(spent, normalizeUsage(usage)),
 		modelUsed: call.modelUsed,
+		isTruncated: isLengthStop(finishReason),
 	};
 }

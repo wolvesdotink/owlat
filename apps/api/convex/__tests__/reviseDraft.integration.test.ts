@@ -5,7 +5,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
-import { writeMeteredSpend } from '../analytics/meteredSpend';
+import { persistMeteredSpend } from '../analytics/meteredSpend';
 import type * as MeteredSpendModule from '../analytics/meteredSpend';
 import { metered } from '../analytics/__tests__/meteredDispatch.testlib';
 
@@ -59,7 +59,7 @@ vi.mock('../lib/llm/dispatch', async () => {
 // The ledger helper, real by default; a test makes one write throw.
 vi.mock('../analytics/meteredSpend', async () => {
 	const actual = await vi.importActual<typeof MeteredSpendModule>('../analytics/meteredSpend');
-	return { ...actual, writeMeteredSpend: vi.fn(actual.writeMeteredSpend) };
+	return { ...actual, persistMeteredSpend: vi.fn(actual.persistMeteredSpend) };
 });
 
 async function makeT() {
@@ -72,7 +72,41 @@ async function makeT() {
 beforeEach(() => {
 	sess.user = { userId: 'user-a', role: 'owner' };
 	vi.mocked(runLlmStream).mockReset();
-	vi.mocked(writeMeteredSpend).mockClear();
+	vi.mocked(persistMeteredSpend).mockClear();
+});
+
+describe('reviseDraft — a revision cut off at its output limit (ADR-0073)', () => {
+	it('settles the buffer as an error instead of a complete revision', async () => {
+		const t = await makeT();
+		await enableFeatures(t, ['ai']);
+		vi.mocked(runLlmStream).mockImplementation(
+			metered(async (opts) => {
+				await opts.onTextDelta?.('Thank you, but we', 'Thank you, but we');
+				return {
+					text: 'Thank you, but we',
+					tokenUsage: { promptTokens: 10, completionTokens: 8, totalTokens: 18 },
+					modelUsed: 'test-model',
+					finishReason: 'length',
+					aborted: false,
+					isTruncated: true,
+				};
+			})
+		);
+		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
+			surface: 'review',
+		});
+		const res = await t.action(api.mail.ai.reviseDraft.reviseDraft, {
+			streamId,
+			instruction: 'Redo but decline politely.',
+			currentDraft: 'Sure, happy to help.',
+			threadContext: 'Please confirm you can help.',
+			surface: 'review',
+		});
+		expect(res.status).toBe('error');
+		const buffer = await t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
+		expect(buffer?.status).toBe('error');
+		expect(buffer?.text).toBe('');
+	});
 });
 
 describe('reviseDraft — streaming', () => {
@@ -176,7 +210,7 @@ describe('reviseDraft — streaming', () => {
 				};
 			})
 		);
-		vi.mocked(writeMeteredSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
+		vi.mocked(persistMeteredSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
 
 		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
 			surface: 'compose',
@@ -193,7 +227,7 @@ describe('reviseDraft — streaming', () => {
 		expect(buffer?.status).toBe('complete');
 		expect(buffer?.text).toBe('Shorter now.');
 		expect(buffer?.errorMessage).toBeFalsy();
-		expect(writeMeteredSpend).toHaveBeenCalledTimes(1);
+		expect(persistMeteredSpend).toHaveBeenCalledTimes(1);
 	});
 
 	it('fails soft: a stream error settles the buffer as error and never throws to the caller', async () => {

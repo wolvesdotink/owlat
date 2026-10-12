@@ -243,6 +243,32 @@ describe('analytics.llmUsage.recordRequests', () => {
 		});
 	});
 
+	it('prices a language request on the operator’s own server at zero, and one without usage as unknown', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(internal.analytics.llmUsage.recordRequests, {
+			feature: 'agent_draft',
+			requestId: 'ollama',
+			requests: [
+				{
+					attempt: 1,
+					latencyMs: 1,
+					modelUsed: 'qwen3.6:27b',
+					isLocalEngine: true,
+					usage: { promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 },
+				},
+				// The provider reported no usage: unknown, so an estimate.
+				{ attempt: 2, latencyMs: 1, modelUsed: 'gpt-4o' },
+			],
+		});
+		await t.run(async (ctx) => {
+			const rows = (await ctx.db.query('llmUsageEvents').collect()).sort(
+				(a, b) => (a.attempt ?? 0) - (b.attempt ?? 0)
+			);
+			expect(rows[0]).toMatchObject({ costUsd: 0, isLocalEngine: true, isEstimated: false });
+			expect(rows[1]).toMatchObject({ costUsd: 0, isEstimated: true, totalTokens: 0 });
+		});
+	});
+
 	it('marks a language row priced at the unknown-model fallback as an estimate', async () => {
 		const t = convexTest(schema, modules);
 		await t.mutation(internal.analytics.llmUsage.recordRequests, {

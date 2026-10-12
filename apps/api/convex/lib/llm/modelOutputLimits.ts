@@ -9,14 +9,11 @@
  * (`anthropic/claude-sonnet-5.5` reads as `claude-sonnet-5.5`). The values are
  * the documented maxima or below them; a lower value only makes the clamp
  * tighter. A model not listed (an Azure deployment name, a local model, a
- * custom endpoint) gets {@link DEFAULT_MODEL_MAX_OUTPUT_TOKENS}, a value every
- * chat model in use accepts.
+ * custom endpoint) has no known maximum: the task's own ceiling goes out
+ * unclamped, so its capacity is what the task needs rather than a guess.
  *
  * Pure and runtime-neutral.
  */
-
-/** What an unknown model is assumed to accept: every chat model in use takes 4 096. */
-export const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 4_096;
 
 const MODEL_MAX_OUTPUT: readonly { readonly prefix: string; readonly maxOutputTokens: number }[] = [
 	// OpenAI
@@ -41,9 +38,8 @@ const MODEL_MAX_OUTPUT: readonly { readonly prefix: string; readonly maxOutputTo
 	{ prefix: 'mimo-', maxOutputTokens: 16_384 },
 ];
 
-/** The output maximum of `modelId`, or the safe default when the model is unknown. */
-export function modelMaxOutputTokens(modelId: string | undefined): number {
+/** The output maximum of `modelId`, or undefined when the model is not listed. */
+export function modelMaxOutputTokens(modelId: string | undefined): number | undefined {
 	const id = (modelId ?? '').toLowerCase().replace(/^[^/]+\//, '');
-	const match = MODEL_MAX_OUTPUT.find((entry) => id.startsWith(entry.prefix));
-	return match?.maxOutputTokens ?? DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
+	return MODEL_MAX_OUTPUT.find((entry) => id.startsWith(entry.prefix))?.maxOutputTokens;
 }

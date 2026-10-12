@@ -40,7 +40,7 @@ import { resolveLanguageModelForUserText } from '../../lib/llmProvider';
 import { runLlmStream } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup, visibleDraftStreamText } from '../../lib/llm/toolMarkup';
 import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
-import { meterFor, writeMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { meterFor, persistMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
 import { newRootRequest, type LlmCallMeter } from '../../lib/llm/requestMeter';
 import type { ActionCtx } from '../../_generated/server';
 import { logWarn } from '../../lib/runtimeLog';
@@ -63,7 +63,7 @@ const REVISE_SPEND: LlmSpendTarget = { feature: 'postbox_revise_draft' };
  */
 async function recordReviseSpend(ctx: ActionCtx, meter: LlmCallMeter): Promise<void> {
 	try {
-		await writeMeteredSpend(ctx, REVISE_SPEND, meter);
+		await persistMeteredSpend(ctx, REVISE_SPEND, meter);
 	} catch (error) {
 		logWarn('[reviseDraft] spend not recorded:', error);
 	}
@@ -214,12 +214,16 @@ export const reviseDraft = authedAction({
 			});
 
 			const revised = stripLeakedToolMarkup(result.text || stream.text);
-			if (revised.kind === 'unusable') {
+			// Markup, or a revision cut off at its output ceiling: never a finished draft.
+			if (revised.kind === 'unusable' || result.isTruncated === true) {
 				await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 					streamId: args.streamId,
 					text: '',
 					status: 'error',
-					errorMessage: 'The revision came back as tool-call markup. Try again.',
+					errorMessage:
+						revised.kind === 'unusable'
+							? 'The revision came back as tool-call markup. Try again.'
+							: 'The revision was too long and was cut off. Try a shorter instruction.',
 				});
 				await recordReviseSpend(ctx, meter);
 				return { text: '', injectionFlagged: false, status: 'error' };

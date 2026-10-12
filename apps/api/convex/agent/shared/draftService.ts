@@ -28,10 +28,11 @@ import type { ToolSet, ModelMessage, LanguageModel } from 'ai';
 import { cacheableSystemMessage } from '../../lib/llm/promptCache';
 import { runLlmText, runLlmTextWithTools, type LlmTextResult } from '../../lib/llm/dispatch';
 import { withoutToolMarkup, type PrimaryDraft } from './draftMarkup';
+import { LlmTruncatedError } from '../../lib/llm/truncation';
 import { buildReplyLanguageInstruction } from './replyLanguage';
 
 export { buildReplyLanguageInstruction } from './replyLanguage';
-import { meterFor, writeMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { meterFor, persistMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
 import { childCall, type LlmCallMeter, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
 import type { ActionCtx } from '../../_generated/server';
@@ -54,7 +55,7 @@ export {
 } from './draftSelfCheck';
 
 /** Ctx shape both entry points share — needs the spend-accounting surface. */
-type SpendCtx = Parameters<typeof writeMeteredSpend>[0];
+type SpendCtx = Parameters<typeof persistMeteredSpend>[0];
 
 // ─── Confirmed-facts block (clarification loop) ──────────────────────────────
 
@@ -378,7 +379,7 @@ async function recordAdvisorySpend(
 	meter: LlmCallMeter
 ): Promise<void> {
 	try {
-		await writeMeteredSpend(ctx, target, meter);
+		await persistMeteredSpend(ctx, target, meter);
 	} catch {
 		// ignore — a lost row under-counts; failing the draft over it loses the work
 	}
@@ -417,14 +418,19 @@ async function runDefaultDraftStrategy(
 	});
 
 	const temperature = params.temperature ?? 0.4;
-	return tools && Object.keys(tools).length > 0
-		? await runLlmTextWithTools({
-				meter,
-				model,
-				maxSteps: params.maxSteps,
-				tools,
-				messages,
-				temperature,
-			})
-		: await runLlmText({ meter, model, messages, temperature });
+	const generated =
+		tools && Object.keys(tools).length > 0
+			? await runLlmTextWithTools({
+					meter,
+					model,
+					maxSteps: params.maxSteps,
+					tools,
+					messages,
+					temperature,
+				})
+			: await runLlmText({ meter, model, messages, temperature });
+	// A draft cut off at its output ceiling is not a draft: it fails like any
+	// other failed generation (its requests are already on the meter).
+	if (generated.isTruncated === true) throw new LlmTruncatedError('draft');
+	return generated;
 }

@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { getFunctionName } from 'convex/server';
-import { meterFor, meterLlmCall, writeMeteredSpend } from '../meteredSpend';
+import { meterFor, meterLlmCall, persistMeteredSpend } from '../meteredSpend';
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
 import type { LlmCallMeter } from '../../lib/llm/requestMeter';
 import { ledgerRows } from './meteredDispatch.testlib';
@@ -104,15 +104,17 @@ describe('meterLlmCall', () => {
 		expect(ledgerRows(runAfter)).toHaveLength(1);
 	});
 
-	it('fails the call on a lost success write unless told to keep the result', async () => {
+	it('fails the call only when no write path stored its rows, unless told to keep the result', async () => {
 		const failing = fakeCtx();
 		failing.runMutation.mockRejectedValue(new Error('ledger down'));
+		failing.runAfter.mockRejectedValue(new Error('scheduler down'));
 		await expect(
 			meterLlmCall(failing.ctx, { feature: 'translate' }, async (m) => requests(m, 1))
-		).rejects.toThrow('ledger down');
+		).rejects.toThrow('scheduler down');
 
 		const tolerant = fakeCtx();
 		tolerant.runMutation.mockRejectedValue(new Error('ledger down'));
+		tolerant.runAfter.mockRejectedValue(new Error('scheduler down'));
 		await expect(
 			meterLlmCall(tolerant.ctx, { feature: 'translate' }, async (m) => requests(m, 1), {
 				onWriteError: 'ignore',
@@ -132,49 +134,56 @@ describe('meterLlmCall', () => {
 	});
 });
 
-describe('writeMeteredSpend', () => {
-	it('keeps a batch whose write failed, and writes it on the next flush', async () => {
+describe('persistMeteredSpend', () => {
+	it('retries a transient write, and acknowledges the batch once stored', async () => {
 		const { ctx, runMutation } = fakeCtx();
 		const target = { feature: 'agent_draft' };
 		const meter = meterFor({}, target);
 		requests(meter, 2);
 		runMutation.mockRejectedValueOnce(new Error('transient'));
-		await expect(writeMeteredSpend(ctx, target, meter)).rejects.toThrow('transient');
-		expect(meter.pendingWrites()).toHaveLength(2);
-
-		await writeMeteredSpend(ctx, target, meter);
+		await persistMeteredSpend(ctx, target, meter);
 		expect(meter.pendingWrites()).toHaveLength(0);
-		// The failed attempt carried the same two requests; the ledger's
-		// (requestId, attempt) idempotency is what makes the re-send safe.
+		// The re-send carried the same two requests; the ledger's
+		// (requestId, attempt) idempotency is what makes it safe.
 		expect(
 			runMutation.mock.calls.map((call) => (call[1] as { requests: unknown[] }).requests.length)
 		).toEqual([2, 2]);
 	});
 
-	it('keeps the later batches when an earlier one fails', async () => {
-		const { ctx, runMutation } = fakeCtx();
+	it('hands a batch the ledger keeps refusing to the scheduler, durably', async () => {
+		const { ctx, runMutation, runAfter } = fakeCtx();
+		const target = { feature: 'assistant_chat' };
+		const meter = meterFor({}, target);
+		requests(meter, 2);
+		runMutation.mockRejectedValue(new Error('ledger down'));
+		await persistMeteredSpend(ctx, target, meter);
+		expect(runMutation).toHaveBeenCalledTimes(2);
+		expect(ledgerRows(runAfter)).toHaveLength(2);
+		expect(meter.pendingWrites()).toHaveLength(0);
+	});
+
+	it('keeps a batch no path could store, and the later ones, for the next flush', async () => {
+		const { ctx, runMutation, runAfter } = fakeCtx();
 		const target = { feature: 'agent_draft' };
 		const meter = meterFor({}, target);
 		for (let i = 0; i < MAX_METERED_REQUESTS_PER_WRITE + 3; i++) {
 			meter.record({ outcome: 'ok', latencyMs: 1, usage: usage(1) });
 		}
-		runMutation.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('transient'));
-		await expect(writeMeteredSpend(ctx, target, meter)).rejects.toThrow('transient');
+		runMutation.mockResolvedValueOnce(null).mockRejectedValue(new Error('ledger down'));
+		runAfter.mockRejectedValue(new Error('scheduler down'));
+		await expect(persistMeteredSpend(ctx, target, meter)).rejects.toThrow('scheduler down');
 		// The first batch is stored; the second stays pending.
 		expect(meter.pendingWrites().map((r) => r.attempt)).toEqual([
 			MAX_METERED_REQUESTS_PER_WRITE + 1,
 			MAX_METERED_REQUESTS_PER_WRITE + 2,
 			MAX_METERED_REQUESTS_PER_WRITE + 3,
 		]);
-	});
 
-	it('retries a transient success-path write once inside meterLlmCall', async () => {
-		const { ctx, runMutation } = fakeCtx();
-		runMutation.mockRejectedValueOnce(new Error('transient'));
-		await expect(
-			meterLlmCall(ctx, { feature: 'translate' }, async (m) => requests(m, 1))
-		).resolves.toMatchObject({ value: 'answer' });
-		expect(runMutation).toHaveBeenCalledTimes(2);
+		// The ledger is back: the next flush writes exactly the pending batch.
+		runMutation.mockReset().mockResolvedValue(null);
+		await persistMeteredSpend(ctx, target, meter);
+		expect(meter.pendingWrites()).toHaveLength(0);
+		expect(ledgerRows(runMutation)).toHaveLength(3);
 	});
 
 	it('gives the meter the action’s deadline, bounded by the root’s', () => {
@@ -192,10 +201,10 @@ describe('writeMeteredSpend', () => {
 		const target = { feature: 'agent_draft' };
 		const meter = meterFor({}, target);
 		requests(meter, 2);
-		await writeMeteredSpend(ctx, target, meter);
-		await writeMeteredSpend(ctx, target, meter);
+		await persistMeteredSpend(ctx, target, meter);
+		await persistMeteredSpend(ctx, target, meter);
 		meter.record({ outcome: 'ok', latencyMs: 1, usage: usage(1) });
-		await writeMeteredSpend(ctx, target, meter);
+		await persistMeteredSpend(ctx, target, meter);
 		expect(ledgerRows(runMutation).map((row) => row.attempt)).toEqual([1, 2, 3]);
 		expect(runMutation).toHaveBeenCalledTimes(2);
 	});
@@ -205,7 +214,7 @@ describe('writeMeteredSpend', () => {
 		const target = { feature: 'embedding_knowledge', budgetClass: 'shadow' as const };
 		const meter = meterFor({}, target);
 		requests(meter, 1);
-		await writeMeteredSpend(ctx, target, meter);
+		await persistMeteredSpend(ctx, target, meter);
 		expect(runMutation.mock.calls[0]![1]).toMatchObject({
 			task: 'embedding.index',
 			plane: 'embedding',

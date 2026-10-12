@@ -26,7 +26,7 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { runLlmStream, DEFAULT_MAX_TOOL_STEPS } from '../lib/llm/dispatch';
 import { resolveLanguageModelForUserText } from '../lib/llmProvider';
-import { meterFor, writeMeteredSpend, type LlmSpendTarget } from '../analytics/meteredSpend';
+import { meterFor, persistMeteredSpend, type LlmSpendTarget } from '../analytics/meteredSpend';
 import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
 import {
 	childCall,
@@ -82,7 +82,7 @@ async function recordTurnSpend(
 	meter: LlmCallMeter
 ): Promise<void> {
 	try {
-		await writeMeteredSpend(ctx, target, meter);
+		await persistMeteredSpend(ctx, target, meter);
 	} catch (error) {
 		logWarn('[assistant] spend not recorded:', target.feature, error);
 	}
@@ -175,12 +175,16 @@ async function streamAssistantTurn(
 		});
 
 		await recordTurnSpend(ctx, target, meter);
+		// An answer cut off at its output ceiling keeps its text but is not
+		// reported complete.
+		const isCutOff = result.isTruncated === true && !stream.stopRequested && !result.aborted;
 		await opts.finalize({
 			text: result.text || stream.text,
-			status: stream.stopRequested || result.aborted ? 'stopped' : 'complete',
+			status: stream.stopRequested || result.aborted ? 'stopped' : isCutOff ? 'error' : 'complete',
 			model: result.modelUsed,
 			tokenUsage: result.tokenUsage,
 			toolCalls: toolCalls.length ? toolCalls : undefined,
+			...(isCutOff ? { errorMessage: 'The answer was cut off at its length limit.' } : {}),
 		});
 	} catch (error) {
 		// Steps that finished before the failure were billed and are on the

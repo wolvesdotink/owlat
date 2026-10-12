@@ -16,6 +16,7 @@ import { internal } from './_generated/api';
 import { resolveLanguageModel } from './lib/llmProvider';
 import { logInfo, logWarn } from './lib/runtimeLog';
 import { runLlmText } from './lib/llm/dispatch';
+import { LlmTruncatedError } from './lib/llm/truncation';
 import { meterLlmCall } from './analytics/meteredSpend';
 import { rootRequest } from './lib/llm/requestMeter';
 import { datasetKeyValidator, isDatasetKey, type DatasetKey } from './visualizationAgent';
@@ -81,6 +82,8 @@ export const generate = internalAction({
 			// (```html / ```HTML / bare ``` / prose around it), so try a
 			// case-insensitive generic fence first, then fall back to slicing
 			// the actual <!DOCTYPE…</html> document out of any surrounding text.
+			// A page cut off at its output ceiling is broken HTML: fail the generation.
+			if (result.isTruncated === true) throw new LlmTruncatedError('visualization');
 			let html = result.text.trim();
 			const fenceMatch = html.match(/```[a-zA-Z]*\s*\n([\s\S]*?)```/);
 			if (fenceMatch?.[1]) {

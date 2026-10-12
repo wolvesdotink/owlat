@@ -24,7 +24,7 @@ import { REPLY_OPTIONS_LIST_FORMAT, streamReplyOptions } from '../replyOptions';
 import { SYSTEM_GUARD } from './promptGuards';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
-import { throwNotFound } from '../../_utils/errors';
+import { throwInvalidState, throwNotFound } from '../../_utils/errors';
 
 /** Hard cap on an inline completion — Superhuman-style, one short continuation. */
 const MAX_COMPLETION_CHARS = 140;
@@ -398,7 +398,7 @@ export const rewriteSelection = authedAction({
 			surroundingContext: args.surroundingContext ?? '',
 			voiceGuidance,
 		});
-		const { text } = await meterLlmCall(
+		const { text, isTruncated } = await meterLlmCall(
 			ctx,
 			{ feature: 'postbox_rewrite_selection', root: newRootRequest('postbox_action') },
 			(meter) =>
@@ -412,6 +412,9 @@ export const rewriteSelection = authedAction({
 				}),
 			{ write: 'schedule', rethrow: 'as_is' }
 		);
+		// A rewrite replaces the owner's selection: a cut-off one must not.
+		if (isTruncated === true)
+			throwInvalidState('The rewrite was cut off. Try a shorter selection.');
 		return { rewritten: text.trim() };
 	},
 });

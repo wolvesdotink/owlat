@@ -24,7 +24,11 @@ import { taskForFeature, taskPolicy } from '../lib/llm/taskPolicy';
 import { callDeadlineAt } from '../lib/llm/actionDeadline';
 import type { LlmUsagePlane } from '../lib/llmUsageTags';
 import type { BudgetClass } from '../lib/validators/aiRouting';
-import { MAX_METERED_REQUESTS_PER_WRITE, type MeteredRequest } from './llmUsage';
+import {
+	MAX_METERED_REQUESTS_PER_WRITE,
+	type MeteredRequest,
+	type RequestBatchArgs,
+} from './llmUsage';
 
 type SpendCtx = Pick<ActionCtx, 'runMutation' | 'scheduler'>;
 
@@ -115,13 +119,53 @@ function callTags(target: LlmSpendTarget, meter: LlmCallMeter) {
 	};
 }
 
+/** Tries of the direct write before a batch falls back to a scheduled write. */
+const DIRECT_WRITE_TRIES = 2;
+
 /**
- * Write the requests `meter` has not stored yet, one row each, in batches.
- * Each batch is acknowledged only after it is stored (or scheduled); a failure
- * throws and leaves that batch and the later ones pending for the next flush.
- * Writes nothing when there are none (a call that never reached a provider).
+ * Store one batch durably. `await`: the mutation, tried twice, then handed to
+ * the scheduler, whose job is stored in the same database the ledger is (a
+ * scheduled write survives the action that queued it). `schedule`: queued
+ * directly, tried twice. Throws only when every path failed. Re-sending a
+ * batch that did land in an ambiguous failure writes nothing twice:
+ * `recordRequests` skips a `(requestId, attempt)` it already holds.
  */
-export async function writeMeteredSpend(
+export async function storeRequestBatch(
+	ctx: SpendCtx,
+	args: RequestBatchArgs,
+	write: 'await' | 'schedule' = 'await'
+): Promise<void> {
+	let lastError: unknown;
+	if (write === 'await') {
+		for (let tryNumber = 0; tryNumber < DIRECT_WRITE_TRIES; tryNumber++) {
+			try {
+				await ctx.runMutation(internal.analytics.llmUsage.recordRequests, args);
+				return;
+			} catch (error) {
+				lastError = error;
+			}
+		}
+	}
+	for (let tryNumber = 0; tryNumber < DIRECT_WRITE_TRIES; tryNumber++) {
+		try {
+			await ctx.scheduler.runAfter(0, internal.analytics.llmUsage.recordRequests, args);
+			return;
+		} catch (error) {
+			lastError = error;
+		}
+	}
+	throw lastError;
+}
+
+/**
+ * Store the requests `meter` holds and has not stored yet, one row each, in
+ * batches ({@link storeRequestBatch}: retried, then scheduled). A batch is
+ * acknowledged only once stored; when a batch cannot be stored at all, this
+ * throws and leaves it and the later ones pending on the meter, so the next
+ * flush sends them again. Writes nothing when nothing is pending (a call that
+ * never reached a provider). Every meter owner flushes through this.
+ */
+export async function persistMeteredSpend(
 	ctx: SpendCtx,
 	target: LlmSpendTarget,
 	meter: LlmCallMeter,
@@ -130,12 +174,11 @@ export async function writeMeteredSpend(
 	const pending = meter.pendingWrites();
 	for (let start = 0; start < pending.length; start += MAX_METERED_REQUESTS_PER_WRITE) {
 		const batch = pending.slice(start, start + MAX_METERED_REQUESTS_PER_WRITE);
-		const args = { ...callTags(target, meter), requests: batch.map(toMeteredRequest) };
-		if (write === 'schedule') {
-			await ctx.scheduler.runAfter(0, internal.analytics.llmUsage.recordRequests, args);
-		} else {
-			await ctx.runMutation(internal.analytics.llmUsage.recordRequests, args);
-		}
+		await storeRequestBatch(
+			ctx,
+			{ ...callTags(target, meter), requests: batch.map(toMeteredRequest) },
+			write
+		);
 		meter.acknowledge(batch);
 	}
 }
@@ -170,28 +213,4 @@ export async function meterLlmCall<R>(
 		if (options.onWriteError !== 'ignore') throw error;
 	}
 	return result;
-}
-
-/** Writes per flush before a call gives up: a transient failure gets one more try. */
-const FLUSH_TRIES = 2;
-
-/**
- * {@link writeMeteredSpend}, retried once: the requests a failed write left
- * pending go again, and the ledger's idempotency means one that did land in
- * an ambiguous failure is not written twice.
- */
-export async function persistMeteredSpend(
-	ctx: SpendCtx,
-	target: LlmSpendTarget,
-	meter: LlmCallMeter,
-	write: 'await' | 'schedule' = 'await'
-): Promise<void> {
-	for (let tryNumber = 1; ; tryNumber++) {
-		try {
-			await writeMeteredSpend(ctx, target, meter, write);
-			return;
-		} catch (error) {
-			if (tryNumber >= FLUSH_TRIES) throw error;
-		}
-	}
 }

@@ -55,6 +55,7 @@ import {
 	type ClassificationSignals,
 } from './llm/complexity';
 import { stampModelEndpoint } from './llm/modelEndpoint';
+import { isLocalEndpoint } from './llm/endpointLocality';
 import { EMBEDDING_DIMENSIONS } from './constants';
 import {
 	embeddingSpaceKey,
@@ -312,11 +313,14 @@ function resolveLanguageModelFromPlane(
 	tier: LLMTier
 ): ResolvedLanguageModel {
 	const modelId = tier === 'fast' ? language.models.fast : language.models.capable;
+	const adapter = languageProviderFor(language.kind);
 	return Object.freeze({
-		// Stamped so every ledger row this model writes names its endpoint (ADR-0073).
+		// Stamped so every ledger row this model writes names its endpoint, and a
+		// model on the operator's own network costs nothing (ADR-0073).
 		model: stampModelEndpoint(
-			languageProviderFor(language.kind).buildChatModel(language.clientConfig, modelId),
-			language.endpointProvenance
+			adapter.buildChatModel(language.clientConfig, modelId),
+			language.endpointProvenance,
+			{ isLocal: isLocalEndpoint(language.kind, language.clientConfig.baseUrl, adapter) }
 		),
 		modelId,
 		endpointProvenance: language.endpointProvenance,
@@ -441,7 +445,7 @@ export async function resolveIndexEmbedder(
 		model: stampModelEndpoint(
 			adapter.buildEmbeddingModel({ ...clientConfig, modelId }),
 			`embedding:${kind}`,
-			{ isLocal: adapter.isLocal }
+			{ isLocal: isLocalEndpoint(kind, clientConfig.baseUrl, adapter) }
 		),
 		embeddingSpaceKey: spaceKey,
 	};

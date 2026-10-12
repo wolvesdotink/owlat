@@ -6,7 +6,7 @@ import { api, internal } from '../_generated/api';
 import { enableFeatures } from './factories';
 import { runLlmStream } from '../lib/llm/dispatch';
 import { LlmPartialUsageError } from '../lib/llm/partialUsage';
-import { writeMeteredSpend } from '../analytics/meteredSpend';
+import { persistMeteredSpend } from '../analytics/meteredSpend';
 import type * as MeteredSpendModule from '../analytics/meteredSpend';
 import { metered } from '../analytics/__tests__/meteredDispatch.testlib';
 
@@ -52,7 +52,7 @@ vi.mock('../lib/llm/dispatch', async () => {
 // The ledger helper, real by default; a test makes one write throw.
 vi.mock('../analytics/meteredSpend', async () => {
 	const actual = await vi.importActual<typeof MeteredSpendModule>('../analytics/meteredSpend');
-	return { ...actual, writeMeteredSpend: vi.fn(actual.writeMeteredSpend) };
+	return { ...actual, persistMeteredSpend: vi.fn(actual.persistMeteredSpend) };
 });
 
 function makeT() {
@@ -75,7 +75,7 @@ async function startTurn(t: ReturnType<typeof makeT>) {
 beforeEach(() => {
 	sess.user = { userId: 'user-a', role: 'owner' };
 	vi.mocked(runLlmStream).mockReset();
-	vi.mocked(writeMeteredSpend).mockClear();
+	vi.mocked(persistMeteredSpend).mockClear();
 });
 
 const STEP_USAGE = { promptTokens: 30, completionTokens: 7, totalTokens: 37 };
@@ -145,6 +145,34 @@ describe('assistant runner', () => {
 		// Spend recorded under the conversation feature tag.
 		const spend = await t.run(async (ctx) => ctx.db.query('llmUsageEvents').collect());
 		expect(spend.some((e) => e.feature === 'assistant_chat' && e.totalTokens === 20)).toBe(true);
+	});
+
+	it('does not report an answer cut off at its output limit as complete', async () => {
+		const t = makeT();
+		const { conversationId, assistantMessageId } = await startTurn(t);
+		vi.mocked(runLlmStream).mockImplementation(
+			metered(async (opts) => {
+				await opts.onTextDelta?.('The open rate was', 'The open rate was');
+				return {
+					text: 'The open rate was',
+					tokenUsage: { promptTokens: 12, completionTokens: 8, totalTokens: 20 },
+					modelUsed: 'test-model',
+					finishReason: 'length',
+					aborted: false,
+					isTruncated: true,
+				};
+			})
+		);
+		await t.action(internal.assistant.runner.run, {
+			conversationId,
+			assistantMessageId,
+			ownerId: 'user-a',
+		});
+		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId });
+		const assistant = msgs.find((m) => m._id === assistantMessageId);
+		expect(assistant?.status).toBe('error');
+		expect(assistant?.text).toBe('The open rate was');
+		expect(assistant?.errorMessage).toContain('length limit');
 	});
 
 	it('marks the turn errored when the stream throws, keeping partial text', async () => {
@@ -245,7 +273,7 @@ describe('assistant runner', () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
 		vi.mocked(runLlmStream).mockImplementation(metered(failAfterOneToolStep));
-		vi.mocked(writeMeteredSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
+		vi.mocked(persistMeteredSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -275,7 +303,7 @@ describe('assistant runner', () => {
 				};
 			})
 		);
-		vi.mocked(writeMeteredSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
+		vi.mocked(persistMeteredSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -288,6 +316,6 @@ describe('assistant runner', () => {
 		expect(assistant?.status).toBe('complete');
 		expect(assistant?.text).toBe('Done.');
 		expect(assistant?.errorMessage).toBeNull();
-		expect(writeMeteredSpend).toHaveBeenCalledTimes(1);
+		expect(persistMeteredSpend).toHaveBeenCalledTimes(1);
 	});
 });

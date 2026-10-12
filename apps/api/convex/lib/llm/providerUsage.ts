@@ -21,8 +21,23 @@ export type RawUsage =
 	  }
 	| undefined;
 
+/**
+ * True when a usage report carries no count at all. The SDK reports a provider
+ * that sent no usage as an object whose totals are all `undefined`; that is
+ * UNKNOWN usage, which the ledger records as an estimate, never as a genuine
+ * zero.
+ */
+function isUnreported(usage: NonNullable<RawUsage>): boolean {
+	return (
+		usage.inputTokens === undefined &&
+		usage.outputTokens === undefined &&
+		usage.totalTokens === undefined
+	);
+}
+
+/** The SDK usage as the ledger's triple; undefined when nothing was reported. */
 export function normalizeUsage(usage: RawUsage): TokenUsage | undefined {
-	if (!usage) return undefined;
+	if (!usage || isUnreported(usage)) return undefined;
 	return {
 		promptTokens: usage.inputTokens ?? 0,
 		completionTokens: usage.outputTokens ?? 0,
@@ -30,8 +45,9 @@ export function normalizeUsage(usage: RawUsage): TokenUsage | undefined {
 	};
 }
 
-/** A stream part's usage; a missing total is the sum of its two halves. */
-export function streamUsage(u: NonNullable<RawUsage>): TokenUsage {
+/** A stream part's usage; a missing total is the sum of its two halves. Undefined when unreported. */
+export function streamUsage(u: RawUsage): TokenUsage | undefined {
+	if (!u || isUnreported(u)) return undefined;
 	const input = u.inputTokens ?? 0;
 	const output = u.outputTokens ?? 0;
 	return {
@@ -82,8 +98,12 @@ export function providerReportedUsage(
 	usage: ProviderUsageV3 | undefined
 ): { usage: TokenUsage; details: UsageDetails } | undefined {
 	if (!usage) return undefined;
-	const input = count(usage.inputTokens?.total) ?? 0;
-	const output = count(usage.outputTokens?.total) ?? 0;
+	const reportedInput = count(usage.inputTokens?.total);
+	const reportedOutput = count(usage.outputTokens?.total);
+	// The provider sent no counts: unknown, not zero.
+	if (reportedInput === undefined && reportedOutput === undefined) return undefined;
+	const input = reportedInput ?? 0;
+	const output = reportedOutput ?? 0;
 	return {
 		usage: { promptTokens: input, completionTokens: output, totalTokens: input + output },
 		details: usageDetails({

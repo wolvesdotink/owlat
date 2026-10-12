@@ -237,7 +237,13 @@ function buildDraftEmailReply(
 						temperature: 0.4,
 					})
 			);
-			return { recipient, contactFound: !!found, draft: result.text.trim() };
+			return {
+				recipient,
+				contactFound: !!found,
+				draft: result.text.trim(),
+				// Cut off at the output limit: the model is told, not handed it as finished.
+				isComplete: result.isTruncated !== true,
+			};
 		},
 	});
 }
@@ -269,7 +275,7 @@ function buildDraftCampaignCopy(
 						temperature: 0.6,
 					})
 			);
-			return { draft: result.text.trim() };
+			return { draft: result.text.trim(), isComplete: result.isTruncated !== true };
 		},
 	});
 }

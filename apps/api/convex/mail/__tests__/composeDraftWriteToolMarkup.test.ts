@@ -73,7 +73,7 @@ function streams(text: string) {
 /** A mocked stream that delivers exactly these chunks, then ends as told. */
 function chunks(
 	parts: readonly string[],
-	end: { aborted?: boolean; tokens?: number; throws?: boolean } = {}
+	end: { aborted?: boolean; tokens?: number; throws?: boolean; truncated?: boolean } = {}
 ) {
 	return metered(async (opts: StreamOpts) => {
 		let full = '';
@@ -89,8 +89,9 @@ function chunks(
 					? undefined
 					: { promptTokens: end.tokens, completionTokens: end.tokens, totalTokens: 2 * end.tokens },
 			modelUsed: 'm',
-			finishReason: end.aborted ? undefined : 'stop',
+			finishReason: end.aborted ? undefined : end.truncated ? 'length' : 'stop',
 			aborted: end.aborted ?? false,
+			isTruncated: end.truncated === true,
 		};
 	});
 }
@@ -442,6 +443,21 @@ describe('writeAnswerDraft — a stream that fails after a paid tool step (#1256
 				'scripted-model',
 			],
 			['postbox_answer_draft', undefined, 'scripted-model'],
+		]);
+	});
+});
+
+describe('writeAnswerDraft — a draft cut off at its output limit (ADR-0073)', () => {
+	it('fails the draft into the existing failure path, never a complete draft', async () => {
+		mocks.runLlmStream.mockImplementationOnce(
+			chunks(['Hi John,\n\nThe room is'], { tokens: 5, truncated: true })
+		);
+		const { ctx, finals, sessions } = makeCtx();
+		await write(ctx);
+		expect(finals).toEqual([expect.objectContaining({ status: 'error', text: '' })]);
+		expect(sessions).toEqual([expect.objectContaining({ status: 'error' })]);
+		expect(spendRows(ctx)).toEqual([
+			['postbox_answer_draft', { promptTokens: 5, completionTokens: 5, totalTokens: 10 }, 'm'],
 		]);
 	});
 });

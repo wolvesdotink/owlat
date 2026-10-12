@@ -26,7 +26,8 @@
 
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import { decisionProviderFor } from '../decisionProviders';
+import { resolveEndpointLocality } from '../llm/endpointLocality';
+import { storeRequestBatch } from '../../analytics/meteredSpend';
 import type {
 	DecisionAttemptRecord,
 	DecisionFallbackBreaker,
@@ -64,7 +65,8 @@ export function decisionBreakerPort(ctx: ActionCtx): DecisionFallbackBreaker {
 export function decisionUsageRecorder(ctx: ActionCtx): DecisionUsageRecorder {
 	return async (record: DecisionAttemptRecord) => {
 		if (record.requests.length === 0) return;
-		await ctx.runMutation(internal.analytics.llmUsage.recordRequests, {
+		// Retried, then scheduled: a transient failure must not lose billed rows.
+		await storeRequestBatch(ctx, {
 			feature: record.feature,
 			plane: 'decision',
 			requestId: record.requestId,
@@ -74,8 +76,10 @@ export function decisionUsageRecorder(ctx: ActionCtx): DecisionUsageRecorder {
 			...(record.root?.parentCallId ? { parentCallId: record.root.parentCallId } : {}),
 			...(record.calibrated === undefined ? {} : { isCalibrated: record.calibrated }),
 			// From the adapter that ran, not the model id it reported: a local
-			// engine may load any checkpoint, and every one of them is free.
-			...(record.provenance === 'local' || decisionProviderFor(record.provider).isLocal
+			// engine may load any checkpoint, and every one of them is free. The
+			// rule is the language and embedding planes' (`endpointLocality.ts`); a
+			// language-backed request carries its own model's locality.
+			...(resolveEndpointLocality(record.provider, undefined) === 'local'
 				? { isLocalEngine: true }
 				: {}),
 			requests: record.requests.map(({ outcome: _outcome, ...request }) => request),

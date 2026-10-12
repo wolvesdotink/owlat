@@ -79,9 +79,20 @@ export interface TaskPolicyEntry {
 	readonly tiers: readonly [LlmTier, ...LlmTier[]];
 	/** Max input tokens per request. `null`: no limit today. */
 	readonly maxInputTokens: number | null;
-	/** Max output tokens per request, reasoning excluded. `null`: no limit today. */
+	/**
+	 * Max output tokens per request, reasoning excluded. `null`: no limit.
+	 * Enforced on its own for the `anthropic` and `openai` (non-reasoning)
+	 * families; elsewhere output and reasoning share one wire field, and this
+	 * split is ADVISORY (`./taskLimits.ts` `OUTPUT_SPLIT_BY_FAMILY`).
+	 */
 	readonly maxOutputTokens: number | null;
-	/** Max billed reasoning tokens per request. `null`: no limit today. */
+	/**
+	 * Max billed reasoning tokens per request. `null`: no limit. The
+	 * `anthropic` and `openai` families spend none (thinking is not enabled; the
+	 * model does not reason). `openai-reasoning` bounds it with the reasoning
+	 * effort and the combined field; `combined` providers with the combined field
+	 * only: for them the split is advisory.
+	 */
 	readonly maxReasoningTokens: number | null;
 	/** Deadline for the whole call, every attempt included. `null`: none today (adapter default). */
 	readonly deadlineMs: number | null;

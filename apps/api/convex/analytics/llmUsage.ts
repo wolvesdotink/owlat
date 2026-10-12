@@ -166,12 +166,18 @@ export const MAX_METERED_REQUESTS_PER_WRITE = 64;
  * skipped, so a writer that retries a batch after an ambiguous failure (the
  * mutation committed, the reply was lost) writes nothing twice.
  */
+/** The arguments of {@link recordRequests}: one call's tags and its requests. */
+const recordRequestsArgs = {
+	feature: v.string(),
+	...tagArgs,
+	requests: v.array(meteredRequestValidator),
+};
+
+/** One batch as {@link recordRequests} takes it (typed off the validator, not the api). */
+export type RequestBatchArgs = Infer<ReturnType<typeof v.object<typeof recordRequestsArgs>>>;
+
 export const recordRequests = internalMutation({
-	args: {
-		feature: v.string(),
-		...tagArgs,
-		requests: v.array(meteredRequestValidator),
-	},
+	args: recordRequestsArgs,
 	handler: async (ctx, args) => {
 		const { feature, requests, ...tags } = args;
 		if (requests.length > MAX_METERED_REQUESTS_PER_WRITE) {

@@ -12,7 +12,7 @@ import { taskPolicy } from './taskPolicy';
 import { isLocalModel, modelEndpoint } from './modelEndpoint';
 
 /** A model handle as the SDK takes it: an id, or an object carrying its `modelId`. */
-type ModelHandle = string | { readonly modelId: string };
+type ModelHandle = string | { readonly modelId: string; readonly provider?: string };
 
 export function requestedModelId(model: ModelHandle): string {
 	return typeof model === 'string' ? model : model.modelId;
@@ -52,6 +52,7 @@ export function callShape(opts: {
 		task: opts.meter?.task,
 		deadlineAt: opts.meter?.deadlineAt,
 		modelId: modelUsed,
+		...(typeof opts.model === 'string' ? {} : { provider: opts.model.provider }),
 		maxOutputTokens: opts.maxOutputTokens,
 		abortSignal: opts.abortSignal,
 	});
