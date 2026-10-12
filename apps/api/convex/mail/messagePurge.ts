@@ -23,6 +23,7 @@ import { deleteMessageBody } from '../lib/messageBodyStore';
 import { deleteMessagePartsForRaw } from './messageParts';
 import { mailMessageSources } from './interpret/purge';
 import { purgeSourcesFromThread } from './interpret/purgeRun';
+import { deleteMailMessageArtifacts } from '../decision/artifacts';
 
 /** The `mailMessages` columns that hold a storage blob a SIBLING row may share. */
 type SharedBlobColumn = 'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageId';
@@ -114,6 +115,8 @@ export async function deleteMessageRowAndBlobs(
 
 	await ctx.db.delete(message._id);
 	await deleteMessageBody(ctx.db, message._id);
+	// Decision artifacts are content-derived labels about this message (ADR-0073).
+	await deleteMailMessageArtifacts(ctx, message._id);
 	await recordMessageCounters(ctx, message, null);
 	await recordFolderMembership(ctx, message, null);
 

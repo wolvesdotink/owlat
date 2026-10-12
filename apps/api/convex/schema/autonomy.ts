@@ -51,6 +51,10 @@ export const agentConfigFields = {
 	// auto-send for real. Zero send-side risk while on. See
 	// agent/steps/route/index.ts.
 	isShadowMode: v.optional(v.boolean()),
+	// ADR-0060 §9: keep the Team Inbox's mail away from every hosted decision
+	// provider (the Team Inbox's per-mailbox opt-out). Absent ⇒ not excluded.
+	// Set by `decision/exclusion.ts setHostedDecisionExclusion`.
+	isExcludedFromHostedDecisions: v.optional(v.boolean()),
 	// Timezone-aware WORKING-HOURS window for AUTONOMOUS auto-sends. When
 	// `isWorkingHoursEnabled` is true, an auto-approved reply whose routing
 	// decision lands OUTSIDE the window is held for human review instead of

@@ -14,6 +14,9 @@ export const UNREACHED_ENTRIES: readonly string[] = [
 	// (`getResolved` is read by the Team security scan.)
 	'aiRouting/policy.ts#get',
 	'aiRouting/policy.ts#update',
+	// ADR-0060 §9 hosted-decision opt-out (decisions lane): the web lane's
+	// mailbox and Team Inbox toggles call it and delete this line.
+	'decision/exclusion.ts#setHostedDecisionExclusion',
 	// Embedding provenance (ADR-0073, embed lane): the settings page's embedding
 	// section (U1) calls the public entries; the web lane deletes each line it
 	// wires. The internal page walkers are reached only through those public
