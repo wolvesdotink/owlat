@@ -242,6 +242,16 @@ crons.interval(
 	{}
 );
 
+// Embedding provenance (ADR-0073): measure the configured local embedder, keep
+// its space active, resume a stalled re-embed and run the daily local re-embed
+// pass; refresh the coverage count. A hosted embedder only gets the count.
+crons.interval(
+	'embedding re-embed kickoff',
+	{ hours: 1 },
+	internal.aiRouting.embeddingReembed.kickoff,
+	{}
+);
+
 // Retry failed agent pipeline actions every 5 minutes
 // Picks up actions that failed and haven't exceeded the retry limit
 crons.interval(

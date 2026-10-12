@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	embeddingCohortValidator,
+	embeddingCoverageValidator,
 	embeddingSlotValidator,
 	embeddingSpaceIdentityFields,
 	embeddingSpaceSourceValidator,
@@ -40,6 +41,8 @@ export const embeddingSpaceTables = {
 		configVersion: v.optional(v.number()),
 		activatedAt: v.optional(v.number()),
 		retiredAt: v.optional(v.number()),
+		/** The last completed coverage count while this space was active (embed lane). */
+		coverage: v.optional(embeddingCoverageValidator),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
