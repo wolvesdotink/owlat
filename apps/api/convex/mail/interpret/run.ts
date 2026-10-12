@@ -62,7 +62,6 @@ import { interpretRoot } from './verify';
 import { planVerification, verifyHoldPlanOf, verifyRouted } from './verifyRoute';
 import { apply as applyRecord } from './runApply';
 import { isRetryDue } from './retry';
-import type { ApplyOutcome } from './reduce';
 import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 import { llmRootContextValidator } from '../../lib/llmUsageTags';
