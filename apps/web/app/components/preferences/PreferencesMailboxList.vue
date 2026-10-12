@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * My settings → Connected mailboxes → Mailboxes, with colour, rename and (for
- * admins) delete. Members see the mailboxes they can use (their own plus the
- * team inboxes they belong to). Admins see every mailbox in the organization
+ * admins) delete and the hosted-decision opt-out (ADR-0060 §9). Members see
+ * the mailboxes they can use (their own plus the team inboxes they belong to). Admins see every mailbox in the organization
  * from `identity.listOrgMailboxes`, so they can rename or retire a teammate's;
  * deliverability seed mailboxes stay on the seed screen. It used to sit at the
  * bottom of General, below thirty keyboard shortcuts.
@@ -166,6 +166,15 @@ async function handleDelete() {
 							<Icon name="lucide:trash-2" class="w-4 h-4" />
 						</button>
 					</div>
+					<!-- ADR-0060 §9: only admins reach every mailbox here, a teammate's
+					     personal one included, so this is where it is excluded. -->
+					<SettingsHostedDecisionExclusion
+						v-if="isAdmin"
+						class="basis-full"
+						:target="{ kind: 'mailbox', mailboxId: mb._id as Id<'mailboxes'> }"
+						:is-excluded="mb.isExcludedFromHostedDecisions === true"
+						:address="mb.address"
+					/>
 				</li>
 			</ul>
 		</section>

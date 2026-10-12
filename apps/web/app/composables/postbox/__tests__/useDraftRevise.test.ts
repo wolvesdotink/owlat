@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { ConvexError } from 'convex/values';
 import { ref } from 'vue';
 import {
 	useDraftRevise,
@@ -172,6 +173,24 @@ describe('useDraftRevise lifecycle', () => {
 		);
 	});
 
+	it('says the AI budget is used up when the stream ended on it (U5)', async () => {
+		const h = harness();
+		const r = useDraftRevise(h.deps);
+		const p = r.start({ instruction: 'x', currentDraft: 'y' });
+		await Promise.resolve();
+		await h.resolveWith({
+			status: 'error',
+			text: '',
+			injectionFlagged: false,
+			errorCode: 'AI_BUDGET_EXHAUSTED',
+		});
+		await p;
+		expect(r.status.value).toBe('error');
+		expect(h.deps.onError).toHaveBeenCalledWith(
+			'The AI spend budget is used up for now, so the AI did not write this.'
+		);
+	});
+
 	it('keeps the generic failure for an error code it does not know', async () => {
 		const h = harness();
 		const r = useDraftRevise(h.deps);
@@ -180,5 +199,25 @@ describe('useDraftRevise lifecycle', () => {
 		await h.resolveWith({ status: 'error', text: '', injectionFlagged: false, errorCode: 'other' });
 		await p;
 		expect(h.deps.onError).toHaveBeenCalledWith('Revise failed — your draft is unchanged.');
+	});
+
+	it('says which budget refused a revise admission threw before its stream (U5)', async () => {
+		const h = harness();
+		const r = useDraftRevise(h.deps);
+		const p = r.start({ instruction: 'x', currentDraft: 'y' });
+		await Promise.resolve();
+		await h.rejectWith(
+			new ConvexError({
+				category: 'forbidden',
+				message: 'AI budget reached.',
+				data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'daily_ceiling', limit: 5 },
+			})
+		);
+		await p;
+		expect(r.status.value).toBe('error');
+		expect(h.deps.onError).toHaveBeenCalledWith(
+			'The AI spend budget for today is used up. AI actions are back tomorrow.'
+		);
+		expect(h.deps.deleteStream).toHaveBeenCalled();
 	});
 });

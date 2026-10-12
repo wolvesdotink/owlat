@@ -14,6 +14,7 @@
 
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
+import { isSameKeyTarget, type KeyTarget } from '@owlat/shared/aiModelCatalog';
 import { throwInvalidInput } from '../_utils/errors';
 import type { DecisionProviderKind } from './decisionProviders/types';
 
@@ -95,32 +96,6 @@ function completeEnvelope(e: StoredEnvelope): Envelope | undefined {
 		version: e.version,
 		keyPreview: e.keyPreview,
 	};
-}
-
-/**
- * A base URL compared by what it addresses: scheme and host in lowercase, the
- * default port dropped, trailing slashes removed. Absent stays absent, so an
- * explicit URL never matches the adapter default it may happen to spell.
- */
-export function normalizedBaseUrl(baseUrl: string | undefined): string | undefined {
-	const raw = baseUrl?.trim();
-	if (!raw) return undefined;
-	try {
-		const url = new URL(raw);
-		return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}${url.search}`;
-	} catch {
-		return raw.replace(/\/+$/, '');
-	}
-}
-
-/** The provider kind and endpoint a plane's key is sent to. */
-interface KeyTarget {
-	readonly kind: string | undefined;
-	readonly baseUrl: string | undefined;
-}
-
-function isSameKeyTarget(a: KeyTarget, b: KeyTarget): boolean {
-	return a.kind === b.kind && normalizedBaseUrl(a.baseUrl) === normalizedBaseUrl(b.baseUrl);
 }
 
 /**

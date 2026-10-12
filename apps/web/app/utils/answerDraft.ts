@@ -118,6 +118,19 @@ export function isAlreadyAnsweredRefusal(op: OperationError): boolean {
 	return op.category === 'invalid_state' && op.message === ALREADY_ANSWERED;
 }
 
+/** The typed code Answer mode refuses a Team message the safety check held back with. */
+const MESSAGE_HELD_BY_GUARD = 'MESSAGE_HELD_BY_GUARD';
+
+/**
+ * Whether a failed `composeDraft.start` (or `answer`) is the guard's refusal
+ * (D13, #1339): the message this reply answers was quarantined, carried
+ * malware or a malicious link, or the safety check flagged it. There is no
+ * AI draft for it; the person can still write the reply.
+ */
+export function isHeldByGuardRefusal(op: OperationError): boolean {
+	return op.data?.['code'] === MESSAGE_HELD_BY_GUARD;
+}
+
 /** The owner's IANA time zone, for dates the AI promises ("tomorrow" at 09:00 local). */
 export function ownerTimeZone(): string | undefined {
 	try {

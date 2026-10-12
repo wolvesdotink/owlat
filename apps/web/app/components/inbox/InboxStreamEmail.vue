@@ -106,8 +106,21 @@ const absoluteTime = computed(() =>
 			</UiButton>
 		</div>
 
+		<!-- D13: the model guard was skipped and recorded as skipped. -->
+		<InboxGuardNotRunNotice
+			v-if="isAdmin && message.securityFlags?.guardNotRun"
+			:marker="message.securityFlags.guardNotRun"
+		/>
+
+		<!-- D1: held for a person at the spend ceiling; replaces the failed notice. -->
+		<InboxBudgetHoldNotice
+			v-if="message.processingStatus === 'failed' && message.budgetHold"
+			:hold="message.budgetHold"
+			:retrying="retrying"
+			@retry="emit('retry')"
+		/>
 		<InboxFailedNotice
-			v-if="message.processingStatus === 'failed'"
+			v-else-if="message.processingStatus === 'failed'"
 			:message="message"
 			:retrying="retrying"
 			@retry="emit('retry')"

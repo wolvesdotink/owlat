@@ -3,6 +3,7 @@ import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import type { SenderHeuristics } from '~/utils/senderAuth';
 import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
+import type { AttachmentIndexing } from '~/utils/attachmentIndexing';
 
 /**
  * The full message row the reader renders (the list-row shape plus body /
@@ -30,6 +31,8 @@ export type PostboxReaderMessage = {
 	hasBodyBlob?: boolean;
 	bodyPending?: boolean;
 	hasAttachments: boolean;
+	/** What the assistant did with the files (hosted-MX capture); absent elsewhere. */
+	attachmentIndexing?: AttachmentIndexing;
 	attachments: Array<{
 		filename: string;
 		contentType: string;
