@@ -410,6 +410,7 @@
 			},
 			"assistantMessage": {
 				"assistant": "Assistent",
+				"cutOff": "Diese Antwort wurde an ihrer Längengrenze abgeschnitten.",
 				"genericError": "Der Assistent konnte diese Antwort nicht abschließen.",
 				"stopped": "Gestoppt",
 				"typing": "Der Assistent schreibt"
@@ -4452,6 +4453,7 @@
 				"askFailed": "Das ließ sich gerade nicht beantworten. Versuche es gleich noch einmal.",
 				"askOperation": "Zu diesem Thread fragen",
 				"askPlaceholder": "Zu diesem Thread fragen…",
+				"cutOff": "Diese Antwort wurde an ihrer Längengrenze abgeschnitten.",
 				"thinking": "Denkt nach…"
 			},
 			"postboxAppPasswordCallout": {
@@ -6091,6 +6093,7 @@
 		},
 		"query": {
 			"queryResult": {
+				"cutOff": "Diese Antwort wurde an ihrer Längengrenze abgeschnitten.",
 				"sources": "Quellen"
 			},
 			"quickQueryPanel": {

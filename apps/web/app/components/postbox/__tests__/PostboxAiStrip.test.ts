@@ -101,4 +101,26 @@ describe('PostboxAiStrip (Ask about this thread)', () => {
 		expect(wrapper.find('.md').text()).toContain('We ship on the 14th.');
 		wrapper.unmount();
 	});
+
+	it('says when an answer was cut off at its length limit, and only then', async () => {
+		askRun.mockResolvedValueOnce({
+			ok: true,
+			result: { answer: 'Full answer.', isTruncated: false },
+		});
+		askRun.mockResolvedValueOnce({
+			ok: true,
+			result: { answer: 'We ship on the', isTruncated: true },
+		});
+		const wrapper = mountStrip();
+		await flushPromises();
+		for (const question of ['First?', 'Second?']) {
+			await wrapper.find('input').setValue(question);
+			await wrapper.find('input').trigger('keydown.enter');
+			await flushPromises();
+		}
+		const notes = wrapper.findAll('[data-testid="postbox-ask-cut-off"]');
+		expect(notes).toHaveLength(1);
+		expect(notes[0]!.text()).toBe('This answer was cut off at its length limit.');
+		wrapper.unmount();
+	});
 });

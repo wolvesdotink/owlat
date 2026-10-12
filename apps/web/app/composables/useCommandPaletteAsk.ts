@@ -21,6 +21,8 @@ export type QuickQuerySource =
 export interface QuickQueryAnswer {
 	answer: string;
 	sources: QuickQuerySource[];
+	/** The answer stopped at its length limit. */
+	isTruncated?: boolean;
 }
 
 export function useCommandPaletteAsk() {

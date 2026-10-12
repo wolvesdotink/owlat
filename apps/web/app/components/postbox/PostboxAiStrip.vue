@@ -19,7 +19,8 @@ const emit = defineEmits<{ close: [] }>();
 
 const { t } = useI18n();
 
-type Turn = { question: string; answer: string };
+/** `isTruncated`: the answer stopped at its length limit, and says so. */
+type Turn = { question: string; answer: string; isTruncated: boolean };
 const question = ref('');
 const askHistory = ref<Turn[]>([]);
 const askErrored = ref(false);
@@ -39,7 +40,11 @@ async function submitAsk() {
 		history: askHistory.value.map((t) => ({ question: t.question, answer: t.answer })),
 	});
 	if (res.ok && res.result.answer) {
-		askHistory.value.push({ question: q, answer: res.result.answer });
+		askHistory.value.push({
+			question: q,
+			answer: res.result.answer,
+			isTruncated: res.result.isTruncated === true,
+		});
 		question.value = '';
 	} else {
 		askErrored.value = true;
@@ -92,6 +97,13 @@ watch(
 			>
 				<p class="text-xs font-medium text-text-tertiary">{{ turn.question }}</p>
 				<AssistantMarkdown :source="turn.answer" />
+				<p
+					v-if="turn.isTruncated"
+					class="text-xs text-text-tertiary"
+					data-testid="postbox-ask-cut-off"
+				>
+					{{ t('components.postbox.postboxAiStrip.cutOff') }}
+				</p>
 			</div>
 
 			<div aria-live="polite" :aria-busy="askBusy">

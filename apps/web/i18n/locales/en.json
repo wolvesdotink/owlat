@@ -410,6 +410,7 @@
 			},
 			"assistantMessage": {
 				"assistant": "Assistant",
+				"cutOff": "This answer was cut off at its length limit.",
 				"genericError": "The assistant could not complete this reply.",
 				"stopped": "Stopped",
 				"typing": "Assistant is typing"
@@ -4452,6 +4453,7 @@
 				"askFailed": "Couldn't answer that right now. Try again in a moment.",
 				"askOperation": "Ask about this thread",
 				"askPlaceholder": "Ask about this thread…",
+				"cutOff": "This answer was cut off at its length limit.",
 				"thinking": "Thinking…"
 			},
 			"postboxAppPasswordCallout": {
@@ -6091,6 +6093,7 @@
 		},
 		"query": {
 			"queryResult": {
+				"cutOff": "This answer was cut off at its length limit.",
 				"sources": "Sources"
 			},
 			"quickQueryPanel": {
