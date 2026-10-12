@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-	__resetEmbeddingProbeCacheForTests,
+	EmbeddingRevisionChangedError,
 	measuredEmbeddingSpace,
 	ollamaApiRoot,
+	probeEmbeddingRevision,
 	revisionFromOllamaTags,
 } from '../embeddingProbe';
 import { storedEmbeddingTarget } from '../../embeddingSpace';
@@ -26,7 +27,6 @@ const TAGS = {
 
 const fetchMock = vi.fn();
 beforeEach(() => {
-	__resetEmbeddingProbeCacheForTests();
 	fetchMock.mockReset();
 	vi.stubGlobal('fetch', fetchMock);
 });
@@ -56,12 +56,20 @@ describe('revisionFromOllamaTags', () => {
 
 describe('measuredEmbeddingSpace', () => {
 	const local = () => storedEmbeddingTarget({ embeddingProviderKind: 'local' });
+	const tags = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+	const REPLACED = {
+		models: [
+			{ ...TAGS.models[0]!, digest: 'b'.repeat(64), details: { quantization_level: 'Q8_0' } },
+		],
+	};
 
 	it('captures the Nomic digest and quantization into the identity (#1334)', async () => {
-		fetchMock.mockResolvedValue(new Response(JSON.stringify(TAGS), { status: 200 }));
+		fetchMock.mockImplementation(async () => tags(TAGS));
+		const before = await probeEmbeddingRevision(local());
 		const space = await measuredEmbeddingSpace(
 			local(),
-			Array.from({ length: 768 }, () => 0.1)
+			Array.from({ length: 768 }, () => 0.1),
+			before
 		);
 		expect(fetchMock).toHaveBeenCalledWith('http://ollama:11434/api/tags', expect.anything());
 		expect(space).toEqual({
@@ -75,40 +83,70 @@ describe('measuredEmbeddingSpace', () => {
 		});
 	});
 
+	it('reads the revision fresh before and after every call: no cache', async () => {
+		fetchMock.mockImplementation(async () => tags(TAGS));
+		const before = await probeEmbeddingRevision(local());
+		await measuredEmbeddingSpace(local(), [1], before);
+		await measuredEmbeddingSpace(local(), [1], await probeEmbeddingRevision(local()));
+		expect(fetchMock).toHaveBeenCalledTimes(4);
+	});
+
+	it('discards a vector when the model was replaced during the call (F1)', async () => {
+		fetchMock.mockResolvedValueOnce(tags(TAGS)).mockResolvedValueOnce(tags(REPLACED));
+		const before = await probeEmbeddingRevision(local());
+		await expect(measuredEmbeddingSpace(local(), [1, 2], before)).rejects.toBeInstanceOf(
+			EmbeddingRevisionChangedError
+		);
+	});
+
+	it('stamps the new revision once the replacement is finished before the call', async () => {
+		fetchMock.mockImplementation(async () => tags(REPLACED));
+		const space = await measuredEmbeddingSpace(
+			local(),
+			[1, 2],
+			await probeEmbeddingRevision(local())
+		);
+		expect(space.revision).toBe('b'.repeat(64));
+	});
+
 	it('marks the revision unknown when the server exposes none, and never pretends', async () => {
-		fetchMock.mockResolvedValue(new Response('not found', { status: 404 }));
-		const space = await measuredEmbeddingSpace(local(), [1, 2, 3]);
+		fetchMock.mockImplementation(async () => new Response('not found', { status: 404 }));
+		const space = await measuredEmbeddingSpace(
+			local(),
+			[1, 2, 3],
+			await probeEmbeddingRevision(local())
+		);
 		expect(space.revision).toBeUndefined();
 		expect(space.quantization).toBeUndefined();
 	});
 
 	it('treats an unknown and a known digest as different spaces', async () => {
-		fetchMock.mockResolvedValueOnce(new Response('not found', { status: 404 }));
-		const unknown = await measuredEmbeddingSpace(local(), [1, 2]);
-		__resetEmbeddingProbeCacheForTests();
-		fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(TAGS), { status: 200 }));
-		const known = await measuredEmbeddingSpace(local(), [1, 2]);
+		fetchMock.mockImplementation(async () => new Response('not found', { status: 404 }));
+		const unknown = await measuredEmbeddingSpace(local(), [1, 2], {});
+		fetchMock.mockImplementation(async () => tags(TAGS));
+		const known = await measuredEmbeddingSpace(
+			local(),
+			[1, 2],
+			await probeEmbeddingRevision(local())
+		);
 		expect(embeddingSpaceIdentityKey(unknown)).not.toBe(embeddingSpaceIdentityKey(known));
 	});
 
 	it('throws when the server cannot be reached, rather than registering an unknown revision', async () => {
 		fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
-		await expect(measuredEmbeddingSpace(local(), [1])).rejects.toThrow(/did not answer/);
+		await expect(probeEmbeddingRevision(local())).rejects.toThrow(/did not answer/);
 		fetchMock.mockResolvedValueOnce(new Response('down', { status: 503 }));
-		await expect(measuredEmbeddingSpace(local(), [1])).rejects.toThrow(/failed the revision probe/);
-	});
-
-	it('reuses a probe answer for a short while', async () => {
-		fetchMock.mockResolvedValue(new Response(JSON.stringify(TAGS), { status: 200 }));
-		await measuredEmbeddingSpace(local(), [1]);
-		await measuredEmbeddingSpace(local(), [1]);
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		await expect(measuredEmbeddingSpace(local(), [1], {})).rejects.toThrow(
+			/failed the revision probe/
+		);
 	});
 
 	it('never probes a hosted embedder', async () => {
+		const openai = storedEmbeddingTarget({ embeddingProviderKind: 'openai' });
 		const space = await measuredEmbeddingSpace(
-			storedEmbeddingTarget({ embeddingProviderKind: 'openai' }),
-			Array.from({ length: 1536 }, () => 0)
+			openai,
+			Array.from({ length: 1536 }, () => 0),
+			await probeEmbeddingRevision(openai)
 		);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(space).toMatchObject({ provider: 'openai', endpoint: 'native', dimensions: 1536 });

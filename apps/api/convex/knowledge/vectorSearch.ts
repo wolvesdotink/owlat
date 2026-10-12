@@ -14,7 +14,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { embed } from 'ai';
 import { resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
-import { measuredEmbeddingSpace } from '../lib/aiRouting/embeddingProbe';
+import { measuredEmbeddingSpace, probeEmbeddingRevision } from '../lib/aiRouting/embeddingProbe';
 import { embeddingSpaceEntryKey } from '../lib/aiRouting/embeddingKeys';
 import { logInfo } from '../lib/runtimeLog';
 import type { VectorTable } from './vectorCorpus';
@@ -72,9 +72,10 @@ export async function embedRetrievalQuery(
 	try {
 		// The searches have always embedded the trimmed text; trimmed here once so
 		// every caller's vector matches it.
+		const before = await probeEmbeddingRevision(embedder.target);
 		const result = await embed({ model: embedder.model, value: queryText.trim() });
 		embedding = toIndexVector(result.embedding);
-		measured = await measuredEmbeddingSpace(embedder.target, result.embedding);
+		measured = await measuredEmbeddingSpace(embedder.target, result.embedding, before);
 	} catch (error) {
 		logInfo(`${logTag} embed failed`, { error: String(error) });
 		return { kind: 'failed' };

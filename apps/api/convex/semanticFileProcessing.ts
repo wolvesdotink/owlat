@@ -27,7 +27,7 @@ import {
 	toIndexVector,
 } from './lib/llmProvider';
 import { AiNotConfiguredError } from './lib/aiNotConfigured';
-import { measuredEmbeddingSpace } from './lib/aiRouting/embeddingProbe';
+import { measuredEmbeddingSpace, probeEmbeddingRevision } from './lib/aiRouting/embeddingProbe';
 import { fileEmbeddingInput } from './lib/aiRouting/embeddingInputs';
 import type { MeasuredSpace } from './lib/aiRouting/embeddingRegistry';
 import { embedRetrievalQuery, searchSpaceVectors } from './knowledge/vectorSearch';
@@ -206,12 +206,10 @@ ${textForAI}`,
 			// only a transient embed() failure fails soft (metadata without search).
 			const embedder = await resolveIndexEmbedder(ctx);
 			try {
-				const embeddingResult = await embed({
-					model: embedder.model,
-					value: embeddingText,
-				});
-				embedding = toIndexVector(embeddingResult.embedding);
-				embeddingSpace = await measuredEmbeddingSpace(embedder.target, embeddingResult.embedding);
+				const before = await probeEmbeddingRevision(embedder.target);
+				const result = await embed({ model: embedder.model, value: embeddingText });
+				embeddingSpace = await measuredEmbeddingSpace(embedder.target, result.embedding, before);
+				embedding = toIndexVector(result.embedding);
 			} catch (error) {
 				logError('[semantic_file] embedding generation failed', {
 					fileId: args.fileId,

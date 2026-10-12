@@ -30,7 +30,7 @@ import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { resolveIndexEmbedder, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
-import { measuredEmbeddingSpace } from './lib/aiRouting/embeddingProbe';
+import { measuredEmbeddingSpace, probeEmbeddingRevision } from './lib/aiRouting/embeddingProbe';
 import { runLlmText } from './lib/llm/dispatch';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
@@ -107,8 +107,9 @@ export const ask = authedAction({
 		// error; only a transient embed() failure falls soft to no-vector recall.
 		const embedder = await resolveIndexEmbedder(ctx);
 		try {
+			const before = await probeEmbeddingRevision(embedder.target);
 			const res = await embed({ model: embedder.model, value: question });
-			const space = await measuredEmbeddingSpace(embedder.target, res.embedding);
+			const space = await measuredEmbeddingSpace(embedder.target, res.embedding, before);
 			embedding = toIndexVector(res.embedding);
 			const target = await ctx.runQuery(internal.aiRouting.embeddingSpaces.searchTarget, {
 				identity: space,

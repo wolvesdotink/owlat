@@ -23,7 +23,11 @@ import {
 	toIndexVector,
 	type IndexEmbedder,
 } from '../lib/llmProvider';
-import { measuredEmbeddingSpace } from '../lib/aiRouting/embeddingProbe';
+import {
+	EmbeddingRevisionChangedError,
+	measuredEmbeddingSpace,
+	probeEmbeddingRevision,
+} from '../lib/aiRouting/embeddingProbe';
 import { knowledgeEmbeddingInput } from '../lib/aiRouting/embeddingInputs';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
@@ -106,10 +110,21 @@ async function persistExtractedEntries(
 ): Promise<void> {
 	const entryIds: Id<'knowledgeEntries'>[] = [];
 	for (const entry of entries) {
+		const before = await probeEmbeddingRevision(embedder.target);
 		const { embedding } = await embed({
 			model: embedder.model,
 			value: knowledgeEmbeddingInput(entry),
 		});
+		// The space this vector is in, with the model that made it: saveEntry
+		// stamps it, or drops the vector if the configuration moved on. A model
+		// replaced during the call stores the entry without a vector; the
+		// re-embed job embeds it later.
+		const measured = await measuredEmbeddingSpace(embedder.target, embedding, before).catch(
+			(error: unknown) => {
+				if (error instanceof EmbeddingRevisionChangedError) return null;
+				throw error;
+			}
+		);
 
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
 		// content-hash leg can dedup the same fact restated across sources.
@@ -125,10 +140,8 @@ async function persistExtractedEntries(
 			sourceId: source.sourceId,
 			contactIds: source.contactIds,
 			threadId: source.threadId,
-			embedding: toIndexVector(embedding),
-			// The space this vector is in, with the model that made it: saveEntry
-			// stamps it, or drops the vector if the configuration moved on.
-			embeddingSpace: await measuredEmbeddingSpace(embedder.target, embedding),
+			embedding: measured ? toIndexVector(embedding) : [],
+			embeddingSpace: measured ?? undefined,
 			confidence: entry.confidence,
 			tags: entry.tags,
 			contentHash,

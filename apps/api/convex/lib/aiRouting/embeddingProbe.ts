@@ -16,6 +16,13 @@
  *     which is part of the identity: unknown is never treated as a match for a
  *     known digest.
  *
+ * The probe is never cached, and it brackets the call: the revision is read
+ * before the embedding and again after it, and a vector is stamped only when
+ * both reads agree. A model replaced while the call ran (`ollama pull`) changes
+ * the digest between the two reads, and the vector is discarded rather than
+ * stamped with either revision. (A replacement and its exact undo inside one
+ * call would pass; the digest cannot tell those apart.)
+ *
  * A probe that cannot reach the server (network error, 5xx, timeout) throws, so
  * the caller treats it like the embedding call failing; it never falls back to
  * "unknown", which would silently register a second space.
@@ -26,20 +33,20 @@
 import type { EmbeddingTarget } from '../embeddingSpace';
 import type { EmbeddingSpaceIdentity } from './embeddingKeys';
 
-/** How long a probe answer is reused. Short, so a pulled digest is seen quickly. */
-const PROBE_TTL_MS = 60_000;
 const PROBE_TIMEOUT_MS = 3_000;
 
-interface ProbedRevision {
+/** The revision a local server reports for a model; both absent when it reports none. */
+export interface ProbedRevision {
 	readonly revision?: string;
 	readonly quantization?: string;
 }
 
-const probeCache = new Map<string, { at: number; value: ProbedRevision }>();
-
-/** Test-only: forget cached probe answers. */
-export function __resetEmbeddingProbeCacheForTests(): void {
-	probeCache.clear();
+/** Thrown when the served model changed while an embedding call ran. */
+export class EmbeddingRevisionChangedError extends Error {
+	constructor() {
+		super('The embedding model was replaced while the call ran; the vector was discarded.');
+		this.name = 'EmbeddingRevisionChangedError';
+	}
 }
 
 /** The server root of an OpenAI-compatible base URL (`…/v1` stripped). */
@@ -78,12 +85,8 @@ export function revisionFromOllamaTags(body: unknown, model: string): ProbedRevi
 	};
 }
 
-async function probeRevision(baseUrl: string, model: string): Promise<ProbedRevision> {
+async function fetchRevision(baseUrl: string, model: string): Promise<ProbedRevision> {
 	const root = ollamaApiRoot(baseUrl);
-	const cacheKey = `${root}|${model}`;
-	const cached = probeCache.get(cacheKey);
-	if (cached && Date.now() - cached.at < PROBE_TTL_MS) return cached.value;
-
 	let response: Response;
 	try {
 		response = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
@@ -95,33 +98,46 @@ async function probeRevision(baseUrl: string, model: string): Promise<ProbedRevi
 	if (response.status >= 500) {
 		throw new Error(`The embedding server at ${root} failed the revision probe.`);
 	}
-	let value: ProbedRevision = {};
-	if (response.ok) {
-		try {
-			value = revisionFromOllamaTags(await response.json(), model);
-		} catch {
-			value = {};
-		}
+	if (!response.ok) return {};
+	try {
+		return revisionFromOllamaTags(await response.json(), model);
+	} catch {
+		return {};
 	}
-	probeCache.set(cacheKey, { at: Date.now(), value });
-	return value;
+}
+
+/**
+ * The target's current revision, read now (never cached). Call it right before
+ * an embedding call and pass the answer to {@link measuredEmbeddingSpace}.
+ * Hosted targets have none and make no request.
+ */
+export async function probeEmbeddingRevision(target: EmbeddingTarget): Promise<ProbedRevision> {
+	return target.probeBaseUrl ? fetchRevision(target.probeBaseUrl, target.model) : {};
+}
+
+function isSameRevision(a: ProbedRevision, b: ProbedRevision): boolean {
+	return a.revision === b.revision && a.quantization === b.quantization;
 }
 
 /**
  * The space a vector belongs to: the target the embedder resolved, the native
- * width of `rawEmbedding` (before index padding), and the local revision.
+ * width of `rawEmbedding` (before index padding), and the local revision. The
+ * revision is read again now and must equal `before` (read before the call), or
+ * the vector is discarded ({@link EmbeddingRevisionChangedError}).
  */
 export async function measuredEmbeddingSpace(
 	target: EmbeddingTarget,
-	rawEmbedding: ArrayLike<number>
+	rawEmbedding: ArrayLike<number>,
+	before: ProbedRevision
 ): Promise<EmbeddingSpaceIdentity & { source: EmbeddingTarget['source'] }> {
-	const probed = target.probeBaseUrl ? await probeRevision(target.probeBaseUrl, target.model) : {};
+	const after = await probeEmbeddingRevision(target);
+	if (!isSameRevision(before, after)) throw new EmbeddingRevisionChangedError();
 	return {
 		provider: target.provider,
 		endpoint: target.endpoint,
 		model: target.model,
 		dimensions: rawEmbedding.length,
-		...probed,
+		...after,
 		source: target.source,
 	};
 }
