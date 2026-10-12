@@ -7,7 +7,6 @@ import { STRUCTURAL_THREAD_FANOUT } from '../knowledge/edges';
 import { normalizeForHash } from '../lib/knowledgeEdges';
 import { createTestContact, createTestKnowledgeEntry, enableFeatures } from './factories';
 import type { Doc, Id } from '../_generated/dataModel';
-import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
 
 // Heavy action / LLM modules aren't needed for the structural-linker mutations
 // and pull in node-only deps, so trim them from the convex-test module map
@@ -202,7 +201,6 @@ describe('knowledge.graph.saveEntry content-hash dedup', () => {
 		expect(hash2).toBe(hash); // normalization makes the two collide
 
 		const firstId = await t.mutation(internal.knowledge.graph.saveEntry, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			entryType: 'fact',
 			title,
 			content,
@@ -214,7 +212,6 @@ describe('knowledge.graph.saveEntry content-hash dedup', () => {
 		});
 
 		const secondId = await t.mutation(internal.knowledge.graph.saveEntry, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			entryType: 'fact',
 			title: title2,
 			content: content2,
@@ -242,7 +239,6 @@ describe('knowledge.graph.saveEntry content-hash dedup', () => {
 		const contactId = await t.run(async (ctx) => ctx.db.insert('contacts', createTestContact()));
 
 		const orgGeneralId = await t.mutation(internal.knowledge.graph.saveEntry, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			entryType: 'fact',
 			title,
 			content,
@@ -254,7 +250,6 @@ describe('knowledge.graph.saveEntry content-hash dedup', () => {
 		});
 
 		const contactScopedId = await t.mutation(internal.knowledge.graph.saveEntry, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			entryType: 'fact',
 			title,
 			content,

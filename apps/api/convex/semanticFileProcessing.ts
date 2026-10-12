@@ -27,11 +27,13 @@ import {
 	toIndexVector,
 } from './lib/llmProvider';
 import { AiNotConfiguredError } from './lib/aiNotConfigured';
-import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
-import { NO_EMBEDDING_SPACE_KEY, vectorHitsInCurrentSpace } from './lib/embeddingSpace';
-import { embedRetrievalQuery } from './knowledge/retrieval';
+import { measuredEmbeddingSpace, probeEmbeddingRevision } from './lib/aiRouting/embeddingProbe';
+import { fileEmbeddingInput } from './lib/aiRouting/embeddingInputs';
+import type { MeasuredSpace } from './lib/aiRouting/embeddingRegistry';
+import { embedRetrievalQuery, searchSpaceVectors } from './knowledge/vectorSearch';
 import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
+import { secretFreeErrorText } from './lib/embeddingSpace';
 import { runLlmObject } from './lib/llm/dispatch';
 import { meterLlmCall } from './analytics/meteredSpend';
 import { runEmbedding } from './lib/llm/embed';
@@ -114,7 +116,6 @@ export const processFile = internalAction({
 			await ctx.runMutation(internal.semanticFiles.updateProcessedMetadata, {
 				fileId: args.fileId,
 				embedding: [],
-				embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 				searchableText: buildFileSearchableText({
 					filename: file.filename,
 					tags: file.tags,
@@ -205,29 +206,30 @@ ${textForAI}`,
 
 		// 3. Generate embedding
 		let embedding: number[] = [];
-		let embeddingSpaceKey = NO_EMBEDDING_SPACE_KEY;
-		const embeddingText = [title, summary, extractedText.slice(0, 2000)].filter(Boolean).join(' ');
+		let embeddingSpace: MeasuredSpace | undefined;
+		const embeddingText = fileEmbeddingInput({ title, summary, extractedText });
 
-		if (aiConfigured && embeddingText.length > 10) {
+		if (aiConfigured && embeddingText) {
 			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
 			// actionable error instead of being swallowed into a silent empty vector;
 			// only a transient embed() failure fails soft (metadata without search).
 			const embedder = await resolveIndexEmbedder(ctx);
-			embeddingSpaceKey = embedder.embeddingSpaceKey;
 			try {
-				const embeddingResult = await meterLlmCall(
+				const before = await probeEmbeddingRevision(embedder.target);
+				const result = await meterLlmCall(
 					ctx,
 					{ feature: 'embedding_file', root: fileRoot },
 					(meter) => runEmbedding({ meter, model: embedder.model, value: embeddingText }),
 					// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
 					{ onWriteError: 'ignore' }
 				);
-				embedding = toIndexVector(embeddingResult.embedding);
+				embeddingSpace = await measuredEmbeddingSpace(embedder.target, result.embedding, before);
+				embedding = toIndexVector(result.embedding);
 			} catch (error) {
 				logError('[semantic_file] embedding generation failed', {
 					fileId: args.fileId,
 					filename: file.filename,
-					error,
+					error: secretFreeErrorText(error),
 				});
 			}
 		}
@@ -276,9 +278,9 @@ ${textForAI}`,
 			extractedText: extractedText.slice(0, 50000), // Cap stored text
 			autoTags,
 			embedding,
-			embeddingModel: embedding.length > 0 ? CURRENT_EMBEDDING_MODEL : undefined,
-			embeddingGeneratedAt: embedding.length > 0 ? Date.now() : undefined,
-			embeddingSpaceKey,
+			// Stamped with the measured space and its model, or dropped when the
+			// configuration moved on (updateProcessedMetadata).
+			embeddingSpace,
 			searchableText,
 			changeSummary,
 		});
@@ -337,9 +339,10 @@ export const semanticSearch = internalAction({
 	args: {
 		queryText: v.optional(v.string()),
 		embedding: v.optional(v.array(v.float64())),
-		// The space a precomputed `embedding` is in. Without it (a previous-release
-		// caller) its vector hits are dropped (vectorHitsInCurrentSpace).
-		embeddingSpaceKey: v.optional(v.string()),
+		// The space a precomputed `embedding` is in (`embedRetrievalQuery`). Without
+		// it the vector leg is skipped: a vector is only ever compared within its
+		// own space (searchSpaceVectors).
+		embeddingSpaceId: v.optional(v.id('embeddingSpaces')),
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out.
 		scopeToContact: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
@@ -360,7 +363,7 @@ export const semanticSearch = internalAction({
 		// vector to find (knowledge/vectorCorpus.ts); with none, the full-text leg
 		// runs alone.
 		let vector = args.embedding && args.embedding.length > 0 ? args.embedding : undefined;
-		let spaceKey = args.embeddingSpaceKey;
+		let spaceId = args.embeddingSpaceId;
 		if (!vector) {
 			if (!queryText) return [];
 			const query = await embedRetrievalQuery(
@@ -373,7 +376,7 @@ export const semanticSearch = internalAction({
 			if (query.kind === 'failed') return [];
 			if (query.kind === 'vector') {
 				vector = query.embedding;
-				spaceKey = query.embeddingSpaceKey;
+				spaceId = query.embeddingSpaceId;
 			}
 		}
 
@@ -386,14 +389,14 @@ export const semanticSearch = internalAction({
 		// at `limit`.
 		const fetchLimit = Math.min(256, Math.max(limit * 5, 50));
 
-		// Leg 1 — semantic vector search (paraphrase / conceptual matches).
-		// Dropped if the embedding space changed while this query ran.
+		// Leg 1 — semantic vector search (paraphrase / conceptual matches), in the
+		// query vector's own space only.
 		const hits = vector
-			? await vectorHitsInCurrentSpace(
-					ctx,
-					await ctx.vectorSearch('semanticFiles', 'vector_files', { vector, limit: fetchLimit }),
-					spaceKey
-				)
+			? await searchSpaceVectors(ctx, 'semanticFiles', {
+					vector,
+					embeddingSpaceId: spaceId,
+					limit: fetchLimit,
+				})
 			: [];
 		const vectorRanked: Id<'semanticFiles'>[] = hits.map((h) => h._id);
 		const scoreById = new Map<string, number>(hits.map((h) => [h._id as string, h._score]));

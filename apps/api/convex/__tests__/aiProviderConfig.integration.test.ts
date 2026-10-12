@@ -12,10 +12,10 @@
  *   • local providers save with NO key.
  *   • a stored key is reused only for the same provider kind and base URL.
  *   • a new embedding key is bound to the embedding kind the save names.
- *   • a vector embedded in a space that is no longer current is not committed.
- *   • embedding space (D8): an omitted embedding selection keeps the stored one,
- *     and neither a save nor a removal may move the resolved space while the
- *     knowledge or file corpus holds vectors.
+ *   • a vector embedded in a space that is no longer configured is not committed.
+ *   • embedding space (D8, post-provenance): an omitted embedding selection
+ *     keeps the stored one, and a save or a removal may switch the space on a
+ *     populated corpus (old vectors leave vector search until re-embedded).
  *   • testConnection ok / err paths (adapter mocked; real crypto round-trip).
  *
  * The adapter registry (`lib/llmProviders`) is mocked so no `@ai-sdk/*` client
@@ -32,12 +32,7 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { hasStoredAiProviderConfig } from '../lib/aiNotConfigured';
-import {
-	EMBEDDING_SPACE_LOCKED,
-	VECTOR_PROBE_ROWS,
-	embeddingSpaceKey,
-	resolvedEmbeddingSpace,
-} from '../lib/embeddingSpace';
+import { measuredLocalSpace, TEST_LOCAL_SPACE } from './helpers/embeddingSpaces';
 import { STORED_KEY_NOT_REUSABLE } from '../lib/aiProviderSecrets';
 
 vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
@@ -621,7 +616,7 @@ describe('stored key reuse', () => {
 	});
 });
 
-describe('embedding space (D8)', () => {
+describe('embedding space (D8, post-provenance)', () => {
 	const ENV_KEYS = ['LLM_API_KEY', 'LLM_PROVIDER', 'LLM_BASE_URL', 'LLM_EMBEDDING_MODEL'] as const;
 	afterEach(() => {
 		for (const key of ENV_KEYS) vi.stubEnv(key, undefined);
@@ -649,22 +644,6 @@ describe('embedding space (D8)', () => {
 		);
 	}
 
-	async function addFile(t: ReturnType<typeof setup>, embedding: number[]) {
-		const now = Date.now();
-		await t.run((ctx) =>
-			ctx.db.insert('semanticFiles', {
-				filename: 'invoice.pdf',
-				mimeType: 'application/pdf',
-				fileSize: 13,
-				sourceType: 'email_attachment',
-				version: 1,
-				embedding,
-				createdAt: now,
-				updatedAt: now,
-			})
-		);
-	}
-
 	const storedRow = (t: ReturnType<typeof setup>) =>
 		t.run((ctx) => ctx.db.query('aiProviderConfig').first());
 
@@ -679,23 +658,6 @@ describe('embedding space (D8)', () => {
 			const row = await ctx.db.query('aiProviderConfig').first();
 			await ctx.db.patch(row!._id, { embeddingModel: undefined });
 		});
-	}
-
-	async function expectLocked(
-		promise: Promise<unknown>,
-		message: RegExp = /embedding model can't change/i
-	) {
-		const error = await promise.then(
-			() => undefined,
-			(e: unknown) => e
-		);
-		expect(error).toBeInstanceOf(ConvexError);
-		const data = (
-			error as ConvexError<{ category: string; message: string; data: Record<string, Value> }>
-		).data;
-		expect(data.category).toBe('conflict');
-		expect(data.message).toMatch(message);
-		expect(data.data).toMatchObject({ reason: EMBEDDING_SPACE_LOCKED });
 	}
 
 	it('keeps the implicit legacy Google model when an API or CLI save omits the model', async () => {
@@ -740,51 +702,10 @@ describe('embedding space (D8)', () => {
 		expect(row?.embeddingModelVersion).toBe(1);
 	});
 
-	it('refuses a new model or provider while the knowledge corpus holds vectors', async () => {
+	it('switches the embedder while the corpus holds vectors, and bumps the version', async () => {
 		const t = setup();
 		await seedLegacyGoogleRow(t);
 		await addKnowledgeEntry(t, [0.1, 0.2]);
-
-		await expectLocked(
-			t.action(api.aiProviderConfigActions.saveConfig, {
-				...anthropic,
-				embeddingProviderKind: 'google',
-				embeddingModel: 'gemini-embedding-2',
-			})
-		);
-		await expectLocked(
-			t.action(api.aiProviderConfigActions.saveConfig, {
-				...anthropic,
-				embeddingProviderKind: 'local',
-			})
-		);
-
-		const row = await storedRow(t);
-		expect(row?.embeddingProviderKind).toBe('google');
-		expect(row?.embeddingModel).toBeUndefined();
-		expect(row?.embeddingModelVersion).toBe(1);
-	});
-
-	it('refuses a change while only the file library holds vectors', async () => {
-		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
-		await addFile(t, [0.3, 0.4]);
-
-		await expectLocked(
-			t.action(api.aiProviderConfigActions.saveConfig, {
-				...anthropic,
-				embeddingProviderKind: 'local',
-				embeddingModel: 'mxbai-embed-large',
-			})
-		);
-	});
-
-	it('allows a change while no row holds a vector, and bumps the version', async () => {
-		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
-		// Rows the pipeline has not embedded yet, fewer than the probe window.
-		await addKnowledgeEntry(t, []);
-		await addFile(t, []);
 
 		await t.action(api.aiProviderConfigActions.saveConfig, {
 			...anthropic,
@@ -793,81 +714,28 @@ describe('embedding space (D8)', () => {
 		});
 
 		const row = await storedRow(t);
+		expect(row?.embeddingProviderKind).toBe('local');
 		expect(row?.embeddingModel).toBe('mxbai-embed-large');
 		expect(row?.embeddingModelVersion).toBe(2);
 	});
 
-	it('fails closed when the newest rows hold no vector but the window is full', async () => {
-		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
-		for (let i = 0; i < VECTOR_PROBE_ROWS; i++) await addKnowledgeEntry(t, []);
-
-		await expectLocked(
-			t.action(api.aiProviderConfigActions.saveConfig, {
-				...anthropic,
-				embeddingProviderKind: 'local',
-				embeddingModel: 'mxbai-embed-large',
-			})
-		);
-	});
-
-	it('compares the first save with the env embedder', async () => {
+	it('saves a first config that differs from the env embedder on a populated corpus', async () => {
 		const t = setup();
 		vi.stubEnv('LLM_API_KEY', 'sk-env-key');
 		await addKnowledgeEntry(t, [0.1, 0.2]);
 
-		// The env plane embeds with OpenAI text-embedding-3-small; local is another space.
-		await expectLocked(t.action(api.aiProviderConfigActions.saveConfig, anthropic));
-		expect(await storedRow(t)).toBeNull();
-
-		await t.action(api.aiProviderConfigActions.saveConfig, {
-			...anthropic,
-			embeddingProviderKind: 'openai',
-			embeddingModel: 'text-embedding-3-small',
-			embeddingApiKey: 'sk-embed-secret-key-9999',
-		});
-		expect((await storedRow(t))?.embeddingProviderKind).toBe('openai');
-	});
-
-	it('refuses a removal that falls back to an env embedder in another space', async () => {
-		const t = setup();
 		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
-		await addKnowledgeEntry(t, [0.1, 0.2]);
-		vi.stubEnv('LLM_API_KEY', 'sk-env-key');
-
-		await expectLocked(t.mutation(api.aiProviderConfig.removeConfig, {}));
-		expect(await storedRow(t)).not.toBeNull();
-	});
-
-	it('refuses a removal with no env fallback, so a later save cannot switch spaces', async () => {
-		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
-		await addKnowledgeEntry(t, [0.1, 0.2]);
-
-		// The row is the only record of the local space the vectors are in.
-		await expectLocked(
-			t.mutation(api.aiProviderConfig.removeConfig, {}),
-			/can't be removed while the knowledge base or file library holds vectors/
-		);
-		expect(await storedRow(t)).not.toBeNull();
-		// So the follow-up save still compares against it and refuses another space.
-		await expectLocked(
-			t.action(api.aiProviderConfigActions.saveConfig, {
-				...anthropic,
-				embeddingProviderKind: 'openai',
-				embeddingModel: 'text-embedding-3-small',
-				embeddingApiKey: 'sk-embed-secret-key-9999',
-			})
-		);
 		expect((await storedRow(t))?.embeddingProviderKind).toBe('local');
 	});
 
-	it('allows a removal with no env fallback once the corpus holds no vector', async () => {
+	it('removes the config while the corpus holds vectors', async () => {
 		const t = setup();
 		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
-		await addKnowledgeEntry(t, []);
+		await addKnowledgeEntry(t, [0.1, 0.2]);
 
+		// The spaces are recorded in `embeddingSpaces`; the row is no longer their only record.
 		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: true });
+		expect(await storedRow(t)).toBeNull();
 	});
 
 	it('resolves an omitted embedding selection against the row the mutation writes', async () => {
@@ -891,43 +759,23 @@ describe('embedding space (D8)', () => {
 			isLanguageLocal: false,
 		});
 
-		// Neither restored to the stale local model nor refused on the populated corpus.
+		// Not restored to the stale local model.
 		const row = await storedRow(t);
 		expect(row?.embeddingProviderKind).toBe('openai');
 		expect(row?.embeddingModel).toBe('text-embedding-3-small');
 		expect(row?.embeddingModelVersion).toBe(2);
 		expect(row?.embeddingSecretCiphertext).toBeTruthy();
 	});
-
-	it('allows a removal when the env embedder resolves the same space', async () => {
-		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
-			...anthropic,
-			embeddingProviderKind: 'openai',
-			embeddingModel: 'text-embedding-3-small',
-			embeddingApiKey: 'sk-embed-secret-key-9999',
-		});
-		await addKnowledgeEntry(t, [0.1, 0.2]);
-		vi.stubEnv('LLM_API_KEY', 'sk-env-key');
-
-		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: true });
-	});
 });
 
-describe('vector commits from a stale embedding space', () => {
+describe('vector commits from a stale embedding target', () => {
 	const anthropic = {
 		languageProviderKind: 'anthropic' as const,
 		apiKey: 'sk-ant-secret-key-1234',
 	};
 	const vector = [0.1, 0.2, 0.3];
 
-	/** What an embedding job captures when it resolves its model (`resolveIndexEmbedder`). */
-	const jobSpaceKey = (t: ReturnType<typeof setup>) =>
-		t.run(async (ctx) =>
-			embeddingSpaceKey(resolvedEmbeddingSpace(await ctx.db.query('aiProviderConfig').first()))
-		);
-
-	it('drops the vector a job embedded before the space switched, and keeps the row', async () => {
+	it('drops the vector a job embedded before the target switched, and keeps the row', async () => {
 		const t = setup();
 		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
 		const now = Date.now();
@@ -943,15 +791,13 @@ describe('vector commits from a stale embedding space', () => {
 				updatedAt: now,
 			})
 		);
-		// Two jobs resolve the local nomic space and start embedding.
-		const staleKey = await jobSpaceKey(t);
-		// The corpus is still empty, so the admin may switch to mxbai.
+		// Two jobs embed with the local nomic default, then the admin switches to mxbai.
+		const nomic = measuredLocalSpace(3);
 		await t.action(api.aiProviderConfigActions.saveConfig, {
 			...anthropic,
 			embeddingProviderKind: 'local',
 			embeddingModel: 'mxbai-embed-large',
 		});
-		expect(await jobSpaceKey(t)).not.toBe(staleKey);
 
 		// The late nomic vectors commit.
 		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
@@ -960,7 +806,7 @@ describe('vector commits from a stale embedding space', () => {
 			embedding: vector,
 			embeddingModel: 'nomic-embed-text',
 			embeddingGeneratedAt: now,
-			embeddingSpaceKey: staleKey,
+			embeddingSpace: nomic,
 		});
 		const entryId = await t.mutation(internal.knowledge.graph.saveEntry, {
 			entryType: 'fact',
@@ -971,24 +817,37 @@ describe('vector commits from a stale embedding space', () => {
 			embeddingModel: 'nomic-embed-text',
 			embeddingGeneratedAt: now,
 			confidence: 0.9,
-			embeddingSpaceKey: staleKey,
+			embeddingSpace: nomic,
 		});
 
 		// The rows keep everything but the vector, so they read as not yet embedded.
 		const file = await t.run((ctx) => ctx.db.get(fileId));
 		expect(file).toMatchObject({ summary: 'An invoice', embedding: [] });
 		expect(file?.embeddingModel).toBeUndefined();
+		expect(file?.embeddingSpaceId).toBeUndefined();
 		const entry = await t.run((ctx) => ctx.db.get(entryId));
 		expect(entry).toMatchObject({ title: 'fact', embedding: [] });
 		expect(entry?.embeddingGeneratedAt).toBeUndefined();
+		expect(await t.run((ctx) => ctx.db.query('embeddingSpaces').collect())).toEqual([]);
 
-		// A job in the current space commits normally.
+		// A job in the configured target commits, stamped with the space it activates.
 		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
 			fileId,
 			embedding: vector,
-			embeddingSpaceKey: await jobSpaceKey(t),
+			embeddingSpace: { ...measuredLocalSpace(3), model: 'mxbai-embed-large' },
 		});
-		expect((await t.run((ctx) => ctx.db.get(fileId)))?.embedding).toEqual(vector);
+		const stored = await t.run((ctx) => ctx.db.get(fileId));
+		expect(stored?.embedding).toEqual(vector);
+		expect(stored?.embeddingModel).toBe('mxbai-embed-large');
+		expect(stored?.embeddingProvenance).toBe('measured');
+		const space = await t.run((ctx) => ctx.db.get(stored!.embeddingSpaceId!));
+		expect(space).toMatchObject({
+			...TEST_LOCAL_SPACE,
+			model: 'mxbai-embed-large',
+			dimensions: 3,
+			state: 'active',
+			slot: 'primary',
+		});
 	});
 });
 
@@ -1010,7 +869,7 @@ describe('previous-release callers (upgrade window)', () => {
 				updatedAt: now,
 			})
 		);
-		// The previous release's processFile sends no embeddingSpaceKey.
+		// The previous release's processFile sends no measured space.
 		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
 			fileId,
 			summary: 'An invoice',

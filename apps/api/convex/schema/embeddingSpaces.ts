@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	embeddingCohortValidator,
+	embeddingCoverageFields,
 	embeddingSlotValidator,
 	embeddingSpaceIdentityFields,
 	embeddingSpaceSourceValidator,
@@ -40,11 +41,30 @@ export const embeddingSpaceTables = {
 		configVersion: v.optional(v.number()),
 		activatedAt: v.optional(v.number()),
 		retiredAt: v.optional(v.number()),
+		/**
+		 * The space this one replaced when it was activated: the rollback target.
+		 * Recorded at activation, never inferred from timestamps.
+		 */
+		predecessorSpaceId: v.optional(v.id('embeddingSpaces')),
+		/**
+		 * Raised every time this space takes its column (registered, activated,
+		 * staged, attested, reused). The space with the highest claim in a column
+		 * owns it; only the owner may write it, and stored vectors are reused only
+		 * by their column's owner (lib/aiRouting/embeddingActivation.ts).
+		 */
+		columnClaim: v.optional(v.number()),
+		/**
+		 * Staged spaces: when an embedding input last changed or a row was added.
+		 * Activation needs a rebuild pass that started after it.
+		 */
+		inputChangedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
 		.index('by_identity_key', ['identityKey'])
-		.index('by_state', ['state']),
+		.index('by_state', ['state'])
+		// A column's owner: the highest claim there (`readColumnOwner`).
+		.index('by_slot_claim', ['slot', 'columnClaim']),
 
 	// The evidence that assigns a legacy cohort to a space: an operator's
 	// attestation (`attestation`, `attestedBy` set) or retained deployment or
@@ -69,6 +89,17 @@ export const embeddingSpaceTables = {
 	})
 		.index('by_space', ['spaceId'])
 		.index('by_status', ['status']),
+
+	// The last completed coverage count (a singleton; `.first()`): how many rows
+	// vector search can find in the searchable space, and how many wait as
+	// unknown, inactive or unembedded. Counted by a bounded paged walk
+	// (aiRouting/embeddingCoverage.ts), because Convex cannot count rows without
+	// reading them. `searchableSpaceId` is the space the count was taken against
+	// (absent: no space was searchable, so every vector counted as not found).
+	embeddingCoverage: defineTable({
+		...embeddingCoverageFields,
+		searchableSpaceId: v.optional(v.id('embeddingSpaces')),
+	}),
 
 	// The re-embed walk. `reembed`: unknown and inactive-space rows into the
 	// active space's column (local runs now; a paid one is admin-started and

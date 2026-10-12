@@ -232,6 +232,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// reference a space or an attestation, jobs and evidence before spaces.
 	'embeddingReembedJobs',
 	'embeddingAttestations',
+	'embeddingCoverage',
 	'embeddingSpaces',
 
 	// Domain stack — reputation before domains. The domains step clears BOTH

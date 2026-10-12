@@ -4,7 +4,6 @@ import schema from '../schema';
 import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
 
 // `authedQuery`/`authedMutation` gate on the session helpers; stub them so the
 // file queries and the admin-only `update`/`create` run as an org owner.
@@ -73,7 +72,6 @@ describe('semanticFiles.search — what the index covers', () => {
 		// rebuilt searchableText, which is what the index actually reads.
 		const fileId = await uploadFile(t, { filename: 'notes.txt' });
 		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			fileId,
 			summary: 'Quarterly revenue review for the northern region.',
 			extractedText: 'Revenue grew by 12% thanks to the Zephyr launch.',
@@ -103,7 +101,6 @@ describe('semanticFiles.search — what the index covers', () => {
 		const t = convexTest(schema, modules);
 		const fileId = await uploadFile(t, { filename: 'doc.txt' });
 		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			fileId,
 			summary: 'Onboarding checklist for new hires.',
 			embedding: [],

@@ -1,31 +1,32 @@
 /**
- * Which embedding space the deployment writes vectors in, and the rule that
- * keeps a populated corpus in that space (AI routing plan, owner decision D8,
- * the pre-provenance half).
+ * Which embedding target the deployment's configuration names (AI routing plan,
+ * Phase 1a provenance and owner decision D8).
  *
- * Vectors carry no record of the model that made them yet, so retrieval cannot
- * tell two spaces apart: a switch would mix incomparable vectors in one index,
- * and zero-padding to the index width hides the damage instead of raising it.
- * Until provenance and the retrieval filter land, the server therefore refuses
- * to change the resolved space while the knowledge or file corpus holds
- * vectors, and an unrelated save keeps the stored space.
+ * A target is the configured part of an embedding space: provider kind, the
+ * secret-free endpoint identity, the resolved model and the width requested
+ * from the provider. The measured part (native width, and for local models the
+ * artifact digest and quantization) is added after an embedding call
+ * (`lib/aiRouting/embeddingProbe.ts`), and the complete identity is an
+ * `embeddingSpaces` row (`lib/aiRouting/embeddingRegistry.ts`).
  *
- * A space is the provider, the resolved model and the width requested from the
- * provider. Everything here is pure or reads the database, so the v8 settings
- * mutation and the Node resolver (`lib/llmProvider.ts`) share one definition.
+ * Since provenance exists, a populated deployment may switch targets: every
+ * vector records its space, retrieval searches only the active one, and the
+ * re-embed job brings the rest back (D8, post-provenance). Everything here is
+ * pure or reads env, so the v8 settings mutation, the commit mutations and the
+ * resolver (`lib/llmProvider.ts`) share one definition.
  */
 
 import {
 	GOOGLE_EMBEDDING_DEFAULT,
 	LEGACY_GOOGLE_EMBEDDING_MODEL,
 } from '@owlat/shared/aiModelCatalog';
-import { internal } from '../_generated/api';
-import type { ActionCtx, DatabaseReader } from '../_generated/server';
-import { throwConflict, throwInvalidInput } from '../_utils/errors';
+import { throwInvalidInput } from '../_utils/errors';
 import { isEnvAiProviderConfigured } from './aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './constants';
 import { getOptional } from './env';
-import { classifyEnvLanguageEndpoint, type EmbeddingProviderKind } from './llmProviders/types';
+import { type EmbeddingProviderKind } from './llmProviders/types';
+import { resolveEndpointLocality, type EndpointLocality } from './llm/endpointLocality';
+import { sha256Hex } from './aiRouting/routeDigest';
 
 /** Each embedding adapter's default model. The adapters read theirs from here. */
 export const EMBEDDING_DEFAULT_MODELS = {
@@ -76,46 +77,193 @@ export function envEmbeddingModel(): string {
 	return getOptional('LLM_EMBEDDING_MODEL') ?? EMBEDDING_DEFAULT_MODELS.openai;
 }
 
-export interface EmbeddingSpace {
-	/** The stored embedding kind, or `env:<endpoint>` for a non-OpenAI env endpoint. */
-	readonly provider: string;
-	readonly modelId: string;
-	readonly dimensions: number | 'native';
+/** Each local adapter's default base URL. The adapters read theirs from here. */
+export const LOCAL_EMBEDDING_DEFAULT_BASE_URLS = {
+	// The `ollama` service of the self-host compose file; `localhost` is the
+	// Convex container itself, where nothing listens.
+	local: 'http://ollama:11434/v1',
+	openaiCompatible: 'http://localhost:11434/v1',
+} as const;
+
+/** The env plane's base URL: the explicit override, else the provider's default. */
+export function envLlmBaseUrl(): string | undefined {
+	const explicit = getOptional('LLM_BASE_URL');
+	if (explicit) return canonicalBaseUrl(explicit);
+	switch (getOptional('LLM_PROVIDER')) {
+		case 'openrouter':
+			return 'https://openrouter.ai/api/v1';
+		case 'ollama':
+			return 'http://ollama:11434/v1';
+		default:
+			return undefined;
+	}
 }
 
-export function storedEmbeddingSpace(selection: StoredEmbeddingSelection): EmbeddingSpace {
-	const kind = selection.embeddingProviderKind;
-	const modelId = resolveStoredEmbeddingModel(selection);
-	return { provider: kind, modelId, dimensions: requestedEmbeddingDimensions(kind, modelId) };
+/** The base URL a local embedding kind reaches (`LOCAL_EMBEDDING_BASE_URL`, else the default). */
+export function localEmbeddingBaseUrl(kind: 'local' | 'openaiCompatible'): string {
+	return canonicalBaseUrl(
+		getOptional('LOCAL_EMBEDDING_BASE_URL') ?? LOCAL_EMBEDDING_DEFAULT_BASE_URLS[kind]
+	);
 }
 
 /**
- * The env fallback's space, or null when the environment configures no AI. The
- * env plane always uses the OpenAI wire; only the native OpenAI endpoint is the
- * same space as a stored `openai` embedder with the same model.
+ * THE canonical form of an endpoint base URL, used both to dispatch (the SDK
+ * client is built with it) and to name the endpoint (`endpointIdentity`), so
+ * the identity always describes exactly where requests go: repeated slashes in
+ * the path collapse, a trailing slash goes, the fragment (never sent) goes;
+ * scheme, userinfo, host, port, path and query are kept as sent. An unparsable
+ * URL is returned unchanged (the call fails, and its identity is `invalid`).
  */
-export function envEmbeddingSpace(): EmbeddingSpace | null {
-	if (!isEnvAiProviderConfigured()) return null;
-	const endpoint = classifyEnvLanguageEndpoint(
-		getOptional('LLM_PROVIDER'),
-		Boolean(getOptional('LLM_BASE_URL'))
-	);
+export function canonicalBaseUrl(url: string): string {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return url;
+	}
+	const path = parsed.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+	const userinfo = parsed.username
+		? `${parsed.username}${parsed.password ? `:${parsed.password}` : ''}@`
+		: '';
+	return `${parsed.protocol}//${userinfo}${parsed.host}${path}${parsed.search}`;
+}
+
+/**
+ * The secret-free identity of an endpoint: its origin (scheme, host, port) and,
+ * when requests carry more, a digest of the rest of its canonical base URL
+ * (`canonicalBaseUrl`: userinfo, path, query). Two services on one origin under
+ * different paths (`/a/v1`, `/b/v1`) are different endpoints; any of those
+ * parts may carry a credential, so only a SHA-256 prefix of them is kept. The
+ * same canonical URL is what the client dispatches to.
+ */
+export function endpointIdentity(url: string): string {
+	let parsed: URL;
+	try {
+		parsed = new URL(canonicalBaseUrl(url));
+	} catch {
+		return 'invalid';
+	}
+	const origin = parsed.origin.toLowerCase();
+	// Everything after the origin that requests carry: userinfo, path, query.
+	const userinfo = parsed.username ? `${parsed.username}:${parsed.password}@` : '';
+	const route = `${userinfo}${parsed.pathname === '/' ? '' : parsed.pathname}${parsed.search}`;
+	return route === '' ? origin : `${origin}/~${sha256Hex(route).slice(0, 32)}`;
+}
+
+/** Any `scheme://…` URL in free text, up to whitespace or a quote. */
+const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/gi;
+
+/**
+ * Error text that may leave the embedding code (a log line, a job's stored
+ * `lastError`), with every URL in it replaced by its {@link endpointIdentity}.
+ * A base URL may carry credentials in its userinfo, path or query, and fetch
+ * and SDK errors quote the request URL ("Cannot connect to API: …", "Failed to
+ * parse URL from …"); the identity keeps the origin and hashes the rest.
+ */
+export function secretFreeErrorText(error: unknown): string {
+	return String(error).replace(URL_IN_TEXT, (url) => endpointIdentity(url));
+}
+
+/**
+ * Whether an embedding endpoint is local (free) or hosted (paid), by the
+ * ledger's one rule (`lib/llm/endpointLocality.ts`): the `local` kind, or an
+ * OpenAI-compatible endpoint on a loopback, private or single-label host. Every
+ * other endpoint, an unparsable one included, is hosted.
+ */
+export function embeddingEndpointLocality(
+	kind: EmbeddingProviderKind,
+	baseUrl: string | undefined
+): EndpointLocality {
+	return resolveEndpointLocality(kind, baseUrl);
+}
+
+/** Where a target was resolved from. */
+export type EmbeddingTargetSource = 'stored_config' | 'env';
+
+/** The configured part of an embedding space. */
+export interface EmbeddingTarget {
+	readonly provider: EmbeddingProviderKind;
+	/** `native`, or the origin of the base URL the embedder calls. */
+	readonly endpoint: string;
+	readonly model: string;
+	readonly requestedDimensions: number | 'native';
+	readonly source: EmbeddingTargetSource;
+	/**
+	 * Local by the ledger's rule (`embeddingEndpointLocality`), so re-embedding
+	 * costs nothing. Decided again from the resolved embedder before each dispatch.
+	 */
+	readonly isLocal: boolean;
+	/**
+	 * Set exactly when `isLocal`: the base URL whose server is asked for the
+	 * model's artifact revision (Ollama's tags API; any other server leaves the
+	 * revision unknown). A hosted endpoint is never probed.
+	 */
+	readonly probeBaseUrl?: string;
+}
+
+/**
+ * A target's endpoint fields from ONE locality decision (the ledger's rule):
+ * a local endpoint is both free and probed for its revision, whatever the
+ * kind or `LLM_PROVIDER`, so payment and revision tracking cannot drift apart.
+ */
+function endpointFields(
+	kind: EmbeddingProviderKind,
+	baseUrl: string | undefined
+): Pick<EmbeddingTarget, 'endpoint' | 'isLocal' | 'probeBaseUrl'> {
+	const isLocal = embeddingEndpointLocality(kind, baseUrl) === 'local';
 	return {
-		provider: endpoint === 'openai-native' ? 'openai' : `env:${endpoint}`,
-		modelId: envEmbeddingModel(),
-		dimensions: 'native',
+		endpoint: baseUrl ? endpointIdentity(baseUrl) : 'native',
+		isLocal,
+		...(isLocal && baseUrl ? { probeBaseUrl: baseUrl } : {}),
 	};
 }
 
-/** The space vectors are written in today: the stored row's, else the env fallback's. */
-export function resolvedEmbeddingSpace(
-	row: StoredEmbeddingSelection | null
-): EmbeddingSpace | null {
-	return row ? storedEmbeddingSpace(row) : envEmbeddingSpace();
+export function storedEmbeddingTarget(selection: StoredEmbeddingSelection): EmbeddingTarget {
+	const kind = selection.embeddingProviderKind;
+	const model = resolveStoredEmbeddingModel(selection);
+	const base = {
+		provider: kind,
+		model,
+		requestedDimensions: requestedEmbeddingDimensions(kind, model),
+		source: 'stored_config' as const,
+	};
+	const baseUrl =
+		kind === 'local' || kind === 'openaiCompatible' ? localEmbeddingBaseUrl(kind) : undefined;
+	return { ...base, ...endpointFields(kind, baseUrl) };
 }
 
-export function isSameEmbeddingSpace(a: EmbeddingSpace, b: EmbeddingSpace): boolean {
-	return a.provider === b.provider && a.modelId === b.modelId && a.dimensions === b.dimensions;
+/**
+ * The env fallback's target, or null when the environment configures no AI.
+ * The env plane always uses the OpenAI adapter; its endpoint tells the native
+ * API, OpenRouter, Ollama and a custom server apart. Locality and the revision
+ * probe follow the ledger's rule on that URL, not `LLM_PROVIDER`: a local
+ * Ollama behind `LLM_PROVIDER=openai` is local and probed all the same.
+ */
+export function envEmbeddingTarget(): EmbeddingTarget | null {
+	if (!isEnvAiProviderConfigured()) return null;
+	return {
+		provider: 'openai',
+		model: envEmbeddingModel(),
+		requestedDimensions: 'native',
+		source: 'env',
+		...endpointFields('openai', envLlmBaseUrl()),
+	};
+}
+
+/** The target vectors are written in today: the stored row's, else the env fallback's. */
+export function configuredEmbeddingTarget(
+	row: StoredEmbeddingSelection | null
+): EmbeddingTarget | null {
+	return row ? storedEmbeddingTarget(row) : envEmbeddingTarget();
+}
+
+export function isSameEmbeddingTarget(a: EmbeddingTarget, b: EmbeddingTarget): boolean {
+	return (
+		a.provider === b.provider &&
+		a.endpoint === b.endpoint &&
+		a.model === b.model &&
+		a.requestedDimensions === b.requestedDimensions
+	);
 }
 
 /**
@@ -145,210 +293,20 @@ export function throwEmbeddingKindRequired(): never {
 }
 
 /**
- * Newest rows read per corpus table. Rows wait with an empty `embedding` until
- * the pipeline fills them, so a window holding no vector is inconclusive when it
- * is full, and counts as populated: the check fails closed without a scan.
+ * The `embeddingModelVersion` a settings save writes. It moves only when the
+ * configured target does, so resubmitting the model an absent field already
+ * resolved to is a no-op. Since provenance exists the save is never refused: a
+ * switch drops the old space out of vector search until the re-embed job or a
+ * staged rebuild replaces its vectors (D8, post-provenance).
  */
-export const VECTOR_PROBE_ROWS = 8;
-
-async function tableMayHoldVectors(
-	db: DatabaseReader,
-	table: 'knowledgeEntries' | 'semanticFiles'
-): Promise<boolean> {
-	const newest = await db
-		.query(table)
-		.withIndex('by_created_at')
-		.order('desc')
-		.take(VECTOR_PROBE_ROWS); // bounded: fixed probe window
-	return newest.some((row) => row.embedding.length > 0) || newest.length === VECTOR_PROBE_ROWS;
-}
-
-/** Whether the knowledge or file corpus may hold vectors (bounded, fails closed). */
-export async function corpusMayHoldVectors(db: DatabaseReader): Promise<boolean> {
-	return (
-		(await tableMayHoldVectors(db, 'knowledgeEntries')) ||
-		(await tableMayHoldVectors(db, 'semanticFiles'))
-	);
-}
-
-/** `data.reason` on the conflict error, for clients that explain the refusal. */
-export const EMBEDDING_SPACE_LOCKED = 'embedding_space_locked';
-
-function describeSpace(space: EmbeddingSpace): string {
-	const width = space.dimensions === 'native' ? '' : `, ${space.dimensions} dimensions`;
-	return `${space.provider} / ${space.modelId}${width}`;
-}
-
-/**
- * Refuse a change of embedding space while the corpus may hold vectors. With no
- * current space (no row and no env AI) there is nothing to compare: that is a
- * first setup. Removal keeps the row while vectors exist
- * ({@link assertRemovalKeepsEmbeddingSpace}), so Owlat itself never reaches that
- * state with vectors present; an env fallback unset outside Owlat, or a row
- * removed before this check existed, still can.
- */
-export async function assertEmbeddingSpaceChangeAllowed(
-	db: DatabaseReader,
-	current: EmbeddingSpace | null,
-	next: EmbeddingSpace | null
-): Promise<void> {
-	if (!current || !next || isSameEmbeddingSpace(current, next)) return;
-	if (!(await corpusMayHoldVectors(db))) return;
-	throwConflict(
-		`The embedding model can't change while the knowledge base or file library holds ` +
-			`vectors. Vectors from ${describeSpace(current)} and ${describeSpace(next)} are not ` +
-			`comparable, and Owlat can't re-embed existing vectors yet. Keep the current ` +
-			`embedding provider and model.`,
-		{ reason: EMBEDDING_SPACE_LOCKED, current: { ...current }, requested: { ...next } }
-	);
-}
-
-/**
- * The `embeddingModelVersion` a settings save writes, after refusing a
- * populated-corpus space change. The version moves only when the resolved space
- * does, so resubmitting the model an absent field already resolved to is a no-op.
- */
-export async function nextEmbeddingModelVersion(
-	db: DatabaseReader,
+export function nextEmbeddingModelVersion(
 	existing: (StoredEmbeddingSelection & { readonly embeddingModelVersion: number }) | null,
 	selection: StoredEmbeddingSelection
-): Promise<number> {
-	const current = resolvedEmbeddingSpace(existing);
-	const next = storedEmbeddingSpace(selection);
-	await assertEmbeddingSpaceChangeAllowed(db, current, next);
+): number {
 	if (!existing) return 1;
-	return existing.embeddingModelVersion + (current && isSameEmbeddingSpace(current, next) ? 0 : 1);
-}
-
-/**
- * Removing the stored row discards the only record of the space its vectors are
- * in: the env fallback takes over, or, with no env AI, nothing does and the next
- * save would have no space to compare with. So removal is refused while the
- * corpus may hold vectors, unless the env fallback resolves the same space.
- * Turning the AI features off (feature flags) is the way to stop AI without
- * forgetting the space.
- */
-export async function assertRemovalKeepsEmbeddingSpace(
-	db: DatabaseReader,
-	row: StoredEmbeddingSelection
-): Promise<void> {
-	const current = storedEmbeddingSpace(row);
-	const fallback = envEmbeddingSpace();
-	if (fallback) {
-		await assertEmbeddingSpaceChangeAllowed(db, current, fallback);
-		return;
-	}
-	if (!(await corpusMayHoldVectors(db))) return;
-	throwConflict(
-		`The AI provider configuration can't be removed while the knowledge base or file ` +
-			`library holds vectors: it is the only record of the embedding model ` +
-			`(${describeSpace(current)}) those vectors came from. To stop using AI, turn the AI ` +
-			`features off instead.`,
-		{ reason: EMBEDDING_SPACE_LOCKED, current: { ...current }, requested: null }
+	const isSame = isSameEmbeddingTarget(
+		storedEmbeddingTarget(existing),
+		storedEmbeddingTarget(selection)
 	);
-}
-
-// ── Vector commits ─────────────────────────────────────────────────────────
-
-/** The key of "no resolvable space": no stored row and no env AI. */
-export const NO_EMBEDDING_SPACE_KEY = 'none';
-
-/**
- * A stable key for a resolved space. An embedding job captures it when it
- * resolves its model (`resolveIndexEmbedder`) and hands it to the mutation that
- * commits the vector. Phase 0 stand-in: the embed lane replaces it with the
- * contract's `embeddingSpaceId`, behind {@link vectorFieldsForCommit}.
- */
-export function embeddingSpaceKey(space: EmbeddingSpace | null): string {
-	return space
-		? JSON.stringify([space.provider, space.modelId, space.dimensions])
-		: NO_EMBEDDING_SPACE_KEY;
-}
-
-/** The deployment's current space key, read in the calling transaction. */
-export async function currentEmbeddingSpaceKey(db: DatabaseReader): Promise<string> {
-	const row = await db.query('aiProviderConfig').first(); // bounded: org singleton
-	return embeddingSpaceKey(resolvedEmbeddingSpace(row));
-}
-
-/**
- * Whether work keyed to `spaceKey` is still in the current space. Shared by the
- * commit check ({@link vectorFieldsForCommit}) and the retrieval check
- * ({@link vectorHitsInCurrentSpace}). A missing key (a previous-release caller)
- * cannot be verified and counts as not current.
- */
-export async function isEmbeddingSpaceCurrent(
-	db: DatabaseReader,
-	spaceKey: string | undefined
-): Promise<boolean> {
-	return spaceKey !== undefined && spaceKey === (await currentEmbeddingSpaceKey(db));
-}
-
-/** The vector columns a corpus row carries. */
-export interface VectorFields {
-	embedding: number[];
-	embeddingModel?: string;
-	embeddingGeneratedAt?: number;
-}
-
-/**
- * THE vector-commit check. Every mutation that writes a vector into the
- * knowledge or file corpus passes the space key its job embedded with, and
- * writes what this returns. A vector from a space that is no longer current (the
- * settings changed while the job ran, or an isolate used a cached config) is
- * dropped: the row is stored without one (`embedding: []`), so it reads as not
- * yet embedded and the next processing pass embeds it in the current space. A
- * commit without a key (a previous-release job) is dropped the same way.
- */
-export async function vectorFieldsForCommit(
-	db: DatabaseReader,
-	vector: VectorFields,
-	jobEmbeddingSpaceKey: string | undefined
-): Promise<VectorFields & { isStale: boolean }> {
-	// `embeddingGeneratedAt` is set exactly when a row holds a vector: the
-	// empty-corpus check (knowledge/vectorCorpus.ts) finds ready vectors by it.
-	if (vector.embedding.length === 0) {
-		return { ...vector, embeddingGeneratedAt: undefined, isStale: false };
-	}
-	// A caller without a key is a job the previous release queued or started: its
-	// vector cannot be verified, so it is dropped like a stale one. Remove the
-	// optional key after release N+1 (see CONVENTIONS "Old clients and workers").
-	if (await isEmbeddingSpaceCurrent(db, jobEmbeddingSpaceKey)) {
-		return {
-			...vector,
-			embeddingGeneratedAt: vector.embeddingGeneratedAt ?? Date.now(),
-			isStale: false,
-		};
-	}
-	return {
-		embedding: [],
-		embeddingModel: undefined,
-		embeddingGeneratedAt: undefined,
-		isStale: true,
-	};
-}
-
-// ── Vector retrieval ───────────────────────────────────────────────────────
-
-/**
- * THE retrieval check, the read-side counterpart of {@link vectorFieldsForCommit}.
- * A search passes the hits of its vector leg and the space key its query vector
- * was embedded in. The space is re-read AFTER the vector search: if it changed
- * while the query ran, the hits may hold vectors of the new space, so they are
- * dropped (the caller's lexical leg still answers). If it did not change, no
- * vector of another space can have been committed before the search, because
- * the commit check refuses those. A missing key (a previous-release caller with a
- * precomputed vector) drops the hits too. Phase 0 stand-in: the embed lane
- * replaces it with a space-filtered vector search on `embeddingSpaceId`.
- */
-export async function vectorHitsInCurrentSpace<H>(
-	ctx: Pick<ActionCtx, 'runQuery'>,
-	hits: H[],
-	queryEmbeddingSpaceKey: string | undefined
-): Promise<H[]> {
-	if (hits.length === 0) return hits;
-	const isCurrent = await ctx.runQuery(internal.aiProviderConfig._isEmbeddingSpaceCurrent, {
-		embeddingSpaceKey: queryEmbeddingSpaceKey,
-	});
-	return isCurrent ? hits : [];
+	return existing.embeddingModelVersion + (isSame ? 0 : 1);
 }

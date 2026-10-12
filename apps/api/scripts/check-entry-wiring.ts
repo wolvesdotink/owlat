@@ -29,6 +29,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { UNREACHED_ENTRIES } from './entryWiringUnreached';
 import { PREVIOUS_RELEASE_ENTRIES } from './entryWiringPreviousRelease';
 import {
 	boundNames,
@@ -380,17 +381,6 @@ function reachedEntries(entries: readonly ConvexEntry[]): ReadonlySet<string> {
 	}
 	return reached;
 }
-
-/**
- * THE LEDGER — entries nothing can start, written down as pre-existing debt.
- * Exact in both directions: a new orphan fails until it is registered, called
- * or deleted; a listed entry that gains a caller or is deleted fails until its
- * line comes off. Empty, and the empty state is the point (issue #528).
- */
-const UNREACHED_ENTRIES: readonly string[] = [
-	// Thread brief: wired by the wiring and web lanes, which delete each line (none may survive).
-	'mail/interpret/scope.ts#loadSourceForScope',
-];
 
 // ─── The checks ─────────────────────────────────────────────────────────────
 

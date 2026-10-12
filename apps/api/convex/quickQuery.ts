@@ -27,7 +27,9 @@ import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { v } from 'convex/values';
 import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
 import { resolveIndexEmbedder, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
+import { measuredEmbeddingSpace, probeEmbeddingRevision } from './lib/aiRouting/embeddingProbe';
 import { runLlmText } from './lib/llm/dispatch';
 import { runEmbedding } from './lib/llm/embed';
 import { newRootRequest } from './lib/llm/requestMeter';
@@ -35,6 +37,7 @@ import { anchorActionDeadline, boundedRoot } from './lib/llm/actionDeadline';
 import { meterLlmCall } from './analytics/meteredSpend';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
+import { secretFreeErrorText } from './lib/embeddingSpace';
 import { throwInvalidInput } from './_utils/errors';
 
 // How many results to pull from EACH source before synthesis, and how much of
@@ -107,13 +110,16 @@ export const ask = authedAction({
 		// Fail-soft: on any embed error we fall through with no vector and each seam
 		// re-embeds from `queryText` itself (or degrades to no vector recall).
 		let embedding: number[] | undefined;
+		// The active space the vector is in; absent ⇒ the seams skip their vector
+		// legs (a vector is only compared within its own space, ADR-0073).
+		let embeddingSpaceId: Id<'embeddingSpaces'> | undefined;
 		// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
 		// error; only a transient embed() failure falls soft to no-vector recall.
 		const embedder = await resolveIndexEmbedder(ctx);
-		const { embeddingSpaceKey } = embedder;
 		// One question is one user action: every call it makes groups under one root.
 		const root = boundedRoot(ctx, newRootRequest('assistant'));
 		try {
+			const before = await probeEmbeddingRevision(embedder.target);
 			const res = await meterLlmCall(
 				ctx,
 				{ feature: 'embedding_quick_query', root },
@@ -121,9 +127,14 @@ export const ask = authedAction({
 				// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
 				{ onWriteError: 'ignore' }
 			);
+			const space = await measuredEmbeddingSpace(embedder.target, res.embedding, before);
 			embedding = toIndexVector(res.embedding);
+			const target = await ctx.runQuery(internal.aiRouting.embeddingSpaces.searchTarget, {
+				identity: space,
+			});
+			embeddingSpaceId = target?.spaceId;
 		} catch (error) {
-			logInfo('[quickQuery] embed failed', { error: String(error) });
+			logInfo('[quickQuery] embed failed', { error: secretFreeErrorText(error) });
 			embedding = undefined;
 		}
 
@@ -132,7 +143,7 @@ export const ask = authedAction({
 			ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 				queryText: question,
 				embedding,
-				embeddingSpaceKey,
+				embeddingSpaceId,
 				scopeToContact: 'org-wide',
 				includeInboxDerived: canReadInbox,
 				limit: PER_SOURCE_LIMIT,
@@ -141,7 +152,7 @@ export const ask = authedAction({
 			ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
 				queryText: question,
 				embedding,
-				embeddingSpaceKey,
+				embeddingSpaceId,
 				scopeToContact: 'org-wide',
 				limit: PER_SOURCE_LIMIT,
 				root,
