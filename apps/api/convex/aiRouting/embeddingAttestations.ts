@@ -47,11 +47,10 @@ import type { EmbeddingSpaceIdentity } from '../lib/aiRouting/embeddingKeys';
 import { activateSpace, claimColumn, patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
 import {
 	attestedStampFields,
-	columnOwnerOf,
 	identityOf,
 	isIdentityOfTarget,
 	ownsColumn,
-	readAllSpaces,
+	readColumnOwner,
 	readConfiguredTarget,
 	readSearchableSpace,
 	readSpaceByIdentity,
@@ -120,7 +119,7 @@ async function placeAttestedSpace(
 	const known = args.spaceId
 		? await getOrThrow(ctx, args.spaceId, 'Embedding space')
 		: await readSpaceByIdentity(ctx.db, args.identity!);
-	const owner = columnOwnerOf(await readAllSpaces(ctx.db), 'primary');
+	const owner = await readColumnOwner(ctx.db, 'primary');
 	if (owner && owner._id !== known?._id) {
 		throwInvalidState(
 			'The vectors from before provenance are in a column another embedding space now uses. Re-embed them instead.'

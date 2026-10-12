@@ -62,7 +62,9 @@ export const embeddingSpaceTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_identity_key', ['identityKey'])
-		.index('by_state', ['state']),
+		.index('by_state', ['state'])
+		// A column's owner: the highest claim there (`readColumnOwner`).
+		.index('by_slot_claim', ['slot', 'columnClaim']),
 
 	// The evidence that assigns a legacy cohort to a space: an operator's
 	// attestation (`attestation`, `attestedBy` set) or retained deployment or

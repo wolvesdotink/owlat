@@ -23,13 +23,12 @@ import { resolveEndpointLocality } from '../llm/endpointLocality';
 import { embeddingSpaceIdentityKey, type EmbeddingSpaceIdentity } from './embeddingKeys';
 import { corpusRowInput, embeddingInputText, type CorpusTable } from './embeddingInputs';
 import {
-	columnOwnerOf,
 	identityOf,
 	inputChangeFields,
 	isIdentityOfTarget,
 	otherSlot,
 	readActiveSpace,
-	readAllSpaces,
+	readColumnOwner,
 	readConfiguredTarget,
 	readSpaceByIdentity,
 	readStagedSpace,
@@ -82,9 +81,22 @@ export async function endReembedJobs(ctx: MutationCtx): Promise<void> {
 	await cancelJobs(ctx, (job) => job.kind !== 'reembed', Date.now());
 }
 
-/** The next column claim: higher than every claim so far. */
-function nextClaim(spaces: readonly SpaceDoc[]): number {
-	return spaces.reduce((max, space) => Math.max(max, space.columnClaim ?? 0), 0) + 1;
+/** Each column's owner: the space there with the highest claim. */
+type ColumnOwners = Record<EmbeddingSlot, SpaceDoc | null>;
+
+async function readColumnOwners(db: MutationCtx['db']): Promise<ColumnOwners> {
+	return {
+		primary: await readColumnOwner(db, 'primary'),
+		secondary: await readColumnOwner(db, 'secondary'),
+	};
+}
+
+/**
+ * The next column claim: higher than every claim so far. Every space has a
+ * column, and each column's owner holds that column's highest claim.
+ */
+function nextClaim(owners: ColumnOwners): number {
+	return Math.max(owners.primary?.columnClaim ?? 0, owners.secondary?.columnClaim ?? 0) + 1;
 }
 
 /**
@@ -92,10 +104,9 @@ function nextClaim(spaces: readonly SpaceDoc[]): number {
  * use; with nothing to avoid, a column nobody owns, else the one whose owner
  * claimed it longest ago.
  */
-function freeColumn(spaces: readonly SpaceDoc[], avoid: EmbeddingSlot | undefined): EmbeddingSlot {
+function freeColumn(owners: ColumnOwners, avoid: EmbeddingSlot | undefined): EmbeddingSlot {
 	if (avoid) return otherSlot(avoid);
-	const primary = columnOwnerOf(spaces, 'primary');
-	const secondary = columnOwnerOf(spaces, 'secondary');
+	const { primary, secondary } = owners;
 	if (!primary) return 'primary';
 	if (!secondary) return 'secondary';
 	return (primary.columnClaim ?? 0) <= (secondary.columnClaim ?? 0) ? 'primary' : 'secondary';
@@ -131,11 +142,11 @@ export async function claimColumn(
 	options: { slot: EmbeddingSlot; state: SpaceDoc['state']; extra?: Partial<SpaceDoc> }
 ): Promise<SpaceDoc> {
 	const now = Date.now();
-	const spaces = await readAllSpaces(ctx.db);
-	const claim = nextClaim(spaces);
+	const owners = await readColumnOwners(ctx.db);
+	const claim = nextClaim(owners);
 	if ('existing' in space) {
 		const existing = space.existing;
-		const isOwner = columnOwnerOf(spaces, existing.slot)?._id === existing._id;
+		const isOwner = owners[existing.slot]?._id === existing._id;
 		if (isOwner && existing.slot === options.slot) {
 			await ctx.db.patch(existing._id, {
 				state: options.state,
@@ -190,7 +201,7 @@ export async function activateSpace(
 	if (staged && staged._id !== existing?._id) {
 		await ctx.db.patch(staged._id, { state: 'retired', retiredAt: now, updatedAt: now });
 	}
-	const spaces = await readAllSpaces(ctx.db);
+	const owners = await readColumnOwners(ctx.db);
 	const extra = {
 		activatedAt: now,
 		...(outgoing ? { predecessorSpaceId: outgoing._id } : {}),
@@ -202,7 +213,7 @@ export async function activateSpace(
 			ctx,
 			{ existing },
 			{
-				slot: keepsColumn ? existing.slot : freeColumn(spaces, outgoing?.slot),
+				slot: keepsColumn ? existing.slot : freeColumn(owners, outgoing?.slot),
 				state: 'active',
 				extra,
 			}
@@ -212,7 +223,7 @@ export async function activateSpace(
 		activated = await claimColumn(
 			ctx,
 			{ identity, source, configVersion: (space as { configVersion?: number }).configVersion },
-			{ slot: freeColumn(spaces, active?.slot), state: 'active', extra }
+			{ slot: freeColumn(owners, active?.slot), state: 'active', extra }
 		);
 	}
 	await cancelJobs(

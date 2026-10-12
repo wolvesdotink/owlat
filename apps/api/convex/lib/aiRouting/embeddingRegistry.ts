@@ -126,24 +126,24 @@ export async function readSearchableSpace(db: DatabaseReader): Promise<SpaceDoc 
 	return target && isIdentityOfTarget(identityOf(active), target) ? active : null;
 }
 
-/** Every space, for the column-ownership reads (a handful of rows). */
-export async function readAllSpaces(db: DatabaseReader): Promise<SpaceDoc[]> {
-	return db.query('embeddingSpaces').take(500); // bounded: one row per space ever configured
-}
-
-/** The space that owns `slot`: the one there with the highest claim, or null. */
-export function columnOwnerOf(spaces: readonly SpaceDoc[], slot: EmbeddingSlot): SpaceDoc | null {
-	let owner: SpaceDoc | null = null;
-	for (const space of spaces) {
-		if (space.slot !== slot) continue;
-		if (!owner || (space.columnClaim ?? 0) > (owner.columnClaim ?? 0)) owner = space;
-	}
-	return owner;
+/**
+ * The space that owns `slot`: the one there with the highest claim, or null.
+ * One indexed read, however many spaces were ever configured.
+ */
+export async function readColumnOwner(
+	db: DatabaseReader,
+	slot: EmbeddingSlot
+): Promise<SpaceDoc | null> {
+	return db
+		.query('embeddingSpaces')
+		.withIndex('by_slot_claim', (q) => q.eq('slot', slot))
+		.order('desc')
+		.first();
 }
 
 /** Whether `space` still owns its column (its stored vectors there are its own). */
 export async function ownsColumn(db: DatabaseReader, space: SpaceDoc): Promise<boolean> {
-	return columnOwnerOf(await readAllSpaces(db), space.slot)?._id === space._id;
+	return (await readColumnOwner(db, space.slot))?._id === space._id;
 }
 
 // ── The two vector columns of a row ─────────────────────────────────────────
