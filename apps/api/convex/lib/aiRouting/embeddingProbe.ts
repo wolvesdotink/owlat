@@ -30,7 +30,7 @@
  * Runtime-neutral (global `fetch`), so the v8 retrieval seam can use it.
  */
 
-import type { EmbeddingTarget } from '../embeddingSpace';
+import { endpointIdentity, type EmbeddingTarget } from '../embeddingSpace';
 import type { EmbeddingSpaceIdentity } from './embeddingKeys';
 
 const PROBE_TIMEOUT_MS = 3_000;
@@ -85,18 +85,23 @@ export function revisionFromOllamaTags(body: unknown, model: string): ProbedRevi
 	};
 }
 
+/**
+ * The probe's errors name the server by its endpoint identity, never by the
+ * base URL (whose userinfo, path or query may hold a credential), and carry no
+ * `cause`: fetch errors quote the request URL.
+ */
 async function fetchRevision(baseUrl: string, model: string): Promise<ProbedRevision> {
 	const root = ollamaApiRoot(baseUrl);
+	const server = endpointIdentity(root);
 	let response: Response;
 	try {
 		response = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
 	} catch (error) {
-		throw new Error(`The embedding server at ${root} did not answer the revision probe.`, {
-			cause: error,
-		});
+		const kind = error instanceof Error ? error.name : 'Error';
+		throw new Error(`The embedding server ${server} did not answer the revision probe (${kind}).`);
 	}
 	if (response.status >= 500) {
-		throw new Error(`The embedding server at ${root} failed the revision probe.`);
+		throw new Error(`The embedding server ${server} failed the revision probe.`);
 	}
 	if (!response.ok) return {};
 	try {

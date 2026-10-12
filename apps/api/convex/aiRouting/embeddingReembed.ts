@@ -25,6 +25,7 @@ import type { Id } from '../_generated/dataModel';
 import { authedAction } from '../lib/authedFunctions';
 import { throwInvalidState } from '../_utils/errors';
 import { logInfo } from '../lib/runtimeLog';
+import { secretFreeErrorText } from '../lib/embeddingSpace';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import { rootRequest } from '../lib/llm/requestMeter';
 import {
@@ -64,7 +65,9 @@ export const kickoff = internalAction({
 		} catch (error) {
 			// A misconfigured embedder fails loudly where it is used; the local
 			// server may just be down. Either way the next cron run tries again.
-			logInfo('[embedding.kickoff] local embedder unavailable', { error: String(error) });
+			logInfo('[embedding.kickoff] local embedder unavailable', {
+				error: secretFreeErrorText(error),
+			});
 			return;
 		}
 		const active = await ctx.runMutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
@@ -169,7 +172,7 @@ export const reembedRow = internalAction({
 			});
 		} catch (error) {
 			// The daily local pass embeds it instead.
-			logInfo('[embedding.reembedRow] failed', { error: String(error) });
+			logInfo('[embedding.reembedRow] failed', { error: secretFreeErrorText(error) });
 		}
 	},
 });
@@ -207,7 +210,7 @@ export const runBatch = internalAction({
 				embedder = await resolveEmbedderForSpace(ctx, page.target);
 			} catch (error) {
 				embedder = null;
-				logInfo('[embedding.reembed] embedder unavailable', { error: String(error) });
+				logInfo('[embedding.reembed] embedder unavailable', { error: secretFreeErrorText(error) });
 			}
 			if (!embedder) {
 				await pause('provider_unavailable', 'No embedder can be built for the target space.');
@@ -230,7 +233,9 @@ export const runBatch = internalAction({
 					);
 				} catch (error) {
 					// The revision probe could not reach the server: the whole page failed.
-					logInfo('[embedding.reembed] revision probe failed', { error: String(error) });
+					logInfo('[embedding.reembed] revision probe failed', {
+						error: secretFreeErrorText(error),
+					});
 					return { vectors: texts.map(() => null), space: null };
 				}
 			};

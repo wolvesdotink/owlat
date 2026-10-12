@@ -19,6 +19,7 @@ import { resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
 import { measuredEmbeddingSpace, probeEmbeddingRevision } from '../lib/aiRouting/embeddingProbe';
 import { embeddingSpaceEntryKey } from '../lib/aiRouting/embeddingKeys';
 import { logInfo } from '../lib/runtimeLog';
+import { secretFreeErrorText } from '../lib/embeddingSpace';
 import type { VectorTable } from './vectorCorpus';
 
 /**
@@ -91,7 +92,7 @@ export async function embedRetrievalQuery(
 		embedding = toIndexVector(result.embedding);
 		measured = await measuredEmbeddingSpace(embedder.target, result.embedding, before);
 	} catch (error) {
-		logInfo(`${logTag} embed failed`, { error: String(error) });
+		logInfo(`${logTag} embed failed`, { error: secretFreeErrorText(error) });
 		return { kind: 'failed' };
 	}
 	// The vector is only comparable with its own space, and only an active space

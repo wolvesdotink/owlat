@@ -10,6 +10,7 @@ import {
 	isSameEmbeddingTarget,
 	nextEmbeddingModelVersion,
 	resolveStoredEmbeddingModel,
+	secretFreeErrorText,
 	storedEmbeddingTarget,
 } from '../embeddingSpace';
 import { embeddingProviderFor } from '../llmProviders';
@@ -183,6 +184,24 @@ describe('embedding target', () => {
 		expect(storedEmbeddingTarget({ embeddingProviderKind: 'openaiCompatible' }).isLocal).toBe(true);
 		expect(storedEmbeddingTarget({ embeddingProviderKind: 'local' }).isLocal).toBe(true);
 		expect(storedEmbeddingTarget({ embeddingProviderKind: 'openai' }).isLocal).toBe(false);
+	});
+});
+
+describe('secretFreeErrorText (F18)', () => {
+	it('replaces every URL in error text with its endpoint identity', () => {
+		const url = 'http://ops:hunter2@gpu-box:11434/tok-s3cret/v1/embeddings?key=k3y';
+		const sdkError = new Error(
+			`Cannot connect to API: Request cannot be constructed from a URL that includes credentials: ${url}`
+		);
+		const text = secretFreeErrorText(sdkError);
+		for (const secret of ['ops', 'hunter2', 'tok-s3cret', 'k3y'])
+			expect(text).not.toContain(secret);
+		expect(text).toContain(`Cannot connect to API`);
+		expect(text).toContain(endpointIdentity(url));
+		expect(secretFreeErrorText(`Failed to parse URL from "${url}" and https://a.example/x`)).toBe(
+			`Failed to parse URL from "${endpointIdentity(url)}" and ${endpointIdentity('https://a.example/x')}`
+		);
+		expect(secretFreeErrorText(new Error('no url here'))).toBe('Error: no url here');
 	});
 });
 

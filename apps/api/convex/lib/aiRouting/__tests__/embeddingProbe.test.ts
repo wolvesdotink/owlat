@@ -142,6 +142,34 @@ describe('measuredEmbeddingSpace', () => {
 		);
 	});
 
+	it('names the server by its endpoint identity, never by its credential-bearing URL (F18)', async () => {
+		const secrets = ['ops', 'hunter2', 'tok-s3cret', 'k3y'];
+		vi.stubEnv(
+			'LOCAL_EMBEDDING_BASE_URL',
+			'http://ops:hunter2@gpu-box:11434/tok-s3cret/v1?key=k3y'
+		);
+		const target = local();
+		const failures: unknown[] = [];
+		fetchMock.mockImplementationOnce(async (url: string) => {
+			throw new TypeError(
+				`Request cannot be constructed from a URL that includes credentials: ${url}`
+			);
+		});
+		await probeEmbeddingRevision(target).catch((error: unknown) => failures.push(error));
+		fetchMock.mockResolvedValueOnce(new Response('down', { status: 503 }));
+		await probeEmbeddingRevision(target).catch((error: unknown) => failures.push(error));
+
+		expect(failures).toHaveLength(2);
+		for (const failure of failures) {
+			const error = failure as Error;
+			const exposed = [String(error), error.message, error.stack ?? '', String(error.cause ?? '')];
+			for (const text of exposed) for (const secret of secrets) expect(text).not.toContain(secret);
+			expect(error.message).toContain('http://gpu-box:11434/~');
+		}
+		// The probe did reach the configured URL; only its errors are redacted.
+		expect(String(fetchMock.mock.calls[0]![0])).toContain('hunter2');
+	});
+
 	it('never probes a hosted embedder', async () => {
 		const openai = storedEmbeddingTarget({ embeddingProviderKind: 'openai' });
 		const space = await measuredEmbeddingSpace(

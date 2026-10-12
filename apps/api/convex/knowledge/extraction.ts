@@ -15,6 +15,7 @@ import { readMailMessageText } from '../lib/messageBody';
 import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { resolveLanguageModel, resolveIndexEmbedder } from '../lib/llmProvider';
 import { logError, logInfo } from '../lib/runtimeLog';
+import { secretFreeErrorText } from '../lib/embeddingSpace';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { meterLlmCall } from '../analytics/meteredSpend';
 import { rootRequest } from '../lib/llm/requestMeter';
@@ -168,7 +169,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 			// message fails to process. Name the source so the gap is traceable.
 			logError('[knowledge.extractFromMessage] failed', {
 				inboundMessageId: args.inboundMessageId,
-				error,
+				error: secretFreeErrorText(error),
 			});
 		}
 	},
@@ -257,7 +258,10 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 				extractRoot
 			);
 		} catch (error) {
-			logError('[knowledge.extractFromFile] failed', { fileId: args.fileId, error });
+			logError('[knowledge.extractFromFile] failed', {
+				fileId: args.fileId,
+				error: secretFreeErrorText(error),
+			});
 		}
 	},
 });
@@ -374,7 +378,7 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 		} catch (error) {
 			logError('[knowledge.extractFromMailMessage] failed', {
 				mailMessageId: args.mailMessageId,
-				error,
+				error: secretFreeErrorText(error),
 			});
 		}
 	},

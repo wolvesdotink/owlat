@@ -37,6 +37,7 @@ import { anchorActionDeadline, boundedRoot } from './lib/llm/actionDeadline';
 import { meterLlmCall } from './analytics/meteredSpend';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
+import { secretFreeErrorText } from './lib/embeddingSpace';
 import { throwInvalidInput } from './_utils/errors';
 
 // How many results to pull from EACH source before synthesis, and how much of
@@ -133,7 +134,7 @@ export const ask = authedAction({
 			});
 			embeddingSpaceId = target?.spaceId;
 		} catch (error) {
-			logInfo('[quickQuery] embed failed', { error: String(error) });
+			logInfo('[quickQuery] embed failed', { error: secretFreeErrorText(error) });
 			embedding = undefined;
 		}
 

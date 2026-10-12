@@ -33,6 +33,7 @@ import type { MeasuredSpace } from './lib/aiRouting/embeddingRegistry';
 import { embedRetrievalQuery, searchSpaceVectors } from './knowledge/vectorSearch';
 import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
+import { secretFreeErrorText } from './lib/embeddingSpace';
 import { runLlmObject } from './lib/llm/dispatch';
 import { meterLlmCall } from './analytics/meteredSpend';
 import { runEmbedding } from './lib/llm/embed';
@@ -228,7 +229,7 @@ ${textForAI}`,
 				logError('[semantic_file] embedding generation failed', {
 					fileId: args.fileId,
 					filename: file.filename,
-					error,
+					error: secretFreeErrorText(error),
 				});
 			}
 		}

@@ -150,6 +150,20 @@ export function endpointIdentity(url: string): string {
 	return route === '' ? origin : `${origin}/~${sha256Hex(route).slice(0, 32)}`;
 }
 
+/** Any `scheme://…` URL in free text, up to whitespace or a quote. */
+const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/gi;
+
+/**
+ * Error text that may leave the embedding code (a log line, a job's stored
+ * `lastError`), with every URL in it replaced by its {@link endpointIdentity}.
+ * A base URL may carry credentials in its userinfo, path or query, and fetch
+ * and SDK errors quote the request URL ("Cannot connect to API: …", "Failed to
+ * parse URL from …"); the identity keeps the origin and hashes the rest.
+ */
+export function secretFreeErrorText(error: unknown): string {
+	return String(error).replace(URL_IN_TEXT, (url) => endpointIdentity(url));
+}
+
 /**
  * Whether an embedding endpoint is local (free) or hosted (paid), by the
  * ledger's one rule (`lib/llm/endpointLocality.ts`): the `local` kind, or an
