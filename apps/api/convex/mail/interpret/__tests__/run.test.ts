@@ -228,6 +228,93 @@ describe('interpretMessage', () => {
 		}
 	});
 
+	it('backs a verifier budget deferral off and verifies the stored output, never extracting again (Sol r3 F4)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedCaptured(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		const extractions = () =>
+			llm.runLlmObject.mock.calls.filter(([opts]) => opts.schema === briefModelSchema).length;
+		const counted = () =>
+			t.run(async (ctx) =>
+				(await ctx.db.query('messageInterpretations').collect()).find((row) => row.isCounted)
+			);
+		const makeDue = async () => {
+			const row = await counted();
+			if (row) await t.run(async (ctx) => ctx.db.patch(row._id, { nextRetryAt: 0 }));
+		};
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			if (schema === briefModelSchema) return { object: modelOutput('s0') };
+			throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+		});
+
+		// 1. Extracted once; the verifier is refused. Backed off, not due at once,
+		// with the refusal's reason on the answer (Sol r3 F5).
+		const before = Date.now();
+		const first = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(first).toMatchObject({
+			status: 'partial',
+			errorCode: 'budget',
+			budgetRefusal: { reason: 'daily_ceiling', limit: 'ceiling' },
+		});
+		if (first.status === 'gone') throw new Error('unreachable');
+		expect(first.retryAt).toBeGreaterThanOrEqual(before + 5 * 60 * 1000);
+		expect(await counted()).toMatchObject({ budgetDeferrals: 1, retryCount: 0 });
+		expect((await counted())?.budgetDeferredOutput).toBeDefined();
+		expect(extractions()).toBe(1);
+
+		// 2. Not due: answered from the row, no call at all.
+		llm.runLlmObject.mockClear();
+		const early = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(early).toMatchObject({ status: 'partial', isReplayed: true });
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+
+		// 3. Due, still refused: the stored output is verified, nothing is
+		// extracted, and the backoff grows even though the reducer replays.
+		await makeDue();
+		const second = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(second).toMatchObject({ status: 'partial', errorCode: 'budget' });
+		expect(extractions()).toBe(0);
+		expect(llm.runLlmObject).toHaveBeenCalledTimes(1); // the verifier only
+		if (second.status === 'gone') throw new Error('unreachable');
+		expect(second.retryAt).toBeGreaterThanOrEqual(Date.now() + 9 * 60 * 1000);
+		expect(await counted()).toMatchObject({ budgetDeferrals: 2, retryCount: 0 });
+
+		// 4. Due, refused at the gate (a ceiling with an unverifiable spend
+		// state): deferred again with no call at all, the backoff growing.
+		await makeDue();
+		llm.runLlmObject.mockClear();
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
+		try {
+			const gated = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(gated).toMatchObject({
+				status: 'partial',
+				errorCode: 'budget',
+				budgetRefusal: { reason: 'spend_unverifiable' },
+			});
+		} finally {
+			vi.unstubAllEnvs();
+		}
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+		expect(await counted()).toMatchObject({ budgetDeferrals: 3, retryCount: 0 });
+
+		// 5. Due, the verifier answers: complete, from the stored output, the
+		// deferral cleared.
+		await makeDue();
+		llm.runLlmObject.mockClear();
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) =>
+			schema === briefModelSchema
+				? { object: modelOutput('s0') }
+				: { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } }
+		);
+		const done = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		expect(done).toMatchObject({ status: 'complete' });
+		expect(extractions()).toBe(0);
+		const row = await counted();
+		expect(row?.budgetDeferredOutput).toBeUndefined();
+		expect(row?.budgetDeferrals).toBeUndefined();
+	});
+
 	it('fails soft when the model throws', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai']);

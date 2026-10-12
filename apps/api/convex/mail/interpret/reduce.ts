@@ -172,6 +172,11 @@ export const applyInterpretation = internalMutation({
 		) {
 			// A replayed outcome is an outcome: the source is no longer outstanding.
 			await settleSource(ctx, sourceKey, 'recorded');
+			// A verifier deferred again: its backoff moves on even though the result
+			// is the same, or the replay would leave the retry due at once (Sol r3 F4).
+			const nextRetryAt = args.budgetDeferral
+				? await refreshBudgetDeferral(ctx, existing._id, args, now)
+				: existing.nextRetryAt;
 			return {
 				outcome: 'replayed',
 				status: existing.status,
@@ -179,7 +184,7 @@ export const applyInterpretation = internalMutation({
 				interpretationRevision: brief.interpretationRevision,
 				createdItemIds: [],
 				completeness: brief.completeness,
-				...(existing.nextRetryAt !== undefined ? { nextRetryAt: existing.nextRetryAt } : {}),
+				...(nextRetryAt !== undefined ? { nextRetryAt } : {}),
 			};
 		}
 		if (brief.interpretationRevision !== args.expectedRevision) {
@@ -236,6 +241,7 @@ export const applyInterpretation = internalMutation({
 				: {}),
 			...(args.sourceVersion ? { sourceVersion: args.sourceVersion } : {}),
 			...(args.retryCount !== undefined ? { retryCount: args.retryCount } : {}),
+			...(args.budgetDeferral ? await budgetDeferralFields(args.budgetDeferral) : {}),
 			sourceAt: args.sourceAt,
 			isCurrent: !isKeepingPrevious,
 			isCounted: true,
@@ -298,7 +304,15 @@ export const applyInterpretation = internalMutation({
 			fold = { ...writeBase, after: loaded.state, rows: loaded.rows, factRows: loaded.factRows };
 		}
 
-		const nextRetryAt = nextRetryAtOf({ status, errorCode, retryCount: args.retryCount }, now);
+		const nextRetryAt = nextRetryAtOf(
+			{
+				status,
+				errorCode,
+				retryCount: args.retryCount,
+				budgetDeferrals: args.budgetDeferral?.deferrals,
+			},
+			now
+		);
 		if (nextRetryAt !== undefined) await ctx.db.patch(interpretationId, { nextRetryAt });
 		const stored = { status, skipReason: args.skipReason };
 		const sourceCounts = shiftCount(
@@ -397,3 +411,42 @@ export const applyInterpretation = internalMutation({
 		};
 	},
 });
+
+/** The row fields of a verifier budget deferral: the output sealed, and the count. */
+async function budgetDeferralFields(deferral: { output: string; deferrals: number }) {
+	return {
+		budgetDeferredOutput: await sealBodyAtWrite(deferral.output),
+		budgetDeferrals: deferral.deferrals,
+	};
+}
+
+/** A replayed verifier deferral: the stored output and count refreshed, the retry backed off. */
+async function refreshBudgetDeferral(
+	ctx: MutationCtx,
+	interpretationId: Id<'messageInterpretations'>,
+	args: {
+		status: InterpretationStatus;
+		errorCode?: string;
+		retryCount?: number;
+		budgetDeferral?: { output: string; deferrals: number };
+	},
+	now: number
+): Promise<number | undefined> {
+	if (!args.budgetDeferral) return undefined;
+	const nextRetryAt = nextRetryAtOf(
+		{
+			status: args.status,
+			errorCode: args.errorCode,
+			retryCount: args.retryCount,
+			budgetDeferrals: args.budgetDeferral.deferrals,
+		},
+		now
+	);
+	await ctx.db.patch(interpretationId, {
+		...(await budgetDeferralFields(args.budgetDeferral)),
+		...(args.errorCode ? { errorCode: args.errorCode } : {}),
+		nextRetryAt,
+		updatedAt: now,
+	});
+	return nextRetryAt;
+}

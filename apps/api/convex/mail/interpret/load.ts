@@ -399,6 +399,8 @@ function extractionSummary(row: Doc<'messageInterpretations'>) {
 		retryCount: row.retryCount,
 		nextRetryAt: row.nextRetryAt,
 		errorCode: row.errorCode,
+		budgetDeferrals: row.budgetDeferrals,
+		hasDeferredOutput: row.budgetDeferredOutput !== undefined,
 	};
 }
 

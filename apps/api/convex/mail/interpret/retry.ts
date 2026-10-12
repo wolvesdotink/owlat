@@ -7,6 +7,10 @@
  *     repairs the extraction and the reducer replays the thread.
  *   - A gate refusal (`ai_off`, `budget`) costs nothing to re-check, so it is
  *     due on every call and never runs out.
+ *   - A verifier spend admission refused (`budget` with `budgetDeferrals`,
+ *     Sol r3 F4) is paid work: it backs off from 5 minutes, doubling to 6
+ *     hours, for at most {@link MAX_BUDGET_DEFERRALS} deferrals. Its retry
+ *     verifies the stored output; it does not extract again.
  *   - Deterministic outcomes (overflow, grounding, the replay budget,
  *     eligibility) are not retried.
  */
@@ -24,6 +28,15 @@ const BACKOFF_CODES: ReadonlySet<string> = new Set([
 ]);
 const GATE_CODES: ReadonlySet<string> = new Set(['ai_off', 'budget']);
 
+/** Verifier budget deferrals of one revision before it waits for a new trigger. */
+export const MAX_BUDGET_DEFERRALS = 24;
+const BUDGET_BACKOFF_MAX_MS = 6 * 60 * 60 * 1000;
+
+/** Backoff before the verifier retry that follows deferral `deferrals` (1-based). */
+export function budgetBackoffMs(deferrals: number): number {
+	return Math.min(BUDGET_BACKOFF_MAX_MS, BASE_BACKOFF_MS * 2 ** Math.max(0, deferrals - 1));
+}
+
 /** Backoff before attempt `retryCount + 1`. */
 export function backoffMs(retryCount: number): number {
 	return BASE_BACKOFF_MS * 4 ** Math.max(0, retryCount);
@@ -31,11 +44,15 @@ export function backoffMs(retryCount: number): number {
 
 /** When the next attempt is due, or undefined when none will be made. */
 export function nextRetryAtOf(
-	row: { status: string; errorCode?: string; retryCount?: number },
+	row: { status: string; errorCode?: string; retryCount?: number; budgetDeferrals?: number },
 	now: number
 ): number | undefined {
 	if (row.status !== 'partial' && row.status !== 'failed') return undefined;
 	const code = row.errorCode ?? '';
+	if (code === 'budget' && row.budgetDeferrals !== undefined) {
+		if (row.budgetDeferrals > MAX_BUDGET_DEFERRALS) return undefined;
+		return now + budgetBackoffMs(row.budgetDeferrals);
+	}
 	if (GATE_CODES.has(code)) return now;
 	// `retryCount` counts admitted attempts (model calls), the first included:
 	// the first read plus at most MAX_RETRIES repairs.

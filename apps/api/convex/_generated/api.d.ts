@@ -1287,8 +1287,10 @@ import type * as mail_interpret___eval___todayClassifier from '../mail/interpret
 import type * as mail_interpret_briefShape from '../mail/interpret/briefShape.js';
 import type * as mail_interpret_briefTop from '../mail/interpret/briefTop.js';
 import type * as mail_interpret_defer from '../mail/interpret/defer.js';
+import type * as mail_interpret_deferredOutput from '../mail/interpret/deferredOutput.js';
 import type * as mail_interpret_delegation from '../mail/interpret/delegation.js';
 import type * as mail_interpret_exactWording from '../mail/interpret/exactWording.js';
+import type * as mail_interpret_extractOutput from '../mail/interpret/extractOutput.js';
 import type * as mail_interpret_ground from '../mail/interpret/ground.js';
 import type * as mail_interpret_purgeRows from '../mail/interpret/purgeRows.js';
 import type * as mail_interpret_quoteMatch from '../mail/interpret/quoteMatch.js';
@@ -2982,8 +2984,10 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/briefShape': typeof mail_interpret_briefShape;
 	'mail/interpret/briefTop': typeof mail_interpret_briefTop;
 	'mail/interpret/defer': typeof mail_interpret_defer;
+	'mail/interpret/deferredOutput': typeof mail_interpret_deferredOutput;
 	'mail/interpret/delegation': typeof mail_interpret_delegation;
 	'mail/interpret/exactWording': typeof mail_interpret_exactWording;
+	'mail/interpret/extractOutput': typeof mail_interpret_extractOutput;
 	'mail/interpret/ground': typeof mail_interpret_ground;
 	'mail/interpret/purgeRows': typeof mail_interpret_purgeRows;
 	'mail/interpret/quoteMatch': typeof mail_interpret_quoteMatch;

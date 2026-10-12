@@ -23,7 +23,7 @@ import type { ActionCtx } from '../../_generated/server';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
 import { meterLlmCall } from '../../analytics/meteredSpend';
-import { admissionRefusalOf } from '../../lib/llm/admissionPort';
+import { admissionRefusalOf, type AdmissionRefusalData } from '../../lib/llm/admissionPort';
 import type { AdmissionPriority } from '../../lib/validators/aiRouting';
 import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
@@ -85,10 +85,13 @@ export async function verifyClaims(
 	isIncomplete: boolean;
 	/** A batch was refused by spend admission: the run records `budget`, not `verify`. */
 	isBudgetDeferred: boolean;
+	/** The refusal's reason and limit, for a caller that holds on it (Sol r3 F5). */
+	refusal?: AdmissionRefusalData;
 }> {
 	const verdicts = new Map<string, VerifyVerdict>();
 	let isIncomplete = false;
 	let isBudgetDeferred = false;
+	let refusal: AdmissionRefusalData | undefined;
 	if (claims.length === 0) return { verdicts, isIncomplete, isBudgetDeferred };
 	const model = await resolveLanguageModel(ctx, 'guard');
 	for (const batch of batchClaims(claims)) {
@@ -116,13 +119,14 @@ export async function verifyClaims(
 			isIncomplete = true;
 			// Spend admission refused the batch (ADR-0073, D1): not a verification
 			// failure. The rest would be refused too; the run defers instead.
-			if (admissionRefusalOf(error)) {
+			refusal = admissionRefusalOf(error) ?? undefined;
+			if (refusal) {
 				isBudgetDeferred = true;
 				break;
 			}
 		}
 	}
-	return { verdicts, isIncomplete, isBudgetDeferred };
+	return { verdicts, isIncomplete, isBudgetDeferred, ...(refusal ? { refusal } : {}) };
 }
 
 /**

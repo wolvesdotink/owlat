@@ -23,10 +23,14 @@ import { isFeatureEnabled } from '../../lib/featureFlags';
 import { budgetHeadroom } from '../../aiRouting/enforcedBudget';
 import { interpretModeValidator } from '../../lib/validators/threadBrief';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
+import { BUDGET_HOLD_REASONS, type BudgetHoldReason } from '@owlat/shared/aiRouting';
+import { literalUnion } from '../../lib/literalUnion';
 
 export type InterpretGateVerdict =
 	| { isAllowed: true }
-	| { isAllowed: false; code: 'ai_off' | 'budget' };
+	| { isAllowed: false; code: 'ai_off' }
+	/** With the refusal's reason and limit, for a caller that holds on it (Sol r3 F5). */
+	| { isAllowed: false; code: 'budget'; reason: BudgetHoldReason; limit: string };
 
 /**
  * The gate itself, for a query or a mutation: the run checks it before the
@@ -42,7 +46,9 @@ export async function interpretGate(
 	const budget = await budgetHeadroom(ctx, {
 		priority: mode === 'brief' ? 'background' : 'pipeline',
 	});
-	if (!budget.isAdmitted) return { isAllowed: false, code: 'budget' };
+	if (!budget.isAdmitted) {
+		return { isAllowed: false, code: 'budget', reason: budget.reason, limit: budget.limit };
+	}
 	return { isAllowed: true };
 }
 
@@ -50,9 +56,12 @@ export const checkAllowed = internalQuery({
 	args: { mode: interpretModeValidator },
 	returns: v.union(
 		v.object({ isAllowed: v.literal(true) }),
+		v.object({ isAllowed: v.literal(false), code: v.literal('ai_off') }),
 		v.object({
 			isAllowed: v.literal(false),
-			code: v.union(v.literal('ai_off'), v.literal('budget')),
+			code: v.literal('budget'),
+			reason: literalUnion(BUDGET_HOLD_REASONS),
+			limit: v.string(),
 		})
 	),
 	handler: (ctx, args): Promise<InterpretGateVerdict> => interpretGate(ctx, args.mode),
