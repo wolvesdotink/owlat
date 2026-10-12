@@ -20,31 +20,24 @@
  *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale;
  *                a changed body or mode starts the run over once
  *
- * FAIL-SOFT: a refusal or any failure records a `failed` extraction, so the
- * brief says it is incomplete; it never deletes items and never reads as
- * "nothing to do". Never throws.
- *
- * `runInterpretation` is the plain core the wiring calls inside its own
- * actions (the Postbox needs-reply classifier, the team context step);
- * `interpretMessage` is the schedulable internal action around it.
+ * FAIL-SOFT: any refusal or failure records a `failed` extraction, so the brief says
+ * it is incomplete. Never deletes items, never reads as "nothing to do", never throws.
+ * `runInterpretation` is the plain core the wiring calls inside its own actions
+ * (needs-reply, the team context step); `interpretMessage` is its action.
  */
 
-import { v, type Infer } from 'convex/values';
+import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
-import { recordLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall } from '../../analytics/meteredSpend';
 import { logWarn } from '../../lib/runtimeLog';
-import type { InterpretMode, InterpretationStatus } from '@owlat/shared/threadBrief';
+import type { InterpretMode } from '@owlat/shared/threadBrief';
 import {
 	interpretModeValidator,
 	interpretationSourceValidator,
 	type InterpretationSource,
-	type interpretCoverageValidator,
-	type sourceManifestValidator,
 } from '../../lib/validators/threadBrief';
 import {
 	INTERPRET_EXTRACTOR_VERSION,
@@ -54,18 +47,28 @@ import {
 } from './schema';
 import { buildInterpretPromptParts, renderSegments } from './prompt';
 import { cachedPromptInput } from '../../lib/llm/promptCacheInput';
-import { predecessorsPending, runDeferredPredecessors, type PredecessorMode } from './defer';
+import { predecessorRoot, predecessorsPending, runDeferredPredecessors } from './defer';
+import {
+	finish,
+	type InterpretArgs,
+	type InterpretRunResult,
+	type Restart,
+	type RunRecord,
+} from './runShape';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
 import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
 import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from './pipeline';
 import { clampOutput } from './clamp';
-import { needsReplyProjectionOf, type NeedsReplyProjection } from './needsReplyProjection';
-import { verifyClaims } from './verify';
+import { needsReplyProjectionOf } from './needsReplyProjection';
+import { interpretRoot, verifyClaims } from './verify';
 import { isRetryDue } from './retry';
-import type { ReduceResult } from './reduceInput';
 import type { ApplyOutcome } from './reduce';
 import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import { llmRootContextValidator } from '../../lib/llmUsageTags';
+
+export type { InterpretArgs, InterpretRunResult } from './runShape';
 
 export const INTERPRET_FEATURE = 'interpret';
 /** Reducer attempts against a moving revision before the run gives up as partial. */
@@ -73,45 +76,7 @@ const MAX_APPLY_ATTEMPTS = 3;
 /** Whole-run attempts when the body or the thread's mode changed under it. */
 const MAX_RUN_ATTEMPTS = 2;
 
-export interface InterpretArgs {
-	source: InterpretationSource;
-	/** Ignored: the thread's current mode and the enqueue-time snapshot (`sources.ts`) decide. */
-	mode?: InterpretMode;
-	isLive?: boolean;
-	precedence?: string;
-	listId?: string;
-	predecessors?: PredecessorMode; // D10: how earlier deferred mail is handled (defer.ts)
-}
-
-export type InterpretRunResult =
-	| {
-			/** The stored extraction's status, also when it was reused. */
-			status: InterpretationStatus;
-			/** The extraction was reused (dedupe or the reducer's replay check). */
-			isReplayed: boolean;
-			interpretationId?: Id<'messageInterpretations'>;
-			createdItemIds: Id<'threadItems'>[];
-			/** The Postbox needs-reply inputs, when the model read the message. */
-			projection?: NeedsReplyProjection;
-			errorCode?: string;
-			/** An incomplete extraction will be repaired by a run at or after this time. */
-			retryAt?: number;
-	  }
-	/** The source or its thread is gone, or a purge ran meanwhile: nothing written. */
-	| { status: 'gone' };
-
 type Loaded = NonNullable<Awaited<ReturnType<typeof loadState>>>;
-type RunRecord = {
-	contentRevision: string;
-	status: InterpretationStatus;
-	skipReason?: 'short' | 'bulk' | 'security' | 'undecryptable' | 'ineligible';
-	errorCode?: string;
-	sourceManifest?: Infer<typeof sourceManifestValidator>;
-	coverage?: Infer<typeof interpretCoverageValidator>;
-	result?: ReduceResult;
-	sourceVersion?: string;
-	retryCount?: number;
-};
 
 function loadState(ctx: ActionCtx, args: InterpretArgs) {
 	return ctx.runQuery(internal.mail.interpret.load.loadForInterpretation, { source: args.source });
@@ -162,47 +127,20 @@ async function apply(
 	return outcome;
 }
 
-/** The run's answer from the reducer's; `restart` when the run must start over. */
-function finish(
-	outcome: ApplyOutcome,
-	extra: { projection?: NeedsReplyProjection; errorCode?: string } = {}
-): InterpretRunResult | Restart {
-	switch (outcome.outcome) {
-		case 'gone':
-		case 'erased':
-			return { status: 'gone' };
-		case 'modeChanged':
-		case 'sourceChanged':
-			return { restart: outcome.outcome };
-		case 'stale':
-			// The revision kept moving: nothing applied this time; the next message retries.
-			return {
-				status: 'failed',
-				isReplayed: false,
-				createdItemIds: [],
-				...extra,
-				errorCode: 'stale',
-			};
-		case 'applied':
-		case 'replayed':
-			return {
-				status: outcome.status,
-				isReplayed: outcome.outcome === 'replayed',
-				interpretationId: outcome.interpretationId,
-				createdItemIds: outcome.createdItemIds,
-				...extra,
-				...(outcome.nextRetryAt !== undefined ? { retryAt: outcome.nextRetryAt } : {}),
-			};
-	}
-}
-
 /** Interpret one message (see the module doc). Never throws. */
 export async function runInterpretation(
 	ctx: ActionCtx,
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
+	anchorActionDeadline(ctx); // one model budget per action, from here (ADR-0073)
+	// D10: earlier deferred mail of the thread first, under the caller's deadline (defer.ts).
+	const deadlineAt = args.root?.deadlineAt;
 	const readFirst = (source: InterpretationSource) =>
-		runInterpretation(ctx, { source, predecessors: 'already_read' });
+		runInterpretation(ctx, {
+			source,
+			predecessors: 'already_read',
+			...predecessorRoot(source, deadlineAt),
+		});
 	const pending = await runDeferredPredecessors(ctx, args.source, readFirst, args);
 	if (pending) return predecessorsPending(pending);
 	let reason: Restart['restart'] = 'sourceChanged';
@@ -224,9 +162,6 @@ export async function runInterpretation(
 		? { status: 'failed', isReplayed: false, createdItemIds: [], errorCode }
 		: out;
 }
-
-/** The run must start over: the body or the thread's mode changed under it. */
-type Restart = { restart: 'modeChanged' | 'sourceChanged' };
 
 async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRunResult | Restart> {
 	const loaded = await loadState(ctx, args);
@@ -267,7 +202,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 
 	// D13 (ADR-0073): a Team message whose scan skipped the model guard gets it
 	// before this generative consumer; one it flags is not interpreted.
-	if (!(await guardAllowsInterpretation(ctx, args.source))) {
+	if (!(await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt))) {
 		const skip = { skipReason: 'security' as const, errorCode: 'guard_flagged' };
 		const record = { contentRevision: 'skip', status: 'skipped' as const, ...skip };
 		return finish(await apply(ctx, args, loaded, record), { errorCode: skip.errorCode });
@@ -381,19 +316,24 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			locales: loaded.locales,
 		});
 		const { truncatedSegmentIds } = renderSegments(input.message.segments);
+		const root = args.root ?? interpretRoot(args.source);
 		const model = await resolveLanguageModel(ctx, 'extract');
 		const parts = buildInterpretPromptParts(input);
 		const prompt = await cachedPromptInput(ctx, 'mail.extract', model, parts);
-		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+		const { object } = await meterLlmCall(
 			ctx,
-			INTERPRET_FEATURE,
-			runLlmObject({ model, schema: interpretOutputSchemaFor(mode), ...prompt, temperature: 0 })
-		);
-		try {
-			await recordLlmSpend(ctx, INTERPRET_FEATURE, tokenUsage, modelUsed);
-		} catch {
+			{ feature: INTERPRET_FEATURE, root },
+			(meter) =>
+				runLlmObject({
+					meter,
+					model,
+					schema: interpretOutputSchemaFor(mode),
+					...prompt,
+					temperature: 0,
+				}),
 			// A lost ledger row under-counts; dropping the interpretation over it would be worse.
-		}
+			{ onWriteError: 'ignore' }
+		);
 
 		// Validate with the lenient parse schema (the model schema only shapes the request).
 		const output = clampOutput(interpretOutputSchema.parse(object) as InterpretOutput);
@@ -408,7 +348,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			itemText: (id) => itemText.get(id),
 			factText: (id) => factText.get(id),
 		});
-		const verified = await verifyClaims(ctx, claims);
+		const verified = await verifyClaims(ctx, claims, root);
 
 		const freshText = segmented.segments
 			.filter((s) => s.kind === 'fresh')
@@ -495,6 +435,7 @@ export const interpretMessage = internalAction({
 		isLive: v.optional(v.boolean()),
 		precedence: v.optional(v.string()),
 		listId: v.optional(v.string()),
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args): Promise<InterpretRunResult> => runInterpretation(ctx, args),
 });

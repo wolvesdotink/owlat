@@ -3,11 +3,13 @@
  * the security-scan guard windows, classify and each clarify call
  * (interpretation, which replaced the context step's quarantined extraction,
  * is metered in `mail/interpret/run.ts`). A failed call records the usage it carries
- * (`partialUsageOf`); one that carries none records nothing. The draft step is
- * covered in `draft/__tests__/draftSpend.test.ts`.
+ * (`partialUsageOf`); one that carries none is still a request, written with no
+ * usage (ADR-0073). The draft step is covered in `draft/__tests__/draftSpend.test.ts`.
  *
- * The LLM dispatch seam and the provider factory are mocked; the spend helper is
- * real, so a ledger row is a call to the `analytics/llmUsage:record` mutation.
+ * The LLM dispatch seam and the provider factory are mocked; the mocked dispatch
+ * records one request per call on the meter (`meteredDispatch.testlib.ts`) and
+ * the spend helper is real, so a ledger row is one request of an
+ * `analytics/llmUsage:recordRequests` mutation.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -19,10 +21,13 @@ const mocks = vi.hoisted(() => ({
 	resolveLanguageModel: vi.fn(() => 'mock-model'),
 }));
 
-vi.mock('../../../lib/llm/dispatch', () => ({
-	runLlmObject: mocks.runLlmObject,
-	runLlmText: mocks.runLlmText,
-}));
+vi.mock('../../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
+	return {
+		runLlmObject: metered((opts: unknown) => mocks.runLlmObject(opts)),
+		runLlmText: metered((opts: unknown) => mocks.runLlmText(opts)),
+	};
+});
 vi.mock('../../../lib/llmProvider', () => ({
 	resolveLanguageModel: mocks.resolveLanguageModel,
 }));
@@ -41,6 +46,13 @@ interface LedgerRow {
 	readonly feature: string;
 	readonly tokenUsage: unknown;
 	readonly modelUsed: unknown;
+	readonly rootRequestId?: unknown;
+}
+
+interface RecordRequestsArgs {
+	readonly feature: string;
+	readonly rootRequestId?: string;
+	readonly requests: ReadonlyArray<{ usage?: unknown; modelUsed?: unknown }>;
 }
 
 /** A step ctx whose ledger writes are collected; `routes` adds the step's own reads. */
@@ -51,7 +63,15 @@ function makeCtx(routes: StepCtxRoutes = {}) {
 		mutations: {
 			...routes.mutations,
 			llmUsage: (args) => {
-				ledger.push(args as LedgerRow);
+				const call = args as RecordRequestsArgs;
+				for (const request of call.requests) {
+					ledger.push({
+						feature: call.feature,
+						tokenUsage: request.usage,
+						modelUsed: request.modelUsed,
+						rootRequestId: call.rootRequestId,
+					});
+				}
 				return undefined;
 			},
 		},
@@ -92,9 +112,20 @@ describe('security_scan guard windows', () => {
 		await securityScanStep.execute(ctx, { inboundMessageId: messageId });
 
 		expect(mocks.runLlmObject).toHaveBeenCalledTimes(2);
+		const root = `team:${messageId}`;
 		expect(ledger).toEqual([
-			{ feature: 'agent_security_scan', tokenUsage: usage(3), modelUsed: 'guard-model' },
-			{ feature: 'agent_security_scan', tokenUsage: usage(2), modelUsed: 'guard-model' },
+			{
+				feature: 'agent_security_scan',
+				tokenUsage: usage(3),
+				modelUsed: 'guard-model',
+				rootRequestId: root,
+			},
+			{
+				feature: 'agent_security_scan',
+				tokenUsage: usage(2),
+				modelUsed: 'guard-model',
+				rootRequestId: root,
+			},
 		]);
 	});
 
@@ -106,17 +137,24 @@ describe('security_scan guard windows', () => {
 
 		expect(output.securityFlags.guardUnavailable).toBe(true);
 		expect(ledger).toEqual([
-			{ feature: 'agent_security_scan', tokenUsage: usage(4), modelUsed: 'model-x' },
+			{
+				feature: 'agent_security_scan',
+				tokenUsage: usage(4),
+				modelUsed: 'model-x',
+				rootRequestId: `team:${messageId}`,
+			},
 		]);
 	});
 
-	it('records nothing for a failure that carries no usage', async () => {
+	it('records a failure that carries no usage as a request with no usage', async () => {
 		mocks.runLlmObject.mockRejectedValueOnce(new Error('401 unauthorized'));
 		const { ctx, ledger } = guardCtx('Just a normal support question, thanks.');
 
 		await securityScanStep.execute(ctx, { inboundMessageId: messageId });
 
-		expect(ledger).toEqual([]);
+		expect(ledger.map((row) => [row.feature, row.tokenUsage])).toEqual([
+			['agent_security_scan', undefined],
+		]);
 	});
 });
 
@@ -142,7 +180,12 @@ describe('classify', () => {
 
 		expect(result.tokenUsage).toEqual(usage(11));
 		expect(ledger).toEqual([
-			{ feature: 'agent_classify', tokenUsage: usage(11), modelUsed: 'classify-model' },
+			{
+				feature: 'agent_classify',
+				tokenUsage: usage(11),
+				modelUsed: 'classify-model',
+				rootRequestId: `team:${messageId}`,
+			},
 		]);
 	});
 
@@ -155,7 +198,12 @@ describe('classify', () => {
 		// for anything above to record again.
 		await expect(classifyStep.execute(ctx, input)).rejects.toBe(error.cause);
 		expect(ledger).toEqual([
-			{ feature: 'agent_classify', tokenUsage: usage(6), modelUsed: 'model-x' },
+			{
+				feature: 'agent_classify',
+				tokenUsage: usage(6),
+				modelUsed: 'model-x',
+				rootRequestId: `team:${messageId}`,
+			},
 		]);
 	});
 });
@@ -227,8 +275,9 @@ describe('clarify', () => {
 			['agent_clarify', usage(3)],
 			['agent_clarify', usage(4)],
 			['agent_clarify', usage(5)],
-			// Localize reports its two calls as one sum, the failed retry included.
-			['agent_clarify', usage(13)],
+			// Localize: one row per call, the failed retry included.
+			['agent_clarify', usage(6)],
+			['agent_clarify', usage(7)],
 		]);
 	});
 

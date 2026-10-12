@@ -26,8 +26,8 @@ import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
 import { interactiveLlmPolicy } from '../../lib/llm/retryPolicy';
-import { scheduleLlmSpend } from '../../analytics/llmUsage';
-import { recordSpendOnFailure } from '../../analytics/failedLlmSpend';
+import { meterLlmCall } from '../../analytics/meteredSpend';
+import { newRootRequest } from '../../lib/llm/requestMeter';
 import { draftRefValidator } from '../../lib/validators/responsePlan';
 import { threadRefValidator } from '../../lib/validators/threadRef';
 import {
@@ -39,6 +39,7 @@ import {
 	type PlanPromptItem,
 } from './planCheck';
 import { draftHashOf, planVerdictOf, type PlanCoverage } from './responsePlanRules';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 /** The longest draft the check reads. */
 const MAX_DRAFT_CHARS = 20_000;
@@ -69,19 +70,21 @@ async function checkWithModel(
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 			rateLimitBucket: 'answerCoveragePerUser',
 		});
-		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
+		const model = await resolveLanguageModel(ctx, 'summarize');
+		const { object } = await meterLlmCall(
 			ctx,
-			'answer_plan_coverage',
-			runLlmObject({
-				model: await resolveLanguageModel(ctx, 'summarize'),
-				schema: planCheckSchema,
-				prompt: buildPlanCoveragePrompt({ items, draft }),
-				temperature: 0,
-				...interactiveLlmPolicy('reply'),
-			}),
-			scheduleLlmSpend
+			{ feature: 'answer_plan_coverage', root: newRootRequest('postbox_action') },
+			(meter) =>
+				runLlmObject({
+					meter,
+					model,
+					schema: planCheckSchema,
+					prompt: buildPlanCoveragePrompt({ items, draft }),
+					temperature: 0,
+					...interactiveLlmPolicy('reply'),
+				}),
+			{ write: 'schedule' }
 		);
-		await scheduleLlmSpend(ctx, 'answer_plan_coverage', tokenUsage, modelUsed);
 		return object;
 	} catch {
 		return null;
@@ -101,6 +104,8 @@ export const check = authedAction({
 		draftText: v.string(),
 	},
 	handler: async (ctx, args): Promise<CoverageResult | null> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForCoverage, {
 			threadRef: args.threadRef,
 			draftRef: args.draftRef,

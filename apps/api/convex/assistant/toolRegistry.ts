@@ -27,6 +27,7 @@
  * builders and the `ctx`-bound assembler live in `./tools`.
  */
 
+import type { LlmRootContext } from '../lib/llm/requestMeter';
 import type { Tool, ToolExecuteFunction } from 'ai';
 import type { ActionCtx } from '../_generated/server';
 import { isPlainObject } from '@owlat/shared';
@@ -73,7 +74,12 @@ export interface HostedAssistantToolModule {
 	readonly spend: string | null;
 	/** When true, the host injection-scrubs the tool's output before it reaches the model. */
 	readonly scrubOutput: boolean;
-	build(ctx: ActionCtx, audience: AssistantAudience): Tool;
+	/**
+	 * `root` is the assistant turn's root request with the turn's call as the
+	 * parent (ADR-0073), so a tool's own model and embedding calls group under
+	 * the turn in the ledger.
+	 */
+	build(ctx: ActionCtx, audience: AssistantAudience, root?: LlmRootContext): Tool;
 }
 
 /** Resolved feature-flag state as returned by the host's flag resolver. */

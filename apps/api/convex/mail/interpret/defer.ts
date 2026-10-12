@@ -55,6 +55,7 @@ import { isInterpretationEligible } from './eligibility';
 import { loadBriefRow, markBriefPending } from './briefRow';
 import { deferSource, markOutstanding, runOf, settleSource } from './outstanding';
 import { sourceOrderKey } from './sourceOrder';
+import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { loadInterpretSource } from './sources';
 import { CLOSED_STATUSES, recentlyClosedItems, threadItemsWithStatus } from './load';
 import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
@@ -172,6 +173,19 @@ export const PREDECESSOR_BUDGET = 10;
 
 /** How long a run waits before it looks again at a predecessor whose own run did not settle it. */
 export const PREDECESSOR_RETRY_MS = 60_000;
+
+/**
+ * The root a predecessor read runs under: its own message's (`postbox:<id>`),
+ * keeping the awaiting caller's deadline when there is one, so reading the
+ * thread's earlier mail never outlasts the caller (ADR-0073).
+ */
+export function predecessorRoot(
+	source: InterpretationSource,
+	deadlineAt: number | undefined
+): { root?: LlmRootContext } {
+	if (deadlineAt === undefined) return {};
+	return { root: { ...rootRequest('postbox', source.id), deadlineAt } };
+}
 
 /**
  * What a run returns when it rescheduled itself because earlier deferred

@@ -27,12 +27,13 @@
 import type { ToolSet, ModelMessage, LanguageModel } from 'ai';
 import { cacheableSystemMessage } from '../../lib/llm/promptCache';
 import { runLlmText, runLlmTextWithTools, type LlmTextResult } from '../../lib/llm/dispatch';
-import { partialUsageOf } from '../../lib/llm/partialUsage';
 import { withoutToolMarkup, type PrimaryDraft } from './draftMarkup';
+import { LlmTruncatedError } from '../../lib/llm/truncation';
 import { buildReplyLanguageInstruction } from './replyLanguage';
 
 export { buildReplyLanguageInstruction } from './replyLanguage';
-import { recordLlmSpend } from '../../analytics/llmUsage';
+import { meterFor, persistMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
+import { childCall, type LlmCallMeter, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
 import type { ActionCtx } from '../../_generated/server';
 import { runSelectedDraftStrategy } from './draftStrategyRunner';
@@ -54,7 +55,7 @@ export {
 } from './draftSelfCheck';
 
 /** Ctx shape both entry points share — needs the spend-accounting surface. */
-type SpendCtx = Parameters<typeof recordLlmSpend>[0];
+type SpendCtx = Parameters<typeof persistMeteredSpend>[0];
 
 // ─── Confirmed-facts block (clarification loop) ──────────────────────────────
 
@@ -221,6 +222,11 @@ export type SharedDraftParams = Readonly<{
 	 */
 	spendLabels: Readonly<{ draft: string; selfCheck: string }>;
 	/**
+	 * The inbound message the draft answers, as a root request (ADR-0073): the
+	 * draft's and the self-check's ledger rows group under it.
+	 */
+	root?: LlmRootContext;
+	/**
 	 * ISO 639-1 code of the inbound's language (the classifier's `language`,
 	 * already allowlisted by the caller). The reply is always written in the
 	 * sender's language; naming it here makes the instruction explicit. Omit
@@ -279,16 +285,22 @@ export async function runSharedDraft(
 		);
 	}
 
-	// Every paid primary generation is recorded in the ledger exactly once, on
-	// every outcome: a throw carrying the usage of finished tool steps
-	// (lib/llm/partialUsage.ts), the rejected attempts of the markup gate
-	// (./draftMarkup.ts), or the successful draft. The successful draft's usage
-	// is also returned; the Team Inbox walker keeps it on the step's
-	// agentActions row, a reporting view the spend ceiling does not read (#1259).
-	// It is written before the caller persists anything, so a write that fails
-	// after the generation cannot lose it.
-	const recordDraftSpend = (attempts: ReadonlyArray<Omit<PrimaryDraft, 'draftBody'>>) =>
-		recordAdvisorySpend(ctx, params.spendLabels.draft, attempts);
+	// Every provider request of the primary generation is recorded in the
+	// ledger exactly once, on every outcome: a throw after finished tool steps,
+	// the rejected attempts of the markup gate (./draftMarkup.ts), or the
+	// successful draft. Both generations (with tools, and the markup retry) run
+	// on one meter, which hands each request out once, so flushing it on every
+	// path cannot double-count. The successful draft's usage is also returned;
+	// the Team Inbox walker keeps it on the step's agentActions row, a reporting
+	// view the spend ceiling does not read (#1259). It is written before the
+	// caller persists anything, so a write that fails after the generation
+	// cannot lose it.
+	const target: LlmSpendTarget = {
+		feature: params.spendLabels.draft,
+		...(params.root ? { root: params.root } : {}),
+	};
+	const meter = meterFor(ctx, target);
+	const recordDraftSpend = () => recordAdvisorySpend(ctx, target, meter);
 	let selected: PrimaryDraft;
 	try {
 		selected = await runSelectedDraftStrategy(
@@ -304,19 +316,23 @@ export async function runSharedDraft(
 				signatureInstruction: params.signatureInstruction,
 				voiceSection: params.voiceSection,
 			},
-			() => runDefaultDraftStrategy(params, true)
+			() => runDefaultDraftStrategy(params, true, meter),
+			// A plugin strategy's own model calls group under the message too.
+			params.root ? childCall(params.root, meter.requestId) : undefined
 		);
 	} catch (error) {
-		const partial = partialUsageOf(error);
-		if (partial) await recordDraftSpend([partial]);
+		await recordDraftSpend();
 		throw error;
 	}
 	const primary = await withoutToolMarkup(
 		selected,
-		() => runDefaultDraftStrategy(params, false),
+		() => runDefaultDraftStrategy(params, false, meter),
 		recordDraftSpend
 	);
-	await recordDraftSpend([primary]);
+	await recordDraftSpend();
+	// The self-check judges this draft: it runs under the same root, the
+	// generation as its parent call.
+	const checkRoot = params.root ? childCall(params.root, meter.requestId) : undefined;
 	// A reviewer note the model wrote anyway becomes a placeholder the send
 	// guard counts (agent/shared/draftGaps.ts).
 	const draftBody = markReviewerNotes(primary.draftBody);
@@ -330,6 +346,7 @@ export async function runSharedDraft(
 				draft: draftBody,
 				spendLabel: params.spendLabels.selfCheck,
 				plan: plan.items,
+				...(checkRoot ? { root: checkRoot } : {}),
 			})
 		: null;
 	const draftQuality = plan
@@ -338,6 +355,7 @@ export async function runSharedDraft(
 				context: params.context,
 				draft: draftBody,
 				spendLabel: params.spendLabels.selfCheck,
+				...(checkRoot ? { root: checkRoot } : {}),
 			});
 
 	return {
@@ -356,18 +374,16 @@ export async function runSharedDraft(
 	};
 }
 
-/** Record each attempt's spend; a failed ledger write never fails the draft. */
+/** Write the requests the meter holds; a failed ledger write never fails the draft. */
 async function recordAdvisorySpend(
 	ctx: SpendCtx,
-	label: string,
-	attempts: ReadonlyArray<Omit<PrimaryDraft, 'draftBody'>>
+	target: LlmSpendTarget,
+	meter: LlmCallMeter
 ): Promise<void> {
-	for (const attempt of attempts) {
-		try {
-			await recordLlmSpend(ctx, label, attempt.tokenUsage, attempt.modelUsed);
-		} catch {
-			// ignore — spend accounting is advisory
-		}
+	try {
+		await persistMeteredSpend(ctx, target, meter);
+	} catch {
+		// ignore — a lost row under-counts; failing the draft over it loses the work
 	}
 }
 
@@ -378,7 +394,8 @@ async function recordAdvisorySpend(
  */
 async function runDefaultDraftStrategy(
 	params: SharedDraftParams,
-	withTools: boolean
+	withTools: boolean,
+	meter: LlmCallMeter
 ): Promise<LlmTextResult> {
 	const tools = withTools ? params.tools : undefined;
 	const model = await params.resolveModel();
@@ -403,13 +420,19 @@ async function runDefaultDraftStrategy(
 	});
 
 	const temperature = params.temperature ?? 0.4;
-	return tools && Object.keys(tools).length > 0
-		? await runLlmTextWithTools({
-				model,
-				maxSteps: params.maxSteps,
-				tools,
-				messages,
-				temperature,
-			})
-		: await runLlmText({ model, messages, temperature });
+	const generated =
+		tools && Object.keys(tools).length > 0
+			? await runLlmTextWithTools({
+					meter,
+					model,
+					maxSteps: params.maxSteps,
+					tools,
+					messages,
+					temperature,
+				})
+			: await runLlmText({ meter, model, messages, temperature });
+	// A draft cut off at its output ceiling is not a draft: it fails like any
+	// other failed generation (its requests are already on the meter).
+	if (generated.isTruncated === true) throw new LlmTruncatedError('draft');
+	return generated;
 }

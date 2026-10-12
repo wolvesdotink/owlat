@@ -19,13 +19,15 @@ import { STALE_MS, deferSource } from '../outstanding';
 import { PREDECESSOR_RETRY_MS, resumeDeferredSources, runDeferredPredecessors } from '../defer';
 import type { InterpretationSource } from '../../../lib/validators/threadBrief';
 
-const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), spend: vi.fn() }));
+const llm = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
 
-vi.mock('../../../lib/llm/dispatch', () => ({ runLlmObject: llm.runLlmObject }));
+vi.mock('../../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
+	return { runLlmObject: metered((opts: unknown) => llm.runLlmObject(opts)) };
+});
 vi.mock('../../../lib/llmProvider', () => ({
 	resolveLanguageModel: vi.fn(async () => ({ modelId: 'stub-model' })),
 }));
-vi.mock('../../../analytics/llmUsage', () => ({ recordLlmSpend: llm.spend }));
 
 const INVOICE = 'Invoice 77: could you send me the signed contract by Friday?';
 const CANCEL = 'Never mind, no need to send me the signed contract by Friday anymore.';
@@ -77,7 +79,7 @@ const readOrder = () =>
 	llm.runLlmObject.mock.calls
 		.filter(([opts]) => (opts as { schema: unknown }).schema === briefModelSchema)
 		.map(([opts]) => {
-			const text = JSON.stringify(opts);
+			const text = promptText(opts);
 			return text.includes('Invoice 77')
 				? 'invoice'
 				: text.includes('Never mind')
@@ -89,22 +91,27 @@ const readOrder = () =>
 
 beforeEach(() => {
 	llm.runLlmObject.mockReset();
-	llm.spend.mockReset();
 	llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
 		if (schema === briefModelSchema) {
 			return {
 				object: modelOutput('s0'),
-				tokenUsage: { totalTokens: 10 },
+				tokenUsage: { promptTokens: 5, completionTokens: 5, totalTokens: 10 },
 				modelUsed: 'stub-model',
 			};
 		}
 		return {
 			object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] },
-			tokenUsage: { totalTokens: 2 },
+			tokenUsage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
 			modelUsed: 'stub-model',
 		};
 	});
 });
+
+/** The text a mocked model call was asked about (a prompt, or a cache-split message list). */
+function promptText(opts: unknown): string {
+	const call = opts as { prompt?: string; messages?: { content: unknown }[] };
+	return call.prompt ?? JSON.stringify(call.messages?.map((m) => m.content) ?? []);
+}
 
 const T0 = Date.UTC(2026, 9, 7, 9, 0);
 
@@ -229,7 +236,7 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 	const readTags = () =>
 		llm.runLlmObject.mock.calls
 			.filter(([opts]) => (opts as { schema: unknown }).schema === briefModelSchema)
-			.map(([opts]) => JSON.stringify(opts).match(TAG)?.[1] ?? '?');
+			.map(([opts]) => promptText(opts).match(TAG)?.[1] ?? '?');
 	const text = (tag: string) => `[${tag}] could you send me the signed contract by Friday?`;
 
 	/** Three deferred messages a < b < c, then the eager message d (captured outstanding). */

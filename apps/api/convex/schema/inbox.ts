@@ -424,7 +424,10 @@ export const inboxTables = {
 			'createdAt',
 		])
 		// Settling a reservation whose action died reads the rows it already wrote.
-		.index('by_reservation_id', ['reservationId']),
+		.index('by_reservation_id', ['reservationId'])
+		// A metered write is idempotent per provider request (ADR-0073): a retried
+		// batch skips the requests already stored.
+		.index('by_request_id_and_attempt', ['requestId', 'attempt']),
 
 	// Coalesce Batches - one in-flight debounce window per thread. When rapid
 	// messages arrive on the same thread, the pending batch's scheduled job is

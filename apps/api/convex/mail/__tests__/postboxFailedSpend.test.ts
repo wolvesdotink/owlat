@@ -1,10 +1,12 @@
 /**
  * Postbox AI callers that fail soft record what a failed structured call was
  * billed for (#1260). `runLlmObject` throws an `LlmPartialUsageError` when every
- * attempt's completion failed the schema; the caller records it once, under the
- * feature its success path uses, and still degrades the way it did before.
+ * attempt's completion failed the schema; the meter records it once, under the
+ * feature its success path uses, and the caller still degrades the way it did
+ * before.
  *
- * The dispatch seam and the provider are mocked; the ledger write is observed.
+ * The dispatch seam and the provider are mocked (each mocked call records one
+ * request on its meter); the ledger write is observed on the ctx.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -12,24 +14,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	runLlmText: vi.fn(),
 	runLlmObject: vi.fn(),
-	recordLlmSpend: vi.fn(async () => {}),
+	runMutation: vi.fn(async (..._args: unknown[]): Promise<unknown> => null),
 }));
 
-vi.mock('../../lib/llm/dispatch', () => ({
-	runLlmText: mocks.runLlmText,
-	runLlmObject: mocks.runLlmObject,
-}));
+vi.mock('../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../analytics/__tests__/meteredDispatch.testlib');
+	return {
+		runLlmText: metered((opts: unknown) => mocks.runLlmText(opts)),
+		runLlmObject: metered((opts: unknown) => mocks.runLlmObject(opts)),
+	};
+});
 vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModel: vi.fn(() => 'mock-model') }));
-vi.mock('../../analytics/llmUsage', () => ({
-	recordLlmSpend: mocks.recordLlmSpend,
-	scheduleLlmSpend: vi.fn(async () => {}),
-}));
 
-import { scheduleLlmSpend } from '../../analytics/llmUsage';
+import { ledgerRows } from '../../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
 import { refineClarification } from '../ai/needsReplyClassify';
 
-const ctx = {} as never;
+const ctx = { runMutation: mocks.runMutation } as never;
 const billed = { promptTokens: 30, completionTokens: 15, totalTokens: 45 };
 const schemaFailure = () =>
 	new LlmPartialUsageError(
@@ -37,17 +38,16 @@ const schemaFailure = () =>
 		billed,
 		'mock-model'
 	);
-/** Rows written under `feature`; a write without usage records nothing (recordLlmSpend). */
+/** Billed rows written under `feature`, as [ctx, feature, usage, model]. */
 const spentUnder = (feature: string) =>
-	mocks.recordLlmSpend.mock.calls.filter(
-		(call) => (call as unknown[])[1] === feature && (call as unknown[])[2] !== undefined
-	);
+	ledgerRows(mocks.runMutation)
+		.filter((row) => row.feature === feature && row.usage !== undefined)
+		.map((row) => [ctx, row.feature, row.usage, row.modelUsed]);
 
 beforeEach(() => {
 	mocks.runLlmText.mockReset();
 	mocks.runLlmObject.mockReset();
-	mocks.recordLlmSpend.mockClear();
-	vi.mocked(scheduleLlmSpend).mockClear();
+	mocks.runMutation.mockClear();
 });
 
 describe('refineClarification — the spend of a failed structured call', () => {
@@ -57,8 +57,8 @@ describe('refineClarification — the spend of a failed structured call', () => 
 		mocks.runLlmObject.mockRejectedValueOnce(schemaFailure());
 
 		await expect(refineClarification(ctx, opts)).resolves.toBeUndefined();
-		expect(mocks.recordLlmSpend.mock.calls).toEqual([
-			[ctx, 'postbox_clarify_slots', billed, 'mock-model'],
+		expect(ledgerRows(mocks.runMutation).map((row) => [row.feature, row.usage])).toEqual([
+			['postbox_clarify_slots', billed],
 		]);
 	});
 

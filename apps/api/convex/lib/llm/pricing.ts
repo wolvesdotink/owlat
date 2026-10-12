@@ -34,6 +34,14 @@ type Price = {
 };
 
 /**
+ * The revision of the price table below, stamped on every ledger row as
+ * `priceVersion` (ADR-0073). A row keeps the cost it was written with; changing
+ * a rate never reprices history. Bump this with any rate change, to the date
+ * the new rates were checked.
+ */
+export const PRICE_VERSION = '2026-10-12';
+
+/**
  * Catch-all prefix for the decision plane's model family. Exported because
  * `lib/decision/pricing.ts` decides "is this id on the decision plane?" from the
  * same string the price row and the admission aliases are written from.
@@ -131,11 +139,23 @@ const PRICING: Price[] = [
 	{ prefix: 'gemini-1.5-pro', inputPerM: 1.25, outputPerM: 5 },
 	// Popular OpenRouter upstreams (curated in the settings model picker). The ids
 	// arrive provider-prefixed (deepseek/deepseek-v4-flash) and match via `includes`.
-	{ prefix: 'deepseek-v4-flash', inputPerM: 0.077, outputPerM: 0.154 },
-	{ prefix: 'deepseek-v4-pro', inputPerM: 0.435, outputPerM: 0.87 },
+	// DeepSeek rates from the OpenRouter catalog (openrouter.ai/api/v1/models),
+	// checked 2026-10-12. The v4-pro row used to carry MiMo's rates by mistake.
+	{ prefix: 'deepseek-v4-flash', inputPerM: 0.0131, outputPerM: 1.28 },
+	{ prefix: 'deepseek-v4-pro', inputPerM: 0.9483, outputPerM: 1.8966 },
 	{ prefix: 'minimax-m3', inputPerM: 0.3, outputPerM: 1.2 },
 	{ prefix: 'mimo-v2.5-pro', inputPerM: 0.435, outputPerM: 0.87 },
 	{ prefix: 'kimi-k2.6', inputPerM: 0.66, outputPerM: 3.41 },
+	// EMBEDDING plane: input only, output is not billed. OpenAI
+	// (developers.openai.com/api/docs/pricing) and Google
+	// (ai.google.dev/gemini-api/docs/pricing), checked 2026-10-12.
+	// `text-embedding-004` and `gemini-embedding-001` are no longer listed: they
+	// price as unknown (an estimate). A self-hosted embedder costs nothing; its
+	// rows say so (`isLocalEngine`), whatever the model id.
+	{ prefix: 'text-embedding-3-small', inputPerM: 0.02, outputPerM: 0 },
+	{ prefix: 'text-embedding-3-large', inputPerM: 0.13, outputPerM: 0 },
+	{ prefix: 'text-embedding-ada-002', inputPerM: 0.1, outputPerM: 0 },
+	{ prefix: 'gemini-embedding-2', inputPerM: 0.2, outputPerM: 0 },
 	// TypeSafe (the DECISION plane). Input only: output tokens ARE returned and
 	// nonzero — a decision answer carries its probabilities — they are simply not
 	// charged, so the zero is written down rather than left to the absence of a
@@ -150,6 +170,14 @@ const PRICING: Price[] = [
 // Conservative fallback (≈ a mid-tier model) — never price an unknown model $0.
 const DEFAULT_INPUT_PER_M = 3;
 const DEFAULT_OUTPUT_PER_M = 12;
+/**
+ * An unknown EMBEDDING model prices at the dearest listed embedding rate: a
+ * chat model's fallback would over-report an embedding 15 to 150 times.
+ */
+const DEFAULT_EMBEDDING_INPUT_PER_M = 0.2;
+
+/** Which fallback an unknown model gets: a chat model's, or an embedding model's. */
+export type PricedPlane = 'language' | 'embedding' | 'decision';
 
 function priceForModel(modelUsed: string | undefined): Price | undefined {
 	const id = (modelUsed ?? '').toLowerCase();
@@ -302,13 +330,16 @@ export interface CostEstimate {
 
 export function estimateCost(
 	modelUsed: string | undefined,
-	usage: TokenUsage | undefined
+	usage: TokenUsage | undefined,
+	plane: PricedPlane = 'language'
 ): CostEstimate {
 	if (!usage) return { costUsd: 0, estimated: modelUsed === undefined };
 	const match = priceForModel(modelUsed);
 	const rates = match ? ratesForUsage(match, usage) : undefined;
-	const inputPerM = rates?.inputPerM ?? DEFAULT_INPUT_PER_M;
-	const outputPerM = rates?.outputPerM ?? DEFAULT_OUTPUT_PER_M;
+	const isEmbedding = plane === 'embedding';
+	const inputPerM =
+		rates?.inputPerM ?? (isEmbedding ? DEFAULT_EMBEDDING_INPUT_PER_M : DEFAULT_INPUT_PER_M);
+	const outputPerM = rates?.outputPerM ?? (isEmbedding ? 0 : DEFAULT_OUTPUT_PER_M);
 	const costUsd =
 		(usage.promptTokens / 1_000_000) * inputPerM +
 		(usage.completionTokens / 1_000_000) * outputPerM;

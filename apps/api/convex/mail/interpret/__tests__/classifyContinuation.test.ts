@@ -22,19 +22,18 @@ import { captureInterpretSource } from '../sources';
 import { deferSource } from '../outstanding';
 import { PREDECESSOR_BUDGET } from '../defer';
 
-const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), spend: vi.fn() }));
+const llm = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
 
-vi.mock('../../../lib/llm/dispatch', async () => ({
-	...(await vi.importActual<object>('../../../lib/llm/dispatch')),
-	runLlmObject: llm.runLlmObject,
-}));
+vi.mock('../../../lib/llm/dispatch', async () => {
+	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
+	return {
+		...(await vi.importActual<object>('../../../lib/llm/dispatch')),
+		runLlmObject: metered((opts: unknown) => llm.runLlmObject(opts)),
+	};
+});
 vi.mock('../../../lib/llmProvider', async () => ({
 	...(await vi.importActual<object>('../../../lib/llmProvider')),
 	resolveLanguageModel: vi.fn(async () => ({ modelId: 'stub-model' })),
-}));
-vi.mock('../../../analytics/llmUsage', async () => ({
-	...(await vi.importActual<object>('../../../analytics/llmUsage')),
-	recordLlmSpend: llm.spend,
 }));
 
 const text = (tag: string) => `[${tag}] could you send me the signed contract by Friday?`;
@@ -82,7 +81,6 @@ function modelOutput(segmentId: string) {
 
 beforeEach(() => {
 	llm.runLlmObject.mockReset();
-	llm.spend.mockReset();
 	llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
 		const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 		if (schema === briefModelSchema) {
@@ -115,12 +113,18 @@ beforeEach(() => {
 	});
 });
 
+/** The text a mocked model call was asked about (a prompt, or a cache-split message list). */
+function promptText(opts: unknown): string {
+	const call = opts as { prompt?: string; messages?: { content: unknown }[] };
+	return call.prompt ?? JSON.stringify(call.messages?.map((m) => m.content) ?? []);
+}
+
 const T0 = Date.UTC(2026, 9, 7, 9, 0);
 
 const readTags = () =>
 	llm.runLlmObject.mock.calls
 		.filter(([opts]) => (opts as { schema: unknown }).schema === briefModelSchema)
-		.map(([opts]) => JSON.stringify(opts).match(/\[(\w+)\]/)?.[1] ?? '?');
+		.map(([opts]) => promptText(opts).match(/\[(\w+)\]/)?.[1] ?? '?');
 
 async function pendingJobs(t: Test, fragment: string) {
 	return t.run(async (ctx) =>

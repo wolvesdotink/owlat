@@ -29,6 +29,9 @@ import { internal } from '../_generated/api';
 import { isActiveOrgMember } from '../lib/sessionOrganization';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { cancelLatestJob, createCappedJob, latestJob } from './backfillJobs';
+import { boundedRoot } from '../lib/llm/actionDeadline';
+import { rootRequest } from '../lib/llm/requestMeter';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 // Tunables
 /** Messages per `runChunk` invocation; the flag toggle starts the walk with it. */
@@ -204,6 +207,8 @@ export const runChunk = internalAction({
 		interChunkDelayMs: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const interChunkDelay = args.interChunkDelayMs ?? INTER_CHUNK_DELAY_MS;
 		try {
 			const job = await ctx.runQuery(internal.knowledge.messageBackfill.loadJob, {
@@ -255,6 +260,8 @@ export const runChunk = internalAction({
 				try {
 					await ctx.runAction(internal.knowledge.extraction.extractFromMessage, {
 						inboundMessageId: msg._id,
+						// Awaited: it spends from this sweep's clock (ADR-0073).
+						root: boundedRoot(ctx, rootRequest('team', msg._id)),
 					});
 					// Re-check post-call: extractFromMessage silently no-ops on
 					// short bodies and swallows internal errors. Only count as

@@ -58,14 +58,22 @@
 
 import { randomUUID } from 'node:crypto';
 import type { LanguageModel } from 'ai';
-import type { TokenUsage } from '../../agent/steps/types';
 import { decisionProviderFor } from '../decisionProviders';
 import type { DecisionRequest, DecisionResult } from '../decisionProviders/types';
 export { DEFAULT_LANGUAGE_DECISION_DEADLINE_MS } from '../decisionProviders/llm';
 import { DecisionWireError } from '../decisionProviders/wire';
 import { errorStatus, isRetriableLlmError } from '../llm/dispatch';
-import { partialUsageOf } from '../llm/partialUsage';
 import { MAX_LLM_ATTEMPTS } from '../llm/retryPolicy';
+import { LlmCallMeter } from '../llm/requestMeter';
+import {
+	attemptRequests,
+	billedUsage,
+	localTag,
+	withinRoot,
+	withRootDeadline,
+} from './attemptRequests';
+export { billedUsage } from './attemptRequests';
+import { taskForFeature } from '../llm/taskPolicy';
 import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
 import type {
 	DecisionFallbackBreaker,
@@ -237,18 +245,8 @@ interface AttemptContext<Q extends QuestionSet> {
 	readonly requestId: string;
 	readonly recordUsage: DecisionUsageRecorder;
 	readonly rateLimiter: DecisionRateLimiter;
-}
-
-/**
- * What a failed attempt was billed for: a response the codec rejected
- * (`DecisionWireError`), or a language call whose billed completions never
- * fitted the schema (`LlmPartialUsageError`, #1260). Anything else bills
- * nothing we can see.
- */
-export function billedUsage(error: unknown): { usage?: TokenUsage; modelUsed?: string } {
-	if (error instanceof DecisionWireError) return { usage: error.usage, modelUsed: error.modelUsed };
-	const partial = partialUsageOf(error);
-	return partial ? { usage: partial.tokenUsage, modelUsed: partial.modelUsed } : {};
+	/** Every provider request of the logical call, the hop included, numbered in order. */
+	readonly meter: LlmCallMeter;
 }
 
 /**
@@ -275,34 +273,43 @@ async function askOnce<Q extends QuestionSet>(
 	const request: DispatchedRequest = {
 		state: options.state,
 		questions: options.questions,
-		deadlineMs: deadlineFor(provider, options.deadlineMs),
+		deadlineMs: withinRoot(deadlineFor(provider, options.deadlineMs), options.root),
 		requestId: ctx.requestId,
+		meter: ctx.meter,
 		...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
 		...(provider.model === undefined ? {} : { model: provider.model }),
 		...(provider.modelId ? { modelId: provider.modelId } : {}),
 	};
 	const startedAt = Date.now();
 	const elapsed = () => Date.now() - startedAt;
+	const recordedBefore = ctx.meter.requests.length;
 	const base = {
 		feature: options.feature,
 		requestId: ctx.requestId,
 		provider: provider.kind,
 		attempt,
 		fallback,
+		...(options.task ? { task: options.task } : {}),
+		...(options.root ? { root: options.root } : {}),
 	} as const;
 
 	let result: DecisionResult;
 	try {
 		result = await decisionProviderFor(provider.kind).ask(provider.config, request);
 	} catch (error) {
+		const durationMs = elapsed();
+		const billed = billedUsage(error);
+		const requests = attemptRequests(
+			ctx.meter,
+			recordedBefore,
+			{ outcome: 'failed', ...billed },
+			durationMs,
+			error,
+			{ isFallback: fallback, ...localTag(provider) }
+		);
 		try {
-			await ctx.recordUsage({
-				...base,
-				outcome: 'failed',
-				durationMs: elapsed(),
-				error,
-				...billedUsage(error),
-			});
+			await ctx.recordUsage({ ...base, outcome: 'failed', durationMs, error, ...billed, requests });
+			ctx.meter.acknowledge(requests);
 		} catch {
 			// Swallowed: a failing recorder must not replace the vendor's error,
 			// which is the one the operator needs to read.
@@ -310,16 +317,32 @@ async function askOnce<Q extends QuestionSet>(
 		throw error;
 	}
 
+	const durationMs = elapsed();
+	const requests = attemptRequests(
+		ctx.meter,
+		recordedBefore,
+		{
+			outcome: 'ok',
+			usage: result.usage,
+			modelUsed: result.modelUsed,
+			endpoint: result.provenance,
+		},
+		durationMs,
+		undefined,
+		{ isFallback: fallback, isCalibrated: result.calibrated, ...localTag(provider) }
+	);
 	try {
 		await ctx.recordUsage({
 			...base,
 			outcome: 'answered',
-			durationMs: elapsed(),
+			durationMs,
 			usage: result.usage,
 			modelUsed: result.modelUsed,
 			provenance: result.provenance,
 			calibrated: result.calibrated,
+			requests,
 		});
+		ctx.meter.acknowledge(requests);
 	} catch (error) {
 		throw new DecisionAccountingFailure(error);
 	}
@@ -386,8 +409,11 @@ function assertFallbackShape<Q extends QuestionSet>(options: RunDecisionOptions<
  * answer: a decision nobody could make belongs to the caller's own fail-soft.
  */
 export async function runDecision<Q extends QuestionSet>(
-	options: RunDecisionOptions<Q>
+	callerOptions: RunDecisionOptions<Q>
 ): Promise<RunDecisionResult<Q>> {
+	// The root's deadline binds every attempt, the backoff and the hop, whatever
+	// adapter answers: it joins the caller's signal (ADR-0073).
+	const options = withRootDeadline(callerOptions);
 	const { abortSignal, allowance, fallbackTo, provider } = options;
 	// Defensive, and cheap: the gate returns this shape and nothing else does,
 	// but a hand-built object is the one way a call site could route around the
@@ -403,11 +429,17 @@ export async function runDecision<Q extends QuestionSet>(
 	const random = options.random ?? Math.random;
 	const sleep = options.sleep ?? realSleep;
 	const breaker = options.breaker ?? NO_HOP_BREAKER;
+	const requestId = options.requestId ?? randomUUID();
 	const ctx: AttemptContext<Q> = {
 		options,
-		requestId: options.requestId ?? randomUUID(),
+		requestId,
 		recordUsage: options.recordUsage ?? (() => {}),
 		rateLimiter: options.rateLimiter ?? NO_OP_RATE_LIMITER,
+		meter: new LlmCallMeter({
+			requestId,
+			task: options.task ?? taskForFeature(options.feature),
+			...(options.root ? { root: options.root } : {}),
+		}),
 	};
 
 	const budget = Math.max(1, options.maxAttempts ?? DEFAULT_DECISION_ATTEMPTS);

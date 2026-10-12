@@ -55,6 +55,7 @@ import {
 	type AskFileRef,
 	type AskQuestion,
 } from './composeDraftPolicy';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 const MAX_INSTRUCTION_CHARS = 2000;
 const MAX_ANSWER_CHARS = 2000;
@@ -226,6 +227,8 @@ export const start = authedAction({
 		timeZone: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<AskSessionView> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const instruction = args.instruction?.trim().slice(0, MAX_INSTRUCTION_CHARS) || undefined;
 		const locale = isAppLocale(args.locale) ? args.locale : 'en';
@@ -379,6 +382,8 @@ export const answer = authedAction({
 		timeZone: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<AskSessionView> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const session = await ctx.runQuery(internal.mail.ai.composeDraftStore.getOwnSession, {
 			sessionId: args.sessionId,

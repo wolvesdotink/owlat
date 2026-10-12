@@ -54,6 +54,8 @@ import {
 	isTrivialClassifiedMessage,
 	type ClassificationSignals,
 } from './llm/complexity';
+import { stampModelEndpoint } from './llm/modelEndpoint';
+import { isLocalEndpoint } from './llm/endpointLocality';
 import { EMBEDDING_DIMENSIONS } from './constants';
 import {
 	embeddingSpaceKey,
@@ -311,8 +313,15 @@ function resolveLanguageModelFromPlane(
 	tier: LLMTier
 ): ResolvedLanguageModel {
 	const modelId = tier === 'fast' ? language.models.fast : language.models.capable;
+	const adapter = languageProviderFor(language.kind);
 	return Object.freeze({
-		model: languageProviderFor(language.kind).buildChatModel(language.clientConfig, modelId),
+		// Stamped so every ledger row this model writes names its endpoint, and a
+		// model on the operator's own network costs nothing (ADR-0073).
+		model: stampModelEndpoint(
+			adapter.buildChatModel(language.clientConfig, modelId),
+			language.endpointProvenance,
+			{ isLocal: isLocalEndpoint(language.kind, language.clientConfig.baseUrl, adapter) }
+		),
 		modelId,
 		endpointProvenance: language.endpointProvenance,
 	});
@@ -431,7 +440,13 @@ export async function resolveIndexEmbedder(
 	// actionable error before building the model.
 	adapter.validateCredentials({ ...clientConfig, modelId });
 	return {
-		model: adapter.buildEmbeddingModel({ ...clientConfig, modelId }),
+		// Stamped so the embedding's ledger row names its endpoint, and a
+		// self-hosted embedder's rows cost nothing (ADR-0073).
+		model: stampModelEndpoint(
+			adapter.buildEmbeddingModel({ ...clientConfig, modelId }),
+			`embedding:${kind}`,
+			{ isLocal: isLocalEndpoint(kind, clientConfig.baseUrl, adapter) }
+		),
 		embeddingSpaceKey: spaceKey,
 	};
 }

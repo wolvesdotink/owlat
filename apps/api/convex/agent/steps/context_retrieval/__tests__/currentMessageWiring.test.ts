@@ -9,6 +9,7 @@
  * Convex query/action/mutation seams are mocked — no live backend.
  */
 
+import { ACTION_MODEL_BUDGET_MS } from '../../../../lib/llm/actionDeadline';
 import { describe, it, expect } from 'vitest';
 import { makeStepCtx } from '../../__tests__/stepCtx';
 import { contextRetrievalStep } from '../index';
@@ -120,7 +121,17 @@ describe('contextRetrievalStep.execute — structured current message', () => {
 		const { output } = await contextRetrievalStep.execute(ctx, input);
 		// The eligibility snapshot is taken before the first run.
 		expect(captures).toEqual([messageId]);
-		expect(runs).toEqual([{ source: { kind: 'inbound', id: messageId } }]);
+		// Awaited, so it runs on this step's clock: the message's root, with the
+		// action's deadline (ADR-0073).
+		expect(runs).toEqual([
+			{
+				source: { kind: 'inbound', id: messageId },
+				root: { rootRequestId: `team:${messageId}`, deadlineAt: expect.any(Number) },
+			},
+		]);
+		const deadlineAt = (runs[0] as { root: { deadlineAt: number } }).root.deadlineAt;
+		expect(deadlineAt).toBeGreaterThan(Date.now());
+		expect(deadlineAt).toBeLessThanOrEqual(Date.now() + ACTION_MODEL_BUDGET_MS);
 		expect(output.context).toContain('Tell the customer where order 4821 is.');
 		expect(output.context).not.toContain('RAWBODYSENTINEL');
 	});

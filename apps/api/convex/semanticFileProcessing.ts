@@ -30,19 +30,22 @@ import { AiNotConfiguredError } from './lib/aiNotConfigured';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
 import { NO_EMBEDDING_SPACE_KEY, vectorHitsInCurrentSpace } from './lib/embeddingSpace';
 import { embedRetrievalQuery } from './knowledge/retrieval';
-import { embed } from 'ai';
 import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
 import { runLlmObject } from './lib/llm/dispatch';
-import { recordLlmSpend } from './analytics/llmUsage';
-import { recordSpendOnFailure } from './analytics/failedLlmSpend';
+import { meterLlmCall } from './analytics/meteredSpend';
+import { runEmbedding } from './lib/llm/embed';
+import { rootRequest } from './lib/llm/requestMeter';
+import { llmRootContextValidator } from './lib/llmUsageTags';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
-import { detectInjection } from './agent/steps/security_scan/patterns';
+import { scrubTags, slugifyTag, truncateForLLM } from './lib/semanticFileText';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
+import { anchorActionDeadline } from './lib/llm/actionDeadline';
+import { boundedRoot } from './lib/llm/actionDeadline';
 
 /**
  * Whether any AI provider is set up. AI is optional: without one a file still
@@ -67,9 +70,13 @@ async function aiProviderConfigured(ctx: ActionCtx): Promise<boolean> {
 export const processFile = internalAction({
 	args: { fileId: v.id('semanticFiles') },
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Get file metadata
 		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
 		if (!file) return;
+		// Every model call processing this file groups under one root (ADR-0073).
+		const fileRoot = rootRequest('file', args.fileId);
 
 		// Resolve the conversation/contact context this file was shared in, so
 		// tags can be inherited and a version diff computed.
@@ -156,30 +163,32 @@ export const processFile = internalAction({
 			title = title || file.filename;
 		} else if (textForAI.length > 50) {
 			try {
-				const result = await recordSpendOnFailure(
+				const model = await resolveLanguageModel(ctx, 'summarize');
+				const result = await meterLlmCall(
 					ctx,
-					'semantic_file',
-					runLlmObject({
-						model: await resolveLanguageModel(ctx, 'summarize'),
-						schema: z.object({
-							title: z.string().describe('Short descriptive title for the file'),
-							summary: z.string().describe('2-3 sentence summary of the file content'),
-							tags: z.array(z.string()).describe('5-10 relevant tags for categorization'),
-						}),
-						prompt: `Analyze this file and provide a title, summary, and tags.
+					{ feature: 'semantic_file', root: fileRoot },
+					(meter) =>
+						runLlmObject({
+							meter,
+							model,
+							schema: z.object({
+								title: z.string().describe('Short descriptive title for the file'),
+								summary: z.string().describe('2-3 sentence summary of the file content'),
+								tags: z.array(z.string()).describe('5-10 relevant tags for categorization'),
+							}),
+							prompt: `Analyze this file and provide a title, summary, and tags.
 
 Filename: ${file.filename}
 MIME type: ${file.mimeType}${fileCtx.threadSubject ? `\nShared in conversation: "${fileCtx.threadSubject}"` : ''}${fileCtx.contactNames.length ? `\nRelated contacts: ${fileCtx.contactNames.join(', ')}` : ''}
 
 Content:
 ${textForAI}`,
-					})
+						})
 				);
 				logInfo('[semantic_file] llm call', {
 					tokenUsage: result.tokenUsage,
 					modelUsed: result.modelUsed,
 				});
-				await recordLlmSpend(ctx, 'semantic_file', result.tokenUsage, result.modelUsed);
 
 				title = title || result.object.title;
 				summary = result.object.summary;
@@ -207,10 +216,13 @@ ${textForAI}`,
 			const embedder = await resolveIndexEmbedder(ctx);
 			embeddingSpaceKey = embedder.embeddingSpaceKey;
 			try {
-				const embeddingResult = await embed({
-					model: embedder.model,
-					value: embeddingText,
-				});
+				const embeddingResult = await meterLlmCall(
+					ctx,
+					{ feature: 'embedding_file', root: fileRoot },
+					(meter) => runEmbedding({ meter, model: embedder.model, value: embeddingText }),
+					// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
+					{ onWriteError: 'ignore' }
+				);
 				embedding = toIndexVector(embeddingResult.embedding);
 			} catch (error) {
 				logError('[semantic_file] embedding generation failed', {
@@ -283,30 +295,12 @@ ${textForAI}`,
 		) {
 			await ctx.runAction(internal.knowledge.extraction.extractFromFile, {
 				fileId: args.fileId,
+				// Awaited: the extraction spends from this action's clock (ADR-0073).
+				root: boundedRoot(ctx, fileRoot),
 			});
 		}
 	},
 });
-
-/**
- * Drop any tag that carries a prompt-injection attempt. Auto-tags are derived by
- * the LLM from untrusted extracted file content, so a planted instruction could
- * otherwise be persisted into `autoTags` / `searchableText` and reach a model via
- * retrieval. Deterministic pattern match — no extra LLM cost. Exported for unit
- * tests.
- */
-export function scrubTags(tags: string[]): string[] {
-	return tags.filter((tag) => !detectInjection(tag).detected);
-}
-
-/** Normalize a phrase into a lowercase kebab tag (e.g. "Q3 Financials" → "q3-financials"). */
-function slugifyTag(input: string): string {
-	return input
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		.slice(0, 40);
-}
 
 /**
  * Semantic file search (hybrid vector + full-text).
@@ -350,11 +344,15 @@ export const semanticSearch = internalAction({
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out.
 		scopeToContact: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
+		/** The caller's root request, so the query embedding's ledger row groups under it. */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (
 		ctx,
 		args
 	): Promise<Array<Doc<'semanticFiles'> & { url: string | null; _score: number }>> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const queryText = args.queryText?.trim();
 
 		// A caller's vector is used as given, with the space it was embedded in
@@ -370,7 +368,8 @@ export const semanticSearch = internalAction({
 				ctx,
 				['semanticFiles'],
 				queryText,
-				'[semantic_file] search'
+				'[semantic_file] search',
+				args.root
 			);
 			if (query.kind === 'failed') return [];
 			if (query.kind === 'vector') {
@@ -487,10 +486,4 @@ export async function extractText(blob: Blob, mimeType: string, filename: string
 	// external libraries or a processing service, so the file is ingested under
 	// its own name and nothing else.
 	return extractionPlaceholder(format, filename);
-}
-
-// Exported for unit tests.
-export function truncateForLLM(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	return text.slice(0, maxChars) + '\n\n[Content truncated...]';
 }

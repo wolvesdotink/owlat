@@ -25,6 +25,7 @@ import {
 	truncateOneLine,
 } from './emergency';
 import { buildCurrentMessageSection, inboundBodyForContext } from './currentMessage';
+import { teamRoot } from '../../shared/agentSpend';
 
 // Re-export the emergency and current-message helpers so existing importers (and
 // tests) that reference them via the step module keep working after the split.
@@ -39,10 +40,6 @@ const CONTEXT_BUDGET = {
 	fileLimit: 3,
 	charsPerToken: 4,
 };
-
-function estimateTokens(text: string): number {
-	return Math.ceil(text.length / CONTEXT_BUDGET.charsPerToken);
-}
 
 interface ContextRetrievalInput {
 	inboundMessageId: Id<'inboundMessages'>;
@@ -252,7 +249,8 @@ export async function assembleInboundBriefing(
 			ctx,
 			['knowledgeEntries', 'semanticFiles'],
 			queryText,
-			'[context_retrieval]'
+			'[context_retrieval]',
+			teamRoot(inboundMessageId)
 		);
 		const embedding =
 			query.kind === 'vector'
@@ -388,7 +386,7 @@ export async function assembleInboundBriefing(
 
 	// ── Compile and compact ──
 	const fullContext = contextParts.join('\n\n');
-	const estimatedTokens = estimateTokens(fullContext);
+	const estimatedTokens = Math.ceil(fullContext.length / CONTEXT_BUDGET.charsPerToken);
 
 	let tier: ContextRetrievalOutput['tier'];
 	let finalContext: string;
