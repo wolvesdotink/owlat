@@ -72,7 +72,9 @@ describe('claim verification off (the default)', () => {
 	it('reads nothing when there is nothing to verify', async () => {
 		const ctx = ctxWith({});
 		await verifyRouted(ctx, [], { source, root });
-		expect((ctx as unknown as { runQuery: ReturnType<typeof vi.fn> }).runQuery).not.toHaveBeenCalled();
+		expect(
+			(ctx as unknown as { runQuery: ReturnType<typeof vi.fn> }).runQuery
+		).not.toHaveBeenCalled();
 		expect(mocks.verifyClaims).not.toHaveBeenCalled();
 	});
 });
@@ -82,7 +84,11 @@ describe('claim checks enforced', () => {
 		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
 		mocks.runBundle
 			.mockResolvedValueOnce({ hasRun: true, status: 'complete', labels: { verdict: 'supported' } })
-			.mockResolvedValueOnce({ hasRun: true, status: 'complete', labels: { verdict: 'contradicted' } })
+			.mockResolvedValueOnce({
+				hasRun: true,
+				status: 'complete',
+				labels: { verdict: 'contradicted' },
+			})
 			.mockResolvedValueOnce({ hasRun: false, why: 'settled', labels: { verdict: 'unknown' } });
 		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
 			source,

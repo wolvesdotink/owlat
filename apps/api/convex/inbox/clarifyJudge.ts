@@ -158,7 +158,9 @@ export async function judgeOpenSlots(
 	const plan = routing ? planNecessity(routing.policy) : null;
 	if (routing && plan?.mode === 'advisory') {
 		const isNeeded = await askNecessity(ctx, surface, routing, plan, context);
-		return { judgment: isNeeded === undefined ? { kind: 'unjudged' } : { kind: 'necessity', isNeeded } };
+		return {
+			judgment: isNeeded === undefined ? { kind: 'unjudged' } : { kind: 'necessity', isNeeded },
+		};
 	}
 	const sampled = await sampleDivergence(ctx, surface, context, candidates);
 	if (routing && plan?.mode === 'shadow' && sampled.judgment.kind === 'divergence') {

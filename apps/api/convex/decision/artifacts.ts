@@ -32,7 +32,11 @@ import {
 	DECISION_LEASE_MS,
 	planFor,
 } from '../lib/decision/routing';
-import { DECISION_FEATURE, type DecisionBundleTask, type DecisionLabels } from '../lib/decision/bundles';
+import {
+	DECISION_FEATURE,
+	type DecisionBundleTask,
+	type DecisionLabels,
+} from '../lib/decision/bundles';
 import type { AiTaskName } from '@owlat/shared/aiRouting';
 import { observeAndLearn, subjectSender } from './senderMemory';
 import { isExcludedFromHostedDecisions, type ExclusionScope } from './exclusion';

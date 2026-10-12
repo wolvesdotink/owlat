@@ -116,7 +116,10 @@ const teamInput: ClarifyInput = {
 	} as ClarifyInput['classification'],
 };
 
-function teamCtx(mode: 'off' | 'shadow' | 'enforce', fills: { questionId: string; value: string }[] = []) {
+function teamCtx(
+	mode: 'off' | 'shadow' | 'enforce',
+	fills: { questionId: string; value: string }[] = []
+) {
 	return makeStepCtx<Parameters<typeof clarifyStep.execute>[0]>({
 		queries: {
 			getAskEagernessInternal: { mode: null },

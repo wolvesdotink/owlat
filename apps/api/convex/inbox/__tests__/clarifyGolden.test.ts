@@ -38,7 +38,12 @@ vi.mock('../../lib/llm/dispatch', () => ({
 		});
 		return mocks.runLlmText(opts);
 	},
-	runLlmObject: (opts: { model: unknown; prompt: string; temperature?: number; schema: unknown }) => {
+	runLlmObject: (opts: {
+		model: unknown;
+		prompt: string;
+		temperature?: number;
+		schema: unknown;
+	}) => {
 		mocks.log.calls.push({
 			call: 'object',
 			model: opts.model,

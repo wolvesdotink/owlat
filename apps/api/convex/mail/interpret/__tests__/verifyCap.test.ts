@@ -75,17 +75,19 @@ const verifierClaims = () =>
 
 beforeEach(() => {
 	llm.runLlmObject.mockReset();
-	llm.runLlmObject.mockImplementation(async ({ schema, prompt }: { schema: unknown; prompt: string }) => {
-		if (schema === briefModelSchema) {
-			return { object: OUTPUT, tokenUsage: undefined, modelUsed: 'stub-model' };
+	llm.runLlmObject.mockImplementation(
+		async ({ schema, prompt }: { schema: unknown; prompt: string }) => {
+			if (schema === briefModelSchema) {
+				return { object: OUTPUT, tokenUsage: undefined, modelUsed: 'stub-model' };
+			}
+			const ids = [...prompt.matchAll(/CLAIM (\S+):/g)].map((m) => m[1]);
+			return {
+				object: { verdicts: ids.map((claimId) => ({ claimId, verdict: 'supported' })) },
+				tokenUsage: undefined,
+				modelUsed: 'stub-model',
+			};
 		}
-		const ids = [...prompt.matchAll(/CLAIM (\S+):/g)].map((m) => m[1]);
-		return {
-			object: { verdicts: ids.map((claimId) => ({ claimId, verdict: 'supported' })) },
-			tokenUsage: undefined,
-			modelUsed: 'stub-model',
-		};
-	});
+	);
 });
 
 async function interpret(t: Test, cap: number | null) {

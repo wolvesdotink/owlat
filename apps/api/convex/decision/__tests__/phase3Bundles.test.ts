@@ -105,7 +105,10 @@ async function setup(
 
 async function seedTeamMessage(t: T): Promise<Id<'inboundMessages'>> {
 	return t.run(async (ctx) => {
-		const contactId = await ctx.db.insert('contacts', createTestContact({ email: 'ada@example.com' }));
+		const contactId = await ctx.db.insert(
+			'contacts',
+			createTestContact({ email: 'ada@example.com' })
+		);
 		const threadId = await ctx.db.insert('conversationThreads', {
 			subject: 'New date',
 			normalizedSubject: 'new date',
