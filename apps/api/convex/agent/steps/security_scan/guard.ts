@@ -29,6 +29,7 @@ import { openInboundMessageBody } from '../../../lib/messageBodyInbound';
 import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject } from '../../../lib/llm/dispatch';
 import { meterAgentCall } from '../../shared/agentSpend';
+import type { LlmCallMeter } from '../../../lib/llm/requestMeter';
 import { stripHiddenContent } from './patterns';
 import { guardStanding } from './disposition';
 
@@ -110,11 +111,12 @@ export type GuardScanResult = {
 async function classifyGuardWindow(
 	ctx: ActionCtx,
 	inboundMessageId: Id<'inboundMessages'>,
-	sample: string
+	sample: string,
+	deadlineAt: number | undefined
 ): Promise<InjectionGuardVerdict | undefined> {
 	try {
 		const model = await resolveLanguageModel(ctx, 'guard');
-		const { object } = await meterAgentCall(ctx, 'agent_security_scan', inboundMessageId, (meter) =>
+		const call = (meter: LlmCallMeter) =>
 			runLlmObject({
 				meter,
 				model,
@@ -129,7 +131,13 @@ Respond with isInjection, a confidence between 0 and 1, and a short reason.
 ${sample}
 --- END EMAIL SECTION ---`,
 				temperature: 0,
-			})
+			});
+		const { object } = await meterAgentCall(
+			ctx,
+			'agent_security_scan',
+			inboundMessageId,
+			call,
+			deadlineAt
 		);
 		return object;
 	} catch {
@@ -143,12 +151,14 @@ ${sample}
  * an injection placed past the first 8k chars is still seen (see
  * {@link chunkForGuard}). ORs the per-window verdicts: any window flagging with
  * high confidence flags the message. Every window's call is a ledger row under
- * the guarded message's root request (`team:<id>`), whichever caller ran it.
+ * the guarded message's root request (`team:<id>`), whichever caller ran it,
+ * and spends from the awaiting caller's deadline (`deadlineAt`) when it has one.
  */
 export async function runModelGuard(
 	ctx: ActionCtx,
 	inboundMessageId: Id<'inboundMessages'>,
-	text: string
+	text: string,
+	deadlineAt?: number
 ): Promise<GuardScanResult> {
 	const windows = chunkForGuard(text);
 	if (windows.length === 0) return { verdict: undefined, incomplete: false };
@@ -158,7 +168,7 @@ export async function runModelGuard(
 	let flagged: InjectionGuardVerdict | undefined;
 	let strongest: InjectionGuardVerdict | undefined;
 	for (const window of windows) {
-		const verdict = await classifyGuardWindow(ctx, inboundMessageId, window);
+		const verdict = await classifyGuardWindow(ctx, inboundMessageId, window, deadlineAt);
 		if (verdict === undefined) {
 			// This window's call failed — the guard did not fully see the message.
 			incomplete = true;
@@ -226,17 +236,20 @@ export function isGuardFlagged(
  *     did not flag it. A model error fails open, the way the step does, with
  *     `guardUnavailable` recorded;
  *   - anything else proceeds.
+ * `deadlineAt` is the awaiting caller's deadline (ADR-0073): an action called
+ * with a bounded root runs the guard on that clock, not on a fresh one.
  */
 export async function runGuardBeforeAutonomy(
 	ctx: ActionCtx,
-	message: Doc<'inboundMessages'>
+	message: Doc<'inboundMessages'>,
+	deadlineAt?: number
 ): Promise<{ mayProceed: boolean }> {
 	const standing = guardStanding(message);
 	if (standing === 'rejected') return { mayProceed: false };
 	if (standing === 'clear' || !message.securityFlags) return { mayProceed: true };
 	const { text, html } = await openInboundMessageBody(message, ctx.storage);
 	const sample = buildGuardSample(message.subject, text, html);
-	const scan = await runModelGuard(ctx, message._id, sample);
+	const scan = await runModelGuard(ctx, message._id, sample, deadlineAt);
 	const flagged = isGuardFlagged(scan.verdict) ? scan.verdict : undefined;
 	// The stored standing after the merge decides, not this run's own verdict:
 	// an overlapping late guard may have rejected the message already.
@@ -258,21 +271,23 @@ export async function runGuardBeforeAutonomy(
  */
 export async function guardAllowsInboundMessage(
 	ctx: ActionCtx,
-	inboundMessageId: Id<'inboundMessages'>
+	inboundMessageId: Id<'inboundMessages'>,
+	deadlineAt?: number
 ): Promise<boolean> {
 	const check = await ctx.runQuery(internal.inbox.stepOutputs.guardStandingOf, {
 		inboundMessageId,
 	});
 	if (check.standing !== 'needs_guard') return check.standing === 'clear';
-	return (await runGuardBeforeAutonomy(ctx, check.message)).mayProceed;
+	return (await runGuardBeforeAutonomy(ctx, check.message, deadlineAt)).mayProceed;
 }
 
 /** Interpretation's check: only a Team `inbound` source is a stored Team message. */
 export async function guardAllowsInterpretation(
 	ctx: ActionCtx,
-	source: Infer<typeof interpretationSourceValidator>
+	source: Infer<typeof interpretationSourceValidator>,
+	deadlineAt?: number
 ): Promise<boolean> {
-	return source.kind === 'inbound' ? guardAllowsInboundMessage(ctx, source.id) : true;
+	return source.kind === 'inbound' ? guardAllowsInboundMessage(ctx, source.id, deadlineAt) : true;
 }
 
 /**
@@ -282,11 +297,12 @@ export async function guardAllowsInterpretation(
  */
 export async function guardedHistory<M extends Doc<'inboundMessages'>>(
 	ctx: ActionCtx,
-	messages: readonly M[]
+	messages: readonly M[],
+	deadlineAt?: number
 ): Promise<M[]> {
 	const kept: M[] = [];
 	for (const message of messages) {
-		if ((await runGuardBeforeAutonomy(ctx, message)).mayProceed) kept.push(message);
+		if ((await runGuardBeforeAutonomy(ctx, message, deadlineAt)).mayProceed) kept.push(message);
 	}
 	return kept;
 }

@@ -44,9 +44,15 @@ export async function meterAgentCall<R>(
 	ctx: SpendCtx,
 	feature: AgentSpendFeature,
 	inboundMessageId: Id<'inboundMessages'>,
-	call: (meter: LlmCallMeter) => Promise<R>
+	call: (meter: LlmCallMeter) => Promise<R>,
+	/** An awaiting caller's deadline (ADR-0073); the action's own budget bounds it too. */
+	deadlineAt?: number
 ): Promise<R> {
-	return meterLlmCall(ctx, { feature, root: teamRoot(inboundMessageId) }, call, {
-		onWriteError: 'ignore',
-	});
+	const root = teamRoot(inboundMessageId);
+	return meterLlmCall(
+		ctx,
+		{ feature, root: deadlineAt === undefined ? root : { ...root, deadlineAt } },
+		call,
+		{ onWriteError: 'ignore' }
+	);
 }

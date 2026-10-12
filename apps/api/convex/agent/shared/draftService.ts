@@ -316,7 +316,9 @@ export async function runSharedDraft(
 				signatureInstruction: params.signatureInstruction,
 				voiceSection: params.voiceSection,
 			},
-			() => runDefaultDraftStrategy(params, true, meter)
+			() => runDefaultDraftStrategy(params, true, meter),
+			// A plugin strategy's own model calls group under the message too.
+			params.root ? childCall(params.root, meter.requestId) : undefined
 		);
 	} catch (error) {
 		await recordDraftSpend();

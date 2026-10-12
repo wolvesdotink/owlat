@@ -196,7 +196,8 @@ export const extractFromMessage = internalAction({
 		// archive, agent off) gets it before its first generative consumer — this
 		// one, which the first-enable backfill reaches for mail that arrived while
 		// the agent was off. A guard that flags the message ends extraction.
-		const guard = await runGuardBeforeAutonomy(ctx, message);
+		// On the awaiting caller's clock when it passed one (ADR-0073).
+		const guard = await runGuardBeforeAutonomy(ctx, message, args.root?.deadlineAt);
 		if (!guard.mayProceed) {
 			logInfo('[knowledge.extract] skipped: the late injection guard flagged the message');
 			return;

@@ -13,7 +13,7 @@ import type { ActionCtx } from '../_generated/server';
 import { MAX_LLM_ATTEMPTS, runLlmTextWithAttemptMetadata } from '../lib/llm/dispatch';
 import { estimateAdmissionCostMicrousd } from '../lib/llm/pricing';
 import { resolveLanguageModelWithProvenance } from '../lib/llmProvider';
-import { LlmCallMeter } from '../lib/llm/requestMeter';
+import { LlmCallMeter, type LlmRootContext } from '../lib/llm/requestMeter';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import type { MeteredRequest } from '../analytics/llmUsage';
 import { PLUGIN_LLM_MAX_OUTPUT_TOKENS, validatePluginLlmRequest } from './llmRequest';
@@ -71,16 +71,19 @@ export function bindAuthenticatedBundledPluginLlm(
 export function bindSystemBundledPluginLlm(
 	ctx: ActionCtx,
 	pluginIdInput: unknown,
-	executionSignal?: AbortSignal
+	executionSignal?: AbortSignal,
+	/** The host's root request (a draft's message): the plugin's rows group under it. */
+	root?: LlmRootContext
 ): PluginLlmService {
-	return bindBundledPluginLlm(ctx, pluginIdInput, SYSTEM_ACTOR_POLICY, executionSignal);
+	return bindBundledPluginLlm(ctx, pluginIdInput, SYSTEM_ACTOR_POLICY, executionSignal, root);
 }
 
 function bindBundledPluginLlm(
 	ctx: ActionCtx,
 	pluginIdInput: unknown,
 	actorPolicy: PluginLlmActorPolicy,
-	executionSignal?: AbortSignal
+	executionSignal?: AbortSignal,
+	root?: LlmRootContext
 ): PluginLlmService {
 	let pluginId;
 	try {
@@ -165,9 +168,12 @@ function bindBundledPluginLlm(
 			const meter = new LlmCallMeter({
 				task: 'plugin.invoke',
 				deadlineAt: anchorActionDeadline(ctx),
+				...(root ? { root } : {}),
 			});
 			const metered = () => ({
 				requestId: meter.requestId,
+				...(root ? { rootRequestId: root.rootRequestId } : {}),
+				...(root?.parentCallId ? { parentCallId: root.parentCallId } : {}),
 				requests: meter.pendingWrites().map(({ outcome: _outcome, ...request }) => request),
 			});
 			let dispatched;
@@ -233,7 +239,12 @@ async function settleFailure(
 	ctx: ActionCtx,
 	reservationId: string,
 	actorPolicy: PluginLlmActorPolicy,
-	metered: { requestId?: string; requests?: MeteredRequest[] } = {}
+	metered: {
+		requestId?: string;
+		rootRequestId?: string;
+		parentCallId?: string;
+		requests?: MeteredRequest[];
+	} = {}
 ): Promise<boolean> {
 	// Pending reservations remain fully charged through their UTC day. Never
 	// reopen budget headroom when terminal accounting is unavailable.

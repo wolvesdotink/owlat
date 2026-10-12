@@ -7,6 +7,7 @@ import { bindSystemBundledPluginLlm } from '../../plugins/llm';
 import { pluginDraftStrategyDefinition } from '../../plugins/draftStrategyCatalog';
 import { BUNDLED_PLUGIN_DRAFT_STRATEGY_MODULES } from '../../plugins/draftStrategyModules.generated';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
+import type { LlmRootContext } from '../../lib/llm/requestMeter';
 
 const MAX_CONTEXT_BYTES = 64 * 1024;
 const MAX_TRUSTED_FIELD_BYTES = 8 * 1024;
@@ -33,7 +34,9 @@ type FailureReason = 'draft_strategy_failed' | 'draft_strategy_invalid' | 'draft
 export async function runHostedDraftStrategy(
 	ctx: ActionCtx,
 	strategyKind: string,
-	source: DraftStrategySource
+	source: DraftStrategySource,
+	/** The draft's root request: the plugin's model calls are rows under it (ADR-0073). */
+	root?: LlmRootContext
 ): Promise<string | null> {
 	const definition = pluginDraftStrategyDefinition(strategyKind);
 	const registration = DRAFT_STRATEGY_MODULES.find((entry) => entry.kind === strategyKind);
@@ -56,7 +59,12 @@ export async function runHostedDraftStrategy(
 			registration.module.generate(
 				input,
 				Object.freeze({
-					llm: bindSystemBundledPluginLlm(ctx, definition.pluginId, executionController.signal),
+					llm: bindSystemBundledPluginLlm(
+						ctx,
+						definition.pluginId,
+						executionController.signal,
+						root
+					),
 				})
 			)
 		);

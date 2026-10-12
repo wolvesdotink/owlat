@@ -122,6 +122,24 @@ describe('runSharedDraft — one pipeline, both entry points', () => {
 		expect(runLlmObjectMock).toHaveBeenCalledTimes(1); // host-owned self-check
 	});
 
+	it('hands the plugin strategy the draft root as a child of the draft call', async () => {
+		runHostedDraftStrategyMock.mockResolvedValue('CUSTOM PRIMARY');
+		const ctx = { runQuery: vi.fn(async () => 'plugin.draft-pack.legal') };
+		await runSharedDraft(
+			ctx as never,
+			baseParams({
+				strategyScope: { classification: 'support' },
+				root: { rootRequestId: 'team:inbound-1', deadlineAt: 9_999_999_999_999 },
+			})
+		);
+		const root = runHostedDraftStrategyMock.mock.calls[0]![3];
+		expect(root).toMatchObject({
+			rootRequestId: 'team:inbound-1',
+			parentCallId: expect.any(String),
+			deadlineAt: 9_999_999_999_999,
+		});
+	});
+
 	it('falls back exactly once to default when a selected strategy is unavailable', async () => {
 		runHostedDraftStrategyMock.mockResolvedValue(null);
 		const ctx = { runQuery: vi.fn(async () => 'plugin.retired.missing') } as never;

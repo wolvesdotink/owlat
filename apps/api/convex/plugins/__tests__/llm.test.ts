@@ -159,6 +159,62 @@ describe('hosted plugin LLM settlement, durably (ADR-0073)', () => {
 		});
 	});
 
+	it.each([
+		['settled directly', 0, false],
+		['recovered by the scheduler', 2, false],
+		['recovered after a provider failure', 2, true],
+	])(
+		'tags the rows of a host-rooted call with its root request when %s',
+		async (_label, failures, providerFails) => {
+			const { t, actionCtx, scheduled } = await flakySettlement(failures);
+			const root = {
+				rootRequestId: 'team:inbound-1',
+				parentCallId: 'draft-call-1',
+				deadlineAt: Date.now() + 60_000,
+			};
+			const service = bindSystemBundledPluginLlm(actionCtx, 'alpha', undefined, root);
+			if (providerFails) {
+				providerGenerate.mockRejectedValueOnce({ statusCode: 401, message: 'bad key' });
+				await expect(service.generate({ tier: 'fast', prompt: 'hi' })).rejects.toMatchObject({
+					code: 'provider_failure',
+				});
+			} else {
+				await service.generate({ tier: 'fast', prompt: 'hi' });
+			}
+			if (failures > 0) {
+				expect(scheduled[0]!.args).toMatchObject({
+					rootRequestId: 'team:inbound-1',
+					parentCallId: 'draft-call-1',
+				});
+				await t.mutation(
+					internal.plugins.llmAccounting.recoverSettlement,
+					scheduled[0]!.args as never
+				);
+			}
+			await t.run(async (ctx) => {
+				const rows = await ctx.db.query('llmUsageEvents').collect();
+				expect(rows.length).toBeGreaterThan(0);
+				for (const row of rows) {
+					expect(row).toMatchObject({
+						feature: 'plugin:alpha',
+						rootRequestId: 'team:inbound-1',
+						parentCallId: 'draft-call-1',
+					});
+				}
+			});
+		}
+	);
+
+	it('leaves the root tags off an unrooted call', async () => {
+		const { t, actionCtx } = await flakySettlement(0);
+		await bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({ tier: 'fast', prompt: 'hi' });
+		await t.run(async (ctx) => {
+			const [row] = await ctx.db.query('llmUsageEvents').collect();
+			expect(row!.rootRequestId).toBeUndefined();
+			expect(row!.parentCallId).toBeUndefined();
+		});
+	});
+
 	it('recovers a failed call’s settlement with its requests too', async () => {
 		const { t, actionCtx, scheduled } = await flakySettlement(2);
 		providerGenerate.mockRejectedValueOnce({ statusCode: 401, message: 'bad key' });

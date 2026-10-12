@@ -263,7 +263,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 
 	// D13 (ADR-0073): a Team message whose scan skipped the model guard gets it
 	// before this generative consumer; one it flags is not interpreted.
-	if (!(await guardAllowsInterpretation(ctx, args.source))) {
+	if (!(await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt))) {
 		const skip = { skipReason: 'security' as const, errorCode: 'guard_flagged' };
 		const record = { contentRevision: 'skip', status: 'skipped' as const, ...skip };
 		return finish(await apply(ctx, args, loaded, record), { errorCode: skip.errorCode });

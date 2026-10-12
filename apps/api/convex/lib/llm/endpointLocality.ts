@@ -7,7 +7,7 @@
  * LOCAL:
  *   - the `local` provider kinds (the bundled embedding sidecar, the local
  *     decision engine), which exist only for self-hosted engines;
- *   - an OpenAI-compatible endpoint whose host is loopback (`localhost`,
+ *   - an OpenAI or OpenAI-compatible endpoint whose host is loopback (`localhost`,
  *     127.0.0.0/8, ::1), a private address (RFC 1918, link-local, IPv6 ULA
  *     and link-local), a `.local` / `.internal` / `.localhost` name, or a
  *     single-label hostname (a Docker or compose service such as `ollama`).
@@ -24,8 +24,12 @@ export type EndpointLocality = 'local' | 'hosted';
 /** Provider kinds that only ever name a self-hosted engine. */
 const LOCAL_KINDS: ReadonlySet<string> = new Set(['local']);
 
-/** Provider kinds whose locality depends on where their base URL points. */
-const URL_DECIDED_KINDS: ReadonlySet<string> = new Set(['openaiCompatible']);
+/**
+ * Provider kinds whose locality depends on where their base URL points. `openai`
+ * is here because the env plane speaks the OpenAI wire to whatever `LLM_BASE_URL`
+ * names (an env Ollama included); its native API, with no base URL, stays hosted.
+ */
+const URL_DECIDED_KINDS: ReadonlySet<string> = new Set(['openaiCompatible', 'openai']);
 
 function isPrivateIpv4(host: string): boolean {
 	const parts = host.split('.');

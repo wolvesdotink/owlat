@@ -19,6 +19,9 @@ import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
 /** The provider requests of one plugin call, as the dispatch metered them (ADR-0073). */
 export const meteredCallArgs = {
 	requestId: v.optional(v.string()),
+	/** The host's root request and calling call, so the rows join the message's other spend. */
+	rootRequestId: v.optional(v.string()),
+	parentCallId: v.optional(v.string()),
 	requests: v.optional(v.array(meteredRequestValidator)),
 };
 
@@ -35,6 +38,8 @@ export async function insertPluginRequestRows(
 	reservation: Doc<'pluginLlmReservations'>,
 	args: {
 		requestId?: string;
+		rootRequestId?: string;
+		parentCallId?: string;
 		requests?: MeteredRequest[];
 		modelUsed?: string;
 		isEstimate?: boolean;
@@ -53,6 +58,8 @@ export async function insertPluginRequestRows(
 			{ organizationId: reservation.organizationId, pluginId: reservation.pluginId },
 			{
 				...(args.requestId ? { requestId: args.requestId } : {}),
+				...(args.rootRequestId ? { rootRequestId: args.rootRequestId } : {}),
+				...(args.parentCallId ? { parentCallId: args.parentCallId } : {}),
 				attempt: request.attempt,
 				latencyMs: request.latencyMs,
 				endpoint: reservation.endpointProvenance,

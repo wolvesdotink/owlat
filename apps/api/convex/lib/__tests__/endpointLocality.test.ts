@@ -64,9 +64,21 @@ describe('resolveEndpointLocality', () => {
 		expect(resolveEndpointLocality('openaiCompatible', url)).toBe('hosted');
 	});
 
+	it.each([
+		['http://localhost:11434/v1', 'local'],
+		['http://ollama:11434/v1', 'local'],
+		['http://192.168.1.10:8000/v1', 'local'],
+		['https://api.openai.com/v1', 'hosted'],
+		['https://openrouter.ai/api/v1', 'hosted'],
+		['not a url', 'hosted'],
+	])('reads an OpenAI-kind endpoint at %s by the same rule: %s', (url, locality) => {
+		expect(resolveEndpointLocality('openai', url)).toBe(locality);
+	});
+
 	it('fails closed: no URL, or a hosted kind, is hosted; a local kind is local', () => {
 		expect(resolveEndpointLocality('openaiCompatible', undefined)).toBe('hosted');
-		expect(resolveEndpointLocality('openai', 'http://localhost:1234')).toBe('hosted');
+		expect(resolveEndpointLocality('openai', undefined)).toBe('hosted');
+		expect(resolveEndpointLocality('anthropic', 'http://localhost:1234')).toBe('hosted');
 		expect(resolveEndpointLocality('typesafe', undefined)).toBe('hosted');
 		expect(resolveEndpointLocality('llm', undefined)).toBe('hosted');
 		expect(resolveEndpointLocality('local', undefined)).toBe('local');
@@ -105,6 +117,28 @@ describe('the resolver stamps locality on both planes', () => {
 		);
 		expect(isLocalModel(model)).toBe(isLocal);
 	});
+
+	// The env plane speaks the OpenAI wire to whatever `LLM_BASE_URL` names.
+	it.each([
+		[undefined, 'http://localhost:11434/v1', true],
+		['openai', 'http://localhost:11434/v1', true],
+		[undefined, 'https://api.openai.com/v1', false],
+		['openai', 'https://api.openai.com/v1', false],
+		['openai', undefined, false],
+	])(
+		'env: LLM_PROVIDER=%s with LLM_BASE_URL=%s is local: %s',
+		async (provider, baseUrl, isLocal) => {
+			vi.stubEnv('LLM_API_KEY', 'test-key');
+			if (provider) vi.stubEnv('LLM_PROVIDER', provider);
+			if (baseUrl) vi.stubEnv('LLM_BASE_URL', baseUrl);
+			const { resolveLanguageModel, resolveIndexEmbedder } = await import('../llmProvider');
+			const { isLocalModel } = await import('../llm/modelEndpoint');
+			const ctx = { runQuery: vi.fn(async () => null) } as unknown as ActionCtx;
+			expect(isLocalModel(await resolveLanguageModel(ctx, 'classify'))).toBe(isLocal);
+			const { model } = await resolveIndexEmbedder(ctx);
+			expect(isLocalModel(model)).toBe(isLocal);
+		}
+	);
 
 	it('embedding: the bundled local sidecar is local', async () => {
 		const { resolveIndexEmbedder } = await import('../llmProvider');

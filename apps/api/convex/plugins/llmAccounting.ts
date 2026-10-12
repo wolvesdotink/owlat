@@ -235,7 +235,12 @@ export const recoverSettlement = internalMutation({
 	},
 });
 
-type MeteredArgs = { requestId?: string; requests?: MeteredRequest[] };
+type MeteredArgs = {
+	requestId?: string;
+	rootRequestId?: string;
+	parentCallId?: string;
+	requests?: MeteredRequest[];
+};
 
 async function applySuccess(
 	ctx: MutationCtx,
