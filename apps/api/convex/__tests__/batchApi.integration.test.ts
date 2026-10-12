@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { newHarness } from './testModules';
-import { createTestInboundMessage, createTestSemanticFile } from './factories';
+import { createTestInboundMessage, createTestSemanticFile, enableFeatures } from './factories';
 import { actionCtxOver, reconcileSpend } from '../aiRouting/__tests__/spend.testlib';
 import { languageProviderFor } from '../lib/llmProviders';
 import { stampModelEndpoint } from '../lib/llm/modelEndpoint';
@@ -140,6 +140,8 @@ async function setup(opts: { dailyUsd?: string; batchApi?: 'off' | 'enforce' } =
 	const t = newHarness();
 	if (opts.dailyUsd !== undefined) await reconcileSpend(t);
 	if (opts.batchApi) await setPolicy(t, opts.batchApi);
+	// The result is kept only while knowledge is on (Sol r2 F1).
+	await enableFeatures(t, ['ai.knowledge']);
 	const openai = fakeOpenAi();
 	vi.stubGlobal('fetch', openai.fetchFn);
 	return { t, openai, ...actionCtxOver(t) };
@@ -252,6 +254,20 @@ describe('batch API on', () => {
 		expect(line).toMatchObject({ custom_id: item!.requestId, url: '/v1/responses' });
 		// No real-time request was made.
 		expect(openai.state.calls.some((call) => call.url.endsWith('/v1/responses'))).toBe(false);
+	});
+
+	it('keeps a source its resume would refuse real-time: nothing is held or sent', async () => {
+		const { t, ctx, openai } = await setup({ dailyUsd: '10', batchApi: 'enforce' });
+		const isEligible = vi.fn(async () => false);
+
+		expect(await sendThroughBatch(ctx, { ...candidate(await seedMessage(t)), isEligible })).toBe(
+			false
+		);
+
+		expect(isEligible).toHaveBeenCalledTimes(1);
+		expect(openai.state.calls.some((call) => call.method === 'POST')).toBe(false);
+		expect(await items(t)).toHaveLength(0);
+		expect(await holds(t)).toHaveLength(0);
 	});
 
 	it('sends a source once: a second run while its item is out sends and holds nothing', async () => {

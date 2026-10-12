@@ -367,6 +367,13 @@ sentence. The web says it in the reader's language.
   result that is unbilled, unparseable or cut off hands the source back to the
   real-time path once. A usable result continues through the existing paths:
   the extraction's resume marker, or file processing re-run with the summary.
+- _Guards at resume._ A result is kept only if the live path would still read
+  its source now: `ai.knowledge` on, a Team message not held back by the guard
+  since, Postbox mail not moved to Spam, Trash, Sent or Drafts. The check runs
+  in the transaction that would keep the result, and the mail resume runs it
+  again. A refusal drops the result; the item still writes its row and
+  settles, because the batch was billed. Only mail in an extractable folder is
+  batched, so imported Sent or Trash mail stays real-time.
 
 ## Consequences
 

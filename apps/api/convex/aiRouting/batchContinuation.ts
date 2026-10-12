@@ -12,6 +12,9 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import type { BatchConsumer } from '../lib/validators/aiRouting';
 import type { BatchedFileSummary } from '../analytics/backgroundDeferral';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { guardStanding } from '../agent/steps/security_scan/disposition';
+import { isInKnowledgeFolder } from '../mail/liveKnowledge';
 import {
 	readExtractionProgress,
 	writeExtractionMarker,
@@ -95,6 +98,34 @@ export async function handBack(ctx: MutationCtx, item: Doc<'llmBatchItems'>): Pr
 	await rerun(ctx, item);
 }
 
+/**
+ * The guards the live extraction path runs, rechecked now that the result is
+ * back (Sol r2 F1): the batch was out for up to a day. `ai.knowledge` still
+ * on (#1335); a Team message the scan or a late guard has since held back
+ * (quarantine, malware, phishing, a quarantine-confidence injection) is not
+ * read; Postbox mail moved to Spam, Trash, Sent or Drafts is not read. Checked
+ * in the transaction that would keep the result, so a refusal keeps nothing:
+ * the result is dropped, the item already settled. The resumed extraction
+ * runs its own guards again (`knowledge/extraction.ts`,
+ * `knowledge/batchedMail.ts`).
+ */
+async function mayKeepExtraction(
+	ctx: MutationCtx,
+	source: NonNullable<Awaited<ReturnType<typeof liveSourceId>>>
+): Promise<boolean> {
+	if (!(await isFeatureEnabled(ctx, 'ai.knowledge'))) return false;
+	switch (source.consumer) {
+		case 'knowledge_message': {
+			const message = await ctx.db.get(source.id);
+			return message !== null && guardStanding(message) !== 'rejected';
+		}
+		case 'knowledge_mail':
+			return isInKnowledgeFolder(ctx, source.id);
+		default:
+			return true;
+	}
+}
+
 /** A usable result: continue the source's work with it. */
 export async function continueWith(
 	ctx: MutationCtx,
@@ -112,7 +143,8 @@ export async function continueWith(
 	const entries = result.entries ?? [];
 	// No entries: the real-time call would have stopped here too.
 	if (entries.length === 0) return;
-	if (!(await liveSourceId(ctx, item))) return;
+	const source = await liveSourceId(ctx, item);
+	if (!source || !(await mayKeepExtraction(ctx, source))) return;
 	const sourceType = EXTRACTION_SOURCE[item.consumer];
 	const progress = await readExtractionProgress(ctx, sourceType, item.sourceId);
 	// Another run got there first (a real-time run while this was out): keep its.

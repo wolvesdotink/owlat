@@ -125,3 +125,22 @@ export async function dropExtractionProgress(
 		.take(10);
 	for (const marker of markers) await ctx.db.delete(marker._id);
 }
+
+/**
+ * Drop a source's UNFINISHED marker: a provider batch result (L14) whose
+ * resume was refused (the mail moved to a folder knowledge is not taken from,
+ * the flag went off, the mail is no longer extractable). The result was
+ * billed and is not kept. A complete marker is left alone.
+ */
+export const dropUnfinishedExtraction = internalMutation({
+	args: sourceArgs,
+	handler: async (ctx, args) => {
+		const marker = await ctx.db
+			.query('knowledgeExtractionProgress')
+			.withIndex('by_source', (q) =>
+				q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId)
+			)
+			.first();
+		if (marker && marker.status === 'in_progress') await ctx.db.delete(marker._id);
+	},
+});

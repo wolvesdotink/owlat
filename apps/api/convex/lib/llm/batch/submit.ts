@@ -41,6 +41,12 @@ export interface BatchCandidate {
 	readonly model: LanguageModel;
 	readonly prompt: string;
 	readonly root: LlmRootContext;
+	/**
+	 * Whether the source may go out at all, asked once the switch and the
+	 * adapter allow it: a source its resume would refuse is not batched (its
+	 * result would be billed and dropped) and stays real-time.
+	 */
+	readonly isEligible?: () => Promise<boolean>;
 }
 
 function numberField(body: Record<string, unknown>, ...names: string[]): number | undefined {
@@ -91,6 +97,7 @@ export async function sendThroughBatch(
 	if (!(await isBatchApiOn(ctx))) return false;
 	const route = await batchRouteFor(ctx, candidate.model);
 	if (!route) return false;
+	if (candidate.isEligible && !(await candidate.isEligible())) return false;
 	const call = batchCallOf(candidate.consumer);
 	let captured: CapturedRequest;
 	try {

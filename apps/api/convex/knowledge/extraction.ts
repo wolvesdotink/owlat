@@ -400,8 +400,18 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 					// L14: through the provider's batch API when the switch allows; the
 					// result resumes through `knowledge/batchedMail.ts`, which scopes it
 					// to the sender's contact as both callers do.
+					// Only mail in a folder live mail is extracted from goes out (an
+					// imported Sent or Trash message stays real-time, as before).
+					const isEligible = () =>
+						ctx.runQuery(internal.mail.liveKnowledge.isInExtractableFolder, {
+							mailMessageId: args.mailMessageId,
+						});
 					const candidate = { sourceId: args.mailMessageId, model, prompt, root: extractRoot };
-					if (await sendThroughBatch(ctx, { consumer: 'knowledge_mail', ...candidate })) return [];
+					if (
+						await sendThroughBatch(ctx, { consumer: 'knowledge_mail', ...candidate, isEligible })
+					) {
+						return [];
+					}
 					const {
 						object: extraction,
 						tokenUsage,
