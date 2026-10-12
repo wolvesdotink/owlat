@@ -101,7 +101,7 @@ const INVENTORY: readonly CallSite[] = [
 	{
 		file: 'plugins/llm.ts',
 		fn: 'resolveLanguageModelWithProvenance',
-		args: "ctx, 'plugin.invoke', { tier: request.tier, }",
+		args: "ctx, 'plugin.invoke', { tier: request.tier }",
 		tasks: ['plugin.invoke'],
 		branches: [
 			['fast', 'summarize'],
@@ -114,15 +114,27 @@ const INVENTORY: readonly CallSite[] = [
 	site('knowledge/extraction.ts', "ctx, 'knowledge.extract'", 'extract'),
 	site('agent/outcomeFeedback.ts', "ctx, 'mail.outcome_sentiment'", 'classify'),
 	site('agent/shared/draftSelfCheck.ts', "ctx, 'mail.draft_check'", 'classify'),
+	// The draft step's writer (./agent/steps/draft/writerRoute.ts). `capable`
+	// is today's route; `fast` was `resolveLanguageModelForClassifiedDraft`'s
+	// downgrade (`LLM_COMPLEXITY_ROUTING`), and is also the cheap-first pass.
 	{
 		file: 'agent/steps/draft/index.ts',
 		fn: 'resolveLanguageModel',
-		args: "ctx, 'mail.draft', { tier: route === 'fast' ? 'fast' : 'capable' }",
+		args: "ctx, 'mail.draft', { tier: route === 'capable' ? 'capable' : 'fast' }",
 		tasks: ['mail.draft'],
 		branches: [
 			['capable', 'draft'],
 			['fast', 'summarize'],
 		],
+	},
+	// NEW, only behind the policy's `cheapFirstWriter`: the cheap-first
+	// escalation, on today's capable draft tier.
+	{
+		file: 'agent/steps/draft/index.ts',
+		fn: 'resolveLanguageModel',
+		args: "ctx, 'mail.draft', { tier: 'capable' }",
+		tasks: ['mail.draft'],
+		branches: [['capable', 'draft']],
 	},
 	site('agent/steps/clarify/index.ts', "ctx, 'mail.clarify'", 'classify'),
 	site('agent/steps/security_scan/guard.ts', "ctx, 'mail.guard'", 'guard'),
@@ -152,7 +164,7 @@ const INVENTORY: readonly CallSite[] = [
 	{
 		file: 'mail/ai/composeDraftGap.ts',
 		fn: 'resolveLanguageModel',
-		args: "ctx, 'mail.clarify', { tier: eagerness === 'cautious' ? 'capable' : 'fast', }",
+		args: "ctx, 'mail.clarify', { tier: eagerness === 'cautious' ? 'capable' : 'fast' }",
 		tasks: ['mail.clarify'],
 		branches: [
 			['capable', 'draft'],
@@ -227,6 +239,8 @@ function scannedCalls(): string[] {
 			const args = text
 				.slice(match.index + match[0].length, end - 1)
 				.replace(/\s+/g, ' ')
+				// The formatter's trailing commas are layout, not arguments.
+				.replace(/,\s*([}\]])/g, ' $1')
 				.trim();
 			calls.push(`${file} | ${match[1]} | ${args}`);
 		}

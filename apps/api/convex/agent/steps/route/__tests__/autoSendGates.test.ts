@@ -115,6 +115,7 @@ describe('ordered core auto-send gate registry', () => {
 			'outbound_injection',
 			'outbound_dlp',
 			'draft_gaps',
+			'cheap_first_draft',
 			'handling_rules',
 			'interpretation_incomplete',
 			'item_coverage',
@@ -483,6 +484,15 @@ describe('ordered core auto-send gate registry', () => {
 					rules: restrictiveRules,
 				},
 				reason: 'placeholder for a missing fact',
+				calls: ['getMessage', 'getBudgetStatus', 'getAgentConfig'],
+			},
+			{
+				id: 'cheap_first_draft',
+				fixture: {
+					message: { ...cleanMessage, isCheapFirstDraft: true },
+					rules: restrictiveRules,
+				},
+				reason: 'written cheap-first',
 				calls: ['getMessage', 'getBudgetStatus', 'getAgentConfig'],
 			},
 			{

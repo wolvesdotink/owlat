@@ -352,16 +352,12 @@ export async function resolveLanguageModelForUserText(
 
 /**
  * How the inbound agent's `draft` step writes its reply (`./llm/complexity.ts`
- * `classifiedDraftRoute`), judged from the TRUSTED, sanitized classifier
- * signals only — never the attacker-controlled email body — so a crafted
- * "thanks!"-looking inbound can't force a cheaper, lower-quality draft:
- *   - `fast` when the message is clearly trivial AND complexity routing is on
- *     (`LLM_COMPLEXITY_ROUTING=1`, default off), exactly as before;
- *   - `cheap_first` for an eligible REVIEWED draft when the routing policy's
- *     `cheapFirstWriter` is `reviewed` (D2);
- *   - `capable` otherwise. With routing off and the switch off (the defaults)
- *     this is exactly today's single-tier behaviour.
- * The step then resolves `mail.draft` on the route's tier.
+ * `classifiedDraftRoute`), from the TRUSTED, sanitized classifier signals only
+ * (never the attacker-controlled email body, so a crafted "thanks!" cannot
+ * force a cheaper draft): `fast` under `LLM_COMPLEXITY_ROUTING=1` for a
+ * clearly trivial message, as before; `cheap_first` for an eligible REVIEWED
+ * draft with the policy's `cheapFirstWriter` on (D2); else `capable`. With
+ * both off (the defaults) this is exactly today's single-tier behaviour.
  */
 export function classifiedDraftRouteOf(
 	signals: ClassificationSignals,
