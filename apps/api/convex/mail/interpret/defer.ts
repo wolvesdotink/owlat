@@ -26,13 +26,24 @@
  * and counted in `threadBriefs.deferredSources`, which keeps the brief
  * `pending` (or partial) and tells the reader to ask `lazy.ensure`. Opening
  * the thread runs them ({@link resumeDeferredSources}).
+ *
+ * A deferred source never stays behind an eager one: when any later source of
+ * the thread is interpreted eagerly (a reply candidate, a sent reply), its
+ * earlier deferred sources are promoted and read first, oldest first
+ * ({@link runDeferredPredecessors}, called by `run.ts#runInterpretation`).
+ * So an eager run always reads the items its thread's earlier mail holds.
  */
 
 import { v } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
 import { internalMutation } from '../../lib/writeFence';
-import { interpretationSourceKey } from '../../lib/validators/threadBrief';
+import {
+	interpretationSourceKey,
+	interpretationSourceValidator,
+	type InterpretationSource,
+} from '../../lib/validators/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { mailboxScope } from '../mailbox/shared';
 import { isInterpretationEligible } from './eligibility';
@@ -156,4 +167,80 @@ export async function resumeDeferredSources(
 /** Whether a mail thread has deferred sources waiting for an open. */
 export function hasDeferredSources(brief: Pick<Doc<'threadBriefs'>, 'deferredSources'> | null) {
 	return (brief?.deferredSources ?? 0) > 0;
+}
+
+/** Deferred predecessors one eager run reads first, at most. */
+export const PREDECESSOR_BATCH = 50;
+
+/** A Postbox message's place in its thread: arrival time, then creation. */
+function threadOrder(message: Doc<'mailMessages'>): [number, number] {
+	return [message.receivedAt, message._creationTime];
+}
+
+function isBefore(a: [number, number], b: [number, number]): boolean {
+	return a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
+}
+
+/**
+ * Sol r2 F1: a source turning eager promotes every EARLIER deferred source of
+ * its thread. An earlier message (an invoice) can hold the item a later one
+ * cancels or completes; the later run reads only items that exist, so the
+ * earlier message must be folded first. Each promoted source becomes
+ * outstanding again (so a run that dies is re-run by the sweep) and is
+ * returned oldest first, for the caller to interpret in that order before
+ * its own source. Inbound and outbound (sent) Postbox sources alike; Team
+ * Inbox threads never defer.
+ */
+export const promoteDeferredPredecessors = internalMutation({
+	args: { source: interpretationSourceValidator },
+	handler: async (ctx, args): Promise<InterpretationSource[]> => {
+		if (args.source.kind !== 'mail' && args.source.kind !== 'outboundMail') return [];
+		const message = await ctx.db.get(args.source.id);
+		if (!message) return [];
+		const deferred = await ctx.db
+			.query('interpretSources')
+			.withIndex('by_mail_thread_and_deferred', (q) =>
+				q.eq('mailThreadId', message.threadId).eq('isDeferred', true)
+			)
+			.take(PREDECESSOR_BATCH);
+		const ownKey = interpretationSourceKey(args.source);
+		const earlier: { source: InterpretationSource; order: [number, number] }[] = [];
+		for (const snapshot of deferred) {
+			if (snapshot.sourceKey === ownKey) continue;
+			if (snapshot.source.kind !== 'mail' && snapshot.source.kind !== 'outboundMail') continue;
+			const row = await ctx.db.get(snapshot.source.id);
+			if (!row || !isBefore(threadOrder(row), threadOrder(message))) continue;
+			await markOutstanding(ctx, snapshot.sourceKey);
+			earlier.push({ source: snapshot.source, order: threadOrder(row) });
+		}
+		if (earlier.length > 0) await markBriefPending(ctx, { kind: 'mail', id: message.threadId });
+		return earlier
+			.sort((a, b) => (isBefore(a.order, b.order) ? -1 : isBefore(b.order, a.order) ? 1 : 0))
+			.map((e) => e.source);
+	},
+});
+
+/**
+ * Before an eager interpretation of `source`: promote its thread's earlier
+ * deferred sources and interpret them, oldest first, with `run` (the run
+ * itself; passed in so this module never imports the Node runtime). Fail-soft:
+ * a failed promotion interprets the source as before, and a promoted source
+ * whose run fails stays outstanding for the sweep.
+ */
+export async function runDeferredPredecessors(
+	ctx: Pick<ActionCtx, 'runMutation'>,
+	source: InterpretationSource,
+	run: (source: InterpretationSource) => Promise<unknown>
+): Promise<void> {
+	// Team Inbox threads never defer: no round trip for them.
+	if (source.kind !== 'mail' && source.kind !== 'outboundMail') return;
+	let earlier: InterpretationSource[] = [];
+	try {
+		earlier = await ctx.runMutation(internal.mail.interpret.defer.promoteDeferredPredecessors, {
+			source,
+		});
+	} catch {
+		return;
+	}
+	for (const predecessor of earlier) await run(predecessor);
 }

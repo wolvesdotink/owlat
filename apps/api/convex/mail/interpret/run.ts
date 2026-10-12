@@ -54,6 +54,7 @@ import {
 } from './schema';
 import { buildInterpretPromptParts, renderSegments } from './prompt';
 import { cachedPromptInput } from '../../lib/llm/promptCacheInput';
+import { runDeferredPredecessors } from './defer';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
 import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
@@ -200,6 +201,8 @@ export async function runInterpretation(
 	ctx: ActionCtx,
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
+	// D10: earlier deferred messages of the thread are read first (defer.ts).
+	await runDeferredPredecessors(ctx, args.source, (source) => runInterpretation(ctx, { source }));
 	let reason: Restart['restart'] = 'sourceChanged';
 	for (let attempt = 0; attempt < MAX_RUN_ATTEMPTS; attempt++) {
 		const out = await runOnce(ctx, args);
@@ -377,12 +380,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 		});
 		const { truncatedSegmentIds } = renderSegments(input.message.segments);
 		const model = await resolveLanguageModel(ctx, 'extract');
-		const prompt = await cachedPromptInput(
-			ctx,
-			'mail.extract',
-			model,
-			buildInterpretPromptParts(input)
-		);
+		const parts = buildInterpretPromptParts(input);
+		const prompt = await cachedPromptInput(ctx, 'mail.extract', model, parts);
 		const { object, tokenUsage, modelUsed } = await recordSpendOnFailure(
 			ctx,
 			INTERPRET_FEATURE,
