@@ -52,6 +52,8 @@ import { SYSTEM_GUARD } from './promptGuards';
 import { draftSurfaceValidator } from '../../lib/literalValidators';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import { admissionRefusalOf } from '../../lib/llm/admissionPort';
+import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 
 /** One revision is one user action: its own root request (ADR-0073). */
 const REVISE_SPEND: LlmSpendTarget = { feature: 'postbox_revise_draft' };
@@ -253,7 +255,12 @@ export const reviseDraft = authedAction({
 			// draft the human already had. Never rethrow into the caller's UI flow.
 			// Steps the stream finished before the failure were billed.
 			await recordReviseSpend(ctx, meter);
-			const message = error instanceof Error ? error.message : 'Revise failed';
+			// D1: a budget refusal carries the stable code the web reads.
+			const message = admissionRefusalOf(error)
+				? AI_BUDGET_ERROR_CODE
+				: error instanceof Error
+					? error.message
+					: 'Revise failed';
 			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 				streamId: args.streamId,
 				text: visibleDraftStreamText(stream.text).trim(),

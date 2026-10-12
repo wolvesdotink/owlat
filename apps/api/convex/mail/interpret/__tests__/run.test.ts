@@ -12,6 +12,7 @@ import { enableFeatures } from '../../../__tests__/factories';
 import { actionsModelSchema, briefModelSchema } from '../schema';
 import { modules, seedMailThread, type Test } from './interpret.testlib';
 import { captureInterpretSource } from '../sources';
+import { AdmissionRefusedError } from '../../../lib/llm/admissionPort';
 
 /** Seed a message and take its enqueue-time snapshot, as delivery does. */
 async function seedCaptured(
@@ -169,6 +170,38 @@ describe('interpretMessage', () => {
 				.first()
 		);
 		expect(brief?.completeness).toBe('partial');
+	});
+
+	it('defers, without spending a retry, when spend admission refuses the model call (Sol r1 F7)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedCaptured(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		llm.runLlmObject.mockRejectedValue(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+
+		for (let run = 0; run < 5; run++) {
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(out).toMatchObject({ status: 'failed', errorCode: 'budget' });
+		}
+		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
+		const counted = rows.find((r) => r.isCounted);
+		// No admitted attempt was spent, and the next call may try again at once.
+		expect(counted?.retryCount ?? 0).toBe(0);
+		expect(counted?.nextRetryAt).toBeDefined();
+	});
+
+	it('defers a verifier batch spend admission refused as budget, not as a verification failure', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedCaptured(t, { text: TEXT });
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			if (schema === briefModelSchema) return { object: modelOutput('s0') };
+			throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+		});
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: messageId },
+		});
+		expect(out).toMatchObject({ status: 'partial', errorCode: 'budget' });
 	});
 
 	it('fails soft when the model throws', async () => {

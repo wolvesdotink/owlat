@@ -17,22 +17,13 @@
 import { v } from 'convex/values';
 import { htmlToPlainText } from '@owlat/shared/html';
 import { internalAction } from './_generated/server';
-import type { ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import {
-	resolveAiConfig,
-	resolveLanguageModel,
-	resolveIndexEmbedder,
-	toIndexVector,
-} from './lib/llmProvider';
-import { AiNotConfiguredError } from './lib/aiNotConfigured';
+import { resolveIndexEmbedder, toIndexVector } from './lib/llmProvider';
 import { CURRENT_EMBEDDING_MODEL } from './lib/constants';
 import { NO_EMBEDDING_SPACE_KEY, vectorHitsInCurrentSpace } from './lib/embeddingSpace';
 import { embedRetrievalQuery } from './knowledge/retrieval';
-import { z } from 'zod';
 import { logError, logInfo } from './lib/runtimeLog';
-import { runLlmObject } from './lib/llm/dispatch';
 import { meterLlmCall } from './analytics/meteredSpend';
 import { runEmbedding } from './lib/llm/embed';
 import { rootRequest } from './lib/llm/requestMeter';
@@ -45,23 +36,13 @@ import { injectionRisk } from './knowledge/extraction';
 import { scrubTags, slugifyTag, truncateForLLM } from './lib/semanticFileText';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
 import { anchorActionDeadline, boundedRoot } from './lib/llm/actionDeadline';
-import { deferFileForBudget } from './analytics/backgroundDeferral';
-
-/**
- * Whether any AI provider is set up. AI is optional: without one a file still
- * gets its extracted text, tags and search text, only no summary, embedding or
- * knowledge entries. A provider that is set up but unusable still throws, so a
- * misconfiguration stays visible instead of silently producing no vectors.
- */
-async function aiProviderConfigured(ctx: ActionCtx): Promise<boolean> {
-	try {
-		await resolveAiConfig(ctx);
-		return true;
-	} catch (error) {
-		if (error instanceof AiNotConfiguredError) return false;
-		throw error;
-	}
-}
+import {
+	deferFileForBudget,
+	fileStageValidator,
+	owedFileStages,
+	reusableSummary,
+} from './analytics/backgroundDeferral';
+import { aiProviderConfigured, summarizeFile } from './lib/semanticFileAi';
 
 /**
  * Process a newly uploaded file: extract text, generate summary,
@@ -72,6 +53,8 @@ export const processFile = internalAction({
 		fileId: v.id('semanticFiles'),
 		/** Runs this file already deferred at the spend ceiling (ADR-0073, D1). */
 		deferrals: v.optional(v.number()),
+		/** The paid stages a deferred run still owes; absent: all of them. */
+		stages: v.optional(v.array(fileStageValidator)),
 	},
 	handler: async (ctx, args) => {
 		// One model budget for this action, from its start (ADR-0073).
@@ -148,7 +131,7 @@ export const processFile = internalAction({
 		// D1 (ADR-0073): at the spend ceiling the paid steps defer to a later run.
 		const aiConfigured =
 			(await aiProviderConfigured(ctx)) &&
-			!(await deferFileForBudget(ctx, args.fileId, args.deferrals));
+			!(await deferFileForBudget(ctx, args.fileId, args.deferrals, args.stages));
 		if (!aiConfigured) {
 			logInfo('[semantic_file] no AI provider, or deferred at the spend ceiling; text only', {
 				fileId: args.fileId,
@@ -160,52 +143,34 @@ export const processFile = internalAction({
 		let summary = '';
 		let autoTags: string[] = [];
 		let title = file.title;
+		// Paid stages spend admission refuses are owed to a later run (D1, ADR-0073).
+		const owed = owedFileStages(ctx, args.fileId, args.deferrals);
+		const reused = reusableSummary(file, args.stages);
 
 		if (injectionReason) {
 			// Poisoned extracted text: don't hand it to the model. Keep filename-only
 			// metadata so the file is still searchable without an AI round-trip.
 			title = title || file.filename;
+		} else if (reused) {
+			// A deferred run whose summary already landed: only the embedding is owed.
+			({ title, summary, autoTags } = reused);
 		} else if (textForAI.length > 50 && !aiConfigured) {
 			// No model to ask: the same fallback as a failed call below.
 			title = title || file.filename;
 		} else if (textForAI.length > 50) {
 			try {
-				const model = await resolveLanguageModel(ctx, 'summarize');
-				const result = await meterLlmCall(
-					ctx,
-					{ feature: 'semantic_file', root: fileRoot },
-					(meter) =>
-						runLlmObject({
-							meter,
-							model,
-							schema: z.object({
-								title: z.string().describe('Short descriptive title for the file'),
-								summary: z.string().describe('2-3 sentence summary of the file content'),
-								tags: z.array(z.string()).describe('5-10 relevant tags for categorization'),
-							}),
-							prompt: `Analyze this file and provide a title, summary, and tags.
-
-Filename: ${file.filename}
-MIME type: ${file.mimeType}${fileCtx.threadSubject ? `\nShared in conversation: "${fileCtx.threadSubject}"` : ''}${fileCtx.contactNames.length ? `\nRelated contacts: ${fileCtx.contactNames.join(', ')}` : ''}
-
-Content:
-${textForAI}`,
-						})
-				);
-				logInfo('[semantic_file] llm call', {
-					tokenUsage: result.tokenUsage,
-					modelUsed: result.modelUsed,
-				});
-
-				title = title || result.object.title;
-				summary = result.object.summary;
-				autoTags = result.object.tags;
+				const result = await summarizeFile(ctx, { file, fileCtx, textForAI, root: fileRoot });
+				title = title || result.title;
+				summary = result.summary;
+				autoTags = result.tags;
 			} catch (error) {
 				logError('[semantic_file] summarize/tag call failed', {
 					fileId: args.fileId,
 					filename: file.filename,
 					error,
 				});
+				// D1: a refused call is owed, with the embedding that reads its summary.
+				owed.note(error, ['summary', 'embedding']);
 				// Fallback: use filename as title
 				title = title || file.filename;
 			}
@@ -237,6 +202,7 @@ ${textForAI}`,
 					filename: file.filename,
 					error,
 				});
+				owed.note(error, ['embedding']);
 			}
 		}
 
@@ -296,6 +262,8 @@ ${textForAI}`,
 		// text (binary stubs like "[PDF file: …]"), or no model to extract with.
 		if (
 			aiConfigured &&
+			// A run that owes only the embedding already fed the graph.
+			(args.stages === undefined || args.stages.includes('summary')) &&
 			extractedText &&
 			!extractedText.startsWith('[') &&
 			extractedText.length > 80
@@ -306,6 +274,7 @@ ${textForAI}`,
 				root: boundedRoot(ctx, fileRoot),
 			});
 		}
+		await owed.schedule();
 	},
 });
 

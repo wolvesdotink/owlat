@@ -32,6 +32,7 @@ import { internal } from '../../_generated/api';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmObject } from '../../lib/llm/dispatch';
 import { meterLlmCall } from '../../analytics/meteredSpend';
+import { admissionRefusalOf } from '../../lib/llm/admissionPort';
 import { logWarn } from '../../lib/runtimeLog';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
 import {
@@ -202,7 +203,16 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 
 	// D13 (ADR-0073): a Team message whose scan skipped the model guard gets it
 	// before this generative consumer; one it flags is not interpreted.
-	if (!(await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt))) {
+	let isGuardClear: boolean;
+	try {
+		isGuardClear = await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt);
+	} catch (error) {
+		// The late guard was refused by spend admission: a budget deferral (D1).
+		if (!admissionRefusalOf(error)) throw error;
+		const deferred = { contentRevision: 'unread', status: 'failed' as const, errorCode: 'budget' };
+		return finish(await apply(ctx, args, loaded, deferred), { errorCode: 'budget' });
+	}
+	if (!isGuardClear) {
 		const skip = { skipReason: 'security' as const, errorCode: 'guard_flagged' };
 		const record = { contentRevision: 'skip', status: 'skipped' as const, ...skip };
 		return finish(await apply(ctx, args, loaded, record), { errorCode: skip.errorCode });
@@ -391,10 +401,14 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			isBodyIncomplete: scoped.omitted.includes('body_unavailable'),
 			isBodyTruncated: isTruncated,
 		});
+		// A verifier batch refused by spend admission is a budget deferral (D1):
+		// re-checked like a gate refusal, never spending a retry.
+		const runErrorCode =
+			verified.isBudgetDeferred && run.errorCode === 'verify' ? 'budget' : run.errorCode;
 		const outcome = await apply(ctx, args, loaded, {
 			contentRevision,
 			status: run.status,
-			...(run.errorCode ? { errorCode: run.errorCode } : {}),
+			...(runErrorCode ? { errorCode: runErrorCode } : {}),
 			sourceManifest,
 			coverage: {
 				segmentsRead: output.coverage.segmentsRead.slice(0, 50),
@@ -406,26 +420,32 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 		});
 		return finish(outcome, {
 			projection: needsReplyProjectionOf(result, loaded.ownerLocale),
-			...(run.errorCode ? { errorCode: run.errorCode } : {}),
+			...(runErrorCode ? { errorCode: runErrorCode } : {}),
 		});
 	} catch (error) {
+		// Spend admission refused the model call after the gate passed (the
+		// request did not fit, or another call took the headroom): a budget
+		// deferral like the gate's, not a model error, and no retry is spent.
+		const isBudget = admissionRefusalOf(error) !== null;
+		const errorCode = isBudget ? 'budget' : 'model_error';
 		// Only the first line: a validation error goes on to print its argument.
 		logWarn(
 			'[interpret] run failed:',
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
 		try {
+			const attempts = isBudget && retryCount !== undefined ? retryCount - 1 : retryCount;
 			return finish(
 				await apply(ctx, args, loaded, {
 					contentRevision,
 					status: 'failed',
-					errorCode: 'model_error',
-					...(retryCount !== undefined ? { retryCount } : {}),
+					errorCode,
+					...(attempts !== undefined ? { retryCount: attempts } : {}),
 				}),
-				{ errorCode: 'model_error' }
+				{ errorCode }
 			);
 		} catch {
-			return { status: 'failed', isReplayed: false, createdItemIds: [], errorCode: 'model_error' };
+			return { status: 'failed', isReplayed: false, createdItemIds: [], errorCode };
 		}
 	}
 }

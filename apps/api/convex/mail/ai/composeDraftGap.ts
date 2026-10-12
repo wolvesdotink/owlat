@@ -67,6 +67,7 @@ import {
 	type AskQuestion,
 	type RankedFile,
 } from './composeDraftPolicy';
+import { rethrowAdmissionRefusal } from '../../lib/llm/admissionPort';
 
 export interface GapCheckInput {
 	/** Untrusted context: the thread (and for a team thread the pipeline briefing). */
@@ -159,8 +160,8 @@ async function findOpenSlots(
 				);
 				if (sample.text.trim().length === 0) continue;
 				samples.push(sample.text);
-			} catch {
-				// One failed sample does not end the check; judge on the rest.
+			} catch (error) {
+				rethrowAdmissionRefusal(error); // a failed sample is skipped, a refusal is not
 			}
 		}
 		if (samples.length < MIN_SAMPLES_FOR_JUDGMENT) return owed;
@@ -176,7 +177,9 @@ async function findOpenSlots(
 		);
 		const divergent = new Set(judged.object.divergentSlotIndexes);
 		return [...owed, ...candidates.filter((_, index) => divergent.has(index))];
-	} catch {
+	} catch (error) {
+		// A budget refusal is shown to the user (D1); any other fault keeps the owed slots.
+		rethrowAdmissionRefusal(error);
 		return owed;
 	}
 }

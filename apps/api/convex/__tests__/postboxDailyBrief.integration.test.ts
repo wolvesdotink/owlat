@@ -20,6 +20,7 @@ import schema from '../schema';
 import { internal, api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
+import { AdmissionRefusedError } from '../lib/llm/admissionPort';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -240,6 +241,25 @@ describe('mail.commitmentExtract.extractCommitment', () => {
 
 		const rows = await t.run(async (ctx) => ctx.db.query('mailCommitments').collect());
 		expect(rows).toHaveLength(0);
+	});
+
+	it('defers the extraction to a later run when spend admission refuses it (D1)', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const seeded = await seedMailbox(t);
+		const { messageId } = await seedSentMessage(t, seeded);
+		runLlmObjectMock.mockRejectedValue(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+
+		await t.action(internal.mail.ai.commitmentExtract.extractCommitment, {
+			messageId,
+			direction: 'outbound',
+		});
+
+		const jobs = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		const retry = jobs.find((job) => job.name.includes('extractCommitment'));
+		expect(retry?.args[0]).toMatchObject({ messageId, direction: 'outbound', deferrals: 1 });
+		expect(await t.run(async (ctx) => ctx.db.query('mailCommitments').collect())).toHaveLength(0);
 	});
 
 	it('writes NO commitment and never calls the model when AI is disabled', async () => {

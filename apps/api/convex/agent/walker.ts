@@ -74,15 +74,16 @@ async function isHeldForBudget(
 	ctx: ActionCtx,
 	inboundMessageId: Id<'inboundMessages'>,
 	kind: AgentStepKind,
-	refused?: { refusal: AdmissionRefusalData; actionId: Id<'agentActions'> }
+	refused?: { refusal: AdmissionRefusalData; actionId?: Id<'agentActions'> }
 ): Promise<boolean> {
 	if (!isTeamPaidStep(kind)) return false;
+	// The scan's deterministic checks always run: it is held only on a refusal.
+	if (!refused && kind === 'security_scan') return false;
 	const { isHeld } = await ctx.runMutation(internal.aiRouting.teamBudgetHold.holdIfOverBudget, {
 		inboundMessageId,
 		step: kind,
-		...(refused
-			? { refusedReason: refused.refusal.reason, refusedActionId: refused.actionId }
-			: {}),
+		...(refused ? { refusedReason: refused.refusal.reason } : {}),
+		...(refused?.actionId ? { refusedActionId: refused.actionId } : {}),
 	});
 	return isHeld;
 }
@@ -227,7 +228,12 @@ export const resumeDraft = internalAction({
 				inboundMessageId: args.inboundMessageId,
 			});
 			context = retrieval.output.context;
-		} catch {
+		} catch (error) {
+			// D1: a refused guard or embedding holds the message, never a blind draft.
+			const refusal = admissionRefusalOf(error);
+			if (refusal && (await isHeldForBudget(ctx, args.inboundMessageId, 'draft', { refusal }))) {
+				return;
+			}
 			context = '';
 		}
 

@@ -36,6 +36,7 @@ import { meterLlmCall } from './analytics/meteredSpend';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
 import { throwInvalidInput } from './_utils/errors';
+import { rethrowAdmissionRefusal } from './lib/llm/admissionPort';
 
 // How many results to pull from EACH source before synthesis, and how much of
 // each result's body to feed the model (bounded so one huge file can't dominate
@@ -123,6 +124,7 @@ export const ask = authedAction({
 			);
 			embedding = toIndexVector(res.embedding);
 		} catch (error) {
+			rethrowAdmissionRefusal(error); // shown to the user (D1)
 			logInfo('[quickQuery] embed failed', { error: String(error) });
 			embedding = undefined;
 		}
@@ -226,6 +228,7 @@ export const ask = authedAction({
 				answer = contextBlocks.join('\n\n');
 			}
 		} catch (error) {
+			rethrowAdmissionRefusal(error); // shown to the user (D1)
 			// Synthesis failed — degrade to the retrieved snippets so the user still
 			// gets their cross-source results (and the citations still resolve).
 			logInfo('[quickQuery] synthesis failed', { error: String(error) });

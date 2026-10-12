@@ -260,6 +260,43 @@ describe('Team Inbox agent spend in the ledger (#1259)', () => {
 		expect(classify?.status).toBe('abandoned');
 	});
 
+	it('holds the message with every judgment missing when the model guard is refused', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t);
+		mocks.runLlmObject.mockRejectedValue(new AdmissionRefusedError('monthly_ceiling', 'ceiling'));
+
+		const ran = await walkToRoute(t, messageId);
+
+		expect(ran).toEqual(['security_scan']);
+		const message = await t.run(async (ctx) => ctx.db.get(messageId));
+		expect(message?.budgetHold).toMatchObject({
+			reason: 'monthly_ceiling',
+			missingJudgments: ['guard', 'interpret', 'classify', 'clarify', 'draft'],
+		});
+	});
+
+	it('holds the message, instead of drafting blind, when clarification is refused', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t);
+		const answer = mocks.runLlmObject.getMockImplementation()!;
+		mocks.runLlmObject.mockImplementation(async (opts: { prompt: string }) => {
+			if (opts.prompt.includes('Identify the SLOTS')) {
+				throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+			}
+			return answer(opts);
+		});
+
+		const ran = await walkToRoute(t, messageId);
+
+		expect(ran).toEqual(['security_scan', 'context_retrieval', 'classify', 'clarify']);
+		expect(mocks.runLlmTextWithTools).not.toHaveBeenCalled();
+		const message = await t.run(async (ctx) => ctx.db.get(messageId));
+		expect(message?.budgetHold).toMatchObject({
+			reason: 'daily_ceiling',
+			missingJudgments: ['clarify', 'draft'],
+		});
+	});
+
 	it('records a draft step that fails after a paid tool step once', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await seedMessage(t);

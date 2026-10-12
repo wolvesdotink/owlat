@@ -29,6 +29,12 @@ import { budgetHeadroom } from './enforcedBudget';
 
 /** The steps the walker asks about, and what each one's model call draws on. */
 export const TEAM_PAID_STEPS = {
+	// Never asked before it runs (its deterministic checks always run); held
+	// only when its model guard was refused at the dispatch.
+	security_scan: {
+		budgetClass: 'triage',
+		missing: ['guard', 'interpret', 'classify', 'clarify', 'draft'],
+	},
 	context_retrieval: {
 		budgetClass: 'standard',
 		missing: ['interpret', 'classify', 'clarify', 'draft'],
@@ -53,7 +59,9 @@ export function missingJudgmentsAt(
 	message: Pick<Doc<'inboundMessages'>, 'securityFlags'>
 ): MissingJudgment[] {
 	const missing: MissingJudgment[] = [...TEAM_PAID_STEPS[step].missing];
-	return message.securityFlags?.guardUnavailable ? ['guard', ...missing] : missing;
+	return message.securityFlags?.guardUnavailable && !missing.includes('guard')
+		? ['guard', ...missing]
+		: missing;
 }
 
 const reasonValidator = v.union(
@@ -63,6 +71,7 @@ const reasonValidator = v.union(
 );
 
 const teamPaidStepValidator = v.union(
+	v.literal('security_scan'),
 	v.literal('context_retrieval'),
 	v.literal('classify'),
 	v.literal('clarify'),

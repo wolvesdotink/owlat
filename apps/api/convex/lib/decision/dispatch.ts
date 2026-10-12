@@ -73,8 +73,8 @@ import {
 export { billedUsage } from './attemptRequests';
 import { taskForFeature } from '../llm/taskPolicy';
 import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
-import { admitDispatch, type DispatchHold } from '../llm/dispatchAdmission';
-import { admissionRefusalOf, serializedBytes } from '../llm/admissionPort';
+import { admissionRefusalOf } from '../llm/admissionPort';
+import { admitNativeAttempt, holdSettlements } from './attemptAdmission';
 import type {
 	DecisionFallbackBreaker,
 	DecisionRateLimiter,
@@ -283,63 +283,6 @@ async function askOnce<Q extends QuestionSet>(
 		throw new DecisionAccountingFailure(error);
 	}
 	return result;
-}
-
-/** Output a native decision answer may bill: labels and probabilities, never text. */
-const NATIVE_DECISION_OUTPUT_TOKENS = 4_096;
-/** The wire codec frames the state and questions; its body is at most this many times their JSON. */
-const NATIVE_WIRE_EXPANSION = 2;
-
-/**
- * Reserve one native paid attempt. The language-backed adapter (`llm`) is
- * reserved by its own dispatch, and a local engine costs nothing.
- */
-async function admitNativeAttempt<Q extends QuestionSet>(
-	meter: LlmCallMeter,
-	provider: ResolvedDecisionProvider,
-	options: RunDecisionOptions<Q>
-): Promise<Pick<DispatchHold, 'end'>> {
-	const adapter = decisionProviderFor(provider.kind);
-	if (provider.kind === 'llm' || adapter.isLocal) return { end: async () => {} };
-	const modelUsed = provider.modelId ?? adapter.defaultModel;
-	return admitDispatch(
-		meter,
-		{
-			maxOutputTokens: NATIVE_DECISION_OUTPUT_TOKENS,
-			abortSignal: undefined,
-			maxAttempts: 1,
-			modelUsed,
-			requestBase: { modelUsed },
-		},
-		{
-			plane: 'decision',
-			isIncremental: false,
-			size: {
-				bytes:
-					NATIVE_WIRE_EXPANSION *
-					serializedBytes({ state: options.state, questions: options.questions }),
-				messages: 1,
-			},
-		}
-	);
-}
-
-/** The holds this attempt closed, for the recorder to settle with its rows. */
-function holdSettlements(meter: LlmCallMeter): {
-	args: { settlements?: { reservationId: string; expectedRequests: number }[] };
-	markSent(): void;
-} {
-	const holds = meter.closedUnsettledHolds();
-	const settlements = holds.map((hold) => ({
-		reservationId: hold.reservationId,
-		expectedRequests: meter.requestsUnder(hold.reservationId),
-	}));
-	return {
-		args: settlements.length ? { settlements } : {},
-		markSent: () => {
-			for (const hold of holds) meter.markHoldSettled(hold.reservationId);
-		},
-	};
 }
 
 // ─── The dispatch ──────────────────────────────────────────────────────────

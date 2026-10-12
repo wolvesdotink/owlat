@@ -9,11 +9,7 @@
 import { ConvexError } from 'convex/values';
 import { AI_BUDGET_ERROR_CODE, type BudgetHoldReason } from '@owlat/shared/aiRouting';
 import type { TokenUsage } from '../../agent/steps/types';
-import {
-	estimateAdmissionCostMicrousd,
-	estimateCost,
-	type AdmissionProvenance,
-} from './pricing';
+import { estimateAdmissionCostMicrousd, estimateCost, type AdmissionProvenance } from './pricing';
 import { LANGUAGE_ENDPOINT_PROVENANCES } from '../llmProviders/types';
 import { DECISION_ENDPOINT_PROVENANCES } from '../decisionProviders/types';
 import { usdToMicrousd } from '../aiRouting/spendPeriods';
@@ -96,6 +92,20 @@ export function admissionRefusalOf(error: unknown): AdmissionRefusalData | null 
 }
 
 /**
+ * Let a spend-admission refusal through a fail-soft catch: background work
+ * then defers (`analytics/backgroundDeferral.ts`), a Team step is held, and a
+ * user's action shows the budget error. Anything else stays the catch's.
+ */
+export function rethrowAdmissionRefusal(error: unknown): void {
+	if (admissionRefusalOf(error)) throw error;
+}
+
+/** The sentence a person reads for a budget refusal of `reason`. */
+export function budgetRefusalMessage(reason: BudgetHoldReason): string {
+	return REFUSAL_MESSAGE[reason];
+}
+
+/**
  * HOLD SIZING (ADR-0073, Phase 1b). A hold must be an upper bound on what the
  * request can be billed, or concurrent calls overshoot the ceiling.
  *
@@ -149,7 +159,9 @@ export function serializedBytes(value: unknown): number {
 
 /** The input-token upper bound of a request of `bytes` serialized bytes and `messages` messages. */
 export function inputTokenBound(bytes: number, messages: number): number {
-	return Math.max(0, Math.ceil(bytes)) + Math.max(1, messages) * PER_MESSAGE_TOKENS + PER_REQUEST_TOKENS;
+	return (
+		Math.max(0, Math.ceil(bytes)) + Math.max(1, messages) * PER_MESSAGE_TOKENS + PER_REQUEST_TOKENS
+	);
 }
 
 /** The size of a dispatch's request before the provider parameters exist (an unwrapped model). */
@@ -166,7 +178,8 @@ export function dispatchRequestSize(input: {
 		serializedBytes(input.messages ?? []) +
 		(input.tools === undefined ? 0 : serializedBytes(input.tools)) +
 		(input.schema === undefined ? 0 : UNSERIALIZABLE_BYTES);
-	const messages = (input.messages?.length ?? 0) + (input.prompt !== undefined ? 1 : 0) + (input.system ? 1 : 0);
+	const messages =
+		(input.messages?.length ?? 0) + (input.prompt !== undefined ? 1 : 0) + (input.system ? 1 : 0);
 	return { bytes, messages };
 }
 

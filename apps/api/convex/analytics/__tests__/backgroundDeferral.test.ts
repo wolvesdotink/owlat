@@ -7,7 +7,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
-import { deferFileForBudget, FILE_DEFER_MS, MAX_FILE_DEFERRALS } from '../backgroundDeferral';
+import {
+	BACKGROUND_DEFER_MS,
+	BudgetDeferral,
+	deferFileForBudget,
+	deferRefusedRun,
+	FILE_DEFER_MS,
+	MAX_BACKGROUND_DEFERRALS,
+	MAX_FILE_DEFERRALS,
+} from '../backgroundDeferral';
+import { AdmissionRefusedError } from '../../lib/llm/admissionPort';
 
 const fileId = 'file-1' as Id<'semanticFiles'>;
 
@@ -51,5 +60,53 @@ describe('deferFileForBudget', () => {
 		const { ctx, runAfter } = ctxWith(false);
 		await expect(deferFileForBudget(ctx, fileId, MAX_FILE_DEFERRALS)).resolves.toBe(true);
 		expect(runAfter).not.toHaveBeenCalled();
+	});
+});
+
+describe('deferRefusedRun', () => {
+	const fn = 'self' as never;
+
+	it('schedules the same run an hour later with one more deferral, dropping the root deadline', async () => {
+		const runAfter = vi.fn(async () => 'job');
+		const out = await deferRefusedRun(
+			{ scheduler: { runAfter } } as never,
+			fn,
+			{ fileId: 'f1', root: { rootRequestId: 'file:f1', deadlineAt: 1 }, deferrals: 2 },
+			async () => {
+				throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+			}
+		);
+		expect(out).toBeUndefined();
+		expect(runAfter).toHaveBeenCalledWith(BACKGROUND_DEFER_MS, fn, {
+			fileId: 'f1',
+			root: { rootRequestId: 'file:f1' },
+			deferrals: 3,
+		});
+	});
+
+	it('gives up after the last deferral, and leaves other errors to the run', async () => {
+		const runAfter = vi.fn(async () => 'job');
+		await deferRefusedRun(
+			{ scheduler: { runAfter } } as never,
+			fn,
+			{ deferrals: MAX_BACKGROUND_DEFERRALS },
+			async () => {
+				throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+			}
+		);
+		expect(runAfter).not.toHaveBeenCalled();
+		await expect(
+			deferRefusedRun({ scheduler: { runAfter } } as never, fn, {}, async () => {
+				throw new Error('provider down');
+			})
+		).rejects.toThrow('provider down');
+	});
+
+	it('treats a budget refusal a fail-soft step already recorded as a refusal too', async () => {
+		const runAfter = vi.fn(async () => 'job');
+		await deferRefusedRun({ scheduler: { runAfter } } as never, fn, {}, async () => {
+			throw new BudgetDeferral();
+		});
+		expect(runAfter).toHaveBeenCalledTimes(1);
 	});
 });

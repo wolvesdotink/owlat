@@ -41,6 +41,7 @@ import {
 	type RelationType,
 } from '../lib/graphRank';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
+import { rethrowAdmissionRefusal } from '../lib/llm/admissionPort';
 
 /**
  * One typed relationship a result entry participates in, for rendering the
@@ -139,6 +140,8 @@ export async function embedRetrievalQuery(
 			embeddingSpaceKey: embedder.embeddingSpaceKey,
 		};
 	} catch (error) {
+		// A budget refusal is the caller's to hold, defer or show (D1), not a failed embed.
+		rethrowAdmissionRefusal(error);
 		logInfo(`${logTag} embed failed`, { error: String(error) });
 		return { kind: 'failed' };
 	}
