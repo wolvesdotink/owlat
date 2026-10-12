@@ -146,7 +146,7 @@ export const classifyThread = internalAction({
 				await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
 				// High-volume background classification → cheap "summarize" tier.
-				const model = await resolveLanguageModel(ctx, 'summarize');
+				const model = await resolveLanguageModel(ctx, 'mail.classify');
 				const { object } = await meterLlmCall(
 					ctx,
 					{

@@ -226,7 +226,7 @@ function buildDraftEmailReply(
 				query: contact,
 			});
 			const recipient = found ? `${found.name ?? found.email} <${found.email}>` : contact;
-			const model = await resolveLanguageModelForUserText(ctx, 'draft', intent);
+			const model = await resolveLanguageModelForUserText(ctx, 'assistant.tool_draft', intent);
 			const result = await meterLlmCall(
 				ctx,
 				{ feature: ASSISTANT_TOOL_DRAFT_SPEND, ...(root ? { root } : {}) },
@@ -265,7 +265,7 @@ function buildDraftCampaignCopy(
 			audience: z.string().optional().describe('Who the campaign is for (optional).'),
 		}),
 		execute: async ({ brief, audience }, { abortSignal }) => {
-			const model = await resolveLanguageModelForUserText(ctx, 'draft', brief);
+			const model = await resolveLanguageModelForUserText(ctx, 'assistant.tool_draft', brief);
 			const result = await meterLlmCall(
 				ctx,
 				{ feature: ASSISTANT_TOOL_DRAFT_SPEND, ...(root ? { root } : {}) },

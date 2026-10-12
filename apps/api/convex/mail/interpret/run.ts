@@ -335,7 +335,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 		// the Team pipeline.
 		const priority = mode === 'brief' ? 'background' : 'pipeline';
 		const prepared = await prepareExtraction(ctx, input, mode);
-		const verifyModel = await resolveLanguageModel(ctx, 'guard');
+		const verifyModel = await resolveLanguageModel(ctx, 'mail.verify');
 		// One hold for the extraction and the verifier's maximum, before anything
 		// is bought (Sol r4): refused, the whole run defers, backed off, with no
 		// retry spent; admitted, no call of the run can be refused halfway.

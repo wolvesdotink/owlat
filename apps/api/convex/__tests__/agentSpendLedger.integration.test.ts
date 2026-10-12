@@ -41,7 +41,7 @@ vi.mock('../lib/llm/dispatch', async () => {
 vi.mock('../lib/llmProvider', async () => ({
 	...(await vi.importActual<object>('../lib/llmProvider')),
 	resolveLanguageModel: vi.fn(async () => 'mock-model'),
-	resolveLanguageModelForClassifiedDraft: vi.fn(async () => 'mock-model'),
+	classifiedDraftRouteOf: () => 'capable',
 }));
 
 const allModules = import.meta.glob('../**/*.*s');

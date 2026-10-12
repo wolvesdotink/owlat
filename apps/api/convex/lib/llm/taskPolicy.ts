@@ -36,8 +36,14 @@
  *     retries re-send its opening request), `INTERACTIVE_LLM_ATTEMPTS` where
  *     `interactiveLlmPolicy` applies, 1 for the connection probe.
  *
- * The catalog is not yet read by the resolver or the dispatch; the writer lane
- * wires it in (SPEC §5).
+ * READERS. The resolver (`lib/llmProvider.ts`, through `./taskRouting.ts`)
+ * takes every call's tier from `tiers`: call sites name a task, never a tier
+ * of their own, and a tier the task does not list is refused. The dispatch
+ * reads the output and reasoning ceilings, the deadline and the attempt
+ * allowance (`./taskLimits.ts`, `./callShape.ts`), and refuses a resolved
+ * model whose tier the call's task does not allow (`./callShape.ts`).
+ * `lib/__tests__/resolverCallSites.test.ts` proves every call site resolves
+ * the tier it resolved before the catalog existed.
  */
 
 import type { AiTaskName } from '@owlat/shared/aiRouting';

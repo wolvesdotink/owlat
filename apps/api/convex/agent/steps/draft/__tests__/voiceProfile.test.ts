@@ -28,7 +28,7 @@ vi.mock('../../../../lib/llm/dispatch', () => ({
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
-	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
+	classifiedDraftRouteOf: () => 'capable',
 }));
 
 // Import AFTER mocks are registered.

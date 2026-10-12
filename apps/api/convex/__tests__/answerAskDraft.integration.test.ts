@@ -29,6 +29,7 @@ import { CUSTOMER, ORG, seedCustomer, seedFile, seedRequest } from './helpers/an
 
 import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 import type * as LlmProviderModule from '../lib/llmProvider';
+import type * as TaskRoutingModule from '../lib/llm/taskRouting';
 import type * as DispatchModule from '../lib/llm/dispatch';
 import type * as AttachmentSuggestModule from '../inbox/attachmentSuggest';
 
@@ -69,8 +70,14 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 vi.mock('../lib/llmProvider', async () => {
 	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
+	const { taskTier } = await vi.importActual<typeof TaskRoutingModule>('../lib/llm/taskRouting');
 	// The tier is the model name, so a test can tell which tier a call used.
-	return { ...actual, resolveLanguageModel: vi.fn((_ctx: unknown, tier: string) => tier) };
+	return {
+		...actual,
+		resolveLanguageModel: vi.fn((_ctx: unknown, ...route: Parameters<typeof taskTier>) =>
+			taskTier(...route)
+		),
+	};
 });
 vi.mock('../lib/llm/dispatch', async () => {
 	const actual = await vi.importActual<typeof DispatchModule>('../lib/llm/dispatch');
@@ -388,14 +395,14 @@ describe('answer', () => {
 		const { target } = await replyDraft(t);
 		await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
 		const tiers = () => vi.mocked(runLlmText).mock.calls.map(([opts]) => opts.model);
-		expect(tiers()).toEqual(['summarize', 'summarize', 'summarize']);
+		expect(tiers()).toEqual(['fast', 'fast', 'fast']);
 
 		vi.mocked(runLlmText).mockClear();
 		await t.run(async (ctx) => {
 			await ctx.db.insert('askEagernessSettings', { mode: 'cautious', updatedAt: Date.now() });
 		});
 		await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
-		expect(tiers()).toEqual(['draft', 'draft', 'draft']);
+		expect(tiers()).toEqual(['capable', 'capable', 'capable']);
 	});
 
 	it('remembers a typed answer for the contact', async () => {

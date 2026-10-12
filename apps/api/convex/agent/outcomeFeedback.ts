@@ -128,7 +128,7 @@ export const classifyReplyOutcome = internalAction({
 				ctx,
 				{ replyMessageId: args.replyMessageId },
 				async () => {
-					const model = await resolveLanguageModel(ctx, 'classify');
+					const model = await resolveLanguageModel(ctx, 'mail.outcome_sentiment');
 					const { object } = await meterLlmCall(
 						ctx,
 						{ feature: 'agent_outcome_sentiment', root: teamRoot(args.replyMessageId) },

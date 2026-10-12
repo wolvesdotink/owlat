@@ -45,6 +45,10 @@ import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { runCoreFinalAutoSendGates, runPreAutonomyGates } from './autoSendGates';
 import { runHostedAutoSendGates } from './pluginAutoSendGates';
+import {
+	restrictedAutoApproveScore,
+	type AdmittedVerdictScore,
+} from '../../../lib/decision/autoSendContract';
 
 /**
  * Draft-quality self-check threaded from the `draft` step. `null`/absent when
@@ -81,14 +85,20 @@ export type RouteInput = {
  * score (0), so an unknown-quality draft can NEVER clear any threshold and is
  * always routed to human review. We never auto-approve on a failed/unknown
  * check.
+ *
+ * DECISION VERDICTS (ADR-0073, "Auto-send contract"): a verdict enters only as
+ * an {@link AdmittedVerdictScore} (`lib/decision/autoSendContract.ts`: a
+ * feeding task, item coverage enforced, compatible provenance and a valid
+ * calibration stamp), and only LOWERS the score: the result is the minimum.
+ * The route step passes none: no task feeds auto-send today.
  */
 export function resolveAutoApproveScore(
-	draftQuality: RouteDraftQuality | null | undefined
+	draftQuality: RouteDraftQuality | null | undefined,
+	verdicts: readonly AdmittedVerdictScore[] = []
 ): number {
-	if (draftQuality && typeof draftQuality.score === 'number') {
-		return draftQuality.score;
-	}
-	return 0;
+	const draftScore =
+		draftQuality && typeof draftQuality.score === 'number' ? draftQuality.score : 0;
+	return restrictedAutoApproveScore(draftScore, verdicts);
 }
 
 /**

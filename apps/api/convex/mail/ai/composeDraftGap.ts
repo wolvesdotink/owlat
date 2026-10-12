@@ -125,7 +125,7 @@ async function findOpenSlots(
 	// Files owed survive a failed divergence stage: they were never judged by it.
 	let owed: ReplySlot[] = [];
 	try {
-		const slotModel = await resolveLanguageModel(ctx, 'summarize');
+		const slotModel = await resolveLanguageModel(ctx, 'mail.clarify');
 		const extracted = await meterLlmCall(ctx, { feature: 'postbox_answer_slots', root }, (meter) =>
 			runLlmObject({
 				meter,
@@ -140,10 +140,9 @@ async function findOpenSlots(
 		const candidates = split.toJudge;
 		if (candidates.length === 0) return owed;
 
-		const sampleModel = await resolveLanguageModel(
-			ctx,
-			eagerness === 'cautious' ? 'draft' : 'summarize'
-		);
+		const sampleModel = await resolveLanguageModel(ctx, 'mail.clarify', {
+			tier: eagerness === 'cautious' ? 'capable' : 'fast',
+		});
 		const samples: string[] = [];
 		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 			try {
@@ -165,7 +164,7 @@ async function findOpenSlots(
 			}
 		}
 		if (samples.length < MIN_SAMPLES_FOR_JUDGMENT) return owed;
-		const judgeModel = await resolveLanguageModel(ctx, 'draft');
+		const judgeModel = await resolveLanguageModel(ctx, 'mail.clarify', { tier: 'capable' });
 		const judged = await meterLlmCall(ctx, { feature: 'postbox_answer_diverge', root }, (meter) =>
 			runLlmObject({
 				meter,
@@ -212,7 +211,7 @@ export async function localizeForOwner(
 	root: LlmRootContext = newRootRequest('postbox_action')
 ): Promise<AskQuestion[]> {
 	if (questions.length === 0 || !isAppLocale(locale) || locale === 'en') return questions;
-	const model = await resolveLanguageModel(ctx, 'summarize');
+	const model = await resolveLanguageModel(ctx, 'mail.clarify');
 	const localized = await meterLlmCall(ctx, { feature: 'postbox_answer_localize', root }, (meter) =>
 		localizeQuestions(model, questions, ['en', locale], meter)
 	);

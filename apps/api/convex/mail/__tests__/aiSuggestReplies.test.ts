@@ -149,8 +149,9 @@ describe('streamReplyOptions', () => {
 		mocks.runLlmStream.mockImplementation(streamOf(['1. Yes.']));
 		const { ctx } = makeCtx();
 		await streamReplyOptions(ctx, { system: 's', prompt: 'p' });
-		expect(mocks.resolveLanguageModel).toHaveBeenCalledWith(ctx, 'suggest');
-		expect(mocks.resolveLanguageModel).not.toHaveBeenCalledWith(ctx, 'draft');
+		// `mail.suggest` runs on the fast tier only (lib/llm/taskPolicy.ts).
+		expect(mocks.resolveLanguageModel).toHaveBeenCalledWith(ctx, 'mail.suggest');
+		expect(mocks.resolveLanguageModel).toHaveBeenCalledTimes(1);
 	});
 
 	it('writes parsed options into the buffer as they form, then settles complete', async () => {

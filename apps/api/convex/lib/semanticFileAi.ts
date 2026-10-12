@@ -63,7 +63,7 @@ export async function sendSummaryThroughBatch(
 	ctx: ActionCtx,
 	input: SummaryInput & { readonly fileId: Id<'semanticFiles'> }
 ): Promise<boolean> {
-	const model = await resolveLanguageModel(ctx, 'summarize');
+	const model = await resolveLanguageModel(ctx, 'file.summarize');
 	return sendThroughBatch(ctx, {
 		consumer: 'file_summary',
 		sourceId: input.fileId,
@@ -78,7 +78,7 @@ export async function summarizeFile(
 	ctx: ActionCtx,
 	input: SummaryInput
 ): Promise<z.infer<typeof summarySchema>> {
-	const model = await resolveLanguageModel(ctx, 'summarize');
+	const model = await resolveLanguageModel(ctx, 'file.summarize');
 	const result = await meterLlmCall(ctx, { feature: 'semantic_file', root: input.root }, (meter) =>
 		runLlmObject({
 			meter,

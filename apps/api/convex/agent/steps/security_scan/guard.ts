@@ -116,7 +116,7 @@ async function classifyGuardWindow(
 	deadlineAt: number | undefined
 ): Promise<InjectionGuardVerdict | undefined> {
 	try {
-		const model = await resolveLanguageModel(ctx, 'guard');
+		const model = await resolveLanguageModel(ctx, 'mail.guard');
 		const call = (meter: LlmCallMeter) =>
 			runLlmObject({
 				meter,

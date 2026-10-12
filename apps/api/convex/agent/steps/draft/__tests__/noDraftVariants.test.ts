@@ -28,7 +28,7 @@ vi.mock('../../../../lib/llm/dispatch', () => ({
 }));
 vi.mock('../../../../lib/llmProvider', () => ({
 	resolveLanguageModel: mocks.resolveLanguageModel,
-	resolveLanguageModelForClassifiedDraft: mocks.resolveLanguageModel,
+	classifiedDraftRouteOf: () => 'capable',
 }));
 
 import { draftStep, type DraftInput } from '../index';

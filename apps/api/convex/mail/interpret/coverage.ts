@@ -78,7 +78,7 @@ async function checkWithModel(
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 			rateLimitBucket: 'answerCoveragePerUser',
 		});
-		const model = await resolveLanguageModel(ctx, 'summarize');
+		const model = await resolveLanguageModel(ctx, 'mail.plan_coverage');
 		const { object } = await meterLlmCall(
 			ctx,
 			{ feature: 'answer_plan_coverage', root: newRootRequest('postbox_action') },

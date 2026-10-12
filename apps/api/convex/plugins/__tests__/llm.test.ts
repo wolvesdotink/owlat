@@ -393,7 +393,13 @@ describe('hosted plugin LLM service', () => {
 			modelUsed: 'gpt-4o-mini',
 			usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
 		});
-		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledWith(expect.anything(), 'summarize');
+		expect(resolveLanguageModelWithProvenance).toHaveBeenCalledWith(
+			expect.anything(),
+			'plugin.invoke',
+			{
+				tier: 'fast',
+			}
+		);
 		expect(providerGenerate).toHaveBeenCalledWith(
 			expect.objectContaining({ maxOutputTokens: 2048 })
 		);

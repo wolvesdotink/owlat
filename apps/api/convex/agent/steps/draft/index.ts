@@ -15,7 +15,8 @@
  */
 
 import { internal } from '../../../_generated/api';
-import { resolveLanguageModelForClassifiedDraft } from '../../../lib/llmProvider';
+import { resolveLanguageModel } from '../../../lib/llmProvider';
+import { draftWriterRoute } from './writerRoute';
 import { buildReplySubject } from '../../../lib/emailAddress';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
@@ -181,17 +182,30 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// self-check. Personal Postbox (mail/ai/draftOnArrival.ts) runs the exact
 		// same service so both surfaces produce identical output for the same
 		// inbound message.
+		// The writer's route (./writerRoute.ts): today's single tier, or for a
+		// reviewed draft with the policy's switch on, the fast writer first and
+		// at most one escalation to the capable one (D2).
+		const route = await draftWriterRoute(ctx, {
+			category: safeCategory,
+			intent: safeIntent,
+			priority: safePriority,
+			confidence: input.classification.confidence,
+		});
 		const { draftBody, draftQuality, planCoverage, tokenUsage, modelUsed } = await runSharedDraft(
 			ctx,
 			{
 				surface: 'organization',
 				resolveModel: () =>
-					resolveLanguageModelForClassifiedDraft(ctx, {
-						category: safeCategory,
-						intent: safeIntent,
-						priority: safePriority,
-						confidence: input.classification.confidence,
+					resolveLanguageModel(ctx, 'mail.draft', {
+						tier: route === 'capable' ? 'capable' : 'fast',
 					}),
+				...(route === 'cheap_first'
+					? {
+							writer: {
+								resolveCapable: () => resolveLanguageModel(ctx, 'mail.draft', { tier: 'capable' }),
+							},
+						}
+					: {}),
 				audience: 'an organization',
 				styleReference: "the organization's",
 				context: input.context,
@@ -236,6 +250,8 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			draftSubject: replySubject,
 			confidenceScore: input.classification.confidence,
 			...(draftQuality ? { draftQuality } : {}),
+			// A cheap-first draft is for review only (the `cheap_first_draft` gate).
+			...(route === 'cheap_first' ? { isCheapFirstDraft: true } : {}),
 			...(await draftAttachmentPatch(
 				ctx,
 				input.context,

@@ -380,7 +380,7 @@ export async function refineClarification(
 	const items = opts.items ?? [];
 	try {
 		// Stage 1 — cheap-tier reply-slot extraction (shared prompt module).
-		const slotModel = await resolveLanguageModel(ctx, 'summarize');
+		const slotModel = await resolveLanguageModel(ctx, 'mail.clarify');
 		const slotsResult = await meterLlmCall(ctx, spend('postbox_clarify_slots'), (meter) =>
 			runLlmObject({
 				meter,
@@ -414,7 +414,7 @@ export async function refineClarification(
 
 		// Ask the owner in their own language: translate the surviving questions
 		// into every other interface locale. Fail-soft to the English copy.
-		const localizeModel = await resolveLanguageModel(ctx, 'summarize');
+		const localizeModel = await resolveLanguageModel(ctx, 'mail.clarify');
 		const localized = await meterLlmCall(ctx, spend('postbox_clarify_localize'), (meter) =>
 			localizeQuestions(localizeModel, sanitized, undefined, meter)
 		);

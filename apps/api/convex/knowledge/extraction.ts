@@ -128,7 +128,7 @@ export const extractFromMessage = internalAction({
 				const extractRoot = args.root ?? rootRequest('team', args.inboundMessageId);
 				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
 				const entries = await entriesToSave(progress.pendingEntries, async () => {
-					const model = await resolveLanguageModel(ctx, 'extract');
+					const model = await resolveLanguageModel(ctx, 'knowledge.extract');
 					const prompt = `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${message.from}
@@ -251,7 +251,7 @@ export const extractFromFile = internalAction({
 				const extractRoot = args.root ?? rootRequest('file', args.fileId);
 				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
 				const entries = await entriesToSave(progress.pendingEntries, async () => {
-					const model = await resolveLanguageModel(ctx, 'extract');
+					const model = await resolveLanguageModel(ctx, 'knowledge.extract');
 					const prompt = `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
 
 Filename: ${file.filename}
@@ -379,7 +379,7 @@ export const extractFromMailMessage = internalAction({
 				const extractRoot = args.root ?? rootRequest('postbox', args.mailMessageId);
 				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
 				const entries = await entriesToSave(progress.pendingEntries, async () => {
-					const model = await resolveLanguageModel(ctx, 'extract');
+					const model = await resolveLanguageModel(ctx, 'knowledge.extract');
 					const prompt = `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${msg.fromName ? `${msg.fromName} <${msg.fromAddress}>` : msg.fromAddress}

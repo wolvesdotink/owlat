@@ -37,7 +37,7 @@ export async function divergentSlots(
 		const drafts: string[] = [];
 		for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 			try {
-				const model = await resolveLanguageModel(ctx, 'draft');
+				const model = await resolveLanguageModel(ctx, 'mail.clarify', { tier: 'capable' });
 				const draft = await meterLlmCall(ctx, target, (meter) =>
 					runLlmText({
 						meter,
@@ -53,7 +53,7 @@ export async function divergentSlots(
 		}
 		if (drafts.length < MIN_SAMPLES_FOR_JUDGMENT) return [];
 
-		const judgeModel = await resolveLanguageModel(ctx, 'draft');
+		const judgeModel = await resolveLanguageModel(ctx, 'mail.clarify', { tier: 'capable' });
 		const divergenceResult = await meterLlmCall(ctx, target, (meter) =>
 			runLlmObject({
 				meter,
