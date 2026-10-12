@@ -64,7 +64,7 @@ describe('env OpenAI-compatible routes', () => {
 				vi.stubEnv('LLM_BASE_URL', baseUrl);
 				vi.stubEnv('LLM_API_KEY', 'env-key');
 			}
-			const model = await resolveLanguageModel(envCtx, 'classify');
+			const model = await resolveLanguageModel(envCtx, 'mail.classify');
 			const result = await runLlmObject({ model, schema, prompt: 'Classify', maxAttempts: 1 });
 
 			expect(result.object).toEqual({ category: 'billing', reason: 'r' });
@@ -84,7 +84,7 @@ describe('env OpenAI-compatible routes', () => {
 		vi.stubEnv('LLM_BASE_URL', 'https://openrouter.ai/api/v1');
 		vi.stubEnv('LLM_API_KEY', 'env-key');
 		vi.stubEnv('LLM_MODEL_FAST', 'openai/gpt-6-luna');
-		const model = modelForRequest(await resolveLanguageModel(envCtx, 'classify'));
+		const model = modelForRequest(await resolveLanguageModel(envCtx, 'mail.classify'));
 		if (typeof model !== 'object' || model.specificationVersion !== 'v3') {
 			throw new Error('v3 expected');
 		}

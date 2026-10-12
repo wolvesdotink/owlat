@@ -80,9 +80,9 @@ export const TRIVIAL_CLASSIFICATION_CONFIDENCE = 0.8;
  * piece of information is the formulaic reply; a question, a request, a
  * complaint or an escalation stays on the capable tier.
  *
- * This is the PROPOSED eligible set, typed against the domain so it cannot
- * drift again. It does not route anything on its own: see
- * {@link ACTIVE_TRIVIAL_INTENTS}.
+ * Typed against the domain so it cannot drift again. It routes only REVIEWED
+ * drafts written cheap-first ({@link classifiedDraftRoute}); the auto-sendable
+ * route reads {@link ACTIVE_TRIVIAL_INTENTS}.
  */
 export const TRIVIAL_INTENTS: ReadonlySet<ClassifyIntent> = new Set<ClassifyIntent>([
 	'acknowledgment',
@@ -90,22 +90,29 @@ export const TRIVIAL_INTENTS: ReadonlySet<ClassifyIntent> = new Set<ClassifyInte
 ]);
 
 /**
- * The intents that actually route to the fast tier today: exactly the one the
- * old set matched. Newly eligible intents are NOT active (plan Phase 1a):
- * under `LLM_COMPLEXITY_ROUTING=1` they would send more autonomous drafts to
- * the fast writer before any safety evaluation. Phase 4 widens this allowlist
- * for reviewed drafts, from {@link TRIVIAL_INTENTS} only.
+ * The intents that route to the fast tier under `LLM_COMPLEXITY_ROUTING`:
+ * exactly the one the old set matched, so that route is unchanged. The newly
+ * eligible intents of {@link TRIVIAL_INTENTS} are NOT active there: such a
+ * draft can be auto-sent, and nothing has evaluated the fast writer on them.
+ * They are eligible only for a reviewed draft written cheap-first
+ * ({@link classifiedDraftRoute}).
  */
 export const ACTIVE_TRIVIAL_INTENTS: ReadonlySet<ClassifyIntent> = new Set<ClassifyIntent>([
 	'acknowledgment',
 ]);
 
-function isActiveTrivialIntent(intent: string): boolean {
-	return (ACTIVE_TRIVIAL_INTENTS as ReadonlySet<string>).has(intent);
-}
-
 /** Priorities that must always keep the capable tier regardless of intent. */
 const NON_DOWNGRADEABLE_PRIORITIES = new Set(['urgent', 'high', 'critical']);
+
+/** The shared guards: certain enough, low stakes, and an intent in `intents`. */
+function isTrivialFor(
+	signals: ClassificationSignals,
+	intents: ReadonlySet<ClassifyIntent>
+): boolean {
+	if (signals.confidence < TRIVIAL_CLASSIFICATION_CONFIDENCE) return false;
+	if (NON_DOWNGRADEABLE_PRIORITIES.has(signals.priority)) return false;
+	return (intents as ReadonlySet<string>).has(signals.intent);
+}
 
 /**
  * Decide, from TRUSTED classifier signals ONLY, whether an inbound message is
@@ -116,7 +123,44 @@ const NON_DOWNGRADEABLE_PRIORITIES = new Set(['urgent', 'high', 'critical']);
  * never influence the tier choice.
  */
 export function isTrivialClassifiedMessage(signals: ClassificationSignals): boolean {
-	if (signals.confidence < TRIVIAL_CLASSIFICATION_CONFIDENCE) return false;
-	if (NON_DOWNGRADEABLE_PRIORITIES.has(signals.priority)) return false;
-	return isActiveTrivialIntent(signals.intent);
+	return isTrivialFor(signals, ACTIVE_TRIVIAL_INTENTS);
+}
+
+/**
+ * How the inbound agent's draft is written (plan Phase 4, D2):
+ *   - `fast`: `LLM_COMPLEXITY_ROUTING` downgrades it, exactly as before;
+ *   - `cheap_first`: the fast writer first, then at most one escalation to the
+ *     capable writer when its quality check does not pass
+ *     (`agent/shared/cheapFirstDraft.ts`). Only for a REVIEWED draft (one that
+ *     cannot be auto-sent), only with the routing policy's `cheapFirstWriter`
+ *     at `reviewed`, and only for a message the corrected allowlist
+ *     ({@link TRIVIAL_INTENTS}) and the same certainty and priority guards
+ *     find formulaic;
+ *   - `capable`: everything else, today's route. A complex message never
+ *     goes cheap-first: it would only add a pass before the capable one.
+ */
+export type ClassifiedDraftRoute = 'capable' | 'fast' | 'cheap_first';
+
+export interface ClassifiedDraftRouteOptions {
+	/** `LLM_COMPLEXITY_ROUTING=1`. */
+	readonly isComplexityRoutingOn: boolean;
+	/** The routing policy's `cheapFirstWriter` switch (default `off`). */
+	readonly cheapFirstWriter: 'off' | 'reviewed';
+	/** The draft cannot be auto-sent: a person reviews it whatever it says. */
+	readonly isReviewedDraft: boolean;
+}
+
+export function classifiedDraftRoute(
+	signals: ClassificationSignals,
+	opts: ClassifiedDraftRouteOptions
+): ClassifiedDraftRoute {
+	if (opts.isComplexityRoutingOn && isTrivialClassifiedMessage(signals)) return 'fast';
+	if (
+		opts.cheapFirstWriter === 'reviewed' &&
+		opts.isReviewedDraft &&
+		isTrivialFor(signals, TRIVIAL_INTENTS)
+	) {
+		return 'cheap_first';
+	}
+	return 'capable';
 }

@@ -127,10 +127,10 @@ function answerClarifySurface(
 			samples: 'postbox_answer_diverge',
 			judge: 'postbox_answer_diverge',
 		},
-		roles: {
-			slots: 'summarize',
-			samples: eagerness === 'cautious' ? 'draft' : 'summarize',
-			judge: 'draft',
+		models: {
+			slots: { task: 'mail.clarify' },
+			samples: { task: 'mail.clarify_sample', tier: eagerness === 'cautious' ? 'capable' : 'fast' },
+			judge: { task: 'mail.clarify', tier: 'capable' },
 		},
 		meter: (feature, task, call) =>
 			meterLlmCall(ctx, { feature, root, ...(task ? { task } : {}) }, call),
@@ -200,7 +200,7 @@ export async function localizeForOwner(
 	root: LlmRootContext = newRootRequest('postbox_action')
 ): Promise<AskQuestion[]> {
 	if (questions.length === 0 || !isAppLocale(locale) || locale === 'en') return questions;
-	const model = await resolveLanguageModel(ctx, 'summarize');
+	const model = await resolveLanguageModel(ctx, 'mail.clarify');
 	const localized = await meterLlmCall(ctx, { feature: 'postbox_answer_localize', root }, (meter) =>
 		localizeQuestions(model, questions, ['en', locale], meter)
 	);

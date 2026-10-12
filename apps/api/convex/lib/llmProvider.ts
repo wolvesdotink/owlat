@@ -49,11 +49,14 @@ import type { ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from './env';
 import { AiNotConfiguredError, envLlmApiKey, isEnvAiProviderConfigured } from './aiNotConfigured';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
 import {
-	isTrivialUserText,
-	isTrivialClassifiedMessage,
+	classifiedDraftRoute,
 	type ClassificationSignals,
+	type ClassifiedDraftRoute,
+	type ClassifiedDraftRouteOptions,
 } from './llm/complexity';
+import { taskTier, userTextTier, type LlmTier, type TierChoice } from './llm/taskRouting';
 import { stampModelEndpoint } from './llm/modelEndpoint';
 import { isLocalEndpoint } from './llm/endpointLocality';
 import { EMBEDDING_DIMENSIONS } from './constants';
@@ -83,17 +86,6 @@ import {
 } from './llmProviders/storedConfigCache';
 
 export { invalidateAiConfigCache } from './llmProviders/storedConfigCache';
-
-/**
- * Task types map to a model tier:
- * - fast: classification, extraction, guardrails, summarization, short
- *   suggested-reply options (a user is waiting on them, and 1–2 sentence
- *   replies do not need the capable model)
- * - capable: drafting replies, planning multi-step actions
- */
-export type LLMTask = 'classify' | 'extract' | 'guard' | 'summarize' | 'suggest' | 'draft' | 'plan';
-/** Model tiers exposed to callers. */
-type LLMTier = 'fast' | 'capable';
 
 /** The resolved language plane — kind + secret-bearing client + per-tier models. */
 interface ResolvedLanguagePlane {
@@ -129,10 +121,6 @@ interface ResolvedProviderConfig {
 	readonly updatedAt?: number;
 }
 
-function taskTier(task: LLMTask): LLMTier {
-	return task === 'draft' || task === 'plan' ? 'capable' : 'fast';
-}
-
 // Environment setup must select the same adapter/defaults as stored settings.
 // OpenRouter and local servers speak chat completions, while native GPT-6 uses
 // Responses (including tool calls). A base URL alone cannot choose that wire.
@@ -161,7 +149,7 @@ function resolveEnvClientConfig(): ProviderClientConfig {
 	return { apiKey: apiKey ?? 'ollama', baseUrl: envLlmBaseUrl() };
 }
 
-function modelIdForTier(tier: LLMTier): string {
+function modelIdForTier(tier: LlmTier): string {
 	const defaults = languageProviderFor(envLanguageKind()).defaultModels;
 	return tier === 'fast'
 		? (getOptional('LLM_MODEL_FAST') ?? getOptional('LLM_MODEL') ?? defaults.fast)
@@ -299,7 +287,7 @@ export const __resetAiConfigCacheForTests = invalidateAiConfigCache;
 /** Build a model together with the trusted, secret-free resolution metadata. */
 function resolveLanguageModelFromPlane(
 	language: ResolvedLanguagePlane,
-	tier: LLMTier
+	tier: LlmTier
 ): ResolvedLanguageModel {
 	const modelId = tier === 'fast' ? language.models.fast : language.models.capable;
 	const adapter = languageProviderFor(language.kind);
@@ -309,69 +297,82 @@ function resolveLanguageModelFromPlane(
 		model: stampModelEndpoint(
 			adapter.buildChatModel(language.clientConfig, modelId),
 			language.endpointProvenance,
-			{ isLocal: isLocalEndpoint(language.kind, language.clientConfig.baseUrl, adapter) }
+			// The tier too: the dispatch refuses the model for a task whose catalog
+			// entry does not allow it (`./llm/callShape.ts`).
+			{ isLocal: isLocalEndpoint(language.kind, language.clientConfig.baseUrl, adapter), tier }
 		),
 		modelId,
 		endpointProvenance: language.endpointProvenance,
 	});
 }
 
-/** Resolve a language model with endpoint identity for hard-budget consumers. */
+/**
+ * Resolve the language model for one call of `task`, with its endpoint
+ * identity (hard-budget consumers price it). The tier is the task's
+ * (`./llm/taskRouting.ts`, from the task-policy catalog): its usual tier, or
+ * the one `choice` names when the catalog allows it for the task.
+ */
 export async function resolveLanguageModelWithProvenance(
 	ctx: ActionCtx,
-	task: LLMTask = 'draft'
+	task: AiTaskName,
+	choice?: TierChoice
 ): Promise<ResolvedLanguageModel> {
-	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx), taskTier(task));
+	const tier = taskTier(task, choice);
+	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx), tier);
 }
 
-/** Resolve the language model for a given task (plugs into the AI SDK helpers). */
+/** Resolve the language model for one call of `task` (plugs into the AI SDK helpers). */
 export async function resolveLanguageModel(
 	ctx: ActionCtx,
-	task: LLMTask = 'draft'
+	task: AiTaskName,
+	choice?: TierChoice
 ): Promise<LanguageModel> {
-	return (await resolveLanguageModelWithProvenance(ctx, task)).model;
+	return (await resolveLanguageModelWithProvenance(ctx, task, choice)).model;
+}
+
+/** `LLM_COMPLEXITY_ROUTING=1` (default off): downgrade clearly trivial work to the fast tier. */
+function isComplexityRoutingOn(): boolean {
+	return getOptional('LLM_COMPLEXITY_ROUTING') === '1';
 }
 
 /**
- * Resolve a model for a *user-facing* task, optionally downgrading the capable
+ * Resolve a model for a *user-facing* task, optionally downgrading its capable
  * tier to fast when the user's input is clearly trivial and complexity routing
- * is enabled (`LLM_COMPLEXITY_ROUTING=1`, default off). Only capable-tier tasks
- * downgrade, and only obviously-trivial input does — ambiguous text keeps the
- * capable model so quality never silently drops. `userText` must be the
- * user-controlled text ONLY (never the system prompt / assembled context).
+ * is enabled (`LLM_COMPLEXITY_ROUTING=1`, default off). Only a capable-tier
+ * task whose catalog entry allows `fast` downgrades, and only obviously-trivial
+ * input does — ambiguous text keeps the capable model so quality never
+ * silently drops. `userText` must be the user-controlled text ONLY (never the
+ * system prompt / assembled context).
  */
 export async function resolveLanguageModelForUserText(
 	ctx: ActionCtx,
-	task: LLMTask,
+	task: AiTaskName,
 	userText: string
 ): Promise<LanguageModel> {
-	const language = await resolveLanguagePlane(ctx);
-	const downgrade =
-		getOptional('LLM_COMPLEXITY_ROUTING') === '1' &&
-		taskTier(task) === 'capable' &&
-		isTrivialUserText(userText);
-	return resolveLanguageModelFromPlane(language, downgrade ? 'fast' : taskTier(task)).model;
+	const tier = userTextTier(task, userText, isComplexityRoutingOn());
+	return resolveLanguageModelFromPlane(await resolveLanguagePlane(ctx), tier).model;
 }
 
 /**
- * Resolve the model for the inbound agent's `draft` step, downgrading the
- * capable tier to fast when the message is clearly trivial AND complexity
- * routing is enabled (`LLM_COMPLEXITY_ROUTING=1`, default off). Unlike
- * {@link resolveLanguageModelForUserText}, triviality is judged from the
- * TRUSTED, sanitized classifier signals only — never the attacker-controlled
- * email body — so a crafted "thanks!"-looking inbound can't force a cheaper,
- * lower-quality draft. Ambiguous / important / low-confidence messages keep the
- * capable tier, and when routing is off this is exactly today's single-tier
- * behaviour.
+ * How the inbound agent's `draft` step writes its reply (`./llm/complexity.ts`
+ * `classifiedDraftRoute`), from the TRUSTED, sanitized classifier signals only
+ * (never the attacker-controlled email body, so a crafted "thanks!" cannot
+ * force a cheaper draft): `fast` under `LLM_COMPLEXITY_ROUTING=1` for a
+ * clearly trivial message, as before; `cheap_first` for an eligible REVIEWED
+ * draft with the policy's `cheapFirstWriter` on (D2); else `capable`. With
+ * both off (the defaults) this is exactly today's single-tier behaviour.
  */
-export async function resolveLanguageModelForClassifiedDraft(
-	ctx: ActionCtx,
-	signals: ClassificationSignals
-): Promise<LanguageModel> {
-	const language = await resolveLanguagePlane(ctx);
-	const downgrade =
-		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && isTrivialClassifiedMessage(signals);
-	return resolveLanguageModelFromPlane(language, downgrade ? 'fast' : 'capable').model;
+export function classifiedDraftRouteOf(
+	signals: ClassificationSignals,
+	writer: Omit<ClassifiedDraftRouteOptions, 'isComplexityRoutingOn'> = {
+		cheapFirstWriter: 'off',
+		isReviewedDraft: false,
+	}
+): ClassifiedDraftRoute {
+	return classifiedDraftRoute(signals, {
+		...writer,
+		isComplexityRoutingOn: isComplexityRoutingOn(),
+	});
 }
 
 // Known embedding models and their native output width. Used to fail fast when

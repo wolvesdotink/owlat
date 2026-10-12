@@ -298,7 +298,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 		// the Team pipeline.
 		const priority = mode === 'brief' ? 'background' : 'pipeline';
 		const prepared = await prepareExtraction(ctx, input, mode);
-		const verifyModel = await resolveLanguageModel(ctx, 'guard');
+		const verifyModel = await resolveLanguageModel(ctx, 'mail.verify');
 		// The verification path (cap, language verifier or claim checks), decided
 		// now so the hold below covers exactly it (`./verifyRoute.ts`, Sol r2 F2).
 		const source = {

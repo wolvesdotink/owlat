@@ -17,6 +17,9 @@ import { clampHumanApproveUndoDelayMs } from './inbox/processingLifecycle/effect
 import { optionalFields, pick } from './lib/validators/fields';
 import { agentConfigFields } from './schema/autonomy';
 import { AGENT_CONFIG_INSERT_DEFAULTS } from './lib/agentConfigDefaults';
+import { throwInvalidInput } from './_utils/errors';
+import { AUTO_SEND_VERDICT_TASKS } from './lib/decision/calibration';
+import { decisionAutonomyProblem } from './lib/decision/autoSendContract';
 
 /** Clamp a minute-of-day into [0, 1439] so a bad client value can't wedge the window. */
 function clampMinuteOfDay(minute: number): number {
@@ -84,6 +87,17 @@ export const updateConfig = adminMutation({
 
 		const configs = await ctx.db.query('agentConfig').take(1);
 		const now = Date.now();
+
+		// Decision-driven autonomous input needs item coverage enforced: while a
+		// decision verdict feeds auto-send, coverage cannot be switched off
+		// (lib/decision/autoSendContract.ts). No verdict feeds it today.
+		if (args.isItemCoverageEnforced === false) {
+			const problem = decisionAutonomyProblem({
+				verdictTasks: AUTO_SEND_VERDICT_TASKS,
+				isItemCoverageEnforced: false,
+			});
+			if (problem) throwInvalidInput(problem);
+		}
 
 		if (configs.length > 0) {
 			const config = configs[0]!;

@@ -218,7 +218,7 @@ export const ask = authedAction({
 		let answer: string;
 		let isTruncated = false;
 		try {
-			const model = await resolveLanguageModel(ctx, 'draft');
+			const model = await resolveLanguageModel(ctx, 'assistant.quick_query');
 			// Recorded since Phase 1a: this synthesis wrote no ledger row before.
 			const result = await meterLlmCall(ctx, { feature: 'assistant_quick_query', root }, (meter) =>
 				runLlmText({

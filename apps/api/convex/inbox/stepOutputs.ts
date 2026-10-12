@@ -127,6 +127,8 @@ export const recordDraftOutput = internalMutation({
 		// Advisory attachment suggestion (see lib/validators/attachment.ts). Absent unless
 		// the inbound asked for a document and a contact-scoped file matched.
 		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
+		// The draft was written cheap-first (D2): never auto-sent.
+		isCheapFirstDraft: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		// A person took the reply over while this draft was being written: their
@@ -146,6 +148,8 @@ export const recordDraftOutput = internalMutation({
 			// an earlier run left, which no longer match the draft.
 			draftOptions: undefined,
 			...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
+			// Bound to this draft: set for a cheap-first draft, cleared by any other.
+			isCheapFirstDraft: args.isCheapFirstDraft === true ? true : undefined,
 			// Edits a person saved over an earlier draft are not edits of this
 			// one: the next save seeds this draft as revision 0. (A Retry never
 			// re-drafts over a person's reply, #1220.)

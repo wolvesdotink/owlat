@@ -146,7 +146,7 @@ export const compile = authedAction({
 		// Flag / budget / rate-limit gate, shared with the advisory Postbox AI.
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 
-		const model = await resolveLanguageModel(ctx, 'classify'); // cheap tier — this is a light extraction
+		const model = await resolveLanguageModel(ctx, 'mail.rule_compile'); // fast tier — a light extraction
 		const { object, modelUsed } = await meterLlmCall(
 			ctx,
 			{ feature: 'handling_rule_compile', root: newRootRequest('rules') },

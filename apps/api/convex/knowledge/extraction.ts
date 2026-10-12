@@ -126,7 +126,7 @@ export const extractFromMessage = internalAction({
 				const extractRoot = args.root ?? rootRequest('team', args.inboundMessageId);
 				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
 				const entries = await entriesToSave(progress.pendingEntries, async () => {
-					const model = await resolveLanguageModel(ctx, 'extract');
+					const model = await resolveLanguageModel(ctx, 'knowledge.extract');
 					const {
 						object: extraction,
 						tokenUsage,
@@ -242,7 +242,7 @@ export const extractFromFile = internalAction({
 				const extractRoot = args.root ?? rootRequest('file', args.fileId);
 				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
 				const entries = await entriesToSave(progress.pendingEntries, async () => {
-					const model = await resolveLanguageModel(ctx, 'extract');
+					const model = await resolveLanguageModel(ctx, 'knowledge.extract');
 					const {
 						object: extraction,
 						tokenUsage,
@@ -366,7 +366,7 @@ export const extractFromMailMessage = internalAction({
 				const extractRoot = args.root ?? rootRequest('postbox', args.mailMessageId);
 				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
 				const entries = await entriesToSave(progress.pendingEntries, async () => {
-					const model = await resolveLanguageModel(ctx, 'extract');
+					const model = await resolveLanguageModel(ctx, 'knowledge.extract');
 					const {
 						object: extraction,
 						tokenUsage,

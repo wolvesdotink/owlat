@@ -178,7 +178,7 @@ describe('the necessity judgment through the runner', () => {
 
 		const first = await necessityRun(t, routed, id);
 		expect(first).toEqual({ hasRun: true, status: 'complete', labels: { necessity: 'needed' } });
-		expect(mocks.roles).toEqual(['classify']);
+		expect(mocks.roles).toEqual(['mail.necessity']); // the decision task's own fast tier
 		const ledger = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
 		expect(ledger).toHaveLength(1);
 		expect(ledger[0]).toMatchObject({

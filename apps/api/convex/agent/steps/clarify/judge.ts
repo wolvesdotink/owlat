@@ -35,7 +35,12 @@ export function teamClarifySurface(
 	const root = teamRoot(inboundMessageId);
 	return {
 		features: { slots: 'agent_clarify', samples: 'agent_clarify', judge: 'agent_clarify' },
-		roles: { slots: 'classify', samples: 'classify', judge: 'classify' },
+		// One fast model for every stage, resolved by the step (`mail.clarify`).
+		models: {
+			slots: { task: 'mail.clarify' },
+			samples: { task: 'mail.clarify_sample', tier: 'fast' },
+			judge: { task: 'mail.clarify' },
+		},
 		model,
 		meter: (feature, task, call) =>
 			meterLlmCall(ctx, { feature, root, ...(task ? { task } : {}) }, call, {

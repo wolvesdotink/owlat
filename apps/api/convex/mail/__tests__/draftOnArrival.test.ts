@@ -40,7 +40,7 @@ vi.mock('../../lib/llm/dispatch', async () => {
 });
 vi.mock('../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
-	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
+	classifiedDraftRouteOf: () => 'capable',
 }));
 
 import { findDraftGaps } from '@owlat/shared/answerMode';

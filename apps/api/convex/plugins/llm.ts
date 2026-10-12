@@ -116,10 +116,9 @@ function bindBundledPluginLlm(
 			let resolvedModel: Awaited<ReturnType<typeof resolveLanguageModelWithProvenance>>;
 			let perAttemptMicrousd: number;
 			try {
-				resolvedModel = await resolveLanguageModelWithProvenance(
-					ctx,
-					request.tier === 'fast' ? 'summarize' : 'draft'
-				);
+				resolvedModel = await resolveLanguageModelWithProvenance(ctx, 'plugin.invoke', {
+					tier: request.tier,
+				});
 				perAttemptMicrousd =
 					estimateAdmissionCostMicrousd(resolvedModel.endpointProvenance, resolvedModel.modelId, {
 						promptTokens: request.inputTokensUpperBound,

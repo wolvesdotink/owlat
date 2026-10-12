@@ -9,12 +9,18 @@
  * request. A weak map keyed by the model object: metadata about one object,
  * not request context, and it never keeps a model alive.
  *
+ * A language model also carries the tier it was resolved on, which the
+ * dispatch checks against its call's task (`./callShape.ts`).
+ *
  * Pure and runtime-neutral.
  */
+
+import type { LlmTier } from './taskPolicy';
 
 interface ModelStamp {
 	readonly endpoint: string;
 	readonly isLocal: boolean;
+	readonly tier?: LlmTier;
 }
 
 const STAMPS = new WeakMap<object, ModelStamp>();
@@ -23,10 +29,14 @@ const STAMPS = new WeakMap<object, ModelStamp>();
 export function stampModelEndpoint<M>(
 	model: M,
 	endpoint: string,
-	options: { readonly isLocal?: boolean } = {}
+	options: { readonly isLocal?: boolean; readonly tier?: LlmTier } = {}
 ): M {
 	if (typeof model === 'object' && model !== null) {
-		STAMPS.set(model, { endpoint, isLocal: options.isLocal === true });
+		STAMPS.set(model, {
+			endpoint,
+			isLocal: options.isLocal === true,
+			...(options.tier ? { tier: options.tier } : {}),
+		});
 	}
 	return model;
 }
@@ -39,4 +49,9 @@ export function modelEndpoint(model: unknown): string | undefined {
 /** True when the resolver stamped `model` as running on the operator's own hardware. */
 export function isLocalModel(model: unknown): boolean {
 	return typeof model === 'object' && model !== null && STAMPS.get(model)?.isLocal === true;
+}
+
+/** The tier the resolver resolved a language `model` on, if it stamped one. */
+export function modelTier(model: unknown): LlmTier | undefined {
+	return typeof model === 'object' && model !== null ? STAMPS.get(model)?.tier : undefined;
 }

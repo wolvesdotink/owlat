@@ -36,7 +36,8 @@ import type { LanguageModel } from 'ai';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { AiTaskName } from '@owlat/shared/aiRouting';
-import { resolveLanguageModel, type LLMTask } from '../lib/llmProvider';
+import { resolveLanguageModel } from '../lib/llmProvider';
+import type { LlmTier } from '../lib/llm/taskPolicy';
 import { runLlmObject, runLlmText } from '../lib/llm/dispatch';
 import type { LlmCallMeter, LlmRootContext } from '../lib/llm/requestMeter';
 import { addTokenUsage } from '../lib/llm/tokenUsage';
@@ -62,10 +63,26 @@ import {
 /** The task every sampled candidate reply records under. */
 export const CLARIFY_SAMPLE_TASK = 'mail.clarify_sample' satisfies AiTaskName;
 
+/** A stage's model: its catalog task, and the tier when the task runs on more than one. */
+export interface ModelChoice {
+	readonly task: AiTaskName;
+	readonly tier?: LlmTier;
+}
+
+/** Resolve a stage's model: the one resolver call of the service (`resolverCallSites.test.ts`). */
+function resolveStage(ctx: ActionCtx, choice: ModelChoice): Promise<LanguageModel> {
+	return resolveLanguageModel(ctx, choice.task, choice);
+}
+
 /** One surface's way of asking: today's tiers, ledger features and metering. */
 export interface ClarifySurface {
 	readonly features: { readonly slots: string; readonly samples: string; readonly judge: string };
-	readonly roles: { readonly slots: LLMTask; readonly samples: LLMTask; readonly judge: LLMTask };
+	/** The catalog task and tier each stage's model resolves for (`lib/llm/taskRouting.ts`). */
+	readonly models: {
+		readonly slots: ModelChoice;
+		readonly samples: ModelChoice;
+		readonly judge: ModelChoice;
+	};
 	/** A model the surface already resolved, used for every stage (Team). */
 	readonly model?: LanguageModel;
 	/**
@@ -105,7 +122,7 @@ export async function extractReplySlots(
 	context: string,
 	items: readonly SlotItem[]
 ): Promise<ExtractedSlots> {
-	const model = surface.model ?? (await resolveLanguageModel(ctx, surface.roles.slots));
+	const model = surface.model ?? (await resolveStage(ctx, surface.models.slots));
 	const result = await surface.meter(surface.features.slots, undefined, (meter) =>
 		runLlmObject({
 			meter,
@@ -197,13 +214,10 @@ async function sampleDivergence(
 	let tokenUsage: TokenUsage | undefined;
 	const sampleModelOnce =
 		surface.model ??
-		(surface.isSampleModelPerSample
-			? undefined
-			: await resolveLanguageModel(ctx, surface.roles.samples));
+		(surface.isSampleModelPerSample ? undefined : await resolveStage(ctx, surface.models.samples));
 	for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 		try {
-			const sampleModel =
-				sampleModelOnce ?? (await resolveLanguageModel(ctx, surface.roles.samples));
+			const sampleModel = sampleModelOnce ?? (await resolveStage(ctx, surface.models.samples));
 			const sample = await surface.meter(surface.features.samples, CLARIFY_SAMPLE_TASK, (meter) =>
 				runLlmText({
 					meter,
@@ -225,7 +239,7 @@ async function sampleDivergence(
 	if (samples.length < MIN_SAMPLES_FOR_JUDGMENT) {
 		return { judgment: { kind: 'insufficient_samples' }, ...(tokenUsage ? { tokenUsage } : {}) };
 	}
-	const judgeModel = surface.model ?? (await resolveLanguageModel(ctx, surface.roles.judge));
+	const judgeModel = surface.model ?? (await resolveStage(ctx, surface.models.judge));
 	const judged = await surface.meter(surface.features.judge, undefined, (meter) =>
 		runLlmObject({
 			meter,

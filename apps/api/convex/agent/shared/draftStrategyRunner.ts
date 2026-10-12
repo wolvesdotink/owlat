@@ -28,6 +28,17 @@ interface StrategySource {
 	readonly voiceSection: string;
 }
 
+/** The strategy the scope selects: `default` without a scope, or when the selection cannot be read. */
+export async function selectedDraftStrategy(
+	ctx: ActionCtx,
+	scope: StrategySelectionScope | undefined
+): Promise<string> {
+	if (!scope) return 'default';
+	return ctx
+		.runQuery(internal.plugins.draftStrategySelections.resolveForDraft, scope)
+		.catch(() => 'default');
+}
+
 export async function runSelectedDraftStrategy(
 	ctx: ActionCtx,
 	scope: StrategySelectionScope | undefined,
@@ -40,11 +51,7 @@ export async function runSelectedDraftStrategy(
 	tokenUsage: LlmTextResult['tokenUsage'];
 	modelUsed: LlmTextResult['modelUsed'];
 }> {
-	const strategyKind = scope
-		? await ctx
-				.runQuery(internal.plugins.draftStrategySelections.resolveForDraft, scope)
-				.catch(() => 'default')
-		: 'default';
+	const strategyKind = await selectedDraftStrategy(ctx, scope);
 	if (strategyKind !== 'default') {
 		const customDraft = await runHostedDraftStrategy(ctx, strategyKind, source, root);
 		if (customDraft !== null)

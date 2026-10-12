@@ -85,7 +85,7 @@ vi.mock('../../lib/llm/dispatch', () => ({
 }));
 vi.mock('../../lib/llmProvider', () => ({
 	resolveLanguageModel: () => ({}) as never,
-	resolveLanguageModelForClassifiedDraft: () => ({}) as never,
+	classifiedDraftRouteOf: () => 'capable',
 }));
 vi.mock('../interpret/run', async () => {
 	const actual = await vi.importActual<typeof InterpretRun>('../interpret/run');

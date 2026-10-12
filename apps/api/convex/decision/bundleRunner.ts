@@ -207,7 +207,7 @@ async function askLanguageRung<Q extends QuestionSet>(
 	run: BundleRun<Q>,
 	admitted: Extract<BundleAdmission, { isAdmitted: true }>
 ): Promise<Answered<Q>> {
-	const model = await resolveLanguageModel(ctx, 'classify');
+	const model = await resolveLanguageModel(ctx, run.plan.task);
 	const { object, modelUsed } = await meterLlmCall(
 		ctx,
 		{ ...admitted.target, task: run.plan.task, root: run.root, plane: 'language' },

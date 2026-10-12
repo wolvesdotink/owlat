@@ -224,7 +224,7 @@ export const askThread = authedAction({
 		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
 		const [model, transcript] = await Promise.all([
-			resolveLanguageModel(ctx, 'draft'),
+			resolveLanguageModel(ctx, 'mail.ask'),
 			buildThreadTranscript(thread.messages, THREAD_SUMMARY),
 		]);
 		const { system, prompt } = buildAskThreadPrompt({
@@ -272,7 +272,7 @@ export const completeDraft = authedAction({
 		// Fast/cheap tier: inline completions are high-volume and must be cheap;
 		// 'summarize' maps to the fast tier in the task router. Resolved while
 		// the gate runs.
-		const model = await gatedInParallel(ctx, resolveLanguageModel(ctx, 'summarize'));
+		const model = await gatedInParallel(ctx, resolveLanguageModel(ctx, 'mail.complete'));
 		const { system, prompt } = buildCompletePrompt(args);
 		const { text } = await meterLlmCall(
 			ctx,
@@ -398,7 +398,7 @@ export const rewriteSelection = authedAction({
 				// a clearly-trivial selection may downgrade to the fast tier when
 				// complexity routing is enabled. FAIL-SOFT: routing off / any
 				// non-trivial selection keeps the capable tier (today's behaviour).
-				resolveLanguageModelForUserText(ctx, 'draft', args.selection),
+				resolveLanguageModelForUserText(ctx, 'mail.rewrite', args.selection),
 			])
 		);
 		const { system, prompt } = buildRewritePrompt({

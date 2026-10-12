@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
 	log: { calls: [] as unknown[], tasks: [] as (string | undefined)[] },
 	runLlmText: vi.fn(),
 	runLlmObject: vi.fn(),
-	/** Which resolutions of a role fail (1-based), a transient provider-config failure. */
+	/** Which resolutions of a tier fail (1-based), a transient provider-config failure. */
 	failResolutions: {} as Record<string, number[]>,
 	resolutions: {} as Record<string, number>,
 }));
@@ -59,14 +59,25 @@ vi.mock('../../lib/llm/dispatch', () => ({
 	},
 }));
 vi.mock('../../lib/llmProvider', () => ({
-	resolveLanguageModel: vi.fn(async (_ctx: unknown, role: string) => {
-		const nth = (mocks.resolutions[role] ?? 0) + 1;
-		mocks.resolutions[role] = nth;
-		const fails = mocks.failResolutions[role]?.includes(nth) === true;
-		mocks.log.calls.push({ call: 'resolve', role, ...(fails ? { fails } : {}) });
-		if (fails) throw new Error(`resolving ${role} failed`);
-		return `model:${role}`;
-	}),
+	// Logged by TIER, which is what decides the model: before the task-policy
+	// catalog a call passed a legacy role (`draft`/`plan` capable, the rest
+	// fast), now a catalog task and an optional tier (the task's usual tier is
+	// fast for every clarification task). Both resolve the same model.
+	resolveLanguageModel: vi.fn(
+		async (_ctx: unknown, roleOrTask: string, choice?: { tier?: 'fast' | 'capable' }) => {
+			const tier = roleOrTask.includes('.')
+				? (choice?.tier ?? 'fast')
+				: roleOrTask === 'draft' || roleOrTask === 'plan'
+					? 'capable'
+					: 'fast';
+			const nth = (mocks.resolutions[tier] ?? 0) + 1;
+			mocks.resolutions[tier] = nth;
+			const fails = mocks.failResolutions[tier]?.includes(nth) === true;
+			mocks.log.calls.push({ call: 'resolve', tier, ...(fails ? { fails } : {}) });
+			if (fails) throw new Error(`resolving the ${tier} tier failed`);
+			return `model:${tier}`;
+		}
+	),
 }));
 vi.mock('../../analytics/meteredSpend', async () => {
 	const actual = await vi.importActual<typeof MeteredSpend>('../../analytics/meteredSpend');
@@ -243,7 +254,7 @@ describe('golden: Team clarify step, necessity off', () => {
 
 	it('fails soft when its one model fails to resolve', async () => {
 		answer({ divergent: [1] });
-		mocks.failResolutions['classify'] = [1];
+		mocks.failResolutions['fast'] = [1];
 		const { ctx, writes } = teamCtx();
 		const result = await clarifyStep.execute(ctx, teamInput());
 		await expect({ result, writes, log: logged().calls }).toMatchFileSnapshot(
@@ -293,7 +304,7 @@ describe('golden: Postbox refinement, necessity off', () => {
 
 	it('a sample whose model fails to resolve costs that sample only', async () => {
 		answer({ divergent: [0] });
-		mocks.failResolutions['draft'] = [1];
+		mocks.failResolutions['capable'] = [1];
 		const result = await refineClarification(postboxCtx(), opts);
 		await expect({ result: { ...result, askedAt: 0 }, log: logged().calls }).toMatchFileSnapshot(
 			'./__golden__/postbox-sample-resolve-fails.golden'
@@ -302,7 +313,7 @@ describe('golden: Postbox refinement, necessity off', () => {
 
 	it('asks only for the file when the judge’s model fails to resolve', async () => {
 		answer({ divergent: [0] });
-		mocks.failResolutions['draft'] = [4];
+		mocks.failResolutions['capable'] = [4];
 		const result = await refineClarification(postboxCtx(), opts);
 		await expect({ result: { ...result, askedAt: 0 }, log: logged().calls }).toMatchFileSnapshot(
 			'./__golden__/postbox-judge-resolve-fails.golden'
@@ -347,7 +358,7 @@ describe('golden: Answer mode gap check, necessity off', () => {
 
 	it('keeps only the file when the sample model fails to resolve', async () => {
 		answer({ divergent: [0, 1] });
-		mocks.failResolutions['summarize'] = [2];
+		mocks.failResolutions['fast'] = [2];
 		const result = await runGapCheck(answerCtx(), input);
 		await expect({ result, log: logged().calls }).toMatchFileSnapshot(
 			'./__golden__/answer-sample-resolve-fails.golden'

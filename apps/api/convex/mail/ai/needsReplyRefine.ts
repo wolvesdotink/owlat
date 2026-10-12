@@ -107,7 +107,7 @@ export async function refineClarification(
 
 		// Ask the owner in their own language: translate the surviving questions
 		// into every other interface locale. Fail-soft to the English copy.
-		const localizeModel = await resolveLanguageModel(ctx, 'summarize');
+		const localizeModel = await resolveLanguageModel(ctx, 'mail.clarify');
 		const localized = await meterLlmCall(ctx, spend('postbox_clarify_localize'), (meter) =>
 			localizeQuestions(localizeModel, sanitized, undefined, meter)
 		);
@@ -135,7 +135,11 @@ function postboxClarifySurface(
 			samples: 'postbox_clarify_diverge',
 			judge: 'postbox_clarify_diverge',
 		},
-		roles: { slots: 'summarize', samples: 'draft', judge: 'draft' },
+		models: {
+			slots: { task: 'mail.clarify' },
+			samples: { task: 'mail.clarify_sample', tier: 'capable' },
+			judge: { task: 'mail.clarify', tier: 'capable' },
+		},
 		// Each sample resolves its own model inside its own failure boundary, as before.
 		isSampleModelPerSample: true,
 		meter: (feature, task, call) =>

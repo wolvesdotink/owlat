@@ -52,7 +52,7 @@ describe('another decision adapter', () => {
 			decisionBaseUrl: 'https://future.example',
 		} as unknown as Doc<'aiProviderConfig'>;
 		const ctx = { runQuery: vi.fn(async () => row), runAction: vi.fn() } as unknown as ActionCtx;
-		const provider = await resolveDecisionProvider(ctx);
+		const provider = await resolveDecisionProvider(ctx, 'mail.triage');
 		expect(provider).toEqual({
 			kind: future.kind,
 			config: { baseUrl: 'https://future.example' },

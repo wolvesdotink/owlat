@@ -273,7 +273,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				}
 			}
 
-			const model = await resolveLanguageModel(ctx, 'classify'); // cheap / fast tier
+			const model = await resolveLanguageModel(ctx, 'mail.clarify');
 			// Each call below writes its own ledger row as it returns or throws, so
 			// the fail-soft returns lose no spend. The sum kept here is only the
 			// step's agentActions reporting figure.

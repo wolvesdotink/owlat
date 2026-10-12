@@ -35,7 +35,7 @@ export async function prepareExtraction(
 	input: ReturnType<typeof buildInterpretInput>,
 	mode: InterpretMode
 ): Promise<PreparedExtraction> {
-	const model = await resolveLanguageModel(ctx, 'extract');
+	const model = await resolveLanguageModel(ctx, 'mail.extract');
 	const prompt = await cachedPromptInput(
 		ctx,
 		'mail.extract',
