@@ -156,24 +156,27 @@ export async function draftClarificationReply(
 					// The same prompt structure minus the confirmed answers — what Owlat
 					// would have drafted WITHOUT asking. No tools: a single cheap pass.
 					const baselineModel = await resolveLanguageModel(ctx, 'draft');
-					const baseline = await meterLlmCall(ctx, { feature: 'postbox_clarify_delta', root }, (meter) =>
-					runLlmText({
-						meter,
-						model: baselineModel,
-						messages: buildDraftMessages({
-							systemPrompt: buildDraftSystemPrompt({
-								audience,
-								styleReference: "the owner's",
-								toneInstruction: TONE_INSTRUCTION,
-								signatureInstruction: '',
-								voiceSection,
-								hasRecallTool: false,
-							}),
-							classification: CLASSIFICATION,
-							context: context.transcript,
-						}),
-						temperature: 0.4,
-					})
+					const baseline = await meterLlmCall(
+						ctx,
+						{ feature: 'postbox_clarify_delta', root },
+						(meter) =>
+							runLlmText({
+								meter,
+								model: baselineModel,
+								messages: buildDraftMessages({
+									systemPrompt: buildDraftSystemPrompt({
+										audience,
+										styleReference: "the owner's",
+										toneInstruction: TONE_INSTRUCTION,
+										signatureInstruction: '',
+										voiceSection,
+										hasRecallTool: false,
+									}),
+									classification: CLASSIFICATION,
+									context: context.transcript,
+								}),
+								temperature: 0.4,
+							})
 					);
 					// The comparison draft goes through the same markup check as the
 					// real one (#1254); markup would read as divergence it is not.

@@ -280,9 +280,9 @@ describe('task limits', () => {
 	it('takes the tighter of the task deadline and the root deadline', () => {
 		const now = 1_000_000;
 		expect(callDeadlineMs('mail.classify', undefined, now)).toBe(300_000);
-		expect(callDeadlineMs('mail.classify', { rootRequestId: 'r', deadlineAt: now + 5_000 }, now)).toBe(
-			5_000
-		);
+		expect(
+			callDeadlineMs('mail.classify', { rootRequestId: 'r', deadlineAt: now + 5_000 }, now)
+		).toBe(5_000);
 		expect(callDeadlineMs('mail.category', undefined, now)).toBeUndefined();
 		expect(callDeadlineMs(undefined, { rootRequestId: 'r', deadlineAt: now - 1 }, now)).toBe(0);
 	});

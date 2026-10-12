@@ -206,7 +206,6 @@ describe('draftClarificationReply — leaked tool-call markup', () => {
 });
 
 describe('draftClarificationReply — the draft spend, recorded once (#1256)', () => {
-
 	it('records the paid tool steps of a draft that fails partway', async () => {
 		const usage = { promptTokens: 6, completionTokens: 3, totalTokens: 9 };
 		mocks.runLlmTextWithTools.mockRejectedValueOnce(

@@ -100,27 +100,29 @@ describe('assistant runner', () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
 
-		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
-			await opts.onToolCall?.({
-				toolCallId: 'tc1',
-				toolName: 'searchKnowledge',
-				input: { query: 'welcome campaign' },
-			});
-			await opts.onToolResult?.({
-				toolCallId: 'tc1',
-				toolName: 'searchKnowledge',
-				output: { results: [{ title: 'Welcome' }] },
-			});
-			await opts.onTextDelta?.('The open', 'The open');
-			await opts.onTextDelta?.('The open rate was 42%.', ' rate was 42%.');
-			return {
-				text: 'The open rate was 42%.',
-				tokenUsage: { promptTokens: 12, completionTokens: 8, totalTokens: 20 },
-				modelUsed: 'test-model',
-				finishReason: 'stop',
-				aborted: false,
-			};
-		}));
+		vi.mocked(runLlmStream).mockImplementation(
+			metered(async (opts) => {
+				await opts.onToolCall?.({
+					toolCallId: 'tc1',
+					toolName: 'searchKnowledge',
+					input: { query: 'welcome campaign' },
+				});
+				await opts.onToolResult?.({
+					toolCallId: 'tc1',
+					toolName: 'searchKnowledge',
+					output: { results: [{ title: 'Welcome' }] },
+				});
+				await opts.onTextDelta?.('The open', 'The open');
+				await opts.onTextDelta?.('The open rate was 42%.', ' rate was 42%.');
+				return {
+					text: 'The open rate was 42%.',
+					tokenUsage: { promptTokens: 12, completionTokens: 8, totalTokens: 20 },
+					modelUsed: 'test-model',
+					finishReason: 'stop',
+					aborted: false,
+				};
+			})
+		);
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -149,10 +151,12 @@ describe('assistant runner', () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
 
-		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
-			await opts.onTextDelta?.('Half a thought', 'Half a thought');
-			throw new Error('model overloaded');
-		}));
+		vi.mocked(runLlmStream).mockImplementation(
+			metered(async (opts) => {
+				await opts.onTextDelta?.('Half a thought', 'Half a thought');
+				throw new Error('model overloaded');
+			})
+		);
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -171,16 +175,18 @@ describe('assistant runner', () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
 
-		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
-			await opts.onTextDelta?.('Starting…', 'Starting…');
-			return {
-				text: 'Starting…',
-				tokenUsage: undefined,
-				modelUsed: 'test-model',
-				finishReason: undefined,
-				aborted: true,
-			};
-		}));
+		vi.mocked(runLlmStream).mockImplementation(
+			metered(async (opts) => {
+				await opts.onTextDelta?.('Starting…', 'Starting…');
+				return {
+					text: 'Starting…',
+					tokenUsage: undefined,
+					modelUsed: 'test-model',
+					finishReason: undefined,
+					aborted: true,
+				};
+			})
+		);
 
 		await t.action(internal.assistant.runner.run, {
 			conversationId,
@@ -257,16 +263,18 @@ describe('assistant runner', () => {
 	it('finalizes a finished answer as complete when the spend write throws', async () => {
 		const t = makeT();
 		const { conversationId, assistantMessageId } = await startTurn(t);
-		vi.mocked(runLlmStream).mockImplementation(metered(async (opts) => {
-			await opts.onTextDelta?.('Done.', 'Done.');
-			return {
-				text: 'Done.',
-				tokenUsage: { promptTokens: 12, completionTokens: 8, totalTokens: 20 },
-				modelUsed: 'test-model',
-				finishReason: 'stop',
-				aborted: false,
-			};
-		}));
+		vi.mocked(runLlmStream).mockImplementation(
+			metered(async (opts) => {
+				await opts.onTextDelta?.('Done.', 'Done.');
+				return {
+					text: 'Done.',
+					tokenUsage: { promptTokens: 12, completionTokens: 8, totalTokens: 20 },
+					modelUsed: 'test-model',
+					finishReason: 'stop',
+					aborted: false,
+				};
+			})
+		);
 		vi.mocked(writeMeteredSpend).mockRejectedValueOnce(new Error('ledger unavailable'));
 
 		await t.action(internal.assistant.runner.run, {

@@ -68,23 +68,22 @@ export const refresh = internalAction({
 				ctx,
 				{ feature: 'postbox_voice_profile', root: rootRequest('voice_profile', args.mailboxId) },
 				(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: profileSchema,
-					temperature: 0.2,
-					prompt:
-						`${SYSTEM_GUARD}\n\n` +
-						'Analyse how this person writes email, from their own sent messages ' +
-						'below (quoted reply-chains have already been removed). Return a compact ' +
-						'profile of their voice: the greeting(s) and sign-off(s) they actually ' +
-						'use, formality (1=very casual … 5=very formal), brevity (1=terse … ' +
-						'5=elaborate), the language(s) they write in, whether they use emoji, and ' +
-						'2-3 short example phrasings that capture their tone.\n\n' +
-						corpus,
-				})
+					runLlmObject({
+						meter,
+						model,
+						schema: profileSchema,
+						temperature: 0.2,
+						prompt:
+							`${SYSTEM_GUARD}\n\n` +
+							'Analyse how this person writes email, from their own sent messages ' +
+							'below (quoted reply-chains have already been removed). Return a compact ' +
+							'profile of their voice: the greeting(s) and sign-off(s) they actually ' +
+							'use, formality (1=very casual … 5=very formal), brevity (1=terse … ' +
+							'5=elaborate), the language(s) they write in, whether they use emoji, and ' +
+							'2-3 short example phrasings that capture their tone.\n\n' +
+							corpus,
+					})
 			);
-
 
 			await ctx.runMutation(internal.mail.ai.voiceProfile.saveProfile, {
 				mailboxId: args.mailboxId,

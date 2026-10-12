@@ -436,8 +436,7 @@ describe('runSharedDraft — unfinished markup and the spend of rejected drafts'
 	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
 	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
 	const tooled = () => baseParams({ tools: { recallKnowledge: {} as never } });
-	const draftSpend = () =>
-		spendUnder('dr');
+	const draftSpend = () => spendUnder('dr');
 
 	it('retries a draft cut off inside a tool tag', async () => {
 		runLlmTextWithToolsMock.mockResolvedValueOnce({
@@ -506,8 +505,7 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
 	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
 	const tooled = () => baseParams({ tools: { recallKnowledge: {} as never } });
-	const draftSpend = () =>
-		spendUnder('dr');
+	const draftSpend = () => spendUnder('dr');
 	/** A tool loop that paid for a step, then the provider failed. */
 	const failedAfterToolStep = () =>
 		new LlmPartialUsageError(new Error('provider down'), usage(6) as never, 'model-a');
@@ -588,8 +586,7 @@ describe('runSharedDraft — the spend of every outcome, recorded once (#1256)',
 describe('runSharedDraft — the spend of a failed self-check (#1260)', () => {
 	const REPLY = 'Hi John,\n\nThanks for getting in touch.\n\nBest,\nAda';
 	const usage = (n: number) => ({ promptTokens: n, completionTokens: n, totalTokens: 2 * n });
-	const selfCheckSpend = () =>
-		spendUnder('sc');
+	const selfCheckSpend = () => spendUnder('sc');
 
 	beforeEach(() => {
 		runLlmTextMock.mockResolvedValue({ text: REPLY, tokenUsage: undefined, modelUsed: 'm' });

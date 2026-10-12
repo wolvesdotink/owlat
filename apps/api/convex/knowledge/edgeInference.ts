@@ -183,13 +183,16 @@ export const inferRelations = internalAction({
 			const model = await resolveLanguageModel(ctx, 'extract');
 			const { object, tokenUsage, modelUsed } = await meterLlmCall(
 				ctx,
-				{ feature: 'knowledge_autolink', root: args.root ?? rootRequest('knowledge', args.entryIds[0] ?? 'autolink') },
+				{
+					feature: 'knowledge_autolink',
+					root: args.root ?? rootRequest('knowledge', args.entryIds[0] ?? 'autolink'),
+				},
 				(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: inferenceSchema,
-					prompt: `You are building a knowledge graph. Below is a numbered list of knowledge entries. Identify meaningful TYPED relations between them, referencing each entry by its [index].
+					runLlmObject({
+						meter,
+						model,
+						schema: inferenceSchema,
+						prompt: `You are building a knowledge graph. Below is a numbered list of knowledge entries. Identify meaningful TYPED relations between them, referencing each entry by its [index].
 
 Relation types (direction matters — "from" relates TO "to"):
 - supersedes: the "from" entry replaces/updates an older "to" entry
@@ -203,8 +206,8 @@ Only propose a relation you are confident actually holds. Skip pairs that are me
 
 Entries:
 ${numbered}`,
-					temperature: 0.1,
-				})
+						temperature: 0.1,
+					})
 			);
 			logInfo('[knowledge.autolink] llm call', { tokenUsage, modelUsed, nodeCount: nodes.length });
 

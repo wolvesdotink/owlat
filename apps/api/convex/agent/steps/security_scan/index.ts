@@ -230,7 +230,9 @@ export const securityScanStep: AgentStepModule<
 			: guardSkipReason({ spamScore, isMtaVerdictTerminal: mtaTerminal, agentEnabled });
 		const runsGuard = !deterministicQuarantine && skipReason === null;
 		const guardSample = runsGuard ? buildGuardSample(message.subject, bodyText, bodyHtml) : '';
-		const guardScan = runsGuard ? await runModelGuard(ctx, input.inboundMessageId, guardSample) : NO_GUARD_RUN;
+		const guardScan = runsGuard
+			? await runModelGuard(ctx, input.inboundMessageId, guardSample)
+			: NO_GUARD_RUN;
 		const llmVerdict = guardScan.verdict;
 		const llmFlagged = isGuardFlagged(llmVerdict);
 		// `incomplete`: the guard did not fully classify the sample (a total or a

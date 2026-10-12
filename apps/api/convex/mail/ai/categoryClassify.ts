@@ -134,13 +134,13 @@ export const classifyThread = internalAction({
 					root: postboxRoot(args.threadId, context.latestMessageId ?? undefined),
 				},
 				(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: categoryRefinementSchema,
-					prompt: buildCategoryPrompt(context.transcript),
-					temperature: 0,
-				})
+					runLlmObject({
+						meter,
+						model,
+						schema: categoryRefinementSchema,
+						prompt: buildCategoryPrompt(context.transcript),
+						temperature: 0,
+					})
 			);
 
 			const llm: MailCategory = object.category;

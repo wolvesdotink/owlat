@@ -64,9 +64,7 @@ export const classificationSchema = z.object({
 	sentiment: z
 		.enum(['positive', 'neutral', 'negative'])
 		.describe('The emotional tone of the message'),
-	intent: z
-		.enum(CLASSIFY_INTENTS)
-		.describe('What the sender is trying to do'),
+	intent: z.enum(CLASSIFY_INTENTS).describe('What the sender is trying to do'),
 	confidence: z
 		.number()
 		.min(0)
@@ -192,10 +190,10 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 				runLlmObject({
 					meter,
 					model,
-				schema: classificationSchema,
-				prompt: buildClassifyPrompt(input.context),
-				temperature: 0.2,
-			})
+					schema: classificationSchema,
+					prompt: buildClassifyPrompt(input.context),
+					temperature: 0.2,
+				})
 		);
 
 		// Everything the model wrote that reaches a user or another prompt is

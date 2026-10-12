@@ -487,7 +487,12 @@ describe('llmProvider', () => {
 	// ============ resolveLanguageModelForClassifiedDraft ============
 
 	describe('resolveLanguageModelForClassifiedDraft', () => {
-		const trivial = { category: 'other', intent: 'acknowledgment', priority: 'low', confidence: 0.95 };
+		const trivial = {
+			category: 'other',
+			intent: 'acknowledgment',
+			priority: 'low',
+			confidence: 0.95,
+		};
 		const complex = { category: 'support', intent: 'question', priority: 'high', confidence: 0.95 };
 
 		it('keeps the capable tier when complexity routing is off (default)', async () => {

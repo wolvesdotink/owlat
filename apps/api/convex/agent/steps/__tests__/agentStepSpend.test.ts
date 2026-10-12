@@ -137,7 +137,12 @@ describe('security_scan guard windows', () => {
 
 		expect(output.securityFlags.guardUnavailable).toBe(true);
 		expect(ledger).toEqual([
-			{ feature: 'agent_security_scan', tokenUsage: usage(4), modelUsed: 'model-x', rootRequestId: `team:${messageId}` },
+			{
+				feature: 'agent_security_scan',
+				tokenUsage: usage(4),
+				modelUsed: 'model-x',
+				rootRequestId: `team:${messageId}`,
+			},
 		]);
 	});
 
@@ -175,7 +180,12 @@ describe('classify', () => {
 
 		expect(result.tokenUsage).toEqual(usage(11));
 		expect(ledger).toEqual([
-			{ feature: 'agent_classify', tokenUsage: usage(11), modelUsed: 'classify-model', rootRequestId: `team:${messageId}` },
+			{
+				feature: 'agent_classify',
+				tokenUsage: usage(11),
+				modelUsed: 'classify-model',
+				rootRequestId: `team:${messageId}`,
+			},
 		]);
 	});
 
@@ -188,7 +198,12 @@ describe('classify', () => {
 		// for anything above to record again.
 		await expect(classifyStep.execute(ctx, input)).rejects.toBe(error.cause);
 		expect(ledger).toEqual([
-			{ feature: 'agent_classify', tokenUsage: usage(6), modelUsed: 'model-x', rootRequestId: `team:${messageId}` },
+			{
+				feature: 'agent_classify',
+				tokenUsage: usage(6),
+				modelUsed: 'model-x',
+				rootRequestId: `team:${messageId}`,
+			},
 		]);
 	});
 });

@@ -88,8 +88,11 @@ export interface LlmUsageTags {
 }
 
 /** The writer-supplied routing columns: everything but the three it computes. */
-const { priceVersion: _priceVersion, costMicrousd: _costMicrousd, ...routingArgs } =
-	llmUsageRoutingFields;
+const {
+	priceVersion: _priceVersion,
+	costMicrousd: _costMicrousd,
+	...routingArgs
+} = llmUsageRoutingFields;
 
 /** The tag arguments every ledger mutation accepts. */
 const tagArgs = {

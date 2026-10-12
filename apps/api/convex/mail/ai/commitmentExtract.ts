@@ -72,21 +72,21 @@ export const extractCommitment = internalAction({
 				ctx,
 				{ feature: 'postbox_commitment', root: rootRequest('postbox', args.messageId) },
 				(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: commitmentSchema,
-					prompt:
-						`${SYSTEM_GUARD}\n\n${who} Set hasCommitment=false when the message states ` +
-						`no such commitment. Give a one-line description (<= 160 chars), a dueDate ` +
-						`as an ISO date (YYYY-MM-DD) ONLY when a concrete date is stated (else null), ` +
-						`and the verbatim duePhrase as written (else null).\n\n` +
-						`Message:\n\nSubject: ${context.subject}\n${context.body}`.slice(
-							0,
-							MAX_TRANSCRIPT_CHARS + 200
-						),
-					temperature: 0,
-				})
+					runLlmObject({
+						meter,
+						model,
+						schema: commitmentSchema,
+						prompt:
+							`${SYSTEM_GUARD}\n\n${who} Set hasCommitment=false when the message states ` +
+							`no such commitment. Give a one-line description (<= 160 chars), a dueDate ` +
+							`as an ISO date (YYYY-MM-DD) ONLY when a concrete date is stated (else null), ` +
+							`and the verbatim duePhrase as written (else null).\n\n` +
+							`Message:\n\nSubject: ${context.subject}\n${context.body}`.slice(
+								0,
+								MAX_TRANSCRIPT_CHARS + 200
+							),
+						temperature: 0,
+					})
 			);
 
 			if (!object.hasCommitment) return;

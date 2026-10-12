@@ -49,7 +49,12 @@ describe('isTrivialUserText', () => {
 });
 
 describe('isTrivialClassifiedMessage', () => {
-	const trivial = { category: 'other', intent: 'acknowledgment', priority: 'low', confidence: 0.95 };
+	const trivial = {
+		category: 'other',
+		intent: 'acknowledgment',
+		priority: 'low',
+		confidence: 0.95,
+	};
 
 	it('downgrades a high-confidence, low-stakes acknowledgement', () => {
 		expect(isTrivialClassifiedMessage(trivial)).toBe(true);

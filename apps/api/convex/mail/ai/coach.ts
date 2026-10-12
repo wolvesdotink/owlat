@@ -153,17 +153,17 @@ export const coachDraft = authedAction({
 				ctx,
 				{ feature: 'postbox_coach_draft', root: newRootRequest('postbox_action') },
 				(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: draftQualitySchema,
-					prompt: buildSelfCheckPrompt({
-						context,
-						draft: draft.slice(0, COACH_MAX_DRAFT_CHARS),
+					runLlmObject({
+						meter,
+						model,
+						schema: draftQualitySchema,
+						prompt: buildSelfCheckPrompt({
+							context,
+							draft: draft.slice(0, COACH_MAX_DRAFT_CHARS),
+						}),
+						temperature: 0.1,
+						...interactiveLlmPolicy('reply'),
 					}),
-					temperature: 0.1,
-					...interactiveLlmPolicy('reply'),
-				}),
 				// Best-effort spend accounting — never let it break the coach.
 				{ write: 'schedule', onWriteError: 'ignore' }
 			);

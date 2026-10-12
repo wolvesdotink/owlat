@@ -362,7 +362,10 @@ export async function refineClarification(
 		if (owed.length === 0 && toJudge.length === 0) return undefined;
 
 		// Files first: they are what the reply cannot go out without.
-		const raw = [...owed, ...(await divergentSlots(ctx, opts.transcript, toJudge, spend('postbox_clarify_diverge')))].map((slot) => ({
+		const raw = [
+			...owed,
+			...(await divergentSlots(ctx, opts.transcript, toJudge, spend('postbox_clarify_diverge'))),
+		].map((slot) => ({
 			slotType: slot.slotType,
 			text: slot.question,
 			options: slot.options,

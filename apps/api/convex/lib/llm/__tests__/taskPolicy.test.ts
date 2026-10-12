@@ -88,7 +88,12 @@ describe('task-policy catalog', () => {
 				deadlineMs: 540_000,
 			});
 		}
-		for (const task of ['mail.classify', 'mail.guard', 'embedding.index', 'plugin.invoke'] as const) {
+		for (const task of [
+			'mail.classify',
+			'mail.guard',
+			'embedding.index',
+			'plugin.invoke',
+		] as const) {
 			expect(taskPolicy(task), task).toMatchObject({
 				maxAttempts: MAX_LLM_ATTEMPTS,
 				deadlineMs: 300_000,
