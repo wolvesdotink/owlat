@@ -121,6 +121,10 @@ export const inboxTables = {
 		// message with no eligible attachments and on every row that predates the
 		// marker. Patched after the insert, because capture runs after it.
 		attachmentIndexing: v.optional(attachmentIndexingValidator),
+		// D12 (ADR-0073): when an owner last corrected a decision about this
+		// message. A decision bundle never judges, keeps or learns from a
+		// corrected message (`decision/artifacts.ts`). Absent ⇒ never corrected.
+		decisionCorrectedAt: v.optional(v.number()),
 		// RFC 8601 inbound authentication verdicts, computed by the MTA over the
 		// raw bytes at ingest (SPF on MAIL FROM, DKIM on the d= signature, DMARC
 		// binding the two to the From domain via alignment). The AI-inbox path
