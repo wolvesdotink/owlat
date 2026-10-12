@@ -258,7 +258,8 @@ export async function reservePath(
 interface Generated {
 	readonly meter: LlmCallMeter;
 	readonly target: LlmSpendTarget;
-	readonly draft: { draftBody: string; tokenUsage: SharedDraftResult['tokenUsage'] } | null;
+	/** The usable draft's body; null when it was markup or cut off at its ceiling. */
+	readonly draft: { draftBody: string } | null;
 	readonly modelUsed: string | undefined;
 }
 
@@ -302,6 +303,7 @@ export async function runCheapFirstDraft(
 		};
 		const meter = meterFor(ctx, target);
 		unwritten.set(meter, target);
+		draftMeters.push(meter);
 		const generated = await runLlmText({
 			meter,
 			model,
@@ -314,11 +316,21 @@ export async function runCheapFirstDraft(
 			meter,
 			target,
 			modelUsed: generated.modelUsed,
-			draft: isUsable
-				? { draftBody: markReviewerNotes(text.text), tokenUsage: generated.tokenUsage }
-				: null,
+			draft: isUsable ? { draftBody: markReviewerNotes(text.text) } : null,
 		};
 	};
+	/**
+	 * The step's draft usage: every request the draft calls were billed for,
+	 * usable or not, failed or not, exactly what their ledger rows record.
+	 */
+	const draftMeters: LlmCallMeter[] = [];
+	const draftUsage = () =>
+		draftMeters
+			.flatMap((meter) => meter.requests)
+			.reduce<SharedDraftResult['tokenUsage']>(
+				(total, request) => addTokenUsage(total, request.usage),
+				undefined
+			);
 	/** A call made for `parent`'s output groups under the draft's root, `parent` its parent call. */
 	const under = (parent: LlmCallMeter) =>
 		params.root ? childCall(params.root, parent.requestId) : undefined;
@@ -339,12 +351,15 @@ export async function runCheapFirstDraft(
 			fastResult = {
 				...fast.draft,
 				...(await check(fast.draft.draftBody, 'fastCheck', fast.meter)),
+				tokenUsage: undefined,
 				modelUsed: fast.modelUsed,
 			};
 		}
+		// Whichever draft is returned, the step reports what both calls cost.
+		const keepFast = (result: SharedDraftResult) => ({ ...result, tokenUsage: draftUsage() });
 		if (fastResult && !failsCheapFirst(fastResult.draftQuality)) {
 			await writeRows(fast.meter, fastResult.draftQuality ? 'passed' : undefined);
-			return fastResult;
+			return keepFast(fastResult);
 		}
 		await writeRows(fast.meter, 'escalated');
 
@@ -354,11 +369,11 @@ export async function runCheapFirstDraft(
 			capable = await generate(models.capable, 'capableDraft', under(fast.meter));
 		} catch (error) {
 			// A failed escalation leaves the usable fast draft for the owner's review.
-			if (fastResult) return fastResult;
+			if (fastResult) return keepFast(fastResult);
 			throw error;
 		}
 		if (!capable.draft) {
-			if (fastResult) return fastResult;
+			if (fastResult) return keepFast(fastResult);
 			throw new Error('Draft generation returned an unusable draft twice.');
 		}
 		const checked = await check(capable.draft.draftBody, 'capableCheck', capable.meter);
@@ -366,7 +381,7 @@ export async function runCheapFirstDraft(
 		return {
 			draftBody: capable.draft.draftBody,
 			...checked,
-			tokenUsage: addTokenUsage(fast.draft?.tokenUsage, capable.draft.tokenUsage),
+			tokenUsage: draftUsage(),
 			modelUsed: capable.modelUsed,
 		};
 	} finally {

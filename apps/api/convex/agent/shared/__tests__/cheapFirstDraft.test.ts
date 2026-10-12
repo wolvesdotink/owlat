@@ -215,18 +215,51 @@ describe('runSharedDraft with the cheap-first writer', () => {
 		});
 	});
 
-	it('escalates a fast draft that is tool-call markup, without a retry', async () => {
+	it.each([
+		[
+			'tool-call markup',
+			reply('<invoke name="recallKnowledge"><parameter name="q">x</parameter></invoke>'),
+		],
+		['cut off at its ceiling', { ...reply('Thanks Sam, the invoice'), finishReason: 'length' }],
+	])(
+		'escalates a fast draft that is %s, without a retry, and reports both drafts’ usage',
+		async (_case, unusable) => {
+			const { t, ctx } = await setup('10');
+			provider({ fast: [unusable], capable: [reply('Thanks Sam.')], checks: [verdict(good)] });
+
+			const out = await runSharedDraft(ctx, params());
+
+			expect(out.draftBody).toBe('Thanks Sam.');
+			expect(draftsBy()).toEqual(['gpt-4o-mini', 'gpt-4o']);
+			// The unusable draft was billed: the step reports what the ledger holds.
+			const billed = (await rows(t))
+				.filter((row) => row.feature === 'agent_draft')
+				.reduce((total, row) => total + row.totalTokens, 0);
+			expect(billed).toBe(2_400);
+			expect(out.tokenUsage).toEqual({
+				promptTokens: 2_000,
+				completionTokens: 400,
+				totalTokens: 2_400,
+			});
+		}
+	);
+
+	it('keeps the fast draft and still reports the unusable escalation’s usage', async () => {
 		const { ctx } = await setup('10');
 		provider({
-			fast: [reply('<invoke name="recallKnowledge"><parameter name="q">x</parameter></invoke>')],
-			capable: [reply('Thanks Sam.')],
-			checks: [verdict(good)],
+			fast: [reply('ok.')],
+			capable: [reply('<invoke name="x"></invoke>')],
+			checks: [verdict(weak)],
 		});
 
 		const out = await runSharedDraft(ctx, params());
 
-		expect(out.draftBody).toBe('Thanks Sam.');
-		expect(draftsBy()).toEqual(['gpt-4o-mini', 'gpt-4o']);
+		expect(out).toMatchObject({ draftBody: 'ok.', modelUsed: 'gpt-4o-mini' });
+		expect(out.tokenUsage).toEqual({
+			promptTokens: 2_000,
+			completionTokens: 400,
+			totalTokens: 2_400,
+		});
 	});
 
 	it('keeps the fast draft when its verdict is unknown (the check failed)', async () => {
@@ -279,7 +312,13 @@ describe('runSharedDraft with the cheap-first writer', () => {
 
 		const out = await runSharedDraft(ctx, params());
 
-		expect(out).toMatchObject({ draftBody: 'ok.', draftQuality: weak, modelUsed: 'gpt-4o-mini' });
+		expect(out).toMatchObject({
+			draftBody: 'ok.',
+			draftQuality: weak,
+			modelUsed: 'gpt-4o-mini',
+			// The failed escalation reported no usage.
+			tokenUsage: { promptTokens: 1_000, completionTokens: 200, totalTokens: 1_200 },
+		});
 		expect(await reservations(t)).toEqual([expect.objectContaining({ status: 'settled' })]);
 		expect((await rows(t)).filter((row) => row.modelUsed === 'gpt-4o')).toHaveLength(3);
 	});
