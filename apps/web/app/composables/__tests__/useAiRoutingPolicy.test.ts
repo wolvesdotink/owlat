@@ -117,6 +117,19 @@ describe('useAiRoutingPolicy', () => {
 		expect(state.form.switches.batchApi).toBe('enforce');
 	});
 
+	it('saves against the policy it opened from, not one that arrived meanwhile (F1)', async () => {
+		data.value = getResult(resolveRoutingPolicy({ policyVersion: 1 }));
+		const state = useAiRoutingPolicy();
+		state.form.knowledgeEntryCap = '6';
+		// Another admin enables batch processing while this form has an edit.
+		data.value = getResult(resolveRoutingPolicy({ policyVersion: 2, batchApi: 'enforce' }));
+		await nextTick();
+		await state.save();
+		// Only the cap, against version 1: the server refuses it with a conflict
+		// instead of this save turning batch processing back off.
+		expect(updateCalls).toEqual([{ expectedPolicyVersion: 1, knowledgeEntryCapPerMessage: 6 }]);
+	});
+
 	it('shows a version conflict inline and reloads the newer policy', async () => {
 		const state = useAiRoutingPolicy();
 		state.form.switches.earlyRuleArchive = 'enforce';

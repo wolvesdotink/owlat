@@ -198,6 +198,49 @@ describe('routingPolicyUpdateArgs', () => {
 		});
 	});
 
+	it('leaves untouched fields exactly as stored: no rounded percentage, no reordered list', () => {
+		const policy = stored({
+			triageAllowanceFraction: 0.123456789,
+			shadowMaxCeilingFraction: 0.0333333333,
+			promptCacheTasks: [PROMPT_CACHE_TASK, 'mail.classify'],
+		});
+		const form = routingPolicyFormOf(policy);
+		expect(form.triagePercent).toBe('12.3457');
+		expect(routingPolicyUpdateArgs(form, policy)).toBeNull();
+		// Another field's edit carries only that field.
+		form.switches.batchApi = 'enforce';
+		expect(routingPolicyUpdateArgs(form, policy)).toEqual({
+			expectedPolicyVersion: 3,
+			batchApi: 'enforce',
+		});
+		// The draft keeps the stored precision too.
+		expect(draftShadowAllowanceUsd(form, policy, 100)).toBe(0);
+		form.switches.triageBundle = 'shadow';
+		expect(draftShadowAllowanceUsd(form, policy, 300)).toBeCloseTo(9.99999999, 8);
+	});
+
+	it('toggles the offered cache task without reordering the others', () => {
+		const policy = stored({ promptCacheTasks: ['mail.classify', PROMPT_CACHE_TASK, 'mail.draft'] });
+		const form = routingPolicyFormOf(policy);
+		form.isInterpretationCached = false;
+		expect(routingPolicyUpdateArgs(form, policy)?.promptCacheTasks).toEqual([
+			'mail.classify',
+			'mail.draft',
+		]);
+	});
+
+	it('takes an edited percentage at full precision, and an edit back as no change', () => {
+		const policy = stored({ triageAllowanceFraction: 0.123456789 });
+		const form = routingPolicyFormOf(policy);
+		form.triagePercent = '12.5';
+		expect(routingPolicyUpdateArgs(form, policy)).toEqual({
+			expectedPolicyVersion: 3,
+			triageAllowanceFraction: 0.125,
+		});
+		form.triagePercent = '12.3456789';
+		expect(routingPolicyUpdateArgs(form, policy)).toBeNull();
+	});
+
 	it('starts from version 0 before the first save', () => {
 		const form = routingPolicyFormOf(defaults);
 		form.isInterpretationCached = true;

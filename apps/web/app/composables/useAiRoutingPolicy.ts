@@ -9,10 +9,11 @@
  *    admin's edits when another admin saves meanwhile. The save is
  *    compare-and-set on `policyVersion`, so that case comes back as a
  *    `conflict`, which is shown inline and reloads the newer policy;
- *  - a save sends only the changed fields. The server validates again and
+ *  - a save sends only the fields changed since the form opened, against the
+ *    version it opened at. The server validates again and
  *    writes the audit row, so this file never decides what is allowed.
  */
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { api } from '@owlat/api';
 import type { ResolvedRoutingPolicy } from '@owlat/shared/aiRouting';
 import {
@@ -56,8 +57,16 @@ export function useAiRoutingPolicy() {
 	});
 	const isDirty = ref(false);
 	let hydrating = false;
+	/**
+	 * The policy the form was opened from. A save diffs against it and expects
+	 * its version, never the latest subscription value: diffing a stale form
+	 * against a newer policy would send its old values as changes and revert
+	 * what another admin just saved. With this, that save meets a conflict.
+	 */
+	const base = shallowRef<ResolvedRoutingPolicy | null>(null);
 
 	function hydrate(policy: ResolvedRoutingPolicy) {
+		base.value = policy;
 		hydrating = true;
 		Object.assign(form, routingPolicyFormOf(policy));
 		hydrating = false;
@@ -89,12 +98,12 @@ export function useAiRoutingPolicy() {
 	const isShadowing = computed(() => isAnyShadowed(form));
 	/** What shadow runs could spend a day under the form as it stands. */
 	const shadowAllowance = computed(() =>
-		stored.value ? draftShadowAllowanceUsd(form, stored.value, dailyCeilingUsd.value) : 0
+		base.value ? draftShadowAllowanceUsd(form, base.value, dailyCeilingUsd.value) : 0
 	);
 
 	/** Save the changed fields. Resolves `true` when nothing is left unsaved. */
 	async function save(): Promise<boolean> {
-		const policy = stored.value;
+		const policy = base.value;
 		if (!policy || hasProblems.value) return false;
 		const args = routingPolicyUpdateArgs(form, policy);
 		if (!args) {

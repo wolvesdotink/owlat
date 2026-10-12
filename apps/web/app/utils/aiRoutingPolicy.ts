@@ -30,6 +30,7 @@ import {
 	shadowAllowanceUsd,
 	type AiTaskName,
 	type ResolvedRoutingPolicy,
+	type RoutingPolicyRow,
 	type RoutingSwitchKey,
 } from '@owlat/shared/aiRouting';
 
@@ -187,90 +188,94 @@ export function routingPolicyFormProblems(
 	return problems;
 }
 
-function fractionOf(raw: string, fallback: number): number {
-	const value = parseNumber(raw);
-	return value !== null && Number.isFinite(value) ? value / 100 : fallback;
+/** The text fields, the policy field each edits, and how its text reads. */
+const NUMERIC_FIELDS = [
+	{ field: 'knowledgeEntryCap', key: 'knowledgeEntryCapPerMessage', isPercent: false },
+	{ field: 'verifyClaimCap', key: 'verifyClaimCapPerMessage', isPercent: false },
+	{ field: 'shadowCapUsd', key: 'shadowCapUsd', isPercent: false },
+	{ field: 'triagePercent', key: 'triageAllowanceFraction', isPercent: true },
+	{ field: 'shadowMessagePercent', key: 'shadowMaxMessageFraction', isPercent: true },
+	{ field: 'shadowCeilingPercent', key: 'shadowMaxCeilingFraction', isPercent: true },
+] as const;
+
+type NumericKey = (typeof NUMERIC_FIELDS)[number]['key'];
+
+/** The policy fields a form edit changed, as the values a save sends (`null` clears). */
+type RoutingPolicyChanges = Partial<
+	Pick<ResolvedRoutingPolicy, RoutingSwitchKey | NumericKey | 'promptCacheTasks'>
+>;
+
+const sameNumber = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+
+/**
+ * What the admin changed, against the policy the form opened from (`base`).
+ *
+ * A field whose text still reads as it opened is untouched, and its stored
+ * value stays exactly as it is: a percentage is shown rounded, so reading it
+ * back would move 0.123456789 to 0.123457, and the cache list keeps its order.
+ * An edited field that cannot be read is left out too; its problem blocks the
+ * save. An edit back to the stored value is no change.
+ */
+function routingPolicyChanges(
+	form: RoutingPolicyForm,
+	base: ResolvedRoutingPolicy
+): RoutingPolicyChanges {
+	const opened = routingPolicyFormOf(base);
+	const changes: Record<string, unknown> = {};
+	for (const key of ROUTING_SWITCH_KEYS) {
+		if (form.switches[key] !== base[key]) changes[key] = form.switches[key];
+	}
+	for (const { field, key, isPercent } of NUMERIC_FIELDS) {
+		if (form[field] === opened[field]) continue;
+		const value = parseNumber(form[field]);
+		if (value !== null && !Number.isFinite(value)) continue;
+		if (value === null && isPercent) continue;
+		const next = value === null ? null : isPercent ? value / 100 : value;
+		const before = base[key];
+		const isSame = next === null || before === null ? next === before : sameNumber(next, before);
+		if (!isSame) changes[key] = next;
+	}
+	if (form.isInterpretationCached !== opened.isInterpretationCached) {
+		changes['promptCacheTasks'] = form.isInterpretationCached
+			? [...base.promptCacheTasks, PROMPT_CACHE_TASK]
+			: base.promptCacheTasks.filter((task) => task !== PROMPT_CACHE_TASK);
+	}
+	return changes as RoutingPolicyChanges;
 }
 
-function wholeOrNull(raw: string, fallback: number | null): number | null {
-	const value = parseNumber(raw);
-	if (value === null) return null;
-	return Number.isFinite(value) ? value : fallback;
-}
-
-/** The cache list the form describes: the stored list with the one offered task toggled. */
-function cacheTasksOf(form: RoutingPolicyForm, stored: ResolvedRoutingPolicy): AiTaskName[] {
-	const others = stored.promptCacheTasks.filter((task) => task !== PROMPT_CACHE_TASK);
-	return form.isInterpretationCached ? [...others, PROMPT_CACHE_TASK] : others;
-}
-
-/** The policy the form describes (an unparsable field keeps its stored value). */
+/** The policy the form describes: the base with the admin's changes applied. */
 export function routingPolicyDraft(
 	form: RoutingPolicyForm,
-	stored: ResolvedRoutingPolicy
+	base: ResolvedRoutingPolicy
 ): ResolvedRoutingPolicy {
-	return resolveRoutingPolicy({
-		...form.switches,
-		policyVersion: stored.policyVersion,
-		knowledgeEntryCapPerMessage:
-			wholeOrNull(form.knowledgeEntryCap, stored.knowledgeEntryCapPerMessage) ?? undefined,
-		verifyClaimCapPerMessage:
-			wholeOrNull(form.verifyClaimCap, stored.verifyClaimCapPerMessage) ?? undefined,
-		promptCacheTasks: cacheTasksOf(form, stored),
-		triageAllowanceFraction: fractionOf(form.triagePercent, stored.triageAllowanceFraction),
-		shadowMaxMessageFraction: fractionOf(
-			form.shadowMessagePercent,
-			stored.shadowMaxMessageFraction
-		),
-		shadowMaxCeilingFraction: fractionOf(
-			form.shadowCeilingPercent,
-			stored.shadowMaxCeilingFraction
-		),
-		shadowCapUsd: wholeOrNull(form.shadowCapUsd, stored.shadowCapUsd) ?? undefined,
-		...(stored.updatedAt !== null ? { updatedAt: stored.updatedAt } : {}),
-	});
+	const merged: Record<string, unknown> = { ...base, ...routingPolicyChanges(form, base) };
+	// A row reads an absent field as unset, never `null`.
+	for (const [key, value] of Object.entries(merged)) {
+		if (value === null) delete merged[key];
+	}
+	return resolveRoutingPolicy(merged as RoutingPolicyRow);
 }
 
 /** What shadow runs may spend a day under the form, in USD (D4). */
 export function draftShadowAllowanceUsd(
 	form: RoutingPolicyForm,
-	stored: ResolvedRoutingPolicy,
+	base: ResolvedRoutingPolicy,
 	dailyCeilingUsd: number
 ): number {
-	return shadowAllowanceUsd(routingPolicyDraft(form, stored), dailyCeilingUsd);
+	return shadowAllowanceUsd(routingPolicyDraft(form, base), dailyCeilingUsd);
 }
-
-const sameNumber = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
 /**
  * The `update` arguments for the fields the form changed, or null when nothing
- * changed. A cleared cap travels as `null`, which the server reads as "unset".
+ * changed. `base` is the policy the form was opened from, and its version is
+ * the one the save expects: if another admin saved since, the server refuses
+ * with a conflict instead of this save reverting their change.
  */
 export function routingPolicyUpdateArgs(
 	form: RoutingPolicyForm,
-	stored: ResolvedRoutingPolicy
+	base: ResolvedRoutingPolicy
 ): RoutingPolicyUpdateArgs | null {
-	const draft = routingPolicyDraft(form, stored);
-	const args: Record<string, unknown> = {};
-	for (const key of ROUTING_SWITCH_KEYS) {
-		if (draft[key] !== stored[key]) args[key] = draft[key];
-	}
-	for (const key of [
-		'knowledgeEntryCapPerMessage',
-		'verifyClaimCapPerMessage',
-		'shadowCapUsd',
-	] as const) {
-		if (draft[key] !== stored[key]) args[key] = draft[key];
-	}
-	for (const key of [
-		'triageAllowanceFraction',
-		'shadowMaxMessageFraction',
-		'shadowMaxCeilingFraction',
-	] as const) {
-		if (!sameNumber(draft[key], stored[key])) args[key] = draft[key];
-	}
-	const cacheTasks = cacheTasksOf(form, stored);
-	if (cacheTasks.join() !== stored.promptCacheTasks.join()) args['promptCacheTasks'] = cacheTasks;
-	if (Object.keys(args).length === 0) return null;
-	return { expectedPolicyVersion: stored.policyVersion, ...args } as RoutingPolicyUpdateArgs;
+	const changes = routingPolicyChanges(form, base);
+	if (Object.keys(changes).length === 0) return null;
+	return { expectedPolicyVersion: base.policyVersion, ...changes } as RoutingPolicyUpdateArgs;
 }
