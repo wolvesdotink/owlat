@@ -174,11 +174,16 @@ export async function runBundle<Q extends QuestionSet>(
 	run: BundleRun<Q>
 ): Promise<BundleRunOutcome> {
 	const { routing, plan, bundle } = run;
-	const plane = routing.isDecisionPlaneOn ? await resolveDecisionConfig(ctx) : null;
+	// A plane that cannot even be resolved (an undecryptable key, say) is the
+	// D3 case too: terminal, never a language call in its place.
+	const plane = routing.isDecisionPlaneOn
+		? await resolveDecisionConfig(ctx).catch(() => null)
+		: null;
 	const rung = decisionRung({
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
 		kind: plane?.kind ?? 'llm',
-		isUnavailable: plane?.degradedFrom !== undefined,
+		isUnavailable:
+			routing.isDecisionPlaneOn && (plane === null || plane.degradedFrom !== undefined),
 	});
 	if (rung === 'unavailable') return { hasRun: false, why: 'provider_unavailable' };
 	if (rung === 'language' && !bundle.runsOnLanguageRung) {

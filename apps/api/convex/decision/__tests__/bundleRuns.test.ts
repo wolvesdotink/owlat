@@ -357,6 +357,17 @@ describe('the message bundle', () => {
 		expect(await artifacts(t)).toHaveLength(1);
 	});
 
+	it('is terminal when the decision plane cannot even be resolved (D3)', async () => {
+		const { resolveDecisionConfig } = await import('../../lib/decisionProvider');
+		vi.mocked(resolveDecisionConfig).mockRejectedValueOnce(new Error('undecryptable'));
+		const t = await setup({ triageBundle: 'shadow' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamTriage, { inboundMessageId });
+		expect(mocks.runLlmObject).not.toHaveBeenCalled();
+		expect(mocks.admitBundle).not.toHaveBeenCalled();
+	});
+
 	it('is terminal when the configured decision provider cannot answer (D3)', async () => {
 		mocks.plane.kind = 'llm';
 		mocks.plane.degradedFrom = 'typesafe';
