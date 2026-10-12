@@ -20,6 +20,7 @@ vi.mock('../../../decision/bundleRunner', () => ({
 }));
 
 import { verifyRouted } from '../verifyRoute';
+import { AdmissionRefusedError } from '../../../lib/llm/admissionPort';
 import type { VerifyClaim } from '../pipeline';
 import type { Id } from '../../../_generated/dataModel';
 
@@ -62,7 +63,7 @@ beforeEach(() => {
 describe('claim verification off (the default)', () => {
 	it('sends every claim to the language verifier and asks no decision', async () => {
 		const out = await verifyRouted(ctxWith({}), CLAIMS, { source, root });
-		expect(mocks.verifyClaims).toHaveBeenCalledWith(expect.anything(), CLAIMS, root);
+		expect(mocks.verifyClaims).toHaveBeenCalledWith(expect.anything(), CLAIMS, { root });
 		expect(mocks.resolveBundleRung).not.toHaveBeenCalled();
 		expect(mocks.runBundle).not.toHaveBeenCalled();
 		expect(out).toMatchObject({ isIncomplete: false, isCapped: false, isUnavailable: false });
@@ -122,6 +123,41 @@ describe('claim checks enforced', () => {
 		expect(out.verdicts.size).toBe(0);
 		expect(out.isIncomplete).toBe(true);
 		expect(mocks.verifyClaims).not.toHaveBeenCalled();
+	});
+
+	it('reports a spend refusal as itself and asks no further claim (D1)', async () => {
+		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
+		const refusal = new AdmissionRefusedError('daily_ceiling', '$1.00');
+		mocks.runBundle.mockImplementationOnce(
+			async (_ctx: unknown, run: { onCallError?: (error: unknown) => void }) => {
+				run.onCallError?.(refusal);
+				return { hasRun: true, status: 'failed' };
+			}
+		);
+		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+			source,
+			root,
+		});
+		expect(mocks.runBundle).toHaveBeenCalledTimes(1);
+		expect(out.refusal).toMatchObject({ reason: 'daily_ceiling' });
+		expect(out.isIncomplete).toBe(true);
+	});
+
+	it('passes the run hold, model and priority to the language verifier', async () => {
+		const hold = { marker: 'hold' } as never;
+		await verifyRouted(ctxWith({}), CLAIMS, {
+			source,
+			root,
+			priority: 'background',
+			model: 'guard-model' as never,
+			hold,
+		});
+		expect(mocks.verifyClaims).toHaveBeenCalledWith(expect.anything(), CLAIMS, {
+			root,
+			priority: 'background',
+			model: 'guard-model',
+			hold,
+		});
 	});
 
 	it('never sends a clipped claim: it stays unverified as unsendable', async () => {

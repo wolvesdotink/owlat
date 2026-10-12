@@ -4,16 +4,17 @@
  * A re-embed or staged rebuild on a hosted embedder costs money, so it starts
  * only from an admin action and every batch is admitted against the spend
  * ceilings first. Admission (reservations, aggregates, settlement) belongs to
- * the admission lane. Until it fills the seam below, paid
- * embedding work is refused outright: the start mutations throw, and a running
- * paid job pauses with reason `budget`. Local embedders never go through here.
- *
- * The admission lane replaces the `null` in `seam` with an implementation;
- * nothing else changes.
+ * the admission lane, which fills the seam below with
+ * `analytics/embeddingBatchAdmission.ts` `admitEmbeddingBatch`: one hold per
+ * batch, every text and attempt at the model's embedding price, settled
+ * against the batch's ledger rows. A refusal (the ceiling, the embedding
+ * plane's share, an unverifiable spend state) pauses a running paid job with
+ * reason `budget`. Local embedders never go through here.
  */
 
 import type { ReembedJobKind } from '@owlat/shared/aiRouting';
 import type { ActionCtx } from '../../_generated/server';
+import { admitEmbeddingBatch } from '../../analytics/embeddingBatchAdmission';
 
 /** One batch of paid embedding calls, described before any call is made. */
 export interface PaidEmbeddingBatch {
@@ -42,12 +43,14 @@ export type PaidEmbeddingAdmissionResult =
 			/**
 			 * Settle the hold, exactly once, after the batch. It must NOT write a
 			 * ledger row: the meter already wrote one per request. `dispatchedCalls`
-			 * counts every call that was started, whether it succeeded or not
-			 * (conservative: a failed call may still be billed); zero releases the
-			 * hold.
+			 * counts every call that was started; `providerRequests` counts the
+			 * provider requests they made, retries included, which is the number of
+			 * rows the settlement waits for. Zero requests releases the hold.
 			 */
 			readonly settle: (usage: {
 				readonly dispatchedCalls: number;
+				/** Provider requests the calls made, retries included: one ledger row each. */
+				readonly providerRequests: number;
 				readonly inputTokens: number | undefined;
 			}) => Promise<void>;
 	  }
@@ -58,10 +61,13 @@ export interface PaidEmbeddingAdmission {
 }
 
 /**
- * Filled by the admission lane (replace `null` with its implementation).
- * `null` ⇒ paid embedding work is refused.
+ * The implementation (ADR-0073). `null` would refuse all paid embedding work,
+ * which is how the embed lane shipped before admission existed.
  */
-const seam: { readonly admission: PaidEmbeddingAdmission | null } = { admission: null };
+const seam: { readonly admission: PaidEmbeddingAdmission | null } = {
+	// Spend admission (ADR-0073, Phase 1b): one hold per batch, settled against its rows.
+	admission: { admitBatch: admitEmbeddingBatch },
+};
 
 export function isPaidEmbeddingAdmissionAvailable(): boolean {
 	return seam.admission !== null;

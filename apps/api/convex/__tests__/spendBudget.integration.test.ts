@@ -1,5 +1,6 @@
 /**
- * Per-org spend budget, end-to-end over the `llmUsageEvents` ledger:
+ * Per-org spend budget, end-to-end over the `llmUsageEvents` ledger, as the
+ * gates enforce it from the reconciled period aggregate (ADR-0073, Phase 1b):
  *   - under budget → autonomous auto-send + advisory both allowed;
  *   - over budget → autonomous path degrades to draft-only (auto-send withheld)
  *     and advisory (aiGate) is blocked with a clear reason;
@@ -10,6 +11,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { internal } from '../_generated/api';
+import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
+import { reconcileSpend } from '../aiRouting/__tests__/spend.testlib';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -72,11 +75,12 @@ async function setAiFlag(t: ReturnType<typeof convexTest>, on: boolean) {
 	});
 }
 
-describe('analytics.spendBudget.getBudgetStatus', () => {
+describe('aiRouting.enforcedBudget.getBudgetStatus (the complete aggregate)', () => {
 	it('is unconfigured + fully permissive when no ceiling env is set', async () => {
 		const t = convexTest(schema, modules);
 		await insertSpend(t, 1000, Date.now());
-		const status = await t.query(internal.analytics.spendBudget.getBudgetStatus, {});
+		// No ceiling: nothing to verify, so no reconcile is needed.
+		const status = await t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
 		expect(status.configured).toBe(false);
 		expect(status.autonomousAutoSendAllowed).toBe(true);
 		expect(status.advisoryAllowed).toBe(true);
@@ -86,7 +90,8 @@ describe('analytics.spendBudget.getBudgetStatus', () => {
 		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
 		const t = convexTest(schema, modules);
 		await insertSpend(t, 1, Date.now());
-		const status = await t.query(internal.analytics.spendBudget.getBudgetStatus, {});
+		await reconcileSpend(t);
+		const status = await t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
 		expect(status.autonomousAutoSendAllowed).toBe(true);
 		expect(status.advisoryAllowed).toBe(true);
 		expect(status.daily.remainingUsd).toBeCloseTo(9);
@@ -97,7 +102,8 @@ describe('analytics.spendBudget.getBudgetStatus', () => {
 		const t = convexTest(schema, modules);
 		await insertSpend(t, 6, Date.now());
 		await insertSpend(t, 6, Date.now());
-		const status = await t.query(internal.analytics.spendBudget.getBudgetStatus, {});
+		await reconcileSpend(t);
+		const status = await t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
 		expect(status.autonomousAutoSendAllowed).toBe(false);
 		expect(status.advisoryAllowed).toBe(false);
 		expect(status.reason).toMatch(/spend budget/i);
@@ -108,7 +114,8 @@ describe('analytics.spendBudget.getBudgetStatus', () => {
 		const t = convexTest(schema, modules);
 		const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000;
 		await insertSpend(t, 50, twoDaysAgo); // last period — must not count today
-		const status = await t.query(internal.analytics.spendBudget.getBudgetStatus, {});
+		await reconcileSpend(t);
+		const status = await t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
 		expect(status.daily.spentUsd).toBe(0);
 		expect(status.autonomousAutoSendAllowed).toBe(true);
 	});
@@ -122,9 +129,13 @@ describe('mail.ai.gate.assertAiAllowed with a spend budget', () => {
 		await setAiFlag(t, true);
 		await insertSpend(t, 12, Date.now());
 
-		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).rejects.toThrow(
-			/spend budget|paused/i
-		);
+		await reconcileSpend(t);
+		const refusal = await t.mutation(internal.mail.ai.gate.assertAiAllowed, {}).catch((e) => e);
+		expect(refusal.data).toMatchObject({
+			category: 'forbidden',
+			message: expect.stringMatching(/spend budget/i),
+			data: { code: AI_BUDGET_ERROR_CODE, reason: 'daily_ceiling' },
+		});
 	});
 
 	it('allows advisory AI while under budget', async () => {
@@ -134,6 +145,39 @@ describe('mail.ai.gate.assertAiAllowed with a spend budget', () => {
 		await setAiFlag(t, true);
 		await insertSpend(t, 1, Date.now());
 
+		await reconcileSpend(t);
 		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).resolves.toBeNull();
+	});
+
+	it('refuses with the budget code while the spend state cannot be verified (#1333)', async () => {
+		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await setAiFlag(t, true);
+		await insertSpend(t, 1, Date.now());
+		// The ledger's history has not been reconciled into the aggregate yet.
+		const refusal = await t.mutation(internal.mail.ai.gate.assertAiAllowed, {}).catch((e) => e);
+		expect(refusal.data).toMatchObject({
+			data: { code: AI_BUDGET_ERROR_CODE, reason: 'spend_unverifiable' },
+		});
+	});
+
+	it('allows advisory AI with no ceiling configured, reconciled or not (today)', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await setAiFlag(t, true);
+		await insertSpend(t, 1000, Date.now());
+		await expect(t.mutation(internal.mail.ai.gate.assertAiAllowed, {})).resolves.toBeNull();
+	});
+});
+
+describe('the enforced status fails closed', () => {
+	it('throws while a ceiling is set and the aggregate is unreconciled', async () => {
+		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
+		const t = convexTest(schema, modules);
+		await insertSpend(t, 1, Date.now());
+		await expect(t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {})).rejects.toThrow(
+			/cannot be verified/
+		);
 	});
 });

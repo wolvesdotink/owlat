@@ -235,6 +235,21 @@ describe('the necessity judgment through the runner', () => {
 		expect(artifact).toMatchObject({ status: 'failed' });
 	});
 
+	it('asks admission at the caller’s priority, on the selected rung’s plane', async () => {
+		const t = await setup({ clarifyNecessity: 'enforce' });
+		const id = await seedTeamMessage(t);
+		await necessityRun(t, await routing(t), id, { priority: 'interactive' });
+		expect(mocks.admitBundle).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				task: 'mail.necessity',
+				mode: 'advisory',
+				priority: 'interactive',
+				plane: 'language',
+			})
+		);
+	});
+
 	it('runs nothing without admission', async () => {
 		mocks.admitBundle.mockResolvedValue({ isAdmitted: false, why: 'admission_unavailable' });
 		const t = await setup({ clarifyNecessity: 'enforce' });

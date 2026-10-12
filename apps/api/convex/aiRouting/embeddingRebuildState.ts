@@ -34,6 +34,7 @@ import {
 	retireStagedSpace,
 } from '../lib/aiRouting/embeddingActivation';
 import {
+	assertExpectedSpace,
 	identityOf,
 	isIdentityOfTarget,
 	otherSlot,
@@ -204,9 +205,8 @@ export const activateStagedSpace = internalMutation({
 		const session = await requireOrgPermission(ctx, 'organization:manage');
 		const row = await requireStoredConfig(ctx);
 		const staged = await readStagedSpace(ctx.db);
-		if (!staged || staged._id !== args.spaceId) {
-			throwConflict('The staged embedding space changed. Reload and try again.');
-		}
+		assertExpectedSpace(staged, args.spaceId);
+		if (!staged) throwInvalidState('There is no staged embedding space.');
 		const job = await ctx.db
 			.query('embeddingReembedJobs')
 			.withIndex('by_target_space', (q) => q.eq('targetSpaceId', staged._id))
@@ -249,9 +249,10 @@ export const activateStagedSpace = internalMutation({
 
 /** Walk the corpus again into the staged space (rows changed or added during the rebuild). */
 export const catchUpRebuild = adminMutation({
-	args: {},
-	handler: async (ctx, _args, session) => {
+	args: { expectedSpaceId: v.optional(v.id('embeddingSpaces')) },
+	handler: async (ctx, args, session) => {
 		const staged = await readStagedSpace(ctx.db);
+		assertExpectedSpace(staged, args.expectedSpaceId);
 		if (!staged) throwInvalidState('There is no staged embedding space.');
 		if (await readOpenJob(ctx)) {
 			throwConflict('A re-embed or rebuild is already running. Wait for it, or cancel it first.');
@@ -284,11 +285,13 @@ export const catchUpRebuild = adminMutation({
  * by the job). A hosted space needs the stored key of its kind.
  */
 export const rollback = adminMutation({
-	args: {},
-	handler: async (ctx, _args, session) => {
+	/** `expectedSpaceId`: the space the caller confirmed rolling back to. */
+	args: { expectedSpaceId: v.optional(v.id('embeddingSpaces')) },
+	handler: async (ctx, args, session) => {
 		const row = await requireStoredConfig(ctx);
 		const active = await readActiveSpace(ctx.db);
 		const previous = active ? await readRollbackSpace(ctx) : null;
+		assertExpectedSpace(previous, args.expectedSpaceId);
 		if (!active || !previous)
 			throwInvalidState('There is no previous embedding space to roll back to.');
 		if (!isStagedTransitionAllowed(row.embeddingProviderKind, previous.provider)) {
@@ -311,9 +314,10 @@ export const rollback = adminMutation({
 
 /** End a staged rebuild without activating it. */
 export const cancelRebuild = adminMutation({
-	args: {},
-	handler: async (ctx, _args, session) => {
+	args: { expectedSpaceId: v.optional(v.id('embeddingSpaces')) },
+	handler: async (ctx, args, session) => {
 		const staged = await readStagedSpace(ctx.db);
+		assertExpectedSpace(staged, args.expectedSpaceId);
 		if (!staged) return;
 		await retireStagedSpace(ctx, staged);
 		await recordAuditLog(ctx, {

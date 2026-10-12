@@ -7,7 +7,7 @@
  * Pipeline: entity extraction → fact extraction → deduplication → contradiction check → store.
  */
 
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { htmlToPlainText } from '@owlat/shared/html';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -24,7 +24,12 @@ import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { detectInjection, detectSmuggling } from '../agent/steps/security_scan/patterns';
 import { runGuardBeforeAutonomy } from '../agent/steps/security_scan/guard';
 import { capPerMessage, isKnowledgeOn } from './extractionPolicy';
-import { extractionSchema, persistExtractedEntries } from './extractedEntries';
+import {
+	deferredHandler,
+	rethrowAdmissionRefusal,
+	type DeferrableAction,
+} from '../analytics/backgroundDeferral';
+import { entriesToSave, extractionSchema, persistExtractedEntries } from './extractedEntries';
 
 /**
  * Guard knowledge extraction against prompt injection planted in untrusted
@@ -60,72 +65,81 @@ const EXTRACTION_LLM_DEADLINE_MS = 180_000;
  */
 const INBOUND_EXTRACTION_BODY_CHARS = 100_000;
 
+/** This action, for its own budget deferral (ADR-0073, D1). */
+const deferFromMessage = (): DeferrableAction => internal.knowledge.extraction.extractFromMessage;
+
+const extractFromMessageArgs = {
+	inboundMessageId: v.id('inboundMessages'),
+	/** An awaiting caller's root, deadline included (ADR-0073). */
+	root: v.optional(llmRootContextValidator),
+	deferrals: v.optional(v.number()),
+};
+
 /**
  * Extract knowledge from a processed inbound message
  */
 export const extractFromMessage = internalAction({
-	args: {
-		inboundMessageId: v.id('inboundMessages'),
-		/** An awaiting caller's root, deadline included (ADR-0073). */
-		root: v.optional(llmRootContextValidator),
-	},
-	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
-		anchorActionDeadline(ctx);
-		if (!(await isKnowledgeOn(ctx, '[knowledge.extract]'))) return;
-		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
-			inboundMessageId: args.inboundMessageId,
-		});
-		if (!message) return;
-		const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message, ctx.storage);
+	args: extractFromMessageArgs,
+	handler: deferredHandler<ObjectType<typeof extractFromMessageArgs>>(
+		deferFromMessage,
+		async (ctx, args) => {
+			// One model budget for this action, from its start (ADR-0073).
+			anchorActionDeadline(ctx);
+			if (!(await isKnowledgeOn(ctx, '[knowledge.extract]'))) return;
+			const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+				inboundMessageId: args.inboundMessageId,
+			});
+			if (!message) return;
+			const { text: bodyText, html: bodyHtml } = await openInboundMessageBody(message, ctx.storage);
 
-		const textContent = bodyText ?? '';
-		if (textContent.length < 20) return; // Skip very short messages
+			const textContent = bodyText ?? '';
+			if (textContent.length < 20) return; // Skip very short messages
 
-		// Don't feed prompt-injection payloads into the extraction LLM.
-		const risk = injectionRisk(textContent, bodyHtml);
-		if (risk) {
-			logInfo('[knowledge.extract] skipped: injection risk in untrusted message', { risk });
-			return;
-		}
+			// Don't feed prompt-injection payloads into the extraction LLM.
+			const risk = injectionRisk(textContent, bodyHtml);
+			if (risk) {
+				logInfo('[knowledge.extract] skipped: injection risk in untrusted message', { risk });
+				return;
+			}
 
-		// Idempotency: a message re-run through the pipeline (e.g. cron retry)
-		// must not duplicate its knowledge entries.
-		const already = await ctx.runQuery(internal.knowledge.graph.countBySource, {
-			sourceType: 'agent_extracted',
-			sourceId: args.inboundMessageId,
-		});
-		if (already > 0) return;
+			// Idempotency: a message re-run through the pipeline (e.g. cron retry)
+			// must not duplicate its knowledge entries.
+			const progress = await ctx.runQuery(
+				internal.knowledge.extractionProgress.extractionProgressOf,
+				{ sourceType: 'agent_extracted', sourceId: args.inboundMessageId }
+			);
+			if (progress.isDone) return; // complete, not merely started (Sol r2 F3)
 
-		// D13 (ADR-0073): a message whose scan skipped the model guard (spam
-		// archive, agent off) gets it before its first generative consumer — this
-		// one, which the first-enable backfill reaches for mail that arrived while
-		// the agent was off. A guard that flags the message ends extraction.
-		// On the awaiting caller's clock when it passed one (ADR-0073).
-		const guard = await runGuardBeforeAutonomy(ctx, message, args.root?.deadlineAt);
-		if (!guard.mayProceed) {
-			logInfo('[knowledge.extract] skipped: the late injection guard flagged the message');
-			return;
-		}
+			// D13 (ADR-0073): a message whose scan skipped the model guard (spam
+			// archive, agent off) gets it before its first generative consumer — this
+			// one, which the first-enable backfill reaches for mail that arrived while
+			// the agent was off. A guard that flags the message ends extraction.
+			// On the awaiting caller's clock when it passed one (ADR-0073).
+			const guard = await runGuardBeforeAutonomy(ctx, message, args.root?.deadlineAt);
+			if (!guard.mayProceed) {
+				logInfo('[knowledge.extract] skipped: the late injection guard flagged the message');
+				return;
+			}
 
-		try {
-			// ── Step 1: Extract knowledge using LLM ──
-			const model = await resolveLanguageModel(ctx, 'extract');
-			const extractRoot = args.root ?? rootRequest('team', args.inboundMessageId);
-
-			const {
-				object: extraction,
-				tokenUsage,
-				modelUsed,
-			} = await meterLlmCall(
-				ctx,
-				{ feature: 'knowledge_extract_message', root: extractRoot },
-				(meter) =>
-					runLlmObject({
-						meter,
-						model,
-						schema: extractionSchema,
-						prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+			try {
+				// ── Step 1: Extract knowledge using LLM ──
+				const extractRoot = args.root ?? rootRequest('team', args.inboundMessageId);
+				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
+				const entries = await entriesToSave(progress.pendingEntries, async () => {
+					const model = await resolveLanguageModel(ctx, 'extract');
+					const {
+						object: extraction,
+						tokenUsage,
+						modelUsed,
+					} = await meterLlmCall(
+						ctx,
+						{ feature: 'knowledge_extract_message', root: extractRoot },
+						(meter) =>
+							runLlmObject({
+								meter,
+								model,
+								schema: extractionSchema,
+								prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${message.from}
 Subject: ${message.subject}
@@ -142,38 +156,51 @@ Extract any:
 - Action Items: commitments or tasks mentioned
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-						temperature: 0.1,
-						abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-					})
-			);
-			logInfo('[knowledge.extract] llm call', { tokenUsage, modelUsed });
+								temperature: 0.1,
+								abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+							})
+					);
+					logInfo('[knowledge.extract] llm call', { tokenUsage, modelUsed });
+					return extraction.entries?.length ? await capPerMessage(ctx, extraction.entries) : [];
+				});
+				if (entries.length === 0) return;
 
-			if (!extraction.entries || extraction.entries.length === 0) return;
-
-			// ── Step 2: Generate embeddings and store ──
-			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(
-				ctx,
-				embedder,
-				await capPerMessage(ctx, extraction.entries),
-				{
-					sourceType: 'agent_extracted',
-					sourceId: args.inboundMessageId,
-					contactIds: message.contactId ? [message.contactId] : undefined,
-					threadId: message.threadId ?? undefined,
-				},
-				extractRoot
-			);
-		} catch (error) {
-			// Fail soft — extraction is best-effort enrichment, never the reason a
-			// message fails to process. Name the source so the gap is traceable.
-			logError('[knowledge.extractFromMessage] failed', {
-				inboundMessageId: args.inboundMessageId,
-				error: secretFreeErrorText(error),
-			});
+				// ── Step 2: Generate embeddings and store ──
+				const embedder = await resolveIndexEmbedder(ctx);
+				await persistExtractedEntries(
+					ctx,
+					embedder,
+					entries,
+					{
+						sourceType: 'agent_extracted',
+						sourceId: args.inboundMessageId,
+						contactIds: message.contactId ? [message.contactId] : undefined,
+						threadId: message.threadId ?? undefined,
+					},
+					extractRoot
+				);
+			} catch (error) {
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				// Fail soft — extraction is best-effort enrichment, never the reason a
+				// message fails to process. Name the source so the gap is traceable.
+				logError('[knowledge.extractFromMessage] failed', {
+					inboundMessageId: args.inboundMessageId,
+					error: secretFreeErrorText(error),
+				});
+			}
 		}
-	},
+	),
 });
+
+/** This action, for its own budget deferral (ADR-0073, D1). */
+const deferFromFile = (): DeferrableAction => internal.knowledge.extraction.extractFromFile;
+
+const extractFromFileArgs = {
+	fileId: v.id('semanticFiles'),
+	/** An awaiting caller's root, deadline included (ADR-0073). */
+	root: v.optional(llmRootContextValidator),
+	deferrals: v.optional(v.number()),
+};
 
 /**
  * Extract knowledge from a processed semantic file (files → knowledge graph).
@@ -183,52 +210,52 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
  * extracted text. Entries are stored with `sourceType: 'file'`.
  */
 export const extractFromFile = internalAction({
-	args: {
-		fileId: v.id('semanticFiles'),
-		/** An awaiting caller's root, deadline included (ADR-0073). */
-		root: v.optional(llmRootContextValidator),
-	},
-	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
-		anchorActionDeadline(ctx);
-		if (!(await isKnowledgeOn(ctx, '[knowledge.extractFile]'))) return;
-		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
-		if (!file) return;
+	args: extractFromFileArgs,
+	handler: deferredHandler<ObjectType<typeof extractFromFileArgs>>(
+		deferFromFile,
+		async (ctx, args) => {
+			// One model budget for this action, from its start (ADR-0073).
+			anchorActionDeadline(ctx);
+			if (!(await isKnowledgeOn(ctx, '[knowledge.extractFile]'))) return;
+			const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
+			if (!file) return;
 
-		const textContent = (file.extractedText ?? '').slice(0, 8000);
-		if (textContent.length < 40) return; // Not enough content to extract from
+			const textContent = (file.extractedText ?? '').slice(0, 8000);
+			if (textContent.length < 40) return; // Not enough content to extract from
 
-		// Don't feed prompt-injection payloads into the extraction LLM.
-		const risk = injectionRisk(textContent);
-		if (risk) {
-			logInfo('[knowledge.extractFile] skipped: injection risk in untrusted file', { risk });
-			return;
-		}
+			// Don't feed prompt-injection payloads into the extraction LLM.
+			const risk = injectionRisk(textContent);
+			if (risk) {
+				logInfo('[knowledge.extractFile] skipped: injection risk in untrusted file', { risk });
+				return;
+			}
 
-		// Idempotency: a file reprocessed by the backfill cron must not
-		// duplicate its knowledge entries.
-		const already = await ctx.runQuery(internal.knowledge.graph.countBySource, {
-			sourceType: 'file',
-			sourceId: args.fileId,
-		});
-		if (already > 0) return;
+			// Idempotency: a file reprocessed by the backfill cron must not
+			// duplicate its knowledge entries.
+			const progress = await ctx.runQuery(
+				internal.knowledge.extractionProgress.extractionProgressOf,
+				{ sourceType: 'file', sourceId: args.fileId }
+			);
+			if (progress.isDone) return; // complete, not merely started (Sol r2 F3)
 
-		try {
-			const model = await resolveLanguageModel(ctx, 'extract');
-			const extractRoot = args.root ?? rootRequest('file', args.fileId);
-			const {
-				object: extraction,
-				tokenUsage,
-				modelUsed,
-			} = await meterLlmCall(
-				ctx,
-				{ feature: 'knowledge_extract_file', root: extractRoot },
-				(meter) =>
-					runLlmObject({
-						meter,
-						model,
-						schema: extractionSchema,
-						prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
+			try {
+				const extractRoot = args.root ?? rootRequest('file', args.fileId);
+				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
+				const entries = await entriesToSave(progress.pendingEntries, async () => {
+					const model = await resolveLanguageModel(ctx, 'extract');
+					const {
+						object: extraction,
+						tokenUsage,
+						modelUsed,
+					} = await meterLlmCall(
+						ctx,
+						{ feature: 'knowledge_extract_file', root: extractRoot },
+						(meter) =>
+							runLlmObject({
+								meter,
+								model,
+								schema: extractionSchema,
+								prompt: `Extract organizational knowledge from this document. Only extract information that would be useful for future reference.
 
 Filename: ${file.filename}
 Title: ${file.title ?? file.filename}
@@ -236,35 +263,52 @@ ${file.summary ? `Summary: ${file.summary}\n` : ''}Content:
 ${textContent}
 
 Extract any facts, decisions, events, preferences, goals, relationships, or action items. Skip boilerplate and formatting noise.`,
-						temperature: 0.1,
-						abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-					})
-			);
-			logInfo('[knowledge.extractFile] llm call', { tokenUsage, modelUsed });
+								temperature: 0.1,
+								abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+							})
+					);
+					logInfo('[knowledge.extractFile] llm call', { tokenUsage, modelUsed });
+					return extraction.entries;
+				});
+				if (entries.length === 0) return;
 
-			if (!extraction.entries || extraction.entries.length === 0) return;
-
-			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(
-				ctx,
-				embedder,
-				extraction.entries,
-				{
-					sourceType: 'file',
-					sourceId: args.fileId,
-					contactIds: file.contactIds ?? undefined,
-					threadId: file.threadId ?? undefined,
-				},
-				extractRoot
-			);
-		} catch (error) {
-			logError('[knowledge.extractFromFile] failed', {
-				fileId: args.fileId,
-				error: secretFreeErrorText(error),
-			});
+				const embedder = await resolveIndexEmbedder(ctx);
+				await persistExtractedEntries(
+					ctx,
+					embedder,
+					entries,
+					{
+						sourceType: 'file',
+						sourceId: args.fileId,
+						contactIds: file.contactIds ?? undefined,
+						threadId: file.threadId ?? undefined,
+					},
+					extractRoot
+				);
+			} catch (error) {
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				logError('[knowledge.extractFromFile] failed', {
+					fileId: args.fileId,
+					error: secretFreeErrorText(error),
+				});
+			}
 		}
-	},
+	),
 });
+
+/** This action, for its own budget deferral (ADR-0073, D1). */
+const deferFromMailMessage = (): DeferrableAction =>
+	internal.knowledge.extraction.extractFromMailMessage;
+
+const extractFromMailMessageArgs = {
+	mailMessageId: v.id('mailMessages'),
+	// Sender contact(s) the entries are scoped to (resolved by the indexer).
+	// Empty/undefined ⇒ org-general (visible to every contact's retrieval).
+	contactIds: v.optional(v.array(v.id('contacts'))),
+	/** An awaiting caller's root, deadline included (ADR-0073). */
+	root: v.optional(llmRootContextValidator),
+	deferrals: v.optional(v.number()),
+};
 
 /**
  * Extract knowledge from an imported Postbox message (mailMessages → knowledge
@@ -281,64 +325,61 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
  * derails the indexing sweep.
  */
 export const extractFromMailMessage = internalAction({
-	args: {
-		mailMessageId: v.id('mailMessages'),
-		// Sender contact(s) the entries are scoped to (resolved by the indexer).
-		// Empty/undefined ⇒ org-general (visible to every contact's retrieval).
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		/** An awaiting caller's root, deadline included (ADR-0073). */
-		root: v.optional(llmRootContextValidator),
-	},
-	handler: async (ctx, args) => {
-		// One model budget for this action, from its start (ADR-0073).
-		anchorActionDeadline(ctx);
-		if (!(await isKnowledgeOn(ctx, '[knowledge.extractMail]'))) return;
-		const msg = await ctx.runQuery(internal.mail.migrationIndexing.getMessageForExtraction, {
-			mailMessageId: args.mailMessageId,
-		});
-		if (!msg) return;
+	args: extractFromMailMessageArgs,
+	handler: deferredHandler<ObjectType<typeof extractFromMailMessageArgs>>(
+		deferFromMailMessage,
+		async (ctx, args) => {
+			// One model budget for this action, from its start (ADR-0073).
+			anchorActionDeadline(ctx);
+			if (!(await isKnowledgeOn(ctx, '[knowledge.extractMail]'))) return;
+			const msg = await ctx.runQuery(internal.mail.migrationIndexing.getMessageForExtraction, {
+				mailMessageId: args.mailMessageId,
+			});
+			if (!msg) return;
 
-		let textContent = await readMailMessageText(ctx.storage, {
-			textBodyInline: msg.textInline ?? undefined,
-			textBodyStorageId: msg.textStorageId ?? undefined,
-		});
-		if (!textContent && msg.htmlInline) textContent = htmlToPlainText(msg.htmlInline);
-		textContent = textContent.slice(0, 8000);
-		if (textContent.length < 20) return; // Skip very short messages
+			let textContent = await readMailMessageText(ctx.storage, {
+				textBodyInline: msg.textInline ?? undefined,
+				textBodyStorageId: msg.textStorageId ?? undefined,
+			});
+			if (!textContent && msg.htmlInline) textContent = htmlToPlainText(msg.htmlInline);
+			textContent = textContent.slice(0, 8000);
+			if (textContent.length < 20) return; // Skip very short messages
 
-		// Don't feed prompt-injection payloads into the extraction LLM. The
-		// imported mailbox is the highest-risk source — untrusted third-party mail
-		// the live agent security_scan never saw.
-		const risk = injectionRisk(textContent, msg.htmlInline ?? undefined);
-		if (risk) {
-			logInfo('[knowledge.extractMail] skipped: injection risk in imported mail', { risk });
-			return;
-		}
+			// Don't feed prompt-injection payloads into the extraction LLM. The
+			// imported mailbox is the highest-risk source — untrusted third-party mail
+			// the live agent security_scan never saw.
+			const risk = injectionRisk(textContent, msg.htmlInline ?? undefined);
+			if (risk) {
+				logInfo('[knowledge.extractMail] skipped: injection risk in imported mail', { risk });
+				return;
+			}
 
-		// Idempotency: a message re-run through the indexer (migration restart)
-		// must not duplicate its knowledge entries.
-		const already = await ctx.runQuery(internal.knowledge.graph.countBySource, {
-			sourceType: 'email',
-			sourceId: args.mailMessageId,
-		});
-		if (already > 0) return;
+			// Idempotency: a message re-run through the indexer (migration restart)
+			// must not duplicate its knowledge entries.
+			const progress = await ctx.runQuery(
+				internal.knowledge.extractionProgress.extractionProgressOf,
+				{ sourceType: 'email', sourceId: args.mailMessageId }
+			);
+			if (progress.isDone) return; // complete, not merely started (Sol r2 F3)
 
-		try {
-			const model = await resolveLanguageModel(ctx, 'extract');
-			const extractRoot = args.root ?? rootRequest('postbox', args.mailMessageId);
-			const {
-				object: extraction,
-				tokenUsage,
-				modelUsed,
-			} = await meterLlmCall(
-				ctx,
-				{ feature: 'knowledge_extract_mail', root: extractRoot },
-				(meter) =>
-					runLlmObject({
-						meter,
-						model,
-						schema: extractionSchema,
-						prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
+			try {
+				const extractRoot = args.root ?? rootRequest('postbox', args.mailMessageId);
+				// A resumed run saves the entries it stored; it does not ask again (Sol r2 F3).
+				const entries = await entriesToSave(progress.pendingEntries, async () => {
+					const model = await resolveLanguageModel(ctx, 'extract');
+					const {
+						object: extraction,
+						tokenUsage,
+						modelUsed,
+					} = await meterLlmCall(
+						ctx,
+						{ feature: 'knowledge_extract_mail', root: extractRoot },
+						(meter) =>
+							runLlmObject({
+								meter,
+								model,
+								schema: extractionSchema,
+								prompt: `Extract organizational knowledge from this email message. Only extract information that would be useful for future reference.
 
 From: ${msg.fromName ? `${msg.fromName} <${msg.fromAddress}>` : msg.fromAddress}
 Subject: ${msg.subject}
@@ -355,31 +396,34 @@ Extract any:
 - Action Items: commitments or tasks mentioned
 
 Only extract knowledge you are confident about. Skip trivial greetings or small talk.`,
-						temperature: 0.1,
-						abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
-					})
-			);
-			logInfo('[knowledge.extractMail] llm call', { tokenUsage, modelUsed });
+								temperature: 0.1,
+								abortSignal: AbortSignal.timeout(EXTRACTION_LLM_DEADLINE_MS),
+							})
+					);
+					logInfo('[knowledge.extractMail] llm call', { tokenUsage, modelUsed });
+					return extraction.entries?.length ? await capPerMessage(ctx, extraction.entries) : [];
+				});
+				if (entries.length === 0) return;
 
-			if (!extraction.entries || extraction.entries.length === 0) return;
-
-			const embedder = await resolveIndexEmbedder(ctx);
-			await persistExtractedEntries(
-				ctx,
-				embedder,
-				await capPerMessage(ctx, extraction.entries),
-				{
-					sourceType: 'email',
-					sourceId: args.mailMessageId,
-					contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,
-				},
-				extractRoot
-			);
-		} catch (error) {
-			logError('[knowledge.extractFromMailMessage] failed', {
-				mailMessageId: args.mailMessageId,
-				error: secretFreeErrorText(error),
-			});
+				const embedder = await resolveIndexEmbedder(ctx);
+				await persistExtractedEntries(
+					ctx,
+					embedder,
+					entries,
+					{
+						sourceType: 'email',
+						sourceId: args.mailMessageId,
+						contactIds: args.contactIds && args.contactIds.length > 0 ? args.contactIds : undefined,
+					},
+					extractRoot
+				);
+			} catch (error) {
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				logError('[knowledge.extractFromMailMessage] failed', {
+					mailMessageId: args.mailMessageId,
+					error: secretFreeErrorText(error),
+				});
+			}
 		}
-	},
+	),
 });

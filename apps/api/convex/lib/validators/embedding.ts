@@ -95,7 +95,7 @@ export const embeddingCohortValidator = v.object({
 });
 
 /** One table's vectors by where they stand against the active space. */
-const embeddingCoverageCountsValidator = v.object({
+export const embeddingCoverageCountsValidator = v.object({
 	/** A vector in the active space: vector search finds the row. */
 	active: v.number(),
 	/** A vector with no recorded space (written before provenance): lexical search only. */
@@ -104,6 +104,14 @@ const embeddingCoverageCountsValidator = v.object({
 	inactive: v.number(),
 	/** No vector at all (pending, too little text, or a dropped stale vector). */
 	unembedded: v.number(),
+	/**
+	 * Of the rows outside the active space (unknown + inactive + unembedded): the
+	 * ones a re-embed WILL embed, by the job's own rule (`corpusRowInput`), and
+	 * the ones it skips (an expired entry, a file still processing, too little
+	 * text). Absent in a count stored before they existed.
+	 */
+	reembedCandidates: v.optional(v.number()),
+	reembedSkipped: v.optional(v.number()),
 });
 
 /** The coverage counts the walk stores (`embeddingCoverage`) and the settings page reads. */

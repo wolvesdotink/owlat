@@ -67,6 +67,7 @@ import {
 	type AskQuestion,
 	type RankedFile,
 } from './composeDraftPolicy';
+import { rethrowAdmissionRefusal } from '../../lib/llm/admissionPort';
 
 export interface GapCheckInput {
 	/** Untrusted context: the thread (and for a team thread the pipeline briefing). */
@@ -137,6 +138,8 @@ function answerClarifySurface(
 		root,
 		masterGate: 'ai',
 		priority: 'interactive',
+		// A spend refusal is never a failed sample or judgment: it reaches the user (D1).
+		onCallError: rethrowAdmissionRefusal,
 	};
 }
 
@@ -162,7 +165,9 @@ async function findOpenSlots(
 		if (candidates.length === 0) return owed;
 		const { judgment } = await judgeOpenSlots(ctx, surface, context, candidates);
 		return [...owed, ...keptSlots(judgment, candidates)];
-	} catch {
+	} catch (error) {
+		// A budget refusal is shown to the user (D1); any other fault keeps the owed slots.
+		rethrowAdmissionRefusal(error);
 		return owed;
 	}
 }

@@ -5,6 +5,8 @@ import { api, internal } from '../_generated/api';
 import { MAX_METERED_REQUESTS_PER_WRITE } from '../analytics/llmUsage';
 import { PRICE_VERSION } from '../lib/llm/pricing';
 import { spendPeriodKeys, usdToMicrousd } from '../lib/aiRouting/spendPeriods';
+import { SETTLEMENT_FEATURE } from '../lib/llmUsageTags';
+import { reconcileSpend } from '../aiRouting/__tests__/spend.testlib';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -381,6 +383,77 @@ describe('analytics.llmUsage.getSpendByFeature', () => {
 		expect(assistant.calls).toBe(2);
 		expect(assistant.costUsd).toBeCloseTo(0.75);
 		expect(result.totalCostUsd).toBeCloseTo(0.751);
+	});
+});
+
+describe('settlement rows in the spend dashboard (Sol r6 F1)', () => {
+	it('counts an estimate and a late offset in the spend, never as calls', async () => {
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
+		try {
+			const t = convexTest(schema, modules);
+			await reconcileSpend(t);
+			const hold = (reservationId: string, expiresAt: number) =>
+				t.mutation(internal.aiRouting.admission.reserve, {
+					reservationId,
+					rootRequestId: `postbox_action:${reservationId}`,
+					plane: 'language',
+					task: 'mail.ask',
+					budgetClass: 'standard',
+					priority: 'pipeline',
+					heldMicrousd: 1_000_000,
+					maxRequests: 1,
+					requestBound: { requestId: reservationId, attempt: 1, microusd: 1_000_000 },
+					modelId: 'gpt-4o',
+					expiresAt,
+				});
+			const request = (
+				reservationId: string,
+				usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
+			) =>
+				t.mutation(internal.analytics.llmUsage.recordRequests, {
+					feature: 'postbox_ask_thread',
+					requestId: reservationId,
+					requests: [
+						{
+							attempt: 1,
+							latencyMs: 1,
+							modelUsed: 'gpt-4o',
+							reservationId,
+							...(usage ? { usage } : {}),
+						},
+					],
+				});
+
+			// 1. A request of unknown usage: settled with an estimate row.
+			await hold('estimated', Date.now() + 60_000);
+			await request('estimated');
+			await t.mutation(internal.aiRouting.admission.settle, {
+				reservationId: 'estimated',
+				expectedRequests: 1,
+			});
+			// 2. A hold swept on expiry (estimate), then its row lands late (offset).
+			await hold('late', Date.now() - 1);
+			await t.mutation(internal.aiRouting.admission.sweepExpiredHolds, {});
+			await request('late', { promptTokens: 1000, completionTokens: 100, totalTokens: 1100 });
+
+			const rows = await t.run((ctx) => ctx.db.query('llmUsageEvents').collect());
+			const settlementRows = rows.filter((r) => r.feature === SETTLEMENT_FEATURE);
+			// An estimate per hold and the late row's offset.
+			expect(settlementRows).toHaveLength(3);
+			const spend = rows.reduce((sum, r) => sum + r.costUsd, 0);
+
+			const byFeature = await t.query(api.analytics.llmUsage.getSpendByFeature, {});
+			expect(byFeature.features.find((f) => f.feature === 'postbox_ask_thread')?.calls).toBe(2);
+			expect(byFeature.features.find((f) => f.feature === SETTLEMENT_FEATURE)?.calls).toBe(0);
+			expect(byFeature.features.reduce((sum, f) => sum + f.calls, 0)).toBe(2);
+			expect(byFeature.totalCostUsd).toBeCloseTo(spend);
+
+			const byProvider = await t.query(api.analytics.llmUsage.getSpendByProvider, {});
+			expect(byProvider.providers.reduce((sum, p) => sum + p.calls, 0)).toBe(2);
+			expect(byProvider.totalCostUsd).toBeCloseTo(spend);
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 });
 

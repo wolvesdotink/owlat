@@ -32,8 +32,8 @@ export interface ResolvedPlaneIdentityInput {
 	readonly kind: DecisionProviderKind;
 	readonly modelId: string;
 	readonly clientConfig: { readonly baseUrl?: string };
-	/** Set when the configured provider cannot answer (D3). */
-	readonly degradedFrom?: DecisionProviderKind;
+	/** Set when the configured provider cannot answer (D3); `kind` stays the configured one. */
+	readonly unavailable?: { readonly code: string };
 }
 
 /**
@@ -47,7 +47,7 @@ export function resolvedPlaneIdentity(
 ): string {
 	if (!isDecisionPlaneOn) return 'off';
 	if (plane === null) return 'unavailable';
-	if (plane.degradedFrom !== undefined) return `unavailable:${plane.degradedFrom}`;
+	if (plane.unavailable !== undefined) return `unavailable:${plane.kind}`;
 	return [plane.kind, plane.modelId, plane.clientConfig.baseUrl ?? ''].join('|');
 }
 

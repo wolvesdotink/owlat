@@ -37,11 +37,10 @@
  *   - nothing missing             → `drafting` (today's behaviour), scheduling
  *     the draft step exactly as classify did before.
  *
- * FAIL-SOFT is sacred: EVERY failure inside `execute` (LLM error, malformed
- * object, missing provider, unreadable coverage) is caught internally and
- * degrades to zero questions → `drafting`. The step never throws (a throw would
- * be translated by the walker into `failed`), never blocks ingest, and never
- * emits a question on uncertainty about its own machinery.
+ * FAIL-SOFT: every failure inside `execute` (LLM error, malformed object,
+ * missing provider, unreadable coverage) degrades to zero questions →
+ * `drafting`, and never a question on uncertainty about its own machinery. The
+ * one throw is a spend-admission refusal: the walker holds the message (D1).
  *
  * Complaint / urgent mail is forked through here too (classify used to skip it
  * straight to a blank human-review box). It runs with CAUTIOUS eagerness — the
@@ -75,6 +74,7 @@ import { loadSlotItems, slotItemLink, type ClarifySlotItem } from './items';
 import { answerKindForSlot } from '../../../inbox/clarificationAnswers';
 import type { AgentStepModule } from '../types';
 import { teamClarifySurface, teamOpenSlots } from './judge';
+import { rethrowAdmissionRefusal } from '../../../analytics/backgroundDeferral';
 
 // The slot taxonomy + untrusted-data prompt module is SHARED with the personal
 // -mail Reply Queue refinement (mail/ai/needsReplyClassify.ts) — see
@@ -323,7 +323,8 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 						})),
 					});
 					fills = result.fills;
-				} catch {
+				} catch (error) {
+					rethrowAdmissionRefusal(error);
 					fills = [];
 				}
 			}
@@ -386,8 +387,8 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				tokenUsage,
 				modelUsed,
 			};
-		} catch {
-			// Fail-soft: degrade to today's behaviour (draft), never block.
+		} catch (error) {
+			rethrowAdmissionRefusal(error); // D1: the walker holds; any other fault drafts as today
 			return { output: { questions: [], memoryAnswers: [], resolution: 'fail_soft' } };
 		}
 	},

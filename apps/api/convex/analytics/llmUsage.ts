@@ -30,62 +30,22 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
+import type { QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { adminQuery } from '../lib/authedFunctions';
 import { tokenUsageValidator } from '../lib/convexValidators';
-import type { TokenUsage } from '../agent/steps/types';
-import { estimateCost, PRICE_VERSION, providerLabelForModel } from '../lib/llm/pricing';
+import { providerLabelForModel } from '../lib/llm/pricing';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import {
 	llmUsagePlaneValidator,
 	llmUsageRoutingFields,
 	type LlmUsagePlane,
+	isProviderRequestRow,
 } from '../lib/llmUsageTags';
-import type { AiTaskName } from '@owlat/shared/aiRouting';
-import type { BudgetClass, QualityResult } from '../lib/validators/aiRouting';
-import { taskForFeature, taskPolicy } from '../lib/llm/taskPolicy';
-import { usdToMicrousd } from '../lib/aiRouting/spendPeriods';
-import { addLedgerRowToSpendPeriods } from '../lib/aiRouting/spendPeriodWrites';
+import { insertLlmUsage, ZERO_USAGE } from './ledgerInsert';
+import { reconcileLateRow, SETTLEMENT_FEATURE, settleReservation } from '../aiRouting/settlement';
 
-/**
- * Per-row annotations beyond feature and cost, mirroring the table's optional
- * tag columns (`lib/llmUsageTags.ts`). `plane` applies to every plane; the
- * three flags below it are the DECISION plane's and are absent elsewhere. All
- * optional, so a caller that knows none of them writes exactly today's row
- * (plus the price version, and the task its feature maps to).
- */
-export interface LlmUsageTags {
-	readonly plane?: LlmUsagePlane;
-	/** The dispatch's id for one logical call, repeated across its retries and its hop. */
-	readonly requestId?: string;
-	/** The attempt ran on the language-backed fallback hop, not the native plane. */
-	readonly isFallback?: boolean;
-	/** The answering adapter's probabilities are calibrated across groups. */
-	readonly isCalibrated?: boolean;
-	/** Upstream pushed back: 429, or 529 (their overload code). */
-	readonly isThrottled?: boolean;
-	/** Ran on the operator's own hardware: priced at zero and labelled `Local`. */
-	readonly isLocalEngine?: boolean;
-	// AI routing columns (ADR-0073); meanings in `lib/llmUsageTags.ts`.
-	readonly rootRequestId?: string;
-	readonly parentCallId?: string;
-	/** Defaults to the task the feature maps to (`taskForFeature`). */
-	readonly task?: AiTaskName;
-	readonly policyVersion?: number;
-	readonly attempt?: number;
-	readonly endpoint?: string;
-	readonly cacheReadTokens?: number;
-	readonly cacheWriteTokens?: number;
-	readonly reasoningTokens?: number;
-	readonly latencyMs?: number;
-	readonly qualityResult?: QualityResult;
-	/** No usage was reported: the cost is an estimate (zero when nothing is known). */
-	readonly isEstimated?: boolean;
-	/** Defaults to the task's budget class; a shadow call passes `shadow`. */
-	readonly budgetClass?: BudgetClass;
-	readonly reservationId?: string;
-}
+export { insertLlmUsage, type LlmUsageTags } from './ledgerInsert';
 
 /** The writer-supplied routing columns: everything but the three it computes. */
 const {
@@ -150,6 +110,8 @@ export const meteredRequestValidator = v.object({
 	isLocalEngine: v.optional(v.boolean()),
 	isFallback: v.optional(v.boolean()),
 	isCalibrated: v.optional(v.boolean()),
+	/** The admission hold the request ran under, when it differs per request (one meter, several dispatches). */
+	reservationId: v.optional(v.string()),
 });
 
 export type MeteredRequest = Infer<typeof meteredRequestValidator>;
@@ -173,6 +135,15 @@ const recordRequestsArgs = {
 	feature: v.string(),
 	...tagArgs,
 	requests: v.array(meteredRequestValidator),
+	/**
+	 * Admission holds whose dispatch is over, settled in this mutation once its
+	 * rows are in (`aiRouting/settlement.ts`). `expectedRequests` is every
+	 * request the hold covered; a hold whose rows are not all in the ledger yet
+	 * stays held, and the expiry sweep settles it.
+	 */
+	settlements: v.optional(
+		v.array(v.object({ reservationId: v.string(), expectedRequests: v.number() }))
+	),
 };
 
 /** One batch as {@link recordRequests} takes it (typed off the validator, not the api). */
@@ -181,7 +152,7 @@ export type RequestBatchArgs = Infer<ReturnType<typeof v.object<typeof recordReq
 export const recordRequests = internalMutation({
 	args: recordRequestsArgs,
 	handler: async (ctx, args) => {
-		const { feature, requests, ...tags } = args;
+		const { feature, requests, settlements, ...tags } = args;
 		if (requests.length > MAX_METERED_REQUESTS_PER_WRITE) {
 			throw new Error('Too many metered requests in one write');
 		}
@@ -196,110 +167,42 @@ export const recordRequests = internalMutation({
 				if (existing) continue;
 			}
 			const { usage, modelUsed, ...requestTags } = request;
-			await insertLlmUsage(ctx, feature, usage ?? ZERO_USAGE, modelUsed, undefined, {
-				...tags,
-				...requestTags,
-				isEstimated: usage === undefined,
+			const inserted = await insertLlmUsage(
+				ctx,
+				feature,
+				usage ?? ZERO_USAGE,
+				modelUsed,
+				undefined,
+				{
+					...tags,
+					...requestTags,
+					isEstimated: usage === undefined,
+				}
+			);
+			// A row of a hold that already closed (it arrived after the sweep) is
+			// charged against the estimate it replaces, in this mutation.
+			const reservationId = request.reservationId ?? tags.reservationId;
+			if (reservationId) await reconcileLateRow(ctx, reservationId, inserted);
+		}
+		for (const settlement of settlements ?? []) {
+			await settleReservation(ctx, settlement.reservationId, {
+				mode: 'call_end',
+				expectedRequests: settlement.expectedRequests,
 			});
 		}
 	},
 });
 
-/** No reported usage: an unknown spend, or a request refused before billing. */
-const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-
-interface LlmUsageAttribution {
-	readonly organizationId: string;
-	readonly pluginId: string;
-}
-
-/** The budget class a row counts under: the caller's, else its task's, else standard. */
-function rowBudgetClass(tags: LlmUsageTags | undefined, task: AiTaskName | undefined): BudgetClass {
-	if (tags?.budgetClass) return tags.budgetClass;
-	return task ? taskPolicy(task).budgetClass : 'standard';
-}
-
-/**
- * The one ledger insert. Shared mutation-local writer so plugin settlement and
- * its audit stay atomic. Stamps the price version and the integer cost, fills
- * the task from the feature when the caller gave none, and adds the row to the
- * spend-period aggregate in the same mutation.
- */
-export async function insertLlmUsage(
-	ctx: MutationCtx,
-	feature: string,
-	tokenUsage: TokenUsage,
-	modelUsed: string | undefined,
-	attribution?: LlmUsageAttribution,
-	tags?: LlmUsageTags
-): Promise<void> {
-	const task = tags?.task ?? taskForFeature(feature);
-	// A local engine bills nothing, whatever its model id would price at. A
-	// model the price table does not know is priced at its plane's conservative
-	// fallback, and the row says the cost is an estimate.
-	const isLocal = tags?.isLocalEngine === true;
-	// The row's plane: the caller's, else its task's (an embedding row is one
-	// whoever wrote it). Absent still reads as language.
-	const pricedPlane = tags?.plane ?? (task ? taskPolicy(task).plane : 'language');
-	const plane = tags?.plane ?? (pricedPlane === 'language' ? undefined : pricedPlane);
-	const priced = isLocal ? undefined : estimateCost(modelUsed, tokenUsage, pricedPlane);
-	const costUsd = priced?.costUsd ?? 0;
-	const isPriceUnknown = priced?.estimated === true && tokenUsage.totalTokens > 0;
-	const isEstimated = tags?.isEstimated === true || isPriceUnknown ? true : tags?.isEstimated;
-	const costMicrousd = usdToMicrousd(costUsd);
-	const budgetClass = rowBudgetClass(tags, task);
-	const createdAt = Date.now();
-	await ctx.db.insert('llmUsageEvents', {
-		feature,
-		organizationId: attribution?.organizationId,
-		pluginId: attribution?.pluginId,
-		modelUsed,
-		promptTokens: tokenUsage.promptTokens,
-		completionTokens: tokenUsage.completionTokens,
-		totalTokens: tokenUsage.totalTokens,
-		costUsd,
-		createdAt,
-		plane,
-		requestId: tags?.requestId,
-		isFallback: tags?.isFallback,
-		isCalibrated: tags?.isCalibrated,
-		isThrottled: tags?.isThrottled,
-		isLocalEngine: tags?.isLocalEngine,
-		rootRequestId: tags?.rootRequestId,
-		parentCallId: tags?.parentCallId,
-		task,
-		policyVersion: tags?.policyVersion,
-		attempt: tags?.attempt,
-		endpoint: tags?.endpoint,
-		cacheReadTokens: tags?.cacheReadTokens,
-		cacheWriteTokens: tags?.cacheWriteTokens,
-		reasoningTokens: tags?.reasoningTokens,
-		latencyMs: tags?.latencyMs,
-		qualityResult: tags?.qualityResult,
-		priceVersion: PRICE_VERSION,
-		isEstimated,
-		costMicrousd,
-		budgetClass,
-		reservationId: tags?.reservationId,
-	});
-	await addLedgerRowToSpendPeriods(ctx, {
-		plane: pricedPlane,
-		budgetClass,
-		microusd: costMicrousd,
-		isEstimated: isEstimated === true,
-		at: createdAt,
-	});
-}
-
 type SpendTotals = { totalTokens: number; costUsd: number; calls: number };
 
 /**
  * Group priced usage events by a caller-chosen key, summing tokens/cost/calls
+ * (settlement rows add their spend and no call)
  * and returning the groups sorted by cost (desc) plus the window total. The
  * per-feature and per-provider spend queries share this shape and differ only in
  * the grouping key, so both delegate here and rename `key` to their own label.
  */
-function groupSpend<E extends { totalTokens: number; costUsd: number }>(
+function groupSpend<E extends { feature: string; totalTokens: number; costUsd: number }>(
 	events: E[],
 	keyOf: (event: E) => string
 ): { groups: Array<SpendTotals & { key: string }>; totalCostUsd: number } {
@@ -309,7 +212,8 @@ function groupSpend<E extends { totalTokens: number; costUsd: number }>(
 		const acc = byKey.get(key) ?? { key, totalTokens: 0, costUsd: 0, calls: 0 };
 		acc.totalTokens += event.totalTokens;
 		acc.costUsd += event.costUsd;
-		acc.calls += 1;
+		// A settlement estimate or offset carries spend, not a call (Sol r6 F1).
+		if (isProviderRequestRow(event)) acc.calls += 1;
 		byKey.set(key, acc);
 	}
 	const groups = [...byKey.values()].sort((a, b) => b.costUsd - a.costUsd);
@@ -384,6 +288,8 @@ export const getSpendByProvider = adminQuery({
 /** The fields the decision counters read. Structural, so it is testable with plain rows. */
 export interface DecisionCountableEvent {
 	readonly plane?: LlmUsagePlane;
+	/** Absent in older callers; a settlement estimate row is not counted as an attempt. */
+	readonly feature?: string;
 	readonly isFallback?: boolean;
 	readonly isCalibrated?: boolean;
 	readonly isThrottled?: boolean;
@@ -427,11 +333,13 @@ export function summarizeDecisionPlane(
 	events: readonly DecisionCountableEvent[]
 ): DecisionPlaneCounters {
 	const decisions = events.filter((event) => event.plane === 'decision');
-	const attempts = decisions.length;
-	const fallbackAttempts = decisions.filter((event) => event.isFallback === true).length;
-	const calibrationReported = decisions.filter((event) => event.isCalibrated !== undefined).length;
-	const uncalibratedAttempts = decisions.filter((event) => event.isCalibrated === false).length;
-	const throttledAttempts = decisions.filter((event) => event.isThrottled === true).length;
+	// A settlement estimate (admission) is spend, not an attempt.
+	const requests = decisions.filter((event) => event.feature !== SETTLEMENT_FEATURE);
+	const attempts = requests.length;
+	const fallbackAttempts = requests.filter((event) => event.isFallback === true).length;
+	const calibrationReported = requests.filter((event) => event.isCalibrated !== undefined).length;
+	const uncalibratedAttempts = requests.filter((event) => event.isCalibrated === false).length;
+	const throttledAttempts = requests.filter((event) => event.isThrottled === true).length;
 	const rate = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
 	return {
 		attempts,

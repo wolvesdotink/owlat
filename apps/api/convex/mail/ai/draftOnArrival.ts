@@ -35,6 +35,7 @@ import { ensureGapPlaceholders } from './composeDraftPolicy';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { rootRequest } from '../../lib/llm/requestMeter';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import { deferRefusedRun, rethrowAdmissionRefusal } from '../../analytics/backgroundDeferral';
 
 /** Map the personal-mail urgency bucket onto the shared draft block's priority vocabulary. */
 function priorityForUrgency(urgency: 'high' | 'normal' | 'low'): string {
@@ -61,7 +62,8 @@ export async function generateDraftOnArrival(
 	// (and every other failure below) degrades to no slot.
 	try {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error);
 		return;
 	}
 
@@ -137,6 +139,7 @@ export async function generateDraftOnArrival(
 		// The prepared reply's plan, bound to its text (review F16).
 		if (plan) await recordArrivalPlan(ctx, args.threadId, plan, draft, result.planCoverage);
 	} catch (err) {
+		rethrowAdmissionRefusal(err);
 		// Injection re-scan / LLM error → no slot; the thread still shows for
 		// manual reply. Never wedge the caller.
 		logError('[draftOnArrival] generation failed:', err);
@@ -144,9 +147,16 @@ export async function generateDraftOnArrival(
 }
 
 export const generateForThread = internalAction({
-	args: { threadId: v.id('mailThreads') },
-	handler: (ctx, args) => {
+	args: {
+		threadId: v.id('mailThreads'),
+		/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+		deferrals: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<void> => {
 		anchorActionDeadline(ctx);
-		return generateDraftOnArrival(ctx, args);
+		// At the spend ceiling the draft defers to a later run (ADR-0073, D1).
+		await deferRefusedRun(ctx, internal.mail.ai.draftOnArrival.generateForThread, args, () =>
+			generateDraftOnArrival(ctx, { threadId: args.threadId })
+		);
 	},
 });

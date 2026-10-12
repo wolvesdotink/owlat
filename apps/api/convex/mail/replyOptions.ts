@@ -30,6 +30,8 @@ import { runLlmStream } from '../lib/llm/dispatch';
 import type { LlmCallMeter } from '../lib/llm/requestMeter';
 import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import type { TokenUsage } from '../agent/steps/types';
+import { admissionRefusalOf } from '../lib/llm/admissionPort';
+import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 
 /** Hard cap on how many reply variants we ever surface. */
 export const MAX_REPLY_OPTIONS = 3;
@@ -201,7 +203,12 @@ export async function streamReplyOptions(
 				modelUsed: undefined,
 			};
 		}
-		const message = error instanceof Error ? error.message : 'Suggest replies failed';
+		// A budget refusal carries the stable code the web reads (D1).
+		const message = admissionRefusalOf(error)
+			? AI_BUDGET_ERROR_CODE
+			: error instanceof Error
+				? error.message
+				: 'Suggest replies failed';
 		// Settling the buffer is best-effort; the model error is what surfaces.
 		await finalize([], 'error', { errorMessage: message.slice(0, 500) }).catch(() => undefined);
 		throw error;

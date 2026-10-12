@@ -27,6 +27,7 @@ import type { Id } from '../../_generated/dataModel';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { requireMailboxAccess } from '../permissions';
 import { throwForbidden } from '../../_utils/errors';
+import { budgetHeadroom, throwBudgetRefused } from '../../aiRouting/enforcedBudget';
 import { extractEmail } from '../../lib/emailAddress';
 import { voiceProfileValidator } from '../../lib/validators/mailAi';
 import { resolveDeliverableMailbox } from '../mailbox/addressResolution';
@@ -154,6 +155,24 @@ export const markIdle = internalMutation({
 });
 
 /**
+ * Whether a background refresh may be scheduled now: the `ai` feature is on and
+ * spend admission has headroom for background work (ADR-0073, D1, #1333). At
+ * the ceiling (or with a spend state that cannot be verified) the refresh
+ * defers: nothing is scheduled, and the next stale read asks again.
+ */
+async function mayRefreshInBackground(ctx: MutationCtx): Promise<boolean> {
+	if (!(await isFeatureEnabled(ctx, 'ai'))) return false;
+	return (await budgetHeadroom(ctx, { priority: 'background' })).isAdmitted;
+}
+
+/**
+ * A refresh that has been `refreshing` this long has lost its job (the action
+ * died); "Refresh now" may schedule another. Below it, a press while one runs
+ * schedules nothing, so repeated presses cannot queue paid jobs (#1333).
+ */
+export const VOICE_REFRESH_LEASE_MS = 15 * 60 * 1000;
+
+/**
  * Schedule ONE background voice-profile refresh for a mailbox whose corpus just
  * changed wholesale — today only the end of a historical import
  * (`mail/migration.completeBackfillImport`), where thousands of Sent messages
@@ -170,7 +189,7 @@ export async function scheduleVoiceProfileRefresh(
 ): Promise<boolean> {
 	const row = await findRow(ctx, mailboxId);
 	if (!row || !row.isEnabled || row.status !== 'idle') return false;
-	if (!(await isFeatureEnabled(ctx, 'ai'))) return false;
+	if (!(await mayRefreshInBackground(ctx))) return false;
 	await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
 	await ctx.scheduler.runAfter(0, internal.mail.ai.voiceProfileActions.refresh, { mailboxId });
 	return true;
@@ -214,9 +233,9 @@ async function guidanceForMailbox(
 	// Lazy background refresh of the SAMPLED voice profile (gated on `ai`); the
 	// derived/standing/contact layers below are served regardless so learning
 	// surfaces even when the sampler is idle.
-	if (await isFeatureEnabled(ctx, 'ai')) {
+	if (row.status === 'idle' && (await isFeatureEnabled(ctx, 'ai'))) {
 		const sentCount = await currentSentCount(ctx, mailboxId);
-		if (row.status === 'idle' && isVoiceProfileStale(row, sentCount, Date.now())) {
+		if (isVoiceProfileStale(row, sentCount, Date.now()) && (await mayRefreshInBackground(ctx))) {
 			await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
 			await ctx.scheduler.runAfter(0, internal.mail.ai.voiceProfileActions.refresh, {
 				mailboxId,
@@ -409,9 +428,11 @@ export const setEnabled = postboxMutation({
 });
 
 /**
- * Force a refresh now ("Refresh now" button). Gated on the `ai` feature. Sets
- * the row refreshing and schedules the background action; the profile updates
- * out of band so the call returns immediately.
+ * Force a refresh now ("Refresh now" button). Gated on the `ai` feature and
+ * on spend admission (a budget refusal carries `AI_BUDGET_EXHAUSTED`). Sets
+ * the row refreshing and schedules the background action, unless one is
+ * already running within its lease; the profile updates out of band so the
+ * call returns immediately.
  */
 export const requestRefresh = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
@@ -420,8 +441,15 @@ export const requestRefresh = postboxMutation({
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) throwForbidden('Mailbox not found');
 		if (!(await isFeatureEnabled(ctx, 'ai'))) throwForbidden('AI features are disabled');
+		const budget = await budgetHeadroom(ctx, { priority: 'background' });
+		if (!budget.isAdmitted) throwBudgetRefused(budget);
 		const now = Date.now();
 		const row = await findRow(ctx, args.mailboxId);
+		// One job at a time: a refresh still within its lease is already coming.
+		if (row?.status === 'refreshing' && now - row.updatedAt < VOICE_REFRESH_LEASE_MS) {
+			if (!row.isEnabled) await ctx.db.patch(row._id, { isEnabled: true });
+			return null;
+		}
 		if (row) {
 			await ctx.db.patch(row._id, { isEnabled: true, status: 'refreshing', updatedAt: now });
 		} else {

@@ -15,6 +15,7 @@ import type { Id } from '../../../_generated/dataModel';
 import { meterLlmCall } from '../../../analytics/meteredSpend';
 import { addTokenUsage } from '../../../lib/llm/tokenUsage';
 import { teamRoot } from '../../shared/agentSpend';
+import { rethrowAdmissionRefusal } from '../../../lib/llm/admissionPort';
 import {
 	extractReplySlots,
 	judgeOpenSlots,
@@ -42,6 +43,11 @@ export function teamClarifySurface(
 			}),
 		subject: { kind: 'inbound_message', inboundMessageId },
 		root,
+		// The necessity call replaces calls the pipeline held at its own priority.
+		priority: 'pipeline',
+		// A spend refusal is never a failed sample or judgment: the walker holds
+		// the message (D1).
+		onCallError: rethrowAdmissionRefusal,
 	};
 }
 

@@ -17,7 +17,10 @@ import { withPartialUsage } from './partialUsage';
 import { addTokenUsage } from './tokenUsage';
 import { streamUsage, usageDetails } from './providerUsage';
 import type { LlmCallMeter } from './requestMeter';
-import { callShape, limitArgs } from './callShape';
+import { callShape, limitArgs, type CallShape } from './callShape';
+import { dispatchRequestSize } from './admissionPort';
+import { admitDispatch, isWrappableModel, type DispatchHold } from './dispatchAdmission';
+
 import { meterStreamModel, STREAM_SETTLE_MS } from './streamMetering';
 import { isLengthStop } from './truncation';
 
@@ -108,7 +111,33 @@ interface LlmStreamResult {
  */
 export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamResult> {
 	const call = callShape(opts);
-	const metered = meterStreamModel(modelForRequest(opts.model), opts.meter, call.requestBase);
+	// Spend admission before the opening request (ADR-0073, Phase 1b): every
+	// step, and the re-sends of the opening request the SDK may make.
+	const requestModel = modelForRequest(opts.model);
+	const hold = await admitDispatch(opts.meter, call, {
+		size: dispatchRequestSize({
+			...(opts.system !== undefined ? { system: opts.system } : {}),
+			messages: opts.messages,
+			...(opts.tools ? { tools: opts.tools } : {}),
+		}),
+		steps: opts.maxSteps ?? DEFAULT_MAX_TOOL_STEPS,
+		retries: 'opening_only',
+		isIncremental: isWrappableModel(requestModel),
+	});
+	try {
+		return await streamOnce(opts, call, requestModel, hold);
+	} finally {
+		await hold.end();
+	}
+}
+
+async function streamOnce(
+	opts: LlmStreamOptions,
+	call: CallShape,
+	requestModel: LanguageModel,
+	hold: DispatchHold
+): Promise<LlmStreamResult> {
+	const metered = meterStreamModel(requestModel, opts.meter, call.requestBase);
 	// Ends the provider stream when the read stops early (a callback threw), so
 	// nothing is generated, and billed, for a reader that has gone.
 	const readerGone = new AbortController();
@@ -116,7 +145,8 @@ export async function runLlmStream(opts: LlmStreamOptions): Promise<LlmStreamRes
 		? AbortSignal.any([call.abortSignal, readerGone.signal])
 		: readerGone.signal;
 	const result = streamText({
-		model: metered.model,
+		// Admission outside the meter: a request it refuses is never opened.
+		model: hold.wrap(metered.model),
 		...(opts.system !== undefined ? { system: opts.system } : {}),
 		messages: opts.messages,
 		...(opts.tools ? { tools: opts.tools } : {}),

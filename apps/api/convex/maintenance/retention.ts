@@ -33,6 +33,9 @@ import { DEFAULT_INBOUND_RAW_RETENTION_DAYS } from '@owlat/shared/inboundRetenti
 
 const BATCH = 200;
 
+/** D4's shadow quota counts and answers (`aiRouting/shadowQuota.ts`) are needed for one UTC day; kept a week. */
+const SHADOW_QUOTA_RETENTION_MS = 7 * DAY_MS;
+
 /** Operational metadata on form submissions ages out after 90 days. */
 const FORM_META_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -97,7 +100,8 @@ export const sweepPluginLlmAccounting = internalMutation({
  * AI routing records (ADR-0073): decision artifacts and sender memory past their
  * own `expiresAt` (every row carries one), and admission reservations that
  * reached a terminal state more than the audit window ago. A `held` reservation
- * is never swept here; the admission expiry sweep settles it first.
+ * is never swept here; the admission expiry sweep settles it first. The D4
+ * shadow quota rows go after a week.
  */
 export const sweepAiRoutingRecords = internalMutation({
 	args: {},
@@ -105,25 +109,45 @@ export const sweepAiRoutingRecords = internalMutation({
 	handler: async (ctx) => {
 		const now = Date.now();
 		const terminalCutoff = now - AUDIT_LOG_RETENTION_MS;
-		const [artifacts, memory, ...reservations] = await Promise.all([
-			ctx.db
-				.query('decisionArtifacts')
-				.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
-				.take(BATCH),
-			ctx.db
-				.query('senderMemory')
-				.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
-				.take(BATCH),
-			...(['settled', 'released', 'expired'] as const).map((status) =>
+		const shadowCutoff = now - SHADOW_QUOTA_RETENTION_MS;
+		const [artifacts, memory, quotaEntries, quotaDays, extractionProgress, ...reservations] =
+			await Promise.all([
 				ctx.db
-					.query('llmReservations')
+					.query('decisionArtifacts')
+					.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
+					.take(BATCH),
+				ctx.db
+					.query('senderMemory')
+					.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
+					.take(BATCH),
+				ctx.db
+					.query('shadowQuotaEntries')
+					.withIndex('by_created_at', (q) => q.lt('createdAt', shadowCutoff))
+					.take(BATCH),
+				ctx.db
+					.query('shadowQuotaDays')
+					.withIndex('by_updated_at', (q) => q.lt('updatedAt', shadowCutoff))
+					.take(BATCH),
+				// Completed extraction markers only: without its marker a complete
+				// source still reads as done from its entries. An unfinished one is
+				// kept until it completes or its source is deleted, however long a
+				// budget refusal lasts, or its unsaved entries would be lost (Sol r3 F2).
+				ctx.db
+					.query('knowledgeExtractionProgress')
 					.withIndex('by_status_and_updated_at', (q) =>
-						q.eq('status', status).lt('updatedAt', terminalCutoff)
+						q.eq('status', 'complete').lt('updatedAt', shadowCutoff)
 					)
-					.take(BATCH)
-			),
-		]);
-		const pages = [artifacts, memory, ...reservations];
+					.take(BATCH),
+				...(['settled', 'released', 'expired'] as const).map((status) =>
+					ctx.db
+						.query('llmReservations')
+						.withIndex('by_status_and_updated_at', (q) =>
+							q.eq('status', status).lt('updatedAt', terminalCutoff)
+						)
+						.take(BATCH)
+				),
+			]);
+		const pages = [artifacts, memory, quotaEntries, quotaDays, extractionProgress, ...reservations];
 		for (const row of pages.flat()) await ctx.db.delete(row._id);
 		if (pages.some((page) => page.length === BATCH)) {
 			await ctx.scheduler.runAfter(0, internal.maintenance.retention.sweepAiRoutingRecords, {});

@@ -26,6 +26,7 @@
  * claim, so the ledger counts checked claims and their cost.
  */
 
+import type { LanguageModel } from 'ai';
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -41,6 +42,9 @@ import {
 } from '../../decision/bundleRunner';
 import type { RoutingContext } from '../../decision/context';
 import { verifyClaims } from './verify';
+import { admissionRefusalOf, type AdmissionRefusalData } from '../../lib/llm/admissionPort';
+import type { AdmissionPriority } from '../../lib/validators/aiRouting';
+import type { InterpretRunHold } from './runHold';
 import { claimCheckState, labelOfVerdict, verdictOfLabel } from './claimCheck';
 import type { VerifyClaim, VerifyVerdict } from './pipeline';
 
@@ -54,6 +58,8 @@ export interface RoutedVerification {
 	readonly isCapped: boolean;
 	/** Claim checks are enforced and the decision provider cannot answer (D3). */
 	readonly isUnavailable: boolean;
+	/** A spend refusal stopped a check: the run reports it (D1), never as a model failure. */
+	readonly refusal?: AdmissionRefusalData;
 }
 
 /** The message a claim check is about, when the decision plane can judge it. */
@@ -86,6 +92,10 @@ export async function verifyRouted(
 		mailboxId?: Id<'mailboxes'>;
 		/** The run's root request: every call of the run groups under it. */
 		root: LlmRootContext;
+		/** The language verifier's admission priority, model and the run's hold (`runHold.ts`). */
+		priority?: AdmissionPriority;
+		model?: LanguageModel;
+		hold?: InterpretRunHold;
 	}
 ): Promise<RoutedVerification> {
 	const none = { isUnsendable: false, isCapped: false, isUnavailable: false };
@@ -118,11 +128,16 @@ export async function verifyRouted(
 		}
 	}
 
-	const verified = await verifyClaims(ctx, sent, root);
+	const verified = await verifyClaims(ctx, sent, {
+		root,
+		...(opts.priority ? { priority: opts.priority } : {}),
+		...(opts.model ? { model: opts.model } : {}),
+		...(opts.hold ? { hold: opts.hold } : {}),
+	});
 	if (routing && plan?.mode === 'shadow' && subject && isDecisionRung(resolved)) {
 		await shadowClaims(ctx, sent, verified.verdicts, { routing, plan, subject, resolved, root });
 	}
-	return { ...verified, ...none, isCapped };
+	return { ...verified, isCapped, isUnavailable: false };
 }
 
 function isDecisionRung(resolved: ResolvedRung | 'stale' | null): resolved is ResolvedRung {
@@ -142,7 +157,7 @@ function askClaim(
 	ctx: ActionCtx,
 	run: ClaimRun,
 	claim: VerifyClaim,
-	extra: { baseline?: { verdict: string } } = {}
+	extra: { baseline?: { verdict: string }; onCallError?: (error: unknown) => void } = {}
 ) {
 	const built = claimCheckState(claim);
 	if (!built) return null;
@@ -163,12 +178,18 @@ async function checkClaims(
 	ctx: ActionCtx,
 	claims: readonly VerifyClaim[],
 	run: ClaimRun
-): Promise<Pick<RoutedVerification, 'verdicts' | 'isIncomplete' | 'isUnsendable'>> {
+): Promise<Pick<RoutedVerification, 'verdicts' | 'isIncomplete' | 'isUnsendable' | 'refusal'>> {
 	const verdicts = new Map<string, VerifyVerdict>();
 	let isIncomplete = false;
 	let isUnsendable = false;
+	let refusal: AdmissionRefusalData | undefined;
+	// A spend refusal is caught as itself, not as a failed check: it stops the
+	// rest (they would be refused the same way) and the run reports it (D1).
+	const onCallError = (error: unknown) => {
+		refusal ??= admissionRefusalOf(error) ?? undefined;
+	};
 	for (const claim of claims) {
-		const pending = askClaim(ctx, run, claim);
+		const pending = askClaim(ctx, run, claim, { onCallError });
 		if (pending === null) {
 			isUnsendable = true;
 			continue;
@@ -177,8 +198,9 @@ async function checkClaims(
 		const verdict = verdictOfLabel('labels' in outcome ? outcome.labels?.['verdict'] : undefined);
 		if (verdict) verdicts.set(claim.id, verdict);
 		else isIncomplete = true;
+		if (refusal) break;
 	}
-	return { verdicts, isIncomplete, isUnsendable };
+	return { verdicts, isIncomplete, isUnsendable, ...(refusal ? { refusal } : {}) };
 }
 
 /** Shadow: each verified claim asked beside the verifier, its verdict as the baseline. */

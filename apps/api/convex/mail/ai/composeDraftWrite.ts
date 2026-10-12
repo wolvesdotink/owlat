@@ -52,6 +52,8 @@ import {
 	type AskFileRef,
 	type AskQuestion,
 } from './composeDraftPolicy';
+import { admissionRefusalOf, budgetRefusalMessage } from '../../lib/llm/admissionPort';
+import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 
 /** How often partial text is written to the buffer (matches Revise). */
 const FLUSH_INTERVAL_MS = 120;
@@ -250,12 +252,18 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
 		await settleSpend().catch(() => undefined);
+		// D1: a budget refusal says so, with the stable code the web reads.
+		const refusal = admissionRefusalOf(error);
 		await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
 			streamId,
 			text: visibleDraftStreamText(stream.text).trim(),
 			status: 'error',
-			errorMessage: 'draft_failed',
+			errorMessage: refusal ? AI_BUDGET_ERROR_CODE : 'draft_failed',
 		});
-		await failSession(ctx, input.sessionId, 'The draft could not be written. Try again.');
+		await failSession(
+			ctx,
+			input.sessionId,
+			refusal ? budgetRefusalMessage(refusal.reason) : 'The draft could not be written. Try again.'
+		);
 	}
 }

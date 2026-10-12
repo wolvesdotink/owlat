@@ -26,7 +26,7 @@
  */
 
 import { vectorInSpace } from '../lib/aiRouting/embeddingRegistry';
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -42,6 +42,11 @@ import { hasLinkablePair, tagForInferredConfidence } from '../lib/knowledgeEdges
 import { contactScopesCanLink } from '../lib/contactScope';
 import { injectionRisk } from './extraction';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
+import {
+	deferredHandler,
+	rethrowAdmissionRefusal,
+	type DeferrableAction,
+} from '../analytics/backgroundDeferral';
 
 /**
  * How many nearest neighbors each anchor contributes to the candidate pool. A
@@ -99,6 +104,17 @@ function scopeForAnchor(anchor: Doc<'knowledgeEntries'>): Id<'contacts'> | 'org-
 	return 'org-general-only';
 }
 
+/** This action, for its own budget deferral (ADR-0073, D1). */
+const deferThisRun = (): DeferrableAction => internal.knowledge.edgeInference.inferRelations;
+
+const inferRelationsArgs = {
+	entryIds: v.array(v.id('knowledgeEntries')),
+	/** The root request of the extraction that wrote the entries (ADR-0073). */
+	root: v.optional(llmRootContextValidator),
+	/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
+	deferrals: v.optional(v.number()),
+};
+
 /**
  * Infer typed edges for a freshly-ingested batch of knowledge entries.
  *
@@ -113,102 +129,100 @@ function scopeForAnchor(anchor: Doc<'knowledgeEntries'>): Id<'contacts'> | 'org-
  * must never derail ingestion.
  */
 export const inferRelations = internalAction({
-	args: {
-		entryIds: v.array(v.id('knowledgeEntries')),
-		/** The root request of the extraction that wrote the entries (ADR-0073). */
-		root: v.optional(llmRootContextValidator),
-	},
-	handler: async (ctx, args): Promise<void> => {
-		// One model budget for this action, from its start (ADR-0073).
-		anchorActionDeadline(ctx);
-		// Authoritative, defense-in-depth flag gate (the schedule already gated, but
-		// the flag can flip between schedule and run, and an action can't read it).
-		if (!(await ctx.runQuery(internal.knowledge.edges.isInferenceEnabled, {}))) return;
+	args: inferRelationsArgs,
+	handler: deferredHandler<ObjectType<typeof inferRelationsArgs>>(
+		deferThisRun,
+		async (ctx, args) => {
+			// One model budget for this action, from its start (ADR-0073).
+			anchorActionDeadline(ctx);
+			// Authoritative, defense-in-depth flag gate (the schedule already gated, but
+			// the flag can flip between schedule and run, and an action can't read it).
+			if (!(await ctx.runQuery(internal.knowledge.edges.isInferenceEnabled, {}))) return;
 
-		// Load the freshly-ingested anchors.
-		// The anchors and the space their stored vectors are in, read together.
-		const { anchors, activeSpace } = await ctx.runQuery(
-			internal.knowledge.edges.getAnchorsWithEmbeddingSpace,
-			{ ids: args.entryIds }
-		);
-		if (anchors.length === 0) return;
-		const anchorIds = new Set(anchors.map((a) => a._id as string));
+			// Load the freshly-ingested anchors.
+			// The anchors and the space their stored vectors are in, read together.
+			const { anchors, activeSpace } = await ctx.runQuery(
+				internal.knowledge.edges.getAnchorsWithEmbeddingSpace,
+				{ ids: args.entryIds }
+			);
+			if (anchors.length === 0) return;
+			const anchorIds = new Set(anchors.map((a) => a._id as string));
 
-		// CANDIDATE SELECTION — security gate #2. Each anchor's neighbors come from a
-		// CONTACT-SCOPED vector search keyed on the anchor's STORED embedding (no
-		// re-embed); the scope is the anchor's contact (or 'org-general-only'), NEVER
-		// 'org-wide', so a neighbor — and any edge to it — can't bridge to another
-		// contact's data.
-		const candidatesById = new Map<string, Doc<'knowledgeEntries'>>();
-		for (const anchor of anchors) {
-			if (candidatesById.size >= MAX_CANDIDATES) break;
-			// Only the anchor's vector in the active space, searched in that space.
-			const embedding = activeSpace ? vectorInSpace(anchor, activeSpace) : null;
-			if (!activeSpace || !embedding) continue; // no comparable stored vector → no neighbors
-			const hits = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
-				embedding,
-				embeddingSpaceId: activeSpace.spaceId,
-				scopeToContact: scopeForAnchor(anchor),
-				// The linker writes edges, not reads for a person; every read of an
-				// edge re-applies the reader rule to both ends.
-				includeInboxDerived: true,
-				limit: CANDIDATES_PER_ANCHOR,
-			});
-			for (const hit of hits) {
-				const key = hit._id as string;
-				if (anchorIds.has(key)) continue; // an anchor is never its own candidate
-				if (!candidatesById.has(key)) candidatesById.set(key, hit);
+			// CANDIDATE SELECTION — security gate #2. Each anchor's neighbors come from a
+			// CONTACT-SCOPED vector search keyed on the anchor's STORED embedding (no
+			// re-embed); the scope is the anchor's contact (or 'org-general-only'), NEVER
+			// 'org-wide', so a neighbor — and any edge to it — can't bridge to another
+			// contact's data.
+			const candidatesById = new Map<string, Doc<'knowledgeEntries'>>();
+			for (const anchor of anchors) {
 				if (candidatesById.size >= MAX_CANDIDATES) break;
+				// Only the anchor's vector in the active space, searched in that space.
+				const embedding = activeSpace ? vectorInSpace(anchor, activeSpace) : null;
+				if (!activeSpace || !embedding) continue; // no comparable stored vector → no neighbors
+				const hits = await ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
+					embedding,
+					embeddingSpaceId: activeSpace.spaceId,
+					scopeToContact: scopeForAnchor(anchor),
+					// The linker writes edges, not reads for a person; every read of an
+					// edge re-applies the reader rule to both ends.
+					includeInboxDerived: true,
+					limit: CANDIDATES_PER_ANCHOR,
+				});
+				for (const hit of hits) {
+					const key = hit._id as string;
+					if (anchorIds.has(key)) continue; // an anchor is never its own candidate
+					if (!candidatesById.has(key)) candidatesById.set(key, hit);
+					if (candidatesById.size >= MAX_CANDIDATES) break;
+				}
 			}
-		}
 
-		// Numbered node list the LLM references by INDEX: anchors first, then candidates.
-		const nodes: Doc<'knowledgeEntries'>[] = [...anchors, ...candidatesById.values()];
-		if (nodes.length < 2) return; // nothing to relate
+			// Numbered node list the LLM references by INDEX: anchors first, then candidates.
+			const nodes: Doc<'knowledgeEntries'>[] = [...anchors, ...candidatesById.values()];
+			if (nodes.length < 2) return; // nothing to relate
 
-		// Prune pairs that already carry an edge so the pass never relitigates a link
-		// the deterministic linker or a human already drew (and never re-merges into it).
-		const existing = new Set(
-			await ctx.runQuery(internal.knowledge.edges.existingEdgePairs, {
-				ids: nodes.map((n) => n._id),
-			})
-		);
+			// Prune pairs that already carry an edge so the pass never relitigates a link
+			// the deterministic linker or a human already drew (and never re-merges into it).
+			const existing = new Set(
+				await ctx.runQuery(internal.knowledge.edges.existingEdgePairs, {
+					ids: nodes.map((n) => n._id),
+				})
+			);
 
-		// M6 (#1335): every pair is already linked, or may not be linked across
-		// contact scopes. Nothing the model proposes could be written, so it is
-		// not asked.
-		if (!hasLinkablePair(nodes, existing)) {
-			logInfo('[knowledge.autolink] skipped: no unlinked pair to relate', {
-				nodeCount: nodes.length,
-			});
-			return;
-		}
+			// M6 (#1335): every pair is already linked, or may not be linked across
+			// contact scopes. Nothing the model proposes could be written, so it is
+			// not asked.
+			if (!hasLinkablePair(nodes, existing)) {
+				logInfo('[knowledge.autolink] skipped: no unlinked pair to relate', {
+					nodeCount: nodes.length,
+				});
+				return;
+			}
 
-		// Defense in depth: never feed prompt-injected content into the inference LLM.
-		const risk = injectionRisk(nodes.map((n) => `${n.title}\n${n.content}`).join('\n\n'));
-		if (risk) {
-			logInfo('[knowledge.autolink] skipped: injection risk in node content', { risk });
-			return;
-		}
+			// Defense in depth: never feed prompt-injected content into the inference LLM.
+			const risk = injectionRisk(nodes.map((n) => `${n.title}\n${n.content}`).join('\n\n'));
+			if (risk) {
+				logInfo('[knowledge.autolink] skipped: injection risk in node content', { risk });
+				return;
+			}
 
-		try {
-			const numbered = nodes
-				.map((n, i) => `[${i}] (${n.entryType}) ${n.title}: ${n.content}`)
-				.join('\n');
+			try {
+				const numbered = nodes
+					.map((n, i) => `[${i}] (${n.entryType}) ${n.title}: ${n.content}`)
+					.join('\n');
 
-			const model = await resolveLanguageModel(ctx, 'extract');
-			const { object, tokenUsage, modelUsed } = await meterLlmCall(
-				ctx,
-				{
-					feature: 'knowledge_autolink',
-					root: args.root ?? rootRequest('knowledge', args.entryIds[0] ?? 'autolink'),
-				},
-				(meter) =>
-					runLlmObject({
-						meter,
-						model,
-						schema: inferenceSchema,
-						prompt: `You are building a knowledge graph. Below is a numbered list of knowledge entries. Identify meaningful TYPED relations between them, referencing each entry by its [index].
+				const model = await resolveLanguageModel(ctx, 'extract');
+				const { object, tokenUsage, modelUsed } = await meterLlmCall(
+					ctx,
+					{
+						feature: 'knowledge_autolink',
+						root: args.root ?? rootRequest('knowledge', args.entryIds[0] ?? 'autolink'),
+					},
+					(meter) =>
+						runLlmObject({
+							meter,
+							model,
+							schema: inferenceSchema,
+							prompt: `You are building a knowledge graph. Below is a numbered list of knowledge entries. Identify meaningful TYPED relations between them, referencing each entry by its [index].
 
 Relation types (direction matters — "from" relates TO "to"):
 - supersedes: the "from" entry replaces/updates an older "to" entry
@@ -222,43 +236,49 @@ Only propose a relation you are confident actually holds. Skip pairs that are me
 
 Entries:
 ${numbered}`,
-						temperature: 0.1,
-					})
-			);
-			logInfo('[knowledge.autolink] llm call', { tokenUsage, modelUsed, nodeCount: nodes.length });
-
-			let written = 0;
-			for (const rel of object.relations) {
-				if (written >= MAX_INFERRED_PER_RUN) break;
-				const from = nodes[rel.from];
-				const to = nodes[rel.to];
-				if (!from || !to) continue; // index out of range
-				if (from._id === to._id) continue; // self-edge
-				// Per-edge contact-isolation guard, mirroring linkStructural. The
-				// candidate pool is unioned across all anchors, so a candidate is only
-				// guaranteed visible to SOME anchor — not the specific endpoint the LLM
-				// attaches it to. Refusing a disjoint contact-scope pair keeps the
-				// per-edge isolation invariant regardless of batch composition (the
-				// wired caller passes a single-contact batch, so this is defense in
-				// depth against a future mixed-scope caller).
-				if (!contactScopesCanLink(from.contactIds, to.contactIds)) continue;
-				const pairKey = `${from._id}:${to._id}`;
-				if (existing.has(pairKey)) continue; // already linked — don't re-merge
-				await ctx.runMutation(internal.knowledge.edges.upsertInferred, {
-					fromEntryId: from._id,
-					toEntryId: to._id,
-					relationType: rel.relationType,
-					confidence: rel.confidence,
-					confidenceTag: tagForInferredConfidence(rel.confidence),
-					rationale: rel.rationale,
+							temperature: 0.1,
+						})
+				);
+				logInfo('[knowledge.autolink] llm call', {
+					tokenUsage,
+					modelUsed,
+					nodeCount: nodes.length,
 				});
-				existing.add(pairKey); // dedupe within this batch too
-				written++;
+
+				let written = 0;
+				for (const rel of object.relations) {
+					if (written >= MAX_INFERRED_PER_RUN) break;
+					const from = nodes[rel.from];
+					const to = nodes[rel.to];
+					if (!from || !to) continue; // index out of range
+					if (from._id === to._id) continue; // self-edge
+					// Per-edge contact-isolation guard, mirroring linkStructural. The
+					// candidate pool is unioned across all anchors, so a candidate is only
+					// guaranteed visible to SOME anchor — not the specific endpoint the LLM
+					// attaches it to. Refusing a disjoint contact-scope pair keeps the
+					// per-edge isolation invariant regardless of batch composition (the
+					// wired caller passes a single-contact batch, so this is defense in
+					// depth against a future mixed-scope caller).
+					if (!contactScopesCanLink(from.contactIds, to.contactIds)) continue;
+					const pairKey = `${from._id}:${to._id}`;
+					if (existing.has(pairKey)) continue; // already linked — don't re-merge
+					await ctx.runMutation(internal.knowledge.edges.upsertInferred, {
+						fromEntryId: from._id,
+						toEntryId: to._id,
+						relationType: rel.relationType,
+						confidence: rel.confidence,
+						confidenceTag: tagForInferredConfidence(rel.confidence),
+						rationale: rel.rationale,
+					});
+					existing.add(pairKey); // dedupe within this batch too
+					written++;
+				}
+			} catch (error) {
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				// Mirror extraction: a single inference failure must never derail ingestion.
+				// eslint-disable-next-line no-console
+				console.error('[Knowledge Edge Inference] Failed:', error);
 			}
-		} catch (error) {
-			// Mirror extraction: a single inference failure must never derail ingestion.
-			// eslint-disable-next-line no-console
-			console.error('[Knowledge Edge Inference] Failed:', error);
 		}
-	},
+	),
 });

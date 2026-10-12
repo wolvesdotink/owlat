@@ -1,3 +1,5 @@
+'use node';
+
 /**
  * Spend admission for a Phase 2 bundle call (ADR-0073 §2, D1, D4): the thin
  * seam between the decisions lane and the admission lane.
@@ -16,22 +18,29 @@
  * Either way the language rung meters `target`, and the decision rung passes
  * `decision` (the admission port and the usage recorder) to `runDecision`.
  *
- * Until the admission lane is merged into this branch, this seam admits
- * NOTHING: no paid bundle call can run without a reservation. Every switch is
- * off by default, so that changes nothing today.
+ * A refusal later, at the dispatch (another call took the headroom first), is
+ * an `AdmissionRefusedError` from the call: the run fails the artifact lease
+ * and no request was sent.
  */
 
 import type { ActionCtx } from '../_generated/server';
 import type { LlmSpendTarget } from '../analytics/meteredSpend';
+import { admitShadow } from '../analytics/shadowAdmission';
+import { dispatchAdmissionPort } from '../analytics/admissionPorts';
+import { decisionUsageRecorder } from '../lib/decision/ports';
 import type { RunDecisionOptions } from '../lib/decision/contract';
 import type { LlmRootContext } from '../lib/llm/requestMeter';
+import type { LlmUsagePlane } from '../lib/llmUsageTags';
 import type { QuestionSet } from '../lib/decision/questions';
 import type { BundleMode } from '../lib/decision/routing';
 import type { DecisionBundleTask } from '../lib/decision/bundles';
 import type { AdmissionPriority } from '../lib/validators/aiRouting';
 
-/** What `runDecision` takes from admission: the usage recorder (and, merged, the port). */
-export type AdmittedDecisionOptions = Pick<RunDecisionOptions<QuestionSet>, 'recordUsage'>;
+/** What `runDecision` takes from admission: the usage recorder and the admission port. */
+export type AdmittedDecisionOptions = Pick<
+	RunDecisionOptions<QuestionSet>,
+	'recordUsage' | 'admission'
+>;
 
 export type BundleAdmission =
 	| {
@@ -43,7 +52,7 @@ export type BundleAdmission =
 	  }
 	| {
 			readonly isAdmitted: false;
-			readonly why: 'not_shadowed' | 'not_sampled' | 'no_allowance' | 'admission_unavailable';
+			readonly why: 'not_shadowed' | 'not_sampled' | 'no_allowance';
 	  };
 
 export interface BundleAdmissionRequest {
@@ -55,6 +64,11 @@ export interface BundleAdmissionRequest {
 	readonly root: LlmRootContext;
 	readonly policyVersion: number;
 	/**
+	 * The selected rung's plane: `decision` on the decision rung, `language` on
+	 * the language rung. Headroom, holds, caps and ledger rows all use it (Sol r7 F1).
+	 */
+	readonly plane: LlmUsagePlane;
+	/**
 	 * The priority an advisory call is held at: background unless the caller
 	 * waits on it (Answer mode's necessity judgment is `interactive`).
 	 */
@@ -62,8 +76,47 @@ export interface BundleAdmissionRequest {
 }
 
 export async function admitBundle(
-	_ctx: ActionCtx,
-	_request: BundleAdmissionRequest
+	ctx: ActionCtx,
+	request: BundleAdmissionRequest
 ): Promise<BundleAdmission> {
-	return { isAdmitted: false, why: 'admission_unavailable' };
+	if (request.mode === 'shadow') {
+		// D4: the switch, the counted message quota, the shadow allowance.
+		const shadow = await admitShadow(ctx, {
+			task: request.task,
+			subjectKey: request.subjectKey,
+			feature: request.feature,
+			root: request.root,
+			plane: request.plane,
+		});
+		if (!shadow.isAdmitted) return { isAdmitted: false, why: shadow.why };
+		return {
+			isAdmitted: true,
+			target: shadow.target,
+			decision: {
+				...(shadow.admission ? { admission: shadow.admission } : {}),
+				recordUsage: decisionUsageRecorder(ctx, { budgetClass: 'shadow' }),
+			},
+		};
+	}
+	// Advisory: an ordinary hold on the task's own class, at background priority
+	// unless the caller waits on it (Answer mode's necessity judgment).
+	const shape = {
+		root: request.root,
+		priority: request.priority ?? ('background' as const),
+		plane: request.plane,
+	};
+	const admission = dispatchAdmissionPort(ctx, shape, request.task, request.root.deadlineAt);
+	return {
+		isAdmitted: true,
+		target: {
+			feature: request.feature,
+			task: request.task,
+			policyVersion: request.policyVersion,
+			...shape,
+		},
+		decision: {
+			...(admission ? { admission } : {}),
+			recordUsage: decisionUsageRecorder(ctx),
+		},
+	};
 }

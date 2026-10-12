@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
 vi.mock('../../lib/llm/dispatch', () => ({ runLlmObject: mocks.runLlmObject }));
 
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
+import { AdmissionRefusedError } from '../../lib/llm/admissionPort';
 import {
 	buildLocalizePrompt,
 	mergeTranslations,
@@ -292,6 +293,41 @@ describe('localizeQuestions', () => {
 		const result = await localizeQuestions({} as never, questions, ['en', 'de']);
 		expect(result.questions[1]?.translations).toBeUndefined();
 		expect(result.tokenUsage?.totalTokens).toBe(14);
+	});
+
+	it('rethrows a spend admission refusal of the first call (Sol r2 F4)', async () => {
+		mocks.runLlmObject.mockRejectedValueOnce(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+		await expect(localizeQuestions({} as never, questions, ['en', 'de'])).rejects.toBeInstanceOf(
+			AdmissionRefusedError
+		);
+	});
+
+	it('rethrows a spend admission refusal of the retry, wrapped or not (Sol r2 F4)', async () => {
+		const firstPass = () =>
+			objectResult([
+				{ questionId: 'q0', locale: 'de', text: '45 Tage gewähren?', options: ['Ja', 'Nein'] },
+			]);
+		mocks.runLlmObject
+			.mockResolvedValueOnce(firstPass())
+			.mockRejectedValueOnce(new AdmissionRefusedError('monthly_ceiling', 'ceiling'));
+		await expect(localizeQuestions({} as never, questions, ['en', 'de'])).rejects.toBeInstanceOf(
+			AdmissionRefusedError
+		);
+
+		// A refusal after billed steps arrives wrapped in the partial-usage error.
+		mocks.runLlmObject
+			.mockResolvedValueOnce(firstPass())
+			.mockRejectedValueOnce(
+				new LlmPartialUsageError(
+					new AdmissionRefusedError('daily_ceiling', 'ceiling'),
+					{ promptTokens: 2, completionTokens: 2, totalTokens: 4 },
+					'mock-model'
+				)
+			);
+		await expect(localizeQuestions({} as never, questions, ['en', 'de'])).rejects.toBeInstanceOf(
+			LlmPartialUsageError
+		);
+		expect(warn).not.toHaveBeenCalled();
 	});
 
 	it('returns the questions unchanged when there is nothing to translate into', async () => {

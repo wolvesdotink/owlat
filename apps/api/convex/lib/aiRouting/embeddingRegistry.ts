@@ -29,6 +29,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { DatabaseReader } from '../../_generated/server';
 import type { entryTypeValidator } from '../../schema/knowledge';
 import type { Infer } from 'convex/values';
+import { throwConflict } from '../../_utils/errors';
 import { configuredEmbeddingTarget, type EmbeddingTarget } from '../embeddingSpace';
 import {
 	embeddingSpaceEntryKey,
@@ -144,6 +145,46 @@ export async function readColumnOwner(
 /** Whether `space` still owns its column (its stored vectors there are its own). */
 export async function ownsColumn(db: DatabaseReader, space: SpaceDoc): Promise<boolean> {
 	return (await readColumnOwner(db, space.slot))?._id === space._id;
+}
+
+/** Why a cohort cannot be attested to a space; see {@link attestationBlocker}. */
+export type AttestationBlocker = 'primary_owned_by_other_space' | 'secondary_column';
+
+/**
+ * Why a cohort cannot be attested to `known` (an existing space, or null for an
+ * identity not registered yet), or null when it can. The legacy vectors are in
+ * the primary column: refused while any other space owns it (a retired one
+ * included), or when `known` keeps its vectors in the secondary column. The
+ * one rule `attest` enforces and the settings page reads (`status`).
+ */
+export async function attestationBlocker(
+	db: DatabaseReader,
+	known: SpaceDoc | null
+): Promise<AttestationBlocker | null> {
+	const owner = await readColumnOwner(db, 'primary');
+	if (owner && owner._id !== known?._id) return 'primary_owned_by_other_space';
+	if (known && known.slot !== 'primary') return 'secondary_column';
+	return null;
+}
+
+/** The stable `data.reason` of {@link assertExpectedSpace}'s refusal. */
+export const EMBEDDING_TARGET_CHANGED = 'embedding_target_changed';
+
+/**
+ * Refuse when the caller confirmed another space than the one an admin action
+ * would act on now (another admin replaced the staged space, a rollback target
+ * moved, the configuration switched). `expected` absent: no check (older
+ * callers). Called before any provider call or write.
+ */
+export function assertExpectedSpace(
+	current: Pick<SpaceDoc, '_id'> | null,
+	expected: SpaceId | undefined
+): void {
+	if (expected === undefined || current?._id === expected) return;
+	throwConflict('The embedding space changed since you confirmed. Reload and try again.', {
+		reason: EMBEDDING_TARGET_CHANGED,
+		...(current ? { currentSpaceId: current._id } : {}),
+	});
 }
 
 // ── The two vector columns of a row ─────────────────────────────────────────

@@ -45,6 +45,7 @@ import {
 	type MeasuredSpace,
 	type SpaceDoc,
 } from './embeddingRegistry';
+import { rethrowAdmissionRefusal } from '../llm/admissionPort';
 
 /** The configured embedder, or null when no AI is set up. */
 export async function configuredEmbedderOrNull(ctx: ActionCtx): Promise<IndexEmbedder | null> {
@@ -122,7 +123,7 @@ export async function embedTextsForIndex(
 	embedder: IndexEmbedder,
 	texts: readonly string[],
 	spend: EmbeddingSpend,
-	counter: DispatchCounter = { dispatched: 0 }
+	counter: DispatchCounter = { dispatched: 0, providerRequests: 0 }
 ): Promise<{ vectors: EmbeddedText[]; space: MeasuredSpace | null }> {
 	const before = await probeEmbeddingRevision(embedder.target);
 	const vectors: EmbeddedText[] = [];
@@ -136,7 +137,14 @@ export async function embedTextsForIndex(
 					...spend,
 					...(counter.reservationId ? { reservationId: counter.reservationId } : {}),
 				},
-				(meter) => runEmbedding({ meter, model: embedder.model, value: text }),
+				async (meter) => {
+					try {
+						return await runEmbedding({ meter, model: embedder.model, value: text });
+					} finally {
+						// Every request the call made, retries included (Sol r2 F5).
+						counter.providerRequests += meter.requests.length;
+					}
+				},
 				// A lost ledger row under-counts; failing the batch over it is worse.
 				{ onWriteError: 'ignore' }
 			);
@@ -144,7 +152,8 @@ export async function embedTextsForIndex(
 			if (width !== null && raw.length !== width) throw new Error('Inconsistent vector width.');
 			width = raw.length;
 			vectors.push({ vector: toIndexVector(raw), raw });
-		} catch {
+		} catch (error) {
+			rethrowAdmissionRefusal(error); // a refused text is not a failed one (D1)
 			vectors.push(null);
 		}
 	}

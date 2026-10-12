@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { llmUsagePlaneValidator } from '../lib/llmUsageTags';
+import { entryTypeValidator } from './knowledge';
 import {
 	admissionPriorityValidator,
 	aiInvalidationReasonValidator,
@@ -36,12 +37,24 @@ import {
  * Every table ADR-0073 adds (here and in `schema/embeddingSpaces.ts`), children
  * before parents. The tenant registry and the workspace deletion spread it.
  */
+/** One extracted knowledge entry, as the extraction model returns it (`knowledge/extractedEntries.ts`). */
+export const extractedEntryValidator = v.object({
+	type: entryTypeValidator,
+	title: v.string(),
+	content: v.string(),
+	confidence: v.number(),
+	tags: v.optional(v.array(v.string())),
+});
+
 export const AI_ROUTING_TABLES = [
 	'decisionArtifacts',
 	'senderMemory',
 	'llmReservations',
 	'llmSpendPeriods',
 	'llmSpendAggregateState',
+	'shadowQuotaEntries',
+	'shadowQuotaDays',
+	'knowledgeExtractionProgress',
 	'aiRoutingPolicy',
 	'embeddingReembedJobs',
 	'embeddingAttestations',
@@ -139,6 +152,26 @@ export const aiRoutingTables = {
 		modelId: v.optional(v.string()),
 		endpoint: v.optional(v.string()),
 		maxAttempts: v.number(),
+		/**
+		 * Each request's own bound, keyed by the meter's request id and attempt
+		 * (admission lane): a request whose usage is unknown is charged at its
+		 * own bound. An entry without a key bounds any request of the hold.
+		 */
+		requestBounds: v.optional(
+			v.array(
+				v.object({
+					requestId: v.optional(v.string()),
+					attempt: v.optional(v.number()),
+					microusd: v.number(),
+				})
+			)
+		),
+		/**
+		 * The part of a settlement estimate not yet offset by a request row that
+		 * arrived after the hold closed (admission lane). Such a row is charged
+		 * against it first, so the final charge is max(estimate, reported).
+		 */
+		estimateRemainingMicrousd: v.optional(v.number()),
 		policyVersion: v.number(),
 		expiresAt: v.number(),
 		createdAt: v.number(),
@@ -151,6 +184,49 @@ export const aiRoutingTables = {
 		// The expiry sweep: held rows past `expiresAt`.
 		.index('by_status_and_expires_at', ['status', 'expiresAt'])
 		// Retention: terminal rows past the audit window.
+		.index('by_status_and_updated_at', ['status', 'updatedAt']),
+
+	// D4's message share, counted (admission lane). One row per (task, UTC day):
+	// how many eligible messages asked to be shadowed and how many were. A
+	// message is admitted only while admitted + 1 ≤ floor(share × eligible).
+	shadowQuotaDays: defineTable({
+		task: aiTaskNameValidator,
+		/** `YYYY-MM-DD` (UTC). */
+		dayKey: v.string(),
+		eligibleCount: v.number(),
+		admittedCount: v.number(),
+		updatedAt: v.number(),
+	})
+		.index('by_task_and_day', ['task', 'dayKey'])
+		.index('by_updated_at', ['updatedAt']),
+
+	// Each message's answer for a (task, day), so asking again is idempotent
+	// and counted once. `subjectKey` is an opaque message id; rows age out with
+	// the retention sweep after a week.
+	shadowQuotaEntries: defineTable({
+		task: aiTaskNameValidator,
+		dayKey: v.string(),
+		subjectKey: v.string(),
+		isAdmitted: v.boolean(),
+		createdAt: v.number(),
+	})
+		.index('by_task_and_subject', ['task', 'subjectKey', 'dayKey'])
+		.index('by_created_at', ['createdAt']),
+
+	// A knowledge extraction that stopped part-way (a spend-admission refusal
+	// between entries, or a crash) is `in_progress` until a run saves every
+	// entry and hands them to the structural linker, then `complete` (admission
+	// lane). Ids only, no content; rows age out with the retention sweep.
+	knowledgeExtractionProgress: defineTable({
+		sourceType: v.union(v.literal('agent_extracted'), v.literal('file'), v.literal('email')),
+		sourceId: v.string(),
+		status: v.union(v.literal('in_progress'), v.literal('complete')),
+		/** While `in_progress`: the entries the model returned, so a resumed run saves them without asking again. */
+		entries: v.optional(v.array(extractedEntryValidator)),
+		updatedAt: v.number(),
+	})
+		.index('by_source', ['sourceType', 'sourceId'])
+		// Retention ages out `complete` markers only (Sol r3 F2).
 		.index('by_status_and_updated_at', ['status', 'updatedAt']),
 
 	// Decision artifacts (Phase 2, D9, D11): a bundle's typed answers for one

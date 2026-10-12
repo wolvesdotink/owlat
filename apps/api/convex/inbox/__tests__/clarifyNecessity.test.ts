@@ -50,6 +50,7 @@ import { clarifyStep, type ClarifyInput } from '../../agent/steps/clarify';
 import { refineClarification } from '../../mail/ai/needsReplyClassify';
 import { runGapCheck } from '../../mail/ai/composeDraftGap';
 import type { Id } from '../../_generated/dataModel';
+import { AdmissionRefusedError } from '../../lib/llm/admissionPort';
 
 const slot = (over: Partial<ReplySlot>): ReplySlot => ({
 	slotType: 'decision',
@@ -270,5 +271,62 @@ describe('Answer mode gap check with D5 enforced', () => {
 		expect(result.questions.map((q) => q.answerKind)).toEqual(['file']);
 		expect(mocks.runBundle).not.toHaveBeenCalled();
 		expectNoSamplingAndNoCapableCall();
+	});
+});
+
+// ── Spend refusals (D1): never a failed sample or judgment ────────────────
+
+describe('a spend refusal during clarification', () => {
+	const refusal = () => new AdmissionRefusedError('daily_ceiling', '$1.00');
+
+	it('reaches the Team walker from a refused sample (the message is held)', async () => {
+		mocks.runLlmText.mockRejectedValueOnce(refusal());
+		await expect(clarifyStep.execute(teamCtx('off'), teamInput)).rejects.toBeInstanceOf(
+			AdmissionRefusedError
+		);
+	});
+
+	it('reaches the Team walker from a refused necessity call', async () => {
+		mocks.runBundle.mockImplementation(
+			async (_ctx: unknown, run: { onCallError?: (error: unknown) => void }) => {
+				run.onCallError?.(refusal());
+				return { hasRun: true, status: 'failed' };
+			}
+		);
+		await expect(clarifyStep.execute(teamCtx('enforce'), teamInput)).rejects.toBeInstanceOf(
+			AdmissionRefusedError
+		);
+	});
+
+	it('defers the Postbox run instead of asking nothing', async () => {
+		mocks.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			if (schema === replySlotsSchema) return { object: { slots: SLOTS } };
+			throw refusal(); // the divergence judge is refused
+		});
+		await expect(
+			refineClarification(actionCtx('off'), {
+				transcript: 'Them: can we move the date?',
+				fromAddress: 'ada@acme.test',
+				subject: mailSubject,
+			})
+		).rejects.toBeInstanceOf(AdmissionRefusedError);
+	});
+
+	it('surfaces the budget error in Answer mode', async () => {
+		mocks.runBundle.mockImplementation(
+			async (_ctx: unknown, run: { onCallError?: (error: unknown) => void }) => {
+				run.onCallError?.(refusal());
+				return { hasRun: true, status: 'failed' };
+			}
+		);
+		await expect(
+			runGapCheck(actionCtx('enforce'), {
+				context: 'Them: what price?',
+				triggerText: 'What price?',
+				subject: 'Price',
+				locale: 'en',
+				decisionSubject: mailSubject,
+			})
+		).rejects.toMatchObject({ data: { data: { code: 'AI_BUDGET_EXHAUSTED' } } });
 	});
 });

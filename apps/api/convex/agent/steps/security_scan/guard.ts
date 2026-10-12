@@ -32,6 +32,7 @@ import { meterAgentCall } from '../../shared/agentSpend';
 import type { LlmCallMeter } from '../../../lib/llm/requestMeter';
 import { stripHiddenContent } from './patterns';
 import { guardStanding } from './disposition';
+import { rethrowAdmissionRefusal } from '../../../analytics/backgroundDeferral';
 
 /** Confidence floor above which the LLM verdict alone flags an injection. */
 export const LLM_INJECTION_CONFIDENCE_THRESHOLD = 0.8;
@@ -140,8 +141,10 @@ ${sample}
 			deadlineAt
 		);
 		return object;
-	} catch {
-		// Fail open — never let a flaky guard model block the pipeline.
+	} catch (error) {
+		// Fail open — never let a flaky guard model block the pipeline. A budget
+		// refusal is not a flaky model: the caller holds or defers (D1).
+		rethrowAdmissionRefusal(error);
 		return undefined;
 	}
 }
