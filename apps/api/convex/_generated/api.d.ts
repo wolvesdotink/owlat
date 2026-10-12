@@ -933,6 +933,7 @@ import type * as lib_llmProviders_openrouter from '../lib/llmProviders/openroute
 import type * as lib_llmProviders_storedConfigCache from '../lib/llmProviders/storedConfigCache.js';
 import type * as lib_llmProviders_types from '../lib/llmProviders/types.js';
 import type * as lib_llmUsageTags from '../lib/llmUsageTags.js';
+import type * as lib_mailEvidence from '../lib/mailEvidence.js';
 import type * as lib_mailMute from '../lib/mailMute.js';
 import type * as lib_mailSnooze from '../lib/mailSnooze.js';
 import type * as lib_mapWithConcurrency from '../lib/mapWithConcurrency.js';
@@ -1297,6 +1298,7 @@ import type * as mail_searchBody from '../mail/searchBody.js';
 import type * as mail_sealPolicy from '../mail/sealPolicy.js';
 import type * as mail_sealedBlobHttp from '../mail/sealedBlobHttp.js';
 import type * as mail_sections from '../mail/sections.js';
+import type * as mail_senderEvidence from '../mail/senderEvidence.js';
 import type * as mail_senderHeuristics from '../mail/senderHeuristics.js';
 import type * as mail_senderProfile from '../mail/senderProfile.js';
 import type * as mail_sendingSwitch from '../mail/sendingSwitch.js';
@@ -2559,6 +2561,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llmProviders/storedConfigCache': typeof lib_llmProviders_storedConfigCache;
 	'lib/llmProviders/types': typeof lib_llmProviders_types;
 	'lib/llmUsageTags': typeof lib_llmUsageTags;
+	'lib/mailEvidence': typeof lib_mailEvidence;
 	'lib/mailMute': typeof lib_mailMute;
 	'lib/mailSnooze': typeof lib_mailSnooze;
 	'lib/mapWithConcurrency': typeof lib_mapWithConcurrency;
@@ -2923,6 +2926,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/sealPolicy': typeof mail_sealPolicy;
 	'mail/sealedBlobHttp': typeof mail_sealedBlobHttp;
 	'mail/sections': typeof mail_sections;
+	'mail/senderEvidence': typeof mail_senderEvidence;
 	'mail/senderHeuristics': typeof mail_senderHeuristics;
 	'mail/senderProfile': typeof mail_senderProfile;
 	'mail/sendingSwitch': typeof mail_sendingSwitch;
