@@ -4,7 +4,12 @@ import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { insertLlmUsage, type MeteredRequest } from '../analytics/llmUsage';
-import { insertPluginRequestRows, meteredCallArgs } from './llmLedgerRows';
+import {
+	insertPluginRequestRows,
+	meteredCallArgs,
+	reserveDeploymentHold,
+	settleDeploymentHold,
+} from './llmLedgerRows';
 import type { TokenUsage } from '../agent/steps/types';
 import { languageEndpointProvenanceValidator } from '../lib/validators/aiProviderConfig';
 import { utcDayKey } from '../lib/clock';
@@ -88,6 +93,8 @@ export const reserve = internalMutation({
 		modelId: v.string(),
 		endpointProvenance: languageEndpointProvenanceValidator,
 		actorMode: pluginLlmActorModeValidator,
+		/** The host's root request, so the deployment hold groups with it. */
+		rootRequestId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		assertReservationInput(args.reservationId, args.reservedMicrousd);
@@ -138,6 +145,16 @@ export const reserve = internalMutation({
 		) {
 			throw new Error('Plugin LLM denied');
 		}
+		// The deployment ceiling admits the call too (ADR-0073, D1), in this
+		// transaction, under the same id.
+		const isAdmitted = await reserveDeploymentHold(ctx, {
+			reservationId: args.reservationId,
+			reservedMicrousd: args.reservedMicrousd,
+			modelId: args.modelId,
+			endpointProvenance: args.endpointProvenance,
+			...(args.rootRequestId ? { rootRequestId: args.rootRequestId } : {}),
+		});
+		if (!isAdmitted) throw new Error('Plugin LLM denied');
 
 		const now = Date.now();
 		await ctx.db.insert('pluginLlmReservations', {
@@ -294,9 +311,11 @@ async function applySuccess(
 			{
 				organizationId: reservation.organizationId,
 				pluginId: reservation.pluginId,
-			}
+			},
+			{ reservationId: reservation.reservationId }
 		);
 	}
+	await settleDeploymentHold(ctx, reservation.reservationId, args.requests);
 	await recordHostedPluginAudit(ctx, auditScope(reservation), 'llm.generate', 'completed', {
 		attempts: args.attempts,
 		usageAvailable: acceptedUsage !== undefined && cost.isUsageAccounted,
@@ -313,6 +332,7 @@ async function applyFailure(
 ): Promise<void> {
 	// The failed call's requests were made; the deployment ledger sees them too.
 	await insertPluginRequestRows(ctx, reservation, args, validTokenUsage);
+	await settleDeploymentHold(ctx, reservation.reservationId, args.requests);
 	await ctx.db.patch(reservation._id, {
 		status: 'failed',
 		chargedMicrousd: reservation.reservedMicrousd,
