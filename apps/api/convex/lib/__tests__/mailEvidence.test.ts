@@ -248,7 +248,7 @@ describe('header evidence: each consumer keeps its predicate', () => {
 					const msg = {
 						fromAddress,
 						hasListUnsubscribe,
-						...(h.precedence !== undefined ? { precedence: h.precedence } : {}),
+						...(h['precedence'] !== undefined ? { precedence: h['precedence'] } : {}),
 					};
 					expect(isBulkOrNoReplySender(msg), JSON.stringify(msg)).toBe(
 						previousIsBulkOrNoReplySender(msg)
@@ -281,7 +281,7 @@ describe('header evidence: each consumer keeps its predicate', () => {
 			for (const hasUnsubscribe of [false, true]) {
 				const args = {
 					hasUnsubscribe,
-					...(h.precedence !== undefined ? { precedence: h.precedence } : {}),
+					...(h['precedence'] !== undefined ? { precedence: h['precedence'] } : {}),
 					...(h['list-id'] !== undefined ? { listId: h['list-id'] } : {}),
 				};
 				const evidence = headerEvidenceOf({
@@ -386,7 +386,7 @@ describe('the eval corpus: every message decides as before', () => {
 				const headers = message.headers ?? {};
 				const precedence = headers.precedence;
 				const hasListUnsubscribe = headers.listUnsubscribe === true;
-				const map = precedence !== undefined ? { precedence } : {};
+				const map: Record<string, string> = precedence !== undefined ? { precedence } : {};
 				expect(isAutomatedMail(map)).toBe(previousIsAutomatedMail(map));
 				const bulkArgs = {
 					fromAddress: message.from.email,
@@ -447,7 +447,7 @@ describe('the eval corpus: every message decides as before', () => {
 				receivedAt: i,
 				subject: m.subject,
 			}));
-			const precedence = thread.messages.at(-1)?.headers?.precedence;
+			const precedence = thread.messages[thread.messages.length - 1]?.headers?.precedence;
 			for (const headers of headerCases) {
 				const opts = {
 					ownerAddresses,

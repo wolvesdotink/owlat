@@ -12,7 +12,7 @@
  *
  * Every model and embedding call is mocked; nothing reaches a provider.
  */
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Ai from 'ai';
 import schema from '../schema';
@@ -37,7 +37,7 @@ vi.mock('../lib/llmProvider', async () => ({
 vi.mock('ai', async () => ({ ...(await vi.importActual<typeof Ai>('ai')), embed: mocks.embed }));
 
 const modules = import.meta.glob('../**/*.*s');
-type T = ReturnType<typeof convexTest>;
+type T = TestConvex<typeof schema>;
 
 const BODY =
 	'Our office moves to Hafenstrasse 12 on 1 March, and invoices now go to billing@example.com.';

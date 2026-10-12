@@ -7,6 +7,11 @@
  * the brief partial until every page is admitted). The brief turns
  * `pending`, then fills in through the live `brief.get` subscription.
  *
+ * D10: a mail thread whose sources were deferred until it is opened
+ * (`defer.ts`; `brief.get` reports `deferredSources`) has them run here, also
+ * when its history was read through long ago, behind the same gate and rate
+ * limit.
+ *
  * Idempotent: a history read through (`has_brief`) or still moving
  * (`running`) is left alone, and a stalled one resumes from its cursor. It
  * runs nothing when the interpretation gate refuses (the `ai` flag or the
@@ -22,6 +27,7 @@ import { loadBriefRow } from './briefRow';
 import { interpretGate } from './gate';
 import { enqueueHistoryPage, isHistoryRunning } from './backfillSources';
 import { activeModeOf } from './backfill';
+import { hasDeferredSources, resumeDeferredSources } from './defer';
 
 export type EnsureOutcome =
 	| { isEnqueued: true; runs: number }
@@ -37,6 +43,21 @@ export const ensure = threadBriefMutation({
 		// requireMailboxAccess for a mail thread, requirePermission(isSharedInboxReader) for a team one.
 		await requireThreadReader(ctx, args.threadRef, session);
 		const brief = await loadBriefRow(ctx, args.threadRef);
+		// D10: sources deferred until an open run now, even when the history was
+		// read through long ago.
+		if (args.threadRef.kind === 'mail' && hasDeferredSources(brief)) {
+			const mode = await activeModeOf(ctx, args.threadRef);
+			const gate = mode ? await interpretGate(ctx, mode) : null;
+			if (gate && !gate.isAllowed) return { isEnqueued: false, reason: gate.code };
+			const limited = await rateLimiter.limit(ctx, 'briefEnsurePerUser', { key: session.userId });
+			if (!limited.ok) return { isEnqueued: false, reason: 'busy' };
+			const resumed = await resumeDeferredSources(ctx, args.threadRef);
+			const history =
+				brief?.historyState === 'done' || isHistoryRunning(brief, Date.now())
+					? { scheduled: 0 }
+					: await enqueueHistoryPage(ctx, args.threadRef);
+			return { isEnqueued: true, runs: resumed + history.scheduled };
+		}
 		if (brief?.historyState === 'done') {
 			return {
 				isEnqueued: false,

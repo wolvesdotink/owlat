@@ -5,6 +5,8 @@
  *   - {@link markOutstanding}: a source was enqueued (delivery, a send, the
  *     Team Inbox pipeline, a history page, first open). Idempotent on the
  *     snapshot's flag, so a repeated enqueue counts once.
+ *   - {@link deferSource}: D10, the source waits for the thread to be opened
+ *     (not outstanding; `threadBriefs.deferredSources`).
  *   - {@link settleSource}: the source has an outcome. `recorded` for any
  *     recorded result (complete, partial, failed, skipped, or a reused one),
  *     `purged` when its snapshot is deleted, `unread` when the stale sweep
@@ -63,14 +65,16 @@ export function runOf(source: InterpretationSource) {
 async function shiftCounts(
 	ctx: MutationCtx,
 	brief: Doc<'threadBriefs'>,
-	delta: { pending: number; unread: number }
+	delta: { pending: number; unread: number; deferred?: number }
 ): Promise<void> {
 	const pendingSources = Math.max(0, (brief.pendingSources ?? 0) + delta.pending);
 	const unreadSources = Math.max(0, (brief.unreadSources ?? 0) + delta.unread);
-	const next = { ...brief, pendingSources, unreadSources };
+	const deferredSources = Math.max(0, (brief.deferredSources ?? 0) + (delta.deferred ?? 0));
+	const next = { ...brief, pendingSources, unreadSources, deferredSources };
 	await ctx.db.patch(brief._id, {
 		pendingSources: pendingSources > 0 ? pendingSources : undefined,
 		unreadSources: unreadSources > 0 ? unreadSources : undefined,
+		deferredSources: deferredSources > 0 ? deferredSources : undefined,
 		// Recomputed from the counts every time, `pending` included: a brief
 		// whose last outstanding source settled reads what it holds.
 		completeness: briefCompleteness(next),
@@ -78,17 +82,50 @@ async function shiftCounts(
 	});
 }
 
-/** A source was enqueued for interpretation: outstanding until it has an outcome. */
+/** The fields a deferred source (D10) carries, cleared. */
+const NOT_DEFERRED = { isDeferred: undefined, deferredAt: undefined, deferReason: undefined };
+
+/**
+ * A source was enqueued for interpretation: outstanding until it has an
+ * outcome. A deferred source (D10) enqueued now is no longer deferred.
+ */
 export async function markOutstanding(ctx: MutationCtx, sourceKey: string): Promise<void> {
 	const snapshot = await snapshotOf(ctx, sourceKey);
 	if (!snapshot || snapshot.isOutstanding) return;
+	const wasDeferred = snapshot.isDeferred === true;
 	await ctx.db.patch(snapshot._id, {
 		isOutstanding: true,
 		outstandingSince: Date.now(),
 		outstandingTries: undefined,
+		...(wasDeferred ? NOT_DEFERRED : {}),
 	});
 	const brief = await ensureBriefRow(ctx, threadRefFromFields(snapshot));
-	if (brief) await shiftCounts(ctx, brief, { pending: 1, unread: 0 });
+	if (brief)
+		await shiftCounts(ctx, brief, { pending: 1, unread: 0, deferred: wasDeferred ? -1 : 0 });
+}
+
+/**
+ * D10 (ADR-0073): the source's only consumer is the reader display, so its
+ * interpretation waits until the thread is opened (`lazy.ts`). It stops being
+ * outstanding, so the stale sweep (`by_outstanding`) never re-runs it, and it
+ * is counted in `threadBriefs.deferredSources` instead of `pendingSources`.
+ * The history backfill skips it like any captured source.
+ */
+export async function deferSource(ctx: MutationCtx, sourceKey: string): Promise<void> {
+	const snapshot = await snapshotOf(ctx, sourceKey);
+	if (!snapshot || snapshot.isDeferred === true) return;
+	const wasPending = snapshot.isOutstanding === true;
+	await ctx.db.patch(snapshot._id, {
+		isOutstanding: undefined,
+		outstandingSince: undefined,
+		outstandingTries: undefined,
+		isDeferred: true,
+		deferredAt: Date.now(),
+		deferReason: 'display_only',
+	});
+	const brief = await ensureBriefRow(ctx, threadRefFromFields(snapshot));
+	if (brief)
+		await shiftCounts(ctx, brief, { pending: wasPending ? -1 : 0, unread: 0, deferred: 1 });
 }
 
 /** The source has an outcome (see the module doc for the kinds). */
@@ -101,14 +138,18 @@ export async function settleSource(
 	if (!snapshot) return;
 	const wasPending = snapshot.isOutstanding === true;
 	const wasUnread = snapshot.isUnread === true;
+	// A deferred source that got an outcome after all (a purge, a run someone
+	// else started) is no longer waiting for the thread to be opened.
+	const wasDeferred = snapshot.isDeferred === true;
 	const isUnread = outcome === 'unread';
-	if (!wasPending && wasUnread === isUnread) return;
+	if (!wasPending && !wasDeferred && wasUnread === isUnread) return;
 	if (outcome !== 'purged') {
 		await ctx.db.patch(snapshot._id, {
 			isOutstanding: undefined,
 			outstandingSince: undefined,
 			outstandingTries: undefined,
 			isUnread: isUnread ? true : undefined,
+			...(wasDeferred ? NOT_DEFERRED : {}),
 		});
 	}
 	const brief = await loadBriefRow(ctx, threadRefFromFields(snapshot));
@@ -116,6 +157,7 @@ export async function settleSource(
 	await shiftCounts(ctx, brief, {
 		pending: wasPending ? -1 : 0,
 		unread: (isUnread ? 1 : 0) - (wasUnread ? 1 : 0),
+		deferred: wasDeferred ? -1 : 0,
 	});
 }
 

@@ -1100,6 +1100,7 @@ import type * as mail_ai_interfaceLanguage from '../mail/ai/interfaceLanguage.js
 import type * as mail_ai_needsReplyClarify from '../mail/ai/needsReplyClarify.js';
 import type * as mail_ai_needsReplyClassify from '../mail/ai/needsReplyClassify.js';
 import type * as mail_ai_needsReplyDraft from '../mail/ai/needsReplyDraft.js';
+import type * as mail_ai_needsReplyGates from '../mail/ai/needsReplyGates.js';
 import type * as mail_ai_needsReplyScoring from '../mail/ai/needsReplyScoring.js';
 import type * as mail_ai_replyIntent from '../mail/ai/replyIntent.js';
 import type * as mail_ai_priorityScore from '../mail/ai/priorityScore.js';
@@ -1223,6 +1224,7 @@ import type * as mail_interpret___eval___stats from '../mail/interpret/__eval__/
 import type * as mail_interpret___eval___todayClassifier from '../mail/interpret/__eval__/todayClassifier.js';
 import type * as mail_interpret_briefShape from '../mail/interpret/briefShape.js';
 import type * as mail_interpret_briefTop from '../mail/interpret/briefTop.js';
+import type * as mail_interpret_defer from '../mail/interpret/defer.js';
 import type * as mail_interpret_delegation from '../mail/interpret/delegation.js';
 import type * as mail_interpret_exactWording from '../mail/interpret/exactWording.js';
 import type * as mail_interpret_ground from '../mail/interpret/ground.js';
@@ -2730,6 +2732,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/ai/needsReplyClarify': typeof mail_ai_needsReplyClarify;
 	'mail/ai/needsReplyClassify': typeof mail_ai_needsReplyClassify;
 	'mail/ai/needsReplyDraft': typeof mail_ai_needsReplyDraft;
+	'mail/ai/needsReplyGates': typeof mail_ai_needsReplyGates;
 	'mail/ai/needsReplyScoring': typeof mail_ai_needsReplyScoring;
 	'mail/ai/replyIntent': typeof mail_ai_replyIntent;
 	'mail/ai/priorityScore': typeof mail_ai_priorityScore;
@@ -2853,6 +2856,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/__eval__/todayClassifier': typeof mail_interpret___eval___todayClassifier;
 	'mail/interpret/briefShape': typeof mail_interpret_briefShape;
 	'mail/interpret/briefTop': typeof mail_interpret_briefTop;
+	'mail/interpret/defer': typeof mail_interpret_defer;
 	'mail/interpret/delegation': typeof mail_interpret_delegation;
 	'mail/interpret/exactWording': typeof mail_interpret_exactWording;
 	'mail/interpret/ground': typeof mail_interpret_ground;

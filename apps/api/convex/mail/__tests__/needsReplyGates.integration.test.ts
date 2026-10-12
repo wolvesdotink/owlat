@@ -1,8 +1,14 @@
 /**
+ * The Reply Queue classifier's two cheap checks (`mail/ai/needsReplyGates.ts`).
+ *
  * L3: the first-time-sender screener runs before the Postbox clarification
  * passes. A sender the screener holds out never costs a clarification call;
  * every other outcome is the one `applyResult` reached before (the held-out
  * thread leaves the queue, a let-in sender is clarified as before).
+ *
+ * D10: a delivered message that is no reply candidate, and whose only consumer
+ * is the reader display, is not interpreted by the run; it waits for the
+ * thread to be opened.
  */
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -13,6 +19,7 @@ import type { Id } from '../../_generated/dataModel';
 import { enableFeatures } from '../../__tests__/factories';
 import type * as InterpretRun from '../interpret/run';
 import { modules } from './helpers.testlib';
+import { captureInterpretSource } from '../interpret/sources';
 
 const runLlmObjectMock = vi.hoisted(() => vi.fn());
 const runLlmTextMock = vi.hoisted(() => vi.fn());
@@ -34,7 +41,7 @@ vi.mock('../../lib/llm/dispatch', async () => {
 });
 
 const OWNER = 'me@example.com';
-const SENDER = 'stranger@example.com';
+const STRANGER = 'stranger@example.com';
 const usage = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 
 beforeEach(() => {
@@ -53,8 +60,13 @@ beforeEach(() => {
 
 async function seed(
 	t: ReturnType<typeof convexTest>,
-	opts: { isScreenerOn: boolean; senderRow?: { isScreenerAccepted?: boolean } }
+	opts: {
+		isScreenerOn: boolean;
+		senderRow?: { isScreenerAccepted?: boolean };
+		sender?: string;
+	}
 ): Promise<{ threadId: Id<'mailThreads'>; messageId: Id<'mailMessages'> }> {
+	const SENDER = opts.sender ?? STRANGER;
 	return t.run(async (ctx) => {
 		const now = Date.now();
 		const mailboxId = await ctx.db.insert('mailboxes', {
@@ -194,5 +206,51 @@ describe('L3: the screener runs before Postbox clarification', () => {
 		const { thread, messageId } = await classify({ isScreenerOn: false });
 		expect(runLlmObjectMock).toHaveBeenCalledTimes(1);
 		expect(thread?.needsReply).toMatchObject({ messageId, source: 'llm' });
+	});
+});
+
+describe('D10: the classify run defers a display-only non-candidate', () => {
+	it('a no-reply notification is not interpreted until the thread is opened', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['mail.external', 'ai']);
+		const { threadId, messageId } = await seed(t, {
+			isScreenerOn: false,
+			sender: 'no-reply@shop.example.com',
+		});
+		// Delivery captured the eligibility snapshot, outstanding.
+		await t.run((ctx) =>
+			captureInterpretSource(ctx, { source: { kind: 'mail', id: messageId }, isLive: true })
+		);
+
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, {
+			threadId,
+			interpretMessageId: messageId,
+		});
+
+		expect(runInterpretationMock).not.toHaveBeenCalled();
+		const snapshot = await t.run((ctx) =>
+			ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${messageId}`))
+				.first()
+		);
+		expect(snapshot).toMatchObject({ isDeferred: true });
+		expect(snapshot?.isOutstanding).toBeUndefined();
+	});
+
+	it('a message without a snapshot is interpreted as before', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['mail.external', 'ai']);
+		const { threadId, messageId } = await seed(t, {
+			isScreenerOn: false,
+			sender: 'no-reply@shop.example.com',
+		});
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, {
+			threadId,
+			interpretMessageId: messageId,
+		});
+		expect(runInterpretationMock).toHaveBeenCalledTimes(1);
 	});
 });

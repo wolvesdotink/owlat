@@ -71,6 +71,7 @@ import {
 } from '../../inbox/clarificationSlots';
 import { applyMemoryFills, withAnswerKind } from '../../inbox/clarificationAnswers';
 import { draftClarificationReply } from './needsReplyDraft';
+import { isDeferredUntilOpen, isHeldOutByScreener } from './needsReplyGates';
 import { logError } from '../../lib/runtimeLog';
 import type { needsReplyClarificationValidator } from '../../lib/validators/clarification';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
@@ -131,6 +132,10 @@ export const classifyThread = internalAction({
 				expectedLatestMessageId: context.latestMessageId,
 				needsReply: null,
 			});
+			// D10: with no reply to decide, the reader display may be the only
+			// consumer left; then the message waits for the thread to be opened.
+			if (args.interpretMessageId && (await isDeferredUntilOpen(ctx, args.interpretMessageId)))
+				return;
 			await interpretDelivered();
 			return;
 		}
@@ -237,24 +242,6 @@ async function applyProjection(
 			'[needsReplyClassify] applyResult failed:',
 			err instanceof Error ? err.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
-		return false;
-	}
-}
-
-/**
- * Whether the first-time-sender screener holds the latest inbound sender out
- * of the queue. Fail-open: a failed read clarifies as before.
- */
-async function isHeldOutByScreener(
-	ctx: ActionCtx,
-	args: { threadId: Id<'mailThreads'>; latestInbound: LatestInbound }
-): Promise<boolean> {
-	try {
-		return await ctx.runQuery(internal.mail.ai.needsReplyScoring.isHeldOutBeforeClarification, {
-			threadId: args.threadId,
-			messageId: args.latestInbound.messageId,
-		});
-	} catch {
 		return false;
 	}
 }
