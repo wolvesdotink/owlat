@@ -76,6 +76,7 @@ import type * as mail_interpret_scope from '../mail/interpret/scope.js';
 import type * as mail_interpret_scopeChange from '../mail/interpret/scopeChange.js';
 import type * as mail_interpret_sendActivity from '../mail/interpret/sendActivity.js';
 import type * as mail_interpret_sendFailure from '../mail/interpret/sendFailure.js';
+import type * as mail_interpret_sourceOrder from '../mail/interpret/sourceOrder.js';
 import type * as mail_interpret_sourceVersion from '../mail/interpret/sourceVersion.js';
 import type * as mail_interpret_sources from '../mail/interpret/sources.js';
 import type * as mail_interpret_threadAccess from '../mail/interpret/threadAccess.js';
@@ -1721,6 +1722,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/scopeChange': typeof mail_interpret_scopeChange;
 	'mail/interpret/sendActivity': typeof mail_interpret_sendActivity;
 	'mail/interpret/sendFailure': typeof mail_interpret_sendFailure;
+	'mail/interpret/sourceOrder': typeof mail_interpret_sourceOrder;
 	'mail/interpret/sourceVersion': typeof mail_interpret_sourceVersion;
 	'mail/interpret/sources': typeof mail_interpret_sources;
 	'mail/interpret/threadAccess': typeof mail_interpret_threadAccess;

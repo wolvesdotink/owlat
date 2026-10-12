@@ -38,6 +38,7 @@ import { threadRefFromFields } from '../../lib/validators/threadRef';
 import { ensureBriefRow, loadBriefRow } from './briefRow';
 import { briefCompleteness } from './purgeRepairs';
 import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
+import { sourceOrderKey } from './sourceOrder';
 
 /** A source outstanding this long without an outcome has lost its run. */
 export const STALE_MS = 30 * 60_000;
@@ -105,6 +106,16 @@ export async function markOutstanding(ctx: MutationCtx, sourceKey: string): Prom
 		await shiftCounts(ctx, brief, { pending: 1, unread: 0, deferred: wasDeferred ? -1 : 0 });
 }
 
+async function orderKeyOfSnapshot(
+	ctx: Pick<MutationCtx, 'db'>,
+	snapshot: Doc<'interpretSources'>
+): Promise<string | undefined> {
+	const { source } = snapshot;
+	if (source.kind !== 'mail' && source.kind !== 'outboundMail') return undefined;
+	const row = await ctx.db.get(source.id);
+	return row ? sourceOrderKey(row) : undefined;
+}
+
 /**
  * D10 (ADR-0073): the source's only consumer is the reader display, so its
  * interpretation waits until the thread is opened (`lazy.ts`). It stops being
@@ -120,10 +131,14 @@ export async function deferSource(
 	const snapshot = await snapshotOf(ctx, sourceKey);
 	if (!snapshot || snapshot.isDeferred === true) return;
 	const wasPending = snapshot.isOutstanding === true;
+	// A row captured before the order key existed gets it now: every deferred
+	// row is read in thread order (`defer.ts`).
+	const orderKey = snapshot.sourceOrderKey ?? (await orderKeyOfSnapshot(ctx, snapshot));
 	await ctx.db.patch(snapshot._id, {
 		isOutstanding: undefined,
 		outstandingSince: undefined,
 		outstandingTries: undefined,
+		...(orderKey ? { sourceOrderKey: orderKey } : {}),
 		isDeferred: true,
 		deferredAt: Date.now(),
 		deferReason: reason,

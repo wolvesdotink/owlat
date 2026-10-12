@@ -71,7 +71,7 @@ import {
 } from '../../inbox/clarificationSlots';
 import { applyMemoryFills, withAnswerKind } from '../../inbox/clarificationAnswers';
 import { draftClarificationReply } from './needsReplyDraft';
-import { isDeferredUntilOpen, isHeldOutByScreener } from './needsReplyGates';
+import { continuesLater, isDeferredUntilOpen, isHeldOutByScreener } from './needsReplyGates';
 import { logError } from '../../lib/runtimeLog';
 import type { needsReplyClarificationValidator } from '../../lib/validators/clarification';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
@@ -162,8 +162,15 @@ export const classifyThread = internalAction({
 		});
 
 		// Never throws; a replayed run (the sweep, a retry) hands back the stored
-		// projection instead of calling the model again.
-		const projection = usableProjection(await interpret(latestInbound.messageId));
+		// projection instead of calling the model again. While the thread's
+		// earlier deferred mail is still being read (D10), this classification
+		// continues later and the thread stays pending (needsReplyGates.ts).
+		const run = await runInterpretation(ctx, {
+			source: { kind: 'mail', id: latestInbound.messageId },
+			isContinuedByCaller: true,
+		});
+		if (await continuesLater(ctx, run, args)) return;
+		const projection = usableProjection(run);
 		const hasVerdict = projection
 			? await applyProjection(ctx, {
 					threadId: args.threadId,

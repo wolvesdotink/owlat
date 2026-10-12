@@ -73,7 +73,11 @@ const EXPECTED_INDEXES: [TableName, string, string[]][] = [
 	['embeddingAttestations', 'by_status', ['status']],
 	['embeddingReembedJobs', 'by_status', ['status']],
 	['embeddingReembedJobs', 'by_target_space', ['targetSpaceId']],
-	['interpretSources', 'by_mail_thread_and_deferred', ['mailThreadId', 'isDeferred']],
+	[
+		'interpretSources',
+		'by_mail_thread_deferred_order',
+		['mailThreadId', 'isDeferred', 'sourceOrderKey'],
+	],
 	['knowledgeEntries', 'by_embedding_space', ['embeddingSpaceId', 'embeddingGeneratedAt']],
 	['knowledgeEntries', 'by_secondary_embedding_space', ['secondaryEmbeddingSpaceId']],
 	['semanticFiles', 'by_embedding_space', ['embeddingSpaceId', 'embeddingGeneratedAt']],

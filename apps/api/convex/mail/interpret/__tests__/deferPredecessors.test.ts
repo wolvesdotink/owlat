@@ -16,7 +16,7 @@ import { briefModelSchema } from '../schema';
 import { addMessageToThread, modules, seedMailThread, type Test } from './interpret.testlib';
 import { captureInterpretSource } from '../sources';
 import { STALE_MS, deferSource } from '../outstanding';
-import { PREDECESSOR_RETRY_MS, runDeferredPredecessors } from '../defer';
+import { PREDECESSOR_RETRY_MS, resumeDeferredSources, runDeferredPredecessors } from '../defer';
 import type { InterpretationSource } from '../../../lib/validators/threadBrief';
 
 const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), spend: vi.fn() }));
@@ -277,6 +277,7 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 				ref: typeof internal.mail.interpret.defer.oldestDeferredBefore,
 				args: { source: InterpretationSource }
 			) => t.query(ref, args),
+			runMutation: (ref: never, args: never) => t.mutation(ref, args),
 			scheduler: {
 				runAfter: async (delayMs: number, _ref: unknown, args: unknown) => {
 					scheduled.push({ delayMs, args });
@@ -296,14 +297,14 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 		const { ids, eager } = await seedChain(t);
 
 		const first = loop(t, eager, realRun(t), 2);
-		expect(await first.done).toBe(false);
+		expect(await first.done).toEqual({ retryAt: expect.any(Number) });
 		expect(readTags()).toEqual(['a', 'b']);
 		expect(await deferredTags(t, ids)).toEqual(['c']);
 		// The eager source's own run is rescheduled to resume the loop.
 		expect(first.scheduled).toEqual([{ delayMs: 0, args: { source: eager } }]);
 
 		const second = loop(t, eager, realRun(t), 2);
-		expect(await second.done).toBe(true);
+		expect(await second.done).toBeNull();
 		expect(readTags()).toEqual(['a', 'b', 'c']);
 		expect(await deferredTags(t, ids)).toEqual([]);
 	});
@@ -368,9 +369,130 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 		const { ids, eager } = await seedChain(t);
 		const noop = vi.fn(async () => undefined);
 		const { done, scheduled } = loop(t, eager, noop);
-		expect(await done).toBe(false);
+		expect(await done).toEqual({ retryAt: expect.any(Number) });
 		expect(noop).toHaveBeenCalledTimes(1);
 		expect(scheduled).toEqual([{ delayMs: PREDECESSOR_RETRY_MS, args: { source: eager } }]);
 		expect(await deferredTags(t, ids)).toEqual(['a', 'b', 'c']);
+	});
+});
+
+/**
+ * Sol r4 F2: the oldest predecessor and the newest deferred source come from
+ * the thread-order index, one indexed read each, whatever the backlog, and in
+ * thread order however the rows were written.
+ */
+describe('D10: indexed thread order (Sol r4 F2)', () => {
+	const settleRun =
+		(t: Test, order: string[], tags: Map<string, string>) => async (s: InterpretationSource) => {
+			order.push(tags.get(s.id as string) ?? '?');
+			// What a committed run does to a deferred source: settle it.
+			await t.mutation(internal.mail.interpret.outstanding.settleRecorded, { source: s });
+		};
+
+	function drive(
+		t: Test,
+		source: InterpretationSource,
+		run: (s: InterpretationSource) => Promise<unknown>,
+		budget: number
+	) {
+		const ctx = {
+			runQuery: (ref: never, args: never) => t.query(ref, args),
+			runMutation: (ref: never, args: never) => t.mutation(ref, args),
+			scheduler: { runAfter: async () => undefined },
+		} as unknown as Parameters<typeof runDeferredPredecessors>[0];
+		return runDeferredPredecessors(ctx, source, run, { budget });
+	}
+
+	/** `count` deferred predecessors written NEWEST first, then the eager message. */
+	async function seedBacklog(t: Test, count: number) {
+		const { mailboxId, threadId, messageId: seedId } = await seedMailThread(t, { text: INVOICE });
+		const tags = new Map<string, string>();
+		const ids: Id<'mailMessages'>[] = [];
+		for (let i = count - 1; i >= 0; i--) {
+			const id = await addMessageToThread(
+				t,
+				{ mailboxId, threadId },
+				{
+					text: `[p${i}] ${INVOICE}`,
+					receivedAt: T0 + (i + 1) * 60_000,
+				}
+			);
+			tags.set(id, `p${i}`);
+			ids.push(id);
+		}
+		await t.run(async (ctx) => {
+			for (const id of ids) {
+				await captureInterpretSource(ctx, { source: { kind: 'mail', id }, isLive: true });
+				await deferSource(ctx, `mail:${id}`, 'display_only');
+			}
+		});
+		const eagerId = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{
+				text: CANCEL,
+				receivedAt: T0 + (count + 1) * 60_000,
+			}
+		);
+		await capture(t, { kind: 'mail', id: eagerId });
+		return { threadId, seedId, tags, ids, eager: { kind: 'mail' as const, id: eagerId } };
+	}
+
+	it('a large backlog is read in thread order, a few per run, to the end', async () => {
+		const t = convexTest(schema, modules);
+		const { tags, eager } = await seedBacklog(t, 30);
+		const order: string[] = [];
+		let runs = 0;
+		while ((await drive(t, eager, settleRun(t, order, tags), 4)) !== null) runs++;
+		expect(order).toEqual(Array.from({ length: 30 }, (_, i) => `p${i}`));
+		expect(runs).toBe(Math.ceil(30 / 4) - 1);
+	});
+
+	it('a legacy deferred row without an order key is read first', async () => {
+		const t = convexTest(schema, modules);
+		const { tags, ids, eager } = await seedBacklog(t, 3);
+		// p2 (written first) loses its key, as a row from before the key.
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${ids[0]}`))
+				.first();
+			await ctx.db.patch(row!._id, { sourceOrderKey: undefined });
+		});
+		const order: string[] = [];
+		expect(await drive(t, eager, settleRun(t, order, tags), 10)).toBeNull();
+		expect(order).toEqual(['p2', 'p0', 'p1']);
+	});
+
+	it('a predecessor whose message is gone is released, not waited on forever', async () => {
+		const t = convexTest(schema, modules);
+		const { tags, ids, eager } = await seedBacklog(t, 2);
+		const gone = ids[ids.length - 1]!; // p0, the oldest
+		await t.run((ctx) => ctx.db.delete(gone));
+		const order: string[] = [];
+		// A gone message's run records nothing (the real run answers `gone`).
+		const run = async (s: InterpretationSource) => {
+			if (s.id === gone) {
+				order.push('gone');
+				return;
+			}
+			await settleRun(t, order, tags)(s);
+		};
+		expect(await drive(t, eager, run, 10)).toBeNull();
+		expect(order).toEqual(['gone', 'p1']);
+		expect((await snapshotOf(t, { kind: 'mail', id: gone }))?.isDeferred).toBeUndefined();
+	});
+
+	it('opening a thread schedules its newest deferred source, by the index', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedBacklog(t, 5);
+		await t.run((ctx) => resumeDeferredSources(ctx, { kind: 'mail', id: threadId }));
+		// ids[0] was written first and is the newest (p4).
+		expect(await snapshotOf(t, { kind: 'mail', id: ids[0]! })).toMatchObject({
+			isOutstanding: true,
+		});
+		for (const id of ids.slice(1)) {
+			expect((await snapshotOf(t, { kind: 'mail', id }))?.isDeferred).toBe(true);
+		}
 	});
 });
