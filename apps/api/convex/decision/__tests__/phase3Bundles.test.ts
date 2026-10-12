@@ -193,6 +193,75 @@ describe('the necessity judgment through the runner', () => {
 		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
 	});
 
+	it('re-asks when the stored answer came from another provider (Sol r3 F2)', async () => {
+		const t = await setup({ clarifyNecessity: 'enforce' });
+		const id = await seedTeamMessage(t);
+		const routed = await routing(t);
+		await necessityRun(t, routed, id);
+		// The answer was stamped by the language rung; say it came from TypeSafe instead.
+		await t.run(async (ctx) => {
+			const [row] = await ctx.db.query('decisionArtifacts').collect();
+			await ctx.db.patch(row!._id, {
+				contextVersion: 'typesafe|jev-1.13.0|https://api.typesafe.ai',
+			});
+		});
+		const again = await necessityRun(t, routed, id);
+		expect(again).toMatchObject({ hasRun: true, status: 'complete' });
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(2);
+		const [row] = await t.run((ctx) => ctx.db.query('decisionArtifacts').collect());
+		expect(row).toMatchObject({ contextVersion: 'language', status: 'complete' });
+	});
+
+	it('reclaims at the claim on a model change, and never hands back another model’s labels', async () => {
+		const t = await setup({ clarifyNecessity: 'enforce' });
+		const id = await seedTeamMessage(t);
+		const before = 'typesafe|jev-1.13.0|https://api.typesafe.ai';
+		const after = 'typesafe|jev-2.0.0|https://api.typesafe.ai';
+		await t.run(async (ctx) => {
+			await ctx.db.insert('decisionArtifacts', {
+				artifactKey: 'key-1',
+				task: 'mail.necessity',
+				kind: 'advisory',
+				status: 'complete',
+				subjectKind: 'inbound_message',
+				inboundMessageId: id,
+				contentHash: 'h',
+				policyVersion: 4,
+				contextVersion: before,
+				answers: JSON.stringify({ labels: { necessity: 'needed' } }),
+				expiresAt: Date.now() + 60_000,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		expect(
+			await t.query(internal.decision.artifacts.answeredLabels, {
+				artifactKey: 'key-1',
+				contextVersion: after,
+			})
+		).toBeNull();
+		expect(
+			await t.query(internal.decision.artifacts.answeredLabels, {
+				artifactKey: 'key-1',
+				contextVersion: before,
+			})
+		).toEqual({ necessity: 'needed' });
+		const languageClaim = (contextVersion: string) =>
+			t.mutation(internal.decision.artifacts.claim, {
+				artifactKey: 'key-1',
+				task: 'mail.necessity',
+				kind: 'advisory',
+				subjectKind: 'inbound_message',
+				inboundMessageId: id,
+				contentHash: 'h',
+				policyVersion: 4,
+				endpoint: { rung: 'language', isLocal: false, isDecisionPlaneOn: false },
+				contextVersion,
+			});
+		expect(await languageClaim(before)).toEqual({ outcome: 'settled' });
+		expect(await languageClaim(after)).toMatchObject({ outcome: 'claimed' });
+	});
+
 	it('stops a call planned under a policy that has since been switched off', async () => {
 		const t = await setup({ clarifyNecessity: 'enforce' });
 		const id = await seedTeamMessage(t);

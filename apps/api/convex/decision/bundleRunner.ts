@@ -325,6 +325,9 @@ export async function runBundle<Q extends QuestionSet>(
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
 		...(routing.configUpdatedAt === undefined ? {} : { configUpdatedAt: routing.configUpdatedAt }),
 	};
+	// The identity the answer is stamped with, from the ONE resolution above:
+	// the claim reclaims a stored answer stamped with any other (Sol r3 F2).
+	const contextVersion = rung === 'decision' ? resolvedPlaneIdentity(plane, true) : 'language';
 	const contentHash = stateContentHash(run.built.state);
 	const artifactKey = artifactKeyOf({
 		task: plan.task,
@@ -347,9 +350,13 @@ export async function runBundle<Q extends QuestionSet>(
 		rootRequestId: run.root.rootRequestId,
 		endpoint,
 		...(run.masterGate ? { masterGate: run.masterGate } : {}),
+		contextVersion,
 	});
 	if (claim.outcome === 'settled') {
-		const labels = await ctx.runQuery(internal.decision.artifacts.answeredLabels, { artifactKey });
+		const labels = await ctx.runQuery(internal.decision.artifacts.answeredLabels, {
+			artifactKey,
+			contextVersion,
+		});
 		return { hasRun: false, why: 'settled', ...(labels ? { labels } : {}) };
 	}
 	if (claim.outcome !== 'claimed') return { hasRun: false, why: claim.outcome };
@@ -381,7 +388,7 @@ export async function runBundle<Q extends QuestionSet>(
 				...(revision ? { calibrationRevision: revision } : {}),
 				...(run.language ? { language: run.language } : {}),
 			},
-			contextVersion: rung === 'decision' ? resolvedPlaneIdentity(plane, true) : 'language',
+			contextVersion,
 			...(run.baseline ? { baseline: { ...run.baseline } } : {}),
 			...(isAgreement === undefined ? {} : { isAgreement }),
 			...(run.built.isComplete ? { memoryKey: run.built.contentFingerprint } : {}),

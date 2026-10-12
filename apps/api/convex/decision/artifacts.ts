@@ -156,9 +156,16 @@ export const claim = internalMutation({
 		endpoint: endpointValidator,
 		/** The master gate, when it is not the subject's default (Answer mode: `ai`). */
 		masterGate: v.optional(v.union(v.literal('ai'), v.literal('ai.agent'))),
+		/**
+		 * The execution identity the call will be stamped with (the resolved
+		 * decision plane, `lib/decision/configIdentity.ts`, or `language`). An
+		 * answer stamped with another identity is stale: the key is reclaimed
+		 * and asked again (clarify lane, Sol r3 F2).
+		 */
+		contextVersion: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ClaimOutcome> => {
-		const { endpoint, masterGate, ...fields } = args;
+		const { endpoint, masterGate, contextVersion, ...fields } = args;
 		const subject = await liveSubject(ctx, fields);
 		if (!subject) return { outcome: 'gone' };
 		if (isCorrectedFor(fields.task, subject.correctedAt)) return { outcome: 'settled' };
@@ -203,7 +210,14 @@ export const claim = internalMutation({
 			}
 			const isAnswered = existing.status === 'complete' || existing.status === 'abstained';
 			const isCorrected = existing.invalidatedAt !== undefined;
-			if ((isAnswered || isCorrected) && existing.expiresAt > now) return { outcome: 'settled' };
+			// An answer from another provider or model than the one resolved now is
+			// not reused: the policy (and so the key) can stay while the
+			// configuration changes. A correction stays settled whatever answered.
+			const isStale =
+				!isCorrected && contextVersion !== undefined && existing.contextVersion !== contextVersion;
+			if ((isAnswered || isCorrected) && !isStale && existing.expiresAt > now) {
+				return { outcome: 'settled' };
+			}
 			await ctx.db.replace(existing._id, {
 				...fields,
 				status: 'leased',
@@ -238,10 +252,16 @@ function isCorrectedFor(task: AiTaskName, correctedAt: number | undefined): bool
 /**
  * The labels a settled key holds, for an inline caller that found it
  * `settled` (Phase 3): only a complete or abstained answer, not invalidated
- * and not expired. Null otherwise (a correction, an invalidation, an expiry).
+ * and not expired, stamped with the execution identity resolved now. Null
+ * otherwise (a correction, an invalidation, an expiry, another provider or
+ * model).
  */
 export const answeredLabels = internalQuery({
-	args: { artifactKey: v.string() },
+	args: {
+		artifactKey: v.string(),
+		/** The execution identity resolved now: an answer stamped with another is not reused. */
+		contextVersion: v.string(),
+	},
 	handler: async (ctx, args): Promise<DecisionLabels | null> => {
 		const row = await ctx.db
 			.query('decisionArtifacts')
@@ -251,6 +271,7 @@ export const answeredLabels = internalQuery({
 		if (row.invalidatedAt !== undefined || row.expiresAt <= Date.now() || !row.answers) {
 			return null;
 		}
+		if (row.contextVersion !== args.contextVersion) return null;
 		const stored = JSON.parse(row.answers) as { labels?: DecisionLabels };
 		return stored.labels ?? null;
 	},
