@@ -236,6 +236,26 @@ describe('AskCard', () => {
 		w.unmount();
 	});
 
+	it('says the budget refused the answer and keeps what was entered to send again (U5)', async () => {
+		const w = mountCard({ round: undefined, questions: QUESTIONS.slice(3) });
+		expect(w.find('[data-testid="ask-budget"]').exists()).toBe(false);
+		const inputs = w.findAll('[data-testid="ask-input"]');
+		await inputs[0]!.setValue('4,200 EUR');
+		await w.get('[data-testid="ask-submit"]').trigger('click');
+		await w.setProps({ budgetRefused: true });
+		expect(w.get('[data-testid="ask-budget"]').text()).toContain(
+			'The AI spend budget is used up for now, so the draft was not written. Your answers stay here'
+		);
+		expect((w.findAll('[data-testid="ask-input"]')[0]!.element as HTMLInputElement).value).toBe(
+			'4,200 EUR'
+		);
+		expectFullyLocalized(w);
+		await w.get('[data-testid="ask-submit"]').trigger('click');
+		expect(w.emitted('answer')).toHaveLength(2);
+		expect(w.emitted('answer')?.[1]?.[0]).toEqual(w.emitted('answer')?.[0]?.[0]);
+		w.unmount();
+	});
+
 	it('sends "It isn\'t ready yet" as a value', async () => {
 		const w = mountCard();
 		await w.get('[data-testid="file-ask-option"]').trigger('click');

@@ -222,6 +222,7 @@ describe('useAnswerAskSession', () => {
 		});
 		await api.start('');
 		expect(api.phase.value).toBe('budget');
+		expect(api.isBudgetRefused.value).toBe(true);
 		expect(api.busy.value).toBe(false);
 		expect(onErrors['answer']!(refusal)).toBe(true);
 
@@ -241,6 +242,33 @@ describe('useAnswerAskSession', () => {
 		draftId.value = 'd2';
 		await nextTick();
 		expect(api.phase.value).toBe('idle');
+	});
+
+	it('keeps the questions open when the budget refuses an answer, and clears it on the next try', async () => {
+		data['getSession']!.value = session({ status: 'asking' });
+		const { api } = host(composerMock());
+		const refusal = {
+			category: 'forbidden',
+			message: 'AI budget reached.',
+			data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'daily_ceiling', limit: 5 },
+		};
+		runs['answer'] = vi.fn(async () => {
+			expect(onErrors['answer']!(refusal)).toBe(true);
+			return { ok: false };
+		});
+		await api.answer([]);
+		// Still asking: the page keeps the ask card and what was entered in it.
+		expect(api.phase.value).toBe('asking');
+		expect(api.isBudgetRefused.value).toBe(true);
+
+		// The retry clears the notice before it runs, and a success leaves it clear.
+		runs['answer'] = vi.fn(async () => {
+			expect(api.isBudgetRefused.value).toBe(false);
+			return { ok: true, result: session({ status: 'drafting', updatedAt: 2 }) };
+		});
+		await api.answer([]);
+		expect(runs['answer']).toHaveBeenCalledTimes(1);
+		expect(api.isBudgetRefused.value).toBe(false);
 	});
 
 	it('reads a draft stream that ended on the budget as budget, any other end as error', () => {

@@ -95,7 +95,11 @@ export function useAnswerAskSession(opts: {
 	 * #1339). The bar says so in place of a toast, until the target changes.
 	 */
 	const isHeldByGuard = ref(false);
-	/** The spend budget refused the start or an answer (U5); cleared like the guard state. */
+	/**
+	 * The spend budget refused the start or an answer (U5). Not a phase of its
+	 * own while the questions are open: the card and its answers stay, and
+	 * the notice sits alongside. Cleared by the next try and a target change.
+	 */
 	const isBudgetRefused = ref(false);
 	function claimHeldByGuard(op: OperationError): boolean {
 		if (budgetReasonOf(op)) {
@@ -141,9 +145,9 @@ export function useAnswerAskSession(opts: {
 
 	const phase = computed<AskPhase>(() => {
 		if (isHeldByGuard.value) return 'held';
-		if (isBudgetRefused.value) return 'budget';
-		if (startOp.isLoading.value && !session.value) return 'checking';
 		const current = session.value;
+		if (isBudgetRefused.value && current?.status !== 'asking') return 'budget';
+		if (startOp.isLoading.value && !current) return 'checking';
 		if (!current) return startOp.isLoading.value ? 'checking' : 'idle';
 		if (current.status === 'drafting' && stream.value?.status === 'complete') return 'ready';
 		// A draft the budget refused: the stream carries the code, before the
@@ -256,6 +260,8 @@ export function useAnswerAskSession(opts: {
 	async function answer(answers: AskAnswer[], skip = false) {
 		const current = session.value;
 		if (!current || current.status !== 'asking' || answerOp.isLoading.value) return;
+		// A new try: the budget may have room again.
+		isBudgetRefused.value = false;
 		// What this answer brings (a file, the draft) is this page's from now on.
 		claim(current);
 		const target = opts.target();
@@ -383,6 +389,8 @@ export function useAnswerAskSession(opts: {
 		busy,
 		/** The stream flagged instructions from the mail in the draft. */
 		injectionFlagged: computed(() => stream.value?.injectionFlagged === true),
+		/** The budget refused the last start or answer; the ask card says so (U5). */
+		isBudgetRefused: computed(() => isBudgetRefused.value),
 		start,
 		answer,
 	};

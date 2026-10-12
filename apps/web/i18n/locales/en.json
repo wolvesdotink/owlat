@@ -7129,7 +7129,8 @@
 				"attachAndUpdate": "Attach and update draft",
 				"draftGaps": "The draft needs one more detail | The draft needs {count} more details",
 				"draftGapsSubline": "The reply below is written. What you answer here goes into it; anything left open stays marked.",
-				"updateDraft": "Update the draft"
+				"updateDraft": "Update the draft",
+				"budgetRefused": "The AI spend budget is used up for now, so the draft was not written. Your answers stay here: try again later, or write the reply yourself."
 			},
 			"fileAsk": {
 				"dropHere": "Drop the file here or",
