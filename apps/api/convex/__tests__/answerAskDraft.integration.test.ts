@@ -735,6 +735,39 @@ describe('team thread', () => {
 		expect(lastDraftPrompt()).toContain('Friday');
 	});
 
+	it('a start that fails before its draft stream opens is not left drafting (final r3 sweep)', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const contactId = await seedCustomer(t);
+		const threadId = await seedTeamThread(t, contactId);
+		// The requested file is found, so nothing is asked and the draft starts.
+		const fileId = await seedFile(t, { filename: 'invoice-2026-09.pdf', contactIds: [contactId] });
+		llm.files = [
+			{
+				source: 'semanticFile',
+				id: fileId,
+				filename: 'invoice-2026-09.pdf',
+				mimeType: 'application/pdf',
+				size: 20,
+				score: 0.8,
+			},
+		];
+		const target = { kind: 'teamThread' as const, threadId };
+		llm.planFailure = new Error('plan read failed');
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' })
+		).rejects.toThrow('plan read failed');
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('error');
+
+		// A new start replaces it and drafts.
+		llm.planFailure = null;
+		const res = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		expect(res.status).toBe('ready');
+	});
+
 	it('an answer that fails before its draft stream opens hands the questions back (final r3 sweep)', async () => {
 		const t = await makeT();
 		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };

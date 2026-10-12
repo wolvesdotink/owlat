@@ -322,7 +322,13 @@ export const start = authedAction({
 			...(timeZone ? { timeZone } : {}),
 		});
 		if (isAsking) return toAskSessionView(session);
-		return await draftNow(ctx, session, context);
+		try {
+			return await draftNow(ctx, session, context);
+		} catch (err) {
+			// Before its stream settles the session would stay busy for good.
+			await releaseSession(ctx, session._id, 'error');
+			throw err;
+		}
 	},
 });
 
