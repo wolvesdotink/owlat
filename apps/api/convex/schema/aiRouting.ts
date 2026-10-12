@@ -42,6 +42,8 @@ export const AI_ROUTING_TABLES = [
 	'llmReservations',
 	'llmSpendPeriods',
 	'llmSpendAggregateState',
+	'shadowQuotaEntries',
+	'shadowQuotaDays',
 	'aiRoutingPolicy',
 	'embeddingReembedJobs',
 	'embeddingAttestations',
@@ -171,6 +173,33 @@ export const aiRoutingTables = {
 		.index('by_status_and_expires_at', ['status', 'expiresAt'])
 		// Retention: terminal rows past the audit window.
 		.index('by_status_and_updated_at', ['status', 'updatedAt']),
+
+	// D4's message share, counted (admission lane). One row per (task, UTC day):
+	// how many eligible messages asked to be shadowed and how many were. A
+	// message is admitted only while admitted + 1 ≤ floor(share × eligible).
+	shadowQuotaDays: defineTable({
+		task: aiTaskNameValidator,
+		/** `YYYY-MM-DD` (UTC). */
+		dayKey: v.string(),
+		eligibleCount: v.number(),
+		admittedCount: v.number(),
+		updatedAt: v.number(),
+	})
+		.index('by_task_and_day', ['task', 'dayKey'])
+		.index('by_updated_at', ['updatedAt']),
+
+	// Each message's answer for a (task, day), so asking again is idempotent
+	// and counted once. `subjectKey` is an opaque message id; rows age out with
+	// the retention sweep after a week.
+	shadowQuotaEntries: defineTable({
+		task: aiTaskNameValidator,
+		dayKey: v.string(),
+		subjectKey: v.string(),
+		isAdmitted: v.boolean(),
+		createdAt: v.number(),
+	})
+		.index('by_task_and_subject', ['task', 'subjectKey', 'dayKey'])
+		.index('by_created_at', ['createdAt']),
 
 	// Decision artifacts (Phase 2, D9, D11): a bundle's typed answers for one
 	// message, keyed by task, message, content hash and policy version

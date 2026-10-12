@@ -200,6 +200,7 @@ import type * as aiRouting_admissionState from '../aiRouting/admissionState.js';
 import type * as aiRouting_enforcedBudget from '../aiRouting/enforcedBudget.js';
 import type * as aiRouting_policy from '../aiRouting/policy.js';
 import type * as aiRouting_settlement from '../aiRouting/settlement.js';
+import type * as aiRouting_shadowQuota from '../aiRouting/shadowQuota.js';
 import type * as aiRouting_spendAggregate from '../aiRouting/spendAggregate.js';
 import type * as aiRouting_teamBudgetHold from '../aiRouting/teamBudgetHold.js';
 import type * as analytics_adaptiveDashboard from '../analytics/adaptiveDashboard.js';
@@ -1872,6 +1873,7 @@ declare const fullApi: ApiFromModules<{
 	aiProviderConfigActions: typeof aiProviderConfigActions;
 	'aiRouting/policy': typeof aiRouting_policy;
 	'aiRouting/settlement': typeof aiRouting_settlement;
+	'aiRouting/shadowQuota': typeof aiRouting_shadowQuota;
 	'aiRouting/spendAggregate': typeof aiRouting_spendAggregate;
 	'aiRouting/teamBudgetHold': typeof aiRouting_teamBudgetHold;
 	'analytics/adaptiveDashboard': typeof analytics_adaptiveDashboard;

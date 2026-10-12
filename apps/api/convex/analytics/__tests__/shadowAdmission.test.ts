@@ -14,11 +14,24 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-/** A message key the 10% sample takes. */
+/** A message key the hash makes a candidate. */
 function sampledKey(): string {
 	for (let index = 0; ; index++) {
-		if (shadowSamplePoint('mail.category', `m${index}`) < 0.1) return `m${index}`;
+		if (shadowSamplePoint('mail.category', `m${index}`) < 0.2) return `m${index}`;
 	}
+}
+
+/** Thirty earlier eligible messages today, so the day's quota has room for three. */
+async function earlierTraffic(t: ReturnType<typeof newHarness>) {
+	await t.run((ctx) =>
+		ctx.db.insert('shadowQuotaDays', {
+			task: 'mail.category',
+			dayKey: new Date().toISOString().slice(0, 10),
+			eligibleCount: 30,
+			admittedCount: 0,
+			updatedAt: Date.now(),
+		})
+	);
 }
 
 async function shadowPolicy(t: ReturnType<typeof newHarness>, shadowCapUsd?: number) {
@@ -46,6 +59,7 @@ describe('admitShadow', () => {
 		const t = newHarness();
 		await reconcileSpend(t);
 		await shadowPolicy(t, 1);
+		await earlierTraffic(t);
 		const { ctx } = actionCtxOver(t);
 		const verdict = await admitShadow(ctx, {
 			task: 'mail.category',
@@ -67,6 +81,7 @@ describe('admitShadow', () => {
 		const t = newHarness();
 		await reconcileSpend(t);
 		await shadowPolicy(t);
+		await earlierTraffic(t);
 		const { ctx } = actionCtxOver(t);
 		expect(
 			await admitShadow(ctx, { task: 'mail.category', subjectKey: sampledKey(), feature: 'x' })
@@ -76,6 +91,7 @@ describe('admitShadow', () => {
 	it('refuses while the spend state cannot be verified', async () => {
 		const t = newHarness();
 		await shadowPolicy(t, 1);
+		await earlierTraffic(t);
 		const { ctx } = actionCtxOver(t);
 		expect(
 			await admitShadow(ctx, { task: 'mail.category', subjectKey: sampledKey(), feature: 'x' })
@@ -87,7 +103,7 @@ describe('admitShadow', () => {
 		await shadowPolicy(t, 1);
 		const { ctx } = actionCtxOver(t);
 		let key = 'u0';
-		for (let index = 0; shadowSamplePoint('mail.category', key) < 0.1; index++) key = `u${index}`;
+		for (let index = 0; shadowSamplePoint('mail.category', key) < 0.2; index++) key = `u${index}`;
 		expect(
 			await admitShadow(ctx, { task: 'mail.category', subjectKey: key, feature: 'x' })
 		).toEqual({

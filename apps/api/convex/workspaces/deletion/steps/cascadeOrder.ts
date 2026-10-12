@@ -72,6 +72,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'llmReservations',
 	'llmSpendPeriods',
 	'llmSpendAggregateState',
+	'shadowQuotaEntries',
+	'shadowQuotaDays',
 	'agentCircuitBreakers',
 	'agentConfig',
 	'autonomyFeedback',

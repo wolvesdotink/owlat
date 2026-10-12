@@ -3,8 +3,9 @@
  * answers whether a shadowed task may judge a message now, and hands back
  * what its calls run under.
  *
- * - The task's switch must be at `shadow`, and the message must fall inside
- *   the message share (`lib/aiRouting/shadowSampling.ts`).
+ * - The task's switch must be at `shadow`, and the message must be inside the
+ *   day's counted message quota (`aiRouting/shadowQuota.ts`; the hash in
+ *   `lib/aiRouting/shadowSampling.ts` only picks candidates).
  * - The day's shadow allowance must have headroom, with a spend state that can
  *   be verified (`aiRouting/admission.ts` `headroom`, budget class `shadow`).
  * - Every call then runs as budget class `shadow` at background priority:
@@ -48,7 +49,15 @@ export async function admitShadow(
 ): Promise<ShadowAdmission> {
 	const policy = await ctx.runQuery(internal.aiRouting.policy.getResolved, {});
 	const sample = shadowSample(policy, args.task, args.subjectKey);
-	if (!sample.isSampled) return { isAdmitted: false, why: sample.why };
+	if (!sample.isSampled && sample.why === 'not_shadowed')
+		return { isAdmitted: false, why: 'not_shadowed' };
+	// Every eligible message is counted; only a candidate inside the day's quota is admitted.
+	const slot = await ctx.runMutation(internal.aiRouting.shadowQuota.claimShadowSlot, {
+		task: args.task,
+		subjectKey: args.subjectKey,
+		isCandidate: sample.isSampled,
+	});
+	if (!slot.isAdmitted) return { isAdmitted: false, why: 'not_sampled' };
 	const headroom = await ctx.runQuery(internal.aiRouting.admission.headroom, {
 		plane: taskPolicy(args.task).plane,
 		budgetClass: 'shadow',

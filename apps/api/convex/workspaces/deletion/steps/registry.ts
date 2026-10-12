@@ -267,6 +267,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	llmReservations: makeSweepStep('llmReservations'),
 	llmSpendPeriods: makeSweepStep('llmSpendPeriods'),
 	llmSpendAggregateState: makeSweepStep('llmSpendAggregateState'),
+	shadowQuotaEntries: makeSweepStep('shadowQuotaEntries'),
+	shadowQuotaDays: makeSweepStep('shadowQuotaDays'),
 	embeddingSpaces: makeSweepStep('embeddingSpaces'),
 	embeddingAttestations: makeSweepStep('embeddingAttestations'),
 	embeddingReembedJobs: makeSweepStep('embeddingReembedJobs'),

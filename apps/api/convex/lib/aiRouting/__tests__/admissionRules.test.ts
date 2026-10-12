@@ -182,20 +182,20 @@ describe('shadow sampling (D4)', () => {
 		});
 	});
 
-	it('samples a stable share of messages at most the message fraction', () => {
+	it('picks a stable set of candidates at twice the message share (the quota caps the admitted)', () => {
 		expect(isTaskShadowed(shadowed, 'mail.category')).toBe(true);
 		expect(isTaskShadowed(shadowed, 'mail.disposition')).toBe(false);
-		let sampled = 0;
+		let candidates = 0;
 		const total = 20_000;
 		for (let index = 0; index < total; index++) {
 			const key = `inbound-${index}`;
 			const verdict = shadowSample(shadowed, 'mail.category', key);
-			// Deterministic: the same message is always in or always out.
+			// Deterministic: the same message is always a candidate or never.
 			expect(shadowSample(shadowed, 'mail.category', key)).toEqual(verdict);
-			if (verdict.isSampled) sampled++;
+			if (verdict.isSampled) candidates++;
 		}
-		expect(sampled / total).toBeGreaterThan(0.08);
-		expect(sampled / total).toBeLessThanOrEqual(0.11);
+		expect(candidates / total).toBeGreaterThan(0.18);
+		expect(candidates / total).toBeLessThan(0.22);
 		expect(shadowSamplePoint('mail.category', 'x')).toBeGreaterThanOrEqual(0);
 		expect(shadowSamplePoint('mail.category', 'x')).toBeLessThan(1);
 	});

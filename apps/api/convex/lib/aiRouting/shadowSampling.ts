@@ -4,11 +4,12 @@
  *
  * Two limits apply, and both must allow a shadow call:
  *
- * 1. MESSAGES. At most `shadowMaxMessageFraction` of eligible messages (10% by
- *    default and at most). The sample is a deterministic function of the task
- *    and the message: an FNV-1a hash of `task|subjectKey` mapped onto [0, 1)
- *    must fall below the fraction. The same message is always in or out, a
- *    re-run cannot re-roll it, and over the id space exactly that share is in.
+ * 1. MESSAGES. At most `shadowMaxMessageFraction` of a task's eligible
+ *    messages per UTC day (10% by default and at most). That limit is COUNTED
+ *    (`aiRouting/shadowQuota.ts`): a message is admitted only while admitted
+ *    + 1 ≤ floor(share × eligible). The hash here only chooses candidates: an
+ *    FNV-1a of `task|subjectKey` mapped onto [0, 1) below twice the share, so
+ *    the quota is spread over the day and a re-run cannot re-roll a message.
  * 2. MONEY. The day's shadow spend stays within `shadowAllowanceUsd` (the
  *    smaller of `shadowMaxCeilingFraction` of the daily ceiling and
  *    `shadowCapUsd`; zero without either). That is enforced at dispatch by
@@ -53,14 +54,18 @@ export type ShadowSampleVerdict =
 	| { readonly isSampled: true }
 	| { readonly isSampled: false; readonly why: 'not_shadowed' | 'not_sampled' };
 
-/** Limit 1 and the switch: may `task` shadow-judge the message `subjectKey`? */
+/** Candidates are drawn at this multiple of the share; the counted quota caps the admitted. */
+export const CANDIDATE_OVERSAMPLE = 2;
+
+/** The switch, and whether the hash makes `subjectKey` a candidate for `task`'s quota. */
 export function shadowSample(
 	policy: ResolvedRoutingPolicy,
 	task: AiTaskName,
 	subjectKey: string
 ): ShadowSampleVerdict {
 	if (!isTaskShadowed(policy, task)) return { isSampled: false, why: 'not_shadowed' };
-	return shadowSamplePoint(task, subjectKey) < policy.shadowMaxMessageFraction
+	return shadowSamplePoint(task, subjectKey) <
+		Math.min(1, CANDIDATE_OVERSAMPLE * policy.shadowMaxMessageFraction)
 		? { isSampled: true }
 		: { isSampled: false, why: 'not_sampled' };
 }
