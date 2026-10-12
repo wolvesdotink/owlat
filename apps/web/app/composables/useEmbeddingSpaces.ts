@@ -171,9 +171,21 @@ export function useEmbeddingSpaces() {
 		validation,
 		isTargetChanged,
 		refresh: () => done(() => refreshOp.run({}), 'refresh'),
-		/** `expectedSpaceId`: the searchable space confirmed; absent while switching (none is). */
-		startReembed: (expectedSpaceId?: SpaceId) =>
-			done(() => startReembedOp.run(expectedSpaceId ? { expectedSpaceId } : {}), 'startReembed'),
+		/**
+		 * What the person confirmed: `spaceId`, the searchable space (absent while
+		 * a switch is pending, none is); `targetKey`, the configured target
+		 * (`status.configured.targetKey`), which names a switch's target too. The
+		 * server refuses with `embedding_target_changed` when either moved.
+		 */
+		startReembed: (expected: { spaceId?: SpaceId; targetKey?: string } = {}) =>
+			done(
+				() =>
+					startReembedOp.run({
+						...(expected.spaceId ? { expectedSpaceId: expected.spaceId } : {}),
+						...(expected.targetKey ? { expectedTargetKey: expected.targetKey } : {}),
+					}),
+				'startReembed'
+			),
 		resume: (job: EmbeddingJob) => done(() => resumeOp.run({ jobId: job._id }), 'resume'),
 		cancel: (job: EmbeddingJob) => done(() => cancelOp.run({ jobId: job._id }), 'cancel'),
 		attest: (args: AttestArgs) => done(() => attestOp.run(args), 'attest'),

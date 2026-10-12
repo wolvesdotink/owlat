@@ -65,9 +65,15 @@ const resumeBlock = computed(() =>
 const confirmation = useEmbeddingConfirm();
 function startReembed() {
 	if (!status.value) return;
-	// The searchable space this re-embed goes into; none while a switch is pending.
-	const expected =
-		status.value.configured?.isActive && status.value.active ? status.value.active._id : undefined;
+	// What this confirmation names, captured now: the configured target (also
+	// a pending switch's) and the searchable space it goes into, none while a
+	// switch is pending. The server refuses if either has moved.
+	const expected = {
+		...(status.value.configured?.isActive && status.value.active
+			? { spaceId: status.value.active._id }
+			: {}),
+		...(status.value.configured?.targetKey ? { targetKey: status.value.configured.targetKey } : {}),
+	};
 	void confirmation.ask(reembedPayment(status.value) === 'paid', {
 		title: t(`${K}.reembed.confirmTitle`),
 		body: t(

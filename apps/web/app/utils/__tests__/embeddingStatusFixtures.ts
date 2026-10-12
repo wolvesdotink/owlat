@@ -63,6 +63,7 @@ export function embeddingStatus(over: Partial<EmbeddingStatus> = {}): EmbeddingS
 			source: 'stored_config',
 			isLocal: false,
 			isActive: true,
+			targetKey: '["openai","native","text-embedding-3-small",null]',
 		},
 		coverage: {
 			_id: 'cov_1' as NonNullable<EmbeddingStatus['coverage']>['_id'],

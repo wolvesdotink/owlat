@@ -13,6 +13,9 @@ import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18
 import { embeddingStatus, job, space } from '~/utils/__tests__/embeddingStatusFixtures';
 import type { EmbeddingStatus } from '~/utils/embeddingSpaces';
 
+/** `status.configured.targetKey` of the default fixture. */
+const TARGET_KEY = '["openai","native","text-embedding-3-small",null]';
+
 const status = ref<EmbeddingStatus | null>(null);
 const validation = ref<unknown>(null);
 const spaces = {
@@ -758,17 +761,36 @@ describe('AiEmbeddingSpaceCard', () => {
 			await w.get('[data-testid="ai-embedding-reembed-start"]').trigger('click');
 			await w.get('[data-testid="dialog-confirm"]').trigger('click');
 			await flushPromises();
-			expect(spaces.startReembed).toHaveBeenCalledWith('sp_active');
+			expect(spaces.startReembed).toHaveBeenCalledWith({
+				spaceId: 'sp_active',
+				targetKey: TARGET_KEY,
+			});
 		});
 
-		it('names no space for a re-embed while a switch is pending', async () => {
+		it('names the target, captured at the dialog, and no space while a switch is pending', async () => {
 			const base = embeddingStatus({ isPaidEmbeddingAvailable: true });
 			status.value = { ...base, configured: { ...base.configured!, isActive: false } };
 			const w = mountCard();
 			await w.get('[data-testid="ai-embedding-reembed-start"]').trigger('click');
 			await w.get('[data-testid="dialog-confirm"]').trigger('click');
 			await flushPromises();
-			expect(spaces.startReembed).toHaveBeenCalledWith(undefined);
+			expect(spaces.startReembed).toHaveBeenCalledWith({ targetKey: TARGET_KEY });
+		});
+
+		it('shows the moved-target refusal of a pending switch inline', async () => {
+			const base = embeddingStatus({ isPaidEmbeddingAvailable: true });
+			status.value = { ...base, configured: { ...base.configured!, isActive: false } };
+			spaces.startReembed.mockImplementationOnce(async () => {
+				spaces.isTargetChanged.value = true;
+				return false;
+			});
+			const w = mountCard();
+			await w.get('[data-testid="ai-embedding-reembed-start"]').trigger('click');
+			await w.get('[data-testid="dialog-confirm"]').trigger('click');
+			await flushPromises();
+			expect(w.get('[data-testid="ai-embedding-target-changed"]').text()).toContain(
+				'changed while you were confirming'
+			);
 		});
 
 		it('shows the server guard refusal inline', () => {

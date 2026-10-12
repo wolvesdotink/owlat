@@ -72,7 +72,7 @@ describe('useEmbeddingSpaces', () => {
 		const spaces = useEmbeddingSpaces();
 		const running = job();
 		await spaces.refresh();
-		await spaces.startReembed('sp_active' as never);
+		await spaces.startReembed({ spaceId: 'sp_active' as never, targetKey: 'key_a' });
 		await spaces.resume(running);
 		await spaces.cancel(running);
 		await spaces.revoke('att_1' as never);
@@ -85,7 +85,10 @@ describe('useEmbeddingSpaces', () => {
 		await spaces.rollback('sp_prev' as never);
 		expect(calls).toEqual([
 			{ label: 'Count embedding coverage', args: {} },
-			{ label: 'Start re-embedding', args: { expectedSpaceId: 'sp_active' } },
+			{
+				label: 'Start re-embedding',
+				args: { expectedSpaceId: 'sp_active', expectedTargetKey: 'key_a' },
+			},
 			{ label: 'Resume re-embedding', args: { jobId: 'job_1' } },
 			{ label: 'Cancel re-embedding', args: { jobId: 'job_1' } },
 			{ label: 'Revoke attestation', args: { attestationId: 'att_1' } },
@@ -163,10 +166,28 @@ describe('useEmbeddingSpaces', () => {
 		expect(calls).toEqual([{ label: 'Record attestation', args }]);
 	});
 
-	it('a re-embed while a switch is pending names no space', async () => {
+	it('a re-embed while a switch is pending names its target, not a space', async () => {
 		const spaces = useEmbeddingSpaces();
+		await spaces.startReembed({ targetKey: 'key_b' });
 		await spaces.startReembed();
-		expect(calls).toEqual([{ label: 'Start re-embedding', args: {} }]);
+		expect(calls).toEqual([
+			{ label: 'Start re-embedding', args: { expectedTargetKey: 'key_b' } },
+			{ label: 'Start re-embedding', args: {} },
+		]);
+	});
+
+	it('shows a moved target on a pending switch inline, no toast', async () => {
+		answers['Start re-embedding'] = {
+			refusal: {
+				category: 'conflict',
+				message: 'The embedding target changed since you confirmed.',
+				data: { reason: 'embedding_target_changed' },
+			},
+		};
+		const spaces = useEmbeddingSpaces();
+		expect(await spaces.startReembed({ targetKey: 'key_b' })).toBe(false);
+		expect(spaces.isTargetChanged.value).toBe(true);
+		expect(showToast).not.toHaveBeenCalled();
 	});
 
 	it('shows the expected-target refusal on the card, no toast, until the next control', async () => {
@@ -193,7 +214,7 @@ describe('useEmbeddingSpaces', () => {
 			() => spaces.catchUp(id),
 			() => spaces.cancelRebuild(id),
 			() => spaces.rollback(id),
-			() => spaces.startReembed(id),
+			() => spaces.startReembed({ spaceId: id }),
 		]) {
 			expect(await run()).toBe(false);
 			expect(spaces.isTargetChanged.value).toBe(true);
