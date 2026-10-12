@@ -161,7 +161,6 @@ function openaiTransport(apiKey: string, fetchImpl: Fetch): BatchTransport {
 				state.errorFileId ? fileText(state.errorFileId) : undefined,
 			]);
 			return openaiResult(
-				state,
 				{
 					...(output === undefined ? {} : { output }),
 					...(errors === undefined ? {} : { errors }),

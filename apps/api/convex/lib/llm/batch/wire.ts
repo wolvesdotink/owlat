@@ -130,9 +130,10 @@ export function anthropicBatchState(batch: unknown): BatchState {
 
 /**
  * The request's result. `succeeded` carries the response body exactly as the
- * real-time endpoint returns it, so the SDK parses it the same way. The other
- * kinds are not billed by either provider. `missing`: the batch ended and no
- * line names the request; whether it was billed is unknown.
+ * real-time endpoint returns it, so the SDK parses it the same way.
+ * `errored`, `expired` and `canceled` come only from the request's own result
+ * record, which says it was not billed. `missing`: no such evidence (no line,
+ * a malformed one); whether it was billed is unknown, so it is charged in full.
  */
 export type BatchResult =
 	| { readonly kind: 'succeeded'; readonly body: unknown }
@@ -142,6 +143,7 @@ export type BatchResult =
 interface ResultLine {
 	custom_id?: unknown;
 	response?: unknown;
+	error?: unknown;
 	result?: unknown;
 }
 
@@ -164,28 +166,45 @@ function lineFor(text: string | undefined, customId: string): ResultLine | undef
 	return jsonLines(text).find((line) => line.custom_id === customId);
 }
 
+/** OpenAI's per-request error codes for a request its batch never ran. */
+const OPENAI_UNRUN: Readonly<Record<string, 'expired' | 'canceled'>> = {
+	batch_expired: 'expired',
+	batch_cancelled: 'canceled',
+};
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 /**
- * OpenAI: the result in the output file (a 200 response) or the error file,
- * else what the batch's own status says about a request it never ran.
+ * OpenAI: the request's own line in the output or the error file. Only that
+ * line is evidence: a 200 response is the result; an error response (an HTTP
+ * error status), or the error record OpenAI writes for a request its batch
+ * never ran (`batch_expired`, `batch_cancelled`), says it was not billed.
+ * Anything else, a line that is malformed or no line at all, is `missing`,
+ * whatever the batch's own status: whether the request was billed is unknown.
  */
 export function openaiResult(
-	state: Extract<BatchState, { state: 'ended' }>,
 	files: { readonly output?: string; readonly errors?: string },
 	customId: string
 ): BatchResult {
 	for (const text of [files.output, files.errors]) {
 		const line = lineFor(text, customId);
 		if (!line) continue;
-		const response = (line.response ?? null) as { status_code?: unknown; body?: unknown } | null;
-		if (response?.status_code === 200 && response.body !== undefined) {
-			return { kind: 'succeeded', body: response.body };
+		const response = isObject(line.response) ? line.response : null;
+		const status = response?.['status_code'];
+		if (status === 200) {
+			return isObject(response?.['body'])
+				? { kind: 'succeeded', body: response['body'] }
+				: { kind: 'missing' };
 		}
-		return { kind: 'errored' };
+		if (typeof status === 'number' && Number.isInteger(status) && status >= 400) {
+			return { kind: 'errored' };
+		}
+		const code = isObject(line.error) ? line.error['code'] : undefined;
+		const unrun = typeof code === 'string' ? OPENAI_UNRUN[code] : undefined;
+		return unrun ? { kind: unrun } : { kind: 'missing' };
 	}
-	// No line: the batch did not run the request.
-	if (state.status === 'expired') return { kind: 'expired' };
-	if (state.status === 'cancelled') return { kind: 'canceled' };
-	if (state.status === 'failed') return { kind: 'errored' };
 	return { kind: 'missing' };
 }
 
@@ -195,9 +214,9 @@ export function anthropicResult(results: string, customId: string): BatchResult 
 	const result = (line?.result ?? null) as { type?: unknown; message?: unknown } | null;
 	switch (result?.type) {
 		case 'succeeded':
-			return result.message === undefined
-				? { kind: 'missing' }
-				: { kind: 'succeeded', body: result.message };
+			return isObject(result.message)
+				? { kind: 'succeeded', body: result.message }
+				: { kind: 'missing' };
 		case 'errored':
 			return { kind: 'errored' };
 		case 'expired':

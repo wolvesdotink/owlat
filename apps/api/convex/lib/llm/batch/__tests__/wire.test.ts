@@ -95,34 +95,41 @@ describe('batch states', () => {
 });
 
 describe('batch results', () => {
-	const ended = (status: string) => ({ state: 'ended' as const, status });
 	const line = (customId: string, statusCode: number, body: unknown) =>
 		JSON.stringify({ custom_id: customId, response: { status_code: statusCode, body } });
+	const unrun = (customId: string, code: string) =>
+		JSON.stringify({ custom_id: customId, response: null, error: { code, message: 'x' } });
 
 	it('OpenAI: the 200 response body of the request’s own line', () => {
 		const output = [line('other', 200, { id: 'x' }), line('req-1', 200, { id: 'mine' })].join('\n');
-		expect(openaiResult(ended('completed'), { output }, 'req-1')).toEqual({
-			kind: 'succeeded',
-			body: { id: 'mine' },
+		expect(openaiResult({ output }, 'req-1')).toEqual({ kind: 'succeeded', body: { id: 'mine' } });
+	});
+
+	it('OpenAI: unbilled only on the request’s own evidence: an error response or its unrun record', () => {
+		expect(openaiResult({ errors: line('req-1', 400, {}) }, 'req-1')).toEqual({ kind: 'errored' });
+		expect(openaiResult({ output: line('req-1', 500, {}) }, 'req-1')).toEqual({ kind: 'errored' });
+		expect(openaiResult({ errors: unrun('req-1', 'batch_expired') }, 'req-1')).toEqual({
+			kind: 'expired',
+		});
+		expect(openaiResult({ errors: unrun('req-1', 'batch_cancelled') }, 'req-1')).toEqual({
+			kind: 'canceled',
 		});
 	});
 
-	it('OpenAI: a line in the error file, or a non-200, is an unbilled error', () => {
-		expect(openaiResult(ended('completed'), { errors: line('req-1', 400, {}) }, 'req-1')).toEqual({
-			kind: 'errored',
-		});
-		expect(openaiResult(ended('completed'), { output: line('req-1', 500, {}) }, 'req-1')).toEqual({
-			kind: 'errored',
-		});
-	});
-
-	it('OpenAI: no line at all reads from the batch status; a completed batch without it is missing', () => {
-		expect(openaiResult(ended('expired'), {}, 'req-1')).toEqual({ kind: 'expired' });
-		expect(openaiResult(ended('cancelled'), {}, 'req-1')).toEqual({ kind: 'canceled' });
-		expect(openaiResult(ended('failed'), {}, 'req-1')).toEqual({ kind: 'errored' });
-		expect(openaiResult(ended('completed'), { output: 'not json\n' }, 'req-1')).toEqual({
-			kind: 'missing',
-		});
+	it('OpenAI: no line, or a malformed one, is missing (the batch status is not consulted)', () => {
+		const malformed = [
+			'not json',
+			JSON.stringify({ custom_id: 'req-1' }),
+			JSON.stringify({ custom_id: 'req-1', response: { status_code: 200 } }),
+			JSON.stringify({ custom_id: 'req-1', response: { status_code: 200, body: 'text' } }),
+			JSON.stringify({ custom_id: 'req-1', response: null, error: { code: 'other' } }),
+			unrun('other', 'batch_expired'),
+		];
+		expect(openaiResult({}, 'req-1')).toEqual({ kind: 'missing' });
+		for (const text of malformed) {
+			expect(openaiResult({ output: text }, 'req-1')).toEqual({ kind: 'missing' });
+			expect(openaiResult({ errors: text }, 'req-1')).toEqual({ kind: 'missing' });
+		}
 	});
 
 	it('Anthropic: each result type of the request’s own line', () => {
@@ -136,7 +143,20 @@ describe('batch results', () => {
 		});
 		expect(anthropicResult(results({ type: 'expired' }), 'req-1')).toEqual({ kind: 'expired' });
 		expect(anthropicResult(results({ type: 'canceled' }), 'req-1')).toEqual({ kind: 'canceled' });
-		expect(anthropicResult(results({ type: 'succeeded' }), 'req-1')).toEqual({ kind: 'missing' });
-		expect(anthropicResult(results({ type: 'expired' }), 'other')).toEqual({ kind: 'missing' });
+	});
+
+	it('Anthropic: no line, or a malformed one, is missing', () => {
+		const results = (result: unknown) => JSON.stringify({ custom_id: 'req-1', result });
+		for (const text of [
+			'',
+			'not json',
+			results({ type: 'succeeded' }),
+			results({ type: 'succeeded', message: 'text' }),
+			results({ type: 'unknown' }),
+			JSON.stringify({ custom_id: 'req-1' }),
+			JSON.stringify({ custom_id: 'other', result: { type: 'expired' } }),
+		]) {
+			expect(anthropicResult(text, 'req-1')).toEqual({ kind: 'missing' });
+		}
 	});
 });
