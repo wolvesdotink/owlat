@@ -243,7 +243,9 @@ export type LlmObjectOptions<S extends z.ZodTypeAny> = LlmObjectInput & LlmObjec
  * One prompt, or messages: a prompt split into a cache-marked system message
  * and the per-message content (`promptCache.ts`, L9).
  */
-type LlmObjectInput = { prompt: string } | { messages: ModelMessage[] };
+type LlmObjectInput =
+	| { prompt: string; messages?: never }
+	| { messages: ModelMessage[]; prompt?: never };
 
 interface LlmObjectSettings<S extends z.ZodTypeAny> {
 	model: LanguageModel;
@@ -300,7 +302,7 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 					return await generateObject({
 						model: modelForRequest(opts.model),
 						schema: opts.schema,
-						...('messages' in opts ? { messages: opts.messages } : { prompt: opts.prompt }),
+						...(opts.messages ? { messages: opts.messages } : { prompt: opts.prompt }),
 						temperature: opts.temperature,
 						maxRetries: SDK_MAX_RETRIES,
 						...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),

@@ -259,7 +259,7 @@ describe('header evidence: each consumer keeps its predicate', () => {
 	});
 
 	it('category: Precedence bulk|list only', () => {
-		for (const precedence of VALUES.precedence!) {
+		for (const precedence of VALUES['precedence']!) {
 			for (const fromAddress of ['ana@example.com', 'alerts@example.com']) {
 				const input = {
 					fromAddress,
