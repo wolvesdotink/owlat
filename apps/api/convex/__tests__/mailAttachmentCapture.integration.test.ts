@@ -324,6 +324,9 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 		// The document is in the library; the installer nobody scanned is not.
 		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
 		expect(files.map((f) => f.filename)).toEqual(['notes.txt']);
+		// …and the message does not read as fully read (Sol r2 F2).
+		const message = await t.run((ctx) => ctx.db.query('mailMessages').first());
+		expect(message?.attachmentIndexing).toBe('skipped_refused_type');
 	});
 
 	it('captures a DMARC fail a trusted ARC forwarder rescued', async () => {
@@ -899,5 +902,109 @@ describe('mail.delivery.captureStagedAttachments — the attachment marker', () 
 			parts: [{ storageId: await blob(), filename: 'b.txt', contentType: 'text/plain', size: 17 }],
 		});
 		expect((await t.run((ctx) => ctx.db.get(messageId)))?.attachmentIndexing).toBe('indexed');
+	});
+});
+
+/**
+ * Sol r2 F2: a mixed batch (one file accepted, others capped, refused or too
+ * large) keeps the plan's reason through the scheduled step, so the message
+ * never reads as fully indexed while files went unread.
+ */
+describe('the attachment marker for a mixed batch', () => {
+	function manyLeaves(count: number): string {
+		const boundary = 'mixb0undary';
+		const lines = [
+			'From: Bob <bob@example.com>',
+			'To: alice@example.com',
+			'Subject: many attachments',
+			'Message-ID: <mixed-cap@example.com>',
+			`Content-Type: multipart/mixed; boundary="${boundary}"`,
+			'',
+			`--${boundary}`,
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'See the attached notes.',
+			'',
+		];
+		for (let i = 0; i < count; i++) {
+			lines.push(
+				`--${boundary}`,
+				`Content-Type: text/plain; name="doc-${i}.txt"`,
+				`Content-Disposition: attachment; filename="doc-${i}.txt"`,
+				'Content-Transfer-Encoding: base64',
+				'',
+				Buffer.from(`document number ${i}`).toString('base64'),
+				''
+			);
+		}
+		lines.push(`--${boundary}--`, '');
+		return lines.join('\r\n');
+	}
+
+	it('more leaves than one message is processed for: indexed up to the cap, marked capped', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const count = ATTACHMENT_COMPOSE_LIMITS.maxCount + 2;
+		const result = await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'd-mixed-cap',
+			rawBytesBase64: Buffer.from(manyLeaves(count), 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'many attachments',
+			textBody: 'See the attached notes.',
+			messageId: '<mixed-cap@example.com>',
+			attachments: Array.from({ length: count }, (_, i) => ({
+				filename: `doc-${i}.txt`,
+				contentType: 'text/plain',
+				size: 17,
+				partIndex: String(i),
+			})),
+		});
+		await drainCapture(t);
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		expect(files.length).toBeGreaterThan(0);
+		expect(files.length).toBeLessThan(count);
+		const message = await t.run((ctx) =>
+			ctx.db.get((result as { messageId: Id<'mailMessages'> }).messageId)
+		);
+		expect(message?.attachmentIndexing).toBe('skipped_cap');
+	});
+
+	it('the scheduled step keeps the reason it was handed; a previous-release job has none', async () => {
+		const t = setupTest();
+		await seedInbox(t);
+		const { messageId } = (await t.action(internal.mail.delivery.ingestFromWebhook, {
+			deliveryId: 'mixed-staged',
+			rawBytesBase64: Buffer.from(buildRawEml(), 'latin1').toString('base64'),
+			recipientAddress: 'alice@example.com',
+			from: 'Bob <bob@example.com>',
+			to: ['alice@example.com'],
+			cc: [],
+			bcc: [],
+			subject: 'with attachment',
+			textBody: 'See the attached notes.',
+			messageId: '<mixed-staged@example.com>',
+			attachments: [],
+		})) as { messageId: Id<'mailMessages'> };
+		await drainCapture(t);
+		const run = async (skippedReason?: 'too_large') => {
+			const storageId = await t.run((ctx) =>
+				ctx.storage.store(new Blob(['a staged document'], { type: 'text/plain' }))
+			);
+			await t.mutation(internal.mail.delivery.captureStagedAttachments, {
+				messageId: '<mixed-staged@example.com>',
+				from: 'Bob <bob@example.com>',
+				captureSource: 'mailbox',
+				mailMessageId: messageId,
+				...(skippedReason ? { skippedReason } : {}),
+				parts: [{ storageId, filename: 'a.txt', contentType: 'text/plain', size: 17 }],
+			});
+			return (await t.run((ctx) => ctx.db.get(messageId)))?.attachmentIndexing;
+		};
+		expect(await run('too_large')).toBe('skipped_too_large');
+		expect(await run()).toBe('indexed');
 	});
 });

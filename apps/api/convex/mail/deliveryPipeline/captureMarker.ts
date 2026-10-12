@@ -10,6 +10,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../../lib/writeFence';
 import { attachmentIndexingValidator, type AttachmentIndexing } from '../../lib/literalValidators';
 import type { AttachmentCaptureOutcome } from './capture';
+import { literalUnion } from '../../lib/literalUnion';
 
 /**
  * The marker each skip reason renders as. A TOTAL table: `satisfies` makes a
@@ -30,6 +31,17 @@ const SKIP_MARKERS = {
 	NonNullable<AttachmentCaptureOutcome['skippedReason']>,
 	AttachmentIndexing
 >;
+
+type CaptureSkipReason = NonNullable<AttachmentCaptureOutcome['skippedReason']>;
+
+/**
+ * A capture skip reason as a validator, from the same total table: the
+ * webhook's plan hands its reason for the parts it left out to the scheduled
+ * step (`deferredCapture.ts` `stagedCaptureArgs.skippedReason`).
+ */
+export const captureSkipReasonValidator = literalUnion(
+	Object.keys(SKIP_MARKERS) as CaptureSkipReason[]
+);
 
 /**
  * Which single line this outcome renders as, or none (nothing to capture).

@@ -37,7 +37,7 @@ import {
 } from './capture';
 import { ingestStoredPart, scopeAndChargeBudget, type IndexedPart } from './captureIndex';
 import { dropStagedBlobs } from './insert';
-import { indexingMarkerOf } from './captureMarker';
+import { captureSkipReasonValidator, indexingMarkerOf } from './captureMarker';
 import { logError } from '../../lib/runtimeLog';
 import type { Id } from '../../_generated/dataModel';
 
@@ -54,6 +54,13 @@ export const stagedCaptureArgs = {
 	 * (remove after release N+1): those record nothing, as before.
 	 */
 	mailMessageId: v.optional(v.id('mailMessages')),
+	/**
+	 * Why the webhook's plan left some of the message's parts out (capped,
+	 * refused, too large) while staging the rest: the scheduled step's outcome
+	 * keeps it, so one accepted file never marks the message fully read.
+	 * Optional for jobs a previous release scheduled (remove after N+1).
+	 */
+	skippedReason: v.optional(captureSkipReasonValidator),
 	/** The eligible parts, already in storage, in capture order. */
 	parts: v.array(
 		v.object({
@@ -110,6 +117,7 @@ export async function scheduleStagedCapture(
 			from: input.from,
 			captureSource: input.captureSource,
 			...(input.mailMessageId ? { mailMessageId: input.mailMessageId } : {}),
+			...(plan.skippedReason ? { skippedReason: plan.skippedReason } : {}),
 			parts: plan.eligible.map((part, i) => ({
 				storageId: storageIds[i]!,
 				filename: part.filename,
@@ -149,7 +157,9 @@ async function indexStaged(
 	for (const part of args.parts) {
 		if (await ctx.db.system.get(part.storageId)) present.push(part);
 	}
-	if (present.length === 0) return { indexed: 0 };
+	if (present.length === 0) {
+		return { indexed: 0, ...(args.skippedReason ? { skippedReason: args.skippedReason } : {}) };
+	}
 
 	const scope = await scopeAndChargeBudget(ctx, {
 		from: args.from,
@@ -174,7 +184,7 @@ async function indexStaged(
 			})
 		);
 	}
-	return summarizeCapture(results, undefined);
+	return summarizeCapture(results, args.skippedReason);
 }
 
 /**
