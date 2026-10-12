@@ -12,6 +12,7 @@ import { convexTest } from 'convex-test';
 import { ConvexError, type Value } from 'convex/values';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Ai from 'ai';
+import type * as LlmProvider from '../lib/llmProvider';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import { EMBEDDING_TARGET_CHANGED } from '../lib/aiRouting/embeddingRegistry';
@@ -39,7 +40,7 @@ vi.mock('ai', async () => {
 });
 
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProvider>('../lib/llmProvider');
 	return {
 		...actual,
 		readEmbeddingConfigSnapshot: vi.fn(
