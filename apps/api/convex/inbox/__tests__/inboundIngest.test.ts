@@ -1766,3 +1766,92 @@ describe('inboundIngest — degenerate MIME', () => {
 		expect(files).toHaveLength(0);
 	});
 });
+
+/**
+ * L6, attachment gates: behind the routing policy's `attachmentGates` switch
+ * (off by default), Spam verdicts and newsletters or automated mail are kept
+ * out of the file library, and the row says why.
+ */
+describe('inboundIngest — attachment gates (L6)', () => {
+	async function ingestWith(
+		t: ReturnType<typeof setupTest>,
+		messageId: string,
+		extra: { headers?: Record<string, string>; mtaSpamVerdict?: 'spam' | 'quarantine' }
+	) {
+		await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
+			mail: {
+				from: 'Bob <bob@example.com>',
+				to: 'inbox@example.com',
+				subject: 'subject',
+				textBody: 'body',
+				headers: extra.headers ?? {},
+				messageId: `<${messageId}>`,
+				attachments: NOTES_META,
+				timestamp: Date.now(),
+				...(extra.mtaSpamVerdict ? { mtaSpamVerdict: extra.mtaSpamVerdict } : {}),
+			},
+			rawBytesBase64: encode(buildEmlWithAttachment(messageId)),
+		});
+		const row = await t.run((ctx) => ctx.db.query('inboundMessages').first());
+		const files = await t.run((ctx) => ctx.db.query('semanticFiles').collect());
+		return { marker: row?.attachmentIndexing, files };
+	}
+
+	async function enforce(t: ReturnType<typeof setupTest>) {
+		await t.run((ctx) =>
+			ctx.db.insert('aiRoutingPolicy', {
+				attachmentGates: 'enforce',
+				policyVersion: 1,
+				updatedAt: Date.now(),
+				updatedBy: 'admin',
+			})
+		);
+	}
+
+	it('off by default: a mailing-list message is captured as before', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+		const { marker, files } = await ingestWith(t, 'gate-off@example.com', {
+			headers: { 'List-Id': '<news.example.com>' },
+		});
+		expect(marker).toBe('indexed');
+		expect(files).toHaveLength(1);
+	});
+
+	it('on: a mailing-list message is not captured, and the row says so', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+		await enforce(t);
+		const { marker, files } = await ingestWith(t, 'gate-list@example.com', {
+			headers: { 'List-Id': '<news.example.com>' },
+		});
+		expect(marker).toBe('skipped_automated');
+		expect(files).toHaveLength(0);
+	});
+
+	it('on: an MTA spam verdict is not captured', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+		await enforce(t);
+		const { marker, files } = await ingestWith(t, 'gate-spam@example.com', {
+			mtaSpamVerdict: 'spam',
+		});
+		expect(marker).toBe('skipped_spam');
+		expect(files).toHaveLength(0);
+	});
+
+	it('on: a person forwarded by another Owlat mailbox is still captured', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+		await enforce(t);
+		const { marker, files } = await ingestWith(t, 'gate-fwd@example.com', {
+			headers: { 'X-Owlat-Forwarded': 'mbx_1' },
+		});
+		expect(marker).toBe('indexed');
+		expect(files).toHaveLength(1);
+	});
+});

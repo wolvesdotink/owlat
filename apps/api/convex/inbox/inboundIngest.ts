@@ -38,6 +38,8 @@ import type { AttachmentIndexing } from '../lib/literalValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
 import { deleteBlobQuietly } from '../lib/storageBlobs';
 import { receiveInboundMail } from './receiveInbound';
+import { resolveAttachmentGate } from '../mail/deliveryPipeline/captureGate';
+import { headerEvidenceFromMap } from '../lib/mailEvidence';
 
 /** A staged raw message: sealed into storage, decoded, and scanned. */
 type StagedRaw = {
@@ -260,6 +262,11 @@ export const ingestFromWebhook = internalAction({
 					dkimSigningDomain: args.mail.dkimSigningDomain,
 					dmarcOverride,
 				},
+				// L6, behind `attachmentGates` (off by default).
+				gateSkip: await resolveAttachmentGate(ctx, {
+					...(args.mail.mtaSpamVerdict ? { spamVerdict: args.mail.mtaSpamVerdict } : {}),
+					headers: headerEvidenceFromMap(args.mail.headers),
+				}),
 			});
 			await recordCaptureOutcome(ctx, inboundMessageId, outcome);
 		} catch (err) {
@@ -304,6 +311,8 @@ async function dropStagedBlob(
  * file — the exact defect these markers exist to close.
  */
 const SKIP_MARKERS = {
+	spam: 'skipped_spam',
+	automated: 'skipped_automated',
 	unverified: 'skipped_unverified',
 	budget: 'skipped_budget',
 	unscanned: 'skipped_unscanned',

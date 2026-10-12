@@ -1143,6 +1143,7 @@ import type * as mail_delivery from '../mail/delivery.js';
 import type * as mail_deliveryPipeline_afterInsert from '../mail/deliveryPipeline/afterInsert.js';
 import type * as mail_deliveryPipeline_attachmentParts from '../mail/deliveryPipeline/attachmentParts.js';
 import type * as mail_deliveryPipeline_capture from '../mail/deliveryPipeline/capture.js';
+import type * as mail_deliveryPipeline_captureGate from '../mail/deliveryPipeline/captureGate.js';
 import type * as mail_deliveryPipeline_captureIndex from '../mail/deliveryPipeline/captureIndex.js';
 import type * as mail_deliveryPipeline_deferredCapture from '../mail/deliveryPipeline/deferredCapture.js';
 import type * as mail_deliveryPipeline_ingest from '../mail/deliveryPipeline/ingest.js';
@@ -2775,6 +2776,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/deliveryPipeline/afterInsert': typeof mail_deliveryPipeline_afterInsert;
 	'mail/deliveryPipeline/attachmentParts': typeof mail_deliveryPipeline_attachmentParts;
 	'mail/deliveryPipeline/capture': typeof mail_deliveryPipeline_capture;
+	'mail/deliveryPipeline/captureGate': typeof mail_deliveryPipeline_captureGate;
 	'mail/deliveryPipeline/captureIndex': typeof mail_deliveryPipeline_captureIndex;
 	'mail/deliveryPipeline/deferredCapture': typeof mail_deliveryPipeline_deferredCapture;
 	'mail/deliveryPipeline/ingest': typeof mail_deliveryPipeline_ingest;

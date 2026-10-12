@@ -185,7 +185,11 @@ export const attachmentIndexingValidator = v.union(
 	v.literal('skipped_refused_type'),
 	v.literal('skipped_too_large'),
 	v.literal('skipped_unsupported'),
-	v.literal('skipped_failed')
+	v.literal('skipped_failed'),
+	// L6 (`attachmentGates`, off by default): Spam or an MTA spam verdict, and
+	// newsletters or automated mail.
+	v.literal('skipped_spam'),
+	v.literal('skipped_automated')
 );
 
 export type AttachmentIndexing = Infer<typeof attachmentIndexingValidator>;
