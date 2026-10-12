@@ -129,15 +129,24 @@ const {
 	setHasChanges,
 } = useUnsavedChanges({
 	onSave: async () => {
-		await handleSave();
-		// `useAiProviderForm.handleSave` clears `isDirty` only once the write
-		// lands; a validation stop or a refused mutation leaves it set, so a
-		// still-dirty form means the save failed and the operator stays here.
-		if (isDirty.value) throw new Error('Save failed');
+		if (isDirty.value) await handleSave();
+		if (routingDirty.value) await routingCard.value?.save();
+		// Both saves clear their dirty flag only once the write lands; a
+		// validation stop or a refused write leaves it set, so a still-dirty
+		// form means the save failed and the operator stays here.
+		if (isDirty.value || routingDirty.value) throw new Error('Save failed');
 	},
 });
 
-watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
+// The routing policy card saves on its own (a separate, versioned record), but
+// leaving the page with its edits unsaved is guarded the same way.
+const routingCard = ref<{ save: () => Promise<boolean> } | null>(null);
+const routingDirty = ref(false);
+watch(
+	() => isDirty.value || routingDirty.value,
+	(dirty) => setHasChanges(dirty),
+	{ immediate: true }
+);
 </script>
 
 <template>
@@ -445,6 +454,12 @@ watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					</UiButton>
 				</div>
 			</form>
+
+			<SettingsAiRoutingPolicyCard
+				ref="routingCard"
+				class="mt-6 max-w-3xl"
+				@dirty="routingDirty = $event"
+			/>
 
 			<!-- Only a stored row can be removed; env-only installs have nothing here. -->
 			<SettingsAiRemoveConfigCard

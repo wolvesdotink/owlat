@@ -7873,6 +7873,113 @@
 						"description": "Deletes the settings and API keys stored on this page. AI then uses the deployment's environment variables, or turns off if none are set.",
 						"title": "Remove provider configuration"
 					},
+					"routing": {
+						"ceiling": "Daily AI spend ceiling: {amount}.",
+						"conflict": "Another admin changed the AI routing while you were editing. Their version is shown now, so make your changes again.",
+						"defaultsInUse": "Not saved yet. The defaults apply.",
+						"description": "Which new AI paths run, and how much of the spend ceiling triage and shadow runs may use. Every switch starts off, which is how Owlat works today. Each change is recorded in the audit log.",
+						"discard": "Discard changes",
+						"groups": {
+							"budget": "Budget",
+							"decisions": "Decision requests",
+							"files": "Attachments and knowledge",
+							"shadow": "Shadow runs",
+							"team": "Team inbox",
+							"writing": "Drafting and background work"
+						},
+						"knowledgeEntryCap": {
+							"help": "The most entries one message may add to the knowledge base. Empty means no limit.",
+							"label": "Knowledge entries per message"
+						},
+						"loading": "Loading the AI routing policy",
+						"noCapPlaceholder": "No limit",
+						"noCeiling": "No daily AI spend ceiling is set.",
+						"problems": {
+							"cap": "Enter a whole number from {min} to {max}, or leave it empty.",
+							"percentBelow": "Enter a percentage above 0 and below {max}.",
+							"percentUpTo": "Enter a percentage above 0 and at most {max}.",
+							"shadowCapRequired": "Required while a switch is in shadow and no daily ceiling is set.",
+							"usd": "Enter an amount above 0, or leave it empty."
+						},
+						"promptCache": {
+							"help": "Marks the fixed part of the interpretation prompt for the provider's cache. Only Anthropic models use it; other providers ignore it.",
+							"label": "Prompt caching for interpretation"
+						},
+						"save": "Save routing",
+						"saveOperation": "Save AI routing",
+						"saved": "AI routing saved.",
+						"savedVersion": "Version {version}, saved {date}.",
+						"shadow": {
+							"allowance": "Shadow runs may spend up to {amount} a day.",
+							"allowanceBlocked": "Set a spending cap. With no daily ceiling, shadow runs need one.",
+							"allowanceIdle": "No switch is in shadow, so shadow runs spend nothing.",
+							"capHelp": "Required when no daily ceiling is set.",
+							"capLabel": "Spending cap (USD per day)",
+							"ceilingHelp": "Share of the daily ceiling, at most {max}%.",
+							"ceilingLabel": "Daily ceiling (%)",
+							"description": "A switch set to shadow runs its new path beside today's and only records the result. These limits apply while any switch is in shadow.",
+							"messageHelp": "Share of eligible messages, at most {max}%.",
+							"messageLabel": "Messages (%)"
+						},
+						"switches": {
+							"attachmentGates": {
+								"help": "Files in spam, junk or newsletter mail are not read into the file library. The message says why its files were skipped.",
+								"label": "Skip attachments from spam and automated mail"
+							},
+							"batchApi": {
+								"help": "Background work such as knowledge extraction goes through the provider's cheaper batch API. Results arrive later.",
+								"label": "Provider batch processing"
+							},
+							"categoryDisplayBundle": {
+								"help": "Sorts mail into categories with decision requests. When on, it changes only how mail is labelled, never what happens to it.",
+								"label": "Categories from the decision provider"
+							},
+							"cheapFirstWriter": {
+								"help": "Drafts a person reviews before sending start on the fast model, and move to the capable one only when the first try falls short.",
+								"label": "Fast model first for reviewed drafts"
+							},
+							"claimVerification": {
+								"help": "Checks the facts a draft states with short decision questions instead of a full review by the language model.",
+								"label": "Check draft claims with decision questions"
+							},
+							"clarifyNecessity": {
+								"help": "One judgment decides whether the AI has to ask you before it drafts. Off keeps today's way of deciding.",
+								"label": "Ask only when a question is needed"
+							},
+							"dispositionAdvisoryBundle": {
+								"help": "Suggests whether a message needs a reply. Advisory only: it never sends, archives or deletes anything.",
+								"label": "Reply suggestions from the decision provider"
+							},
+							"earlyRuleArchive": {
+								"help": "Handling rules that don't depend on a category run before the AI reads and sorts the message, so mail they archive costs no AI call.",
+								"label": "Archive by rule before sorting"
+							},
+							"mtaVerdictTerminal": {
+								"help": "When the mail server marks a Team inbox message as spam, it is archived without running the agent. The verdict is recorded either way.",
+								"label": "Stop at the mail server's spam verdict"
+							},
+							"triageBundle": {
+								"help": "One short decision request per Team inbox message, before the knowledge lookup. Shadow only: it records its answer and changes nothing.",
+								"label": "Triage before knowledge lookup"
+							}
+						},
+						"title": "AI routing",
+						"triage": {
+							"help": "Share of the daily and monthly ceiling kept for the safety check and sorting, so both keep running after other AI work has used up its share.",
+							"label": "Triage allowance (%)"
+						},
+						"values": {
+							"enforce": "On",
+							"off": "Off",
+							"offDefault": "Off (default)",
+							"reviewed": "On for reviewed drafts",
+							"shadow": "Shadow: record only"
+						},
+						"verifyClaimCap": {
+							"help": "The most claims the draft check verifies for one message. Empty means no limit.",
+							"label": "Checked claims per message"
+						}
+					},
 					"save": "Save AI provider",
 					"saveFirstTest": "Save first, then test.",
 					"subtitle": "Choose the AI backend every AI feature uses. Pick a hosted provider and paste a key, or point at a model you host yourself.",

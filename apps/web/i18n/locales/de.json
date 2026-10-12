@@ -7873,6 +7873,113 @@
 						"description": "Löscht die auf dieser Seite gespeicherten Einstellungen und API-Schlüssel. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist.",
 						"title": "Anbieterkonfiguration entfernen"
 					},
+					"routing": {
+						"ceiling": "Tägliche Obergrenze für KI-Ausgaben: {amount}.",
+						"conflict": "Jemand anderes hat das KI-Routing geändert, während du es bearbeitet hast. Du siehst jetzt diese Fassung, nimm deine Änderungen also bitte erneut vor.",
+						"defaultsInUse": "Noch nicht gespeichert. Es gelten die Standardwerte.",
+						"description": "Welche neuen KI-Wege laufen und wie viel von der Ausgabenobergrenze Vorsortierung und Schattenläufe nutzen dürfen. Jeder Schalter steht anfangs auf Aus, so arbeitet Owlat heute. Jede Änderung wird im Audit-Protokoll festgehalten.",
+						"discard": "Änderungen verwerfen",
+						"groups": {
+							"budget": "Budget",
+							"decisions": "Entscheidungsanfragen",
+							"files": "Anhänge und Wissen",
+							"shadow": "Schattenläufe",
+							"team": "Team-Postfach",
+							"writing": "Entwürfe und Hintergrundarbeit"
+						},
+						"knowledgeEntryCap": {
+							"help": "Höchstens so viele Einträge darf eine Nachricht zum Wissen hinzufügen. Leer heißt: keine Grenze.",
+							"label": "Wissenseinträge pro Nachricht"
+						},
+						"loading": "KI-Routing wird geladen",
+						"noCapPlaceholder": "Keine Grenze",
+						"noCeiling": "Es ist keine tägliche Obergrenze für KI-Ausgaben eingestellt.",
+						"problems": {
+							"cap": "Gib eine ganze Zahl von {min} bis {max} ein oder lass das Feld leer.",
+							"percentBelow": "Gib einen Prozentwert über 0 und unter {max} ein.",
+							"percentUpTo": "Gib einen Prozentwert über 0 und höchstens {max} ein.",
+							"shadowCapRequired": "Pflicht, solange ein Schalter im Schattenmodus ist und keine Tagesobergrenze eingestellt ist.",
+							"usd": "Gib einen Betrag über 0 ein oder lass das Feld leer."
+						},
+						"promptCache": {
+							"help": "Markiert den gleichbleibenden Teil des Auswertungs-Prompts für den Cache des Anbieters. Nur Anthropic-Modelle nutzen das, andere Anbieter ignorieren es.",
+							"label": "Prompt-Caching für die Auswertung"
+						},
+						"save": "Routing speichern",
+						"saveOperation": "KI-Routing speichern",
+						"saved": "KI-Routing gespeichert.",
+						"savedVersion": "Version {version}, gespeichert am {date}.",
+						"shadow": {
+							"allowance": "Schattenläufe dürfen bis zu {amount} pro Tag ausgeben.",
+							"allowanceBlocked": "Leg eine Ausgabengrenze fest. Ohne Tagesobergrenze brauchen Schattenläufe eine.",
+							"allowanceIdle": "Kein Schalter ist im Schattenmodus, deshalb geben Schattenläufe nichts aus.",
+							"capHelp": "Pflicht, wenn keine Tagesobergrenze eingestellt ist.",
+							"capLabel": "Ausgabengrenze (USD pro Tag)",
+							"ceilingHelp": "Anteil an der Tagesobergrenze, höchstens {max} %.",
+							"ceilingLabel": "Tagesobergrenze (%)",
+							"description": "Ein Schalter im Schattenmodus führt den neuen Weg neben dem heutigen aus und zeichnet nur das Ergebnis auf. Diese Grenzen gelten, solange ein Schalter im Schattenmodus ist.",
+							"messageHelp": "Anteil der infrage kommenden Nachrichten, höchstens {max} %.",
+							"messageLabel": "Nachrichten (%)"
+						},
+						"switches": {
+							"attachmentGates": {
+								"help": "Dateien aus Spam, Junk oder Newslettern kommen nicht in die Dateibibliothek. Die Nachricht zeigt, warum ihre Dateien übersprungen wurden.",
+								"label": "Anhänge aus Spam und automatischen Mails überspringen"
+							},
+							"batchApi": {
+								"help": "Hintergrundarbeit wie das Auslesen von Wissen läuft über die günstigere Batch-API des Anbieters. Die Ergebnisse kommen später.",
+								"label": "Stapelverarbeitung beim Anbieter"
+							},
+							"categoryDisplayBundle": {
+								"help": "Sortiert Mails mit Entscheidungsanfragen in Kategorien. Eingeschaltet ändert das nur die Beschriftung, nie, was mit der Mail passiert.",
+								"label": "Kategorien vom Entscheidungsanbieter"
+							},
+							"cheapFirstWriter": {
+								"help": "Entwürfe, die vor dem Senden jemand prüft, beginnen mit dem schnellen Modell und wechseln nur zum leistungsfähigen, wenn der erste Versuch nicht reicht.",
+								"label": "Schnelles Modell zuerst für geprüfte Entwürfe"
+							},
+							"claimVerification": {
+								"help": "Prüft die Fakten in einem Entwurf mit kurzen Entscheidungsfragen statt mit einer vollen Prüfung durch das Sprachmodell.",
+								"label": "Aussagen im Entwurf mit Entscheidungsfragen prüfen"
+							},
+							"clarifyNecessity": {
+								"help": "Eine Einschätzung entscheidet, ob die KI vor dem Entwurf bei dir nachfragen muss. Aus behält das heutige Verfahren.",
+								"label": "Nur nachfragen, wenn es nötig ist"
+							},
+							"dispositionAdvisoryBundle": {
+								"help": "Schlägt vor, ob eine Nachricht eine Antwort braucht. Nur ein Hinweis: Es wird nie etwas gesendet, archiviert oder gelöscht.",
+								"label": "Antwortvorschläge vom Entscheidungsanbieter"
+							},
+							"earlyRuleArchive": {
+								"help": "Regeln, die keine Kategorie brauchen, laufen, bevor die KI die Nachricht liest und sortiert. Was sie archivieren, kostet keinen KI-Aufruf.",
+								"label": "Vor dem Sortieren per Regel archivieren"
+							},
+							"mtaVerdictTerminal": {
+								"help": "Markiert der Mailserver eine Nachricht im Team-Postfach als Spam, wird sie archiviert, ohne dass der Agent läuft. Das Urteil wird in jedem Fall gespeichert.",
+								"label": "Beim Spam-Urteil des Mailservers stoppen"
+							},
+							"triageBundle": {
+								"help": "Eine kurze Entscheidungsanfrage pro Nachricht im Team-Postfach, vor der Wissenssuche. Nur im Schattenmodus: Sie speichert ihre Antwort und ändert nichts.",
+								"label": "Vorsortierung vor der Wissenssuche"
+							}
+						},
+						"title": "KI-Routing",
+						"triage": {
+							"help": "Anteil an der Tages- und Monatsobergrenze, der für die Sicherheitsprüfung und das Sortieren reserviert bleibt. So laufen beide weiter, wenn andere KI-Arbeit ihren Anteil verbraucht hat.",
+							"label": "Reserve für die Vorsortierung (%)"
+						},
+						"values": {
+							"enforce": "An",
+							"off": "Aus",
+							"offDefault": "Aus (Standard)",
+							"reviewed": "An für geprüfte Entwürfe",
+							"shadow": "Schatten: nur aufzeichnen"
+						},
+						"verifyClaimCap": {
+							"help": "Höchstens so viele Aussagen prüft die Entwurfsprüfung pro Nachricht. Leer heißt: keine Grenze.",
+							"label": "Geprüfte Aussagen pro Nachricht"
+						}
+					},
 					"save": "KI-Anbieter speichern",
 					"saveFirstTest": "Zuerst speichern, dann testen.",
 					"subtitle": "Wähle das KI-Backend, das jede KI-Funktion nutzt. Entscheide dich für einen gehosteten Anbieter und füge einen Schlüssel ein, oder verweise auf ein Modell, das du selbst betreibst.",
