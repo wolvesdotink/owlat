@@ -273,7 +273,10 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 	) {
 		const scheduled: { delayMs: number; args: unknown }[] = [];
 		const ctx = {
-			runQuery: (ref: never, args: never) => t.query(ref, args),
+			runQuery: (
+				ref: typeof internal.mail.interpret.defer.oldestDeferredBefore,
+				args: { source: InterpretationSource }
+			) => t.query(ref, args),
 			scheduler: {
 				runAfter: async (delayMs: number, _ref: unknown, args: unknown) => {
 					scheduled.push({ delayMs, args });
