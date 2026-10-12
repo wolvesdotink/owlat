@@ -14,8 +14,7 @@ import { stampModelEndpoint } from '../modelEndpoint';
 import { LlmCallMeter } from '../requestMeter';
 import { callShape } from '../callShape';
 import { runLlmText } from '../dispatch';
-import { resolveLanguageModel } from '../../llmProvider';
-import { __resetAiConfigCacheForTests } from '../../llmProvider';
+import { __resetAiConfigCacheForTests, resolveLanguageModel } from '../../llmProvider';
 
 describe('taskTier', () => {
 	it('is the usual tier (the first listed) of every language and decision task', () => {

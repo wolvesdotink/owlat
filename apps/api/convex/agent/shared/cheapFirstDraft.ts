@@ -305,7 +305,7 @@ export async function runCheapFirstDraft(
 		const generated = await runLlmText({
 			meter,
 			model,
-			messages: [...messages],
+			messages,
 			temperature: params.temperature ?? 0.4,
 		});
 		const text = stripLeakedToolMarkup(generated.text);
