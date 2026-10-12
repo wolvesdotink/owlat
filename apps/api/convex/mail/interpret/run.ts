@@ -417,6 +417,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			},
 			result,
 			...attempt,
+			// A verifier refused by spend admission spends no retry (Sol r2 F2).
+			...(verified.isBudgetDeferred ? { retryCount: priorAttempts } : {}),
 		});
 		return finish(outcome, {
 			projection: needsReplyProjectionOf(result, loaded.ownerLocale),

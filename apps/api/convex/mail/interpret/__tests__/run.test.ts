@@ -204,6 +204,30 @@ describe('interpretMessage', () => {
 		expect(out).toMatchObject({ status: 'partial', errorCode: 'budget' });
 	});
 
+	it('spends no retry on repeated verifier budget deferrals (Sol r2 F2)', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedCaptured(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+			if (schema === briefModelSchema) return { object: modelOutput('s0') };
+			throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+		});
+		for (let run = 0; run < 5; run++) {
+			llm.runLlmObject.mockClear();
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(out).toMatchObject({ status: 'partial', errorCode: 'budget' });
+			// The run was made (the model was asked), not answered from the stored row.
+			expect(llm.runLlmObject).toHaveBeenCalled();
+			const counted = await t.run(async (ctx) =>
+				(await ctx.db.query('messageInterpretations').collect()).find((row) => row.isCounted)
+			);
+			expect(counted?.retryCount ?? 0).toBe(0);
+			// Due again: the next run re-checks the verifier.
+			if (counted) await t.run(async (ctx) => ctx.db.patch(counted._id, { nextRetryAt: 0 }));
+		}
+	});
+
 	it('fails soft when the model throws', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai']);
