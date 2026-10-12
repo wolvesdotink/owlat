@@ -831,4 +831,26 @@ describe('AiEmbeddingSpaceCard', () => {
 			expect(summary).toContain('As recorded for this space');
 		});
 	});
+
+	it('round 10 F3: zero exact candidates says no eligible items, and names the skipped rows', () => {
+		const exact = embeddingStatus({ isPaidEmbeddingAvailable: true });
+		exact.coverage = {
+			...exact.coverage!,
+			knowledgeEntries: {
+				...exact.coverage!.knowledgeEntries,
+				reembedCandidates: 0,
+				reembedSkipped: 5,
+			},
+			semanticFiles: { ...exact.coverage!.semanticFiles, reembedCandidates: 0, reembedSkipped: 2 },
+		};
+		status.value = exact;
+		const w = mountCard();
+		expect(
+			w.get('[data-testid="ai-embedding-reembed-start"]').attributes('disabled')
+		).toBeDefined();
+		const line = w.get('[data-testid="ai-embedding-reembed-nothing"]').text();
+		expect(line).toContain('No eligible items need re-embedding.');
+		expect(line).toContain('7 items stay out of vector search anyway');
+		expect(line).not.toContain('Every item already has a vector');
+	});
 });

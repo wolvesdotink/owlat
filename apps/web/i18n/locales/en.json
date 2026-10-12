@@ -8014,6 +8014,8 @@
 							"hosted": "Your embedding model is hosted, so re-embedding is paid: every item is sent to the provider and counted against your AI spend. It runs only when you start it.",
 							"local": "Your embedding model runs on your server, so re-embedding is free. It also runs on its own once a day.",
 							"nothing": "Every item already has a vector in vector search.",
+							"nothingEligible": "No eligible items need re-embedding.",
+							"skipped": "{count} items stay out of vector search anyway: expired entries, files still being processed, or too little text.",
 							"start": "Re-embed up to {count} items",
 							"startExact": "Re-embed {count} items",
 							"title": "Re-embed"

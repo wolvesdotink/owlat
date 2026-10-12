@@ -57,16 +57,24 @@ describe('search state and coverage', () => {
 			['semanticFiles', 43],
 		]);
 		// An old snapshot without the exact counts: the upper bound, unembedded rows included.
-		expect(reembedCandidates(status.coverage)).toEqual({ count: 279, isExact: false });
+		expect(reembedCandidates(status.coverage)).toEqual({
+			count: 279,
+			isExact: false,
+			skipped: null,
+		});
 		expect(unknownRows(status.coverage)).toBe(271);
-		expect(reembedCandidates(null)).toEqual({ count: 0, isExact: false });
+		expect(reembedCandidates(null)).toEqual({ count: 0, isExact: false, skipped: null });
 		const onlyUnembedded = embeddingStatus();
 		onlyUnembedded.coverage = {
 			...onlyUnembedded.coverage!,
 			knowledgeEntries: { active: 9, unknown: 0, inactive: 0, unembedded: 2 },
 			semanticFiles: { active: 3, unknown: 0, inactive: 0, unembedded: 0 },
 		};
-		expect(reembedCandidates(onlyUnembedded.coverage)).toEqual({ count: 2, isExact: false });
+		expect(reembedCandidates(onlyUnembedded.coverage)).toEqual({
+			count: 2,
+			isExact: false,
+			skipped: null,
+		});
 	});
 
 	it('uses the exact candidate count by the job rule when the snapshot has it', () => {
@@ -80,7 +88,7 @@ describe('search state and coverage', () => {
 			},
 			semanticFiles: { ...exact.coverage!.semanticFiles, reembedCandidates: 40, reembedSkipped: 2 },
 		};
-		expect(reembedCandidates(exact.coverage)).toEqual({ count: 240, isExact: true });
+		expect(reembedCandidates(exact.coverage)).toEqual({ count: 240, isExact: true, skipped: 39 });
 		// One table without it (a partial old snapshot) falls back to the bound.
 		exact.coverage.semanticFiles = {
 			...exact.coverage.semanticFiles,

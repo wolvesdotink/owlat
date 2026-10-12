@@ -8014,6 +8014,8 @@
 							"hosted": "Dein Embedding-Modell wird gehostet, deshalb kostet das Neueinbetten Geld: Jedes Element geht an den Anbieter und zählt zu deinen KI-Ausgaben. Es läuft nur, wenn du es startest.",
 							"local": "Dein Embedding-Modell läuft auf deinem Server, deshalb kostet das Neueinbetten nichts. Es läuft außerdem einmal am Tag von selbst.",
 							"nothing": "Jedes Element hat bereits einen Vektor in der Vektorsuche.",
+							"nothingEligible": "Keine geeigneten Elemente müssen neu eingebettet werden.",
+							"skipped": "{count} Elemente bleiben trotzdem außerhalb der Vektorsuche: abgelaufene Einträge, Dateien in Verarbeitung oder zu wenig Text.",
 							"start": "Bis zu {count} Elemente neu einbetten",
 							"startExact": "{count} Elemente neu einbetten",
 							"title": "Neu einbetten"

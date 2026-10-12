@@ -58,6 +58,8 @@ export function coverageRows(coverage: EmbeddingStatus['coverage']): CoverageRow
 export function reembedCandidates(coverage: EmbeddingStatus['coverage']): {
 	count: number;
 	isExact: boolean;
+	/** With an exact count: rows outside the active space the job skips; else null. */
+	skipped: number | null;
 } {
 	const rows = coverageRows(coverage);
 	const isExact =
@@ -70,7 +72,10 @@ export function reembedCandidates(coverage: EmbeddingStatus['coverage']): {
 				: row.counts.unknown + row.counts.inactive + row.counts.unembedded),
 		0
 	);
-	return { count, isExact };
+	const skipped = isExact
+		? rows.reduce((sum, row) => sum + (row.counts.reembedSkipped ?? 0), 0)
+		: null;
+	return { count, isExact, skipped };
 }
 
 /** Rows whose vector has no recorded space: what an attestation can establish. */

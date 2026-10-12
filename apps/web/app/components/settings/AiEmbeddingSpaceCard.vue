@@ -308,8 +308,17 @@ const providerLabel = (kind: string | undefined) => {
 						>
 							{{ t(blocker) }}
 						</p>
-						<p v-else-if="candidates.count === 0" class="text-xs text-text-tertiary">
-							{{ t(`${K}.reembed.nothing`) }}
+						<p
+							v-else-if="candidates.count === 0"
+							class="text-xs text-text-tertiary"
+							data-testid="ai-embedding-reembed-nothing"
+						>
+							{{
+								candidates.isExact ? t(`${K}.reembed.nothingEligible`) : t(`${K}.reembed.nothing`)
+							}}
+							<template v-if="candidates.skipped">
+								{{ t(`${K}.reembed.skipped`, { count: formatNumber(candidates.skipped) }) }}
+							</template>
 						</p>
 					</div>
 
