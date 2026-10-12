@@ -564,3 +564,108 @@ describe('D13: a briefing reads no unguarded history (F1)', () => {
 		expect(context).not.toContain('SKIPPEDHISTORY');
 	});
 });
+
+describe('D13: overlapping late guards merge monotonically (Sol r2 F1)', () => {
+	const FLAGGED = {
+		flagged: { confidence: 0.95, reason: 'manipulation attempt' },
+		isIncomplete: false,
+	};
+	const BENIGN = { isIncomplete: false };
+
+	async function lateGuard(
+		t: Harness,
+		id: Id<'inboundMessages'>,
+		verdict: { flagged?: { confidence: number; reason: string }; isIncomplete: boolean },
+		generation = AGENT_OFF_FLAGS.scanTimestamp
+	) {
+		return t.mutation(internal.inbox.stepOutputs.recordLateGuard, {
+			inboundMessageId: id,
+			generation,
+			verdict,
+		});
+	}
+
+	it('benign first, flagged second: the rejection still lands, and both read it after', async () => {
+		const t = convexTest(schema, modules);
+		const id = await insertMessage(t, {
+			processingStatus: 'security_check',
+			securityFlags: AGENT_OFF_FLAGS,
+		});
+
+		expect(await lateGuard(t, id, BENIGN)).toBe('clear');
+		expect(await lateGuard(t, id, FLAGGED)).toBe('rejected');
+
+		const flags = (await read(t, id)).securityFlags!;
+		expect(flags).toMatchObject({
+			injectionDetected: true,
+			flaggedContent: 'manipulation attempt',
+		});
+		expect(flags.guardNotRun).toBeUndefined();
+		expect(flags.scanTimestamp).toBe(AGENT_OFF_FLAGS.scanTimestamp);
+	});
+
+	it('flagged first, benign second: the benign caller gets the persisted rejection', async () => {
+		const t = convexTest(schema, modules);
+		const id = await insertMessage(t, {
+			processingStatus: 'security_check',
+			securityFlags: AGENT_OFF_FLAGS,
+		});
+
+		expect(await lateGuard(t, id, FLAGGED)).toBe('rejected');
+		expect(await lateGuard(t, id, BENIGN)).toBe('rejected');
+
+		expect((await read(t, id)).securityFlags).toMatchObject({
+			injectionDetected: true,
+			confidence: 0.95,
+		});
+	});
+
+	it('an incomplete guard run turns guardUnavailable on and a complete one never turns it off', async () => {
+		const t = convexTest(schema, modules);
+		const id = await insertMessage(t, {
+			processingStatus: 'security_check',
+			securityFlags: AGENT_OFF_FLAGS,
+		});
+
+		await lateGuard(t, id, { isIncomplete: true });
+		await lateGuard(t, id, BENIGN);
+
+		expect((await read(t, id)).securityFlags?.guardUnavailable).toBe(true);
+	});
+
+	it('drops a result from an older scan generation and answers with the newer scan', async () => {
+		const t = convexTest(schema, modules);
+		const { guardNotRun: _gone, ...rescanned } = AGENT_OFF_FLAGS;
+		const id = await insertMessage(t, {
+			processingStatus: 'classifying',
+			securityFlags: { ...rescanned, scanTimestamp: 2 },
+		});
+
+		expect(await lateGuard(t, id, FLAGGED, 1)).toBe('clear');
+		expect((await read(t, id)).securityFlags?.injectionDetected).toBe(false);
+	});
+
+	it('a consumer acts on the persisted standing, not on its own benign verdict', async () => {
+		const t = convexTest(schema, modules);
+		const id = await insertMessage(t, {
+			processingStatus: 'security_check',
+			securityFlags: AGENT_OFF_FLAGS,
+		});
+		// An overlapping consumer's late guard flagged the message while this
+		// extraction's own guard run (benign, guardFlags = false) was in flight.
+		mocks.runLlmObject.mockImplementation(async ({ prompt }: { prompt: string }) => {
+			if (prompt.includes(GUARD_PROMPT)) {
+				await lateGuard(t, id, FLAGGED);
+				return { object: { isInjection: false, confidence: 0.02, reason: 'benign' } };
+			}
+			if (prompt.includes(EXTRACT_PROMPT)) return { object: { entries: [] } };
+			throw new Error('unexpected model call');
+		});
+
+		await t.action(internal.knowledge.extraction.extractFromMessage, { inboundMessageId: id });
+
+		expect(callsTo(GUARD_PROMPT)).toBe(1);
+		expect(callsTo(EXTRACT_PROMPT)).toBe(0);
+		expect((await read(t, id)).securityFlags?.injectionDetected).toBe(true);
+	});
+});

@@ -24,7 +24,11 @@ import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internalQuery } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import { guardStanding } from '../agent/steps/security_scan/disposition';
+import {
+	guardStanding,
+	mergeLateGuard,
+	type GuardStanding,
+} from '../agent/steps/security_scan/disposition';
 import {
 	contextCoverageValidator,
 	draftQualityValidator,
@@ -172,21 +176,37 @@ export const recordSecurityScan = internalMutation({
 });
 
 /**
- * D13: record the model guard that ran late, the first time a guarded consumer
- * reached a message whose scan skipped it (agent/steps/security_scan/guard.ts
- * `runGuardBeforeAutonomy`). Applied only while the stored scan still carries
- * the marker: a pipeline re-run that rescanned the message in the meantime
- * wins. The processing status is untouched.
+ * D13: record a model guard that ran late, the first time a generative
+ * consumer reached a message whose scan skipped it (agent/steps/security_scan/
+ * guard.ts `runGuardBeforeAutonomy`), and answer with the message's
+ * AUTHORITATIVE standing, which the caller acts on instead of its own verdict.
+ *
+ * Late guards can overlap (extraction, interpretation, a briefing's history),
+ * so the result is merged, never written over: `mergeLateGuard` is monotonic
+ * within one scan generation (`scanTimestamp`), so a rejection that landed
+ * first is kept and one that lands second still applies after a benign run
+ * cleared the marker. A result for an older generation (the pipeline rescanned
+ * the message meanwhile) is dropped, and the newer scan's standing answers. A
+ * gone message answers `rejected`: nothing may read it. The processing status
+ * is untouched.
  */
 export const recordLateGuard = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
-		securityFlags: securityFlagsValidator,
+		generation: v.number(),
+		verdict: v.object({
+			flagged: v.optional(v.object({ confidence: v.number(), reason: v.string() })),
+			isIncomplete: v.boolean(),
+		}),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<GuardStanding> => {
 		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message?.securityFlags?.guardNotRun) return;
-		await ctx.db.patch(args.inboundMessageId, { securityFlags: args.securityFlags });
+		if (!message) return 'rejected';
+		const flags = message.securityFlags;
+		if (!flags || flags.scanTimestamp !== args.generation) return guardStanding(message);
+		const merged = mergeLateGuard(flags, args.verdict);
+		await ctx.db.patch(args.inboundMessageId, { securityFlags: merged });
+		return guardStanding({ ...message, securityFlags: merged });
 	},
 });
 

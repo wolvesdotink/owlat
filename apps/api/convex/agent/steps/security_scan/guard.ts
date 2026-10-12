@@ -7,8 +7,11 @@
  *   - the step itself, which runs it after the deterministic layers and only
  *     when D13 does not skip it (ADR-0073);
  *   - {@link runGuardBeforeAutonomy}, which runs it late, the first time a
- *     guarded consumer (knowledge extraction) reaches a message whose scan
- *     recorded `securityFlags.guardNotRun`.
+ *     generative consumer outside the pipeline (knowledge extraction, thread
+ *     interpretation, a briefing's history, Answer mode) reaches a message
+ *     whose scan recorded `securityFlags.guardNotRun`. Overlapping late runs
+ *     merge monotonically (`disposition.ts` `mergeLateGuard`), and every
+ *     caller acts on the merged, persisted standing.
  *
  * The guard fails OPEN for drafting (a model error leaves the pattern-only
  * verdict) and CLOSED for auto-send (`incomplete` becomes `guardUnavailable`,
@@ -19,18 +22,15 @@ import { z } from 'zod';
 import { htmlToPlainText } from '@owlat/shared/html';
 import type { Infer } from 'convex/values';
 import { internal } from '../../../_generated/api';
-import type { Doc } from '../../../_generated/dataModel';
+import type { Doc, Id } from '../../../_generated/dataModel';
 import type { interpretationSourceValidator } from '../../../lib/validators/threadBrief';
 import type { ActionCtx } from '../../../_generated/server';
-import type { securityFlagsValidator } from '../../../lib/convexValidators';
 import { openInboundMessageBody } from '../../../lib/messageBodyInbound';
 import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { runLlmObject } from '../../../lib/llm/dispatch';
 import { meterAgentCall } from '../../shared/agentSpend';
 import { stripHiddenContent } from './patterns';
 import { guardStanding } from './disposition';
-
-type SecurityFlags = Infer<typeof securityFlagsValidator>;
 
 /** Confidence floor above which the LLM verdict alone flags an injection. */
 export const LLM_INJECTION_CONFIDENCE_THRESHOLD = 0.8;
@@ -206,34 +206,6 @@ export function isGuardFlagged(
 }
 
 /**
- * The scan record after a late guard run: the marker is gone, the guard's
- * result is folded in the way the step folds it, and nothing the deterministic
- * layers recorded is weakened. Pure + exported for tests.
- */
-export function flagsAfterLateGuard(
-	flags: SecurityFlags,
-	scan: GuardScanResult,
-	sample: string,
-	at: number
-): SecurityFlags {
-	const { guardNotRun: _done, ...rest } = flags;
-	const flagged = isGuardFlagged(scan.verdict) ? scan.verdict : undefined;
-	return {
-		...rest,
-		...(flagged
-			? {
-					injectionDetected: true,
-					injectionType: flags.injectionDetected ? flags.injectionType : 'llm_prompt_injection',
-					confidence: Math.max(flags.confidence, flagged.confidence),
-					flaggedContent: flags.flaggedContent ?? flagged.reason,
-				}
-			: {}),
-		guardUnavailable: scan.incomplete && sample.trim().length > 0,
-		scanTimestamp: at,
-	};
-}
-
-/**
  * D13's "guard required before autonomy" for a generative consumer that reads
  * a stored Team message outside the pipeline: knowledge extraction (including
  * the first-enable backfill), thread interpretation, and a briefing's
@@ -258,28 +230,42 @@ export async function runGuardBeforeAutonomy(
 	const { text, html } = await openInboundMessageBody(message, ctx.storage);
 	const sample = buildGuardSample(message.subject, text, html);
 	const scan = await runModelGuard(ctx, sample);
-	await ctx.runMutation(internal.inbox.stepOutputs.recordLateGuard, {
+	const flagged = isGuardFlagged(scan.verdict) ? scan.verdict : undefined;
+	// The stored standing after the merge decides, not this run's own verdict:
+	// an overlapping late guard may have rejected the message already.
+	const persisted = await ctx.runMutation(internal.inbox.stepOutputs.recordLateGuard, {
 		inboundMessageId: message._id,
-		securityFlags: flagsAfterLateGuard(message.securityFlags, scan, sample, Date.now()),
+		generation: message.securityFlags.scanTimestamp,
+		verdict: {
+			...(flagged ? { flagged: { confidence: flagged.confidence, reason: flagged.reason } } : {}),
+			isIncomplete: scan.incomplete && sample.trim().length > 0,
+		},
 	});
-	return { mayProceed: !isGuardFlagged(scan.verdict) };
+	return { mayProceed: persisted === 'clear' };
 }
 
 /**
- * The same requirement for thread interpretation, whose Team sources are read
- * by id. Only a Team `inbound` source is checked; a reply of ours passes. A
- * gone message passes too: the run's own load reports that.
+ * The same requirement for a Team message read by id: thread interpretation's
+ * `inbound` sources, and Answer mode's current message. A gone message passes:
+ * the caller's own load reports that.
  */
+export async function guardAllowsInboundMessage(
+	ctx: ActionCtx,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<boolean> {
+	const check = await ctx.runQuery(internal.inbox.stepOutputs.guardStandingOf, {
+		inboundMessageId,
+	});
+	if (check.standing !== 'needs_guard') return check.standing === 'clear';
+	return (await runGuardBeforeAutonomy(ctx, check.message)).mayProceed;
+}
+
+/** Interpretation's check: only a Team `inbound` source is a stored Team message. */
 export async function guardAllowsInterpretation(
 	ctx: ActionCtx,
 	source: Infer<typeof interpretationSourceValidator>
 ): Promise<boolean> {
-	if (source.kind !== 'inbound') return true;
-	const check = await ctx.runQuery(internal.inbox.stepOutputs.guardStandingOf, {
-		inboundMessageId: source.id,
-	});
-	if (check.standing !== 'needs_guard') return check.standing === 'clear';
-	return (await runGuardBeforeAutonomy(ctx, check.message)).mayProceed;
+	return source.kind === 'inbound' ? guardAllowsInboundMessage(ctx, source.id) : true;
 }
 
 /**

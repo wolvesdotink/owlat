@@ -162,3 +162,41 @@ export function guardStanding(message: {
 	}
 	return guardRequirement(flags) === 'guard_not_run' ? 'needs_guard' : 'clear';
 }
+
+/**
+ * What one late guard run found: the injection it flagged at quarantine
+ * confidence, if any, and whether it could not classify all of a non-empty
+ * sample (`guardUnavailable`).
+ */
+export interface LateGuardVerdict {
+	flagged?: { confidence: number; reason: string };
+	isIncomplete: boolean;
+}
+
+/**
+ * Fold one late guard run into the stored scan of the SAME scan generation
+ * (`scanTimestamp`, which a late guard keeps). Monotonic, so concurrent late
+ * guards (extraction, interpretation, a briefing's history) can complete in
+ * any order: the D13 marker goes, a flagged injection is added and never
+ * removed by a benign result, `guardUnavailable` only ever turns on, and
+ * nothing the scan recorded is weakened. Pure.
+ */
+export function mergeLateGuard(
+	flags: Infer<typeof securityFlagsValidator>,
+	verdict: LateGuardVerdict
+): Infer<typeof securityFlagsValidator> {
+	const { guardNotRun: _done, ...rest } = flags;
+	const flagged = verdict.flagged;
+	return {
+		...rest,
+		...(flagged
+			? {
+					injectionDetected: true,
+					injectionType: flags.injectionDetected ? flags.injectionType : 'llm_prompt_injection',
+					confidence: Math.max(flags.confidence, flagged.confidence),
+					flaggedContent: flags.flaggedContent ?? flagged.reason,
+				}
+			: {}),
+		guardUnavailable: flags.guardUnavailable === true || verdict.isIncomplete,
+	};
+}
