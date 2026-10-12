@@ -80,10 +80,22 @@ describe('task-policy catalog', () => {
 	});
 
 	it('keeps today’s attempt budgets and deadlines', () => {
-		expect(taskPolicy('mail.draft')).toMatchObject({
-			maxAttempts: MAX_LLM_ATTEMPTS,
-			deadlineMs: null,
-		});
+		// Today's effective bounds: a one-shot request dies at the runtime's 300 s
+		// header timeout, a tool loop or a stream at the 10-minute action limit.
+		for (const task of ['mail.draft', 'mail.compose', 'assistant.answer'] as const) {
+			expect(taskPolicy(task), task).toMatchObject({
+				maxAttempts: MAX_LLM_ATTEMPTS,
+				deadlineMs: 540_000,
+			});
+		}
+		for (const task of ['mail.classify', 'mail.guard', 'embedding.index', 'plugin.invoke'] as const) {
+			expect(taskPolicy(task), task).toMatchObject({
+				maxAttempts: MAX_LLM_ATTEMPTS,
+				deadlineMs: 300_000,
+			});
+		}
+		// The decision plane keeps its adapters' own deadlines.
+		expect(taskPolicy('mail.category').deadlineMs).toBeNull();
 		expect(taskPolicy('mail.complete')).toMatchObject({
 			maxAttempts: INTERACTIVE_LLM_ATTEMPTS,
 			deadlineMs: INTERACTIVE_LLM_DEADLINE_MS.completion,

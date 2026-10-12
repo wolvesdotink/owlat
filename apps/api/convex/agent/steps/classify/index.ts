@@ -32,6 +32,7 @@ import { runLlmObject } from '../../../lib/llm/dispatch';
 import { meterAgentCall } from '../../shared/agentSpend';
 import { SYSTEM_GUARD } from '../../../mail/ai/promptGuards';
 import { ALLOWED_KINDS, BULK_KINDS, safeEnum, safeLanguage } from '../draft/sanitize';
+import { CLASSIFY_INTENTS } from './intents';
 
 /**
  * Below this classifier confidence a "no response needed" verdict is not
@@ -64,7 +65,7 @@ export const classificationSchema = z.object({
 		.enum(['positive', 'neutral', 'negative'])
 		.describe('The emotional tone of the message'),
 	intent: z
-		.enum(['question', 'complaint', 'request', 'information', 'escalation', 'acknowledgment'])
+		.enum(CLASSIFY_INTENTS)
 		.describe('What the sender is trying to do'),
 	confidence: z
 		.number()

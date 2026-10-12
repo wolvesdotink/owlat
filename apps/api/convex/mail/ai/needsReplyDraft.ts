@@ -22,7 +22,7 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { runLlmText } from '../../lib/llm/dispatch';
 import { stripLeakedToolMarkup } from '../../lib/llm/toolMarkup';
 import { meterLlmCall } from '../../analytics/meteredSpend';
-import { rootRequest } from '../../lib/llm/requestMeter';
+import { postboxRoot } from '../../lib/llm/requestMeter';
 import { logError } from '../../lib/runtimeLog';
 import {
 	buildConfirmedContext,
@@ -99,7 +99,7 @@ export async function draftClarificationReply(
 		// Contact-scoped recall, the same isolation gate as the team draft step:
 		// the sender's contact, or org-general knowledge only. Never org-wide.
 		// Every model call of this clarification draft groups under the message it answers.
-		const root = rootRequest('postbox', context.latestMessageId);
+		const root = postboxRoot(args.threadId, context.latestMessageId);
 		const recallKnowledge = buildRecallKnowledgeTool({
 			runAction: ctx.runAction,
 			scopeToContact: context.contactId ?? 'org-general-only',

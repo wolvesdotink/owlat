@@ -1,4 +1,5 @@
 import type * as agent_replyEnvelope from '../agent/replyEnvelope.js';
+import type * as agent_steps_classify_intents from '../agent/steps/classify/intents.js';
 import type * as analytics_meteredSpend from '../analytics/meteredSpend.js';
 import type * as chat_attachmentAccess from '../chat/attachmentAccess.js';
 import type * as contacts_growthCounters from '../contacts/growthCounters.js';
@@ -1640,6 +1641,7 @@ import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server
 
 declare const fullApi: ApiFromModules<{
 	'agent/replyEnvelope': typeof agent_replyEnvelope;
+	'agent/steps/classify/intents': typeof agent_steps_classify_intents;
 	'analytics/meteredSpend': typeof analytics_meteredSpend;
 	'chat/attachmentAccess': typeof chat_attachmentAccess;
 	'contacts/growthCounters': typeof contacts_growthCounters;

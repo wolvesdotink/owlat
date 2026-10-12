@@ -3,7 +3,11 @@ import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { insertLlmUsage } from '../analytics/llmUsage';
+import {
+	insertLlmUsage,
+	meteredRequestValidator,
+	type MeteredRequest,
+} from '../analytics/llmUsage';
 import type { TokenUsage } from '../agent/steps/types';
 import { languageEndpointProvenanceValidator } from '../lib/validators/aiProviderConfig';
 import { utcDayKey } from '../lib/clock';
@@ -173,6 +177,12 @@ export const reserve = internalMutation({
 	},
 });
 
+/** The provider requests of one plugin call, as the dispatch metered them (ADR-0073). */
+const meteredCallArgs = {
+	requestId: v.optional(v.string()),
+	requests: v.optional(v.array(meteredRequestValidator)),
+};
+
 export const settleSuccess = internalMutation({
 	args: {
 		reservationId: v.string(),
@@ -180,6 +190,7 @@ export const settleSuccess = internalMutation({
 		tokenUsage: v.optional(tokenUsageValidator),
 		attempts: v.number(),
 		actorMode: pluginLlmActorModeValidator,
+		...meteredCallArgs,
 	},
 	handler: async (ctx, args) => {
 		const reservation = await pendingActorReservation(ctx, args.reservationId, args.actorMode);
@@ -213,7 +224,9 @@ export const settleSuccess = internalMutation({
 			actualMicrousd: cost.actual,
 			completedAt: now,
 		});
-		if (acceptedUsage && cost.isUsageAccounted) {
+		if (args.requests !== undefined) {
+			await insertPluginRequestRows(ctx, reservation, args);
+		} else if (acceptedUsage && cost.isUsageAccounted) {
 			await insertLlmUsage(
 				ctx,
 				`plugin:${reservation.pluginId}`,
@@ -236,11 +249,17 @@ export const settleSuccess = internalMutation({
 });
 
 export const settleFailure = internalMutation({
-	args: { reservationId: v.string(), actorMode: pluginLlmActorModeValidator },
+	args: {
+		reservationId: v.string(),
+		actorMode: pluginLlmActorModeValidator,
+		...meteredCallArgs,
+	},
 	handler: async (ctx, args) => {
 		const reservation = await pendingActorReservation(ctx, args.reservationId, args.actorMode);
 		if (reservation.status === 'failed') return null;
 		if (reservation.status !== 'pending') throw new Error('Plugin LLM settlement denied');
+		// The failed call's requests were made; the deployment ledger sees them too.
+		await insertPluginRequestRows(ctx, reservation, args);
 		await ctx.db.patch(reservation._id, {
 			status: 'failed',
 			chargedMicrousd: reservation.reservedMicrousd,
@@ -395,4 +414,46 @@ async function requiredDailyUsage(ctx: MutationCtx, row: Doc<'pluginLlmReservati
 		throw new Error('Plugin LLM settlement denied');
 	}
 	return daily;
+}
+
+/**
+ * One ledger row per provider request of a plugin call (ADR-0073), written in
+ * the settlement mutation so the plugin budget and the deployment ledger move
+ * together. Rows are priced at the reserved model's list price; a request with
+ * no valid reported usage writes a zero-cost row marked `isEstimated`. At most
+ * {@link MAX_LLM_ATTEMPTS} requests: a plugin call is one-shot text.
+ */
+async function insertPluginRequestRows(
+	ctx: MutationCtx,
+	reservation: Doc<'pluginLlmReservations'>,
+	args: { requestId?: string; requests?: MeteredRequest[] }
+): Promise<void> {
+	const requests = args.requests ?? [];
+	if (requests.length > MAX_LLM_ATTEMPTS) throw new Error('Plugin LLM settlement denied');
+	for (const request of requests) {
+		const usage = validTokenUsage(request.usage) ? request.usage : undefined;
+		await insertLlmUsage(
+			ctx,
+			`plugin:${reservation.pluginId}`,
+			usage ?? { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+			reservation.modelId,
+			{ organizationId: reservation.organizationId, pluginId: reservation.pluginId },
+			{
+				...(args.requestId ? { requestId: args.requestId } : {}),
+				attempt: request.attempt,
+				latencyMs: request.latencyMs,
+				endpoint: reservation.endpointProvenance,
+				isEstimated: usage === undefined,
+				...(request.cacheReadTokens === undefined
+					? {}
+					: { cacheReadTokens: request.cacheReadTokens }),
+				...(request.cacheWriteTokens === undefined
+					? {}
+					: { cacheWriteTokens: request.cacheWriteTokens }),
+				...(request.reasoningTokens === undefined
+					? {}
+					: { reasoningTokens: request.reasoningTokens }),
+			}
+		);
+	}
 }

@@ -12,6 +12,8 @@ import type { ActionCtx } from '../_generated/server';
 import { MAX_LLM_ATTEMPTS, runLlmTextWithAttemptMetadata } from '../lib/llm/dispatch';
 import { estimateAdmissionCostMicrousd } from '../lib/llm/pricing';
 import { resolveLanguageModelWithProvenance } from '../lib/llmProvider';
+import { LlmCallMeter } from '../lib/llm/requestMeter';
+import type { MeteredRequest } from '../analytics/llmUsage';
 import { PLUGIN_LLM_MAX_OUTPUT_TOKENS, validatePluginLlmRequest } from './llmRequest';
 
 type PluginLlmErrorCode =
@@ -154,10 +156,17 @@ function bindBundledPluginLlm(
 				throw new PluginLlmError('access_denied');
 			}
 
+			// Every provider request lands in the deployment ledger at settlement.
+			const meter = new LlmCallMeter({ task: 'plugin.invoke' });
+			const metered = () => ({
+				requestId: meter.requestId,
+				requests: meter.takeUnwritten().map(({ outcome: _outcome, ...request }) => request),
+			});
 			let dispatched;
 			try {
 				assertExecutionActive(executionSignal);
 				dispatched = await runLlmTextWithAttemptMetadata({
+					meter,
 					model: resolvedModel.model,
 					...request.dispatchInput,
 					maxOutputTokens: PLUGIN_LLM_MAX_OUTPUT_TOKENS,
@@ -165,7 +174,7 @@ function bindBundledPluginLlm(
 				});
 				assertExecutionActive(executionSignal);
 			} catch {
-				const settled = await settleFailure(ctx, reservationId, actorPolicy);
+				const settled = await settleFailure(ctx, reservationId, actorPolicy, metered());
 				if (!settled) throw new PluginLlmError('accounting_unavailable');
 				assertExecutionActive(executionSignal);
 				throw new PluginLlmError('provider_failure');
@@ -178,6 +187,7 @@ function bindBundledPluginLlm(
 					tokenUsage: dispatched.result.tokenUsage,
 					attempts: dispatched.attempts,
 					actorMode: actorPolicy.kind,
+					...metered(),
 				});
 				assertExecutionActive(executionSignal);
 			} catch {
@@ -210,12 +220,14 @@ async function recordDenied(
 async function settleFailure(
 	ctx: ActionCtx,
 	reservationId: string,
-	actorPolicy: PluginLlmActorPolicy
+	actorPolicy: PluginLlmActorPolicy,
+	metered: { requestId?: string; requests?: MeteredRequest[] } = {}
 ): Promise<boolean> {
 	try {
 		await ctx.runMutation(internal.plugins.llmAccounting.settleFailure, {
 			reservationId,
 			actorMode: actorPolicy.kind,
+			...metered,
 		});
 		return true;
 	} catch {

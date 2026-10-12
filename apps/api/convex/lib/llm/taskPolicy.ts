@@ -16,9 +16,15 @@
  *     the Team Inbox samples on fast, Postbox on capable, Answer mode by the
  *     eagerness dial) or can be downgraded by `LLM_COMPLEXITY_ROUTING`
  *     (`lib/llmProvider.ts`).
- *   - `null` limits mean "no limit today". Phase 1a gives every dispatch mode
- *     an output and reasoning limit and a root deadline; that lane replaces
- *     these nulls, not the call sites.
+ *   - `null` limits mean "no limit today". The dispatch enforces every value
+ *     here in every mode (`./taskLimits.ts`). An output or reasoning ceiling
+ *     stays null until an evaluation sets one: today the provider's per-model
+ *     default applies, and a fixed number would be refused by a model whose
+ *     own maximum is lower. Deadlines are today's effective bounds: a one-shot
+ *     call already fails at the runtime's 300 s response-header timeout, and a
+ *     tool loop or stream at the 10-minute action limit, so the catalog says
+ *     so and the call fails as itself, recorded, rather than as a killed
+ *     action.
  *   - `maxAttempts` is the attempt budget the dispatch gives the call today:
  *     `MAX_LLM_ATTEMPTS` for one-shot and streamed calls (a stream's SDK
  *     retries re-send its opening request), `INTERACTIVE_LLM_ATTEMPTS` where
@@ -100,8 +106,12 @@ type EntryInput = Omit<
 
 const UNLIMITED = { maxInputTokens: null, maxOutputTokens: null, maxReasoningTokens: null };
 const REPLY_MS = INTERACTIVE_LLM_DEADLINE_MS.reply;
+/** A one-shot request: the runtime's fetch gives up on response headers after 300 s. */
+const ONE_SHOT_DEADLINE_MS = 300_000;
+/** A tool loop or a stream: inside the 10-minute action limit, with a margin to record. */
+const LOOP_DEADLINE_MS = 540_000;
 
-/** One-shot language call with today's defaults: full attempt budget, no deadline. */
+/** A language call with today's defaults: no output ceiling, no evaluation. */
 function language(input: Omit<EntryInput, 'plane'>): Omit<TaskPolicyEntry, 'task'> {
 	return { ...UNLIMITED, fallback: 'none', evalVersion: 0, plane: 'language', ...input };
 }
@@ -131,7 +141,7 @@ function embedding(
 		evalVersion: 0,
 		plane: 'embedding',
 		tiers: ['fast'],
-		deadlineMs: null,
+		deadlineMs: ONE_SHOT_DEADLINE_MS,
 		maxAttempts: MAX_LLM_ATTEMPTS,
 		budgetClass: 'standard',
 		...input,
@@ -142,7 +152,8 @@ const background = { priority: 'background', budgetClass: 'standard' } as const;
 const pipeline = { priority: 'pipeline', budgetClass: 'standard' } as const;
 const interactive = { priority: 'interactive', budgetClass: 'standard' } as const;
 const triage = { priority: 'pipeline', budgetClass: 'triage' } as const;
-const oneShot = { deadlineMs: null, maxAttempts: MAX_LLM_ATTEMPTS } as const;
+const oneShot = { deadlineMs: ONE_SHOT_DEADLINE_MS, maxAttempts: MAX_LLM_ATTEMPTS } as const;
+const loop = { deadlineMs: LOOP_DEADLINE_MS, maxAttempts: MAX_LLM_ATTEMPTS } as const;
 const replySurface = { deadlineMs: REPLY_MS, maxAttempts: INTERACTIVE_LLM_ATTEMPTS } as const;
 
 const ENTRIES = {
@@ -187,7 +198,7 @@ const ENTRIES = {
 	'mail.draft': language({
 		tiers: ['capable', 'fast'],
 		...pipeline,
-		...oneShot,
+		...loop,
 		features: ['agent_draft', 'postbox_draft', 'postbox_clarify_draft', 'postbox_clarify_delta'],
 	}),
 	'mail.draft_check': language({
@@ -211,7 +222,7 @@ const ENTRIES = {
 	'mail.compose': language({
 		tiers: ['capable', 'fast'],
 		...interactive,
-		...oneShot,
+		...loop,
 		features: ['postbox_answer_draft', 'postbox_revise_draft'],
 	}),
 	'mail.plan_coverage': language({
@@ -286,7 +297,7 @@ const ENTRIES = {
 	'assistant.answer': language({
 		tiers: ['capable', 'fast'],
 		...interactive,
-		...oneShot,
+		...loop,
 		features: ['assistant_chat', 'chat_assistant'],
 	}),
 	'assistant.tool_draft': language({

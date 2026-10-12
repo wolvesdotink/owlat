@@ -18,6 +18,7 @@ import type { LanguageModel } from 'ai';
 import { runLlmObject } from '../../lib/llm/dispatch';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { meterLlmCall } from '../../analytics/meteredSpend';
+import type { ActionCtx } from '../../_generated/server';
 import type { LlmCallMeter, LlmRootContext } from '../../lib/llm/requestMeter';
 import { logError } from '../../lib/runtimeLog';
 import {
@@ -28,7 +29,7 @@ import {
 } from '../../mail/interpret/planCheck';
 
 /** Ctx shape the self-check needs — the spend-accounting surface. */
-type SpendCtx = Parameters<typeof meterLlmCall>[0];
+type SpendCtx = ActionCtx;
 
 /**
  * Draft-quality self-check result. Scores the GENERATED DRAFT (not the
