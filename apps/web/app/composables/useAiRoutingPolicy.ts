@@ -92,7 +92,10 @@ export function useAiRoutingPolicy() {
 	);
 
 	const problems = computed(() =>
-		routingPolicyFormProblems(form, { dailyCeilingUsd: dailyCeilingUsd.value })
+		routingPolicyFormProblems(form, {
+			dailyCeilingUsd: dailyCeilingUsd.value,
+			...(base.value ? { opened: routingPolicyFormOf(base.value) } : {}),
+		})
 	);
 	const hasProblems = computed(() => Object.keys(problems.value).length > 0);
 	const isShadowing = computed(() => isAnyShadowed(form));

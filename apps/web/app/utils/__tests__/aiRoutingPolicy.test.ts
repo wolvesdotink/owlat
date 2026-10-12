@@ -134,6 +134,57 @@ describe('routingPolicyFormProblems', () => {
 		expect(routingPolicyFormProblems(form, { dailyCeilingUsd: 0 })).toEqual({});
 	});
 
+	describe('stored values at the boundaries (Sol r2 F1)', () => {
+		const boundaries = [
+			{ triageAllowanceFraction: 0.9999999 },
+			{ triageAllowanceFraction: 0.0000001 },
+			{ shadowMaxMessageFraction: 0.0000001 },
+			{ shadowMaxCeilingFraction: 0.0000001 },
+			{ shadowMaxMessageFraction: 0.1, shadowMaxCeilingFraction: 0.05 },
+			{ shadowMaxMessageFraction: 0.0999999, shadowMaxCeilingFraction: 0.0499999 },
+		];
+
+		it.each(boundaries)('an untouched stored %o blocks nothing', (row) => {
+			const policy = stored(row);
+			// The server accepted it, and the shared resolver keeps it.
+			for (const [key, value] of Object.entries(row)) {
+				expect(policy[key as keyof typeof row]).toBe(value);
+			}
+			const opened = routingPolicyFormOf(policy);
+			expect(routingPolicyFormProblems(opened, { ...ceiling, opened })).toEqual({});
+			// Saving another field carries that field only, the stored value untouched.
+			const form = { ...opened, switches: { ...opened.switches, batchApi: 'enforce' } };
+			expect(routingPolicyFormProblems(form, { ...ceiling, opened })).toEqual({});
+			expect(routingPolicyUpdateArgs(form, policy)).toEqual({
+				expectedPolicyVersion: 3,
+				batchApi: 'enforce',
+			});
+		});
+
+		it('still checks a boundary value once it is edited', () => {
+			const opened = routingPolicyFormOf(stored({ triageAllowanceFraction: 0.9999999 }));
+			expect(opened.triagePercent).toBe('100');
+			const edited = { ...opened, triagePercent: '100.0' };
+			expect(routingPolicyFormProblems(edited, { ...ceiling, opened }).triagePercent?.key).toMatch(
+				/percentBelow$/
+			);
+			const message = { ...opened, shadowMessagePercent: '10.5' };
+			expect(
+				routingPolicyFormProblems(message, { ...ceiling, opened }).shadowMessagePercent
+			).toBeDefined();
+			const exact = { ...opened, shadowMessagePercent: '10', shadowCeilingPercent: '5' };
+			expect(routingPolicyFormProblems(exact, { ...ceiling, opened })).toEqual({});
+		});
+
+		it('keeps the D4 cap rule for an untouched empty cap', () => {
+			const opened = routingPolicyFormOf(stored());
+			const form = { ...opened, switches: { ...opened.switches, triageBundle: 'shadow' } };
+			expect(
+				routingPolicyFormProblems(form, { dailyCeilingUsd: 0, opened }).shadowCapUsd?.key
+			).toMatch(/shadowCapRequired$/);
+		});
+	});
+
 	it('agrees with the server on what it refuses', () => {
 		const form = routingPolicyFormOf(defaults);
 		form.switches.clarifyNecessity = 'shadow';

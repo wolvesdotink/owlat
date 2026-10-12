@@ -88,6 +88,18 @@ describe('useAiRoutingPolicy', () => {
 		expect(showToast).toHaveBeenCalledWith('AI routing saved.');
 	});
 
+	it('saves another field over a stored share the form shows rounded (Sol r2 F1)', async () => {
+		data.value = getResult(
+			resolveRoutingPolicy({ policyVersion: 2, triageAllowanceFraction: 0.9999999 })
+		);
+		const state = useAiRoutingPolicy();
+		expect(state.form.triagePercent).toBe('100');
+		state.form.switches.attachmentGates = 'enforce';
+		expect(state.hasProblems.value).toBe(false);
+		expect(await state.save()).toBe(true);
+		expect(updateCalls).toEqual([{ expectedPolicyVersion: 2, attachmentGates: 'enforce' }]);
+	});
+
 	it('refuses to save a form with a problem, and sends nothing', async () => {
 		const state = useAiRoutingPolicy();
 		state.form.shadowMessagePercent = '50';

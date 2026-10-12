@@ -153,34 +153,40 @@ export function isAnyShadowed(form: RoutingPolicyForm): boolean {
 }
 
 /**
- * What is wrong with the form, per field. Empty when it can be saved. The
- * cross-field rule (D4): with no daily ceiling, shadowing needs a finite cap.
+ * What is wrong with the form, per field. Empty when it can be saved.
+ *
+ * Only an EDITED field is read as typed. With `opened` (the form the stored
+ * policy opened as), a field whose text is unchanged stands for its stored
+ * value, which the server already accepted and a save leaves as it is: a
+ * stored triage share of 0.9999999 shows as "100" and 0.0000001 as "0", and
+ * neither may block saving another field. The cross-field rule (D4) always
+ * applies: with no daily ceiling, shadowing needs a finite cap.
  */
 export function routingPolicyFormProblems(
 	form: RoutingPolicyForm,
-	context: { dailyCeilingUsd: number }
+	context: { dailyCeilingUsd: number; opened?: RoutingPolicyForm }
 ): Partial<Record<RoutingPolicyField, RoutingPolicyText>> {
 	const problems: Partial<Record<RoutingPolicyField, RoutingPolicyText>> = {};
-	const knowledge = capProblem(form.knowledgeEntryCap);
-	if (knowledge) problems.knowledgeEntryCap = knowledge;
-	const verify = capProblem(form.verifyClaimCap);
-	if (verify) problems.verifyClaimCap = verify;
-	const triage = percentProblem(form.triagePercent, 100, false);
-	if (triage) problems.triagePercent = triage;
-	const message = percentProblem(
-		form.shadowMessagePercent,
-		SHADOW_FRACTION_MAXIMA.shadowMaxMessageFraction * 100,
-		true
+	const isEdited = (field: RoutingPolicyField) =>
+		!context.opened || form[field] !== context.opened[field];
+	const check = (
+		field: RoutingPolicyField,
+		problemOf: (raw: string) => RoutingPolicyText | null
+	) => {
+		const problem = isEdited(field) ? problemOf(form[field]) : null;
+		if (problem) problems[field] = problem;
+	};
+	check('knowledgeEntryCap', capProblem);
+	check('verifyClaimCap', capProblem);
+	check('triagePercent', (raw) => percentProblem(raw, 100, false));
+	check('shadowMessagePercent', (raw) =>
+		percentProblem(raw, SHADOW_FRACTION_MAXIMA.shadowMaxMessageFraction * 100, true)
 	);
-	if (message) problems.shadowMessagePercent = message;
-	const ceiling = percentProblem(
-		form.shadowCeilingPercent,
-		SHADOW_FRACTION_MAXIMA.shadowMaxCeilingFraction * 100,
-		true
+	check('shadowCeilingPercent', (raw) =>
+		percentProblem(raw, SHADOW_FRACTION_MAXIMA.shadowMaxCeilingFraction * 100, true)
 	);
-	if (ceiling) problems.shadowCeilingPercent = ceiling;
 	const cap = parseNumber(form.shadowCapUsd);
-	if (cap !== null && !(Number.isFinite(cap) && cap > 0)) {
+	if (isEdited('shadowCapUsd') && cap !== null && !(Number.isFinite(cap) && cap > 0)) {
 		problems.shadowCapUsd = { key: `${K}.problems.usd` };
 	} else if (cap === null && isAnyShadowed(form) && !(context.dailyCeilingUsd > 0)) {
 		problems.shadowCapUsd = { key: `${K}.problems.shadowCapRequired` };
