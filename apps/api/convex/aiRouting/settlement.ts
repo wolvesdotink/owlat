@@ -37,9 +37,10 @@ import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { insertLlmUsage, ZERO_USAGE } from '../analytics/ledgerInsert';
 import { ledgerRowMicrousd } from '../lib/aiRouting/spendPeriods';
+import { SETTLEMENT_FEATURE } from '../lib/llmUsageTags';
 
-/** The feature tag of a settlement's estimate and adjustment rows (the dashboard groups by it). */
-export const SETTLEMENT_FEATURE = 'admission_settlement';
+/** The feature tag of a settlement's estimate and adjustment rows (`lib/llmUsageTags.ts`). */
+export { SETTLEMENT_FEATURE };
 
 /** Rows read per hold: one per provider request, which a hold bounds well below this. */
 const MAX_SETTLEMENT_ROWS = 512;

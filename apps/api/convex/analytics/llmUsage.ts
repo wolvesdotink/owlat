@@ -40,6 +40,7 @@ import {
 	llmUsagePlaneValidator,
 	llmUsageRoutingFields,
 	type LlmUsagePlane,
+	isProviderRequestRow,
 } from '../lib/llmUsageTags';
 import { insertLlmUsage, ZERO_USAGE } from './ledgerInsert';
 import { reconcileLateRow, SETTLEMENT_FEATURE, settleReservation } from '../aiRouting/settlement';
@@ -196,11 +197,12 @@ type SpendTotals = { totalTokens: number; costUsd: number; calls: number };
 
 /**
  * Group priced usage events by a caller-chosen key, summing tokens/cost/calls
+ * (settlement rows add their spend and no call)
  * and returning the groups sorted by cost (desc) plus the window total. The
  * per-feature and per-provider spend queries share this shape and differ only in
  * the grouping key, so both delegate here and rename `key` to their own label.
  */
-function groupSpend<E extends { totalTokens: number; costUsd: number }>(
+function groupSpend<E extends { feature: string; totalTokens: number; costUsd: number }>(
 	events: E[],
 	keyOf: (event: E) => string
 ): { groups: Array<SpendTotals & { key: string }>; totalCostUsd: number } {
@@ -210,7 +212,8 @@ function groupSpend<E extends { totalTokens: number; costUsd: number }>(
 		const acc = byKey.get(key) ?? { key, totalTokens: 0, costUsd: 0, calls: 0 };
 		acc.totalTokens += event.totalTokens;
 		acc.costUsd += event.costUsd;
-		acc.calls += 1;
+		// A settlement estimate or offset carries spend, not a call (Sol r6 F1).
+		if (isProviderRequestRow(event)) acc.calls += 1;
 		byKey.set(key, acc);
 	}
 	const groups = [...byKey.values()].sort((a, b) => b.costUsd - a.costUsd);
