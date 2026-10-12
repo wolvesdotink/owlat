@@ -207,6 +207,7 @@ import type * as aiProviderConfig from '../aiProviderConfig.js';
 import type * as aiProviderConfigActions from '../aiProviderConfigActions.js';
 import type * as aiRouting_admission from '../aiRouting/admission.js';
 import type * as aiRouting_admissionState from '../aiRouting/admissionState.js';
+import type * as aiRouting_batchContinuation from '../aiRouting/batchContinuation.js';
 import type * as aiRouting_batchItems from '../aiRouting/batchItems.js';
 import type * as aiRouting_batchPoller from '../aiRouting/batchPoller.js';
 import type * as aiRouting_embeddingAttestations from '../aiRouting/embeddingAttestations.js';
@@ -1936,6 +1937,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/walkerTransition': typeof agent_walkerTransition;
 	'aiRouting/admission': typeof aiRouting_admission;
 	'aiRouting/admissionState': typeof aiRouting_admissionState;
+	'aiRouting/batchContinuation': typeof aiRouting_batchContinuation;
 	'aiRouting/batchItems': typeof aiRouting_batchItems;
 	'aiRouting/batchPoller': typeof aiRouting_batchPoller;
 	'aiRouting/enforcedBudget': typeof aiRouting_enforcedBudget;
