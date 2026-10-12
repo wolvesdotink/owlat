@@ -72,7 +72,7 @@ describe('useEmbeddingSpaces', () => {
 		const spaces = useEmbeddingSpaces();
 		const running = job();
 		await spaces.refresh();
-		await spaces.startReembed();
+		await spaces.startReembed('sp_active' as never);
 		await spaces.resume(running);
 		await spaces.cancel(running);
 		await spaces.revoke('att_1' as never);
@@ -80,12 +80,12 @@ describe('useEmbeddingSpaces', () => {
 			embeddingProviderKind: 'openai',
 			embeddingModel: 'text-embedding-3-large',
 		});
-		await spaces.catchUp();
-		await spaces.cancelRebuild();
-		await spaces.rollback();
+		await spaces.catchUp('sp_staged' as never);
+		await spaces.cancelRebuild('sp_staged' as never);
+		await spaces.rollback('sp_prev' as never);
 		expect(calls).toEqual([
 			{ label: 'Count embedding coverage', args: {} },
-			{ label: 'Start re-embedding', args: {} },
+			{ label: 'Start re-embedding', args: { expectedSpaceId: 'sp_active' } },
 			{ label: 'Resume re-embedding', args: { jobId: 'job_1' } },
 			{ label: 'Cancel re-embedding', args: { jobId: 'job_1' } },
 			{ label: 'Revoke attestation', args: { attestationId: 'att_1' } },
@@ -93,9 +93,9 @@ describe('useEmbeddingSpaces', () => {
 				label: 'Start rebuild',
 				args: { embeddingProviderKind: 'openai', embeddingModel: 'text-embedding-3-large' },
 			},
-			{ label: 'Embed changes into the rebuild', args: {} },
-			{ label: 'Cancel rebuild', args: {} },
-			{ label: 'Roll back the embedding model', args: {} },
+			{ label: 'Embed changes into the rebuild', args: { expectedSpaceId: 'sp_staged' } },
+			{ label: 'Cancel rebuild', args: { expectedSpaceId: 'sp_staged' } },
+			{ label: 'Roll back the embedding model', args: { expectedSpaceId: 'sp_prev' } },
 		]);
 		expect(showToast).toHaveBeenCalledTimes(9);
 		expect(showToast).toHaveBeenCalledWith('Re-embedding started.');
@@ -116,7 +116,7 @@ describe('useEmbeddingSpaces', () => {
 			result: { spaceId: 'sp_staged', sampled: 5, passed: 5, isPassing: true },
 		};
 		const spaces = useEmbeddingSpaces();
-		expect(await spaces.validate()).toBe(true);
+		expect(await spaces.validate('sp_staged' as never)).toBe(true);
 		expect(spaces.validation.value?.isPassing).toBe(true);
 		status.value = embeddingStatus({ staged: null });
 		await nextTick();
@@ -132,7 +132,7 @@ describe('useEmbeddingSpaces', () => {
 			},
 		};
 		const spaces = useEmbeddingSpaces();
-		expect(await spaces.activate()).toBe(false);
+		expect(await spaces.activate('sp_staged' as never)).toBe(false);
 		expect(spaces.validation.value).toEqual({
 			spaceId: 'sp_staged',
 			sampled: 5,
@@ -147,7 +147,7 @@ describe('useEmbeddingSpaces', () => {
 			refusal: { category: 'invalid_state', message: 'Rows changed since the rebuild started.' },
 		};
 		const spaces = useEmbeddingSpaces();
-		expect(await spaces.activate()).toBe(false);
+		expect(await spaces.activate('sp_staged' as never)).toBe(false);
 		expect(spaces.validation.value).toBeNull();
 	});
 
@@ -161,5 +161,46 @@ describe('useEmbeddingSpaces', () => {
 		};
 		expect(await spaces.attest(args)).toBe(true);
 		expect(calls).toEqual([{ label: 'Record attestation', args }]);
+	});
+
+	it('a re-embed while a switch is pending names no space', async () => {
+		const spaces = useEmbeddingSpaces();
+		await spaces.startReembed();
+		expect(calls).toEqual([{ label: 'Start re-embedding', args: {} }]);
+	});
+
+	it('shows the expected-target refusal on the card, no toast, until the next control', async () => {
+		const changed: OperationError = {
+			category: 'conflict',
+			message: 'The embedding space changed since you confirmed.',
+			data: { reason: 'embedding_target_changed', currentSpaceId: 'sp_b' },
+		};
+		for (const label of [
+			'Validate rebuild',
+			'Activate rebuild',
+			'Embed changes into the rebuild',
+			'Cancel rebuild',
+			'Roll back the embedding model',
+			'Start re-embedding',
+		]) {
+			answers[label] = { refusal: changed };
+		}
+		const spaces = useEmbeddingSpaces();
+		const id = 'sp_a' as never;
+		for (const run of [
+			() => spaces.validate(id),
+			() => spaces.activate(id),
+			() => spaces.catchUp(id),
+			() => spaces.cancelRebuild(id),
+			() => spaces.rollback(id),
+			() => spaces.startReembed(id),
+		]) {
+			expect(await run()).toBe(false);
+			expect(spaces.isTargetChanged.value).toBe(true);
+		}
+		expect(spaces.validation.value).toBeNull();
+		expect(showToast).not.toHaveBeenCalled();
+		await spaces.refresh();
+		expect(spaces.isTargetChanged.value).toBe(false);
 	});
 });

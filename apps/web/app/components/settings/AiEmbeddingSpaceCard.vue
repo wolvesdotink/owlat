@@ -65,17 +65,23 @@ const resumeBlock = computed(() =>
 const confirmation = useEmbeddingConfirm();
 function startReembed() {
 	if (!status.value) return;
+	// The searchable space this re-embed goes into; none while a switch is pending.
+	const expected =
+		status.value.configured?.isActive && status.value.active ? status.value.active._id : undefined;
 	void confirmation.ask(reembedPayment(status.value) === 'paid', {
 		title: t(`${K}.reembed.confirmTitle`),
-		body: t(`${K}.reembed.confirmBody`, {
-			count: formatNumber(candidates.value),
-			provider: providerLabel(status.value.configured?.provider),
-		}),
+		body: t(
+			candidates.value.isExact ? `${K}.reembed.confirmBodyExact` : `${K}.reembed.confirmBody`,
+			{
+				count: formatNumber(candidates.value.count),
+				provider: providerLabel(status.value.configured?.provider),
+			}
+		),
 		confirmText: t(`${K}.reembed.confirm`),
 		targetKey: configuredKey(status.value) ?? '',
 		currentKey: () => configuredKey(status.value),
 		blocker: () => (status.value ? reembedBlocker(status.value) : null),
-		run: spaces.startReembed,
+		run: () => spaces.startReembed(expected),
 	});
 }
 function resume(job: EmbeddingJob) {
@@ -116,6 +122,14 @@ const providerLabel = (kind: string | undefined) => {
 			</template>
 
 			<div v-if="status" class="space-y-6">
+				<p
+					v-if="spaces.isTargetChanged.value"
+					class="rounded-lg bg-warning-subtle/50 p-3 text-sm text-text-primary"
+					role="alert"
+					data-testid="ai-embedding-target-changed"
+				>
+					{{ t(`${K}.targetChanged`) }}
+				</p>
 				<div
 					class="flex items-start gap-3 rounded-lg border border-border-subtle p-4 text-sm"
 					:class="searchState === 'searchable' ? 'bg-success-subtle/50' : 'bg-warning-subtle/50'"
@@ -277,11 +291,15 @@ const providerLabel = (kind: string | undefined) => {
 							type="button"
 							variant="secondary"
 							size="sm"
-							:disabled="spaces.isBusy.value || blocker !== null || candidates === 0"
+							:disabled="spaces.isBusy.value || blocker !== null || candidates.count === 0"
 							data-testid="ai-embedding-reembed-start"
 							@click="startReembed"
 						>
-							{{ t(`${K}.reembed.start`, { count: formatNumber(candidates) }) }}
+							{{
+								t(candidates.isExact ? `${K}.reembed.startExact` : `${K}.reembed.start`, {
+									count: formatNumber(candidates.count),
+								})
+							}}
 						</UiButton>
 						<p
 							v-if="blocker"
@@ -290,7 +308,7 @@ const providerLabel = (kind: string | undefined) => {
 						>
 							{{ t(blocker) }}
 						</p>
-						<p v-else-if="candidates === 0" class="text-xs text-text-tertiary">
+						<p v-else-if="candidates.count === 0" class="text-xs text-text-tertiary">
 							{{ t(`${K}.reembed.nothing`) }}
 						</p>
 					</div>

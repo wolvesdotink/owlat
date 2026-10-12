@@ -7869,6 +7869,7 @@
 								"title": "This attestation assigns them to",
 								"width": "Vector width",
 								"widthMissing": "Enter it above",
+								"widthOnRecord": "As recorded for this space",
 								"widthValue": "{dimensions} dimensions"
 							},
 							"problems": {
@@ -8001,11 +8002,13 @@
 							},
 							"confirm": "Start re-embedding",
 							"confirmBody": "Up to {count} items are sent to {provider} and counted against your AI spend; items with too little text are skipped. You can cancel it while it runs.",
+							"confirmBodyExact": "{count} items are sent to {provider} and counted against your AI spend. You can cancel it while it runs.",
 							"confirmTitle": "Start a paid re-embed?",
 							"hosted": "Your embedding model is hosted, so re-embedding is paid: every item is sent to the provider and counted against your AI spend. It runs only when you start it.",
 							"local": "Your embedding model runs on your server, so re-embedding is free. It also runs on its own once a day.",
 							"nothing": "Every item already has a vector in vector search.",
 							"start": "Re-embed up to {count} items",
+							"startExact": "Re-embed {count} items",
 							"title": "Re-embed"
 						},
 						"state": {
@@ -8023,6 +8026,7 @@
 								"title": "Switching to {model}"
 							}
 						},
+						"targetChanged": "The embedding setup changed while you were confirming, so nothing was done. Check what is shown now and try again.",
 						"title": "Embedding search",
 						"toasts": {
 							"activate": "Vector search now uses the rebuilt model.",

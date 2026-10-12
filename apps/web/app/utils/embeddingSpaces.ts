@@ -48,18 +48,29 @@ export function coverageRows(coverage: EmbeddingStatus['coverage']): CoverageRow
 }
 
 /**
- * The most rows a re-embed would embed: every row without a vector in the
- * active space, the ones with no vector at all included (a hosted edit can
- * leave a row with none). An upper bound: the job skips rows with too little
- * text, expired entries and files still being processed, which the coverage
- * count does not separate (see the notes: the exact candidate count is not
- * exposed).
+ * The rows a re-embed would embed. The coverage walk counts them by the job's
+ * own rule (`reembedCandidates`: rows outside the active space with an input
+ * the job uses); `isExact` then. A count stored before that field existed has
+ * only the coarse columns, so it falls back to the upper bound (every row
+ * without a vector in the active space, the ones with none included) and the
+ * copy says "up to".
  */
-export function reembedCandidates(coverage: EmbeddingStatus['coverage']): number {
-	return coverageRows(coverage).reduce(
-		(sum, row) => sum + row.counts.unknown + row.counts.inactive + row.counts.unembedded,
+export function reembedCandidates(coverage: EmbeddingStatus['coverage']): {
+	count: number;
+	isExact: boolean;
+} {
+	const rows = coverageRows(coverage);
+	const isExact =
+		rows.length > 0 && rows.every((row) => row.counts.reembedCandidates !== undefined);
+	const count = rows.reduce(
+		(sum, row) =>
+			sum +
+			(isExact
+				? (row.counts.reembedCandidates ?? 0)
+				: row.counts.unknown + row.counts.inactive + row.counts.unembedded),
 		0
 	);
+	return { count, isExact };
 }
 
 /** Rows whose vector has no recorded space: what an attestation can establish. */
@@ -135,22 +146,27 @@ export function jobPayment(job: EmbeddingJob): EmbeddingPayment {
 	return job.isPaid ? 'paid' : 'free';
 }
 
-/** The staged space: its rebuild job's `isPaid`; with no job to tell, paid. */
+/** A space: the server's locality of its endpoint (the rule its jobs are paid by). */
+export function spacePayment(space: { isLocal: boolean } | null | undefined): EmbeddingPayment {
+	return space?.isLocal === true ? 'free' : 'paid';
+}
+
+/** The staged space, by its own locality; with no staged space, paid. */
 export function stagedPayment(status: EmbeddingStatus): EmbeddingPayment {
-	return rebuildJob(status)?.isPaid === false ? 'free' : 'paid';
+	return spacePayment(status.staged);
 }
 
 /**
- * A rebuild into `kind`: free only for the configured kind on a local
- * endpoint, whose locality the server reported. Another kind's endpoint is not
- * exposed, so it counts as paid.
+ * A rebuild into `kind`: the server's locality of the endpoint `startRebuild`
+ * resolves for that kind (`rebuildTargets`); a kind it does not list is paid.
  */
 export function rebuildTargetPayment(
 	status: EmbeddingStatus,
 	kind: EmbeddingProviderKind
 ): EmbeddingPayment {
-	const configured = status.configured;
-	return configured?.isLocal === true && configured.provider === kind ? 'free' : 'paid';
+	return status.rebuildTargets.find((target) => target.kind === kind)?.isLocal === true
+		? 'free'
+		: 'paid';
 }
 
 /** Why paid work cannot start: no spend admission on the server (its own flag). */
@@ -183,7 +199,7 @@ export function resumeBlocker(status: EmbeddingStatus, job: EmbeddingJob): strin
  * the admin states (prefilled with the model's known width).
  */
 export type AttestationSubject =
-	| { kind: 'space'; spaceId: EmbeddingSpaceView['_id']; dimensions: number }
+	| { kind: 'space'; spaceId: EmbeddingSpaceView['_id']; dimensions: number | null }
 	| {
 			kind: 'identity';
 			provider: EmbeddingProviderKind;
@@ -195,8 +211,14 @@ export type AttestationSubject =
 export function attestationSubject(status: EmbeddingStatus): AttestationSubject | null {
 	const configured = status.configured;
 	if (!configured) return null;
-	if (configured.isActive && status.active) {
-		return { kind: 'space', spaceId: status.active._id, dimensions: status.active.dimensions };
+	// The server names the registered space the configured target already has
+	// (the active space, or the primary column's owner); null: a new registration.
+	const spaceId = status.attestation.spaceId;
+	if (spaceId) {
+		const known = [status.active, status.staged, status.rollbackTo].find(
+			(space) => space?._id === spaceId
+		);
+		return { kind: 'space', spaceId, dimensions: known?.dimensions ?? null };
 	}
 	const meta = embeddingProviderMeta(configured.provider);
 	return {
@@ -219,27 +241,25 @@ export function isAttestationOffered(status: EmbeddingStatus): boolean {
 	);
 }
 
+const ATTESTATION_REASON_KEYS: Record<
+	NonNullable<EmbeddingStatus['attestation']['reason']>,
+	string | null
+> = {
+	// No configured embedder: the section is not offered at all.
+	not_configured: null,
+	primary_owned_by_other_space: `${K}.attest.blocked.columnTaken`,
+	secondary_column: `${K}.attest.blocked.secondaryColumn`,
+};
+
 /**
- * Why the server would refuse an attestation for the configured embedder, as
- * a message key, or null. The vectors from before provenance are all in the
- * primary column, so the attested space must hold that column: a configured
- * space that lives in the secondary one is refused, and so is any while
- * another known space holds the primary one. (The server knows the column's
- * owner exactly; the status exposes only the active, staged and rollback
- * spaces, so this can miss a refusal, never invent one. See the notes.)
+ * Why the server would refuse an attestation for the configured target, as a
+ * message key, or null: the server's own rule (`status.attestation`), the one
+ * `attest` enforces.
  */
 export function attestationBlocker(status: EmbeddingStatus): string | null {
-	const subject = attestationSubject(status);
-	if (!subject) return null;
-	const subjectId = subject.kind === 'space' ? subject.spaceId : null;
-	if (subject.kind === 'space' && status.active?.slot !== 'primary') {
-		return `${K}.attest.blocked.secondaryColumn`;
-	}
-	const others = [status.active, status.staged, status.rollbackTo].filter(
-		(known) => known !== null && known._id !== subjectId
-	);
-	if (others.some((known) => known?.slot === 'primary')) return `${K}.attest.blocked.columnTaken`;
-	return null;
+	const { canAttest, reason } = status.attestation;
+	if (canAttest || !reason) return null;
+	return ATTESTATION_REASON_KEYS[reason];
 }
 
 /**
@@ -275,17 +295,30 @@ export function attestationIdentity(
 ): AttestationIdentity | null {
 	const subject = attestationSubject(status);
 	if (!subject) return null;
-	if (subject.kind === 'space' && status.active) {
-		const active = status.active;
+	if (subject.kind === 'space') {
+		const known = [status.active, status.staged, status.rollbackTo].find(
+			(space) => space?._id === subject.spaceId
+		);
+		if (known) {
+			return {
+				provider: known.provider,
+				endpointOrigin: endpointOrigin(known.endpoint),
+				model: known.model,
+				dimensions: known.dimensions,
+				revision: known.revision ?? null,
+			};
+		}
+		// A registered space the status does not list (a retired primary owner):
+		// it is the configured identity; its width and revision are on record.
+		const configured = status.configured!;
 		return {
-			provider: active.provider,
-			endpointOrigin: endpointOrigin(active.endpoint),
-			model: active.model,
-			dimensions: active.dimensions,
-			revision: active.revision ?? null,
+			provider: configured.provider,
+			endpointOrigin: endpointOrigin(configured.endpoint),
+			model: configured.model,
+			dimensions: null,
+			revision: null,
 		};
 	}
-	if (subject.kind !== 'identity') return null;
 	return {
 		provider: subject.provider,
 		endpointOrigin: endpointOrigin(subject.endpoint),

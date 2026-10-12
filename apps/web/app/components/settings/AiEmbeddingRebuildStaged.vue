@@ -77,30 +77,33 @@ const onStaged = (action: StagedAction) => ({
 });
 
 function validate() {
+	const spaceId = props.staged._id;
 	void confirmation.ask(isPaid.value, {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidValidateBody`, { model: model() }),
 		confirmText: t(`${K}.validate`),
 		...onStaged('validate'),
-		run: props.spaces.validate,
+		run: () => props.spaces.validate(spaceId),
 	});
 }
 function activate() {
+	const spaceId = props.staged._id;
 	void confirmation.ask(isPaid.value, {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidActivateBody`, { model: model() }),
 		confirmText: t(`${K}.activate`),
 		...onStaged('activate'),
-		run: props.spaces.activate,
+		run: () => props.spaces.activate(spaceId),
 	});
 }
 function catchUp() {
+	const spaceId = props.staged._id;
 	void confirmation.ask(isPaid.value, {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidCatchUpBody`, { model: model() }),
 		confirmText: t(`${K}.catchUp`),
 		...onStaged('catchUp'),
-		run: props.spaces.catchUp,
+		run: () => props.spaces.catchUp(spaceId),
 	});
 }
 function resume() {
@@ -120,6 +123,7 @@ function resume() {
 	});
 }
 function cancel() {
+	const spaceId = props.staged._id;
 	void confirmation.ask(true, {
 		title: t(`${K}.cancelTitle`),
 		body: t(`${K}.cancelBody`, { model: model() }),
@@ -127,7 +131,7 @@ function cancel() {
 		isDanger: true,
 		targetKey: stagedKey(props.status) ?? '',
 		currentKey: () => stagedKey(live()),
-		run: props.spaces.cancelRebuild,
+		run: () => props.spaces.cancelRebuild(spaceId),
 	});
 }
 </script>

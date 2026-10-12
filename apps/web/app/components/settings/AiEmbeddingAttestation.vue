@@ -234,7 +234,11 @@ async function confirmRevoke() {
 					<dd class="text-text-primary">
 						{{
 							identity.dimensions === null
-								? t(`${K}.identity.widthMissing`)
+								? t(
+										subject?.kind === 'space'
+											? `${K}.identity.widthOnRecord`
+											: `${K}.identity.widthMissing`
+									)
 								: t(`${K}.identity.widthValue`, { dimensions: identity.dimensions })
 						}}
 					</dd>

@@ -56,17 +56,37 @@ describe('search state and coverage', () => {
 			['knowledgeEntries', 246],
 			['semanticFiles', 43],
 		]);
-		// Unembedded rows are candidates too: a hosted edit can leave a row with none.
-		expect(reembedCandidates(status.coverage)).toBe(279);
+		// An old snapshot without the exact counts: the upper bound, unembedded rows included.
+		expect(reembedCandidates(status.coverage)).toEqual({ count: 279, isExact: false });
 		expect(unknownRows(status.coverage)).toBe(271);
-		expect(reembedCandidates(null)).toBe(0);
+		expect(reembedCandidates(null)).toEqual({ count: 0, isExact: false });
 		const onlyUnembedded = embeddingStatus();
 		onlyUnembedded.coverage = {
 			...onlyUnembedded.coverage!,
 			knowledgeEntries: { active: 9, unknown: 0, inactive: 0, unembedded: 2 },
 			semanticFiles: { active: 3, unknown: 0, inactive: 0, unembedded: 0 },
 		};
-		expect(reembedCandidates(onlyUnembedded.coverage)).toBe(2);
+		expect(reembedCandidates(onlyUnembedded.coverage)).toEqual({ count: 2, isExact: false });
+	});
+
+	it('uses the exact candidate count by the job rule when the snapshot has it', () => {
+		const exact = embeddingStatus();
+		exact.coverage = {
+			...exact.coverage!,
+			knowledgeEntries: {
+				...exact.coverage!.knowledgeEntries,
+				reembedCandidates: 200,
+				reembedSkipped: 37,
+			},
+			semanticFiles: { ...exact.coverage!.semanticFiles, reembedCandidates: 40, reembedSkipped: 2 },
+		};
+		expect(reembedCandidates(exact.coverage)).toEqual({ count: 240, isExact: true });
+		// One table without it (a partial old snapshot) falls back to the bound.
+		exact.coverage.semanticFiles = {
+			...exact.coverage.semanticFiles,
+			reembedCandidates: undefined,
+		};
+		expect(reembedCandidates(exact.coverage).isExact).toBe(false);
 	});
 });
 
@@ -122,7 +142,10 @@ describe('attestation', () => {
 	});
 
 	it('names an inactive configured embedder by identity, with the known width suggested', () => {
-		const base = embeddingStatus({ active: null });
+		const base = embeddingStatus({
+			active: null,
+			attestation: { canAttest: true, reason: null, spaceId: null },
+		});
 		const status = { ...base, configured: { ...base.configured!, isActive: false } };
 		expect(attestationSubject(status)).toEqual({
 			kind: 'identity',
@@ -192,30 +215,29 @@ describe('payment, from what the server says', () => {
 			endpoint: 'https://embeddings.example.com',
 			isLocal: false,
 		};
+		publicCompatible.rebuildTargets = [
+			{ kind: 'local', isLocal: true },
+			{ kind: 'openaiCompatible', isLocal: false },
+		];
 		expect(reembedPayment(publicCompatible)).toBe('paid');
+		// The server's locality of each rebuild target, not the catalog kind.
 		expect(rebuildTargetPayment(publicCompatible, 'openaiCompatible')).toBe('paid');
+		expect(rebuildTargetPayment(publicCompatible, 'local')).toBe('free');
+		// A kind the server does not list counts as paid.
+		expect(rebuildTargetPayment(publicCompatible, 'google')).toBe('paid');
 		const local = embeddingStatus();
 		local.configured = { ...local.configured!, provider: 'local', isLocal: true };
 		expect(reembedPayment(local)).toBe('free');
-		expect(rebuildTargetPayment(local, 'local')).toBe('free');
-		// Another kind's endpoint is not exposed: paid until the server says otherwise.
-		expect(rebuildTargetPayment(local, 'openaiCompatible')).toBe('paid');
 		expect(reembedPayment(embeddingStatus({ configured: null }))).toBe('paid');
 	});
 
-	it('takes a job and a staged space from the job the server derived', () => {
+	it('takes a job from its isPaid and a staged space from its own locality', () => {
 		expect(jobPayment(job({ isPaid: false }))).toBe('free');
 		expect(jobPayment(job())).toBe('paid');
 		const staged = space({ _id: 'sp_staged' as never, state: 'staged' });
 		expect(stagedPayment(embeddingStatus({ staged }))).toBe('paid');
-		expect(
-			stagedPayment(
-				embeddingStatus({
-					staged,
-					jobs: [job({ kind: 'rebuild', targetSpaceId: 'sp_staged' as never, isPaid: false })],
-				})
-			)
-		).toBe('free');
+		expect(stagedPayment(embeddingStatus({ staged: { ...staged, isLocal: true } }))).toBe('free');
+		expect(stagedPayment(embeddingStatus())).toBe('paid');
 	});
 
 	it('blocks paid work on the server admission flag, never free work', () => {
@@ -228,25 +250,24 @@ describe('payment, from what the server says', () => {
 	});
 });
 
-describe('attestationBlocker (Sol r5 F6)', () => {
-	it('allows the configured space in the primary column', () => {
+describe('attestationBlocker, from the server rule', () => {
+	it('allows what the server allows', () => {
 		expect(attestationBlocker(embeddingStatus())).toBeNull();
 	});
 
-	it('refuses a configured space that lives in the secondary column', () => {
-		const status = embeddingStatus({ active: space({ slot: 'secondary' }) });
-		expect(attestationBlocker(status)).toBe(`${K}.attest.blocked.secondaryColumn`);
-	});
-
-	it('refuses an identity while another known space holds the primary column', () => {
-		const base = embeddingStatus({ active: space({ _id: 'sp_old' as never, model: 'ada' }) });
-		const status = {
-			...base,
-			configured: { ...base.configured!, model: 'text-embedding-3-large', isActive: false },
-		};
-		expect(attestationBlocker(status)).toBe(`${K}.attest.blocked.columnTaken`);
-		const free = { ...status, active: space({ _id: 'sp_old' as never, slot: 'secondary' }) };
-		expect(attestationBlocker(free)).toBeNull();
+	it('names each refusal the server reports', () => {
+		const secondary = embeddingStatus({
+			attestation: { canAttest: false, reason: 'secondary_column', spaceId: 'sp_active' as never },
+		});
+		expect(attestationBlocker(secondary)).toBe(`${K}.attest.blocked.secondaryColumn`);
+		const taken = embeddingStatus({
+			attestation: { canAttest: false, reason: 'primary_owned_by_other_space', spaceId: null },
+		});
+		expect(attestationBlocker(taken)).toBe(`${K}.attest.blocked.columnTaken`);
+		const none = embeddingStatus({
+			attestation: { canAttest: false, reason: 'not_configured', spaceId: null },
+		});
+		expect(attestationBlocker(none)).toBeNull();
 	});
 });
 
@@ -267,9 +288,21 @@ describe('attestation identity (Sol r6 F2)', () => {
 			dimensions: 1536,
 			revision: null,
 		});
-		const base = embeddingStatus({ active: null });
+		const base = embeddingStatus({
+			active: null,
+			attestation: { canAttest: true, reason: null, spaceId: null },
+		});
 		const status = { ...base, configured: { ...base.configured!, isActive: false } };
 		expect(attestationIdentity(status, 3072)).toMatchObject({ dimensions: 3072, revision: null });
+		// A registered space the status does not list (a retired primary owner): its width is on record.
+		const retiredOwner = embeddingStatus({
+			active: null,
+			attestation: { canAttest: true, reason: null, spaceId: 'sp_retired' as never },
+		});
+		expect(attestationIdentity(retiredOwner, null)).toMatchObject({
+			model: 'text-embedding-3-small',
+			dimensions: null,
+		});
 		expect(attestationIdentity(embeddingStatus({ configured: null }), 1)).toBeNull();
 	});
 });
@@ -293,7 +326,7 @@ describe('confirmation target keys (Sol r6 F1)', () => {
 });
 
 describe('stagedActionBlocker (Sol r7 F2)', () => {
-	const staged = space({ _id: 'sp_a' as never, state: 'staged' });
+	const staged = space({ _id: 'sp_a' as never, state: 'staged', isLocal: true });
 	const rebuild = (status: 'running' | 'completed' | 'cancelled') =>
 		job({ kind: 'rebuild', targetSpaceId: 'sp_a' as never, status, isPaid: false });
 
@@ -310,7 +343,7 @@ describe('stagedActionBlocker (Sol r7 F2)', () => {
 
 	it('needs spend admission for paid staged work', () => {
 		const paid = embeddingStatus({
-			staged,
+			staged: { ...staged, isLocal: false },
 			jobs: [job({ kind: 'rebuild', targetSpaceId: 'sp_a' as never, status: 'completed' })],
 		});
 		expect(stagedActionBlocker(paid, 'validate')).toBe(`${K}.paid.unavailable`);

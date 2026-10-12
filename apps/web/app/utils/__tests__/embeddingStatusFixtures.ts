@@ -18,6 +18,7 @@ export function space(over: Partial<EmbeddingSpaceView> = {}): EmbeddingSpaceVie
 		source: 'stored_config',
 		state: 'active',
 		slot: 'primary',
+		isLocal: false,
 		createdAt: T0,
 		updatedAt: T0,
 		...over,
@@ -75,6 +76,17 @@ export function embeddingStatus(over: Partial<EmbeddingStatus> = {}): EmbeddingS
 		attestations: [],
 		isPaidEmbeddingAvailable: false,
 		canStageRebuild: true,
+		rebuildTargets: [
+			{ kind: 'local', isLocal: true },
+			{ kind: 'openai', isLocal: false },
+			{ kind: 'google', isLocal: false },
+			{ kind: 'openaiCompatible', isLocal: true },
+		],
+		attestation: {
+			canAttest: true,
+			reason: null,
+			spaceId: 'sp_active' as EmbeddingSpaceView['_id'],
+		},
 		...over,
 	};
 }

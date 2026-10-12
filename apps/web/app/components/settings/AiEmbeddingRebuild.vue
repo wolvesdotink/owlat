@@ -116,16 +116,15 @@ function start() {
 function rollback() {
 	const target = props.status.rollbackTo;
 	if (!target) return;
-	const isLocalRecovery =
-		props.status.configured?.isLocal === true &&
-		props.status.configured.provider === target.provider;
+	// The server's locality of the space rolled back to (`isSpaceLocal`).
+	const isLocalRecovery = target.isLocal;
 	void confirmation.ask(true, {
 		title: t(`${K}.rollbackTitle`, { model: target.model }),
 		body: t(isLocalRecovery ? `${K}.rollbackBodyLocal` : `${K}.rollbackBodyHosted`),
 		confirmText: t(`${K}.rollback`),
 		targetKey: rollbackKey(props.status) ?? '',
 		currentKey: () => rollbackKey(live()),
-		run: props.spaces.rollback,
+		run: () => props.spaces.rollback(target._id),
 	});
 }
 

@@ -7869,6 +7869,7 @@
 								"title": "Diese Bestätigung ordnet sie zu",
 								"width": "Vektorbreite",
 								"widthMissing": "Gib sie oben ein",
+								"widthOnRecord": "Wie für diesen Raum festgehalten",
 								"widthValue": "{dimensions} Dimensionen"
 							},
 							"problems": {
@@ -8001,11 +8002,13 @@
 							},
 							"confirm": "Neueinbetten starten",
 							"confirmBody": "Bis zu {count} Elemente gehen an {provider} und zählen zu deinen KI-Ausgaben; Elemente mit zu wenig Text werden übersprungen. Du kannst es abbrechen, solange es läuft.",
+							"confirmBodyExact": "{count} Elemente gehen an {provider} und zählen zu deinen KI-Ausgaben. Du kannst es abbrechen, solange es läuft.",
 							"confirmTitle": "Kostenpflichtiges Neueinbetten starten?",
 							"hosted": "Dein Embedding-Modell wird gehostet, deshalb kostet das Neueinbetten Geld: Jedes Element geht an den Anbieter und zählt zu deinen KI-Ausgaben. Es läuft nur, wenn du es startest.",
 							"local": "Dein Embedding-Modell läuft auf deinem Server, deshalb kostet das Neueinbetten nichts. Es läuft außerdem einmal am Tag von selbst.",
 							"nothing": "Jedes Element hat bereits einen Vektor in der Vektorsuche.",
 							"start": "Bis zu {count} Elemente neu einbetten",
+							"startExact": "{count} Elemente neu einbetten",
 							"title": "Neu einbetten"
 						},
 						"state": {
@@ -8023,6 +8026,7 @@
 								"title": "Wechsel zu {model}"
 							}
 						},
+						"targetChanged": "Die Embedding-Einrichtung hat sich geändert, während du bestätigt hast, deshalb ist nichts passiert. Prüfe den jetzigen Stand und versuche es erneut.",
 						"title": "Embedding-Suche",
 						"toasts": {
 							"activate": "Die Vektorsuche nutzt jetzt das neu aufgebaute Modell.",

@@ -21,6 +21,7 @@ const spaces = {
 	error: ref(null),
 	refetch: vi.fn(),
 	isBusy: ref(false),
+	isTargetChanged: ref(false),
 	validation,
 	refresh: vi.fn(async () => true),
 	startReembed: vi.fn(async () => true),
@@ -51,6 +52,7 @@ beforeEach(() => {
 		if (typeof fn === 'function' && 'mockClear' in fn) fn.mockClear();
 	}
 	validation.value = null;
+	spaces.isTargetChanged.value = false;
 	status.value = embeddingStatus();
 });
 
@@ -257,7 +259,10 @@ describe('AiEmbeddingSpaceCard', () => {
 			job({ kind: 'rebuild', targetSpaceId: 'sp_staged' as never, ...over });
 
 		it('F1: a settings change under the form takes the confirmation back', async () => {
-			const base = embeddingStatus({ active: null });
+			const base = embeddingStatus({
+				active: null,
+				attestation: { canAttest: true, reason: null, spaceId: null },
+			});
 			status.value = { ...base, configured: { ...base.configured!, isActive: false } };
 			const w = mountCard();
 			const form = w.get('[data-testid="ai-embedding-attest-form"]');
@@ -353,7 +358,12 @@ describe('AiEmbeddingSpaceCard', () => {
 				model: 'nomic-embed-text',
 				isLocal: false,
 			};
-			status.value = { ...base, configured };
+			// The server judges the public compatible endpoint hosted, whatever the catalog kind says.
+			const rebuildTargets = [
+				{ kind: 'local' as const, isLocal: true },
+				{ kind: 'openaiCompatible' as const, isLocal: false },
+			];
+			status.value = { ...base, configured, rebuildTargets };
 			const blocked = mountCard();
 			const form = blocked.get('[data-testid="ai-embedding-rebuild-form"]');
 			expect(form.text()).toContain('Paid: every item is sent to the provider');
@@ -362,7 +372,7 @@ describe('AiEmbeddingSpaceCard', () => {
 			).toBeDefined();
 			expect(blocked.text()).toContain('your embedding model is hosted'.replace('your', 'Your'));
 
-			status.value = { ...base, configured, isPaidEmbeddingAvailable: true };
+			status.value = { ...base, configured, rebuildTargets, isPaidEmbeddingAvailable: true };
 			const w = mountCard();
 			await w.get('[data-testid="ai-embedding-reembed-start"]').trigger('click');
 			expect(spaces.startReembed).not.toHaveBeenCalled();
@@ -399,7 +409,7 @@ describe('AiEmbeddingSpaceCard', () => {
 
 		it('F5: a free staged rebuild validates and activates at once', async () => {
 			status.value = embeddingStatus({
-				staged: stagedSpace(),
+				staged: { ...stagedSpace(), isLocal: true },
 				jobs: [rebuild({ status: 'completed', isPaid: false })],
 			});
 			const w = mountCard();
@@ -420,7 +430,14 @@ describe('AiEmbeddingSpaceCard', () => {
 		});
 
 		it('F6: no attestation form for a configured space in the secondary column', () => {
-			status.value = embeddingStatus({ active: space({ slot: 'secondary' }) });
+			status.value = embeddingStatus({
+				active: space({ slot: 'secondary' }),
+				attestation: {
+					canAttest: false,
+					reason: 'secondary_column',
+					spaceId: 'sp_active' as never,
+				},
+			});
 			const w = mountCard();
 			expect(w.find('[data-testid="ai-embedding-attest-form"]').exists()).toBe(false);
 			expect(w.get('[data-testid="ai-embedding-attest-blocked"]').text()).toContain(
@@ -459,6 +476,7 @@ describe('AiEmbeddingSpaceCard', () => {
 					provider: 'local',
 					model: 'mxbai-embed-large',
 					state: 'retired',
+					isLocal: true,
 				}),
 			});
 			local.configured = {
@@ -590,7 +608,10 @@ describe('AiEmbeddingSpaceCard', () => {
 		});
 
 		it('F2: an identity without a known width asks for it in the summary', () => {
-			const base = embeddingStatus({ active: null });
+			const base = embeddingStatus({
+				active: null,
+				attestation: { canAttest: true, reason: null, spaceId: null },
+			});
 			status.value = {
 				...base,
 				configured: { ...base.configured!, model: 'text-embedding-3-large', isActive: false },
@@ -686,6 +707,128 @@ describe('AiEmbeddingSpaceCard', () => {
 			await confirmButton.trigger('click');
 			await flushPromises();
 			expect(spaces.startRebuild).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('round 9: expected targets and server fields', () => {
+		const staged = space({
+			_id: 'sp_a' as never,
+			model: 'model-a',
+			state: 'staged',
+			slot: 'secondary',
+			isLocal: true,
+		});
+		const filled = embeddingStatus({
+			staged,
+			jobs: [
+				job({
+					kind: 'rebuild',
+					targetSpaceId: 'sp_a' as never,
+					status: 'completed',
+					isPaid: false,
+				}),
+			],
+		});
+
+		it('names the staged space it confirmed on validate, activate, catch-up and cancel', async () => {
+			status.value = filled;
+			const w = mountCard();
+			await w.get('[data-testid="ai-embedding-rebuild-validate"]').trigger('click');
+			await w.get('[data-testid="ai-embedding-rebuild-activate"]').trigger('click');
+			await w.get('[data-testid="ai-embedding-rebuild-catch-up"]').trigger('click');
+			await w.get('[data-testid="ai-embedding-rebuild-cancel"]').trigger('click');
+			await w.get('[data-testid="dialog-confirm"]').trigger('click');
+			await flushPromises();
+			expect(spaces.validate).toHaveBeenCalledWith('sp_a');
+			expect(spaces.activate).toHaveBeenCalledWith('sp_a');
+			expect(spaces.catchUp).toHaveBeenCalledWith('sp_a');
+			expect(spaces.cancelRebuild).toHaveBeenCalledWith('sp_a');
+		});
+
+		it('names the space a rollback restores, and a re-embed the searchable space', async () => {
+			status.value = embeddingStatus({
+				isPaidEmbeddingAvailable: true,
+				rollbackTo: space({ _id: 'sp_prev' as never, model: 'ada', state: 'retired' }),
+			});
+			const w = mountCard();
+			await w.get('[data-testid="ai-embedding-rollback"] button').trigger('click');
+			await w.get('[data-testid="dialog-confirm"]').trigger('click');
+			await flushPromises();
+			expect(spaces.rollback).toHaveBeenCalledWith('sp_prev');
+			await w.get('[data-testid="ai-embedding-reembed-start"]').trigger('click');
+			await w.get('[data-testid="dialog-confirm"]').trigger('click');
+			await flushPromises();
+			expect(spaces.startReembed).toHaveBeenCalledWith('sp_active');
+		});
+
+		it('names no space for a re-embed while a switch is pending', async () => {
+			const base = embeddingStatus({ isPaidEmbeddingAvailable: true });
+			status.value = { ...base, configured: { ...base.configured!, isActive: false } };
+			const w = mountCard();
+			await w.get('[data-testid="ai-embedding-reembed-start"]').trigger('click');
+			await w.get('[data-testid="dialog-confirm"]').trigger('click');
+			await flushPromises();
+			expect(spaces.startReembed).toHaveBeenCalledWith(undefined);
+		});
+
+		it('shows the server guard refusal inline', () => {
+			spaces.isTargetChanged.value = true;
+			expect(mountCard().get('[data-testid="ai-embedding-target-changed"]').text()).toContain(
+				'changed while you were confirming'
+			);
+		});
+
+		it('uses the exact candidate count when the coverage carries it', () => {
+			const exact = embeddingStatus({ isPaidEmbeddingAvailable: true });
+			exact.coverage = {
+				...exact.coverage!,
+				knowledgeEntries: {
+					...exact.coverage!.knowledgeEntries,
+					reembedCandidates: 200,
+					reembedSkipped: 37,
+				},
+				semanticFiles: {
+					...exact.coverage!.semanticFiles,
+					reembedCandidates: 40,
+					reembedSkipped: 2,
+				},
+			};
+			status.value = exact;
+			expect(mountCard().get('[data-testid="ai-embedding-reembed-start"]').text()).toBe(
+				'Re-embed 240 items'
+			);
+		});
+
+		it('takes a rebuild target the server reports local as free', async () => {
+			const local = embeddingStatus({
+				active: space({ provider: 'local', model: 'nomic-embed-text', isLocal: true }),
+			});
+			local.configured = {
+				...local.configured!,
+				provider: 'local',
+				model: 'nomic-embed-text',
+				isLocal: true,
+			};
+			status.value = local;
+			const w = mountCard();
+			expect(w.get('[data-testid="ai-embedding-rebuild-form"]').text()).toContain(
+				'Free: runs on your server.'
+			);
+			await w.get('[data-testid="model-choice"]').setValue('mxbai-embed-large');
+			await w.get('[data-testid="ai-embedding-rebuild-start"]').trigger('click');
+			expect(spaces.startRebuild).toHaveBeenCalledWith({
+				embeddingProviderKind: 'local',
+				embeddingModel: 'mxbai-embed-large',
+			});
+		});
+
+		it('shows the recorded width for a registered space the status does not list', () => {
+			status.value = embeddingStatus({
+				active: null,
+				attestation: { canAttest: true, reason: null, spaceId: 'sp_retired' as never },
+			});
+			const summary = mountCard().get('[data-testid="ai-embedding-attest-identity"]').text();
+			expect(summary).toContain('As recorded for this space');
 		});
 	});
 });
