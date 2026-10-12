@@ -410,6 +410,7 @@
 			},
 			"assistantMessage": {
 				"assistant": "Assistent",
+				"cutOff": "Diese Antwort wurde an ihrer Längengrenze abgeschnitten.",
 				"genericError": "Der Assistent konnte diese Antwort nicht abschließen.",
 				"stopped": "Gestoppt",
 				"typing": "Der Assistent schreibt"
@@ -1080,7 +1081,8 @@
 				"securityLead": "Sicherheits-E-Mail.",
 				"security": "Wird so angezeigt, wie geschrieben, und nie zusammengefasst.",
 				"signed": "Nur der signierte Teil ist zusammengefasst.",
-				"openConversation": "E-Mail-Verlauf öffnen"
+				"openConversation": "E-Mail-Verlauf öffnen",
+				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich der Überblick gleich."
 			},
 			"conversation": {
 				"read": "Den ganzen Verlauf lesen",
@@ -4183,6 +4185,22 @@
 				},
 				"tooLong": "{count} Zeichen zu lang | {count} Zeichen zu lang",
 				"updateOperation": "Notiz speichern"
+			},
+			"guardNotRun": {
+				"reason": {
+					"agentDisabled": "Die Musterprüfungen sind gelaufen, die KI-Prüfung wurde aber übersprungen, weil der Agent aus war, als diese Nachricht ankam. Sie läuft, bevor der Agent etwas mit der Nachricht macht.",
+					"budgetRefused": "Die Musterprüfungen sind gelaufen, die KI-Prüfung wurde aber übersprungen, weil das KI-Ausgabenbudget aufgebraucht war. Sie läuft, bevor der Agent etwas mit der Nachricht macht.",
+					"spamArchived": "Die Musterprüfungen sind gelaufen, die KI-Prüfung wurde aber übersprungen, weil diese Nachricht als Spam archiviert wurde. Sie läuft, bevor der Agent etwas mit der Nachricht macht."
+				},
+				"recordedAt": "Festgehalten am {date}.",
+				"title": "KI-Sicherheitsprüfung nicht gelaufen"
+			},
+			"budgetHold": {
+				"missing": "Die KI hat {steps} übersprungen.",
+				"retry": "KI erneut versuchen",
+				"retryHint": "Ein neuer Versuch lässt den Agenten die Nachricht mit der normalen Automatik bearbeiten, sodass seine Antwort von selbst gesendet werden kann.",
+				"since": "Zurückgehalten am {date}. Solange die Nachricht zurückgehalten wird, wird nichts automatisch gesendet.",
+				"title": "Wartet auf eine Person: KI-Budget erreicht"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -4443,6 +4461,7 @@
 				"askFailed": "Das ließ sich gerade nicht beantworten. Versuche es gleich noch einmal.",
 				"askOperation": "Zu diesem Thread fragen",
 				"askPlaceholder": "Zu diesem Thread fragen…",
+				"cutOff": "Diese Antwort wurde an ihrer Längengrenze abgeschnitten.",
 				"thinking": "Denkt nach…"
 			},
 			"postboxAppPasswordCallout": {
@@ -6082,6 +6101,7 @@
 		},
 		"query": {
 			"queryResult": {
+				"cutOff": "Diese Antwort wurde an ihrer Längengrenze abgeschnitten.",
 				"sources": "Quellen"
 			},
 			"quickQueryPanel": {
@@ -6230,6 +6250,13 @@
 				"needsSetup": "Einrichtung nötig",
 				"needsSetupTitle": "Eingeschaltet, aber noch nicht eingerichtet. Es fehlt: {missing}",
 				"partial": "Teilweise an"
+			},
+			"hostedDecisionExclusion": {
+				"adminOnly": "Nur ein Admin kann das ändern.",
+				"helpMailbox": "Mails in {address} beurteilt dann nur die lokale Entscheidungs-Engine auf deinem eigenen Server. Sie gehen nie an TypeSafe, dein Sprachmodell oder einen anderen gehosteten Entscheidungsanbieter; ohne lokale Engine überspringen Entscheidungsanfragen sie, und alles funktioniert wie bisher.",
+				"helpTeamInbox": "Mails im Team-Postfach beurteilt dann nur die lokale Entscheidungs-Engine auf deinem eigenen Server. Sie gehen nie an TypeSafe, dein Sprachmodell oder einen anderen gehosteten Entscheidungsanbieter; ohne lokale Engine überspringen Entscheidungsanfragen sie, und alles funktioniert wie bisher.",
+				"label": "Von gehosteten Entscheidungsanbietern fernhalten",
+				"operation": "Ausschluss von gehosteten Entscheidungen aktualisieren"
 			},
 			"inboundRetentionCard": {
 				"adminOnly": "Nur Inhaber und Administratoren können das ändern.",
@@ -7055,7 +7082,8 @@
 					"checking": "Der Entwurf wird geprüft …",
 					"addressed": "{addressed} von {total} berücksichtigt",
 					"needsFile": "{count} braucht eine Datei | {count} brauchen eine Datei",
-					"promise": "neues Versprechen notiert: „{text}“"
+					"promise": "neues Versprechen notiert: „{text}“",
+					"budget": "Nur teilweise geprüft: Das KI-Budget ist aufgebraucht"
 				},
 				"banner": {
 					"title": "Eins noch vor dem Senden.",
@@ -7078,7 +7106,9 @@
 				"peekDraft": "Entwerfen",
 				"readyKept": "Der KI-Entwurf ist fertig. Dein Text bleibt stehen, bis du den Entwurf übernimmst.",
 				"useDraft": "Entwurf übernehmen",
-				"preparedFileFailed": "{filename} aus der vorbereiteten Antwort konnte nicht angehängt werden. Hänge die Datei erneut an, falls die Antwort sie braucht."
+				"preparedFileFailed": "{filename} aus der vorbereiteten Antwort konnte nicht angehängt werden. Hänge die Datei erneut an, falls die Antwort sie braucht.",
+				"heldByGuard": "Die Sicherheitsprüfung hat diese Nachricht zurückgehalten, deshalb gibt es dafür keinen KI-Entwurf. Du kannst die Antwort trotzdem selbst schreiben.",
+				"budget": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb gibt es keinen KI-Entwurf. Du kannst die Antwort trotzdem selbst schreiben."
 			},
 			"askCard": {
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
@@ -7099,7 +7129,8 @@
 				"attachAndUpdate": "Anhängen und Entwurf anpassen",
 				"draftGaps": "Dem Entwurf fehlt noch eine Angabe | Dem Entwurf fehlen noch {count} Angaben",
 				"draftGapsSubline": "Die Antwort unten ist schon geschrieben. Was du hier beantwortest, kommt in den Entwurf; was offen bleibt, bleibt markiert.",
-				"updateDraft": "Entwurf ergänzen"
+				"updateDraft": "Entwurf ergänzen",
+				"budgetRefused": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb wurde der Entwurf nicht geschrieben. Deine Antworten bleiben hier: Versuch es später erneut oder schreib die Antwort selbst."
 			},
 			"fileAsk": {
 				"dropHere": "Lege die Datei hier ab oder",
@@ -7695,6 +7726,7 @@
 						"description": "Einmaliger Durchlauf durch deinen eingehenden Mail-Verlauf, um den KI-Agenten mit Kontext zu versorgen.",
 						"errors": "Fehler",
 						"extracted": "Extrahiert",
+						"partial": "{count} Nachrichten wurden bei diesem Durchlauf nur teilweise gelesen, weil das KI-Ausgabenbudget erreicht war. Die Zahl sinkt nicht, wenn sie später fertig werden, und manche bleiben womöglich unfertig.",
 						"progress": "{scanned} / {total} Nachrichten",
 						"progressLabel": "Fortschritt der Wissens-Nachverarbeitung",
 						"skipped": "Übersprungen",
@@ -7782,7 +7814,7 @@
 						},
 						"degraded": {
 							"breakerOpen": "Die Ebene ist so oft ausgefallen, dass sie vorerst abgeschaltet wurde. Bis sie sich erholt, laufen die Entscheidungen so wie vor ihrer Einrichtung.",
-							"keyMissing": "Für diesen Anbieter ist kein Schlüssel hinterlegt. Sofern die Installation nicht TYPESAFE_API_KEY in ihrer Umgebung bereitstellt, beantwortet stattdessen dein Sprachmodell jede Entscheidung.",
+							"keyMissing": "Für diesen Anbieter ist kein Schlüssel hinterlegt. Sofern die Installation nicht TYPESAFE_API_KEY in ihrer Umgebung bereitstellt, werden Entscheidungen abgelehnt, ohne Ausweichen auf das Sprachmodell, bis ein gültiger Schlüssel vorliegt.",
 							"languageBacked": "Dein Sprachmodell beantwortet diese Entscheidungen. Es liefert ein Label ohne kalibrierte Wahrscheinlichkeit; eine Zahl, die hier nach Konfidenz aussieht, ist die Selbsteinschätzung des Modells.",
 							"localUncalibrated": "Das lokale Modell läuft auf deinem Server und liefert echte Wahrscheinlichkeiten, aber noch hat niemand gemessen, wie gut sie zur Wirklichkeit passen. Bis dahin liest kein Schwellenwert sie aus.",
 							"testFailed": "Der letzte Schlüsseltest endete mit einem Fehler, die gespeicherte Konfiguration ist also möglicherweise nicht lauffähig.",
@@ -7828,6 +7860,211 @@
 							"loading": "Der Status der Entscheidungsanfragen wird geprüft…",
 							"error": "Der Funktionsstatus konnte nicht geprüft werden. Tests sind erst nach der Bestätigung des Status verfügbar.",
 							"manage": "Unter Funktionen verwalten"
+						},
+						"envProblem": {
+							"body": "Entscheidungen werden abgelehnt, ohne Ausweichen auf das Sprachmodell, bis die Umgebungsvariable einen Entscheidungsanbieter nennt.",
+							"title": "Die Einstellung für den Entscheidungsanbieter im Deployment ist ungültig"
+						}
+					},
+					"embeddingSpace": {
+						"attest": {
+							"blocked": {
+								"columnTaken": "Ein anderes Embedding-Modell nutzt jetzt die Stelle, an der die älteren Vektoren liegen, deshalb kann eine Bestätigung sie nicht zurückbringen. Bette sie stattdessen neu ein.",
+								"secondaryColumn": "Das eingerichtete Modell legt seine Vektoren an einer anderen Stelle ab als die älteren Vektoren, deshalb kann eine Bestätigung sie nicht zurückbringen. Bette sie stattdessen neu ein."
+							},
+							"confirm": "Ich bestätige, dass jeder Vektor, der bis einschließlich {date} geschrieben wurde, über diesen ganzen Zeitraum mit genau diesem Anbieter, Endpunkt, Modell und dieser Vektorbreite erzeugt wurde.",
+							"confirmWithRevision": "Ich bestätige, dass jeder Vektor, der bis einschließlich {date} geschrieben wurde, über diesen ganzen Zeitraum mit genau diesem Anbieter, Endpunkt, Modell, dieser Vektorbreite und diesem Modellstand erzeugt wurde.",
+							"description": "Owlat hat vor dieser Version nicht festgehalten, welcher Embedder die Vektoren geschrieben hat. Wenn du weißt, dass der eingerichtete Embedder mit Anbieter, Endpunkt, Modell und Breite wie unten angezeigt sie alle im gewählten Zeitraum geschrieben hat, kannst du das bestätigen, und sie kehren ohne Neueinbetten in die Vektorsuche zurück. Bestätige nur, was du sicher weißt: Vektoren eines anderen Modells oder Endpunkts machen die Suchergebnisse falsch.",
+							"entry": {
+								"status": {
+									"applied": "{count} Elemente zugeordnet, Vektoren geschrieben bis {until}.",
+									"applying": "Elemente werden zugeordnet: bisher {count}, Vektoren geschrieben bis {until}.",
+									"revoked": "Widerrufen. Ihre Elemente sind bis zur Neueinbettung nicht in der Vektorsuche."
+								},
+								"title": "{source}, festgehalten am {date}"
+							},
+							"identity": {
+								"endpoint": "Endpunkt",
+								"model": "Modell",
+								"nativeEndpoint": "Die eigene API des Anbieters",
+								"provider": "Anbieter",
+								"revision": "Modellstand",
+								"title": "Diese Bestätigung ordnet sie zu",
+								"width": "Vektorbreite",
+								"widthMissing": "Gib sie oben ein",
+								"widthOnRecord": "Wie für diesen Raum festgehalten",
+								"widthValue": "{dimensions} Dimensionen"
+							},
+							"problems": {
+								"date": "Wähle einen Tag.",
+								"statement": "Beschreibe in bis zu {max} Zeichen, worauf das beruht.",
+								"width": "Gib eine ganze Zahl über 0 ein."
+							},
+							"revoke": "Widerrufen",
+							"revokeBody": "Ihre Elemente verlassen die Vektorsuche, bis ein Neueinbetten sie mit einem gemessenen Modell zurückbringt.",
+							"revokeTitle": "Diese Bestätigung widerrufen?",
+							"sourceLabel": "Grundlage",
+							"sources": {
+								"attestation": "Mein eigenes Wissen",
+								"record": "Aufzeichnungen der Installation"
+							},
+							"statementLabel": "Worauf du dich stützt",
+							"statementPlaceholder": "Zum Beispiel: Diese Installation nutzt dieses Modell seit der Einrichtung, und ihre Umgebung hat nie ein anderes genannt.",
+							"subject": "{count} Elemente haben Vektoren ohne erfasstes Modell.",
+							"submit": "Bestätigung festhalten",
+							"title": "Modell älterer Vektoren bestätigen",
+							"warning": "Wird unter deinem Namen im Audit-Protokoll festgehalten.",
+							"widthHelp": "Die Zahl der Dimensionen, die das Modell liefert, zum Beispiel 1536.",
+							"widthLabel": "Vektorbreite",
+							"writtenBeforeHelp": "Einschließlich dieses Tages. Spätere Vektoren sind nicht erfasst.",
+							"writtenBeforeLabel": "Vektoren geschrieben bis"
+						},
+						"coverage": {
+							"columns": {
+								"active": "In der Vektorsuche",
+								"inactive": "Anderes Modell",
+								"unembedded": "Nicht eingebettet",
+								"unknown": "Modell nicht erfasst"
+							},
+							"legend": "Nur die erste Spalte findet die Vektorsuche. Die anderen findet die Stichwortsuche, bis sie neu eingebettet sind; nicht eingebettete Elemente warten auf die Verarbeitung oder haben zu wenig Text.",
+							"measuredAt": "Gezählt am {date}.",
+							"none": "Noch nicht gezählt. Das Zählen läuft im Hintergrund.",
+							"refresh": "Neu zählen",
+							"stale": "Das durchsuchte Modell hat sich seit der letzten Zählung geändert. Eine neue Zählung läuft.",
+							"table": "Bestand",
+							"tables": {
+								"knowledgeEntries": "Wissen",
+								"semanticFiles": "Dateien"
+							},
+							"title": "Abdeckung"
+						},
+						"description": "Welches Embedding-Modell die Vektorsuche nutzt und wie viel von deinem Wissen und deinen Dateien sie erreicht. Die Stichwortsuche findet in jedem Fall alles.",
+						"job": {
+							"cancel": "Abbrechen",
+							"last": "Letztes Neueinbetten: {state}, {date}, {embedded} eingebettet.",
+							"paused": {
+								"budget": "Pausiert: Das KI-Ausgabenbudget ist vorerst aufgebraucht.",
+								"other": "Pausiert",
+								"providerUnavailable": "Pausiert: Der Embedding-Anbieter war nicht erreichbar.",
+								"spaceChanged": "Pausiert: Das Embedding-Modell hat sich geändert."
+							},
+							"progress": "Bisher {embedded} eingebettet, {scanned} geprüft ({table})",
+							"resume": "Fortsetzen",
+							"resumeBody": "Der Rest dieses Auftrags geht an den Anbieter und zählt zu deinen KI-Ausgaben.",
+							"resumeTitle": "Kostenpflichtiges Neueinbetten fortsetzen?",
+							"status": {
+								"cancelled": "Abgebrochen",
+								"completed": "Abgeschlossen",
+								"failed": "Fehlgeschlagen",
+								"running": "Läuft"
+							}
+						},
+						"loading": "Embedding-Suche wird geladen",
+						"operations": {
+							"activate": "Neuaufbau aktivieren",
+							"attest": "Bestätigung festhalten",
+							"cancel": "Neueinbetten abbrechen",
+							"cancelRebuild": "Neuaufbau abbrechen",
+							"catchUp": "Änderungen in den Neuaufbau einbetten",
+							"refresh": "Embedding-Abdeckung zählen",
+							"resume": "Neueinbetten fortsetzen",
+							"revoke": "Bestätigung widerrufen",
+							"rollback": "Embedding-Modell zurücksetzen",
+							"startRebuild": "Neuaufbau starten",
+							"startReembed": "Neueinbetten starten",
+							"validate": "Neuaufbau prüfen"
+						},
+						"paid": {
+							"unavailable": "Kostenpflichtige Embedding-Arbeit braucht die Ausgabenfreigabe, die diese Installation noch nicht hat."
+						},
+						"rebuild": {
+							"activate": "Aktivieren",
+							"activateHint": "Die Aktivierung prüft erneut eine Stichprobe und stellt dann Suche und Embedding-Einstellungen in einem Schritt um. Elemente, die während des Neuaufbaus hinzukamen oder sich änderten, brauchen vorher „Änderungen einbetten“.",
+							"blocked": {
+								"jobOpen": "Ein Neueinbetten oder ein Neuaufbau läuft bereits.",
+								"noModel": "Wähle ein Modell.",
+								"notFilled": "Der Neuaufbau ist noch nicht fertig eingebettet.",
+								"sameModel": "Die Vektorsuche nutzt dieses Modell bereits."
+							},
+							"cancel": "Neuaufbau abbrechen",
+							"cancelBody": "Das bereitgestellte {model} wird verworfen, und sein Lauf lässt sich nicht fortsetzen; ein neuer Neuaufbau beginnt von vorn. Die Vektorsuche behält das aktive Modell.",
+							"cancelTitle": "Diesen Neuaufbau abbrechen?",
+							"catchUp": "Änderungen einbetten",
+							"confirmPaidBody": "Jedes Element wird mit {model} eingebettet und zählt zu deinen KI-Ausgaben. Die Suche nutzt das aktive Modell weiter, bis du den Neuaufbau aktivierst.",
+							"confirmPaidTitle": "Das ist kostenpflichtige Embedding-Arbeit",
+							"costHosted": "Kostenpflichtig: Jedes Element geht an den Anbieter und zählt zu deinen KI-Ausgaben.",
+							"costLocal": "Kostenlos: läuft auf deinem Server.",
+							"costUnknown": "Wird als kostenpflichtig behandelt: Owlat kann von hier nicht erkennen, ob der Endpunkt dieses Anbieters auf deinem Server läuft.",
+							"description": "Bettet alles mit dem neuen Modell neben dem aktiven ein, damit die Suche während des Wechsels weiter funktioniert. Möglich zwischen lokalen Modellen oder zwischen Modellen desselben gehosteten Anbieters; jeder andere Wechsel läuft über die Embedding-Einstellungen oben.",
+							"modelLabel": "Modell",
+							"paidActivateBody": "Die Aktivierung prüft zuerst erneut und bettet dafür einige Stichproben mit {model} beim Anbieter ein; das zählt zu deinen KI-Ausgaben.",
+							"paidCatchUpBody": "Jedes Element, das seit dem Start des Neuaufbaus hinzukam oder sich änderte, wird mit {model} beim Anbieter eingebettet und zählt zu deinen KI-Ausgaben.",
+							"paidResumeBody": "Der Rest des Neuaufbaus wird mit {model} beim Anbieter eingebettet und zählt zu deinen KI-Ausgaben.",
+							"paidValidateBody": "Die Prüfung bettet einige Stichproben mit {model} beim Anbieter ein; das zählt zu deinen KI-Ausgaben.",
+							"progress": "{embedded} eingebettet, {scanned} geprüft",
+							"providerLabel": "Embedding-Anbieter",
+							"resume": "Fortsetzen",
+							"rollback": "Zurücksetzen",
+							"rollbackAvailable": "{model} lässt sich wiederherstellen: Seine Vektoren sind noch gespeichert.",
+							"rollbackBodyHosted": "Vektorsuche und Embedding-Einstellungen wechseln sofort zurück. Seither hinzugekommene Elemente bleiben außerhalb der Vektorsuche, bis du ein Neueinbetten startest; mit einem gehosteten Embedder kostet das Geld.",
+							"rollbackBodyLocal": "Vektorsuche und Embedding-Einstellungen wechseln sofort zurück. Seither hinzugekommene Elemente werden von selbst und kostenlos neu eingebettet.",
+							"rollbackTitle": "Auf {model} zurücksetzen?",
+							"staged": "{model} ({dimensions} Dimensionen) wird neben dem aktiven Modell aufgebaut.",
+							"start": "Neuaufbau starten",
+							"title": "Mit einem anderen Modell neu aufbauen",
+							"validate": "Prüfen",
+							"validation": {
+								"failed": "Nur {passed} von {sampled} Stichproben haben sich selbst gefunden. Die Aktivierung braucht mindestens 80 %.",
+								"passed": "{passed} von {sampled} Stichproben haben sich mit dem neuen Modell selbst gefunden."
+							}
+						},
+						"reembed": {
+							"blocked": {
+								"jobOpen": "Ein Neueinbetten oder ein Neuaufbau läuft bereits.",
+								"noEmbedder": "Kein Embedding-Modell eingerichtet."
+							},
+							"confirm": "Neueinbetten starten",
+							"confirmBody": "Bis zu {count} Elemente gehen an {provider} und zählen zu deinen KI-Ausgaben; Elemente mit zu wenig Text werden übersprungen. Du kannst es abbrechen, solange es läuft.",
+							"confirmBodyExact": "{count} Elemente gehen an {provider} und zählen zu deinen KI-Ausgaben. Du kannst es abbrechen, solange es läuft.",
+							"confirmTitle": "Kostenpflichtiges Neueinbetten starten?",
+							"hosted": "Dein Embedding-Modell wird gehostet, deshalb kostet das Neueinbetten Geld: Jedes Element geht an den Anbieter und zählt zu deinen KI-Ausgaben. Es läuft nur, wenn du es startest.",
+							"local": "Dein Embedding-Modell läuft auf deinem Server, deshalb kostet das Neueinbetten nichts. Es läuft außerdem einmal am Tag von selbst.",
+							"nothing": "Jedes Element hat bereits einen Vektor in der Vektorsuche.",
+							"nothingEligible": "Keine geeigneten Elemente müssen neu eingebettet werden.",
+							"skipped": "{count} Elemente bleiben trotzdem außerhalb der Vektorsuche: abgelaufene Einträge, Dateien in Verarbeitung oder zu wenig Text.",
+							"start": "Bis zu {count} Elemente neu einbetten",
+							"startExact": "{count} Elemente neu einbetten",
+							"title": "Neu einbetten"
+						},
+						"state": {
+							"none": {
+								"body": "Die Suche nutzt nur Stichwörter.",
+								"title": "Kein Embedding-Modell eingerichtet"
+							},
+							"searchable": {
+								"body": "Elemente, die mit einem anderen Modell eingebettet wurden oder bevor Owlat das verwendete Modell festhielt, findet nur die Stichwortsuche, bis sie neu eingebettet sind.",
+								"title": "Die Vektorsuche nutzt {model}"
+							},
+							"space": "{provider}, {dimensions} Dimensionen",
+							"switching": {
+								"body": "Die Vektorsuche beginnt, sobald das erste Element damit eingebettet ist. Bis dahin, und für ältere Elemente bis zu ihrer Neueinbettung, nutzt die Suche Stichwörter.",
+								"title": "Wechsel zu {model}"
+							}
+						},
+						"targetChanged": "Die Embedding-Einrichtung hat sich geändert, während du bestätigt hast, deshalb ist nichts passiert. Prüfe den jetzigen Stand und versuche es erneut.",
+						"title": "Embedding-Suche",
+						"toasts": {
+							"activate": "Die Vektorsuche nutzt jetzt das neu aufgebaute Modell.",
+							"attest": "Bestätigung festgehalten. Ihre Elemente kehren in die Vektorsuche zurück, sobald sie zugeordnet sind.",
+							"cancel": "Neueinbetten abgebrochen.",
+							"cancelRebuild": "Neuaufbau abgebrochen.",
+							"catchUp": "Die Änderungen seit dem Start des Neuaufbaus werden eingebettet.",
+							"refresh": "Zählung gestartet.",
+							"resume": "Neueinbetten fortgesetzt.",
+							"revoke": "Bestätigung widerrufen.",
+							"rollback": "Auf das vorherige Embedding-Modell zurückgesetzt.",
+							"startRebuild": "Neuaufbau gestartet.",
+							"startReembed": "Neueinbetten gestartet."
 						}
 					},
 					"embeddings": {
@@ -7840,8 +8077,8 @@
 						"localTitle": "Lokal (mitgeliefert) — keine Einrichtung nötig",
 						"modelLabel": "Embedding-Modell",
 						"providerLabel": "Embedding-Anbieter",
-						"reindexBody": "Neue und alte Vektoren sind nicht vergleichbar. Indiziere dein Wissen nach dem Speichern neu, damit die Suche genau bleibt.",
-						"reindexTitle": "Ein Wechsel der Embeddings erfordert eine Neuindizierung",
+						"reindexBody": "Vektoren zweier Modelle sind nicht vergleichbar. Nach dem Speichern findet die Stichwortsuche ältere Elemente, bis sie neu eingebettet sind: von selbst mit einem lokalen Modell, oder wenn du es unter „Embedding-Suche“ startest mit einem gehosteten. Für einen Wechsel ohne diese Lücke nutze dort „Mit einem anderen Modell neu aufbauen“, wo der Wechsel das erlaubt.",
+						"reindexTitle": "Ein Modellwechsel nimmt ältere Elemente aus der Vektorsuche",
 						"title": "Embeddings"
 					},
 					"language": {
@@ -7868,10 +8105,117 @@
 					"remove": {
 						"button": "Konfiguration entfernen",
 						"confirm": "Konfiguration entfernen",
-						"confirmBody": "Die gespeicherten API-Schlüssel werden gelöscht und lassen sich nicht wiederherstellen. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist. Verwendet die Umgebung ein anderes Embedding-Modell, indiziere dein Wissen danach neu.",
+						"confirmBody": "Die gespeicherten API-Schlüssel werden gelöscht und lassen sich nicht wiederherstellen. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist. Nutzt die Umgebung ein anderes Embedding-Modell, verlassen ältere Elemente die Vektorsuche, bis sie neu eingebettet sind.",
 						"confirmTitle": "KI-Anbieterkonfiguration entfernen?",
 						"description": "Löscht die auf dieser Seite gespeicherten Einstellungen und API-Schlüssel. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist.",
 						"title": "Anbieterkonfiguration entfernen"
+					},
+					"routing": {
+						"ceiling": "Tägliche Obergrenze für KI-Ausgaben: {amount}.",
+						"conflict": "Jemand anderes hat das KI-Routing geändert, während du es bearbeitet hast. Du siehst jetzt diese Fassung, nimm deine Änderungen also bitte erneut vor.",
+						"defaultsInUse": "Noch nicht gespeichert. Es gelten die Standardwerte.",
+						"description": "Welche neuen KI-Wege laufen und wie viel von der Ausgabenobergrenze Vorsortierung und Schattenläufe nutzen dürfen. Jeder Schalter steht anfangs auf Aus, so arbeitet Owlat heute. Jede Änderung wird im Audit-Protokoll festgehalten.",
+						"discard": "Änderungen verwerfen",
+						"groups": {
+							"budget": "Ausgabenrahmen",
+							"decisions": "Entscheidungsanfragen",
+							"files": "Anhänge und Wissen",
+							"shadow": "Schattenläufe",
+							"team": "Team-Postfach",
+							"writing": "Entwürfe und Hintergrundarbeit"
+						},
+						"knowledgeEntryCap": {
+							"help": "Höchstens so viele Wissenseinträge darf eine E-Mail hinzufügen; die sichersten werden behalten. Dateien sind nicht begrenzt. Leer heißt: keine Grenze.",
+							"label": "Wissenseinträge pro Nachricht"
+						},
+						"loading": "KI-Routing wird geladen",
+						"noCapPlaceholder": "Keine Grenze",
+						"noCeiling": "Es ist keine tägliche Obergrenze für KI-Ausgaben eingestellt.",
+						"problems": {
+							"cap": "Gib eine ganze Zahl von {min} bis {max} ein oder lass das Feld leer.",
+							"percentBelow": "Gib einen Prozentwert über 0 und unter {max} ein.",
+							"percentUpTo": "Gib einen Prozentwert über 0 und höchstens {max} ein.",
+							"shadowCapRequired": "Pflicht, solange ein Schalter im Schattenmodus ist und keine Tagesobergrenze eingestellt ist.",
+							"usd": "Gib einen Betrag über 0 ein oder lass das Feld leer."
+						},
+						"promptCache": {
+							"help": "Markiert den gleichbleibenden Teil des Auswertungs-Prompts für den Cache des Anbieters. Nur direkt angebundenes Anthropic nutzt das, OpenRouter und andere Anbieter ignorieren es.",
+							"label": "Prompt-Caching für die Auswertung"
+						},
+						"save": "Routing speichern",
+						"saveOperation": "KI-Routing speichern",
+						"saved": "KI-Routing gespeichert.",
+						"savedVersion": "Version {version}, gespeichert am {date}.",
+						"shadow": {
+							"allowance": "Schattenläufe dürfen bis zu {amount} pro Tag ausgeben.",
+							"allowanceBlocked": "Leg eine Ausgabengrenze fest. Ohne Tagesobergrenze brauchen Schattenläufe eine.",
+							"allowanceIdle": "Kein Schalter ist im Schattenmodus, deshalb geben Schattenläufe nichts aus.",
+							"capHelp": "Pflicht für Schattenläufe, wenn keine Tagesobergrenze eingestellt ist.",
+							"capLabel": "Ausgabengrenze (USD pro Tag)",
+							"ceilingHelp": "Anteil an der Tagesobergrenze, höchstens {max} %.",
+							"ceilingLabel": "Tagesobergrenze (%)",
+							"description": "Ein Schalter im Schattenmodus führt den neuen Weg neben dem heutigen aus und zeichnet nur das Ergebnis auf. Diese Grenzen gelten, solange ein Schalter im Schattenmodus ist.",
+							"messageHelp": "Anteil der infrage kommenden Nachrichten, höchstens {max} %.",
+							"messageLabel": "Nachrichten (%)"
+						},
+						"switches": {
+							"attachmentGates": {
+								"help": "Dateien aus Mails im Spam- oder Junk-Ordner, aus Mails, die der Mailserver als Spam eingestuft hat, und aus Newslettern oder anderen automatischen Mails kommen nicht in die Dateibibliothek. Die Nachricht zeigt, warum ihre Dateien übersprungen wurden.",
+								"label": "Anhänge aus Spam und automatischen Mails überspringen"
+							},
+							"batchApi": {
+								"help": "Hintergrundarbeit wie das Auslesen von Wissen, Dateizusammenfassungen und das Nachholen älterer Mails läuft über die günstigere Batch-API des Anbieters, wo es eine gibt. Die Ergebnisse kommen später.",
+								"label": "Stapelverarbeitung beim Anbieter"
+							},
+							"categoryDisplayBundle": {
+								"help": "Sortiert Mails mit Entscheidungsanfragen in Kategorien. Eingeschaltet ändert das nur die Beschriftung, nie, was mit der Mail passiert.",
+								"label": "Kategorien vom Entscheidungsanbieter"
+							},
+							"cheapFirstWriter": {
+								"help": "Gilt nur, solange KI-Antworten auf „Nur entwerfen“ stehen. Geeignete Entwürfe beginnen mit dem schnellen Modell und wechseln höchstens einmal zum leistungsfähigen, wenn der erste Versuch nicht reicht. Diese Entwürfe werden nie automatisch gesendet: Jemand prüft jeden, bevor er rausgeht. Komplexe Fälle gehen weiterhin direkt an das leistungsfähige Modell.",
+								"label": "Schnelles Modell zuerst für geprüfte Entwürfe"
+							},
+							"claimVerification": {
+								"help": "Wenn eine Nachricht für den Überblick gelesen wird, werden die daraus entnommenen Aussagen mit kurzen Entscheidungsfragen geprüft statt durch das Sprachmodell.",
+								"label": "Aussagen mit Entscheidungsfragen prüfen"
+							},
+							"clarifyNecessity": {
+								"help": "Eine Einschätzung entscheidet zuerst, ob die KI vor dem Entwurf bei dir nachfragen muss; Probeentwürfe werden nur verglichen, wenn sie es nicht sagen kann. Aus behält den heutigen Vergleich von Probeentwürfen.",
+								"label": "Nur nachfragen, wenn es nötig ist"
+							},
+							"dispositionAdvisoryBundle": {
+								"help": "Schlägt vor, ob eine Nachricht eine Antwort braucht. Nur ein Hinweis: Es wird nie etwas gesendet, archiviert oder gelöscht.",
+								"label": "Antwortvorschläge vom Entscheidungsanbieter"
+							},
+							"earlyRuleArchive": {
+								"help": "Regeln, die keine Kategorie brauchen, werden direkt nach den Sicherheitsprüfungen ausgewertet. Was eine solche Regel archiviert, überspringt die Wissenssuche und das Sortieren; die Sicherheitsprüfungen, auch die KI-Prüfung, laufen trotzdem.",
+								"label": "Vor dem Sortieren per Regel archivieren"
+							},
+							"mtaVerdictTerminal": {
+								"help": "Meldet dein Mailserver eine Nachricht im Team-Postfach als Spam oder zur Quarantäne, wird sie als Spam archiviert, ohne dass der Agent läuft, und die übersprungene KI-Sicherheitsprüfung wird festgehalten. Das Urteil wird in jedem Fall gespeichert. Ohne Urteil vom Mailserver hat das keine Wirkung.",
+								"label": "Beim Spam-Urteil des Mailservers stoppen"
+							},
+							"triageBundle": {
+								"help": "Im Schattenmodus bekommt eine Stichprobe der Nachrichten im Team-Postfach vor der Wissenssuche eine kurze Entscheidungsanfrage, innerhalb der Schattengrenzen unten. Sie speichert ihre Antwort und ändert nichts.",
+								"label": "Vorsortierung vor der Wissenssuche"
+							}
+						},
+						"title": "KI-Routing",
+						"triage": {
+							"help": "Anteil an der Tages- und Monatsobergrenze, der für die KI-Sicherheitsprüfung und das Sortieren zurückgehalten wird. Andere KI-Arbeit kann ihn nicht ausgeben.",
+							"label": "Reserve für die Vorsortierung (%)"
+						},
+						"values": {
+							"enforce": "An",
+							"off": "Aus",
+							"offDefault": "Aus (Standard)",
+							"reviewed": "An für geprüfte Entwürfe",
+							"shadow": "Schatten: nur aufzeichnen"
+						},
+						"verifyClaimCap": {
+							"help": "Höchstens so viele Aussagen einer Nachricht werden beim Lesen geprüft. Leer heißt: keine Grenze.",
+							"label": "Geprüfte Aussagen pro Nachricht"
+						}
 					},
 					"save": "KI-Anbieter speichern",
 					"saveFirstTest": "Zuerst speichern, dann testen.",
@@ -12949,7 +13293,7 @@
 						"label": "Klassifikatoren im Hintergrund"
 					}
 				},
-				"keyFromEnvironment": "Hier ist noch kein Schlüssel hinterlegt. Das Speichern gelingt trotzdem, wenn die Installation TYPESAFE_API_KEY in ihrer Umgebung bereitstellt; andernfalls löst die Ebene auf dein Sprachmodell auf.",
+				"keyFromEnvironment": "Hier ist noch kein Schlüssel hinterlegt. Das Speichern gelingt trotzdem, wenn die Installation TYPESAFE_API_KEY in ihrer Umgebung bereitstellt; andernfalls werden Entscheidungen abgelehnt, bis ein gültiger Schlüssel vorliegt.",
 				"providers": {
 					"llm": {
 						"hint": "Kein Dritter. Dieselben Fragen gehen an dein konfiguriertes Sprachmodell, das sie ohne kalibrierte Wahrscheinlichkeiten beantwortet.",
@@ -12964,6 +13308,7 @@
 						"label": "TypeSafe Jev (empfohlen)"
 					}
 				},
+				"storedKeyNotReusable": "Der gespeicherte Schlüssel gehört zum vorherigen Anbieter oder zur vorherigen Adresse und wird nicht übernommen. Füge den Schlüssel für diesen ein, außer die Installation stellt TYPESAFE_API_KEY in ihrer Umgebung bereit.",
 				"thresholds": {
 					"choice": {
 						"body": "Beurteilt anhand der Konfidenz, die der Anbieter zur gewählten Option mitliefert; sie beschreibt, wie ausgeprägt die Verteilung über die Optionen ist.",
@@ -12975,7 +13320,8 @@
 					}
 				},
 				"validation": {
-					"consentRequired": "Lies, was diese Installation verlässt, und setze den Haken, bevor du einen fremden Entscheidungsanbieter aktivierst."
+					"consentRequired": "Lies, was diese Installation verlässt, und setze den Haken, bevor du einen fremden Entscheidungsanbieter aktivierst.",
+					"storedKeyNotReusable": "Der gespeicherte Schlüssel gehört zum vorherigen Anbieter oder zur vorherigen Adresse. Füge den Schlüssel für diesen ein und speichere erneut."
 				}
 			},
 			"embedders": {
@@ -13031,7 +13377,8 @@
 				"baseUrlRequired": {
 					"azure": "Azure OpenAI benötigt die Basis-URL seiner Ressource. Füge sie oben hinzu, um fortzufahren.",
 					"unknown": "dieser Anbieter benötigt die Basis-URL seiner Ressource. Füge sie oben hinzu, um fortzufahren."
-				}
+				},
+				"storedKeyNotReusable": "Der gespeicherte Schlüssel gehört zum vorherigen Anbieter oder zur vorherigen Adresse und wird nicht übernommen. Füge den Schlüssel für diesen ein, um fortzufahren."
 			}
 		},
 		"automations": {
@@ -16000,6 +16347,7 @@
 			"actions": {
 				"activated": "Aktiviert",
 				"added": "Hinzugefügt",
+				"attested": "Bestätigt",
 				"cancelled": "Abgebrochen",
 				"completed": "Abgeschlossen",
 				"created": "Erstellt",
@@ -16010,11 +16358,16 @@
 				"invited": "Eingeladen",
 				"paused": "Pausiert",
 				"published": "Veröffentlicht",
+				"rebuildCancelled": "Neuaufbau abgebrochen",
 				"removed": "Entfernt",
+				"resumed": "Fortgesetzt",
 				"revoked": "Widerrufen",
 				"roleChanged": "Rolle geändert",
+				"rolledBack": "Zurückgesetzt",
 				"scheduled": "Geplant",
 				"sent": "Gesendet",
+				"staged": "Bereitgestellt",
+				"started": "Gestartet",
 				"updated": "Aktualisiert",
 				"verified": "Verifiziert"
 			},
@@ -16043,6 +16396,7 @@
 			},
 			"resourceFilters": {
 				"aiProviderConfig": "KI-Anbieter",
+				"aiRoutingPolicy": "KI-Routing",
 				"all": "Alle Ressourcen",
 				"apiKey": "API-Schlüssel",
 				"automation": "Automationen",
@@ -16052,6 +16406,7 @@
 				"contact": "Kontakte",
 				"domain": "Domains",
 				"emailTemplate": "E-Mail-Vorlagen",
+				"embeddingSpace": "Embedding-Räume",
 				"plugin": "Plugins",
 				"segment": "Segmente",
 				"settings": "Einstellungen",
@@ -16061,6 +16416,7 @@
 			},
 			"resources": {
 				"aiProviderConfig": "KI-Anbieter",
+				"aiRoutingPolicy": "KI-Routing-Richtlinie",
 				"apiKey": "API-Schlüssel",
 				"automation": "Automation",
 				"blocklist": "Sperrliste",
@@ -16070,6 +16426,7 @@
 				"deliverabilityRamp": "Zustellbarkeits-Ramp-up",
 				"domain": "Domain",
 				"emailTemplate": "E-Mail-Vorlage",
+				"embeddingSpace": "Embedding-Raum",
 				"plugin": "Plugin",
 				"seedMailbox": "Seed-Postfach",
 				"segment": "Segment",
@@ -16871,6 +17228,22 @@
 				"hours": "überfällig {hours} Std.",
 				"minutes": "überfällig {minutes} Min."
 			}
+		},
+		"aiBudget": {
+			"generic": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb hat die KI das nicht geschrieben.",
+			"judgment": {
+				"clarify": "Rückfragen an dich",
+				"classify": "das Sortieren",
+				"draft": "den Entwurf",
+				"guard": "die Sicherheitsprüfung",
+				"interpret": "das Lesen des Verlaufs"
+			},
+			"reason": {
+				"dailyCeiling": "Das KI-Ausgabenbudget für heute ist aufgebraucht. KI-Aktionen gibt es morgen wieder.",
+				"monthlyCeiling": "Das KI-Ausgabenbudget für diesen Monat ist aufgebraucht. KI-Aktionen gibt es nächsten Monat wieder oder sobald ein Admin das Budget erhöht.",
+				"spendUnverifiable": "Die KI-Ausgaben lassen sich gerade nicht prüfen, deshalb läuft kein kostenpflichtiger KI-Aufruf. Versuch es in ein paar Minuten erneut."
+			},
+			"title": "KI-Budget erreicht."
 		}
 	},
 	"sharedPkg": {

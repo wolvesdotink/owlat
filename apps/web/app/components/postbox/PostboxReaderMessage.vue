@@ -464,6 +464,7 @@ const renderToggleLabel = computed(() =>
 			:message-id="msg._id"
 			:downloading-key="downloadingAttachment"
 			:is-preview-enabled="!signedOnly"
+			:indexing="msg.attachmentIndexing"
 			@preview="(att, all) => emit('preview-attachment', att, all)"
 			@download="(att) => emit('download-attachment', att)"
 		/>

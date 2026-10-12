@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { ConvexError } from 'convex/values';
 import {
 	usePostboxSelectionRewrite,
 	isRewriteEligible,
@@ -166,5 +167,24 @@ describe('usePostboxSelectionRewrite lifecycle', () => {
 
 		expect(rw.status.value).toBe('idle');
 		expect(onError).toHaveBeenCalledTimes(1);
+	});
+
+	it('says which budget refused the rewrite (U5)', async () => {
+		const r = deferredRewrite();
+		const onError = vi.fn();
+		const rw = usePostboxSelectionRewrite({ requestRewrite: r.fn, onError });
+		const p = rw.start(INPUT);
+		await r.rejectWith(
+			new ConvexError({
+				category: 'forbidden',
+				message: 'AI budget reached.',
+				data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'spend_unverifiable', limit: 5 },
+			})
+		);
+		await p;
+		expect(rw.status.value).toBe('idle');
+		expect(onError).toHaveBeenCalledWith(
+			expect.stringContaining("AI spend can't be checked right now")
+		);
 	});
 });

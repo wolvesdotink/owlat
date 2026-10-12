@@ -32,7 +32,20 @@ const PARTIAL_REASON: Partial<Record<GapReason, string>> = {
 };
 
 /** What the banners read: the same on a personal brief and a team view. */
-export type BriefGapInput = Pick<ThreadBriefView, 'completeness' | 'gap'>;
+export type BriefGapInput = Pick<ThreadBriefView, 'completeness' | 'gap' | 'deferredSources'>;
+
+/**
+ * D10: new mail in the thread waited for this open and is being read now.
+ * Only while the overview is otherwise waiting on it: nothing recorded yet,
+ * or a partial overview whose gap is exactly that wait.
+ */
+function isReadingDeferred(brief: BriefGapInput): boolean {
+	if ((brief.deferredSources ?? 0) === 0) return false;
+	return (
+		brief.completeness === 'pending' ||
+		(brief.completeness === 'partial' && brief.gap?.reason === 'pending')
+	);
+}
 
 export function briefBanners(
 	brief: BriefGapInput | null,
@@ -61,6 +74,13 @@ export function briefBanners(
 			tone: 'neutral',
 			text: (reason && NONE_TEXT[reason]) || 'components.brief.incomplete.none.default',
 			offersConversation: true,
+		});
+	} else if (isReadingDeferred(brief)) {
+		banners.push({
+			key: 'deferred',
+			tone: 'info',
+			text: 'components.brief.incomplete.deferred',
+			offersConversation: brief.completeness === 'partial',
 		});
 	} else if (brief.completeness === 'pending') {
 		banners.push({

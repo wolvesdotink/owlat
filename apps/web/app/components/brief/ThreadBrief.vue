@@ -86,7 +86,15 @@ provide(BRIEF_CONTEXT, {
 	cite: (ref, quoteIndex) => emit('cite', ref, quoteIndex),
 });
 
-const hasBody = computed(() => !!props.brief && props.brief.completeness !== 'none');
+/**
+ * `pending` means nothing of the thread is recorded yet (a first read, or mail
+ * whose reading waited for this open, D10): the banner says it is being read,
+ * and the sections show their loading shape until the brief fills in.
+ */
+const isReading = computed(() => props.brief?.completeness === 'pending');
+const hasBody = computed(
+	() => !!props.brief && props.brief.completeness !== 'none' && !isReading.value
+);
 const complete = computed(() => isBriefComplete(props.brief));
 const selectedSet = computed(() => new Set(props.selected));
 const addressedSet = computed(() => new Set(props.addressed));
@@ -104,7 +112,7 @@ function toggle(item: BriefItemView) {
 	<div
 		class="rounded-xl border border-border-subtle bg-bg-elevated px-4 py-4 sm:px-[18px]"
 		data-testid="thread-brief"
-		:aria-busy="brief === undefined"
+		:aria-busy="brief === undefined || isReading"
 	>
 		<div v-if="brief === undefined" class="space-y-3" aria-hidden="true">
 			<UiSkeleton class="h-3 w-28" />
@@ -117,9 +125,16 @@ function toggle(item: BriefItemView) {
 			<BriefIncomplete
 				:brief="brief"
 				:is-signed="isSigned"
-				:class="{ 'mb-4': hasBody }"
+				:class="{ 'mb-4': hasBody || isReading }"
 				@open-conversation="emit('open-conversation')"
 			/>
+			<div v-if="isReading" class="space-y-3" aria-hidden="true" data-testid="brief-reading">
+				<UiSkeleton class="h-3 w-28" />
+				<UiSkeleton class="h-4 w-full" />
+				<UiSkeleton class="h-4 w-4/5" />
+				<UiSkeleton class="mt-4 h-3 w-20" />
+				<UiSkeleton class="h-10 w-full" />
+			</div>
 			<template v-if="brief && hasBody">
 				<BriefLatest :lines="brief.latest ?? []" :is-new="isLatestNew" :note="latestNote" />
 				<BriefStanding v-if="brief.standing && showRest" :standing="brief.standing" />

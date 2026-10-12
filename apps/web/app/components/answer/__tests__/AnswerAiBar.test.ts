@@ -49,6 +49,33 @@ describe('AnswerAiBar', () => {
 		w.unmount();
 	});
 
+	it('says the safety check held the message back, and offers no AI draft (D13)', async () => {
+		const w = mountBar({ phase: 'held' });
+		const status = w.get('[data-testid="answer-ai-status"]');
+		expect(status.text()).toBe(
+			'The safety check held this message back, so there is no AI draft for it. You can still write the reply yourself.'
+		);
+		expect(status.classes()).toContain('text-warning');
+		expect(w.get('[data-testid="answer-ai-draft"]').attributes('disabled')).toBeDefined();
+		await w.get('form').trigger('submit');
+		expect(w.emitted('draft')).toBeUndefined();
+		expectFullyLocalized(w);
+		w.unmount();
+	});
+
+	it('says the AI budget is used up, and still lets a later try start (U5)', async () => {
+		const w = mountBar({ phase: 'budget' });
+		const status = w.get('[data-testid="answer-ai-status"]');
+		expect(status.text()).toBe(
+			'The AI spend budget is used up for now, so there is no AI draft. You can still write the reply yourself.'
+		);
+		expect(status.classes()).toContain('text-warning');
+		await w.get('form').trigger('submit');
+		expect(w.emitted('draft')).toHaveLength(1);
+		expectFullyLocalized(w);
+		w.unmount();
+	});
+
 	it('offers to discard an AI draft, and warns when the mail tried to steer it', async () => {
 		const w = mountBar({ hasAiDraft: true, injectionFlagged: true });
 		expect(w.get('[data-testid="answer-ai-draft-tag"]').text()).toContain('AI draft');

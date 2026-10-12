@@ -66,6 +66,7 @@ vi.mock('~/composables/useAnswerTeamAssist', () => ({
 			session: ref(null),
 			busy: ref(false),
 			injectionFlagged: ref(false),
+			isBudgetRefused: ref(false),
 			start: vi.fn(),
 			answer: vi.fn(),
 		},

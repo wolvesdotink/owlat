@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
+import { notIndexedNoticeKey, type AttachmentIndexing } from '~/utils/attachmentIndexing';
 
 /**
  * The attachment rows under one Postbox message: name, size, type, an eye for
@@ -12,8 +13,13 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
  * means fetching the raw `.eml`, and that (with its spinner, its toast and its
  * object-URL lifetime) belongs to the reader, which already owns it for the
  * lightbox.
+ *
+ * Hosted-MX mail records what the assistant did with the files
+ * (`mailMessages.attachmentIndexing`), and a file it did not read says why,
+ * with the Team inbox's sentence for the same marker. Synced and imported mail
+ * carries no marker and shows no line.
  */
-withDefaults(
+const props = withDefaults(
 	defineProps<{
 		attachments: AttachmentMeta[];
 		/** `${messageId}:${part}` of the attachment being fetched right now, if any. */
@@ -22,6 +28,8 @@ withDefaults(
 		messageId: string;
 		/** Offer Quick Look. Off for parts a shown signature does not cover: download only. */
 		isPreviewEnabled?: boolean;
+		/** What the assistant did with these files, when the delivery recorded it. */
+		indexing?: AttachmentIndexing;
 	}>(),
 	{ isPreviewEnabled: true }
 );
@@ -32,6 +40,11 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+const notice = computed(() => {
+	const key = notIndexedNoticeKey(props.indexing);
+	return key ? [t(key)] : null;
+});
 
 function downloadLabel(filename: string): string {
 	return t('components.postbox.postboxThreadReader.downloadAttachment', { filename });
@@ -50,6 +63,9 @@ function previewLabel(filename: string): string {
 		:download-label="downloadLabel"
 		:preview-label="previewLabel"
 		:is-preview-enabled="isPreviewEnabled"
+		:notice="notice"
+		notice-tone="muted"
+		notice-test-id="postbox-attachments-not-indexed"
 		@preview="(att: AttachmentMeta, all: AttachmentMeta[]) => emit('preview', att, all)"
 		@download="(att: AttachmentMeta) => emit('download', att)"
 	/>

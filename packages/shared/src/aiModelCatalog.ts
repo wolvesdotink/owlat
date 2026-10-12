@@ -46,3 +46,37 @@ export const GOOGLE_EMBEDDING_DEFAULT = { model: 'gemini-embedding-2', dimension
 
 /** Old rows omitted the model ID. Resolve their implicit choice without changing vector spaces. */
 export const LEGACY_GOOGLE_EMBEDDING_MODEL = 'text-embedding-004';
+
+// ── Stored-key reuse ──────────────────────────────────────────────────────
+
+/**
+ * A base URL compared by what it addresses: scheme and host in lowercase, the
+ * default port dropped, trailing slashes removed. Absent stays absent, so an
+ * explicit URL never matches the adapter default it may happen to spell.
+ */
+function normalizedBaseUrl(baseUrl: string | undefined): string | undefined {
+	const raw = baseUrl?.trim();
+	if (!raw) return undefined;
+	try {
+		const url = new URL(raw);
+		return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}${url.search}`;
+	} catch {
+		return raw.replace(/\/+$/, '');
+	}
+}
+
+/** The provider kind and endpoint a plane's key is sent to. */
+export interface KeyTarget {
+	readonly kind: string | undefined;
+	readonly baseUrl: string | undefined;
+}
+
+/**
+ * Whether a stored API key still applies: the plane keeps its provider kind and
+ * its normalized base URL. The server (`saveConfig`) refuses a save that would
+ * reuse a key across either change (`stored_key_not_reusable`); the settings
+ * form asks the same question so it can say so before the round trip.
+ */
+export function isSameKeyTarget(a: KeyTarget, b: KeyTarget): boolean {
+	return a.kind === b.kind && normalizedBaseUrl(a.baseUrl) === normalizedBaseUrl(b.baseUrl);
+}

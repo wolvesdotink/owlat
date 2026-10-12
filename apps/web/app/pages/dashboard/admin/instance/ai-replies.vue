@@ -445,6 +445,14 @@ const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackS
 					</div>
 				</section>
 
+				<!-- ADR-0060 §9: keep Team Inbox mail away from hosted decision providers. -->
+				<section class="card" data-testid="ai-replies-hosted-decisions">
+					<SettingsHostedDecisionExclusion
+						:target="{ kind: 'team_inbox' }"
+						:is-excluded="config?.isExcludedFromHostedDecisions === true"
+					/>
+				</section>
+
 				<template v-if="agentEnabled">
 					<AgentKnowledgeBackfillCard />
 					<AgentKnowledgeRelationBackfillCard />
