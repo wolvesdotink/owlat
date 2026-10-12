@@ -42,6 +42,7 @@ import type { ActionCtx } from '../../../_generated/server';
 import type { AgentStepModule } from '../types';
 import type { securityFlagsValidator } from '../../../lib/convexValidators';
 import { getOptional } from '../../../lib/env';
+import { admissionRefusalOf } from '../../../lib/llm/admissionPort';
 import { detectInjection, detectSmuggling, calculateSpamScore } from './patterns';
 import { buildGuardSample, isGuardFlagged, runModelGuard, type GuardScanResult } from './guard';
 import {
@@ -173,6 +174,20 @@ async function earlyRuleArchives(
 
 const NO_GUARD_RUN: GuardScanResult = { verdict: undefined, incomplete: false };
 
+/** The guard's scan, or the spend admission refusal that stopped it (D1). */
+async function guardOrRefusal(
+	ctx: ActionCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	sample: string
+): Promise<{ guardScan: GuardScanResult; refusal: unknown }> {
+	try {
+		return { guardScan: await runModelGuard(ctx, inboundMessageId, sample), refusal: undefined };
+	} catch (error) {
+		if (!admissionRefusalOf(error)) throw error;
+		return { guardScan: NO_GUARD_RUN, refusal: error };
+	}
+}
+
 export const securityScanStep: AgentStepModule<
 	'security_scan',
 	SecurityScanInput,
@@ -230,9 +245,11 @@ export const securityScanStep: AgentStepModule<
 			: guardSkipReason({ spamScore, isMtaVerdictTerminal: mtaTerminal, agentEnabled });
 		const runsGuard = !deterministicQuarantine && skipReason === null;
 		const guardSample = runsGuard ? buildGuardSample(message.subject, bodyText, bodyHtml) : '';
-		const guardScan = runsGuard
-			? await runModelGuard(ctx, input.inboundMessageId, guardSample)
-			: NO_GUARD_RUN;
+		const { guardScan, refusal } = runsGuard
+			? await guardOrRefusal(ctx, input.inboundMessageId, guardSample)
+			: { guardScan: NO_GUARD_RUN, refusal: undefined };
+		// D13 marker: skipped by policy, or refused by spend admission (D1).
+		const notRunReason = skipReason ?? (refusal ? ('budget_refused' as const) : null);
 		const llmVerdict = guardScan.verdict;
 		const llmFlagged = isGuardFlagged(llmVerdict);
 		// `incomplete`: the guard did not fully classify the sample (a total or a
@@ -271,9 +288,21 @@ export const securityScanStep: AgentStepModule<
 			spamScore,
 			phishingDetected,
 			guardUnavailable,
-			...(skipReason ? { guardNotRun: { reason: skipReason, at: scanTimestamp } } : {}),
+			...(notRunReason ? { guardNotRun: { reason: notRunReason, at: scanTimestamp } } : {}),
 			scanTimestamp,
 		};
+
+		// Spend admission refused the guard (D1, Sol r3 F1): the deterministic
+		// verdict is stored with the `guardNotRun` marker, so every later
+		// generative consumer runs the guard first, and the refusal goes on to
+		// the walker, which holds the message.
+		if (refusal) {
+			await ctx.runMutation(internal.inbox.stepOutputs.recordSecurityScan, {
+				inboundMessageId: input.inboundMessageId,
+				securityFlags,
+			});
+			throw refusal;
+		}
 
 		const output: SecurityScanOutput = {
 			securityFlags,

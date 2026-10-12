@@ -359,7 +359,12 @@ export function routingPolicyProblem(
 // ── Stored enums the UI renders ───────────────────────────────────────────
 
 /** D13: why the model guard was skipped for a Team message. */
-export const GUARD_NOT_RUN_REASONS = ['spam_archived', 'agent_disabled'] as const;
+/**
+ * Why the scan did not run the model guard (D13): skipped for spam-archived mail
+ * or while the agent is off, or refused by spend admission (D1, Sol r3 F1).
+ * Each requires the guard before any later generative processing.
+ */
+export const GUARD_NOT_RUN_REASONS = ['spam_archived', 'agent_disabled', 'budget_refused'] as const;
 export type GuardNotRunReason = (typeof GUARD_NOT_RUN_REASONS)[number];
 
 /** D1: why a Team message waits for a person instead of the model path. */

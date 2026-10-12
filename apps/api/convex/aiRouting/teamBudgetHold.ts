@@ -6,9 +6,11 @@
  * is paid: context retrieval (interpretation and the query embedding),
  * classify (triage allowance), clarify and draft. The security scan is not
  * asked: its deterministic checks always run, and its model guard is admitted
- * at dispatch on the triage allowance; a refused guard leaves
- * `securityFlags.guardUnavailable`, which already blocks auto-send, and the
- * hold at the next step names it as a missing judgment.
+ * at dispatch on the triage allowance. A refused guard stores the scan with
+ * `securityFlags.guardNotRun { reason: 'budget_refused' }` (Sol r3 F1), the
+ * D13 marker, so auto-send is blocked and every later generative consumer
+ * (interpretation, knowledge extraction, a briefing's history) runs the guard
+ * first; the hold names it as a missing judgment.
  *
  * Without headroom (or with a spend state that cannot be verified) the
  * message gets `budgetHold { reason, missingJudgments, at }` and moves to
@@ -59,9 +61,9 @@ export function missingJudgmentsAt(
 	message: Pick<Doc<'inboundMessages'>, 'securityFlags'>
 ): MissingJudgment[] {
 	const missing: MissingJudgment[] = [...TEAM_PAID_STEPS[step].missing];
-	return message.securityFlags?.guardUnavailable && !missing.includes('guard')
-		? ['guard', ...missing]
-		: missing;
+	const flags = message.securityFlags;
+	const isGuardMissing = flags?.guardUnavailable === true || flags?.guardNotRun !== undefined;
+	return isGuardMissing && !missing.includes('guard') ? ['guard', ...missing] : missing;
 }
 
 const reasonValidator = v.union(
