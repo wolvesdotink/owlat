@@ -28,8 +28,9 @@
  *      attacker-controlled body as untrusted data. The result only ever updates
  *      the advisory flag — it never sends or modifies mail.
  *   4. Clarification (whether a good reply misses a fact only the owner has)
- *      runs only when the decision needs a reply, behind the Postbox AI gate
- *      (`ai` flag, advisory budget, rate limit), with answer-memory fills.
+ *      runs only when the decision needs a reply and the sender screener lets
+ *      the sender into the queue (L3), behind the Postbox AI gate (`ai` flag,
+ *      advisory budget, rate limit), with answer-memory fills.
  *
  * Delivery also hands over the message it just delivered
  * (`interpretMessageId`): it is interpreted here even when the thread is no
@@ -204,15 +205,18 @@ async function applyProjection(
 	const { decision } = needsReplyResultOf(args.projection, args.latestInbound);
 	// Clarification loop: only when the message genuinely needs a reply do we
 	// spend the extra passes deciding whether a good reply is missing a fact
-	// only the owner can supply. Self-contained fail-soft (undefined on any
+	// only the owner can supply, and only for a sender the screener lets into
+	// the queue (L3): `applyResult` drops a held-out sender's result, the
+	// clarification with it. Self-contained fail-soft (undefined on any
 	// error), so a clarification failure never downgrades the verdict.
-	const clarification = decision.needsReply
-		? await clarifyWithMemory(ctx, {
-				transcript: args.transcript,
-				fromAddress: args.latestInbound.fromAddress,
-				threadId: args.threadId,
-			})
-		: undefined;
+	const clarification =
+		decision.needsReply && !(await isHeldOutByScreener(ctx, args))
+			? await clarifyWithMemory(ctx, {
+					transcript: args.transcript,
+					fromAddress: args.latestInbound.fromAddress,
+					threadId: args.threadId,
+				})
+			: undefined;
 	// A throw here is a real fault (e.g. the result no longer matching the
 	// applyResult validator), so log it and keep the heuristic flag. Only the
 	// first line: a Convex validation error goes on to print the whole argument,
@@ -233,6 +237,24 @@ async function applyProjection(
 			'[needsReplyClassify] applyResult failed:',
 			err instanceof Error ? err.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
+		return false;
+	}
+}
+
+/**
+ * Whether the first-time-sender screener holds the latest inbound sender out
+ * of the queue. Fail-open: a failed read clarifies as before.
+ */
+async function isHeldOutByScreener(
+	ctx: ActionCtx,
+	args: { threadId: Id<'mailThreads'>; latestInbound: LatestInbound }
+): Promise<boolean> {
+	try {
+		return await ctx.runQuery(internal.mail.ai.needsReplyScoring.isHeldOutBeforeClarification, {
+			threadId: args.threadId,
+			messageId: args.latestInbound.messageId,
+		});
+	} catch {
 		return false;
 	}
 }
