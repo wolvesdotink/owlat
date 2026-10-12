@@ -110,33 +110,39 @@ export const sweepAiRoutingRecords = internalMutation({
 		const now = Date.now();
 		const terminalCutoff = now - AUDIT_LOG_RETENTION_MS;
 		const shadowCutoff = now - SHADOW_QUOTA_RETENTION_MS;
-		const [artifacts, memory, quotaEntries, quotaDays, ...reservations] = await Promise.all([
-			ctx.db
-				.query('decisionArtifacts')
-				.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
-				.take(BATCH),
-			ctx.db
-				.query('senderMemory')
-				.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
-				.take(BATCH),
-			ctx.db
-				.query('shadowQuotaEntries')
-				.withIndex('by_created_at', (q) => q.lt('createdAt', shadowCutoff))
-				.take(BATCH),
-			ctx.db
-				.query('shadowQuotaDays')
-				.withIndex('by_updated_at', (q) => q.lt('updatedAt', shadowCutoff))
-				.take(BATCH),
-			...(['settled', 'released', 'expired'] as const).map((status) =>
+		const [artifacts, memory, quotaEntries, quotaDays, extractionProgress, ...reservations] =
+			await Promise.all([
 				ctx.db
-					.query('llmReservations')
-					.withIndex('by_status_and_updated_at', (q) =>
-						q.eq('status', status).lt('updatedAt', terminalCutoff)
-					)
-					.take(BATCH)
-			),
-		]);
-		const pages = [artifacts, memory, quotaEntries, quotaDays, ...reservations];
+					.query('decisionArtifacts')
+					.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
+					.take(BATCH),
+				ctx.db
+					.query('senderMemory')
+					.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
+					.take(BATCH),
+				ctx.db
+					.query('shadowQuotaEntries')
+					.withIndex('by_created_at', (q) => q.lt('createdAt', shadowCutoff))
+					.take(BATCH),
+				ctx.db
+					.query('shadowQuotaDays')
+					.withIndex('by_updated_at', (q) => q.lt('updatedAt', shadowCutoff))
+					.take(BATCH),
+				// Past the extraction deferral window: completion falls back to the entries.
+				ctx.db
+					.query('knowledgeExtractionProgress')
+					.withIndex('by_updated_at', (q) => q.lt('updatedAt', shadowCutoff))
+					.take(BATCH),
+				...(['settled', 'released', 'expired'] as const).map((status) =>
+					ctx.db
+						.query('llmReservations')
+						.withIndex('by_status_and_updated_at', (q) =>
+							q.eq('status', status).lt('updatedAt', terminalCutoff)
+						)
+						.take(BATCH)
+				),
+			]);
+		const pages = [artifacts, memory, quotaEntries, quotaDays, extractionProgress, ...reservations];
 		for (const row of pages.flat()) await ctx.db.delete(row._id);
 		if (pages.some((page) => page.length === BATCH)) {
 			await ctx.scheduler.runAfter(0, internal.maintenance.retention.sweepAiRoutingRecords, {});

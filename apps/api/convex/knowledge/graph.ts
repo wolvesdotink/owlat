@@ -38,7 +38,6 @@ import { logInfo } from '../lib/runtimeLog';
 import { findDuplicateEntry } from './entryDedupe';
 import {
 	entryTypeValidator,
-	sourceTypeValidator,
 	relationTypeValidator,
 	commitmentStatusValidator,
 	POLICY_ENTRY_TYPES,
@@ -820,28 +819,6 @@ export const setCommitmentStatus = knowledgeMutation({
 // ============================================================
 // Internal Queries (for agent pipeline)
 // ============================================================
-
-/**
- * Count knowledge entries already extracted from a given source. Lets the
- * live extractors (`extraction.extractFromMessage` / `extractFromFile`) be
- * idempotent — a message re-run through the pipeline (cron retry) or a file
- * reprocessed by the backfill cron won't duplicate its knowledge entries.
- */
-export const countBySource = internalQuery({
-	args: {
-		sourceType: sourceTypeValidator,
-		sourceId: v.string(),
-	},
-	handler: async (ctx, args): Promise<number> => {
-		const existing = await ctx.db
-			.query('knowledgeEntries')
-			.withIndex('by_source', (q) =>
-				q.eq('sourceType', args.sourceType).eq('sourceId', args.sourceId)
-			)
-			.take(1);
-		return existing.length;
-	},
-});
 
 /**
  * Fetch knowledge entries by a list of ids, preserving the input order.

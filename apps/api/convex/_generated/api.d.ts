@@ -857,6 +857,7 @@ import type * as knowledge_entryDedupe from '../knowledge/entryDedupe.js';
 import type * as knowledge_extractedEntries from '../knowledge/extractedEntries.js';
 import type * as knowledge_extraction from '../knowledge/extraction.js';
 import type * as knowledge_extractionPolicy from '../knowledge/extractionPolicy.js';
+import type * as knowledge_extractionProgress from '../knowledge/extractionProgress.js';
 import type * as knowledge_graph from '../knowledge/graph.js';
 import type * as knowledge_graphAnalytics from '../knowledge/graphAnalytics.js';
 import type * as knowledge_graphAnalyticsRecompute from '../knowledge/graphAnalyticsRecompute.js';
@@ -2551,6 +2552,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/extractedEntries': typeof knowledge_extractedEntries;
 	'knowledge/extraction': typeof knowledge_extraction;
 	'knowledge/extractionPolicy': typeof knowledge_extractionPolicy;
+	'knowledge/extractionProgress': typeof knowledge_extractionProgress;
 	'knowledge/graph': typeof knowledge_graph;
 	'knowledge/graphAnalytics': typeof knowledge_graphAnalytics;
 	'knowledge/graphAnalyticsRecompute': typeof knowledge_graphAnalyticsRecompute;
