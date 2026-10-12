@@ -10,6 +10,12 @@ interface WorkbenchView {
 	since: number | undefined;
 	isFallback: boolean;
 	previousSeenAt: number | null;
+	/**
+	 * A server time that everything in this view arrived by, and nothing left
+	 * out of it did: the digest's read time, or on the team tab the newest
+	 * update shown. Marking the tab seen "as of what was on screen" uses it.
+	 */
+	asOf: number | null;
 }
 
 /**
@@ -70,19 +76,31 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 		teamTab.value ? {} : 'skip'
 	);
 
-	const liveView = computed<WorkbenchView>(() => ({
-		model: buildTodayModel({
+	const liveView = computed<WorkbenchView>(() => {
+		const model = buildTodayModel({
 			digests: mailboxIds.value.map(
 				(id) => (digests.get(id)?.data.value ?? null) as MailboxDigest | null
 			),
 			teamUpdates: teamTab.value ? (teamUpdates.value ?? []) : [],
 			teamCounts: teamTab.value ? (teamCounts.value ?? null) : null,
 			since: since.value ?? mountedAt,
-		}),
-		since: since.value,
-		isFallback: watermark.value?.isFallback ?? false,
-		previousSeenAt: watermark.value?.previousSeenAt ?? null,
-	}));
+		});
+		const teamTimes = [...model.worth, ...model.also].map((line) => line.at);
+		const digestTime = mailboxIds.value
+			.map((id) => (digests.get(id)?.data.value as MailboxDigest | null | undefined)?.generatedAt)
+			.find((at) => at !== undefined);
+		return {
+			model,
+			since: since.value,
+			isFallback: watermark.value?.isFallback ?? false,
+			previousSeenAt: watermark.value?.previousSeenAt ?? null,
+			asOf: teamTab.value
+				? teamTimes.length > 0
+					? Math.max(...teamTimes)
+					: null
+				: (digestTime ?? null),
+		};
+	});
 
 	const isLoading = computed(() => {
 		if (stateLoading.value) return true;
@@ -131,6 +149,8 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 		 * belongs to the open tab yet, so "mark as seen" must wait.
 		 */
 		isStale,
+		/** Server time of what is on screen (see WorkbenchView.asOf). */
+		asOf: computed(() => view.value.asOf),
 		teamOn,
 		/**
 		 * Mark a tab as seen; the open one unless told otherwise (leaving a tab).
