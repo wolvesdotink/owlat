@@ -112,6 +112,9 @@ export function errorStatus(error: unknown): number | undefined {
 export function isRetriableLlmError(error: unknown): boolean {
 	// Output cut at its ceiling: the same request would stop at the same place.
 	if (providerError(error) instanceof LlmTruncatedError) return false;
+	// An error that says it is final (a spend-admission refusal, ADR-0073): the
+	// retry would be refused the same way, or would buy what was refused.
+	if ((providerError(error) as { retriable?: unknown } | null)?.retriable === false) return false;
 	const status = errorStatus(error);
 	if (status !== undefined) {
 		if (status === 408 || status === 409 || status === 429) return true;

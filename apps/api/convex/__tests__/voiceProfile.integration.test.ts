@@ -11,10 +11,11 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
-import { internal } from '../_generated/api';
+import { api, internal } from '../_generated/api';
+import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { VOICE_STALE_MS } from '../mail/ai/voiceProfile';
@@ -58,6 +59,9 @@ const modules = Object.fromEntries(
 
 beforeEach(() => {
 	runLlmObjectMock.mockReset();
+});
+afterEach(() => {
+	vi.unstubAllEnvs();
 });
 
 async function seedMailboxWithSent(
@@ -269,6 +273,11 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 		});
 	}
 
+	async function refreshJobs(t: TestConvex<typeof schema>): Promise<number> {
+		const jobs = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		return jobs.filter((job) => job.name.includes('voiceProfileActions')).length;
+	}
+
 	async function statusOf(t: TestConvex<typeof schema>, mailboxId: Id<'mailboxes'>) {
 		return await t.run(async (ctx) =>
 			ctx.db
@@ -303,6 +312,49 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 		// Stale profile is still served immediately (never blocks).
 		expect(res.guidance).toContain('Typical greetings: Hi');
 		expect((await statusOf(t, mailboxId))?.status).toBe('refreshing');
+	});
+
+	it('defers a stale refresh while spend admission says no: no job is scheduled (#1333)', async () => {
+		// A ceiling with a spend state nobody has reconciled yet: unverifiable.
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const mailboxId = await seedProfile(t, Date.now() - VOICE_STALE_MS - 1);
+
+		const res = await t.mutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, {
+			mailboxId,
+		});
+		expect(res.guidance).toContain('Typical greetings: Hi');
+		expect((await statusOf(t, mailboxId))?.status).toBe('idle');
+		expect(await refreshJobs(t)).toBe(0);
+	});
+
+	it('schedules one refresh for repeated "Refresh now" presses, not one per press', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai', 'postbox']);
+		const mailboxId = await seedProfile(t, Date.now());
+
+		for (let press = 0; press < 5; press++) {
+			await t.mutation(api.mail.ai.voiceProfile.requestRefresh, { mailboxId });
+		}
+		expect((await statusOf(t, mailboxId))?.status).toBe('refreshing');
+		expect(await refreshJobs(t)).toBe(1);
+	});
+
+	it('refuses "Refresh now" with the budget code when admission says no', async () => {
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai', 'postbox']);
+		const mailboxId = await seedProfile(t, Date.now());
+
+		const error = await t
+			.mutation(api.mail.ai.voiceProfile.requestRefresh, { mailboxId })
+			.catch((e) => e);
+		expect(error.data).toMatchObject({ data: { code: AI_BUDGET_ERROR_CODE } });
+		expect(await refreshJobs(t)).toBe(0);
 	});
 
 	it('returns no guidance when personalization is disabled', async () => {

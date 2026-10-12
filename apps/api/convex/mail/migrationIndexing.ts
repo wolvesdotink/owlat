@@ -337,11 +337,11 @@ async function indexOneMessage(
 	try {
 		// Idempotency: a message already swept (migration restart / retry) is
 		// counted but not re-extracted — saves a redundant LLM call.
-		const already = await ctx.runQuery(internal.knowledge.graph.countBySource, {
-			sourceType: 'email',
-			sourceId: msg._id,
-		});
-		if (already > 0) return;
+		const progress = await ctx.runQuery(
+			internal.knowledge.extractionProgress.extractionProgressOf,
+			{ sourceType: 'email', sourceId: msg._id }
+		);
+		if (progress.isDone) return;
 
 		// Phishing and spoofed mail never feeds the graph (and its sender never
 		// becomes a contact). Still counted; the cursor advances.

@@ -382,6 +382,8 @@ export const inboxTables = {
 		extractedCount: v.number(),
 		skippedCount: v.number(),
 		errorCount: v.number(),
+		/** Messages whose extraction started but is not complete (a budget deferral resumes it). */
+		partialCount: v.optional(v.number()),
 		// Resumable cursor (compound: receivedAt then _id for stable ordering)
 		cursorReceivedAt: v.optional(v.number()),
 		cursorId: v.optional(v.id('inboundMessages')),

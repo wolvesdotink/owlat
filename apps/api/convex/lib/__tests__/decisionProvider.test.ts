@@ -38,6 +38,8 @@ import {
 	resolveDecisionFallback,
 	resolveDecisionProvider,
 } from '../decisionProvider';
+import { DecisionProviderUnavailable } from '../decision/contract';
+import { decisionEnvProblem } from '../decisionEnvKind';
 
 vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
 
@@ -115,8 +117,8 @@ describe('decisionProvider — resolution order', () => {
 		expect(plane.kind).toBe('llm');
 		expect(plane.source).toBe('default');
 		expect(plane.calibrated).toBe(false);
-		// Not a degradation: nobody opted in, so there is nothing to explain.
-		expect(plane.degradedFrom).toBeUndefined();
+		// Not unavailable: nobody opted in, so there is nothing to explain.
+		expect(plane.unavailable).toBeUndefined();
 		// And nothing was decrypted — there is no envelope to decrypt.
 		expect(runAction).not.toHaveBeenCalled();
 	});
@@ -173,13 +175,14 @@ describe('decisionProvider — resolution order', () => {
 		expect(plane.source).toBe('stored');
 	});
 
-	it('ignores an unrecognised DECISION_PROVIDER rather than failing the call', async () => {
+	it('marks an unrecognised DECISION_PROVIDER unavailable rather than answering through the default (D3)', async () => {
 		vi.stubEnv('DECISION_PROVIDER', 'typesaef');
 		vi.stubEnv('TYPESAFE_API_KEY', 'env-key');
 		const { ctx } = makeCtx(null);
 		const plane = await resolveDecisionConfig(ctx);
-		expect(plane.kind).toBe('llm');
-		expect(plane.source).toBe('default');
+		expect(plane.source).toBe('env');
+		expect(plane.unavailable?.code).toBe('invalid_config');
+		expect(plane.clientConfig).toEqual({});
 	});
 
 	it('marks an explicitly configured origin as a custom endpoint', async () => {
@@ -199,7 +202,7 @@ describe('decisionProvider — resolution order', () => {
 		const { ctx, runAction } = makeCtx(storedRow({ decisionProviderKind: 'local' }));
 		const plane = await resolveDecisionConfig(ctx);
 		expect(plane.kind).toBe('local');
-		expect(plane.degradedFrom).toBeUndefined();
+		expect(plane.unavailable).toBeUndefined();
 		expect(plane.calibrated).toBe(false);
 		expect(plane.endpointProvenance).toBe('local');
 		expect(plane.modelId).toBe('fastino/GLiNER2.5-multi-Decide');
@@ -255,33 +258,34 @@ describe('decisionProvider — resolution order', () => {
 	});
 });
 
-describe('decisionProvider — degradation without a key', () => {
+describe('decisionProvider — an explicit provider that cannot answer is terminal (D3)', () => {
 	beforeEach(() => {
 		__resetDecisionPlaneCacheForTests();
 		vi.unstubAllEnvs();
 		vi.stubEnv('INSTANCE_SECRET', 'test-instance-secret-value-for-aes-256-gcm-kdf');
 	});
 
-	it('degrades a keyless stored typesafe config to the language plane', async () => {
+	it('keeps a keyless stored typesafe config as typesafe, unavailable, with no client', async () => {
 		const { ctx, runAction } = makeCtx(storedRow({ decisionProviderKind: 'typesafe' }));
 		const plane = await resolveDecisionConfig(ctx);
-		expect(plane.kind).toBe('llm');
-		expect(plane.calibrated).toBe(false);
-		expect(plane.degradedFrom).toBe('typesafe');
-		expect(plane.degradedReason).toContain('API key');
+		// Never relabelled as the language-backed adapter.
+		expect(plane.kind).toBe('typesafe');
+		expect(plane.unavailable?.code).toBe('missing_credentials');
+		expect(plane.unavailable?.reason).toContain('API key');
+		expect(plane.clientConfig).toEqual({});
 		// Nothing to decrypt, so nothing was asked of the Node action.
 		expect(runAction).not.toHaveBeenCalled();
 	});
 
-	it('never leaks the key into the degraded explanation', async () => {
+	it('never leaks the key into the unavailable explanation', async () => {
 		vi.stubEnv('DECISION_PROVIDER', 'typesafe');
 		const { ctx } = makeCtx(null);
 		const plane = await resolveDecisionConfig(ctx);
-		expect(plane.degradedReason).toBeDefined();
-		expect(plane.degradedReason).not.toContain(DECISION_KEY);
+		expect(plane.unavailable?.reason).toBeDefined();
+		expect(plane.unavailable?.reason).not.toContain(DECISION_KEY);
 	});
 
-	it('degrades a stored config whose base URL already carries the endpoint path', async () => {
+	it('marks a stored config whose base URL already carries the endpoint path invalid', async () => {
 		const { ctx } = makeCtx(
 			storedRow({
 				decisionProviderKind: 'typesafe',
@@ -290,8 +294,60 @@ describe('decisionProvider — degradation without a key', () => {
 			})
 		);
 		const plane = await resolveDecisionConfig(ctx);
-		expect(plane.kind).toBe('llm');
-		expect(plane.degradedFrom).toBe('typesafe');
+		expect(plane.kind).toBe('typesafe');
+		expect(plane.unavailable?.code).toBe('invalid_config');
+	});
+
+	it('marks a stored key that cannot be decrypted unavailable instead of throwing', async () => {
+		const { ctx, runAction } = makeCtx(
+			storedRow({ decisionProviderKind: 'typesafe', ...decisionEnvelopeColumns() })
+		);
+		runAction.mockRejectedValueOnce(new Error('bad auth tag'));
+		const plane = await resolveDecisionConfig(ctx);
+		expect(plane.kind).toBe('typesafe');
+		expect(plane.unavailable?.code).toBe('undecryptable');
+		expect(plane.clientConfig).toEqual({});
+	});
+
+	it('refuses to hand out a provider, and resolves no language model, when unavailable', async () => {
+		const { ctx, runAction } = makeCtx(storedRow({ decisionProviderKind: 'typesafe' }));
+		await expect(resolveDecisionProvider(ctx)).rejects.toBeInstanceOf(DecisionProviderUnavailable);
+		// No language model was resolved for it (that would decrypt the language key).
+		expect(runAction).not.toHaveBeenCalled();
+	});
+
+	it('refuses an explicit DECISION_PROVIDER that is not a provider, instead of the default (Sol r1 F5)', async () => {
+		vi.stubEnv('DECISION_PROVIDER', 'typesaf');
+		const { ctx } = makeCtx(null);
+		const plane = await resolveDecisionConfig(ctx);
+		expect(plane.source).toBe('env');
+		expect(plane.unavailable?.code).toBe('invalid_config');
+		expect(plane.unavailable?.reason).toContain("'typesaf'");
+		await expect(resolveDecisionProvider(ctx)).rejects.toBeInstanceOf(DecisionProviderUnavailable);
+		const { resolveLanguageModel } = await import('../llmProvider');
+		expect(resolveLanguageModel).not.toHaveBeenCalled();
+	});
+
+	it('states the problem for the settings status', () => {
+		vi.stubEnv('DECISION_PROVIDER', 'typesaf');
+		expect(decisionEnvProblem()).toContain("'typesaf'");
+		vi.stubEnv('DECISION_PROVIDER', 'local');
+		expect(decisionEnvProblem()).toBeUndefined();
+	});
+
+	it('keeps a blank DECISION_PROVIDER as no choice: the default plane', async () => {
+		vi.stubEnv('DECISION_PROVIDER', '  ');
+		const { ctx } = makeCtx(null);
+		const plane = await resolveDecisionConfig(ctx);
+		expect(plane).toMatchObject({ kind: 'llm', source: 'default' });
+		expect(plane.unavailable).toBeUndefined();
+	});
+
+	it('offers no fallback hop for an unavailable provider, even with the hop enabled', async () => {
+		const { ctx } = makeCtx(
+			storedRow({ decisionProviderKind: 'typesafe', isDecisionFallbackEnabled: true })
+		);
+		expect(await resolveDecisionFallback(ctx)).toBeUndefined();
 	});
 
 	it('knows which kinds carry a key of their own', () => {

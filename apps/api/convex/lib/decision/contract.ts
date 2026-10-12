@@ -20,7 +20,7 @@
 import type { LanguageModel } from 'ai';
 import type { AiTaskName } from '@owlat/shared/aiRouting';
 import type { TokenUsage } from '../../agent/steps/types';
-import type { LlmRequestRecord, LlmRootContext } from '../llm/requestMeter';
+import type { AdmissionPort, LlmRequestRecord, LlmRootContext } from '../llm/requestMeter';
 import type {
 	DecisionAllowance,
 	DecisionEndpointProvenance,
@@ -88,6 +88,11 @@ export interface DecisionAttemptRecord {
 	 * Each carries its own usage, so a recorder writes these, not `usage`.
 	 */
 	readonly requests: readonly LlmRequestRecord[];
+	/**
+	 * Admission holds whose dispatch ended in this attempt, settled in the same
+	 * write as its rows (ADR-0073, Phase 1b). Absent when nothing was held.
+	 */
+	readonly settlements?: readonly { reservationId: string; expectedRequests: number }[];
 	/** The task-policy entry and root request the caller passed. */
 	readonly task?: AiTaskName;
 	readonly root?: LlmRootContext;
@@ -106,6 +111,33 @@ export class DecisionAccountingFailure extends Error {
 	constructor(cause: unknown) {
 		super('Decision usage could not be recorded.', { cause });
 		this.name = 'DecisionAccountingFailure';
+	}
+}
+
+/** Why an explicitly configured decision provider cannot answer (D3). */
+export interface DecisionUnavailable {
+	readonly code: 'missing_credentials' | 'invalid_config' | 'undecryptable';
+	/** In the adapter's own words; never contains a key. */
+	readonly reason: string;
+}
+
+/**
+ * The configured decision provider cannot answer at all (D3, ADR-0073): its
+ * credential is missing, malformed or undecryptable, or its config is invalid.
+ * Terminal: never retried, never a fallback hop, never relabelled as the
+ * language-backed adapter. The caller's own fail-soft decides what a missing
+ * decision means.
+ */
+export class DecisionProviderUnavailable extends Error {
+	readonly retriable = false;
+	readonly provider: DecisionProviderKind;
+	readonly unavailable: DecisionUnavailable;
+
+	constructor(provider: DecisionProviderKind, unavailable: DecisionUnavailable) {
+		super(`The ${provider} decision provider cannot answer: ${unavailable.reason}`);
+		this.name = 'DecisionProviderUnavailable';
+		this.provider = provider;
+		this.unavailable = unavailable;
 	}
 }
 
@@ -191,6 +223,13 @@ export interface RunDecisionOptions<Q extends QuestionSet> {
 	readonly recordUsage?: DecisionUsageRecorder;
 	readonly rateLimiter?: DecisionRateLimiter;
 	readonly breaker?: DecisionFallbackBreaker;
+	/**
+	 * Spend admission (ADR-0073, Phase 1b): every paid attempt, and the hop, is
+	 * reserved through it before its request (`analytics/meteredSpend.ts`
+	 * `decisionAdmissionPort`). Required alongside `fallbackTo`: the hop is a
+	 * paid language call and goes through the breaker and admission.
+	 */
+	readonly admission?: AdmissionPort;
 	/** Injected so the jitter is deterministic under test. Defaults to `Math.random`. */
 	readonly random?: () => number;
 	/** Injected so tests observe the computed backoff without waiting it out. */

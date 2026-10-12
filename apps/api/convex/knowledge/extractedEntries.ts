@@ -46,6 +46,17 @@ export const extractionSchema = z.object({
 });
 
 /**
+ * The entries to save for a source: the ones an interrupted run stored
+ * (`pendingEntries`, Sol r2 F3), else what the model returns now.
+ */
+export async function entriesToSave(
+	pendingEntries: ExtractedEntry[] | undefined,
+	ask: () => Promise<ExtractedEntry[] | undefined>
+): Promise<ExtractedEntry[]> {
+	return pendingEntries ?? (await ask()) ?? [];
+}
+
+/**
  * For each extracted entry, compute its embedding and persist it via
  * `knowledge.graph.saveEntry`. Shared by `extractFromMessage` (source
  * `agent_extracted`) and `extractFromFile` (source `file`) — the only
@@ -64,6 +75,14 @@ export async function persistExtractedEntries(
 	},
 	root: LlmRootContext
 ): Promise<void> {
+	// Resumable (Sol r2 F3): `in_progress`, with the entries to save, until every
+	// one is saved and linked (`knowledge/extractionProgress.ts`).
+	const marker = { sourceType: source.sourceType, sourceId: source.sourceId };
+	await ctx.runMutation(internal.knowledge.extractionProgress.markExtraction, {
+		...marker,
+		status: 'in_progress',
+		entries,
+	});
 	const entryIds: Id<'knowledgeEntries'>[] = [];
 	for (const entry of entries) {
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
@@ -139,4 +158,8 @@ export async function persistExtractedEntries(
 			root: scheduledRoot(root),
 		});
 	}
+	await ctx.runMutation(internal.knowledge.extractionProgress.markExtraction, {
+		...marker,
+		status: 'complete',
+	});
 }

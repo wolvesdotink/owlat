@@ -31,6 +31,7 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { cancelLatestJob, createCappedJob, latestJob } from './backfillJobs';
 import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
 import { rootRequest } from '../lib/llm/requestMeter';
+import { readExtractionProgress } from './extractionProgress';
 
 // Tunables
 /** Messages per `runChunk` invocation; the flag toggle starts the walk with it. */
@@ -60,21 +61,15 @@ export const isAgentEnabled = internalQuery({
 });
 
 /**
- * True iff a knowledgeEntries row already exists with
- * sourceType='agent_extracted' and sourceId=inboundMessageId.
- * Drives idempotency.
+ * True iff the message's extraction is complete (`extractionProgressOf`'s
+ * `isDone`): an extraction a budget refusal interrupted is not, so the walker
+ * resumes it (Sol r3 F3). Without a progress marker, saved entries mean done.
+ * Drives idempotency; the old path (`agent/knowledgeBackfill.ts`) re-exports it.
  */
 export const hasExtraction = internalQuery({
 	args: { inboundMessageId: v.id('inboundMessages') },
-	handler: async (ctx, args) => {
-		const existing = await ctx.db
-			.query('knowledgeEntries')
-			.withIndex('by_source', (q) =>
-				q.eq('sourceType', 'agent_extracted').eq('sourceId', args.inboundMessageId)
-			)
-			.first();
-		return existing !== null;
-	},
+	handler: async (ctx, args) =>
+		(await readExtractionProgress(ctx, 'agent_extracted', args.inboundMessageId)).isDone,
 });
 
 /**
@@ -147,6 +142,8 @@ export const patchProgress = internalMutation({
 		deltaScanned: v.number(),
 		deltaExtracted: v.number(),
 		deltaSkipped: v.number(),
+		// Optional: an old walker's call (agent/knowledgeBackfill.ts) does not pass it.
+		deltaPartial: v.optional(v.number()),
 		deltaError: v.number(),
 		cursorReceivedAt: v.optional(v.number()),
 		cursorId: v.optional(v.id('inboundMessages')),
@@ -159,6 +156,7 @@ export const patchProgress = internalMutation({
 			scannedCount: job.scannedCount + args.deltaScanned,
 			extractedCount: job.extractedCount + args.deltaExtracted,
 			skippedCount: job.skippedCount + args.deltaSkipped,
+			...(args.deltaPartial ? { partialCount: (job.partialCount ?? 0) + args.deltaPartial } : {}),
 			errorCount: job.errorCount + args.deltaError,
 			cursorReceivedAt: args.cursorReceivedAt ?? job.cursorReceivedAt,
 			cursorId: args.cursorId ?? job.cursorId,
@@ -238,6 +236,7 @@ export const runChunk = internalAction({
 			let deltaScanned = 0;
 			let deltaExtracted = 0;
 			let deltaSkipped = 0;
+			let deltaPartial = 0;
 			let deltaError = 0;
 			let lastReceivedAt: number | undefined;
 			let lastId: Id<'inboundMessages'> | undefined;
@@ -247,11 +246,12 @@ export const runChunk = internalAction({
 				lastReceivedAt = msg.receivedAt;
 				lastId = msg._id;
 
-				// Idempotency: if this message has already been extracted, skip.
-				const already = await ctx.runQuery(internal.knowledge.messageBackfill.hasExtraction, {
+				// Idempotency: a complete extraction is skipped; one a budget refusal
+				// interrupted is resumed from its stored entries (Sol r3 F3).
+				const isDone = await ctx.runQuery(internal.knowledge.messageBackfill.hasExtraction, {
 					inboundMessageId: msg._id,
 				});
-				if (already) {
+				if (isDone) {
 					deltaSkipped++;
 					continue;
 				}
@@ -263,13 +263,17 @@ export const runChunk = internalAction({
 						root: boundedRoot(ctx, rootRequest('team', msg._id)),
 					});
 					// Re-check post-call: extractFromMessage silently no-ops on
-					// short bodies and swallows internal errors. Only count as
-					// "extracted" if it actually wrote at least one entry.
-					const wrote = await ctx.runQuery(internal.knowledge.messageBackfill.hasExtraction, {
-						inboundMessageId: msg._id,
-					});
-					if (wrote) {
+					// short bodies, swallows internal errors and defers a budget
+					// refusal. Only a complete extraction counts as "extracted"; one
+					// still in progress is counted apart, and its deferral resumes it.
+					const after = await ctx.runQuery(
+						internal.knowledge.extractionProgress.extractionProgressOf,
+						{ sourceType: 'agent_extracted', sourceId: msg._id }
+					);
+					if (after.isDone) {
 						deltaExtracted++;
+					} else if (after.isPartial) {
+						deltaPartial++;
 					} else {
 						deltaSkipped++;
 					}
@@ -290,6 +294,7 @@ export const runChunk = internalAction({
 				deltaScanned,
 				deltaExtracted,
 				deltaSkipped,
+				deltaPartial,
 				deltaError,
 				cursorReceivedAt: lastReceivedAt,
 				cursorId: lastId,

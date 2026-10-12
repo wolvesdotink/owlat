@@ -621,14 +621,14 @@ describe('paid re-embed (hosted embedder)', () => {
 		);
 	}
 
-	it('is refused while spend admission is absent', async () => {
+	it('starts a paid job once spend admission exists; its batches are admitted one by one', async () => {
 		const t = convexTest(schema, modules);
 		await configureOpenAi(t);
 		await seedEmbeddingSpace(t, { identity: OPENAI });
-		await expect(t.action(api.aiRouting.embeddingReembed.startReembed, {})).rejects.toThrow(
-			/spend admission/
-		);
-		expect(await jobs(t)).toEqual([]);
+		await t.action(api.aiRouting.embeddingReembed.startReembed, {});
+		// The batches' own admission is pinned by the two runBatch tests below.
+		expect(await jobs(t)).toEqual([expect.objectContaining({ isPaid: true })]);
+		expect(embedCalls.texts).toEqual([]);
 	});
 
 	it('counts unknown vectors on a first upgrade with nothing searchable (F9)', async () => {
@@ -660,11 +660,10 @@ describe('paid re-embed (hosted embedder)', () => {
 		const t = convexTest(schema, modules);
 		await configureOpenAi(t);
 		await seedEmbeddingSpace(t, { identity: OPENAI });
-		// Called directly: no earlier read of the configuration can vouch for it.
-		await expect(
-			t.mutation(internal.aiRouting.embeddingReembedJobs.startReembedJob, {})
-		).rejects.toThrow(/spend admission/);
-		expect(await jobs(t)).toEqual([]);
+		// Called directly: no earlier read of the configuration can vouch for it,
+		// so the job is paid because its target is, and each batch is admitted.
+		await t.mutation(internal.aiRouting.embeddingReembedJobs.startReembedJob, {});
+		expect(await jobs(t)).toEqual([expect.objectContaining({ isPaid: true })]);
 	});
 
 	it('is never started by the kickoff', async () => {
@@ -680,8 +679,10 @@ describe('paid re-embed (hosted embedder)', () => {
 
 	it('pauses a running paid job for budget before any call', async () => {
 		const t = convexTest(schema, modules);
-		// The env plane: hosted OpenAI embeddings with a key, so only admission refuses.
+		// The env plane: hosted OpenAI embeddings with a key, so only admission
+		// refuses: a ceiling over a spend state nobody has reconciled yet.
 		vi.stubEnv('LLM_API_KEY', 'sk-test-env');
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
 		const active = await seedEmbeddingSpace(t, { identity: OPENAI });
 		await t.run((ctx) => ctx.db.patch(active, { source: 'env' }));
 		await insertEntry(t, 'legacy', { embedding: padded(3), embeddingGeneratedAt: 1 });
@@ -711,8 +712,9 @@ describe('paid re-embed (hosted embedder)', () => {
 
 	it('admits a batch by the embedder it resolves, not by the job flag (F12)', async () => {
 		const t = convexTest(schema, modules);
-		// The env plane: hosted OpenAI embeddings.
+		// The env plane: hosted OpenAI embeddings, under a ceiling admission cannot verify.
 		vi.stubEnv('LLM_API_KEY', 'sk-test-env');
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
 		const active = await seedEmbeddingSpace(t, {
 			identity: OPENAI,
 			isConfigured: false,

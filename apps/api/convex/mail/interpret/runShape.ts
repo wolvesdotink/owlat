@@ -7,6 +7,7 @@
 import type { Infer } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import type { InterpretationStatus, InterpretMode } from '@owlat/shared/threadBrief';
+import type { BudgetHoldReason } from '@owlat/shared/aiRouting';
 import type {
 	InterpretationSource,
 	interpretCoverageValidator,
@@ -45,9 +46,14 @@ export type InterpretRunResult =
 			errorCode?: string;
 			/** An incomplete extraction will be repaired by a run at or after this time. */
 			retryAt?: number;
+			/** `errorCode: 'budget'` from a refusal this run met: its reason and limit (Sol r3 F5). */
+			budgetRefusal?: RunBudgetRefusal;
 	  }
 	/** The source or its thread is gone, or a purge ran meanwhile: nothing written. */
 	| { status: 'gone' };
+
+/** A spend admission refusal the run met, for a caller that holds on it. */
+export type RunBudgetRefusal = { reason: BudgetHoldReason; limit: string };
 
 export type RunRecord = {
 	contentRevision: string;
@@ -59,6 +65,8 @@ export type RunRecord = {
 	result?: ReduceResult;
 	sourceVersion?: string;
 	retryCount?: number;
+	/** The run's hold was refused: consecutive deferrals, which back the retry off (Sol r4). */
+	budgetDeferrals?: number;
 };
 
 /** The run must start over: the body or the thread's mode changed under it. */
@@ -67,7 +75,11 @@ export type Restart = { restart: 'modeChanged' | 'sourceChanged' };
 /** The run's answer from the reducer's; `restart` when the run must start over. */
 export function finish(
 	outcome: ApplyOutcome,
-	extra: { projection?: NeedsReplyProjection; errorCode?: string } = {}
+	extra: {
+		projection?: NeedsReplyProjection;
+		errorCode?: string;
+		budgetRefusal?: RunBudgetRefusal;
+	} = {}
 ): InterpretRunResult | Restart {
 	switch (outcome.outcome) {
 		case 'gone':

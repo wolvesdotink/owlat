@@ -203,8 +203,7 @@ export async function runBundle<Q extends QuestionSet>(
 	const rung = decisionRung({
 		isDecisionPlaneOn: routing.isDecisionPlaneOn,
 		kind: plane?.kind ?? 'llm',
-		isUnavailable:
-			routing.isDecisionPlaneOn && (plane === null || plane.degradedFrom !== undefined),
+		isUnavailable: routing.isDecisionPlaneOn && (plane === null || plane.unavailable !== undefined),
 	});
 	if (rung === 'unavailable') return { hasRun: false, why: 'provider_unavailable' };
 	if (rung === 'language' && !bundle.runsOnLanguageRung) {
@@ -218,6 +217,8 @@ export async function runBundle<Q extends QuestionSet>(
 		feature: DECISION_FEATURE[plan.task],
 		root: run.root,
 		policyVersion: routing.policy.policyVersion,
+		// The selected rung's plane, for the hold and the rows alike (Sol r7 F1).
+		plane: rung === 'decision' ? 'decision' : 'language',
 	});
 	if (!admitted.isAdmitted) return { hasRun: false, why: admitted.why };
 

@@ -40,6 +40,8 @@ import {
 } from './planCheck';
 import { draftHashOf, planVerdictOf, type PlanCoverage } from './responsePlanRules';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import { admissionRefusalOf } from '../../lib/llm/admissionPort';
+import type { BudgetHoldReason } from '@owlat/shared/aiRouting';
 
 /** The longest draft the check reads. */
 const MAX_DRAFT_CHARS = 20_000;
@@ -54,15 +56,21 @@ export interface CoverageResult extends PlanCoverage<Id<'threadItems'>> {
 	itemRevisions: { itemId: Id<'threadItems'>; revision: number }[];
 	/** The model answered. Without it only the attachment claims are known. */
 	isChecked: boolean;
+	/** Set when spend admission refused the check (`AI_BUDGET_EXHAUSTED`); the web says why. */
+	budgetRefusal?: BudgetHoldReason;
 	/** Stored as the draft's coverage; false when newer stances superseded it. */
 	isStored: boolean;
 }
 
-/** The model's plan check, or null when the gate refused or the call failed. */
+/**
+ * The model's plan check, or null when the gate refused or the call failed.
+ * A spend-admission refusal is reported (D1) instead of read as a fault.
+ */
 async function checkWithModel(
 	ctx: ActionCtx,
 	items: readonly PlanPromptItem[],
-	draft: string
+	draft: string,
+	onBudgetRefusal: (reason: BudgetHoldReason) => void
 ): Promise<PlanCheckOutput | null> {
 	// File claims and commitments are checked even when no item is planned or
 	// every item is skipped (review F12).
@@ -86,7 +94,9 @@ async function checkWithModel(
 			{ write: 'schedule' }
 		);
 		return object;
-	} catch {
+	} catch (error) {
+		const refusal = admissionRefusalOf(error);
+		if (refusal) onBudgetRefusal(refusal.reason);
 		return null;
 	}
 }
@@ -113,7 +123,12 @@ export const check = authedAction({
 		if (!loaded) return null;
 		const draft = args.draftText.slice(0, MAX_DRAFT_CHARS);
 		const items = toPromptItems(loaded.items, loaded.stances);
-		const output = draft.trim() ? await checkWithModel(ctx, items, draft) : null;
+		let budgetRefusal: BudgetHoldReason | undefined;
+		const output = draft.trim()
+			? await checkWithModel(ctx, items, draft, (reason) => {
+					budgetRefusal = reason;
+				})
+			: null;
 		const checked = parsePlanCheck(output, {
 			draft,
 			items,
@@ -145,6 +160,8 @@ export const check = authedAction({
 			threadRevision: loaded.threadRevision,
 			itemRevisions: loaded.items.map((i) => ({ itemId: i.id, revision: i.revision })),
 			isChecked: output !== null,
+			// D1 (U5): the model was not asked because the AI budget said no.
+			...(budgetRefusal ? { budgetRefusal } : {}),
 			isStored: stored.isStored,
 		};
 	},

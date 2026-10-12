@@ -28,6 +28,7 @@ import { newRootRequest } from '../../lib/llm/requestMeter';
 import { gatedInParallel, readThreadMessages } from './gate';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import { rethrowAdmissionRefusal } from '../../lib/llm/admissionPort';
 
 /**
  * Categories the flat self-check flags are bucketed into for inline display
@@ -178,7 +179,9 @@ export const coachDraft = authedAction({
 					flags: object.flags,
 				}),
 			};
-		} catch {
+		} catch (error) {
+			// A budget refusal is shown to the user (D1, AI_BUDGET_EXHAUSTED).
+			rethrowAdmissionRefusal(error);
 			// FAIL-SOFT: no critique is better than blocking the user's own draft.
 			return { suggestions: [] };
 		}

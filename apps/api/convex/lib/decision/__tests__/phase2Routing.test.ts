@@ -215,9 +215,9 @@ describe('the decision plane identity and locality', () => {
 		const plane = { kind: 'typesafe' as const, modelId: 'jev-1.13.0', clientConfig: {} };
 		expect(resolvedPlaneIdentity(plane, false)).toBe('off');
 		expect(resolvedPlaneIdentity(null, true)).toBe('unavailable');
-		expect(resolvedPlaneIdentity({ ...plane, kind: 'llm', degradedFrom: 'typesafe' }, true)).toBe(
-			'unavailable:typesafe'
-		);
+		expect(
+			resolvedPlaneIdentity({ ...plane, unavailable: { code: 'missing_credentials' } }, true)
+		).toBe('unavailable:typesafe');
 		expect(
 			resolvedPlaneIdentity({ ...plane, clientConfig: { baseUrl: 'https://p.example' } }, true)
 		).toBe('typesafe|jev-1.13.0|https://p.example');

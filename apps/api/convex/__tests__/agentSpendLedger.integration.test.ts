@@ -19,6 +19,9 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { LlmPartialUsageError } from '../lib/llm/partialUsage';
+import { BUDGET_HOLD_ERROR_MESSAGE } from '@owlat/shared/aiRouting';
+import { AdmissionRefusedError } from '../lib/llm/admissionPort';
+import { reconcileSpend } from '../aiRouting/__tests__/spend.testlib';
 
 const mocks = vi.hoisted(() => ({
 	runLlmObject: vi.fn(),
@@ -188,29 +191,110 @@ describe('Team Inbox agent spend in the ledger (#1259)', () => {
 		);
 		expect(stepUsage).toEqual(['clarify', 'classify', 'draft']);
 
+		// The rows were written before any ceiling was configured; the reconcile
+		// counts them into the aggregate the enforced status reads.
 		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '100';
-		const status = await t.query(internal.analytics.spendBudget.getBudgetStatus, {});
+		await reconcileSpend(t);
+		const status = await t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
 		expect(status.daily.spentUsd).toBeCloseTo(5 * CALL_COST);
 	});
 
-	it('withholds autonomous auto-send once the agent’s own spend crosses the ceiling', async () => {
-		// Above one self-check, below the whole run.
+	it('holds the message for a person before the draft once the agent’s own spend crosses the ceiling (D1)', async () => {
+		// Three calls ($1.05: guard, classify, clarify) cross the $1 ceiling, so
+		// the draft, the next paid step, never runs.
 		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '1';
 		const t = convexTest(schema, modules);
+		await reconcileSpend(t);
 		const messageId = await seedMessage(t);
 		mocks.runLlmTextWithTools.mockResolvedValueOnce(
 			billed({ text: 'Hi Jonas, your refund is on its way.' })
 		);
 
-		const before = await t.query(internal.analytics.spendBudget.getBudgetStatus, {});
+		const before = await t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
 		expect(before.autonomousAutoSendAllowed).toBe(true);
 
-		await walkToRoute(t, messageId);
+		const ran = await walkToRoute(t, messageId);
 
-		const after = await t.query(internal.analytics.spendBudget.getBudgetStatus, {});
+		expect(ran).toEqual(['security_scan', 'context_retrieval', 'classify', 'clarify', 'draft']);
+		expect(mocks.runLlmTextWithTools).not.toHaveBeenCalled();
+		const message = await t.run(async (ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('failed');
+		expect(message?.errorMessage).toBe(BUDGET_HOLD_ERROR_MESSAGE);
+		expect(message?.budgetHold).toMatchObject({
+			reason: 'daily_ceiling',
+			missingJudgments: ['draft'],
+		});
+		// No failed step row: the retry cron leaves it for a person.
+		const draftAction = await t.run(async (ctx) =>
+			(await ctx.db.query('agentActions').collect()).find((a) => a.actionType === 'draft')
+		);
+		expect(draftAction ?? null).toBeNull();
+
+		const after = await t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
 		expect(after.daily.spentUsd).toBeGreaterThan(1);
 		expect(after.autonomousAutoSendAllowed).toBe(false);
 		expect(after.reason).toMatch(/spend budget/i);
+	});
+
+	it('holds the message when a paid call is refused mid-step (another call took the headroom)', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t);
+		const answer = mocks.runLlmObject.getMockImplementation()!;
+		mocks.runLlmObject.mockImplementation(async (opts: { prompt: string }) => {
+			if (opts.prompt.includes('security classifier')) return answer(opts);
+			throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+		});
+
+		const ran = await walkToRoute(t, messageId);
+
+		expect(ran).toEqual(['security_scan', 'context_retrieval', 'classify']);
+		const message = await t.run(async (ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('failed');
+		expect(message?.budgetHold).toMatchObject({
+			reason: 'daily_ceiling',
+			missingJudgments: ['classify', 'clarify', 'draft'],
+		});
+		const classify = await t.run(async (ctx) =>
+			(await ctx.db.query('agentActions').collect()).find((a) => a.actionType === 'classify')
+		);
+		expect(classify?.status).toBe('abandoned');
+	});
+
+	it('holds the message with every judgment missing when the model guard is refused', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t);
+		mocks.runLlmObject.mockRejectedValue(new AdmissionRefusedError('monthly_ceiling', 'ceiling'));
+
+		const ran = await walkToRoute(t, messageId);
+
+		expect(ran).toEqual(['security_scan']);
+		const message = await t.run(async (ctx) => ctx.db.get(messageId));
+		expect(message?.budgetHold).toMatchObject({
+			reason: 'monthly_ceiling',
+			missingJudgments: ['guard', 'interpret', 'classify', 'clarify', 'draft'],
+		});
+	});
+
+	it('holds the message, instead of drafting blind, when clarification is refused', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedMessage(t);
+		const answer = mocks.runLlmObject.getMockImplementation()!;
+		mocks.runLlmObject.mockImplementation(async (opts: { prompt: string }) => {
+			if (opts.prompt.includes('Identify the SLOTS')) {
+				throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+			}
+			return answer(opts);
+		});
+
+		const ran = await walkToRoute(t, messageId);
+
+		expect(ran).toEqual(['security_scan', 'context_retrieval', 'classify', 'clarify']);
+		expect(mocks.runLlmTextWithTools).not.toHaveBeenCalled();
+		const message = await t.run(async (ctx) => ctx.db.get(messageId));
+		expect(message?.budgetHold).toMatchObject({
+			reason: 'daily_ceiling',
+			missingJudgments: ['clarify', 'draft'],
+		});
 	});
 
 	it('records a draft step that fails after a paid tool step once', async () => {

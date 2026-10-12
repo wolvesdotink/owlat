@@ -150,6 +150,7 @@ function bindBundledPluginLlm(
 					modelId: resolvedModel.modelId,
 					endpointProvenance: resolvedModel.endpointProvenance,
 					actorMode: actorPolicy.kind,
+					...(root ? { rootRequestId: root.rootRequestId } : {}),
 				});
 			} catch {
 				assertExecutionActive(executionSignal);

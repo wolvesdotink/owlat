@@ -12,12 +12,17 @@ import type { IndexEmbedder } from '../llmProvider';
 import { admitPaidEmbeddingBatch, type PaidEmbeddingBatch } from './embeddingAdmission';
 
 /**
- * Counts the embedding calls a batch started (`embedTextsForIndex` raises it),
- * and carries the admission hold the batch runs under, so every metered ledger
+ * Counts the embedding calls a batch started and the provider requests they
+ * made (`embedTextsForIndex` raises both), and carries the admission hold the batch runs under, so every metered ledger
  * row names it (`reservationId`).
  */
 export interface DispatchCounter {
 	dispatched: number;
+	/**
+	 * Provider requests the calls made (each call's retries included): what the
+	 * batch's ledger rows number, so its settlement waits for all of them.
+	 */
+	providerRequests: number;
 	reservationId?: string;
 }
 
@@ -36,7 +41,7 @@ export async function runAdmittedEmbedding<T>(
 	/** `isPaid: true` admits even a local embedder (a job whose target is paid). */
 	options: { isPaid?: boolean } = {}
 ): Promise<{ isAdmitted: true; value: T } | { isAdmitted: false; reason: string }> {
-	const counter: DispatchCounter = { dispatched: 0 };
+	const counter: DispatchCounter = { dispatched: 0, providerRequests: 0 };
 	const isPaid = options.isPaid === true || !embedder.target.isLocal;
 	if (!isPaid) return { isAdmitted: true, value: await run(counter) };
 	const admission = await admitPaidEmbeddingBatch(ctx, {
@@ -49,6 +54,10 @@ export async function runAdmittedEmbedding<T>(
 	try {
 		return { isAdmitted: true, value: await run(counter) };
 	} finally {
-		await admission.settle({ dispatchedCalls: counter.dispatched, inputTokens: undefined });
+		await admission.settle({
+			dispatchedCalls: counter.dispatched,
+			providerRequests: counter.providerRequests,
+			inputTokens: undefined,
+		});
 	}
 }
