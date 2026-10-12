@@ -101,6 +101,26 @@ describe('classifyStep.execute — categorize override cannot widen auto-send', 
 		expect(output.category).toBe('sales');
 	});
 
+	// Today's post-classify behaviour, which the security scan's early archive
+	// (L4, ADR-0073) must stay equivalent to: a matching `auto_archive` rule
+	// archives the message whatever the classifier said, complaint and urgent
+	// included. Only `categorize` is barred from relabelling them.
+	it.each([
+		['a complaint', { category: 'complaint' }],
+		['an urgent message', { category: 'support', priority: 'urgent' }],
+	] as const)('an auto_archive rule archives %s after classification today', async (_, over) => {
+		mockClassification(over);
+		const { output } = await classifyStep.execute(fakeCtx({ ...inert, autoArchive: true }), input);
+		const route = classifyStep.route(output, input, {
+			inboundMessageId: 'msg1' as never,
+			agentConfig: null,
+		});
+		expect(route).toMatchObject({
+			kind: 'transition',
+			transition: { to: 'archived', reason: 'handling_rule_archive' },
+		});
+	});
+
 	it('an auto_archive rule still short-circuits regardless of category', async () => {
 		mockClassification({ category: 'support' });
 		const { output } = await classifyStep.execute(fakeCtx({ ...inert, autoArchive: true }), input);

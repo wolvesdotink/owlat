@@ -22,7 +22,7 @@ import {
 } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
 import { deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
-import { runLlmStream, runLlmText } from '../lib/llm/dispatch';
+import { runLlmObject, runLlmStream, runLlmText } from '../lib/llm/dispatch';
 import { assembleInboundBriefing } from '../agent/steps/context_retrieval';
 import { NOT_READY_OPTION } from '../inbox/clarificationAnswers';
 import { CUSTOMER, ORG, seedCustomer, seedFile, seedRequest } from './helpers/answerAsk';
@@ -50,6 +50,8 @@ const llm = vi.hoisted(() => ({
 	}>,
 	draft: 'Hi Jonas,\n\nthanks for your note.\n\nBest,\nAda',
 	files: [] as FoundFile[],
+	// The late injection guard's verdict (D13), for a message whose scan skipped it.
+	guard: { isInjection: false, confidence: 0.02, reason: 'benign' },
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -77,6 +79,7 @@ vi.mock('../lib/llm/dispatch', async () => {
 		...actual,
 		runLlmObject: vi.fn(async (opts: { prompt?: string }) => {
 			const prompt = String(opts.prompt ?? '');
+			if (prompt.includes('security classifier')) return { object: llm.guard, ...result };
 			if (prompt.includes('Identify the SLOTS')) return { object: { slots: llm.slots }, ...result };
 			if (prompt.includes('DISAGREE')) {
 				return { object: { divergentSlotIndexes: llm.slots.map((_, i) => i) }, ...result };
@@ -154,6 +157,7 @@ beforeEach(() => {
 	llm.slots = [];
 	llm.files = [];
 	llm.draft = 'Hi Jonas,\n\nthanks for your note.\n\nBest,\nAda';
+	llm.guard = { isInjection: false, confidence: 0.02, reason: 'benign' };
 	vi.mocked(runLlmStream).mockReset();
 	vi.mocked(runLlmText).mockClear();
 	vi.mocked(assembleInboundBriefing).mockClear();
@@ -475,7 +479,11 @@ describe('privacy', () => {
 });
 
 describe('team thread', () => {
-	async function seedTeamThread(t: Tx, contactId: Id<'contacts'>) {
+	async function seedTeamThread(
+		t: Tx,
+		contactId: Id<'contacts'>,
+		message: Record<string, unknown> = {}
+	) {
 		await enableFeatures(t, ['inbox']);
 		return await t.run(async (ctx) => {
 			const { updatedAt: _unused, ...thread } = createTestConversationThread({
@@ -491,6 +499,7 @@ describe('team thread', () => {
 					from: CUSTOMER,
 					subject: 'September invoice',
 					textBody: 'Could you send us the invoice for September?',
+					...message,
 				})
 			);
 			return threadId;
@@ -633,6 +642,98 @@ describe('team thread', () => {
 		await expect(
 			t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' })
 		).rejects.toMatchObject({ data: { category: 'forbidden' } });
+	});
+
+	// D13 / #1339 (Sol r2 F2): the message being answered is guarded before its
+	// briefing, its trigger text or the gap check reach a model, and a held-back
+	// message is refused with no raw-text fallback.
+	const SKIPPED_SCAN = {
+		injectionDetected: false,
+		confidence: 0,
+		spamScore: 0,
+		phishingDetected: false,
+		guardUnavailable: false,
+		guardNotRun: { reason: 'agent_disabled' as const, at: 1 },
+		scanTimestamp: 1,
+	};
+	const guardCalls = () =>
+		vi
+			.mocked(runLlmObject)
+			.mock.calls.filter(([opts]) => String(opts.prompt ?? '').includes('security classifier'))
+			.length;
+	const HELD = { data: { category: 'invalid_state', data: { code: 'MESSAGE_HELD_BY_GUARD' } } };
+
+	it.each([
+		[
+			'a quarantined injection',
+			{
+				processingStatus: 'quarantined',
+				securityFlags: {
+					...SKIPPED_SCAN,
+					guardNotRun: undefined,
+					injectionDetected: true,
+					confidence: 0.9,
+				},
+			},
+		],
+		['malware', { processingStatus: 'quarantined', virusVerdict: 'infected' }],
+	])('refuses to draft for %s, with no model call', async (_, message) => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const threadId = await seedTeamThread(t, await seedCustomer(t), message);
+		vi.mocked(runLlmObject).mockClear();
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, {
+				target: { kind: 'teamThread', threadId },
+				locale: 'en',
+			})
+		).rejects.toMatchObject(HELD);
+		expect(vi.mocked(assembleInboundBriefing)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmObject)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+	});
+
+	it('guards a message whose scan skipped the guard, and refuses it when flagged', async () => {
+		llm.guard = { isInjection: true, confidence: 0.95, reason: 'manipulation attempt' };
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const threadId = await seedTeamThread(t, await seedCustomer(t), {
+			processingStatus: 'security_check',
+			securityFlags: SKIPPED_SCAN,
+		});
+		vi.mocked(runLlmObject).mockClear();
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.start, {
+				target: { kind: 'teamThread', threadId },
+				locale: 'en',
+			})
+		).rejects.toMatchObject(HELD);
+		expect(guardCalls()).toBe(1);
+		expect(vi.mocked(runLlmObject)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(assembleInboundBriefing)).not.toHaveBeenCalled();
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+	});
+
+	it('drafts on a message whose late guard passes it', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'admin-1', role: 'owner', activeOrganizationId: ORG };
+		const threadId = await seedTeamThread(t, await seedCustomer(t), {
+			processingStatus: 'security_check',
+			securityFlags: SKIPPED_SCAN,
+		});
+		vi.mocked(runLlmObject).mockClear();
+
+		const res = await t.action(api.mail.ai.composeDraft.start, {
+			target: { kind: 'teamThread', threadId },
+			locale: 'en',
+		});
+
+		// Not refused: the session opens on the briefing (asking or drafting).
+		expect(res.sessionId).toBeDefined();
+		expect(guardCalls()).toBe(1);
+		expect(vi.mocked(assembleInboundBriefing)).toHaveBeenCalledTimes(1);
 	});
 
 	it('refuses a member who cannot read the shared inbox', async () => {

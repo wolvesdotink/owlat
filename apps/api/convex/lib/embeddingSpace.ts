@@ -305,12 +305,20 @@ export async function vectorFieldsForCommit(
 	vector: VectorFields,
 	jobEmbeddingSpaceKey: string | undefined
 ): Promise<VectorFields & { isStale: boolean }> {
-	if (vector.embedding.length === 0) return { ...vector, isStale: false };
+	// `embeddingGeneratedAt` is set exactly when a row holds a vector: the
+	// empty-corpus check (knowledge/vectorCorpus.ts) finds ready vectors by it.
+	if (vector.embedding.length === 0) {
+		return { ...vector, embeddingGeneratedAt: undefined, isStale: false };
+	}
 	// A caller without a key is a job the previous release queued or started: its
 	// vector cannot be verified, so it is dropped like a stale one. Remove the
 	// optional key after release N+1 (see CONVENTIONS "Old clients and workers").
 	if (await isEmbeddingSpaceCurrent(db, jobEmbeddingSpaceKey)) {
-		return { ...vector, isStale: false };
+		return {
+			...vector,
+			embeddingGeneratedAt: vector.embeddingGeneratedAt ?? Date.now(),
+			isStale: false,
+		};
 	}
 	return {
 		embedding: [],

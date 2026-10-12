@@ -97,6 +97,35 @@ describe('MtaInboundAdapter', () => {
 		expect(mail.arcAttestsOriginalPass).toBe(true);
 	});
 
+	it('carries the MTA spam verdict and score under their provenance names (L5)', () => {
+		const mail = getInboundChannelAdapter('mta').parseInbound(
+			mtaEnvelope({ spamVerdict: 'spam', spamScore: 12.5 })
+		);
+
+		expect(mail.mtaSpamVerdict).toBe('spam');
+		expect(mail.mtaSpamScore).toBe(12.5);
+	});
+
+	it('drops a spam verdict or score it does not recognise instead of 500ing', () => {
+		const mail = getInboundChannelAdapter('mta').parseInbound(
+			mtaEnvelope({ spamVerdict: 'definitely-spam', spamScore: Number.NaN })
+		);
+		expect(mail.mtaSpamVerdict).toBeUndefined();
+		expect(mail.mtaSpamScore).toBeUndefined();
+
+		const wrongTypes = getInboundChannelAdapter('mta').parseInbound(
+			mtaEnvelope({ spamVerdict: 1, spamScore: '9' })
+		);
+		expect(wrongTypes.mtaSpamVerdict).toBeUndefined();
+		expect(wrongTypes.mtaSpamScore).toBeUndefined();
+	});
+
+	it('leaves the verdict absent when the MTA sends none', () => {
+		const mail = getInboundChannelAdapter('mta').parseInbound(mtaEnvelope());
+		expect(mail.mtaSpamVerdict).toBeUndefined();
+		expect(mail.mtaSpamScore).toBeUndefined();
+	});
+
 	it('drops an unexpected key on an attachment rather than 500ing the route', () => {
 		// `inboundEmailMessageValidator` spells each element as a CLOSED
 		// `v.object`, and Convex refuses an unknown field in one — so a single
@@ -202,6 +231,12 @@ describe('ResendInboundAdapter', () => {
 			attachments: [],
 			timestamp: 1_699_000_000_000,
 		});
+	});
+
+	it('never asserts an MTA spam verdict, whatever the payload claims', () => {
+		const mail = resend.parseInbound({ spamVerdict: 'ham', spamScore: 0 });
+		expect(mail.mtaSpamVerdict).toBeUndefined();
+		expect(mail.mtaSpamScore).toBeUndefined();
 	});
 
 	it('defaults the three required strings and empties the two collections', () => {

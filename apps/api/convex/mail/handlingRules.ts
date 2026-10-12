@@ -22,6 +22,7 @@ import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import {
 	evaluateHandlingRules,
+	isPreClassifyRule,
 	type HandlingRuleLike,
 	type HandlingRuleOutcome,
 } from './handlingRules/engine';
@@ -143,13 +144,20 @@ export const remove = authedMutation({
 
 /**
  * Evaluate every enabled handling rule against one inbound message. Used by the
- * classify step (category override / auto-archive) and by the route step's final
- * safety gate (RESTRICT-only auto-send). Returns an inert outcome — no matches,
+ * classify step (category override / auto-archive), by the route step's final
+ * safety gate (RESTRICT-only auto-send), and, behind `earlyRuleArchive`, by the
+ * security scan's early archive (`isPreClassify`, L4). Returns an inert outcome — no matches,
  * no restriction — when the feature flag is off or the message is gone, so a
  * missing rule set degrades to today's non-rule behaviour.
  */
 export const evaluateForMessage = internalQuery({
-	args: { inboundMessageId: v.id('inboundMessages') },
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		// L4 (ADR-0073, `earlyRuleArchive`): before classification only the rules
+		// with no category facet are evaluated, and with no category, so a
+		// classification left on the row by an earlier run cannot match.
+		isPreClassify: v.optional(v.boolean()),
+	},
 	handler: async (ctx, args): Promise<HandlingRuleOutcome> => {
 		const inert: HandlingRuleOutcome = {
 			matchedInstructions: [],
@@ -164,10 +172,11 @@ export const evaluateForMessage = internalQuery({
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message) return inert;
 
-		const rules = await ctx.db
+		const enabled = (await ctx.db
 			.query('handlingRules')
 			.withIndex('by_enabled', (q) => q.eq('isEnabled', true))
-			.take(MAX_HANDLING_RULES);
+			.take(MAX_HANDLING_RULES)) as HandlingRuleLike[];
+		const rules = args.isPreClassify === true ? enabled.filter(isPreClassifyRule) : enabled;
 		if (rules.length === 0) return inert;
 
 		// A query cannot read a part held in storage; a large message is matched
@@ -176,11 +185,11 @@ export const evaluateForMessage = internalQuery({
 		// Bounded so a huge HTML body can't blow up matching.
 		const body =
 			bodyText ?? (bodyHtml ? htmlToPlainText(bodyHtml.slice(0, 100_000)) : (excerpt ?? ''));
-		return evaluateHandlingRules(rules as HandlingRuleLike[], {
+		return evaluateHandlingRules(rules, {
 			from: message.from ?? '',
 			subject: message.subject ?? '',
 			body,
-			category: message.classification?.category,
+			category: args.isPreClassify === true ? undefined : message.classification?.category,
 		});
 	},
 });

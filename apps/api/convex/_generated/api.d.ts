@@ -161,6 +161,8 @@ import type * as agent_steps_route_autoSendGates from '../agent/steps/route/auto
 import type * as agent_steps_route_index from '../agent/steps/route/index.js';
 import type * as agent_steps_route_pluginAutoSendGates from '../agent/steps/route/pluginAutoSendGates.js';
 import type * as agent_steps_security_scan_activeFormatting from '../agent/steps/security_scan/activeFormatting.js';
+import type * as agent_steps_security_scan_disposition from '../agent/steps/security_scan/disposition.js';
+import type * as agent_steps_security_scan_guard from '../agent/steps/security_scan/guard.js';
 import type * as agent_steps_security_scan_hiddenMarkup from '../agent/steps/security_scan/hiddenMarkup.js';
 import type * as agent_steps_security_scan_hiddenStyle from '../agent/steps/security_scan/hiddenStyle.js';
 import type * as agent_steps_security_scan_htmlElements from '../agent/steps/security_scan/htmlElements.js';
@@ -820,6 +822,7 @@ import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_messageBackfill from '../knowledge/messageBackfill.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
+import type * as knowledge_vectorCorpus from '../knowledge/vectorCorpus.js';
 import type * as knowledge_visibility from '../knowledge/visibility.js';
 import type * as lib_readBody from '../lib/readBody.js';
 import type * as lib_adminRequests from '../lib/adminRequests.js';
@@ -1784,6 +1787,8 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/route/index': typeof agent_steps_route_index;
 	'agent/steps/route/pluginAutoSendGates': typeof agent_steps_route_pluginAutoSendGates;
 	'agent/steps/security_scan/activeFormatting': typeof agent_steps_security_scan_activeFormatting;
+	'agent/steps/security_scan/disposition': typeof agent_steps_security_scan_disposition;
+	'agent/steps/security_scan/guard': typeof agent_steps_security_scan_guard;
 	'agent/steps/security_scan/hiddenMarkup': typeof agent_steps_security_scan_hiddenMarkup;
 	'agent/steps/security_scan/hiddenStyle': typeof agent_steps_security_scan_hiddenStyle;
 	'agent/steps/security_scan/htmlElements': typeof agent_steps_security_scan_htmlElements;
@@ -2443,6 +2448,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/messageBackfill': typeof knowledge_messageBackfill;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
+	'knowledge/vectorCorpus': typeof knowledge_vectorCorpus;
 	'knowledge/visibility': typeof knowledge_visibility;
 	'lib/readBody': typeof lib_readBody;
 	'lib/adminRequests': typeof lib_adminRequests;

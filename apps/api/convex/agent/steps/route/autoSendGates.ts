@@ -6,6 +6,7 @@ import { detectSecretLeak } from '../../../lib/secretLeakScan';
 import { isWithinWorkingHours } from '../../../lib/workingHours';
 import { deriveAuthenticatedRecipient } from '../../referenceMonitor';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
+import { guardRequirement } from '../../../lib/aiRouting/guardRecord';
 
 export type AutoSendGateDecision =
 	| { readonly safe: true }
@@ -107,11 +108,18 @@ const complaintOrUrgentGate: CoreAutoSendGate = messageGate('complaint_or_urgent
 		: safe();
 });
 
-const inboundGuardGate: CoreAutoSendGate = messageGate('inbound_guard', (message) =>
-	message.securityFlags?.guardUnavailable
-		? unsafe('Inbound injection guard was unavailable; not auto-sending — routing to human review.')
-		: safe()
-);
+// D13 (ADR-0073): a scan that skipped the model guard (`guardNotRun`) has no
+// semantic injection verdict, so it is held exactly like a guard that failed.
+const inboundGuardGate: CoreAutoSendGate = messageGate('inbound_guard', (message) => {
+	if (message.securityFlags?.guardUnavailable) {
+		return unsafe(
+			'Inbound injection guard was unavailable; not auto-sending — routing to human review.'
+		);
+	}
+	return guardRequirement(message.securityFlags) === 'guard_not_run'
+		? unsafe('Inbound injection guard has not run; not auto-sending — routing to human review.')
+		: safe();
+});
 
 const recipientLockGate: CoreAutoSendGate = messageGate('recipient_lock', (message) =>
 	deriveAuthenticatedRecipient(message.from ?? '')

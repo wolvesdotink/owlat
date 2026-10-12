@@ -72,6 +72,8 @@ function makeCtx(reads: Array<Read | 'throw'>, opts: { canRun?: boolean } = {}) 
 			getThreadMessages: [],
 			getOpenCommitments: [],
 			isGraphRetrievalEnabled: false,
+			// knowledge/vectorCorpus: no table holds a vector, so no query embedding.
+			hasQueryableVectors: false,
 			briefingActions: () => {
 				const read = reads[Math.min(readIndex++, reads.length - 1)];
 				if (read === undefined) throw new Error('no read fixture');
