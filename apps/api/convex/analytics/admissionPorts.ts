@@ -116,6 +116,12 @@ export function dispatchAdmissionPort(
 		readonly budgetClass?: BudgetClass;
 		readonly priority?: AdmissionPriority;
 		readonly root?: LlmRootContext;
+		/**
+		 * The plane the call's rows are written on, when the caller chose one
+		 * (a decision bundle on its language rung): the hold, its caps and the
+		 * rows then share it (Sol r7 F1). Absent: the dispatch's own plane.
+		 */
+		readonly plane?: LlmUsagePlane;
 	},
 	task: AiTaskName | undefined,
 	deadlineAt: number | undefined
@@ -132,7 +138,7 @@ export function dispatchAdmissionPort(
 			if (estimate.microusd <= 0) return null;
 			return reserveHold(ctx, {
 				task,
-				plane: estimate.plane,
+				plane: target.plane ?? estimate.plane,
 				budgetClass,
 				priority: target.priority ?? policy.priority,
 				root: target.root,

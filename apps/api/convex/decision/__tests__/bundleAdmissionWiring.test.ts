@@ -38,11 +38,17 @@ import { meterLlmCall } from '../../analytics/meteredSpend';
 import { runDecision } from '../../lib/decision/dispatch';
 import { noul } from '../../lib/decision/questions';
 import { admitBundle } from '../bundleAdmission';
+import { insertLlmUsage } from '../../analytics/ledgerInsert';
 
 type T = ReturnType<typeof newHarness>;
 
 const model = stampModelEndpoint(
 	{ modelId: 'gpt-4o', specificationVersion: 'v2' } as never,
+	'openai-native'
+);
+/** A fast-tier model whose worst-case hold fits the day's shadow allowance. */
+const fastModel = stampModelEndpoint(
+	{ modelId: 'gpt-4o-mini', specificationVersion: 'v2' } as never,
 	'openai-native'
 );
 
@@ -84,13 +90,18 @@ async function setup(dailyUsd: string) {
 	return { t, ...actionCtxOver(t) };
 }
 
-const request = (subjectKey: string, mode: 'shadow' | 'advisory') => ({
+const request = (
+	subjectKey: string,
+	mode: 'shadow' | 'advisory',
+	plane: 'decision' | 'language' = 'decision'
+) => ({
 	task: 'mail.triage' as const,
 	mode,
 	subjectKey,
 	feature: 'decision_triage',
 	root: { rootRequestId: `team:${subjectKey}` },
 	policyVersion: 3,
+	plane,
 });
 
 beforeEach(() => {
@@ -124,7 +135,12 @@ describe('admitBundle, wired to admission', () => {
 		sdk.typesafe.mockImplementation(async () => {
 			const holds = await t.run((c) => c.db.query('llmReservations').collect());
 			expect(holds).toEqual([
-				expect.objectContaining({ status: 'held', budgetClass: 'shadow', priority: 'background' }),
+				expect.objectContaining({
+					status: 'held',
+					budgetClass: 'shadow',
+					priority: 'background',
+					plane: 'decision',
+				}),
 			]);
 			return {
 				answers: { isWork: { kind: 'noul', probability: 0.9 } },
@@ -151,6 +167,62 @@ describe('admitBundle, wired to admission', () => {
 			budgetClass: 'shadow',
 			plane: 'decision',
 		});
+		const [hold] = await t.run((c) => c.db.query('llmReservations').collect());
+		expect(hold).toMatchObject({ plane: 'decision' });
+	});
+
+	it("holds and records a language-rung call on the language plane, whatever the task's catalog plane (Sol r7 F1)", async () => {
+		const { t, ctx } = await setup('10');
+		await triageShadowPolicy(t);
+		await earlierTraffic(t);
+		// $2 of decision spend: the decision plane's 20% cap of a $10 ceiling is used up.
+		await t.run((c) =>
+			insertLlmUsage(
+				c,
+				'decision_triage',
+				{ promptTokens: 800_000, completionTokens: 0, totalTokens: 800_000 },
+				'gpt-4o',
+				undefined,
+				{ plane: 'decision' }
+			)
+		);
+		const key = sampledKey();
+		const admitted = await admitBundle(ctx, request(key, 'shadow', 'language'));
+		if (!admitted.isAdmitted) throw new Error(`refused: ${admitted.why}`);
+		expect(admitted.target).toMatchObject({ plane: 'language', budgetClass: 'shadow' });
+
+		sdk.generateObject.mockImplementation(async () => {
+			const holds = await t.run((c) => c.db.query('llmReservations').collect());
+			expect(holds).toEqual([expect.objectContaining({ status: 'held', plane: 'language' })]);
+			return {
+				object: { triage: 'needs_work' },
+				usage: { inputTokens: 100, outputTokens: 5, totalTokens: 105 },
+				finishReason: 'stop',
+				response: { modelId: 'gpt-4o-mini' },
+			};
+		});
+		// As the runner's language rung meters it (`decision/bundleRunner.ts` askLanguageRung).
+		await meterLlmCall(
+			ctx,
+			{ ...admitted.target, task: 'mail.triage', plane: 'language' },
+			(meter) =>
+				runLlmObject({
+					meter,
+					model: fastModel,
+					schema: z.object({ triage: z.string() }),
+					prompt: 'Is this work?',
+				})
+		);
+		expect(sdk.generateObject).toHaveBeenCalledTimes(1);
+		const rows = await t.run((c) => c.db.query('llmUsageEvents').collect());
+		expect(rows.find((r) => r.feature === 'decision_triage' && r.reservationId)).toMatchObject({
+			plane: 'language',
+			budgetClass: 'shadow',
+		});
+
+		// The decision rung is still bounded by its own plane's cap.
+		const onDecision = await admitBundle(ctx, request(key, 'shadow', 'decision'));
+		expect(onDecision).toEqual({ isAdmitted: false, why: 'no_allowance' });
 	});
 
 	it('refuses a shadow call outside the counted quota, with no hold', async () => {
@@ -174,7 +246,7 @@ describe('admitBundle, wired to admission', () => {
 		it('on the language rung', async () => {
 			// $0.0001 a day: the gate-sized probe fits, a real request's hold does not.
 			const { t, ctx } = await setup('0.0001');
-			const admitted = await admitBundle(ctx, request('m-lang', 'advisory'));
+			const admitted = await admitBundle(ctx, request('m-lang', 'advisory', 'language'));
 			if (!admitted.isAdmitted) throw new Error('advisory admission refused up front');
 			expect(admitted.target).toMatchObject({ task: 'mail.triage', priority: 'background' });
 

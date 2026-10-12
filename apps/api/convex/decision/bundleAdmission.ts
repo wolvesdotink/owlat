@@ -30,6 +30,7 @@ import { dispatchAdmissionPort } from '../analytics/admissionPorts';
 import { decisionUsageRecorder } from '../lib/decision/ports';
 import type { RunDecisionOptions } from '../lib/decision/contract';
 import type { LlmRootContext } from '../lib/llm/requestMeter';
+import type { LlmUsagePlane } from '../lib/llmUsageTags';
 import type { QuestionSet } from '../lib/decision/questions';
 import type { BundleMode } from '../lib/decision/routing';
 import type { DecisionBundleTask } from '../lib/decision/bundles';
@@ -61,6 +62,11 @@ export interface BundleAdmissionRequest {
 	readonly feature: string;
 	readonly root: LlmRootContext;
 	readonly policyVersion: number;
+	/**
+	 * The selected rung's plane: `decision` on the decision rung, `language` on
+	 * the language rung. Headroom, holds, caps and ledger rows all use it (Sol r7 F1).
+	 */
+	readonly plane: LlmUsagePlane;
 }
 
 export async function admitBundle(
@@ -74,6 +80,7 @@ export async function admitBundle(
 			subjectKey: request.subjectKey,
 			feature: request.feature,
 			root: request.root,
+			plane: request.plane,
 		});
 		if (!shadow.isAdmitted) return { isAdmitted: false, why: shadow.why };
 		return {
@@ -86,7 +93,7 @@ export async function admitBundle(
 		};
 	}
 	// Advisory: an ordinary hold, at background priority, on the task's own class.
-	const shape = { root: request.root, priority: 'background' as const };
+	const shape = { root: request.root, priority: 'background' as const, plane: request.plane };
 	const admission = dispatchAdmissionPort(ctx, shape, request.task, request.root.deadlineAt);
 	return {
 		isAdmitted: true,

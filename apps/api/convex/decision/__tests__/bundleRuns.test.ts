@@ -212,6 +212,8 @@ describe('the triage shadow (D11)', () => {
 				subjectKey: inboundMessageId,
 				root: { rootRequestId: `team:${inboundMessageId}` },
 				policyVersion: 7,
+				// The selected rung's plane (Sol r7 F1).
+				plane: 'language',
 			})
 		);
 		const [artifact] = await artifacts(t);
@@ -318,6 +320,10 @@ describe('the message bundle', () => {
 
 		expect(mocks.runLlmObject).not.toHaveBeenCalled();
 		expect(mocks.runDecision).toHaveBeenCalledTimes(1);
+		expect(mocks.admitBundle).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ task: 'mail.category', plane: 'decision' })
+		);
 		const options = mocks.runDecision.mock.calls[0]![0] as Record<string, unknown>;
 		expect(options).not.toHaveProperty('fallbackTo');
 		expect(options).toMatchObject({

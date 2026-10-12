@@ -22,6 +22,7 @@ import type { AiTaskName } from '@owlat/shared/aiRouting';
 import { taskPolicy } from '../lib/llm/taskPolicy';
 import type { AdmissionPort } from '../lib/llm/admissionPort';
 import type { LlmRootContext } from '../lib/llm/requestMeter';
+import type { LlmUsagePlane } from '../lib/llmUsageTags';
 import { shadowSample } from '../lib/aiRouting/shadowSampling';
 import { dispatchAdmissionPort } from './admissionPorts';
 import type { LlmSpendTarget } from './meteredSpend';
@@ -45,6 +46,12 @@ export async function admitShadow(
 		readonly subjectKey: string;
 		readonly feature: string;
 		readonly root?: LlmRootContext;
+		/**
+		 * The plane the judgment runs on (the decision bundle's selected rung):
+		 * its headroom, its holds and its rows all use it (Sol r7 F1). Absent:
+		 * the task's catalog plane.
+		 */
+		readonly plane?: LlmUsagePlane;
 	}
 ): Promise<ShadowAdmission> {
 	const policy = await ctx.runQuery(internal.aiRouting.policy.getResolved, {});
@@ -58,8 +65,9 @@ export async function admitShadow(
 		isCandidate: sample.isSampled,
 	});
 	if (!slot.isAdmitted) return { isAdmitted: false, why: 'not_sampled' };
+	const plane = args.plane ?? taskPolicy(args.task).plane;
 	const headroom = await ctx.runQuery(internal.aiRouting.admission.headroom, {
-		plane: taskPolicy(args.task).plane,
+		plane,
 		budgetClass: 'shadow',
 		priority: 'background',
 	});
@@ -67,6 +75,7 @@ export async function admitShadow(
 	const shape = {
 		budgetClass: 'shadow' as const,
 		priority: 'background' as const,
+		plane,
 		...(args.root ? { root: args.root } : {}),
 	};
 	return {
