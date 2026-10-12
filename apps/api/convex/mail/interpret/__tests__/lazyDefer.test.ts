@@ -29,7 +29,7 @@ import {
 	type MailboxSeed,
 	type SeededFolderRole,
 } from '../../__tests__/helpers.testlib';
-import { STALE_MS, settleSource } from '../outstanding';
+import { STALE_MS, markOutstanding, settleSource } from '../outstanding';
 import { briefCompleteness } from '../purgeRepairs';
 import { historyGapOf } from '../brief';
 import { enqueueHistoryPage } from '../backfillSources';
@@ -259,26 +259,10 @@ describe('D10: every other consumer keeps the eager run', () => {
 		).toBe(false);
 	});
 
-	it('a thread with open items, or with a response plan', async () => {
-		const t = convexTest(schema, modules);
-		const mailboxId = await seed(t);
-		const first = await deliverToArchive(t, mailboxId, '<o1@shop.test>');
-		await t.run(async (ctx) => {
-			const brief = await ctx.db
-				.query('threadBriefs')
-				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', first.threadId))
-				.first();
-			await ctx.db.patch(brief!._id, {
-				itemCounts: { us: 1, them: 0, unclear: 0, closed: 0, hidden: 0 },
-			});
-		});
-		const withItems = await deliverToArchive(t, mailboxId, '<o2@shop.test>');
-		expect(withItems.threadId).not.toBe(first.threadId);
-		expect((await state(t, withItems)).snapshot?.isDeferred).toBe(true);
-
-		// Same thread as an item-carrying brief: kept eager.
-		const reply = await t.run(async (ctx) => {
-			const mailbox = (await ctx.db.get(mailboxId))!;
+	/** A reply into `first`'s thread, delivered the same way (synced into Archive). */
+	async function replyTo(t: Test, first: Doc<'mailMessages'>, n: number) {
+		return t.run(async (ctx) => {
+			const mailbox = (await ctx.db.get(first.mailboxId))!;
 			const folder = (await ctx.db.get(first.folderId))!;
 			const id = await insertDeliveredMessage(ctx, {
 				mailbox,
@@ -291,7 +275,7 @@ describe('D10: every other consumer keeps the eager run', () => {
 				bcc: [],
 				subject: 'Re: Your order shipped',
 				textBodyInline: 'Update: it arrives Saturday instead.',
-				messageId: '<o3@shop.test>',
+				messageId: `<r${n}@shop.test>`,
 				inReplyTo: '<o1@shop.test>',
 				receivedAt: Date.now(),
 				attachments: [],
@@ -300,10 +284,113 @@ describe('D10: every other consumer keeps the eager run', () => {
 			await runPostInsertInboundEffects(ctx, { messageId: id, folder, origin: 'sync' });
 			return (await ctx.db.get(id))!;
 		});
+	}
+
+	/** One item on the thread, with this status, last changed `ageMs` ago. */
+	async function seedItem(
+		t: Test,
+		message: Doc<'mailMessages'>,
+		status: 'open' | 'done' | 'declined',
+		ageMs = 0
+	) {
+		await t.run(async (ctx) => {
+			const at = Date.now() - ageMs;
+			await ctx.db.insert('threadItems', {
+				threadKind: 'mail',
+				mailThreadId: message.threadId,
+				mailboxId: message.mailboxId,
+				revision: 1,
+				intent: 'request',
+				facets: ['payment'],
+				assertion: 'atrest:1:assertion',
+				display: { en: 'atrest:1:en', de: 'atrest:1:de' },
+				requester: { email: 'orders@shop.test', isUs: false },
+				responsible: { isUs: true },
+				responsibility: 'us',
+				status,
+				disposition: 'unanswered',
+				evidence: [
+					{
+						source: { kind: 'mail', id: message._id },
+						segmentId: 's0',
+						start: 0,
+						end: 4,
+						contentRevision: 'rev1',
+					},
+				],
+				verify: 'na',
+				askedAt: at,
+				createdAt: at,
+				updatedAt: at,
+			});
+		});
+	}
+
+	const DAY = 24 * 60 * 60 * 1000;
+
+	it('a thread with an open item', async () => {
+		const t = convexTest(schema, modules);
+		const first = await deliverToArchive(t, await seed(t), '<o1@shop.test>');
+		await seedItem(t, first, 'open');
+		const reply = await replyTo(t, first, 1);
 		expect(reply.threadId).toBe(first.threadId);
 		const replyState = await state(t, reply);
 		expect(replyState.snapshot?.isDeferred).toBeUndefined();
 		expect(replyState.runs).toContainEqual({ source: { kind: 'mail', id: reply._id } });
+	});
+
+	it('a thread with an item closed within the lookback, which the message could reopen (Sol r1 F1)', async () => {
+		for (const status of ['done', 'declined'] as const) {
+			const t = convexTest(schema, modules);
+			const first = await deliverToArchive(t, await seed(t), '<o1@shop.test>');
+			await seedItem(t, first, status, 2 * DAY);
+			const reply = await replyTo(t, first, 1);
+			const replyState = await state(t, reply);
+			expect(replyState.snapshot?.isDeferred, status).toBeUndefined();
+			expect(replyState.runs).toContainEqual({ source: { kind: 'mail', id: reply._id } });
+		}
+	});
+
+	it('an item closed before the lookback cannot be moved, so the reply still defers', async () => {
+		const t = convexTest(schema, modules);
+		const first = await deliverToArchive(t, await seed(t), '<o1@shop.test>');
+		await seedItem(t, first, 'done', 40 * DAY);
+		const reply = await replyTo(t, first, 1);
+		expect((await state(t, reply)).snapshot?.isDeferred).toBe(true);
+	});
+
+	it('another source of the thread still outstanding (Sol r1 F2)', async () => {
+		const t = convexTest(schema, modules);
+		const first = await deliverToArchive(t, await seed(t), '<o1@shop.test>');
+		// The first message's run is in flight (enqueued eagerly, e.g. a reply
+		// candidate's): it may be creating the item the next message updates.
+		await t.run((ctx) => markOutstanding(ctx, `mail:${first._id}`));
+		const reply = await replyTo(t, first, 1);
+		const replyState = await state(t, reply);
+		expect(replyState.snapshot?.isDeferred).toBeUndefined();
+		expect(replyState.runs).toContainEqual({ source: { kind: 'mail', id: reply._id } });
+
+		// Once both have an outcome, a later display-only message defers again.
+		await t.run(async (ctx) => {
+			await settleSource(ctx, `mail:${first._id}`, 'recorded');
+			await settleSource(ctx, `mail:${reply._id}`, 'recorded');
+		});
+		const later = await replyTo(t, first, 2);
+		expect((await state(t, later)).snapshot?.isDeferred).toBe(true);
+	});
+
+	it('a history walk still admitting pages', async () => {
+		const t = convexTest(schema, modules);
+		const first = await deliverToArchive(t, await seed(t), '<o1@shop.test>');
+		await t.run(async (ctx) => {
+			const brief = await ctx.db
+				.query('threadBriefs')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', first.threadId))
+				.first();
+			await ctx.db.patch(brief!._id, { historyState: 'pending' });
+		});
+		const reply = await replyTo(t, first, 1);
+		expect((await state(t, reply)).snapshot?.isDeferred).toBeUndefined();
 	});
 
 	it('briefCompleteness counts deferred sources like outstanding ones', () => {

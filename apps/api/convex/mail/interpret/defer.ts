@@ -11,8 +11,12 @@
  *   - a personal mailbox (brief mode; a shared mailbox runs in actions mode);
  *   - not a reply candidate: the thread carries no needs-reply flag and no
  *     pending classification;
- *   - no tracked items a new message could move (open, unclear or proposed
- *     items, or wording matches still being scanned);
+ *   - no item a new message could move: none open (unclear and proposed
+ *     included) and none closed within the lookback, since interpretation
+ *     may reopen, complete or supersede those;
+ *   - nothing else in flight in the thread: no other outstanding source (an
+ *     earlier run may be creating the item this message updates), no
+ *     history walk still admitting pages, no wording matches scanning;
  *   - no response plan (a draft self-check reads the items);
  *   - eligible on its snapshot. An ineligible source is still run now: its
  *     run records a skip without a model call.
@@ -36,6 +40,7 @@ import { loadBriefRow, markBriefPending } from './briefRow';
 import { deferSource, markOutstanding, runOf } from './outstanding';
 import { loadInterpretSource } from './sources';
 import { RUN_SPACING_MS } from './backfillSources';
+import { CLOSED_STATUSES, recentlyClosedItems, threadItemsWithStatus } from './load';
 import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
@@ -46,11 +51,16 @@ const DISPLAY_ONLY: InterpretDeferReason = 'display_only';
 /** Deferred sources one thread open starts at most; the rest wait for the next ask. */
 export const RESUME_BATCH = 25;
 
-/** Items a new message could still create work on: open ones and proposals. */
-function trackedItemCount(brief: Doc<'threadBriefs'> | null): number {
-	const counts = brief?.itemCounts;
-	if (!counts) return 0;
-	return counts.us + counts.them + counts.unclear + (counts.proposal ?? 0);
+/**
+ * Whether the thread holds an item this message could move (D10 keeps
+ * transitions eager): any open item (unclear and proposed ones included) or
+ * one closed within the lookback, which is exactly the set interpretation
+ * reads and may reopen, complete or supersede (`load.ts`
+ * `loadPromptItemCandidates`). Bounded: one row per status.
+ */
+async function hasTransitionTargets(ctx: ReadCtx, ref: ThreadRef, now: number): Promise<boolean> {
+	if ((await threadItemsWithStatus(ctx, ref, 'open', 1)).length > 0) return true;
+	return (await recentlyClosedItems(ctx, ref, CLOSED_STATUSES, now, 1)).rows.length > 0;
 }
 
 /**
@@ -69,16 +79,26 @@ export async function isDisplayOnlyInterpretation(
 	const mailbox = await ctx.db.get(thread.mailboxId);
 	if (!mailbox || mailboxScope(mailbox) === 'shared') return false;
 	const ref: ThreadRef = { kind: 'mail', id: thread._id };
+	const snapshot = await loadInterpretSource(ctx, { kind: 'mail', id: message._id });
+	if (!snapshot) return false;
+	if (!isInterpretationEligible(snapshot.eligibility, { direction: 'inbound' }).isEligible) {
+		return false;
+	}
 	const brief = await loadBriefRow(ctx, ref);
-	if (trackedItemCount(brief) > 0 || (brief?.pendingMatchRuns ?? 0) > 0) return false;
+	// Work still in flight in this thread: another source's run (it may be
+	// creating the item this message updates; nothing would resume this one
+	// when that item appears), a history walk still admitting pages, or
+	// wording matches still scanning. The source itself is outstanding when
+	// delivery captured it, so it is not counted.
+	const otherOutstanding = (brief?.pendingSources ?? 0) - (snapshot.isOutstanding ? 1 : 0);
+	if (otherOutstanding > 0 || brief?.historyState === 'pending') return false;
+	if ((brief?.pendingMatchRuns ?? 0) > 0) return false;
+	if (await hasTransitionTargets(ctx, ref, Date.now())) return false;
 	const plan = await ctx.db
 		.query('draftResponsePlans')
 		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', thread._id))
 		.first();
-	if (plan) return false;
-	const snapshot = await loadInterpretSource(ctx, { kind: 'mail', id: message._id });
-	if (!snapshot) return false;
-	return isInterpretationEligible(snapshot.eligibility, { direction: 'inbound' }).isEligible;
+	return plan === null;
 }
 
 /**
