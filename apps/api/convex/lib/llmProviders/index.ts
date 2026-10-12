@@ -45,7 +45,6 @@ export {
 	LANGUAGE_PROVIDER_KINDS,
 	classifyEnvLanguageEndpoint,
 	classifyStoredLanguageEndpoint,
-	endpointOrigin,
 } from './types';
 
 // ─── Language registry ─────────────────────────────────────────────────────

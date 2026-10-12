@@ -17,6 +17,7 @@ import type * as lib_llm_callShape from '../lib/llm/callShape.js';
 import type * as lib_llm_dispatchStream from '../lib/llm/dispatchStream.js';
 import type * as lib_llm_embed from '../lib/llm/embed.js';
 import type * as lib_llm_endpointLocality from '../lib/llm/endpointLocality.js';
+import type * as lib_llm_languageIdentity from '../lib/llm/languageIdentity.js';
 import type * as lib_llm_modelEndpoint from '../lib/llm/modelEndpoint.js';
 import type * as lib_llm_modelOutputLimits from '../lib/llm/modelOutputLimits.js';
 import type * as lib_llm_providerUsage from '../lib/llm/providerUsage.js';
@@ -1756,6 +1757,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llm/dispatchStream': typeof lib_llm_dispatchStream;
 	'lib/llm/embed': typeof lib_llm_embed;
 	'lib/llm/endpointLocality': typeof lib_llm_endpointLocality;
+	'lib/llm/languageIdentity': typeof lib_llm_languageIdentity;
 	'lib/llm/modelEndpoint': typeof lib_llm_modelEndpoint;
 	'lib/llm/modelOutputLimits': typeof lib_llm_modelOutputLimits;
 	'lib/llm/providerUsage': typeof lib_llm_providerUsage;

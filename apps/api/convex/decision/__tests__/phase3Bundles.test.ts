@@ -33,7 +33,11 @@ const mocks = vi.hoisted(() => ({
 	admitBundle: vi.fn(),
 	roles: [] as string[],
 	/** The language plane the rung resolves (kind and fast model). */
-	language: { kind: 'openai', modelId: 'gpt-6-luna' },
+	language: { kind: 'openai', modelId: 'gpt-6-luna' } as {
+		kind: string;
+		modelId: string;
+		baseUrl?: string;
+	},
 }));
 
 vi.mock('../../lib/llm/dispatch', async () => {
@@ -51,11 +55,17 @@ vi.mock('../../lib/llmProvider', async () => ({
 	}),
 	resolveLanguageModelWithProvenance: vi.fn(async (_ctx: unknown, task: string) => {
 		mocks.roles.push(task);
+		const { languageModelIdentity } = await import('../../lib/llm/languageIdentity');
 		return {
 			model: 'mock-model',
 			modelId: mocks.language.modelId,
 			endpointProvenance: 'openai-native',
-			identity: `${mocks.language.kind}|${mocks.language.modelId}|`,
+			// The resolver's own identity builder, over the plane the test configures.
+			identity: languageModelIdentity(
+				mocks.language.kind,
+				mocks.language.modelId,
+				mocks.language.baseUrl
+			),
 		};
 	}),
 }));
@@ -227,6 +237,25 @@ describe('the necessity judgment through the runner', () => {
 		expect(mocks.runLlmObject).toHaveBeenCalledTimes(2);
 		const [row] = await t.run((ctx) => ctx.db.query('decisionArtifacts').collect());
 		expect(row).toMatchObject({ contextVersion: `language|${next.kind}|${next.modelId}|` });
+	});
+
+	it('re-asks when the base path of the same provider and model changes (Sol r5 F1)', async () => {
+		mocks.language = {
+			kind: 'openaiCompatible',
+			modelId: 'gpt-6-luna',
+			baseUrl: 'https://gateway.example/a/v1',
+		};
+		const t = await setup({ clarifyNecessity: 'enforce' });
+		const id = await seedTeamMessage(t);
+		const routed = await routing(t);
+		await necessityRun(t, routed, id);
+		// Unchanged endpoint: the stored answer is reused.
+		expect(await necessityRun(t, routed, id)).toMatchObject({ hasRun: false, why: 'settled' });
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
+
+		mocks.language = { ...mocks.language, baseUrl: 'https://gateway.example/b/v1' };
+		expect(await necessityRun(t, routed, id)).toMatchObject({ hasRun: true, status: 'complete' });
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(2);
 	});
 
 	it('re-asks when the stored answer came from another plane (Sol r3 F2)', async () => {

@@ -219,6 +219,25 @@ describe('llmProvider', () => {
 			});
 		});
 
+		it('gives the resolved model an identity that tells base paths apart, and no secret (Sol r5 F1)', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'test-key');
+			vi.stubEnv('LLM_MODEL_FAST', 'gpt-4o-mini');
+			const identityAt = async (baseUrl: string) => {
+				vi.stubEnv('LLM_BASE_URL', baseUrl);
+				vi.resetModules();
+				const { resolveLanguageModelWithProvenance } = await import('../llmProvider');
+				return (await resolveLanguageModelWithProvenance(makeCtx(null).ctx, 'mail.clarify'))
+					.identity;
+			};
+			const a = await identityAt('https://gateway.example/a/v1');
+			const b = await identityAt('https://gateway.example/b/v1');
+			expect(a).not.toBe(b);
+			expect(await identityAt('https://gateway.example/a/v1')).toBe(a);
+			expect(a).toMatch(/^openai\|gpt-4o-mini\|https:\/\/gateway\.example\/~[0-9a-f]{32}$/);
+			const withKey = await identityAt('https://user:s3cret@gateway.example/a/v1?key=s3cret');
+			expect(withKey).not.toContain('s3cret');
+		});
+
 		it.each([
 			['openrouter', 'openai/gpt-6-luna', 'openrouter'],
 			['ollama', 'gpt-4o-mini', 'custom'],
