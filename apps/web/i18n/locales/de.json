@@ -7901,7 +7901,7 @@
 							"writing": "Entwürfe und Hintergrundarbeit"
 						},
 						"knowledgeEntryCap": {
-							"help": "Höchstens so viele Einträge darf eine Nachricht zum Wissen hinzufügen. Leer heißt: keine Grenze.",
+							"help": "Höchstens so viele Wissenseinträge darf eine E-Mail hinzufügen; die sichersten werden behalten. Dateien sind nicht begrenzt. Leer heißt: keine Grenze.",
 							"label": "Wissenseinträge pro Nachricht"
 						},
 						"loading": "KI-Routing wird geladen",
@@ -7915,7 +7915,7 @@
 							"usd": "Gib einen Betrag über 0 ein oder lass das Feld leer."
 						},
 						"promptCache": {
-							"help": "Markiert den gleichbleibenden Teil des Auswertungs-Prompts für den Cache des Anbieters. Nur Anthropic-Modelle nutzen das, andere Anbieter ignorieren es.",
+							"help": "Markiert den gleichbleibenden Teil des Auswertungs-Prompts für den Cache des Anbieters. Nur direkt angebundenes Anthropic nutzt das, OpenRouter und andere Anbieter ignorieren es.",
 							"label": "Prompt-Caching für die Auswertung"
 						},
 						"save": "Routing speichern",
@@ -7926,7 +7926,7 @@
 							"allowance": "Schattenläufe dürfen bis zu {amount} pro Tag ausgeben.",
 							"allowanceBlocked": "Leg eine Ausgabengrenze fest. Ohne Tagesobergrenze brauchen Schattenläufe eine.",
 							"allowanceIdle": "Kein Schalter ist im Schattenmodus, deshalb geben Schattenläufe nichts aus.",
-							"capHelp": "Pflicht, wenn keine Tagesobergrenze eingestellt ist.",
+							"capHelp": "Pflicht für Schattenläufe, wenn keine Tagesobergrenze eingestellt ist.",
 							"capLabel": "Ausgabengrenze (USD pro Tag)",
 							"ceilingHelp": "Anteil an der Tagesobergrenze, höchstens {max} %.",
 							"ceilingLabel": "Tagesobergrenze (%)",
@@ -7936,11 +7936,11 @@
 						},
 						"switches": {
 							"attachmentGates": {
-								"help": "Dateien aus Spam, Junk oder Newslettern kommen nicht in die Dateibibliothek. Die Nachricht zeigt, warum ihre Dateien übersprungen wurden.",
+								"help": "Dateien aus Mails im Spam- oder Junk-Ordner, aus Mails, die der Mailserver als Spam eingestuft hat, und aus Newslettern oder anderen automatischen Mails kommen nicht in die Dateibibliothek. Die Nachricht zeigt, warum ihre Dateien übersprungen wurden.",
 								"label": "Anhänge aus Spam und automatischen Mails überspringen"
 							},
 							"batchApi": {
-								"help": "Hintergrundarbeit wie das Auslesen von Wissen läuft über die günstigere Batch-API des Anbieters. Die Ergebnisse kommen später.",
+								"help": "Hintergrundarbeit wie das Auslesen von Wissen, Dateizusammenfassungen und das Nachholen älterer Mails läuft über die günstigere Batch-API des Anbieters, wo es eine gibt. Die Ergebnisse kommen später.",
 								"label": "Stapelverarbeitung beim Anbieter"
 							},
 							"categoryDisplayBundle": {
@@ -7952,11 +7952,11 @@
 								"label": "Schnelles Modell zuerst für geprüfte Entwürfe"
 							},
 							"claimVerification": {
-								"help": "Prüft die Fakten in einem Entwurf mit kurzen Entscheidungsfragen statt mit einer vollen Prüfung durch das Sprachmodell.",
-								"label": "Aussagen im Entwurf mit Entscheidungsfragen prüfen"
+								"help": "Wenn eine Nachricht für den Überblick gelesen wird, werden die daraus entnommenen Aussagen mit kurzen Entscheidungsfragen geprüft statt durch das Sprachmodell.",
+								"label": "Aussagen mit Entscheidungsfragen prüfen"
 							},
 							"clarifyNecessity": {
-								"help": "Eine Einschätzung entscheidet, ob die KI vor dem Entwurf bei dir nachfragen muss. Aus behält das heutige Verfahren.",
+								"help": "Eine Einschätzung entscheidet zuerst, ob die KI vor dem Entwurf bei dir nachfragen muss; Probeentwürfe werden nur verglichen, wenn sie es nicht sagen kann. Aus behält den heutigen Vergleich von Probeentwürfen.",
 								"label": "Nur nachfragen, wenn es nötig ist"
 							},
 							"dispositionAdvisoryBundle": {
@@ -7964,21 +7964,21 @@
 								"label": "Antwortvorschläge vom Entscheidungsanbieter"
 							},
 							"earlyRuleArchive": {
-								"help": "Regeln, die keine Kategorie brauchen, laufen, bevor die KI die Nachricht liest und sortiert. Was sie archivieren, kostet keinen KI-Aufruf.",
+								"help": "Regeln, die keine Kategorie brauchen, werden direkt nach den Sicherheitsprüfungen ausgewertet. Was eine solche Regel archiviert, überspringt die Wissenssuche und das Sortieren; die Sicherheitsprüfungen, auch die KI-Prüfung, laufen trotzdem.",
 								"label": "Vor dem Sortieren per Regel archivieren"
 							},
 							"mtaVerdictTerminal": {
-								"help": "Markiert der Mailserver eine Nachricht im Team-Postfach als Spam, wird sie archiviert, ohne dass der Agent läuft. Das Urteil wird in jedem Fall gespeichert.",
+								"help": "Meldet dein Mailserver eine Nachricht im Team-Postfach als Spam oder zur Quarantäne, wird sie als Spam archiviert, ohne dass der Agent läuft, und die übersprungene KI-Sicherheitsprüfung wird festgehalten. Das Urteil wird in jedem Fall gespeichert. Ohne Urteil vom Mailserver hat das keine Wirkung.",
 								"label": "Beim Spam-Urteil des Mailservers stoppen"
 							},
 							"triageBundle": {
-								"help": "Eine kurze Entscheidungsanfrage pro Nachricht im Team-Postfach, vor der Wissenssuche. Nur im Schattenmodus: Sie speichert ihre Antwort und ändert nichts.",
+								"help": "Im Schattenmodus bekommt eine Stichprobe der Nachrichten im Team-Postfach vor der Wissenssuche eine kurze Entscheidungsanfrage, innerhalb der Schattengrenzen unten. Sie speichert ihre Antwort und ändert nichts.",
 								"label": "Vorsortierung vor der Wissenssuche"
 							}
 						},
 						"title": "KI-Routing",
 						"triage": {
-							"help": "Anteil an der Tages- und Monatsobergrenze, der für die Sicherheitsprüfung und das Sortieren reserviert bleibt. So laufen beide weiter, wenn andere KI-Arbeit ihren Anteil verbraucht hat.",
+							"help": "Anteil an der Tages- und Monatsobergrenze, der für die KI-Sicherheitsprüfung und das Sortieren zurückgehalten wird. Andere KI-Arbeit kann ihn nicht ausgeben, deshalb laufen beide weiter, bis die Obergrenze selbst erreicht ist.",
 							"label": "Reserve für die Vorsortierung (%)"
 						},
 						"values": {
@@ -7989,7 +7989,7 @@
 							"shadow": "Schatten: nur aufzeichnen"
 						},
 						"verifyClaimCap": {
-							"help": "Höchstens so viele Aussagen prüft die Entwurfsprüfung pro Nachricht. Leer heißt: keine Grenze.",
+							"help": "Höchstens so viele Aussagen einer Nachricht werden beim Lesen geprüft. Leer heißt: keine Grenze.",
 							"label": "Geprüfte Aussagen pro Nachricht"
 						}
 					},

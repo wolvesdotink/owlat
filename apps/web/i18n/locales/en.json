@@ -7901,7 +7901,7 @@
 							"writing": "Drafting and background work"
 						},
 						"knowledgeEntryCap": {
-							"help": "The most entries one message may add to the knowledge base. Empty means no limit.",
+							"help": "The most knowledge entries one email may add; the most confident are kept. Files are not capped. Empty means no limit.",
 							"label": "Knowledge entries per message"
 						},
 						"loading": "Loading the AI routing policy",
@@ -7915,7 +7915,7 @@
 							"usd": "Enter an amount above 0, or leave it empty."
 						},
 						"promptCache": {
-							"help": "Marks the fixed part of the interpretation prompt for the provider's cache. Only Anthropic models use it; other providers ignore it.",
+							"help": "Marks the fixed part of the interpretation prompt for the provider's cache. Only Anthropic connected directly uses it; OpenRouter and other providers ignore it.",
 							"label": "Prompt caching for interpretation"
 						},
 						"save": "Save routing",
@@ -7926,7 +7926,7 @@
 							"allowance": "Shadow runs may spend up to {amount} a day.",
 							"allowanceBlocked": "Set a spending cap. With no daily ceiling, shadow runs need one.",
 							"allowanceIdle": "No switch is in shadow, so shadow runs spend nothing.",
-							"capHelp": "Required when no daily ceiling is set.",
+							"capHelp": "Required for shadow runs when no daily ceiling is set.",
 							"capLabel": "Spending cap (USD per day)",
 							"ceilingHelp": "Share of the daily ceiling, at most {max}%.",
 							"ceilingLabel": "Daily ceiling (%)",
@@ -7936,11 +7936,11 @@
 						},
 						"switches": {
 							"attachmentGates": {
-								"help": "Files in spam, junk or newsletter mail are not read into the file library. The message says why its files were skipped.",
+								"help": "Files in mail from the Spam or Junk folder, mail the mail server judged as spam, and newsletters or other automated mail are not read into the file library. The message says why its files were skipped.",
 								"label": "Skip attachments from spam and automated mail"
 							},
 							"batchApi": {
-								"help": "Background work such as knowledge extraction goes through the provider's cheaper batch API. Results arrive later.",
+								"help": "Background work such as knowledge extraction, file summaries and the backfill of older mail goes through the provider's cheaper batch API, where it offers one. Results arrive later.",
 								"label": "Provider batch processing"
 							},
 							"categoryDisplayBundle": {
@@ -7952,11 +7952,11 @@
 								"label": "Fast model first for reviewed drafts"
 							},
 							"claimVerification": {
-								"help": "Checks the facts a draft states with short decision questions instead of a full review by the language model.",
-								"label": "Check draft claims with decision questions"
+								"help": "When a message is read for its overview, the claims taken from it are checked with short decision questions instead of a review by the language model.",
+								"label": "Check claims with decision questions"
 							},
 							"clarifyNecessity": {
-								"help": "One judgment decides whether the AI has to ask you before it drafts. Off keeps today's way of deciding.",
+								"help": "One judgment first decides whether the AI has to ask you before it drafts; sample drafts are compared only when it cannot tell. Off keeps today's comparison of sample drafts.",
 								"label": "Ask only when a question is needed"
 							},
 							"dispositionAdvisoryBundle": {
@@ -7964,21 +7964,21 @@
 								"label": "Reply suggestions from the decision provider"
 							},
 							"earlyRuleArchive": {
-								"help": "Handling rules that don't depend on a category run before the AI reads and sorts the message, so mail they archive costs no AI call.",
+								"help": "Handling rules that don't depend on a category are checked right after the safety checks. Mail such a rule archives skips the knowledge lookup and sorting calls; the safety checks, the AI check included, still run.",
 								"label": "Archive by rule before sorting"
 							},
 							"mtaVerdictTerminal": {
-								"help": "When the mail server marks a Team inbox message as spam, it is archived without running the agent. The verdict is recorded either way.",
+								"help": "When your mail server reports a Team inbox message as spam or for quarantine, it is archived as spam without running the agent, and the skipped AI safety check is recorded. The verdict is recorded either way. Without a verdict from the mail server this has no effect.",
 								"label": "Stop at the mail server's spam verdict"
 							},
 							"triageBundle": {
-								"help": "One short decision request per Team inbox message, before the knowledge lookup. Shadow only: it records its answer and changes nothing.",
+								"help": "In shadow, a sample of Team inbox messages gets one short decision request before the knowledge lookup, within the shadow limits below. It records its answer and changes nothing.",
 								"label": "Triage before knowledge lookup"
 							}
 						},
 						"title": "AI routing",
 						"triage": {
-							"help": "Share of the daily and monthly ceiling kept for the safety check and sorting, so both keep running after other AI work has used up its share.",
+							"help": "Share of the daily and monthly ceiling held back for the AI safety check and sorting. Other AI work cannot spend it, so these keep running until the ceiling itself is reached.",
 							"label": "Triage allowance (%)"
 						},
 						"values": {
@@ -7989,7 +7989,7 @@
 							"shadow": "Shadow: record only"
 						},
 						"verifyClaimCap": {
-							"help": "The most claims the draft check verifies for one message. Empty means no limit.",
+							"help": "The most claims from one message that are checked when it is read. Empty means no limit.",
 							"label": "Checked claims per message"
 						}
 					},

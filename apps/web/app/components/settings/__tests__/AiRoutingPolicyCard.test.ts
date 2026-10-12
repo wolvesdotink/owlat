@@ -88,7 +88,8 @@ describe('AiRoutingPolicyCard', () => {
 		expect(selects).toHaveLength(ROUTING_SWITCH_KEYS.length);
 		for (const select of selects) expect((select.element as HTMLSelectElement).value).toBe('off');
 		expect(w.text()).toContain('Off (default)');
-		expect(w.text()).toContain('Shadow only: it records its answer and changes nothing.');
+		expect(w.text()).toContain('It records its answer and changes nothing.');
+		expect(w.text()).toContain('the safety checks, the AI check included, still run.');
 		expect(w.text()).toContain('Daily AI spend ceiling: $25.00.');
 		expect(w.get('[data-testid="ai-routing-shadow-allowance"]').text()).toBe(
 			'No switch is in shadow, so shadow runs spend nothing.'
