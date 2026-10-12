@@ -1,8 +1,8 @@
 /**
  * The pipeline hooks (`decision/schedule.ts`): nothing is scheduled while a
  * switch is off (the default), each hook schedules exactly its own action when
- * on, and a failure never escapes into the pipeline. Plus the admission seam's
- * posture until the admission lane is merged: it admits nothing.
+ * on, and a failure never escapes into the pipeline. The admission seam itself
+ * is covered through the real admission in `bundleAdmissionWiring.test.ts`.
  */
 
 import { getFunctionName } from 'convex/server';
@@ -15,7 +15,6 @@ import {
 	scheduleTeamMessageBundle,
 	scheduleTeamTriage,
 } from '../schedule';
-import { admitBundle } from '../bundleAdmission';
 
 const inboundMessageId = 'm1' as Id<'inboundMessages'>;
 const threadId = 't1' as Id<'mailThreads'>;
@@ -110,20 +109,5 @@ describe('pipeline hooks', () => {
 			scheduleTeamMessageBundle(ctx, inboundMessageId, { baseline: {} })
 		).resolves.toBeUndefined();
 		warn.mockRestore();
-	});
-});
-
-describe('the admission seam before the admission lane is merged', () => {
-	it('admits nothing, so no paid bundle call can run unreserved', async () => {
-		await expect(
-			admitBundle({} as ActionCtx, {
-				task: 'mail.triage',
-				mode: 'shadow',
-				subjectKey: inboundMessageId,
-				feature: 'decision_triage',
-				root: { rootRequestId: `team:${inboundMessageId}` },
-				policyVersion: 1,
-			})
-		).resolves.toEqual({ isAdmitted: false, why: 'admission_unavailable' });
 	});
 });

@@ -27,6 +27,7 @@ import {
 	type PlanCheckOutput,
 	type PlanPromptItem,
 } from '../../mail/interpret/planCheck';
+import { rethrowAdmissionRefusal } from '../../analytics/backgroundDeferral';
 
 /** Ctx shape the self-check needs — the spend-accounting surface. */
 type SpendCtx = ActionCtx;
@@ -188,6 +189,8 @@ async function selfCheckCall<T>(
 		);
 		return object;
 	} catch (err) {
+		// A budget refusal is not a failed check: the caller holds or surfaces it (D1).
+		rethrowAdmissionRefusal(err);
 		// Still fail-soft, but not silent: a self-check that failed on every draft
 		// (an OpenRouter client that dropped the schema, so the model guessed the
 		// keys) showed up only as every draft reading 0.4 confidence. First line

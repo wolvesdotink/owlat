@@ -21,6 +21,7 @@ import { meterLlmCall } from './analytics/meteredSpend';
 import { rootRequest } from './lib/llm/requestMeter';
 import { datasetKeyValidator, isDatasetKey, type DatasetKey } from './visualizationAgent';
 import { anchorActionDeadline } from './lib/llm/actionDeadline';
+import { admissionRefusalOf, budgetRefusalMessage } from './lib/llm/admissionPort';
 
 // ============================================================
 // Internal Action: Generate Visualization
@@ -132,12 +133,18 @@ Respond with ONLY the title, no quotes or explanation.`,
 				dataQuery: liveData ? (datasetKey ?? undefined) : undefined,
 			});
 		} catch (error) {
-			// Update with error state
+			// Update with error state; a budget refusal reads as one (D1).
+			const refusal = admissionRefusalOf(error);
+			const reason = refusal
+				? budgetRefusalMessage(refusal.reason)
+				: error instanceof Error
+					? error.message
+					: 'Unknown error';
 			const errorHtml = `<!DOCTYPE html>
 <html>
 <body style="padding:20px;font-family:system-ui;">
 <h3 style="color:#EF4444;">Generation Failed</h3>
-<p>${error instanceof Error ? escapeHtml(error.message) : 'Unknown error'}</p>
+<p>${escapeHtml(reason)}</p>
 <p style="color:#666;">Try rephrasing your request.</p>
 </body>
 </html>`;

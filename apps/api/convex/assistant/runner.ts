@@ -40,6 +40,7 @@ import { buildAssistantTools } from './tools';
 import type { AssistantAudience } from './toolRegistry';
 import { buildAssistantSystemPrompt, clampText, type AssistantSurface } from './prompt';
 import { assistantToolCallValidator } from '../lib/convexValidators';
+import { admissionRefusalOf, budgetRefusalMessage } from '../lib/llm/admissionPort';
 
 type ToolCall = Infer<typeof assistantToolCallValidator>;
 type Status = 'complete' | 'stopped' | 'error';
@@ -193,10 +194,17 @@ async function streamAssistantTurn(
 		await opts.finalize({
 			text: stream.text,
 			status: 'error',
-			errorMessage: clampText(String((error as { message?: unknown })?.message ?? error), 300),
+			errorMessage: turnErrorMessage(error),
 			toolCalls: toolCalls.length ? toolCalls : undefined,
 		});
 	}
+}
+
+/** What a failed turn tells the person; a budget refusal reads as one (D1). */
+function turnErrorMessage(error: unknown): string {
+	const refusal = admissionRefusalOf(error);
+	if (refusal) return budgetRefusalMessage(refusal.reason);
+	return clampText(String((error as { message?: unknown })?.message ?? error), 300);
 }
 
 /** Personal assistant — drive a `/dashboard/assistant` conversation turn. */

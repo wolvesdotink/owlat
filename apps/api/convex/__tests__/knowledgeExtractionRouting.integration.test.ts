@@ -22,6 +22,7 @@ import { enableFeatures } from './factories';
 import { capExtractedEntries } from '../knowledge/extractionPolicy';
 import { createHash } from 'node:crypto';
 import { hasLinkablePair, normalizeForHash } from '../lib/knowledgeEdges';
+import { AdmissionRefusedError } from '../lib/llm/admissionPort';
 
 const mocks = vi.hoisted(() => ({ runLlmObject: vi.fn(), embed: vi.fn() }));
 
@@ -432,5 +433,91 @@ describe('M6: relation inference without an unlinked pair', () => {
 		const entryIds = await seedLinkedPair(t, false);
 		await t.action(internal.knowledge.edgeInference.inferRelations, { entryIds });
 		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('Sol r2 F3: an extraction a spend refusal interrupted resumes', () => {
+	const progressOf = (t: T, sourceId: string) =>
+		t.run((ctx) =>
+			ctx.db
+				.query('knowledgeExtractionProgress')
+				.withIndex('by_source', (q) => q.eq('sourceType', 'email').eq('sourceId', sourceId))
+				.first()
+		);
+
+	it('saves the rest from the stored entries, without asking the model again, then marks it complete', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		await configureLocalAi(t);
+		const mailMessageId = await seedPostboxMessage(t);
+		// The first entry is embedded and saved; admission refuses the second's embedding.
+		mocks.embed
+			.mockImplementationOnce(async () => ({ embedding: [0.1, 0.2, 0.3], usage: { tokens: 1 } }))
+			.mockImplementationOnce(async () => {
+				throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+			});
+
+		await t.action(internal.knowledge.extraction.extractFromMailMessage, { mailMessageId });
+
+		expect(await entriesOf(t, mailMessageId)).toHaveLength(1);
+		expect(await progressOf(t, mailMessageId)).toMatchObject({
+			status: 'in_progress',
+			entries: extracted,
+		});
+		// Started is not done: the next run is not skipped.
+		expect(
+			await t.query(internal.knowledge.extractionProgress.extractionProgressOf, {
+				sourceType: 'email',
+				sourceId: mailMessageId,
+			})
+		).toEqual({ isDone: false, isPartial: true, pendingEntries: extracted });
+
+		// The deferred run: no second model call, one embedding (the unsaved entry).
+		mocks.embed.mockClear();
+		await t.action(internal.knowledge.extraction.extractFromMailMessage, { mailMessageId });
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
+		expect(mocks.embed).toHaveBeenCalledTimes(1);
+		expect(mocks.embed.mock.calls[0]![0]).toMatchObject({
+			value: 'Invoices go to billing: Invoices go to billing.',
+		});
+		expect((await entriesOf(t, mailMessageId)).map((e) => e.title).sort()).toEqual([
+			'Invoices go to billing',
+			'Office moves to Hafenstrasse 12',
+		]);
+		const marker = await progressOf(t, mailMessageId);
+		expect(marker).toMatchObject({ status: 'complete' });
+		expect(marker?.entries).toBeUndefined();
+
+		// Complete: a later run makes no call at all.
+		await t.action(internal.knowledge.extraction.extractFromMailMessage, { mailMessageId });
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
+		expect(mocks.embed).toHaveBeenCalledTimes(1);
+	});
+
+	it('without a marker, a source with entries is done and one without is not', async () => {
+		const t = convexTest(schema, modules);
+		const ask = (sourceId: string) =>
+			t.query(internal.knowledge.extractionProgress.extractionProgressOf, {
+				sourceType: 'email',
+				sourceId,
+			});
+		expect(await ask('m-legacy')).toEqual({ isDone: false, isPartial: false });
+		await t.mutation(internal.knowledge.graph.saveEntry, {
+			entryType: 'fact',
+			title: 'Legacy',
+			content: 'Legacy.',
+			sourceType: 'email',
+			sourceId: 'm-legacy',
+			embedding: [],
+			confidence: 0.9,
+		});
+		expect(await ask('m-legacy')).toEqual({ isDone: true, isPartial: false });
+		// A marker decides over the entries: started is not done.
+		await t.mutation(internal.knowledge.extractionProgress.markExtraction, {
+			sourceType: 'email',
+			sourceId: 'm-legacy',
+			status: 'in_progress',
+		});
+		expect(await ask('m-legacy')).toEqual({ isDone: false, isPartial: true });
 	});
 });

@@ -428,6 +428,8 @@ export function runStatusOf(input: {
 	isFactsOverflow: boolean;
 	truncatedSegmentIds: readonly string[];
 	isVerifyIncomplete: boolean;
+	/** Some claims were too long to send to the verifier: unverified, never retried. */
+	isVerifyUnsendable?: boolean;
 	/** Scoping could not load the whole body (an excerpt stood in). */
 	isBodyIncomplete?: boolean;
 	/** The body ran past the hidden-content scanner's cap (its tail was not read). */
@@ -445,6 +447,8 @@ export function runStatusOf(input: {
 		return { status: 'partial', errorCode: 'overflow' };
 	}
 	if (!input.grounding.coverage.complete) return { status: 'partial', errorCode: 'grounding' };
+	// A transient verifier failure is retried; it wins over unsendable claims.
 	if (input.isVerifyIncomplete) return { status: 'partial', errorCode: 'verify' };
+	if (input.isVerifyUnsendable) return { status: 'partial', errorCode: 'verify_unsendable' };
 	return { status: 'complete' };
 }

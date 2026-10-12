@@ -41,10 +41,15 @@ export interface AggregatedLedgerRow {
 	readonly budgetClass?: BudgetClass;
 }
 
-/** What one ledger row adds to its buckets: its integer cost, exact when the writer stored it. */
+/**
+ * What one ledger row adds to its buckets: its integer cost, exact when the
+ * writer stored it. Only an admission settlement adjustment is negative: it
+ * offsets an earlier estimate a late request row replaced
+ * (`aiRouting/settlement.ts`), so the sum stays the settled spend.
+ */
 export function ledgerRowMicrousd(row: AggregatedLedgerRow): number {
 	const exact = row.costMicrousd;
-	if (exact !== undefined && Number.isSafeInteger(exact) && exact >= 0) return exact;
+	if (exact !== undefined && Number.isSafeInteger(exact)) return exact;
 	return usdToMicrousd(row.costUsd);
 }
 

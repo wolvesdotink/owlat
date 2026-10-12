@@ -34,6 +34,7 @@ import { runLlmObject, type LlmTextResult } from '../lib/llm/dispatch';
 import { partialUsageOf } from '../lib/llm/partialUsage';
 import { isCredentialSolicitation } from './clarificationSlots';
 import { interfaceRegisterRules } from '../mail/ai/interfaceLanguage';
+import { rethrowAdmissionRefusal } from '../lib/llm/admissionPort';
 
 /** Canonical question copy is English; every other shipped locale is a target. */
 export const CANONICAL_QUESTION_LOCALE = 'en';
@@ -261,6 +262,8 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		tokenUsage = first.tokenUsage;
 		modelUsed = first.modelUsed;
 	} catch (error) {
+		// A budget refusal holds the Team message or defers the Postbox run (D1).
+		rethrowAdmissionRefusal(error);
 		// A completion that failed the schema was still billed.
 		const billed = partialUsageOf(error);
 		return {
@@ -293,6 +296,7 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 		tokenUsage = sumUsage(tokenUsage, retry.tokenUsage);
 		modelUsed = modelUsed ?? retry.modelUsed;
 	} catch (error) {
+		rethrowAdmissionRefusal(error); // a refusal is not a gap (D1)
 		// Keep the first pass; the gap is logged below.
 		const billed = partialUsageOf(error);
 		tokenUsage = sumUsage(tokenUsage, billed?.tokenUsage);

@@ -116,6 +116,13 @@ export const llmUsageTagFields = {
 	 */
 	isLocalEngine: v.optional(v.boolean()),
 	...llmUsageRoutingFields,
+	/**
+	 * The spend-aggregate generation the row was counted under at insert
+	 * (`analytics/ledgerInsert.ts`). A rebuild counts the rows older than its
+	 * own generation; absent (rows from before the field) reads as older.
+	 * Written by the insert only, never by a caller.
+	 */
+	spendGeneration: v.optional(v.number()),
 };
 
 /**
@@ -128,3 +135,16 @@ export const llmRootContextValidator = v.object({
 	parentCallId: v.optional(v.string()),
 	deadlineAt: v.optional(v.number()),
 });
+
+/**
+ * The feature tag of a hold's settlement rows (`aiRouting/settlement.ts`): an
+ * estimate for unknown usage, or a late row's offset of it. They carry spend
+ * but are not provider requests, so every call or request count leaves them
+ * out (Sol r6 F1).
+ */
+export const SETTLEMENT_FEATURE = 'admission_settlement';
+
+/** Whether a ledger row is a provider request (not a settlement adjustment). */
+export function isProviderRequestRow(row: { readonly feature?: string }): boolean {
+	return row.feature !== SETTLEMENT_FEATURE;
+}

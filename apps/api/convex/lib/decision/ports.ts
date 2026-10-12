@@ -27,6 +27,7 @@
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { storeRequestBatch } from '../../analytics/meteredSpend';
+import type { BudgetClass } from '../validators/aiRouting';
 import type {
 	DecisionAttemptRecord,
 	DecisionFallbackBreaker,
@@ -61,14 +62,19 @@ export function decisionBreakerPort(ctx: ActionCtx): DecisionFallbackBreaker {
  * because an adapter's message can quote a vendor body, and a ledger row is not
  * the place to find out that it once quoted a key.
  */
-export function decisionUsageRecorder(ctx: ActionCtx): DecisionUsageRecorder {
+export function decisionUsageRecorder(
+	ctx: ActionCtx,
+	/** `shadow` for a shadow judgment (D4): its rows count against the shadow allowance. */
+	options: { readonly budgetClass?: BudgetClass } = {}
+): DecisionUsageRecorder {
 	return async (record: DecisionAttemptRecord) => {
-		if (record.requests.length === 0) return;
+		if (record.requests.length === 0 && !record.settlements?.length) return;
 		// Retried, then scheduled: a transient failure must not lose billed rows.
 		await storeRequestBatch(ctx, {
 			feature: record.feature,
 			plane: 'decision',
 			requestId: record.requestId,
+			...(options.budgetClass ? { budgetClass: options.budgetClass } : {}),
 			...(record.task ? { task: record.task } : {}),
 			...(record.root?.rootRequestId ? { rootRequestId: record.root.rootRequestId } : {}),
 			...(record.root?.parentCallId ? { parentCallId: record.root.parentCallId } : {}),
@@ -78,6 +84,8 @@ export function decisionUsageRecorder(ctx: ActionCtx): DecisionUsageRecorder {
 			// attempt, keeps its own flags. A local engine is tagged from the
 			// adapter that ran, not the model id it reported.
 			requests: record.requests.map(({ outcome: _outcome, ...request }) => request),
+			// Admission holds the attempt closed settle with its rows (ADR-0073).
+			...(record.settlements?.length ? { settlements: [...record.settlements] } : {}),
 		});
 	};
 }

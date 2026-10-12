@@ -46,6 +46,7 @@ import {
 } from '../../inbox/askEagerness';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { loadThreadPlan } from './composeDraftPlan';
+import { rethrowAdmissionRefusal } from '../../analytics/backgroundDeferral';
 
 const TONE_INSTRUCTION =
 	'\n\nTone: match the owner’s natural, personal style — warm and direct, not corporate.';
@@ -71,7 +72,8 @@ export async function draftClarificationReply(
 	// refusal (AI off, rate-limited) is expected and stays silent.
 	try {
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error);
 		return;
 	}
 
@@ -187,8 +189,8 @@ export async function draftClarificationReply(
 						isDraftChanged = delta.changed;
 						draftDivergence = delta.divergence;
 					}
-				} catch {
-					// Sampling is best-effort; log the ask without the delta.
+				} catch (error) {
+					rethrowAdmissionRefusal(error); // Sampling is best-effort, a refusal is not.
 				}
 			}
 			await ctx.runMutation(internal.inbox.clarificationLog.recordClarificationAsk, {
@@ -204,6 +206,7 @@ export async function draftClarificationReply(
 			// Observability only — never affects the draft or the card.
 		}
 	} catch (err) {
+		rethrowAdmissionRefusal(err);
 		// Fail-soft: answers stay recorded; no starter draft is persisted. First
 		// line only: a model error can quote the prompt, which quotes mail.
 		logError(

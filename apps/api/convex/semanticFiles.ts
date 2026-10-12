@@ -39,6 +39,7 @@ import {
 	type CaptureSource,
 } from './lib/literalValidators';
 import { batchGet } from './_utils/batchLoader';
+import { dropExtractionProgress } from './knowledge/extractionProgress';
 
 // ============================================================
 // Queries
@@ -705,6 +706,7 @@ export const remove = authedMutation({
 			}
 		}
 		await ctx.db.delete(args.fileId);
+		await dropExtractionProgress(ctx, 'file', args.fileId);
 	},
 });
 
