@@ -69,7 +69,13 @@ export function useBriefEnsure(opts: {
 	});
 	const inFlight = new Set<string>();
 	let timer: ReturnType<typeof setTimeout> | undefined;
-	onScopeDispose(() => clearTimeout(timer));
+	// Closing the reader ends this ensure: an answer still on its way, or a
+	// timer it would arm, must not ask again for a thread nobody is reading.
+	let isDisposed = false;
+	onScopeDispose(() => {
+		isDisposed = true;
+		clearTimeout(timer);
+	});
 
 	/** Whether this thread holds messages whose reading waits for the open (D10). */
 	const hasDeferred = (ref: ThreadRefArg) =>
@@ -87,6 +93,7 @@ export function useBriefEnsure(opts: {
 		inFlight.add(key);
 		const res = await ensureOp.run({ threadRef: ref });
 		inFlight.delete(key);
+		if (isDisposed) return;
 		const result = res.ok ? (res.result as { isEnqueued: boolean; reason?: string }) : null;
 		// D10: taken, or a run already in flight. Neither is a refusal.
 		if (isDeferredAsk && result && (result.isEnqueued || result.reason === 'running')) {
@@ -107,6 +114,7 @@ export function useBriefEnsure(opts: {
 	}
 
 	function check() {
+		if (isDisposed) return;
 		const ref = opts.threadRef();
 		if (!ref || !isEnabled('ai')) return;
 		const isDeferredAsk = hasDeferred(ref);

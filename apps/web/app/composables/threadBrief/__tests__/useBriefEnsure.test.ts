@@ -241,6 +241,39 @@ describe('useBriefEnsure', () => {
 			expect(run).toHaveBeenCalledTimes(ENSURE_MAX_TRIES);
 		});
 
+		it('asks nothing more once the reader closed before the answer came (F5)', async () => {
+			let answer!: (value: unknown) => void;
+			run.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						answer = resolve;
+					})
+			);
+			const scope = mount(
+				mail,
+				() => 'pending',
+				undefined,
+				() => 1
+			);
+			await flushPromises();
+			expect(run).toHaveBeenCalledTimes(1);
+			scope.stop();
+			answer({ ok: true, result: { isEnqueued: false, reason: 'running' } });
+			await flushPromises();
+			expect(vi.getTimerCount()).toBe(0);
+			await vi.advanceTimersByTimeAsync(ENSURE_RUNNING_RECHECK_MS * 5);
+			expect(run).toHaveBeenCalledTimes(1);
+		});
+
+		it('drops a refusal retry the reader no longer waits for', async () => {
+			run.mockResolvedValue({ ok: true, result: { isEnqueued: false, reason: 'busy' } });
+			const scope = mount(team, () => 'none');
+			await flushPromises();
+			scope.stop();
+			await vi.advanceTimersByTimeAsync(ENSURE_RETRY_MS * 10);
+			expect(run).toHaveBeenCalledTimes(1);
+		});
+
 		it('never asks for a team thread on a deferred count', async () => {
 			mount(
 				team,
