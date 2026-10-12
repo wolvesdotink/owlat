@@ -22,16 +22,17 @@ import { isKnowledgeOn } from './extractionPolicy';
 
 export const resumeMailExtraction = internalAction({
 	args: { mailMessageId: v.id('mailMessages') },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<void> => {
 		// One model budget for this action, from its start (ADR-0073).
 		anchorActionDeadline(ctx);
 		// Every guard the live path runs, rechecked now: the batch was out for
 		// up to a day (Sol r2 F1). A refusal drops the batch's result.
-		const refuse = () =>
-			ctx.runMutation(internal.knowledge.extractionProgress.dropUnfinishedExtraction, {
+		const refuse = async (): Promise<void> => {
+			await ctx.runMutation(internal.knowledge.extractionProgress.dropUnfinishedExtraction, {
 				sourceType: 'email',
 				sourceId: args.mailMessageId,
 			});
+		};
 		if (!(await isKnowledgeOn(ctx, '[knowledge.batchedMail]'))) return refuse();
 		// Moved to Spam, Trash, Sent or Drafts while the batch was out.
 		if (!(await ctx.runQuery(internal.mail.liveKnowledge.isInExtractableFolder, args))) {

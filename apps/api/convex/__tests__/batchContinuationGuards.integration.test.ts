@@ -248,7 +248,7 @@ describe('the mail resume rechecks the live guards', () => {
 			}
 			for (const row of await c.db.query('instanceSettings').collect()) {
 				await c.db.patch(row._id, {
-					featureFlags: { ...(row.featureFlags ?? {}), 'ai.knowledge': false },
+					featureFlags: { ...row.featureFlags, 'ai.knowledge': false },
 				});
 			}
 		});
