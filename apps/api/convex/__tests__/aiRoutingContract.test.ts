@@ -55,7 +55,7 @@ const EXPECTED_INDEXES: [TableName, string, string[]][] = [
 	['llmReservations', 'by_status_and_expires_at', ['status', 'expiresAt']],
 	['llmReservations', 'by_status_and_updated_at', ['status', 'updatedAt']],
 	['decisionArtifacts', 'by_artifact_key', ['artifactKey']],
-	['decisionArtifacts', 'by_inbound_message', ['inboundMessageId', 'task']],
+	['decisionArtifacts', 'by_inbound_message', ['inboundMessageId', 'task', 'kind']],
 	['decisionArtifacts', 'by_mail_message', ['mailMessageId', 'task']],
 	['decisionArtifacts', 'by_mailbox', ['mailboxId']],
 	['decisionArtifacts', 'by_task_and_kind', ['task', 'kind', 'createdAt']],
