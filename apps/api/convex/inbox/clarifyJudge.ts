@@ -162,7 +162,7 @@ export async function judgeOpenSlots(
 	}
 	const sampled = await sampleDivergence(ctx, surface, context, candidates);
 	if (routing && plan?.mode === 'shadow' && sampled.judgment.kind === 'divergence') {
-		const baseline = sampled.judgment.keep.length > 0 ? 'needed' : 'not_needed';
+		const baseline = keptSlots(sampled.judgment, candidates).length > 0 ? 'needed' : 'not_needed';
 		await shadowNecessity(ctx, surface, routing, plan, context, baseline);
 	}
 	return sampled;

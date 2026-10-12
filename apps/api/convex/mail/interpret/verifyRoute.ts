@@ -84,7 +84,8 @@ export async function verifyRouted(
 	opts: {
 		source: InterpretationSource;
 		mailboxId?: Id<'mailboxes'>;
-		root?: LlmRootContext;
+		/** The run's root request: every call of the run groups under it. */
+		root: LlmRootContext;
 	}
 ): Promise<RoutedVerification> {
 	const none = { isUnsendable: false, isCapped: false, isUnavailable: false };
@@ -111,14 +112,14 @@ export async function verifyRouted(
 		if (resolved.rung === 'unavailable') {
 			return { verdicts: new Map(), isIncomplete: false, ...none, isCapped, isUnavailable: true };
 		}
-		if (resolved.rung === 'decision' && root) {
+		if (resolved.rung === 'decision') {
 			const checked = await checkClaims(ctx, sent, { routing, plan, subject, resolved, root });
 			return { ...checked, isCapped, isUnavailable: false };
 		}
 	}
 
 	const verified = await verifyClaims(ctx, sent, root);
-	if (routing && plan?.mode === 'shadow' && subject && root && isDecisionRung(resolved)) {
+	if (routing && plan?.mode === 'shadow' && subject && isDecisionRung(resolved)) {
 		await shadowClaims(ctx, sent, verified.verdicts, { routing, plan, subject, resolved, root });
 	}
 	return { ...verified, ...none, isCapped };
