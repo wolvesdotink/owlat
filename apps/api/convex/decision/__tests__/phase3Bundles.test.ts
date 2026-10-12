@@ -256,6 +256,14 @@ describe('the necessity judgment through the runner', () => {
 		mocks.language = { ...mocks.language, baseUrl: 'https://gateway.example/b/v1' };
 		expect(await necessityRun(t, routed, id)).toMatchObject({ hasRun: true, status: 'complete' });
 		expect(mocks.runLlmObject).toHaveBeenCalledTimes(2);
+
+		// A doubled slash is another URL the client dispatches to: asked again (Sol r6 F1).
+		mocks.language = { ...mocks.language, baseUrl: 'https://gateway.example/b//v1' };
+		expect(await necessityRun(t, routed, id)).toMatchObject({ hasRun: true, status: 'complete' });
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(3);
+		// And unchanged again: reused.
+		expect(await necessityRun(t, routed, id)).toMatchObject({ hasRun: false, why: 'settled' });
+		expect(mocks.runLlmObject).toHaveBeenCalledTimes(3);
 	});
 
 	it('re-asks when the stored answer came from another plane (Sol r3 F2)', async () => {
