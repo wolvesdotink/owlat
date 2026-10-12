@@ -11,7 +11,9 @@
  * fixtures.
  *
  * Counting rules:
- *   - one row is one provider request; a retry is a row with `attempt > 1`;
+ *   - one row is one provider request; a retry is a row with `attempt > 1`.
+ *     A hold's settlement row (an estimate or a late offset) is not a request:
+ *     it counts in the cost, never in a request or call count;
  *   - a logical call is one `requestId` (a row without one counts alone);
  *   - a root is one message's run (or one user action), keyed `rootRequestId`;
  *     rows without it are reported as unattributed, never guessed into a root;
@@ -24,7 +26,7 @@
  */
 import type { AiTaskName } from '@owlat/shared/aiRouting';
 import { taskForFeature } from '../../../lib/llm/taskPolicy';
-import type { LlmUsagePlane } from '../../../lib/llmUsageTags';
+import { isProviderRequestRow, type LlmUsagePlane } from '../../../lib/llmUsageTags';
 import type { BudgetClass } from '../../../lib/validators/aiRouting';
 import { mean, quantile } from './stats';
 
@@ -155,7 +157,7 @@ function spread(values: readonly number[]): Spread {
 function logicalCalls(rows: readonly LedgerCallRow[]): number {
 	const ids = new Set<string>();
 	let anonymous = 0;
-	for (const row of rows) {
+	for (const row of rows.filter(isProviderRequestRow)) {
 		if (row.requestId === undefined) anonymous++;
 		else ids.add(row.requestId);
 	}
@@ -163,7 +165,10 @@ function logicalCalls(rows: readonly LedgerCallRow[]): number {
 }
 
 const sumCost = (rows: readonly LedgerCallRow[]) => rows.reduce((sum, r) => sum + r.costUsd, 0);
-const retries = (rows: readonly LedgerCallRow[]) => rows.filter((r) => (r.attempt ?? 1) > 1).length;
+/** Provider requests among `rows`: settlement rows carry cost only. */
+const requestsOf = (rows: readonly LedgerCallRow[]) => rows.filter(isProviderRequestRow);
+const retries = (rows: readonly LedgerCallRow[]) =>
+	requestsOf(rows).filter((r) => (r.attempt ?? 1) > 1).length;
 
 export function callInventory(
 	rows: readonly LedgerCallRow[],
@@ -206,11 +211,11 @@ export function callInventory(
 		const byTask: Record<string, TaskInventory> = {};
 		for (const [task, list] of [...tasks].sort(([a], [b]) => a.localeCompare(b))) {
 			byTask[task] = {
-				requests: list.length,
+				requests: requestsOf(list).length,
 				logicalCalls: logicalCalls(list),
 				retries: retries(list),
 				costUsd: sumCost(list),
-				requestsPerMessage: messages === 0 ? null : list.length / messages,
+				requestsPerMessage: messages === 0 ? null : requestsOf(list).length / messages,
 				costPerMessage: messages === 0 ? null : sumCost(list) / messages,
 			};
 		}
@@ -219,15 +224,15 @@ export function callInventory(
 			roots: groups.length,
 			messages,
 			isRootsOnly: counted === undefined,
-			requests: all.length,
+			requests: requestsOf(all).length,
 			logicalCalls: logicalCalls(all),
 			retries: retries(all),
-			fallbacks: all.filter((r) => r.isFallback).length,
+			fallbacks: requestsOf(all).filter((r) => r.isFallback).length,
 			costUsd: sumCost(all),
 			estimatedCostUsd: sumCost(all.filter((r) => r.isEstimated)),
-			shadowRequests: all.filter((r) => r.budgetClass === 'shadow').length,
+			shadowRequests: requestsOf(all).filter((r) => r.budgetClass === 'shadow').length,
 			shadowCostUsd: sumCost(all.filter((r) => r.budgetClass === 'shadow')),
-			requestsPerMessage: spread([...groups.map((g) => g.length), ...zeros]),
+			requestsPerMessage: spread([...groups.map((g) => requestsOf(g).length), ...zeros]),
 			costPerMessage: spread([...groups.map(sumCost), ...zeros]),
 			byTask,
 		});

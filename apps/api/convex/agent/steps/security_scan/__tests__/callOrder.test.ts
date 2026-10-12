@@ -23,6 +23,9 @@ vi.mock('../../../../lib/llmProvider', () => ({
 }));
 
 import { securityScanStep } from '../index';
+import { guardStanding } from '../disposition';
+import { AdmissionRefusedError } from '../../../../lib/llm/admissionPort';
+import { missingJudgmentsAt } from '../../../../aiRouting/teamBudgetHold';
 
 const messageId = 'msg_order' as Id<'inboundMessages'>;
 const input = { inboundMessageId: messageId };
@@ -290,5 +293,29 @@ describe('L4: early handling-rule archive', () => {
 		});
 		expect(agentOff.ruleCalls).toEqual([]);
 		expect(agentOff.route).toEqual({ kind: 'done' });
+	});
+});
+
+describe('Sol r3 F1: a guard refused by spend admission', () => {
+	it('stores the scan with the guardNotRun marker, then lets the refusal reach the walker', async () => {
+		mocks.runLlmObject.mockRejectedValue(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+		const harness = scan({ message: CLEAN });
+
+		await expect(securityScanStep.execute(harness.ctx, input)).rejects.toBeInstanceOf(
+			AdmissionRefusedError
+		);
+
+		expect(harness.recorded).toHaveLength(1);
+		const flags = harness.recorded[0]!['securityFlags'] as Parameters<
+			typeof guardStanding
+		>[0]['securityFlags'];
+		expect(flags).toMatchObject({
+			injectionDetected: false,
+			guardNotRun: { reason: 'budget_refused' },
+		});
+		// The D13 marker: every later generative consumer runs the guard first.
+		expect(guardStanding({ processingStatus: 'failed', securityFlags: flags })).toBe('needs_guard');
+		// And the hold names the guard as missing at every later step.
+		expect(missingJudgmentsAt('draft', { securityFlags: flags })).toEqual(['guard', 'draft']);
 	});
 });

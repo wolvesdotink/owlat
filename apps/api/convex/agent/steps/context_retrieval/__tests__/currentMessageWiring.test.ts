@@ -53,7 +53,10 @@ const toRead = (read: Read) => ({
 });
 
 /** ctx serving one contact-less/thread-less inbound; retrieval legs empty. */
-function makeCtx(reads: Array<Read | 'throw'>, opts: { canRun?: boolean } = {}) {
+function makeCtx(
+	reads: Array<Read | 'throw'>,
+	opts: { canRun?: boolean; runResult?: Record<string, unknown> } = {}
+) {
 	const message = {
 		_id: messageId,
 		from: 'sender@example.com',
@@ -85,7 +88,7 @@ function makeCtx(reads: Array<Read | 'throw'>, opts: { canRun?: boolean } = {}) 
 		actions: {
 			interpretMessage: (args: unknown) => {
 				runs.push(args);
-				return { status: 'complete', createdItemIds: [] };
+				return opts.runResult ?? { status: 'complete', createdItemIds: [] };
 			},
 			knowledge: [],
 			semanticFileProcessing: [],
@@ -167,6 +170,36 @@ describe('contextRetrievalStep.execute — structured current message', () => {
 		const { ctx } = makeCtx(['throw']);
 		const { output } = await contextRetrievalStep.execute(ctx, input);
 		expect(output.context).toContain('[CURRENT MESSAGE]');
+		expect(output.context).toContain('RAWBODYSENTINEL');
+	});
+
+	it('passes a budget refusal the run answered with on to the walker (Sol r3 F5)', async () => {
+		const { ctx, runs } = makeCtx([{ interpretation: null, items: [] }], {
+			runResult: {
+				status: 'failed',
+				isReplayed: false,
+				createdItemIds: [],
+				errorCode: 'budget',
+				budgetRefusal: { reason: 'monthly_ceiling', limit: 'ceiling' },
+			},
+		});
+		await expect(contextRetrievalStep.execute(ctx, input)).rejects.toMatchObject({
+			reason: 'monthly_ceiling',
+			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
+		});
+		expect(runs).toHaveLength(1);
+	});
+
+	it('still falls back to the raw body for a failed run that met no refusal', async () => {
+		const { ctx } = makeCtx([{ interpretation: null, items: [] }], {
+			runResult: {
+				status: 'failed',
+				isReplayed: false,
+				createdItemIds: [],
+				errorCode: 'model_error',
+			},
+		});
+		const { output } = await contextRetrievalStep.execute(ctx, input);
 		expect(output.context).toContain('RAWBODYSENTINEL');
 	});
 });

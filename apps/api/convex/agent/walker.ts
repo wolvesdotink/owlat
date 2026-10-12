@@ -46,9 +46,11 @@ import type {
 	AgentRunContext,
 	AgentStepKind,
 	AgentStepResult,
-	RouteTransition,
+	NextStep,
 } from './steps/types';
-import type { NextStep } from './steps/types';
+import { assembleTransition } from './walkerTransition';
+import { admissionRefusalOf, type AdmissionRefusalData } from '../lib/llm/admissionPort';
+import { isTeamPaidStep } from '../aiRouting/teamBudgetHold';
 import { runHostedPluginStep } from './hostedStepRunner';
 import { GUARD_REQUIRED_ERROR, guardBlocksStep } from './steps/security_scan/disposition';
 
@@ -59,127 +61,31 @@ interface PluginStepContinuation {
 	readonly coreStep?: NextStep;
 }
 
-/**
- * Walker-assembled lifecycle TransitionInput. Adds the bookkeeping
- * fields (`at`, `completedActionId`, `output`, `durationMs`,
- * `modelUsed`, `tokenUsage`) to the domain-only fields the module's
- * `route` returned.
- *
- * The variant arms here mirror the lifecycle's TransitionInput
- * validator. Variants that the LLM bookkeeping fields don't apply to
- * (quarantined, archived) get only `output` / `durationMs`.
- */
-function assembleTransition(
-	routeT: RouteTransition,
-	actionId: Id<'agentActions'>,
-	result: AgentStepResult<unknown>,
-	durationMs: number
-) {
-	const at = Date.now();
-	const output = JSON.stringify(result.output);
-
-	switch (routeT.to) {
-		case 'security_check':
-			return { to: 'security_check' as const, at };
-		case 'classifying':
-			return {
-				to: 'classifying' as const,
-				at,
-				completedActionId: actionId,
-				output,
-				durationMs,
-				modelUsed: result.modelUsed,
-				tokenUsage: result.tokenUsage,
-				securityFlags: routeT.securityFlags,
-				contextTier: routeT.contextTier,
-			};
-		case 'drafting':
-			return {
-				to: 'drafting' as const,
-				at,
-				completedActionId: actionId,
-				output,
-				durationMs,
-				modelUsed: result.modelUsed,
-				tokenUsage: result.tokenUsage,
-				classification: routeT.classification,
-			};
-		case 'awaiting_clarification':
-			return {
-				to: 'awaiting_clarification' as const,
-				at,
-				completedActionId: actionId,
-				output,
-				durationMs,
-				modelUsed: result.modelUsed,
-				tokenUsage: result.tokenUsage,
-				// The clarify step returns the questions; the walker stamps
-				// `askedAt` from the transition time so `route` stays pure.
-				pendingClarification: { questions: routeT.questions, askedAt: at },
-				classification: routeT.classification,
-			};
-		case 'draft_ready':
-			return {
-				to: 'draft_ready' as const,
-				at,
-				completedActionId: actionId,
-				output,
-				durationMs,
-				modelUsed: result.modelUsed,
-				tokenUsage: result.tokenUsage,
-				classification: routeT.classification,
-				draftResponse: routeT.draftResponse,
-				draftSubject: routeT.draftSubject,
-				confidenceScore: routeT.confidenceScore,
-			};
-		case 'informational':
-			return {
-				to: 'informational' as const,
-				at,
-				completedActionId: actionId,
-				output,
-				durationMs,
-				modelUsed: result.modelUsed,
-				tokenUsage: result.tokenUsage,
-				classification: routeT.classification,
-			};
-		case 'quarantined':
-			return {
-				to: 'quarantined' as const,
-				at,
-				completedActionId: actionId,
-				output,
-				durationMs,
-				securityFlags: routeT.securityFlags,
-			};
-		case 'archived':
-			return {
-				to: 'archived' as const,
-				at,
-				completedActionId: actionId,
-				output,
-				durationMs,
-				reason: routeT.reason,
-				securityFlags: routeT.securityFlags,
-			};
-		case 'approved':
-			return {
-				to: 'approved' as const,
-				at,
-				completedActionId: actionId,
-				output,
-				source: routeT.source,
-				userId: routeT.userId,
-			};
-	}
-}
-
 async function loadRunContext(
 	ctx: ActionCtx,
 	inboundMessageId: Id<'inboundMessages'>
 ): Promise<AgentRunContext> {
 	const agentConfig = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
 	return { inboundMessageId, agentConfig };
+}
+
+/** D1: hold the message for a person when `kind` is a paid step without headroom. */
+async function isHeldForBudget(
+	ctx: ActionCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	kind: AgentStepKind,
+	refused?: { refusal: AdmissionRefusalData; actionId?: Id<'agentActions'> }
+): Promise<boolean> {
+	if (!isTeamPaidStep(kind)) return false;
+	// The scan's deterministic checks always run: it is held only on a refusal.
+	if (!refused && kind === 'security_scan') return false;
+	const { isHeld } = await ctx.runMutation(internal.aiRouting.teamBudgetHold.holdIfOverBudget, {
+		inboundMessageId,
+		step: kind,
+		...(refused ? { refusedReason: refused.refusal.reason } : {}),
+		...(refused?.actionId ? { refusedActionId: refused.actionId } : {}),
+	});
+	return isHeld;
 }
 
 /** D13: fail the message; a retry restarts the pipeline at the scan, which runs the guard. */
@@ -322,7 +228,12 @@ export const resumeDraft = internalAction({
 				inboundMessageId: args.inboundMessageId,
 			});
 			context = retrieval.output.context;
-		} catch {
+		} catch (error) {
+			// D1: a refused guard or embedding holds the message, never a blind draft.
+			const refusal = admissionRefusalOf(error);
+			if (refusal && (await isHeldForBudget(ctx, args.inboundMessageId, 'draft', { refusal }))) {
+				return;
+			}
 			context = '';
 		}
 
@@ -416,6 +327,10 @@ export const runStep = internalAction({
 		// A step already in flight is stopped by the lifecycle instead.
 		if (message?.manualTakeoverAt !== undefined) return;
 
+		// D1 (ADR-0073): at the spend ceiling the message waits for a person
+		// before a paid step runs (`aiRouting/teamBudgetHold.ts`).
+		if (await isHeldForBudget(ctx, args.inboundMessageId, args.kind)) return;
+
 		// Begin the agentAction row up front so a crash inside `execute`
 		// still has an actionId to fail.
 		const { actionId } = await ctx.runMutation(internal.inbox.processingLifecycle.recordStepBegin, {
@@ -431,6 +346,13 @@ export const runStep = internalAction({
 			result = await module.execute(ctx, args.input);
 			route = module.route(result.output, args.input, runCtx);
 		} catch (error) {
+			// A paid call admission refused mid-step (another call took the
+			// headroom): the same D1 hold, not a pipeline failure.
+			const refusal = admissionRefusalOf(error);
+			if (refusal && isTeamPaidStep(args.kind)) {
+				await isHeldForBudget(ctx, args.inboundMessageId, args.kind, { refusal, actionId });
+				return;
+			}
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
 				inboundMessageId: args.inboundMessageId,

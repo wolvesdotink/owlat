@@ -14,7 +14,7 @@ import { isFeatureEnabled } from '../../lib/featureFlags';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { rateLimiter } from '../../lib/rateLimiter';
 import { throwForbidden, throwRateLimited } from '../../_utils/errors';
-import { computeBudgetStatus } from '../../analytics/spendBudget';
+import { budgetHeadroom, throwBudgetRefused } from '../../aiRouting/enforcedBudget';
 
 /**
  * Per-user rate-limit bucket the gate charges. Each user-triggered AI surface
@@ -35,22 +35,14 @@ export const assertAiAllowed = internalMutation({
 			throwForbidden('AI features are disabled');
 		}
 
-		// Per-org dollar-spend budget: advisory (user-triggered) AI is paused once
-		// remaining headroom drops within the reserve held for the autonomous
-		// drafting path, so manual actions can't drain the budget to $0. FAIL-SOFT:
-		// only a definitively-computed over-reserve state blocks; any error
-		// determining the budget degrades to today's behaviour (allowed) rather
-		// than breaking a user's manual action on a transient hiccup.
-		let budgetBlock: string | undefined;
-		try {
-			const budget = await computeBudgetStatus(ctx);
-			if (!budget.advisoryAllowed) {
-				budgetBlock = budget.reason || 'AI spend budget reached — advisory AI is paused.';
-			}
-		} catch {
-			// swallowed: a computation error degrades to today's (allowed) behaviour
-		}
-		if (budgetBlock) throwForbidden(budgetBlock);
+		// Spend admission (ADR-0073, D1): a user-triggered feature needs headroom
+		// outside the triage allowance and the reserve held for the Team
+		// pipeline, read from the complete period aggregate. FAIL-CLOSED (#1333):
+		// a spend state that cannot be verified refuses. The refusal carries the
+		// stable `AI_BUDGET_EXHAUSTED` code the web shows (U5). Each model call
+		// the action then makes is admitted again at dispatch, with a hold.
+		const budget = await budgetHeadroom(ctx, { priority: 'interactive' });
+		if (!budget.isAdmitted) throwBudgetRefused(budget);
 
 		const session = await getBetterAuthSessionWithRole(ctx);
 		const key = session?.userId ?? 'anon';

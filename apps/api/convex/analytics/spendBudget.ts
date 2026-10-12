@@ -18,7 +18,14 @@
  * a prompt-injected auto-reply loop) can run up unbounded spend. This module
  * turns that same aggregation into an enforced ceiling.
  *
- * Two consumers share one evaluation ({@link computeBudgetStatus}):
+ * ENFORCEMENT MOVED (ADR-0073, Phase 1b). The gates no longer read the
+ * bounded scan below: admission and the enforced status read the complete
+ * period aggregate (`aiRouting/admissionState.ts`, `aiRouting/enforcedBudget.ts`)
+ * and fail closed when it cannot be verified. This module keeps the config
+ * ({@link resolveBudgetConfig}), the shared evaluation ({@link evaluateBudget})
+ * and the admin dashboard's scan-based figures ({@link getBudgetStatusAdmin}).
+ *
+ * Two consumers shared one evaluation ({@link computeBudgetStatus}) before that:
  *   - the AUTONOMOUS path (`agent/steps/route`) degrades to draft-only — the
  *     draft is still produced and queued for a human, only the unattended
  *     auto-SEND is withheld — so mail is never silently dropped and an injected
@@ -37,7 +44,7 @@
  * see {@link projectScannedSpend}.
  */
 
-import { internalQuery, type QueryCtx, type MutationCtx } from '../_generated/server';
+import type { QueryCtx, MutationCtx } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
 import { getWithDefault } from '../lib/env';
 
@@ -120,7 +127,7 @@ interface PeriodBudget {
 }
 
 /** Combined budget status across both periods, shared by every consumer. */
-interface BudgetStatus {
+export interface BudgetStatus {
 	/** True when at least one period has a ceiling configured. */
 	configured: boolean;
 	daily: PeriodBudget;
@@ -385,9 +392,9 @@ async function spentInCurrentPeriods(ctx: QueryCtx | MutationCtx): Promise<Scann
 }
 
 /**
- * Compute the current budget status. Shared by the internal gate query and the
- * admin dashboard query, and callable directly from a mutation ctx (aiGate)
- * since it only reads. Skips the ledger scan entirely when no ceiling is set.
+ * Compute the current budget status from the bounded ledger scan, for the admin
+ * dashboard. Enforcement reads the aggregate instead (`aiRouting/enforcedBudget.ts`).
+ * Skips the ledger scan entirely when no ceiling is set.
  */
 export async function computeBudgetStatus(ctx: QueryCtx | MutationCtx): Promise<BudgetStatus> {
 	const config = resolveBudgetConfig();
@@ -400,12 +407,6 @@ export async function computeBudgetStatus(ctx: QueryCtx | MutationCtx): Promise<
 		monthly: spend.monthlyProjectedUsd,
 	});
 }
-
-/** Gate query for the autonomous route step + advisory aiGate. */
-export const getBudgetStatus = internalQuery({
-	args: {},
-	handler: async (ctx): Promise<BudgetStatus> => computeBudgetStatus(ctx),
-});
 
 /** Admin dashboard read: remaining budget + warn state, all members. */
 export const getBudgetStatusAdmin = adminQuery({

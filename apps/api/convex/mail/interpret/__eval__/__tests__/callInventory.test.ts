@@ -41,6 +41,44 @@ const baseline: LedgerCallRow[] = [
 ];
 
 describe('callInventory', () => {
+	it('counts a settlement estimate and a late offset in the cost, never as requests (Sol r6 F1)', () => {
+		const settled: LedgerCallRow[] = [
+			...baseline,
+			// m1's draft hold settled with an estimate; a late row's offset of it.
+			row({
+				rootRequestId: 'team:m1',
+				requestId: 'settlement:h1:estimate',
+				task: 'mail.draft',
+				feature: 'admission_settlement',
+				costUsd: 0.05,
+			}),
+			row({
+				rootRequestId: 'team:m1',
+				requestId: 'settlement:h1:offset',
+				task: 'mail.draft',
+				feature: 'admission_settlement',
+				attempt: 2,
+				costUsd: -0.01,
+			}),
+		];
+		const before = callInventory(baseline).paths[0]!;
+		const after = callInventory(settled).paths[0]!;
+		expect(after).toMatchObject({
+			requests: before.requests,
+			logicalCalls: before.logicalCalls,
+			retries: before.retries,
+			fallbacks: before.fallbacks,
+			shadowRequests: before.shadowRequests,
+		});
+		expect(after.requestsPerMessage).toEqual(before.requestsPerMessage);
+		expect(after.byTask['mail.draft']).toMatchObject({
+			requests: before.byTask['mail.draft']!.requests,
+			logicalCalls: before.byTask['mail.draft']!.logicalCalls,
+			retries: before.byTask['mail.draft']!.retries,
+		});
+		expect(after.costUsd).toBeCloseTo(before.costUsd + 0.04, 10);
+	});
+
 	it('groups rows by root request and counts requests, logical calls and retries', () => {
 		const inventory = callInventory(baseline);
 		expect(inventory.rows).toBe(7);

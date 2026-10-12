@@ -13,8 +13,10 @@
  *   5. dedupe    an applied extraction of this revision + extractor is reused,
  *                unless it is incomplete and its retry is due (`retry.ts`)
  *   6. gate      `ai` flag and the spend ceiling (`gate.ts`)
+ *   6b. hold     one spend hold for the extraction and the verifier's maximum
+ *                (`runHold.ts`); refused, the run defers, backed off, unspent
  *   7. model     `runLlmObject` on the `extract` tier, temperature 0, metered
- *                as `interpret`
+ *                as `interpret`, drawing on the hold
  *   8. ground    every claim's quotes verbatim in the named segment
  *   9. verify    consequential claims on the `guard` tier (`verify.ts`)
  *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale;
@@ -29,9 +31,7 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import { resolveLanguageModel } from '../../lib/llmProvider';
-import { runLlmObject } from '../../lib/llm/dispatch';
-import { meterLlmCall } from '../../analytics/meteredSpend';
+import { admissionRefusalOf } from '../../lib/llm/admissionPort';
 import { logWarn } from '../../lib/runtimeLog';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
 import {
@@ -39,14 +39,11 @@ import {
 	interpretationSourceValidator,
 	type InterpretationSource,
 } from '../../lib/validators/threadBrief';
-import {
-	INTERPRET_EXTRACTOR_VERSION,
-	interpretOutputSchema,
-	interpretOutputSchemaFor,
-	type InterpretOutput,
-} from './schema';
-import { buildInterpretPromptParts, renderSegments } from './prompt';
-import { cachedPromptInput } from '../../lib/llm/promptCacheInput';
+import { INTERPRET_EXTRACTOR_VERSION } from './schema';
+import { renderSegments } from './prompt';
+import { extractOutput, prepareExtraction } from './extractOutput';
+import { admitInterpretRun, type InterpretRunHold } from './runHold';
+import { resolveLanguageModel } from '../../lib/llmProvider';
 import { predecessorRoot, predecessorsPending, runDeferredPredecessors } from './defer';
 import {
 	finish,
@@ -59,7 +56,6 @@ import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
 import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
 import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from './pipeline';
-import { clampOutput } from './clamp';
 import { needsReplyProjectionOf } from './needsReplyProjection';
 import { interpretRoot, verifyClaims } from './verify';
 import { isRetryDue } from './retry';
@@ -70,7 +66,6 @@ import { llmRootContextValidator } from '../../lib/llmUsageTags';
 
 export type { InterpretArgs, InterpretRunResult } from './runShape';
 
-export const INTERPRET_FEATURE = 'interpret';
 /** Reducer attempts against a moving revision before the run gives up as partial. */
 const MAX_APPLY_ATTEMPTS = 3;
 /** Whole-run attempts when the body or the thread's mode changed under it. */
@@ -112,6 +107,7 @@ async function apply(
 			...(record.result ? { result: record.result } : {}),
 			...(record.sourceVersion ? { sourceVersion: record.sourceVersion } : {}),
 			...(record.retryCount !== undefined ? { retryCount: record.retryCount } : {}),
+			...(record.budgetDeferrals !== undefined ? { budgetDeferrals: record.budgetDeferrals } : {}),
 			...(state.threadAssigneeUserId ? { threadAssigneeUserId: state.threadAssigneeUserId } : {}),
 		});
 		if (outcome.outcome !== 'stale') return outcome;
@@ -202,7 +198,20 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 
 	// D13 (ADR-0073): a Team message whose scan skipped the model guard gets it
 	// before this generative consumer; one it flags is not interpreted.
-	if (!(await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt))) {
+	let isGuardClear: boolean;
+	try {
+		isGuardClear = await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt);
+	} catch (error) {
+		// The late guard was refused by spend admission: a budget deferral (D1).
+		const refusal = admissionRefusalOf(error);
+		if (!refusal) throw error;
+		const deferred = { contentRevision: 'unread', status: 'failed' as const, errorCode: 'budget' };
+		return finish(await apply(ctx, args, loaded, deferred), {
+			errorCode: 'budget',
+			budgetRefusal: { reason: refusal.reason, limit: refusal.limit },
+		});
+	}
+	if (!isGuardClear) {
 		const skip = { skipReason: 'security' as const, errorCode: 'guard_flagged' };
 		const record = { contentRevision: 'skip', status: 'skipped' as const, ...skip };
 		return finish(await apply(ctx, args, loaded, record), { errorCode: skip.errorCode });
@@ -210,6 +219,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 
 	let contentRevision = 'unread';
 	let retryCount: number | undefined;
+	// The run's one spend hold, settled however the run ends (`runHold.ts`).
+	let hold: InterpretRunHold | undefined;
 	try {
 		const scoped = await scopeForInterpretation(ctx, args.source);
 		if (!scoped) return { status: 'gone' };
@@ -288,6 +299,8 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 
 		const gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
 		if (!gate.isAllowed) {
+			const gateRefusal =
+				gate.code === 'budget' ? { reason: gate.reason, limit: gate.limit } : undefined;
 			return finish(
 				await apply(ctx, args, loaded, {
 					contentRevision,
@@ -298,7 +311,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 					// A refusal is not an admitted attempt: the count stays.
 					retryCount: priorAttempts,
 				}),
-				{ errorCode: gate.code }
+				{ errorCode: gate.code, ...(gateRefusal ? { budgetRefusal: gateRefusal } : {}) }
 			);
 		}
 
@@ -317,26 +330,35 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 		});
 		const { truncatedSegmentIds } = renderSegments(input.message.segments);
 		const root = args.root ?? interpretRoot(args.source);
-		const model = await resolveLanguageModel(ctx, 'extract');
-		const parts = buildInterpretPromptParts(input);
-		const prompt = await cachedPromptInput(ctx, 'mail.extract', model, parts);
-		const { object } = await meterLlmCall(
-			ctx,
-			{ feature: INTERPRET_FEATURE, root },
-			(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: interpretOutputSchemaFor(mode),
-					...prompt,
-					temperature: 0,
+		// Spend admission (ADR-0073, D1): brief mode is background work, so its
+		// holds stop at the advisory reserve like its gate; actions mode feeds
+		// the Team pipeline.
+		const priority = mode === 'brief' ? 'background' : 'pipeline';
+		const prepared = await prepareExtraction(ctx, input, mode);
+		const verifyModel = await resolveLanguageModel(ctx, 'guard');
+		// One hold for the extraction and the verifier's maximum, before anything
+		// is bought (Sol r4): refused, the whole run defers, backed off, with no
+		// retry spent; admitted, no call of the run can be refused halfway.
+		try {
+			hold = await admitInterpretRun(ctx, { extract: prepared, verifyModel, root, priority });
+		} catch (error) {
+			const refusal = admissionRefusalOf(error);
+			if (!refusal) throw error;
+			const deferrals = (isExact ? (counted?.budgetDeferrals ?? 0) : 0) + 1;
+			return finish(
+				await apply(ctx, args, loaded, {
+					contentRevision,
+					status: 'failed',
+					errorCode: 'budget',
+					sourceManifest,
+					...(sourceVersion ? { sourceVersion } : {}),
+					retryCount: priorAttempts,
+					budgetDeferrals: deferrals,
 				}),
-			// A lost ledger row under-counts; dropping the interpretation over it would be worse.
-			{ onWriteError: 'ignore' }
-		);
-
-		// Validate with the lenient parse schema (the model schema only shapes the request).
-		const output = clampOutput(interpretOutputSchema.parse(object) as InterpretOutput);
+				{ errorCode: 'budget', budgetRefusal: { reason: refusal.reason, limit: refusal.limit } }
+			);
+		}
+		const output = await extractOutput(ctx, prepared, { root, priority, hold });
 		const grounding = groundProposals(output, segmented);
 		const ownAddresses = new Set(loaded.ownAddresses);
 
@@ -348,7 +370,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			itemText: (id) => itemText.get(id),
 			factText: (id) => factText.get(id),
 		});
-		const verified = await verifyClaims(ctx, claims, root);
+		const verified = await verifyClaims(ctx, claims, { root, priority, model: verifyModel, hold });
 
 		const freshText = segmented.segments
 			.filter((s) => s.kind === 'fresh')
@@ -384,13 +406,15 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			isFactsOverflow: loaded.isFactsOverflow,
 			truncatedSegmentIds,
 			isVerifyIncomplete: verified.isIncomplete,
+			isVerifyUnsendable: verified.isUnsendable,
 			isBodyIncomplete: scoped.omitted.includes('body_unavailable'),
 			isBodyTruncated: isTruncated,
 		});
+		const runErrorCode = run.errorCode;
 		const outcome = await apply(ctx, args, loaded, {
 			contentRevision,
 			status: run.status,
-			...(run.errorCode ? { errorCode: run.errorCode } : {}),
+			...(runErrorCode ? { errorCode: runErrorCode } : {}),
 			sourceManifest,
 			coverage: {
 				segmentsRead: output.coverage.segmentsRead.slice(0, 50),
@@ -402,27 +426,49 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 		});
 		return finish(outcome, {
 			projection: needsReplyProjectionOf(result, loaded.ownerLocale),
-			...(run.errorCode ? { errorCode: run.errorCode } : {}),
+			...(runErrorCode ? { errorCode: runErrorCode } : {}),
+			// Not expected under the run's hold; when it happens the verification is
+			// an ordinary incomplete one, and the refusal is still reported, whatever
+			// else the run found incomplete (Sol r4 F2).
+			...(verified.refusal
+				? { budgetRefusal: { reason: verified.refusal.reason, limit: verified.refusal.limit } }
+				: {}),
 		});
 	} catch (error) {
+		// Spend admission refused the model call after the gate passed (the
+		// request did not fit, or another call took the headroom): a budget
+		// deferral like the gate's, not a model error, and no retry is spent.
+		const refusal = admissionRefusalOf(error);
+		const isBudget = refusal !== null;
+		const errorCode = isBudget ? 'budget' : 'model_error';
+		const budgetRefusal = refusal ? { reason: refusal.reason, limit: refusal.limit } : undefined;
 		// Only the first line: a validation error goes on to print its argument.
 		logWarn(
 			'[interpret] run failed:',
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
 		try {
+			const attempts = isBudget && retryCount !== undefined ? retryCount - 1 : retryCount;
 			return finish(
 				await apply(ctx, args, loaded, {
 					contentRevision,
 					status: 'failed',
-					errorCode: 'model_error',
-					...(retryCount !== undefined ? { retryCount } : {}),
+					errorCode,
+					...(attempts !== undefined ? { retryCount: attempts } : {}),
 				}),
-				{ errorCode: 'model_error' }
+				{ errorCode, ...(budgetRefusal ? { budgetRefusal } : {}) }
 			);
 		} catch {
-			return { status: 'failed', isReplayed: false, createdItemIds: [], errorCode: 'model_error' };
+			return {
+				status: 'failed',
+				isReplayed: false,
+				createdItemIds: [],
+				errorCode,
+				...(budgetRefusal ? { budgetRefusal } : {}),
+			};
 		}
+	} finally {
+		await hold?.settle();
 	}
 }
 

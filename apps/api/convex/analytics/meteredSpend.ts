@@ -23,7 +23,8 @@ import { LlmCallMeter, type LlmRequestRecord, type LlmRootContext } from '../lib
 import { taskForFeature, taskPolicy } from '../lib/llm/taskPolicy';
 import { callDeadlineAt } from '../lib/llm/actionDeadline';
 import type { LlmUsagePlane } from '../lib/llmUsageTags';
-import type { BudgetClass } from '../lib/validators/aiRouting';
+import type { AdmissionPriority, BudgetClass } from '../lib/validators/aiRouting';
+import { dispatchAdmissionPort } from './admissionPorts';
 import {
 	MAX_METERED_REQUESTS_PER_WRITE,
 	type MeteredRequest,
@@ -44,7 +45,18 @@ export interface LlmSpendTarget {
 	readonly plane?: LlmUsagePlane;
 	/** Absent ⇒ the task's class; a shadow call passes `shadow`. */
 	readonly budgetClass?: BudgetClass;
+	/** Absent ⇒ the task's priority (`lib/llm/taskPolicy.ts`). */
+	readonly priority?: AdmissionPriority;
+	/**
+	 * A hold the caller reserved and settles itself (an embedding batch, a
+	 * writer escalation): the rows carry it and the dispatch reserves nothing.
+	 */
 	readonly reservationId?: string;
+	/**
+	 * The call's request id, when the caller's hold keyed its requests' bounds
+	 * by it (`mail/interpret/runHold.ts`). Absent: a fresh one.
+	 */
+	readonly requestId?: string;
 	readonly policyVersion?: number;
 	/** Rows of a decision attempt carry the plane's flags. */
 	readonly isFallback?: boolean;
@@ -82,10 +94,17 @@ export interface MeterLlmCallOptions {
  * its deadline is the tighter of the root's and the action's model budget.
  */
 export function meterFor(ctx: object, target: LlmSpendTarget): LlmCallMeter {
+	const task = target.task ?? taskForFeature(target.feature);
+	const deadlineAt = callDeadlineAt(ctx, target.root);
 	return new LlmCallMeter({
-		task: target.task ?? taskForFeature(target.feature),
+		...(target.requestId ? { requestId: target.requestId } : {}),
+		task,
 		root: target.root,
-		deadlineAt: callDeadlineAt(ctx, target.root),
+		deadlineAt,
+		// A caller that holds its own reservation settles it; the dispatch adds none.
+		...(target.reservationId
+			? { hasOuterHold: true }
+			: { admission: dispatchAdmissionPort(ctx, target, task, deadlineAt) }),
 	});
 }
 
@@ -172,15 +191,62 @@ export async function persistMeteredSpend(
 	write: 'await' | 'schedule' = 'await'
 ): Promise<void> {
 	const pending = meter.pendingWrites();
-	for (let start = 0; start < pending.length; start += MAX_METERED_REQUESTS_PER_WRITE) {
+	// Holds whose dispatch has ended settle in the batch that carries their
+	// last pending request; one with nothing pending settles in the last batch.
+	const settleable = meter.closedUnsettledHolds();
+	const lastBatchStart =
+		Math.max(0, Math.ceil(pending.length / MAX_METERED_REQUESTS_PER_WRITE) - 1) *
+		MAX_METERED_REQUESTS_PER_WRITE;
+	for (
+		let start = 0;
+		start < Math.max(pending.length, 1);
+		start += MAX_METERED_REQUESTS_PER_WRITE
+	) {
 		const batch = pending.slice(start, start + MAX_METERED_REQUESTS_PER_WRITE);
+		const settles = settleable.filter((hold) =>
+			holdSettlesIn(hold.reservationId, pending, start, start === lastBatchStart)
+		);
+		if (batch.length === 0 && settles.length === 0) break;
 		await storeRequestBatch(
 			ctx,
-			{ ...callTags(target, meter), requests: batch.map(toMeteredRequest) },
+			{
+				...callTags(target, meter),
+				requests: batch.map(toMeteredRequest),
+				...(settles.length
+					? {
+							settlements: settles.map((hold) => ({
+								reservationId: hold.reservationId,
+								expectedRequests: meter.requestsUnder(hold.reservationId),
+							})),
+						}
+					: {}),
+			},
 			write
 		);
 		meter.acknowledge(batch);
+		for (const hold of settles) meter.markHoldSettled(hold.reservationId);
 	}
+}
+
+/**
+ * Whether a hold settles in the batch starting at `start`: the batch holds the
+ * hold's last pending request, or the hold has none pending and this is the
+ * last batch. A settlement only closes the hold once every request it covered
+ * is in the ledger (`expectedRequests`), so the order batches land in cannot
+ * under-charge it.
+ */
+function holdSettlesIn(
+	reservationId: string,
+	pending: readonly LlmRequestRecord[],
+	start: number,
+	isLastBatch: boolean
+): boolean {
+	let last = -1;
+	for (let index = 0; index < pending.length; index++) {
+		if (pending[index]?.reservationId === reservationId) last = index;
+	}
+	if (last < 0) return isLastBatch;
+	return last >= start && last < start + MAX_METERED_REQUESTS_PER_WRITE;
 }
 
 /**

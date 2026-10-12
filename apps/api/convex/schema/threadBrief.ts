@@ -147,6 +147,9 @@ export const threadBriefTables = {
 		// Retryable partial or failed runs: attempts so far and when the next is due.
 		retryCount: v.optional(v.number()),
 		nextRetryAt: v.optional(v.number()),
+		// Consecutive runs deferred because spend admission refused the run's
+		// one hold (D1, Sol r4): they back `nextRetryAt` off (`retry.ts`).
+		budgetDeferrals: v.optional(v.number()),
 		// Transitions (indexes into the payload's `transitions`) on an obligation
 		// not seen yet, waiting for the item that its delayed request creates.
 		pendingTransitions: v.optional(v.array(v.number())),

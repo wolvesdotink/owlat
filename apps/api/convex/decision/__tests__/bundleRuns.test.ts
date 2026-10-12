@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => ({
 	admitBundle: vi.fn(),
 	plane: {
 		kind: 'llm' as string,
-		degradedFrom: undefined as string | undefined,
+		unavailable: undefined as { code: string; reason: string } | undefined,
 		updatedAt: undefined as number | undefined,
 	},
 }));
@@ -154,7 +154,7 @@ const artifacts = (t: T) => t.run((ctx) => ctx.db.query('decisionArtifacts').col
 
 beforeEach(() => {
 	mocks.plane.kind = 'llm';
-	mocks.plane.degradedFrom = undefined;
+	mocks.plane.unavailable = undefined;
 	mocks.plane.updatedAt = undefined;
 	mocks.admitBundle.mockResolvedValue(admitted());
 	mocks.runLlmObject.mockResolvedValue({
@@ -212,6 +212,8 @@ describe('the triage shadow (D11)', () => {
 				subjectKey: inboundMessageId,
 				root: { rootRequestId: `team:${inboundMessageId}` },
 				policyVersion: 7,
+				// The selected rung's plane (Sol r7 F1).
+				plane: 'language',
 			})
 		);
 		const [artifact] = await artifacts(t);
@@ -248,7 +250,7 @@ describe('the triage shadow (D11)', () => {
 		expect(await artifacts(t)).toHaveLength(1);
 	});
 
-	it.each(['not_sampled', 'no_allowance', 'not_shadowed', 'admission_unavailable'])(
+	it.each(['not_sampled', 'no_allowance', 'not_shadowed'])(
 		'obeys admission: %s makes no call and no artifact',
 		async (why) => {
 			mocks.admitBundle.mockResolvedValue({ isAdmitted: false, why });
@@ -318,6 +320,10 @@ describe('the message bundle', () => {
 
 		expect(mocks.runLlmObject).not.toHaveBeenCalled();
 		expect(mocks.runDecision).toHaveBeenCalledTimes(1);
+		expect(mocks.admitBundle).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ task: 'mail.category', plane: 'decision' })
+		);
 		const options = mocks.runDecision.mock.calls[0]![0] as Record<string, unknown>;
 		expect(options).not.toHaveProperty('fallbackTo');
 		expect(options).toMatchObject({
@@ -376,8 +382,8 @@ describe('the message bundle', () => {
 	});
 
 	it('is terminal when the configured decision provider cannot answer (D3)', async () => {
-		mocks.plane.kind = 'llm';
-		mocks.plane.degradedFrom = 'typesafe';
+		mocks.plane.kind = 'typesafe';
+		mocks.plane.unavailable = { code: 'missing_credentials', reason: 'no key' };
 		const t = await setup({ triageBundle: 'shadow', categoryDisplayBundle: 'shadow' });
 		await enableFeatures(t, ['ai.decisionPlane']);
 		const inboundMessageId = await seedTeamMessage(t);
