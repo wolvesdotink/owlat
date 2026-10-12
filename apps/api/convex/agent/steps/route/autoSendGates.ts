@@ -7,19 +7,25 @@ import { isWithinWorkingHours } from '../../../lib/workingHours';
 import { deriveAuthenticatedRecipient } from '../../referenceMonitor';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
 import { guardRequirement } from '../../../lib/aiRouting/guardRecord';
+import type { AiTaskName } from '@owlat/shared/aiRouting';
+import {
+	AUTO_SEND_VERDICT_TASKS,
+	CALIBRATION_REVISIONS,
+	verdictBlockReason,
+} from '../../../lib/decision/calibration';
 
 export type AutoSendGateDecision =
 	| { readonly safe: true }
 	| { readonly safe: false; readonly reason: string };
 
-interface AutoSendGateContext {
+export interface AutoSendGateContext {
 	readonly action: ActionCtx;
 	readonly inboundMessageId: Id<'inboundMessages'>;
 	readonly now: () => number;
 	readonly getMessage: () => Promise<Doc<'inboundMessages'> | null>;
 }
 
-interface CoreAutoSendGate {
+export interface CoreAutoSendGate {
 	readonly id: string;
 	evaluate(context: AutoSendGateContext): Promise<AutoSendGateDecision> | AutoSendGateDecision;
 }
@@ -217,6 +223,44 @@ const itemCoverageGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
+/**
+ * ADR-0060 §8, ADR-0073 §8: the block-only gate for decision verdicts. A
+ * verdict of a task in `tasks` that would feed the auto-send path must be a
+ * complete, valid, advisory answer from the decision plane configured now,
+ * under the current policy, with a calibration stamp that names the checked-in
+ * revision for its task and the message's language. Anything else holds the
+ * send. It can only block. Nothing feeds a verdict today
+ * (`AUTO_SEND_VERDICT_TASKS` is empty), so it reads nothing and blocks nothing.
+ */
+export function decisionVerdictGate(
+	tasks: readonly AiTaskName[],
+	registry: typeof CALIBRATION_REVISIONS = CALIBRATION_REVISIONS
+): CoreAutoSendGate {
+	return Object.freeze({
+		id: 'decision_verdict',
+		async evaluate({ action, inboundMessageId, now }: AutoSendGateContext) {
+			if (tasks.length === 0) return safe();
+			const inputs = await action.runQuery(internal.decision.context.autoSendVerdictInputs, {
+				inboundMessageId,
+				tasks: [...tasks],
+			});
+			if (inputs.isTruncated) {
+				return unsafe('Too many decision verdicts to check; routing to human review.');
+			}
+			if (!inputs.current) return safe();
+			for (const verdict of inputs.verdicts) {
+				const reason = verdictBlockReason(verdict, { ...inputs.current, now: now(), registry });
+				if (reason) {
+					return unsafe(
+						`A ${verdict.task} decision verdict cannot feed auto-send: ${reason}. Routing to human review.`
+					);
+				}
+			}
+			return safe();
+		},
+	});
+}
+
 const PRE_AUTONOMY_GATES = Object.freeze([circuitBreakersGate]);
 const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	messageExistsGate,
@@ -232,6 +276,7 @@ const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	handlingRulesGate,
 	interpretationIncompleteGate,
 	itemCoverageGate,
+	decisionVerdictGate(AUTO_SEND_VERDICT_TASKS),
 ]);
 
 export const PRE_AUTONOMY_GATE_IDS = gateIds(PRE_AUTONOMY_GATES);
