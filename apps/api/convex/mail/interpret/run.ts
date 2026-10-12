@@ -406,6 +406,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			isFactsOverflow: loaded.isFactsOverflow,
 			truncatedSegmentIds,
 			isVerifyIncomplete: verified.isIncomplete,
+			isVerifyUnsendable: verified.isUnsendable,
 			isBodyIncomplete: scoped.omitted.includes('body_unavailable'),
 			isBodyTruncated: isTruncated,
 		});

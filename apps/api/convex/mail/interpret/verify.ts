@@ -133,20 +133,26 @@ export async function verifyClaims(
 	} = {}
 ): Promise<{
 	verdicts: Map<string, VerifyVerdict>;
+	/** A batch failed or came back short: a retry may repair it. */
 	isIncomplete: boolean;
+	/**
+	 * Some claims were too long to send whole, so they stay unverified: a retry
+	 * would extract again and clip again, so the run does not retry for it.
+	 */
+	isUnsendable: boolean;
 	/** The refusal's reason and limit, for a caller that holds on it (Sol r3 F5). */
 	refusal?: AdmissionRefusalData;
 }> {
 	const verdicts = new Map<string, VerifyVerdict>();
 	let isIncomplete = false;
 	let refusal: AdmissionRefusalData | undefined;
-	if (claims.length === 0) return { verdicts, isIncomplete };
+	if (claims.length === 0) return { verdicts, isIncomplete, isUnsendable: false };
 	const model = opts.model ?? (await resolveLanguageModel(ctx, 'guard'));
 	// Only what the verifier can see whole is checked (Sol r5 F1): a claim whose
 	// statement or quotes the prompt would clip, or one past the most the run's
-	// hold covers, stays unverified and leaves the verification incomplete.
+	// hold covers, stays unverified, and the run is `partial` without a retry.
 	const checkable = claims.filter(fitsVerifyPrompt).slice(0, MAX_VERIFY_CLAIMS);
-	if (checkable.length < claims.length) isIncomplete = true;
+	const isUnsendable = checkable.length < claims.length;
 	for (const [index, batch] of batchClaims(checkable).entries()) {
 		try {
 			const { object } = await meterLlmCall(
@@ -185,7 +191,7 @@ export async function verifyClaims(
 			if (refusal) break;
 		}
 	}
-	return { verdicts, isIncomplete, ...(refusal ? { refusal } : {}) };
+	return { verdicts, isIncomplete, isUnsendable, ...(refusal ? { refusal } : {}) };
 }
 
 /**

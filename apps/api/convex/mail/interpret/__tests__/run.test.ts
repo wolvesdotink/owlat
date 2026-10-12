@@ -137,34 +137,75 @@ describe('interpretMessage', () => {
 		expect(verifyPrompt).toContain('send me the signed contract by Friday');
 	});
 
-	it('never verifies a claim whose quote the verify prompt would clip (Sol r5 F1)', async () => {
-		const t = convexTest(schema, modules);
-		await enableFeatures(t, ['ai']);
+	describe('a claim too long to send the verifier (Sol r5 F1)', () => {
 		const long =
 			'Could you send me the signed contract by Friday, ' +
 			'together with every appendix, every schedule and the cover letter we went through on the call last week, '.repeat(
 				4
 			) +
 			'but do not send anything until I confirm.';
-		expect(long.length).toBeGreaterThan(400);
-		const { messageId } = await seedCaptured(t, { text: long });
-		const output = modelOutput('s0');
-		output.items[0]!.quotes = [{ segmentId: 's0', text: long }];
-		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
-			if (schema === briefModelSchema) return { object: output };
-			return { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } };
+		const seedLong = async (t: Test) => {
+			await enableFeatures(t, ['ai']);
+			const { messageId } = await seedCaptured(t, { text: long });
+			const output = modelOutput('s0');
+			output.items[0]!.quotes = [{ segmentId: 's0', text: long }];
+			return { source: { kind: 'mail' as const, id: messageId }, output };
+		};
+
+		it('is never verified, and the run is partial with no retry and no further extraction', async () => {
+			expect(long.length).toBeGreaterThan(400);
+			const t = convexTest(schema, modules);
+			const { source, output } = await seedLong(t);
+			llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+				if (schema === briefModelSchema) return { object: output };
+				return { object: { verdicts: [{ claimId: 'item:0', verdict: 'supported' }] } };
+			});
+
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+
+			// The extraction only: the clipped claim never reached the verifier.
+			expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
+			expect(out).toMatchObject({ status: 'partial', errorCode: 'verify_unsendable' });
+			if (out.status === 'gone') throw new Error('unreachable');
+			expect(out.retryAt).toBeUndefined();
+			const items = await t.run(async (ctx) => ctx.db.query('threadItems').collect());
+			expect(items).toHaveLength(1);
+			expect(items[0]?.verify).not.toBe('passed');
+			const row = (await t.run((ctx) => ctx.db.query('messageInterpretations').collect())).find(
+				(r) => r.isCounted
+			);
+			expect(row).toMatchObject({ status: 'partial', errorCode: 'verify_unsendable' });
+			expect(row?.nextRetryAt).toBeUndefined();
+
+			// Asked again: answered from the stored extraction, nothing bought.
+			llm.runLlmObject.mockClear();
+			const again = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			expect(again).toMatchObject({
+				status: 'partial',
+				isReplayed: true,
+				errorCode: 'verify_unsendable',
+			});
+			expect(llm.runLlmObject).not.toHaveBeenCalled();
 		});
 
-		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
-			source: { kind: 'mail', id: messageId },
-		});
+		it('lets a transient verifier failure in the same run win, so the run retries', async () => {
+			const t = convexTest(schema, modules);
+			const { source, output } = await seedLong(t);
+			// A second, sendable claim whose verify call fails.
+			const short = modelOutput('s0').items[0]!;
+			short.quotes = [{ segmentId: 's0', text: 'send me the signed contract by Friday' }];
+			output.items.push(short);
+			llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
+				if (schema === briefModelSchema) return { object: output };
+				throw new Error('verifier down');
+			});
 
-		// The extraction only: the clipped claim never reached the verifier.
-		expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
-		expect(out).toMatchObject({ status: 'partial', errorCode: 'verify' });
-		const items = await t.run(async (ctx) => ctx.db.query('threadItems').collect());
-		expect(items).toHaveLength(1);
-		expect(items[0]?.verify).not.toBe('passed');
+			const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+
+			expect(out).toMatchObject({ status: 'partial', errorCode: 'verify' });
+			if (out.status === 'gone') throw new Error('unreachable');
+			expect(out.retryAt).toBeGreaterThan(Date.now());
+		});
 	});
 
 	it('reuses an applied revision instead of calling the model again', async () => {

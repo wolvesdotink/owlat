@@ -12,7 +12,8 @@
  *     paid path: it backs off from 5 minutes, doubling to 6 hours, for at most
  *     {@link MAX_BUDGET_DEFERRALS} deferrals.
  *   - Deterministic outcomes (overflow, grounding, the replay budget,
- *     eligibility) are not retried.
+ *     eligibility, and `verify_unsendable`: claims too long to send the
+ *     verifier whole, which a new extraction would clip again) are not retried.
  */
 
 export const MAX_RETRIES = 3;
