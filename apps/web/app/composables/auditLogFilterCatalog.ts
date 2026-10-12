@@ -102,6 +102,7 @@ const ACTION_GROUP_SPECS: readonly ActionGroupSpec[] = [
 		prefixes: [
 			'ai_provider_config',
 			'ai_routing_policy',
+			'ai_decision_exclusion',
 			'embedding_cohort',
 			'embedding_reembed',
 			'embedding_space',

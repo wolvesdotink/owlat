@@ -28,7 +28,10 @@ const { isEnabled } = useFeatureFlag();
 		</div>
 
 		<div v-else-if="isLoading" class="p-8 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+			/>
 		</div>
 
 		<div v-else-if="mailboxes.length === 0" class="card p-8 text-center text-text-secondary">
@@ -36,12 +39,15 @@ const { isEnabled } = useFeatureFlag();
 		</div>
 
 		<div v-else class="space-y-4">
-			<PostboxVoiceProfileCard
-				v-for="mb in mailboxes"
-				:key="mb._id"
-				:mailbox-id="mb._id as Id<'mailboxes'>"
-				:address="mb.address"
-			/>
+			<template v-for="mb in mailboxes" :key="mb._id">
+				<PostboxVoiceProfileCard :mailbox-id="mb._id as Id<'mailboxes'>" :address="mb.address" />
+				<!-- ADR-0060 §9: this mailbox's opt-out from hosted decision providers. -->
+				<SettingsHostedDecisionExclusion
+					:target="{ kind: 'mailbox', mailboxId: mb._id as Id<'mailboxes'> }"
+					:is-excluded="mb.isExcludedFromHostedDecisions === true"
+					:address="mb.address"
+				/>
+			</template>
 		</div>
 	</div>
 </template>

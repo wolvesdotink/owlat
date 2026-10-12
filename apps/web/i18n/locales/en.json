@@ -6243,6 +6243,13 @@
 				"needsSetupTitle": "On, but not set up yet. Missing: {missing}",
 				"partial": "Some on"
 			},
+			"hostedDecisionExclusion": {
+				"adminOnly": "Only an admin can change this.",
+				"helpMailbox": "Mail in {address} is then judged only by the local decision engine on your own server. It never goes to TypeSafe, your language model or another hosted decision provider; without a local engine, decision requests skip it and everything works as before.",
+				"helpTeamInbox": "Team inbox mail is then judged only by the local decision engine on your own server. It never goes to TypeSafe, your language model or another hosted decision provider; without a local engine, decision requests skip it and everything works as before.",
+				"label": "Keep out of hosted decision providers",
+				"operation": "Update the hosted decision opt-out"
+			},
 			"inboundRetentionCard": {
 				"adminOnly": "Only owners and admins can change this.",
 				"dayOption": "{count} days",

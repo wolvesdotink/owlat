@@ -6243,6 +6243,13 @@
 				"needsSetupTitle": "Eingeschaltet, aber noch nicht eingerichtet. Es fehlt: {missing}",
 				"partial": "Teilweise an"
 			},
+			"hostedDecisionExclusion": {
+				"adminOnly": "Nur ein Admin kann das ändern.",
+				"helpMailbox": "Mails in {address} beurteilt dann nur die lokale Entscheidungs-Engine auf deinem eigenen Server. Sie gehen nie an TypeSafe, dein Sprachmodell oder einen anderen gehosteten Entscheidungsanbieter; ohne lokale Engine überspringen Entscheidungsanfragen sie, und alles funktioniert wie bisher.",
+				"helpTeamInbox": "Mails im Team-Postfach beurteilt dann nur die lokale Entscheidungs-Engine auf deinem eigenen Server. Sie gehen nie an TypeSafe, dein Sprachmodell oder einen anderen gehosteten Entscheidungsanbieter; ohne lokale Engine überspringen Entscheidungsanfragen sie, und alles funktioniert wie bisher.",
+				"label": "Von gehosteten Entscheidungsanbietern fernhalten",
+				"operation": "Ausschluss von gehosteten Entscheidungen aktualisieren"
+			},
 			"inboundRetentionCard": {
 				"adminOnly": "Nur Inhaber und Administratoren können das ändern.",
 				"dayOption": "{count} Tage",

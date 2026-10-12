@@ -9,7 +9,4 @@
 export const UNREACHED_ENTRIES: readonly string[] = [
 	// Thread brief: wired by the wiring and web lanes, which delete each line (none may survive).
 	'mail/interpret/scope.ts#loadSourceForScope',
-	// ADR-0060 §9 hosted-decision opt-out (decisions lane): the web lane's
-	// mailbox and Team Inbox toggles call it and delete this line.
-	'decision/exclusion.ts#setHostedDecisionExclusion',
 ];
