@@ -15,10 +15,16 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { readMailMessageText } from '../lib/messageBody';
 import { openInboundMessageBody } from '../lib/messageBodyInbound';
-import { CURRENT_EMBEDDING_MODEL } from '../lib/constants';
-import { embed, type EmbeddingModel } from 'ai';
+import { embed } from 'ai';
 import { z } from 'zod';
-import { resolveLanguageModel, resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
+import {
+	resolveLanguageModel,
+	resolveIndexEmbedder,
+	toIndexVector,
+	type IndexEmbedder,
+} from '../lib/llmProvider';
+import { measuredEmbeddingSpace } from '../lib/aiRouting/embeddingProbe';
+import { knowledgeEmbeddingInput } from '../lib/aiRouting/embeddingInputs';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { recordLlmSpend } from '../analytics/llmUsage';
@@ -89,7 +95,7 @@ const extractionSchema = z.object({
  */
 async function persistExtractedEntries(
 	ctx: ActionCtx,
-	embedder: { model: EmbeddingModel; embeddingSpaceKey: string },
+	embedder: IndexEmbedder,
 	entries: ExtractedEntry[],
 	source: {
 		sourceType: 'agent_extracted' | 'file' | 'email';
@@ -102,7 +108,7 @@ async function persistExtractedEntries(
 	for (const entry of entries) {
 		const { embedding } = await embed({
 			model: embedder.model,
-			value: `${entry.title}: ${entry.content}`,
+			value: knowledgeEmbeddingInput(entry),
 		});
 
 		// Deterministic fingerprint of the normalized title+content, so saveEntry's
@@ -120,10 +126,9 @@ async function persistExtractedEntries(
 			contactIds: source.contactIds,
 			threadId: source.threadId,
 			embedding: toIndexVector(embedding),
-			embeddingModel: CURRENT_EMBEDDING_MODEL,
-			embeddingGeneratedAt: Date.now(),
-			// saveEntry drops the vector if the space changed while this job ran.
-			embeddingSpaceKey: embedder.embeddingSpaceKey,
+			// The space this vector is in, with the model that made it: saveEntry
+			// stamps it, or drops the vector if the configuration moved on.
+			embeddingSpace: await measuredEmbeddingSpace(embedder.target, embedding),
 			confidence: entry.confidence,
 			tags: entry.tags,
 			contentHash,

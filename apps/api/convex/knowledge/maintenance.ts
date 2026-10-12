@@ -17,6 +17,7 @@
  * - Action Item: fast (5% per day, ~7 day half-life)
  */
 
+import { readActiveSpace, spaceRefOf, vectorInSpace } from '../lib/aiRouting/embeddingRegistry';
 import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -266,16 +267,20 @@ export const dedupeContactEntries = internalMutation({
 		if (links.length < 2) return { merged: 0 };
 
 		const loaded = await Promise.all(links.map((l) => ctx.db.get(l.entryId)));
-		// Only entries with a real embedding can be compared for similarity.
+		// Only vectors of the active space are compared, never two spaces
+		// (ADR-0073); an entry without one is left alone.
+		const active = await readActiveSpace(ctx.db);
+		if (!active) return { merged: 0 };
+		const ref = spaceRefOf(active);
 		const entries = loaded.filter(
-			(e): e is Doc<'knowledgeEntries'> => e !== null && e.embedding.length > 0
+			(e): e is Doc<'knowledgeEntries'> => e !== null && vectorInSpace(e, ref) !== null
 		);
 		if (entries.length < 2) return { merged: 0 };
 
 		const clusters = [
 			entries.filter((e) => isInboxDerivedKnowledge(e)),
 			entries.filter((e) => !isInboxDerivedKnowledge(e)),
-		].flatMap((side) => clusterBySimilarity(side, (e) => e.embedding, threshold));
+		].flatMap((side) => clusterBySimilarity(side, (e) => vectorInSpace(e, ref)!, threshold));
 
 		let merged = 0;
 		for (const cluster of clusters) {

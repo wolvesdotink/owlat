@@ -11,15 +11,15 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeStepCtx } from '../../__tests__/stepCtx';
-import { embeddingSpaceKey, resolvedEmbeddingSpace } from '../../../../lib/embeddingSpace';
+import { storedEmbeddingTarget } from '../../../../lib/embeddingSpace';
 import type { Id } from '../../../../_generated/dataModel';
 
 const mocks = vi.hoisted(() => ({
 	embed: vi.fn(),
-	// The embedder for the space the deployment is in (no stored config here).
+	// A hosted embedder: its target needs no revision probe.
 	resolveIndexEmbedder: vi.fn(async () => ({
 		model: 'mock-embedder',
-		embeddingSpaceKey: embeddingSpaceKey(resolvedEmbeddingSpace(null)),
+		target: storedEmbeddingTarget({ embeddingProviderKind: 'openai' }),
 	})),
 }));
 
@@ -32,6 +32,7 @@ vi.mock('../../../../lib/llmProvider', async () => ({
 import { contextRetrievalStep } from '../index';
 
 const messageId = 'msg_embed' as Id<'inboundMessages'>;
+const SPACE_ID = 'space_active' as Id<'embeddingSpaces'>;
 // Surrounding whitespace, which the searches have always trimmed before embedding.
 const SUBJECT = '   Can you confirm my order shipped?';
 const BODY = 'Hi, I placed order 123 last week — has it shipped yet?\n\n  ';
@@ -54,6 +55,8 @@ function makeCtx(hasVectors: boolean) {
 				vectorChecks.push(args);
 				return hasVectors;
 			},
+			// The query vector's space is the active one.
+			searchTarget: { spaceId: SPACE_ID, slot: 'primary' },
 		},
 		actions: {
 			semanticFileProcessing: (args) => {
@@ -92,6 +95,9 @@ describe('contextRetrievalStep — one query embedding', () => {
 		const [knowledge, files] = searches;
 		expect(knowledge!.args['embedding']).toHaveLength(1536);
 		expect(knowledge!.args['embedding']).toEqual(files!.args['embedding']);
+		// Both vector legs filter to the space the vector is in.
+		expect(knowledge!.args['embeddingSpaceId']).toBe(SPACE_ID);
+		expect(files!.args['embeddingSpaceId']).toBe(SPACE_ID);
 		expect((knowledge!.args['embedding'] as number[]).slice(0, 3)).toEqual([0.25, 0.5, 0.75]);
 		expect(knowledge!.args['queryText']).toContain('order 123');
 		expect(files!.args['queryText']).toBe(knowledge!.args['queryText']);

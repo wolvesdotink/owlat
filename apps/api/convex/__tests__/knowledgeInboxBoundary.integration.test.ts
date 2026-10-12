@@ -17,7 +17,7 @@ import {
 	enableFeatures,
 } from './factories';
 import type * as SessionOrganization from '../lib/sessionOrganization';
-import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
+import { activeSpaceId, stampedIn } from './helpers/embeddingSpaces';
 
 const sess = vi.hoisted(() => ({ role: 'editor' as 'owner' | 'admin' | 'editor' }));
 
@@ -79,13 +79,14 @@ async function makeT(flags: Parameters<typeof enableFeatures>[1] = ['ai.knowledg
  * `open` has an outgoing relation to `inbox`.
  */
 async function seed(t: T) {
+	const spaceId = await activeSpaceId(t);
 	return await t.run(async (ctx) => {
 		const contactId = await ctx.db.insert('contacts', createTestContact());
 		const threadId = await ctx.db.insert(
 			'conversationThreads',
 			createTestConversationThread({ contactId, updatedAt: undefined })
 		);
-		const base = { contactIds: [contactId], embedding: unit(4) };
+		const base = { contactIds: [contactId], embedding: unit(4), ...stampedIn(spaceId, 'fact') };
 		const inbox = await ctx.db.insert(
 			'knowledgeEntries',
 			createTestKnowledgeEntry({
@@ -396,13 +397,11 @@ describe('knowledge sources a client may set', () => {
 			contentHash: 'hash-1',
 		};
 		const visible = await t.mutation(internal.knowledge.graph.saveEntry, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			...base,
 			sourceType: 'file',
 			sourceId: 'file-1',
 		});
 		const extracted = await t.mutation(internal.knowledge.graph.saveEntry, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			...base,
 			sourceType: 'agent_extracted',
 			sourceId: 'inbound-1',
@@ -468,7 +467,7 @@ describe('retrieval leaves inbox-derived entries out unless asked for them', () 
 		await seed(t);
 
 		const member = await t.action(internal.knowledge.retrieval.semanticSearch, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'boundarytoken',
 			embedding: unit(4),
 			scopeToContact: 'org-wide',
@@ -478,7 +477,7 @@ describe('retrieval leaves inbox-derived entries out unless asked for them', () 
 		expect(titles(member)).toEqual(['open fact']);
 
 		const expanded = await t.action(internal.knowledge.retrieval.semanticSearch, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'boundarytoken',
 			embedding: unit(4),
 			scopeToContact: 'org-wide',
@@ -490,7 +489,7 @@ describe('retrieval leaves inbox-derived entries out unless asked for them', () 
 		expect(expanded[0]?._via ?? []).toEqual([]);
 
 		const reader = await t.action(internal.knowledge.retrieval.semanticSearch, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'boundarytoken',
 			embedding: unit(4),
 			scopeToContact: 'org-wide',

@@ -28,7 +28,9 @@ import { v } from 'convex/values';
 import { embed } from 'ai';
 import { authedAction } from './lib/authedFunctions';
 import { internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
 import { resolveIndexEmbedder, resolveLanguageModel, toIndexVector } from './lib/llmProvider';
+import { measuredEmbeddingSpace } from './lib/aiRouting/embeddingProbe';
 import { runLlmText } from './lib/llm/dispatch';
 import { scrubForInjection, clampText } from './assistant/prompt';
 import { logInfo } from './lib/runtimeLog';
@@ -98,13 +100,20 @@ export const ask = authedAction({
 		// Fail-soft: on any embed error we fall through with no vector and each seam
 		// re-embeds from `queryText` itself (or degrades to no vector recall).
 		let embedding: number[] | undefined;
+		// The active space the vector is in; absent ⇒ the seams skip their vector
+		// legs (a vector is only compared within its own space, ADR-0073).
+		let embeddingSpaceId: Id<'embeddingSpaces'> | undefined;
 		// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
 		// error; only a transient embed() failure falls soft to no-vector recall.
 		const embedder = await resolveIndexEmbedder(ctx);
-		const { embeddingSpaceKey } = embedder;
 		try {
 			const res = await embed({ model: embedder.model, value: question });
+			const space = await measuredEmbeddingSpace(embedder.target, res.embedding);
 			embedding = toIndexVector(res.embedding);
+			const target = await ctx.runQuery(internal.aiRouting.embeddingSpaces.searchTarget, {
+				identity: space,
+			});
+			embeddingSpaceId = target?.spaceId;
 		} catch (error) {
 			logInfo('[quickQuery] embed failed', { error: String(error) });
 			embedding = undefined;
@@ -115,7 +124,7 @@ export const ask = authedAction({
 			ctx.runAction(internal.knowledge.retrieval.semanticSearch, {
 				queryText: question,
 				embedding,
-				embeddingSpaceKey,
+				embeddingSpaceId,
 				scopeToContact: 'org-wide',
 				includeInboxDerived: canReadInbox,
 				limit: PER_SOURCE_LIMIT,
@@ -123,7 +132,7 @@ export const ask = authedAction({
 			ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
 				queryText: question,
 				embedding,
-				embeddingSpaceKey,
+				embeddingSpaceId,
 				scopeToContact: 'org-wide',
 				limit: PER_SOURCE_LIMIT,
 			}),

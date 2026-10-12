@@ -16,7 +16,7 @@ import type { Id } from '../../../_generated/dataModel';
 import type { ActionCtx } from '../../../_generated/server';
 import type { AgentStepModule } from '../types';
 import { openInboundMessageBody } from '../../../lib/messageBodyInbound';
-import { embedRetrievalQuery } from '../../../knowledge/retrieval';
+import { embedRetrievalQuery } from '../../../knowledge/vectorSearch';
 import { guardedHistory } from '../security_scan/guard';
 import {
 	EMERGENCY_BUDGET,
@@ -245,7 +245,7 @@ export async function assembleInboundBriefing(
 			internal.knowledge.graphTraversal.isGraphRetrievalEnabled,
 			{}
 		);
-		// L8 + empty-corpus skip (ADR-0073): one query embedding (and its space key)
+		// L8 + empty-corpus skip (ADR-0073): one query embedding (and its space)
 		// for both searches, none when neither table holds a vector; the text still
 		// feeds both full-text legs. An embed failure leaves both empty, as before.
 		const query = await embedRetrievalQuery(
@@ -256,7 +256,7 @@ export async function assembleInboundBriefing(
 		);
 		const embedding =
 			query.kind === 'vector'
-				? { embedding: query.embedding, embeddingSpaceKey: query.embeddingSpaceKey }
+				? { embedding: query.embedding, embeddingSpaceId: query.embeddingSpaceId }
 				: {};
 		const knowledge =
 			query.kind === 'failed'

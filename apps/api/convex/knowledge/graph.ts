@@ -28,7 +28,8 @@ import {
 import { batchGet } from '../_utils/batchLoader';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { sameContactScope } from '../lib/contactScope';
-import { vectorFieldsForCommit } from '../lib/embeddingSpace';
+import { entryKeysForType, vectorFieldsForCommit } from '../lib/aiRouting/embeddingRegistry';
+import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
 import { logInfo } from '../lib/runtimeLog';
 import {
 	entryTypeValidator,
@@ -398,7 +399,11 @@ export const updateEntry = knowledgeMutation({
 			updatedAt: now,
 			lastValidatedAt: now,
 		};
-		if (args.entryType !== undefined) patch.entryType = args.entryType;
+		if (args.entryType !== undefined) {
+			patch.entryType = args.entryType;
+			// The space-and-type vector filter key follows the type (ADR-0073).
+			Object.assign(patch, entryKeysForType(entry, args.entryType));
+		}
 		if (args.title !== undefined) patch.title = args.title;
 		if (args.content !== undefined) patch.content = args.content;
 		if (args.contactIds !== undefined) patch.contactIds = args.contactIds;
@@ -515,12 +520,13 @@ export const saveEntry = internalMutation({
 			'expiresAt',
 			'contentHash',
 		]),
-		// The space the job embedded with; a stale vector is dropped (vectorFieldsForCommit).
+		// The space the job measured for `embedding`; the vector is stamped with it,
+		// or dropped when the configuration moved on (vectorFieldsForCommit).
 		// Optional for previous-release jobs, whose vector is dropped; required
 		// after release N+1.
-		embeddingSpaceKey: v.optional(v.string()),
+		embeddingSpace: v.optional(measuredEmbeddingSpaceValidator),
 	},
-	handler: async (ctx, { embeddingSpaceKey, ...args }) => {
+	handler: async (ctx, { embeddingSpace, ...args }) => {
 		const now = Date.now();
 		// Write-level idempotency, leg 1 — same source: if an entry from the same
 		// source already exists with this title, return it instead of inserting a
@@ -564,11 +570,16 @@ export const saveEntry = internalMutation({
 			);
 			if (dup) return dup._id;
 		}
-		const { isStale, ...vector } = await vectorFieldsForCommit(ctx.db, args, embeddingSpaceKey);
+		const { embedding, embeddingModel: _model, embeddingGeneratedAt: _at, ...fields } = args;
+		const { isStale, fields: vector } = await vectorFieldsForCommit(
+			ctx,
+			{ embedding, space: embeddingSpace },
+			{ mode: 'insert', entryType: args.entryType }
+		);
 		if (isStale) logInfo('[knowledge.saveEntry] stale embedding space, stored without vector');
 		const entry = {
-			...args,
-			...vector,
+			...fields,
+			...(vector as { embedding: number[] }),
 			searchableText: `${args.title} ${args.content}`,
 			lastValidatedAt: now,
 			createdAt: now,
@@ -711,6 +722,7 @@ export const createPolicyEntry = knowledgeAdminMutation({
 			if (!existing) return null;
 			await ctx.db.patch(args.entryId, {
 				entryType,
+				...entryKeysForType(existing, entryType),
 				title: args.title,
 				content: args.content,
 				sourceType: 'curated',

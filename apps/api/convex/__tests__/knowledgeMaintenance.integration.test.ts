@@ -1,3 +1,4 @@
+import { stampLegacyVectors } from './helpers/embeddingSpaces';
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
@@ -539,6 +540,7 @@ describe('dedupeContactEntries', () => {
 			return entryId;
 		});
 
+		await stampLegacyVectors(t);
 		const r = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, { contactId });
 		expect(r.merged).toBe(0);
 		await t.run(async (ctx) => {
@@ -574,6 +576,7 @@ describe('dedupeContactEntries', () => {
 			confidence: 0.8,
 		});
 
+		await stampLegacyVectors(t);
 		const r1 = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, { contactId });
 		expect(r1.merged).toBe(1);
 
@@ -599,6 +602,7 @@ describe('dedupeContactEntries', () => {
 		});
 
 		// Idempotent: a second pass finds nothing more to merge.
+		await stampLegacyVectors(t);
 		const r2 = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, { contactId });
 		expect(r2.merged).toBe(0);
 	});
@@ -662,6 +666,7 @@ describe('dedupeContactEntries', () => {
 			await ctx.db.insert('knowledgeEntryContacts', { entryId: e2, contactId });
 		});
 
+		await stampLegacyVectors(t);
 		const r = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, { contactId });
 		expect(r.merged).toBe(2);
 
@@ -690,6 +695,7 @@ describe('dedupeContactEntries', () => {
 			embedAt: 1,
 			confidence: 0.9,
 		});
+		await stampLegacyVectors(t);
 		const r = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, { contactId });
 		expect(r.merged).toBe(0);
 	});
@@ -763,6 +769,7 @@ describe('dedupeContactEntries', () => {
 			});
 		});
 
+		await stampLegacyVectors(t);
 		const r = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, { contactId });
 		expect(r.merged).toBe(1);
 

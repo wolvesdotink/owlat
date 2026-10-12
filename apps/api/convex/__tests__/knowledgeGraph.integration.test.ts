@@ -4,7 +4,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { createTestContact, createTestKnowledgeEntry, enableFeatures } from './factories';
 import type { Id } from '../_generated/dataModel';
-import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
+import { configureLocalEmbedder, measuredLocalSpace } from './helpers/embeddingSpaces';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -717,7 +717,6 @@ describe('knowledgeGraph.getByContact', () => {
 		});
 
 		await t.mutation(internal.knowledge.graph.saveEntry, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			entryType: 'goal',
 			title: 'Agent Goal',
 			content: 'extracted goal',
@@ -846,9 +845,10 @@ describe('knowledgeGraph.saveEntry', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.knowledge']);
 		const embedding = Array.from({ length: 10 }, (_, i) => i * 0.1);
+		await configureLocalEmbedder(t);
 
 		const entryId = await t.mutation(internal.knowledge.graph.saveEntry, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
+			embeddingSpace: measuredLocalSpace(10),
 			entryType: 'goal',
 			title: 'Agent-extracted Goal',
 			content: 'Complete project by Q2.',
@@ -866,6 +866,11 @@ describe('knowledgeGraph.saveEntry', () => {
 			expect(entry!.entryType).toBe('goal');
 			expect(entry!.title).toBe('Agent-extracted Goal');
 			expect(entry!.embedding).toEqual(embedding);
+			// Stamped with the space the job measured and the model that made it.
+			expect(entry!.embeddingSpaceId).toBeDefined();
+			expect(entry!.embeddingProvenance).toBe('measured');
+			expect(entry!.embeddingModel).toBe('nomic-embed-text');
+			expect(entry!.embeddingSpaceEntryKey).toBe(`${entry!.embeddingSpaceId}:goal`);
 			expect(entry!.confidence).toBe(0.9);
 			expect(entry!.tags).toEqual(['q2', 'deadline']);
 			expect(entry!.searchableText).toBe('Agent-extracted Goal Complete project by Q2.');
@@ -895,7 +900,6 @@ describe('knowledgeGraph.saveEntry', () => {
 		});
 
 		const entryId = await t.mutation(internal.knowledge.graph.saveEntry, {
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			entryType: 'fact',
 			title: 'Thread Fact',
 			content: 'Fact from a thread.',

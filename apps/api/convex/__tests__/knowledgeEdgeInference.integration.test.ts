@@ -1,3 +1,4 @@
+import { stampLegacyVectors } from './helpers/embeddingSpaces';
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
@@ -109,6 +110,7 @@ describe('knowledge.edgeInference.inferRelations', () => {
 			{ from: 1, to: 2, relationType: 'contradicts', confidence: 0.5 }, // < floor → ambiguous
 		]);
 
+		await stampLegacyVectors(t);
 		await t.action(internal.knowledge.edgeInference.inferRelations, { entryIds: [a0, a1, a2] });
 
 		const rels = await allRelations(t);
@@ -146,6 +148,7 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		});
 
 		mockRelations([{ from: 0, to: 1, relationType: 'supports', confidence: 0.8 }]);
+		await stampLegacyVectors(t);
 		await t.action(internal.knowledge.edgeInference.inferRelations, { entryIds: [a0, a1] });
 
 		const usage = await t.run(async (ctx) => ctx.db.query('llmUsageEvents').collect());
@@ -183,6 +186,7 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		});
 
 		mockRelations([{ from: 0, to: 1, relationType: 'supports', confidence: 0.9 }]);
+		await stampLegacyVectors(t);
 		await t.action(internal.knowledge.edgeInference.inferRelations, { entryIds: [a0, a1] });
 
 		const rels = await allRelations(t);
@@ -208,6 +212,7 @@ describe('knowledge.edgeInference.inferRelations', () => {
 		});
 
 		mockRelations([{ from: 0, to: 1, relationType: 'supports', confidence: 0.9 }]);
+		await stampLegacyVectors(t);
 		await t.action(internal.knowledge.edgeInference.inferRelations, { entryIds: [a0, a1] });
 
 		expect(runLlmObjectMock).not.toHaveBeenCalled();
@@ -280,6 +285,7 @@ describe('knowledge.edgeInference.inferRelations', () => {
 			{ from: 0, to: 2, relationType: 'contradicts', confidence: 0.9 },
 		]);
 
+		await stampLegacyVectors(t);
 		await t.action(internal.knowledge.edgeInference.inferRelations, { entryIds: [anchor] });
 
 		const rels = await allRelations(t);
@@ -328,6 +334,7 @@ describe('knowledge.edgeInference.inferRelations', () => {
 			{ from: 1, to: 2, relationType: 'supports', confidence: 0.9 }, // B → org-general: ok
 		]);
 
+		await stampLegacyVectors(t);
 		await t.action(internal.knowledge.edgeInference.inferRelations, {
 			entryIds: [anchorA, anchorB],
 		});

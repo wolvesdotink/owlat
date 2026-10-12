@@ -30,6 +30,7 @@
  * endpoint detail.
  */
 
+import { readActiveSpace, spaceRefOf, vectorInSpace } from '../lib/aiRouting/embeddingRegistry';
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -142,7 +143,7 @@ export const pageEntryConfidence = internalQuery({
 
 /**
  * Embeddings for a bounded id set (the endpoints of the surprise candidates).
- * Skips entries without a real embedding. Reads `knowledgeEntries` only (not the
+ * Skips entries without a vector in the active embedding space. Reads `knowledgeEntries` only (not the
  * edge table), so it is outside the graph-scope guard's scope entirely.
  */
 export const getEmbeddingsByIds = internalQuery({
@@ -151,9 +152,14 @@ export const getEmbeddingsByIds = internalQuery({
 		// Independent ids: one deduplicated, parallel read.
 		const byId = await batchGet(ctx, args.ids);
 		const out: { id: Id<'knowledgeEntries'>; embedding: number[] }[] = [];
+		// Only active-space vectors, so every distance compares one space (ADR-0073).
+		const active = await readActiveSpace(ctx.db);
+		if (!active) return out;
+		const ref = spaceRefOf(active);
 		for (const id of args.ids) {
 			const e = byId.get(id);
-			if (e && e.embedding.length > 0) out.push({ id, embedding: e.embedding });
+			const embedding = e ? vectorInSpace(e, ref) : null;
+			if (embedding) out.push({ id, embedding });
 		}
 		return out;
 	},

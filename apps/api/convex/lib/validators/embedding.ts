@@ -93,3 +93,36 @@ export const embeddingCohortValidator = v.object({
 	/** The legacy `embeddingModel` stamp the cohort's rows carry, if the cohort is narrowed by it. */
 	legacyModelStamp: v.optional(v.string()),
 });
+
+/** One table's vectors by where they stand against the active space. */
+const embeddingCoverageCountsValidator = v.object({
+	/** A vector in the active space: vector search finds the row. */
+	active: v.number(),
+	/** A vector with no recorded space (written before provenance): lexical search only. */
+	unknown: v.number(),
+	/** A vector in another space only: lexical search until re-embedded. */
+	inactive: v.number(),
+	/** No vector at all (pending, too little text, or a dropped stale vector). */
+	unembedded: v.number(),
+});
+
+/**
+ * The last completed coverage count of the active space (`embeddingSpaces.coverage`),
+ * from a bounded paged walk (`aiRouting/embeddingCoverage.ts`): Convex cannot count
+ * rows without reading them, so the settings page reads this snapshot.
+ */
+export const embeddingCoverageValidator = v.object({
+	knowledgeEntries: embeddingCoverageCountsValidator,
+	semanticFiles: embeddingCoverageCountsValidator,
+	measuredAt: v.number(),
+});
+
+/**
+ * A space as a job measured it (`lib/aiRouting/embeddingProbe.ts`): the
+ * identity plus where its target came from. Commit mutations and searches take
+ * it beside a vector, so the vector is stamped or filtered by its real space.
+ */
+export const measuredEmbeddingSpaceValidator = v.object({
+	...embeddingSpaceIdentityFields,
+	source: v.union(v.literal('stored_config'), v.literal('env')),
+});
