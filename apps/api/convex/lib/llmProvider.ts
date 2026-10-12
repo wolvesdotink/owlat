@@ -55,6 +55,7 @@ import {
 	isTrivialClassifiedMessage,
 	type ClassificationSignals,
 } from './llm/complexity';
+import { stampModelEndpoint } from './llm/modelEndpoint';
 import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from './constants';
 import {
 	classifyEnvLanguageEndpoint,
@@ -303,7 +304,11 @@ function resolveLanguageModelFromPlane(
 ): ResolvedLanguageModel {
 	const modelId = tier === 'fast' ? language.models.fast : language.models.capable;
 	return Object.freeze({
-		model: languageProviderFor(language.kind).buildChatModel(language.clientConfig, modelId),
+		// Stamped so every ledger row this model writes names its endpoint (ADR-0073).
+		model: stampModelEndpoint(
+			languageProviderFor(language.kind).buildChatModel(language.clientConfig, modelId),
+			language.endpointProvenance
+		),
 		modelId,
 		endpointProvenance: language.endpointProvenance,
 	});
@@ -409,7 +414,11 @@ export async function resolveEmbeddingModel(ctx: ActionCtx): Promise<EmbeddingMo
 	// Surface an unusable config (missing hosted key / local base URL) as an
 	// actionable error before building the model.
 	adapter.validateCredentials({ ...clientConfig, modelId });
-	return adapter.buildEmbeddingModel({ ...clientConfig, modelId });
+	// Stamped so the embedding's ledger row names its endpoint (ADR-0073).
+	return stampModelEndpoint(
+		adapter.buildEmbeddingModel({ ...clientConfig, modelId }),
+		`embedding:${kind}`
+	);
 }
 
 /**

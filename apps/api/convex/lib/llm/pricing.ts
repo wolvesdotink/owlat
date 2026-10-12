@@ -31,6 +31,14 @@ type Price = {
 };
 
 /**
+ * The revision of the price table below, stamped on every ledger row as
+ * `priceVersion` (ADR-0073). A row keeps the cost it was written with; changing
+ * a rate never reprices history. Bump this with any rate change, to the date
+ * the new rates were checked.
+ */
+export const PRICE_VERSION = '2026-10-11';
+
+/**
  * Catch-all prefix for the decision plane's model family. Exported because
  * `lib/decision/pricing.ts` decides "is this id on the decision plane?" from the
  * same string the price row and the admission aliases are written from.

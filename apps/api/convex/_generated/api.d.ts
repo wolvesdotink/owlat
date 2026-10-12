@@ -1,11 +1,20 @@
 import type * as agent_replyEnvelope from '../agent/replyEnvelope.js';
+import type * as analytics_meteredSpend from '../analytics/meteredSpend.js';
 import type * as chat_attachmentAccess from '../chat/attachmentAccess.js';
 import type * as contacts_growthCounters from '../contacts/growthCounters.js';
 import type * as delivery_sendLifecycle_sourceFinalization from '../delivery/sendLifecycle/sourceFinalization.js';
 import type * as delivery_sendLifecycle_sendTimeEffects from '../delivery/sendLifecycle/sendTimeEffects.js';
 import type * as inbox_followUps from '../inbox/followUps.js';
+import type * as lib_aiRouting_spendPeriodWrites from '../lib/aiRouting/spendPeriodWrites.js';
 import type * as lib_counters from '../lib/counters.js';
+import type * as lib_decision_attemptRequests from '../lib/decision/attemptRequests.js';
 import type * as lib_listingCounters from '../lib/listingCounters.js';
+import type * as lib_llm_dispatchStream from '../lib/llm/dispatchStream.js';
+import type * as lib_llm_embed from '../lib/llm/embed.js';
+import type * as lib_llm_modelEndpoint from '../lib/llm/modelEndpoint.js';
+import type * as lib_llm_providerUsage from '../lib/llm/providerUsage.js';
+import type * as lib_llm_requestMeter from '../lib/llm/requestMeter.js';
+import type * as lib_llm_taskLimits from '../lib/llm/taskLimits.js';
 import type * as lib_rowCounters from '../lib/rowCounters.js';
 import type * as mail_interpret___eval___liveModel from '../mail/interpret/__eval__/liveModel.js';
 import type * as mail_interpret_activity from '../mail/interpret/activity.js';
@@ -182,7 +191,6 @@ import type * as analytics_engagementActivity from '../analytics/engagementActiv
 import type * as analytics_engagementPercentile from '../analytics/engagementPercentile.js';
 import type * as analytics_engagementScore from '../analytics/engagementScore.js';
 import type * as analytics_engagementScoreSync from '../analytics/engagementScoreSync.js';
-import type * as analytics_failedLlmSpend from '../analytics/failedLlmSpend.js';
 import type * as analytics_sendTimeProfile from '../analytics/sendTimeProfile.js';
 import type * as analytics_sendTimeProfileSync from '../analytics/sendTimeProfileSync.js';
 import type * as analytics_llmUsage from '../analytics/llmUsage.js';
@@ -1629,13 +1637,22 @@ import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server
 
 declare const fullApi: ApiFromModules<{
 	'agent/replyEnvelope': typeof agent_replyEnvelope;
+	'analytics/meteredSpend': typeof analytics_meteredSpend;
 	'chat/attachmentAccess': typeof chat_attachmentAccess;
 	'contacts/growthCounters': typeof contacts_growthCounters;
 	'delivery/sendLifecycle/sourceFinalization': typeof delivery_sendLifecycle_sourceFinalization;
 	'delivery/sendLifecycle/sendTimeEffects': typeof delivery_sendLifecycle_sendTimeEffects;
 	'inbox/followUps': typeof inbox_followUps;
+	'lib/aiRouting/spendPeriodWrites': typeof lib_aiRouting_spendPeriodWrites;
 	'lib/counters': typeof lib_counters;
+	'lib/decision/attemptRequests': typeof lib_decision_attemptRequests;
 	'lib/listingCounters': typeof lib_listingCounters;
+	'lib/llm/dispatchStream': typeof lib_llm_dispatchStream;
+	'lib/llm/embed': typeof lib_llm_embed;
+	'lib/llm/modelEndpoint': typeof lib_llm_modelEndpoint;
+	'lib/llm/providerUsage': typeof lib_llm_providerUsage;
+	'lib/llm/requestMeter': typeof lib_llm_requestMeter;
+	'lib/llm/taskLimits': typeof lib_llm_taskLimits;
 	'lib/rowCounters': typeof lib_rowCounters;
 	'mail/interpret/__eval__/liveModel': typeof mail_interpret___eval___liveModel;
 	'mail/interpret/activity': typeof mail_interpret_activity;
@@ -1802,7 +1819,6 @@ declare const fullApi: ApiFromModules<{
 	'analytics/engagementPercentile': typeof analytics_engagementPercentile;
 	'analytics/engagementScore': typeof analytics_engagementScore;
 	'analytics/engagementScoreSync': typeof analytics_engagementScoreSync;
-	'analytics/failedLlmSpend': typeof analytics_failedLlmSpend;
 	'analytics/sendTimeProfile': typeof analytics_sendTimeProfile;
 	'analytics/sendTimeProfileSync': typeof analytics_sendTimeProfileSync;
 	'analytics/llmUsage': typeof analytics_llmUsage;

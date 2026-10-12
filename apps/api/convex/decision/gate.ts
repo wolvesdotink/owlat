@@ -25,11 +25,13 @@
  * the breaker's verdict back to the caller and lets the dispatch decide.
  */
 
+import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { rateLimiter } from '../lib/rateLimiter';
 import { throwForbidden, throwRateLimited } from '../_utils/errors';
 import type { DecisionAllowance } from '../lib/decisionProviders/types';
+import { decisionProviderKindValidator } from '../lib/validators/aiProviderConfig';
 import { readDecisionBreaker, type DecisionBreakerState } from './breaker';
 
 /** What the gate hands back, plus the breaker's state for a surface to render. */
@@ -61,5 +63,22 @@ export const assertDecisionAllowed = internalMutation({
 		// the vendor without the flag and the bucket having been read first — the
 		// kill switch is in the type, not in a convention.
 		return { allowed: true, fallbackAllowed: breaker.fallbackAllowed, breakerState: breaker.state };
+	},
+});
+
+/**
+ * The per-ATTEMPT charge behind `lib/decision/ports.ts` `decisionRateLimiterPort`:
+ * one token of `decisionPlaneAttempt` per round trip, keyed by provider kind.
+ * Throws when the bucket is empty; the dispatch turns that into a terminal
+ * `DecisionRateLimitRefusal`.
+ */
+export const chargeDecisionAttempt = internalMutation({
+	args: { provider: decisionProviderKindValidator },
+	handler: async (ctx, args): Promise<null> => {
+		const res = await rateLimiter.limit(ctx, 'decisionPlaneAttempt', { key: args.provider });
+		if (!res.ok) {
+			throwRateLimited('The decision plane is busy — try again in a moment.', res.retryAfter);
+		}
+		return null;
 	},
 });

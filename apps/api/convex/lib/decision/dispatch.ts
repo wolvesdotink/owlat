@@ -58,14 +58,16 @@
 
 import { randomUUID } from 'node:crypto';
 import type { LanguageModel } from 'ai';
-import type { TokenUsage } from '../../agent/steps/types';
 import { decisionProviderFor } from '../decisionProviders';
 import type { DecisionRequest, DecisionResult } from '../decisionProviders/types';
 export { DEFAULT_LANGUAGE_DECISION_DEADLINE_MS } from '../decisionProviders/llm';
 import { DecisionWireError } from '../decisionProviders/wire';
 import { errorStatus, isRetriableLlmError } from '../llm/dispatch';
-import { partialUsageOf } from '../llm/partialUsage';
 import { MAX_LLM_ATTEMPTS } from '../llm/retryPolicy';
+import { LlmCallMeter } from '../llm/requestMeter';
+import { attemptRequests, billedUsage } from './attemptRequests';
+export { billedUsage } from './attemptRequests';
+import { taskForFeature } from '../llm/taskPolicy';
 import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
 import type {
 	DecisionFallbackBreaker,
@@ -237,18 +239,8 @@ interface AttemptContext<Q extends QuestionSet> {
 	readonly requestId: string;
 	readonly recordUsage: DecisionUsageRecorder;
 	readonly rateLimiter: DecisionRateLimiter;
-}
-
-/**
- * What a failed attempt was billed for: a response the codec rejected
- * (`DecisionWireError`), or a language call whose billed completions never
- * fitted the schema (`LlmPartialUsageError`, #1260). Anything else bills
- * nothing we can see.
- */
-export function billedUsage(error: unknown): { usage?: TokenUsage; modelUsed?: string } {
-	if (error instanceof DecisionWireError) return { usage: error.usage, modelUsed: error.modelUsed };
-	const partial = partialUsageOf(error);
-	return partial ? { usage: partial.tokenUsage, modelUsed: partial.modelUsed } : {};
+	/** Every provider request of the logical call, the hop included, numbered in order. */
+	readonly meter: LlmCallMeter;
 }
 
 /**
@@ -277,31 +269,44 @@ async function askOnce<Q extends QuestionSet>(
 		questions: options.questions,
 		deadlineMs: deadlineFor(provider, options.deadlineMs),
 		requestId: ctx.requestId,
+		meter: ctx.meter,
 		...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
 		...(provider.model === undefined ? {} : { model: provider.model }),
 		...(provider.modelId ? { modelId: provider.modelId } : {}),
 	};
 	const startedAt = Date.now();
 	const elapsed = () => Date.now() - startedAt;
+	const recordedBefore = ctx.meter.requests.length;
 	const base = {
 		feature: options.feature,
 		requestId: ctx.requestId,
 		provider: provider.kind,
 		attempt,
 		fallback,
+		...(options.task ? { task: options.task } : {}),
+		...(options.root ? { root: options.root } : {}),
 	} as const;
 
 	let result: DecisionResult;
 	try {
 		result = await decisionProviderFor(provider.kind).ask(provider.config, request);
 	} catch (error) {
+		const durationMs = elapsed();
+		const billed = billedUsage(error);
 		try {
 			await ctx.recordUsage({
 				...base,
 				outcome: 'failed',
-				durationMs: elapsed(),
+				durationMs,
 				error,
-				...billedUsage(error),
+				...billed,
+				requests: attemptRequests(
+					ctx.meter,
+					recordedBefore,
+					{ outcome: 'failed', ...billed },
+					durationMs,
+					error
+				),
 			});
 		} catch {
 			// Swallowed: a failing recorder must not replace the vendor's error,
@@ -310,15 +315,27 @@ async function askOnce<Q extends QuestionSet>(
 		throw error;
 	}
 
+	const durationMs = elapsed();
 	try {
 		await ctx.recordUsage({
 			...base,
 			outcome: 'answered',
-			durationMs: elapsed(),
+			durationMs,
 			usage: result.usage,
 			modelUsed: result.modelUsed,
 			provenance: result.provenance,
 			calibrated: result.calibrated,
+			requests: attemptRequests(
+				ctx.meter,
+				recordedBefore,
+				{
+					outcome: 'ok',
+					usage: result.usage,
+					modelUsed: result.modelUsed,
+					endpoint: result.provenance,
+				},
+				durationMs
+			),
 		});
 	} catch (error) {
 		throw new DecisionAccountingFailure(error);
@@ -403,11 +420,17 @@ export async function runDecision<Q extends QuestionSet>(
 	const random = options.random ?? Math.random;
 	const sleep = options.sleep ?? realSleep;
 	const breaker = options.breaker ?? NO_HOP_BREAKER;
+	const requestId = options.requestId ?? randomUUID();
 	const ctx: AttemptContext<Q> = {
 		options,
-		requestId: options.requestId ?? randomUUID(),
+		requestId,
 		recordUsage: options.recordUsage ?? (() => {}),
 		rateLimiter: options.rateLimiter ?? NO_OP_RATE_LIMITER,
+		meter: new LlmCallMeter({
+			requestId,
+			task: options.task ?? taskForFeature(options.feature),
+			...(options.root ? { root: options.root } : {}),
+		}),
 	};
 
 	const budget = Math.max(1, options.maxAttempts ?? DEFAULT_DECISION_ATTEMPTS);

@@ -295,12 +295,11 @@ const ENTRIES = {
 		...oneShot,
 		features: ['assistant_tool_draft'],
 	}),
-	// Records no ledger row today (quickQuery.ts); the ledger lane adds one.
 	'assistant.quick_query': language({
 		tiers: ['capable'],
 		...interactive,
 		...oneShot,
-		features: [],
+		features: ['assistant_quick_query'],
 	}),
 	'analytics.visualize': language({
 		tiers: ['capable'],
@@ -334,9 +333,14 @@ const ENTRIES = {
 	'mail.claim_check': decision({ ...pipeline, maxAttempts: MAX_LLM_ATTEMPTS, features: [] }),
 	'mail.necessity': decision({ ...pipeline, maxAttempts: MAX_LLM_ATTEMPTS, features: [] }),
 	'mail.draft_quality': decision({ ...pipeline, maxAttempts: MAX_LLM_ATTEMPTS, features: [] }),
-	// Embedding calls write no ledger row today; the ledger lane adds them.
-	'embedding.index': embedding({ priority: 'background', features: [] }),
-	'embedding.query': embedding({ priority: 'pipeline', features: [] }),
+	'embedding.index': embedding({
+		priority: 'background',
+		features: ['embedding_knowledge', 'embedding_file'],
+	}),
+	'embedding.query': embedding({
+		priority: 'pipeline',
+		features: ['embedding_knowledge_search', 'embedding_file_search', 'embedding_quick_query'],
+	}),
 } satisfies Record<AiTaskName, Omit<TaskPolicyEntry, 'task'>>;
 
 /** The catalog, frozen. Keyed by task name; every name has exactly one entry. */
