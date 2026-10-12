@@ -26,7 +26,21 @@ type T = TestConvex<typeof schema>;
 async function newT(): Promise<T> {
 	const t = convexTest(schema, modules);
 	await enableFeatures(t, ['ai.agent', 'ai']);
+	await seedPolicy(t);
 	return t;
+}
+
+/** The routing policy the claims below plan under: the category bundle in shadow. */
+async function seedPolicy(t: T): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('aiRoutingPolicy', {
+			categoryDisplayBundle: 'shadow',
+			shadowCapUsd: 1,
+			policyVersion: 1,
+			updatedAt: 1,
+			updatedBy: 'admin-1',
+		});
+	});
 }
 
 const PROVENANCE = {
@@ -159,6 +173,13 @@ describe('sender memory', () => {
 	])('does not match %s', async (_name, message, opts) => {
 		const t = await newT();
 		await answer(t, await teamMessage(t));
+		if (opts.policyVersion !== undefined) {
+			// An admin saved the policy: later answers run under its new version.
+			await t.run(async (ctx) => {
+				const row = await ctx.db.query('aiRoutingPolicy').first();
+				await ctx.db.patch(row!._id, { policyVersion: opts.policyVersion! });
+			});
+		}
 		expect(await answer(t, await teamMessage(t, message), opts)).toEqual({ kind: 'learned' });
 	});
 

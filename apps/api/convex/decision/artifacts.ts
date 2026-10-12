@@ -30,7 +30,8 @@ import { DECISION_ARTIFACT_TTL_MS, DECISION_LEASE_MS } from '../lib/decision/rou
 import { observeAndLearn, subjectSender } from './senderMemory';
 import { isExcludedFromHostedDecisions, type ExclusionScope } from './exclusion';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { decisionConfigIdentity } from '../lib/decision/configIdentity';
+import { loadRoutingPolicy } from '../aiRouting/policy';
+import { planMessageBundle, planTriage } from '../lib/decision/routing';
 
 /** Version of the stored `answers` and `baseline` JSON shapes. */
 export const DECISION_ANSWERS_VERSION = 1;
@@ -41,18 +42,14 @@ const SUBJECT_ARTIFACT_BATCH = 64;
 const labelsValidator = v.record(v.string(), v.string());
 
 export type ClaimOutcome =
-	| {
-			readonly outcome: 'claimed';
-			readonly leaseExpiresAt: number;
-			/** The decision plane identity the claim verified, stamped on the answer. */
-			readonly contextVersion: string;
-	  }
+	| { readonly outcome: 'claimed'; readonly leaseExpiresAt: number }
 	| { readonly outcome: 'settled' }
 	| { readonly outcome: 'busy' }
 	| { readonly outcome: 'gone' }
 	| { readonly outcome: 'excluded' }
 	| { readonly outcome: 'disabled' }
-	| { readonly outcome: 'stale' };
+	| { readonly outcome: 'stale' }
+	| { readonly outcome: 'policy_changed' };
 
 /**
  * The endpoint the call will use, as the action resolved it ONCE: the rung,
@@ -116,6 +113,9 @@ async function liveSubject(
  * - `disabled`: the master gate today's classifier honours is off (`ai.agent`
  *   for the Team Inbox, `ai` for Postbox), or the decision plane is off for a
  *   decision-rung call;
+ * - `policy_changed`: the routing policy is no longer the one the worker
+ *   planned under, or no longer plans this task in this mode (a switch was
+ *   turned off or moved);
  * - `stale`: the decision configuration changed since the action resolved
  *   the provider it is about to call;
  * - `excluded`: the mailbox is excluded from hosted decisions and the call
@@ -143,6 +143,17 @@ export const claim = internalMutation({
 		const subject = await liveSubject(ctx, fields);
 		if (!subject) return { outcome: 'gone' };
 		if (subject.correctedAt !== undefined) return { outcome: 'settled' };
+		// The routing policy NOW: a worker that planned under an older policy (a
+		// switch turned off or moved since) never calls. Any save bumps the version.
+		const policy = await loadRoutingPolicy(ctx);
+		const plan = fields.task === 'mail.triage' ? planTriage(policy) : planMessageBundle(policy);
+		if (
+			policy.policyVersion !== fields.policyVersion ||
+			plan?.task !== fields.task ||
+			plan.mode !== fields.kind
+		) {
+			return { outcome: 'policy_changed' };
+		}
 		// The gates today's classifier calls honour, read again right before the
 		// call: the Team Inbox's agent (which requires `ai`), Postbox's `ai`.
 		const gate = subject.exclusion.kind === 'team_inbox' ? 'ai.agent' : 'ai';
@@ -158,8 +169,6 @@ export const claim = internalMutation({
 		if (!endpoint.isLocal && (await isExcludedFromHostedDecisions(ctx, subject.exclusion))) {
 			return { outcome: 'excluded' };
 		}
-		const contextVersion =
-			endpoint.rung === 'decision' ? decisionConfigIdentity(config, isDecisionPlaneOn) : 'language';
 		const now = Date.now();
 		const leaseExpiresAt = now + DECISION_LEASE_MS;
 		const existing = await ctx.db
@@ -181,7 +190,7 @@ export const claim = internalMutation({
 				createdAt: existing.createdAt,
 				updatedAt: now,
 			});
-			return { outcome: 'claimed', leaseExpiresAt, contextVersion };
+			return { outcome: 'claimed', leaseExpiresAt };
 		}
 		await ctx.db.insert('decisionArtifacts', {
 			...fields,
@@ -191,7 +200,7 @@ export const claim = internalMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
-		return { outcome: 'claimed', leaseExpiresAt, contextVersion };
+		return { outcome: 'claimed', leaseExpiresAt };
 	},
 });
 

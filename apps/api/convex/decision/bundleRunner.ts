@@ -55,6 +55,7 @@ import {
 import { calibrationRevisionFor } from '../lib/decision/calibration';
 import { stateContentHash, type BuiltDecisionState } from '../lib/decision/evidence';
 import { resolveEndpointLocality } from '../lib/llm/endpointLocality';
+import { resolvedPlaneIdentity } from '../lib/decision/configIdentity';
 import { artifactKeyOf, decisionRung, type BundlePlan } from '../lib/decision/routing';
 import { admitBundle, type BundleAdmission } from './bundleAdmission';
 import type { RoutingContext } from './context';
@@ -98,6 +99,7 @@ export type BundleRunOutcome =
 				| 'excluded'
 				| 'disabled'
 				| 'stale'
+				| 'policy_changed'
 				| Extract<BundleAdmission, { isAdmitted: false }>['why'];
 	  };
 
@@ -276,7 +278,7 @@ export async function runBundle<Q extends QuestionSet>(
 				...(revision ? { calibrationRevision: revision } : {}),
 				...(run.language ? { language: run.language } : {}),
 			},
-			contextVersion: claim.contextVersion,
+			contextVersion: rung === 'decision' ? resolvedPlaneIdentity(plane, true) : 'language',
 			...(run.baseline ? { baseline: { ...run.baseline } } : {}),
 			...(isAgreement === undefined ? {} : { isAgreement }),
 			...(run.built.isComplete ? { memoryKey: run.built.contentFingerprint } : {}),

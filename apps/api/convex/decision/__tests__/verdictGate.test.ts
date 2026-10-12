@@ -18,15 +18,20 @@ import {
 	decisionVerdictGate,
 } from '../../agent/steps/route/autoSendGates';
 import { AUTO_SEND_VERDICT_TASKS } from '../../lib/decision/calibration';
+import { PINNED_DECISION_MODEL } from '../../lib/decisionProviders/typesafe';
+import { __resetDecisionPlaneCacheForTests } from '../../lib/decisionProvider';
 
 type T = ReturnType<typeof convexTest>;
 
 const NOW = Date.now();
 const REGISTRY = { 'mail.draft_quality': { en: 'baseline-2026-11' } };
+/** The resolved TypeSafe plane: env kind and key, the adapter's pinned model, no proxy. */
+const IDENTITY = `typesafe|${PINNED_DECISION_MODEL}|`;
 
 async function setup() {
 	const t = convexTest(schema, modules);
 	vi.stubEnv('DECISION_PROVIDER', 'typesafe');
+	vi.stubEnv('TYPESAFE_API_KEY', 'ts-live-0123456789abcdef');
 	await enableFeatures(t, ['ai.decisionPlane']);
 	const inboundMessageId = await t.run((ctx) =>
 		ctx.db.insert(
@@ -58,7 +63,7 @@ function verdict(inboundMessageId: Id<'inboundMessages'>, over: Record<string, u
 		inboundMessageId,
 		contentHash: 'hash',
 		policyVersion: 0,
-		contextVersion: 'typesafe||',
+		contextVersion: IDENTITY,
 		provenance: { provider: 'typesafe' as const, questionSetId: 'q', questionSetVersion: 1 },
 		calibration: {
 			isAdapterCalibrated: true,
@@ -79,8 +84,9 @@ async function evaluate(
 ) {
 	const query = t.query as (reference: unknown, args: unknown) => Promise<unknown>;
 	const runQuery = vi.fn((reference: unknown, args: unknown) => query(reference, args));
+	const runAction = t.action as (reference: unknown, args: unknown) => Promise<unknown>;
 	const decision = await decisionVerdictGate([...tasks], REGISTRY).evaluate({
-		action: { runQuery } as unknown as ActionCtx,
+		action: { runQuery, runAction } as unknown as ActionCtx,
 		inboundMessageId,
 		now: () => NOW,
 		getMessage: () =>
@@ -89,7 +95,10 @@ async function evaluate(
 	return { decision, runQuery };
 }
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+	vi.unstubAllEnvs();
+	__resetDecisionPlaneCacheForTests();
+});
 
 describe('the registered decision verdict gate', () => {
 	it('is the last core final gate and, with nothing feeding a verdict, reads nothing', async () => {
@@ -147,6 +156,11 @@ describe('a verdict gate for a task that feeds auto-send', () => {
 		],
 		['a stale policy', { policyVersion: 3 }, /routing policy/],
 		['another provider', { contextVersion: 'local||' }, /different decision provider/],
+		[
+			'another model of the same provider',
+			{ contextVersion: 'typesafe|jev-0.9.0|' },
+			/different decision provider/,
+		],
 		[
 			'an invalidated verdict',
 			{ invalidatedAt: NOW - 1, invalidationReason: 'owner_correction' },

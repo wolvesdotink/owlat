@@ -20,7 +20,7 @@ import {
 	type StoredVerdict,
 	type VerdictContext,
 } from '../calibration';
-import { decisionConfigIdentity } from '../configIdentity';
+import { isLocalDecisionEngine, resolvedPlaneIdentity } from '../configIdentity';
 
 const DEFAULTS = resolveRoutingPolicy(null);
 const NOW = Date.UTC(2026, 9, 12);
@@ -208,24 +208,27 @@ describe('the block-only verdict rule', () => {
 	});
 });
 
-describe('the decision plane identity', () => {
+describe('the decision plane identity and locality', () => {
 	afterEach(() => vi.unstubAllEnvs());
 
-	it('is off while the plane is off', () => {
-		expect(decisionConfigIdentity({ decisionProviderKind: 'typesafe' }, false)).toBe('off');
+	it('is off while the plane is off, and names a provider that cannot answer', () => {
+		const plane = { kind: 'typesafe' as const, modelId: 'jev-1.13.0', clientConfig: {} };
+		expect(resolvedPlaneIdentity(plane, false)).toBe('off');
+		expect(resolvedPlaneIdentity(null, true)).toBe('unavailable');
+		expect(resolvedPlaneIdentity({ ...plane, kind: 'llm', degradedFrom: 'typesafe' }, true)).toBe(
+			'unavailable:typesafe'
+		);
+		expect(
+			resolvedPlaneIdentity({ ...plane, clientConfig: { baseUrl: 'https://p.example' } }, true)
+		).toBe('typesafe|jev-1.13.0|https://p.example');
 	});
 
-	it('follows the stored row, then the environment, then the default', () => {
-		expect(
-			decisionConfigIdentity(
-				{ decisionProviderKind: 'typesafe', decisionModel: 'jev-1.13.0' },
-				true
-			)
-		).toBe('typesafe|jev-1.13.0|');
+	it('treats only the local engine as local, from the stored kind or the environment', () => {
+		expect(isLocalDecisionEngine({ decisionProviderKind: 'local' }, true)).toBe(true);
+		expect(isLocalDecisionEngine({ decisionProviderKind: 'local' }, false)).toBe(false);
+		expect(isLocalDecisionEngine({ decisionProviderKind: 'typesafe' }, true)).toBe(false);
 		vi.stubEnv('DECISION_PROVIDER', 'local');
-		vi.stubEnv('DECISION_BASE_URL', 'http://decision-local:8080');
-		expect(decisionConfigIdentity(null, true)).toBe('local||http://decision-local:8080');
-		vi.stubEnv('DECISION_PROVIDER', 'bogus');
-		expect(decisionConfigIdentity(null, true)).toBe('llm||');
+		expect(isLocalDecisionEngine(null, true)).toBe(true);
+		expect(isLocalDecisionEngine({ decisionProviderKind: 'llm' }, true)).toBe(false);
 	});
 });

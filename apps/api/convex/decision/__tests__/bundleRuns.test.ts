@@ -332,7 +332,7 @@ describe('the message bundle', () => {
 			task: 'mail.category',
 			kind: 'advisory',
 			status: 'complete',
-			contextVersion: 'llm||',
+			contextVersion: 'typesafe||',
 			provenance: {
 				provider: 'typesafe',
 				endpoint: 'typesafe-native',
@@ -507,6 +507,33 @@ describe('dispatch races (Sol r2)', () => {
 		});
 		const inboundMessageId = await seedTeamMessage(t);
 		await t.action(internal.decision.bundleActions.teamMessage, { inboundMessageId, baseline });
+		expect(mocks.runDecision).not.toHaveBeenCalled();
+		expect(await artifacts(t)).toEqual([]);
+	});
+
+	it('never calls once the bundle switches were turned off after the worker planned', async () => {
+		mocks.plane.kind = 'typesafe';
+		const t = await setup({ categoryDisplayBundle: 'enforce' });
+		await enableFeatures(t, ['ai.decisionPlane']);
+		// Admission runs between the worker's policy read and its claim: turn
+		// every bundle switch off there, as an admin saving the policy would.
+		mocks.admitBundle.mockImplementation(async () => {
+			await t.run(async (ctx) => {
+				const row = await ctx.db.query('aiRoutingPolicy').first();
+				await ctx.db.patch(row!._id, {
+					categoryDisplayBundle: 'off',
+					dispositionAdvisoryBundle: 'off',
+					triageBundle: 'off',
+					policyVersion: 8,
+				});
+			});
+			return admitted('advisory');
+		});
+		const inboundMessageId = await seedTeamMessage(t);
+		await t.action(internal.decision.bundleActions.teamMessage, {
+			inboundMessageId,
+			baseline: { category: 'support', disposition: 'reply' },
+		});
 		expect(mocks.runDecision).not.toHaveBeenCalled();
 		expect(await artifacts(t)).toEqual([]);
 	});

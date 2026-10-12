@@ -33,7 +33,21 @@ type T = TestConvex<typeof schema>;
 async function newT(): Promise<T> {
 	const t = convexTest(schema, modules);
 	await enableFeatures(t, ['ai.agent', 'ai']);
+	await seedPolicy(t);
 	return t;
+}
+
+/** The routing policy the claims below plan under: the category bundle in shadow. */
+async function seedPolicy(t: T): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('aiRoutingPolicy', {
+			categoryDisplayBundle: 'shadow',
+			shadowCapUsd: 1,
+			policyVersion: 1,
+			updatedAt: 1,
+			updatedBy: 'admin-1',
+		});
+	});
 }
 
 const PROVENANCE = {
@@ -258,7 +272,42 @@ describe('the gates and the endpoint snapshot, right before the call', () => {
 				internal.decision.artifacts.claim,
 				claimArgs({ inboundMessageId }, { rung: 'decision', isLocal: true })
 			)
-		).toMatchObject({ outcome: 'claimed', contextVersion: 'llm||' });
+		).toMatchObject({ outcome: 'claimed' });
+	});
+});
+
+describe('the routing policy, right before the call (Sol r3)', () => {
+	it('refuses a worker that planned under an older policy, or a plan the policy no longer makes', async () => {
+		const t = await newT();
+		const inboundMessageId = await teamMessage(t);
+		// The switch turned off (and the version bumped) after the worker planned.
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('aiRoutingPolicy').first();
+			await ctx.db.patch(row!._id, { categoryDisplayBundle: 'off', policyVersion: 2 });
+		});
+		expect(
+			await t.mutation(internal.decision.artifacts.claim, claimArgs({ inboundMessageId }))
+		).toEqual({ outcome: 'policy_changed' });
+		// Same version, but the claim asks for a plan this policy does not make.
+		expect(
+			await t.mutation(internal.decision.artifacts.claim, {
+				...claimArgs({ inboundMessageId }),
+				policyVersion: 2,
+			})
+		).toEqual({ outcome: 'policy_changed' });
+		expect(await rows(t)).toEqual([]);
+	});
+
+	it('refuses a mode the current policy does not plan (shadow worker, enforced switch)', async () => {
+		const t = await newT();
+		const inboundMessageId = await teamMessage(t);
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('aiRoutingPolicy').first();
+			await ctx.db.patch(row!._id, { categoryDisplayBundle: 'enforce' });
+		});
+		expect(
+			await t.mutation(internal.decision.artifacts.claim, claimArgs({ inboundMessageId }))
+		).toEqual({ outcome: 'policy_changed' });
 	});
 });
 

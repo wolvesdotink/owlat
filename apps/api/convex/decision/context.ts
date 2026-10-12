@@ -10,18 +10,13 @@ import type { ResolvedRoutingPolicy } from '@owlat/shared/aiRouting';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { loadRoutingPolicy } from '../aiRouting/policy';
-import { decisionConfigIdentity, isLocalDecisionEngine } from '../lib/decision/configIdentity';
+import { isLocalDecisionEngine } from '../lib/decision/configIdentity';
 import { isExcludedFromHostedDecisions } from './exclusion';
 import type { StoredVerdict } from '../lib/decision/calibration';
 import { aiTaskNameValidator } from '../lib/validators/aiRouting';
 
 /** Verdicts one message can hold per task: one per policy version. Bounded. */
 const VERDICTS_PER_TASK = 32;
-
-async function configIdentity(ctx: { db: QueryCtx['db'] }, isDecisionPlaneOn: boolean) {
-	const row = await ctx.db.query('aiProviderConfig').first(); // bounded: singleton
-	return decisionConfigIdentity(row, isDecisionPlaneOn);
-}
 
 export interface RoutingContext {
 	readonly policy: ResolvedRoutingPolicy;
@@ -93,13 +88,12 @@ export const autoSendVerdictInputs = internalQuery({
 		}
 		if (verdicts.length === 0) return { verdicts, isTruncated, current: null };
 		const message = await ctx.db.get(args.inboundMessageId);
-		const isDecisionPlaneOn = await isFeatureEnabled(ctx, 'ai.decisionPlane');
 		return {
 			verdicts,
 			isTruncated,
 			current: {
 				policyVersion: (await loadRoutingPolicy(ctx)).policyVersion,
-				decisionConfigIdentity: await configIdentity(ctx, isDecisionPlaneOn),
+				isDecisionPlaneOn: await isFeatureEnabled(ctx, 'ai.decisionPlane'),
 				language: message?.classification?.language,
 			},
 		};

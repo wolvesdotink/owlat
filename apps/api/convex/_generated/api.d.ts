@@ -460,6 +460,7 @@ import type * as decision_bundleAdmission from '../decision/bundleAdmission.js';
 import type * as decision_bundleRunner from '../decision/bundleRunner.js';
 import type * as decision_context from '../decision/context.js';
 import type * as decision_exclusion from '../decision/exclusion.js';
+import type * as decision_planeIdentity from '../decision/planeIdentity.js';
 import type * as decision_postboxEvidence from '../decision/postboxEvidence.js';
 import type * as decision_schedule from '../decision/schedule.js';
 import type * as decision_scopedEvidence from '../decision/scopedEvidence.js';
@@ -2150,6 +2151,7 @@ declare const fullApi: ApiFromModules<{
 	'decision/bundleRunner': typeof decision_bundleRunner;
 	'decision/context': typeof decision_context;
 	'decision/exclusion': typeof decision_exclusion;
+	'decision/planeIdentity': typeof decision_planeIdentity;
 	'decision/postboxEvidence': typeof decision_postboxEvidence;
 	'decision/schedule': typeof decision_schedule;
 	'decision/scopedEvidence': typeof decision_scopedEvidence;

@@ -248,8 +248,21 @@ export function decisionVerdictGate(
 				return unsafe('Too many decision verdicts to check; routing to human review.');
 			}
 			if (!inputs.current) return safe();
+			// The plane as it resolves now (the resolver's own output), which every
+			// verdict must have been answered by.
+			const decisionConfigIdentity = await action.runAction(
+				internal.decision.planeIdentity.resolvedIdentity,
+				{ isDecisionPlaneOn: inputs.current.isDecisionPlaneOn }
+			);
+			const current = {
+				policyVersion: inputs.current.policyVersion,
+				language: inputs.current.language,
+				decisionConfigIdentity,
+				now: now(),
+				registry,
+			};
 			for (const verdict of inputs.verdicts) {
-				const reason = verdictBlockReason(verdict, { ...inputs.current, now: now(), registry });
+				const reason = verdictBlockReason(verdict, current);
 				if (reason) {
 					return unsafe(
 						`A ${verdict.task} decision verdict cannot feed auto-send: ${reason}. Routing to human review.`
