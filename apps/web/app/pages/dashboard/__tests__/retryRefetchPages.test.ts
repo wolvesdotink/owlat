@@ -132,6 +132,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'PostboxTeamMemberPicker',
 		'PostboxThreadListSkeleton',
 		'SettingsAiDecisionCard',
+		'SettingsAiEmbeddingSpaceCard',
 		'SettingsAiKeyField',
 		'SettingsAiModelPicker',
 		'SettingsAiRemoveConfigCard',

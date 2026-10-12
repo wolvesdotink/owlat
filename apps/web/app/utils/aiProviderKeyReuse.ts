@@ -1,5 +1,5 @@
 /**
- * When a stored API key still applies, and the two settings-save refusals the
+ * When a stored API key still applies, and the settings-save refusal the
  * AI-provider form shows on a field instead of as a toast. Pure: message keys
  * only, the composables translate.
  *
@@ -42,19 +42,15 @@ export function isStoredKeyStranded(stored: StoredKeyFacts | null, next: KeyTarg
 
 /** The inline sentence for a stranded key on the language and embedding planes. */
 export const STORED_KEY_NOT_REUSABLE_KEY = 'shared.aiProviders.validation.storedKeyNotReusable';
-/** The inline sentence when the corpus holds vectors from the current embedding space (D8). */
-export const EMBEDDING_SPACE_LOCKED_KEY = 'shared.useAiProviderForm.embeddingSpaceLocked';
 
 export type AiPlane = 'language' | 'embedding' | 'decision';
 
 /** A refused settings save the form puts on a field. */
-export type AiSaveRefusal =
-	| { kind: 'storedKeyNotReusable'; plane: AiPlane }
-	| { kind: 'embeddingSpaceLocked' };
+export type AiSaveRefusal = { kind: 'storedKeyNotReusable'; plane: AiPlane };
 
 const PLANES: ReadonlySet<string> = new Set(['language', 'embedding', 'decision']);
 
-/** `saveConfig`'s typed refusals, read off `data.reason`; null for anything else. */
+/** `saveConfig`'s stored-key refusal, read off `data.reason`; null for anything else. */
 export function aiSaveRefusalOf(op: OperationError): AiSaveRefusal | null {
 	const reason = op.data?.['reason'];
 	if (reason === 'stored_key_not_reusable') {
@@ -63,6 +59,5 @@ export function aiSaveRefusalOf(op: OperationError): AiSaveRefusal | null {
 			? { kind: 'storedKeyNotReusable', plane: plane as AiPlane }
 			: null;
 	}
-	if (reason === 'embedding_space_locked') return { kind: 'embeddingSpaceLocked' };
 	return null;
 }

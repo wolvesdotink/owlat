@@ -47,8 +47,7 @@ export function useAiProviderForm() {
 		{
 			label: () => t('shared.useAiProviderForm.saveOperation'),
 			type: 'action',
-			// A changed provider that needs a new key, and the D8 embedding lock,
-			// belong on their field rather than in a toast.
+			// A changed provider that needs a new key belongs on its field, not in a toast.
 			onError: (op) => keys.claimSaveRefusal(op),
 		}
 	);
@@ -62,10 +61,7 @@ export function useAiProviderForm() {
 	);
 	const { run: runRemove, isLoading: isRemoving } = useBackendOperation(
 		api.aiProviderConfig.removeConfig,
-		{
-			label: () => t('shared.useAiProviderForm.removeOperation'),
-			onError: (op) => keys.claimRemoveRefusal(op),
-		}
+		{ label: () => t('shared.useAiProviderForm.removeOperation') }
 	);
 
 	const providerOptions = languageProviderOptions();
@@ -156,7 +152,6 @@ export function useAiProviderForm() {
 	const {
 		languageSaveError,
 		embeddingSaveError,
-		embeddingLockError,
 		storedLanguageKeySet,
 		storedEmbeddingKeySet,
 		isLanguageKeyStranded,
@@ -336,7 +331,6 @@ export function useAiProviderForm() {
 
 		// A hosted embedder needs a key too (stored for this provider, or freshly typed).
 		embeddingSaveError.value = null;
-		embeddingLockError.value = null;
 		if (
 			embeddingRequiresKey.value &&
 			!storedEmbeddingKeySet.value &&
@@ -467,7 +461,6 @@ export function useAiProviderForm() {
 		form,
 		languageError,
 		embeddingError,
-		embeddingLockError,
 		showLanguageBaseUrl,
 		showHostedEmbedder,
 		isDirty,

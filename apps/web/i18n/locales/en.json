@@ -7843,6 +7843,172 @@
 							"manage": "Manage in Features"
 						}
 					},
+					"embeddingSpace": {
+						"attest": {
+							"confirm": "I attest that {model} wrote these vectors.",
+							"description": "Owlat did not record which model wrote the vectors from before this version. If you know the configured model wrote them, you can attest to it, and they return to vector search without re-embedding. Attest only to what you know: vectors from another model make search results wrong.",
+							"entry": {
+								"status": {
+									"applied": "{count} items assigned, vectors written up to {until}.",
+									"applying": "Assigning items: {count} so far, vectors written up to {until}.",
+									"revoked": "Revoked. Its items are out of vector search until they are re-embedded."
+								},
+								"title": "{source}, recorded {date}"
+							},
+							"problems": {
+								"date": "Choose a day.",
+								"statement": "Describe what this rests on, in up to {max} characters.",
+								"width": "Enter a whole number above 0."
+							},
+							"revoke": "Revoke",
+							"revokeBody": "Its items leave vector search until a re-embed brings them back with a measured model.",
+							"revokeTitle": "Revoke this attestation?",
+							"sourceLabel": "This rests on",
+							"sources": {
+								"attestation": "My own knowledge",
+								"record": "Deployment records"
+							},
+							"statementLabel": "What you base this on",
+							"statementPlaceholder": "For example: this deployment has used this model since it was set up, and its environment never named another.",
+							"subject": "{count} items have vectors with no recorded model. This attestation names {model}.",
+							"submit": "Record attestation",
+							"title": "Attest the model of older vectors",
+							"warning": "Recorded in the audit log under your name.",
+							"widthHelp": "The number of dimensions the model returns, for example 1536.",
+							"widthLabel": "Vector width",
+							"writtenBeforeHelp": "Including this day. Later vectors are not covered.",
+							"writtenBeforeLabel": "Vectors written up to"
+						},
+						"coverage": {
+							"columns": {
+								"active": "In vector search",
+								"inactive": "Other model",
+								"unembedded": "Not embedded",
+								"unknown": "Model not recorded"
+							},
+							"legend": "Only the first column is found by vector search. Keyword search finds the others until they are re-embedded; items not embedded yet wait for processing or have too little text.",
+							"measuredAt": "Counted {date}.",
+							"none": "Not counted yet. Counting runs in the background.",
+							"refresh": "Count again",
+							"stale": "The searched model changed since the last count. A new count is on its way.",
+							"table": "Collection",
+							"tables": {
+								"knowledgeEntries": "Knowledge",
+								"semanticFiles": "Files"
+							},
+							"title": "Coverage"
+						},
+						"description": "Which embedding model vector search uses, and how much of your knowledge and files it reaches. Keyword search finds everything either way.",
+						"job": {
+							"cancel": "Cancel",
+							"last": "Last re-embed: {state}, {date}, {embedded} embedded.",
+							"paused": {
+								"budget": "Paused: the AI spend budget is used up for now.",
+								"other": "Paused",
+								"providerUnavailable": "Paused: the embedding provider could not be reached.",
+								"spaceChanged": "Paused: the embedding model changed."
+							},
+							"progress": "{embedded} embedded, {scanned} checked so far ({table})",
+							"resume": "Resume",
+							"status": {
+								"cancelled": "Cancelled",
+								"completed": "Finished",
+								"failed": "Failed",
+								"running": "Running"
+							}
+						},
+						"loading": "Loading embedding search",
+						"operations": {
+							"activate": "Activate rebuild",
+							"attest": "Record attestation",
+							"cancel": "Cancel re-embedding",
+							"cancelRebuild": "Cancel rebuild",
+							"catchUp": "Embed changes into the rebuild",
+							"refresh": "Count embedding coverage",
+							"resume": "Resume re-embedding",
+							"revoke": "Revoke attestation",
+							"rollback": "Roll back the embedding model",
+							"startRebuild": "Start rebuild",
+							"startReembed": "Start re-embedding",
+							"validate": "Validate rebuild"
+						},
+						"rebuild": {
+							"activate": "Activate",
+							"activateHint": "Activation checks a sample again, then switches search and the embedding settings in one step. Items added or changed during the rebuild need Embed changes first.",
+							"blocked": {
+								"jobOpen": "A re-embed or rebuild is already running.",
+								"noModel": "Choose a model.",
+								"paidUnavailable": "A paid rebuild needs spend admission, which this deployment doesn't have yet.",
+								"sameModel": "Vector search already uses this model."
+							},
+							"cancel": "Cancel rebuild",
+							"catchUp": "Embed changes",
+							"confirmPaidBody": "Every item is embedded with {model} and counted against your AI spend. Search keeps using the active model until you activate the rebuild.",
+							"confirmPaidTitle": "Start a paid rebuild?",
+							"costHosted": "Paid: every item is sent to the provider and counted against your AI spend.",
+							"costLocal": "Free: runs on your server.",
+							"description": "Embeds everything with the new model beside the active one, so search keeps working during the change. Possible between local models, or between models of the same hosted provider; any other change goes through the embedding settings above.",
+							"modelLabel": "Model",
+							"progress": "{embedded} embedded, {scanned} checked",
+							"providerLabel": "Embedding provider",
+							"rollback": "Roll back",
+							"rollbackAvailable": "{model} can be restored: its vectors are still stored.",
+							"rollbackBody": "Vector search and the embedding settings switch back at once. Items added since are re-embedded with it.",
+							"rollbackTitle": "Roll back to {model}?",
+							"staged": "Building {model} ({dimensions} dimensions) beside the active model.",
+							"start": "Start rebuild",
+							"title": "Rebuild with another model",
+							"validate": "Validate",
+							"validation": {
+								"failed": "Only {passed} of {sampled} sampled items found themselves. Activation needs at least 80%.",
+								"passed": "{passed} of {sampled} sampled items found themselves with the new model."
+							}
+						},
+						"reembed": {
+							"blocked": {
+								"jobOpen": "A re-embed or rebuild is already running.",
+								"noEmbedder": "No embedding model is configured.",
+								"paidUnavailable": "Paid re-embedding needs spend admission, which this deployment doesn't have yet."
+							},
+							"confirm": "Start re-embedding",
+							"confirmBody": "About {count} items are sent to {provider} and counted against your AI spend. You can cancel it while it runs.",
+							"confirmTitle": "Start a paid re-embed?",
+							"hosted": "Your embedding model is hosted, so re-embedding is paid: every item is sent to the provider and counted against your AI spend. It runs only when you start it.",
+							"local": "Your embedding model runs on your server, so re-embedding is free. It also runs on its own once a day.",
+							"nothing": "Everything with a vector is in vector search.",
+							"start": "Re-embed {count} items",
+							"title": "Re-embed"
+						},
+						"state": {
+							"none": {
+								"body": "Search uses keywords only.",
+								"title": "No embedding model is configured"
+							},
+							"searchable": {
+								"body": "Items embedded with another model, or before Owlat recorded which model it used, are found by keyword search only until they are re-embedded.",
+								"title": "Vector search uses {model}"
+							},
+							"space": "{provider}, {dimensions} dimensions",
+							"switching": {
+								"body": "Vector search starts once the first item is embedded with it. Until then, and for older items until they are re-embedded, search uses keywords.",
+								"title": "Switching to {model}"
+							}
+						},
+						"title": "Embedding search",
+						"toasts": {
+							"activate": "Vector search now uses the rebuilt model.",
+							"attest": "Attestation recorded. Its items return to vector search as they are assigned.",
+							"cancel": "Re-embedding cancelled.",
+							"cancelRebuild": "Rebuild cancelled.",
+							"catchUp": "Embedding the changes since the rebuild started.",
+							"refresh": "Counting started.",
+							"resume": "Re-embedding resumed.",
+							"revoke": "Attestation revoked.",
+							"rollback": "Rolled back to the previous embedding model.",
+							"startRebuild": "Rebuild started.",
+							"startReembed": "Re-embedding started."
+						}
+					},
 					"embeddings": {
 						"apiKeyHelp": "Encrypted at rest, never shown again.",
 						"apiKeyLabel": "Embedding API key",
@@ -7853,8 +8019,8 @@
 						"localTitle": "Local (bundled) — no setup needed",
 						"modelLabel": "Embedding model",
 						"providerLabel": "Embedding provider",
-						"reindexBody": "Vectors from two models can't be compared, and Owlat can't re-embed them yet. If your knowledge or files already hold vectors, this change is refused on save and the current model stays.",
-						"reindexTitle": "The embedding model changes only while nothing is indexed",
+						"reindexBody": "Vectors from two models can't be compared. After saving, keyword search finds older items until they are re-embedded: on its own with a local model, or when you start it under Embedding search with a hosted one. To change without that gap, use Rebuild with another model there, where the change allows it.",
+						"reindexTitle": "Changing the model takes older items out of vector search",
 						"title": "Embeddings"
 					},
 					"language": {
@@ -7881,7 +8047,7 @@
 					"remove": {
 						"button": "Remove configuration",
 						"confirm": "Remove configuration",
-						"confirmBody": "The stored API keys are deleted and can't be recovered. AI falls back to the deployment's environment variables, or turns off if none are set. While your knowledge or files hold vectors, removing is refused unless the environment uses the same embedding model.",
+						"confirmBody": "The stored API keys are deleted and can't be recovered. AI falls back to the deployment's environment variables, or turns off if none are set. If the environment uses another embedding model, older items leave vector search until they are re-embedded.",
 						"confirmTitle": "Remove the AI provider configuration?",
 						"description": "Deletes the settings and API keys stored on this page. AI then uses the deployment's environment variables, or turns off if none are set.",
 						"title": "Remove provider configuration"
@@ -16074,12 +16240,10 @@
 		},
 		"useAiProviderForm": {
 			"embeddingKeyRequired": "{provider} needs an API key.",
-			"embeddingSpaceLocked": "Your knowledge and files already hold vectors from the current embedding model, so it stays. Vectors from two models can't be compared, and Owlat can't re-embed them yet.",
 			"listModelsOperation": "Load available models",
 			"modelsEmpty": "No models returned — keep using a custom id.",
 			"modelsLoadFailed": "Could not load models.",
 			"modelsUnsupported": "This provider does not support listing models.",
-			"removeLocked": "The configuration stays: it is the only record of which embedding model made your vectors. To stop using AI, turn the AI features off in Features.",
 			"removeOperation": "Remove AI provider configuration",
 			"removed": "AI provider configuration removed",
 			"saveOperation": "Save AI provider",
@@ -16178,6 +16342,7 @@
 				"contact": "Contacts",
 				"domain": "Domains",
 				"emailTemplate": "Email templates",
+				"embeddingSpace": "Embedding spaces",
 				"plugin": "Plugins",
 				"segment": "Segments",
 				"settings": "Settings",
@@ -16197,6 +16362,7 @@
 				"deliverabilityRamp": "Deliverability ramp",
 				"domain": "Domain",
 				"emailTemplate": "Email template",
+				"embeddingSpace": "Embedding space",
 				"plugin": "Plugin",
 				"seedMailbox": "Seed mailbox",
 				"segment": "Segment",

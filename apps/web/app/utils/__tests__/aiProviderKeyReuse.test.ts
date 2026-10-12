@@ -1,6 +1,6 @@
 /**
  * When a stored key still applies (the server's `stored_key_not_reusable`
- * rule), and which settings-save refusals the form claims for a field.
+ * rule), and which settings-save refusal the form claims for a field.
  */
 import { describe, expect, it } from 'vitest';
 import { aiSaveRefusalOf, isStoredKeyStranded, storedKeyApplies } from '../aiProviderKeyReuse';
@@ -45,7 +45,7 @@ describe('isStoredKeyStranded', () => {
 });
 
 describe('aiSaveRefusalOf', () => {
-	it('reads the two typed refusals off data.reason', () => {
+	it('reads the stored-key refusal off data.reason', () => {
 		expect(
 			aiSaveRefusalOf({
 				category: 'invalid_input',
@@ -53,17 +53,18 @@ describe('aiSaveRefusalOf', () => {
 				data: { reason: 'stored_key_not_reusable', plane: 'embedding' },
 			})
 		).toEqual({ kind: 'storedKeyNotReusable', plane: 'embedding' });
-		expect(
-			aiSaveRefusalOf({
-				category: 'conflict',
-				message: 'x',
-				data: { reason: 'embedding_space_locked', requested: null },
-			})
-		).toEqual({ kind: 'embeddingSpaceLocked' });
 	});
 
 	it('claims nothing else, nor a refusal naming an unknown plane', () => {
 		expect(aiSaveRefusalOf({ category: 'internal', message: 'x' })).toBeNull();
+		// The pre-provenance embedding lock no longer exists (D8 switch path).
+		expect(
+			aiSaveRefusalOf({
+				category: 'conflict',
+				message: 'x',
+				data: { reason: 'embedding_space_locked' },
+			})
+		).toBeNull();
 		expect(
 			aiSaveRefusalOf({
 				category: 'invalid_input',

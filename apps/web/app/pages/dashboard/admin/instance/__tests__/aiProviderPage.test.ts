@@ -1,8 +1,6 @@
 // @vitest-environment happy-dom
 /**
  * The AI provider page, mounted with its real form composable:
- *   - the D8 embedding lock is shown on the embeddings card itself, so a local
- *     embedder (which has no key field) still says why its change was refused;
  *   - "Save and leave" stays on the page when the routing card's save was
  *     refused (a version conflict reloads the card and clears its dirty flag,
  *     so only the save's answer tells), and leaves once both saves landed.
@@ -10,7 +8,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, onMounted, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
-import type { OperationError } from '@owlat/shared/operationError';
 import { installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useAiProviderForm } from '~/composables/useAiProviderForm';
@@ -45,8 +42,6 @@ const RoutingCardStub = defineComponent({
 });
 
 let onSave: (() => Promise<void>) | undefined;
-/** What `saveConfig` fails with next, through its `onError`; null lands. */
-let saveFailure: OperationError | null;
 const config = ref<Record<string, unknown>>({});
 
 function install() {
@@ -60,18 +55,8 @@ function install() {
 			error: ref(null),
 			refetch: vi.fn(),
 		}),
-		useBackendOperation: (
-			_ref: unknown,
-			options: { label: string | (() => string); onError?: (op: OperationError) => boolean }
-		) => ({
-			run: vi.fn(async () => {
-				const label = typeof options.label === 'function' ? options.label() : options.label;
-				if (label === 'Save AI provider' && saveFailure) {
-					options.onError?.(saveFailure);
-					return { ok: false };
-				}
-				return { ok: true, result: { ok: true } };
-			}),
+		useBackendOperation: () => ({
+			run: vi.fn(async () => ({ ok: true, result: { ok: true } })),
 			isLoading: ref(false),
 		}),
 		useToast: () => ({ showToast: vi.fn() }),
@@ -121,6 +106,7 @@ async function mountPage() {
 				},
 				SettingsAiModelPicker: true,
 				SettingsAiDecisionCard: true,
+				SettingsAiEmbeddingSpaceCard: true,
 				SettingsAiRemoveConfigCard: true,
 				SettingsAiRoutingPolicyCard: RoutingCardStub,
 			},
@@ -130,7 +116,6 @@ async function mountPage() {
 
 beforeEach(() => {
 	onSave = undefined;
-	saveFailure = null;
 	isRoutingDirty = true;
 	routingSave.mockReset();
 	routingSave.mockResolvedValue(true);
@@ -147,23 +132,6 @@ beforeEach(() => {
 });
 
 describe('the AI provider page', () => {
-	it('shows the D8 lock on the embeddings card for a local embedder (F2)', async () => {
-		const w = await mountPage();
-		saveFailure = {
-			category: 'conflict',
-			message: 'locked',
-			data: { reason: 'embedding_space_locked' },
-		};
-		await w.get('form').trigger('submit');
-		await flushPromises();
-		// A local embedder renders no key field to carry the error.
-		expect(w.findAll('[data-testid="key-field"]')).toHaveLength(1);
-		expect(w.get('[data-testid="ai-embedding-locked"]').text()).toContain(
-			'already hold vectors from the current embedding model'
-		);
-		w.unmount();
-	});
-
 	it('stays when the routing save is refused, and leaves once it lands (F3)', async () => {
 		const w = await mountPage();
 		await flushPromises();

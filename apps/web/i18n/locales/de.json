@@ -7843,6 +7843,172 @@
 							"manage": "Unter Funktionen verwalten"
 						}
 					},
+					"embeddingSpace": {
+						"attest": {
+							"confirm": "Ich bestätige, dass {model} diese Vektoren geschrieben hat.",
+							"description": "Owlat hat vor dieser Version nicht festgehalten, welches Modell die Vektoren geschrieben hat. Wenn du weißt, dass das eingerichtete Modell sie geschrieben hat, kannst du das bestätigen, und sie kehren ohne Neueinbetten in die Vektorsuche zurück. Bestätige nur, was du sicher weißt: Vektoren eines anderen Modells machen die Suchergebnisse falsch.",
+							"entry": {
+								"status": {
+									"applied": "{count} Elemente zugeordnet, Vektoren geschrieben bis {until}.",
+									"applying": "Elemente werden zugeordnet: bisher {count}, Vektoren geschrieben bis {until}.",
+									"revoked": "Widerrufen. Ihre Elemente sind bis zur Neueinbettung nicht in der Vektorsuche."
+								},
+								"title": "{source}, festgehalten am {date}"
+							},
+							"problems": {
+								"date": "Wähle einen Tag.",
+								"statement": "Beschreibe in bis zu {max} Zeichen, worauf das beruht.",
+								"width": "Gib eine ganze Zahl über 0 ein."
+							},
+							"revoke": "Widerrufen",
+							"revokeBody": "Ihre Elemente verlassen die Vektorsuche, bis ein Neueinbetten sie mit einem gemessenen Modell zurückbringt.",
+							"revokeTitle": "Diese Bestätigung widerrufen?",
+							"sourceLabel": "Grundlage",
+							"sources": {
+								"attestation": "Mein eigenes Wissen",
+								"record": "Aufzeichnungen der Installation"
+							},
+							"statementLabel": "Worauf du dich stützt",
+							"statementPlaceholder": "Zum Beispiel: Diese Installation nutzt dieses Modell seit der Einrichtung, und ihre Umgebung hat nie ein anderes genannt.",
+							"subject": "{count} Elemente haben Vektoren ohne erfasstes Modell. Diese Bestätigung nennt {model}.",
+							"submit": "Bestätigung festhalten",
+							"title": "Modell älterer Vektoren bestätigen",
+							"warning": "Wird unter deinem Namen im Audit-Protokoll festgehalten.",
+							"widthHelp": "Die Zahl der Dimensionen, die das Modell liefert, zum Beispiel 1536.",
+							"widthLabel": "Vektorbreite",
+							"writtenBeforeHelp": "Einschließlich dieses Tages. Spätere Vektoren sind nicht erfasst.",
+							"writtenBeforeLabel": "Vektoren geschrieben bis"
+						},
+						"coverage": {
+							"columns": {
+								"active": "In der Vektorsuche",
+								"inactive": "Anderes Modell",
+								"unembedded": "Nicht eingebettet",
+								"unknown": "Modell nicht erfasst"
+							},
+							"legend": "Nur die erste Spalte findet die Vektorsuche. Die anderen findet die Stichwortsuche, bis sie neu eingebettet sind; nicht eingebettete Elemente warten auf die Verarbeitung oder haben zu wenig Text.",
+							"measuredAt": "Gezählt am {date}.",
+							"none": "Noch nicht gezählt. Das Zählen läuft im Hintergrund.",
+							"refresh": "Neu zählen",
+							"stale": "Das durchsuchte Modell hat sich seit der letzten Zählung geändert. Eine neue Zählung läuft.",
+							"table": "Bestand",
+							"tables": {
+								"knowledgeEntries": "Wissen",
+								"semanticFiles": "Dateien"
+							},
+							"title": "Abdeckung"
+						},
+						"description": "Welches Embedding-Modell die Vektorsuche nutzt und wie viel von deinem Wissen und deinen Dateien sie erreicht. Die Stichwortsuche findet in jedem Fall alles.",
+						"job": {
+							"cancel": "Abbrechen",
+							"last": "Letztes Neueinbetten: {state}, {date}, {embedded} eingebettet.",
+							"paused": {
+								"budget": "Pausiert: Das KI-Ausgabenbudget ist vorerst aufgebraucht.",
+								"other": "Pausiert",
+								"providerUnavailable": "Pausiert: Der Embedding-Anbieter war nicht erreichbar.",
+								"spaceChanged": "Pausiert: Das Embedding-Modell hat sich geändert."
+							},
+							"progress": "Bisher {embedded} eingebettet, {scanned} geprüft ({table})",
+							"resume": "Fortsetzen",
+							"status": {
+								"cancelled": "Abgebrochen",
+								"completed": "Abgeschlossen",
+								"failed": "Fehlgeschlagen",
+								"running": "Läuft"
+							}
+						},
+						"loading": "Embedding-Suche wird geladen",
+						"operations": {
+							"activate": "Neuaufbau aktivieren",
+							"attest": "Bestätigung festhalten",
+							"cancel": "Neueinbetten abbrechen",
+							"cancelRebuild": "Neuaufbau abbrechen",
+							"catchUp": "Änderungen in den Neuaufbau einbetten",
+							"refresh": "Embedding-Abdeckung zählen",
+							"resume": "Neueinbetten fortsetzen",
+							"revoke": "Bestätigung widerrufen",
+							"rollback": "Embedding-Modell zurücksetzen",
+							"startRebuild": "Neuaufbau starten",
+							"startReembed": "Neueinbetten starten",
+							"validate": "Neuaufbau prüfen"
+						},
+						"rebuild": {
+							"activate": "Aktivieren",
+							"activateHint": "Die Aktivierung prüft erneut eine Stichprobe und stellt dann Suche und Embedding-Einstellungen in einem Schritt um. Elemente, die während des Neuaufbaus hinzukamen oder sich änderten, brauchen vorher „Änderungen einbetten“.",
+							"blocked": {
+								"jobOpen": "Ein Neueinbetten oder ein Neuaufbau läuft bereits.",
+								"noModel": "Wähle ein Modell.",
+								"paidUnavailable": "Ein kostenpflichtiger Neuaufbau braucht die Ausgabenfreigabe, die diese Installation noch nicht hat.",
+								"sameModel": "Die Vektorsuche nutzt dieses Modell bereits."
+							},
+							"cancel": "Neuaufbau abbrechen",
+							"catchUp": "Änderungen einbetten",
+							"confirmPaidBody": "Jedes Element wird mit {model} eingebettet und zählt zu deinen KI-Ausgaben. Die Suche nutzt das aktive Modell weiter, bis du den Neuaufbau aktivierst.",
+							"confirmPaidTitle": "Kostenpflichtigen Neuaufbau starten?",
+							"costHosted": "Kostenpflichtig: Jedes Element geht an den Anbieter und zählt zu deinen KI-Ausgaben.",
+							"costLocal": "Kostenlos: läuft auf deinem Server.",
+							"description": "Bettet alles mit dem neuen Modell neben dem aktiven ein, damit die Suche während des Wechsels weiter funktioniert. Möglich zwischen lokalen Modellen oder zwischen Modellen desselben gehosteten Anbieters; jeder andere Wechsel läuft über die Embedding-Einstellungen oben.",
+							"modelLabel": "Modell",
+							"progress": "{embedded} eingebettet, {scanned} geprüft",
+							"providerLabel": "Embedding-Anbieter",
+							"rollback": "Zurücksetzen",
+							"rollbackAvailable": "{model} lässt sich wiederherstellen: Seine Vektoren sind noch gespeichert.",
+							"rollbackBody": "Vektorsuche und Embedding-Einstellungen wechseln sofort zurück. Seither hinzugekommene Elemente werden damit neu eingebettet.",
+							"rollbackTitle": "Auf {model} zurücksetzen?",
+							"staged": "{model} ({dimensions} Dimensionen) wird neben dem aktiven Modell aufgebaut.",
+							"start": "Neuaufbau starten",
+							"title": "Mit einem anderen Modell neu aufbauen",
+							"validate": "Prüfen",
+							"validation": {
+								"failed": "Nur {passed} von {sampled} Stichproben haben sich selbst gefunden. Die Aktivierung braucht mindestens 80 %.",
+								"passed": "{passed} von {sampled} Stichproben haben sich mit dem neuen Modell selbst gefunden."
+							}
+						},
+						"reembed": {
+							"blocked": {
+								"jobOpen": "Ein Neueinbetten oder ein Neuaufbau läuft bereits.",
+								"noEmbedder": "Kein Embedding-Modell eingerichtet.",
+								"paidUnavailable": "Kostenpflichtiges Neueinbetten braucht die Ausgabenfreigabe, die diese Installation noch nicht hat."
+							},
+							"confirm": "Neueinbetten starten",
+							"confirmBody": "Etwa {count} Elemente gehen an {provider} und zählen zu deinen KI-Ausgaben. Du kannst es abbrechen, solange es läuft.",
+							"confirmTitle": "Kostenpflichtiges Neueinbetten starten?",
+							"hosted": "Dein Embedding-Modell wird gehostet, deshalb kostet das Neueinbetten Geld: Jedes Element geht an den Anbieter und zählt zu deinen KI-Ausgaben. Es läuft nur, wenn du es startest.",
+							"local": "Dein Embedding-Modell läuft auf deinem Server, deshalb kostet das Neueinbetten nichts. Es läuft außerdem einmal am Tag von selbst.",
+							"nothing": "Alles mit einem Vektor ist in der Vektorsuche.",
+							"start": "{count} Elemente neu einbetten",
+							"title": "Neu einbetten"
+						},
+						"state": {
+							"none": {
+								"body": "Die Suche nutzt nur Stichwörter.",
+								"title": "Kein Embedding-Modell eingerichtet"
+							},
+							"searchable": {
+								"body": "Elemente, die mit einem anderen Modell eingebettet wurden oder bevor Owlat das verwendete Modell festhielt, findet nur die Stichwortsuche, bis sie neu eingebettet sind.",
+								"title": "Die Vektorsuche nutzt {model}"
+							},
+							"space": "{provider}, {dimensions} Dimensionen",
+							"switching": {
+								"body": "Die Vektorsuche beginnt, sobald das erste Element damit eingebettet ist. Bis dahin, und für ältere Elemente bis zu ihrer Neueinbettung, nutzt die Suche Stichwörter.",
+								"title": "Wechsel zu {model}"
+							}
+						},
+						"title": "Embedding-Suche",
+						"toasts": {
+							"activate": "Die Vektorsuche nutzt jetzt das neu aufgebaute Modell.",
+							"attest": "Bestätigung festgehalten. Ihre Elemente kehren in die Vektorsuche zurück, sobald sie zugeordnet sind.",
+							"cancel": "Neueinbetten abgebrochen.",
+							"cancelRebuild": "Neuaufbau abgebrochen.",
+							"catchUp": "Die Änderungen seit dem Start des Neuaufbaus werden eingebettet.",
+							"refresh": "Zählung gestartet.",
+							"resume": "Neueinbetten fortgesetzt.",
+							"revoke": "Bestätigung widerrufen.",
+							"rollback": "Auf das vorherige Embedding-Modell zurückgesetzt.",
+							"startRebuild": "Neuaufbau gestartet.",
+							"startReembed": "Neueinbetten gestartet."
+						}
+					},
 					"embeddings": {
 						"apiKeyHelp": "Verschlüsselt gespeichert, wird nie wieder angezeigt.",
 						"apiKeyLabel": "Embedding-API-Schlüssel",
@@ -7853,8 +8019,8 @@
 						"localTitle": "Lokal (mitgeliefert) — keine Einrichtung nötig",
 						"modelLabel": "Embedding-Modell",
 						"providerLabel": "Embedding-Anbieter",
-						"reindexBody": "Vektoren zweier Modelle sind nicht vergleichbar, und Owlat kann sie noch nicht neu berechnen. Enthalten dein Wissen oder deine Dateien schon Vektoren, wird diese Änderung beim Speichern abgelehnt und das aktuelle Modell bleibt.",
-						"reindexTitle": "Das Embedding-Modell lässt sich nur wechseln, solange nichts indiziert ist",
+						"reindexBody": "Vektoren zweier Modelle sind nicht vergleichbar. Nach dem Speichern findet die Stichwortsuche ältere Elemente, bis sie neu eingebettet sind: von selbst mit einem lokalen Modell, oder wenn du es unter „Embedding-Suche“ startest mit einem gehosteten. Für einen Wechsel ohne diese Lücke nutze dort „Mit einem anderen Modell neu aufbauen“, wo der Wechsel das erlaubt.",
+						"reindexTitle": "Ein Modellwechsel nimmt ältere Elemente aus der Vektorsuche",
 						"title": "Embeddings"
 					},
 					"language": {
@@ -7881,7 +8047,7 @@
 					"remove": {
 						"button": "Konfiguration entfernen",
 						"confirm": "Konfiguration entfernen",
-						"confirmBody": "Die gespeicherten API-Schlüssel werden gelöscht und lassen sich nicht wiederherstellen. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist. Solange dein Wissen oder deine Dateien Vektoren enthalten, wird das Entfernen abgelehnt, außer die Umgebung nutzt dasselbe Embedding-Modell.",
+						"confirmBody": "Die gespeicherten API-Schlüssel werden gelöscht und lassen sich nicht wiederherstellen. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist. Nutzt die Umgebung ein anderes Embedding-Modell, verlassen ältere Elemente die Vektorsuche, bis sie neu eingebettet sind.",
 						"confirmTitle": "KI-Anbieterkonfiguration entfernen?",
 						"description": "Löscht die auf dieser Seite gespeicherten Einstellungen und API-Schlüssel. Die KI nutzt dann die Umgebungsvariablen des Deployments oder ist aus, wenn dort nichts gesetzt ist.",
 						"title": "Anbieterkonfiguration entfernen"
@@ -16074,12 +16240,10 @@
 		},
 		"useAiProviderForm": {
 			"embeddingKeyRequired": "{provider} benötigt einen API-Schlüssel.",
-			"embeddingSpaceLocked": "Dein Wissen und deine Dateien enthalten bereits Vektoren des aktuellen Embedding-Modells, deshalb bleibt es. Vektoren zweier Modelle sind nicht vergleichbar, und Owlat kann sie noch nicht neu berechnen.",
 			"listModelsOperation": "Verfügbare Modelle laden",
 			"modelsEmpty": "Keine Modelle zurückgegeben — verwende weiterhin eine eigene ID.",
 			"modelsLoadFailed": "Modelle konnten nicht geladen werden.",
 			"modelsUnsupported": "Dieser Anbieter unterstützt das Auflisten von Modellen nicht.",
-			"removeLocked": "Die Konfiguration bleibt: Nur sie hält fest, welches Embedding-Modell deine Vektoren erzeugt hat. Wenn du keine KI mehr nutzen willst, schalte die KI-Funktionen unter Funktionen aus.",
 			"removeOperation": "KI-Anbieterkonfiguration entfernen",
 			"removed": "KI-Anbieterkonfiguration entfernt",
 			"saveOperation": "KI-Anbieter speichern",
@@ -16178,6 +16342,7 @@
 				"contact": "Kontakte",
 				"domain": "Domains",
 				"emailTemplate": "E-Mail-Vorlagen",
+				"embeddingSpace": "Embedding-Räume",
 				"plugin": "Plugins",
 				"segment": "Segmente",
 				"settings": "Einstellungen",
@@ -16197,6 +16362,7 @@
 				"deliverabilityRamp": "Zustellbarkeits-Ramp-up",
 				"domain": "Domain",
 				"emailTemplate": "E-Mail-Vorlage",
+				"embeddingSpace": "Embedding-Raum",
 				"plugin": "Plugin",
 				"seedMailbox": "Seed-Postfach",
 				"segment": "Segment",

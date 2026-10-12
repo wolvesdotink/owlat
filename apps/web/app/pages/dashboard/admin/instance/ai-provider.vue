@@ -28,7 +28,6 @@ const {
 	form,
 	languageError,
 	embeddingError,
-	embeddingLockError,
 	showLanguageBaseUrl,
 	showHostedEmbedder,
 	isDirty,
@@ -376,15 +375,6 @@ watch(
 							</p>
 						</div>
 					</div>
-					<!-- On the card, not the key field: a local embedder has no key field. -->
-					<p
-						v-if="embeddingLockError"
-						class="mt-4 text-sm text-error"
-						role="alert"
-						data-testid="ai-embedding-locked"
-					>
-						{{ embeddingLockError }}
-					</p>
 				</UiCard>
 
 				<SettingsAiDecisionCard
@@ -466,6 +456,9 @@ watch(
 					</UiButton>
 				</div>
 			</form>
+
+			<!-- Outside the form: it has controls and a form of its own. -->
+			<SettingsAiEmbeddingSpaceCard class="mt-6 max-w-3xl" />
 
 			<SettingsAiRoutingPolicyCard
 				ref="routingCard"

@@ -4,11 +4,11 @@
  * server refuses a save that would carry it across either change
  * (`stored_key_not_reusable`). The form asks the same question: the key field
  * reads as empty, the reason shows at once, and a save without a new key never
- * reaches the server. The server's own refusal, and the D8 embedding lock,
- * land on their field instead of in a toast.
+ * reaches the server. The server's own refusal lands on its field instead of
+ * in a toast.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { nextTick, ref, type Ref } from 'vue';
+import { ref, type Ref } from 'vue';
 import type { OperationError } from '@owlat/shared/operationError';
 import { createTestI18n } from '~/__tests__/i18n';
 
@@ -219,30 +219,6 @@ describe('save refusals on their field', () => {
 		);
 	});
 
-	it('reports the D8 embedding lock apart from the key field, for a local embedder too', async () => {
-		config.value = existingConfig({ embeddingProviderKind: 'local', isEmbeddingKeySet: false });
-		const form = useAiProviderForm();
-		form.form.embeddingModelChoice = 'mxbai-embed-large';
-		saveFailure = {
-			category: 'conflict',
-			message: 'locked',
-			data: { reason: 'embedding_space_locked' },
-		};
-		await form.handleSave();
-		expect(form.embeddingLockError.value).toContain('already hold vectors');
-		// Not a key problem, and the local embedder has no key field to carry it.
-		expect(form.embeddingError.value).toBeNull();
-		// It goes once the refused selection changes, and when the next save starts.
-		form.form.embeddingModelChoice = 'nomic-embed-text';
-		await nextTick();
-		expect(form.embeddingLockError.value).toBeNull();
-		await form.handleSave();
-		expect(form.embeddingLockError.value).not.toBeNull();
-		saveFailure = null;
-		await form.handleSave();
-		expect(form.embeddingLockError.value).toBeNull();
-	});
-
 	it('leaves any other failure to the operation layer', () => {
 		config.value = existingConfig();
 		useAiProviderForm();
@@ -251,16 +227,5 @@ describe('save refusals on their field', () => {
 		expect(claim?.({ category: 'invalid_input', message: 'x', data: { reason: 'other' } })).toBe(
 			false
 		);
-	});
-
-	it('says why a removal under the D8 lock was refused, in the reader’s language', () => {
-		config.value = existingConfig();
-		useAiProviderForm();
-		const claim = onErrors['Remove AI provider configuration'];
-		expect(
-			claim?.({ category: 'conflict', message: 'x', data: { reason: 'embedding_space_locked' } })
-		).toBe(true);
-		expect(showToast).toHaveBeenCalledWith(expect.stringContaining('only record'), 'error');
-		expect(claim?.({ category: 'internal', message: 'boom' })).toBe(false);
 	});
 });
