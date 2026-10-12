@@ -28,6 +28,7 @@ const {
 	form,
 	languageError,
 	embeddingError,
+	embeddingLockError,
 	showLanguageBaseUrl,
 	showHostedEmbedder,
 	isDirty,
@@ -130,11 +131,13 @@ const {
 } = useUnsavedChanges({
 	onSave: async () => {
 		if (isDirty.value) await handleSave();
-		if (routingDirty.value) await routingCard.value?.save();
-		// Both saves clear their dirty flag only once the write lands; a
-		// validation stop or a refused write leaves it set, so a still-dirty
-		// form means the save failed and the operator stays here.
-		if (isDirty.value || routingDirty.value) throw new Error('Save failed');
+		// The routing card says whether its save landed: a version conflict
+		// reloads the newer policy and clears its dirty flag, so only the
+		// answer tells a refused save apart from a saved one.
+		const isRoutingSaved = !routingDirty.value || (await routingCard.value?.save()) === true;
+		// handleSave clears `isDirty` only once the write lands; a still-dirty
+		// form, or a refused routing save, keeps the operator here.
+		if (isDirty.value || !isRoutingSaved) throw new Error('Save failed');
 	},
 });
 
@@ -373,6 +376,15 @@ watch(
 							</p>
 						</div>
 					</div>
+					<!-- On the card, not the key field: a local embedder has no key field. -->
+					<p
+						v-if="embeddingLockError"
+						class="mt-4 text-sm text-error"
+						role="alert"
+						data-testid="ai-embedding-locked"
+					>
+						{{ embeddingLockError }}
+					</p>
 				</UiCard>
 
 				<SettingsAiDecisionCard

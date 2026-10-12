@@ -151,14 +151,12 @@ export function useAiProviderForm() {
 		form,
 		requiresKey,
 		embeddingRequiresKey,
-		onEmbeddingLocked: () => {
-			showHostedEmbedder.value = true;
-		},
 		onDecisionKeyRefused: () => decision.showStoredKeyRefusal(),
 	});
 	const {
 		languageSaveError,
 		embeddingSaveError,
+		embeddingLockError,
 		storedLanguageKeySet,
 		storedEmbeddingKeySet,
 		isLanguageKeyStranded,
@@ -338,6 +336,7 @@ export function useAiProviderForm() {
 
 		// A hosted embedder needs a key too (stored for this provider, or freshly typed).
 		embeddingSaveError.value = null;
+		embeddingLockError.value = null;
 		if (
 			embeddingRequiresKey.value &&
 			!storedEmbeddingKeySet.value &&
@@ -468,6 +467,7 @@ export function useAiProviderForm() {
 		form,
 		languageError,
 		embeddingError,
+		embeddingLockError,
 		showLanguageBaseUrl,
 		showHostedEmbedder,
 		isDirty,

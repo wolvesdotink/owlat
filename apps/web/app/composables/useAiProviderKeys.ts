@@ -11,7 +11,7 @@
  *
  * A sibling of `useAiProviderForm`, which is at the file-size cap.
  */
-import { computed, ref, type Ref } from 'vue';
+import { computed, ref, watch, type Ref } from 'vue';
 import type { EmbeddingProviderKind, LanguageProviderKind } from '~/utils/aiProviders';
 import type { OperationError } from '@owlat/shared/operationError';
 import {
@@ -39,12 +39,12 @@ export function useAiProviderKeys(opts: {
 		languageBaseUrl: string;
 		apiKey: string;
 		embeddingProviderKind: string;
+		embeddingModelChoice: string;
+		embeddingModelCustom: string;
 		embeddingApiKey: string;
 	};
 	requiresKey: Readonly<Ref<boolean>>;
 	embeddingRequiresKey: Readonly<Ref<boolean>>;
-	/** The D8 lock landed on the embedding field: open the panel it is in. */
-	onEmbeddingLocked: () => void;
 	/** The decision card owns its key note. */
 	onDecisionKeyRefused: () => void;
 }) {
@@ -55,6 +55,22 @@ export function useAiProviderKeys(opts: {
 	/** What the last save said, per field; cleared when its provider changes. */
 	const languageSaveError = ref<string | null>(null);
 	const embeddingSaveError = ref<string | null>(null);
+	/**
+	 * The D8 lock refused the embedding change. Not a key problem: the page
+	 * shows it on the embeddings card itself, because the key field it would
+	 * otherwise sit under is hidden for a local embedder. It goes once the
+	 * selection it refused changes, or the next save starts.
+	 */
+	const embeddingLockError = ref<string | null>(null);
+	watch(
+		() => [form.embeddingProviderKind, form.embeddingModelChoice, form.embeddingModelCustom],
+		() => {
+			embeddingLockError.value = null;
+		},
+		// At the edit, not after it: a queued clear would wipe a refusal that
+		// a save started right after the edit has just reported.
+		{ flush: 'sync' }
+	);
 
 	const languageFacts = computed<StoredKeyFacts | null>(() => {
 		const row = opts.saved();
@@ -119,8 +135,7 @@ export function useAiProviderKeys(opts: {
 		const refusal = aiSaveRefusalOf(op);
 		if (!refusal) return false;
 		if (refusal.kind === 'embeddingSpaceLocked') {
-			embeddingSaveError.value = t(EMBEDDING_SPACE_LOCKED_KEY);
-			opts.onEmbeddingLocked();
+			embeddingLockError.value = t(EMBEDDING_SPACE_LOCKED_KEY);
 		} else if (refusal.plane === 'language') {
 			languageSaveError.value = t(STORED_KEY_NOT_REUSABLE_KEY);
 		} else if (refusal.plane === 'embedding') {
@@ -143,6 +158,7 @@ export function useAiProviderKeys(opts: {
 		claimRemoveRefusal,
 		languageSaveError,
 		embeddingSaveError,
+		embeddingLockError,
 		storedLanguageKeySet,
 		storedEmbeddingKeySet,
 		isLanguageKeyStranded,
