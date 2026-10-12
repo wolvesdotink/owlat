@@ -25,10 +25,12 @@ import {
 	type EmbeddingProviderKind,
 } from '~/utils/aiProviders';
 import {
+	configuredKey,
 	hasOpenJob,
 	paidBlocker,
 	rebuildKinds,
 	rebuildTargetPayment,
+	rollbackKey,
 	type EmbeddingStatus,
 } from '~/utils/embeddingSpaces';
 
@@ -88,6 +90,8 @@ const startBlocker = computed(() => {
 });
 
 const confirmation = useEmbeddingConfirm();
+// The live read, not the prop: a prop catches up only on the next render.
+const live = () => props.spaces.status.value ?? null;
 function start() {
 	if (startBlocker.value) return;
 	const target = { embeddingProviderKind: kind.value, embeddingModel: model.value };
@@ -95,6 +99,10 @@ function start() {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.confirmPaidBody`, { model: model.value }),
 		confirmText: t(`${K}.start`),
+		// Bound to the configuration the form was filled against.
+		targetKey: configuredKey(props.status) ?? '',
+		currentKey: () => configuredKey(live()),
+		blocker: () => startBlocker.value,
 		run: () => props.spaces.startRebuild(target),
 	});
 }
@@ -115,6 +123,8 @@ function rollback() {
 		title: t(`${K}.rollbackTitle`, { model: target.model }),
 		body: t(isLocalRecovery ? `${K}.rollbackBodyLocal` : `${K}.rollbackBodyHosted`),
 		confirmText: t(`${K}.rollback`),
+		targetKey: rollbackKey(props.status) ?? '',
+		currentKey: () => rollbackKey(live()),
 		run: props.spaces.rollback,
 	});
 }

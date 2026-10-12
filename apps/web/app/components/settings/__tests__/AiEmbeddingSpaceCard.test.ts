@@ -470,4 +470,129 @@ describe('AiEmbeddingSpaceCard', () => {
 			);
 		});
 	});
+
+	describe('Sol round 6', () => {
+		const stagedA = space({
+			_id: 'sp_a' as never,
+			model: 'model-a',
+			state: 'staged',
+			slot: 'secondary',
+		});
+		const stagedB = space({
+			_id: 'sp_b' as never,
+			model: 'model-b',
+			state: 'staged',
+			slot: 'secondary',
+		});
+		const filled = (staged: typeof stagedA) =>
+			embeddingStatus({
+				staged,
+				isPaidEmbeddingAvailable: true,
+				jobs: [job({ kind: 'rebuild', targetSpaceId: staged._id, status: 'completed' })],
+			});
+
+		it.each([
+			['validate', 'validate'],
+			['activate', 'activate'],
+			['cancel', 'cancelRebuild'],
+		] as const)(
+			'F1: a %s dialog naming model A never acts on a replacement model B',
+			async (button, operation) => {
+				status.value = filled(stagedA);
+				const w = mountCard();
+				await w.get(`[data-testid="ai-embedding-rebuild-${button}"]`).trigger('click');
+				expect(w.get('[data-testid="dialog"]').text()).toContain('model-a');
+				const confirmButton = w.get('[data-testid="dialog-confirm"]');
+				// Another admin cancels A and stages B; the subscription delivers it.
+				status.value = filled(stagedB);
+				await confirmButton.trigger('click');
+				await flushPromises();
+				expect(spaces[operation]).not.toHaveBeenCalled();
+				expect(w.find('[data-testid="dialog"]').exists()).toBe(false);
+			}
+		);
+
+		it('F1: a rollback dialog lapses when the space it would restore changes', async () => {
+			const previous = space({ _id: 'sp_prev' as never, model: 'ada', state: 'retired' });
+			status.value = embeddingStatus({ rollbackTo: previous });
+			const w = mountCard();
+			await w.get('[data-testid="ai-embedding-rollback"] button').trigger('click');
+			const confirmButton = w.get('[data-testid="dialog-confirm"]');
+			status.value = embeddingStatus({
+				rollbackTo: space({ _id: 'sp_other' as never, model: 'other', state: 'retired' }),
+			});
+			await confirmButton.trigger('click');
+			await flushPromises();
+			expect(spaces.rollback).not.toHaveBeenCalled();
+		});
+
+		it('F1: a paid re-embed dialog lapses when the configured model changes', async () => {
+			status.value = embeddingStatus({ isPaidEmbeddingAvailable: true });
+			const w = mountCard();
+			await w.get('[data-testid="ai-embedding-reembed-start"]').trigger('click');
+			const confirmButton = w.get('[data-testid="dialog-confirm"]');
+			status.value = {
+				...status.value!,
+				configured: { ...status.value!.configured!, model: 'text-embedding-3-large' },
+			};
+			await confirmButton.trigger('click');
+			await flushPromises();
+			expect(spaces.startReembed).not.toHaveBeenCalled();
+		});
+
+		it('F1: the target unchanged, the confirmed work still runs', async () => {
+			status.value = filled(stagedA);
+			const w = mountCard();
+			await w.get('[data-testid="ai-embedding-rebuild-validate"]').trigger('click');
+			status.value = filled(stagedA);
+			await flushPromises();
+			await w.get('[data-testid="dialog-confirm"]').trigger('click');
+			expect(spaces.validate).toHaveBeenCalledTimes(1);
+		});
+
+		it('F2: the attestation shows the whole identity and attests to all of it', () => {
+			const w = mountCard();
+			const summary = w.get('[data-testid="ai-embedding-attest-identity"]');
+			expect(summary.text()).toContain('OpenAI (hosted)');
+			expect(summary.text()).toContain("The provider's own API");
+			expect(summary.text()).toContain('text-embedding-3-small');
+			expect(summary.text()).toContain('1536 dimensions');
+			expect(summary.text()).not.toContain('Revision');
+			const label = w
+				.get('[data-testid="ai-embedding-attest-form"]')
+				.get('[data-testid="checkbox"]').element.parentElement!.textContent!;
+			expect(label).toContain(
+				'was made with exactly this provider, endpoint, model and vector width, throughout that whole period.'
+			);
+			expectFullyLocalized(w);
+		});
+
+		it('F2: a custom endpoint shows as its origin only, and a known revision is attested too', () => {
+			const base = embeddingStatus({
+				active: space({
+					endpoint: 'https://user:secret@embed.example.com:8443/v1/embed?key=x',
+					revision: 'sha256:abc',
+				}),
+			});
+			status.value = base;
+			const w = mountCard();
+			const summary = w.get('[data-testid="ai-embedding-attest-identity"]').text();
+			expect(summary).toContain('https://embed.example.com:8443');
+			expect(summary).not.toContain('secret');
+			expect(summary).not.toContain('/v1');
+			expect(summary).toContain('sha256:abc');
+			expect(w.text()).toContain('model, vector width and revision, throughout that whole period.');
+		});
+
+		it('F2: an identity without a known width asks for it in the summary', () => {
+			const base = embeddingStatus({ active: null });
+			status.value = {
+				...base,
+				configured: { ...base.configured!, model: 'text-embedding-3-large', isActive: false },
+			};
+			const summary = mountCard().get('[data-testid="ai-embedding-attest-identity"]').text();
+			expect(summary).toContain('text-embedding-3-large');
+			expect(summary).toContain('Enter it above');
+		});
+	});
 });

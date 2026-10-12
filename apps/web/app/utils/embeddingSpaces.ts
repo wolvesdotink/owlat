@@ -242,6 +242,59 @@ export function attestationBlocker(status: EmbeddingStatus): string | null {
 	return null;
 }
 
+/**
+ * Everything an attestation assigns, as the admin must see it before stating
+ * it (D8): the provider, the endpoint, the model, the vector width and the
+ * revision when one is known. The endpoint is shown as an origin only: the
+ * server stores no more than that, and a path, query or credentials must
+ * never be displayed even if one slipped through.
+ */
+export interface AttestationIdentity {
+	provider: EmbeddingProviderKind;
+	/** `null`: the provider's own API (`native`). */
+	endpointOrigin: string | null;
+	model: string;
+	/** `null` until the admin states it (an identity with no known width). */
+	dimensions: number | null;
+	revision: string | null;
+}
+
+/** An endpoint as an origin (`https://host:port`), never a path or credentials. */
+export function endpointOrigin(endpoint: string): string | null {
+	if (endpoint === 'native') return null;
+	try {
+		return new URL(endpoint).origin;
+	} catch {
+		return endpoint.replace(/^([a-z][a-z0-9+.-]*:\/\/)?(?:[^@/]*@)?([^/?#]*).*$/i, '$1$2');
+	}
+}
+
+export function attestationIdentity(
+	status: EmbeddingStatus,
+	statedWidth: number | null
+): AttestationIdentity | null {
+	const subject = attestationSubject(status);
+	if (!subject) return null;
+	if (subject.kind === 'space' && status.active) {
+		const active = status.active;
+		return {
+			provider: active.provider,
+			endpointOrigin: endpointOrigin(active.endpoint),
+			model: active.model,
+			dimensions: active.dimensions,
+			revision: active.revision ?? null,
+		};
+	}
+	if (subject.kind !== 'identity') return null;
+	return {
+		provider: subject.provider,
+		endpointOrigin: endpointOrigin(subject.endpoint),
+		model: subject.model,
+		dimensions: statedWidth,
+		revision: null,
+	};
+}
+
 /** The end of the attested period: the chosen day's end, never later than now. */
 export function cohortEnd(day: string, now: number): number | null {
 	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
@@ -271,4 +324,41 @@ export function rebuildJob(status: EmbeddingStatus): EmbeddingJob | null {
 		(job) => job.kind === 'rebuild' && job.targetSpaceId === staged._id
 	);
 	return own.find((job) => isOpen(job.status)) ?? own[0] ?? null;
+}
+
+// ── Confirmation targets ───────────────────────────────────────────────────
+
+/**
+ * Stable keys for what a held confirmation acts on (`useEmbeddingConfirm`):
+ * the endpoints act on whatever is configured, staged or active when they
+ * run, so a dialog is valid only while its key still matches the status.
+ */
+export function configuredKey(status: EmbeddingStatus | null): string | null {
+	const configured = status?.configured;
+	if (!configured) return null;
+	return JSON.stringify([
+		configured.provider,
+		configured.endpoint,
+		configured.model,
+		configured.isLocal,
+		status.active?._id ?? null,
+	]);
+}
+
+/** The staged space, by id and model. */
+export function stagedKey(status: EmbeddingStatus | null): string | null {
+	const staged = status?.staged;
+	return staged ? JSON.stringify([staged._id, staged.model]) : null;
+}
+
+/** A rollback: the active space and the one it would restore. */
+export function rollbackKey(status: EmbeddingStatus | null): string | null {
+	if (!status?.active || !status.rollbackTo) return null;
+	return JSON.stringify([status.active._id, status.rollbackTo._id]);
+}
+
+/** A paused job, while it is still paused. */
+export function pausedJobKey(status: EmbeddingStatus | null, jobId: string): string | null {
+	const job = status?.jobs.find((candidate) => candidate._id === jobId);
+	return job?.status === 'paused' ? JSON.stringify([job._id, 'paused']) : null;
 }

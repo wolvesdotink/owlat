@@ -25,6 +25,12 @@ import {
 	paidBlocker,
 	resumeBlocker,
 	attestationBlocker,
+	attestationIdentity,
+	endpointOrigin,
+	stagedKey,
+	rollbackKey,
+	configuredKey,
+	pausedJobKey,
 	unknownRows,
 } from '../embeddingSpaces';
 import { embeddingStatus, job, space, T0 } from './embeddingStatusFixtures';
@@ -240,5 +246,47 @@ describe('attestationBlocker (Sol r5 F6)', () => {
 		expect(attestationBlocker(status)).toBe(`${K}.attest.blocked.columnTaken`);
 		const free = { ...status, active: space({ _id: 'sp_old' as never, slot: 'secondary' }) };
 		expect(attestationBlocker(free)).toBeNull();
+	});
+});
+
+describe('attestation identity (Sol r6 F2)', () => {
+	it('shows an endpoint as its origin, never a path, query or credentials', () => {
+		expect(endpointOrigin('native')).toBeNull();
+		expect(endpointOrigin('https://user:pw@embed.example.com:8443/v1?key=x')).toBe(
+			'https://embed.example.com:8443'
+		);
+		expect(endpointOrigin('embed.internal/v1')).toBe('embed.internal');
+	});
+
+	it('lists everything the attestation assigns', () => {
+		expect(attestationIdentity(embeddingStatus(), null)).toEqual({
+			provider: 'openai',
+			endpointOrigin: null,
+			model: 'text-embedding-3-small',
+			dimensions: 1536,
+			revision: null,
+		});
+		const base = embeddingStatus({ active: null });
+		const status = { ...base, configured: { ...base.configured!, isActive: false } };
+		expect(attestationIdentity(status, 3072)).toMatchObject({ dimensions: 3072, revision: null });
+		expect(attestationIdentity(embeddingStatus({ configured: null }), 1)).toBeNull();
+	});
+});
+
+describe('confirmation target keys (Sol r6 F1)', () => {
+	it('move when the target they name is replaced', () => {
+		const a = embeddingStatus({ staged: space({ _id: 'sp_a' as never, state: 'staged' }) });
+		const b = embeddingStatus({ staged: space({ _id: 'sp_b' as never, state: 'staged' }) });
+		expect(stagedKey(a)).not.toBe(stagedKey(b));
+		expect(stagedKey(embeddingStatus())).toBeNull();
+		const withPrevious = embeddingStatus({ rollbackTo: space({ _id: 'sp_p' as never }) });
+		expect(rollbackKey(withPrevious)).not.toBeNull();
+		expect(rollbackKey(embeddingStatus())).toBeNull();
+		const moved = embeddingStatus();
+		moved.configured = { ...moved.configured!, model: 'other' };
+		expect(configuredKey(moved)).not.toBe(configuredKey(embeddingStatus()));
+		const paused = job({ status: 'paused' });
+		expect(pausedJobKey(embeddingStatus({ jobs: [paused] }), paused._id)).not.toBeNull();
+		expect(pausedJobKey(embeddingStatus({ jobs: [job()] }), paused._id)).toBeNull();
 	});
 });

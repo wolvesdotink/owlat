@@ -7849,8 +7849,9 @@
 								"columnTaken": "Ein anderes Embedding-Modell nutzt jetzt die Stelle, an der die älteren Vektoren liegen, deshalb kann eine Bestätigung sie nicht zurückbringen. Bette sie stattdessen neu ein.",
 								"secondaryColumn": "Das eingerichtete Modell legt seine Vektoren an einer anderen Stelle ab als die älteren Vektoren, deshalb kann eine Bestätigung sie nicht zurückbringen. Bette sie stattdessen neu ein."
 							},
-							"confirm": "Ich bestätige, dass {model} diese Vektoren geschrieben hat.",
-							"description": "Owlat hat vor dieser Version nicht festgehalten, welches Modell die Vektoren geschrieben hat. Wenn du weißt, dass das eingerichtete Modell sie geschrieben hat, kannst du das bestätigen, und sie kehren ohne Neueinbetten in die Vektorsuche zurück. Bestätige nur, was du sicher weißt: Vektoren eines anderen Modells machen die Suchergebnisse falsch.",
+							"confirm": "Ich bestätige, dass jeder Vektor, der bis einschließlich {date} geschrieben wurde, über diesen ganzen Zeitraum mit genau diesem Anbieter, Endpunkt, Modell und dieser Vektorbreite erzeugt wurde.",
+							"confirmWithRevision": "Ich bestätige, dass jeder Vektor, der bis einschließlich {date} geschrieben wurde, über diesen ganzen Zeitraum mit genau diesem Anbieter, Endpunkt, Modell, dieser Vektorbreite und diesem Modellstand erzeugt wurde.",
+							"description": "Owlat hat vor dieser Version nicht festgehalten, welcher Embedder die Vektoren geschrieben hat. Wenn du weißt, dass der eingerichtete Embedder mit Anbieter, Endpunkt, Modell und Breite wie unten angezeigt sie alle im gewählten Zeitraum geschrieben hat, kannst du das bestätigen, und sie kehren ohne Neueinbetten in die Vektorsuche zurück. Bestätige nur, was du sicher weißt: Vektoren eines anderen Modells oder Endpunkts machen die Suchergebnisse falsch.",
 							"entry": {
 								"status": {
 									"applied": "{count} Elemente zugeordnet, Vektoren geschrieben bis {until}.",
@@ -7858,6 +7859,17 @@
 									"revoked": "Widerrufen. Ihre Elemente sind bis zur Neueinbettung nicht in der Vektorsuche."
 								},
 								"title": "{source}, festgehalten am {date}"
+							},
+							"identity": {
+								"endpoint": "Endpunkt",
+								"model": "Modell",
+								"nativeEndpoint": "Die eigene API des Anbieters",
+								"provider": "Anbieter",
+								"revision": "Modellstand",
+								"title": "Diese Bestätigung ordnet sie zu",
+								"width": "Vektorbreite",
+								"widthMissing": "Gib sie oben ein",
+								"widthValue": "{dimensions} Dimensionen"
 							},
 							"problems": {
 								"date": "Wähle einen Tag.",
@@ -7874,7 +7886,7 @@
 							},
 							"statementLabel": "Worauf du dich stützt",
 							"statementPlaceholder": "Zum Beispiel: Diese Installation nutzt dieses Modell seit der Einrichtung, und ihre Umgebung hat nie ein anderes genannt.",
-							"subject": "{count} Elemente haben Vektoren ohne erfasstes Modell. Diese Bestätigung nennt {model}.",
+							"subject": "{count} Elemente haben Vektoren ohne erfasstes Modell.",
 							"submit": "Bestätigung festhalten",
 							"title": "Modell älterer Vektoren bestätigen",
 							"warning": "Wird unter deinem Namen im Audit-Protokoll festgehalten.",

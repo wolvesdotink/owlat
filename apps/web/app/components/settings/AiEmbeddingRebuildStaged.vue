@@ -20,8 +20,10 @@ import {
 	jobPayment,
 	jobStateKey,
 	paidBlocker,
+	pausedJobKey,
 	rebuildJob,
 	resumeBlocker,
+	stagedKey,
 	stagedPayment,
 	type EmbeddingSpaceView,
 	type EmbeddingStatus,
@@ -52,12 +54,28 @@ const blocker = computed(() => (isPaused.value ? resumeBlock.value : paidBlock.v
 
 const confirmation = useEmbeddingConfirm();
 const model = () => props.staged.model;
+/**
+ * Every staged action names THIS staged space; the endpoints act on whatever
+ * is staged when they run, so the confirmation is bound to it and lapses if
+ * another admin replaces or cancels it meanwhile.
+ */
+// The live read, not the prop: a prop catches up only on the next render.
+const live = () => props.spaces.status.value ?? null;
+const onStaged = () => ({
+	targetKey: stagedKey(props.status) ?? '',
+	currentKey: () => stagedKey(live()),
+	blocker: () => {
+		const status = live();
+		return status ? paidBlocker(status, stagedPayment(status)) : null;
+	},
+});
 
 function validate() {
 	void confirmation.ask(isPaid.value, {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidValidateBody`, { model: model() }),
 		confirmText: t(`${K}.validate`),
+		...onStaged(),
 		run: props.spaces.validate,
 	});
 }
@@ -66,6 +84,7 @@ function activate() {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidActivateBody`, { model: model() }),
 		confirmText: t(`${K}.activate`),
+		...onStaged(),
 		run: props.spaces.activate,
 	});
 }
@@ -74,6 +93,7 @@ function catchUp() {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidCatchUpBody`, { model: model() }),
 		confirmText: t(`${K}.catchUp`),
+		...onStaged(),
 		run: props.spaces.catchUp,
 	});
 }
@@ -84,6 +104,12 @@ function resume() {
 		title: t(`${K}.confirmPaidTitle`),
 		body: t(`${K}.paidResumeBody`, { model: model() }),
 		confirmText: t(`${K}.resume`),
+		targetKey: pausedJobKey(props.status, paused._id) ?? '',
+		currentKey: () => pausedJobKey(live(), paused._id),
+		blocker: () => {
+			const status = live();
+			return status ? resumeBlocker(status, paused) : null;
+		},
 		run: () => props.spaces.resume(paused),
 	});
 }
@@ -93,6 +119,8 @@ function cancel() {
 		body: t(`${K}.cancelBody`, { model: model() }),
 		confirmText: t(`${K}.cancel`),
 		isDanger: true,
+		targetKey: stagedKey(props.status) ?? '',
+		currentKey: () => stagedKey(live()),
 		run: props.spaces.cancelRebuild,
 	});
 }

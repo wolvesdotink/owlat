@@ -27,7 +27,9 @@ import {
 	jobStateKey,
 	lastFinishedJob,
 	openJob,
+	configuredKey,
 	jobPayment,
+	pausedJobKey,
 	reembedBlocker,
 	reembedCandidates,
 	reembedPayment,
@@ -70,6 +72,9 @@ function startReembed() {
 			provider: providerLabel(status.value.configured?.provider),
 		}),
 		confirmText: t(`${K}.reembed.confirm`),
+		targetKey: configuredKey(status.value) ?? '',
+		currentKey: () => configuredKey(status.value),
+		blocker: () => (status.value ? reembedBlocker(status.value) : null),
 		run: spaces.startReembed,
 	});
 }
@@ -78,6 +83,9 @@ function resume(job: EmbeddingJob) {
 		title: t(`${K}.job.resumeTitle`),
 		body: t(`${K}.job.resumeBody`),
 		confirmText: t(`${K}.job.resume`),
+		targetKey: pausedJobKey(status.value, job._id) ?? '',
+		currentKey: () => pausedJobKey(status.value, job._id),
+		blocker: () => (status.value ? resumeBlocker(status.value, job) : null),
 		run: () => spaces.resume(job),
 	});
 }

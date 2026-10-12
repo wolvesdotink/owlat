@@ -7849,8 +7849,9 @@
 								"columnTaken": "Another embedding model now uses the place where the older vectors are, so an attestation can't put them back. Re-embed them instead.",
 								"secondaryColumn": "The configured model keeps its vectors in a different place than the older vectors, so an attestation can't put them back. Re-embed them instead."
 							},
-							"confirm": "I attest that {model} wrote these vectors.",
-							"description": "Owlat did not record which model wrote the vectors from before this version. If you know the configured model wrote them, you can attest to it, and they return to vector search without re-embedding. Attest only to what you know: vectors from another model make search results wrong.",
+							"confirm": "I attest that every vector written up to and including {date} was made with exactly this provider, endpoint, model and vector width, throughout that whole period.",
+							"confirmWithRevision": "I attest that every vector written up to and including {date} was made with exactly this provider, endpoint, model, vector width and revision, throughout that whole period.",
+							"description": "Owlat did not record which embedder wrote the vectors from before this version. If you know that the configured embedder, with the provider, endpoint, model and width shown below, wrote all of them in the period you choose, you can attest to it, and they return to vector search without re-embedding. Attest only to what you know: vectors from another model or endpoint make search results wrong.",
 							"entry": {
 								"status": {
 									"applied": "{count} items assigned, vectors written up to {until}.",
@@ -7858,6 +7859,17 @@
 									"revoked": "Revoked. Its items are out of vector search until they are re-embedded."
 								},
 								"title": "{source}, recorded {date}"
+							},
+							"identity": {
+								"endpoint": "Endpoint",
+								"model": "Model",
+								"nativeEndpoint": "The provider's own API",
+								"provider": "Provider",
+								"revision": "Revision",
+								"title": "This attestation assigns them to",
+								"width": "Vector width",
+								"widthMissing": "Enter it above",
+								"widthValue": "{dimensions} dimensions"
 							},
 							"problems": {
 								"date": "Choose a day.",
@@ -7874,7 +7886,7 @@
 							},
 							"statementLabel": "What you base this on",
 							"statementPlaceholder": "For example: this deployment has used this model since it was set up, and its environment never named another.",
-							"subject": "{count} items have vectors with no recorded model. This attestation names {model}.",
+							"subject": "{count} items have vectors with no recorded model.",
 							"submit": "Record attestation",
 							"title": "Attest the model of older vectors",
 							"warning": "Recorded in the audit log under your name.",

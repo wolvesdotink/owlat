@@ -17,13 +17,15 @@ import { computed, ref, watch } from 'vue';
 import type { useEmbeddingSpaces } from '~/composables/useEmbeddingSpaces';
 import {
 	attestationBlocker,
+	attestationIdentity,
 	attestationSubject,
 	cohortEnd,
 	isAttestationOffered,
 	unknownRows,
 	type EmbeddingStatus,
 } from '~/utils/embeddingSpaces';
-import { formatDateTime, formatNumber } from '~/utils/formatters';
+import { formatDate, formatDateTime, formatNumber } from '~/utils/formatters';
+import { embeddingProviderMeta } from '~/utils/aiProviders';
 
 const props = defineProps<{
 	spaces: ReturnType<typeof useEmbeddingSpaces>;
@@ -86,6 +88,28 @@ const width = computed(() => {
 	const value = Number(dimensions.value.trim());
 	return Number.isInteger(value) && value >= 1 ? value : null;
 });
+/**
+ * Everything the attestation assigns (D8): the admin states all of it, for
+ * the whole period, not only the model name.
+ */
+const identity = computed(() => attestationIdentity(props.status, width.value));
+const providerLabel = computed(() => {
+	const meta = identity.value ? embeddingProviderMeta(identity.value.provider) : undefined;
+	return meta ? t(meta.label) : (identity.value?.provider ?? '');
+});
+/** The chosen day, as the confirmation names it. */
+const periodEnd = computed(() => {
+	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(writtenBefore.value);
+	return match
+		? formatDate(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])), 'long')
+		: '';
+});
+const confirmLabel = computed(() =>
+	t(identity.value?.revision ? `${K}.confirmWithRevision` : `${K}.confirm`, {
+		date: periodEnd.value,
+	})
+);
+
 const problems = computed(() => ({
 	writtenBefore:
 		cohortEnd(writtenBefore.value, Date.now()) === null ? t(`${K}.problems.date`) : null,
@@ -159,7 +183,6 @@ async function confirmRevoke() {
 			<p class="text-sm text-text-primary">
 				{{
 					t(`${K}.subject`, {
-						model: status.configured?.model ?? '',
 						count: formatNumber(unknown),
 					})
 				}}
@@ -192,6 +215,35 @@ async function confirmRevoke() {
 					:disabled="spaces.isBusy.value"
 				/>
 			</div>
+			<div
+				v-if="identity"
+				class="rounded-lg bg-bg-surface-hover p-3 text-sm"
+				data-testid="ai-embedding-attest-identity"
+			>
+				<p class="text-xs font-medium text-text-secondary">{{ t(`${K}.identity.title`) }}</p>
+				<dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+					<dt class="text-text-tertiary">{{ t(`${K}.identity.provider`) }}</dt>
+					<dd class="text-text-primary">{{ providerLabel }}</dd>
+					<dt class="text-text-tertiary">{{ t(`${K}.identity.endpoint`) }}</dt>
+					<dd class="text-text-primary break-all">
+						{{ identity.endpointOrigin ?? t(`${K}.identity.nativeEndpoint`) }}
+					</dd>
+					<dt class="text-text-tertiary">{{ t(`${K}.identity.model`) }}</dt>
+					<dd class="font-mono text-text-primary">{{ identity.model }}</dd>
+					<dt class="text-text-tertiary">{{ t(`${K}.identity.width`) }}</dt>
+					<dd class="text-text-primary">
+						{{
+							identity.dimensions === null
+								? t(`${K}.identity.widthMissing`)
+								: t(`${K}.identity.widthValue`, { dimensions: identity.dimensions })
+						}}
+					</dd>
+					<template v-if="identity.revision">
+						<dt class="text-text-tertiary">{{ t(`${K}.identity.revision`) }}</dt>
+						<dd class="font-mono text-text-primary break-all">{{ identity.revision }}</dd>
+					</template>
+				</dl>
+			</div>
 			<UiTextarea
 				v-model="statement"
 				:label="t(`${K}.statementLabel`)"
@@ -200,11 +252,7 @@ async function confirmRevoke() {
 				:max-length="STATEMENT_MAX"
 				:disabled="spaces.isBusy.value"
 			/>
-			<UiCheckbox
-				v-model="isConfirmed"
-				:disabled="spaces.isBusy.value"
-				:label="t(`${K}.confirm`, { model: status.configured?.model ?? '' })"
-			/>
+			<UiCheckbox v-model="isConfirmed" :disabled="spaces.isBusy.value" :label="confirmLabel" />
 			<div class="flex flex-wrap items-center gap-3">
 				<UiButton
 					type="submit"
