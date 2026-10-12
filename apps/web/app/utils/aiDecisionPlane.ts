@@ -53,8 +53,10 @@ export interface DecisionFormSnapshot {
 	/** The operator has the plane switched on in this form. */
 	readonly enabled: boolean;
 	readonly kind: DecisionProviderKind;
-	/** A key is already encrypted on the row for this plane. */
+	/** A key is encrypted on the row and still applies (same vendor and origin). */
 	readonly hasStoredKey: boolean;
+	/** A key is stored, but for another vendor or origin, so a save drops it. */
+	readonly hasStrandedKey?: boolean;
 	/** Freshly typed key, as typed (trimmed here, not by the caller). */
 	readonly apiKey: string;
 	/** The consent checkbox, in this session. */
@@ -105,6 +107,7 @@ export function decisionKeyNotice(state: DecisionFormSnapshot): string | null {
 	if (!state.enabled) return null;
 	if (decisionProviderMeta(state.kind)?.requiresKey !== true) return null;
 	if (state.hasStoredKey || state.apiKey.trim().length > 0) return null;
+	if (state.hasStrandedKey) return `${K}.storedKeyNotReusable`;
 	return `${K}.keyFromEnvironment`;
 }
 
@@ -132,8 +135,9 @@ export function shouldSendDecisionConfig(state: DecisionFormSnapshot): boolean {
  *  • `localUncalibrated` — the local engine returns a real distribution, but
  *    one nobody has calibrated, so it is stamped `calibrated: false` too.
  *  • `keyMissing`     — a keyed adapter is selected with no key we can see, so
- *    resolution degrades to the language plane (unless the deployment supplies
- *    one through its environment, which a query cannot tell us).
+ *    decisions are refused (D3: terminal, never the language plane), unless
+ *    the deployment supplies one through its environment, which a query
+ *    cannot tell us.
  *  • `breakerOpen`    — the plane has been failing and the breaker has cut it.
  *  • `testFailed`     — the last key test came back with an error.
  */

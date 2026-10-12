@@ -454,6 +454,7 @@ onBeforeUnmount(() => {
 								:questions="ask.session.value.questions"
 								:round="ask.session.value.round"
 								:submitting="ask.busy.value"
+								:budget-refused="ask.isBudgetRefused.value"
 								:mailbox-id="seed.mailboxId"
 								:resolve-thread-file="assist.resolveThreadFile"
 								:copy-policy="copyPolicy"

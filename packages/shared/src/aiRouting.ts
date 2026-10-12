@@ -427,3 +427,12 @@ export type ReembedPauseReason = (typeof REEMBED_PAUSE_REASONS)[number];
 /** D10: why an interpretation source waits for the thread to be opened. */
 export const INTERPRET_DEFER_REASONS = ['display_only'] as const;
 export type InterpretDeferReason = (typeof INTERPRET_DEFER_REASONS)[number];
+
+// ── Output limits ─────────────────────────────────────────────────────────
+
+/**
+ * The `errorMessage` an assistant answer is finalized with when it stopped at
+ * its output ceiling: status `error`, the text kept. The web recognizes it to
+ * show its own translated line beside the kept text instead of a failure.
+ */
+export const ASSISTANT_CUT_OFF_MESSAGE = 'The answer was cut off at its length limit.';

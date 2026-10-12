@@ -70,6 +70,7 @@ function mountList() {
 				UiConfirmationDialog: true,
 				UiButton: true,
 				I18nT: true,
+				SettingsHostedDecisionExclusion: true,
 			},
 		},
 	});

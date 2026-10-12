@@ -58,6 +58,7 @@ vi.mock('~/composables/useAnswerModeAssist', () => ({
 			busy: ref(false),
 			session: ref(null),
 			injectionFlagged: ref(false),
+			isBudgetRefused: ref(false),
 			start: vi.fn(),
 			answer: vi.fn(),
 		},

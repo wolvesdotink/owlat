@@ -410,6 +410,7 @@
 			},
 			"assistantMessage": {
 				"assistant": "Assistant",
+				"cutOff": "This answer was cut off at its length limit.",
 				"genericError": "The assistant could not complete this reply.",
 				"stopped": "Stopped",
 				"typing": "Assistant is typing"
@@ -1080,7 +1081,8 @@
 				"securityLead": "Security email.",
 				"security": "Shown as written, never summarised.",
 				"signed": "Only the signed part is summarised.",
-				"openConversation": "Open the conversation"
+				"openConversation": "Open the conversation",
+				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the overview fills in shortly."
 			},
 			"conversation": {
 				"read": "Read the whole thread",
@@ -4183,6 +4185,22 @@
 				},
 				"tooLong": "{count} character too long | {count} characters too long",
 				"updateOperation": "Save the note"
+			},
+			"guardNotRun": {
+				"reason": {
+					"agentDisabled": "The pattern checks ran, but the AI check was skipped because the agent was off when this message arrived. It runs before the agent does anything with the message.",
+					"budgetRefused": "The pattern checks ran, but the AI check was skipped because the AI spend budget was used up. It runs before the agent does anything with the message.",
+					"spamArchived": "The pattern checks ran, but the AI check was skipped because this message was archived as spam. It runs before the agent does anything with the message."
+				},
+				"recordedAt": "Recorded {date}.",
+				"title": "AI safety check not run"
+			},
+			"budgetHold": {
+				"missing": "The AI skipped {steps}.",
+				"retry": "Try the AI again",
+				"retryHint": "Trying again runs the message through the agent with normal automation, so its reply can be sent on its own.",
+				"since": "Held {date}. Nothing is sent automatically while the message is held.",
+				"title": "Waiting for a person: AI budget reached"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -4443,6 +4461,7 @@
 				"askFailed": "Couldn't answer that right now. Try again in a moment.",
 				"askOperation": "Ask about this thread",
 				"askPlaceholder": "Ask about this thread…",
+				"cutOff": "This answer was cut off at its length limit.",
 				"thinking": "Thinking…"
 			},
 			"postboxAppPasswordCallout": {
@@ -6082,6 +6101,7 @@
 		},
 		"query": {
 			"queryResult": {
+				"cutOff": "This answer was cut off at its length limit.",
 				"sources": "Sources"
 			},
 			"quickQueryPanel": {
@@ -6230,6 +6250,13 @@
 				"needsSetup": "Needs setup",
 				"needsSetupTitle": "On, but not set up yet. Missing: {missing}",
 				"partial": "Some on"
+			},
+			"hostedDecisionExclusion": {
+				"adminOnly": "Only an admin can change this.",
+				"helpMailbox": "Mail in {address} is then judged only by the local decision engine on your own server. It never goes to TypeSafe, your language model or another hosted decision provider; without a local engine, decision requests skip it and everything works as before.",
+				"helpTeamInbox": "Team inbox mail is then judged only by the local decision engine on your own server. It never goes to TypeSafe, your language model or another hosted decision provider; without a local engine, decision requests skip it and everything works as before.",
+				"label": "Keep out of hosted decision providers",
+				"operation": "Update the hosted decision opt-out"
 			},
 			"inboundRetentionCard": {
 				"adminOnly": "Only owners and admins can change this.",
@@ -7055,7 +7082,8 @@
 					"checking": "Checking the draft…",
 					"addressed": "{addressed} of {total} addressed",
 					"needsFile": "{count} needs a file | {count} need a file",
-					"promise": "new promise noted: “{text}”"
+					"promise": "new promise noted: “{text}”",
+					"budget": "Only partly checked: the AI budget is used up"
 				},
 				"banner": {
 					"title": "One thing before sending.",
@@ -7078,7 +7106,9 @@
 				"peekDraft": "Draft",
 				"readyKept": "The AI draft is ready. Your text stays until you use the draft.",
 				"useDraft": "Use the draft",
-				"preparedFileFailed": "{filename} from the prepared reply could not be attached. Attach it again if the reply needs it."
+				"preparedFileFailed": "{filename} from the prepared reply could not be attached. Attach it again if the reply needs it.",
+				"heldByGuard": "The safety check held this message back, so there is no AI draft for it. You can still write the reply yourself.",
+				"budget": "The AI spend budget is used up for now, so there is no AI draft. You can still write the reply yourself."
 			},
 			"askCard": {
 				"title": "One thing before I write this | {count} things before I write this",
@@ -7099,7 +7129,8 @@
 				"attachAndUpdate": "Attach and update draft",
 				"draftGaps": "The draft needs one more detail | The draft needs {count} more details",
 				"draftGapsSubline": "The reply below is written. What you answer here goes into it; anything left open stays marked.",
-				"updateDraft": "Update the draft"
+				"updateDraft": "Update the draft",
+				"budgetRefused": "The AI spend budget is used up for now, so the draft was not written. Your answers stay here: try again later, or write the reply yourself."
 			},
 			"fileAsk": {
 				"dropHere": "Drop the file here or",
@@ -7695,6 +7726,7 @@
 						"description": "One-time scan of your inbound mail history to seed the AI agent with context.",
 						"errors": "Errors",
 						"extracted": "Extracted",
+						"partial": "{count} messages were only partly read during this backfill because the AI spend budget was reached. This count does not go down when they are finished later, and some may stay unfinished.",
 						"progress": "{scanned} / {total} messages",
 						"progressLabel": "Knowledge backfill progress",
 						"skipped": "Skipped",
@@ -7782,7 +7814,7 @@
 						},
 						"degraded": {
 							"breakerOpen": "The plane has failed often enough to be cut off for the moment. Until it recovers, judgements run the way they did before it was configured.",
-							"keyMissing": "No key is stored for this provider. Unless this deployment supplies TYPESAFE_API_KEY in its environment, every judgement resolves to your language model instead.",
+							"keyMissing": "No key is stored for this provider. Unless this deployment supplies TYPESAFE_API_KEY in its environment, decisions are refused, with no fallback to the language model, until a valid key is in place.",
 							"languageBacked": "Your language model is answering these judgements. It returns a label without a calibrated probability, so a number that looks like confidence here is the model's own guess about itself.",
 							"localUncalibrated": "The local model runs on your server and returns real probabilities, but nobody has measured how well they match reality yet. No threshold reads them until that has been done.",
 							"testFailed": "The last key test came back with an error, so the stored configuration may not be able to run.",
@@ -7828,6 +7860,211 @@
 							"loading": "Checking whether decision requests are enabled…",
 							"error": "Could not check the feature status. Testing is unavailable until the status is confirmed.",
 							"manage": "Manage in Features"
+						},
+						"envProblem": {
+							"body": "Decisions are refused, with no fallback to the language model, until the environment variable names a decision provider.",
+							"title": "The deployment's decision provider setting is invalid"
+						}
+					},
+					"embeddingSpace": {
+						"attest": {
+							"blocked": {
+								"columnTaken": "Another embedding model now uses the place where the older vectors are, so an attestation can't put them back. Re-embed them instead.",
+								"secondaryColumn": "The configured model keeps its vectors in a different place than the older vectors, so an attestation can't put them back. Re-embed them instead."
+							},
+							"confirm": "I attest that every vector written up to and including {date} was made with exactly this provider, endpoint, model and vector width, throughout that whole period.",
+							"confirmWithRevision": "I attest that every vector written up to and including {date} was made with exactly this provider, endpoint, model, vector width and revision, throughout that whole period.",
+							"description": "Owlat did not record which embedder wrote the vectors from before this version. If you know that the configured embedder, with the provider, endpoint, model and width shown below, wrote all of them in the period you choose, you can attest to it, and they return to vector search without re-embedding. Attest only to what you know: vectors from another model or endpoint make search results wrong.",
+							"entry": {
+								"status": {
+									"applied": "{count} items assigned, vectors written up to {until}.",
+									"applying": "Assigning items: {count} so far, vectors written up to {until}.",
+									"revoked": "Revoked. Its items are out of vector search until they are re-embedded."
+								},
+								"title": "{source}, recorded {date}"
+							},
+							"identity": {
+								"endpoint": "Endpoint",
+								"model": "Model",
+								"nativeEndpoint": "The provider's own API",
+								"provider": "Provider",
+								"revision": "Revision",
+								"title": "This attestation assigns them to",
+								"width": "Vector width",
+								"widthMissing": "Enter it above",
+								"widthOnRecord": "As recorded for this space",
+								"widthValue": "{dimensions} dimensions"
+							},
+							"problems": {
+								"date": "Choose a day.",
+								"statement": "Describe what this rests on, in up to {max} characters.",
+								"width": "Enter a whole number above 0."
+							},
+							"revoke": "Revoke",
+							"revokeBody": "Its items leave vector search until a re-embed brings them back with a measured model.",
+							"revokeTitle": "Revoke this attestation?",
+							"sourceLabel": "This rests on",
+							"sources": {
+								"attestation": "My own knowledge",
+								"record": "Deployment records"
+							},
+							"statementLabel": "What you base this on",
+							"statementPlaceholder": "For example: this deployment has used this model since it was set up, and its environment never named another.",
+							"subject": "{count} items have vectors with no recorded model.",
+							"submit": "Record attestation",
+							"title": "Attest the model of older vectors",
+							"warning": "Recorded in the audit log under your name.",
+							"widthHelp": "The number of dimensions the model returns, for example 1536.",
+							"widthLabel": "Vector width",
+							"writtenBeforeHelp": "Including this day. Later vectors are not covered.",
+							"writtenBeforeLabel": "Vectors written up to"
+						},
+						"coverage": {
+							"columns": {
+								"active": "In vector search",
+								"inactive": "Other model",
+								"unembedded": "Not embedded",
+								"unknown": "Model not recorded"
+							},
+							"legend": "Only the first column is found by vector search. Keyword search finds the others until they are re-embedded; items not embedded yet wait for processing or have too little text.",
+							"measuredAt": "Counted {date}.",
+							"none": "Not counted yet. Counting runs in the background.",
+							"refresh": "Count again",
+							"stale": "The searched model changed since the last count. A new count is on its way.",
+							"table": "Collection",
+							"tables": {
+								"knowledgeEntries": "Knowledge",
+								"semanticFiles": "Files"
+							},
+							"title": "Coverage"
+						},
+						"description": "Which embedding model vector search uses, and how much of your knowledge and files it reaches. Keyword search finds everything either way.",
+						"job": {
+							"cancel": "Cancel",
+							"last": "Last re-embed: {state}, {date}, {embedded} embedded.",
+							"paused": {
+								"budget": "Paused: the AI spend budget is used up for now.",
+								"other": "Paused",
+								"providerUnavailable": "Paused: the embedding provider could not be reached.",
+								"spaceChanged": "Paused: the embedding model changed."
+							},
+							"progress": "{embedded} embedded, {scanned} checked so far ({table})",
+							"resume": "Resume",
+							"resumeBody": "The rest of this job is sent to the provider and counted against your AI spend.",
+							"resumeTitle": "Resume paid re-embedding?",
+							"status": {
+								"cancelled": "Cancelled",
+								"completed": "Finished",
+								"failed": "Failed",
+								"running": "Running"
+							}
+						},
+						"loading": "Loading embedding search",
+						"operations": {
+							"activate": "Activate rebuild",
+							"attest": "Record attestation",
+							"cancel": "Cancel re-embedding",
+							"cancelRebuild": "Cancel rebuild",
+							"catchUp": "Embed changes into the rebuild",
+							"refresh": "Count embedding coverage",
+							"resume": "Resume re-embedding",
+							"revoke": "Revoke attestation",
+							"rollback": "Roll back the embedding model",
+							"startRebuild": "Start rebuild",
+							"startReembed": "Start re-embedding",
+							"validate": "Validate rebuild"
+						},
+						"paid": {
+							"unavailable": "Paid embedding work needs spend admission, which this deployment doesn't have yet."
+						},
+						"rebuild": {
+							"activate": "Activate",
+							"activateHint": "Activation checks a sample again, then switches search and the embedding settings in one step. Items added or changed during the rebuild need Embed changes first.",
+							"blocked": {
+								"jobOpen": "A re-embed or rebuild is already running.",
+								"noModel": "Choose a model.",
+								"notFilled": "The rebuild hasn't finished embedding yet.",
+								"sameModel": "Vector search already uses this model."
+							},
+							"cancel": "Cancel rebuild",
+							"cancelBody": "The staged {model} is abandoned and its run can't be resumed; a new rebuild starts from the beginning. Vector search keeps the active model.",
+							"cancelTitle": "Cancel this rebuild?",
+							"catchUp": "Embed changes",
+							"confirmPaidBody": "Every item is embedded with {model} and counted against your AI spend. Search keeps using the active model until you activate the rebuild.",
+							"confirmPaidTitle": "This is paid embedding work",
+							"costHosted": "Paid: every item is sent to the provider and counted against your AI spend.",
+							"costLocal": "Free: runs on your server.",
+							"costUnknown": "Treated as paid: Owlat can't tell from here whether this provider's endpoint runs on your server.",
+							"description": "Embeds everything with the new model beside the active one, so search keeps working during the change. Possible between local models, or between models of the same hosted provider; any other change goes through the embedding settings above.",
+							"modelLabel": "Model",
+							"paidActivateBody": "Activation validates again first, which embeds a few sample items with {model} at the provider, counted against your AI spend.",
+							"paidCatchUpBody": "Every item added or changed since the rebuild started is embedded with {model} at the provider and counted against your AI spend.",
+							"paidResumeBody": "The rest of the rebuild is embedded with {model} at the provider and counted against your AI spend.",
+							"paidValidateBody": "Validation embeds a few sample items with {model} at the provider, counted against your AI spend.",
+							"progress": "{embedded} embedded, {scanned} checked",
+							"providerLabel": "Embedding provider",
+							"resume": "Resume",
+							"rollback": "Roll back",
+							"rollbackAvailable": "{model} can be restored: its vectors are still stored.",
+							"rollbackBodyHosted": "Vector search and the embedding settings switch back at once. Items added since stay out of vector search until you start a re-embed, which is paid with a hosted embedder.",
+							"rollbackBodyLocal": "Vector search and the embedding settings switch back at once. Items added since are re-embedded on their own, for free.",
+							"rollbackTitle": "Roll back to {model}?",
+							"staged": "Building {model} ({dimensions} dimensions) beside the active model.",
+							"start": "Start rebuild",
+							"title": "Rebuild with another model",
+							"validate": "Validate",
+							"validation": {
+								"failed": "Only {passed} of {sampled} sampled items found themselves. Activation needs at least 80%.",
+								"passed": "{passed} of {sampled} sampled items found themselves with the new model."
+							}
+						},
+						"reembed": {
+							"blocked": {
+								"jobOpen": "A re-embed or rebuild is already running.",
+								"noEmbedder": "No embedding model is configured."
+							},
+							"confirm": "Start re-embedding",
+							"confirmBody": "Up to {count} items are sent to {provider} and counted against your AI spend; items with too little text are skipped. You can cancel it while it runs.",
+							"confirmBodyExact": "{count} items are sent to {provider} and counted against your AI spend. You can cancel it while it runs.",
+							"confirmTitle": "Start a paid re-embed?",
+							"hosted": "Your embedding model is hosted, so re-embedding is paid: every item is sent to the provider and counted against your AI spend. It runs only when you start it.",
+							"local": "Your embedding model runs on your server, so re-embedding is free. It also runs on its own once a day.",
+							"nothing": "Every item already has a vector in vector search.",
+							"nothingEligible": "No eligible items need re-embedding.",
+							"skipped": "{count} items stay out of vector search anyway: expired entries, files still being processed, or too little text.",
+							"start": "Re-embed up to {count} items",
+							"startExact": "Re-embed {count} items",
+							"title": "Re-embed"
+						},
+						"state": {
+							"none": {
+								"body": "Search uses keywords only.",
+								"title": "No embedding model is configured"
+							},
+							"searchable": {
+								"body": "Items embedded with another model, or before Owlat recorded which model it used, are found by keyword search only until they are re-embedded.",
+								"title": "Vector search uses {model}"
+							},
+							"space": "{provider}, {dimensions} dimensions",
+							"switching": {
+								"body": "Vector search starts once the first item is embedded with it. Until then, and for older items until they are re-embedded, search uses keywords.",
+								"title": "Switching to {model}"
+							}
+						},
+						"targetChanged": "The embedding setup changed while you were confirming, so nothing was done. Check what is shown now and try again.",
+						"title": "Embedding search",
+						"toasts": {
+							"activate": "Vector search now uses the rebuilt model.",
+							"attest": "Attestation recorded. Its items return to vector search as they are assigned.",
+							"cancel": "Re-embedding cancelled.",
+							"cancelRebuild": "Rebuild cancelled.",
+							"catchUp": "Embedding the changes since the rebuild started.",
+							"refresh": "Counting started.",
+							"resume": "Re-embedding resumed.",
+							"revoke": "Attestation revoked.",
+							"rollback": "Rolled back to the previous embedding model.",
+							"startRebuild": "Rebuild started.",
+							"startReembed": "Re-embedding started."
 						}
 					},
 					"embeddings": {
@@ -7840,8 +8077,8 @@
 						"localTitle": "Local (bundled) — no setup needed",
 						"modelLabel": "Embedding model",
 						"providerLabel": "Embedding provider",
-						"reindexBody": "New and old vectors aren't comparable. After saving, re-index your knowledge so search stays accurate.",
-						"reindexTitle": "Changing embeddings needs a re-index",
+						"reindexBody": "Vectors from two models can't be compared. After saving, keyword search finds older items until they are re-embedded: on its own with a local model, or when you start it under Embedding search with a hosted one. To change without that gap, use Rebuild with another model there, where the change allows it.",
+						"reindexTitle": "Changing the model takes older items out of vector search",
 						"title": "Embeddings"
 					},
 					"language": {
@@ -7868,10 +8105,117 @@
 					"remove": {
 						"button": "Remove configuration",
 						"confirm": "Remove configuration",
-						"confirmBody": "The stored API keys are deleted and can't be recovered. AI falls back to the deployment's environment variables, or turns off if none are set. If the environment uses a different embedding model, re-index your knowledge afterwards.",
+						"confirmBody": "The stored API keys are deleted and can't be recovered. AI falls back to the deployment's environment variables, or turns off if none are set. If the environment uses another embedding model, older items leave vector search until they are re-embedded.",
 						"confirmTitle": "Remove the AI provider configuration?",
 						"description": "Deletes the settings and API keys stored on this page. AI then uses the deployment's environment variables, or turns off if none are set.",
 						"title": "Remove provider configuration"
+					},
+					"routing": {
+						"ceiling": "Daily AI spend ceiling: {amount}.",
+						"conflict": "Another admin changed the AI routing while you were editing. Their version is shown now, so make your changes again.",
+						"defaultsInUse": "Not saved yet. The defaults apply.",
+						"description": "Which new AI paths run, and how much of the spend ceiling triage and shadow runs may use. Every switch starts off, which is how Owlat works today. Each change is recorded in the audit log.",
+						"discard": "Discard changes",
+						"groups": {
+							"budget": "Budget",
+							"decisions": "Decision requests",
+							"files": "Attachments and knowledge",
+							"shadow": "Shadow runs",
+							"team": "Team inbox",
+							"writing": "Drafting and background work"
+						},
+						"knowledgeEntryCap": {
+							"help": "The most knowledge entries one email may add; the most confident are kept. Files are not capped. Empty means no limit.",
+							"label": "Knowledge entries per message"
+						},
+						"loading": "Loading the AI routing policy",
+						"noCapPlaceholder": "No limit",
+						"noCeiling": "No daily AI spend ceiling is set.",
+						"problems": {
+							"cap": "Enter a whole number from {min} to {max}, or leave it empty.",
+							"percentBelow": "Enter a percentage above 0 and below {max}.",
+							"percentUpTo": "Enter a percentage above 0 and at most {max}.",
+							"shadowCapRequired": "Required while a switch is in shadow and no daily ceiling is set.",
+							"usd": "Enter an amount above 0, or leave it empty."
+						},
+						"promptCache": {
+							"help": "Marks the fixed part of the interpretation prompt for the provider's cache. Only Anthropic connected directly uses it; OpenRouter and other providers ignore it.",
+							"label": "Prompt caching for interpretation"
+						},
+						"save": "Save routing",
+						"saveOperation": "Save AI routing",
+						"saved": "AI routing saved.",
+						"savedVersion": "Version {version}, saved {date}.",
+						"shadow": {
+							"allowance": "Shadow runs may spend up to {amount} a day.",
+							"allowanceBlocked": "Set a spending cap. With no daily ceiling, shadow runs need one.",
+							"allowanceIdle": "No switch is in shadow, so shadow runs spend nothing.",
+							"capHelp": "Required for shadow runs when no daily ceiling is set.",
+							"capLabel": "Spending cap (USD per day)",
+							"ceilingHelp": "Share of the daily ceiling, at most {max}%.",
+							"ceilingLabel": "Daily ceiling (%)",
+							"description": "A switch set to shadow runs its new path beside today's and only records the result. These limits apply while any switch is in shadow.",
+							"messageHelp": "Share of eligible messages, at most {max}%.",
+							"messageLabel": "Messages (%)"
+						},
+						"switches": {
+							"attachmentGates": {
+								"help": "Files in mail from the Spam or Junk folder, mail the mail server judged as spam, and newsletters or other automated mail are not read into the file library. The message says why its files were skipped.",
+								"label": "Skip attachments from spam and automated mail"
+							},
+							"batchApi": {
+								"help": "Background work such as knowledge extraction, file summaries and the backfill of older mail goes through the provider's cheaper batch API, where it offers one. Results arrive later.",
+								"label": "Provider batch processing"
+							},
+							"categoryDisplayBundle": {
+								"help": "Sorts mail into categories with decision requests. When on, it changes only how mail is labelled, never what happens to it.",
+								"label": "Categories from the decision provider"
+							},
+							"cheapFirstWriter": {
+								"help": "Applies only while AI replies are set to “Draft only”. Eligible drafts start on the fast model, with at most one move to the capable model when the first try falls short. These drafts are never sent automatically: a person reviews each one before it goes out. Complex cases still go straight to the capable model.",
+								"label": "Fast model first for reviewed drafts"
+							},
+							"claimVerification": {
+								"help": "When a message is read for its overview, the claims taken from it are checked with short decision questions instead of a review by the language model.",
+								"label": "Check claims with decision questions"
+							},
+							"clarifyNecessity": {
+								"help": "One judgment first decides whether the AI has to ask you before it drafts; sample drafts are compared only when it cannot tell. Off keeps today's comparison of sample drafts.",
+								"label": "Ask only when a question is needed"
+							},
+							"dispositionAdvisoryBundle": {
+								"help": "Suggests whether a message needs a reply. Advisory only: it never sends, archives or deletes anything.",
+								"label": "Reply suggestions from the decision provider"
+							},
+							"earlyRuleArchive": {
+								"help": "Handling rules that don't depend on a category are checked right after the safety checks. Mail such a rule archives skips the knowledge lookup and sorting calls; the safety checks, the AI check included, still run.",
+								"label": "Archive by rule before sorting"
+							},
+							"mtaVerdictTerminal": {
+								"help": "When your mail server reports a Team inbox message as spam or for quarantine, it is archived as spam without running the agent, and the skipped AI safety check is recorded. The verdict is recorded either way. Without a verdict from the mail server this has no effect.",
+								"label": "Stop at the mail server's spam verdict"
+							},
+							"triageBundle": {
+								"help": "In shadow, a sample of Team inbox messages gets one short decision request before the knowledge lookup, within the shadow limits below. It records its answer and changes nothing.",
+								"label": "Triage before knowledge lookup"
+							}
+						},
+						"title": "AI routing",
+						"triage": {
+							"help": "Share of the daily and monthly ceiling held back for the AI safety check and sorting. Other AI work cannot spend it.",
+							"label": "Triage allowance (%)"
+						},
+						"values": {
+							"enforce": "On",
+							"off": "Off",
+							"offDefault": "Off (default)",
+							"reviewed": "On for reviewed drafts",
+							"shadow": "Shadow: record only"
+						},
+						"verifyClaimCap": {
+							"help": "The most claims from one message that are checked when it is read. Empty means no limit.",
+							"label": "Checked claims per message"
+						}
 					},
 					"save": "Save AI provider",
 					"saveFirstTest": "Save first, then test.",
@@ -12949,7 +13293,7 @@
 						"label": "Background classifiers"
 					}
 				},
-				"keyFromEnvironment": "No key here yet. Saving still works if this deployment supplies TYPESAFE_API_KEY in its environment; otherwise the plane resolves to your language model.",
+				"keyFromEnvironment": "No key here yet. Saving still works if this deployment supplies TYPESAFE_API_KEY in its environment; otherwise decisions are refused until a valid key is in place.",
 				"providers": {
 					"llm": {
 						"hint": "No third party. The same questions go to your configured language model, which answers them without calibrated probabilities.",
@@ -12964,6 +13308,7 @@
 						"label": "TypeSafe Jev (recommended)"
 					}
 				},
+				"storedKeyNotReusable": "The saved key belongs to the previous provider or address, so it doesn't carry over. Paste the key for this one, unless this deployment supplies TYPESAFE_API_KEY in its environment.",
 				"thresholds": {
 					"choice": {
 						"body": "Judged by the confidence the provider returns alongside the chosen option, which describes how peaked the distribution across the options is.",
@@ -12975,7 +13320,8 @@
 					}
 				},
 				"validation": {
-					"consentRequired": "Read what leaves this deployment and tick the box before enabling a third-party decision provider."
+					"consentRequired": "Read what leaves this deployment and tick the box before enabling a third-party decision provider.",
+					"storedKeyNotReusable": "The saved key belongs to the previous provider or address. Paste the key for this one, then save again."
 				}
 			},
 			"embedders": {
@@ -13031,7 +13377,8 @@
 				"baseUrlRequired": {
 					"azure": "Azure OpenAI needs its resource base URL. Add it above to continue.",
 					"unknown": "this provider needs its resource base URL. Add it above to continue."
-				}
+				},
+				"storedKeyNotReusable": "The saved key belongs to the previous provider or address, so it doesn't carry over. Paste the key for this one to continue."
 			}
 		},
 		"automations": {
@@ -16000,6 +16347,7 @@
 			"actions": {
 				"activated": "Activated",
 				"added": "Added",
+				"attested": "Attested",
 				"cancelled": "Cancelled",
 				"completed": "Completed",
 				"created": "Created",
@@ -16010,11 +16358,16 @@
 				"invited": "Invited",
 				"paused": "Paused",
 				"published": "Published",
+				"rebuildCancelled": "Rebuild cancelled",
 				"removed": "Removed",
+				"resumed": "Resumed",
 				"revoked": "Revoked",
 				"roleChanged": "Role changed",
+				"rolledBack": "Rolled back",
 				"scheduled": "Scheduled",
 				"sent": "Sent",
+				"staged": "Staged",
+				"started": "Started",
 				"updated": "Updated",
 				"verified": "Verified"
 			},
@@ -16043,6 +16396,7 @@
 			},
 			"resourceFilters": {
 				"aiProviderConfig": "AI providers",
+				"aiRoutingPolicy": "AI routing",
 				"all": "All resources",
 				"apiKey": "API keys",
 				"automation": "Automations",
@@ -16052,6 +16406,7 @@
 				"contact": "Contacts",
 				"domain": "Domains",
 				"emailTemplate": "Email templates",
+				"embeddingSpace": "Embedding spaces",
 				"plugin": "Plugins",
 				"segment": "Segments",
 				"settings": "Settings",
@@ -16061,6 +16416,7 @@
 			},
 			"resources": {
 				"aiProviderConfig": "AI provider",
+				"aiRoutingPolicy": "AI routing policy",
 				"apiKey": "API key",
 				"automation": "Automation",
 				"blocklist": "Blocklist",
@@ -16070,6 +16426,7 @@
 				"deliverabilityRamp": "Deliverability ramp",
 				"domain": "Domain",
 				"emailTemplate": "Email template",
+				"embeddingSpace": "Embedding space",
 				"plugin": "Plugin",
 				"seedMailbox": "Seed mailbox",
 				"segment": "Segment",
@@ -16871,6 +17228,22 @@
 				"hours": "overdue {hours}h",
 				"minutes": "overdue {minutes}m"
 			}
+		},
+		"aiBudget": {
+			"generic": "The AI spend budget is used up for now, so the AI did not write this.",
+			"judgment": {
+				"clarify": "questions to you",
+				"classify": "sorting",
+				"draft": "the draft",
+				"guard": "the safety check",
+				"interpret": "reading the thread"
+			},
+			"reason": {
+				"dailyCeiling": "The AI spend budget for today is used up. AI actions are back tomorrow.",
+				"monthlyCeiling": "The AI spend budget for this month is used up. AI actions are back next month, or once an admin raises the budget.",
+				"spendUnverifiable": "AI spend can't be checked right now, so no paid AI call is made. Try again in a few minutes."
+			},
+			"title": "AI budget reached."
 		}
 	},
 	"sharedPkg": {

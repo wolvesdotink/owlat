@@ -125,4 +125,15 @@ describe('deriveQuarantineReason', () => {
 			'The scan left no machine-readable record for this message.'
 		);
 	});
+
+	it('says when the model guard was skipped (D13), beside what did fire', () => {
+		const reason = deriveQuarantineReason({
+			injectionDetected: false,
+			spamScore: 0,
+			guardNotRun: { reason: 'agent_disabled', at: 1 },
+		});
+		expect(reason.reasons.map(render)).toEqual([
+			'The pattern checks ran, but the AI check was skipped because the agent was off when this message arrived. It runs before the agent does anything with the message.',
+		]);
+	});
 });

@@ -111,7 +111,11 @@ const { t } = useI18n();
 				<p class="mt-2 text-sm">{{ t('components.query.quickQueryPanel.searching') }}</p>
 			</div>
 			<div v-else-if="askAnswer" class="px-4 py-3">
-				<QueryResult :answer="askAnswer.answer" :sources="askAnswer.sources" />
+				<QueryResult
+					:answer="askAnswer.answer"
+					:sources="askAnswer.sources"
+					:is-truncated="askAnswer.isTruncated === true"
+				/>
 			</div>
 			<div v-else class="px-4 py-8 text-center text-text-tertiary">
 				<Icon name="lucide:sparkles" class="w-8 h-8 mx-auto mb-2 opacity-50" />

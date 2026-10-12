@@ -350,4 +350,40 @@ describe('ThreadBrief', () => {
 		const w = mountBrief({ brief: undefined });
 		expect(w.get('[data-testid="thread-brief"]').attributes('aria-busy')).toBe('true');
 	});
+
+	describe('a brief with nothing recorded yet (pending)', () => {
+		it('says it is being read and shows the loading shape, not empty sections', () => {
+			const w = mountBrief({ brief: briefView({ completeness: 'pending', latest: [] }) });
+			expect(w.get('[data-testid="brief-incomplete"]').attributes('data-kind')).toBe('pending');
+			expect(w.find('[data-testid="brief-reading"]').exists()).toBe(true);
+			expect(w.get('[data-testid="thread-brief"]').attributes('aria-busy')).toBe('true');
+			expect(w.text()).not.toContain('For you');
+			expectFullyLocalized(w);
+		});
+
+		it('says new mail waited for this open (D10)', () => {
+			const w = mountBrief({
+				brief: briefView({ completeness: 'pending', latest: [], deferredSources: 1 }),
+			});
+			const banner = w.get('[data-testid="brief-incomplete"]');
+			expect(banner.attributes('data-kind')).toBe('deferred');
+			expect(banner.text()).toContain('Reading new mail in this thread now.');
+			expect(w.find('[data-testid="brief-open-conversation"]').exists()).toBe(false);
+			expect(w.find('[data-testid="brief-reading"]').exists()).toBe(true);
+		});
+
+		it('keeps a read brief on screen while newer deferred mail is read', () => {
+			const w = mountBrief({
+				brief: briefView({
+					completeness: 'partial',
+					gap: { reason: 'pending', interpretedMessages: 2, totalMessages: 3 },
+					deferredSources: 1,
+				}),
+			});
+			expect(w.get('[data-testid="brief-incomplete"]').attributes('data-kind')).toBe('deferred');
+			expect(w.find('[data-testid="brief-open-conversation"]').exists()).toBe(true);
+			expect(w.find('[data-testid="brief-reading"]').exists()).toBe(false);
+			expect(w.text()).toContain('Latest update');
+		});
+	});
 });

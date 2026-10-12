@@ -185,6 +185,142 @@ describe('useAnswerAskSession', () => {
 		).toBe(false);
 	});
 
+	it('reads the guard refusal as held, with no toast, until the target changes (D13)', async () => {
+		const draftId = ref<string | null>('d1');
+		const { api } = host(composerMock(), draftId);
+		const held = {
+			category: 'invalid_state',
+			message: 'This message was held back as unsafe.',
+			data: { code: 'MESSAGE_HELD_BY_GUARD' },
+		};
+		runs['start'] = vi.fn(async () => {
+			expect(onErrors['start']!(held)).toBe(true);
+			return { ok: false };
+		});
+		await api.start('');
+		expect(api.phase.value).toBe('held');
+		expect(api.busy.value).toBe(false);
+		// The same refusal on an answer is claimed too; other start failures are not.
+		expect(onErrors['answer']!(held)).toBe(true);
+		expect(onErrors['start']!({ category: 'forbidden', message: 'No' })).toBe(false);
+		draftId.value = 'd2';
+		await nextTick();
+		expect(api.phase.value).toBe('idle');
+	});
+
+	it('reads a budget refusal as budget, with no toast, and tries again on the next start (U5)', async () => {
+		const draftId = ref<string | null>('d1');
+		const { api } = host(composerMock(), draftId);
+		const refusal = {
+			category: 'forbidden',
+			message: 'AI budget reached.',
+			data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'daily_ceiling', limit: 5 },
+		};
+		runs['start'] = vi.fn(async () => {
+			expect(onErrors['start']!(refusal)).toBe(true);
+			return { ok: false };
+		});
+		await api.start('');
+		expect(api.phase.value).toBe('budget');
+		expect(api.isBudgetRefused.value).toBe(true);
+		expect(api.busy.value).toBe(false);
+		expect(onErrors['answer']!(refusal)).toBe(true);
+
+		// A new start clears it before it runs; the target changing does too.
+		runs['start'] = vi.fn(async () => {
+			expect(api.phase.value).not.toBe('budget');
+			return { ok: false };
+		});
+		await api.start('');
+		expect(runs['start']).toHaveBeenCalledTimes(1);
+		runs['start'] = vi.fn(async () => {
+			onErrors['start']!(refusal);
+			return { ok: false };
+		});
+		await api.start('');
+		expect(api.phase.value).toBe('budget');
+		draftId.value = 'd2';
+		await nextTick();
+		expect(api.phase.value).toBe('idle');
+	});
+
+	it('keeps the questions open when the budget refuses an answer, and clears it on the next try', async () => {
+		data['getSession']!.value = session({ status: 'asking' });
+		const { api } = host(composerMock());
+		const refusal = {
+			category: 'forbidden',
+			message: 'AI budget reached.',
+			data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'daily_ceiling', limit: 5 },
+		};
+		runs['answer'] = vi.fn(async () => {
+			expect(onErrors['answer']!(refusal)).toBe(true);
+			return { ok: false };
+		});
+		await api.answer([]);
+		// Still asking: the page keeps the ask card and what was entered in it.
+		expect(api.phase.value).toBe('asking');
+		expect(api.isBudgetRefused.value).toBe(true);
+
+		// The retry clears the notice before it runs, and a success leaves it clear.
+		runs['answer'] = vi.fn(async () => {
+			expect(api.isBudgetRefused.value).toBe(false);
+			return { ok: true, result: session({ status: 'drafting', updatedAt: 2 }) };
+		});
+		await api.answer([]);
+		expect(runs['answer']).toHaveBeenCalledTimes(1);
+		expect(api.isBudgetRefused.value).toBe(false);
+	});
+
+	it('reads a draft stream that ended on the budget as budget, any other end as error', () => {
+		data['getSession']!.value = session({ status: 'drafting', streamId: 'ds1' });
+		data['getDraftStream']!.value = {
+			_id: 'ds1',
+			status: 'error',
+			text: '',
+			errorMessage: 'AI_BUDGET_EXHAUSTED',
+		};
+		const { api } = host(composerMock());
+		expect(api.phase.value).toBe('budget');
+		data['getDraftStream']!.value = {
+			_id: 'ds1',
+			status: 'error',
+			text: '',
+			errorMessage: 'Provider down',
+		};
+		expect(api.phase.value).toBe('error');
+	});
+
+	it('keeps the budget state once the server settles the session as error, and on a reload', async () => {
+		const refused = {
+			_id: 'ds1',
+			status: 'error',
+			text: '',
+			errorMessage: 'AI_BUDGET_EXHAUSTED',
+		};
+		data['getSession']!.value = session({ status: 'drafting', streamId: 'ds1' });
+		data['getDraftStream']!.value = { _id: 'ds1', status: 'streaming', text: '' };
+		const { api } = host(composerMock());
+		data['getDraftStream']!.value = refused;
+		await nextTick();
+		expect(api.phase.value).toBe('budget');
+		// writeAnswerDraft settles the session `error` with an English sentence.
+		data['getSession']!.value = session({
+			status: 'error',
+			streamId: 'ds1',
+			errorMessage: 'The AI spend budget for today is used up.',
+		});
+		await nextTick();
+		expect(api.phase.value).toBe('budget');
+
+		// A reload finds the settled session and its stream.
+		const reloaded = host(composerMock());
+		expect(reloaded.api.phase.value).toBe('budget');
+
+		// Any other settled failure stays a failure.
+		data['getDraftStream']!.value = { ...refused, errorMessage: 'draft_failed' };
+		expect(reloaded.api.phase.value).toBe('error');
+	});
+
 	it('streams into the editor, then settles the draft, the follow-up and the files once', async () => {
 		const composer = composerMock();
 		const { api, onSettled } = host(composer);

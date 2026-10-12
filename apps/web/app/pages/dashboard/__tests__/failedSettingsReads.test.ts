@@ -271,6 +271,7 @@ function mountForm(Page: Component): VueWrapper {
 			AutonomyFeedbackStatsCard: true,
 			AutonomyItemCoverage: true,
 			AutonomyLearningControls: true,
+			SettingsHostedDecisionExclusion: true,
 			AutonomyWorkingHours: true,
 			BrandKitLogoPicker: true,
 			BrandKitColorField: true,
