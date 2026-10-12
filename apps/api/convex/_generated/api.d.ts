@@ -35,6 +35,7 @@ import type * as mail_interpret_briefProject from '../mail/interpret/briefProjec
 import type * as mail_interpret_briefRead from '../mail/interpret/briefRead.js';
 import type * as mail_interpret_briefRow from '../mail/interpret/briefRow.js';
 import type * as mail_interpret_categoryDefer from '../mail/interpret/categoryDefer.js';
+import type * as mail_interpret_claimCheck from '../mail/interpret/claimCheck.js';
 import type * as mail_interpret_clamp from '../mail/interpret/clamp.js';
 import type * as mail_interpret_commitmentLink from '../mail/interpret/commitmentLink.js';
 import type * as mail_interpret_counters from '../mail/interpret/counters.js';
@@ -101,6 +102,7 @@ import type * as mail_interpret_threadAccess from '../mail/interpret/threadAcces
 import type * as mail_interpret_threadEvents from '../mail/interpret/threadEvents.js';
 import type * as mail_interpret_transitionSources from '../mail/interpret/transitionSources.js';
 import type * as mail_interpret_verify from '../mail/interpret/verify.js';
+import type * as mail_interpret_verifyRoute from '../mail/interpret/verifyRoute.js';
 import type * as mail_messageCounters from '../mail/messageCounters.js';
 import type * as maintenance_counterBackfill from '../maintenance/counterBackfill.js';
 import type * as migrations_0048_backfill_counters from '../migrations/0048_backfill_counters.js';
@@ -1739,6 +1741,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/briefRead': typeof mail_interpret_briefRead;
 	'mail/interpret/briefRow': typeof mail_interpret_briefRow;
 	'mail/interpret/categoryDefer': typeof mail_interpret_categoryDefer;
+	'mail/interpret/claimCheck': typeof mail_interpret_claimCheck;
 	'mail/interpret/clamp': typeof mail_interpret_clamp;
 	'mail/interpret/commitmentLink': typeof mail_interpret_commitmentLink;
 	'mail/interpret/counters': typeof mail_interpret_counters;
@@ -1805,6 +1808,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/threadEvents': typeof mail_interpret_threadEvents;
 	'mail/interpret/transitionSources': typeof mail_interpret_transitionSources;
 	'mail/interpret/verify': typeof mail_interpret_verify;
+	'mail/interpret/verifyRoute': typeof mail_interpret_verifyRoute;
 	'mail/messageCounters': typeof mail_messageCounters;
 	'maintenance/counterBackfill': typeof maintenance_counterBackfill;
 	'migrations/0048_backfill_counters': typeof migrations_0048_backfill_counters;

@@ -73,14 +73,21 @@ type T = ReturnType<typeof convexTest>;
 
 /** An action context over the test deployment, for calling the runner directly. */
 function actionCtx(t: T): ActionCtx {
+	const run = t as unknown as Record<
+		'query' | 'mutation' | 'action',
+		(ref: unknown, args: unknown) => Promise<unknown>
+	>;
 	return {
-		runQuery: (ref: never, args: never) => t.query(ref, args),
-		runMutation: (ref: never, args: never) => t.mutation(ref, args),
-		runAction: (ref: never, args: never) => t.action(ref, args),
+		runQuery: (ref: unknown, args: unknown) => run.query(ref, args),
+		runMutation: (ref: unknown, args: unknown) => run.mutation(ref, args),
+		runAction: (ref: unknown, args: unknown) => run.action(ref, args),
 	} as unknown as ActionCtx;
 }
 
-async function setup(policy: Record<string, unknown>, flags = ['ai.agent', 'ai']): Promise<T> {
+async function setup(
+	policy: Record<string, unknown>,
+	flags: Parameters<typeof enableFeatures>[1] = ['ai.agent', 'ai']
+): Promise<T> {
 	const t = convexTest(schema, modules);
 	rateLimiterTest.register(t);
 	await enableFeatures(t, flags);

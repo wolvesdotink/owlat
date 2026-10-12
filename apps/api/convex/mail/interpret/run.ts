@@ -16,7 +16,8 @@
  *   7. model     `runLlmObject` on the `extract` tier, temperature 0, metered
  *                as `interpret`
  *   8. ground    every claim's quotes verbatim in the named segment
- *   9. verify    consequential claims on the `guard` tier (`verify.ts`)
+ *   9. verify    consequential claims on the `guard` tier (`verify.ts`), capped and
+ *               routed by the policy (`verifyRoute.ts`)
  *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale;
  *                a changed body or mode starts the run over once
  *
@@ -61,7 +62,8 @@ import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scop
 import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from './pipeline';
 import { clampOutput } from './clamp';
 import { needsReplyProjectionOf } from './needsReplyProjection';
-import { interpretRoot, verifyClaims } from './verify';
+import { interpretRoot } from './verify';
+import { verifyRouted } from './verifyRoute';
 import { isRetryDue } from './retry';
 import type { ApplyOutcome } from './reduce';
 import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
@@ -348,7 +350,12 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			itemText: (id) => itemText.get(id),
 			factText: (id) => factText.get(id),
 		});
-		const verified = await verifyClaims(ctx, claims, root);
+		// The routing policy's claim cap and claim-check switch (`./verifyRoute.ts`).
+		const verified = await verifyRouted(ctx, claims, {
+			source: args.source,
+			...(loaded.mailboxId ? { mailboxId: loaded.mailboxId } : {}),
+			root,
+		});
 
 		const freshText = segmented.segments
 			.filter((s) => s.kind === 'fresh')
@@ -384,6 +391,9 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			isFactsOverflow: loaded.isFactsOverflow,
 			truncatedSegmentIds,
 			isVerifyIncomplete: verified.isIncomplete,
+			isVerifyUnsendable: verified.isUnsendable,
+			isVerifyCapped: verified.isCapped,
+			isVerifyUnavailable: verified.isUnavailable,
 			isBodyIncomplete: scoped.omitted.includes('body_unavailable'),
 			isBodyTruncated: isTruncated,
 		});
