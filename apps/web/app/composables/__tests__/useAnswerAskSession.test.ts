@@ -208,6 +208,60 @@ describe('useAnswerAskSession', () => {
 		expect(api.phase.value).toBe('idle');
 	});
 
+	it('reads a budget refusal as budget, with no toast, and tries again on the next start (U5)', async () => {
+		const draftId = ref<string | null>('d1');
+		const { api } = host(composerMock(), draftId);
+		const refusal = {
+			category: 'forbidden',
+			message: 'AI budget reached.',
+			data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'daily_ceiling', limit: 5 },
+		};
+		runs['start'] = vi.fn(async () => {
+			expect(onErrors['start']!(refusal)).toBe(true);
+			return { ok: false };
+		});
+		await api.start('');
+		expect(api.phase.value).toBe('budget');
+		expect(api.busy.value).toBe(false);
+		expect(onErrors['answer']!(refusal)).toBe(true);
+
+		// A new start clears it before it runs; the target changing does too.
+		runs['start'] = vi.fn(async () => {
+			expect(api.phase.value).not.toBe('budget');
+			return { ok: false };
+		});
+		await api.start('');
+		expect(runs['start']).toHaveBeenCalledTimes(1);
+		runs['start'] = vi.fn(async () => {
+			onErrors['start']!(refusal);
+			return { ok: false };
+		});
+		await api.start('');
+		expect(api.phase.value).toBe('budget');
+		draftId.value = 'd2';
+		await nextTick();
+		expect(api.phase.value).toBe('idle');
+	});
+
+	it('reads a draft stream that ended on the budget as budget, any other end as error', () => {
+		data['getSession']!.value = session({ status: 'drafting', streamId: 'ds1' });
+		data['getDraftStream']!.value = {
+			_id: 'ds1',
+			status: 'error',
+			text: '',
+			errorMessage: 'AI_BUDGET_EXHAUSTED',
+		};
+		const { api } = host(composerMock());
+		expect(api.phase.value).toBe('budget');
+		data['getDraftStream']!.value = {
+			_id: 'ds1',
+			status: 'error',
+			text: '',
+			errorMessage: 'Provider down',
+		};
+		expect(api.phase.value).toBe('error');
+	});
+
 	it('streams into the editor, then settles the draft, the follow-up and the files once', async () => {
 		const composer = composerMock();
 		const { api, onSettled } = host(composer);

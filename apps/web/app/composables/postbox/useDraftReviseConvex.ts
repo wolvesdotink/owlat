@@ -12,6 +12,8 @@
 import { ref, computed } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
+import { isBudgetStreamError } from '~/utils/aiBudget';
 import {
 	useDraftRevise,
 	type ReviseInput,
@@ -24,6 +26,22 @@ export interface DraftReviseConvexOptions {
 	/** Mailbox whose voice profile personalizes the revise (optional). */
 	mailboxId?: () => Id<'mailboxes'> | undefined;
 	onError?: (message: string) => void;
+}
+
+/**
+ * U5: a revise the spend budget refused settles its buffer with the stable
+ * code as `errorMessage` (the action itself only answers `error`). Read it
+ * once, so the composer says it was the budget rather than a failure.
+ */
+async function budgetStreamCode(streamId: string): Promise<string | undefined> {
+	try {
+		const row = await requireConvex().query(api.mail.draftStreamStore.getDraftStream, {
+			streamId: streamId as Id<'aiDraftStreams'>,
+		});
+		return isBudgetStreamError(row?.errorMessage) ? AI_BUDGET_ERROR_CODE : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 export function useDraftReviseConvex(opts: DraftReviseConvexOptions) {
@@ -64,11 +82,13 @@ export function useDraftReviseConvex(opts: DraftReviseConvexOptions) {
 				...(mailboxId ? { mailboxId } : {}),
 				surface: opts.surface,
 			});
+			const errorCode =
+				res?.errorCode ?? (res?.status === 'error' ? await budgetStreamCode(streamId) : undefined);
 			return {
 				status: res?.status ?? 'error',
 				text: res?.text ?? '',
 				injectionFlagged: res?.injectionFlagged ?? false,
-				...(res?.errorCode ? { errorCode: res.errorCode } : {}),
+				...(errorCode ? { errorCode } : {}),
 			};
 		},
 		deleteStream: async (streamId: string) => {

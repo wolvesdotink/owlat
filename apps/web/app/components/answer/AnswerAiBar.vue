@@ -50,6 +50,7 @@ const statusLine = computed(() => {
 	if (props.phase === 'drafting') return t('components.answer.aiBar.drafting');
 	if (props.phase === 'error') return t('components.answer.aiBar.failed');
 	if (isHeld.value) return t('components.answer.aiBar.heldByGuard');
+	if (props.phase === 'budget') return t('components.answer.aiBar.budget');
 	return '';
 });
 
@@ -97,7 +98,13 @@ const inputId = useId();
 		<p
 			v-if="statusLine"
 			class="mt-1 text-xs"
-			:class="phase === 'error' ? 'text-error' : isHeld ? 'text-warning' : 'text-text-tertiary'"
+			:class="
+				phase === 'error'
+					? 'text-error'
+					: isHeld || phase === 'budget'
+						? 'text-warning'
+						: 'text-text-tertiary'
+			"
 			role="status"
 			data-testid="answer-ai-status"
 		>

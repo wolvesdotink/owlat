@@ -7082,7 +7082,8 @@
 					"checking": "Der Entwurf wird geprüft …",
 					"addressed": "{addressed} von {total} berücksichtigt",
 					"needsFile": "{count} braucht eine Datei | {count} brauchen eine Datei",
-					"promise": "neues Versprechen notiert: „{text}“"
+					"promise": "neues Versprechen notiert: „{text}“",
+					"budget": "Nur teilweise geprüft: Das KI-Budget ist aufgebraucht"
 				},
 				"banner": {
 					"title": "Eins noch vor dem Senden.",
@@ -7106,7 +7107,8 @@
 				"readyKept": "Der KI-Entwurf ist fertig. Dein Text bleibt stehen, bis du den Entwurf übernimmst.",
 				"useDraft": "Entwurf übernehmen",
 				"preparedFileFailed": "{filename} aus der vorbereiteten Antwort konnte nicht angehängt werden. Hänge die Datei erneut an, falls die Antwort sie braucht.",
-				"heldByGuard": "Die Sicherheitsprüfung hat diese Nachricht zurückgehalten, deshalb gibt es dafür keinen KI-Entwurf. Du kannst die Antwort trotzdem selbst schreiben."
+				"heldByGuard": "Die Sicherheitsprüfung hat diese Nachricht zurückgehalten, deshalb gibt es dafür keinen KI-Entwurf. Du kannst die Antwort trotzdem selbst schreiben.",
+				"budget": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb gibt es keinen KI-Entwurf. Du kannst die Antwort trotzdem selbst schreiben."
 			},
 			"askCard": {
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",

@@ -27,6 +27,7 @@ const queried = vi.fn();
 const askRun = vi.fn(async (_a: unknown): Promise<unknown> => undefined);
 const otherRun = vi.fn(async (_a: unknown): Promise<unknown> => undefined);
 const askLoading = ref(false);
+let askOnError: ((op: unknown) => boolean | void) | undefined;
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -36,11 +37,14 @@ beforeAll(() => {
 	});
 	vi.stubGlobal(
 		'useBackendOperation',
-		(_action: unknown, opts: { label?: string | (() => string) }) => {
+		(
+			_action: unknown,
+			opts: { label?: string | (() => string); onError?: (op: unknown) => boolean | void }
+		) => {
 			const label = typeof opts?.label === 'function' ? opts.label() : opts?.label;
-			return label === 'Ask about this thread'
-				? { run: askRun, isLoading: askLoading }
-				: { run: otherRun, isLoading: ref(false) };
+			if (label !== 'Ask about this thread') return { run: otherRun, isLoading: ref(false) };
+			askOnError = opts.onError;
+			return { run: askRun, isLoading: askLoading };
 		}
 	);
 });
@@ -121,6 +125,45 @@ describe('PostboxAiStrip (Ask about this thread)', () => {
 		const notes = wrapper.findAll('[data-testid="postbox-ask-cut-off"]');
 		expect(notes).toHaveLength(1);
 		expect(notes[0]!.text()).toBe('This answer was cut off at its length limit.');
+		wrapper.unmount();
+	});
+
+	it('says the AI budget is used up, by its reason, in place of the failure line', async () => {
+		let claimed: boolean | void = undefined;
+		askRun.mockImplementationOnce(async () => {
+			claimed = askOnError?.({
+				category: 'forbidden',
+				message: 'AI budget reached.',
+				data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling', limit: 20 },
+			});
+			return { ok: false };
+		});
+		const wrapper = mountStrip();
+		await flushPromises();
+		await wrapper.find('input').setValue('When do we ship?');
+		await wrapper.find('input').trigger('keydown.enter');
+		await flushPromises();
+
+		expect(claimed).toBe(true);
+		const block = wrapper.get('[data-testid="postbox-ask-budget"]');
+		expect(block.attributes('data-reason')).toBe('monthly_ceiling');
+		expect(block.text()).toContain('AI budget reached.');
+		expect(block.text()).toContain('for this month is used up');
+		expect(wrapper.text()).not.toContain("Couldn't");
+
+		// The next question tries again, so the budget line clears.
+		askRun.mockResolvedValueOnce({ ok: true, result: { answer: 'On the 14th.' } });
+		await wrapper.find('input').setValue('And now?');
+		await wrapper.find('input').trigger('keydown.enter');
+		await flushPromises();
+		expect(wrapper.find('[data-testid="postbox-ask-budget"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+
+	it('leaves other failures to the toast', async () => {
+		const wrapper = mountStrip();
+		await flushPromises();
+		expect(askOnError?.({ category: 'internal', message: 'boom' })).toBe(false);
 		wrapper.unmount();
 	});
 });

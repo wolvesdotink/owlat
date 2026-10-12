@@ -18,6 +18,8 @@
  * can warn the user, but nothing here sends anything.
  */
 
+import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
+import { BUDGET_GENERIC_KEY } from '~/utils/aiBudget';
 import { ref, computed, type Ref } from 'vue';
 
 export type ReviseStatus = 'idle' | 'streaming' | 'done' | 'error';
@@ -116,7 +118,9 @@ export function useDraftRevise(deps: DraftReviseDeps) {
 				deps.onError?.(
 					res.errorCode === 'draft_has_tool_markup'
 						? t('shared.postbox.useDraftRevise.draftHasToolMarkup')
-						: t('shared.postbox.useDraftRevise.failed')
+						: res.errorCode === AI_BUDGET_ERROR_CODE
+							? t(BUDGET_GENERIC_KEY)
+							: t('shared.postbox.useDraftRevise.failed')
 				);
 				await cleanup();
 				return;

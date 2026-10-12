@@ -7082,7 +7082,8 @@
 					"checking": "Checking the draft…",
 					"addressed": "{addressed} of {total} addressed",
 					"needsFile": "{count} needs a file | {count} need a file",
-					"promise": "new promise noted: “{text}”"
+					"promise": "new promise noted: “{text}”",
+					"budget": "Only partly checked: the AI budget is used up"
 				},
 				"banner": {
 					"title": "One thing before sending.",
@@ -7106,7 +7107,8 @@
 				"readyKept": "The AI draft is ready. Your text stays until you use the draft.",
 				"useDraft": "Use the draft",
 				"preparedFileFailed": "{filename} from the prepared reply could not be attached. Attach it again if the reply needs it.",
-				"heldByGuard": "The safety check held this message back, so there is no AI draft for it. You can still write the reply yourself."
+				"heldByGuard": "The safety check held this message back, so there is no AI draft for it. You can still write the reply yourself.",
+				"budget": "The AI spend budget is used up for now, so there is no AI draft. You can still write the reply yourself."
 			},
 			"askCard": {
 				"title": "One thing before I write this | {count} things before I write this",

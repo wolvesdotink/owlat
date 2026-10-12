@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { BudgetHoldReason } from '@owlat/shared/aiRouting';
+import { BUDGET_REASON_KEYS, budgetReasonOf } from '~/utils/aiBudget';
 
 /**
  * "Ask about this thread": a grounded Q&A about THIS thread (single-turn
@@ -24,9 +26,19 @@ type Turn = { question: string; answer: string; isTruncated: boolean };
 const question = ref('');
 const askHistory = ref<Turn[]>([]);
 const askErrored = ref(false);
+/**
+ * U5: the spend budget refused the question. It is not a failure to retry in
+ * a moment, so the strip says which budget and why, in place of the generic
+ * line and the toast.
+ */
+const budgetReason = ref<BudgetHoldReason | null>(null);
 const askOp = useBackendOperation(api.mail.ai.assist.askThread, {
 	label: () => t('components.postbox.postboxAiStrip.askOperation'),
 	type: 'action',
+	onError: (op) => {
+		budgetReason.value = budgetReasonOf(op);
+		return budgetReason.value !== null;
+	},
 });
 const askBusy = computed(() => askOp.isLoading.value);
 
@@ -34,6 +46,7 @@ async function submitAsk() {
 	const q = question.value.trim();
 	if (!q || askBusy.value) return;
 	askErrored.value = false;
+	budgetReason.value = null;
 	const res = await askOp.run({
 		messageId: props.messageId as Id<'mailMessages'>,
 		question: q,
@@ -65,6 +78,7 @@ watch(
 		question.value = '';
 		askHistory.value = [];
 		askErrored.value = false;
+		budgetReason.value = null;
 	}
 );
 </script>
@@ -114,6 +128,19 @@ watch(
 					/>
 					{{ t('components.postbox.postboxAiStrip.thinking') }}
 				</p>
+				<div
+					v-else-if="budgetReason"
+					class="flex items-start gap-2 rounded-md bg-warning-subtle/50 px-2.5 py-2 text-xs"
+					role="status"
+					data-testid="postbox-ask-budget"
+					:data-reason="budgetReason"
+				>
+					<Icon name="lucide:wallet" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+					<p>
+						<span class="font-medium text-text-primary">{{ t('shared.aiBudget.title') }}</span>
+						<span class="text-text-secondary"> {{ t(BUDGET_REASON_KEYS[budgetReason]) }}</span>
+					</p>
+				</div>
 				<p v-else-if="askErrored" class="text-xs text-text-tertiary">
 					{{ t('components.postbox.postboxAiStrip.askFailed') }}
 				</p>
