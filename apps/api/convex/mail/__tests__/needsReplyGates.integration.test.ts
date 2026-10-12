@@ -18,6 +18,8 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { enableFeatures } from '../../__tests__/factories';
 import type * as InterpretRun from '../interpret/run';
+import type * as LlmProvider from '../../lib/llmProvider';
+import type * as Dispatch from '../../lib/llm/dispatch';
 import { modules } from './helpers.testlib';
 import { captureInterpretSource } from '../interpret/sources';
 
@@ -26,8 +28,7 @@ const runLlmTextMock = vi.hoisted(() => vi.fn());
 const runInterpretationMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../lib/llmProvider', async () => {
-	const actual =
-		await vi.importActual<typeof import('../../lib/llmProvider')>('../../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProvider>('../../lib/llmProvider');
 	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 vi.mock('../interpret/run', async () => {
@@ -35,8 +36,7 @@ vi.mock('../interpret/run', async () => {
 	return { ...actual, runInterpretation: runInterpretationMock };
 });
 vi.mock('../../lib/llm/dispatch', async () => {
-	const actual =
-		await vi.importActual<typeof import('../../lib/llm/dispatch')>('../../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof Dispatch>('../../lib/llm/dispatch');
 	return { ...actual, runLlmObject: runLlmObjectMock, runLlmText: runLlmTextMock };
 });
 
