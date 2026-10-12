@@ -27,6 +27,7 @@ import { meterLlmCall } from '../../analytics/meteredSpend';
 import { newRootRequest } from '../../lib/llm/requestMeter';
 import { gatedInParallel, readThreadMessages } from './gate';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 /**
  * Categories the flat self-check flags are bucketed into for inline display
@@ -133,6 +134,8 @@ export const coachDraft = authedAction({
 		threadContext: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ suggestions: CoachSuggestion[] }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const draft = args.draftText.trim();
 		if (!draft) return { suggestions: [] };
 		try {

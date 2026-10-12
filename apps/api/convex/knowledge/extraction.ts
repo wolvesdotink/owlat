@@ -25,10 +25,12 @@ import { meterLlmCall } from '../analytics/meteredSpend';
 import { runEmbedding } from '../lib/llm/embed';
 import { rootRequest, type LlmRootContext } from '../lib/llm/requestMeter';
 import { scheduledRoot } from '../lib/llm/actionDeadline';
+import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { ENTRY_TYPES } from '../schema/knowledge';
 import { normalizeForHash } from '../lib/knowledgeEdges';
 import { detectInjection, detectSmuggling } from '../agent/steps/security_scan/patterns';
 import { runGuardBeforeAutonomy } from '../agent/steps/security_scan/guard';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /**
  * Guard knowledge extraction against prompt injection planted in untrusted
@@ -160,8 +162,12 @@ async function persistExtractedEntries(
 export const extractFromMessage = internalAction({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
+		/** An awaiting caller's root, deadline included (ADR-0073). */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});
@@ -199,7 +205,7 @@ export const extractFromMessage = internalAction({
 		try {
 			// ── Step 1: Extract knowledge using LLM ──
 			const model = await resolveLanguageModel(ctx, 'extract');
-			const extractRoot = rootRequest('team', args.inboundMessageId);
+			const extractRoot = args.root ?? rootRequest('team', args.inboundMessageId);
 
 			const {
 				object: extraction,
@@ -273,8 +279,12 @@ Only extract knowledge you are confident about. Skip trivial greetings or small 
 export const extractFromFile = internalAction({
 	args: {
 		fileId: v.id('semanticFiles'),
+		/** An awaiting caller's root, deadline included (ADR-0073). */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
 		if (!file) return;
 
@@ -298,7 +308,7 @@ export const extractFromFile = internalAction({
 
 		try {
 			const model = await resolveLanguageModel(ctx, 'extract');
-			const extractRoot = rootRequest('file', args.fileId);
+			const extractRoot = args.root ?? rootRequest('file', args.fileId);
 			const {
 				object: extraction,
 				tokenUsage,
@@ -366,8 +376,12 @@ export const extractFromMailMessage = internalAction({
 		// Sender contact(s) the entries are scoped to (resolved by the indexer).
 		// Empty/undefined ⇒ org-general (visible to every contact's retrieval).
 		contactIds: v.optional(v.array(v.id('contacts'))),
+		/** An awaiting caller's root, deadline included (ADR-0073). */
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const msg = await ctx.runQuery(internal.mail.migrationIndexing.getMessageForExtraction, {
 			mailMessageId: args.mailMessageId,
 		});
@@ -400,7 +414,7 @@ export const extractFromMailMessage = internalAction({
 
 		try {
 			const model = await resolveLanguageModel(ctx, 'extract');
-			const extractRoot = rootRequest('postbox', args.mailMessageId);
+			const extractRoot = args.root ?? rootRequest('postbox', args.mailMessageId);
 			const {
 				object: extraction,
 				tokenUsage,

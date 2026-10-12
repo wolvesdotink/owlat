@@ -14,6 +14,7 @@ import { DecisionWireError } from '../decisionProviders/wire';
 import { partialUsageOf } from '../llm/partialUsage';
 import { errorStatus } from '../llm/retryPolicy';
 import { callSignal } from '../llm/taskLimits';
+import { resolveEndpointLocality } from '../llm/endpointLocality';
 import type { QuestionSet } from './questions';
 import type { RunDecisionOptions } from './contract';
 import type { LlmCallMeter, LlmRequestInput, LlmRequestRecord } from '../llm/requestMeter';
@@ -40,13 +41,26 @@ export function attemptRequests(
 	recordedBefore: number,
 	single: Omit<LlmRequestInput, 'latencyMs'>,
 	durationMs: number,
-	error?: unknown
+	error?: unknown,
+	attemptTags: AttemptTags = {}
 ): LlmRequestRecord[] {
 	if (meter.requests.length === recordedBefore) meter.record({ ...single, latencyMs: durationMs });
+	// THIS attempt's requests carry its own tags, so a request an earlier write
+	// left pending keeps the tags of the attempt that made it.
+	for (let attempt = recordedBefore + 1; attempt <= meter.requests.length; attempt++) {
+		meter.amend(attempt, attemptTags);
+	}
 	if (error !== undefined && isThrottledError(error)) {
 		meter.amend(meter.requests.length, { isThrottled: true });
 	}
 	return meter.pendingWrites();
+}
+
+/** The per-attempt tags every request of the attempt carries. */
+export interface AttemptTags {
+	readonly isFallback?: boolean;
+	readonly isCalibrated?: boolean;
+	readonly isLocalEngine?: boolean;
 }
 
 /**
@@ -78,4 +92,11 @@ export function withinRoot(
 ): number {
 	if (root?.deadlineAt === undefined) return deadlineMs;
 	return Math.max(0, Math.min(deadlineMs, root.deadlineAt - Date.now()));
+}
+
+/** A request on the operator's own engine costs nothing (`lib/llm/endpointLocality.ts`). */
+export function localTag(provider: { readonly kind: string }): { isLocalEngine?: true } {
+	return resolveEndpointLocality(provider.kind, undefined) === 'local'
+		? { isLocalEngine: true }
+		: {};
 }

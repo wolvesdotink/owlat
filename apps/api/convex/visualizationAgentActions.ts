@@ -20,6 +20,7 @@ import { LlmTruncatedError } from './lib/llm/truncation';
 import { meterLlmCall } from './analytics/meteredSpend';
 import { rootRequest } from './lib/llm/requestMeter';
 import { datasetKeyValidator, isDatasetKey, type DatasetKey } from './visualizationAgent';
+import { anchorActionDeadline } from './lib/llm/actionDeadline';
 
 // ============================================================
 // Internal Action: Generate Visualization
@@ -38,6 +39,8 @@ export const generate = internalAction({
 		dataset: v.optional(datasetKeyValidator),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		try {
 			// Step 1: Use live account data only when the caller explicitly opts in
 			// with an allowlisted `dataset` key. Free-form prompts are NOT inferred

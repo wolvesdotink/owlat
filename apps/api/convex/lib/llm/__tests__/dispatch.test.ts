@@ -194,7 +194,6 @@ describe('runLlmObject', () => {
 			object: { greeting: 'hi' },
 			tokenUsage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
 			modelUsed: 'fake-model-id',
-			isTruncated: false,
 		});
 	});
 

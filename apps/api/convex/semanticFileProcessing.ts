@@ -44,6 +44,8 @@ import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
 import { scrubTags, slugifyTag, truncateForLLM } from './lib/semanticFileText';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
+import { anchorActionDeadline } from './lib/llm/actionDeadline';
+import { boundedRoot } from './lib/llm/actionDeadline';
 
 /**
  * Whether any AI provider is set up. AI is optional: without one a file still
@@ -68,6 +70,8 @@ async function aiProviderConfigured(ctx: ActionCtx): Promise<boolean> {
 export const processFile = internalAction({
 	args: { fileId: v.id('semanticFiles') },
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Get file metadata
 		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
 		if (!file) return;
@@ -291,6 +295,8 @@ ${textForAI}`,
 		) {
 			await ctx.runAction(internal.knowledge.extraction.extractFromFile, {
 				fileId: args.fileId,
+				// Awaited: the extraction spends from this action's clock (ADR-0073).
+				root: boundedRoot(ctx, fileRoot),
 			});
 		}
 	},
@@ -345,6 +351,8 @@ export const semanticSearch = internalAction({
 		ctx,
 		args
 	): Promise<Array<Doc<'semanticFiles'> & { url: string | null; _score: number }>> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const queryText = args.queryText?.trim();
 
 		// A caller's vector is used as given, with the space it was embedded in

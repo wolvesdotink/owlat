@@ -47,6 +47,9 @@ const ATTEMPT: DecisionAttemptRecord = {
 			latencyMs: 180,
 			usage: { promptTokens: 1200, completionTokens: 8, totalTokens: 1208 },
 			modelUsed: 'jev-1.13.0',
+			// Tagged by the dispatch with the attempt that made it.
+			isFallback: false,
+			isCalibrated: true,
 		},
 	],
 	task: 'mail.triage',
@@ -88,9 +91,10 @@ describe('decisionUsageRecorder', () => {
 			feature: 'inbound_triage',
 			plane: 'decision',
 			requestId: 'decision-42',
-			isFallback: false,
-			isCalibrated: true,
+			// Flags travel on each request, never as call-level tags.
+			requests: [expect.objectContaining({ isFallback: false, isCalibrated: true })],
 		});
+		expect(runMutation.mock.calls[0]?.[1]).not.toHaveProperty('isCalibrated');
 	});
 
 	it('writes one row per provider request of the attempt, with the routing context', async () => {
@@ -147,39 +151,17 @@ describe('decisionUsageRecorder', () => {
 		expect(runMutation).not.toHaveBeenCalled();
 	});
 
-	it('marks every local-engine attempt free, whatever checkpoint answered', async () => {
+	it('passes each request’s own local-engine tag through', async () => {
 		const { ctx, runMutation } = fakeCtx();
-		const local = {
+		await decisionUsageRecorder(ctx)({
 			...ATTEMPT,
 			provider: 'local',
-			modelUsed: 'someone/custom-finetune',
-			provenance: 'local',
-			calibrated: false,
-		} as const;
-
-		await decisionUsageRecorder(ctx)(local);
-		// A failed attempt carries no provenance; the adapter that ran still says it.
-		await decisionUsageRecorder(ctx)({
-			...local,
-			outcome: 'failed',
-			usage: undefined,
-			provenance: undefined,
-			calibrated: undefined,
-			error: Object.assign(new Error('busy'), { status: 503 }),
+			requests: [{ ...ATTEMPT.requests[0]!, isLocalEngine: true }],
 		});
-
-		for (const call of runMutation.mock.calls) {
-			expect((call[1] ?? {}) as Record<string, unknown>).toMatchObject({ isLocalEngine: true });
-		}
-	});
-
-	it('leaves hosted and fallback attempts untagged', async () => {
-		const { ctx, runMutation } = fakeCtx();
-		await decisionUsageRecorder(ctx)(ATTEMPT);
-		await decisionUsageRecorder(ctx)({ ...ATTEMPT, provider: 'llm', fallback: true });
-		for (const call of runMutation.mock.calls) {
-			expect(((call[1] ?? {}) as Record<string, unknown>)['isLocalEngine']).toBeUndefined();
-		}
+		expect(runMutation.mock.calls[0]?.[1]).toMatchObject({
+			requests: [expect.objectContaining({ isLocalEngine: true })],
+		});
+		expect(runMutation.mock.calls[0]?.[1]).not.toHaveProperty('isLocalEngine');
 	});
 });
 

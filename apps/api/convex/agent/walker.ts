@@ -252,6 +252,8 @@ async function scheduleAfterPluginStep(
 export const start = internalAction({
 	args: { inboundMessageId: v.id('inboundMessages') },
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Advance `received → security_check` before the scan runs. The
 		// `security_scan` step's route emits `classifying` / `quarantined` /
 		// `archived`, which are legal edges only from `security_check`. Without
@@ -296,6 +298,8 @@ export const start = internalAction({
 export const resumeDraft = internalAction({
 	args: { inboundMessageId: v.id('inboundMessages') },
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});

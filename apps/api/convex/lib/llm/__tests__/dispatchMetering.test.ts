@@ -35,6 +35,8 @@ import {
 import { modelMaxOutputTokens } from '../modelOutputLimits';
 import { stampModelEndpoint } from '../modelEndpoint';
 import { LlmPartialUsageError } from '../partialUsage';
+import { LlmTruncatedError } from '../truncation';
+import { isRetriableLlmError } from '../retryPolicy';
 import { normalizeUsage, providerReportedUsage, streamUsage } from '../providerUsage';
 import { scriptedStreamModel } from './streamModel.testlib';
 
@@ -144,14 +146,29 @@ describe('truncation and unreported usage', () => {
 			finishReason: 'stop',
 		});
 		expect((await runLlmText({ model, prompt: 'hi' })).isTruncated).toBe(false);
+	});
 
-		sdk.generateObject.mockResolvedValueOnce({
-			object: {},
-			usage: sdkUsage(1, 1),
+	it('rejects a schema-valid object that stopped at its ceiling, after metering it, without a retry', async () => {
+		sdk.generateObject.mockResolvedValue({
+			object: { isInjection: false, confidence: 0.1 },
+			usage: sdkUsage(7, 3),
 			finishReason: 'length',
 		});
-		const object = await runLlmObject({ model, schema: z.object({}), prompt: 'p' });
-		expect(object.isTruncated).toBe(true);
+		const meter = new LlmCallMeter({ task: 'mail.guard' });
+		const error = await runLlmObject({ model, schema: z.object({}), prompt: 'p', meter }).catch(
+			(caught: unknown) => caught
+		);
+		expect(error).toBeInstanceOf(LlmPartialUsageError);
+		expect((error as LlmPartialUsageError).cause).toBeInstanceOf(LlmTruncatedError);
+		expect((error as LlmPartialUsageError).tokenUsage.totalTokens).toBe(10);
+		expect(sdk.generateObject).toHaveBeenCalledTimes(1);
+		expect(meter.requests).toEqual([
+			expect.objectContaining({
+				outcome: 'ok',
+				usage: { promptTokens: 7, completionTokens: 3, totalTokens: 10 },
+			}),
+		]);
+		expect(isRetriableLlmError(error)).toBe(false);
 	});
 
 	it('keeps a usage report with no counts as unknown, not as zero', async () => {

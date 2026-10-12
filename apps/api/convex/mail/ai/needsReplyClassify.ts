@@ -73,6 +73,7 @@ import { draftClarificationReply } from './needsReplyDraft';
 import { logError } from '../../lib/runtimeLog';
 import type { needsReplyClarificationValidator } from '../../lib/validators/clarification';
 import { localizeQuestions } from '../../inbox/clarificationLocalize';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 /**
  * The needs-reply inputs of a run, when the model read the message. A failed,
@@ -100,6 +101,8 @@ export const classifyThread = internalAction({
 		interpretMessageId: v.optional(v.id('mailMessages')),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const context = await ctx.runQuery(internal.mail.needsReply.getThreadContext, {
 			threadId: args.threadId,
 		});
@@ -454,5 +457,8 @@ async function divergentSlots(
  */
 export const draftWithAnswers = internalAction({
 	args: { threadId: v.id('mailThreads') },
-	handler: (ctx, args) => draftClarificationReply(ctx, args),
+	handler: (ctx, args) => {
+		anchorActionDeadline(ctx);
+		return draftClarificationReply(ctx, args);
+	},
 });

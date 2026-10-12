@@ -40,6 +40,7 @@ import { RELATION_TYPES } from '../schema/knowledge';
 import { tagForInferredConfidence } from '../lib/knowledgeEdges';
 import { contactScopesCanLink } from '../lib/contactScope';
 import { injectionRisk } from './extraction';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /**
  * How many nearest neighbors each anchor contributes to the candidate pool. A
@@ -116,6 +117,8 @@ export const inferRelations = internalAction({
 		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args): Promise<void> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Authoritative, defense-in-depth flag gate (the schedule already gated, but
 		// the flag can flip between schedule and run, and an action can't read it).
 		if (!(await ctx.runQuery(internal.knowledge.edges.isInferenceEnabled, {}))) return;

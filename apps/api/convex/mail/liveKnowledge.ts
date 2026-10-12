@@ -25,6 +25,9 @@ import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isAutomatedMail } from '../lib/inboundClassification';
 import { loadExtractableMail } from './knowledgeScreen';
+import { boundedRoot } from '../lib/llm/actionDeadline';
+import { rootRequest } from '../lib/llm/requestMeter';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /**
  * Whether one live inbound message should be extracted into the knowledge
@@ -54,6 +57,8 @@ export async function shouldExtractLiveMessage(
 export const extractLiveMessage = internalAction({
 	args: { mailMessageId: v.id('mailMessages') },
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Gone, or phishing/spoofed mail that must not feed the graph.
 		const msg = await loadExtractableMail(ctx, args.mailMessageId);
 		if (!msg) return;
@@ -67,6 +72,8 @@ export const extractLiveMessage = internalAction({
 		await ctx.runAction(internal.knowledge.extraction.extractFromMailMessage, {
 			mailMessageId: args.mailMessageId,
 			contactIds: [contactId],
+			// Awaited: it spends from this action's clock (ADR-0073).
+			root: boundedRoot(ctx, rootRequest('postbox', args.mailMessageId)),
 		});
 	},
 });

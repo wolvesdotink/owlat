@@ -1,9 +1,11 @@
+import { getFunctionName } from 'convex/server';
 import { PRICE_VERSION } from '../../lib/llm/pricing';
 import { convexTest } from 'convex-test';
 import { MockLanguageModelV3 } from 'ai/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import schema from '../../schema';
+import { internal } from '../../_generated/api';
 import {
 	bindAuthenticatedBundledPluginLlm,
 	bindSystemBundledPluginLlm,
@@ -87,6 +89,92 @@ async function setup() {
 	} as unknown as ActionCtx;
 	return { t, actionCtx, service: bindAuthenticatedBundledPluginLlm(actionCtx, 'alpha') };
 }
+
+describe('hosted plugin LLM settlement, durably (ADR-0073)', () => {
+	/** A ctx whose settlement mutations fail `failures` times, with a scheduler that queues. */
+	async function flakySettlement(failures: number) {
+		const base = await setup();
+		let failed = 0;
+		const scheduled: Array<{ ref: unknown; args: Record<string, unknown> }> = [];
+		const actionCtx = {
+			runQuery: base.t.query as unknown as ActionCtx['runQuery'],
+			runMutation: (async (ref: Parameters<typeof base.t.mutation>[0], args: never) => {
+				const name = getFunctionName(ref as never);
+				if (/settle(Success|Failure)$/.test(name) && failed < failures) {
+					failed += 1;
+					throw new Error('transient');
+				}
+				return base.t.mutation(ref, args);
+			}) as unknown as ActionCtx['runMutation'],
+			scheduler: {
+				runAfter: async (_delay: number, ref: unknown, args: Record<string, unknown>) => {
+					scheduled.push({ ref, args });
+					return 'job';
+				},
+			},
+		} as unknown as ActionCtx;
+		return { t: base.t, actionCtx, scheduled };
+	}
+
+	it('retries a transient settlement once and writes the ledger rows', async () => {
+		const { t, actionCtx, scheduled } = await flakySettlement(1);
+		await bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({ tier: 'fast', prompt: 'hi' });
+		expect(scheduled).toEqual([]);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				status: 'completed',
+			});
+			expect(await ctx.db.query('llmUsageEvents').collect()).toHaveLength(1);
+		});
+	});
+
+	it('hands a settlement that keeps failing to a scheduled recovery carrying its requests', async () => {
+		const { t, actionCtx, scheduled } = await flakySettlement(2);
+		const result = await bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+			tier: 'fast',
+			prompt: 'hi',
+		});
+		expect(result.text).toBe('safe result');
+		expect(scheduled).toHaveLength(1);
+		expect(getFunctionName(scheduled[0]!.ref as never)).toContain('recoverSettlement');
+		expect(scheduled[0]!.args).toMatchObject({
+			outcome: 'success',
+			requests: [expect.objectContaining({ attempt: 1 })],
+		});
+
+		// The scheduled job runs: the plugin budget settles and the ledger gets its row.
+		await t.mutation(internal.plugins.llmAccounting.recoverSettlement, scheduled[0]!.args as never);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				status: 'completed',
+			});
+			expect(await ctx.db.query('llmUsageEvents').collect()).toEqual([
+				expect.objectContaining({ feature: 'plugin:alpha', attempt: 1 }),
+			]);
+		});
+		// Idempotent: running it again changes nothing.
+		await t.mutation(internal.plugins.llmAccounting.recoverSettlement, scheduled[0]!.args as never);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('llmUsageEvents').collect()).toHaveLength(1);
+		});
+	});
+
+	it('recovers a failed call’s settlement with its requests too', async () => {
+		const { t, actionCtx, scheduled } = await flakySettlement(2);
+		providerGenerate.mockRejectedValueOnce({ statusCode: 401, message: 'bad key' });
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({ tier: 'fast', prompt: 'hi' })
+		).rejects.toMatchObject({ code: 'provider_failure' });
+		expect(scheduled[0]!.args).toMatchObject({ outcome: 'failure' });
+		await t.mutation(internal.plugins.llmAccounting.recoverSettlement, scheduled[0]!.args as never);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				status: 'failed',
+			});
+			expect((await ctx.db.query('llmUsageEvents').collect()).length).toBeGreaterThan(0);
+		});
+	});
+});
 
 describe('hosted plugin LLM service', () => {
 	it('supports background strategy dispatch with system attribution and the same budget gate', async () => {

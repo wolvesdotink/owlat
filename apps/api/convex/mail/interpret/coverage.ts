@@ -39,6 +39,7 @@ import {
 	type PlanPromptItem,
 } from './planCheck';
 import { draftHashOf, planVerdictOf, type PlanCoverage } from './responsePlanRules';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 /** The longest draft the check reads. */
 const MAX_DRAFT_CHARS = 20_000;
@@ -103,6 +104,8 @@ export const check = authedAction({
 		draftText: v.string(),
 	},
 	handler: async (ctx, args): Promise<CoverageResult | null> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForCoverage, {
 			threadRef: args.threadRef,
 			draftRef: args.draftRef,

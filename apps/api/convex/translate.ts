@@ -11,6 +11,7 @@ import { newRootRequest } from './lib/llm/requestMeter';
 import { resolveLanguageModel } from './lib/llmProvider';
 import { requireAuthenticatedIdentity } from './lib/sessionOrganization';
 import { throwInvalidInput } from './_utils/errors';
+import { anchorActionDeadline } from './lib/llm/actionDeadline';
 
 // Input caps so a single call can't be looped into an unbounded LLM spend: the
 // batch size and the combined character volume fed to the model are both
@@ -59,6 +60,8 @@ export const translateBatch = authedAction({
 		targetLanguage: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ translations: TranslatedItem[] }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Require authentication to prevent unauthorized API quota consumption
 		await requireAuthenticatedIdentity(ctx);
 

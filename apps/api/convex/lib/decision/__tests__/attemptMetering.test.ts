@@ -16,7 +16,8 @@ vi.mock('ai', async () => ({
 }));
 
 import { runDecision, type DecisionAttemptRecord } from '../dispatch';
-import { attemptRequests, isThrottledError } from '../attemptRequests';
+import { attemptRequests, isThrottledError, localTag } from '../attemptRequests';
+import { decisionUsageRecorder } from '../ports';
 import { noul } from '../questions';
 import { LlmCallMeter } from '../../llm/requestMeter';
 
@@ -112,6 +113,56 @@ describe('decision metering', () => {
 		]);
 	});
 
+	it('keeps each attempt’s own tags when an earlier write failed and its request rides along', () => {
+		const meter = new LlmCallMeter();
+		// Attempt 1 on the primary, uncalibrated failure; its row write fails.
+		attemptRequests(
+			meter,
+			0,
+			{ outcome: 'failed' },
+			5,
+			Object.assign(new Error('x'), { status: 503 }),
+			{
+				isFallback: false,
+			}
+		);
+		// Attempt 2 is the hop, answered by a calibrated adapter, and written.
+		const written = attemptRequests(meter, 1, { outcome: 'ok' }, 7, undefined, {
+			isFallback: true,
+			isCalibrated: true,
+		});
+		expect(written).toEqual([
+			expect.objectContaining({ attempt: 1, isFallback: false }),
+			expect.objectContaining({ attempt: 2, isFallback: true, isCalibrated: true }),
+		]);
+		expect(written[0]!.isCalibrated).toBeUndefined();
+
+		// The recorder sends no call-level flag that could overwrite them.
+		const runMutation = vi.fn(async (_ref: unknown, _args?: unknown) => null);
+		const ctx = { runMutation, scheduler: { runAfter: vi.fn() } } as never;
+		return Promise.resolve(
+			decisionUsageRecorder(ctx)({
+				feature: 'inbound_triage',
+				requestId: 'r',
+				provider: 'llm',
+				attempt: 1,
+				fallback: true,
+				outcome: 'answered',
+				durationMs: 7,
+				calibrated: true,
+				requests: written,
+			})
+		).then(() => {
+			const args = runMutation.mock.calls[0]![1] as Record<string, unknown>;
+			expect(args).not.toHaveProperty('isFallback');
+			expect(args).not.toHaveProperty('isCalibrated');
+			expect(args['requests']).toEqual([
+				expect.objectContaining({ attempt: 1, isFallback: false }),
+				expect.objectContaining({ attempt: 2, isFallback: true, isCalibrated: true }),
+			]);
+		});
+	});
+
 	it('records one request per native attempt, the throttled one flagged', () => {
 		const meter = new LlmCallMeter();
 		const throttled = attemptRequests(
@@ -133,6 +184,12 @@ describe('decision metering', () => {
 		]);
 		expect(answered).toEqual([expect.objectContaining({ attempt: 2, latencyMs: 20 })]);
 		expect(answered[0]!.isThrottled).toBeUndefined();
+	});
+
+	it('tags a local engine’s requests free from the adapter kind, whatever model answered', () => {
+		expect(localTag({ kind: 'local' })).toEqual({ isLocalEngine: true });
+		expect(localTag({ kind: 'typesafe' })).toEqual({});
+		expect(localTag({ kind: 'llm' })).toEqual({});
 	});
 
 	it.each([

@@ -7,6 +7,7 @@ import {
 	type PluginLlmGenerateResult,
 	type PluginLlmService,
 } from '@owlat/plugin-kit';
+import type { FunctionArgs } from 'convex/server';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { MAX_LLM_ATTEMPTS, runLlmTextWithAttemptMetadata } from '../lib/llm/dispatch';
@@ -158,8 +159,9 @@ function bindBundledPluginLlm(
 			}
 
 			// Every provider request lands in the deployment ledger at settlement.
-			// The settlement mutation writes these rows once (it is idempotent per
-			// reservation), so reading the pending requests needs no acknowledgement.
+			// Settlement is idempotent per reservation, retried, then recovered by
+			// a scheduled job that carries the requests (`settleDurably`), so
+			// reading the pending requests needs no acknowledgement.
 			const meter = new LlmCallMeter({
 				task: 'plugin.invoke',
 				deadlineAt: anchorActionDeadline(ctx),
@@ -185,23 +187,27 @@ function bindBundledPluginLlm(
 				assertExecutionActive(executionSignal);
 				throw new PluginLlmError('provider_failure');
 			}
-			try {
-				assertExecutionActive(executionSignal);
-				await ctx.runMutation(internal.plugins.llmAccounting.settleSuccess, {
-					reservationId,
-					modelUsed: dispatched.providerModelUsed,
-					tokenUsage: dispatched.result.tokenUsage,
-					attempts: dispatched.attempts,
-					actorMode: actorPolicy.kind,
-					...metered(),
-				});
-				assertExecutionActive(executionSignal);
-			} catch {
-				assertExecutionActive(executionSignal);
-				// The reservation mutation already consumed headroom. A failed
-				// settlement leaves it pending and fully charged.
-				throw new PluginLlmError('accounting_unavailable');
-			}
+			assertExecutionActive(executionSignal);
+			const success = {
+				reservationId,
+				modelUsed: dispatched.providerModelUsed,
+				tokenUsage: dispatched.result.tokenUsage,
+				attempts: dispatched.attempts,
+				...metered(),
+			};
+			const settled = await settleDurably(
+				ctx,
+				() =>
+					ctx.runMutation(internal.plugins.llmAccounting.settleSuccess, {
+						...success,
+						actorMode: actorPolicy.kind,
+					}),
+				{ ...success, outcome: 'success' }
+			);
+			assertExecutionActive(executionSignal);
+			// Neither written nor queued: the reservation stays pending and fully
+			// charged (it already consumed headroom), and the caller is told.
+			if (!settled) throw new PluginLlmError('accounting_unavailable');
 			return Object.freeze({
 				text: dispatched.result.text,
 				modelUsed: dispatched.providerModelUsed,
@@ -229,16 +235,46 @@ async function settleFailure(
 	actorPolicy: PluginLlmActorPolicy,
 	metered: { requestId?: string; requests?: MeteredRequest[] } = {}
 ): Promise<boolean> {
+	// Pending reservations remain fully charged through their UTC day. Never
+	// reopen budget headroom when terminal accounting is unavailable.
+	return settleDurably(
+		ctx,
+		() =>
+			ctx.runMutation(internal.plugins.llmAccounting.settleFailure, {
+				reservationId,
+				actorMode: actorPolicy.kind,
+				...metered,
+			}),
+		{ reservationId, ...metered, outcome: 'failure' }
+	);
+}
+
+/** Direct settlement tries before the settlement is handed to the scheduler. */
+const SETTLEMENT_TRIES = 2;
+
+/**
+ * Settle a reservation without losing it to a transient failure (ADR-0073):
+ * the settlement mutation (idempotent per reservation) is tried twice, then
+ * `recoverSettlement` is scheduled with the same arguments, metered requests
+ * included. True once the settlement is written or durably queued.
+ */
+async function settleDurably(
+	ctx: ActionCtx,
+	settle: () => Promise<unknown>,
+	recovery: FunctionArgs<typeof internal.plugins.llmAccounting.recoverSettlement>
+): Promise<boolean> {
+	for (let tryNumber = 0; tryNumber < SETTLEMENT_TRIES; tryNumber++) {
+		try {
+			await settle();
+			return true;
+		} catch {
+			// retried below, then recovered
+		}
+	}
 	try {
-		await ctx.runMutation(internal.plugins.llmAccounting.settleFailure, {
-			reservationId,
-			actorMode: actorPolicy.kind,
-			...metered,
-		});
+		await ctx.scheduler.runAfter(0, internal.plugins.llmAccounting.recoverSettlement, recovery);
 		return true;
 	} catch {
-		// Pending reservations remain fully charged through their UTC day. Never
-		// reopen budget headroom when terminal accounting is unavailable.
 		return false;
 	}
 }

@@ -25,6 +25,7 @@ import { SYSTEM_GUARD } from './promptGuards';
 import { buildThreadTranscript, THREAD_SUMMARY } from './transcript';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { throwInvalidState, throwNotFound } from '../../_utils/errors';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 /** Hard cap on an inline completion — Superhuman-style, one short continuation. */
 const MAX_COMPLETION_CHARS = 140;
@@ -117,6 +118,8 @@ export const suggestReplies = authedAction({
 		streamId: v.optional(v.id('aiDraftStreams')),
 	},
 	handler: async (ctx, args): Promise<{ replies: string[] }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
 		// The prompt parts and the buffer's ownership check are independent, so
@@ -214,7 +217,10 @@ export const askThread = authedAction({
 		question: v.string(),
 		history: v.optional(v.array(v.object({ question: v.string(), answer: v.string() }))),
 	},
-	handler: async (ctx, args): Promise<{ answer: string }> => {
+	// `isTruncated`: the answer stopped at its output limit; the UI marks it cut off.
+	handler: async (ctx, args): Promise<{ answer: string; isTruncated: boolean }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const thread = await gateAndLoadThread(ctx, args.messageId);
 		if (!thread || thread.messages.length === 0) throwNotFound('Thread');
 		const [model, transcript] = await Promise.all([
@@ -226,7 +232,7 @@ export const askThread = authedAction({
 			question: args.question,
 			history: args.history,
 		});
-		const { text } = await meterLlmCall(
+		const { text, isTruncated } = await meterLlmCall(
 			ctx,
 			{ feature: 'postbox_ask_thread', root: newRootRequest('postbox_action') },
 			(meter) =>
@@ -240,7 +246,7 @@ export const askThread = authedAction({
 				}),
 			{ write: 'schedule', rethrow: 'as_is' }
 		);
-		return { answer: text.trim() };
+		return { answer: text.trim(), isTruncated: isTruncated === true };
 	},
 });
 
@@ -261,6 +267,8 @@ export const completeDraft = authedAction({
 		cursorSentence: v.string(),
 	},
 	handler: async (ctx, args): Promise<{ completion: string }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		// Fast/cheap tier: inline completions are high-volume and must be cheap;
 		// 'summarize' maps to the fast tier in the task router. Resolved while
 		// the gate runs.
@@ -377,6 +385,8 @@ export const rewriteSelection = authedAction({
 		mailboxId: v.optional(v.id('mailboxes')),
 	},
 	handler: async (ctx, args): Promise<{ rewritten: string }> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const [voiceGuidance, model] = await gatedInParallel(
 			ctx,
 			Promise.all([

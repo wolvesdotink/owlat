@@ -37,7 +37,7 @@ import { addTokenUsage } from './tokenUsage';
 import { normalizeUsage, usageDetails, type RawUsage } from './providerUsage';
 import { startRequest, type LlmCallMeter } from './requestMeter';
 import { callShape, limitArgs } from './callShape';
-import { isLengthStop } from './truncation';
+import { isLengthStop, LlmTruncatedError } from './truncation';
 import { DEFAULT_MAX_TOOL_STEPS } from './dispatchStream';
 
 export { MAX_LLM_ATTEMPTS, errorStatus, isRetriableLlmError, retryAfterMs } from './retryPolicy';
@@ -298,8 +298,6 @@ export interface LlmObjectResult<S extends z.ZodTypeAny> {
 	object: z.infer<S>;
 	tokenUsage: TokenUsage | undefined;
 	modelUsed: string | undefined;
-	/** The output stopped at its ceiling (a schema-valid but cut-off object). */
-	isTruncated?: boolean;
 }
 
 /**
@@ -322,6 +320,8 @@ function billedUsageOf(error: unknown): RawUsage {
  * `LlmPartialUsageError` carrying that usage, with the last error as its cause
  * and message; a failure before any attempt was billed rethrows the original
  * error as is. Each attempt is one request on the meter, with its own usage.
+ * An object that stopped at its output ceiling throws an `LlmTruncatedError`
+ * (wrapped with its usage), never a result.
  */
 export async function runLlmObject<S extends z.ZodTypeAny>(
 	opts: LlmObjectOptions<S>
@@ -358,10 +358,14 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 		throw withPartialUsage(error, spent, call.modelUsed);
 	}
 	const { object, usage, finishReason } = dispatched.value;
-	return {
-		object: object as z.infer<S>,
-		tokenUsage: addTokenUsage(spent, normalizeUsage(usage)),
-		modelUsed: call.modelUsed,
-		isTruncated: isLengthStop(finishReason),
-	};
+	const tokenUsage = addTokenUsage(spent, normalizeUsage(usage));
+	// A schema-valid object that stopped at its output ceiling is incomplete: a
+	// verdict, a score or a list cut short. It is never returned as a result.
+	// Thrown after the request is on the meter, as a failure every structured
+	// caller already handles; the error carries the billed usage. Not retried:
+	// the same request would stop at the same ceiling.
+	if (isLengthStop(finishReason)) {
+		throw withPartialUsage(new LlmTruncatedError('structured output'), tokenUsage, call.modelUsed);
+	}
+	return { object: object as z.infer<S>, tokenUsage, modelUsed: call.modelUsed };
 }

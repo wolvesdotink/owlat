@@ -109,6 +109,10 @@ export interface LlmRequestRecord {
 	readonly isThrottled?: boolean;
 	/** Ran on the operator's own hardware (a local embedder or decision engine): costs nothing. */
 	readonly isLocalEngine?: boolean;
+	/** Decision rows: the request ran on the fallback hop. Each request keeps its own. */
+	readonly isFallback?: boolean;
+	/** Decision rows: the adapter that answered is calibrated. Each request keeps its own. */
+	readonly isCalibrated?: boolean;
 }
 
 export type LlmRequestInput = Omit<LlmRequestRecord, 'attempt'>;

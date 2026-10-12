@@ -65,7 +65,13 @@ import { DecisionWireError } from '../decisionProviders/wire';
 import { errorStatus, isRetriableLlmError } from '../llm/dispatch';
 import { MAX_LLM_ATTEMPTS } from '../llm/retryPolicy';
 import { LlmCallMeter } from '../llm/requestMeter';
-import { attemptRequests, billedUsage, withinRoot, withRootDeadline } from './attemptRequests';
+import {
+	attemptRequests,
+	billedUsage,
+	localTag,
+	withinRoot,
+	withRootDeadline,
+} from './attemptRequests';
 export { billedUsage } from './attemptRequests';
 import { taskForFeature } from '../llm/taskPolicy';
 import { DecisionAccountingFailure, DecisionRateLimitRefusal } from './contract';
@@ -298,7 +304,8 @@ async function askOnce<Q extends QuestionSet>(
 			recordedBefore,
 			{ outcome: 'failed', ...billed },
 			durationMs,
-			error
+			error,
+			{ isFallback: fallback, ...localTag(provider) }
 		);
 		try {
 			await ctx.recordUsage({ ...base, outcome: 'failed', durationMs, error, ...billed, requests });
@@ -320,7 +327,9 @@ async function askOnce<Q extends QuestionSet>(
 			modelUsed: result.modelUsed,
 			endpoint: result.provenance,
 		},
-		durationMs
+		durationMs,
+		undefined,
+		{ isFallback: fallback, isCalibrated: result.calibrated, ...localTag(provider) }
 	);
 	try {
 		await ctx.recordUsage({

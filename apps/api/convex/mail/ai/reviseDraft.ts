@@ -51,6 +51,7 @@ import {
 import { SYSTEM_GUARD } from './promptGuards';
 import { draftSurfaceValidator } from '../../lib/literalValidators';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 /** One revision is one user action: its own root request (ADR-0073). */
 const REVISE_SPEND: LlmSpendTarget = { feature: 'postbox_revise_draft' };
@@ -149,6 +150,8 @@ export const reviseDraft = authedAction({
 		 */
 		errorCode?: typeof DRAFT_HAS_TOOL_MARKUP;
 	}> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		// Ownership check + reset the buffer to a clean streaming state.
 		await ctx.runMutation(internal.mail.draftStreamStore.beginDraftStream, {

@@ -40,6 +40,7 @@ import {
 	type GraphRankNeighbor,
 	type RelationType,
 } from '../lib/graphRank';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /**
  * One typed relationship a result entry participates in, for rendering the
@@ -198,6 +199,8 @@ export const semanticSearch = internalAction({
 		neighborBudget: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ScoredKnowledgeEntry[]> => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const queryText = args.queryText?.trim();
 
 		// A caller's vector is used as given, with the space it was embedded in

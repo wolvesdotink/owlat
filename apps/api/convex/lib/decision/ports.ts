@@ -26,7 +26,6 @@
 
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import { resolveEndpointLocality } from '../llm/endpointLocality';
 import { storeRequestBatch } from '../../analytics/meteredSpend';
 import type {
 	DecisionAttemptRecord,
@@ -70,18 +69,14 @@ export function decisionUsageRecorder(ctx: ActionCtx): DecisionUsageRecorder {
 			feature: record.feature,
 			plane: 'decision',
 			requestId: record.requestId,
-			isFallback: record.fallback,
 			...(record.task ? { task: record.task } : {}),
 			...(record.root?.rootRequestId ? { rootRequestId: record.root.rootRequestId } : {}),
 			...(record.root?.parentCallId ? { parentCallId: record.root.parentCallId } : {}),
-			...(record.calibrated === undefined ? {} : { isCalibrated: record.calibrated }),
-			// From the adapter that ran, not the model id it reported: a local
-			// engine may load any checkpoint, and every one of them is free. The
-			// rule is the language and embedding planes' (`endpointLocality.ts`); a
-			// language-backed request carries its own model's locality.
-			...(resolveEndpointLocality(record.provider, undefined) === 'local'
-				? { isLocalEngine: true }
-				: {}),
+			// Fallback, calibration and locality are PER REQUEST: the dispatch tags
+			// each request with the attempt that made it (`attemptRequests`), so a
+			// request an earlier failed write left pending, written now with a later
+			// attempt, keeps its own flags. A local engine is tagged from the
+			// adapter that ran, not the model id it reported.
 			requests: record.requests.map(({ outcome: _outcome, ...request }) => request),
 		});
 	};

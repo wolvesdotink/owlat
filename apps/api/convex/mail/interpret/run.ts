@@ -20,13 +20,10 @@
  *  10. reduce    `applyInterpretation`, compare-and-set, retried when stale;
  *                a changed body or mode starts the run over once
  *
- * FAIL-SOFT: a refusal or any failure records a `failed` extraction, so the
- * brief says it is incomplete; it never deletes items and never reads as
- * "nothing to do". Never throws.
- *
- * `runInterpretation` is the plain core the wiring calls inside its own
- * actions (the Postbox needs-reply classifier, the team context step);
- * `interpretMessage` is the schedulable internal action around it.
+ * FAIL-SOFT: any refusal or failure records a `failed` extraction, so the brief says
+ * it is incomplete. Never deletes items, never reads as "nothing to do", never throws.
+ * `runInterpretation` is the plain core the wiring calls inside its own actions
+ * (needs-reply, the team context step); `interpretMessage` is its action.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -63,6 +60,9 @@ import { isRetryDue } from './retry';
 import type { ReduceResult } from './reduceInput';
 import type { ApplyOutcome } from './reduce';
 import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
+import type { LlmRootContext } from '../../lib/llm/requestMeter';
+import { llmRootContextValidator } from '../../lib/llmUsageTags';
 
 export const INTERPRET_FEATURE = 'interpret';
 /** Reducer attempts against a moving revision before the run gives up as partial. */
@@ -78,6 +78,8 @@ export interface InterpretArgs {
 	isLive?: boolean;
 	precedence?: string;
 	listId?: string;
+	/** The awaiting caller's root, deadline included (ADR-0073); else the message's own. */
+	root?: LlmRootContext;
 }
 
 export type InterpretRunResult =
@@ -198,6 +200,7 @@ export async function runInterpretation(
 	ctx: ActionCtx,
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
+	anchorActionDeadline(ctx); // one model budget per action, from here (ADR-0073)
 	let reason: Restart['restart'] = 'sourceChanged';
 	for (let attempt = 0; attempt < MAX_RUN_ATTEMPTS; attempt++) {
 		const out = await runOnce(ctx, args);
@@ -374,7 +377,7 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 			locales: loaded.locales,
 		});
 		const { truncatedSegmentIds } = renderSegments(input.message.segments);
-		const root = interpretRoot(args.source);
+		const root = args.root ?? interpretRoot(args.source);
 		const model = await resolveLanguageModel(ctx, 'extract');
 		const { object } = await meterLlmCall(
 			ctx,
@@ -491,6 +494,7 @@ export const interpretMessage = internalAction({
 		isLive: v.optional(v.boolean()),
 		precedence: v.optional(v.string()),
 		listId: v.optional(v.string()),
+		root: v.optional(llmRootContextValidator),
 	},
 	handler: async (ctx, args): Promise<InterpretRunResult> => runInterpretation(ctx, args),
 });

@@ -148,6 +148,8 @@ export const meteredRequestValidator = v.object({
 	endpoint: v.optional(v.string()),
 	isThrottled: v.optional(v.boolean()),
 	isLocalEngine: v.optional(v.boolean()),
+	isFallback: v.optional(v.boolean()),
+	isCalibrated: v.optional(v.boolean()),
 });
 
 export type MeteredRequest = Infer<typeof meteredRequestValidator>;

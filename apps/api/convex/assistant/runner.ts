@@ -211,6 +211,8 @@ export const run = internalAction({
 		includeInboxDerived: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const runCtx = await ctx.runQuery(internal.assistant.conversations.getRunContext, {
 			conversationId: args.conversationId,
 			assistantMessageId: args.assistantMessageId,
@@ -257,6 +259,8 @@ export const runForChat = internalAction({
 		promptMessageId: v.id('chatMessages'),
 	},
 	handler: async (ctx, args) => {
+		// One model budget for this action, from its start (ADR-0073).
+		anchorActionDeadline(ctx);
 		const runCtx = await ctx.runQuery(internal.chat.messages.getAssistantChatContext, {
 			roomId: args.roomId,
 			assistantMessageId: args.assistantMessageId,

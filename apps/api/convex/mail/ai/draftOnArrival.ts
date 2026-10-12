@@ -34,6 +34,7 @@ import {
 import { ensureGapPlaceholders } from './composeDraftPolicy';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { rootRequest } from '../../lib/llm/requestMeter';
+import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 /** Map the personal-mail urgency bucket onto the shared draft block's priority vocabulary. */
 function priorityForUrgency(urgency: 'high' | 'normal' | 'low'): string {
@@ -144,5 +145,8 @@ export async function generateDraftOnArrival(
 
 export const generateForThread = internalAction({
 	args: { threadId: v.id('mailThreads') },
-	handler: (ctx, args) => generateDraftOnArrival(ctx, args),
+	handler: (ctx, args) => {
+		anchorActionDeadline(ctx);
+		return generateDraftOnArrival(ctx, args);
+	},
 });
