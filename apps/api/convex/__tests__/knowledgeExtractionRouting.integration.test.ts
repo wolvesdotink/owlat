@@ -13,14 +13,13 @@
  * Every model and embedding call is mocked; nothing reaches a provider.
  */
 import { convexTest, type TestConvex } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Ai from 'ai';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { capExtractedEntries } from '../knowledge/extractionPolicy';
-import { NO_EMBEDDING_SPACE_KEY } from '../lib/embeddingSpace';
 import { createHash } from 'node:crypto';
 import { hasLinkablePair, normalizeForHash } from '../lib/knowledgeEdges';
 
@@ -61,6 +60,19 @@ beforeEach(() => {
 		embedding: [0.1, 0.2, 0.3],
 		usage: { tokens: 1 },
 	}));
+	// Scheduled work stays queued: the first write into the local space
+	// activates it and schedules its re-embed kickoff (ADR-0073), whose embedding
+	// calls are not this suite's subject and would race the counts below.
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	// The local embedding server answers no revision probe (ADR-0073).
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => new Response('not found', { status: 404 }))
+	);
+});
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllGlobals();
 });
 
 /** A local embedder, so `resolveIndexEmbedder` resolves without any key. */
@@ -310,7 +322,6 @@ describe('M4: dedupe before embedding', () => {
 			sourceId: 'm-1',
 			embedding: [],
 			confidence: 0.9,
-			embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 		};
 		const first = await t.mutation(internal.knowledge.graph.saveEntry, args);
 		const second = await t.mutation(internal.knowledge.graph.saveEntry, args);
@@ -385,7 +396,6 @@ describe('M6: relation inference without an unlinked pair', () => {
 				sourceType: 'manual',
 				embedding: [],
 				confidence: 0.9,
-				embeddingSpaceKey: NO_EMBEDDING_SPACE_KEY,
 			});
 		const first = await save('Office hours are nine to five');
 		const second = await save('The office closes on public holidays');

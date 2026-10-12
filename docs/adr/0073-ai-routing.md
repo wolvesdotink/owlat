@@ -176,6 +176,31 @@ Each embedding table has two vector columns. A staged rebuild writes the new
 space into the column the active space does not use, activation flips the
 active space in one write, and rollback flips it back.
 
+The active space is the configured one. A settings or environment switch is
+allowed on a populated corpus: the new space registers and activates with its
+first committed vector, in the column the previous space does not use, so the
+previous vectors survive for a switch back. A vector committed under a
+configuration that has since changed is dropped. Activating a staged rebuild
+also switches the stored embedding selection, in the same transaction.
+
+Each column has one owner, the space that claimed it last (`columnClaim`), and
+only the owner writes it. A space's stored vectors are reused (a reactivation,
+a rollback to the recorded predecessor, a re-stage) only while it still owns
+their column; a space that lost its column is superseded and re-embedded.
+Vectors are never copied between columns. Every write of a row's embedding
+input, eligibility or stamps goes through one writer (`patchCorpusRow`): a
+changed input clears every column the write does not fill, and a write that
+leaves a row eligible without a staged vector marks the staged rebuild, which
+activates only after a pass that started after the last such mark. An
+endpoint's identity is its origin plus a digest of the rest of its canonical
+base URL, the same URL the client dispatches to, and whether it is paid
+follows the ledger's locality rule (an OpenAI-wire endpoint on a private host
+is local), decided again from the embedder about to be called. The same
+locality decides the revision probe: every local endpoint, whatever its kind
+or `LLM_PROVIDER`, is asked for the model's revision before and after each
+call, and a server without Ollama's tags API leaves it unknown, which is an
+identity of its own.
+
 ### 10. Guard placement (D13)
 
 The deterministic injection, smuggling and URL checks run on every Team

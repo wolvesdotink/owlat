@@ -29,7 +29,8 @@ import {
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { isAiProviderConfigured } from './lib/aiNotConfigured';
-import { vectorFieldsForCommit } from './lib/embeddingSpace';
+import { patchCorpusRow, vectorFieldsForCommit } from './lib/aiRouting/embeddingActivation';
+import { measuredEmbeddingSpaceValidator } from './lib/validators/embedding';
 import { logInfo } from './lib/runtimeLog';
 import type { Id, Doc } from './_generated/dataModel';
 import {
@@ -485,9 +486,13 @@ export async function insertSemanticFile(
 	return fileId;
 }
 
-/** Processing never produced an embedding for this file. */
+/** Processing never produced an embedding for this file, in either vector column. */
 function lacksEmbedding(file: Doc<'semanticFiles'>): boolean {
-	return file.embeddingGeneratedAt === undefined && (file.embedding?.length ?? 0) === 0;
+	return (
+		file.embeddingGeneratedAt === undefined &&
+		(file.embedding?.length ?? 0) === 0 &&
+		(file.secondaryEmbedding?.length ?? 0) === 0
+	);
 }
 
 /**
@@ -578,21 +583,41 @@ export const updateProcessedMetadata = internalMutation({
 		embeddingGeneratedAt: v.optional(v.number()),
 		searchableText: v.optional(v.string()),
 		changeSummary: v.optional(v.string()),
-		// The space the job embedded with; a stale vector is dropped and the file
-		// stays unembedded for the next processing pass (vectorFieldsForCommit).
-		// Optional for previous-release jobs, whose vector is dropped; required
-		// after release N+1.
-		embeddingSpaceKey: v.optional(v.string()),
+		// The space the job measured for `embedding`; the vector is stamped with it,
+		// or dropped when the configuration moved on, and the file stays unembedded
+		// for the next processing pass (vectorFieldsForCommit). Optional for
+		// previous-release jobs, whose vector is dropped; required after release N+1.
+		embeddingSpace: v.optional(measuredEmbeddingSpaceValidator),
 	},
-	handler: async (ctx, { fileId, embeddingSpaceKey, ...updates }) => {
-		const { isStale, ...vector } = await vectorFieldsForCommit(ctx.db, updates, embeddingSpaceKey);
+	handler: async (
+		ctx,
+		{
+			fileId,
+			embeddingSpace,
+			embedding,
+			embeddingModel: _model,
+			embeddingGeneratedAt: _at,
+			...updates
+		}
+	) => {
+		const file = await ctx.db.get(fileId);
+		if (!file) return;
+		const { isStale, fields, written } = await vectorFieldsForCommit(
+			ctx,
+			{ embedding, space: embeddingSpace },
+			{}
+		);
 		if (isStale)
 			logInfo('[semanticFiles] stale embedding space, stored without vector', { fileId });
-		await ctx.db.patch(fileId, {
-			...updates,
-			...vector,
-			updatedAt: Date.now(),
-		});
+		// Through the one corpus writer (ADR-0073): processing changes the input
+		// and the file's eligibility, so a staged rebuild learns of it.
+		await patchCorpusRow(
+			ctx,
+			'semanticFiles',
+			file,
+			{ ...updates, ...fields, updatedAt: Date.now() },
+			{ written }
+		);
 	},
 });
 
@@ -645,7 +670,9 @@ export const update = authedMutation({
 			});
 		}
 
-		await ctx.db.patch(fileId, cleanUpdates);
+		// Through the one corpus writer (ADR-0073): the title is part of the
+		// embedding input, so a new one leaves no vector of the old one.
+		await patchCorpusRow(ctx, 'semanticFiles', file, cleanUpdates);
 
 		// Keep the junction in sync when the contactIds array is edited in place.
 		if (updates.contactIds !== undefined) {

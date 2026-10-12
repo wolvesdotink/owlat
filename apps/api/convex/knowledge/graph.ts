@@ -27,7 +27,13 @@ import {
 } from './visibility';
 import { batchGet } from '../_utils/batchLoader';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
-import { vectorFieldsForCommit } from '../lib/embeddingSpace';
+import { entryKeysForType } from '../lib/aiRouting/embeddingRegistry';
+import {
+	noteCorpusInsert,
+	patchCorpusRow,
+	vectorFieldsForCommit,
+} from '../lib/aiRouting/embeddingActivation';
+import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
 import { logInfo } from '../lib/runtimeLog';
 import { findDuplicateEntry } from './entryDedupe';
 import {
@@ -351,6 +357,8 @@ export const createEntry = knowledgeMutation({
 
 		// Mirror contactIds into the index-able junction (powers getByContact).
 		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
+		// A new embedding input: a local embedder embeds it now (ADR-0073).
+		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
 
 		return entryId;
 	},
@@ -398,7 +406,11 @@ export const updateEntry = knowledgeMutation({
 			updatedAt: now,
 			lastValidatedAt: now,
 		};
-		if (args.entryType !== undefined) patch.entryType = args.entryType;
+		if (args.entryType !== undefined) {
+			patch.entryType = args.entryType;
+			// The space-and-type vector filter key follows the type (ADR-0073).
+			Object.assign(patch, entryKeysForType(entry, args.entryType));
+		}
 		if (args.title !== undefined) patch.title = args.title;
 		if (args.content !== undefined) patch.content = args.content;
 		if (args.contactIds !== undefined) patch.contactIds = args.contactIds;
@@ -412,7 +424,11 @@ export const updateEntry = knowledgeMutation({
 		const nextContent = args.content ?? entry.content;
 		patch.searchableText = `${nextTitle} ${nextContent}`;
 
-		await ctx.db.patch(args.entryId, patch);
+		// Through the one corpus writer (ADR-0073): an edited title or content
+		// clears every vector column, and an edit that changes eligibility (an
+		// expired entry revived) marks a staged rebuild; either way a local
+		// embedder re-embeds the entry.
+		await patchCorpusRow(ctx, 'knowledgeEntries', entry, patch);
 
 		// Reconcile the index-able junction when contactIds is edited in place;
 		// otherwise re-project its open-commitment facets (type / expiry edits).
@@ -515,12 +531,13 @@ export const saveEntry = internalMutation({
 			'expiresAt',
 			'contentHash',
 		]),
-		// The space the job embedded with; a stale vector is dropped (vectorFieldsForCommit).
+		// The space the job measured for `embedding`; the vector is stamped with it,
+		// or dropped when the configuration moved on (vectorFieldsForCommit).
 		// Optional for previous-release jobs, whose vector is dropped; required
 		// after release N+1.
-		embeddingSpaceKey: v.optional(v.string()),
+		embeddingSpace: v.optional(measuredEmbeddingSpaceValidator),
 	},
-	handler: async (ctx, { embeddingSpaceKey, ...args }) => {
+	handler: async (ctx, { embeddingSpace, ...args }) => {
 		const now = Date.now();
 		// Write-level idempotency (knowledge/entryDedupe.ts): an entry from the
 		// same source with this title, or one with the same normalized content
@@ -532,17 +549,24 @@ export const saveEntry = internalMutation({
 		// already carries its junction rows, so none are written.
 		const dup = await findDuplicateEntry(ctx, args);
 		if (dup) return dup;
-		const { isStale, ...vector } = await vectorFieldsForCommit(ctx.db, args, embeddingSpaceKey);
+		const { embedding, embeddingModel: _model, embeddingGeneratedAt: _at, ...fields } = args;
+		const { isStale, fields: vector } = await vectorFieldsForCommit(
+			ctx,
+			{ embedding, space: embeddingSpace },
+			{ entryType: args.entryType }
+		);
 		if (isStale) logInfo('[knowledge.saveEntry] stale embedding space, stored without vector');
 		const entry = {
-			...args,
-			...vector,
+			...fields,
+			...(vector as { embedding: number[] }),
 			searchableText: `${args.title} ${args.content}`,
 			lastValidatedAt: now,
 			createdAt: now,
 			updatedAt: now,
 		};
 		const entryId = await ctx.db.insert('knowledgeEntries', entry);
+		// A new row: a staged rebuild learns it may lack its vector (ADR-0073).
+		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
 
 		// Mirror contactIds into the index-able junction (powers getByContact).
 		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
@@ -677,8 +701,11 @@ export const createPolicyEntry = knowledgeAdminMutation({
 		if (args.entryId) {
 			const existing = await ctx.db.get(args.entryId);
 			if (!existing) return null;
-			await ctx.db.patch(args.entryId, {
+			// Through the one corpus writer (ADR-0073): input and eligibility
+			// (expiry) changes clear the stale vectors and mark a staged rebuild.
+			await patchCorpusRow(ctx, 'knowledgeEntries', existing, {
 				entryType,
+				...entryKeysForType(existing, entryType),
 				title: args.title,
 				content: args.content,
 				sourceType: 'curated',
@@ -699,7 +726,7 @@ export const createPolicyEntry = knowledgeAdminMutation({
 			return args.entryId;
 		}
 
-		return await ctx.db.insert('knowledgeEntries', {
+		const policyId = await ctx.db.insert('knowledgeEntries', {
 			entryType,
 			title: args.title,
 			content: args.content,
@@ -714,6 +741,8 @@ export const createPolicyEntry = knowledgeAdminMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		await noteCorpusInsert(ctx, 'knowledgeEntries', policyId);
+		return policyId;
 	},
 });
 

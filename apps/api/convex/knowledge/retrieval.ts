@@ -21,13 +21,8 @@ import { internalAction } from '../_generated/server';
 import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { meterLlmCall } from '../analytics/meteredSpend';
-import { runEmbedding } from '../lib/llm/embed';
-import type { LlmRootContext } from '../lib/llm/requestMeter';
 import { llmRootContextValidator } from '../lib/llmUsageTags';
-import { resolveIndexEmbedder, toIndexVector } from '../lib/llmProvider';
-import { vectorHitsInCurrentSpace } from '../lib/embeddingSpace';
-import type { VectorTable } from './vectorCorpus';
+import { embedRetrievalQuery, searchSpaceVectors } from './vectorSearch';
 import { entryTypeValidator } from '../schema/knowledge';
 import { logInfo } from '../lib/runtimeLog';
 import { isContactScopeVisible } from '../lib/contactScope';
@@ -71,80 +66,6 @@ export type ScoredKnowledgeEntry = Doc<'knowledgeEntries'> & {
 };
 
 /**
- * The retrieval query embedding, made once and only when it can find something
- * (ADR-0073, Phase 1c L8 and the empty-corpus skip).
- *
- * Knowledge search (below) and file search (`semanticFileProcessing.ts`) each
- * embedded the same query text, and Team retrieval called both, so one inbound
- * paid for two identical embeddings. And either embedded even when its table
- * held no vector at all, where the vector leg cannot return a row. Both now go
- * through this:
- *
- *   - it embeds only when a searched table holds a queryable vector
- *     (`knowledge/vectorCorpus.ts`); otherwise the caller runs the full-text
- *     leg alone;
- *   - Team retrieval embeds once for both tables and hands the same vector to
- *     both searches, with the query text still passed for both full-text legs.
- *
- * Failure semantics are the searches' own: a misconfigured embedder throws
- * (an actionable error, not silent emptiness), and an embed call that fails
- * makes the search return nothing.
- */
-/**
- * The query vector for a search over `tables`:
- *   - `vector`: embedded once; use it for every table's vector leg;
- *   - `no_vectors`: nothing to search by vector, so no embedding was made;
- *     run the full-text leg alone;
- *   - `failed`: the embedding call failed; the search returns nothing, as it
- *     did when each search embedded for itself.
- */
-export type RetrievalQueryVector =
-	| { kind: 'vector'; embedding: number[]; embeddingSpaceKey: string }
-	| { kind: 'no_vectors' }
-	| { kind: 'failed' };
-
-export async function embedRetrievalQuery(
-	ctx: ActionCtx,
-	tables: readonly VectorTable[],
-	queryText: string,
-	logTag: string,
-	/** The caller's root request: the query embedding's ledger row groups under it. */
-	root?: LlmRootContext
-): Promise<RetrievalQueryVector> {
-	const hasVectors = await ctx.runQuery(internal.knowledge.vectorCorpus.hasQueryableVectors, {
-		tables: [...tables],
-	});
-	if (!hasVectors) return { kind: 'no_vectors' };
-	// Resolve OUTSIDE the try so a misconfigured embedder surfaces an actionable
-	// error rather than silently returning zero results.
-	const embedder = await resolveIndexEmbedder(ctx);
-	try {
-		// The searches have always embedded the trimmed text; trimmed here once so
-		// every caller's vector matches it.
-		// One metered request per query (ADR-0073): an embedding row in the ledger.
-		const feature = tables.includes('knowledgeEntries')
-			? 'embedding_knowledge_search'
-			: 'embedding_file_search';
-		const { embedding } = await meterLlmCall(
-			ctx,
-			{ feature, ...(root ? { root } : {}) },
-			(meter) => runEmbedding({ meter, model: embedder.model, value: queryText.trim() }),
-			// A lost ledger row under-counts; failing retrieval or indexing over it is worse.
-			{ onWriteError: 'ignore' }
-		);
-		return {
-			kind: 'vector',
-			embedding: toIndexVector(embedding),
-			// The space the vector is in, which each search's fence checks.
-			embeddingSpaceKey: embedder.embeddingSpaceKey,
-		};
-	} catch (error) {
-		logInfo(`${logTag} embed failed`, { error: String(error) });
-		return { kind: 'failed' };
-	}
-}
-
-/**
  * Semantic search over knowledge entries (hybrid vector + full-text).
  *
  * Provide either `queryText` (embedded here, and used as-is for the FTS leg) or
@@ -176,9 +97,10 @@ export const semanticSearch = internalAction({
 	args: {
 		queryText: v.optional(v.string()),
 		embedding: v.optional(v.array(v.float64())),
-		// The space a precomputed `embedding` is in. Without it (a previous-release
-		// caller) its vector hits are dropped (vectorHitsInCurrentSpace).
-		embeddingSpaceKey: v.optional(v.string()),
+		// The space a precomputed `embedding` is in (`embedRetrievalQuery`, or a
+		// stored vector's column). Without it the vector leg is skipped: a vector
+		// is only ever compared within its own space (searchSpaceVectors).
+		embeddingSpaceId: v.optional(v.id('embeddingSpaces')),
 		entryType: v.optional(entryTypeValidator),
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out; any
@@ -209,7 +131,7 @@ export const semanticSearch = internalAction({
 		// vector to find (knowledge/vectorCorpus.ts); with none, the full-text leg
 		// runs alone.
 		let vector = args.embedding && args.embedding.length > 0 ? args.embedding : undefined;
-		let spaceKey = args.embeddingSpaceKey;
+		let spaceId = args.embeddingSpaceId;
 		if (!vector) {
 			if (!queryText) return [];
 			const query = await embedRetrievalQuery(
@@ -222,7 +144,7 @@ export const semanticSearch = internalAction({
 			if (query.kind === 'failed') return [];
 			if (query.kind === 'vector') {
 				vector = query.embedding;
-				spaceKey = query.embeddingSpaceKey;
+				spaceId = query.embeddingSpaceId;
 			}
 		}
 
@@ -236,18 +158,15 @@ export const semanticSearch = internalAction({
 		// 256. The final slice keeps the returned count at `limit` regardless.
 		const fetchLimit = Math.min(256, Math.max(limit * 5, 50));
 
-		// Leg 1 — semantic vector search (paraphrase / conceptual matches).
-		// Dropped if the embedding space changed while this query ran.
+		// Leg 1 — semantic vector search (paraphrase / conceptual matches), in the
+		// query vector's own space only.
 		const hits = vector
-			? await vectorHitsInCurrentSpace(
-					ctx,
-					await ctx.vectorSearch('knowledgeEntries', 'vector_knowledge', {
-						vector,
-						limit: fetchLimit,
-						filter: entryType ? (q) => q.eq('entryType', entryType) : undefined,
-					}),
-					spaceKey
-				)
+			? await searchSpaceVectors(ctx, 'knowledgeEntries', {
+					vector,
+					embeddingSpaceId: spaceId,
+					limit: fetchLimit,
+					entryType,
+				})
 			: [];
 		const vectorRanked: Id<'knowledgeEntries'>[] = hits.map((h) => h._id);
 		const scoreById = new Map<string, number>(hits.map((h) => [h._id as string, h._score]));
