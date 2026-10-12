@@ -21,6 +21,7 @@ import {
 } from '../lib/aiRouting/embedderForSpace';
 import { runAdmittedEmbedding } from '../lib/aiRouting/embeddingDispatch';
 import { embeddingSpaceIdentityKey } from '../lib/aiRouting/embeddingKeys';
+import { assertExpectedSpace } from '../lib/aiRouting/embeddingRegistry';
 import { embeddingProviderKindValidator } from '../lib/validators/aiProviderConfig';
 import { searchSpaceVectors } from '../knowledge/vectorSearch';
 import { SPACE_PROBE_TEXT } from './embeddingReembed';
@@ -101,10 +102,14 @@ export interface RebuildValidation {
  * The bounded sanity check: each sampled staged row's own text, embedded with
  * the staged model, must find that row among the top hits of the staged index.
  */
-async function validateStagedSpace(ctx: ActionCtx): Promise<RebuildValidation> {
+async function validateStagedSpace(
+	ctx: ActionCtx,
+	expectedSpaceId: Id<'embeddingSpaces'> | undefined
+): Promise<RebuildValidation> {
 	anchorActionDeadline(ctx);
 	await ctx.runQuery(internal.aiRouting.embeddingSpaces.assertAdmin, {});
 	const { staged } = await ctx.runQuery(internal.aiRouting.embeddingSpaces.getSpaces, {});
+	assertExpectedSpace(staged, expectedSpaceId);
 	if (!staged) throwInvalidState('There is no staged embedding space.');
 	const embedder = await resolveEmbedderForSpace(ctx, staged);
 	if (!embedder) throwInvalidState('No embedder can be built for the staged space.');
@@ -164,18 +169,19 @@ async function validateStagedSpace(ctx: ActionCtx): Promise<RebuildValidation> {
 /** Validate the staged space without activating it. */
 // authz: admin-only; assertAdmin runs before any credential or provider call
 export const validateStaged = authedAction({
-	args: {},
-	handler: async (ctx): Promise<RebuildValidation> => validateStagedSpace(ctx),
+	args: { expectedSpaceId: v.optional(v.id('embeddingSpaces')) },
+	handler: async (ctx, args): Promise<RebuildValidation> =>
+		validateStagedSpace(ctx, args.expectedSpaceId),
 });
 
 /** Validate, then activate the staged space atomically. Refused when validation fails. */
 // authz: admin-only; assertAdmin runs first, activateStagedSpace checks again
 export const activateStaged = authedAction({
-	args: {},
-	handler: async (ctx): Promise<RebuildValidation> => {
+	args: { expectedSpaceId: v.optional(v.id('embeddingSpaces')) },
+	handler: async (ctx, args): Promise<RebuildValidation> => {
 		// One model budget for this action, from its start (ADR-0073).
 		anchorActionDeadline(ctx);
-		const validation = await validateStagedSpace(ctx);
+		const validation = await validateStagedSpace(ctx, args.expectedSpaceId);
 		if (!validation.isPassing) {
 			throwInvalidState(
 				`The staged embedding space failed validation: ${validation.passed} of ${validation.sampled} sampled items found themselves.`,
