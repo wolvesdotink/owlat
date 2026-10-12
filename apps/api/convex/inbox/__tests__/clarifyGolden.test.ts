@@ -16,6 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeStepCtx } from '../../agent/steps/__tests__/stepCtx';
+import type * as MeteredSpend from '../../analytics/meteredSpend';
 
 interface CallLog {
 	readonly calls: unknown[];
@@ -58,9 +59,7 @@ vi.mock('../../lib/llmProvider', () => ({
 	resolveLanguageModel: vi.fn(async (_ctx: unknown, role: string) => `model:${role}`),
 }));
 vi.mock('../../analytics/meteredSpend', async () => {
-	const actual = await vi.importActual<typeof import('../../analytics/meteredSpend')>(
-		'../../analytics/meteredSpend'
-	);
+	const actual = await vi.importActual<typeof MeteredSpend>('../../analytics/meteredSpend');
 	return {
 		...actual,
 		meterLlmCall: async (
