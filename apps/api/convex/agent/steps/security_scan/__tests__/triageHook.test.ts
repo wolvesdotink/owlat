@@ -6,7 +6,7 @@
  */
 
 import { getFunctionName } from 'convex/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveRoutingPolicy, type RoutingPolicyRow } from '@owlat/shared/aiRouting';
 import { makeStepCtx } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
@@ -58,7 +58,12 @@ async function scan(
 	return { scheduled, route: securityScanStep.route(output, input, runCtx) };
 }
 
+// The scan stamps `securityFlags.scanTimestamp` from the clock, and the tests
+// compare two scans' routes: one fixed instant keeps them comparable. Only
+// `Date` is faked, so the scan's promises still settle on their own.
 beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(new Date('2026-10-12T09:00:00Z'));
 	mocks.runLlmObject.mockReset();
 	mocks.runLlmObject.mockResolvedValue({
 		object: { isInjection: false, confidence: 0.05, reason: 'benign' },
@@ -66,6 +71,8 @@ beforeEach(() => {
 		modelUsed: 'mock-model',
 	});
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe('the triage shadow hook', () => {
 	it('schedules nothing while the switch is off', async () => {
