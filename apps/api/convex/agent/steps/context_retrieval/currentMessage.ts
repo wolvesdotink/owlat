@@ -24,6 +24,7 @@ import { stripHiddenContent } from '../security_scan/patterns';
 import { renderBriefingActions } from '../../../mail/interpret/teamActions';
 import { teamRoot } from '../../shared/agentSpend';
 import { boundedRoot } from '../../../lib/llm/actionDeadline';
+import { rethrowAdmissionRefusal } from '../../../lib/llm/admissionPort';
 
 /**
  * The message body the LLM steps should read, with remote images / tracking
@@ -123,7 +124,8 @@ async function structuredActions(
 		}
 		if (read.interpretation?.status !== 'complete') return null;
 		return renderBriefingActions(read.selection);
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error); // the walker holds the message (D1)
 		// Fail soft — keep the hidden-stripped raw body.
 		return null;
 	}

@@ -29,6 +29,7 @@ import {
 	pickAttachmentSuggestion,
 	MAX_CANDIDATES,
 } from './attachmentMatch';
+import { rethrowAdmissionRefusal } from '../lib/llm/admissionPort';
 
 export type AttachmentSuggestions = Infer<typeof attachmentSuggestionsValidator>;
 type PersistedCandidate = AttachmentSuggestions['candidates'][number];
@@ -95,7 +96,8 @@ export async function computeAttachmentSuggestions(
 		if (picked.candidates.length === 0) return null;
 
 		return { query, ambiguous: picked.ambiguous, candidates: picked.candidates };
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error); // held, deferred or shown by the caller (D1)
 		// Fail-soft: no suggestion, no ask — today's behaviour.
 		return null;
 	}
@@ -164,7 +166,8 @@ export async function searchFilesForRequest(
 				score: file._score,
 			});
 		}
-	} catch {
+	} catch (error) {
+		rethrowAdmissionRefusal(error); // held, deferred or shown by the caller (D1)
 		// Fail-soft: no Files hits.
 	}
 	if (args.mailboxScope) {
