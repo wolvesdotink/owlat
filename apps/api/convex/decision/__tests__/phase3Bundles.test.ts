@@ -55,6 +55,7 @@ import { CLAIM_CHECK_BUNDLE, NECESSITY_BUNDLE } from '../../lib/decision/bundles
 import { necessityState } from '../../lib/decision/necessityState';
 import { recordOwnerCorrection } from '../artifacts';
 import type { RoutingContext } from '../context';
+import { ACTION_MODEL_BUDGET_MS, anchorActionDeadline } from '../../lib/llm/actionDeadline';
 
 const rootGlob = import.meta.glob('../../**/*.*s');
 const decisionGlob = Object.fromEntries(
@@ -248,6 +249,48 @@ describe('the necessity judgment through the runner', () => {
 				plane: 'language',
 			})
 		);
+	});
+
+	it('bounds the root by the action’s model budget before admission and dispatch', async () => {
+		const t = await setup({ clarifyNecessity: 'enforce' });
+		const id = await seedTeamMessage(t);
+		await necessityRun(t, await routing(t), id);
+		const [, request] = mocks.admitBundle.mock.calls[0]!;
+		expect(request.root).toMatchObject({ rootRequestId: `team:${id}` });
+		expect(request.root.deadlineAt).toBeGreaterThan(Date.now());
+		expect(request.root.deadlineAt).toBeLessThanOrEqual(Date.now() + ACTION_MODEL_BUDGET_MS);
+	});
+
+	it('stops asking once the action’s budget is spent: no admission, no claim, no call', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const start = Date.parse('2026-10-12T10:00:00Z');
+			vi.setSystemTime(start);
+			const t = await setup({ clarifyNecessity: 'enforce' });
+			const id = await seedTeamMessage(t);
+			const routed = await routing(t);
+			const ctx = actionCtx(t); // one action: one budget across its calls
+			anchorActionDeadline(ctx, start);
+			const ask = (context: string) =>
+				runBundle(ctx, {
+					bundle: NECESSITY_BUNDLE,
+					plan: { task: 'mail.necessity', mode: 'advisory' },
+					routing: routed,
+					subject: { kind: 'inbound_message', inboundMessageId: id },
+					built: necessityState(context),
+					root: { rootRequestId: `team:${id}` },
+				});
+			expect(await ask('first')).toMatchObject({ hasRun: true, status: 'complete' });
+			vi.setSystemTime(start + ACTION_MODEL_BUDGET_MS);
+			expect(await ask('second')).toEqual({ hasRun: false, why: 'deadline' });
+			expect(await ask('third')).toEqual({ hasRun: false, why: 'deadline' });
+			expect(mocks.admitBundle).toHaveBeenCalledTimes(1);
+			expect(mocks.runLlmObject).toHaveBeenCalledTimes(1);
+			const rows = await t.run((c) => c.db.query('decisionArtifacts').collect());
+			expect(rows).toHaveLength(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('runs nothing without admission', async () => {

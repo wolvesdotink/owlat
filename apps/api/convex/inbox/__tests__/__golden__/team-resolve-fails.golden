@@ -1,0 +1,17 @@
+{
+  "log": [
+    {
+      "call": "resolve",
+      "fails": true,
+      "role": "classify",
+    },
+  ],
+  "result": {
+    "output": {
+      "memoryAnswers": [],
+      "questions": [],
+      "resolution": "fail_soft",
+    },
+  },
+  "writes": [],
+}

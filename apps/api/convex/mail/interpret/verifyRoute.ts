@@ -173,6 +173,10 @@ function askClaim(
 	});
 }
 
+function isOutOfTime(outcome: { hasRun: boolean; why?: string }): boolean {
+	return !outcome.hasRun && outcome.why === 'deadline';
+}
+
 /** Enforced: each claim asked on the decision plane; a claim without an answer stays unverified. */
 async function checkClaims(
 	ctx: ActionCtx,
@@ -198,7 +202,11 @@ async function checkClaims(
 		const verdict = verdictOfLabel('labels' in outcome ? outcome.labels?.['verdict'] : undefined);
 		if (verdict) verdicts.set(claim.id, verdict);
 		else isIncomplete = true;
-		if (refusal) break;
+		// A spent action budget or a refusal stops the rest: they would end the same way.
+		if (refusal || isOutOfTime(outcome)) {
+			isIncomplete = true;
+			break;
+		}
 	}
 	return { verdicts, isIncomplete, isUnsendable, ...(refusal ? { refusal } : {}) };
 }
@@ -214,7 +222,10 @@ async function shadowClaims(
 		const verdict = verdicts.get(claim.id);
 		if (!verdict) continue;
 		try {
-			await askClaim(ctx, run, claim, { baseline: { verdict: labelOfVerdict(verdict) } });
+			const outcome = await askClaim(ctx, run, claim, {
+				baseline: { verdict: labelOfVerdict(verdict) },
+			});
+			if (outcome && isOutOfTime(outcome)) return;
 		} catch {
 			// A shadow observation never changes verification.
 		}

@@ -68,6 +68,13 @@ export interface ClarifySurface {
 	readonly roles: { readonly slots: LLMTask; readonly samples: LLMTask; readonly judge: LLMTask };
 	/** A model the surface already resolved, used for every stage (Team). */
 	readonly model?: LanguageModel;
+	/**
+	 * Resolve the sample model for each sample, inside that sample's failure
+	 * boundary (Postbox, as before): a resolution that fails costs that one
+	 * sample, and the later ones still run. Otherwise it is resolved once,
+	 * before the samples, and a failure ends the check.
+	 */
+	readonly isSampleModelPerSample?: boolean;
 	/** One metered call, the way the surface meters today. */
 	readonly meter: <R>(
 		feature: string,
@@ -188,9 +195,15 @@ async function sampleDivergence(
 ): Promise<JudgedSlots> {
 	const samples: string[] = [];
 	let tokenUsage: TokenUsage | undefined;
-	const sampleModel = surface.model ?? (await resolveLanguageModel(ctx, surface.roles.samples));
+	const sampleModelOnce =
+		surface.model ??
+		(surface.isSampleModelPerSample
+			? undefined
+			: await resolveLanguageModel(ctx, surface.roles.samples));
 	for (let i = 0; i < DIVERGENCE_SAMPLES; i++) {
 		try {
+			const sampleModel =
+				sampleModelOnce ?? (await resolveLanguageModel(ctx, surface.roles.samples));
 			const sample = await surface.meter(surface.features.samples, CLARIFY_SAMPLE_TASK, (meter) =>
 				runLlmText({
 					meter,

@@ -65,6 +65,7 @@ import {
 import { admitBundle, type BundleAdmission } from './bundleAdmission';
 import type { RoutingContext } from './context';
 import type { Id } from '../_generated/dataModel';
+import { boundedRoot } from '../lib/llm/actionDeadline';
 import type { AdmissionPriority } from '../lib/validators/aiRouting';
 
 /** Same state, same questions, same answer: a decision is no place for sampling. */
@@ -132,6 +133,8 @@ export type BundleRunOutcome =
 				| 'excluded'
 				| 'disabled'
 				| 'stale'
+				/** The action's model budget is spent: no call could finish and be recorded in time. */
+				| 'deadline'
 				| 'policy_changed'
 				| Extract<BundleAdmission, { isAdmitted: false }>['why'];
 	  };
@@ -247,11 +250,23 @@ export async function resolveBundleRung(
 	return { rung, plane };
 }
 
-/** Ask `run.bundle` about one message and store the artifact. Never throws for a provider failure. */
+/**
+ * Ask `run.bundle` about one message and store the artifact. Never throws for
+ * a provider failure.
+ *
+ * The root is bounded by the calling action's model budget first (ADR-0073):
+ * a caller's root (Team, Postbox) may carry no deadline, and the decision
+ * rung's dispatch takes its deadline from the root alone. A call that cannot
+ * start inside the budget is not admitted and not claimed (`deadline`), so a
+ * caller asking many bundles in one action (one claim check per claim) never
+ * runs past the point where its ledger writes still land.
+ */
 export async function runBundle<Q extends QuestionSet>(
 	ctx: ActionCtx,
-	run: BundleRun<Q>
+	callerRun: BundleRun<Q>
 ): Promise<BundleRunOutcome> {
+	const run: BundleRun<Q> = { ...callerRun, root: boundedRoot(ctx, callerRun.root) };
+	if ((run.root.deadlineAt ?? Infinity) <= Date.now()) return { hasRun: false, why: 'deadline' };
 	const { routing, plan, bundle } = run;
 	const resolved = run.resolved ?? (await resolveBundleRung(ctx, routing));
 	if (resolved === 'stale') return { hasRun: false, why: 'stale' };

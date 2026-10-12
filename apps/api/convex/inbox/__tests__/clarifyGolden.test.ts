@@ -27,6 +27,9 @@ const mocks = vi.hoisted(() => ({
 	log: { calls: [] as unknown[], tasks: [] as (string | undefined)[] },
 	runLlmText: vi.fn(),
 	runLlmObject: vi.fn(),
+	/** Which resolutions of a role fail (1-based), a transient provider-config failure. */
+	failResolutions: {} as Record<string, number[]>,
+	resolutions: {} as Record<string, number>,
 }));
 
 vi.mock('../../lib/llm/dispatch', () => ({
@@ -56,7 +59,14 @@ vi.mock('../../lib/llm/dispatch', () => ({
 	},
 }));
 vi.mock('../../lib/llmProvider', () => ({
-	resolveLanguageModel: vi.fn(async (_ctx: unknown, role: string) => `model:${role}`),
+	resolveLanguageModel: vi.fn(async (_ctx: unknown, role: string) => {
+		const nth = (mocks.resolutions[role] ?? 0) + 1;
+		mocks.resolutions[role] = nth;
+		const fails = mocks.failResolutions[role]?.includes(nth) === true;
+		mocks.log.calls.push({ call: 'resolve', role, ...(fails ? { fails } : {}) });
+		if (fails) throw new Error(`resolving ${role} failed`);
+		return `model:${role}`;
+	}),
 }));
 vi.mock('../../analytics/meteredSpend', async () => {
 	const actual = await vi.importActual<typeof MeteredSpend>('../../analytics/meteredSpend');
@@ -162,6 +172,8 @@ function logged(): CallLog {
 const RECORDED_AT = Date.parse('2026-10-12T00:00:00Z');
 
 beforeEach(() => {
+	for (const role of Object.keys(mocks.failResolutions)) delete mocks.failResolutions[role];
+	for (const role of Object.keys(mocks.resolutions)) delete mocks.resolutions[role];
 	vi.useFakeTimers({ toFake: ['Date'] });
 	vi.setSystemTime(RECORDED_AT);
 	mocks.log.calls.length = 0;
@@ -229,6 +241,16 @@ describe('golden: Team clarify step, necessity off', () => {
 		);
 	});
 
+	it('fails soft when its one model fails to resolve', async () => {
+		answer({ divergent: [1] });
+		mocks.failResolutions['classify'] = [1];
+		const { ctx, writes } = teamCtx();
+		const result = await clarifyStep.execute(ctx, teamInput());
+		await expect({ result, writes, log: logged().calls }).toMatchFileSnapshot(
+			'./__golden__/team-resolve-fails.golden'
+		);
+	});
+
 	it('fails soft when the judgment fails', async () => {
 		answer({ judgeFails: true });
 		const { ctx, writes } = teamCtx();
@@ -269,6 +291,24 @@ describe('golden: Postbox refinement, necessity off', () => {
 		);
 	});
 
+	it('a sample whose model fails to resolve costs that sample only', async () => {
+		answer({ divergent: [0] });
+		mocks.failResolutions['draft'] = [1];
+		const result = await refineClarification(postboxCtx(), opts);
+		await expect({ result: { ...result, askedAt: 0 }, log: logged().calls }).toMatchFileSnapshot(
+			'./__golden__/postbox-sample-resolve-fails.golden'
+		);
+	});
+
+	it('asks only for the file when the judge’s model fails to resolve', async () => {
+		answer({ divergent: [0] });
+		mocks.failResolutions['draft'] = [4];
+		const result = await refineClarification(postboxCtx(), opts);
+		await expect({ result: { ...result, askedAt: 0 }, log: logged().calls }).toMatchFileSnapshot(
+			'./__golden__/postbox-judge-resolve-fails.golden'
+		);
+	});
+
 	it('still asks for the file when the divergence stage fails', async () => {
 		answer({ judgeFails: true });
 		const result = await refineClarification(postboxCtx(), opts);
@@ -302,6 +342,15 @@ describe('golden: Answer mode gap check, necessity off', () => {
 		const result = await runGapCheck(answerCtx(), input);
 		await expect({ result, log: logged().calls }).toMatchFileSnapshot(
 			'./__golden__/answer-default.golden'
+		);
+	});
+
+	it('keeps only the file when the sample model fails to resolve', async () => {
+		answer({ divergent: [0, 1] });
+		mocks.failResolutions['summarize'] = [2];
+		const result = await runGapCheck(answerCtx(), input);
+		await expect({ result, log: logged().calls }).toMatchFileSnapshot(
+			'./__golden__/answer-sample-resolve-fails.golden'
 		);
 	});
 

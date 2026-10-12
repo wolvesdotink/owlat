@@ -136,6 +136,8 @@ function postboxClarifySurface(
 			judge: 'postbox_clarify_diverge',
 		},
 		roles: { slots: 'summarize', samples: 'draft', judge: 'draft' },
+		// Each sample resolves its own model inside its own failure boundary, as before.
+		isSampleModelPerSample: true,
 		meter: (feature, task, call) =>
 			meterLlmCall(
 				ctx,

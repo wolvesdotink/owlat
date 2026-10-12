@@ -77,6 +77,12 @@ function usableProjection(run: InterpretRunResult): NeedsReplyProjection | undef
 	return run.projection;
 }
 
+/** Whether spend admission refused any call of the run (its code, or a reported refusal). */
+export function isBudgetRefused(run: InterpretRunResult): boolean {
+	if (run.status === 'gone' || !('errorCode' in run)) return false;
+	return run.errorCode === 'budget' || run.budgetRefusal !== undefined;
+}
+
 /** This action, for its own budget deferral (ADR-0073, D1). */
 const deferClassify = (): DeferrableAction => internal.mail.ai.needsReplyClassify.classifyThread;
 
@@ -171,7 +177,12 @@ export const classifyThread = internalAction({
 				predecessors: 'caller_continues',
 			});
 			if (await continuesLater(ctx, run, args)) return;
-			if ('errorCode' in run && run.errorCode === 'budget') throw new BudgetDeferral(); // stays pending, defers (D1)
+			// A spend refusal anywhere in the run (the gate, the model call, a
+			// verifier batch or a claim check) defers the whole classification
+			// BEFORE its projection is applied: a projection from a run that could
+			// not finish its checks must not settle the thread (D1). It stays
+			// pending and runs again.
+			if (isBudgetRefused(run)) throw new BudgetDeferral();
 			const projection = usableProjection(run);
 			const hasVerdict = projection
 				? await applyProjection(ctx, {

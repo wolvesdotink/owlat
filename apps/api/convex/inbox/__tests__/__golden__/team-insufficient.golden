@@ -1,6 +1,10 @@
 {
   "log": [
     {
+      "call": "resolve",
+      "role": "classify",
+    },
+    {
       "call": "meter",
       "feature": "agent_clarify",
       "opts": {

@@ -143,6 +143,27 @@ describe('claim checks enforced', () => {
 		expect(out.isIncomplete).toBe(true);
 	});
 
+	it('stops at the first claim the action’s budget no longer covers', async () => {
+		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
+		mocks.runBundle
+			.mockResolvedValueOnce({ hasRun: true, status: 'complete', labels: { verdict: 'supported' } })
+			.mockResolvedValue({ hasRun: false, why: 'deadline' });
+		const out = await verifyRouted(ctxWith({ claimVerification: 'enforce' }), CLAIMS, {
+			source,
+			root,
+		});
+		expect(mocks.runBundle).toHaveBeenCalledTimes(2);
+		expect([...out.verdicts.keys()]).toEqual(['item:0']);
+		expect(out.isIncomplete).toBe(true);
+	});
+
+	it('stops shadow observations once the budget is spent', async () => {
+		mocks.resolveBundleRung.mockResolvedValue(rung('decision'));
+		mocks.runBundle.mockResolvedValue({ hasRun: false, why: 'deadline' });
+		await verifyRouted(ctxWith({ claimVerification: 'shadow' }), CLAIMS, { source, root });
+		expect(mocks.runBundle).toHaveBeenCalledTimes(1);
+	});
+
 	it('passes the run hold, model and priority to the language verifier', async () => {
 		const hold = { marker: 'hold' } as never;
 		await verifyRouted(ctxWith({}), CLAIMS, {

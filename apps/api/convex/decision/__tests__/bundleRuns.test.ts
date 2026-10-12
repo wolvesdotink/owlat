@@ -210,7 +210,8 @@ describe('the triage shadow (D11)', () => {
 				task: 'mail.triage',
 				mode: 'shadow',
 				subjectKey: inboundMessageId,
-				root: { rootRequestId: `team:${inboundMessageId}` },
+				// Bounded by the action's model budget (clarify lane, Sol r1 F1).
+				root: { rootRequestId: `team:${inboundMessageId}`, deadlineAt: expect.any(Number) },
 				policyVersion: 7,
 				// The selected rung's plane (Sol r7 F1).
 				plane: 'language',
@@ -329,7 +330,8 @@ describe('the message bundle', () => {
 		expect(options).toMatchObject({
 			feature: 'decision_category',
 			task: 'mail.category',
-			root: { rootRequestId: `team:${inboundMessageId}` },
+			// The native dispatch's only deadline is the root's: bounded by the action's budget.
+			root: { rootRequestId: `team:${inboundMessageId}`, deadlineAt: expect.any(Number) },
 			allowance: expect.objectContaining({ allowed: true }),
 			recordUsage: expect.any(Function),
 		});
