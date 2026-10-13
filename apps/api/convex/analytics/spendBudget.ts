@@ -5,13 +5,15 @@
  * Single-org-per-deployment (see `lib/sessionOrganization.ts`), so "per-org"
  * here is the deployment-wide `llmUsageEvents` ledger (`analytics/llmUsage.ts`),
  * priced by `lib/llm/pricing.ts`. The ledger is the single source of truth for
- * money: features that call a language or decision model write one row per
- * billed call there, including each call of the Team Inbox agent pipeline
- * (guard, message interpretation, classify, clarify, draft and its self-check,
- * outcome sentiment; `agent/shared/agentSpend.ts`). The per-step
+ * money: features that call a language, decision or embedding model write one
+ * row per provider request there, including each call of the Team Inbox agent
+ * pipeline (guard, message interpretation, classify, clarify, draft and its
+ * self-check, outcome sentiment; `agent/shared/agentSpend.ts`) and every
+ * `embed()` (`lib/llm/embed.ts`, under an `embedding_*` feature). A local
+ * embedder's rows price at zero (`isLocalEngine`); a hosted one's count toward
+ * the ceiling like any other call (#1268). The per-step
  * `agentActions.tokenUsage` the walker stores is a reporting view and is never
- * summed here (#1259). Embedding calls write no row, so they are outside the
- * ceiling.
+ * summed here (#1259).
  *
  * Rate limits elsewhere are per-CALL-COUNT token buckets and `estimateCost`
  * only feeds a read-only dashboard, so nothing today caps DOLLARS — an org (or
