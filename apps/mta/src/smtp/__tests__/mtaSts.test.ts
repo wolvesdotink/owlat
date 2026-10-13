@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import type RealRedis from 'ioredis';
 
 vi.mock('dns/promises', () => ({
@@ -82,14 +84,20 @@ describe('mtaSts', () => {
 		});
 
 		it('accepts STSv1 case-insensitively', () => {
-			const policy = parseStsPolicy('version: stsv1\nmode: testing\nmx: mx.example.com\nmax_age: 600', 'id-1');
+			const policy = parseStsPolicy(
+				'version: stsv1\nmode: testing\nmx: mx.example.com\nmax_age: 600',
+				'id-1'
+			);
 			expect(policy.mode).toBe('testing');
 		});
 	});
 
 	describe('parseStsPolicy — max_age clamping (RFC 8461 §3.2)', () => {
 		it('clamps an over-large max_age to the one-year ceiling', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 99999999', 'id-1');
+			const policy = parseStsPolicy(
+				'version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 99999999',
+				'id-1'
+			);
 			expect(policy.maxAge).toBe(31557600);
 		});
 
@@ -100,19 +108,28 @@ describe('mtaSts', () => {
 		});
 
 		it('preserves max_age: 0 even for an enforce policy (does not coerce to 86400)', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 0', 'id-1');
+			const policy = parseStsPolicy(
+				'version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 0',
+				'id-1'
+			);
 			expect(policy.maxAge).toBe(0);
 		});
 
 		it('never accepts a negative max_age', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: -5', 'id-1');
+			const policy = parseStsPolicy(
+				'version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: -5',
+				'id-1'
+			);
 			expect(policy.maxAge).toBeGreaterThanOrEqual(0);
 			// Negative is invalid → falls back to the 1-day default for an enforce policy.
 			expect(policy.maxAge).toBe(86400);
 		});
 
 		it('falls back to the default for a non-numeric max_age', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: abc', 'id-1');
+			const policy = parseStsPolicy(
+				'version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: abc',
+				'id-1'
+			);
 			expect(policy.maxAge).toBe(86400);
 		});
 
@@ -304,7 +321,10 @@ describe('mtaSts', () => {
 
 		it('throws on a 5xx response (does not silently treat it as no-policy)', async () => {
 			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response('boom', { status: 503, statusText: 'Service Unavailable' }) as unknown as Response
+				new Response('boom', {
+					status: 503,
+					statusText: 'Service Unavailable',
+				}) as unknown as Response
 			);
 
 			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow();
@@ -335,6 +355,122 @@ describe('mtaSts', () => {
 			const policy = await fetchStsPolicy('example.com', 'id-xyz');
 			expect(policy.version).toBe('id-xyz');
 			expect(policy.mode).toBe('enforce');
+		});
+	});
+
+	// Issue #1326: the policy host is attacker-controlled. A redirect must not
+	// carry the GET to another origin (plaintext / internal), and the body must
+	// be read under a byte cap instead of buffered whole.
+	describe('fetchStsPolicy — redirect and size bounds (RFC 8461 §3.3)', () => {
+		const realFetch = globalThis.fetch;
+		const servers: Server[] = [];
+
+		function listen(handler: Parameters<typeof createServer>[1]): Promise<string> {
+			const server = createServer(handler);
+			servers.push(server);
+			return new Promise((resolve) =>
+				server.listen(0, '127.0.0.1', () =>
+					resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
+				)
+			);
+		}
+
+		afterEach(async () => {
+			await Promise.all(
+				servers.splice(0).map((s) => {
+					s.closeAllConnections();
+					return new Promise((resolve) => s.close(() => resolve(undefined)));
+				})
+			);
+		});
+
+		it('does not follow a redirect to a private plaintext target (real fetch)', async () => {
+			let secondHopRequests = 0;
+			const internal = await listen((_req, res) => {
+				secondHopRequests++;
+				res.end(policyBody());
+			});
+			const policyHost = await listen((_req, res) => {
+				res.writeHead(302, { Location: `${internal}/` });
+				res.end();
+			});
+			// Stand in for DNS: send the production RequestInit to the local policy
+			// host so real fetch decides whether to follow the 302.
+			vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => realFetch(policyHost, init));
+
+			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/redirect/);
+			expect(secondHopRequests).toBe(0);
+		});
+
+		it.each([301, 302, 307, 308])('rejects a %i response', async (status) => {
+			const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+				new Response(null, {
+					status,
+					headers: { Location: 'http://127.0.0.1/.well-known/mta-sts.txt' },
+				}) as unknown as Response
+			);
+
+			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/redirect/);
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+			expect((fetchSpy.mock.calls[0]![1] as RequestInit).redirect).toBe('manual');
+		});
+
+		it('rejects a declared Content-Length over the cap without reading the body', async () => {
+			const policyHost = await listen((_req, res) => {
+				res.writeHead(200, { 'Content-Length': String(1024 * 1024) });
+				res.write('version: STSv1\n');
+				// Never finish: a read that waited for the body would hang the test.
+			});
+			vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => realFetch(policyHost, init));
+
+			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/too large/);
+		});
+
+		it('rejects an oversized chunked body at the cap and cancels the stream', async () => {
+			let cancelled = false;
+			let pulled = 0;
+			// 2 MiB of valid-looking lines in 1 KiB chunks, with no Content-Length.
+			const oversized = new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new TextEncoder().encode(policyBody() + '\n'));
+				},
+				pull(controller) {
+					if (++pulled > 2048) return controller.close();
+					controller.enqueue(new TextEncoder().encode(`mx: ${'a'.repeat(1019)}\n`));
+				},
+				cancel() {
+					cancelled = true;
+				},
+			});
+			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+				new Response(oversized, { status: 200 }) as unknown as Response
+			);
+
+			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/exceeds/);
+			expect(cancelled).toBe(true);
+			// 1 KiB chunks against a 64 KiB cap: reading stops just past the limit.
+			expect(pulled).toBeLessThanOrEqual(66);
+		});
+
+		it('still parses a valid policy served in small chunks', async () => {
+			const policyHost = await listen((_req, res) => {
+				res.writeHead(200, { 'Content-Type': 'text/plain' });
+				for (const line of policyBody({
+					mode: 'enforce',
+					mx: ['mx1.example.com', '*.example.net'],
+				}).split('\n'))
+					res.write(`${line}\n`);
+				res.end('max_age: 604800\n');
+			});
+			vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => realFetch(policyHost, init));
+
+			const policy = await fetchStsPolicy('example.com', 'id-1');
+			expect(policy).toMatchObject({
+				mode: 'enforce',
+				mx: ['mx1.example.com', '*.example.net'],
+				maxAge: 604800,
+				version: 'id-1',
+			});
 		});
 	});
 

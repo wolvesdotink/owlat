@@ -14,10 +14,14 @@
 
 import { resolveTxt } from 'dns/promises';
 import type Redis from 'ioredis';
+import { readStreamBytes } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
 
 const STS_CACHE_PREFIX = 'mta:sts:';
 const STS_FETCH_TIMEOUT = 10_000; // 10s timeout for HTTP fetch
+// A real policy file is a handful of short lines; 64 KiB leaves ample room for
+// long MX lists while bounding what an attacker-run policy host can make us buffer.
+const STS_MAX_POLICY_BYTES = 64 * 1024;
 const STS_DNS_NEGATIVE_CACHE_TTL = 3600; // 1h cache for domains without MTA-STS
 const STS_MIN_CACHE_TTL = 300; // Minimum 5 minutes regardless of max_age
 // RFC 8461 §3.2: max_age has a maximum of 31557600 seconds (one year).
@@ -242,22 +246,42 @@ async function lookupStsDnsRecord(domain: string): Promise<string | null> {
  *   mx: mail.google.com
  *   max_age: 86400
  *
- * Exported for regression testing of the exact URL, the non-2xx throw, and the
- * 10s abort (RFC 8461 §3.3 — policy retrieval via HTTPS GET).
+ * Exported for regression testing of the exact URL, the non-2xx throw, the
+ * refused redirect, the body-size cap, and the 10s abort (RFC 8461 §3.3 —
+ * policy retrieval via HTTPS GET).
  */
 export async function fetchStsPolicy(domain: string, dnsVersion: string): Promise<StsPolicy> {
 	const url = `https://mta-sts.${domain}/.well-known/mta-sts.txt`;
 
+	// RFC 8461 §3.3: "HTTP 3xx redirects MUST NOT be followed". Default fetch
+	// would follow one to any origin, including plaintext HTTP or an internal
+	// address, so take the 3xx as-is and fail it below.
 	const response = await fetch(url, {
+		redirect: 'manual',
 		signal: AbortSignal.timeout(STS_FETCH_TIMEOUT),
 		headers: { 'User-Agent': 'owlat-mta/0.1 (MTA-STS policy fetch)' },
 	});
 
+	if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+		void response.body?.cancel().catch(() => undefined);
+		throw new Error(`MTA-STS policy fetch refused redirect: ${response.status}`);
+	}
+
 	if (!response.ok) {
+		void response.body?.cancel().catch(() => undefined);
 		throw new Error(`MTA-STS policy fetch failed: ${response.status} ${response.statusText}`);
 	}
 
-	const text = await response.text();
+	const declaredLength = Number(response.headers.get('content-length'));
+	if (Number.isFinite(declaredLength) && declaredLength > STS_MAX_POLICY_BYTES) {
+		void response.body?.cancel().catch(() => undefined);
+		throw new Error(`MTA-STS policy too large: ${declaredLength} bytes`);
+	}
+
+	// The body is untrusted: read decoded bytes up to the cap and cancel the
+	// stream past it, rather than letting response.text() buffer all of it.
+	const bytes = await readStreamBytes(response.body, STS_MAX_POLICY_BYTES);
+	const text = bytes ? new TextDecoder().decode(bytes) : '';
 	return parseStsPolicy(text, dnsVersion);
 }
 
