@@ -5,14 +5,18 @@
  * It drafts through the shared draft service (surface 'personal') with the
  * knowledge recall tool scoped to the sender's contact, puts the answers and
  * attached-file notes in the trusted confirmed block, and lands the body on the
- * card. The shared service and the recall tool are mocked; no model runs.
+ * card. A draft with gaps the owner did not agree to is not landed: its gaps
+ * go back to the card as questions. The shared service and the recall tool are
+ * mocked; no model runs.
  */
 
 import { getFunctionName } from 'convex/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type * as DraftService from '../../agent/shared/draftService';
+import type * as Localize from '../../inbox/clarificationLocalize';
 
 const mocks = vi.hoisted(() => ({
+	localizeRefuses: false,
 	runSharedDraft: vi.fn(),
 	buildRecallKnowledgeTool: vi.fn((_args: unknown) => ({ tool: 'recallKnowledge' })),
 	runLlmText: vi.fn(),
@@ -27,6 +31,17 @@ vi.mock('../../agent/steps/draft/recall', () => ({
 	buildRecallKnowledgeTool: mocks.buildRecallKnowledgeTool,
 }));
 vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModel: vi.fn(async () => 'mock-model') }));
+vi.mock('../../inbox/clarificationLocalize', async () => {
+	const actual = await vi.importActual<typeof Localize>('../../inbox/clarificationLocalize');
+	const { AdmissionRefusedError } = await import('../../lib/llm/admissionPort');
+	return {
+		...actual,
+		localizeQuestions: vi.fn(async (...args: Parameters<typeof actual.localizeQuestions>) => {
+			if (mocks.localizeRefuses) throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+			return actual.localizeQuestions(...args);
+		}),
+	};
+});
 vi.mock('../../lib/llm/dispatch', () => ({ runLlmText: mocks.runLlmText }));
 vi.mock('../ai/voiceGuidance', () => ({
 	loadVoiceGuidance: vi.fn(async () => null),
@@ -34,6 +49,7 @@ vi.mock('../ai/voiceGuidance', () => ({
 }));
 
 import { draftClarificationReply } from '../ai/needsReplyDraft';
+import { localizeQuestions } from '../../inbox/clarificationLocalize';
 import type { Id } from '../../_generated/dataModel';
 
 const threadId = 'thread_1' as Id<'mailThreads'>;
@@ -42,6 +58,10 @@ function context(overrides: Record<string, unknown> = {}) {
 	return {
 		mailboxId: 'mailbox_1',
 		latestMessageId: 'msg_1',
+		answeredAt: 111,
+		isGapsAccepted: false,
+		questionIds: ['clarify_0'],
+		senderAddress: 'jonas@brightpath.example',
 		ownerAddress: 'ada@example.com',
 		contactId: 'contact_1',
 		transcript: 'Them: could you send us the September invoice?',
@@ -84,6 +104,7 @@ function makeCtx(opts: { context?: unknown; gateThrows?: boolean; plan?: unknown
 }
 
 beforeEach(() => {
+	mocks.localizeRefuses = false;
 	mocks.runSharedDraft.mockReset();
 	mocks.buildRecallKnowledgeTool.mockClear();
 	mocks.runLlmText.mockReset();
@@ -125,13 +146,96 @@ describe('draftClarificationReply', () => {
 		expect(persisted?.args).toEqual({
 			threadId,
 			expectedLatestMessageId: 'msg_1',
+			expectedAnsweredAt: 111,
 			draft: 'Hi, here is the September invoice, PO included.',
 		});
 	});
 
+	it('lands no draft with a gap of its own: the gap goes back to the card as a question', async () => {
+		mocks.runSharedDraft.mockResolvedValueOnce({
+			draftBody: 'Hi Jonas, the invoice total is [Bitte prüfen: Gesamtbetrag].',
+			draftQuality: undefined,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+
+		expect(mutations.some((m) => m.name.includes('persistClarificationDraft'))).toBe(false);
+		const asked = mutations.find((m) => m.name.includes('askAboutDraftGaps'));
+		// Worded in the reply's language: English is one of the translations.
+		const localizeCall = vi.mocked(localizeQuestions).mock.lastCall!;
+		expect(localizeCall[4]).toEqual({ includeCanonical: true });
+		expect(asked?.args).toMatchObject({
+			threadId,
+			expectedLatestMessageId: 'msg_1',
+			expectedAnsweredAt: 111,
+			questions: [
+				expect.objectContaining({
+					id: 'gap_0',
+					text: 'Bitte prüfen: Gesamtbetrag',
+					answerKind: 'text',
+					origin: { kind: 'email', senderDomain: 'brightpath.example' },
+				}),
+			],
+		});
+	});
+
+	it('asks about the gaps as written when the budget refuses to translate the questions', async () => {
+		mocks.localizeRefuses = true;
+		mocks.runSharedDraft.mockResolvedValueOnce({
+			draftBody: 'Hi Jonas, the total is [[invoice total]].',
+			draftQuality: undefined,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+
+		const asked = mutations.find((m) => m.name.includes('askAboutDraftGaps'));
+		expect(asked?.args['questions']).toEqual([
+			expect.objectContaining({ id: 'gap_0', text: 'invoice total' }),
+		]);
+	});
+
+	it('says there is no AI draft for a gap no question may ask for (a password)', async () => {
+		mocks.runSharedDraft.mockResolvedValueOnce({
+			draftBody: 'Hi Jonas, I will log in with [[your password]].',
+			draftQuality: undefined,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+
+		expect(mutations.some((m) => m.name.includes('persistClarificationDraft'))).toBe(false);
+		expect(mutations.some((m) => m.name.includes('askAboutDraftGaps'))).toBe(false);
+		expect(mutations.find((m) => m.name.includes('holdClarificationDraft'))?.args).toEqual({
+			threadId,
+			expectedLatestMessageId: 'msg_1',
+			expectedAnsweredAt: 111,
+		});
+	});
+
+	it('drafts every question as a gap after "Draft with what I have" with nothing answered', async () => {
+		const gap = '[[Which delivery date works for you]]';
+		const { ctx, mutations } = makeCtx({
+			context: context({ answers: [], questionGaps: [gap], isGapsAccepted: true }),
+		});
+		await draftClarificationReply(ctx, { threadId });
+
+		const persisted = mutations.find((m) => m.name.includes('persistClarificationDraft'));
+		expect(persisted?.args['draft']).toBe(
+			`Hi, here is the September invoice, PO included.\n\n${gap}`
+		);
+		expect(mutations.some((m) => m.name.includes('askAboutDraftGaps'))).toBe(false);
+	});
+
 	it('leaves a placeholder for a file question still open, even when the model drops it', async () => {
 		const gap = '[[Please provide the invoice PDFs]]';
-		const { ctx, mutations } = makeCtx({ context: context({ fileNotes: '', fileGaps: [gap] }) });
+		const { ctx, mutations } = makeCtx({
+			context: context({ fileNotes: '', fileGaps: [gap], isGapsAccepted: true }),
+		});
 		await draftClarificationReply(ctx, { threadId });
 
 		const params = mocks.runSharedDraft.mock.calls[0]![1];
@@ -145,7 +249,9 @@ describe('draftClarificationReply', () => {
 
 	it('leaves a placeholder for a question the owner skipped', async () => {
 		const gap = '[[Which delivery date works for you]]';
-		const { ctx, mutations } = makeCtx({ context: context({ questionGaps: [gap] }) });
+		const { ctx, mutations } = makeCtx({
+			context: context({ questionGaps: [gap], isGapsAccepted: true }),
+		});
 		await draftClarificationReply(ctx, { threadId });
 
 		const params = mocks.runSharedDraft.mock.calls[0]![1];
@@ -165,7 +271,9 @@ describe('draftClarificationReply', () => {
 			tokenUsage: undefined,
 			modelUsed: 'mock-model',
 		});
-		const { ctx, mutations } = makeCtx({ context: context({ fileNotes: '', fileGaps: [gap] }) });
+		const { ctx, mutations } = makeCtx({
+			context: context({ fileNotes: '', fileGaps: [gap], isGapsAccepted: true }),
+		});
 		await draftClarificationReply(ctx, { threadId });
 
 		const draft = mutations.find((m) => m.name.includes('persistClarificationDraft'))?.args[

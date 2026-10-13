@@ -7,6 +7,14 @@
  * gap placeholders a "draft with gaps" leaves behind.
  */
 
+/**
+ * The error a "Draft with AI" stream ends with when the draft would need a fact
+ * Owlat never asks for (a password, a code): there is no AI draft for that
+ * reply, and the web says so the way it does for a message the safety check
+ * held back.
+ */
+export const DRAFT_HELD_FOR_SECRET = 'draft_held_secret';
+
 /** Questions per round before drafting, and rounds per draft. */
 export const MAX_ASK_QUESTIONS = 3;
 export const MAX_ASK_ROUNDS = 2;

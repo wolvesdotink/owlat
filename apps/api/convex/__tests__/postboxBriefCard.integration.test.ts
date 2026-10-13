@@ -270,7 +270,8 @@ describe('mail.brief freshness policy', () => {
 		const warm = await t.query(api.mail.brief.getBriefCard, { mailboxId, localDay: LOCAL_DAY });
 		expect(warm?.isStale).toBe(false);
 		expect(warm?.isDismissed).toBe(false);
-		expect(warm?.card?.counts).toEqual({ newMail: 2, drafted: 1, questions: 1, autoFiled: 0 });
+		// The slot sits next to open questions, so it is not a draft ready.
+		expect(warm?.card?.counts).toEqual({ newMail: 2, drafted: 0, questions: 1, autoFiled: 0 });
 
 		// Same morning, nothing new: refresh must NOT regenerate.
 		const again = await t.mutation(api.mail.brief.refresh, {

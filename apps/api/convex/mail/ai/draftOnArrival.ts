@@ -13,6 +13,8 @@
  *   - AI disabled / no provider / any generation error  → no slot written, the
  *     plain needs-reply row still renders (today's behaviour).
  *   - The slot's presence NEVER auto-sends — it only pre-fills the composer.
+ *   - A draft with gaps is not stored: each gap becomes a question for the
+ *     owner, and the reply is written from the answers (mail/ai/gapQuestions.ts).
  *   - Prompt-injection in the assembled context throws inside the shared
  *     service; we swallow it here so the thread still shows for manual reply.
  */
@@ -24,14 +26,10 @@ import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
-import { buildConfirmedContext, runSharedDraft } from '../../agent/shared/draftService';
+import { runSharedDraft } from '../../agent/shared/draftService';
 import { loadThreadPlan, recordArrivalPlan } from './composeDraftPlan';
-import {
-	buildOpenFileNote,
-	buildOpenQuestionNote,
-	joinConfirmedBlocks,
-} from '../../inbox/clarificationAnswers';
-import { ensureGapPlaceholders } from './composeDraftPolicy';
+import { checkDraftGaps } from './gapQuestions';
+import { localizeReplyQueueQuestions } from './needsReplyRefine';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { rootRequest } from '../../lib/llm/requestMeter';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
@@ -78,18 +76,6 @@ export async function generateDraftOnArrival(
 		await loadVoiceGuidance(ctx, { mailboxId: loaded.mailboxId, requireAccess: false })
 	);
 
-	// Owner-confirmed clarification facts (trusted; rendered outside the
-	// untrusted tags by the shared service), the files the clarification card
-	// still waits for, which the draft must not claim to attach, and the
-	// questions still open, whose facts the draft must not guess.
-	const confirmedContext = joinConfirmedBlocks(
-		buildConfirmedContext(
-			loaded.clarificationQuestions ? { questions: loaded.clarificationQuestions } : undefined
-		),
-		buildOpenFileNote(loaded.fileGaps),
-		buildOpenQuestionNote(loaded.questionGaps)
-	);
-	const gaps = [...loaded.fileGaps, ...loaded.questionGaps];
 	// The thread's open items with their default stances (SPEC §6).
 	const plan = await loadThreadPlan(ctx, args.threadId);
 
@@ -102,7 +88,6 @@ export async function generateDraftOnArrival(
 			audience: `the mailbox owner (${loaded.ownerAddress}), answering the last message in the thread, which the other party sent`,
 			styleReference: "the owner's",
 			context: loaded.context,
-			confirmedContext: confirmedContext.length > 0 ? confirmedContext : undefined,
 			classification: {
 				// person / newsletter → the shared block's neutral vocabulary.
 				category: 'other',
@@ -123,9 +108,25 @@ export async function generateDraftOnArrival(
 			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
 
-		if (result.draftBody.trim().length === 0) return; // nothing usable
+		const draft = result.draftBody.trim();
+		if (draft.length === 0) return; // nothing usable
 
-		const draft = ensureGapPlaceholders(result.draftBody, gaps);
+		// A fact the draft could not fill: ask the owner instead of storing it.
+		// One no question may ask for (a password): no AI draft for this reply.
+		const gaps = checkDraftGaps(draft, { fromAddress: loaded.senderAddress, existing: [] });
+		if (gaps.kind === 'unaskable') return;
+		if (gaps.kind === 'ask') {
+			await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.holdForGapQuestions, {
+				threadId: args.threadId,
+				triggerMessageId: loaded.triggerMessageId,
+				questions: await localizeReplyQueueQuestions(
+					ctx,
+					gaps.questions,
+					rootRequest('postbox_thread', args.threadId)
+				),
+			});
+			return;
+		}
 		await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
 			threadId: args.threadId,
 			triggerMessageId: loaded.triggerMessageId,

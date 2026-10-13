@@ -12,11 +12,18 @@
  * The model may fetch missing facts through the same contact-scoped
  * `recallKnowledge` tool the inbound agent drafts with.
  *
- * Unlike the pipeline, the owner is watching: the service streams the draft
- * into an owner-private `aiDraftStreams` buffer the way Revise does
- * (mail/ai/reviseDraft.ts), and runs no self-check, since the owner reviews
+ * Unlike the pipeline, the owner is watching: the draft lands in an
+ * owner-private `aiDraftStreams` buffer the way Revise does
+ * (mail/ai/reviseDraft.ts), and no self-check runs, since the owner reviews
  * the draft in the composer. Nothing here sends; the injection scan of the
  * final text is advisory and flags the buffer.
+ *
+ * No draft with gaps the owner did not agree to. Only a draft written after
+ * "Draft with what I have" (or with asking turned off) streams in as it is
+ * written. Any other draft is written in full first; if it still has a
+ * `[[...]]` gap, it is never shown: each gap becomes a question and the
+ * session goes back to asking (mail/ai/gapQuestions.ts). Otherwise the
+ * finished text goes into the buffer at once.
  *
  * Tool-call markup the model types into its reply instead of calling the tool
  * (#1254) never reaches the editor: the buffer only ever holds the part of the
@@ -54,8 +61,11 @@ import {
 	type AskFileRef,
 	type AskQuestion,
 } from './composeDraftPolicy';
+import { checkDraftGaps } from './gapQuestions';
+import { localizeGapQuestions } from './composeDraftGap';
 import { admissionRefusalOf, budgetRefusalMessage } from '../../lib/llm/admissionPort';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
+import { DRAFT_HELD_FOR_SECRET } from '@owlat/shared/answerMode';
 
 /** How often partial text is written to the buffer (matches Revise). */
 const FLUSH_INTERVAL_MS = 120;
@@ -90,6 +100,15 @@ export interface AnswerDraftInput {
 	timeZone?: string | undefined;
 	/** The thread's open items with the owner's stances (SPEC §6). */
 	responsePlan?: readonly PlanPromptItem[] | undefined;
+	/**
+	 * The owner chose "Draft with what I have", or turned asking off: gaps may
+	 * stay, and the draft streams in as it is written.
+	 */
+	allowGaps: boolean;
+	/** Who questions about the draft's own gaps are attributed to. */
+	counterpartAddress?: string | undefined;
+	/** The owner's interface locale, for those questions. */
+	locale: string;
 }
 
 /** Settle the session as failed; the composer keeps what the person had. */
@@ -124,14 +143,39 @@ async function failDraft(
 const DRAFT_FAILED = 'The draft could not be written. Try again.';
 
 /**
- * Stream the draft into a fresh buffer on the session and settle the session
- * `ready` (or `error`). Never throws for a model failure.
+ * The questions about a held draft's gaps in the owner's language, or as
+ * written when that fails (a provider error, the budget): they are asked
+ * either way, never lost to a failed translation.
+ */
+async function localizedOrAsIs(
+	ctx: ActionCtx,
+	questions: AskQuestion[],
+	input: AnswerDraftInput
+): Promise<AskQuestion[]> {
+	try {
+		return await localizeGapQuestions(ctx, questions, input.locale);
+	} catch (error) {
+		logError(
+			'[composeDraft] localizing gap questions failed:',
+			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
+		);
+		return questions;
+	}
+}
+
+/**
+ * Write the draft into a fresh buffer on the session and settle the session
+ * `ready` (or `error`), or back to `asking` when the draft has gaps the owner
+ * did not agree to. Never throws for a model failure.
  */
 export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput): Promise<void> {
-	const streamId: Id<'aiDraftStreams'> = await ctx.runMutation(
-		internal.mail.ai.composeDraftStore.openSessionStream,
-		{ sessionId: input.sessionId }
-	);
+	let streamId: Id<'aiDraftStreams'> | null = null;
+	const openStream = async (): Promise<Id<'aiDraftStreams'>> =>
+		(streamId ??= await ctx.runMutation(internal.mail.ai.composeDraftStore.openSessionStream, {
+			sessionId: input.sessionId,
+		}));
+	// A draft that may keep its gaps streams in; any other is checked first.
+	if (input.allowGaps) await openStream();
 
 	const placeholders = openGapPlaceholders(input.questions, input.fileLabel);
 	const confirmedContext = buildAnswerConfirmedContext({
@@ -145,9 +189,9 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 	});
 	const stream = createThrottledStreamFlusher({
 		intervalMs: FLUSH_INTERVAL_MS,
-		patch: (text) =>
+		patch: async (text) =>
 			ctx.runMutation(internal.mail.draftStreamStore.appendDraftStream, {
-				streamId,
+				streamId: await openStream(),
 				text: visibleDraftStreamText(text),
 			}),
 	});
@@ -181,21 +225,50 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 			...(input.responsePlan
 				? { responsePlan: { items: input.responsePlan, attachments: [] } }
 				: {}),
-			stream: {
-				signal: stream.signal,
-				onText: (full) => stream.onText(full),
-				onToolCall: () => stream.flush(true),
-				onRetry: async () => {
-					await stream.onText('');
-					await stream.flush(true);
-				},
-				isStopRequested: () => stream.stopRequested,
-			},
+			...(input.allowGaps
+				? {
+						stream: {
+							signal: stream.signal,
+							onText: (full: string) => stream.onText(full),
+							onToolCall: () => stream.flush(true),
+							onRetry: async () => {
+								await stream.onText('');
+								await stream.flush(true);
+							},
+							isStopRequested: () => stream.stopRequested,
+						},
+					}
+				: {}),
 		});
 		const text = ensureGapPlaceholders(draft.draftBody.trim(), placeholders);
+		if (!input.allowGaps) {
+			const gaps = checkDraftGaps(text, {
+				fromAddress: input.counterpartAddress ?? '',
+				existing: input.questions,
+			});
+			// A gap only a question Owlat never asks could fill: no AI draft.
+			if (gaps.kind === 'unaskable') {
+				await failDraft(ctx, input, await openStream(), {
+					text: '',
+					errorMessage: DRAFT_HELD_FOR_SECRET,
+					sessionMessage:
+						'This reply needs a detail Owlat never asks for, such as a password, so it was not drafted.',
+				});
+				return;
+			}
+			if (gaps.kind === 'ask') {
+				await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
+					sessionId: input.sessionId,
+					status: 'asking',
+					expectStatus: 'drafting',
+					questions: [...input.questions, ...(await localizedOrAsIs(ctx, gaps.questions, input))],
+				});
+				return;
+			}
+		}
 		const outbound = detectInjection(text);
 		await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
-			streamId,
+			streamId: await openStream(),
 			text,
 			status: 'complete',
 			injectionFlagged: outbound.detected && outbound.confidence >= INJECTION_CONFIDENCE_THRESHOLD,
@@ -210,7 +283,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 		// An assembled context that reads as an injection attempt is not drafted
 		// automatically (the service's defense-in-depth re-scan).
 		if (error instanceof DraftInjectionError) {
-			await failDraft(ctx, input, streamId, {
+			await failDraft(ctx, input, await openStream(), {
 				text: '',
 				errorMessage: 'injection_suspected',
 				sessionMessage:
@@ -221,7 +294,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 		// Markup twice over, or cut off at its output ceiling: not a draft.
 		if (error instanceof DraftUnusableError) {
 			logError('[composeDraft] draft unusable:', error.reason);
-			await failDraft(ctx, input, streamId, {
+			await failDraft(ctx, input, await openStream(), {
 				text: '',
 				errorMessage: 'draft_failed',
 				sessionMessage: DRAFT_FAILED,
@@ -234,7 +307,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 		);
 		// D1: a budget refusal says so, with the stable code the web reads.
 		const refusal = admissionRefusalOf(error);
-		await failDraft(ctx, input, streamId, {
+		await failDraft(ctx, input, await openStream(), {
 			text: visibleDraftStreamText(stream.text).trim(),
 			errorMessage: refusal ? AI_BUDGET_ERROR_CODE : 'draft_failed',
 			sessionMessage: refusal ? budgetRefusalMessage(refusal.reason) : DRAFT_FAILED,

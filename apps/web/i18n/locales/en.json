@@ -4504,7 +4504,8 @@
 			},
 			"postboxClarificationCard": {
 				"answerLater": "I'll answer later",
-				"drafting": "Drafting your reply…"
+				"drafting": "Drafting your reply…",
+				"held": "No AI draft for this reply: it needs a detail Owlat never asks for, such as a password. You can still write it yourself."
 			},
 			"postboxCoachPanel": {
 				"clean": "Looks solid — no issues found.",
@@ -7129,8 +7130,7 @@
 			},
 			"askCard": {
 				"title": "One thing before I write this | {count} things before I write this",
-				"round": "round {round} of {total}",
-				"subline": "Answer what you can. Anything you skip becomes a highlighted gap in the draft.",
+				"subline": "No draft yet. Answer first, or draft now and anything still open stays in as a highlighted gap.",
 				"placeholder": {
 					"choice": "Something else…",
 					"text": "Type your answer…",
@@ -7139,15 +7139,12 @@
 				},
 				"pickDate": "Pick a date",
 				"answerAndDraft": "Answer and draft",
-				"skip": "Skip, draft with gaps",
+				"skip": "Draft with what I have",
 				"operation": "Answer the questions",
-				"waitingForFiles": "Draft ready. Waiting for your files",
-				"waitingForFilesSubline": "The reply is written. Add the files they asked for and it is updated to go out with them.",
-				"attachAndUpdate": "Attach and update draft",
-				"draftGaps": "The draft needs one more detail | The draft needs {count} more details",
-				"draftGapsSubline": "The reply below is written. What you answer here goes into it; anything left open stays marked.",
-				"updateDraft": "Update the draft",
-				"budgetRefused": "The AI spend budget is used up for now, so the draft was not written. Your answers stay here: try again later, or write the reply yourself."
+				"budgetRefused": "The AI spend budget is used up for now, so the draft was not written. Your answers stay here: try again later, or write the reply yourself.",
+				"sublineAgent": "No draft yet. The agent writes it once everything here is answered.",
+				"allAnswered": "Everything is answered",
+				"draftNow": "Write the draft"
 			},
 			"fileAsk": {
 				"dropHere": "Drop the file here or",

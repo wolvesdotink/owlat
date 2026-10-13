@@ -235,6 +235,20 @@ describe('streamReplyOptions', () => {
 		});
 	});
 
+	it('drops an option the deadline cut off inside a gap', async () => {
+		mocks.runLlmStream.mockResolvedValueOnce({
+			text: '1. Yes, Tuesday works.\n2. The total is [[invoice total\n3. Fine by [TBD: da',
+			tokenUsage: undefined,
+			modelUsed: 'fast-model',
+			finishReason: undefined,
+			aborted: true,
+		});
+		const { ctx } = makeCtx();
+		await expect(streamReplyOptions(ctx, { system: 's', prompt: 'p' })).resolves.toMatchObject({
+			replies: ['Yes, Tuesday works.'],
+		});
+	});
+
 	it('keeps partial options when the deadline cuts the stream, and fails when nothing arrived', async () => {
 		mocks.runLlmStream.mockResolvedValueOnce({
 			text: '1. Yes.\n2. Maybe lat',

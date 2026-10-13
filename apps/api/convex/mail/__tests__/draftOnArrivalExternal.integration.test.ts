@@ -588,7 +588,7 @@ describe('a classify run killed after its baseline', () => {
 });
 
 describe('draft-on-arrival with files the card still waits for', () => {
-	it('never claims the files are attached, and leaves a placeholder for them', async () => {
+	it('writes no draft until the owner gives the files (or drafts with what they have)', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await seedInstanceFlags(t, {
@@ -621,23 +621,12 @@ describe('draft-on-arrival with files the card still waits for', () => {
 				},
 			});
 		});
-		// The model ignores the instruction and writes the placeholder nowhere.
-		llm.runLlmText.mockResolvedValueOnce({
-			text: 'Hi Sam, here are your invoices.',
-			tokenUsage: undefined,
-			modelUsed: 'mock-model',
-		});
 
 		await t.action(internal.mail.ai.draftOnArrival.generateForThread, { threadId });
 
-		const placeholder = '[[Please provide the invoice PDFs for the four bookings]]';
-		const prompt = JSON.stringify(llm.runLlmText.mock.calls[0]);
-		expect(prompt).toContain('not attached yet');
-		expect(prompt).toContain(placeholder);
+		expect(llm.runLlmText).not.toHaveBeenCalled();
 		await t.run(async (ctx) => {
-			const slot = (await ctx.db.get(threadId))!.needsReply?.draftSlot;
-			expect(slot?.draft).toBe(`Hi Sam, here are your invoices.\n\n${placeholder}`);
-			expect(slot?.options).toBeUndefined();
+			expect((await ctx.db.get(threadId))!.needsReply?.draftSlot).toBeUndefined();
 		});
 	});
 });

@@ -4504,7 +4504,8 @@
 			},
 			"postboxClarificationCard": {
 				"answerLater": "Ich antworte später",
-				"drafting": "Deine Antwort wird entworfen…"
+				"drafting": "Deine Antwort wird entworfen…",
+				"held": "Kein KI-Entwurf für diese Antwort: Sie braucht eine Angabe, nach der Owlat nie fragt, etwa ein Passwort. Du kannst sie trotzdem selbst schreiben."
 			},
 			"postboxCoachPanel": {
 				"clean": "Sieht gut aus — keine Auffälligkeiten gefunden.",
@@ -7129,8 +7130,7 @@
 			},
 			"askCard": {
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
-				"round": "Runde {round} von {total}",
-				"subline": "Beantworte, was du kannst. Was du auslässt, wird im Entwurf als markierte Lücke eingefügt.",
+				"subline": "Noch kein Entwurf. Beantworte zuerst, was gefragt ist, oder entwirf jetzt: Was offen ist, bleibt als markierte Lücke drin.",
 				"placeholder": {
 					"choice": "Etwas anderes …",
 					"text": "Gib deine Antwort ein …",
@@ -7139,15 +7139,12 @@
 				},
 				"pickDate": "Datum wählen",
 				"answerAndDraft": "Antworten und entwerfen",
-				"skip": "Überspringen, mit Lücken entwerfen",
+				"skip": "Mit vorhandenen Infos entwerfen",
 				"operation": "Fragen beantworten",
-				"waitingForFiles": "Entwurf fertig. Wartet auf deine Dateien",
-				"waitingForFilesSubline": "Die Antwort ist geschrieben. Füge die angefragten Dateien hinzu, dann wird sie mit ihnen als Anhang angepasst.",
-				"attachAndUpdate": "Anhängen und Entwurf anpassen",
-				"draftGaps": "Dem Entwurf fehlt noch eine Angabe | Dem Entwurf fehlen noch {count} Angaben",
-				"draftGapsSubline": "Die Antwort unten ist schon geschrieben. Was du hier beantwortest, kommt in den Entwurf; was offen bleibt, bleibt markiert.",
-				"updateDraft": "Entwurf ergänzen",
-				"budgetRefused": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb wurde der Entwurf nicht geschrieben. Deine Antworten bleiben hier: Versuch es später erneut oder schreib die Antwort selbst."
+				"budgetRefused": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb wurde der Entwurf nicht geschrieben. Deine Antworten bleiben hier: Versuch es später erneut oder schreib die Antwort selbst.",
+				"sublineAgent": "Noch kein Entwurf. Der Agent schreibt ihn, sobald alles hier beantwortet ist.",
+				"allAnswered": "Alles beantwortet",
+				"draftNow": "Entwurf schreiben"
 			},
 			"fileAsk": {
 				"dropHere": "Lege die Datei hier ab oder",

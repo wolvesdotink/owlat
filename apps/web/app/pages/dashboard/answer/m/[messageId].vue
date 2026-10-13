@@ -432,9 +432,10 @@ onBeforeUnmount(() => {
 					@drop="assist.onComposerDrop"
 				>
 					<template #above-editor="{ composer }">
-						<!-- A background clarification of the Answer queue item comes first. -->
+						<!-- The Reply Queue's open questions come first: no reply is prepared until they are answered. -->
 						<AnswerQueueMailAsk
 							:message-id="messageId"
+							:thread-id="message?.threadId"
 							:mailbox-id="seed.mailboxId"
 							:resolve-thread-file="assist.resolveThreadFile"
 							:written="hasOwnWriting(composer.draftText.value, composer.aiDraft.value)"
@@ -452,7 +453,6 @@ onBeforeUnmount(() => {
 							<AskCard
 								v-if="ask.phase.value === 'asking' && ask.session.value"
 								:questions="ask.session.value.questions"
-								:round="ask.session.value.round"
 								:submitting="ask.busy.value"
 								:budget-refused="ask.isBudgetRefused.value"
 								:mailbox-id="seed.mailboxId"

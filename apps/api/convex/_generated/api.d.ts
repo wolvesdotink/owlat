@@ -32,6 +32,7 @@ import type * as lib_llm_taskLimits from '../lib/llm/taskLimits.js';
 import type * as lib_llm_truncation from '../lib/llm/truncation.js';
 import type * as lib_rowCounters from '../lib/rowCounters.js';
 import type * as lib_semanticFileText from '../lib/semanticFileText.js';
+import type * as mail_ai_gapQuestions from '../mail/ai/gapQuestions.js';
 import type * as mail_interpret___eval___liveModel from '../mail/interpret/__eval__/liveModel.js';
 import type * as mail_interpret_activity from '../mail/interpret/activity.js';
 import type * as mail_interpret_backfill from '../mail/interpret/backfill.js';
@@ -112,6 +113,7 @@ import type * as mail_interpret_transitionSources from '../mail/interpret/transi
 import type * as mail_interpret_verify from '../mail/interpret/verify.js';
 import type * as mail_interpret_verifyRoute from '../mail/interpret/verifyRoute.js';
 import type * as mail_messageCounters from '../mail/messageCounters.js';
+import type * as mail_needsReplySlot from '../mail/needsReplySlot.js';
 import type * as maintenance_counterBackfill from '../maintenance/counterBackfill.js';
 import type * as migrations_0048_backfill_counters from '../migrations/0048_backfill_counters.js';
 import type * as migrations_0049_move_message_bodies from '../migrations/0049_move_message_bodies.js';
@@ -1784,6 +1786,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/llm/truncation': typeof lib_llm_truncation;
 	'lib/rowCounters': typeof lib_rowCounters;
 	'lib/semanticFileText': typeof lib_semanticFileText;
+	'mail/ai/gapQuestions': typeof mail_ai_gapQuestions;
 	'mail/interpret/__eval__/liveModel': typeof mail_interpret___eval___liveModel;
 	'mail/interpret/activity': typeof mail_interpret_activity;
 	'mail/interpret/backfill': typeof mail_interpret_backfill;
@@ -1864,6 +1867,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/verify': typeof mail_interpret_verify;
 	'mail/interpret/verifyRoute': typeof mail_interpret_verifyRoute;
 	'mail/messageCounters': typeof mail_messageCounters;
+	'mail/needsReplySlot': typeof mail_needsReplySlot;
 	'maintenance/counterBackfill': typeof maintenance_counterBackfill;
 	'migrations/0048_backfill_counters': typeof migrations_0048_backfill_counters;
 	'migrations/0049_move_message_bodies': typeof migrations_0049_move_message_bodies;

@@ -178,3 +178,29 @@ async function openSlotsToAsk(
 		return [];
 	}
 }
+
+/**
+ * The questions about a held draft's gaps in every interface locale
+ * (`translations`), metered under the clarification's localize label.
+ * Fail-soft, a budget refusal included: the questions as written, so they are
+ * never lost to a translation.
+ */
+export async function localizeReplyQueueQuestions<Q extends ClarificationFlag['questions'][number]>(
+	ctx: SpendCtx,
+	questions: Q[],
+	root: LlmRootContext | undefined
+): Promise<Q[]> {
+	if (questions.length === 0) return questions;
+	try {
+		const model = await resolveLanguageModel(ctx, 'mail.clarify');
+		const localized = await meterLlmCall(
+			ctx,
+			{ feature: 'postbox_clarify_localize', ...(root ? { root } : {}) },
+			// Worded in the reply's language: English is a translation too.
+			(meter) => localizeQuestions(model, questions, undefined, meter, { includeCanonical: true })
+		);
+		return localized.questions;
+	} catch {
+		return questions;
+	}
+}

@@ -14,17 +14,15 @@
  *  - date: the suggested days as chips plus a date picker;
  *  - file: `FileAsk` (upload, a found candidate, Files, or "It isn't ready yet").
  *
- * "Answer and draft" sends what was answered; "Skip, draft with gaps" is always
- * there and sends the same, telling the server to stop asking: whatever is left
- * becomes a highlighted gap in the draft. A remembered answer left as it was
- * is not sent again (the server already holds it as remembered).
+ * No draft is written while the card is up: the reply is written once every
+ * question has an answer ("Answer and draft", enabled only then), or when the
+ * person chooses "Draft with what I have", which sends what was answered and
+ * lets whatever is left become a highlighted gap in the draft. A remembered
+ * answer left as it was is not sent again (the server already holds it as
+ * remembered), and a question already answered is not shown again when the
+ * card comes back with more (a gap the draft found).
  *
- * A Reply Queue item can arrive with its draft already written and only the
- * files it promises still missing (`waitingForFiles`): the card then says so
- * instead of asking before it writes, and its file questions take several
- * files (`multipleFiles`). When other facts are missing from a written draft
- * (`draftWritten`), the card says the answers go into that draft rather than
- * promising to write one.
+ * The Reply Queue's file questions take several files (`multipleFiles`).
  *
  * The card is the one thing the person has to do before the reply can go,
  * so it reads as a card, not as another strip of the composer. Where the
@@ -32,7 +30,6 @@
  * (`ClarificationTrustLine`).
  */
 import type { Id } from '@owlat/api/dataModel';
-import { MAX_ASK_ROUNDS } from '@owlat/shared/answerMode';
 import ClarificationQuestions from '~/components/agent-tasks/ClarificationQuestions.vue';
 import ClarificationTrustLine from '~/components/agent-tasks/ClarificationTrustLine.vue';
 import TaskOptions from '~/components/agent-tasks/TaskOptions.vue';
@@ -53,41 +50,27 @@ export type AskCardAnswer = AskAnswer & { files?: FileAnswerRef[] };
 const props = withDefaults(
 	defineProps<{
 		questions: readonly AskQuestion[];
-		/** The ask round; omitted for a background clarification, which has one. */
-		round?: number;
 		submitting?: boolean;
 		mailboxId?: Id<'mailboxes'>;
 		resolveThreadFile?: (file: ThreadFile) => Promise<FileAnswerRef | null>;
 		/**
-		 * The second button's words. "Skip, draft with gaps" for Draft with AI; a
-		 * background clarification (the queue, the team agent) puts the card away
-		 * instead ("Answer later").
+		 * The team agent's questions. Its draft cannot be written with gaps yet, so
+		 * the second button puts the card away ("I'll answer later") instead of
+		 * drafting with what the person has, and the subline says so.
 		 */
-		skipLabel?: string;
-		/**
-		 * Every question must be answered before "Answer and draft". The team
-		 * agent's questions (its resumed draft can go out on its own, so a
-		 * question left open would reach it as a guess); see ClarificationQuestions.
-		 */
-		requireAll?: boolean;
+		teamAgent?: boolean;
 		/** Whether an uploaded file answer is kept in Files (see FileAsk). */
 		copyPolicy?: FileCopyPolicy;
 		/** File questions take several files (the Reply Queue's answer does). */
 		multipleFiles?: boolean;
-		/** The draft is written; only files are still open. Changes the header. */
-		waitingForFiles?: boolean;
-		/** The draft is written and still has gaps these questions fill. */
-		draftWritten?: boolean;
 		/** The AI budget refused the last answer; the answers stay to try again (U5). */
 		budgetRefused?: boolean;
 	}>(),
 	{
-		requireAll: false,
-		round: undefined,
 		submitting: false,
 		mailboxId: undefined,
 		resolveThreadFile: undefined,
-		skipLabel: undefined,
+		teamAgent: false,
 	}
 );
 
@@ -102,8 +85,19 @@ type Kind = NonNullable<AskQuestion['answerKind']>;
 function kindOf(question: AskQuestion): Kind {
 	return question.answerKind ?? ((question.options?.length ?? 0) > 0 ? 'choice' : 'text');
 }
+/**
+ * The questions still to answer: a remembered answer is shown to confirm, one
+ * the person gave in an earlier round is not asked again (a blank one is).
+ */
+const shown = computed(() =>
+	props.questions.filter((q) => {
+		const answer = q.answer;
+		if (!answer || answer.source === 'memory') return true;
+		return !answer.value.trim() && !answer.file && !answer.files?.length;
+	})
+);
 /** The list hands its slot the shared question shape; this card needs its own. */
-const byId = computed(() => new Map(props.questions.map((q) => [q.id, q])));
+const byId = computed(() => new Map(shown.value.map((q) => [q.id, q])));
 const askOf = (id: string): AskQuestion => byId.value.get(id)!;
 
 const listRef = ref<InstanceType<typeof ClarificationQuestions> | null>(null);
@@ -149,7 +143,7 @@ function onSubmit(answers: ClarificationAnswer[]) {
 
 function skip() {
 	if (props.submitting) return;
-	emit('skip', toAskAnswers(collectClarificationAnswers(props.questions, values, locale.value)));
+	emit('skip', toAskAnswers(collectClarificationAnswers(shown.value, values, locale.value)));
 }
 
 // Keys 1 to 9: a chip of the first open question that has chips. Not while
@@ -162,9 +156,7 @@ function onKeydown(event: KeyboardEvent) {
 	if (!/^[1-9]$/.test(event.key) || props.submitting) return;
 	if (isEditableTarget(event.target) || isDialogOpen()) return;
 	if (rootEl.value?.closest('[data-sheet-hidden]')) return;
-	const withChips = props.questions.filter(
-		(q) => kindOf(q) !== 'file' && (q.options?.length ?? 0) > 0
-	);
+	const withChips = shown.value.filter((q) => kindOf(q) !== 'file' && (q.options?.length ?? 0) > 0);
 	// A remembered answer counts as answered until the person clears it.
 	const question =
 		withChips.find((q) => !(values[q.id] ?? q.answer?.value ?? '').trim()) ?? withChips[0];
@@ -189,7 +181,7 @@ const FOCUSABLE =
  * raises the phone's keyboard. False when there is nothing to focus.
  */
 function focusFirstOpen(): boolean {
-	const open = props.questions.findIndex((q) => !(values[q.id] ?? q.answer?.value ?? '').trim());
+	const open = shown.value.findIndex((q) => !(values[q.id] ?? q.answer?.value ?? '').trim());
 	const rows = rootEl.value?.querySelectorAll<HTMLElement>('[data-testid="ask-question"]');
 	const target =
 		open >= 0
@@ -204,15 +196,8 @@ defineExpose({ focusFirstOpen });
 const titleId = useId();
 
 const title = computed(() => {
-	const count = props.questions.length;
-	if (props.waitingForFiles) return t('components.answer.askCard.waitingForFiles');
-	if (props.draftWritten) return t('components.answer.askCard.draftGaps', { count }, count);
+	const count = shown.value.length;
 	return t('components.answer.askCard.title', { count }, count);
-});
-const subline = computed(() => {
-	if (props.waitingForFiles) return t('components.answer.askCard.waitingForFilesSubline');
-	if (props.draftWritten) return t('components.answer.askCard.draftGapsSubline');
-	return t('components.answer.askCard.subline');
 });
 </script>
 
@@ -224,10 +209,37 @@ const subline = computed(() => {
 		:aria-busy="submitting"
 		data-testid="ask-card"
 	>
+		<!-- Every question answered (a draft that failed before it was written):
+		     only the retry, which accepts no gaps. -->
+		<template v-if="shown.length === 0">
+			<div class="flex flex-wrap items-baseline gap-x-2">
+				<Icon name="lucide:sparkles" class="size-3.5 self-center text-brand" aria-hidden="true" />
+				<h2 :id="titleId" class="text-sm font-semibold text-text-primary">
+					{{ t('components.answer.askCard.allAnswered') }}
+				</h2>
+			</div>
+			<UiButton
+				type="button"
+				size="sm"
+				class="mt-3"
+				:disabled="submitting"
+				data-testid="ask-submit"
+				@click="emit('answer', [])"
+			>
+				<Icon
+					v-if="submitting"
+					name="lucide:loader-2"
+					class="mr-1 size-3.5 animate-spin motion-reduce:animate-none"
+					aria-hidden="true"
+				/>
+				{{ t('components.answer.askCard.draftNow') }}
+			</UiButton>
+		</template>
 		<ClarificationQuestions
+			v-else
 			ref="listRef"
-			:questions="questions"
-			:require-all="requireAll"
+			:questions="shown"
+			require-all
 			:submitting="submitting"
 			test-id-prefix="ask"
 			@submit="onSubmit"
@@ -238,15 +250,14 @@ const subline = computed(() => {
 					<h2 :id="titleId" class="text-sm font-semibold text-text-primary">
 						{{ title }}
 					</h2>
-					<span
-						v-if="round !== undefined"
-						class="text-xs text-text-tertiary"
-						data-testid="ask-round"
-					>
-						{{ t('components.answer.askCard.round', { round, total: MAX_ASK_ROUNDS }) }}
-					</span>
 				</div>
-				<p class="mt-0.5 text-xs text-text-secondary">{{ subline }}</p>
+				<p class="mt-0.5 text-xs text-text-secondary" data-testid="ask-subline">
+					{{
+						teamAgent
+							? t('components.answer.askCard.sublineAgent')
+							: t('components.answer.askCard.subline')
+					}}
+				</p>
 			</template>
 
 			<template #answer="{ question, copy, remembered, value, setValue }">
@@ -305,13 +316,7 @@ const subline = computed(() => {
 							class="mr-1 size-3.5 animate-spin motion-reduce:animate-none"
 							aria-hidden="true"
 						/>
-						{{
-							waitingForFiles
-								? t('components.answer.askCard.attachAndUpdate')
-								: draftWritten
-									? t('components.answer.askCard.updateDraft')
-									: t('components.answer.askCard.answerAndDraft')
-						}}
+						{{ t('components.answer.askCard.answerAndDraft') }}
 					</UiButton>
 					<UiButton
 						type="button"
@@ -321,20 +326,24 @@ const subline = computed(() => {
 						data-testid="ask-skip"
 						@click="skip"
 					>
-						{{ skipLabel ?? t('components.answer.askCard.skip') }}
+						{{
+							teamAgent
+								? t('components.postbox.postboxClarificationCard.answerLater')
+								: t('components.answer.askCard.skip')
+						}}
 					</UiButton>
 				</div>
-				<p
-					v-if="budgetRefused"
-					class="mt-3 flex items-start gap-1.5 text-xs text-warning"
-					role="status"
-					data-testid="ask-budget"
-				>
-					<Icon name="lucide:wallet" class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-					{{ t('components.answer.askCard.budgetRefused') }}
-				</p>
-				<ClarificationTrustLine class="mt-3" :questions="questions" test-id="ask-trust" />
+				<ClarificationTrustLine class="mt-3" :questions="shown" test-id="ask-trust" />
 			</template>
 		</ClarificationQuestions>
+		<p
+			v-if="budgetRefused"
+			class="mt-3 flex items-start gap-1.5 text-xs text-warning"
+			role="status"
+			data-testid="ask-budget"
+		>
+			<Icon name="lucide:wallet" class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+			{{ t('components.answer.askCard.budgetRefused') }}
+		</p>
 	</section>
 </template>

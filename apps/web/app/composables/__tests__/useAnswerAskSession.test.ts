@@ -290,6 +290,20 @@ describe('useAnswerAskSession', () => {
 		expect(api.phase.value).toBe('error');
 	});
 
+	it('reads a draft held for a fact Owlat never asks for as held, also once settled', () => {
+		data['getSession']!.value = session({ status: 'drafting', streamId: 'ds1' });
+		data['getDraftStream']!.value = {
+			_id: 'ds1',
+			status: 'error',
+			text: '',
+			errorMessage: 'draft_held_secret',
+		};
+		const { api } = host(composerMock());
+		expect(api.phase.value).toBe('held');
+		data['getSession']!.value = session({ status: 'error', streamId: 'ds1' });
+		expect(api.phase.value).toBe('held');
+	});
+
 	it('keeps the budget state once the server settles the session as error, and on a reload', async () => {
 		const refused = {
 			_id: 'ds1',

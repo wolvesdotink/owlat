@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 /**
- * The Reply Queue's clarification of an Answer queue item, above the editor:
+ * The Reply Queue's clarification of a thread, above the editor:
  *  - it shows as the ask card while it asks, answered through the Reply
  *    Queue's mutation (a kept remembered answer goes back as `memory`);
- *  - "Answer later" puts it away;
+ *  - "Draft with what I have" sends what was answered, with gaps allowed;
+ *  - file questions ask before any draft is written, like every other;
+ *  - a reply opened outside the queue reads the thread's own questions;
  *  - the starter reply that lands while the page is open goes to the editor,
  *    once; a reply drafted before the page opened is left to the prepared draft.
  */
@@ -25,7 +27,7 @@ vi.mock('~/composables/useAnswerFileUpload', () => ({
 }));
 
 const clarification = ref<Record<string, unknown>>({});
-const hasDraftSlot = ref(false);
+const inQueue = ref(true);
 const current = computed(() => ({
 	id: 'mail:thr_1',
 	source: 'mail',
@@ -33,13 +35,14 @@ const current = computed(() => ({
 		kind: 'needs_reply',
 		threadId: 'thr_1',
 		messageId: 'msg_1',
-		hasDraftSlot: hasDraftSlot.value,
 		clarification: clarification.value,
 	},
 }));
 vi.mock('~/composables/useAnswerQueueSession', () => ({
-	useAnswerQueueSession: () => ({ isCurrentRoute: ref(true), flow: { current } }),
+	useAnswerQueueSession: () => ({ isCurrentRoute: inQueue, flow: { current } }),
 }));
+/** The thread's own read, for a reply opened outside the queue. */
+const preparedArgs = vi.fn();
 
 const run = vi.fn(async () => ({ ok: true }));
 beforeAll(() => {
@@ -47,12 +50,20 @@ beforeAll(() => {
 		useI18n: i18nStubs.useI18n,
 		useToast: () => ({ showToast: vi.fn() }),
 		useBackendOperation: () => ({ run, isLoading: ref(false) }),
+		useConvexQuery: (_query: unknown, args: () => unknown) => ({
+			data: computed(() => {
+				const value = args();
+				preparedArgs(value);
+				return value === 'skip' ? undefined : { clarification: clarification.value };
+			}),
+		}),
 	});
 });
 enableAutoUnmount(afterEach);
 beforeEach(() => {
 	run.mockClear();
-	hasDraftSlot.value = false;
+	preparedArgs.mockClear();
+	inQueue.value = true;
 	clarification.value = {
 		isNeeded: true,
 		askedAt: 1,
@@ -103,11 +114,33 @@ describe('AnswerQueueMailAsk', () => {
 		});
 	});
 
-	it('"Answer later" puts it away', async () => {
+	it('says no draft is written yet, and holds "Answer and draft" until all are answered', () => {
 		const w = mountAsk();
+		expect(w.get('[data-testid="ask-subline"]').text()).toMatch(/^No draft yet\./);
+		expect(w.get('[data-testid="ask-submit"]').attributes('disabled')).toBeDefined();
+	});
+
+	it('"Draft with what I have" sends what was answered, with gaps allowed', async () => {
+		const w = mountAsk();
+		expect(w.get('[data-testid="ask-skip"]').text()).toBe('Draft with what I have');
 		await w.get('[data-testid="ask-skip"]').trigger('click');
-		expect(w.find('[data-testid="answer-queue-ask"]').exists()).toBe(false);
-		expect(w.emitted('visible')?.at(-1)).toEqual([false]);
+		await flushPromises();
+		expect(run).toHaveBeenCalledWith({
+			threadId: 'thr_1',
+			answers: [{ questionId: 'q1', value: 'Yes', source: 'memory' }],
+			withGaps: true,
+		});
+	});
+
+	it("asks the thread's own questions on a reply opened outside the queue", async () => {
+		inQueue.value = false;
+		const w = mountAsk({ threadId: 'thr_1' });
+		expect(preparedArgs).toHaveBeenCalledWith({ threadId: 'thr_1' });
+		expect(w.find('[data-testid="ask-card"]').exists()).toBe(true);
+		await w.findAll('[data-testid="ask-input"]').at(-1)!.setValue('Thanks!');
+		await w.get('[data-testid="ask-submit"]').trigger('click');
+		await flushPromises();
+		expect(run).toHaveBeenCalledWith(expect.objectContaining({ threadId: 'thr_1' }));
 	});
 
 	it('hands the starter reply to the editor when it lands, once', async () => {
@@ -136,6 +169,15 @@ describe('AnswerQueueMailAsk', () => {
 		expect(w.find('[data-testid="answer-queue-ask"]').exists()).toBe(false);
 	});
 
+	it('says there is no AI draft when the reply needs a fact Owlat never asks for', async () => {
+		clarification.value = { ...clarification.value, answeredAt: 2, isDraftHeld: true };
+		const w = mountAsk();
+		expect(w.get('[data-testid="answer-queue-ask-held"]').text()).toContain(
+			'No AI draft for this reply'
+		);
+		expect(w.find('[data-testid="answer-queue-ask-drafting"]').exists()).toBe(false);
+	});
+
 	it('leaves a reply drafted before the page opened to the prepared draft', async () => {
 		clarification.value = { ...clarification.value, answeredAt: 2, draft: 'Earlier' };
 		const w = mountAsk();
@@ -144,58 +186,46 @@ describe('AnswerQueueMailAsk', () => {
 		expect(w.find('[data-testid="answer-queue-ask"]').exists()).toBe(false);
 	});
 
-	// Issue #1131: the arrival draft is written, only the invoices are missing.
-	describe('a draft waiting for files', () => {
-		beforeEach(() => {
-			clarification.value = {
-				isNeeded: true,
-				askedAt: 1,
-				questions: [
-					{
-						id: 'clarify_0',
-						slotType: 'attachment',
-						answerKind: 'file',
-						text: 'Please provide the invoice PDFs for the four bookings',
-						origin: { kind: 'email', senderDomain: 'example.org' },
-						fileCandidates: [
-							{
-								source: 'mailAttachment',
-								id: 'att_1',
-								filename: 'invoice-1.pdf',
-								mimeType: 'application/pdf',
-								size: 1000,
-								score: 0.7,
-							},
-						],
-					},
-				],
-			};
-		});
-
-		it('says the draft is ready, and sends the files the person gave', async () => {
-			hasDraftSlot.value = true;
-			const w = mountAsk();
-			expect(w.text()).toContain('Draft ready. Waiting for your files');
-			await w.get('[data-testid="file-ask-candidate"]').trigger('click');
-			await w.get('[data-testid="ask-submit"]').trigger('click');
-			await flushPromises();
-			expect(run).toHaveBeenCalledWith({
-				threadId: 'thr_1',
-				answers: [
-					{
-						questionId: 'clarify_0',
-						files: [{ source: 'mailAttachment', id: 'att_1', filename: 'invoice-1.pdf' }],
-						keepCopy: true,
-						source: 'user',
-					},
-				],
-			});
-		});
-
-		it('asks before it writes while no draft exists yet', () => {
-			hasDraftSlot.value = false;
-			const w = mountAsk();
-			expect(w.text()).not.toContain('Waiting for your files');
+	// Issue #1131's invoices: no draft is written while they are missing either.
+	it('asks for files before any draft, and sends the files the person gave', async () => {
+		clarification.value = {
+			isNeeded: true,
+			askedAt: 1,
+			questions: [
+				{
+					id: 'clarify_0',
+					slotType: 'attachment',
+					answerKind: 'file',
+					text: 'Please provide the invoice PDFs for the four bookings',
+					origin: { kind: 'email', senderDomain: 'example.org' },
+					fileCandidates: [
+						{
+							source: 'mailAttachment',
+							id: 'att_1',
+							filename: 'invoice-1.pdf',
+							mimeType: 'application/pdf',
+							size: 1000,
+							score: 0.7,
+						},
+					],
+				},
+			],
+		};
+		const w = mountAsk();
+		expect(w.get('h2').text()).toBe('One thing before I write this');
+		await w.get('[data-testid="file-ask-candidate"]').trigger('click');
+		await w.get('[data-testid="ask-submit"]').trigger('click');
+		await flushPromises();
+		expect(run).toHaveBeenCalledWith({
+			threadId: 'thr_1',
+			answers: [
+				{
+					questionId: 'clarify_0',
+					files: [{ source: 'mailAttachment', id: 'att_1', filename: 'invoice-1.pdf' }],
+					keepCopy: true,
+					source: 'user',
+				},
+			],
 		});
 	});
 });

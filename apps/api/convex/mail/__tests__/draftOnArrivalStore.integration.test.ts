@@ -123,47 +123,152 @@ describe('loadForDraft only answers incoming mail', () => {
 	});
 });
 
-describe('loadForDraft hands the drafter the open clarification questions', () => {
-	it('returns a placeholder for every open question, file and non-file', async () => {
+const QUESTIONS = [
+	{
+		id: 'q1',
+		slotType: 'date_time',
+		text: 'Which delivery date can you offer?',
+		origin: { kind: 'email' as const, senderDomain: 'example.com' },
+	},
+	{
+		id: 'q2',
+		slotType: 'attachment',
+		text: 'Which invoice should go out?',
+		origin: { kind: 'email' as const, senderDomain: 'example.com' },
+		answerKind: 'file' as const,
+	},
+];
+
+/** Put open questions on the thread's flag. */
+async function askQuestions(t: TestConvex<typeof schema>, threadId: Id<'mailThreads'>) {
+	await t.run(async (ctx) => {
+		const thread = await ctx.db.get(threadId);
+		await ctx.db.patch(threadId, {
+			needsReply: {
+				...thread!.needsReply!,
+				clarification: { isNeeded: true, askedAt: Date.now(), questions: QUESTIONS },
+			},
+		});
+	});
+}
+
+describe('no arrival draft while the owner has questions to answer', () => {
+	it('loadForDraft skips a thread with open questions', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId } = await seedThread(
 			t,
 			[{ from: CUSTOMER, body: 'When can you deliver, and can you send the invoice?' }],
 			0
 		);
-		await t.run(async (ctx) => {
-			const thread = await ctx.db.get(threadId);
-			await ctx.db.patch(threadId, {
-				needsReply: {
-					...thread!.needsReply!,
-					clarification: {
-						isNeeded: true,
-						askedAt: Date.now(),
-						questions: [
-							{
-								id: 'q1',
-								slotType: 'date_time',
-								text: 'Which delivery date can you offer?',
-								origin: { kind: 'email', senderDomain: 'example.com' },
-							},
-							{
-								id: 'q2',
-								slotType: 'attachment',
-								text: 'Which invoice should go out?',
-								origin: { kind: 'email', senderDomain: 'example.com' },
-								answerKind: 'file',
-							},
-						],
-					},
-				},
-			});
+		await askQuestions(t, threadId);
+
+		expect(
+			await t.query(internal.mail.ai.draftOnArrivalStore.loadForDraft, { threadId })
+		).toBeNull();
+	});
+
+	it('persistDraftSlot drops a draft that raced the questions', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'When can you deliver?' }],
+			0
+		);
+		await askQuestions(t, threadId);
+
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			draft: 'Hi Chris, we can deliver on [[delivery date]].',
+			confidence: 0.8,
 		});
 
-		const loaded = await t.query(internal.mail.ai.draftOnArrivalStore.loadForDraft, { threadId });
+		const thread = await t.run((ctx) => ctx.db.get(threadId));
+		expect(thread?.needsReply?.draftSlot).toBeUndefined();
+	});
 
-		// The card is not answered yet: no confirmed facts, only placeholders.
-		expect(loaded?.clarificationQuestions).toBeUndefined();
-		expect(loaded?.questionGaps).toEqual(['[[Which delivery date can you offer]]']);
-		expect(loaded?.fileGaps).toEqual(['[[Which invoice should go out]]']);
+	it('persistDraftSlot stores no draft with a gap, whoever wrote it: the gap is asked', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'When can you deliver?' }],
+			0
+		);
+
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			draft: 'Hi Chris, we can deliver on [[delivery date]].',
+			confidence: 0.8,
+		});
+
+		const flag = (await t.run((ctx) => ctx.db.get(threadId)))?.needsReply;
+		expect(flag?.draftSlot).toBeUndefined();
+		expect(flag?.clarification?.questions).toEqual([
+			expect.objectContaining({
+				id: 'gap_0',
+				text: 'delivery date',
+				origin: { kind: 'email', senderDomain: 'example.com' },
+			}),
+		]);
+	});
+
+	it('persistDraftSlot stores nothing for a gap no question may ask for', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'Can you log in for me?' }],
+			0
+		);
+
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			draft: 'Sure, I will use [[your password]].',
+			confidence: 0.8,
+		});
+
+		const flag = (await t.run((ctx) => ctx.db.get(threadId)))?.needsReply;
+		expect(flag?.draftSlot).toBeUndefined();
+		expect(flag?.clarification).toBeUndefined();
+	});
+
+	it('holdForGapQuestions turns a draft with gaps into questions instead of a slot', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'When can you deliver?' }],
+			0
+		);
+
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.holdForGapQuestions, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			questions: [{ ...QUESTIONS[0]!, id: 'gap_0' }],
+		});
+
+		const flag = (await t.run((ctx) => ctx.db.get(threadId)))?.needsReply;
+		expect(flag?.draftSlot).toBeUndefined();
+		expect(flag?.clarification?.isNeeded).toBe(true);
+		expect(flag?.clarification?.questions.map((q) => q.id)).toEqual(['gap_0']);
+	});
+
+	it('holdForGapQuestions never replaces questions already asked', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'When can you deliver?' }],
+			0
+		);
+		await askQuestions(t, threadId);
+
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.holdForGapQuestions, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			questions: [{ ...QUESTIONS[0]!, id: 'gap_0' }],
+		});
+
+		const flag = (await t.run((ctx) => ctx.db.get(threadId)))?.needsReply;
+		expect(flag?.clarification?.questions.map((q) => q.id)).toEqual(['q1', 'q2']);
 	});
 });

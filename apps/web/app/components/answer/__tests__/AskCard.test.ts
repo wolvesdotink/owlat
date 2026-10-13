@@ -1,16 +1,17 @@
 // @vitest-environment happy-dom
 /**
  * "N things before I write this" (plan §05):
- *   - the header counts the questions and names the round;
+ *   - the header counts the questions and says no draft is written yet;
  *   - one input per kind: chips with "Something else...", free text, a number,
  *     a date (chips plus a picker), a file (FileAsk);
  *   - a remembered answer is pre-picked with its "last time" tag and, left as
  *     it was, is not sent again;
  *   - keys 1 to 9 pick a chip on the first open question with chips;
- *   - "Answer and draft" sends what was answered; "Skip, draft with gaps" sends
- *     the same, as a skip; a file answer goes out as a file;
- *   - where the questions came from is said once, in the reader's language;
- *   - a draft that is already written is named as such ("The draft needs …").
+ *   - "Answer and draft" needs every question answered; "Draft with what I
+ *     have" sends what was answered so far, as a skip; a file answer goes out
+ *     as a file;
+ *   - a question answered in an earlier round is not asked again;
+ *   - where the questions came from is said once, in the reader's language.
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
@@ -88,17 +89,18 @@ const PickerStub = defineComponent({ name: 'AnswerFilePicker', setup: () => () =
 
 function mountCard(props: Record<string, unknown> = {}) {
 	return mount(AskCard, {
-		props: { questions: QUESTIONS, round: 1, ...props },
+		props: { questions: QUESTIONS, ...props },
 		attachTo: document.body,
 		global: { plugins: [createTestI18n()], stubs: { AnswerFilePicker: PickerStub } },
 	});
 }
 
 describe('AskCard', () => {
-	it('counts the questions, names the round, and renders an input per kind', () => {
+	it('counts the questions, says no draft is written yet, and renders an input per kind', () => {
 		const w = mountCard();
 		expect(w.get('h2').text()).toBe('5 things before I write this');
-		expect(w.get('[data-testid="ask-round"]').text()).toBe('round 1 of 2');
+		expect(w.get('[data-testid="ask-subline"]').text()).toMatch(/^No draft yet\./);
+		expect(w.get('[data-testid="ask-skip"]').text()).toBe('Draft with what I have');
 		expect(w.findAll('[data-testid="file-ask"]')).toHaveLength(1);
 		expect(w.findAll('[data-testid="ask-date"]')).toHaveLength(1);
 		const placeholders = w
@@ -119,16 +121,32 @@ describe('AskCard', () => {
 		w.unmount();
 	});
 
-	it('names a written draft as the one the answers go into', () => {
-		const w = mountCard({ round: undefined, draftWritten: true, questions: QUESTIONS.slice(3) });
-		expect(w.get('h2').text()).toBe('The draft needs 2 more details');
-		expect(w.text()).toContain('The reply below is written.');
-		expect(w.get('[data-testid="ask-submit"]').text()).toBe('Update the draft');
+	it('enables "Answer and draft" only once every question has an answer', async () => {
+		const w = mountCard({ questions: QUESTIONS.slice(3) });
+		const submit = w.get('[data-testid="ask-submit"]');
+		expect(submit.text()).toBe('Answer and draft');
+		const inputs = w.findAll('[data-testid="ask-input"]');
+		await inputs[0]!.setValue('4,200 EUR');
+		expect(submit.attributes('disabled')).toBeDefined();
+		await inputs[1]!.setValue('Nothing else');
+		expect(submit.attributes('disabled')).toBeUndefined();
+		w.unmount();
+	});
+
+	it('does not ask again what the person answered in an earlier round', () => {
+		const answered = {
+			...QUESTIONS[3]!,
+			answer: { value: '4,200 EUR', at: 0, source: 'user' as const },
+		};
+		const w = mountCard({ questions: [answered, QUESTIONS[4]!] });
+		expect(w.get('h2').text()).toBe('One thing before I write this');
+		expect(w.findAll('[data-testid="ask-question"]')).toHaveLength(1);
+		expect(w.text()).not.toContain('What is the total?');
 		w.unmount();
 	});
 
 	it('focuses the first open question, then the submit button once all are answered', async () => {
-		const w = mountCard({ round: undefined, questions: QUESTIONS.slice(3) });
+		const w = mountCard({ questions: QUESTIONS.slice(3) });
 		const inputs = w.findAll('[data-testid="ask-input"]');
 		expect((w.vm as unknown as { focusFirstOpen: () => boolean }).focusFirstOpen()).toBe(true);
 		expect(document.activeElement).toBe(inputs[0]!.element);
@@ -179,7 +197,7 @@ describe('AskCard', () => {
 	});
 
 	it('pre-picks the remembered answer and does not send it back untouched', async () => {
-		const w = mountCard();
+		const w = mountCard({ questions: [QUESTIONS[1]!] });
 		expect(w.find('[data-testid="task-option-remembered"]').exists()).toBe(true);
 		await w.get('[data-testid="ask-submit"]').trigger('click');
 		expect(w.emitted('answer')?.[0]).toEqual([[]]);
@@ -187,7 +205,7 @@ describe('AskCard', () => {
 	});
 
 	it('picks a chip of the first open question with keys 1 to 9', async () => {
-		const w = mountCard();
+		const w = mountCard({ questions: [QUESTIONS[1]!, QUESTIONS[2]!] });
 		window.dispatchEvent(new KeyboardEvent('keydown', { key: '2' }));
 		await flushPromises();
 		await w.get('[data-testid="ask-submit"]').trigger('click');
@@ -200,7 +218,7 @@ describe('AskCard', () => {
 		sheet.setAttribute('data-sheet-hidden', '');
 		document.body.appendChild(sheet);
 		const w = mount(AskCard, {
-			props: { questions: QUESTIONS, round: 1 },
+			props: { questions: [QUESTIONS[1]!, QUESTIONS[2]!] },
 			attachTo: sheet,
 			global: { plugins: [createTestI18n()], stubs: { AnswerFilePicker: PickerStub } },
 		});
@@ -208,8 +226,8 @@ describe('AskCard', () => {
 		window.dispatchEvent(event);
 		await flushPromises();
 		expect(event.defaultPrevented).toBe(false);
-		await w.get('[data-testid="ask-submit"]').trigger('click');
-		expect(w.emitted('answer')?.[0]?.[0]).toEqual([]);
+		// Nothing picked: the date question is still open.
+		expect(w.get('[data-testid="ask-submit"]').attributes('disabled')).toBeDefined();
 		w.unmount();
 		sheet.remove();
 	});
@@ -237,10 +255,11 @@ describe('AskCard', () => {
 	});
 
 	it('says the budget refused the answer and keeps what was entered to send again (U5)', async () => {
-		const w = mountCard({ round: undefined, questions: QUESTIONS.slice(3) });
+		const w = mountCard({ questions: QUESTIONS.slice(3) });
 		expect(w.find('[data-testid="ask-budget"]').exists()).toBe(false);
 		const inputs = w.findAll('[data-testid="ask-input"]');
 		await inputs[0]!.setValue('4,200 EUR');
+		await inputs[1]!.setValue('Nothing else');
 		await w.get('[data-testid="ask-submit"]').trigger('click');
 		await w.setProps({ budgetRefused: true });
 		expect(w.get('[data-testid="ask-budget"]').text()).toContain(
@@ -257,7 +276,7 @@ describe('AskCard', () => {
 	});
 
 	it('sends "It isn\'t ready yet" as a value', async () => {
-		const w = mountCard();
+		const w = mountCard({ questions: [QUESTIONS[0]!] });
 		await w.get('[data-testid="file-ask-option"]').trigger('click');
 		await w.get('[data-testid="ask-submit"]').trigger('click');
 		expect(w.emitted('answer')?.[0]?.[0]).toEqual([
@@ -283,23 +302,41 @@ describe('AskCard', () => {
 		w.unmount();
 	});
 
-	it('as a background clarification: no round, "Answer later", and every question required', async () => {
-		const w = mountCard({
-			questions: QUESTIONS.slice(2),
-			round: undefined,
-			requireAll: true,
-			skipLabel: 'Answer later',
-		});
-		expect(w.find('[data-testid="ask-round"]').exists()).toBe(false);
-		expect(w.get('[data-testid="ask-skip"]').text()).toBe('Answer later');
+	it('as the team agent\'s card: "I\'ll answer later", its own subline, every question required', async () => {
+		const w = mountCard({ questions: QUESTIONS.slice(2), teamAgent: true });
+		expect(w.get('[data-testid="ask-skip"]').text()).toBe("I'll answer later");
+		expect(w.get('[data-testid="ask-subline"]').text()).toBe(
+			'No draft yet. The agent writes it once everything here is answered.'
+		);
 		const submit = w.get('[data-testid="ask-submit"]');
 		await w.findAll('[data-testid="ask-input"]')[2]!.setValue('Nothing else');
 		expect(submit.attributes('disabled')).toBeDefined();
 		w.unmount();
 	});
 
+	it('with every question answered (a draft that failed before it was written), offers only the retry', async () => {
+		const answered = (q: (typeof QUESTIONS)[number], value: string) => ({
+			...q,
+			answer: { value, at: 0, source: 'user' as const },
+		});
+		const w = mountCard({ questions: [answered(QUESTIONS[3]!, '4,200 EUR')] });
+		expect(w.get('h2').text()).toBe('Everything is answered');
+		expect(w.find('[data-testid="ask-skip"]').exists()).toBe(false);
+		await w.get('[data-testid="ask-submit"]').trigger('click');
+		expect(w.emitted('answer')?.[0]).toEqual([[]]);
+		expectFullyLocalized(w);
+		w.unmount();
+	});
+
+	it('asks again a question whose stored answer is blank', () => {
+		const blank = { ...QUESTIONS[4]!, answer: { value: '  ', at: 0, source: 'user' as const } };
+		const w = mountCard({ questions: [blank] });
+		expect(w.findAll('[data-testid="ask-question"]')).toHaveLength(1);
+		w.unmount();
+	});
+
 	it('sends several files for one question when the card takes them', async () => {
-		const w = mountCard({ questions: [QUESTIONS[0]], round: undefined, multipleFiles: true });
+		const w = mountCard({ questions: [QUESTIONS[0]], multipleFiles: true });
 		await w.get('[data-testid="file-ask-candidate"]').trigger('click');
 		await w.get('[data-testid="ask-submit"]').trigger('click');
 		expect(w.emitted('answer')?.[0]?.[0]).toEqual([
@@ -309,15 +346,6 @@ describe('AskCard', () => {
 				keepCopy: true,
 			},
 		]);
-		w.unmount();
-	});
-
-	it('says the draft is ready and only waits for files', () => {
-		const w = mountCard({ questions: [QUESTIONS[0]], round: undefined, waitingForFiles: true });
-		expect(w.text()).toContain('Draft ready. Waiting for your files');
-		expect(w.text()).toContain('The reply is written.');
-		expect(w.get('[data-testid="ask-submit"]').text()).toBe('Attach and update draft');
-		expectFullyLocalized(w);
 		w.unmount();
 	});
 });

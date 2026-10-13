@@ -191,9 +191,20 @@ export const needsReplyClarificationValidator = v.object({
 	questions: v.array(needsReplyClarificationQuestionValidator),
 	// When the questions were surfaced (advisory ordering only).
 	askedAt: v.number(),
-	// Set once the owner answers — drives the draftWithAnswers path.
+	// Set once the owner answers every question, or chooses to draft with what
+	// they have — drives the draftWithAnswers path.
 	answeredAt: v.optional(v.number()),
+	// The owner chose "Draft with what I have": questions left open become
+	// `[[...]]` gaps in the draft. Without it a draft with gaps is never shown;
+	// its gaps are asked as questions instead (mail/ai/gapQuestions.ts).
+	isGapsAccepted: v.optional(v.boolean()),
+	// The reply written from the answers needs a fact Owlat never asks for (a
+	// password, a code): there is no AI draft for it, and the card says so.
+	// Cleared when the owner answers again.
+	isDraftHeld: v.optional(v.boolean()),
 	// The starter reply produced by draftWithAnswers once the owner
-	// answered. Its presence flips the card to "Draft ready".
+	// answered. Its presence flips the card to "Draft ready". The only draft a
+	// thread with a clarification shows: the arrival slot is not written for
+	// it and not shown next to it (mail/needsReplySlot.ts).
 	draft: v.optional(v.string()),
 });

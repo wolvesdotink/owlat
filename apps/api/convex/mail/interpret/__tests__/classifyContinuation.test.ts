@@ -135,7 +135,7 @@ async function pendingJobs(t: Test, fragment: string) {
 }
 
 describe('D10: the Reply Queue classification continues past its predecessors (Sol r4 F1)', () => {
-	it('stays pending, continues itself, then applies the verdict, clarifies and drafts', async () => {
+	it('stays pending, continues itself, then applies the verdict and clarifies', async () => {
 		// Scheduled jobs wait for the test to run them.
 		vi.useFakeTimers();
 		const t = convexTest(schema, modules);
@@ -189,7 +189,8 @@ describe('D10: the Reply Queue classification continues past its predecessors (S
 		expect(thread?.needsReply?.clarification?.questions).toEqual([
 			expect.objectContaining({ slotType: 'attachment', answerKind: 'file' }),
 		]);
-		expect(await pendingJobs(t, 'draftOnArrival')).toContainEqual({ threadId });
+		// The owner is asked first: no reply is drafted until the file is given.
+		expect(await pendingJobs(t, 'draftOnArrival')).toEqual([]);
 		vi.useRealTimers();
 	});
 });

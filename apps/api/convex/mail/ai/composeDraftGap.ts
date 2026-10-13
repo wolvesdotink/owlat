@@ -208,6 +208,25 @@ export async function localizeForOwner(
 }
 
 /**
+ * The questions about a held draft's gaps in the owner's language. They are
+ * worded in the reply's language, so English is a translation too.
+ */
+export async function localizeGapQuestions(
+	ctx: ActionCtx,
+	questions: AskQuestion[],
+	locale: string
+): Promise<AskQuestion[]> {
+	if (questions.length === 0 || !isAppLocale(locale)) return questions;
+	const model = await resolveLanguageModel(ctx, 'mail.clarify');
+	const localized = await meterLlmCall(
+		ctx,
+		{ feature: 'postbox_answer_localize', root: newRootRequest('postbox_action') },
+		(meter) => localizeQuestions(model, questions, [locale], meter, { includeCanonical: true })
+	);
+	return localized.questions;
+}
+
+/**
  * Run the gap check. The owner's instruction is appended to the context the
  * slot check reads, so "say the invoice goes out Friday" already answers the
  * date and is not asked.
