@@ -11,7 +11,10 @@ import {
 	DESCENDANT_RELATIONS,
 	type ErasureRelation,
 } from '../contacts/erasure/relations';
-import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
+import {
+	CONTACT_MERGE_EXCLUSIONS,
+	permanentlyDeleteContactWithRelations,
+} from '../lib/contactMutations';
 
 /**
  * The relation registry (`contacts/erasure/relations.ts`) declares what erasure
@@ -206,35 +209,50 @@ interface Seeded {
 	rows: SeededRow[];
 }
 
+/**
+ * Seed one row per contact relation in `relations`, pointing at `contactId`.
+ * Parents first: the junction tables must point at the seeded entry/file (the
+ * knowledge and file phases, and the merge's junction repoint, are
+ * junction-driven). Returns the seeded rows and the ids by table.
+ */
+async function seedContactRelations(
+	seeder: RowSeeder,
+	contactId: Id<'contacts'>,
+	relations: readonly ErasureRelation[]
+): Promise<{ rows: SeededRow[]; parents: Map<TableNames, Id<TableNames>> }> {
+	const rows: SeededRow[] = [];
+	const parents = new Map<TableNames, Id<TableNames>>();
+	const ordered = [...relations]
+		.sort((a, b) => Number(a.field.endsWith('[]')) - Number(b.field.endsWith('[]')))
+		.reverse();
+	for (const relation of ordered) {
+		const field = baseField(relation.field);
+		const junctionParent =
+			relation.table === 'knowledgeEntryContacts'
+				? { entryId: parents.get('knowledgeEntries') }
+				: relation.table === 'semanticFileContacts'
+					? { fileId: parents.get('semanticFiles') }
+					: {};
+		const id = await seeder.insert(relation.table, {
+			...ROW_SHAPES[relation.table],
+			...junctionParent,
+			[field]: relation.field.endsWith('[]') ? [contactId] : contactId,
+		});
+		parents.set(relation.table, id);
+		rows.push({ label: `${relation.table}.${relation.field}`, id, relation });
+	}
+	return { rows, parents };
+}
+
 async function seedEveryClearingRelation(t: Harness, contactFields: Row): Promise<Seeded> {
 	return t.run(async (ctx) => {
 		const contactId = await ctx.db.insert('contacts', createTestContact(contactFields));
 		const seeder = new RowSeeder(ctx);
-		const rows: SeededRow[] = [];
-		const parents = new Map<TableNames, Id<TableNames>>();
-
-		// Parents first: the junction tables must point at the seeded entry/file
-		// (the knowledge and file phases are junction-driven).
-		const contactRelations = [...CONTACT_RELATIONS]
-			.filter(isClearing)
-			.sort((a, b) => Number(a.field.endsWith('[]')) - Number(b.field.endsWith('[]')))
-			.reverse();
-		for (const relation of contactRelations) {
-			const field = baseField(relation.field);
-			const junctionParent =
-				relation.table === 'knowledgeEntryContacts'
-					? { entryId: parents.get('knowledgeEntries') }
-					: relation.table === 'semanticFileContacts'
-						? { fileId: parents.get('semanticFiles') }
-						: {};
-			const id = await seeder.insert(relation.table, {
-				...ROW_SHAPES[relation.table],
-				...junctionParent,
-				[field]: relation.field.endsWith('[]') ? [contactId] : contactId,
-			});
-			parents.set(relation.table, id);
-			rows.push({ label: `${relation.table}.${relation.field}`, id, relation });
-		}
+		const { rows, parents } = await seedContactRelations(
+			seeder,
+			contactId,
+			CONTACT_RELATIONS.filter(isClearing)
+		);
 
 		for (const relation of DESCENDANT_RELATIONS.filter(isClearing)) {
 			const parentId = parents.get(relation.parent);
@@ -326,5 +344,117 @@ describe('every delete/unlink relation has a phase behind it', () => {
 		expect(outcome).toBe('done');
 		expect(await survivors(t, seeded)).toEqual([]);
 		expect(await t.run((ctx) => ctx.db.get(seeded.contactId))).toBeNull();
+	});
+});
+
+/**
+ * A merge moves the source's rows onto the survivor and hard-deletes the
+ * source (#1337), so a later erasure of the survivor is the only one that can
+ * reach them. Seed the source with a row for every contact relation the merge
+ * moves, run a real merge, and check that nothing is left on the deleted
+ * source and that erasing the survivor clears the rows both ways it runs.
+ */
+interface MergePair {
+	targetId: Id<'contacts'>;
+	sourceId: Id<'contacts'>;
+	rows: SeededRow[];
+}
+
+const movedByMerge = (relation: ErasureRelation): boolean =>
+	!(`${relation.table}.${relation.field}` in CONTACT_MERGE_EXCLUSIONS);
+
+async function seedMergePair(t: Harness): Promise<MergePair> {
+	return t.run(async (ctx) => {
+		// The oldest contact survives an auto-merge.
+		const targetId = await ctx.db.insert('contacts', createTestContact());
+		const sourceId = await ctx.db.insert('contacts', createTestContact());
+		const seeder = new RowSeeder(ctx);
+		const { rows } = await seedContactRelations(
+			seeder,
+			sourceId,
+			CONTACT_RELATIONS.filter(movedByMerge)
+		);
+		// A shared address on a strong channel makes the two a duplicate pair.
+		for (const contactId of [targetId, sourceId]) {
+			await seeder.insert('contactIdentities', {
+				contactId,
+				channel: 'email',
+				identifier: 'shared@example.com',
+			});
+		}
+		return { targetId, sourceId, rows };
+	});
+}
+
+async function mergePair(t: Harness): Promise<void> {
+	const { merged } = await t.mutation(internal.contacts.identities.autoMergeDuplicates, {});
+	expect(merged).toBe(1);
+}
+
+/** Labels of the seeded rows that still exist and reference `contactId`. */
+async function rowsPointingAt(
+	t: Harness,
+	rows: SeededRow[],
+	contactId: Id<'contacts'>
+): Promise<string[]> {
+	return t.run(async (ctx) => {
+		const pointing: string[] = [];
+		for (const { label, id, relation } of rows) {
+			const row = (await ctx.db.get(id)) as Row | null;
+			const value = row?.[baseField(relation.field)];
+			const points = Array.isArray(value) ? value.includes(contactId) : value === contactId;
+			if (points) pointing.push(label);
+		}
+		return pointing.sort();
+	});
+}
+
+describe('a merged contact’s rows reach the survivor’s erasure', () => {
+	it('moves every relation off the deleted source onto the survivor', async () => {
+		const t = newHarness();
+		const pair = await seedMergePair(t);
+
+		await mergePair(t);
+
+		expect(await t.run((ctx) => ctx.db.get(pair.sourceId))).toBeNull();
+		expect(await rowsPointingAt(t, pair.rows, pair.sourceId)).toEqual([]);
+		expect(await rowsPointingAt(t, pair.rows, pair.targetId)).toEqual(
+			pair.rows.map((row) => row.label).sort()
+		);
+	});
+
+	it('inline erasure of the survivor clears them', async () => {
+		const t = newHarness();
+		const pair = await seedMergePair(t);
+		await mergePair(t);
+
+		await t.run((ctx) => permanentlyDeleteContactWithRelations(ctx, pair.targetId));
+
+		const clearing = pair.rows.filter((row) => isClearing(row.relation));
+		expect(await survivors(t, { contactId: pair.targetId, rows: clearing })).toEqual([]);
+		expect(await rowsPointingAt(t, pair.rows, pair.sourceId)).toEqual([]);
+	});
+
+	it('the persisted walker erasing the survivor clears them', async () => {
+		const t = newHarness();
+		const pair = await seedMergePair(t);
+		await mergePair(t);
+		const jobId = await t.run(async (ctx) => {
+			await ctx.db.patch(pair.targetId, { deletedAt: Date.now() - 40 * 86_400_000 });
+			return (await new RowSeeder(ctx).insert('contactErasureJobs', {
+				contactId: pair.targetId,
+			})) as Id<'contactErasureJobs'>;
+		});
+
+		let outcome = 'more';
+		for (let i = 0; i < 50 && outcome === 'more'; i++) {
+			outcome = await t.mutation(internal.contacts.erasure.walker.tick, { jobId });
+		}
+
+		expect(outcome).toBe('done');
+		const clearing = pair.rows.filter((row) => isClearing(row.relation));
+		expect(await survivors(t, { contactId: pair.targetId, rows: clearing })).toEqual([]);
+		expect(await rowsPointingAt(t, pair.rows, pair.sourceId)).toEqual([]);
+		expect(await t.run((ctx) => ctx.db.get(pair.targetId))).toBeNull();
 	});
 });

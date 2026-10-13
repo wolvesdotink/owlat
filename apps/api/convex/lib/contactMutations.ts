@@ -1,5 +1,5 @@
 import type { MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { decrementContactCount } from './contactCountHelpers';
 import { recordContactGrowth } from '../contacts/growthCounters';
 import { deleteIdentitiesForContact } from '../contacts/resolution';
@@ -16,12 +16,13 @@ import { advanceErasure, finishErasure, FIRST_ERASURE_PHASE } from '../contacts/
  * plain FK swap. (What permanent deletion does to each contact-referencing
  * table is declared separately, in `contacts/erasure/relations.ts`.)
  *
- * `contactIdentities`, `contactRelationships`, `contactTopics`, and
- * `contactPropertyValues` are handled by bespoke routines (dedupe / two-sided
- * FK / consent membership) and are therefore intentionally NOT in either array
- * below — see `repointSimpleContactRefs` / the per-table loops in the callers.
+ * The tables with a bespoke routine (dedupe / two-sided FK / consent
+ * membership / mirrored junction) are listed in `CONTACT_MERGE_ROUTINES`
+ * instead, and the fields the merge leaves alone on purpose in
+ * `CONTACT_MERGE_EXCLUSIONS`. `__tests__/contactMergeRelations.test.ts` walks
+ * the schema so every `v.id('contacts')` field lands in exactly one of the three.
  */
-const CONTACT_REPOINT_TABLES = [
+export const CONTACT_REPOINT_TABLES = [
 	'contactActivities',
 	'emailSends',
 	'transactionalSends',
@@ -35,7 +36,33 @@ const CONTACT_REPOINT_TABLES = [
 	// the entry stays valid on the survivor; repointed so the survivor's erasure
 	// finds it.
 	'senderMemory',
+	// Answer mode ask sessions: no per-contact uniqueness, so a plain swap. The
+	// survivor's erasure must find them (they quote the person's mail).
+	'answerAskSessions',
 ] as const;
+
+/**
+ * The `table.field` references to `contacts` that `mergeContactRelations`
+ * moves with a routine of its own rather than the plain swap above.
+ */
+export const CONTACT_MERGE_ROUTINES = [
+	'contactIdentities.contactId',
+	'contactRelationships.fromContactId',
+	'contactRelationships.toContactId',
+	'contactTopics.contactId',
+	'contactPropertyValues.contactId',
+	'clarificationMemory.contactId',
+	'knowledgeEntries.contactIds[]',
+	'knowledgeEntryContacts.contactId',
+	'semanticFiles.contactIds[]',
+	'semanticFileContacts.contactId',
+] as const;
+
+/** References to `contacts` the merge deliberately leaves on the source, and why. */
+export const CONTACT_MERGE_EXCLUSIONS: Readonly<Record<string, string>> = {
+	'contactErasureJobs.contactId':
+		'An erasure job names the contact it erases. Moving it onto the survivor would erase the survivor.',
+};
 
 /**
  * Repoint every "simple" `contactId` FK row (the tables in
@@ -63,10 +90,66 @@ async function repointSimpleContactRefs(
 	}
 }
 
+/** The later of two optional timestamps. */
+function laterOf(a: number | undefined, b: number | undefined): number | undefined {
+	if (a === undefined) return b;
+	if (b === undefined) return a;
+	return Math.max(a, b);
+}
+
+/**
+ * Move the source's learned clarification answers onto the target. Both
+ * contacts can hold an answer to the same question (`questionKey`, which
+ * carries the slot type, is what `captureStandingAnswers` upserts on): the
+ * target's row survives, takes the newer answer, and adds up both counters; the
+ * source's row goes. `contactId` is only ever swapped, never cleared: an absent `contactId`
+ * is the organization-wide scope.
+ */
+async function mergeClarificationMemory(
+	ctx: MutationCtx,
+	targetContactId: Id<'contacts'>,
+	sourceContactId: Id<'contacts'>
+): Promise<void> {
+	const targetRows = await ctx.db
+		.query('clarificationMemory')
+		.withIndex('by_contact_slot', (q) => q.eq('contactId', targetContactId))
+		.collect(); // bounded: one contact's standing answers
+	const targetByKey = new Map<string, Doc<'clarificationMemory'>>(
+		targetRows.map((row) => [row.questionKey, row])
+	);
+	const sourceRows = await ctx.db
+		.query('clarificationMemory')
+		.withIndex('by_contact_slot', (q) => q.eq('contactId', sourceContactId))
+		.collect(); // bounded: one contact's standing answers
+	for (const row of sourceRows) {
+		const existing = targetByKey.get(row.questionKey);
+		if (!existing) {
+			await ctx.db.patch(row._id, { contactId: targetContactId });
+			targetByKey.set(row.questionKey, row);
+			continue;
+		}
+		const newer = row.updatedAt > existing.updatedAt ? row : existing;
+		const merged = {
+			questionText: newer.questionText,
+			answerValue: newer.answerValue,
+			source: newer.source,
+			answerCount: existing.answerCount + row.answerCount,
+			useCount: existing.useCount + row.useCount,
+			createdAt: Math.min(existing.createdAt, row.createdAt),
+			updatedAt: Math.max(existing.updatedAt, row.updatedAt),
+			lastUsedAt: laterOf(existing.lastUsedAt, row.lastUsedAt),
+		};
+		await ctx.db.patch(existing._id, merged);
+		await ctx.db.delete(row._id);
+		targetByKey.set(row.questionKey, { ...existing, ...merged });
+	}
+}
+
 /**
  * Move every contact-owned row (identities, relationships, topic memberships,
- * property values, and all `CONTACT_REPOINT_TABLES` FK rows) from `source` onto
- * `target`, deduping the tables that carry a unique-per-contact constraint.
+ * property values, learned clarification answers, and all
+ * `CONTACT_REPOINT_TABLES` FK rows) from `source` onto `target`, deduping the
+ * tables that carry a unique-per-contact constraint.
  *
  * This is the cascade half of a contact merge — it leaves both contact rows in
  * place; the caller deletes the source afterwards. Factored here (next to the
@@ -82,6 +165,9 @@ async function repointSimpleContactRefs(
  *    otherwise the membership is repointed.
  *  - contactPropertyValues — on a property already set on the target, keep the
  *    newer value (compare `updatedAt`) and drop the loser; otherwise repoint.
+ *  - clarificationMemory — on a question the target already has an answer to,
+ *    keep the newer answer on the target's row, add up the counters, and drop
+ *    the source's row; otherwise repoint (`mergeClarificationMemory`).
  *  - everything else — straight FK repoint (`repointSimpleContactRefs`).
  */
 export async function mergeContactRelations(
@@ -181,6 +267,9 @@ export async function mergeContactRelations(
 	// owned by `repointContactJunction`).
 	await repointContactJunction(ctx, KNOWLEDGE_ENTRY_JUNCTION, targetContactId, sourceContactId);
 	await repointContactJunction(ctx, SEMANTIC_FILE_JUNCTION, targetContactId, sourceContactId);
+
+	// Learned clarification answers — dedupe by question, keeping the newer.
+	await mergeClarificationMemory(ctx, targetContactId, sourceContactId);
 
 	// Everything else — straight FK repoint.
 	await repointSimpleContactRefs(ctx, targetContactId, sourceContactId);

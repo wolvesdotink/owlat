@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import schema from '../schema';
 import {
 	CONTACT_RELATIONS,
 	DESCENDANT_RELATIONS,
 	tablesErasureDeletesFrom,
 } from '../contacts/erasure/relations';
+import { schemaReferencesTo } from './schemaReferences';
 
 /**
  * Schema coverage gate for the contact erasure relation registry
@@ -14,56 +14,6 @@ import {
  * behind the schema again (clarificationMemory did, and kept learned answers
  * about erased people).
  */
-
-interface ValidatorJson {
-	kind: string;
-	tableName?: string;
-	fields?: Record<string, ValidatorJson>;
-	element?: ValidatorJson;
-	members?: ValidatorJson[];
-	value?: ValidatorJson;
-}
-
-function collectReferences(
-	validator: ValidatorJson | undefined,
-	target: string,
-	path: string,
-	out: Set<string>
-): void {
-	if (!validator) return;
-	switch (validator.kind) {
-		case 'id':
-			if (validator.tableName === target) out.add(path);
-			return;
-		case 'object':
-			for (const [key, field] of Object.entries(validator.fields ?? {})) {
-				collectReferences(field, target, path ? `${path}.${key}` : key, out);
-			}
-			return;
-		case 'array':
-			collectReferences(validator.element, target, `${path}[]`, out);
-			return;
-		case 'union':
-			for (const member of validator.members ?? []) collectReferences(member, target, path, out);
-			return;
-		case 'record':
-			collectReferences(validator.value, target, `${path}{}`, out);
-			return;
-	}
-}
-
-/** `table.field` for every schema field holding an id of `target`. */
-function schemaReferencesTo(target: string): string[] {
-	const refs: string[] = [];
-	const tables = (schema as unknown as { tables: Record<string, { validator: ValidatorJson }> })
-		.tables;
-	for (const [table, definition] of Object.entries(tables)) {
-		const fields = new Set<string>();
-		collectReferences(definition.validator, target, '', fields);
-		for (const field of fields) refs.push(`${table}.${field}`);
-	}
-	return refs.sort();
-}
 
 describe('contact erasure relation registry', () => {
 	it('declares a policy for every field in the schema that references contacts', () => {
