@@ -5,12 +5,14 @@
  *   - `inbox.answerClarification` persists the owner's answers onto
  *     `pendingClarification`, drives `awaiting_clarification → drafting`, and
  *     schedules the walker resume.
- *   - `answerClarification` refuses a message that is NOT awaiting clarification.
- *   - The abandoned-question fallback cron
- *     (`processingLifecycle.reconcileAbandonedClarifications`) resumes a message
- *     that sat unanswered past the window, marking it `isAutoSendBlocked` (never
- *     auto-send-eligible) and routing it into `drafting`; a still-fresh await is
- *     left alone.
+ *   - `answerClarification` refuses a message that is NOT awaiting clarification,
+ *     and refuses to leave a question open unless the owner chose "Draft with
+ *     what I have" (`withGaps`, stored as `isGapsAccepted`).
+ *   - The abandoned-question cron
+ *     (`processingLifecycle.reconcileAbandonedClarifications`) asks again, once,
+ *     about a message that sat unanswered past the window. It drafts nothing:
+ *     the message keeps waiting in `awaiting_clarification`; a still-fresh await
+ *     is left alone.
  *
  * The Agent walker / draft step are excluded from the module glob (they carry
  * `'use node'` + LLM deps), so the scheduled `walker.resumeDraft` is recorded
@@ -138,7 +140,10 @@ describe('inbox.answerClarification', () => {
 			.withIdentity(testIdentity)
 			.mutation(api.inbox.clarification.answerClarification, {
 				inboundMessageId: messageId,
-				answers: [{ questionId: 'q1', value: 'A-123' }],
+				answers: [
+					{ questionId: 'q1', value: 'A-123' },
+					{ questionId: 'q2', value: 'No' },
+				],
 			});
 		expect(result.success).toBe(true);
 
@@ -146,12 +151,10 @@ describe('inbox.answerClarification', () => {
 			const msg = await ctx.db.get(messageId);
 			expect(msg!.processingStatus).toBe('drafting');
 			expect(msg!.pendingClarification!.answeredAt).toBeDefined();
+			expect(msg!.pendingClarification!.isGapsAccepted).toBeUndefined();
 			const q1 = msg!.pendingClarification!.questions.find((q) => q.id === 'q1');
-			const q2 = msg!.pendingClarification!.questions.find((q) => q.id === 'q2');
 			expect(q1!.answer!.value).toBe('A-123');
 			expect(q1!.answer!.source).toBe('user');
-			// Unanswered questions stay unanswered.
-			expect(q2!.answer).toBeUndefined();
 		});
 
 		// The walker resume was scheduled (the draft re-entry).
@@ -169,6 +172,72 @@ describe('inbox.answerClarification', () => {
 				.withIndex('by_action', (q) => q.eq('action', 'inbound.clarification_answered'))
 				.collect();
 			expect(logs.length).toBe(1);
+		});
+	});
+
+	it('refuses to leave a question open without "Draft with what I have"', async () => {
+		const t = convexTest(schema, modules);
+		let messageId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'awaiting_clarification',
+					classification,
+					pendingClarification: pending(1000),
+				})
+			);
+		});
+
+		for (const value of [undefined, '   ']) {
+			await expect(
+				t.withIdentity(testIdentity).mutation(api.inbox.clarification.answerClarification, {
+					inboundMessageId: messageId,
+					answers: [
+						{ questionId: 'q1', value: 'A-123' },
+						...(value === undefined ? [] : [{ questionId: 'q2', value }]),
+					],
+				})
+			).rejects.toThrow(/answer every question/i);
+		}
+
+		await t.run(async (ctx) => {
+			const msg = await ctx.db.get(messageId);
+			expect(msg!.processingStatus).toBe('awaiting_clarification');
+			expect(msg!.pendingClarification!.questions.every((q) => !q.answer)).toBe(true);
+		});
+		const scheduled = await t.run(async (ctx) =>
+			ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled.some((s) => s.name.includes('resumeDraft'))).toBe(false);
+	});
+
+	it('drafts with a question left open once the owner agrees to gaps', async () => {
+		const t = convexTest(schema, modules);
+		let messageId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'awaiting_clarification',
+					classification,
+					pendingClarification: pending(1000),
+				})
+			);
+		});
+
+		await t.withIdentity(testIdentity).mutation(api.inbox.clarification.answerClarification, {
+			inboundMessageId: messageId,
+			answers: [{ questionId: 'q1', value: 'A-123' }],
+			withGaps: true,
+		});
+
+		await t.run(async (ctx) => {
+			const msg = await ctx.db.get(messageId);
+			expect(msg!.processingStatus).toBe('drafting');
+			expect(msg!.pendingClarification!.isGapsAccepted).toBe(true);
+			const q2 = msg!.pendingClarification!.questions.find((q) => q.id === 'q2');
+			expect(q2!.answer).toBeUndefined();
 		});
 	});
 
@@ -216,76 +285,66 @@ describe('inbox.answerClarification', () => {
 });
 
 describe('processingLifecycle.reconcileAbandonedClarifications', () => {
-	it('resumes an abandoned await as a non-auto-send-eligible best-guess', async () => {
-		const t = convexTest(schema, modules);
-
-		const longAgo = Date.now() - 48 * 60 * 60 * 1000; // 48h ago (> default 24h)
-		let messageId!: Id<'inboundMessages'>;
-		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert(
+	async function seedAwaiting(t: ReturnType<typeof convexTest>, askedAt: number) {
+		return await t.run(async (ctx) =>
+			ctx.db.insert(
 				'inboundMessages',
 				msgData({
 					processingStatus: 'awaiting_clarification',
 					classification,
-					pendingClarification: pending(longAgo),
+					pendingClarification: pending(askedAt),
 				})
-			);
-		});
+			)
+		);
+	}
 
-		const { resumed } = await t.mutation(
+	it('asks an abandoned await again, once, and drafts nothing', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seedAwaiting(t, Date.now() - 48 * 60 * 60 * 1000);
+
+		const first = await t.mutation(
 			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
 			{}
 		);
-		expect(resumed).toBe(1);
+		expect(first).toEqual({ reminded: 1 });
+		const again = await t.mutation(
+			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
+			{}
+		);
+		expect(again).toEqual({ reminded: 0 });
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
-			expect(msg!.processingStatus).toBe('drafting');
-			// Marked so the route step's safety gate can NEVER auto-send it.
-			expect(msg!.isAutoSendBlocked).toBe(true);
+			// Still waiting on the owner: no best-guess draft around the questions.
+			expect(msg!.processingStatus).toBe('awaiting_clarification');
+			expect(msg!.pendingClarification!.remindedAt).toBeDefined();
+			expect(msg!.draftResponse).toBeUndefined();
 		});
-
-		const scheduled = await t.run(async (ctx) => {
-			return await ctx.db.system.query('_scheduled_functions').collect();
-		});
-		expect(scheduled.some((s) => s.name.includes('walker') && s.name.includes('resumeDraft'))).toBe(
-			true
+		const scheduled = await t.run(async (ctx) =>
+			ctx.db.system.query('_scheduled_functions').collect()
 		);
+		expect(scheduled.some((s) => s.name.includes('resumeDraft'))).toBe(false);
 	});
 
 	it('leaves a still-fresh await untouched', async () => {
 		const t = convexTest(schema, modules);
+		const messageId = await seedAwaiting(t, Date.now());
 
-		let messageId!: Id<'inboundMessages'>;
-		await t.run(async (ctx) => {
-			messageId = await ctx.db.insert(
-				'inboundMessages',
-				msgData({
-					processingStatus: 'awaiting_clarification',
-					classification,
-					pendingClarification: pending(Date.now()), // just asked
-				})
-			);
-		});
-
-		const { resumed } = await t.mutation(
+		const { reminded } = await t.mutation(
 			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
 			{}
 		);
-		expect(resumed).toBe(0);
+		expect(reminded).toBe(0);
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
 			expect(msg!.processingStatus).toBe('awaiting_clarification');
-			expect(msg!.isAutoSendBlocked).toBeUndefined();
+			expect(msg!.pendingClarification!.remindedAt).toBeUndefined();
 		});
 	});
 
 	it('respects a shorter configured window (clarificationTimeoutMs)', async () => {
 		const t = convexTest(schema, modules);
-
-		const twoMinAgo = Date.now() - 2 * 60 * 1000;
-		let messageId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
 			await ctx.db.insert('agentConfig', {
 				isAutoReplyEnabled: false,
@@ -294,26 +353,19 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
 			});
-			messageId = await ctx.db.insert(
-				'inboundMessages',
-				msgData({
-					processingStatus: 'awaiting_clarification',
-					classification,
-					pendingClarification: pending(twoMinAgo),
-				})
-			);
 		});
+		const messageId = await seedAwaiting(t, Date.now() - 2 * 60 * 1000);
 
-		const { resumed } = await t.mutation(
+		const { reminded } = await t.mutation(
 			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
 			{}
 		);
-		expect(resumed).toBe(1);
+		expect(reminded).toBe(1);
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
-			expect(msg!.processingStatus).toBe('drafting');
-			expect(msg!.isAutoSendBlocked).toBe(true);
+			expect(msg!.processingStatus).toBe('awaiting_clarification');
+			expect(msg!.pendingClarification!.remindedAt).toBeDefined();
 		});
 	});
 });

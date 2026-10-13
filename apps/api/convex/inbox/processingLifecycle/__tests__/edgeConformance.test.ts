@@ -30,7 +30,7 @@ const EXPECTED_EDGES: Readonly<Record<ProcessingStatus, readonly ProcessingStatu
 	quarantined: ['received', 'archived'],
 	classifying: ['drafting', 'draft_ready', 'awaiting_clarification', 'informational', 'archived'],
 	informational: ['drafting', 'archived'],
-	drafting: ['draft_ready', 'approved'],
+	drafting: ['draft_ready', 'approved', 'awaiting_clarification'],
 	draft_ready: ['approved', 'rejected', 'archived'],
 	awaiting_clarification: ['drafting', 'archived', 'draft_ready'],
 	approved: ['sent', 'draft_ready'],

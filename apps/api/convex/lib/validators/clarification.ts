@@ -104,11 +104,18 @@ export const clarificationQuestionValidator = v.object({
 export const pendingClarificationValidator = v.object({
 	questions: v.array(clarificationQuestionValidator),
 	// When the questions were surfaced to the owner. Drives the abandoned-question
-	// fallback: after a configurable window with no answer, the pipeline resumes
-	// the draft as a flagged best-guess that is never auto-send-eligible.
+	// reminder: after a configurable window with no answer, the owner is asked
+	// again once (`remindedAt`). Nothing is drafted until they answer.
 	askedAt: v.number(),
 	// When the owner answered — set by `answerClarification`. Absent while pending.
 	answeredAt: v.optional(v.number()),
+	// The owner chose "Draft with what I have": questions left open become
+	// `[[...]]` gaps in the draft. Without it every question needs an answer, and
+	// a draft that comes back with gaps of its own is not shown: its gaps are
+	// asked as new questions (mail/ai/gapQuestions.ts).
+	isGapsAccepted: v.optional(v.boolean()),
+	// When the abandoned-question cron asked the owner again. Set once per ask.
+	remindedAt: v.optional(v.number()),
 });
 
 /**

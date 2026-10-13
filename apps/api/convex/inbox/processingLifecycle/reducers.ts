@@ -69,9 +69,9 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// and ask for a draft after all (`drafting`, via walker.resumeDraft).
 		informational: ['drafting', 'archived'],
 		// The clarification loop: parked awaiting an owner answer. Resumes into
-		// `drafting` two ways — the owner answers (`answerClarification`), or the
-		// abandoned-question fallback cron gives up after the window and drafts a
-		// flagged best-guess. `archived` is the dismiss edge (permitted uniformly by
+		// `drafting` once the owner answers every question or chooses "Draft with
+		// what I have" (`answerClarification`); nothing drafts around an
+		// unanswered question. `archived` is the dismiss edge (permitted uniformly by
 		// the `* → archived` star-source in dispatch; declared here to keep the
 		// contract in sync). `draft_ready` is a person writing the reply
 		// themselves instead of answering the agent's questions
@@ -79,8 +79,10 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		awaiting_clarification: ['drafting', 'archived', 'draft_ready'],
 		// `draft_ready` is also a person taking over mid-draft
 		// (inbox/manualReply.ts); the walker's late writes then stand down (see
-		// `isPipelineInput`).
-		drafting: ['draft_ready', 'approved'],
+		// `isPipelineInput`). `awaiting_clarification` is a draft that came back
+		// with gaps the owner did not agree to: not stored, its gaps are asked
+		// (agent/steps/draft/gaps.ts).
+		drafting: ['draft_ready', 'approved', 'awaiting_clarification'],
 		draft_ready: ['approved', 'rejected', 'archived'],
 		// `draft_ready` is the fail-soft degrade for a cancelled delayed auto-send
 		// (cancelAutoSend): aborting the in-flight send routes the reply back to the

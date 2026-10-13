@@ -207,8 +207,8 @@ async function moveToManualReply(
 /**
  * States in which the agent can still write its draft over a person's saved
  * reply without anyone acting: `drafting`, where the draft step is in flight,
- * `awaiting_clarification`, which `reconcileAbandonedClarifications` sends
- * back to drafting once its questions time out, and `failed`, which the retry
+ * `awaiting_clarification`, which goes back to drafting as soon as anyone
+ * answers its questions, and `failed`, which the retry
  * cron sends back through the pipeline after a step failure (#1220). The new
  * agent draft would replace the saved text and, as a new draft, clear its
  * revisions.

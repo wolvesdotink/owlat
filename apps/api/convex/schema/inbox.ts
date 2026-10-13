@@ -279,8 +279,8 @@ export const inboxTables = {
 		// pendingClarificationValidator.
 		pendingClarification: v.optional(pendingClarificationValidator),
 		// Set when a draft was produced from an ABANDONED clarification (the owner
-		// never answered within the window and the fallback cron resumed a
-		// best-guess). It is a hard, fail-closed block on autonomous sending — the
+		// never answered within the window and the fallback cron, before #1343,
+		// resumed a best-guess). It is a hard, fail-closed block on autonomous sending — the
 		// route step's final safety gate refuses to auto-send while this is set, so
 		// a best-guess reply always goes to human review. Never cleared by the
 		// pipeline; a human reviews and sends (or discards) the draft.

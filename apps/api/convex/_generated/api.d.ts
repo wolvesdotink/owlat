@@ -188,6 +188,7 @@ import type * as agent_steps_context_retrieval_currentMessage from '../agent/ste
 import type * as agent_steps_context_retrieval_emergency from '../agent/steps/context_retrieval/emergency.js';
 import type * as agent_steps_context_retrieval_index from '../agent/steps/context_retrieval/index.js';
 import type * as agent_steps_draft_attachment from '../agent/steps/draft/attachment.js';
+import type * as agent_steps_draft_gaps from '../agent/steps/draft/gaps.js';
 import type * as agent_steps_draft_index from '../agent/steps/draft/index.js';
 import type * as agent_steps_draft_plan from '../agent/steps/draft/plan.js';
 import type * as agent_steps_draft_recall from '../agent/steps/draft/recall.js';
@@ -1932,6 +1933,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/context_retrieval/emergency': typeof agent_steps_context_retrieval_emergency;
 	'agent/steps/context_retrieval/index': typeof agent_steps_context_retrieval_index;
 	'agent/steps/draft/attachment': typeof agent_steps_draft_attachment;
+	'agent/steps/draft/gaps': typeof agent_steps_draft_gaps;
 	'agent/steps/draft/index': typeof agent_steps_draft_index;
 	'agent/steps/draft/plan': typeof agent_steps_draft_plan;
 	'agent/steps/draft/recall': typeof agent_steps_draft_recall;

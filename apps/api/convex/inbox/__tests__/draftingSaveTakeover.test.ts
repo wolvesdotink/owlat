@@ -224,7 +224,7 @@ describe.each<SaveMutation>(['saveDraftRevision', 'editDraft'])(
 );
 
 describe('a save while the agent waits on its clarification questions', () => {
-	it('takes the reply over, so the timed-out resume cannot draft over it', async () => {
+	it('takes the reply over, so a late agent draft cannot write over it', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId } = await seed(t, {
 			processingStatus: 'awaiting_clarification',
@@ -243,7 +243,7 @@ describe('a save while the agent waits on its clarification questions', () => {
 			confidenceScore: 0.95,
 		});
 
-		expect(resumed).toEqual({ resumed: 0 });
+		expect(resumed).toEqual({ reminded: 0 });
 		const message = await getMessage(t, messageId);
 		expect(message.processingStatus).toBe('draft_ready');
 		expect(message.pendingClarification).toBeUndefined();

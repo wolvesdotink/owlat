@@ -38,7 +38,12 @@ import { contextRetrievalStep } from './steps/context_retrieval';
 import { buildConfirmedContext } from './steps/draft';
 import {
 	buildFileAnswerNotes,
+	buildOpenFileNote,
+	buildOpenQuestionNote,
+	hasUsableAnswer,
 	joinConfirmedBlocks,
+	openFileGaps,
+	openQuestionGaps,
 	ownerAttachmentFromAnswers,
 } from '../inbox/clarificationAnswers';
 import type {
@@ -182,16 +187,19 @@ export const start = internalAction({
 });
 
 /**
- * Resume a clarification-parked message back INTO the draft step.
+ * Resume a message back INTO the draft step.
  *
- * Two callers, both after the lifecycle has already moved the message
- * `awaiting_clarification → drafting`:
+ * Two callers, both after the lifecycle has already moved the message into
+ * `drafting`:
  *   - `inbox.answerClarification` — the owner answered; the confirmed answers
- *     are folded in as a TRUSTED `[CONFIRMED BY OWNER]` block.
- *   - `processingLifecycle.reconcileAbandonedClarifications` — the fallback
- *     cron gave up after the window; the questions are unanswered so the block
- *     is empty and the draft is a best-guess (the route step's safety gate
- *     refuses to auto-send it because `isAutoSendBlocked` is set).
+ *     are folded in as a TRUSTED `[CONFIRMED BY OWNER]` block. A question the
+ *     owner left open under "Draft with what I have" gets a fixed `[[...]]`
+ *     placeholder, which the draft step keeps in the reply.
+ *   - `inbox.updates.requestReply` — a reader asked for a reply to an update;
+ *     there are no questions.
+ *
+ * A question still open without the owner's consent to gaps (a run answered
+ * before that rule) is never drafted around: the message goes back to asking.
  *
  * Re-enters the DRAFT step specifically (not the whole tail): it rebuilds the
  * retrieval context, folds in the confirmed answers, and schedules the draft
@@ -237,18 +245,9 @@ export const resumeDraft = internalAction({
 			context = '';
 		}
 
-		// Fold the owner-confirmed answers into a trusted block (empty for the
-		// abandoned-question fallback path — an unanswered best-guess). A file
-		// the owner attached gets its own line so the reply mentions it.
-		const questions = message.pendingClarification?.questions ?? [];
-		const confirmedContext = joinConfirmedBlocks(
-			buildConfirmedContext(message.pendingClarification),
-			buildFileAnswerNotes(questions)
-		);
-		// The owner's answer to a file question replaces the draft step's own
-		// file search (undefined when none was answered).
-		const ownerAttachment = ownerAttachmentFromAnswers(questions, message.attachmentSuggestions);
-
+		const pending = message.pendingClarification;
+		const questions = pending?.questions ?? [];
+		const isGapsAccepted = pending?.isGapsAccepted === true;
 		// The message went through `classify` to reach `awaiting_clarification`, so
 		// its classification is normally present; fall back to a neutral one so the
 		// draft can still run.
@@ -259,6 +258,33 @@ export const resumeDraft = internalAction({
 			intent: 'other',
 			confidence: 0,
 		};
+		if (pending && !isGapsAccepted && !questions.every(hasUsableAnswer)) {
+			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId: args.inboundMessageId,
+				input: {
+					to: 'awaiting_clarification',
+					at: Date.now(),
+					pendingClarification: { questions, askedAt: Date.now() },
+					classification,
+				},
+			});
+			return;
+		}
+
+		// Fold the owner-confirmed answers into a trusted block. A file the owner
+		// attached gets its own line so the reply mentions it, and each question
+		// left open under "Draft with what I have" its placeholder.
+		const fileGaps = isGapsAccepted ? openFileGaps(questions) : [];
+		const questionGaps = isGapsAccepted ? openQuestionGaps(questions) : [];
+		const confirmedContext = joinConfirmedBlocks(
+			buildConfirmedContext(pending),
+			buildFileAnswerNotes(questions),
+			buildOpenFileNote(fileGaps),
+			buildOpenQuestionNote(questionGaps)
+		);
+		// The owner's answer to a file question replaces the draft step's own
+		// file search (undefined when none was answered).
+		const ownerAttachment = ownerAttachmentFromAnswers(questions, message.attachmentSuggestions);
 
 		await scheduleAfterCoreStep(ctx, args.inboundMessageId, 'clarify', {
 			kind: 'draft',
@@ -268,6 +294,9 @@ export const resumeDraft = internalAction({
 				classification,
 				confirmedContext,
 				...(ownerAttachment !== undefined ? { ownerAttachment } : {}),
+				...(isGapsAccepted
+					? { isGapsAccepted: true, gapPlaceholders: [...fileGaps, ...questionGaps] }
+					: {}),
 			},
 		});
 	},

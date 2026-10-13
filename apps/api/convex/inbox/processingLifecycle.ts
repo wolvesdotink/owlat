@@ -46,7 +46,7 @@ import {
 	transitionInputValidator,
 	type TransitionOutcome,
 } from './processingLifecycle/types';
-import { dispatch } from './processingLifecycle/effects';
+import { applyEffects, dispatch } from './processingLifecycle/effects';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
 import { inboxRetryPlan } from '@owlat/shared/inboxRetry';
 import {
@@ -323,63 +323,59 @@ export const reconcileStuckApproved = internalMutation({
 	},
 });
 
-// ─── Abandoned-clarification fallback ────────────────────────────────────────
+// ─── Abandoned-clarification reminder ───────────────────────────────────────
 //
-// A message parked in `awaiting_clarification` waits on a human answer. If the
-// owner never answers, it must not wedge there forever: after a configurable
-// window this cron gives up, marks the message so it can NEVER be auto-sent
-// (`isAutoSendBlocked`), routes it `awaiting_clarification → drafting`, and
-// re-enters the draft step with NO confirmed answers — producing a flagged
-// best-guess draft that always lands in the human review queue. Same fail-soft
-// posture as the stuck-approved reconcile: on uncertainty, degrade to human
-// review, never auto-send.
+// A message parked in `awaiting_clarification` waits on a human answer. Nothing
+// is drafted around an unanswered question: a reply guessed from the email
+// alone is the draft with silent gaps the question was there to prevent. After
+// a configurable window this cron asks the owner again, once (the same notice
+// the question raised, `remindedAt` on the ask), and the message keeps waiting
+// in the review queue until someone answers, chooses "Draft with what I have",
+// writes the reply or dismisses it.
 
-/** Default window before an unanswered clarification is drafted as a best-guess.
+/** Default window before an unanswered clarification is asked again.
  * Overridable per-deployment via `agentConfig.clarificationTimeoutMs`. */
 export const DEFAULT_CLARIFICATION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+/** Messages read per run; a longer queue continues in a scheduled follow-up. */
+const CLARIFICATION_REMINDER_PAGE = 100;
+
 export const reconcileAbandonedClarifications = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<{ resumed: number }> => {
+	args: { cursor: v.optional(v.string()) },
+	handler: async (ctx, args): Promise<{ reminded: number }> => {
 		const configs = await ctx.db.query('agentConfig').take(1);
 		const windowMs = Math.max(
 			0,
 			configs[0]?.clarificationTimeoutMs ?? DEFAULT_CLARIFICATION_TIMEOUT_MS
 		);
-		const cutoff = Date.now() - windowMs;
+		const now = Date.now();
+		const cutoff = now - windowMs;
 
-		const awaiting = await ctx.db
+		// Paged, so messages already reminded (which stay in this state) can
+		// never crowd out the ones behind them.
+		const page = await ctx.db
 			.query('inboundMessages')
 			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'awaiting_clarification'))
-			.take(100);
+			.paginate({ numItems: CLARIFICATION_REMINDER_PAGE, cursor: args.cursor ?? null });
 
-		let resumed = 0;
-		for (const message of awaiting) {
-			// Measure the abandonment window from when the questions were asked;
-			// fall back to processedAt / receivedAt if a row predates the field.
-			const askedAt =
-				message.pendingClarification?.askedAt ?? message.processedAt ?? message.receivedAt;
-			if (askedAt > cutoff) continue;
-
-			// Mark the draft as never-auto-send-eligible BEFORE the transition, so
-			// even if the resumed draft races to the route step the safety gate
-			// (assertSafeToAutoSend) already sees the block. Direct patch of an
-			// advisory field — the processingStatus change goes through dispatch.
-			await ctx.db.patch(message._id, { isAutoSendBlocked: true });
-
-			const outcome = await dispatch(ctx, message, {
-				to: 'drafting',
-				at: Date.now(),
-			});
-			if (!outcome.ok) continue;
-
-			await ctx.scheduler.runAfter(0, internal.agent.walker.resumeDraft, {
-				inboundMessageId: message._id,
-			});
-			resumed++;
+		let reminded = 0;
+		for (const message of page.page) {
+			const pending = message.pendingClarification;
+			if (!pending || pending.remindedAt !== undefined) continue;
+			if (pending.askedAt > cutoff) continue;
+			await ctx.db.patch(message._id, { pendingClarification: { ...pending, remindedAt: now } });
+			await applyEffects(ctx, [{ kind: 'notify_clarification', inboundMessageId: message._id }]);
+			reminded++;
 		}
 
-		return { resumed };
+		if (!page.isDone) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
+				{ cursor: page.continueCursor }
+			);
+		}
+		return { reminded };
 	},
 });
 

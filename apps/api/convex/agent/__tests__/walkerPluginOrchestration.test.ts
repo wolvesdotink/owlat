@@ -445,4 +445,43 @@ describe('walker generated plugin orchestration conformance', () => {
 		expect(step.input['ownerAttachment']).toBeNull();
 		expect(step.input['confirmedContext']).toContain("It isn't ready yet");
 	});
+
+	const openQuestions = [
+		{
+			id: 'clarify_0',
+			slotType: 'factual_lookup',
+			text: 'Which order?',
+			answer: { value: '#4821', source: 'user', at: 2 },
+		},
+		{ id: 'clarify_1', slotType: 'date_time', text: 'When does it ship?' },
+	];
+
+	it('drafts an open question as a fixed placeholder once the owner agreed to gaps', async () => {
+		const harness = createHarness();
+		harness.message['processingStatus'] = 'drafting';
+		harness.message['pendingClarification'] = {
+			questions: openQuestions,
+			askedAt: 1,
+			answeredAt: 2,
+			isGapsAccepted: true,
+		};
+		await resumeDraftHandler(harness.ctx, { inboundMessageId: 'message-id' });
+		const step = harness.scheduled[0]!.coreStep as { input: Record<string, unknown> };
+		expect(step.input['isGapsAccepted']).toBe(true);
+		expect(step.input['gapPlaceholders']).toEqual(['[[When does it ship]]']);
+		expect(step.input['confirmedContext']).toContain('[[When does it ship]]');
+	});
+
+	it('asks again instead of drafting around a question left open without consent', async () => {
+		const harness = createHarness();
+		harness.message['processingStatus'] = 'drafting';
+		harness.message['pendingClarification'] = {
+			questions: openQuestions,
+			askedAt: 1,
+			answeredAt: 2,
+		};
+		await resumeDraftHandler(harness.ctx, { inboundMessageId: 'message-id' });
+		expect(harness.scheduled).toHaveLength(0);
+		expect(harness.message['processingStatus']).toBe('awaiting_clarification');
+	});
 });

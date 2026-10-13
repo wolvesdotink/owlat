@@ -187,6 +187,10 @@ async function stageUpload(t: ReturnType<typeof convexTest>, userId = OWNER) {
 	});
 }
 
+/**
+ * Answer as "Draft with what I have": most cases here answer the file question
+ * alone, and without that choice an open question is refused (#1343).
+ */
 function answer(
 	t: ReturnType<typeof convexTest>,
 	messageId: Id<'inboundMessages'>,
@@ -195,6 +199,7 @@ function answer(
 	return t.withIdentity(identity).mutation(api.inbox.clarification.answerClarification, {
 		inboundMessageId: messageId,
 		answers: answers as never,
+		withGaps: true,
 	});
 }
 
