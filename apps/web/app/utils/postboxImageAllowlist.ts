@@ -79,7 +79,7 @@ export type PostboxImageBannerState =
 	| { kind: 'trackers-blocked'; trackerCount: number };
 
 export function resolvePostboxImageBanner(input: {
-	/** The sanitized body contains at least one remote `<img>`. */
+	/** The sanitized body references at least one remote resource (img, srcset, CSS). */
 	hasRemoteImages: boolean;
 	/** Images are currently being rendered. */
 	showImages: boolean;

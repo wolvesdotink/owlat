@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildBaseStyle } from '../postboxDarkMode';
 import {
 	POSTBOX_BODY_META_CSP,
+	POSTBOX_BODY_META_CSP_NO_REMOTE,
 	POSTBOX_SRCDOC_HEAD,
 	postboxBodyPlaceholder,
 } from '../postboxBodyPlaceholder';
@@ -28,6 +29,11 @@ describe('postboxBodyPlaceholder', () => {
 		expect(srcdoc).not.toContain(POSTBOX_BODY_META_CSP);
 		// The body itself is untouched; only the policy changes.
 		expect(srcdoc).toContain('<p>hello</p><img src="https://img.example/a.png">');
+	});
+
+	it('serves a copy saved while images were blocked as it is', () => {
+		const saved = `${POSTBOX_SRCDOC_HEAD}${POSTBOX_BODY_META_CSP_NO_REMOTE}${buildBaseStyle('light')}</head><body><p>hi</p></body></html>`;
+		expect(postboxBodyPlaceholder(saved, { blockRemote: true })?.srcdoc).toBe(saved);
 	});
 
 	it('refuses a saved copy whose policy it cannot swap', () => {

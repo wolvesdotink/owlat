@@ -19,6 +19,7 @@ function entry(srcdoc: string, height: number | null = null): PostboxRenderEntry
 		renderScheme: 'light',
 		kind: 'simple',
 		detection: { pixelCount: 0, hosts: [] } as unknown as PostboxRenderEntry['detection'],
+		hasRemoteImages: false,
 		height,
 	};
 }

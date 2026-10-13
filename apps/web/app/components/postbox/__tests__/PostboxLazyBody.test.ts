@@ -90,6 +90,7 @@ function setHeight(options: typeof LIGHT, height: number) {
 		renderScheme: 'light',
 		kind: 'simple',
 		detection: { pixelCount: 0 } as never,
+		hasRemoteImages: false,
 		height,
 	});
 }

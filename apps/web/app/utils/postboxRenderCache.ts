@@ -48,6 +48,8 @@ export interface PostboxRenderEntry {
 	kind: EmailHtmlKind;
 	/** Tracker detection computed on the sanitized output (feeds the badge). */
 	detection: TrackerDetection;
+	/** The body references a remote resource, so the image banner has a say. */
+	hasRemoteImages: boolean;
 	/** Last measured iframe content height (px); null until first load. */
 	height: number | null;
 }
