@@ -269,6 +269,20 @@ describe('start', () => {
 		expect(lastDraftPrompt()).toContain('invoice total');
 	});
 
+	it('writes no draft at all for a gap no question may ask for (a password)', async () => {
+		const t = await makeT();
+		llm.draft = 'Hi Jonas,\n\nI will log in with [[your password]].';
+		const { target } = await replyDraft(t, 'Thanks for the call today, talk soon.');
+
+		const res = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+
+		expect(res.status).toBe('error');
+		const stream = await t.query(api.mail.draftStreamStore.getDraftStream, {
+			streamId: res.streamId!,
+		});
+		expect(stream).toMatchObject({ status: 'error', text: '', errorMessage: 'draft_held_secret' });
+	});
+
 	it('asks first, pre-picking what answer memory holds for this contact', async () => {
 		const t = await makeT();
 		const contactId = await seedCustomer(t);

@@ -302,12 +302,36 @@ describe('AskCard', () => {
 		w.unmount();
 	});
 
-	it('as the team agent\'s card: "Answer later", and every question required', async () => {
-		const w = mountCard({ questions: QUESTIONS.slice(2), skipLabel: 'Answer later' });
-		expect(w.get('[data-testid="ask-skip"]').text()).toBe('Answer later');
+	it('as the team agent\'s card: "I\'ll answer later", its own subline, every question required', async () => {
+		const w = mountCard({ questions: QUESTIONS.slice(2), teamAgent: true });
+		expect(w.get('[data-testid="ask-skip"]').text()).toBe("I'll answer later");
+		expect(w.get('[data-testid="ask-subline"]').text()).toBe(
+			'No draft yet. The agent writes it once everything here is answered.'
+		);
 		const submit = w.get('[data-testid="ask-submit"]');
 		await w.findAll('[data-testid="ask-input"]')[2]!.setValue('Nothing else');
 		expect(submit.attributes('disabled')).toBeDefined();
+		w.unmount();
+	});
+
+	it('with every question answered (a draft that failed before it was written), offers only the retry', async () => {
+		const answered = (q: (typeof QUESTIONS)[number], value: string) => ({
+			...q,
+			answer: { value, at: 0, source: 'user' as const },
+		});
+		const w = mountCard({ questions: [answered(QUESTIONS[3]!, '4,200 EUR')] });
+		expect(w.get('h2').text()).toBe('Everything is answered');
+		expect(w.find('[data-testid="ask-skip"]').exists()).toBe(false);
+		await w.get('[data-testid="ask-submit"]').trigger('click');
+		expect(w.emitted('answer')?.[0]).toEqual([[]]);
+		expectFullyLocalized(w);
+		w.unmount();
+	});
+
+	it('asks again a question whose stored answer is blank', () => {
+		const blank = { ...QUESTIONS[4]!, answer: { value: '  ', at: 0, source: 'user' as const } };
+		const w = mountCard({ questions: [blank] });
+		expect(w.findAll('[data-testid="ask-question"]')).toHaveLength(1);
 		w.unmount();
 	});
 

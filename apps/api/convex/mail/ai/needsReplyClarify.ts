@@ -22,7 +22,7 @@
  * asked as new questions (`askAboutDraftGaps`, mail/ai/gapQuestions.ts).
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { normalizeEmail } from '@owlat/shared';
 import { internalQuery, type MutationCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
@@ -53,6 +53,8 @@ import { buildThreadTranscript, CLARIFY_DRAFT } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
 import type { Id } from '../../_generated/dataModel';
 import { recordClarificationAnswered } from '../interpret/threadEvents';
+import { checkDraftGaps } from './gapQuestions';
+import { isGapsAccepted } from '../needsReplySlot';
 
 /**
  * Answer the clarification questions on a Reply Queue thread and kick off the
@@ -323,7 +325,7 @@ export const getClarificationContext = internalQuery({
 			// The answers this context holds; a write for older ones is dropped.
 			answeredAt: clarification.answeredAt,
 			// The owner chose to draft with what they have: gaps may stay.
-			isGapsAccepted: clarification.isGapsAccepted === true,
+			isGapsAccepted: isGapsAccepted(clarification),
 			// Taken ids, so questions about the draft's own gaps get fresh ones.
 			questionIds: clarification.questions.map((q) => q.id),
 			// Who questions about the draft's own gaps are attributed to.
@@ -377,6 +379,10 @@ async function currentClarification(
 	) {
 		return null; // stale — a newer ingest re-enqueued its own check
 	}
+	// Only an answered card takes a draft: a run started before writes were
+	// checked by revision (no expectedAnsweredAt) still never lands on a card
+	// that asks again.
+	if (clarification.answeredAt === undefined) return null;
 	if (
 		args.expectedAnsweredAt !== undefined &&
 		clarification.answeredAt !== args.expectedAnsweredAt
@@ -386,11 +392,37 @@ async function currentClarification(
 	return { flag, clarification };
 }
 
+/** The card asks again: its questions plus `questions`, the answers kept. */
+async function askAgain(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	current: NonNullable<Awaited<ReturnType<typeof currentClarification>>>,
+	questions: ReadonlyArray<Infer<typeof needsReplyClarificationQuestionValidator>>
+): Promise<void> {
+	const { flag, clarification } = current;
+	const { answeredAt: _answered, draft: _held, ...asked } = clarification;
+	const now = Date.now();
+	await ctx.db.patch(threadId, {
+		needsReply: {
+			...flag,
+			clarification: {
+				...asked,
+				isNeeded: true,
+				askedAt: now,
+				questions: [...clarification.questions, ...questions],
+			},
+		},
+		updatedAt: now,
+	});
+}
+
 /**
  * Persist the starter reply produced by `draftWithAnswers`. Staleness-guarded
  * (a newer inbound message re-triggers the whole flow) and clarification-guarded
  * (the answers it was written from must still be the current ones). Flips the
- * card to "Draft ready".
+ * card to "Draft ready". A draft with gaps the owner did not agree to is never
+ * stored, whoever wrote it: its gaps join the card as questions, and a gap no
+ * question may ask for stores nothing.
  */
 export const persistClarificationDraft = internalMutation({
 	args: { ...draftWriteGuardArgs, draft: v.string() },
@@ -398,6 +430,18 @@ export const persistClarificationDraft = internalMutation({
 		const current = await currentClarification(ctx, args);
 		if (!current) return;
 		const { flag, clarification } = current;
+		if (!isGapsAccepted(clarification)) {
+			const trigger = await ctx.db.get(flag.messageId);
+			const gaps = checkDraftGaps(args.draft, {
+				fromAddress: trigger?.fromAddress ?? '',
+				existing: clarification.questions,
+			});
+			if (gaps.kind === 'unaskable') return;
+			if (gaps.kind === 'ask') {
+				await askAgain(ctx, args.threadId, current, gaps.questions);
+				return;
+			}
+		}
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
 				...flag,
@@ -421,20 +465,6 @@ export const askAboutDraftGaps = internalMutation({
 	handler: async (ctx, args) => {
 		const current = await currentClarification(ctx, args);
 		if (!current || args.questions.length === 0) return;
-		const { flag, clarification } = current;
-		const { answeredAt: _answered, draft: _held, ...asked } = clarification;
-		const now = Date.now();
-		await ctx.db.patch(args.threadId, {
-			needsReply: {
-				...flag,
-				clarification: {
-					...asked,
-					isNeeded: true,
-					askedAt: now,
-					questions: [...clarification.questions, ...args.questions],
-				},
-			},
-			updatedAt: now,
-		});
+		await askAgain(ctx, args.threadId, current, args.questions);
 	},
 });

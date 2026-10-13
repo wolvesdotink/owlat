@@ -187,6 +187,52 @@ describe('no arrival draft while the owner has questions to answer', () => {
 		expect(thread?.needsReply?.draftSlot).toBeUndefined();
 	});
 
+	it('persistDraftSlot stores no draft with a gap, whoever wrote it: the gap is asked', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'When can you deliver?' }],
+			0
+		);
+
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			draft: 'Hi Chris, we can deliver on [[delivery date]].',
+			confidence: 0.8,
+		});
+
+		const flag = (await t.run((ctx) => ctx.db.get(threadId)))?.needsReply;
+		expect(flag?.draftSlot).toBeUndefined();
+		expect(flag?.clarification?.questions).toEqual([
+			expect.objectContaining({
+				id: 'gap_0',
+				text: 'delivery date',
+				origin: { kind: 'email', senderDomain: 'example.com' },
+			}),
+		]);
+	});
+
+	it('persistDraftSlot stores nothing for a gap no question may ask for', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'Can you log in for me?' }],
+			0
+		);
+
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			draft: 'Sure, I will use [[your password]].',
+			confidence: 0.8,
+		});
+
+		const flag = (await t.run((ctx) => ctx.db.get(threadId)))?.needsReply;
+		expect(flag?.draftSlot).toBeUndefined();
+		expect(flag?.clarification).toBeUndefined();
+	});
+
 	it('holdForGapQuestions turns a draft with gaps into questions instead of a slot', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, ids } = await seedThread(

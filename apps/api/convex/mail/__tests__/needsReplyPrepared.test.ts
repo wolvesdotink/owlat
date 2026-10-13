@@ -101,6 +101,13 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 		});
 	});
 
+	it('shows no slot with a gap of its own', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seedFlaggedThread(t, { slotDraft: 'Hi Jonas, the total is [[total]].' });
+		const prepared = await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId });
+		expect(prepared?.slotDraft).toBeNull();
+	});
+
 	it('returns nulls for a flag without drafts, and null for an unflagged thread', async () => {
 		const t = convexTest(schema, modules);
 		const flagged = await seedFlaggedThread(t, {});

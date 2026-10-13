@@ -7,8 +7,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { authoredGapLabels } from '../../agent/shared/draftGaps';
-import { gapQuestionsFor } from '../ai/gapQuestions';
-import { visibleDraftSlot, withVisibleDraftSlot } from '../needsReplySlot';
+import { checkDraftGaps } from '../ai/gapQuestions';
+import { visibleClarification, visibleDraftSlot, withVisibleDrafts } from '../needsReplySlot';
 import { leavesQuestionsOpen, type AskQuestion } from '../ai/composeDraftPolicy';
 import { parseReplyOptionsText } from '../replyOptions';
 
@@ -36,60 +36,99 @@ describe('authoredGapLabels', () => {
 	});
 });
 
-describe('gapQuestionsFor', () => {
+describe('checkDraftGaps', () => {
+	const opts = (existing: { id: string }[] = []) => ({
+		fromAddress: 'jonas@brightpath.example',
+		existing,
+	});
+
 	it('asks one text question per gap, attributed to the email, with fresh ids', () => {
-		const questions = gapQuestionsFor('Total: [[invoice total]], due [[due date]].', {
-			fromAddress: 'jonas@brightpath.example',
-			existing: [{ id: 'gap_0' }, { id: 'clarify_0' }],
+		const check = checkDraftGaps(
+			'Total: [[invoice total]], due [[due date]].',
+			opts([{ id: 'gap_0' }, { id: 'clarify_0' }])
+		);
+		expect(check).toEqual({
+			kind: 'ask',
+			questions: [
+				expect.objectContaining({
+					id: 'gap_1',
+					text: 'invoice total',
+					answerKind: 'text',
+					origin: { kind: 'email', senderDomain: 'brightpath.example' },
+				}),
+				expect.objectContaining({ id: 'gap_2', text: 'due date' }),
+			],
 		});
-		expect(questions).toEqual([
-			expect.objectContaining({
-				id: 'gap_1',
-				text: 'invoice total',
-				answerKind: 'text',
-				origin: { kind: 'email', senderDomain: 'brightpath.example' },
-			}),
-			expect.objectContaining({ id: 'gap_2', text: 'due date' }),
-		]);
 	});
 
-	it('never asks for a credential, even when the draft leaves a gap for one', () => {
-		expect(
-			gapQuestionsFor('Log in with [[your password]].', {
-				fromAddress: 'a@b.example',
-				existing: [],
-			})
-		).toEqual([]);
+	it('asks for a file where the gap wants one', () => {
+		const check = checkDraftGaps('Here it is: [[attach the September invoice]]', opts());
+		expect(check).toEqual({
+			kind: 'ask',
+			questions: [expect.objectContaining({ slotType: 'attachment', answerKind: 'file' })],
+		});
+		const german = checkDraftGaps('[[Rechnung als PDF anhängen]]', opts());
+		expect(german.kind === 'ask' && german.questions[0]!.answerKind).toBe('file');
 	});
 
-	it('asks nothing about a complete draft', () => {
-		expect(gapQuestionsFor('All done.', { fromAddress: 'a@b.example', existing: [] })).toEqual([]);
+	it('holds a draft whose gap no question may ask for, instead of passing it', () => {
+		expect(checkDraftGaps('Log in with [[your password]].', opts())).toEqual({
+			kind: 'unaskable',
+		});
+	});
+
+	it('passes a complete draft', () => {
+		expect(checkDraftGaps('All done.', opts())).toEqual({ kind: 'complete' });
 	});
 });
 
-describe('visibleDraftSlot', () => {
+describe('visibleDraftSlot and visibleClarification', () => {
 	const slot = { draft: 'Hi', confidence: 0.8, generatedAt: 1 };
-	const clarification = { isNeeded: true, questions: [], askedAt: 1 };
+	const answered = {
+		id: 'q1',
+		slotType: 'decision',
+		text: 'Approve?',
+		answer: { value: 'Yes', at: 1 },
+	};
+	const clarification = { isNeeded: true, questions: [answered], askedAt: 1 };
 
 	it('shows the slot of a thread without questions', () => {
 		expect(visibleDraftSlot({ draftSlot: slot })).toBe(slot);
 	});
 
-	it('never shows a slot next to a clarification, answered or not', () => {
+	it('never shows a slot next to a clarification, or one with a gap of its own', () => {
 		expect(visibleDraftSlot({ draftSlot: slot, clarification })).toBeUndefined();
 		expect(
-			visibleDraftSlot({ draftSlot: slot, clarification: { ...clarification, answeredAt: 2 } })
+			visibleDraftSlot({ draftSlot: { ...slot, draft: 'Total: [[amount]]' } })
 		).toBeUndefined();
 	});
 
-	it('leaves a hidden slot out of a whole thread row', () => {
+	it('reads a reply with gaps nobody agreed to as asking again, answers kept', () => {
+		const stored = { ...clarification, isNeeded: false, answeredAt: 2, draft: 'Total: [[amount]]' };
+		expect(visibleClarification(stored)).toEqual({
+			isNeeded: true,
+			questions: [answered],
+			askedAt: 1,
+		});
+		// "Draft with what I have", or a question left open: the gaps were agreed to.
+		expect(visibleClarification({ ...stored, isGapsAccepted: true })).toEqual({
+			...stored,
+			isGapsAccepted: true,
+		});
+		const open = { ...stored, questions: [{ ...answered, answer: undefined }] };
+		expect(visibleClarification(open)).toBe(open);
+		const clean = { ...stored, draft: 'Total: EUR 2,100' };
+		expect(visibleClarification(clean)).toBe(clean);
+	});
+
+	it('applies both to a whole thread row', () => {
 		const thread = { _id: 't1', needsReply: { draftSlot: slot, clarification, messageId: 'm1' } };
-		expect(withVisibleDraftSlot(thread)).toEqual({
+		expect(withVisibleDrafts(thread)).toEqual({
 			_id: 't1',
 			needsReply: { clarification, messageId: 'm1' },
 		});
 		const plain = { _id: 't2', needsReply: { draftSlot: slot } };
-		expect(withVisibleDraftSlot(plain)).toBe(plain);
+		expect(withVisibleDrafts(plain)).toEqual(plain);
 	});
 });
 

@@ -17,7 +17,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../../_generated/server';
+import { internalQuery, type MutationCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { draftQualityValidator } from '../../lib/convexValidators';
 import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
@@ -25,6 +25,9 @@ import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { buildThreadTranscript, DRAFT_ON_ARRIVAL } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
 import { needsReplyClarificationQuestionValidator } from '../../lib/validators/clarification';
+import type { Doc, Id } from '../../_generated/dataModel';
+import { checkDraftGaps } from './gapQuestions';
+import type { AskQuestion } from './composeDraftPolicy';
 
 /**
  * Load everything the draft-on-arrival action needs for one thread, or `null`
@@ -109,6 +112,9 @@ export const loadForDraft = internalQuery({
  * skips silently if the flag is gone or now points at a different (newer)
  * trigger message — the draft was for a message that is no longer current, so
  * writing it would surface a stale reply. Never clears the rest of the flag.
+ * A draft with gaps is never stored, whoever wrote it (a run started before
+ * the action checked them too): its gaps become the thread's questions, and a
+ * gap no question may ask for leaves no slot at all.
  */
 export const persistDraftSlot = internalMutation({
 	args: {
@@ -130,6 +136,16 @@ export const persistDraftSlot = internalMutation({
 		if (thread.needsReply.messageId !== args.triggerMessageId) return;
 		// Questions arrived meanwhile: the reply waits for their answers.
 		if (thread.needsReply.clarification) return;
+		const trigger = await ctx.db.get(args.triggerMessageId);
+		const gaps = checkDraftGaps(args.draft, {
+			fromAddress: trigger?.fromAddress ?? '',
+			existing: [],
+		});
+		if (gaps.kind === 'unaskable') return;
+		if (gaps.kind === 'ask') {
+			await askInstead(ctx, args.threadId, thread.needsReply, gaps.questions);
+			return;
+		}
 
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
@@ -164,14 +180,21 @@ export const holdForGapQuestions = internalMutation({
 		const flag = thread?.needsReply;
 		if (!thread || !flag || flag.messageId !== args.triggerMessageId) return;
 		if (flag.clarification || args.questions.length === 0) return;
-		const now = Date.now();
-		const { draftSlot: _stale, ...rest } = flag;
-		await ctx.db.patch(args.threadId, {
-			needsReply: {
-				...rest,
-				clarification: { isNeeded: true, questions: args.questions, askedAt: now },
-			},
-			updatedAt: now,
-		});
+		await askInstead(ctx, args.threadId, flag, args.questions);
 	},
 });
+
+/** The thread asks `questions` in place of an arrival slot. */
+async function askInstead(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	flag: NonNullable<Doc<'mailThreads'>['needsReply']>,
+	questions: AskQuestion[]
+): Promise<void> {
+	const now = Date.now();
+	const { draftSlot: _stale, ...rest } = flag;
+	await ctx.db.patch(threadId, {
+		needsReply: { ...rest, clarification: { isNeeded: true, questions, askedAt: now } },
+		updatedAt: now,
+	});
+}

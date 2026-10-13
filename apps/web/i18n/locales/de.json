@@ -7129,7 +7129,7 @@
 			},
 			"askCard": {
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
-				"subline": "Noch kein Entwurf. Beantworte erst diese Fragen, oder entwirf jetzt: Was offen ist, bleibt als markierte Lücke drin.",
+				"subline": "Noch kein Entwurf. Beantworte zuerst, was gefragt ist, oder entwirf jetzt: Was offen ist, bleibt als markierte Lücke drin.",
 				"placeholder": {
 					"choice": "Etwas anderes …",
 					"text": "Gib deine Antwort ein …",
@@ -7140,7 +7140,10 @@
 				"answerAndDraft": "Antworten und entwerfen",
 				"skip": "Mit vorhandenen Infos entwerfen",
 				"operation": "Fragen beantworten",
-				"budgetRefused": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb wurde der Entwurf nicht geschrieben. Deine Antworten bleiben hier: Versuch es später erneut oder schreib die Antwort selbst."
+				"budgetRefused": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb wurde der Entwurf nicht geschrieben. Deine Antworten bleiben hier: Versuch es später erneut oder schreib die Antwort selbst.",
+				"sublineAgent": "Noch kein Entwurf. Der Agent schreibt ihn, sobald alles hier beantwortet ist.",
+				"allAnswered": "Alles beantwortet",
+				"draftNow": "Entwurf schreiben"
 			},
 			"fileAsk": {
 				"dropHere": "Lege die Datei hier ab oder",

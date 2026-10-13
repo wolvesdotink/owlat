@@ -19,7 +19,7 @@ import { internal } from '../../_generated/api';
 import { requireMessageAccess, loadReadableMailbox } from '../permissions';
 import { senderHeuristicsValidator } from '../../lib/validators/senderHeuristics';
 import { loadThreadOutboundDelivery, loadThreadPage } from './threadReads';
-import { withVisibleDraftSlot } from '../needsReplySlot';
+import { withVisibleDrafts } from '../needsReplySlot';
 
 /**
  * Load a message the caller is allowed to READ (owner/admin, or the mailbox
@@ -88,7 +88,7 @@ export const listThreadMessages = publicQuery({
 			.collect(); // bounded: one mailbox's labels
 		const thread = await ctx.db.get(seed.threadId);
 		// A pre-written reply the thread may not show yet stays on the server.
-		return { thread: thread && withVisibleDraftSlot(thread), labels, ...page };
+		return { thread: thread && withVisibleDrafts(thread), labels, ...page };
 	},
 });
 

@@ -38,7 +38,7 @@ import { needsReplyTriggerOf } from './needsReplyTrigger';
 import { QUEUE_LIMIT, scanReplyQueue } from './needsReplyQueueScan';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
-import { visibleDraftSlot } from './needsReplySlot';
+import { visibleClarification, visibleDraftSlot } from './needsReplySlot';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
@@ -351,7 +351,7 @@ export const listQueue = publicQuery({
 				// Clarification loop: when present, the row renders as a "Needs your
 				// input" card (question + scoped chips + free-text) instead of the
 				// plain needs-reply row. Absent for the deterministic/plain case.
-				clarification: flag.clarification,
+				clarification: flag.clarification && visibleClarification(flag.clarification),
 				// Draft-on-arrival review slot (postbox.aiDraft): whether a pre-generated
 				// reply is waiting for review. The draft itself is read by the card that
 				// shows it (`getDraftSlot`, plan C8), not shipped on every row.

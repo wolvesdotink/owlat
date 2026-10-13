@@ -28,7 +28,7 @@ import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
 import { runSharedDraft } from '../../agent/shared/draftService';
 import { loadThreadPlan, recordArrivalPlan } from './composeDraftPlan';
-import { gapQuestionsFor } from './gapQuestions';
+import { checkDraftGaps } from './gapQuestions';
 import { localizeReplyQueueQuestions } from './needsReplyRefine';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
 import { rootRequest } from '../../lib/llm/requestMeter';
@@ -112,14 +112,16 @@ export async function generateDraftOnArrival(
 		if (draft.length === 0) return; // nothing usable
 
 		// A fact the draft could not fill: ask the owner instead of storing it.
-		const questions = gapQuestionsFor(draft, { fromAddress: loaded.senderAddress, existing: [] });
-		if (questions.length > 0) {
+		// One no question may ask for (a password): no AI draft for this reply.
+		const gaps = checkDraftGaps(draft, { fromAddress: loaded.senderAddress, existing: [] });
+		if (gaps.kind === 'unaskable') return;
+		if (gaps.kind === 'ask') {
 			await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.holdForGapQuestions, {
 				threadId: args.threadId,
 				triggerMessageId: loaded.triggerMessageId,
 				questions: await localizeReplyQueueQuestions(
 					ctx,
-					questions,
+					gaps.questions,
 					rootRequest('postbox_thread', args.threadId)
 				),
 			});

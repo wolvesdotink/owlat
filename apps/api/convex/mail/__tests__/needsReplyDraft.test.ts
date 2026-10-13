@@ -163,6 +163,20 @@ describe('draftClarificationReply', () => {
 		});
 	});
 
+	it('lands nothing for a gap no question may ask for (a password)', async () => {
+		mocks.runSharedDraft.mockResolvedValueOnce({
+			draftBody: 'Hi Jonas, I will log in with [[your password]].',
+			draftQuality: undefined,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+
+		expect(mutations.some((m) => m.name.includes('persistClarificationDraft'))).toBe(false);
+		expect(mutations.some((m) => m.name.includes('askAboutDraftGaps'))).toBe(false);
+	});
+
 	it('drafts every question as a gap after "Draft with what I have" with nothing answered', async () => {
 		const gap = '[[Which delivery date works for you]]';
 		const { ctx, mutations } = makeCtx({

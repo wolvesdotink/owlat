@@ -194,6 +194,19 @@ describe('generateDraftOnArrival', () => {
 		});
 	});
 
+	it('stores nothing for a gap no question may ask for (a password)', async () => {
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'Hi Sam, I will log in with [[your password]].',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const h = makeCtx({ loaded: makeLoaded() });
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+
+		expect(h.persisted).toHaveLength(0);
+		expect(h.held).toHaveLength(0);
+	});
+
 	it('counts a reviewer note the model wrote as a gap, so it is asked too', async () => {
 		runLlmTextMock.mockResolvedValueOnce({
 			text: 'Hallo Sam,\n\n[Bitte prüfen: x]\n\nViele Grüße',

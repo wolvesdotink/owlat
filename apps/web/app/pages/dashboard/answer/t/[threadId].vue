@@ -415,7 +415,7 @@ onBeforeUnmount(() => {
 								:questions="clarificationQuestions"
 								:copy-policy="copyPolicy"
 								:submitting="reply.isAnsweringClarification.value"
-								:skip-label="t('components.postbox.postboxClarificationCard.answerLater')"
+								team-agent
 								@answer="onClarificationAnswers"
 								@skip="clarificationDeferred = true"
 							/>

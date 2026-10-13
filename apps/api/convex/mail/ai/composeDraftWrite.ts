@@ -61,10 +61,11 @@ import {
 	type AskFileRef,
 	type AskQuestion,
 } from './composeDraftPolicy';
-import { gapQuestionsFor } from './gapQuestions';
+import { checkDraftGaps } from './gapQuestions';
 import { localizeForOwner } from './composeDraftGap';
 import { admissionRefusalOf, budgetRefusalMessage } from '../../lib/llm/admissionPort';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
+import { DRAFT_HELD_FOR_SECRET } from '@owlat/shared/answerMode';
 
 /** How often partial text is written to the buffer (matches Revise). */
 const FLUSH_INTERVAL_MS = 120;
@@ -140,6 +141,27 @@ async function failDraft(
 }
 
 const DRAFT_FAILED = 'The draft could not be written. Try again.';
+
+/**
+ * The questions about a held draft's gaps in the owner's language, or as
+ * written when that fails (a provider error, the budget): they are asked
+ * either way, never lost to a failed translation.
+ */
+async function localizedOrAsIs(
+	ctx: ActionCtx,
+	questions: AskQuestion[],
+	input: AnswerDraftInput
+): Promise<AskQuestion[]> {
+	try {
+		return await localizeForOwner(ctx, questions, input.locale);
+	} catch (error) {
+		logError(
+			'[composeDraft] localizing gap questions failed:',
+			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
+		);
+		return questions;
+	}
+}
 
 /**
  * Write the draft into a fresh buffer on the session and settle the session
@@ -220,16 +242,26 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 		});
 		const text = ensureGapPlaceholders(draft.draftBody.trim(), placeholders);
 		if (!input.allowGaps) {
-			const asked = gapQuestionsFor(text, {
+			const gaps = checkDraftGaps(text, {
 				fromAddress: input.counterpartAddress ?? '',
 				existing: input.questions,
 			});
-			if (asked.length > 0) {
+			// A gap only a question Owlat never asks could fill: no AI draft.
+			if (gaps.kind === 'unaskable') {
+				await failDraft(ctx, input, await openStream(), {
+					text: '',
+					errorMessage: DRAFT_HELD_FOR_SECRET,
+					sessionMessage:
+						'This reply needs a detail Owlat never asks for, such as a password, so it was not drafted.',
+				});
+				return;
+			}
+			if (gaps.kind === 'ask') {
 				await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
 					sessionId: input.sessionId,
 					status: 'asking',
 					expectStatus: 'drafting',
-					questions: [...input.questions, ...(await localizeForOwner(ctx, asked, input.locale))],
+					questions: [...input.questions, ...(await localizedOrAsIs(ctx, gaps.questions, input))],
 				});
 				return;
 			}

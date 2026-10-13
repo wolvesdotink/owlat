@@ -7129,7 +7129,7 @@
 			},
 			"askCard": {
 				"title": "One thing before I write this | {count} things before I write this",
-				"subline": "No draft yet. Answer these first, or draft now and anything still open stays in as a highlighted gap.",
+				"subline": "No draft yet. Answer first, or draft now and anything still open stays in as a highlighted gap.",
 				"placeholder": {
 					"choice": "Something else…",
 					"text": "Type your answer…",
@@ -7140,7 +7140,10 @@
 				"answerAndDraft": "Answer and draft",
 				"skip": "Draft with what I have",
 				"operation": "Answer the questions",
-				"budgetRefused": "The AI spend budget is used up for now, so the draft was not written. Your answers stay here: try again later, or write the reply yourself."
+				"budgetRefused": "The AI spend budget is used up for now, so the draft was not written. Your answers stay here: try again later, or write the reply yourself.",
+				"sublineAgent": "No draft yet. The agent writes it once everything here is answered.",
+				"allAnswered": "Everything is answered",
+				"draftNow": "Write the draft"
 			},
 			"fileAsk": {
 				"dropHere": "Drop the file here or",

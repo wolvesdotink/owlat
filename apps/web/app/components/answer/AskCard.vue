@@ -54,11 +54,11 @@ const props = withDefaults(
 		mailboxId?: Id<'mailboxes'>;
 		resolveThreadFile?: (file: ThreadFile) => Promise<FileAnswerRef | null>;
 		/**
-		 * The second button's words: "Draft with what I have" by default. The team
-		 * agent's card, whose draft cannot be written with gaps, puts the card
-		 * away instead ("Answer later").
+		 * The team agent's questions. Its draft cannot be written with gaps yet, so
+		 * the second button puts the card away ("I'll answer later") instead of
+		 * drafting with what the person has, and the subline says so.
 		 */
-		skipLabel?: string;
+		teamAgent?: boolean;
 		/** Whether an uploaded file answer is kept in Files (see FileAsk). */
 		copyPolicy?: FileCopyPolicy;
 		/** File questions take several files (the Reply Queue's answer does). */
@@ -70,7 +70,7 @@ const props = withDefaults(
 		submitting: false,
 		mailboxId: undefined,
 		resolveThreadFile: undefined,
-		skipLabel: undefined,
+		teamAgent: false,
 	}
 );
 
@@ -87,10 +87,14 @@ function kindOf(question: AskQuestion): Kind {
 }
 /**
  * The questions still to answer: a remembered answer is shown to confirm, one
- * the person gave in an earlier round is not asked again.
+ * the person gave in an earlier round is not asked again (a blank one is).
  */
 const shown = computed(() =>
-	props.questions.filter((q) => !q.answer || q.answer.source === 'memory')
+	props.questions.filter((q) => {
+		const answer = q.answer;
+		if (!answer || answer.source === 'memory') return true;
+		return !answer.value.trim() && !answer.file && !answer.files?.length;
+	})
 );
 /** The list hands its slot the shared question shape; this card needs its own. */
 const byId = computed(() => new Map(shown.value.map((q) => [q.id, q])));
@@ -205,7 +209,34 @@ const title = computed(() => {
 		:aria-busy="submitting"
 		data-testid="ask-card"
 	>
+		<!-- Every question answered (a draft that failed before it was written):
+		     only the retry, which accepts no gaps. -->
+		<template v-if="shown.length === 0">
+			<div class="flex flex-wrap items-baseline gap-x-2">
+				<Icon name="lucide:sparkles" class="size-3.5 self-center text-brand" aria-hidden="true" />
+				<h2 :id="titleId" class="text-sm font-semibold text-text-primary">
+					{{ t('components.answer.askCard.allAnswered') }}
+				</h2>
+			</div>
+			<UiButton
+				type="button"
+				size="sm"
+				class="mt-3"
+				:disabled="submitting"
+				data-testid="ask-submit"
+				@click="emit('answer', [])"
+			>
+				<Icon
+					v-if="submitting"
+					name="lucide:loader-2"
+					class="mr-1 size-3.5 animate-spin motion-reduce:animate-none"
+					aria-hidden="true"
+				/>
+				{{ t('components.answer.askCard.draftNow') }}
+			</UiButton>
+		</template>
 		<ClarificationQuestions
+			v-else
 			ref="listRef"
 			:questions="shown"
 			require-all
@@ -221,7 +252,11 @@ const title = computed(() => {
 					</h2>
 				</div>
 				<p class="mt-0.5 text-xs text-text-secondary" data-testid="ask-subline">
-					{{ t('components.answer.askCard.subline') }}
+					{{
+						teamAgent
+							? t('components.answer.askCard.sublineAgent')
+							: t('components.answer.askCard.subline')
+					}}
 				</p>
 			</template>
 
@@ -291,20 +326,24 @@ const title = computed(() => {
 						data-testid="ask-skip"
 						@click="skip"
 					>
-						{{ skipLabel ?? t('components.answer.askCard.skip') }}
+						{{
+							teamAgent
+								? t('components.postbox.postboxClarificationCard.answerLater')
+								: t('components.answer.askCard.skip')
+						}}
 					</UiButton>
 				</div>
-				<p
-					v-if="budgetRefused"
-					class="mt-3 flex items-start gap-1.5 text-xs text-warning"
-					role="status"
-					data-testid="ask-budget"
-				>
-					<Icon name="lucide:wallet" class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-					{{ t('components.answer.askCard.budgetRefused') }}
-				</p>
 				<ClarificationTrustLine class="mt-3" :questions="shown" test-id="ask-trust" />
 			</template>
 		</ClarificationQuestions>
+		<p
+			v-if="budgetRefused"
+			class="mt-3 flex items-start gap-1.5 text-xs text-warning"
+			role="status"
+			data-testid="ask-budget"
+		>
+			<Icon name="lucide:wallet" class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+			{{ t('components.answer.askCard.budgetRefused') }}
+		</p>
 	</section>
 </template>

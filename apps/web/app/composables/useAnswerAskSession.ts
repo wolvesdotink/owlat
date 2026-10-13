@@ -30,6 +30,7 @@ import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposer
 import { isAlreadyAnsweredRefusal, isHeldByGuardRefusal, ownerTimeZone } from '~/utils/answerDraft';
 import type { OperationError } from '@owlat/shared/operationError';
 import { budgetReasonOf, isBudgetStreamError } from '~/utils/aiBudget';
+import { DRAFT_HELD_FOR_SECRET } from '@owlat/shared/answerMode';
 
 export type AskSession = NonNullable<
 	FunctionReturnType<typeof api.mail.ai.composeDraftStore.getSession>
@@ -41,7 +42,8 @@ export type AskAnswer = FunctionArgs<typeof api.mail.ai.composeDraft.answer>['an
 type AttachmentRow = { storageId: string; filename: string; contentType: string; size: number };
 
 /**
- * `held`: the safety check held the message back, so there is no AI draft for it.
+ * `held`: the safety check held the message back, or the draft would need a
+ * fact Owlat never asks for (a password), so there is no AI draft for it.
  * `budget`: the AI spend budget refused the gap check or the draft (U5).
  */
 export type AskPhase =
@@ -150,6 +152,8 @@ export function useAnswerAskSession(opts: {
 		if (startOp.isLoading.value && !current) return 'checking';
 		if (!current) return startOp.isLoading.value ? 'checking' : 'idle';
 		if (current.status === 'drafting' && stream.value?.status === 'complete') return 'ready';
+		const ended = current.status === 'drafting' || current.status === 'error';
+		if (ended && stream.value?.errorMessage === DRAFT_HELD_FOR_SECRET) return 'held';
 		// A draft the budget refused: the stream carries the code, before the
 		// session settles (`drafting`) and after (`error`), also on a reload.
 		const endedOnBudget =

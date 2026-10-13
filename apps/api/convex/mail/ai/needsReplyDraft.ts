@@ -43,7 +43,7 @@ import {
 	joinConfirmedBlocks,
 } from '../../inbox/clarificationAnswers';
 import { fitGapPlaceholders } from './composeDraftPolicy';
-import { gapQuestionsFor } from './gapQuestions';
+import { checkDraftGaps } from './gapQuestions';
 import { localizeReplyQueueQuestions } from './needsReplyRefine';
 import {
 	measureDraftDelta,
@@ -154,16 +154,19 @@ export async function draftClarificationReply(
 			expectedAnsweredAt: context.answeredAt,
 		};
 		// Gaps the owner did not agree to: ask about them, store nothing.
-		const gapQuestions = context.isGapsAccepted
-			? []
-			: gapQuestionsFor(body, {
+		// The whole body, before the card's length cut could split a gap.
+		const gaps = context.isGapsAccepted
+			? ({ kind: 'complete' } as const)
+			: checkDraftGaps(body, {
 					fromAddress: context.senderAddress,
 					existing: context.questionIds.map((id) => ({ id })),
 				});
-		if (gapQuestions.length > 0) {
+		// A gap no question may ask for (a password): no AI draft for this reply.
+		if (gaps.kind === 'unaskable') return;
+		if (gaps.kind === 'ask') {
 			await ctx.runMutation(internal.mail.ai.needsReplyClarify.askAboutDraftGaps, {
 				...guard,
-				questions: await localizeReplyQueueQuestions(ctx, gapQuestions, root),
+				questions: await localizeReplyQueueQuestions(ctx, gaps.questions, root),
 			});
 			return;
 		}

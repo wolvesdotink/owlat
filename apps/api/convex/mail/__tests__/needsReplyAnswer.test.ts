@@ -543,6 +543,12 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 		await enableFeatures(t, ['mail.external']);
 		const threadId = await seedThreadWithClarification(t, 'user-A', [fileQuestion]);
 		const gap = '[[Provide the invoices]]';
+		// "Draft with what I have" with the files still open.
+		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+			threadId,
+			answers: [],
+			withGaps: true,
+		});
 
 		await t.mutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
 			threadId,
@@ -792,6 +798,38 @@ describe('a draft written from the answers that still has gaps', () => {
 			['clarify_0', 'Yes'],
 			['gap_0', undefined],
 		]);
+	});
+
+	it('stores no reply with a gap nobody agreed to, whoever wrote it: the gap is asked', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, clarification } = await answered(t);
+
+		// A run from before revisions were checked: no expectedAnsweredAt.
+		await t.mutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
+			threadId,
+			draft: 'Hi, the refund is [[refund amount]].',
+		});
+
+		const after = await clarification();
+		expect(after.draft).toBeUndefined();
+		expect(after.answeredAt).toBeUndefined();
+		expect(after.questions.map((q) => q.id)).toEqual(['clarify_0', 'gap_0']);
+	});
+
+	it('never lands a reply on a card that is asking', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A');
+
+		await t.mutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
+			threadId,
+			draft: 'Hi, approved.',
+		});
+
+		const stored = await t.run(
+			async (ctx) => (await ctx.db.get(threadId))!.needsReply!.clarification!
+		);
+		expect(stored.draft).toBeUndefined();
 	});
 
 	it('drops a write made from answers that are no longer the current ones', async () => {
