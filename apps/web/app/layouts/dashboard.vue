@@ -605,8 +605,10 @@ const sidebarDesktopClass = computed(() => {
 			</nav>
 
 			<!-- Account, Settings and the collapse toggle share one row. The toggle
-			     is one preference, the same on every page; a section that lends
-			     its navigation to the rail keeps it expanded. -->
+			     is one saved preference, except in the Postbox, where the rail
+			     folds on its own and opening it holds for the session
+			     (`onToggleCollapse`); a section that lends its navigation to the
+			     rail keeps it expanded. -->
 			<ShellSidebarFooter
 				:collapsed="isCollapsed"
 				:collapse-label="activeSection ? null : sidebarToggleLabel"

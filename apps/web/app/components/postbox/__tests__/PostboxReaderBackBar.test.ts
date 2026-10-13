@@ -7,7 +7,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import { resetShortcutPreferences } from '~/utils/shortcutScope';
+import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
+import { SHORTCUT_PRESET_DEFAULT } from '~/utils/shortcutPresets';
 import PostboxReaderBackBar from '../PostboxReaderBackBar.vue';
 
 const navigateTo = vi.fn();
@@ -80,5 +81,26 @@ describe('PostboxReaderBackBar', () => {
 		const w = mountBar({ zen: true });
 		await w.findAll('button')[0]!.trigger('click');
 		expect(w.emitted('back')).toHaveLength(1);
+	});
+
+	it('names the step keys as the person has them mapped', () => {
+		const titles = (w: VueWrapper) =>
+			w
+				.findAll('button')
+				.slice(1)
+				.map((b) => b.attributes('title'));
+		expect(titles(mountBar({ zen: true }))).toEqual([
+			'Previous conversation (k)',
+			'Next conversation (j)',
+		]);
+		wrapper?.unmount();
+		applyShortcutPreferences(SHORTCUT_PRESET_DEFAULT, [
+			{ id: 'postbox.next', keys: ['ArrowDown'] },
+		]);
+		// Only the arrow is left, and the arrows scroll here: no key to name.
+		expect(titles(mountBar({ zen: true }))).toEqual([
+			'Previous conversation (k)',
+			'Next conversation',
+		]);
 	});
 });

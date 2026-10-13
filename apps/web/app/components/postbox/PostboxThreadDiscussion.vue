@@ -28,8 +28,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
-const { isOpen, toggle } = usePostboxThreadDiscussionPanel(() => props.threadId);
-const { discussion, count } = usePostboxThreadDiscussionData(() => props.threadId);
+const { isOpen, toggle, discussion, count } = usePostboxThreadDiscussionPanel(() => props.threadId);
 
 const { run: postRun, isLoading: isPosting } = useBackendOperation(api.chat.mailDiscussion.post, {
 	label: () => t('components.postbox.threadDiscussion.sendOperation'),

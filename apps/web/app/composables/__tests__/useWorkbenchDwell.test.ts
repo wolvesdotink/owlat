@@ -91,7 +91,8 @@ describe('useWorkbenchDwell', () => {
 	});
 
 	it('ignores snapshots that arrive while hidden, even with the browser clock far ahead', async () => {
-		// The browser is an hour ahead of the server; its clock never reaches `at`.
+		// The browser is an hour ahead of the server; were its clock used as `at`,
+		// everything that arrived in that hour would count as seen.
 		const t = setup({ scope: 'ada', showing: true, clock: SNAPSHOT_1 + 3_600_000 });
 		t.advance(WORKBENCH_DWELL_MS);
 		t.showing.value = false; // into Zen

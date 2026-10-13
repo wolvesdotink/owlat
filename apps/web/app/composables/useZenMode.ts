@@ -15,8 +15,9 @@ import { readonly, ref } from 'vue';
  * but not hidden.
  *
  * Enter and leave with Cmd/Ctrl+Shift+F (`global.zen`), the header's Zen
- * button, the avatar menu or ⌘K; leave with the floating "Exit Zen" button or
- * Esc where Esc has nothing else to do (see `ShellZenExit`).
+ * button, the avatar menu or ⌘K; leave with "Exit Zen" in the slim bar Zen
+ * keeps at the top, or with Esc once nothing above Zen wants it (see
+ * `ShellZenExit`).
  */
 
 const ZEN_STORAGE_KEY = 'owlat:zen';

@@ -28,6 +28,25 @@ const menuRef = ref<HTMLElement | null>(null);
 const menuPosition = ref({ top: 0, left: 0, bottom: 0 });
 const openDirection = ref<'down' | 'up'>('down');
 
+/** The caller's own control in the trigger slot (a UiButton, mostly). */
+function triggerControl(): HTMLElement | null {
+	return triggerRef.value?.querySelector<HTMLElement>('button, [tabindex]') ?? null;
+}
+
+// The menu's state is announced on that control. The wrapper used to be a
+// role="button" of its own around it: one control nested in another, which
+// screen readers announce twice and axe reports as `nested-interactive`.
+watch(
+	[isOpen, triggerRef],
+	() => {
+		const control = triggerControl();
+		if (!control) return;
+		control.setAttribute('aria-haspopup', 'menu');
+		control.setAttribute('aria-expanded', String(isOpen.value));
+	},
+	{ immediate: true, flush: 'post' }
+);
+
 // Calculate menu position based on trigger element
 const updatePosition = () => {
 	if (!triggerRef.value) return;
@@ -83,8 +102,7 @@ const MENU_ITEM_SELECTOR =
 useEscapeLayer(isOpen, () => {
 	isOpen.value = false;
 	// Restore focus to trigger
-	const trigger = triggerRef.value?.querySelector('button, [tabindex]') as HTMLElement | null;
-	(trigger ?? triggerRef.value)?.focus();
+	(triggerControl() ?? triggerRef.value)?.focus();
 });
 
 // Handle keyboard navigation within the dropdown
@@ -177,13 +195,7 @@ provide('dropdownClose', close);
 <template>
 	<div class="relative inline-block">
 		<!-- Trigger -->
-		<div
-			ref="triggerRef"
-			role="button"
-			:aria-expanded="isOpen"
-			aria-haspopup="menu"
-			@click.stop="toggle"
-		>
+		<div ref="triggerRef" @click.stop="toggle">
 			<slot name="trigger" />
 		</div>
 

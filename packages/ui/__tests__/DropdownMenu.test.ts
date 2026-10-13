@@ -48,6 +48,29 @@ it('Escape closes the menu and restores focus without running the page shortcut'
 	}
 });
 
+it('puts the menu state on the trigger control itself, with no control around it', async () => {
+	const wrapper = mount(DropdownMenu, {
+		attachTo: document.body,
+		slots: {
+			trigger: '<button>More actions</button>',
+			default: '<button role="menuitem">Create contact</button>',
+		},
+	});
+	try {
+		await nextTick();
+		const trigger = wrapper.get('button');
+		// One control, not a button inside a role="button" (axe nested-interactive).
+		expect(wrapper.find('[role="button"]').exists()).toBe(false);
+		expect(trigger.attributes('aria-haspopup')).toBe('menu');
+		expect(trigger.attributes('aria-expanded')).toBe('false');
+		await wrapper.setProps({ open: true });
+		await nextTick();
+		expect(trigger.attributes('aria-expanded')).toBe('true');
+	} finally {
+		wrapper.unmount();
+	}
+});
+
 /**
  * UiModal handles Escape too. Escape belongs to the innermost open layer: the
  * menu first, then the dialog, so one press never throws away the dialog.

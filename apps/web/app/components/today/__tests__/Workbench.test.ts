@@ -8,7 +8,8 @@
  *   - the scope header names the inbox and jumps to its bands;
  *   - none of the three has axe violations.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { inject, provide } from 'vue';
 import { mount } from '@vue/test-utils';
 import TodayWorkbenchTabs from '../TodayWorkbenchTabs.vue';
 import TodayFiledAway from '../TodayFiledAway.vue';
@@ -21,6 +22,9 @@ import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	// The real UiDropdownMenu (audited below) uses these two Nuxt auto-imports.
+	vi.stubGlobal('provide', provide);
+	vi.stubGlobal('inject', inject);
 });
 
 const TABS: WorkbenchTab[] = [
@@ -273,17 +277,17 @@ describe('TodayScopeHeader', () => {
 		]);
 	});
 
-	it('has no axe violations', async () => {
+	it.each([
+		['closed', false],
+		['open', true],
+	])('has no axe violations with its real ⋯ menu %s', async (_state, open) => {
 		const violations = await auditA11y(TodayScopeHeader, {
 			props,
-			global: {
-				plugins: [createTestI18n()],
-				stubs: {
-					UiDropdownMenu: {
-						template: '<div><slot name="trigger" /><div role="menu"><slot /></div></div>',
-					},
-					UiDropdownMenuItem: { template: '<button role="menuitem"><slot /></button>' },
-				},
+			global: { plugins: [createTestI18n()] },
+			prepare: async (wrapper) => {
+				if (!open) return;
+				await wrapper.get('button[aria-label="More for Support"]').trigger('click');
+				expect(document.querySelectorAll('[role="menuitem"]')).toHaveLength(2);
 			},
 		});
 		expect(violations).toEqual([]);

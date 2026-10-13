@@ -14,6 +14,9 @@ const SIDE_PANEL_QUERY = '(min-width: 1280px)';
  * screens keep it closed until "Discuss" opens it below the messages. An
  * explicit choice sticks for the session across threads.
  *
+ * It reads the discussion to decide that, and hands it back (`discussion`,
+ * `count`), so the toggle and the panel do not read it a second time.
+ *
  * `articleClass` is what the reader's `<article>` needs to make room for the
  * side panel: a two-column grid once the reader PANE (an `@container` in
  * PostboxLayout) is at least 52rem wide. A container query rather than the
@@ -29,7 +32,7 @@ export function usePostboxThreadDiscussionPanel(threadId: () => string | null | 
 	const { isEnabled } = useFeatureFlag();
 	const isWide = useMediaQuery(SIDE_PANEL_QUERY);
 	const choice = useState<boolean | null>('postbox-thread-discussion-open', () => null);
-	const { count } = usePostboxThreadDiscussionData(threadId);
+	const { discussion, count } = usePostboxThreadDiscussionData(threadId);
 
 	const isAvailable = computed(() => isEnabled('chat'));
 	const isOpen = computed(
@@ -45,7 +48,7 @@ export function usePostboxThreadDiscussionPanel(threadId: () => string | null | 
 		choice.value = !isOpen.value;
 	}
 
-	return { isAvailable, isOpen, articleClass, toggle };
+	return { isAvailable, isOpen, articleClass, toggle, discussion, count };
 }
 
 /**

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { resolveActiveChord } from '~/utils/shortcutScope';
+import { resolveActiveChord, shortcutBindings } from '~/utils/shortcutScope';
+import { formatChord } from '~/utils/shortcutRegistry';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isDialogOpen } from '~/utils/dialogOpen';
 
@@ -31,6 +32,17 @@ const previousId = computed(() =>
 const nextId = computed(() =>
 	index.value >= 0 ? (props.orderedIds[index.value + 1] ?? null) : null
 );
+
+/**
+ * "(j)" after a step's label: the key that steps here, as the person has it
+ * mapped. Only plain keys count, since those are what the handler below takes.
+ */
+function keyHint(id: 'postbox.next' | 'postbox.previous'): string {
+	const chord = shortcutBindings.value.byId
+		.get(id)
+		?.find((step) => !step.startsWith('Arrow') && !step.includes('+') && !step.includes(' '));
+	return chord ? ` (${formatChord(chord, false).join('')})` : '';
+}
 
 function open(id: string | null) {
 	if (id) void navigateTo(`/dashboard/postbox/${props.folderPath}/${id}`);
@@ -73,7 +85,7 @@ const stepClass =
 				type="button"
 				:class="stepClass"
 				:disabled="!previousId"
-				:title="`${t('components.postbox.readerBackBar.previous')} (k)`"
+				:title="t('components.postbox.readerBackBar.previous') + keyHint('postbox.previous')"
 				:aria-label="t('components.postbox.readerBackBar.previous')"
 				@click="open(previousId)"
 			>
@@ -83,7 +95,7 @@ const stepClass =
 				type="button"
 				:class="stepClass"
 				:disabled="!nextId"
-				:title="`${t('components.postbox.readerBackBar.next')} (j)`"
+				:title="t('components.postbox.readerBackBar.next') + keyHint('postbox.next')"
 				:aria-label="t('components.postbox.readerBackBar.next')"
 				@click="open(nextId)"
 			>
