@@ -1,3 +1,5 @@
+import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import {
@@ -80,6 +82,28 @@ export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
 				result = { state: 'failed' };
 			}
 			if (sequence === requestSequence) fetched.value = result;
+		},
+		{ immediate: true }
+	);
+
+	// A verdict from before scopes were recorded is withheld, so ask the server
+	// to verify the message again (#1320); the row picks up the scoped verdict
+	// when it lands. Once per message for this card: the server drops repeats.
+	const reverifyRequested = new Set<string>();
+	watch(
+		() => [source.active(), source.message()._id, source.message().inboundSignatureInfo] as const,
+		([active, messageId, info]) => {
+			if (!active || !info || info.scope !== undefined || reverifyRequested.has(messageId)) return;
+			reverifyRequested.add(messageId);
+			Promise.resolve()
+				.then(() =>
+					requireConvex().mutation(api.mail.mailbox.signatureReverify.request, {
+						messageId: messageId as Id<'mailMessages'>,
+					})
+				)
+				.catch(() => {
+					// Best effort: the withheld verdict stays withheld.
+				});
 		},
 		{ immediate: true }
 	);

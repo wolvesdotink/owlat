@@ -1369,6 +1369,7 @@ import type * as mail_mailbox_searchClause from '../mail/mailbox/searchClause.js
 import type * as mail_mailbox_searchCursor from '../mail/mailbox/searchCursor.js';
 import type * as mail_mailbox_selection from '../mail/mailbox/selection.js';
 import type * as mail_mailbox_sendingHealth from '../mail/mailbox/sendingHealth.js';
+import type * as mail_mailbox_signatureReverify from '../mail/mailbox/signatureReverify.js';
 import type * as mail_mailbox_shared from '../mail/mailbox/shared.js';
 import type * as mail_mailbox_threadReads from '../mail/mailbox/threadReads.js';
 import type * as mail_mailboxActions from '../mail/mailboxActions.js';
@@ -3113,6 +3114,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailbox/searchCursor': typeof mail_mailbox_searchCursor;
 	'mail/mailbox/selection': typeof mail_mailbox_selection;
 	'mail/mailbox/sendingHealth': typeof mail_mailbox_sendingHealth;
+	'mail/mailbox/signatureReverify': typeof mail_mailbox_signatureReverify;
 	'mail/mailbox/shared': typeof mail_mailbox_shared;
 	'mail/mailbox/threadReads': typeof mail_mailbox_threadReads;
 	'mail/mailboxActions': typeof mail_mailboxActions;
