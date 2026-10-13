@@ -257,6 +257,12 @@ describe('start', () => {
 		]);
 		// Written in full and checked, never streamed into the editor.
 		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		// Worded in the reply's language, so English is translated too.
+		const translations = vi
+			.mocked(runLlmObject)
+			.mock.calls.map(([opts]) => String((opts as { prompt?: string }).prompt ?? ''))
+			.filter((prompt) => prompt.includes('invoice total'));
+		expect(translations[translations.length - 1]).toContain('of these language codes: en.');
 
 		// Answering it writes the draft again, with the fact.
 		llm.draft = 'Hi Jonas,\n\nthe total is EUR 2,100.\n\nBest,\nAda';

@@ -183,6 +183,16 @@ describe('leavesQuestionsOpen', () => {
 });
 
 describe('parseReplyOptionsText', () => {
+	it('drops a suggestion cut off inside a gap or reviewer note', () => {
+		expect(
+			parseReplyOptionsText('1. Sure.\n2. The total is [[invoice total\n3. On [Bitte prüfen: Da', {
+				partial: true,
+			})
+		).toEqual(['Sure.']);
+		// An ordinary bracket stays.
+		expect(parseReplyOptionsText('1. See [1] for details.')).toEqual(['See [1] for details.']);
+	});
+
 	it('drops a suggestion that leaves a fact open', () => {
 		expect(
 			parseReplyOptionsText(

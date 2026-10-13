@@ -196,7 +196,8 @@ export async function localizeReplyQueueQuestions<Q extends ClarificationFlag['q
 		const localized = await meterLlmCall(
 			ctx,
 			{ feature: 'postbox_clarify_localize', ...(root ? { root } : {}) },
-			(meter) => localizeQuestions(model, questions, undefined, meter)
+			// Worded in the reply's language: English is a translation too.
+			(meter) => localizeQuestions(model, questions, undefined, meter, { includeCanonical: true })
 		);
 		return localized.questions;
 	} catch {

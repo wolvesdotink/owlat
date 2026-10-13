@@ -62,7 +62,7 @@ import {
 	type AskQuestion,
 } from './composeDraftPolicy';
 import { checkDraftGaps } from './gapQuestions';
-import { localizeForOwner } from './composeDraftGap';
+import { localizeGapQuestions } from './composeDraftGap';
 import { admissionRefusalOf, budgetRefusalMessage } from '../../lib/llm/admissionPort';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 import { DRAFT_HELD_FOR_SECRET } from '@owlat/shared/answerMode';
@@ -153,7 +153,7 @@ async function localizedOrAsIs(
 	input: AnswerDraftInput
 ): Promise<AskQuestion[]> {
 	try {
-		return await localizeForOwner(ctx, questions, input.locale);
+		return await localizeGapQuestions(ctx, questions, input.locale);
 	} catch (error) {
 		logError(
 			'[composeDraft] localizing gap questions failed:',

@@ -30,6 +30,11 @@ describe('translationTargets', () => {
 		expect(translationTargets(['en', 'de'])).toEqual(['de']);
 		expect(translationTargets(['en'])).toEqual([]);
 	});
+
+	it('keeps English for a question not worded in English (a draft gap)', () => {
+		expect(translationTargets(['en', 'de'], true)).toEqual(['en', 'de']);
+		expect(translationTargets(['en'], true)).toEqual(['en']);
+	});
 });
 
 describe('buildLocalizePrompt', () => {

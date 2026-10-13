@@ -49,6 +49,7 @@ vi.mock('../ai/voiceGuidance', () => ({
 }));
 
 import { draftClarificationReply } from '../ai/needsReplyDraft';
+import { localizeQuestions } from '../../inbox/clarificationLocalize';
 import type { Id } from '../../_generated/dataModel';
 
 const threadId = 'thread_1' as Id<'mailThreads'>;
@@ -162,6 +163,9 @@ describe('draftClarificationReply', () => {
 
 		expect(mutations.some((m) => m.name.includes('persistClarificationDraft'))).toBe(false);
 		const asked = mutations.find((m) => m.name.includes('askAboutDraftGaps'));
+		// Worded in the reply's language: English is one of the translations.
+		const localizeCall = vi.mocked(localizeQuestions).mock.lastCall!;
+		expect(localizeCall[4]).toEqual({ includeCanonical: true });
 		expect(asked?.args).toMatchObject({
 			threadId,
 			expectedLatestMessageId: 'msg_1',

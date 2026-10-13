@@ -135,3 +135,20 @@ export function authoredGapLabels(text: string): string[] {
 	}
 	return labels;
 }
+
+/** A single bracket opened on a line, closed or not yet: its content so far. */
+const OPENED_BRACKET = /(?<!\[)\[(?!\[)([^[\]\n]{0,400})/gu;
+
+/**
+ * Whether short text leaves a fact open, also while it is still being written
+ * or was cut off: a placeholder or reviewer note, finished or not
+ * (`[[invoice total`, `[TBD: date`). For text that is used as it is, like a
+ * suggested reply.
+ */
+export function leavesFactOpen(text: string): boolean {
+	if (text.includes('[[') || authoredGapLabels(text).length > 0) return true;
+	for (const match of text.matchAll(OPENED_BRACKET)) {
+		if (REVIEWER_NOTE.test((match[1] ?? '').trim())) return true;
+	}
+	return false;
+}

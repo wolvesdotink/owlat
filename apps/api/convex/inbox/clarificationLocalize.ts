@@ -54,9 +54,16 @@ export interface QuestionTranslation {
 	options?: string[];
 }
 
-/** The locales a translation pass has to produce. Pure + exported for tests. */
-export function translationTargets(locales: readonly string[] = APP_LOCALES): string[] {
-	return locales.filter((l) => l !== CANONICAL_QUESTION_LOCALE);
+/**
+ * The locales a translation pass has to produce. Pure + exported for tests.
+ * `includeCanonical` keeps English: for a question whose canonical text is
+ * not English (the gap a draft left, worded in the reply's language).
+ */
+export function translationTargets(
+	locales: readonly string[] = APP_LOCALES,
+	includeCanonical = false
+): string[] {
+	return includeCanonical ? [...locales] : locales.filter((l) => l !== CANONICAL_QUESTION_LOCALE);
 }
 
 export const questionTranslationsSchema = z.object({
@@ -237,13 +244,15 @@ export async function localizeQuestions<Q extends LocalizableQuestion>(
 	questions: readonly Q[],
 	locales: readonly string[] = APP_LOCALES,
 	/** Records each provider request of both calls, one ledger row each (ADR-0073). */
-	meter?: LlmCallMeter
+	meter?: LlmCallMeter,
+	/** Translate into English too: the canonical text is in another language. */
+	opts: { includeCanonical?: boolean } = {}
 ): Promise<{
 	questions: (Q & { translations?: QuestionTranslation[] })[];
 	tokenUsage?: LlmTextResult['tokenUsage'];
 	modelUsed?: LlmTextResult['modelUsed'];
 }> {
-	const targets = translationTargets(locales);
+	const targets = translationTargets(locales, opts.includeCanonical === true);
 	if (questions.length === 0 || targets.length === 0) {
 		return { questions: questions.map((q) => ({ ...q })) };
 	}

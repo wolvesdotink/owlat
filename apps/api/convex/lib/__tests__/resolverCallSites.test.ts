@@ -175,6 +175,8 @@ const INVENTORY: readonly CallSite[] = [
 	// Answer mode's localization; its slots, samples and judge resolve through
 	// the shared clarification service below.
 	site('mail/ai/composeDraftGap.ts', "ctx, 'mail.clarify'", 'summarize'),
+	// The questions about a held draft's gaps (localizeGapQuestions).
+	site('mail/ai/composeDraftGap.ts', "ctx, 'mail.clarify'", 'summarize'),
 	// The shared clarification service (ADR-0073, Phase 3): one call for every
 	// stage, with the surface's task and tier. Each surface's choices pin
 	// today's tier: Team every stage fast (it passes its own `mail.clarify`
