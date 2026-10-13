@@ -13,6 +13,7 @@ on:
       - 'server-v*.*.*'
 
 permissions:
+  actions: read # inspect exact-commit main verification
   contents: write
   packages: write
   id-token: write
@@ -43,7 +44,7 @@ jobs:
   # publish unverified images. The whole pipeline is needs-chained below.
   # Shared core: _verify.yml.
   verify:
-    name: Verify (ci:verify)
+    name: Verify exact commit
     needs: resolve
     uses: ./.github/workflows/_verify.yml
 
@@ -57,7 +58,7 @@ jobs:
           egress-policy: audit
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
-          name: "Server v${{ needs.resolve.outputs.version }}"
+          name: 'Server v${{ needs.resolve.outputs.version }}'
           tag_name: ${{ github.ref_name }}
           draft: true # published by `publish` once the core succeeds
           prerelease: ${{ contains(needs.resolve.outputs.version, '-') }}

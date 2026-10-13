@@ -208,17 +208,21 @@ manual dispatch run the full set as a safety valve.
   - **Detect affected.** Asks Turborepo which workspaces the PR affects
     (`scripts/ci-select-affected.sh`) and feeds the matrices below. Every
     non-PR run selects everything.
-  - **Test (<package>).** `turbo run test:coverage` per affected workspace.
-  - **Test api (shard 1-3/3)** and **Test api (merge + coverage).**
-    `apps/api` sharded across three runners; the merge job enforces the
-    coverage threshold.
+  - **Test group (1–4).** Duration-weighted groups run the small affected
+    workspaces with bounded Turbo/Vitest concurrency. MTA retains its own
+    runner and required Redis integration tests.
+  - **Test api (shard 1–4/4)** and **Test web (shard 1–3/3)**, each followed
+    by **merge + coverage**. Shards collect coverage without any global or
+    per-path floor; the merge validates every report's commit, run, attempt
+    and shard identity, then enforces all original thresholds. Successful
+    reports from earlier attempts of the same run survive partial reruns.
   - **Ramp gates (reference_arm | standalone).** The ramp-controller gate
     suite twice: once equipped, once as a deployment with zero third-party
     accounts. Never affected-filtered. Locally: `bun run test:ramp` runs both
     legs, `bun run test:ramp standalone` one.
-  - **Lint & Typecheck.** `bun run ci:lint` (`scripts/ci-gate.sh lint`: the
+  - **Lint** and **Typecheck**, on separate runners. `bun run ci:lint` (`scripts/ci-gate.sh lint`: the
     plugin codegen and Convex bundle smokes, `turbo lint`, then every
-    `lint:*` ratchet and repo gate in the order that script lists them) plus
+    `lint:*` ratchet and repo gate in the order that script lists them) and
     `bun run ci:typecheck`.
   - **Docker Build (<image>).** Builds each affected image listed in
     `.github/docker-images.json`; images marked `runtimeSmoke` also get their
@@ -226,8 +230,9 @@ manual dispatch run the full set as a safety valve.
   - **Test (packages/sdk-java).** Maven `verify`, when `packages/sdk-java`
     changes.
   - **Test Summary.** The single required status check; point branch
-    protection at it. Skipped matrix jobs count as passed; failures and
-    cancellations do not.
+    protection at it. Selected jobs must succeed; unselected jobs must be
+    skipped. Missing reports, selected skips, failures and cancellations fail
+    closed. Full runs upload identified verification evidence for release reuse.
 - **security.yml** (`Security`). **Dependency audit** (`bun audit`; fails on
   High/Critical through `scripts/check-security-audit.ts`), **SAST (Semgrep)**
   and **Secret scan (gitleaks)** over the full history. Also nightly.
@@ -251,9 +256,14 @@ Out of band:
   `providerHealth`, …), so a breaking schema change to one of those needs the
   deployment's volume recreated by hand before the next run can push.
 - **release.yml**, **server-release.yml**, **desktop-release.yml**.
-  Tag-triggered. Each starts with the shared `_verify.yml` job, which runs
-  `bun run ci:verify` (`scripts/ci-gate.sh verify`: the lint gate plus
-  `turbo typecheck test`) on the exact tagged commit. See `docs/RELEASING.md`.
+  Tag-triggered. Each starts with `_verify.yml`, which reuses successful full
+  main CI for the exact commit or calls the full CI graph as a fallback.
+  Main pushes use per-commit concurrency groups; PR updates still cancel stale
+  work. See `docs/RELEASING.md` for evidence rules, cache producers, stable alias
+  reconciliation and post-publication update checks.
+
+For timing and cache baselines, run `bun run ci:report` with read-only GitHub
+access. Compare matched change categories and include queue and retry delays.
 
 All checks must pass before merging. To reproduce the PR gate locally, run
 `bun run ci:verify` and `bun run test:ramp`.

@@ -19,8 +19,16 @@ on:
       - 'packages/shared/src/containerHealth*'
       - 'scripts/e2e-update-flow.sh'
       - '.github/workflows/update-flow.yml'
-  release:
-    types: [published]
+  # Publication with GITHUB_TOKEN suppresses release events. The unified
+  # release explicitly calls this workflow after publishing instead.
+  workflow_call:
+    inputs:
+      from:
+        type: string
+        required: true
+      to:
+        type: string
+        required: true
   schedule:
     - cron: '30 4 * * *' # nightly 04:30 UTC, after the E2E run
   workflow_dispatch:
@@ -36,8 +44,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: update-flow-${{ github.ref }}
-  cancel-in-progress: true
+  group: update-flow-${{ github.event_name }}-${{ inputs.to || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   update-flow:

@@ -16,6 +16,7 @@ on:
       - 'desktop-v*'
 
 permissions:
+  actions: read # inspect exact-commit main verification
   contents: write # create the Release + upload artifacts
   id-token: write # OIDC for build provenance attestations
   attestations: write
@@ -45,7 +46,7 @@ jobs:
   # publish unverified artifacts. The whole pipeline is needs-chained below.
   # Shared core: _verify.yml.
   verify:
-    name: Verify (ci:verify)
+    name: Verify exact commit
     needs: resolve
     uses: ./.github/workflows/_verify.yml
 
@@ -62,7 +63,7 @@ jobs:
       - id: create
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
-          name: "Owlat Desktop ${{ github.ref_name }}"
+          name: 'Owlat Desktop ${{ github.ref_name }}'
           tag_name: ${{ github.ref_name }}
           draft: true # published by `publish` once the core succeeds
           prerelease: ${{ contains(needs.resolve.outputs.version, '-') }}

@@ -22,6 +22,7 @@ on:
       - 'v*.*.*'
 
 permissions:
+  actions: read # inspect exact-commit main verification
   contents: write # create the Release + upload assets
   packages: write # push images to GHCR
   id-token: write # OIDC for cosign keyless signing + attestations
@@ -47,14 +48,14 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Resolved unified release VERSION=${VERSION}"
 
-  # Gate the entire release on a green ci:verify of the EXACT tagged commit
+  # Gate the entire release on successful full CI of the EXACT tagged commit
   # (shared core: _verify.yml). test.yml only runs on branch push / PRs, which
   # a tag push does NOT match — without this job a tag on an un-CI'd commit
   # would sign and publish unverified artifacts. Everything downstream (draft
   # Release, server images, desktop apps, publish) is `needs`-chained to this,
   # so nothing ships unless the release commit is green.
   verify:
-    name: Verify (ci:verify)
+    name: Verify exact commit
     needs: resolve
     uses: ./.github/workflows/_verify.yml
 
@@ -132,3 +133,38 @@ jobs:
             gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --latest
           fi
           echo "Published $TAG (server images + desktop apps)."
+
+  promote-aliases:
+    needs: [resolve, publish]
+    if: ${{ !contains(needs.resolve.outputs.version, '-') }}
+    uses: ./.github/workflows/promote-aliases.yml
+
+  update-versions:
+    name: Resolve published update pair
+    needs: [resolve, publish]
+    if: ${{ !contains(needs.resolve.outputs.version, '-') }}
+    runs-on: ubuntu-latest
+    outputs:
+      from: ${{ steps.pair.outputs.from }}
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - id: pair
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: bun scripts/ci/resolve-update.ts
+
+  post-publish-update:
+    name: Verify the published update
+    needs: [resolve, update-versions]
+    if: needs.update-versions.outputs.from != ''
+    uses: ./.github/workflows/update-flow.yml
+    with:
+      from: ${{ needs.update-versions.outputs.from }}
+      to: ${{ needs.resolve.outputs.version }}

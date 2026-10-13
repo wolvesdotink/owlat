@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The one lint/verify gate. `bun run ci:lint` (test.yml, every PR) and
-# `bun run ci:verify` (_verify.yml, every release tag) both run this file, so a
+# the local `bun run ci:verify` both run this file, so a
 # gate added here fires in both places and the two chains cannot drift apart.
 #
 #   bash scripts/ci-gate.sh lint     plugin smokes + turbo lint + the ratchets

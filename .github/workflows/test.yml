@@ -18,17 +18,27 @@ on:
   schedule:
     - cron: '0 5 * * *' # nightly full-matrix safety valve
   workflow_dispatch: {}
+  workflow_call: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR updates cancel stale work; main commits and nightly runs do not collide.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   detect:
     name: Detect affected
     runs-on: ubuntu-latest
     outputs:
-      packages: ${{ steps.select.outputs.packages }}
+      groups: ${{ steps.select.outputs.groups }}
+      web: ${{ steps.select.outputs.web }}
+      mta: ${{ steps.select.outputs.mta }}
+      expected: ${{ steps.select.outputs.expected }}
+      full: ${{ steps.select.outputs.full }}
       api: ${{ steps.select.outputs.api }}
       images: ${{ steps.select.outputs.images }}
       java: ${{ steps.select.outputs.java }}
@@ -54,71 +64,131 @@ jobs:
         run: bash scripts/ci-select-affected.sh
 
   test:
-    name: Test (${{ matrix.name }})
+    name: Test group (${{ matrix.id }})
     needs: detect
-    if: needs.detect.outputs.packages != '[]'
+    if: needs.detect.outputs.groups != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(needs.detect.outputs.packages) }}
+        include: ${{ fromJson(needs.detect.outputs.groups) }}
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
       - uses: ./.github/actions/setup-bun
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        if: matrix.name == 'plugin-kit'
         with:
           node-version: '22'
-
-      # Phase 3: share Turborepo results across CI runs via the GitHub Actions
-      # cache, so a re-run / rebase-with-no-changes replays green suites in seconds.
       - name: Turborepo remote cache
-        # Pinned to a commit SHA (not a mutable tag): this third-party action sits
-        # in the trust path for test results — a poisoned turbo cache replays
-        # "green" without running anything.
+        if: github.ref_type != 'tag'
         uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
-
-      # The MTA's Redis integration suites (Lua scripts, Redis Cluster slot
-      # routing) run against throwaway redis:7-alpine containers and skip when
-      # the image is missing. Pull it here and set OWLAT_REQUIRE_DOCKER so a
-      # missing daemon or image fails the job instead of skipping those tests.
-      # The flag is covered by turbo's OWLAT_* globalEnv, so it reaches vitest.
-      - name: Pull Redis image for MTA integration tests
-        if: matrix.name == 'mta'
-        run: |
-          docker pull redis:7-alpine
-          echo "OWLAT_REQUIRE_DOCKER=1" >> "$GITHUB_ENV"
-
-      - name: Run tests with coverage
-        # The non-PR matrix is the uncached safety valve: it must execute the
-        # suite against today's runner/dependencies instead of replaying a prior
-        # green log whose task inputs happened not to change.
-        run: bunx turbo run test:coverage --filter=${{ matrix.package }} ${{ github.event_name != 'pull_request' && '--force' || '' }}
-
-      - name: Upload coverage report
-        # Coverage thresholds are enforced during the run regardless; only keep
-        # the artifacts from canonical branches to cut PR noise (Phase 4.4).
+      - name: Run grouped coverage suites
+        env:
+          CI_GROUP: ${{ toJson(matrix) }}
+          CI_FULL: ${{ needs.detect.outputs.full }}
+        run: bun scripts/ci/run-group.ts
+      - name: Upload coverage reports
         if: always() && github.event_name == 'push'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: coverage-${{ matrix.name }}
-          path: ${{ matrix.directory }}/coverage/
+          name: coverage-group-${{ matrix.id }}
+          path: '**/coverage/'
           retention-days: 14
 
-  # apps/api is the long pole (3300+ tests). Shard it across 3 runners and merge
-  # the blob reports for the combined coverage/threshold check (Phase 4.1). Runs
-  # vitest directly rather than through turbo because sharding is per-invocation.
+  test-mta:
+    name: Test (mta)
+    needs: detect
+    if: needs.detect.outputs.mta == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-bun
+      - name: Turborepo remote cache
+        if: github.ref_type != 'tag'
+        uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
+      - name: Require Redis integration tests
+        run: |
+          docker pull redis:7-alpine
+          echo "OWLAT_REQUIRE_DOCKER=1" >> "$GITHUB_ENV"
+      - name: Run MTA coverage
+        run: bunx turbo run test:coverage --filter=@owlat/mta ${{ needs.detect.outputs.full == 'true' && '--force' || '' }}
+      - name: Upload coverage
+        if: always() && github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-mta
+          path: apps/mta/coverage/
+          retention-days: 14
+
   test-api:
-    name: Test api (shard ${{ matrix.shard }}/3)
+    name: Test api (shard ${{ matrix.shard }}/4)
     needs: detect
     if: needs.detect.outputs.api == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-bun
+      - name: Run coverage shard
+        run: bun scripts/ci/run-shard.ts api ${{ matrix.shard }} 4
+      - name: Upload identified blob report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: api-blob-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: |
+            apps/api/.vitest-reports/*
+            apps/api/.ci-shards/*
+          include-hidden-files: true
+          retention-days: 2
+
+  test-api-merge:
+    name: Test api (merge + coverage)
+    needs: [detect, test-api]
+    if: needs.detect.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-bun
+      - name: Download shard reports from this run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: apps/api/.ci-downloads
+          pattern: api-blob-*
+      - name: Validate identities, merge and enforce all coverage floors
+        run: bun scripts/ci/merge-shards.ts api 4
+      - name: Upload coverage
+        if: always() && github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-api
+          path: apps/api/coverage/
+          retention-days: 14
+
+  test-web:
+    name: Test web (shard ${{ matrix.shard }}/3)
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -127,61 +197,46 @@ jobs:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
       - uses: ./.github/actions/setup-bun
-
-      - name: Run tests (shard ${{ matrix.shard }}/3)
-        working-directory: apps/api
-        # Collect coverage into the blob, but DON'T enforce the threshold here — a
-        # single shard only exercises ~1/3 of the code and would always fall short.
-        # The merge job checks the combined coverage against the real threshold.
-        # The default reporter runs next to the blob one so a failing shard names
-        # its failing tests in the job log; the blob alone prints nothing.
-        run: bunx vitest run --coverage --coverage.thresholds.lines=0 --reporter=default --reporter=blob --shard=${{ matrix.shard }}/3
-
-      - name: Upload blob report
-        # Upload even when the shard failed, so its report can still be inspected.
+      - name: Run coverage shard
+        run: bun scripts/ci/run-shard.ts web ${{ matrix.shard }} 3
+      - name: Upload identified blob report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: api-blob-${{ matrix.shard }}
-          path: apps/api/.vitest-reports/*
+          name: web-blob-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: |
+            apps/web/.vitest-reports/*
+            apps/web/.ci-shards/*
           include-hidden-files: true
-          retention-days: 1
+          retention-days: 2
 
-  test-api-merge:
-    name: Test api (merge + coverage)
-    needs: [detect, test-api]
-    if: needs.detect.outputs.api == 'true'
+  test-web-merge:
+    name: Test web (merge + coverage)
+    needs: [detect, test-web]
+    if: needs.detect.outputs.web == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
       - uses: ./.github/actions/setup-bun
-
-      - name: Download shard blob reports
+      - name: Download shard reports from this run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          path: apps/api/.vitest-reports
-          pattern: api-blob-*
-          merge-multiple: true
-
-      - name: Merge reports + enforce coverage
-        working-directory: apps/api
-        run: bunx vitest --merge-reports --coverage
-
-      - name: Upload coverage report
+          path: apps/web/.ci-downloads
+          pattern: web-blob-*
+      - name: Validate identities, merge and enforce all coverage floors
+        run: bun scripts/ci/merge-shards.ts web 3
+      - name: Upload coverage
         if: always() && github.event_name == 'push'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: coverage-api
-          path: apps/api/coverage/
+          name: coverage-web
+          path: apps/web/coverage/
           retention-days: 14
 
   # THE STANDALONE MATRIX (deliverability plan D2/D3). The ramp controller has two
@@ -228,7 +283,7 @@ jobs:
         run: bun run test:ramp ${{ matrix.mode }}
 
   lint:
-    name: Lint & Typecheck
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
@@ -255,6 +310,7 @@ jobs:
           node-version: '22'
 
       - name: Turborepo remote cache
+        if: github.ref_type != 'tag'
         # Pinned to a commit SHA (not a mutable tag): this third-party action sits
         # in the trust path for test results — a poisoned turbo cache replays
         # "green" without running anything.
@@ -266,7 +322,23 @@ jobs:
       - name: Lint
         run: bun run ci:lint
 
-      - name: Typecheck
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+      - name: Turborepo remote cache
+        if: github.ref_type != 'tag'
+        uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
+      - name: Typecheck workspaces and scripts
         run: bun run ci:typecheck
 
   docker-build:
@@ -391,22 +463,38 @@ jobs:
       [
         detect,
         test,
+        test-mta,
         test-api,
         test-api-merge,
+        test-web,
+        test-web-merge,
         ramp-gate-matrix,
         lint,
+        typecheck,
         docker-build,
         sdk-java,
       ]
     runs-on: ubuntu-latest
     steps:
-      - name: Fail if any required job failed
-        run: |
-          echo '${{ toJson(needs) }}'
-          failed=$(echo '${{ toJson(needs) }}' \
-            | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key')
-          if [ -n "$failed" ]; then
-            echo "::error::Required jobs did not pass: $failed"
-            exit 1
-          fi
-          echo "All required jobs passed or were skipped."
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Assert selected jobs succeeded and record verification
+        env:
+          CI_EXPECTED: ${{ needs.detect.outputs.expected }}
+          CI_NEEDS: ${{ toJson(needs) }}
+          CI_FULL: ${{ needs.detect.outputs.full }}
+        run: bun scripts/ci/summary.ts
+      - name: Upload full verification evidence
+        if: needs.detect.outputs.full == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ci-verification
+          path: .ci-verification/verification.json
+          include-hidden-files: true
+          overwrite: true
+          retention-days: 7

@@ -112,9 +112,11 @@
 			"dependsOn": ["^transit"]
 		},
 		"test": {
+			"env": ["VITEST_MAX_WORKERS"],
 			"dependsOn": ["transit", "@owlat/plugin-kit#build"]
 		},
 		"test:coverage": {
+			"env": ["VITEST_MAX_WORKERS"],
 			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
 			"outputs": ["coverage/**"]
 		},

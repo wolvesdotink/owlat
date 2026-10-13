@@ -51,12 +51,18 @@ Release is created as a DRAFT up front; every job below must pass before the
 `publish` job flips it live, so a red gate means nothing was shipped:
 
 1. **`verify`** (the shared `_verify.yml`, called by all three release
-   workflows) — full `ci:verify` of the exact tagged commit.
+   workflows) — accepts a fresh successful full `test.yml` main-push run for
+   the exact tagged commit, including its identified `ci-verification` artifact.
+   The newest matching run controls the decision; a known failed run blocks
+   publication. Missing, cancelled or expired evidence uses the same full CI
+   graph through `workflow_call`. The lookup waits at most 20 minutes (90 seconds
+   when no main run exists). Coverage, both ramp modes, Java and Docker smokes
+   are part of this shared graph.
 2. **`build-and-push`** — builds every image natively for linux/amd64 (on
    `ubuntu-latest`) and linux/arm64 (on `ubuntu-24.04-arm`), pushing each
    per-arch image untagged, by digest.
 3. **`merge-manifests`** — stitches the two per-arch digests of each image
-   into one multi-arch manifest list per tag, fails if either platform is
+   into one multi-arch manifest list per version, fails if either platform is
    missing, cosign-signs the LIST digest, publishes the SLSA attestation, and
    records that digest for compose pinning. Consumers pin, pull and verify the
    list digest, never a per-arch leaf.
@@ -66,7 +72,9 @@ Release is created as a DRAFT up front; every job below must pass before the
 5. **`upload-release-assets`** — generates `docker-compose-<version>.yml` with
    every Owlat image pinned to `:<version>@sha256:<digest>` (the digests come
    from build-push-action, via `scripts/gen-release-compose.sh`), plus its
-   `.sha256` manifest and provenance attestation.
+   `.sha256` manifest and provenance attestation. It also publishes an attested
+   `image-digests-<version>.txt` and checksum covering every image, including
+   setup and other images absent from the compose template.
 6. **`e2e-install`** — from a clean runner with no checkout: downloads the
    compose + checksum from the draft release, pulls every first-party image
    anonymously, boots the stack with a scripted minimal env, deploys the
@@ -75,6 +83,46 @@ Release is created as a DRAFT up front; every job below must pass before the
    release on amd64 (the upgrade path — Redis/ClamAV volume-ownership
    regressions only show up there), plus `fresh` on an arm64 runner to prove
    the multi-arch manifests actually boot there.
+
+## Caches and post-publish checks
+
+Main CI produces the amd64 Docker cache that releases restore. Tag builds do
+not export Docker or Bun caches that another tag cannot read. The separate
+`desktop-cache.yml` workflow warms release-profile Rust dependencies on main
+with the same pinned `rust-toolchain.toml`, OS, targets and shared cache key as
+release packaging. Dependency crates are cached; the app and its embedded
+frontend are rebuilt with the tag's version. The first release after rollout
+may still be cold while the producer seeds its caches.
+
+A successful stable unified release calls `promote-aliases.yml`. Its repository
+lock protects a reconciliation of the highest eligible published stable version
+and each major.minor line. It checks the published digest manifest and compose
+checksums before pointing aliases at those exact signed digests. Candidate
+builds, prereleases and single-target releases only publish versioned images.
+Older releases without the digest manifest retain their existing aliases.
+The nightly reconciliation and manual dispatch can repair an interrupted
+promotion without rebuilding images.
+
+The unified workflow explicitly calls Update flow after publication, using the
+highest earlier stable unified version and this release's version. This tests
+the actual previous updater applying the new release. The rollout result is a
+post-publication check; the three install gates above still block publication.
+GitHub suppresses release events created using GITHUB_TOKEN, so the handoff is
+`workflow_call` rather than `release: published`. Nightly checks remain useful
+but cannot cover every intermediate release when several ship between runs.
+
+To reproduce the timing/cache baseline with read-only GitHub access:
+
+```sh
+bun run ci:report > ci-baseline.json
+```
+
+The report records job queue time, actual peak overlap, job-minutes, successful
+attempt duration, attempt count, run-creation-to-publication time and cache bytes
+by ref. Compare similar changes, report first-attempt success separately, and
+use p90 only when there are at least 20 samples. Hosted-runner improvements
+require observation over real CI and release runs; local checks cannot establish
+warm-cache or notarization timings.
 
 ## GHCR visibility: the manual step (read before adding a new image)
 

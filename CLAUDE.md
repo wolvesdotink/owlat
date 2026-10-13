@@ -32,7 +32,10 @@ npx vitest related path/to/file.ts  # only tests that import the given file
 
 CI mirrors this: pull requests run only the workspaces Turborepo reports as
 affected (`scripts/ci-select-affected.sh`); pushes, the nightly schedule and
-manual dispatch run the full matrix as a safety valve.
+manual dispatch run the full matrix as a safety valve. Small suites share four
+bounded jobs; web/API coverage uses three/four identified shards and merged
+threshold checks. Releases reuse full main CI only for the exact commit and
+verified run/attempt evidence, or invoke the same full graph as a fallback.
 
 ## Convex backend
 
