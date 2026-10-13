@@ -14,19 +14,20 @@
 
 import { resolveTxt } from 'dns/promises';
 import type Redis from 'ioredis';
-import { readStreamBytes } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
+import { fetchStsPolicyText } from './mtaStsFetch.js';
 
 const STS_CACHE_PREFIX = 'mta:sts:';
-const STS_FETCH_TIMEOUT = 10_000; // 10s timeout for HTTP fetch
-// A real policy file is a handful of short lines; 64 KiB leaves ample room for
-// long MX lists while bounding what an attacker-run policy host can make us buffer.
-const STS_MAX_POLICY_BYTES = 64 * 1024;
 const STS_DNS_NEGATIVE_CACHE_TTL = 3600; // 1h cache for domains without MTA-STS
 const STS_MIN_CACHE_TTL = 300; // Minimum 5 minutes regardless of max_age
 // RFC 8461 §3.2: max_age has a maximum of 31557600 seconds (one year).
 const STS_MAX_AGE_CEILING = 31_557_600;
 const STS_DEFAULT_MAX_AGE = 86_400; // Default 1 day when max_age is absent/invalid
+// Real policies carry a few lines and a handful of MX patterns. These bound
+// what one policy can put into the Redis cache and the "policy cached" log
+// line; the byte cap alone would still admit thousands of `mx:` entries.
+export const STS_MAX_POLICY_LINES = 256;
+export const STS_MAX_MX_ENTRIES = 64;
 
 export type StsPolicyMode = 'enforce' | 'testing' | 'none';
 
@@ -246,43 +247,11 @@ async function lookupStsDnsRecord(domain: string): Promise<string | null> {
  *   mx: mail.google.com
  *   max_age: 86400
  *
- * Exported for regression testing of the exact URL, the non-2xx throw, the
- * refused redirect, the body-size cap, and the 10s abort (RFC 8461 §3.3 —
- * policy retrieval via HTTPS GET).
+ * The HTTPS GET and its bounds (redirects, address policy, size, timeout) live
+ * in mtaStsFetch.ts. Every failure throws, so callers keep a cached policy.
  */
 export async function fetchStsPolicy(domain: string, dnsVersion: string): Promise<StsPolicy> {
-	const url = `https://mta-sts.${domain}/.well-known/mta-sts.txt`;
-
-	// RFC 8461 §3.3: "HTTP 3xx redirects MUST NOT be followed". Default fetch
-	// would follow one to any origin, including plaintext HTTP or an internal
-	// address, so take the 3xx as-is and fail it below.
-	const response = await fetch(url, {
-		redirect: 'manual',
-		signal: AbortSignal.timeout(STS_FETCH_TIMEOUT),
-		headers: { 'User-Agent': 'owlat-mta/0.1 (MTA-STS policy fetch)' },
-	});
-
-	if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
-		void response.body?.cancel().catch(() => undefined);
-		throw new Error(`MTA-STS policy fetch refused redirect: ${response.status}`);
-	}
-
-	if (!response.ok) {
-		void response.body?.cancel().catch(() => undefined);
-		throw new Error(`MTA-STS policy fetch failed: ${response.status} ${response.statusText}`);
-	}
-
-	const declaredLength = Number(response.headers.get('content-length'));
-	if (Number.isFinite(declaredLength) && declaredLength > STS_MAX_POLICY_BYTES) {
-		void response.body?.cancel().catch(() => undefined);
-		throw new Error(`MTA-STS policy too large: ${declaredLength} bytes`);
-	}
-
-	// The body is untrusted: read decoded bytes up to the cap and cancel the
-	// stream past it, rather than letting response.text() buffer all of it.
-	const bytes = await readStreamBytes(response.body, STS_MAX_POLICY_BYTES);
-	const text = bytes ? new TextDecoder().decode(bytes) : '';
-	return parseStsPolicy(text, dnsVersion);
+	return parseStsPolicy(await fetchStsPolicyText(domain), dnsVersion);
 }
 
 /**
@@ -293,12 +262,20 @@ export async function fetchStsPolicy(domain: string, dnsVersion: string): Promis
  * page served by a misconfigured host) is treated as "no usable policy"
  * (mode: 'none') so we fall back to opportunistic TLS rather than enforcing a
  * body we don't actually understand.
+ *
+ * A body over {@link STS_MAX_POLICY_LINES} non-empty lines or
+ * {@link STS_MAX_MX_ENTRIES} `mx` entries throws instead, like a failed fetch.
  */
 export function parseStsPolicy(text: string, version: string): StsPolicy {
 	const lines = text
 		.split('\n')
 		.map((l) => l.trim())
 		.filter(Boolean);
+	// Throw rather than return mode 'none': an oversized policy is a fetch
+	// failure, and a 'none' result would overwrite a cached enforce policy.
+	if (lines.length > STS_MAX_POLICY_LINES) {
+		throw new Error(`MTA-STS policy has more than ${STS_MAX_POLICY_LINES} lines`);
+	}
 
 	let hasValidVersion = false;
 	let mode: StsPolicyMode = 'none';
@@ -326,6 +303,9 @@ export function parseStsPolicy(text: string, version: string): StsPolicy {
 				}
 				break;
 			case 'mx':
+				if (mx.length === STS_MAX_MX_ENTRIES) {
+					throw new Error(`MTA-STS policy has more than ${STS_MAX_MX_ENTRIES} mx entries`);
+				}
 				mx.push(value);
 				break;
 			case 'max_age':

@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import type RealRedis from 'ioredis';
+import type * as StsFetch from '../mtaStsFetch.js';
 
 vi.mock('dns/promises', () => ({
 	resolveTxt: vi.fn(),
@@ -10,11 +9,31 @@ vi.mock('dns/promises', () => ({
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+// The HTTPS GET is covered against a real loopback server in mtaStsFetch.test.ts;
+// here it is a stub so the cache/refresh logic can be driven directly.
+vi.mock('../mtaStsFetch.js', async (importOriginal) => ({
+	...(await importOriginal<typeof StsFetch>()),
+	fetchStsPolicyText: vi.fn(),
+}));
 
-import { getStsTlsOptions, parseStsPolicy, isMxAllowed, fetchStsPolicy } from '../mtaSts.js';
+import {
+	getStsTlsOptions,
+	parseStsPolicy,
+	isMxAllowed,
+	fetchStsPolicy,
+	STS_MAX_MX_ENTRIES,
+	STS_MAX_POLICY_LINES,
+} from '../mtaSts.js';
+import { fetchStsPolicyText } from '../mtaStsFetch.js';
 import { resolveTxt } from 'dns/promises';
+import {
+	startPolicyServer,
+	STS_TEST_DOMAIN,
+	type PolicyServer,
+} from './helpers/stsPolicyServer.js';
 
 const resolveTxtMock = vi.mocked(resolveTxt);
+const fetchTextMock = vi.mocked(fetchStsPolicyText);
 
 const CACHE_PREFIX = 'mta:sts:';
 
@@ -23,7 +42,7 @@ function dnsRecord(id: string): string[][] {
 	return [[`v=STSv1; id=${id};`]];
 }
 
-/** Build a valid STSv1 enforcing policy body for a fetch() stub. */
+/** Build a valid STSv1 enforcing policy body for a policy-fetch stub. */
 function policyBody(opts: { mode?: string; mx?: string[]; maxAge?: number | string } = {}): string {
 	const lines = ['version: STSv1'];
 	lines.push(`mode: ${opts.mode ?? 'enforce'}`);
@@ -33,9 +52,7 @@ function policyBody(opts: { mode?: string; mx?: string[]; maxAge?: number | stri
 }
 
 function stubFetch(body: string) {
-	return vi
-		.spyOn(globalThis, 'fetch')
-		.mockResolvedValue(new Response(body, { status: 200 }) as unknown as Response);
+	return fetchTextMock.mockResolvedValue(body);
 }
 
 describe('mtaSts', () => {
@@ -44,6 +61,7 @@ describe('mtaSts', () => {
 	beforeEach(() => {
 		redis = new Redis() as unknown as RealRedis;
 		resolveTxtMock.mockReset();
+		fetchTextMock.mockReset();
 	});
 
 	afterEach(async () => {
@@ -214,9 +232,7 @@ describe('mtaSts', () => {
 
 			// DNS advertises a bumped id-2 but the policy fetch is blocked/fails.
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
-			const fetchSpy = vi
-				.spyOn(globalThis, 'fetch')
-				.mockRejectedValue(new Error('connect ECONNREFUSED'));
+			const fetchSpy = fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
 
 			const opts = await getStsTlsOptions(redis, 'example.com');
 
@@ -298,178 +314,124 @@ describe('mtaSts', () => {
 	// option mapping, wildcard matching, the empty-mx validation guard, the
 	// fetch/Redis fail-open, and the negative cache. RFC 8461 §3.3/§4.1/§5.
 
-	describe('fetchStsPolicy — HTTPS retrieval (RFC 8461 §3.3)', () => {
-		it('GETs exactly https://mta-sts.<domain>/.well-known/mta-sts.txt', async () => {
-			const fetchSpy = vi
-				.spyOn(globalThis, 'fetch')
-				.mockResolvedValue(new Response(policyBody(), { status: 200 }) as unknown as Response);
-
-			await fetchStsPolicy('example.com', 'id-1');
-
-			expect(fetchSpy).toHaveBeenCalledTimes(1);
-			const calledUrl = fetchSpy.mock.calls[0]![0];
-			expect(calledUrl).toBe('https://mta-sts.example.com/.well-known/mta-sts.txt');
-		});
-
-		it('throws on a non-2xx response (404)', async () => {
-			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response('not found', { status: 404, statusText: 'Not Found' }) as unknown as Response
-			);
-
-			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/404/);
-		});
-
-		it('throws on a 5xx response (does not silently treat it as no-policy)', async () => {
-			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response('boom', {
-					status: 503,
-					statusText: 'Service Unavailable',
-				}) as unknown as Response
-			);
-
-			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow();
-		});
-
-		it('passes an AbortSignal that aborts at the 10s timeout', async () => {
-			let capturedSignal: AbortSignal | undefined;
-			vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-				capturedSignal = (init as RequestInit | undefined)?.signal ?? undefined;
-				return Promise.resolve(new Response(policyBody(), { status: 200 }) as unknown as Response);
-			});
-			// AbortSignal.timeout(ms) — assert the deadline is the 10s budget, not 0/∞.
-			const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
-
-			await fetchStsPolicy('example.com', 'id-1');
-
-			expect(capturedSignal).toBeInstanceOf(AbortSignal);
-			expect(timeoutSpy).toHaveBeenCalledWith(10_000);
-		});
-
-		it('carries the policy DNS id onto the parsed policy', async () => {
-			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response(policyBody({ mode: 'enforce', mx: ['*.example.com'] }), {
-					status: 200,
-				}) as unknown as Response
-			);
+	describe('fetchStsPolicy — parses the fetched text against the DNS id', () => {
+		it('fetches for the recipient domain and carries the DNS id onto the policy', async () => {
+			stubFetch(policyBody({ mode: 'enforce', mx: ['*.example.com'] }));
 
 			const policy = await fetchStsPolicy('example.com', 'id-xyz');
+			expect(fetchTextMock).toHaveBeenCalledWith('example.com');
 			expect(policy.version).toBe('id-xyz');
 			expect(policy.mode).toBe('enforce');
 		});
+
+		it('propagates a fetch failure instead of returning a policy', async () => {
+			fetchTextMock.mockRejectedValue(new Error('MTA-STS policy fetch refused redirect: 302'));
+
+			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/redirect/);
+		});
 	});
 
-	// Issue #1326: the policy host is attacker-controlled. A redirect must not
-	// carry the GET to another origin (plaintext / internal), and the body must
-	// be read under a byte cap instead of buffered whole.
-	describe('fetchStsPolicy — redirect and size bounds (RFC 8461 §3.3)', () => {
-		const realFetch = globalThis.fetch;
-		const servers: Server[] = [];
+	// Issue #1326: the byte cap still admits thousands of `mx:` lines, all of
+	// which would be cached and logged. Overflow is a fetch failure (throw), not
+	// mode 'none', so it can't overwrite a cached enforce policy.
+	describe('parseStsPolicy — line and mx limits', () => {
+		const withMx = (count: number) =>
+			policyBody({ mx: Array.from({ length: count }, (_, i) => `mx${i}.example.com`) });
 
-		function listen(handler: Parameters<typeof createServer>[1]): Promise<string> {
-			const server = createServer(handler);
-			servers.push(server);
-			return new Promise((resolve) =>
-				server.listen(0, '127.0.0.1', () =>
-					resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
-				)
+		it(`accepts ${STS_MAX_MX_ENTRIES} mx entries`, () => {
+			expect(parseStsPolicy(withMx(STS_MAX_MX_ENTRIES), 'id-1').mx).toHaveLength(
+				STS_MAX_MX_ENTRIES
 			);
-		}
+		});
+
+		it('throws past the mx limit', () => {
+			expect(() => parseStsPolicy(withMx(STS_MAX_MX_ENTRIES + 1), 'id-1')).toThrow(/mx entries/);
+		});
+
+		it('throws past the line limit, whatever the lines are', () => {
+			const filler = Array.from({ length: STS_MAX_POLICY_LINES }, (_, i) => `x-ext${i}: 1`);
+			expect(() => parseStsPolicy(`${policyBody()}\n${filler.join('\n')}`, 'id-1')).toThrow(
+				/lines/
+			);
+		});
+
+		it('blank lines do not count toward the line limit', () => {
+			const padded = `${policyBody()}${'\n'.repeat(STS_MAX_POLICY_LINES * 2)}`;
+			expect(parseStsPolicy(padded, 'id-1').mode).toBe('enforce');
+		});
+	});
+
+	// RFC 8461 §5.1/§6.2 + issue #1326: each kind of refused refresh keeps the
+	// cached enforce policy. These run the real HTTPS GET against a loopback
+	// policy server, so the failure is the one production would see.
+	describe('cached enforce policy survives a refused refresh', () => {
+		let server: PolicyServer | undefined;
 
 		afterEach(async () => {
-			await Promise.all(
-				servers.splice(0).map((s) => {
-					s.closeAllConnections();
-					return new Promise((resolve) => s.close(() => resolve(undefined)));
-				})
-			);
+			await server?.close();
+			server = undefined;
 		});
 
-		it('does not follow a redirect to a private plaintext target (real fetch)', async () => {
-			let secondHopRequests = 0;
-			const internal = await listen((_req, res) => {
-				secondHopRequests++;
-				res.end(policyBody());
+		async function refreshAgainst(
+			handler: Parameters<typeof startPolicyServer>[0],
+			overrides: { untrustedCert?: boolean } = {}
+		) {
+			server = await startPolicyServer(handler);
+			const actual = await vi.importActual<typeof StsFetch>('../mtaStsFetch.js');
+			const transport = {
+				...server.transport,
+				timeoutMs: 300,
+				...(overrides.untrustedCert ? { ca: undefined } : {}),
+			};
+			fetchTextMock.mockImplementation((domain) => actual.fetchStsPolicyText(domain, transport));
+
+			const cacheKey = `${CACHE_PREFIX}${STS_TEST_DOMAIN}`;
+			const cached = {
+				mode: 'enforce',
+				mx: ['mx1.owlat.test'],
+				maxAge: 86400,
+				version: 'id-1',
+				cachedAt: Date.now(),
+			};
+			await redis.set(cacheKey, JSON.stringify(cached));
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+
+			const opts = await getStsTlsOptions(redis, STS_TEST_DOMAIN);
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+			expect(opts).toEqual({
+				requireTLS: true,
+				rejectUnauthorized: true,
+				allowedMxHosts: ['mx1.owlat.test'],
+				policyMode: 'enforce',
 			});
-			const policyHost = await listen((_req, res) => {
-				res.writeHead(302, { Location: `${internal}/` });
+			expect(JSON.parse((await redis.get(cacheKey))!)).toEqual(cached);
+		}
+
+		it('on a redirect', async () => {
+			await refreshAgainst((_req, res) => {
+				res.writeHead(302, { Location: 'http://127.0.0.1/.well-known/mta-sts.txt' });
 				res.end();
 			});
-			// Stand in for DNS: send the production RequestInit to the local policy
-			// host so real fetch decides whether to follow the 302.
-			vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => realFetch(policyHost, init));
-
-			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/redirect/);
-			expect(secondHopRequests).toBe(0);
 		});
 
-		it.each([301, 302, 307, 308])('rejects a %i response', async (status) => {
-			const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response(null, {
-					status,
-					headers: { Location: 'http://127.0.0.1/.well-known/mta-sts.txt' },
-				}) as unknown as Response
-			);
-
-			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/redirect/);
-			expect(fetchSpy).toHaveBeenCalledTimes(1);
-			expect((fetchSpy.mock.calls[0]![1] as RequestInit).redirect).toBe('manual');
+		it('on an oversized body', async () => {
+			await refreshAgainst((_req, res) => res.end('x'.repeat(1024 * 1024)));
 		});
 
-		it('rejects a declared Content-Length over the cap without reading the body', async () => {
-			const policyHost = await listen((_req, res) => {
-				res.writeHead(200, { 'Content-Length': String(1024 * 1024) });
-				res.write('version: STSv1\n');
-				// Never finish: a read that waited for the body would hang the test.
+		it('on a policy over the mx limit', async () => {
+			const mx = Array.from({ length: STS_MAX_MX_ENTRIES + 1 }, (_, i) => `mx${i}.owlat.test`);
+			await refreshAgainst((_req, res) => res.end(policyBody({ mx })));
+		});
+
+		it('on a certificate the trust store rejects', async () => {
+			await refreshAgainst((_req, res) => res.end(policyBody({ mx: ['evil.owlat.test'] })), {
+				untrustedCert: true,
 			});
-			vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => realFetch(policyHost, init));
-
-			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/too large/);
 		});
 
-		it('rejects an oversized chunked body at the cap and cancels the stream', async () => {
-			let cancelled = false;
-			let pulled = 0;
-			// 2 MiB of valid-looking lines in 1 KiB chunks, with no Content-Length.
-			const oversized = new ReadableStream<Uint8Array>({
-				start(controller) {
-					controller.enqueue(new TextEncoder().encode(policyBody() + '\n'));
-				},
-				pull(controller) {
-					if (++pulled > 2048) return controller.close();
-					controller.enqueue(new TextEncoder().encode(`mx: ${'a'.repeat(1019)}\n`));
-				},
-				cancel() {
-					cancelled = true;
-				},
-			});
-			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response(oversized, { status: 200 }) as unknown as Response
-			);
-
-			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/exceeds/);
-			expect(cancelled).toBe(true);
-			// 1 KiB chunks against a 64 KiB cap: reading stops just past the limit.
-			expect(pulled).toBeLessThanOrEqual(66);
-		});
-
-		it('still parses a valid policy served in small chunks', async () => {
-			const policyHost = await listen((_req, res) => {
-				res.writeHead(200, { 'Content-Type': 'text/plain' });
-				for (const line of policyBody({
-					mode: 'enforce',
-					mx: ['mx1.example.com', '*.example.net'],
-				}).split('\n'))
-					res.write(`${line}\n`);
-				res.end('max_age: 604800\n');
-			});
-			vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => realFetch(policyHost, init));
-
-			const policy = await fetchStsPolicy('example.com', 'id-1');
-			expect(policy).toMatchObject({
-				mode: 'enforce',
-				mx: ['mx1.example.com', '*.example.net'],
-				maxAge: 604800,
-				version: 'id-1',
+		it('on a timeout', async () => {
+			await refreshAgainst(() => {
+				// Never respond.
 			});
 		});
 	});
@@ -607,7 +569,7 @@ describe('mtaSts', () => {
 	describe('fetch / Redis error → fail-open to opportunistic TLS (no throw) (RFC 8461 §5)', () => {
 		it('a thrown fetch yields policyMode none / requireTLS false and does NOT throw', async () => {
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
-			vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('connect ECONNREFUSED'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
 
 			const opts = await getStsTlsOptions(redis, 'example.com');
 
