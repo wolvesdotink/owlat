@@ -369,6 +369,13 @@ export function routingPolicyProblem(
 export const GUARD_NOT_RUN_REASONS = ['spam_archived', 'agent_disabled', 'budget_refused'] as const;
 export type GuardNotRunReason = (typeof GUARD_NOT_RUN_REASONS)[number];
 
+/**
+ * At or above this Team inbox spam score (0-100, from `calculateSpamScore`) the
+ * security scan archives the message as spam. Shared so the quarantine card's
+ * "scored high on the spam filters" reason uses the pipeline's own bar (#1336).
+ */
+export const SPAM_ARCHIVE_SCORE = 80;
+
 /** D1: why a Team message waits for a person instead of the model path. */
 export const BUDGET_HOLD_REASONS = [
 	'daily_ceiling',
