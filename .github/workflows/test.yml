@@ -86,6 +86,7 @@ jobs:
         if: github.ref_type != 'tag'
         uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
       - name: Run grouped coverage suites
+        id: coverage
         env:
           CI_GROUP: ${{ toJson(matrix) }}
           CI_FULL: ${{ needs.detect.outputs.full }}
@@ -95,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: coverage-group-${{ matrix.id }}
-          path: '**/coverage/'
+          path: ${{ steps.coverage.outputs.paths }}
           retention-days: 14
 
   test-mta:
@@ -376,7 +377,8 @@ jobs:
           build-args: |
             OWLAT_VERSION=0.0.0-ci
           cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          # Main owns reusable caches; PR/tag exports only churn quota.
+          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=gha,mode=max,scope={0}', matrix.name) || '' }}
 
       # The entry chunk and its static imports are what every page, sign-in
       # included, loads before Vue mounts. The image above is the only place CI

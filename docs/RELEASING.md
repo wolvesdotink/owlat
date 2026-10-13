@@ -55,7 +55,10 @@ Release is created as a DRAFT up front; every job below must pass before the
    the exact tagged commit, including its identified `ci-verification` artifact.
    The newest matching run controls the decision; a known failed run blocks
    publication. Missing, cancelled or expired evidence uses the same full CI
-   graph through `workflow_call`. The lookup waits at most 20 minutes (90 seconds
+   graph through `workflow_call`. API errors, deleted artifacts and rerun races
+   also request full verification; none authorize reuse. Recover from a known
+   main failure by rerunning main CI successfully, then rerunning the release.
+   The lookup waits at most 35 minutes (90 seconds
    when no main run exists). Coverage, both ramp modes, Java and Docker smokes
    are part of this shared graph.
 2. **`build-and-push`** — builds every image natively for linux/amd64 (on
@@ -86,18 +89,25 @@ Release is created as a DRAFT up front; every job below must pass before the
 
 ## Caches and post-publish checks
 
-Main CI produces the amd64 Docker cache that releases restore. Tag builds do
+Main CI produces the amd64 Docker cache that releases restore. PRs restore
+main caches without exporting their own. Tag builds do
 not export Docker or Bun caches that another tag cannot read. The separate
 `desktop-cache.yml` workflow warms release-profile Rust dependencies on main
-with the same pinned `rust-toolchain.toml`, OS, targets and shared cache key as
-release packaging. Dependency crates are cached; the app and its embedded
+with the same pinned `rust-toolchain.toml`, OS, targets, Tauri release config and
+shared cache key as release packaging. It also runs twice a week to prevent idle
+eviction. Dependency crates are cached; the app and its embedded
 frontend are rebuilt with the tag's version. The first release after rollout
 may still be cold while the producer seeds its caches.
 
 A successful stable unified release calls `promote-aliases.yml`. Its repository
 lock protects a reconciliation of the highest eligible published stable version
 and each major.minor line. It checks the published digest manifest and compose
-checksums before pointing aliases at those exact signed digests. Candidate
+checksums before pointing aliases at those exact signed digests and re-inspects
+each alias afterward. The lock uses GitHub's `queue: max` to retain up to 100
+pending reconciliations instead of cancelling a published release's pending
+caller. Every invocation recomputes current published state, so ordering is not
+required. Beyond that queue limit, or after a post-publish cancellation/failure,
+the release remains published: rerun reconciliation to repair aliases. Candidate
 builds, prereleases and single-target releases only publish versioned images.
 Older releases without the digest manifest retain their existing aliases.
 The nightly reconciliation and manual dispatch can repair an interrupted
@@ -117,7 +127,7 @@ To reproduce the timing/cache baseline with read-only GitHub access:
 bun run ci:report > ci-baseline.json
 ```
 
-The report records job queue time, actual peak overlap, job-minutes, successful
+The report records job queue time, actual peak overlap, latest-attempt job-minutes, successful
 attempt duration, attempt count, run-creation-to-publication time and cache bytes
 by ref. Compare similar changes, report first-attempt success separately, and
 use p90 only when there are at least 20 samples. Hosted-runner improvements

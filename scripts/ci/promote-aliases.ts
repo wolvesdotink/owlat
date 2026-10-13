@@ -88,6 +88,20 @@ for (const { release, aliases } of aliasReleases(
 					['buildx', 'imagetools', 'create', '--tag', `${image}:${alias}`, `${image}@${digest}`],
 					{ stdio: 'inherit' }
 				);
+				const aliasDigest = execFileSync(
+					'docker',
+					[
+						'buildx',
+						'imagetools',
+						'inspect',
+						`${image}:${alias}`,
+						'--format',
+						'{{.Manifest.Digest}}',
+					],
+					{ encoding: 'utf8' }
+				).trim();
+				if (aliasDigest !== digest)
+					throw new Error(`Promoted alias digest mismatch: ${name}:${alias}`);
 			}
 	} finally {
 		rmSync(directory, { recursive: true, force: true });

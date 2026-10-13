@@ -31,3 +31,56 @@ it('accepts release API URLs only when the exact release owns the asset', () => 
 	expect(() => assertDesktopManifest(copy, 'v1.2.3', 'example/repo', [...urls, url])).not.toThrow();
 	expect(() => assertDesktopManifest(copy, 'v1.2.3', 'example/repo', urls)).toThrow();
 });
+
+it('validates a draft by numeric ID and downloads only its manifest asset', async () => {
+	const { verifyDesktopRelease } = await import('../ci/desktop-manifest');
+	const calls: string[] = [];
+	const draft = {
+		id: 42,
+		tag_name: 'v1.2.3',
+		draft: true,
+		assets: [
+			{
+				id: 100,
+				name: 'latest.json',
+				url: 'https://api.github.com/repos/example/repo/releases/assets/100',
+				browser_download_url:
+					'https://github.com/example/repo/releases/download/untagged-draft/latest.json',
+			},
+			...Object.values(manifest.platforms).map((platform, i) => ({
+				id: i + 101,
+				name: `platform-${i}.zip`,
+				url: `https://api.github.com/repos/example/repo/releases/assets/${i + 101}`,
+				browser_download_url: platform.url.replace('v1.2.3', 'untagged-draft'),
+			})),
+		],
+	};
+	const draftManifest = structuredClone(manifest);
+	for (const [i, platform] of Object.values(draftManifest.platforms).entries())
+		platform.url = draft.assets[i + 1]!.url;
+	const releaseFetcher = (path: string) => {
+		calls.push(path);
+		return draft;
+	};
+	const assetFetcher = (path: string) => {
+		calls.push(path);
+		return draftManifest;
+	};
+	expect(() =>
+		verifyDesktopRelease('example/repo', 'v1.2.3', '42', releaseFetcher, assetFetcher)
+	).not.toThrow();
+	expect(calls).toEqual([
+		'repos/example/repo/releases/42',
+		'repos/example/repo/releases/assets/100',
+	]);
+	expect(() =>
+		verifyDesktopRelease('example/repo', 'v1.2.3', '43', releaseFetcher, assetFetcher)
+	).toThrow('identity');
+	expect(() =>
+		verifyDesktopRelease('example/repo', 'v1.2.4', '42', releaseFetcher, assetFetcher)
+	).toThrow('identity');
+	draft.assets.shift();
+	expect(() =>
+		verifyDesktopRelease('example/repo', 'v1.2.3', '42', releaseFetcher, assetFetcher)
+	).toThrow('exactly one');
+});

@@ -261,4 +261,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_ID: ${{ inputs.release_id }}
         run: bun scripts/ci/verify-desktop.ts

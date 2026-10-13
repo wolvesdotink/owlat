@@ -10,7 +10,7 @@ jobs:
   probe:
     name: Find exact-commit main verification
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     outputs:
       reused: ${{ steps.evidence.outputs.reused }}
     steps:

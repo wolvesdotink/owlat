@@ -8,6 +8,9 @@ on:
       - '.github/workflows/desktop-cache.yml'
       - '.github/workflows/_desktop-build.yml'
   workflow_dispatch: {}
+  # Access caches more often than GitHub's seven-day idle eviction window.
+  schedule:
+    - cron: '23 5 * * 1,4'
 permissions:
   contents: read
 concurrency:
@@ -34,6 +37,7 @@ jobs:
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-bun
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -56,15 +60,19 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build release dependencies with the release feature set
         shell: bash
+        working-directory: apps/desktop
         run: |
           # Tauri embeds this path. Cache only dependency crates: the real app
           # crate and frontend are rebuilt from the tagged source in release.
-          mkdir -p apps/web/.output/public
-          echo '<!doctype html><title>cache producer</title>' > apps/web/.output/public/index.html
+          mkdir -p ../web/.output/public
+          echo '<!doctype html><title>cache producer</title>' > ../web/.output/public/index.html
+          args=()
           if [ "$RUNNER_OS" = macOS ]; then
-            for target in aarch64-apple-darwin x86_64-apple-darwin; do
-              cargo build --locked --release --manifest-path apps/desktop/src-tauri/Cargo.toml --target "$target"
-            done
-          else
-            cargo build --locked --release --manifest-path apps/desktop/src-tauri/Cargo.toml
+            args+=(--target universal-apple-darwin)
           fi
+          # Let the same Tauri CLI/config select deployment targets, features
+          # and cargo environment as release packaging. Omit only frontend
+          # generation and bundling/signing; no secrets are needed to warm crates.
+          bunx tauri build --no-bundle "${args[@]}" \
+            --config src-tauri/tauri.release.conf.json \
+            --config '{"build":{"beforeBuildCommand":""}}' -- --locked

@@ -7,11 +7,13 @@ on:
 permissions:
   contents: read
   packages: write
-# Never lock the entire publishing workflow. A queued reconciliation may be
-# superseded safely: each invocation promotes current highest published state.
+# Never lock the entire publishing workflow. Retain queued callers so a newer
+# reconciliation cannot cancel an already-published release's parent run.
 concurrency:
   group: release-image-aliases
   cancel-in-progress: false
+  # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency#example-queueing-multiple-pending-runs
+  queue: max
 jobs:
   reconcile:
     runs-on: ubuntu-latest

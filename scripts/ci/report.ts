@@ -84,6 +84,7 @@ process.stdout.write(
 	JSON.stringify(
 		{
 			repository: repo,
+			jobMinutesScope: 'latest-attempt',
 			capturedAt: new Date().toISOString(),
 			cache,
 			cacheByRef,
