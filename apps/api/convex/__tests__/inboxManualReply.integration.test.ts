@@ -121,7 +121,6 @@ afterEach(() => {
 describe('takeOverRefusal', () => {
 	const facts = {
 		scanFinished: true,
-		agentEnabled: false,
 		pipelineStarted: false,
 		receivedLongEnough: true,
 	};
@@ -138,12 +137,11 @@ describe('takeOverRefusal', () => {
 		}
 	});
 
-	it('allows a finished scan only while the agent is off', () => {
+	it('allows a message in security_check only once its scan has finished', () => {
 		expect(takeOverRefusal('security_check', facts)).toBeNull();
 		expect(takeOverRefusal('security_check', { ...facts, scanFinished: false })).toMatch(
 			/security check/
 		);
-		expect(takeOverRefusal('security_check', { ...facts, agentEnabled: true })).toMatch(/agent/);
 	});
 
 	it('allows a received message only when no pipeline run is coming', () => {
@@ -338,7 +336,10 @@ describe('manualReply.takeOverReply', () => {
 		});
 	});
 
-	it('refuses a finished scan while the agent is on', async () => {
+	// #1338: a clean scan with the agent off ends the run in `security_check`,
+	// and turning the agent on later does not restart it. The message must stay
+	// answerable rather than wait on an agent that never comes.
+	it('answers a message scanned while the agent was off after the agent is turned on', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await seed(t, 'security_check', 'completed');
 		await t.run(async (ctx) => {
@@ -348,11 +349,42 @@ describe('manualReply.takeOverReply', () => {
 				featureFlags: { ai: true, inbox: true, 'ai.agent': true },
 			});
 		});
+
+		const view = await t.run(async (ctx) => {
+			const message = await ctx.db.get(messageId);
+			return takeOverViewFor(ctx, message ? [message] : []);
+		});
+		expect(view.messages[0]).toMatchObject({ scanFinished: true });
+
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('draft_ready');
+		expect(message?.manualTakeoverAt).toBeDefined();
+
+		// A pipeline step landing late cannot carry the message on behind the person.
+		const late = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'classifying', at: Date.now() },
+		});
+		expect(late.ok).toBe(false);
+	});
+
+	it('refuses while a retried run rescans, even after an earlier scan finished', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seed(t, 'security_check', 'completed');
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({ inboundMessageId: messageId, status: 'running' })
+			);
+		});
 		await expect(
 			t
 				.withIdentity(testIdentity)
 				.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId })
-		).rejects.toThrow(/agent/);
+		).rejects.toThrow(/security check/);
 	});
 
 	it('reopens a rejected draft for a person to answer', async () => {

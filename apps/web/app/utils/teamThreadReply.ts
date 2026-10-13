@@ -84,9 +84,11 @@ export const REPLY_BLOCKER_KEYS: Record<ReplyBlocker, string> = {
  * "not yet", never as sendable.
  */
 export interface ReplyContext {
-	/** Is the AI agent on? When it is off, a scanned message rests in `security_check`. */
-	agentEnabled: boolean;
-	/** The message's security scan has completed. */
+	/**
+	 * The message's latest security scan has completed. A message still in
+	 * `security_check` after that rests there (the agent was off when it was
+	 * scanned), whether or not the agent is on now.
+	 */
 	scanFinished?: boolean;
 	/** Any agent action exists for the message: a pipeline run started. */
 	pipelineStarted?: boolean;
@@ -104,19 +106,14 @@ export interface ReplyContext {
  * `null` = a person can reply to this message now (possibly after taking it
  * over, see {@link needsTakeOver}).
  */
-export function replyBlocker(
-	status: string,
-	context: ReplyContext = { agentEnabled: true }
-): ReplyBlocker | null {
+export function replyBlocker(status: string, context: ReplyContext = {}): ReplyBlocker | null {
 	if (status === 'draft_ready' || status === 'failed') return null;
 	if (status === 'rejected' || status === 'archived') return null;
 	// Writing the reply instead of answering the agent's questions, or instead
 	// of waiting for its draft.
 	if (status === 'awaiting_clarification' || status === 'drafting') return null;
 	if (status === 'sent' && !context.isChannel) return null;
-	if (status === 'security_check' && !context.agentEnabled && context.scanFinished === true) {
-		return null;
-	}
+	if (status === 'security_check' && context.scanFinished === true) return null;
 	if (
 		status === 'received' &&
 		context.pipelineStarted === false &&
