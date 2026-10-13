@@ -522,6 +522,7 @@ export const saveEntry = internalMutation({
 			'sourceId',
 			'contactIds',
 			'threadId',
+			'captureSource',
 			'embedding',
 			'embeddingModel',
 			'embeddingGeneratedAt',

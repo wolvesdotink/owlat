@@ -21,11 +21,12 @@ import { internalQuery, type QueryCtx } from '../_generated/server';
 import { isInboxDerivedKnowledge } from '../inbox/access';
 import { sameContactScope } from '../lib/contactScope';
 import { sourceTypeValidator } from '../schema/knowledge';
+import { captureSourceValidator } from '../lib/literalValidators';
 
 /** What identifies a would-be entry for deduplication. */
 export type DedupeCandidate = Pick<
 	Doc<'knowledgeEntries'>,
-	'sourceType' | 'sourceId' | 'title' | 'contentHash' | 'contactIds' | 'threadId'
+	'sourceType' | 'sourceId' | 'title' | 'contentHash' | 'contactIds' | 'threadId' | 'captureSource'
 >;
 
 /**
@@ -78,6 +79,7 @@ export const findExistingEntry = internalQuery({
 		contentHash: v.optional(v.string()),
 		contactIds: v.optional(v.array(v.id('contacts'))),
 		threadId: v.optional(v.id('conversationThreads')),
+		captureSource: v.optional(captureSourceValidator),
 	},
 	handler: (ctx, args): Promise<Id<'knowledgeEntries'> | null> => findDuplicateEntry(ctx, args),
 });

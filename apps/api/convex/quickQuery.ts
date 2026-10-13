@@ -157,6 +157,7 @@ export const ask = authedAction({
 				embedding,
 				embeddingSpaceId,
 				scopeToContact: 'org-wide',
+				mailCaptures: canReadInbox ? 'all' : 'none',
 				limit: PER_SOURCE_LIMIT,
 				root,
 			}),

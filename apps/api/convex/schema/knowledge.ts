@@ -1,7 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { literalUnion } from '../lib/literalUnion';
-import { backfillJobStatusValidator } from '../lib/literalValidators';
+import { backfillJobStatusValidator, captureSourceValidator } from '../lib/literalValidators';
 import {
 	embeddingProvenanceFields,
 	embeddingSecondarySlotFields,
@@ -158,6 +158,11 @@ export const knowledgeEntriesFields = {
 	// Entity links
 	contactIds: v.optional(v.array(v.id('contacts'))),
 	threadId: v.optional(v.id('conversationThreads')),
+	// Set on an entry extracted from a file captured from inbound mail: the
+	// file's own `captureSource`. Such a file keeps its mailbox's permission, so
+	// what was learned from it is Team Inbox-derived (inbox/access.ts) and shown
+	// to shared-inbox readers only. Written by the extraction, never by a client.
+	captureSource: v.optional(captureSourceValidator),
 	// Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
 	embedding: v.array(v.float64()),
 	// Model that produced `embedding` (e.g., 'text-embedding-3-small'). Re-embed when this changes.

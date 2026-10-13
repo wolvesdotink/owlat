@@ -295,6 +295,9 @@ Extract any facts, decisions, events, preferences, goals, relationships, or acti
 						sourceId: args.fileId,
 						contactIds: file.contactIds ?? undefined,
 						threadId: file.threadId ?? undefined,
+						// A mail capture keeps its mailbox's permission, and so do
+						// the facts learned from it (inbox/access.ts).
+						captureSource: file.captureSource,
 					},
 					extractRoot
 				);

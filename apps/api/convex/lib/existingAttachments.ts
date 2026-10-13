@@ -17,9 +17,10 @@
  * and a mail attachment has no blob of its own at all, only a sealed part cut
  * out of the raw message (or just the sealed raw message on older mail).
  *
- * Access: a Files row is readable by any organization member (the Files page
- * lists them all); a mail attachment only by someone with access to the
- * mailbox it arrived in, the same gate the Postbox reader's download uses.
+ * Access: a Files row by whoever the Files page shows it to (any member, but a
+ * file captured from inbound mail only to its mailbox's readers,
+ * lib/semanticFileAccess.ts); a mail attachment only by someone with access to
+ * the mailbox it arrived in, the same gate the Postbox reader's download uses.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -28,6 +29,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { MutationSessionContext } from './sessionOrganization';
 import { readSealedBlobBytes, type BlobGet } from './sealedBlob';
 import { requireMailboxAccess } from '../mail/permissions';
+import { semanticFileReadGate } from './semanticFileAccess';
 import { bytesToBinaryString } from './bytes';
 import { pickStoredPart } from '../mail/messageParts';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../_utils/errors';
@@ -78,7 +80,9 @@ export async function resolveReadableExistingAttachment(
 	if (args.source === 'semanticFile') {
 		const fileId = ctx.db.normalizeId('semanticFiles', args.id);
 		const file = fileId ? await ctx.db.get(fileId) : null;
-		if (!file) throwNotFound('File');
+		// A file the caller may not read is reported as missing, as `get` does.
+		const canReadSemanticFile = semanticFileReadGate(ctx, session);
+		if (!file || !(await canReadSemanticFile(file))) throwNotFound('File');
 		if (!file.storageId) throwInvalidState('This file is no longer stored');
 		const stored = await ctx.db.system.get(file.storageId);
 		if (!stored) throwInvalidState('This file is no longer stored');

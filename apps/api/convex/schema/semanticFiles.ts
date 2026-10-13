@@ -69,6 +69,12 @@ export const semanticFileTables = {
 		// and no horizon at all. The inbound retention sweep scans
 		// `captureSource === 'team_inbox'` and nothing else.
 		captureSource: v.optional(captureSourceValidator),
+		// The mailbox a `captureSource: 'mailbox'` file arrived in, resolved on
+		// the server from the delivered message. A captured file keeps its
+		// mailbox's permission (lib/semanticFileAccess.ts); a Postbox capture
+		// without it (stored before it was recorded) is shown to owners and
+		// admins only. Never set from client input.
+		sourceMailboxId: v.optional(v.id('mailboxes')),
 		// When the retention sweep released this file's bytes. Set exactly once,
 		// by the sweep, together with clearing `storageId`. It is also the
 		// equality component of `by_attachment_retention`, which is what makes

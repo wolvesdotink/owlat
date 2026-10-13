@@ -90,18 +90,27 @@ export async function listSharedInboxReaderIds(ctx: QueryCtx | MutationCtx): Pro
  * Whether a knowledge entry was derived from Team Inbox mail, and so follows
  * the reader rule above: shown only to shared-inbox readers.
  *
- * Either marker is enough:
+ * Any marker is enough:
  *   - `sourceType: 'agent_extracted'` is what `extractFromMessage` stores for
  *     facts mined from an inbound Team Inbox message;
  *   - `threadId` points at a Team Inbox conversation (message extraction, and
  *     files linked to a thread). `updateEntry` cannot change it, and only a
- *     reader may set it on `createEntry`.
- * Entries from files, chat, imported Postbox mail and manual authoring carry
- * neither and keep their member-wide visibility. Only someone who can already
- * see an entry can edit its `sourceType`.
+ *     reader may set it on `createEntry`;
+ *   - `captureSource` marks an entry extracted from a file captured from
+ *     inbound mail, Team Inbox or Postbox. The file keeps its mailbox's
+ *     permission (lib/semanticFileAccess.ts); knowledge carries no mailbox, so
+ *     the entry falls back to the readers who may open every mailbox. Only the
+ *     extraction writes it.
+ * Entries from uploaded files, chat, imported Postbox mail and manual
+ * authoring carry none and keep their member-wide visibility. Only someone who
+ * can already see an entry can edit its `sourceType`.
  */
 export function isInboxDerivedKnowledge(
-	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId'>
+	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'captureSource'>
 ): boolean {
-	return entry.sourceType === 'agent_extracted' || entry.threadId !== undefined;
+	return (
+		entry.sourceType === 'agent_extracted' ||
+		entry.threadId !== undefined ||
+		entry.captureSource !== undefined
+	);
 }

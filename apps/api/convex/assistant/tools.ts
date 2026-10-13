@@ -103,7 +103,7 @@ function buildSearchKnowledge(
 
 function buildSearchFiles(
 	ctx: ActionCtx,
-	_audience: AssistantAudience,
+	audience: AssistantAudience,
 	root?: LlmRootContext
 ): Tool {
 	return tool({
@@ -118,6 +118,9 @@ function buildSearchFiles(
 				queryText: query,
 				limit: clampInt(limit, 1, 8, 5),
 				scopeToContact: 'org-wide',
+				// Files captured from inbound mail keep their mailbox's permission;
+				// only a shared-inbox reader may open every mailbox.
+				mailCaptures: audience.canReadInbox ? 'all' : 'none',
 				...(root ? { root } : {}),
 			});
 			return {

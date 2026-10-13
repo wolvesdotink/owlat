@@ -130,6 +130,7 @@ import type * as migrations_0065_backfill_thread_response_metrics from '../migra
 import type * as migrations_0066_backfill_clarification_origin from '../migrations/0066_backfill_clarification_origin.js';
 import type * as migrations_0067_empty_retired_summaries from '../migrations/0067_empty_retired_summaries.js';
 import type * as migrations_0068_seal_fact_keys from '../migrations/0068_seal_fact_keys.js';
+import type * as migrations_0069_restrict_captured_file_knowledge from '../migrations/0069_restrict_captured_file_knowledge.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as plugins_llmLedgerRows from '../plugins/llmLedgerRows.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
@@ -1076,6 +1077,7 @@ import type * as lib_scannerHealth from '../lib/scannerHealth.js';
 import type * as lib_sealedBlob from '../lib/sealedBlob.js';
 import type * as lib_sealedBlobStream from '../lib/sealedBlobStream.js';
 import type * as lib_secretLeakScan from '../lib/secretLeakScan.js';
+import type * as lib_semanticFileAccess from '../lib/semanticFileAccess.js';
 import type * as lib_semanticFileAi from '../lib/semanticFileAi.js';
 import type * as lib_semanticFileSummary from '../lib/semanticFileSummary.js';
 import type * as lib_sendDailyStats from '../lib/sendDailyStats.js';
@@ -1884,6 +1886,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0066_backfill_clarification_origin': typeof migrations_0066_backfill_clarification_origin;
 	'migrations/0067_empty_retired_summaries': typeof migrations_0067_empty_retired_summaries;
 	'migrations/0068_seal_fact_keys': typeof migrations_0068_seal_fact_keys;
+	'migrations/0069_restrict_captured_file_knowledge': typeof migrations_0069_restrict_captured_file_knowledge;
 	'lib/migrationLedger': typeof lib_migrationLedger;
 	'plugins/llmLedgerRows': typeof plugins_llmLedgerRows;
 	'schema/migrationRuns': typeof schema_migrationRuns;
@@ -2820,6 +2823,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sealedBlob': typeof lib_sealedBlob;
 	'lib/sealedBlobStream': typeof lib_sealedBlobStream;
 	'lib/secretLeakScan': typeof lib_secretLeakScan;
+	'lib/semanticFileAccess': typeof lib_semanticFileAccess;
 	'lib/semanticFileAi': typeof lib_semanticFileAi;
 	'lib/semanticFileSummary': typeof lib_semanticFileSummary;
 	'lib/sendDailyStats': typeof lib_sendDailyStats;

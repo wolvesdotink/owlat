@@ -11,12 +11,13 @@ import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 import { v } from 'convex/values';
 import { consumeUpload, deleteOwnedUpload, storedFileSize } from './storage/uploads';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
-import { internalQuery, type MutationCtx } from './_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import { internal } from './_generated/api';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireAdminContext } from './lib/sessionOrganization';
+import { requireAdminContext, type MutationSessionContext } from './lib/sessionOrganization';
 import { isSharedInboxReader } from './inbox/access';
+import { semanticFileReadGate } from './lib/semanticFileAccess';
 import { throwInvalidInput } from './_utils/errors';
 import {
 	isExtensionAllowed,
@@ -70,7 +71,8 @@ function hydrateFiles(
 }
 
 /**
- * Get a file by ID.
+ * Get a file by ID. A file captured from inbound mail is only returned to
+ * someone who may read the mailbox it arrived in (lib/semanticFileAccess.ts).
  *
  * The conversation link follows the shared-inbox reader rule
  * (inbox/access.ts): handing any other member the linked thread's id — let
@@ -83,7 +85,8 @@ export const get = authedQuery({
 	args: { fileId: v.id('semanticFiles') },
 	handler: async (ctx, args, session) => {
 		const file = await ctx.db.get(args.fileId);
-		if (!file) return null;
+		const canReadSemanticFile = semanticFileReadGate(ctx, session);
+		if (!file || !(await canReadSemanticFile(file))) return null;
 		const hydrated = await hydrateFile(ctx, file);
 		if (!isSharedInboxReader(session)) {
 			return { ...hydrated, threadId: undefined, threadSubject: undefined };
@@ -187,19 +190,26 @@ export const getProcessingContext = internalQuery({
 });
 
 /**
- * Apply the `sourceType` provenance filter to a page of files and resolve a
- * storage URL for each survivor. The filter runs after pagination (mirroring
- * `mediaAssets.list`), so a page can come back sparse while matching files sit
- * on later pages — the client auto-loads further pages until the grid fills.
- * This pushes filtering across the whole table instead of the old client-side
- * narrowing over only the newest 50/20 fetched rows.
+ * Apply the `sourceType` provenance filter and the caller's read check to a
+ * page of files and resolve a storage URL for each survivor. Both run after
+ * pagination (mirroring `mediaAssets.list`), so a page can come back sparse
+ * while matching files sit on later pages — the client auto-loads further
+ * pages until the grid fills. This pushes filtering across the whole table
+ * instead of the old client-side narrowing over only the newest 50/20 fetched
+ * rows.
  */
 async function applySourceFilter(
-	ctx: StorageReader,
+	ctx: QueryCtx,
+	session: MutationSessionContext,
 	results: PaginationResult<Doc<'semanticFiles'>>,
 	sourceType: 'upload' | 'email_attachment' | 'agent_generated' | undefined
 ): Promise<PaginationResult<Doc<'semanticFiles'> & { url: string | null }>> {
-	const page = sourceType ? results.page.filter((f) => f.sourceType === sourceType) : results.page;
+	const canReadSemanticFile = semanticFileReadGate(ctx, session);
+	const page: Doc<'semanticFiles'>[] = [];
+	for (const file of results.page) {
+		if (sourceType && file.sourceType !== sourceType) continue;
+		if (await canReadSemanticFile(file)) page.push(file);
+	}
 	const hydrated = await hydrateFiles(ctx, page);
 	return { ...results, page: hydrated };
 }
@@ -207,18 +217,19 @@ async function applySourceFilter(
 /**
  * List files (paginated, newest first) with an optional `sourceType` filter.
  */
+// authz: applySourceFilter drops every file semanticFileReadGate refuses the caller.
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
 		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const results = await ctx.db
 			.query('semanticFiles')
 			.withIndex('by_created_at')
 			.order('desc')
 			.paginate(args.paginationOpts);
-		return applySourceFilter(ctx, results, args.sourceType);
+		return applySourceFilter(ctx, session, results, args.sourceType);
 	},
 });
 
@@ -226,18 +237,19 @@ export const list = authedQuery({
  * Full-text search for files by content/title (paginated), with an optional
  * `sourceType` filter applied across the whole result set, not just one page.
  */
+// authz: applySourceFilter drops every file semanticFileReadGate refuses the caller.
 export const search = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
 		query: v.string(),
 		sourceType: v.optional(semanticFileSourceTypeValidator),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const results = await ctx.db
 			.query('semanticFiles')
 			.withSearchIndex('search_files', (q) => q.search('searchableText', args.query))
 			.paginate(args.paginationOpts);
-		return applySourceFilter(ctx, results, args.sourceType);
+		return applySourceFilter(ctx, session, results, args.sourceType);
 	},
 });
 
@@ -250,11 +262,13 @@ export const search = authedQuery({
 // results must go through the action.
 
 /**
- * Get version history for a file
+ * Get version history for a file. Each version is read-checked on its own,
+ * like `get`, so a chain cannot surface a version the caller may not read.
  */
 export const getVersionHistory = authedQuery({
 	args: { fileId: v.id('semanticFiles') },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		const canReadSemanticFile = semanticFileReadGate(ctx, session);
 		const versions: Array<Doc<'semanticFiles'> & { url: string | null }> = [];
 		let currentId: Id<'semanticFiles'> | undefined = args.fileId;
 
@@ -262,7 +276,7 @@ export const getVersionHistory = authedQuery({
 			const file: Doc<'semanticFiles'> | null = await ctx.db.get(currentId);
 			if (!file) break;
 
-			versions.push(await hydrateFile(ctx, file));
+			if (await canReadSemanticFile(file)) versions.push(await hydrateFile(ctx, file));
 
 			currentId = file.previousVersionId;
 		}
@@ -272,14 +286,14 @@ export const getVersionHistory = authedQuery({
 });
 
 /**
- * Get files related to a contact
+ * Get files related to a contact, those the caller may read.
  */
 export const listByContact = authedQuery({
 	args: {
 		contactId: v.id('contacts'),
 		limit: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// Query the index-able semanticFileContacts mirror by contact instead of
 		// scanning the newest 200 files and JS-filtering the contactIds array —
 		// complete (no silent truncation past 200) and O(files-for-this-contact).
@@ -292,10 +306,13 @@ export const listByContact = authedQuery({
 			ctx,
 			links.map((link) => link.fileId)
 		);
-		const files = await hydrateFiles(
-			ctx,
-			links.map((link) => byId.get(link.fileId)).filter((file) => file != null)
-		);
+		const canReadSemanticFile = semanticFileReadGate(ctx, session);
+		const readable: Doc<'semanticFiles'>[] = [];
+		for (const link of links) {
+			const file = byId.get(link.fileId);
+			if (file && (await canReadSemanticFile(file))) readable.push(file);
+		}
+		const files = await hydrateFiles(ctx, readable);
 
 		// Newest first, then cap.
 		files.sort((a, b) => b.createdAt - a.createdAt);
@@ -390,6 +407,10 @@ export const ingest = internalMutation({
 		// captures are in range of the inbound retention sweep — see the schema
 		// comment on `captureSource`.
 		captureSource: v.optional(captureSourceValidator),
+		// The mailbox a Postbox capture arrived in, which decides who may read
+		// it (lib/semanticFileAccess.ts). Resolved by the capture step from the
+		// delivered message, never taken from a client.
+		sourceMailboxId: v.optional(v.id('mailboxes')),
 		sourceMessageId: v.optional(v.string()),
 		uploadContext: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
@@ -439,6 +460,7 @@ export async function insertSemanticFile(
 		tags?: string[];
 		sourceType: 'upload' | 'email_attachment' | 'agent_generated';
 		captureSource?: CaptureSource;
+		sourceMailboxId?: Id<'mailboxes'>;
 		sourceMessageId?: string;
 		uploadContext?: string;
 		uploadedBy?: string;
@@ -463,6 +485,7 @@ export async function insertSemanticFile(
 		tags: args.tags,
 		sourceType: args.sourceType,
 		captureSource: args.captureSource,
+		sourceMailboxId: args.sourceMailboxId,
 		sourceMessageId: args.sourceMessageId,
 		uploadContext: args.uploadContext,
 		uploadedBy: args.uploadedBy,
