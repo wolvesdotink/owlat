@@ -4504,7 +4504,8 @@
 			},
 			"postboxClarificationCard": {
 				"answerLater": "I'll answer later",
-				"drafting": "Drafting your reply…"
+				"drafting": "Drafting your reply…",
+				"held": "No AI draft for this reply: it needs a detail Owlat never asks for, such as a password. You can still write it yourself."
 			},
 			"postboxCoachPanel": {
 				"clean": "Looks solid — no issues found.",

@@ -4504,7 +4504,8 @@
 			},
 			"postboxClarificationCard": {
 				"answerLater": "Ich antworte später",
-				"drafting": "Deine Antwort wird entworfen…"
+				"drafting": "Deine Antwort wird entworfen…",
+				"held": "Kein KI-Entwurf für diese Antwort: Sie braucht eine Angabe, nach der Owlat nie fragt, etwa ein Passwort. Du kannst sie trotzdem selbst schreiben."
 			},
 			"postboxCoachPanel": {
 				"clean": "Sieht gut aus — keine Auffälligkeiten gefunden.",

@@ -163,7 +163,7 @@ describe('draftClarificationReply', () => {
 		});
 	});
 
-	it('lands nothing for a gap no question may ask for (a password)', async () => {
+	it('says there is no AI draft for a gap no question may ask for (a password)', async () => {
 		mocks.runSharedDraft.mockResolvedValueOnce({
 			draftBody: 'Hi Jonas, I will log in with [[your password]].',
 			draftQuality: undefined,
@@ -175,6 +175,11 @@ describe('draftClarificationReply', () => {
 
 		expect(mutations.some((m) => m.name.includes('persistClarificationDraft'))).toBe(false);
 		expect(mutations.some((m) => m.name.includes('askAboutDraftGaps'))).toBe(false);
+		expect(mutations.find((m) => m.name.includes('holdClarificationDraft'))?.args).toEqual({
+			threadId,
+			expectedLatestMessageId: 'msg_1',
+			expectedAnsweredAt: 111,
+		});
 	});
 
 	it('drafts every question as a gap after "Draft with what I have" with nothing answered', async () => {

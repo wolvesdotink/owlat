@@ -201,7 +201,12 @@ export const answerClarification = postboxMutation({
 		// The arrival slot was written without these answers: it goes, so it can
 		// never stand in for the reply they are about to produce.
 		const { draftSlot: _superseded, ...rest } = flag;
-		const { draft: _previous, isGapsAccepted: _consent, ...asked } = clarification;
+		const {
+			draft: _previous,
+			isGapsAccepted: _consent,
+			isDraftHeld: _held,
+			...asked
+		} = clarification;
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
 				...rest,
@@ -392,6 +397,19 @@ async function currentClarification(
 	return { flag, clarification };
 }
 
+/** No AI draft for the card's reply: it needs a fact Owlat never asks for (a password). */
+async function holdDraft(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	current: NonNullable<Awaited<ReturnType<typeof currentClarification>>>
+): Promise<void> {
+	const { flag, clarification } = current;
+	await ctx.db.patch(threadId, {
+		needsReply: { ...flag, clarification: { ...clarification, isDraftHeld: true } },
+		updatedAt: Date.now(),
+	});
+}
+
 /** The card asks again: its questions plus `questions`, the answers kept. */
 async function askAgain(
 	ctx: MutationCtx,
@@ -436,7 +454,10 @@ export const persistClarificationDraft = internalMutation({
 				fromAddress: trigger?.fromAddress ?? '',
 				existing: clarification.questions,
 			});
-			if (gaps.kind === 'unaskable') return;
+			if (gaps.kind === 'unaskable') {
+				await holdDraft(ctx, args.threadId, current);
+				return;
+			}
 			if (gaps.kind === 'ask') {
 				await askAgain(ctx, args.threadId, current, gaps.questions);
 				return;
@@ -466,5 +487,14 @@ export const askAboutDraftGaps = internalMutation({
 		const current = await currentClarification(ctx, args);
 		if (!current || args.questions.length === 0) return;
 		await askAgain(ctx, args.threadId, current, args.questions);
+	},
+});
+
+/** {@link holdDraft} behind the guards of `persistClarificationDraft`. */
+export const holdClarificationDraft = internalMutation({
+	args: draftWriteGuardArgs,
+	handler: async (ctx, args) => {
+		const current = await currentClarification(ctx, args);
+		if (current) await holdDraft(ctx, args.threadId, current);
 	},
 });

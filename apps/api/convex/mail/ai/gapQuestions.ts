@@ -26,9 +26,14 @@ import type { AskQuestion } from './composeDraftPolicy';
 /** Ids of the questions a held draft's placeholders become. */
 export const GAP_QUESTION_PREFIX = 'gap_';
 
-/** A gap that asks for a file ("attach the September invoice"), in English or German. */
+/**
+ * A gap that asks for a file to be attached: it opens with the verb ("attach
+ * the September invoice") or, in German, ends with it ("Rechnung als PDF
+ * anhängen"). A gap that only mentions a file ("amount in the attached
+ * invoice", "maximum file size") asks for a fact and stays a text question.
+ */
 const FILE_GAP =
-	/(attach|enclos|anh(?:ä|ae)ng|anlage|beif(?:ü|ue)g|beileg|\bpdf\b|\bdatei|\bfiles?\b|\bdocuments?\b|\bdokument)/iu;
+	/^(?:please\s+|bitte\s+)?(?:attach|enclose|upload|anh(?:ä|ae)ngen|beif(?:ü|ue)gen|beilegen|hochladen)\b|\b(?:anh(?:ä|ae)ngen|beif(?:ü|ue)gen|beilegen|hochladen|mitschicken)$/iu;
 
 /** What a freshly written draft still needs before it may be shown. */
 export type DraftGapCheck =

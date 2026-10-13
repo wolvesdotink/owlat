@@ -71,6 +71,18 @@ describe('checkDraftGaps', () => {
 		expect(german.kind === 'ask' && german.questions[0]!.answerKind).toBe('file');
 	});
 
+	it('keeps a gap that only mentions a file a text question', () => {
+		for (const label of [
+			'maximum file size in MB',
+			'amount in the attached invoice',
+			'delivery date stated in the document',
+			'Betrag laut PDF-Anhang',
+		]) {
+			const check = checkDraftGaps(`[[${label}]]`, opts());
+			expect(check.kind === 'ask' && check.questions[0]!.answerKind, label).toBe('text');
+		}
+	});
+
 	it('holds a draft whose gap no question may ask for, instead of passing it', () => {
 		expect(checkDraftGaps('Log in with [[your password]].', opts())).toEqual({
 			kind: 'unaskable',

@@ -169,6 +169,15 @@ describe('AnswerQueueMailAsk', () => {
 		expect(w.find('[data-testid="answer-queue-ask"]').exists()).toBe(false);
 	});
 
+	it('says there is no AI draft when the reply needs a fact Owlat never asks for', async () => {
+		clarification.value = { ...clarification.value, answeredAt: 2, isDraftHeld: true };
+		const w = mountAsk();
+		expect(w.get('[data-testid="answer-queue-ask-held"]').text()).toContain(
+			'No AI draft for this reply'
+		);
+		expect(w.find('[data-testid="answer-queue-ask-drafting"]').exists()).toBe(false);
+	});
+
 	it('leaves a reply drafted before the page opened to the prepared draft', async () => {
 		clarification.value = { ...clarification.value, answeredAt: 2, draft: 'Earlier' };
 		const w = mountAsk();

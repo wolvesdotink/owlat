@@ -816,6 +816,26 @@ describe('a draft written from the answers that still has gaps', () => {
 		expect(after.questions.map((q) => q.id)).toEqual(['clarify_0', 'gap_0']);
 	});
 
+	it('says there is no AI draft for a gap no question may ask for, until answered again', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, clarification } = await answered(t);
+
+		await t.mutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
+			threadId,
+			draft: 'Hi, I will log in with [[your password]].',
+		});
+		const held = await clarification();
+		expect(held.draft).toBeUndefined();
+		expect(held.isDraftHeld).toBe(true);
+		expect(held.answeredAt).toBeTypeOf('number');
+
+		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+			threadId,
+			answers: [{ questionId: 'clarify_0', value: 'No' }],
+		});
+		expect((await clarification()).isDraftHeld).toBeUndefined();
+	});
+
 	it('never lands a reply on a card that is asking', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);

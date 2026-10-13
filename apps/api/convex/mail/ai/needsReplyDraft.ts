@@ -162,7 +162,10 @@ export async function draftClarificationReply(
 					existing: context.questionIds.map((id) => ({ id })),
 				});
 		// A gap no question may ask for (a password): no AI draft for this reply.
-		if (gaps.kind === 'unaskable') return;
+		if (gaps.kind === 'unaskable') {
+			await ctx.runMutation(internal.mail.ai.needsReplyClarify.holdClarificationDraft, guard);
+			return;
+		}
 		if (gaps.kind === 'ask') {
 			await ctx.runMutation(internal.mail.ai.needsReplyClarify.askAboutDraftGaps, {
 				...guard,

@@ -77,7 +77,10 @@ const visible = computed(
 	() =>
 		!!row.value &&
 		!deferred.value &&
-		(state.value === 'asking' || state.value === 'drafting' || waitingDraft.value !== null)
+		(state.value === 'asking' ||
+			state.value === 'drafting' ||
+			state.value === 'held' ||
+			waitingDraft.value !== null)
 );
 watch(visible, (value) => emit('visible', value), { immediate: true });
 onBeforeUnmount(() => emit('visible', false));
@@ -160,6 +163,15 @@ async function submit(answers: AskCardAnswer[], withGaps = false) {
 			<UiButton variant="ghost" size="sm" @click="deferred = true">
 				{{ t('components.answer.aiBar.discard') }}
 			</UiButton>
+		</div>
+		<div
+			v-else-if="state === 'held'"
+			class="flex items-center gap-2 border-b border-border-subtle px-3 py-3 text-sm text-text-secondary"
+			role="status"
+			data-testid="answer-queue-ask-held"
+		>
+			<Icon name="lucide:shield-alert" class="size-4 shrink-0" aria-hidden="true" />
+			<span class="flex-1">{{ t('components.postbox.postboxClarificationCard.held') }}</span>
 		</div>
 		<div
 			v-else

@@ -54,6 +54,10 @@ export interface ReplyQueueClarification {
 	answeredAt?: number;
 	/** The starter reply produced after answering — flips the card to Draft ready. */
 	draft?: string;
+	/** The owner chose "Draft with what I have". */
+	isGapsAccepted?: boolean;
+	/** The reply needs a fact Owlat never asks for (a password): no AI draft. */
+	isDraftHeld?: boolean;
 }
 
 export interface ReplyQueueItem {
@@ -219,13 +223,16 @@ export function replyQueueSection(
  *   - 'asking'   — questions are open, waiting on the owner.
  *   - 'drafting' — answered, the starter reply has not landed yet.
  *   - 'ready'    — the starter reply is ready (flip to "Draft ready").
+ *   - 'held'     — the reply needs a fact Owlat never asks for (a password):
+ *                  there is no AI draft for it.
  * Pure so the card's state machine is unit-testable.
  */
 export function clarificationCardState(
-	clarification: Pick<ReplyQueueClarification, 'answeredAt' | 'draft'> | undefined
-): 'asking' | 'drafting' | 'ready' | null {
+	clarification: Pick<ReplyQueueClarification, 'answeredAt' | 'draft' | 'isDraftHeld'> | undefined
+): 'asking' | 'drafting' | 'ready' | 'held' | null {
 	if (!clarification) return null;
 	if (clarification.draft) return 'ready';
+	if (clarification.isDraftHeld) return 'held';
 	if (clarification.answeredAt) return 'drafting';
 	return 'asking';
 }
