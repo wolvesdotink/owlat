@@ -167,16 +167,13 @@ const replyLanguage = computed(() => {
 		return code;
 	}
 });
-// "Answer later" puts the agent's questions away; the editor stays.
-const clarificationDeferred = ref(false);
-const showClarification = computed(
-	() => !!reply.clarification.value && !clarificationDeferred.value
-);
+const showClarification = computed(() => !!reply.clarification.value);
 // A file given as an answer goes on the reply on the server, in the same
 // transaction as the answer (inbox.clarification.answerClarification); the
-// attachment list then updates through its subscription.
-async function onClarificationAnswers(answers: AskAnswer[]) {
-	await reply.submitClarification(answers);
+// attachment list then updates through its subscription. "Draft with what I
+// have" sends what was answered and lets the rest become highlighted gaps.
+async function onClarificationAnswers(answers: AskAnswer[], withGaps = false) {
+	await reply.submitClarification(answers, withGaps);
 }
 
 /** The resting phone/tablet sheet's "✦ Draft": open the reply and draft with AI. */
@@ -415,9 +412,8 @@ onBeforeUnmount(() => {
 								:questions="clarificationQuestions"
 								:copy-policy="copyPolicy"
 								:submitting="reply.isAnsweringClarification.value"
-								team-agent
 								@answer="onClarificationAnswers"
-								@skip="clarificationDeferred = true"
+								@skip="onClarificationAnswers($event, true)"
 							/>
 						</div>
 						<template v-else>

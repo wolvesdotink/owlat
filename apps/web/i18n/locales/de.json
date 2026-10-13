@@ -7142,7 +7142,6 @@
 				"skip": "Mit vorhandenen Infos entwerfen",
 				"operation": "Fragen beantworten",
 				"budgetRefused": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb wurde der Entwurf nicht geschrieben. Deine Antworten bleiben hier: Versuch es später erneut oder schreib die Antwort selbst.",
-				"sublineAgent": "Noch kein Entwurf. Der Agent schreibt ihn, sobald alles hier beantwortet ist.",
 				"allAnswered": "Alles beantwortet",
 				"draftNow": "Entwurf schreiben"
 			},

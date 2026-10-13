@@ -202,14 +202,17 @@ export function useAnswerTeamReply(opts: {
 	);
 	// The ask card leaves a kept remembered answer out; it goes back as
 	// `memory`, so the agent has every answer and the fact is not captured again.
-	// Resolves to the answers sent, or null when nothing was saved.
-	async function submitClarification(answers: AskAnswer[]) {
+	// `withGaps` is "Draft with what I have": what is still open becomes a
+	// highlighted gap in the draft. Resolves to the answers sent, or null when
+	// nothing was saved.
+	async function submitClarification(answers: AskAnswer[], withGaps = false) {
 		const current = clarification.value;
 		if (!current || !isAdmin.value) return null;
 		const sent = backgroundAskAnswers(current.questions, answers);
 		const result = await answerClarification({
 			inboundMessageId: current.messageId,
 			answers: sent,
+			...(withGaps ? { withGaps: true } : {}),
 		});
 		if (!result.ok) return null;
 		showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
