@@ -53,7 +53,8 @@ export function packageCoverage({
 		...coverageReports(),
 		include,
 		exclude: ['**/__tests__/**', ...exclude],
-		...(floors ? { thresholds: floors } : {}),
+		// Shards collect only; the merge runs without this flag and enforces all floors.
+		...(floors && process.env['OWLAT_COVERAGE_COLLECT_ONLY'] !== '1' ? { thresholds: floors } : {}),
 	};
 }
 

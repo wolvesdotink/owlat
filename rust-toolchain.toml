@@ -1,0 +1,5 @@
+# The main cache producer and signed release must compile with the same rustc.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+components = ["rustfmt"]

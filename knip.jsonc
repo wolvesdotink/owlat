@@ -19,6 +19,8 @@
 				"scripts/__tests__/**/*.ts",
 				"scripts/list-shared-production-exports.ts",
 				"scripts/read-feature-flags.mjs",
+				// Spawned by the shell selector; knip cannot follow that edge.
+				"scripts/ci/select.ts",
 			],
 			"includeEntryExports": false,
 			// @owlat/plugin-kit, @owlat/provider-kit and @owlat/sdk-js are tsup

@@ -66,10 +66,9 @@ export default defineConfig({
 			// without flaking on run-to-run async/retry variance. Raise as coverage
 			// climbs; never lower it without justification.
 			//
-			// CI shards this suite ×3 and disables the gate per shard with
-			// --coverage.thresholds.lines=0 (test.yml); the merged report enforces
-			// it. If you add another threshold key here (functions, branches, …),
-			// the shard jobs will fail spuriously unless it's zeroed there too.
+			// CI shards this suite ×4. OWLAT_COVERAGE_COLLECT_ONLY drops all
+			// floors during shard collection; the identified merge restores and
+			// enforces this threshold tree, including any future additional floors.
 			lines: 65,
 		}),
 	},

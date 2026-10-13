@@ -514,7 +514,10 @@ describe('matchesPattern', () => {
 			expect(matchesPattern(pattern, path, meter)).toBe(expected);
 			expect(meter.cells).toBeGreaterThan(0);
 			expect(meter.cells).toBeLessThanOrEqual((pattern.length + 1) * (path.length + 1));
-		}
+		},
+		// This checks the operation count, not elapsed time. Grouped coverage on
+		// shared CI CPUs needs headroom for the deliberately large inputs.
+		30_000
 	);
 
 	it('stops at the first row nothing reaches', () => {

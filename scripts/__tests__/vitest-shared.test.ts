@@ -12,7 +12,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
+afterEach(() => vi.unstubAllEnvs());
 import { coverageReports, nodePackageConfig, packageCoverage } from '../../vitest.shared';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
@@ -54,6 +55,18 @@ describe('packageCoverage', () => {
 				thresholds: { branches: 85, 'src/parse/**': { lines: 90 } },
 			}).thresholds
 		).toEqual({ lines: 90, branches: 85, 'src/parse/**': { lines: 90 } });
+	});
+
+	it('drops the entire threshold tree only during shard collection', () => {
+		const config = { lines: 90, thresholds: { branches: 85, 'src/parse/**': { lines: 95 } } };
+		vi.stubEnv('OWLAT_COVERAGE_COLLECT_ONLY', '1');
+		expect(packageCoverage(config)).not.toHaveProperty('thresholds');
+		vi.stubEnv('OWLAT_COVERAGE_COLLECT_ONLY', '');
+		expect(packageCoverage(config).thresholds).toEqual({
+			lines: 90,
+			branches: 85,
+			'src/parse/**': { lines: 95 },
+		});
 	});
 
 	it('sets no thresholds for a workspace without a floor', () => {

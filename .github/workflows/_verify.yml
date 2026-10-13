@@ -1,50 +1,52 @@
 name: _verify
-
-# Reusable CORE that gates a release on a green `ci:verify` of the exact ref
-# it runs on. Shared by every release pipeline (release.yml, desktop-release.yml,
-# server-release.yml): a tag push does NOT match test.yml, so without this gate a
-# tag on an un-CI'd commit would sign and publish unverified artifacts. Each
-# caller names its job `verify` and needs-chains everything downstream to it,
-# so nothing ships unless the release commit is green.
-
+# Every release gates on this exact SHA. Main already runs the stronger full
+# graph; reuse only identified successful evidence, otherwise call that graph.
 on:
   workflow_call: {}
-
 permissions:
   contents: read
-
+  actions: read
 jobs:
-  verify:
-    name: Verify (ci:verify)
+  probe:
+    name: Find exact-commit main verification
     runs-on: ubuntu-latest
+    # The 35-minute main wait also needs room for setup and bounded API retries.
+    timeout-minutes: 50
+    outputs:
+      reused: ${{ steps.evidence.outputs.reused }}
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: ./.github/actions/setup-bun
-
-      # ci:verify (scripts/ci-gate.sh) runs the knip dead-code gate and the
-      # Convex bundle smoke on node; setup-bun does not put node on PATH, so pin
-      # it explicitly (mirrors the lint job in test.yml).
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          node-version: "22"
-
-      - name: Verify (lint + typecheck + test)
-        # Unlike test.yml (one package per job), this job runs the WHOLE
-        # monorepo's suites on a single 4-core runner. Turbo's default
-        # concurrency (10) oversubscribes it badly enough that CPU-bound tests
-        # ran 17-40x slower than idle and tripped their vitest deadlines (the
-        # v0.4.0 gate died three times on three different tests this way). Cap
-        # task concurrency so per-test wall time stays within the margins the
-        # suites were sized for. 4 was not enough — each vitest task spawns its
-        # own worker pool, so two CPU-bound suites side by side still starved
-        # apps/api's heaviest tests past their deadlines (41s observed on a 10s
-        # budget). 2 trades a few minutes of wall clock for a deterministic
-        # gate.
-        run: bun run ci:verify
+          bun-version-file: package.json
+      - name: Check trusted full main CI and its artifact
+        id: evidence
         env:
-          TURBO_CONCURRENCY: "2"
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/ci/reuse-main.ts
+  fallback:
+    name: Full verification fallback
+    needs: probe
+    if: needs.probe.outputs.reused != 'true'
+    uses: ./.github/workflows/test.yml
+  verify:
+    name: Verify exact commit
+    if: always()
+    needs: [probe, fallback]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require reused evidence or successful full fallback
+        env:
+          PROBE: ${{ needs.probe.result }}
+          REUSED: ${{ needs.probe.outputs.reused }}
+          FALLBACK: ${{ needs.fallback.result }}
+        run: |
+          test "$PROBE" = success
+          if [ "$REUSED" = true ]; then
+            test "$FALLBACK" = skipped
+          else
+            test "$FALLBACK" = success
+          fi

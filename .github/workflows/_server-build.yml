@@ -160,8 +160,6 @@ jobs:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           tags: |
             type=semver,pattern={{version}},value=v${{ inputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=v${{ inputs.version }}
-            type=raw,value=latest
           # Per-image title and description from docker/images.json. Without
           # them, metadata-action's defaults give every image the repository's
           # name and description. source, licenses, version, revision and
@@ -191,8 +189,11 @@ jobs:
           tags: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=release-${{ matrix.image.name }}-${{ steps.platform.outputs.arch }}
-          cache-to: type=gha,mode=max,scope=release-${{ matrix.image.name }}-${{ steps.platform.outputs.arch }}
+          # Main CI produces the amd64 scope. Tags restore it without exporting
+          # large caches that another release ref cannot read.
+          cache-from: |
+            type=gha,scope=${{ matrix.image.name }}
+            type=gha,scope=release-${{ matrix.image.name }}-${{ steps.platform.outputs.arch }}
           provenance: mode=max
           sbom: true
           build-args: |
@@ -259,8 +260,6 @@ jobs:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           tags: |
             type=semver,pattern={{version}},value=v${{ inputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=v${{ inputs.version }}
-            type=raw,value=latest
           # Same inputs as the build-and-push metadata step, so both compute
           # the same metadata for the image.
           labels: |
@@ -333,14 +332,12 @@ jobs:
       - name: Sign published image digest (cosign keyless)
         env:
           DIGEST: ${{ steps.merge.outputs.digest }}
-          TAGS: ${{ steps.meta.outputs.tags }}
-          COSIGN_EXPERIMENTAL: "1"
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
+          COSIGN_EXPERIMENTAL: '1'
         run: |
           set -euo pipefail
-          for tag in $TAGS; do
-            # Sign the concrete digest, not the mutable tag (sign-once guarantee).
-            cosign sign --yes "${tag%:*}@${DIGEST}"
-          done
+          # Aliases are reconciled after publication and reference this digest.
+          cosign sign --yes "${IMAGE}@${DIGEST}"
 
       # Publish an SLSA provenance attestation pinned to the image digest.
       # Consumers verify with `gh attestation verify --repo wolvesdotink/owlat`.
@@ -426,6 +423,8 @@ jobs:
       - name: Generate pinned docker-compose
         run: |
           cat /tmp/image-digest/*.txt > image-digests.txt
+          cp image-digests.txt "image-digests-${{ inputs.version }}.txt"
+          sha256sum "image-digests-${{ inputs.version }}.txt" > "image-digests-${{ inputs.version }}.txt.sha256"
           echo "Collected image digests:"
           cat image-digests.txt
           bash scripts/gen-release-compose.sh "${{ inputs.version }}" \
@@ -472,6 +471,8 @@ jobs:
           subject-path: |
             docker-compose-${{ inputs.version }}.yml
             docker-compose-${{ inputs.version }}.yml.sha256
+            image-digests-${{ inputs.version }}.txt
+            image-digests-${{ inputs.version }}.txt.sha256
 
       # Attach the compose file + manifest to the Release the CALLER created.
       # --clobber makes re-runs idempotent.
@@ -482,6 +483,8 @@ jobs:
           gh release upload "${{ inputs.tag }}" \
             "docker-compose-${{ inputs.version }}.yml" \
             "docker-compose-${{ inputs.version }}.yml.sha256" \
+            "image-digests-${{ inputs.version }}.txt" \
+            "image-digests-${{ inputs.version }}.txt.sha256" \
             --repo "${{ github.repository }}" --clobber
 
   # ── End-to-end install from the release artifacts ────────────────────────────
