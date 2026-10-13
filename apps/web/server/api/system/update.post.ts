@@ -5,6 +5,7 @@ import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import {
+	MIGRATIONS_PENDING_STATUS,
 	UPDATER_REPORT_MARKER,
 	isStartedRollout,
 	isUpdateAttemptId,
@@ -25,7 +26,8 @@ const UPDATER_TIMEOUT_MS = 30 * 60 * 1000;
  * called by the platform-admin UI at Settings → System & Updates.
  *
  * Flow:
- *   1. Verify caller is a platform admin (via session cookie → Convex).
+ *   1. Verify caller is a platform admin (via session cookie → Convex), and
+ *      that no stepping-stone migration has to complete first (412).
  *   2. Download the pinned docker-compose-<version>.yml from GitHub Releases.
  *   3. Record an "updateRun" doc via api.systemUpdates.recordUpdateStart.
  *   4. POST to http://updater:3200/update with the downloaded compose template.
@@ -72,6 +74,27 @@ export default defineEventHandler(async (event) => {
 	}
 
 	const currentVersion = process.env['OWLAT_VERSION'] || 'dev';
+
+	// 0. Stepping stones. A migration a later release's contract depends on has
+	//    to complete before the update (the System page's "Data migrations"
+	//    card names them and runs them). Refused before anything is recorded or
+	//    dispatched. A Convex that cannot answer does not stop the update, for
+	//    the same reason the audit row below does not: the deploy step still
+	//    refuses a schema that rows left by an unfinished migration break.
+	let blockers: { migration: string }[] = [];
+	try {
+		blockers = await client.query(api.migrations.admin.updateBlockers, { targetVersion });
+	} catch (err) {
+		console.error('[system/update] could not check migration prerequisites', err);
+	}
+	if (blockers.length > 0) {
+		const migrations = blockers.map((blocker) => blocker.migration);
+		throw createError({
+			statusCode: MIGRATIONS_PENDING_STATUS,
+			message: `Finish these data migrations before updating to ${targetVersion}: ${migrations.join(', ')}`,
+			data: { migrations },
+		});
+	}
 
 	// 1. Fetch + cryptographically verify the pinned compose template from
 	//    GitHub Releases. The release workflow publishes BOTH

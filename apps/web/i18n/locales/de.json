@@ -6438,6 +6438,55 @@
 				"spendBudget": "Ausgabenbudget",
 				"title": "KI-Nutzung · letzte 7 Tage"
 			},
+			"migrationsCard": {
+				"title": "Datenmigrationen",
+				"intro": "Manche Updates wandeln bereits gespeicherte Daten um. Jede Migration läuft im Hintergrund und speichert ihren Fortschritt, du kannst diese Seite also verlassen. Ein erneuter Start setzt eine unterbrochene Migration dort fort, wo sie stehen geblieben ist, und überspringt abgeschlossene.",
+				"loading": "Datenmigrationen werden geladen…",
+				"runPending": "Ausstehende Migrationen starten",
+				"runnerActive": "Migrationen laufen im Hintergrund. Eine Migration, die auf eine andere wartet, startet, sobald diese abgeschlossen ist.",
+				"runnerStopped": "Die Migrationen sind bei {name} stehen geblieben. Behebe die Ursache und starte erneut: Es geht ab der zuletzt gespeicherten Seite weiter.",
+				"allCompleted": "Alle Migrationen dieser Version sind abgeschlossen.",
+				"summary": "{pending} ausstehend · {running} laufen · {stopped} angehalten · {completed} abgeschlossen",
+				"introducedIn": "Eingeführt in {version}",
+				"progress": "{scanned} Zeilen geprüft, {changed} geändert",
+				"completedAt": "abgeschlossen {date}",
+				"lastProgress": "letzter Fortschritt {date}",
+				"waitsFor": "Startet, sobald {names} abgeschlossen ist.",
+				"interruptedHint": "Seit einer Weile kein Fortschritt: Der Hintergrundjob ist stehen geblieben. Starte erneut, um ab der zuletzt gespeicherten Seite fortzufahren.",
+				"failedHint": "Behebe die Ursache und starte erneut, um ab der zuletzt gespeicherten Seite weiterzumachen. Die Wartungsanleitung enthält die CLI-Befehle für dieselben Schritte.",
+				"startsItself": "Startet auch von selbst im Hintergrund. Hier startest du sie nur früher.",
+				"steppingStone": "Muss abgeschlossen sein, bevor du auf eine Version nach {version} aktualisierst.",
+				"steppingStoneBefore": "Muss abgeschlossen sein, bevor du auf {version} oder neuer aktualisierst.",
+				"unknownError": "Unbekannter Fehler",
+				"state": {
+					"pending": "Ausstehend",
+					"waiting": "Wartet",
+					"running": "Läuft",
+					"completed": "Abgeschlossen",
+					"failed": "Fehlgeschlagen",
+					"interrupted": "Unterbrochen"
+				},
+				"toasts": {
+					"noClient": "Keine Verbindung zum Backend",
+					"started": "{count} Migrationen gestartet. Sie laufen im Hintergrund; diese Liste zeigt ihren Fortschritt.",
+					"alreadyRunning": "Die Migrationen laufen bereits.",
+					"nothingToRun": "Nichts zu starten: Jede Migration ist abgeschlossen oder läuft.",
+					"startFailed": "{name} konnte nicht gestartet werden: {error}",
+					"runFailed": "Die Migrationen konnten nicht gestartet werden: {error}"
+				},
+				"names": {
+					"m0053": "Offene Zusagen im Kontaktwissen",
+					"m0054": "Nachrichtenlisten der IMAP-Ordner",
+					"m0055": "Doppelte Block-IDs in gespeicherten E-Mails",
+					"m0056": "Nach abgelehnter Anmeldung geparkte Postfächer erneut versuchen",
+					"m0057": "Bestätigungslinks nach einer Abmeldung zurückziehen",
+					"m0060": "Geltungsbereich gespeicherter Antworten",
+					"m0064": "Versandzeit-Profile aus früheren Kampagnen",
+					"m0065": "Antwortverlauf im Team-Posteingang",
+					"m0067": "Ausgemusterte Thread-Zusammenfassungen entfernen",
+					"m0068": "Faktenschlüssel der Thread-Briefs versiegeln"
+				}
+			},
 			"portChecksCard": {
 				"title": "Netzwerk-Ports",
 				"intro": "Funktionen hier hängen an Ports, die dein Hoster unangekündigt sperren kann — ein gesperrter Port sieht aus wie eine kaputte Funktion, nicht wie eine Firewall. Diese Prüfungen laufen auf Wunsch von diesem Server aus.",
@@ -9213,6 +9262,7 @@
 						},
 						"lastCheckError": "Die letzte Prüfung hatte einen Fehler: {error}",
 						"latestChecked": "Neueste: v{version} · Zuletzt geprüft {date}",
+						"migrationsFirst": "Schließe zuerst diese Datenmigrationen ab, bevor du auf v{version} aktualisierst: {names}. Starte sie unten unter Datenmigrationen; sobald sie abgeschlossen sind, ist das Update verfügbar.",
 						"neverChecked": "Klicke auf „Jetzt prüfen“, um GitHub nach der neuesten Version zu fragen.",
 						"otherRoutes": "Lieber über die Kommandozeile oder manuell? Die Update-Anleitung beschreibt beides und wie du ein fehlgeschlagenes Update reparierst.",
 						"released": "Veröffentlicht {date}",

@@ -1,0 +1,291 @@
+/**
+ * Data migrations from Settings → System & updates (migrations/admin.ts):
+ * platform admins only, pending migrations start through their own `run`,
+ * completed ones are left alone, a second click does not start a second
+ * execution, an interrupted pass resumes from its cursor, dependencies run in
+ * order, and unfinished stepping stones hold back an update.
+ *
+ * The `authedQuery` / `authedMutation` org floor is mocked to pass, as in
+ * systemUpdates.integration.test.ts, so `requirePlatformAdmin` is the gate
+ * under test: the caller is an org owner, which is not a platform admin.
+ */
+import { convexTest, type TestConvex } from 'convex-test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import schema from '../schema';
+import { api, internal } from '../_generated/api';
+import type * as ManifestModule from '../migrations/manifest';
+
+const sessionMock = vi.hoisted(() => ({ subject: 'admin-user' }));
+
+vi.mock('../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../lib/sessionOrganization');
+	return {
+		...actual,
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'admin-user', role: 'owner' }),
+		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.subject),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'admin-user', role: 'owner' }),
+		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'admin-user', role: 'owner' }),
+		requireAuthenticatedIdentity: vi.fn().mockImplementation(async () => ({
+			subject: sessionMock.subject,
+			issuer: 'test',
+			tokenIdentifier: `test|${sessionMock.subject}`,
+		})),
+	};
+});
+
+// The shipped manifest has no dependencies yet. Make 0060 wait for 0053 so
+// the runner's ordering is exercised on real migrations.
+const DEPENDENT = '0060_saved_reply_scopes';
+const DEPENDENCY = '0053_project_open_commitments';
+vi.mock('../migrations/manifest', async () => {
+	const actual = await vi.importActual<typeof ManifestModule>('../migrations/manifest');
+	return {
+		...actual,
+		MIGRATION_MANIFEST: actual.MIGRATION_MANIFEST.map((entry) =>
+			entry.migration === '0060_saved_reply_scopes'
+				? { ...entry, dependsOn: ['0053_project_open_commitments'] }
+				: entry
+		),
+	};
+});
+
+const allModules = import.meta.glob('../**/*.*s');
+const modules = Object.fromEntries(
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
+	)
+);
+
+type T = TestConvex<typeof schema>;
+
+const STONES = ['0067_empty_retired_summaries', '0068_seal_fact_keys'];
+
+function setup() {
+	return convexTest(schema, modules);
+}
+
+async function seedAdmin(t: T) {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('platformAdmins', {
+			authUserId: 'admin-user',
+			email: 'admin@example.com',
+			role: 'admin',
+			createdAt: Date.now(),
+		});
+	});
+}
+
+async function seedRun(
+	t: T,
+	migration: string,
+	fields: { status: 'running' | 'completed'; updatedAt: number; cursor?: string }
+) {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('migrationRuns', {
+			migration,
+			introducedIn: '0.6.0',
+			generation: 1,
+			pageCount: 3,
+			scannedCount: 300,
+			changedCount: 12,
+			startedAt: fields.updatedAt - 1_000,
+			...fields,
+			...(fields.status === 'completed' ? { completedAt: fields.updatedAt } : {}),
+		});
+	});
+}
+
+async function ledgerRow(t: T, migration: string) {
+	return await t.run(async (ctx) =>
+		ctx.db
+			.query('migrationRuns')
+			.withIndex('by_migration', (q) => q.eq('migration', migration))
+			.unique()
+	);
+}
+
+beforeEach(() => {
+	vi.useFakeTimers();
+	sessionMock.subject = 'admin-user';
+});
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+describe('permission boundary', () => {
+	it('refuses an org owner who is not a platform admin, for every entry point', async () => {
+		const t = setup();
+		const refused = /Platform admin access required/;
+		await expect(t.query(api.migrations.admin.list, {})).rejects.toThrow(refused);
+		await expect(
+			t.query(api.migrations.admin.updateBlockers, { targetVersion: '0.6.13' })
+		).rejects.toThrow(refused);
+		await expect(t.mutation(api.migrations.admin.runPending, {})).rejects.toThrow(refused);
+		const rows = await t.run(async (ctx) => ctx.db.query('migrationRuns').collect());
+		expect(rows).toEqual([]);
+	});
+});
+
+describe('runPending', () => {
+	it('starts the pending migrations in the background and reports them running, not done', async () => {
+		const t = setup();
+		await seedAdmin(t);
+
+		const before = await t.query(api.migrations.admin.list, {});
+		expect(before.migrations.every((m) => m.state === 'pending')).toBe(true);
+		expect(before.migrations.find((m) => m.migration === DEPENDENT)?.waitingFor).toEqual([
+			DEPENDENCY,
+		]);
+
+		const result = await t.mutation(api.migrations.admin.runPending, {});
+		expect(result.outcome).toBe('started');
+		expect(result.started).toContain(DEPENDENCY);
+		expect(result.started).not.toContain(DEPENDENT);
+		expect(result.waiting).toEqual([DEPENDENT]);
+
+		const during = await t.query(api.migrations.admin.list, {});
+		const state = (name: string) => during.migrations.find((m) => m.migration === name)?.state;
+		expect(state(DEPENDENCY)).toBe('running');
+		expect(state(DEPENDENT)).toBe('pending');
+		expect(during.runner?.status).toBe('active');
+		expect(await ledgerRow(t, DEPENDENT)).toBeNull();
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const after = await t.query(api.migrations.admin.list, {});
+		expect(after.migrations.every((m) => m.state === 'completed')).toBe(true);
+		expect(after.runner?.status).toBe('finished');
+		// The dependent started only after its dependency had completed.
+		const dependency = await ledgerRow(t, DEPENDENCY);
+		const dependent = await ledgerRow(t, DEPENDENT);
+		expect(dependent!.startedAt).toBeGreaterThanOrEqual(dependency!.completedAt!);
+	});
+
+	it('does not start a second execution on a repeated click', async () => {
+		const t = setup();
+		await seedAdmin(t);
+		await t.mutation(api.migrations.admin.runPending, {});
+		const generation = (await ledgerRow(t, DEPENDENCY))!.generation;
+
+		const again = await t.mutation(api.migrations.admin.runPending, {});
+		expect(again.outcome).toBe('alreadyRunning');
+		expect((await ledgerRow(t, DEPENDENCY))!.generation).toBe(generation);
+	});
+
+	it('skips a completed migration and reports nothing to run once all are done', async () => {
+		const t = setup();
+		await seedAdmin(t);
+		await seedRun(t, DEPENDENCY, { status: 'completed', updatedAt: Date.now() });
+
+		const result = await t.mutation(api.migrations.admin.runPending, {});
+		expect(result.started).not.toContain(DEPENDENCY);
+		// Its dependent no longer waits.
+		expect(result.started).toContain(DEPENDENT);
+		const row = await ledgerRow(t, DEPENDENCY);
+		expect(row!.generation).toBe(1);
+		expect(row!.status).toBe('completed');
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect((await t.mutation(api.migrations.admin.runPending, {})).outcome).toBe('nothingToRun');
+	});
+
+	it('shows a pass that stopped moving as interrupted and resumes it from its cursor', async () => {
+		const t = setup();
+		await seedAdmin(t);
+		await seedRun(t, DEPENDENCY, {
+			status: 'running',
+			updatedAt: Date.now() - 60 * 60_000,
+			cursor: 'stored-cursor',
+		});
+
+		const listed = await t.query(api.migrations.admin.list, {});
+		const interrupted = listed.migrations.find((m) => m.migration === DEPENDENCY)!;
+		expect(interrupted.state).toBe('interrupted');
+		expect(interrupted.progress).toMatchObject({ scannedCount: 300, changedCount: 12 });
+
+		const result = await t.mutation(api.migrations.admin.runPending, {});
+		expect(result.started).toContain(DEPENDENCY);
+		const row = await ledgerRow(t, DEPENDENCY);
+		// A resume: a new generation, the recorded cursor and counts kept.
+		expect(row).toMatchObject({
+			status: 'running',
+			generation: 2,
+			cursor: 'stored-cursor',
+			scannedCount: 300,
+		});
+	});
+
+	it('stops the runner when a migration stops moving, and the next run resumes it', async () => {
+		const t = setup();
+		await seedAdmin(t);
+		await t.mutation(api.migrations.admin.runPending, {});
+		// Simulate a page chain that died: the row stays running and stops moving.
+		const runner = await t.run(async (ctx) => (await ctx.db.query('migrationDriver').first())!);
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('migrationRuns')
+				.withIndex('by_migration', (q) => q.eq('migration', DEPENDENCY))
+				.unique();
+			await ctx.db.patch(row!._id, {
+				status: 'running',
+				completedAt: undefined,
+				updatedAt: Date.now() - 60 * 60_000,
+				generation: row!.generation + 100,
+			});
+		});
+		await t.mutation(internal.migrations.admin.advance, { generation: runner.generation });
+
+		const listed = await t.query(api.migrations.admin.list, {});
+		expect(listed.runner).toMatchObject({ status: 'stopped', stoppedMigration: DEPENDENCY });
+		expect(listed.runner?.stoppedError).toBeTruthy();
+
+		const resumed = await t.mutation(api.migrations.admin.runPending, {});
+		expect(resumed.outcome).toBe('started');
+		expect(resumed.started).toContain(DEPENDENCY);
+	});
+});
+
+describe('updateBlockers', () => {
+	it('names the unfinished stepping stones for a later release only', async () => {
+		const t = setup();
+		await seedAdmin(t);
+		const blockers = await t.query(api.migrations.admin.updateBlockers, {
+			targetVersion: '0.6.13',
+		});
+		expect(blockers.map((b) => b.migration)).toEqual(STONES);
+		expect(await t.query(api.migrations.admin.updateBlockers, { targetVersion: '0.6.12' })).toEqual(
+			[]
+		);
+
+		for (const stone of STONES) {
+			await seedRun(t, stone, { status: 'completed', updatedAt: Date.now() });
+		}
+		expect(await t.query(api.migrations.admin.updateBlockers, { targetVersion: '0.6.13' })).toEqual(
+			[]
+		);
+	});
+
+	it('rejects a target that is not a version', async () => {
+		const t = setup();
+		await seedAdmin(t);
+		await expect(
+			t.query(api.migrations.admin.updateBlockers, { targetVersion: 'latest' })
+		).rejects.toThrow();
+	});
+});

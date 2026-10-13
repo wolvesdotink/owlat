@@ -2,9 +2,10 @@
 import { api } from '@owlat/api';
 import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
+import { migrationNameKey } from '~/utils/systemMigrations';
 import { hasReleaseNotes, OWLAT_REPO_URL, parseReleaseNotes } from '~/utils/releaseNotes';
 
-const { t } = useI18n();
+const { t, te } = useI18n();
 const { showToast } = useToast();
 
 useHead({ title: () => t('dashboard.admin.system.index.pageTitle') });
@@ -64,6 +65,19 @@ const releaseUrl = computed(() =>
 		? `${OWLAT_REPO_URL}/releases/tag/v${latestRelease.value.latestVersion}`
 		: null
 );
+
+// Stepping stones (#1345): migrations a later release's contract needs
+// completed. The update route refuses while any is open; the button says why.
+const { data: updateBlockers } = useConvexQuery(api.migrations.admin.updateBlockers, () =>
+	updateAvailable.value && latestRelease.value?.latestVersion
+		? { targetVersion: latestRelease.value.latestVersion }
+		: 'skip'
+);
+const blockingMigrations = computed(() => updateBlockers.value ?? []);
+function migrationName(migration: string): string {
+	const key = `components.system.migrationsCard.names.${migrationNameKey(migration)}`;
+	return te(key) ? t(key) : migration;
+}
 
 // ── Update history ───────────────────────────────────────────────────────────
 
@@ -250,10 +264,38 @@ function formatDuration(start?: number, end?: number) {
 						</div>
 					</div>
 
+					<!-- A stepping stone holds the update back until it has completed:
+					     the route answers 412 until then, so the button waits too. -->
+					<div
+						v-if="blockingMigrations.length"
+						class="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/5 p-4 text-sm text-text-secondary"
+						role="status"
+						data-test="migration-blockers"
+					>
+						<Icon
+							name="lucide:database"
+							class="w-5 h-5 text-warning shrink-0 mt-0.5"
+							aria-hidden="true"
+						/>
+						<p class="min-w-0 break-words">
+							{{
+								t('dashboard.admin.system.index.updates.migrationsFirst', {
+									version: latestRelease.latestVersion,
+									names: blockingMigrations.map((b) => migrationName(b.migration)).join(', '),
+								})
+							}}
+						</p>
+					</div>
+
 					<div class="flex items-center gap-x-4 gap-y-2 flex-wrap">
 						<!-- Held while a run is in flight: a second run would only get the
 						     updater's 409, after replacing the progress card with a confirm. -->
-						<UiButton variant="primary" size="sm" :disabled="updateInProgress" @click="startUpdate">
+						<UiButton
+							variant="primary"
+							size="sm"
+							:disabled="updateInProgress || blockingMigrations.length > 0"
+							@click="startUpdate"
+						>
 							<Icon name="lucide:download" class="w-4 h-4" />
 							{{
 								t('dashboard.admin.system.index.updates.updateNowTo', {
@@ -419,6 +461,11 @@ function formatDuration(start?: number, end?: number) {
 				</div>
 			</div>
 		</div>
+
+		<!-- Data migrations: what this release (and any release it skipped)
+		     still has to convert, and the action that runs it. Below the update
+		     flow because it is what an update leaves behind. -->
+		<SystemMigrationsCard />
 
 		<!-- Update history -->
 		<div class="card">

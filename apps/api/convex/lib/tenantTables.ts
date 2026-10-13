@@ -394,6 +394,9 @@ export const NON_TENANT_TABLES = [
 	// step reads it after any wipe, and a wipe must not make a finished migration
 	// look as if it never ran.
 	'migrationRuns',
+	// The migration runner's single row (who started it, whether it is still
+	// starting migrations). Deployment state for the same reason.
+	'migrationDriver',
 	// Instance configuration singleton — recreated by setup; reset clears it in a
 	// dedicated step. The flag singleton and counter rows split off it (plan 2.4)
 	// go with it, in the same reset step and the walker's terminal steps.

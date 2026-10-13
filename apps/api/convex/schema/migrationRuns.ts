@@ -38,4 +38,27 @@ export const migrationRunTables = {
 		updatedAt: v.number(),
 		completedAt: v.optional(v.number()),
 	}).index('by_migration', ['migration']),
+
+	/**
+	 * The migration runner behind Settings → System & updates
+	 * (`migrations/admin.ts`): at most one row. While `active`, a tick every
+	 * few seconds starts each manifest migration whose dependencies have
+	 * completed, until every one has completed (`finished`) or one failed or
+	 * stopped moving (`stopped`). It only starts and resumes migrations through
+	 * their own `run` entry points; their progress stays on their
+	 * `migrationRuns` rows.
+	 */
+	migrationDriver: defineTable({
+		status: v.union(v.literal('active'), v.literal('finished'), v.literal('stopped')),
+		/** Bumped by every start; a tick scheduled under an older one does nothing. */
+		generation: v.number(),
+		/** The platform admin who started the runner (auth user id). */
+		startedBy: v.string(),
+		startedAt: v.number(),
+		updatedAt: v.number(),
+		finishedAt: v.optional(v.number()),
+		/** Set with `stopped`: the migration that stopped the runner, and why. */
+		stoppedMigration: v.optional(v.string()),
+		stoppedError: v.optional(v.string()),
+	}),
 };

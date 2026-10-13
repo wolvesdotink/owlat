@@ -3,6 +3,7 @@ import { apiFetch } from '~/lib/csrfFetch';
 import {
 	isStartedRollout,
 	isUpdaterRefusal,
+	MIGRATIONS_PENDING_STATUS,
 	updateFailureMessage,
 	updateRequestWasAnswered,
 } from '~/lib/systemUpdate';
@@ -140,9 +141,12 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 				statusCode === 409
 					? t('dashboard.admin.system.index.updateBusy')
 					: updateFailureMessage(err, t('dashboard.admin.system.index.unknownError'));
-			// A refused update never ran, and the route took its row back. The
-			// open run, if any, is the rollout that refused it, not this one.
-			if (!isUpdaterRefusal(statusCode)) void closeOpenRun('failed', updateError.value);
+			// A refused update never ran, and the route took its row back (or, for
+			// unfinished migrations, never opened one). The open run, if any, is
+			// another rollout, not this one.
+			if (!isUpdaterRefusal(statusCode) && statusCode !== MIGRATIONS_PENDING_STATUS) {
+				void closeOpenRun('failed', updateError.value);
+			}
 		}
 	}
 
