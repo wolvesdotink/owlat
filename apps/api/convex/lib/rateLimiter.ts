@@ -83,6 +83,19 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: MINUTE,
 	},
 
+	// Failed requests on the per-recipient token endpoints (`rateLimitKeyMode:
+	// 'ip+token'` in lib/publicTokenEndpoint.ts), keyed per client IP. Those
+	// endpoints give every token its own bucket, so a caller inventing tokens
+	// would otherwise get a fresh bucket, a lookup and a stored limiter row per
+	// guess. Only failures spend a token, and the bucket is read before a new
+	// per-token bucket is charged, so a valid link is never slowed by it.
+	publicTokenFailure: {
+		kind: 'token bucket',
+		rate: 30,
+		period: MINUTE,
+		capacity: 60,
+	},
+
 	// DOI confirmations: one-time actions (20 per minute per IP)
 	doiConfirmation: {
 		kind: 'fixed window',

@@ -9,9 +9,10 @@
  *
  *   1. CORS preflight (`OPTIONS` → 204 with the declared methods header)
  *   2. Method gate     (anything other than `config.method` → 405)
- *   3. Rate-limit gate (`checkPublicRateLimit` keyed by client IP)
- *   4. Token extract   (named path segment first, `?token=` fallback) with
- *                      uniform `decodeURIComponent`
+ *   3. Token extract   (named path segment first, `?token=` fallback),
+ *                      decoded once (`canonicalizeToken`)
+ *   4. Rate-limit gate (client IP, or IP + token digest with a per-IP
+ *                      failure budget for `rateLimitKeyMode: 'ip+token'`)
  *   5. Body parse      (`'none' | 'json' | 'formData'`, 100 KB cap)
  *   6. Handler         (typed `{ token, body, request }` input)
  *   7. Result map      (`'action' | 'outcome'`)
@@ -96,7 +97,7 @@ export interface EndpointConfig {
 	/**
 	 * What the rate-limit bucket is keyed on. Defaults to `'ip'`.
 	 *
-	 * `'ip+token'` mixes the path/query token into the key (`<ip>:<token>`). Use
+	 * `'ip+token'` mixes the decoded token into the key (`<ip>:<sha256>`). Use
 	 * it for endpoints whose token is an UNFORGEABLE PER-RECIPIENT secret
 	 * (unsubscribe / preferences / DOI confirm / share / archive links): each
 	 * recipient then gets an isolated bucket, so when no trusted proxy is
@@ -105,6 +106,10 @@ export interface EndpointConfig {
 	 * recipients' one-click unsubscribes. Do NOT use it where the token is shared
 	 * across legitimate callers (e.g. a form endpoint id), where IP is the right
 	 * per-submitter key.
+	 *
+	 * In this mode every failed request (missing or malformed token, bad body,
+	 * handler `ok: false`) also spends the caller's per-IP `publicTokenFailure`
+	 * bucket, and an empty one stops new per-token buckets from being created.
 	 */
 	rateLimitKeyMode?: 'ip' | 'ip+token';
 	/**
@@ -282,6 +287,37 @@ export async function parseBody(request: Request, mode: BodyParser): Promise<unk
 	throw new Error('Unsupported content type. Use JSON or form-urlencoded.');
 }
 
+// ─── Token ─────────────────────────────────────────────────────────────────
+
+/**
+ * Longest decoded token the shell accepts. Every token the app issues is far
+ * shorter; the cap keeps arbitrary request text out of the limiter and lookups.
+ */
+export const MAX_TOKEN_LENGTH = 512;
+
+/**
+ * Decode the extracted token once and check it. The result is both the
+ * handler's token and the rate-limit identity, so two spellings of one token
+ * (`%73` vs `s`, `%3A` vs `%3a`) are the same token everywhere.
+ *
+ * Exported for unit tests.
+ */
+export function canonicalizeToken(
+	tokenRaw: string | null
+): { ok: true; token: string } | { ok: false; message: string } {
+	if (!tokenRaw) return { ok: false, message: 'Missing token' };
+	const token = safeDecodeURIComponent(tokenRaw);
+	if (token === null) return { ok: false, message: 'Invalid token encoding' };
+	if (token.length > MAX_TOKEN_LENGTH) return { ok: false, message: 'Token too long' };
+	return { ok: true, token };
+}
+
+/** SHA-256 of a string as lowercase hex. */
+async function sha256Hex(value: string): Promise<string> {
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+	return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 // ─── CORS overlay ──────────────────────────────────────────────────────────
 
 function applyCors(response: Response, corsHeaders: Record<string, string> | null): Response {
@@ -325,41 +361,62 @@ export function createShellHandler(
 			return methodNotAllowed('Method not allowed', corsHeaders);
 		}
 
-		// Token (raw) — needed both for the rate-limit key (ip+token mode) and for
-		// the handler below. Parsed once here.
+		// 3. Token extract — `:token` path segment first, `?token=` fallback,
+		// decoded once. The decoded value is what the handler gets and what an 'ip+token'
+		// bucket is keyed on, so `/x/abc` and `/x/%61bc` share one bucket.
 		const url = new URL(request.url);
 		const pathMatch = matcher(url.pathname);
 		const tokenRaw = pathMatch?.['token'] ?? url.searchParams.get('token') ?? null;
-
-		// 3. Rate-limit gate. For per-recipient token endpoints the bucket is keyed
-		// on `<ip>:<token>` so a flood on one link (or, when no trusted proxy is
-		// configured, the shared 'unknown' IP) can't starve another recipient's
-		// bucket. IP-only endpoints (e.g. forms, whose token is a shared id) keep
-		// the plain IP key.
+		const parsedToken = canonicalizeToken(tokenRaw);
+		const perToken = config.rateLimitKeyMode === 'ip+token';
 		const ip = getClientIp(request);
-		const rateKey = config.rateLimitKeyMode === 'ip+token' && tokenRaw ? `${ip}:${tokenRaw}` : ip;
-		const { ok, retryAfter } = await ctx.runMutation<{ ok: boolean; retryAfter: number }>(
-			internal.lib.publicRateLimit.checkPublicRateLimit,
-			{ limitType: config.rateLimit, key: rateKey }
-		);
-		if (!ok) {
-			return rateLimitedResponse(retryAfter, { corsHeaders: corsHeaders ?? undefined });
+
+		// 4. Rate-limit gate. For per-recipient token endpoints the bucket is keyed
+		// on `<ip>:<sha256(token)>` so a flood on one link (or, when no trusted
+		// proxy is configured, the shared 'unknown' IP) can't starve another
+		// recipient's bucket, and the stored key never holds the token itself.
+		// Invented tokens are metered by the per-IP `publicTokenFailure` bucket
+		// (see `checkPublicTokenRateLimit`). IP-only endpoints keep the plain IP
+		// key.
+		if (perToken && parsedToken.ok) {
+			const { ok, retryAfter } = await ctx.runMutation<{ ok: boolean; retryAfter: number }>(
+				internal.lib.publicRateLimit.checkPublicTokenRateLimit,
+				{ limitType: config.rateLimit, ip, tokenDigest: await sha256Hex(parsedToken.token) }
+			);
+			if (!ok) {
+				return rateLimitedResponse(retryAfter, { corsHeaders: corsHeaders ?? undefined });
+			}
+		} else {
+			const { ok, retryAfter } = await ctx.runMutation<{ ok: boolean; retryAfter: number }>(
+				internal.lib.publicRateLimit.checkPublicRateLimit,
+				{ limitType: perToken ? 'publicTokenFailure' : config.rateLimit, key: ip }
+			);
+			if (!ok) {
+				return rateLimitedResponse(retryAfter, { corsHeaders: corsHeaders ?? undefined });
+			}
 		}
 
-		// 4. Token extract — `:token` path segment first, `?token=` fallback.
-		if (!tokenRaw) {
-			return errorResponse('invalid_input', 'Missing token', undefined, corsHeaders);
+		if (!parsedToken.ok) {
+			return errorResponse('invalid_input', parsedToken.message, undefined, corsHeaders);
 		}
-		const token = safeDecodeURIComponent(tokenRaw);
-		if (token === null) {
-			return errorResponse('invalid_input', 'Invalid token encoding', undefined, corsHeaders);
-		}
+		const token = parsedToken.token;
+
+		// A failed request on a per-token endpoint spends the caller's
+		// `publicTokenFailure` bucket. Missing or malformed tokens already did, above.
+		const recordFailure = async () => {
+			if (!perToken) return;
+			await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
+				limitType: 'publicTokenFailure',
+				key: ip,
+			});
+		};
 
 		// 5. Body parse.
 		let body: unknown;
 		try {
 			body = await parseBody(request, config.body ?? 'none');
 		} catch (error) {
+			await recordFailure();
 			const message = error instanceof Error ? error.message : 'Invalid body';
 			return errorResponse('invalid_input', message, undefined, corsHeaders);
 		}
@@ -372,6 +429,8 @@ export function createShellHandler(
 			logError(`[${config.path}] handler threw:`, error);
 			return errorResponse('internal', 'Internal error', undefined, corsHeaders);
 		}
+
+		if (!result.ok) await recordFailure();
 
 		// 7. Map result by mode.
 		if (config.resultMode === 'outcome') {

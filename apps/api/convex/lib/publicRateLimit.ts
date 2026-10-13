@@ -24,9 +24,13 @@ const publicRateLimitTypeValidator = v.union(
 	v.literal('instanceSecret'),
 	v.literal('uploadServiceSecret'),
 	v.literal('bookingPage'),
-	v.literal('bookingCreate')
+	v.literal('bookingCreate'),
+	v.literal('publicTokenFailure')
 );
 export type PublicRateLimitType = Infer<typeof publicRateLimitTypeValidator>;
+
+/** The shared key `getClientIp` answers when no client address resolves. */
+export const UNRESOLVED_CLIENT_KEY = 'unknown';
 
 /**
  * Resolve the client IP used as the per-IP rate-limit key for public endpoints.
@@ -82,6 +86,50 @@ export const checkPublicRateLimit = internalMutation({
 			ok,
 			retryAfter: retryAfter ?? 0,
 		};
+	},
+});
+
+/**
+ * Hex digits of the token digest that pick an overflow bucket (16² = 256
+ * buckets). See `checkPublicTokenRateLimit`.
+ */
+const OVERFLOW_SHARD_HEX_DIGITS = 2;
+
+/**
+ * The rate-limit gate for `rateLimitKeyMode: 'ip+token'` endpoints
+ * (lib/publicTokenEndpoint.ts). Each token normally gets its own bucket,
+ * `<ip>:<digest>`, so one recipient's link can't use up another's.
+ *
+ * A caller can invent any number of tokens, though, and each one would get a
+ * fresh bucket and a stored limiter row. So the caller's `publicTokenFailure`
+ * bucket, which only failed requests spend, is read first, without spending:
+ *
+ *   - while it has room, the per-token bucket is charged as usual;
+ *   - once it is empty, a resolved address gets 429 before any per-token
+ *     bucket is created or any lookup runs;
+ *   - for the shared `'unknown'` key (no trusted proxy), refusing would let one
+ *     caller's invented tokens lock every recipient out. The request is charged
+ *     to one of 256 overflow buckets picked by the digest instead: valid links
+ *     keep working, a link holder is still limited, and invented tokens add at
+ *     most 256 rows in total.
+ */
+export const checkPublicTokenRateLimit = internalMutation({
+	args: {
+		limitType: publicRateLimitTypeValidator,
+		ip: v.string(),
+		tokenDigest: v.string(),
+	},
+	handler: async (ctx, args) => {
+		let key = `${args.ip}:${args.tokenDigest}`;
+		const failures = await rateLimiter.check(ctx, 'publicTokenFailure', { key: args.ip });
+		if (!failures.ok) {
+			if (args.ip !== UNRESOLVED_CLIENT_KEY) {
+				return { ok: false, retryAfter: failures.retryAfter ?? 0 };
+			}
+			key = `${args.ip}:overflow:${args.tokenDigest.slice(0, OVERFLOW_SHARD_HEX_DIGITS)}`;
+		}
+		const { ok, retryAfter } = await rateLimiter.limit(ctx, args.limitType, { key });
+		return { ok, retryAfter: retryAfter ?? 0 };
 	},
 });
 

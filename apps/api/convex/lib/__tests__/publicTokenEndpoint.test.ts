@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	compilePath,
 	createShellHandler,
+	MAX_TOKEN_LENGTH,
 	parseBody,
 	type HandlerContext,
 } from '../publicTokenEndpoint';
@@ -612,24 +613,32 @@ describe('shell — outcome mode', () => {
 // rateLimitKeyMode: 'ip+token' must mix the token into the rate-limit key so a
 // flood on one recipient's link (or, with no trusted proxy, the shared 'unknown'
 // IP) cannot exhaust another recipient's bucket. Without a configured proxy
-// getClientIp returns 'unknown', so the key becomes 'unknown:<token>'.
+// getClientIp returns 'unknown'. The token is keyed by the SHA-256 of its
+// decoded form, so every spelling of one token shares one bucket.
+
+interface LimiterCall {
+	limitType: string;
+	key?: string;
+	ip?: string;
+	tokenDigest?: string;
+}
 
 describe('rate-limit key mode', () => {
-	function makeKeyCapturingCtx(): { ctx: HandlerContext; keys: string[] } {
-		const keys: string[] = [];
+	function makeKeyCapturingCtx(): { ctx: HandlerContext; calls: LimiterCall[] } {
+		const calls: LimiterCall[] = [];
 		const ctx: HandlerContext = {
 			runMutation: vi.fn(async (_ref: unknown, args: unknown) => {
-				keys.push((args as { key: string }).key);
+				calls.push(args as LimiterCall);
 				return { ok: true, retryAfter: 0 };
 			}) as unknown as HandlerContext['runMutation'],
 			runQuery: vi.fn() as unknown as HandlerContext['runQuery'],
 			runAction: vi.fn() as unknown as HandlerContext['runAction'],
 		};
-		return { ctx, keys };
+		return { ctx, calls };
 	}
 
-	it('ip+token mode gives each token its own bucket key', async () => {
-		const handler = createShellHandler(
+	function perTokenHandler(result: { ok: true; data: unknown } | { ok: false; reason: string }) {
+		return createShellHandler(
 			{
 				path: '/unsub/:token',
 				method: 'GET',
@@ -638,15 +647,88 @@ describe('rate-limit key mode', () => {
 				cors: 'GET, OPTIONS',
 				resultMode: 'outcome',
 			},
-			async () => ({ ok: true, data: {} })
+			async () => result
 		);
-		const { ctx, keys } = makeKeyCapturingCtx();
-		await handler(ctx, new Request('http://localhost/unsub/recipientA', { method: 'GET' }));
-		await handler(ctx, new Request('http://localhost/unsub/recipientB', { method: 'GET' }));
-		expect(keys).toEqual(['unknown:recipientA', 'unknown:recipientB']);
+	}
+
+	const get = (path: string) => new Request(`http://localhost${path}`, { method: 'GET' });
+
+	it('ip+token mode gives each token its own bucket, keyed by digest not the token', async () => {
+		const handler = perTokenHandler({ ok: true, data: {} });
+		const { ctx, calls } = makeKeyCapturingCtx();
+		await handler(ctx, get('/unsub/recipientA'));
+		await handler(ctx, get('/unsub/recipientB'));
+		expect(calls).toHaveLength(2);
+		const [a, b] = calls;
+		expect(a).toMatchObject({ limitType: 'subscriptionManagement', ip: 'unknown' });
+		expect(a?.tokenDigest).toMatch(/^[0-9a-f]{64}$/);
+		expect(a?.tokenDigest).not.toBe(b?.tokenDigest);
 	});
 
-	it('default (ip) mode shares one key regardless of token', async () => {
+	it('percent-encoded spellings of one token share one bucket', async () => {
+		const handler = perTokenHandler({ ok: true, data: {} });
+		const { ctx, calls } = makeKeyCapturingCtx();
+		for (const spelling of [
+			'abc:123:sig',
+			'abc%3A123%3Asig',
+			'abc%3a123%3asig',
+			'%61bc%3A123:%73ig',
+		]) {
+			await handler(ctx, get(`/unsub/${spelling}`));
+		}
+		const digests = new Set(calls.map((c) => c.tokenDigest));
+		expect(calls).toHaveLength(4);
+		expect(digests.size).toBe(1);
+	});
+
+	it("the ?token= form shares the path form's bucket", async () => {
+		const config = {
+			method: 'GET' as const,
+			rateLimit: 'doiConfirmation' as const,
+			rateLimitKeyMode: 'ip+token' as const,
+			resultMode: 'outcome' as const,
+		};
+		const byPath = createShellHandler({ ...config, path: '/doi/:token' }, async () => ({
+			ok: true,
+			data: {},
+		}));
+		const byQuery = createShellHandler({ ...config, path: '/doi' }, async () => ({
+			ok: true,
+			data: {},
+		}));
+		const { ctx, calls } = makeKeyCapturingCtx();
+		await byPath(ctx, get('/doi/tok%3A1'));
+		await byQuery(ctx, get('/doi?token=tok%3A1'));
+		expect(calls[0]?.tokenDigest).toBeDefined();
+		expect(calls[0]?.tokenDigest).toBe(calls[1]?.tokenDigest);
+	});
+
+	it('a missing, malformed or oversize token spends only the per-IP failure bucket', async () => {
+		const handler = perTokenHandler({ ok: true, data: {} });
+		const { ctx, calls } = makeKeyCapturingCtx();
+		const oversize = 'a'.repeat(MAX_TOKEN_LENGTH + 1);
+		for (const path of ['/unsub/%E0%A4%A', `/unsub/${oversize}`]) {
+			const response = await handler(ctx, get(path));
+			expect(response.status).toBe(400);
+		}
+		expect(calls).toEqual([
+			{ limitType: 'publicTokenFailure', key: 'unknown' },
+			{ limitType: 'publicTokenFailure', key: 'unknown' },
+		]);
+	});
+
+	it('a failed lookup spends the per-IP failure bucket; a success does not', async () => {
+		const { ctx: okCtx, calls: okCalls } = makeKeyCapturingCtx();
+		await perTokenHandler({ ok: true, data: {} })(okCtx, get('/unsub/valid'));
+		expect(okCalls.map((c) => c.limitType)).toEqual(['subscriptionManagement']);
+
+		const { ctx, calls } = makeKeyCapturingCtx();
+		await perTokenHandler({ ok: false, reason: 'invalid_token' })(ctx, get('/unsub/invented'));
+		expect(calls.map((c) => c.limitType)).toEqual(['subscriptionManagement', 'publicTokenFailure']);
+		expect(calls[1]).toEqual({ limitType: 'publicTokenFailure', key: 'unknown' });
+	});
+
+	it('default (ip) mode shares one key regardless of token and never spends the failure bucket', async () => {
 		const handler = createShellHandler(
 			{
 				path: '/forms/:token',
@@ -655,11 +737,14 @@ describe('rate-limit key mode', () => {
 				cors: 'POST, OPTIONS',
 				resultMode: 'outcome',
 			},
-			async () => ({ ok: true, data: {} })
+			async () => ({ ok: false, reason: 'nope' })
 		);
-		const { ctx, keys } = makeKeyCapturingCtx();
+		const { ctx, calls } = makeKeyCapturingCtx();
 		await handler(ctx, new Request('http://localhost/forms/formA', { method: 'POST' }));
 		await handler(ctx, new Request('http://localhost/forms/formB', { method: 'POST' }));
-		expect(keys).toEqual(['unknown', 'unknown']);
+		expect(calls).toEqual([
+			{ limitType: 'formSubmission', key: 'unknown' },
+			{ limitType: 'formSubmission', key: 'unknown' },
+		]);
 	});
 });
