@@ -395,6 +395,68 @@ describe('the plugin webhook verifier dispatches on the declared scheme', () => 
 			);
 		});
 
+		describe('names a delivery by what was signed, not by how the header spells it (#1328)', () => {
+			const ROTATED_BASE64 = 'cm90YXRlZHJvdGF0ZWRrZXk=';
+			const JUNK = 'v1,bm90LWEtc2lnbmF0dXJl';
+
+			async function digestOf(
+				headerOverrides: Record<string, string | null> = {},
+				overrides: Partial<PluginWebhookDelivery> = {}
+			): Promise<string> {
+				const result = await verifyPluginWebhookDelivery(delivery(headerOverrides, overrides));
+				if (!result.ok) throw new Error(`expected a verified result: ${result.reason}`);
+				return result.deliveryDigest;
+			}
+
+			it.each([
+				['an extra invalid candidate', () => `${JUNK} v1,${svixSigned(nowSeconds)}`],
+				['doubled spaces', () => `v1,${svixSigned(nowSeconds)}  ${JUNK}`],
+				['reordered candidates', () => `v1,${svixSigned(nowSeconds)} ${JUNK}`],
+				[
+					'a duplicated candidate',
+					() => `v1,${svixSigned(nowSeconds)} v1,${svixSigned(nowSeconds)}`,
+				],
+			] as const)(
+				'gives the same delivery one digest across %s',
+				async (_label, signatureHeader) => {
+					vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+					// Each of these verifies, so each would earn its own claim if the
+					// digest covered the header text: a captured, still-fresh delivery
+					// re-sent once per spelling.
+					expect(await digestOf({ 'svix-signature': signatureHeader() })).toBe(await digestOf());
+				}
+			);
+
+			it('keeps one digest across a key rotation', async () => {
+				vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+				const before = await digestOf();
+				vi.stubEnv(SECRET_ENV, `whsec_${ROTATED_BASE64}`);
+				const after = await digestOf({
+					'svix-signature': `v1,${svixSigned(nowSeconds, BODY, ROTATED_BASE64)}`,
+				});
+				expect(after).toBe(before);
+			});
+
+			it('still separates a different body', async () => {
+				vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+				const otherBody = '{"event":"deal.lost","id":"43"}';
+				expect(
+					await digestOf(
+						{ 'svix-signature': `v1,${svixSigned(nowSeconds, otherBody)}` },
+						{ rawBody: otherBody }
+					)
+				).not.toBe(await digestOf());
+			});
+
+			it('still refuses a header whose candidates are all invalid', async () => {
+				vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+				const result = await verifyPluginWebhookDelivery(
+					delivery({ 'svix-signature': `${JUNK}  ${JUNK} v2,${svixSigned(nowSeconds - 1)}` })
+				);
+				expect(result).toMatchObject({ ok: false, status: 401 });
+			});
+		});
+
 		it('names ONE plugin: the same signed bytes at another route are another delivery', async () => {
 			vi.stubEnv(SECRET_ENV, SVIX_SECRET);
 			const digest = async (overrides: Partial<PluginWebhookDelivery>) => {

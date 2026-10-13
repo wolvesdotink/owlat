@@ -124,13 +124,13 @@ export async function compareSignature(
 /**
  * A verified delivery: origin proven AND bound to a moment.
  *
- * The `deliveryDigest` is what the caller de-duplicates on. It is derived from
- * the SIGNATURE, which is an HMAC over the timestamp and the exact body under a
- * secret only the sender holds: two requests share a digest exactly when they
- * are the same signed bytes, and an attacker cannot mint a fresh digest for a
- * captured body without the secret. `expiresAtMs` is when remembering it stops
- * mattering, because the timestamp check below would reject the same request by
- * then anyway.
+ * The `deliveryDigest` is what the caller de-duplicates on. It is derived only
+ * from what the verifier AUTHENTICATED, so two requests share a digest exactly
+ * when they carry the same signed content, and no unauthenticated framing of
+ * that content (how a header spells it) can mint a fresh one. Each arm decides
+ * what that content is — see the two call sites of `deliveryDigestOf`.
+ * `expiresAtMs` is when remembering it stops mattering, because the timestamp
+ * check would reject the same request by then anyway.
  */
 interface ReplayBoundVerification {
 	readonly ok: true;
@@ -196,6 +196,9 @@ export async function verifyPluginReplayBoundSignature(
 	if (!verification.ok) return verification;
 	return {
 		ok: true,
+		// The raw header IS the authenticated value here: `compareSignature` accepts
+		// exactly one string, the recomputed MAC, so there is no second spelling of
+		// a verified header to mint a second digest with.
 		deliveryDigest: await deliveryDigestOf(delivery.pluginId, delivery.transportKind, [
 			contract.header,
 			contract.replay.timestampHeader,
@@ -255,7 +258,8 @@ export async function verifyPluginWebhookDelivery(
 }
 
 /**
- * Domain separator for a Svix delivery's digest.
+ * Domain separator for a Svix delivery's digest, followed by the version of
+ * what the digest covers.
  *
  * The other arm's digest is named by the contract's own header names, which are
  * what distinguishes two contracts that happen to share a secret. Svix fixes its
@@ -266,6 +270,23 @@ export async function verifyPluginWebhookDelivery(
  * delivery can collide with a Svix one.
  */
 const SVIX_DIGEST_SCHEME = 'svix';
+
+/**
+ * v2 names a Svix delivery by its authenticated content (id, timestamp, body)
+ * instead of v1's raw `svix-signature` header (#1328). The header is a LIST that
+ * verifies when any one candidate matches, so v1 let a captured delivery be
+ * re-sent with an extra junk candidate, doubled spaces or reordered candidates
+ * — still authentic, but a fresh digest and so a fresh claim.
+ *
+ * Versioned because the change re-names every in-flight delivery: a claim
+ * stored under v1 does not match the same delivery's v2 digest, so a delivery
+ * applied just before a deploy could be applied once more after it, inside its
+ * still-open window. The rollout that closes that gap: disable the plugin that
+ * signs with Svix (its route then answers 403), deploy, wait out the claim
+ * retention — twice the contract tolerance, at most 2 × 900 s — and re-enable.
+ * Svix retries a refused delivery for hours, so the pause drops nothing.
+ */
+const SVIX_DIGEST_VERSION = 'v2';
 
 /**
  * The Svix arm, in the same fail-closed order the arm above documents:
@@ -321,24 +342,34 @@ async function verifyPluginSvixDelivery(
 	if (!verified) {
 		return { ok: false, status: 401, reason: 'Inbound signature mismatch or outside tolerance' };
 	}
+	// NAMED BY WHAT WAS SIGNED, NOT BY THE HEADER THAT SIGNED IT. The header is an
+	// unauthenticated list around the one candidate that matched, and the
+	// candidate itself depends on which key the sender used — so neither belongs
+	// in the name: the same delivery must keep one name across a reformatted
+	// header and across a key rotation. The body is hashed first so the
+	// digest's input stays newline-free and never holds a payload.
+	const bodyDigest = bytesToHex(
+		await crypto.subtle.digest('SHA-256', new TextEncoder().encode(delivery.rawBody))
+	);
 	return {
 		ok: true,
 		deliveryDigest: await deliveryDigestOf(delivery.pluginId, delivery.transportKind, [
 			SVIX_DIGEST_SCHEME,
+			SVIX_DIGEST_VERSION,
 			id,
 			timestamp,
-			signature,
+			bodyDigest,
 		]),
 		expiresAtMs: nowMs + 2 * toleranceSeconds * 1000,
 	};
 }
 
 /**
- * A collision-resistant name for one delivery: the secret-bearing header value,
- * domain-separated by the OWNING PLUGIN, its transport kind, and the
- * scheme-specific parts its caller passes (the contract's own header names and
- * the timestamp for the parameterized HMAC; the scheme tag, the message id and
- * the timestamp for Svix).
+ * A collision-resistant name for one delivery, domain-separated by the OWNING
+ * PLUGIN, its transport kind, and the scheme-specific parts its caller passes:
+ * for the parameterized HMAC, the contract's own header names, the timestamp
+ * and the verified signature; for Svix, the scheme tag and digest version, the
+ * message id, the timestamp and a hash of the body.
  *
  * The plugin id is in there because nothing forbids two bundled plugins from
  * naming the same `secretEnvVar` and the same headers (the manifest validator
@@ -349,10 +380,11 @@ async function verifyPluginSvixDelivery(
  * redelivered. The signing base cannot carry the id (the provider computes the
  * HMAC), but the digest is entirely ours.
  *
- * Hashed rather than stored raw because the signature is a MAC computed under a
- * live shared secret, and a de-duplication table is not a place to accumulate
- * those. SHA-256 over a value an attacker cannot predict without the secret is
- * enough to make forging a colliding digest infeasible.
+ * Hashed rather than stored raw because the parts include a MAC computed under
+ * a live shared secret, or a payload, and a de-duplication table is not a place
+ * to accumulate either. A digest is only ever claimed after its delivery
+ * verified, so being able to predict one (a Svix digest covers no secret) does
+ * not let anyone claim it ahead of the real sender.
  */
 async function deliveryDigestOf(
 	pluginId: string,
