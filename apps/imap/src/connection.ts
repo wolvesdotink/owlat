@@ -45,6 +45,22 @@ const DEFAULT_PRE_AUTH_DEADLINE_MS = 30 * 1000;
  * huge `{N}` for any verb and forces the pump to buffer it before dispatch.
  */
 const PRE_AUTH_LITERAL_BYTES = 4 * 1024;
+/**
+ * Aggregate ceilings on one command assembled across `{N}` continuations
+ * (raw octets of every text segment plus every literal). The per-literal caps
+ * alone do not bound memory: a peer can chain any number of individually legal
+ * literals into one never-finished command. Pre-auth fits a literal LOGIN with
+ * two full-size credential literals; post-auth it admits one maximum literal
+ * plus one maximum line. APPEND streams its body through the session path and
+ * is not counted.
+ */
+const PRE_AUTH_COMMAND_BYTES = 3 * PRE_AUTH_LITERAL_BYTES;
+/**
+ * Literal-count ceilings for one command, so zero-length or one-octet literals
+ * cannot grow the segment arrays and parser work without bound.
+ */
+const PRE_AUTH_COMMAND_LITERALS = 8;
+const MAX_COMMAND_LITERALS = 1024;
 const CRLF = Buffer.from('\r\n');
 /**
  * How long a shutdown waits for the BYE to flush before destroying a socket
@@ -64,6 +80,8 @@ const SHUTDOWN_FLUSH_MS = 2_000;
 interface PendingCommand {
 	readonly segments: string[];
 	readonly literals: string[];
+	/** Raw octets admitted so far: every segment line plus every literal. */
+	bytes: number;
 }
 
 export class ImapConnection {
@@ -219,8 +237,12 @@ export class ImapConnection {
 		} catch {
 			// best-effort notice; tear down regardless
 		}
-		// Nothing more will be read or answered: stop in-flight work now rather
-		// than when the socket finally closes (a flushing shutdown can take a while).
+		// Nothing more will be read or answered: stop in-flight work and drop the
+		// buffered input now rather than when the socket finally closes (a
+		// flushing shutdown can take a while).
+		this.buffer = Buffer.alloc(0);
+		this.pendingCommand = null;
+		this.commandLiteralChunks = [];
 		this.cancelSessions();
 		const sock = this.socket as { destroy?: () => void; end: (cb?: () => void) => void };
 		if (typeof sock.destroy !== 'function') {
@@ -303,27 +325,23 @@ export class ImapConnection {
 				this.pendingCommand?.literals.push(value);
 			}
 
-			// Guard — cap the length of an un-terminated command line. When we are
-			// NOT mid-literal and the buffer has grown past the line ceiling with no
-			// CRLF in sight, the peer is streaming an endless line: abort instead of
-			// letting `this.buffer` grow without bound (pre-auth memory/CPU DoS).
-			if (
-				this.literalRemaining === 0 &&
-				this.commandLiteralRemaining === 0 &&
-				this.buffer.length > this.maxLineBytes &&
-				this.buffer.indexOf(CRLF) < 0
-			) {
-				this.destroyConnection('Command line too long');
-				return 'drained';
-			}
-
 			// Phase 2 — drain whole lines. `restartPump` is set when a line arms a
 			// new literal (command-literal continuation or APPEND session body) whose
 			// octets may already be buffered: break out and loop the outer `while` so
 			// Phase 1/1b absorb them, instead of self-recursing per literal.
 			let restartPump = false;
-			let newlineIdx: number;
-			while ((newlineIdx = this.buffer.indexOf(CRLF)) >= 0) {
+			while (true) {
+				// Cap every client line — command, continuation segment, IDLE/
+				// AUTHENTICATE input — by its raw octets before decoding, whether its
+				// CRLF has arrived or not, so neither an endless line nor a complete
+				// oversized one gets past the ceiling (pre-auth memory/CPU DoS).
+				const newlineIdx = this.buffer.indexOf(CRLF);
+				const lineBytes = newlineIdx < 0 ? this.buffer.length : newlineIdx;
+				if (lineBytes > this.maxLineBytes) {
+					this.destroyConnection('Command line too long');
+					return 'drained';
+				}
+				if (newlineIdx < 0) break;
 				const line = this.buffer.subarray(0, newlineIdx).toString('utf-8');
 
 				// 2a — the active session reads its own input (IDLE: DONE, else BAD;
@@ -346,7 +364,7 @@ export class ImapConnection {
 
 				// 2c — does this line/segment end in a `{N}` / `{N+}` literal that we
 				// must absorb before the command is complete?
-				if (this.startCommandLiteralIfPresent(line)) {
+				if (this.startCommandLiteralIfPresent(line, lineBytes)) {
 					// Octet absorption begins next; loop back so Phase 1b consumes any
 					// already-buffered literal body (without growing the call stack).
 					restartPump = true;
@@ -354,7 +372,7 @@ export class ImapConnection {
 				}
 
 				// 2d — a fresh command, or the final segment of a literal command.
-				this.dispatchAssembled(line);
+				this.dispatchAssembled(line, lineBytes);
 
 				// If that command armed a session literal (APPEND), the remaining
 				// buffer is its raw body, not more lines — loop back via Phase 1 so
@@ -385,9 +403,11 @@ export class ImapConnection {
 	 * the session `awaitingLiteral` path), set up command-literal absorption:
 	 * strip the literal token, stash the segment, send the `+ ` continuation
 	 * (unless LITERAL+), and arm `commandLiteralRemaining`. Returns true when
-	 * absorption was started, false when `line` should be dispatched as-is.
+	 * absorption was started (or the connection was rejected), false when
+	 * `line` should be dispatched as-is. `lineBytes` is the line's raw octet
+	 * length, charged with the literal against the command's aggregate budget.
 	 */
-	private startCommandLiteralIfPresent(line: string): boolean {
+	private startCommandLiteralIfPresent(line: string, lineBytes: number): boolean {
 		const lit = matchTrailingLiteral(line);
 		if (!lit) return false;
 
@@ -415,11 +435,25 @@ export class ImapConnection {
 			return true;
 		}
 
-		const segment = line.slice(0, line.length - this.trailingLiteralTokenLength(line));
-		if (this.pendingCommand === null) {
-			this.pendingCommand = { segments: [], literals: [] };
+		// Aggregate ceiling: admit this segment and its literal against the whole
+		// command's budget before inviting or buffering any body, so chaining
+		// individually legal literals cannot retain more than the budget.
+		const pending = this.pendingCommand ?? { segments: [], literals: [], bytes: 0 };
+		const preAuth = this.state.auth === null;
+		const maxLiterals = preAuth ? PRE_AUTH_COMMAND_LITERALS : MAX_COMMAND_LITERALS;
+		if (
+			pending.bytes + lineBytes + lit.octets > this.commandByteBudget() ||
+			pending.literals.length >= maxLiterals
+		) {
+			this.pendingCommand = null;
+			this.destroyConnection('Command too large');
+			return true;
 		}
-		this.pendingCommand.segments.push(segment);
+
+		const segment = line.slice(0, line.length - this.trailingLiteralTokenLength(line));
+		pending.bytes += lineBytes + lit.octets;
+		pending.segments.push(segment);
+		this.pendingCommand = pending;
 		this.commandLiteralRemaining = lit.octets;
 		this.commandLiteralChunks = [];
 		// RFC 3501 §4.3: a non-synchronizing LITERAL+ ({N+}, RFC 7888) needs no
@@ -428,6 +462,13 @@ export class ImapConnection {
 			this.send('+ ');
 		}
 		return true;
+	}
+
+	/** Aggregate octet budget for one literal-continued command. */
+	private commandByteBudget(): number {
+		return this.state.auth === null
+			? PRE_AUTH_COMMAND_BYTES
+			: this.maxLiteralBytes + this.maxLineBytes;
 	}
 
 	/** Length of the trailing `{N}` / `{N+}` token on a segment (0 if none). */
@@ -442,10 +483,15 @@ export class ImapConnection {
 	 * collected literals back into the token stream. Otherwise parse the
 	 * single line directly.
 	 */
-	private dispatchAssembled(line: string): void {
+	private dispatchAssembled(line: string, lineBytes: number): void {
 		let parsed;
 		const concurrent = this.pendingCommand === null && runsConcurrently(line);
 		if (this.pendingCommand) {
+			if (this.pendingCommand.bytes + lineBytes > this.commandByteBudget()) {
+				this.pendingCommand = null;
+				this.destroyConnection('Command too large');
+				return;
+			}
 			this.pendingCommand.segments.push(line);
 			parsed = parseCommandWithLiterals(this.pendingCommand.segments, this.pendingCommand.literals);
 			this.pendingCommand = null;
