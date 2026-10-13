@@ -42,7 +42,7 @@ import {
 import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } from './draftSend';
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
-import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
+import { deleteDraftRow } from './answeredReply';
 import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
 import {
@@ -397,11 +397,7 @@ export const discard = postboxMutation({
 		if (!draft) return;
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return;
-		for (const att of draft.attachments) {
-			await deleteOwnedUpload(ctx, att.storageId, `mailDrafts:${args.draftId}`);
-		}
-		await deleteAskSessionsForDraft(ctx, args.draftId);
-		await ctx.db.delete(args.draftId);
+		await deleteDraftRow(ctx, draft);
 	},
 });
 

@@ -1221,6 +1221,7 @@ import type * as mail_ai_voiceProfileActions from '../mail/ai/voiceProfileAction
 import type * as mail_ai_voiceProfileText from '../mail/ai/voiceProfileText.js';
 import type * as mail_aliases from '../mail/aliases.js';
 import type * as mail_aliasesActions from '../mail/aliasesActions.js';
+import type * as mail_answeredReply from '../mail/answeredReply.js';
 import type * as mail_appPasswords from '../mail/appPasswords.js';
 import type * as mail_archiveImport from '../mail/archiveImport.js';
 import type * as mail_archiveImportRun from '../mail/archiveImportRun.js';
@@ -2965,6 +2966,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/ai/voiceProfileText': typeof mail_ai_voiceProfileText;
 	'mail/aliases': typeof mail_aliases;
 	'mail/aliasesActions': typeof mail_aliasesActions;
+	'mail/answeredReply': typeof mail_answeredReply;
 	'mail/appPasswords': typeof mail_appPasswords;
 	'mail/archiveImport': typeof mail_archiveImport;
 	'mail/archiveImportRun': typeof mail_archiveImportRun;

@@ -18,7 +18,7 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import { deleteOwnedUpload } from '../../storage/uploads';
-import { deleteAskSessionsForDraft } from '../ai/composeDraftStore';
+import { deleteSentDraft } from '../answeredReply';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { recordAuditLog } from '../../lib/auditLog';
@@ -478,9 +478,9 @@ export async function dispatch(
 
 		// delete_draft_row effect — runs LAST so a crash mid-sequence
 		// leaves the draft for retry rather than a half-applied send with
-		// no draft to recover from. Its Answer mode ask sessions go with it.
-		await deleteAskSessionsForDraft(ctx, draft._id);
-		await ctx.db.delete(draft._id);
+		// no draft to recover from. Its Answer mode ask sessions go with it,
+		// and so do the conversation's drafts this reply made obsolete.
+		await deleteSentDraft(ctx, draft, Date.now());
 	} else {
 		await applyNonSentEffects(ctx, result.effects);
 	}

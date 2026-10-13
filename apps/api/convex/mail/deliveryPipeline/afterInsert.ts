@@ -16,7 +16,8 @@
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { clearNeedsReplyOnOwnerReply, scheduleNeedsReplyClassify } from '../needsReply';
+import { scheduleNeedsReplyClassify } from '../needsReply';
+import { settleOwnerReply } from '../answeredReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { isPersonalMailbox } from '../permissions';
 import { enqueueCategoryCheck } from '../categoryArrival';
@@ -57,7 +58,8 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *     interprets the delivered message; other live mail that could be
  *     eligible is scheduled on its own (`../interpret/enqueue.ts`). Either way
  *     the brief reads "pending" until the run lands.
- *   - The owner's own reply settles the thread's Reply Queue row.
+ *   - The owner's own reply settles the thread's Reply Queue row and removes
+ *     the reply drafts it made obsolete (`../answeredReply`).
  *   - Web Push to the owner of a personal mailbox, for live unread mail from
  *     someone else that stayed in the inbox (`../../push/`). Whether it
  *     actually notifies — scope, mute, quiet hours — is the sender's call.
@@ -122,5 +124,5 @@ export async function runPostInsertInboundEffects(
 		}
 	}
 
-	await clearNeedsReplyOnOwnerReply(ctx, messageId);
+	await settleOwnerReply(ctx, messageId);
 }

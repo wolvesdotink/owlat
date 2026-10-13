@@ -18,7 +18,7 @@ import { insertMessageBody } from '../../lib/messageBodyStore';
 import { isImapSystemFlag } from './flags';
 import { mergeThreadParticipants, rebuildThreadAggregates } from '../threadAggregates';
 import { conversationRootId, resolveDeliveryThread } from '../deliveryPipeline/threading';
-import { clearNeedsReplyOnOwnerReply } from '../needsReply';
+import { settleOwnerReply } from '../answeredReply';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
@@ -203,9 +203,10 @@ export const appendMessage = internalMutation({
 			// Counters, participants, folder roles and the latest pointers all move
 			// with the new message; re-deriving them is simpler than patching each.
 			await rebuildThreadAggregates(ctx, threadId);
-			// Our reply sent from a desktop client settles the Reply Queue row, as
-			// the same reply synced from a provider's Sent folder does.
-			await clearNeedsReplyOnOwnerReply(ctx, messageId);
+			// Our reply sent from a desktop client settles the Reply Queue row and
+			// its obsolete drafts, as the same reply synced from a provider's Sent
+			// folder does.
+			await settleOwnerReply(ctx, messageId);
 		} else {
 			// The conversation list links to latestMessageId; set it now that the
 			// appended message exists.
