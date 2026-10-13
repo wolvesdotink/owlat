@@ -38,10 +38,12 @@ interface SlotHolder<S extends { draft: string }, C extends ClarificationLike> {
 /**
  * Whether the owner agreed to a draft with gaps: "Draft with what I have", or
  * a card answered with questions left open, which only that choice allows
- * now (and which the card's own copy offered as gaps before it existed).
+ * now (and which the card's own copy offered as gaps before it existed). A
+ * card still asking agreed to nothing.
  */
 export function isGapsAccepted(clarification: ClarificationLike): boolean {
-	return clarification.isGapsAccepted === true || !clarification.questions.every(hasUsableAnswer);
+	if (clarification.isGapsAccepted === true) return true;
+	return clarification.answeredAt !== undefined && !clarification.questions.every(hasUsableAnswer);
 }
 
 /** The arrival draft the thread may show, or undefined (see the module comment). */
@@ -52,9 +54,17 @@ export function visibleDraftSlot<S extends { draft: string }, C extends Clarific
 	return authoredDraftHasGaps({ text: flag.draftSlot.draft }) ? undefined : flag.draftSlot;
 }
 
-/** The clarification as the card may show it: a reply with unagreed gaps reads as asking again. */
+/**
+ * The clarification as the card may show it: a reply on a card still asking
+ * is not shown (it raced the questions), and one with gaps the owner did not
+ * agree to reads as asking again.
+ */
 export function visibleClarification<C extends ClarificationLike>(clarification: C): C {
 	const draft = clarification.draft;
+	if (draft && clarification.answeredAt === undefined) {
+		const { draft: _raced, ...asking } = clarification;
+		return asking as C;
+	}
 	if (!draft || isGapsAccepted(clarification) || !authoredDraftHasGaps({ text: draft })) {
 		return clarification;
 	}

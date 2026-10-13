@@ -8,7 +8,12 @@
 import { describe, expect, it } from 'vitest';
 import { authoredGapLabels } from '../../agent/shared/draftGaps';
 import { checkDraftGaps } from '../ai/gapQuestions';
-import { visibleClarification, visibleDraftSlot, withVisibleDrafts } from '../needsReplySlot';
+import {
+	isGapsAccepted,
+	visibleClarification,
+	visibleDraftSlot,
+	withVisibleDrafts,
+} from '../needsReplySlot';
 import { leavesQuestionsOpen, type AskQuestion } from '../ai/composeDraftPolicy';
 import { parseReplyOptionsText } from '../replyOptions';
 
@@ -131,6 +136,21 @@ describe('visibleDraftSlot and visibleClarification', () => {
 		expect(visibleClarification(open)).toBe(open);
 		const clean = { ...stored, draft: 'Total: EUR 2,100' };
 		expect(visibleClarification(clean)).toBe(clean);
+	});
+
+	it('shows no reply stored on a card that is still asking, and infers no consent there', () => {
+		const raced = {
+			isNeeded: true,
+			questions: [{ ...answered, answer: undefined }],
+			askedAt: 1,
+			draft: 'Total: [[amount]]',
+		};
+		expect(isGapsAccepted(raced)).toBe(false);
+		expect(visibleClarification(raced)).toEqual({
+			isNeeded: true,
+			questions: [{ ...answered, answer: undefined }],
+			askedAt: 1,
+		});
 	});
 
 	it('applies both to a whole thread row', () => {

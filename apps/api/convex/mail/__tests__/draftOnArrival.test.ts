@@ -19,6 +19,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getFunctionName } from 'convex/server';
+import type * as Localize from '../../inbox/clarificationLocalize';
 
 // LLM seam used by the shared draft service (resolved paths match its imports).
 const runLlmTextMock = vi.fn(async (_a: unknown) => ({
@@ -37,6 +38,18 @@ vi.mock('../../lib/llm/dispatch', async () => {
 		runLlmText: metered((a: unknown) => runLlmTextMock(a as never)),
 		runLlmTextWithTools: metered((a: unknown) => runLlmTextMock(a as never)),
 		runLlmObject: metered((a: unknown) => runLlmObjectMock(a as never)),
+	};
+});
+const localize = vi.hoisted(() => ({ refuses: false }));
+vi.mock('../../inbox/clarificationLocalize', async () => {
+	const actual = await vi.importActual<typeof Localize>('../../inbox/clarificationLocalize');
+	const { AdmissionRefusedError } = await import('../../lib/llm/admissionPort');
+	return {
+		...actual,
+		localizeQuestions: vi.fn(async (...args: Parameters<typeof actual.localizeQuestions>) => {
+			if (localize.refuses) throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+			return actual.localizeQuestions(...args);
+		}),
 	};
 });
 vi.mock('../../lib/llmProvider', () => ({
@@ -94,6 +107,7 @@ function makeCtx(opts: { aiOff?: boolean; loaded: unknown }) {
 }
 
 beforeEach(() => {
+	localize.refuses = false;
 	runLlmTextMock.mockClear();
 	runLlmObjectMock.mockClear();
 	runLlmTextMock.mockResolvedValue({
@@ -192,6 +206,22 @@ describe('generateDraftOnArrival', () => {
 				}),
 			],
 		});
+	});
+
+	it('asks about the gaps as written when the budget refuses to translate the questions', async () => {
+		localize.refuses = true;
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'Hi Sam, the total is [[invoice total]].',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const h = makeCtx({ loaded: makeLoaded() });
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+
+		expect(h.persisted).toHaveLength(0);
+		expect((h.held[0] as { questions: { text: string }[] }).questions.map((q) => q.text)).toEqual([
+			'invoice total',
+		]);
 	});
 
 	it('stores nothing for a gap no question may ask for (a password)', async () => {

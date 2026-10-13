@@ -13,8 +13,10 @@
 import { getFunctionName } from 'convex/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type * as DraftService from '../../agent/shared/draftService';
+import type * as Localize from '../../inbox/clarificationLocalize';
 
 const mocks = vi.hoisted(() => ({
+	localizeRefuses: false,
 	runSharedDraft: vi.fn(),
 	buildRecallKnowledgeTool: vi.fn((_args: unknown) => ({ tool: 'recallKnowledge' })),
 	runLlmText: vi.fn(),
@@ -29,6 +31,17 @@ vi.mock('../../agent/steps/draft/recall', () => ({
 	buildRecallKnowledgeTool: mocks.buildRecallKnowledgeTool,
 }));
 vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModel: vi.fn(async () => 'mock-model') }));
+vi.mock('../../inbox/clarificationLocalize', async () => {
+	const actual = await vi.importActual<typeof Localize>('../../inbox/clarificationLocalize');
+	const { AdmissionRefusedError } = await import('../../lib/llm/admissionPort');
+	return {
+		...actual,
+		localizeQuestions: vi.fn(async (...args: Parameters<typeof actual.localizeQuestions>) => {
+			if (mocks.localizeRefuses) throw new AdmissionRefusedError('daily_ceiling', 'ceiling');
+			return actual.localizeQuestions(...args);
+		}),
+	};
+});
 vi.mock('../../lib/llm/dispatch', () => ({ runLlmText: mocks.runLlmText }));
 vi.mock('../ai/voiceGuidance', () => ({
 	loadVoiceGuidance: vi.fn(async () => null),
@@ -90,6 +103,7 @@ function makeCtx(opts: { context?: unknown; gateThrows?: boolean; plan?: unknown
 }
 
 beforeEach(() => {
+	mocks.localizeRefuses = false;
 	mocks.runSharedDraft.mockReset();
 	mocks.buildRecallKnowledgeTool.mockClear();
 	mocks.runLlmText.mockReset();
@@ -161,6 +175,23 @@ describe('draftClarificationReply', () => {
 				}),
 			],
 		});
+	});
+
+	it('asks about the gaps as written when the budget refuses to translate the questions', async () => {
+		mocks.localizeRefuses = true;
+		mocks.runSharedDraft.mockResolvedValueOnce({
+			draftBody: 'Hi Jonas, the total is [[invoice total]].',
+			draftQuality: undefined,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+
+		const asked = mutations.find((m) => m.name.includes('askAboutDraftGaps'));
+		expect(asked?.args['questions']).toEqual([
+			expect.objectContaining({ id: 'gap_0', text: 'invoice total' }),
+		]);
 	});
 
 	it('says there is no AI draft for a gap no question may ask for (a password)', async () => {

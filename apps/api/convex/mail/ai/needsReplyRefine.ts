@@ -11,7 +11,7 @@ import type { Infer } from 'convex/values';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { resolveLanguageModel } from '../../lib/llmProvider';
-import { meterLlmCall } from '../../analytics/meteredSpend';
+import { meterLlmCall, type LlmSpendTarget } from '../../analytics/meteredSpend';
 import { newRootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import {
 	sanitizeClarificationQuestions,
@@ -78,6 +78,7 @@ export async function refineClarification(
 	}
 ): Promise<ClarificationFlag | undefined> {
 	const root = opts.root;
+	const spend = (feature: string): LlmSpendTarget => ({ feature, ...(root ? { root } : {}) });
 	const items = opts.items ?? [];
 	try {
 		// Stage 1 — cheap-tier reply-slot extraction (the shared service).
@@ -106,9 +107,12 @@ export async function refineClarification(
 
 		// Ask the owner in their own language: translate the surviving questions
 		// into every other interface locale. Fail-soft to the English copy.
-		const questions = await localizeReplyQueueQuestions(ctx, sanitized, root);
+		const localizeModel = await resolveLanguageModel(ctx, 'mail.clarify');
+		const localized = await meterLlmCall(ctx, spend('postbox_clarify_localize'), (meter) =>
+			localizeQuestions(localizeModel, sanitized, undefined, meter)
+		);
 
-		return { isNeeded: true, questions, askedAt: Date.now() };
+		return { isNeeded: true, questions: localized.questions, askedAt: Date.now() };
 	} catch (error) {
 		rethrowAdmissionRefusal(error);
 		return undefined;
@@ -176,8 +180,10 @@ async function openSlotsToAsk(
 }
 
 /**
- * Reply Queue questions in every interface locale (`translations`), metered
- * under the clarification's localize label. Fail-soft: the questions as given.
+ * The questions about a held draft's gaps in every interface locale
+ * (`translations`), metered under the clarification's localize label.
+ * Fail-soft, a budget refusal included: the questions as written, so they are
+ * never lost to a translation.
  */
 export async function localizeReplyQueueQuestions<Q extends ClarificationFlag['questions'][number]>(
 	ctx: SpendCtx,
@@ -193,8 +199,7 @@ export async function localizeReplyQueueQuestions<Q extends ClarificationFlag['q
 			(meter) => localizeQuestions(model, questions, undefined, meter)
 		);
 		return localized.questions;
-	} catch (error) {
-		rethrowAdmissionRefusal(error);
+	} catch {
 		return questions;
 	}
 }

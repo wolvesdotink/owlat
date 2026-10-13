@@ -200,6 +200,8 @@ const INVENTORY: readonly CallSite[] = [
 	site('mail/ai/categoryClassify.ts', "ctx, 'mail.classify'", 'summarize'),
 	// Postbox localization; its slots go through the shared service.
 	site('mail/ai/needsReplyRefine.ts', "ctx, 'mail.clarify'", 'summarize'),
+	// The questions about a held draft's gaps, localized like the clarification's.
+	site('mail/ai/needsReplyRefine.ts', "ctx, 'mail.clarify'", 'summarize'),
 	site('mail/ai/assist.ts', "ctx, 'mail.ask'", 'draft'),
 	site('mail/ai/assist.ts', "ctx, 'mail.complete'", 'summarize'),
 	site(
