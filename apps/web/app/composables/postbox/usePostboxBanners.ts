@@ -15,7 +15,8 @@
  * nudge then, because it is one-time and its dismissal is a server write; the
  * reply-queue strip last because it is the only one with a permanent
  * second home — the folder rail carries its live count regardless, so nothing
- * is hidden when its banner yields.
+ * is hidden when its banner yields (and while that rail is on screen, the
+ * strip does not show at all).
  *
  * Yielding is not losing: each predicate stays live, so the moment the higher
  * banner is dismissed (sealed) or resolves (back online, queue drained) the next
@@ -46,16 +47,19 @@ export function usePostboxSealedNudge() {
 
 /**
  * The "waiting on your reply" strip: inbox only, non-empty queue only, and
- * dismissible for the session (in-memory state, resets on reload).
+ * dismissible for the session (in-memory state, resets on reload). It says
+ * nothing while the folder rail is on screen (`railOnScreen`): the rail's own
+ * Answer queue row already shows the same count, one glance to the left.
  */
 export function usePostboxReplyQueueBanner(
 	mailboxId: Ref<Id<'mailboxes'>>,
-	folderRole: Ref<string>
+	folderRole: Ref<string>,
+	railOnScreen: Ref<boolean>
 ) {
 	const { count } = usePostboxReplyQueue(mailboxId);
 	const dismissed = useState('postbox:reply-queue-strip-dismissed', () => false);
 	const visible = computed(
-		() => folderRole.value === 'inbox' && count.value > 0 && !dismissed.value
+		() => folderRole.value === 'inbox' && count.value > 0 && !dismissed.value && !railOnScreen.value
 	);
 	return { visible, count, dismissed };
 }
@@ -67,9 +71,11 @@ export function usePostboxBannerSlot(args: {
 	failedCount: Ref<number>;
 	mailboxId: Ref<Id<'mailboxes'>>;
 	folderRole: Ref<string>;
+	/** The folder rail (and its Answer queue row) is on screen beside the list. */
+	railOnScreen: Ref<boolean>;
 }) {
 	const sealed = usePostboxSealedNudge();
-	const replyQueue = usePostboxReplyQueueBanner(args.mailboxId, args.folderRole);
+	const replyQueue = usePostboxReplyQueueBanner(args.mailboxId, args.folderRole, args.railOnScreen);
 	// PostboxOfflineBanners renders exactly one of its two strips, and nothing at
 	// all when the device is online with an empty failed queue.
 	const offlineVisible = computed(() => args.isOffline.value || args.failedCount.value > 0);

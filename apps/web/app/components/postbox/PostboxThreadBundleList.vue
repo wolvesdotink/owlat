@@ -65,6 +65,9 @@ const navigableMessages = computed(() =>
 	)
 );
 
+// Previous/next in Zen walk the same order.
+defineExpose({ visibleIds: computed(() => navigableMessages.value.map((m) => String(m._id))) });
+
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	items: navigableMessages,
 	resetKey: computed(() => props.folderRole),

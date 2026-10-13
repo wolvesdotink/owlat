@@ -5964,6 +5964,10 @@
 				"saved": "Entwurf an {name} gespeichert",
 				"resume": "Fortsetzen",
 				"dismiss": "Diesen Hinweis ausblenden"
+			},
+			"readerBackBar": {
+				"previous": "Vorherige Unterhaltung",
+				"next": "Nächste Unterhaltung"
 			}
 		},
 		"preferences": {
@@ -6879,6 +6883,13 @@
 				"tabsLabel": "Einstellungsbereich",
 				"results": "Passende Einstellungen",
 				"noResults": "Keine Einstellung passt."
+			},
+			"zen": {
+				"enter": "Zen-Modus",
+				"exit": "Zen beenden",
+				"entered": "Zen-Modus an. Nur die Aufgabe ist zu sehen.",
+				"left": "Zen-Modus aus.",
+				"paletteSubtitle": "Alles außer der Aufgabe ausblenden"
 			}
 		},
 		"today": {
@@ -6990,7 +7001,13 @@
 					"filed": "abgelegt | abgelegt"
 				},
 				"since": "Seit deinem letzten Besuch, {when}",
-				"sinceFallback": "In den letzten 24 Stunden"
+				"sinceFallback": "In den letzten 24 Stunden",
+				"allClear": "nichts Neues",
+				"more": "Mehr zu {inbox}"
+			},
+			"zenMore": {
+				"hidden": "{count} weiteres Update in {inbox} wartet außerhalb von Zen. | {count} weitere Updates in {inbox} warten außerhalb von Zen.",
+				"show": "Alles zeigen"
 			}
 		},
 		"answer": {
@@ -12486,7 +12503,6 @@
 				"markSeen": "Als gesehen markieren",
 				"chooseInboxes": "Postfächer auf der Werkbank ändern"
 			},
-			"intro": "Eine Werkbank pro Postfach: was dich braucht, was sich getan hat und was seit deinem letzten Besuch angekommen ist.",
 			"noInbox": {
 				"title": "Noch kein Postfach zum Arbeiten",
 				"body": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank: was dich braucht, was sich getan hat und was angekommen ist. Verbinde ein Postfach, um loszulegen.",
@@ -15968,6 +15984,7 @@
 				"toggleSidebar": "Seitenleiste ein-/ausblenden",
 				"toggleTodayBrowse": "Zwischen Priorität und Alle E-Mails wechseln (Posteingang)",
 				"undoTriage": "Letzte Triage rückgängig machen",
+				"zenMode": "Zen-Modus: nur die aktuelle Aufgabe zeigen",
 				"goToAnswer": "Zur Antwortliste",
 				"goToMarketing": "Zu Marketing",
 				"next": "Weiter",

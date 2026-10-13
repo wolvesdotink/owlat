@@ -5964,6 +5964,10 @@
 				"saved": "Draft to {name} saved",
 				"resume": "Resume",
 				"dismiss": "Hide this reminder"
+			},
+			"readerBackBar": {
+				"previous": "Previous conversation",
+				"next": "Next conversation"
 			}
 		},
 		"preferences": {
@@ -6879,6 +6883,13 @@
 				"tabsLabel": "Settings area",
 				"results": "Matching settings",
 				"noResults": "No setting matches."
+			},
+			"zen": {
+				"enter": "Zen mode",
+				"exit": "Exit Zen",
+				"entered": "Zen mode on. Only the task is on screen.",
+				"left": "Zen mode off.",
+				"paletteSubtitle": "Hide everything but the task"
 			}
 		},
 		"today": {
@@ -6990,7 +7001,13 @@
 					"filed": "filed away | filed away"
 				},
 				"since": "Since you last looked, {when}",
-				"sinceFallback": "In the last 24 hours"
+				"sinceFallback": "In the last 24 hours",
+				"allClear": "nothing new",
+				"more": "More for {inbox}"
+			},
+			"zenMore": {
+				"hidden": "{count} more update in {inbox} waits outside Zen. | {count} more updates in {inbox} wait outside Zen.",
+				"show": "Show everything"
 			}
 		},
 		"answer": {
@@ -12486,7 +12503,6 @@
 				"markSeen": "Mark as seen",
 				"chooseInboxes": "Change the inboxes on the Workbench"
 			},
-			"intro": "One workbench per inbox: what needs you, what moved and what arrived since you last looked.",
 			"noInbox": {
 				"title": "No inbox to work from yet",
 				"body": "Each inbox you read gets its own workbench here, with what needs you, what moved and what arrived. Connect a mailbox to get started.",
@@ -15968,6 +15984,7 @@
 				"toggleSidebar": "Hide / show sidebar",
 				"toggleTodayBrowse": "Switch between Priority and All mail (inbox)",
 				"undoTriage": "Undo last triage",
+				"zenMode": "Zen mode: show only the task at hand",
 				"goToAnswer": "Go to the Answer queue",
 				"goToMarketing": "Go to marketing",
 				"next": "Next",

@@ -56,7 +56,7 @@ const showGettingStarted = computed(() => !mailboxId.value && !mailboxesLoading.
 </script>
 
 <template>
-	<div class="flex h-[calc(100vh-4rem)]">
+	<div class="flex h-[calc(100vh-var(--shell-chrome-h,4rem))]">
 		<!-- Error — a failed mailbox query must NOT look like "no mailbox yet". -->
 		<div v-if="mailboxError && !mailboxId" class="flex-1 flex items-center justify-center p-12">
 			<UiErrorAlert

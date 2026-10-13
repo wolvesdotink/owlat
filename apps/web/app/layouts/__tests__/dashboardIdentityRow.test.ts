@@ -138,9 +138,9 @@ describe('dashboard sidebar — identity row', () => {
 		const row = identityButton();
 
 		expect(row.textContent).not.toContain('...');
-		// Avatar circle plus the two text lines it stands in for, so the row
-		// keeps its height when the name lands.
-		expect(row.querySelectorAll('.ui-skeleton')).toHaveLength(3);
+		// Avatar circle plus the name line it stands in for, so the row keeps
+		// its height when the name lands.
+		expect(row.querySelectorAll('.ui-skeleton')).toHaveLength(2);
 		wrapper.unmount();
 	});
 

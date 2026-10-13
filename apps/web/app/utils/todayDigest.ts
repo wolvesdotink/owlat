@@ -88,6 +88,8 @@ export interface TodayModel {
 /** What `today.mailbox.digest` returns (the fields this module reads). */
 export interface MailboxDigest {
 	mailboxId: string;
+	/** The server time the snapshot was read at (absent from older servers). */
+	generatedAt?: number;
 	newMail: number;
 	isNewMailCapped: boolean;
 	changed: Array<{

@@ -41,9 +41,11 @@ function mountPicker(hidden: string[]) {
 }
 
 describe('TodayInboxPicker', () => {
-	it('says "Edit tabs" until one is left out, then counts', () => {
-		expect(mountPicker([]).text()).toContain('Edit tabs');
-		expect(mountPicker(['mb_support']).text()).toContain('1 of 2 inboxes');
+	it('is just an icon named "Edit tabs" until one is left out, then counts', () => {
+		const all = mountPicker([]).find('button');
+		expect(all.attributes('title')).toBe('Edit tabs');
+		expect(all.text()).toBe('');
+		expect(mountPicker(['mb_support']).find('button').text()).toBe('1 of 2 inboxes');
 	});
 
 	it('marks each row checked or not and toggles to the opposite', async () => {

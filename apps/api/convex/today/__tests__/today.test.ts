@@ -322,6 +322,16 @@ describe('today digest', () => {
 		expect(await subjects()).toEqual(['Just now', 'This morning']);
 	});
 
+	it('says which server moment the snapshot was read at', async () => {
+		const t = convexTest(schema, modules);
+		setSession('user-A');
+		const mailboxId = await seedMailbox(t);
+		const before = Date.now();
+		const digest = await t.query(api.today.mailbox.digest, { mailboxId });
+		expect(digest!.generatedAt).toBeGreaterThanOrEqual(before);
+		expect(digest!.generatedAt).toBeLessThanOrEqual(Date.now());
+	});
+
 	it('returns null for a mailbox the caller cannot open', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, { userId: 'user-A' });

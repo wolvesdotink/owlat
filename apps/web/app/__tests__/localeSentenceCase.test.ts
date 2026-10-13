@@ -44,6 +44,7 @@ const PROPER_NOUNS = new Set([
 	'Spam',
 	'Today', // page names
 	'Workbench', // the home screen (one tab per inbox)
+	'Zen', // Zen mode, one task and nothing else on screen
 	'Features',
 	// Mail headers
 	'From',

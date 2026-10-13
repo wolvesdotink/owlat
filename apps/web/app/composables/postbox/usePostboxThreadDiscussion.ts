@@ -1,16 +1,21 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-/** Tailwind's `xl`: from here on the discussion starts open. */
+/** Tailwind's `xl`: from here on a discussion with messages starts open. */
 const SIDE_PANEL_QUERY = '(min-width: 1280px)';
 
 /**
  * Open/closed state of the reader's "Team discussion" panel, shared by the
  * reader toolbar toggle and the panel itself.
  *
- * Wide screens show the panel beside the conversation unless the user closed
- * it; narrow screens keep it closed until "Discuss" opens it below the
- * messages. An explicit choice sticks for the session across threads.
+ * Wide screens show the panel beside the conversation once the thread has a
+ * discussion to read, unless the user closed it; an empty one waits behind
+ * "Discuss" rather than taking a column to say "No discussion yet". Narrow
+ * screens keep it closed until "Discuss" opens it below the messages. An
+ * explicit choice sticks for the session across threads.
+ *
+ * It reads the discussion to decide that, and hands it back (`discussion`,
+ * `count`), so the toggle and the panel do not read it a second time.
  *
  * `articleClass` is what the reader's `<article>` needs to make room for the
  * side panel: a two-column grid once the reader PANE (an `@container` in
@@ -23,13 +28,16 @@ const SIDE_PANEL_QUERY = '(min-width: 1280px)';
  * with nothing pinned to column 2 auto-placed the whole conversation into the
  * 20rem side column (on every load, and for good when the query answers null).
  */
-export function usePostboxThreadDiscussionPanel() {
+export function usePostboxThreadDiscussionPanel(threadId: () => string | null | undefined) {
 	const { isEnabled } = useFeatureFlag();
 	const isWide = useMediaQuery(SIDE_PANEL_QUERY);
 	const choice = useState<boolean | null>('postbox-thread-discussion-open', () => null);
+	const { discussion, count } = usePostboxThreadDiscussionData(threadId);
 
 	const isAvailable = computed(() => isEnabled('chat'));
-	const isOpen = computed(() => isAvailable.value && (choice.value ?? isWide.value));
+	const isOpen = computed(
+		() => isAvailable.value && (choice.value ?? (isWide.value && count.value > 0))
+	);
 	const articleClass = computed(() =>
 		isOpen.value
 			? '@min-[52rem]:has-[>.pbx-thread-discussion]:max-w-7xl @min-[52rem]:has-[>.pbx-thread-discussion]:grid @min-[52rem]:grid-cols-[minmax(0,1fr)_20rem] @min-[52rem]:gap-x-6 @min-[52rem]:items-start'
@@ -40,7 +48,7 @@ export function usePostboxThreadDiscussionPanel() {
 		choice.value = !isOpen.value;
 	}
 
-	return { isAvailable, isOpen, articleClass, toggle };
+	return { isAvailable, isOpen, articleClass, toggle, discussion, count };
 }
 
 /**

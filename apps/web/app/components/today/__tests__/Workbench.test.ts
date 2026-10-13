@@ -8,7 +8,8 @@
  *   - the scope header names the inbox and jumps to its bands;
  *   - none of the three has axe violations.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { inject, provide } from 'vue';
 import { mount } from '@vue/test-utils';
 import TodayWorkbenchTabs from '../TodayWorkbenchTabs.vue';
 import TodayFiledAway from '../TodayFiledAway.vue';
@@ -21,6 +22,9 @@ import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	// The real UiDropdownMenu (audited below) uses these two Nuxt auto-imports.
+	vi.stubGlobal('provide', provide);
+	vi.stubGlobal('inject', inject);
 });
 
 const TABS: WorkbenchTab[] = [
@@ -167,6 +171,19 @@ describe('TodayFiledAway', () => {
 });
 
 describe('TodayScopeHeader', () => {
+	// A controlled ⋯ menu, like the real one: it opens only through `open`.
+	const headerStubs = {
+		...stubs,
+		UiButton: { template: '<button><slot /></button>' },
+		UiSkeleton: true,
+		UiDropdownMenu: {
+			props: ['open'],
+			emits: ['update:open'],
+			template:
+				'<div><span data-trigger @click="$emit(\'update:open\', !open)"><slot name="trigger" /></span><div v-if="open" role="menu"><slot /></div></div>',
+		},
+		UiDropdownMenuItem: { template: '<button role="menuitem"><slot /></button>' },
+	};
 	const props = {
 		name: 'Support',
 		slot: 1,
@@ -185,7 +202,7 @@ describe('TodayScopeHeader', () => {
 			props,
 			global: {
 				plugins: [createTestI18n()],
-				stubs: { ...stubs, UiButton: { template: '<button><slot /></button>' }, UiSkeleton: true },
+				stubs: headerStubs,
 			},
 		});
 		expect(w.find('h2').text()).toBe('Support');
@@ -197,7 +214,48 @@ describe('TodayScopeHeader', () => {
 			['moved', '#workbench-changed'],
 			['filed', '#workbench-filed'],
 		]);
-		expect(stats[0]!.text()).toBe('23new emails');
+		expect(stats[0]!.text()).toBe('23 new emails');
+	});
+
+	it('leaves zeros out, and says so when nothing is new', () => {
+		const mountWith = (stats: typeof props.stats) =>
+			mount(TodayScopeHeader, {
+				props: { ...props, stats },
+				global: { plugins: [createTestI18n()], stubs: headerStubs },
+			});
+		const some = mountWith({
+			newMail: 4,
+			isNewMailCapped: false,
+			important: 0,
+			moved: 0,
+			filed: 1,
+		});
+		expect(some.findAll('[data-scope-stat]').map((s) => s.attributes('data-scope-stat'))).toEqual([
+			'new',
+			'filed',
+		]);
+		const none = mountWith({
+			newMail: 0,
+			isNewMailCapped: false,
+			important: 0,
+			moved: 0,
+			filed: 0,
+		});
+		expect(none.findAll('[data-scope-stat]')).toHaveLength(0);
+		expect(none.text()).toContain('nothing new');
+	});
+
+	it('keeps "Open inbox" and "Write" one click away in its menu', async () => {
+		const w = mount(TodayScopeHeader, {
+			props,
+			global: { plugins: [createTestI18n()], stubs: headerStubs },
+		});
+		expect(w.find('[role="menu"]').exists()).toBe(false);
+		await w.find('[data-trigger]').trigger('click');
+		expect(w.findAll('[role="menuitem"]').map((item) => item.text())).toEqual([
+			'Open inbox',
+			'Write',
+		]);
 	});
 
 	it('leaves "new email" and "moved" out on the team inbox', () => {
@@ -210,7 +268,7 @@ describe('TodayScopeHeader', () => {
 			},
 			global: {
 				plugins: [createTestI18n()],
-				stubs: { ...stubs, UiButton: { template: '<button><slot /></button>' }, UiSkeleton: true },
+				stubs: headerStubs,
 			},
 		});
 		expect(w.findAll('[data-scope-stat]').map((s) => s.attributes('data-scope-stat'))).toEqual([
@@ -219,10 +277,18 @@ describe('TodayScopeHeader', () => {
 		]);
 	});
 
-	it('has no axe violations', async () => {
+	it.each([
+		['closed', false],
+		['open', true],
+	])('has no axe violations with its real ⋯ menu %s', async (_state, open) => {
 		const violations = await auditA11y(TodayScopeHeader, {
 			props,
 			global: { plugins: [createTestI18n()] },
+			prepare: async (wrapper) => {
+				if (!open) return;
+				await wrapper.get('button[aria-label="More for Support"]').trigger('click');
+				expect(document.querySelectorAll('[role="menuitem"]')).toHaveLength(2);
+			},
 		});
 		expect(violations).toEqual([]);
 	});

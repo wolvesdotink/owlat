@@ -41,6 +41,21 @@ const CHIPS: Array<{ value: PostboxTriageFilter; labelKey: string }> = [
 	{ value: 'attachments', labelKey: 'components.postbox.postboxTriageFilterChips.attachments' },
 ];
 
+/**
+ * Only the chips that can narrow something. Once the counts cover the whole
+ * folder, a zero chip would filter to an empty list, so it steps aside; the
+ * active chip and "All" always stay. While pages remain unloaded a zero proves
+ * nothing, so every chip shows. With nothing left to pick, the row goes.
+ */
+const visibleChips = computed(() =>
+	props.countsArePartial
+		? CHIPS
+		: CHIPS.filter(
+				(chip) =>
+					chip.value === 'all' || chip.value === props.filter || props.counts[chip.value] > 0
+			)
+);
+
 /** "12" when the window is the whole folder, "12+" while pages remain. */
 function countLabel(value: PostboxTriageFilter): string {
 	return props.countsArePartial ? `${props.counts[value]}+` : String(props.counts[value]);
@@ -71,12 +86,13 @@ const searchToken = computed(() =>
 	     can find. The handover token drops to a second line when the four chips
 	     have taken the first. -->
 	<div
+		v-if="visibleChips.length > 1"
 		class="px-4 pb-2.5 -mt-1 flex flex-wrap items-center gap-1.5"
 		role="group"
 		:aria-label="t('components.postbox.postboxTriageFilterChips.groupLabel')"
 	>
 		<button
-			v-for="chip in CHIPS"
+			v-for="chip in visibleChips"
 			:key="chip.value"
 			type="button"
 			class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs whitespace-nowrap transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/40"

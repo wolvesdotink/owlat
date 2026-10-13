@@ -137,3 +137,29 @@ describe('dashboard layout — sidebar motion', () => {
 		expect(content().classList.contains('lg:pl-64')).toBe(false);
 	});
 });
+
+describe('dashboard layout — the Postbox folds the sidebar on its own', () => {
+	afterEach(() => {
+		route.path = '/dashboard/campaigns';
+		route.fullPath = '/dashboard/campaigns';
+	});
+
+	it('shows the icon rail beside the folder rail, and opens again for the session', async () => {
+		route.path = '/dashboard/postbox/inbox';
+		route.fullPath = '/dashboard/postbox/inbox';
+		mountLayout();
+		await nextTick();
+		expect(rail().classList.contains('w-16')).toBe(true);
+
+		const expand = [...rail().querySelectorAll('button')].find(
+			(button) => button.getAttribute('title') === 'Expand sidebar'
+		);
+		expect(expand, 'expand toggle not found').toBeTruthy();
+		expand?.click();
+		await nextTick();
+
+		// The saved preference was never "collapsed", so it is left alone.
+		expect(toggleCollapsed).not.toHaveBeenCalled();
+		expect(rail().classList.contains('w-64')).toBe(true);
+	});
+});

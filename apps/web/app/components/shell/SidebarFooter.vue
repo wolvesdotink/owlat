@@ -1,18 +1,26 @@
 <script setup lang="ts">
 import { logError } from '~/lib/runtimeLog';
+import { useZenMode } from '~/composables/useZenMode';
 
 /**
- * The sidebar footer: exactly one Settings entry (settings are visited rarely,
- * so they get one quiet door rather than two top-level sections) and the
- * account menu — Assistant, keyboard shortcuts, theme, sign out.
+ * The sidebar footer, one row: the account menu (Assistant, Zen mode, keyboard
+ * shortcuts, theme, sign out), then Settings as a quiet gear (settings are
+ * visited rarely, so they get one door rather than two top-level sections),
+ * then the collapse toggle. Collapsed to the icon rail, the three stack.
  */
-const props = defineProps<{ collapsed: boolean }>();
+const props = defineProps<{
+	collapsed: boolean;
+	/** The collapse toggle's label; absent where the rail cannot collapse. */
+	collapseLabel?: string | null;
+}>();
+const emit = defineEmits<{ toggleCollapse: [] }>();
 
 const { t } = useI18n();
 const route = useRoute();
 const { user, signOut, isPending } = useAuth();
 const { isEnabled } = useFeatureFlag();
 const { openHelpModal } = useKeyboardShortcuts();
+const { enterZen } = useZenMode();
 
 const settingsActive = computed(
 	() => route.path.startsWith('/dashboard/preferences') || route.path.startsWith('/dashboard/admin')
@@ -67,30 +75,18 @@ function openShortcuts() {
 	menuOpen.value = false;
 	openHelpModal();
 }
+function startZen() {
+	menuOpen.value = false;
+	enterZen();
+}
 </script>
 
 <template>
-	<div class="border-t border-border-subtle px-2 py-2">
-		<NuxtLink
-			to="/dashboard/preferences"
-			:aria-current="settingsActive ? 'page' : undefined"
-			:title="props.collapsed ? t('components.shell.footer.settings') : undefined"
-			class="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm transition-colors"
-			:class="[
-				settingsActive
-					? 'bg-(--surface-2-selected) font-medium text-text-primary'
-					: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary',
-				props.collapsed ? 'justify-center' : '',
-			]"
-		>
-			<Icon name="lucide:settings" class="size-4.5 shrink-0 text-text-tertiary" />
-			<span v-if="!props.collapsed" class="flex-1">{{
-				t('components.shell.footer.settings')
-			}}</span>
-			<kbd v-if="!props.collapsed" class="font-mono text-2xs text-text-tertiary">⌘,</kbd>
-		</NuxtLink>
-
-		<div ref="menuRef" class="relative mt-1">
+	<div
+		class="flex border-t border-border-subtle px-2 py-2"
+		:class="props.collapsed ? 'flex-col-reverse items-center gap-1' : 'items-center gap-0.5'"
+	>
+		<div ref="menuRef" class="relative min-w-0" :class="props.collapsed ? '' : 'flex-1'">
 			<button
 				type="button"
 				class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-bg-surface"
@@ -111,20 +107,13 @@ function openShortcuts() {
 				<span v-if="!props.collapsed" class="min-w-0 flex-1 text-left">
 					<template v-if="isPending">
 						<UiSkeleton class="h-3.5 w-24" />
-						<UiSkeleton class="mt-2 h-3 w-32" />
 					</template>
 					<template v-else>
 						<span class="block truncate text-sm font-medium text-text-primary">{{
 							user?.name || t('shell.dashboard.userFallback')
 						}}</span>
-						<span class="block truncate text-xs text-text-tertiary">{{ user?.email || '' }}</span>
 					</template>
 				</span>
-				<Icon
-					v-if="!props.collapsed"
-					name="lucide:chevrons-up-down"
-					class="size-4 text-text-tertiary"
-				/>
 			</button>
 
 			<Transition
@@ -138,6 +127,9 @@ function openShortcuts() {
 					role="menu"
 					class="absolute bottom-full left-0 z-(--z-dropdown,50) mb-2 w-60 overflow-hidden rounded-lg border border-border-default bg-bg-elevated py-1 shadow-lg"
 				>
+					<p v-if="user?.email" class="truncate px-3 pb-1.5 pt-1 text-xs text-text-tertiary">
+						{{ user.email }}
+					</p>
 					<NuxtLink
 						v-if="showAssistant"
 						to="/dashboard/assistant"
@@ -148,6 +140,16 @@ function openShortcuts() {
 						<span class="flex-1">{{ t('components.shell.footer.assistant') }}</span>
 						<kbd class="font-mono text-2xs text-text-tertiary">⌘J</kbd>
 					</NuxtLink>
+					<button
+						type="button"
+						role="menuitem"
+						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
+						@click="startZen"
+					>
+						<Icon name="lucide:maximize-2" class="size-4 text-text-tertiary" />
+						<span class="flex-1 text-left">{{ t('components.shell.zen.enter') }}</span>
+						<kbd class="font-mono text-2xs text-text-tertiary">⌘⇧F</kbd>
+					</button>
 					<button
 						type="button"
 						role="menuitem"
@@ -178,5 +180,33 @@ function openShortcuts() {
 				</div>
 			</Transition>
 		</div>
+
+		<NuxtLink
+			to="/dashboard/preferences"
+			:aria-current="settingsActive ? 'page' : undefined"
+			:aria-label="t('components.shell.footer.settings')"
+			:title="`${t('components.shell.footer.settings')} (⌘,)`"
+			class="flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors"
+			:class="
+				settingsActive
+					? 'bg-(--surface-2-selected) text-text-primary'
+					: 'text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary'
+			"
+		>
+			<Icon name="lucide:settings" class="size-4.5" />
+		</NuxtLink>
+		<button
+			v-if="props.collapseLabel"
+			type="button"
+			class="hidden size-8 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-(--surface-2-hover) hover:text-text-primary lg:flex"
+			:title="props.collapseLabel"
+			:aria-label="props.collapseLabel"
+			@click="emit('toggleCollapse')"
+		>
+			<Icon
+				:name="props.collapsed ? 'lucide:panel-left' : 'lucide:panel-left-close'"
+				class="size-4.5"
+			/>
+		</button>
 	</div>
 </template>

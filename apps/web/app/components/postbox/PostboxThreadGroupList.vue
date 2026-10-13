@@ -31,6 +31,11 @@ function threadTo(thread: { latestMessageId?: string }) {
 }
 
 const threadsRef = computed(() => props.threads);
+// What a row opens, in row order: previous/next in Zen walk this.
+const visibleIds = computed(() =>
+	props.threads.flatMap((thread) => (thread.latestMessageId ? [thread.latestMessageId] : []))
+);
+defineExpose({ visibleIds });
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	items: threadsRef,
 	resetKey: computed(() => props.folderRole),

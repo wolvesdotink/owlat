@@ -6,6 +6,8 @@ import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
 import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
 import { usePerfMark } from '~/composables/usePerfMark';
+import { useZenMode } from '~/composables/useZenMode';
+import { useMediaQuery } from '~/composables/useMediaQuery';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -42,7 +44,26 @@ const {
 
 // A section lends its existing navigation to this sidebar on desktop.
 const { activeSection, showAppNavigation } = useSectionNavigation();
-const isCollapsed = computed(() => (activeSection.value ? false : preferredCollapsed.value));
+// The Postbox brings its own folder rail beside the list, and next to it the
+// full sidebar is a second copy of the same inboxes. There the sidebar folds to
+// its icon rail on its own (desktop only; below lg it is the drawer), until it
+// is opened again, which holds for the session.
+const isDesktopViewport = useMediaQuery('(min-width: 1024px)');
+const foldsOnItsOwn = computed(
+	() => isDesktopViewport.value && route.path.startsWith('/dashboard/postbox')
+);
+const openedOnPostbox = useState('sidebar-opened-on-postbox', () => false);
+const isCollapsed = computed(() => {
+	if (activeSection.value) return false;
+	return preferredCollapsed.value || (foldsOnItsOwn.value && !openedOnPostbox.value);
+});
+function onToggleCollapse() {
+	if (!foldsOnItsOwn.value) return toggleCollapsed();
+	const opening = isCollapsed.value;
+	// Opening there also clears a saved "collapsed", so the rail actually opens.
+	if (opening && preferredCollapsed.value) toggleCollapsed();
+	openedOnPostbox.value = opening;
+}
 const showSectionNavigation = computed(() => !!activeSection.value && !showAppNavigation.value);
 const sectionNavigationTarget = ref<HTMLElement | null>(null);
 provide('section-navigation-target', sectionNavigationTarget);
@@ -82,9 +103,25 @@ onBeforeUnmount(() => removePageFinishHook?.());
 // Focus mode state for distraction-free editing. Answer mode (a reply being
 // written, `definePageMeta({ answerMode: true })`) takes the whole screen the
 // same way, so both hide the sidebar and the shell header through one flag.
+// Zen mode (useZenMode) is the app-wide version of the same: one task, no chrome.
 const { isFocusMode: isEditorFocusMode } = useFocusMode();
+const { isZen } = useZenMode();
 const isAnswerMode = computed(() => route.meta.answerMode === true);
-const isFocusMode = computed(() => isEditorFocusMode.value || isAnswerMode.value);
+const isFocusMode = computed(() => isEditorFocusMode.value || isAnswerMode.value || isZen.value);
+// Zen keeps one slim bar for its exit, except where the page is chrome-less on
+// its own terms and brings its own way out.
+const pageOwnsEscape = computed(() => isAnswerMode.value || isEditorFocusMode.value);
+const showZenBar = computed(() => isZen.value && !pageOwnsEscape.value);
+const shellChromeHeight = computed(() => {
+	if (!isFocusMode.value) return '4rem';
+	return showZenBar.value ? 'calc(2.75rem + env(safe-area-inset-top, 0px))' : '0px';
+});
+// Below lg the shell is taller: bar, breadcrumb strip, hairline and tab bar.
+const shellChromeMobileHeight = computed(() =>
+	isFocusMode.value
+		? `calc(${shellChromeHeight.value} + env(safe-area-inset-bottom, 0px))`
+		: 'calc(10.25rem + 1px + env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px))'
+);
 
 // Desktop runtime — gates the workspace switcher rail + native chrome.
 const { isDesktop, isMac, isWindows } = useDesktopContext();
@@ -405,7 +442,17 @@ const sidebarDesktopClass = computed(() => {
 </script>
 
 <template>
-	<div class="min-h-dvh bg-bg-base" :class="{ 'has-desktop-chrome': isDesktop }">
+	<div
+		class="min-h-dvh bg-bg-base"
+		:class="{ 'has-desktop-chrome': isDesktop }"
+		:style="{
+			'--shell-chrome-h': shellChromeHeight,
+			'--shell-chrome-mobile-h': shellChromeMobileHeight,
+		}"
+	>
+		<!-- --shell-chrome-h / --shell-chrome-mobile-h: the shell chrome around the
+		     page, for full-height pages that size against it (from lg / below
+		     lg). In Zen it is the slim bar, in a chrome-less page 0. -->
 		<!-- Skip link: first tab stop, visible only when focused -->
 		<a
 			href="#main-content"
@@ -557,26 +604,16 @@ const sidebarDesktopClass = computed(() => {
 				</div>
 			</nav>
 
-			<!-- Collapse toggle button: one preference, the same on every page. -->
-			<div v-if="!activeSection" class="hidden lg:flex px-2 py-1 border-t border-border-subtle">
-				<button
-					:class="[
-						'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full',
-						'text-text-secondary hover:text-text-primary hover:bg-bg-surface',
-						{ 'justify-center': isCollapsed },
-					]"
-					:title="sidebarToggleLabel"
-					@click="toggleCollapsed"
-				>
-					<Icon
-						:name="isCollapsed ? 'lucide:panel-left' : 'lucide:panel-left-close'"
-						class="w-5 h-5 text-text-tertiary"
-					/>
-					<span v-if="!isCollapsed">{{ sidebarToggleLabel }}</span>
-				</button>
-			</div>
-
-			<ShellSidebarFooter :collapsed="isCollapsed" />
+			<!-- Account, Settings and the collapse toggle share one row. The toggle
+			     is one saved preference, except in the Postbox, where the rail
+			     folds on its own and opening it holds for the session
+			     (`onToggleCollapse`); a section that lends its navigation to the
+			     rail keeps it expanded. -->
+			<ShellSidebarFooter
+				:collapsed="isCollapsed"
+				:collapse-label="activeSection ? null : sidebarToggleLabel"
+				@toggle-collapse="onToggleCollapse"
+			/>
 		</aside>
 
 		<!-- Main content area -->
@@ -590,6 +627,9 @@ const sidebarDesktopClass = computed(() => {
 				@open-search="openCommandPalette()"
 			/>
 
+			<!-- Zen mode's chord, its Esc and, in Zen, the slim bar with "Exit Zen". -->
+			<ShellZenExit :show-bar="showZenBar" :page-owns-escape="pageOwnsEscape" />
+
 			<!-- Page content. The floor is "fill what the chrome leaves", and below
 			     lg the chrome is taller than the 4rem bar: the mobile header also
 			     carries the 2.25rem breadcrumb strip and its hairline. Counting only
@@ -600,7 +640,7 @@ const sidebarDesktopClass = computed(() => {
 				tabindex="-1"
 				:class="
 					isFocusMode
-						? 'min-h-[calc(100dvh-var(--titlebar-h,0px))]'
+						? 'min-h-[calc(100dvh-var(--titlebar-h,0px)-var(--shell-chrome-h))]'
 						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-2.25rem-1px)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
 				"
 			>

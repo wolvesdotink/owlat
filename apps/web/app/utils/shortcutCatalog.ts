@@ -133,6 +133,16 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		groupKey: G.actions,
 		remappable: false,
 	},
+	{
+		// The same chord the email builder has always used for its focus mode;
+		// handled by ShellZenExit, outside the dispatcher, like ⌘\.
+		id: 'global.zen',
+		scope: 'global',
+		keys: ['mod+shift+F'],
+		labelKey: L('zenMode'),
+		groupKey: G.actions,
+		remappable: false,
+	},
 
 	// --- App-wide general -----------------------------------------------------
 	{

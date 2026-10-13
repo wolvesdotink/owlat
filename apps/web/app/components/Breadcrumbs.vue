@@ -1,11 +1,17 @@
 <script setup lang="ts">
+/**
+ * `hideShallow`: leave out a trail that is only the page itself (Home ›
+ * Workbench). The page's own heading already says where you are; the trail
+ * earns its row once there is somewhere to go back to.
+ */
+const props = defineProps<{ hideShallow?: boolean }>();
 const { t } = useI18n();
 const { breadcrumbs } = useBreadcrumbs();
 </script>
 
 <template>
 	<nav
-		v-if="breadcrumbs.length > 0"
+		v-if="breadcrumbs.length > (props.hideShallow ? 1 : 0)"
 		class="flex items-center gap-1 text-sm"
 		:aria-label="t('components.breadcrumbs.label')"
 	>

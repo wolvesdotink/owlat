@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 
 // Pane 1's responsive shell: a static column at lg+, an off-canvas drawer below
 // it (same pattern as the dashboard shell's mobile sidebar). The rail itself is
@@ -9,6 +10,8 @@ const props = defineProps<{
 	folderRole: string;
 	folderId?: Id<'mailFolders'>;
 	open: boolean;
+	/** Zen mode: no static column at lg+; below lg the drawer still opens. */
+	zen?: boolean;
 }>();
 
 const { t } = useI18n();
@@ -22,6 +25,11 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 // this needs its own viewport check rather than the shell's condition.)
 const isDesktopViewport = useMediaQuery('(min-width: 1024px)');
 const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
+// The open drawer is one layer of the shared Escape stack, above Zen mode.
+useEscapeLayer(
+	() => props.open,
+	() => emit('update:open', false)
+);
 </script>
 
 <template>
@@ -43,11 +51,12 @@ const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
 	<DashboardNavigationPortal :title="t('shell.dashboard.mailNavigation')" inline>
 		<div
 			class="fixed top-0 left-0 z-50 h-full flex transition-transform pt-[env(safe-area-inset-top)] lg:pt-0 lg:static lg:z-auto lg:h-auto lg:translate-x-0 lg:transition-none"
-			:class="
+			:class="[
 				open
 					? 'translate-x-0 duration-(--motion-moderate)'
-					: '-translate-x-full duration-(--motion-moderate-exit)'
-			"
+					: '-translate-x-full duration-(--motion-moderate-exit)',
+				zen && !open ? 'lg:hidden' : '',
+			]"
 			:inert="isOffCanvas ? true : undefined"
 		>
 			<!-- Below lg the rail IS the drawer: it was opened deliberately and there

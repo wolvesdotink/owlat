@@ -534,6 +534,8 @@ export function dashboardShellStubs(): Record<string, unknown> {
 				filedTotal: 0,
 			}),
 			isLoading: ref(false),
+			isStale: ref(false),
+			asOf: ref(null),
 			teamOn: ref(false),
 			markSeen: vi.fn(),
 			undoMarkSeen: vi.fn(),

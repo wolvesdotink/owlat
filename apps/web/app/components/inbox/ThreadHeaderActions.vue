@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
  * The Team inbox thread header's actions. Reply is the one primary action; the
- * rest sit beside it on wide screens and fold into one ⋯ menu below `sm`
+ * thread's state (assignee, snooze, status) and any chat channel already
+ * discussing it sit beside it on wide screens, while starting a new discussion
+ * waits in a ⋯ menu. Below `sm` everything but Reply folds into that one menu
  * instead of wrapping off the edge.
  *
  * The plain actions (discuss in chat, snooze / unsnooze) are described once in
@@ -43,7 +45,9 @@ const assignMenuOpen = ref(false);
 const statusMenuOpen = ref(false);
 const moreMenuOpen = ref(false);
 
-const assignedToMe = computed(() => !!props.currentUserId && props.assignedTo === props.currentUserId);
+const assignedToMe = computed(
+	() => !!props.currentUserId && props.assignedTo === props.currentUserId
+);
 function toggleAssignToMe() {
 	emit('assign', assignedToMe.value ? undefined : (props.currentUserId ?? undefined));
 }
@@ -83,6 +87,11 @@ const simpleActions = computed<SimpleAction[]>(() => {
 	return actions;
 });
 
+/** Wide screens: the channel links stay in view; the rest waits in ⋯. */
+const inlineActions = computed(() => simpleActions.value.filter((action) => action.to));
+const overflowActions = computed(() => simpleActions.value.filter((action) => !action.to));
+const wideMenuOpen = ref(false);
+
 const snoozeAction = computed<SimpleAction>(() =>
 	props.isSnoozed
 		? {
@@ -115,21 +124,16 @@ const snoozeAction = computed<SimpleAction>(() =>
 		</UiButton>
 
 		<div class="hidden sm:flex items-center gap-2">
-			<template v-for="action in simpleActions" :key="action.key">
-				<NuxtLink
-					v-if="action.to"
-					:to="action.to"
-					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-text-primary hover:bg-brand-subtle/70 transition-colors"
-					:title="action.title"
-				>
-					<Icon :name="action.icon" class="w-3.5 h-3.5 text-brand" />
-					{{ action.label }}
-				</NuxtLink>
-				<UiButton v-else variant="outline" size="sm" @click="action.run">
-					<template #iconLeft><Icon :name="action.icon" class="w-3.5 h-3.5" /></template>
-					{{ action.label }}
-				</UiButton>
-			</template>
+			<NuxtLink
+				v-for="action in inlineActions"
+				:key="action.key"
+				:to="action.to!"
+				class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-text-primary hover:bg-brand-subtle/70 transition-colors"
+				:title="action.title"
+			>
+				<Icon :name="action.icon" class="w-3.5 h-3.5 text-brand" />
+				{{ action.label }}
+			</NuxtLink>
 			<!-- Assignee picker — avatar popover (Me / members / Unassign). `open`
 			     is a controlled prop: without the binding the popover never opens. -->
 			<InboxAssignPopover
@@ -199,7 +203,33 @@ const snoozeAction = computed<SimpleAction>(() =>
 					@click="emit('status', s)"
 				>
 					<span class="flex-1 truncate">{{ t(`dashboard.inbox.detail.statuses.${s}`) }}</span>
-					<Icon v-if="s === currentStatus" name="lucide:check" class="w-4 h-4 text-brand shrink-0" />
+					<Icon
+						v-if="s === currentStatus"
+						name="lucide:check"
+						class="w-4 h-4 text-brand shrink-0"
+					/>
+				</UiDropdownMenuItem>
+			</UiDropdownMenu>
+			<UiDropdownMenu
+				v-if="overflowActions.length > 0"
+				v-model:open="wideMenuOpen"
+				position="right"
+			>
+				<template #trigger>
+					<UiButton
+						variant="ghost"
+						size="sm"
+						type="button"
+						class="w-8 px-0"
+						data-testid="thread-more-wide"
+						:aria-label="t('dashboard.inbox.detail.moreActions')"
+					>
+						<Icon name="lucide:ellipsis" class="w-4 h-4" />
+					</UiButton>
+				</template>
+				<UiDropdownMenuItem v-for="action in overflowActions" :key="action.key" @click="action.run">
+					<Icon :name="action.icon" class="w-4 h-4 shrink-0" />
+					<span class="flex-1 truncate">{{ action.label }}</span>
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
 		</div>

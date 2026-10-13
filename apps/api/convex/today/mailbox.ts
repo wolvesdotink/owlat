@@ -295,6 +295,10 @@ export const digest = publicQuery({
 
 		return {
 			mailboxId: args.mailboxId,
+			// The server time this snapshot was read at. A client marking the
+			// Workbench seen as of "what was on screen" passes it back as `at`,
+			// so nothing newer counts as seen, whatever the browser's clock says.
+			generatedAt: now,
 			newMail: newMail.count,
 			isNewMailCapped: newMail.isCapped,
 			changed,

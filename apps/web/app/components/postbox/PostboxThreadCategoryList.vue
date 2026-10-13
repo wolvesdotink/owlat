@@ -60,6 +60,19 @@ const listSections = computed<PostboxThreadListSection<CategoryThread>[]>(() =>
 	}))
 );
 
+// What a row opens, in row order, skipping collapsed sections: previous/next
+// in Zen walk this.
+const visibleIds = computed(() =>
+	props.sections
+		.filter((section) => !props.collapsed[section.key])
+		.flatMap((section) =>
+			section.threads.flatMap((thread) =>
+				thread.latestMessageId ? [String(thread.latestMessageId)] : []
+			)
+		)
+);
+defineExpose({ visibleIds });
+
 // "Recategorize as…" picker — driven per row.
 const recategorizeTarget = ref<string | null>(null);
 function pickCategory(label: MailCategory) {

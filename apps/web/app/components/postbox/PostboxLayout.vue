@@ -44,6 +44,8 @@ const {
 	setSortOrder,
 } = usePostboxSettings();
 
+// Zen: no rail, and the reader alone once a message is open (saved prefs untouched).
+const zen = usePostboxZen(readingPane);
 const {
 	geometry,
 	listPaneBorder,
@@ -54,7 +56,7 @@ const {
 	commitListSize,
 	paneStyle,
 } = usePostboxReadingPane({
-	readingPane,
+	readingPane: zen.readingPane,
 	listWidth,
 	listHeight,
 	setListSize,
@@ -234,25 +236,25 @@ const activeMessage = activeRead.message;
 
 // Auto-advance context for the reader: the flat list's visual row order
 // (optimistic-hide filtered, via the template ref below). In every grouped
-// renderer the flat order doesn't match what's on screen, so an empty list
-// makes every triage fall back to back-to-list there.
+// renderer triage falls back to back-to-list (an empty list) instead.
 const threadListRef = ref<{ visibleIds: string[] } | null>(null);
 const advanceIds = computed(() =>
 	grouped.value
 		? []
 		: // The raw-messages fallback only applies while the list component is
-			// unmounted (e.g. the search overlay covers it); it skips the
-			// optimistic-hide filter, but any hidden row is mid-mutation and about
-			// to leave `messages` anyway, so the order is at worst one row stale.
+			// unmounted (e.g. the search overlay covers it); a hidden row is
+			// mid-mutation and about to leave `messages`, so at worst one row stale.
 			(threadListRef.value?.visibleIds ?? messages.value.map((m) => m._id))
 );
+// Previous/next in Zen: whichever renderer is on screen, in its own row order.
+const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.value);
 </script>
 
 <template>
 	<div
 		class="flex w-full min-w-0"
 		:data-density="density"
-		:data-reading-pane="readingPane"
+		:data-reading-pane="zen.readingPane.value"
 		:style="paneStyle"
 	>
 		<!-- Pane 1: folder rail — collapsible icon strip; self-contained (search,
@@ -262,6 +264,7 @@ const advanceIds = computed(() =>
 		     reach in both Priority and All mail. -->
 		<PostboxFolderDrawer
 			v-model:open="railOpen"
+			:zen="zen.isZen.value"
 			:mailbox-id="mailboxId"
 			:folder-role="folderRole"
 			:folder-id="folderId"
@@ -284,7 +287,7 @@ const advanceIds = computed(() =>
 			<!-- The list + reader split. Its own flex container so the reading
 			     pane can flip it to a column ('bottom') without taking the folder
 			     rail with it. -->
-			<div v-else class="flex w-full min-w-0">
+			<div v-else class="flex w-full min-w-0" :class="{ 'mx-auto max-w-4xl': zen.isZen.value }">
 				<div class="pbx-pane-split flex flex-1 min-w-0 min-h-0">
 					<!-- Pane 2: thread/message list — the whole width below lg, and hidden
 			     entirely once a message is open (the reader takes over). Its lg
@@ -303,6 +306,7 @@ const advanceIds = computed(() =>
 							:queued-count="queuedSendCount"
 							:failed-count="failedSendCount"
 							:cached-at="cachedAt"
+							:rail-on-screen="zen.railOnScreen.value"
 							@retry="() => void retryQueuedSends()"
 						/>
 						<PostboxListHeader
@@ -365,6 +369,7 @@ const advanceIds = computed(() =>
 										<UiQueryBoundary v-if="listError" :error="listError" @retry="retryList" />
 										<PostboxThreadCategoryList
 											v-else-if="categoriesEnabled"
+											ref="threadListRef"
 											:sections="categories.sections.value"
 											:collapsed="categories.collapsed.value"
 											:loading="categories.isLoading.value"
@@ -377,6 +382,7 @@ const advanceIds = computed(() =>
 										/>
 										<PostboxThreadGroupList
 											v-else-if="conversationsEnabled"
+											ref="threadListRef"
 											:threads="conversations.threads.value"
 											:loading="conversations.isLoading.value"
 											:folder-role="folderRole"
@@ -386,6 +392,7 @@ const advanceIds = computed(() =>
 										/>
 										<PostboxThreadBundleList
 											v-else-if="bundlesEnabled"
+											ref="threadListRef"
 											:entries="bundles.entries.value"
 											:expanded="bundles.expanded.value"
 											:loading="isLoading && !showingCached"
@@ -402,6 +409,7 @@ const advanceIds = computed(() =>
 										/>
 										<PostboxThreadSectionList
 											v-else-if="sectionsEnabled"
+											ref="threadListRef"
 											:sections="sections.sections.value"
 											:collapsed="sections.collapsed.value"
 											:loading="sections.isLoading.value"
@@ -451,18 +459,16 @@ const advanceIds = computed(() =>
 						class="pbx-pane-reader @container flex-1 min-w-0 min-h-0 overflow-auto bg-bg-base"
 						:class="readerPaneVisibility"
 					>
-						<!-- Drill-in back navigation (mobile only; on lg the list is still
-					     on screen beside the reader). py-3 puts the full-width bar past
-					     the 44px touch target — it is the only way out of the reader. -->
-						<button
+						<!-- Drill-in back (mobile; and in Zen, with previous/next). -->
+						<PostboxReaderBackBar
 							v-if="activeMessageId"
-							type="button"
-							class="lg:hidden sticky top-0 z-10 w-full flex items-center gap-1.5 border-b border-border-subtle bg-bg-base px-3 py-3 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-							@click="backToList"
-						>
-							<Icon name="lucide:arrow-left" class="w-4 h-4" />
-							<span class="capitalize truncate">{{ currentFolderName }}</span>
-						</button>
+							:folder-name="currentFolderName"
+							:folder-path="String(folderId ?? folderRole)"
+							:active-message-id="activeMessageId"
+							:ordered-ids="stepIds"
+							:zen="zen.isZen.value"
+							@back="backToList"
+						/>
 
 						<!-- Keyed, enter-only swap (postbox-motion.css): the next thread
 						     mounts in the same frame the previous one goes. -->

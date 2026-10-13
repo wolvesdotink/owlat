@@ -198,7 +198,8 @@ interface AuditedPage {
 const LIST_SCAFFOLD = { ListPageShell, ListSortMenu };
 
 const pages: readonly AuditedPage[] = [
-	{ name: 'dashboard home', component: DashboardHome, loaded: 'One workbench per inbox' },
+	// The greeting follows the clock (morning, afternoon, evening); all start "Good".
+	{ name: 'dashboard home', component: DashboardHome, loaded: 'Good ' },
 	{
 		name: 'campaigns list',
 		component: CampaignsIndex,

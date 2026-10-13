@@ -172,7 +172,7 @@ watch(target, async (value, previous) => {
 			tabindex="-1"
 			role="dialog"
 			:aria-label="view?.subject || t('components.today.peek.label')"
-			class="fixed bottom-0 right-0 top-[calc(var(--titlebar-h,0px)+4rem)] z-30 flex w-full max-w-md flex-col border-l border-border-subtle bg-bg-elevated shadow-(--shadow-6) outline-none"
+			class="fixed bottom-0 right-0 top-[calc(var(--titlebar-h,0px)+var(--shell-chrome-h,4rem))] z-30 flex w-full max-w-md flex-col border-l border-border-subtle bg-bg-elevated shadow-(--shadow-6) outline-none"
 		>
 			<header
 				class="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5 text-xs text-text-tertiary"

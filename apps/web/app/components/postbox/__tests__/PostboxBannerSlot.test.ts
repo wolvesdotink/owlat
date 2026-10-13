@@ -47,7 +47,10 @@ const stubs = {
 	PostboxOfflineBanners: { props: ['isOffline'], template: '<div class="offline" />' },
 	PostboxAnswerDraftBar: { template: '<div class="draft" />' },
 	PostboxSealedMailNudge: { template: '<div class="sealed" />' },
-	PostboxReplyQueueStrip: { props: ['mailboxId', 'folderRole'], template: '<div class="queue" />' },
+	PostboxReplyQueueStrip: {
+		props: ['mailboxId', 'folderRole', 'railOnScreen'],
+		template: '<div class="queue" />',
+	},
 };
 
 function mountSlot(props: Record<string, unknown> = {}) {
@@ -58,6 +61,7 @@ function mountSlot(props: Record<string, unknown> = {}) {
 			isOffline: false,
 			queuedCount: 0,
 			failedCount: 0,
+			railOnScreen: false,
 			...props,
 		},
 		global: { plugins: [createTestI18n()], stubs },
@@ -100,6 +104,13 @@ describe('PostboxBannerSlot', () => {
 		hasSeenSealedNudge.value = true;
 		replyQueueCount.value = 2;
 		expect(shown(mountSlot())).toEqual(['queue']);
+	});
+
+	it('leaves the reply queue to the folder rail while the rail is on screen', () => {
+		hasSeenSealedNudge.value = true;
+		replyQueueCount.value = 2;
+		// The rail's Answer queue row already shows the same count.
+		expect(shown(mountSlot({ railOnScreen: true }))).toEqual([]);
 	});
 
 	it('renders nothing when no strip has anything to say', () => {

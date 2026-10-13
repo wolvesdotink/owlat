@@ -1,8 +1,16 @@
 <script setup lang="ts">
+import { formatChord } from '~/utils/shortcutRegistry';
+import { useZenMode } from '~/composables/useZenMode';
+
 defineProps<{ isDesktop: boolean; navigationOpen?: boolean; navigationHidden?: boolean }>();
 const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
 
 const { t } = useI18n();
+const { enterZen } = useZenMode();
+const { platform } = useDesktopContext();
+const zenChord = computed(() =>
+	formatChord('mod+shift+F', import.meta.client && platform.value === 'mac').join('+')
+);
 </script>
 
 <template>
@@ -19,12 +27,22 @@ const { t } = useI18n();
 			<Icon name="lucide:panel-left" class="size-4" />
 		</button>
 		<div class="flex-1 min-w-0 mr-4">
-			<Breadcrumbs />
+			<Breadcrumbs hide-shallow />
 		</div>
-		<div class="flex items-center gap-3 flex-shrink-0">
+		<div class="flex items-center gap-2 flex-shrink-0">
 			<!-- The create action, persistent: one click from every page. -->
 			<DashboardQuickCreateMenu />
 			<GlobalSearch v-if="!isDesktop" />
+			<button
+				type="button"
+				data-testid="zen-enter"
+				class="flex size-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+				:title="`${t('components.shell.zen.enter')} (${zenChord})`"
+				:aria-label="t('components.shell.zen.enter')"
+				@click="enterZen"
+			>
+				<Icon name="lucide:maximize-2" class="size-4" />
+			</button>
 		</div>
 	</header>
 
@@ -49,13 +67,22 @@ const { t } = useI18n();
 				</NuxtLink>
 			</div>
 
-			<button
-				class="p-2 rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-				:aria-label="t('common.search')"
-				@click="emit('openSearch')"
-			>
-				<Icon name="lucide:search" class="w-5 h-5" />
-			</button>
+			<div class="flex items-center">
+				<button
+					class="p-2 rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					:aria-label="t('common.search')"
+					@click="emit('openSearch')"
+				>
+					<Icon name="lucide:search" class="w-5 h-5" />
+				</button>
+				<button
+					class="p-2 rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					:aria-label="t('components.shell.zen.enter')"
+					@click="enterZen"
+				>
+					<Icon name="lucide:maximize-2" class="w-5 h-5" />
+				</button>
+			</div>
 		</div>
 		<!-- A stated height, not padding around a variable trail: the mobile
 		     chrome is 4rem of bar + 2.25rem of crumbs, and the full-height panes
