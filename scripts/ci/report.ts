@@ -1,8 +1,11 @@
 import { github, githubPages, repository } from './github';
 import { distribution, jobMetrics, type JobTiming } from './metrics';
 const repo = repository();
+const runLimit = Number(process.env['CI_REPORT_RUNS'] ?? 100);
+if (!Number.isInteger(runLimit) || runLimit < 1 || runLimit > 100)
+	throw new Error('CI_REPORT_RUNS must be 1–100');
 const workflows = [
-	['test.yml', 100],
+	['test.yml', runLimit],
 	['release.yml', 10],
 	['desktop-release.yml', 5],
 	['server-release.yml', 5],
