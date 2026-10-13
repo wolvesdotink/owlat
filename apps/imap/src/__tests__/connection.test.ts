@@ -1035,6 +1035,41 @@ describe('ImapConnection — LOGIN literal continuation (RFC 3501 §4.3 / RFC 78
 		expect(socket.lines()).not.toContain('z2 OK NOOP completed');
 	});
 
+	it('counts zero-length {0+} literals against the pre-auth count ceiling', async () => {
+		const { socket, convex } = makeMocks();
+		socket.written.length = 0;
+		convex.action.mockResolvedValue(null);
+
+		// Zero-length literals carry no octets, so they must be counted when
+		// declared; otherwise they never reach any ceiling.
+		socket.receive(`z LOGIN ${'{0+}\r\n'.repeat(100)}x\r\n`);
+		for (let i = 0; i < 8; i += 1) await Promise.resolve();
+
+		expect(socket.written.join('')).toContain('* BYE Command too large');
+		expect(socket.ended).toBe(true);
+		expect(convex.action).not.toHaveBeenCalled();
+	});
+
+	it('counts zero-length {0+} literals against the authenticated count ceiling', async () => {
+		const { socket, convex } = makeMocks();
+		convex.action.mockResolvedValue({
+			mailboxId: 'mb1',
+			appPasswordId: 'ap1',
+			userId: 'u1',
+			organizationId: 'org1',
+		});
+		await execMulti(socket, 'a LOGIN "alice@test" "good"');
+		socket.written.length = 0;
+
+		// ~12 KB in total, far under the post-auth byte budget: only the
+		// literal count can stop it.
+		expect(() => socket.receive(`b NOOP ${'x{0+}\r\n'.repeat(2000)}x\r\n`)).not.toThrow();
+		for (let i = 0; i < 8; i += 1) await Promise.resolve();
+
+		expect(socket.written.join('')).toContain('* BYE Command too large');
+		expect(socket.ended).toBe(true);
+	});
+
 	it('rejects chained individually legal pre-auth literals once the command budget is spent', async () => {
 		const { socket, convex } = makeMocks();
 		socket.written.length = 0;
@@ -1112,6 +1147,21 @@ describe('ImapConnection — command line ceiling', () => {
 
 		expect(socket.written.join('')).toContain('* BYE Command line too long');
 		expect(socket.ended).toBe(true);
+	});
+
+	it('accepts a line of exactly the ceiling whose CRLF is split across chunks', async () => {
+		const { socket } = makeMocks(true, { maxLineBytes });
+		socket.written.length = 0;
+
+		const line = `a NOOP ${'x'.repeat(maxLineBytes - 'a NOOP '.length)}`;
+		expect(Buffer.byteLength(line)).toBe(maxLineBytes);
+		socket.receive(`${line}\r`);
+		expect(socket.ended).toBe(false);
+		socket.receive('\n');
+		await Promise.resolve();
+
+		expect(socket.lines()).toContain('a OK NOOP completed');
+		expect(socket.ended).toBe(false);
 	});
 
 	it('measures the line in wire octets, not decoded characters', () => {
