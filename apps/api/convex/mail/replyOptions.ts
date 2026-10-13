@@ -32,6 +32,7 @@ import { createThrottledStreamFlusher } from '../lib/llm/streamFlusher';
 import type { TokenUsage } from '../agent/steps/types';
 import { admissionRefusalOf } from '../lib/llm/admissionPort';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
+import { authoredGapLabels } from '../agent/shared/draftGaps';
 
 /** Hard cap on how many reply variants we ever surface. */
 export const MAX_REPLY_OPTIONS = 3;
@@ -84,7 +85,9 @@ function unquote(text: string): string {
  * preamble) is dropped; text with no markers at all counts as ONE reply rather
  * than being guessed apart. With `partial`, the half-written start of the next
  * marker is trimmed off the last option so "…today.\n2" never flashes up.
- * Capped at {@link MAX_REPLY_OPTIONS}; empty options are skipped.
+ * Capped at {@link MAX_REPLY_OPTIONS}; empty options are skipped, and so is
+ * one that leaves a fact open (a `[[...]]` gap or a reviewer note): a
+ * suggestion is put in as it is, so it never carries a gap nobody asked about.
  */
 export function parseReplyOptionsText(raw: string, opts: { partial?: boolean } = {}): string[] {
 	let text = raw.replace(/\r/g, '');
@@ -100,7 +103,7 @@ export function parseReplyOptionsText(raw: string, opts: { partial?: boolean } =
 				});
 	return bodies
 		.map(unquote)
-		.filter((r) => r.length > 0)
+		.filter((r) => r.length > 0 && authoredGapLabels(r).length === 0)
 		.slice(0, MAX_REPLY_OPTIONS);
 }
 

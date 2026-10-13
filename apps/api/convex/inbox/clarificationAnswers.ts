@@ -171,11 +171,24 @@ function openGapFor(text: string, fallback: string): string {
 	return formatDraftGap(safe ? label : fallback);
 }
 
+/**
+ * Whether a question has an answer a draft can use: a value that is not blank,
+ * or a file. An answer object alone is not enough, since an empty string would
+ * otherwise count as answered and leave the fact for the model to guess.
+ */
+export function hasUsableAnswer(question: {
+	answer?: { value: string; file?: unknown; files?: readonly unknown[] | undefined } | undefined;
+}): boolean {
+	const answer = question.answer;
+	if (!answer) return false;
+	return answer.value.trim().length > 0 || !!answer.file || (answer.files?.length ?? 0) > 0;
+}
+
 type OpenGapQuestion = {
 	slotType: string;
 	text: string;
 	answerKind?: AskAnswerKind | undefined;
-	answer?: unknown;
+	answer?: { value: string; file?: unknown; files?: readonly unknown[] | undefined } | undefined;
 };
 
 /**
@@ -186,7 +199,7 @@ type OpenGapQuestion = {
  */
 export function openFileGaps(questions: ReadonlyArray<OpenGapQuestion>): string[] {
 	return questions
-		.filter((q) => isFileQuestion(q) && q.answer === undefined)
+		.filter((q) => isFileQuestion(q) && !hasUsableAnswer(q))
 		.map((q) => openGapFor(q.text, 'attach the requested files'));
 }
 
@@ -199,7 +212,7 @@ export function openFileGaps(questions: ReadonlyArray<OpenGapQuestion>): string[
  */
 export function openQuestionGaps(questions: ReadonlyArray<OpenGapQuestion>): string[] {
 	return questions
-		.filter((q) => !isFileQuestion(q) && q.answer === undefined)
+		.filter((q) => !isFileQuestion(q) && !hasUsableAnswer(q))
 		.map((q) => openGapFor(q.text, 'add the missing detail'));
 }
 

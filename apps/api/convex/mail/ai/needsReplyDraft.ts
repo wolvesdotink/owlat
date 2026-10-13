@@ -13,6 +13,10 @@
  * fact from the sender's contact knowledge instead of inventing it. Only the
  * body lands on the card (`clarification.draft`); the quality score and any
  * alternative drafts are not stored there.
+ *
+ * Unless the owner chose "Draft with what I have", a draft that still has
+ * gaps is not stored: each gap becomes a new question on the card
+ * (mail/ai/gapQuestions.ts), and answering it writes the draft again.
  */
 
 import type { Id } from '../../_generated/dataModel';
@@ -39,6 +43,8 @@ import {
 	joinConfirmedBlocks,
 } from '../../inbox/clarificationAnswers';
 import { fitGapPlaceholders } from './composeDraftPolicy';
+import { gapQuestionsFor } from './gapQuestions';
+import { localizeReplyQueueQuestions } from './needsReplyRefine';
 import {
 	measureDraftDelta,
 	predictedAskValue,
@@ -81,7 +87,9 @@ export async function draftClarificationReply(
 		const context = await ctx.runQuery(internal.mail.ai.needsReplyClarify.getClarificationContext, {
 			threadId: args.threadId,
 		});
-		if (!context || context.answers.length === 0) return;
+		if (!context) return;
+		// Nothing answered: only "Draft with what I have" drafts all of it as gaps.
+		if (context.answers.length === 0 && !context.isGapsAccepted) return;
 
 		// Personalize to the owner's learned voice (opt-in, fail-soft). No access
 		// check: a scheduled internal action for the flagged thread's own mailbox.
@@ -140,9 +148,28 @@ export async function draftClarificationReply(
 			MAX_CLARIFICATION_DRAFT_CHARS
 		);
 
-		await ctx.runMutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
+		const guard = {
 			threadId: args.threadId,
 			expectedLatestMessageId: context.latestMessageId,
+			expectedAnsweredAt: context.answeredAt,
+		};
+		// Gaps the owner did not agree to: ask about them, store nothing.
+		const gapQuestions = context.isGapsAccepted
+			? []
+			: gapQuestionsFor(body, {
+					fromAddress: context.senderAddress,
+					existing: context.questionIds.map((id) => ({ id })),
+				});
+		if (gapQuestions.length > 0) {
+			await ctx.runMutation(internal.mail.ai.needsReplyClarify.askAboutDraftGaps, {
+				...guard,
+				questions: await localizeReplyQueueQuestions(ctx, gapQuestions, root),
+			});
+			return;
+		}
+
+		await ctx.runMutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
+			...guard,
 			draft,
 		});
 

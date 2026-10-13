@@ -12,7 +12,7 @@
  * Pure (no ctx, no 'use node').
  */
 
-import { formatDraftGap, hasDraftGaps } from '@owlat/shared/answerMode';
+import { findDraftGaps, formatDraftGap, hasDraftGaps } from '@owlat/shared/answerMode';
 import { htmlToPlainText } from '@owlat/shared/html';
 import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
 
@@ -114,4 +114,24 @@ export function authoredDraftHasGaps({ html, text }: DraftBody): boolean {
 		? htmlToPlainText(splitQuotedHtml(html).fresh)
 		: splitQuotedText(text ?? '').fresh;
 	return hasDraftGaps(authored);
+}
+
+/**
+ * The missing facts a freshly written draft leaves open: the label of every
+ * placeholder in its authored part, reviewer notes included (they are counted
+ * as placeholders first, the same way {@link markReviewerNotes} stores them),
+ * each once. A draft with any of these is not shown until the owner answers
+ * them or chooses to draft with what they have (mail/ai/gapQuestions.ts).
+ */
+export function authoredGapLabels(text: string): string[] {
+	const fresh = splitQuotedText(markReviewerNotes(text)).fresh;
+	const seen = new Set<string>();
+	const labels: string[] = [];
+	for (const { label } of findDraftGaps(fresh)) {
+		const key = label.toLocaleLowerCase();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		labels.push(label);
+	}
+	return labels;
 }

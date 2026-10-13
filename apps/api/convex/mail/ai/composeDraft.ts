@@ -9,8 +9,13 @@
  *   answer  record the owner's answers (text, chips, dates, numbers, files),
  *           remember them per contact, attach file answers, and either open
  *           round 2 ("It isn't ready yet" → "When can you send it?") or write
- *           the draft. `skip: true` drafts at once with `[[...]]` placeholders
- *           for whatever is still open.
+ *           the draft. Without `skip` every question needs an answer;
+ *           `skip: true` ("Draft with what I have") drafts at once with
+ *           `[[...]]` placeholders for whatever is still open.
+ *
+ * Gaps only with the owner's say-so: a draft written without `skip` (or with
+ * asking turned off) that still has gaps is not shown; its gaps are asked as
+ * questions (mail/ai/composeDraftWrite.ts, mail/ai/gapQuestions.ts).
  *
  * A target is a Postbox draft (`mailDraft`) or a team conversation
  * (`teamThread`). For a draft, file answers are attached to the draft itself;
@@ -52,6 +57,7 @@ import {
 	canonicalAnswerValue,
 	formatGapFor,
 	isNotReadyAnswer,
+	leavesQuestionsOpen,
 	type AskFileRef,
 	type AskQuestion,
 } from './composeDraftPolicy';
@@ -195,7 +201,9 @@ async function releaseSession(
 async function draftNow(
 	ctx: ActionCtx,
 	session: Doc<'answerAskSessions'>,
-	context: AnswerDraftContext
+	context: AnswerDraftContext,
+	/** The owner agreed to gaps ("Draft with what I have", or asking off). */
+	allowGaps: boolean
 ): Promise<AskSessionView> {
 	const now = Date.now();
 	const followUp = followUpFor(
@@ -233,6 +241,9 @@ async function draftNow(
 		instruction: session.instruction,
 		timeZone: session.timeZone,
 		...(plan ? { responsePlan: plan } : {}),
+		allowGaps,
+		counterpartAddress: session.counterpartAddress,
+		locale: session.locale,
 	});
 	const settled = await ctx.runQuery(internal.mail.ai.composeDraftStore.getOwnSession, {
 		sessionId: session._id,
@@ -323,7 +334,8 @@ export const start = authedAction({
 		});
 		if (isAsking) return toAskSessionView(session);
 		try {
-			return await draftNow(ctx, session, context);
+			// Asking turned off is the owner's standing "draft with what I have".
+			return await draftNow(ctx, session, context, !gap.mayAsk);
 		} catch (err) {
 			// Before its stream settles the session would stay busy for good.
 			await releaseSession(ctx, session._id, 'error');
@@ -423,6 +435,9 @@ export const answer = authedAction({
 			sessionId: args.sessionId,
 		});
 		if (session.status !== 'asking') throwAskSessionClaimed();
+		if (args.skip !== true && leavesQuestionsOpen(session.questions, args.answers)) {
+			throwInvalidInput('Answer every question, or draft with what you have');
+		}
 		// Claim the session before anything is attached: a second call racing
 		// this one (a double tap, a retry after a slow first call) is refused
 		// here instead of attaching the same file again and opening a second
@@ -477,5 +492,5 @@ async function answerClaimed(
 	if (opensRoundTwo) return toAskSessionView(updated);
 	// The context `start` built; rebuilt only for a session that has none.
 	const context = updated.draftContext ?? (await loadAnswerContext(ctx, session.target));
-	return await draftNow(ctx, updated, context);
+	return await draftNow(ctx, updated, context, args.skip === true);
 }

@@ -146,6 +146,9 @@ function write(ctx: Parameters<typeof writeAnswerDraft>[0]) {
 		voiceSection: '',
 		questions: [],
 		attachedFiles: [],
+		// These cases cover the streamed draft ("Draft with what I have").
+		allowGaps: true,
+		locale: 'en',
 	});
 }
 
@@ -478,6 +481,9 @@ describe('writeAnswerDraft on the shared draft service (parity)', () => {
 		voiceSection: '',
 		questions: [],
 		attachedFiles: [],
+		// These cases cover the streamed draft ("Draft with what I have").
+		allowGaps: true,
+		locale: 'en',
 	};
 
 	it('refuses a context that reads as an injection before any model call, as before', async () => {

@@ -10,6 +10,7 @@
  *   - AI disabled (assertAiAllowed throws)  → no slot persisted.
  *   - No live needs-reply thread (loader null) → no slot persisted.
  *   - LLM generation error → no slot persisted (thread still shows for reply).
+ *   - A draft with a gap → no slot; its gaps become the thread's questions.
  *   - Happy path → exactly one persistDraftSlot with the quality score as
  *     confidence, after two model calls (the draft and its self-check) and no
  *     alternative-drafts call (#1200). NEVER auto-sends (there is no send call
@@ -43,7 +44,6 @@ vi.mock('../../lib/llmProvider', () => ({
 	classifiedDraftRouteOf: () => 'capable',
 }));
 
-import { findDraftGaps } from '@owlat/shared/answerMode';
 import { generateDraftOnArrival } from '../ai/draftOnArrival';
 import { ledgerRows } from '../../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
@@ -59,9 +59,7 @@ function makeLoaded(over: Record<string, unknown> = {}) {
 		latestMessageId: 'msg1',
 		urgency: 'normal',
 		isBulk: false,
-		clarificationQuestions: undefined,
-		fileGaps: [],
-		questionGaps: [],
+		senderAddress: 'sam@acme.test',
 		...over,
 	};
 }
@@ -73,9 +71,14 @@ function makeLoaded(over: Record<string, unknown> = {}) {
  */
 function makeCtx(opts: { aiOff?: boolean; loaded: unknown }) {
 	const persisted: Persisted[] = [];
+	const held: unknown[] = [];
 	const runMutation = vi.fn(async (_ref: unknown, params: Record<string, unknown>) => {
 		if (params && 'draft' in params) {
 			persisted.push(params as unknown as Persisted);
+			return;
+		}
+		if (params && 'questions' in params) {
+			held.push(params);
 			return;
 		}
 		if (params && 'mailboxId' in params) return { guidance: null };
@@ -87,7 +90,7 @@ function makeCtx(opts: { aiOff?: boolean; loaded: unknown }) {
 		const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 		return name.includes('resolveForDraft') ? 'default' : opts.loaded;
 	});
-	return { ctx: { runMutation, runQuery } as never, persisted, runMutation, runQuery };
+	return { ctx: { runMutation, runQuery } as never, persisted, held, runMutation, runQuery };
 }
 
 beforeEach(() => {
@@ -167,26 +170,31 @@ describe('generateDraftOnArrival', () => {
 		});
 	});
 
-	it('leaves a placeholder for an open clarification question, even when the model drops it', async () => {
-		const gap = '[[Which delivery date works for you]]';
-		const h = makeCtx({ loaded: makeLoaded({ questionGaps: [gap] }) });
+	it('stores no draft with a gap of its own: each gap becomes a question for the owner', async () => {
+		runLlmTextMock.mockResolvedValueOnce({
+			text: 'Hi Sam,\n\nFriday works. The total is [[invoice total]].\n\nBest',
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 
-		// The drafter is told about the open question, with its placeholder.
-		const call = runLlmTextMock.mock.calls[0]![0] as { messages: { content: unknown }[] };
-		const user = String(call.messages[call.messages.length - 1]!.content);
-		expect(user).toContain('has not answered these questions yet');
-		expect(user).toContain(gap);
-		// The model dropped it; the stored draft still carries it.
-		const slot = h.persisted[0]!;
-		expect(slot.draft).toBe(`PERSONAL DRAFT BODY\n\n${gap}`);
-		expect(findDraftGaps(slot.draft).map((g) => g.label)).toEqual([
-			'Which delivery date works for you',
-		]);
-		expect(slot.options).toBeUndefined();
+		expect(h.persisted).toHaveLength(0);
+		expect(h.held).toHaveLength(1);
+		expect(h.held[0]).toMatchObject({
+			threadId: 'thr1',
+			triggerMessageId: 'msg1',
+			questions: [
+				expect.objectContaining({
+					id: 'gap_0',
+					text: 'invoice total',
+					origin: { kind: 'email', senderDomain: 'acme.test' },
+				}),
+			],
+		});
 	});
 
-	it('stores a reviewer note the model wrote as a gap the send guard counts', async () => {
+	it('counts a reviewer note the model wrote as a gap, so it is asked too', async () => {
 		runLlmTextMock.mockResolvedValueOnce({
 			text: 'Hallo Sam,\n\n[Bitte prüfen: x]\n\nViele Grüße',
 			tokenUsage: undefined,
@@ -195,9 +203,9 @@ describe('generateDraftOnArrival', () => {
 		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 
-		const slot = h.persisted[0]!;
-		expect(slot.draft).toBe('Hallo Sam,\n\n[[Bitte prüfen: x]]\n\nViele Grüße');
-		expect(findDraftGaps(slot.draft).map((g) => g.label)).toEqual(['Bitte prüfen: x']);
+		expect(h.persisted).toHaveLength(0);
+		const questions = (h.held[0] as { questions: { text: string }[] }).questions;
+		expect(questions.map((q) => q.text)).toEqual(['Bitte prüfen: x']);
 	});
 
 	it('FAIL-SOFT: LLM generation error → no slot persisted (thread still shows for reply)', async () => {

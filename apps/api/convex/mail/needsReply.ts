@@ -38,6 +38,7 @@ import { needsReplyTriggerOf } from './needsReplyTrigger';
 import { QUEUE_LIMIT, scanReplyQueue } from './needsReplyQueueScan';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
+import { visibleDraftSlot } from './needsReplySlot';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
@@ -297,10 +298,12 @@ export const applyResult = internalMutation({
 		// model then rejected (and a second draft for every real one once the
 		// model agreed). A heuristic flag that outlives a failed model call stays
 		// in the queue for a human, without a draft; one whose run died before the
-		// model answered stays pending and is classified again by the sweep.
+		// model answered stays pending and is classified again by the sweep. A
+		// verdict with questions waits for the answers (mail/needsReplySlot.ts).
 		if (
 			resolved !== null &&
 			resolved.source === 'llm' &&
+			!resolved.clarification &&
 			(await isFeatureEnabled(ctx, 'postbox.aiDraft'))
 		) {
 			await ctx.scheduler.runAfter(0, internal.mail.ai.draftOnArrival.generateForThread, {
@@ -352,7 +355,8 @@ export const listQueue = publicQuery({
 				// Draft-on-arrival review slot (postbox.aiDraft): whether a pre-generated
 				// reply is waiting for review. The draft itself is read by the card that
 				// shows it (`getDraftSlot`, plan C8), not shipped on every row.
-				hasDraftSlot: flag.draftSlot !== undefined,
+				// Never while the row asks questions (mail/needsReplySlot.ts).
+				hasDraftSlot: visibleDraftSlot(flag) !== undefined,
 				fromAddress: trigger.fromAddress,
 				fromName: trigger.fromName,
 				subject: trigger.subject,
@@ -424,7 +428,7 @@ export const getDraftSlot = publicQuery({
 		if (!thread) return null;
 		const mailbox = await loadReadableMailbox(ctx, thread.mailboxId);
 		if (!mailbox) return null;
-		const slot = thread.needsReply?.draftSlot;
+		const slot = visibleDraftSlot(thread.needsReply);
 		if (!slot) return null;
 		// A slot written before #1200 can carry alternative drafts. No screen
 		// lets anyone pick one, and a web build from before then counts them as

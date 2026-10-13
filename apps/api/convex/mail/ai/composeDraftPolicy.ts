@@ -24,7 +24,7 @@ import { pickAttachmentSuggestion, MATCH_FLOOR } from '../../inbox/attachmentMat
 import { isCredentialSolicitation } from '../../inbox/clarificationSlots';
 import { detectInjection } from '../../agent/steps/security_scan/patterns';
 import { formatPromisedDay, weekdayAfter } from './composeDraftDates';
-import { NOT_READY_OPTION } from '../../inbox/clarificationAnswers';
+import { NOT_READY_OPTION, hasUsableAnswer } from '../../inbox/clarificationAnswers';
 import type { FoundFile } from '../../inbox/attachmentSuggest';
 import type {
 	clarificationFileCandidateValidator,
@@ -340,10 +340,23 @@ export function openGapPlaceholders(
 ): string[] {
 	const out: string[] = [];
 	for (const q of questions) {
-		if (q.answer && (q.answer.value.trim().length > 0 || q.answer.file)) continue;
+		if (hasUsableAnswer(q)) continue;
 		out.push(formatGapFor(q, fileLabel));
 	}
 	return out;
+}
+
+/**
+ * Whether answering with `given` would leave a question without a usable
+ * answer. "Answer and draft" needs every one; only "Draft with what I have"
+ * may leave one open, as a gap.
+ */
+export function leavesQuestionsOpen(
+	questions: readonly AskQuestion[],
+	given: ReadonlyArray<{ questionId: string; value?: string | undefined; file?: unknown }>
+): boolean {
+	const answered = new Set(given.filter((g) => g.file || g.value?.trim()).map((g) => g.questionId));
+	return questions.some((q) => !answered.has(q.id) && !hasUsableAnswer(q));
 }
 
 /**

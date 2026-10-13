@@ -14,7 +14,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
-import { runLlmStream } from '../lib/llm/dispatch';
+import { runLlmStream, runLlmTextWithTools } from '../lib/llm/dispatch';
 import { searchFilesForRequest } from '../inbox/attachmentSuggest';
 import { seedMessage } from '../mail/__tests__/helpers.testlib';
 import {
@@ -70,6 +70,12 @@ vi.mock('../lib/llm/dispatch', async () => {
 			await opts.onTextDelta?.('Here it is.', 'Here it is.');
 			return { text: 'Here it is.', ...result, finishReason: 'stop', aborted: false };
 		}),
+		// A draft the owner did not agree to gaps for is written in full first.
+		runLlmTextWithTools: vi.fn(async () => ({
+			text: 'Here it is.',
+			...result,
+			finishReason: 'stop',
+		})),
 	};
 });
 vi.mock('../inbox/attachmentSuggest', async () => {
@@ -127,6 +133,7 @@ beforeEach(() => {
 	sess.user = { userId: 'user-a', role: 'member', activeOrganizationId: ORG };
 	llm.files = [];
 	vi.mocked(runLlmStream).mockClear();
+	vi.mocked(runLlmTextWithTools).mockClear();
 });
 
 describe('the three file outcomes on a draft', () => {
@@ -157,7 +164,7 @@ describe('the three file outcomes on a draft', () => {
 			status: 'bound',
 			resourceKey: `mailDrafts:${draftId}`,
 		});
-		const prompt = JSON.stringify(vi.mocked(runLlmStream).mock.lastCall![0].messages);
+		const prompt = JSON.stringify(vi.mocked(runLlmTextWithTools).mock.lastCall![0].messages);
 		expect(prompt).toContain('mention them naturally: invoice-2026-09-brightpath.pdf');
 	});
 
@@ -378,7 +385,7 @@ describe('upload answers and Files', () => {
 			data: { category: 'invalid_state', data: { code: 'ASK_SESSION_CLAIMED' } },
 		});
 		expect((await draftRow(t, draftId)).attachments).toHaveLength(1);
-		expect(vi.mocked(runLlmStream)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(runLlmTextWithTools)).toHaveBeenCalledTimes(1);
 	});
 });
 

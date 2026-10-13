@@ -7129,8 +7129,7 @@
 			},
 			"askCard": {
 				"title": "Eine Frage, bevor ich schreibe | {count} Fragen, bevor ich schreibe",
-				"round": "Runde {round} von {total}",
-				"subline": "Beantworte, was du kannst. Was du auslässt, wird im Entwurf als markierte Lücke eingefügt.",
+				"subline": "Noch kein Entwurf. Beantworte erst diese Fragen, oder entwirf jetzt: Was offen ist, bleibt als markierte Lücke drin.",
 				"placeholder": {
 					"choice": "Etwas anderes …",
 					"text": "Gib deine Antwort ein …",
@@ -7139,14 +7138,8 @@
 				},
 				"pickDate": "Datum wählen",
 				"answerAndDraft": "Antworten und entwerfen",
-				"skip": "Überspringen, mit Lücken entwerfen",
+				"skip": "Mit vorhandenen Infos entwerfen",
 				"operation": "Fragen beantworten",
-				"waitingForFiles": "Entwurf fertig. Wartet auf deine Dateien",
-				"waitingForFilesSubline": "Die Antwort ist geschrieben. Füge die angefragten Dateien hinzu, dann wird sie mit ihnen als Anhang angepasst.",
-				"attachAndUpdate": "Anhängen und Entwurf anpassen",
-				"draftGaps": "Dem Entwurf fehlt noch eine Angabe | Dem Entwurf fehlen noch {count} Angaben",
-				"draftGapsSubline": "Die Antwort unten ist schon geschrieben. Was du hier beantwortest, kommt in den Entwurf; was offen bleibt, bleibt markiert.",
-				"updateDraft": "Entwurf ergänzen",
 				"budgetRefused": "Das KI-Ausgabenbudget ist vorerst aufgebraucht, deshalb wurde der Entwurf nicht geschrieben. Deine Antworten bleiben hier: Versuch es später erneut oder schreib die Antwort selbst."
 			},
 			"fileAsk": {

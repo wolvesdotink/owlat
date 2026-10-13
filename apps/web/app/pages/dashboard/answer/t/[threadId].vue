@@ -413,7 +413,6 @@ onBeforeUnmount(() => {
 							</p>
 							<AskCard
 								:questions="clarificationQuestions"
-								require-all
 								:copy-policy="copyPolicy"
 								:submitting="reply.isAnsweringClarification.value"
 								:skip-label="t('components.postbox.postboxClarificationCard.answerLater')"
@@ -436,7 +435,6 @@ onBeforeUnmount(() => {
 								<AskCard
 									v-if="assist.ask.phase.value === 'asking' && assist.ask.session.value"
 									:questions="assist.ask.session.value.questions"
-									:round="assist.ask.session.value.round"
 									:copy-policy="copyPolicy"
 									:submitting="assist.ask.busy.value"
 									:budget-refused="assist.ask.isBudgetRefused.value"

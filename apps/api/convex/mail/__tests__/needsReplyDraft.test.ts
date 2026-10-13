@@ -5,7 +5,9 @@
  * It drafts through the shared draft service (surface 'personal') with the
  * knowledge recall tool scoped to the sender's contact, puts the answers and
  * attached-file notes in the trusted confirmed block, and lands the body on the
- * card. The shared service and the recall tool are mocked; no model runs.
+ * card. A draft with gaps the owner did not agree to is not landed: its gaps
+ * go back to the card as questions. The shared service and the recall tool are
+ * mocked; no model runs.
  */
 
 import { getFunctionName } from 'convex/server';
@@ -42,6 +44,10 @@ function context(overrides: Record<string, unknown> = {}) {
 	return {
 		mailboxId: 'mailbox_1',
 		latestMessageId: 'msg_1',
+		answeredAt: 111,
+		isGapsAccepted: false,
+		questionIds: ['clarify_0'],
+		senderAddress: 'jonas@brightpath.example',
 		ownerAddress: 'ada@example.com',
 		contactId: 'contact_1',
 		transcript: 'Them: could you send us the September invoice?',
@@ -125,13 +131,57 @@ describe('draftClarificationReply', () => {
 		expect(persisted?.args).toEqual({
 			threadId,
 			expectedLatestMessageId: 'msg_1',
+			expectedAnsweredAt: 111,
 			draft: 'Hi, here is the September invoice, PO included.',
 		});
 	});
 
+	it('lands no draft with a gap of its own: the gap goes back to the card as a question', async () => {
+		mocks.runSharedDraft.mockResolvedValueOnce({
+			draftBody: 'Hi Jonas, the invoice total is [Bitte prüfen: Gesamtbetrag].',
+			draftQuality: undefined,
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		});
+		const { ctx, mutations } = makeCtx();
+		await draftClarificationReply(ctx, { threadId });
+
+		expect(mutations.some((m) => m.name.includes('persistClarificationDraft'))).toBe(false);
+		const asked = mutations.find((m) => m.name.includes('askAboutDraftGaps'));
+		expect(asked?.args).toMatchObject({
+			threadId,
+			expectedLatestMessageId: 'msg_1',
+			expectedAnsweredAt: 111,
+			questions: [
+				expect.objectContaining({
+					id: 'gap_0',
+					text: 'Bitte prüfen: Gesamtbetrag',
+					answerKind: 'text',
+					origin: { kind: 'email', senderDomain: 'brightpath.example' },
+				}),
+			],
+		});
+	});
+
+	it('drafts every question as a gap after "Draft with what I have" with nothing answered', async () => {
+		const gap = '[[Which delivery date works for you]]';
+		const { ctx, mutations } = makeCtx({
+			context: context({ answers: [], questionGaps: [gap], isGapsAccepted: true }),
+		});
+		await draftClarificationReply(ctx, { threadId });
+
+		const persisted = mutations.find((m) => m.name.includes('persistClarificationDraft'));
+		expect(persisted?.args['draft']).toBe(
+			`Hi, here is the September invoice, PO included.\n\n${gap}`
+		);
+		expect(mutations.some((m) => m.name.includes('askAboutDraftGaps'))).toBe(false);
+	});
+
 	it('leaves a placeholder for a file question still open, even when the model drops it', async () => {
 		const gap = '[[Please provide the invoice PDFs]]';
-		const { ctx, mutations } = makeCtx({ context: context({ fileNotes: '', fileGaps: [gap] }) });
+		const { ctx, mutations } = makeCtx({
+			context: context({ fileNotes: '', fileGaps: [gap], isGapsAccepted: true }),
+		});
 		await draftClarificationReply(ctx, { threadId });
 
 		const params = mocks.runSharedDraft.mock.calls[0]![1];
@@ -145,7 +195,9 @@ describe('draftClarificationReply', () => {
 
 	it('leaves a placeholder for a question the owner skipped', async () => {
 		const gap = '[[Which delivery date works for you]]';
-		const { ctx, mutations } = makeCtx({ context: context({ questionGaps: [gap] }) });
+		const { ctx, mutations } = makeCtx({
+			context: context({ questionGaps: [gap], isGapsAccepted: true }),
+		});
 		await draftClarificationReply(ctx, { threadId });
 
 		const params = mocks.runSharedDraft.mock.calls[0]![1];
@@ -165,7 +217,9 @@ describe('draftClarificationReply', () => {
 			tokenUsage: undefined,
 			modelUsed: 'mock-model',
 		});
-		const { ctx, mutations } = makeCtx({ context: context({ fileNotes: '', fileGaps: [gap] }) });
+		const { ctx, mutations } = makeCtx({
+			context: context({ fileNotes: '', fileGaps: [gap], isGapsAccepted: true }),
+		});
 		await draftClarificationReply(ctx, { threadId });
 
 		const draft = mutations.find((m) => m.name.includes('persistClarificationDraft'))?.args[

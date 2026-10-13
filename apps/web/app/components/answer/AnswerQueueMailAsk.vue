@@ -10,25 +10,27 @@ import { clarificationCardState } from '~/utils/postboxReplyQueue';
 import type { ThreadFile } from '~/utils/answerThreadFiles';
 
 /**
- * The background clarification of an Answer queue item, above the editor
- * (plan §07): the Reply Queue asked the owner something before it could draft,
- * and an item waiting on that answer shows the questions first, as the same
- * ask card "Draft with AI" uses (chips, dates, files, remembered answers
- * pre-picked with "last time"). Answering goes through the Reply Queue's own
- * mutation; the card then waits for the starter reply and hands it to the
- * editor when it lands. "Answer later" puts the card away so the person can
- * simply write. Someone who started writing while the reply was drafted keeps
- * their text: the card then says the draft is ready and puts it in only when
- * asked. An item whose reply was drafted on arrival asks only for what that
- * draft left open, and the card says so.
+ * The background clarification of a Reply Queue thread, above the editor
+ * (plan §07): the Reply Queue needs a fact from the owner before it can draft,
+ * so no reply is prepared and the questions show first, as the same ask card
+ * "Draft with AI" uses (chips, dates, files, remembered answers pre-picked with
+ * "last time"). "Answer and draft" needs every question answered; "Draft with
+ * what I have" drafts at once and leaves a highlighted gap for the rest. Both
+ * go through the Reply Queue's own mutation; the card then waits for the
+ * starter reply and hands it to the editor when it lands. Someone who started
+ * writing while the reply was drafted keeps their text: the card then says the
+ * draft is ready and puts it in only when asked.
  *
- * Renders nothing unless the page is the queue's current item and that item
- * carries a clarification still asking or drafting. A reply that was already
- * drafted when the page opened is the prepared draft's business, not this
- * card's.
+ * The thread comes from the Answer queue's current item, or, for a reply
+ * opened elsewhere (Reply in the reader), from the thread's own prepared-reply
+ * read. Renders nothing unless that thread carries a clarification still asking
+ * or drafting. A reply that was already drafted when the page opened is the
+ * prepared draft's business, not this card's.
  */
 const props = defineProps<{
 	messageId: string;
+	/** The message's thread, for a reply opened outside the Answer queue. */
+	threadId?: string;
 	mailboxId?: Id<'mailboxes'>;
 	resolveThreadFile?: (file: ThreadFile) => Promise<FileAnswerRef | null>;
 	/** The person has written something in the reply. */
@@ -46,10 +48,21 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const session = useAnswerQueueSession();
 
-const row = computed(() => {
+const queueRow = computed(() => {
 	const item = session?.flow.current.value;
 	if (!session?.isCurrentRoute.value || item?.source !== 'mail') return null;
 	return item.row.messageId === props.messageId ? item.row : null;
+});
+// Outside the queue: the thread's own read (shared with the prepared draft's).
+const prepared = useConvexQuery(api.mail.needsReplyPrepared.getPreparedDraft, () =>
+	!queueRow.value && props.threadId
+		? { threadId: props.threadId as Id<'mailThreads'> }
+		: ('skip' as const)
+);
+const row = computed(() => {
+	if (queueRow.value) return queueRow.value;
+	const clarification = prepared.data.value?.clarification;
+	return props.threadId && clarification ? { threadId: props.threadId, clarification } : null;
 });
 const state = computed(() => clarificationCardState(row.value?.clarification));
 // The Reply Queue's questions carry the same clarification question shape the
@@ -57,17 +70,6 @@ const state = computed(() => clarificationCardState(row.value?.clarification));
 const questions = computed(
 	() => (row.value?.clarification?.questions ?? []) as unknown as AskQuestion[]
 );
-// Draft-on-arrival already wrote the reply and left a placeholder where the
-// files go: the card only waits for them (issue #1131).
-const waitingForFiles = computed(() => {
-	const open = questions.value.filter((q) => !q.answer);
-	return (
-		!!row.value?.hasDraftSlot &&
-		open.length > 0 &&
-		open.every((q) => (q.answerKind ?? (q.slotType === 'attachment' ? 'file' : '')) === 'file')
-	);
-});
-
 const deferred = ref(false);
 /** A starter reply that landed after the person began writing, waiting to be asked for. */
 const waitingDraft = ref<string | null>(null);
@@ -113,7 +115,8 @@ const answerOp = useBackendOperation(api.mail.ai.needsReplyClarify.answerClarifi
 	label: () => t('components.postbox.postboxReplyFlow.operations.answer'),
 });
 const submitting = ref(false);
-async function submit(answers: AskCardAnswer[]) {
+/** Send the answers; `withGaps` is "Draft with what I have". */
+async function submit(answers: AskCardAnswer[], withGaps = false) {
 	const current = row.value;
 	if (!current || submitting.value) return;
 	submitting.value = true;
@@ -121,6 +124,7 @@ async function submit(answers: AskCardAnswer[]) {
 		await answerOp.run({
 			threadId: current.threadId as Id<'mailThreads'>,
 			answers: backgroundAskAnswers(current.clarification?.questions ?? [], answers),
+			...(withGaps ? { withGaps: true } : {}),
 		});
 	} finally {
 		submitting.value = false;
@@ -139,11 +143,8 @@ async function submit(answers: AskCardAnswer[]) {
 			:resolve-thread-file="resolveThreadFile"
 			:copy-policy="copyPolicy"
 			multiple-files
-			:waiting-for-files="waitingForFiles"
-			:draft-written="!!row.hasDraftSlot"
-			:skip-label="t('components.postbox.postboxClarificationCard.answerLater')"
 			@answer="submit"
-			@skip="deferred = true"
+			@skip="submit($event, true)"
 		/>
 		<div
 			v-else-if="waitingDraft !== null"

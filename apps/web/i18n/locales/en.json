@@ -7129,8 +7129,7 @@
 			},
 			"askCard": {
 				"title": "One thing before I write this | {count} things before I write this",
-				"round": "round {round} of {total}",
-				"subline": "Answer what you can. Anything you skip becomes a highlighted gap in the draft.",
+				"subline": "No draft yet. Answer these first, or draft now and anything still open stays in as a highlighted gap.",
 				"placeholder": {
 					"choice": "Something else…",
 					"text": "Type your answer…",
@@ -7139,14 +7138,8 @@
 				},
 				"pickDate": "Pick a date",
 				"answerAndDraft": "Answer and draft",
-				"skip": "Skip, draft with gaps",
+				"skip": "Draft with what I have",
 				"operation": "Answer the questions",
-				"waitingForFiles": "Draft ready. Waiting for your files",
-				"waitingForFilesSubline": "The reply is written. Add the files they asked for and it is updated to go out with them.",
-				"attachAndUpdate": "Attach and update draft",
-				"draftGaps": "The draft needs one more detail | The draft needs {count} more details",
-				"draftGapsSubline": "The reply below is written. What you answer here goes into it; anything left open stays marked.",
-				"updateDraft": "Update the draft",
 				"budgetRefused": "The AI spend budget is used up for now, so the draft was not written. Your answers stay here: try again later, or write the reply yourself."
 			},
 			"fileAsk": {

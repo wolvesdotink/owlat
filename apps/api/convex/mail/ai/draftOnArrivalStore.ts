@@ -9,6 +9,11 @@
  * isn't a live, needs-a-reply personal-mail thread whose trigger someone ELSE
  * sent and the owner has not answered yet; the persister no-ops on a
  * stale trigger so a draft can never overwrite a newer message's slot.
+ *
+ * No draft is written while the owner still has to supply a fact: a thread
+ * with a clarification is drafted after the answers (needsReplyClarify), and a
+ * draft that comes back with placeholders of its own is not stored; its gaps
+ * become the thread's questions instead (`holdForGapQuestions`).
  */
 
 import { v } from 'convex/values';
@@ -19,7 +24,7 @@ import { NEEDS_REPLY_CONTEXT_MESSAGES } from '../needsReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { buildThreadTranscript, DRAFT_ON_ARRIVAL } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
-import { openFileGaps, openQuestionGaps } from '../../inbox/clarificationAnswers';
+import { needsReplyClarificationQuestionValidator } from '../../lib/validators/clarification';
 
 /**
  * Load everything the draft-on-arrival action needs for one thread, or `null`
@@ -35,6 +40,8 @@ export const loadForDraft = internalQuery({
 		if (!thread) return null;
 		const flag = thread.needsReply;
 		if (!flag) return null; // nothing flagged for reply → nothing to draft
+		// The owner is asked first; the reply is written from the answers.
+		if (flag.clarification) return null;
 
 		const mailbox = await ctx.db.get(thread.mailboxId);
 		if (!mailbox || mailbox.status !== 'active') return null;
@@ -79,21 +86,12 @@ export const loadForDraft = internalQuery({
 			}
 		);
 
-		// Confirmed-owner facts from the clarification loop (only the ANSWERED
-		// questions; unanswered questions carry no confirmed block). Shape matches
-		// the shared buildConfirmedContext() consumer.
-		const clarificationQuestions =
-			flag.clarification && flag.clarification.answeredAt !== undefined
-				? flag.clarification.questions.map((q) => ({
-						text: q.text,
-						answer: q.answer ? { value: q.answer.value } : undefined,
-					}))
-				: undefined;
-
 		return {
 			context: transcript,
 			triggerMessageId: flag.messageId,
 			triggerSubject: trigger.subject,
+			// Who the questions a held draft asks are attributed to.
+			senderAddress: trigger.fromAddress,
 			mailboxId: thread.mailboxId,
 			ownerAddress,
 			// Stale guard the persister re-checks: a newer inbound moves this.
@@ -102,14 +100,6 @@ export const loadForDraft = internalQuery({
 			// person vs newsletter — the personal-mail taxonomy. Aligned to the
 			// shared draft block's vocabulary in the action.
 			isBulk: trigger.unsubscribe !== undefined,
-			clarificationQuestions,
-			// Files the clarification card is still waiting for: the draft leaves a
-			// placeholder for them instead of claiming they are attached.
-			fileGaps: flag.clarification ? openFileGaps(flag.clarification.questions) : [],
-			// The other questions still open (the card is not answered yet, or the
-			// owner skipped one): the draft marks each missing fact with its
-			// placeholder, which the send guard counts.
-			questionGaps: flag.clarification ? openQuestionGaps(flag.clarification.questions) : [],
 		};
 	},
 });
@@ -138,6 +128,8 @@ export const persistDraftSlot = internalMutation({
 		if (!thread || !thread.needsReply) return;
 		// Stale guard: only attach to the trigger we drafted for.
 		if (thread.needsReply.messageId !== args.triggerMessageId) return;
+		// Questions arrived meanwhile: the reply waits for their answers.
+		if (thread.needsReply.clarification) return;
 
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
@@ -151,6 +143,35 @@ export const persistDraftSlot = internalMutation({
 				},
 			},
 			updatedAt: Date.now(),
+		});
+	},
+});
+
+/**
+ * Hold a draft that came back with gaps: instead of the slot, the thread gets
+ * one question per gap, and its reply is written once they are answered (or
+ * the owner drafts with what they have). The same guards as the slot: only for
+ * the trigger it was drafted for, and never over questions already there.
+ */
+export const holdForGapQuestions = internalMutation({
+	args: {
+		threadId: v.id('mailThreads'),
+		triggerMessageId: v.id('mailMessages'),
+		questions: v.array(needsReplyClarificationQuestionValidator),
+	},
+	handler: async (ctx, args) => {
+		const thread = await ctx.db.get(args.threadId);
+		const flag = thread?.needsReply;
+		if (!thread || !flag || flag.messageId !== args.triggerMessageId) return;
+		if (flag.clarification || args.questions.length === 0) return;
+		const now = Date.now();
+		const { draftSlot: _stale, ...rest } = flag;
+		await ctx.db.patch(args.threadId, {
+			needsReply: {
+				...rest,
+				clarification: { isNeeded: true, questions: args.questions, askedAt: now },
+			},
+			updatedAt: now,
 		});
 	},
 });

@@ -16,6 +16,8 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
+import type { Infer } from 'convex/values';
+import type { needsReplyClarificationValidator } from '../../lib/validators/clarification';
 import { api, internal } from '../../_generated/api';
 import {
 	createTestContact,
@@ -465,7 +467,31 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 		expect(draftContext?.fileGaps).toEqual([]);
 	});
 
-	it('leaves a placeholder for a file question answered around', async () => {
+	it('refuses to draft while a question is left open, blank answers included', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A', [
+			fileQuestion,
+			{ id: 'clarify_2', slotType: 'decision', text: 'Invoice monthly?', origin: ORIGIN },
+		]);
+
+		await expect(
+			t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+				threadId,
+				answers: [
+					{ questionId: 'clarify_2', value: 'Yes' },
+					{ questionId: fileQuestion.id, value: '   ' },
+				],
+			})
+		).rejects.toThrow(/Answer every question/);
+
+		const clarification = await t.run(
+			async (ctx) => (await ctx.db.get(threadId))!.needsReply!.clarification!
+		);
+		expect(clarification.answeredAt).toBeUndefined();
+	});
+
+	it('"Draft with what I have" leaves a placeholder for a file question answered around', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
 		const threadId = await seedThreadWithClarification(t, 'user-A', [
@@ -476,12 +502,40 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
 			threadId,
 			answers: [{ questionId: 'clarify_2', value: 'Yes' }],
+			withGaps: true,
 		});
 
 		const draftContext = await t.query(internal.mail.ai.needsReplyClarify.getClarificationContext, {
 			threadId,
 		});
+		expect(draftContext?.isGapsAccepted).toBe(true);
 		expect(draftContext?.fileGaps).toEqual(['[[Which invoice should I attach]]']);
+	});
+
+	it('"Draft with what I have" drafts with nothing answered, and drops the arrival slot', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A', [fileQuestion]);
+		await t.run(async (ctx) => {
+			const thread = await ctx.db.get(threadId);
+			await ctx.db.patch(threadId, {
+				needsReply: {
+					...thread!.needsReply!,
+					draftSlot: { draft: 'Hi, [[invoice]]', confidence: 0.5, generatedAt: Date.now() },
+				},
+			});
+		});
+
+		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+			threadId,
+			answers: [],
+			withGaps: true,
+		});
+
+		const flag = await t.run(async (ctx) => (await ctx.db.get(threadId))!.needsReply!);
+		expect(flag.draftSlot).toBeUndefined();
+		expect(flag.clarification?.answeredAt).toBeTypeOf('number');
+		expect(flag.clarification?.isGapsAccepted).toBe(true);
 	});
 
 	it('stores a long starter reply with its file placeholder whole', async () => {
@@ -696,5 +750,68 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 			});
 			expect(attachments.map((a) => a.filename)).toEqual(['inv.pdf']);
 		});
+	});
+});
+
+describe('a draft written from the answers that still has gaps', () => {
+	const gapQuestion = {
+		id: 'gap_0',
+		slotType: 'factual_lookup',
+		text: 'invoice total',
+		origin: ORIGIN,
+		answerKind: 'text' as const,
+	};
+
+	async function answered(t: ReturnType<typeof convexTest>) {
+		await enableFeatures(t, ['mail.external']);
+		const threadId = await seedThreadWithClarification(t, 'user-A');
+		await t.mutation(api.mail.ai.needsReplyClarify.answerClarification, {
+			threadId,
+			answers: [{ questionId: 'clarify_0', value: 'Yes' }],
+		});
+		const clarification = async (): Promise<Infer<typeof needsReplyClarificationValidator>> =>
+			t.run(async (ctx) => (await ctx.db.get(threadId))!.needsReply!.clarification!);
+		return { threadId, clarification, answeredAt: (await clarification()).answeredAt! };
+	}
+
+	it('goes back to the card as a question, with the earlier answer kept', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, clarification, answeredAt } = await answered(t);
+
+		await t.mutation(internal.mail.ai.needsReplyClarify.askAboutDraftGaps, {
+			threadId,
+			expectedAnsweredAt: answeredAt,
+			questions: [gapQuestion],
+		});
+
+		const after = await clarification();
+		expect(after.answeredAt).toBeUndefined();
+		expect(after.isNeeded).toBe(true);
+		expect(after.draft).toBeUndefined();
+		expect(after.questions.map((q) => [q.id, q.answer?.value])).toEqual([
+			['clarify_0', 'Yes'],
+			['gap_0', undefined],
+		]);
+	});
+
+	it('drops a write made from answers that are no longer the current ones', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, clarification, answeredAt } = await answered(t);
+
+		await t.mutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
+			threadId,
+			expectedAnsweredAt: answeredAt - 1,
+			draft: 'An older reply.',
+		});
+		await t.mutation(internal.mail.ai.needsReplyClarify.askAboutDraftGaps, {
+			threadId,
+			expectedAnsweredAt: answeredAt - 1,
+			questions: [gapQuestion],
+		});
+
+		const after = await clarification();
+		expect(after.draft).toBeUndefined();
+		expect(after.answeredAt).toBe(answeredAt);
+		expect(after.questions.map((q) => q.id)).toEqual(['clarify_0']);
 	});
 });

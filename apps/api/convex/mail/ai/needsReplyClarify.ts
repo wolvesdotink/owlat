@@ -14,11 +14,17 @@
  * (bounded transcript + confirmed answers) and writes the draft back via
  * `persistClarificationDraft`. Fail-soft throughout: if the draft never lands
  * the answer is still recorded and the plain "Draft reply" button keeps working.
+ *
+ * No draft with gaps the owner did not agree to: drafting starts once every
+ * question has an answer, or when the owner chooses "Draft with what I have"
+ * (`withGaps`, stored as `isGapsAccepted`). A draft that still comes back with
+ * placeholders of its own is not stored without that choice; its gaps are
+ * asked as new questions (`askAboutDraftGaps`, mail/ai/gapQuestions.ts).
  */
 
 import { v } from 'convex/values';
 import { normalizeEmail } from '@owlat/shared';
-import { internalQuery } from '../../_generated/server';
+import { internalQuery, type MutationCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { postboxMutation } from '../_helpers';
 import { internal } from '../../_generated/api';
@@ -30,6 +36,7 @@ import { MAX_FILES_PER_ANSWER } from '@owlat/shared/answerMode';
 import {
 	MAX_CLARIFICATION_DRAFT_CHARS,
 	buildFileAnswerNotes,
+	hasUsableAnswer,
 	isFileQuestion,
 	openFileGaps,
 	openQuestionGaps,
@@ -38,7 +45,10 @@ import { resolveClarificationFile } from '../../inbox/clarificationFileAnswer';
 import { findContactByIdentifier } from '../../contacts/resolution';
 import { canSaveAnswerToFiles } from '../../lib/answerFileToFiles';
 import { consumeUpload, mailThreadUploadKey } from '../../storage/uploads';
-import { clarificationFileRefValidator } from '../../lib/validators/clarification';
+import {
+	clarificationFileRefValidator,
+	needsReplyClarificationQuestionValidator,
+} from '../../lib/validators/clarification';
 import { buildThreadTranscript, CLARIFY_DRAFT } from './transcript';
 import { withStoredInlineBodies } from '../../lib/messageBodyStore';
 import type { Id } from '../../_generated/dataModel';
@@ -77,6 +87,9 @@ export const answerClarification = postboxMutation({
 				mimeType: v.optional(v.string()),
 			})
 		),
+		// "Draft with what I have": draft now, with a highlighted gap for every
+		// question left open. Without it every question needs an answer.
+		withGaps: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args, session) => {
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
@@ -95,13 +108,16 @@ export const answerClarification = postboxMutation({
 		// answers, so draftWithAnswers produces no draft and the card strands in
 		// 'drafting' forever. Reject instead of silently answering nothing. A card
 		// whose every question memory pre-picked may be confirmed as it stands.
+		// "Draft with what I have" may leave every question open.
 		let matched = 0;
 		let prePicked = 0;
 		for (const q of clarification.questions) {
 			if (answerByQuestion.has(q.id)) matched += 1;
 			else if (q.answer) prePicked += 1;
 		}
-		if (matched === 0 && prePicked === 0) throwInvalidInput('No answer matches an open question');
+		if (matched === 0 && prePicked === 0 && args.withGaps !== true) {
+			throwInvalidInput('No answer matches an open question');
+		}
 
 		const senderMessage = await ctx.db.get(flag.messageId);
 		const fromAddress = senderMessage?.fromAddress;
@@ -157,9 +173,13 @@ export const answerClarification = postboxMutation({
 				}
 				refs.push(resolved.ref);
 			}
-			const value =
-				provided.value ?? (refs.length > 0 ? refs.map((r) => r.filename).join(', ') : undefined);
-			if (value === undefined) throwInvalidInput('An answer needs a value or a file');
+			const typed = provided.value?.trim() || undefined;
+			const value = typed ?? (refs.length > 0 ? refs.map((r) => r.filename).join(', ') : undefined);
+			if (value === undefined) {
+				// A blank answer leaves the question open.
+				questions.push(q);
+				continue;
+			}
 			questions.push({
 				...q,
 				answer: {
@@ -172,10 +192,24 @@ export const answerClarification = postboxMutation({
 			});
 		}
 
+		const withGaps = args.withGaps === true;
+		if (!withGaps && !questions.every(hasUsableAnswer)) {
+			throwInvalidInput('Answer every question, or draft with what you have');
+		}
+		// The arrival slot was written without these answers: it goes, so it can
+		// never stand in for the reply they are about to produce.
+		const { draftSlot: _superseded, ...rest } = flag;
+		const { draft: _previous, isGapsAccepted: _consent, ...asked } = clarification;
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
-				...flag,
-				clarification: { ...clarification, questions, answeredAt: now, isNeeded: false },
+				...rest,
+				clarification: {
+					...asked,
+					questions,
+					answeredAt: now,
+					isNeeded: false,
+					...(withGaps ? { isGapsAccepted: true } : {}),
+				},
 			},
 			updatedAt: now,
 		});
@@ -265,7 +299,7 @@ export const getClarificationContext = internalQuery({
 		// without re-reading the thread.
 		const answeredSlotTypes: string[] = [];
 		for (const q of clarification.questions) {
-			if (q.answer) {
+			if (q.answer && hasUsableAnswer(q)) {
 				answers.push({ question: q.text, answer: q.answer.value });
 				answeredSlotTypes.push(q.slotType);
 			}
@@ -286,6 +320,14 @@ export const getClarificationContext = internalQuery({
 		return {
 			mailboxId: thread.mailboxId,
 			latestMessageId: thread.latestMessageId,
+			// The answers this context holds; a write for older ones is dropped.
+			answeredAt: clarification.answeredAt,
+			// The owner chose to draft with what they have: gaps may stay.
+			isGapsAccepted: clarification.isGapsAccepted === true,
+			// Taken ids, so questions about the draft's own gaps get fresh ones.
+			questionIds: clarification.questions.map((q) => q.id),
+			// Who questions about the draft's own gaps are attributed to.
+			senderAddress: trigger?.fromAddress ?? '',
 			ownerAddress: mailbox.address,
 			contactId: identity?.contactId,
 			transcript,
@@ -302,30 +344,60 @@ export const getClarificationContext = internalQuery({
 	},
 });
 
+/** Stale-write guards shared by the two writers below. */
+const draftWriteGuardArgs = {
+	threadId: v.id('mailThreads'),
+	expectedLatestMessageId: v.optional(v.id('mailMessages')),
+	// The answers the draft was written from (getClarificationContext). Optional
+	// for a run scheduled before it existed.
+	expectedAnsweredAt: v.optional(v.number()),
+};
+
+/**
+ * The thread and its clarification when a draft written from
+ * `expectedAnsweredAt` may still land: no newer message, and the answers it
+ * was written from are still the current ones.
+ */
+async function currentClarification(
+	ctx: MutationCtx,
+	args: {
+		threadId: Id<'mailThreads'>;
+		expectedLatestMessageId?: Id<'mailMessages'>;
+		expectedAnsweredAt?: number;
+	}
+) {
+	const thread = await ctx.db.get(args.threadId);
+	const flag = thread?.needsReply;
+	const clarification = flag?.clarification;
+	if (!thread || !flag || !clarification) return null;
+	if (
+		args.expectedLatestMessageId !== undefined &&
+		thread.latestMessageId !== undefined &&
+		thread.latestMessageId !== args.expectedLatestMessageId
+	) {
+		return null; // stale — a newer ingest re-enqueued its own check
+	}
+	if (
+		args.expectedAnsweredAt !== undefined &&
+		clarification.answeredAt !== args.expectedAnsweredAt
+	) {
+		return null; // answered again (or asked again) since
+	}
+	return { flag, clarification };
+}
+
 /**
  * Persist the starter reply produced by `draftWithAnswers`. Staleness-guarded
  * (a newer inbound message re-triggers the whole flow) and clarification-guarded
- * (the answer must still be present). Flips the card to "Draft ready".
+ * (the answers it was written from must still be the current ones). Flips the
+ * card to "Draft ready".
  */
 export const persistClarificationDraft = internalMutation({
-	args: {
-		threadId: v.id('mailThreads'),
-		expectedLatestMessageId: v.optional(v.id('mailMessages')),
-		draft: v.string(),
-	},
+	args: { ...draftWriteGuardArgs, draft: v.string() },
 	handler: async (ctx, args) => {
-		const thread = await ctx.db.get(args.threadId);
-		if (!thread) return;
-		const flag = thread.needsReply;
-		const clarification = flag?.clarification;
-		if (!flag || !clarification) return;
-		if (
-			args.expectedLatestMessageId !== undefined &&
-			thread.latestMessageId !== undefined &&
-			thread.latestMessageId !== args.expectedLatestMessageId
-		) {
-			return; // stale — a newer ingest re-enqueued its own check
-		}
+		const current = await currentClarification(ctx, args);
+		if (!current) return;
+		const { flag, clarification } = current;
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
 				...flag,
@@ -335,6 +407,34 @@ export const persistClarificationDraft = internalMutation({
 				},
 			},
 			updatedAt: Date.now(),
+		});
+	},
+});
+
+/**
+ * The draft written from the answers came back with gaps the owner did not
+ * agree to: it is not stored, and each gap joins the card as a new question,
+ * which flips it back to asking. Same guards as `persistClarificationDraft`.
+ */
+export const askAboutDraftGaps = internalMutation({
+	args: { ...draftWriteGuardArgs, questions: v.array(needsReplyClarificationQuestionValidator) },
+	handler: async (ctx, args) => {
+		const current = await currentClarification(ctx, args);
+		if (!current || args.questions.length === 0) return;
+		const { flag, clarification } = current;
+		const { answeredAt: _answered, draft: _held, ...asked } = clarification;
+		const now = Date.now();
+		await ctx.db.patch(args.threadId, {
+			needsReply: {
+				...flag,
+				clarification: {
+					...asked,
+					isNeeded: true,
+					askedAt: now,
+					questions: [...clarification.questions, ...args.questions],
+				},
+			},
+			updatedAt: now,
 		});
 	},
 });

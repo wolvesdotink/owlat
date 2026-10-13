@@ -32,6 +32,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { isBundledCategory } from './dailyBrief';
+import { visibleDraftSlot } from './needsReplySlot';
 
 // ─── Freshness rules (pure, unit-tested) ─────────────────────────────────────
 
@@ -127,7 +128,8 @@ async function gatherBriefCounts(
 	for (const thread of needsReplyThreads) {
 		const flag = thread.needsReply;
 		if (!flag) continue;
-		if (flag.draftSlot && flag.draftSlot.generatedAt >= overnightStart) drafted += 1;
+		const slot = visibleDraftSlot(flag);
+		if (slot && slot.generatedAt >= overnightStart) drafted += 1;
 		if (flag.clarification?.isNeeded === true) questions += 1;
 	}
 

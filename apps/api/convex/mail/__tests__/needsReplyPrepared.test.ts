@@ -75,7 +75,7 @@ async function seedFlaggedThread(
 }
 
 describe('mail.needsReplyPrepared.getPreparedDraft', () => {
-	it("returns the thread's clarification draft and draft slot", async () => {
+	it("returns the thread's clarification draft, and never a slot next to it", async () => {
 		const t = convexTest(schema, modules);
 		const threadId = await seedFlaggedThread(t, {
 			clarificationDraft: '  Hi Jonas, attached.  ',
@@ -83,8 +83,21 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 		});
 		expect(await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId })).toEqual({
 			clarificationDraft: 'Hi Jonas, attached.',
+			// Written without the answers: the clarification owns the reply.
+			slotDraft: null,
+			files: [],
+			clarification: expect.objectContaining({ draft: '  Hi Jonas, attached.  ' }),
+		});
+	});
+
+	it('returns the arrival slot of a thread without questions', async () => {
+		const t = convexTest(schema, modules);
+		const threadId = await seedFlaggedThread(t, { slotDraft: 'Hi Jonas, here it is.' });
+		expect(await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId })).toEqual({
+			clarificationDraft: null,
 			slotDraft: 'Hi Jonas, here it is.',
 			files: [],
+			clarification: null,
 		});
 	});
 
@@ -93,7 +106,7 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 		const flagged = await seedFlaggedThread(t, {});
 		expect(
 			await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId: flagged })
-		).toEqual({ clarificationDraft: null, slotDraft: null, files: [] });
+		).toEqual({ clarificationDraft: null, slotDraft: null, files: [], clarification: null });
 		const plain = await seedFlaggedThread(t, null);
 		expect(
 			await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId: plain })

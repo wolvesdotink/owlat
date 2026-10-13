@@ -13,6 +13,7 @@
  */
 
 import type { Doc } from '../../_generated/dataModel';
+import { visibleDraftSlot } from '../needsReplySlot';
 
 export type ThreadListRow = Pick<
 	Doc<'mailThreads'>,
@@ -56,7 +57,7 @@ export function toThreadListRow(thread: Doc<'mailThreads'>): ThreadListRow {
 	const flag = thread.needsReply;
 	if (flag) {
 		row.needsReply = {};
-		if (flag.draftSlot) row.needsReply.draftSlot = true;
+		if (visibleDraftSlot(flag)) row.needsReply.draftSlot = true;
 		if (flag.clarification) {
 			row.needsReply.clarification = flag.clarification.draft ? { draft: true } : {};
 		}

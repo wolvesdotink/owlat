@@ -80,6 +80,10 @@ function makeCtx() {
 					fileGaps: [],
 					questionGaps: [],
 					answeredSlotTypes: ['factual_lookup'],
+					answeredAt: 111,
+					isGapsAccepted: false,
+					questionIds: ['clarify_0'],
+					senderAddress: 'john@example.com',
 				};
 			}
 			// The strategy selection read: no plugin strategy, the default runs.

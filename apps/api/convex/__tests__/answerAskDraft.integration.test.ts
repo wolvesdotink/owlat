@@ -22,7 +22,7 @@ import {
 } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
 import { deleteAskSessionsOfOwner } from '../mail/ai/composeDraftStore';
-import { runLlmObject, runLlmStream, runLlmText } from '../lib/llm/dispatch';
+import { runLlmObject, runLlmStream, runLlmText, runLlmTextWithTools } from '../lib/llm/dispatch';
 import { assembleInboundBriefing } from '../agent/steps/context_retrieval';
 import { NOT_READY_OPTION } from '../inbox/clarificationAnswers';
 import { INTERPRET_EXTRACTOR_VERSION } from '../mail/interpret/schema';
@@ -99,6 +99,8 @@ vi.mock('../lib/llm/dispatch', async () => {
 		}),
 		runLlmText: vi.fn(async () => ({ text: 'A candidate reply.', ...result })),
 		runLlmStream: vi.fn(),
+		// A draft the owner did not agree to gaps for is written in full first.
+		runLlmTextWithTools: vi.fn(),
 	};
 });
 vi.mock('../inbox/attachmentSuggest', async () => {
@@ -164,10 +166,25 @@ async function replyDraft(t: Tx, text?: string) {
 	return { mailboxId, messageId, draftId, target: { kind: 'mailDraft' as const, draftId } };
 }
 
+/**
+ * The drafter's model calls, streamed ("Draft with what I have") or written in
+ * full first (every other draft), oldest first.
+ */
+function draftCalls(): Array<{ messages: unknown }> {
+	const streamed = vi.mocked(runLlmStream).mock;
+	const whole = vi.mocked(runLlmTextWithTools).mock;
+	return [
+		...streamed.calls.map((c, i) => ({ at: streamed.invocationCallOrder[i]!, opts: c[0] })),
+		...whole.calls.map((c, i) => ({ at: whole.invocationCallOrder[i]!, opts: c[0] })),
+	]
+		.sort((a, b) => a.at - b.at)
+		.map((c) => c.opts);
+}
+
 /** The messages the drafter sent to the model, flattened. */
 function lastDraftPrompt(): string {
-	const calls = vi.mocked(runLlmStream).mock.calls;
-	return JSON.stringify(calls[calls.length - 1]![0].messages);
+	const calls = draftCalls();
+	return JSON.stringify(calls[calls.length - 1]!.messages);
 }
 
 async function streamText(t: Tx, streamId: Id<'aiDraftStreams'> | undefined) {
@@ -183,6 +200,13 @@ beforeEach(() => {
 	llm.guard = { isInjection: false, confidence: 0.02, reason: 'benign' };
 	llm.planFailure = null;
 	vi.mocked(runLlmStream).mockReset();
+	vi.mocked(runLlmTextWithTools).mockReset();
+	vi.mocked(runLlmTextWithTools).mockImplementation(async () => ({
+		text: llm.draft,
+		tokenUsage: undefined,
+		modelUsed: 'test-model',
+		finishReason: 'stop',
+	}));
 	vi.mocked(runLlmText).mockClear();
 	vi.mocked(assembleInboundBriefing).mockClear();
 	vi.mocked(runLlmStream).mockImplementation(async (opts) => {
@@ -219,6 +243,32 @@ describe('start', () => {
 		expect(session?.status).toBe('ready');
 	});
 
+	it('shows no draft with a gap nobody was asked about: the gap becomes a question', async () => {
+		const t = await makeT();
+		llm.draft = 'Hi Jonas,\n\nthe total is [[invoice total]].\n\nBest,\nAda';
+		const { target } = await replyDraft(t, 'Thanks for the call today, talk soon.');
+
+		const res = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+
+		expect(res.status).toBe('asking');
+		expect(res.streamId).toBeUndefined();
+		expect(res.questions).toEqual([
+			expect.objectContaining({ id: 'gap_0', text: 'invoice total', answerKind: 'text' }),
+		]);
+		// Written in full and checked, never streamed into the editor.
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+
+		// Answering it writes the draft again, with the fact.
+		llm.draft = 'Hi Jonas,\n\nthe total is EUR 2,100.\n\nBest,\nAda';
+		const done = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: res.sessionId,
+			answers: [{ questionId: 'gap_0', value: 'EUR 2,100' }],
+		});
+		expect(done.status).toBe('ready');
+		expect(await streamText(t, done.streamId)).toBe(llm.draft);
+		expect(lastDraftPrompt()).toContain('invoice total');
+	});
+
 	it('asks first, pre-picking what answer memory holds for this contact', async () => {
 		const t = await makeT();
 		const contactId = await seedCustomer(t);
@@ -248,7 +298,7 @@ describe('start', () => {
 
 		expect(res.status).toBe('asking');
 		expect(res.round).toBe(1);
-		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(draftCalls()).toHaveLength(0);
 		const [file, po, payment] = res.questions;
 		expect(file).toMatchObject({
 			id: 'file_request',
@@ -326,6 +376,42 @@ describe('answer', () => {
 		expect(lastDraftPrompt()).toContain('write its placeholder exactly as given');
 	});
 
+	it('"Answer and draft" needs every question answered', async () => {
+		const t = await makeT();
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const { target } = await replyDraft(t);
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+		const payment = asked.questions.find((q) => q.slotType === 'date_time')!;
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId: asked.sessionId,
+				answers: [{ questionId: payment.id, value: 'Friday' }],
+			})
+		).rejects.toThrow(/Answer every question/);
+		expect(draftCalls()).toHaveLength(0);
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('asking');
+	});
+
+	it('"Draft with what I have" keeps a gap the draft writes, and streams it in', async () => {
+		const t = await makeT();
+		llm.draft = 'Hi Jonas,\n\nthe total is [[invoice total]].';
+		llm.slots = [slot('date_time', 'When will payment arrive?')];
+		const { target } = await replyDraft(t);
+		const asked = await t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' });
+
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId: asked.sessionId,
+			answers: [],
+			skip: true,
+		});
+
+		expect(res.status).toBe('ready');
+		expect(await streamText(t, res.streamId)).toContain('[[invoice total]]');
+		expect(vi.mocked(runLlmStream)).toHaveBeenCalledOnce();
+	});
+
 	it('"It isn\'t ready yet" opens round 2, then promises the date and arms the follow-up', async () => {
 		const t = await makeT();
 		await seedCustomer(t);
@@ -343,7 +429,7 @@ describe('answer', () => {
 			answerKind: 'date',
 			options: ['Tomorrow', expect.any(String)],
 		});
-		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(draftCalls()).toHaveLength(0);
 
 		const res = await t.action(api.mail.ai.composeDraft.answer, {
 			sessionId: asked.sessionId,
@@ -397,9 +483,11 @@ describe('answer', () => {
 			await ctx.db.patch(messageId, { textBodyInline: 'Edited after the questions were asked.' });
 		});
 
+		// The file question stays open: drafted with what the owner has.
 		await t.action(api.mail.ai.composeDraft.answer, {
 			sessionId: asked.sessionId,
 			answers: [{ questionId: asked.questions[0]!.id, value: 'Friday' }],
+			skip: true,
 		});
 		const prompt = lastDraftPrompt();
 		expect(prompt).toContain('Our books close on Friday');
@@ -433,6 +521,7 @@ describe('answer', () => {
 		await t.action(api.mail.ai.composeDraft.answer, {
 			sessionId: asked.sessionId,
 			answers: [{ questionId: po.id, value: 'No' }],
+			skip: true,
 		});
 
 		const memory = await t.run(async (ctx) => await ctx.db.query('clarificationMemory').collect());
@@ -686,7 +775,7 @@ describe('team thread', () => {
 		// No gap check, clarification or draft followed.
 		expect(vi.mocked(runLlmObject)).not.toHaveBeenCalled();
 		expect(vi.mocked(runLlmText)).not.toHaveBeenCalled();
-		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(draftCalls()).toHaveLength(0);
 		expect(
 			await t.query(api.mail.ai.composeDraftStore.getSession, {
 				target: { kind: 'teamThread', threadId },
@@ -714,13 +803,14 @@ describe('team thread', () => {
 			t.action(api.mail.ai.composeDraft.answer, {
 				sessionId: asked.sessionId,
 				answers: [{ questionId: payment.id, value: 'Friday' }],
+				skip: true,
 			})
 		).rejects.toMatchObject({
 			data: { data: { code: 'AI_BUDGET_EXHAUSTED', reason: 'monthly_ceiling' } },
 		});
 		expect(vi.mocked(runLlmObject)).not.toHaveBeenCalled();
 		expect(vi.mocked(runLlmText)).not.toHaveBeenCalled();
-		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(draftCalls()).toHaveLength(0);
 		// Not stuck busy: back to the questions, the answer kept.
 		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
 		expect(session?.status).toBe('asking');
@@ -730,6 +820,7 @@ describe('team thread', () => {
 		const res = await t.action(api.mail.ai.composeDraft.answer, {
 			sessionId: asked.sessionId,
 			answers: [],
+			skip: true,
 		});
 		expect(res.status).toBe('ready');
 		expect(lastDraftPrompt()).toContain('Friday');
@@ -758,7 +849,7 @@ describe('team thread', () => {
 		await expect(
 			t.action(api.mail.ai.composeDraft.start, { target, locale: 'en' })
 		).rejects.toThrow('plan read failed');
-		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(draftCalls()).toHaveLength(0);
 		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
 		expect(session?.status).toBe('error');
 
@@ -783,9 +874,10 @@ describe('team thread', () => {
 			t.action(api.mail.ai.composeDraft.answer, {
 				sessionId: asked.sessionId,
 				answers: [{ questionId: payment.id, value: 'Friday' }],
+				skip: true,
 			})
 		).rejects.toThrow('plan read failed');
-		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(draftCalls()).toHaveLength(0);
 		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
 		expect(session?.status).toBe('asking');
 		expect(session?.questions.find((q) => q.id === payment.id)?.answer?.value).toBe('Friday');
@@ -877,7 +969,7 @@ describe('team thread', () => {
 		).rejects.toMatchObject(HELD);
 		expect(vi.mocked(assembleInboundBriefing)).not.toHaveBeenCalled();
 		expect(vi.mocked(runLlmObject)).not.toHaveBeenCalled();
-		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(draftCalls()).toHaveLength(0);
 	});
 
 	it('guards a message whose scan skipped the guard, and refuses it when flagged', async () => {
@@ -899,7 +991,7 @@ describe('team thread', () => {
 		expect(guardCalls()).toBe(1);
 		expect(vi.mocked(runLlmObject)).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(assembleInboundBriefing)).not.toHaveBeenCalled();
-		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		expect(draftCalls()).toHaveLength(0);
 	});
 
 	it('drafts on a message whose late guard passes it', async () => {

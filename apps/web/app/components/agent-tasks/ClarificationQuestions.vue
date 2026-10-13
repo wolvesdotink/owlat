@@ -24,13 +24,10 @@ import {
  * A question answer-memory already answered starts on the remembered value,
  * tagged on its chip; submitting it untouched sends it back as `memory`.
  *
- * `requireAll` is the one place the two surfaces differ, on purpose:
- *   - Team inbox (true): answering resumes the agent's draft once, with the
- *     answers as confirmed facts, and that draft can go out automatically. A
- *     question left open would reach the draft as a guess.
- *   - Postbox (false): the answers seed a starter reply that opens in the
- *     composer, where the owner reads and edits it before sending. One answer
- *     is enough to start, and only the answered questions are sent.
+ * `requireAll` needs every question answered before `submit`; off, one answer
+ * is enough and only the answered questions are sent. Answer mode's ask card
+ * always sets it: no draft is written with a fact the owner was asked for and
+ * did not give, unless they choose to draft with what they have.
  *
  * The `header` and `actions` slots receive `{ answered, total, remaining,
  * canSubmit, submit }`, so each surface keeps its own progress line and

@@ -200,7 +200,6 @@ const AskCardStub = defineComponent({
 	name: 'AskCard',
 	props: [
 		'questions',
-		'round',
 		'submitting',
 		'budgetRefused',
 		'mailboxId',
@@ -520,7 +519,7 @@ describe('Answer mode page', () => {
 		const w = await mountAt({ draft: 'draft_1' });
 		expect(w.find('[data-testid="ai-bar"]').exists()).toBe(false);
 		const card = w.getComponent(AskCardStub);
-		expect(card.props('round')).toBe(2);
+		expect(card.props('questions')).toEqual([{ id: 'q1' }]);
 		card.vm.$emit('answer', [{ questionId: 'q1', value: 'Yes' }]);
 		card.vm.$emit('skip', []);
 		expect(assist.ask.answer.mock.calls).toEqual([

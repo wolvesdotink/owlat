@@ -7,14 +7,20 @@
  * `needsReply.listQueue` (up to its cap of rows, each with its counterpart
  * lookups) to find this one row on every fresh reply. Lives beside
  * `needsReply.ts`, which is at the file-size cap.
+ *
+ * It also carries the thread's open questions (`clarification`), so a reply
+ * opened outside the Answer queue (Reply in the reader) asks them too instead
+ * of opening blank: no reply is prepared while they are open.
  */
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
+import type { needsReplyClarificationValidator } from '../lib/validators/clarification';
 import { postboxQuery } from './_helpers';
 import { loadReadableMailbox } from './permissions';
 import { mailThreadUploadKey } from '../storage/uploads';
 import { answerFiles } from '../inbox/clarificationAnswers';
+import { visibleDraftSlot } from './needsReplySlot';
 
 /**
  * Hand an upload the thread holds for a Reply Queue answer to a draft of that
@@ -106,6 +112,7 @@ export const getPreparedDraft = postboxQuery({
 		clarificationDraft: string | null;
 		slotDraft: string | null;
 		files: PreparedFile[];
+		clarification: Infer<typeof needsReplyClarificationValidator> | null;
 	} | null> => {
 		const thread = await ctx.db.get(args.threadId);
 		const flag = thread?.needsReply;
@@ -114,8 +121,9 @@ export const getPreparedDraft = postboxQuery({
 		if (!mailbox) return null;
 		return {
 			clarificationDraft: flag.clarification?.draft?.trim() || null,
-			slotDraft: flag.draftSlot?.draft.trim() || null,
+			slotDraft: visibleDraftSlot(flag)?.draft.trim() || null,
 			files: await answeredFiles(ctx, thread._id, flag, session.userId),
+			clarification: flag.clarification ?? null,
 		};
 	},
 });
