@@ -10,7 +10,8 @@ jobs:
   probe:
     name: Find exact-commit main verification
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # The 35-minute main wait also needs room for setup and bounded API retries.
+    timeout-minutes: 50
     outputs:
       reused: ${{ steps.evidence.outputs.reused }}
     steps:

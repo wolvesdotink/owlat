@@ -60,7 +60,8 @@ Release is created as a DRAFT up front; every job below must pass before the
    main failure by rerunning main CI successfully, then rerunning the release.
    The lookup waits at most 35 minutes (90 seconds
    when no main run exists). Coverage, both ramp modes, Java and Docker smokes
-   are part of this shared graph.
+   are part of this shared graph. The probe job allows 50 minutes overall for
+   setup and bounded API retries around the 35-minute main wait.
 2. **`build-and-push`** — builds every image natively for linux/amd64 (on
    `ubuntu-latest`) and linux/arm64 (on `ubuntu-24.04-arm`), pushing each
    per-arch image untagged, by digest.
@@ -112,6 +113,12 @@ builds, prereleases and single-target releases only publish versioned images.
 Older releases without the digest manifest retain their existing aliases.
 The nightly reconciliation and manual dispatch can repair an interrupted
 promotion without rebuilding images.
+
+After merging changes to alias reconciliation, confirm a scheduled or manually
+dispatched run on main succeeds before cutting the next release tag. This checks
+GitHub's reusable-workflow/queue handling, which PR CI cannot exercise. On the
+first warm desktop release, record the compiled crate count per OS; also compare
+ARM64 build times and exact-commit reuse rates over the next few releases.
 
 The unified workflow explicitly calls Update flow after publication, using the
 highest earlier stable unified version and this release's version. This tests
