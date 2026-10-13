@@ -48,12 +48,25 @@ function runGate(env: string, compose: string): { status: number | null; stderr:
 	sandboxes.push(dir);
 	const file = join(dir, 'docker-compose.yml');
 	writeFileSync(file, compose);
+	// A sync spawn blocks the event loop, so vitest's own timeout cannot stop a
+	// hung gate; the spawn has to time out by itself.
 	const result = spawnSync('bash', [SCRIPT], {
 		encoding: 'utf8',
 		env: { ...process.env, [env]: file },
+		timeout: GATE_TIMEOUT_MS,
 	});
+	expect(result.error).toBeUndefined();
 	return { status: result.status, stderr: result.stderr };
 }
+
+/** Adds a service, written as `body`, ahead of the updater. */
+function addIntruder(body: string): (s: string) => string {
+	return (s) =>
+		replaceOnce(s, '\n  updater:\n', `\n  intruder:\n    image: alpine:3\n${body}\n  updater:\n`);
+}
+
+const NOT_ONLY_MEMBERS = 'docker-proxy network must hold exactly docker-socket-proxy and updater';
+const SHARES_NAMESPACE = "joins a docker-proxy member's network namespace";
 
 const MUTATIONS = [
 	{
@@ -64,7 +77,8 @@ const MUTATIONS = [
 				'      - docker-proxy\n    restart: unless-stopped',
 				'      - default\n      - docker-proxy\n    restart: unless-stopped'
 			),
-		expected: 'docker-socket-proxy must mount the socket :ro, attach to docker-proxy only',
+		expected:
+			'docker-socket-proxy must attach to docker-proxy only (attached: default, docker-proxy)',
 	},
 	{
 		breaks: 'the proxy with no networks key (implicitly on default)',
@@ -74,7 +88,17 @@ const MUTATIONS = [
 				'    networks:\n      - docker-proxy\n    restart: unless-stopped',
 				'    restart: unless-stopped'
 			),
-		expected: 'docker-socket-proxy must mount the socket :ro, attach to docker-proxy only',
+		expected: 'docker-socket-proxy must attach to docker-proxy only (attached: default)',
+	},
+	{
+		breaks: 'a published proxy port',
+		apply: (s: string) =>
+			replaceOnce(
+				s,
+				'    networks:\n      - docker-proxy\n    restart: unless-stopped',
+				"    ports:\n      - '127.0.0.1:2375:2375'\n    networks:\n      - docker-proxy\n    restart: unless-stopped"
+			),
+		expected: 'docker-socket-proxy must publish no port',
 	},
 	{
 		breaks: 'a docker-proxy network that is not internal',
@@ -87,14 +111,59 @@ const MUTATIONS = [
 		expected: 'must declare the docker-proxy network with internal: true',
 	},
 	{
-		breaks: 'a third service on docker-proxy',
+		breaks: 'a third service on docker-proxy (block list)',
+		apply: addIntruder('    networks:\n      - docker-proxy\n'),
+		expected: `${NOT_ONLY_MEMBERS} (members: docker-socket-proxy, intruder, updater)`,
+	},
+	{
+		breaks: 'a third service on docker-proxy (flow list)',
+		apply: addIntruder('    networks: [default, docker-proxy]\n'),
+		expected: `${NOT_ONLY_MEMBERS} (members: docker-socket-proxy, intruder, updater)`,
+	},
+	{
+		breaks: 'a third service on docker-proxy (flow map)',
+		apply: addIntruder('    networks: {docker-proxy: {}}\n'),
+		expected: `${NOT_ONLY_MEMBERS} (members: docker-socket-proxy, intruder, updater)`,
+	},
+	{
+		breaks: 'a third service on docker-proxy (block map)',
+		apply: addIntruder('    networks:\n      docker-proxy:\n        aliases: [x]\n'),
+		expected: `${NOT_ONLY_MEMBERS} (members: docker-socket-proxy, intruder, updater)`,
+	},
+	{
+		breaks: 'a third service on docker-proxy (quoted name)',
+		apply: addIntruder("    networks:\n      - 'docker-proxy'\n"),
+		expected: `${NOT_ONLY_MEMBERS} (members: docker-socket-proxy, intruder, updater)`,
+	},
+	{
+		breaks: 'a third service on docker-proxy (trailing comment)',
+		apply: addIntruder('    networks:\n      - docker-proxy # temporary\n'),
+		expected: `${NOT_ONLY_MEMBERS} (members: docker-socket-proxy, intruder, updater)`,
+	},
+	{
+		breaks: "a service sharing the updater's namespace",
+		apply: addIntruder('    network_mode: service:updater\n'),
+		expected: `intruder ${SHARES_NAMESPACE} via network_mode: service:updater`,
+	},
+	{
+		breaks: "a service sharing the proxy's namespace",
+		apply: addIntruder("    network_mode: 'service:docker-socket-proxy'\n"),
+		expected: `intruder ${SHARES_NAMESPACE} via network_mode: service:docker-socket-proxy`,
+	},
+	{
+		breaks: "a service sharing the proxy container's namespace",
+		apply: addIntruder('    network_mode: container:owlat-docker-socket-proxy-1\n'),
+		expected: `intruder ${SHARES_NAMESPACE} via network_mode: container:owlat-docker-socket-proxy-1`,
+	},
+	{
+		breaks: 'the proxy on the host network',
 		apply: (s: string) =>
 			replaceOnce(
 				s,
-				'\n  updater:\n',
-				'\n  intruder:\n    image: alpine:3\n    networks:\n      - docker-proxy\n\n  updater:\n'
+				'    networks:\n      - docker-proxy\n    restart: unless-stopped',
+				'    network_mode: host\n    restart: unless-stopped'
 			),
-		expected: 'has 3 services on the docker-proxy network',
+		expected: 'docker-socket-proxy must not set network_mode (found host)',
 	},
 ] as const;
 

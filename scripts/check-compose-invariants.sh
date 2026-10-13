@@ -162,32 +162,26 @@ for compose in "$root" "$vps" ${release:+"$release"}; do
 
 	socket_proxy=$(service_block "$compose" docker-socket-proxy)
 	if grep -qE 'image: *tecnativa/docker-socket-proxy:' <<<"$socket_proxy" \
-		&& grep -qE '/var/run/docker\.sock:/var/run/docker\.sock:ro' <<<"$socket_proxy" \
-		&& grep -qE '^ {6}- docker-proxy$' <<<"$socket_proxy" \
-		&& ! grep -qE '^ {6}- default$' <<<"$socket_proxy" \
-		&& ! grep -qE '^ {4}ports:' <<<"$socket_proxy"; then
-		ok "$label runs docker-socket-proxy with a read-only socket on docker-proxy only, unpublished"
-	else bad "$label docker-socket-proxy must mount the socket :ro, attach to docker-proxy only (not default) and publish no port"; fi
+		&& grep -qE '/var/run/docker\.sock:/var/run/docker\.sock:ro' <<<"$socket_proxy"; then
+		ok "$label runs docker-socket-proxy with a read-only socket"
+	else bad "$label docker-socket-proxy must run tecnativa/docker-socket-proxy and mount the socket :ro"; fi
 
 	updater=$(service_block "$compose" updater)
 	if grep -qE 'DOCKER_HOST: *tcp://docker-socket-proxy:2375' <<<"$updater" \
 		&& grep -Pzq '\n {4}depends_on:\n {6}- docker-socket-proxy\n' <<<"$updater" \
-		&& ! grep -qE '\- */var/run/docker\.sock' <<<"$updater" \
-		&& grep -qE '^ {6}- default$' <<<"$updater" \
-		&& grep -qE '^ {6}- docker-proxy$' <<<"$updater"; then
-		ok "$label updater reaches Docker through the proxy on docker-proxy, and web on default"
-	else bad "$label updater must set DOCKER_HOST=tcp://docker-socket-proxy:2375, depend on the proxy, mount no socket and attach to both default and docker-proxy"; fi
+		&& ! grep -qE '\- */var/run/docker\.sock' <<<"$updater"; then
+		ok "$label updater reaches Docker through the proxy, never the raw socket"
+	else bad "$label updater must set DOCKER_HOST=tcp://docker-socket-proxy:2375, depend on the proxy and mount no socket"; fi
 
-	if grep -Pzq '\n {2}docker-proxy:\n {4}internal: true\n' "$compose"; then
-		ok "$label keeps the docker-proxy network internal:true"
-	else bad "$label must declare the docker-proxy network with internal: true"; fi
-
-	# Both the list form (`- docker-proxy`) and the map form (`docker-proxy:`)
-	# of a service's network attachment count; the 2-space declaration does not.
-	proxy_members=$(grep -cE '^ {4,}(- docker-proxy *$|docker-proxy:)' "$compose")
-	if [ "$proxy_members" = 2 ]; then
-		ok "$label attaches exactly docker-socket-proxy and updater to docker-proxy"
-	else bad "$label has $proxy_members services on the docker-proxy network (expected 2: the proxy and the updater)"; fi
+	# Network membership is read off the parsed YAML, not grepped: flow lists,
+	# quoted names, comments and `network_mode: service:updater` all attach a
+	# service without a `      - docker-proxy` line.
+	network_violations=$(bun scripts/check-docker-proxy-network.ts "$compose")
+	case $? in
+	0) ok "$label keeps docker-proxy internal, holding only docker-socket-proxy (unpublished) and updater (also on default)" ;;
+	1) while IFS= read -r violation; do bad "$label $violation"; done <<<"$network_violations" ;;
+	*) bad "$label could not be parsed by scripts/check-docker-proxy-network.ts" ;;
+	esac
 done
 
 # The proxy is the updater's ONLY route to Docker, so its allowlist is the
