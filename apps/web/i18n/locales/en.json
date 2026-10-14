@@ -6485,7 +6485,8 @@
 					"m0064": "Send-time profiles from past campaigns",
 					"m0065": "Team Inbox response history",
 					"m0067": "Remove retired thread summaries",
-					"m0068": "Seal thread brief fact keys"
+					"m0068": "Seal thread brief fact keys",
+					"m0069": "Restrict older knowledge to owners and admins"
 				}
 			},
 			"portChecksCard": {

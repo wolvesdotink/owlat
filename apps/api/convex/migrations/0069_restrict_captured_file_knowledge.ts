@@ -65,6 +65,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 
 export const MIGRATION = '0069_restrict_captured_file_knowledge';
@@ -144,7 +145,9 @@ export const processPage = internalMutation({
 			generation: run.generation,
 		});
 		if (!result.isDone) {
-			await ctx.scheduler.runAfter(
+			await scheduleMigrationPage(
+				ctx,
+				run,
 				0,
 				internal.migrations['0069_restrict_captured_file_knowledge'].processPage,
 				{ cursor: result.cursor, generation: run.generation }
@@ -178,7 +181,9 @@ export const run = internalMutation({
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
 		const cursor = begun.cursor ?? null;
-		await ctx.scheduler.runAfter(
+		await scheduleMigrationPage(
+			ctx,
+			begun,
 			0,
 			internal.migrations['0069_restrict_captured_file_knowledge'].processPage,
 			{ cursor, generation: begun.generation }

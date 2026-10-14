@@ -317,6 +317,17 @@ describe('0069_restrict_captured_file_knowledge', () => {
 		}
 	});
 
+	it('records its page job, so the System & updates runner can report a failed page', async () => {
+		const t = convexTest(schema, modules);
+		await entry(t, { sourceType: 'manual', content: 'Old fact' });
+		tick();
+		expect(await t.mutation(migration.run, {})).toMatchObject({ started: true });
+
+		const run = await ledger(t);
+		expect(run.pageJob).toMatchObject({ generation: run.generation });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+	});
+
 	it('keeps the start time when run is called again before the first page commits', async () => {
 		const t = convexTest(schema, modules);
 		const before = await entry(t, { sourceType: 'manual', content: 'Old fact' });
