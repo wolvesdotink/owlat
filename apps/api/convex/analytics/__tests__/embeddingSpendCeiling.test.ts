@@ -27,6 +27,8 @@ import { embedRetrievalQuery } from '../../knowledge/vectorSearch';
 import { embedForIndex } from '../../lib/aiRouting/embedderForSpace';
 import { storedEmbeddingTarget } from '../../lib/embeddingSpace';
 import { stampModelEndpoint } from '../../lib/llm/modelEndpoint';
+import { estimateCost } from '../../lib/llm/pricing';
+import { usdToMicrousd } from '../../lib/aiRouting/spendPeriods';
 import type { IndexEmbedder } from '../../lib/llmProvider';
 
 const embedder = {
@@ -43,8 +45,16 @@ vi.mock('../../lib/llmProvider', async () => ({
 	resolveIndexEmbedder: async () => embedder,
 }));
 
-// 600M input tokens of text-embedding-3-small at $0.02 per million: $12.
 const TOKENS = 600_000_000;
+// What the ledger prices this call at, from the same lookup it uses; the exact
+// rate is the pricing tests' to pin. The ceiling is half of it, so one call is
+// over it whatever the listed rate.
+const EXPECTED = estimateCost(
+	'text-embedding-3-small',
+	{ promptTokens: TOKENS, completionTokens: 0, totalTokens: TOKENS },
+	'embedding'
+);
+const CEILING_USD = EXPECTED.costUsd / 2;
 
 beforeEach(() => {
 	sdk.embed.mockReset();
@@ -55,7 +65,7 @@ afterEach(() => {
 });
 
 async function setup() {
-	vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
+	vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', String(CEILING_USD));
 	const t = newHarness();
 	await reconcileSpend(t);
 	return { t, ...actionCtxOver(t) };
@@ -74,12 +84,13 @@ async function expectCountedAgainstCeiling(
 			modelUsed: 'text-embedding-3-small',
 			promptTokens: TOKENS,
 			completionTokens: 0,
-			costMicrousd: 12_000_000,
-			isEstimated: false,
+			costMicrousd: usdToMicrousd(EXPECTED.costUsd),
+			isEstimated: EXPECTED.estimated,
 		}),
 	]);
 	const status = await t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
-	expect(status.daily.spentUsd).toBeCloseTo(12);
+	expect(status.daily.spentUsd).toBeCloseTo(EXPECTED.costUsd);
+	expect(status.daily.spentUsd).toBeGreaterThan(CEILING_USD);
 	expect(status.autonomousAutoSendAllowed).toBe(false);
 	expect(status.advisoryAllowed).toBe(false);
 }
