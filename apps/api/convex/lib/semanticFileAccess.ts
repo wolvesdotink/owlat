@@ -13,39 +13,48 @@
  *     shared mailbox, or an owner/admin, while the mailbox is active and
  *     personal mail is on;
  *   - a Team Inbox capture: the shared-inbox reader rule (inbox/access.ts);
- *   - a Postbox capture from before the mailbox was recorded: FAILS CLOSED to
- *     the shared-inbox readers. Its mailbox cannot be told from the Message-ID
- *     alone (the same message can land in several mailboxes), and owners and
- *     admins could open any of the org's mailboxes anyway.
- *
- * `captureSource` is set only by the inbound capture path, so it is the one
- * marker; `sourceMailboxId` only narrows a Postbox capture back to its readers.
+ *   - any other capture FAILS CLOSED to the shared-inbox readers: a Postbox
+ *     capture stored before its mailbox was recorded, and one stored before
+ *     `captureSource` existed at all, which carries only
+ *     `sourceType: 'email_attachment'`. Migration 0069 gives back the ones
+ *     whose source it can resolve; the Message-ID alone is not guessed from
+ *     (the same message can land in several mailboxes).
  */
 
 import { v, type Infer } from 'convex/values';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
-import type { MutationSessionContext } from './sessionOrganization';
-import { createMailboxAccessGate } from '../mail/permissions';
+import { getSingletonOrganizationId, type MutationSessionContext } from './sessionOrganization';
+import { createMailboxAccessGate, personalMailEnabled } from '../mail/permissions';
 import { isSharedInboxReader } from '../inbox/access';
 
-type FileAccessFields = Pick<Doc<'semanticFiles'>, 'captureSource' | 'sourceMailboxId'>;
+type FileAccessFields = Pick<
+	Doc<'semanticFiles'>,
+	'sourceType' | 'captureSource' | 'sourceMailboxId'
+>;
 
-/** Whether a Files row was captured from inbound mail and so keeps its mailbox's permission. */
-export function isMailCapture(file: Pick<Doc<'semanticFiles'>, 'captureSource'>): boolean {
-	return file.captureSource !== undefined;
+/**
+ * Whether a Files row was captured from inbound mail and so keeps its
+ * mailbox's permission. `sourceType: 'email_attachment'` alone counts: rows
+ * captured before `captureSource` existed carry nothing else.
+ */
+export function isMailCapture(
+	file: Pick<Doc<'semanticFiles'>, 'sourceType' | 'captureSource'>
+): boolean {
+	return file.captureSource !== undefined || file.sourceType === 'email_attachment';
 }
 
 /**
  * Which mail captures a session-less search may return — the retrieval
  * counterpart of the read check below, for the actions that have no session
- * to ask (`semanticFileProcessing.semanticSearch`). REQUIRED there, like
- * `scopeToContact`, so a forgotten argument cannot widen anything:
+ * to ask (`semanticFileProcessing.semanticSearch`). Absent means 'none', so a
+ * caller that does not name a scope cannot widen anything:
  *   - 'none'       → no mail captures (a member's assistant, a Postbox draft,
  *                    whose own mailbox's attachments come from that mailbox);
  *   - 'team_inbox' → Team Inbox captures only (the Team Inbox agent);
- *   - 'all'        → every capture (a shared-inbox reader, who may open every
- *                    mailbox of the org).
+ *   - 'all'        → what a shared-inbox reader may open: every capture whose
+ *                    mailbox, if recorded, is active, in this organization,
+ *                    with personal mail on (as `semanticFiles.get` decides).
  */
 export const mailCaptureScopeValidator = v.union(
 	v.literal('none'),
@@ -54,13 +63,37 @@ export const mailCaptureScopeValidator = v.union(
 );
 export type MailCaptureScope = Infer<typeof mailCaptureScopeValidator>;
 
-/** Whether a search under `scope` may return this file. */
-export function isInMailCaptureScope(
-	file: Pick<Doc<'semanticFiles'>, 'captureSource'>,
+/**
+ * The retrieval check for one query: `canRetrieve(file)` under `scope`. Under
+ * 'all' a Postbox capture's mailbox is checked exactly as the mailbox gate
+ * checks it for an owner/admin; decisions are memoized per mailbox.
+ */
+export function semanticFileRetrievalGate(
+	ctx: QueryCtx,
 	scope: MailCaptureScope
-): boolean {
-	if (!isMailCapture(file) || scope === 'all') return true;
-	return scope === 'team_inbox' && file.captureSource === 'team_inbox';
+): (file: FileAccessFields) => Promise<boolean> {
+	let enabled: Promise<boolean> | undefined;
+	let organizationId: Promise<string> | undefined;
+	const mailboxes = new Map<Id<'mailboxes'>, Promise<boolean>>();
+	const isMailboxOpen = async (mailboxId: Id<'mailboxes'>): Promise<boolean> => {
+		enabled ??= personalMailEnabled(ctx);
+		organizationId ??= getSingletonOrganizationId(ctx);
+		if (!(await enabled)) return false;
+		const mailbox = await ctx.db.get(mailboxId);
+		return mailbox?.status === 'active' && mailbox.organizationId === (await organizationId);
+	};
+	return async (file) => {
+		if (!isMailCapture(file)) return true;
+		if (scope === 'none') return false;
+		if (scope === 'team_inbox') return file.captureSource === 'team_inbox';
+		if (file.captureSource === 'mailbox' && file.sourceMailboxId) {
+			const id = file.sourceMailboxId;
+			let decision = mailboxes.get(id);
+			if (!decision) mailboxes.set(id, (decision = isMailboxOpen(id)));
+			return decision;
+		}
+		return true;
+	};
 }
 
 /**

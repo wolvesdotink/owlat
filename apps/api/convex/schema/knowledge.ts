@@ -1,7 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { literalUnion } from '../lib/literalUnion';
-import { backfillJobStatusValidator, captureSourceValidator } from '../lib/literalValidators';
+import { backfillJobStatusValidator } from '../lib/literalValidators';
 import {
 	embeddingProvenanceFields,
 	embeddingSecondarySlotFields,
@@ -158,11 +158,14 @@ export const knowledgeEntriesFields = {
 	// Entity links
 	contactIds: v.optional(v.array(v.id('contacts'))),
 	threadId: v.optional(v.id('conversationThreads')),
-	// Set on an entry extracted from a file captured from inbound mail: the
-	// file's own `captureSource`. Such a file keeps its mailbox's permission, so
-	// what was learned from it is Team Inbox-derived (inbox/access.ts) and shown
-	// to shared-inbox readers only. Written by the extraction, never by a client.
-	captureSource: v.optional(captureSourceValidator),
+	// Whether members may see what was learned here (inbox/access.ts
+	// `isInboxDerivedKnowledge`). `restricted` keeps it to shared-inbox readers
+	// whatever the source. For `sourceType: 'file'` only `members` opens it: the
+	// write (`knowledge.graph.saveEntry`) sets it from the source FILE, `members`
+	// for an upload and `restricted` for a mail capture or a file that is gone,
+	// so an entry written before the field existed stays restricted until
+	// migration 0069 resolves it. Never set by a client.
+	memberAccess: v.optional(v.union(v.literal('members'), v.literal('restricted'))),
 	// Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
 	embedding: v.array(v.float64()),
 	// Model that produced `embedding` (e.g., 'text-embedding-3-small'). Re-embed when this changes.

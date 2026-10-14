@@ -87,8 +87,9 @@ export async function listSharedInboxReaderIds(ctx: QueryCtx | MutationCtx): Pro
 }
 
 /**
- * Whether a knowledge entry was derived from Team Inbox mail, and so follows
- * the reader rule above: shown only to shared-inbox readers.
+ * Whether a knowledge entry was derived from Team Inbox mail, or from anything
+ * else members may not read, and so follows the reader rule above: shown only
+ * to shared-inbox readers.
  *
  * Any marker is enough:
  *   - `sourceType: 'agent_extracted'` is what `extractFromMessage` stores for
@@ -96,21 +97,23 @@ export async function listSharedInboxReaderIds(ctx: QueryCtx | MutationCtx): Pro
  *   - `threadId` points at a Team Inbox conversation (message extraction, and
  *     files linked to a thread). `updateEntry` cannot change it, and only a
  *     reader may set it on `createEntry`;
- *   - `captureSource` marks an entry extracted from a file captured from
- *     inbound mail, Team Inbox or Postbox. The file keeps its mailbox's
- *     permission (lib/semanticFileAccess.ts); knowledge carries no mailbox, so
- *     the entry falls back to the readers who may open every mailbox. Only the
- *     extraction writes it.
- * Entries from uploaded files, chat, imported Postbox mail and manual
- * authoring carry none and keep their member-wide visibility. Only someone who
- * can already see an entry can edit its `sourceType`.
+ *   - `memberAccess: 'restricted'`, set on whatever must stay with the readers;
+ *   - `sourceType: 'file'` WITHOUT `memberAccess: 'members'`. A file captured
+ *     from inbound mail keeps its mailbox's permission
+ *     (lib/semanticFileAccess.ts), and knowledge carries no mailbox, so only
+ *     what the write proved came from an uploaded file is opened to members
+ *     (`knowledge.graph.saveEntry`, migration 0069).
+ * Entries from chat, imported Postbox mail and manual authoring carry none and
+ * keep their member-wide visibility. Only someone who can already see an entry
+ * can edit its `sourceType`; nobody can edit `memberAccess`.
  */
 export function isInboxDerivedKnowledge(
-	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'captureSource'>
+	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'memberAccess'>
 ): boolean {
 	return (
 		entry.sourceType === 'agent_extracted' ||
 		entry.threadId !== undefined ||
-		entry.captureSource !== undefined
+		entry.memberAccess === 'restricted' ||
+		(entry.sourceType === 'file' && entry.memberAccess !== 'members')
 	);
 }

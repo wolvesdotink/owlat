@@ -20,11 +20,9 @@
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
-import { isInMailCaptureScope } from '../lib/semanticFileAccess';
-import { isInboxDerivedKnowledge } from '../inbox/access';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'victim',
@@ -44,6 +42,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn(async () => session()),
 		getBetterAuthSessionWithRole: vi.fn(async () => session()),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getSingletonOrganizationId: vi.fn(async () => 'test-org'),
 	};
 });
 
@@ -57,6 +56,8 @@ interface Seeded {
 	postbox: Id<'semanticFiles'>;
 	teamInbox: Id<'semanticFiles'>;
 	legacyPostbox: Id<'semanticFiles'>;
+	unmarked: Id<'semanticFiles'>;
+	mailboxId: Id<'mailboxes'>;
 }
 
 async function seed(t: Harness): Promise<Seeded> {
@@ -123,6 +124,9 @@ async function seed(t: Harness): Promise<Seeded> {
 			teamInbox: await file('team.txt', { captureSource: 'team_inbox' }),
 			// Captured before the mailbox was recorded: fails closed.
 			legacyPostbox: await file('legacy.txt', { captureSource: 'mailbox' }),
+			// Captured before `captureSource` existed (v0.4.17): only the source type.
+			unmarked: await file('unmarked.txt', {}),
+			mailboxId,
 		};
 	});
 }
@@ -146,7 +150,7 @@ async function readAll(t: Harness, seeded: Seeded) {
 	const get: Record<string, boolean> = {};
 	const history: Record<string, number> = {};
 	for (const [key, fileId] of Object.entries(seeded)) {
-		if (key === 'contactId') continue;
+		if (key === 'contactId' || key === 'mailboxId') continue;
 		const id = fileId as Id<'semanticFiles'>;
 		get[key] = (await t.query(api.semanticFiles.get, { fileId: id })) !== null;
 		history[key] = (await t.query(api.semanticFiles.getVersionHistory, { fileId: id })).length;
@@ -182,8 +186,15 @@ describe('semanticFiles reads — captured mail keeps its mailbox permission', (
 			postbox: false,
 			teamInbox: false,
 			legacyPostbox: false,
+			unmarked: false,
 		});
-		expect(reads.history).toEqual({ upload: 1, postbox: 0, teamInbox: 0, legacyPostbox: 0 });
+		expect(reads.history).toEqual({
+			upload: 1,
+			postbox: 0,
+			teamInbox: 0,
+			legacyPostbox: 0,
+			unmarked: 0,
+		});
 	});
 
 	it('shows a Postbox capture to its mailbox’s own user and members, nothing more', async () => {
@@ -201,6 +212,7 @@ describe('semanticFiles reads — captured mail keeps its mailbox permission', (
 				postbox: true,
 				teamInbox: false,
 				legacyPostbox: false,
+				unmarked: false,
 			});
 		}
 	});
@@ -212,12 +224,19 @@ describe('semanticFiles reads — captured mail keeps its mailbox permission', (
 		sessionMock.role = 'owner';
 
 		const reads = await readAll(t, seeded);
-		expect(reads.list).toEqual(['legacy.txt', 'postbox.txt', 'team.txt', 'upload.txt']);
+		expect(reads.list).toEqual([
+			'legacy.txt',
+			'postbox.txt',
+			'team.txt',
+			'unmarked.txt',
+			'upload.txt',
+		]);
 		expect(reads.get).toEqual({
 			upload: true,
 			postbox: true,
 			teamInbox: true,
 			legacyPostbox: true,
+			unmarked: true,
 		});
 	});
 
@@ -238,31 +257,57 @@ describe('semanticFiles reads — captured mail keeps its mailbox permission', (
 	});
 });
 
-describe('retrieval and derived knowledge keep the same boundary', () => {
-	it('a session-less file search returns captures only within the scope it names', () => {
-		const upload = { captureSource: undefined };
-		const postbox = { captureSource: 'mailbox' as const };
-		const team = { captureSource: 'team_inbox' as const };
-		expect([upload, postbox, team].map((f) => isInMailCaptureScope(f, 'none'))).toEqual([
-			true,
-			false,
-			false,
-		]);
-		expect([upload, postbox, team].map((f) => isInMailCaptureScope(f, 'team_inbox'))).toEqual([
-			true,
-			false,
-			true,
-		]);
-		expect([upload, postbox, team].map((f) => isInMailCaptureScope(f, 'all'))).toEqual([
-			true,
-			true,
-			true,
+describe('semanticFiles.getByIds — what a session-less search may hydrate', () => {
+	async function retrieve(
+		t: Harness,
+		seeded: Seeded,
+		mailCaptures?: 'none' | 'team_inbox' | 'all'
+	) {
+		const ids = [
+			seeded.upload,
+			seeded.postbox,
+			seeded.teamInbox,
+			seeded.legacyPostbox,
+			seeded.unmarked,
+		];
+		const rows = await t.query(internal.semanticFiles.getByIds, {
+			ids,
+			...(mailCaptures ? { mailCaptures } : {}),
+		});
+		return rows.map((r) => r.filename).sort();
+	}
+
+	it('keeps mail captures to the named scope, and to none when no scope is named', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		expect(await retrieve(t, seeded)).toEqual(['upload.txt']);
+		expect(await retrieve(t, seeded, 'none')).toEqual(['upload.txt']);
+		expect(await retrieve(t, seeded, 'team_inbox')).toEqual(['team.txt', 'upload.txt']);
+		expect(await retrieve(t, seeded, 'all')).toEqual([
+			'legacy.txt',
+			'postbox.txt',
+			'team.txt',
+			'unmarked.txt',
+			'upload.txt',
 		]);
 	});
 
-	it('knowledge extracted from a captured file is Team Inbox-derived', () => {
-		expect(isInboxDerivedKnowledge({ sourceType: 'file' })).toBe(false);
-		expect(isInboxDerivedKnowledge({ sourceType: 'file', captureSource: 'mailbox' })).toBe(true);
-		expect(isInboxDerivedKnowledge({ sourceType: 'file', captureSource: 'team_inbox' })).toBe(true);
+	it("under 'all', applies the mailbox gate's status and feature checks", async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seed(t);
+		await t.run((ctx) => ctx.db.patch(seeded.mailboxId, { status: 'suspended' }));
+		expect(await retrieve(t, seeded, 'all')).not.toContain('postbox.txt');
+
+		await t.run((ctx) => ctx.db.patch(seeded.mailboxId, { status: 'active' }));
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, {
+				featureFlags: { ...settings!.featureFlags, postbox: false, 'mail.external': false },
+			});
+		});
+		expect(await retrieve(t, seeded, 'all')).not.toContain('postbox.txt');
+
+		await t.run((ctx) => ctx.db.delete(seeded.mailboxId));
+		expect(await retrieve(t, seeded, 'all')).not.toContain('postbox.txt');
 	});
 });

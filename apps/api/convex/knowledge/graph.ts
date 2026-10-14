@@ -35,7 +35,7 @@ import {
 } from '../lib/aiRouting/embeddingActivation';
 import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
 import { logInfo } from '../lib/runtimeLog';
-import { findDuplicateEntry } from './entryDedupe';
+import { findDuplicateEntry, resolveMemberAccess } from './entryDedupe';
 import {
 	entryTypeValidator,
 	relationTypeValidator,
@@ -522,7 +522,6 @@ export const saveEntry = internalMutation({
 			'sourceId',
 			'contactIds',
 			'threadId',
-			'captureSource',
 			'embedding',
 			'embeddingModel',
 			'embeddingGeneratedAt',
@@ -547,8 +546,16 @@ export const saveEntry = internalMutation({
 		// source: the second writer's reads conflict with the first's committed
 		// insert under Convex OCC, so it sees it here and no-ops. The duplicate
 		// already carries its junction rows, so none are written.
-		const dup = await findDuplicateEntry(ctx, args);
-		if (dup) return dup;
+		//
+		// Who may see it comes from the source, resolved here in the write
+		// (entryDedupe.ts `resolveMemberAccess`), never from the caller: an
+		// extraction from a previous release passes nothing.
+		const memberAccess = await resolveMemberAccess(ctx, args);
+		const dup = await findDuplicateEntry(ctx, { ...args, memberAccess });
+		if (dup) {
+			if (dup.needsRestriction) await ctx.db.patch(dup.id, { memberAccess: 'restricted' });
+			return dup.id;
+		}
 		const { embedding, embeddingModel: _model, embeddingGeneratedAt: _at, ...fields } = args;
 		const { isStale, fields: vector } = await vectorFieldsForCommit(
 			ctx,
@@ -558,6 +565,7 @@ export const saveEntry = internalMutation({
 		if (isStale) logInfo('[knowledge.saveEntry] stale embedding space, stored without vector');
 		const entry = {
 			...fields,
+			...(memberAccess ? { memberAccess } : {}),
 			...(vector as { embedding: number[] }),
 			searchableText: `${args.title} ${args.content}`,
 			lastValidatedAt: now,

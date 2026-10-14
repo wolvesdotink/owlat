@@ -87,6 +87,8 @@ export const semanticFileTables = {
 	})
 		.index('by_created_at', ['createdAt'])
 		.index('by_thread', ['threadId'])
+		// A personal mailbox's captures, which member erasure deletes with it.
+		.index('by_source_mailbox', ['sourceMailboxId'])
 		.index('by_attachment_retention', ['captureSource', 'bytesReleasedAt', 'createdAt'])
 		.index('by_embedding_space', ['embeddingSpaceId', 'embeddingGeneratedAt'])
 		.index('by_secondary_embedding_space', ['secondaryEmbeddingSpaceId'])

@@ -23,7 +23,6 @@ import { knowledgeEmbeddingInput } from '../lib/aiRouting/embeddingInputs';
 import { meterLlmCall } from '../analytics/meteredSpend';
 import { runEmbedding } from '../lib/llm/embed';
 import type { LlmRootContext } from '../lib/llm/requestMeter';
-import type { CaptureSource } from '../lib/literalValidators';
 import { scheduledRoot } from '../lib/llm/actionDeadline';
 import { ENTRY_TYPES } from '../schema/knowledge';
 import { normalizeForHash } from '../lib/knowledgeEdges';
@@ -73,8 +72,6 @@ export async function persistExtractedEntries(
 		sourceId: string;
 		contactIds?: Id<'contacts'>[];
 		threadId?: Id<'conversationThreads'>;
-		/** The source file's `captureSource`: entries from mail captures stay restricted. */
-		captureSource?: CaptureSource;
 	},
 	root: LlmRootContext
 ): Promise<void> {
@@ -104,7 +101,6 @@ export async function persistExtractedEntries(
 			contentHash,
 			contactIds: source.contactIds,
 			threadId: source.threadId,
-			captureSource: source.captureSource,
 		});
 		if (existing) {
 			entryIds.push(existing);
@@ -139,7 +135,6 @@ export async function persistExtractedEntries(
 			sourceId: source.sourceId,
 			contactIds: source.contactIds,
 			threadId: source.threadId,
-			captureSource: source.captureSource,
 			embedding: measured ? toIndexVector(embedding) : [],
 			embeddingSpace: measured ?? undefined,
 			confidence: entry.confidence,

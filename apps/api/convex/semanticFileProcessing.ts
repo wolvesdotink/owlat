@@ -32,7 +32,7 @@ import { rootRequest } from './lib/llm/requestMeter';
 import { llmRootContextValidator } from './lib/llmUsageTags';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
-import { isInMailCaptureScope, mailCaptureScopeValidator } from './lib/semanticFileAccess';
+import { mailCaptureScopeValidator } from './lib/semanticFileAccess';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
@@ -338,10 +338,6 @@ export const processFile = internalAction({
  *                          contact B's uploaded contract/invoice.
  *   - 'org-general-only' → only org-general files (inbound has no resolved
  *                          contact → fail closed).
- *
- * Mail-capture scoping (`mailCaptures`, REQUIRED): a file captured from inbound
- * mail keeps its mailbox's permission, so it is returned only within the scope
- * the caller names (lib/semanticFileAccess.ts `mailCaptureScopeValidator`).
  */
 export const semanticSearch = internalAction({
 	args: {
@@ -354,9 +350,7 @@ export const semanticSearch = internalAction({
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out.
 		scopeToContact: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
-		// Required: which files captured from inbound mail the caller may see
-		// (lib/semanticFileAccess.ts). They keep their mailbox's permission.
-		mailCaptures: mailCaptureScopeValidator,
+		mailCaptures: v.optional(mailCaptureScopeValidator), // absent ⇒ none (getByIds)
 		/** The caller's root request, so the query embedding's ledger row groups under it. */
 		root: v.optional(llmRootContextValidator),
 	},
@@ -432,19 +426,22 @@ export const semanticSearch = internalAction({
 		if (fusedIds.length === 0) return [];
 
 		// Hydrate in fused order (getByIds preserves input order, drops deleted).
-		const files = await ctx.runQuery(internal.semanticFiles.getByIds, { ids: fusedIds });
+		const { mailCaptures } = args;
+		const files = await ctx.runQuery(internal.semanticFiles.getByIds, {
+			ids: fusedIds,
+			mailCaptures,
+		});
 		const scored = files.map((file) => ({
 			...file,
 			_score: scoreById.get(file._id as string) ?? 0,
 		}));
 
-		// Mail-capture and contact scoping AFTER fusion (over-fetched above so
-		// this doesn't starve the result set).
-		const visible = scored.filter(
-			(file) =>
-				isInMailCaptureScope(file, args.mailCaptures) &&
-				(scope === 'org-wide' || isContactScopeVisible(file.contactIds, scope))
-		);
+		// Contact scoping AFTER fusion (over-fetched above so this doesn't starve
+		// the result set).
+		const visible =
+			scope === 'org-wide'
+				? scored
+				: scored.filter((file) => isContactScopeVisible(file.contactIds, scope));
 		return visible.slice(0, limit);
 	},
 });

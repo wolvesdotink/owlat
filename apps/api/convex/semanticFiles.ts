@@ -17,7 +17,11 @@ import { internal } from './_generated/api';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireAdminContext, type MutationSessionContext } from './lib/sessionOrganization';
 import { isSharedInboxReader } from './inbox/access';
-import { semanticFileReadGate } from './lib/semanticFileAccess';
+import {
+	mailCaptureScopeValidator,
+	semanticFileReadGate,
+	semanticFileRetrievalGate,
+} from './lib/semanticFileAccess';
 import { throwInvalidInput } from './_utils/errors';
 import {
 	isExtensionAllowed,
@@ -115,15 +119,24 @@ export const getInternal = internalQuery({
  * Fetch files by a list of ids, preserving input order, with storage URLs
  * resolved. Used to hydrate the hits from a vector search (`ctx.vectorSearch`
  * yields `{ _id, _score }`; this resolves them to documents). Internal — the
- * semantic-search action calls it.
+ * semantic-search action calls it. Files captured from inbound mail are kept
+ * only within `mailCaptures` (lib/semanticFileAccess.ts); absent means none.
  */
 export const getByIds = internalQuery({
-	args: { ids: v.array(v.id('semanticFiles')) },
+	args: {
+		ids: v.array(v.id('semanticFiles')),
+		mailCaptures: v.optional(mailCaptureScopeValidator),
+	},
 	handler: async (ctx, args) => {
 		// The ids are independent, so read them in one batch and hydrate the
 		// survivors together, still in input order.
 		const byId = await batchGet(ctx, args.ids);
-		const files = args.ids.map((id) => byId.get(id)).filter((file) => file != null);
+		const canRetrieve = semanticFileRetrievalGate(ctx, args.mailCaptures ?? 'none');
+		const files: Doc<'semanticFiles'>[] = [];
+		for (const id of args.ids) {
+			const file = byId.get(id);
+			if (file && (await canRetrieve(file))) files.push(file);
+		}
 		return await hydrateFiles(ctx, files);
 	},
 });

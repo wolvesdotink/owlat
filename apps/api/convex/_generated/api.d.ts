@@ -294,6 +294,7 @@ import type * as auth_apiResponses from '../auth/apiResponses.js';
 import type * as auth_apiScopes from '../auth/apiScopes.js';
 import type * as auth_auth from '../auth/auth.js';
 import type * as auth_emailVerificationAdmin from '../auth/emailVerificationAdmin.js';
+import type * as auth_erasure_capturedFilePhases from '../auth/erasure/capturedFilePhases.js';
 import type * as auth_erasure_descendantRelations from '../auth/erasure/descendantRelations.js';
 import type * as auth_erasure_identityPhases from '../auth/erasure/identityPhases.js';
 import type * as auth_erasure_lifecycle from '../auth/erasure/lifecycle.js';
@@ -2040,6 +2041,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/apiScopes': typeof auth_apiScopes;
 	'auth/auth': typeof auth_auth;
 	'auth/emailVerificationAdmin': typeof auth_emailVerificationAdmin;
+	'auth/erasure/capturedFilePhases': typeof auth_erasure_capturedFilePhases;
 	'auth/erasure/descendantRelations': typeof auth_erasure_descendantRelations;
 	'auth/erasure/identityPhases': typeof auth_erasure_identityPhases;
 	'auth/erasure/lifecycle': typeof auth_erasure_lifecycle;
