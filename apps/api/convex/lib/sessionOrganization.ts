@@ -1,5 +1,6 @@
 import type { QueryCtx, MutationCtx, ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
+import { memoizeSessionQuery } from './sessionQueryCache';
 import { components } from '../_generated/api';
 import { throwUnauthenticated, throwForbidden } from '../_utils/errors';
 import {
@@ -47,6 +48,10 @@ export async function getBetterAuthSession(ctx: QueryCtx | MutationCtx): Promise
 	userId: string;
 	activeOrganizationId: string | null;
 } | null> {
+	return memoizeSessionQuery(ctx, 'session', () => resolveBetterAuthSession(ctx));
+}
+
+async function resolveBetterAuthSession(ctx: QueryCtx | MutationCtx) {
 	try {
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) {
@@ -75,6 +80,8 @@ export async function getBetterAuthSession(ctx: QueryCtx | MutationCtx): Promise
 			};
 		}
 
+		// Legacy JWTs lack org claims. JWT expiry does not prove that this
+		// BetterAuth session is still live; retain its expiry filter here.
 		const session = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
 			model: 'session',
 			where: [
@@ -106,7 +113,8 @@ export async function getBetterAuthSession(ctx: QueryCtx | MutationCtx): Promise
  * (BetterAuth `auth/organization/create` is disabled in `auth.ts`), so once
  * we've confirmed the invariant for a given org id within an isolate the
  * subsequent calls are pure equality checks. The cache is process-local —
- * a new isolate or a redeploy re-runs the full check.
+ * a new isolate or a redeploy re-runs the full check. It holds one
+ * deployment-wide id, never per-user auth data.
  */
 let cachedSingletonOrgId: string | null = null;
 
@@ -164,7 +172,16 @@ export async function getSingletonOrganizationId(
 	if (cachedSingletonOrgId !== null) {
 		return cachedSingletonOrgId;
 	}
+	const singletonId = await memoizeSessionQuery(ctx, 'singletonOrganization', () =>
+		resolveSingletonOrganizationId(ctx)
+	);
+	cachedSingletonOrgId = singletonId;
+	return singletonId;
+}
 
+async function resolveSingletonOrganizationId(
+	ctx: QueryCtx | MutationCtx | ActionCtx
+): Promise<string> {
 	const result = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
 		model: 'organization',
 		where: [],
@@ -189,7 +206,6 @@ export async function getSingletonOrganizationId(
 	if (!singletonId) {
 		throwForbidden('No organization configured on this Owlat instance');
 	}
-	cachedSingletonOrgId = singletonId;
 	return singletonId;
 }
 
@@ -206,6 +222,10 @@ export async function getBetterAuthSessionWithRole(ctx: QueryCtx | MutationCtx):
 	activeOrganizationId: string | null;
 	role: OrganizationRole | null;
 } | null> {
+	return memoizeSessionQuery(ctx, 'sessionWithRole', () => resolveBetterAuthSessionWithRole(ctx));
+}
+
+async function resolveBetterAuthSessionWithRole(ctx: QueryCtx | MutationCtx) {
 	const session = await getBetterAuthSession(ctx);
 	if (!session) return null;
 

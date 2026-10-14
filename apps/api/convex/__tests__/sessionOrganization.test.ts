@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { initializeSessionQueryCache } from '../lib/sessionQueryCache';
 import {
 	assertSingletonOrgInvariant,
 	requireOrgMember,
@@ -29,11 +30,13 @@ type OrgRow = { id?: string; _id?: string };
  * `organization` model — we intercept that call and return the supplied rows.
  */
 function makeCtx(rows: OrgRow[]) {
-	return {
+	const ctx = {
 		runQuery: vi.fn(async () => ({ page: rows })),
 		// The runtime ctx has many more fields; the invariant only uses runQuery,
 		// so the cast through `unknown` is safe for this unit test.
 	} as unknown as Parameters<typeof assertSingletonOrgInvariant>[0];
+	initializeSessionQueryCache(ctx);
+	return ctx;
 }
 
 describe('assertSingletonOrgInvariant', () => {
@@ -42,7 +45,6 @@ describe('assertSingletonOrgInvariant', () => {
 		// between tests so each case re-exercises the DB path.
 		_resetSingletonOrgCacheForTests();
 	});
-
 	it('passes when exactly one organization exists and the session matches it', async () => {
 		const ctx = makeCtx([{ id: 'org_singleton' }]);
 
@@ -152,7 +154,6 @@ function makeMemberCtx(opts: {
 
 describe('requireOrgMember', () => {
 	beforeEach(() => _resetSingletonOrgCacheForTests());
-
 	it('returns { userId, role, activeOrganizationId } for an active member', async () => {
 		const ctx = makeMemberCtx({
 			identity: { subject: 'user_1', activeOrganizationId: 'org_singleton' },
@@ -189,7 +190,6 @@ describe('requireOrgMember', () => {
 
 describe('isActiveOrgMember', () => {
 	beforeEach(() => _resetSingletonOrgCacheForTests());
-
 	it('is true for an active member', async () => {
 		const ctx = makeMemberCtx({
 			identity: { subject: 'user_1', activeOrganizationId: 'org_singleton' },
