@@ -424,7 +424,7 @@ describe('mtaSts', () => {
 			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
 			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
 			expect(fetchTextMock).toHaveBeenCalledTimes(1);
-			expect(await redis.ttl('mta:sts-fetch-failed:example.com')).toBe(300);
+			expect(await redis.ttl('mta:sts-fetch-failures:example.com')).toBe(300);
 
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
 			stubFetch(ENFORCE_BODY);
@@ -470,7 +470,7 @@ describe('mtaSts', () => {
 			policyMode: 'enforce',
 		};
 		const CACHE_KEY = `${CACHE_PREFIX}example.com`;
-		const FAILED_KEY = 'mta:sts-fetch-failed:example.com';
+		const FAILED_KEY = 'mta:sts-fetch-failures:example.com';
 		const BUDGET_KEY = 'mta:sts-fetch-budget:example.com';
 
 		async function cacheEnforce(opts: { maxAge: number; ageSeconds: number }) {
@@ -485,20 +485,24 @@ describe('mtaSts', () => {
 			return entry;
 		}
 
-		/** Make one Redis command fail for keys with `prefix`; others pass through. */
-		function failFor(command: 'get' | 'set', prefix: string) {
+		/**
+		 * Make one Redis command fail for keys with `prefix`; others pass through.
+		 * The key is the first argument, or the third for EVAL (script, 1, key).
+		 */
+		function failFor(command: 'set' | 'zscore' | 'eval', prefix: string) {
 			const real = redis[command].bind(redis) as (...args: unknown[]) => Promise<unknown>;
-			vi.spyOn(redis, command).mockImplementation(((key: string, ...rest: unknown[]) =>
-				key.startsWith(prefix)
+			const keyAt = command === 'eval' ? 2 : 0;
+			vi.spyOn(redis, command).mockImplementation(((...args: unknown[]) =>
+				String(args[keyAt]).startsWith(prefix)
 					? Promise.reject(new Error('READONLY'))
-					: real(key, ...rest)) as never);
+					: real(...args)) as never);
 		}
 
 		it('keeps the cached enforce policy when the backoff read fails', async () => {
 			const cached = await cacheEnforce({ maxAge: 86400, ageSeconds: 10 });
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
 			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
-			failFor('get', FAILED_KEY);
+			failFor('zscore', FAILED_KEY);
 
 			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
 			expect(JSON.parse((await redis.get(CACHE_KEY))!)).toEqual(cached);
@@ -508,7 +512,7 @@ describe('mtaSts', () => {
 			const cached = await cacheEnforce({ maxAge: 86400, ageSeconds: 10 });
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
 			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
-			failFor('set', FAILED_KEY);
+			failFor('eval', FAILED_KEY);
 
 			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
 			expect(JSON.parse((await redis.get(CACHE_KEY))!)).toEqual(cached);

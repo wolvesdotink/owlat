@@ -15,7 +15,7 @@ import {
 } from '../mtaStsFetchGate.js';
 
 const DOMAIN = 'example.com';
-const FAILED_KEY = `mta:sts-fetch-failed:${DOMAIN}`;
+const FAILED_KEY = `mta:sts-fetch-failures:${DOMAIN}`;
 const BUDGET_KEY = `mta:sts-fetch-budget:${DOMAIN}`;
 
 // Issue #1326: the recipient domain's owner controls both the DNS id and the
@@ -48,6 +48,38 @@ describe('gatedPolicyFetch', () => {
 			expect(await redis.ttl(FAILED_KEY)).toBe(STS_FETCH_FAILURE_BACKOFF_SECONDS);
 		});
 
+		it('keeps both records when two ids fail at the same time', async () => {
+			let rejectA!: (err: Error) => void;
+			let rejectB!: (err: Error) => void;
+			const fetchA = vi.fn(() => new Promise<string>((_, reject) => (rejectA = reject)));
+			const fetchB = vi.fn(() => new Promise<string>((_, reject) => (rejectB = reject)));
+
+			const a = callSettled('id-a', fetchA);
+			const b = callSettled('id-b', fetchB);
+			await vi.waitFor(() => {
+				expect(fetchA).toHaveBeenCalled();
+				expect(fetchB).toHaveBeenCalled();
+			});
+			rejectA(new Error('a down'));
+			rejectB(new Error('b down'));
+			await Promise.all([a, b]);
+
+			expect((await redis.zrange(FAILED_KEY, '0', '-1')).sort()).toEqual(['id-a', 'id-b']);
+			// Retrying either id right away is backed off: no third fetch.
+			expect(await callSettled('id-b', fetchB)).toBeNull();
+			expect(await callSettled('id-a', fetchA)).toBeNull();
+			expect(fetchA.mock.calls.length + fetchB.mock.calls.length).toBe(2);
+		});
+
+		it('drops failures older than the backoff when recording a new one', async () => {
+			const stale = Date.now() - (STS_FETCH_FAILURE_BACKOFF_SECONDS + 1) * 1000;
+			await redis.zadd(FAILED_KEY, stale, 'id-old');
+
+			await callSettled('id-a', failing());
+
+			expect(await redis.zrange(FAILED_KEY, '0', '-1')).toEqual(['id-a']);
+		});
+
 		it('alternating two failing ids fetches each once, not on every call', async () => {
 			const fetch = failing();
 
@@ -63,15 +95,14 @@ describe('gatedPolicyFetch', () => {
 				await callSettled(`id-${i}`, failing());
 			}
 
-			const stored = JSON.parse((await redis.get(FAILED_KEY))!) as Array<{ id: string }>;
-			expect(stored.map((entry) => entry.id)).toEqual(
+			expect(await redis.zrange(FAILED_KEY, '0', '-1')).toEqual(
 				Array.from({ length: STS_FAILED_IDS_KEPT }, (_, i) => `id-${i + 2}`)
 			);
 		});
 
 		it('lets an id fetch again once its 5-minute backoff has passed', async () => {
 			const stale = Date.now() - (STS_FETCH_FAILURE_BACKOFF_SECONDS + 1) * 1000;
-			await redis.set(FAILED_KEY, JSON.stringify([{ id: 'id-a', at: stale }]));
+			await redis.zadd(FAILED_KEY, stale, 'id-a');
 			const fetch = vi.fn(() => Promise.resolve('policy'));
 
 			expect(await gatedPolicyFetch(redis, DOMAIN, 'id-a', fetch)).toBe('policy');
@@ -85,7 +116,7 @@ describe('gatedPolicyFetch', () => {
 			await gatedPolicyFetch(redis, DOMAIN, 'id-a', fetch);
 
 			expect(fetch).toHaveBeenCalledTimes(2);
-			expect(await redis.get(FAILED_KEY)).toBeNull();
+			expect(await redis.exists(FAILED_KEY)).toBe(0);
 		});
 	});
 
@@ -111,11 +142,31 @@ describe('gatedPolicyFetch', () => {
 			expect(results.slice(-2)).toEqual([null, null]);
 		});
 
-		it('re-arms a spent budget whose window lost its TTL', async () => {
+		// The counter and its TTL are set in one script, so the key can't be
+		// left without a TTL; a counter that lost one anyway (e.g. written by an
+		// older build) is repaired on the next call, under the limit or over it.
+		it('repairs a TTL-less counter below the limit', async () => {
+			await redis.set(BUDGET_KEY, '1');
+			expect(await redis.ttl(BUDGET_KEY)).toBe(-1);
+			const fetch = vi.fn(() => Promise.resolve('policy'));
+
+			expect(await gatedPolicyFetch(redis, DOMAIN, 'id-a', fetch)).toBe('policy');
+			expect(await redis.get(BUDGET_KEY)).toBe('2');
+			expect(await redis.ttl(BUDGET_KEY)).toBe(STS_FETCH_BUDGET_WINDOW_SECONDS);
+		});
+
+		it('repairs a TTL-less counter over the limit, so it cannot lock forever', async () => {
 			await redis.set(BUDGET_KEY, String(STS_FETCH_BUDGET));
 
 			expect(await gatedPolicyFetch(redis, DOMAIN, 'id-a', failing())).toBeNull();
 			expect(await redis.ttl(BUDGET_KEY)).toBe(STS_FETCH_BUDGET_WINDOW_SECONDS);
+		});
+
+		it('does not extend a running window', async () => {
+			await redis.set(BUDGET_KEY, '1', 'EX', 100);
+
+			await gatedPolicyFetch(redis, DOMAIN, 'id-a', () => Promise.resolve('policy'));
+			expect(await redis.ttl(BUDGET_KEY)).toBe(100);
 		});
 
 		it('keeps budgets per domain', async () => {
@@ -152,7 +203,7 @@ describe('gatedPolicyFetch', () => {
 
 			expect(results.every((result) => result instanceof Error)).toBe(true);
 			expect(fetch).toHaveBeenCalledTimes(1);
-			expect(JSON.parse((await redis.get(FAILED_KEY))!)).toHaveLength(1);
+			expect(await redis.zcard(FAILED_KEY)).toBe(1);
 		});
 
 		it('does not coalesce different ids', async () => {
@@ -169,29 +220,34 @@ describe('gatedPolicyFetch', () => {
 
 	describe('storage errors fail open', () => {
 		it('fetches when the backoff cannot be read', async () => {
-			vi.spyOn(redis, 'get').mockRejectedValue(new Error('READONLY'));
+			vi.spyOn(redis, 'zscore').mockRejectedValue(new Error('READONLY'));
 			const fetch = vi.fn(() => Promise.resolve('policy'));
 
 			expect(await gatedPolicyFetch(redis, DOMAIN, 'id-a', fetch)).toBe('policy');
 		});
 
 		it('fetches when the budget cannot be counted', async () => {
-			vi.spyOn(redis, 'incr').mockRejectedValue(new Error('READONLY'));
+			vi.spyOn(redis, 'eval').mockRejectedValue(new Error('READONLY'));
 			const fetch = vi.fn(() => Promise.resolve('policy'));
 
 			expect(await gatedPolicyFetch(redis, DOMAIN, 'id-a', fetch)).toBe('policy');
 		});
 
 		it('passes the fetch error on when the backoff cannot be written', async () => {
-			vi.spyOn(redis, 'set').mockRejectedValue(new Error('READONLY'));
+			const realEval = redis.eval.bind(redis) as (...args: unknown[]) => Promise<unknown>;
+			// The budget script passes; the failure-recording script rejects.
+			vi.spyOn(redis, 'eval').mockImplementation(((...args: unknown[]) =>
+				String(args[2]).startsWith('mta:sts-fetch-failures:')
+					? Promise.reject(new Error('READONLY'))
+					: realEval(...args)) as never);
 
 			await expect(gatedPolicyFetch(redis, DOMAIN, 'id-a', failing())).rejects.toThrow(
 				/ECONNREFUSED/
 			);
 		});
 
-		it('ignores a corrupt backoff entry', async () => {
-			await redis.set(FAILED_KEY, '{not json');
+		it('ignores a backoff key of the wrong type', async () => {
+			await redis.set(FAILED_KEY, '{not a sorted set');
 			const fetch = vi.fn(() => Promise.resolve('policy'));
 
 			expect(await gatedPolicyFetch(redis, DOMAIN, 'id-a', fetch)).toBe('policy');
