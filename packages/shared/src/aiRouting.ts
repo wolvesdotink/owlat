@@ -1,8 +1,8 @@
 /**
  * AI routing: the vocabulary the backend and the web app share (ADR-0073).
  *
- * Three things live here, so the settings form, the Convex validators and the
- * code that reads the policy cannot drift apart:
+ * These live here, so the settings form, the Convex validators and the code
+ * that reads the policy cannot drift apart:
  *
  *   - the task names of the task-policy catalog (`AI_TASK_NAMES`). The backend
  *     catalog (`apps/api/convex/lib/llm/taskPolicy.ts`) gives each one its
@@ -12,7 +12,10 @@
  *     defaults, and the defaults are today's behaviour (SPEC §2);
  *   - the small enums the new records store and the UI renders: why the model
  *     guard did not run, why a message waits for a human after the ceiling,
- *     where an embedding space's provenance came from, the re-embed job state.
+ *     where an embedding space's provenance came from, the re-embed job state;
+ *   - the few values both sides compare against: the spam score the security
+ *     scan archives at (`SPAM_ARCHIVE_SCORE`) and the cut-off message of an
+ *     assistant answer (`ASSISTANT_CUT_OFF_MESSAGE`).
  *
  * Everything here is pure. `resolveRoutingPolicy` turns a stored row (or no
  * row) into a complete typed policy; `routingPolicyProblem` says what is wrong
@@ -369,13 +372,6 @@ export function routingPolicyProblem(
 export const GUARD_NOT_RUN_REASONS = ['spam_archived', 'agent_disabled', 'budget_refused'] as const;
 export type GuardNotRunReason = (typeof GUARD_NOT_RUN_REASONS)[number];
 
-/**
- * At or above this Team inbox spam score (0-100, from `calculateSpamScore`) the
- * security scan archives the message as spam. Shared so the quarantine card's
- * "scored high on the spam filters" reason uses the pipeline's own bar (#1336).
- */
-export const SPAM_ARCHIVE_SCORE = 80;
-
 /** D1: why a Team message waits for a person instead of the model path. */
 export const BUDGET_HOLD_REASONS = [
 	'daily_ceiling',
@@ -436,6 +432,15 @@ export type ReembedPauseReason = (typeof REEMBED_PAUSE_REASONS)[number];
 /** D10: why an interpretation source waits for the thread to be opened. */
 export const INTERPRET_DEFER_REASONS = ['display_only'] as const;
 export type InterpretDeferReason = (typeof INTERPRET_DEFER_REASONS)[number];
+
+// ── Security-scan thresholds ──────────────────────────────────────────────
+
+/**
+ * At or above this Team inbox spam score (0-100, from `calculateSpamScore`) the
+ * security scan archives the message as spam. Shared so the quarantine card's
+ * "scored high on the spam filters" reason uses the pipeline's own bar (#1336).
+ */
+export const SPAM_ARCHIVE_SCORE = 80;
 
 // ── Output limits ─────────────────────────────────────────────────────────
 
