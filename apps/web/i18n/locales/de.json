@@ -6455,6 +6455,7 @@
 				"interruptedHint": "Seit einer Weile kein Fortschritt: Der Hintergrundjob ist stehen geblieben. Starte erneut, um ab der zuletzt gespeicherten Seite fortzufahren.",
 				"failedHint": "Behebe die Ursache und starte erneut, um ab der zuletzt gespeicherten Seite weiterzumachen. Die Wartungsanleitung enthält die CLI-Befehle für dieselben Schritte.",
 				"startsItself": "Startet auch von selbst im Hintergrund. Hier startest du sie nur früher.",
+				"startsItselfStopped": "Nach diesem Fehler startet sie nicht mehr von selbst. Behebe die Ursache und starte sie hier erneut.",
 				"steppingStone": "Muss abgeschlossen sein, bevor du auf eine Version nach {version} aktualisierst.",
 				"steppingStoneBefore": "Muss abgeschlossen sein, bevor du auf {version} oder neuer aktualisierst.",
 				"unknownError": "Unbekannter Fehler",

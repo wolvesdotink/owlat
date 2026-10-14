@@ -174,6 +174,9 @@ export const list = platformAdminQuery({
 					isSteppingStone: entry.isSteppingStone,
 					requiredBefore: entry.requiredBefore ?? null,
 					startsItself: entry.startsItself === true,
+					// The pass stopped itself on a failure: a cron that starts it (0054's
+					// ensure) leaves it alone until someone runs it again.
+					hasRecordedFailure: run?.status === 'running' && run.failure !== undefined,
 					state: derived.state,
 					stalledAt: derived.stalledAt,
 					error: derived.error,

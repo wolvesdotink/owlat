@@ -51,6 +51,12 @@ export const migrationRunTables = {
 		 * stays `running`; the next start or resume clears this.
 		 */
 		failure: v.optional(v.object({ error: v.string(), at: v.number() })),
+		/**
+		 * Bumped by an operator's explicit start or retry, never by a cron's
+		 * automatic resume. A pass that counts failures across resumes (0054's
+		 * folder walks) keys its streaks to it, so only a person resets them.
+		 */
+		retryEpoch: v.optional(v.number()),
 	}).index('by_migration', ['migration']),
 
 	/**

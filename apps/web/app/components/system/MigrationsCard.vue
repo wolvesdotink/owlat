@@ -259,8 +259,14 @@ async function runPending() {
 								<p class="font-mono text-xs text-error break-words">{{ row.error }}</p>
 								<p>{{ t('components.system.migrationsCard.failedHint') }}</p>
 							</template>
+							<!-- A recorded failure stops the cron's resumes (0054's ensure), so
+							     that row must not promise that it starts by itself. -->
 							<p v-if="row.startsItself && row.state !== 'completed'">
-								{{ t('components.system.migrationsCard.startsItself') }}
+								{{
+									row.hasRecordedFailure
+										? t('components.system.migrationsCard.startsItselfStopped')
+										: t('components.system.migrationsCard.startsItself')
+								}}
 							</p>
 							<p
 								v-if="row.isSteppingStone && row.state !== 'completed'"

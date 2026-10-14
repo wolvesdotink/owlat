@@ -37,6 +37,7 @@ function row(overrides: Partial<MigrationRow>): MigrationRow {
 		isSteppingStone: false,
 		requiredBefore: null,
 		startsItself: false,
+		hasRecordedFailure: false,
 		state: 'pending',
 		stalledAt: null,
 		error: null,
@@ -173,6 +174,50 @@ describe('MigrationsCard', () => {
 		});
 		expect(done.find('button').attributes('disabled')).toBeDefined();
 		expect(done.text()).toContain('Every migration of this release has completed.');
+	});
+
+	it('says a self-starting migration that recorded its failure does not restart by itself', () => {
+		const FOLDERS = '0054_backfill_folder_membership';
+		const wrapper = mountCard({
+			runner: null,
+			migrations: [
+				row({
+					migration: FOLDERS,
+					introducedIn: '0.6.7',
+					startsItself: true,
+					state: 'failed',
+					hasRecordedFailure: true,
+					error: 'Folder k1: The folder walk step failed',
+					progress: progress(null),
+				}),
+			],
+		});
+		const text = wrapper.find(`[data-test="migration-${FOLDERS}"]`).text();
+		expect(text).toContain(
+			'After this failure it does not restart by itself. Fix the cause, then run it here to retry.'
+		);
+		expect(text).not.toContain('Running it here only starts it sooner');
+		expectFullyLocalized(wrapper);
+	});
+
+	it('keeps the starts-by-itself hint while such a migration is still running', () => {
+		const FOLDERS = '0054_backfill_folder_membership';
+		const wrapper = mountCard({
+			runner: null,
+			migrations: [
+				row({
+					migration: FOLDERS,
+					introducedIn: '0.6.7',
+					startsItself: true,
+					state: 'running',
+					stalledAt: NOW + 60_000,
+					progress: progress(null),
+				}),
+			],
+		});
+		const text = wrapper.find(`[data-test="migration-${FOLDERS}"]`).text();
+		expect(text).toContain('Also starts by itself in the background.');
+		expect(text).not.toContain('does not restart by itself');
 	});
 
 	it('names the migration that stopped the runner, with its error', () => {

@@ -21,6 +21,8 @@ export interface MigrationRow {
 	isSteppingStone: boolean;
 	requiredBefore: string | null;
 	startsItself: boolean;
+	/** The pass recorded its own failure; a cron that starts it waits for an operator's run. */
+	hasRecordedFailure: boolean;
 	state: MigrationServerState;
 	stalledAt: number | null;
 	error: string | null;

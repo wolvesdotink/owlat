@@ -27,6 +27,7 @@ function row(overrides: Partial<MigrationRow> = {}): MigrationRow {
 		isSteppingStone: false,
 		requiredBefore: null,
 		startsItself: false,
+		hasRecordedFailure: false,
 		state: 'pending',
 		stalledAt: null,
 		error: null,

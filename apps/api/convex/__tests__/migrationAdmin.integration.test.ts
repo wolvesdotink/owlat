@@ -305,43 +305,66 @@ describe('failed jobs', () => {
 describe('0054 folder walks', () => {
 	const FOLDERS = '0054_backfill_folder_membership';
 	const folders = internal.migrations[FOLDERS];
+	const STEP = 'maintenance/folderMembershipBackfill:step';
 
-	it('fails the migration once a folder walk keeps failing, and the card shows it', async () => {
-		expectScheduledFailure('maintenance/folderMembershipBackfill:step');
-		const t = setup();
-		await seedAdmin(t);
+	/** `count` folders whose walk has a stored cursor no page can read: every step throws. */
+	async function seedFailingWalks(t: T, count: number) {
 		const mailboxId = await seedMailbox(t);
-		const folderId = await seedFolder(t, mailboxId);
+		const folderIds = [];
+		for (let i = 0; i < count; i++) folderIds.push(await seedFolder(t, mailboxId));
 		await seedMessage(t, mailboxId, { subject: 's' });
-		// A walk whose stored cursor no page can read: every step throws.
 		await t.run(async (ctx) => {
 			const now = Date.now();
-			await ctx.db.insert('mailFolderMembership', {
-				folderId,
-				isReady: false,
-				revision: 0,
-				cursor: 'not-a-cursor',
-				startedAt: now,
-				updatedAt: now,
-			});
+			for (const folderId of folderIds) {
+				await ctx.db.insert('mailFolderMembership', {
+					folderId,
+					isReady: false,
+					revision: 0,
+					cursor: 'not-a-cursor',
+					startedAt: now,
+					updatedAt: now,
+				});
+			}
 		});
+		return folderIds;
+	}
+
+	const walkOf = (t: T, folderId: string) =>
+		t.run(async (ctx) =>
+			ctx.db
+				.query('mailFolderMembership')
+				.withIndex('by_folder', (q) => q.eq('folderId', folderId as never))
+				.unique()
+		);
+
+	const stateOf = async (t: T) =>
+		(await t.query(api.migrations.admin.list, {})).migrations.find((m) => m.migration === FOLDERS)!;
+
+	/** Simulated minutes at production cadence: `finish` polls each minute, the cron every ten. */
+	async function minutes(t: T, count: number, onMinute?: (minute: number) => Promise<void>) {
+		for (let minute = 1; minute <= count; minute++) {
+			vi.advanceTimersByTime(60_000);
+			await t.finishInProgressScheduledFunctions();
+			await onMinute?.(minute);
+		}
+	}
+
+	it('fails the migration once a folder walk keeps failing, and the card shows it', async () => {
+		expectScheduledFailure(STEP);
+		const t = setup();
+		await seedAdmin(t);
+		const [folderId] = await seedFailingWalks(t, 1);
 
 		await t.mutation(folders.run, {});
 		// `finish` polls every minute and restarts the stalled walk every ten,
 		// counting each failed step; the third one stops the polling.
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-		const listed = await t.query(api.migrations.admin.list, {});
-		const row = listed.migrations.find((m) => m.migration === FOLDERS)!;
+		const row = await stateOf(t);
 		expect(row.state).toBe('failed');
 		expect(row.error).toContain(`Folder ${folderId}`);
-		const walk = await t.run(async (ctx) =>
-			ctx.db
-				.query('mailFolderMembership')
-				.withIndex('by_folder', (q) => q.eq('folderId', folderId))
-				.unique()
-		);
-		expect(walk!.walkFailures?.count).toBe(3);
+		expect(row.hasRecordedFailure).toBe(true);
+		expect((await walkOf(t, folderId!))!.walkFailures?.count).toBe(3);
 
 		// The cron does not resume a pass that failed on a folder, even after an hour.
 		const generation = (await ledgerRow(t, FOLDERS))!.generation;
@@ -349,12 +372,82 @@ describe('0054 folder walks', () => {
 		expect(await t.mutation(folders.ensure, {})).toEqual({ started: false });
 		expect((await ledgerRow(t, FOLDERS))!.generation).toBe(generation);
 
-		// An explicit run resumes it, with the failure cleared and a fresh count.
+		// An explicit run resumes it, with the failure cleared and a fresh streak.
 		const resumed = await t.mutation(api.migrations.admin.runPending, {});
 		expect(resumed.started).toContain(FOLDERS);
 		const after = await ledgerRow(t, FOLDERS);
 		expect(after).toMatchObject({ status: 'running', generation: generation + 1 });
 		expect(after!.failure).toBeUndefined();
+		expect(after!.retryEpoch).toBe(2);
+	});
+
+	it('reaches Failed with many failing folders at cron cadence, across an automatic resume', async () => {
+		expectScheduledFailure(STEP);
+		const t = setup();
+		await seedAdmin(t);
+		await seedFailingWalks(t, 40);
+
+		await t.mutation(api.migrations.admin.runPending, {});
+		const started = (await ledgerRow(t, FOLDERS))!;
+		let failedAt: number | null = null;
+		await minutes(t, 60, async (minute) => {
+			if (minute % 10 === 0) {
+				// At minute 20 the ledger row has been still for an hour, so the
+				// cron's resume runs and bumps the generation mid-streak.
+				if (minute === 20) {
+					await t.run(async (ctx) => {
+						await ctx.db.patch(started._id, { updatedAt: Date.now() - 61 * 60_000 });
+					});
+				}
+				await t.mutation(folders.ensure, {});
+			}
+			if (failedAt === null && (await stateOf(t)).state === 'failed') failedAt = minute;
+		});
+
+		expect(failedAt).not.toBeNull();
+		// Three ten-minute rounds of failed steps: the resume at minute 20 must not
+		// start the streaks over (keyed to the generation, this took 55 minutes).
+		expect(failedAt!).toBeLessThanOrEqual(35);
+		const ledger = (await ledgerRow(t, FOLDERS))!;
+		// The cron's resume happened, and did not wipe the streaks.
+		expect(ledger.generation).toBeGreaterThan(started.generation);
+		expect(ledger.retryEpoch).toBe(started.retryEpoch);
+		const listed = await t.query(api.migrations.admin.list, {});
+		expect(listed.runner).toMatchObject({ status: 'stopped', stoppedMigration: FOLDERS });
+	});
+
+	it("never counts a step that failed before the operator's retry toward the new streak", async () => {
+		expectScheduledFailure(STEP);
+		const t = setup();
+		await seedAdmin(t);
+		const [folderId] = await seedFailingWalks(t, 1);
+
+		await t.mutation(folders.run, {});
+		await minutes(t, 2);
+		const before = (await walkOf(t, folderId!))!;
+		expect(before.walkJob?.epoch).toBe(1);
+
+		// The operator retries while that failed step is still the recorded one.
+		await t.mutation(folders.run, {});
+		expect((await ledgerRow(t, FOLDERS))!.retryEpoch).toBe(2);
+
+		// The first stalled poll restarts the walk without counting the old step.
+		await minutes(t, 11);
+		const restarted = (await walkOf(t, folderId!))!;
+		expect(restarted.walkFailures).toBeUndefined();
+		expect(restarted.walkJob?.epoch).toBe(2);
+
+		await minutes(t, 40);
+		const failed = (await walkOf(t, folderId!))!;
+		expect((await stateOf(t)).state).toBe('failed');
+		expect(failed.walkFailures).toMatchObject({ epoch: 2, count: 3 });
+		// Four failed steps in all: the one before the retry, and three after it.
+		const failedSteps = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+				(job) => job.name.replace(/\.js(?=:)/, '') === STEP && job.state.kind === 'failed'
+			)
+		);
+		expect(failedSteps).toHaveLength(4);
 	});
 });
 

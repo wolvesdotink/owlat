@@ -6455,6 +6455,7 @@
 				"interruptedHint": "No progress for a while: its background job stopped. Run again to resume from the last recorded page.",
 				"failedHint": "Fix the cause, then run again to retry from the last recorded page. The maintenance guide has the CLI commands for the same steps.",
 				"startsItself": "Also starts by itself in the background. Running it here only starts it sooner.",
+				"startsItselfStopped": "After this failure it does not restart by itself. Fix the cause, then run it here to retry.",
 				"steppingStone": "Must complete before you update past {version}.",
 				"steppingStoneBefore": "Must complete before you update to {version} or later.",
 				"unknownError": "Unknown error",
