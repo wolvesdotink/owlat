@@ -65,8 +65,31 @@ function addIntruder(body: string): (s: string) => string {
 		replaceOnce(s, '\n  updater:\n', `\n  intruder:\n    image: alpine:3\n${body}\n  updater:\n`);
 }
 
+/** Gives an existing service an explicit `container_name`. */
+function nameContainer(service: string, containerName: string): (s: string) => string {
+	return (s) =>
+		replaceOnce(s, `\n  ${service}:\n`, `\n  ${service}:\n    container_name: ${containerName}\n`);
+}
+
+/** Declares an extra top-level network next to docker-proxy. */
+function addNetwork(body: string): (s: string) => string {
+	return (s) =>
+		replaceOnce(
+			s,
+			'  docker-proxy:\n    internal: true\n',
+			`  docker-proxy:\n    internal: true\n${body}`
+		);
+}
+
+const both =
+	(...steps: ((s: string) => string)[]) =>
+	(s: string) =>
+		steps.reduce((acc, step) => step(acc), s);
+
 const NOT_ONLY_MEMBERS = 'docker-proxy network must hold exactly docker-socket-proxy and updater';
 const SHARES_NAMESPACE = "joins a docker-proxy member's network namespace";
+const ALIAS = 'can resolve to the same Docker network as docker-proxy';
+const WITH_INTRUDER = `${NOT_ONLY_MEMBERS} (members: docker-socket-proxy, intruder, updater)`;
 
 const MUTATIONS = [
 	{
@@ -154,6 +177,89 @@ const MUTATIONS = [
 		breaks: "a service sharing the proxy container's namespace",
 		apply: addIntruder('    network_mode: container:owlat-docker-socket-proxy-1\n'),
 		expected: `intruder ${SHARES_NAMESPACE} via network_mode: container:owlat-docker-socket-proxy-1`,
+	},
+	{
+		breaks: "a service sharing the proxy's custom-named container",
+		apply: both(
+			nameContainer('docker-socket-proxy', 'engine-api'),
+			addIntruder('    network_mode: container:engine-api\n')
+		),
+		expected: `intruder ${SHARES_NAMESPACE} via network_mode: container:engine-api`,
+	},
+	{
+		breaks: "a service sharing the updater's custom-named container",
+		apply: both(
+			nameContainer('updater', 'self-update'),
+			addIntruder('    network_mode: container:self-update\n')
+		),
+		expected: `intruder ${SHARES_NAMESPACE} via network_mode: container:self-update`,
+	},
+	{
+		breaks: 'an external network named like the project-scoped docker-proxy',
+		apply: both(
+			addNetwork('  sidedoor:\n    external: true\n    name: owlat_docker-proxy\n'),
+			addIntruder('    networks:\n      - sidedoor\n')
+		),
+		expected: WITH_INTRUDER,
+	},
+	{
+		breaks: 'a second network key with the same name',
+		apply: both(
+			addNetwork('  sidedoor:\n    name: owlat_docker-proxy\n'),
+			addIntruder('    networks: [sidedoor]\n')
+		),
+		expected: `network sidedoor ${ALIAS} (name owlat_docker-proxy vs the project-scoped name <project>_docker-proxy)`,
+	},
+	{
+		breaks: 'a network using the legacy external-name form',
+		apply: both(
+			addNetwork('  sidedoor:\n    external:\n      name: owlat_docker-proxy\n'),
+			addIntruder('    networks: [sidedoor]\n')
+		),
+		expected: WITH_INTRUDER,
+	},
+	{
+		breaks: 'an external network whose key is the project-scoped name',
+		apply: both(
+			addNetwork('  owlat_docker-proxy:\n    external: true\n'),
+			addIntruder("    networks: ['owlat_docker-proxy']\n")
+		),
+		expected: WITH_INTRUDER,
+	},
+	{
+		breaks: 'the default network renamed onto docker-proxy',
+		apply: (s: string) =>
+			replaceOnce(s, '\n  default:\n', '\n  default:\n    name: owlat_docker-proxy\n'),
+		expected: `network default ${ALIAS}`,
+	},
+	{
+		breaks: 'docker-proxy renamed onto the default network',
+		apply: (s: string) =>
+			replaceOnce(
+				s,
+				'  docker-proxy:\n    internal: true\n',
+				'  docker-proxy:\n    name: owlat_default\n    internal: true\n'
+			),
+		expected: `network default ${ALIAS}`,
+	},
+	{
+		breaks: 'a docker-proxy name chosen by interpolation',
+		apply: (s: string) =>
+			replaceOnce(
+				s,
+				'  docker-proxy:\n    internal: true\n',
+				'  docker-proxy:\n    name: ${PROXY_NET:-owlat_docker-proxy}\n    internal: true\n'
+			),
+		expected: 'docker-proxy network must not take its name from interpolation',
+	},
+	{
+		// -p and COMPOSE_PROJECT_NAME override a top-level name, so it pins nothing.
+		breaks: 'a network named for another project despite a literal project name',
+		apply: both(
+			(s: string) => `name: owlat\n${s}`,
+			addNetwork('  metrics:\n    name: metrics_docker-proxy\n')
+		),
+		expected: `network metrics ${ALIAS}`,
 	},
 	{
 		breaks: 'the proxy on the host network',

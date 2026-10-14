@@ -13,6 +13,15 @@
  * service:updater`, which joins the updater's namespace without naming the
  * network at all. Parsing the YAML sees what Compose sees.
  *
+ * Two indirections are resolved too. `network_mode: container:<x>` is matched
+ * against a member's `container_name` as well as Compose's default
+ * `<project>-<service>-<n>` name. And membership is counted by Docker network,
+ * not YAML key: a second key whose `name:` (or external name) can resolve to
+ * the same network as docker-proxy is an alias, and its services are members.
+ * The project name is chosen at deploy time (`-p` and COMPOSE_PROJECT_NAME
+ * override a top-level `name:`, and scripts/owlat sets the latter), so any
+ * project is assumed.
+ *
  * Usage: bun scripts/check-docker-proxy-network.ts <compose-file>
  * Prints one violation per line and exits 1 when there are any; exits 2 when
  * the file cannot be read as a compose file.
@@ -24,15 +33,24 @@ const UPDATER = 'updater';
 const MEMBERS = [PROXY, UPDATER];
 
 type Service = {
+	container_name?: unknown;
 	networks?: unknown;
 	network_mode?: unknown;
 	ports?: unknown;
 };
 
+type Network = { internal?: unknown; name?: unknown; external?: unknown } | null;
+
 type Compose = {
 	services?: Record<string, Service | null>;
-	networks?: Record<string, { internal?: unknown } | null>;
+	networks?: Record<string, Network>;
 };
+
+/**
+ * The Docker network a key creates or joins: a fixed name, `<project>_<key>`,
+ * or a name that interpolation decides at deploy time.
+ */
+type NetworkName = { exact: string } | { scoped: string } | 'unresolved';
 
 /** The networks a service joins, as Compose resolves them (no key = default). */
 function attachedNetworks(service: Service): string[] {
@@ -45,27 +63,90 @@ function attachedNetworks(service: Service): string[] {
 }
 
 /** Whether `network_mode` puts a service inside a member's network namespace. */
-function sharesMemberNamespace(networkMode: string): boolean {
-	const [kind, target = ''] = networkMode.split(':', 2);
-	if (kind === 'service') return MEMBERS.includes(target.trim());
-	// Compose names containers <project>-<service>-<n> unless container_name is set.
-	if (kind === 'container') return MEMBERS.some((member) => target.includes(member));
-	return false;
+function sharesMemberNamespace(
+	networkMode: string,
+	services: Record<string, Service | null>
+): boolean {
+	const [kind, rawTarget = ''] = networkMode.split(':', 2);
+	const target = rawTarget.trim();
+	if (kind === 'service') return MEMBERS.includes(target);
+	if (kind !== 'container') return false;
+	return MEMBERS.some((member) => {
+		const containerName = services[member]?.container_name;
+		if (typeof containerName === 'string' && target === containerName) return true;
+		// Compose's default <project>-<service>-<n>; any project, so match the service.
+		return target.includes(member);
+	});
+}
+
+function networkName(key: string, network: Network): NetworkName {
+	const literal = (value: unknown): NetworkName => {
+		const name = String(value);
+		return name.includes('$') ? 'unresolved' : { exact: name };
+	};
+	if (network?.name !== undefined) return literal(network.name);
+	const { external } = network ?? {};
+	// The legacy `external: { name: x }` form still works in Compose v2.
+	if (external && typeof external === 'object' && 'name' in external) {
+		return literal((external as { name: unknown }).name);
+	}
+	// An external network is joined by its key, unprefixed.
+	if (external === true) return { exact: key };
+	return { scoped: key };
+}
+
+/** Whether two network keys can end up on the same Docker network. */
+function sameNetwork(a: NetworkName, b: NetworkName): boolean {
+	if (a === 'unresolved' || b === 'unresolved') return true;
+	if ('exact' in a && 'exact' in b) return a.exact === b.exact;
+	if ('scoped' in a && 'scoped' in b) return a.scoped === b.scoped;
+	const exact = 'exact' in a ? a.exact : (b as { exact: string }).exact;
+	const scoped = 'scoped' in a ? a.scoped : (b as { scoped: string }).scoped;
+	// <project>_<key> for a project only known at deploy time.
+	return exact.endsWith(`_${scoped}`);
+}
+
+function describeName(name: NetworkName): string {
+	if (name === 'unresolved') return 'a name interpolated at deploy time';
+	return 'exact' in name
+		? `name ${name.exact}`
+		: `the project-scoped name <project>_${name.scoped}`;
 }
 
 function dockerProxyViolations(compose: Compose): string[] {
 	const violations: string[] = [];
 	const services = compose.services ?? {};
 
-	if (compose.networks?.[NETWORK]?.internal !== true) {
+	const networks: Record<string, Network> = { default: null, ...compose.networks };
+	if (networks[NETWORK]?.internal !== true) {
 		violations.push(`must declare the ${NETWORK} network with internal: true`);
+	}
+
+	const protectedName = networkName(NETWORK, networks[NETWORK] ?? null);
+	if (protectedName === 'unresolved') {
+		violations.push(`${NETWORK} network must not take its name from interpolation`);
+	}
+	// Every key that is, or may be, the same Docker network as docker-proxy.
+	const aliases = new Set([NETWORK]);
+	for (const [key, network] of Object.entries(networks)) {
+		if (key === NETWORK || protectedName === 'unresolved') continue;
+		const name = networkName(key, network);
+		if (sameNetwork(protectedName, name)) {
+			aliases.add(key);
+			violations.push(
+				`network ${key} can resolve to the same Docker network as ${NETWORK} (${describeName(name)} vs ${describeName(protectedName)})`
+			);
+		}
 	}
 
 	const members: string[] = [];
 	for (const [name, raw] of Object.entries(services)) {
 		const service = raw ?? {};
-		if (attachedNetworks(service).includes(NETWORK)) members.push(name);
-		if (typeof service.network_mode === 'string' && sharesMemberNamespace(service.network_mode)) {
+		if (attachedNetworks(service).some((key) => aliases.has(key))) members.push(name);
+		if (
+			typeof service.network_mode === 'string' &&
+			sharesMemberNamespace(service.network_mode, services)
+		) {
 			violations.push(
 				`${name} joins a ${NETWORK} member's network namespace via network_mode: ${service.network_mode}`
 			);
