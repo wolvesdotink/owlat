@@ -157,6 +157,15 @@ describe('takeOverRefusal', () => {
 	});
 });
 
+/** What the scan records when it stops a clean message because the agent is off. */
+const AGENT_OFF_SCAN = JSON.stringify({
+	isInjection: false,
+	maxConfidence: 0,
+	spamScore: 0,
+	phishingDetected: false,
+	agentEnabled: false,
+});
+
 describe('manualReply.takeOverReply', () => {
 	async function seed(
 		t: ReturnType<typeof convexTest>,
@@ -174,7 +183,11 @@ describe('manualReply.takeOverReply', () => {
 			if (scan) {
 				await ctx.db.insert(
 					'agentActions',
-					createTestAgentAction({ inboundMessageId: messageId, status: scan })
+					createTestAgentAction({
+						inboundMessageId: messageId,
+						status: scan,
+						...(scan === 'completed' ? { output: AGENT_OFF_SCAN } : {}),
+					})
 				);
 			}
 		});
@@ -396,7 +409,6 @@ describe('manualReply.takeOverReply', () => {
 
 		// The retry, then `walker.start` entering `security_check`, stopped
 		// before the walker's `recordStepBegin` for the new scan.
-		vi.setSystemTime(Date.now() + 1_000);
 		for (const input of [
 			{ to: 'received' as const, at: Date.now(), source: 'cron_retry' as const },
 			{ to: 'security_check' as const, at: Date.now() },
@@ -413,7 +425,6 @@ describe('manualReply.takeOverReply', () => {
 		).rejects.toThrow(/security check/);
 
 		// The new scan runs and stops with the agent off: now it is a person's.
-		vi.setSystemTime(Date.now() + 1_000);
 		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
 			inboundMessageId: messageId,
 			actionType: 'security_scan',
@@ -424,6 +435,93 @@ describe('manualReply.takeOverReply', () => {
 		await asUser.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
 		const message = await t.run((ctx) => ctx.db.get(messageId));
 		expect(message?.processingStatus).toBe('draft_ready');
+	});
+
+	it('counts the run’s scan whatever the clocks say', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seed(t, 'received');
+		// The action that enters security_check runs on a clock ahead of the
+		// database's, so its time is later than the scan's start.
+		const entered = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'security_check', at: Date.now() + 60_000 },
+		});
+		expect(entered.ok).toBe(true);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'security_scan',
+		});
+		await t.mutation(internal.inbox.processingLifecycle.recordStepEnd, {
+			actionId,
+			output: AGENT_OFF_SCAN,
+		});
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('draft_ready');
+	});
+
+	// Rows that entered security_check before runs were numbered carry no run.
+	describe('across the deploy that numbers runs', () => {
+		async function legacyRescan(
+			t: ReturnType<typeof convexTest>,
+			earlier: Array<{ actionType: string; status: string; output?: string }>
+		): Promise<Id<'inboundMessages'>> {
+			const messageId = await seed(t, 'security_check');
+			await t.run(async (ctx) => {
+				for (const action of earlier) {
+					await ctx.db.insert(
+						'agentActions',
+						createTestAgentAction({ inboundMessageId: messageId, ...action })
+					);
+				}
+			});
+			return messageId;
+		}
+
+		it('answers a message stuck since a scan with the agent off', async () => {
+			const t = convexTest(schema, modules);
+			const messageId = await seed(t, 'security_check', 'completed');
+			const message = await t.run((ctx) => ctx.db.get(messageId));
+			expect(message?.securityCheckRun).toBeUndefined();
+			await t
+				.withIdentity(testIdentity)
+				.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+			expect((await t.run((ctx) => ctx.db.get(messageId)))?.processingStatus).toBe('draft_ready');
+		});
+
+		it('refuses a message whose rescan has not recorded its scan yet', async () => {
+			const t = convexTest(schema, modules);
+			// Released from quarantine: the earlier scan quarantined it.
+			const released = await legacyRescan(t, [
+				{
+					actionType: 'security_scan',
+					status: 'completed',
+					output: JSON.stringify({
+						isInjection: true,
+						maxConfidence: 0.99,
+						spamScore: 0,
+						phishingDetected: false,
+						agentEnabled: false,
+					}),
+				},
+			]);
+			// Retried after a later step failed: that step's row follows the scan.
+			const retried = await legacyRescan(t, [
+				{ actionType: 'security_scan', status: 'completed', output: AGENT_OFF_SCAN },
+				{ actionType: 'classify', status: 'abandoned' },
+			]);
+			// A scan whose output predates the recorded disposition.
+			const unknown = await legacyRescan(t, [{ actionType: 'security_scan', status: 'completed' }]);
+			for (const messageId of [released, retried, unknown]) {
+				await expect(
+					t
+						.withIdentity(testIdentity)
+						.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId })
+				).rejects.toThrow(/security check/);
+			}
+		});
 	});
 
 	it('refuses while a retried run rescans, even after an earlier scan finished', async () => {

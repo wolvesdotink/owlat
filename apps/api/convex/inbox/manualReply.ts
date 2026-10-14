@@ -29,11 +29,12 @@
  * It never answers a message whose security scan is still running or has not
  * started yet. Only a scan of the current run counts: a retried or released
  * message keeps the completed scan of its earlier run, and enters
- * `security_check` (`securityCheckEnteredAt`) before the walker begins the new
- * scan. Every outcome of a clean scan
- * that goes on leaves `security_check` in the same mutation that completes the
- * scan, so a finished latest scan on a message still in `security_check` means
- * the run stopped there and nothing will pick the message up.
+ * `security_check` before the walker begins the new scan. Each entry bumps
+ * the message's `securityCheckRun`, and a scan records the run it began in.
+ * Every outcome of a clean scan that goes on leaves `security_check` in the
+ * same mutation that completes the scan, so a finished scan of the current
+ * run on a message still in `security_check` means the run stopped there and
+ * nothing will pick the message up.
  *
  * Saving a reply takes the message over too wherever the agent could still
  * write its draft over the saved text with nobody acting
@@ -48,6 +49,7 @@ import { adminMutation } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidState } from '../_utils/errors';
 import type { TransitionOutcome } from './processingLifecycle';
+import { type DispositionFacts, scanDisposition } from '../agent/steps/security_scan/disposition';
 
 /** What {@link takeOverRefusal} needs to know besides the status. */
 export interface TakeOverFacts {
@@ -110,10 +112,17 @@ async function agentActionsFor(ctx: QueryCtx, message: Doc<'inboundMessages'>) {
 }
 
 /**
- * The current run's security scan has completed (`actions` newest first): the
- * latest scan is done and began once the message entered `security_check`.
- * A message that entered it before the field existed has only its latest scan
- * to go on.
+ * The current run's security scan has completed (`actions` newest first).
+ *
+ * A message that last entered `security_check` before runs were numbered has
+ * no `securityCheckRun`, and its latest completed scan may belong to an earlier
+ * run whose rescan has not begun. It counts only when it is the message's last
+ * action and its own output shows it stopped the run because the agent was
+ * off. Only pipeline steps write agent actions, and every way back into a scan
+ * passes `received`, after a quarantine (whose scan routed to quarantine), a
+ * failed step (which left its own row after the scan, or a failed or reset
+ * scan), or neither on a new message (no earlier scan). A message whose reply a
+ * person took over is never retried into the pipeline (`inboxRetryPlan`).
  */
 function isScanFinished(
 	message: Doc<'inboundMessages'>,
@@ -121,8 +130,21 @@ function isScanFinished(
 ): boolean {
 	const scan = actions.find((a) => a.actionType === 'security_scan');
 	if (scan?.status !== 'completed') return false;
-	const enteredAt = message.securityCheckEnteredAt;
-	return enteredAt === undefined || (scan.startedAt ?? scan.createdAt) >= enteredAt;
+	if (message.securityCheckRun !== undefined) {
+		return scan.securityCheckRun === message.securityCheckRun;
+	}
+	return actions[0]?._id === scan._id && isAgentOffStop(scan.output);
+}
+
+/** The scan's recorded output routed `agent_off`: a clean scan with the agent off. */
+function isAgentOffStop(output: string | undefined): boolean {
+	if (output === undefined) return false;
+	try {
+		const facts = JSON.parse(output) as DispositionFacts;
+		return typeof facts.agentEnabled === 'boolean' && scanDisposition(facts) === 'agent_off';
+	} catch {
+		return false;
+	}
 }
 
 /** The per-message facts the thread composer needs to apply {@link takeOverRefusal}. */
