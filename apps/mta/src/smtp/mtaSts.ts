@@ -15,15 +15,17 @@
 import { resolveTxt } from 'dns/promises';
 import type Redis from 'ioredis';
 import { logger } from '../monitoring/logger.js';
-import { fetchStsPolicyText } from './mtaStsFetch.js';
+import { fetchStsPolicyText, isLdhName } from './mtaStsFetch.js';
 
 const STS_CACHE_PREFIX = 'mta:sts:';
+// Holds the DNS id whose policy fetch last failed, for the backoff below.
+const STS_FETCH_FAILURE_PREFIX = 'mta:sts-fetch-failed:';
 const STS_DNS_NEGATIVE_CACHE_TTL = 3600; // 1h cache for domains without MTA-STS
-// Refetch throttle: after a fetch, an expired policy (max_age below this) is
-// not fetched again for this long, so a short max_age can't turn every send
-// into a 10s HTTPS round trip. Expiry itself is checked separately: a policy
-// is never applied past cachedAt + max_age.
-const STS_REFETCH_THROTTLE_SECONDS = 300;
+// Backoff after a FAILED policy fetch: the same DNS id is not fetched again
+// for this long, so an unreachable or broken policy host can't turn every send
+// into a 10s HTTPS round trip. A successful fetch never starts it, and a new
+// DNS id is fetched straight away.
+const STS_FETCH_FAILURE_BACKOFF_SECONDS = 300;
 // RFC 8461 §3.2: max_age has a maximum of 31557600 seconds (one year).
 const STS_MAX_AGE_CEILING = 31_557_600;
 // How many mx patterns the "policy cached" log line carries; the full list is cached.
@@ -137,11 +139,9 @@ export function isMxAllowed(mxHost: string, allowedPatterns: string[]): boolean 
 async function fetchOrCachedPolicy(redis: Redis, domain: string): Promise<StsPolicy> {
 	const cacheKey = `${STS_CACHE_PREFIX}${domain}`;
 
-	// Try cache first. An entry past cachedAt + max_age is kept only to
-	// throttle the refetch; it is never applied.
+	// Try cache first. A policy applies only until cachedAt + max_age.
 	const entry = parseCachedPolicy(await redis.get(cacheKey));
-	const now = Date.now();
-	const cachedPolicy = entry && !isExpired(entry, now) ? entry : null;
+	const cachedPolicy = entry && !isExpired(entry, Date.now()) ? entry : null;
 
 	// Check DNS for _mta-sts TXT record. RFC 8461 §5.1: the DNS TXT `id` is the
 	// authoritative version marker — a recipient signals a policy change (e.g.
@@ -150,26 +150,10 @@ async function fetchOrCachedPolicy(redis: Redis, domain: string): Promise<StsPol
 	// ignored for the whole TTL.
 	const dnsVersion = await lookupStsDnsRecord(domain);
 
-	if (cachedPolicy) {
-		// Cheap path: cached id still matches the DNS id (or DNS is currently
-		// unreachable) — keep serving the cached policy without an HTTP fetch.
-		if (!dnsVersion || cachedPolicy.version === dnsVersion) {
-			return cachedPolicy;
-		}
-		// id changed: the recipient updated their policy. Re-fetch the policy
-		// file and re-cache against the new id. RFC 8461 §5.1/§6.2: a policy
-		// fetch failure MUST NOT discard an unexpired cached policy — if the
-		// re-fetch fails (HTTPS blocked / cert invalid / 5xx / a body that is
-		// not a valid policy) we keep serving
-		// the still-valid cached enforce policy rather than downgrading to
-		// opportunistic TLS, which an on-path attacker who spoofs the DNS id
-		// and blocks the fetch could otherwise exploit to strip STARTTLS.
-		try {
-			return await refetchAndCache(redis, cacheKey, domain, dnsVersion);
-		} catch (err) {
-			logger.warn({ domain, err }, 'MTA-STS re-fetch on id change failed; serving cached policy');
-			return cachedPolicy;
-		}
+	// Cheap path: an unexpired policy whose id still matches the DNS id (or DNS
+	// is currently unreachable) is served without an HTTP fetch.
+	if (cachedPolicy && (!dnsVersion || cachedPolicy.version === dnsVersion)) {
+		return cachedPolicy;
 	}
 
 	if (!dnsVersion) {
@@ -185,15 +169,34 @@ async function fetchOrCachedPolicy(redis: Redis, domain: string): Promise<StsPol
 		return noPolicy;
 	}
 
-	// An expired policy fetched moments ago: no policy applies until the
-	// throttle window passes.
-	if (entry && now - entry.cachedAt < STS_REFETCH_THROTTLE_SECONDS * 1000) {
-		return { mode: 'none', mx: [], maxAge: 0, version: entry.version, cachedAt: entry.cachedAt };
+	// The cache is empty or expired, or DNS announces a new id: fetch, unless
+	// this very id failed to fetch moments ago.
+	const failureKey = `${STS_FETCH_FAILURE_PREFIX}${domain}`;
+	if ((await redis.get(failureKey)) === dnsVersion) {
+		return cachedPolicy ?? noActivePolicy(dnsVersion);
 	}
 
-	// Cold cache: no prior policy to fall back to, so a fetch failure correctly
-	// bubbles up to opportunistic TLS.
-	return refetchAndCache(redis, cacheKey, domain, dnsVersion);
+	try {
+		return await refetchAndCache(redis, cacheKey, domain, dnsVersion);
+	} catch (err) {
+		await redis.set(failureKey, dnsVersion, 'EX', STS_FETCH_FAILURE_BACKOFF_SECONDS);
+		// Cold or expired cache: nothing to fall back to, so the failure bubbles
+		// up to opportunistic TLS.
+		if (!cachedPolicy) throw err;
+		// RFC 8461 §5.1/§6.2: a policy fetch failure MUST NOT discard an
+		// unexpired cached policy. If the id-change re-fetch fails (HTTPS
+		// blocked / cert invalid / 5xx / a body that is not a valid policy) we
+		// keep serving the still-valid cached enforce policy rather than
+		// downgrading to opportunistic TLS, which an on-path attacker who spoofs
+		// the DNS id and blocks the fetch could otherwise exploit to strip
+		// STARTTLS.
+		logger.warn({ domain, err }, 'MTA-STS re-fetch on id change failed; serving cached policy');
+		return cachedPolicy;
+	}
+}
+
+function noActivePolicy(version: string): StsPolicy {
+	return { mode: 'none', mx: [], maxAge: 0, version, cachedAt: Date.now() };
 }
 
 function isExpired(policy: StsPolicy, now: number): boolean {
@@ -229,9 +232,13 @@ async function refetchAndCache(
 ): Promise<StsPolicy> {
 	const policy = await fetchStsPolicy(domain, dnsVersion);
 
-	// Keep the entry through max_age, and at least through the refetch throttle.
-	const cacheTtl = Math.max(policy.maxAge, STS_REFETCH_THROTTLE_SECONDS);
-	await redis.set(cacheKey, JSON.stringify(policy), 'EX', cacheTtl);
+	// The entry lives exactly as long as the policy. A max_age 0 policy applies
+	// to this delivery only, and replaces whatever was cached before it.
+	if (policy.maxAge > 0) {
+		await redis.set(cacheKey, JSON.stringify(policy), 'EX', policy.maxAge);
+	} else {
+		await redis.del(cacheKey);
+	}
 
 	logger.info(
 		{
@@ -296,7 +303,8 @@ export async function fetchStsPolicy(domain: string, dnsVersion: string): Promis
  *
  * A valid policy has `version: STSv1`, a `mode` of enforce, testing or none,
  * and a non-negative integer `max_age`. Enforce and testing also need at least
- * one `mx`. Unknown fields are ignored. Anything else throws
+ * one `mx`, and every `mx` must be a hostname or `*.` wildcard. For version,
+ * mode and max_age the first occurrence wins. Unknown fields are ignored. Anything else throws
  * {@link InvalidStsPolicyError} rather than returning mode 'none': only an
  * explicit `mode: none` policy may replace a cached one. An HTML error page,
  * a future "STSv2" body or an enforce policy with no mx must not quietly
@@ -308,8 +316,7 @@ export async function fetchStsPolicy(domain: string, dnsVersion: string): Promis
  * The fetch's 64 KiB cap bounds how much this has to parse.
  */
 export function parseStsPolicy(text: string, version: string): StsPolicy {
-	let hasValidVersion = false;
-	let mode: StsPolicyMode | undefined;
+	let versionValue: string | undefined;
 	let modeValue: string | undefined;
 	const mx: string[] = [];
 	let maxAgeValue: string | undefined;
@@ -322,26 +329,33 @@ export function parseStsPolicy(text: string, version: string): StsPolicy {
 		const key = line.substring(0, colonIndex).trim().toLowerCase();
 		const value = line.substring(colonIndex + 1).trim();
 
+		// RFC 8461 §3.2: for version, mode and max_age, only the first
+		// occurrence counts; later ones are ignored.
 		switch (key) {
 			case 'version':
-				hasValidVersion = value.toLowerCase() === 'stsv1';
+				versionValue ??= value;
 				break;
 			case 'mode':
-				modeValue = value;
-				mode = STS_MODES.find((m) => m === value);
+				modeValue ??= value;
 				break;
 			case 'mx':
+				if (!isMxPattern(value)) {
+					throw new InvalidStsPolicyError(
+						`MTA-STS policy mx ${JSON.stringify(value)} is not a hostname`
+					);
+				}
 				mx.push(value);
 				break;
 			case 'max_age':
-				maxAgeValue = value;
+				maxAgeValue ??= value;
 				break;
 		}
 	}
 
-	if (!hasValidVersion) {
+	if (versionValue?.toLowerCase() !== 'stsv1') {
 		throw new InvalidStsPolicyError('MTA-STS policy has no `version: STSv1` line');
 	}
+	const mode = STS_MODES.find((m) => m === modeValue);
 	if (!mode) {
 		throw new InvalidStsPolicyError(`MTA-STS policy mode is ${modeValue ?? 'missing'}`);
 	}
@@ -354,6 +368,16 @@ export function parseStsPolicy(text: string, version: string): StsPolicy {
 	}
 
 	return { mode, mx: mode === 'none' ? [] : mx, maxAge, version, cachedAt: Date.now() };
+}
+
+/**
+ * An mx value per RFC 8461 §3.2: a hostname, optionally with a leading `*.`
+ * wildcard label. An empty or malformed value would cache an enforce policy
+ * that no MX matches, which blocks delivery instead of protecting it.
+ */
+function isMxPattern(value: string): boolean {
+	const name = value.toLowerCase().replace(/^\*\./, '').replace(/\.$/, '');
+	return name !== '' && isLdhName(name);
 }
 
 /**

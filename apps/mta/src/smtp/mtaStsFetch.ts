@@ -15,7 +15,8 @@
  * - only a 200 with media type text/plain is a policy (§3.3); a 204 or 206 is
  *   not an empty policy;
  * - the certificate must name the host in a DNS subjectAltName (§3.3 follows
- *   RFC 6125, which drops the CN fallback Node still allows);
+ *   RFC 6125): no CN fallback, a wildcard only as a whole leftmost label,
+ *   and never one sitting directly on a public suffix;
  * - the body is capped at {@link STS_MAX_POLICY_BYTES} decoded bytes, declared
  *   (Content-Length) and actual, and the response is destroyed past the cap;
  * - the whole exchange, body included, is bounded by {@link STS_FETCH_TIMEOUT}.
@@ -30,10 +31,12 @@ import { lookup as dnsLookup, type LookupAddress, type LookupAllOptions } from '
 import type { IncomingMessage } from 'node:http';
 import { request } from 'node:https';
 import type { LookupFunction } from 'node:net';
-import { checkServerIdentity, type PeerCertificate } from 'node:tls';
+import { X509Certificate } from 'node:crypto';
+import type { PeerCertificate } from 'node:tls';
 import { domainToASCII } from 'node:url';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import type { Readable } from 'node:stream';
+import { trySplitZone } from '@owlat/shared/dnsZone';
 import { isDisallowedIpAddress } from '@owlat/shared/ipBlocklist';
 
 export const STS_FETCH_TIMEOUT = 10_000; // 10s for connect, headers and body
@@ -78,10 +81,16 @@ export function stsPolicyHost(recipientDomain: string): string | null {
 	if (!ascii) return null;
 	const host = `mta-sts.${ascii}`;
 	if (host.length > MAX_HOSTNAME_LENGTH) return null;
-	const labels = ascii.split('.');
-	if (labels.length < 2 || !labels.every((label) => DNS_LABEL.test(label))) return null;
-	if (/^\d+$/.test(labels[labels.length - 1]!)) return null;
+	if (!isLdhName(ascii) || !ascii.includes('.')) return null;
+	if (/^\d+$/.test(ascii.slice(ascii.lastIndexOf('.') + 1))) return null;
 	return host;
+}
+
+/** True for a lowercase dotted name of RFC 1123 LDH labels, 253 characters at most. */
+export function isLdhName(name: string): boolean {
+	return (
+		name.length <= MAX_HOSTNAME_LENGTH && name.split('.').every((label) => DNS_LABEL.test(label))
+	);
 }
 
 /**
@@ -111,16 +120,27 @@ function guardedLookup(
 }
 
 /**
- * Node's checkServerIdentity falls back to the subject CN when a cert has no
- * DNS subjectAltName. Refuse that case first, then run the normal name and
- * wildcard check. Chain and expiry are still verified by TLS itself.
+ * Name check for the policy host certificate, in place of Node's
+ * checkServerIdentity, which falls back to the subject CN and accepts partial
+ * wildcards such as `mta-*.example.com`. Only a DNS subjectAltName counts, a
+ * wildcard must be the whole leftmost label, and a wildcard directly on a
+ * public suffix (`*.co.uk`) is refused. Chain and expiry are still verified
+ * by TLS itself.
  */
-function requireDnsSubjectAltName(hostname: string, cert: PeerCertificate): Error | undefined {
-	const names = (cert.subjectaltname ?? '').split(',').map((name) => name.trim());
-	if (!names.some((name) => name.startsWith('DNS:'))) {
-		return new Error(`MTA-STS policy host ${hostname} certificate has no DNS subjectAltName`);
+function checkPolicyHostIdentity(hostname: string, cert: PeerCertificate): Error | undefined {
+	const matched = new X509Certificate(cert.raw).checkHost(hostname, {
+		subject: 'never',
+		partialWildcards: false,
+	});
+	if (!matched) {
+		return new Error(
+			`MTA-STS policy host ${hostname} is not named in a certificate DNS subjectAltName`
+		);
 	}
-	return checkServerIdentity(hostname, cert);
+	if (matched.startsWith('*.') && trySplitZone(matched.slice(2)) === null) {
+		return new Error(`MTA-STS policy host certificate wildcard ${matched} covers a public suffix`);
+	}
+	return undefined;
 }
 
 /** Undo a Content-Encoding the server applied even though we asked for identity. */
@@ -209,7 +229,7 @@ export async function fetchStsPolicyText(
 				method: 'GET',
 				headers: { 'User-Agent': USER_AGENT, 'Accept-Encoding': 'identity' },
 				lookup,
-				checkServerIdentity: requireDnsSubjectAltName,
+				checkServerIdentity: checkPolicyHostIdentity,
 				signal,
 				agent: false,
 				...(transport.ca ? { ca: transport.ca } : {}),

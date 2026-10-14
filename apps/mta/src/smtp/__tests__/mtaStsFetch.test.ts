@@ -13,6 +13,7 @@ import {
 	startPolicyServer,
 	STS_TEST_DOMAIN,
 	type PolicyServer,
+	type PolicyServerCert,
 } from './helpers/stsPolicyServer.js';
 
 const POLICY = 'version: STSv1\nmode: enforce\nmx: mx1.owlat.test\nmax_age: 604800\n';
@@ -76,15 +77,45 @@ describe('fetchStsPolicyText', () => {
 		expect(text.split('\n').filter(Boolean)).toEqual(POLICY.split('\n').filter(Boolean));
 	});
 
-	it('refuses a trusted certificate that names the host only in its CN', async () => {
-		// Node falls back to the CN when a cert has no DNS subjectAltName; the
-		// policy fetch must not (RFC 8461 §3.3 via RFC 6125).
-		const server = await startPolicyServer((_req, res) => res.end(POLICY), { cnOnly: true });
-		cleanups.push(server.close);
+	// RFC 8461 §3.3 via RFC 6125: DNS subjectAltName only, and a wildcard only
+	// as a whole leftmost label that does not sit on a public suffix.
+	describe('certificate names', () => {
+		async function serverWith(cert: PolicyServerCert) {
+			const server = await startPolicyServer((_req, res) => res.end(POLICY), { cert });
+			cleanups.push(server.close);
+			return server;
+		}
 
-		await expect(fetchStsPolicyText(STS_TEST_DOMAIN, server.transport)).rejects.toThrow(
-			/no DNS subjectAltName/
-		);
+		it('refuses a trusted certificate that names the host only in its CN', async () => {
+			// Node's own checkServerIdentity would fall back to the CN.
+			const server = await serverWith('cnOnly');
+
+			await expect(fetchStsPolicyText(STS_TEST_DOMAIN, server.transport)).rejects.toThrow(
+				/not named in a certificate DNS subjectAltName/
+			);
+		});
+
+		it('refuses a partial-label wildcard such as mta-*.owlat.test', async () => {
+			const server = await serverWith('partialWildcard');
+
+			await expect(fetchStsPolicyText(STS_TEST_DOMAIN, server.transport)).rejects.toThrow(
+				/not named in a certificate DNS subjectAltName/
+			);
+		});
+
+		it('refuses a wildcard directly on a public suffix (*.co.uk for mta-sts.co.uk)', async () => {
+			const server = await serverWith('suffixWildcard');
+
+			await expect(fetchStsPolicyText('co.uk', server.transport)).rejects.toThrow(
+				/wildcard \*\.co\.uk covers a public suffix/
+			);
+		});
+
+		it('accepts a whole-label wildcard under a registrable domain', async () => {
+			const server = await serverWith('wildcard');
+
+			await expect(fetchStsPolicyText(STS_TEST_DOMAIN, server.transport)).resolves.toBe(POLICY);
+		});
 	});
 
 	it('fails on a certificate the trust store does not accept', async () => {

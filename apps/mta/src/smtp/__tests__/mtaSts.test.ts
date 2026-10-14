@@ -307,30 +307,37 @@ describe('mtaSts', () => {
 	});
 
 	// RFC 8461 §3.2/§5: a policy applies for max_age seconds from when it was
-	// fetched. The 300 s refetch throttle must not stretch that lifetime.
-	describe('getStsTlsOptions — max_age expiry', () => {
+	// fetched. An expired policy or a new DNS id means a fetch; the only thing
+	// that holds a fetch back is a recent FAILED fetch of the same id.
+	describe('getStsTlsOptions — max_age expiry and refetch', () => {
 		const ENFORCE_OPTS = {
 			requireTLS: true,
 			rejectUnauthorized: true,
 			allowedMxHosts: ['mail.example.com'],
 			policyMode: 'enforce',
 		};
+		const ENFORCE_BODY = policyBody({ mx: ['mail.example.com'] });
 
-		async function cacheEnforce(maxAge: number, ageSeconds: number, version = 'id-1') {
+		async function cachePolicy(opts: {
+			mode?: string;
+			maxAge: number;
+			ageSeconds: number;
+			version?: string;
+		}) {
 			await redis.set(
 				`${CACHE_PREFIX}example.com`,
 				JSON.stringify({
-					mode: 'enforce',
-					mx: ['mail.example.com'],
-					maxAge,
-					version,
-					cachedAt: Date.now() - ageSeconds * 1000,
+					mode: opts.mode ?? 'enforce',
+					mx: opts.mode === 'none' ? [] : ['mail.example.com'],
+					maxAge: opts.maxAge,
+					version: opts.version ?? 'id-1',
+					cachedAt: Date.now() - opts.ageSeconds * 1000,
 				})
 			);
 		}
 
 		it('applies an unexpired short-lived policy without a fetch', async () => {
-			await cacheEnforce(600, 60);
+			await cachePolicy({ maxAge: 600, ageSeconds: 60 });
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
 
 			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
@@ -340,21 +347,68 @@ describe('mtaSts', () => {
 		it.each([
 			[0, 1],
 			[1, 2],
-			[60, 120],
+			[60, 61],
 		])(
-			'does not apply a max_age %i policy %is old, even with a matching id, inside the refetch throttle',
-			async (maxAge, age) => {
-				await cacheEnforce(maxAge, age);
+			'refetches a max_age %i policy %is old from a healthy server, same id',
+			async (maxAge, ageSeconds) => {
+				await cachePolicy({ mode: 'testing', maxAge, ageSeconds });
 				resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+				stubFetch(ENFORCE_BODY);
 
-				const opts = await getStsTlsOptions(redis, 'example.com');
-				expect(opts.policyMode).toBe('none');
-				expect(fetchTextMock).not.toHaveBeenCalled();
+				expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+				expect(fetchTextMock).toHaveBeenCalledTimes(1);
 			}
 		);
 
+		it('fetches a new DNS id at once, even right after the previous fetch', async () => {
+			await cachePolicy({ mode: 'testing', maxAge: 1, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(ENFORCE_BODY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
+
+		it('moves from mode none to enforce when the id changes (max_age 0 none)', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch('version: STSv1\nmode: none\nmax_age: 0');
+			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(ENFORCE_BODY);
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(2);
+		});
+
+		it('moves from a cached long-lived none to enforce when the id changes', async () => {
+			await cachePolicy({ mode: 'none', maxAge: 86400, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(ENFORCE_BODY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+		});
+
+		it('applies a fresh max_age 0 policy to this delivery only, then fetches again', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'], maxAge: 0 }));
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(await redis.get(`${CACHE_PREFIX}example.com`)).toBeNull();
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			// A successful fetch never starts the backoff.
+			expect(fetchTextMock).toHaveBeenCalledTimes(2);
+		});
+
+		it('caches a policy for exactly its max_age', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'], maxAge: 60 }));
+
+			await getStsTlsOptions(redis, 'example.com');
+			expect(await redis.ttl(`${CACHE_PREFIX}example.com`)).toBe(60);
+		});
+
 		it('does not fall back to an expired policy when the refresh fails', async () => {
-			await cacheEnforce(60, 400);
+			await cachePolicy({ maxAge: 60, ageSeconds: 400 });
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
 			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
 
@@ -363,24 +417,28 @@ describe('mtaSts', () => {
 			expect(opts.policyMode).toBe('none');
 		});
 
-		it('refetches an expired policy once the throttle window has passed', async () => {
-			await cacheEnforce(60, 400);
+		it('backs off the same id for 300 s after a failed fetch, but not a new id', async () => {
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
-			stubFetch(policyBody({ mode: 'testing', mx: ['mail.example.com'], maxAge: 86400 }));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
 
-			const opts = await getStsTlsOptions(redis, 'example.com');
+			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
 			expect(fetchTextMock).toHaveBeenCalledTimes(1);
-			expect(opts.policyMode).toBe('testing');
+			expect(await redis.ttl('mta:sts-fetch-failed:example.com')).toBe(300);
+
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(ENFORCE_BODY);
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(2);
 		});
 
-		it('applies a fresh max_age 0 policy once, then not again inside the throttle', async () => {
-			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
-			stubFetch(policyBody({ mx: ['mail.example.com'], maxAge: 0 }));
+		it('keeps serving an unexpired cached policy while a new id is backed off', async () => {
+			await cachePolicy({ maxAge: 86400, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
 
 			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
-			// Kept for the throttle window, but not applied past its zero lifetime.
-			expect(await redis.ttl(`${CACHE_PREFIX}example.com`)).toBe(300);
-			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
 			expect(fetchTextMock).toHaveBeenCalledTimes(1);
 		});
 
@@ -395,10 +453,69 @@ describe('mtaSts', () => {
 				})
 			);
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
-			stubFetch(policyBody({ mx: ['mail.example.com'] }));
+			stubFetch(ENFORCE_BODY);
 
 			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
 			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	// RFC 8461 §3.2: later occurrences of version, mode and max_age are ignored,
+	// and every mx is a hostname with an optional leading `*.` label.
+	describe('parseStsPolicy — repeated fields and mx syntax', () => {
+		it('keeps the first mode, version and max_age', () => {
+			const policy = parseStsPolicy(
+				[
+					'version: STSv1',
+					'mode: enforce',
+					'mx: mail.example.com',
+					'max_age: 86400',
+					'version: STSv2',
+					'mode: none',
+					'max_age: 0',
+				].join('\n'),
+				'id-1'
+			);
+			expect(policy).toMatchObject({ mode: 'enforce', mx: ['mail.example.com'], maxAge: 86400 });
+		});
+
+		it('a valid later version does not rescue an invalid first one', () => {
+			expect(() => parseStsPolicy(`version: STSv2\n${policyBody()}`, 'id-1')).toThrow(
+				InvalidStsPolicyError
+			);
+		});
+
+		it('a valid later max_age does not rescue an invalid first one', () => {
+			expect(() =>
+				parseStsPolicy(`${policyBody({ maxAge: 'soon' })}\nmax_age: 86400`, 'id-1')
+			).toThrow(/max_age is soon/);
+		});
+
+		it.each([
+			'*.example.com',
+			'MAIL.Example.COM',
+			'mx.example.com.',
+			'mx1',
+			'xn--bcher-kva.example',
+		])('accepts mx %j', (value) => {
+			expect(parseStsPolicy(policyBody({ mx: [value] }), 'id-1').mx).toEqual([value]);
+		});
+
+		it.each([
+			'',
+			'*',
+			'*.',
+			'a.*.example.com',
+			'mail_host.example.com',
+			'mx.example.com:25',
+			'exa mple.com',
+			'-mx.example.com',
+			'mx..example.com',
+			`${'a'.repeat(64)}.example.com`,
+		])('rejects mx %j', (value) => {
+			expect(() => parseStsPolicy(policyBody({ mx: ['mail.example.com', value] }), 'id-1')).toThrow(
+				/is not a hostname/
+			);
 		});
 	});
 
@@ -548,6 +665,8 @@ describe('mtaSts', () => {
 			['an enforce policy with no mx', 'version: STSv1\nmode: enforce\nmax_age: 86400'],
 			['a policy with no max_age', 'version: STSv1\nmode: enforce\nmx: evil.owlat.test'],
 			['an unknown mode', 'version: STSv1\nmode: off\nmx: evil.owlat.test\nmax_age: 86400'],
+			['an empty mx', 'version: STSv1\nmode: enforce\nmx:\nmax_age: 86400'],
+			['a malformed mx', 'version: STSv1\nmode: enforce\nmx: evil host\nmax_age: 86400'],
 		])('on a 200 carrying %s', async (_label, body) => {
 			await refreshAgainst((_req, res) => res.end(body));
 		});

@@ -9,8 +9,12 @@
  * Responses default to `Content-Type: text/plain`, which a handler can
  * override or remove.
  *
- * `cnOnly` serves a second throwaway cert whose only name is
- * CN=mta-sts.owlat.test (no subjectAltName at all), trusted the same way.
+ * `cert` picks another throwaway cert, trusted the same way:
+ * - `cnOnly`: CN=mta-sts.owlat.test and no subjectAltName at all;
+ * - `wildcard`: DNS:*.owlat.test, a whole-label wildcard;
+ * - `partialWildcard`: DNS:mta-*.owlat.test;
+ * - `suffixWildcard`: DNS:*.co.uk, a wildcard on a public suffix.
+ * The three wildcard certs reuse the default cert's key.
  */
 import { createServer, type Server } from 'node:https';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -117,6 +121,82 @@ Ht03cQYSTM46qf9tYY1vJIPyv4UMaJavlSlbqfCy7TSVbBzde+fxo+851A9h0jq3
 tcC7tVc5BDCrAUUJTQ201xw=
 -----END PRIVATE KEY-----`;
 
+const STS_WILDCARD_CERT = `-----BEGIN CERTIFICATE-----
+MIIDLDCCAhSgAwIBAgIUFoCLYQT+sfJMWHBJ52O9KwDsoaAwDQYJKoZIhvcNAQEL
+BQAwGDEWMBQGA1UEAwwNd2lsZGNhcmQgdGVzdDAgFw0yNjEwMTQwNzUyMzVaGA8y
+MTI2MDkyMDA3NTIzNVowGDEWMBQGA1UEAwwNd2lsZGNhcmQgdGVzdDCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBALTqzupKm1XBXGuaq8irfs+RihrWx5k5
+J4CxgYNqT0Fv5UAZa9raLdoNooCrbsqP+qu789tvVEt3L6jNYI2bjwZA6XUtTlHP
+ZalBka4sfKooLuX74PfhDjgOKDsmaIuRCXxOIeiub27s9NO6L9qhOyPMnPDMXvlI
+QTEO4927/a5mMpfglKePAcOOzwx5SXAKDzF7Zwck2pN2PsZtem+Nz34Drr+3Xf6F
+JekseraXHMxI/mizcV8E/L4aOtl9yuq/7WRg/vqWTogxiVH1ajq+p6zErU//llbe
+vnCIuei/9RxkQo5zYRuoYpM5yBoDqSvPNDGMAWooS7TiN6dWzEhEtOUCAwEAAaNs
+MGowHQYDVR0OBBYEFGYEp8KjeBZJaV/5/i57Lk6/cLDGMB8GA1UdIwQYMBaAFGYE
+p8KjeBZJaV/5/i57Lk6/cLDGMBcGA1UdEQQQMA6CDCoub3dsYXQudGVzdDAPBgNV
+HRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQAr/LRR/FeM9RrXLZyLRhYo
+Mtaj3rOlPCvmBKpZf1/Nxs4Jki13+SVvUoXviRv6a0DA7+V2gNSyuQ04MJWvy++o
+kczRQBtsGGHQad0JYULMzV8aKGUTkMUE5rIv2ssUZ4wIqNRWwdEiBU0oAkjFHTNg
+f3J2hSHrDkm/pO3cUBxDiO1UeA7/st+iKqdO5G4KlBXFZ+75VX78hJpMfeEGmpwx
+PAXBvzQRpWWBHI4v8gsePxlVMIVFCBfiP8ysvAfXIxdE6wRW0PWB4eUOKYlP7RIL
+40V2Ow1s9voLPYVqNPKGPRGD0pNubGYXFtoSS/hQ9FFdoISnRow9NBkiwpy587SJ
+-----END CERTIFICATE-----`;
+
+const STS_PARTIAL_WILDCARD_CERT = `-----BEGIN CERTIFICATE-----
+MIIDMDCCAhigAwIBAgIUDwEE19Kt2w/abNNMcnYyJaAAsVEwDQYJKoZIhvcNAQEL
+BQAwGDEWMBQGA1UEAwwNd2lsZGNhcmQgdGVzdDAgFw0yNjEwMTQwNzUyMzVaGA8y
+MTI2MDkyMDA3NTIzNVowGDEWMBQGA1UEAwwNd2lsZGNhcmQgdGVzdDCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBALTqzupKm1XBXGuaq8irfs+RihrWx5k5
+J4CxgYNqT0Fv5UAZa9raLdoNooCrbsqP+qu789tvVEt3L6jNYI2bjwZA6XUtTlHP
+ZalBka4sfKooLuX74PfhDjgOKDsmaIuRCXxOIeiub27s9NO6L9qhOyPMnPDMXvlI
+QTEO4927/a5mMpfglKePAcOOzwx5SXAKDzF7Zwck2pN2PsZtem+Nz34Drr+3Xf6F
+JekseraXHMxI/mizcV8E/L4aOtl9yuq/7WRg/vqWTogxiVH1ajq+p6zErU//llbe
+vnCIuei/9RxkQo5zYRuoYpM5yBoDqSvPNDGMAWooS7TiN6dWzEhEtOUCAwEAAaNw
+MG4wHQYDVR0OBBYEFGYEp8KjeBZJaV/5/i57Lk6/cLDGMB8GA1UdIwQYMBaAFGYE
+p8KjeBZJaV/5/i57Lk6/cLDGMBsGA1UdEQQUMBKCEG10YS0qLm93bGF0LnRlc3Qw
+DwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAAcuJ1yOG6jpYXnVw
+4mS66XwMQitqYIs140ryPG1kQ9WqTIIiLL5Z9N/a8QjQofFRDAI/D5suPBr8QBMc
+aDFJoTrOnaN3JF7RIm2fHmtaRWFf8VzUD51pPeCAWYWt3ypDKFFoMMnYYiBuRbyI
+75xFxevQ48ABGmNjEm4fxneNvXhZRrjbwMCrPNC5+E1fX3G7fNjMDrmwcl83HxgC
+qtX6ssiKWyEVxEf/sBEzSV3l+IonpyOH8nAGDao65LQapi2hpc3YuwJc6Jup4s/R
+m8mKPAoYs9HuCz3w35+W3C/xjHkYwMFVoE0AVNa7SSlRQC3VJbOAzSWR9B8eKT7g
+q6t7Kg==
+-----END CERTIFICATE-----`;
+
+const STS_SUFFIX_WILDCARD_CERT = `-----BEGIN CERTIFICATE-----
+MIIDJzCCAg+gAwIBAgIUbNM9jrAx92bxAzEN3yHWfJ3ATxAwDQYJKoZIhvcNAQEL
+BQAwGDEWMBQGA1UEAwwNd2lsZGNhcmQgdGVzdDAgFw0yNjEwMTQwNzUyMzVaGA8y
+MTI2MDkyMDA3NTIzNVowGDEWMBQGA1UEAwwNd2lsZGNhcmQgdGVzdDCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBALTqzupKm1XBXGuaq8irfs+RihrWx5k5
+J4CxgYNqT0Fv5UAZa9raLdoNooCrbsqP+qu789tvVEt3L6jNYI2bjwZA6XUtTlHP
+ZalBka4sfKooLuX74PfhDjgOKDsmaIuRCXxOIeiub27s9NO6L9qhOyPMnPDMXvlI
+QTEO4927/a5mMpfglKePAcOOzwx5SXAKDzF7Zwck2pN2PsZtem+Nz34Drr+3Xf6F
+JekseraXHMxI/mizcV8E/L4aOtl9yuq/7WRg/vqWTogxiVH1ajq+p6zErU//llbe
+vnCIuei/9RxkQo5zYRuoYpM5yBoDqSvPNDGMAWooS7TiN6dWzEhEtOUCAwEAAaNn
+MGUwHQYDVR0OBBYEFGYEp8KjeBZJaV/5/i57Lk6/cLDGMB8GA1UdIwQYMBaAFGYE
+p8KjeBZJaV/5/i57Lk6/cLDGMBIGA1UdEQQLMAmCByouY28udWswDwYDVR0TAQH/
+BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEACxkcSkl+dSgw7WqMSkMCT9a0WI2B
+/gLYF3e4IW1AuoUOHZ9jgHNJ1YAIGlGu1ZUwi3AKDEeF3m86gp3ZmUdGOKf7OsNN
+jQThKZuIFtNxSre01d6C8t7TaOEAHmgHHr25Wfv3oe5V0W+8ZJBuSQjFxBTsPPPD
+WFfo2CJPVtTG59t4XL4sW1oG5VOX7NCB+T4Ikm7TLXdNMKu0CAasw0WlMEagEXWl
+Xxe31NxAu5jaPMaX3CBvvFqMFz+eVJU4Bn25LTiTgcAFQ3KHdd/XnDaCiIo0LRX3
+hP1TmKReMK5AFyRO6xjTKiyvz2OiA3aKAwVnfENNCk05067Znb8+Fyl+GQ==
+-----END CERTIFICATE-----`;
+
+export type PolicyServerCert =
+	| 'default'
+	| 'cnOnly'
+	| 'wildcard'
+	| 'partialWildcard'
+	| 'suffixWildcard';
+
+const CERTS: Record<PolicyServerCert, { cert: string; key: string }> = {
+	default: { cert: STS_TEST_CERT, key: STS_TEST_KEY },
+	cnOnly: { cert: STS_CN_ONLY_CERT, key: STS_CN_ONLY_KEY },
+	wildcard: { cert: STS_WILDCARD_CERT, key: STS_TEST_KEY },
+	partialWildcard: { cert: STS_PARTIAL_WILDCARD_CERT, key: STS_TEST_KEY },
+	suffixWildcard: { cert: STS_SUFFIX_WILDCARD_CERT, key: STS_TEST_KEY },
+};
+
 export interface PolicyServer {
 	transport: StsFetchTransport;
 	requests: () => number;
@@ -125,11 +205,10 @@ export interface PolicyServer {
 
 export async function startPolicyServer(
 	handler: (req: IncomingMessage, res: ServerResponse) => void,
-	opts: { cnOnly?: boolean } = {}
+	opts: { cert?: PolicyServerCert } = {}
 ): Promise<PolicyServer> {
 	let requests = 0;
-	const cert = opts.cnOnly ? STS_CN_ONLY_CERT : STS_TEST_CERT;
-	const key = opts.cnOnly ? STS_CN_ONLY_KEY : STS_TEST_KEY;
+	const { cert, key } = CERTS[opts.cert ?? 'default'];
 	const server: Server = createServer({ cert, key }, (req, res) => {
 		requests++;
 		res.setHeader('Content-Type', 'text/plain');
