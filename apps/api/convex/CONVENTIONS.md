@@ -1060,6 +1060,19 @@ absent contact is the org-wide scope, so a contact-scoped answer is deleted,
 not unlinked. Organization-wide knowledge that an admin promoted before the
 erasure no longer references the contact and is retained.
 
+A contact merge has the same contract on the other side:
+`lib/contactMutations.ts` repoints, dedupes with a routine, or excludes (with
+the reason) every contact reference, and
+`__tests__/contactMergeRelations.test.ts` fails on one it does not handle.
+
+**A new contact id must be `v.id('contacts')`.** Both gates find those by
+walking the schema. They also catch a plain string that names itself
+(`contactId`, `contactIds`, or `<x>Id` next to an `<x>Type: 'contact'`
+discriminator), but no rule can see an arbitrarily named string or a
+plain-string record key. If a contact id has to be a string, declare it in
+`lib/contactStringReferences.ts`, and the gates will then require its merge
+handling, its erasure policy and a fixture row like any other reference.
+
 ### Audit logging
 
 Use `recordAuditLog` from `lib/auditLog.ts`. Never call

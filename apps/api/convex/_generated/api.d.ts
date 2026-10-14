@@ -470,6 +470,7 @@ import type * as contacts_erasure_relations from '../contacts/erasure/relations.
 import type * as contacts_erasure_retention from '../contacts/erasure/retention.js';
 import type * as contacts_erasure_threadBriefPhases from '../contacts/erasure/threadBriefPhases.js';
 import type * as contacts_erasure_threadBriefRelations from '../contacts/erasure/threadBriefRelations.js';
+import type * as contacts_erasure_threadRelations from '../contacts/erasure/threadRelations.js';
 import type * as contacts_erasure_walker from '../contacts/erasure/walker.js';
 import type * as contacts_guards from '../contacts/guards.js';
 import type * as contacts_identities from '../contacts/identities.js';
@@ -947,6 +948,7 @@ import type * as lib_contactHelpers from '../lib/contactHelpers.js';
 import type * as lib_contactJunctions from '../lib/contactJunctions.js';
 import type * as lib_contactMutations from '../lib/contactMutations.js';
 import type * as lib_contactScope from '../lib/contactScope.js';
+import type * as lib_contactStringReferences from '../lib/contactStringReferences.js';
 import type * as lib_convexLimitErrors from '../lib/convexLimitErrors.js';
 import type * as lib_convexValidators from '../lib/convexValidators.js';
 import type * as lib_cors from '../lib/cors.js';
@@ -2218,6 +2220,7 @@ declare const fullApi: ApiFromModules<{
 	'contacts/erasure/retention': typeof contacts_erasure_retention;
 	'contacts/erasure/threadBriefPhases': typeof contacts_erasure_threadBriefPhases;
 	'contacts/erasure/threadBriefRelations': typeof contacts_erasure_threadBriefRelations;
+	'contacts/erasure/threadRelations': typeof contacts_erasure_threadRelations;
 	'contacts/erasure/walker': typeof contacts_erasure_walker;
 	'contacts/guards': typeof contacts_guards;
 	'contacts/identities': typeof contacts_identities;
@@ -2695,6 +2698,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/contactJunctions': typeof lib_contactJunctions;
 	'lib/contactMutations': typeof lib_contactMutations;
 	'lib/contactScope': typeof lib_contactScope;
+	'lib/contactStringReferences': typeof lib_contactStringReferences;
 	'lib/convexLimitErrors': typeof lib_convexLimitErrors;
 	'lib/convexValidators': typeof lib_convexValidators;
 	'lib/cors': typeof lib_cors;

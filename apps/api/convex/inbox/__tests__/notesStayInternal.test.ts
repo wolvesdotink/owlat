@@ -33,7 +33,10 @@ const ALLOWED = new Set([
 	'auth/erasure/phases.ts',
 	'auth/erasure/relations.ts',
 	'contacts/erasure/contentPhases.ts',
-	'contacts/erasure/relations.ts',
+	// The contact erasure registry's thread descendants (split out of
+	// relations.ts): declares that a thread takes its notes with it. Table
+	// names only, never a note's text.
+	'contacts/erasure/threadRelations.ts',
 	'lib/tenantTables.ts',
 	'workspaces/deletion/steps/_common.ts',
 	'workspaces/deletion/steps/cascadeOrder.ts',

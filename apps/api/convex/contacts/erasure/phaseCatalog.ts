@@ -29,6 +29,8 @@ export const CONTACT_ERASURE_PHASES = [
 	'answerAskSessions',
 	// Team Inbox sender memory (ADR-0073, D12).
 	'senderMemory',
+	// Contact-scoped draft strategy overrides (a contact id in a string field).
+	'draftStrategySelections',
 ] as const;
 
 export type ContactErasurePhase = (typeof CONTACT_ERASURE_PHASES)[number];

@@ -44,7 +44,11 @@ export const pluginTables = {
 		strategyKind: v.string(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	}).index('by_organization_scope', ['organizationId', 'scopeType', 'scopeId']),
+	})
+		.index('by_organization_scope', ['organizationId', 'scopeType', 'scopeId'])
+		// A contact merge moves the source's override onto the survivor without
+		// an organization in hand (lib/contactMutations.ts).
+		.index('by_scope', ['scopeType', 'scopeId']),
 
 	pluginStorageEntries: defineTable({
 		organizationId: v.string(),
