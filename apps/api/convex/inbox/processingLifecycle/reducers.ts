@@ -90,7 +90,9 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// A person reopens a rejected draft or an archived message to write the
 		// reply themselves (inbox/manualReply.ts).
 		rejected: ['draft_ready'],
-		archived: ['draft_ready'],
+		// `awaiting_clarification` too, only to reopen a message whose answering
+		// reply bounced (`reopenAnswered`, inbox/answeredThread.ts).
+		archived: ['draft_ready', 'awaiting_clarification'],
 		// `received` is the agent's retry; `draft_ready` is a person writing the
 		// reply the agent failed to (inbox/manualReply.ts), or a Retry returning
 		// a person's reply to review; `approved` is a Retry sending a person's
@@ -330,10 +332,6 @@ function reduceArchived(
 	}
 	if (input.securityFlags) patch['securityFlags'] = input.securityFlags;
 	patch['archiveReason'] = input.reason;
-	// Answered through a newer message: the agent's draft and questions are moot.
-	if (input.reason === 'answered_in_thread') {
-		Object.assign(patch, { draftResponse: undefined, pendingClarification: undefined });
-	}
 	return { patch, effects };
 }
 

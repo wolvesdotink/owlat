@@ -6,32 +6,63 @@
  *
  *   - The generated reply (the Reply Queue's draft slot and clarification
  *     draft) lives on `mailThreads.needsReply` and goes with that flag.
- *   - A saved composer draft (`mailDrafts`) that still holds an AI reply
- *     word for word goes here.
+ *   - A saved composer draft (`mailDrafts`) the AI wrote and no person has
+ *     touched: `aiAuthored` set, `humanTouchedAt` never (mail/draftProvenance.ts).
+ *     Any change a person makes (body, recipients, subject, attachments, a
+ *     link) sets `humanTouchedAt`, and such a draft is theirs and always stays.
  *
- * A saved draft a person wrote, or an AI draft a person edited, is theirs and
- * always stays: only one whose recorded AI baseline still equals its text
- * (`isUntouchedAiAnswer`) is removed. So does any draft replying to mail newer
- * than the response, one saved after the response was written, and a pending
- * or scheduled send (a send the owner already chose).
+ * Cleanup is soft: the draft is marked `obsoleted` by the reply and hidden from
+ * every draft surface; its uploads stay. If the reply bounces for the person
+ * it answers, every draft it obsoleted comes back (`reconcileAnsweredReply`).
+ * After `ANSWERED_RETENTION_MS` the draft is deleted for good, uploads and all
+ * (`purgeExpired`).
  *
  * Both kinds of response settle: an Owlat reply once its transport accepted it
- * (`settleAcceptedReply`, from the Postbox outbound lifecycle; a send that
- * fails leaves every draft), and our own reply detected by mail sync or a
- * client's IMAP APPEND (`settleOwnerReply`). An auto-reply (vacation notice)
- * or a provider draft is not a response. A new inbound message reopens the
- * flow: classification flags it afresh and drafts it under the usual rules,
- * with nothing left to restore.
+ * for the correspondent (the answered sender or a To recipient; a Bcc or
+ * archive copy does not count), from the Postbox outbound lifecycle; and our
+ * own reply detected by mail sync or a client's IMAP APPEND
+ * (`settleOwnerReply`). An auto-reply (vacation notice) or a provider draft is
+ * not a response. Untouched as well: a draft replying to mail newer than the
+ * response, one saved after it, and a pending or scheduled send. A new inbound
+ * message reopens the flow: classification flags it afresh and drafts it under
+ * the usual rules, with nothing left to restore.
  */
 
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
+import { internal } from '../_generated/api';
+import { internalMutation } from '../lib/writeFence';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS, normalizeEmail } from '@owlat/shared';
 import { isUntouchedAiAnswer } from '@owlat/shared/answerMode';
 import { deleteOwnedUpload } from '../storage/uploads';
 import { openMailDraftBody } from '../lib/messageBody';
+import {
+	headerEvidenceFromMap,
+	isBulkPrecedenceForReply,
+	isMachineGeneratedForReply,
+} from '../lib/mailEvidence';
 import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
 import { clearThreadNeedsReply, isOwnMessage } from './needsReply';
 import { mailboxOwnAddresses } from './identities';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long an obsoleted draft (or a Team Inbox stash) waits for a bounce
+ * before it is purged: the MTA's own retry horizon, plus three days for a
+ * remote server's late bounce report.
+ */
+export const ANSWERED_RETENTION_MS = GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 3 * DAY_MS;
+
+/**
+ * An auto-reply (a vacation notice, a list or bulk mailing) by its headers:
+ * Auto-Submitted other than `no`, List-Id, or a bulk / `auto_reply`
+ * Precedence. It answers nothing.
+ */
+export function isAutomatedResponse(headers: Record<string, string> | undefined): boolean {
+	const evidence = headerEvidenceFromMap(headers ?? {});
+	return isMachineGeneratedForReply(evidence) || isBulkPrecedenceForReply(evidence);
+}
 
 /** Delete a draft row with its uploads and Answer mode ask sessions. */
 export async function deleteDraftRow(ctx: MutationCtx, draft: Doc<'mailDrafts'>): Promise<void> {
@@ -42,7 +73,7 @@ export async function deleteDraftRow(ctx: MutationCtx, draft: Doc<'mailDrafts'>)
 	await ctx.db.delete(draft._id);
 }
 
-/** The thread's saved drafts still being composed (not pending or scheduled). */
+/** The thread's live drafts still being composed (not pending, scheduled or obsoleted). */
 async function composingDrafts(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>
@@ -51,54 +82,84 @@ async function composingDrafts(
 		.query('mailDrafts')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
 		.collect(); // bounded: one conversation's drafts
-	return drafts.filter((d) => d.state === 'draft');
+	return drafts.filter((d) => d.state === 'draft' && d.obsoleted === undefined);
 }
 
-/** A saved draft that is still the AI's reply, untouched by a person. */
-async function isUntouchedAiDraft(draft: Doc<'mailDrafts'>): Promise<boolean> {
-	const baseline = draft.aiDraftBaseline?.text;
-	if (!baseline || draft.composerMode === 'full') return false;
+/** Written by the AI and never touched by a person (the text check is a second guard). */
+async function isAiOnlyDraft(draft: Doc<'mailDrafts'>): Promise<boolean> {
+	if (!draft.aiAuthored || draft.humanTouchedAt !== undefined) return false;
+	if (draft.composerMode === 'full') return false;
 	const { bodyHtml } = await openMailDraftBody(draft);
-	return isUntouchedAiAnswer(bodyHtml, baseline);
+	return isUntouchedAiAnswer(bodyHtml, draft.aiAuthored.text);
 }
 
 /**
- * Delete the AI drafts a response made obsolete: untouched ones replying to a
+ * Mark obsolete the AI drafts a response answered: AI-only ones replying to a
  * message received at or before `answeredUpTo`, saved at or before
  * `respondedAt`.
  */
-async function removeAnsweredDrafts(
+async function obsoleteAnsweredDrafts(
 	ctx: MutationCtx,
 	drafts: ReadonlyArray<Doc<'mailDrafts'>>,
-	response: { answeredUpTo: number; respondedAt: number }
+	response: { byMessageId: Id<'mailMessages'>; answeredUpTo: number; respondedAt: number }
 ): Promise<void> {
+	const at = Date.now();
 	for (const draft of drafts) {
 		if (!draft.inReplyToMessageId || draft.lastEditedAt > response.respondedAt) continue;
 		const repliedTo = await ctx.db.get(draft.inReplyToMessageId);
 		if (!repliedTo || repliedTo.receivedAt > response.answeredUpTo) continue;
-		if (!(await isUntouchedAiDraft(draft))) continue;
-		await deleteDraftRow(ctx, draft);
+		if (!(await isAiOnlyDraft(draft))) continue;
+		await ctx.db.patch(draft._id, { obsoleted: { byMessageId: response.byMessageId, at } });
 	}
 }
 
+/** Bring back every draft `messageId` obsoleted (the reply never reached them). */
+async function restoreObsoletedBy(ctx: MutationCtx, messageId: Id<'mailMessages'>): Promise<void> {
+	const drafts = await ctx.db
+		.query('mailDrafts')
+		.withIndex('by_obsoleted_by', (q) => q.eq('obsoleted.byMessageId', messageId))
+		.collect(); // bounded: one conversation's drafts
+	for (const draft of drafts) await ctx.db.patch(draft._id, { obsoleted: undefined });
+}
+
+/** Whom an Owlat reply answers: the sender of the answered mail and the reply's To. */
+function correspondentsOf(sent: Doc<'mailMessages'>, answered: Doc<'mailMessages'>): Set<string> {
+	return new Set(
+		[answered.fromAddress, answered.replyToAddress, ...sent.toAddresses]
+			.filter((a): a is string => !!a)
+			.map(normalizeEmail)
+	);
+}
+
 /**
- * An Owlat reply's transport accepted it (a recipient reached `sent`): the
- * conversation's AI drafts for the message it answered, or an earlier one, go.
- * The sent draft itself was deleted at `→ sent`. Idempotent, so every accepted
- * recipient may call it.
+ * Bring an Owlat reply's drafts in line with its delivery to the correspondent,
+ * after any recipient transition: accepted for one of them, the conversation's
+ * AI drafts are obsoleted; refused for all of them (a bounce, a failure, even
+ * after an earlier acceptance), they come back. A Bcc or archive copy never
+ * decides either way. Idempotent.
  */
-export async function settleAcceptedReply(
+export async function reconcileAnsweredReply(
 	ctx: MutationCtx,
-	sent: Doc<'mailMessages'>
+	sentId: Id<'mailMessages'>
 ): Promise<void> {
-	if (!sent.answeredMessageId) return;
+	const sent = await ctx.db.get(sentId);
+	if (!sent?.answeredMessageId || !sent.outbound) return;
 	const answered = await ctx.db.get(sent.answeredMessageId);
 	if (!answered) return;
-	const drafts = await composingDrafts(ctx, answered.threadId);
-	await removeAnsweredDrafts(ctx, drafts, {
-		answeredUpTo: answered.receivedAt,
-		respondedAt: sent.createdAt,
-	});
+	const correspondents = correspondentsOf(sent, answered);
+	const states = sent.outbound.recipients
+		.filter((r) => correspondents.has(normalizeEmail(r.address)))
+		.map((r) => r.state);
+	if (states.includes('sent')) {
+		const drafts = await composingDrafts(ctx, answered.threadId);
+		await obsoleteAnsweredDrafts(ctx, drafts, {
+			byMessageId: sent._id,
+			answeredUpTo: answered.receivedAt,
+			respondedAt: sent.createdAt,
+		});
+	} else if (states.length > 0 && !states.includes('queued')) {
+		await restoreObsoletedBy(ctx, sent._id);
+	}
 }
 
 /**
@@ -108,8 +169,8 @@ export async function settleAcceptedReply(
  * generated for it and the saved AI draft all outlive the reply that settled
  * them. A Sent copy older than the flagged message (out-of-order sync) settles
  * nothing newer than itself. Not a reply at all: a saved draft (the Drafts
- * folder, `\Draft`) and an automatic one (`isAutomated`: Auto-Submitted, a
- * vacation Precedence).
+ * folder, `\Draft`) and an automatic one (`isAutomated`, see
+ * {@link isAutomatedResponse}).
  */
 export async function settleOwnerReply(
 	ctx: MutationCtx,
@@ -127,10 +188,36 @@ export async function settleOwnerReply(
 	if (!mailbox || !isOwnMessage(message, await mailboxOwnAddresses(ctx, mailbox))) return;
 	if ((await ctx.db.get(message.folderId))?.role === 'drafts') return;
 
-	const response = { answeredUpTo: message.receivedAt, respondedAt: message.receivedAt };
-	await removeAnsweredDrafts(ctx, drafts, response);
+	await obsoleteAnsweredDrafts(ctx, drafts, {
+		byMessageId: message._id,
+		answeredUpTo: message.receivedAt,
+		respondedAt: message.receivedAt,
+	});
 	if (!thread.needsReply) return;
 	const trigger = await ctx.db.get(thread.needsReply.messageId);
 	if (trigger && trigger.receivedAt > message.receivedAt) return;
 	await clearThreadNeedsReply(ctx, thread._id);
 }
+
+const PURGE_BATCH = 50;
+
+/**
+ * Delete the drafts obsoleted longer ago than the retention window, uploads
+ * and all, and have the Team Inbox drop its stashes from as long ago.
+ */
+export const purgeExpired = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ purged: number }> => {
+		await ctx.scheduler.runAfter(0, internal.inbox.answeredThread.purgeAnsweredStashes, {});
+		const cutoff = Date.now() - ANSWERED_RETENTION_MS;
+		const drafts = await ctx.db
+			.query('mailDrafts')
+			.withIndex('by_obsoleted_at', (q) => q.gt('obsoleted.at', 0).lt('obsoleted.at', cutoff))
+			.take(PURGE_BATCH);
+		for (const draft of drafts) await deleteDraftRow(ctx, draft);
+		if (drafts.length === PURGE_BATCH) {
+			await ctx.scheduler.runAfter(0, internal.mail.answeredReply.purgeExpired, {});
+		}
+		return { purged: drafts.length };
+	},
+});

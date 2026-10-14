@@ -53,6 +53,7 @@ import {
 } from '../_utils/errors';
 import type { mailDraftAttachmentValidator } from '../lib/validators/mailContent';
 import { recordFileAddedToDraft } from './interpret/threadEvents';
+import { humanEdit } from './draftProvenance';
 
 type AttachExistingSource = Infer<typeof existingAttachmentSourceValidator>;
 type DraftAttachment = Infer<typeof mailDraftAttachmentValidator>;
@@ -229,7 +230,7 @@ export const bindCopiedAttachment = internalMutation({
 				copiedFrom: args.copiedFrom,
 			},
 		];
-		await ctx.db.patch(args.draftId, { attachments, lastEditedAt: Date.now() });
+		await ctx.db.patch(args.draftId, { attachments, ...humanEdit(Date.now()) });
 		if (draft.threadId) {
 			await recordFileAddedToDraft(
 				ctx,

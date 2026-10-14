@@ -16,6 +16,13 @@ import { addressFieldList, parseMessage, primaryMailbox } from '@owlat/mail-mess
  */
 export const APPEND_INLINE_BODY_LIMIT_BYTES = 64 * 1024;
 
+/**
+ * Cap on the forwarded header block. The backend reads its automation headers
+ * (Auto-Submitted, List-Id, Precedence) the way it does for synced mail, so a
+ * client filing its own vacation reply is not taken for an answer.
+ */
+export const APPEND_HEADER_BLOCK_LIMIT_BYTES = 16 * 1024;
+
 interface AppendAddress {
 	address: string;
 	/** Decoded display name, absent when the header carries none. */
@@ -37,6 +44,8 @@ interface AppendEnvelope {
 	internalDate?: number;
 	text?: string;
 	html?: string;
+	/** The raw header section (up to the blank line), capped. */
+	headerBlock: string;
 }
 
 /**
@@ -102,5 +111,13 @@ export function appendEnvelope(raw: Buffer): AppendEnvelope {
 		internalDate: parsed.date?.getTime(),
 		text: capInlineBody(parsed.text),
 		html: capInlineBody(parsed.html === false ? undefined : parsed.html),
+		headerBlock: headerSection(raw),
 	};
+}
+
+/** The raw header section of a message, up to the blank line that ends it, capped. */
+function headerSection(raw: Buffer): string {
+	const ends = [raw.indexOf('\r\n\r\n'), raw.indexOf('\n\n')].filter((i) => i >= 0);
+	const length = ends.length > 0 ? Math.min(...ends) : raw.length;
+	return raw.subarray(0, Math.min(length, APPEND_HEADER_BLOCK_LIMIT_BYTES)).toString('utf8');
 }

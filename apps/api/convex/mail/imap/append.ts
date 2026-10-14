@@ -18,7 +18,8 @@ import { insertMessageBody } from '../../lib/messageBodyStore';
 import { isImapSystemFlag } from './flags';
 import { mergeThreadParticipants, rebuildThreadAggregates } from '../threadAggregates';
 import { conversationRootId, resolveDeliveryThread } from '../deliveryPipeline/threading';
-import { settleOwnerReply } from '../answeredReply';
+import { isAutomatedResponse, settleOwnerReply } from '../answeredReply';
+import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { buildSearchBody, isBodySearchIndexingEnabled } from '../searchBody';
 import { buildSnippet } from '../deliveryPipeline/insert';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
@@ -64,6 +65,9 @@ export const appendMessage = internalMutation({
 		textBodyInline: v.optional(v.string()),
 		internalDate: v.optional(v.number()),
 		flags: v.optional(v.array(v.string())),
+		// The raw header section: its automation headers (Auto-Submitted, List-Id,
+		// Precedence) keep a client's filed vacation reply from counting as one.
+		headerBlock: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const folder = await ctx.db.get(args.folderId);
@@ -206,7 +210,8 @@ export const appendMessage = internalMutation({
 			// Our reply sent from a desktop client settles the Reply Queue row and
 			// its obsolete drafts, as the same reply synced from a provider's Sent
 			// folder does.
-			await settleOwnerReply(ctx, messageId);
+			const antiLoop = args.headerBlock ? extractAntiLoopHeaders(args.headerBlock) : undefined;
+			await settleOwnerReply(ctx, messageId, { isAutomated: isAutomatedResponse(antiLoop) });
 		} else {
 			// The conversation list links to latestMessageId; set it now that the
 			// appended message exists.

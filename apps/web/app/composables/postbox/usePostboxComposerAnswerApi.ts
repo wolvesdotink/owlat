@@ -28,6 +28,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import { freshDraftText, replaceAnswerText, splitAnswerBody } from '~/utils/answerDraft';
+import { setAiWrittenText } from '~/utils/postboxAiWrittenText';
 import { formatTime } from '~/utils/formatters';
 
 export interface AnswerComposerApi {
@@ -90,10 +91,12 @@ export function usePostboxComposerAnswerApi(opts: {
 		streamAiDraft(text) {
 			keepWrittenBefore();
 			opts.bodyHtml.value = replaceAnswerText(opts.bodyHtml.value, text);
+			setAiWrittenText(opts.bodyHtml, text);
 		},
 		async applyAiDraft(text) {
 			keepWrittenBefore();
 			opts.bodyHtml.value = replaceAnswerText(opts.bodyHtml.value, text);
+			setAiWrittenText(opts.bodyHtml, text);
 			aiDraft.value = text;
 			const saved = await opts.flush();
 			if (saved.ok && saved.result) {
@@ -105,6 +108,7 @@ export function usePostboxComposerAnswerApi(opts: {
 			opts.bodyHtml.value = `${writtenBefore ?? ''}${tail}`;
 			writtenBefore = null;
 			aiDraft.value = null;
+			setAiWrittenText(opts.bodyHtml, null);
 			opts.focusBody();
 		},
 		setAttachments(list) {

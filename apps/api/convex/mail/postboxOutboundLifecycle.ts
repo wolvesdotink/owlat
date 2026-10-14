@@ -5,7 +5,7 @@ import { internalMutation } from '../lib/writeFence';
 import { defineLifecycle, refuse, type LifecycleReason } from '../lib/lifecycle';
 import { recordPostboxOutboundAudit, type PostboxOutboundAuditEvent } from './postboxOutboundAudit';
 import { onPostboxRecipientTransition } from './interpret/sendActivity';
-import { settleAcceptedReply } from './answeredReply';
+import { reconcileAnsweredReply } from './answeredReply';
 
 // Postbox outbound lifecycle — the single writer of every
 // `mailMessages.outbound.recipients[].state` and the only producer of the
@@ -337,8 +337,9 @@ async function dispatch(
 	// Thread activity, the sent message's interpretation, failed dispositions.
 	if (result.applied === 'transitioned') {
 		await onPostboxRecipientTransition(ctx, { message, recipient, to: result.to, at: input.at });
-		// Accepted: the reply answered its conversation, and the AI drafts go.
-		if (result.to === 'sent') await settleAcceptedReply(ctx, message);
+		// Accepted for the correspondent: the conversation's AI drafts go; a
+		// later bounce brings them back (mail/answeredReply.ts).
+		await reconcileAnsweredReply(ctx, mailMessageId);
 	}
 
 	return {
@@ -412,7 +413,7 @@ async function observeRemoteAcceptance(
 			at: acceptedAt,
 		});
 		await onPostboxRecipientTransition(ctx, { message, recipient, to: 'sent', at: acceptedAt });
-		await settleAcceptedReply(ctx, message);
+		await reconcileAnsweredReply(ctx, mailMessageId);
 	}
 
 	return {

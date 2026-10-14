@@ -1,11 +1,13 @@
 /**
- * A response completes the reply it answers (#1346): the generated reply and
- * the saved AI draft for the answered mail go, whether the response was sent
- * through Owlat (once its transport accepted it) or detected through
- * sync/APPEND (`settleOwnerReply`, via the delivery pipeline's post-insert
- * tail). A draft a person wrote or edited always stays, nothing newer than the
- * response is touched, a cancelled or failed send keeps every draft, and a
- * late AI generation cannot write the obsolete reply back.
+ * A response completes the reply it answers (#1346): the generated reply goes,
+ * and a saved AI draft no person touched is hidden as obsoleted, whether the
+ * response was sent through Owlat (once the correspondent's transport
+ * accepted it; a Bcc copy does not count) or detected through sync/APPEND
+ * (`settleOwnerReply`). A bounce brings the drafts back, the retention window
+ * purges them with their uploads. A draft a person wrote or touched always
+ * stays, nothing newer than the response is touched, a cancelled or refused
+ * send keeps every draft, and a late AI generation cannot write the obsolete
+ * reply back.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -15,7 +17,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
-import { settleOwnerReply } from '../answeredReply';
+import { ANSWERED_RETENTION_MS, settleOwnerReply } from '../answeredReply';
 import { runPostInsertInboundEffects } from '../deliveryPipeline/afterInsert';
 
 const OWNER = 'me@owlat.test';
@@ -99,9 +101,9 @@ async function flagWithSlot(t: T, c: Conversation, messageId: Id<'mailMessages'>
 }
 
 /**
- * A saved reply draft. `ai` makes it an AI draft (baseline recorded, the AI's
- * text in the body above the quote); `typed` is what a person changed the
- * body's written part to. Without `ai` it is a draft a person wrote.
+ * A saved reply draft. `ai` makes it an AI draft no person touched (its
+ * written part is the AI's text, `aiAuthored` records it); `human` marks a
+ * person's change on top. Without either it is a draft a person wrote.
  */
 async function seedDraft(
 	t: T,
@@ -110,23 +112,26 @@ async function seedDraft(
 		inReplyTo: Id<'mailMessages'>;
 		editedAt: number;
 		ai?: boolean;
-		typed?: string;
+		human?: boolean;
 		state?: Doc<'mailDrafts'>['state'];
+		to?: string[];
+		bcc?: string[];
 	}
 ): Promise<Id<'mailDrafts'>> {
-	const written = opts.typed ?? (opts.ai ? AI_TEXT : 'Thanks, I will look at it.');
+	const written = opts.ai ? AI_TEXT : 'Thanks, I will look at it.';
 	return await t.run(async (ctx) =>
 		ctx.db.insert('mailDrafts', {
 			mailboxId: c.mailboxId,
 			threadId: c.threadId,
 			inReplyToMessageId: opts.inReplyTo,
-			toAddresses: [SENDER],
+			toAddresses: opts.to ?? [SENDER],
 			ccAddresses: [],
-			bccAddresses: [],
+			bccAddresses: opts.bcc ?? [],
 			fromAddress: OWNER,
 			subject: 'Re: Can you send the report?',
 			bodyHtml: `${aiTextToHtml(written)}${QUOTE}`,
-			...(opts.ai ? { aiDraftBaseline: { text: AI_TEXT, capturedAt: opts.editedAt } } : {}),
+			...(opts.ai ? { aiAuthored: { text: AI_TEXT, at: opts.editedAt } } : {}),
+			...(opts.human || !opts.ai ? { humanTouchedAt: opts.editedAt } : {}),
 			attachments: [],
 			state: opts.state ?? 'draft',
 			...(opts.state === 'pending_send' ? { undoToken: 'undo-1' } : {}),
@@ -136,8 +141,13 @@ async function seedDraft(
 	);
 }
 
-async function draftExists(t: T, draftId: Id<'mailDrafts'>): Promise<boolean> {
-	return await t.run(async (ctx) => (await ctx.db.get(draftId)) !== null);
+/** Where a draft stands: shown, hidden as answered (restorable), or deleted. */
+async function draftState(t: T, draftId: Id<'mailDrafts'>): Promise<'live' | 'obsoleted' | 'gone'> {
+	return await t.run(async (ctx) => {
+		const draft = await ctx.db.get(draftId);
+		if (!draft) return 'gone' as const;
+		return draft.obsoleted ? ('obsoleted' as const) : ('live' as const);
+	});
 }
 
 async function thread(t: T, c: Conversation): Promise<Doc<'mailThreads'>> {
@@ -167,21 +177,22 @@ async function sendThroughOwlat(t: T, draftId: Id<'mailDrafts'>): Promise<Id<'ma
 	return outcome.messageId;
 }
 
-/** The transport's verdict on the sent reply's only recipient. */
+/** The transport's verdict on one recipient of the sent reply (To first, then Cc, Bcc). */
 async function transport(
 	t: T,
 	mailMessageId: Id<'mailMessages'>,
-	verdict: 'sent' | 'bounced' | 'failed'
+	verdict: 'sent' | 'bounced' | 'failed',
+	recipientIdx = 0
 ): Promise<void> {
 	const at = Date.now();
 	await t.mutation(internal.mail.postboxOutboundLifecycle.transition, {
 		mailMessageId,
-		recipientIdx: 0,
+		recipientIdx,
 		input:
 			verdict === 'sent'
 				? { to: 'sent', at }
 				: verdict === 'bounced'
-					? { to: 'bounced', at, bounceMessage: 'MTA POST 550: refused' }
+					? { to: 'bounced', at, bounceMessage: '550 mailbox unavailable' }
 					: {
 							to: 'failed',
 							at,
@@ -220,7 +231,7 @@ async function syncIn(
 }
 
 describe('a reply sent through Owlat', () => {
-	it('removes the untouched AI drafts once the transport accepts it, and keeps a person’s', async () => {
+	it('hides the AI-only drafts once the correspondent accepts it, and keeps a person’s', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
 		const newerId = await addMessage(t, c, { from: SENDER, at: T0 + 5_000, role: 'inbox' });
@@ -232,34 +243,73 @@ describe('a reply sent through Owlat', () => {
 		});
 		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000, ai: true });
 		const written = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000 });
-		const edited = await seedDraft(t, c, {
+		const touched = await seedDraft(t, c, {
 			inReplyTo: c.askId,
 			editedAt: T0 + 2_000,
 			ai: true,
-			typed: `${AI_TEXT} PS: numbers on page 3.`,
+			human: true,
 		});
 		const forNewer = await seedDraft(t, c, { inReplyTo: newerId, editedAt: T0 + 6_000, ai: true });
 
 		const sentId = await sendThroughOwlat(t, sending);
-		expect(await draftExists(t, sending)).toBe(false);
-		// Queued, not yet accepted: nothing else has gone.
-		expect(await draftExists(t, aiDraft)).toBe(true);
+		expect(await draftState(t, sending)).toBe('gone');
+		// Queued, not yet accepted: nothing else has changed.
+		expect(await draftState(t, aiDraft)).toBe('live');
 		expect((await thread(t, c)).needsReply).toBeUndefined();
 
 		await transport(t, sentId, 'sent');
 
-		expect(await draftExists(t, aiDraft)).toBe(false);
-		expect(await draftExists(t, written)).toBe(true);
-		expect(await draftExists(t, edited)).toBe(true);
-		expect(await draftExists(t, forNewer)).toBe(true);
+		expect(await draftState(t, aiDraft)).toBe('obsoleted');
+		expect(await draftState(t, written)).toBe('live');
+		expect(await draftState(t, touched)).toBe('live');
+		expect(await draftState(t, forNewer)).toBe('live');
+		// Hidden from the composer and the Drafts list.
+		const listed = await t.run(async (ctx) => ctx.db.get(aiDraft));
+		expect(listed?.obsoleted?.byMessageId).toBe(sentId);
 
 		// A generation started before the send cannot bring the reply back.
 		await lateGeneration(t, c, c.askId);
 		expect((await thread(t, c)).needsReply).toBeUndefined();
 	});
 
+	it('does not settle on a Bcc copy alone', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const sending = await seedDraft(t, c, {
+			inReplyTo: c.askId,
+			editedAt: T0 + 1_000,
+			state: 'pending_send',
+			bcc: ['archive@owlat.test'],
+		});
+		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000, ai: true });
+
+		const sentId = await sendThroughOwlat(t, sending);
+		await transport(t, sentId, 'sent', 1); // the Bcc archive copy
+		await transport(t, sentId, 'bounced', 0); // the correspondent
+
+		expect(await draftState(t, aiDraft)).toBe('live');
+	});
+
+	it('brings the drafts back when the reply later bounces for the correspondent', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const sending = await seedDraft(t, c, {
+			inReplyTo: c.askId,
+			editedAt: T0 + 1_000,
+			state: 'pending_send',
+		});
+		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000, ai: true });
+
+		const sentId = await sendThroughOwlat(t, sending);
+		await transport(t, sentId, 'sent');
+		expect(await draftState(t, aiDraft)).toBe('obsoleted');
+
+		await transport(t, sentId, 'bounced'); // the asynchronous bounce report
+		expect(await draftState(t, aiDraft)).toBe('live');
+	});
+
 	it.each(['bounced', 'failed'] as const)(
-		'keeps the other drafts when the transport refuses it after queuing (%s)',
+		'keeps the drafts when the transport refuses it after queuing (%s)',
 		async (verdict) => {
 			const t = convexTest(schema, modules);
 			const c = await seedConversation(t);
@@ -273,7 +323,7 @@ describe('a reply sent through Owlat', () => {
 			const sentId = await sendThroughOwlat(t, sending);
 			await transport(t, sentId, verdict);
 
-			expect(await draftExists(t, aiDraft)).toBe(true);
+			expect(await draftState(t, aiDraft)).toBe('live');
 		}
 	);
 
@@ -294,14 +344,62 @@ describe('a reply sent through Owlat', () => {
 		});
 		expect(outcome.ok).toBe(true);
 
-		expect(await draftExists(t, sending)).toBe(true);
-		expect(await draftExists(t, other)).toBe(true);
+		expect(await draftState(t, sending)).toBe('live');
+		expect(await draftState(t, other)).toBe('live');
 		expect((await thread(t, c)).needsReply?.draftSlot?.draft).toBe('Here is the report.');
 	});
 });
 
+describe('the retention window', () => {
+	it('keeps an obsoleted draft and its upload until the window passes, then purges both', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000, ai: true });
+		const storageId = await t.run(async (ctx) => {
+			const id = await ctx.storage.store(new Blob(['report']));
+			await ctx.db.insert('storageUploads', {
+				userId: 'user-A',
+				organizationId: 'org-1',
+				status: 'bound',
+				storageId: id,
+				resourceKey: `mailDrafts:${aiDraft}`,
+			});
+			await ctx.db.patch(aiDraft, {
+				attachments: [
+					{
+						storageId: id,
+						filename: 'report.pdf',
+						contentType: 'application/pdf',
+						size: 6,
+						isInline: false,
+					},
+				],
+			});
+			return id;
+		});
+		const sentId = await addMessage(t, c, { from: OWNER, at: T0 + 10_000, role: 'sent' });
+		await syncIn(t, sentId);
+		expect(await draftState(t, aiDraft)).toBe('obsoleted');
+
+		await t.mutation(internal.mail.answeredReply.purgeExpired, {});
+		expect(await draftState(t, aiDraft)).toBe('obsoleted');
+		expect(await t.run(async (ctx) => ctx.storage.getUrl(storageId))).not.toBeNull();
+
+		await t.run(async (ctx) => {
+			const draft = (await ctx.db.get(aiDraft))!;
+			await ctx.db.patch(aiDraft, {
+				obsoleted: { ...draft.obsoleted!, at: Date.now() - ANSWERED_RETENTION_MS - 1 },
+			});
+		});
+		await t.mutation(internal.mail.answeredReply.purgeExpired, {});
+
+		expect(await draftState(t, aiDraft)).toBe('gone');
+		expect(await t.run(async (ctx) => ctx.storage.getUrl(storageId))).toBeNull();
+	});
+});
+
 describe('a reply sent from an external client', () => {
-	it('removes the AI draft once sync detects it, and repeated syncs or a late generation change nothing', async () => {
+	it('hides the AI draft once sync detects it, and repeated syncs or a late generation change nothing', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
 		await flagWithSlot(t, c, c.askId);
@@ -316,8 +414,8 @@ describe('a reply sent from an external client', () => {
 
 		await syncIn(t, sentId);
 
-		expect(await draftExists(t, aiDraft)).toBe(false);
-		expect(await draftExists(t, scheduled)).toBe(true); // a send the owner chose, not a draft
+		expect(await draftState(t, aiDraft)).toBe('obsoleted');
+		expect(await draftState(t, scheduled)).toBe('live'); // a send the owner chose, not a draft
 		expect((await thread(t, c)).needsReply).toBeUndefined();
 
 		await syncIn(t, sentId);
@@ -325,22 +423,22 @@ describe('a reply sent from an external client', () => {
 		expect((await thread(t, c)).needsReply).toBeUndefined();
 	});
 
-	it('keeps a draft a person wrote, and an AI draft a person edited', async () => {
+	it('keeps a draft a person wrote, and an AI draft a person touched', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
 		const written = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 1_000 });
-		const edited = await seedDraft(t, c, {
+		const touched = await seedDraft(t, c, {
 			inReplyTo: c.askId,
 			editedAt: T0 + 1_000,
 			ai: true,
-			typed: `Quick note first. ${AI_TEXT}`,
+			human: true,
 		});
 		const sentId = await addMessage(t, c, { from: OWNER, at: T0 + 10_000, role: 'sent' });
 
 		await syncIn(t, sentId);
 
-		expect(await draftExists(t, written)).toBe(true);
-		expect(await draftExists(t, edited)).toBe(true);
+		expect(await draftState(t, written)).toBe('live');
+		expect(await draftState(t, touched)).toBe('live');
 	});
 
 	it('settles the same way when a desktop client APPENDs it', async () => {
@@ -352,7 +450,7 @@ describe('a reply sent from an external client', () => {
 
 		await t.run(async (ctx) => settleOwnerReply(ctx, sentId));
 
-		expect(await draftExists(t, aiDraft)).toBe(false);
+		expect(await draftState(t, aiDraft)).toBe('obsoleted');
 		expect((await thread(t, c)).needsReply).toBeUndefined();
 	});
 
@@ -364,7 +462,7 @@ describe('a reply sent from an external client', () => {
 
 		await syncIn(t, sentId);
 
-		expect(await draftExists(t, later)).toBe(true);
+		expect(await draftState(t, later)).toBe('live');
 	});
 
 	it('does not treat an auto-reply from the owner as an answer', async () => {
@@ -376,7 +474,7 @@ describe('a reply sent from an external client', () => {
 
 		await syncIn(t, vacation, { 'Auto-Submitted': 'auto-replied' });
 
-		expect(await draftExists(t, aiDraft)).toBe(true);
+		expect(await draftState(t, aiDraft)).toBe('live');
 		expect((await thread(t, c)).needsReply?.draftSlot).toBeDefined();
 	});
 
@@ -389,7 +487,7 @@ describe('a reply sent from an external client', () => {
 
 		await syncIn(t, providerDraft);
 
-		expect(await draftExists(t, aiDraft)).toBe(true);
+		expect(await draftState(t, aiDraft)).toBe('live');
 		expect((await thread(t, c)).needsReply?.draftSlot).toBeDefined();
 	});
 
@@ -405,8 +503,8 @@ describe('a reply sent from an external client', () => {
 
 		await syncIn(t, olderSentId);
 
-		expect(await draftExists(t, answered)).toBe(false);
-		expect(await draftExists(t, forNewer)).toBe(true);
+		expect(await draftState(t, answered)).toBe('obsoleted');
+		expect(await draftState(t, forNewer)).toBe('live');
 		const flag = (await thread(t, c)).needsReply;
 		expect(flag?.messageId).toBe(newerId);
 		expect(flag?.draftSlot?.draft).toBe('Here is the report.');
@@ -430,7 +528,7 @@ describe('a new inbound mail after the response', () => {
 		});
 		// Nothing of the old reply came back with the flag.
 		expect((await thread(t, c)).needsReply?.draftSlot).toBeUndefined();
-		expect(await draftExists(t, aiDraft)).toBe(false);
+		expect(await draftState(t, aiDraft)).toBe('obsoleted');
 
 		await lateGeneration(t, c, c.askId); // the old trigger's run: stale
 		expect((await thread(t, c)).needsReply?.draftSlot).toBeUndefined();

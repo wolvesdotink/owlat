@@ -388,6 +388,10 @@ crons.interval(
 	{}
 );
 
+// Answered conversations (#1346): drafts a reply obsoleted, and Team Inbox
+// stashes it archived, are purged once the bounce window has passed.
+crons.interval('purge answered drafts', { hours: 1 }, internal.mail.answeredReply.purgeExpired, {});
+
 // Attachment share links (idea 10): release the bytes of every lapsed link, and
 // delete the record once it has sat byte-less through the grace window. The
 // serving route already refuses an expired token, so this is what turns

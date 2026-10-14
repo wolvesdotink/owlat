@@ -319,6 +319,23 @@ export const inboxTables = {
 		// (`@owlat/shared/inboxRetry`); cleared when the message leaves `failed`.
 		// Absent on rows that failed before the field existed.
 		failedStage: v.optional(v.union(v.literal('send'), v.literal('pipeline'))),
+		// Archived because the agent reply to a newer message of the thread was
+		// sent (inbox/answeredThread.ts): what the agent had here, kept so a
+		// bounce of that reply can restore it, purged after the retention window.
+		answeredStash: v.optional(
+			v.object({
+				byInboundMessageId: v.id('inboundMessages'),
+				at: v.number(),
+				processingStatus: v.union(
+					v.literal('classifying'),
+					v.literal('drafting'),
+					v.literal('draft_ready'),
+					v.literal('awaiting_clarification')
+				),
+				draftResponse: v.optional(v.string()),
+				pendingClarification: v.optional(pendingClarificationValidator),
+			})
+		),
 		// Timestamps
 		receivedAt: v.number(),
 		processedAt: v.optional(v.number()),
@@ -331,7 +348,8 @@ export const inboxTables = {
 		// Drives the raw-blob retention sweep: the equality component keeps the
 		// scanned range to rows that still hold a blob, so the walk is bounded by
 		// what is left to release rather than by the size of the table.
-		.index('by_raw_retention', ['isRawRetained', 'receivedAt']),
+		.index('by_raw_retention', ['isRawRetained', 'receivedAt'])
+		.index('by_answered_stash_at', ['answeredStash.at']),
 
 	// Agent Actions - tracks individual pipeline step executions
 	agentActions: defineTable({

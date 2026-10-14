@@ -190,6 +190,8 @@ type AppendArgs = {
 	textBodyInline?: string;
 	internalDate?: number;
 	flags?: string[];
+	/** The raw header section, for the automation headers. */
+	headerBlock?: string;
 };
 
 /**

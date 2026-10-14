@@ -58,6 +58,7 @@ import type {
 	mailDraftExpectedAttachmentValidator,
 } from '../lib/validators/mailContent';
 import { getOrThrow, throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { humanEdit } from './draftProvenance';
 
 type ExpectedAttachment = Infer<typeof mailDraftExpectedAttachmentValidator>;
 type ExpectedAttachmentRequest = Infer<typeof expectedAttachmentRequestValidator>;
@@ -390,7 +391,7 @@ export const bindExpected = internalMutation({
 			expectedAttachments: entries.map((e) =>
 				e.key === args.key ? settled(e, 'attached', args.storageId) : e
 			),
-			lastEditedAt: Date.now(),
+			...humanEdit(Date.now()),
 		});
 		return { outcome: 'bound' };
 	},
@@ -423,7 +424,7 @@ export const remove = postboxMutation({
 			expectedAttachments: entries.map((e) =>
 				covered(e.key) && e.state !== 'removed' ? settled(e, 'removed') : e
 			),
-			lastEditedAt: Date.now(),
+			...humanEdit(Date.now()),
 		});
 		for (const attachment of removing) {
 			await deleteOwnedUpload(ctx, attachment.storageId, `mailDrafts:${args.draftId}`);

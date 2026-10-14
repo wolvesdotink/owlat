@@ -1,6 +1,6 @@
 /**
- * #1346 through the IMAP-sync ingest mutation (`ingestExternalMessage`): our
- * own reply synced from the provider removes the conversation's untouched AI
+ * #1346 through the IMAP-sync ingest mutation (`ingestExternalMessage`) and a
+ * client's IMAP APPEND: our own reply hides the conversation's untouched AI
  * draft, but neither a vacation auto-reply (Auto-Submitted) nor an unsent
  * `\Draft` kept in a custom folder counts as a reply. The `\Draft` flag the
  * worker forwards is stored on the row.
@@ -151,7 +151,7 @@ async function askWithAiDraft(t: T, s: Seeded) {
 			fromAddress: OWNER,
 			subject: 'Re: Friday plans?',
 			bodyHtml: aiTextToHtml(AI_TEXT),
-			aiDraftBaseline: { text: AI_TEXT, capturedAt: T0 + 1_000 },
+			aiAuthored: { text: AI_TEXT, at: T0 + 1_000 },
 			attachments: [],
 			state: 'draft',
 			lastEditedAt: T0 + 1_000,
@@ -161,8 +161,40 @@ async function askWithAiDraft(t: T, s: Seeded) {
 	});
 }
 
+/** Still shown: not deleted, not obsoleted by a reply. */
 async function draftExists(t: T, draftId: Id<'mailDrafts'>): Promise<boolean> {
-	return await t.run(async (ctx) => (await ctx.db.get(draftId)) !== null);
+	return await t.run(async (ctx) => {
+		const draft = await ctx.db.get(draftId);
+		return draft !== null && draft.obsoleted === undefined;
+	});
+}
+
+/** A desktop client files our reply in Sent through IMAP APPEND. */
+async function appendReply(t: T, s: Seeded, headerBlock: string): Promise<void> {
+	const { folderId, rawStorageId } = await t.run(async (ctx) => ({
+		folderId: (await ctx.db
+			.query('mailFolders')
+			.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', s.mailboxId).eq('role', 'sent'))
+			.first())!._id,
+		rawStorageId: await ctx.storage.store(new Blob(['raw'])),
+	}));
+	await t.mutation(internal.mail.imap.append.appendMessage, {
+		folderId,
+		rawStorageId,
+		rawSize: 3,
+		rfc822MessageId: 'reply-1@gmail.example',
+		inReplyTo: '<m1@acme.test>',
+		references: ['<m1@acme.test>'],
+		fromAddress: OWNER,
+		toAddresses: [SENDER],
+		ccAddresses: [],
+		bccAddresses: [],
+		subject: 'Re: Friday plans?',
+		textBodyInline: 'Friday works.',
+		internalDate: T0 + 10_000,
+		flags: ['\\Seen'],
+		headerBlock,
+	});
 }
 
 describe('our reply synced through ingest', () => {
@@ -226,5 +258,31 @@ describe('our reply synced through ingest', () => {
 			).find((m) => m.fromAddress === OWNER)
 		);
 		expect(stored?.flagDraft).toBe(true);
+	});
+});
+
+describe('our reply filed through IMAP APPEND', () => {
+	it('hides the untouched AI draft for the answered mail', async () => {
+		const t = convexTest(schema, modules);
+		const s = await seedAccount(t);
+		const { draftId } = await askWithAiDraft(t, s);
+
+		await appendReply(t, s, 'From: me@gmail.example\r\nSubject: Re: Friday plans?');
+
+		expect(await draftExists(t, draftId)).toBe(false);
+	});
+
+	it('keeps it for a vacation auto-reply (Auto-Submitted: auto-replied)', async () => {
+		const t = convexTest(schema, modules);
+		const s = await seedAccount(t);
+		const { draftId } = await askWithAiDraft(t, s);
+
+		await appendReply(
+			t,
+			s,
+			'From: me@gmail.example\r\nAuto-Submitted: auto-replied\r\nSubject: Re: Friday plans?'
+		);
+
+		expect(await draftExists(t, draftId)).toBe(true);
 	});
 });

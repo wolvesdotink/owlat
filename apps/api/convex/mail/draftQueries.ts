@@ -39,7 +39,8 @@ export async function canSendFromHandler(
 
 export async function getDraftHandler(ctx: QueryCtx, args: { draftId: Id<'mailDrafts'> }) {
 	const draft = await ctx.db.get(args.draftId);
-	if (!draft) return null;
+	// A draft a sent reply answered is hidden until a bounce restores it (mail/answeredReply.ts).
+	if (!draft || draft.obsoleted) return null;
 	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 	if (!owned.ok) return null;
 	const opened = await openMailDraftBody(draft);
@@ -100,7 +101,8 @@ export async function listForMailboxHandler(ctx: QueryCtx, args: { mailboxId: Id
 		.withIndex('by_mailbox_and_edited', (q) => q.eq('mailboxId', args.mailboxId))
 		.order('desc')
 		.take(100);
-	return await Promise.all(drafts.map((draft) => openMailDraftBody(draft)));
+	const shown = drafts.filter((draft) => !draft.obsoleted);
+	return await Promise.all(shown.map((draft) => openMailDraftBody(draft)));
 }
 
 export async function getInternalHandler(ctx: QueryCtx, args: { draftId: Id<'mailDrafts'> }) {

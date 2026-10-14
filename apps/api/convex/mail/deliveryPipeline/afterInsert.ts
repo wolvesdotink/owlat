@@ -17,12 +17,7 @@ import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { scheduleNeedsReplyClassify } from '../needsReply';
-import { settleOwnerReply } from '../answeredReply';
-import {
-	headerEvidenceFromMap,
-	isBulkPrecedenceForReply,
-	isMachineGeneratedForReply,
-} from '../../lib/mailEvidence';
+import { isAutomatedResponse, settleOwnerReply } from '../answeredReply';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { isPersonalMailbox } from '../permissions';
 import { enqueueCategoryCheck } from '../categoryArrival';
@@ -131,8 +126,5 @@ export async function runPostInsertInboundEffects(
 	}
 
 	// A vacation notice or other auto-reply from the owner answers nothing.
-	const evidence = headerEvidenceFromMap(antiLoopHeaders ?? {});
-	await settleOwnerReply(ctx, messageId, {
-		isAutomated: isMachineGeneratedForReply(evidence) || isBulkPrecedenceForReply(evidence),
-	});
+	await settleOwnerReply(ctx, messageId, { isAutomated: isAutomatedResponse(antiLoopHeaders) });
 }

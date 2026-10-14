@@ -2,19 +2,22 @@
  * #1346 for the Team Inbox: once the agent reply to a newer message of a
  * thread is sent, the older messages the agent was still drafting or asking
  * about are answered too. Their AI draft and questions go (archived,
- * `answered_in_thread`) and a late generation cannot write them back; a
- * person's edited draft, a newer message, and every message of a reply that
- * failed to send stay as they were.
+ * `answered_in_thread`, kept in a stash) and a late generation cannot write
+ * them back; a later bounce of that reply reopens them, and the retention
+ * window drops the stash. A person's edited draft, a newer message, and every
+ * message of a reply that failed to send stay as they were.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { WorkId } from '@convex-dev/workpool';
-import schema from '../../schema';
+import type schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { createTestContact, flushScheduled } from '../../__tests__/factories';
+import { pushHarness } from '../../push/__tests__/pushFixtures';
 import { modules } from './helpers.testlib';
+import { ANSWERED_RETENTION_MS } from '../answeredReply';
 
 const NOW = 1_700_000_000_000;
 const workId = 'test-work-id' as WorkId;
@@ -74,7 +77,7 @@ async function completeReply(
 	th: Thread,
 	inboundMessageId: Id<'inboundMessages'>,
 	outcome: 'sent' | 'failed'
-): Promise<void> {
+): Promise<Id<'transactionalSends'>> {
 	const sendId = await t.run(async (ctx) =>
 		ctx.db.insert('transactionalSends', {
 			kind: 'agent_reply' as const,
@@ -103,6 +106,15 @@ async function completeReply(
 		context: { sendRef: { kind: 'transactional', id: sendId } },
 		workId,
 	});
+	return sendId;
+}
+
+/** The recipient's server reports a bounce for a reply already sent. */
+async function laterBounce(t: T, sendId: Id<'transactionalSends'>): Promise<void> {
+	await t.mutation(internal.delivery.sendLifecycle.transition, {
+		send: { kind: 'transactional', id: sendId },
+		transition: { to: 'bounced', at: NOW + 60_000, bounceType: 'hard' },
+	});
 }
 
 async function get(t: T, id: Id<'inboundMessages'>): Promise<Inbound> {
@@ -111,7 +123,7 @@ async function get(t: T, id: Id<'inboundMessages'>): Promise<Inbound> {
 
 describe('a Team Inbox reply to a newer message', () => {
 	it('settles the older messages the agent was drafting or asking about', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules, {});
 		const th = await seedThread(t);
 		const olderDraft = await seedInbound(t, th, {
 			processingStatus: 'draft_ready',
@@ -153,7 +165,14 @@ describe('a Team Inbox reply to a newer message', () => {
 			expect(message.archiveReason).toBe('answered_in_thread');
 			expect(message.draftResponse).toBeUndefined();
 			expect(message.pendingClarification).toBeUndefined();
+			expect(message.answeredStash?.byInboundMessageId).toBe(answered);
 		}
+		expect((await get(t, olderDraft)).answeredStash?.draftResponse).toBe(
+			'Your order ships Monday.'
+		);
+		expect((await get(t, olderAsking)).answeredStash?.processingStatus).toBe(
+			'awaiting_clarification'
+		);
 		expect((await get(t, olderEdited)).draftResponse).toBe('Edited by a teammate.');
 		expect((await get(t, olderEdited)).processingStatus).toBe('draft_ready');
 		expect((await get(t, newer)).processingStatus).toBe('draft_ready');
@@ -176,7 +195,7 @@ describe('a Team Inbox reply to a newer message', () => {
 	});
 
 	it('leaves every older message as it was when the reply fails to send', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules, {});
 		const th = await seedThread(t);
 		const olderDraft = await seedInbound(t, th, {
 			processingStatus: 'draft_ready',
@@ -195,5 +214,69 @@ describe('a Team Inbox reply to a newer message', () => {
 		const older = await get(t, olderDraft);
 		expect(older.processingStatus).toBe('draft_ready');
 		expect(older.draftResponse).toBe('Your order ships Monday.');
+	});
+
+	it('reopens what it settled when the reply later bounces', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		const olderDraft = await seedInbound(t, th, {
+			processingStatus: 'draft_ready',
+			draftResponse: 'Your order ships Monday.',
+			receivedAt: NOW - 3_000,
+		});
+		const olderAsking = await seedInbound(t, th, {
+			processingStatus: 'awaiting_clarification',
+			pendingClarification: { questions: [], askedAt: NOW - 2_500 },
+			receivedAt: NOW - 2_000,
+		});
+		const answered = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			draftResponse: 'All orders ship Monday.',
+			receivedAt: NOW,
+		});
+
+		const sendId = await completeReply(t, th, answered, 'sent');
+		expect((await get(t, olderDraft)).processingStatus).toBe('archived');
+
+		await laterBounce(t, sendId);
+
+		const draft = await get(t, olderDraft);
+		expect(draft.processingStatus).toBe('draft_ready');
+		expect(draft.draftResponse).toBe('Your order ships Monday.');
+		expect(draft.answeredStash).toBeUndefined();
+		const asking = await get(t, olderAsking);
+		expect(asking.processingStatus).toBe('awaiting_clarification');
+		expect(asking.pendingClarification?.askedAt).toBe(NOW - 2_500);
+	});
+
+	it('drops the stash after the retention window, leaving the message answered', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		const olderDraft = await seedInbound(t, th, {
+			processingStatus: 'draft_ready',
+			draftResponse: 'Your order ships Monday.',
+			receivedAt: NOW - 3_000,
+		});
+		const answered = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			draftResponse: 'All orders ship Monday.',
+			receivedAt: NOW,
+		});
+		await completeReply(t, th, answered, 'sent');
+
+		await t.mutation(internal.inbox.answeredThread.purgeAnsweredStashes, {});
+		expect((await get(t, olderDraft)).answeredStash).toBeDefined();
+
+		await t.run(async (ctx) => {
+			const message = (await ctx.db.get(olderDraft))!;
+			await ctx.db.patch(olderDraft, {
+				answeredStash: { ...message.answeredStash!, at: Date.now() - ANSWERED_RETENTION_MS - 1 },
+			});
+		});
+		await t.mutation(internal.inbox.answeredThread.purgeAnsweredStashes, {});
+
+		const settled = await get(t, olderDraft);
+		expect(settled.answeredStash).toBeUndefined();
+		expect(settled.processingStatus).toBe('archived');
 	});
 });

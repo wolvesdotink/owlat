@@ -53,8 +53,15 @@ export function isPipelineInput(input: TransitionInput): boolean {
  * failed message must never send from there.
  */
 export function refusedAsNotAPerson(from: ProcessingStatus, input: TransitionInput): boolean {
+	// Reopening a message whose answering reply bounced (inbox/answeredThread.ts)
+	// is the only way out of `archived` besides a person's takeover.
+	const isReopen =
+		from === 'archived' &&
+		(input.to === 'draft_ready' || input.to === 'awaiting_clarification') &&
+		input.reopenAnswered === true;
+	if (from === 'archived' && input.to === 'awaiting_clarification') return !isReopen;
 	if (requiresManualTakeover(from, input.to)) {
-		return !(input.to === 'draft_ready' && input.manualTakeover === true);
+		return !(isReopen || (input.to === 'draft_ready' && input.manualTakeover === true));
 	}
 	return from === 'failed' && input.to === 'approved' && isPipelineInput(input);
 }
