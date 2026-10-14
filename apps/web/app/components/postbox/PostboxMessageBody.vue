@@ -264,8 +264,10 @@ function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 		t('components.postbox.postboxMessageBody.blockedImage')
 	);
 	// Until the user consents, the frame's policy admits no remote image at
-	// all, whatever spelling the reference uses.
-	const csp = showImages.value ? POSTBOX_BODY_META_CSP : POSTBOX_BODY_META_CSP_NO_REMOTE;
+	// all, whatever spelling the reference uses; nor does it when the body
+	// could not be inventoried.
+	const csp =
+		showImages.value && !gated.noRemote ? POSTBOX_BODY_META_CSP : POSTBOX_BODY_META_CSP_NO_REMOTE;
 	const srcdoc = `${POSTBOX_SRCDOC_HEAD}${csp}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${gated.html || t('components.postbox.postboxMessageBody.emptyMessage')}</body></html>`;
 	return {
 		srcdoc,

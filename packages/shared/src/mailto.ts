@@ -70,7 +70,7 @@ export function parseMailto(uri: string): ParsedMailto | null {
 	let body: string | undefined;
 
 	const path = (match[1] ?? '').trim();
-	if (path) to.push(...splitMailtoAddressList(path, { decode: true }));
+	if (path) for (const address of splitMailtoAddressList(path, { decode: true })) to.push(address);
 
 	const query = match[2] ?? '';
 	if (query) {
@@ -82,13 +82,13 @@ export function parseMailto(uri: string): ParsedMailto | null {
 			const key = decodeComponent(rawKey).toLowerCase();
 			switch (key) {
 				case 'to':
-					to.push(...splitMailtoAddressList(rawVal, { decode: true }));
+					for (const address of splitMailtoAddressList(rawVal, { decode: true })) to.push(address);
 					break;
 				case 'cc':
-					cc.push(...splitMailtoAddressList(rawVal, { decode: true }));
+					for (const address of splitMailtoAddressList(rawVal, { decode: true })) cc.push(address);
 					break;
 				case 'bcc':
-					bcc.push(...splitMailtoAddressList(rawVal, { decode: true }));
+					for (const address of splitMailtoAddressList(rawVal, { decode: true })) bcc.push(address);
 					break;
 				case 'subject':
 					if (subject === undefined) subject = decodeComponent(rawVal);

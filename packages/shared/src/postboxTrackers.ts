@@ -166,39 +166,56 @@ export interface RemoteResourceContext {
 	style: string;
 }
 
+/** What an element's size and visibility say about every resource on it. */
+export interface TrackingHints {
+	/** Hidden (`display:none`) or declared 0/1px: whatever it loads is a beacon. */
+	looksLikePixel: boolean;
+}
+
+/**
+ * Read an element's hints once. The reader classifies every reference on an
+ * element (thousands of CSS URLs, possibly) against the same hints, so they
+ * must not be re-derived from the style per URL.
+ */
+export function elementTrackingHints(context: RemoteResourceContext): TrackingHints {
+	if (/display\s*:\s*none/i.test(context.style)) return { looksLikePixel: true };
+	const dims = [
+		context.width,
+		styleProp(context.style, 'width'),
+		context.height,
+		styleProp(context.style, 'height'),
+	];
+	// Pixel-sized: at least one declared 0/1px dimension and none larger.
+	return { looksLikePixel: dims.some(isPixelSize) && !dims.some(isVisibleSize) };
+}
+
 /**
  * Classify one remote resource reference (an `<img>` src, one srcset
  * candidate, or a CSS background URL) by the element it sits on. Exported for
  * the reader's resource inventory, which covers every way a body loads one.
  */
-export function isTrackingResource(url: string, context: RemoteResourceContext): boolean {
+export function isTrackingResource(url: string, hints: TrackingHints): boolean {
 	// No remote fetch -> cannot track, regardless of size/visibility.
 	if (isEmbeddedResourceUrl(url)) return false;
 	const host = remoteResourceHost(url);
 	// A reference that is neither embedded nor a readable http(s) URL is
 	// treated as a tracker: its host cannot be checked against the list.
 	if (!host) return true;
-
-	if (isKnownTrackerHost(host)) return true;
-
-	if (/display\s*:\s*none/i.test(context.style)) return true;
-
-	const widths = [context.width, styleProp(context.style, 'width')];
-	const heights = [context.height, styleProp(context.style, 'height')];
-	const dims = [...widths, ...heights];
-	// Pixel-sized: at least one declared 0/1px dimension and none larger.
-	return dims.some(isPixelSize) && !dims.some(isVisibleSize);
+	return isKnownTrackerHost(host) || hints.looksLikePixel;
 }
 
 /** Classify one <img ...> tag string. Exported for tests. */
 export function isTrackingPixelTag(tag: string): boolean {
 	const src = attrValue(tag, 'src');
 	if (!src) return false;
-	return isTrackingResource(src, {
-		width: attrValue(tag, 'width'),
-		height: attrValue(tag, 'height'),
-		style: attrValue(tag, 'style') ?? '',
-	});
+	return isTrackingResource(
+		src,
+		elementTrackingHints({
+			width: attrValue(tag, 'width'),
+			height: attrValue(tag, 'height'),
+			style: attrValue(tag, 'style') ?? '',
+		})
+	);
 }
 
 /** True when an <img ...> tag string has a src that is not an inline `data:`/`cid:` part. */

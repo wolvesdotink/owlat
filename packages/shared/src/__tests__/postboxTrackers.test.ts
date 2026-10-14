@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	elementTrackingHints,
 	isTrackingResource,
 	isTrackingPixelTag,
 	remoteResourceHost,
@@ -13,7 +14,7 @@ const PHOTO =
 const KNOWN_HOST = '<img src="https://click.list-manage.com/track/open.php?u=abc" alt="">';
 
 describe('isTrackingResource', () => {
-	const NO_HINTS = { width: null, height: null, style: '' };
+	const NO_HINTS = elementTrackingHints({ width: null, height: null, style: '' });
 
 	it('flags a 1x1 resource and names its host', () => {
 		expect(isTrackingPixelTag(PIXEL_1X1)).toBe(true);
@@ -22,10 +23,10 @@ describe('isTrackingResource', () => {
 
 	it('flags a zero-size element declared via inline style', () => {
 		expect(
-			isTrackingResource('https://t.example.org/p.gif', {
-				...NO_HINTS,
-				style: 'width:0;height:0',
-			})
+			isTrackingResource(
+				'https://t.example.org/p.gif',
+				elementTrackingHints({ width: null, height: null, style: 'width:0;height:0' })
+			)
 		).toBe(true);
 	});
 
@@ -48,7 +49,7 @@ describe('isTrackingResource', () => {
 	});
 
 	it('never flags data:/cid: resources (no network fetch, cannot track)', () => {
-		const pixel = { width: '1', height: '1', style: '' };
+		const pixel = elementTrackingHints({ width: '1', height: '1', style: '' });
 		expect(isTrackingResource('data:image/gif;base64,R0lGOD', pixel)).toBe(false);
 		expect(isTrackingResource('cid:inline-part', pixel)).toBe(false);
 	});
@@ -74,7 +75,9 @@ describe('isTrackingResource', () => {
 	it('matches a tracker host written with a trailing root dot', () => {
 		const url = 'https://click.list-manage.com./open.gif';
 		expect(remoteResourceHost(url)).toBe('click.list-manage.com');
-		expect(isTrackingResource(url, { width: '600', height: '200', style: '' })).toBe(true);
+		expect(
+			isTrackingResource(url, elementTrackingHints({ width: '600', height: '200', style: '' }))
+		).toBe(true);
 		expect(remoteResourceHost('https://CDN.Example.COM./a.png')).toBe('cdn.example.com');
 	});
 
@@ -86,8 +89,12 @@ describe('isTrackingResource', () => {
 
 	it('classifies a CSS background by the element it sits on', () => {
 		const url = 'https://t.example.org/bg.gif';
-		expect(isTrackingResource(url, { width: '1', height: '1', style: '' })).toBe(true);
-		expect(isTrackingResource(url, { width: '600', height: null, style: '' })).toBe(false);
+		expect(
+			isTrackingResource(url, elementTrackingHints({ width: '1', height: '1', style: '' }))
+		).toBe(true);
+		expect(
+			isTrackingResource(url, elementTrackingHints({ width: '600', height: null, style: '' }))
+		).toBe(false);
 		expect(isTrackingResource(url, NO_HINTS)).toBe(false);
 	});
 });

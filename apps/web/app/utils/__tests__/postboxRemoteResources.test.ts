@@ -5,10 +5,23 @@
  * srcset) must be withheld while images are blocked and seen by the tracker
  * count, and must still render once the user shows images.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
+import type * as SharedTrackers from '@owlat/shared/postboxTrackers';
 import { applyPostboxImageConsent, type PostboxImageConsent } from '../postboxRemoteResources';
+
+// The failing-closed tests make the inventory throw on a marked element.
+vi.mock('@owlat/shared/postboxTrackers', async (importOriginal) => {
+	const actual = await importOriginal<typeof SharedTrackers>();
+	return {
+		...actual,
+		elementTrackingHints: (context: Parameters<typeof actual.elementTrackingHints>[0]) => {
+			if (context.width === 'fail-inventory') throw new RangeError('boom');
+			return actual.elementTrackingHints(context);
+		},
+	};
+});
 
 const LABEL = 'Image blocked';
 
@@ -229,5 +242,109 @@ describe('applyPostboxImageConsent — hostile input stays linear', () => {
 		const out = applyPostboxImageConsent(`<div style="${style}">x</div>`, 'blocked', LABEL);
 		expect(performance.now() - started).toBeLessThan(250);
 		expect(out.html).toContain('x');
+	});
+});
+
+describe('applyPostboxImageConsent — CSS escapes', () => {
+	it('keeps an escaped colour and reports no tracker', () => {
+		const out = render('<div style="background-color:\\23 000;color:#fff">News</div>', 'blocked');
+		expect(out.html).toContain('background-color:\\23 000');
+		expect(out.html).toContain('color:#fff');
+		expect(out.hasRemoteResources).toBe(false);
+		expect(out.detection.pixelCount).toBe(0);
+	});
+
+	it('reads a CDN url with an escaped space as a normal image', () => {
+		const html =
+			'<div style="background:#fff url(https://cdn.example/hero\\ image.png) no-repeat">a</div>';
+		const shown = applyPostboxImageConsent(html, 'images', LABEL);
+		expect(shown.html).toContain('hero\\ image.png');
+		expect(shown.detection.pixelCount).toBe(0);
+		const blocked = applyPostboxImageConsent(html, 'blocked', LABEL);
+		expect(blocked.hasRemoteResources).toBe(true);
+		expect(blocked.html).toContain('background:#fff none no-repeat');
+	});
+
+	it('decodes escapes that spell a tracker url, host or string', () => {
+		const out = applyPostboxImageConsent(
+			'<div style="background:\\75 rl(https://click.list-manage\\2e com/a.gif)">a</div>' +
+				'<div style="background:image-set(&quot;\\&quot;&quot; &quot;https://click.list-manage.com/b.gif&quot; 1x)">b</div>',
+			'images',
+			LABEL
+		);
+		expect(out.detection.pixelCount).toBe(2);
+		expect(out.detection.trackerHosts).toEqual(['click.list-manage.com']);
+		expect(out.html).not.toContain('list-manage');
+	});
+});
+
+describe('applyPostboxImageConsent — large inventories', () => {
+	const TRACKER = 'https://click.list-manage.com/open.gif';
+	const embedded = (count: number) =>
+		Array.from({ length: count }, () => '&quot;data:image/gif;base64,R0&quot; 2x').join(',');
+
+	it('withholds the tracker among 150k embedded image-set candidates', () => {
+		const html = `<div style="background:#000 image-set(&quot;${TRACKER}&quot; 1x,${embedded(150_000)})">a</div>`;
+		const out = applyPostboxImageConsent(html, 'images', LABEL);
+		expect(out.noRemote).toBe(false);
+		expect(out.detection.trackerHosts).toEqual(['click.list-manage.com']);
+		expect(out.html).not.toContain('list-manage');
+		expect(out.html).toContain('background:#000 none');
+	});
+
+	it('withholds the tracker among 150k srcset candidates', () => {
+		const candidates = Array.from({ length: 150_000 }, (_, i) => `data:image/gif;base64,R${i} 2x`);
+		const out = applyPostboxImageConsent(
+			`<img srcset="${TRACKER} 1x, ${candidates.join(', ')}">`,
+			'images',
+			LABEL
+		);
+		expect(out.detection.pixelCount).toBe(1);
+		expect(out.html).not.toContain('list-manage');
+		expect(out.html).toContain('data:image/gif;base64,R149999 2x');
+	});
+
+	it('classifies 32k CSS urls on one element in linear time', () => {
+		const urls = Array.from({ length: 32_000 }, (_, i) => `url(https://cdn.example/${i}.png)`);
+		const html = `<div style="width:600px;height:400px;background:${urls.join(',')}">a</div>`;
+		const started = performance.now();
+		const out = applyPostboxImageConsent(html, 'images', LABEL);
+		expect(performance.now() - started).toBeLessThan(250);
+		expect(out.hasRemoteResources).toBe(true);
+		expect(out.detection.pixelCount).toBe(0);
+	});
+});
+
+describe('applyPostboxImageConsent — failing closed', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it('withholds every CSS and srcset resource of an element it cannot read', () => {
+		const out = applyPostboxImageConsent(
+			'<p style="color:red">Hello</p>' +
+				'<img width="fail-inventory" src="https://cdn.example/a.png" style="background:url(https://cdn.example/b.png)" srcset="https://cdn.example/c.png 2x">' +
+				'<div width="fail-inventory" style="background:#000 url(https://cdn.example/d.png)">Text</div>',
+			'images',
+			LABEL
+		);
+		expect(out.html).toBe('<p style="color:red">Hello</p><div width="fail-inventory">Text</div>');
+		expect(out.hasRemoteResources).toBe(true);
+		expect(out.detection.pixelCount).toBe(2);
+		expect(out.noRemote).toBe(false);
+	});
+
+	it('pins the no-network policy when the body cannot be inventoried', () => {
+		const createElement = document.createElement.bind(document);
+		vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+			if (tag === 'template') throw new Error('boom');
+			return createElement(tag);
+		});
+		const out = applyPostboxImageConsent(
+			'<div style="background:url(https://click.list-manage.com/o.gif)">a</div>',
+			'images',
+			LABEL
+		);
+		expect(out.noRemote).toBe(true);
+		expect(out.hasRemoteResources).toBe(true);
+		expect(applyPostboxImageConsent('<p>x</p>', 'everything', LABEL).noRemote).toBe(false);
 	});
 });

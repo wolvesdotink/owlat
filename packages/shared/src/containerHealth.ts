@@ -90,7 +90,7 @@ export function parseComposePs(stdout: string): ComposeService[] {
 	const rows: unknown[] = [];
 	try {
 		const parsed: unknown = JSON.parse(text);
-		if (Array.isArray(parsed)) rows.push(...parsed);
+		if (Array.isArray(parsed)) for (const row of parsed) rows.push(row);
 		else rows.push(parsed);
 	} catch {
 		// Not a single JSON document — treat it as NDJSON and skip junk lines.

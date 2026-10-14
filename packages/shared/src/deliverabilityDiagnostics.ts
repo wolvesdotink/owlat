@@ -28,7 +28,7 @@ function observationStringSlots(value: unknown): MutableStringSlot[] {
 					},
 				});
 			} else {
-				slots.push(...observationStringSlots(child));
+				for (const slot of observationStringSlots(child)) slots.push(slot);
 			}
 		}
 	} else if (value !== null && typeof value === 'object') {
@@ -42,7 +42,7 @@ function observationStringSlots(value: unknown): MutableStringSlot[] {
 					},
 				});
 			} else {
-				slots.push(...observationStringSlots(child));
+				for (const slot of observationStringSlots(child)) slots.push(slot);
 			}
 		}
 	}

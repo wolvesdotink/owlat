@@ -20,20 +20,24 @@
  * The iframe's CSP is the load-bearing half for `blocked` (it admits no remote
  * image at all until the user consents); this pass keeps the markup honest so
  * the banner, the counts and the "Show images" state agree with it. Anything
- * this pass cannot read with confidence (a CSS escape, an unreadable URL) is
- * treated as remote and as a tracker, so it fails closed.
+ * this pass cannot read with confidence (a URL that does not parse) is treated
+ * as remote and as a tracker, and an element it fails to inventory loses all
+ * of its CSS and srcset resources, so it fails closed. If the body cannot be
+ * inventoried at all, `noRemote` tells the reader to keep the no-network
+ * policy whatever the consent.
  *
  * It runs last in the render pipeline, after the string transforms, so no
  * regex pass ever reads the DOM's re-serialized output.
  */
 
 import {
+	elementTrackingHints,
 	isEmbeddedResourceUrl,
 	isTrackingResource,
 	remoteResourceHost,
 	stripRemoteImages,
-	type RemoteResourceContext,
 	type TrackerDetection,
+	type TrackingHints,
 } from '@owlat/shared/postboxTrackers';
 
 /** What the reader currently lets the body load. */
@@ -46,12 +50,16 @@ export interface PostboxRemoteResourceResult {
 	hasRemoteResources: boolean;
 	/** Tracker count and hosts over the same inventory (before gating). */
 	detection: TrackerDetection;
+	/**
+	 * The body could not be inventoried: render it with no remote loads at
+	 * all, even after consent, rather than trust markup nobody checked.
+	 */
+	noRemote: boolean;
 }
 
 /**
- * One URL a body would fetch. `url` is null when the reference could not be
- * read safely (a CSS escape can spell `url(` without the letters); such a
- * reference counts as remote and as a tracker.
+ * One URL a body would fetch. `url` is null for an element the inventory
+ * failed on; such a reference counts as remote and as a tracker.
  */
 interface ResourceRef {
 	url: string | null;
@@ -59,10 +67,11 @@ interface ResourceRef {
 	tracker: boolean;
 }
 
-function classify(url: string | null, context: RemoteResourceContext): ResourceRef {
-	if (url === null) return { url, remote: true, tracker: true };
+const UNREADABLE_REF: ResourceRef = { url: null, remote: true, tracker: true };
+
+function classify(url: string, hints: TrackingHints): ResourceRef {
 	if (isEmbeddedResourceUrl(url)) return { url, remote: false, tracker: false };
-	return { url, remote: true, tracker: isTrackingResource(url, context) };
+	return { url, remote: true, tracker: isTrackingResource(url, hints) };
 }
 
 /**
@@ -81,7 +90,8 @@ function splitDeclarations(style: string): string[] {
 			continue;
 		}
 		if (quote) {
-			if (ch === quote) quote = null;
+			// A newline ends a CSS string (as a bad string) just like its quote.
+			if (ch === quote || isCssNewline(ch)) quote = null;
 			continue;
 		}
 		if (ch === '"' || ch === "'") quote = ch;
@@ -106,8 +116,88 @@ interface CssFunctionUnit {
 	urls: string[];
 }
 
+function isCssNewline(ch: string | undefined): boolean {
+	return ch === '\n' || ch === '\r' || ch === '\f';
+}
+
+function isCssWhitespace(ch: string | undefined): boolean {
+	return ch === ' ' || ch === '\t' || isCssNewline(ch);
+}
+
 function isCssIdentChar(ch: string): boolean {
 	return /[\w-]/.test(ch) || ch.charCodeAt(0) >= 0x80;
+}
+
+/** A `\` at `at` starts an escape unless a newline follows it. */
+function isCssEscape(value: string, at: number): boolean {
+	return value[at] === '\\' && !isCssNewline(value[at + 1]);
+}
+
+/**
+ * Decode the escape whose `\` is at `at` (CSS Syntax 4.3.7): 1-6 hex digits
+ * plus one optional whitespace, or the next character as itself. Out-of-range
+ * code points and a trailing `\` read as U+FFFD, as the browser reads them.
+ */
+function decodeCssEscape(value: string, at: number): { text: string; next: number } {
+	let i = at + 1;
+	if (i >= value.length) return { text: '\uFFFD', next: i };
+	let hex = '';
+	while (hex.length < 6 && i < value.length && /[\da-f]/i.test(value[i]!)) hex += value[i++];
+	if (hex) {
+		if (value[i] === '\r' && value[i + 1] === '\n') i += 2;
+		else if (isCssWhitespace(value[i])) i++;
+		const code = Number.parseInt(hex, 16);
+		const valid = code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
+		return { text: valid ? String.fromCodePoint(code) : '\uFFFD', next: i };
+	}
+	const ch = String.fromCodePoint(value.codePointAt(i)!);
+	return { text: ch, next: i + ch.length };
+}
+
+/** Read the quoted string opening at `at`, escapes decoded. */
+function readCssString(value: string, at: number): { text: string; next: number } {
+	const quote = value[at];
+	let text = '';
+	let i = at + 1;
+	while (i < value.length) {
+		const ch = value[i]!;
+		if (ch === quote) return { text, next: i + 1 };
+		// An unescaped newline ends the string (the browser drops it as bad).
+		if (isCssNewline(ch)) return { text, next: i };
+		if (ch === '\\') {
+			if (isCssNewline(value[i + 1])) {
+				// A line continuation.
+				i += value[i + 1] === '\r' && value[i + 2] === '\n' ? 3 : 2;
+				continue;
+			}
+			if (i + 1 >= value.length) break;
+			const escape = decodeCssEscape(value, i);
+			text += escape.text;
+			i = escape.next;
+			continue;
+		}
+		text += ch;
+		i++;
+	}
+	return { text, next: i };
+}
+
+/** Read the identifier starting at `at`, escapes decoded. */
+function readCssIdent(value: string, at: number): { name: string; next: number } {
+	let name = '';
+	let i = at;
+	while (i < value.length) {
+		if (isCssEscape(value, i)) {
+			const escape = decodeCssEscape(value, i);
+			name += escape.text;
+			i = escape.next;
+		} else if (isCssIdentChar(value[i]!)) {
+			name += value[i++];
+		} else {
+			break;
+		}
+	}
+	return { name, next: i };
 }
 
 /**
@@ -117,8 +207,10 @@ function isCssIdentChar(ch: string): boolean {
  * `cross-fade(image-set("…"))`), it fails closed: every `url(…)` token and
  * every quoted string inside a function, at any depth, counts, except a
  * string directly inside `type()`, which names a MIME type. A quoted string
- * outside every function (a `font-family` name) is never fetched. Comments
- * are skipped; an unterminated string, comment or function runs to the end.
+ * outside every function (a `font-family` name) is never fetched. Escapes are
+ * decoded the way the browser decodes them, so `\75 rl(…)` is a `url(…)` and
+ * `\23 000` is just a colour. Comments are skipped; an unterminated string,
+ * comment or function runs to the end.
  */
 function cssFunctionUnits(value: string): CssFunctionUnit[] {
 	const units: CssFunctionUnit[] = [];
@@ -145,38 +237,44 @@ function cssFunctionUnits(value: string): CssFunctionUnit[] {
 			const end = value.indexOf('*/', i + 2);
 			i = end === -1 ? length : end + 2;
 		} else if (ch === '"' || ch === "'") {
-			const end = value.indexOf(ch, i + 1);
-			const stop = end === -1 ? length : end;
+			const string = readCssString(value, i);
 			if (current.unit && stack[stack.length - 1] !== 'type') {
-				current.unit.urls.push(value.slice(i + 1, stop).trim());
+				current.unit.urls.push(string.text.trim());
 			}
-			i = stop + 1;
+			i = string.next;
 		} else if (ch === '(') {
 			open('', i);
 			i++;
 		} else if (ch === ')') {
 			if (stack.length > 0) close(i + 1);
 			i++;
-		} else if (isCssIdentChar(ch)) {
-			let j = i;
-			while (j < length && isCssIdentChar(value[j]!)) j++;
-			if (value[j] !== '(') {
-				i = j;
+		} else if (isCssIdentChar(ch) || isCssEscape(value, i)) {
+			const ident = readCssIdent(value, i);
+			if (value[ident.next] !== '(') {
+				i = ident.next;
 				continue;
 			}
-			const name = value.slice(i, j).toLowerCase();
+			const name = ident.name.toLowerCase();
 			open(name, i);
-			i = j + 1;
+			i = ident.next + 1;
 			if (name !== 'url') continue;
 			let k = i;
-			while (k < length && /\s/.test(value[k]!)) k++;
+			while (k < length && isCssWhitespace(value[k])) k++;
 			if (value[k] === '"' || value[k] === "'") continue;
-			// An unquoted url token runs to the next `)`, quotes and all.
-			const end = value.indexOf(')', k);
-			const stop = end === -1 ? length : end;
-			current.unit?.urls.push(value.slice(k, stop).trim());
-			close(stop + 1);
-			i = stop + 1;
+			// An unquoted url token runs to the next `)`, escapes decoded.
+			let url = '';
+			while (k < length && value[k] !== ')') {
+				if (isCssEscape(value, k)) {
+					const escape = decodeCssEscape(value, k);
+					url += escape.text;
+					k = escape.next;
+				} else {
+					url += value[k++];
+				}
+			}
+			current.unit?.urls.push(url.trim());
+			close(Math.min(k + 1, length));
+			i = k + 1;
 		} else {
 			i++;
 		}
@@ -187,33 +285,30 @@ function cssFunctionUnits(value: string): CssFunctionUnit[] {
 
 /**
  * Gate one CSS declaration. Each top-level function that could fetch a
- * withheld URL is rewritten to `none`, so `background:#000 url(…)` keeps its colour (and
- * the newsletter its contrast) while the image layer goes. Returns the refs
- * it found and the declaration to keep, or null to drop it.
+ * withheld URL is rewritten to `none`, so `background:#000 url(…)` keeps its
+ * colour (and the newsletter its contrast) while the image layer goes. Every
+ * reference found is appended to `refs`; returns the declaration to keep.
  */
 function gateDeclaration(
 	declaration: string,
-	classifyUrl: (url: string | null) => ResourceRef,
-	withheld: (ref: ResourceRef) => boolean
-): { refs: ResourceRef[]; kept: string | null } {
-	// `\75 rl(…)` is still `url(…)`, and an escaped host defeats the tracker
-	// match; no legitimate mail needs either, so the whole value is opaque.
-	if (declaration.includes('\\')) {
-		const ref = classifyUrl(null);
-		return { refs: [ref], kept: withheld(ref) ? null : declaration };
-	}
-	const refs: ResourceRef[] = [];
+	classifyUrl: (url: string) => ResourceRef,
+	withheld: (ref: ResourceRef) => boolean,
+	refs: ResourceRef[]
+): string {
 	let kept = '';
 	let last = 0;
 	for (const fn of cssFunctionUnits(declaration)) {
-		const fnRefs = fn.urls.map(classifyUrl);
-		refs.push(...fnRefs);
-		if (!fnRefs.some(withheld)) continue;
+		let withholdFn = false;
+		for (const url of fn.urls) {
+			const ref = classifyUrl(url);
+			refs.push(ref);
+			if (withheld(ref)) withholdFn = true;
+		}
+		if (!withholdFn) continue;
 		kept += `${declaration.slice(last, fn.start)}none`;
 		last = fn.end;
 	}
-	kept += declaration.slice(last);
-	return { refs, kept };
+	return kept + declaration.slice(last);
 }
 
 /**
@@ -276,15 +371,113 @@ export function applyPostboxImageConsent(
 	try {
 		return gateResources(html, consent, blockedLabel);
 	} catch {
-		// Fail closed: with no inventory, keep no remote <img>. The iframe CSP
-		// still refuses every other remote load while images are blocked.
+		// Fail closed: with no inventory, keep no remote <img> and tell the
+		// reader to render with no network at all, whatever the consent.
 		const stripped = stripRemoteImages(html);
 		return {
 			html: consent === 'everything' ? html : stripped.html,
-			hasRemoteResources: stripped.strippedRemoteImages > 0,
+			hasRemoteResources: true,
 			detection: { pixelCount: 0, trackerHosts: [] },
+			noRemote: consent !== 'everything',
 		};
 	}
+}
+
+interface ElementOutcome {
+	refs: ResourceRef[];
+	replacement: 'none' | 'placeholder' | 'remove';
+	blockedUrl: string;
+}
+
+/** Inventory one element and withhold what the consent does not cover. */
+function gateElement(
+	el: Element,
+	consent: PostboxImageConsent,
+	withheld: (ref: ResourceRef) => boolean
+): ElementOutcome {
+	const style = el.getAttribute('style') ?? '';
+	// Read once per element: every reference on it shares these hints.
+	const hints = elementTrackingHints({
+		width: el.getAttribute('width'),
+		height: el.getAttribute('height'),
+		style,
+	});
+	const classifyUrl = (url: string) => classify(url, hints);
+	const refs: ResourceRef[] = [];
+	const outcome: ElementOutcome = { refs, replacement: 'none', blockedUrl: '' };
+
+	// Inline style: rewrite each image layer that would fetch a withheld URL.
+	if (style) {
+		let changed = false;
+		const kept: string[] = [];
+		for (const declaration of splitDeclarations(style)) {
+			const original = declaration.trim();
+			const gated = gateDeclaration(original, classifyUrl, withheld, refs);
+			if (gated !== original) changed = true;
+			kept.push(gated);
+		}
+		if (changed) el.setAttribute('style', kept.join(';'));
+	}
+
+	// Legacy `<td background="…">`; the sanitizer drops it today, but a
+	// later allowlist change must not quietly reopen it.
+	const background = el.getAttribute('background');
+	if (background !== null) {
+		const ref = classifyUrl(background);
+		refs.push(ref);
+		if (withheld(ref)) el.removeAttribute('background');
+	}
+
+	if (el.tagName !== 'IMG') return outcome;
+
+	const src = el.getAttribute('src');
+	const srcRef = src === null ? null : classifyUrl(src);
+	if (srcRef) refs.push(srcRef);
+	// Withhold candidate by candidate: one tracker in a srcset must not take
+	// the approved sources (and their descriptors) with it.
+	const keptCandidates: string[] = [];
+	let withheldCandidate: string | null = null;
+	for (const candidate of srcsetCandidates(el.getAttribute('srcset') ?? '')) {
+		const ref = classifyUrl(candidate.url);
+		refs.push(ref);
+		if (!withheld(ref)) keptCandidates.push(candidate.text);
+		else withheldCandidate ??= candidate.url;
+	}
+	if (withheldCandidate !== null) {
+		if (keptCandidates.length > 0) el.setAttribute('srcset', keptCandidates.join(', '));
+		else el.removeAttribute('srcset');
+	}
+	const srcWithheld = srcRef !== null && withheld(srcRef);
+	if (srcWithheld) el.removeAttribute('src');
+	// The image goes only when something was withheld and no usable source is
+	// left to show.
+	const hasSource = (srcRef !== null && !srcWithheld) || keptCandidates.length > 0;
+	if ((srcWithheld || withheldCandidate !== null) && !hasSource) {
+		outcome.replacement = consent === 'blocked' ? 'placeholder' : 'remove';
+		outcome.blockedUrl = (srcWithheld ? src : withheldCandidate) ?? '';
+	}
+	return outcome;
+}
+
+/**
+ * The inventory failed on this element. Unless the user asked for
+ * everything, withhold every CSS, srcset and remote src resource it carries
+ * rather than let its unchecked markup through, and count it as a tracker.
+ */
+function failElementClosed(el: Element, consent: PostboxImageConsent): ElementOutcome {
+	const outcome: ElementOutcome = { refs: [UNREADABLE_REF], replacement: 'none', blockedUrl: '' };
+	if (consent === 'everything') return outcome;
+	el.removeAttribute('style');
+	el.removeAttribute('srcset');
+	el.removeAttribute('background');
+	if (el.tagName === 'IMG') {
+		const src = el.getAttribute('src');
+		if (src === null || !isEmbeddedResourceUrl(src)) {
+			outcome.replacement = consent === 'blocked' ? 'placeholder' : 'remove';
+			outcome.blockedUrl = src ?? '';
+		}
+	}
+	return outcome;
 }
 
 function gateResources(
@@ -303,90 +496,34 @@ function gateResources(
 	const trackerHosts = new Set<string>();
 
 	for (const el of Array.from(template.content.querySelectorAll('*'))) {
-		const style = el.getAttribute('style') ?? '';
-		const context: RemoteResourceContext = {
-			width: el.getAttribute('width'),
-			height: el.getAttribute('height'),
-			style,
-		};
-		const refs: ResourceRef[] = [];
-
-		// Inline style: rewrite each image layer that would fetch a withheld URL.
-		if (style) {
-			const classifyUrl = (url: string | null) => classify(url, context);
-			const declarations = splitDeclarations(style).map((declaration) => {
-				const original = declaration.trim();
-				return { original, ...gateDeclaration(original, classifyUrl, withheld) };
-			});
-			for (const d of declarations) refs.push(...d.refs);
-			if (declarations.some((d) => d.kept !== d.original)) {
-				const kept = declarations.flatMap((d) => (d.kept === null ? [] : [d.kept]));
-				if (kept.length === 0) el.removeAttribute('style');
-				else el.setAttribute('style', kept.join(';'));
-			}
+		let outcome: ElementOutcome;
+		try {
+			outcome = gateElement(el, consent, withheld);
+		} catch {
+			outcome = failElementClosed(el, consent);
 		}
 
-		// Legacy `<td background="…">`; the sanitizer drops it today, but a
-		// later allowlist change must not quietly reopen it.
-		const background = el.getAttribute('background');
-		if (background !== null) {
-			const ref = classify(background, context);
-			refs.push(ref);
-			if (withheld(ref)) el.removeAttribute('background');
+		let hasTracker = false;
+		for (const ref of outcome.refs) {
+			if (ref.remote) hasRemoteResources = true;
+			if (!ref.tracker) continue;
+			hasTracker = true;
+			const host = remoteResourceHost(ref.url);
+			if (host) trackerHosts.add(host);
 		}
+		if (hasTracker) pixelCount += 1;
 
-		let replacement: 'none' | 'placeholder' | 'remove' = 'none';
-		let blockedUrl = '';
-		if (el.tagName === 'IMG') {
-			const src = el.getAttribute('src');
-			const srcRef = src === null ? null : classify(src, context);
-			const candidates = srcsetCandidates(el.getAttribute('srcset') ?? '').map((candidate) => ({
-				...candidate,
-				ref: classify(candidate.url, context),
-			}));
-			if (srcRef) refs.push(srcRef);
-			refs.push(...candidates.map((candidate) => candidate.ref));
-
-			// Withhold candidate by candidate: one tracker in a srcset must not
-			// take the approved sources (and their descriptors) with it.
-			const keptCandidates = candidates.filter((candidate) => !withheld(candidate.ref));
-			const withheldCandidate = candidates.find((candidate) => withheld(candidate.ref));
-			if (withheldCandidate) {
-				if (keptCandidates.length > 0) {
-					el.setAttribute('srcset', keptCandidates.map((candidate) => candidate.text).join(', '));
-				} else {
-					el.removeAttribute('srcset');
-				}
-			}
-			const srcWithheld = srcRef !== null && withheld(srcRef);
-			if (srcWithheld) el.removeAttribute('src');
-			// The image goes only when something was withheld and no usable
-			// source is left to show.
-			const hasSource = (srcRef !== null && !srcWithheld) || keptCandidates.length > 0;
-			if ((srcWithheld || withheldCandidate) && !hasSource) {
-				replacement = consent === 'blocked' ? 'placeholder' : 'remove';
-				blockedUrl = (srcWithheld ? src : withheldCandidate?.url) ?? '';
-			}
+		if (outcome.replacement === 'placeholder') {
+			el.replaceWith(blockedPlaceholder(doc, outcome.blockedUrl, blockedLabel));
+		} else if (outcome.replacement === 'remove') {
+			el.remove();
 		}
-
-		if (refs.some((ref) => ref.remote)) hasRemoteResources = true;
-		const trackers = refs.filter((ref) => ref.tracker);
-		if (trackers.length > 0) {
-			pixelCount += 1;
-			for (const ref of trackers) {
-				const host = remoteResourceHost(ref.url);
-				if (host) trackerHosts.add(host);
-			}
-		}
-
-		if (replacement === 'placeholder')
-			el.replaceWith(blockedPlaceholder(doc, blockedUrl, blockedLabel));
-		else if (replacement === 'remove') el.remove();
 	}
 
 	return {
 		html: template.innerHTML,
 		hasRemoteResources,
 		detection: { pixelCount, trackerHosts: [...trackerHosts].sort() },
+		noRemote: false,
 	};
 }
