@@ -70,13 +70,19 @@ export function isPostboxSenderImageAllowed(
  *                         wrong kind of quiet.
  *   - `trackers-blocked`→ images were shown for this message only, and probable
  *                         tracking pixels are being withheld.
+ *   - `unchecked`       → the body could not be checked safely, so images stay
+ *                         blocked whatever was shown or trusted; only the
+ *                         deliberate "Load everything" lifts that. It outranks
+ *                         `auto-allowed` and the shown-once states, which would
+ *                         otherwise claim images are loading.
  *   - `none`            → nothing to say.
  */
 export type PostboxImageBannerState =
 	| { kind: 'none' }
 	| { kind: 'blocked'; trackerCount: number; canTrustSender: boolean }
 	| { kind: 'auto-allowed'; trackerCount: number }
-	| { kind: 'trackers-blocked'; trackerCount: number };
+	| { kind: 'trackers-blocked'; trackerCount: number }
+	| { kind: 'unchecked' };
 
 export function resolvePostboxImageBanner(input: {
 	/** The sanitized body references at least one remote resource (img, srcset, CSS). */
@@ -90,8 +96,11 @@ export function resolvePostboxImageBanner(input: {
 	/** A canonical sender key could be derived from the From header. */
 	hasSenderKey: boolean;
 	trackerCount: number;
+	/** The body could not be inventoried; remote loads stay blocked. */
+	inventoryFailed: boolean;
 }): PostboxImageBannerState {
 	if (!input.hasRemoteImages) return { kind: 'none' };
+	if (input.inventoryFailed && !input.loadEverything) return { kind: 'unchecked' };
 	if (!input.showImages) {
 		return {
 			kind: 'blocked',

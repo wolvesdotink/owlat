@@ -91,6 +91,7 @@ function setHeight(options: typeof LIGHT, height: number) {
 		kind: 'simple',
 		detection: { pixelCount: 0 } as never,
 		hasRemoteImages: false,
+		inventoryFailed: false,
 		height,
 	});
 }

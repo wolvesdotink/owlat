@@ -61,6 +61,7 @@ describe('resolvePostboxImageBanner', () => {
 		isSenderAllowed: false,
 		hasSenderKey: true,
 		trackerCount: 0,
+		inventoryFailed: false,
 	};
 
 	it('says nothing when the body carries no remote images', () => {
@@ -80,6 +81,21 @@ describe('resolvePostboxImageBanner', () => {
 			trackerCount: 0,
 			canTrustSender: false,
 		});
+	});
+
+	it('says images stay blocked when the body could not be checked, whatever was shown or trusted', () => {
+		const failed = { ...base, inventoryFailed: true };
+		expect(resolvePostboxImageBanner(failed)).toEqual({ kind: 'unchecked' });
+		expect(resolvePostboxImageBanner({ ...failed, showImages: true })).toEqual({
+			kind: 'unchecked',
+		});
+		expect(
+			resolvePostboxImageBanner({ ...failed, showImages: true, isSenderAllowed: true })
+		).toEqual({ kind: 'unchecked' });
+		// The deliberate escalation is the one way past it.
+		expect(
+			resolvePostboxImageBanner({ ...failed, showImages: true, loadEverything: true })
+		).toEqual({ kind: 'none' });
 	});
 
 	it('reports the auto-load when the sender is trusted', () => {

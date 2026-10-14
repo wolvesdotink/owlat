@@ -50,6 +50,11 @@ export interface PostboxRenderEntry {
 	detection: TrackerDetection;
 	/** The body references a remote resource, so the image banner has a say. */
 	hasRemoteImages: boolean;
+	/**
+	 * The body could not be inventoried, so it renders with no remote loads
+	 * whatever the consent short of "Load everything"; the banner says so.
+	 */
+	inventoryFailed: boolean;
 	/** Last measured iframe content height (px); null until first load. */
 	height: number | null;
 }

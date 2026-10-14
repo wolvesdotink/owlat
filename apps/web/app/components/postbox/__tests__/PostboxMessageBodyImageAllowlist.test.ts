@@ -23,11 +23,25 @@ import {
 	splitQuotedText,
 	splitQuotedHtml,
 } from '../../../composables/postbox/usePostboxQuotedText';
+import type * as SharedTrackers from '@owlat/shared/postboxTrackers';
 import { getPostboxRenderCache } from '../../../utils/postboxRenderCache';
 import {
 	POSTBOX_BODY_META_CSP,
 	POSTBOX_BODY_META_CSP_NO_REMOTE,
 } from '../../../utils/postboxBodyPlaceholder';
+
+// A body whose tracker host is `fail-inventory.example` makes the resource
+// inventory throw outside its per-element guard (the whole-body failure).
+vi.mock('@owlat/shared/postboxTrackers', async (importOriginal) => {
+	const actual = await importOriginal<typeof SharedTrackers>();
+	return {
+		...actual,
+		remoteResourceHost: (url: string | null) => {
+			if (url?.includes('fail-inventory.example')) throw new Error('inventory failed');
+			return actual.remoteResourceHost(url);
+		},
+	};
+});
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -169,5 +183,44 @@ describe('PostboxMessageBody remote-image allowlist', () => {
 		expect(srcdoc(w)).toContain(POSTBOX_BODY_META_CSP);
 		expect(srcdoc(w)).toContain('https://bg.example/hero.png');
 		expect(srcdoc(w)).toContain('https://img.example/b.png 2x');
+	});
+
+	describe('when the body cannot be checked', () => {
+		const UNCHECKED_HTML =
+			'<p>Hello</p><img src="https://stratechery.com/hero.png" width="600" height="200">' +
+			'<img src="https://fail-inventory.example/open.gif" width="1" height="1">';
+		const UNCHECKED_COPY = "Images stay blocked because this message couldn't be checked safely.";
+
+		function buttonLabels(w: ReturnType<typeof mountBody>): string[] {
+			return w.findAll('button').map((b) => b.text());
+		}
+
+		it('says images stay blocked and offers only "Load everything"', async () => {
+			const w = mountBody({ html: UNCHECKED_HTML });
+			await nextTick();
+			expect(w.text()).toContain(UNCHECKED_COPY);
+			expect(buttonLabels(w)).toEqual(['Load everything']);
+			expect(srcdoc(w)).toContain(POSTBOX_BODY_META_CSP_NO_REMOTE);
+
+			await w.find('button').trigger('click');
+			await nextTick();
+			expect(w.text()).not.toContain(UNCHECKED_COPY);
+			expect(srcdoc(w)).toContain(POSTBOX_BODY_META_CSP);
+			expect(srcdoc(w)).toContain('https://stratechery.com/hero.png');
+		});
+
+		it('never claims a trusted sender’s images load automatically', async () => {
+			const w = mountBody({ html: UNCHECKED_HTML, senderImagesAllowed: true });
+			await nextTick();
+			expect(w.text()).toContain(UNCHECKED_COPY);
+			expect(w.text()).not.toContain('load automatically');
+			expect(buttonLabels(w)).toEqual(['Load everything']);
+			expect(srcdoc(w)).toContain(POSTBOX_BODY_META_CSP_NO_REMOTE);
+
+			await w.find('button').trigger('click');
+			await nextTick();
+			expect(srcdoc(w)).toContain(POSTBOX_BODY_META_CSP);
+			expect(srcdoc(w)).toContain('https://fail-inventory.example/open.gif');
+		});
 	});
 });

@@ -275,6 +275,7 @@ function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 		kind: adapted.kind,
 		detection: gated.detection,
 		hasRemoteImages: gated.hasRemoteResources,
+		inventoryFailed: gated.noRemote,
 	};
 }
 
@@ -359,6 +360,7 @@ const imageBanner = computed(() =>
 		isSenderAllowed: !!props.senderImagesAllowed,
 		hasSenderKey: senderKey.value !== null,
 		trackerCount: trackerDetection.value.pixelCount,
+		inventoryFailed: render.value.inventoryFailed,
 	})
 );
 
@@ -376,6 +378,15 @@ function trustSender() {
 	// reader should not wait on a round trip to honour a click it already has.
 	showImages.value = true;
 	emit('trustSender', from);
+}
+
+/**
+ * "Load everything" from any banner. From the `unchecked` banner images may
+ * not be shown yet, and the escalation has to include them.
+ */
+function loadEverythingNow() {
+	showImages.value = true;
+	loadEverything.value = true;
 }
 
 function untrustSender() {
@@ -431,7 +442,7 @@ usePostboxFrameAutosize({
 			:can-trust-sender="canTrustSender"
 			:sender-label="senderTrustLabel"
 			@show-once="showImages = true"
-			@load-everything="loadEverything = true"
+			@load-everything="loadEverythingNow()"
 			@trust-sender="trustSender()"
 			@untrust-sender="untrustSender()"
 		/>
