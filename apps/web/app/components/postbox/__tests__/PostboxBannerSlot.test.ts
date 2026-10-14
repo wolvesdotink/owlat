@@ -27,7 +27,7 @@ beforeAll(() => {
 		hasSeenSealedMailNudge: hasSeenSealedNudge,
 		dismissSealedMailNudge: vi.fn(async () => {}),
 	}));
-	vi.stubGlobal('usePostboxReplyQueue', () => ({ count: replyQueueCount }));
+	vi.stubGlobal('usePostboxReplyQueueCount', () => ({ count: replyQueueCount }));
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
