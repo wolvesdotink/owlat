@@ -84,7 +84,7 @@
  * See docs/adr (operation-error-taxonomy) and CONVENTIONS.md § Permissions.
  */
 
-import { initializeSessionQueryCache } from './sessionQueryCache';
+import { withQueryCacheConfig, withSessionQueryCache } from './sessionQueryCache';
 import { validatePublicInputStrings } from './publicInput';
 import { fenceMutationBuilder } from './writeFence';
 import { query, mutation as rawMutation, action } from '../_generated/server';
@@ -210,11 +210,10 @@ export const authedQuery = ((fn: FunctionConfig) =>
 	query({
 		args: fn.args,
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
-		handler: async (ctx: QueryCtx, args: unknown) => {
-			initializeSessionQueryCache(ctx);
+		handler: withSessionQueryCache(async (ctx: QueryCtx, args: unknown) => {
 			const session = await requireOrgMember(ctx);
 			return (fn.handler as unknown as SessionThreadedHandler<QueryCtx>)(ctx, args, session);
-		},
+		}),
 	} as Parameters<RawQuery>[0])) as unknown as SessionQueryBuilder;
 
 /**
@@ -339,11 +338,10 @@ export const adminQuery = ((fn: FunctionConfig) =>
 	query({
 		args: fn.args,
 		...(fn.returns !== undefined ? { returns: fn.returns } : {}),
-		handler: async (ctx: QueryCtx, args: unknown) => {
-			initializeSessionQueryCache(ctx);
+		handler: withSessionQueryCache(async (ctx: QueryCtx, args: unknown) => {
 			const session = await requireOrgPermission(ctx, 'organization:manage');
 			return (fn.handler as unknown as SessionThreadedHandler<QueryCtx>)(ctx, args, session);
-		},
+		}),
 	} as Parameters<RawQuery>[0])) as unknown as SessionQueryBuilder;
 
 /**
@@ -482,13 +480,7 @@ export function featureGatedAny<
  * Every use MUST carry a `// public: <reason>` comment at the call site.
  */
 export const publicQuery = ((fn: FunctionConfig) =>
-	query({
-		...fn,
-		handler: (ctx: QueryCtx, args: unknown) => {
-			initializeSessionQueryCache(ctx);
-			return (fn.handler as unknown as (c: QueryCtx, a: unknown) => unknown)(ctx, args);
-		},
-	} as Parameters<RawQuery>[0])) as unknown as RawQuery;
+	query(withQueryCacheConfig(fn) as Parameters<RawQuery>[0])) as unknown as RawQuery;
 export const publicMutation = ((fn: FunctionConfig) =>
 	mutation({
 		...fn,

@@ -25,3 +25,16 @@ export function memoizeSessionQuery<T>(
 	// Retain rejected promises too: auth failures must not trigger duplicate I/O.
 	return (cache[key] ??= load()) as Promise<T>;
 }
+
+/** A query handler that starts its invocation with a fresh session cache. */
+export function withSessionQueryCache(handler: unknown) {
+	return (ctx: QueryCtx, args: unknown) => {
+		initializeSessionQueryCache(ctx);
+		return (handler as (ctx: QueryCtx, args: unknown) => unknown)(ctx, args);
+	};
+}
+
+/** A function config whose handler starts with a fresh session cache. */
+export function withQueryCacheConfig<T extends { handler: unknown }>(fn: T): T {
+	return { ...fn, handler: withSessionQueryCache(fn.handler) };
+}

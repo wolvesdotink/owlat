@@ -80,8 +80,6 @@ async function resolveBetterAuthSession(ctx: QueryCtx | MutationCtx) {
 			};
 		}
 
-		// Legacy JWTs lack org claims. JWT expiry does not prove that this
-		// BetterAuth session is still live; retain its expiry filter here.
 		const session = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
 			model: 'session',
 			where: [
@@ -113,8 +111,7 @@ async function resolveBetterAuthSession(ctx: QueryCtx | MutationCtx) {
  * (BetterAuth `auth/organization/create` is disabled in `auth.ts`), so once
  * we've confirmed the invariant for a given org id within an isolate the
  * subsequent calls are pure equality checks. The cache is process-local —
- * a new isolate or a redeploy re-runs the full check. It holds one
- * deployment-wide id, never per-user auth data.
+ * a new isolate or a redeploy re-runs the full check.
  */
 let cachedSingletonOrgId: string | null = null;
 
@@ -169,14 +166,10 @@ export async function assertSingletonOrgInvariant(
 export async function getSingletonOrganizationId(
 	ctx: QueryCtx | MutationCtx | ActionCtx
 ): Promise<string> {
-	if (cachedSingletonOrgId !== null) {
-		return cachedSingletonOrgId;
-	}
-	const singletonId = await memoizeSessionQuery(ctx, 'singletonOrganization', () =>
+	cachedSingletonOrgId ??= await memoizeSessionQuery(ctx, 'singletonOrganization', () =>
 		resolveSingletonOrganizationId(ctx)
 	);
-	cachedSingletonOrgId = singletonId;
-	return singletonId;
+	return cachedSingletonOrgId;
 }
 
 async function resolveSingletonOrganizationId(
