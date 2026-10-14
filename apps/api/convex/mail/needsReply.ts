@@ -38,7 +38,7 @@ import { needsReplyTriggerOf } from './needsReplyTrigger';
 import { QUEUE_LIMIT, scanReplyQueue } from './needsReplyQueueScan';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
-import { visibleClarification, visibleThreadDraftSlot } from './needsReplySlot';
+import { visibleThreadClarification, visibleThreadDraftSlot } from './needsReplySlot';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
@@ -51,7 +51,7 @@ import { mailboxOwnAddresses } from './identities';
 import { normalizeEmail } from '@owlat/shared';
 import { needsReplyResultFields } from '../schema/mailThreads';
 import type { needsReplyClarificationValidator } from '../lib/validators/clarification';
-import { isFencedThread, withoutInterpretationCache } from './interpret/staleFence';
+import { isFencedThread, withoutModelClarification } from './interpret/staleFence';
 
 /** True when an attachment is a calendar invite (.ics / text/calendar). */
 export function isCalendarAttachment(att: { filename: string; contentType: string }): boolean {
@@ -277,8 +277,9 @@ export const applyResult = internalMutation({
 				resolved === null
 					? undefined
 					: {
-							// A fenced thread keeps nothing the model derived (interpret/staleFence.ts).
-							...(isFencedThread(thread) ? withoutInterpretationCache(resolved) : resolved),
+							// A fenced thread keeps nothing the model derived (interpret/staleFence.ts),
+							// nor questions it asked from the old reading.
+							...(isFencedThread(thread) ? withoutModelClarification(resolved) : resolved),
 							detectedAt: Date.now(),
 							// The queue row's sender and subject, so listQueue need not load
 							// the message (plan C8).
@@ -357,7 +358,7 @@ export const listQueue = publicQuery({
 				// Clarification loop: when present, the row renders as a "Needs your
 				// input" card (question + scoped chips + free-text) instead of the
 				// plain needs-reply row. Absent for the deterministic/plain case.
-				clarification: flag.clarification && visibleClarification(flag.clarification),
+				clarification: visibleThreadClarification(thread),
 				// Draft-on-arrival review slot (postbox.aiDraft): whether a pre-generated
 				// reply is waiting for review. The draft itself is read by the card that
 				// shows it (`getDraftSlot`, plan C8), not shipped on every row.

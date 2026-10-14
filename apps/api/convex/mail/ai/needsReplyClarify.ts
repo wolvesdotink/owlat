@@ -55,6 +55,7 @@ import type { Id } from '../../_generated/dataModel';
 import { recordClarificationAnswered } from '../interpret/threadEvents';
 import { checkDraftGaps } from './gapQuestions';
 import { isGapsAccepted } from '../needsReplySlot';
+import { isFencedThread } from '../interpret/staleFence';
 
 /**
  * Answer the clarification questions on a Reply Queue thread and kick off the
@@ -267,17 +268,16 @@ export const answerClarification = postboxMutation({
 });
 
 /**
- * Bounded context for the `draftWithAnswers` action: the mailbox id, a short
- * transcript of the newest messages, the owner's confirmed answers (typed and
- * remembered) folded into `question: answer` lines, a note for each file they
- * attached, and the sender's contact (the knowledge recall scope). Null when
- * the clarification is gone / stale.
+ * Bounded context for the `draftWithAnswers` action: the mailbox id, a short transcript of the
+ * newest messages, the owner's confirmed answers (typed and remembered) folded into `question:
+ * answer` lines, a note for each file they attached, and the sender's contact (the knowledge
+ * recall scope). Null when the clarification is gone / stale, or the thread is fenced off.
  */
 export const getClarificationContext = internalQuery({
 	args: { threadId: v.id('mailThreads') },
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
-		if (!thread) return null;
+		if (!thread || isFencedThread(thread)) return null; // no AI draft (interpret/staleFence.ts)
 		const flag = thread.needsReply;
 		const clarification = flag?.clarification;
 		if (!flag || !clarification || clarification.answeredAt === undefined) return null;
@@ -376,7 +376,7 @@ async function currentClarification(
 	const thread = await ctx.db.get(args.threadId);
 	const flag = thread?.needsReply;
 	const clarification = flag?.clarification;
-	if (!thread || !flag || !clarification) return null;
+	if (!thread || !flag || !clarification || isFencedThread(thread)) return null; // staleFence.ts
 	if (
 		args.expectedLatestMessageId !== undefined &&
 		thread.latestMessageId !== undefined &&

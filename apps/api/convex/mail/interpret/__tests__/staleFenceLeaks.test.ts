@@ -6,7 +6,10 @@
  *   - an arrival draft written from the old plan, late or already stored;
  *   - a stored reply-plan check (coverage, claims, promises) and a late one;
  *   - "Export my data" labels a fenced thread's interpretation as paused;
- *   - the team stream's notes keep their item reference, not its text.
+ *   - the team stream's notes keep their item reference, not its text;
+ *
+ * and the two AI draft paths round 6 found: the clarification card's draft,
+ * and an Answer mode "Draft with AI" stream that started before the fence.
  */
 
 import { convexTest } from 'convex-test';
@@ -30,6 +33,7 @@ vi.mock('../../../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn(async () => session),
 		getBetterAuthSessionWithRole: vi.fn(async () => session),
 		requireSelf: vi.fn(async () => session),
+		getUserIdFromSession: vi.fn(async () => session.userId),
 	};
 });
 
@@ -293,5 +297,141 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 		expect(fenced?.['body']).toBe('Is this right?');
 		expect(fenced?.['threadItemId']).toBe(itemId);
 		expect(fenced?.['threadItemText']).toBeUndefined();
+	});
+
+	it("strips the clarification card's AI draft, refuses a late one, and keeps the answers", async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, threadId } = await seedThread(t);
+		const answeredAt = Date.now();
+		const answer = { value: 'Use the usual one', at: answeredAt };
+		await t.run(async (ctx) => {
+			const thread = (await ctx.db.get(threadId))!;
+			await ctx.db.patch(threadId, {
+				needsReply: {
+					...thread.needsReply!,
+					clarification: {
+						isNeeded: false,
+						questions: [{ id: 'q1', slotType: 'text', text: 'Which account?', answer }],
+						askedAt: answeredAt - 1,
+						answeredAt,
+						draft: STALE_DRAFT,
+					},
+				},
+			});
+		});
+		const prepared = () => t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId });
+		expect((await prepared())?.clarificationDraft).toBe(STALE_DRAFT);
+
+		await fence(t, threadId);
+		const stored = async () =>
+			(await t.run((ctx) => ctx.db.get(threadId)))!.needsReply!.clarification!;
+		expect((await stored()).draft).toBeUndefined();
+		expect((await stored()).questions[0]!.answer).toEqual(answer);
+		expect((await stored()).answeredAt).toBe(answeredAt);
+
+		// A draft (or new gap questions) written from before the fence lands nowhere.
+		const guard = { threadId, expectedAnsweredAt: answeredAt };
+		await t.mutation(internal.mail.ai.needsReplyClarify.persistClarificationDraft, {
+			...guard,
+			draft: STALE_DRAFT,
+		});
+		await t.mutation(internal.mail.ai.needsReplyClarify.askAboutDraftGaps, {
+			...guard,
+			questions: [{ id: 'q2', slotType: 'text', text: 'Which account number?' }],
+		});
+		expect((await stored()).draft).toBeUndefined();
+		expect((await stored()).questions.map((q) => q.id)).toEqual(['q1']);
+
+		// One that slipped in anyway is never shown; the answers are.
+		await t.run(async (ctx) => {
+			const thread = (await ctx.db.get(threadId))!;
+			const flag = thread.needsReply!;
+			await ctx.db.patch(threadId, {
+				needsReply: { ...flag, clarification: { ...flag.clarification!, draft: STALE_DRAFT } },
+			});
+		});
+		const shown = await prepared();
+		expect(shown?.clarificationDraft).toBeNull();
+		expect(shown?.slotDraft).toBeNull();
+		expect(shown?.clarification?.questions[0]?.answer).toEqual(answer);
+		const queued = (await t.query(api.mail.needsReply.listQueue, { mailboxId })).items.find(
+			(i) => i.threadId === threadId
+		);
+		expect(queued?.clarification?.draft).toBeUndefined();
+		expect(JSON.stringify(shown)).not.toContain('999');
+	});
+
+	it('keeps nothing of a Draft with AI stream that started before the fence', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, threadId } = await seedThread(t);
+		const now = Date.now();
+		const OWN = '<p>My own words.</p>';
+		const { draftId, sessionId } = await t.run(async (ctx) => {
+			const draftId = await ctx.db.insert('mailDrafts', {
+				mailboxId,
+				threadId,
+				toAddresses: ['jonas@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				fromAddress: 'me@owlat.test',
+				subject: 'Re: invoice',
+				bodyHtml: OWN,
+				attachments: [],
+				state: 'draft' as const,
+				lastEditedAt: now,
+				createdAt: now,
+			});
+			const sessionId = await ctx.db.insert('answerAskSessions', {
+				ownerId: 'user-A',
+				organizationId: 'org-1',
+				target: { kind: 'mailDraft', draftId },
+				targetKey: `mailDraft:${draftId}`,
+				locale: 'en',
+				round: 1,
+				status: 'drafting',
+				questions: [{ id: 'q1', slotType: 'text', text: 'Which account?' }],
+				attachedFiles: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { draftId, sessionId };
+		});
+		const target = { kind: 'mailDraft' as const, draftId };
+		const streamId = await t.mutation(internal.mail.ai.composeDraftStore.openSessionStream, {
+			sessionId,
+		});
+		expect((await t.run((ctx) => ctx.db.get(streamId)))!.mailThreadId).toBe(threadId);
+		const read = () => t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
+		await t.mutation(internal.mail.draftStreamStore.appendDraftStream, {
+			streamId,
+			text: 'I will pay',
+		});
+		expect((await read())?.text).toBe('I will pay');
+
+		await fence(t, threadId);
+
+		// Still running: told to stop. Finalized: kept as nothing.
+		expect(
+			await t.mutation(internal.mail.draftStreamStore.appendDraftStream, {
+				streamId,
+				text: 'I will pay account 999',
+			})
+		).toEqual({ stop: true });
+		await t.mutation(internal.mail.draftStreamStore.finalizeDraftStream, {
+			streamId,
+			text: STALE_DRAFT,
+			status: 'complete',
+		});
+		const row = (await t.run((ctx) => ctx.db.get(streamId)))!;
+		expect(row).toMatchObject({ status: 'error', text: '', errorMessage: 'draft_paused_stale' });
+		expect(await read()).toMatchObject({
+			status: 'error',
+			text: '',
+			errorMessage: 'draft_paused_stale',
+		});
+		const view = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(view).toMatchObject({ status: 'error', questions: [], streamId });
+		// The person's own draft is untouched.
+		expect((await t.run((ctx) => ctx.db.get(draftId)))!.bodyHtml).toBe(OWN);
 	});
 });

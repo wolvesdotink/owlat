@@ -13,7 +13,7 @@
  */
 
 import type { Doc } from '../../_generated/dataModel';
-import { visibleClarification, visibleThreadDraftSlot } from '../needsReplySlot';
+import { visibleThreadClarification, visibleThreadDraftSlot } from '../needsReplySlot';
 
 export type ThreadListRow = Pick<
 	Doc<'mailThreads'>,
@@ -59,7 +59,7 @@ export function toThreadListRow(thread: Doc<'mailThreads'>): ThreadListRow {
 		row.needsReply = {};
 		if (visibleThreadDraftSlot(thread)) row.needsReply.draftSlot = true;
 		if (flag.clarification) {
-			row.needsReply.clarification = visibleClarification(flag.clarification).draft
+			row.needsReply.clarification = visibleThreadClarification(thread)?.draft
 				? { draft: true }
 				: {};
 		}

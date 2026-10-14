@@ -20,7 +20,7 @@ import { postboxQuery } from './_helpers';
 import { loadReadableMailbox } from './permissions';
 import { mailThreadUploadKey } from '../storage/uploads';
 import { answerFiles } from '../inbox/clarificationAnswers';
-import { visibleClarification, visibleThreadDraftSlot } from './needsReplySlot';
+import { visibleThreadClarification, visibleThreadDraftSlot } from './needsReplySlot';
 
 /**
  * Hand an upload the thread holds for a Reply Queue answer to a draft of that
@@ -119,7 +119,7 @@ export const getPreparedDraft = postboxQuery({
 		if (!thread || !flag) return null;
 		const mailbox = await loadReadableMailbox(ctx, thread.mailboxId);
 		if (!mailbox) return null;
-		const clarification = flag.clarification ? visibleClarification(flag.clarification) : null;
+		const clarification = visibleThreadClarification(thread) ?? null;
 		return {
 			clarificationDraft: clarification?.draft?.trim() || null,
 			slotDraft: visibleThreadDraftSlot(thread)?.draft.trim() || null,

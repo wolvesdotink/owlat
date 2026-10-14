@@ -74,14 +74,35 @@ export function isFencedThread(
 
 /**
  * A needs-reply flag without what the model derived from its read of the
- * thread: the summary of the ask, the deadline and meeting hints, and the
- * arrival draft. The flag itself (urgency, trigger) and the clarification,
- * which holds the person's answers, stay. Pure.
+ * thread: the summary of the ask, the deadline and meeting hints, the arrival
+ * draft and the clarification's draft. The flag itself (urgency, trigger) and
+ * the clarification's questions, answers and files, which are the person's,
+ * stay. Pure.
  */
 export function withoutInterpretationCache<
-	T extends { askSummary?: string; dueHint?: string; meetingIntent?: unknown; draftSlot?: unknown },
+	T extends {
+		askSummary?: string;
+		dueHint?: string;
+		meetingIntent?: unknown;
+		draftSlot?: unknown;
+		clarification?: { draft?: string } | undefined;
+	},
 >(flag: T): Omit<T, 'askSummary' | 'dueHint' | 'meetingIntent' | 'draftSlot'> {
 	const { askSummary: _a, dueHint: _d, meetingIntent: _m, draftSlot: _s, ...rest } = flag;
+	if (rest.clarification?.draft === undefined) return rest;
+	const { draft: _draft, ...clarification } = rest.clarification;
+	return { ...rest, clarification };
+}
+
+/**
+ * A needs-reply result written while the thread is fenced: none of the model
+ * fields, and no clarification (the questions were asked from the old
+ * reading). Pure.
+ */
+export function withoutModelClarification<
+	T extends Parameters<typeof withoutInterpretationCache>[0],
+>(flag: T) {
+	const { clarification: _asked, ...rest } = withoutInterpretationCache(flag);
 	return rest;
 }
 

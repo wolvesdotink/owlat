@@ -30,7 +30,7 @@ import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposer
 import { isAlreadyAnsweredRefusal, isHeldByGuardRefusal, ownerTimeZone } from '~/utils/answerDraft';
 import type { OperationError } from '@owlat/shared/operationError';
 import { budgetReasonOf, isBudgetStreamError } from '~/utils/aiBudget';
-import { DRAFT_HELD_FOR_SECRET } from '@owlat/shared/answerMode';
+import { DRAFT_HELD_FOR_SECRET, DRAFT_PAUSED_STALE_INTERPRETATION } from '@owlat/shared/answerMode';
 
 export type AskSession = NonNullable<
 	FunctionReturnType<typeof api.mail.ai.composeDraftStore.getSession>
@@ -302,6 +302,15 @@ export function useAnswerAskSession(opts: {
 			if (status === 'streaming') {
 				liveStreams.add(id);
 				if (text) composer.streamAiDraft(text);
+				return;
+			}
+			// The thread's AI reading was paused while this draft ran: take back
+			// what it streamed into the composer, once (the person's text stays).
+			const isPaused =
+				status === 'error' && stream.value?.errorMessage === DRAFT_PAUSED_STALE_INTERPRETATION;
+			if (isPaused && liveStreams.has(id) && !settledStreams.has(id)) {
+				settledStreams.add(id);
+				composer.discardAiDraft();
 				return;
 			}
 			reconcileStream();

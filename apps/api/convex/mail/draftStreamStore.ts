@@ -22,6 +22,28 @@ import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganiza
 import { tokenUsageValidator } from '../lib/convexValidators';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { draftSurfaceValidator } from '../lib/literalValidators';
+import type { Doc } from '../_generated/dataModel';
+import type { QueryCtx } from '../_generated/server';
+import { DRAFT_PAUSED_STALE_INTERPRETATION } from '@owlat/shared/answerMode';
+import { isThreadInterpretationFenced } from './interpret/staleFence';
+
+/**
+ * Is the buffer a draft from a thread whose AI reading is now fenced off
+ * (interpret/staleFence.ts)? Then it keeps and shows none of its text.
+ */
+async function isFencedStream(
+	ctx: Pick<QueryCtx, 'db'>,
+	row: Pick<Doc<'aiDraftStreams'>, 'mailThreadId'>
+): Promise<boolean> {
+	return row.mailThreadId !== undefined && isThreadInterpretationFenced(ctx, row.mailThreadId);
+}
+
+/** What a fenced stream ends as, and reads as: an error with the paused code and no text. */
+const PAUSED = {
+	status: 'error' as const,
+	text: '',
+	errorMessage: DRAFT_PAUSED_STALE_INTERPRETATION,
+};
 
 /** Cap the persisted streaming text so a runaway model cannot bloat a row. */
 const DRAFT_STREAM_MAX_CHARS = 20000;
@@ -88,6 +110,10 @@ export const appendDraftStream = internalMutation({
 	handler: async (ctx, args): Promise<{ stop: boolean }> => {
 		const row = await ctx.db.get(args.streamId);
 		if (!row || row.status !== 'streaming') return { stop: true };
+		if (await isFencedStream(ctx, row)) {
+			await ctx.db.patch(args.streamId, { ...PAUSED, updatedAt: Date.now() });
+			return { stop: true };
+		}
 		await ctx.db.patch(args.streamId, {
 			text: args.text.slice(0, DRAFT_STREAM_MAX_CHARS),
 			updatedAt: Date.now(),
@@ -111,6 +137,11 @@ export const finalizeDraftStream = internalMutation({
 		const row = await ctx.db.get(args.streamId);
 		// The client may have discarded the buffer mid-flight — nothing to write.
 		if (!row) return;
+		// Written from a reading fenced off since: kept as nothing.
+		if (await isFencedStream(ctx, row)) {
+			await ctx.db.patch(args.streamId, { ...PAUSED, updatedAt: Date.now() });
+			return;
+		}
 		await ctx.db.patch(args.streamId, {
 			text: args.text.slice(0, DRAFT_STREAM_MAX_CHARS),
 			status: args.status,
@@ -135,6 +166,9 @@ export const getDraftStream = answerModeQuery({
 		const userId = await getUserIdFromSession(ctx);
 		const row = await ctx.db.get(args.streamId);
 		if (!row || row.ownerId !== userId) return null;
+		if (await isFencedStream(ctx, row)) {
+			return { _id: row._id, ...PAUSED, injectionFlagged: false };
+		}
 		return {
 			_id: row._id,
 			status: row.status,
