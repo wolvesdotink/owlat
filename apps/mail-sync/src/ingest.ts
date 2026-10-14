@@ -231,6 +231,9 @@ export async function stageIngest(
 			attachments,
 			flagSeen: params.flags.has('\\Seen'),
 			flagFlagged: params.flags.has('\\Flagged'),
+			// Sent only when set, so a backend from before the field accepts every
+			// other message unchanged.
+			...(params.flags.has('\\Draft') ? { flagDraft: true } : {}),
 			origin: params.origin,
 		},
 	};

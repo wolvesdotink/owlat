@@ -18,6 +18,11 @@ import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { scheduleNeedsReplyClassify } from '../needsReply';
 import { settleOwnerReply } from '../answeredReply';
+import {
+	headerEvidenceFromMap,
+	isBulkPrecedenceForReply,
+	isMachineGeneratedForReply,
+} from '../../lib/mailEvidence';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { isPersonalMailbox } from '../permissions';
 import { enqueueCategoryCheck } from '../categoryArrival';
@@ -59,7 +64,8 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *     eligible is scheduled on its own (`../interpret/enqueue.ts`). Either way
  *     the brief reads "pending" until the run lands.
  *   - The owner's own reply settles the thread's Reply Queue row and removes
- *     the reply drafts it made obsolete (`../answeredReply`).
+ *     the AI drafts it made obsolete (`../answeredReply`); an auto-reply
+ *     (Auto-Submitted, a list, a bulk or `auto_reply` Precedence) does not.
  *   - Web Push to the owner of a personal mailbox, for live unread mail from
  *     someone else that stayed in the inbox (`../../push/`). Whether it
  *     actually notifies — scope, mute, quiet hours — is the sender's call.
@@ -124,5 +130,9 @@ export async function runPostInsertInboundEffects(
 		}
 	}
 
-	await settleOwnerReply(ctx, messageId);
+	// A vacation notice or other auto-reply from the owner answers nothing.
+	const evidence = headerEvidenceFromMap(antiLoopHeaders ?? {});
+	await settleOwnerReply(ctx, messageId, {
+		isAutomated: isMachineGeneratedForReply(evidence) || isBulkPrecedenceForReply(evidence),
+	});
 }

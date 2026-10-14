@@ -810,6 +810,7 @@ import type * as forms_submission from '../forms/submission.js';
 import type * as globalSearch from '../globalSearch.js';
 import type * as http from '../http.js';
 import type * as inbox_access from '../inbox/access.js';
+import type * as inbox_answeredThread from '../inbox/answeredThread.js';
 import type * as inbox_askEagerness from '../inbox/askEagerness.js';
 import type * as inbox_askEagernessSettings from '../inbox/askEagernessSettings.js';
 import type * as inbox_attachmentMatch from '../inbox/attachmentMatch.js';
@@ -2555,6 +2556,7 @@ declare const fullApi: ApiFromModules<{
 	globalSearch: typeof globalSearch;
 	http: typeof http;
 	'inbox/access': typeof inbox_access;
+	'inbox/answeredThread': typeof inbox_answeredThread;
 	'inbox/askEagerness': typeof inbox_askEagerness;
 	'inbox/askEagernessSettings': typeof inbox_askEagernessSettings;
 	'inbox/attachmentMatch': typeof inbox_attachmentMatch;

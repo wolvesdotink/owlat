@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { findDraftGaps, formatDraftGap, hasDraftGaps } from '../answerMode';
+import {
+	aiTextToHtml,
+	findDraftGaps,
+	formatDraftGap,
+	hasDraftGaps,
+	isUntouchedAiAnswer,
+} from '../answerMode';
 
 describe('draft gaps', () => {
 	it('finds each placeholder with its offsets and label', () => {
@@ -19,5 +25,27 @@ describe('draft gaps', () => {
 		const gap = formatDraftGap('the [PO] number\n');
 		expect(gap).toBe('[[the  PO  number]]');
 		expect(findDraftGaps(gap)[0]?.label).toBe('the  PO  number');
+	});
+});
+
+describe('isUntouchedAiAnswer', () => {
+	const ai = "Hi Sam,\n\nIt's ready & attached.";
+	const quote = '<br><br><div class="gmail_quote">On Monday Sam wrote: ready?</div>';
+
+	it('holds for the AI text as the composer wrote it, above the quote', () => {
+		expect(isUntouchedAiAnswer(`${aiTextToHtml(ai)}${quote}`, ai)).toBe(true);
+	});
+
+	it('holds when the editor re-serialized the markup', () => {
+		expect(isUntouchedAiAnswer("<p>Hi Sam,</p><p>It's ready &amp; attached.</p>", ai)).toBe(true);
+	});
+
+	it('fails for a changed word, or text a person kept above the AI text', () => {
+		expect(isUntouchedAiAnswer(`${aiTextToHtml(`${ai} Thanks!`)}${quote}`, ai)).toBe(false);
+		expect(isUntouchedAiAnswer(`<p>Quick note.</p>${aiTextToHtml(ai)}${quote}`, ai)).toBe(false);
+	});
+
+	it('fails without AI text', () => {
+		expect(isUntouchedAiAnswer(quote, '  ')).toBe(false);
 	});
 });

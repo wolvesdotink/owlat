@@ -207,6 +207,11 @@ export const mailMessagesTables = {
 		// mail and legacy sent rows carry no sender, and the from-address alone can
 		// never distinguish two teammates sending as the same shared address.
 		sentByUserId: v.optional(v.string()),
+		// On an Owlat reply: the message it answered (the draft's
+		// `inReplyToMessageId`, in the thread's mailbox, which a send-as copy is
+		// not filed in). When the transport accepts the reply, the
+		// conversation's untouched AI drafts for it go (mail/answeredReply.ts).
+		answeredMessageId: v.optional(v.id('mailMessages')),
 
 		// Outbound tracking (sent path). Per-recipient state lives in
 		// `recipients[]`; `state` is a denormalized aggregate derived by

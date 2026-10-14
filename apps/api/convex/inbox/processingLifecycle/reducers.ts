@@ -330,6 +330,10 @@ function reduceArchived(
 	}
 	if (input.securityFlags) patch['securityFlags'] = input.securityFlags;
 	patch['archiveReason'] = input.reason;
+	// Answered through a newer message: the agent's draft and questions are moot.
+	if (input.reason === 'answered_in_thread') {
+		Object.assign(patch, { draftResponse: undefined, pendingClarification: undefined });
+	}
 	return { patch, effects };
 }
 

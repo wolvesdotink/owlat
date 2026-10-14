@@ -156,7 +156,9 @@ export type TransitionInput =
 				| 'coalesced'
 				| 'clarification_dismissed'
 				| 'plugin_caution'
-				| 'update_dismissed';
+				| 'update_dismissed'
+				// A teammate answered a newer message of the thread (inbox/answeredThread.ts).
+				| 'answered_in_thread';
 			securityFlags?: SecurityFlags;
 			userId?: string;
 			output?: string;
@@ -292,7 +294,8 @@ export const transitionInputValidator = v.union(
 			v.literal('coalesced'),
 			v.literal('clarification_dismissed'),
 			v.literal('plugin_caution'),
-			v.literal('update_dismissed')
+			v.literal('update_dismissed'),
+			v.literal('answered_in_thread')
 		),
 		securityFlags: v.optional(securityFlagsValidator),
 		userId: v.optional(v.string()),

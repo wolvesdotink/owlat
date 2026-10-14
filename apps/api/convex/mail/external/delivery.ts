@@ -78,6 +78,8 @@ export const ingestExternalMessage = internalMutation({
 		...storedBodyFields,
 		flagSeen: v.optional(v.boolean()),
 		flagFlagged: v.optional(v.boolean()),
+		// The provider's `\Draft` (an unsent draft outside the Drafts folder).
+		flagDraft: v.optional(v.boolean()),
 		// Parsed List-Unsubscribe target (extracted at ingest by ingestExternalRaw).
 		unsubscribe: v.optional(mailUnsubscribeValidator),
 		// Which worker loop produced this message. Absent ⇒ treated as a backfill
@@ -154,6 +156,7 @@ export const ingestExternalMessage = internalMutation({
 			attachments: args.attachments,
 			flagSeen: args.flagSeen,
 			flagFlagged: args.flagFlagged,
+			flagDraft: args.flagDraft,
 			unsubscribe: args.unsubscribe,
 			// The provider holds it here: the evidence a later reconcile needs to
 			// call it deleted there, even one after a worker restart.
@@ -418,6 +421,8 @@ export const ingestExternalRaw = internalAction({
 		receivedAt: v.number(),
 		flagSeen: v.optional(v.boolean()),
 		flagFlagged: v.optional(v.boolean()),
+		// The provider's `\Draft` (an unsent draft outside the Drafts folder).
+		flagDraft: v.optional(v.boolean()),
 		// Forward sync vs historical import; see the file header.
 		origin: v.optional(v.union(v.literal('sync'), v.literal('backfill'))),
 	},
@@ -482,6 +487,7 @@ export const ingestExternalRaw = internalAction({
 			attachments: args.attachments,
 			flagSeen: args.flagSeen,
 			flagFlagged: args.flagFlagged,
+			flagDraft: args.flagDraft,
 			unsubscribe,
 			origin: args.origin,
 			antiLoopHeaders,

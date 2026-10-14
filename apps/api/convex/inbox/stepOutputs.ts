@@ -39,6 +39,7 @@ import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { contextTierValidator } from '../lib/literalValidators';
 import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
 import { NO_SAVED_EDITS } from './processingLifecycle/draftFields';
+import { isAnsweredInThread } from './answeredThread';
 
 /**
  * Record the context-tier metadata onto an inboundMessage without
@@ -133,8 +134,9 @@ export const recordDraftOutput = internalMutation({
 	handler: async (ctx, args) => {
 		// A person took the reply over while this draft was being written: their
 		// text is the reply now, so the late agent draft is dropped.
+		// Nor is there a draft to write for a message a newer reply answered.
 		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message || message.manualTakeoverAt !== undefined) return;
+		if (!message || message.manualTakeoverAt !== undefined || isAnsweredInThread(message)) return;
 		await ctx.db.patch(args.inboundMessageId, {
 			draftResponse: args.draftResponse,
 			draftSubject: args.draftSubject,

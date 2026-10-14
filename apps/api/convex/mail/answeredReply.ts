@@ -1,30 +1,34 @@
 /**
  * A response completes the reply it answers (#1346).
  *
- * Once we have answered a conversation, a reply draft left behind makes it look
- * unanswered and invites a second response. There are two kinds of draft:
+ * Once we have answered a conversation, an AI reply left behind makes it look
+ * unanswered and invites a second response. There are two kinds:
  *
  *   - The generated reply (the Reply Queue's draft slot and clarification
  *     draft) lives on `mailThreads.needsReply` and goes with that flag.
- *   - Saved composer drafts (`mailDrafts`), shown in Drafts and resumed by the
- *     composer, are removed here.
+ *   - A saved composer draft (`mailDrafts`) that still holds an AI reply
+ *     word for word goes here.
  *
- * Both kinds of response settle both: an Owlat send through the draft
- * lifecycle's sent-effects (`deleteSentDraft`; the thread patch there clears
- * the flag), and our own reply detected by mail sync or a client's IMAP APPEND
- * (`settleOwnerReply`).
+ * A saved draft a person wrote, or an AI draft a person edited, is theirs and
+ * always stays: only one whose recorded AI baseline still equals its text
+ * (`isUntouchedAiAnswer`) is removed. So does any draft replying to mail newer
+ * than the response, one saved after the response was written, and a pending
+ * or scheduled send (a send the owner already chose).
  *
- * Only what the response answered goes. A draft replying to mail newer than
- * that stays, and so does one edited after the response was written (the
- * owner is still working on it). A pending or scheduled send is a send the
- * owner already chose, not a draft, and is never touched. A new inbound
- * message reopens the flow: classification flags it afresh and drafts it under
- * the usual rules, with nothing left to restore.
+ * Both kinds of response settle: an Owlat reply once its transport accepted it
+ * (`settleAcceptedReply`, from the Postbox outbound lifecycle; a send that
+ * fails leaves every draft), and our own reply detected by mail sync or a
+ * client's IMAP APPEND (`settleOwnerReply`). An auto-reply (vacation notice)
+ * or a provider draft is not a response. A new inbound message reopens the
+ * flow: classification flags it afresh and drafts it under the usual rules,
+ * with nothing left to restore.
  */
 
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
+import { isUntouchedAiAnswer } from '@owlat/shared/answerMode';
 import { deleteOwnedUpload } from '../storage/uploads';
+import { openMailDraftBody } from '../lib/messageBody';
 import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
 import { clearThreadNeedsReply, isOwnMessage } from './needsReply';
 import { mailboxOwnAddresses } from './identities';
@@ -50,63 +54,69 @@ async function composingDrafts(
 	return drafts.filter((d) => d.state === 'draft');
 }
 
+/** A saved draft that is still the AI's reply, untouched by a person. */
+async function isUntouchedAiDraft(draft: Doc<'mailDrafts'>): Promise<boolean> {
+	const baseline = draft.aiDraftBaseline?.text;
+	if (!baseline || draft.composerMode === 'full') return false;
+	const { bodyHtml } = await openMailDraftBody(draft);
+	return isUntouchedAiAnswer(bodyHtml, baseline);
+}
+
 /**
- * Delete the drafts a response made obsolete: those replying to a message
- * received at or before `answeredUpTo` and last edited at or before
- * `respondedAt`. Returns how many went.
+ * Delete the AI drafts a response made obsolete: untouched ones replying to a
+ * message received at or before `answeredUpTo`, saved at or before
+ * `respondedAt`.
  */
 async function removeAnsweredDrafts(
 	ctx: MutationCtx,
 	drafts: ReadonlyArray<Doc<'mailDrafts'>>,
 	response: { answeredUpTo: number; respondedAt: number }
-): Promise<number> {
-	let removed = 0;
+): Promise<void> {
 	for (const draft of drafts) {
 		if (!draft.inReplyToMessageId || draft.lastEditedAt > response.respondedAt) continue;
 		const repliedTo = await ctx.db.get(draft.inReplyToMessageId);
 		if (!repliedTo || repliedTo.receivedAt > response.answeredUpTo) continue;
+		if (!(await isUntouchedAiDraft(draft))) continue;
 		await deleteDraftRow(ctx, draft);
-		removed++;
 	}
-	return removed;
 }
 
 /**
- * The `→ sent` row delete: the dispatched draft goes, and so do the other
- * drafts of the conversation that replied to the same message or an earlier
- * one. The dispatched draft's attachments stay (the sent copy owns them).
+ * An Owlat reply's transport accepted it (a recipient reached `sent`): the
+ * conversation's AI drafts for the message it answered, or an earlier one, go.
+ * The sent draft itself was deleted at `→ sent`. Idempotent, so every accepted
+ * recipient may call it.
  */
-export async function deleteSentDraft(
+export async function settleAcceptedReply(
 	ctx: MutationCtx,
-	draft: Doc<'mailDrafts'>,
-	sentAt: number
+	sent: Doc<'mailMessages'>
 ): Promise<void> {
-	const original = draft.inReplyToMessageId ? await ctx.db.get(draft.inReplyToMessageId) : null;
-	// Same-mailbox only, as for the flagAnswered patch (cross-mailbox IDOR).
-	if (draft.threadId && original && original.mailboxId === draft.mailboxId) {
-		const others = (await composingDrafts(ctx, draft.threadId)).filter((d) => d._id !== draft._id);
-		await removeAnsweredDrafts(ctx, others, {
-			answeredUpTo: original.receivedAt,
-			respondedAt: sentAt,
-		});
-	}
-	await deleteAskSessionsForDraft(ctx, draft._id);
-	await ctx.db.delete(draft._id);
+	if (!sent.answeredMessageId) return;
+	const answered = await ctx.db.get(sent.answeredMessageId);
+	if (!answered) return;
+	const drafts = await composingDrafts(ctx, answered.threadId);
+	await removeAnsweredDrafts(ctx, drafts, {
+		answeredUpTo: answered.receivedAt,
+		respondedAt: sent.createdAt,
+	});
 }
 
 /**
  * Settle a conversation when our own reply arrives from OUTSIDE Owlat (the
  * provider's web client, a phone, a desktop client's APPEND). That reply never
- * passes the draft lifecycle's sent-effects, so without this the needs-reply
- * flag, the draft generated for it and the saved draft all outlive the reply
- * that settled them. A Sent copy older than the flagged message (out-of-order
- * sync) settles nothing newer than itself; a saved draft (the Drafts folder,
- * `\Draft`) is not a reply at all.
+ * passes the draft lifecycle, so without this the needs-reply flag, the draft
+ * generated for it and the saved AI draft all outlive the reply that settled
+ * them. A Sent copy older than the flagged message (out-of-order sync) settles
+ * nothing newer than itself. Not a reply at all: a saved draft (the Drafts
+ * folder, `\Draft`) and an automatic one (`isAutomated`: Auto-Submitted, a
+ * vacation Precedence).
  */
 export async function settleOwnerReply(
 	ctx: MutationCtx,
-	messageId: Id<'mailMessages'>
+	messageId: Id<'mailMessages'>,
+	opts: { isAutomated?: boolean } = {}
 ): Promise<void> {
+	if (opts.isAutomated) return;
 	const message = await ctx.db.get(messageId);
 	if (!message || message.flagDraft) return;
 	const thread = await ctx.db.get(message.threadId);

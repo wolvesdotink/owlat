@@ -182,6 +182,8 @@ export async function insertDeliveredMessage(
 		attachments: DeliveredAttachment[];
 		flagSeen?: boolean;
 		flagFlagged?: boolean;
+		/** External sync: the provider's `\Draft` flag. */
+		flagDraft?: boolean;
 		labelIds?: Id<'mailLabels'>[];
 		spamScore?: number;
 		spamVerdict?: 'ham' | 'spam' | 'quarantine';
@@ -326,7 +328,7 @@ export async function insertDeliveredMessage(
 		flagSeen,
 		flagFlagged: params.flagFlagged ?? false,
 		flagAnswered: false,
-		flagDraft: false,
+		flagDraft: params.flagDraft ?? false,
 		flagDeleted: false,
 		customFlags: [],
 		labelIds: params.labelIds ?? [],

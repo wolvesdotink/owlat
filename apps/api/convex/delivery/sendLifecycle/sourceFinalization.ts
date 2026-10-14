@@ -5,7 +5,8 @@
  * record once the Send is terminal:
  *
  * - `agent_reply` → the inbound message it replies to (`approved → sent` or
- *   `→ failed`), plus the reply mirrored into the thread's unified timeline
+ *   `→ failed`), the thread's older messages the agent was still drafting or
+ *   asking about once it is sent (archived, `inbox/answeredThread.ts`), plus the reply mirrored into the thread's unified timeline
  *   and the thread brief's activity and interpretation
  *   (mail/interpret/sendActivity.ts).
  * - `team_reply` → the follow-up it carries (`inbox/followUps.ts`), plus the
@@ -22,6 +23,7 @@ import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { mirrorEmailSendWrite } from '../../unifiedMessages';
 import { onTeamSendFinalized } from '../../mail/interpret/sendActivity';
+import { settleAnsweredTeamThread } from '../../inbox/answeredThread';
 import type { EmailSendDoc, SendRef, TransactionalSendDoc, TransitionInput } from './types';
 
 type TerminalInput = Extract<TransitionInput, { to: 'sent' | 'failed' | 'bounced' | 'complained' }>;
@@ -80,6 +82,8 @@ export async function finalizeSendSource(
 		await onTeamSendFinalized(ctx, tSend, { to: input.to, at: input.at });
 	}
 	if (input.to !== 'sent') return;
+	// The thread's older messages this reply answered too (inbox/answeredThread.ts).
+	await settleAnsweredTeamThread(ctx, tSend.inboundMessageId, input.at);
 
 	try {
 		const inbound = await ctx.db.get(tSend.inboundMessageId);

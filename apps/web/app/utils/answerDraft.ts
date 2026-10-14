@@ -10,38 +10,20 @@
  * person chose stay byte for byte what they were.
  *
  * Pure string work (no DOM), so it runs the same in tests and in the browser.
+ * The split and the AI text's HTML live in `@owlat/shared/answerMode`, where
+ * the server reads them to tell an untouched AI draft from an edited one.
  */
-import { escapeHtmlWithBreaks } from '@owlat/shared/html';
-import { findDraftGaps, type DraftGap } from '@owlat/shared/answerMode';
+import {
+	aiTextToHtml,
+	findDraftGaps,
+	splitAnswerBody,
+	type DraftGap,
+} from '@owlat/shared/answerMode';
 import type { OperationError } from '@owlat/shared/operationError';
 import { splitQuotedText } from '@owlat/shared/quotedText';
 import { draftTextParts } from '~/utils/postboxDraftText';
 
-/** The start of the seeded tail: the signature block or the quoted original. */
-const TAIL_START =
-	/(?:<br\s*\/?>\s*){0,2}<div[^>]*(?:\bdata-postbox-signature\b|class=["'][^"']*gmail_quote)/i;
-
-/** Split a body into what was written and the seeded tail (signature, quote). */
-export function splitAnswerBody(bodyHtml: string): { fresh: string; tail: string } {
-	const index = bodyHtml.search(TAIL_START);
-	if (index < 0) return { fresh: bodyHtml, tail: '' };
-	return { fresh: bodyHtml.slice(0, index), tail: bodyHtml.slice(index) };
-}
-
-/**
- * Plain AI text as the composer's HTML: blank lines make paragraphs, single
- * line breaks stay breaks, and everything is escaped (model output is never
- * markup).
- */
-export function aiTextToHtml(text: string): string {
-	const paragraphs = text
-		.replace(/\r\n?/g, '\n')
-		.trim()
-		.split(/\n{2,}/)
-		.map((p) => p.trim())
-		.filter((p) => p.length > 0);
-	return paragraphs.map((p) => `<p>${escapeHtmlWithBreaks(p)}</p>`).join('');
-}
+export { aiTextToHtml, splitAnswerBody };
 
 /** `bodyHtml` with its fresh part replaced by `text` (the tail untouched). */
 export function replaceAnswerText(bodyHtml: string, text: string): string {
