@@ -881,6 +881,92 @@ describe('the response clock of a reopened message', () => {
 		expect((await thread(t, th)).responseDueAt).toBeUndefined();
 	});
 
+	/** An approved earlier message whose Send is still in flight, archived meanwhile, then delivered. */
+	async function deliveredAfterArchive(t: T, th: Thread) {
+		const earlier = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			draftResponse: 'Earlier answer',
+			receivedAt: NOW - 10_000,
+		});
+		const earlierSend = await t.run(async (ctx) =>
+			ctx.db.insert('transactionalSends', {
+				kind: 'agent_reply' as const,
+				email: 'customer@example.com',
+				status: 'queued',
+				queuedAt: NOW,
+				inboundMessageId: earlier,
+				contactId: th.contactId,
+				subject: 'Re: Order',
+			})
+		);
+		const { older, sendId } = await answeredThenBounced(t, th);
+		await bounce(t, sendId);
+		expect((await get(t, older)).answerBouncedAt).toBe(BOUNCE_AT);
+		// The sender gets blocked while the earlier reply is still in flight.
+		const archived = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: earlier,
+			input: { to: 'archived', at: BOUNCE_AT + 1, reason: 'sender_blocked' },
+		});
+		expect(archived.ok).toBe(true);
+		const deliver = async () => {
+			vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 10_000);
+			await t.mutation(internal.delivery.sendLifecycle.transition, {
+				send: { kind: 'transactional', id: earlierSend },
+				transition: { to: 'sent', at: BOUNCE_AT + 10_000, providerMessageId: 'earlier-reply' },
+			});
+		};
+		return { earlier, older, deliver };
+	}
+
+	it('reports a delivered reply to the thread even when its message was archived in flight', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const { earlier, older, deliver } = await deliveredAfterArchive(t, th);
+
+		await deliver();
+
+		expect((await get(t, earlier)).processingStatus).toBe('archived'); // left as it was
+		expect((await get(t, older)).answerBouncedAt).toBeUndefined();
+		expect((await thread(t, th)).lastReplySentAt).toBe(BOUNCE_AT + 10_000);
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+		for (let i = 0; i < 50; i++) {
+			vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 20_000 + i);
+			await seedInbound(t, th, {
+				processingStatus: 'informational',
+				receivedAt: BOUNCE_AT + 20_000 + i,
+			});
+			await t.run(async (ctx) =>
+				recordInboundMirror(ctx, {
+					threadId: th.threadId,
+					contactId: th.contactId,
+					channel: 'email',
+					content: 'FYI',
+					externalMessageId: `fyi-${i}`,
+				})
+			);
+		}
+		expect(await t.run(async (ctx) => isReplyOwed(ctx, th.threadId))).toBe(false);
+		await savePolicy(t, BOUNCE_AT + 30_000);
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+	});
+
+	it('counts that reply once, however often its delivery is reported', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const { deliver } = await deliveredAfterArchive(t, th);
+		await deliver();
+		const once = await thread(t, th);
+
+		await deliver(); // the same delivery report again
+
+		const twice = await thread(t, th);
+		expect(twice.slaMetCount ?? 0).toBe(once.slaMetCount ?? 0);
+		expect(twice.slaMissedCount ?? 0).toBe(once.slaMissedCount ?? 0);
+		expect(twice.lastReplySentAt).toBe(once.lastReplySentAt);
+	});
+
 	it('starts nothing for a person taking over an archived message, as before', async () => {
 		const t = await pushHarness(modules, {});
 		const th = await seedThread(t);

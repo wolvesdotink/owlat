@@ -5,7 +5,8 @@
  * record once the Send is terminal:
  *
  * - `agent_reply` → the inbound message it replies to (`approved → sent` or
- *   `→ failed`), the thread's older messages the agent was still drafting or
+ *   `→ failed`; a delivered reply whose message refuses `→ sent` is still
+ *   reported to the thread as a reply), the thread's older messages the agent was still drafting or
  *   asking about once it is sent (archived, `inbox/answeredThread.ts`; a later
  *   bounce reopens them), plus the reply mirrored into the thread's unified timeline
  *   and the thread brief's activity and interpretation
@@ -21,7 +22,9 @@
  */
 
 import type { MutationCtx } from '../../_generated/server';
+import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
+import { transition as threadTransition } from '../../inbox/threads/module';
 import { mirrorEmailSendWrite } from '../../unifiedMessages';
 import { onTeamSendFinalized } from '../../mail/interpret/sendActivity';
 import { restoreAnsweredTeamThread, settleAnsweredTeamThread } from '../../inbox/answeredThread';
@@ -43,6 +46,17 @@ function failureMessage(input: Exclude<TerminalInput, { to: 'sent' }>): string {
 	if (input.to === 'failed') return input.errorMessage;
 	if (input.to === 'bounced') return input.bounceMessage ?? 'Delivery bounced';
 	return 'Recipient complained about delivery';
+}
+
+/** A reply to `inboundMessageId` reached the customer, whatever its message's state. */
+async function reportReplyToThread(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	at: number
+): Promise<void> {
+	const message = await ctx.db.get(inboundMessageId);
+	if (!message?.threadId || message.processingStatus === 'sent') return;
+	await threadTransition(ctx, { threadId: message.threadId, input: { kind: 'reply_sent', at } });
 }
 
 export async function finalizeSendSource(
@@ -70,13 +84,21 @@ export async function finalizeSendSource(
 	}
 
 	if (tSend.kind !== 'agent_reply' || !tSend.inboundMessageId) return;
-	await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+	const source = await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
 		inboundMessageId: tSend.inboundMessageId,
 		input:
 			input.to === 'sent'
 				? { to: 'sent', at: input.at }
 				: { to: 'failed', at: input.at, errorMessage: failureMessage(input) },
 	});
+	// The reply reached the customer even when its message refuses `→ sent`
+	// (archived while the Send was in flight, say), and that edge is what
+	// reports a reply to the thread. Report it here instead: bounce markers end,
+	// `lastReplySentAt` moves, the clock settles. A message already `sent` had
+	// its reply reported, so a repeat report never counts twice.
+	if (input.to === 'sent' && !source.ok) {
+		await reportReplyToThread(ctx, tSend.inboundMessageId, input.at);
+	}
 	// The thread brief: sent → activity + the reply's interpretation; a failed
 	// or bounced Send → activity + the dispositions it answered fail.
 	if (input.to !== 'complained') {
