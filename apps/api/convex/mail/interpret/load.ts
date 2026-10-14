@@ -435,7 +435,8 @@ export const loadForInterpretation = internalQuery({
 		const brief = await loadBriefRow(ctx, info.threadRef);
 		const now = Date.now();
 		const candidates = await loadPromptItemCandidates(ctx, info.threadRef, now);
-		const items = selectPromptItems(candidates.rows, now);
+		const live = candidates.rows.filter((r) => !r.withdrawnFrom); // withdraw.ts
+		const items = selectPromptItems(live, now);
 		const openItems = await Promise.all(
 			items.page.map((item) => toPromptItem(item, info.participants))
 		);

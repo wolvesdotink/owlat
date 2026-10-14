@@ -239,7 +239,7 @@ async function toBriefingItem(
 		...(item.amount ? { amount: item.amount } : {}),
 		...(item.options?.length ? { options: item.options } : {}),
 		isUnconfirmed: item.verify === 'proposal',
-		isReviewNeeded: item.isReviewNeeded === true,
+		isReviewNeeded: item.isReviewNeeded === true || item.withdrawnFrom !== undefined,
 		isFromCurrentMessage,
 		askedAt: item.askedAt,
 	};
@@ -397,10 +397,14 @@ export function interpretationHoldReason(input: {
  * surviving messages cannot be re-read leaves the brief complete). Pure.
  */
 export function isUnresolved(
-	item: Pick<Doc<'threadItems'>, 'status' | 'responsibility' | 'isReviewNeeded' | 'redactedFields'>
+	item: Pick<
+		Doc<'threadItems'>,
+		'status' | 'responsibility' | 'isReviewNeeded' | 'redactedFields' | 'withdrawnFrom'
+	>
 ): boolean {
 	if (item.status !== 'open' || item.responsibility === 'them') return false;
-	return item.isReviewNeeded === true || (item.redactedFields?.length ?? 0) > 0;
+	const isFlagged = item.isReviewNeeded === true || item.withdrawnFrom !== undefined;
+	return isFlagged || (item.redactedFields?.length ?? 0) > 0;
 }
 
 /**

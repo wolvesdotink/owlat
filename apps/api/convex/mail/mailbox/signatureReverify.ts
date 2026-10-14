@@ -28,10 +28,12 @@
  *
  * A scope can change what interpretation reads: a clearsigned scope narrows the
  * body to the signed block, so the unsigned text around it and an HTML
- * alternative no longer count. Then the message is interpreted again, once, as
- * part of the write (`interpret/enqueue.ts enqueueReread`): a re-read that keeps
- * every item a person touched and flags what the signed block no longer
- * supports. A run of the old read still in flight is refused by the body
+ * alternative no longer count. Then, in the same write, what the old read
+ * contributed is withdrawn (`interpret/withdraw.ts`: facts retracted, items
+ * held as proposals for review, every human field kept), whether or not a new
+ * read can run, and the message is queued to be read again
+ * (`interpret/enqueue.ts enqueueReread`), which restores what the signed block
+ * still supports. A run of the old read still in flight is refused by the body
  * fingerprint (`interpret/sourceVersion.ts`) and starts over on the new read.
  */
 
@@ -51,6 +53,7 @@ import { postboxMutation } from '../_helpers';
 import { requireMailboxAccess } from '../permissions';
 import { isMailReadChangedBy } from '../interpret/scope';
 import { enqueueReread } from '../interpret/enqueue';
+import { withdrawSourceRead } from '../interpret/withdraw';
 
 /** A signed plaintext row whose verdict has no scope, so the reader withholds it. */
 export function needsSignatureReverify(
@@ -167,12 +170,18 @@ export const apply = internalMutation({
 	},
 });
 
-/** Read the message again, when it was interpreted (a cached read to replace). */
+/**
+ * When the message was interpreted: withdraw what its old read contributed,
+ * now, whether or not a new read can run (`interpret/withdraw.ts`), then queue
+ * that read, which restores what the signed block still supports.
+ */
 async function rereadInterpretation(ctx: MutationCtx, message: Doc<'mailMessages'>): Promise<void> {
 	const source = { kind: 'mail' as const, id: message._id };
 	const extraction = await ctx.db
 		.query('messageInterpretations')
 		.withIndex('by_source_revision', (q) => q.eq('sourceKey', interpretationSourceKey(source)))
 		.first();
-	if (extraction) await enqueueReread(ctx, source);
+	if (!extraction) return;
+	await withdrawSourceRead(ctx, message.threadId, source);
+	await enqueueReread(ctx, source);
 }

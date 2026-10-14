@@ -112,6 +112,7 @@ import type * as mail_interpret_threadEvents from '../mail/interpret/threadEvent
 import type * as mail_interpret_transitionSources from '../mail/interpret/transitionSources.js';
 import type * as mail_interpret_verify from '../mail/interpret/verify.js';
 import type * as mail_interpret_verifyRoute from '../mail/interpret/verifyRoute.js';
+import type * as mail_interpret_withdraw from '../mail/interpret/withdraw.js';
 import type * as mail_messageCounters from '../mail/messageCounters.js';
 import type * as mail_needsReplySlot from '../mail/needsReplySlot.js';
 import type * as maintenance_counterBackfill from '../maintenance/counterBackfill.js';
@@ -1867,6 +1868,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/transitionSources': typeof mail_interpret_transitionSources;
 	'mail/interpret/verify': typeof mail_interpret_verify;
 	'mail/interpret/verifyRoute': typeof mail_interpret_verifyRoute;
+	'mail/interpret/withdraw': typeof mail_interpret_withdraw;
 	'mail/messageCounters': typeof mail_messageCounters;
 	'mail/needsReplySlot': typeof mail_needsReplySlot;
 	'maintenance/counterBackfill': typeof maintenance_counterBackfill;

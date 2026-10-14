@@ -145,6 +145,9 @@ export const threadBriefTables = {
 		// Fingerprint of the stored body the run read (mail/interpret/sourceVersion.ts);
 		// the reducer refuses a write when the body changed since.
 		sourceVersion: v.optional(v.string()),
+		// What this read contributed was withdrawn: the message now reads narrower
+		// (mail/interpret/withdraw.ts). The next read restores what it reproduces.
+		isWithdrawn: v.optional(v.boolean()),
 		// Retryable partial or failed runs: attempts so far and when the next is due.
 		retryCount: v.optional(v.number()),
 		nextRetryAt: v.optional(v.number()),
@@ -209,6 +212,9 @@ export const threadBriefTables = {
 		lineage: v.optional(v.string()),
 		// Fields a message purge redacted (mail/interpret/purgeClaims.ts); a later claim refills them.
 		redactedFields: v.optional(v.array(v.string())),
+		// Retracted because the one message it rested on now reads narrower
+		// (mail/interpret/withdraw.ts); current again when a read of it restates it.
+		withdrawnFrom: v.optional(v.object({ sourceKey: v.string(), at: v.number() })),
 		revision: v.number(),
 		createdAt: v.number(),
 		updatedAt: v.number(),
@@ -266,6 +272,13 @@ export const threadBriefTables = {
 		sortKey: v.optional(v.string()),
 		// Conflicting evidence after a human correction, or a security flag.
 		isReviewNeeded: v.optional(v.boolean()),
+		// Unsupported: the one message it rested on now reads narrower
+		// (mail/interpret/withdraw.ts). Held as a proposal, for review, every human
+		// field kept; `verify` is what it was before, restored when a read of it
+		// supports it again.
+		withdrawnFrom: v.optional(
+			v.object({ sourceKey: v.string(), at: v.number(), verify: itemVerifyValidator })
+		),
 		// "Remind me" (lives next to the lifecycle, never changes it).
 		remindAt: v.optional(v.number()),
 		commitmentId: v.optional(v.id('mailCommitments')),

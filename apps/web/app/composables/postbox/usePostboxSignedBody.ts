@@ -11,6 +11,9 @@ import {
 } from '~/utils/postboxSignedBody';
 import { loadPostboxTextBody } from './postboxBodyResolver';
 
+/** How long a re-verify request may stay unsettled before the next look sends another. */
+export const REVERIFY_IN_FLIGHT_MS = 45_000;
+
 export interface SignedBodyMessage {
 	_id: string;
 	htmlBodyInline?: string;
@@ -89,11 +92,14 @@ export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
 	// A verdict from before scopes were recorded is withheld, so ask the server
 	// to verify the message again (#1320); the row picks up the scoped verdict
 	// when it lands. At most once per expansion, whatever the answer: collapsing
-	// the card lets the next expansion ask again while the verdict has no scope,
-	// and a request still on its way is never sent twice. The server throttles
+	// the card lets the next expansion ask again while the verdict has no scope.
+	// A request still on its way is not sent twice, until it has had
+	// REVERIFY_IN_FLIGHT_MS to settle (one that never settles must not block the
+	// next look); each attempt clears only its own guard. The server throttles
 	// repeats per message.
 	const askedThisExpansion = new Set<string>();
-	const inFlight = new Set<string>();
+	const inFlight = new Map<string, { attempt: number; since: number }>();
+	let attempts = 0;
 	watch(
 		() => [source.active(), source.message()._id, source.message().inboundSignatureInfo] as const,
 		([active, messageId, info]) => {
@@ -101,10 +107,12 @@ export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
 				askedThisExpansion.clear();
 				return;
 			}
-			if (!info || info.scope !== undefined) return;
-			if (askedThisExpansion.has(messageId) || inFlight.has(messageId)) return;
+			if (!info || info.scope !== undefined || askedThisExpansion.has(messageId)) return;
+			const pending = inFlight.get(messageId);
+			if (pending && Date.now() - pending.since < REVERIFY_IN_FLIGHT_MS) return;
+			const attempt = ++attempts;
 			askedThisExpansion.add(messageId);
-			inFlight.add(messageId);
+			inFlight.set(messageId, { attempt, since: Date.now() });
 			Promise.resolve()
 				.then(() =>
 					requireConvex().mutation(api.mail.mailbox.signatureReverify.request, {
@@ -114,7 +122,9 @@ export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
 				.catch(() => {
 					// Best effort: the verdict stays withheld until the next expansion asks.
 				})
-				.finally(() => inFlight.delete(messageId));
+				.finally(() => {
+					if (inFlight.get(messageId)?.attempt === attempt) inFlight.delete(messageId);
+				});
 		},
 		{ immediate: true }
 	);

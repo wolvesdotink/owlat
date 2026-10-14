@@ -14,6 +14,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
 import PostboxSecurityBadge from '../PostboxSecurityBadge.vue';
+import { REVERIFY_IN_FLIGHT_MS } from '~/composables/postbox/usePostboxSignedBody';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -514,15 +515,45 @@ describe('PostboxReaderMessage · a verdict without a scope is never shown', () 
 		expect(mutation).toHaveBeenCalledTimes(2);
 	});
 
-	it('never sends a second request while one is on its way', async () => {
-		const message = { textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY };
-		mutation.mockReturnValue(new Promise(() => {}));
-		const w = mountCard(message, { secureClass: 'pgp-clearsigned', hideBody: true });
-		await flushPromises();
-		await w.setProps({ expanded: false });
-		await w.setProps({ expanded: true });
-		await flushPromises();
-		expect(mutation).toHaveBeenCalledTimes(1);
+	it('a request that never settles holds the next one back only for a bounded time', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const message = { textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY };
+			const reopen = async (w: Card) => {
+				await w.setProps({ expanded: false });
+				await w.setProps({ expanded: true });
+				await flushPromises();
+			};
+			let settleFirst!: () => void;
+			mutation.mockReturnValueOnce(new Promise<null>((r) => (settleFirst = () => r(null))));
+			mutation.mockReturnValue(new Promise(() => {}));
+			const w = mountCard(message, { secureClass: 'pgp-clearsigned', hideBody: true });
+			await flushPromises();
+			expect(mutation).toHaveBeenCalledTimes(1);
+
+			// Reopened while it is on its way: not sent twice.
+			await reopen(w);
+			expect(mutation).toHaveBeenCalledTimes(1);
+
+			// It never settled: past the bound, a reopen asks once, refreshes add nothing.
+			vi.setSystemTime(Date.now() + REVERIFY_IN_FLIGHT_MS + 1);
+			await reopen(w);
+			for (let i = 0; i < 20; i++) {
+				await w.setProps({
+					message: { ...base, ...message, inboundSignatureInfo: { ...LEGACY } } as never,
+				});
+				await flushPromises();
+			}
+			expect(mutation).toHaveBeenCalledTimes(2);
+
+			// The first one settles late: it clears nothing of the second attempt's guard.
+			settleFirst();
+			await flushPromises();
+			await reopen(w);
+			expect(mutation).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('asks nothing for a collapsed card, a scoped verdict or unsigned mail', async () => {

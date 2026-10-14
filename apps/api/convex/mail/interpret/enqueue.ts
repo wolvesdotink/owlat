@@ -117,15 +117,12 @@ export async function enqueueSentInterpretation(
 }
 
 /**
- * Interpret a message again from its body as it reads now. Nothing is erased:
- * the run reads a new content revision and the reducer folds it onto the
- * thread like any re-read (`reduce.ts`, `fold.ts`). Items it reproduces keep
- * their identity and every field a person set (status, completion,
- * confirmation, reminder, undo snapshot) and gain the new evidence; an item it
- * no longer reproduces whose every quote came from this message is flagged
- * for review, never deleted (`flagUnreproduced`); other messages' items are
- * not touched. The run goes through the gate and the spend hold like any
- * other. A source with no snapshot was never enqueued and has nothing to
+ * Interpret a message again from its body as it reads now, after what its old
+ * read contributed was withdrawn (`withdraw.ts`). Nothing is erased: the run
+ * reads a new content revision and the reducer folds it onto the thread like
+ * any re-read (`reduce.ts`, `fold.ts`), matching withdrawn rows back by
+ * identity and restoring those it supports again; every field a person set
+ * stays. The run goes through the gate and the spend hold like any other. A source with no snapshot was never enqueued and has nothing to
  * re-read; one already outstanding has a run under way, which the body
  * fingerprint (`sourceVersion.ts`) starts over on the new read.
  */

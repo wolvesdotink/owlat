@@ -123,7 +123,7 @@ export async function openItem(row: Doc<'threadItems'>, locale: AppLocale): Prom
 		...(row.options ? { options: row.options } : {}),
 		evidence: await openEvidence(row.evidence),
 		verify: row.verify,
-		isReviewNeeded: row.isReviewNeeded === true,
+		isReviewNeeded: row.isReviewNeeded === true || row.withdrawnFrom !== undefined,
 		...(row.correction ? { correction: { kind: row.correction.kind, at: row.correction.at } } : {}),
 		...(row.remindAt !== undefined ? { remindAt: row.remindAt } : {}),
 		...(row.replacedById ? { replacedById: row.replacedById } : {}),

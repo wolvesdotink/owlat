@@ -4,14 +4,16 @@
  * clearsigned body beside an unrelated `.asc` attachment was read whole (its
  * unsigned trailer included); after, only the signed block counts.
  *
- *   - CACHED: nothing is erased. The message is queued to be read again
- *     (`enqueue.ts enqueueReread`); the re-read keeps every item it reproduces
- *     with each field a person set, flags an item only the unsigned trailer
- *     supported for review (human state kept), and leaves other messages'
- *     items alone;
+ *   - WITHDRAWN AT ONCE (`withdraw.ts`), whether or not a new read can run:
+ *     this message's facts are retracted and its items held as proposals for
+ *     review, out of the brief's facts, the model's input and reply plans,
+ *     every human field kept; other messages' rows untouched;
+ *   - RESTORED by the next read: what the signed block still supports is
+ *     current (fact) or supported (item) again, by identity; what only the
+ *     trailer supported stays withdrawn;
  *   - IN FLIGHT: a run that read the old body cannot commit (the body
- *     fingerprint, `sourceVersion.ts`) and starts over on the new read;
- *   - a MIME scope reads the body as it was, so nothing is re-read.
+ *     fingerprint, `sourceVersion.ts`);
+ *   - a MIME scope reads the body as it was, so nothing is withdrawn.
  */
 
 import { convexTest } from 'convex-test';
@@ -35,6 +37,8 @@ import {
 import { expectScheduledFailure } from '../../../__tests__/helpers/scheduledFailures';
 import { captureInterpretSource } from '../sources';
 import { listBucketOf } from '../counters';
+import { readFacts } from '../briefRead';
+import { isPlanRelevant } from '../responsePlanRules';
 import { sourceVersionOf } from '../sourceVersion';
 import type { ReduceResult } from '../reduceInput';
 import {
@@ -70,7 +74,20 @@ const trailerItem = reduceItem({
 	due: undefined,
 	evidence: [{ segmentId: 's0', start: 0, end: 16, quote: 'UNSIGNED TRAILER' }],
 });
-/** Another message's item in the same thread. */
+const fact = (key: string, text: string, quote: string) => ({
+	key,
+	assertion: text,
+	display: { en: text, de: text },
+	value: { kind: 'text' as const, text },
+	evidence: [{ segmentId: 's0', start: 0, end: quote.length, quote }],
+	isVerified: true,
+	isReviewNeeded: false,
+});
+/** A fact the signed block states, and one only the trailer states. */
+const signedFact = fact('["invoice","number",""]', 'Invoice 4471', 'invoice 4471');
+const trailerFact = fact('["payment","account",""]', 'Pay to account 999', 'account 999');
+/** Another message's item and fact in the same thread. */
+const venueFact = fact('["meeting","venue",""]', 'Venue still open', 'which venue');
 const venueItem = reduceItem({
 	intent: 'question',
 	facets: ['meeting'],
@@ -205,6 +222,11 @@ async function stateOf(t: Test, messageId: Id<'mailMessages'>, threadId: Id<'mai
 				.query('interpretSources')
 				.withIndex('by_source_key', (q) => q.eq('sourceKey', sourceKey))
 				.first(),
+			facts: await ctx.db
+				.query('threadFacts')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.collect(),
+			briefFacts: (await readFacts(ctx, threadId, 'en')).map((f) => f.id),
 			queued: (await ctx.db.system.query('_scheduled_functions').collect()).filter(
 				(job) => job.name === RUN && job.state.kind === 'pending'
 			),
@@ -218,10 +240,8 @@ function itemOf(items: Doc<'threadItems'>[], claim: { facets: readonly string[] 
 }
 
 describe('a re-verified clearsigned scope re-reads the interpretation (#1320)', () => {
-	it('keeps every item and what people set on them, and flags what the trailer alone supported', async () => {
-		// The queued run needs the LLM provider, which this module map leaves out.
-		expectScheduledFailure(RUN);
-		const t = convexTest(schema, modules);
+	/** The thread after the old read: this message's item and fact from each part, another message's too. */
+	async function seedInterpreted(t: Test) {
 		const { mailboxId, messageId, threadId } = await seedLegacy(t);
 		const otherId = await addMessageToThread(
 			t,
@@ -230,60 +250,172 @@ describe('a re-verified clearsigned scope re-reads the interpretation (#1320)', 
 		);
 		await interpret(t, otherId, threadId, {
 			contentRevision: 'rev-venue',
-			result: reduceResult({ items: [venueItem] }),
+			result: reduceResult({ items: [venueItem], facts: [venueFact] }),
 		});
-		// The old read took the trailer: one item from the signed block, one from the trailer.
+		// The old read took the trailer: an item and a fact from each part.
 		await interpret(t, messageId, threadId, {
 			contentRevision: 'rev-old-read',
-			result: reduceResult({ items: [signedItem, trailerItem] }),
+			result: reduceResult({ items: [signedItem, trailerItem], facts: [signedFact, trailerFact] }),
 		});
 		const seeded = await stateOf(t, messageId, threadId);
-		const signedId = itemOf(seeded.items, signedItem)!._id;
-		const trailerId = itemOf(seeded.items, trailerItem)!._id;
-		const venueId = itemOf(seeded.items, venueItem)!._id;
+		const ids = {
+			signed: itemOf(seeded.items, signedItem)!._id,
+			trailer: itemOf(seeded.items, trailerItem)!._id,
+			venue: itemOf(seeded.items, venueItem)!._id,
+		};
+		// Each fact is the one quoting its own span of its own message.
+		const factOf = (id: Id<'mailMessages'>, quote: string) =>
+			seeded.facts.find((f) =>
+				f.evidence.some((e) => e.source.id === id && e.end === quote.length)
+			)!;
+		const facts = {
+			signed: factOf(messageId, 'invoice 4471')._id,
+			trailer: factOf(messageId, 'account 999')._id,
+			venue: factOf(otherId, 'which venue')._id,
+		};
 		await t.run(async (ctx) => {
-			for (const id of [signedId, trailerId, venueId]) {
+			for (const id of [ids.signed, ids.trailer, ids.venue]) {
 				// The list projection follows the status, as the write path keeps it.
 				const item = (await ctx.db.get(id))!;
 				await ctx.db.patch(id, { ...HUMAN, listBucket: listBucketOf({ ...item, ...HUMAN }) });
 			}
 		});
-		const venueBefore = await t.run((ctx) => ctx.db.get(venueId));
+		const other = await t.run(async (ctx) => ({
+			item: await ctx.db.get(ids.venue),
+			fact: await ctx.db.get(facts.venue),
+		}));
+		return { messageId, threadId, ids, facts, other, seeded };
+	}
+
+	/** What every machine consumer sees of the thread now. */
+	async function consumersOf(t: Test, messageId: Id<'mailMessages'>, threadId: Id<'mailThreads'>) {
+		const state = await stateOf(t, messageId, threadId);
+		const input = await t.query(internal.mail.interpret.load.loadForInterpretation, {
+			source: { kind: 'mail', id: messageId },
+		});
+		return {
+			state,
+			promptItems: input!.openItems.map((i) => i.id as string),
+			promptFacts: input!.currentFacts.map((f) => f.id as string),
+			planItems: state.items.filter((i) => isPlanRelevant(i)).map((i) => i._id as string),
+		};
+	}
+
+	it('withdraws the old read at once, and a signed-only re-read restores what the block supports', async () => {
+		// The queued run needs the LLM provider, which this module map leaves out.
+		expectScheduledFailure(RUN);
+		const t = convexTest(schema, modules);
+		const { messageId, threadId, ids, facts, other, seeded } = await seedInterpreted(t);
 
 		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
 
-		// Nothing is erased; the message is queued to be read again, once.
-		const queued = await stateOf(t, messageId, threadId);
-		expect(queued.verdict).toMatchObject({ isSignatureValid: true, scope: 'clearsigned' });
-		expect(queued.extractions).toHaveLength(1);
-		expect(queued.items).toHaveLength(3);
-		expect(queued.epoch).toBe(seeded.epoch);
-		expect(queued.snapshot).toMatchObject({ isOutstanding: true });
-		expect(queued.snapshot!.claimIds?.length).toBeGreaterThan(0);
-		expect(queued.queued.map((job) => job.args[0])).toEqual([
-			{ source: { kind: 'mail', id: messageId } },
-		]);
-		expect(queued.version).not.toBe(seeded.version);
+		// (b) At once, before any new read: nothing of this message reaches a machine consumer.
+		const now = await consumersOf(t, messageId, threadId);
+		expect(now.state.verdict).toMatchObject({ isSignatureValid: true, scope: 'clearsigned' });
+		for (const id of [ids.signed, ids.trailer]) {
+			const item = now.state.items.find((i) => i._id === id)!;
+			expect(item).toMatchObject({
+				...HUMAN,
+				verify: 'proposal',
+				withdrawnFrom: { verify: 'passed' },
+			});
+			expect(now.promptItems).not.toContain(id);
+			expect(now.planItems).not.toContain(id);
+		}
+		for (const id of [facts.signed, facts.trailer]) {
+			expect(now.state.facts.find((f) => f._id === id)).toMatchObject({ status: 'retracted' });
+			expect(now.state.briefFacts).not.toContain(id);
+			expect(now.promptFacts).not.toContain(id);
+		}
+		// (d) another message's item and fact are untouched, and still reach the model.
+		expect(await t.run((ctx) => ctx.db.get(ids.venue))).toEqual(other.item);
+		expect(await t.run((ctx) => ctx.db.get(facts.venue))).toEqual(other.fact);
+		expect(now.promptFacts).toContain(facts.venue);
+		expect(now.state.queued).toHaveLength(1);
+		expect(now.state.version).not.toBe(seeded.version);
 
-		// The queued run lands: the signed block shows only the signed claim.
+		// The queued run lands: the signed block shows the signed claim and fact only.
 		expect(
 			await interpret(t, messageId, threadId, {
 				contentRevision: 'rev-signed-block',
-				result: reduceResult({ items: [signedItem] }),
+				result: reduceResult({ items: [signedItem], facts: [signedFact] }),
 			})
 		).toMatchObject({ outcome: 'applied' });
 
-		const after = await stateOf(t, messageId, threadId);
-		// (a) the signed-block claim keeps its identity, completion, confirmation and reminder.
-		expect(after.items.find((i) => i._id === signedId)).toMatchObject(HUMAN);
-		// (c) the trailer-only claim is flagged for review, never deleted; its human state stays.
-		expect(after.items.find((i) => i._id === trailerId)).toMatchObject({
-			...HUMAN,
-			isReviewNeeded: true,
+		const after = await consumersOf(t, messageId, threadId);
+		// (c) the signed-block item and fact stand again, by identity, human state kept.
+		const signed = after.state.items.find((i) => i._id === ids.signed)!;
+		expect(signed).toMatchObject({ ...HUMAN, verify: 'passed' });
+		expect(signed.withdrawnFrom).toBeUndefined();
+		expect(after.state.facts.find((f) => f._id === facts.signed)).toMatchObject({
+			status: 'current',
 		});
-		// (b) another message's item is not touched at all, its undo snapshot included.
-		expect(await t.run((ctx) => ctx.db.get(venueId))).toEqual(venueBefore);
-		expect(after.snapshot?.isOutstanding).not.toBe(true);
+		expect(after.state.briefFacts).toContain(facts.signed);
+		expect(after.promptFacts).toContain(facts.signed);
+		// (a) the trailer-only fact stays out of the brief and the model's input; its
+		// item stays out of plans, held for review with every human field.
+		expect(after.state.facts.find((f) => f._id === facts.trailer)).toMatchObject({
+			status: 'retracted',
+		});
+		expect(after.state.briefFacts).not.toContain(facts.trailer);
+		expect(after.promptFacts).not.toContain(facts.trailer);
+		const trailer = after.state.items.find((i) => i._id === ids.trailer)!;
+		expect(trailer).toMatchObject({
+			...HUMAN,
+			verify: 'proposal',
+			withdrawnFrom: { verify: 'passed' },
+		});
+		expect(after.promptItems).not.toContain(ids.trailer);
+		expect(after.planItems).not.toContain(ids.trailer);
+		// (d) still untouched.
+		expect(await t.run((ctx) => ctx.db.get(ids.venue))).toEqual(other.item);
+		expect(await t.run((ctx) => ctx.db.get(facts.venue))).toEqual(other.fact);
+	});
+
+	it.each([
+		['the ai flag is off', { errorCode: 'ai_off' }],
+		[
+			'the spend hold refuses',
+			{ errorCode: 'budget', budgetRefusal: { reason: 'monthly_ceiling', limit: 'interpret' } },
+		],
+	] as const)('keeps the old read withdrawn when %s', async (_case, refusal) => {
+		expectScheduledFailure(RUN);
+		const t = convexTest(schema, modules);
+		const { messageId, threadId, ids, facts } = await seedInterpreted(t);
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+
+		// The queued run is refused before any model call: it records the refusal and nothing else.
+		const loaded = await stateOf(t, messageId, threadId);
+		expect(
+			await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+				source: { kind: 'mail', id: messageId },
+				threadRef: { kind: 'mail', id: threadId },
+				mode: 'brief',
+				contentRevision: 'rev-signed-block',
+				extractorVersion: 2,
+				sourceAt: T,
+				direction: 'inbound',
+				status: 'failed',
+				...refusal,
+				sourceVersion: loaded.version!,
+				deletionEpoch: loaded.epoch,
+				expectedRevision: loaded.revision,
+			})
+		).toMatchObject({ outcome: 'applied' });
+
+		const now = await consumersOf(t, messageId, threadId);
+		for (const id of [ids.signed, ids.trailer]) {
+			expect(now.state.items.find((i) => i._id === id)).toMatchObject({
+				...HUMAN,
+				verify: 'proposal',
+			});
+			expect(now.promptItems).not.toContain(id);
+			expect(now.planItems).not.toContain(id);
+		}
+		for (const id of [facts.signed, facts.trailer]) {
+			expect(now.state.briefFacts).not.toContain(id);
+			expect(now.promptFacts).not.toContain(id);
+		}
 	});
 
 	it('refuses a first run that read the old body, which starts over on the new read', async () => {
