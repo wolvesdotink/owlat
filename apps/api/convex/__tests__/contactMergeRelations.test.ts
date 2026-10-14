@@ -1,14 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { v } from 'convex/values';
-import schema from '../schema';
 import type { Id } from '../_generated/dataModel';
 import { createTestContact } from './factories';
 import { newHarness } from './testModules';
-import { referencesTo, schemaReferencesTo } from './schemaReferences';
+import {
+	referencesTo,
+	schemaReferencesTo,
+	schemaStringContactReferences,
+	stringReferencesTo,
+} from './schemaReferences';
 import {
 	CONTACT_MERGE_EXCLUSIONS,
 	CONTACT_MERGE_ROUTINES,
-	CONTACT_MERGE_STRING_REFS,
 	CONTACT_REPOINT_TABLES,
 	mergeContactRelations,
 } from '../lib/contactMutations';
@@ -22,9 +25,12 @@ import {
  * (clarificationMemory and answerAskSessions were, #1337). A new field fails
  * here until it is repointed, given a routine, or excluded with a reason.
  *
- * The walk only sees `v.id('contacts')` fields. A contact id kept in a plain
- * string is invisible to it, so each such field is declared by hand in
- * `CONTACT_MERGE_STRING_REFS`, and checked here to still exist.
+ * A contact id kept in a plain string is invisible to the `v.id` walk, so the
+ * gate also takes the string fields `stringReferencesTo` recognises as contact
+ * ids (see its rule in `schemaReferences.ts`). Those must be handled the same
+ * way, and the executable fixtures in `contactErasureRelationCoverage.test.ts`
+ * seed them through their discriminator, so a missing merge or erasure
+ * handler fails a test rather than only a list comparison.
  */
 
 const handled = (): string[] => [
@@ -34,24 +40,16 @@ const handled = (): string[] => [
 ];
 
 describe('contact merge relation coverage', () => {
-	it("handles every v.id('contacts') field in the schema", () => {
-		expect([...handled()].sort()).toEqual(schemaReferencesTo('contacts'));
+	it('handles every field in the schema that references contacts', () => {
+		const inSchema = [
+			...schemaReferencesTo('contacts'),
+			...schemaStringContactReferences().map((r) => r.ref),
+		].sort();
+		expect([...handled()].sort()).toEqual(inSchema);
 	});
 
 	it('handles each field one way only', () => {
 		expect(new Set(handled()).size).toBe(handled().length);
-	});
-
-	it('declares string-typed contact references that still exist as strings', () => {
-		const tables = (
-			schema as unknown as {
-				tables: Record<string, { validator: { fields: Record<string, { kind: string }> } }>;
-			}
-		).tables;
-		for (const ref of CONTACT_MERGE_STRING_REFS) {
-			const [table, field] = ref.split('.') as [string, string];
-			expect(tables[table]?.validator.fields[field]?.kind, ref).toBe('string');
-		}
 	});
 
 	it('gives every exclusion a reason', () => {
@@ -62,6 +60,38 @@ describe('contact merge relation coverage', () => {
 });
 
 describe('schema reference walk', () => {
+	it('recognises contact ids held in plain strings by their discriminator or name', () => {
+		const tables = {
+			scoped: {
+				validator: v.object({
+					organizationId: v.string(),
+					scopeType: v.union(v.literal('mailbox'), v.literal('contact')),
+					scopeId: v.string(),
+				}),
+			},
+			audited: {
+				validator: v.object({
+					resource: v.union(v.literal('contact'), v.literal('campaign')),
+					resourceId: v.optional(v.string()),
+					userId: v.string(),
+				}),
+			},
+			otherKind: {
+				validator: v.object({ targetType: v.literal('mailbox'), targetId: v.string() }),
+			},
+			named: {
+				validator: v.object({ fromContactId: v.string(), contactIds: v.array(v.string()) }),
+			},
+			typed: { validator: v.object({ contactId: v.id('contacts') }) },
+		};
+		expect(stringReferencesTo(tables, 'contact')).toEqual([
+			{ ref: 'audited.resourceId', discriminator: 'resource' },
+			{ ref: 'named.contactIds[]' },
+			{ ref: 'named.fromContactId' },
+			{ ref: 'scoped.scopeId', discriminator: 'scopeType' },
+		]);
+	});
+
 	it('finds ids in nested objects, arrays, unions, and record keys and values', () => {
 		const tables = {
 			plain: { validator: v.object({ contactId: v.id('contacts'), other: v.id('topics') }) },

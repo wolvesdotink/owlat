@@ -20,7 +20,9 @@ export async function danglingContactReferences(
 		const field = isArray ? relation.field.slice(0, -2) : relation.field;
 		const rows = await ctx.db.query(relation.table).collect();
 		for (const row of rows) {
-			const value = (row as Record<string, unknown>)[field];
+			const record = row as Record<string, unknown>;
+			if (relation.when && record[relation.when.field] !== relation.when.equals) continue;
+			const value = record[field];
 			const hit = isArray ? Array.isArray(value) && value.includes(contactId) : value === contactId;
 			if (hit) dangling.push(`${relation.table}.${relation.field}`);
 		}

@@ -17,10 +17,11 @@ import { advanceErasure, finishErasure, FIRST_ERASURE_PHASE } from '../contacts/
  * table is declared separately, in `contacts/erasure/relations.ts`.)
  *
  * The tables with a bespoke routine (dedupe / two-sided FK / consent
- * membership / mirrored junction) are listed in `CONTACT_MERGE_ROUTINES`
- * instead, and the fields the merge leaves alone on purpose in
- * `CONTACT_MERGE_EXCLUSIONS`. `__tests__/contactMergeRelations.test.ts` walks
- * the schema so every `v.id('contacts')` field lands in exactly one of the three.
+ * membership / mirrored junction / string-typed id) are listed in
+ * `CONTACT_MERGE_ROUTINES` instead, and the fields the merge leaves alone on
+ * purpose in `CONTACT_MERGE_EXCLUSIONS`. `__tests__/contactMergeRelations.test.ts`
+ * walks the schema so every `v.id('contacts')` field, and every plain-string
+ * field it recognises as a contact id, lands in exactly one of the three.
  */
 export const CONTACT_REPOINT_TABLES = [
 	'contactActivities',
@@ -56,14 +57,7 @@ export const CONTACT_MERGE_ROUTINES = [
 	'knowledgeEntryContacts.contactId',
 	'semanticFiles.contactIds[]',
 	'semanticFileContacts.contactId',
-] as const;
-
-/**
- * References to `contacts` held in a plain `v.string()` field, which the schema
- * walk cannot see. Each is moved by a routine in `mergeContactRelations`.
- */
-export const CONTACT_MERGE_STRING_REFS = [
-	// A contact-scoped draft strategy override (`scopeType: 'contact'`).
+	// A contact id in a plain string (`scopeType: 'contact'`).
 	'draftStrategySelections.scopeId',
 ] as const;
 
@@ -71,6 +65,8 @@ export const CONTACT_MERGE_STRING_REFS = [
 export const CONTACT_MERGE_EXCLUSIONS: Readonly<Record<string, string>> = {
 	'contactErasureJobs.contactId':
 		'An erasure job names the contact it erases. Moving it onto the survivor would erase the survivor.',
+	'auditLogs.resourceId':
+		'An audit entry records what happened to that contact id, including the merge itself; rewriting it would falsify the history.',
 };
 
 /**

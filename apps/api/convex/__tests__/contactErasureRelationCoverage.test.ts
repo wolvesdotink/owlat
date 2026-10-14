@@ -236,6 +236,8 @@ async function seedContactRelations(
 		const id = await seeder.insert(relation.table, {
 			...ROW_SHAPES[relation.table],
 			...junctionParent,
+			// A contact id in a plain string only counts beside its discriminator.
+			...(relation.when ? { [relation.when.field]: relation.when.equals } : {}),
 			[field]: relation.field.endsWith('[]') ? [contactId] : contactId,
 		});
 		parents.set(relation.table, id);

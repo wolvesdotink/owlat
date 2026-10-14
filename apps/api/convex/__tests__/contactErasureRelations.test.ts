@@ -4,11 +4,12 @@ import {
 	DESCENDANT_RELATIONS,
 	tablesErasureDeletesFrom,
 } from '../contacts/erasure/relations';
-import { schemaReferencesTo } from './schemaReferences';
+import { schemaReferencesTo, schemaStringContactReferences } from './schemaReferences';
 
 /**
  * Schema coverage gate for the contact erasure relation registry
- * (`contacts/erasure/relations.ts`). A new `v.id('contacts')` field, or a new
+ * (`contacts/erasure/relations.ts`). A new `v.id('contacts')` field, a new
+ * plain-string field the walk recognises as a contact id, or a new
  * reference to a table the erasure deletes from, fails here until it declares
  * what permanent deletion does to it — so the cascade can never silently fall
  * behind the schema again (clarificationMemory did, and kept learned answers
@@ -18,7 +19,28 @@ import { schemaReferencesTo } from './schemaReferences';
 describe('contact erasure relation registry', () => {
 	it('declares a policy for every field in the schema that references contacts', () => {
 		const declared = CONTACT_RELATIONS.map((r) => `${r.table}.${r.field}`).sort();
-		expect(declared).toEqual(schemaReferencesTo('contacts'));
+		const inSchema = [
+			...schemaReferencesTo('contacts'),
+			...schemaStringContactReferences().map((r) => r.ref),
+		].sort();
+		expect(declared).toEqual(inSchema);
+	});
+
+	it('names the discriminator of every contact id held in a plain string', () => {
+		const discriminators = new Map(
+			schemaStringContactReferences().map((r) => [r.ref, r.discriminator])
+		);
+		for (const relation of CONTACT_RELATIONS) {
+			const ref = `${relation.table}.${relation.field}`;
+			if (!discriminators.has(ref)) {
+				expect(relation.when, `${ref} is a v.id field`).toBeUndefined();
+				continue;
+			}
+			const discriminator = discriminators.get(ref);
+			// A string named for the contact itself needs no discriminator.
+			if (discriminator === undefined) continue;
+			expect(relation.when, ref).toEqual({ field: discriminator, equals: 'contact' });
+		}
 	});
 
 	it('declares a policy for every reference to a table the erasure deletes from', () => {

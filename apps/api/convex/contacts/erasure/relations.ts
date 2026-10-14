@@ -10,7 +10,8 @@
  * new relation cannot land without a declaration here:
  *
  *   - every `v.id('contacts')` field anywhere in the schema (including nested
- *     and array fields) must appear in `CONTACT_RELATIONS`, and
+ *     and array fields) must appear in `CONTACT_RELATIONS`, and so must every
+ *     plain-string field the walk recognises as a contact id (`when`), and
  *   - every field that references a table the erasure deletes rows from must
  *     appear in `DESCENDANT_RELATIONS`, recursively.
  *
@@ -48,6 +49,12 @@ export interface ErasureRelation {
 	 * element, `a.b[].c` for a nested field.
 	 */
 	field: string;
+	/**
+	 * For a contact id held in a plain `v.string()` field: the sibling field
+	 * whose value says the string is a contact id (`scopeType: 'contact'`).
+	 * Absent on `v.id('contacts')` fields.
+	 */
+	when?: { field: string; equals: string };
 	action: ErasureAction;
 	/** For `unlink`: the case in which the row is deleted instead. */
 	deletesWhen?: string;
@@ -190,6 +197,23 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		why: 'The erasure’s own progress row; deleted in the same transaction as the contact row.',
 	},
 	...AI_ROUTING_CONTACT_RELATIONS,
+	// Contact ids held in plain strings, next to a field naming their kind. The
+	// schema walk cannot see these; `__tests__/schemaReferences.ts` finds them
+	// by that pairing (`<x>Id` beside `<x>`, `<x>Type` or `<x>Kind`).
+	{
+		table: 'draftStrategySelections',
+		field: 'scopeId',
+		when: { field: 'scopeType', equals: 'contact' },
+		action: 'delete',
+		why: 'A draft strategy override for this one contact means nothing once the contact is gone.',
+	},
+	{
+		table: 'auditLogs',
+		field: 'resourceId',
+		when: { field: 'resource', equals: 'contact' },
+		action: 'retain',
+		why: 'The audit log is the organization’s record of who did what, kept as written. Known gap: contact entries also keep the address in `details`, which contact erasure does not scrub yet.',
+	},
 ];
 
 /**
