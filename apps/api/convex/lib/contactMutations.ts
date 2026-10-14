@@ -58,6 +58,15 @@ export const CONTACT_MERGE_ROUTINES = [
 	'semanticFileContacts.contactId',
 ] as const;
 
+/**
+ * References to `contacts` held in a plain `v.string()` field, which the schema
+ * walk cannot see. Each is moved by a routine in `mergeContactRelations`.
+ */
+export const CONTACT_MERGE_STRING_REFS = [
+	// A contact-scoped draft strategy override (`scopeType: 'contact'`).
+	'draftStrategySelections.scopeId',
+] as const;
+
 /** References to `contacts` the merge deliberately leaves on the source, and why. */
 export const CONTACT_MERGE_EXCLUSIONS: Readonly<Record<string, string>> = {
 	'contactErasureJobs.contactId':
@@ -146,6 +155,43 @@ async function mergeClarificationMemory(
 }
 
 /**
+ * Move the source's draft strategy override onto the target. A scope holds at
+ * most one override per organization (`setSelection` reads it with
+ * `.unique()`), so when both contacts have one, the newer choice stays on the
+ * target's row and the source's row is deleted.
+ */
+async function mergeDraftStrategySelections(
+	ctx: MutationCtx,
+	targetContactId: Id<'contacts'>,
+	sourceContactId: Id<'contacts'>
+): Promise<void> {
+	const targetRows = await ctx.db
+		.query('draftStrategySelections')
+		.withIndex('by_scope', (q) => q.eq('scopeType', 'contact').eq('scopeId', targetContactId))
+		.collect(); // bounded: one override per organization for one contact
+	const targetByOrganization = new Map(targetRows.map((row) => [row.organizationId, row]));
+	const sourceRows = await ctx.db
+		.query('draftStrategySelections')
+		.withIndex('by_scope', (q) => q.eq('scopeType', 'contact').eq('scopeId', sourceContactId))
+		.collect(); // bounded: one override per organization for one contact
+	for (const row of sourceRows) {
+		const existing = targetByOrganization.get(row.organizationId);
+		if (!existing) {
+			await ctx.db.patch(row._id, { scopeId: targetContactId });
+			targetByOrganization.set(row.organizationId, row);
+			continue;
+		}
+		if (row.updatedAt > existing.updatedAt) {
+			await ctx.db.patch(existing._id, {
+				strategyKind: row.strategyKind,
+				updatedAt: row.updatedAt,
+			});
+		}
+		await ctx.db.delete(row._id);
+	}
+}
+
+/**
  * Move every contact-owned row (identities, relationships, topic memberships,
  * property values, learned clarification answers, and all
  * `CONTACT_REPOINT_TABLES` FK rows) from `source` onto `target`, deduping the
@@ -168,6 +214,8 @@ async function mergeClarificationMemory(
  *  - clarificationMemory — on a question the target already has an answer to,
  *    keep the newer answer on the target's row, add up the counters, and drop
  *    the source's row; otherwise repoint (`mergeClarificationMemory`).
+ *  - draftStrategySelections — the contact-scoped override keeps the newer
+ *    choice when both contacts have one (`mergeDraftStrategySelections`).
  *  - everything else — straight FK repoint (`repointSimpleContactRefs`).
  */
 export async function mergeContactRelations(
@@ -270,6 +318,9 @@ export async function mergeContactRelations(
 
 	// Learned clarification answers — dedupe by question, keeping the newer.
 	await mergeClarificationMemory(ctx, targetContactId, sourceContactId);
+
+	// Draft strategy override — a string-typed reference, one per scope.
+	await mergeDraftStrategySelections(ctx, targetContactId, sourceContactId);
 
 	// Everything else — straight FK repoint.
 	await repointSimpleContactRefs(ctx, targetContactId, sourceContactId);

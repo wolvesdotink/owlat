@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import { v } from 'convex/values';
+import schema from '../schema';
 import type { Id } from '../_generated/dataModel';
 import { createTestContact } from './factories';
 import { newHarness } from './testModules';
-import { schemaReferencesTo } from './schemaReferences';
+import { referencesTo, schemaReferencesTo } from './schemaReferences';
 import {
 	CONTACT_MERGE_EXCLUSIONS,
 	CONTACT_MERGE_ROUTINES,
+	CONTACT_MERGE_STRING_REFS,
 	CONTACT_REPOINT_TABLES,
 	mergeContactRelations,
 } from '../lib/contactMutations';
@@ -18,6 +21,10 @@ import {
  * left pointing at a deleted contact, out of reach of the survivor's erasure
  * (clarificationMemory and answerAskSessions were, #1337). A new field fails
  * here until it is repointed, given a routine, or excluded with a reason.
+ *
+ * The walk only sees `v.id('contacts')` fields. A contact id kept in a plain
+ * string is invisible to it, so each such field is declared by hand in
+ * `CONTACT_MERGE_STRING_REFS`, and checked here to still exist.
  */
 
 const handled = (): string[] => [
@@ -27,7 +34,7 @@ const handled = (): string[] => [
 ];
 
 describe('contact merge relation coverage', () => {
-	it('handles every field in the schema that references contacts', () => {
+	it("handles every v.id('contacts') field in the schema", () => {
 		expect([...handled()].sort()).toEqual(schemaReferencesTo('contacts'));
 	});
 
@@ -35,10 +42,43 @@ describe('contact merge relation coverage', () => {
 		expect(new Set(handled()).size).toBe(handled().length);
 	});
 
+	it('declares string-typed contact references that still exist as strings', () => {
+		const tables = (
+			schema as unknown as {
+				tables: Record<string, { validator: { fields: Record<string, { kind: string }> } }>;
+			}
+		).tables;
+		for (const ref of CONTACT_MERGE_STRING_REFS) {
+			const [table, field] = ref.split('.') as [string, string];
+			expect(tables[table]?.validator.fields[field]?.kind, ref).toBe('string');
+		}
+	});
+
 	it('gives every exclusion a reason', () => {
 		for (const [field, why] of Object.entries(CONTACT_MERGE_EXCLUSIONS)) {
 			expect(why.trim().length, field).toBeGreaterThan(0);
 		}
+	});
+});
+
+describe('schema reference walk', () => {
+	it('finds ids in nested objects, arrays, unions, and record keys and values', () => {
+		const tables = {
+			plain: { validator: v.object({ contactId: v.id('contacts'), other: v.id('topics') }) },
+			nested: {
+				validator: v.object({
+					a: v.object({ b: v.array(v.union(v.id('contacts'), v.null())) }),
+				}),
+			},
+			keyed: { validator: v.object({ byContact: v.record(v.id('contacts'), v.string()) }) },
+			valued: { validator: v.object({ toContact: v.record(v.string(), v.id('contacts')) }) },
+		};
+		expect(referencesTo(tables, 'contacts')).toEqual([
+			'keyed.byContact{key}',
+			'nested.a.b[]',
+			'plain.contactId',
+			'valued.toContact{}',
+		]);
 	});
 });
 
@@ -171,5 +211,73 @@ describe('learned clarification answers across a merge', () => {
 
 		const row = await t.run((ctx) => ctx.db.get(orgWideId));
 		expect(row?.contactId).toBeUndefined();
+	});
+});
+
+function selection(scopeId: string, strategyKind: string, updatedAt: number) {
+	return {
+		organizationId: 'org-1',
+		scopeType: 'contact' as const,
+		scopeId,
+		strategyKind,
+		createdAt: NOW,
+		updatedAt,
+	};
+}
+
+describe('draft strategy overrides across a merge', () => {
+	it('moves the source’s override onto the survivor', async () => {
+		const t = newHarness();
+		const { targetId, sourceId, rowId } = await t.run(async (ctx) => {
+			const targetId = await ctx.db.insert('contacts', createTestContact());
+			const sourceId = await ctx.db.insert('contacts', createTestContact());
+			const rowId = await ctx.db.insert(
+				'draftStrategySelections',
+				selection(sourceId, 'concise', NOW)
+			);
+			return { targetId, sourceId, rowId };
+		});
+
+		await t.run((ctx) => mergeContactRelations(ctx, targetId, sourceId));
+
+		expect(await t.run((ctx) => ctx.db.get(rowId))).toMatchObject({
+			scopeType: 'contact',
+			scopeId: targetId,
+			strategyKind: 'concise',
+		});
+	});
+
+	it('keeps one override, the newer one, when both contacts have one', async () => {
+		const t = newHarness();
+		const { targetId, sourceId } = await t.run(async (ctx) => {
+			const targetId = await ctx.db.insert('contacts', createTestContact());
+			const sourceId = await ctx.db.insert('contacts', createTestContact());
+			await ctx.db.insert('draftStrategySelections', selection(targetId, 'concise', NOW));
+			await ctx.db.insert('draftStrategySelections', selection(sourceId, 'formal', NOW + 1000));
+			return { targetId, sourceId };
+		});
+
+		await t.run((ctx) => mergeContactRelations(ctx, targetId, sourceId));
+
+		const rows = await t.run((ctx) => ctx.db.query('draftStrategySelections').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ scopeId: targetId, strategyKind: 'formal' });
+	});
+
+	it('keeps the survivor’s override when it is the newer one', async () => {
+		const t = newHarness();
+		const { targetId, sourceId } = await t.run(async (ctx) => {
+			const targetId = await ctx.db.insert('contacts', createTestContact());
+			const sourceId = await ctx.db.insert('contacts', createTestContact());
+			await ctx.db.insert('draftStrategySelections', selection(targetId, 'concise', NOW + 1000));
+			await ctx.db.insert('draftStrategySelections', selection(sourceId, 'formal', NOW));
+			return { targetId, sourceId };
+		});
+
+		await t.run((ctx) => mergeContactRelations(ctx, targetId, sourceId));
+
+		const rows = await t.run((ctx) => ctx.db.query('draftStrategySelections').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ scopeId: targetId, strategyKind: 'concise' });
 	});
 });

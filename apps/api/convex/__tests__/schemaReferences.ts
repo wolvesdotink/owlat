@@ -13,6 +13,7 @@ interface ValidatorJson {
 	fields?: Record<string, ValidatorJson>;
 	element?: ValidatorJson;
 	members?: ValidatorJson[];
+	key?: ValidatorJson;
 	value?: ValidatorJson;
 }
 
@@ -39,20 +40,31 @@ function collectReferences(
 			for (const member of validator.members ?? []) collectReferences(member, target, path, out);
 			return;
 		case 'record':
+			// A key can be an id too: `v.record(v.id('contacts'), …)`.
+			collectReferences(validator.key, target, `${path}{key}`, out);
 			collectReferences(validator.value, target, `${path}{}`, out);
 			return;
 	}
 }
 
-/** `table.field` for every schema field holding an id of `target`, sorted. */
-export function schemaReferencesTo(target: string): string[] {
+/** `table.field` for every field of `tables` holding an id of `target`, sorted. */
+export function referencesTo(
+	tables: Record<string, { validator: unknown }>,
+	target: string
+): string[] {
 	const refs: string[] = [];
-	const tables = (schema as unknown as { tables: Record<string, { validator: ValidatorJson }> })
-		.tables;
 	for (const [table, definition] of Object.entries(tables)) {
 		const fields = new Set<string>();
-		collectReferences(definition.validator, target, '', fields);
+		collectReferences(definition.validator as ValidatorJson, target, '', fields);
 		for (const field of fields) refs.push(`${table}.${field}`);
 	}
 	return refs.sort();
+}
+
+/** `table.field` for every schema field holding an id of `target`, sorted. */
+export function schemaReferencesTo(target: string): string[] {
+	return referencesTo(
+		(schema as unknown as { tables: Record<string, { validator: unknown }> }).tables,
+		target
+	);
 }
