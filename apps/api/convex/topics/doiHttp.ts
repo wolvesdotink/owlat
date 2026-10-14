@@ -8,7 +8,7 @@
  */
 
 import { internal } from '../_generated/api';
-import { publicTokenEndpoint } from '../lib/publicTokenEndpoint';
+import { ADMISSION_REFUSED, publicTokenEndpoint } from '../lib/publicTokenEndpoint';
 
 type DoiStatus = 'not_required' | 'pending' | 'confirmed';
 
@@ -41,10 +41,10 @@ export const verifyContactDoiToken = publicTokenEndpoint(
 		cors: 'GET, POST, OPTIONS',
 		resultMode: 'action',
 	},
-	async (ctx, { token }) => {
+	async (ctx, { token, admit }) => {
 		const contact = await ctx.runQuery<ContactByDoi | null>(
 			internal.topics.topics.getContactByDoiToken,
-			{ token },
+			{ token }
 		);
 
 		if (!contact) {
@@ -55,6 +55,7 @@ export const verifyContactDoiToken = publicTokenEndpoint(
 				status: 404,
 			};
 		}
+		if (!(await admit())) return ADMISSION_REFUSED;
 
 		if (contact.doiStatus === 'confirmed') {
 			return {
@@ -74,7 +75,7 @@ export const verifyContactDoiToken = publicTokenEndpoint(
 				doiStatus: contact.doiStatus,
 			},
 		};
-	},
+	}
 );
 
 /**
@@ -89,7 +90,23 @@ export const confirmContactDoi = publicTokenEndpoint(
 		cors: 'GET, POST, OPTIONS',
 		resultMode: 'action',
 	},
-	async (ctx, { token }) => {
+	async (ctx, { token, admit }) => {
+		// Verify before charging the token's bucket: the lookup refuses exactly
+		// what the confirm would (unknown, expired, a form token while forms is off).
+		const contact = await ctx.runQuery<ContactByDoi | null>(
+			internal.topics.topics.getContactByDoiToken,
+			{ token }
+		);
+		if (!contact) {
+			return {
+				ok: false,
+				reason: 'confirmation_failed',
+				message: 'Invalid or expired confirmation token',
+				status: 400,
+			};
+		}
+		if (!(await admit())) return ADMISSION_REFUSED;
+
 		const result = await ctx.runMutation<ConfirmDoiResult>(internal.topics.topics.confirmDoi, {
 			token,
 		});
@@ -113,5 +130,5 @@ export const confirmContactDoi = publicTokenEndpoint(
 					: 'Your subscription has been confirmed!',
 			},
 		};
-	},
+	}
 );

@@ -336,6 +336,32 @@ export const createShare = internalMutation({
 
 // ─── Internal: the serving path ──────────────────────────────────────────────
 
+/** The share a public token may serve right now, or `null` for any refusal. */
+async function loadServableShare(ctx: QueryCtx, token: string, now: number) {
+	if (!isAttachmentShareToken(token)) return null;
+	// Links follow the personal-mail feature flags like the Postbox paths that
+	// mint them: with personal mail off, no link serves.
+	if (!(await personalMailEnabled(ctx))) return null;
+	const row = await ctx.db
+		.query('mailAttachmentShares')
+		.withIndex('by_token', (q) => q.eq('token', token))
+		.first();
+	if (!row || !row.storageId) return null;
+	if (row.scope !== 'anyone') return null;
+	if (attachmentShareState(row, now) !== 'live') return null;
+	return row;
+}
+
+/**
+ * Whether a token may be served, without counting a hit. The public route
+ * asks this before it charges the token's own rate-limit bucket, so an
+ * invented token never gets one (lib/publicTokenPolicy.ts).
+ */
+export const isServableShareToken = internalQuery({
+	args: { token: v.string() },
+	handler: async (ctx, args) => (await loadServableShare(ctx, args.token, Date.now())) !== null,
+});
+
 /**
  * Resolve a token for the public route and, when it may be served, record the
  * hit. A MUTATION rather than a query because the download counter is what lets
@@ -350,18 +376,9 @@ export const createShare = internalMutation({
 export const consumeShareToken = internalMutation({
 	args: { token: v.string() },
 	handler: async (ctx, args) => {
-		if (!isAttachmentShareToken(args.token)) return null;
-		// Links follow the personal-mail feature flags like the Postbox paths that
-		// mint them: with personal mail off, no link serves.
-		if (!(await personalMailEnabled(ctx))) return null;
-		const row = await ctx.db
-			.query('mailAttachmentShares')
-			.withIndex('by_token', (q) => q.eq('token', args.token))
-			.first();
-		if (!row || !row.storageId) return null;
-		if (row.scope !== 'anyone') return null;
 		const now = Date.now();
-		if (attachmentShareState(row, now) !== 'live') return null;
+		const row = await loadServableShare(ctx, args.token, now);
+		if (!row?.storageId) return null;
 		await ctx.db.patch(row._id, {
 			downloadCount: row.downloadCount + 1,
 			lastAccessedAt: now,

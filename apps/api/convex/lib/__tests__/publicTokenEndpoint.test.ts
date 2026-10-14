@@ -16,10 +16,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	compilePath,
+	ADMISSION_REFUSED,
 	createShellHandler,
 	parseBody,
+	type HandlerArgs,
 	type HandlerContext,
+	type ResultAction,
+	type ResultOutcome,
 } from '../publicTokenEndpoint';
+import { capabilityKey, MAX_TOKEN_LENGTH } from '../publicTokenPolicy';
 
 // ─── Test harness ──────────────────────────────────────────────────────────
 
@@ -607,46 +612,155 @@ describe('shell — outcome mode', () => {
 	});
 });
 
-// ─── Rate-limit key mode (per-recipient token bucketing) ─────────────────────
+// ─── Per-token admission (lib/publicTokenPolicy.ts) ─────────────────────────
 //
-// rateLimitKeyMode: 'ip+token' must mix the token into the rate-limit key so a
-// flood on one recipient's link (or, with no trusted proxy, the shared 'unknown'
-// IP) cannot exhaust another recipient's bucket. Without a configured proxy
-// getClientIp returns 'unknown', so the key becomes 'unknown:<token>'.
+// In 'ip+token' mode nothing is charged up front. A handler verifies its token
+// and calls `admit()`, which charges `<ip>:<sha256(token)>`; a request that is
+// never admitted spends only the bounded failure budget. Without a configured
+// proxy getClientIp returns 'unknown', whose failure shard is null.
 
-describe('rate-limit key mode', () => {
-	function makeKeyCapturingCtx(): { ctx: HandlerContext; keys: string[] } {
-		const keys: string[] = [];
+interface LimiterCall {
+	limitType?: string;
+	key?: string;
+	shardKey?: string | null;
+}
+
+describe('per-token admission', () => {
+	function makeLimiterCtx(options: { capabilityOk?: boolean; failureOk?: boolean } = {}): {
+		ctx: HandlerContext;
+		calls: LimiterCall[];
+	} {
+		const { capabilityOk = true, failureOk = true } = options;
+		const calls: LimiterCall[] = [];
 		const ctx: HandlerContext = {
 			runMutation: vi.fn(async (_ref: unknown, args: unknown) => {
-				keys.push((args as { key: string }).key);
-				return { ok: true, retryAfter: 0 };
+				const call = args as LimiterCall;
+				calls.push(call);
+				const ok = 'shardKey' in call ? failureOk : capabilityOk;
+				return { ok, retryAfter: ok ? 0 : 7000 };
 			}) as unknown as HandlerContext['runMutation'],
 			runQuery: vi.fn() as unknown as HandlerContext['runQuery'],
 			runAction: vi.fn() as unknown as HandlerContext['runAction'],
 		};
-		return { ctx, keys };
+		return { ctx, calls };
 	}
 
-	it('ip+token mode gives each token its own bucket key', async () => {
-		const handler = createShellHandler(
+	type Handler = (ctx: HandlerContext, args: HandlerArgs) => Promise<ResultAction | ResultOutcome>;
+
+	/** A handler that treats `real-*` tokens as verified and admits them. */
+	const verifying: Handler = async (_ctx, { token, admit }) => {
+		if (!token.startsWith('real-')) return { ok: false, reason: 'not_found', status: 404 };
+		if (!(await admit())) return ADMISSION_REFUSED;
+		return { ok: true, data: {} };
+	};
+
+	function perToken(handler: Handler, path = '/share/:token') {
+		return createShellHandler(
 			{
-				path: '/unsub/:token',
+				path,
 				method: 'GET',
 				rateLimit: 'subscriptionManagement',
 				rateLimitKeyMode: 'ip+token',
 				cors: 'GET, OPTIONS',
-				resultMode: 'outcome',
+				resultMode: 'action',
 			},
-			async () => ({ ok: true, data: {} })
+			handler
 		);
-		const { ctx, keys } = makeKeyCapturingCtx();
-		await handler(ctx, new Request('http://localhost/unsub/recipientA', { method: 'GET' }));
-		await handler(ctx, new Request('http://localhost/unsub/recipientB', { method: 'GET' }));
-		expect(keys).toEqual(['unknown:recipientA', 'unknown:recipientB']);
+	}
+
+	const get = (path: string) => new Request(`http://localhost${path}`, { method: 'GET' });
+	const FAILURE = { shardKey: null };
+
+	it('charges a verified token on its digest key, and nothing else', async () => {
+		const { ctx, calls } = makeLimiterCtx();
+		const response = await perToken(verifying)(ctx, get('/share/real-A'));
+		expect(response.status).toBe(200);
+		expect(calls).toEqual([
+			{ limitType: 'subscriptionManagement', key: capabilityKey('unknown', 'real-A') },
+		]);
+		expect(calls[0]?.key).not.toContain('real-A');
 	});
 
-	it('default (ip) mode shares one key regardless of token', async () => {
+	it('charges every spelling of one token, path or query, to the same key', async () => {
+		const { ctx, calls } = makeLimiterCtx();
+		for (const path of ['/share/real-abc:1', '/share/real-%61bc%3A1', '/share/real-abc%3a1']) {
+			await perToken(verifying)(ctx, get(path));
+		}
+		await perToken(verifying, '/share')(ctx, get('/share?token=real-abc%3A1'));
+		expect(new Set(calls.map((c) => c.key))).toEqual(
+			new Set([capabilityKey('unknown', 'real-abc:1')])
+		);
+	});
+
+	it('charges an unknown token to the failure budget only', async () => {
+		const { ctx, calls } = makeLimiterCtx();
+		const response = await perToken(verifying)(ctx, get('/share/invented'));
+		expect(response.status).toBe(404);
+		expect(calls).toEqual([FAILURE]);
+	});
+
+	it('charges a missing, malformed or oversize token to the failure budget only', async () => {
+		const { ctx, calls } = makeLimiterCtx();
+		const oversize = 'a'.repeat(MAX_TOKEN_LENGTH + 1);
+		for (const path of ['/share/%E0%A4%A', `/share/${oversize}`]) {
+			expect((await perToken(verifying)(ctx, get(path))).status).toBe(400);
+		}
+		expect(calls).toEqual([FAILURE, FAILURE]);
+	});
+
+	it('answers 429 for an unknown token once the failure budget is empty', async () => {
+		const { ctx } = makeLimiterCtx({ failureOk: false });
+		const response = await perToken(verifying)(ctx, get('/share/invented'));
+		expect(response.status).toBe(429);
+		expect(response.headers.get('Retry-After')).toBe('7');
+	});
+
+	it('never reads the failure budget for a verified token', async () => {
+		const { ctx, calls } = makeLimiterCtx({ failureOk: false });
+		const response = await perToken(verifying)(ctx, get('/share/real-A'));
+		expect(response.status).toBe(200);
+		expect(calls.some((c) => 'shardKey' in c)).toBe(false);
+	});
+
+	it("answers 429 when the token's own bucket refuses, whatever the handler returns", async () => {
+		const { ctx, calls } = makeLimiterCtx({ capabilityOk: false });
+		const response = await perToken(async (_ctx, { admit }) => {
+			await admit();
+			return { ok: true, data: {} };
+		})(ctx, get('/share/real-A'));
+		expect(response.status).toBe(429);
+		expect(calls.some((c) => 'shardKey' in c)).toBe(false);
+	});
+
+	it('counts a handler that throws before admitting as a failure', async () => {
+		const { ctx, calls } = makeLimiterCtx();
+		const response = await perToken(async () => {
+			throw new Error('validator rejected the id');
+		})(ctx, get('/share/whatever'));
+		expect(response.status).toBe(500);
+		expect(calls).toEqual([FAILURE]);
+	});
+
+	it('does not count a throw after admission as a failure', async () => {
+		const { ctx, calls } = makeLimiterCtx();
+		const response = await perToken(async (_ctx, { admit }) => {
+			await admit();
+			throw new Error('downstream failed');
+		})(ctx, get('/share/real-A'));
+		expect(response.status).toBe(500);
+		expect(calls.map((c) => c.limitType)).toEqual(['subscriptionManagement']);
+	});
+
+	it('refuses a success that never admitted its token', async () => {
+		const { ctx } = makeLimiterCtx();
+		const response = await perToken(async () => ({ ok: true, data: { leaked: true } }))(
+			ctx,
+			get('/share/real-A')
+		);
+		expect(response.status).toBe(500);
+	});
+
+	it('default (ip) mode charges the IP up front and never spends the failure budget', async () => {
 		const handler = createShellHandler(
 			{
 				path: '/forms/:token',
@@ -655,11 +769,14 @@ describe('rate-limit key mode', () => {
 				cors: 'POST, OPTIONS',
 				resultMode: 'outcome',
 			},
-			async () => ({ ok: true, data: {} })
+			async () => ({ ok: false, reason: 'nope' })
 		);
-		const { ctx, keys } = makeKeyCapturingCtx();
+		const { ctx, calls } = makeLimiterCtx();
 		await handler(ctx, new Request('http://localhost/forms/formA', { method: 'POST' }));
 		await handler(ctx, new Request('http://localhost/forms/formB', { method: 'POST' }));
-		expect(keys).toEqual(['unknown', 'unknown']);
+		expect(calls).toEqual([
+			{ limitType: 'formSubmission', key: 'unknown' },
+			{ limitType: 'formSubmission', key: 'unknown' },
+		]);
 	});
 });

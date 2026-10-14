@@ -9,9 +9,11 @@
  *
  *   1. CORS preflight (`OPTIONS` → 204 with the declared methods header)
  *   2. Method gate     (anything other than `config.method` → 405)
- *   3. Rate-limit gate (`checkPublicRateLimit` keyed by client IP)
- *   4. Token extract   (named path segment first, `?token=` fallback) with
- *                      uniform `decodeURIComponent`
+ *   3. Token extract   (named path segment first, `?token=` fallback),
+ *                      decoded once (`canonicalizeToken`)
+ *   4. Rate-limit gate (client IP; for `rateLimitKeyMode: 'ip+token'` the
+ *                      handler's `admit()` instead, after it verified the
+ *                      token — see lib/publicTokenPolicy.ts)
  *   5. Body parse      (`'none' | 'json' | 'formData'`, 100 KB cap)
  *   6. Handler         (typed `{ token, body, request }` input)
  *   7. Result map      (`'action' | 'outcome'`)
@@ -45,7 +47,7 @@ import {
 } from './httpResponse';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
 import { logError } from './runtimeLog';
-import { safeDecodeURIComponent } from './inputGuards';
+import { admitCapability, canonicalizeToken, chargeTokenFailure } from './publicTokenPolicy';
 
 /**
  * Best-effort reverse map for the action-mode failure boundary: an endpoint
@@ -94,17 +96,16 @@ export interface EndpointConfig {
 	/** Rate-limit kind. Shell calls `checkPublicRateLimit` once per request. */
 	rateLimit: PublicRateLimitType;
 	/**
-	 * What the rate-limit bucket is keyed on. Defaults to `'ip'`.
+	 * What the rate-limit bucket is keyed on. Defaults to `'ip'`: the shell
+	 * charges the client IP before anything else runs.
 	 *
-	 * `'ip+token'` mixes the path/query token into the key (`<ip>:<token>`). Use
-	 * it for endpoints whose token is an UNFORGEABLE PER-RECIPIENT secret
-	 * (unsubscribe / preferences / DOI confirm / share / archive links): each
-	 * recipient then gets an isolated bucket, so when no trusted proxy is
-	 * configured (every caller shares the `'unknown'` IP) a flood on one link —
-	 * or on a cheap browse path — can't exhaust the shared window and block other
-	 * recipients' one-click unsubscribes. Do NOT use it where the token is shared
-	 * across legitimate callers (e.g. a form endpoint id), where IP is the right
-	 * per-submitter key.
+	 * `'ip+token'` gives every real token its own bucket, `<ip>:<sha256(token)>`,
+	 * so when no trusted proxy is configured (every caller shares the `'unknown'`
+	 * IP) a flood on one link can't use up another recipient's window. Nothing is
+	 * charged up front: the handler verifies the token, then calls `admit()`
+	 * before it reads anything private or changes anything. A request that is
+	 * never admitted (missing, malformed or unknown token, bad body, a throw)
+	 * spends only the bounded failure buckets of lib/publicTokenPolicy.ts.
 	 */
 	rateLimitKeyMode?: 'ip' | 'ip+token';
 	/**
@@ -179,7 +180,22 @@ export interface HandlerArgs {
 	 */
 	body: unknown;
 	request: Request;
+	/**
+	 * Charge the verified token's own bucket. In `'ip+token'` mode a handler
+	 * MUST call it once it knows the token is real and before it returns data or
+	 * changes anything; `false` means the bucket is empty, and whatever the
+	 * handler returns then becomes a 429. A success that never admitted is a bug
+	 * and answers 500. In `'ip'` mode it is always `true`.
+	 */
+	admit: () => Promise<boolean>;
 }
+
+/** What a handler returns when `admit()` said no; the shell answers 429. */
+export const ADMISSION_REFUSED: ResultAction = {
+	ok: false,
+	reason: 'rate_limited',
+	status: 429,
+};
 
 // ─── Path matcher ──────────────────────────────────────────────────────────
 
@@ -325,35 +341,48 @@ export function createShellHandler(
 			return methodNotAllowed('Method not allowed', corsHeaders);
 		}
 
-		// Token (raw) — needed both for the rate-limit key (ip+token mode) and for
-		// the handler below. Parsed once here.
+		// 3. Token extract — `:token` path segment first, `?token=` fallback,
+		// decoded once. The decoded value is what the handler gets and what an
+		// admitted token's bucket is keyed on.
 		const url = new URL(request.url);
 		const pathMatch = matcher(url.pathname);
-		const tokenRaw = pathMatch?.['token'] ?? url.searchParams.get('token') ?? null;
-
-		// 3. Rate-limit gate. For per-recipient token endpoints the bucket is keyed
-		// on `<ip>:<token>` so a flood on one link (or, when no trusted proxy is
-		// configured, the shared 'unknown' IP) can't starve another recipient's
-		// bucket. IP-only endpoints (e.g. forms, whose token is a shared id) keep
-		// the plain IP key.
+		const parsed = canonicalizeToken(pathMatch?.['token'] ?? url.searchParams.get('token') ?? null);
+		const perToken = config.rateLimitKeyMode === 'ip+token';
 		const ip = getClientIp(request);
-		const rateKey = config.rateLimitKeyMode === 'ip+token' && tokenRaw ? `${ip}:${tokenRaw}` : ip;
-		const { ok, retryAfter } = await ctx.runMutation<{ ok: boolean; retryAfter: number }>(
-			internal.lib.publicRateLimit.checkPublicRateLimit,
-			{ limitType: config.rateLimit, key: rateKey }
-		);
-		if (!ok) {
-			return rateLimitedResponse(retryAfter, { corsHeaders: corsHeaders ?? undefined });
-		}
+		const tooMany = (retryAfter: number) =>
+			rateLimitedResponse(retryAfter, { corsHeaders: corsHeaders ?? undefined });
 
-		// 4. Token extract — `:token` path segment first, `?token=` fallback.
-		if (!tokenRaw) {
-			return errorResponse('invalid_input', 'Missing token', undefined, corsHeaders);
+		// 4. Rate-limit gate. IP-keyed endpoints are charged here; per-token ones
+		// when the handler admits its verified token.
+		let admitted = !perToken;
+		let refusedRetryAfter: number | null = null;
+		if (!perToken) {
+			const { ok, retryAfter } = await ctx.runMutation<{ ok: boolean; retryAfter: number }>(
+				internal.lib.publicRateLimit.checkPublicRateLimit,
+				{ limitType: config.rateLimit, key: ip }
+			);
+			if (!ok) return tooMany(retryAfter);
 		}
-		const token = safeDecodeURIComponent(tokenRaw);
-		if (token === null) {
-			return errorResponse('invalid_input', 'Invalid token encoding', undefined, corsHeaders);
+		// A request that was never admitted spends the bounded failure budget, and
+		// answers 429 instead once that is empty.
+		const unadmitted = async (response: Response): Promise<Response> => {
+			if (admitted || refusedRetryAfter !== null) return response;
+			const { ok, retryAfter } = await chargeTokenFailure(ctx, ip);
+			return ok ? response : tooMany(retryAfter);
+		};
+
+		if (!parsed.ok) {
+			return unadmitted(errorResponse('invalid_input', parsed.message, undefined, corsHeaders));
 		}
+		const token = parsed.token;
+		const admit = async (): Promise<boolean> => {
+			if (admitted) return true;
+			if (refusedRetryAfter !== null) return false;
+			const outcome = await admitCapability(ctx, { limitType: config.rateLimit, ip, token });
+			if (outcome.ok) admitted = true;
+			else refusedRetryAfter = outcome.retryAfter;
+			return outcome.ok;
+		};
 
 		// 5. Body parse.
 		let body: unknown;
@@ -361,40 +390,55 @@ export function createShellHandler(
 			body = await parseBody(request, config.body ?? 'none');
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Invalid body';
-			return errorResponse('invalid_input', message, undefined, corsHeaders);
+			return unadmitted(errorResponse('invalid_input', message, undefined, corsHeaders));
 		}
 
 		// 6. Handler.
 		let result: ResultAction | ResultOutcome;
 		try {
-			result = await handler(ctx, { token, body, request });
+			result = await handler(ctx, { token, body, request, admit });
 		} catch (error) {
 			logError(`[${config.path}] handler threw:`, error);
-			return errorResponse('internal', 'Internal error', undefined, corsHeaders);
+			if (refusedRetryAfter !== null) return tooMany(refusedRetryAfter);
+			return unadmitted(errorResponse('internal', 'Internal error', undefined, corsHeaders));
 		}
 
 		// 7. Map result by mode.
-		if (config.resultMode === 'outcome') {
-			// Always 200 — body discriminates with `ok`.
-			return jsonResponse(result, 200, corsHeaders);
+		if (refusedRetryAfter !== null) return tooMany(refusedRetryAfter);
+		if (!admitted && result.ok) {
+			logError(`[${config.path}] handler succeeded without admitting its token`);
+			return errorResponse('internal', 'Internal error', undefined, corsHeaders);
 		}
-		// Action mode — `resultMode === 'action'` narrows runtime, but TS can't
-		// infer the result narrowing from `config.resultMode`. Cast it.
-		const action = result as ResultAction;
-		if (action.ok) {
-			if ('raw' in action) {
-				return applyCors(action.raw, corsHeaders);
-			}
-			const combinedHeaders = action.headers ? { ...corsHeaders, ...action.headers } : corsHeaders;
-			return jsonResponse({ ok: true, data: action.data }, 200, combinedHeaders);
-		}
-		return errorResponse(
-			statusToCategory(action.status),
-			action.message ?? action.reason,
-			{ reason: action.reason },
-			corsHeaders
-		);
+		return unadmitted(mapResult(config, result, corsHeaders));
 	};
+}
+
+/** Map a handler result to HTTP per the endpoint's `resultMode`. */
+function mapResult(
+	config: EndpointConfig,
+	result: ResultAction | ResultOutcome,
+	corsHeaders: Record<string, string> | null
+): Response {
+	if (config.resultMode === 'outcome') {
+		// Always 200 — body discriminates with `ok`.
+		return jsonResponse(result, 200, corsHeaders);
+	}
+	// Action mode — `resultMode === 'action'` narrows runtime, but TS can't
+	// infer the result narrowing from `config.resultMode`. Cast it.
+	const action = result as ResultAction;
+	if (action.ok) {
+		if ('raw' in action) {
+			return applyCors(action.raw, corsHeaders);
+		}
+		const combinedHeaders = action.headers ? { ...corsHeaders, ...action.headers } : corsHeaders;
+		return jsonResponse({ ok: true, data: action.data }, 200, combinedHeaders);
+	}
+	return errorResponse(
+		statusToCategory(action.status),
+		action.message ?? action.reason,
+		{ reason: action.reason },
+		corsHeaders
+	);
 }
 
 /**

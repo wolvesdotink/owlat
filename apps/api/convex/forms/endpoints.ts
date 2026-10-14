@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { publicQuery, publicMutation } from '../lib/authedFunctions';
 import { formsQuery, formsMutation } from './_helpers';
 import { internalMutation } from '../lib/writeFence';
@@ -10,6 +11,9 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwRateLimited, throwInvalidInput } from '../_utils/errors';
 import { rateLimiter } from '../lib/rateLimiter';
+import { isFeatureEnabled } from '../lib/featureFlags';
+import { spendPublicTokenFailure } from '../lib/publicRateLimit';
+import { capabilityKey, MAX_TOKEN_LENGTH } from '../lib/publicTokenPolicy';
 import { formFieldValidator } from '../lib/convexValidators';
 import type { TransitionOutcome as DoiTransitionOutcome } from '../contacts/doiLifecycle';
 import { findContactByConfirmationToken, isFormTokenDisabled } from '../contacts/doiLifecycle';
@@ -245,6 +249,10 @@ export const getByConfirmationToken = publicQuery({
 		token: v.string(),
 	},
 	handler: async (ctx, args) => {
+		// The same length rule as every public token route
+		// (lib/publicTokenPolicy.ts). A query writes nothing, so a lookup of an
+		// invented token leaves no state behind.
+		if (args.token.length > MAX_TOKEN_LENGTH) return null;
 		// A form-minted token follows the `forms` flag, like the submit endpoint.
 		if (await isFormTokenDisabled(ctx, args.token)) return null;
 
@@ -344,22 +352,67 @@ type ConfirmSubmissionResult =
 	| { success: true; alreadyConfirmed: boolean }
 	| { success: false; error: string };
 
+/** The failure shard confirmations made over the client API spend. */
+const CLIENT_FAILURE_SHARD = 'client';
+
+function throwConfirmRateLimited(retryAfter: number | undefined): never {
+	return throwRateLimited('Too many confirmation attempts. Please try again shortly.', retryAfter);
+}
+
+/**
+ * Whether any contact or form submission holds `token`: the tokens the confirm
+ * below can act on, including a spent one whose rows remember it.
+ */
+async function isKnownConfirmationToken(ctx: QueryCtx | MutationCtx, token: string) {
+	if (token.length > MAX_TOKEN_LENGTH) return false;
+	if (await findContactByConfirmationToken(ctx, token)) return true;
+	const submission = await ctx.db
+		.query('formSubmissions')
+		.withIndex('by_confirmation_token_and_status', (q) => q.eq('confirmationToken', token))
+		.first();
+	return submission !== null;
+}
+
+/**
+ * The public form submit route's verification step (forms/apiHttp.ts): the
+ * form a `/forms/<id>` request names, checked before the request is charged to
+ * that form's bucket. A malformed id is `form_not_found` here rather than an
+ * argument-validator throw in `submission.submit`.
+ */
+export const resolveSubmitTarget = internalQuery({
+	args: { formEndpointId: v.string() },
+	handler: async (ctx, args) => {
+		if (!(await isFeatureEnabled(ctx, 'forms'))) {
+			return { ok: false as const, reason: 'feature_disabled' as const };
+		}
+		const id = ctx.db.normalizeId('formEndpoints', args.formEndpointId);
+		const form = id ? await ctx.db.get(id) : null;
+		if (!id || !form) return { ok: false as const, reason: 'form_not_found' as const };
+		if (!form.isActive) return { ok: false as const, reason: 'form_inactive' as const };
+		return { ok: true as const, formEndpointId: id };
+	},
+});
+
 // public: double-opt-in confirmation via secret token — followed from an email link, no session
 export const confirmSubmission = publicMutation({
 	args: {
 		token: v.string(),
 	},
 	handler: async (ctx, args): Promise<ConfirmSubmissionResult> => {
-		// This publicMutation is reachable directly on the Convex client API,
-		// parallel to the rate-limited HTTP /confirm/doi route — cap confirm
-		// storms against a single token (the high-entropy token itself defeats
-		// enumeration; this bounds replay/refresh hammering of a known one).
-		const { ok, retryAfter } = await rateLimiter.limit(ctx, 'doiConfirmation', {
-			key: `token:${args.token}`,
-		});
-		if (!ok) {
-			throwRateLimited('Too many confirmation attempts. Please try again shortly.', retryAfter);
+		// Reachable directly on the Convex client API, beside the HTTP
+		// /confirm/doi route, so it follows the same policy
+		// (lib/publicTokenPolicy.ts): a token is verified before it gets a bucket
+		// of its own, and an unknown one only spends the bounded failure budget.
+		// There is no client address here, so the failure shard is fixed.
+		if (!(await isKnownConfirmationToken(ctx, args.token))) {
+			const failure = await spendPublicTokenFailure(ctx, CLIENT_FAILURE_SHARD);
+			if (!failure.ok) throwConfirmRateLimited(failure.retryAfter);
+			return { success: false, error: 'invalid_token' };
 		}
+		const { ok, retryAfter } = await rateLimiter.limit(ctx, 'doiConfirmation', {
+			key: capabilityKey('client', args.token),
+		});
+		if (!ok) throwConfirmRateLimited(retryAfter);
 
 		// A form-minted token follows the `forms` flag, like the submit endpoint.
 		// Refused here rather than falling through to the contact-level confirm.

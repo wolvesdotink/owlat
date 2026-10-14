@@ -23,6 +23,8 @@
  * EVERY REFUSAL IS THE SAME 404. Revoked, expired, narrowed, never-existed and
  * malformed are indistinguishable from outside, so the route cannot be used to
  * enumerate which tokens are real or to learn that a file was once there.
+ * (Once a caller has spent its failure budget, refusals turn into 429s
+ * instead; a token that can be served is never charged to that budget.)
  *
  * The response is forced to a DOWNLOAD (`Content-Disposition: attachment` and
  * `X-Content-Type-Options: nosniff`) rather than rendered inline. The bytes are
@@ -39,6 +41,7 @@ import { getClientIp, rateLimitedResponse } from '../lib/publicRateLimit';
 import { logError } from '../lib/runtimeLog';
 import { errorResponse } from '../lib/httpResponse';
 import { safeDecodeURIComponent } from '../lib/inputGuards';
+import { admitCapability, chargeTokenFailure, type MutationRunner } from '../lib/publicTokenPolicy';
 
 /**
  * Filename for the `Content-Disposition` header. Quotes, backslashes and
@@ -72,24 +75,38 @@ function notFound(): Response {
 }
 
 export const serveAttachmentShare = httpAction(async (ctx, request) => {
+	const ip = getClientIp(request);
+	const limiter = ctx as unknown as MutationRunner;
+	// A token that cannot be served spends only the bounded failure budget
+	// (lib/publicTokenPolicy.ts); once that is empty it answers 429.
+	const refuse = async (): Promise<Response> => {
+		const failure = await chargeTokenFailure(limiter, ip);
+		return failure.ok ? notFound() : rateLimitedResponse(failure.retryAfter);
+	};
+
 	const path = new URL(request.url).pathname;
 	const raw = path.startsWith(ATTACHMENT_SHARE_PATH)
 		? path.slice(ATTACHMENT_SHARE_PATH.length)
 		: '';
 	const token = safeDecodeURIComponent(raw);
 	// A malformed percent-escape is not a token.
-	if (token === null || !isAttachmentShareToken(token)) return notFound();
+	if (token === null || !isAttachmentShareToken(token)) return refuse();
+	if (!(await ctx.runQuery(internal.mail.attachmentShares.isServableShareToken, { token }))) {
+		return refuse();
+	}
 
 	// The token space is 192 bits, so this is not what stops guessing — it stops
 	// a live token from being turned into a bandwidth tap, and it bounds the
-	// damage of a leaked link before its owner notices and revokes.
-	const limit = await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
+	// damage of a leaked link before its owner notices and revokes. Only a token
+	// that can be served gets a bucket, keyed on its digest.
+	const limit = await admitCapability(limiter, {
 		limitType: 'subscriptionManagement',
-		key: `${getClientIp(request)}:${token}`,
+		ip,
+		token,
 	});
 	if (!limit.ok) return rateLimitedResponse(limit.retryAfter);
 
-	// Resolves AND counts, or refuses. Every gate is inside.
+	// Resolves AND counts, or refuses (it may have been revoked since the check).
 	const share = await ctx.runMutation(internal.mail.attachmentShares.consumeShareToken, {
 		token,
 	});

@@ -1063,6 +1063,7 @@ import type * as lib_posthogHelpers from '../lib/posthogHelpers.js';
 import type * as lib_publicInput from '../lib/publicInput.js';
 import type * as lib_publicRateLimit from '../lib/publicRateLimit.js';
 import type * as lib_publicTokenEndpoint from '../lib/publicTokenEndpoint.js';
+import type * as lib_publicTokenPolicy from '../lib/publicTokenPolicy.js';
 import type * as lib_publishableEmail from '../lib/publishableEmail.js';
 import type * as lib_publishableEmailRender from '../lib/publishableEmailRender.js';
 import type * as lib_queryHelpers from '../lib/queryHelpers.js';
@@ -2810,6 +2811,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/publicInput': typeof lib_publicInput;
 	'lib/publicRateLimit': typeof lib_publicRateLimit;
 	'lib/publicTokenEndpoint': typeof lib_publicTokenEndpoint;
+	'lib/publicTokenPolicy': typeof lib_publicTokenPolicy;
 	'lib/publishableEmail': typeof lib_publishableEmail;
 	'lib/publishableEmailRender': typeof lib_publishableEmailRender;
 	'lib/queryHelpers': typeof lib_queryHelpers;

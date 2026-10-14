@@ -11,7 +11,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
@@ -127,5 +127,51 @@ describe('GET /attachment-share/{token}', () => {
 		expect(revoked.status).toBe(404);
 		expect(malformed.status).toBe(404);
 		expect(await revoked.json()).toEqual(await malformed.json());
+	});
+});
+
+// Issue #1323: the route follows the common public-token policy
+// (lib/publicTokenPolicy.ts). Only a token that can be served gets a bucket of
+// its own; anything else spends the bounded failure budget.
+describe('GET /attachment-share/{token} rate limits', () => {
+	const attacker = { method: 'GET', headers: { 'X-Forwarded-For': '203.0.113.44' } };
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('meters invented tokens on the failure budget and still serves a real link', async () => {
+		vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', 'xforwarded');
+		const t = setupTest();
+		await seedLiveShare(t);
+
+		for (let i = 0; i < 60; i++) {
+			const invented = `invented${String(i).padStart(24, '0')}`;
+			const res = await t.fetch(`${ATTACHMENT_SHARE_PATH}${invented}`, attacker);
+			expect(res.status).toBe(404);
+		}
+		const next = await t.fetch(`${ATTACHMENT_SHARE_PATH}inventednext0123456789abcdef`, attacker);
+		expect(next.status).toBe(429);
+
+		const real = await t.fetch(`${ATTACHMENT_SHARE_PATH}${TOKEN}`, attacker);
+		expect(real.status).toBe(200);
+	});
+
+	it('gives a token no bucket before it can be served', async () => {
+		vi.stubEnv('RATE_LIMIT_TRUSTED_PROXY', 'xforwarded');
+		const t = setupTest();
+
+		for (let i = 0; i < 40; i++) {
+			const res = await t.fetch(`${ATTACHMENT_SHARE_PATH}${TOKEN}`, attacker);
+			expect(res.status).toBe(404);
+		}
+		// Had those requests charged this token's bucket, none of its 30 would be left.
+		await seedLiveShare(t);
+		for (let i = 0; i < 30; i++) {
+			const res = await t.fetch(`${ATTACHMENT_SHARE_PATH}${TOKEN}`, attacker);
+			expect(res.status).toBe(200);
+		}
+		const over = await t.fetch(`${ATTACHMENT_SHARE_PATH}${TOKEN}`, attacker);
+		expect(over.status).toBe(429);
 	});
 });
