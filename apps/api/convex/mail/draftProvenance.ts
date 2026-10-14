@@ -34,9 +34,9 @@ export function humanEdit(now: number) {
 	return { lastEditedAt: now, humanTouchedAt: now, obsoleted: undefined };
 }
 
-/** The patch fields of a write: a person's edit only if it changed the row. */
+/** The patch fields of a write: a person's edit if it changed the row, else nothing. */
 export function editPatch(isChange: boolean, now: number = Date.now()) {
-	return isChange ? humanEdit(now) : { lastEditedAt: now };
+	return isChange ? humanEdit(now) : {};
 }
 
 /** The written part of a body, with an empty one (no text, link or image) as ''. */
@@ -44,6 +44,11 @@ function writtenPart(bodyHtml: string): string {
 	const fresh = splitAnswerBody(bodyHtml).fresh.trim();
 	const hasMedia = /<(?:a|img)\b/i.test(fresh);
 	return !hasMedia && htmlToPlainText(fresh) === '' ? '' : fresh;
+}
+
+function sameWords(a: string, b: string): boolean {
+	const words = (text: string) => text.replace(/\s+/g, ' ').trim();
+	return words(a) === words(b);
 }
 
 function sameList(next: readonly string[] | undefined, stored: readonly string[]): boolean {
@@ -84,6 +89,7 @@ export async function provenancePatch(
 		(write.isGapGuarded === true && draft.isGapGuarded !== true);
 
 	let isAiWrite = false;
+	let aiBodyChanged = false;
 	let bodyChanged = false;
 	const isBodyWrite =
 		write.bodyHtml !== undefined || write.bodyText !== undefined || write.bodyBlocks !== undefined;
@@ -96,17 +102,28 @@ export async function provenancePatch(
 			const written = writtenPart(write.bodyHtml);
 			isAiWrite =
 				write.aiText !== undefined && written !== '' && written === aiTextToHtml(write.aiText);
-			if (!isAiWrite && written !== writtenPart(stored.bodyHtml)) bodyChanged = true;
+			if (written !== writtenPart(stored.bodyHtml)) {
+				if (isAiWrite) aiBodyChanged = true;
+				else bodyChanged = true;
+			}
 		}
 		// The plain-text body (a quick reply, the offline outbox) is a person's
-		// text unless it rides along with a verified AI write.
-		if (write.bodyText !== undefined && !isAiWrite && write.bodyText !== (stored.bodyText ?? '')) {
-			bodyChanged = true;
+		// text unless it is provably the AI's: the same words as the AI text this
+		// verified AI write carries. Anything else counts as theirs.
+		if (write.bodyText !== undefined && write.bodyText !== (stored.bodyText ?? '')) {
+			const isAiText = isAiWrite && sameWords(write.bodyText, write.aiText ?? '');
+			if (isAiText) aiBodyChanged = true;
+			else bodyChanged = true;
 		}
 	}
 
+	// A write that changes nothing leaves the row as it was, `lastEditedAt`
+	// included: the answered-draft cutoff compares it with a reply's send time.
+	const isNewAiText = isAiWrite && draft.aiAuthored?.text !== write.aiText;
+	const changed = envelopeChanged || bodyChanged ? humanEdit(now) : {};
 	return {
-		...(isAiWrite ? { aiAuthored: { text: write.aiText, at: now } } : {}),
-		...(envelopeChanged || bodyChanged ? humanEdit(now) : {}),
+		...(isNewAiText ? { aiAuthored: { text: write.aiText, at: now } } : {}),
+		...(aiBodyChanged ? { lastEditedAt: now } : {}),
+		...changed,
 	};
 }

@@ -57,6 +57,32 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const ANSWERED_RETENTION_MS = GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 3 * DAY_MS;
 
 /**
+ * How many answering replies a hidden draft or a Team Inbox stash tracks. A
+ * Convex array tops out at 8,192 and a document at 1 MiB, so the set cannot
+ * grow with the conversation. Past the cap it stops growing and the row is
+ * marked untracked: it stays answered and is never restored by a bounce. That
+ * fails safe (dozens of accepted replies answered it), and an exact restore
+ * past that point would need the full set, which is what the cap gives up.
+ */
+export const MAX_TRACKED_ANSWERS = 64;
+
+/**
+ * Record one more distinct answering reply on a tracked set: it joins the
+ * set and renews retention (`at`, the purge clock), so the purge waits for the
+ * newest reply's bounce window. Past the cap the set is frozen and marked
+ * untracked. The caller has checked the id is not in the set already, so a
+ * duplicate acceptance never renews.
+ */
+export function withAnsweringReply<IdT>(
+	ids: readonly IdT[],
+	id: IdT,
+	at: number
+): { ids: IdT[]; at?: number; isUntracked?: true } {
+	if (ids.length >= MAX_TRACKED_ANSWERS) return { ids: [...ids], isUntracked: true };
+	return { ids: [...ids, id], at };
+}
+
+/**
  * An auto-reply (a vacation notice, a list or bulk mailing) by its headers:
  * Auto-Submitted other than `no`, List-Id, or a bulk / `auto_reply`
  * Precedence. It answers nothing.
@@ -108,18 +134,24 @@ async function obsoleteAnsweredDrafts(
 ): Promise<void> {
 	const at = Date.now();
 	for (const draft of drafts) {
-		if (draft.obsoleted?.byMessageIds.includes(response.byMessageId)) continue;
+		const hidden = draft.obsoleted;
+		if (hidden?.isUntracked || hidden?.byMessageIds.includes(response.byMessageId)) continue;
 		if (!draft.inReplyToMessageId || draft.lastEditedAt > response.respondedAt) continue;
 		const repliedTo = await ctx.db.get(draft.inReplyToMessageId);
 		if (!repliedTo || repliedTo.receivedAt > response.answeredUpTo) continue;
 		if (!(await isAiOnlyDraft(draft))) continue;
+		if (!hidden) {
+			await ctx.db.patch(draft._id, { obsoleted: { byMessageIds: [response.byMessageId], at } });
+			continue;
+		}
+		const next = withAnsweringReply(hidden.byMessageIds, response.byMessageId, at);
 		await ctx.db.patch(draft._id, {
-			obsoleted: draft.obsoleted
-				? {
-						...draft.obsoleted,
-						byMessageIds: [...draft.obsoleted.byMessageIds, response.byMessageId],
-					}
-				: { byMessageIds: [response.byMessageId], at },
+			obsoleted: {
+				...hidden,
+				byMessageIds: next.ids,
+				...(next.at !== undefined ? { at: next.at } : {}),
+				...(next.isUntracked ? { isUntracked: true as const } : {}),
+			},
 		});
 	}
 }
@@ -136,7 +168,8 @@ async function restoreObsoletedBy(
 ): Promise<void> {
 	for (const draft of await composingDrafts(ctx, answered.threadId)) {
 		const ids = draft.obsoleted?.byMessageIds;
-		if (!draft.obsoleted || !ids?.includes(sent._id)) continue;
+		// An untracked draft stays hidden: its set no longer says who answered it.
+		if (!draft.obsoleted || draft.obsoleted.isUntracked || !ids?.includes(sent._id)) continue;
 		const rest = ids.filter((id) => id !== sent._id);
 		await ctx.db.patch(draft._id, {
 			obsoleted: rest.length > 0 ? { ...draft.obsoleted, byMessageIds: rest } : undefined,

@@ -206,8 +206,8 @@ export const update = postboxMutation({
 		assertStateIs(draft, 'draft');
 
 		const now = Date.now();
-		const patch: Record<string, unknown> = { lastEditedAt: now };
-		Object.assign(patch, await provenancePatch(draft, args, now));
+		// `lastEditedAt` moves only when something changed (mail/draftProvenance.ts).
+		const patch: Record<string, unknown> = await provenancePatch(draft, args, now);
 		if (args.toAddresses !== undefined) patch['toAddresses'] = args.toAddresses;
 		if (args.ccAddresses !== undefined) patch['ccAddresses'] = args.ccAddresses;
 		if (args.bccAddresses !== undefined) patch['bccAddresses'] = args.bccAddresses;
@@ -248,7 +248,7 @@ export const update = postboxMutation({
 				...(args.bccAddresses ?? draft.bccAddresses),
 			]);
 		}
-		return { savedAt: patch['lastEditedAt'] };
+		return { savedAt: now };
 	},
 });
 

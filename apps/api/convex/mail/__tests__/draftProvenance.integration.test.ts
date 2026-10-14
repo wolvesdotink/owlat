@@ -11,7 +11,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import { aiTextToHtml } from '@owlat/shared/answerMode';
 import schema from '../../schema';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 import { settleOwnerReply } from '../answeredReply';
@@ -70,7 +70,7 @@ async function save(
 	t: T,
 	r: Reply,
 	body: string,
-	extra: { aiText?: string; toAddresses?: string[]; subject?: string } = {}
+	extra: { aiText?: string; bodyText?: string; toAddresses?: string[]; subject?: string } = {}
 ): Promise<void> {
 	await t.mutation(api.mail.drafts.update, {
 		draftId: r.draftId,
@@ -82,6 +82,7 @@ async function save(
 		composerMode: 'simple',
 		followUpRemindAt: null,
 		...(extra.aiText !== undefined ? { aiText: extra.aiText } : {}),
+		...(extra.bodyText !== undefined ? { bodyText: extra.bodyText } : {}),
 	});
 }
 
@@ -132,6 +133,16 @@ describe('an AI draft no person touched', () => {
 		expect(await answerAndCheck(t, r)).toBe(true);
 	});
 
+	it('includes a plain-text body that is the same AI text', async () => {
+		const t = convexTest(schema, modules);
+		const r = await openReply(t);
+
+		await save(t, r, aiBody(AI_TEXT), { aiText: AI_TEXT, bodyText: `${AI_TEXT}\n` });
+
+		expect((await draftRow(t, r)).humanTouchedAt).toBeUndefined();
+		expect(await answerAndCheck(t, r)).toBe(true);
+	});
+
 	it('includes a second generation that replaced the first', async () => {
 		const t = convexTest(schema, modules);
 		const r = await openReply(t);
@@ -151,6 +162,11 @@ describe('an AI draft no person touched', () => {
 describe('a person’s change makes the draft theirs', () => {
 	const edits: Array<[string, (t: T, r: Reply) => Promise<unknown>]> = [
 		['a word in the body', (t, r) => save(t, r, aiBody(`${AI_TEXT} Thanks!`))],
+		[
+			'a plain-text body of its own beside the unchanged AI HTML',
+			(t, r) =>
+				save(t, r, aiBody(AI_TEXT), { aiText: AI_TEXT, bodyText: 'My own words, not the AI’s.' }),
+		],
 		[
 			'the plain-text body (a quick reply)',
 			(t, r) =>
@@ -247,5 +263,77 @@ describe('the Drafts list', () => {
 		const listed = await t.query(api.mail.drafts.listForMailbox, { mailboxId: r.mailboxId });
 
 		expect(listed.map((d) => d._id)).toEqual([r.draftId]);
+	});
+});
+
+describe('a write that changes nothing, between two replies', () => {
+	/** A reply queued on Sam's mail and taken to `→ sent`; returns the sent copy. */
+	async function sendReply(t: T, r: Reply): Promise<Id<'mailMessages'>> {
+		const draftId = await t.run(async (ctx) =>
+			ctx.db.insert('mailDrafts', {
+				mailboxId: r.mailboxId,
+				inReplyToMessageId: r.askId,
+				threadId: (await ctx.db.get(r.askId))!.threadId,
+				toAddresses: [SENDER],
+				ccAddresses: [],
+				bccAddresses: [],
+				fromAddress: OWNER,
+				subject: 'Re: Can you send the report?',
+				bodyHtml: '<p>Sent</p>',
+				attachments: [],
+				state: 'pending_send',
+				undoToken: `undo-${Math.random()}`,
+				lastEditedAt: Date.now(),
+				createdAt: Date.now(),
+			})
+		);
+		const rawStorageId = await t.run(async (ctx) => ctx.storage.store(new Blob(['raw'])));
+		const outcome = await t.mutation(internal.mail.draftLifecycle.transition, {
+			draftId,
+			input: {
+				to: 'sent',
+				at: Date.now(),
+				context: {
+					rawStorageId,
+					rawSize: 3,
+					rfc822MessageId: 'reply@owlat.test',
+					references: [],
+					bodyHtml: '<p>Sent</p>',
+					bodyText: 'Sent',
+					attachmentsMeta: [],
+				},
+			},
+		});
+		if (!outcome.ok || !outcome.messageId) throw new Error('send did not reach → sent');
+		return outcome.messageId;
+	}
+
+	async function deliver(t: T, sentId: Id<'mailMessages'>, verdict: 'sent' | 'bounced') {
+		await t.mutation(internal.mail.postboxOutboundLifecycle.transition, {
+			mailMessageId: sentId,
+			recipientIdx: 0,
+			input:
+				verdict === 'sent' ? { to: 'sent', at: Date.now() } : { to: 'bounced', at: Date.now() },
+		});
+	}
+
+	it('does not move the draft past a queued reply, which then still answers it', async () => {
+		const t = convexTest(schema, modules);
+		const r = await openReply(t);
+		await save(t, r, aiBody(AI_TEXT), { aiText: AI_TEXT });
+		const sentA = await sendReply(t, r);
+		const sentB = await sendReply(t, r);
+		await deliver(t, sentA, 'sent');
+		expect((await draftRow(t, r)).obsoleted?.byMessageIds).toEqual([sentA]);
+		const editedAt = (await draftRow(t, r)).lastEditedAt;
+
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		await t.mutation(api.mail.drafts.setIdentity, { draftId: r.draftId, fromAddress: OWNER });
+		await save(t, r, aiBody(AI_TEXT), { aiText: AI_TEXT }); // the same snapshot again
+		expect((await draftRow(t, r)).lastEditedAt).toBe(editedAt);
+
+		await deliver(t, sentB, 'sent');
+		await deliver(t, sentA, 'bounced');
+		expect((await draftRow(t, r)).obsoleted?.byMessageIds).toEqual([sentB]);
 	});
 });

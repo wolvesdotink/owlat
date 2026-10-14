@@ -24,7 +24,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
-import { ANSWERED_RETENTION_MS } from '../mail/answeredReply';
+import { ANSWERED_RETENTION_MS, withAnsweringReply } from '../mail/answeredReply';
 
 /** The archive reason of a message a newer reply in its thread answered. */
 export const ANSWERED_IN_THREAD = 'answered_in_thread';
@@ -83,14 +83,18 @@ export async function settleAnsweredTeamThread(
 		// bounce of either alone leaves it answered.
 		const stash = message.answeredStash;
 		if (stash && isAnsweredInThread(message)) {
-			if (!stash.byInboundMessageIds.includes(answered._id)) {
-				await ctx.db.patch(message._id, {
-					answeredStash: {
-						...stash,
-						byInboundMessageIds: [...stash.byInboundMessageIds, answered._id],
-					},
-				});
-			}
+			if (stash.isUntracked || stash.byInboundMessageIds.includes(answered._id)) continue;
+			// A distinct reply: it joins the set and renews retention (capped,
+			// see MAX_TRACKED_ANSWERS in mail/answeredReply.ts).
+			const next = withAnsweringReply(stash.byInboundMessageIds, answered._id, at);
+			await ctx.db.patch(message._id, {
+				answeredStash: {
+					...stash,
+					byInboundMessageIds: next.ids,
+					...(next.at !== undefined ? { at: next.at } : {}),
+					...(next.isUntracked ? { isUntracked: true as const } : {}),
+				},
+			});
 			continue;
 		}
 		const status = message.processingStatus;
@@ -131,7 +135,8 @@ export async function restoreAnsweredTeamThread(
 	if (!answered?.threadId) return;
 	for (const message of await threadMessages(ctx, answered.threadId)) {
 		const stash = message.answeredStash;
-		if (!stash?.byInboundMessageIds.includes(answeredId)) continue;
+		// An untracked stash stays archived: its set no longer says who answered it.
+		if (!stash || stash.isUntracked || !stash.byInboundMessageIds.includes(answeredId)) continue;
 		if (!isAnsweredInThread(message)) {
 			await ctx.db.patch(message._id, { answeredStash: undefined });
 			continue;

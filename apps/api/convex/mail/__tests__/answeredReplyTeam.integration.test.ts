@@ -17,7 +17,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { createTestContact, flushScheduled } from '../../__tests__/factories';
 import { pushHarness } from '../../push/__tests__/pushFixtures';
 import { modules } from './helpers.testlib';
-import { ANSWERED_RETENTION_MS } from '../answeredReply';
+import { ANSWERED_RETENTION_MS, MAX_TRACKED_ANSWERS } from '../answeredReply';
 
 const NOW = 1_700_000_000_000;
 const workId = 'test-work-id' as WorkId;
@@ -314,6 +314,86 @@ describe('a Team Inbox reply to a newer message', () => {
 		const reopened = await get(t, older);
 		expect(reopened.processingStatus).toBe('draft_ready');
 		expect(reopened.draftResponse).toBe('Your order ships Monday.');
+	});
+});
+
+describe('a Team Inbox stash answered by several replies', () => {
+	it('keeps the stash through the newest reply’s bounce window, not the first one’s', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		const older = await seedInbound(t, th, {
+			processingStatus: 'draft_ready',
+			draftResponse: 'Your order ships Monday.',
+			receivedAt: NOW - 3_000,
+		});
+		const first = await seedInbound(t, th, { processingStatus: 'approved', receivedAt: NOW });
+		const sendA = await completeReply(t, th, first, 'sent');
+		// A was sent longer ago than the retention window.
+		await t.run(async (ctx) => {
+			const message = (await ctx.db.get(older))!;
+			await ctx.db.patch(older, {
+				answeredStash: { ...message.answeredStash!, at: Date.now() - ANSWERED_RETENTION_MS - 1 },
+			});
+		});
+		const second = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			receivedAt: NOW + 5_000,
+		});
+		const sendB = await completeReply(t, th, second, 'sent'); // a distinct reply renews retention
+
+		await laterBounce(t, sendA);
+		await t.mutation(internal.inbox.answeredThread.purgeAnsweredStashes, {});
+		expect((await get(t, older)).answeredStash?.byInboundMessageIds).toEqual([second]);
+
+		await laterBounce(t, sendB);
+		const reopened = await get(t, older);
+		expect(reopened.processingStatus).toBe('draft_ready');
+		expect(reopened.draftResponse).toBe('Your order ships Monday.');
+	});
+
+	it('stops tracking past the cap and keeps such a message archived for good', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		const older = await seedInbound(t, th, {
+			processingStatus: 'draft_ready',
+			draftResponse: 'Your order ships Monday.',
+			receivedAt: NOW - 3_000,
+		});
+		const first = await seedInbound(t, th, { processingStatus: 'approved', receivedAt: NOW });
+		const sendA = await completeReply(t, th, first, 'sent');
+		// As many other sent replies as the cap allows.
+		await t.run(async (ctx) => {
+			const message = (await ctx.db.get(older))!;
+			const others: Id<'inboundMessages'>[] = [];
+			for (let i = 1; i < MAX_TRACKED_ANSWERS; i++) {
+				others.push(
+					await ctx.db.insert('inboundMessages', {
+						to: 'support@example.com',
+						from: 'customer@example.com',
+						subject: 'Order',
+						textBody: 'More',
+						messageId: `<other-${i}@example.com>`,
+						processingStatus: 'sent',
+						receivedAt: NOW + i,
+					})
+				);
+			}
+			await ctx.db.patch(older, {
+				answeredStash: { ...message.answeredStash!, byInboundMessageIds: [first, ...others] },
+			});
+		});
+
+		const second = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			receivedAt: NOW + 5_000,
+		});
+		await completeReply(t, th, second, 'sent');
+		const stash = (await get(t, older)).answeredStash!;
+		expect(stash.byInboundMessageIds).toHaveLength(MAX_TRACKED_ANSWERS);
+		expect(stash.isUntracked).toBe(true);
+
+		await laterBounce(t, sendA);
+		expect((await get(t, older)).processingStatus).toBe('archived');
 	});
 });
 

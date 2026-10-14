@@ -326,7 +326,10 @@ export const inboxTables = {
 			v.object({
 				// The newer messages whose sent replies answered this one.
 				byInboundMessageIds: v.array(v.id('inboundMessages')),
+				// Moves with each distinct sent reply; past the tracking cap the set
+				// stops growing and the message stays answered for good.
 				at: v.number(),
+				isUntracked: v.optional(v.literal(true)),
 				processingStatus: v.union(
 					v.literal('classifying'),
 					v.literal('drafting'),

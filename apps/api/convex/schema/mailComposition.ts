@@ -117,9 +117,15 @@ export const mailCompositionTables = {
 		humanTouchedAt: v.optional(v.number()),
 		// Replies answered this AI draft's conversation: hidden from every draft
 		// surface while any of them stands, restored once all of them bounced,
-		// purged after the retention window (with its uploads).
+		// purged after the retention window (with its uploads). `at` moves with
+		// each distinct reply. Past the tracking cap the set stops growing and
+		// `isUntracked` keeps the draft hidden for good (mail/answeredReply.ts).
 		obsoleted: v.optional(
-			v.object({ byMessageIds: v.array(v.id('mailMessages')), at: v.number() })
+			v.object({
+				byMessageIds: v.array(v.id('mailMessages')),
+				at: v.number(),
+				isUntracked: v.optional(v.literal(true)),
+			})
 		),
 
 		// Team-inbox attribution: the BetterAuth user id of the teammate who fired

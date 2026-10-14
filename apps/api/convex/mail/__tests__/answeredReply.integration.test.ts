@@ -17,7 +17,12 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
-import { ANSWERED_RETENTION_MS, settleOwnerReply } from '../answeredReply';
+import {
+	ANSWERED_RETENTION_MS,
+	MAX_TRACKED_ANSWERS,
+	reconcileAnsweredReply,
+	settleOwnerReply,
+} from '../answeredReply';
 import { runPostInsertInboundEffects } from '../deliveryPipeline/afterInsert';
 
 const OWNER = 'me@owlat.test';
@@ -338,6 +343,85 @@ describe('a reply sent through Owlat', () => {
 
 		await transport(t, sentB, 'bounced'); // now neither did
 		expect(await draftState(t, aiDraft)).toBe('live');
+	});
+
+	it('keeps a draft through the newest reply’s bounce window, not the first one’s', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000, ai: true });
+		const replyA = await seedDraft(t, c, {
+			inReplyTo: c.askId,
+			editedAt: T0 + 3_000,
+			state: 'pending_send',
+		});
+		const sentA = await sendThroughOwlat(t, replyA);
+		await transport(t, sentA, 'sent');
+		const setHiddenAt = (at: number) =>
+			t.run(async (ctx) => {
+				const draft = (await ctx.db.get(aiDraft))!;
+				await ctx.db.patch(aiDraft, { obsoleted: { ...draft.obsoleted!, at } });
+			});
+		// A was accepted longer ago than the retention window.
+		await setHiddenAt(Date.now() - ANSWERED_RETENTION_MS - 1);
+
+		const newerId = await addMessage(t, c, { from: SENDER, at: T0 + 5_000, role: 'inbox' });
+		const replyB = await seedDraft(t, c, {
+			inReplyTo: newerId,
+			editedAt: T0 + 6_000,
+			state: 'pending_send',
+		});
+		const sentB = await sendThroughOwlat(t, replyB);
+		await transport(t, sentB, 'sent'); // a distinct reply renews retention
+		const renewed = (await t.run(async (ctx) => ctx.db.get(aiDraft)))!.obsoleted!.at;
+		expect(renewed).toBeGreaterThan(Date.now() - ANSWERED_RETENTION_MS);
+
+		// B's acceptance seen again (another recipient's event) renews nothing.
+		const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+		await setHiddenAt(dayAgo);
+		await t.run(async (ctx) => reconcileAnsweredReply(ctx, sentB));
+		expect((await t.run(async (ctx) => ctx.db.get(aiDraft)))!.obsoleted!.at).toBe(dayAgo);
+
+		await transport(t, sentA, 'bounced');
+		await t.mutation(internal.mail.answeredReply.purgeExpired, { isContinuation: true });
+		expect(await draftState(t, aiDraft)).toBe('obsoleted'); // B is still within its window
+
+		await transport(t, sentB, 'bounced');
+		expect(await draftState(t, aiDraft)).toBe('live');
+	});
+
+	it('stops tracking past the cap and keeps such a draft hidden for good', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000, ai: true });
+		const replyA = await seedDraft(t, c, {
+			inReplyTo: c.askId,
+			editedAt: T0 + 3_000,
+			state: 'pending_send',
+		});
+		const sentA = await sendThroughOwlat(t, replyA);
+		await transport(t, sentA, 'sent');
+		// As many other accepted replies as the cap allows.
+		await t.run(async (ctx) => {
+			const draft = (await ctx.db.get(aiDraft))!;
+			const ask = (await ctx.db.get(c.askId))!;
+			const { _id, _creationTime, ...base } = ask;
+			const others: Id<'mailMessages'>[] = [];
+			for (let i = 1; i < MAX_TRACKED_ANSWERS; i++)
+				others.push(await ctx.db.insert('mailMessages', base));
+			await ctx.db.patch(aiDraft, {
+				obsoleted: { ...draft.obsoleted!, byMessageIds: [sentA, ...others] },
+			});
+		});
+
+		// One more reply, from another client: the set must not grow past the cap.
+		const sentC = await addMessage(t, c, { from: OWNER, at: T0 + 10_000, role: 'sent' });
+		await syncIn(t, sentC);
+		const hidden = (await t.run(async (ctx) => ctx.db.get(aiDraft)))!.obsoleted!;
+		expect(hidden.byMessageIds).toHaveLength(MAX_TRACKED_ANSWERS);
+		expect(hidden.isUntracked).toBe(true);
+
+		await transport(t, sentA, 'bounced');
+		expect(await draftState(t, aiDraft)).toBe('obsoleted');
 	});
 
 	it.each(['bounced', 'failed'] as const)(
