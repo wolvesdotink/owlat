@@ -199,3 +199,26 @@ export async function recomputeCompleteness(
 	const brief = await loadBriefRow(ctx, ref);
 	return brief ? briefCompleteness(brief) : 'none';
 }
+
+/**
+ * A re-read's snapshots (`purgeRun.ts rereadSourcesInThread`): each stays, the
+ * eligibility its next run decides on, and loses only its claim record, so the
+ * run starts from no claims of its own.
+ */
+export async function clearClaimRecords(
+	ctx: MutationCtx,
+	keys: ReadonlySet<string>,
+	budget: { charge(doc: unknown): void }
+): Promise<{ isDone: true }> {
+	for (const key of keys) {
+		const snapshot = await ctx.db
+			.query('interpretSources')
+			.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
+			.first();
+		budget.charge(snapshot);
+		if (snapshot?.claimIds !== undefined) {
+			await ctx.db.patch(snapshot._id, { claimIds: undefined, updatedAt: Date.now() });
+		}
+	}
+	return { isDone: true };
+}

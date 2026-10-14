@@ -41,7 +41,7 @@ import {
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { scopedIdempotencyKey } from './activity';
 import { recordItemChange } from './counters';
-import { deleteExtractions } from './purgeRows';
+import { clearClaimRecords, deleteExtractions } from './purgeRows';
 import { drainFactLinks, drainItemLinks } from './purgeLinks';
 import { stripFact, stripItem, type PurgedSources } from './purgeClaims';
 import {
@@ -214,56 +214,31 @@ const extractionsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
 	);
 
 /**
- * 2. The purged sources' snapshots (and claim records). A re-read keeps each
- * snapshot, the eligibility its next run decides on, and drops only its claim
- * record: the run starts from no claims of its own.
+ * 2. The purged sources' snapshots (and claim records). A re-read keeps the
+ * snapshots and drops only their claim records (`purgeRows.ts`).
  */
 const snapshotsRange: PurgeRange = (ctx, { job, cursor, budget, state }) =>
 	job.isReread
 		? clearClaimRecords(ctx, purgedOf(state).keys, budget)
-		: erasedSnapshots(ctx, { cursor, budget, state });
-
-async function clearClaimRecords(
-	ctx: MutationCtx,
-	keys: ReadonlySet<string>,
-	budget: RangeRun['budget']
-): Promise<{ isDone: true }> {
-	for (const key of keys) {
-		const snapshot = await ctx.db
-			.query('interpretSources')
-			.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
-			.first();
-		budget.charge(snapshot);
-		if (snapshot?.claimIds !== undefined) {
-			await ctx.db.patch(snapshot._id, { claimIds: undefined, updatedAt: Date.now() });
-		}
-	}
-	return { isDone: true };
-}
-
-const erasedSnapshots = (
-	ctx: MutationCtx,
-	{ cursor, budget, state }: Pick<RangeRun, 'cursor' | 'budget' | 'state'>
-) =>
-	drainSteps(
-		budget,
-		cursor,
-		stepsOf(purgedOf(state).keys, (key) =>
-			drainShrinking(
+		: drainSteps(
 				budget,
-				(n) =>
-					ctx.db
-						.query('interpretSources')
-						.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
-						.take(n),
-				async (row) => {
-					// A purged source will never record an outcome.
-					await settleSource(ctx, row.sourceKey, 'purged');
-					return deleting(ctx)(row);
-				}
-			)
-		)
-	);
+				cursor,
+				stepsOf(purgedOf(state).keys, (key) =>
+					drainShrinking(
+						budget,
+						(n) =>
+							ctx.db
+								.query('interpretSources')
+								.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
+								.take(n),
+						async (row) => {
+							// A purged source will never record an outcome.
+							await settleSource(ctx, row.sourceKey, 'purged');
+							return deleting(ctx)(row);
+						}
+					)
+				)
+			);
 
 /** The activity key ranges `[from, to]` that name a purged source in this thread. */
 function activityKeyRanges(ref: ThreadRef, purged: PurgedSources): Array<[string, string]> {
