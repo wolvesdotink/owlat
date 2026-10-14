@@ -90,7 +90,10 @@ interface MockConvex {
 	action: ReturnType<typeof vi.fn>;
 }
 
-function makeMocks(tls = true): {
+function makeMocks(
+	tls = true,
+	overrides: Partial<ImapConfig> = {}
+): {
 	socket: MockSocket;
 	convex: MockConvex;
 	limiter: AuthRateLimiter;
@@ -105,7 +108,7 @@ function makeMocks(tls = true): {
 	const limiter = new AuthRateLimiter(null, config.authRateLimit);
 	const connection = new ImapConnection(
 		socket as unknown as Socket,
-		config,
+		{ ...config, ...overrides },
 		convex as unknown as ConvexClient,
 		limiter,
 		'10.0.0.1',
@@ -1005,33 +1008,217 @@ describe('ImapConnection — LOGIN literal continuation (RFC 3501 §4.3 / RFC 78
 		expect(socket.ended).toBe(true);
 	});
 
-	it('does not overflow the stack on thousands of chained tiny {N+} literals in one buffer', async () => {
+	it('rejects thousands of chained tiny {N+} literals at the count ceiling without overflowing the stack', async () => {
 		const { socket, convex } = makeMocks();
 		socket.written.length = 0;
 		convex.action.mockResolvedValue(null);
 
 		// Pre-auth DoS regression: a single TCP segment can pack thousands of
-		// tiny non-synchronizing ({1+}) literals — each 1 octet (under the
-		// pre-auth ceiling) with CRLFs present (line guard never trips). The pump
-		// must absorb them iteratively (O(1) stack), not self-recurse one frame
-		// per literal, which previously overflowed the V8 stack and crashed the
-		// shared process. We feed ~10k chained literals as one buffer; the test
-		// reaching its assertions at all proves no RangeError was thrown.
+		// tiny non-synchronizing literals ({0+} and {1+}, each under the pre-auth
+		// ceiling, CRLFs present so the line guard never trips). The pump must
+		// process them iteratively (O(1) stack — self-recursion per literal once
+		// overflowed the V8 stack) and reject the command at the per-command
+		// literal-count ceiling instead of growing it without bound.
 		const count = 10_000;
 		let payload = 'z LOGIN {1+}\r\n';
 		for (let i = 0; i < count; i += 1) {
-			payload += 'x{1+}\r\n';
+			payload += i % 2 === 0 ? 'x{0+}\r\n' : '{1+}\r\n';
 		}
-		// Terminate the chained command with a final non-literal segment, then a
-		// fresh NOOP so we can prove the pump still parses subsequent commands.
 		payload += 'x\r\nz2 NOOP\r\n';
 
-		// Must not throw (no stack overflow) regardless of literal count.
 		expect(() => socket.receive(payload)).not.toThrow();
 		for (let i = 0; i < 8; i += 1) await Promise.resolve();
 
-		// Boundary preserved: the NOOP after the giant chained command still
-		// parsed and was answered (the connection is alive, not crashed).
-		expect(socket.lines()).toContain('z2 OK NOOP completed');
+		expect(socket.written.join('')).toContain('* BYE Command too large');
+		expect(socket.ended).toBe(true);
+		expect(convex.action).not.toHaveBeenCalled();
+		expect(socket.lines()).not.toContain('z2 OK NOOP completed');
+	});
+
+	it('counts zero-length {0+} literals against the pre-auth count ceiling', async () => {
+		const { socket, convex } = makeMocks();
+		socket.written.length = 0;
+		convex.action.mockResolvedValue(null);
+
+		// Zero-length literals carry no octets, so they must be counted when
+		// declared; otherwise they never reach any ceiling.
+		socket.receive(`z LOGIN ${'{0+}\r\n'.repeat(100)}x\r\n`);
+		for (let i = 0; i < 8; i += 1) await Promise.resolve();
+
+		expect(socket.written.join('')).toContain('* BYE Command too large');
+		expect(socket.ended).toBe(true);
+		expect(convex.action).not.toHaveBeenCalled();
+	});
+
+	it('counts zero-length {0+} literals against the authenticated count ceiling', async () => {
+		const { socket, convex } = makeMocks();
+		convex.action.mockResolvedValue({
+			mailboxId: 'mb1',
+			appPasswordId: 'ap1',
+			userId: 'u1',
+			organizationId: 'org1',
+		});
+		await execMulti(socket, 'a LOGIN "alice@test" "good"');
+		socket.written.length = 0;
+
+		// ~12 KB in total, far under the post-auth byte budget: only the
+		// literal count can stop it.
+		expect(() => socket.receive(`b NOOP ${'x{0+}\r\n'.repeat(2000)}x\r\n`)).not.toThrow();
+		for (let i = 0; i < 8; i += 1) await Promise.resolve();
+
+		expect(socket.written.join('')).toContain('* BYE Command too large');
+		expect(socket.ended).toBe(true);
+	});
+
+	it('rejects chained individually legal pre-auth literals once the command budget is spent', async () => {
+		const { socket, convex } = makeMocks();
+		socket.written.length = 0;
+
+		// Every literal is exactly the 4 KiB pre-auth per-literal ceiling, but
+		// together they exceed the aggregate pre-auth command budget.
+		const body = 'a'.repeat(4096);
+		socket.receive('w LOGIN {4096}\r\n');
+		expect(socket.written.filter((w) => w.startsWith('+ '))).toHaveLength(1);
+		socket.receive(`${body} {4096}\r\n`);
+		expect(socket.written.filter((w) => w.startsWith('+ '))).toHaveLength(2);
+		socket.receive(`${body} {4096}\r\n`);
+		for (let i = 0; i < 4; i += 1) await Promise.resolve();
+
+		// The third body is never invited: rejected at its declaration.
+		expect(socket.written.filter((w) => w.startsWith('+ '))).toHaveLength(2);
+		expect(socket.written.join('')).toContain('* BYE Command too large');
+		expect(socket.ended).toBe(true);
+		expect(convex.action).not.toHaveBeenCalled();
+	});
+
+	it('rejects an unterminated continuation segment that outgrows the command budget', async () => {
+		const { socket, convex } = makeMocks();
+		socket.written.length = 0;
+
+		// Two legal 4 KiB literals leave ~4 KiB of the 12 KiB pre-auth budget;
+		// the next segment never sends its CRLF, so only the budget can stop it
+		// (it stays under the 64 KiB line ceiling).
+		const body = 'a'.repeat(4096);
+		socket.receive(`w LOGIN {4096+}\r\n${body} {4096+}\r\n${body}`);
+		expect(socket.ended).toBe(false);
+		socket.receive(` ${'b'.repeat(8192)}`);
+		for (let i = 0; i < 4; i += 1) await Promise.resolve();
+
+		expect(socket.written.join('')).toContain('* BYE Command too large');
+		expect(socket.ended).toBe(true);
+		expect(convex.action).not.toHaveBeenCalled();
+	});
+
+	it('accepts an authenticated literal command within the aggregate budget', async () => {
+		const { socket, convex } = makeMocks();
+		convex.action.mockResolvedValue({
+			mailboxId: 'mb1',
+			appPasswordId: 'ap1',
+			userId: 'u1',
+			organizationId: 'org1',
+		});
+		await execMulti(socket, 'a LOGIN "alice@test" "good"');
+		socket.written.length = 0;
+
+		// Post-auth literals are bounded by the post-auth budget, not the 12 KiB
+		// pre-auth one: a 64 KiB literal still dispatches.
+		socket.receive(`b NOOP {65536+}\r\n${'n'.repeat(65536)}\r\nc NOOP\r\n`);
+		for (let i = 0; i < 8; i += 1) await Promise.resolve();
+
+		expect(socket.ended).toBe(false);
+		expect(socket.lines()).toContain('c OK NOOP completed');
+	});
+});
+
+describe('ImapConnection — disconnect', () => {
+	it('drops buffered input on close while authentication is still pending', async () => {
+		const { socket, convex, connection } = makeMocks();
+		// The backend never answers: LOGIN's completion stays pending and holds
+		// a reference to the connection after the socket is gone.
+		convex.action.mockReturnValue(new Promise(() => {}));
+		socket.receive('a LOGIN "alice@test" "good"\r\n');
+		await Promise.resolve();
+		// Held behind the running LOGIN, so it stays in the buffer.
+		socket.receive(`b NOOP ${'x'.repeat(60_000)}\r\n`);
+		const buffered = () => (connection as unknown as { buffer: Buffer }).buffer.length;
+		expect(buffered()).toBeGreaterThan(60_000);
+
+		socket.emit('close');
+
+		expect(buffered()).toBe(0);
+	});
+});
+
+describe('ImapConnection — command line ceiling', () => {
+	const maxLineBytes = 1024;
+
+	it('rejects a complete oversized line delivered in one chunk', () => {
+		const { socket } = makeMocks(true, { maxLineBytes });
+		socket.written.length = 0;
+
+		socket.receive(`a NOOP ${'x'.repeat(2000)}\r\n`);
+
+		expect(socket.written.join('')).toContain('* BYE Command line too long');
+		expect(socket.lines()).not.toContain('a OK NOOP completed');
+		expect(socket.ended).toBe(true);
+	});
+
+	it('rejects a complete oversized line whose CRLF arrives with the threshold-crossing chunk', () => {
+		const { socket } = makeMocks(true, { maxLineBytes });
+		socket.written.length = 0;
+
+		socket.receive(`a NOOP ${'x'.repeat(1000)}`);
+		expect(socket.ended).toBe(false);
+		socket.receive(`${'x'.repeat(1000)}\r\n`);
+
+		expect(socket.written.join('')).toContain('* BYE Command line too long');
+		expect(socket.lines()).not.toContain('a OK NOOP completed');
+		expect(socket.ended).toBe(true);
+	});
+
+	it('rejects an unterminated oversized line', () => {
+		const { socket } = makeMocks(true, { maxLineBytes });
+		socket.written.length = 0;
+
+		socket.receive(`a NOOP ${'x'.repeat(2000)}`);
+
+		expect(socket.written.join('')).toContain('* BYE Command line too long');
+		expect(socket.ended).toBe(true);
+	});
+
+	it('accepts a line of exactly the ceiling whose CRLF is split across chunks', async () => {
+		const { socket } = makeMocks(true, { maxLineBytes });
+		socket.written.length = 0;
+
+		const line = `a NOOP ${'x'.repeat(maxLineBytes - 'a NOOP '.length)}`;
+		expect(Buffer.byteLength(line)).toBe(maxLineBytes);
+		socket.receive(`${line}\r`);
+		expect(socket.ended).toBe(false);
+		socket.receive('\n');
+		await Promise.resolve();
+
+		expect(socket.lines()).toContain('a OK NOOP completed');
+		expect(socket.ended).toBe(false);
+	});
+
+	it('measures the line in wire octets, not decoded characters', () => {
+		const { socket } = makeMocks(true, { maxLineBytes });
+		socket.written.length = 0;
+
+		// 600 characters, 1,200 octets.
+		socket.receive(`a NOOP ${'ä'.repeat(600)}\r\n`);
+
+		expect(socket.written.join('')).toContain('* BYE Command line too long');
+		expect(socket.ended).toBe(true);
+	});
+
+	it('still answers a line within the ceiling', async () => {
+		const { socket } = makeMocks(true, { maxLineBytes });
+		socket.written.length = 0;
+
+		await exec(socket, `a NOOP ${'x'.repeat(900)}`);
+
+		expect(socket.lines()).toContain('a OK NOOP completed');
+		expect(socket.ended).toBe(false);
 	});
 });

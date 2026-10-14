@@ -23,7 +23,10 @@
 #     ghcr.io/wolvesdotink and is pinned via ${OWLAT_VERSION:-dev}, never the
 #     mutable :latest.
 #   • Docker socket: only the read-only docker-socket-proxy mounts it, and the
-#     privileged Docker API sits on an internal-only network.
+#     privileged Docker API sits on an internal-only network shared with the
+#     updater alone — in the root file, the VPS template and the release file
+#     generated from the root one (#1329: the VPS template had put the proxy
+#     on `default`, next to every other service).
 #   • Updater shutdown: both templates give the updater the stop grace its
 #     shutdown budget is computed against (apps/updater/src/lifecycle.ts), and
 #     an init to reap what a stopped docker command leaves behind.
@@ -56,7 +59,12 @@ service_block() {
 	' "$1"
 }
 
-for compose in docker-compose.yml infra/templates/docker-compose.vps.yml; do
+# Overridable so scripts/__tests__/check-compose-invariants.test.ts can run the
+# gate against a deliberately broken copy.
+root=${COMPOSE_INVARIANTS_ROOT:-docker-compose.yml}
+vps=${COMPOSE_INVARIANTS_VPS:-infra/templates/docker-compose.vps.yml}
+
+for compose in "$root" "$vps"; do
 	worker=$(service_block "$compose" code-worker)
 	proxy=$(service_block "$compose" convex-fn-proxy)
 	[ -n "$worker" ] || { bad "$compose: no code-worker service"; continue; }
@@ -83,9 +91,6 @@ for compose in docker-compose.yml infra/templates/docker-compose.vps.yml; do
 	else bad "$compose: code-worker must declare deploy.replicas: 1"; fi
 done
 
-
-root=docker-compose.yml
-vps=infra/templates/docker-compose.vps.yml
 
 # --- registry and version pinning --------------------------------------------
 # docker/images.json lists every published image; the ones whose rootCompose is
@@ -131,19 +136,53 @@ if grep -qE 'ghcr\.io/wolvesdotink/[a-z0-9-]+:(latest\b|\$\{OWLAT_VERSION:-lates
 else ok "$root pins no image to :latest"; fi
 
 # --- docker socket exposure ---------------------------------------------------
-# A bind mount without a `:ro` suffix is read-write, which hands the mounting
-# container effective root on the host.
-if grep -qP '/var/run/docker\.sock:/var/run/docker\.sock(?!:ro)' "$root"; then
-	bad "$root bind-mounts /var/run/docker.sock read-write (missing the :ro suffix)"
-else ok "$root mounts the docker socket read-only wherever it is mounted"; fi
+# The release asset is generated from the root file, so it is checked as built
+# rather than assumed to inherit the root file's shape.
+release_dir=$(mktemp -d)
+trap 'rm -rf "$release_dir"' EXIT
+release=
+if cp -- "$root" "$release_dir/docker-compose.yml" \
+	&& (cd "$release_dir" && bash "$OLDPWD/scripts/gen-release-compose.sh" 0.0.0 release.yml >/dev/null); then
+	release=$release_dir/release.yml
+else bad "scripts/gen-release-compose.sh could not generate a release file from $root"; fi
 
-socket_proxy=$(service_block "$root" docker-socket-proxy)
-if grep -qE 'image: *tecnativa/docker-socket-proxy:' <<<"$socket_proxy" \
-	&& grep -qE '/var/run/docker\.sock:/var/run/docker\.sock:ro' <<<"$socket_proxy" \
-	&& grep -qE '^ {6}- docker-proxy$' <<<"$socket_proxy" \
-	&& ! grep -qE '^ {6}- default$' <<<"$socket_proxy"; then
-	ok "$root runs docker-socket-proxy with a read-only socket on docker-proxy only"
-else bad "$root docker-socket-proxy must mount the socket :ro and attach to docker-proxy only"; fi
+# The Docker API behind the proxy is unauthenticated, and CONTAINERS+POST can
+# create a container with a host bind mount. So the proxy lives on an internal
+# network whose only other member is the updater; a service on `default` that
+# could resolve docker-socket-proxy would have root on the host.
+for compose in "$root" "$vps" ${release:+"$release"}; do
+	label=$compose
+	[ "$compose" = "$release" ] && label="release file generated from $root"
+
+	# A bind mount without a `:ro` suffix is read-write, which hands the
+	# mounting container effective root on the host.
+	if grep -qP '/var/run/docker\.sock:/var/run/docker\.sock(?!:ro)' "$compose"; then
+		bad "$label bind-mounts /var/run/docker.sock read-write (missing the :ro suffix)"
+	else ok "$label mounts the docker socket read-only wherever it is mounted"; fi
+
+	socket_proxy=$(service_block "$compose" docker-socket-proxy)
+	if grep -qE 'image: *tecnativa/docker-socket-proxy:' <<<"$socket_proxy" \
+		&& grep -qE '/var/run/docker\.sock:/var/run/docker\.sock:ro' <<<"$socket_proxy"; then
+		ok "$label runs docker-socket-proxy with a read-only socket"
+	else bad "$label docker-socket-proxy must run tecnativa/docker-socket-proxy and mount the socket :ro"; fi
+
+	updater=$(service_block "$compose" updater)
+	if grep -qE 'DOCKER_HOST: *tcp://docker-socket-proxy:2375' <<<"$updater" \
+		&& grep -Pzq '\n {4}depends_on:\n {6}- docker-socket-proxy\n' <<<"$updater" \
+		&& ! grep -qE '\- */var/run/docker\.sock' <<<"$updater"; then
+		ok "$label updater reaches Docker through the proxy, never the raw socket"
+	else bad "$label updater must set DOCKER_HOST=tcp://docker-socket-proxy:2375, depend on the proxy and mount no socket"; fi
+
+	# Network membership is read off the parsed YAML, not grepped: flow lists,
+	# quoted names, comments and `network_mode: service:updater` all attach a
+	# service without a `      - docker-proxy` line.
+	network_violations=$(bun scripts/check-docker-proxy-network.ts "$compose")
+	case $? in
+	0) ok "$label keeps docker-proxy internal, holding only docker-socket-proxy (unpublished) and updater (also on default)" ;;
+	1) while IFS= read -r violation; do bad "$label $violation"; done <<<"$network_violations" ;;
+	*) bad "$label could not be parsed by scripts/check-docker-proxy-network.ts" ;;
+	esac
+done
 
 # The proxy is the updater's ONLY route to Docker, so its allowlist is the
 # feature list of in-app updates. `compose up` and `compose run` resolve the
@@ -168,13 +207,6 @@ for compose in "$root" "$vps"; do
 	else bad "$compose: docker-socket-proxy must keep$granted_danger at 0"; fi
 done
 
-updater=$(service_block "$root" updater)
-if grep -qE 'DOCKER_HOST: *tcp://docker-socket-proxy:2375' <<<"$updater" \
-	&& grep -Pzq '\n {4}depends_on:\n {6}- docker-socket-proxy\n' <<<"$updater" \
-	&& ! grep -qE '\- */var/run/docker\.sock' <<<"$updater"; then
-	ok "$root updater reaches Docker through the proxy, never the raw socket"
-else bad "$root updater must set DOCKER_HOST=tcp://docker-socket-proxy:2375, depend on the proxy and mount no socket"; fi
-
 # The updater finishes a rollout it has committed to before it exits, inside a
 # budget apps/updater/src/lifecycle.ts computes against STOP_GRACE_SECONDS.
 # Docker's default 10s grace SIGKILLs it halfway through a recreate, so both
@@ -190,15 +222,6 @@ for compose in "$root" "$vps"; do
 		ok "$compose: updater declares stop_grace_period ${updater_grace}s (lifecycle.ts STOP_GRACE_SECONDS) and init: true"
 	else bad "$compose: updater must declare stop_grace_period: <STOP_GRACE_SECONDS>s (apps/updater/src/lifecycle.ts, ${updater_grace:-unreadable}) and init: true"; fi
 done
-
-if grep -Pzq '\n {2}docker-proxy:\n {4}internal: true\n' "$root"; then
-	ok "$root keeps the docker-proxy network internal:true"
-else bad "$root must declare the docker-proxy network with internal: true"; fi
-
-proxy_members=$(grep -cE '^ +- docker-proxy$' "$root")
-if [ "$proxy_members" = 2 ]; then
-	ok "$root attaches exactly docker-socket-proxy and updater to docker-proxy"
-else bad "$root has $proxy_members services on the docker-proxy network (expected 2: the proxy and the updater)"; fi
 
 # --- ClamAV stays opt-in and fail-open ----------------------------------------
 if grep -Pzq '\n {6}- clamav\n' <<<"$(service_block "$root" clamav)"; then

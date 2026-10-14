@@ -211,8 +211,8 @@ const headline = computed(() => {
 					<Icon name="lucide:circle-check" class="mt-0.5 h-4 w-4 shrink-0 text-success" />
 					<span class="text-text-secondary">
 						<span class="text-text-primary">{{ t(`${KEY}.names.${check.id}`) }}:</span>
-						{{ localized(check.summary) }}
-						<template v-if="check.note"> {{ localized(check.note) }}</template>
+						{{ localized(check.summary)
+						}}<template v-if="check.note">{{ ' ' }}{{ localized(check.note) }}</template>
 					</span>
 				</li>
 			</ul>

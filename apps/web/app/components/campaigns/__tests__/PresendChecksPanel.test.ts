@@ -81,6 +81,27 @@ describe('PresendChecksPanel', () => {
 		expectFullyLocalized(wrapper);
 	});
 
+	it('keeps one space between a passed check and its note', async () => {
+		const wrapper = mountPanel({
+			checks: [
+				{
+					id: 'unsubscribe',
+					category: 'compliance',
+					status: 'pass',
+					summary: `${KEY}.unsubscribe.footer`,
+					note: `${KEY}.unsubscribe.segmentNote`,
+					items: [],
+				},
+			],
+			summary: { warnings: 0, blocking: 0, pending: 0, signature: '' },
+		});
+
+		await wrapper.find('[data-testid="presend-toggle-passed"]').trigger('click');
+		expect(wrapper.find('[data-testid="presend-check-unsubscribe"]').text()).toBe(
+			'Unsubscribe link: Owlat adds an unsubscribe and a preferences link to every topic campaign. Sent to a segment, the email needs its own unsubscribe link.'
+		);
+	});
+
 	it('offers "Show me" only where a finding has a Block', async () => {
 		const wrapper = mountPanel();
 		const buttons = wrapper.findAll('[data-testid="presend-show-block"]');

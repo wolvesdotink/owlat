@@ -289,8 +289,9 @@ const createdOn = computed(() =>
 					</div>
 					<span class="text-text-secondary">
 						{{ t('dashboard.admin.team.inboxes.memberCount', inbox.memberCount)
-						}}<template v-if="inbox.memberCount > AVATAR_PREVIEW_LIMIT">
-							{{
+						}}<template v-if="inbox.memberCount > AVATAR_PREVIEW_LIMIT"
+							>{{ ' '
+							}}{{
 								t('dashboard.admin.team.inboxes.moreMembers', {
 									count: inbox.memberCount - AVATAR_PREVIEW_LIMIT,
 								})
