@@ -18,12 +18,11 @@ import type { ImapConfig } from '../config.js';
 import type { ConvexClient } from '../convex.js';
 import { AuthRateLimiter } from '../rateLimit.js';
 import { startImapServer, type ImapServerHandle } from '../server.js';
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../../../vitest.timeouts';
 
 vi.mock('../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-
-const HANDSHAKE_MS = 500;
 
 let pair: { cert: string; key: string };
 
@@ -56,7 +55,7 @@ beforeAll(() => {
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
-});
+}, PARALLEL_GATE_TIMEOUT_MS);
 
 let imap: ImapServerHandle | null = null;
 const clients: Socket[] = [];
@@ -69,10 +68,10 @@ afterEach(async () => {
 		await new Promise((resolve) => imap!.server.close(resolve));
 	}
 	imap = null;
-});
+}, PARALLEL_GATE_TIMEOUT_MS);
 
 async function startServer(
-	handshakeMs = HANDSHAKE_MS
+	handshakeMs: number
 ): Promise<{ handle: ImapServerHandle; port: number }> {
 	const config: ImapConfig = {
 		port: 0,
@@ -111,7 +110,11 @@ async function silentPeer(port: number): Promise<{ socket: Socket; closed: Promi
 	return { socket, closed };
 }
 
-/** A real TLS client: collects decrypted lines and lets the test send a command. */
+/**
+ * A real TLS client: collects decrypted lines and lets the test send a command.
+ * Rejects if the server resets or closes the connection before the handshake
+ * completes, so a refused client fails fast instead of hanging.
+ */
 async function tlsClient(port: number) {
 	const socket = connectTls({
 		port,
@@ -120,50 +123,90 @@ async function tlsClient(port: number) {
 		rejectUnauthorized: false,
 	});
 	clients.push(socket);
+	// Kept for the socket's lifetime: a later reset must not surface as an
+	// unhandled error event.
+	let failure: Error | null = null;
+	socket.on('error', (err) => {
+		failure = err;
+	});
 	let received = '';
 	socket.setEncoding('utf8');
 	socket.on('data', (chunk: string) => {
 		received += chunk;
 	});
 	const waitFor = (text: string) =>
-		vi.waitFor(() => expect(received).toContain(text), { timeout: 2_000 });
-	await new Promise((resolve) => socket.once('secureConnect', resolve));
+		vi.waitFor(() => expect(received).toContain(text), { timeout: 10_000 });
+	await new Promise<void>((resolve, reject) => {
+		const onClose = () =>
+			reject(failure ?? new Error('connection closed before the TLS handshake finished'));
+		socket.once('close', onClose);
+		socket.once('secureConnect', () => {
+			socket.off('close', onClose);
+			resolve();
+		});
+	});
 	return { socket, waitFor };
 }
 
-describe('IMAPS admission before the TLS handshake (real sockets)', () => {
-	it('a silent raw peer takes the only slot and is dropped at the deadline', async () => {
-		const { port } = await startServer();
-		const first = await silentPeer(port);
-		// With maxClients = maxConnectionsPerIp = 1 the second raw peer is over
-		// both caps and is closed straight away, long before any deadline.
-		const second = await silentPeer(port);
-		await second.closed;
-		expect(first.socket.destroyed).toBe(false);
-		// The first is closed by the handshake deadline, not left open.
-		expect(await first.closed).toBeGreaterThanOrEqual(HANDSHAKE_MS - 50);
+/** Connect a TLS client, retrying while the server is still releasing a slot. */
+function tlsClientOnceAdmitted(port: number) {
+	return vi.waitFor(() => tlsClient(port), { timeout: 10_000, interval: 50 });
+}
 
-		// Its slot is free again: a real TLS client gets an IMAP session.
-		const client = await tlsClient(port);
-		await client.waitFor('* OK');
-	});
+// Real sockets, real handshakes and an openssl subprocess: give the suite the
+// shared budget for tests whose fixed cost grows under a loaded CI runner.
+describe(
+	'IMAPS admission before the TLS handshake (real sockets)',
+	{ timeout: PARALLEL_GATE_TIMEOUT_MS },
+	() => {
+		it('a pending handshake holds the only slot and a second raw peer is refused', async () => {
+			// A deadline no test reaches, so only admission decides what closes.
+			const { port } = await startServer(60_000);
+			const first = await silentPeer(port);
+			// With maxClients = maxConnectionsPerIp = 1 the second raw peer is over
+			// both caps and is closed by the server.
+			const second = await silentPeer(port);
+			await second.closed;
+			expect(first.socket.destroyed).toBe(false);
 
-	it('a completed handshake keeps its session past the handshake deadline', async () => {
-		const { port } = await startServer();
-		const client = await tlsClient(port);
-		await client.waitFor('* OK');
-		await new Promise((resolve) => setTimeout(resolve, HANDSHAKE_MS * 2));
-		expect(client.socket.destroyed).toBe(false);
-		client.socket.write('a1 NOOP\r\n');
-		await client.waitFor('a1 OK');
-	});
+			// A handshake abandoned by the peer frees its slot: a real TLS client
+			// then gets an IMAP session.
+			first.socket.destroy();
+			const client = await tlsClientOnceAdmitted(port);
+			await client.waitFor('* OK');
+		});
 
-	it('shutdown destroys a pending handshake so the listener can close', async () => {
-		// A deadline the test never reaches, so only the shutdown can close it.
-		const { handle, port } = await startServer(60_000);
-		const pending = await silentPeer(port);
-		handle.closeAllConnections('Server shutting down');
-		await pending.closed;
-		await new Promise((resolve) => handle.server.close(resolve));
-	});
-});
+		it('a raw peer that never negotiates is closed at the deadline, freeing its slot', async () => {
+			const deadlineMs = 300;
+			const { port } = await startServer(deadlineMs);
+			// Lower bounds only: load can delay a close, never hasten one.
+			const first = await silentPeer(port);
+			expect(await first.closed).toBeGreaterThanOrEqual(deadlineMs - 50);
+			// Had the expired peer kept its slot, this one would be refused at once
+			// rather than waiting out a deadline of its own.
+			const next = await silentPeer(port);
+			expect(await next.closed).toBeGreaterThanOrEqual(deadlineMs - 50);
+		});
+
+		it('a completed handshake keeps its session past the handshake deadline', async () => {
+			// Room for a slow handshake on a loaded runner, short enough to outwait.
+			const deadlineMs = 2_000;
+			const { port } = await startServer(deadlineMs);
+			const client = await tlsClient(port);
+			await client.waitFor('* OK');
+			await new Promise((resolve) => setTimeout(resolve, deadlineMs + 500));
+			expect(client.socket.destroyed).toBe(false);
+			client.socket.write('a1 NOOP\r\n');
+			await client.waitFor('a1 OK');
+		});
+
+		it('shutdown destroys a pending handshake so the listener can close', async () => {
+			// A deadline the test never reaches, so only the shutdown can close it.
+			const { handle, port } = await startServer(60_000);
+			const pending = await silentPeer(port);
+			handle.closeAllConnections('Server shutting down');
+			await pending.closed;
+			await new Promise((resolve) => handle.server.close(resolve));
+		});
+	}
+);
