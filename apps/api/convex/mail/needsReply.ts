@@ -147,13 +147,12 @@ export const getThreadContext = internalQuery({
 		if (!thread) return null;
 		const mailbox = await ctx.db.get(thread.mailboxId);
 		if (!mailbox || mailbox.status !== 'active') return null;
-		const all = await ctx.db
+		const newest = await ctx.db
 			.query('mailMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.collect(); // bounded: one thread's messages
-		const newest = all
-			.sort((a, b) => a.receivedAt - b.receivedAt)
-			.slice(-NEEDS_REPLY_CONTEXT_MESSAGES);
+			.withIndex('by_thread_and_received', (q) => q.eq('threadId', args.threadId))
+			.order('desc')
+			.take(NEEDS_REPLY_CONTEXT_MESSAGES);
+		newest.reverse();
 		const ownerAddress = mailbox.address.toLowerCase();
 		// Every address that is "us": the mailbox's own plus each alias that
 		// targets it. A team inbox reached through `info@` would otherwise read
