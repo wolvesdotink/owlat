@@ -28,6 +28,7 @@
  */
 
 import {
+	isEmbeddedResourceUrl,
 	isTrackingResource,
 	remoteResourceHost,
 	stripRemoteImages,
@@ -58,14 +59,9 @@ interface ResourceRef {
 	tracker: boolean;
 }
 
-/** `data:` and `cid:` (resolved to `data:` earlier) arrived with the message. */
-function isEmbeddedUrl(url: string): boolean {
-	return /^(data|cid):/i.test(url.trim());
-}
-
 function classify(url: string | null, context: RemoteResourceContext): ResourceRef {
 	if (url === null) return { url, remote: true, tracker: true };
-	if (isEmbeddedUrl(url)) return { url, remote: false, tracker: false };
+	if (isEmbeddedResourceUrl(url)) return { url, remote: false, tracker: false };
 	return { url, remote: true, tracker: isTrackingResource(url, context) };
 }
 
@@ -102,53 +98,126 @@ function splitDeclarations(style: string): string[] {
 
 const CSS_URL_RE = /\b(?:url|src)\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))/gi;
 const CSS_STRING_RE = /"([^"]*)"|'([^']*)'/g;
+// The start of every CSS function that can fetch an image. `image-set()` and
+// `cross-fade()` are taken whole, with the url()s inside them.
+const CSS_IMAGE_FUNCTION_RE = /(?:-webkit-)?(?:image-set|cross-fade)\(|\b(?:url|src)\(/gi;
+// `type("image/png")` inside an image-set names a MIME type, not a URL.
+const CSS_TYPE_RE = /\btype\(\s*(?:"[^"]*"|'[^']*')\s*\)/gi;
 
-/** Every URL one CSS declaration can fetch. */
-function declarationUrls(declaration: string): Array<string | null> {
-	// `\75 rl(…)` is still `url(…)`, and an escaped host defeats the tracker
-	// match; no legitimate mail needs either, so the whole value is opaque.
-	if (declaration.includes('\\')) return [null];
-	const urls: Array<string | null> = [];
-	for (const match of declaration.matchAll(CSS_URL_RE)) {
+/** Index just past the `)` closing the function whose `(` is at `open`, honouring quotes. */
+function closingParen(text: string, open: number): number {
+	let depth = 0;
+	let quote: string | null = null;
+	for (let i = open; i < text.length; i++) {
+		const ch = text[i];
+		if (quote) {
+			if (ch === quote) quote = null;
+		} else if (ch === '"' || ch === "'") quote = ch;
+		else if (ch === '(') depth++;
+		else if (ch === ')' && --depth === 0) return i + 1;
+	}
+	// Unterminated: the function runs to the end of the declaration.
+	return text.length;
+}
+
+/** Every URL one image function (`url()`, `image-set()`, …) can fetch. */
+function imageFunctionUrls(fn: string): string[] {
+	const urls: string[] = [];
+	for (const match of fn.matchAll(CSS_URL_RE)) {
 		urls.push((match[1] ?? match[2] ?? match[3] ?? '').trim());
 	}
 	// `image-set("a.png" 1x)` fetches its plain strings too.
-	if (/image-set\(/i.test(declaration)) {
-		for (const match of declaration.matchAll(CSS_STRING_RE)) {
+	if (/^(?:-webkit-)?image-set\(/i.test(fn)) {
+		for (const match of fn.replace(CSS_TYPE_RE, '').matchAll(CSS_STRING_RE)) {
 			urls.push((match[1] ?? match[2] ?? '').trim());
 		}
 	}
 	return urls;
 }
 
+interface CssImageFunction {
+	start: number;
+	end: number;
+	urls: string[];
+}
+
+/** The image functions in one declaration, outermost only, in order. */
+function imageFunctions(declaration: string): CssImageFunction[] {
+	const fns: CssImageFunction[] = [];
+	const re = new RegExp(CSS_IMAGE_FUNCTION_RE.source, 'gi');
+	let match: RegExpExecArray | null;
+	while ((match = re.exec(declaration))) {
+		const start = match.index;
+		const end = closingParen(declaration, start + match[0].length - 1);
+		fns.push({ start, end, urls: imageFunctionUrls(declaration.slice(start, end)) });
+		// Skip past the whole function: a url() inside an image-set is its own.
+		re.lastIndex = end;
+	}
+	return fns;
+}
+
 /**
- * The URL of each `srcset` candidate. A candidate's URL runs to the next
- * whitespace (so a `data:` URL keeps its comma); trailing commas end it.
+ * Gate one CSS declaration. Each image function that fetches a withheld URL
+ * is rewritten to `none`, so `background:#000 url(…)` keeps its colour (and
+ * the newsletter its contrast) while the image layer goes. Returns the refs
+ * it found and the declaration to keep, or null to drop it.
  */
-function srcsetUrls(srcset: string): string[] {
-	const urls: string[] = [];
+function gateDeclaration(
+	declaration: string,
+	classifyUrl: (url: string | null) => ResourceRef,
+	withheld: (ref: ResourceRef) => boolean
+): { refs: ResourceRef[]; kept: string | null } {
+	// `\75 rl(…)` is still `url(…)`, and an escaped host defeats the tracker
+	// match; no legitimate mail needs either, so the whole value is opaque.
+	if (declaration.includes('\\')) {
+		const ref = classifyUrl(null);
+		return { refs: [ref], kept: withheld(ref) ? null : declaration };
+	}
+	const refs: ResourceRef[] = [];
+	let kept = '';
+	let last = 0;
+	for (const fn of imageFunctions(declaration)) {
+		const fnRefs = fn.urls.map(classifyUrl);
+		refs.push(...fnRefs);
+		if (!fnRefs.some(withheld)) continue;
+		kept += `${declaration.slice(last, fn.start)}none`;
+		last = fn.end;
+	}
+	kept += declaration.slice(last);
+	return { refs, kept };
+}
+
+/**
+ * The `srcset` candidates: each one's URL and its full text (URL plus
+ * descriptors). A candidate's URL runs to the next whitespace (so a `data:`
+ * URL keeps its comma); trailing commas end it.
+ */
+function srcsetCandidates(srcset: string): Array<{ url: string; text: string }> {
+	const candidates: Array<{ url: string; text: string }> = [];
 	let i = 0;
 	while (i < srcset.length) {
 		while (i < srcset.length && /[\s,]/.test(srcset[i]!)) i++;
 		if (i >= srcset.length) break;
+		const start = i;
 		let end = i;
 		while (end < srcset.length && !/\s/.test(srcset[end]!)) end++;
 		let url = srcset.slice(i, end);
 		i = end;
 		if (url.endsWith(',')) {
 			url = url.replace(/,+$/, '');
-		} else {
-			// Skip the descriptors up to the comma that ends this candidate.
-			let depth = 0;
-			while (i < srcset.length && !(srcset[i] === ',' && depth === 0)) {
-				if (srcset[i] === '(') depth++;
-				else if (srcset[i] === ')') depth = Math.max(0, depth - 1);
-				i++;
-			}
+			candidates.push({ url, text: url });
+			continue;
 		}
-		if (url) urls.push(url);
+		// The descriptors run up to the comma that ends this candidate.
+		let depth = 0;
+		while (i < srcset.length && !(srcset[i] === ',' && depth === 0)) {
+			if (srcset[i] === '(') depth++;
+			else if (srcset[i] === ')') depth = Math.max(0, depth - 1);
+			i++;
+		}
+		if (url) candidates.push({ url, text: srcset.slice(start, i).trim() });
 	}
-	return urls;
+	return candidates;
 }
 
 function blockedPlaceholder(doc: Document, url: string, label: string): HTMLElement {
@@ -210,17 +279,18 @@ function gateResources(
 		};
 		const refs: ResourceRef[] = [];
 
-		// Inline style: drop each declaration that would fetch a withheld URL.
+		// Inline style: rewrite each image layer that would fetch a withheld URL.
 		if (style) {
-			const declarations = splitDeclarations(style).map((declaration) => ({
-				declaration,
-				refs: declarationUrls(declaration).map((url) => classify(url, context)),
-			}));
-			const kept = declarations.filter((d) => !d.refs.some(withheld));
+			const classifyUrl = (url: string | null) => classify(url, context);
+			const declarations = splitDeclarations(style).map((declaration) => {
+				const original = declaration.trim();
+				return { original, ...gateDeclaration(original, classifyUrl, withheld) };
+			});
 			for (const d of declarations) refs.push(...d.refs);
-			if (kept.length !== declarations.length) {
+			if (declarations.some((d) => d.kept !== d.original)) {
+				const kept = declarations.flatMap((d) => (d.kept === null ? [] : [d.kept]));
 				if (kept.length === 0) el.removeAttribute('style');
-				else el.setAttribute('style', kept.map((d) => d.declaration.trim()).join(';'));
+				else el.setAttribute('style', kept.join(';'));
 			}
 		}
 
@@ -238,20 +308,32 @@ function gateResources(
 		if (el.tagName === 'IMG') {
 			const src = el.getAttribute('src');
 			const srcRef = src === null ? null : classify(src, context);
-			const srcsetRefs = srcsetUrls(el.getAttribute('srcset') ?? '').map((url) =>
-				classify(url, context)
-			);
+			const candidates = srcsetCandidates(el.getAttribute('srcset') ?? '').map((candidate) => ({
+				...candidate,
+				ref: classify(candidate.url, context),
+			}));
 			if (srcRef) refs.push(srcRef);
-			refs.push(...srcsetRefs);
+			refs.push(...candidates.map((candidate) => candidate.ref));
 
-			const withheldSrcset = srcsetRefs.filter(withheld);
-			if (withheldSrcset.length > 0) el.removeAttribute('srcset');
-			// The image has nothing left to show once its own src is withheld, or
-			// when it never had one and its srcset is gone.
+			// Withhold candidate by candidate: one tracker in a srcset must not
+			// take the approved sources (and their descriptors) with it.
+			const keptCandidates = candidates.filter((candidate) => !withheld(candidate.ref));
+			const withheldCandidate = candidates.find((candidate) => withheld(candidate.ref));
+			if (withheldCandidate) {
+				if (keptCandidates.length > 0) {
+					el.setAttribute('srcset', keptCandidates.map((candidate) => candidate.text).join(', '));
+				} else {
+					el.removeAttribute('srcset');
+				}
+			}
 			const srcWithheld = srcRef !== null && withheld(srcRef);
-			if (srcWithheld || (srcRef === null && withheldSrcset.length > 0)) {
+			if (srcWithheld) el.removeAttribute('src');
+			// The image goes only when something was withheld and no usable
+			// source is left to show.
+			const hasSource = (srcRef !== null && !srcWithheld) || keptCandidates.length > 0;
+			if ((srcWithheld || withheldCandidate) && !hasSource) {
 				replacement = consent === 'blocked' ? 'placeholder' : 'remove';
-				blockedUrl = (srcWithheld ? src : withheldSrcset[0]?.url) ?? '';
+				blockedUrl = (srcWithheld ? src : withheldCandidate?.url) ?? '';
 			}
 		}
 

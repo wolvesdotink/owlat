@@ -92,6 +92,26 @@ describe('applyPostboxImageConsent — images blocked', () => {
 		expect(out.detection.trackerHosts).toEqual(['click.list-manage.com', 'pixel.example']);
 	});
 
+	it('keeps the background colour when it withholds the image layer', () => {
+		const out = render(
+			'<div style="background:#000 url(https://img.example/hero.png) no-repeat;color:#fff">News</div>',
+			'blocked'
+		);
+		expect(out.html).not.toContain('img.example');
+		expect(out.html).toMatch(/background:\s*#000 none no-repeat/);
+		expect(out.html).toContain('color:#fff');
+	});
+
+	it('does not count an image-set type() as a remote URL', () => {
+		const out = applyPostboxImageConsent(
+			'<div style="background:image-set(&quot;data:image/png;base64,AAAA&quot; 1x type(&quot;image/png&quot;))">a</div>',
+			'blocked',
+			LABEL
+		);
+		expect(out.hasRemoteResources).toBe(false);
+		expect(out.html).toContain('data:image/png;base64,AAAA');
+	});
+
 	it('leaves inline images, plain styles and text untouched', () => {
 		const html =
 			'<p style="font-family:&quot;Helvetica Neue&quot;, Arial;color:#333">Hello</p>' +
@@ -127,6 +147,36 @@ describe('applyPostboxImageConsent — images shown', () => {
 		expect(out.html).toContain('https://cdn.example/photo.jpg');
 		expect(out.html).toContain('<p>Body</p>');
 		expect(out.detection.pixelCount).toBe(3);
+	});
+
+	it('keeps the approved srcset candidates when one is a tracker', () => {
+		const out = render(
+			'<img srcset="https://cdn.example/photo.png 1x, https://click.list-manage.com/open.gif 2x">',
+			'images'
+		);
+		expect(out.html).toContain('<img srcset="https://cdn.example/photo.png 1x">');
+		expect(out.html).not.toContain('list-manage.com');
+		expect(out.detection.pixelCount).toBe(1);
+	});
+
+	it('keeps an image whose tracker src is backed by an approved srcset', () => {
+		const out = applyPostboxImageConsent(
+			'<img src="https://click.list-manage.com/open.gif" srcset="https://cdn.example/photo.png 2x">',
+			'images',
+			LABEL
+		);
+		expect(out.html).toBe('<img srcset="https://cdn.example/photo.png 2x">');
+	});
+
+	it('sees a tracker whose scheme hides behind a tab', () => {
+		const out = render(
+			'<img src="https:&#9;//click.list-manage.com/open.gif" width="600">' +
+				'<div style="background:url(https:&#9;//click.list-manage.com/bg.gif);width:1px;height:1px"></div>',
+			'images'
+		);
+		expect(out.detection.pixelCount).toBe(2);
+		expect(out.detection.trackerHosts).toEqual(['click.list-manage.com']);
+		expect(out.html).not.toContain('list-manage.com');
 	});
 
 	it('loads trackers too once the user asks for everything', () => {

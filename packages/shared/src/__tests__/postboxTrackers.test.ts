@@ -53,6 +53,30 @@ describe('isTrackingResource', () => {
 		expect(isTrackingResource('cid:inline-part', pixel)).toBe(false);
 	});
 
+	it('reads a URL the way the browser parser does (tabs, newlines, controls)', () => {
+		const tracker = 'click.list-manage.com';
+		for (const url of [
+			`https:\t//${tracker}/open.gif`,
+			`https:/\n/${tracker}/open.gif`,
+			`\u0001\u001f https://${tracker}/open.gif\r\n`,
+			`https://click.list-\tmanage.com/open.gif`,
+		]) {
+			expect(remoteResourceHost(url)).toBe(tracker);
+			expect(isTrackingResource(url, NO_HINTS)).toBe(true);
+		}
+	});
+
+	it('decodes character references in a tag string before classifying', () => {
+		expect(isTrackingPixelTag('<img src="https:&#9;//click.list-manage.com/open.gif">')).toBe(true);
+		expect(isTrackingPixelTag('<img src="https&colon;&Tab;//click.list-manage.com/o">')).toBe(true);
+	});
+
+	it('treats a remote reference it cannot read as a tracker', () => {
+		expect(isTrackingResource('open.gif', NO_HINTS)).toBe(true);
+		expect(isTrackingResource('ftp://files.example/a.gif', NO_HINTS)).toBe(true);
+		expect(remoteResourceHost('open.gif')).toBeNull();
+	});
+
 	it('classifies a CSS background by the element it sits on', () => {
 		const url = 'https://t.example.org/bg.gif';
 		expect(isTrackingResource(url, { width: '1', height: '1', style: '' })).toBe(true);
@@ -101,6 +125,12 @@ describe('stripRemoteImages', () => {
 		const out = stripRemoteImages(PHOTO);
 		expect(out.strippedRemoteImages).toBe(1);
 		expect(out.html).toBe('');
+	});
+
+	it('strips a remote image whose src hides its scheme behind a tab', () => {
+		const out = stripRemoteImages('<img src="https:&#9;//evil.example/beacon.gif"><p>x</p>');
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).toBe('<p>x</p>');
 	});
 
 	it('strips a protocol-relative remote image', () => {
