@@ -191,23 +191,14 @@ async function hostInstallDir(): Promise<string | null> {
 	return bind?.split(':')[0] ?? null;
 }
 
-/**
- * `base` plus the install's override file, when there is one — what compose
- * loads for a project whose main file is `base`. Naming `-f` explicitly turns
- * off compose's own override discovery, so a caller that names a file (the
- * staged release template) must add the override back itself.
- */
+/** `base` plus the install's override file — `-f` turns off compose's own discovery. */
 export function withOverrideFile(base: string): string[] {
-	const files = [base];
 	const override = join(OWLAT_DIR, 'docker-compose.override.yml');
-	if (existsSync(override)) files.push(override);
-	return files;
+	return existsSync(override) ? [base, override] : [base];
 }
 
 /** The compose files an unqualified `docker compose` in OWLAT_DIR would load. */
-function defaultComposeFiles(): string[] {
-	return withOverrideFile(join(OWLAT_DIR, 'docker-compose.yml'));
-}
+const defaultComposeFiles = () => withOverrideFile(join(OWLAT_DIR, 'docker-compose.yml'));
 
 /**
  * `docker compose`, told where the project really lives.
