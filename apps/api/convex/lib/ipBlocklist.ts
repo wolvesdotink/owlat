@@ -23,7 +23,7 @@ const DOTTED_QUAD_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
  * optional trailing dotted-quad; a `%eth0` zone id is rejected (it can only
  * appear on a link-local/multicast address, which the caller blocks anyway).
  */
-function expandIpv6(address: string): number[] | null {
+export function expandIpv6(address: string): number[] | null {
 	const halves = address.split('::');
 	if (halves.length > 2) return null; // at most one zero run
 

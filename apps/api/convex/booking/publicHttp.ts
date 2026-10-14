@@ -121,14 +121,17 @@ const getBookingPage = publicTokenEndpoint(
 		) {
 			return NOT_FOUND;
 		}
+		// Admit before the read: it computes open times from the host's busy
+		// calendar, which a refused request must never pay for.
+		const refused = await admitExisting(ctx, admit, { slug: token });
+		if (refused) return refused;
 		const page = await ctx.runQuery(internal.booking.public.getPage, {
 			slug: token,
 			typeSlug: type || undefined,
 			from: numberParam(request, 'from'),
 			until: numberParam(request, 'until'),
 		});
-		if (!page) return NOT_FOUND;
-		return (await admit()) ? { ok: true, data: page } : ADMISSION_REFUSED;
+		return page ? { ok: true, data: page } : NOT_FOUND;
 	}
 );
 
@@ -199,13 +202,16 @@ const getManagedBooking = publicTokenEndpoint(
 	},
 	async (ctx, { token, request, admit }) => {
 		if (!isCanonicalSegment(request, token, 'manageToken')) return NOT_FOUND;
+		const manageTokenHash = await hashManageToken(token);
+		// Admit before the read, which computes the times to move it to.
+		const refused = await admitExisting(ctx, admit, { manageTokenHash });
+		if (refused) return refused;
 		const managed = await ctx.runQuery(internal.booking.public.getManaged, {
-			manageTokenHash: await hashManageToken(token),
+			manageTokenHash,
 			from: numberParam(request, 'from'),
 			until: numberParam(request, 'until'),
 		});
-		if (!managed) return NOT_FOUND;
-		return (await admit()) ? { ok: true, data: managed } : ADMISSION_REFUSED;
+		return managed ? { ok: true, data: managed } : NOT_FOUND;
 	}
 );
 
