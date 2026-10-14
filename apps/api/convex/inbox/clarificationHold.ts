@@ -47,3 +47,25 @@ export async function resolveClarificationRecipients(
 	if (isReader(thread?.assignedTo)) return [thread.assignedTo];
 	return readers;
 }
+
+/**
+ * The review queue's rows (`queries.getReviewQueue` and its badge count),
+ * newest first: `draft_ready` messages, and messages held on the agent's
+ * questions, which wait there until someone answers. A held message on a
+ * resolved or closed conversation needs nobody.
+ */
+export async function readPendingReview(ctx: QueryCtx, limit: number) {
+	const newest = (status: 'draft_ready' | 'awaiting_clarification') =>
+		ctx.db
+			.query('inboundMessages')
+			.withIndex('by_processing_status', (q) => q.eq('processingStatus', status))
+			.order('desc')
+			.take(limit);
+	const [drafts, held] = await Promise.all([
+		newest('draft_ready'),
+		newest('awaiting_clarification'),
+	]);
+	const live = [];
+	for (const message of held) if (await isClarificationLive(ctx, message)) live.push(message);
+	return [...drafts, ...live].sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
+}

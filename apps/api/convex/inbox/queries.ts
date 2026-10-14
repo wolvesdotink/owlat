@@ -27,7 +27,7 @@ import {
 import { compareResponseDue, isSlaSlice, slaSliceNow } from './sla/slices';
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
-import { isClarificationLive } from './clarificationHold';
+import { readPendingReview } from './clarificationHold';
 import { redactContactCapabilityFields } from '../contacts/listing';
 import { openConversationThreadPreview } from '../lib/messageBody';
 import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBodyInbound';
@@ -315,27 +315,6 @@ export const countReviewQueue = publicQuery({
 		return (await readPendingReview(ctx, Math.min(args.limit ?? 50, 200))).length;
 	},
 });
-
-/**
- * The review queue's rows, newest first: `draft_ready` messages, and messages
- * held on the agent's questions (#1343), which wait there until someone
- * answers. A held message on a resolved or closed conversation needs nobody.
- */
-async function readPendingReview(ctx: QueryCtx, limit: number) {
-	const newest = (status: 'draft_ready' | 'awaiting_clarification') =>
-		ctx.db
-			.query('inboundMessages')
-			.withIndex('by_processing_status', (q) => q.eq('processingStatus', status))
-			.order('desc')
-			.take(limit);
-	const [drafts, held] = await Promise.all([
-		newest('draft_ready'),
-		newest('awaiting_clarification'),
-	]);
-	const live = [];
-	for (const message of held) if (await isClarificationLive(ctx, message)) live.push(message);
-	return [...drafts, ...live].sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
-}
 
 /**
  * Get quarantined messages for admin review
