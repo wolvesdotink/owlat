@@ -3,39 +3,53 @@
  *
  * `processingLifecycle.reconcileAbandonedClarifications` keeps the Answer
  * queue's index right and starts ONE chain of this worker per run, by
- * scheduling it: the sends never share a transaction with the cron's scan.
- * Each link of the chain is its own transaction, bounded by its shape rather
- * than by budgets it counts:
- *   - held messages: one page of at most {@link LINK_PAGE} rows through
- *     `paginate`, which also stops at {@link LINK_PAGE_BYTES} (a held message
- *     keeps its body inline; the page overshoots by at most the one row that
- *     crosses it). Each row is read once: its notices and its target reuse
- *     the loaded document;
- *   - threads: one `get` per row, so at most {@link LINK_PAGE} documents of at
- *     most 1 MiB;
- *   - who was reminded: one point lookup per (question, person) on the
- *     notices' (message, person, ask) index, at most one small row each
- *     (`clarificationHold.hasReminder`), for at most 200 readers a question
- *     (`access.listSharedInboxReaderIds`), and the reader list read once;
- *   - sends: each reminder schedules a push per person with a device, and a
- *     transaction may schedule at most 1,000 functions. A run sends at most
- *     {@link MAX_REMINDER_SENDS} in all, carried along the chain as
- *     `sendsLeft`.
+ * scheduling it with the run's cutoff: the sends never share a transaction
+ * with the cron's scan. Each link of the chain is its own transaction.
+ *
+ * Order: the link walks held messages least recently reminded first
+ * (`lastReminderAt`, absent first, then oldest). A question that just drew
+ * reminders moves to the back, so the run's capped sends reach every question
+ * in turn and none waits forever behind others that keep asking anew. Nothing
+ * is shared between links but the cursor they pass on, so overlapping chains
+ * need no guard (see the end of this comment).
+ *
+ * WORST-CASE READS PER LINK, by shape (a document is at most 1 MiB):
+ *   - held messages: one `paginate` page of at most {@link LINK_PAGE} rows
+ *     that stops at {@link LINK_PAGE_BYTES}, overshooting by at most one
+ *     document: 1 MiB + 1 MiB = 2 MiB;
+ *   - the patch of each row it reminds reads that row again: 2 MiB;
+ *   - threads, one `get` per row: 4 x 1 MiB = 4 MiB;
+ *   - who was reminded: one point lookup per (question, person), at most one
+ *     row each (`clarificationHold.hasReminder`), for at most 200 readers a
+ *     question (`access.listSharedInboxReaderIds`). A reminder notice keeps
+ *     at most 200 UTF-16 units of subject and of sender (<= 600 bytes each)
+ *     beside ids and numbers, so <= 2 KiB: 4 x 200 x 2 KiB = 1.6 MiB;
+ *   - push devices, one `.first()` per send (`push/events.enqueuePush`), at
+ *     most {@link MAX_REMINDER_SENDS} sends; a device row is capped at a
+ *     2,048-character endpoint, a 200-character key, an 80-character label
+ *     and a 64-character time zone, so <= 4 KiB: 400 x 4 KiB = 1.6 MiB;
+ *   - the reader list, read once per link: <= 200 member rows, < 0.2 MiB;
+ *   - no `agentConfig` read (the cron passes the cutoff) and no second read
+ *     of a message (the notice reuses the loaded row).
+ * Total <= 11.4 MiB of the 16 MiB a transaction may read. Index ranges: at
+ * most 4 x 200 lookups + 400 device lookups + a few, far below 4,096. Writes:
+ * at most 400 small notices and 4 message patches (<= 4 MiB). Scheduled
+ * functions: at most 400 pushes and one continuation.
+ *
  * A link finishes every row of its page before the next link takes the next
- * page, so the chain's cursor only ever moves forward; it schedules at most
- * one continuation and ends when the run's sends are spent or the held rows
- * are.
+ * page, so the chain's cursor only moves forward; it ends when the run's sends
+ * are spent or the held rows are.
  *
  * Progress survives across runs: once everyone a question's target names has
  * been reminded, the question records that target (`isRemindedForReaders`, or
  * `remindedForUserId` for an assignee) and later links skip it without any
  * lookup. A new assignee is a new target, and a new ask has a new `askedAt`.
  *
- * Overlap is harmless, so nothing guards against it: should a cron start a new
- * chain while the last one still runs, both look up a person's reminder before
- * they write one, so Convex serializes the two writes and the later link sees
- * the earlier one's notice; nobody is reminded twice. At worst the two chains
- * share out more than one run's share of sends between them.
+ * Overlap is harmless: should a cron start a new chain while the last one
+ * still runs, both look up a person's reminder before they write one, so
+ * Convex serializes the two writes and the later link sees the earlier one's
+ * notice; nobody is reminded twice. At worst the two chains share out more
+ * than one run's share of sends between them.
  */
 
 import { v } from 'convex/values';
@@ -58,25 +72,26 @@ export const DEFAULT_CLARIFICATION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const MAX_REMINDER_SENDS = 400;
 
 /** Held messages one link pages over, and the bytes that page may read. */
-const LINK_PAGE = 8;
-const LINK_PAGE_BYTES = 2 * 1024 * 1024;
+const LINK_PAGE = 4;
+const LINK_PAGE_BYTES = 1024 * 1024;
 
 export const remindHeldClarifications = internalMutation({
-	args: { cursor: v.union(v.string(), v.null()), sendsLeft: v.number() },
+	args: {
+		cursor: v.union(v.string(), v.null()),
+		sendsLeft: v.number(),
+		// Questions asked before this are overdue (the cron reads the window).
+		cutoff: v.number(),
+	},
 	handler: async (ctx, args): Promise<{ reminded: number }> => {
-		const configs = await ctx.db.query('agentConfig').take(1);
-		const windowMs = Math.max(
-			0,
-			configs[0]?.clarificationTimeoutMs ?? DEFAULT_CLARIFICATION_TIMEOUT_MS
-		);
 		const now = Date.now();
-		const cutoff = now - windowMs;
 		// Read once per link, and only when a question needs it.
 		let readers: string[] | undefined;
 		const readersOnce = async () => (readers ??= await listSharedInboxReaderIds(ctx));
 		const page = await ctx.db
 			.query('inboundMessages')
-			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'awaiting_clarification'))
+			.withIndex('by_processing_status_and_last_reminder', (q) =>
+				q.eq('processingStatus', 'awaiting_clarification')
+			)
 			.paginate({ numItems: LINK_PAGE, cursor: args.cursor, maximumBytesRead: LINK_PAGE_BYTES });
 
 		let sendsLeft = Math.min(args.sendsLeft, MAX_REMINDER_SENDS);
@@ -84,7 +99,12 @@ export const remindHeldClarifications = internalMutation({
 		for (const message of page.page) {
 			// The run's sends are spent: the rest wait for the next run.
 			if (sendsLeft <= 0) break;
-			const sent = await remindOne(ctx, message, { cutoff, readersOnce, sendsLeft, now });
+			const sent = await remindOne(ctx, message, {
+				cutoff: args.cutoff,
+				readersOnce,
+				sendsLeft,
+				now,
+			});
 			sendsLeft -= sent;
 			if (sent > 0) reminded++;
 		}
@@ -94,7 +114,7 @@ export const remindHeldClarifications = internalMutation({
 			await ctx.scheduler.runAfter(
 				0,
 				internal.inbox.clarificationReminders.remindHeldClarifications,
-				{ cursor: page.continueCursor, sendsLeft }
+				{ cursor: page.continueCursor, sendsLeft, cutoff: args.cutoff }
 			);
 		}
 		return { reminded };
@@ -140,6 +160,8 @@ async function remindOne(
 	const isComplete = batch.length === fresh.length;
 	if (batch.length > 0 || isComplete) {
 		await ctx.db.patch(message._id, {
+			// To the back of the next run's walk, once it drew reminders.
+			...(batch.length > 0 ? { lastReminderAt: run.now } : {}),
 			pendingClarification: {
 				...pending,
 				...(batch.length > 0 ? { remindedAt: run.now } : {}),

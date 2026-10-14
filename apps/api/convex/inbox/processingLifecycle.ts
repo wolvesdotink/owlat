@@ -48,7 +48,7 @@ import {
 } from './processingLifecycle/types';
 import { dispatch } from './processingLifecycle/effects';
 import { isClarificationLive } from './clarificationHold';
-import { MAX_REMINDER_SENDS } from './clarificationReminders';
+import { DEFAULT_CLARIFICATION_TIMEOUT_MS, MAX_REMINDER_SENDS } from './clarificationReminders';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
 import { inboxRetryPlan } from '@owlat/shared/inboxRetry';
 import {
@@ -343,17 +343,18 @@ export const reconcileStuckApproved = internalMutation({
 // its conversation (./clarificationHold.ts). This cron keeps the queue's index
 // right; the sends are ./clarificationReminders.ts, in their own transactions.
 
-export { DEFAULT_CLARIFICATION_TIMEOUT_MS } from './clarificationReminders';
+export { DEFAULT_CLARIFICATION_TIMEOUT_MS };
 
 /**
- * Held messages one cron page reads, and the bytes that page may read (a held
- * message keeps its body inline; the page overshoots by at most the one row
- * that crosses it). Each row costs one thread `get`, so a page reads at most
- * eight threads of at most 1 MiB: its bound is its shape, not a counted budget.
- * A longer queue continues in a scheduled follow-up page.
+ * Held messages one cron page reads, and the bytes that page may read. Worst
+ * case by shape (a document is at most 1 MiB): `agentConfig` on a run's first
+ * page (1 MiB); the page, stopping at 1 MiB and overshooting by at most one
+ * row (2 MiB); one thread `get` per row (4 x 1 MiB = 4 MiB); the flag patches
+ * reading those rows again (2 MiB). 9 MiB of the 16 MiB a transaction may
+ * read. A longer queue continues in a scheduled follow-up page.
  */
-const CLARIFICATION_REMINDER_PAGE = 8;
-export const CLARIFICATION_PAGE_BYTES = 2 * 1024 * 1024;
+const CLARIFICATION_REMINDER_PAGE = 4;
+export const CLARIFICATION_PAGE_BYTES = 1024 * 1024;
 
 export const reconcileAbandonedClarifications = internalMutation({
 	args: { cursor: v.optional(v.string()) },
@@ -361,10 +362,15 @@ export const reconcileAbandonedClarifications = internalMutation({
 		// The reminders run in their own transactions (./clarificationReminders.ts),
 		// never in this one: one worker per run, started with the run's first page.
 		if (args.cursor === undefined) {
+			const configs = await ctx.db.query('agentConfig').take(1);
+			const windowMs = Math.max(
+				0,
+				configs[0]?.clarificationTimeoutMs ?? DEFAULT_CLARIFICATION_TIMEOUT_MS
+			);
 			await ctx.scheduler.runAfter(
 				0,
 				internal.inbox.clarificationReminders.remindHeldClarifications,
-				{ cursor: null, sendsLeft: MAX_REMINDER_SENDS }
+				{ cursor: null, sendsLeft: MAX_REMINDER_SENDS, cutoff: Date.now() - windowMs }
 			);
 		}
 

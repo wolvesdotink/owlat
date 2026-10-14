@@ -510,7 +510,7 @@ describe('settlement sync', () => {
 			);
 
 		await settle('resolved');
-		expect(await flagged()).toBe(50);
+		expect(await flagged()).toBe(4);
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 		expect(await flagged()).toBe(120);
 

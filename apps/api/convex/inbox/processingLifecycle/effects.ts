@@ -113,6 +113,7 @@ export async function notifyClarification(
 		const noticeId = await ctx.db.insert('inboxAssignmentNotices', {
 			kind: 'clarification',
 			inboundMessageId,
+			...(message.pendingClarification ? { askedAt: message.pendingClarification.askedAt } : {}),
 			...(opts.reminderAskedAt !== undefined
 				? { isReminder: true, reminderAskedAt: opts.reminderAskedAt }
 				: {}),
@@ -405,7 +406,7 @@ export async function dispatch(
 	// taken over, their reminder rows go; parked, they join the Answer queue's
 	// index unless the conversation is already settled.
 	if (from === 'awaiting_clarification' && input.to !== 'awaiting_clarification') {
-		await clearClarificationReminders(ctx, message._id, input.at);
+		await clearClarificationReminders(ctx, message._id, message.pendingClarification?.askedAt);
 	} else if (input.to === 'awaiting_clarification' && message.threadId) {
 		const thread = await ctx.db.get(message.threadId);
 		const isSettled = !!thread && isSettledThreadStatus(thread.status);

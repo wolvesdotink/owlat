@@ -93,6 +93,10 @@ export const inboxCollaborationTables = {
 		// On a reminder: the `askedAt` of the questions it reminded about, so
 		// "was this person reminded about this ask" is one indexed lookup.
 		reminderAskedAt: v.optional(v.number()),
+		// On every `clarification` notice: the `askedAt` of the ask it belongs
+		// to, so the cleanup after the question settles deletes that ask's
+		// notices and never a newer ask's (inbox/clarificationHold.ts).
+		askedAt: v.optional(v.number()),
 		// The note that mentioned the person, for `mention` notices only.
 		noteId: v.optional(v.id('threadNotes')),
 		// Assignee (BetterAuth user id) — who the thread was handed to.

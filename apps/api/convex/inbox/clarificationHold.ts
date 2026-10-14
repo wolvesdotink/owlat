@@ -15,6 +15,7 @@
  * and reopen), so open questions are never crowded out by settled ones.
  */
 
+import { getConvexSize, type Value } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
@@ -110,26 +111,51 @@ export async function readPendingReview(ctx: QueryCtx, limit: number) {
 	return [...drafts, ...held].sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
 }
 
-/** Held messages one settle, reopen or follow-up page updates per transaction. */
-const SYNC_PAGE = 50;
+/**
+ * The settlement sync's reads, by shape (a document is at most 1 MiB):
+ *   - in the transition (it runs inside whatever settles or reopens the
+ *     thread, so its share stays small): held messages read one at a time
+ *     until {@link INLINE_ROWS} rows or {@link INLINE_BYTES} are read, so at
+ *     most 1 MiB + one 1 MiB document = 2 MiB, and the patches of those rows
+ *     read them again: 2 MiB. 4 MiB in all;
+ *   - in a scheduled page: the thread (1 MiB), a `paginate` page of at most
+ *     {@link PAGE_ROWS} rows that stops at {@link PAGE_BYTES} (2 MiB + one
+ *     1 MiB overshoot = 3 MiB), and the patches reading those rows again
+ *     (3 MiB). 7 MiB in all, of the 16 MiB a transaction may read.
+ */
+const INLINE_ROWS = 4;
+const INLINE_BYTES = 1024 * 1024;
+const PAGE_ROWS = 8;
+const PAGE_BYTES = 2 * 1024 * 1024;
 
 /**
  * Keep `isThreadSettled` on a thread's held messages in step with its status.
  * Called by the thread module whenever a status change crosses between open
  * (`open`, `waiting`) and settled (`resolved`, `closed`). Reads only the
- * thread's held messages (never its whole history): the first page here, in
- * the transition, and when there may be more, the whole set again in
- * scheduled pages (`./clarificationHoldSync.ts`), which walk it with a
- * paginate cursor so rows sharing a creation time are never skipped.
+ * thread's held messages (never its whole history), bounded by rows and bytes:
+ * the first few here, in the transition, and when there may be more, the
+ * whole set again in scheduled pages (`./clarificationHoldSync.ts`), which
+ * walk it with a paginate cursor so rows sharing a creation time are never
+ * skipped.
  */
 export async function syncHeldClarifications(
 	ctx: MutationCtx,
 	threadId: Id<'conversationThreads'>,
 	status: string
 ): Promise<void> {
-	const held = await heldOf(ctx, threadId).take(SYNC_PAGE);
+	const held: Doc<'inboundMessages'>[] = [];
+	let bytes = 0;
+	let isMore = false;
+	for await (const message of heldOf(ctx, threadId)) {
+		if (held.length >= INLINE_ROWS || bytes >= INLINE_BYTES) {
+			isMore = true;
+			break;
+		}
+		held.push(message);
+		bytes += documentBytes(message);
+	}
 	await applySettled(ctx, held, status);
-	if (held.length === SYNC_PAGE) {
+	if (isMore) {
 		await ctx.scheduler.runAfter(
 			0,
 			internal.inbox.clarificationHoldSync.syncHeldClarificationsPage,
@@ -153,7 +179,11 @@ export async function syncHeldPage(
 ): Promise<void> {
 	const thread = await ctx.db.get(threadId);
 	if (!thread) return;
-	const page = await heldOf(ctx, threadId).paginate({ numItems: SYNC_PAGE, cursor });
+	const page = await heldOf(ctx, threadId).paginate({
+		numItems: PAGE_ROWS,
+		cursor,
+		maximumBytesRead: PAGE_BYTES,
+	});
 	await applySettled(ctx, page.page, thread.status);
 	if (!page.isDone) {
 		await ctx.scheduler.runAfter(
@@ -165,6 +195,11 @@ export async function syncHeldPage(
 			}
 		);
 	}
+}
+
+/** What reading `doc` costs a transaction's read limit, roughly. */
+export function documentBytes(doc: unknown): number {
+	return getConvexSize(doc as Value) + 128;
 }
 
 /** A thread's held messages, in creation order. */
@@ -225,18 +260,19 @@ const CLEANUP_PAGE_BYTES = 2 * 1024 * 1024;
  * The questions are answered, dismissed or taken over: their notices go.
  * Not in the transaction that settles them (a question may carry an ask and a
  * reminder per reader): a scheduled cleanup pages through them
- * (`./clarificationHoldSync.ts`), deleting only notices written up to `at`, so
- * the notices of a question asked again meanwhile stay. Reminder dedup does
- * not wait on it: a new ask has a new `askedAt`.
+ * (`./clarificationHoldSync.ts`). It deletes the notices of the settled ask
+ * only, by the ask they carry (`askedAt`), never by when they were written,
+ * so a question asked again meanwhile keeps its new notices whatever the
+ * clock says. Notices from before asks were stamped carry none and go too.
  */
 export async function clearClarificationReminders(
 	ctx: MutationCtx,
 	inboundMessageId: Id<'inboundMessages'>,
-	at: number
+	askedAt: number | undefined
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.inbox.clarificationHoldSync.clearClarificationNotices, {
 		inboundMessageId,
-		before: at,
+		askedAt: askedAt ?? null,
 		cursor: null,
 	});
 }
@@ -245,7 +281,7 @@ export async function clearClarificationReminders(
 export async function clearNoticesPage(
 	ctx: MutationCtx,
 	inboundMessageId: Id<'inboundMessages'>,
-	before: number,
+	askedAt: number | null,
 	cursor: string | null
 ): Promise<void> {
 	const page = await ctx.db
@@ -255,9 +291,9 @@ export async function clearNoticesPage(
 		)
 		.paginate({ numItems: CLEANUP_PAGE, cursor, maximumBytesRead: CLEANUP_PAGE_BYTES });
 	for (const notice of page.page) {
-		if (notice.kind === 'clarification' && notice.createdAt <= before) {
-			await ctx.db.delete(notice._id);
-		}
+		if (notice.kind !== 'clarification') continue;
+		const isSettledAsk = notice.askedAt === undefined || notice.askedAt === askedAt;
+		if (isSettledAsk) await ctx.db.delete(notice._id);
 	}
 	if (!page.isDone) {
 		await ctx.scheduler.runAfter(
@@ -265,7 +301,7 @@ export async function clearNoticesPage(
 			internal.inbox.clarificationHoldSync.clearClarificationNotices,
 			{
 				inboundMessageId,
-				before,
+				askedAt,
 				cursor: page.continueCursor,
 			}
 		);

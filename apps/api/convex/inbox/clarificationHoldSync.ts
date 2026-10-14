@@ -25,15 +25,16 @@ export const syncHeldClarificationsPage = internalMutation({
 
 /**
  * A settled question's notices, a page at a time (`clarificationHold.
- * clearClarificationReminders`): only those written up to `before`.
+ * clearClarificationReminders`): only those of the settled ask.
  */
 export const clearClarificationNotices = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
-		before: v.number(),
+		// The settled ask (null: the message carried none).
+		askedAt: v.union(v.number(), v.null()),
 		cursor: v.union(v.string(), v.null()),
 	},
 	handler: async (ctx, args) => {
-		await clearNoticesPage(ctx, args.inboundMessageId, args.before, args.cursor);
+		await clearNoticesPage(ctx, args.inboundMessageId, args.askedAt, args.cursor);
 	},
 });

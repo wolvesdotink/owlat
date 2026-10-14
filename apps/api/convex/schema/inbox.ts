@@ -292,6 +292,11 @@ export const inboxTables = {
 		// closed: it needs nobody, so the Answer queue's index skips it. Kept by
 		// the thread module on every settle and reopen (inbox/clarificationHold.ts).
 		isThreadSettled: v.optional(v.boolean()),
+		// When the abandoned-question reminder last sent anything about this
+		// message. Its worker walks held messages least recently reminded first,
+		// so no question waits behind others that keep drawing reminders
+		// (inbox/clarificationReminders.ts).
+		lastReminderAt: v.optional(v.number()),
 		// Counts the message's entries into `security_check`, bumped by the
 		// transition that enters it. A scan action records the run it belongs to
 		// (`agentActions.securityCheckRun`), so a retried or released message's
@@ -344,6 +349,8 @@ export const inboxTables = {
 		.index('by_processing_status', ['processingStatus'])
 		// The Answer queue's held questions on open conversations (#1343).
 		.index('by_processing_status_and_thread_settled', ['processingStatus', 'isThreadSettled'])
+		// The reminder's walk: held messages, least recently reminded first.
+		.index('by_processing_status_and_last_reminder', ['processingStatus', 'lastReminderAt'])
 		.index('by_received_at', ['receivedAt'])
 		.index('by_contact', ['contactId'])
 		// Drives the raw-blob retention sweep: the equality component keeps the
