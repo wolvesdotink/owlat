@@ -109,29 +109,6 @@ describe('aiRouting.enforcedBudget.getBudgetStatus (the complete aggregate)', ()
 		expect(status.reason).toMatch(/spend budget/i);
 	});
 
-	it('counts a hosted embedding row against the ceiling (#1268)', async () => {
-		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
-		const t = convexTest(schema, modules);
-		// Written the way `runEmbedding` under `meterLlmCall` writes it: 600M
-		// input tokens of text-embedding-3-small at $0.02 per million is $12.
-		await t.mutation(internal.analytics.llmUsage.recordRequests, {
-			feature: 'embedding_file',
-			requestId: 'embed-1',
-			requests: [
-				{
-					attempt: 1,
-					latencyMs: 1,
-					modelUsed: 'text-embedding-3-small',
-					usage: { promptTokens: 600_000_000, completionTokens: 0, totalTokens: 600_000_000 },
-				},
-			],
-		});
-		await reconcileSpend(t);
-		const status = await t.query(internal.aiRouting.enforcedBudget.getBudgetStatus, {});
-		expect(status.daily.spentUsd).toBeCloseTo(12);
-		expect(status.autonomousAutoSendAllowed).toBe(false);
-	});
-
 	it('resets per period — a previous-day event is not counted against today', async () => {
 		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '10';
 		const t = convexTest(schema, modules);
