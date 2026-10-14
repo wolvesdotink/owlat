@@ -114,6 +114,9 @@ export async function draftClarificationReply(
 		const recallKnowledge = buildRecallKnowledgeTool({
 			runAction: ctx.runAction,
 			scopeToContact: context.contactId ?? 'org-general-only',
+			// The card's draft is read by the mailbox's members: no knowledge kept
+			// to shared-inbox readers (inbox/access.ts), as in composeDraftLoad.ts.
+			includeInboxDerived: false,
 			root,
 		});
 

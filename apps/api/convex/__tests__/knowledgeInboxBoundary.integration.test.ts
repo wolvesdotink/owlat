@@ -398,8 +398,8 @@ describe('knowledge sources a client may set', () => {
 		};
 		const visible = await t.mutation(internal.knowledge.graph.saveEntry, {
 			...base,
-			sourceType: 'file',
-			sourceId: 'file-1',
+			sourceType: 'chat',
+			sourceId: 'chat-1',
 		});
 		const extracted = await t.mutation(internal.knowledge.graph.saveEntry, {
 			...base,

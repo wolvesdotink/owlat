@@ -35,7 +35,7 @@ import {
 } from '../lib/aiRouting/embeddingActivation';
 import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
 import { logInfo } from '../lib/runtimeLog';
-import { findDuplicateEntry } from './entryDedupe';
+import { findDuplicateEntry, resolveMemberAccess } from './entryDedupe';
 import {
 	entryTypeValidator,
 	relationTypeValidator,
@@ -343,6 +343,10 @@ export const createEntry = knowledgeMutation({
 			sourceId: args.sourceId,
 			contactIds: args.contactIds,
 			threadId: args.threadId,
+			// Stamped on every write of this release (knowledge/entryDedupe.ts):
+			// a manual entry is member-visible unless a thread link keeps it to
+			// Team Inbox readers.
+			memberAccess: args.threadId === undefined ? ('members' as const) : ('restricted' as const),
 			embedding: [], // Will be populated by extraction pipeline
 			confidence: args.confidence ?? 0.8,
 			lastValidatedAt: now,
@@ -546,8 +550,16 @@ export const saveEntry = internalMutation({
 		// source: the second writer's reads conflict with the first's committed
 		// insert under Convex OCC, so it sees it here and no-ops. The duplicate
 		// already carries its junction rows, so none are written.
-		const dup = await findDuplicateEntry(ctx, args);
-		if (dup) return dup;
+		//
+		// Who may see it comes from the source, resolved here in the write
+		// (entryDedupe.ts `resolveMemberAccess`), never from the caller: an
+		// extraction from a previous release passes nothing.
+		const memberAccess = await resolveMemberAccess(ctx, args);
+		const dup = await findDuplicateEntry(ctx, { ...args, memberAccess });
+		if (dup) {
+			if (dup.needsRestriction) await ctx.db.patch(dup.id, { memberAccess: 'restricted' });
+			return dup.id;
+		}
 		const { embedding, embeddingModel: _model, embeddingGeneratedAt: _at, ...fields } = args;
 		const { isStale, fields: vector } = await vectorFieldsForCommit(
 			ctx,
@@ -557,6 +569,7 @@ export const saveEntry = internalMutation({
 		if (isStale) logInfo('[knowledge.saveEntry] stale embedding space, stored without vector');
 		const entry = {
 			...fields,
+			memberAccess,
 			...(vector as { embedding: number[] }),
 			searchableText: `${args.title} ${args.content}`,
 			lastValidatedAt: now,
@@ -731,6 +744,8 @@ export const createPolicyEntry = knowledgeAdminMutation({
 			content: args.content,
 			sourceType: 'curated',
 			isAuthoritative: true,
+			// Stamped on every write of this release (knowledge/entryDedupe.ts).
+			memberAccess: 'members',
 			embedding: [], // filled by the embedding pipeline; FTS works immediately
 			confidence: 1.0, // a human-authored canonical answer is fully trusted
 			lastValidatedAt: now,

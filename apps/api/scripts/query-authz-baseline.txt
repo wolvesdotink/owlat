@@ -70,10 +70,6 @@ convex/mediaAssets.ts:list
 convex/mediaAssets.ts:listTags
 convex/segments.ts:get
 convex/segments.ts:list
-convex/semanticFiles.ts:getVersionHistory
-convex/semanticFiles.ts:list
-convex/semanticFiles.ts:listByContact
-convex/semanticFiles.ts:search
 convex/storage.ts:getUrl
 convex/topics/topics.ts:get
 convex/topics/topics.ts:getContactInTopicDetails

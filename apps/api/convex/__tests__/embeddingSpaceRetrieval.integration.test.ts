@@ -195,6 +195,7 @@ describe('the vector leg searches one space', () => {
 			embedding: unit(5),
 			embeddingSpaceId: active,
 			scopeToContact: 'org-wide',
+			mailCaptures: 'all',
 		});
 		expect(hits.map((f) => f.filename)).toEqual(['current.txt']);
 	});

@@ -5,7 +5,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestContact, createTestKnowledgeEntry } from './factories';
 import type { Id } from '../_generated/dataModel';
-import { accessBoostFactor } from '../knowledge/maintenance';
+import { accessBoostFactor, mergedMemberAccess } from '../knowledge/maintenance';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -487,6 +487,20 @@ function unit(at: number): number[] {
 	return vec;
 }
 
+/**
+ * A knowledge row as this release writes it: `memberAccess` stamped from its
+ * source (knowledge/entryDedupe.ts `resolveMemberAccess`). The dedup leaves
+ * rows without the stamp, written before this release, alone.
+ */
+function stampedEntry(overrides: Record<string, unknown> = {}) {
+	// The factory's default source is Team Inbox extraction.
+	const sourceType = overrides['sourceType'] ?? 'agent_extracted';
+	return createTestKnowledgeEntry({
+		memberAccess: sourceType === 'agent_extracted' ? 'restricted' : 'members',
+		...overrides,
+	});
+}
+
 async function insertContactEntry(
 	t: ReturnType<typeof convexTest>,
 	contactId: Id<'contacts'>,
@@ -495,7 +509,7 @@ async function insertContactEntry(
 	return await t.run(async (ctx) => {
 		const entryId = await ctx.db.insert(
 			'knowledgeEntries',
-			createTestKnowledgeEntry({
+			stampedEntry({
 				entryType: 'fact',
 				title: opts.title,
 				content: opts.content,
@@ -526,7 +540,7 @@ describe('dedupeContactEntries', () => {
 		const inboxDerived = await t.run(async (ctx) => {
 			const entryId = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({
+				stampedEntry({
 					entryType: 'fact',
 					title: 'Berlin B',
 					content: 'moved to Berlin last spring',
@@ -618,7 +632,7 @@ describe('dedupeContactEntries', () => {
 		const survivor = await t.run(async (ctx) => {
 			const entryId = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({
+				stampedEntry({
 					entryType: 'fact',
 					title: 'A',
 					content: 'fact alpha',
@@ -636,7 +650,7 @@ describe('dedupeContactEntries', () => {
 		await t.run(async (ctx) => {
 			const e1 = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({
+				stampedEntry({
 					entryType: 'fact',
 					title: 'B',
 					content: 'fact beta',
@@ -651,7 +665,7 @@ describe('dedupeContactEntries', () => {
 			await ctx.db.insert('knowledgeEntryContacts', { entryId: e1, contactId });
 			const e2 = await ctx.db.insert(
 				'knowledgeEntries',
-				createTestKnowledgeEntry({
+				stampedEntry({
 					entryType: 'fact',
 					title: 'C',
 					content: 'fact gamma',
@@ -790,6 +804,90 @@ describe('dedupeContactEntries', () => {
 			expect(edge.rationale).toBe('survivor-kept');
 			expect(edge.updatedAt).toBeGreaterThan(oldTs);
 		});
+	});
+
+	it('leaves a row written before this release out of every merge until 0069 restricts it', async () => {
+		const t = convexTest(schema, modules);
+		let contactId!: Id<'contacts'>;
+		await t.run(async (ctx) => {
+			contactId = await ctx.db.insert('contacts', createTestContact());
+		});
+		// Written before this release, no stamp: an old merge folded a capture's
+		// private fact into it.
+		const legacy = await t.run(async (ctx) => {
+			const entryId = await ctx.db.insert(
+				'knowledgeEntries',
+				createTestKnowledgeEntry({
+					entryType: 'fact',
+					title: 'Berlin office',
+					content: 'Office in Berlin\nAcquisition price is four million',
+					sourceType: 'manual',
+					confidence: 0.6,
+					contactIds: [contactId],
+					embedding: unit(5),
+				})
+			);
+			await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId });
+			return entryId;
+		});
+		const migration = internal.migrations['0069_restrict_captured_file_knowledge'];
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			// The walk has started; its first page has not reached the old row.
+			await t.mutation(migration.run, {});
+			// A newer, more confident, member-visible fact about the same contact.
+			const fresh = await t.run(async (ctx) => {
+				const entryId = await ctx.db.insert(
+					'knowledgeEntries',
+					stampedEntry({
+						entryType: 'fact',
+						title: 'Berlin office (new)',
+						content: 'The office is in Berlin',
+						sourceType: 'manual',
+						confidence: 0.9,
+						contactIds: [contactId],
+						embedding: unit(5),
+					})
+				);
+				await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId });
+				return entryId;
+			});
+			await stampLegacyVectors(t);
+
+			// Sol's case: the dedup would make the new entry the survivor and
+			// delete the old row before the walk reached it.
+			const during = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, {
+				contactId,
+			});
+			expect(during.merged).toBe(0);
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			const after = await t.mutation(internal.knowledge.maintenance.dedupeContactEntries, {
+				contactId,
+			});
+			// Now restricted, the old row is on the other side of the boundary.
+			expect(after.merged).toBe(0);
+			await t.run(async (ctx) => {
+				expect((await ctx.db.get(legacy))?.memberAccess).toBe('restricted');
+				const survivor = (await ctx.db.get(fresh))!;
+				expect(survivor.memberAccess).toBe('members');
+				expect(survivor.content).toBe('The office is in Berlin');
+			});
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('never widens access on a merge: the survivor takes the most restrictive side', () => {
+		const open = { sourceType: 'manual' as const, memberAccess: 'members' as const };
+		const restricted = { sourceType: 'manual' as const, memberAccess: 'restricted' as const };
+		const teamInbox = { sourceType: 'agent_extracted' as const, memberAccess: 'members' as const };
+		const threadLinked = { ...open, threadId: 'thread' as Id<'conversationThreads'> };
+		expect(mergedMemberAccess(open, open)).toBe('members');
+		expect(mergedMemberAccess(open, restricted)).toBe('restricted');
+		expect(mergedMemberAccess(restricted, open)).toBe('restricted');
+		expect(mergedMemberAccess(open, teamInbox)).toBe('restricted');
+		expect(mergedMemberAccess(open, threadLinked)).toBe('restricted');
 	});
 });
 

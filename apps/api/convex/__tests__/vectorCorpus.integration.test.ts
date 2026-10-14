@@ -242,6 +242,7 @@ describe('semanticSearch — empty-corpus skip', () => {
 		await t.action(internal.semanticFileProcessing.semanticSearch, {
 			queryText: 'notes',
 			scopeToContact: 'org-wide',
+			mailCaptures: 'all',
 		});
 
 		expect(mocks.embed).not.toHaveBeenCalled();

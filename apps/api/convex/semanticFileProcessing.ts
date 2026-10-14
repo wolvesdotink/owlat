@@ -32,6 +32,7 @@ import { rootRequest } from './lib/llm/requestMeter';
 import { llmRootContextValidator } from './lib/llmUsageTags';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
+import { mailCaptureScopeValidator } from './lib/semanticFileAccess';
 import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
@@ -349,6 +350,7 @@ export const semanticSearch = internalAction({
 		limit: v.optional(v.number()),
 		// Required: 'org-wide' is the explicit member-path opt-out.
 		scopeToContact: v.union(v.id('contacts'), v.literal('org-general-only'), v.literal('org-wide')),
+		mailCaptures: v.optional(mailCaptureScopeValidator), // absent ⇒ none (getByIds)
 		/** The caller's root request, so the query embedding's ledger row groups under it. */
 		root: v.optional(llmRootContextValidator),
 	},
@@ -424,7 +426,11 @@ export const semanticSearch = internalAction({
 		if (fusedIds.length === 0) return [];
 
 		// Hydrate in fused order (getByIds preserves input order, drops deleted).
-		const files = await ctx.runQuery(internal.semanticFiles.getByIds, { ids: fusedIds });
+		const { mailCaptures } = args;
+		const files = await ctx.runQuery(internal.semanticFiles.getByIds, {
+			ids: fusedIds,
+			mailCaptures,
+		});
 		const scored = files.map((file) => ({
 			...file,
 			_score: scoreById.get(file._id as string) ?? 0,

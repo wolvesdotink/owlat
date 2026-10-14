@@ -122,9 +122,13 @@ describe('curated knowledge answers are admin-only', () => {
 	it('still lets a member correct an extracted fact', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.knowledge']);
-		// Extracted from a file: Team Inbox-derived entries are for readers only
-		// (knowledgeInboxBoundary.integration.test.ts).
-		const extracted = await seedEntry(t, { content: 'old', sourceType: 'file' });
+		// Extracted from an uploaded file: Team Inbox-derived entries, and those
+		// from a mail capture, are for readers only (inbox/access.ts).
+		const extracted = await seedEntry(t, {
+			content: 'old',
+			sourceType: 'file',
+			memberAccess: 'members',
+		});
 		sessionMock.role = 'editor';
 
 		await t.mutation(api.knowledge.graph.updateEntry, { entryId: extracted, content: 'new' });

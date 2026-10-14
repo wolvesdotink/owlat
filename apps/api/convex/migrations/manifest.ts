@@ -152,4 +152,11 @@ export const MIGRATION_MANIFEST: readonly MigrationManifestEntry[] = [
 		isSteppingStone: true,
 		run: internal.migrations['0068_seal_fact_keys'].run,
 	},
+	{
+		migration: '0069_restrict_captured_file_knowledge',
+		introducedIn: '0.6.13',
+		dependsOn: [],
+		isSteppingStone: false,
+		run: internal.migrations['0069_restrict_captured_file_knowledge'].run,
+	},
 ];

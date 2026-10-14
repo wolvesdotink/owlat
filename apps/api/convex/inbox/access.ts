@@ -87,21 +87,48 @@ export async function listSharedInboxReaderIds(ctx: QueryCtx | MutationCtx): Pro
 }
 
 /**
- * Whether a knowledge entry was derived from Team Inbox mail, and so follows
- * the reader rule above: shown only to shared-inbox readers.
+ * Whether a knowledge entry was derived from Team Inbox mail, or from anything
+ * else members may not read, and so follows the reader rule above: shown only
+ * to shared-inbox readers.
  *
- * Either marker is enough:
+ * Any marker is enough:
  *   - `sourceType: 'agent_extracted'` is what `extractFromMessage` stores for
  *     facts mined from an inbound Team Inbox message;
  *   - `threadId` points at a Team Inbox conversation (message extraction, and
  *     files linked to a thread). `updateEntry` cannot change it, and only a
- *     reader may set it on `createEntry`.
- * Entries from files, chat, imported Postbox mail and manual authoring carry
- * neither and keep their member-wide visibility. Only someone who can already
- * see an entry can edit its `sourceType`.
+ *     reader may set it on `createEntry`;
+ *   - `memberAccess: 'restricted'`, set on whatever must stay with the readers;
+ *   - `sourceType: 'file'` WITHOUT `memberAccess: 'members'`. A file captured
+ *     from inbound mail keeps its mailbox's permission
+ *     (lib/semanticFileAccess.ts), and knowledge carries no mailbox, so only
+ *     what the write proved came from an uploaded file is opened to members.
+ *
+ * Every write of this release stamps `memberAccess` from the source:
+ *   - a non-file entry gets `members`, unless it comes from Team Inbox
+ *     extraction (`sourceType: 'agent_extracted'`) or carries a thread link
+ *     (`threadId`), when it gets `restricted`. `knowledge.graph.saveEntry`
+ *     decides it in knowledge/entryDedupe.ts `resolveMemberAccess`;
+ *     `knowledge.graph.createEntry`, which only writes `manual` entries, by its
+ *     thread link alone;
+ *   - a file entry gets `members` when its file exists and is not a mail
+ *     capture, else `restricted`. A thread link does not change the stamp, but
+ *     still keeps the entry from members through the `threadId` marker above;
+ *   - a new curated answer (`knowledge.graph.createPolicyEntry`) gets `members`;
+ *     turning an existing entry into one keeps that entry's stamp.
+ * A merge never widens it
+ * (knowledge/maintenance.ts `mergedMemberAccess`). Every entry that existed
+ * before this release, Team Inbox included, is restricted by migration 0069,
+ * since a historical merge may have folded private text into it; until then
+ * the dedup leaves those unstamped rows alone. Nobody can edit `sourceType`,
+ * `threadId` after creation, or `memberAccess` (`knowledge.graph.updateEntry`).
  */
 export function isInboxDerivedKnowledge(
-	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId'>
+	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'memberAccess'>
 ): boolean {
-	return entry.sourceType === 'agent_extracted' || entry.threadId !== undefined;
+	return (
+		entry.sourceType === 'agent_extracted' ||
+		entry.threadId !== undefined ||
+		entry.memberAccess === 'restricted' ||
+		(entry.sourceType === 'file' && entry.memberAccess !== 'members')
+	);
 }

@@ -159,6 +159,22 @@ const RELATION_REPOINT_CAP = 500;
 const DEDUP_CONTACT_PAGE = 50;
 
 /**
+ * Who may see a merge's survivor: never more people than could see either
+ * entry. A merge folds the loser's content, tags and contact links into the
+ * survivor, so when either one is kept from members (Team Inbox mail, a Team
+ * Inbox thread link, `memberAccess: 'restricted'`), so is the survivor. The
+ * dedup already clusters each side apart; this holds whatever a caller does.
+ */
+export function mergedMemberAccess(
+	survivor: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'memberAccess'>,
+	loser: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'memberAccess'>
+): Doc<'knowledgeEntries'>['memberAccess'] {
+	return isInboxDerivedKnowledge(survivor) || isInboxDerivedKnowledge(loser)
+		? 'restricted'
+		: survivor.memberAccess;
+}
+
+/**
  * Merge a loser knowledge entry into the survivor, atomically: fold in content
  * (dedup), union contactIds + tags, repoint the contact junction and any
  * relations onto the survivor, then delete the loser. One Convex mutation, so a
@@ -189,6 +205,7 @@ async function mergeEntryInto(
 	const mergedContent = mergeContent(survivor.content, loser.content);
 	const mergedContactIds = nonEmpty(unionDistinct(survivor.contactIds, loser.contactIds));
 	const mergedTags = nonEmpty(unionDistinct(survivor.tags, loser.tags));
+	const memberAccess = mergedMemberAccess(survivor, loser);
 	// Through the one corpus writer (ADR-0073): folded-in content makes the
 	// survivor's vectors stale in every column; a local embedder re-embeds it.
 	await patchCorpusRow(ctx, 'knowledgeEntries', survivor, {
@@ -196,8 +213,10 @@ async function mergeEntryInto(
 		searchableText: `${survivor.title} ${mergedContent}`,
 		contactIds: mergedContactIds,
 		tags: mergedTags,
+		memberAccess,
 		updatedAt: now,
 	});
+	survivor.memberAccess = memberAccess;
 	survivor.content = mergedContent;
 	survivor.contactIds = mergedContactIds;
 	survivor.tags = mergedTags;
@@ -271,12 +290,16 @@ export const dedupeContactEntries = internalMutation({
 
 		const loaded = await Promise.all(links.map((l) => ctx.db.get(l.entryId)));
 		// Only vectors of the active space are compared, never two spaces
-		// (ADR-0073); an entry without one is left alone.
+		// (ADR-0073); an entry without one is left alone. So is an entry with no
+		// `memberAccess`: written before this release, it may hold private text
+		// an old merge folded in, and until migration 0069 has restricted it a
+		// merge into a newer member-visible survivor would publish that text.
 		const active = await readSearchableSpace(ctx.db);
 		if (!active) return { merged: 0 };
 		const ref = spaceRefOf(active);
 		const entries = loaded.filter(
-			(e): e is Doc<'knowledgeEntries'> => e !== null && vectorInSpace(e, ref) !== null
+			(e): e is Doc<'knowledgeEntries'> =>
+				e !== null && e.memberAccess !== undefined && vectorInSpace(e, ref) !== null
 		);
 		if (entries.length < 2) return { merged: 0 };
 

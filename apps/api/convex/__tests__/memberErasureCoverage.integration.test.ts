@@ -290,6 +290,75 @@ describe('personal data coverage', () => {
 		});
 	});
 
+	it('erases the attachments captured into Files from personal mail, and keeps the team’s', async () => {
+		const t = erasureHarness();
+		const { authUserId, requestId } = await seedEditor(t);
+		const personal = await seedPersonalMailbox(t, authUserId);
+		const team = await seedPersonalMailbox(t, authUserId, {
+			scope: 'shared',
+			address: 'team@example.com',
+		});
+		const seeded = await t.run(async (ctx) => {
+			const now = Date.now();
+			const contactId = await ctx.db.insert('contacts', {
+				email: 'sender@example.com',
+				source: 'api',
+				doiStatus: 'not_required',
+				createdAt: now,
+				updatedAt: now,
+			});
+			const capture = async (mailboxId: Id<'mailboxes'>) => {
+				const storageId = await ctx.storage.store(new Blob(['attachment']));
+				const fileId = await ctx.db.insert('semanticFiles', {
+					storageId,
+					filename: 'contract.pdf',
+					mimeType: 'application/pdf',
+					fileSize: 10,
+					sourceType: 'email_attachment',
+					captureSource: 'mailbox',
+					sourceMailboxId: mailboxId,
+					contactIds: [contactId],
+					version: 1,
+					embedding: [],
+					createdAt: now,
+					updatedAt: now,
+				});
+				const linkId = await ctx.db.insert('semanticFileContacts', { fileId, contactId });
+				return { fileId, storageId, linkId };
+			};
+			const personalFile = await capture(personal.mailboxId);
+			const entryId = await ctx.db.insert('knowledgeEntries', {
+				entryType: 'fact',
+				title: 'Learned from the contract',
+				content: 'Learned from the contract',
+				sourceType: 'file',
+				sourceId: personalFile.fileId,
+				memberAccess: 'restricted',
+				embedding: [],
+				confidence: 0.8,
+				lastValidatedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { personalFile, teamFile: await capture(team.mailboxId), entryId };
+		});
+
+		await runDeletionCron(t);
+		await drainScheduled(t);
+		expect((await requestOf(t, requestId))?.status).toBe('completed');
+
+		await t.run(async (ctx) => {
+			const { personalFile, teamFile, entryId } = seeded;
+			expect(await ctx.db.get(personalFile.fileId)).toBeNull();
+			expect(await ctx.db.get(personalFile.linkId)).toBeNull();
+			expect(await ctx.storage.get(personalFile.storageId)).toBeNull();
+			expect(await ctx.db.get(teamFile.fileId)).not.toBeNull();
+			expect(await ctx.db.get(teamFile.linkId)).not.toBeNull();
+			// What was learned from it stays, restricted to owners and admins.
+			expect((await ctx.db.get(entryId))?.memberAccess).toBe('restricted');
+		});
+	});
+
 	it('does not finish the thread phase while a thread’s children outlast the budget', async () => {
 		const t = erasureHarness();
 		const { authUserId, requestId } = await seedEditor(t);

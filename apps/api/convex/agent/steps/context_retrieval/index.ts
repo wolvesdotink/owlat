@@ -362,6 +362,8 @@ export async function assembleInboundBriefing(
 						...embedding,
 						limit: CONTEXT_BUDGET.fileLimit,
 						scopeToContact,
+						// The Team Inbox agent: its own captures, never a Postbox mailbox's.
+						mailCaptures: 'team_inbox',
 					});
 		if (files.length > 0) {
 			hasFiles = true;

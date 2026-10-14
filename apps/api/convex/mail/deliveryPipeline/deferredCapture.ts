@@ -174,12 +174,18 @@ async function indexStaged(
 		return { indexed: 0, skippedReason: 'budget' };
 	}
 
+	// The mailbox comes from the delivered message, not the job's arguments:
+	// it decides who may read the captured files (lib/semanticFileAccess.ts).
+	// A job from a previous release has no message id, and its files stay
+	// with owners and admins.
+	const message = args.mailMessageId ? await ctx.db.get(args.mailMessageId) : null;
 	const results: IndexedPart[] = [];
 	for (const part of present) {
 		results.push(
 			await ingestStoredPart(ctx, part, {
 				messageId: args.messageId,
 				captureSource: args.captureSource,
+				...(message ? { sourceMailboxId: message.mailboxId } : {}),
 				contactIds: scope.contactIds,
 			})
 		);
