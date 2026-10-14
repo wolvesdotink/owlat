@@ -333,6 +333,9 @@ export const inboxTables = {
 	})
 		.index('by_message_id', ['messageId'])
 		.index('by_thread', ['threadId'])
+		// A thread's held questions, without its whole history: kept in step with
+		// the thread's status on every settle and reopen (inbox/clarificationHold.ts).
+		.index('by_thread_and_processing_status', ['threadId', 'processingStatus'])
 		.index('by_processing_status', ['processingStatus'])
 		// The Answer queue's held questions on open conversations (#1343).
 		.index('by_processing_status_and_thread_settled', ['processingStatus', 'isThreadSettled'])

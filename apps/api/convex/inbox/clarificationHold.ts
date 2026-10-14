@@ -15,6 +15,7 @@
  * and reopen), so open questions are never crowded out by settled ones.
  */
 
+import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { listSharedInboxReaderIds } from './access';
@@ -85,25 +86,53 @@ export async function readPendingReview(ctx: QueryCtx, limit: number) {
 	return [...drafts, ...held].sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
 }
 
+/** Held messages one settle or reopen updates per transaction. */
+const SYNC_PAGE = 50;
+
 /**
  * Keep `isThreadSettled` on a thread's held messages in step with its status.
  * Called by the thread module whenever a status change crosses between open
- * (`open`, `waiting`) and settled (`resolved`, `closed`).
+ * (`open`, `waiting`) and settled (`resolved`, `closed`). Reads only the
+ * thread's held messages (never its whole history), a bounded page at a time;
+ * a longer tail continues in scheduled pages.
  */
 export async function syncHeldClarifications(
 	ctx: MutationCtx,
 	threadId: Id<'conversationThreads'>,
 	status: string
 ): Promise<void> {
+	await syncHeldPage(ctx, threadId, status, undefined);
+}
+
+/** One page of {@link syncHeldClarifications}, after `after` (`_creationTime`). */
+export async function syncHeldPage(
+	ctx: MutationCtx,
+	threadId: Id<'conversationThreads'>,
+	status: string,
+	after: number | undefined
+): Promise<void> {
 	const isSettled = SETTLED_THREAD_STATUSES.has(status);
-	const messages = await ctx.db
+	const held = await ctx.db
 		.query('inboundMessages')
-		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect(); // bounded: one thread's inbound messages
-	for (const message of messages) {
-		if (message.processingStatus !== 'awaiting_clarification') continue;
+		.withIndex('by_thread_and_processing_status', (q) => {
+			const range = q.eq('threadId', threadId).eq('processingStatus', 'awaiting_clarification');
+			return after === undefined ? range : range.gt('_creationTime', after);
+		})
+		.take(SYNC_PAGE);
+	for (const message of held) {
 		if ((message.isThreadSettled === true) === isSettled) continue;
 		await ctx.db.patch(message._id, { isThreadSettled: isSettled ? true : undefined });
+	}
+	const last = held[held.length - 1];
+	if (held.length === SYNC_PAGE && last) {
+		await ctx.scheduler.runAfter(
+			0,
+			internal.inbox.clarificationHoldSync.syncHeldClarificationsPage,
+			{
+				threadId,
+				after: last._creationTime,
+			}
+		);
 	}
 }
 

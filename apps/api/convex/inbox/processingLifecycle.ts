@@ -357,8 +357,9 @@ export const reconcileAbandonedClarifications = internalMutation({
 		const now = Date.now();
 		const cutoff = now - windowMs;
 
-		// Paged, so messages already reminded (which stay in this state) can
-		// never crowd out the ones behind them.
+		// Paged through every held row, so messages already reminded (which stay
+		// in this state) never crowd out the ones behind them, and every row's
+		// `isThreadSettled` is reconciled on each run.
 		const page = await ctx.db
 			.query('inboundMessages')
 			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'awaiting_clarification'))
@@ -366,17 +367,19 @@ export const reconcileAbandonedClarifications = internalMutation({
 
 		let reminded = 0;
 		for (const message of page.page) {
-			const pending = message.pendingClarification;
-			// A notice points at a conversation: without one there is nobody to ask.
-			if (!pending || pending.askedAt > cutoff || !message.threadId) continue;
-			// A conversation someone resolved or closed needs no answer. A row
-			// parked before the queue's index existed is marked on the way.
-			if (!(await isClarificationLive(ctx, message))) {
-				if (message.isThreadSettled !== true) {
-					await ctx.db.patch(message._id, { isThreadSettled: true });
-				}
-				continue;
+			// First, for every held row whatever its age: keep the Answer queue's
+			// index right (`isThreadSettled`). A row parked before the index
+			// existed is stamped on the first run after deploy, so legacy settled
+			// rows never pile up in front of live questions.
+			const isLive = await isClarificationLive(ctx, message);
+			if (!isLive !== (message.isThreadSettled === true)) {
+				await ctx.db.patch(message._id, { isThreadSettled: isLive ? undefined : true });
 			}
+			// Then whether to ask again. A conversation someone resolved or closed
+			// needs no answer, and a notice points at a conversation: without one
+			// there is nobody to ask.
+			const pending = message.pendingClarification;
+			if (!isLive || !pending || pending.askedAt > cutoff || !message.threadId) continue;
 			// Each person who has to answer now is asked again once: an assignee
 			// who left or lost the role is replaced by the readers, and a new
 			// assignee hears of it, but nobody is reminded twice.

@@ -821,6 +821,7 @@ import type * as inbox_clarification from '../inbox/clarification.js';
 import type * as inbox_clarificationAnswers from '../inbox/clarificationAnswers.js';
 import type * as inbox_clarificationFileAnswer from '../inbox/clarificationFileAnswer.js';
 import type * as inbox_clarificationHold from '../inbox/clarificationHold.js';
+import type * as inbox_clarificationHoldSync from '../inbox/clarificationHoldSync.js';
 import type * as inbox_clarificationLog from '../inbox/clarificationLog.js';
 import type * as inbox_clarificationLocalize from '../inbox/clarificationLocalize.js';
 import type * as inbox_clarificationMemory from '../inbox/clarificationMemory.js';
@@ -2568,6 +2569,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/clarificationAnswers': typeof inbox_clarificationAnswers;
 	'inbox/clarificationFileAnswer': typeof inbox_clarificationFileAnswer;
 	'inbox/clarificationHold': typeof inbox_clarificationHold;
+	'inbox/clarificationHoldSync': typeof inbox_clarificationHoldSync;
 	'inbox/clarificationLog': typeof inbox_clarificationLog;
 	'inbox/clarificationLocalize': typeof inbox_clarificationLocalize;
 	'inbox/clarificationMemory': typeof inbox_clarificationMemory;

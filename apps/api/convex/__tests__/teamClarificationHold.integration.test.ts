@@ -12,10 +12,11 @@
  *     conversations, and replaces an assignee who no longer reads the inbox.
  */
 import type { TestConvex } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type { MutationCtx } from '../_generated/server';
 import {
 	createTestContact,
 	createTestConversationThread,
@@ -358,5 +359,137 @@ describe('reminder bookkeeping', () => {
 		expect(await rows()).toEqual([]);
 		const left = await t.run(async (ctx) => ctx.db.query('inboxAssignmentNotices').collect());
 		expect(left.filter((n) => n.inboundMessageId === messageId)).toEqual([]);
+	});
+});
+
+/** Insert `count` messages on one thread in a single transaction. */
+async function seedMany(
+	t: Harness,
+	threadId: Id<'conversationThreads'>,
+	count: number,
+	fields: Record<string, unknown>
+) {
+	await t.run(async (ctx) => {
+		for (let i = 0; i < count; i++) {
+			const { threadId: _t, ...row } = createTestInboundMessage({
+				contactId: undefined,
+				...fields,
+			});
+			await ctx.db.insert('inboundMessages', { ...row, threadId });
+		}
+	});
+}
+
+const heldNow = () => ({
+	processingStatus: 'awaiting_clarification',
+	pendingClarification: {
+		questions: [{ id: 'clarify_0', slotType: 'factual_lookup', text: 'Which order?' }],
+		askedAt: Date.now(),
+	},
+});
+
+describe('settlement sync', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// Rows parked before the index existed, on conversations settled since, and
+	// younger than the reminder window: the cron stamps them all, whatever
+	// their age, so they never crowd a live question out of the queue.
+	it('finds the open question behind 204 legacy settled rows once the cron has run', async () => {
+		vi.useFakeTimers();
+		const t = await pushHarness(modules);
+		const open = await seed(t, heldNow());
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 204; i++) {
+				const { updatedAt: _u, ...thread } = createTestConversationThread({
+					contactId: undefined,
+					status: 'resolved',
+				});
+				const threadId = await ctx.db.insert('conversationThreads', thread);
+				const { threadId: _t, ...row } = createTestInboundMessage({
+					contactId: undefined,
+					...heldNow(),
+				});
+				await ctx.db.insert('inboundMessages', { ...row, threadId });
+			}
+		});
+
+		await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const queue = await t.query(api.inbox.queries.getReviewQueue, { limit: 3 });
+		expect(queue.map((entry) => entry.message._id)).toEqual([open.messageId]);
+		expect(await t.query(api.inbox.queries.countReviewQueue, { limit: 3 })).toBe(1);
+		const stamped = await t.run(async (ctx) =>
+			(await ctx.db.query('inboundMessages').collect()).filter((m) => m.isThreadSettled === true)
+		);
+		expect(stamped).toHaveLength(204);
+	});
+
+	it('settles a long conversation reading only its held messages, not its history', async () => {
+		const t = await pushHarness(modules);
+		const { messageId, threadId } = await seed(t, heldNow());
+		await seedMany(t, threadId, 300, { processingStatus: 'sent' });
+
+		const reads: string[] = [];
+		await t.run(async (ctx) => {
+			const db = new Proxy(ctx.db, {
+				get(target, prop, receiver) {
+					if (prop !== 'query') return Reflect.get(target, prop, receiver);
+					return (table: string) => {
+						const query = target.query(table as never);
+						return new Proxy(query, {
+							get(q, key, r) {
+								if (key !== 'withIndex') return Reflect.get(q, key, r);
+								return (name: string, range: never) => {
+									reads.push(`${table}.${name}`);
+									return q.withIndex(name as never, range);
+								};
+							},
+						});
+					};
+				},
+			});
+			await threadTransition({ ...ctx, db } as MutationCtx, {
+				threadId,
+				input: { kind: 'status_change', to: 'resolved', source: 'user' },
+			});
+		});
+
+		expect(reads).toContain('inboundMessages.by_thread_and_processing_status');
+		expect(reads).not.toContain('inboundMessages.by_thread');
+		expect((await read(t, messageId))?.isThreadSettled).toBe(true);
+	});
+
+	it('pages a long tail of held messages, and a reopen racing the pages wins', async () => {
+		vi.useFakeTimers();
+		const t = await pushHarness(modules);
+		const { threadId } = await seed(t, heldNow());
+		await seedMany(t, threadId, 119, heldNow());
+		const flagged = () =>
+			t.run(
+				async (ctx) =>
+					(await ctx.db.query('inboundMessages').collect()).filter(
+						(m) => m.isThreadSettled === true
+					).length
+			);
+		const settle = (to: 'resolved' | 'open') =>
+			t.run((ctx) =>
+				threadTransition(ctx, { threadId, input: { kind: 'status_change', to, source: 'user' } })
+			);
+
+		await settle('resolved');
+		expect(await flagged()).toBe(50);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(await flagged()).toBe(120);
+
+		// Settled again, then reopened before the later pages run: every page
+		// applies the thread's status at that moment, so none is left flagged.
+		await settle('open');
+		await settle('resolved');
+		await settle('open');
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		expect(await flagged()).toBe(0);
 	});
 });
