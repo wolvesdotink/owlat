@@ -103,10 +103,19 @@ export async function listSharedInboxReaderIds(ctx: QueryCtx | MutationCtx): Pro
  *     (lib/semanticFileAccess.ts), and knowledge carries no mailbox, so only
  *     what the write proved came from an uploaded file is opened to members.
  *
- * Every write of this release stamps `memberAccess` from the source
- * (knowledge/entryDedupe.ts `resolveMemberAccess`): `members` for an entry from
- * chat, imported Postbox mail, manual or curated authoring, or an uploaded
- * file; `restricted` for anything else. A merge never widens it
+ * Every write of this release stamps `memberAccess` from the source:
+ *   - a non-file entry gets `members`, unless it comes from Team Inbox
+ *     extraction (`sourceType: 'agent_extracted'`) or carries a thread link
+ *     (`threadId`), when it gets `restricted`. `knowledge.graph.saveEntry`
+ *     decides it in knowledge/entryDedupe.ts `resolveMemberAccess`;
+ *     `knowledge.graph.createEntry`, which only writes `manual` entries, by its
+ *     thread link alone;
+ *   - a file entry gets `members` when its file exists and is not a mail
+ *     capture, else `restricted`. A thread link does not change the stamp, but
+ *     still keeps the entry from members through the `threadId` marker above;
+ *   - a new curated answer (`knowledge.graph.createPolicyEntry`) gets `members`;
+ *     turning an existing entry into one keeps that entry's stamp.
+ * A merge never widens it
  * (knowledge/maintenance.ts `mergedMemberAccess`). Every entry that existed
  * before this release, Team Inbox included, is restricted by migration 0069,
  * since a historical merge may have folded private text into it; until then
