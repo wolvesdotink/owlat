@@ -43,6 +43,7 @@ const INLINE = new Set([
 	'label',
 	'mark',
 	'q',
+	'ruby',
 	's',
 	'samp',
 	'small',
@@ -102,27 +103,36 @@ function gluedToText(previous: TemplateNode | undefined): boolean {
 
 /** `line <tag>` for each inline element whose leading space Vue drops. */
 function droppedSpaces(source: string): string[] {
-	const ast = parse(source).descriptor.template?.ast as TemplateNode | undefined;
-	const found: string[] = [];
-	const visit = (node: TemplateNode) => {
-		const siblings = rendered(node.children);
-		for (const [index, child] of siblings.entries()) {
-			const first = rendered(child.children)[0];
-			if (
-				child.type === ELEMENT &&
-				INLINE.has(child.tag ?? '') &&
-				first &&
-				(first.type === INTERPOLATION || first.type === ELEMENT) &&
-				/^\s+$/.test(leadingGap(child)) &&
-				gluedToText(siblings[index - 1])
-			) {
-				found.push(`${child.loc.start.line} <${child.tag}>`);
-			}
-			visit(child);
+	// Development keeps comments and production strips them, and the two can
+	// disagree: `<span><!-- c --> {{ x }}</span>` keeps its space only while the
+	// comment is there to hold it. So read the template both ways; without a
+	// comment the two readings are the same tree, and one parse is enough.
+	const found = new Set<string>();
+	for (const comments of source.includes('<!--') ? [true, false] : [true]) {
+		const ast = parse(source, { sourceMap: false, templateParseOptions: { comments } }).descriptor
+			.template?.ast as TemplateNode | undefined;
+		if (ast) visitInline(ast, found);
+	}
+	return [...found];
+}
+
+/** Adds `line <tag>` to `found` for each glued element under `node` that opens with whitespace. */
+function visitInline(node: TemplateNode, found: Set<string>): void {
+	const siblings = rendered(node.children);
+	for (const [index, child] of siblings.entries()) {
+		const first = rendered(child.children)[0];
+		if (
+			child.type === ELEMENT &&
+			INLINE.has(child.tag ?? '') &&
+			first &&
+			(first.type === INTERPOLATION || first.type === ELEMENT) &&
+			/^\s+$/.test(leadingGap(child)) &&
+			gluedToText(siblings[index - 1])
+		) {
+			found.add(`${child.loc.start.line} <${child.tag}>`);
 		}
-	};
-	if (ast) visit(ast);
-	return found;
+		visitInline(child, found);
+	}
 }
 
 function vueFiles(dir: string, out: string[] = []): string[] {
@@ -160,6 +170,20 @@ describe('the leading-space check itself', () => {
 		expect(check('{{ host }}<span> <!-- note -->{{ label }}</span>')).toEqual(['1 <span>']);
 		expect(check('{{ host }}<span><!-- note -->{{ label }}</span>')).toEqual([]);
 		expect(check('{{ host }} <!-- note --><span>{{ label }}</span>')).toEqual([]);
+	});
+
+	it('flags a space only a comment holds, which production strips with it', () => {
+		expect(check('{{ host }}<span><!-- c --> {{ label }}</span>')).toEqual(['1 <span>']);
+		expect(check('{{ host }}<span><!-- a --><!-- b --> {{ label }}</span>')).toEqual(['1 <span>']);
+		expect(check('{{ host }}<span><!-- a -->\n\t<!-- b -->\n\t{{ label }}</span>')).toEqual([
+			'1 <span>',
+		]);
+	});
+
+	it('covers ruby annotations', () => {
+		expect(check('{{ host }}<ruby> {{ label }}<rt>{{ reading }}</rt></ruby>')).toEqual([
+			'1 <ruby>',
+		]);
 	});
 
 	it('accepts an explicit {{ " " }} and a space outside the element', () => {
