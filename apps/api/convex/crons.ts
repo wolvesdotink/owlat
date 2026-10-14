@@ -288,9 +288,8 @@ crons.interval(
 	{}
 );
 
-// Give up on clarification questions the owner never answered: after the
-// configurable window, draft a flagged best-guess (never auto-send-eligible)
-// so an abandoned `awaiting_clarification` message can't wedge forever.
+// Clarification questions the owner never answered: after the configurable
+// window, ask them again once. Nothing is drafted around an unanswered question.
 crons.interval(
 	'reconcile abandoned clarifications',
 	{ minutes: 30 },

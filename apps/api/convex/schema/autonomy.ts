@@ -38,8 +38,8 @@ export const agentConfigFields = {
 	humanApproveUndoDelayMs: v.optional(v.number()),
 	// Abandoned-clarification window (ms). A message parked in
 	// `awaiting_clarification` for longer than this with no owner answer is
-	// resumed by the fallback cron as a flagged best-guess that is never
-	// auto-send-eligible. Unset ⇒ DEFAULT_CLARIFICATION_TIMEOUT_MS (24h). See
+	// asked again once by the reminder cron; it keeps waiting for an answer.
+	// Unset ⇒ DEFAULT_CLARIFICATION_TIMEOUT_MS (24h). See
 	// inbox/processingLifecycle.ts:reconcileAbandonedClarifications.
 	clarificationTimeoutMs: v.optional(v.number()),
 	// Shadow ("would-have-sent") mode. When true (or unset — shadow is the

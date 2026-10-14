@@ -21,7 +21,8 @@
  * whose feature flag was switched off does not either. So is the person's
  * access: someone removed from the organization since the event gets nothing,
  * and an assignment reaches only a current shared-inbox reader (an assignee
- * demoted meanwhile no longer sees the thread in the app either).
+ * demoted meanwhile no longer sees the thread in the app either). An agent
+ * question reaches nobody once it is answered or its conversation settled.
  */
 
 import { v } from 'convex/values';
@@ -38,6 +39,7 @@ import {
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { components, internal } from '../_generated/api';
+import { isClarificationLive } from '../inbox/clarificationHold';
 import { internalMutation } from '../lib/writeFence';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { isThreadMuted } from '../lib/mailMute';
@@ -185,6 +187,12 @@ async function resolveAssignment(
 	// whoever reads the shared inbox now, as `inbox.queries.pendingAssignments`.
 	if (!isSharedInboxReader({ role })) return null;
 	if (!(await isFeatureEnabled(ctx, 'inbox'))) return null;
+	// An agent question answered, or its conversation resolved or closed,
+	// between the notice and this delivery needs nobody any more.
+	if (notice.kind === 'clarification' && notice.inboundMessageId) {
+		const message = await ctx.db.get(notice.inboundMessageId);
+		if (!message || !(await isClarificationLive(ctx, message))) return null;
+	}
 	return {
 		payload: assignmentPayload(
 			{

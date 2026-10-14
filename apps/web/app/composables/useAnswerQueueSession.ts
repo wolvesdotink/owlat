@@ -52,9 +52,10 @@ function orderKey(item: AnswerItem): TaskFlowOrderKey {
 	}
 	if (item.source === 'team') {
 		const hasDraft = !!item.entry.message.draftResponse?.trim();
+		const isHeld = item.entry.message.processingStatus === 'awaiting_clarification';
 		return {
 			id: item.id,
-			kind: hasDraft ? 'draft_review' : 'reply',
+			kind: isHeld ? 'question' : hasDraft ? 'draft_review' : 'reply',
 			threadId: item.entry.thread?._id,
 			contactKey: item.entry.message.from,
 		};

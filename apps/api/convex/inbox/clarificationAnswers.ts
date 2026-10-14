@@ -265,3 +265,25 @@ export function ownerAttachmentFromAnswers<
 	const pick = stored && !stored.ambiguous ? stored.candidates[0] : undefined;
 	return pick && pick.fileId === file.id ? stored : null;
 }
+
+/**
+ * Whether a stored clarification still has a question open that nobody agreed
+ * to leave open: no "Draft with what I have" on it, and no standing consent
+ * (asking turned off). Such a message is never drafted around, whichever path
+ * reaches the draft (#1343): it goes back to asking. Read from the stored
+ * state, not from the draft's text, so a draft that simply leaves the fact out
+ * cannot pass.
+ */
+export function hasUnconsentedOpenQuestion(
+	pending:
+		| {
+				questions: ReadonlyArray<Parameters<typeof hasUsableAnswer>[0]>;
+				isGapsAccepted?: boolean | undefined;
+		  }
+		| undefined
+		| null,
+	standingConsent = false
+): boolean {
+	if (!pending || standingConsent || pending.isGapsAccepted === true) return false;
+	return !pending.questions.every(hasUsableAnswer);
+}

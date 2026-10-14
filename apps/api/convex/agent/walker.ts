@@ -35,12 +35,7 @@ import {
 	pluginStepsFollowing,
 } from './steps/catalog';
 import { contextRetrievalStep } from './steps/context_retrieval';
-import { buildConfirmedContext } from './steps/draft';
-import {
-	buildFileAnswerNotes,
-	joinConfirmedBlocks,
-	ownerAttachmentFromAnswers,
-} from '../inbox/clarificationAnswers';
+import { hasUsableAnswer } from '../inbox/clarificationAnswers';
 import type {
 	AgentRoute,
 	AgentRunContext,
@@ -182,20 +177,23 @@ export const start = internalAction({
 });
 
 /**
- * Resume a clarification-parked message back INTO the draft step.
+ * Resume a message back INTO the draft step.
  *
- * Two callers, both after the lifecycle has already moved the message
- * `awaiting_clarification → drafting`:
- *   - `inbox.answerClarification` — the owner answered; the confirmed answers
- *     are folded in as a TRUSTED `[CONFIRMED BY OWNER]` block.
- *   - `processingLifecycle.reconcileAbandonedClarifications` — the fallback
- *     cron gave up after the window; the questions are unanswered so the block
- *     is empty and the draft is a best-guess (the route step's safety gate
- *     refuses to auto-send it because `isAutoSendBlocked` is set).
+ * Two callers, both after the lifecycle has already moved the message into
+ * `drafting`:
+ *   - `inbox.answerClarification` — the owner answered. The draft step folds
+ *     the stored answers in as a TRUSTED `[CONFIRMED BY OWNER]` block, and a
+ *     question left open under "Draft with what I have" as a fixed `[[...]]`
+ *     placeholder it keeps in the reply (agent/steps/draft/gaps.ts).
+ *   - `inbox.updates.requestReply` — a reader asked for a reply to an update;
+ *     there are no questions.
+ *
+ * A question still open without the owner's consent to gaps (a run answered
+ * before that rule) is never drafted around: the message goes back to asking.
  *
  * Re-enters the DRAFT step specifically (not the whole tail): it rebuilds the
- * retrieval context, folds in the confirmed answers, and schedules the draft
- * step, which then hands off to `route` as usual.
+ * retrieval context and schedules the draft step (which reads the stored answers)
+ * and then hands off to `route` as usual.
  *
  * FAIL-SOFT: a vanished message, a message no longer in `drafting` (a racing
  * transition won), or a context-retrieval failure never wedges anything — it
@@ -237,18 +235,9 @@ export const resumeDraft = internalAction({
 			context = '';
 		}
 
-		// Fold the owner-confirmed answers into a trusted block (empty for the
-		// abandoned-question fallback path — an unanswered best-guess). A file
-		// the owner attached gets its own line so the reply mentions it.
-		const questions = message.pendingClarification?.questions ?? [];
-		const confirmedContext = joinConfirmedBlocks(
-			buildConfirmedContext(message.pendingClarification),
-			buildFileAnswerNotes(questions)
-		);
-		// The owner's answer to a file question replaces the draft step's own
-		// file search (undefined when none was answered).
-		const ownerAttachment = ownerAttachmentFromAnswers(questions, message.attachmentSuggestions);
-
+		const pending = message.pendingClarification;
+		const questions = pending?.questions ?? [];
+		const isGapsAccepted = pending?.isGapsAccepted === true;
 		// The message went through `classify` to reach `awaiting_clarification`, so
 		// its classification is normally present; fall back to a neutral one so the
 		// draft can still run.
@@ -259,15 +248,28 @@ export const resumeDraft = internalAction({
 			intent: 'other',
 			confidence: 0,
 		};
+		if (pending && !isGapsAccepted && !questions.every(hasUsableAnswer)) {
+			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId: args.inboundMessageId,
+				input: {
+					to: 'awaiting_clarification',
+					at: Date.now(),
+					pendingClarification: { questions, askedAt: Date.now() },
+					classification,
+				},
+			});
+			return;
+		}
 
 		await scheduleAfterCoreStep(ctx, args.inboundMessageId, 'clarify', {
 			kind: 'draft',
 			input: {
 				inboundMessageId: args.inboundMessageId,
 				context,
+				// The owner's answers, files, consent to gaps and its placeholders
+				// are read from the stored clarification by the draft step itself
+				// (agent/steps/draft/gaps.ts), so every path into it gets them.
 				classification,
-				confirmedContext,
-				...(ownerAttachment !== undefined ? { ownerAttachment } : {}),
 			},
 		});
 	},

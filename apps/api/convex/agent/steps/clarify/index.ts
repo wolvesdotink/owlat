@@ -39,7 +39,8 @@
  *
  * FAIL-SOFT: every failure inside `execute` (LLM error, malformed object,
  * missing provider, unreadable coverage) degrades to zero questions →
- * `drafting`, and never a question on uncertainty about its own machinery. The
+ * `drafting`, and never a question on uncertainty about its own machinery.
+ * A gap the draft then leaves is asked after drafting (../draft/gaps.ts). The
  * one throw is a spend-admission refusal: the walker holds the message (D1).
  *
  * Complaint / urgent mail is forked through here too (classify used to skip it
@@ -416,7 +417,9 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 		// Nothing left to ask → drafting, exactly as classify did before. When
 		// answer-memory silently resolved every open slot, thread those confirmed
 		// facts straight into the draft (as a TRUSTED block) so the reply uses them
-		// even though we never parked for a human.
+		// even though we never parked for a human. The draft step still asks about
+		// any gap the draft leaves, unless asking is turned off: the dial at Off is
+		// standing consent to a draft with highlighted gaps, as in Answer mode.
 		const confirmedContext = buildMemoryConfirmedContext(memoryAnswers);
 		return {
 			kind: 'transition',
@@ -428,6 +431,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 					context: input.context,
 					classification: input.classification,
 					...(confirmedContext.length > 0 ? { confirmedContext } : {}),
+					...(output.resolution === 'eagerness_off' ? { isGapsAccepted: true } : {}),
 				},
 			},
 		};

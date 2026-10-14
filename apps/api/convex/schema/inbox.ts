@@ -279,8 +279,8 @@ export const inboxTables = {
 		// pendingClarificationValidator.
 		pendingClarification: v.optional(pendingClarificationValidator),
 		// Set when a draft was produced from an ABANDONED clarification (the owner
-		// never answered within the window and the fallback cron resumed a
-		// best-guess). It is a hard, fail-closed block on autonomous sending — the
+		// never answered within the window and the fallback cron, before #1343,
+		// resumed a best-guess). It is a hard, fail-closed block on autonomous sending — the
 		// route step's final safety gate refuses to auto-send while this is set, so
 		// a best-guess reply always goes to human review. Never cleared by the
 		// pipeline; a human reviews and sends (or discards) the draft.
@@ -288,6 +288,15 @@ export const inboxTables = {
 		// When a person last took the reply over from the agent (manualReply.ts).
 		// While set, late pipeline writes are refused; cleared on `→ received`.
 		manualTakeoverAt: v.optional(v.number()),
+		// Held on the agent's questions on a conversation someone resolved or
+		// closed: it needs nobody, so the Answer queue's index skips it. Kept by
+		// the thread module on every settle and reopen (inbox/clarificationHold.ts).
+		isThreadSettled: v.optional(v.boolean()),
+		// When the abandoned-question reminder last sent anything about this
+		// message. Its worker walks held messages least recently reminded first,
+		// so no question waits behind others that keep drawing reminders
+		// (inbox/clarificationReminders.ts).
+		lastReminderAt: v.optional(v.number()),
 		// Counts the message's entries into `security_check`, bumped by the
 		// transition that enters it. A scan action records the run it belongs to
 		// (`agentActions.securityCheckRun`), so a retried or released message's
@@ -317,6 +326,10 @@ export const inboxTables = {
 		// Written by the composer's saves (`draftRevisions.appendDraftRevision`)
 		// and with the agent's draft (`stepOutputs.recordDraftOutput`).
 		isDraftGapGuarded: v.optional(v.boolean()),
+		// The agent's draft was stored with gaps the owner agreed to ("Draft with
+		// what I have", or asking turned off). Without it an agent draft with
+		// gaps is never shown (lib/heldGapDraft.ts, #1343).
+		isDraftGapsAccepted: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Where a `failed` message failed: `send` when the approved reply could not
@@ -330,7 +343,14 @@ export const inboxTables = {
 	})
 		.index('by_message_id', ['messageId'])
 		.index('by_thread', ['threadId'])
+		// A thread's held questions, without its whole history: kept in step with
+		// the thread's status on every settle and reopen (inbox/clarificationHold.ts).
+		.index('by_thread_and_processing_status', ['threadId', 'processingStatus'])
 		.index('by_processing_status', ['processingStatus'])
+		// The Answer queue's held questions on open conversations (#1343).
+		.index('by_processing_status_and_thread_settled', ['processingStatus', 'isThreadSettled'])
+		// The reminder's walk: held messages, least recently reminded first.
+		.index('by_processing_status_and_last_reminder', ['processingStatus', 'lastReminderAt'])
 		.index('by_received_at', ['receivedAt'])
 		.index('by_contact', ['contactId'])
 		// Drives the raw-blob retention sweep: the equality component keeps the

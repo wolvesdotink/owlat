@@ -6961,6 +6961,7 @@
 				"needsTitle": "Needs an answer",
 				"allInQueue": "All {count} in the queue",
 				"draftReady": "draft ready",
+				"question": "needs your input",
 				"mention": "mention",
 				"mentionTitle": "#{room}: {preview}",
 				"clearTitleIn": "Nothing in {inbox} needs an answer"
@@ -7196,7 +7197,6 @@
 				"skip": "Draft with what I have",
 				"operation": "Answer the questions",
 				"budgetRefused": "The AI spend budget is used up for now, so the draft was not written. Your answers stay here: try again later, or write the reply yourself.",
-				"sublineAgent": "No draft yet. The agent writes it once everything here is answered.",
 				"allAnswered": "Everything is answered",
 				"draftNow": "Write the draft"
 			},

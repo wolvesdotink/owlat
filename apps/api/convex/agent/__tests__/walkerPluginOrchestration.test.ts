@@ -364,85 +364,34 @@ describe('walker generated plugin orchestration conformance', () => {
 				remainingPluginSteps: [],
 				coreStep: {
 					kind: 'draft',
-					input: {
-						context: 'fixture retrieval context',
-						confirmedContext: pending ? expect.stringContaining('Europe') : '',
-					},
+					// The answers are read from the stored clarification by the
+					// draft step itself (agent/steps/draft/gaps.ts), not passed here.
+					input: { context: 'fixture retrieval context' },
 				},
 			});
 		}
 	);
 
-	it("threads the owner's file answer into the draft instead of a new file search", async () => {
-		const pick = {
-			query: 'signed contract',
-			ambiguous: false,
-			candidates: [
-				{
-					fileId: 'file_pick',
-					storageId: 'store_pick',
-					filename: 'contract-signed.pdf',
-					mimeType: 'application/pdf',
-					fileSize: 2048,
-					score: 1,
-				},
-			],
-		};
-		const harness = createHarness();
-		harness.message['processingStatus'] = 'drafting';
-		harness.message['attachmentSuggestions'] = pick;
-		harness.message['pendingClarification'] = {
-			questions: [
-				{
-					id: 'clarify_attachment',
-					slotType: 'attachment',
-					answerKind: 'file',
-					text: 'Which file should I attach to this reply?',
-					answer: {
-						value: 'contract-signed.pdf',
-						source: 'user',
-						at: 2,
-						file: { source: 'semanticFile', id: 'file_pick', filename: 'contract-signed.pdf' },
-					},
-				},
-			],
-			askedAt: 1,
-			answeredAt: 2,
-		};
-		await resumeDraftHandler(harness.ctx, { inboundMessageId: 'message-id' });
-		expect(harness.scheduled[0]).toMatchObject({
-			coreStep: {
-				kind: 'draft',
-				input: {
-					ownerAttachment: pick,
-					confirmedContext: expect.stringContaining(
-						'The file "contract-signed.pdf" is attached to this reply'
-					),
-				},
-			},
-		});
-	});
+	const openQuestions = [
+		{
+			id: 'clarify_0',
+			slotType: 'factual_lookup',
+			text: 'Which order?',
+			answer: { value: '#4821', source: 'user', at: 2 },
+		},
+		{ id: 'clarify_1', slotType: 'date_time', text: 'When does it ship?' },
+	];
 
-	it('tells the draft step to suggest no file when the owner said it is not ready', async () => {
+	it('asks again instead of drafting around a question left open without consent', async () => {
 		const harness = createHarness();
 		harness.message['processingStatus'] = 'drafting';
 		harness.message['pendingClarification'] = {
-			questions: [
-				{
-					id: 'clarify_attachment',
-					slotType: 'attachment',
-					answerKind: 'file',
-					text: "They asked for a file. I couldn't find it in Files.",
-					options: ["It isn't ready yet"],
-					answer: { value: "It isn't ready yet", source: 'user', at: 2 },
-				},
-			],
+			questions: openQuestions,
 			askedAt: 1,
 			answeredAt: 2,
 		};
 		await resumeDraftHandler(harness.ctx, { inboundMessageId: 'message-id' });
-		const step = harness.scheduled[0]!.coreStep as { input: Record<string, unknown> };
-		expect(step.input['ownerAttachment']).toBeNull();
-		expect(step.input['confirmedContext']).toContain("It isn't ready yet");
+		expect(harness.scheduled).toHaveLength(0);
+		expect(harness.message['processingStatus']).toBe('awaiting_clarification');
 	});
 });

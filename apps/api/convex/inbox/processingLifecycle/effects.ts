@@ -14,7 +14,11 @@
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { listSharedInboxReaderIds } from '../access';
+import {
+	clearClarificationReminders,
+	isSettledThreadStatus,
+	resolveClarificationRecipients,
+} from '../clarificationHold';
 import { transition as threadTransition } from '../threads/module';
 import { settleClockForMessage } from '../sla/threadClock';
 import { applyInboxStatsDelta, bucketForStatus } from '../../lib/inboxStats';
@@ -79,47 +83,49 @@ export function resolveHumanApproveUndoDelayMs(configured: number | undefined): 
 
 // ─── Clarification notices ──────────────────────────────────────────────────
 
-/**
- * Who has to answer the agent's questions on this message: the message's own
- * assignee, else the thread's assignee. Without either there is no single
- * responsible person, so the notice fans out to every shared-inbox reader
- * (owner / admin) — the same set that sees the review queue.
- */
-export async function resolveClarificationRecipients(
-	ctx: MutationCtx,
-	message: Doc<'inboundMessages'>
-): Promise<string[]> {
-	if (message.assignedTo) return [message.assignedTo];
-	const thread = message.threadId ? await ctx.db.get(message.threadId) : null;
-	if (thread?.assignedTo) return [thread.assignedTo];
-	return listSharedInboxReaderIds(ctx);
-}
+/** Characters of the subject (and sender) a clarification notice keeps. */
+export const NOTICE_SUBJECT_CHARS = 200;
 
 /**
- * Append one `clarification` notice per recipient. Best-effort: the message
- * is already parked in `awaiting_clarification`; a missing row or profile
- * only means fewer notices, never a failed transition.
+ * Append one `clarification` notice per recipient, and push it. The
+ * recipients are `../clarificationHold.resolveClarificationRecipients` unless
+ * the caller names them (the reminder names those not reminded yet, and marks
+ * its notices `isReminder` with the ask they remind about, `reminderAskedAt`:
+ * the record that they were asked again). A notice is a toast: it keeps the
+ * first {@link NOTICE_SUBJECT_CHARS} characters of the subject, so every
+ * clarification notice is a small row whoever reads it.
+ * Returns who was notified. Best-effort: the message is already parked in
+ * `awaiting_clarification`; a missing row or profile only means fewer notices,
+ * never a failed transition.
  */
-async function notifyClarification(
+export async function notifyClarification(
 	ctx: MutationCtx,
-	inboundMessageId: Id<'inboundMessages'>
-): Promise<void> {
-	const message = await ctx.db.get(inboundMessageId);
-	if (!message?.threadId) return;
-	const recipients = await resolveClarificationRecipients(ctx, message);
+	inboundMessageId: Id<'inboundMessages'>,
+	recipients?: readonly string[],
+	/** `message`: the row when the caller already read it, so it is not read again. */
+	opts: { reminderAskedAt?: number; message?: Doc<'inboundMessages'> } = {}
+): Promise<string[]> {
+	const message = opts.message ?? (await ctx.db.get(inboundMessageId));
+	if (!message?.threadId) return [];
+	const userIds = recipients ?? (await resolveClarificationRecipients(ctx, message));
 	const now = Date.now();
-	for (const userId of recipients) {
+	for (const userId of userIds) {
 		const noticeId = await ctx.db.insert('inboxAssignmentNotices', {
 			kind: 'clarification',
 			inboundMessageId,
+			...(message.pendingClarification ? { askedAt: message.pendingClarification.askedAt } : {}),
+			...(opts.reminderAskedAt !== undefined
+				? { isReminder: true, reminderAskedAt: opts.reminderAskedAt }
+				: {}),
 			userId,
 			threadId: message.threadId,
-			subject: message.subject ?? 'No subject',
-			assignedByName: message.from,
+			subject: (message.subject ?? 'No subject').slice(0, NOTICE_SUBJECT_CHARS),
+			assignedByName: message.from.slice(0, NOTICE_SUBJECT_CHARS),
 			createdAt: now,
 		});
 		await enqueuePush(ctx, userId, { kind: 'assignment', noticeId });
 	}
+	return [...userIds];
 }
 
 // ─── Failed step rows ───────────────────────────────────────────────────────
@@ -396,6 +402,18 @@ export async function dispatch(
 		await ctx.db.patch(message._id, result.patch as Partial<Doc<'inboundMessages'>>);
 	}
 	await applyEffects(ctx, result.effects);
+	// The agent's questions (../clarificationHold.ts): answered, dismissed or
+	// taken over, their reminder rows go; parked, they join the Answer queue's
+	// index unless the conversation is already settled.
+	if (from === 'awaiting_clarification' && input.to !== 'awaiting_clarification') {
+		await clearClarificationReminders(ctx, message._id, message.pendingClarification?.askedAt);
+	} else if (input.to === 'awaiting_clarification' && message.threadId) {
+		const thread = await ctx.db.get(message.threadId);
+		const isSettled = !!thread && isSettledThreadStatus(thread.status);
+		if (isSettled !== (message.isThreadSettled === true)) {
+			await ctx.db.patch(message._id, { isThreadSettled: isSettled ? true : undefined });
+		}
+	}
 	// The thread's response clock (inbox/sla): a reply sent, nothing left to answer.
 	await settleClockForMessage(ctx, message, input);
 	// A rejected draft, or one a person took over, is no draft of the agent's any

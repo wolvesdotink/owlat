@@ -435,6 +435,17 @@ describe('clarifyStep.route', () => {
 		});
 	});
 
+	it('drafts with standing consent to gaps when asking is turned off', () => {
+		const input = makeInput();
+		const route = clarifyStep.route(
+			{ questions: [], memoryAnswers: [], resolution: 'eagerness_off' },
+			input,
+			runCtx
+		);
+		if (route.kind !== 'transition') throw new Error('expected drafting');
+		expect(route.nextStep?.input).toMatchObject({ isGapsAccepted: true });
+	});
+
 	it('folds memory-filled answers into the parked questions when some remain open', () => {
 		const input = makeInput();
 		const memoryAnswers: ClarifyOutput['memoryAnswers'] = [

@@ -302,18 +302,6 @@ describe('AskCard', () => {
 		w.unmount();
 	});
 
-	it('as the team agent\'s card: "I\'ll answer later", its own subline, every question required', async () => {
-		const w = mountCard({ questions: QUESTIONS.slice(2), teamAgent: true });
-		expect(w.get('[data-testid="ask-skip"]').text()).toBe("I'll answer later");
-		expect(w.get('[data-testid="ask-subline"]').text()).toBe(
-			'No draft yet. The agent writes it once everything here is answered.'
-		);
-		const submit = w.get('[data-testid="ask-submit"]');
-		await w.findAll('[data-testid="ask-input"]')[2]!.setValue('Nothing else');
-		expect(submit.attributes('disabled')).toBeDefined();
-		w.unmount();
-	});
-
 	it('with every question answered (a draft that failed before it was written), offers only the retry', async () => {
 		const answered = (q: (typeof QUESTIONS)[number], value: string) => ({
 			...q,

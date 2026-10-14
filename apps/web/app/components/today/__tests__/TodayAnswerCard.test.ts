@@ -152,6 +152,41 @@ describe('TodayAnswerCard', () => {
 		expect(line).not.toContain('=?utf-8?');
 	});
 
+	it("says a team row held on the agent's questions needs your input (#1343)", () => {
+		const held = {
+			id: 'team:m2',
+			source: 'team',
+			at: Date.now(),
+			entry: {
+				message: {
+					_id: 'm2',
+					subject: 'Order status',
+					from: 'Lea Brandt <lea@example.com>',
+					processingStatus: 'awaiting_clarification',
+				},
+			},
+		} as never;
+		const w = mount(TodayAnswerCard, {
+			props: {
+				items: [held],
+				counts: { mail: 0, team: 1, mention: 0, drafts: 0 },
+				isLoading: false,
+			},
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					UiButton: { template: '<a><slot /></a>' },
+					UiSkeleton: true,
+					Icon: true,
+					InboxChip: true,
+					NuxtLink: { template: '<a><slot /></a>' },
+				},
+			},
+		});
+		expect(w.text()).toContain('needs your input');
+		expect(w.text()).not.toContain('draft ready');
+	});
+
 	it('leads a team row with its top open action, then the sender and the raw preview', () => {
 		teamTops.value = [{ threadId: 't1', text: 'Refund €129.00 for order #4471', count: 2 }];
 		const team = {

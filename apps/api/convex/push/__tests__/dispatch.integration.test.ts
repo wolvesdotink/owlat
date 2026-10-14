@@ -10,7 +10,7 @@
 import type { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../../_generated/api';
-import { enableFeatures } from '../../__tests__/factories';
+import { createTestInboundMessage, enableFeatures } from '../../__tests__/factories';
 import { enqueuePush } from '../events';
 import { runPostInsertInboundEffects } from '../../mail/deliveryPipeline/afterInsert';
 import { insertRoomMessage } from '../../chat/messageInsert';
@@ -319,6 +319,34 @@ describe('push.dispatch assignment', () => {
 		await setMemberRole(t, USER, 'owner');
 		expect(await prepare(t, { kind: 'assignment', noticeId })).toHaveLength(1);
 		await setMemberRole(t, USER, null);
+		expect(await prepare(t, { kind: 'assignment', noticeId })).toEqual([]);
+	});
+
+	// #1343: a held question can wait long, so its notice is checked again
+	// right before it is pushed.
+	it.each([
+		['answered', { processingStatus: 'drafting' }, 'open'],
+		['on a conversation closed', { processingStatus: 'awaiting_clarification' }, 'closed'],
+	] as const)('drops an agent question %s before delivery', async (_case, message, status) => {
+		const t = await pushHarness(modules);
+		await enableFeatures(t, ['inbox']);
+		await seedDevice(t, USER);
+		const { threadId, noticeId } = await seedNotice(t, 'clarification');
+		await t.run(async (ctx) => {
+			const { threadId: _t, ...row } = createTestInboundMessage({
+				contactId: undefined,
+				processingStatus: 'awaiting_clarification',
+			});
+			const inboundMessageId = await ctx.db.insert('inboundMessages', { ...row, threadId });
+			await ctx.db.patch(noticeId, { inboundMessageId });
+		});
+		expect(await prepare(t, { kind: 'assignment', noticeId })).toHaveLength(1);
+
+		await t.run(async (ctx) => {
+			const notice = await ctx.db.get(noticeId);
+			await ctx.db.patch(notice!.inboundMessageId!, message);
+			await ctx.db.patch(threadId, { status });
+		});
 		expect(await prepare(t, { kind: 'assignment', noticeId })).toEqual([]);
 	});
 });
