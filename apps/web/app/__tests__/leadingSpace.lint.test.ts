@@ -24,28 +24,42 @@ import { parse } from 'vue/compiler-sfc';
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+// HTML phrasing elements that hold text, plus `<template>`, which renders none.
 const INLINE = new Set([
 	'a',
 	'abbr',
 	'b',
+	'bdi',
+	'bdo',
+	'cite',
 	'code',
+	'data',
+	'del',
+	'dfn',
 	'em',
 	'i',
+	'ins',
 	'kbd',
 	'label',
 	'mark',
+	'q',
 	's',
+	'samp',
 	'small',
 	'span',
 	'strong',
+	'sub',
+	'sup',
 	'template',
 	'time',
 	'u',
+	'var',
 ]);
 
-// compiler-core NodeTypes, structurally: ELEMENT, TEXT, INTERPOLATION.
+// compiler-core NodeTypes, structurally: ELEMENT, TEXT, COMMENT, INTERPOLATION.
 const ELEMENT = 1;
 const TEXT = 2;
+const COMMENT = 3;
 const INTERPOLATION = 5;
 
 interface TemplateNode {
@@ -57,9 +71,17 @@ interface TemplateNode {
 	loc: { source: string; start: { offset: number; line: number } };
 }
 
-/** The raw source between an element's start tag and its first child. */
+/**
+ * Children as they render: comments are dropped from the page, and the
+ * whitespace beside one is dropped with it, so neither can separate text.
+ */
+function rendered(children: TemplateNode[] | undefined): TemplateNode[] {
+	return (children ?? []).filter((child) => child.type !== COMMENT);
+}
+
+/** The raw source, comments removed, between an element's start tag and its first rendered child. */
 function leadingGap(element: TemplateNode): string {
-	const first = element.children?.[0];
+	const first = rendered(element.children)[0];
 	if (!first) return '';
 	const base = element.loc.start.offset;
 	const props = element.props ?? [];
@@ -67,7 +89,9 @@ function leadingGap(element: TemplateNode): string {
 		? props[props.length - 1]!.loc.end.offset - base
 		: 1 + (element.tag?.length ?? 0);
 	const tagEnd = element.loc.source.indexOf('>', afterProps);
-	return element.loc.source.slice(tagEnd + 1, first.loc.start.offset - base);
+	return element.loc.source
+		.slice(tagEnd + 1, first.loc.start.offset - base)
+		.replace(/<!--[\s\S]*?-->/g, '');
 }
 
 function gluedToText(previous: TemplateNode | undefined): boolean {
@@ -81,16 +105,16 @@ function droppedSpaces(source: string): string[] {
 	const ast = parse(source).descriptor.template?.ast as TemplateNode | undefined;
 	const found: string[] = [];
 	const visit = (node: TemplateNode) => {
-		const children = node.children ?? [];
-		for (const [index, child] of children.entries()) {
-			const first = child.children?.[0];
+		const siblings = rendered(node.children);
+		for (const [index, child] of siblings.entries()) {
+			const first = rendered(child.children)[0];
 			if (
 				child.type === ELEMENT &&
 				INLINE.has(child.tag ?? '') &&
 				first &&
 				(first.type === INTERPOLATION || first.type === ELEMENT) &&
 				/^\s+$/.test(leadingGap(child)) &&
-				gluedToText(children[index - 1])
+				gluedToText(siblings[index - 1])
 			) {
 				found.push(`${child.loc.start.line} <${child.tag}>`);
 			}
@@ -123,6 +147,19 @@ describe('the leading-space check itself', () => {
 
 	it('flags one glued to plain text', () => {
 		expect(check('Total<span> {{ n }}</span>')).toEqual(['1 <span>']);
+	});
+
+	it('covers every phrasing element, not just span', () => {
+		expect(check('{{ host }}<del> {{ label }}</del>')).toEqual(['1 <del>']);
+		expect(check('x{{ n }}<sup> {{ footnote }}</sup>')).toEqual(['1 <sup>']);
+		expect(check('{{ said }}<q> {{ quote }}</q>')).toEqual(['1 <q>']);
+	});
+
+	it('sees through comments, which render nothing and take their whitespace along', () => {
+		expect(check('{{ host }}<!-- note --><span> {{ label }}</span>')).toEqual(['1 <span>']);
+		expect(check('{{ host }}<span> <!-- note -->{{ label }}</span>')).toEqual(['1 <span>']);
+		expect(check('{{ host }}<span><!-- note -->{{ label }}</span>')).toEqual([]);
+		expect(check('{{ host }} <!-- note --><span>{{ label }}</span>')).toEqual([]);
 	});
 
 	it('accepts an explicit {{ " " }} and a space outside the element', () => {
