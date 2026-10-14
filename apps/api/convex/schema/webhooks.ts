@@ -161,8 +161,8 @@ export const webhookTables = {
 		// signature header or a rotated key keeps one name (#1328). That digest
 		// covers no secret and can be predicted, which is harmless: it is only
 		// claimed after its delivery verified. Rows written under Svix `v1` no
-		// longer match; that matters for at most twice the tolerance (about 30
-		// minutes) after the deploy — see the rollout note there.
+		// longer match; that matters for at most twice the tolerance plus a second
+		// (about 30 minutes) after the deploy — see the rollout note there.
 		deliveryDigest: v.string(),
 		claimedAt: v.number(),
 		expiresAt: v.number(),

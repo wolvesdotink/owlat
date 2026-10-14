@@ -129,8 +129,9 @@ export async function compareSignature(
  * when they carry the same signed content, and no unauthenticated framing of
  * that content (how a header spells it) can mint a fresh one. Each arm decides
  * what that content is — see the two call sites of `deliveryDigestOf`.
- * `expiresAtMs` is when remembering it stops mattering, because the timestamp
- * check would reject the same request by then anyway.
+ * `expiresAtMs` is when remembering it stops mattering: no earlier than the
+ * first instant the timestamp check rejects the same request — see
+ * {@link claimExpiresAtMs}.
  */
 interface ReplayBoundVerification {
 	readonly ok: true;
@@ -205,9 +206,7 @@ export async function verifyPluginReplayBoundSignature(
 			timestamp,
 			delivery.signature!,
 		]),
-		// Two tolerances wide, not one: the request stays verifiable until its own
-		// timestamp plus the tolerance, and our clock may sit a tolerance behind it.
-		expiresAtMs: nowMs + 2 * toleranceSeconds * 1000,
+		expiresAtMs: claimExpiresAtMs(timestamp, toleranceSeconds),
 	};
 }
 
@@ -283,10 +282,19 @@ const SVIX_DIGEST_SCHEME = 'svix';
  * applied just before a deploy could be applied once more after it, inside its
  * still-open window. The rollout that closes that gap: disable the plugin that
  * signs with Svix (its route then answers 403), deploy, and wait MORE than twice
- * the contract tolerance, measured from disabling — at most just over 30
- * minutes — before re-enabling it. Every delivery applied before the switch-off
- * is outside its window by then. A sender that retries refused deliveries loses
- * nothing in the pause; check that the provider behind the plugin retries a 403.
+ * the contract tolerance plus one second, measured from disabling — at most
+ * just over 30 minutes — before re-enabling it. A delivery accepted just before
+ * the switch-off may carry a timestamp a tolerance ahead of our clock, and the
+ * verifier rounds our clock down to the second (see `claimExpiresAtMs`), so
+ * that is when the last of them stops verifying.
+ *
+ * The pause is lossless only for a sender whose retries outlast it AND are
+ * re-signed: a retry that reuses its original timestamp is refused with 401
+ * once the pause runs past the tolerance. The Svix service does both — it
+ * sends "the timestamp of the attempt" in `svix-timestamp` and retries any
+ * non-2xx for about 27 hours (docs.svix.com, "Verifying Webhooks Manually"
+ * and "Retries") — but a plugin can name this scheme for any sender, and a
+ * message whose last attempt falls inside the pause must be resent by hand.
  */
 const SVIX_DIGEST_VERSION = 'v2';
 
@@ -362,8 +370,26 @@ async function verifyPluginSvixDelivery(
 			timestamp,
 			bodyDigest,
 		]),
-		expiresAtMs: nowMs + 2 * toleranceSeconds * 1000,
+		expiresAtMs: claimExpiresAtMs(timestamp, toleranceSeconds),
 	};
+}
+
+/**
+ * When a claim may be forgotten: no earlier than the first instant at which
+ * the same signed timestamp can no longer verify, on either arm.
+ *
+ * Derived from the SIGNED timestamp, not from when we happened to accept it,
+ * because that is what bounds the request's life. And one second past the
+ * tolerance, because the two arms round differently and the claim must outlast
+ * both: the Svix check floors our clock to whole seconds, so it accepts every
+ * instant before `(timestamp + tolerance + 1) s`; the parameterized check
+ * compares milliseconds and accepts up to `(timestamp + tolerance) s`
+ * inclusive. The claim mutation treats a row as gone once `expiresAt <= now`,
+ * so anything earlier leaves an instant at which a still-verifiable copy finds
+ * its receipt expired and is applied again.
+ */
+function claimExpiresAtMs(timestamp: string, toleranceSeconds: number): number {
+	return (Number(timestamp) + toleranceSeconds + 1) * 1000;
 }
 
 /**

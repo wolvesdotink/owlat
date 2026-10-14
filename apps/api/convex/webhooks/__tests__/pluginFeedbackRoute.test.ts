@@ -585,11 +585,10 @@ describe('a caller replaying a request that was once authentic', () => {
 			request.headers.get(SIGNATURE_HEADER) ?? 'unset'
 		);
 		// The claim outlives the window in which the same request could still
-		// verify, and no longer.
-		expect(digestOf(first).expiresAt).toBeGreaterThan(Date.now() + TOLERANCE_SECONDS * 1000);
-		expect(digestOf(first).expiresAt).toBeLessThanOrEqual(
-			Date.now() + 2 * TOLERANCE_SECONDS * 1000
-		);
+		// verify, and no longer: up to the first second past the signed
+		// timestamp's tolerance.
+		const signedAt = Number(request.headers.get(TIMESTAMP_HEADER));
+		expect(digestOf(first).expiresAt).toBe((signedAt + TOLERANCE_SECONDS + 1) * 1000);
 	});
 
 	it('gives the claim back when the delivery could not be applied', async () => {

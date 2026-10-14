@@ -11,9 +11,12 @@
  * alike loses whole batches.
  */
 
+import { createHmac } from 'node:crypto';
 import { convexTest } from 'convex-test';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { PluginWebhookSignatureContract } from '@owlat/plugin-kit';
 import { internal } from '../../_generated/api';
+import { verifyPluginWebhookDelivery } from '../../plugins/inboundSignature';
 import schema from '../../schema';
 
 // Two globs merged, because Vite's `import.meta.glob` omits the directory chain
@@ -268,4 +271,106 @@ describe('the durable feedback-activity marker', () => {
 		);
 		expect(rows.map((row) => row.transportKind)).toEqual([KIND]);
 	});
+});
+
+/**
+ * The claim must not expire while the request it records can still verify
+ * (#1328 review). The two arms round the clock differently — Svix floors it to
+ * whole seconds, the parameterized check compares milliseconds — so each is
+ * walked to its own last accepted instant with a delivery signed as far ahead
+ * of our clock as the window allows, the case that leaves the least room.
+ */
+describe('a claim and the signature it records', () => {
+	const SECRET_ENV = 'PLUGIN_BOUNDARY_WEBHOOK_SECRET';
+	const TOLERANCE_SECONDS = 300;
+	const ACCEPTED_AT_MS = 1_770_000_000_000;
+	const SIGNED_AT = ACCEPTED_AT_MS / 1000 + TOLERANCE_SECONDS;
+	const BODY = '{"events":[{"type":"bounce","id":"edge"}]}';
+	const SVIX_SECRET_BASE64 = 'YWJjZGVmZ2hpamtsbW5vcA==';
+	const HMAC_SECRET = 'boundary-signing-secret';
+
+	const ARMS: readonly {
+		readonly label: string;
+		readonly secret: string;
+		readonly contract: PluginWebhookSignatureContract;
+		readonly headers: Record<string, string>;
+		readonly lastAcceptedMs: number;
+	}[] = [
+		{
+			label: 'svix',
+			secret: `whsec_${SVIX_SECRET_BASE64}`,
+			contract: { scheme: 'svix', secretEnvVar: SECRET_ENV, toleranceSeconds: TOLERANCE_SECONDS },
+			headers: {
+				'svix-id': 'msg_edge',
+				'svix-timestamp': String(SIGNED_AT),
+				'svix-signature': `v1,${createHmac('sha256', Buffer.from(SVIX_SECRET_BASE64, 'base64'))
+					.update(`msg_edge.${SIGNED_AT}.${BODY}`)
+					.digest('base64')}`,
+			},
+			// Floored to the second: every instant of the second after the window.
+			lastAcceptedMs: (SIGNED_AT + TOLERANCE_SECONDS + 1) * 1000 - 1,
+		},
+		{
+			label: 'the parameterized HMAC',
+			secret: HMAC_SECRET,
+			contract: {
+				header: 'x-signature',
+				algorithm: 'hmac-sha256',
+				encoding: 'hex',
+				secretEnvVar: SECRET_ENV,
+				replay: { timestampHeader: 'x-timestamp', toleranceSeconds: TOLERANCE_SECONDS },
+			},
+			headers: {
+				'x-timestamp': String(SIGNED_AT),
+				'x-signature': createHmac('sha256', HMAC_SECRET)
+					.update(`${SIGNED_AT}.${BODY}`)
+					.digest('hex'),
+			},
+			// Inclusive, to the millisecond.
+			lastAcceptedMs: (SIGNED_AT + TOLERANCE_SECONDS) * 1000,
+		},
+	];
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
+	});
+
+	it.each(ARMS)(
+		'$label: a copy that still verifies still finds its claim',
+		async ({ secret, contract, headers, lastAcceptedMs }) => {
+			vi.stubEnv(SECRET_ENV, secret);
+			vi.useFakeTimers({ toFake: ['Date'] });
+			const t = convexTest(schema, modules);
+			const table = internal.webhooks.pluginFeedbackDeliveries;
+			const verify = (nowMs: number) =>
+				verifyPluginWebhookDelivery({
+					contract,
+					pluginId: PLUGIN_ID,
+					transportKind: KIND,
+					rawBody: BODY,
+					headers: new Headers(headers),
+					nowMs,
+				});
+
+			vi.setSystemTime(ACCEPTED_AT_MS);
+			const first = await verify(ACCEPTED_AT_MS);
+			if (!first.ok) throw new Error(`expected the first copy to verify: ${first.reason}`);
+			await expect(
+				t.mutation(table.claim, claimArgs(first.deliveryDigest, first.expiresAtMs))
+			).resolves.toBe('claimed');
+			await t.mutation(table.complete, completeArgs(first.deliveryDigest));
+
+			vi.setSystemTime(lastAcceptedMs);
+			const replay = await verify(lastAcceptedMs);
+			if (!replay.ok) throw new Error(`expected the replay to verify: ${replay.reason}`);
+			await expect(
+				t.mutation(table.claim, claimArgs(replay.deliveryDigest, replay.expiresAtMs))
+			).resolves.toBe('duplicate_completed');
+
+			// One millisecond on, the request itself is refused, so the claim has
+			// nothing left to guard.
+			await expect(verify(lastAcceptedMs + 1)).resolves.toMatchObject({ ok: false, status: 401 });
+		}
+	);
 });
