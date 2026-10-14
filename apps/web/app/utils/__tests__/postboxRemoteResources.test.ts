@@ -304,12 +304,29 @@ describe('applyPostboxImageConsent — large inventories', () => {
 		expect(out.html).toContain('data:image/gif;base64,R149999 2x');
 	});
 
-	it('classifies 32k CSS urls on one element in linear time', () => {
-		const urls = Array.from({ length: 32_000 }, (_, i) => `url(https://cdn.example/${i}.png)`);
-		const html = `<div style="width:600px;height:400px;background:${urls.join(',')}">a</div>`;
-		const started = performance.now();
-		const out = applyPostboxImageConsent(html, 'images', LABEL);
-		expect(performance.now() - started).toBeLessThan(250);
+	it('classifies CSS urls on one element in linear time', () => {
+		// Compare how the cost scales rather than racing a wall clock, which a
+		// busy CI runner misses: 4x the URLs should cost about 4x the time,
+		// where per-URL style rescans made it about 16x.
+		const elementWith = (count: number) => {
+			const urls = Array.from({ length: count }, (_, i) => `url(https://cdn.example/${i}.png)`);
+			return `<div style="width:600px;height:400px;background:${urls.join(',')}">a</div>`;
+		};
+		const fastest = (html: string) => {
+			let best = Number.POSITIVE_INFINITY;
+			for (let run = 0; run < 3; run++) {
+				const started = performance.now();
+				applyPostboxImageConsent(html, 'images', LABEL);
+				best = Math.min(best, performance.now() - started);
+			}
+			return best;
+		};
+		const small = elementWith(8_000);
+		const large = elementWith(32_000);
+		fastest(small); // warm-up: JIT and parser
+		expect(fastest(large) / fastest(small)).toBeLessThan(8);
+
+		const out = applyPostboxImageConsent(large, 'images', LABEL);
 		expect(out.hasRemoteResources).toBe(true);
 		expect(out.detection.pixelCount).toBe(0);
 	});
