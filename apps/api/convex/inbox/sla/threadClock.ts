@@ -14,6 +14,14 @@
  * after the team last replied. The last reply is read off the unified timeline
  * (`unifiedMessages`), which records every reply channel, including a person's
  * SMS, WhatsApp or chat reply that leaves the inbound message untouched.
+ *
+ * One exception, and both checks honour it: a message the reply that answered
+ * it bounced back to the team (`answerBouncedAt`, inbox/answeredThread.ts) is
+ * owed however old it is and whatever newer message was answered before the
+ * bounce. That reply never reached the customer, so an earlier `sent` does not
+ * speak for it. How the marker stays live-only, and the check that stands in
+ * if a path ever misses clearing it: ./bounceObligations.ts. The marker is
+ * cleared here when its message moves to a state that needs no reply.
  */
 
 import type { MutationCtx } from '../../_generated/server';
@@ -21,6 +29,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { transition as threadTransition } from '../threads/module';
 import type { ProcessingStatus, TransitionInput } from '../processingLifecycle/types';
 import { loadSlaPolicy } from './policy';
+import { hasOpenBounceObligation, latestReplyAt } from './bounceObligations';
 import {
 	isClockSet,
 	pauseClock,
@@ -85,7 +94,16 @@ const DELIVERED_STATES: ReadonlySet<Doc<'unifiedMessages'>['status']> = new Set(
  *     needs an answer;
  *   - released from quarantine, or an informational mail a person wants a
  *     draft for: the message needs an answer after all, so a clock starts from
- *     its arrival when none is running.
+ *     its arrival when none is running;
+ *   - reopened because the reply that answered it bounced (`reopenAnswered`,
+ *     inbox/answeredThread.ts): a reply is owed again, so a clock starts from
+ *     the bounce when none is running. Not from the message's arrival: that
+ *     wait was already judged when the reply went out (`reply_sent` counted
+ *     it met or missed), and the bounce can come days later (the MTA retries
+ *     for up to four), so restarting from arrival would open an overdue clock
+ *     and breach the team for time it could not know about. The bounce is new
+ *     information that a reply is owed, like a new customer message, and gets
+ *     the same next-response target from the moment it arrives.
  */
 export async function settleClockForMessage(
 	ctx: MutationCtx,
@@ -94,6 +112,10 @@ export async function settleClockForMessage(
 ): Promise<void> {
 	const threadId = message.threadId;
 	if (!threadId) return;
+	// The message needs no reply any more: a bounce obligation on it ends here.
+	if (!isAwaitingReply(input.to) && message.answerBouncedAt !== undefined) {
+		await ctx.db.patch(message._id, { answerBouncedAt: undefined });
+	}
 	if (input.to === 'sent') {
 		await threadTransition(ctx, { threadId, input: { kind: 'reply_sent', at: input.at } });
 		return;
@@ -102,11 +124,17 @@ export async function settleClockForMessage(
 		await releaseClockIfNothingOwed(ctx, threadId, message._id);
 		return;
 	}
-	if (OVERRULED_STATES.has(message.processingStatus) && isAwaitingReply(input.to)) {
+	const isReopenedAnswer =
+		(input.to === 'draft_ready' || input.to === 'awaiting_clarification') &&
+		input.reopenAnswered === true;
+	const isOverruled = OVERRULED_STATES.has(message.processingStatus);
+	if ((isOverruled || isReopenedAnswer) && isAwaitingReply(input.to)) {
 		const thread = await ctx.db.get(threadId);
 		if (!thread || thread.status !== 'open') return;
 		const policy = await loadSlaPolicy(ctx);
-		const patch = startClockOnThread(thread, message.receivedAt, Date.now(), policy);
+		// A running or paused clock is never reset (`startClock` keeps it).
+		const startAt = isReopenedAnswer ? input.at : message.receivedAt;
+		const patch = startClockOnThread(thread, startAt, Date.now(), policy);
 		if (Object.keys(patch).length > 0) await ctx.db.patch(threadId, patch);
 	}
 }
@@ -131,7 +159,8 @@ async function lastReplyAt(
 /**
  * Does the customer still wait on an answer? Read off the thread's newest
  * inbound message: answered, set aside as needing none, or older than the
- * team's last reply means no. A thread without inbound messages (a channel
+ * team's last reply means no, unless a bounce reopened earlier work that still
+ * needs a reply (see the header). A thread without inbound messages (a channel
  * conversation while the agent is off) is read off its timeline instead: it
  * waits when the customer wrote last, or when nothing is on record, as an open
  * thread does for the list's waiting time (inbox/threadSort.ts).
@@ -146,9 +175,13 @@ export async function isReplyOwed(
 		.order('desc')
 		.first();
 	if (newest) {
-		if (!isAwaitingReply(newest.processingStatus)) return false;
 		const repliedAt = await lastReplyAt(ctx, threadId);
-		return repliedAt === undefined || newest.receivedAt > repliedAt;
+		if (isAwaitingReply(newest.processingStatus)) {
+			if (repliedAt === undefined || newest.receivedAt > repliedAt) return true;
+		}
+		const thread = await ctx.db.get(threadId);
+		const latest = latestReplyAt(thread, repliedAt);
+		return await hasOpenBounceObligation(ctx, threadId, latest, isAwaitingReply);
 	}
 	const latest = await ctx.db
 		.query('unifiedMessages')
@@ -162,7 +195,8 @@ export async function isReplyOwed(
  * Stop the clock when nothing on the thread still needs an answer, now that
  * `settledId` turned out to need none. Newest first: a message already
  * answered (`sent`) means everything before it was answered too, and a message
- * from before the team's last reply is not owed whatever its state says.
+ * from before the team's last reply is not owed whatever its state says,
+ * except work a bounce reopened (see the header), which is owed wherever it is.
  */
 export async function releaseClockIfNothingOwed(
 	ctx: MutationCtx,
@@ -172,6 +206,8 @@ export async function releaseClockIfNothingOwed(
 	const thread = await ctx.db.get(threadId);
 	if (!thread || !isClockSet(thread)) return;
 	const repliedAt = await lastReplyAt(ctx, threadId);
+	const latest = latestReplyAt(thread, repliedAt);
+	if (await hasOpenBounceObligation(ctx, threadId, latest, isAwaitingReply, settledId)) return;
 	const messages = await ctx.db
 		.query('inboundMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))

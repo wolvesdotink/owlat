@@ -65,7 +65,8 @@ export async function findRequestDraft(
 		.first();
 	if (!binding || binding.createdAt <= now - REQUEST_NONCE_TTL_MS) return null;
 	const draft = await ctx.db.get(binding.draftId);
-	if (draft) return existingDraftResult(draft);
+	// An obsoleted draft (mail/answeredReply.ts) is gone as far as the composer knows.
+	if (draft && !draft.obsoleted) return existingDraftResult(draft);
 	return { draftId: binding.draftId, toAddresses: [], subject: '', existing: true, missing: true };
 }
 

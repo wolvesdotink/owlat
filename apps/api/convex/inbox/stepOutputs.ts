@@ -39,6 +39,7 @@ import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { contextTierValidator } from '../lib/literalValidators';
 import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
 import { NO_SAVED_EDITS } from './processingLifecycle/draftFields';
+import { isAnsweredInThread } from './answeredThread';
 import { dispatch } from './processingLifecycle/effects';
 import { asTeamGapQuestion, checkDraftGaps } from '../mail/ai/gapQuestions';
 import { hasUnconsentedOpenQuestion, hasUsableAnswer } from './clarificationAnswers';
@@ -152,7 +153,9 @@ export const recordDraftOutput = internalMutation({
 		// A person took the reply over while this draft was being written: their
 		// text is the reply now, so the late agent draft is dropped.
 		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message || message.manualTakeoverAt !== undefined) return;
+		// Answered first: a message a newer sent reply answered never reaches the
+		// gap hold below, nor the draft write (inbox/answeredThread.ts).
+		if (!message || message.manualTakeoverAt !== undefined || isAnsweredInThread(message)) return;
 		const hasGaps = authoredDraftHasGaps({ text: args.draftResponse });
 		const isGapsAccepted =
 			args.isGapsAccepted === true || message.pendingClarification?.isGapsAccepted === true;

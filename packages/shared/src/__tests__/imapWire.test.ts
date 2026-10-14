@@ -22,4 +22,11 @@ describe('imapWireVerdict', () => {
 		expect(imapWireVerdict(IMAP_WIRE_LEGACY)).toBe('unsupported');
 		expect(imapWireVerdict(IMAP_WIRE_VERSION)).toBe('current');
 	});
+
+	it('speaks 3 (APPEND sends its header block) and still serves a wire-2 server', () => {
+		expect(IMAP_WIRE_VERSION).toBe(3);
+		expect(imapWireVerdict(2)).toBe('supported');
+		// A wire-3 server against a backend that still speaks 2 waits for it.
+		expect(imapWireVerdict(3, 2, 2)).toBe('ahead');
+	});
 });

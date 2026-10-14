@@ -175,4 +175,13 @@ describe('appendEnvelope', () => {
 		expect(Buffer.byteLength(text, 'utf-8')).toBeLessThanOrEqual(APPEND_INLINE_BODY_LIMIT_BYTES);
 		expect(text).toBe('é'.repeat(APPEND_INLINE_BODY_LIMIT_BYTES / 2));
 	});
+
+	it('forwards the header section, without the body, for the automation headers', () => {
+		const env = appendEnvelope(
+			eml(['Subject: Out of office', 'Auto-Submitted: auto-replied', 'Precedence: bulk'], 'Away')
+		);
+		expect(env.headerBlock).toBe(
+			'Subject: Out of office\r\nAuto-Submitted: auto-replied\r\nPrecedence: bulk'
+		);
+	});
 });

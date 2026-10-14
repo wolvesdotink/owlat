@@ -15,7 +15,7 @@ import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 import { evaluateNeedsReplyCandidate } from '../needsReplyHeuristic';
-import { clearNeedsReplyOnOwnerReply } from '../needsReply';
+import { settleOwnerReply } from '../answeredReply';
 
 const TEAM = 'team@owlat.test';
 const ALIAS = 'info@owlat.test';
@@ -96,7 +96,7 @@ describe('Reply Queue screen and mailbox aliases', () => {
 			});
 		});
 
-		await t.run(async (ctx) => clearNeedsReplyOnOwnerReply(ctx, replyId));
+		await t.run(async (ctx) => settleOwnerReply(ctx, replyId));
 
 		await t.run(async (ctx) => {
 			expect((await ctx.db.get(threadId))!.needsReply).toBeUndefined();

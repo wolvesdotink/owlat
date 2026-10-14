@@ -37,6 +37,7 @@ import { applyOpenThreadDelta } from '../../lib/inboxStats';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { loadSlaPolicy } from '../sla/policy';
 import { clockOnInbound, clockOnReply, clockOnStatus, type ClockPatch } from '../sla/clock';
+import { endBounceObligations } from '../sla/bounceObligations';
 import { isSettledThreadStatus, syncHeldClarifications } from '../clarificationHold';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -230,6 +231,7 @@ async function clockPatchFor(
 		case 'status_change':
 			return clockOnStatus(thread, input.to, Date.now(), await loadSlaPolicy(ctx));
 		case 'reply_sent':
+			await endBounceObligations(ctx, thread._id, input.at); // ../sla/bounceObligations.ts
 			return clockOnReply(thread, input.at, await loadSlaPolicy(ctx));
 		default:
 			return {};

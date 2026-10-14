@@ -21,7 +21,8 @@
  * cron (`sweepPending`, mail/needsReplyPending.ts) that re-schedules threads
  * whose classification never reached a verdict.
  *
- * Clearing: any outbound send in the thread (draftLifecycle sent-effects),
+ * Clearing: any outbound send in the thread (draftLifecycle sent-effects), our
+ * own reply synced in from outside Owlat (mail/answeredReply.ts),
  * archiving/trashing its messages (messageActions.move), muting it (mail/mute.ts
  * — a muted thread is skipped by the queue read too), or the manual `clear`.
  */
@@ -124,33 +125,10 @@ export async function clearThreadNeedsReply(
 	});
 }
 
-/**
- * Settle the flag when the owner answers OUTSIDE Owlat (the provider's web
- * client, a phone). That reply syncs in through the Sent folder and never
- * passes draftLifecycle's sent-effects, so without this the flag — and the
- * draft pre-generated for it — outlives the reply that settled it, and the
- * queue offers to answer a conversation whose last word is our own. A Sent copy
- * older than the flagged message (out-of-order sync) settles nothing.
- */
-export async function clearNeedsReplyOnOwnerReply(
-	ctx: MutationCtx,
-	messageId: Id<'mailMessages'>
-): Promise<void> {
-	const message = await ctx.db.get(messageId);
-	if (!message) return;
-	const thread = await ctx.db.get(message.threadId);
-	if (!thread?.needsReply) return;
-	const mailbox = await ctx.db.get(message.mailboxId);
-	if (!mailbox || !isOwnMessage(message, await mailboxOwnAddresses(ctx, mailbox))) return;
-	const trigger = await ctx.db.get(thread.needsReply.messageId);
-	if (trigger && trigger.receivedAt > message.receivedAt) return;
-	await clearThreadNeedsReply(ctx, thread._id);
-}
-
 // ─── Convex functions ────────────────────────────────────────────────────────
 
 /** Sent by the mailbox itself: outbound, or From one of its own addresses. */
-function isOwnMessage(
+export function isOwnMessage(
 	message: Pick<Doc<'mailMessages'>, 'outbound' | 'fromAddress'>,
 	ownAddresses: ReadonlySet<string>
 ): boolean {

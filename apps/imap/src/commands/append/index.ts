@@ -152,6 +152,7 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 					htmlBodyInline: envelope.html,
 					internalDate: args.internalDate ?? envelope.internalDate,
 					flags: args.flags,
+					headerBlock: envelope.headerBlock,
 				});
 
 				finalize(`${tag} OK [APPENDUID ${result.uidValidity} ${result.uid}] APPEND completed`);

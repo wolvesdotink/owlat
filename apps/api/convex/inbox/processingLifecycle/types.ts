@@ -105,6 +105,8 @@ export type TransitionInput =
 			 * `archived`, so a late pipeline step can never reopen them.
 			 */
 			manualTakeover?: true;
+			/** The reply that answered it bounced: back to review (inbox/answeredThread.ts). */
+			reopenAnswered?: true;
 			completedActionId?: Id<'agentActions'>;
 			output?: string;
 			draftResponse?: string;
@@ -118,6 +120,8 @@ export type TransitionInput =
 	| {
 			to: 'awaiting_clarification';
 			at: number;
+			/** The reply that answered it bounced: its questions are open again. */
+			reopenAnswered?: true;
 			completedActionId?: Id<'agentActions'>;
 			output?: string;
 			pendingClarification?: PendingClarification;
@@ -156,7 +160,9 @@ export type TransitionInput =
 				| 'coalesced'
 				| 'clarification_dismissed'
 				| 'plugin_caution'
-				| 'update_dismissed';
+				| 'update_dismissed'
+				// A teammate answered a newer message of the thread (inbox/answeredThread.ts).
+				| 'answered_in_thread';
 			securityFlags?: SecurityFlags;
 			userId?: string;
 			output?: string;
@@ -241,6 +247,7 @@ export const transitionInputValidator = v.union(
 		to: v.literal('draft_ready'),
 		at: v.number(),
 		manualTakeover: v.optional(v.literal(true)),
+		reopenAnswered: v.optional(v.literal(true)),
 		completedActionId: v.optional(v.id('agentActions')),
 		output: v.optional(v.string()),
 		draftResponse: v.optional(v.string()),
@@ -254,6 +261,7 @@ export const transitionInputValidator = v.union(
 	v.object({
 		to: v.literal('awaiting_clarification'),
 		at: v.number(),
+		reopenAnswered: v.optional(v.literal(true)),
 		completedActionId: v.optional(v.id('agentActions')),
 		output: v.optional(v.string()),
 		pendingClarification: v.optional(pendingClarificationValidator),
@@ -292,7 +300,8 @@ export const transitionInputValidator = v.union(
 			v.literal('coalesced'),
 			v.literal('clarification_dismissed'),
 			v.literal('plugin_caution'),
-			v.literal('update_dismissed')
+			v.literal('update_dismissed'),
+			v.literal('answered_in_thread')
 		),
 		securityFlags: v.optional(securityFlagsValidator),
 		userId: v.optional(v.string()),

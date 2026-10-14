@@ -250,6 +250,20 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc(
 		'mailMessages',
 		'mailDrafts',
+		'obsoleted.byMessageIds[]',
+		'retain',
+		'The reply that hid an answered AI draft: a send-as copy can sit in another mailbox, so the id may dangle; restoring skips a missing reply and the retention purge deletes the draft.'
+	),
+	desc(
+		'mailMessages',
+		'mailMessages',
+		'answeredMessageId',
+		'retain',
+		'An Owlat reply’s answered message: in a personal mailbox the reply is deleted with it; a send-as copy keeps a dangling id, which settling the conversation skips.'
+	),
+	desc(
+		'mailMessages',
+		'mailDrafts',
 		'expectedAttachments[].source.messageId',
 		'retain',
 		'A forward still owing the message’s files: drafts in the personal mailbox are deleted with it; a draft elsewhere keeps a dangling id, which fulfil reports as unreadable until the person removes the file.'

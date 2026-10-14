@@ -45,8 +45,11 @@
  *   no longer sends `selectFolder`'s `skipFirstUnseenSeq`. The paths only
  *   wire 0 used are gone too: `appendMessage`'s `snippet`,
  *   `fetchRawStorageId` and `getRawStorageUrl`.
+ * - 3: `appendMessage` takes the message's raw `headerBlock` (optional), so a
+ *   client's filed auto-reply is not taken for an answer (#1346). A wire-2
+ *   server, which sends none, is still served.
  */
-export const IMAP_WIRE_VERSION = 2;
+export const IMAP_WIRE_VERSION = 3;
 
 /**
  * The oldest IMAP server contract the backend still serves: 2, which v0.6.9,

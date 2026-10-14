@@ -154,6 +154,8 @@ async function runSentEffects(
 		hasAttachments: context.attachmentsMeta.length > 0,
 		// Team-inbox attribution: WHO fired this send (captured by drafts.send).
 		sentByUserId: draft.sentByUserId,
+		// Settles the conversation's AI drafts once the transport accepts it.
+		answeredMessageId: draft.inReplyToMessageId,
 		flagSeen: true,
 		flagFlagged: false,
 		flagAnswered: false,

@@ -39,7 +39,8 @@ export async function canSendFromHandler(
 
 export async function getDraftHandler(ctx: QueryCtx, args: { draftId: Id<'mailDrafts'> }) {
 	const draft = await ctx.db.get(args.draftId);
-	if (!draft) return null;
+	// A draft a sent reply answered is hidden until a bounce restores it (mail/answeredReply.ts).
+	if (!draft || draft.obsoleted) return null;
 	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 	if (!owned.ok) return null;
 	const opened = await openMailDraftBody(draft);
@@ -97,7 +98,11 @@ export async function listForMailboxHandler(ctx: QueryCtx, args: { mailboxId: Id
 	if (!owned.ok) return [];
 	const drafts = await ctx.db
 		.query('mailDrafts')
-		.withIndex('by_mailbox_and_edited', (q) => q.eq('mailboxId', args.mailboxId))
+		// Live drafts only, selected before the limit (mail/answeredReply.ts hides
+		// answered ones).
+		.withIndex('by_mailbox_live_and_edited', (q) =>
+			q.eq('mailboxId', args.mailboxId).eq('obsoleted.at', undefined)
+		)
 		.order('desc')
 		.take(100);
 	return await Promise.all(drafts.map((draft) => openMailDraftBody(draft)));

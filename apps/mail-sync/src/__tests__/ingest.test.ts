@@ -277,6 +277,22 @@ describe('ingestMessage', () => {
 		const payload = lastPayload();
 		expect(payload.flagSeen).toBe(false);
 		expect(payload.flagFlagged).toBe(true);
+		// Absent unless set, so an older backend accepts the payload unchanged.
+		expect('flagDraft' in payload).toBe(false);
+	});
+
+	it('forwards \\Draft so an unsent draft in any folder is never read as a reply', async () => {
+		const { client, lastPayload } = mockConvex();
+		await ingestMessage(client, UPLOAD, {
+			accountId: 'a',
+			remoteName: 'Notes',
+			remoteUid: 1,
+			remoteUidValidity: 1,
+			raw: Buffer.from(RAW),
+			flags: new Set(['\\Draft', '\\Seen']),
+			origin: 'sync',
+		});
+		expect(lastPayload().flagDraft).toBe(true);
 	});
 
 	it('synthesises a messageId when the source has none', async () => {

@@ -42,7 +42,8 @@ import {
 import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } from './draftSend';
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
-import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
+import { deleteDraftRow } from './answeredReply';
+import { editPatch, humanEdit, provenancePatch } from './draftProvenance';
 import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
 import {
@@ -195,6 +196,8 @@ export const update = postboxMutation({
 		// A saved reply with `[[...]]` gaps went into the body: guard the send
 		// the way an AI text with gaps does. Never unset here.
 		isGapGuarded: v.optional(v.literal(true)),
+		// The written part holds this AI text: not a person's edit (mail/draftProvenance.ts).
+		aiText: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
@@ -202,7 +205,9 @@ export const update = postboxMutation({
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		assertStateIs(draft, 'draft');
 
-		const patch: Record<string, unknown> = { lastEditedAt: Date.now() };
+		const now = Date.now();
+		// `lastEditedAt` moves only when something changed (mail/draftProvenance.ts).
+		const patch: Record<string, unknown> = await provenancePatch(draft, args, now);
 		if (args.toAddresses !== undefined) patch['toAddresses'] = args.toAddresses;
 		if (args.ccAddresses !== undefined) patch['ccAddresses'] = args.ccAddresses;
 		if (args.bccAddresses !== undefined) patch['bccAddresses'] = args.bccAddresses;
@@ -243,7 +248,7 @@ export const update = postboxMutation({
 				...(args.bccAddresses ?? draft.bccAddresses),
 			]);
 		}
-		return { savedAt: patch['lastEditedAt'] };
+		return { savedAt: now };
 	},
 });
 
@@ -279,13 +284,13 @@ export const setIdentity = postboxMutation({
 			throwForbidden('From address not authorized for this mailbox');
 		}
 
+		// Personal send-as ⇒ record the sending mailbox; team/own identity ⇒ clear
+		// it so the classic path (transport + Sent copy on the thread mailbox) runs.
+		const sendAsMailboxId = match.mailboxId === draft.mailboxId ? undefined : match.mailboxId;
 		await ctx.db.patch(args.draftId, {
 			fromAddress: candidate,
-			// Personal send-as ⇒ record the sending mailbox; team/own identity ⇒
-			// clear it so the classic path (transport + Sent copy on the thread
-			// mailbox) runs unchanged.
-			sendAsMailboxId: match.mailboxId === draft.mailboxId ? undefined : match.mailboxId,
-			lastEditedAt: Date.now(),
+			sendAsMailboxId,
+			...editPatch(candidate !== draft.fromAddress || sendAsMailboxId !== draft.sendAsMailboxId),
 		});
 	},
 });
@@ -346,7 +351,7 @@ export const addAttachment = postboxMutation({
 					contentId: args.contentId,
 				},
 			],
-			lastEditedAt: Date.now(),
+			...humanEdit(Date.now()),
 		});
 		// Return a truthy result so callers can distinguish success from the
 		// undefined that useBackendOperation.run yields on a failed/void call.
@@ -379,9 +384,10 @@ export const removeAttachment = postboxMutation({
 		if (!owned.ok) return;
 
 		const toDelete = draft.attachments.find((a) => a.storageId === args.storageId);
+		const isOwed = draft.expectedAttachments?.some((e) => e.storageId === args.storageId);
 		await ctx.db.patch(args.draftId, {
 			...withoutAttachment(draft, args.storageId),
-			lastEditedAt: Date.now(),
+			...editPatch(toDelete !== undefined || isOwed === true),
 		});
 		if (toDelete) {
 			await deleteOwnedUpload(ctx, toDelete.storageId, `mailDrafts:${args.draftId}`);
@@ -397,11 +403,7 @@ export const discard = postboxMutation({
 		if (!draft) return;
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return;
-		for (const att of draft.attachments) {
-			await deleteOwnedUpload(ctx, att.storageId, `mailDrafts:${args.draftId}`);
-		}
-		await deleteAskSessionsForDraft(ctx, args.draftId);
-		await ctx.db.delete(args.draftId);
+		await deleteDraftRow(ctx, draft);
 	},
 });
 

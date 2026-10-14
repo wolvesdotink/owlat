@@ -214,6 +214,8 @@ type IngestExternalRawArgs = {
 	attachments: IngestAttachment[];
 	flagSeen?: boolean;
 	flagFlagged?: boolean;
+	/** The provider's `\Draft`: an unsent draft, which answers nothing. */
+	flagDraft?: boolean;
 	origin?: 'sync' | 'backfill';
 };
 

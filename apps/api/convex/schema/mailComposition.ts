@@ -108,6 +108,25 @@ export const mailCompositionTables = {
 		// its send guard on after a reload (mail/ai/composeDraftStore.ts
 		// assertNoAnswerGaps). Set by `drafts.update`; never cleared.
 		isGapGuarded: v.optional(v.boolean()),
+		// Provenance for answered-conversation cleanup (mail/answeredReply.ts).
+		// `aiAuthored`: the AI text the written part holds, refreshed by every
+		// AI write (unlike the once-only `aiDraftBaseline` above). `humanTouchedAt`:
+		// the last time a person changed anything on the row; once set, the draft
+		// is theirs and is never cleaned up. Both absent on legacy rows.
+		aiAuthored: v.optional(v.object({ text: v.string(), at: v.number() })),
+		humanTouchedAt: v.optional(v.number()),
+		// Replies answered this AI draft's conversation: hidden from every draft
+		// surface while any of them stands, restored once all of them bounced,
+		// purged after the retention window (with its uploads). `at` moves with
+		// each distinct reply. Past the tracking cap the set stops growing and
+		// `isUntracked` keeps the draft hidden for good (mail/answeredReply.ts).
+		obsoleted: v.optional(
+			v.object({
+				byMessageIds: v.array(v.id('mailMessages')),
+				at: v.number(),
+				isUntracked: v.optional(v.literal(true)),
+			})
+		),
 
 		// Team-inbox attribution: the BetterAuth user id of the teammate who fired
 		// the send, stamped by `drafts.send` from the acting session. Copied onto
@@ -140,10 +159,13 @@ export const mailCompositionTables = {
 		// sessions may name a deleted thread brief item.
 		.index('by_thread', ['threadId'])
 		.index('by_mailbox', ['mailboxId'])
-		.index('by_mailbox_and_edited', ['mailboxId', 'lastEditedAt'])
+		// The Drafts list: live drafts only (`obsoleted` absent), newest first, so
+		// hidden answered drafts never push a live one past the page.
+		.index('by_mailbox_live_and_edited', ['mailboxId', 'obsoleted.at', 'lastEditedAt'])
 		.index('by_state_and_scheduled', ['state', 'scheduledSendAt'])
 		.index('by_undo_token', ['undoToken'])
-		.index('by_client_nonce', ['clientNonce']),
+		.index('by_client_nonce', ['clientNonce'])
+		.index('by_obsoleted_at', ['obsoleted.at']),
 
 	// One row per compose request (the full-page composer's `?c=`): which draft
 	// its creation nonce made. Kept after the draft itself is sent or

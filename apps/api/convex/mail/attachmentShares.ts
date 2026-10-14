@@ -51,6 +51,7 @@ import { withoutAttachment } from './draftExpectedAttachments';
 import { personalMailEnabled, requireMailboxAccess } from './permissions';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { humanEdit } from './draftProvenance';
 
 /**
  * Defensive cap on the management list. Share links are created one deliberate
@@ -300,7 +301,7 @@ export const createShare = internalMutation({
 		const expiresAt = attachmentShareExpiryAt(now, args.expiryDays);
 		await ctx.db.patch(args.draftId, {
 			...withoutAttachment(draft, args.storageId),
-			lastEditedAt: now,
+			...humanEdit(now),
 		});
 		const shareId = await ctx.db.insert('mailAttachmentShares', {
 			mailboxId: draft.mailboxId,

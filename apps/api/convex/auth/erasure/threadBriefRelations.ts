@@ -94,6 +94,13 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 		'retain',
 		TEAM_ONLY
 	),
+	descendant(
+		'threadItems',
+		'inboundMessages',
+		'answeredStash.pendingClarification.questions[].itemId',
+		'retain',
+		TEAM_ONLY
+	),
 	descendant('threadItems', 'threadNotes', 'threadItemId', 'retain', TEAM_ONLY),
 	descendant(
 		'threadItems',

@@ -65,6 +65,13 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 
 	relation('conversationThreads', 'threadPurgeJobs', 'conversationThreadId', 'retain', PURGE_JOB),
 	relation('inboundMessages', 'threadPurgeJobs', 'sources[].id', 'retain', PURGE_JOB),
+	relation(
+		'inboundMessages',
+		'inboundMessages',
+		'answeredStash.byInboundMessageIds[]',
+		'retain',
+		'The newer message whose reply settled this one (inbox/answeredThread.ts). Governed by the row’s own contactId; restoring skips it once gone, and the retention purge drops the stash.'
+	),
 	relation('inboundMessages', 'threadPurgeJobs', 'inboundMessageId', 'retain', PURGE_JOB),
 
 	// ── inboundMessages (the contact's received mail) ──
@@ -133,6 +140,13 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 		'threadItems',
 		'inboundMessages',
 		'pendingClarification.questions[].itemId',
+		'retain',
+		DANGLING
+	),
+	relation(
+		'threadItems',
+		'inboundMessages',
+		'answeredStash.pendingClarification.questions[].itemId',
 		'retain',
 		DANGLING
 	),

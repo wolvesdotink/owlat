@@ -50,6 +50,7 @@ export type ThreadClock = Pick<
 	| 'resolvedAt'
 	| 'slaMetCount'
 	| 'slaMissedCount'
+	| 'lastReplySentAt'
 >;
 
 export type ClockPatch = Partial<
@@ -64,6 +65,7 @@ export type ClockPatch = Partial<
 		| 'resolvedAt'
 		| 'slaMetCount'
 		| 'slaMissedCount'
+		| 'lastReplySentAt'
 	>
 >;
 
@@ -153,13 +155,20 @@ export function clockOnReply(
 	at: number,
 	policy: SlaPolicyView | null
 ): ClockPatch {
+	// The latest reply on any channel, complete (a bounce obligation is judged
+	// against it, ./bounceObligations.ts). A repeat report never moves it back.
+	const replied: ClockPatch =
+		thread.lastReplySentAt !== undefined && thread.lastReplySentAt >= at
+			? {}
+			: { lastReplySentAt: at };
 	// Nothing owed and the first reply already on record: a second report of
-	// the same send (channel replies are recorded twice) changes nothing.
+	// the same send (channel replies are recorded twice) changes nothing more.
 	if (!isClockSet(thread) && thread.firstResponseAt !== undefined && thread.firstResponseAt <= at) {
-		return {};
+		return replied;
 	}
 	const patch: ClockPatch = {
 		...CLEARED,
+		...replied,
 		firstResponseAt: Math.min(thread.firstResponseAt ?? at, at),
 	};
 	const verdict = policy ? judge(thread, at) : null;

@@ -36,7 +36,9 @@ const EXPECTED_EDGES: Readonly<Record<ProcessingStatus, readonly ProcessingStatu
 	approved: ['sent', 'draft_ready'],
 	sent: [],
 	rejected: ['draft_ready'],
-	archived: ['draft_ready'],
+	// `awaiting_clarification` only reopens a message whose answering reply
+	// bounced (`reopenAnswered`, inbox/answeredThread.ts).
+	archived: ['draft_ready', 'awaiting_clarification'],
 	failed: ['received', 'draft_ready', 'approved'],
 };
 
@@ -71,6 +73,21 @@ describe('inbox lifecycle edge conformance', () => {
 			);
 		}
 		expect(requiresManualTakeover('received', 'security_check')).toBe(false);
+	});
+
+	it('lets an archived message out only by a person or a bounced answering reply', () => {
+		const at = 1;
+		expect(refusedAsNotAPerson('archived', { to: 'awaiting_clarification', at })).toBe(true);
+		expect(refusedAsNotAPerson('archived', { to: 'draft_ready', at })).toBe(true);
+		expect(
+			refusedAsNotAPerson('archived', { to: 'awaiting_clarification', at, reopenAnswered: true })
+		).toBe(false);
+		expect(refusedAsNotAPerson('archived', { to: 'draft_ready', at, reopenAnswered: true })).toBe(
+			false
+		);
+		expect(refusedAsNotAPerson('archived', { to: 'draft_ready', at, manualTakeover: true })).toBe(
+			false
+		);
 	});
 
 	it('lets only a person send a failed message again', () => {

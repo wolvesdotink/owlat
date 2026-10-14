@@ -18,6 +18,7 @@ import { draftRevisionValidator } from '../lib/validators/draftRevision';
 import { agentStepKindValidator } from '../agent/steps/catalog';
 import { llmUsageTagFields } from '../lib/llmUsageTags';
 import { conversationThreadTables } from './conversationThreads';
+import { inboundAnsweredFields } from './inboxAnswered';
 import {
 	agentMetricTypeValidator,
 	attachmentIndexingValidator,
@@ -337,6 +338,8 @@ export const inboxTables = {
 		// (`@owlat/shared/inboxRetry`); cleared when the message leaves `failed`.
 		// Absent on rows that failed before the field existed.
 		failedStage: v.optional(v.union(v.literal('send'), v.literal('pipeline'))),
+		// Answered by a newer message's sent reply (#1346, ./inboxAnswered.ts).
+		...inboundAnsweredFields,
 		// Timestamps
 		receivedAt: v.number(),
 		processedAt: v.optional(v.number()),
@@ -356,7 +359,10 @@ export const inboxTables = {
 		// Drives the raw-blob retention sweep: the equality component keeps the
 		// scanned range to rows that still hold a blob, so the walk is bounded by
 		// what is left to release rather than by the size of the table.
-		.index('by_raw_retention', ['isRawRetained', 'receivedAt']),
+		.index('by_raw_retention', ['isRawRetained', 'receivedAt'])
+		.index('by_answered_stash_at', ['answeredStash.at'])
+		// Live bounce obligations of a thread (inbox/sla/threadClock.ts).
+		.index('by_thread_and_answer_bounced', ['threadId', 'answerBouncedAt']),
 
 	// Agent Actions - tracks individual pipeline step executions
 	agentActions: defineTable({

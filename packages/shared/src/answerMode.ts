@@ -7,6 +7,8 @@
  * gap placeholders a "draft with gaps" leaves behind.
  */
 
+import { escapeHtmlWithBreaks, htmlToPlainText } from './html';
+
 /**
  * The error a "Draft with AI" stream ends with when the draft would need a fact
  * Owlat never asks for (a password, a code): there is no AI draft for that
@@ -80,4 +82,47 @@ export function formatDraftGap(label: string): string {
 		.replace(/[[\]\n]/g, ' ')
 		.trim()
 		.slice(0, 160)}]]`;
+}
+
+/**
+ * The start of a reply body's seeded tail: the signature block
+ * (`data-postbox-signature`) or the quoted original (`gmail_quote`), with
+ * their `<br><br>` spacing.
+ */
+const ANSWER_TAIL_START =
+	/(?:<br\s*\/?>\s*){0,2}<div[^>]*(?:\bdata-postbox-signature\b|class=["'][^"']*gmail_quote)/i;
+
+/** Split a reply body into what was written and the seeded tail (signature, quote). */
+export function splitAnswerBody(bodyHtml: string): { fresh: string; tail: string } {
+	const index = bodyHtml.search(ANSWER_TAIL_START);
+	if (index < 0) return { fresh: bodyHtml, tail: '' };
+	return { fresh: bodyHtml.slice(0, index), tail: bodyHtml.slice(index) };
+}
+
+/**
+ * Plain AI text as the composer's HTML: blank lines make paragraphs, single
+ * line breaks stay breaks, and everything is escaped (model output is never
+ * markup). Applying an AI draft writes exactly this in place of the written
+ * part, so a body whose written part still equals it holds the AI's text
+ * untouched.
+ */
+export function aiTextToHtml(text: string): string {
+	const paragraphs = text
+		.replace(/\r\n?/g, '\n')
+		.trim()
+		.split(/\n{2,}/)
+		.map((p) => p.trim())
+		.filter((p) => p.length > 0);
+	return paragraphs.map((p) => `<p>${escapeHtmlWithBreaks(p)}</p>`).join('');
+}
+
+/**
+ * Whether the written part of a reply body is still exactly the AI's text
+ * (`aiText`, the draft's recorded AI baseline): no word added, removed or
+ * changed. Markup the editor re-serialized does not count as an edit; anything
+ * a person typed does, including text kept above the AI's.
+ */
+export function isUntouchedAiAnswer(bodyHtml: string, aiText: string): boolean {
+	const expected = htmlToPlainText(aiTextToHtml(aiText));
+	return expected.length > 0 && htmlToPlainText(splitAnswerBody(bodyHtml).fresh) === expected;
 }
