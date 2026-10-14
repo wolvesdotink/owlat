@@ -58,6 +58,11 @@ export interface ReplyQueueClarification {
 	isGapsAccepted?: boolean;
 	/** The reply needs a fact Owlat never asks for (a password): no AI draft. */
 	isDraftHeld?: boolean;
+	/**
+	 * The thread's AI reading is paused (a signature check narrowed what one of
+	 * its messages may be read for): no AI reply comes, the person writes it.
+	 */
+	isPaused?: boolean;
 }
 
 export interface ReplyQueueItem {
@@ -225,12 +230,17 @@ export function replyQueueSection(
  *   - 'ready'    — the starter reply is ready (flip to "Draft ready").
  *   - 'held'     — the reply needs a fact Owlat never asks for (a password):
  *                  there is no AI draft for it.
+ *   - 'paused'   — the thread's AI reading is paused: no AI reply comes,
+ *                  whatever was answered, so nothing waits for one.
  * Pure so the card's state machine is unit-testable.
  */
 export function clarificationCardState(
-	clarification: Pick<ReplyQueueClarification, 'answeredAt' | 'draft' | 'isDraftHeld'> | undefined
-): 'asking' | 'drafting' | 'ready' | 'held' | null {
+	clarification:
+		| Pick<ReplyQueueClarification, 'answeredAt' | 'draft' | 'isDraftHeld' | 'isPaused'>
+		| undefined
+): 'asking' | 'drafting' | 'ready' | 'held' | 'paused' | null {
 	if (!clarification) return null;
+	if (clarification.isPaused) return 'paused';
 	if (clarification.draft) return 'ready';
 	if (clarification.isDraftHeld) return 'held';
 	if (clarification.answeredAt) return 'drafting';

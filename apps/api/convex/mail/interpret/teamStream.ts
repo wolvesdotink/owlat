@@ -16,7 +16,7 @@
  */
 
 import { v } from 'convex/values';
-import type { Doc } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
 import { publicQuery } from '../../lib/authedFunctions';
@@ -29,6 +29,7 @@ import { loadReadableMailbox } from '../permissions';
 import { mailboxOwnAddresses } from '../identities';
 import { teamStreamPageValidator, type TeamStreamEntry, type TeamStreamPage } from './briefShape';
 import { readNoteReactions } from './noteReactions';
+import { isFencedThread } from './staleFence';
 import {
 	decodeStreamCursor,
 	mergeStreamPage,
@@ -206,7 +207,11 @@ export const page = publicQuery({
 		if (!mailbox) return null;
 		const ref: MailThreadRef = { kind: 'mail', id: thread._id };
 		const before = decodeStreamCursor(args.cursor);
-		const itemText = itemTextReader(ctx, ref, streamLocale(args.locale));
+		// A fenced thread's item texts are the model's wording (staleFence.ts): the
+		// notes keep their reference, without the label.
+		const itemText = isFencedThread(thread)
+			? async (_itemId?: Id<'threadItems'>) => undefined
+			: itemTextReader(ctx, ref, streamLocale(args.locale));
 		const ownAddresses = new Set(
 			[...(await mailboxOwnAddresses(ctx, mailbox))].map((a) => normalizeEmail(a))
 		);
@@ -217,7 +222,10 @@ export const page = publicQuery({
 			isChatOn
 				? discussionBatch(ctx, ref, before, session.userId, itemText)
 				: Promise.resolve<SourceBatch<Entry>>({ entries: [], floor: null }),
-			readActivityBatch(ctx, ref, before, itemText),
+			// A fenced thread's activity is the model's reading (staleFence.ts): left out.
+			isFencedThread(thread)
+				? Promise.resolve<SourceBatch<Entry>>({ entries: [], floor: null })
+				: readActivityBatch(ctx, ref, before, itemText),
 		]);
 		const merged = mergeStreamPage<Entry>([mail, notes, activity], STREAM_PAGE_SIZE);
 		const seenPosition = await readSeenPosition(ctx, ref, session.userId);

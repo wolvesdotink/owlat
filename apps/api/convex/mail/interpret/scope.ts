@@ -20,7 +20,7 @@
  * runs in any action.
  */
 
-import type { Doc } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
 import { internalQuery, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { classifySecureMessage, isEncryptedClass } from '@owlat/shared/secureMessage';
@@ -200,6 +200,37 @@ export async function scopeForInterpretation(
 	if (!scoped.ok) return scoped;
 	if (!body.isComplete) scoped.omitted.push('body_unavailable');
 	return { ...scoped, sourceVersion: loaded.sourceVersion };
+}
+
+/**
+ * Whether a new signature verdict changes what interpretation reads of a
+ * stored mail message: its opened body scoped under the stored verdict and
+ * under `next`. A MIME scope reads the body as it is; a clearsigned one can
+ * narrow it to the signed block (`mail/mailbox/signatureReverify.ts`).
+ */
+export async function isMailReadChangedBy(
+	ctx: ActionCtx,
+	messageId: Id<'mailMessages'>,
+	next: { isSigned?: boolean; scope?: SignedBodyScope }
+): Promise<boolean> {
+	const loaded = await ctx.runQuery(internal.mail.interpret.scope.loadSourceForScope, {
+		source: { kind: 'mail', id: messageId },
+	});
+	if (!loaded || loaded.kind !== 'mail') return false;
+	const row = loaded.row;
+	const body = await openMailRow(ctx, row);
+	const readUnder = (signatureInfo: typeof next | undefined) => {
+		const scoped = scopeBody({
+			...body,
+			subject: row.subject,
+			attachments: row.attachments,
+			signatureInfo,
+		});
+		return JSON.stringify(
+			scoped.ok ? [scoped.text ?? null, scoped.html ?? null, scoped.omitted] : scoped.skipReason
+		);
+	};
+	return readUnder(row.inboundSignatureInfo) !== readUnder(next);
 }
 
 /** A segmentation plus what scoping could not read. */

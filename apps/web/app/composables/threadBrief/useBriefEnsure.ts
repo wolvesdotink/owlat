@@ -49,7 +49,7 @@ export function resetBriefEnsure() {
 }
 
 /** Answers that mean there is nothing left to ask for. */
-const DONE_REASONS: ReadonlySet<string> = new Set(['has_brief', 'nothing_to_read']);
+const DONE_REASONS: ReadonlySet<string> = new Set(['has_brief', 'nothing_to_read', 'fenced']);
 /** Answers that mean the server took it: no retry, but asked again if it stalls later. */
 const ACCEPTED_REASONS: ReadonlySet<string> = new Set(['running']);
 

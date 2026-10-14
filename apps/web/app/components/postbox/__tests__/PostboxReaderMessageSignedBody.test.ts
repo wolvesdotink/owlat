@@ -14,6 +14,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
 import PostboxSecurityBadge from '../PostboxSecurityBadge.vue';
+import { REVERIFY_IN_FLIGHT_MS } from '~/composables/postbox/usePostboxSignedBody';
 import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -26,16 +27,19 @@ vi.mock('@owlat/api', () => {
 });
 
 const action = vi.fn();
+const mutation = vi.fn();
 const fetchMock = vi.fn();
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
-	vi.stubGlobal('requireConvex', () => ({ action }));
+	vi.stubGlobal('requireConvex', () => ({ action, mutation }));
 	vi.stubGlobal('fetch', fetchMock);
 });
 
 beforeEach(() => {
 	action.mockReset();
+	mutation.mockReset();
+	mutation.mockResolvedValue(null);
 	fetchMock.mockReset();
 });
 
@@ -447,6 +451,118 @@ describe('PostboxReaderMessage · a verdict without a scope is never shown', () 
 		expect(action).not.toHaveBeenCalled();
 		expect(has(w, 'PostboxMessageBody')).toBe(true);
 		expect(chip(w).attributes('data-signature')).toBe('absent');
+	});
+
+	it('opening a card with an unscoped verdict asks once for it to be verified again (#1320)', async () => {
+		const message = { textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY };
+		const w = mountCard(message, { secureClass: 'pgp-clearsigned', hideBody: true });
+		await flushPromises();
+
+		expect(mutation).toHaveBeenCalledTimes(1);
+		expect(mutation.mock.calls[0]![1]).toEqual({ messageId: 'msg_1' });
+		expect(has(w, 'signature-badge')).toBe(false);
+
+		// The same row re-rendered does not ask again.
+		await w.setProps({ message: { ...base, ...message, subject: 'Invoice 4471 (re)' } as never });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(1);
+
+		// The re-verified, scoped verdict lands on the row and shows.
+		await w.setProps({ message: { ...base, ...message, inboundSignatureInfo: VERIFIED } as never });
+		await flushPromises();
+		expect(w.get('[data-testid="signature-badge-summary"]').text()).toBe('Signed · verified');
+		expect(mutation).toHaveBeenCalledTimes(1);
+	});
+
+	it('asks again when the card is reopened after a failed or unanswered request', async () => {
+		const message = { textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY };
+		mutation.mockRejectedValueOnce(new Error('offline'));
+		const w = mountCard(message, { secureClass: 'pgp-clearsigned', hideBody: true });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(1);
+
+		// Rejected: collapsed and opened again later, the card asks again.
+		await w.setProps({ expanded: false });
+		await w.setProps({ expanded: true });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(2);
+
+		// Answered, but the verdict is still unscoped (a throttled or failed
+		// re-verify): the next expansion asks again, the server decides.
+		await w.setProps({ expanded: false });
+		await w.setProps({ expanded: true });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(3);
+	});
+
+	it('a flapping backend gets at most one request per expansion', async () => {
+		const message = { textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY };
+		mutation.mockRejectedValue(new Error('flapping'));
+		const w = mountCard(message, { secureClass: 'pgp-clearsigned', hideBody: true });
+		await flushPromises();
+		// Every reactive refresh of the row brings a fresh verdict object.
+		for (let i = 0; i < 20; i++) {
+			await w.setProps({
+				message: { ...base, ...message, inboundSignatureInfo: { ...LEGACY } } as never,
+			});
+			await flushPromises();
+		}
+		expect(mutation).toHaveBeenCalledTimes(1);
+
+		await w.setProps({ expanded: false });
+		await w.setProps({ expanded: true });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(2);
+	});
+
+	it('a request that never settles holds the next one back only for a bounded time', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const message = { textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY };
+			const reopen = async (w: Card) => {
+				await w.setProps({ expanded: false });
+				await w.setProps({ expanded: true });
+				await flushPromises();
+			};
+			let settleFirst!: () => void;
+			mutation.mockReturnValueOnce(new Promise<null>((r) => (settleFirst = () => r(null))));
+			mutation.mockReturnValue(new Promise(() => {}));
+			const w = mountCard(message, { secureClass: 'pgp-clearsigned', hideBody: true });
+			await flushPromises();
+			expect(mutation).toHaveBeenCalledTimes(1);
+
+			// Reopened while it is on its way: not sent twice.
+			await reopen(w);
+			expect(mutation).toHaveBeenCalledTimes(1);
+
+			// It never settled: past the bound, a reopen asks once, refreshes add nothing.
+			vi.setSystemTime(Date.now() + REVERIFY_IN_FLIGHT_MS + 1);
+			await reopen(w);
+			for (let i = 0; i < 20; i++) {
+				await w.setProps({
+					message: { ...base, ...message, inboundSignatureInfo: { ...LEGACY } } as never,
+				});
+				await flushPromises();
+			}
+			expect(mutation).toHaveBeenCalledTimes(2);
+
+			// The first one settles late: it clears nothing of the second attempt's guard.
+			settleFirst();
+			await flushPromises();
+			await reopen(w);
+			expect(mutation).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('asks nothing for a collapsed card, a scoped verdict or unsigned mail', async () => {
+		mountCard({ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY }, { expanded: false });
+		mountCard({ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: VERIFIED });
+		mountCard({ textBodyInline: 'Plain mail.' });
+		await flushPromises();
+
+		expect(mutation).not.toHaveBeenCalled();
 	});
 
 	it('a scoped clearsigned verdict still shows beside its block', async () => {

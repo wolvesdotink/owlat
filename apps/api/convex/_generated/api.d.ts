@@ -106,6 +106,7 @@ import type * as mail_interpret_sendActivity from '../mail/interpret/sendActivit
 import type * as mail_interpret_sendFailure from '../mail/interpret/sendFailure.js';
 import type * as mail_interpret_sourceOrder from '../mail/interpret/sourceOrder.js';
 import type * as mail_interpret_sourceVersion from '../mail/interpret/sourceVersion.js';
+import type * as mail_interpret_staleFence from '../mail/interpret/staleFence.js';
 import type * as mail_interpret_sources from '../mail/interpret/sources.js';
 import type * as mail_interpret_threadAccess from '../mail/interpret/threadAccess.js';
 import type * as mail_interpret_threadEvents from '../mail/interpret/threadEvents.js';
@@ -1194,6 +1195,7 @@ import type * as lib_writeFence from '../lib/writeFence.js';
 import type * as mail__bodySearchLifecycle from '../mail/_bodySearchLifecycle.js';
 import type * as mail__helpers from '../mail/_helpers.js';
 import type * as mail__jobLifecycle from '../mail/_jobLifecycle.js';
+import type * as mail_ai_answerStreamFence from '../mail/ai/answerStreamFence.js';
 import type * as mail_ai_assist from '../mail/ai/assist.js';
 import type * as mail_ai_categoryClassify from '../mail/ai/categoryClassify.js';
 import type * as mail_ai_coach from '../mail/ai/coach.js';
@@ -1378,6 +1380,7 @@ import type * as mail_mailbox_searchClause from '../mail/mailbox/searchClause.js
 import type * as mail_mailbox_searchCursor from '../mail/mailbox/searchCursor.js';
 import type * as mail_mailbox_selection from '../mail/mailbox/selection.js';
 import type * as mail_mailbox_sendingHealth from '../mail/mailbox/sendingHealth.js';
+import type * as mail_mailbox_signatureReverify from '../mail/mailbox/signatureReverify.js';
 import type * as mail_mailbox_shared from '../mail/mailbox/shared.js';
 import type * as mail_mailbox_threadReads from '../mail/mailbox/threadReads.js';
 import type * as mail_mailboxActions from '../mail/mailboxActions.js';
@@ -1869,6 +1872,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/sendFailure': typeof mail_interpret_sendFailure;
 	'mail/interpret/sourceOrder': typeof mail_interpret_sourceOrder;
 	'mail/interpret/sourceVersion': typeof mail_interpret_sourceVersion;
+	'mail/interpret/staleFence': typeof mail_interpret_staleFence;
 	'mail/interpret/sources': typeof mail_interpret_sources;
 	'mail/interpret/threadAccess': typeof mail_interpret_threadAccess;
 	'mail/interpret/threadEvents': typeof mail_interpret_threadEvents;
@@ -2947,6 +2951,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/_bodySearchLifecycle': typeof mail__bodySearchLifecycle;
 	'mail/_helpers': typeof mail__helpers;
 	'mail/_jobLifecycle': typeof mail__jobLifecycle;
+	'mail/ai/answerStreamFence': typeof mail_ai_answerStreamFence;
 	'mail/ai/assist': typeof mail_ai_assist;
 	'mail/ai/categoryClassify': typeof mail_ai_categoryClassify;
 	'mail/ai/coach': typeof mail_ai_coach;
@@ -3131,6 +3136,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailbox/searchCursor': typeof mail_mailbox_searchCursor;
 	'mail/mailbox/selection': typeof mail_mailbox_selection;
 	'mail/mailbox/sendingHealth': typeof mail_mailbox_sendingHealth;
+	'mail/mailbox/signatureReverify': typeof mail_mailbox_signatureReverify;
 	'mail/mailbox/shared': typeof mail_mailbox_shared;
 	'mail/mailbox/threadReads': typeof mail_mailbox_threadReads;
 	'mail/mailboxActions': typeof mail_mailboxActions;

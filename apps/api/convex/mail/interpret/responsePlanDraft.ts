@@ -27,6 +27,7 @@ import {
 } from '../../lib/validators/threadRef';
 import type { Id } from '../../_generated/dataModel';
 import { loadBriefRow } from './briefRow';
+import { isInterpretationFenced } from './staleFence';
 import {
 	canRead,
 	isDraftLive,
@@ -174,6 +175,8 @@ export const recordCheck = internalMutation({
 	handler: async (ctx, args): Promise<{ isStored: boolean }> => {
 		if (!(await isDraftOfThread(ctx, args.draftRef, args.threadRef))) return { isStored: false };
 		if (!(await isDraftLive(ctx, args.draftRef))) return { isStored: false };
+		// A check that read a thread now fenced off is not kept (staleFence.ts).
+		if (await isInterpretationFenced(ctx, args.threadRef)) return { isStored: false };
 		const existing = await readPlanRow(ctx, args.draftRef);
 		if ((existing?.planRevision ?? 0) !== args.planRevision) return { isStored: false };
 		// Nothing purged or erased since the check read, and every item it names

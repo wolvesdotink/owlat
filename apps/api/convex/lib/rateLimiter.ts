@@ -333,6 +333,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 15,
 	},
 
+	// Re-verifying a signed message stored before verdicts recorded a scope
+	// (`mail/mailbox/signatureReverify.ts`), keyed per message. The reader asks
+	// once per open; a verdict that lands ends the asking, and one that cannot
+	// (no raw message, a verifier error) is retried at most this often.
+	signatureReverify: {
+		kind: 'fixed window',
+		rate: 1,
+		period: 10 * MINUTE,
+	},
+
 	// Direct-to-storage upload URL minting (media library, chat attachments).
 	// The minted blob is inert until a gated mutation references it, but an
 	// unbounded mint loop still fills `_storage` with orphaned bytes the

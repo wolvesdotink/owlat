@@ -169,6 +169,24 @@ describe('briefBanners', () => {
 		]);
 	});
 
+	it("says a fenced thread's overview is paused, without the signed-part note", () => {
+		const banners = briefBanners(
+			briefView({
+				completeness: 'partial',
+				gap: { interpretedMessages: 0, totalMessages: 3, reason: 'stale' },
+			}),
+			{ isSigned: true }
+		);
+		expect(banners).toEqual([
+			{
+				key: 'stale',
+				tone: 'warn',
+				text: 'components.brief.incomplete.stale',
+				offersConversation: true,
+			},
+		]);
+	});
+
 	it('explains a missing overview, and shows short and security mail as written', () => {
 		expect(briefBanners(null)[0]).toMatchObject({ key: 'none', offersConversation: true });
 		expect(

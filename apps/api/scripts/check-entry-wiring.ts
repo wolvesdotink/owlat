@@ -220,6 +220,8 @@ const HAND_RUN_ENTRIES: Readonly<Record<string, string>> = {
 		'the operator view of queued sends the lost-send sweep will fail or cannot judge (`convex run`)',
 	'delivery/stuckSendSweepAdmin.ts#failUnanchoredLostSends':
 		'the operator pass over lost sends with no recorded first attempt, older than eight days (`convex run`)',
+	'mail/interpret/staleFence.ts#release':
+		'the operator lift of a thread’s stale interpretation fence; nothing rebuilds a thread (`convex run`)',
 };
 const isHandRun = (module: string): boolean =>
 	HAND_RUN_PREFIXES.some((prefix) => module.startsWith(prefix));

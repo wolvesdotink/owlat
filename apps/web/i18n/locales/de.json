@@ -1081,6 +1081,7 @@
 				"securityLead": "Sicherheits-E-Mail.",
 				"security": "Wird so angezeigt, wie geschrieben, und nie zusammengefasst.",
 				"signed": "Nur der signierte Teil ist zusammengefasst.",
+				"stale": "Der Überblick ist pausiert: Eine Signaturprüfung hat geändert, wofür eine Nachricht hier verlässlich ist. Im E-Mail-Verlauf siehst du alles.",
 				"openConversation": "E-Mail-Verlauf öffnen",
 				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich der Überblick gleich."
 			},
@@ -4505,7 +4506,8 @@
 			"postboxClarificationCard": {
 				"answerLater": "Ich antworte später",
 				"drafting": "Deine Antwort wird entworfen…",
-				"held": "Kein KI-Entwurf für diese Antwort: Sie braucht eine Angabe, nach der Owlat nie fragt, etwa ein Passwort. Du kannst sie trotzdem selbst schreiben."
+				"held": "Kein KI-Entwurf für diese Antwort: Sie braucht eine Angabe, nach der Owlat nie fragt, etwa ein Passwort. Du kannst sie trotzdem selbst schreiben.",
+				"paused": "Die KI-Antwort ist pausiert, weil sich die Signaturprüfung dieser Unterhaltung geändert hat, nachdem die KI sie gelesen hat. Du kannst deine Antwort selbst schreiben."
 			},
 			"postboxCoachPanel": {
 				"clean": "Sieht gut aus — keine Auffälligkeiten gefunden.",

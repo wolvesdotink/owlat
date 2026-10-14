@@ -28,6 +28,7 @@ import { loadReadableMailbox } from '../permissions';
 import { mailboxScope } from '../mailbox/shared';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
 import { threadBriefMutation } from '../_helpers';
+import { isFencedThread } from './staleFence';
 import { threadViewValidator, streamPositionValidator } from '../../lib/validators/threadBrief';
 import {
 	threadRefToFields,
@@ -82,6 +83,9 @@ export const get = publicQuery({
 		// latest line or facts from the moment it flips, whatever the async
 		// scope-change cleanup has done yet (review F8).
 		let mode: InterpretMode;
+		// A fenced thread (staleFence.ts) shows its items, with what people set on
+		// them, and nothing else the model derived.
+		let isFenced = false;
 		let people: Awaited<ReturnType<typeof readMailPeopleAndFiles>> = {
 			participants: [],
 			files: [],
@@ -92,6 +96,7 @@ export const get = publicQuery({
 			const mailbox = await loadReadableMailbox(ctx, thread.mailboxId);
 			if (!mailbox) return null;
 			totalMessages = thread.messageCount;
+			isFenced = isFencedThread(thread);
 			people = await readMailPeopleAndFiles(ctx, thread, mailbox);
 			mode = mailboxScope(mailbox) === 'shared' ? 'actions' : 'brief';
 		} else {
@@ -143,6 +148,25 @@ export const get = publicQuery({
 			...(brief?.sourceCounts ? { sourceCounts: brief.sourceCounts } : {}),
 			suppressed: latest.suppressed,
 		});
+		if (isFenced) {
+			return projectBrief({
+				threadRef: ref,
+				mode,
+				interpretationRevision: brief?.interpretationRevision ?? 0,
+				completeness: 'partial',
+				items: itemsPage.items,
+				page: itemsPage.page,
+				...(brief?.itemCounts ? { itemCounts: brief.itemCounts } : {}),
+				facts: [],
+				activity: [],
+				participants: people.participants,
+				files: people.files,
+				...(viewer?.viewOverride ? { viewOverride: viewer.viewOverride } : {}),
+				gap: { interpretedMessages: 0, totalMessages, reason: 'stale' },
+				isNoReplyNeeded: false,
+				now: Date.now(),
+			});
+		}
 		return projectBrief({
 			threadRef: ref,
 			mode,

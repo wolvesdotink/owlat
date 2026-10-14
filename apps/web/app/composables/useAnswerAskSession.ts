@@ -30,7 +30,7 @@ import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposer
 import { isAlreadyAnsweredRefusal, isHeldByGuardRefusal, ownerTimeZone } from '~/utils/answerDraft';
 import type { OperationError } from '@owlat/shared/operationError';
 import { budgetReasonOf, isBudgetStreamError } from '~/utils/aiBudget';
-import { DRAFT_HELD_FOR_SECRET } from '@owlat/shared/answerMode';
+import { DRAFT_HELD_FOR_SECRET, DRAFT_PAUSED_STALE_INTERPRETATION } from '@owlat/shared/answerMode';
 
 export type AskSession = NonNullable<
 	FunctionReturnType<typeof api.mail.ai.composeDraftStore.getSession>
@@ -284,22 +284,43 @@ export function useAnswerAskSession(opts: {
 	const liveStreams = new Set<string>();
 	const settledStreams = new Set<string>();
 
+	/**
+	 * The thread's AI reading was paused (a signature check narrowed what one
+	 * of its messages may be read for): the stream says so, or its session
+	 * does (a stream opened before the server tied streams to their thread can
+	 * still read complete). Either way nothing of it is used.
+	 */
+	const isStreamPaused = computed(
+		() =>
+			session.value?.errorMessage === DRAFT_PAUSED_STALE_INTERPRETATION ||
+			(stream.value?.status === 'error' &&
+				stream.value.errorMessage === DRAFT_PAUSED_STALE_INTERPRETATION)
+	);
+
 	/** Settle the current stream once it is complete, if it is ours. */
 	function reconcileStream() {
 		const current = stream.value;
 		const composer = opts.composer();
-		if (!current || !composer || current.status !== 'complete') return;
+		if (!current || !composer) return;
 		if (!liveStreams.has(current._id) || settledStreams.has(current._id)) return;
+		if (isStreamPaused.value) {
+			// Take back what it streamed into the composer, once (the person's text stays).
+			settledStreams.add(current._id);
+			composer.discardAiDraft();
+			return;
+		}
+		if (current.status !== 'complete') return;
 		settledStreams.add(current._id);
 		void settle(composer, current.text);
 	}
 
 	watch(
-		() => [stream.value?._id, stream.value?.status, stream.value?.text] as const,
-		([id, status, text]) => {
+		() =>
+			[stream.value?._id, stream.value?.status, stream.value?.text, isStreamPaused.value] as const,
+		([id, status, text, isPaused]) => {
 			const composer = opts.composer();
 			if (!id || !composer) return;
-			if (status === 'streaming') {
+			if (status === 'streaming' && !isPaused) {
 				liveStreams.add(id);
 				if (text) composer.streamAiDraft(text);
 				return;

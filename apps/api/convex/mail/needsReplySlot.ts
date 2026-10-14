@@ -21,6 +21,7 @@
 
 import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
 import { hasUsableAnswer } from '../inbox/clarificationAnswers';
+import { isFencedThread } from './interpret/staleFence';
 
 interface ClarificationLike {
 	questions: ReadonlyArray<Parameters<typeof hasUsableAnswer>[0]>;
@@ -55,6 +56,37 @@ export function visibleDraftSlot<S extends { draft: string }, C extends Clarific
 }
 
 /**
+ * The arrival draft a thread may show: none while its interpretation is fenced
+ * off (interpret/staleFence.ts), whose plan the draft was written from.
+ */
+export function visibleThreadDraftSlot<S extends { draft: string }, C extends ClarificationLike>(
+	thread: {
+		needsReply?: SlotHolder<S, C> | undefined | null;
+		interpretationStaleSince?: number | undefined;
+	} | null
+): S | undefined {
+	return thread && !isFencedThread(thread) ? visibleDraftSlot(thread.needsReply) : undefined;
+}
+
+/**
+ * The clarification a thread may show (as the card shows it). While the
+ * thread's interpretation is fenced off (interpret/staleFence.ts) it is
+ * `isPaused`: no AI-written draft, and the card says the AI reply is paused
+ * instead of waiting for one; the questions and the person's answers stay.
+ */
+export function visibleThreadClarification<C extends ClarificationLike>(thread: {
+	needsReply?: { clarification?: C | undefined } | undefined | null;
+	interpretationStaleSince?: number | undefined;
+}): (C & { isPaused?: true }) | undefined {
+	const clarification = thread.needsReply?.clarification;
+	if (!clarification) return undefined;
+	const shown = visibleClarification(clarification);
+	if (!isFencedThread(thread)) return shown;
+	const { draft: _ai, ...answered } = shown;
+	return { ...(answered as C), isPaused: true };
+}
+
+/**
  * The clarification as the card may show it: a reply on a card still asking
  * is not shown (it raced the questions), and one with gaps the owner did not
  * agree to reads as asking again.
@@ -78,18 +110,19 @@ export function withVisibleDrafts<
 		needsReply?:
 			| (SlotHolder<{ draft: string }, ClarificationLike> & Record<string, unknown>)
 			| undefined;
+		interpretationStaleSince?: number | undefined;
 	},
 >(thread: T): T {
 	const flag = thread.needsReply;
 	if (!flag) return thread;
 	const { draftSlot, clarification, ...rest } = flag;
-	const slot = visibleDraftSlot(flag);
+	const slot = visibleThreadDraftSlot(thread);
 	return {
 		...thread,
 		needsReply: {
 			...rest,
 			...(slot ? { draftSlot } : {}),
-			...(clarification ? { clarification: visibleClarification(clarification) } : {}),
+			...(clarification ? { clarification: visibleThreadClarification(thread)! } : {}),
 		},
 	};
 }
