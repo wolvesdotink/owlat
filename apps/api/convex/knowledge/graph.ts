@@ -343,6 +343,10 @@ export const createEntry = knowledgeMutation({
 			sourceId: args.sourceId,
 			contactIds: args.contactIds,
 			threadId: args.threadId,
+			// Stamped on every write of this release (knowledge/entryDedupe.ts):
+			// a manual entry is member-visible unless a thread link keeps it to
+			// Team Inbox readers.
+			memberAccess: args.threadId === undefined ? ('members' as const) : ('restricted' as const),
 			embedding: [], // Will be populated by extraction pipeline
 			confidence: args.confidence ?? 0.8,
 			lastValidatedAt: now,
@@ -565,7 +569,7 @@ export const saveEntry = internalMutation({
 		if (isStale) logInfo('[knowledge.saveEntry] stale embedding space, stored without vector');
 		const entry = {
 			...fields,
-			...(memberAccess ? { memberAccess } : {}),
+			memberAccess,
 			...(vector as { embedding: number[] }),
 			searchableText: `${args.title} ${args.content}`,
 			lastValidatedAt: now,
@@ -740,6 +744,8 @@ export const createPolicyEntry = knowledgeAdminMutation({
 			content: args.content,
 			sourceType: 'curated',
 			isAuthoritative: true,
+			// Stamped on every write of this release (knowledge/entryDedupe.ts).
+			memberAccess: 'members',
 			embedding: [], // filled by the embedding pipeline; FTS works immediately
 			confidence: 1.0, // a human-authored canonical answer is fully trusted
 			lastValidatedAt: now,

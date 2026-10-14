@@ -35,16 +35,22 @@ export type DedupeCandidate = Pick<
 >;
 
 /**
- * Who may see an entry from this source: for a file, `members` only when the
- * file exists and is not a mail capture (lib/semanticFileAccess.ts), else
- * `restricted`, so knowledge from a file deleted mid-extraction fails closed.
- * Other sources keep their own rule (undefined).
+ * The `memberAccess` every write of this release stamps (schema/knowledge.ts).
+ * For a file, `members` only when the file exists and is not a mail capture
+ * (lib/semanticFileAccess.ts), else `restricted`, so knowledge from a file
+ * deleted mid-extraction fails closed. For any other source, `restricted` when
+ * its source keeps it from members (Team Inbox mail, a Team Inbox thread
+ * link), else `members`. Never undefined: an unstamped row is one written
+ * before this release, which the dedup leaves alone until migration 0069 has
+ * restricted it (knowledge/maintenance.ts).
  */
 export async function resolveMemberAccess(
 	ctx: Pick<QueryCtx, 'db'>,
-	source: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'sourceId'>
-): Promise<Doc<'knowledgeEntries'>['memberAccess']> {
-	if (source.sourceType !== 'file') return undefined;
+	source: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'sourceId' | 'threadId'>
+): Promise<'members' | 'restricted'> {
+	if (source.sourceType !== 'file') {
+		return isInboxDerivedKnowledge(source) ? 'restricted' : 'members';
+	}
 	const fileId = source.sourceId ? ctx.db.normalizeId('semanticFiles', source.sourceId) : null;
 	const file = fileId ? await ctx.db.get(fileId) : null;
 	return file && !isMailCapture(file) ? 'members' : 'restricted';

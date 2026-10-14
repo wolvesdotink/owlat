@@ -170,6 +170,36 @@ describe('knowledge extracted from a captured file', () => {
 		]);
 	});
 
+	it('a Team Inbox entry restricted by migration 0069 still reaches the Team Inbox agent', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		const id = await t.run((ctx) =>
+			ctx.db.insert('knowledgeEntries', {
+				entryType: 'fact',
+				title: 'Refund window',
+				content: 'The refund window is thirty days.',
+				sourceType: 'agent_extracted',
+				embedding: [],
+				searchableText: 'Refund window The refund window is thirty days.',
+				confidence: 0.9,
+				lastValidatedAt: 1,
+				createdAt: 1,
+				updatedAt: 1,
+			})
+		);
+		const until = Date.now() + 3;
+		while (Date.now() < until) {
+			// let the walk start after the entry was written
+		}
+		await t.mutation(internal.migrations[MIGRATION].run, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect((await t.run((ctx) => ctx.db.get(id)))?.memberAccess).toBe('restricted');
+		// The agent's retrieval includes what is kept from members; a member's does not.
+		expect(await recall(t, true, 'refund window')).toContain('Refund window');
+		expect(await recall(t, false, 'refund window')).not.toContain('Refund window');
+	});
+
 	it('stays restricted when a previous release writes it after migration 0069 has run', async () => {
 		const t = convexTest(schema, modules);
 		const files = await seed(t);

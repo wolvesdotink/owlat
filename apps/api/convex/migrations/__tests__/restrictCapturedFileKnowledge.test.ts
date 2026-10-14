@@ -12,6 +12,7 @@
 
 import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getDocumentSize } from 'convex/values';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -21,13 +22,7 @@ import {
 	seedMailbox,
 	seedMessage,
 } from '../../mail/__tests__/helpers.testlib';
-import {
-	MIGRATION,
-	PAGE_BYTES,
-	PAGE_SIZE,
-	sweepPage,
-	type SweepPosition,
-} from '../0069_restrict_captured_file_knowledge';
+import { MIGRATION, PAGE_SIZE, sweepPage } from '../0069_restrict_captured_file_knowledge';
 import { isInboxDerivedKnowledge } from '../../inbox/access';
 
 const migration = internal.migrations[MIGRATION];
@@ -100,7 +95,7 @@ async function ledger(t: T) {
 }
 
 describe('0069_restrict_captured_file_knowledge', () => {
-	it('restricts every member-visible entry of every source type, and every file-derived one', async () => {
+	it('restricts every entry of every source type, Team Inbox included', async () => {
 		const t = convexTest(schema, modules);
 		const upload = await file(t, { sourceType: 'upload' });
 		const capture = await file(t, { captureSource: 'team_inbox' });
@@ -148,9 +143,15 @@ describe('0069_restrict_captured_file_knowledge', () => {
 				contactIds: [contactId],
 				updatedAt: 5,
 			}),
+			// Before 2026-09-29 the dedup clustered Team Inbox knowledge with
+			// everything else: a personal capture's facts could sit in one.
+			teamInbox: await entry(t, { sourceType: 'agent_extracted', content: 'Team fact' }),
 		};
-		// Already kept from members by their source: left as they are.
-		const teamInbox = await entry(t, { sourceType: 'agent_extracted', content: 'Team fact' });
+		const alreadyRestricted = await entry(t, {
+			sourceType: 'manual',
+			content: 'Restricted before',
+			memberAccess: 'restricted',
+		});
 
 		await runToEnd(t);
 
@@ -159,9 +160,7 @@ describe('0069_restrict_captured_file_knowledge', () => {
 			expect(row.memberAccess, key).toBe('restricted');
 			expect(isInboxDerivedKnowledge(row), key).toBe(true);
 		}
-		const team = await read(t, teamInbox);
-		expect(team.memberAccess).toBeUndefined();
-		expect(isInboxDerivedKnowledge(team)).toBe(true);
+		expect((await read(t, alreadyRestricted)).memberAccess).toBe('restricted');
 
 		const run = await ledger(t);
 		expect(run.status).toBe('completed');
@@ -215,7 +214,7 @@ describe('0069_restrict_captured_file_knowledge', () => {
 	});
 
 	it('bounds a page by bytes: rows with full embeddings split across pages that always advance', async () => {
-		const t = convexTest(schema, modules);
+		const t = convexTest({ schema, modules, transactionLimits: true });
 		const embedding = Array.from({ length: 1536 }, (_, i) => i / 1536);
 		const ids: Id<'knowledgeEntries'>[] = [];
 		for (let i = 0; i < 6; i++) {
@@ -224,48 +223,97 @@ describe('0069_restrict_captured_file_knowledge', () => {
 		tick();
 		const cutoff = Date.now();
 
-		// Two rows' worth of bytes: the page stops short of PAGE_SIZE rows.
+		// Two rows' worth of bytes: a page stops short of PAGE_SIZE rows.
 		const maxBytes = 2 * 1536 * 8;
-		let after: SweepPosition | null = null;
+		let cursor: string | null = null;
 		let pages = 0;
+		let scanned = 0;
 		for (;;) {
-			const result = await t.run((ctx) => sweepPage(ctx, { cutoff, after, maxBytes }));
+			const result = await t.run((ctx) => sweepPage(ctx, { cutoff, cursor, maxBytes }));
 			pages++;
+			scanned += result.scanned;
 			expect(result.scanned).toBeLessThan(PAGE_SIZE);
 			if (result.isDone) break;
-			// A page cut short by bytes still takes at least one row.
-			expect(result.scanned).toBeGreaterThan(0);
-			expect(result.after).not.toEqual(after);
-			after = result.after;
+			expect(result.cursor).not.toBe(cursor);
+			cursor = result.cursor;
 		}
 		expect(pages).toBeGreaterThan(1);
+		expect(scanned).toBe(ids.length);
 		for (const id of ids) expect((await read(t, id)).memberAccess).toBe('restricted');
 	});
 
-	it('keeps every page under a transaction when entries are near the 1 MiB document limit', async () => {
-		const t = convexTest(schema, modules);
-		const text = 'x'.repeat(1_000_000);
+	it('walks entries near the 1 MiB document limit inside production transaction limits', async () => {
+		const t = convexTest({ schema, modules, transactionLimits: true });
+		const text = 'x'.repeat(900_000);
 		const ids: Id<'knowledgeEntries'>[] = [];
-		for (let i = 0; i < 24; i++) {
-			ids.push(await entry(t, { sourceType: 'manual', content: `fact ${i} ${text}` }));
+		for (let i = 0; i < 12; i++) {
+			ids.push(
+				await entry(t, {
+					sourceType: 'manual',
+					title: `Fact ${i}`,
+					content: `fact ${i} ${text}`,
+					embedding: Array.from({ length: 1536 }, () => 0.5),
+				})
+			);
 		}
+		await t.run(async (ctx) => {
+			for (const id of ids) {
+				// A real document: under the 1 MiB limit.
+				expect(getDocumentSize((await ctx.db.get(id))!)).toBeLessThan(1024 * 1024);
+			}
+		});
+		await runToEnd(t);
+
+		const run = await ledger(t);
+		expect(run.status).toBe('completed');
+		expect(run.scannedCount).toBe(ids.length);
+		for (const id of ids) expect((await read(t, id)).memberAccess).toBe('restricted');
+	});
+
+	it('neither rescans nor skips a row when the last row a page handled is deleted', async () => {
+		const t = convexTest({ schema, modules, transactionLimits: true });
+		const ids: Id<'knowledgeEntries'>[] = [];
+		await t.run(async (ctx) => {
+			// One transaction: rows that may share a creation time.
+			for (let i = 0; i < 12; i++) {
+				ids.push(
+					await ctx.db.insert('knowledgeEntries', {
+						entryType: 'fact',
+						title: `Fact ${i}`,
+						content: `fact ${i}`,
+						sourceType: 'manual',
+						embedding: [],
+						confidence: 0.8,
+						lastValidatedAt: 1,
+						createdAt: 1,
+						updatedAt: 1,
+					})
+				);
+			}
+		});
 		tick();
 		const cutoff = Date.now();
 
-		let after: SweepPosition | null = null;
-		let pages = 0;
+		const first = await t.run((ctx) => sweepPage(ctx, { cutoff, cursor: null }));
+		expect(first.scanned).toBe(PAGE_SIZE);
+		// The last row the first page handled, and one it has not reached.
+		const gone = [ids[PAGE_SIZE - 1]!, ids[PAGE_SIZE + 2]!];
+		await t.run(async (ctx) => {
+			for (const id of gone) await ctx.db.delete(id);
+		});
+		let cursor: string | null = first.cursor;
+		let scanned = first.scanned;
 		for (;;) {
-			const result = await t.run((ctx) => sweepPage(ctx, { cutoff, after }));
-			pages++;
-			// The budget, plus the peeked entry and the resume anchor re-read.
-			expect(result.bytesRead).toBeLessThan(PAGE_BYTES + 2 * 1024 * 1024);
-			expect(result.bytesRead).toBeLessThan(16 * 1024 * 1024);
+			const result = await t.run((ctx) => sweepPage(ctx, { cutoff, cursor }));
+			scanned += result.scanned;
 			if (result.isDone) break;
-			expect(result.scanned).toBeGreaterThan(0);
-			after = result.after;
+			cursor = result.cursor;
 		}
-		expect(pages).toBeGreaterThan(2);
-		for (const id of ids) expect((await read(t, id)).memberAccess).toBe('restricted');
+		// Every row read once: 12 written, one deleted before it was reached.
+		expect(scanned).toBe(ids.length - 1);
+		for (const id of ids.filter((id) => !gone.includes(id))) {
+			expect((await read(t, id)).memberAccess).toBe('restricted');
+		}
 	});
 
 	it('keeps the start time when run is called again before the first page commits', async () => {

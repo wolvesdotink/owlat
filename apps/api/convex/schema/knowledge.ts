@@ -160,11 +160,12 @@ export const knowledgeEntriesFields = {
 	threadId: v.optional(v.id('conversationThreads')),
 	// Whether members may see what was learned here (inbox/access.ts
 	// `isInboxDerivedKnowledge`). `restricted` keeps it to shared-inbox readers
-	// whatever the source. For `sourceType: 'file'` only `members` opens it, and
-	// only the write sets that (`knowledge.graph.saveEntry`, from the source
-	// FILE: `members` for an upload, `restricted` for a mail capture or a file
-	// that is gone). Entries that existed before this release are restricted by
-	// migration 0069 and never reopened. Never set by a client.
+	// whatever the source; for `sourceType: 'file'` only `members` opens it.
+	// Every write of this release stamps it, from the source (knowledge/
+	// entryDedupe.ts `resolveMemberAccess`), so ABSENT means a row written before
+	// this release: the dedup leaves those alone (knowledge/maintenance.ts) until
+	// migration 0069 restricts them, and never reopens one. A merge never widens
+	// it. Never set by a client.
 	memberAccess: v.optional(v.union(v.literal('members'), v.literal('restricted'))),
 	// Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
 	embedding: v.array(v.float64()),

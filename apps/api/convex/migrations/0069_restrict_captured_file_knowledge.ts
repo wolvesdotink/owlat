@@ -1,5 +1,5 @@
 /**
- * Restrict the knowledge a historical merge may have written captured mail
+ * Restrict the knowledge a historical merge may have written private text
  * into (migration 0069, #1322).
  *
  *   npx convex run migrations/0069_restrict_captured_file_knowledge:run
@@ -7,54 +7,59 @@
  * WHAT IS ALREADY SAFE WITHOUT IT. From the deploy on, a captured file keeps
  * its mailbox's permission (lib/semanticFileAccess.ts) and a capture whose
  * source is not recorded on the row stays with owners and admins for good: no
- * Message-ID is taken as proof of where a file came from. Knowledge from a
- * file is opened to members only by the write that proves it came from an
- * upload (knowledge/entryDedupe.ts `resolveMemberAccess`).
+ * Message-ID is taken as proof of where a file came from. Every knowledge write
+ * stamps `memberAccess` from its source (knowledge/entryDedupe.ts
+ * `resolveMemberAccess`), a merge never widens it, and the dedup leaves rows
+ * without the stamp (written before this release) alone, so no merge can move
+ * old text into a newer member-visible entry while this walk is under way
+ * (knowledge/maintenance.ts).
  *
  * WHAT IS NOT. Before this release, knowledge learned from a capture was
- * member-visible, and so, before 2026-09-29, was knowledge learned from Team
- * Inbox mail. The daily dedup (`knowledge/maintenance.ts`
- * `dedupeContactEntries`) folds a loser into a survivor and deletes the loser:
- * the survivor takes the loser's content (on a new line, or not at all when it
- * already contains it), its tags and its contact links. Nothing records that a
- * merge happened, and an edit can rewrite the content afterwards. So no
- * property of an entry today proves it never took in private text.
+ * member-visible, and before 2026-09-29 the dedup did not keep Team Inbox
+ * knowledge apart either (`9b5732a64`). The daily dedup (`knowledge/
+ * maintenance.ts` `dedupeContactEntries`) folds a loser into a survivor and
+ * deletes the loser: the survivor takes the loser's content (on a new line, or
+ * not at all when it already contains it), its tags and its contact links.
+ * Nothing records that a merge happened, and an edit can rewrite the content
+ * afterwards. So no property of an entry today proves it never took in
+ * private text, and that includes Team Inbox entries, which a personal
+ * capture's facts could have been folded into.
  *
  * WHICH ENTRIES A MERGE COULD REACH. Every version of the dedup, from 0.1.0
  * on, clusters the entries linked to one contact (`knowledgeEntryContacts`)
  * that carry a vector, of ANY source type, and picks the survivor by
  * confidence alone. Any entry can carry a contact link: `updateEntry` sets
- * `contactIds` on every entry a member may edit (on a curated answer, an admin),
- * and a contact merge repoints them. So no source type — file, email, chat,
- * manual, curated — is provably out of a merge's reach, and none is exempt.
+ * `contactIds` on every entry a member may edit (on a curated answer, an
+ * admin), and a contact merge repoints them. So no source type (file, email,
+ * chat, manual, curated, Team Inbox) is provably out of a merge's reach, and
+ * none is exempt.
  *
  * THE RULE (Marcel, 2026-10-14): every entry that existed when the walk
- * started and that members could see becomes owner/admin-only
- * (`memberAccess: 'restricted'`), every file-derived entry with it, whatever
- * its content, tags or source file. The walk never opens anything. Entries
- * written after it started follow the write-time rules. An owner or admin who
- * wants members to see one again re-creates it.
+ * started becomes owner/admin-only (`memberAccess: 'restricted'`), whatever its
+ * source, content, tags or source file. The walk never opens anything. The
+ * Team Inbox agent still reads them: its retrieval includes what is kept from
+ * members (`includeInboxDerived: true`). Entries written after the walk started
+ * follow the write-time rules. An owner or admin who wants members to see one
+ * again re-creates it.
  *
  * ONE SWEEP, BOUNDED: `knowledgeEntries` in creation order up to the time the
- * walk started — the ledger row's `startedAt`, written before the first page is
- * scheduled and kept by every resume, so a second `run` cannot move it (entries
- * written after it come from this release). A page stops after
- * {@link PAGE_SIZE} entries or {@link PAGE_BYTES} of entries read (each carries
- * its embedding; nothing else is read), and always handles at least one
- * entry. Each page records its position in the migration ledger
- * (`migrationRuns` row `0069_restrict_captured_file_knowledge`,
+ * walk started, the ledger row's `startedAt`, written before the first page is
+ * scheduled and kept by every resume, so a second `run` cannot move it. Each
+ * page is ONE `paginate` (its cursor survives ties and deletions) of at most
+ * {@link PAGE_SIZE} entries and about {@link PAGE_BYTES} read; see there for
+ * why that stays inside a transaction. Each page records its cursor in the
+ * migration ledger (`migrationRuns` row `0069_restrict_captured_file_knowledge`,
  * lib/migrationLedger.ts) before the next is scheduled. Running `run` again on
  * an unfinished walk resumes it; on a finished one it does nothing
  * (`'{"restart":true}'` starts over with a new start time). Pages are idempotent.
  */
 
-import { getDocumentSize, v } from 'convex/values';
+import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { logInfo } from '../lib/runtimeLog';
-import { isInboxDerivedKnowledge } from '../inbox/access';
 import {
 	beginMigrationRun,
 	isCurrentMigrationPage,
@@ -65,116 +70,50 @@ import {
 export const MIGRATION = '0069_restrict_captured_file_knowledge';
 /** The release this migration ships in, recorded on its ledger row. */
 const INTRODUCED_IN = '0.6.13';
-/** Entries a page handles at most. */
-export const PAGE_SIZE = 32;
+/** Entries a page reads at most. */
+export const PAGE_SIZE = 4;
 /**
- * Bytes of entries a page reads before it stops (each carries a 1536-float
- * embedding). The check runs before each entry, so the next entry read and,
- * on a resume, the entry it resumes after (a document is at most 1 MiB) can
- * add to it: a page reads under 10 MiB, inside the 16 MiB a transaction may
- * read.
+ * Bytes a page's `paginate` reads before it stops early (`maximumBytesRead`;
+ * every row carries a 1536-float embedding). A page reads at most
+ * {@link PAGE_SIZE} documents of at most 1 MiB, so under 4 MiB, and patching
+ * each re-reads it, under 4 MiB more; with the ledger row that stays far inside
+ * the 16 MiB a transaction may read, and the writes under 4 MiB.
  */
-export const PAGE_BYTES = 8 * 1024 * 1024;
+export const PAGE_BYTES = 2 * 1024 * 1024;
 
-/** Where the sweep stands: just after the entry created at `time` with id `id`. */
-export type SweepPosition = { time: number; id: Id<'knowledgeEntries'> };
-
-/** The ledger cursor: `<_creationTime>:<_id>` of the last entry handled, or '' at the start. */
-export function encodeCursor(position: SweepPosition | null): string {
-	return position ? `${position.time}:${position.id}` : '';
-}
-
-export function decodeCursor(stored: string | null | undefined): SweepPosition | null {
-	const split = stored ? stored.indexOf(':') : -1;
-	if (!stored || split === -1) return null;
-	return {
-		time: Number(stored.slice(0, split)),
-		id: stored.slice(split + 1) as Id<'knowledgeEntries'>,
-	};
-}
-
-/**
- * What this walk writes for one entry that existed when it started: owner/admin
- * only for every entry members could see, and every file-derived entry. Null
- * leaves an entry already kept from members by its source (Team Inbox mail, a
- * Team Inbox thread link) or already restricted.
- */
+/** What this walk writes for one entry that existed when it started. */
 export function sweptAccess(
-	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'memberAccess'>
+	entry: Pick<Doc<'knowledgeEntries'>, 'memberAccess'>
 ): 'restricted' | null {
-	if (entry.memberAccess === 'restricted') return null;
-	if (entry.sourceType === 'file' || !isInboxDerivedKnowledge(entry)) return 'restricted';
-	return null;
+	return entry.memberAccess === 'restricted' ? null : 'restricted';
 }
 
-/**
- * One page of the sweep: the entries created before `cutoff`, from just after
- * `after`, until the page has handled {@link PAGE_SIZE} entries or read
- * `maxBytes` of entries. At least one entry is handled, so a resume always
- * advances. The position is the last entry handled; entries sharing its
- * creation time that come before it are not handled twice, except when it was
- * deleted since, when they are (a page is idempotent).
- */
+/** One page of the sweep: one `paginate` over the entries created before `cutoff`. */
 export async function sweepPage(
 	ctx: MutationCtx,
-	page: { cutoff: number; after: SweepPosition | null; maxBytes?: number }
-): Promise<{
-	after: SweepPosition | null;
-	isDone: boolean;
-	scanned: number;
-	changed: number;
-	bytesRead: number;
-}> {
-	const { cutoff, after } = page;
-	const maxBytes = page.maxBytes ?? PAGE_BYTES;
-	const rows = ctx.db
+	page: { cutoff: number; cursor: string | null; maxBytes?: number }
+) {
+	const result = await ctx.db
 		.query('knowledgeEntries')
-		.withIndex('by_creation_time', (q) =>
-			after
-				? q.gte('_creationTime', after.time).lt('_creationTime', cutoff)
-				: q.lt('_creationTime', cutoff)
-		);
-	let entryBytes = 0;
-	let last = after;
-	let scanned = 0;
+		.withIndex('by_creation_time', (q) => q.lt('_creationTime', page.cutoff))
+		.paginate({
+			numItems: PAGE_SIZE,
+			cursor: page.cursor,
+			maximumBytesRead: page.maxBytes ?? PAGE_BYTES,
+		});
 	let changed = 0;
-	// Entries tied with `after`'s creation time, read before `after` itself.
-	let held: Doc<'knowledgeEntries'>[] = [];
-	let isPastAfter = after === null;
-
-	const handle = async (entry: Doc<'knowledgeEntries'>): Promise<void> => {
+	for (const entry of result.page) {
 		const access = sweptAccess(entry);
-		if (access !== null) {
-			await ctx.db.patch(entry._id, { memberAccess: access });
-			changed++;
-		}
-		scanned++;
-		last = { time: entry._creationTime, id: entry._id };
-	};
-
-	for await (const entry of rows) {
-		entryBytes += getDocumentSize(entry);
-		if (!isPastAfter && after) {
-			if (entry._creationTime === after.time) {
-				if (entry._id === after.id) {
-					isPastAfter = true;
-					held = []; // handled before `after`, by an earlier page
-				} else {
-					held.push(entry);
-				}
-				continue;
-			}
-			// `after` is gone: handle its ties again rather than skip one.
-			isPastAfter = true;
-			for (const tie of held) await handle(tie);
-		}
-		if (scanned > 0 && (scanned >= PAGE_SIZE || entryBytes >= maxBytes)) {
-			return { after: last, isDone: false, scanned, changed, bytesRead: entryBytes };
-		}
-		await handle(entry);
+		if (access === null) continue;
+		await ctx.db.patch(entry._id, { memberAccess: access });
+		changed++;
 	}
-	if (!isPastAfter) for (const tie of held) await handle(tie);
-	return { after: last, isDone: true, scanned, changed, bytesRead: entryBytes };
+	return {
+		cursor: result.continueCursor,
+		isDone: result.isDone,
+		scanned: result.page.length,
+		changed,
+	};
 }
 
 /** Run one page and schedule the next one of the same run. */
@@ -191,13 +130,9 @@ export const processPage = internalMutation({
 		// The walk covers what existed when it was started. The start time lives
 		// on the ledger row, written before the first page is scheduled and kept
 		// by every resume, so a second `run` cannot move it.
-		const result = await sweepPage(ctx, {
-			cutoff: run.startedAt,
-			after: decodeCursor(args.cursor),
-		});
-		const next = encodeCursor(result.after);
+		const result = await sweepPage(ctx, { cutoff: run.startedAt, cursor: args.cursor });
 		await recordMigrationPage(ctx, run, {
-			cursor: next,
+			cursor: result.cursor,
 			isDone: result.isDone,
 			scanned: result.scanned,
 			changed: result.changed,
@@ -212,7 +147,7 @@ export const processPage = internalMutation({
 			await ctx.scheduler.runAfter(
 				0,
 				internal.migrations['0069_restrict_captured_file_knowledge'].processPage,
-				{ cursor: next, generation: run.generation }
+				{ cursor: result.cursor, generation: run.generation }
 			);
 		}
 		return { isDone: result.isDone };

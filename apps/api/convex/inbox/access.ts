@@ -103,8 +103,9 @@ export async function listSharedInboxReaderIds(ctx: QueryCtx | MutationCtx): Pro
  *     (lib/semanticFileAccess.ts), and knowledge carries no mailbox, so only
  *     what the write proved came from an uploaded file is opened to members
  *     (`knowledge.graph.saveEntry`). Migration 0069 restricts every entry that
- *     existed before this release and members could see, since a historical
- *     merge may have folded private text into it.
+ *     existed before this release, since a historical merge may have folded
+ *     private text into it, and a merge never widens access
+ *     (knowledge/maintenance.ts `mergedMemberAccess`).
  * Entries from chat, imported Postbox mail and manual authoring carry none and
  * keep their member-wide visibility. Only someone who can already see an entry
  * can edit its `sourceType`; nobody can edit `memberAccess`.
