@@ -57,6 +57,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 	type MigrationRun,
 } from '../lib/migrationLedger';
 import { resetFolderMembership, startFolderMembership } from '../mail/folderMembership';
@@ -125,7 +126,7 @@ export const startPage = internalMutation({
 		const next = isDone
 			? internal.migrations['0054_backfill_folder_membership'].finish
 			: internal.migrations['0054_backfill_folder_membership'].startPage;
-		await ctx.scheduler.runAfter(0, next, {
+		await scheduleMigrationPage(ctx, run, 0, next, {
 			cursor: continueCursor,
 			generation: run.generation,
 		});
@@ -175,7 +176,9 @@ export const finish = internalMutation({
 				folderId: stalest.folderId,
 			});
 		}
-		await ctx.scheduler.runAfter(
+		await scheduleMigrationPage(
+			ctx,
+			run,
 			FINISH_POLL_MS,
 			internal.migrations['0054_backfill_folder_membership'].finish,
 			{ cursor: null, generation: run.generation }
@@ -243,7 +246,9 @@ async function begin(
 	if (!begun) {
 		return { started: false, reason: 'Already completed; pass restart to run it again' };
 	}
-	await ctx.scheduler.runAfter(
+	await scheduleMigrationPage(
+		ctx,
+		begun,
 		0,
 		internal.migrations['0054_backfill_folder_membership'].startPage,
 		{

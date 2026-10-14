@@ -133,21 +133,15 @@ export function updateBlockers(
 }
 
 /**
- * The error of the page job a running pass is waiting on, or null. `jobs` are
- * the scheduled functions created around the ledger row's last write, oldest
- * first: the transaction that wrote it scheduled the next page, so the newest
- * of this migration's jobs there is the one the pass depends on.
+ * The error of the job a running pass waits on (its row's `pageJob`), or null
+ * while that job is pending, running or done. A job recorded for an older
+ * generation says nothing about the current pass.
  */
-export function failedPageError(
-	migration: string,
-	jobs: readonly { name: string; state: { kind: string; error?: string } }[]
+export function pageJobError(
+	run: { generation: number; pageJob?: { generation: number } },
+	job: { state: { kind: string; error?: string } } | null
 ): string | null {
-	const prefix = `migrations/${migration}:`;
-	let newest: (typeof jobs)[number] | null = null;
-	for (const job of jobs) {
-		// `migrations/0053_x.js:projectPage` and `migrations/0053_x:projectPage` read the same.
-		if (job.name.replace(/\.js(?=:)/, '').startsWith(prefix)) newest = job;
-	}
-	if (newest?.state.kind !== 'failed') return null;
-	return newest.state.error || 'The page failed without an error message';
+	if (!job || run.pageJob?.generation !== run.generation) return null;
+	if (job.state.kind !== 'failed') return null;
+	return job.state.error || 'The page failed without an error message';
 }

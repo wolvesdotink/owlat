@@ -38,6 +38,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 	type MigrationRun,
 } from '../lib/migrationLedger';
 
@@ -154,7 +155,9 @@ export const projectPage = internalMutation({
 			generation: run?.generation ?? null,
 		});
 		if (run && args.chain && !result.isDone) {
-			await ctx.scheduler.runAfter(
+			await scheduleMigrationPage(
+				ctx,
+				run,
 				0,
 				internal.migrations['0053_project_open_commitments'].projectPage,
 				{ cursor: result.cursor, chain: true, generation: run.generation }
@@ -187,7 +190,9 @@ export const run = internalMutation({
 		if (!begun) {
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
-		await ctx.scheduler.runAfter(
+		await scheduleMigrationPage(
+			ctx,
+			begun,
 			0,
 			internal.migrations['0053_project_open_commitments'].projectPage,
 			{ cursor: begun.cursor ?? null, chain: true, generation: begun.generation }

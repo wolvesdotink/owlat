@@ -188,7 +188,9 @@ describe('MigrationsCard', () => {
 			migrations: [row({ migration: '0055_repair_repeated_block_ids', state: 'failed' })],
 		});
 		const alert = wrapper.find('[role="alert"]').text();
-		expect(alert).toContain('Migrations stopped at Repeated block ids in saved emails.');
+		expect(alert).toContain(
+			'No further migrations start: Repeated block ids in saved emails stopped the run.'
+		);
 		expect(alert).toContain('Template k1 has an unreadable block');
 		expect(wrapper.find('button').attributes('disabled')).toBeUndefined();
 	});

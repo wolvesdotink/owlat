@@ -8,8 +8,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	blocksUpdateTo,
 	deriveMigrationState,
-	failedPageError,
 	firstStoppedMigration,
+	pageJobError,
 	planMigrationStarts,
 	updateBlockers,
 	type MigrationState,
@@ -152,34 +152,29 @@ describe('stepping stones', () => {
 	});
 });
 
-describe('failedPageError', () => {
-	const job = (name: string, kind: string, error?: string) => ({
-		name,
+describe('pageJobError', () => {
+	const run = { generation: 3, pageJob: { generation: 3 } };
+	const job = (kind: string, error?: string) => ({
 		state: error === undefined ? { kind } : { kind, error },
 	});
 
-	it("returns the error of the migration's newest page job when it failed", () => {
-		expect(
-			failedPageError('0053_x', [
-				job('migrations/0053_x.js:projectPage', 'success'),
-				job('other/module:fn', 'failed', 'not ours'),
-				job('migrations/0053_x.js:projectPage', 'failed', 'Row k1 cannot be mapped'),
-			])
-		).toBe('Row k1 cannot be mapped');
+	it('returns the error of the job the pass waits on when it failed', () => {
+		expect(pageJobError(run, job('failed', 'Row k1 cannot be mapped'))).toBe(
+			'Row k1 cannot be mapped'
+		);
 	});
 
-	it('ignores an older failure once a newer page job exists', () => {
-		expect(
-			failedPageError('0053_x', [
-				job('migrations/0053_x:projectPage', 'failed', 'old'),
-				job('migrations/0053_x:projectPage', 'pending'),
-			])
-		).toBeNull();
+	it('says nothing while the job is pending, running or done', () => {
+		for (const kind of ['pending', 'inProgress', 'success']) {
+			expect(pageJobError(run, job(kind))).toBeNull();
+		}
 	});
 
-	it('does not confuse a migration with one whose name it prefixes', () => {
+	it('ignores a job recorded for an older generation, or one that is gone', () => {
 		expect(
-			failedPageError('0053_x', [job('migrations/0053_xy:projectPage', 'failed', 'other')])
+			pageJobError({ generation: 4, pageJob: { generation: 3 } }, job('failed', 'old'))
 		).toBeNull();
+		expect(pageJobError({ generation: 3 }, job('failed', 'untracked'))).toBeNull();
+		expect(pageJobError(run, null)).toBeNull();
 	});
 });

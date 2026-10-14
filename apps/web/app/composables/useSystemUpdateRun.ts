@@ -3,7 +3,7 @@ import { apiFetch } from '~/lib/csrfFetch';
 import {
 	isStartedRollout,
 	isUpdaterRefusal,
-	MIGRATIONS_PENDING_STATUS,
+	isMigrationCheckRefusal,
 	updateFailureMessage,
 	updateRequestWasAnswered,
 } from '~/lib/systemUpdate';
@@ -144,7 +144,7 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 			// A refused update never ran, and the route took its row back (or, for
 			// unfinished migrations, never opened one). The open run, if any, is
 			// another rollout, not this one.
-			if (!isUpdaterRefusal(statusCode) && statusCode !== MIGRATIONS_PENDING_STATUS) {
+			if (!isUpdaterRefusal(statusCode) && !isMigrationCheckRefusal(statusCode)) {
 				void closeOpenRun('failed', updateError.value);
 			}
 		}

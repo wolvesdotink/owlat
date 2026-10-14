@@ -124,12 +124,13 @@ describe('POST /api/system/update — gates', () => {
 		expect(callUpdaterMock).not.toHaveBeenCalled();
 	});
 
-	it('still updates when the migration check cannot be read', async () => {
+	it('refuses with 503 when the migration check cannot be read, before anything runs', async () => {
 		queryMock.mockRejectedValue(new Error('Convex unreachable'));
 
-		const result = await callRoute();
-		expect(result.success).toBe(true);
-		expect(callUpdaterMock).toHaveBeenCalledOnce();
+		await expect(callRoute()).rejects.toMatchObject({ statusCode: 503 });
+		expect(mutationMock).not.toHaveBeenCalled();
+		expect(resolveComposeMock).not.toHaveBeenCalled();
+		expect(callUpdaterMock).not.toHaveBeenCalled();
 	});
 
 	it('propagates the platform-admin gate before touching the updater', async () => {

@@ -38,8 +38,8 @@ import { internalMutation } from '../lib/writeFence';
 import { readMigrationRun, type MigrationRun } from '../lib/migrationLedger';
 import {
 	deriveMigrationState,
-	failedPageError,
 	firstStoppedMigration,
+	pageJobError,
 	planMigrationStarts,
 	unfinishedDependencies,
 	updateBlockers as stepBlockers,
@@ -60,14 +60,6 @@ const TICK_MS = 30_000;
  */
 const RUNNER_STALE_MS = 4 * TICK_MS;
 
-/**
- * The page a running pass waits on was scheduled by the transaction that last
- * wrote its ledger row, so its job was created right around `updatedAt`.
- */
-const PAGE_JOB_WINDOW_BEFORE_MS = 1_000;
-const PAGE_JOB_WINDOW_AFTER_MS = 60_000;
-const PAGE_JOB_SCAN_LIMIT = 200;
-
 type Ctx = { db: QueryCtx['db'] };
 
 interface ManifestState {
@@ -75,17 +67,10 @@ interface ManifestState {
 	derived: DerivedState;
 }
 
-/** The newest page job of a running pass failed: its error, or null. */
-async function readFailedPage(ctx: Ctx, migration: string, run: MigrationRun) {
-	const jobs = await ctx.db.system
-		.query('_scheduled_functions')
-		.withIndex('by_creation_time', (q) =>
-			q
-				.gte('_creationTime', run.updatedAt - PAGE_JOB_WINDOW_BEFORE_MS)
-				.lte('_creationTime', run.updatedAt + PAGE_JOB_WINDOW_AFTER_MS)
-		)
-		.take(PAGE_JOB_SCAN_LIMIT);
-	return failedPageError(migration, jobs);
+/** The error of the job a running pass waits on, read by the id its chain recorded. */
+async function readFailedPage(ctx: Ctx, run: MigrationRun): Promise<string | null> {
+	if (!run.pageJob) return null;
+	return pageJobError(run, await ctx.db.system.get(run.pageJob.id));
 }
 
 /** Every manifest migration's ledger row and state, by migration. */
@@ -93,8 +78,7 @@ async function readManifestStates(ctx: Ctx, now: number): Promise<Map<string, Ma
 	const states = new Map<string, ManifestState>();
 	for (const entry of MIGRATION_MANIFEST) {
 		const run = await readMigrationRun(ctx, entry.migration);
-		const failedPage =
-			run?.status === 'running' ? await readFailedPage(ctx, entry.migration, run) : null;
+		const failedPage = run?.status === 'running' ? await readFailedPage(ctx, run) : null;
 		states.set(entry.migration, {
 			run,
 			derived: deriveMigrationState(entry, run, {

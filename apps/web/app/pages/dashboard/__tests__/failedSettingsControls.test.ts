@@ -128,11 +128,12 @@ const CONTROLS: ControlCase[] = [
 	{
 		name: 'system updates',
 		load: () => import('../admin/system/index.vue'),
-		absent: [
-			'dashboard.admin.system.index.updates.neverChecked',
-			'dashboard.admin.system.index.history.empty',
-		],
-		errors: 2,
+		absent: ['dashboard.admin.system.index.updates.neverChecked'],
+	},
+	{
+		name: 'update history',
+		load: () => import('~/components/system/UpdateHistoryCard.vue'),
+		absent: ['dashboard.admin.system.index.history.empty'],
 	},
 ];
 
@@ -154,6 +155,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'SystemMigrationsCard',
 		'SystemPortChecksCard',
 		'SystemReleaseNotes',
+		'SystemUpdateHistoryCard',
 		'SystemUpdateProgress',
 		'SystemVersionCard',
 		'UiConfirmationDialog',

@@ -37,6 +37,14 @@ export const migrationRunTables = {
 		startedAt: v.number(),
 		updatedAt: v.number(),
 		completedAt: v.optional(v.number()),
+		/**
+		 * The job the pass waits on: the next page (or poll) its chain scheduled,
+		 * with the generation it belongs to. Written by `scheduleMigrationPage`
+		 * without moving `updatedAt`, so a failed job is found by id however long
+		 * after the last committed page it ran. Absent on a row written before
+		 * this field existed, until its next scheduled page.
+		 */
+		pageJob: v.optional(v.object({ id: v.id('_scheduled_functions'), generation: v.number() })),
 	}).index('by_migration', ['migration']),
 
 	/**

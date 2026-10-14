@@ -14,6 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type * as ManifestModule from '../migrations/manifest';
+import { scheduleMigrationPage } from '../lib/migrationLedger';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
 
 const sessionMock = vi.hoisted(() => ({ subject: 'admin-user' }));
 
@@ -164,6 +166,9 @@ describe('runPending', () => {
 		expect(state(DEPENDENCY)).toBe('running');
 		expect(state(DEPENDENT)).toBe('pending');
 		expect(during.runner?.status).toBe('active');
+		// The chain recorded the page it waits on, for the live generation.
+		const started = await ledgerRow(t, DEPENDENCY);
+		expect(started!.pageJob?.generation).toBe(started!.generation);
 		expect(await ledgerRow(t, DEPENDENT)).toBeNull();
 
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -258,6 +263,41 @@ describe('runPending', () => {
 		const resumed = await t.mutation(api.migrations.admin.runPending, {});
 		expect(resumed.outcome).toBe('started');
 		expect(resumed.started).toContain(DEPENDENCY);
+	});
+});
+
+describe('failed jobs', () => {
+	it('reports a delayed poll that failed long after the last ledger write, with its error', async () => {
+		expectScheduledFailure('migrations/0054_backfill_folder_membership:finish');
+		const t = setup();
+		await seedAdmin(t);
+		const FOLDERS = '0054_backfill_folder_membership';
+		// 0054 waits for its folder walks by polling `finish` every minute, and
+		// the poll does not move the ledger row: the last write is half an hour old.
+		await seedRun(t, FOLDERS, { status: 'running', updatedAt: Date.now() - 30 * 60_000 });
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('migrationRuns')
+				.withIndex('by_migration', (q) => q.eq('migration', FOLDERS))
+				.unique();
+			// A poll the function rejects when it runs.
+			await scheduleMigrationPage(ctx, row!, 60_000, internal.migrations[FOLDERS].finish, {
+				cursor: null,
+				generation: 'not-a-generation' as unknown as number,
+			});
+		});
+		const before = await t.query(api.migrations.admin.list, {});
+		expect(before.migrations.find((m) => m.migration === FOLDERS)?.state).toBe('running');
+
+		vi.advanceTimersByTime(61_000);
+		await t.finishInProgressScheduledFunctions();
+
+		const listed = await t.query(api.migrations.admin.list, {});
+		const folders = listed.migrations.find((m) => m.migration === FOLDERS)!;
+		expect(folders.state).toBe('failed');
+		// The job's own error where the backend keeps it (convex-test does not),
+		// otherwise a stated fallback; never an empty card.
+		expect(folders.error).toBeTruthy();
 	});
 });
 

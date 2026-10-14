@@ -6,6 +6,7 @@ import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import {
 	MIGRATIONS_PENDING_STATUS,
+	MIGRATIONS_UNVERIFIED_STATUS,
 	UPDATER_REPORT_MARKER,
 	isStartedRollout,
 	isUpdateAttemptId,
@@ -77,15 +78,18 @@ export default defineEventHandler(async (event) => {
 
 	// 0. Stepping stones. A migration a later release's contract depends on has
 	//    to complete before the update (the System page's "Data migrations"
-	//    card names them and runs them). Refused before anything is recorded or
-	//    dispatched. A Convex that cannot answer does not stop the update, for
-	//    the same reason the audit row below does not: the deploy step still
-	//    refuses a schema that rows left by an unfinished migration break.
-	let blockers: { migration: string }[] = [];
+	//    card names them and runs them). Checked before anything is recorded or
+	//    dispatched, and an unanswered check refuses the update too: without it
+	//    nothing says the target's prerequisites are met.
+	let blockers: { migration: string }[];
 	try {
 		blockers = await client.query(api.migrations.admin.updateBlockers, { targetVersion });
 	} catch (err) {
 		console.error('[system/update] could not check migration prerequisites', err);
+		throw createError({
+			statusCode: MIGRATIONS_UNVERIFIED_STATUS,
+			message: 'Could not check the data migrations this update needs. Try again in a moment.',
+		});
 	}
 	if (blockers.length > 0) {
 		const migrations = blockers.map((blocker) => blocker.migration);

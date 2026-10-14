@@ -55,6 +55,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 
 const MIGRATION = '0064_backfill_send_time_profiles';
@@ -188,7 +189,9 @@ export const backfillPage = internalMutation({
 			generation: run.generation,
 		});
 		if (!result.isDone) {
-			await ctx.scheduler.runAfter(
+			await scheduleMigrationPage(
+				ctx,
+				run,
 				0,
 				internal.migrations['0064_backfill_send_time_profiles'].backfillPage,
 				{ cursor: result.cursor, generation: run.generation }
@@ -219,7 +222,9 @@ export const run = internalMutation({
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
 		if (begun.cursor === undefined) await clearOrganizationHistogram(ctx);
-		await ctx.scheduler.runAfter(
+		await scheduleMigrationPage(
+			ctx,
+			begun,
 			0,
 			internal.migrations['0064_backfill_send_time_profiles'].backfillPage,
 			{ cursor: begun.cursor ?? null, generation: begun.generation }

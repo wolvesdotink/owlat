@@ -6444,7 +6444,7 @@
 				"loading": "Datenmigrationen werden geladen…",
 				"runPending": "Ausstehende Migrationen starten",
 				"runnerActive": "Migrationen laufen im Hintergrund. Eine Migration, die auf eine andere wartet, startet, sobald diese abgeschlossen ist.",
-				"runnerStopped": "Die Migrationen sind bei {name} stehen geblieben. Behebe die Ursache und starte erneut: Es geht ab der zuletzt gespeicherten Seite weiter.",
+				"runnerStopped": "Es starten keine weiteren Migrationen: {name} hat den Lauf angehalten. Migrationen, die schon laufen, laufen weiter. Behebe die Ursache und starte erneut: Es geht ab der zuletzt gespeicherten Seite weiter.",
 				"allCompleted": "Alle Migrationen dieser Version sind abgeschlossen.",
 				"summary": "{pending} ausstehend · {running} laufen · {stopped} angehalten · {completed} abgeschlossen",
 				"introducedIn": "Eingeführt in {version}",

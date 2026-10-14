@@ -6444,7 +6444,7 @@
 				"loading": "Loading data migrations…",
 				"runPending": "Run pending migrations",
 				"runnerActive": "Migrations are running in the background. One that waits for another starts once that one has completed.",
-				"runnerStopped": "Migrations stopped at {name}. Fix the cause, then run again: it resumes from its last recorded page.",
+				"runnerStopped": "No further migrations start: {name} stopped the run. Migrations already running carry on. Fix the cause, then run again: it resumes from its last recorded page.",
 				"allCompleted": "Every migration of this release has completed.",
 				"summary": "{pending} pending · {running} running · {stopped} stopped · {completed} completed",
 				"introducedIn": "Introduced in {version}",

@@ -104,6 +104,28 @@ describe('useSystemUpdateRun', () => {
 		expect(mutationMock).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		[412, 'Precondition Failed'],
+		[503, 'Service Unavailable'],
+	])(
+		'leaves the open run alone when the route refused on the migration check (%i)',
+		async (status, statusText) => {
+			apiFetchMock.mockRejectedValue(
+				createFetchError({
+					request: '/api/system/update',
+					response: new Response(null, { status, statusText }),
+					options: { method: 'POST' },
+				} as Parameters<typeof createFetchError>[0])
+			);
+			const run = startedRun();
+
+			await run.confirmUpdate();
+
+			expect(run.updateState.value).toBe('failed');
+			expect(mutationMock).not.toHaveBeenCalled();
+		}
+	);
+
 	it('still closes the open run as failed when the update itself failed', async () => {
 		apiFetchMock.mockRejectedValue(
 			createFetchError({
