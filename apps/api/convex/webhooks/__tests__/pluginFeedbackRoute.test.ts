@@ -38,8 +38,11 @@
  */
 
 import { createHmac } from 'node:crypto';
+import { convexTest } from 'convex-test';
 import { getFunctionName } from 'convex/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { internal } from '../../_generated/api';
+import schema from '../../schema';
 
 // Hoisted with the mock factories: `vi.mock` runs before the module body, so
 // the fixture the factories close over has to be built there too.
@@ -221,6 +224,11 @@ interface ContextOptions {
 	readonly isCompletable?: boolean;
 	/** Whether `ctx.scheduler.runAfter` succeeds — the audit row's own failure. */
 	readonly isSchedulable?: boolean;
+	/**
+	 * Answers the replay table's own mutations (claim, complete, release) — set
+	 * to send them to a real database instead of the canned answers above.
+	 */
+	readonly deliveries?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 
 function fakeContext(options: ContextOptions = {}) {
@@ -236,6 +244,10 @@ function fakeContext(options: ContextOptions = {}) {
 				return { ok: options.isRateLimited !== true, retryAfter: 1_000 };
 			}
 			if (name.includes('authorizeDelivery')) return options.isAuthorized !== false;
+			if (options.deliveries && name.includes('pluginFeedbackDeliveries:')) {
+				if (name.includes(':complete')) completed.push(args);
+				return options.deliveries(name, args);
+			}
 			if (name.includes('pluginFeedbackDeliveries:claim')) return options.claimOutcome ?? 'claimed';
 			if (name.includes('pluginFeedbackDeliveries:complete')) {
 				if (options.isCompletable === false) throw new Error('completion write unavailable');
@@ -261,6 +273,19 @@ function fakeContext(options: ContextOptions = {}) {
 }
 
 const BODY = JSON.stringify({ events: [{ type: 'bounce', id: 'abc' }] });
+
+// The backend's modules for the cases that run a real claim. Two globs merged,
+// because Vite's `import.meta.glob` omits the directory chain it climbed to
+// reach the base — see the note in `adapterRegistry.test.ts`.
+const CONVEX_MODULES = {
+	...import.meta.glob('../../**/*.*s'),
+	...Object.fromEntries(
+		Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+			path.replace(/^\.\.\//, '../../webhooks/'),
+			mod,
+		])
+	),
+};
 
 function sign(body: string, timestampSeconds: number, secret = SECRET): string {
 	return createHmac('sha256', secret).update(`${timestampSeconds}.${body}`).digest('hex');
@@ -1184,6 +1209,39 @@ describe('a plugin whose provider signs with svix', () => {
 		// Identical signed bytes: one delivery, one digest.
 		expect(repeatClaim.deliveryDigest).toBe(firstClaim.deliveryDigest);
 		expect(firstClaim.deliveryDigest).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	it('applies a re-spelled copy of a delivery once, against the real claim (#1328)', async () => {
+		// The signature header is a list that verifies when ANY candidate matches,
+		// so a captured delivery can be re-sent with junk around the real one and
+		// still verify. It must still find the first copy's claim.
+		const t = convexTest(schema, CONVEX_MODULES);
+		const deliveries = (name: string, args: Record<string, unknown>) => {
+			const table = internal.webhooks.pluginFeedbackDeliveries;
+			if (name.endsWith(':claim')) return t.mutation(table.claim, args as never);
+			if (name.endsWith(':complete')) return t.mutation(table.complete, args as never);
+			return t.mutation(table.release, args as never);
+		};
+
+		const original = svixRequest();
+		const first = await handler(fakeContext({ deliveries }).ctx, original);
+		expect(first.status).toBe(200);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+
+		const respelled = svixRequest({
+			headers: {
+				'svix-timestamp': original.headers.get('svix-timestamp')!,
+				'svix-signature': `v1,bm90LWEtc2lnbmF0dXJl  ${original.headers.get('svix-signature')!} v1,${'A'.repeat(43)}=`,
+			},
+		});
+		const second = await handler(fakeContext({ deliveries }).ctx, respelled);
+		expect(second.status).toBe(200);
+		expect(await second.json()).toEqual({ success: true, duplicate: true });
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+
+		const rows = await t.run((ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ pluginId: SVIX_PLUGIN_ID, status: 'completed' });
 	});
 
 	it('still refuses a revoked grant with 403, before the claim is taken', async () => {

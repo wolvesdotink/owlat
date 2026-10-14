@@ -161,6 +161,25 @@ describe('replay-bound plugin inbound signature verification', () => {
 		expect(result).toMatchObject({ ok: false, status: 401 });
 	});
 
+	it.each([
+		['upper-cased', (sig: string) => sig.toUpperCase()],
+		['prefixed with its algorithm', (sig: string) => `sha256=${sig}`],
+		['padded with whitespace', (sig: string) => ` ${sig} `],
+		['followed by a second candidate', (sig: string) => `${sig} ${sig}`],
+	] as const)(
+		'rejects the valid signature %s — one spelling, so one digest (#1328)',
+		async (_label, respell) => {
+			// The digest on this arm covers the signature header as sent, which is only
+			// sound while a verified header has exactly one spelling. These are the
+			// rewrites that would otherwise mint a second claim for the same delivery.
+			vi.stubEnv(SECRET_ENV, SECRET);
+			const result = await verifyPluginReplayBoundSignature(
+				delivery({ signature: respell(signed(nowSeconds)) })
+			);
+			expect(result).toMatchObject({ ok: false, status: 401 });
+		}
+	);
+
 	it('clamps a tolerance beyond the contract ceiling', async () => {
 		// A generated artifact is not proof that the kit that validated it is the
 		// kit running now, so the bound is applied again here.

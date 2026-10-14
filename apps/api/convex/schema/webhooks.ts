@@ -153,8 +153,16 @@ export const webhookTables = {
 		pluginId: v.string(),
 		// Namespaced `plugin.<pluginId>.<localId>` transport kind, for attribution.
 		transportKind: v.string(),
-		// SHA-256 hex of the contract-domain-separated signature; never the
-		// signature itself, which is a live MAC under a shared secret.
+		// SHA-256 hex naming one delivery, domain-separated by plugin and transport
+		// kind (`plugins/inboundSignature.ts`, `deliveryDigestOf`). The
+		// parameterized-HMAC arm hashes the verified signature, never storing it,
+		// since it is a live MAC under a shared secret. The Svix arm (`v2`) hashes
+		// the message id, timestamp and a hash of the body instead, so a re-spelled
+		// signature header or a rotated key keeps one name (#1328). That digest
+		// covers no secret and can be predicted, which is harmless: it is only
+		// claimed after its delivery verified. Rows written under Svix `v1` no
+		// longer match; that matters for at most twice the tolerance (about 30
+		// minutes) after the deploy — see the rollout note there.
 		deliveryDigest: v.string(),
 		claimedAt: v.number(),
 		expiresAt: v.number(),

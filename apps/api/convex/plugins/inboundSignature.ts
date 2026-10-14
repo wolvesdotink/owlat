@@ -282,9 +282,11 @@ const SVIX_DIGEST_SCHEME = 'svix';
  * stored under v1 does not match the same delivery's v2 digest, so a delivery
  * applied just before a deploy could be applied once more after it, inside its
  * still-open window. The rollout that closes that gap: disable the plugin that
- * signs with Svix (its route then answers 403), deploy, wait out the claim
- * retention — twice the contract tolerance, at most 2 × 900 s — and re-enable.
- * Svix retries a refused delivery for hours, so the pause drops nothing.
+ * signs with Svix (its route then answers 403), deploy, and wait MORE than twice
+ * the contract tolerance, measured from disabling — at most just over 30
+ * minutes — before re-enabling it. Every delivery applied before the switch-off
+ * is outside its window by then. A sender that retries refused deliveries loses
+ * nothing in the pause; check that the provider behind the plugin retries a 403.
  */
 const SVIX_DIGEST_VERSION = 'v2';
 
