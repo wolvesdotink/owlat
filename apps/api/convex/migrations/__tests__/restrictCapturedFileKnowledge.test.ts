@@ -1,9 +1,11 @@
 /**
- * Migration 0069 (#1322): legacy captures are matched to their source where
- * the Message-ID names one place; knowledge from an upload is opened to
- * members again, knowledge from a capture or a deleted file stays restricted,
- * and member-visible entries a historical merge could have reached are
- * restricted. Over several pages, idempotent and recorded in the ledger.
+ * Migration 0069 (#1322): one sweep over the knowledge that existed when it
+ * started. Every member-visible entry a historical dedup merge could have
+ * written into (content on more than one line) is restricted, whatever its
+ * source and whether any capture still exists; a single-line entry from an
+ * uploaded file is opened to members; one from a capture or a gone file stays
+ * restricted. No Message-ID is used to widen a capture. Pages are bounded by
+ * bytes as well as rows, always advance, and are recorded in the ledger.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -17,48 +19,49 @@ import {
 	seedMailbox,
 	seedMessage,
 } from '../../mail/__tests__/helpers.testlib';
-import { MIGRATION } from '../0069_restrict_captured_file_knowledge';
+import { MIGRATION, PAGE_SIZE, sweepPage } from '../0069_restrict_captured_file_knowledge';
 import { isInboxDerivedKnowledge } from '../../inbox/access';
 
 const migration = internal.migrations[MIGRATION];
 type T = TestConvex<typeof schema>;
 
 beforeEach(() => {
-	vi.useFakeTimers();
+	// Only the scheduler's timers: creation times and the walk's start time are real.
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 });
 afterEach(() => {
 	vi.useRealTimers();
 });
 
-type FileFields = Partial<
-	Pick<
-		Doc<'semanticFiles'>,
-		'sourceType' | 'captureSource' | 'sourceMailboxId' | 'sourceMessageId' | 'contactIds'
-	>
->;
+/** Let the wall clock move past every row written so far. */
+function tick(): void {
+	const until = Date.now() + 3;
+	while (Date.now() < until) {
+		// spin
+	}
+}
 
-const file = (t: T, fields: FileFields) =>
+const file = (t: T, fields: Partial<Doc<'semanticFiles'>>) =>
 	t.run((ctx) =>
 		ctx.db.insert('semanticFiles', {
 			filename: 'f.txt',
 			mimeType: 'text/plain',
 			fileSize: 1,
-			sourceType: fields.sourceType ?? 'email_attachment',
-			...fields,
+			sourceType: 'email_attachment',
 			version: 1,
 			embedding: [],
 			createdAt: 1,
 			updatedAt: 1,
+			...fields,
 		})
 	);
 
 const entry = (
 	t: T,
-	fields: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'content'> &
-		Partial<Pick<Doc<'knowledgeEntries'>, 'sourceId' | 'contactIds'>>
+	fields: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'content'> & Partial<Doc<'knowledgeEntries'>>
 ) =>
-	t.run(async (ctx) => {
-		const id = await ctx.db.insert('knowledgeEntries', {
+	t.run((ctx) =>
+		ctx.db.insert('knowledgeEntries', {
 			entryType: 'fact',
 			title: fields.content,
 			embedding: [],
@@ -67,143 +70,62 @@ const entry = (
 			createdAt: 1,
 			updatedAt: 1,
 			...fields,
-		});
-		for (const contactId of fields.contactIds ?? []) {
-			await ctx.db.insert('knowledgeEntryContacts', { entryId: id, contactId });
-		}
-		return id;
-	});
-
-const contact = (t: T, email: string) =>
-	t.run((ctx) =>
-		ctx.db.insert('contacts', {
-			email,
-			source: 'api',
-			doiStatus: 'not_required',
-			createdAt: 1,
-			updatedAt: 1,
 		})
 	);
 
-async function runToEnd(t: T) {
-	await t.mutation(migration.run, {});
-	await t.finishAllScheduledFunctions(vi.runAllTimers);
-}
+const read = (t: T, id: Id<'knowledgeEntries'>) => t.run(async (ctx) => (await ctx.db.get(id))!);
 
 describe('0069_restrict_captured_file_knowledge', () => {
-	it('matches unrecorded captures to one source by Message-ID, and only to one', async () => {
+	it('restricts every multi-line member-visible entry and opens single-line upload knowledge', async () => {
 		const t = convexTest(schema, modules);
-		const mailboxA = await seedMailbox(t, { address: 'a@owlat.test' });
-		const mailboxB = await seedMailbox(t, { address: 'b@owlat.test', userId: 'user-B' });
-		await seedFolder(t, mailboxA);
-		await seedFolder(t, mailboxB);
-		await seedMessage(t, mailboxA, { rfc822MessageId: 'only-a@example.com' });
-		await seedMessage(t, mailboxA, { rfc822MessageId: 'both@example.com' });
-		await seedMessage(t, mailboxB, { rfc822MessageId: 'both@example.com' });
-		await t.run((ctx) =>
-			ctx.db.insert('inboundMessages', {
-				messageId: '<team@example.com>',
-				from: 'x@example.com',
-				to: 'support@owlat.test',
-				subject: 's',
-				processingStatus: 'received',
-				receivedAt: 1,
-			})
-		);
-		const toA = await file(t, { sourceMessageId: '<only-a@example.com>' });
-		const toTeam = await file(t, { sourceMessageId: '<team@example.com>' });
-		const ambiguous = await file(t, { sourceMessageId: '<both@example.com>' });
-		const unknown = await file(t, { sourceMessageId: '<nowhere@example.com>' });
-		const postboxNoMailbox = await file(t, {
-			captureSource: 'mailbox',
-			sourceMessageId: '<only-a@example.com>',
-		});
-		// A recorded Team Inbox capture is never re-pointed at a mailbox.
-		const team = await file(t, {
-			captureSource: 'team_inbox',
-			sourceMessageId: '<only-a@example.com>',
-		});
-
-		await runToEnd(t);
-
-		const source = (id: Id<'semanticFiles'>) =>
-			t.run(async (ctx) => {
-				const row = (await ctx.db.get(id))!;
-				return { captureSource: row.captureSource, sourceMailboxId: row.sourceMailboxId };
-			});
-		expect(await source(toA)).toEqual({ captureSource: 'mailbox', sourceMailboxId: mailboxA });
-		expect(await source(toTeam)).toEqual({
-			captureSource: 'team_inbox',
-			sourceMailboxId: undefined,
-		});
-		expect(await source(ambiguous)).toEqual({
-			captureSource: undefined,
-			sourceMailboxId: undefined,
-		});
-		expect(await source(unknown)).toEqual({ captureSource: undefined, sourceMailboxId: undefined });
-		expect(await source(postboxNoMailbox)).toEqual({
-			captureSource: 'mailbox',
-			sourceMailboxId: mailboxA,
-		});
-		expect(await source(team)).toEqual({ captureSource: 'team_inbox', sourceMailboxId: undefined });
-	});
-
-	it('opens upload knowledge, restricts capture, orphan and merge-suspect knowledge, across pages', async () => {
-		const t = convexTest(schema, modules);
-		const sender = await contact(t, 'sender@example.com');
-		const other = await contact(t, 'other@example.com');
 		const upload = await file(t, { sourceType: 'upload' });
-		const capture = await file(t, { captureSource: 'team_inbox', contactIds: [sender] });
-		const unmarked = await file(t, {});
+		const capture = await file(t, { captureSource: 'team_inbox' });
 		const gone = await file(t, { sourceType: 'upload' });
 		await t.run((ctx) => ctx.db.delete(gone));
 
-		const fromUpload = await entry(t, { sourceType: 'file', sourceId: upload, content: 'u' });
-		const fromCapture = await entry(t, { sourceType: 'file', sourceId: capture, content: 'c' });
-		const fromUnmarked = await entry(t, { sourceType: 'file', sourceId: unmarked, content: 'm' });
-		const orphan = await entry(t, {
-			sourceType: 'file',
-			sourceId: gone,
-			content: 'o',
-			contactIds: [other],
-		});
-		// The sender's entries a historical merge could have reached: a merged
-		// survivor carries the loser's content on a new line.
-		const merged = await entry(t, {
-			sourceType: 'manual',
-			content: 'Survivor fact\nprivate fact from a capture',
-			contactIds: [sender],
-		});
-		const singleLine = await entry(t, {
-			sourceType: 'manual',
-			content: 'One plain fact',
-			contactIds: [sender],
-		});
-		// A deleted file's contact is a suspect contact too.
-		const otherMerged = await entry(t, {
-			sourceType: 'chat',
-			content: 'Other survivor\nfolded',
-			contactIds: [other],
-		});
-		// More upload knowledge than one page.
-		const many: Id<'knowledgeEntries'>[] = [];
-		for (let i = 0; i < 45; i++) {
-			many.push(await entry(t, { sourceType: 'file', sourceId: upload, content: `u${i}` }));
-		}
+		const ids = {
+			upload: await entry(t, { sourceType: 'file', sourceId: upload, content: 'Open fact' }),
+			uploadMultiLine: await entry(t, {
+				sourceType: 'file',
+				sourceId: upload,
+				content: 'Upload fact\nfolded in',
+			}),
+			capture: await entry(t, { sourceType: 'file', sourceId: capture, content: 'Private' }),
+			orphan: await entry(t, { sourceType: 'file', sourceId: gone, content: 'Orphan' }),
+			// No capture, no contact link left: a multi-line survivor is restricted anyway.
+			manualMultiLine: await entry(t, {
+				sourceType: 'manual',
+				content: 'Survivor\nprivate fact from a capture',
+			}),
+			chatMultiLine: await entry(t, { sourceType: 'chat', content: 'Chat\nfolded' }),
+			manual: await entry(t, { sourceType: 'manual', content: 'One plain fact' }),
+			teamInbox: await entry(t, { sourceType: 'agent_extracted', content: 'Team\nfact' }),
+		};
+		tick();
+		await t.mutation(migration.run, {});
+		tick();
+		// Written after the walk started: this release's own write, left alone.
+		const later = await entry(t, { sourceType: 'manual', content: 'Written\nafter' });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-		await runToEnd(t);
-
-		const access = (id: Id<'knowledgeEntries'>) => t.run(async (ctx) => (await ctx.db.get(id))!);
-		expect((await access(fromUpload)).memberAccess).toBe('members');
-		for (const id of many) expect((await access(id)).memberAccess).toBe('members');
-		for (const id of [fromCapture, fromUnmarked, orphan, merged, otherMerged]) {
-			const row = await access(id);
-			expect(row.memberAccess, row.content).toBe('restricted');
-			expect(isInboxDerivedKnowledge(row)).toBe(true);
+		expect((await read(t, ids.upload)).memberAccess).toBe('members');
+		for (const key of [
+			'uploadMultiLine',
+			'capture',
+			'orphan',
+			'manualMultiLine',
+			'chatMultiLine',
+		] as const) {
+			const row = await read(t, ids[key]);
+			expect(row.memberAccess, key).toBe('restricted');
+			expect(isInboxDerivedKnowledge(row), key).toBe(true);
 		}
-		const plain = await access(singleLine);
+		const plain = await read(t, ids.manual);
 		expect(plain.memberAccess).toBeUndefined();
 		expect(isInboxDerivedKnowledge(plain)).toBe(false);
+		// Already restricted by its source: nothing to write.
+		expect((await read(t, ids.teamInbox)).memberAccess).toBeUndefined();
+		expect((await read(t, later)).memberAccess).toBeUndefined();
 
 		await t.run(async (ctx) => {
 			const run = await ctx.db
@@ -213,5 +135,60 @@ describe('0069_restrict_captured_file_knowledge', () => {
 			expect(run?.status).toBe('completed');
 		});
 		expect(await t.mutation(migration.run, {})).toMatchObject({ started: false });
+	});
+
+	it('never widens a capture by its Message-ID', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { address: 'a@owlat.test' });
+		await seedFolder(t, mailboxId);
+		// A message in mailbox A with the capture's Message-ID: not proof of origin.
+		await seedMessage(t, mailboxId, { rfc822MessageId: 'reused@example.com' });
+		const unmarked = await file(t, { sourceMessageId: '<reused@example.com>' });
+		const postbox = await file(t, {
+			captureSource: 'mailbox',
+			sourceMessageId: '<reused@example.com>',
+		});
+		tick();
+		await t.mutation(migration.run, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		await t.run(async (ctx) => {
+			for (const id of [unmarked, postbox]) {
+				const row = (await ctx.db.get(id))!;
+				expect(row.sourceMailboxId).toBeUndefined();
+			}
+			expect((await ctx.db.get(unmarked))!.captureSource).toBeUndefined();
+		});
+	});
+
+	it('bounds a page by bytes: rows with full embeddings split across pages that always advance', async () => {
+		const t = convexTest(schema, modules);
+		const upload = await file(t, { sourceType: 'upload' });
+		const embedding = Array.from({ length: 1536 }, (_, i) => i / 1536);
+		const ids: Id<'knowledgeEntries'>[] = [];
+		for (let i = 0; i < 6; i++) {
+			ids.push(
+				await entry(t, { sourceType: 'file', sourceId: upload, content: `fact ${i}`, embedding })
+			);
+		}
+		tick();
+		const cutoff = Date.now();
+
+		// Two rows' worth of bytes: the page stops short of PAGE_SIZE rows.
+		const maxBytes = 2 * 1536 * 8;
+		let cursor: string | null = null;
+		let pages = 0;
+		for (;;) {
+			const result = await t.run((ctx) => sweepPage(ctx, { cutoff, cursor, maxBytes }));
+			pages++;
+			expect(result.scanned).toBeLessThan(PAGE_SIZE);
+			if (result.isDone) break;
+			// A page cut short by bytes still takes at least one row.
+			expect(result.scanned).toBeGreaterThan(0);
+			expect(result.continueCursor).not.toBe(cursor);
+			cursor = result.continueCursor;
+		}
+		expect(pages).toBeGreaterThan(1);
+		for (const id of ids) expect((await read(t, id)).memberAccess).toBe('members');
 	});
 });

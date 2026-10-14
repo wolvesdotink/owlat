@@ -13,12 +13,12 @@
  *     shared mailbox, or an owner/admin, while the mailbox is active and
  *     personal mail is on;
  *   - a Team Inbox capture: the shared-inbox reader rule (inbox/access.ts);
- *   - any other capture FAILS CLOSED to the shared-inbox readers: a Postbox
- *     capture stored before its mailbox was recorded, and one stored before
- *     `captureSource` existed at all, which carries only
- *     `sourceType: 'email_attachment'`. Migration 0069 gives back the ones
- *     whose source it can resolve; the Message-ID alone is not guessed from
- *     (the same message can land in several mailboxes).
+ *   - any other capture FAILS CLOSED to the shared-inbox readers, for good: a
+ *     Postbox capture stored before its mailbox was recorded, and one stored
+ *     before `captureSource` existed at all, which carries only
+ *     `sourceType: 'email_attachment'`. Nothing on those rows proves where they
+ *     came from — a Message-ID can be reused by a sender and held many times by
+ *     a mailbox — so nothing widens them; an admin can capture or share again.
  */
 
 import { v, type Infer } from 'convex/values';

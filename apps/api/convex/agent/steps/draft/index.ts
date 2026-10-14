@@ -149,6 +149,8 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		const recallKnowledge = buildRecallKnowledgeTool({
 			runAction: ctx.runAction,
 			scopeToContact: recallScope,
+			// A Team Inbox draft, read by owners and admins, like the context step.
+			includeInboxDerived: true,
 			root,
 		});
 

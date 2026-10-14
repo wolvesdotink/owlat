@@ -154,7 +154,7 @@ export const runDecay = internalMutation({
 
 // Bound the pairwise comparison and per-merge relation rewrite so one
 // pathological contact can't blow the transaction budget.
-export const DEDUP_MAX_ENTRIES_PER_CONTACT = 200;
+const DEDUP_MAX_ENTRIES_PER_CONTACT = 200;
 const RELATION_REPOINT_CAP = 500;
 const DEDUP_CONTACT_PAGE = 50;
 

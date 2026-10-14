@@ -46,6 +46,14 @@ interface RecallToolArgs {
 	 * or 'org-general-only' when the inbound has no resolved contact. Never
 	 * 'org-wide' on the drafting path. */
 	scopeToContact: Id<'contacts'> | 'org-general-only';
+	/**
+	 * Whether the draft may use knowledge kept to shared-inbox readers
+	 * (inbox/access.ts `isInboxDerivedKnowledge`). Required: every caller decides.
+	 * The Team Inbox draft step passes true — its drafts are read by owners and
+	 * admins. A personal or shared Postbox draft passes false: it is read by the
+	 * mailbox's members, whatever the role of whoever started it.
+	 */
+	includeInboxDerived: boolean;
 	/** The draft's root request, so each recall's query embedding groups under it. */
 	root?: LlmRootContext;
 }
@@ -89,8 +97,7 @@ export function buildRecallKnowledgeTool(args: RecallToolArgs) {
 					// org-wide, so this can only surface org-general OR this contact's
 					// knowledge.
 					scopeToContact: args.scopeToContact,
-					// Drafting a Team Inbox reply, like the context step.
-					includeInboxDerived: true,
+					includeInboxDerived: args.includeInboxDerived,
 					// Flat retrieval — the tool is a targeted fetch-more, not a graph walk.
 					expandGraph: false,
 					...(args.root ? { root: args.root } : {}),

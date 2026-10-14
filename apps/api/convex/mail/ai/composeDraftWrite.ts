@@ -213,6 +213,9 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 				recallKnowledge: buildRecallKnowledgeTool({
 					runAction: ctx.runAction,
 					scopeToContact: input.contactId ?? 'org-general-only',
+					// A Postbox draft is read by the mailbox's members: no knowledge
+					// kept to shared-inbox readers (inbox/access.ts), as in composeDraftLoad.ts.
+					includeInboxDerived: false,
 					root: draftCallRoot,
 				}),
 			}),
