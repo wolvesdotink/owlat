@@ -85,7 +85,16 @@ const DELIVERED_STATES: ReadonlySet<Doc<'unifiedMessages'>['status']> = new Set(
  *     needs an answer;
  *   - released from quarantine, or an informational mail a person wants a
  *     draft for: the message needs an answer after all, so a clock starts from
- *     its arrival when none is running.
+ *     its arrival when none is running;
+ *   - reopened because the reply that answered it bounced (`reopenAnswered`,
+ *     inbox/answeredThread.ts): a reply is owed again, so a clock starts from
+ *     the bounce when none is running. Not from the message's arrival: that
+ *     wait was already judged when the reply went out (`reply_sent` counted
+ *     it met or missed), and the bounce can come days later (the MTA retries
+ *     for up to four), so restarting from arrival would open an overdue clock
+ *     and breach the team for time it could not know about. The bounce is new
+ *     information that a reply is owed, like a new customer message, and gets
+ *     the same next-response target from the moment it arrives.
  */
 export async function settleClockForMessage(
 	ctx: MutationCtx,
@@ -102,11 +111,17 @@ export async function settleClockForMessage(
 		await releaseClockIfNothingOwed(ctx, threadId, message._id);
 		return;
 	}
-	if (OVERRULED_STATES.has(message.processingStatus) && isAwaitingReply(input.to)) {
+	const isReopenedAnswer =
+		(input.to === 'draft_ready' || input.to === 'awaiting_clarification') &&
+		input.reopenAnswered === true;
+	const isOverruled = OVERRULED_STATES.has(message.processingStatus);
+	if ((isOverruled || isReopenedAnswer) && isAwaitingReply(input.to)) {
 		const thread = await ctx.db.get(threadId);
 		if (!thread || thread.status !== 'open') return;
 		const policy = await loadSlaPolicy(ctx);
-		const patch = startClockOnThread(thread, message.receivedAt, Date.now(), policy);
+		// A running or paused clock is never reset (`startClock` keeps it).
+		const startAt = isReopenedAnswer ? input.at : message.receivedAt;
+		const patch = startClockOnThread(thread, startAt, Date.now(), policy);
 		if (Object.keys(patch).length > 0) await ctx.db.patch(threadId, patch);
 	}
 }

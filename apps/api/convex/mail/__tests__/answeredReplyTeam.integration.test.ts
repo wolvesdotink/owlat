@@ -397,6 +397,113 @@ describe('a Team Inbox stash answered by several replies', () => {
 	});
 });
 
+describe('the response clock of a reopened message', () => {
+	const NEXT_RESPONSE_MS = 120 * 60_000;
+	const BOUNCE_AT = NOW + 60_000;
+
+	/** Response targets on (calendar hours), and the thread's clock running from the older mail. */
+	async function withTargets(t: T, th: Thread): Promise<void> {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('inboxSlaPolicies', {
+				isEnabled: true,
+				firstResponseMinutes: 60,
+				nextResponseMinutes: 120,
+				hoursMode: 'calendar',
+				timeZone: 'UTC',
+				businessHours: [],
+				holidays: [],
+				updatedAt: NOW,
+			});
+			await ctx.db.patch(th.threadId, {
+				responseDueAt: NOW + 3_600_000,
+				responseDueKind: 'first',
+				responseClockStartedAt: NOW - 3_000,
+			});
+		});
+	}
+
+	const thread = (t: T, th: Thread) => t.run(async (ctx) => (await ctx.db.get(th.threadId))!);
+
+	it.each(['draft_ready', 'awaiting_clarification'] as const)(
+		'starts a next-response clock from the bounce when it reopens %s',
+		async (status) => {
+			const t = await pushHarness(modules, {});
+			const th = await seedThread(t);
+			await withTargets(t, th);
+			const older = await seedInbound(t, th, {
+				processingStatus: status,
+				receivedAt: NOW - 3_000,
+				...(status === 'draft_ready'
+					? { draftResponse: 'Your order ships Monday.' }
+					: { pendingClarification: { questions: [], askedAt: NOW - 3_000 } }),
+			});
+			const answered = await seedInbound(t, th, {
+				processingStatus: 'approved',
+				draftResponse: 'All orders ship Monday.',
+				receivedAt: NOW,
+			});
+			const sendId = await completeReply(t, th, answered, 'sent');
+			expect((await thread(t, th)).responseDueAt).toBeUndefined(); // answered: clock closed
+
+			await laterBounce(t, sendId);
+
+			expect((await get(t, older)).processingStatus).toBe(status);
+			const reopened = await thread(t, th);
+			expect(reopened.responseDueKind).toBe('next');
+			expect(reopened.responseClockStartedAt).toBe(BOUNCE_AT);
+			expect(reopened.responseDueAt).toBe(BOUNCE_AT + NEXT_RESPONSE_MS);
+		}
+	);
+
+	it('leaves a clock that is already running as it is', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		await seedInbound(t, th, {
+			processingStatus: 'draft_ready',
+			draftResponse: 'Your order ships Monday.',
+			receivedAt: NOW - 3_000,
+		});
+		const answered = await seedInbound(t, th, { processingStatus: 'approved', receivedAt: NOW });
+		const sendId = await completeReply(t, th, answered, 'sent');
+		// The customer wrote again meanwhile: a clock runs for that.
+		const running = { responseDueAt: NOW + 999_000, responseClockStartedAt: NOW + 30_000 };
+		await t.run(async (ctx) =>
+			ctx.db.patch(th.threadId, { ...running, responseDueKind: 'next' as const })
+		);
+
+		await laterBounce(t, sendId);
+
+		expect(await thread(t, th)).toMatchObject(running);
+	});
+
+	it('starts nothing for a person taking over an archived message, as before', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		await t.run(async (ctx) =>
+			ctx.db.patch(th.threadId, {
+				responseDueAt: undefined,
+				responseDueKind: undefined,
+				responseClockStartedAt: undefined,
+			})
+		);
+		const archived = await seedInbound(t, th, {
+			processingStatus: 'archived',
+			archiveReason: 'classifier_spam',
+			receivedAt: NOW - 3_000,
+		});
+
+		const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: archived,
+			input: { to: 'draft_ready', at: NOW, manualTakeover: true },
+		});
+
+		expect(outcome.ok).toBe(true);
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+	});
+});
+
 describe('the stash purge under real transaction limits', () => {
 	it('works through large messages in bounded runs, each one making progress', async () => {
 		const t = convexTest({ schema, modules, transactionLimits: true });
