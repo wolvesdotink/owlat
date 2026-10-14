@@ -492,13 +492,13 @@ function unit(at: number): number[] {
  * source (knowledge/entryDedupe.ts `resolveMemberAccess`). The dedup leaves
  * rows without the stamp, written before this release, alone.
  */
-function stampedEntry(overrides: Parameters<typeof createTestKnowledgeEntry>[0] = {}) {
-	const entry = createTestKnowledgeEntry(overrides);
-	return {
-		...entry,
-		memberAccess:
-			entry.memberAccess ?? (entry.sourceType === 'agent_extracted' ? 'restricted' : 'members'),
-	} as ReturnType<typeof createTestKnowledgeEntry>;
+function stampedEntry(overrides: Record<string, unknown> = {}) {
+	// The factory's default source is Team Inbox extraction.
+	const sourceType = overrides.sourceType ?? 'agent_extracted';
+	return createTestKnowledgeEntry({
+		memberAccess: sourceType === 'agent_extracted' ? 'restricted' : 'members',
+		...overrides,
+	});
 }
 
 async function insertContactEntry(

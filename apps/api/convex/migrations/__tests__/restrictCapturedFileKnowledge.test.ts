@@ -1,13 +1,14 @@
 /**
  * Migration 0069 (#1322): one sweep over the knowledge that existed when it
  * started. A historical dedup merge may have folded captured or Team Inbox
- * text, tags or contact links into any member-visible entry of any source
- * type, and nothing on an entry proves it did not, so every member-visible
- * entry and every file-derived entry becomes owner/admin-only (Marcel,
+ * text, tags or contact links into an entry of any source type, Team Inbox
+ * entries included, and nothing on an entry proves it did not, so every entry
+ * that existed when the walk started becomes owner/admin-only (Marcel,
  * 2026-10-14). Nothing is opened; entries written after the walk started are
- * left to the write-time rules. No Message-ID widens a capture. Pages are
- * bounded by entries and bytes, always advance, and are recorded in the ledger
- * with a start time a second `run` cannot move.
+ * stamped at write time and left alone. No Message-ID widens a capture. Each
+ * page is one paginate bounded by rows and bytes, reads every row once under
+ * production transaction limits, and is recorded in the ledger with a start
+ * time a second `run` cannot move.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';

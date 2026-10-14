@@ -101,14 +101,17 @@ export async function listSharedInboxReaderIds(ctx: QueryCtx | MutationCtx): Pro
  *   - `sourceType: 'file'` WITHOUT `memberAccess: 'members'`. A file captured
  *     from inbound mail keeps its mailbox's permission
  *     (lib/semanticFileAccess.ts), and knowledge carries no mailbox, so only
- *     what the write proved came from an uploaded file is opened to members
- *     (`knowledge.graph.saveEntry`). Migration 0069 restricts every entry that
- *     existed before this release, since a historical merge may have folded
- *     private text into it, and a merge never widens access
- *     (knowledge/maintenance.ts `mergedMemberAccess`).
- * Entries from chat, imported Postbox mail and manual authoring carry none and
- * keep their member-wide visibility. Only someone who can already see an entry
- * can edit its `sourceType`; nobody can edit `memberAccess`.
+ *     what the write proved came from an uploaded file is opened to members.
+ *
+ * Every write of this release stamps `memberAccess` from the source
+ * (knowledge/entryDedupe.ts `resolveMemberAccess`): `members` for an entry from
+ * chat, imported Postbox mail, manual or curated authoring, or an uploaded
+ * file; `restricted` for anything else. A merge never widens it
+ * (knowledge/maintenance.ts `mergedMemberAccess`). Every entry that existed
+ * before this release, Team Inbox included, is restricted by migration 0069,
+ * since a historical merge may have folded private text into it; until then
+ * the dedup leaves those unstamped rows alone. Nobody can edit `sourceType`,
+ * `threadId` after creation, or `memberAccess` (`knowledge.graph.updateEntry`).
  */
 export function isInboxDerivedKnowledge(
 	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'memberAccess'>
