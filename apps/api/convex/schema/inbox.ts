@@ -288,6 +288,11 @@ export const inboxTables = {
 		// When a person last took the reply over from the agent (manualReply.ts).
 		// While set, late pipeline writes are refused; cleared on `→ received`.
 		manualTakeoverAt: v.optional(v.number()),
+		// Counts the message's entries into `security_check`, bumped by the
+		// transition that enters it. A scan action records the run it belongs to
+		// (`agentActions.securityCheckRun`), so a retried or released message's
+		// earlier completed scan never counts for the new run (manualReply.ts).
+		securityCheckRun: v.optional(v.number()),
 		// True while the working draft differs from the agent original (kept in
 		// sync by every revision-appending save — see inbox/draftRevisions.ts).
 		// Used to tell an UNEDITED owner-send of an answered-clarification draft
@@ -368,6 +373,9 @@ export const inboxTables = {
 		modelUsed: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		createdAt: v.number(),
+		// `security_scan` only: the message's `securityCheckRun` when the scan
+		// began (inbox/manualReply.ts).
+		securityCheckRun: v.optional(v.number()),
 	})
 		.index('by_inbound_message', ['inboundMessageId'])
 		// One message's rows in one status. A message gains a row per step per

@@ -306,8 +306,9 @@ function confirmOrphanClear() {
 									<ul class="mt-1.5 space-y-0.5">
 										<li v-for="secret in unsetSecrets" :key="secret.key">
 											<code class="text-xs text-text-tertiary">{{ secret.envVar }}</code>
-											<span class="text-text-tertiary">
-												{{
+											<span class="text-text-tertiary"
+												>{{ ' '
+												}}{{
 													t('dashboard.admin.instance.plugins.detail.settings.secretLabelSuffix', {
 														label: secret.label,
 													})

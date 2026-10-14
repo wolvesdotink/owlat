@@ -1100,11 +1100,12 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									</p>
 									<DesktopDnsRecordList v-if="dnsRecords.length" :records="displayDnsRecords" />
 									<p v-else class="text-xs text-text-secondary">
-										{{ t('desktop.setup.dns.enterDomain') }}
-										<template v-if="isRemoteTarget">
-											{{ t('desktop.setup.dns.enterDomainRemote') }}</template
+										{{ t('desktop.setup.dns.enterDomain')
+										}}<template v-if="isRemoteTarget"
+											>{{ ' ' }}{{ t('desktop.setup.dns.enterDomainRemote') }}</template
+										><template v-else
+											>{{ ' ' }}{{ t('desktop.setup.dns.enterDomainLocal') }}</template
 										>
-										<template v-else> {{ t('desktop.setup.dns.enterDomainLocal') }}</template>
 									</p>
 									<p v-if="dnsRecords.length" class="mt-2 text-xs text-text-secondary">
 										{{ t('desktop.setup.dns.tlsHint') }}
