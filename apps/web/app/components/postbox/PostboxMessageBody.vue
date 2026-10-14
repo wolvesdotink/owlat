@@ -350,8 +350,8 @@ watch(trackerDetection, (detection) => emit('trackers', detection), { immediate:
 const hasRemoteImages = computed(() => render.value.hasRemoteImages);
 
 // Exactly one banner sits above the body; which one is a pure function of the
-// render's facts (utils/postboxImageAllowlist), so the four-way choice is
-// unit-tested without mounting this component.
+// render's facts (utils/postboxImageAllowlist), so the choice between the
+// banner states is unit-tested without mounting this component.
 const imageBanner = computed(() =>
 	resolvePostboxImageBanner({
 		hasRemoteImages: hasRemoteImages.value,

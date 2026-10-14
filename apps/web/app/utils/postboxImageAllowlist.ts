@@ -13,8 +13,9 @@
  *      the grant on — a malformed `From` offers no "Always for…" affordance,
  *      because the grant would key on something no message can match.
  *
- * The banner state machine lives here too: the reader renders exactly one of
- * four states, and which one is a pure function of the render's facts.
+ * The banner state machine lives here too: the reader renders exactly one
+ * banner state (see `PostboxImageBannerState`), and which one is a pure
+ * function of the render's facts.
  */
 
 /** A stored grant, as the settings list and the reader both consume it. */
