@@ -76,19 +76,20 @@ const inFlight = new Map<string, Promise<unknown>>();
  * Run `fetch` for `domain` at DNS id `id`, unless that id is backed off or the
  * domain's fetch budget is spent (then `null`). A rejection from `fetch`
  * records the failure and is passed on. Concurrent calls for the same domain
- * and id share one run.
+ * and id share one run. `maxInFlight` is the coalescing-map cap (a test seam).
  */
 export function gatedPolicyFetch<T>(
 	redis: Redis,
 	domain: string,
 	id: string,
-	fetch: () => Promise<T>
+	fetch: () => Promise<T>,
+	maxInFlight = MAX_IN_FLIGHT
 ): Promise<T | null> {
 	const key = `${domain}\n${id}`;
 	const running = inFlight.get(key) as Promise<T | null> | undefined;
 	if (running) return running;
 
-	const run = (async (): Promise<T | null> => {
+	const run: Promise<T | null> = (async (): Promise<T | null> => {
 		if (await isBackedOff(redis, domain, id)) return null;
 		if (!(await takeFetchBudget(redis, domain))) {
 			logger.warn({ domain }, 'MTA-STS policy fetch budget spent; not fetching');
@@ -100,8 +101,12 @@ export function gatedPolicyFetch<T>(
 			await recordFailure(redis, domain, id);
 			throw err;
 		}
-	})().finally(() => inFlight.delete(key));
-	if (inFlight.size < MAX_IN_FLIGHT) inFlight.set(key, run);
+	})().finally(() => {
+		// Only remove our own entry: a run started while the map was full is
+		// untracked, and a later run for the same key may hold the slot now.
+		if (inFlight.get(key) === run) inFlight.delete(key);
+	});
+	if (inFlight.size < maxInFlight) inFlight.set(key, run);
 	return run;
 }
 

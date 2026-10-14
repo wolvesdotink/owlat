@@ -206,6 +206,42 @@ describe('gatedPolicyFetch', () => {
 			expect(await redis.zcard(FAILED_KEY)).toBe(1);
 		});
 
+		it('an untracked run finishing does not evict a later tracked run for its key', async () => {
+			// Cap 1: a pending fetch on another domain fills the map, so run A for
+			// (example.com, id-a) is untracked. Once the slot frees, run B for the
+			// same key is tracked. A settling must leave B's entry alone.
+			const pending = () => {
+				let release!: (value: string) => void;
+				const fetch = vi.fn(() => new Promise<string>((resolve) => (release = resolve)));
+				return { fetch, release: (value: string) => release(value) };
+			};
+			const filler = pending();
+			const a = pending();
+			const b = pending();
+			const third = vi.fn(() => Promise.resolve('third'));
+
+			const fillerRun = gatedPolicyFetch(redis, 'other.example', 'id-x', filler.fetch, 1);
+			const aRun = gatedPolicyFetch(redis, DOMAIN, 'id-a', a.fetch, 1);
+			await vi.waitFor(() => expect(filler.fetch).toHaveBeenCalled());
+			await vi.waitFor(() => expect(a.fetch).toHaveBeenCalled());
+
+			filler.release('filler');
+			await fillerRun;
+			const bRun = gatedPolicyFetch(redis, DOMAIN, 'id-a', b.fetch, 1);
+			await vi.waitFor(() => expect(b.fetch).toHaveBeenCalled());
+
+			a.release('a');
+			expect(await aRun).toBe('a');
+			// B is still pending and still tracked: this call joins it.
+			const thirdRun = gatedPolicyFetch(redis, DOMAIN, 'id-a', third, 1);
+			b.release('b');
+
+			expect(await Promise.all([bRun, thirdRun])).toEqual(['b', 'b']);
+			expect(third).not.toHaveBeenCalled();
+			// Two of the domain's budget slots, not three.
+			expect(await redis.get(BUDGET_KEY)).toBe('2');
+		});
+
 		it('does not coalesce different ids', async () => {
 			const fetch = vi.fn(() => Promise.resolve('policy'));
 
