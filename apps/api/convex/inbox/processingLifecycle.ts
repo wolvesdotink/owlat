@@ -46,12 +46,9 @@ import {
 	transitionInputValidator,
 	type TransitionOutcome,
 } from './processingLifecycle/types';
-import { dispatch, notifyClarification } from './processingLifecycle/effects';
-import {
-	isClarificationLive,
-	notRemindedYet,
-	resolveClarificationRecipients,
-} from './clarificationHold';
+import { dispatch } from './processingLifecycle/effects';
+import { isClarificationLive } from './clarificationHold';
+import { logError } from '../lib/runtimeLog';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
 import { inboxRetryPlan } from '@owlat/shared/inboxRetry';
 import {
@@ -365,30 +362,35 @@ export const reconcileAbandonedClarifications = internalMutation({
 			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'awaiting_clarification'))
 			.paginate({ numItems: CLARIFICATION_REMINDER_PAGE, cursor: args.cursor ?? null });
 
-		let reminded = 0;
+		// First, for every held row whatever its age: keep the Answer queue's
+		// index right (`isThreadSettled`). A row parked before the index existed
+		// is stamped on the first run after deploy, so legacy settled rows never
+		// pile up in front of live questions. Then collect the overdue ones.
+		const overdue: Id<'inboundMessages'>[] = [];
 		for (const message of page.page) {
-			// First, for every held row whatever its age: keep the Answer queue's
-			// index right (`isThreadSettled`). A row parked before the index
-			// existed is stamped on the first run after deploy, so legacy settled
-			// rows never pile up in front of live questions.
 			const isLive = await isClarificationLive(ctx, message);
 			if (!isLive !== (message.isThreadSettled === true)) {
 				await ctx.db.patch(message._id, { isThreadSettled: isLive ? undefined : true });
 			}
-			// Then whether to ask again. A conversation someone resolved or closed
-			// needs no answer, and a notice points at a conversation: without one
-			// there is nobody to ask.
 			const pending = message.pendingClarification;
-			if (!isLive || !pending || pending.askedAt > cutoff || !message.threadId) continue;
-			// Each person who has to answer now is asked again once: an assignee
-			// who left or lost the role is replaced by the readers, and a new
-			// assignee hears of it, but nobody is reminded twice.
-			const eligible = await resolveClarificationRecipients(ctx, message);
-			const fresh = await notRemindedYet(ctx, message._id, eligible);
-			if (fresh.length === 0) continue;
-			await notifyClarification(ctx, message._id, fresh, { isReminder: true });
-			await ctx.db.patch(message._id, { pendingClarification: { ...pending, remindedAt: now } });
-			reminded++;
+			if (isLive && pending && pending.askedAt <= cutoff && message.threadId) {
+				overdue.push(message._id);
+			}
+		}
+
+		// Then ask again, as a sub-transaction: whatever happens to the sends
+		// (./clarificationReminders.ts caps them per run), the bookkeeping above
+		// commits.
+		let reminded = 0;
+		if (overdue.length > 0) {
+			try {
+				({ reminded } = await ctx.runMutation(
+					internal.inbox.clarificationReminders.remindHeldClarifications,
+					{ inboundMessageIds: overdue }
+				));
+			} catch (error) {
+				logError('[Clarification reminder] sending failed; the next run tries again:', error);
+			}
 		}
 
 		if (!page.isDone) {

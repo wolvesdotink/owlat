@@ -826,6 +826,7 @@ import type * as inbox_clarificationLog from '../inbox/clarificationLog.js';
 import type * as inbox_clarificationLocalize from '../inbox/clarificationLocalize.js';
 import type * as inbox_clarificationMemory from '../inbox/clarificationMemory.js';
 import type * as inbox_clarificationMemoryMatch from '../inbox/clarificationMemoryMatch.js';
+import type * as inbox_clarificationReminders from '../inbox/clarificationReminders.js';
 import type * as inbox_clarificationSlots from '../inbox/clarificationSlots.js';
 import type * as inbox_clarifyJudge from '../inbox/clarifyJudge.js';
 import type * as inbox_decisionFeedback from '../inbox/decisionFeedback.js';
@@ -2574,6 +2575,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/clarificationLocalize': typeof inbox_clarificationLocalize;
 	'inbox/clarificationMemory': typeof inbox_clarificationMemory;
 	'inbox/clarificationMemoryMatch': typeof inbox_clarificationMemoryMatch;
+	'inbox/clarificationReminders': typeof inbox_clarificationReminders;
 	'inbox/clarificationSlots': typeof inbox_clarificationSlots;
 	'inbox/clarifyJudge': typeof inbox_clarifyJudge;
 	'inbox/decisionFeedback': typeof inbox_decisionFeedback;

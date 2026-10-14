@@ -25,6 +25,7 @@ import {
 import { pushHarness, setMemberRole } from '../push/__tests__/pushFixtures';
 import { HELD_GAP_DRAFT_REASON, UNASKABLE_GAP_REASON } from '../lib/heldGapDraft';
 import { transition as threadTransition } from '../inbox/threads/module';
+import { withCreationTime } from './helpers/creationTimeSeam';
 
 vi.mock('../lib/sessionOrganization', async () => ({
 	...(await vi.importActual('../lib/sessionOrganization')),
@@ -492,4 +493,31 @@ describe('settlement sync', () => {
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 		expect(await flagged()).toBe(0);
 	});
+
+	// Rows created in the same instant, the page boundary among them: a
+	// timestamp alone cannot tell them apart, the paginate cursor can.
+	it.each([
+		['a settle', 'open', 'resolved', 120],
+		['a reopen', 'resolved', 'open', 0],
+	] as const)(
+		'%s reaches every held row sharing the boundary time',
+		async (_case, from, to, settled) => {
+			vi.useFakeTimers();
+			const t = await pushHarness(modules);
+			const flag = from === 'resolved' ? { isThreadSettled: true } : {};
+			const { threadId } = await seed(t, { ...heldNow(), ...flag }, { status: from });
+			await withCreationTime(Date.now() + 100, () =>
+				seedMany(t, threadId, 119, { ...heldNow(), ...flag })
+			);
+			const all = () => t.run(async (ctx) => ctx.db.query('inboundMessages').collect());
+			expect(new Set((await all()).map((m) => m._creationTime)).size).toBe(2);
+
+			await t.run((ctx) =>
+				threadTransition(ctx, { threadId, input: { kind: 'status_change', to, source: 'user' } })
+			);
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			expect((await all()).filter((m) => m.isThreadSettled === true)).toHaveLength(settled);
+		}
+	);
 });

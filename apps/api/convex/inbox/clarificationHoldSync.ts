@@ -8,15 +8,16 @@ import { internalMutation } from '../lib/writeFence';
 import { syncHeldPage } from './clarificationHold';
 
 /**
- * The next page. It applies the thread's status as it is NOW, not as it was
- * when the page was scheduled, so a settle and a reopen racing each other
- * always end on the thread's last state.
+ * The next page, from `cursor` (null: from the start). Paged with Convex's
+ * own cursor, which breaks ties between rows created in the same instant; it
+ * applies the thread's status at the moment it runs (`syncHeldPage`).
  */
 export const syncHeldClarificationsPage = internalMutation({
-	args: { threadId: v.id('conversationThreads'), after: v.number() },
+	args: {
+		threadId: v.id('conversationThreads'),
+		cursor: v.union(v.string(), v.null()),
+	},
 	handler: async (ctx, args) => {
-		const thread = await ctx.db.get(args.threadId);
-		if (!thread) return;
-		await syncHeldPage(ctx, args.threadId, thread.status, args.after);
+		await syncHeldPage(ctx, args.threadId, args.cursor);
 	},
 });
