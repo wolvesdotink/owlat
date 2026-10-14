@@ -51,13 +51,12 @@ max_age: 86400`;
 		expect(policy.mx).toHaveLength(4);
 	});
 
-	it('should handle missing max_age (defaults to 86400)', () => {
+	it('should reject a policy with no max_age', () => {
 		const text = `version: STSv1
 mode: enforce
 mx: *.example.com`;
 
-		const policy = parseStsPolicy(text, 'v1');
-		expect(policy.maxAge).toBe(86400);
+		expect(() => parseStsPolicy(text, 'v1')).toThrow(/max_age/);
 	});
 
 	it('should ignore blank lines and extra whitespace', () => {
@@ -73,14 +72,13 @@ max_age: 3600`;
 		expect(policy.mx).toEqual(['*.example.com']);
 	});
 
-	it('should default mode to none for unknown values', () => {
+	it('should reject an unknown mode rather than default to none', () => {
 		const text = `version: STSv1
 mode: invalid
 mx: *.example.com
 max_age: 86400`;
 
-		const policy = parseStsPolicy(text, 'v1');
-		expect(policy.mode).toBe('none');
+		expect(() => parseStsPolicy(text, 'v1')).toThrow(/mode/);
 	});
 });
 

@@ -12,6 +12,10 @@
  *   resolutions cannot slip through;
  * - a 3xx is refused, never followed ("HTTP 3xx redirects MUST NOT be
  *   followed"), so the GET can't be bounced to plaintext HTTP or another host;
+ * - only a 200 with media type text/plain is a policy (§3.3); a 204 or 206 is
+ *   not an empty policy;
+ * - the certificate must name the host in a DNS subjectAltName (§3.3 follows
+ *   RFC 6125, which drops the CN fallback Node still allows);
  * - the body is capped at {@link STS_MAX_POLICY_BYTES} decoded bytes, declared
  *   (Content-Length) and actual, and the response is destroyed past the cap;
  * - the whole exchange, body included, is bounded by {@link STS_FETCH_TIMEOUT}.
@@ -26,6 +30,7 @@ import { lookup as dnsLookup, type LookupAddress, type LookupAllOptions } from '
 import type { IncomingMessage } from 'node:http';
 import { request } from 'node:https';
 import type { LookupFunction } from 'node:net';
+import { checkServerIdentity, type PeerCertificate } from 'node:tls';
 import { domainToASCII } from 'node:url';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import type { Readable } from 'node:stream';
@@ -105,6 +110,19 @@ function guardedLookup(
 	};
 }
 
+/**
+ * Node's checkServerIdentity falls back to the subject CN when a cert has no
+ * DNS subjectAltName. Refuse that case first, then run the normal name and
+ * wildcard check. Chain and expiry are still verified by TLS itself.
+ */
+function requireDnsSubjectAltName(hostname: string, cert: PeerCertificate): Error | undefined {
+	const names = (cert.subjectaltname ?? '').split(',').map((name) => name.trim());
+	if (!names.some((name) => name.startsWith('DNS:'))) {
+		return new Error(`MTA-STS policy host ${hostname} certificate has no DNS subjectAltName`);
+	}
+	return checkServerIdentity(hostname, cert);
+}
+
 /** Undo a Content-Encoding the server applied even though we asked for identity. */
 function decodedBody(response: IncomingMessage): Readable {
 	const encoding = (response.headers['content-encoding'] ?? 'identity').trim().toLowerCase();
@@ -159,8 +177,9 @@ function readCapped(response: IncomingMessage, maxBytes: number): Promise<Buffer
 
 /**
  * GET the policy file for `recipientDomain` and return its text. Throws on a
- * malformed domain, a non-public policy host, a redirect, a non-2xx status, a
- * body over the cap, an unsupported encoding, a TLS failure or the timeout.
+ * malformed domain, a non-public policy host, a redirect, any status but 200,
+ * a media type other than text/plain, a body over the cap, an unsupported
+ * encoding, a TLS failure or the timeout.
  */
 export async function fetchStsPolicyText(
 	recipientDomain: string,
@@ -190,6 +209,7 @@ export async function fetchStsPolicyText(
 				method: 'GET',
 				headers: { 'User-Agent': USER_AGENT, 'Accept-Encoding': 'identity' },
 				lookup,
+				checkServerIdentity: requireDnsSubjectAltName,
 				signal,
 				agent: false,
 				...(transport.ca ? { ca: transport.ca } : {}),
@@ -217,10 +237,15 @@ export async function fetchStsPolicyText(
 		if (status >= 300 && status < 400) {
 			throw new Error(`MTA-STS policy fetch refused redirect: ${status}`);
 		}
-		if (status < 200 || status >= 300) {
+		if (status !== 200) {
 			throw new Error(
 				`MTA-STS policy fetch failed: ${status} ${response.statusMessage ?? ''}`.trim()
 			);
+		}
+
+		const mediaType = (response.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
+		if (mediaType !== 'text/plain') {
+			throw new Error(`MTA-STS policy media type is ${mediaType || 'missing'}, not text/plain`);
 		}
 
 		const declaredLength = Number(response.headers['content-length']);

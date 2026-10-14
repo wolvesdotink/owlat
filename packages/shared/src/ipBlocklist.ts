@@ -104,6 +104,9 @@ export function isDisallowedIpAddress(ip: string): boolean {
 	if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
 	if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
 	if ((first & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+	// 64:ff9b:1::/48 (RFC 8215 local-use NAT64) may translate to private IPv4,
+	// and the embedding is network-specific, so the whole prefix is internal.
+	if (first === 0x0064 && hextets[1] === 0xff9b && hextets[2] === 0x0001) return true;
 
 	// Every form that embeds a real IPv4 destination in the low 32 bits is
 	// classified by that IPv4, not by its prefix: ::ffff:a.b.c.d (v4-mapped),

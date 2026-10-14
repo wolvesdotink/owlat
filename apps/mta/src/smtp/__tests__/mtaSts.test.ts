@@ -21,9 +21,9 @@ import {
 	parseStsPolicy,
 	isMxAllowed,
 	fetchStsPolicy,
-	STS_MAX_MX_ENTRIES,
-	STS_MAX_POLICY_LINES,
+	InvalidStsPolicyError,
 } from '../mtaSts.js';
+import { logger } from '../../monitoring/logger.js';
 import { fetchStsPolicyText } from '../mtaStsFetch.js';
 import { resolveTxt } from 'dns/promises';
 import {
@@ -47,7 +47,7 @@ function policyBody(opts: { mode?: string; mx?: string[]; maxAge?: number | stri
 	const lines = ['version: STSv1'];
 	lines.push(`mode: ${opts.mode ?? 'enforce'}`);
 	for (const mx of opts.mx ?? ['*.example.com']) lines.push(`mx: ${mx}`);
-	if (opts.maxAge !== undefined) lines.push(`max_age: ${opts.maxAge}`);
+	lines.push(`max_age: ${opts.maxAge ?? 86400}`);
 	return lines.join('\n');
 }
 
@@ -70,24 +70,38 @@ describe('mtaSts', () => {
 	});
 
 	describe('parseStsPolicy — version validation (RFC 8461 §3.1)', () => {
+		// A body that is not a valid policy throws (the fetch-failure path), so it
+		// can never overwrite a cached policy the way a mode:'none' result would.
 		it('rejects a body with no version line', () => {
-			const policy = parseStsPolicy('mode: enforce\nmx: *.example.com\nmax_age: 86400', 'id-1');
-			expect(policy.mode).toBe('none');
-			expect(policy.mx).toEqual([]);
+			expect(() =>
+				parseStsPolicy('mode: enforce\nmx: *.example.com\nmax_age: 86400', 'id-1')
+			).toThrow(InvalidStsPolicyError);
 		});
 
 		it('rejects a future STSv2 body', () => {
-			const policy = parseStsPolicy(
-				'version: STSv2\nmode: enforce\nmx: *.example.com\nmax_age: 86400',
-				'id-1'
-			);
-			expect(policy.mode).toBe('none');
-			expect(policy.mx).toEqual([]);
+			expect(() =>
+				parseStsPolicy('version: STSv2\nmode: enforce\nmx: *.example.com\nmax_age: 86400', 'id-1')
+			).toThrow(InvalidStsPolicyError);
 		});
 
 		it('rejects an HTML error page served instead of a policy', () => {
-			const policy = parseStsPolicy('<html><body>404 Not Found</body></html>', 'id-1');
-			expect(policy.mode).toBe('none');
+			expect(() => parseStsPolicy('<html><body>404 Not Found</body></html>', 'id-1')).toThrow(
+				InvalidStsPolicyError
+			);
+		});
+
+		it('rejects a missing or unknown mode', () => {
+			expect(() =>
+				parseStsPolicy('version: STSv1\nmx: *.example.com\nmax_age: 86400', 'id-1')
+			).toThrow(/mode is missing/);
+			expect(() =>
+				parseStsPolicy('version: STSv1\nmode: strict\nmx: *.example.com\nmax_age: 86400', 'id-1')
+			).toThrow(/mode is strict/);
+		});
+
+		it('accepts an explicit mode: none policy, which is not an error', () => {
+			const policy = parseStsPolicy('version: STSv1\nmode: none\nmax_age: 3600', 'id-1');
+			expect(policy).toMatchObject({ mode: 'none', mx: [], maxAge: 3600 });
 		});
 
 		it('accepts a valid STSv1 policy', () => {
@@ -133,27 +147,24 @@ describe('mtaSts', () => {
 			expect(policy.maxAge).toBe(0);
 		});
 
-		it('never accepts a negative max_age', () => {
-			const policy = parseStsPolicy(
-				'version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: -5',
-				'id-1'
-			);
-			expect(policy.maxAge).toBeGreaterThanOrEqual(0);
-			// Negative is invalid → falls back to the 1-day default for an enforce policy.
-			expect(policy.maxAge).toBe(86400);
+		it.each([
+			['-5', 'negative'],
+			['abc', 'non-numeric'],
+			['1.5', 'fractional'],
+			['', 'empty'],
+		])('rejects max_age %j (%s)', (value) => {
+			expect(() =>
+				parseStsPolicy(
+					`version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: ${value}`,
+					'id-1'
+				)
+			).toThrow(/max_age/);
 		});
 
-		it('falls back to the default for a non-numeric max_age', () => {
-			const policy = parseStsPolicy(
-				'version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: abc',
-				'id-1'
-			);
-			expect(policy.maxAge).toBe(86400);
-		});
-
-		it('falls back to the default for an absent max_age', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com', 'id-1');
-			expect(policy.maxAge).toBe(86400);
+		it('rejects a policy with no max_age', () => {
+			expect(() =>
+				parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com', 'id-1')
+			).toThrow(/max_age is missing/);
 		});
 	});
 
@@ -295,6 +306,102 @@ describe('mtaSts', () => {
 		});
 	});
 
+	// RFC 8461 §3.2/§5: a policy applies for max_age seconds from when it was
+	// fetched. The 300 s refetch throttle must not stretch that lifetime.
+	describe('getStsTlsOptions — max_age expiry', () => {
+		const ENFORCE_OPTS = {
+			requireTLS: true,
+			rejectUnauthorized: true,
+			allowedMxHosts: ['mail.example.com'],
+			policyMode: 'enforce',
+		};
+
+		async function cacheEnforce(maxAge: number, ageSeconds: number, version = 'id-1') {
+			await redis.set(
+				`${CACHE_PREFIX}example.com`,
+				JSON.stringify({
+					mode: 'enforce',
+					mx: ['mail.example.com'],
+					maxAge,
+					version,
+					cachedAt: Date.now() - ageSeconds * 1000,
+				})
+			);
+		}
+
+		it('applies an unexpired short-lived policy without a fetch', async () => {
+			await cacheEnforce(600, 60);
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			[0, 1],
+			[1, 2],
+			[60, 120],
+		])(
+			'does not apply a max_age %i policy %is old, even with a matching id, inside the refetch throttle',
+			async (maxAge, age) => {
+				await cacheEnforce(maxAge, age);
+				resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+
+				const opts = await getStsTlsOptions(redis, 'example.com');
+				expect(opts.policyMode).toBe('none');
+				expect(fetchTextMock).not.toHaveBeenCalled();
+			}
+		);
+
+		it('does not fall back to an expired policy when the refresh fails', async () => {
+			await cacheEnforce(60, 400);
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+			const opts = await getStsTlsOptions(redis, 'example.com');
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+			expect(opts.policyMode).toBe('none');
+		});
+
+		it('refetches an expired policy once the throttle window has passed', async () => {
+			await cacheEnforce(60, 400);
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mode: 'testing', mx: ['mail.example.com'], maxAge: 86400 }));
+
+			const opts = await getStsTlsOptions(redis, 'example.com');
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+			expect(opts.policyMode).toBe('testing');
+		});
+
+		it('applies a fresh max_age 0 policy once, then not again inside the throttle', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'], maxAge: 0 }));
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			// Kept for the throttle window, but not applied past its zero lifetime.
+			expect(await redis.ttl(`${CACHE_PREFIX}example.com`)).toBe(300);
+			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
+
+		it('treats a cache entry without cachedAt as absent and refetches', async () => {
+			await redis.set(
+				`${CACHE_PREFIX}example.com`,
+				JSON.stringify({
+					mode: 'enforce',
+					mx: ['mail.example.com'],
+					maxAge: 86400,
+					version: 'id-1',
+				})
+			);
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'] }));
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
+	});
+
 	describe('isMxAllowed', () => {
 		it('matches exact and wildcard patterns', () => {
 			expect(isMxAllowed('mail.google.com', ['*.google.com'])).toBe(true);
@@ -331,33 +438,33 @@ describe('mtaSts', () => {
 		});
 	});
 
-	// Issue #1326: the byte cap still admits thousands of `mx:` lines, all of
-	// which would be cached and logged. Overflow is a fetch failure (throw), not
-	// mode 'none', so it can't overwrite a cached enforce policy.
-	describe('parseStsPolicy — line and mx limits', () => {
-		const withMx = (count: number) =>
-			policyBody({ mx: Array.from({ length: count }, (_, i) => `mx${i}.example.com`) });
+	// RFC 8461 §3.2: unknown fields are ignored, and nothing caps the mx count.
+	// The fetch's 64 KiB byte cap is what bounds parsing.
+	describe('parseStsPolicy — large and extended policies', () => {
+		const manyMx = Array.from({ length: 500 }, (_, i) => `mx${i}.example.com`);
 
-		it(`accepts ${STS_MAX_MX_ENTRIES} mx entries`, () => {
-			expect(parseStsPolicy(withMx(STS_MAX_MX_ENTRIES), 'id-1').mx).toHaveLength(
-				STS_MAX_MX_ENTRIES
-			);
+		it('accepts a valid policy with hundreds of mx entries', () => {
+			expect(parseStsPolicy(policyBody({ mx: manyMx }), 'id-1').mx).toEqual(manyMx);
 		});
 
-		it('throws past the mx limit', () => {
-			expect(() => parseStsPolicy(withMx(STS_MAX_MX_ENTRIES + 1), 'id-1')).toThrow(/mx entries/);
+		it('ignores unknown extension fields, however many', () => {
+			const ext = Array.from({ length: 1000 }, (_, i) => `x-ext${i}: 1`).join('\n');
+			const policy = parseStsPolicy(`${policyBody()}\n${ext}`, 'id-1');
+			expect(policy).toMatchObject({ mode: 'enforce', mx: ['*.example.com'] });
 		});
 
-		it('throws past the line limit, whatever the lines are', () => {
-			const filler = Array.from({ length: STS_MAX_POLICY_LINES }, (_, i) => `x-ext${i}: 1`);
-			expect(() => parseStsPolicy(`${policyBody()}\n${filler.join('\n')}`, 'id-1')).toThrow(
-				/lines/
-			);
-		});
+		it('caches every mx but logs only the first few', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: manyMx }));
 
-		it('blank lines do not count toward the line limit', () => {
-			const padded = `${policyBody()}${'\n'.repeat(STS_MAX_POLICY_LINES * 2)}`;
-			expect(parseStsPolicy(padded, 'id-1').mode).toBe('enforce');
+			const opts = await getStsTlsOptions(redis, 'example.com');
+
+			expect(opts.allowedMxHosts).toEqual(manyMx);
+			const cached = JSON.parse((await redis.get(`${CACHE_PREFIX}example.com`))!);
+			expect(cached.mx).toHaveLength(500);
+			const [fields] = vi.mocked(logger.info).mock.calls.at(-1)!;
+			expect(fields).toMatchObject({ mxCount: 500 });
+			expect((fields as { mx: string[] }).mx).toHaveLength(10);
 		});
 	});
 
@@ -418,9 +525,31 @@ describe('mtaSts', () => {
 			await refreshAgainst((_req, res) => res.end('x'.repeat(1024 * 1024)));
 		});
 
-		it('on a policy over the mx limit', async () => {
-			const mx = Array.from({ length: STS_MAX_MX_ENTRIES + 1 }, (_, i) => `mx${i}.owlat.test`);
-			await refreshAgainst((_req, res) => res.end(policyBody({ mx })));
+		it.each([204, 206])('on a %i (only a 200 is a policy)', async (status) => {
+			await refreshAgainst((_req, res) => {
+				res.writeHead(status);
+				res.end();
+			});
+		});
+
+		it('on a policy served as text/html', async () => {
+			await refreshAgainst((_req, res) => {
+				res.setHeader('Content-Type', 'text/html');
+				res.end(policyBody({ mx: ['evil.owlat.test'] }));
+			});
+		});
+
+		it.each([
+			['an HTML error page', '<html><body>Service Unavailable</body></html>'],
+			[
+				'an unsupported version',
+				'version: STSv2\nmode: enforce\nmx: evil.owlat.test\nmax_age: 86400',
+			],
+			['an enforce policy with no mx', 'version: STSv1\nmode: enforce\nmax_age: 86400'],
+			['a policy with no max_age', 'version: STSv1\nmode: enforce\nmx: evil.owlat.test'],
+			['an unknown mode', 'version: STSv1\nmode: off\nmx: evil.owlat.test\nmax_age: 86400'],
+		])('on a 200 carrying %s', async (_label, body) => {
+			await refreshAgainst((_req, res) => res.end(body));
 		});
 
 		it('on a certificate the trust store rejects', async () => {
@@ -530,16 +659,16 @@ describe('mtaSts', () => {
 	});
 
 	describe('empty-mx enforce policy is a validation failure, not allow-all (RFC 8461 §3.2)', () => {
-		it('parses an enforce body with no mx line as mode: none (fail closed)', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmax_age: 86400', 'id-1');
-			expect(policy.mode).toBe('none');
-			expect(policy.mx).toEqual([]);
+		it('rejects an enforce body with no mx line (fail closed)', () => {
+			expect(() => parseStsPolicy('version: STSv1\nmode: enforce\nmax_age: 86400', 'id-1')).toThrow(
+				/enforce policy lists no mx/
+			);
 		});
 
-		it('parses a testing body with no mx line as mode: none', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: testing\nmax_age: 600', 'id-1');
-			expect(policy.mode).toBe('none');
-			expect(policy.mx).toEqual([]);
+		it('rejects a testing body with no mx line', () => {
+			expect(() => parseStsPolicy('version: STSv1\nmode: testing\nmax_age: 600', 'id-1')).toThrow(
+				/testing policy lists no mx/
+			);
 		});
 
 		it('getStsTlsOptions does NOT enter enforce for a no-mx policy (no allow-all)', async () => {

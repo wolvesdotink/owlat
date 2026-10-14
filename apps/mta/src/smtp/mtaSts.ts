@@ -8,7 +8,7 @@
  * Flow:
  * 1. Check DNS TXT record at _mta-sts.{domain} for policy version
  * 2. If version changed (or uncached), fetch https://mta-sts.{domain}/.well-known/mta-sts.txt
- * 3. Cache parsed policy in Redis with TTL from max_age
+ * 3. Cache parsed policy in Redis; it applies until cachedAt + max_age
  * 4. Return TLS requirements for SMTP sender to apply
  */
 
@@ -19,15 +19,22 @@ import { fetchStsPolicyText } from './mtaStsFetch.js';
 
 const STS_CACHE_PREFIX = 'mta:sts:';
 const STS_DNS_NEGATIVE_CACHE_TTL = 3600; // 1h cache for domains without MTA-STS
-const STS_MIN_CACHE_TTL = 300; // Minimum 5 minutes regardless of max_age
+// Refetch throttle: after a fetch, an expired policy (max_age below this) is
+// not fetched again for this long, so a short max_age can't turn every send
+// into a 10s HTTPS round trip. Expiry itself is checked separately: a policy
+// is never applied past cachedAt + max_age.
+const STS_REFETCH_THROTTLE_SECONDS = 300;
 // RFC 8461 §3.2: max_age has a maximum of 31557600 seconds (one year).
 const STS_MAX_AGE_CEILING = 31_557_600;
-const STS_DEFAULT_MAX_AGE = 86_400; // Default 1 day when max_age is absent/invalid
-// Real policies carry a few lines and a handful of MX patterns. These bound
-// what one policy can put into the Redis cache and the "policy cached" log
-// line; the byte cap alone would still admit thousands of `mx:` entries.
-export const STS_MAX_POLICY_LINES = 256;
-export const STS_MAX_MX_ENTRIES = 64;
+// How many mx patterns the "policy cached" log line carries; the full list is cached.
+const STS_LOGGED_MX_ENTRIES = 10;
+const STS_MODES: readonly StsPolicyMode[] = ['enforce', 'testing', 'none'];
+
+/**
+ * Thrown for a fetched body that is not a usable STSv1 policy. It goes down
+ * the fetch-failure path, so it never replaces a cached policy.
+ */
+export class InvalidStsPolicyError extends Error {}
 
 export type StsPolicyMode = 'enforce' | 'testing' | 'none';
 
@@ -36,7 +43,7 @@ export interface StsPolicy {
 	mode: StsPolicyMode;
 	/** Allowed MX hostname patterns (e.g., ["*.google.com", "mail.google.com"]) */
 	mx: string[];
-	/** Max age in seconds (from policy) */
+	/** Lifetime in seconds from cachedAt (policy max_age, capped at one year) */
 	maxAge: number;
 	/** Policy version ID from DNS TXT record */
 	version: string;
@@ -130,17 +137,11 @@ export function isMxAllowed(mxHost: string, allowedPatterns: string[]): boolean 
 async function fetchOrCachedPolicy(redis: Redis, domain: string): Promise<StsPolicy> {
 	const cacheKey = `${STS_CACHE_PREFIX}${domain}`;
 
-	// Try cache first
-	const cached = await redis.get(cacheKey);
-	let cachedPolicy: StsPolicy | null = null;
-	if (cached) {
-		try {
-			cachedPolicy = JSON.parse(cached) as StsPolicy;
-		} catch {
-			// Invalid cache entry, refetch
-			cachedPolicy = null;
-		}
-	}
+	// Try cache first. An entry past cachedAt + max_age is kept only to
+	// throttle the refetch; it is never applied.
+	const entry = parseCachedPolicy(await redis.get(cacheKey));
+	const now = Date.now();
+	const cachedPolicy = entry && !isExpired(entry, now) ? entry : null;
 
 	// Check DNS for _mta-sts TXT record. RFC 8461 §5.1: the DNS TXT `id` is the
 	// authoritative version marker — a recipient signals a policy change (e.g.
@@ -158,7 +159,8 @@ async function fetchOrCachedPolicy(redis: Redis, domain: string): Promise<StsPol
 		// id changed: the recipient updated their policy. Re-fetch the policy
 		// file and re-cache against the new id. RFC 8461 §5.1/§6.2: a policy
 		// fetch failure MUST NOT discard an unexpired cached policy — if the
-		// re-fetch fails (HTTPS blocked / cert invalid / 5xx) we keep serving
+		// re-fetch fails (HTTPS blocked / cert invalid / 5xx / a body that is
+		// not a valid policy) we keep serving
 		// the still-valid cached enforce policy rather than downgrading to
 		// opportunistic TLS, which an on-path attacker who spoofs the DNS id
 		// and blocks the fetch could otherwise exploit to strip STARTTLS.
@@ -183,9 +185,37 @@ async function fetchOrCachedPolicy(redis: Redis, domain: string): Promise<StsPol
 		return noPolicy;
 	}
 
+	// An expired policy fetched moments ago: no policy applies until the
+	// throttle window passes.
+	if (entry && now - entry.cachedAt < STS_REFETCH_THROTTLE_SECONDS * 1000) {
+		return { mode: 'none', mx: [], maxAge: 0, version: entry.version, cachedAt: entry.cachedAt };
+	}
+
 	// Cold cache: no prior policy to fall back to, so a fetch failure correctly
 	// bubbles up to opportunistic TLS.
 	return refetchAndCache(redis, cacheKey, domain, dnsVersion);
+}
+
+function isExpired(policy: StsPolicy, now: number): boolean {
+	return now >= policy.cachedAt + policy.maxAge * 1000;
+}
+
+/** A cached entry, or null when it is missing or not a well-formed policy. */
+function parseCachedPolicy(raw: string | null): StsPolicy | null {
+	if (!raw) return null;
+	try {
+		const value = JSON.parse(raw) as Partial<StsPolicy>;
+		const wellFormed =
+			STS_MODES.includes(value.mode as StsPolicyMode) &&
+			Array.isArray(value.mx) &&
+			value.mx.every((mx) => typeof mx === 'string') &&
+			Number.isFinite(value.maxAge) &&
+			Number.isFinite(value.cachedAt) &&
+			typeof value.version === 'string';
+		return wellFormed ? (value as StsPolicy) : null;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -199,12 +229,18 @@ async function refetchAndCache(
 ): Promise<StsPolicy> {
 	const policy = await fetchStsPolicy(domain, dnsVersion);
 
-	// Cache with TTL from policy max_age (minimum 5 minutes)
-	const cacheTtl = Math.max(policy.maxAge, STS_MIN_CACHE_TTL);
+	// Keep the entry through max_age, and at least through the refetch throttle.
+	const cacheTtl = Math.max(policy.maxAge, STS_REFETCH_THROTTLE_SECONDS);
 	await redis.set(cacheKey, JSON.stringify(policy), 'EX', cacheTtl);
 
 	logger.info(
-		{ domain, mode: policy.mode, mx: policy.mx, maxAge: policy.maxAge },
+		{
+			domain,
+			mode: policy.mode,
+			mx: policy.mx.slice(0, STS_LOGGED_MX_ENTRIES),
+			mxCount: policy.mx.length,
+			maxAge: policy.maxAge,
+		},
 		'MTA-STS policy cached'
 	);
 
@@ -247,44 +283,39 @@ async function lookupStsDnsRecord(domain: string): Promise<string | null> {
  *   mx: mail.google.com
  *   max_age: 86400
  *
- * The HTTPS GET and its bounds (redirects, address policy, size, timeout) live
- * in mtaStsFetch.ts. Every failure throws, so callers keep a cached policy.
+ * The HTTPS GET and its bounds (redirects, address policy, status, media type,
+ * size, timeout) live in mtaStsFetch.ts. Every failure throws, an invalid
+ * policy included, so callers keep a cached policy.
  */
 export async function fetchStsPolicy(domain: string, dnsVersion: string): Promise<StsPolicy> {
 	return parseStsPolicy(await fetchStsPolicyText(domain), dnsVersion);
 }
 
 /**
- * Parse an MTA-STS policy text file
+ * Parse an MTA-STS policy text file (RFC 8461 §3.2).
  *
- * Per RFC 8461 §3.2 a usable policy MUST begin with `version: STSv1`. A policy
- * with a missing/unknown version (e.g. a future "STSv2" body, or an HTML error
- * page served by a misconfigured host) is treated as "no usable policy"
- * (mode: 'none') so we fall back to opportunistic TLS rather than enforcing a
- * body we don't actually understand.
+ * A valid policy has `version: STSv1`, a `mode` of enforce, testing or none,
+ * and a non-negative integer `max_age`. Enforce and testing also need at least
+ * one `mx`. Unknown fields are ignored. Anything else throws
+ * {@link InvalidStsPolicyError} rather than returning mode 'none': only an
+ * explicit `mode: none` policy may replace a cached one. An HTML error page,
+ * a future "STSv2" body or an enforce policy with no mx must not quietly
+ * downgrade a live enforce policy.
  *
- * A body over {@link STS_MAX_POLICY_LINES} non-empty lines or
- * {@link STS_MAX_MX_ENTRIES} `mx` entries throws instead, like a failed fetch.
+ * Without the mx check an empty list would reach isMxAllowed, whose
+ * `length === 0` short-circuit allows every MX host under enforce.
+ *
+ * The fetch's 64 KiB cap bounds how much this has to parse.
  */
 export function parseStsPolicy(text: string, version: string): StsPolicy {
-	const lines = text
-		.split('\n')
-		.map((l) => l.trim())
-		.filter(Boolean);
-	// Throw rather than return mode 'none': an oversized policy is a fetch
-	// failure, and a 'none' result would overwrite a cached enforce policy.
-	if (lines.length > STS_MAX_POLICY_LINES) {
-		throw new Error(`MTA-STS policy has more than ${STS_MAX_POLICY_LINES} lines`);
-	}
-
 	let hasValidVersion = false;
-	let mode: StsPolicyMode = 'none';
+	let mode: StsPolicyMode | undefined;
+	let modeValue: string | undefined;
 	const mx: string[] = [];
-	// `undefined` means max_age was absent/invalid; default only applies to a
-	// usable enforcing/testing policy (mode: 'none' keeps max_age 0).
-	let maxAge: number | undefined;
+	let maxAgeValue: string | undefined;
 
-	for (const line of lines) {
+	for (const rawLine of text.split('\n')) {
+		const line = rawLine.trim();
 		const colonIndex = line.indexOf(':');
 		if (colonIndex === -1) continue;
 
@@ -293,73 +324,43 @@ export function parseStsPolicy(text: string, version: string): StsPolicy {
 
 		switch (key) {
 			case 'version':
-				if (value.toLowerCase() === 'stsv1') {
-					hasValidVersion = true;
-				}
+				hasValidVersion = value.toLowerCase() === 'stsv1';
 				break;
 			case 'mode':
-				if (value === 'enforce' || value === 'testing' || value === 'none') {
-					mode = value;
-				}
+				modeValue = value;
+				mode = STS_MODES.find((m) => m === value);
 				break;
 			case 'mx':
-				if (mx.length === STS_MAX_MX_ENTRIES) {
-					throw new Error(`MTA-STS policy has more than ${STS_MAX_MX_ENTRIES} mx entries`);
-				}
 				mx.push(value);
 				break;
 			case 'max_age':
-				maxAge = parseMaxAge(value);
+				maxAgeValue = value;
 				break;
 		}
 	}
 
 	if (!hasValidVersion) {
-		// Missing or unsupported version line — not a usable STSv1 policy.
-		return { mode: 'none', mx: [], maxAge: 0, version, cachedAt: Date.now() };
+		throw new InvalidStsPolicyError('MTA-STS policy has no `version: STSv1` line');
 	}
-
-	// RFC 8461 §3.2: a policy with mode `enforce` or `testing` MUST list at least
-	// one `mx`. A version-valid policy that names NO MX is malformed — treat it as
-	// "no usable policy" (mode: 'none') rather than enforcing it. Without this
-	// guard an empty mx list reaches isMxAllowed, whose `length === 0` short-circuit
-	// returns allow-all, which under `enforce` would silently permit EVERY MX host
-	// (a STARTTLS-stripping / MX-substitution bypass) instead of failing closed.
-	if ((mode === 'enforce' || mode === 'testing') && mx.length === 0) {
-		return { mode: 'none', mx: [], maxAge: 0, version, cachedAt: Date.now() };
+	if (!mode) {
+		throw new InvalidStsPolicyError(`MTA-STS policy mode is ${modeValue ?? 'missing'}`);
 	}
-
-	const resolvedMaxAge = resolveMaxAge(mode, maxAge);
-
-	return { mode, mx, maxAge: resolvedMaxAge, version, cachedAt: Date.now() };
-}
-
-/**
- * Parse a raw max_age value. Returns the integer seconds when valid, or
- * `undefined` for a missing/non-numeric/negative value (RFC 8461 §3.2: max_age
- * is a non-negative integer).
- */
-function parseMaxAge(value: string): number | undefined {
-	if (!/^\d+$/.test(value.trim())) {
-		// Non-digit (incl. negative "-5", "abc", "") — never accept as max_age.
-		return undefined;
-	}
-	const parsed = Number.parseInt(value, 10);
-	return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-/**
- * Resolve the effective max_age for a usable policy.
- * - mode 'none': preserve 0 (an explicit "no policy" carries no positive TTL).
- * - missing/invalid max_age: fall back to the 1-day default.
- * - otherwise clamp into [0, RFC ceiling] (31557600s per §3.2).
- */
-function resolveMaxAge(mode: StsPolicyMode, maxAge: number | undefined): number {
+	const maxAge = parseMaxAge(maxAgeValue);
 	if (maxAge === undefined) {
-		// Absent/invalid: an explicit mode:none policy stays at 0, others default.
-		return mode === 'none' ? 0 : STS_DEFAULT_MAX_AGE;
+		throw new InvalidStsPolicyError(`MTA-STS policy max_age is ${maxAgeValue ?? 'missing'}`);
 	}
-	// Clamp into the RFC-permitted range. parseMaxAge already rejects negatives,
-	// but Math.max keeps the floor robust against any future caller.
-	return Math.min(Math.max(maxAge, 0), STS_MAX_AGE_CEILING);
+	if (mode !== 'none' && mx.length === 0) {
+		throw new InvalidStsPolicyError(`MTA-STS ${mode} policy lists no mx`);
+	}
+
+	return { mode, mx: mode === 'none' ? [] : mx, maxAge, version, cachedAt: Date.now() };
+}
+
+/**
+ * Parse a raw max_age: a non-negative integer (RFC 8461 §3.2), capped at the
+ * one-year maximum. `undefined` when missing, negative or not a number.
+ */
+function parseMaxAge(value: string | undefined): number | undefined {
+	if (value === undefined || !/^\d+$/.test(value)) return undefined;
+	return Math.min(Number.parseInt(value, 10), STS_MAX_AGE_CEILING);
 }

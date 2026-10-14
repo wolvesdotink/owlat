@@ -76,6 +76,17 @@ describe('fetchStsPolicyText', () => {
 		expect(text.split('\n').filter(Boolean)).toEqual(POLICY.split('\n').filter(Boolean));
 	});
 
+	it('refuses a trusted certificate that names the host only in its CN', async () => {
+		// Node falls back to the CN when a cert has no DNS subjectAltName; the
+		// policy fetch must not (RFC 8461 §3.3 via RFC 6125).
+		const server = await startPolicyServer((_req, res) => res.end(POLICY), { cnOnly: true });
+		cleanups.push(server.close);
+
+		await expect(fetchStsPolicyText(STS_TEST_DOMAIN, server.transport)).rejects.toThrow(
+			/no DNS subjectAltName/
+		);
+	});
+
 	it('fails on a certificate the trust store does not accept', async () => {
 		const server = await policyServer((_req, res) => res.end(POLICY));
 		const { ca: _ca, ...untrusted } = server.transport;
@@ -91,6 +102,8 @@ describe('fetchStsPolicyText', () => {
 			['::1'],
 			['fd00::1'],
 			['::ffff:127.0.0.1'],
+			['64:ff9b:1::a9fe:a9fe'],
+			['64:ff9b:1::808:808'],
 		])('refuses a policy host resolving to %s without connecting', async (address) => {
 			const server = await policyServer((_req, res) => res.end(POLICY));
 			const resolve: StsResolver = (_host, _opts, callback) =>
@@ -269,7 +282,60 @@ describe('fetchStsPolicyText', () => {
 		});
 	});
 
+	// RFC 8461 §3.3: the policy is served with media type text/plain.
+	describe('media type', () => {
+		it.each(['text/plain; charset=utf-8', 'TEXT/PLAIN', 'text/plain;charset="us-ascii"'])(
+			'accepts %j',
+			async (contentType) => {
+				const server = await policyServer((_req, res) => {
+					res.setHeader('Content-Type', contentType);
+					res.end(POLICY);
+				});
+
+				await expect(fetchStsPolicyText(STS_TEST_DOMAIN, server.transport)).resolves.toBe(POLICY);
+			}
+		);
+
+		it.each([
+			'text/html',
+			'application/octet-stream',
+			'text/plainx',
+			'text/plain-ish; charset=utf-8',
+		])('rejects %j', async (contentType) => {
+			const server = await policyServer((_req, res) => {
+				res.setHeader('Content-Type', contentType);
+				res.end(POLICY);
+			});
+
+			await expect(fetchStsPolicyText(STS_TEST_DOMAIN, server.transport)).rejects.toThrow(
+				/not text\/plain/
+			);
+		});
+
+		it('rejects a response with no Content-Type', async () => {
+			const server = await policyServer((_req, res) => {
+				res.removeHeader('Content-Type');
+				res.end(POLICY);
+			});
+
+			await expect(fetchStsPolicyText(STS_TEST_DOMAIN, server.transport)).rejects.toThrow(
+				/missing, not text\/plain/
+			);
+		});
+	});
+
 	describe('status and timeout', () => {
+		it.each([204, 206])('throws on a %i: only a 200 is a policy', async (status) => {
+			const server = await policyServer((_req, res) => {
+				res.writeHead(status, status === 206 ? { 'Content-Range': 'bytes 0-9/100' } : {});
+				res.end(status === 206 ? POLICY.slice(0, 10) : undefined);
+			});
+
+			await expect(fetchStsPolicyText(STS_TEST_DOMAIN, server.transport)).rejects.toThrow(
+				new RegExp(`failed: ${status}`)
+			);
+		});
+
 		it.each([404, 503])('throws on a %i', async (status) => {
 			const server = await policyServer((_req, res) => {
 				res.writeHead(status);

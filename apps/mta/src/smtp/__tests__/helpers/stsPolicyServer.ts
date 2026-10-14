@@ -6,6 +6,11 @@
  *
  * The returned transport resolves every name to 127.0.0.1 and allows that
  * address; tests of the address guard pass their own resolver instead.
+ * Responses default to `Content-Type: text/plain`, which a handler can
+ * override or remove.
+ *
+ * `cnOnly` serves a second throwaway cert whose only name is
+ * CN=mta-sts.owlat.test (no subjectAltName at all), trusted the same way.
  */
 import { createServer, type Server } from 'node:https';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -64,6 +69,54 @@ oE4dE4Itw/vCsXsdFkLzYsFVGjEdvFhdzobLeh+6VO/YiF9nTAumPMsOqSQ0wKa1
 VK4MDddEBzkLAFKHZcDPFTQ=
 -----END PRIVATE KEY-----`;
 
+const STS_CN_ONLY_CERT = `-----BEGIN CERTIFICATE-----
+MIIC/DCCAeSgAwIBAgIUSBRCZWHwFbVyZLn+gboXLNfY/IMwDQYJKoZIhvcNAQEL
+BQAwHTEbMBkGA1UEAwwSbXRhLXN0cy5vd2xhdC50ZXN0MCAXDTI2MTAxNDA3MzMy
+MFoYDzIxMjYwOTIwMDczMzIwWjAdMRswGQYDVQQDDBJtdGEtc3RzLm93bGF0LnRl
+c3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC5pmn9NgoimatxpVAm
+R+q9HhyYCBrOeuwOyt4W178LX5uLmyHD/JbOerjju6vHiWOEgKp7hBjrwpsOwNVi
+kTDrBqsJl/au2Y+NZ0ek9WtVQE1PmM2hOjz7QilLIdf057Nhpph99hpSsjhnY78E
+y9Le32I9T6k2ObawL1rQ6e8ig0siWBbrFughAV6jT7NmrRXIalbcdrdqIbFoQUBb
+b9bumR7cx8SPCEx5KT5KyxEFhvSTBeG50J+TrZdxyKY1D1nCJjN8qA12j+JiNT1b
+4NFN3AQ0Wo58bSJfuPfk6EiDtX8uZ8D9blBT2BtKljNk2kGDJUr+yc8cXP7Qgqtt
+S10tAgMBAAGjMjAwMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFFePricqNkAS
+8EVSucOoC6+zW+xTMA0GCSqGSIb3DQEBCwUAA4IBAQBsIFvec/57rE7QOSSz7qu8
+7iUXOmBKZ421mvTaUW/mu3c7xrhHrYWUtVKPa2aYi9CWPAngvBT9acWaaF7UWtEx
+tKFY1uamTQkRVzGMHplmiX0y8wNA+FTFsj4SKpGoVFqRDhcBFGL+oiobelYvaGkQ
+5cXj92L6hEOD/Fxb3xSAy+8ug5kA3GnfVkvEv4w9bxtzo1VF2iFU8arB/vwxReHB
+SREoIYhNprWvOB2pUDatbGaWEuOXhLsOlbU81oMY9RJZr5Sn6Ob8jLQbeDVUvx1p
+GbWZ9fEsUCeBOHwSW8Pcj1x/KTJkKm3ycIEHhCBeAxdGv1iaBzLaGQxh6rW/QY9R
+-----END CERTIFICATE-----`;
+
+const STS_CN_ONLY_KEY = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC5pmn9Ngoimatx
+pVAmR+q9HhyYCBrOeuwOyt4W178LX5uLmyHD/JbOerjju6vHiWOEgKp7hBjrwpsO
+wNVikTDrBqsJl/au2Y+NZ0ek9WtVQE1PmM2hOjz7QilLIdf057Nhpph99hpSsjhn
+Y78Ey9Le32I9T6k2ObawL1rQ6e8ig0siWBbrFughAV6jT7NmrRXIalbcdrdqIbFo
+QUBbb9bumR7cx8SPCEx5KT5KyxEFhvSTBeG50J+TrZdxyKY1D1nCJjN8qA12j+Ji
+NT1b4NFN3AQ0Wo58bSJfuPfk6EiDtX8uZ8D9blBT2BtKljNk2kGDJUr+yc8cXP7Q
+gqttS10tAgMBAAECggEATCFVF3Qgpd20c48iFgCp31HI0gOI0qGPyeUhO+bPPh+/
+znkYWKFtSlEDHshoAhRyDfUhdDNQcOXF5j/ngVse31JFs1Jw43TuLENtGtVVZYlP
+6tMzh+k09qhD/L5tK84UPngt0oGoe77/6E38GEBpQeIDDDdtoYH7S7avnDpCSTkv
+Yqk/prtgemZFhRKk9t45fh2YfMlQg/uDBdj7clS2I9s/cQGW20Yzja0jTNmsk7F2
+pbEwl+warHDn2bT/fDb7S52KKOlfat/6X4r8mZRMoyg4yFDy5W7kuKVo++GZPrC3
+5m+Rk4Mrz3UAG59IN2+aNFOFd/xcMEJWziWoPNRxlQKBgQD7pYorWNxbjk97NZiP
+bLYf5aMSii7ZAfzqzz+8DuIVR+ayuU1q2NFr9QVokNOfPrmCE2ZRfu+aVLmR+3eS
+91hZnnTe10T9XpWg82fwi6DY5zh6XPsFvlIFDytIsVjq2JuPkcl6P1dTTZ0Vz/DP
+Pn9onotQfp/2GDt39pSTavJnJwKBgQC83JjcF6JbXbJpvtpMkc9oJsfaCnWxh2p3
+Ag3SL83Unua+XGl7YGD44j8C9qnws5HrLTgTI5URPjH2onDNlBaffLhpCTgx0kZt
+5x27klDFeQsohdimX3/12sS1KWGTQawqxhGynATqT2OJsC+F8JM9+qfjSC7p5isB
+DOMzz0itiwKBgFGSa6N5fpS/IMyTpwx29OKKEb5kxKLbnhyPad2QBYFYeVPd9VZ5
+Sglwt3wZ1j98ma2slDI+r3SbmjvUBALD4wPJ9aB2r4piKqatwDedS1qEOS6RDV3j
+P7scG6/IrUYTSPnVDDZwaeI6+nyjly/W1n4XRpmlMj0Xxc8xQyA2PrVpAoGAd+7W
+m53emorLy99JHarSvV8zNsHBr7VA5MZHJJz65vTpryVcTt8LdcGnJiiiDpraJTCY
+FX9ZIJQQgoDxhXtvSmSXbwxNxUW1OAG2nfDynhSaA2fMBwtKZURB+pGGx07DGH6j
+qnrtnCZCHaPm6fW2a3uLtgeW0y45TPd0KOiPTLUCgYEA75N0ob2LYDbl5ZTTMCbV
+Ht03cQYSTM46qf9tYY1vJIPyv4UMaJavlSlbqfCy7TSVbBzde+fxo+851A9h0jq3
++GmvvN26I+G72EmX53s05kV0G86mlHTOGivXFzojQvuxurxsJZ4BcClhCYLtLU4+
+tcC7tVc5BDCrAUUJTQ201xw=
+-----END PRIVATE KEY-----`;
+
 export interface PolicyServer {
 	transport: StsFetchTransport;
 	requests: () => number;
@@ -71,11 +124,15 @@ export interface PolicyServer {
 }
 
 export async function startPolicyServer(
-	handler: (req: IncomingMessage, res: ServerResponse) => void
+	handler: (req: IncomingMessage, res: ServerResponse) => void,
+	opts: { cnOnly?: boolean } = {}
 ): Promise<PolicyServer> {
 	let requests = 0;
-	const server: Server = createServer({ cert: STS_TEST_CERT, key: STS_TEST_KEY }, (req, res) => {
+	const cert = opts.cnOnly ? STS_CN_ONLY_CERT : STS_TEST_CERT;
+	const key = opts.cnOnly ? STS_CN_ONLY_KEY : STS_TEST_KEY;
+	const server: Server = createServer({ cert, key }, (req, res) => {
 		requests++;
+		res.setHeader('Content-Type', 'text/plain');
 		handler(req, res);
 	});
 	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -83,7 +140,7 @@ export async function startPolicyServer(
 	return {
 		transport: {
 			port,
-			ca: STS_TEST_CERT,
+			ca: cert,
 			resolve: (_host, _opts, callback) => callback(null, [{ address: '127.0.0.1', family: 4 }]),
 			isAllowedAddress: () => true,
 		},

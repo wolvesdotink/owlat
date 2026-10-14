@@ -110,6 +110,9 @@ describe('isDisallowedIpAddress', () => {
 		expect(isDisallowedIpAddress('::ffff:0:7f00:1')).toBe(true);
 		expect(isDisallowedIpAddress('::ffff:0:127.0.0.1')).toBe(true);
 		expect(isDisallowedIpAddress('64:ff9b::7f00:1')).toBe(true); // RFC 6052 NAT64
+		// RFC 8215 local-use NAT64 may translate to private IPv4: the whole /48 is internal.
+		expect(isDisallowedIpAddress('64:ff9b:1::a9fe:a9fe')).toBe(true);
+		expect(isDisallowedIpAddress('64:ff9b:1::8.8.8.8')).toBe(true);
 		// Public counterexamples in each form.
 		expect(isDisallowedIpAddress('::808:808')).toBe(false); // 8.8.8.8
 		expect(isDisallowedIpAddress('::8.8.8.8')).toBe(false);
