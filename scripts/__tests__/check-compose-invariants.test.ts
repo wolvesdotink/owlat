@@ -262,6 +262,99 @@ const MUTATIONS = [
 		expected: `network metrics ${ALIAS}`,
 	},
 	{
+		breaks: 'an interpolated network attachment (list)',
+		apply: addIntruder("    networks: ['${INTRUDER_NETWORK:-docker-proxy}']\n"),
+		expected:
+			'intruder networks must not use interpolation (found ${INTRUDER_NETWORK:-docker-proxy})',
+	},
+	{
+		breaks: 'an interpolated network attachment (map key)',
+		apply: addIntruder("    networks:\n      '${INTRUDER_NETWORK:-docker-proxy}': {}\n"),
+		expected:
+			'intruder networks must not use interpolation (found ${INTRUDER_NETWORK:-docker-proxy})',
+	},
+	{
+		breaks: 'an interpolated network_mode',
+		apply: addIntruder('    network_mode: ${INTRUDER_MODE:-service:updater}\n'),
+		expected:
+			'intruder network_mode must be a literal value (found ${INTRUDER_MODE:-service:updater})',
+	},
+	{
+		breaks: 'an interpolated container: target',
+		apply: addIntruder('    network_mode: container:${PROXY_CONTAINER}\n'),
+		expected: 'intruder network_mode must be a literal value (found container:${PROXY_CONTAINER})',
+	},
+	{
+		breaks: 'an interpolated proxy container_name',
+		apply: both(
+			nameContainer('docker-socket-proxy', '${PROXY_CONTAINER:-engine-api}'),
+			addIntruder('    network_mode: service:web\n')
+		),
+		expected:
+			'docker-socket-proxy container_name must not use interpolation (found ${PROXY_CONTAINER:-engine-api})',
+	},
+	{
+		breaks: 'an interpolated updater container_name',
+		apply: nameContainer('updater', '${UPDATER_CONTAINER:-self-update}'),
+		expected:
+			'updater container_name must not use interpolation (found ${UPDATER_CONTAINER:-self-update})',
+	},
+	{
+		breaks: 'another network named by interpolation',
+		apply: both(
+			addNetwork('  sidedoor:\n    name: ${SIDEDOOR:-owlat_docker-proxy}\n'),
+			addIntruder('    networks: [sidedoor]\n')
+		),
+		expected: 'sidedoor network must not take its name from interpolation',
+	},
+	{
+		breaks: 'a member on a network named by interpolation',
+		apply: both(
+			addNetwork('  sidedoor:\n    name: ${SIDEDOOR:-owlat_docker-proxy}\n'),
+			addIntruder('    networks: [sidedoor]\n')
+		),
+		expected: WITH_INTRUDER,
+	},
+	{
+		breaks: 'a service extending the proxy',
+		apply: addIntruder('    extends:\n      service: docker-socket-proxy\n'),
+		expected: 'intruder must not use extends (the gate cannot see the merged definition)',
+	},
+	{
+		breaks: 'a service extending another file',
+		apply: addIntruder('    extends:\n      file: other.yml\n      service: web\n'),
+		expected: 'intruder must not use extends',
+	},
+	{
+		breaks: 'an include of another compose file',
+		apply: (s: string) => `include:\n  - other.yml\n${s}`,
+		expected: 'must not use include (the gate only sees this file)',
+	},
+	{
+		breaks: 'any service on the host network',
+		apply: addIntruder('    network_mode: host\n'),
+		expected:
+			'intruder must not use network_mode: host (it reaches internal-network container IPs)',
+	},
+	{
+		breaks: 'a container: target the gate cannot resolve',
+		apply: addIntruder('    network_mode: container:3f2a9c1d\n'),
+		expected:
+			'intruder network_mode: container:3f2a9c1d names a container the gate cannot resolve; use service:<name>',
+	},
+	{
+		breaks: "a service reaching the updater's namespace through another service",
+		apply: addIntruder(
+			'    network_mode: service:hop\n\n  hop:\n    image: alpine:3\n    network_mode: service:updater\n'
+		),
+		expected: `intruder ${SHARES_NAMESPACE} via network_mode: service:hop`,
+	},
+	{
+		breaks: 'an unsupported network_mode',
+		apply: addIntruder('    network_mode: ns:/proc/1/ns/net\n'),
+		expected: 'intruder uses unsupported network_mode: ns:/proc/1/ns/net',
+	},
+	{
 		breaks: 'the proxy on the host network',
 		apply: (s: string) =>
 			replaceOnce(
@@ -280,6 +373,21 @@ describe.each(TEMPLATES)('$name keeps the Docker API off the app network', ({ na
 		'passes the gate as checked in',
 		() => {
 			const result = runGate(env, original);
+			expect(result.stderr).toBe('');
+			expect(result.status).toBe(0);
+		},
+		GATE_TIMEOUT_MS
+	);
+
+	it(
+		'accepts the network modes that stay off docker-proxy',
+		() => {
+			const result = runGate(
+				env,
+				addIntruder(
+					'    network_mode: service:web\n\n  isolated:\n    image: alpine:3\n    network_mode: none\n'
+				)(original)
+			);
 			expect(result.stderr).toBe('');
 			expect(result.status).toBe(0);
 		},

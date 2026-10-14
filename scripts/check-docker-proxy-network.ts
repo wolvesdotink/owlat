@@ -22,6 +22,13 @@
  * override a top-level `name:`, and scripts/owlat sets the latter), so any
  * project is assumed.
  *
+ * Anything the gate cannot resolve from the file alone fails closed rather
+ * than being modelled: `include` and `extends` (the merged definition is not in
+ * this file), `${...}` in a network attachment, a network or protected
+ * container name, and every `network_mode` except none, bridge, default and
+ * `service:` naming a non-member. `host` reaches internal-network container
+ * IPs on Linux; `container:` can name a container by id.
+ *
  * Usage: bun scripts/check-docker-proxy-network.ts <compose-file>
  * Prints one violation per line and exits 1 when there are any; exits 2 when
  * the file cannot be read as a compose file.
@@ -34,6 +41,7 @@ const MEMBERS = [PROXY, UPDATER];
 
 type Service = {
 	container_name?: unknown;
+	extends?: unknown;
 	networks?: unknown;
 	network_mode?: unknown;
 	ports?: unknown;
@@ -42,6 +50,7 @@ type Service = {
 type Network = { internal?: unknown; name?: unknown; external?: unknown } | null;
 
 type Compose = {
+	include?: unknown;
 	services?: Record<string, Service | null>;
 	networks?: Record<string, Network>;
 };
@@ -62,21 +71,53 @@ function attachedNetworks(service: Service): string[] {
 	return [String(networks)];
 }
 
-/** Whether `network_mode` puts a service inside a member's network namespace. */
-function sharesMemberNamespace(
-	networkMode: string,
+const interpolated = (value: unknown): boolean => JSON.stringify(value ?? null).includes('$');
+
+/** Modes that give a service its own namespace or none; `service:` is checked separately. */
+const OWN_NAMESPACE_MODES = new Set(['none', 'bridge', 'default']);
+
+/**
+ * Why a service's `network_mode` is not allowed, or undefined when it is.
+ * `service:` chains are followed, so a hop through another service is seen.
+ */
+function networkModeViolation(
+	name: string,
 	services: Record<string, Service | null>
-): boolean {
-	const [kind, rawTarget = ''] = networkMode.split(':', 2);
+): string | undefined {
+	const mode = services[name]?.network_mode;
+	if (mode === undefined) return undefined;
+	if (typeof mode !== 'string' || interpolated(mode)) {
+		return `${name} network_mode must be a literal value (found ${String(mode)})`;
+	}
+	if (mode === 'host') {
+		return `${name} must not use network_mode: host (it reaches internal-network container IPs)`;
+	}
+	if (OWN_NAMESPACE_MODES.has(mode)) return undefined;
+	const [kind, rawTarget = ''] = mode.split(':', 2);
 	const target = rawTarget.trim();
-	if (kind === 'service') return MEMBERS.includes(target);
-	if (kind !== 'container') return false;
-	return MEMBERS.some((member) => {
-		const containerName = services[member]?.container_name;
-		if (typeof containerName === 'string' && target === containerName) return true;
-		// Compose's default <project>-<service>-<n>; any project, so match the service.
-		return target.includes(member);
-	});
+	if (kind === 'container') {
+		const member = MEMBERS.find((m) => {
+			const containerName = services[m]?.container_name;
+			// Compose's default <project>-<service>-<n>; any project, so match the service.
+			return target === containerName || target.includes(m);
+		});
+		return member
+			? `${name} joins a ${NETWORK} member's network namespace via network_mode: ${mode}`
+			: `${name} network_mode: ${mode} names a container the gate cannot resolve; use service:<name>`;
+	}
+	if (kind !== 'service') return `${name} uses unsupported network_mode: ${mode}`;
+	const seen = new Set([name]);
+	let hop = target;
+	while (!seen.has(hop)) {
+		if (MEMBERS.includes(hop)) {
+			return `${name} joins a ${NETWORK} member's network namespace via network_mode: ${mode}`;
+		}
+		seen.add(hop);
+		const next = services[hop]?.network_mode;
+		if (typeof next !== 'string' || !next.startsWith('service:')) return undefined;
+		hop = next.slice('service:'.length).trim();
+	}
+	return `${name} network_mode: ${mode} forms a cycle`;
 }
 
 function networkName(key: string, network: Network): NetworkName {
@@ -117,21 +158,31 @@ function dockerProxyViolations(compose: Compose): string[] {
 	const violations: string[] = [];
 	const services = compose.services ?? {};
 
+	if (compose.include !== undefined) {
+		violations.push('must not use include (the gate only sees this file)');
+	}
+
 	const networks: Record<string, Network> = { default: null, ...compose.networks };
 	if (networks[NETWORK]?.internal !== true) {
 		violations.push(`must declare the ${NETWORK} network with internal: true`);
 	}
 
-	const protectedName = networkName(NETWORK, networks[NETWORK] ?? null);
-	if (protectedName === 'unresolved') {
-		violations.push(`${NETWORK} network must not take its name from interpolation`);
+	for (const [key, network] of Object.entries(networks)) {
+		if (interpolated(key) || networkName(key, network) === 'unresolved') {
+			violations.push(`${key} network must not take its name from interpolation`);
+		}
 	}
+
+	const protectedName = networkName(NETWORK, networks[NETWORK] ?? null);
 	// Every key that is, or may be, the same Docker network as docker-proxy.
+	// An interpolated name counts: it is rejected above and may be this one.
 	const aliases = new Set([NETWORK]);
 	for (const [key, network] of Object.entries(networks)) {
 		if (key === NETWORK || protectedName === 'unresolved') continue;
 		const name = networkName(key, network);
-		if (sameNetwork(protectedName, name)) {
+		if (name === 'unresolved') {
+			aliases.add(key);
+		} else if (sameNetwork(protectedName, name)) {
 			aliases.add(key);
 			violations.push(
 				`network ${key} can resolve to the same Docker network as ${NETWORK} (${describeName(name)} vs ${describeName(protectedName)})`
@@ -142,13 +193,28 @@ function dockerProxyViolations(compose: Compose): string[] {
 	const members: string[] = [];
 	for (const [name, raw] of Object.entries(services)) {
 		const service = raw ?? {};
-		if (attachedNetworks(service).some((key) => aliases.has(key))) members.push(name);
-		if (
-			typeof service.network_mode === 'string' &&
-			sharesMemberNamespace(service.network_mode, services)
-		) {
+		if (service.extends !== undefined) {
+			violations.push(`${name} must not use extends (the gate cannot see the merged definition)`);
+		}
+		const attached = attachedNetworks(service);
+		if (attached.some(interpolated)) {
 			violations.push(
-				`${name} joins a ${NETWORK} member's network namespace via network_mode: ${service.network_mode}`
+				`${name} networks must not use interpolation (found ${attached.filter(interpolated).join(', ')})`
+			);
+		}
+		if (attached.some((key) => aliases.has(key))) members.push(name);
+		// The proxy and the updater may not set network_mode at all; see below.
+		if (!MEMBERS.includes(name)) {
+			const violation = networkModeViolation(name, services);
+			if (violation) violations.push(violation);
+		}
+	}
+
+	for (const member of MEMBERS) {
+		const containerName = services[member]?.container_name;
+		if (containerName !== undefined && interpolated(containerName)) {
+			violations.push(
+				`${member} container_name must not use interpolation (found ${String(containerName)})`
 			);
 		}
 	}
