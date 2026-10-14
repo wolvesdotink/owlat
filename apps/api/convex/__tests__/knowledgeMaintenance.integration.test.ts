@@ -494,7 +494,7 @@ function unit(at: number): number[] {
  */
 function stampedEntry(overrides: Record<string, unknown> = {}) {
 	// The factory's default source is Team Inbox extraction.
-	const sourceType = overrides.sourceType ?? 'agent_extracted';
+	const sourceType = overrides['sourceType'] ?? 'agent_extracted';
 	return createTestKnowledgeEntry({
 		memberAccess: sourceType === 'agent_extracted' ? 'restricted' : 'members',
 		...overrides,
