@@ -334,6 +334,10 @@
 			"types": "./src/ipAddress.ts",
 			"import": "./src/ipAddress.ts"
 		},
+		"./ipBlocklist": {
+			"types": "./src/ipBlocklist.ts",
+			"import": "./src/ipBlocklist.ts"
+		},
 		"./mailAuthPolicy": {
 			"types": "./src/mailAuthPolicy.ts",
 			"import": "./src/mailAuthPolicy.ts"

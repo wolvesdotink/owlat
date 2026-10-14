@@ -253,8 +253,9 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 			>
 				<p class="text-text-tertiary">
 					{{ record.label }}<span v-if="record.type"> · {{ record.type }}</span> {{ record.host
-					}}<span v-if="record.priority">
-						{{
+					}}<span v-if="record.priority"
+						>{{ ' '
+						}}{{
 							t('components.delivery.relayDomainStatus.recordPriority', {
 								priority: record.priority,
 							})

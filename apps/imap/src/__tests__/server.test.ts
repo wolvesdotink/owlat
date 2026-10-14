@@ -5,9 +5,12 @@
  *
  * `node:tls` and `node:net` are mocked so no real sockets ever open: each
  * mock `createServer` records the connection handler that the production
- * code installs, plus the options/listen calls. Tests then drive that
- * captured handler with fake duplex sockets to exercise the accounting
- * branches deterministically. `../connection.js` is mocked so constructing
+ * code installs, plus the options/listen calls. Tests then drive fake duplex
+ * sockets through it to exercise the accounting branches deterministically.
+ * On the TLS flavor a socket first arrives as a raw TCP `connection` on the
+ * fake server, where admission happens, and only reaches the captured
+ * secure-connection handler if admitted (the "handshake" is instant here;
+ * server.handshake.test.ts runs the real one). `../connection.js` is mocked so constructing
  * an ImapConnection per accepted socket is a no-op.
  */
 
@@ -57,7 +60,7 @@ interface ServerCapture {
 	handler: ((socket: Socket) => void) | null;
 	options: Record<string, unknown> | null;
 	listen: ReturnType<typeof vi.fn>;
-	on: ReturnType<typeof vi.fn>;
+	server: EventEmitter | null;
 	flavor: 'tls' | 'tcp' | null;
 }
 
@@ -65,15 +68,17 @@ const capture: ServerCapture = {
 	handler: null,
 	options: null,
 	listen: vi.fn(),
-	on: vi.fn(),
+	server: null,
 	flavor: null,
 };
 
+// Stands in for node's own `connection` listener on a tls.Server, the one that
+// wraps the raw socket and starts the handshake.
+const tlsAccept = vi.fn();
+
 function makeFakeServer() {
-	return {
-		listen: capture.listen,
-		on: capture.on,
-	};
+	capture.server = Object.assign(new EventEmitter(), { listen: capture.listen });
+	return capture.server;
 }
 
 vi.mock('tls', () => ({
@@ -81,7 +86,9 @@ vi.mock('tls', () => ({
 		capture.flavor = 'tls';
 		capture.options = options;
 		capture.handler = handler;
-		return makeFakeServer();
+		const server = makeFakeServer();
+		server.on('connection', tlsAccept);
+		return server;
 	}),
 }));
 
@@ -93,10 +100,16 @@ vi.mock('net', () => ({
 	}),
 }));
 
+let nextPort = 40_000;
+
 /** Minimal duplex stand-in: records writes/end and emits 'close' on demand. */
 class FakeSocket extends EventEmitter {
 	written: string[] = [];
 	ended = false;
+	destroyed = false;
+	remotePort = nextPort++;
+	localAddress = '127.0.0.1';
+	localPort = 993;
 	constructor(public remoteAddress: string | undefined) {
 		super();
 	}
@@ -106,6 +119,13 @@ class FakeSocket extends EventEmitter {
 	}
 	end(): void {
 		this.ended = true;
+	}
+	destroy(): void {
+		this.destroyed = true;
+	}
+	/** Refused: a BYE on the plaintext listener, a bare destroy before TLS. */
+	get refused(): boolean {
+		return this.ended || this.destroyed;
 	}
 	/** Simulate the socket closing (fires the handler's 'close' listener). */
 	close(): void {
@@ -130,19 +150,30 @@ const baseConfig: ImapConfig = {
 const convex = {} as unknown as ConvexClient;
 const limiter = new AuthRateLimiter(null, baseConfig.authRateLimit);
 
-function start(overrides: Partial<ImapConfig> = {}): {
-	handler: (socket: Socket) => void;
-} {
+type Connect = (ip: string | undefined) => FakeSocket;
+
+function start(overrides: Partial<ImapConfig> = {}): { handler: Connect } {
 	startImapServer({ ...baseConfig, ...overrides }, convex, limiter);
-	if (!capture.handler) throw new Error('no connection handler captured');
-	return { handler: capture.handler };
+	const handler = capture.handler;
+	if (!handler) throw new Error('no connection handler captured');
+	return {
+		handler: (ip) => {
+			const sock = new FakeSocket(ip);
+			if (capture.flavor === 'tcp') {
+				handler(sock as unknown as Socket);
+				return sock;
+			}
+			// TCP accept, then (if admitted) the completed TLS handshake.
+			capture.server!.emit('connection', sock);
+			if (!sock.destroyed) handler(sock as unknown as Socket);
+			return sock;
+		},
+	};
 }
 
-/** Run a fresh socket from `ip` through the captured accounting handler. */
-function connect(handler: (socket: Socket) => void, ip: string | undefined): FakeSocket {
-	const sock = new FakeSocket(ip);
-	handler(sock as unknown as Socket);
-	return sock;
+/** Run a fresh socket from `ip` through the listener. */
+function connect(handler: Connect, ip: string | undefined): FakeSocket {
+	return handler(ip);
 }
 
 beforeEach(() => {
@@ -150,7 +181,7 @@ beforeEach(() => {
 	capture.options = null;
 	capture.flavor = null;
 	capture.listen.mockReset();
-	capture.on.mockReset();
+	capture.server = null;
 	connectionCtor.mockReset();
 	delete process.env['NODE_ENV'];
 });
@@ -295,8 +326,8 @@ describe('startImapServer — per-IP connection cap', () => {
 		const { handler } = start({ tls: { cert: 'c', key: 'k' }, maxConnectionsPerIp: 2 });
 		const s1 = connect(handler, '10.0.0.1');
 		const s2 = connect(handler, '10.0.0.1');
-		expect(s1.ended).toBe(false);
-		expect(s2.ended).toBe(false);
+		expect(s1.refused).toBe(false);
+		expect(s2.refused).toBe(false);
 		expect(connectionCtor).toHaveBeenCalledTimes(2);
 	});
 
@@ -305,8 +336,8 @@ describe('startImapServer — per-IP connection cap', () => {
 		connect(handler, '10.0.0.1');
 		connect(handler, '10.0.0.1');
 		const over = connect(handler, '10.0.0.1');
-		expect(over.ended).toBe(true);
-		expect(over.written.join('')).toContain('Too many connections from this IP');
+		expect(over.refused).toBe(true);
+		expect(over.written).toEqual([]);
 		// Only the two accepted sockets spun up a connection.
 		expect(connectionCtor).toHaveBeenCalledTimes(2);
 	});
@@ -319,12 +350,12 @@ describe('startImapServer — per-IP connection cap', () => {
 		});
 		const a = connect(handler, '10.0.0.1');
 		const b = connect(handler, '10.0.0.2');
-		expect(a.ended).toBe(false);
-		expect(b.ended).toBe(false);
+		expect(a.refused).toBe(false);
+		expect(b.refused).toBe(false);
 		expect(connectionCtor).toHaveBeenCalledTimes(2);
 		// A second from IP .1 is over its per-IP cap of 1.
 		const aOver = connect(handler, '10.0.0.1');
-		expect(aOver.ended).toBe(true);
+		expect(aOver.refused).toBe(true);
 	});
 
 	it('counts an IPv4 peer once whether it arrives native or IPv4-mapped', () => {
@@ -335,9 +366,9 @@ describe('startImapServer — per-IP connection cap', () => {
 		});
 		const native = connect(handler, '10.0.0.1');
 		const mapped = connect(handler, '::ffff:10.0.0.1');
-		expect(native.ended).toBe(false);
-		expect(mapped.ended).toBe(true);
-		expect(mapped.written.join('')).toContain('Too many connections from this IP');
+		expect(native.refused).toBe(false);
+		expect(mapped.refused).toBe(true);
+		expect(mapped.written).toEqual([]);
 	});
 
 	it('counts every IPv6 address of one /64 as one peer', () => {
@@ -349,14 +380,14 @@ describe('startImapServer — per-IP connection cap', () => {
 		const first = connect(handler, '2001:db8:1:2::1');
 		const sameNet = connect(handler, '2001:db8:1:2:aaaa:bbbb:cccc:dddd');
 		const otherNet = connect(handler, '2001:db8:1:3::1');
-		expect(first.ended).toBe(false);
-		expect(sameNet.ended).toBe(true);
-		expect(sameNet.written.join('')).toContain('Too many connections from this IP');
-		expect(otherNet.ended).toBe(false);
+		expect(first.refused).toBe(false);
+		expect(sameNet.refused).toBe(true);
+		expect(sameNet.written).toEqual([]);
+		expect(otherNet.refused).toBe(false);
 
 		// Closing the first frees the /64's slot for another address in it.
 		first.close();
-		expect(connect(handler, '2001:db8:1:2::2').ended).toBe(false);
+		expect(connect(handler, '2001:db8:1:2::2').refused).toBe(false);
 		// The connection itself still sees the peer's full address.
 		expect(connectionCtor.mock.calls[0]![4]).toBe('2001:db8:1:2::1');
 	});
@@ -369,9 +400,9 @@ describe('startImapServer — per-IP connection cap', () => {
 		});
 		const first = connect(handler, undefined);
 		const second = connect(handler, undefined);
-		expect(first.ended).toBe(false);
-		expect(second.ended).toBe(true);
-		expect(second.written.join('')).toContain('Too many connections from this IP');
+		expect(first.refused).toBe(false);
+		expect(second.refused).toBe(true);
+		expect(second.written).toEqual([]);
 	});
 });
 
@@ -386,11 +417,11 @@ describe('startImapServer — global connection cap', () => {
 		const a = connect(handler, '10.0.0.1');
 		const b = connect(handler, '10.0.0.2');
 		const c = connect(handler, '10.0.0.3');
-		expect([a, b, c].every((s) => !s.ended)).toBe(true);
+		expect([a, b, c].every((s) => !s.refused)).toBe(true);
 
 		const d = connect(handler, '10.0.0.4');
-		expect(d.ended).toBe(true);
-		expect(d.written.join('')).toContain('Server connection limit reached');
+		expect(d.refused).toBe(true);
+		expect(d.written).toEqual([]);
 		expect(connectionCtor).toHaveBeenCalledTimes(3);
 	});
 });
@@ -403,16 +434,16 @@ describe('startImapServer — socket close decrements counters', () => {
 			maxClients: 99,
 		});
 		const first = connect(handler, '10.0.0.1');
-		expect(first.ended).toBe(false);
+		expect(first.refused).toBe(false);
 
 		// At the per-IP cap: a second is rejected.
 		const blocked = connect(handler, '10.0.0.1');
-		expect(blocked.ended).toBe(true);
+		expect(blocked.refused).toBe(true);
 
 		// Close the first; the IP slot frees and a new connection is accepted.
 		first.close();
 		const reconnect = connect(handler, '10.0.0.1');
-		expect(reconnect.ended).toBe(false);
+		expect(reconnect.refused).toBe(false);
 		// 2 successful ImapConnection constructions (first + reconnect).
 		expect(connectionCtor).toHaveBeenCalledTimes(2);
 	});
@@ -424,17 +455,17 @@ describe('startImapServer — socket close decrements counters', () => {
 			maxClients: 1,
 		});
 		const first = connect(handler, '10.0.0.1');
-		expect(first.ended).toBe(false);
+		expect(first.refused).toBe(false);
 
 		// Global cap reached: a second IP is still rejected.
 		const blocked = connect(handler, '10.0.0.2');
-		expect(blocked.ended).toBe(true);
-		expect(blocked.written.join('')).toContain('Server connection limit reached');
+		expect(blocked.refused).toBe(true);
+		expect(blocked.written).toEqual([]);
 
 		// Close the first; global slot frees and the next is accepted.
 		first.close();
 		const reconnect = connect(handler, '10.0.0.2');
-		expect(reconnect.ended).toBe(false);
+		expect(reconnect.refused).toBe(false);
 	});
 
 	it('does not let totalActive go negative on repeated close events', () => {
@@ -451,8 +482,8 @@ describe('startImapServer — socket close decrements counters', () => {
 		// Should still be able to fill the full global budget afterwards.
 		const a = connect(handler, '10.0.0.2');
 		const b = connect(handler, '10.0.0.3');
-		expect(a.ended).toBe(false);
-		expect(b.ended).toBe(false);
+		expect(a.refused).toBe(false);
+		expect(b.refused).toBe(false);
 	});
 
 	it('passes the resolved IP through to the ImapConnection constructor', () => {
@@ -462,5 +493,114 @@ describe('startImapServer — socket close decrements counters', () => {
 		expect(connectionCtor).toHaveBeenCalledTimes(1);
 		const args = connectionCtor.mock.calls[0]!;
 		expect(args[4]).toBe('10.0.0.1');
+	});
+});
+
+describe('startImapServer — plaintext dev listener refusals', () => {
+	beforeEach(() => {
+		process.env['NODE_ENV'] = 'development';
+	});
+
+	it('answers a per-IP refusal with BYE, since no TLS stands in the way', () => {
+		const { handler } = start({ tls: null, maxConnectionsPerIp: 1, maxClients: 99 });
+		connect(handler, '10.0.0.1');
+		const over = connect(handler, '10.0.0.1');
+		expect(over.ended).toBe(true);
+		expect(over.written.join('')).toContain('Too many connections from this IP');
+	});
+
+	it('answers a global refusal with BYE', () => {
+		const { handler } = start({ tls: null, maxConnectionsPerIp: 99, maxClients: 1 });
+		connect(handler, '10.0.0.1');
+		const over = connect(handler, '10.0.0.2');
+		expect(over.ended).toBe(true);
+		expect(over.written.join('')).toContain('Server connection limit reached');
+	});
+});
+
+/**
+ * Issue #1325: a raw TCP peer on 993 that never negotiates TLS must hold a
+ * slot and be dropped by a deadline, rather than sit outside both caps.
+ */
+describe('startImapServer — admission before the TLS handshake', () => {
+	/** A raw TCP accept that has not finished (or started) its handshake. */
+	function acceptRaw(ip: string): FakeSocket {
+		const sock = new FakeSocket(ip);
+		capture.server!.emit('connection', sock);
+		return sock;
+	}
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('counts a pending handshake against the caps and never starts TLS for the refused one', () => {
+		start({ tls: { cert: 'c', key: 'k' }, maxConnectionsPerIp: 1, maxClients: 1 });
+		const pending = acceptRaw('10.0.0.1');
+		const samePeer = acceptRaw('10.0.0.1');
+		const otherPeer = acceptRaw('10.0.0.2');
+		expect(pending.destroyed).toBe(false);
+		expect(samePeer.destroyed).toBe(true);
+		expect(otherPeer.destroyed).toBe(true);
+		// Only the admitted socket reached node's TLS wrapper.
+		expect(tlsAccept).toHaveBeenCalledTimes(1);
+		expect(tlsAccept).toHaveBeenCalledWith(pending);
+		expect(connectionCtor).not.toHaveBeenCalled();
+
+		// A handshake that ends (failed, refused, peer gone) frees the slot.
+		pending.close();
+		expect(acceptRaw('10.0.0.2').destroyed).toBe(false);
+	});
+
+	it('destroys a peer that does not finish the handshake in time, freeing its slot', () => {
+		vi.useFakeTimers();
+		start({ tls: { cert: 'c', key: 'k' }, maxClients: 1, tlsHandshakeTimeoutMs: 1_000 });
+		const silent = acceptRaw('10.0.0.1');
+		vi.advanceTimersByTime(999);
+		expect(silent.destroyed).toBe(false);
+		vi.advanceTimersByTime(1);
+		expect(silent.destroyed).toBe(true);
+		silent.close();
+		expect(acceptRaw('10.0.0.2').destroyed).toBe(false);
+	});
+
+	it('defaults the handshake deadline to 30 seconds', () => {
+		vi.useFakeTimers();
+		start({ tls: { cert: 'c', key: 'k' } });
+		const silent = acceptRaw('10.0.0.1');
+		vi.advanceTimersByTime(29_999);
+		expect(silent.destroyed).toBe(false);
+		vi.advanceTimersByTime(1);
+		expect(silent.destroyed).toBe(true);
+	});
+
+	it('keeps one slot through the handshake and clears the deadline once TLS is up', () => {
+		vi.useFakeTimers();
+		const { handler } = start({
+			tls: { cert: 'c', key: 'k' },
+			maxClients: 2,
+			tlsHandshakeTimeoutMs: 1_000,
+		});
+		const session = connect(handler, '10.0.0.1');
+		expect(connectionCtor).toHaveBeenCalledTimes(1);
+		vi.advanceTimersByTime(5_000);
+		expect(session.destroyed).toBe(false);
+		// Counted once: one more fits, the next does not.
+		expect(acceptRaw('10.0.0.2').destroyed).toBe(false);
+		expect(acceptRaw('10.0.0.3').destroyed).toBe(true);
+	});
+
+	it('destroys a socket node leaves open after a TLS client error', () => {
+		start({ tls: { cert: 'c', key: 'k' } });
+		const sock = acceptRaw('10.0.0.1');
+		capture.server!.emit('tlsClientError', new Error('ERR_TLS_HANDSHAKE_TIMEOUT'), sock);
+		expect(sock.destroyed).toBe(true);
+	});
+
+	it('destroys pending handshakes on shutdown', () => {
+		const imap = startImapServer({ ...baseConfig, tls: { cert: 'c', key: 'k' } }, convex, limiter);
+		const pending = acceptRaw('10.0.0.1');
+		imap.closeAllConnections('Server shutting down');
+		expect(pending.destroyed).toBe(true);
 	});
 });

@@ -18,6 +18,8 @@
 				"plugins.config.ts",
 				"scripts/__tests__/**/*.ts",
 				"scripts/list-shared-production-exports.ts",
+				// Spawned by scripts/check-compose-invariants.sh.
+				"scripts/check-docker-proxy-network.ts",
 				"scripts/read-feature-flags.mjs",
 				// Spawned by the shell selector; knip cannot follow that edge.
 				"scripts/ci/select.ts",

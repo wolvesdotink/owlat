@@ -8,6 +8,7 @@
  * rather than a fabricated 0%.
  */
 import { describe, it, expect } from 'vitest';
+import { SPAM_ARCHIVE_SCORE } from '@owlat/shared/aiRouting';
 import { deriveQuarantineReason, QUARANTINE_SPAM_SCORE_NOTABLE } from '../quarantineReason';
 import { createTestI18n, localizedWith } from '~/__tests__/i18n';
 
@@ -97,6 +98,25 @@ describe('deriveQuarantineReason', () => {
 			confidence: 0.9,
 		});
 		expect(loud.reasons.map(render)).toContain('It also scored high on the ordinary spam filters.');
+	});
+
+	it("puts the spam threshold on the backend's 0-100 scale, at the spam-archive bar", () => {
+		// The same constant the security scan archives spam at, so the two cannot drift (#1336).
+		expect(QUARANTINE_SPAM_SCORE_NOTABLE).toBe(SPAM_ARCHIVE_SCORE);
+
+		// One or a few rule hits (10 or 15 each) are not "high".
+		for (const spamScore of [5, 10, 15, 50, SPAM_ARCHIVE_SCORE - 1]) {
+			const reason = deriveQuarantineReason({ phishingDetected: true, spamScore });
+			expect(reason.reasons.map(render)).not.toContain(
+				'It also scored high on the ordinary spam filters.'
+			);
+		}
+		for (const spamScore of [SPAM_ARCHIVE_SCORE, 100]) {
+			const reason = deriveQuarantineReason({ phishingDetected: true, spamScore });
+			expect(reason.reasons.map(render)).toContain(
+				'It also scored high on the ordinary spam filters.'
+			);
+		}
 	});
 
 	it('carries the flagged excerpt verbatim, trimmed, and drops a blank one', () => {

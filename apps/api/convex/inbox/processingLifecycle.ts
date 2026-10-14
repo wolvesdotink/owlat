@@ -114,6 +114,11 @@ export const recordStepBegin = internalMutation({
 		actionType: actionTypeValidator,
 	},
 	handler: async (ctx, args): Promise<{ actionId: Id<'agentActions'> }> => {
+		// A scan belongs to the message's current `security_check` run.
+		const run =
+			args.actionType === 'security_scan'
+				? (await ctx.db.get(args.inboundMessageId))?.securityCheckRun
+				: undefined;
 		const actionId = await ctx.db.insert('agentActions', {
 			inboundMessageId: args.inboundMessageId,
 			actionType: args.actionType,
@@ -121,6 +126,7 @@ export const recordStepBegin = internalMutation({
 			retryCount: 0,
 			startedAt: Date.now(),
 			createdAt: Date.now(),
+			...(run !== undefined ? { securityCheckRun: run } : {}),
 		});
 		return { actionId };
 	},

@@ -456,6 +456,10 @@ services:
       TASKS: 0
     security_opt:
       - no-new-privileges:true
+    # Only on the internal docker-proxy network, never on `default`: a service
+    # that can reach this proxy can create containers with host bind mounts.
+    networks:
+      - docker-proxy
     restart: unless-stopped
 
   # ── Updater Sidecar (VPS self-update agent) ──
@@ -477,6 +481,11 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # Bridges both networks: `default` keeps web → updater:3200 reachable, while
+    # `docker-proxy` (internal-only) is the SOLE path to the Docker socket proxy.
+    networks:
+      - default
+      - docker-proxy
     # Same grace and init as the root compose file; see the note there.
     init: true
     stop_grace_period: 120s
@@ -779,6 +788,9 @@ services:
 networks:
   default:
     enable_ipv6: ${MTA_IPV6_ENABLED:-false}
+  # Internal bridge carrying only docker-socket-proxy and the updater.
+  docker-proxy:
+    internal: true
   code-worker:
     internal: true
 

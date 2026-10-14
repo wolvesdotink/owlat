@@ -22,6 +22,7 @@
  * evidence, not copy, and the page renders it as such.
  */
 
+import { SPAM_ARCHIVE_SCORE } from '@owlat/shared/aiRouting';
 import { GUARD_NOT_RUN_REASON_KEYS, type GuardNotRunMarker } from '~/utils/guardNotRun';
 
 /** A translatable sentence: a bare catalog key, or a key plus its values. */
@@ -97,8 +98,13 @@ const GUARD_UNAVAILABLE = {
 	reason: 'dashboard.inbox.quarantine.outcomes.guardUnavailable.reason',
 };
 
-/** At or above this score the spam filters are worth mentioning as a reason. */
-export const QUARANTINE_SPAM_SCORE_NOTABLE = 5;
+/**
+ * At or above this score the spam filters are worth mentioning as a reason. The
+ * score runs 0-100 and one rule hit adds 10 or 15, so anything lower than the
+ * pipeline's own spam-archive bar is too weak to call "high". Quarantine wins
+ * over the spam archive, so a held message can still carry such a score.
+ */
+export const QUARANTINE_SPAM_SCORE_NOTABLE = SPAM_ARCHIVE_SCORE;
 
 /**
  * Turn one scan record into the three layers above.

@@ -117,6 +117,11 @@ describe('TeamInboxCard', () => {
 		expectFullyLocalized(wrapper);
 	});
 
+	it('keeps a space before the members the avatar row leaves out', () => {
+		const wrapper = mountCard({ memberCount: 6 });
+		expect(wrapper.text()).toContain('6 members (+1 more)');
+	});
+
 	it('hides the import from a hosted inbox, which has no history to pull in', () => {
 		const wrapper = mountCard({ kind: 'hosted', externalStatus: null });
 
