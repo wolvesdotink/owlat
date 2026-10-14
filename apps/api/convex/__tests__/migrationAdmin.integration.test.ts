@@ -16,6 +16,7 @@ import { api, internal } from '../_generated/api';
 import type * as ManifestModule from '../migrations/manifest';
 import { scheduleMigrationPage } from '../lib/migrationLedger';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
+import { seedFolder, seedMailbox, seedMessage } from '../mail/__tests__/helpers.testlib';
 
 const sessionMock = vi.hoisted(() => ({ subject: 'admin-user' }));
 
@@ -298,6 +299,62 @@ describe('failed jobs', () => {
 		// The job's own error where the backend keeps it (convex-test does not),
 		// otherwise a stated fallback; never an empty card.
 		expect(folders.error).toBeTruthy();
+	});
+});
+
+describe('0054 folder walks', () => {
+	const FOLDERS = '0054_backfill_folder_membership';
+	const folders = internal.migrations[FOLDERS];
+
+	it('fails the migration once a folder walk keeps failing, and the card shows it', async () => {
+		expectScheduledFailure('maintenance/folderMembershipBackfill:step');
+		const t = setup();
+		await seedAdmin(t);
+		const mailboxId = await seedMailbox(t);
+		const folderId = await seedFolder(t, mailboxId);
+		await seedMessage(t, mailboxId, { subject: 's' });
+		// A walk whose stored cursor no page can read: every step throws.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('mailFolderMembership', {
+				folderId,
+				isReady: false,
+				revision: 0,
+				cursor: 'not-a-cursor',
+				startedAt: now,
+				updatedAt: now,
+			});
+		});
+
+		await t.mutation(folders.run, {});
+		// `finish` polls every minute and restarts the stalled walk every ten,
+		// counting each failed step; the third one stops the polling.
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const listed = await t.query(api.migrations.admin.list, {});
+		const row = listed.migrations.find((m) => m.migration === FOLDERS)!;
+		expect(row.state).toBe('failed');
+		expect(row.error).toContain(`Folder ${folderId}`);
+		const walk = await t.run(async (ctx) =>
+			ctx.db
+				.query('mailFolderMembership')
+				.withIndex('by_folder', (q) => q.eq('folderId', folderId))
+				.unique()
+		);
+		expect(walk!.walkFailures?.count).toBe(3);
+
+		// The cron does not resume a pass that failed on a folder, even after an hour.
+		const generation = (await ledgerRow(t, FOLDERS))!.generation;
+		vi.advanceTimersByTime(2 * 60 * 60_000);
+		expect(await t.mutation(folders.ensure, {})).toEqual({ started: false });
+		expect((await ledgerRow(t, FOLDERS))!.generation).toBe(generation);
+
+		// An explicit run resumes it, with the failure cleared and a fresh count.
+		const resumed = await t.mutation(api.migrations.admin.runPending, {});
+		expect(resumed.started).toContain(FOLDERS);
+		const after = await ledgerRow(t, FOLDERS);
+		expect(after).toMatchObject({ status: 'running', generation: generation + 1 });
+		expect(after!.failure).toBeUndefined();
 	});
 });
 

@@ -9245,6 +9245,8 @@
 					},
 					"unknownError": "Unbekannter Fehler",
 					"updateBusy": "Der Updater wendet noch eine andere Änderung an. Versuche es erneut, sobald sie abgeschlossen ist.",
+					"migrationsPending": "Schließe zuerst die Datenmigrationen ab, die unter Verfügbare Updates genannt sind. Das Update wurde nicht gestartet.",
+					"migrationsUnverified": "Die Datenmigrationen, die dieses Update braucht, konnten nicht geprüft werden, deshalb wurde das Update nicht gestartet. Versuche es gleich noch einmal.",
 					"updates": {
 						"availableCurrent": "verfügbar (aktuell: v{version})",
 						"beforeUpdate": "Vor dem Update",

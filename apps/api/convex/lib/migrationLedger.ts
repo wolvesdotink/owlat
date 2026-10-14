@@ -72,6 +72,7 @@ export async function beginMigrationRun(
 			cursor,
 			updatedAt: now,
 			pageJob: undefined,
+			failure: undefined,
 		});
 		return await ctx.db.get(existing._id);
 	}
@@ -89,6 +90,7 @@ export async function beginMigrationRun(
 		updatedAt: now,
 		completedAt: undefined,
 		pageJob: undefined,
+		failure: undefined,
 	};
 	if (existing) {
 		await ctx.db.patch(existing._id, fresh);
@@ -145,4 +147,17 @@ export async function scheduleMigrationPage<Ref extends FunctionReference<'mutat
 ): Promise<void> {
 	const id = await ctx.scheduler.runAfter(delayMs, ref, ...([args] as OptionalRestArgs<Ref>));
 	await ctx.db.patch(run._id, { pageJob: { id, generation: run.generation } });
+}
+
+/**
+ * Record that the pass stopped on a failure it cannot retry its way out of,
+ * and should not be resumed until someone looks: the migration reads as failed
+ * with `error`. Call it from the live chain, which then stops scheduling.
+ */
+export async function recordMigrationFailure(
+	ctx: MutationCtx,
+	run: Pick<MigrationRun, '_id'>,
+	error: string
+): Promise<void> {
+	await ctx.db.patch(run._id, { failure: { error, at: Date.now() } });
 }

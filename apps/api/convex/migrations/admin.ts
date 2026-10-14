@@ -69,6 +69,8 @@ interface ManifestState {
 
 /** The error of the job a running pass waits on, read by the id its chain recorded. */
 async function readFailedPage(ctx: Ctx, run: MigrationRun): Promise<string | null> {
+	// A failure the pass recorded itself (0054's folder walks) comes first.
+	if (run.failure) return run.failure.error;
 	if (!run.pageJob) return null;
 	return pageJobError(run, await ctx.db.system.get(run.pageJob.id));
 }

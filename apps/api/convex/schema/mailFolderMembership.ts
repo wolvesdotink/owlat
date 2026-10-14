@@ -38,6 +38,20 @@ export const mailFolderMembershipTables = {
 		completedAt: v.optional(v.number()),
 		/** Last change to the walk (a step, a reset). Revision bumps leave it alone. */
 		updatedAt: v.number(),
+		/**
+		 * The backfill step the walk waits on, recorded wherever one is scheduled
+		 * (`scheduleFolderWalkStep`), so 0054's `finish` can tell a failed step
+		 * from a slow one. Absent on a walk last scheduled before it existed.
+		 */
+		walkJob: v.optional(v.id('_scheduled_functions')),
+		/**
+		 * Failed steps in a row that `finish` found, counted within one 0054 ledger
+		 * generation (a resume starts again at zero); cleared by a step that makes
+		 * progress. Enough of them fail the migration with `lastError`.
+		 */
+		walkFailures: v.optional(
+			v.object({ generation: v.number(), count: v.number(), lastError: v.string() })
+		),
 	})
 		.index('by_folder', ['folderId'])
 		// Folders still walking, stalest first: the 0054 finish step's progress

@@ -31,6 +31,14 @@
  * has not moved for {@link STALLED_MS} (its chain died: a failed step, a
  * redeploy mid-chain); a walk resumes from its stored cursor.
  *
+ * FAILING WALKS: every walk step is scheduled with its job recorded on the
+ * folder's state row (`walkJob`), so `finish` can tell a failed step from a
+ * slow one. It counts the failed steps it finds per folder within the ledger
+ * generation, and once one folder's step has failed {@link MAX_WALK_FAILURES}
+ * times in a row it records the error on the ledger row and stops polling: the
+ * migration reads as failed (Settings → System & updates), and {@link ensure}
+ * no longer resumes it. Running `run` again resumes it with a fresh count.
+ *
  * Running `run` again on an unfinished pass resumes it and supersedes any
  * chain still queued; on a finished one it does nothing. `'{"restart": true}'`
  * passes over every folder again (a ready folder is left alone, a walking one
@@ -51,16 +59,22 @@ import { v } from 'convex/values';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import { logInfo } from '../lib/runtimeLog';
+import { logInfo, logWarn } from '../lib/runtimeLog';
+import type { Doc } from '../_generated/dataModel';
 import {
 	beginMigrationRun,
 	isCurrentMigrationPage,
 	readMigrationRun,
+	recordMigrationFailure,
 	recordMigrationPage,
 	scheduleMigrationPage,
 	type MigrationRun,
 } from '../lib/migrationLedger';
-import { resetFolderMembership, startFolderMembership } from '../mail/folderMembership';
+import {
+	resetFolderMembership,
+	scheduleFolderWalkStep,
+	startFolderMembership,
+} from '../mail/folderMembership';
 
 const MIGRATION = '0054_backfill_folder_membership';
 /** The release this migration ships in, recorded on its ledger row. */
@@ -74,6 +88,9 @@ const FINISH_POLL_MS = 60_000;
 
 /** A walk whose state row has not changed for this long has lost its chain. */
 const STALLED_MS = 10 * 60_000;
+
+/** Failed steps in a row after which a folder's walk fails the migration. */
+const MAX_WALK_FAILURES = 3;
 
 /** The ledger `mode` of a rebuild pass. */
 const REBUILD = 'rebuild';
@@ -89,6 +106,28 @@ const RESUME_AFTER_MS = 60 * 60_000;
 async function currentRun(ctx: MutationCtx, generation: number): Promise<MigrationRun | null> {
 	const run = await readMigrationRun(ctx, MIGRATION);
 	return isCurrentMigrationPage(run, generation) ? run : null;
+}
+
+/**
+ * The walk's failure count once its recorded step is read: one more when that
+ * step failed (counted within `generation`), null when it did not fail or no
+ * step was recorded. A failed mutation rolls back its own writes, so the
+ * count lives here, kept by the poll that finds the failure.
+ */
+async function countWalkFailure(
+	ctx: MutationCtx,
+	walk: Doc<'mailFolderMembership'>,
+	generation: number
+): Promise<NonNullable<Doc<'mailFolderMembership'>['walkFailures']> | null> {
+	if (!walk.walkJob) return null;
+	const job = await ctx.db.system.get(walk.walkJob);
+	if (job?.state.kind !== 'failed') return null;
+	const prior = walk.walkFailures?.generation === generation ? walk.walkFailures.count : 0;
+	return {
+		generation,
+		count: prior + 1,
+		lastError: job.state.error || 'The folder walk step failed without an error message',
+	};
 }
 
 /** Start (or, in a rebuild, reset) the walks of one page of folders. */
@@ -112,9 +151,7 @@ export const startPage = internalMutation({
 				continue;
 			}
 			walking += 1;
-			await ctx.scheduler.runAfter(0, internal.maintenance.folderMembershipBackfill.step, {
-				folderId: folder._id,
-			});
+			await scheduleFolderWalkStep(ctx, folder._id);
 		}
 		// The ledger completes in `finish`, once the walks started here are ready.
 		await recordMigrationPage(ctx, run, {
@@ -171,10 +208,25 @@ export const finish = internalMutation({
 			return { isSuperseded: false, isCompleted: true };
 		}
 		if (stalest.updatedAt < Date.now() - STALLED_MS) {
-			await ctx.db.patch(stalest._id, { updatedAt: Date.now() });
-			await ctx.scheduler.runAfter(0, internal.maintenance.folderMembershipBackfill.step, {
-				folderId: stalest.folderId,
+			const walkFailures = await countWalkFailure(ctx, stalest, run.generation);
+			if (walkFailures && walkFailures.count >= MAX_WALK_FAILURES) {
+				// Retrying has not helped: stop polling and fail the migration, so the
+				// card and its runner show the error instead of waiting forever.
+				const error = `Folder ${stalest.folderId}: ${walkFailures.lastError}`;
+				await ctx.db.patch(stalest._id, { walkFailures });
+				await recordMigrationFailure(ctx, run, error);
+				logWarn('migration.0054_backfill_folder_membership.walk_failed', {
+					folderId: stalest.folderId,
+					failures: walkFailures.count,
+					generation: run.generation,
+				});
+				return { isSuperseded: false, isCompleted: false, isFailed: true };
+			}
+			await ctx.db.patch(stalest._id, {
+				updatedAt: Date.now(),
+				...(walkFailures ? { walkFailures } : {}),
 			});
+			await scheduleFolderWalkStep(ctx, stalest.folderId);
 		}
 		await scheduleMigrationPage(
 			ctx,
@@ -222,6 +274,9 @@ export const ensure = internalMutation({
 	handler: async (ctx): Promise<BeginResult> => {
 		const existing = await readMigrationRun(ctx, MIGRATION);
 		if (existing?.status === 'completed') return { started: false };
+		// A pass that failed on a folder waits for someone to look: resuming it
+		// here would only fail the same folder again.
+		if (existing?.failure) return { started: false };
 		if (existing && existing.updatedAt > Date.now() - RESUME_AFTER_MS) return { started: false };
 		return await begin(ctx, { restart: false, rebuild: false });
 	},

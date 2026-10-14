@@ -34,6 +34,7 @@
  * its blocks). New folders start ready and empty.
  */
 
+import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import { AFTER_EVERY_ROW, isCountedPosition, type CounterPosition } from '../lib/counters';
@@ -72,6 +73,30 @@ export async function loadFolderMembership(
  */
 export function membershipVersion(state: Doc<'mailFolderMembership'>): string {
 	return `${state._id}:${state.revision}`;
+}
+
+/**
+ * Schedule the folder's next walk step and record its job on the folder's
+ * state row (`walkJob`), so 0054's `finish` can read whether it failed.
+ * `madeProgress` clears the walk's failure count: a step that committed a page
+ * ends a run of failures.
+ */
+export async function scheduleFolderWalkStep(
+	ctx: MutationCtx,
+	folderId: Id<'mailFolders'>,
+	options: { madeProgress?: boolean } = {}
+): Promise<void> {
+	const walkJob = await ctx.scheduler.runAfter(
+		0,
+		internal.maintenance.folderMembershipBackfill.step,
+		{ folderId }
+	);
+	const state = await loadFolderMembership(ctx.db, folderId);
+	if (!state) return;
+	await ctx.db.patch(state._id, {
+		walkJob,
+		...(options.madeProgress ? { walkFailures: undefined } : {}),
+	});
 }
 
 /**

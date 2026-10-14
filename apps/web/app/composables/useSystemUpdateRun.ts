@@ -4,6 +4,8 @@ import {
 	isStartedRollout,
 	isUpdaterRefusal,
 	isMigrationCheckRefusal,
+	MIGRATIONS_PENDING_STATUS,
+	MIGRATIONS_UNVERIFIED_STATUS,
 	updateFailureMessage,
 	updateRequestWasAnswered,
 } from '~/lib/systemUpdate';
@@ -106,6 +108,18 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 		pendingTargetVersion.value = '';
 	}
 
+	/** The reader's-language reason for a refusal the route or updater gave; null otherwise. */
+	function refusalMessage(statusCode: unknown): string | null {
+		if (statusCode === 409) return t('dashboard.admin.system.index.updateBusy');
+		if (statusCode === MIGRATIONS_PENDING_STATUS) {
+			return t('dashboard.admin.system.index.migrationsPending');
+		}
+		if (statusCode === MIGRATIONS_UNVERIFIED_STATUS) {
+			return t('dashboard.admin.system.index.migrationsUnverified');
+		}
+		return null;
+	}
+
 	async function confirmUpdate() {
 		updateState.value = 'running';
 		updateError.value = '';
@@ -138,9 +152,8 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 			const statusCode = (err as { statusCode?: unknown }).statusCode;
 			updateState.value = 'failed';
 			updateError.value =
-				statusCode === 409
-					? t('dashboard.admin.system.index.updateBusy')
-					: updateFailureMessage(err, t('dashboard.admin.system.index.unknownError'));
+				refusalMessage(statusCode) ??
+				updateFailureMessage(err, t('dashboard.admin.system.index.unknownError'));
 			// A refused update never ran, and the route took its row back (or, for
 			// unfinished migrations, never opened one). The open run, if any, is
 			// another rollout, not this one.

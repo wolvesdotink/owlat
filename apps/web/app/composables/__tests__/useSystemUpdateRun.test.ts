@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getFunctionName } from 'convex/server';
 import { createFetchError } from 'ofetch';
+import { createI18n } from 'vue-i18n';
+import en from '../../../i18n/locales/en.json';
+import de from '../../../i18n/locales/de.json';
 
 /**
  * The in-app update run, from "Update now" to a verdict.
@@ -123,6 +126,39 @@ describe('useSystemUpdateRun', () => {
 
 			expect(run.updateState.value).toBe('failed');
 			expect(mutationMock).not.toHaveBeenCalled();
+		}
+	);
+
+	it.each([
+		['de', 503, 'Die Datenmigrationen, die dieses Update braucht, konnten nicht geprüft werden'],
+		['en', 503, 'Could not check the data migrations this update needs'],
+		['de', 412, 'Schließe zuerst die Datenmigrationen ab'],
+	])(
+		"words a migration-check refusal in the reader's language (%s, %i), not the server's English",
+		async (locale, status, expected) => {
+			const i18n = createI18n({ legacy: false, locale, messages: { en, de } });
+			vi.stubGlobal('useI18n', () => i18n.global);
+			try {
+				apiFetchMock.mockRejectedValue(
+					createFetchError({
+						request: '/api/system/update',
+						response: new Response(
+							JSON.stringify({ message: 'Could not check the data migrations (server)' }),
+							{ status, headers: { 'content-type': 'application/json' } }
+						),
+						options: { method: 'POST' },
+					} as Parameters<typeof createFetchError>[0])
+				);
+				const run = startedRun();
+
+				await run.confirmUpdate();
+
+				expect(run.updateState.value).toBe('failed');
+				expect(run.updateError.value).toContain(expected);
+				expect(run.updateError.value).not.toContain('(server)');
+			} finally {
+				vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
+			}
 		}
 	);
 

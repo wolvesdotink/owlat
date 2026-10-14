@@ -45,6 +45,12 @@ export const migrationRunTables = {
 		 * this field existed, until its next scheduled page.
 		 */
 		pageJob: v.optional(v.object({ id: v.id('_scheduled_functions'), generation: v.number() })),
+		/**
+		 * A failure the pass recorded itself (`recordMigrationFailure`): work it
+		 * started outside its own page chain kept failing, so it stopped. The row
+		 * stays `running`; the next start or resume clears this.
+		 */
+		failure: v.optional(v.object({ error: v.string(), at: v.number() })),
 	}).index('by_migration', ['migration']),
 
 	/**

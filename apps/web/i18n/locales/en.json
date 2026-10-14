@@ -9245,6 +9245,8 @@
 					},
 					"unknownError": "Unknown error",
 					"updateBusy": "The updater is still applying another change. Try again once it has finished.",
+					"migrationsPending": "Finish the data migrations named under Available updates first. The update was not started.",
+					"migrationsUnverified": "Could not check the data migrations this update needs, so the update was not started. Try again in a moment.",
 					"updates": {
 						"availableCurrent": "available (current: v{version})",
 						"beforeUpdate": "Before you update",
