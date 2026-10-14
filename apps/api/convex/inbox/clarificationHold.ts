@@ -45,13 +45,30 @@ export async function resolveClarificationRecipients(
 	ctx: MutationCtx,
 	message: Pick<Doc<'inboundMessages'>, 'assignedTo' | 'threadId'>
 ): Promise<string[]> {
-	const readers = await listSharedInboxReaderIds(ctx);
+	const target = await clarificationTarget(ctx, message, await listSharedInboxReaderIds(ctx));
+	return target.recipients;
+}
+
+/**
+ * {@link resolveClarificationRecipients} against a reader list the caller read
+ * once (the reminder reads it once per run, not once per question). `assignee`
+ * is set when one person has to answer; absent, the readers do.
+ */
+export async function clarificationTarget(
+	ctx: MutationCtx,
+	message: Pick<Doc<'inboundMessages'>, 'assignedTo' | 'threadId'>,
+	readers: readonly string[]
+): Promise<{ assignee?: string; recipients: string[] }> {
 	const isReader = (userId: string | undefined): userId is string =>
 		userId !== undefined && readers.includes(userId);
-	if (isReader(message.assignedTo)) return [message.assignedTo];
+	if (isReader(message.assignedTo)) {
+		return { assignee: message.assignedTo, recipients: [message.assignedTo] };
+	}
 	const thread = message.threadId ? await ctx.db.get(message.threadId) : null;
-	if (isReader(thread?.assignedTo)) return [thread.assignedTo];
-	return readers;
+	if (isReader(thread?.assignedTo)) {
+		return { assignee: thread.assignedTo, recipients: [thread.assignedTo] };
+	}
+	return { recipients: [...readers] };
 }
 
 /** Held messages the queue reads past its limit before it stops (stragglers). */
@@ -171,23 +188,25 @@ export function isSettledThreadStatus(status: string): boolean {
 
 // ─── Reminder bookkeeping (a reminder notice per message and person) ────────
 
-/** Of `userIds`, those the reminder has not asked about `inboundMessageId` yet. */
-export async function notRemindedYet(
+/** The most notices one question can carry: an ask and a reminder per reader, with room. */
+export const MAX_NOTICES_PER_QUESTION = 500;
+
+/**
+ * Who the reminder already asked about `inboundMessageId`, in ONE range read
+ * of the question's notices (not one read per person), and how many notices
+ * that read. A question carries at most an ask and a reminder per
+ * shared-inbox reader (`access.listSharedInboxReaderIds` reads at most 200).
+ */
+export async function remindedUserIds(
 	ctx: MutationCtx,
-	inboundMessageId: Id<'inboundMessages'>,
-	userIds: readonly string[]
-): Promise<string[]> {
-	const fresh: string[] = [];
-	for (const userId of userIds) {
-		const notices = await ctx.db
-			.query('inboxAssignmentNotices')
-			.withIndex('by_inbound_message_and_user', (q) =>
-				q.eq('inboundMessageId', inboundMessageId).eq('userId', userId)
-			)
-			.collect(); // bounded: the ask and at most one reminder per person
-		if (!notices.some((notice) => notice.isReminder === true)) fresh.push(userId);
-	}
-	return fresh;
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<{ userIds: Set<string>; read: number }> {
+	const notices = await ctx.db
+		.query('inboxAssignmentNotices')
+		.withIndex('by_inbound_message_and_user', (q) => q.eq('inboundMessageId', inboundMessageId))
+		.take(MAX_NOTICES_PER_QUESTION);
+	const userIds = new Set(notices.filter((n) => n.isReminder === true).map((n) => n.userId));
+	return { userIds, read: notices.length };
 }
 
 /**

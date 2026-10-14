@@ -299,6 +299,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('conversationThreads', 'assignedTo', 'retain', ORG_ATTRIBUTION),
 	rel('inboundMessages', 'assignedTo', 'retain', ORG_ATTRIBUTION),
 	rel('inboundMessages', 'draftRevisions[].savedBy', 'retain', ORG_ATTRIBUTION),
+	rel('inboundMessages', 'pendingClarification.remindedForUserId', 'retain', ORG_ATTRIBUTION),
 
 	rel(
 		'unifiedMessages',

@@ -44,15 +44,15 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-/** Real transaction limits, and shared-inbox readers who all have a device. */
-async function harness(): Promise<Harness> {
+/** Real transaction limits, and `readers` shared-inbox readers, each with a device or none. */
+async function harness(readers = READERS, hasDevices = true): Promise<Harness> {
 	_resetSingletonOrgCacheForTests();
 	const t = convexTest({ schema, modules, transactionLimits: true });
 	t.registerComponent('betterAuth', betterAuthSchema, betterAuthModules);
 	const org = (await t.mutation(components.betterAuth.adapter.create, {
 		input: { model: 'organization', data: { name: 'Acme', slug: 'acme', createdAt: Date.now() } },
 	} as never)) as { _id: string };
-	for (let i = 0; i < READERS; i++) {
+	for (let i = 0; i < readers; i++) {
 		const userId = `reader-${i}`;
 		await t.mutation(components.betterAuth.adapter.create, {
 			input: {
@@ -60,7 +60,7 @@ async function harness(): Promise<Harness> {
 				data: { organizationId: org._id, userId, role: 'admin', createdAt: Date.now() },
 			},
 		} as never);
-		await seedDevice(t, userId);
+		if (hasDevices) await seedDevice(t, userId);
 	}
 	return t;
 }
@@ -114,4 +114,36 @@ it('stamps every legacy row on the first run and drains the reminders over runs,
 	const sent = await reminders();
 	expect(sent).toHaveLength(total);
 	expect(new Set(sent.map((n) => `${n.inboundMessageId}:${n.userId}`)).size).toBe(total);
+}, 180_000);
+
+// Sol's round-5 scenario: once some questions were reminded, every run used
+// to re-check each (question, reader) pair with its own index read. From the
+// tenth run on, 100 questions x 50 readers went over the 4,096 index ranges a
+// transaction may read, the sends rolled back, and 1,400 reminders were never
+// sent. Each run must send its full share until all 5,000 are out.
+it('drains 100 questions x 50 readers over runs, a full share each run, nobody twice', async () => {
+	const readers = 50;
+	const t = await harness(readers, false);
+	await seedHeld(t, OVERDUE, 'open', Date.now() - 2 * DAY);
+	const total = OVERDUE * readers;
+	const reminders = () =>
+		t.run(async (ctx) =>
+			(await ctx.db.query('inboxAssignmentNotices').collect()).filter((n) => n.isReminder)
+		);
+
+	let sent = 0;
+	for (let run = 0; run < Math.ceil(total / MAX_REMINDER_SENDS); run++) {
+		await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		const now = (await reminders()).length;
+		// A run that rolled back sends nothing: the share proves it ran.
+		expect(now - sent).toBe(Math.min(MAX_REMINDER_SENDS, total - sent));
+		sent = now;
+	}
+	const all = await reminders();
+	expect(all).toHaveLength(total);
+	expect(new Set(all.map((n) => `${n.inboundMessageId}:${n.userId}`)).size).toBe(total);
+	// Done questions are skipped from then on, and nothing more goes out.
+	await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+	expect(await reminders()).toHaveLength(total);
 }, 180_000);

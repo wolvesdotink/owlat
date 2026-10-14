@@ -117,6 +117,12 @@ export const pendingClarificationValidator = v.object({
 	// When the abandoned-question cron last asked again. Whom it asked is kept
 	// in its notices marked `isReminder`, one per person (inbox/clarificationHold.ts).
 	remindedAt: v.optional(v.number()),
+	// The reminder is done for this target, so later runs skip the question
+	// without reading its notices (inbox/clarificationReminders.ts): every
+	// shared-inbox reader was reminded, or the assignee with this id was. A
+	// new assignee is a new target and is reminded once.
+	isRemindedForReaders: v.optional(v.boolean()),
+	remindedForUserId: v.optional(v.string()),
 });
 
 /**
