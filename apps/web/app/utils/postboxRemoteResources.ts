@@ -96,69 +96,98 @@ function splitDeclarations(style: string): string[] {
 	return declarations.filter((declaration) => declaration.trim() !== '');
 }
 
-const CSS_URL_RE = /\b(?:url|src)\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))/gi;
-const CSS_STRING_RE = /"([^"]*)"|'([^']*)'/g;
-// The start of every CSS function that can fetch an image. `image-set()` and
-// `cross-fade()` are taken whole, with the url()s inside them.
-const CSS_IMAGE_FUNCTION_RE = /(?:-webkit-)?(?:image-set|cross-fade)\(|\b(?:url|src)\(/gi;
-// `type("image/png")` inside an image-set names a MIME type, not a URL.
-const CSS_TYPE_RE = /\btype\(\s*(?:"[^"]*"|'[^']*')\s*\)/gi;
-
-/** Index just past the `)` closing the function whose `(` is at `open`, honouring quotes. */
-function closingParen(text: string, open: number): number {
-	let depth = 0;
-	let quote: string | null = null;
-	for (let i = open; i < text.length; i++) {
-		const ch = text[i];
-		if (quote) {
-			if (ch === quote) quote = null;
-		} else if (ch === '"' || ch === "'") quote = ch;
-		else if (ch === '(') depth++;
-		else if (ch === ')' && --depth === 0) return i + 1;
-	}
-	// Unterminated: the function runs to the end of the declaration.
-	return text.length;
-}
-
-/** Every URL one image function (`url()`, `image-set()`, …) can fetch. */
-function imageFunctionUrls(fn: string): string[] {
-	const urls: string[] = [];
-	for (const match of fn.matchAll(CSS_URL_RE)) {
-		urls.push((match[1] ?? match[2] ?? match[3] ?? '').trim());
-	}
-	// `image-set("a.png" 1x)` fetches its plain strings too.
-	if (/^(?:-webkit-)?image-set\(/i.test(fn)) {
-		for (const match of fn.replace(CSS_TYPE_RE, '').matchAll(CSS_STRING_RE)) {
-			urls.push((match[1] ?? match[2] ?? '').trim());
-		}
-	}
-	return urls;
-}
-
-interface CssImageFunction {
+/**
+ * A top-level CSS function in one declaration (`url(…)`, `image-set(…)`,
+ * `-webkit-cross-fade(…)`, anything) and every URL it could fetch.
+ */
+interface CssFunctionUnit {
 	start: number;
 	end: number;
 	urls: string[];
 }
 
-/** The image functions in one declaration, outermost only, in order. */
-function imageFunctions(declaration: string): CssImageFunction[] {
-	const fns: CssImageFunction[] = [];
-	const re = new RegExp(CSS_IMAGE_FUNCTION_RE.source, 'gi');
-	let match: RegExpExecArray | null;
-	while ((match = re.exec(declaration))) {
-		const start = match.index;
-		const end = closingParen(declaration, start + match[0].length - 1);
-		fns.push({ start, end, urls: imageFunctionUrls(declaration.slice(start, end)) });
-		// Skip past the whole function: a url() inside an image-set is its own.
-		re.lastIndex = end;
-	}
-	return fns;
+function isCssIdentChar(ch: string): boolean {
+	return /[\w-]/.test(ch) || ch.charCodeAt(0) >= 0x80;
 }
 
 /**
- * Gate one CSS declaration. Each image function that fetches a withheld URL
- * is rewritten to `none`, so `background:#000 url(…)` keeps its colour (and
+ * Tokenize one declaration in a single linear pass and collect, per
+ * top-level function, every reference the browser could fetch. Rather than
+ * know which functions take images (and miss a nesting such as
+ * `cross-fade(image-set("…"))`), it fails closed: every `url(…)` token and
+ * every quoted string inside a function, at any depth, counts, except a
+ * string directly inside `type()`, which names a MIME type. A quoted string
+ * outside every function (a `font-family` name) is never fetched. Comments
+ * are skipped; an unterminated string, comment or function runs to the end.
+ */
+function cssFunctionUnits(value: string): CssFunctionUnit[] {
+	const units: CssFunctionUnit[] = [];
+	const stack: string[] = [];
+	const length = value.length;
+	// The top-level function being read, if any.
+	const current: { unit: CssFunctionUnit | null } = { unit: null };
+	const open = (name: string, at: number) => {
+		if (stack.length === 0) current.unit = { start: at, end: length, urls: [] };
+		stack.push(name);
+	};
+	const close = (end: number) => {
+		stack.pop();
+		if (stack.length === 0 && current.unit) {
+			current.unit.end = end;
+			units.push(current.unit);
+			current.unit = null;
+		}
+	};
+	let i = 0;
+	while (i < length) {
+		const ch = value[i]!;
+		if (ch === '/' && value[i + 1] === '*') {
+			const end = value.indexOf('*/', i + 2);
+			i = end === -1 ? length : end + 2;
+		} else if (ch === '"' || ch === "'") {
+			const end = value.indexOf(ch, i + 1);
+			const stop = end === -1 ? length : end;
+			if (current.unit && stack[stack.length - 1] !== 'type') {
+				current.unit.urls.push(value.slice(i + 1, stop).trim());
+			}
+			i = stop + 1;
+		} else if (ch === '(') {
+			open('', i);
+			i++;
+		} else if (ch === ')') {
+			if (stack.length > 0) close(i + 1);
+			i++;
+		} else if (isCssIdentChar(ch)) {
+			let j = i;
+			while (j < length && isCssIdentChar(value[j]!)) j++;
+			if (value[j] !== '(') {
+				i = j;
+				continue;
+			}
+			const name = value.slice(i, j).toLowerCase();
+			open(name, i);
+			i = j + 1;
+			if (name !== 'url') continue;
+			let k = i;
+			while (k < length && /\s/.test(value[k]!)) k++;
+			if (value[k] === '"' || value[k] === "'") continue;
+			// An unquoted url token runs to the next `)`, quotes and all.
+			const end = value.indexOf(')', k);
+			const stop = end === -1 ? length : end;
+			current.unit?.urls.push(value.slice(k, stop).trim());
+			close(stop + 1);
+			i = stop + 1;
+		} else {
+			i++;
+		}
+	}
+	if (current.unit) units.push(current.unit);
+	return units;
+}
+
+/**
+ * Gate one CSS declaration. Each top-level function that could fetch a
+ * withheld URL is rewritten to `none`, so `background:#000 url(…)` keeps its colour (and
  * the newsletter its contrast) while the image layer goes. Returns the refs
  * it found and the declaration to keep, or null to drop it.
  */
@@ -176,7 +205,7 @@ function gateDeclaration(
 	const refs: ResourceRef[] = [];
 	let kept = '';
 	let last = 0;
-	for (const fn of imageFunctions(declaration)) {
+	for (const fn of cssFunctionUnits(declaration)) {
 		const fnRefs = fn.urls.map(classifyUrl);
 		refs.push(...fnRefs);
 		if (!fnRefs.some(withheld)) continue;
@@ -204,8 +233,11 @@ function srcsetCandidates(srcset: string): Array<{ url: string; text: string }> 
 		let url = srcset.slice(i, end);
 		i = end;
 		if (url.endsWith(',')) {
-			url = url.replace(/,+$/, '');
-			candidates.push({ url, text: url });
+			// A backward scan: `/,+$/` rescans every inner run of commas.
+			let stop = url.length;
+			while (stop > 0 && url[stop - 1] === ',') stop--;
+			url = url.slice(0, stop);
+			if (url) candidates.push({ url, text: url });
 			continue;
 		}
 		// The descriptors run up to the comma that ends this candidate.

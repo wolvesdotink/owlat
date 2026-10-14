@@ -31,7 +31,26 @@ export interface TrackerDetection {
 	trackerHosts: readonly string[];
 }
 
-const IMG_TAG_RE = /<img\b[^>]*>/gi;
+// The start of an `<img` tag. The tag's end is found with indexOf rather than
+// `<img\b[^>]*>`, which backtracks quadratically over unterminated tags.
+const IMG_TAG_START_RE = /<img(?![\w])/gi;
+
+/** Replace every `<img …>` tag in one linear pass. */
+function replaceImgTags(html: string, replace: (tag: string) => string): string {
+	const starts = new RegExp(IMG_TAG_START_RE.source, 'gi');
+	let out = '';
+	let from = 0;
+	let match: RegExpExecArray | null;
+	while ((match = starts.exec(html))) {
+		const close = html.indexOf('>', match.index);
+		// No `>` left: no later tag can close either.
+		if (close === -1) break;
+		out += html.slice(from, match.index) + replace(html.slice(match.index, close + 1));
+		from = close + 1;
+		starts.lastIndex = from;
+	}
+	return out + html.slice(from);
+}
 
 // The named references that can spell a URL's scheme or authority; anything
 // else a URL could hide behind a named reference leaves it unparseable, and an
@@ -127,7 +146,10 @@ export function remoteResourceHost(url: string | null): string | null {
 		const parsed = new URL(normalizeResourceUrl(url), base);
 		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
 		if (parsed.href.startsWith(base)) return null;
-		return parsed.hostname.toLowerCase() || null;
+		// One trailing root dot names the same host (`list-manage.com.`), so it
+		// must not slip past the tracker suffix match.
+		const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+		return host || null;
 	} catch {
 		return null;
 	}
@@ -216,7 +238,7 @@ export interface RemoteImageStripResult {
 export function stripRemoteImages(html: string): RemoteImageStripResult {
 	try {
 		let strippedRemoteImages = 0;
-		const out = html.replace(IMG_TAG_RE, (tag) => {
+		const out = replaceImgTags(html, (tag) => {
 			if (!isRemoteImgTag(tag)) return tag;
 			strippedRemoteImages += 1;
 			return '';

@@ -71,6 +71,13 @@ describe('isTrackingResource', () => {
 		expect(isTrackingPixelTag('<img src="https&colon;&Tab;//click.list-manage.com/o">')).toBe(true);
 	});
 
+	it('matches a tracker host written with a trailing root dot', () => {
+		const url = 'https://click.list-manage.com./open.gif';
+		expect(remoteResourceHost(url)).toBe('click.list-manage.com');
+		expect(isTrackingResource(url, { width: '600', height: '200', style: '' })).toBe(true);
+		expect(remoteResourceHost('https://CDN.Example.COM./a.png')).toBe('cdn.example.com');
+	});
+
 	it('treats a remote reference it cannot read as a tracker', () => {
 		expect(isTrackingResource('open.gif', NO_HINTS)).toBe(true);
 		expect(isTrackingResource('ftp://files.example/a.gif', NO_HINTS)).toBe(true);
@@ -151,6 +158,16 @@ describe('stripRemoteImages', () => {
 		expect(out.strippedRemoteImages).toBe(1);
 		expect(out.html).toContain('cid:logo@corp');
 		expect(out.html).not.toContain('tracker.example.com');
+	});
+
+	it('stays linear on a flood of unterminated <img tags', () => {
+		// No `>` anywhere: `<img\b[^>]*>` retried every start to the end.
+		const html = `<img src="https://evil.example/p.gif">${'<img src=x '.repeat(50_000)}`;
+		const started = performance.now();
+		const out = stripRemoteImages(html);
+		expect(performance.now() - started).toBeLessThan(250);
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).toBe('<img src=x '.repeat(50_000));
 	});
 
 	it('fails soft on non-string input', () => {

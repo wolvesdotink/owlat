@@ -102,6 +102,32 @@ describe('applyPostboxImageConsent — images blocked', () => {
 		expect(out.html).toContain('color:#fff');
 	});
 
+	it('sees an image-set nested inside cross-fade', () => {
+		const html =
+			'<div style="background:#000 -webkit-cross-fade(image-set(&quot;https://click.list-manage.com/open.gif&quot; 1x),url(data:image/gif;base64,AAAA),50%);color:#fff">a</div>';
+		const blocked = applyPostboxImageConsent(html, 'blocked', LABEL);
+		expect(blocked.hasRemoteResources).toBe(true);
+		expect(blocked.detection.trackerHosts).toEqual(['click.list-manage.com']);
+		expect(blocked.html).not.toContain('list-manage.com');
+		expect(blocked.html).toContain('background:#000 none');
+		expect(blocked.html).toContain('color:#fff');
+		const shown = applyPostboxImageConsent(html, 'images', LABEL);
+		expect(shown.html).not.toContain('list-manage.com');
+	});
+
+	it('fails closed on any function nesting and keeps the ones that fetch nothing', () => {
+		const out = applyPostboxImageConsent(
+			'<div style="background:linear-gradient(red,blue), foo(bar(baz(&quot;https://deep.example/a.png&quot;)))">a</div>' +
+				'<div style="background-image:image-set(/*&quot;*/&quot;https://cmt.example/b.png&quot; 1x)">b</div>',
+			'blocked',
+			LABEL
+		);
+		expect(out.hasRemoteResources).toBe(true);
+		expect(out.html).not.toContain('deep.example');
+		expect(out.html).not.toContain('cmt.example');
+		expect(out.html).toContain('linear-gradient(red,blue)');
+	});
+
 	it('does not count an image-set type() as a remote URL', () => {
 		const out = applyPostboxImageConsent(
 			'<div style="background:image-set(&quot;data:image/png;base64,AAAA&quot; 1x type(&quot;image/png&quot;))">a</div>',
@@ -183,5 +209,25 @@ describe('applyPostboxImageConsent — images shown', () => {
 		const out = render(CSS_PIXEL, 'everything');
 		expect(out.html).toContain('https://pixel.example/open.gif');
 		expect(out.detection.pixelCount).toBe(1);
+	});
+});
+
+describe('applyPostboxImageConsent — hostile input stays linear', () => {
+	it('parses a srcset with 100k commas quickly', () => {
+		const html = `<img srcset="https://cdn.example/a${','.repeat(100_000)}b, https://cdn.example/p.png 2x">`;
+		const started = performance.now();
+		const out = applyPostboxImageConsent(html, 'blocked', LABEL);
+		expect(performance.now() - started).toBeLessThan(250);
+		expect(out.hasRemoteResources).toBe(true);
+		expect(out.html).not.toContain('srcset');
+		expect(out.html).toContain(LABEL);
+	});
+
+	it('tokenizes deeply nested and unterminated CSS quickly', () => {
+		const style = `background:${'f('.repeat(20_000)}${'url(&quot;'.repeat(20_000)}`;
+		const started = performance.now();
+		const out = applyPostboxImageConsent(`<div style="${style}">x</div>`, 'blocked', LABEL);
+		expect(performance.now() - started).toBeLessThan(250);
+		expect(out.html).toContain('x');
 	});
 });
