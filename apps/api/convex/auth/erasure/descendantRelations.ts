@@ -115,6 +115,34 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailboxes', 'mailAttachments', 'mailboxId', 'delete', WITH_MAILBOX),
 	desc(
 		'mailboxes',
+		'semanticFiles',
+		'sourceMailboxId',
+		'delete',
+		'Attachments captured into Files from the personal mail, bytes and contact links included. Knowledge learned from them stays, restricted to owners and admins (inbox/access.ts).'
+	),
+	desc(
+		'semanticFiles',
+		'semanticFileContacts',
+		'fileId',
+		'delete',
+		'Deleted with the captured file.'
+	),
+	desc(
+		'semanticFiles',
+		'semanticFiles',
+		'previousVersionId',
+		'retain',
+		'A later version uploaded on top of an erased capture keeps a dangling id; its history ends there.'
+	),
+	desc(
+		'semanticFiles',
+		'inboundMessages',
+		'attachmentSuggestions.candidates[].fileId',
+		'retain',
+		'A Team Inbox suggestion naming an erased capture keeps a dangling id; attaching it finds no file.'
+	),
+	desc(
+		'mailboxes',
 		'mailAttachmentBackfillJobs',
 		'mailboxId',
 		'delete',

@@ -68,6 +68,15 @@ export function briefBanners(
 			text: 'components.brief.incomplete.short',
 			offersConversation: false,
 		});
+	} else if (reason === 'stale') {
+		// The thread's interpretation is fenced off (mail/interpret/staleFence.ts):
+		// its items show, nothing the model read.
+		banners.push({
+			key: 'stale',
+			tone: 'warn',
+			text: 'components.brief.incomplete.stale',
+			offersConversation: true,
+		});
 	} else if (!brief || brief.completeness === 'none') {
 		banners.push({
 			key: 'none',
@@ -105,7 +114,7 @@ export function briefBanners(
 			offersConversation: true,
 		});
 	}
-	if (opts.isSigned && brief && brief.completeness !== 'none') {
+	if (opts.isSigned && brief && brief.completeness !== 'none' && reason !== 'stale') {
 		banners.push({
 			key: 'signed',
 			tone: 'info',

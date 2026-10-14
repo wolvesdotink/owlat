@@ -83,6 +83,25 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: MINUTE,
 	},
 
+	// Failed requests on the public capability-token routes
+	// (lib/publicTokenPolicy.ts): a missing, malformed or unknown token, or any
+	// request that failed before its token was verified. Keyed on one of 4,096
+	// shards of the client address, and on one global key for every caller, so
+	// invented tokens add no rows. A verified token is charged on its own bucket
+	// and never reads these, so emptying them never blocks a real link.
+	publicTokenFailure: {
+		kind: 'token bucket',
+		rate: 30,
+		period: MINUTE,
+		capacity: 60,
+	},
+	publicTokenFailureGlobal: {
+		kind: 'token bucket',
+		rate: 600,
+		period: MINUTE,
+		capacity: 1200,
+	},
+
 	// DOI confirmations: one-time actions (20 per minute per IP)
 	doiConfirmation: {
 		kind: 'fixed window',
@@ -312,6 +331,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		rate: 10,
 		period: MINUTE,
 		capacity: 15,
+	},
+
+	// Re-verifying a signed message stored before verdicts recorded a scope
+	// (`mail/mailbox/signatureReverify.ts`), keyed per message. The reader asks
+	// once per open; a verdict that lands ends the asking, and one that cannot
+	// (no raw message, a verifier error) is retried at most this often.
+	signatureReverify: {
+		kind: 'fixed window',
+		rate: 1,
+		period: 10 * MINUTE,
 	},
 
 	// Direct-to-storage upload URL minting (media library, chat attachments).

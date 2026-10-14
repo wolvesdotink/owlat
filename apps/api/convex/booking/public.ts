@@ -296,6 +296,22 @@ async function loadManaged(ctx: ReadCtx, manageTokenHash: string) {
 }
 
 /**
+ * Whether a page slug or a manage token digest names something real. The
+ * public routes check this before charging the token's rate-limit bucket
+ * (lib/publicTokenPolicy.ts), so an invented one never gets a bucket.
+ */
+export const hasPageOrBooking = internalQuery({
+	args: { slug: v.optional(v.string()), manageTokenHash: v.optional(v.string()) },
+	handler: async (ctx, args) => {
+		if (args.slug !== undefined) return (await loadPage(ctx, args.slug)) !== null;
+		if (args.manageTokenHash !== undefined) {
+			return (await loadManaged(ctx, args.manageTokenHash)) !== null;
+		}
+		return false;
+	},
+});
+
+/**
  * The guest's view of their booking, and — while it can still be moved — the
  * open times to move it to in `[from, until)` (its own slot counts as free).
  */

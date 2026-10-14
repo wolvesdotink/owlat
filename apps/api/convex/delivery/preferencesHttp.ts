@@ -8,7 +8,7 @@
 
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { publicTokenEndpoint } from '../lib/publicTokenEndpoint';
+import { ADMISSION_REFUSED, publicTokenEndpoint } from '../lib/publicTokenEndpoint';
 import type { TokenValidation } from './tokenValidation';
 
 interface PreferenceData {
@@ -41,19 +41,20 @@ export const verifyPreferenceToken = publicTokenEndpoint(
 		cors: 'GET, OPTIONS',
 		resultMode: 'outcome',
 	},
-	async (ctx, { token }) => {
+	async (ctx, { token, admit }) => {
 		const validation = await ctx.runAction<TokenValidation>(
 			internal.delivery.preferences.validateToken,
-			{ token },
+			{ token }
 		);
 
 		if (!validation.valid) {
 			return { ok: false, reason: validation.reason ?? 'invalid_token' };
 		}
+		if (!(await admit())) return ADMISSION_REFUSED;
 
 		const preferences = await ctx.runQuery<PreferenceData | null>(
 			internal.delivery.preferencesQueries.getContactPreferences,
-			{ contactId: validation.contactId as Id<'contacts'> },
+			{ contactId: validation.contactId as Id<'contacts'> }
 		);
 
 		if (!preferences) {
@@ -69,7 +70,7 @@ export const verifyPreferenceToken = publicTokenEndpoint(
 				topics: preferences.topics,
 			},
 		};
-	},
+	}
 );
 
 interface UpdatePreferencesBody {
@@ -92,10 +93,10 @@ export const updatePreferences = publicTokenEndpoint(
 		body: 'json',
 		resultMode: 'action',
 	},
-	async (ctx, { token, body }) => {
+	async (ctx, { token, body, admit }) => {
 		const validation = await ctx.runAction<TokenValidation>(
 			internal.delivery.preferences.validateToken,
-			{ token },
+			{ token }
 		);
 
 		if (!validation.valid) {
@@ -106,6 +107,7 @@ export const updatePreferences = publicTokenEndpoint(
 				status: 400,
 			};
 		}
+		if (!(await admit())) return ADMISSION_REFUSED;
 
 		const { globalUnsubscribe, topicUpdates } = (body ?? {}) as UpdatePreferencesBody;
 
@@ -167,7 +169,7 @@ export const updatePreferences = publicTokenEndpoint(
 				contactId: validation.contactId as Id<'contacts'>,
 				globalUnsubscribe: globalUnsubscribe as boolean | undefined,
 				topicUpdates: formattedUpdates,
-			},
+			}
 		);
 
 		if (!result.success) {
@@ -180,5 +182,5 @@ export const updatePreferences = publicTokenEndpoint(
 		}
 
 		return { ok: true, data: { message: 'Preferences updated successfully' } };
-	},
+	}
 );

@@ -13,19 +13,25 @@
  * it is hashed here and only the digest is looked up. A booking request with
  * the honeypot field filled answers like a success and books nothing.
  *
- * Every route keys its limit on `<ip>:<page slug or manage token>`, like the
- * forms endpoint: while `RATE_LIMIT_TRUSTED_PROXY` is unset (the default) every
- * caller shares the `'unknown'` IP, and an IP-only key would let one visitor
- * close every member's page. The segment must be spelled as it is stored
- * (a lowercase slug, a manage token, no percent escapes); any other spelling
- * answers "not found", so it cannot stand in for the page with a bucket of its
- * own. What one page can take in total is held by the per-host limit inside
- * `reserve` / `rescheduleByToken`.
+ * Every route keys its limit on `<ip>:<sha256(page slug or manage token)>`,
+ * like the forms endpoint: while `RATE_LIMIT_TRUSTED_PROXY` is unset (the
+ * default) every caller shares the `'unknown'` IP, and an IP-only key would let
+ * one visitor close every member's page. A route charges that bucket only once
+ * the page or booking is known to exist (`admit()`); an unknown one spends the
+ * bounded failure budget of lib/publicTokenPolicy.ts. The segment must be
+ * spelled as it is stored (a lowercase slug, a manage token, no percent
+ * escapes); any other spelling answers "not found". What one page can take in
+ * total is held by the per-host limit inside `reserve` / `rescheduleByToken`.
  */
 
 import type { HttpRouter } from 'convex/server';
 import { internal } from '../_generated/api';
-import { publicTokenEndpoint, type ResultAction } from '../lib/publicTokenEndpoint';
+import {
+	ADMISSION_REFUSED,
+	publicTokenEndpoint,
+	type HandlerContext,
+	type ResultAction,
+} from '../lib/publicTokenEndpoint';
 import { randomToken } from '../lib/randomToken';
 import { BOOKING_LIMITS, isValidBookingSlug } from '@owlat/shared/booking';
 import { hashManageToken } from './model';
@@ -42,9 +48,8 @@ const MANAGE_TOKEN_RE = /^bk_[A-Za-z0-9]{40}$/;
 
 /**
  * Whether the path's last segment is `token` exactly as sent: no percent
- * escapes and, for a page slug, no capitals. The rate-limit key is the raw
- * segment, so a spelling that still resolved (`ADA`, `%61da`) would open a
- * fresh bucket per variant.
+ * escapes and, for a page slug, no capitals. A spelling that still resolved
+ * (`ADA`, `%61da`) would otherwise be a second name for one page.
  */
 function isCanonicalSegment(
 	request: Request,
@@ -54,6 +59,21 @@ function isCanonicalSegment(
 	const segments = new URL(request.url).pathname.split('/').filter(Boolean);
 	if (segments[segments.length - 1] !== token) return false;
 	return kind === 'slug' ? isValidBookingSlug(token) : MANAGE_TOKEN_RE.test(token);
+}
+
+/**
+ * Admit a request for a page or booking that exists. `null` means go on;
+ * otherwise the result to return (not found, or refused by the bucket).
+ */
+async function admitExisting(
+	ctx: HandlerContext,
+	admit: () => Promise<boolean>,
+	ref: { slug: string } | { manageTokenHash: string }
+): Promise<ResultAction | null> {
+	if (!(await ctx.runQuery<boolean>(internal.booking.public.hasPageOrBooking, ref))) {
+		return NOT_FOUND;
+	}
+	return (await admit()) ? null : ADMISSION_REFUSED;
 }
 
 /** A finite number query parameter, or undefined. */
@@ -93,7 +113,7 @@ const getBookingPage = publicTokenEndpoint(
 		cors: 'GET, OPTIONS',
 		resultMode: 'action',
 	},
-	async (ctx, { token, request }) => {
+	async (ctx, { token, request, admit }) => {
 		const type = new URL(request.url).searchParams.get('type') ?? undefined;
 		if (
 			!isCanonicalSegment(request, token, 'slug') ||
@@ -101,6 +121,10 @@ const getBookingPage = publicTokenEndpoint(
 		) {
 			return NOT_FOUND;
 		}
+		// Admit before the read: it computes open times from the host's busy
+		// calendar, which a refused request must never pay for.
+		const refused = await admitExisting(ctx, admit, { slug: token });
+		if (refused) return refused;
 		const page = await ctx.runQuery(internal.booking.public.getPage, {
 			slug: token,
 			typeSlug: type || undefined,
@@ -121,8 +145,10 @@ const createBooking = publicTokenEndpoint(
 		body: 'json',
 		resultMode: 'action',
 	},
-	async (ctx, { token, body, request }) => {
+	async (ctx, { token, body, request, admit }) => {
 		if (!isCanonicalSegment(request, token, 'slug')) return NOT_FOUND;
+		const refused = await admitExisting(ctx, admit, { slug: token });
+		if (refused) return refused;
 		const fields = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
 		const start = fields['start'];
 		const typeSlug = stringField(fields, 'type', BOOKING_LIMITS.slugMaxLength);
@@ -174,10 +200,14 @@ const getManagedBooking = publicTokenEndpoint(
 		cors: 'GET, OPTIONS',
 		resultMode: 'action',
 	},
-	async (ctx, { token, request }) => {
+	async (ctx, { token, request, admit }) => {
 		if (!isCanonicalSegment(request, token, 'manageToken')) return NOT_FOUND;
+		const manageTokenHash = await hashManageToken(token);
+		// Admit before the read, which computes the times to move it to.
+		const refused = await admitExisting(ctx, admit, { manageTokenHash });
+		if (refused) return refused;
 		const managed = await ctx.runQuery(internal.booking.public.getManaged, {
-			manageTokenHash: await hashManageToken(token),
+			manageTokenHash,
 			from: numberParam(request, 'from'),
 			until: numberParam(request, 'until'),
 		});
@@ -194,11 +224,14 @@ const cancelManagedBooking = publicTokenEndpoint(
 		cors: 'POST, OPTIONS',
 		resultMode: 'action',
 	},
-	async (ctx, { token, request }) => {
+	async (ctx, { token, request, admit }) => {
 		if (!isCanonicalSegment(request, token, 'manageToken')) return NOT_FOUND;
+		const manageTokenHash = await hashManageToken(token);
+		const refused = await admitExisting(ctx, admit, { manageTokenHash });
+		if (refused) return refused;
 		const result = await ctx.runMutation<{ ok: true } | { ok: false; reason: string }>(
 			internal.booking.public.cancelByToken,
-			{ manageTokenHash: await hashManageToken(token) }
+			{ manageTokenHash }
 		);
 		return result.ok ? { ok: true, data: { cancelled: true } } : refusal(result.reason);
 	}
@@ -214,8 +247,11 @@ const rescheduleManagedBooking = publicTokenEndpoint(
 		body: 'json',
 		resultMode: 'action',
 	},
-	async (ctx, { token, body, request }) => {
+	async (ctx, { token, body, request, admit }) => {
 		if (!isCanonicalSegment(request, token, 'manageToken')) return NOT_FOUND;
+		const manageTokenHash = await hashManageToken(token);
+		const refused = await admitExisting(ctx, admit, { manageTokenHash });
+		if (refused) return refused;
 		const start = (body && typeof body === 'object' ? (body as Record<string, unknown>) : {})[
 			'start'
 		];
@@ -223,7 +259,7 @@ const rescheduleManagedBooking = publicTokenEndpoint(
 		const result = await ctx.runMutation<
 			{ ok: true; startAt: number; endAt: number } | { ok: false; reason: string }
 		>(internal.booking.public.rescheduleByToken, {
-			manageTokenHash: await hashManageToken(token),
+			manageTokenHash,
 			start,
 			nextManageToken: randomToken(40, 'bk_'),
 		});

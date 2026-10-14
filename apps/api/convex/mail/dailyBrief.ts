@@ -30,6 +30,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { resolveCounterpartName } from './counterpartName';
 import type { MailCategory } from './category';
+import { isFencedThread } from './interpret/staleFence';
 
 // ─── Pure ranking + bundling (unit-tested, framework-free) ───────────────────
 
@@ -185,7 +186,10 @@ async function buildBriefForMailbox(ctx: MutationCtx, mailboxId: Id<'mailboxes'>
 					threadId: thread._id,
 					priorityScore: nr.priorityScore ?? urgencyFallbackScore(nr.urgency),
 					title: thread.latestSubject || '(no subject)',
-					subtitle: isClarify ? 'Needs your input' : (nr.askSummary ?? message.fromAddress),
+					// A fenced thread's model summary is not used (interpret/staleFence.ts).
+					subtitle: isClarify
+						? 'Needs your input'
+						: ((isFencedThread(thread) ? undefined : nr.askSummary) ?? message.fromAddress),
 					dueAt: undefined,
 				});
 			}

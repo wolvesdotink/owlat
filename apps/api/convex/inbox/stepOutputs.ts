@@ -40,6 +40,11 @@ import { contextTierValidator } from '../lib/literalValidators';
 import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
 import { NO_SAVED_EDITS } from './processingLifecycle/draftFields';
 import { isAnsweredInThread } from './answeredThread';
+import { dispatch } from './processingLifecycle/effects';
+import { asTeamGapQuestion, checkDraftGaps } from '../mail/ai/gapQuestions';
+import { hasUnconsentedOpenQuestion, hasUsableAnswer } from './clarificationAnswers';
+import { UNASKABLE_GAP_REASON } from '../lib/heldGapDraft';
+import type { MutationCtx } from '../_generated/server';
 
 /**
  * Record the context-tier metadata onto an inboundMessage without
@@ -110,6 +115,16 @@ export const recordAgentDecision = internalMutation({
  * decision. A draft with `[[...]]` placeholders is stored gap-guarded
  * (`isDraftGapGuarded`), so a reviewer's Approve cannot send them. A new
  * draft starts without the saved edits of the one it replaces.
+ *
+ * WRITE-SIDE FENCE (#1343): a draft with gaps is stored only with the owner's
+ * consent ("Draft with what I have" on the stored clarification, or the
+ * caller's `isGapsAccepted`, which the draft step passes when asking is off).
+ * Without it the draft is not stored, whoever wrote it: a draft action that
+ * started before this rule finishes here too. Nor is any draft while a stored
+ * question is still open without that consent. The open questions and the
+ * draft's gaps go back to the owner as questions, or, when only a question
+ * Owlat never asks could fill the gaps, the reply is left to a person with no
+ * AI draft.
  */
 export const recordDraftOutput = internalMutation({
 	args: {
@@ -130,20 +145,36 @@ export const recordDraftOutput = internalMutation({
 		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
 		// The draft was written cheap-first (D2): never auto-sent.
 		isCheapFirstDraft: v.optional(v.boolean()),
+		// Standing consent to gaps (asking is turned off). The owner's own
+		// "Draft with what I have" is read from the stored clarification.
+		isGapsAccepted: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		// A person took the reply over while this draft was being written: their
 		// text is the reply now, so the late agent draft is dropped.
-		// Nor is there a draft to write for a message a newer reply answered.
 		const message = await ctx.db.get(args.inboundMessageId);
+		// Answered first: a message a newer sent reply answered never reaches the
+		// gap hold below, nor the draft write (inbox/answeredThread.ts).
 		if (!message || message.manualTakeoverAt !== undefined || isAnsweredInThread(message)) return;
+		const hasGaps = authoredDraftHasGaps({ text: args.draftResponse });
+		const isGapsAccepted =
+			args.isGapsAccepted === true || message.pendingClarification?.isGapsAccepted === true;
+		// A stored question still open without consent holds the draft too,
+		// whatever its text: a draft that leaves the fact out is no better.
+		const isQuestionOpen = hasUnconsentedOpenQuestion(message.pendingClarification, isGapsAccepted);
+		if ((hasGaps && !isGapsAccepted) || isQuestionOpen) {
+			await holdUnconsentedGapDraft(ctx, message, args.draftResponse);
+			return;
+		}
 		await ctx.db.patch(args.inboundMessageId, {
 			draftResponse: args.draftResponse,
 			draftSubject: args.draftSubject,
 			// A `[[...]]` placeholder marks a fact the agent did not have. Stored as
 			// the gap guard, so the composer highlights and counts it and
 			// `approveDraft` refuses to send it (DRAFT_HAS_GAPS) until it is filled.
-			isDraftGapGuarded: authoredDraftHasGaps({ text: args.draftResponse }),
+			isDraftGapGuarded: hasGaps,
+			// Gaps the owner agreed to: shown, highlighted (lib/heldGapDraft.ts).
+			isDraftGapsAccepted: hasGaps ? true : undefined,
 			confidenceScore: args.confidenceScore,
 			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
 			// No screen offers variants any more (#1200): a new draft drops the ones
@@ -159,6 +190,44 @@ export const recordDraftOutput = internalMutation({
 		});
 	},
 });
+
+/**
+ * The fence's hold (see `recordDraftOutput`): nothing of the draft is stored.
+ * Only a message still in `drafting` moves; anywhere else the late draft is
+ * simply dropped. Questions are written untranslated (a mutation cannot call
+ * the model); the draft step's own hold translates them.
+ */
+async function holdUnconsentedGapDraft(
+	ctx: MutationCtx,
+	message: Doc<'inboundMessages'>,
+	draft: string
+): Promise<void> {
+	if (message.processingStatus !== 'drafting') return;
+	const existing = message.pendingClarification?.questions ?? [];
+	const gaps = checkDraftGaps(draft, { fromAddress: message.from, existing });
+	const fresh = gaps.kind === 'ask' ? gaps.questions.map(asTeamGapQuestion) : [];
+	const at = Date.now();
+	// Questions to ask: the stored ones still open, and one per new gap.
+	if (fresh.length > 0 || !existing.every(hasUsableAnswer)) {
+		await dispatch(ctx, message, {
+			to: 'awaiting_clarification',
+			at,
+			pendingClarification: { questions: [...existing, ...fresh], askedAt: at },
+		});
+		return;
+	}
+	// Only a credential could fill the gap: a person writes the reply. Blocked
+	// from autonomous sending too, since the route step may still run after.
+	await ctx.db.patch(message._id, {
+		isAutoSendBlocked: true,
+		agentDecision: {
+			decision: 'human_review',
+			reason: UNASKABLE_GAP_REASON,
+			confidence: message.confidenceScore ?? 0,
+		},
+	});
+	await dispatch(ctx, message, { to: 'draft_ready', at, draftResponse: '' });
+}
 
 /**
  * D13 (ADR-0073): persist the scan of a message that arrived while the agent

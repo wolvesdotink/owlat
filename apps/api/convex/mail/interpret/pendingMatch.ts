@@ -43,6 +43,7 @@ import { readResult } from './load';
 import { textSimilarity } from './reducePlan';
 import { pendingFieldsOf } from './reduceIdentity';
 import type { ReduceTransition } from './reduceInput';
+import { isInterpretationFenced } from './staleFence';
 
 /** Pending rows one run reads. */
 const PAGE = 20;
@@ -208,7 +209,8 @@ export const matchPendingTransitions = internalMutation({
 		const ref = args.threadRef;
 		const brief = await loadBriefRow(ctx, ref);
 		if (!brief) return;
-		if (brief.deletionEpoch !== args.deletionEpoch) {
+		// A fenced thread's reads propose nothing (staleFence.ts).
+		if (brief.deletionEpoch !== args.deletionEpoch || (await isInterpretationFenced(ctx, ref))) {
 			await finishRun(ctx, brief);
 			return;
 		}

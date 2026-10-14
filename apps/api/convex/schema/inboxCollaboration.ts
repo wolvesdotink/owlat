@@ -60,7 +60,10 @@ export const inboxCollaborationTables = {
 	// `inbox.queries.pendingAssignments`, which drives an in-app toast and a
 	// desktop notification; the client coalesces bursts and remembers which
 	// notices it has already surfaced, so this table is an append-only signal —
-	// never mutated, and old rows simply age out of the query window.
+	// never mutated, and old rows simply age out of the query window. The one
+	// exception is `clarification`: its notices go when the question settles
+	// (answered, dismissed, taken over), and a reminder's notice is the record
+	// that the person was already asked again (inbox/clarificationHold.ts).
 	inboxAssignmentNotices: defineTable({
 		// What the notice is about. `assignment` (absent = assignment, the
 		// original meaning) is a teammate handing over a thread; `clarification`
@@ -84,6 +87,16 @@ export const inboxCollaborationTables = {
 		),
 		// The parked message, for `clarification` notices only.
 		inboundMessageId: v.optional(v.id('inboundMessages')),
+		// A `clarification` notice the abandoned-question reminder sent: the
+		// person is not reminded about the same questions again.
+		isReminder: v.optional(v.boolean()),
+		// On a reminder: the `askedAt` of the questions it reminded about, so
+		// "was this person reminded about this ask" is one indexed lookup.
+		reminderAskedAt: v.optional(v.number()),
+		// On every `clarification` notice: the `askedAt` of the ask it belongs
+		// to, so the cleanup after the question settles deletes that ask's
+		// notices and never a newer ask's (inbox/clarificationHold.ts).
+		askedAt: v.optional(v.number()),
 		// The note that mentioned the person, for `mention` notices only.
 		noteId: v.optional(v.id('threadNotes')),
 		// Assignee (BetterAuth user id) — who the thread was handed to.
@@ -96,7 +109,15 @@ export const inboxCollaborationTables = {
 		createdAt: v.number(),
 	})
 		// Newest-first window of notices for one assignee.
-		.index('by_user_and_created', ['userId', 'createdAt']),
+		.index('by_user_and_created', ['userId', 'createdAt'])
+		// A held question's notices: one point lookup per person for reminder
+		// dedup (message, person, ask), and clearing them by message when the
+		// question settles (inbox/clarificationHold.ts).
+		.index('by_inbound_message_user_and_reminder', [
+			'inboundMessageId',
+			'userId',
+			'reminderAskedAt',
+		]),
 
 	// Thread Notes - internal notes the team writes on a shared-inbox thread,
 	// shown between the messages and never sent: no outbound mail, quoted reply,

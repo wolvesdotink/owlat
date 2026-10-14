@@ -28,6 +28,7 @@ import { needsReplyClarificationQuestionValidator } from '../../lib/validators/c
 import type { Doc, Id } from '../../_generated/dataModel';
 import { checkDraftGaps } from './gapQuestions';
 import type { AskQuestion } from './composeDraftPolicy';
+import { isFencedThread } from '../interpret/staleFence';
 
 /**
  * Load everything the draft-on-arrival action needs for one thread, or `null`
@@ -132,6 +133,8 @@ export const persistDraftSlot = internalMutation({
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread || !thread.needsReply) return;
+		// A draft written from a fenced thread's plan is never kept (interpret/staleFence.ts).
+		if (isFencedThread(thread)) return;
 		// Stale guard: only attach to the trigger we drafted for.
 		if (thread.needsReply.messageId !== args.triggerMessageId) return;
 		// Questions arrived meanwhile: the reply waits for their answers.

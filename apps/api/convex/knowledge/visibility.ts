@@ -49,7 +49,7 @@ export async function resolveKnowledgeViewer(ctx: QueryCtx): Promise<KnowledgeVi
 /** Whether `entry` is visible to a caller whose reader status is `canReadInbox`. */
 export function isKnowledgeEntryVisible(
 	canReadInbox: boolean,
-	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId'>
+	entry: Pick<Doc<'knowledgeEntries'>, 'sourceType' | 'threadId' | 'memberAccess'>
 ): boolean {
 	return canReadInbox || !isInboxDerivedKnowledge(entry);
 }

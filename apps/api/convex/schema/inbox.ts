@@ -18,6 +18,7 @@ import { draftRevisionValidator } from '../lib/validators/draftRevision';
 import { agentStepKindValidator } from '../agent/steps/catalog';
 import { llmUsageTagFields } from '../lib/llmUsageTags';
 import { conversationThreadTables } from './conversationThreads';
+import { inboundAnsweredFields } from './inboxAnswered';
 import {
 	agentMetricTypeValidator,
 	attachmentIndexingValidator,
@@ -279,8 +280,8 @@ export const inboxTables = {
 		// pendingClarificationValidator.
 		pendingClarification: v.optional(pendingClarificationValidator),
 		// Set when a draft was produced from an ABANDONED clarification (the owner
-		// never answered within the window and the fallback cron resumed a
-		// best-guess). It is a hard, fail-closed block on autonomous sending — the
+		// never answered within the window and the fallback cron, before #1343,
+		// resumed a best-guess). It is a hard, fail-closed block on autonomous sending — the
 		// route step's final safety gate refuses to auto-send while this is set, so
 		// a best-guess reply always goes to human review. Never cleared by the
 		// pipeline; a human reviews and sends (or discards) the draft.
@@ -288,6 +289,20 @@ export const inboxTables = {
 		// When a person last took the reply over from the agent (manualReply.ts).
 		// While set, late pipeline writes are refused; cleared on `→ received`.
 		manualTakeoverAt: v.optional(v.number()),
+		// Held on the agent's questions on a conversation someone resolved or
+		// closed: it needs nobody, so the Answer queue's index skips it. Kept by
+		// the thread module on every settle and reopen (inbox/clarificationHold.ts).
+		isThreadSettled: v.optional(v.boolean()),
+		// When the abandoned-question reminder last sent anything about this
+		// message. Its worker walks held messages least recently reminded first,
+		// so no question waits behind others that keep drawing reminders
+		// (inbox/clarificationReminders.ts).
+		lastReminderAt: v.optional(v.number()),
+		// Counts the message's entries into `security_check`, bumped by the
+		// transition that enters it. A scan action records the run it belongs to
+		// (`agentActions.securityCheckRun`), so a retried or released message's
+		// earlier completed scan never counts for the new run (manualReply.ts).
+		securityCheckRun: v.optional(v.number()),
 		// True while the working draft differs from the agent original (kept in
 		// sync by every revision-appending save — see inbox/draftRevisions.ts).
 		// Used to tell an UNEDITED owner-send of an answered-clarification draft
@@ -312,6 +327,10 @@ export const inboxTables = {
 		// Written by the composer's saves (`draftRevisions.appendDraftRevision`)
 		// and with the agent's draft (`stepOutputs.recordDraftOutput`).
 		isDraftGapGuarded: v.optional(v.boolean()),
+		// The agent's draft was stored with gaps the owner agreed to ("Draft with
+		// what I have", or asking turned off). Without it an agent draft with
+		// gaps is never shown (lib/heldGapDraft.ts, #1343).
+		isDraftGapsAccepted: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Where a `failed` message failed: `send` when the approved reply could not
@@ -319,39 +338,22 @@ export const inboxTables = {
 		// (`@owlat/shared/inboxRetry`); cleared when the message leaves `failed`.
 		// Absent on rows that failed before the field existed.
 		failedStage: v.optional(v.union(v.literal('send'), v.literal('pipeline'))),
-		// Archived because the agent reply to a newer message of the thread was
-		// sent (inbox/answeredThread.ts): what the agent had here, kept so a
-		// bounce of that reply can restore it, purged after the retention window.
-		answeredStash: v.optional(
-			v.object({
-				// The newer messages whose sent replies answered this one.
-				byInboundMessageIds: v.array(v.id('inboundMessages')),
-				// Moves with each distinct sent reply; past the tracking cap the set
-				// stops growing and the message stays answered for good.
-				at: v.number(),
-				isUntracked: v.optional(v.literal(true)),
-				processingStatus: v.union(
-					v.literal('classifying'),
-					v.literal('drafting'),
-					v.literal('draft_ready'),
-					v.literal('awaiting_clarification')
-				),
-				draftResponse: v.optional(v.string()),
-				pendingClarification: v.optional(pendingClarificationValidator),
-			})
-		),
-		// When the reply that had answered this message bounced and reopened it
-		// (inbox/answeredThread.ts): a live response obligation, read by the
-		// response clock (inbox/sla/threadClock.ts). Cleared when it ends: the
-		// message needs no reply any more, or another sent reply settles it.
-		answerBouncedAt: v.optional(v.number()),
+		// Answered by a newer message's sent reply (#1346, ./inboxAnswered.ts).
+		...inboundAnsweredFields,
 		// Timestamps
 		receivedAt: v.number(),
 		processedAt: v.optional(v.number()),
 	})
 		.index('by_message_id', ['messageId'])
 		.index('by_thread', ['threadId'])
+		// A thread's held questions, without its whole history: kept in step with
+		// the thread's status on every settle and reopen (inbox/clarificationHold.ts).
+		.index('by_thread_and_processing_status', ['threadId', 'processingStatus'])
 		.index('by_processing_status', ['processingStatus'])
+		// The Answer queue's held questions on open conversations (#1343).
+		.index('by_processing_status_and_thread_settled', ['processingStatus', 'isThreadSettled'])
+		// The reminder's walk: held messages, least recently reminded first.
+		.index('by_processing_status_and_last_reminder', ['processingStatus', 'lastReminderAt'])
 		.index('by_received_at', ['receivedAt'])
 		.index('by_contact', ['contactId'])
 		// Drives the raw-blob retention sweep: the equality component keeps the
@@ -397,6 +399,9 @@ export const inboxTables = {
 		modelUsed: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		createdAt: v.number(),
+		// `security_scan` only: the message's `securityCheckRun` when the scan
+		// began (inbox/manualReply.ts).
+		securityCheckRun: v.optional(v.number()),
 	})
 		.index('by_inbound_message', ['inboundMessageId'])
 		// One message's rows in one status. A message gains a row per step per

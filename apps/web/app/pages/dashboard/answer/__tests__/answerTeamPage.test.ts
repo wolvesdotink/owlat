@@ -516,6 +516,33 @@ describe('Answer mode for a Team inbox thread', () => {
 		});
 	});
 
+	it('"Draft with what I have" has the agent draft now, open questions as gaps', async () => {
+		messages.value = [
+			inbound('in_1', {
+				processingStatus: 'awaiting_clarification',
+				draftResponse: undefined,
+				pendingClarification: {
+					questions: [
+						{ id: 'q1', text: 'Is the PO on the invoice?', options: ['Yes', 'No'] },
+						{ id: 'q2', text: 'Which warehouse ships it?' },
+					],
+				},
+			}),
+		];
+		const wrapper = await mountPage();
+		const skip = wrapper.get('[data-testid="ask-skip"]');
+		expect(skip.text()).toBe('Draft with what I have');
+
+		await wrapper.findAll('[data-testid="ask-chip"]')[0]!.trigger('click');
+		await skip.trigger('click');
+		await flushPromises();
+		expect(findRun('Answer clarification')).toHaveBeenCalledWith({
+			inboundMessageId: 'in_1',
+			answers: [{ questionId: 'q1', value: 'Yes', source: 'user' }],
+			withGaps: true,
+		});
+	});
+
 	it('leaves a file answer to the server, which attaches it with the answer', async () => {
 		messages.value = [
 			inbound('in_1', {

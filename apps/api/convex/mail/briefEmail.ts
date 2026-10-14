@@ -41,6 +41,7 @@ import { mailMessageAttachmentValidator } from '../lib/validators/mailContent';
 import { insertDeliveredMessage } from './deliveryPipeline/insert';
 import { batchGet } from '../_utils/batchLoader';
 import { getActiveMailboxForUser } from './mailbox/identity';
+import { isFencedThread } from './interpret/staleFence';
 
 /**
  * How often the delivery cron runs. A brief is due when the user's local
@@ -159,10 +160,13 @@ export const listDue = internalQuery({
 			);
 			const items: BriefEmailItem[] = itemRows.map((item) => {
 				const thread = threads.get(item.threadId);
+				// A snapshot taken before its thread was fenced (interpret/staleFence.ts)
+				// carries the model's summary of the ask: left out now.
+				const isFenced = item.kind === 'needs_reply' && isFencedThread(thread ?? null);
 				return {
 					kind: item.kind,
 					title: item.title,
-					subtitle: item.subtitle,
+					subtitle: isFenced ? undefined : item.subtitle,
 					dueAt: item.dueAt,
 					// A deep link per item is the whole reason to mail a brief rather
 					// than describe one. A thread whose newest message is gone links

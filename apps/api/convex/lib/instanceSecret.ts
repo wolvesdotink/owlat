@@ -5,9 +5,7 @@ import { rateLimiter } from './rateLimiter';
 import { secretMatches } from './crypto';
 import { errorResponse } from './httpResponse';
 import { getClientIp, rateLimitedResponse, type PublicRateLimitType } from './publicRateLimit';
-
-/** The shared key `getClientIp` answers when no client address resolves. */
-const UNRESOLVED_CLIENT_KEY = 'unknown';
+import { UNRESOLVED_CLIENT_KEY } from './publicTokenPolicy';
 
 /** Header operator tooling sends the on-box `INSTANCE_SECRET` in. */
 const INSTANCE_SECRET_HEADER = 'X-Instance-Secret';

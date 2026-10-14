@@ -38,6 +38,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 
 export const MIGRATION = '0065_backfill_thread_response_metrics';
@@ -165,7 +166,9 @@ export const processPage = internalMutation({
 			generation: run.generation,
 		});
 		if (!isDone) {
-			await ctx.scheduler.runAfter(
+			await scheduleMigrationPage(
+				ctx,
+				run,
 				0,
 				internal.migrations['0065_backfill_thread_response_metrics'].processPage,
 				{ cursor: next, generation: run.generation }
@@ -190,7 +193,9 @@ export async function beginResponseHistoryBackfill(
 		restart: options.restart,
 	});
 	if (!begun) return null;
-	await ctx.scheduler.runAfter(
+	await scheduleMigrationPage(
+		ctx,
+		begun,
 		0,
 		internal.migrations['0065_backfill_thread_response_metrics'].processPage,
 		{ cursor: begun.cursor ?? null, generation: begun.generation }

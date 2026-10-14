@@ -21,6 +21,7 @@ import type { ItemResponsibility, InterpretMode } from '@owlat/shared/threadBrie
 import { openMessageBody, sealBodyAtWrite } from '../../lib/messageBody';
 import { mailboxScope } from '../mailbox/shared';
 import { itemCountsOf } from './counters';
+import { isFencedThread } from './staleFence';
 
 type SealedPair = { en: string; de: string };
 
@@ -61,6 +62,11 @@ export async function refreshBriefTop(
 ): Promise<void> {
 	const thread = await ctx.db.get(mailThreadId);
 	if (!thread) return;
+	if (isFencedThread(thread)) {
+		// A fenced thread has no list projection (staleFence.ts).
+		if (thread.briefTop) await ctx.db.patch(mailThreadId, { briefTop: undefined });
+		return;
+	}
 	const brief = await ctx.db
 		.query('threadBriefs')
 		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', mailThreadId))
@@ -143,11 +149,12 @@ export function modeOfMailbox(mailbox: Pick<Doc<'mailboxes'>, 'scope'>): Interpr
  * surface while the async scope-change cleanup catches up.
  */
 export async function openBriefTop(
-	thread: Pick<Doc<'mailThreads'>, 'briefTop' | 'needsReply'>,
+	thread: Pick<Doc<'mailThreads'>, 'briefTop' | 'needsReply' | 'interpretationStaleSince'>,
 	mode: InterpretMode
 ): Promise<BriefTopRow | undefined> {
 	const stored = thread.briefTop;
-	if (!stored) return undefined;
+	// A fenced thread has no projection, even one written before the fence.
+	if (!stored || isFencedThread(thread)) return undefined;
 	const storedLatest = mode === 'brief' && stored.mode === 'brief' ? stored.latest : undefined;
 	const [topText, latest] = await Promise.all([
 		stored.top ? openPair(stored.top.text) : Promise.resolve(undefined),

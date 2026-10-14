@@ -161,6 +161,25 @@ describe('replay-bound plugin inbound signature verification', () => {
 		expect(result).toMatchObject({ ok: false, status: 401 });
 	});
 
+	it.each([
+		['upper-cased', (sig: string) => sig.toUpperCase()],
+		['prefixed with its algorithm', (sig: string) => `sha256=${sig}`],
+		['padded with whitespace', (sig: string) => ` ${sig} `],
+		['followed by a second candidate', (sig: string) => `${sig} ${sig}`],
+	] as const)(
+		'rejects the valid signature %s — one spelling, so one digest (#1328)',
+		async (_label, respell) => {
+			// The digest on this arm covers the signature header as sent, which is only
+			// sound while a verified header has exactly one spelling. These are the
+			// rewrites that would otherwise mint a second claim for the same delivery.
+			vi.stubEnv(SECRET_ENV, SECRET);
+			const result = await verifyPluginReplayBoundSignature(
+				delivery({ signature: respell(signed(nowSeconds)) })
+			);
+			expect(result).toMatchObject({ ok: false, status: 401 });
+		}
+	);
+
 	it('clamps a tolerance beyond the contract ceiling', async () => {
 		// A generated artifact is not proof that the kit that validated it is the
 		// kit running now, so the bound is applied again here.
@@ -393,6 +412,68 @@ describe('the plugin webhook verifier dispatches on the declared scheme', () => 
 					'svix-signature': `v1,${svixSigned(nowSeconds, BODY, SECRET_BASE64, 'msg_plugin_2')}`,
 				})
 			);
+		});
+
+		describe('names a delivery by what was signed, not by how the header spells it (#1328)', () => {
+			const ROTATED_BASE64 = 'cm90YXRlZHJvdGF0ZWRrZXk=';
+			const JUNK = 'v1,bm90LWEtc2lnbmF0dXJl';
+
+			async function digestOf(
+				headerOverrides: Record<string, string | null> = {},
+				overrides: Partial<PluginWebhookDelivery> = {}
+			): Promise<string> {
+				const result = await verifyPluginWebhookDelivery(delivery(headerOverrides, overrides));
+				if (!result.ok) throw new Error(`expected a verified result: ${result.reason}`);
+				return result.deliveryDigest;
+			}
+
+			it.each([
+				['an extra invalid candidate', () => `${JUNK} v1,${svixSigned(nowSeconds)}`],
+				['doubled spaces', () => `v1,${svixSigned(nowSeconds)}  ${JUNK}`],
+				['reordered candidates', () => `v1,${svixSigned(nowSeconds)} ${JUNK}`],
+				[
+					'a duplicated candidate',
+					() => `v1,${svixSigned(nowSeconds)} v1,${svixSigned(nowSeconds)}`,
+				],
+			] as const)(
+				'gives the same delivery one digest across %s',
+				async (_label, signatureHeader) => {
+					vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+					// Each of these verifies, so each would earn its own claim if the
+					// digest covered the header text: a captured, still-fresh delivery
+					// re-sent once per spelling.
+					expect(await digestOf({ 'svix-signature': signatureHeader() })).toBe(await digestOf());
+				}
+			);
+
+			it('keeps one digest across a key rotation', async () => {
+				vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+				const before = await digestOf();
+				vi.stubEnv(SECRET_ENV, `whsec_${ROTATED_BASE64}`);
+				const after = await digestOf({
+					'svix-signature': `v1,${svixSigned(nowSeconds, BODY, ROTATED_BASE64)}`,
+				});
+				expect(after).toBe(before);
+			});
+
+			it('still separates a different body', async () => {
+				vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+				const otherBody = '{"event":"deal.lost","id":"43"}';
+				expect(
+					await digestOf(
+						{ 'svix-signature': `v1,${svixSigned(nowSeconds, otherBody)}` },
+						{ rawBody: otherBody }
+					)
+				).not.toBe(await digestOf());
+			});
+
+			it('still refuses a header whose candidates are all invalid', async () => {
+				vi.stubEnv(SECRET_ENV, SVIX_SECRET);
+				const result = await verifyPluginWebhookDelivery(
+					delivery({ 'svix-signature': `${JUNK}  ${JUNK} v2,${svixSigned(nowSeconds - 1)}` })
+				);
+				expect(result).toMatchObject({ ok: false, status: 401 });
+			});
 		});
 
 		it('names ONE plugin: the same signed bytes at another route are another delivery', async () => {

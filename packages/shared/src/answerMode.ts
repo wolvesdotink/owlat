@@ -17,6 +17,14 @@ import { escapeHtmlWithBreaks, htmlToPlainText } from './html';
  */
 export const DRAFT_HELD_FOR_SECRET = 'draft_held_secret';
 
+/**
+ * The error a "Draft with AI" stream ends with when its thread's AI reading
+ * was paused while it ran (a signature check narrowed what one of the
+ * thread's messages may be read for): the draft read the old reading, so none
+ * of it is kept, and the web takes back what it streamed into the composer.
+ */
+export const DRAFT_PAUSED_STALE_INTERPRETATION = 'draft_paused_stale';
+
 /** Questions per round before drafting, and rounds per draft. */
 export const MAX_ASK_QUESTIONS = 3;
 export const MAX_ASK_ROUNDS = 2;

@@ -15,7 +15,7 @@ import { clarificationFileRefValidator } from '../lib/validators/clarification';
 import type { Id } from '../_generated/dataModel';
 import { captureStandingAnswers } from './clarificationMemory';
 import { attachExistingToThread, attachUploadToThread } from './replyAttachmentStore';
-import { candidateForLabel, isFileQuestion } from './clarificationAnswers';
+import { candidateForLabel, hasUsableAnswer, isFileQuestion } from './clarificationAnswers';
 import {
 	ownerPickSuggestion,
 	resolveClarificationFile,
@@ -44,6 +44,10 @@ import { recordClarificationAnswered } from '../mail/interpret/threadEvents';
  * and a Files pick is recorded as the message's confident attachment
  * suggestion, which the resumed draft step keeps instead of searching again.
  *
+ * No draft with gaps the owner did not agree to: every question needs a usable
+ * answer, unless the owner chose "Draft with what I have" (`withGaps`, stored as
+ * `isGapsAccepted`), which drafts what is still open as `[[...]]` gaps.
+ *
  * The file also goes on the thread's reply, here, through the same code the
  * composer's attach runs (`./replyAttachmentStore.ts`). The resumed draft is
  * told the file is attached, and the reply may leave on the autonomous path
@@ -69,6 +73,9 @@ export const answerClarification = adminMutation({
 				mimeType: v.optional(v.string()),
 			})
 		),
+		// "Draft with what I have": questions left open become `[[...]]` gaps in
+		// the draft. Without it every question needs an answer.
+		withGaps: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args, session) => {
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
@@ -119,6 +126,11 @@ export const answerClarification = adminMutation({
 			});
 		}
 
+		const withGaps = args.withGaps === true;
+		if (!withGaps && !questions.every(hasUsableAnswer)) {
+			throwInvalidInput('Answer every question, or draft with what you have');
+		}
+
 		// Put the answered files on the thread's reply. A refusal (a non-email
 		// thread, the reply's size limits) throws and undoes the whole answer, so
 		// the owner never sees a draft that promises a file it does not carry.
@@ -147,8 +159,14 @@ export const answerClarification = adminMutation({
 		// Files pick becomes the confident suggestion the review surface offers
 		// and the resumed draft keeps.
 		const pickStorageId = pickedFile?.storageId;
+		const { isGapsAccepted: _consent, ...asked } = pending;
 		await ctx.db.patch(args.inboundMessageId, {
-			pendingClarification: { ...pending, questions, answeredAt: now },
+			pendingClarification: {
+				...asked,
+				questions,
+				answeredAt: now,
+				...(withGaps ? { isGapsAccepted: true } : {}),
+			},
 			...(pickedFile && pickStorageId
 				? {
 						attachmentSuggestions: ownerPickSuggestion(
@@ -169,7 +187,8 @@ export const answerClarification = adminMutation({
 			const capture = [] as { slotType: string; questionText: string; value: string }[];
 			for (const q of questions) {
 				const provided = answerByQuestion.get(q.id);
-				if (!provided || !q.answer) continue;
+				// A blank answer left under "Draft with what I have" is no fact.
+				if (!provided || !q.answer || !hasUsableAnswer(q)) continue;
 				if ((provided.source ?? 'user') !== 'user') continue;
 				if (isFileQuestion(q)) continue;
 				capture.push({ slotType: q.slotType, questionText: q.text, value: q.answer.value });

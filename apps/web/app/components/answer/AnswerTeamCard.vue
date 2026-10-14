@@ -17,6 +17,9 @@ import {
 import { escalationTrustLabel, trustLabel, type TrustLabel } from '~/utils/trustLabel';
 import type { AnswerCardControls } from '~/utils/answerCard';
 import { authoredTextGaps, draftTextGapSegments } from '~/utils/answerDraft';
+import { backgroundAskAnswers } from '~/utils/backgroundAskAnswers';
+import AskCard, { type AskCardAnswer } from './AskCard.vue';
+import type { AskQuestion } from '~/composables/useAnswerAskSession';
 
 type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[number];
 
@@ -32,6 +35,9 @@ type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[n
  * holds a skeleton while it goes. So the card has no thread to open, to edit
  * in, or to watch for a teammate replying; the server still answers a
  * collision on send, and `settleSend` says so.
+ *
+ * A message held on the agent's questions shows them, as Answer mode does:
+ * answering every one (or "Draft with what I have") resumes the draft.
  *
  * An agent draft's `[[...]]` gaps are marked. While the draft is gap-guarded
  * Approve is held (the server refuses it, DRAFT_HAS_GAPS) and the card offers
@@ -56,11 +62,40 @@ const collisionText = useLocalized();
 
 const { needsReply, onApprove, onReject, undoApprove, composeAndSend } = useReviewQueue();
 const message = computed(() => props.entry.message);
-const draftless = computed(() => needsReply(message.value));
+// Held on the agent's questions: no draft yet, and none written around them.
+// The card takes them as Answer mode's team page does.
+const heldQuestions = computed(() =>
+	message.value.processingStatus === 'awaiting_clarification'
+		? ((message.value.pendingClarification?.questions ?? []) as unknown as AskQuestion[])
+		: null
+);
+const draftless = computed(() => !heldQuestions.value && needsReply(message.value));
 
 const { showToast } = useToast();
 const busy = ref(false);
 const composeBody = ref('');
+
+const answerOp = useBackendOperation(api.inbox.clarification.answerClarification, {
+	label: () => t('dashboard.inbox.detail.answerClarificationOperation'),
+});
+/** Send the answers; `withGaps` is "Draft with what I have". */
+async function answerHeld(answers: AskCardAnswer[], withGaps = false) {
+	const questions = heldQuestions.value;
+	if (!questions || busy.value) return;
+	busy.value = true;
+	try {
+		const result = await answerOp.run({
+			inboundMessageId: message.value._id,
+			answers: backgroundAskAnswers(questions, answers),
+			...(withGaps ? { withGaps: true } : {}),
+		});
+		if (!result.ok) return;
+		showToast(t('dashboard.inbox.detail.clarificationSavedToast'));
+		props.controls.complete('completed');
+	} finally {
+		busy.value = false;
+	}
+}
 
 // The draft's `[[...]]` gaps, in the written part only, as `approveDraft`
 // counts them. They hold Approve while the draft is stored gap-guarded. A
@@ -232,6 +267,8 @@ async function sendReply() {
 
 function onKeydown(event: KeyboardEvent) {
 	if (event.metaKey || event.ctrlKey || event.altKey) return;
+	// The question card has its own keys; nothing here may approve or send.
+	if (heldQuestions.value) return;
 	if (isEditableTarget(event.target)) return;
 	const action = resolveReviewFocusKey(event.key, {
 		currentKind: draftless.value ? 'reply' : 'draft_review',
@@ -287,8 +324,18 @@ const primaryButton =
 			"
 		/>
 
+		<!-- Held on the agent's questions -->
+		<AskCard
+			v-if="heldQuestions"
+			:questions="heldQuestions"
+			:submitting="busy"
+			data-testid="team-card-ask"
+			@answer="answerHeld"
+			@skip="answerHeld($event, true)"
+		/>
+
 		<!-- Draftless escalation: compose a reply inline -->
-		<template v-if="draftless">
+		<template v-else-if="draftless">
 			<textarea
 				v-model="composeBody"
 				rows="6"

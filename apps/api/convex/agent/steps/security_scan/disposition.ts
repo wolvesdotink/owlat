@@ -14,13 +14,14 @@
  */
 
 import type { Infer } from 'convex/values';
-import type { GuardNotRunReason, ResolvedRoutingPolicy } from '@owlat/shared/aiRouting';
+import {
+	SPAM_ARCHIVE_SCORE,
+	type GuardNotRunReason,
+	type ResolvedRoutingPolicy,
+} from '@owlat/shared/aiRouting';
 import type { securityFlagsValidator } from '../../../lib/convexValidators';
 import { guardRequirement } from '../../../lib/aiRouting/guardRecord';
 import { INJECTION_CONFIDENCE_THRESHOLD } from './patterns';
-
-/** At or above this deterministic spam score the message is archived as spam. */
-export const SPAM_ARCHIVE_SCORE = 80;
 
 type MtaSpamVerdict = 'ham' | 'spam' | 'quarantine';
 

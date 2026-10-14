@@ -12,6 +12,11 @@
  * On injection-pattern detection in context: returns a `RouteTransition`
  * to `failed` via an error throw — the walker's catch translates to a
  * `to: 'failed'` lifecycle transition with `failingActionId`.
+ *
+ * A draft with `[[...]]` gaps the owner did not agree to is not stored: its
+ * gaps go back to the owner as questions (`awaiting_clarification`), or, when
+ * no question may ask for them, the message waits for a person with no AI
+ * draft (./gaps.ts).
  */
 
 import { internal } from '../../../_generated/api';
@@ -25,6 +30,18 @@ import { teamRoot } from '../../shared/agentSpend';
 import { boundedRoot } from '../../../lib/llm/actionDeadline';
 import { draftAttachmentPatch } from './attachment';
 import { loadDraftPlan, recordDraftPlan } from './plan';
+import {
+	checkTeamDraftGaps,
+	DRAFT_HELD_REASON,
+	storedClarificationDraft,
+	type TeamDraftGapCheck,
+} from './gaps';
+import {
+	hasUnconsentedOpenQuestion,
+	joinConfirmedBlocks,
+	ownerAttachmentFromAnswers,
+} from '../../../inbox/clarificationAnswers';
+import { ensureGapPlaceholders } from '../../../mail/ai/composeDraftPolicy';
 import type { AttachmentSuggestions } from '../../../inbox/attachmentSuggest';
 import {
 	ALLOWED_CATEGORIES,
@@ -59,18 +76,26 @@ export type DraftInput = {
 		// Optional for back-compat with rows classified before the field existed.
 		language?: string;
 	};
-	// TRUSTED facts the mailbox owner confirmed via the clarification loop
-	// (`inbox.answerClarification`). Rendered as a `[CONFIRMED BY OWNER]` block
-	// OUTSIDE the `<untrusted_email_content>` tags, so the model treats it as
-	// authoritative instruction rather than data. Absent on the normal draft
-	// path (no clarification was needed). See buildConfirmedContext.
+	// TRUSTED facts confirmed outside the stored clarification: the answers
+	// answer-memory filled in silently (`clarify` step). Rendered as a
+	// `[CONFIRMED BY OWNER]` block OUTSIDE the `<untrusted_email_content>` tags,
+	// so the model treats it as authoritative instruction rather than data. The
+	// owner's own answers are not passed here: the step rebuilds them from the
+	// stored `pendingClarification` on every entry (./gaps.ts
+	// `storedClarificationDraft`), so a retried draft keeps them too.
 	confirmedContext?: string;
-	// The owner's answer to the attachment question, threaded by
-	// `walker.resumeDraft`: the file they picked (recorded as a confident
-	// suggestion) or null when they answered without a file ("It isn't ready
-	// yet"). Absent when no attachment question was answered; the step then
-	// searches Files itself. See ./attachment.ts.
+	// The owner's answer to the attachment question: the file they picked
+	// (recorded as a confident suggestion) or null when they answered without a
+	// file ("It isn't ready yet"). Absent: read from the stored answers, and when
+	// none was answered the step searches Files itself. See ./attachment.ts.
 	ownerAttachment?: AttachmentSuggestions | null;
+	// Standing consent to a draft with gaps: asking is turned off. The owner's
+	// own "Draft with what I have" is read from the stored clarification.
+	// Without either, a draft with gaps is not stored; its gaps are asked.
+	isGapsAccepted?: boolean;
+	// Placeholders that must end up in the reply even when the model drops
+	// them. Those of the stored clarification's open questions are added here.
+	gapPlaceholders?: string[];
 };
 
 type DraftOutput = {
@@ -81,6 +106,8 @@ type DraftOutput = {
 	confidence: number;
 	/** Draft-quality self-check (null when the check failed / was unknown). */
 	draftQuality: DraftQuality | null;
+	/** Set when the draft was not stored because of gaps nobody agreed to. */
+	gapHold?: Exclude<TeamDraftGapCheck, { kind: 'complete' }>;
 };
 
 export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
@@ -95,6 +122,45 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: input.inboundMessageId,
 		});
+
+		// The owner's answers, their consent to gaps and its placeholders, from
+		// the stored clarification: the same on every path into this step,
+		// whether an answer resumed it, the clarify step handed off, or a retry
+		// ran the pipeline again (./gaps.ts).
+		const pending = message?.pendingClarification;
+		const stored = storedClarificationDraft(pending, input.isGapsAccepted === true);
+		const isGapsAccepted = stored.isGapsAccepted;
+		// A question still open that nobody agreed to leave open (a clarification
+		// answered in part before this rule, then retried through the whole
+		// pipeline): nothing is drafted around it, and no model is called. The
+		// message goes back to asking.
+		if (pending && hasUnconsentedOpenQuestion(pending, isGapsAccepted)) {
+			return {
+				output: {
+					draftResponse: '',
+					draftSubject: buildReplySubject(message?.subject),
+					confidenceScore: input.classification.confidence,
+					category: input.classification.category,
+					confidence: input.classification.confidence,
+					draftQuality: null,
+					gapHold: { kind: 'ask', questions: pending.questions },
+				},
+			};
+		}
+		const confirmedContext = joinConfirmedBlocks(
+			input.confirmedContext ?? '',
+			stored.confirmedContext
+		);
+		const gapPlaceholders = [
+			...new Set([...(input.gapPlaceholders ?? []), ...stored.gapPlaceholders]),
+		];
+		const ownerAttachment =
+			input.ownerAttachment !== undefined
+				? input.ownerAttachment
+				: ownerAttachmentFromAnswers(
+						message?.pendingClarification?.questions ?? [],
+						message?.attachmentSuggestions
+					);
 
 		// Personalize to the recipient's learned writing voice when a Postbox
 		// mailbox for this inbound recipient has opted in and has a derived
@@ -149,6 +215,8 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		const recallKnowledge = buildRecallKnowledgeTool({
 			runAction: ctx.runAction,
 			scopeToContact: recallScope,
+			// A Team Inbox draft, read by owners and admins, like the context step.
+			includeInboxDerived: true,
 			root,
 		});
 
@@ -191,55 +259,80 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			priority: safePriority,
 			confidence: input.classification.confidence,
 		});
-		const { draftBody, draftQuality, planCoverage, tokenUsage, modelUsed } = await runSharedDraft(
-			ctx,
-			{
-				surface: 'organization',
-				resolveModel: () =>
-					resolveLanguageModel(ctx, 'mail.draft', {
-						tier: route === 'capable' ? 'capable' : 'fast',
-					}),
-				...(route === 'cheap_first'
-					? {
-							writer: {
-								resolveCapable: () => resolveLanguageModel(ctx, 'mail.draft', { tier: 'capable' }),
-							},
-						}
-					: {}),
-				audience: 'an organization',
-				styleReference: "the organization's",
-				context: input.context,
-				confirmedContext: input.confirmedContext,
-				stanceGuidance,
-				classification: {
-					category: safeCategory,
-					intent: safeIntent,
-					sentiment: safeSentiment,
-					priority: safePriority,
-				},
-				toneInstruction,
-				signatureInstruction,
-				voiceSection,
-				// Allow a couple of fetch-more round-trips beyond the recall cap so the
-				// model can act on what it fetched, then still produce the final draft.
-				tools: { recallKnowledge },
-				maxSteps: MAX_RECALL_CALLS + 2,
-				// The service writes every generation to the ledger under these labels,
-				// the one store the spend ceiling reads (#1259). The usage it returns
-				// goes onto the step's agentActions row, the cost-by-step view only.
-				spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
-				root,
-				replyLanguage,
-				...(plan ? { responsePlan: plan.prompt } : {}),
-				strategyScope: {
-					...(message?.contactId ? { contactId: message.contactId } : {}),
-					classification: safeCategory,
-				},
-			}
-		);
+		const shared = await runSharedDraft(ctx, {
+			surface: 'organization',
+			resolveModel: () =>
+				resolveLanguageModel(ctx, 'mail.draft', {
+					tier: route === 'capable' ? 'capable' : 'fast',
+				}),
+			...(route === 'cheap_first'
+				? {
+						writer: {
+							resolveCapable: () => resolveLanguageModel(ctx, 'mail.draft', { tier: 'capable' }),
+						},
+					}
+				: {}),
+			audience: 'an organization',
+			styleReference: "the organization's",
+			context: input.context,
+			confirmedContext: confirmedContext.length > 0 ? confirmedContext : undefined,
+			stanceGuidance,
+			classification: {
+				category: safeCategory,
+				intent: safeIntent,
+				sentiment: safeSentiment,
+				priority: safePriority,
+			},
+			toneInstruction,
+			signatureInstruction,
+			voiceSection,
+			// Allow a couple of fetch-more round-trips beyond the recall cap so the
+			// model can act on what it fetched, then still produce the final draft.
+			tools: { recallKnowledge },
+			maxSteps: MAX_RECALL_CALLS + 2,
+			// The service writes every generation to the ledger under these labels,
+			// the one store the spend ceiling reads (#1259). The usage it returns
+			// goes onto the step's agentActions row, the cost-by-step view only.
+			spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
+			root,
+			replyLanguage,
+			...(plan ? { responsePlan: plan.prompt } : {}),
+			strategyScope: {
+				...(message?.contactId ? { contactId: message.contactId } : {}),
+				classification: safeCategory,
+			},
+		});
+
+		const { draftQuality, planCoverage, tokenUsage, modelUsed } = shared;
+		const draftBody = ensureGapPlaceholders(shared.draftBody, gapPlaceholders);
 
 		// Compose the reply subject from the original (fetched above).
 		const replySubject = buildReplySubject(message?.subject);
+
+		const draftOutput = {
+			draftResponse: draftBody,
+			draftSubject: replySubject,
+			confidenceScore: input.classification.confidence,
+			category: input.classification.category,
+			confidence: input.classification.confidence,
+			draftQuality,
+		};
+
+		// Gaps nobody agreed to: the draft is not stored, so it is never shown.
+		if (!isGapsAccepted) {
+			const gaps = await checkTeamDraftGaps(ctx, input.inboundMessageId, draftBody, message);
+			if (gaps.kind !== 'complete') {
+				if (gaps.kind === 'unaskable') {
+					await ctx.runMutation(internal.inbox.stepOutputs.recordAgentDecision, {
+						inboundMessageId: input.inboundMessageId,
+						decision: 'human_review',
+						reason: DRAFT_HELD_REASON,
+						confidence: input.classification.confidence,
+					});
+				}
+				return { output: { ...draftOutput, gapHold: gaps }, tokenUsage, modelUsed };
+			}
+		}
 
 		// Persist the draft fields (in-state side effect — ADR-0010); the route
 		// step reads them. The advisory, human-confirmed, contact-scoped attachment
@@ -250,13 +343,15 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			draftSubject: replySubject,
 			confidenceScore: input.classification.confidence,
 			...(draftQuality ? { draftQuality } : {}),
+			// The write-side fence stores gaps only with this consent.
+			...(isGapsAccepted ? { isGapsAccepted: true } : {}),
 			// A cheap-first draft is for review only (the `cheap_first_draft` gate).
 			...(route === 'cheap_first' ? { isCheapFirstDraft: true } : {}),
 			...(await draftAttachmentPatch(
 				ctx,
 				input.context,
 				message?.contactId,
-				input.ownerAttachment,
+				ownerAttachment,
 				root
 			)),
 		});
@@ -264,21 +359,27 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// Bound to this draft's hash and the items' revisions; the gate re-reads it.
 		if (plan) await recordDraftPlan(ctx, plan, draftBody, planCoverage);
 
-		return {
-			output: {
-				draftResponse: draftBody,
-				draftSubject: replySubject,
-				confidenceScore: input.classification.confidence,
-				category: input.classification.category,
-				confidence: input.classification.confidence,
-				draftQuality,
-			},
-			tokenUsage,
-			modelUsed,
-		};
+		return { output: draftOutput, tokenUsage, modelUsed };
 	},
 
 	route(output, _input, runCtx) {
+		// Held for gaps: back to the owner with one question per gap, or to a
+		// person with no AI draft. Never on to `route`, so nothing can send it.
+		if (output.gapHold?.kind === 'ask') {
+			return {
+				kind: 'transition',
+				transition: {
+					to: 'awaiting_clarification',
+					questions: output.gapHold.questions,
+				},
+			};
+		}
+		if (output.gapHold?.kind === 'unaskable') {
+			return {
+				kind: 'transition',
+				transition: { to: 'draft_ready', draftResponse: '', draftSubject: output.draftSubject },
+			};
+		}
 		// In-state — drafting state. Hand off to the route step, threading the
 		// draft-quality self-check forward so the route step gates auto-send on
 		// draft quality rather than classifier confidence.

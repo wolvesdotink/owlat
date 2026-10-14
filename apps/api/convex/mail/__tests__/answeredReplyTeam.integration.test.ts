@@ -17,6 +17,14 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { createTestContact, flushScheduled } from '../../__tests__/factories';
 import { pushHarness } from '../../push/__tests__/pushFixtures';
 import { appendDraftRevision } from '../../inbox/draftRevisions';
+import * as clarificationAnswers from '../../inbox/clarificationAnswers';
+
+// The team draft-gap fence's predicate (inbox/stepOutputs.ts), wrapped so a test
+// can tell whether the fence was reached at all. Behaviour is unchanged.
+vi.mock('../../inbox/clarificationAnswers', async (importOriginal) => {
+	const actual = await importOriginal<typeof clarificationAnswers>();
+	return { ...actual, hasUnconsentedOpenQuestion: vi.fn(actual.hasUnconsentedOpenQuestion) };
+});
 import { modules } from './helpers.testlib';
 import { ANSWERED_RETENTION_MS, MAX_TRACKED_ANSWERS } from '../answeredReply';
 
@@ -316,6 +324,40 @@ describe('a Team Inbox reply to a newer message', () => {
 		const reopened = await get(t, older);
 		expect(reopened.processingStatus).toBe('draft_ready');
 		expect(reopened.draftResponse).toBe('Your order ships Monday.');
+	});
+});
+
+describe('a late draft for a message a newer reply answered', () => {
+	it('is skipped as answered before the draft-gap fence, so nothing is held', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		// Still drafting when the newer reply went out: archived as answered.
+		const inFlight = await seedInbound(t, th, {
+			processingStatus: 'drafting',
+			receivedAt: NOW - 3_000,
+		});
+		const answered = await seedInbound(t, th, { processingStatus: 'approved', receivedAt: NOW });
+		await completeReply(t, th, answered, 'sent');
+		expect((await get(t, inFlight)).processingStatus).toBe('archived');
+		const fence = vi.mocked(clarificationAnswers.hasUnconsentedOpenQuestion);
+		fence.mockClear();
+
+		// The late draft has a gap no one agreed to: the fence would hold it.
+		await t.mutation(internal.inbox.stepOutputs.recordDraftOutput, {
+			inboundMessageId: inFlight,
+			draftResponse: 'Your order [[order number]] ships Monday.',
+			draftSubject: 'Re: Order',
+			confidenceScore: 0.9,
+		});
+
+		expect(fence).not.toHaveBeenCalled();
+		const message = await get(t, inFlight);
+		expect(message.processingStatus).toBe('archived');
+		expect(message.archiveReason).toBe('answered_in_thread');
+		expect(message.pendingClarification).toBeUndefined();
+		expect(message.draftResponse).toBeUndefined();
+		expect(message.isAutoSendBlocked).toBeUndefined();
+		expect(message.answeredStash?.processingStatus).toBe('drafting');
 	});
 });
 

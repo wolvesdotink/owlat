@@ -357,7 +357,7 @@ export function evaluateIpAudit(input: IpAuditInput): IpAuditReport {
 
 	const port25 = port25Finding(input.port25);
 	if (port25) findings.push(port25);
-	findings.push(...zoneFindings(input.zones));
+	for (const finding of zoneFindings(input.zones)) findings.push(finding);
 	const fcrdns = fcrdnsFinding(input);
 	if (fcrdns) findings.push(fcrdns);
 	const neighbour = neighbourhoodFinding(neighbourStatus);

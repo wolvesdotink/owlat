@@ -7,7 +7,7 @@
  */
 
 import { internal } from '../_generated/api';
-import { publicTokenEndpoint } from '../lib/publicTokenEndpoint';
+import { ADMISSION_REFUSED, publicTokenEndpoint } from '../lib/publicTokenEndpoint';
 
 interface ArchiveData {
 	html: string;
@@ -28,10 +28,10 @@ export const getCampaignArchive = publicTokenEndpoint(
 		cors: 'GET, OPTIONS',
 		resultMode: 'action',
 	},
-	async (ctx, { token }) => {
+	async (ctx, { token, admit }) => {
 		const archive = await ctx.runQuery<ArchiveData | null>(
 			internal.campaigns.archiveQueries.getCampaignByArchiveToken,
-			{ archiveToken: token },
+			{ archiveToken: token }
 		);
 
 		if (!archive) {
@@ -43,6 +43,7 @@ export const getCampaignArchive = publicTokenEndpoint(
 			};
 		}
 
+		if (!(await admit())) return ADMISSION_REFUSED;
 		return {
 			ok: true,
 			headers: { 'Cache-Control': 'public, max-age=3600' },
@@ -53,5 +54,5 @@ export const getCampaignArchive = publicTokenEndpoint(
 				organizationName: archive.organizationName,
 			},
 		};
-	},
+	}
 );

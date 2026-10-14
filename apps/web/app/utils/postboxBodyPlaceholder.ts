@@ -16,8 +16,13 @@ export const POSTBOX_SRCDOC_HEAD = '<!doctype html><html><head>';
  */
 export const POSTBOX_BODY_META_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:; upgrade-insecure-requests;">`;
 
-/** Same policy with no network at all: remote images and fonts stay blocked. */
-const PLACEHOLDER_META_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;">`;
+/**
+ * Same policy with no network at all: remote images and fonts stay blocked.
+ * A live body renders under it until the user consents to remote images, so
+ * no spelling of a remote reference (a CSS background, a srcset candidate)
+ * can load before that; the saved-copy placeholder uses it too.
+ */
+export const POSTBOX_BODY_META_CSP_NO_REMOTE = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;">`;
 
 // Markers buildBaseStyle writes into the head: the dark scheme pins
 // color-scheme, and "simple" mail gets a transparent canvas.
@@ -37,8 +42,9 @@ export interface PostboxBodyPlaceholder {
  * CSP is swapped for one that loads nothing from the network. The saved copy
  * may have been rendered after "Show images" or "Load everything"; replaying
  * it as-is would fetch those images and tracking pixels again without the
- * user asking this time. A saved copy that does not start with the expected
- * head is not used at all, since its policy cannot be swapped reliably.
+ * user asking this time. A copy saved while images were blocked already
+ * carries the no-network policy. A saved copy that starts with neither head is
+ * not used at all, since its policy cannot be swapped reliably.
  */
 export function postboxBodyPlaceholder(
 	cachedSrcdoc: string | null,
@@ -48,8 +54,12 @@ export function postboxBodyPlaceholder(
 	let srcdoc = cachedSrcdoc;
 	if (options.blockRemote) {
 		const head = POSTBOX_SRCDOC_HEAD + POSTBOX_BODY_META_CSP;
-		if (!cachedSrcdoc.startsWith(head)) return null;
-		srcdoc = POSTBOX_SRCDOC_HEAD + PLACEHOLDER_META_CSP + cachedSrcdoc.slice(head.length);
+		const blockedHead = POSTBOX_SRCDOC_HEAD + POSTBOX_BODY_META_CSP_NO_REMOTE;
+		if (cachedSrcdoc.startsWith(head)) {
+			srcdoc = blockedHead + cachedSrcdoc.slice(head.length);
+		} else if (!cachedSrcdoc.startsWith(blockedHead)) {
+			return null;
+		}
 	}
 	const headEnd = srcdoc.indexOf('</head>');
 	const headPart = headEnd >= 0 ? srcdoc.slice(0, headEnd) : '';

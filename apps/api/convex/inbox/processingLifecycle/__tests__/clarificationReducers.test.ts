@@ -65,8 +65,8 @@ describe('clarification legal edges', () => {
 		expect(PROCESSING_LIFECYCLE.isTerminal('awaiting_clarification')).toBe(false);
 	});
 
-	it('drafting still cannot loop back to awaiting_clarification', () => {
-		expect(PROCESSING_LIFECYCLE.isLegalEdge('drafting', 'awaiting_clarification')).toBe(false);
+	it('drafting goes back to awaiting_clarification when the draft has gaps to ask about', () => {
+		expect(PROCESSING_LIFECYCLE.isLegalEdge('drafting', 'awaiting_clarification')).toBe(true);
 	});
 });
 

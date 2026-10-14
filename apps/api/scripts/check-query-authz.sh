@@ -53,6 +53,8 @@
 #   loadReadableMailbox    mail/permissions.ts — requireMailboxAccess collapsed to a doc|null
 #   loadReadableMessage    mail/mailbox/messages.ts — the same, keyed by message id
 #   loadAccessibleMailboxes mail/permissions.ts — the caller's own + shared-member mailboxes
+#   semanticFileReadGate   lib/semanticFileAccess.ts — a Files row; mail captures keep their
+#                          mailbox's permission (the mailbox gate / the reader rule)
 #
 # Two of those are weaker than they look, and a REVIEWER still has to check the
 # call site — the token only proves the handler asked the question:

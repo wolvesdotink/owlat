@@ -1,51 +1,91 @@
 /**
- * Tracking-pixel detection for Postbox received mail (Apple-Mail-Privacy-style
- * transparency).
+ * Tracking-pixel classification for Postbox received mail (Apple-Mail-Privacy-
+ * style transparency), plus the remote-image strip the agent pipeline uses.
  *
- * Pure string functions over ALREADY-SANITIZED HTML (the output of
- * sanitize-html with `POSTBOX_SANITIZE_CONFIG`) — this module is a transform
- * on sanitized output and deliberately does NOT touch the sanitizer allowlist
- * or make any network call. It powers:
+ * Pure functions that make no network call and never touch the sanitizer
+ * allowlist. The reader's resource inventory (`apps/web/app/utils/
+ * postboxRemoteResources.ts`) walks every way a sanitized body can load a
+ * remote resource (an `<img>` src, each srcset candidate, a CSS background)
+ * and classifies each one here. That inventory powers:
  *   - the "Images blocked — N tracking pixels detected" banner,
  *   - keeping pixels stripped when the user clicks "Show images"
  *     (with a separate "load everything" escalation),
  *   - the shield badge naming the tracker hosts.
  *
- * Heuristics (an <img> with a remote http(s) src is flagged when ANY holds):
+ * Heuristics (a remote http(s) resource is flagged when ANY holds for the
+ * element it sits on):
  *   - declared 0/1px size via width/height attributes or inline style,
  *   - `display:none` in inline style,
- *   - src host matches a well-known open-tracker pattern
+ *   - its host matches a well-known open-tracker pattern
  *     (see `postboxTrackerHosts.ts`).
  *
- * `data:`/`cid:` images are never flagged — they cannot phone home.
- *
- * Everything fails soft: on any unexpected error the detector reports zero
- * trackers and the strip transform returns its input unchanged, so the reader
- * behaves exactly as it did before this feature existed.
+ * `data:`/`cid:` resources are never flagged — they cannot phone home.
  */
 
 import { TRACKER_HOST_PATTERNS } from './postboxTrackerHosts';
 
 export interface TrackerDetection {
-	/** Number of probable tracking-pixel <img> tags in the sanitized HTML. */
+	/** Number of elements in the sanitized HTML that load a probable tracker. */
 	pixelCount: number;
-	/** Deduped, sorted hosts of the flagged images (for the badge popover). */
+	/** Deduped, sorted hosts of the flagged resources (for the badge popover). */
 	trackerHosts: readonly string[];
 }
 
-const EMPTY_TRACKER_DETECTION: TrackerDetection = Object.freeze({
-	pixelCount: 0,
-	trackerHosts: Object.freeze([]),
-});
+// The start of an `<img` tag. The tag's end is found with indexOf rather than
+// `<img\b[^>]*>`, which backtracks quadratically over unterminated tags.
+const IMG_TAG_START_RE = /<img(?![\w])/gi;
 
-const IMG_TAG_RE = /<img\b[^>]*>/gi;
+/** Replace every `<img …>` tag in one linear pass. */
+function replaceImgTags(html: string, replace: (tag: string) => string): string {
+	const starts = new RegExp(IMG_TAG_START_RE.source, 'gi');
+	let out = '';
+	let from = 0;
+	let match: RegExpExecArray | null;
+	while ((match = starts.exec(html))) {
+		const close = html.indexOf('>', match.index);
+		// No `>` left: no later tag can close either.
+		if (close === -1) break;
+		out += html.slice(from, match.index) + replace(html.slice(match.index, close + 1));
+		from = close + 1;
+		starts.lastIndex = from;
+	}
+	return out + html.slice(from);
+}
 
-/** Extract an attribute value from a single tag string (quoted or bare). */
+// The named references that can spell a URL's scheme or authority; anything
+// else a URL could hide behind a named reference leaves it unparseable, and an
+// unparseable remote reference is classified conservatively.
+const NAMED_CHAR_REFS: Record<string, string> = {
+	amp: '&',
+	apos: "'",
+	colon: ':',
+	gt: '>',
+	lt: '<',
+	newline: '\n',
+	period: '.',
+	quot: '"',
+	sol: '/',
+	tab: '\t',
+};
+
+/** Decode character references in a raw attribute value read from a tag string. */
+function decodeCharRefs(value: string): string {
+	return value.replace(/&(?:#(\d+)|#x([\da-f]+)|([a-z]+));?/gi, (ref, dec, hex, name) => {
+		if (dec || hex) {
+			const code = Number.parseInt(dec ?? hex, dec ? 10 : 16);
+			return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+		}
+		return NAMED_CHAR_REFS[String(name).toLowerCase()] ?? ref;
+	});
+}
+
+/** Extract an attribute value from a single tag string (quoted or bare), decoded. */
 function attrValue(tag: string, name: string): string | null {
 	const re = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
 	const m = tag.match(re);
 	if (!m) return null;
-	return m[1] ?? m[2] ?? m[3] ?? null;
+	const raw = m[1] ?? m[2] ?? m[3];
+	return raw == null ? null : decodeCharRefs(raw);
 }
 
 /** Read one property value out of an inline style string. */
@@ -74,12 +114,42 @@ function isVisibleSize(value: string | null): boolean {
 	return Number.isFinite(n) && n > 1;
 }
 
-/** Host of a remote http(s) img src, or null for data:/cid:/relative/no src. */
-function remoteSrcHost(tag: string): string | null {
-	const src = attrValue(tag, 'src');
-	if (!src || !/^https?:\/\//i.test(src)) return null;
+/**
+ * A URL as the browser's URL parser sees it: leading and trailing C0 controls
+ * and spaces stripped, and every tab and newline removed wherever it sits, so
+ * `https:<TAB>//tracker.example/` is read as the fetch it becomes.
+ */
+function normalizeResourceUrl(url: string): string {
+	// Index scans rather than an anchored regex, which is quadratic on a long
+	// run of spaces that does not reach the end.
+	let start = 0;
+	let end = url.length;
+	while (start < end && url.charCodeAt(start) <= 0x20) start++;
+	while (end > start && url.charCodeAt(end - 1) <= 0x20) end--;
+	return url.slice(start, end).replace(/[\t\n\r]/g, '');
+}
+
+/** True for `data:`/`cid:` references: they arrived with the message. */
+export function isEmbeddedResourceUrl(url: string): boolean {
+	return /^(data|cid):/i.test(normalizeResourceUrl(url));
+}
+
+/**
+ * Host of a remote http(s) or protocol-relative URL, parsed the way the
+ * browser parses it. Null for anything else: an embedded `data:`/`cid:`
+ * reference, a relative path, another scheme, or a URL that does not parse.
+ */
+export function remoteResourceHost(url: string | null): string | null {
+	if (url == null) return null;
+	const base = 'https://owlat.invalid/';
 	try {
-		return new URL(src).hostname.toLowerCase();
+		const parsed = new URL(normalizeResourceUrl(url), base);
+		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+		if (parsed.href.startsWith(base)) return null;
+		// One trailing root dot names the same host (`list-manage.com.`), so it
+		// must not slip past the tracker suffix match.
+		const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+		return host || null;
 	} catch {
 		return null;
 	}
@@ -89,66 +159,72 @@ function isKnownTrackerHost(host: string): boolean {
 	return TRACKER_HOST_PATTERNS.some((pattern) => host === pattern || host.endsWith(`.${pattern}`));
 }
 
-/** Classify one <img ...> tag string. Exported for the strip transform + tests. */
-export function isTrackingPixelTag(tag: string): boolean {
-	const host = remoteSrcHost(tag);
-	// No remote fetch -> cannot track, regardless of size/visibility.
-	if (!host) return false;
+/** The element a remote resource is loaded for: its size and visibility hints. */
+export interface RemoteResourceContext {
+	width: string | null;
+	height: string | null;
+	style: string;
+}
 
-	if (isKnownTrackerHost(host)) return true;
+/** What an element's size and visibility say about every resource on it. */
+export interface TrackingHints {
+	/** Hidden (`display:none`) or declared 0/1px: whatever it loads is a beacon. */
+	looksLikePixel: boolean;
+}
 
-	const style = attrValue(tag, 'style') ?? '';
-	if (/display\s*:\s*none/i.test(style)) return true;
-
-	const widths = [attrValue(tag, 'width'), styleProp(style, 'width')];
-	const heights = [attrValue(tag, 'height'), styleProp(style, 'height')];
-	const dims = [...widths, ...heights];
+/**
+ * Read an element's hints once. The reader classifies every reference on an
+ * element (thousands of CSS URLs, possibly) against the same hints, so they
+ * must not be re-derived from the style per URL.
+ */
+export function elementTrackingHints(context: RemoteResourceContext): TrackingHints {
+	if (/display\s*:\s*none/i.test(context.style)) return { looksLikePixel: true };
+	const dims = [
+		context.width,
+		styleProp(context.style, 'width'),
+		context.height,
+		styleProp(context.style, 'height'),
+	];
 	// Pixel-sized: at least one declared 0/1px dimension and none larger.
-	return dims.some(isPixelSize) && !dims.some(isVisibleSize);
+	return { looksLikePixel: dims.some(isPixelSize) && !dims.some(isVisibleSize) };
 }
 
 /**
- * Detect probable tracking pixels in sanitized message HTML.
- * Fails soft: any unexpected error reports zero trackers.
+ * Classify one remote resource reference (an `<img>` src, one srcset
+ * candidate, or a CSS background URL) by the element it sits on. Exported for
+ * the reader's resource inventory, which covers every way a body loads one.
  */
-export function detectTrackers(sanitizedHtml: string): TrackerDetection {
-	try {
-		let pixelCount = 0;
-		const hosts = new Set<string>();
-		for (const [tag] of sanitizedHtml.matchAll(IMG_TAG_RE)) {
-			if (!isTrackingPixelTag(tag)) continue;
-			pixelCount += 1;
-			const host = remoteSrcHost(tag);
-			if (host) hosts.add(host);
-		}
-		if (pixelCount === 0) return EMPTY_TRACKER_DETECTION;
-		return { pixelCount, trackerHosts: [...hosts].sort() };
-	} catch {
-		return EMPTY_TRACKER_DETECTION;
-	}
+export function isTrackingResource(url: string, hints: TrackingHints): boolean {
+	// No remote fetch -> cannot track, regardless of size/visibility.
+	if (isEmbeddedResourceUrl(url)) return false;
+	const host = remoteResourceHost(url);
+	// A reference that is neither embedded nor a readable http(s) URL is
+	// treated as a tracker: its host cannot be checked against the list.
+	if (!host) return true;
+	return isKnownTrackerHost(host) || hints.looksLikePixel;
 }
 
-/**
- * Remove probable tracking-pixel <img> tags from sanitized message HTML so
- * "Show images" can load real content while pixels stay stripped.
- * Fails soft: any unexpected error returns the input unchanged.
- */
-export function stripTrackerPixels(sanitizedHtml: string): string {
-	try {
-		return sanitizedHtml.replace(IMG_TAG_RE, (tag) => (isTrackingPixelTag(tag) ? '' : tag));
-	} catch {
-		return sanitizedHtml;
-	}
-}
-
-/** True when an <img ...> tag string has a REMOTE src (http/https/protocol-relative). */
-function isRemoteImgTag(tag: string): boolean {
+/** Classify one <img ...> tag string. Exported for tests. */
+export function isTrackingPixelTag(tag: string): boolean {
 	const src = attrValue(tag, 'src');
 	if (!src) return false;
-	const trimmed = src.trim();
-	// `data:`/`cid:`/relative sources never phone home; only absolute http(s)
-	// and protocol-relative `//host/...` can resolve a remote resource.
-	return /^https?:\/\//i.test(trimmed) || trimmed.startsWith('//');
+	return isTrackingResource(
+		src,
+		elementTrackingHints({
+			width: attrValue(tag, 'width'),
+			height: attrValue(tag, 'height'),
+			style: attrValue(tag, 'style') ?? '',
+		})
+	);
+}
+
+/** True when an <img ...> tag string has a src that is not an inline `data:`/`cid:` part. */
+function isRemoteImgTag(tag: string): boolean {
+	const src = attrValue(tag, 'src');
+	if (!src || normalizeResourceUrl(src) === '') return false;
+	// Only inline parts are known not to phone home; anything else, however it
+	// is spelled (`https:&#9;//…`, `//host/…`), is stripped.
+	return !isEmbeddedResourceUrl(src);
 }
 
 export interface RemoteImageStripResult {
@@ -159,10 +235,10 @@ export interface RemoteImageStripResult {
 }
 
 /**
- * Remove EVERY remote-src <img> tag from an HTML body — the superset of
- * `stripTrackerPixels` (a 1×1 / display:none / known-tracker pixel is just a
- * remote image, so this covers them all) while leaving inline `data:`/`cid:`
- * images and non-image content untouched.
+ * Remove EVERY remote-src <img> tag from an HTML body — a 1×1 /
+ * display:none / known-tracker pixel is just a remote image, so this covers
+ * them all — while leaving inline `data:`/`cid:` images and non-image content
+ * untouched.
  *
  * This is the single privacy-strip primitive shared by:
  *   - the OUTBOUND auto-send reference monitor (so an unattended reply can't
@@ -179,7 +255,7 @@ export interface RemoteImageStripResult {
 export function stripRemoteImages(html: string): RemoteImageStripResult {
 	try {
 		let strippedRemoteImages = 0;
-		const out = html.replace(IMG_TAG_RE, (tag) => {
+		const out = replaceImgTags(html, (tag) => {
 			if (!isRemoteImgTag(tag)) return tag;
 			strippedRemoteImages += 1;
 			return '';

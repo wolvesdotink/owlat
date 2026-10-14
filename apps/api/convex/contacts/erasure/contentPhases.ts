@@ -6,6 +6,7 @@
  * and the next one finds it again.
  */
 
+import { isMailCapture } from '../../lib/semanticFileAccess';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { deleteBlobQuietly } from '../../lib/storageBlobs';
 import { deleteInboundBodyBlobs } from '../../lib/messageBodyInbound';
@@ -327,7 +328,7 @@ export const eraseSemanticFiles: PhaseRunner = (phase) => {
 			}
 			budget.chargeRead(file);
 			const othersRemain = (file.contactIds ?? []).some((c) => c !== contactId);
-			if (file.captureSource && !othersRemain) {
+			if (isMailCapture(file) && !othersRemain) {
 				// Junction rows of other contacts on a file scoped to this contact
 				// alone only exist through drift; they go with the file. This
 				// contact's own row goes last, so a cut-short pass finds it again.

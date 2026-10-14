@@ -129,6 +129,9 @@ function rowMeta(item: AnswerItem): string {
 	const when = formatCompactRelativeTime(item.at);
 	if (item.source === 'mail' && item.row.hasDraftSlot)
 		return `${when} · ${t('components.today.answer.draftReady')}`;
+	if (item.source === 'team' && item.entry.message.processingStatus === 'awaiting_clarification') {
+		return `${when} · ${t('components.today.answer.question')}`;
+	}
 	if (item.source === 'team' && item.entry.message.draftResponse?.trim()) {
 		return `${when} · ${t('components.today.answer.draftReady')}`;
 	}

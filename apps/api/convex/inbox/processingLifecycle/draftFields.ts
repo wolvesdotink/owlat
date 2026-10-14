@@ -35,6 +35,8 @@ export function draftReadyDraftPatch(
 		// a legacy row still carries are dropped: no screen offers them (#1200).
 		patch['draftOptions'] = undefined;
 		patch['isDraftGapGuarded'] = authoredDraftHasGaps({ text: input.draftResponse });
+		// Consent to gaps belonged to the draft it was given for.
+		patch['isDraftGapsAccepted'] = undefined;
 		// An agent draft that replaces a different text: the saved edits were
 		// made to that text, not to this draft.
 		if (input.draftResponse !== message.draftResponse) Object.assign(patch, NO_SAVED_EDITS);
@@ -51,6 +53,7 @@ export function draftReadyDraftPatch(
 			draftSubject: undefined,
 			draftOptions: undefined,
 			isDraftGapGuarded: undefined,
+			isDraftGapsAccepted: undefined,
 		});
 	}
 	return patch;

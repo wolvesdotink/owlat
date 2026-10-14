@@ -9,7 +9,9 @@
  * every case where no agent is going to answer it:
  *
  * - `failed`: the agent tried and failed.
- * - `security_check` with the agent off: the pipeline stops after a clean scan.
+ * - `security_check` after a finished scan: with the agent off the pipeline
+ *   stops after a clean scan. Turning the agent on later does not restart it
+ *   (#1338), so the message stays a person's to answer.
  * - `received` with no pipeline run: automated/self-send mail and mail over the
  *   agent cost cap are stored without starting the walker
  *   (inbox/messages.ts), so they would otherwise sit there for good.
@@ -24,9 +26,15 @@
  *   late draft, auto-send or failure refused by the lifecycle
  *   (`processingLifecycle/effects.ts`).
  *
- * It never answers a message whose security scan is still running or whose
- * classification is still in progress — the scan-finished check alone is not
- * enough, the `ai.agent` flag is read here too.
+ * It never answers a message whose security scan is still running or has not
+ * started yet. Only a scan of the current run counts: a retried or released
+ * message keeps the completed scan of its earlier run, and enters
+ * `security_check` before the walker begins the new scan. Each entry bumps
+ * the message's `securityCheckRun`, and a scan records the run it began in.
+ * Every outcome of a clean scan that goes on leaves `security_check` in the
+ * same mutation that completes the scan, so a finished scan of the current
+ * run on a message still in `security_check` means the run stopped there and
+ * nothing will pick the message up.
  *
  * Saving a reply takes the message over too wherever the agent could still
  * write its draft over the saved text with nobody acting
@@ -39,16 +47,14 @@ import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
-import { isFeatureEnabled } from '../lib/featureFlags';
 import { getOrThrow, throwInvalidState } from '../_utils/errors';
 import type { TransitionOutcome } from './processingLifecycle';
+import { type DispositionFacts, scanDisposition } from '../agent/steps/security_scan/disposition';
 
 /** What {@link takeOverRefusal} needs to know besides the status. */
 export interface TakeOverFacts {
-	/** The message's security scan has completed. */
+	/** The security scan of the message's current run has completed. */
 	scanFinished: boolean;
-	/** The `ai.agent` flag is on, so a scanned message is still the agent's. */
-	agentEnabled: boolean;
 	/** Any agent action exists for the message: a pipeline run started. */
 	pipelineStarted: boolean;
 	/**
@@ -74,8 +80,7 @@ export function takeOverRefusal(
 		case 'drafting':
 			return null;
 		case 'security_check':
-			if (!facts.scanFinished) return 'The security check has not finished yet';
-			return facts.agentEnabled ? 'The agent is still working on this message' : null;
+			return facts.scanFinished ? null : 'The security check has not finished yet';
 		case 'received':
 			return !facts.pipelineStarted && facts.receivedLongEnough
 				? null
@@ -97,12 +102,49 @@ async function receivedWaitMs(ctx: QueryCtx): Promise<number> {
 	return Math.max(MIN_RECEIVED_WAIT_MS, (config?.coalesceWindowMs ?? 0) + 60_000);
 }
 
-/** The message's agent actions (bounded: a run records a handful). */
+/** The message's agent actions, newest first (bounded: a run records a handful). */
 async function agentActionsFor(ctx: QueryCtx, message: Doc<'inboundMessages'>) {
 	return ctx.db
 		.query('agentActions')
 		.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', message._id))
+		.order('desc')
 		.take(50);
+}
+
+/**
+ * The current run's security scan has completed (`actions` newest first).
+ *
+ * A message that last entered `security_check` before runs were numbered has
+ * no `securityCheckRun`, and its latest completed scan may belong to an earlier
+ * run whose rescan has not begun. It counts only when it is the message's last
+ * action and its own output shows it stopped the run because the agent was
+ * off. Only pipeline steps write agent actions, and every way back into a scan
+ * passes `received`, after a quarantine (whose scan routed to quarantine), a
+ * failed step (which left its own row after the scan, or a failed or reset
+ * scan), or neither on a new message (no earlier scan). A message whose reply a
+ * person took over is never retried into the pipeline (`inboxRetryPlan`).
+ */
+function isScanFinished(
+	message: Doc<'inboundMessages'>,
+	actions: readonly Doc<'agentActions'>[]
+): boolean {
+	const scan = actions.find((a) => a.actionType === 'security_scan');
+	if (scan?.status !== 'completed') return false;
+	if (message.securityCheckRun !== undefined) {
+		return scan.securityCheckRun === message.securityCheckRun;
+	}
+	return actions[0]?._id === scan._id && isAgentOffStop(scan.output);
+}
+
+/** The scan's recorded output routed `agent_off`: a clean scan with the agent off. */
+function isAgentOffStop(output: string | undefined): boolean {
+	if (output === undefined) return false;
+	try {
+		const facts = JSON.parse(output) as DispositionFacts;
+		return typeof facts.agentEnabled === 'boolean' && scanDisposition(facts) === 'agent_off';
+	} catch {
+		return false;
+	}
 }
 
 /** The per-message facts the thread composer needs to apply {@link takeOverRefusal}. */
@@ -136,9 +178,7 @@ export async function takeOverViewFor(
 				const actions = await agentActionsFor(ctx, message);
 				return {
 					messageId: message._id,
-					scanFinished: actions.some(
-						(a) => a.actionType === 'security_scan' && a.status === 'completed'
-					),
+					scanFinished: isScanFinished(message, actions),
 					pipelineStarted: actions.length > 0,
 				};
 			})
@@ -159,10 +199,7 @@ export const takeOverReply = adminMutation({
 				? await agentActionsFor(ctx, message)
 				: [];
 		const refusal = takeOverRefusal(status, {
-			scanFinished: actions.some(
-				(a) => a.actionType === 'security_scan' && a.status === 'completed'
-			),
-			agentEnabled: status === 'security_check' && (await isFeatureEnabled(ctx, 'ai.agent')),
+			scanFinished: isScanFinished(message, actions),
 			pipelineStarted: actions.length > 0,
 			receivedLongEnough:
 				status === 'received' && Date.now() - message._creationTime >= (await receivedWaitMs(ctx)),
@@ -207,8 +244,8 @@ async function moveToManualReply(
 /**
  * States in which the agent can still write its draft over a person's saved
  * reply without anyone acting: `drafting`, where the draft step is in flight,
- * `awaiting_clarification`, which `reconcileAbandonedClarifications` sends
- * back to drafting once its questions time out, and `failed`, which the retry
+ * `awaiting_clarification`, which goes back to drafting as soon as anyone
+ * answers its questions, and `failed`, which the retry
  * cron sends back through the pipeline after a step failure (#1220). The new
  * agent draft would replace the saved text and, as a new draft, clear its
  * revisions.

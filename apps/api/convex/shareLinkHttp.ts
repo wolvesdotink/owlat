@@ -8,7 +8,7 @@
  */
 
 import { internal } from './_generated/api';
-import { publicTokenEndpoint } from './lib/publicTokenEndpoint';
+import { ADMISSION_REFUSED, publicTokenEndpoint } from './lib/publicTokenEndpoint';
 
 interface ShareLinkData {
 	html: string;
@@ -32,10 +32,10 @@ export const getShareLink = publicTokenEndpoint(
 		cors: 'GET, OPTIONS',
 		resultMode: 'action',
 	},
-	async (ctx, { token }) => {
+	async (ctx, { token, admit }) => {
 		const result = await ctx.runQuery<ShareLinkResult>(
 			internal.shareLinkQueries.getShareLinkByToken,
-			{ token },
+			{ token }
 		);
 
 		if (!result) {
@@ -62,6 +62,7 @@ export const getShareLink = publicTokenEndpoint(
 			};
 		}
 
+		if (!(await admit())) return ADMISSION_REFUSED;
 		return {
 			ok: true,
 			headers: { 'Cache-Control': 'no-store' },
@@ -73,5 +74,5 @@ export const getShareLink = publicTokenEndpoint(
 				expiresAt: result.expiresAt,
 			},
 		};
-	},
+	}
 );

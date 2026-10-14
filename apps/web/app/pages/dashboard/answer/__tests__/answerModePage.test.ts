@@ -184,7 +184,7 @@ const ComposerStub = defineComponent({
 const queueAskFocus = vi.fn(() => true);
 const QueueAskStub = defineComponent({
 	name: 'AnswerQueueMailAsk',
-	emits: ['visible', 'use-draft'],
+	emits: ['visible', 'asking', 'use-draft'],
 	setup(_p, { expose }) {
 		expose({ focusQuestion: queueAskFocus });
 		return () => h('div');
@@ -549,11 +549,29 @@ describe('Answer mode page', () => {
 		expect(composerFocusBody).toHaveBeenCalledTimes(1);
 	});
 
+	it('puts the caret in the body under a paused card, which asks nothing', async () => {
+		queueAskFocus.mockClear();
+		const w = await mountAt({});
+		// A paused AI reply: the card is up, with a status line and no questions.
+		w.getComponent(QueueAskStub).vm.$emit('visible', true);
+		w.getComponent(QueueAskStub).vm.$emit('asking', false);
+		await flushPromises();
+		expect(w.getComponent(AnswerModeFrame).props('peekText')).toBeUndefined();
+		w.getComponent(AnswerModeFrame).vm.$emit('start-reply');
+		expect(queueAskFocus).not.toHaveBeenCalled();
+		expect(composerFocusBody).toHaveBeenCalledTimes(1);
+	});
+
 	it('puts the caret in the first open question while the queue item asks, not the body', async () => {
 		queueAskFocus.mockClear();
 		const w = await mountAt({});
+		// As the real card does: up, with its questions on screen.
 		w.getComponent(QueueAskStub).vm.$emit('visible', true);
+		w.getComponent(QueueAskStub).vm.$emit('asking', true);
 		await flushPromises();
+		expect(w.getComponent(AnswerModeFrame).props('peekText')).toBe(
+			'Answer the questions for this reply…'
+		);
 		w.getComponent(AnswerModeFrame).vm.$emit('start-reply');
 		expect(queueAskFocus).toHaveBeenCalledTimes(1);
 		expect(composerFocusBody).not.toHaveBeenCalled();

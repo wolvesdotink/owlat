@@ -38,6 +38,29 @@ export const mailFolderMembershipTables = {
 		completedAt: v.optional(v.number()),
 		/** Last change to the walk (a step, a reset). Revision bumps leave it alone. */
 		updatedAt: v.number(),
+		/**
+		 * The backfill step the walk waits on, recorded wherever one is scheduled
+		 * (`scheduleFolderWalkStep`) with the 0054 retry epoch it belongs to, so
+		 * `finish` can tell a failed step from a slow one and never counts a step
+		 * from before the operator's last retry. Absent on a walk last scheduled
+		 * before it existed.
+		 */
+		walkJob: v.optional(v.object({ id: v.id('_scheduled_functions'), epoch: v.number() })),
+		/**
+		 * The walk's run of failed steps that `finish` found, within one 0054
+		 * retry epoch (`migrationRuns.retryEpoch`): the cron's automatic resumes
+		 * keep it, an operator's run or a step that commits progress ends it.
+		 * `lastJobId` is the step counted last, so no step is counted twice.
+		 * Enough of them fail the migration with `lastError`.
+		 */
+		walkFailures: v.optional(
+			v.object({
+				epoch: v.number(),
+				count: v.number(),
+				lastError: v.string(),
+				lastJobId: v.id('_scheduled_functions'),
+			})
+		),
 	})
 		.index('by_folder', ['folderId'])
 		// Folders still walking, stalest first: the 0054 finish step's progress

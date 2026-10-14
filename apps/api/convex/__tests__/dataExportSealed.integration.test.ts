@@ -193,3 +193,51 @@ describe('contacts.dataExport — capability fields', () => {
 		expect(JSON.stringify(bundle)).not.toContain(DOI_TOKEN);
 	});
 });
+
+// #1343: the export is a read boundary too. Both export endpoints build their
+// inbound rows here (`exportContactDataBundle` reads the same bundle).
+describe('contacts.dataExport — an agent draft with gaps nobody agreed to', () => {
+	const GAPPED = 'Hi, your refund of [[refund amount]] is on its way.';
+
+	it.each([
+		['is held, with its variants', {}, undefined],
+		['stays when the owner agreed to it', { isDraftGapsAccepted: true }, GAPPED],
+	] as const)('%s', async (_case, fields, expected) => {
+		const t = convexTest(schema, allModules);
+		const contactId = await t.run(async (ctx): Promise<Id<'contacts'>> => {
+			const now = Date.now();
+			const cId = await ctx.db.insert('contacts', {
+				email: 'person@example.com',
+				source: 'api',
+				doiStatus: 'not_required',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('inboundMessages', {
+				messageId: '<gap@example.com>',
+				from: 'person@example.com',
+				to: 'me@example.com',
+				subject: 'Refund',
+				textBody: 'Where is my refund?',
+				processingStatus: 'draft_ready',
+				receivedAt: now,
+				contactId: cId,
+				draftResponse: GAPPED,
+				draftOptions: [GAPPED, 'Hi, your refund is on its way.'],
+				isDraftGapGuarded: true,
+				...fields,
+			});
+			return cId;
+		});
+
+		const bundle = await t.query(api.contacts.dataExport.exportContactData, { contactId });
+
+		const row = bundle.inboundMessages.rows[0]!;
+		expect(row.textBody).toBe('Where is my refund?');
+		expect(row.draftResponse).toBe(expected);
+		if (expected === undefined) {
+			expect(row.draftOptions).toBeUndefined();
+			expect(JSON.stringify(bundle)).not.toContain('[[refund amount]]');
+		}
+	});
+});

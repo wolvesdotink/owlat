@@ -1,47 +1,43 @@
 /**
- * Per-org dollar-spend budget for LLM calls — a pre-call gate that FAILS CLOSED
- * when the org's daily/monthly budget is exhausted.
+ * Per-org dollar-spend budget for LLM calls: the config, the shared
+ * evaluation, and the admin dashboard's scan-based figures.
  *
  * Single-org-per-deployment (see `lib/sessionOrganization.ts`), so "per-org"
  * here is the deployment-wide `llmUsageEvents` ledger (`analytics/llmUsage.ts`),
- * priced by `lib/llm/pricing.ts`. The ledger is the single source of truth for
- * money: features that call a language or decision model write one row per
- * billed call there, including each call of the Team Inbox agent pipeline
- * (guard, message interpretation, classify, clarify, draft and its self-check,
- * outcome sentiment; `agent/shared/agentSpend.ts`). The per-step
+ * priced by `lib/llm/pricing.ts` (`estimateCost`, applied as each row is
+ * inserted in `analytics/ledgerInsert.ts`). The ledger is the single source of
+ * truth for money: features that call a language, decision or embedding model
+ * write one row per provider request there, including each call of the Team
+ * Inbox agent pipeline (guard, message interpretation, classify, clarify,
+ * draft and its self-check, outcome sentiment; `agent/shared/agentSpend.ts`)
+ * and every `embed()` (`lib/llm/embed.ts`, under an `embedding_*` feature). A
+ * local embedder's rows price at zero (`isLocalEngine`); a hosted one's count
+ * toward the ceiling like any other call (#1268). The per-step
  * `agentActions.tokenUsage` the walker stores is a reporting view and is never
- * summed here (#1259). Embedding calls write no row, so they are outside the
- * ceiling.
+ * summed here (#1259).
  *
- * Rate limits elsewhere are per-CALL-COUNT token buckets and `estimateCost`
- * only feeds a read-only dashboard, so nothing today caps DOLLARS — an org (or
- * a prompt-injected auto-reply loop) can run up unbounded spend. This module
- * turns that same aggregation into an enforced ceiling.
- *
- * ENFORCEMENT MOVED (ADR-0073, Phase 1b). The gates no longer read the
- * bounded scan below: admission and the enforced status read the complete
- * period aggregate (`aiRouting/admissionState.ts`, `aiRouting/enforcedBudget.ts`)
- * and fail closed when it cannot be verified. This module keeps the config
- * ({@link resolveBudgetConfig}), the shared evaluation ({@link evaluateBudget})
- * and the admin dashboard's scan-based figures ({@link getBudgetStatusAdmin}).
- *
- * Two consumers shared one evaluation ({@link computeBudgetStatus}) before that:
- *   - the AUTONOMOUS path (`agent/steps/route`) degrades to draft-only — the
- *     draft is still produced and queued for a human, only the unattended
- *     auto-SEND is withheld — so mail is never silently dropped and an injected
- *     loop can't keep auto-replying past the ceiling.
- *   - ADVISORY, user-triggered features (`mail/ai/gate.ts`) degrade gracefully
- *     within a RESERVE: they are cut off once remaining headroom drops below the
- *     reserve fraction, preserving the tail of the budget for the critical
- *     drafting path rather than letting manual actions drain it to $0.
+ * ENFORCEMENT is not here (ADR-0073, Phase 1b). Admission and the enforced
+ * status read the complete period aggregate (`aiRouting/admissionState.ts`,
+ * `aiRouting/enforcedBudget.ts`) and fail closed when a ceiling is set and the
+ * aggregate cannot be verified. At the ceiling:
+ *   - a Team Inbox message is held for a person before its next paid step,
+ *     with no draft (`aiRouting/teamBudgetHold.ts`, `agent/walker.ts`);
+ *   - the AUTONOMOUS route step withholds auto-send for a draft it already
+ *     has and queues it for review (`agent/steps/route/autoSendGates.ts`), so
+ *     an injected loop can't keep auto-replying past the ceiling;
+ *   - ADVISORY, user-triggered features (`mail/ai/gate.ts`) are cut off once
+ *     remaining headroom drops within the reserve fraction, preserving the
+ *     tail of the budget for the Team pipeline.
+ * This module keeps the config ({@link resolveBudgetConfig}), the evaluation
+ * the enforced status shares ({@link evaluateBudget}), and the dashboard's
+ * figures ({@link computeBudgetStatus}, {@link getBudgetStatusAdmin}).
  *
  * Budgets are configured via env (see `lib/env.ts`); an unset / `0` limit means
- * "no limit for that period" and the gate is a no-op (today's behaviour).
- * Spend is a best-effort estimate over a bounded recent-events scan — the same
- * posture as the dashboard aggregation it reuses. A scan that runs out of budget
- * before it reaches the start of the period says so, and says what the rate it
- * DID see would extrapolate to, but the enforced figure stays the counted one:
- * see {@link projectScannedSpend}.
+ * "no limit for that period" and the gate is a no-op. The dashboard's figures
+ * come from a bounded recent-events scan and are display-only, never enforced.
+ * A scan that runs out of budget before it reaches the start of the period
+ * says so, and says what the rate it DID see would extrapolate to, but the
+ * figure it shows stays the counted one: see {@link projectScannedSpend}.
  */
 
 import type { QueryCtx, MutationCtx } from '../_generated/server';
@@ -290,8 +286,10 @@ export interface SpendPeriodBounds {
 
 /**
  * Spend per period: what the scan COUNTED, and what the rate it saw would
- * extrapolate to over the whole period. The counted figures are what the gate
- * binds on; the projected ones only ever raise a warning.
+ * extrapolate to over the whole period, for the admin dashboard. The counted
+ * figures are what its status shows; the projected ones only ever raise a
+ * warning. Neither is enforced: the gates read the complete aggregate
+ * (`aiRouting/enforcedBudget.ts`).
  */
 export interface ScannedSpend {
 	dailyUsd: number;

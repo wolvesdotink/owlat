@@ -893,10 +893,16 @@ calls it for every IMAP login.
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish
 before users are let back in or may run in the background, whether a later
-contract depends on it (stepping stone), and a rough cost. Nothing reads a
-machine-readable manifest yet and the updater does not run migrations, so for
-now the manifest lives in the release notes, in the form the maintenance docs
-use for the 0044 chat-media migration.
+contract depends on it (stepping stone), and a rough cost. The release notes
+carry it for operators, in the form the maintenance docs use for the 0044
+chat-media migration. Every ledger-backed migration is also listed in
+`migrations/manifest.ts` with its release, its dependencies and whether it is a
+stepping stone (`__tests__/manifest.test.ts` fails on one that is missing).
+Settings → System & updates reads that list with the ledger to show what is
+pending and runs it through each migration's own `run` (`migrations/admin.ts`);
+the in-app update refuses to start while a stepping stone is unfinished. When a
+later release has made a migration moot (its contract removed what the
+migration converts), move it to `RETIRED_MIGRATIONS` in that release.
 
 **Durable progress and completion.** A migration records its progress in the
 deployment's database, not only in its return value: the cursor of each pass,
@@ -1053,6 +1059,19 @@ null a `contactId` whose absence carries meaning — on `clarificationMemory` an
 absent contact is the org-wide scope, so a contact-scoped answer is deleted,
 not unlinked. Organization-wide knowledge that an admin promoted before the
 erasure no longer references the contact and is retained.
+
+A contact merge has the same contract on the other side:
+`lib/contactMutations.ts` repoints, dedupes with a routine, or excludes (with
+the reason) every contact reference, and
+`__tests__/contactMergeRelations.test.ts` fails on one it does not handle.
+
+**A new contact id must be `v.id('contacts')`.** Both gates find those by
+walking the schema. They also catch a plain string that names itself
+(`contactId`, `contactIds`, or `<x>Id` next to an `<x>Type: 'contact'`
+discriminator), but no rule can see an arbitrarily named string or a
+plain-string record key. If a contact id has to be a string, declare it in
+`lib/contactStringReferences.ts`, and the gates will then require its merge
+handling, its erasure policy and a fixture row like any other reference.
 
 ### Audit logging
 

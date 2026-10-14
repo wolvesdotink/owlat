@@ -28,6 +28,7 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
+import { isInterpretationFenced } from './staleFence';
 
 /** Items of one thread read per status when matching (a thread has a handful). */
 const ITEM_READ_LIMIT = 100;
@@ -72,6 +73,8 @@ export async function linkCommitmentsForMessage(
 		.take(2); // bounded: one per direction (the dedup key)
 	for (const commitment of commitments) {
 		if (commitment.threadItemId && (await ctx.db.get(commitment.threadItemId))) continue;
+		// A fenced thread's items link nothing (staleFence.ts).
+		if (await isInterpretationFenced(ctx, { kind: 'mail', id: commitment.threadId })) continue;
 		const items: Doc<'threadItems'>[] = [];
 		for (const status of ['open', 'done'] as const) {
 			items.push(

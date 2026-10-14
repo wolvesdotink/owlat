@@ -53,12 +53,6 @@ const props = withDefaults(
 		submitting?: boolean;
 		mailboxId?: Id<'mailboxes'>;
 		resolveThreadFile?: (file: ThreadFile) => Promise<FileAnswerRef | null>;
-		/**
-		 * The team agent's questions. Its draft cannot be written with gaps yet, so
-		 * the second button puts the card away ("I'll answer later") instead of
-		 * drafting with what the person has, and the subline says so.
-		 */
-		teamAgent?: boolean;
 		/** Whether an uploaded file answer is kept in Files (see FileAsk). */
 		copyPolicy?: FileCopyPolicy;
 		/** File questions take several files (the Reply Queue's answer does). */
@@ -70,7 +64,6 @@ const props = withDefaults(
 		submitting: false,
 		mailboxId: undefined,
 		resolveThreadFile: undefined,
-		teamAgent: false,
 	}
 );
 
@@ -252,11 +245,7 @@ const title = computed(() => {
 					</h2>
 				</div>
 				<p class="mt-0.5 text-xs text-text-secondary" data-testid="ask-subline">
-					{{
-						teamAgent
-							? t('components.answer.askCard.sublineAgent')
-							: t('components.answer.askCard.subline')
-					}}
+					{{ t('components.answer.askCard.subline') }}
 				</p>
 			</template>
 
@@ -326,11 +315,7 @@ const title = computed(() => {
 						data-testid="ask-skip"
 						@click="skip"
 					>
-						{{
-							teamAgent
-								? t('components.postbox.postboxClarificationCard.answerLater')
-								: t('components.answer.askCard.skip')
-						}}
+						{{ t('components.answer.askCard.skip') }}
 					</UiButton>
 				</div>
 				<ClarificationTrustLine class="mt-3" :questions="shown" test-id="ask-trust" />

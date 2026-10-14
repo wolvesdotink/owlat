@@ -219,6 +219,83 @@ describe('AnswerTeamCard with a draftless escalation', () => {
 });
 
 /**
+ * A message held on the agent's questions (#1343): no draft is written around
+ * them, so the card asks them, as Answer mode does, and answering resumes the
+ * draft. Nothing on it approves or sends.
+ */
+describe("AnswerTeamCard with the agent's questions", () => {
+	let calls: Array<Record<string, unknown>>;
+
+	beforeEach(() => {
+		vi.mocked(controls.complete).mockClear();
+		calls = [];
+		vi.stubGlobal('useBackendOperation', () => ({
+			run: vi.fn(async (args: Record<string, unknown>) => {
+				calls.push(args);
+				return { ok: true, result: { success: true } };
+			}),
+			isLoading: ref(false),
+		}));
+		entry = {
+			message: {
+				_id: 'im_4',
+				from: 'Lea Brandt <lea@example.com>',
+				subject: 'Order status',
+				textBody: 'When does my order ship?',
+				processingStatus: 'awaiting_clarification',
+				pendingClarification: {
+					questions: [
+						{ id: 'clarify_0', slotType: 'decision', text: 'Ship today?', options: ['Yes', 'No'] },
+						{ id: 'clarify_1', slotType: 'factual_lookup', text: 'Which carrier?' },
+					],
+					askedAt: 1,
+				},
+			},
+			thread: null,
+			contact: null,
+		};
+	});
+
+	function mountHeld() {
+		return mount(AnswerTeamCard, {
+			props: { entry: entry as never, controls },
+			attachTo: document.body,
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					Icon: true,
+					InboxTrustChip: true,
+					InboxDecisionRationale: true,
+					TaskContext: true,
+					TaskAsk: true,
+				},
+			},
+		});
+	}
+
+	it('asks the questions instead of offering a reply box or Approve', () => {
+		const wrapper = mountHeld();
+		expect(wrapper.find('[data-testid="ask-submit"]').exists()).toBe(true);
+		expect(wrapper.text()).toContain('2 things before I write this');
+		expect(wrapper.find('textarea').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="task-primary"]').exists()).toBe(false);
+	});
+
+	it('"Draft with what I have" answers with gaps and finishes the item', async () => {
+		const wrapper = mountHeld();
+		await wrapper.findAll('[data-testid="ask-chip"]')[0]!.trigger('click');
+		await wrapper.get('[data-testid="ask-skip"]').trigger('click');
+		await flushPromises();
+		expect(calls).toContainEqual({
+			inboundMessageId: 'im_4',
+			answers: [{ questionId: 'clarify_0', value: 'Yes', source: 'user' }],
+			withGaps: true,
+		});
+		expect(controls.complete).toHaveBeenCalledWith('completed');
+	});
+});
+
+/**
  * An agent draft with `[[...]]` gaps on the card (#1197). The server refuses
  * to approve a gap-guarded draft (DRAFT_HAS_GAPS), so the card marks the gaps,
  * holds Approve with the reason, and offers the way to fill them. Mounted with

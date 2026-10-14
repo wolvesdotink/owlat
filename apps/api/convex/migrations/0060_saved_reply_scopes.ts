@@ -36,6 +36,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 
 const MIGRATION = '0060_saved_reply_scopes';
@@ -106,10 +107,16 @@ export const scopePage = internalMutation({
 			generation: run.generation,
 		});
 		if (!isDone) {
-			await ctx.scheduler.runAfter(0, internal.migrations['0060_saved_reply_scopes'].scopePage, {
-				cursor: continueCursor,
-				generation: run.generation,
-			});
+			await scheduleMigrationPage(
+				ctx,
+				run,
+				0,
+				internal.migrations['0060_saved_reply_scopes'].scopePage,
+				{
+					cursor: continueCursor,
+					generation: run.generation,
+				}
+			);
 		}
 		return { cursor: continueCursor, isDone, scanned: page.length, scoped };
 	},
@@ -133,10 +140,16 @@ export const run = internalMutation({
 		if (!begun) {
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
-		await ctx.scheduler.runAfter(0, internal.migrations['0060_saved_reply_scopes'].scopePage, {
-			cursor: begun.cursor ?? null,
-			generation: begun.generation,
-		});
+		await scheduleMigrationPage(
+			ctx,
+			begun,
+			0,
+			internal.migrations['0060_saved_reply_scopes'].scopePage,
+			{
+				cursor: begun.cursor ?? null,
+				generation: begun.generation,
+			}
+		);
 		logInfo('migration.0060_saved_reply_scopes.started', {
 			cursor: begun.cursor ?? null,
 			generation: begun.generation,

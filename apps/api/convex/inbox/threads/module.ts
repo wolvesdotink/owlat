@@ -37,6 +37,7 @@ import { applyOpenThreadDelta } from '../../lib/inboxStats';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { loadSlaPolicy } from '../sla/policy';
 import { clockOnInbound, clockOnReply, clockOnStatus, type ClockPatch } from '../sla/clock';
+import { isSettledThreadStatus, syncHeldClarifications } from '../clarificationHold';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -276,6 +277,10 @@ async function applyTransition(
 			const isOpen = patch.status === 'open';
 			if (!wasOpen && isOpen) await applyOpenThreadDelta(ctx, 1);
 			else if (wasOpen && !isOpen) await applyOpenThreadDelta(ctx, -1);
+			// Held questions leave (or rejoin) the Answer queue's index.
+			if (isSettledThreadStatus(patch.status) !== isSettledThreadStatus(thread.status)) {
+				await syncHeldClarifications(ctx, thread._id, patch.status);
+			}
 		}
 	}
 	await applyEffects(ctx, result.effects);

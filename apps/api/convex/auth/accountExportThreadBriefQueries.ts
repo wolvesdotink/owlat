@@ -9,6 +9,7 @@ import { loadPersonalMailboxForUser } from '../mail/permissions';
 import { loadBriefRow } from '../mail/interpret/briefRow';
 import { openEvidence } from '../mail/interpret/briefOpen';
 import { rowFactKeyLabel } from '../mail/interpret/factKeys';
+import { isFencedThread } from '../mail/interpret/staleFence';
 
 // Thread brief resources of "Export my data" (SPEC §5 Erasure: "Export
 // includes authorized derived content"), next to accountExportQueries.ts.
@@ -19,6 +20,13 @@ import { rowFactKeyLabel } from '../mail/interpret/factKeys';
 // member owns, like the mail itself (a team inbox is org infrastructure).
 // Internal notes and discussion messages never appear here: the activity log
 // does not hold them, and their own resources export what the member wrote.
+//
+// A thread whose interpretation is fenced off (mail/interpret/staleFence.ts)
+// is exported whole, every row labelled `isInterpretationPaused` with the
+// fence's time: an export is the member's complete copy of what is stored,
+// and the fence stops the interpretation from being USED, not from existing.
+// The label is read on every page, so a thread fenced mid-export is labelled
+// from that page on.
 
 /** Threads scanned for a brief per export page. */
 const THREAD_SCAN = 25;
@@ -225,6 +233,9 @@ export const listMailboxThreadBriefs = internalQuery({
 		if (!thread || !brief) return page([], nextThread(state));
 
 		const rows: unknown[] = [];
+		const paused = isFencedThread(thread)
+			? { isInterpretationPaused: true, interpretationStaleSince: thread.interpretationStaleSince }
+			: {};
 		if (!state.isHeaderDone) {
 			rows.push({
 				threadId: thread._id,
@@ -232,6 +243,7 @@ export const listMailboxThreadBriefs = internalQuery({
 				subject: thread.latestSubject,
 				mode: brief.mode,
 				completeness: brief.completeness,
+				...paused,
 			});
 		}
 		const opts = { cursor: state.partCursor, numItems: args.paginationOpts.numItems };
@@ -244,7 +256,7 @@ export const listMailboxThreadBriefs = internalQuery({
 				.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', thread._id))
 				.paginate(opts);
 			for (const row of result.page)
-				rows.push({ threadId: thread._id, kind: 'item', ...(await exportItem(row)) });
+				rows.push({ threadId: thread._id, kind: 'item', ...(await exportItem(row)), ...paused });
 			({ isDone: isPartDone, continueCursor: partCursor } = result);
 		} else if (part === 'facts') {
 			const result = await ctx.db
@@ -252,7 +264,7 @@ export const listMailboxThreadBriefs = internalQuery({
 				.withIndex('by_mail_thread_and_status', (q) => q.eq('mailThreadId', thread._id))
 				.paginate(opts);
 			for (const row of result.page)
-				rows.push({ threadId: thread._id, kind: 'fact', ...(await exportFact(row)) });
+				rows.push({ threadId: thread._id, kind: 'fact', ...(await exportFact(row)), ...paused });
 			({ isDone: isPartDone, continueCursor: partCursor } = result);
 		} else {
 			const result = await ctx.db
@@ -260,7 +272,12 @@ export const listMailboxThreadBriefs = internalQuery({
 				.withIndex('by_mail_thread_and_seq', (q) => q.eq('mailThreadId', thread._id))
 				.paginate(opts);
 			for (const row of result.page)
-				rows.push({ threadId: thread._id, kind: 'activity', ...(await exportActivity(row)) });
+				rows.push({
+					threadId: thread._id,
+					kind: 'activity',
+					...(await exportActivity(row)),
+					...paused,
+				});
 			({ isDone: isPartDone, continueCursor: partCursor } = result);
 		}
 

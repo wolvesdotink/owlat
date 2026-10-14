@@ -1,10 +1,38 @@
 import { describe, it, expect } from 'vitest';
 import {
-	detectTrackers,
-	stripTrackerPixels,
-	stripRemoteImages,
+	elementTrackingHints,
+	isTrackingResource,
 	isTrackingPixelTag,
+	remoteResourceHost,
+	stripRemoteImages,
 } from '../postboxTrackers';
+
+/**
+ * How much longer 4n units of hostile input take than n: per call, the
+ * fastest of three samples each, after a warm-up. A sample repeats the call
+ * for at least 10 ms so a cheap input is not timed at the clock's resolution.
+ * Linear code measures about 4, quadratic about 16. A ratio rather than a
+ * wall-clock budget, which a busy CI runner misses.
+ */
+function scalingRatio(build: (n: number) => string, n: number, run: (input: string) => unknown) {
+	const perCall = (input: string) => {
+		const started = performance.now();
+		let calls = 0;
+		do {
+			run(input);
+			calls++;
+		} while (performance.now() - started < 10);
+		return (performance.now() - started) / calls;
+	};
+	const fastest = (input: string) => Math.min(perCall(input), perCall(input), perCall(input));
+	const small = build(n);
+	const large = build(4 * n);
+	fastest(small); // warm-up: JIT
+	return fastest(large) / fastest(small);
+}
+
+/** Linear stays near 4x; the quadratic tag regex this guards measures far higher. */
+const LINEAR_RATIO = 8;
 
 const PIXEL_1X1 = '<img src="https://tracker.example.com/open.gif" width="1" height="1" alt="">';
 const HIDDEN_IMG = '<img src="https://tracker.example.net/o.png" style="display:none">';
@@ -12,81 +40,89 @@ const PHOTO =
 	'<img src="https://cdn.example.com/photo.jpg" width="600" height="400" alt="A photo">';
 const KNOWN_HOST = '<img src="https://click.list-manage.com/track/open.php?u=abc" alt="">';
 
-describe('detectTrackers', () => {
-	it('counts a 1x1 pixel', () => {
-		const result = detectTrackers(`<p>Hello</p>${PIXEL_1X1}`);
-		expect(result.pixelCount).toBe(1);
-		expect(result.trackerHosts).toEqual(['tracker.example.com']);
+describe('isTrackingResource', () => {
+	const NO_HINTS = elementTrackingHints({ width: null, height: null, style: '' });
+
+	it('flags a 1x1 resource and names its host', () => {
+		expect(isTrackingPixelTag(PIXEL_1X1)).toBe(true);
+		expect(remoteResourceHost('https://tracker.example.com/open.gif')).toBe('tracker.example.com');
 	});
 
-	it('counts a zero-size pixel declared via inline style', () => {
-		const html = '<img src="https://t.example.org/p.gif" style="width:0;height:0">';
-		expect(detectTrackers(html).pixelCount).toBe(1);
+	it('flags a zero-size element declared via inline style', () => {
+		expect(
+			isTrackingResource(
+				'https://t.example.org/p.gif',
+				elementTrackingHints({ width: null, height: null, style: 'width:0;height:0' })
+			)
+		).toBe(true);
 	});
 
-	it('counts a display:none image', () => {
-		const result = detectTrackers(HIDDEN_IMG);
-		expect(result.pixelCount).toBe(1);
-		expect(result.trackerHosts).toEqual(['tracker.example.net']);
+	it('flags a display:none element', () => {
+		expect(isTrackingPixelTag(HIDDEN_IMG)).toBe(true);
 	});
 
-	it('does not count a regular photo', () => {
-		const result = detectTrackers(PHOTO);
-		expect(result.pixelCount).toBe(0);
-		expect(result.trackerHosts).toEqual([]);
+	it('does not flag a regular photo', () => {
+		expect(isTrackingPixelTag(PHOTO)).toBe(false);
 	});
 
-	it('lists the host of a known tracker even at full size', () => {
-		const result = detectTrackers(`${KNOWN_HOST}${PHOTO}`);
-		expect(result.pixelCount).toBe(1);
-		expect(result.trackerHosts).toEqual(['click.list-manage.com']);
+	it('flags a known tracker host even at full size', () => {
+		expect(isTrackingPixelTag(KNOWN_HOST)).toBe(true);
 	});
 
 	it('does not flag an unrelated host that merely contains a pattern substring', () => {
 		// evil-list-manage.com is NOT a subdomain of list-manage.com
 		const html = '<img src="https://evil-list-manage.com/logo.png" width="200" height="80">';
-		expect(detectTrackers(html).pixelCount).toBe(0);
+		expect(isTrackingPixelTag(html)).toBe(false);
 	});
 
-	it('never flags data:/cid: images (no network fetch, cannot track)', () => {
-		const html =
-			'<img src="data:image/gif;base64,R0lGOD" width="1" height="1">' +
-			'<img src="cid:inline-part" width="1" height="1">';
-		expect(detectTrackers(html).pixelCount).toBe(0);
+	it('never flags data:/cid: resources (no network fetch, cannot track)', () => {
+		const pixel = elementTrackingHints({ width: '1', height: '1', style: '' });
+		expect(isTrackingResource('data:image/gif;base64,R0lGOD', pixel)).toBe(false);
+		expect(isTrackingResource('cid:inline-part', pixel)).toBe(false);
 	});
 
-	it('dedupes and sorts tracker hosts across multiple pixels', () => {
-		const html = `${PIXEL_1X1}${PIXEL_1X1}${HIDDEN_IMG}`;
-		const result = detectTrackers(html);
-		expect(result.pixelCount).toBe(3);
-		expect(result.trackerHosts).toEqual(['tracker.example.com', 'tracker.example.net']);
+	it('reads a URL the way the browser parser does (tabs, newlines, controls)', () => {
+		const tracker = 'click.list-manage.com';
+		for (const url of [
+			`https:\t//${tracker}/open.gif`,
+			`https:/\n/${tracker}/open.gif`,
+			`\u0001\u001f https://${tracker}/open.gif\r\n`,
+			`https://click.list-\tmanage.com/open.gif`,
+		]) {
+			expect(remoteResourceHost(url)).toBe(tracker);
+			expect(isTrackingResource(url, NO_HINTS)).toBe(true);
+		}
 	});
 
-	it('fails soft on non-string input', () => {
-		// Simulates an unexpected caller bug — must not throw.
-		const result = detectTrackers(undefined as unknown as string);
-		expect(result).toEqual({ pixelCount: 0, trackerHosts: [] });
-	});
-});
-
-describe('stripTrackerPixels ("show images" keeps pixels stripped)', () => {
-	it('removes tracking pixels but keeps real images', () => {
-		const html = `<p>Hi</p>${PIXEL_1X1}${PHOTO}${HIDDEN_IMG}${KNOWN_HOST}`;
-		const stripped = stripTrackerPixels(html);
-		expect(stripped).toContain('photo.jpg');
-		expect(stripped).not.toContain('tracker.example.com');
-		expect(stripped).not.toContain('tracker.example.net');
-		expect(stripped).not.toContain('list-manage.com');
-		expect(stripped).toContain('<p>Hi</p>');
+	it('decodes character references in a tag string before classifying', () => {
+		expect(isTrackingPixelTag('<img src="https:&#9;//click.list-manage.com/open.gif">')).toBe(true);
+		expect(isTrackingPixelTag('<img src="https&colon;&Tab;//click.list-manage.com/o">')).toBe(true);
 	});
 
-	it('returns tracker-free HTML unchanged', () => {
-		const html = `<p>Hello</p>${PHOTO}`;
-		expect(stripTrackerPixels(html)).toBe(html);
+	it('matches a tracker host written with a trailing root dot', () => {
+		const url = 'https://click.list-manage.com./open.gif';
+		expect(remoteResourceHost(url)).toBe('click.list-manage.com');
+		expect(
+			isTrackingResource(url, elementTrackingHints({ width: '600', height: '200', style: '' }))
+		).toBe(true);
+		expect(remoteResourceHost('https://CDN.Example.COM./a.png')).toBe('cdn.example.com');
 	});
 
-	it('fails soft on non-string input', () => {
-		expect(() => stripTrackerPixels(undefined as unknown as string)).not.toThrow();
+	it('treats a remote reference it cannot read as a tracker', () => {
+		expect(isTrackingResource('open.gif', NO_HINTS)).toBe(true);
+		expect(isTrackingResource('ftp://files.example/a.gif', NO_HINTS)).toBe(true);
+		expect(remoteResourceHost('open.gif')).toBeNull();
+	});
+
+	it('classifies a CSS background by the element it sits on', () => {
+		const url = 'https://t.example.org/bg.gif';
+		expect(
+			isTrackingResource(url, elementTrackingHints({ width: '1', height: '1', style: '' }))
+		).toBe(true);
+		expect(
+			isTrackingResource(url, elementTrackingHints({ width: '600', height: null, style: '' }))
+		).toBe(false);
+		expect(isTrackingResource(url, NO_HINTS)).toBe(false);
 	});
 });
 
@@ -132,6 +168,12 @@ describe('stripRemoteImages', () => {
 		expect(out.html).toBe('');
 	});
 
+	it('strips a remote image whose src hides its scheme behind a tab', () => {
+		const out = stripRemoteImages('<img src="https:&#9;//evil.example/beacon.gif"><p>x</p>');
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).toBe('<p>x</p>');
+	});
+
 	it('strips a protocol-relative remote image', () => {
 		const out = stripRemoteImages('<img src="//evil.example/beacon.gif">');
 		expect(out.strippedRemoteImages).toBe(1);
@@ -150,6 +192,16 @@ describe('stripRemoteImages', () => {
 		expect(out.strippedRemoteImages).toBe(1);
 		expect(out.html).toContain('cid:logo@corp');
 		expect(out.html).not.toContain('tracker.example.com');
+	});
+
+	it('stays linear on a flood of unterminated <img tags', () => {
+		// No `>` anywhere: `<img\b[^>]*>` retried every start to the end.
+		const flood = (n: number) => `<img src="https://evil.example/p.gif">${'<img src=x '.repeat(n)}`;
+		expect(scalingRatio(flood, 12_500, stripRemoteImages)).toBeLessThan(LINEAR_RATIO);
+
+		const out = stripRemoteImages(flood(50_000));
+		expect(out.strippedRemoteImages).toBe(1);
+		expect(out.html).toBe('<img src=x '.repeat(50_000));
 	});
 
 	it('fails soft on non-string input', () => {

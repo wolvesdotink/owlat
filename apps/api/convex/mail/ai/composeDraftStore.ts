@@ -39,6 +39,9 @@ import {
 } from '../../lib/validators/clarification';
 import { authoredDraftHasGaps, type DraftBody } from '../../agent/shared/draftGaps';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/errors';
+import { isThreadInterpretationFenced } from '../interpret/staleFence';
+import { mailThreadOf } from './answerStreamFence';
+import { DRAFT_PAUSED_STALE_INTERPRETATION } from '@owlat/shared/answerMode';
 import {
 	FILE_QUESTION_ID,
 	FOLLOW_UP_QUESTION_ID,
@@ -134,7 +137,20 @@ export const getSession = answerModeQuery({
 		const row = await findOwnSession(ctx, args.target, session.userId);
 		if (!row || !isSameReplyTarget(row.target, args.target)) return null;
 		if (!(await canReachTarget(ctx, args.target, session))) return null;
-		return toAskSessionView(row);
+		const view = toAskSessionView(row);
+		// The thread's AI reading is fenced off (interpret/staleFence.ts): the
+		// questions it asked are not shown, and its stream reads as paused
+		// (draftStreamStore.ts), so the web takes back what it streamed.
+		const threadId = await mailThreadOf(ctx, row.target);
+		if (threadId && (await isThreadInterpretationFenced(ctx, threadId))) {
+			return {
+				...view,
+				status: 'error',
+				questions: [],
+				errorMessage: DRAFT_PAUSED_STALE_INTERPRETATION,
+			};
+		}
+		return view;
 	},
 });
 

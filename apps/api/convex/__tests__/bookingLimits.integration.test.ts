@@ -26,6 +26,9 @@ import { enableFeatures } from './factories';
 import { hashManageToken } from '../booking/model';
 import type * as SessionOrganization from '../lib/sessionOrganization';
 import type * as SystemMail from '../systemMail';
+import type * as Slots from '../booking/slots';
+import { rateLimiter } from '../lib/rateLimiter';
+import { capabilityKey } from '../lib/publicTokenPolicy';
 
 let mockUserId = 'host-A';
 
@@ -42,6 +45,19 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn(session),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getBetterAuthSessionWithRole: vi.fn(session),
+	};
+});
+
+// A pass-through spy: lets a test see whether a request computed open times.
+const computeSlots = vi.hoisted(() => ({ calls: 0 }));
+vi.mock('../booking/slots', async (importOriginal) => {
+	const actual = await importOriginal<typeof Slots>();
+	return {
+		...actual,
+		computeSlots: (...args: Parameters<typeof actual.computeSlots>) => {
+			computeSlots.calls++;
+			return actual.computeSlots(...args);
+		},
 	};
 });
 
@@ -250,7 +266,10 @@ describe('public route limits', () => {
 		const flood = { type: 'intro', start: tenOClockInDays(2), name: 'Bot', email: 'b@example.com' };
 		const statuses: number[] = [];
 		for (let i = 0; i < 6; i++) statuses.push((await post('nobody', flood)).status);
-		expect(statuses).toContain(429);
+		// A page that does not exist gets no bucket of its own: the flood is a
+		// string of 404s metered on the bounded failure budget
+		// (lib/publicTokenPolicy.ts), and it cannot touch a real page's bucket.
+		expect(statuses).toEqual([404, 404, 404, 404, 404, 404]);
 
 		const ok = await post('ada', {
 			type: 'intro',
@@ -259,6 +278,49 @@ describe('public route limits', () => {
 			email: 'grace@example.com',
 		});
 		expect(ok.status).toBe(200);
+	});
+});
+
+describe('public route admission', () => {
+	/** Empty a route's bucket for `token` on the shared 'unknown' address. */
+	async function exhaust(t: TestConvex<typeof schema>, token: string): Promise<void> {
+		await t.run(async (ctx) => {
+			const key = capabilityKey('unknown', token);
+			while ((await rateLimiter.limit(ctx, 'bookingPage', { key })).ok) {
+				// Spend until the bucket is empty, including anything refilled since.
+			}
+		});
+	}
+
+	it('computes no open times for a request its bucket refuses', async () => {
+		const t = await setup();
+		const manageToken = `bk_${'A'.repeat(40)}`;
+		await t.mutation(internal.booking.public.reserve, {
+			slug: 'ada',
+			typeSlug: 'intro',
+			start: tenOClockInDays(4),
+			guestName: 'Grace Guest',
+			guestEmail: 'grace@example.com',
+			manageToken,
+		});
+		const routes = [
+			{ token: 'ada', path: (from: number) => `/booking/page/ada?type=intro&from=${from}` },
+			{ token: manageToken, path: (from: number) => `/booking/manage/${manageToken}?from=${from}` },
+		];
+
+		for (const route of routes) {
+			computeSlots.calls = 0;
+			expect((await t.fetch(route.path(Date.now()))).status).toBe(200);
+			expect(computeSlots.calls).toBeGreaterThan(0);
+
+			computeSlots.calls = 0;
+			for (let i = 1; i <= 5; i++) {
+				await exhaust(t, route.token);
+				// A different `from` each time, so no cached read could answer it.
+				expect((await t.fetch(route.path(Date.now() + i * DAY))).status).toBe(429);
+			}
+			expect(computeSlots.calls).toBe(0);
+		}
 	});
 });
 

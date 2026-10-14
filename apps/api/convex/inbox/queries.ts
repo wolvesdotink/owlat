@@ -27,6 +27,7 @@ import {
 import { compareResponseDue, isSlaSlice, slaSliceNow } from './sla/slices';
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
+import { liveNotices, readPendingReview } from './clarificationHold';
 import { redactContactCapabilityFields } from '../contacts/listing';
 import { openConversationThreadPreview } from '../lib/messageBody';
 import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBodyInbound';
@@ -266,7 +267,10 @@ export const getThread = publicQuery({
 });
 
 /**
- * Get the review queue — threads with pending drafts needing human attention
+ * Get the review queue — team messages waiting on a person: an agent draft to
+ * review (`draft_ready`), or the agent's questions to answer before it drafts
+ * (`awaiting_clarification`, on a conversation still open). A held message has
+ * no draft and carries its questions on `pendingClarification`.
  */
 // public: soft-auth — admin-only shared inbox; returns empty for non-admins
 export const getReviewQueue = publicQuery({
@@ -311,15 +315,6 @@ export const countReviewQueue = publicQuery({
 		return (await readPendingReview(ctx, Math.min(args.limit ?? 50, 200))).length;
 	},
 });
-
-/** The newest `draft_ready` messages, the review queue's rows. */
-async function readPendingReview(ctx: QueryCtx, limit: number) {
-	return await ctx.db
-		.query('inboundMessages')
-		.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'draft_ready'))
-		.order('desc')
-		.take(limit);
-}
 
 /**
  * Get quarantined messages for admin review
@@ -483,7 +478,8 @@ export const pendingAssignments = publicQuery({
 			.order('desc')
 			.take(limit);
 
-		return rows
+		// An agent question answered, or its conversation settled, is no notice.
+		return (await liveNotices(ctx, rows))
 			.filter((r) => args.includeMentions || r.kind !== 'mention')
 			.filter((r) => args.includeSlaBreaches || r.kind !== 'sla_breach')
 			.map((r) => ({

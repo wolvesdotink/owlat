@@ -34,6 +34,7 @@
  * its blocks). New folders start ready and empty.
  */
 
+import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import { AFTER_EVERY_ROW, isCountedPosition, type CounterPosition } from '../lib/counters';
@@ -72,6 +73,30 @@ export async function loadFolderMembership(
  */
 export function membershipVersion(state: Doc<'mailFolderMembership'>): string {
 	return `${state._id}:${state.revision}`;
+}
+
+/**
+ * Schedule the folder's next walk step and record its job on the folder's
+ * state row (`walkJob`) with the 0054 retry `epoch` it belongs to, so the
+ * migration's `finish` can read whether it failed. Without `epoch` the step
+ * inherits the one it continues. `madeProgress` ends the walk's failure
+ * streak: a step that committed a page is not failing.
+ */
+export async function scheduleFolderWalkStep(
+	ctx: MutationCtx,
+	folderId: Id<'mailFolders'>,
+	options: { epoch?: number; madeProgress?: boolean } = {}
+): Promise<void> {
+	const state = await loadFolderMembership(ctx.db, folderId);
+	const id = await ctx.scheduler.runAfter(0, internal.maintenance.folderMembershipBackfill.step, {
+		folderId,
+	});
+	if (!state) return;
+	const epoch = options.epoch ?? state.walkJob?.epoch ?? 0;
+	await ctx.db.patch(state._id, {
+		walkJob: { id, epoch },
+		...(options.madeProgress ? { walkFailures: undefined } : {}),
+	});
 }
 
 /**

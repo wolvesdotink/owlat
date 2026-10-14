@@ -5,7 +5,7 @@
  *
  * Split from `PostboxMessageBody` (which owns the sanitize/render pipeline and
  * was over the file-size ceiling) — this is presentation only. Which of the
- * four states applies is decided by `resolvePostboxImageBanner`, so the two
+ * states applies is decided by `resolvePostboxImageBanner`, so the two
  * halves are testable apart: the choice as a pure function, the wording here.
  *
  * The states, and the promise each one makes:
@@ -17,6 +17,9 @@
  *                        kind of quiet.
  *   - `trackers-blocked` images shown for this message; probable tracking
  *                        pixels withheld.
+ *   - `unchecked`        the body could not be checked safely, so images stay
+ *                        blocked even if shown or trusted; "Load everything"
+ *                        is the one deliberate way past that.
  *   - `none`             nothing rendered.
  *
  * Across every state, trusting a sender loads IMAGES and never pixels, so
@@ -112,6 +115,20 @@ const BANNER_CLASS =
 				{{ t('components.postbox.postboxMessageBody.manageTrustedSenders') }}
 			</NuxtLink>
 		</span>
+	</div>
+
+	<div v-else-if="kind === 'unchecked'" :class="BANNER_CLASS">
+		<span class="text-text-secondary inline-flex items-center gap-1.5">
+			<Icon name="lucide:shield-alert" class="w-3.5 h-3.5 flex-shrink-0" />
+			{{ t('components.postbox.postboxMessageBody.imagesUnchecked') }}
+		</span>
+		<button
+			type="button"
+			class="text-brand font-medium hover:underline flex-shrink-0"
+			@click="emit('loadEverything')"
+		>
+			{{ t('components.postbox.postboxMessageBody.loadEverything') }}
+		</button>
 	</div>
 
 	<div v-else-if="kind === 'trackers-blocked'" :class="BANNER_CLASS">

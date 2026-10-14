@@ -31,6 +31,21 @@
  * has not moved for {@link STALLED_MS} (its chain died: a failed step, a
  * redeploy mid-chain); a walk resumes from its stored cursor.
  *
+ * FAILING WALKS: every walk step is scheduled with its job recorded on the
+ * folder's state row (`walkJob`, with the retry epoch below), so `finish` can
+ * tell a failed step from a slow one. Each poll checks every stalled walk (up
+ * to {@link STALLED_BATCH}) and extends a folder's failure streak by each step
+ * that failed, counting a step once. Once one folder's step has failed
+ * {@link MAX_WALK_FAILURES} times in a row, `finish` records the error on the
+ * ledger row and stops polling: the migration reads as failed (Settings →
+ * System & updates), and {@link ensure} no longer resumes it.
+ *
+ * Streaks belong to the ledger row's `retryEpoch`, which only `run` (an
+ * operator's start or retry) bumps. The cron's hourly resume bumps the
+ * generation but not the epoch, so it never wipes a streak; only committed
+ * progress on that folder or an operator's run does, and a step scheduled
+ * before that run never counts toward the new streak.
+ *
  * Running `run` again on an unfinished pass resumes it and supersedes any
  * chain still queued; on a finished one it does nothing. `'{"restart": true}'`
  * passes over every folder again (a ready folder is left alone, a walking one
@@ -51,15 +66,22 @@ import { v } from 'convex/values';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import { logInfo } from '../lib/runtimeLog';
+import { logInfo, logWarn } from '../lib/runtimeLog';
+import type { Doc } from '../_generated/dataModel';
 import {
 	beginMigrationRun,
 	isCurrentMigrationPage,
 	readMigrationRun,
+	recordMigrationFailure,
 	recordMigrationPage,
+	scheduleMigrationPage,
 	type MigrationRun,
 } from '../lib/migrationLedger';
-import { resetFolderMembership, startFolderMembership } from '../mail/folderMembership';
+import {
+	resetFolderMembership,
+	scheduleFolderWalkStep,
+	startFolderMembership,
+} from '../mail/folderMembership';
 
 const MIGRATION = '0054_backfill_folder_membership';
 /** The release this migration ships in, recorded on its ledger row. */
@@ -73,6 +95,12 @@ const FINISH_POLL_MS = 60_000;
 
 /** A walk whose state row has not changed for this long has lost its chain. */
 const STALLED_MS = 10 * 60_000;
+
+/** Failed steps in a row after which a folder's walk fails the migration. */
+const MAX_WALK_FAILURES = 3;
+
+/** Stalled walks `finish` reads and restarts per poll. */
+const STALLED_BATCH = 25;
 
 /** The ledger `mode` of a rebuild pass. */
 const REBUILD = 'rebuild';
@@ -88,6 +116,33 @@ const RESUME_AFTER_MS = 60 * 60_000;
 async function currentRun(ctx: MutationCtx, generation: number): Promise<MigrationRun | null> {
 	const run = await readMigrationRun(ctx, MIGRATION);
 	return isCurrentMigrationPage(run, generation) ? run : null;
+}
+
+/**
+ * The walk's failure streak once its recorded step is read: one longer when
+ * that step failed, null when it did not, or when it does not count. A step
+ * counts once (`lastJobId`), and only in the retry `epoch` it was scheduled
+ * under: one from before the operator's last retry never starts a new streak.
+ * A failed mutation rolls back its own writes, so the streak lives here, kept
+ * by the poll that finds the failure.
+ */
+async function countWalkFailure(
+	ctx: MutationCtx,
+	walk: Doc<'mailFolderMembership'>,
+	epoch: number
+): Promise<NonNullable<Doc<'mailFolderMembership'>['walkFailures']> | null> {
+	const recorded = walk.walkJob;
+	if (!recorded || recorded.epoch !== epoch) return null;
+	if (walk.walkFailures?.lastJobId === recorded.id) return null;
+	const job = await ctx.db.system.get(recorded.id);
+	if (job?.state.kind !== 'failed') return null;
+	const prior = walk.walkFailures?.epoch === epoch ? walk.walkFailures.count : 0;
+	return {
+		epoch,
+		count: prior + 1,
+		lastError: job.state.error || 'The folder walk step failed without an error message',
+		lastJobId: recorded.id,
+	};
 }
 
 /** Start (or, in a rebuild, reset) the walks of one page of folders. */
@@ -111,9 +166,7 @@ export const startPage = internalMutation({
 				continue;
 			}
 			walking += 1;
-			await ctx.scheduler.runAfter(0, internal.maintenance.folderMembershipBackfill.step, {
-				folderId: folder._id,
-			});
+			await scheduleFolderWalkStep(ctx, folder._id, { epoch: run.retryEpoch ?? 0 });
 		}
 		// The ledger completes in `finish`, once the walks started here are ready.
 		await recordMigrationPage(ctx, run, {
@@ -125,7 +178,7 @@ export const startPage = internalMutation({
 		const next = isDone
 			? internal.migrations['0054_backfill_folder_membership'].finish
 			: internal.migrations['0054_backfill_folder_membership'].startPage;
-		await ctx.scheduler.runAfter(0, next, {
+		await scheduleMigrationPage(ctx, run, 0, next, {
 			cursor: continueCursor,
 			generation: run.generation,
 		});
@@ -153,11 +206,11 @@ export const finish = internalMutation({
 	handler: async (ctx, args) => {
 		const run = await currentRun(ctx, args.generation);
 		if (!run) return { isSuperseded: true, isCompleted: false };
-		const stalest = await ctx.db
+		const walking = await ctx.db
 			.query('mailFolderMembership')
 			.withIndex('by_is_ready_and_updated', (q) => q.eq('isReady', false))
 			.first();
-		if (!stalest) {
+		if (!walking) {
 			await recordMigrationPage(ctx, run, {
 				cursor: run.cursor ?? '',
 				isDone: true,
@@ -169,13 +222,37 @@ export const finish = internalMutation({
 			});
 			return { isSuperseded: false, isCompleted: true };
 		}
-		if (stalest.updatedAt < Date.now() - STALLED_MS) {
-			await ctx.db.patch(stalest._id, { updatedAt: Date.now() });
-			await ctx.scheduler.runAfter(0, internal.maintenance.folderMembershipBackfill.step, {
-				folderId: stalest.folderId,
-			});
+		// Every stalled walk, stalest first and a bounded batch per poll, so how
+		// fast a failing folder is found does not grow with the number of folders.
+		const now = Date.now();
+		const stalled = await ctx.db
+			.query('mailFolderMembership')
+			.withIndex('by_is_ready_and_updated', (q) =>
+				q.eq('isReady', false).lt('updatedAt', now - STALLED_MS)
+			)
+			.take(STALLED_BATCH);
+		const epoch = run.retryEpoch ?? 0;
+		for (const walk of stalled) {
+			const walkFailures = await countWalkFailure(ctx, walk, epoch);
+			if (walkFailures && walkFailures.count >= MAX_WALK_FAILURES) {
+				// Retrying has not helped: stop polling and fail the migration, so the
+				// card and its runner show the error instead of waiting forever.
+				const error = `Folder ${walk.folderId}: ${walkFailures.lastError}`;
+				await ctx.db.patch(walk._id, { walkFailures });
+				await recordMigrationFailure(ctx, run, error);
+				logWarn('migration.0054_backfill_folder_membership.walk_failed', {
+					folderId: walk.folderId,
+					failures: walkFailures.count,
+					generation: run.generation,
+				});
+				return { isSuperseded: false, isCompleted: false, isFailed: true };
+			}
+			await ctx.db.patch(walk._id, { updatedAt: now, ...(walkFailures ? { walkFailures } : {}) });
+			await scheduleFolderWalkStep(ctx, walk.folderId, { epoch });
 		}
-		await ctx.scheduler.runAfter(
+		await scheduleMigrationPage(
+			ctx,
+			run,
 			FINISH_POLL_MS,
 			internal.migrations['0054_backfill_folder_membership'].finish,
 			{ cursor: null, generation: run.generation }
@@ -203,7 +280,11 @@ export const run = internalMutation({
 				};
 			}
 		}
-		return await begin(ctx, { restart: args.restart === true || rebuild, rebuild });
+		return await begin(ctx, {
+			restart: args.restart === true || rebuild,
+			rebuild,
+			isOperatorRetry: true,
+		});
 	},
 });
 
@@ -219,8 +300,11 @@ export const ensure = internalMutation({
 	handler: async (ctx): Promise<BeginResult> => {
 		const existing = await readMigrationRun(ctx, MIGRATION);
 		if (existing?.status === 'completed') return { started: false };
+		// A pass that failed on a folder waits for someone to look: resuming it
+		// here would only fail the same folder again.
+		if (existing?.failure) return { started: false };
 		if (existing && existing.updatedAt > Date.now() - RESUME_AFTER_MS) return { started: false };
-		return await begin(ctx, { restart: false, rebuild: false });
+		return await begin(ctx, { restart: false, rebuild: false, isOperatorRetry: false });
 	},
 });
 
@@ -232,7 +316,7 @@ interface BeginResult {
 
 async function begin(
 	ctx: MutationCtx,
-	options: { restart: boolean; rebuild: boolean }
+	options: { restart: boolean; rebuild: boolean; isOperatorRetry: boolean }
 ): Promise<BeginResult> {
 	const begun = await beginMigrationRun(ctx, {
 		migration: MIGRATION,
@@ -243,7 +327,14 @@ async function begin(
 	if (!begun) {
 		return { started: false, reason: 'Already completed; pass restart to run it again' };
 	}
-	await ctx.scheduler.runAfter(
+	// Only a person's run starts the folder walks' failure streaks over; the
+	// cron's resume keeps them, so a folder that keeps failing still fails it.
+	if (options.isOperatorRetry) {
+		await ctx.db.patch(begun._id, { retryEpoch: (begun.retryEpoch ?? 0) + 1 });
+	}
+	await scheduleMigrationPage(
+		ctx,
+		begun,
 		0,
 		internal.migrations['0054_backfill_folder_membership'].startPage,
 		{

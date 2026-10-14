@@ -54,6 +54,7 @@ describe('buildRecallKnowledgeTool', () => {
 		const tool = buildRecallKnowledgeTool({
 			runAction: runAction as never,
 			scopeToContact: contactId,
+			includeInboxDerived: true,
 		});
 
 		const result = (await toolExecute(tool, { query: 'refund window' })) as {
@@ -64,6 +65,7 @@ describe('buildRecallKnowledgeTool', () => {
 		expect(calls[0]!['scopeToContact']).toBe(contactId);
 		expect(calls[0]!['limit']).toBe(RECALL_RESULT_LIMIT);
 		expect(calls[0]!['expandGraph']).toBe(false);
+		expect(calls[0]!['includeInboxDerived']).toBe(true);
 		expect(result.facts).toHaveLength(1);
 		expect(result.facts[0]!.title).toBe('Refund policy');
 	});
@@ -77,9 +79,13 @@ describe('buildRecallKnowledgeTool', () => {
 		const tool = buildRecallKnowledgeTool({
 			runAction: runAction as never,
 			scopeToContact: 'org-general-only',
+			includeInboxDerived: false,
 		});
 		await toolExecute(tool, { query: 'anything' });
 		expect(calls[0]!['scopeToContact']).toBe('org-general-only');
+		// The caller's visibility, passed through: a personal draft never asks
+		// for knowledge kept to shared-inbox readers.
+		expect(calls[0]!['includeInboxDerived']).toBe(false);
 	});
 
 	it('is bounded: stops retrieving after MAX_RECALL_CALLS', async () => {
@@ -91,6 +97,7 @@ describe('buildRecallKnowledgeTool', () => {
 		const tool = buildRecallKnowledgeTool({
 			runAction: runAction as never,
 			scopeToContact: contactId,
+			includeInboxDerived: true,
 		});
 
 		// Exhaust the budget, then call once more.
@@ -121,6 +128,7 @@ describe('buildRecallKnowledgeTool', () => {
 		const tool = buildRecallKnowledgeTool({
 			runAction: runAction as never,
 			scopeToContact: contactId,
+			includeInboxDerived: true,
 		});
 		await expect(toolExecute(tool, { query: 'anything' })).rejects.toMatchObject({
 			data: { data: { code: 'AI_BUDGET_EXHAUSTED' } },
@@ -134,6 +142,7 @@ describe('buildRecallKnowledgeTool', () => {
 		const tool = buildRecallKnowledgeTool({
 			runAction: runAction as never,
 			scopeToContact: contactId,
+			includeInboxDerived: true,
 		});
 		const result = (await toolExecute(tool, { query: 'anything' })) as { facts: unknown[] };
 		expect(result.facts).toEqual([]);

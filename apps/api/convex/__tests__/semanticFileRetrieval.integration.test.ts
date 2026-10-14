@@ -27,6 +27,7 @@ type FileSpec = {
 	embedAt: number;
 	searchableText?: string;
 	contactIds?: Id<'contacts'>[];
+	captureSource?: 'mailbox' | 'team_inbox';
 };
 
 async function insertFile(
@@ -44,7 +45,8 @@ async function insertFile(
 			filename: spec.filename,
 			mimeType: 'text/plain',
 			fileSize: (spec.searchableText ?? spec.filename).length,
-			sourceType: 'upload',
+			sourceType: spec.captureSource ? 'email_attachment' : 'upload',
+			captureSource: spec.captureSource,
 			contactIds: spec.contactIds,
 			version: 1,
 			embedding: unit(spec.embedAt),
@@ -93,6 +95,7 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 			queryText: 'ABC-12345',
 			embedding: unit(7),
 			scopeToContact: 'org-wide',
+			mailCaptures: 'all',
 			limit: 10,
 		});
 
@@ -113,6 +116,7 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 			queryText: 'zzzznomatch',
 			embedding: unit(3),
 			scopeToContact: 'org-wide',
+			mailCaptures: 'all',
 			limit: 10,
 		});
 
@@ -146,11 +150,50 @@ describe('semanticFileProcessing.semanticSearch — contact-scope post-filter', 
 			queryText: 'SKU-777',
 			embedding: unit(4),
 			scopeToContact: contactA,
+			mailCaptures: 'all',
 			limit: 10,
 		});
 
 		const names = results.map((r) => r.filename);
 		expect(names).toContain('a-contract.pdf');
 		expect(names).not.toContain('b-contract.pdf');
+	});
+});
+
+describe('semanticFileProcessing.semanticSearch — mail-capture scope (#1322)', () => {
+	it('returns files captured from inbound mail only within the scope the caller names', async () => {
+		const t = convexTest(schema, modules);
+		const text = 'quarterly figures INV-9001';
+		await insertFile(t, { filename: 'upload.pdf', embedAt: 5, searchableText: text });
+		await insertFile(t, {
+			filename: 'postbox.pdf',
+			embedAt: 5,
+			searchableText: text,
+			captureSource: 'mailbox',
+		});
+		await insertFile(t, {
+			filename: 'team.pdf',
+			embedAt: 5,
+			searchableText: text,
+			captureSource: 'team_inbox',
+		});
+
+		const search = async (mailCaptures: 'none' | 'team_inbox' | 'all') =>
+			(
+				await t.action(internal.semanticFileProcessing.semanticSearch, {
+					embeddingSpaceId: await activeSpaceId(t),
+					queryText: 'INV-9001',
+					embedding: unit(5),
+					scopeToContact: 'org-wide',
+					mailCaptures,
+					limit: 10,
+				})
+			)
+				.map((r) => r.filename)
+				.sort();
+
+		expect(await search('none')).toEqual(['upload.pdf']);
+		expect(await search('team_inbox')).toEqual(['team.pdf', 'upload.pdf']);
+		expect(await search('all')).toEqual(['postbox.pdf', 'team.pdf', 'upload.pdf']);
 	});
 });

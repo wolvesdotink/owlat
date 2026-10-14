@@ -40,6 +40,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 
 const MIGRATION = '0057_withdraw_opted_out_confirmation_tokens';
@@ -109,7 +110,9 @@ export const processPage = internalMutation({
 			generation: run.generation,
 		});
 		if (!result.isDone) {
-			await ctx.scheduler.runAfter(
+			await scheduleMigrationPage(
+				ctx,
+				run,
 				0,
 				internal.migrations['0057_withdraw_opted_out_confirmation_tokens'].processPage,
 				{ cursor: result.cursor, generation: run.generation }
@@ -142,7 +145,9 @@ export const run = internalMutation({
 		if (!begun) {
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
-		await ctx.scheduler.runAfter(
+		await scheduleMigrationPage(
+			ctx,
+			begun,
 			0,
 			internal.migrations['0057_withdraw_opted_out_confirmation_tokens'].processPage,
 			{ cursor: begun.cursor ?? null, generation: begun.generation }

@@ -29,6 +29,7 @@ import { dropFolderMembership } from '../../mail/folderMembership';
 import { isOrgInfrastructureAccount } from '../../mail/external/personalAccount';
 import { deleteStoredAccessToken } from '../../mail/external/accessTokenStore';
 import { drainThreadBrief, eraseDraftPlans } from '../../contacts/erasure/threadBriefPhases';
+import { eraseCapturedFiles } from './capturedFilePhases';
 import {
 	deleteAskSession,
 	deleteBlobAndReceipt,
@@ -328,13 +329,14 @@ export const eraseShares: MemberPhaseRunner = (phase) =>
  * The mailbox's own records: rules, signatures, snippets, learned style, the
  * AI digests and commitments, saved searches, forwarding and vacation state,
  * the private address book and per-sender preferences, app passwords, aliases,
- * pending and current member grants, and any attachment index row a message
- * delete left behind.
+ * pending and current member grants, any attachment index row a message
+ * delete left behind, and the attachments captured into Files from its mail.
  */
 export const eraseMailboxRecords: MemberPhaseRunner = (phase) =>
-	forEachPersonalMailbox(phase, (mailbox) => {
+	forEachPersonalMailbox(phase, async (mailbox) => {
 		const { ctx } = phase;
 		const id = mailbox._id;
+		if (!(await eraseCapturedFiles(phase, id))) return false;
 		return deleteRanges(phase, [
 			(n) =>
 				ctx.db

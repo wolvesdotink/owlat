@@ -69,6 +69,8 @@ export async function computeAttachmentSuggestions(
 		const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
 			queryText,
 			scopeToContact,
+			// The Team Inbox agent: its own captures, never a Postbox mailbox's.
+			mailCaptures: 'team_inbox',
 			limit: MAX_CANDIDATES + 2,
 			...(args.root ? { root: args.root } : {}),
 		});
@@ -150,6 +152,9 @@ export async function searchFilesForRequest(
 		const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
 			queryText,
 			scopeToContact: args.contactId ?? 'org-general-only',
+			// No mail captures from Files: they keep their mailbox's permission,
+			// and the reply's own mailbox is searched by the second leg below.
+			mailCaptures: 'none',
 			limit: MAX_FOUND_PER_SOURCE,
 			...(args.root ? { root: args.root } : {}),
 		});

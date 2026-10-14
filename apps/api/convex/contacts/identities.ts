@@ -14,7 +14,7 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import type { Doc } from '../_generated/dataModel';
 import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
 import { logInfo } from '../lib/runtimeLog';
-import { mergeContactRelations } from '../lib/contactMutations';
+import { contactMergeBlocker, mergeContactRelations } from '../lib/contactMutations';
 import { decrementContactCount } from '../lib/contactCountHelpers';
 import { recordAuditLog } from '../lib/auditLog';
 import { redactContactCapabilityFields, type PublicContact } from './listing';
@@ -288,10 +288,18 @@ async function mergeContactInto(
 	ctx: MutationCtx,
 	targetContactId: Doc<'contacts'>['_id'],
 	sourceContactId: Doc<'contacts'>['_id']
-): Promise<void> {
+): Promise<boolean> {
 	const target = await ctx.db.get(targetContactId);
 	const source = await ctx.db.get(sourceContactId);
-	if (!target || !source) return;
+	if (!target || !source) return false;
+	// A contact being erased is left to its erasure; `mergeContactRelations`
+	// would refuse it and take the whole batch's transaction down with it.
+	if (
+		(await contactMergeBlocker(ctx, targetContactId)) ||
+		(await contactMergeBlocker(ctx, sourceContactId))
+	) {
+		return false;
+	}
 
 	await mergeContactRelations(ctx, targetContactId, sourceContactId);
 
@@ -304,6 +312,7 @@ async function mergeContactInto(
 
 	await ctx.db.delete(sourceContactId);
 	await decrementContactCount(ctx, 1);
+	return true;
 }
 
 /**
@@ -379,7 +388,7 @@ export const autoMergeDuplicates = internalMutation({
 			for (const source of contacts.slice(1)) {
 				if (merged >= limit) break;
 				if (consumed.has(source._id as string)) continue;
-				await mergeContactInto(ctx, target._id, source._id);
+				if (!(await mergeContactInto(ctx, target._id, source._id))) continue;
 				consumed.add(source._id as string);
 				merged++;
 			}

@@ -61,6 +61,7 @@ import {
 	settleHeldTransitions,
 } from './pendingMatch';
 import { reconcileSendFailure } from './sendFailure';
+import { isInterpretationFenced } from './staleFence';
 
 /** How far ahead a reminder may be set. */
 const MAX_REMIND_AHEAD_MS = 400 * 24 * 60 * 60 * 1000;
@@ -113,6 +114,11 @@ async function runLifecycle(
 	reaction: LifecycleReaction
 ): Promise<{ result: ReactionResult; item: Doc<'threadItems'>; ref: ThreadRef }> {
 	const { item: row, ref } = await requireItemReader(ctx, itemId, session);
+	// Confirming takes on what the model proposed: not from a fenced thread
+	// (staleFence.ts). Everything a person decides alone still works.
+	if (reaction === 'confirmProposal' && (await isInterpretationFenced(ctx, ref))) {
+		throwInvalidState('This conversation is being checked again; its suggestions are paused.');
+	}
 	// A held transition whose message was re-read (or confirmed elsewhere)
 	// since no longer stands: it is not applied (pendingMatch.ts).
 	const held = row.pendingUpdate?.transitions;

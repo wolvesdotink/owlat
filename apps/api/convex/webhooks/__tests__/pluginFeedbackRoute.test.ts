@@ -38,8 +38,11 @@
  */
 
 import { createHmac } from 'node:crypto';
+import { convexTest } from 'convex-test';
 import { getFunctionName } from 'convex/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { internal } from '../../_generated/api';
+import schema from '../../schema';
 
 // Hoisted with the mock factories: `vi.mock` runs before the module body, so
 // the fixture the factories close over has to be built there too.
@@ -221,6 +224,13 @@ interface ContextOptions {
 	readonly isCompletable?: boolean;
 	/** Whether `ctx.scheduler.runAfter` succeeds — the audit row's own failure. */
 	readonly isSchedulable?: boolean;
+	/**
+	 * Answers the replay table's own mutations (claim, complete, release) — set
+	 * to send them to a real database instead of the canned answers above.
+	 */
+	readonly deliveries?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+	/** Runs while authorization is being decided — to let time pass there. */
+	readonly onAuthorize?: () => void;
 }
 
 function fakeContext(options: ContextOptions = {}) {
@@ -235,7 +245,14 @@ function fakeContext(options: ContextOptions = {}) {
 			if (name.includes('checkPublicRateLimit')) {
 				return { ok: options.isRateLimited !== true, retryAfter: 1_000 };
 			}
-			if (name.includes('authorizeDelivery')) return options.isAuthorized !== false;
+			if (name.includes('authorizeDelivery')) {
+				options.onAuthorize?.();
+				return options.isAuthorized !== false;
+			}
+			if (options.deliveries && name.includes('pluginFeedbackDeliveries:')) {
+				if (name.includes(':complete')) completed.push(args);
+				return options.deliveries(name, args);
+			}
 			if (name.includes('pluginFeedbackDeliveries:claim')) return options.claimOutcome ?? 'claimed';
 			if (name.includes('pluginFeedbackDeliveries:complete')) {
 				if (options.isCompletable === false) throw new Error('completion write unavailable');
@@ -261,6 +278,19 @@ function fakeContext(options: ContextOptions = {}) {
 }
 
 const BODY = JSON.stringify({ events: [{ type: 'bounce', id: 'abc' }] });
+
+// The backend's modules for the cases that run a real claim. Two globs merged,
+// because Vite's `import.meta.glob` omits the directory chain it climbed to
+// reach the base — see the note in `adapterRegistry.test.ts`.
+const CONVEX_MODULES = {
+	...import.meta.glob('../../**/*.*s'),
+	...Object.fromEntries(
+		Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
+			path.replace(/^\.\.\//, '../../webhooks/'),
+			mod,
+		])
+	),
+};
 
 function sign(body: string, timestampSeconds: number, secret = SECRET): string {
 	return createHmac('sha256', secret).update(`${timestampSeconds}.${body}`).digest('hex');
@@ -560,11 +590,10 @@ describe('a caller replaying a request that was once authentic', () => {
 			request.headers.get(SIGNATURE_HEADER) ?? 'unset'
 		);
 		// The claim outlives the window in which the same request could still
-		// verify, and no longer.
-		expect(digestOf(first).expiresAt).toBeGreaterThan(Date.now() + TOLERANCE_SECONDS * 1000);
-		expect(digestOf(first).expiresAt).toBeLessThanOrEqual(
-			Date.now() + 2 * TOLERANCE_SECONDS * 1000
-		);
+		// verify, and no longer: up to the first second past the signed
+		// timestamp's tolerance.
+		const signedAt = Number(request.headers.get(TIMESTAMP_HEADER));
+		expect(digestOf(first).expiresAt).toBe((signedAt + TOLERANCE_SECONDS + 1) * 1000);
 	});
 
 	it('gives the claim back when the delivery could not be applied', async () => {
@@ -1186,6 +1215,39 @@ describe('a plugin whose provider signs with svix', () => {
 		expect(firstClaim.deliveryDigest).toMatch(/^[0-9a-f]{64}$/);
 	});
 
+	it('applies a re-spelled copy of a delivery once, against the real claim (#1328)', async () => {
+		// The signature header is a list that verifies when ANY candidate matches,
+		// so a captured delivery can be re-sent with junk around the real one and
+		// still verify. It must still find the first copy's claim.
+		const t = convexTest(schema, CONVEX_MODULES);
+		const deliveries = (name: string, args: Record<string, unknown>) => {
+			const table = internal.webhooks.pluginFeedbackDeliveries;
+			if (name.endsWith(':claim')) return t.mutation(table.claim, args as never);
+			if (name.endsWith(':complete')) return t.mutation(table.complete, args as never);
+			return t.mutation(table.release, args as never);
+		};
+
+		const original = svixRequest();
+		const first = await handler(fakeContext({ deliveries }).ctx, original);
+		expect(first.status).toBe(200);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+
+		const respelled = svixRequest({
+			headers: {
+				'svix-timestamp': original.headers.get('svix-timestamp')!,
+				'svix-signature': `v1,bm90LWEtc2lnbmF0dXJl  ${original.headers.get('svix-signature')!} v1,${'A'.repeat(43)}=`,
+			},
+		});
+		const second = await handler(fakeContext({ deliveries }).ctx, respelled);
+		expect(second.status).toBe(200);
+		expect(await second.json()).toEqual({ success: true, duplicate: true });
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+
+		const rows = await t.run((ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ pluginId: SVIX_PLUGIN_ID, status: 'completed' });
+	});
+
 	it('still refuses a revoked grant with 403, before the claim is taken', async () => {
 		const { ctx, calls } = fakeContext({ isAuthorized: false });
 		const response = await handler(ctx, svixRequest());
@@ -1205,5 +1267,132 @@ describe('a plugin whose provider signs with svix', () => {
 		expect(response.status).toBe(400);
 		expect(calls.some((name) => name.includes('pluginFeedbackDeliveries:release'))).toBe(true);
 		expect(scheduled.map((entry) => entry.args['outcome'])).toEqual(['failed']);
+	});
+});
+
+/**
+ * A REPLAY THAT GOES STALE WHILE IT IS BEING AUTHORIZED (#1328 review).
+ *
+ * The route verifies, then awaits authorization, then claims. A completed
+ * delivery's receipt lives exactly as long as its signature can verify — so a
+ * replay that verifies in the last instant of its window and reaches the claim
+ * a moment later finds that receipt expired. The claim must refuse it as the
+ * stale request it has become, not take the freed slot and apply it again.
+ * Each arm is walked to its own last accepted instant, against the real claim.
+ */
+describe('a replay whose window closes during authorization', () => {
+	// A whole second, so both arms' boundaries fall on known instants.
+	const WINDOW_CLOSES_MS = 1_770_000_300_000;
+	const SIGNED_AT = WINDOW_CLOSES_MS / 1000 - TOLERANCE_SECONDS;
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function realDeliveries() {
+		const t = convexTest(schema, CONVEX_MODULES);
+		const table = internal.webhooks.pluginFeedbackDeliveries;
+		const deliveries = (name: string, args: Record<string, unknown>) => {
+			if (name.endsWith(':claim')) return t.mutation(table.claim, args as never);
+			if (name.endsWith(':complete')) return t.mutation(table.complete, args as never);
+			return t.mutation(table.release, args as never);
+		};
+		return { t, deliveries };
+	}
+
+	it.each([
+		{
+			label: 'svix',
+			pluginId: mocks.svix.pluginId,
+			request: () => {
+				const signature = createHmac('sha256', Buffer.from(mocks.svix.secretBase64, 'base64'))
+					.update(`msg_stale.${SIGNED_AT}.${BODY}`)
+					.digest('base64');
+				return new Request(`https://example.convex.site/webhooks/plugin/${mocks.svix.pluginId}`, {
+					method: 'POST',
+					body: BODY,
+					headers: {
+						'Content-Type': 'application/json',
+						'svix-id': 'msg_stale',
+						'svix-timestamp': String(SIGNED_AT),
+						'svix-signature': `v1,${signature}`,
+					},
+				});
+			},
+			// Floored to the second, so the window's second is accepted to its end;
+			// one millisecond of authorization carries the replay past it.
+			verifiedAtMs: WINDOW_CLOSES_MS + 999,
+			authorizationMs: 1,
+		},
+		{
+			label: 'the parameterized HMAC',
+			pluginId: PLUGIN_ID,
+			request: () => webhookRequest({ timestamp: String(SIGNED_AT) }),
+			// Inclusive to the millisecond, so the replay verifies at the boundary
+			// itself, and a second of authorization carries it past.
+			verifiedAtMs: WINDOW_CLOSES_MS,
+			authorizationMs: 1_000,
+		},
+	] as const)(
+		'$label: is refused with 401 and dispatched once in all',
+		async ({ pluginId, request, verifiedAtMs, authorizationMs }) => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			const { t, deliveries } = realDeliveries();
+
+			// The original, fresh when it arrived, applied and receipted.
+			vi.setSystemTime(SIGNED_AT * 1000);
+			const original = await handler(fakeContext({ deliveries }).ctx, request());
+			expect(original.status).toBe(200);
+			expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+
+			// The replay verifies in the last instant of its window, then waits.
+			vi.setSystemTime(verifiedAtMs);
+			const replay = await handler(
+				fakeContext({
+					deliveries,
+					onAuthorize: () => vi.setSystemTime(verifiedAtMs + authorizationMs),
+				}).ctx,
+				request()
+			);
+
+			expect(replay.status).toBe(401);
+			expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+			// The original's receipt is the only row, untouched by the refusal.
+			const rows = await t.run((ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+			expect(rows).toHaveLength(1);
+			expect(rows[0]).toMatchObject({ pluginId, status: 'completed' });
+		}
+	);
+
+	it('svix: a replay that arrives at the claim still inside its window is a duplicate', async () => {
+		// The other side of the boundary: the same replay with no time lost to
+		// authorization still meets a live receipt and is acknowledged, not applied.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		const { deliveries } = realDeliveries();
+		const request = () =>
+			new Request(`https://example.convex.site/webhooks/plugin/${mocks.svix.pluginId}`, {
+				method: 'POST',
+				body: BODY,
+				headers: {
+					'Content-Type': 'application/json',
+					'svix-id': 'msg_stale',
+					'svix-timestamp': String(SIGNED_AT),
+					'svix-signature': `v1,${createHmac(
+						'sha256',
+						Buffer.from(mocks.svix.secretBase64, 'base64')
+					)
+						.update(`msg_stale.${SIGNED_AT}.${BODY}`)
+						.digest('base64')}`,
+				},
+			});
+
+		vi.setSystemTime(SIGNED_AT * 1000);
+		expect((await handler(fakeContext({ deliveries }).ctx, request())).status).toBe(200);
+
+		vi.setSystemTime(WINDOW_CLOSES_MS + 999);
+		const replay = await handler(fakeContext({ deliveries }).ctx, request());
+		expect(replay.status).toBe(200);
+		expect(await replay.json()).toEqual({ success: true, duplicate: true });
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
 	});
 });

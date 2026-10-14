@@ -1,74 +1,46 @@
 import { describe, it, expect } from 'vitest';
-import schema from '../schema';
 import {
 	CONTACT_RELATIONS,
 	DESCENDANT_RELATIONS,
 	tablesErasureDeletesFrom,
 } from '../contacts/erasure/relations';
+import {
+	schemaContactReferences,
+	schemaReferencesTo,
+	schemaStringContactReferences,
+} from './schemaReferences';
 
 /**
  * Schema coverage gate for the contact erasure relation registry
- * (`contacts/erasure/relations.ts`). A new `v.id('contacts')` field, or a new
+ * (`contacts/erasure/relations.ts`). A new `v.id('contacts')` field, a new
+ * plain-string field the walk recognises as a contact id, or a new
  * reference to a table the erasure deletes from, fails here until it declares
  * what permanent deletion does to it — so the cascade can never silently fall
  * behind the schema again (clarificationMemory did, and kept learned answers
  * about erased people).
  */
 
-interface ValidatorJson {
-	kind: string;
-	tableName?: string;
-	fields?: Record<string, ValidatorJson>;
-	element?: ValidatorJson;
-	members?: ValidatorJson[];
-	value?: ValidatorJson;
-}
-
-function collectReferences(
-	validator: ValidatorJson | undefined,
-	target: string,
-	path: string,
-	out: Set<string>
-): void {
-	if (!validator) return;
-	switch (validator.kind) {
-		case 'id':
-			if (validator.tableName === target) out.add(path);
-			return;
-		case 'object':
-			for (const [key, field] of Object.entries(validator.fields ?? {})) {
-				collectReferences(field, target, path ? `${path}.${key}` : key, out);
-			}
-			return;
-		case 'array':
-			collectReferences(validator.element, target, `${path}[]`, out);
-			return;
-		case 'union':
-			for (const member of validator.members ?? []) collectReferences(member, target, path, out);
-			return;
-		case 'record':
-			collectReferences(validator.value, target, `${path}{}`, out);
-			return;
-	}
-}
-
-/** `table.field` for every schema field holding an id of `target`. */
-function schemaReferencesTo(target: string): string[] {
-	const refs: string[] = [];
-	const tables = (schema as unknown as { tables: Record<string, { validator: ValidatorJson }> })
-		.tables;
-	for (const [table, definition] of Object.entries(tables)) {
-		const fields = new Set<string>();
-		collectReferences(definition.validator, target, '', fields);
-		for (const field of fields) refs.push(`${table}.${field}`);
-	}
-	return refs.sort();
-}
-
 describe('contact erasure relation registry', () => {
 	it('declares a policy for every field in the schema that references contacts', () => {
 		const declared = CONTACT_RELATIONS.map((r) => `${r.table}.${r.field}`).sort();
-		expect(declared).toEqual(schemaReferencesTo('contacts'));
+		expect(declared).toEqual(schemaContactReferences());
+	});
+
+	it('names the discriminator of every contact id held in a plain string', () => {
+		const discriminators = new Map(
+			schemaStringContactReferences().map((r) => [r.ref, r.discriminator])
+		);
+		for (const relation of CONTACT_RELATIONS) {
+			const ref = `${relation.table}.${relation.field}`;
+			if (!discriminators.has(ref)) {
+				expect(relation.when, `${ref} is a v.id field`).toBeUndefined();
+				continue;
+			}
+			const discriminator = discriminators.get(ref);
+			// A string named for the contact itself needs no discriminator.
+			if (discriminator === undefined) continue;
+			expect(relation.when, ref).toEqual({ field: discriminator, equals: 'contact' });
+		}
 	});
 
 	it('declares a policy for every reference to a table the erasure deletes from', () => {

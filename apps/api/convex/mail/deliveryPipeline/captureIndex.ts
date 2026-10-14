@@ -87,11 +87,20 @@ export type StoredPart = {
 
 export type IndexedPart = { indexed: boolean; namesOnly: boolean };
 
-/** Hand one stored part to `semanticFiles.ingest`. */
+/**
+ * Hand one stored part to `semanticFiles.ingest`. `sourceMailboxId` is the
+ * mailbox a Postbox capture arrived in, which keeps the file readable only by
+ * that mailbox's readers (lib/semanticFileAccess.ts).
+ */
 export async function ingestStoredPart(
 	ctx: CaptureRunner,
 	part: StoredPart,
-	meta: { messageId: string; captureSource: CaptureSource; contactIds?: Id<'contacts'>[] }
+	meta: {
+		messageId: string;
+		captureSource: CaptureSource;
+		sourceMailboxId?: Id<'mailboxes'>;
+		contactIds?: Id<'contacts'>[];
+	}
 ): Promise<IndexedPart> {
 	// `ingest` re-runs the same file-type policy as `selectIngestible` and
 	// deletes the blob if it disagrees.
@@ -102,6 +111,7 @@ export async function ingestStoredPart(
 		fileSize: part.size,
 		sourceType: 'email_attachment',
 		captureSource: meta.captureSource,
+		...(meta.sourceMailboxId ? { sourceMailboxId: meta.sourceMailboxId } : {}),
 		sourceMessageId: meta.messageId,
 		contactIds: meta.contactIds,
 	});

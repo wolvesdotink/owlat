@@ -205,6 +205,11 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 		expect(file.filename).toBe('notes.txt');
 		expect(file.sourceMessageId).toBe('<cap-1@example.com>');
 		expect(file.fileSize).toBeGreaterThan(0);
+		// The mailbox it arrived in, resolved from the delivered message: it
+		// decides who may read the file (lib/semanticFileAccess.ts).
+		const mailbox = await t.run((ctx) => ctx.db.query('mailboxes').first());
+		expect(file.captureSource).toBe('mailbox');
+		expect(file.sourceMailboxId).toBe(mailbox!._id);
 
 		// The captured bytes round-trip through storage. A freshly captured file
 		// always has a blob — `storageId` is only absent once the retention sweep

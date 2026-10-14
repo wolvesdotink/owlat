@@ -299,6 +299,15 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('conversationThreads', 'assignedTo', 'retain', ORG_ATTRIBUTION),
 	rel('inboundMessages', 'assignedTo', 'retain', ORG_ATTRIBUTION),
 	rel('inboundMessages', 'draftRevisions[].savedBy', 'retain', ORG_ATTRIBUTION),
+	rel('inboundMessages', 'pendingClarification.remindedForUserId', 'retain', ORG_ATTRIBUTION),
+	// The same questions kept while a newer reply answered the message (#1346).
+	rel(
+		'inboundMessages',
+		'answeredStash.pendingClarification.remindedForUserId',
+		'retain',
+		ORG_ATTRIBUTION
+	),
+
 	rel(
 		'unifiedMessages',
 		'memberId',
@@ -344,6 +353,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('embeddingAttestations', 'revokedBy', 'retain', ORG_ATTRIBUTION),
 	rel('embeddingReembedJobs', 'startedBy', 'retain', ORG_ATTRIBUTION),
 	rel('systemUpdates', 'initiatedBy', 'retain', ORG_ATTRIBUTION),
+	rel('migrationDriver', 'startedBy', 'retain', ORG_ATTRIBUTION),
 	rel('workspaceDeletionJobs', 'requestedBy', 'retain', 'The workspace deletion’s own history.'),
 	rel('workspaceDeletionJobs', 'abortedBy', 'retain', 'The workspace deletion’s own history.'),
 	...THREAD_BRIEF_MEMBER_RELATIONS,

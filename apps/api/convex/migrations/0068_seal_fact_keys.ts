@@ -32,6 +32,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 import { storedFactKey } from '../mail/interpret/factKeys';
 
@@ -91,10 +92,16 @@ export const processPage = internalMutation({
 			generation: run.generation,
 		});
 		if (!result.isDone) {
-			await ctx.scheduler.runAfter(0, internal.migrations['0068_seal_fact_keys'].processPage, {
-				cursor: result.continueCursor,
-				generation: run.generation,
-			});
+			await scheduleMigrationPage(
+				ctx,
+				run,
+				0,
+				internal.migrations['0068_seal_fact_keys'].processPage,
+				{
+					cursor: result.continueCursor,
+					generation: run.generation,
+				}
+			);
 		}
 		return { isDone: result.isDone };
 	},
@@ -123,10 +130,16 @@ export const run = internalMutation({
 		if (!begun) {
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
-		await ctx.scheduler.runAfter(0, internal.migrations['0068_seal_fact_keys'].processPage, {
-			cursor: begun.cursor ?? null,
-			generation: begun.generation,
-		});
+		await scheduleMigrationPage(
+			ctx,
+			begun,
+			0,
+			internal.migrations['0068_seal_fact_keys'].processPage,
+			{
+				cursor: begun.cursor ?? null,
+				generation: begun.generation,
+			}
+		);
 		logInfo('migration.0068_seal_fact_keys.started', {
 			cursor: begun.cursor ?? null,
 			generation: begun.generation,

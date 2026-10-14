@@ -40,7 +40,7 @@ interface Row {
 	kind: string;
 	kindLabel: string;
 	status: string;
-	records: { label: string; type?: string; host?: string; value: string }[];
+	records: { label: string; type?: string; host?: string; value: string; priority?: number }[];
 	spf?: { isValid: boolean; error?: string };
 	dkim?: { isValid: boolean; error?: string };
 	lastError?: string;
@@ -131,6 +131,25 @@ describe('RelayDomainStatus', () => {
 	it('keeps published records on screen after the hatch is removed', async () => {
 		const wrapper = await mountPanel([sesRow()]);
 		expect(wrapper.text()).toContain('v=spf1 include:amazonses.com');
+	});
+
+	it('keeps a space between an MX host and its priority', async () => {
+		const wrapper = await mountPanel([
+			sesRow({
+				records: [
+					{
+						label: 'MX',
+						type: 'MX',
+						host: 'bounce.example.com',
+						value: 'feedback-smtp.eu-west-1.amazonses.com',
+						priority: 10,
+					},
+				],
+			}),
+		]);
+		expect(wrapper.find('[data-testid="relay-dns-record"] p').text()).toBe(
+			'MX · MX bounce.example.com priority 10'
+		);
 	});
 
 	it('keeps SES’s apex-SPF exemption, worded from the row’s own label', async () => {

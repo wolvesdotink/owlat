@@ -10,7 +10,8 @@
  * new relation cannot land without a declaration here:
  *
  *   - every `v.id('contacts')` field anywhere in the schema (including nested
- *     and array fields) must appear in `CONTACT_RELATIONS`, and
+ *     and array fields) must appear in `CONTACT_RELATIONS`, and so must every
+ *     plain-string field the walk recognises as a contact id (`when`), and
  *   - every field that references a table the erasure deletes rows from must
  *     appear in `DESCENDANT_RELATIONS`, recursively.
  *
@@ -36,6 +37,7 @@
 
 import type { TableNames } from '../../_generated/dataModel';
 import { THREAD_BRIEF_CONTACT_DESCENDANTS } from './threadBriefRelations';
+import { CONVERSATION_THREAD_DESCENDANTS } from './threadRelations';
 import { AI_ROUTING_CONTACT_DESCENDANTS, AI_ROUTING_CONTACT_RELATIONS } from './aiRoutingRelations';
 
 export type ErasureAction = 'delete' | 'unlink' | 'retain';
@@ -48,6 +50,12 @@ export interface ErasureRelation {
 	 * element, `a.b[].c` for a nested field.
 	 */
 	field: string;
+	/**
+	 * For a contact id held in a plain `v.string()` field: the sibling field
+	 * whose value says the string is a contact id (`scopeType: 'contact'`).
+	 * Absent on `v.id('contacts')` fields.
+	 */
+	when?: { field: string; equals: string };
 	action: ErasureAction;
 	/** For `unlink`: the case in which the row is deleted instead. */
 	deletesWhen?: string;
@@ -190,6 +198,23 @@ export const CONTACT_RELATIONS: readonly ErasureRelation[] = [
 		why: 'The erasure’s own progress row; deleted in the same transaction as the contact row.',
 	},
 	...AI_ROUTING_CONTACT_RELATIONS,
+	// Contact ids held in plain strings, next to a field naming their kind. The
+	// schema walk cannot see these; `__tests__/schemaReferences.ts` finds them
+	// by that pairing (`<x>Id` beside `<x>`, `<x>Type` or `<x>Kind`).
+	{
+		table: 'draftStrategySelections',
+		field: 'scopeId',
+		when: { field: 'scopeType', equals: 'contact' },
+		action: 'delete',
+		why: 'A draft strategy override for this one contact means nothing once the contact is gone.',
+	},
+	{
+		table: 'auditLogs',
+		field: 'resourceId',
+		when: { field: 'resource', equals: 'contact' },
+		action: 'retain',
+		why: 'The audit log is the organization’s record of who did what, kept as written. Known gap: contact entries also keep the address in `details`, which contact erasure does not scrub yet.',
+	},
 ];
 
 /**
@@ -215,133 +240,8 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		why: 'An opaque idempotency key, not content; the Send itself is governed by its contactId (scrubbed above). Nothing dereferences it: the intake only looks it up by the id of a live step run, and ids are never reused, so the dangling key is inert. Keeping it means an email attempt still in flight during the erasure resolves to this Send instead of enqueuing a second one.',
 	},
 
-	// ── conversationThreads ──
-	{
-		parent: 'conversationThreads',
-		table: 'unifiedMessages',
-		field: 'threadId',
-		action: 'delete',
-		why: 'Every message in the thread goes, including organization replies that quote the person.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'inboundMessages',
-		field: 'threadId',
-		action: 'retain',
-		why: 'Governed by the message’s own contactId: the erased person’s mail is deleted through that relation, another sender’s mail in the same thread is theirs.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'answerAskSessions',
-		field: 'target.threadId',
-		action: 'retain',
-		why: 'Governed by the session’s own contactId (deleted above), which is the thread’s contact when one is linked; a session without a contact carries no contact data beyond the thread it names.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'coalesceBatches',
-		field: 'threadId',
-		action: 'retain',
-		why: 'Transient debounce row, consumed and deleted by its own scheduled job within the coalescing window.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'threadPresence',
-		field: 'threadId',
-		action: 'retain',
-		why: 'Ephemeral viewer heartbeat (user id and a timestamp), expired by the presence sweep.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'threadReads',
-		field: 'threadId',
-		action: 'retain',
-		why: 'A team member’s read marker: ids and a timestamp, no content.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'inboxAssignmentNotices',
-		field: 'threadId',
-		action: 'retain',
-		why: 'Known gap: the notice copies the thread subject, but the table has no index by thread to find it from here.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'inboxFollowUps',
-		field: 'threadId',
-		action: 'delete',
-		why: 'A follow-up is the team writing to the person on their thread; it goes with the thread like the replies in it. A pending one has its dispatch cancelled.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'threadCatchUps',
-		field: 'conversationThreadId',
-		action: 'delete',
-		why: 'Answer mode’s catch-up card retells the thread and lists what the person asked for; it goes with the thread it summarises.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'threadNotes',
-		field: 'threadId',
-		action: 'delete',
-		why: 'The team’s internal notes discuss the person on their thread; they go with the thread.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'threadNoteMentions',
-		field: 'threadId',
-		action: 'retain',
-		why: 'Governed by the row’s noteId (below): a mention goes with its note, which goes with the thread. The thread id is only the Mentions filter’s key.',
-	},
-	{
-		parent: 'threadNotes',
-		table: 'threadNoteMentions',
-		field: 'noteId',
-		action: 'delete',
-		why: 'A mention row is meaningless without its note.',
-	},
-	{
-		parent: 'threadNotes',
-		table: 'noteReactions',
-		field: 'threadNoteId',
-		action: 'delete',
-		why: 'An emoji reaction is meaningless without its note.',
-	},
-	{
-		parent: 'threadNotes',
-		table: 'inboxAssignmentNotices',
-		field: 'noteId',
-		action: 'retain',
-		why: 'Known gap, as for the thread pointer above: the notice copies the thread subject, but the table has no index by note to find it from here.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'knowledgeEntries',
-		field: 'threadId',
-		action: 'retain',
-		why: 'Governed by the entry’s contact links (contactIds[] above).',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'semanticFiles',
-		field: 'threadId',
-		action: 'retain',
-		why: 'Governed by the file’s contact links (contactIds[] above).',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'visualizations',
-		field: 'threadId',
-		action: 'retain',
-		why: 'An organization dashboard artifact that optionally names the thread it was asked from.',
-	},
-	{
-		parent: 'conversationThreads',
-		table: 'chatRooms',
-		field: 'linkedInboxThreadId',
-		action: 'retain',
-		why: 'An internal team chat room; the optional link to the inbox thread is not the person’s data.',
-	},
+	// ── conversationThreads ── (threadRelations.ts)
+	...CONVERSATION_THREAD_DESCENDANTS,
 
 	// ── inboundMessages ──
 	{
@@ -391,7 +291,7 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		table: 'inboxAssignmentNotices',
 		field: 'inboundMessageId',
 		action: 'retain',
-		why: 'Known gap: the notice copies the message subject, but the table has no index by message to find it from here.',
+		why: 'Known gap: the notice copies the message subject. A clarification notice goes when its question settles; the others age out of the toast window.',
 	},
 	{
 		parent: 'inboundMessages',

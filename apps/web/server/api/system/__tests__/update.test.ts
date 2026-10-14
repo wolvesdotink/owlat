@@ -22,12 +22,14 @@ const {
 	callUpdaterMock,
 	resolveComposeMock,
 	mutationMock,
+	queryMock,
 } = vi.hoisted(() => ({
 	requirePlatformAdminMock: vi.fn(),
 	getInstanceSecretMock: vi.fn(),
 	callUpdaterMock: vi.fn(),
 	resolveComposeMock: vi.fn(),
 	mutationMock: vi.fn(),
+	queryMock: vi.fn(),
 }));
 
 vi.mock('~~/server/utils/requireAdmin', () => ({
@@ -81,7 +83,10 @@ function convexCalls(): { name: string; args: Record<string, unknown> }[] {
 beforeEach(() => {
 	process.env['OWLAT_VERSION'] = '0.4.16';
 	mutationMock.mockReset().mockResolvedValue('run-id-1');
-	requirePlatformAdminMock.mockReset().mockResolvedValue({ mutation: mutationMock });
+	queryMock.mockReset().mockResolvedValue([]);
+	requirePlatformAdminMock
+		.mockReset()
+		.mockResolvedValue({ mutation: mutationMock, query: queryMock });
 	getInstanceSecretMock.mockReset().mockReturnValue(INSTANCE_SECRET);
 	resolveComposeMock.mockReset().mockResolvedValue(COMPOSE_TEMPLATE);
 	callUpdaterMock
@@ -100,6 +105,34 @@ beforeEach(() => {
 });
 
 describe('POST /api/system/update — gates', () => {
+	it('refuses with 412 while a stepping-stone migration is unfinished, before anything runs', async () => {
+		queryMock.mockResolvedValue([
+			{ migration: '0067_empty_retired_summaries', introducedIn: '0.4.16', state: 'pending' },
+		]);
+
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 412,
+			data: { migrations: ['0067_empty_retired_summaries'] },
+		});
+		const [ref, args] = queryMock.mock.calls[0]!;
+		expect(getFunctionName(ref as Parameters<typeof getFunctionName>[0])).toBe(
+			'migrations/admin:updateBlockers'
+		);
+		expect(args).toEqual({ targetVersion: '0.4.17' });
+		expect(mutationMock).not.toHaveBeenCalled();
+		expect(resolveComposeMock).not.toHaveBeenCalled();
+		expect(callUpdaterMock).not.toHaveBeenCalled();
+	});
+
+	it('refuses with 503 when the migration check cannot be read, before anything runs', async () => {
+		queryMock.mockRejectedValue(new Error('Convex unreachable'));
+
+		await expect(callRoute()).rejects.toMatchObject({ statusCode: 503 });
+		expect(mutationMock).not.toHaveBeenCalled();
+		expect(resolveComposeMock).not.toHaveBeenCalled();
+		expect(callUpdaterMock).not.toHaveBeenCalled();
+	});
+
 	it('propagates the platform-admin gate before touching the updater', async () => {
 		requirePlatformAdminMock.mockRejectedValue(
 			Object.assign(new Error('Platform admin access required'), { statusCode: 403 })

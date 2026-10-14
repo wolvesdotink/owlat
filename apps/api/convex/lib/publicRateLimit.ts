@@ -86,6 +86,30 @@ export const checkPublicRateLimit = internalMutation({
 });
 
 /**
+ * Spend one failed public-token request: first the caller's address shard
+ * (when the address resolved), then the global budget every failure shares.
+ * Both key sets are fixed (lib/publicTokenPolicy.ts), so no number of invented
+ * tokens adds rows. Only requests that were never admitted land here; a valid
+ * capability is charged on its own bucket and never reads these.
+ */
+export async function spendPublicTokenFailure(
+	ctx: Parameters<typeof rateLimiter.limit>[0],
+	shardKey: string | null
+): Promise<{ ok: boolean; retryAfter: number }> {
+	if (shardKey !== null) {
+		const shard = await rateLimiter.limit(ctx, 'publicTokenFailure', { key: shardKey });
+		if (!shard.ok) return { ok: false, retryAfter: shard.retryAfter ?? 0 };
+	}
+	const global = await rateLimiter.limit(ctx, 'publicTokenFailureGlobal', { key: 'global' });
+	return { ok: global.ok, retryAfter: global.retryAfter ?? 0 };
+}
+
+export const chargePublicTokenFailure = internalMutation({
+	args: { shardKey: v.union(v.string(), v.null()) },
+	handler: (ctx, args) => spendPublicTokenFailure(ctx, args.shardKey),
+});
+
+/**
  * Options for rate limited response
  */
 interface RateLimitedResponseOptions {

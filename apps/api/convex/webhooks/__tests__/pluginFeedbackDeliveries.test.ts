@@ -11,9 +11,12 @@
  * alike loses whole batches.
  */
 
+import { createHmac } from 'node:crypto';
 import { convexTest } from 'convex-test';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { PluginWebhookSignatureContract } from '@owlat/plugin-kit';
 import { internal } from '../../_generated/api';
+import { verifyPluginWebhookDelivery } from '../../plugins/inboundSignature';
 import schema from '../../schema';
 
 // Two globs merged, because Vite's `import.meta.glob` omits the directory chain
@@ -34,6 +37,44 @@ const TOLERANCE_MS = 600_000;
 
 function claimArgs(digest: string, expiresAt = Date.now() + TOLERANCE_MS) {
 	return { pluginId: PLUGIN_ID, transportKind: KIND, deliveryDigest: digest, expiresAt };
+}
+
+/** A claim row's state; `undefined` is a row written before the column existed. */
+type RowStatus = 'completed' | 'in_flight' | undefined;
+
+/**
+ * Every state an expired row can be left in. Expiry must retire all three: a
+ * sweep that kept in-flight rows (a dispatch that died mid-way) or legacy rows
+ * (no status at all) would let the table grow without bound.
+ */
+const EXPIRED_ROW_STATES: readonly (readonly [string, RowStatus])[] = [
+	['completed', 'completed'],
+	['in flight', 'in_flight'],
+	['legacy (no status)', undefined],
+];
+
+/**
+ * Receipts whose window has already closed, written straight to the table: the
+ * claim mutation refuses to take a claim that is already expired, so it cannot
+ * be used to make one.
+ */
+async function insertExpiredRows(
+	t: ReturnType<typeof convexTest>,
+	digests: readonly string[],
+	status: RowStatus
+) {
+	await t.run(async (ctx) => {
+		for (const digest of digests) {
+			await ctx.db.insert('pluginWebhookDeliveries', {
+				pluginId: PLUGIN_ID,
+				transportKind: KIND,
+				deliveryDigest: digest,
+				claimedAt: Date.now() - TOLERANCE_MS,
+				expiresAt: Date.now() - 1,
+				...(status === undefined ? {} : { status }),
+			});
+		}
+	});
 }
 
 function completeArgs(digest: string) {
@@ -75,62 +116,63 @@ describe('plugin webhook delivery claims', () => {
 		expect(rows[0]!.status).toBe('in_flight');
 	});
 
-	it('lets an EXPIRED digest through again', async () => {
+	it.each(EXPIRED_ROW_STATES)('lets an EXPIRED %s digest through again', async (_label, status) => {
 		// Not a loosening: the same request can no longer verify once its signed
 		// timestamp is outside tolerance, so remembering it past that point buys
 		// nothing and only grows the table.
 		const t = convexTest(schema, modules);
 		const claim = internal.webhooks.pluginFeedbackDeliveries.claim;
 
-		await t.mutation(claim, claimArgs('digest-d', Date.now() - 1));
+		await insertExpiredRows(t, ['digest-d'], status);
 		await expect(t.mutation(claim, claimArgs('digest-d'))).resolves.toBe('claimed');
 		const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
-		expect(rows.filter((row) => row.deliveryDigest === 'digest-d')).toHaveLength(1);
+		expect(rows.filter((row) => row.deliveryDigest === 'digest-d')).toEqual([
+			expect.objectContaining({ status: 'in_flight' }),
+		]);
 	});
 
-	it('ages expired rows out as it goes', async () => {
+	it.each(EXPIRED_ROW_STATES)('ages expired %s rows out as it goes', async (_label, status) => {
 		const t = convexTest(schema, modules);
 		const claim = internal.webhooks.pluginFeedbackDeliveries.claim;
-		for (let index = 0; index < 10; index += 1) {
-			await t.mutation(claim, claimArgs(`stale-${index}`, Date.now() - 1));
-		}
+		await insertExpiredRows(
+			t,
+			Array.from({ length: 10 }, (_, index) => `stale-${index}`),
+			status
+		);
 		await t.mutation(claim, claimArgs('fresh'));
 
 		const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
 		expect(rows.map((row) => row.deliveryDigest)).toEqual(['fresh']);
 	});
 
-	it('the cron sweeps what an idle route leaves behind, and only that', async () => {
-		// The claim mutation's own sweep runs only when a delivery is authorized.
-		// Disable the plugin, or let the provider go quiet after a burst, and the
-		// residue would otherwise sit there forever — so the invariant "this table
-		// empties itself" belongs to the cron, not to the hot path.
-		const t = convexTest(schema, modules);
-		await t.mutation(internal.webhooks.pluginFeedbackDeliveries.claim, claimArgs('still-live'));
-		// Written straight to the table: the point is rows NO later claim ever
-		// reaches, which is exactly what going through the claim mutation would
-		// clean up on the way in.
-		await t.run(async (ctx) => {
-			for (let index = 0; index < 5; index += 1) {
-				await ctx.db.insert('pluginWebhookDeliveries', {
-					pluginId: PLUGIN_ID,
-					transportKind: KIND,
-					deliveryDigest: `abandoned-${index}`,
-					claimedAt: Date.now() - TOLERANCE_MS,
-					expiresAt: Date.now() - 1,
-				});
-			}
-		});
+	it.each(EXPIRED_ROW_STATES)(
+		'the cron sweeps the %s rows an idle route leaves behind, and only those',
+		async (_label, status) => {
+			// The claim mutation's own sweep runs only when a delivery is authorized.
+			// Disable the plugin, or let the provider go quiet after a burst, and the
+			// residue would otherwise sit there forever — so the invariant "this table
+			// empties itself" belongs to the cron, not to the hot path.
+			const t = convexTest(schema, modules);
+			await t.mutation(internal.webhooks.pluginFeedbackDeliveries.claim, claimArgs('still-live'));
+			// Written straight to the table: the point is rows NO later claim ever
+			// reaches, which is exactly what going through the claim mutation would
+			// clean up on the way in.
+			await insertExpiredRows(
+				t,
+				Array.from({ length: 5 }, (_, index) => `abandoned-${index}`),
+				status
+			);
 
-		const { deletedCount } = await t.mutation(
-			internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
-			{}
-		);
+			const { deletedCount } = await t.mutation(
+				internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
+				{}
+			);
 
-		expect(deletedCount).toBe(5);
-		const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
-		expect(rows.map((row) => row.deliveryDigest)).toEqual(['still-live']);
-	});
+			expect(deletedCount).toBe(5);
+			const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+			expect(rows.map((row) => row.deliveryDigest)).toEqual(['still-live']);
+		}
+	);
 
 	it('releases a claim so a redelivery after our failure is accepted', async () => {
 		const t = convexTest(schema, modules);
@@ -186,15 +228,24 @@ describe('a claim that has been completed', () => {
 		// cannot verify again, so the row buys nothing and the sweeps take it.
 		const t = convexTest(schema, modules);
 		const { claim, complete } = internal.webhooks.pluginFeedbackDeliveries;
+		const claimedAt = 1_770_000_000_000;
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			// Claimed while live — a claim whose window has already closed is refused.
+			vi.setSystemTime(claimedAt);
+			await t.mutation(claim, claimArgs('digest-h', claimedAt + 1_000));
+			await t.mutation(complete, completeArgs('digest-h'));
 
-		await t.mutation(claim, claimArgs('digest-h', Date.now() - 1));
-		await t.mutation(complete, completeArgs('digest-h'));
-		const { deletedCount } = await t.mutation(
-			internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
-			{}
-		);
+			vi.setSystemTime(claimedAt + 1_001);
+			const { deletedCount } = await t.mutation(
+				internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
+				{}
+			);
 
-		expect(deletedCount).toBe(1);
+			expect(deletedCount).toBe(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('reads a row written before the state column existed as IN FLIGHT', async () => {
@@ -268,4 +319,118 @@ describe('the durable feedback-activity marker', () => {
 		);
 		expect(rows.map((row) => row.transportKind)).toEqual([KIND]);
 	});
+});
+
+/**
+ * The claim must not expire while the request it records can still verify
+ * (#1328 review). The two arms round the clock differently — Svix floors it to
+ * whole seconds, the parameterized check compares milliseconds — so each is
+ * walked to its own last accepted instant with a delivery signed as far ahead
+ * of our clock as the window allows, the case that leaves the least room.
+ */
+describe('a claim and the signature it records', () => {
+	const SECRET_ENV = 'PLUGIN_BOUNDARY_WEBHOOK_SECRET';
+	const TOLERANCE_SECONDS = 300;
+	const ACCEPTED_AT_MS = 1_770_000_000_000;
+	const SIGNED_AT = ACCEPTED_AT_MS / 1000 + TOLERANCE_SECONDS;
+	const BODY = '{"events":[{"type":"bounce","id":"edge"}]}';
+	const SVIX_SECRET_BASE64 = 'YWJjZGVmZ2hpamtsbW5vcA==';
+	const HMAC_SECRET = 'boundary-signing-secret';
+
+	const ARMS: readonly {
+		readonly label: string;
+		readonly secret: string;
+		readonly contract: PluginWebhookSignatureContract;
+		readonly headers: Record<string, string>;
+		readonly lastAcceptedMs: number;
+	}[] = [
+		{
+			label: 'svix',
+			secret: `whsec_${SVIX_SECRET_BASE64}`,
+			contract: { scheme: 'svix', secretEnvVar: SECRET_ENV, toleranceSeconds: TOLERANCE_SECONDS },
+			headers: {
+				'svix-id': 'msg_edge',
+				'svix-timestamp': String(SIGNED_AT),
+				'svix-signature': `v1,${createHmac('sha256', Buffer.from(SVIX_SECRET_BASE64, 'base64'))
+					.update(`msg_edge.${SIGNED_AT}.${BODY}`)
+					.digest('base64')}`,
+			},
+			// Floored to the second: every instant of the second after the window.
+			lastAcceptedMs: (SIGNED_AT + TOLERANCE_SECONDS + 1) * 1000 - 1,
+		},
+		{
+			label: 'the parameterized HMAC',
+			secret: HMAC_SECRET,
+			contract: {
+				header: 'x-signature',
+				algorithm: 'hmac-sha256',
+				encoding: 'hex',
+				secretEnvVar: SECRET_ENV,
+				replay: { timestampHeader: 'x-timestamp', toleranceSeconds: TOLERANCE_SECONDS },
+			},
+			headers: {
+				'x-timestamp': String(SIGNED_AT),
+				'x-signature': createHmac('sha256', HMAC_SECRET)
+					.update(`${SIGNED_AT}.${BODY}`)
+					.digest('hex'),
+			},
+			// Inclusive, to the millisecond.
+			lastAcceptedMs: (SIGNED_AT + TOLERANCE_SECONDS) * 1000,
+		},
+	];
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
+	});
+
+	it.each(ARMS)(
+		'$label: a copy that still verifies still finds its claim',
+		async ({ secret, contract, headers, lastAcceptedMs }) => {
+			vi.stubEnv(SECRET_ENV, secret);
+			vi.useFakeTimers({ toFake: ['Date'] });
+			const t = convexTest(schema, modules);
+			const table = internal.webhooks.pluginFeedbackDeliveries;
+			const verify = (nowMs: number) =>
+				verifyPluginWebhookDelivery({
+					contract,
+					pluginId: PLUGIN_ID,
+					transportKind: KIND,
+					rawBody: BODY,
+					headers: new Headers(headers),
+					nowMs,
+				});
+
+			vi.setSystemTime(ACCEPTED_AT_MS);
+			const first = await verify(ACCEPTED_AT_MS);
+			if (!first.ok) throw new Error(`expected the first copy to verify: ${first.reason}`);
+			await expect(
+				t.mutation(table.claim, claimArgs(first.deliveryDigest, first.expiresAtMs))
+			).resolves.toBe('claimed');
+			await t.mutation(table.complete, completeArgs(first.deliveryDigest));
+
+			vi.setSystemTime(lastAcceptedMs);
+			const replay = await verify(lastAcceptedMs);
+			if (!replay.ok) throw new Error(`expected the replay to verify: ${replay.reason}`);
+			await expect(
+				t.mutation(table.claim, claimArgs(replay.deliveryDigest, replay.expiresAtMs))
+			).resolves.toBe('duplicate_completed');
+
+			// A copy that verified in time but reaches the claim once the window has
+			// closed is refused there, and the receipt it would have displaced is
+			// left exactly as it was.
+			vi.setSystemTime(replay.expiresAtMs);
+			await expect(
+				t.mutation(table.claim, claimArgs(replay.deliveryDigest, replay.expiresAtMs))
+			).resolves.toBe('expired');
+			const rows = await t.run((ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+			expect(rows).toEqual([
+				expect.objectContaining({ deliveryDigest: first.deliveryDigest, status: 'completed' }),
+			]);
+
+			// One millisecond on, the request itself is refused, so the claim has
+			// nothing left to guard.
+			await expect(verify(lastAcceptedMs + 1)).resolves.toMatchObject({ ok: false, status: 401 });
+		}
+	);
 });
