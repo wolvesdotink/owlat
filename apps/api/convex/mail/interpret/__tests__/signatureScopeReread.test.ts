@@ -98,7 +98,10 @@ const venueItem = reduceItem({
 });
 
 /** Everything a person can set on an item: completion, a confirmation, a reminder. */
-const HUMAN = {
+const HUMAN: Pick<
+	Doc<'threadItems'>,
+	'status' | 'completion' | 'correction' | 'remindAt' | 'confirmedFrom'
+> = {
 	status: 'done',
 	completion: 'asserted',
 	correction: { by: 'user-A', at: T + 1, kind: 'confirmed' },
@@ -109,7 +112,7 @@ const HUMAN = {
 		verify: 'passed',
 		addedEvidenceKeys: [],
 	},
-} as const;
+};
 
 beforeEach(() => {
 	vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
@@ -273,9 +276,10 @@ async function consumersOf(
 	const todo = await t.query(api.mail.interpret.todo.listNoReplyToDo, { mailboxId });
 	const queue = await t.query(api.mail.needsReply.listQueue, { mailboxId });
 	await t.mutation(internal.mail.dailyBrief.buildForMailbox, { mailboxId });
-	const daily = await t.run(async (ctx) =>
-		(await ctx.db.query('mailDailyBriefs').collect()).at(-1)
-	);
+	const daily = await t.run(async (ctx) => {
+		const briefs = await ctx.db.query('mailDailyBriefs').collect();
+		return briefs[briefs.length - 1];
+	});
 	const thread = (await t.run((ctx) => ctx.db.get(threadId)))!;
 	return {
 		thread,
@@ -419,10 +423,11 @@ describe('the stale fence (#1320)', () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId, threadId } = await seedInterpreted(t);
 		await t.run(async (ctx) => {
-			const [{ _id, _creationTime, ...item }] = await ctx.db
+			const [first] = await ctx.db
 				.query('threadItems')
 				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
 				.take(1);
+			const { _id, _creationTime, ...item } = first!;
 			for (let i = 0; i < 520; i++) {
 				await ctx.db.insert('threadItems', {
 					...item,
@@ -489,6 +494,33 @@ describe('the stale fence (#1320)', () => {
 		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
 		const thread = (await t.run((ctx) => ctx.db.get(threadId)))!;
 		expect(thread.interpretationStaleSince).toBeUndefined();
+	});
+
+	it('fences a thread whose narrowed message was read as sent (history)', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedLegacy(t);
+		// Filed in Sent and read by the history pass: an `outboundMail:` source only.
+		const source = { kind: 'outboundMail' as const, id: messageId };
+		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+			source,
+			threadRef: { kind: 'mail', id: threadId },
+			mode: 'brief',
+			contentRevision: 'rev-sent',
+			extractorVersion: 2,
+			sourceAt: T,
+			direction: 'outbound',
+			status: 'complete',
+			result: reduceResult({ items: [trailerItem] }),
+			sourceVersion: (await t.run((ctx) => sourceVersionOf(ctx, source)))!,
+			deletionEpoch: 0,
+			expectedRevision: 0,
+		});
+
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+
+		const thread = (await t.run((ctx) => ctx.db.get(threadId)))!;
+		expect(thread.interpretationStaleSince).toBeTypeOf('number');
+		expect(await t.query(internal.mail.interpret.staleFence.isSourceFenced, { source })).toBe(true);
 	});
 
 	it('does not fence a thread the message never contributed to', async () => {

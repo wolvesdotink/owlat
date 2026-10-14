@@ -16,7 +16,7 @@
  */
 
 import { v } from 'convex/values';
-import type { Doc } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
 import { publicQuery } from '../../lib/authedFunctions';
@@ -207,7 +207,11 @@ export const page = publicQuery({
 		if (!mailbox) return null;
 		const ref: MailThreadRef = { kind: 'mail', id: thread._id };
 		const before = decodeStreamCursor(args.cursor);
-		const itemText = itemTextReader(ctx, ref, streamLocale(args.locale));
+		// A fenced thread's item texts are the model's wording (staleFence.ts): the
+		// notes keep their reference, without the label.
+		const itemText = isFencedThread(thread)
+			? async (_itemId?: Id<'threadItems'>) => undefined
+			: itemTextReader(ctx, ref, streamLocale(args.locale));
 		const ownAddresses = new Set(
 			[...(await mailboxOwnAddresses(ctx, mailbox))].map((a) => normalizeEmail(a))
 		);

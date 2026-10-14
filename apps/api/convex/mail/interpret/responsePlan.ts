@@ -28,7 +28,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { PlanVerdict } from '@owlat/shared/threadBrief';
 import { openMessageBody } from '../../lib/messageBody';
-import { throwInvalidInput, throwNotFound } from '../../_utils/errors';
+import { throwInvalidInput, throwInvalidState, throwNotFound } from '../../_utils/errors';
 import { requireMailboxAccess } from '../permissions';
 import { answerModeQuery, threadBriefMutation } from '../_helpers';
 import { draftRefValidator, type DraftRef } from '../../lib/validators/responsePlan';
@@ -37,6 +37,7 @@ import type { MutationSessionContext } from '../../lib/sessionOrganization';
 import { rowMatchesThreadRef, threadRefValidator } from '../../lib/validators/threadRef';
 import { requireThreadReader } from './threadAccess';
 import type { PlanStance } from './responsePlanRules';
+import { isInterpretationFenced } from './staleFence';
 import {
 	canRead,
 	givenStanceValidator,
@@ -177,6 +178,11 @@ export const setStances = threadBriefMutation({
 	},
 	handler: async (ctx, args, session): Promise<{ planRevision: number }> => {
 		await requireDraftWriter(ctx, args.threadRef, args.draftRef, session);
+		// A fenced thread has no plan to choose in (staleFence.ts); writing one now
+		// would replace the stored row, the owner's inputs with it.
+		if (await isInterpretationFenced(ctx, args.threadRef)) {
+			throwInvalidState('This conversation is being checked again; its suggestions are paused.');
+		}
 		const state = await loadPlanState(ctx, args.threadRef, args.draftRef);
 		const open = new Set<string>(state.items.map((i) => i.id));
 		// An item of this thread that was closed since the choice was made is
@@ -233,6 +239,8 @@ export const adoptArrivalPlan = threadBriefMutation({
 		const draftRef: DraftRef = { kind: 'mailDraft', id: args.draftId };
 		await requireDraftWriter(ctx, args.threadRef, draftRef, session);
 		const arrivalRef: DraftRef = { kind: 'arrivalDraft', id: args.threadRef.id };
+		// A fenced thread's stored check read the old plan (staleFence.ts): not moved.
+		if (await isInterpretationFenced(ctx, args.threadRef)) return null;
 		const arrival = await readPlanRow(ctx, arrivalRef);
 		if (!arrival || (await readPlanRow(ctx, draftRef))) return null;
 		const {

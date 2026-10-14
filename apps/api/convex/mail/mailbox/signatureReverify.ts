@@ -169,12 +169,19 @@ export const apply = internalMutation({
 	},
 });
 
-/** Did a read of the message contribute to its thread's interpretation? */
+/**
+ * Did a read of the message contribute to its thread's interpretation? A
+ * Postbox message is read as received (`mail:`) or, filed in Sent and read by
+ * the history pass, as sent (`outboundMail:`): either counts.
+ */
 async function isInterpreted(ctx: MutationCtx, message: Doc<'mailMessages'>): Promise<boolean> {
-	const sourceKey = interpretationSourceKey({ kind: 'mail', id: message._id });
-	const extraction = await ctx.db
-		.query('messageInterpretations')
-		.withIndex('by_source_revision', (q) => q.eq('sourceKey', sourceKey))
-		.first();
-	return extraction !== null;
+	for (const kind of ['mail', 'outboundMail'] as const) {
+		const sourceKey = interpretationSourceKey({ kind, id: message._id });
+		const extraction = await ctx.db
+			.query('messageInterpretations')
+			.withIndex('by_source_revision', (q) => q.eq('sourceKey', sourceKey))
+			.first();
+		if (extraction) return true;
+	}
+	return false;
 }

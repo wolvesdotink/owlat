@@ -21,6 +21,7 @@
 
 import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
 import { hasUsableAnswer } from '../inbox/clarificationAnswers';
+import { isFencedThread } from './interpret/staleFence';
 
 interface ClarificationLike {
 	questions: ReadonlyArray<Parameters<typeof hasUsableAnswer>[0]>;
@@ -55,6 +56,19 @@ export function visibleDraftSlot<S extends { draft: string }, C extends Clarific
 }
 
 /**
+ * The arrival draft a thread may show: none while its interpretation is fenced
+ * off (interpret/staleFence.ts), whose plan the draft was written from.
+ */
+export function visibleThreadDraftSlot<S extends { draft: string }, C extends ClarificationLike>(
+	thread: {
+		needsReply?: SlotHolder<S, C> | undefined | null;
+		interpretationStaleSince?: number | undefined;
+	} | null
+): S | undefined {
+	return thread && !isFencedThread(thread) ? visibleDraftSlot(thread.needsReply) : undefined;
+}
+
+/**
  * The clarification as the card may show it: a reply on a card still asking
  * is not shown (it raced the questions), and one with gaps the owner did not
  * agree to reads as asking again.
@@ -78,12 +92,13 @@ export function withVisibleDrafts<
 		needsReply?:
 			| (SlotHolder<{ draft: string }, ClarificationLike> & Record<string, unknown>)
 			| undefined;
+		interpretationStaleSince?: number | undefined;
 	},
 >(thread: T): T {
 	const flag = thread.needsReply;
 	if (!flag) return thread;
 	const { draftSlot, clarification, ...rest } = flag;
-	const slot = visibleDraftSlot(flag);
+	const slot = visibleThreadDraftSlot(thread);
 	return {
 		...thread,
 		needsReply: {

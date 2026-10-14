@@ -38,7 +38,7 @@ import { needsReplyTriggerOf } from './needsReplyTrigger';
 import { QUEUE_LIMIT, scanReplyQueue } from './needsReplyQueueScan';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
-import { visibleClarification, visibleDraftSlot } from './needsReplySlot';
+import { visibleClarification, visibleThreadDraftSlot } from './needsReplySlot';
 import { scoreAndScreenResult } from './ai/needsReplyScoring';
 import { buildThreadTranscript, NEEDS_REPLY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
@@ -51,7 +51,7 @@ import { mailboxOwnAddresses } from './identities';
 import { normalizeEmail } from '@owlat/shared';
 import { needsReplyResultFields } from '../schema/mailThreads';
 import type { needsReplyClarificationValidator } from '../lib/validators/clarification';
-import { isFencedThread, withoutAskSummary } from './interpret/staleFence';
+import { isFencedThread, withoutInterpretationCache } from './interpret/staleFence';
 
 /** True when an attachment is a calendar invite (.ics / text/calendar). */
 export function isCalendarAttachment(att: { filename: string; contentType: string }): boolean {
@@ -277,8 +277,8 @@ export const applyResult = internalMutation({
 				resolved === null
 					? undefined
 					: {
-							// A fenced thread keeps no model summary (interpret/staleFence.ts).
-							...(isFencedThread(thread) ? withoutAskSummary(resolved) : resolved),
+							// A fenced thread keeps nothing the model derived (interpret/staleFence.ts).
+							...(isFencedThread(thread) ? withoutInterpretationCache(resolved) : resolved),
 							detectedAt: Date.now(),
 							// The queue row's sender and subject, so listQueue need not load
 							// the message (plan C8).
@@ -362,7 +362,7 @@ export const listQueue = publicQuery({
 				// reply is waiting for review. The draft itself is read by the card that
 				// shows it (`getDraftSlot`, plan C8), not shipped on every row.
 				// Never while the row asks questions (mail/needsReplySlot.ts).
-				hasDraftSlot: visibleDraftSlot(flag) !== undefined,
+				hasDraftSlot: visibleThreadDraftSlot(thread) !== undefined,
 				fromAddress: trigger.fromAddress,
 				fromName: trigger.fromName,
 				subject: trigger.subject,
@@ -434,7 +434,7 @@ export const getDraftSlot = publicQuery({
 		if (!thread) return null;
 		const mailbox = await loadReadableMailbox(ctx, thread.mailboxId);
 		if (!mailbox) return null;
-		const slot = visibleDraftSlot(thread.needsReply);
+		const slot = visibleThreadDraftSlot(thread);
 		if (!slot) return null;
 		// A slot written before #1200 can carry alternative drafts. No screen
 		// lets anyone pick one, and a web build from before then counts them as

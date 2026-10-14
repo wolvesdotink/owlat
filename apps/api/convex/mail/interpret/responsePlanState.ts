@@ -37,7 +37,7 @@ import {
 	type PlanStance,
 } from './responsePlanRules';
 import type { AttachmentRef } from './planCheck';
-import { isInterpretationFenced } from './staleFence';
+import { isFencedThread, isInterpretationFenced } from './staleFence';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 type ItemId = Id<'threadItems'>;
@@ -145,7 +145,9 @@ const SETTLED_STATUSES: ReadonlySet<Doc<'inboundMessages'>['processingStatus']> 
 export async function isDraftLive(ctx: ReadCtx, draftRef: DraftRef): Promise<boolean> {
 	if (draftRef.kind === 'mailDraft') return (await ctx.db.get(draftRef.id)) !== null;
 	if (draftRef.kind === 'arrivalDraft') {
-		return !!(await ctx.db.get(draftRef.id))?.needsReply?.draftSlot;
+		const thread = await ctx.db.get(draftRef.id);
+		// A fenced thread's arrival draft is hidden (staleFence.ts): nothing to check.
+		return !!thread?.needsReply?.draftSlot && !isFencedThread(thread);
 	}
 	const message = await ctx.db.get(draftRef.id);
 	return !!message && !SETTLED_STATUSES.has(message.processingStatus);
@@ -275,12 +277,13 @@ export async function loadPlanState(
 	draftRef: DraftRef | null,
 	options: { chosen?: readonly PlanStance<ItemId>[]; openSlots?: readonly string[] } = {}
 ): Promise<PlanState> {
-	// A fenced thread (staleFence.ts) has no items to plan, and no brief.
+	// A fenced thread (staleFence.ts) has no items to plan, no brief, and no
+	// stored check to show: its coverage, claims and promises read the old plan.
 	const isFenced = await isInterpretationFenced(ctx, ref);
 	const [brief, loaded, row, slots] = await Promise.all([
 		loadBriefRow(ctx, ref),
 		isFenced ? { rows: [], items: [], isOverflow: false } : loadPlanItems(ctx, ref),
-		draftRef ? readPlanRow(ctx, draftRef) : Promise.resolve(null),
+		draftRef && !isFenced ? readPlanRow(ctx, draftRef) : Promise.resolve(null),
 		openSlotItemIds(ctx, ref, draftRef),
 	]);
 	for (const id of options.openSlots ?? []) slots.add(id);

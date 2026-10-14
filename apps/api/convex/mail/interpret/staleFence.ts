@@ -33,13 +33,24 @@ import { internalMutation } from '../../lib/writeFence';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { interpretationSourceValidator } from '../../lib/validators/threadBrief';
 
-/** Is the thread's interpretation fenced off? Only mail threads can be. */
+/**
+ * THE fence check: is this mail thread's interpretation fenced off? Every
+ * machine consumer asks this (or {@link isFencedThread} for a thread row it
+ * already holds, {@link isInterpretationFenced} for a thread reference).
+ */
+export async function isThreadInterpretationFenced(
+	ctx: Pick<QueryCtx, 'db'>,
+	threadId: Id<'mailThreads'>
+): Promise<boolean> {
+	return isFencedThread(await ctx.db.get(threadId));
+}
+
+/** The same, for a thread reference. Only mail threads can be fenced. */
 export async function isInterpretationFenced(
 	ctx: Pick<QueryCtx, 'db'>,
 	ref: ThreadRef
 ): Promise<boolean> {
-	if (ref.kind !== 'mail') return false;
-	return isFencedThread(await ctx.db.get(ref.id));
+	return ref.kind === 'mail' && (await isThreadInterpretationFenced(ctx, ref.id));
 }
 
 /** Is the thread of an interpretation source fenced off? For a run, before it reads anything. */
@@ -50,7 +61,7 @@ export const isSourceFenced = internalQuery({
 		const { source } = args;
 		if (source.kind !== 'mail' && source.kind !== 'outboundMail') return false;
 		const message = await ctx.db.get(source.id);
-		return message ? isInterpretationFenced(ctx, { kind: 'mail', id: message.threadId }) : false;
+		return message ? isThreadInterpretationFenced(ctx, message.threadId) : false;
 	},
 });
 
@@ -61,17 +72,23 @@ export function isFencedThread(
 	return thread?.interpretationStaleSince !== undefined;
 }
 
-/** A needs-reply flag without the model's one-line summary of the ask. Pure. */
-export function withoutAskSummary<T extends { askSummary?: string }>(
-	flag: T
-): Omit<T, 'askSummary'> {
-	const { askSummary: _summary, ...rest } = flag;
+/**
+ * A needs-reply flag without what the model derived from its read of the
+ * thread: the summary of the ask, the deadline and meeting hints, and the
+ * arrival draft. The flag itself (urgency, trigger) and the clarification,
+ * which holds the person's answers, stay. Pure.
+ */
+export function withoutInterpretationCache<
+	T extends { askSummary?: string; dueHint?: string; meetingIntent?: unknown; draftSlot?: unknown },
+>(flag: T): Omit<T, 'askSummary' | 'dueHint' | 'meetingIntent' | 'draftSlot'> {
+	const { askSummary: _a, dueHint: _d, meetingIntent: _m, draftSlot: _s, ...rest } = flag;
 	return rest;
 }
 
 /**
  * Fence the thread off, and drop the caches it carries that the model
- * derived: the list projection and the needs-reply summary. Idempotent.
+ * derived: the list projection and the needs-reply flag's model fields
+ * ({@link withoutInterpretationCache}). Idempotent.
  */
 export async function fenceThreadInterpretation(
 	ctx: MutationCtx,
@@ -79,8 +96,10 @@ export async function fenceThreadInterpretation(
 ): Promise<void> {
 	const thread = await ctx.db.get(threadId);
 	if (!thread || isFencedThread(thread)) return;
-	// The flag stays (it is the Reply Queue's own); only the model's summary goes.
-	const needsReply = thread.needsReply ? { needsReply: withoutAskSummary(thread.needsReply) } : {};
+	// The flag stays (it is the Reply Queue's own); only what the model derived goes.
+	const needsReply = thread.needsReply
+		? { needsReply: withoutInterpretationCache(thread.needsReply) }
+		: {};
 	await ctx.db.patch(threadId, {
 		interpretationStaleSince: Date.now(),
 		briefTop: undefined,

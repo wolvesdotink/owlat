@@ -128,8 +128,13 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 	const source = { source: args.source };
 	if (await ctx.runQuery(internal.mail.interpret.staleFence.isSourceFenced, source)) {
 		await ctx.runMutation(internal.mail.interpret.outstanding.settleRecorded, source);
-		const skip = { status: 'skipped', isReplayed: false, createdItemIds: [] } as const;
-		return { ...skip, errorCode: 'interpretation_fenced' };
+		const skipped: InterpretRunResult = {
+			status: 'skipped',
+			isReplayed: false,
+			createdItemIds: [],
+			errorCode: 'interpretation_fenced',
+		};
+		return skipped;
 	}
 
 	// A bulk-stranger candidate whose thread category is still provisional
