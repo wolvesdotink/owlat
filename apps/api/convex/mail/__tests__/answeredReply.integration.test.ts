@@ -265,7 +265,7 @@ describe('a reply sent through Owlat', () => {
 		expect(await draftState(t, forNewer)).toBe('live');
 		// Hidden from the composer and the Drafts list.
 		const listed = await t.run(async (ctx) => ctx.db.get(aiDraft));
-		expect(listed?.obsoleted?.byMessageId).toBe(sentId);
+		expect(listed?.obsoleted?.byMessageIds).toEqual([sentId]);
 
 		// A generation started before the send cannot bring the reply back.
 		await lateGeneration(t, c, c.askId);
@@ -305,6 +305,38 @@ describe('a reply sent through Owlat', () => {
 		expect(await draftState(t, aiDraft)).toBe('obsoleted');
 
 		await transport(t, sentId, 'bounced'); // the asynchronous bounce report
+		expect(await draftState(t, aiDraft)).toBe('live');
+	});
+
+	it('keeps a draft hidden while another accepted reply still answers it', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const aiDraft = await seedDraft(t, c, { inReplyTo: c.askId, editedAt: T0 + 2_000, ai: true });
+		const replyA = await seedDraft(t, c, {
+			inReplyTo: c.askId,
+			editedAt: T0 + 3_000,
+			state: 'pending_send',
+		});
+		const sentA = await sendThroughOwlat(t, replyA);
+		await transport(t, sentA, 'sent');
+
+		// Sam writes again and the newer mail is answered too.
+		const newerId = await addMessage(t, c, { from: SENDER, at: T0 + 5_000, role: 'inbox' });
+		const replyB = await seedDraft(t, c, {
+			inReplyTo: newerId,
+			editedAt: T0 + 6_000,
+			state: 'pending_send',
+		});
+		const sentB = await sendThroughOwlat(t, replyB);
+		await transport(t, sentB, 'sent');
+
+		await transport(t, sentA, 'bounced'); // A never reached Sam, but B did
+		expect(await draftState(t, aiDraft)).toBe('obsoleted');
+		expect((await t.run(async (ctx) => ctx.db.get(aiDraft)))?.obsoleted?.byMessageIds).toEqual([
+			sentB,
+		]);
+
+		await transport(t, sentB, 'bounced'); // now neither did
 		expect(await draftState(t, aiDraft)).toBe('live');
 	});
 
@@ -395,6 +427,53 @@ describe('the retention window', () => {
 
 		expect(await draftState(t, aiDraft)).toBe('gone');
 		expect(await t.run(async (ctx) => ctx.storage.getUrl(storageId))).toBeNull();
+	});
+});
+
+describe('the purge under real transaction limits', () => {
+	it('works through large drafts in bounded runs, each one making progress', async () => {
+		const t = convexTest({ schema, modules, transactionLimits: true });
+		const c = await seedConversation(t);
+		const body = `<p>${'x'.repeat(700 * 1024)}</p>`;
+		const old = Date.now() - ANSWERED_RETENTION_MS - 1;
+		const ids: Id<'mailDrafts'>[] = [];
+		for (let i = 0; i < 25; i++) {
+			ids.push(
+				await t.run(async (ctx) => {
+					const id = await ctx.db.insert('mailDrafts', {
+						mailboxId: c.mailboxId,
+						threadId: c.threadId,
+						inReplyToMessageId: c.askId,
+						toAddresses: [SENDER],
+						ccAddresses: [],
+						bccAddresses: [],
+						fromAddress: OWNER,
+						subject: 'Re: report',
+						bodyHtml: body,
+						aiAuthored: { text: 'x', at: T0 },
+						obsoleted: { byMessageIds: [c.askId], at: old },
+						attachments: [],
+						state: 'draft',
+						lastEditedAt: T0,
+						createdAt: T0,
+					});
+					// Each row is a valid document on its own (under 1 MiB).
+					expect(JSON.stringify(await ctx.db.get(id)).length).toBeLessThan(1024 * 1024);
+					return id;
+				})
+			);
+		}
+
+		for (let run = 0; run < 25; run++) {
+			const { purged } = await t.mutation(internal.mail.answeredReply.purgeExpired, {
+				isContinuation: true,
+			});
+			expect(purged).toBeGreaterThan(0);
+			if ((await Promise.all(ids.map((id) => draftState(t, id)))).every((s) => s === 'gone')) break;
+		}
+		expect((await Promise.all(ids.map((id) => draftState(t, id)))).every((s) => s === 'gone')).toBe(
+			true
+		);
 	});
 });
 

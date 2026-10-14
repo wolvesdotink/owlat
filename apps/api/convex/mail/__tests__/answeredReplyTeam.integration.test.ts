@@ -8,10 +8,10 @@
  * message of a reply that failed to send stay as they were.
  */
 
-import type { TestConvex } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { WorkId } from '@convex-dev/workpool';
-import type schema from '../../schema';
+import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { createTestContact, flushScheduled } from '../../__tests__/factories';
@@ -165,7 +165,7 @@ describe('a Team Inbox reply to a newer message', () => {
 			expect(message.archiveReason).toBe('answered_in_thread');
 			expect(message.draftResponse).toBeUndefined();
 			expect(message.pendingClarification).toBeUndefined();
-			expect(message.answeredStash?.byInboundMessageId).toBe(answered);
+			expect(message.answeredStash?.byInboundMessageIds).toEqual([answered]);
 		}
 		expect((await get(t, olderDraft)).answeredStash?.draftResponse).toBe(
 			'Your order ships Monday.'
@@ -278,5 +278,79 @@ describe('a Team Inbox reply to a newer message', () => {
 		const settled = await get(t, olderDraft);
 		expect(settled.answeredStash).toBeUndefined();
 		expect(settled.processingStatus).toBe('archived');
+	});
+
+	it('keeps a message archived while another sent reply still answers it', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		const older = await seedInbound(t, th, {
+			processingStatus: 'draft_ready',
+			draftResponse: 'Your order ships Monday.',
+			receivedAt: NOW - 3_000,
+		});
+		const firstAnswered = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			draftResponse: 'Both orders ship Monday.',
+			receivedAt: NOW,
+		});
+		const sendA = await completeReply(t, th, firstAnswered, 'sent');
+		const secondAnswered = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			draftResponse: 'All three ship Monday.',
+			receivedAt: NOW + 5_000,
+		});
+		const sendB = await completeReply(t, th, secondAnswered, 'sent');
+		expect((await get(t, older)).answeredStash?.byInboundMessageIds).toEqual([
+			firstAnswered,
+			secondAnswered,
+		]);
+
+		await laterBounce(t, sendA); // the first reply never arrived, the second did
+		const stillAnswered = await get(t, older);
+		expect(stillAnswered.processingStatus).toBe('archived');
+		expect(stillAnswered.answeredStash?.byInboundMessageIds).toEqual([secondAnswered]);
+
+		await laterBounce(t, sendB); // now neither did
+		const reopened = await get(t, older);
+		expect(reopened.processingStatus).toBe('draft_ready');
+		expect(reopened.draftResponse).toBe('Your order ships Monday.');
+	});
+});
+
+describe('the stash purge under real transaction limits', () => {
+	it('works through large messages in bounded runs, each one making progress', async () => {
+		const t = convexTest({ schema, modules, transactionLimits: true });
+		const th = await seedThread(t);
+		const answered = await seedInbound(t, th, { processingStatus: 'sent', receivedAt: NOW });
+		const old = Date.now() - ANSWERED_RETENTION_MS - 1;
+		const ids: Id<'inboundMessages'>[] = [];
+		for (let i = 0; i < 25; i++) {
+			const id = await seedInbound(t, th, {
+				processingStatus: 'archived',
+				archiveReason: 'answered_in_thread',
+				textBody: 'x'.repeat(700 * 1024),
+				receivedAt: NOW - 10_000 - i,
+				answeredStash: {
+					byInboundMessageIds: [answered],
+					at: old,
+					processingStatus: 'draft_ready',
+					draftResponse: 'Your order ships Monday.',
+				},
+			});
+			// Each row is a valid document on its own (under 1 MiB).
+			expect(JSON.stringify(await get(t, id)).length).toBeLessThan(1024 * 1024);
+			ids.push(id);
+		}
+
+		for (let run = 0; run < 25; run++) {
+			const { purged } = await t.mutation(internal.inbox.answeredThread.purgeAnsweredStashes, {});
+			expect(purged).toBeGreaterThan(0);
+			const rows = await Promise.all(ids.map((id) => get(t, id)));
+			if (rows.every((row) => row.answeredStash === undefined)) break;
+		}
+		const rows = await Promise.all(ids.map((id) => get(t, id)));
+		expect(
+			rows.every((row) => row.answeredStash === undefined && row.processingStatus === 'archived')
+		).toBe(true);
 	});
 });

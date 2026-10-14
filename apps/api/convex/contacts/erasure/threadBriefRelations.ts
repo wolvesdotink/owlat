@@ -68,7 +68,7 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 	relation(
 		'inboundMessages',
 		'inboundMessages',
-		'answeredStash.byInboundMessageId',
+		'answeredStash.byInboundMessageIds[]',
 		'retain',
 		'The newer message whose reply settled this one (inbox/answeredThread.ts). Governed by the row’s own contactId; restoring skips it once gone, and the retention purge drops the stash.'
 	),

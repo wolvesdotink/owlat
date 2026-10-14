@@ -98,11 +98,14 @@ export async function listForMailboxHandler(ctx: QueryCtx, args: { mailboxId: Id
 	if (!owned.ok) return [];
 	const drafts = await ctx.db
 		.query('mailDrafts')
-		.withIndex('by_mailbox_and_edited', (q) => q.eq('mailboxId', args.mailboxId))
+		// Live drafts only, selected before the limit (mail/answeredReply.ts hides
+		// answered ones).
+		.withIndex('by_mailbox_live_and_edited', (q) =>
+			q.eq('mailboxId', args.mailboxId).eq('obsoleted.at', undefined)
+		)
 		.order('desc')
 		.take(100);
-	const shown = drafts.filter((draft) => !draft.obsoleted);
-	return await Promise.all(shown.map((draft) => openMailDraftBody(draft)));
+	return await Promise.all(drafts.map((draft) => openMailDraftBody(draft)));
 }
 
 export async function getInternalHandler(ctx: QueryCtx, args: { draftId: Id<'mailDrafts'> }) {

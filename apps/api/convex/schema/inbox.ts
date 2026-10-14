@@ -324,7 +324,8 @@ export const inboxTables = {
 		// bounce of that reply can restore it, purged after the retention window.
 		answeredStash: v.optional(
 			v.object({
-				byInboundMessageId: v.id('inboundMessages'),
+				// The newer messages whose sent replies answered this one.
+				byInboundMessageIds: v.array(v.id('inboundMessages')),
 				at: v.number(),
 				processingStatus: v.union(
 					v.literal('classifying'),

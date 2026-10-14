@@ -11,9 +11,10 @@
  *     Any change a person makes (body, recipients, subject, attachments, a
  *     link) sets `humanTouchedAt`, and such a draft is theirs and always stays.
  *
- * Cleanup is soft: the draft is marked `obsoleted` by the reply and hidden from
- * every draft surface; its uploads stay. If the reply bounces for the person
- * it answers, every draft it obsoleted comes back (`reconcileAnsweredReply`).
+ * Cleanup is soft: the draft is marked `obsoleted` by the replies that answered
+ * it and hidden from every draft surface; its uploads stay. When a reply
+ * bounces for the person it answers it drops out of that set, and a draft no
+ * reply answers any more comes back (`reconcileAnsweredReply`).
  * After `ANSWERED_RETENTION_MS` the draft is deleted for good, uploads and all
  * (`purgeExpired`).
  *
@@ -28,6 +29,7 @@
  * the usual rules, with nothing left to restore.
  */
 
+import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
@@ -73,7 +75,7 @@ export async function deleteDraftRow(ctx: MutationCtx, draft: Doc<'mailDrafts'>)
 	await ctx.db.delete(draft._id);
 }
 
-/** The thread's live drafts still being composed (not pending, scheduled or obsoleted). */
+/** The thread's drafts still being composed, hidden ones included (not pending or scheduled). */
 async function composingDrafts(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>
@@ -82,7 +84,7 @@ async function composingDrafts(
 		.query('mailDrafts')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
 		.collect(); // bounded: one conversation's drafts
-	return drafts.filter((d) => d.state === 'draft' && d.obsoleted === undefined);
+	return drafts.filter((d) => d.state === 'draft');
 }
 
 /** Written by the AI and never touched by a person (the text check is a second guard). */
@@ -94,9 +96,10 @@ async function isAiOnlyDraft(draft: Doc<'mailDrafts'>): Promise<boolean> {
 }
 
 /**
- * Mark obsolete the AI drafts a response answered: AI-only ones replying to a
- * message received at or before `answeredUpTo`, saved at or before
- * `respondedAt`.
+ * Record `byMessageId` as answering the AI drafts it answered: AI-only ones
+ * replying to a message received at or before `answeredUpTo`, saved at or
+ * before `respondedAt`. A live draft is hidden; one another reply already hid
+ * gains this reply too, so it stays hidden while either stands.
  */
 async function obsoleteAnsweredDrafts(
 	ctx: MutationCtx,
@@ -105,21 +108,40 @@ async function obsoleteAnsweredDrafts(
 ): Promise<void> {
 	const at = Date.now();
 	for (const draft of drafts) {
+		if (draft.obsoleted?.byMessageIds.includes(response.byMessageId)) continue;
 		if (!draft.inReplyToMessageId || draft.lastEditedAt > response.respondedAt) continue;
 		const repliedTo = await ctx.db.get(draft.inReplyToMessageId);
 		if (!repliedTo || repliedTo.receivedAt > response.answeredUpTo) continue;
 		if (!(await isAiOnlyDraft(draft))) continue;
-		await ctx.db.patch(draft._id, { obsoleted: { byMessageId: response.byMessageId, at } });
+		await ctx.db.patch(draft._id, {
+			obsoleted: draft.obsoleted
+				? {
+						...draft.obsoleted,
+						byMessageIds: [...draft.obsoleted.byMessageIds, response.byMessageId],
+					}
+				: { byMessageIds: [response.byMessageId], at },
+		});
 	}
 }
 
-/** Bring back every draft `messageId` obsoleted (the reply never reached them). */
-async function restoreObsoletedBy(ctx: MutationCtx, messageId: Id<'mailMessages'>): Promise<void> {
-	const drafts = await ctx.db
-		.query('mailDrafts')
-		.withIndex('by_obsoleted_by', (q) => q.eq('obsoleted.byMessageId', messageId))
-		.collect(); // bounded: one conversation's drafts
-	for (const draft of drafts) await ctx.db.patch(draft._id, { obsoleted: undefined });
+/**
+ * `sent` never reached the correspondent: it no longer answers the drafts it
+ * hid. One another reply also answered stays hidden behind that reply; one
+ * nothing else answered comes back.
+ */
+async function restoreObsoletedBy(
+	ctx: MutationCtx,
+	sent: Doc<'mailMessages'>,
+	answered: Doc<'mailMessages'>
+): Promise<void> {
+	for (const draft of await composingDrafts(ctx, answered.threadId)) {
+		const ids = draft.obsoleted?.byMessageIds;
+		if (!draft.obsoleted || !ids?.includes(sent._id)) continue;
+		const rest = ids.filter((id) => id !== sent._id);
+		await ctx.db.patch(draft._id, {
+			obsoleted: rest.length > 0 ? { ...draft.obsoleted, byMessageIds: rest } : undefined,
+		});
+	}
 }
 
 /** Whom an Owlat reply answers: the sender of the answered mail and the reply's To. */
@@ -158,7 +180,7 @@ export async function reconcileAnsweredReply(
 			respondedAt: sent.createdAt,
 		});
 	} else if (states.length > 0 && !states.includes('queued')) {
-		await restoreObsoletedBy(ctx, sent._id);
+		await restoreObsoletedBy(ctx, sent, answered);
 	}
 }
 
@@ -199,25 +221,34 @@ export async function settleOwnerReply(
 	await clearThreadNeedsReply(ctx, thread._id);
 }
 
-const PURGE_BATCH = 50;
+/**
+ * Per purge run: few rows and a read budget well under the transaction's
+ * 16 MiB, leaving room for each draft's ask sessions, receipts and deletes. The
+ * row that crosses the budget is still returned, so every run makes progress.
+ */
+const PURGE_PAGE = { numItems: 8, maximumBytesRead: 4 * 1024 * 1024 } as const;
 
 /**
  * Delete the drafts obsoleted longer ago than the retention window, uploads
  * and all, and have the Team Inbox drop its stashes from as long ago.
  */
 export const purgeExpired = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<{ purged: number }> => {
-		await ctx.scheduler.runAfter(0, internal.inbox.answeredThread.purgeAnsweredStashes, {});
+	args: { isContinuation: v.optional(v.boolean()) },
+	handler: async (ctx, args): Promise<{ purged: number }> => {
+		if (!args.isContinuation) {
+			await ctx.scheduler.runAfter(0, internal.inbox.answeredThread.purgeAnsweredStashes, {});
+		}
 		const cutoff = Date.now() - ANSWERED_RETENTION_MS;
-		const drafts = await ctx.db
+		const page = await ctx.db
 			.query('mailDrafts')
 			.withIndex('by_obsoleted_at', (q) => q.gt('obsoleted.at', 0).lt('obsoleted.at', cutoff))
-			.take(PURGE_BATCH);
-		for (const draft of drafts) await deleteDraftRow(ctx, draft);
-		if (drafts.length === PURGE_BATCH) {
-			await ctx.scheduler.runAfter(0, internal.mail.answeredReply.purgeExpired, {});
+			.paginate({ cursor: null, ...PURGE_PAGE });
+		for (const draft of page.page) await deleteDraftRow(ctx, draft);
+		if (!page.isDone && page.page.length > 0) {
+			await ctx.scheduler.runAfter(0, internal.mail.answeredReply.purgeExpired, {
+				isContinuation: true,
+			});
 		}
-		return { purged: drafts.length };
+		return { purged: page.page.length };
 	},
 });

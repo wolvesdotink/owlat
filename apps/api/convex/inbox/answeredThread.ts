@@ -79,6 +79,20 @@ export async function settleAnsweredTeamThread(
 	if (!answered?.threadId) return;
 	for (const message of await threadMessages(ctx, answered.threadId)) {
 		if (message._id === answered._id || message.receivedAt > answered.receivedAt) continue;
+		// Already settled by another sent reply: this one answers it too, so a
+		// bounce of either alone leaves it answered.
+		const stash = message.answeredStash;
+		if (stash && isAnsweredInThread(message)) {
+			if (!stash.byInboundMessageIds.includes(answered._id)) {
+				await ctx.db.patch(message._id, {
+					answeredStash: {
+						...stash,
+						byInboundMessageIds: [...stash.byInboundMessageIds, answered._id],
+					},
+				});
+			}
+			continue;
+		}
 		const status = message.processingStatus;
 		if (!isAgentOpen(status) || hasHumanWork(message)) continue;
 		const archived = await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
@@ -88,7 +102,7 @@ export async function settleAnsweredTeamThread(
 		if (!archived.ok) continue;
 		await ctx.db.patch(message._id, {
 			answeredStash: {
-				byInboundMessageId: answered._id,
+				byInboundMessageIds: [answered._id],
 				at,
 				processingStatus: status,
 				...(message.draftResponse !== undefined ? { draftResponse: message.draftResponse } : {}),
@@ -104,9 +118,9 @@ export async function settleAnsweredTeamThread(
 
 /**
  * The agent reply to `answeredId` bounced or failed after it had settled the
- * thread: every message it archived goes back to where the agent left it. A
- * message a person has since reopened (no longer archived as answered) is
- * left alone.
+ * thread: every message only it answered goes back to where the agent left
+ * it; one another sent reply also answered stays archived. A message a person
+ * has since reopened (no longer archived as answered) is left alone.
  */
 export async function restoreAnsweredTeamThread(
 	ctx: MutationCtx,
@@ -117,9 +131,15 @@ export async function restoreAnsweredTeamThread(
 	if (!answered?.threadId) return;
 	for (const message of await threadMessages(ctx, answered.threadId)) {
 		const stash = message.answeredStash;
-		if (stash?.byInboundMessageId !== answeredId) continue;
+		if (!stash?.byInboundMessageIds.includes(answeredId)) continue;
 		if (!isAnsweredInThread(message)) {
 			await ctx.db.patch(message._id, { answeredStash: undefined });
+			continue;
+		}
+		// Another sent reply still answers it: it stays archived behind that one.
+		const rest = stash.byInboundMessageIds.filter((id) => id !== answeredId);
+		if (rest.length > 0) {
+			await ctx.db.patch(message._id, { answeredStash: { ...stash, byInboundMessageIds: rest } });
 			continue;
 		}
 		const reopened = await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
@@ -147,23 +167,28 @@ export async function restoreAnsweredTeamThread(
 	}
 }
 
-const PURGE_BATCH = 100;
+/**
+ * Per purge run: a read budget well under the transaction's 16 MiB (a Team
+ * Inbox message can be large). The row that crosses it is still returned, so
+ * every run makes progress.
+ */
+const PURGE_PAGE = { numItems: 32, maximumBytesRead: 4 * 1024 * 1024 } as const;
 
 /** Drop the stashes older than the retention window: those messages stay answered. */
 export const purgeAnsweredStashes = internalMutation({
 	args: {},
 	handler: async (ctx): Promise<{ purged: number }> => {
 		const cutoff = Date.now() - ANSWERED_RETENTION_MS;
-		const rows = await ctx.db
+		const page = await ctx.db
 			.query('inboundMessages')
 			.withIndex('by_answered_stash_at', (q) =>
 				q.gt('answeredStash.at', 0).lt('answeredStash.at', cutoff)
 			)
-			.take(PURGE_BATCH);
-		for (const row of rows) await ctx.db.patch(row._id, { answeredStash: undefined });
-		if (rows.length === PURGE_BATCH) {
+			.paginate({ cursor: null, ...PURGE_PAGE });
+		for (const row of page.page) await ctx.db.patch(row._id, { answeredStash: undefined });
+		if (!page.isDone && page.page.length > 0) {
 			await ctx.scheduler.runAfter(0, internal.inbox.answeredThread.purgeAnsweredStashes, {});
 		}
-		return { purged: rows.length };
+		return { purged: page.page.length };
 	},
 });

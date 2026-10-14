@@ -149,8 +149,13 @@ describe('an AI draft no person touched', () => {
 });
 
 describe('a person’s change makes the draft theirs', () => {
-	const edits: Array<[string, (t: T, r: Reply) => Promise<void>]> = [
+	const edits: Array<[string, (t: T, r: Reply) => Promise<unknown>]> = [
 		['a word in the body', (t, r) => save(t, r, aiBody(`${AI_TEXT} Thanks!`))],
+		[
+			'the plain-text body (a quick reply)',
+			(t, r) =>
+				t.mutation(api.mail.drafts.update, { draftId: r.draftId, bodyText: 'Numbers attached.' }),
+		],
 		[
 			'a link, with the text unchanged (even tagged as AI)',
 			(t, r) =>
@@ -204,5 +209,43 @@ describe('a person’s change makes the draft theirs', () => {
 
 		expect((await draftRow(t, r)).humanTouchedAt).toBeDefined();
 		expect(await answerAndCheck(t, r)).toBe(false);
+	});
+});
+
+describe('a write that changes nothing', () => {
+	it('leaves the draft the AI’s: the same sender, an attachment that is not there', async () => {
+		const t = convexTest(schema, modules);
+		const r = await openReply(t);
+		await save(t, r, aiBody(AI_TEXT), { aiText: AI_TEXT });
+		const absent = await t.run(async (ctx) => ctx.storage.store(new Blob(['x'])));
+
+		await t.mutation(api.mail.drafts.setIdentity, { draftId: r.draftId, fromAddress: OWNER });
+		await t.mutation(api.mail.drafts.removeAttachment, { draftId: r.draftId, storageId: absent });
+
+		expect((await draftRow(t, r)).humanTouchedAt).toBeUndefined();
+		expect(await answerAndCheck(t, r)).toBe(true);
+	});
+});
+
+describe('the Drafts list', () => {
+	it('shows a live draft however many newer drafts are hidden as answered', async () => {
+		const t = convexTest(schema, modules);
+		const r = await openReply(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(r.draftId, { lastEditedAt: 1_000 });
+			const live = (await ctx.db.get(r.draftId))!;
+			const { _id, _creationTime, ...base } = live;
+			for (let i = 0; i < 101; i++) {
+				await ctx.db.insert('mailDrafts', {
+					...base,
+					lastEditedAt: 2_000 + i,
+					obsoleted: { byMessageIds: [r.askId], at: 2_000 },
+				});
+			}
+		});
+
+		const listed = await t.query(api.mail.drafts.listForMailbox, { mailboxId: r.mailboxId });
+
+		expect(listed.map((d) => d._id)).toEqual([r.draftId]);
 	});
 });

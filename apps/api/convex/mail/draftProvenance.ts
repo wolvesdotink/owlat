@@ -9,9 +9,14 @@
  *     exactly an AI text: Answer mode streaming or applying a draft tags its
  *     autosave with `aiText`, and the server checks the body really holds it.
  *     Every AI write refreshes it, so a second generation counts as AI too.
- *   - `humanTouchedAt` is set by any write a person makes that changes the row:
- *     the written part, recipients, subject, follow-up, mode, identity or
- *     attachments. It is never cleared, and it brings an obsoleted draft back.
+ *   - `humanTouchedAt` is set by any write a person makes that changes the row.
+ *     `drafts.update` field by field: recipients, subject, follow-up, mode,
+ *     the HTML body's written part, the plain-text body and the block body
+ *     each count when they differ from what is stored; `isGapGuarded` counts
+ *     when it newly guards (a saved reply with gaps went in); `aiBaseline` and
+ *     `aiText` are the AI's. Elsewhere: identity, attachments (add, remove,
+ *     share link, owed files), each only when the row really changes. It is
+ *     never cleared, and it brings an obsoleted draft back.
  *
  * An autosave that changes nothing (the same snapshot again, the seeded
  * signature and quote only) touches nothing. The editor emits only on input,
@@ -27,6 +32,11 @@ import { openMailDraftBody } from '../lib/messageBody';
 /** The patch fields of a change a person made. */
 export function humanEdit(now: number) {
 	return { lastEditedAt: now, humanTouchedAt: now, obsoleted: undefined };
+}
+
+/** The patch fields of a write: a person's edit only if it changed the row. */
+export function editPatch(isChange: boolean, now: number = Date.now()) {
+	return isChange ? humanEdit(now) : { lastEditedAt: now };
 }
 
 /** The written part of a body, with an empty one (no text, link or image) as ''. */
@@ -49,7 +59,9 @@ export interface DraftWrite {
 	bccAddresses?: string[];
 	subject?: string;
 	bodyHtml?: string;
+	bodyText?: string;
 	bodyBlocks?: string;
+	isGapGuarded?: true;
 	composerMode?: 'simple' | 'full';
 	followUpRemindAt?: number | null;
 	aiText?: string;
@@ -68,11 +80,14 @@ export async function provenancePatch(
 		(write.subject !== undefined && write.subject !== draft.subject) ||
 		(write.composerMode !== undefined && write.composerMode !== (draft.composerMode ?? 'simple')) ||
 		(write.followUpRemindAt !== undefined &&
-			(write.followUpRemindAt ?? undefined) !== draft.followUpRemindAt);
+			(write.followUpRemindAt ?? undefined) !== draft.followUpRemindAt) ||
+		(write.isGapGuarded === true && draft.isGapGuarded !== true);
 
 	let isAiWrite = false;
 	let bodyChanged = false;
-	if (write.bodyHtml !== undefined || write.bodyBlocks !== undefined) {
+	const isBodyWrite =
+		write.bodyHtml !== undefined || write.bodyText !== undefined || write.bodyBlocks !== undefined;
+	if (isBodyWrite) {
 		const stored = await openMailDraftBody(draft);
 		if (write.bodyBlocks !== undefined && write.bodyBlocks !== (stored.bodyBlocks ?? '')) {
 			bodyChanged = true;
@@ -82,6 +97,11 @@ export async function provenancePatch(
 			isAiWrite =
 				write.aiText !== undefined && written !== '' && written === aiTextToHtml(write.aiText);
 			if (!isAiWrite && written !== writtenPart(stored.bodyHtml)) bodyChanged = true;
+		}
+		// The plain-text body (a quick reply, the offline outbox) is a person's
+		// text unless it rides along with a verified AI write.
+		if (write.bodyText !== undefined && !isAiWrite && write.bodyText !== (stored.bodyText ?? '')) {
+			bodyChanged = true;
 		}
 	}
 

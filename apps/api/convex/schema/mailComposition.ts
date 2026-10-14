@@ -115,10 +115,12 @@ export const mailCompositionTables = {
 		// is theirs and is never cleaned up. Both absent on legacy rows.
 		aiAuthored: v.optional(v.object({ text: v.string(), at: v.number() })),
 		humanTouchedAt: v.optional(v.number()),
-		// A reply answered this AI draft's conversation: hidden from every draft
-		// surface, restored if that reply bounces, purged after the retention
-		// window (with its uploads).
-		obsoleted: v.optional(v.object({ byMessageId: v.id('mailMessages'), at: v.number() })),
+		// Replies answered this AI draft's conversation: hidden from every draft
+		// surface while any of them stands, restored once all of them bounced,
+		// purged after the retention window (with its uploads).
+		obsoleted: v.optional(
+			v.object({ byMessageIds: v.array(v.id('mailMessages')), at: v.number() })
+		),
 
 		// Team-inbox attribution: the BetterAuth user id of the teammate who fired
 		// the send, stamped by `drafts.send` from the acting session. Copied onto
@@ -151,11 +153,12 @@ export const mailCompositionTables = {
 		// sessions may name a deleted thread brief item.
 		.index('by_thread', ['threadId'])
 		.index('by_mailbox', ['mailboxId'])
-		.index('by_mailbox_and_edited', ['mailboxId', 'lastEditedAt'])
+		// The Drafts list: live drafts only (`obsoleted` absent), newest first, so
+		// hidden answered drafts never push a live one past the page.
+		.index('by_mailbox_live_and_edited', ['mailboxId', 'obsoleted.at', 'lastEditedAt'])
 		.index('by_state_and_scheduled', ['state', 'scheduledSendAt'])
 		.index('by_undo_token', ['undoToken'])
 		.index('by_client_nonce', ['clientNonce'])
-		.index('by_obsoleted_by', ['obsoleted.byMessageId'])
 		.index('by_obsoleted_at', ['obsoleted.at']),
 
 	// One row per compose request (the full-page composer's `?c=`): which draft

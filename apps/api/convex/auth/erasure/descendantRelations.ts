@@ -222,7 +222,7 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc(
 		'mailMessages',
 		'mailDrafts',
-		'obsoleted.byMessageId',
+		'obsoleted.byMessageIds[]',
 		'retain',
 		'The reply that hid an answered AI draft: a send-as copy can sit in another mailbox, so the id may dangle; restoring skips a missing reply and the retention purge deletes the draft.'
 	),

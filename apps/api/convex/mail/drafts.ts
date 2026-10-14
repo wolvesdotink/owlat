@@ -43,7 +43,7 @@ import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } fro
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteDraftRow } from './answeredReply';
-import { humanEdit, provenancePatch } from './draftProvenance';
+import { editPatch, humanEdit, provenancePatch } from './draftProvenance';
 import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
 import {
@@ -206,10 +206,8 @@ export const update = postboxMutation({
 		assertStateIs(draft, 'draft');
 
 		const now = Date.now();
-		const patch: Record<string, unknown> = {
-			lastEditedAt: now,
-			...(await provenancePatch(draft, args, now)),
-		};
+		const patch: Record<string, unknown> = { lastEditedAt: now };
+		Object.assign(patch, await provenancePatch(draft, args, now));
 		if (args.toAddresses !== undefined) patch['toAddresses'] = args.toAddresses;
 		if (args.ccAddresses !== undefined) patch['ccAddresses'] = args.ccAddresses;
 		if (args.bccAddresses !== undefined) patch['bccAddresses'] = args.bccAddresses;
@@ -286,13 +284,13 @@ export const setIdentity = postboxMutation({
 			throwForbidden('From address not authorized for this mailbox');
 		}
 
+		// Personal send-as ⇒ record the sending mailbox; team/own identity ⇒ clear
+		// it so the classic path (transport + Sent copy on the thread mailbox) runs.
+		const sendAsMailboxId = match.mailboxId === draft.mailboxId ? undefined : match.mailboxId;
 		await ctx.db.patch(args.draftId, {
 			fromAddress: candidate,
-			// Personal send-as ⇒ record the sending mailbox; team/own identity ⇒
-			// clear it so the classic path (transport + Sent copy on the thread
-			// mailbox) runs unchanged.
-			sendAsMailboxId: match.mailboxId === draft.mailboxId ? undefined : match.mailboxId,
-			...humanEdit(Date.now()),
+			sendAsMailboxId,
+			...editPatch(candidate !== draft.fromAddress || sendAsMailboxId !== draft.sendAsMailboxId),
 		});
 	},
 });
@@ -386,9 +384,10 @@ export const removeAttachment = postboxMutation({
 		if (!owned.ok) return;
 
 		const toDelete = draft.attachments.find((a) => a.storageId === args.storageId);
+		const isOwed = draft.expectedAttachments?.some((e) => e.storageId === args.storageId);
 		await ctx.db.patch(args.draftId, {
 			...withoutAttachment(draft, args.storageId),
-			...humanEdit(Date.now()),
+			...editPatch(toDelete !== undefined || isOwed === true),
 		});
 		if (toDelete) {
 			await deleteOwnedUpload(ctx, toDelete.storageId, `mailDrafts:${args.draftId}`);
