@@ -43,6 +43,8 @@ const emit = defineEmits<{
 	(e: 'use-draft', draft: string): void;
 	/** Whether the card is up (the page holds "Draft with AI" back meanwhile). */
 	(e: 'visible', visible: boolean): void;
+	/** Whether the card shows questions to answer (not only a status line). */
+	(e: 'asking', asking: boolean): void;
 }>();
 
 const { t } = useI18n();
@@ -84,7 +86,12 @@ const visible = computed(
 			waitingDraft.value !== null)
 );
 watch(visible, (value) => emit('visible', value), { immediate: true });
-onBeforeUnmount(() => emit('visible', false));
+const asking = computed(() => visible.value && state.value === 'asking');
+watch(asking, (value) => emit('asking', value), { immediate: true });
+onBeforeUnmount(() => {
+	emit('visible', false);
+	emit('asking', false);
+});
 
 // The starter reply lands while the page is open: into the editor, once.
 let sawDrafting = false;
@@ -170,6 +177,9 @@ async function submit(answers: AskCardAnswer[], withGaps = false) {
 		>
 			<Icon name="lucide:circle-pause" class="size-4 shrink-0" aria-hidden="true" />
 			<span class="flex-1">{{ t('components.postbox.postboxClarificationCard.paused') }}</span>
+			<UiButton variant="ghost" size="sm" @click="deferred = true">
+				{{ t('components.postbox.postboxClarificationCard.answerLater') }}
+			</UiButton>
 		</div>
 		<div
 			v-else-if="waitingDraft !== null"

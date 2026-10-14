@@ -182,11 +182,29 @@ describe('AnswerQueueMailAsk', () => {
 		clarification.value = { ...clarification.value, answeredAt: 2, isPaused: true };
 		const w = mountAsk();
 		expect(w.get('[data-testid="answer-queue-ask-paused"]').text()).toContain(
-			'The AI reply is paused'
+			'signature check changed after the AI read it'
 		);
 		expect(w.find('[data-testid="answer-queue-ask-drafting"]').exists()).toBe(false);
 		expect(w.find('.animate-spin').exists()).toBe(false);
 		expect(w.emitted('use-draft')).toBeUndefined();
+		// Up, but asking nothing: the page keeps its plain reply label.
+		expect(w.emitted('visible')?.at(-1)).toEqual([true]);
+		expect(w.emitted('asking')?.at(-1)).toEqual([false]);
+
+		// "I'll answer later" still puts it away.
+		await w.get('[data-testid="answer-queue-ask-paused"] button').trigger('click');
+		expect(w.find('[data-testid="answer-queue-ask"]').exists()).toBe(false);
+		expect(w.emitted('visible')?.at(-1)).toEqual([false]);
+	});
+
+	it('says it is asking only while questions are up', async () => {
+		const w = mountAsk();
+		expect(w.emitted('asking')?.at(-1)).toEqual([true]);
+		clarification.value = { ...clarification.value, answeredAt: 2 };
+		await flushPromises();
+		// Drafting: still up, no questions to answer.
+		expect(w.emitted('visible')?.at(-1)).toEqual([true]);
+		expect(w.emitted('asking')?.at(-1)).toEqual([false]);
 	});
 
 	it('drops a kept draft the server withdrew, and never hands it to the editor', async () => {

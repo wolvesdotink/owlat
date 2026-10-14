@@ -4507,7 +4507,7 @@
 				"answerLater": "Ich antworte später",
 				"drafting": "Deine Antwort wird entworfen…",
 				"held": "Kein KI-Entwurf für diese Antwort: Sie braucht eine Angabe, nach der Owlat nie fragt, etwa ein Passwort. Du kannst sie trotzdem selbst schreiben.",
-				"paused": "Die KI-Antwort ist pausiert, solange die Signaturen dieser Unterhaltung neu geprüft werden. Du kannst deine Antwort selbst schreiben."
+				"paused": "Die KI-Antwort ist pausiert, weil sich die Signaturprüfung dieser Unterhaltung geändert hat, nachdem die KI sie gelesen hat. Du kannst deine Antwort selbst schreiben."
 			},
 			"postboxCoachPanel": {
 				"clean": "Sieht gut aus — keine Auffälligkeiten gefunden.",

@@ -227,6 +227,8 @@ function leave() {
 const queueSession = useAnswerQueueSession();
 // While the queue item's own questions are up, "Draft with AI" waits below them.
 const queueAskVisible = ref(false);
+/** The card shows questions, not only a status line (a paused AI reply). */
+const queueAskAsking = ref(false);
 const queueAskRef = ref<{ focusQuestion: () => boolean } | null>(null);
 
 /**
@@ -235,7 +237,7 @@ const queueAskRef = ref<{ focusQuestion: () => boolean } | null>(null);
  * nothing there to focus) into the reply body. Inside the tap, for iOS.
  */
 function startReply() {
-	if (queueAskVisible.value && queueAskRef.value?.focusQuestion()) return;
+	if (queueAskAsking.value && queueAskRef.value?.focusQuestion()) return;
 	composerRef.value?.focusBody();
 }
 
@@ -326,7 +328,7 @@ onBeforeUnmount(() => {
 			:subject="message?.subject ?? ''"
 			:message-count="messageCount"
 			:counterpart="counterpart"
-			:peek-text="queueAskVisible ? t('components.answer.mode.sheet.peekQuestions') : undefined"
+			:peek-text="queueAskAsking ? t('components.answer.mode.sheet.peekQuestions') : undefined"
 			@back="leave"
 			@start-reply="startReply"
 		>
@@ -442,6 +444,7 @@ onBeforeUnmount(() => {
 							:copy-policy="copyPolicy"
 							ref="queueAskRef"
 							@visible="queueAskVisible = $event"
+							@asking="queueAskAsking = $event"
 							@use-draft="assist.applyQueueDraft(composer, $event)"
 						/>
 						<AnswerPlanBanner
