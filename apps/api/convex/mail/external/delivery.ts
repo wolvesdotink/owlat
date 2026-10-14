@@ -180,12 +180,10 @@ export const ingestExternalMessage = internalMutation({
 			antiLoopHeaders: args.antiLoopHeaders,
 		});
 		await advanceCursor(ctx, args, mailbox._id);
-		// One stamp per refresh window, not one per message: a backfill ingests
-		// thousands, and each rewrite re-runs every reader of the account row.
+		// One stamp per refresh window, not per message: each rewrite re-runs the row's readers.
 		const now = Date.now();
-		if (isSyncStampStale(account.lastSyncAt, now)) {
+		if (isSyncStampStale(account.lastSyncAt, now))
 			await ctx.db.patch(args.accountId, { lastSyncAt: now, updatedAt: now });
-		}
 		return { messageId };
 	},
 });
