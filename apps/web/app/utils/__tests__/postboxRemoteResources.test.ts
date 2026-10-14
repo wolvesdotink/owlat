@@ -25,6 +25,33 @@ vi.mock('@owlat/shared/postboxTrackers', async (importOriginal) => {
 
 const LABEL = 'Image blocked';
 
+/**
+ * How much longer 4n units of hostile input take than n: per call, the
+ * fastest of three samples each, after a warm-up. A sample repeats the call
+ * for at least 10 ms so a cheap input is not timed at the clock's resolution.
+ * Linear code measures about 4, quadratic about 16. A ratio rather than a
+ * wall-clock budget, which a busy CI runner misses.
+ */
+function scalingRatio(build: (n: number) => string, n: number, consent: PostboxImageConsent) {
+	const perCall = (html: string) => {
+		const started = performance.now();
+		let calls = 0;
+		do {
+			applyPostboxImageConsent(html, consent, LABEL);
+			calls++;
+		} while (performance.now() - started < 10);
+		return (performance.now() - started) / calls;
+	};
+	const fastest = (html: string) => Math.min(perCall(html), perCall(html), perCall(html));
+	const small = build(n);
+	const large = build(4 * n);
+	fastest(small); // warm-up: JIT and parser
+	return fastest(large) / fastest(small);
+}
+
+/** Linear stays near 4x; the quadratic regressions these tests guard measure 12x and up. */
+const LINEAR_RATIO = 8;
+
 function render(raw: string, consent: PostboxImageConsent) {
 	return applyPostboxImageConsent(sanitizeHtml(raw, POSTBOX_SANITIZE_CONFIG), consent, LABEL);
 }
@@ -226,21 +253,23 @@ describe('applyPostboxImageConsent — images shown', () => {
 });
 
 describe('applyPostboxImageConsent — hostile input stays linear', () => {
-	it('parses a srcset with 100k commas quickly', () => {
-		const html = `<img srcset="https://cdn.example/a${','.repeat(100_000)}b, https://cdn.example/p.png 2x">`;
-		const started = performance.now();
-		const out = applyPostboxImageConsent(html, 'blocked', LABEL);
-		expect(performance.now() - started).toBeLessThan(250);
+	it('parses a srcset with 100k commas in linear time', () => {
+		const srcsetWithCommas = (n: number) =>
+			`<img srcset="https://cdn.example/a${','.repeat(n)}b, https://cdn.example/p.png 2x">`;
+		expect(scalingRatio(srcsetWithCommas, 25_000, 'blocked')).toBeLessThan(LINEAR_RATIO);
+
+		const out = applyPostboxImageConsent(srcsetWithCommas(100_000), 'blocked', LABEL);
 		expect(out.hasRemoteResources).toBe(true);
 		expect(out.html).not.toContain('srcset');
 		expect(out.html).toContain(LABEL);
 	});
 
-	it('tokenizes deeply nested and unterminated CSS quickly', () => {
-		const style = `background:${'f('.repeat(20_000)}${'url(&quot;'.repeat(20_000)}`;
-		const started = performance.now();
-		const out = applyPostboxImageConsent(`<div style="${style}">x</div>`, 'blocked', LABEL);
-		expect(performance.now() - started).toBeLessThan(250);
+	it('tokenizes deeply nested and unterminated CSS in linear time', () => {
+		const nestedCss = (n: number) =>
+			`<div style="background:${'f('.repeat(n)}${'url(&quot;'.repeat(n)}">x</div>`;
+		expect(scalingRatio(nestedCss, 5_000, 'blocked')).toBeLessThan(LINEAR_RATIO);
+
+		const out = applyPostboxImageConsent(nestedCss(20_000), 'blocked', LABEL);
 		expect(out.html).toContain('x');
 	});
 });
@@ -305,28 +334,14 @@ describe('applyPostboxImageConsent — large inventories', () => {
 	});
 
 	it('classifies CSS urls on one element in linear time', () => {
-		// Compare how the cost scales rather than racing a wall clock, which a
-		// busy CI runner misses: 4x the URLs should cost about 4x the time,
-		// where per-URL style rescans made it about 16x.
+		// Per-URL style rescans made 4x the URLs cost about 13x.
 		const elementWith = (count: number) => {
 			const urls = Array.from({ length: count }, (_, i) => `url(https://cdn.example/${i}.png)`);
 			return `<div style="width:600px;height:400px;background:${urls.join(',')}">a</div>`;
 		};
-		const fastest = (html: string) => {
-			let best = Number.POSITIVE_INFINITY;
-			for (let run = 0; run < 3; run++) {
-				const started = performance.now();
-				applyPostboxImageConsent(html, 'images', LABEL);
-				best = Math.min(best, performance.now() - started);
-			}
-			return best;
-		};
-		const small = elementWith(8_000);
-		const large = elementWith(32_000);
-		fastest(small); // warm-up: JIT and parser
-		expect(fastest(large) / fastest(small)).toBeLessThan(8);
+		expect(scalingRatio(elementWith, 8_000, 'images')).toBeLessThan(LINEAR_RATIO);
 
-		const out = applyPostboxImageConsent(large, 'images', LABEL);
+		const out = applyPostboxImageConsent(elementWith(32_000), 'images', LABEL);
 		expect(out.hasRemoteResources).toBe(true);
 		expect(out.detection.pixelCount).toBe(0);
 	});
