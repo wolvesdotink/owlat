@@ -626,3 +626,31 @@ details differ from the Decision above:
   so there is no local `parseFormData` left.
 - There are ten declarations. The tenth is
   `delivery/unsubscribeHttp.ts:handleSeedProbeUnsubscribe`.
+
+## Amendment: verify before charging (2026-10-14)
+
+Issue #1323 found that `'ip+token'` keyed the bucket on the raw request
+text before the token was decoded or checked. Every percent-encoding of a
+live link had a fresh budget, and every invented token got a bucket of its
+own. The policy now lives in `lib/publicTokenPolicy.ts`:
+
+- The shell decodes the token once (`canonicalizeToken`, 512 characters at
+  most). The handler gets that value, and the bucket key is
+  `<ip>:<sha256(token)>`, so every spelling of one token shares a bucket
+  and the stored key never holds the token.
+- In `'ip+token'` mode the shell charges nothing up front. The handler
+  verifies the token and calls `admit()` before it returns data or changes
+  anything. If `admit()` returns `false`, the shell answers 429. If a handler
+  succeeds without admitting, the shell answers 500.
+- A request that is never admitted only spends the failure budget. That
+  covers a missing, malformed or unknown token, a bad body, and a throw
+  before admission. The budget is `publicTokenFailure`, keyed on one of
+  4,096 shards of the client address (none for `'unknown'`), plus
+  `publicTokenFailureGlobal` on a single key. Once it is empty, those
+  requests answer 429. Invented tokens therefore add no rows.
+- An admitted token never reads the failure budget, so an empty budget
+  never blocks a real link or moves its counter.
+
+The attachment-share route (`mail/attachmentShareHttp.ts`) and the
+client-API form confirmation (`forms/endpoints.ts:confirmSubmission`)
+follow the same policy outside the shell.

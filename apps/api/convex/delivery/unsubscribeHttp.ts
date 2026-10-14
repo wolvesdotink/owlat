@@ -11,7 +11,7 @@
 
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { publicTokenEndpoint } from '../lib/publicTokenEndpoint';
+import { ADMISSION_REFUSED, publicTokenEndpoint } from '../lib/publicTokenEndpoint';
 import type { TokenValidation } from './tokenValidation';
 import type { SeedProbeTokenValidation } from './unsubscribe';
 import { logWarn } from '../lib/runtimeLog';
@@ -43,7 +43,7 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 		cors: false,
 		resultMode: 'action',
 	},
-	async (ctx, { token }) => {
+	async (ctx, { token, admit }) => {
 		const startedAt = Date.now();
 		const validation = await ctx.runAction<TokenValidation>(
 			internal.delivery.unsubscribe.validateToken,
@@ -58,6 +58,7 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 				status: 400,
 			};
 		}
+		if (!(await admit())) return ADMISSION_REFUSED;
 
 		const result = await ctx.runMutation<ProcessOutcome>(
 			internal.delivery.unsubscribeQueries.processUnsubscribe,
@@ -118,7 +119,7 @@ export const verifyUnsubscribeToken = publicTokenEndpoint(
 		cors: 'GET, OPTIONS',
 		resultMode: 'outcome',
 	},
-	async (ctx, { token }) => {
+	async (ctx, { token, admit }) => {
 		const validation = await ctx.runAction<TokenValidation>(
 			internal.delivery.unsubscribe.validateToken,
 			{ token }
@@ -127,6 +128,7 @@ export const verifyUnsubscribeToken = publicTokenEndpoint(
 		if (!validation.valid) {
 			return { ok: false, reason: validation.reason ?? 'invalid_token' };
 		}
+		if (!(await admit())) return ADMISSION_REFUSED;
 
 		const contact = await ctx.runQuery<ContactUnsubInfo | null>(
 			internal.delivery.unsubscribeQueries.getContactForUnsubscribe,
@@ -168,7 +170,7 @@ export const handleSeedProbeUnsubscribe = publicTokenEndpoint(
 		cors: false,
 		resultMode: 'action',
 	},
-	async (ctx, { token }) => {
+	async (ctx, { token, admit }) => {
 		const validation = await ctx.runAction<SeedProbeTokenValidation>(
 			internal.delivery.unsubscribe.validateSeedProbeToken,
 			{ token }
@@ -181,6 +183,7 @@ export const handleSeedProbeUnsubscribe = publicTokenEndpoint(
 				status: 400,
 			};
 		}
+		if (!(await admit())) return ADMISSION_REFUSED;
 		await ctx.runMutation(internal.analytics.seedPlacement.recordSeedProbeUnsubscribe, {
 			organizationId: validation.organizationId,
 			probeId: validation.probeId,

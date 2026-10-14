@@ -20,7 +20,11 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { isSafeRedirectUrl } from '../lib/inputGuards';
 import { publicCorsHeaders } from '../lib/cors';
-import { publicTokenEndpoint } from '../lib/publicTokenEndpoint';
+import {
+	ADMISSION_REFUSED,
+	publicTokenEndpoint,
+	type HandlerContext,
+} from '../lib/publicTokenEndpoint';
 import { getClientIp } from '../lib/publicRateLimit';
 // Single source of truth: the mutation's real return contract lives in
 // submission.ts. Re-declaring it here previously dropped required fields
@@ -53,6 +57,24 @@ export const handleFormCors = httpAction(async () => {
 	});
 });
 
+/** Write the submission for a verified, admitted form. */
+function submit(
+	ctx: HandlerContext,
+	formEndpointId: Id<'formEndpoints'>,
+	submissionData: unknown,
+	request: Request
+): Promise<SubmitOutcome> {
+	// Use the hardened, trusted-proxy-aware resolver for the stored audit IP —
+	// never the spoofable leftmost X-Forwarded-For entry.
+	const resolvedIp = getClientIp(request);
+	return ctx.runMutation<SubmitOutcome>(internal.forms.submission.submit, {
+		formEndpointId,
+		submissionData,
+		ipAddress: resolvedIp === 'unknown' ? undefined : resolvedIp,
+		userAgent: request.headers.get('User-Agent') || undefined,
+	});
+}
+
 /**
  * POST /forms/{formId}. The shell extracts the form id as `:token` (the
  * shell's parameter name is "token" — `submitForm` reads it as the form
@@ -63,31 +85,26 @@ export const submitForm = publicTokenEndpoint(
 		path: '/forms/:token',
 		method: 'POST',
 		rateLimit: 'formSubmission',
-		// Mix the form id into the rate-limit key (`<ip>:<formId>`) so each form
-		// gets its own window. Without this, when RATE_LIMIT_TRUSTED_PROXY is
-		// unset (the default), getClientIp() returns 'unknown' for everyone and
-		// ALL forms share one 5/min bucket — flooding any single form (even a
-		// non-existent id) would 429 every newsletter/contact form on the
-		// instance. Keying on the form id isolates that blast radius to the
-		// targeted form; legitimate submissions to other forms are unaffected.
+		// Mix the form id into the rate-limit key (`<ip>:<sha256(formId)>`) so
+		// each form gets its own window. Without this, when
+		// RATE_LIMIT_TRUSTED_PROXY is unset (the default), getClientIp() returns
+		// 'unknown' for everyone and ALL forms would share one 5/min bucket.
+		// Only a form that exists and is active is charged to a bucket of its
+		// own; any other id spends the bounded failure budget instead.
 		rateLimitKeyMode: 'ip+token',
 		cors: 'POST, OPTIONS',
 		body: 'formData',
 		resultMode: 'action',
 	},
-	async (ctx, { token: formEndpointId, body: submissionData, request }) => {
-		// Use the hardened, trusted-proxy-aware resolver for the stored audit IP —
-		// never the spoofable leftmost X-Forwarded-For entry.
-		const resolvedIp = getClientIp(request);
-		const ipAddress = resolvedIp === 'unknown' ? undefined : resolvedIp;
-		const userAgent = request.headers.get('User-Agent') || undefined;
-
-		const outcome = await ctx.runMutation<SubmitOutcome>(internal.forms.submission.submit, {
-			formEndpointId: formEndpointId as Id<'formEndpoints'>,
-			submissionData,
-			ipAddress,
-			userAgent,
-		});
+	async (ctx, { token, body: submissionData, request, admit }) => {
+		const target = await ctx.runQuery<
+			| { ok: true; formEndpointId: Id<'formEndpoints'> }
+			| { ok: false; reason: 'feature_disabled' | 'form_not_found' | 'form_inactive' }
+		>(internal.forms.endpoints.resolveSubmitTarget, { formEndpointId: token });
+		if (target.ok && !(await admit())) return ADMISSION_REFUSED;
+		const outcome = target.ok
+			? await submit(ctx, target.formEndpointId, submissionData, request)
+			: target;
 
 		if (!outcome.ok) {
 			if (outcome.reason === 'feature_disabled') {

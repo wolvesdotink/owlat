@@ -250,7 +250,10 @@ describe('public route limits', () => {
 		const flood = { type: 'intro', start: tenOClockInDays(2), name: 'Bot', email: 'b@example.com' };
 		const statuses: number[] = [];
 		for (let i = 0; i < 6; i++) statuses.push((await post('nobody', flood)).status);
-		expect(statuses).toContain(429);
+		// A page that does not exist gets no bucket of its own: the flood is a
+		// string of 404s metered on the bounded failure budget
+		// (lib/publicTokenPolicy.ts), and it cannot touch a real page's bucket.
+		expect(statuses).toEqual([404, 404, 404, 404, 404, 404]);
 
 		const ok = await post('ada', {
 			type: 'intro',
