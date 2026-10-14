@@ -5,6 +5,8 @@ import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import {
+	MIGRATIONS_PENDING_STATUS,
+	MIGRATIONS_UNVERIFIED_STATUS,
 	UPDATER_REPORT_MARKER,
 	isStartedRollout,
 	isUpdateAttemptId,
@@ -25,7 +27,8 @@ const UPDATER_TIMEOUT_MS = 30 * 60 * 1000;
  * called by the platform-admin UI at Settings → System & Updates.
  *
  * Flow:
- *   1. Verify caller is a platform admin (via session cookie → Convex).
+ *   1. Verify caller is a platform admin (via session cookie → Convex), and
+ *      that no stepping-stone migration has to complete first (412).
  *   2. Download the pinned docker-compose-<version>.yml from GitHub Releases.
  *   3. Record an "updateRun" doc via api.systemUpdates.recordUpdateStart.
  *   4. POST to http://updater:3200/update with the downloaded compose template.
@@ -72,6 +75,30 @@ export default defineEventHandler(async (event) => {
 	}
 
 	const currentVersion = process.env['OWLAT_VERSION'] || 'dev';
+
+	// 0. Stepping stones. A migration a later release's contract depends on has
+	//    to complete before the update (the System page's "Data migrations"
+	//    card names them and runs them). Checked before anything is recorded or
+	//    dispatched, and an unanswered check refuses the update too: without it
+	//    nothing says the target's prerequisites are met.
+	let blockers: { migration: string }[];
+	try {
+		blockers = await client.query(api.migrations.admin.updateBlockers, { targetVersion });
+	} catch (err) {
+		console.error('[system/update] could not check migration prerequisites', err);
+		throw createError({
+			statusCode: MIGRATIONS_UNVERIFIED_STATUS,
+			message: 'Could not check the data migrations this update needs. Try again in a moment.',
+		});
+	}
+	if (blockers.length > 0) {
+		const migrations = blockers.map((blocker) => blocker.migration);
+		throw createError({
+			statusCode: MIGRATIONS_PENDING_STATUS,
+			message: `Finish these data migrations before updating to ${targetVersion}: ${migrations.join(', ')}`,
+			data: { migrations },
+		});
+	}
 
 	// 1. Fetch + cryptographically verify the pinned compose template from
 	//    GitHub Releases. The release workflow publishes BOTH

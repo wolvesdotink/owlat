@@ -53,6 +53,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 
 const MIGRATION = '0055_repair_repeated_block_ids';
@@ -196,7 +197,9 @@ export const repairPage = internalMutation({
 		});
 		if (!result.isDone) {
 			const next = decodeCursor(result.cursor);
-			await ctx.scheduler.runAfter(
+			await scheduleMigrationPage(
+				ctx,
+				run,
 				0,
 				internal.migrations['0055_repair_repeated_block_ids'].repairPage,
 				{ table: next.table, cursor: next.cursor, generation: run.generation }
@@ -225,7 +228,9 @@ export const run = internalMutation({
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
 		const start = decodeCursor(begun.cursor);
-		await ctx.scheduler.runAfter(
+		await scheduleMigrationPage(
+			ctx,
+			begun,
 			0,
 			internal.migrations['0055_repair_repeated_block_ids'].repairPage,
 			{ table: start.table, cursor: start.cursor, generation: begun.generation }

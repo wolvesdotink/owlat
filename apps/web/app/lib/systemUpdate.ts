@@ -15,6 +15,21 @@ export const UPDATER_REPORT_MARKER = 'updaterReport';
  */
 const UPDATER_REFUSAL_STATUSES = new Set([409, 429]);
 
+/**
+ * The status `/api/system/update` answers when a stepping-stone migration has
+ * not completed (Settings → System & updates, "Data migrations"): the update
+ * was refused before anything was recorded or dispatched.
+ */
+export const MIGRATIONS_PENDING_STATUS = 412;
+
+/** The status it answers when it could not check those migrations at all. */
+export const MIGRATIONS_UNVERIFIED_STATUS = 503;
+
+/** Did the route refuse on the migration check, before it recorded a run? */
+export function isMigrationCheckRefusal(statusCode: unknown): boolean {
+	return statusCode === MIGRATIONS_PENDING_STATUS || statusCode === MIGRATIONS_UNVERIFIED_STATUS;
+}
+
 /** Did the updater refuse to start this update, leaving everything as it was? */
 export function isUpdaterRefusal(statusCode: unknown): boolean {
 	return typeof statusCode === 'number' && UPDATER_REFUSAL_STATUSES.has(statusCode);

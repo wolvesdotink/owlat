@@ -6438,6 +6438,56 @@
 				"spendBudget": "Spend budget",
 				"title": "AI usage · last 7 days"
 			},
+			"migrationsCard": {
+				"title": "Data migrations",
+				"intro": "Some updates convert data that is already stored. Each migration runs in the background and records its progress, so you can leave this page. Running again resumes an interrupted migration where it stopped and skips the completed ones.",
+				"loading": "Loading data migrations…",
+				"runPending": "Run pending migrations",
+				"runnerActive": "Migrations are running in the background. One that waits for another starts once that one has completed.",
+				"runnerStopped": "No further migrations start: {name} stopped the run. Migrations already running carry on. Fix the cause, then run again: it resumes from its last recorded page.",
+				"allCompleted": "Every migration of this release has completed.",
+				"summary": "{pending} pending · {running} running · {stopped} stopped · {completed} completed",
+				"introducedIn": "Introduced in {version}",
+				"progress": "{scanned} rows checked, {changed} changed",
+				"completedAt": "completed {date}",
+				"lastProgress": "last progress {date}",
+				"waitsFor": "Starts after {names} has completed.",
+				"interruptedHint": "No progress for a while: its background job stopped. Run again to resume from the last recorded page.",
+				"failedHint": "Fix the cause, then run again to retry from the last recorded page. The maintenance guide has the CLI commands for the same steps.",
+				"startsItself": "Also starts by itself in the background. Running it here only starts it sooner.",
+				"startsItselfStopped": "After this failure it does not restart by itself. Fix the cause, then run it here to retry.",
+				"steppingStone": "Must complete before you update past {version}.",
+				"steppingStoneBefore": "Must complete before you update to {version} or later.",
+				"unknownError": "Unknown error",
+				"state": {
+					"pending": "Pending",
+					"waiting": "Waiting",
+					"running": "Running",
+					"completed": "Completed",
+					"failed": "Failed",
+					"interrupted": "Interrupted"
+				},
+				"toasts": {
+					"noClient": "Not connected to the backend",
+					"started": "Started {count} migrations. They run in the background; this list shows their progress.",
+					"alreadyRunning": "Migrations are already running.",
+					"nothingToRun": "Nothing to run: every migration has completed or is running.",
+					"startFailed": "Could not start {name}: {error}",
+					"runFailed": "Could not run migrations: {error}"
+				},
+				"names": {
+					"m0053": "Open commitments in contact knowledge",
+					"m0054": "IMAP folder message lists",
+					"m0055": "Repeated block ids in saved emails",
+					"m0056": "Retry mailboxes parked after a refused login",
+					"m0057": "Withdraw confirmation links after an opt-out",
+					"m0060": "Saved reply scopes",
+					"m0064": "Send-time profiles from past campaigns",
+					"m0065": "Team Inbox response history",
+					"m0067": "Remove retired thread summaries",
+					"m0068": "Seal thread brief fact keys"
+				}
+			},
 			"portChecksCard": {
 				"title": "Network ports",
 				"intro": "Features here depend on ports your hosting provider can block without telling you — a blocked port looks like a broken feature, not like a firewall. These probes run from this server when you ask them to.",
@@ -9196,6 +9246,8 @@
 					},
 					"unknownError": "Unknown error",
 					"updateBusy": "The updater is still applying another change. Try again once it has finished.",
+					"migrationsPending": "Finish the data migrations named under Available updates first. The update was not started.",
+					"migrationsUnverified": "Could not check the data migrations this update needs, so the update was not started. Try again in a moment.",
 					"updates": {
 						"availableCurrent": "available (current: v{version})",
 						"beforeUpdate": "Before you update",
@@ -9213,6 +9265,7 @@
 						},
 						"lastCheckError": "Last check had an error: {error}",
 						"latestChecked": "Latest: v{version} · Last checked {date}",
+						"migrationsFirst": "Finish these data migrations before updating to v{version}: {names}. Run them under Data migrations below; once they have completed, the update is available.",
 						"neverChecked": "Click \"Check now\" to poll GitHub for the latest release.",
 						"otherRoutes": "Prefer the command line or a manual update? The update guide covers both, and how to recover if an update fails.",
 						"released": "Released {date}",

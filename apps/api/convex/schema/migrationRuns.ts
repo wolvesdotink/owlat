@@ -37,5 +37,48 @@ export const migrationRunTables = {
 		startedAt: v.number(),
 		updatedAt: v.number(),
 		completedAt: v.optional(v.number()),
+		/**
+		 * The job the pass waits on: the next page (or poll) its chain scheduled,
+		 * with the generation it belongs to. Written by `scheduleMigrationPage`
+		 * without moving `updatedAt`, so a failed job is found by id however long
+		 * after the last committed page it ran. Absent on a row written before
+		 * this field existed, until its next scheduled page.
+		 */
+		pageJob: v.optional(v.object({ id: v.id('_scheduled_functions'), generation: v.number() })),
+		/**
+		 * A failure the pass recorded itself (`recordMigrationFailure`): work it
+		 * started outside its own page chain kept failing, so it stopped. The row
+		 * stays `running`; the next start or resume clears this.
+		 */
+		failure: v.optional(v.object({ error: v.string(), at: v.number() })),
+		/**
+		 * Bumped by an operator's explicit start or retry, never by a cron's
+		 * automatic resume. A pass that counts failures across resumes (0054's
+		 * folder walks) keys its streaks to it, so only a person resets them.
+		 */
+		retryEpoch: v.optional(v.number()),
 	}).index('by_migration', ['migration']),
+
+	/**
+	 * The migration runner behind Settings → System & updates
+	 * (`migrations/admin.ts`): at most one row. While `active`, a tick every
+	 * few seconds starts each manifest migration whose dependencies have
+	 * completed, until every one has completed (`finished`) or one failed or
+	 * stopped moving (`stopped`). It only starts and resumes migrations through
+	 * their own `run` entry points; their progress stays on their
+	 * `migrationRuns` rows.
+	 */
+	migrationDriver: defineTable({
+		status: v.union(v.literal('active'), v.literal('finished'), v.literal('stopped')),
+		/** Bumped by every start; a tick scheduled under an older one does nothing. */
+		generation: v.number(),
+		/** The platform admin who started the runner (auth user id). */
+		startedBy: v.string(),
+		startedAt: v.number(),
+		updatedAt: v.number(),
+		finishedAt: v.optional(v.number()),
+		/** Set with `stopped`: the migration that stopped the runner, and why. */
+		stoppedMigration: v.optional(v.string()),
+		stoppedError: v.optional(v.string()),
+	}),
 };

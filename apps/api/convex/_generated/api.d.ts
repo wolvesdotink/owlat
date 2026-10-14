@@ -131,6 +131,9 @@ import type * as migrations_0066_backfill_clarification_origin from '../migratio
 import type * as migrations_0067_empty_retired_summaries from '../migrations/0067_empty_retired_summaries.js';
 import type * as migrations_0068_seal_fact_keys from '../migrations/0068_seal_fact_keys.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
+import type * as lib_migrationPlan from '../lib/migrationPlan.js';
+import type * as migrations_admin from '../migrations/admin.js';
+import type * as migrations_manifest from '../migrations/manifest.js';
 import type * as plugins_llmLedgerRows from '../plugins/llmLedgerRows.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
 import type * as migrations_0060_saved_reply_scopes from '../migrations/0060_saved_reply_scopes.js';
@@ -1885,6 +1888,9 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0067_empty_retired_summaries': typeof migrations_0067_empty_retired_summaries;
 	'migrations/0068_seal_fact_keys': typeof migrations_0068_seal_fact_keys;
 	'lib/migrationLedger': typeof lib_migrationLedger;
+	'lib/migrationPlan': typeof lib_migrationPlan;
+	'migrations/admin': typeof migrations_admin;
+	'migrations/manifest': typeof migrations_manifest;
 	'plugins/llmLedgerRows': typeof plugins_llmLedgerRows;
 	'schema/migrationRuns': typeof schema_migrationRuns;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;

@@ -13,8 +13,12 @@
  * generation it belongs to and checks it with {@link isCurrentMigrationPage}
  * before doing anything, so a resume or restart supersedes a chain that is
  * still queued instead of running beside it.
+ *
+ * A chain schedules its next page with {@link scheduleMigrationPage}, which
+ * records the job on the row (`pageJob`), so a page that failed is found by id.
  */
 
+import type { FunctionArgs, FunctionReference, OptionalRestArgs } from 'convex/server';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 
@@ -67,6 +71,8 @@ export async function beginMigrationRun(
 			introducedIn,
 			cursor,
 			updatedAt: now,
+			pageJob: undefined,
+			failure: undefined,
 		});
 		return await ctx.db.get(existing._id);
 	}
@@ -83,6 +89,8 @@ export async function beginMigrationRun(
 		startedAt: now,
 		updatedAt: now,
 		completedAt: undefined,
+		pageJob: undefined,
+		failure: undefined,
 	};
 	if (existing) {
 		await ctx.db.patch(existing._id, fresh);
@@ -122,4 +130,34 @@ export async function recordMigrationPage(
 		updatedAt: now,
 		...(page.isDone ? { status: 'completed' as const, completedAt: now } : {}),
 	});
+}
+
+/**
+ * Schedule the job a run's chain continues with (its next page, or a poll)
+ * and record it on the row with the run's generation. `updatedAt` stays: a
+ * scheduled job is not progress. Call it in the transaction that checked the
+ * page is current, so only the live chain ever writes `pageJob`.
+ */
+export async function scheduleMigrationPage<Ref extends FunctionReference<'mutation', 'internal'>>(
+	ctx: MutationCtx,
+	run: Pick<MigrationRun, '_id' | 'generation'>,
+	delayMs: number,
+	ref: Ref,
+	args: FunctionArgs<Ref>
+): Promise<void> {
+	const id = await ctx.scheduler.runAfter(delayMs, ref, ...([args] as OptionalRestArgs<Ref>));
+	await ctx.db.patch(run._id, { pageJob: { id, generation: run.generation } });
+}
+
+/**
+ * Record that the pass stopped on a failure it cannot retry its way out of,
+ * and should not be resumed until someone looks: the migration reads as failed
+ * with `error`. Call it from the live chain, which then stops scheduling.
+ */
+export async function recordMigrationFailure(
+	ctx: MutationCtx,
+	run: Pick<MigrationRun, '_id'>,
+	error: string
+): Promise<void> {
+	await ctx.db.patch(run._id, { failure: { error, at: Date.now() } });
 }
