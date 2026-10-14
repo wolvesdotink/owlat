@@ -875,6 +875,7 @@ import type * as inbox_threads_module from '../inbox/threads/module.js';
 import type * as inbox_cronRegistration from '../inbox/cronRegistration.js';
 import type * as inbox_sla_analyticsRules from '../inbox/sla/analyticsRules.js';
 import type * as inbox_sla_apply from '../inbox/sla/apply.js';
+import type * as inbox_sla_bounceObligations from '../inbox/sla/bounceObligations.js';
 import type * as inbox_sla_breaches from '../inbox/sla/breaches.js';
 import type * as inbox_sla_businessHours from '../inbox/sla/businessHours.js';
 import type * as inbox_sla_clock from '../inbox/sla/clock.js';
@@ -2640,6 +2641,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/cronRegistration': typeof inbox_cronRegistration;
 	'inbox/sla/analyticsRules': typeof inbox_sla_analyticsRules;
 	'inbox/sla/apply': typeof inbox_sla_apply;
+	'inbox/sla/bounceObligations': typeof inbox_sla_bounceObligations;
 	'inbox/sla/breaches': typeof inbox_sla_breaches;
 	'inbox/sla/businessHours': typeof inbox_sla_businessHours;
 	'inbox/sla/clock': typeof inbox_sla_clock;

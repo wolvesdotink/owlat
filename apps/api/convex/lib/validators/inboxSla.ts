@@ -60,6 +60,10 @@ export const conversationThreadSlaFields = {
 	// AGGREGATED — when the team first replied, and the latest resolve.
 	firstResponseAt: v.optional(v.number()),
 	resolvedAt: v.optional(v.number()),
+	// When a reply last reached the customer, on any channel (every
+	// `reply_sent`). Unlike the timeline it is never windowed, so a bounce
+	// obligation is judged against it (inbox/sla/bounceObligations.ts).
+	lastReplySentAt: v.optional(v.number()),
 	// AGGREGATED — replies judged against a target: on time, and late.
 	slaMetCount: v.optional(v.number()),
 	slaMissedCount: v.optional(v.number()),

@@ -126,6 +126,26 @@ export async function settleAnsweredTeamThread(
 }
 
 /**
+ * The stashed questions, asked again as of `at`: a new ask generation. The
+ * archive's queued notice cleanup removes notices by the settled ask's
+ * `askedAt` (inbox/clarificationHold.ts), so reusing it would let that cleanup
+ * delete the reopened question's notices; and the reminder bookkeeping starts
+ * over, so the reopened question is reminded like any new one.
+ */
+function reaskedClarification(
+	pending: NonNullable<Stash['pendingClarification']>,
+	at: number
+): NonNullable<Stash['pendingClarification']> {
+	const {
+		remindedAt: _remindedAt,
+		isRemindedForReaders: _isRemindedForReaders,
+		remindedForUserId: _remindedForUserId,
+		...questions
+	} = pending;
+	return { ...questions, askedAt: at };
+}
+
+/**
  * The agent reply to `answeredId` bounced or failed after it had settled the
  * thread: every message only it answered goes back to where the agent left
  * it; one another sent reply also answered stays archived. A message a person
@@ -161,7 +181,7 @@ export async function restoreAnsweredTeamThread(
 							at,
 							reopenAnswered: true,
 							...(stash.pendingClarification
-								? { pendingClarification: stash.pendingClarification }
+								? { pendingClarification: reaskedClarification(stash.pendingClarification, at) }
 								: {}),
 						}
 					: {

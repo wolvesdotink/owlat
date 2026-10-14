@@ -17,6 +17,8 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { createTestContact, flushScheduled } from '../../__tests__/factories';
 import { pushHarness } from '../../push/__tests__/pushFixtures';
 import { appendDraftRevision } from '../../inbox/draftRevisions';
+import { isReplyOwed } from '../../inbox/sla/threadClock';
+import { recordInboundMirror } from '../../unifiedMessages';
 import * as clarificationAnswers from '../../inbox/clarificationAnswers';
 
 // The team draft-gap fence's predicate (inbox/stepOutputs.ts), wrapped so a test
@@ -256,7 +258,8 @@ describe('a Team Inbox reply to a newer message', () => {
 		expect(draft.answeredStash).toBeUndefined();
 		const asking = await get(t, olderAsking);
 		expect(asking.processingStatus).toBe('awaiting_clarification');
-		expect(asking.pendingClarification?.askedAt).toBe(NOW - 2_500);
+		// Asked again as of the bounce: a new ask generation (see the clarification tests).
+		expect(asking.pendingClarification?.askedAt).toBe(NOW + 60_000);
 	});
 
 	it('drops the stash after the retention window, leaving the message answered', async () => {
@@ -324,6 +327,56 @@ describe('a Team Inbox reply to a newer message', () => {
 		const reopened = await get(t, older);
 		expect(reopened.processingStatus).toBe('draft_ready');
 		expect(reopened.draftResponse).toBe('Your order ships Monday.');
+	});
+});
+
+describe('a clarification a bounce reopens', () => {
+	it('is a new ask, so the archive’s queued notice cleanup cannot remove its notices', async () => {
+		vi.spyOn(Date, 'now').mockReturnValue(NOW);
+		const t = await pushHarness(modules, { 'user-a': 'admin' });
+		const th = await seedThread(t);
+		const askedAt = NOW - 1_000;
+		const held = await seedInbound(t, th, {
+			processingStatus: 'awaiting_clarification',
+			receivedAt: NOW - 2_000,
+			pendingClarification: {
+				questions: [{ id: 'q1', slotType: 'text', text: 'Which order?' }],
+				askedAt,
+				remindedAt: NOW - 500,
+				isRemindedForReaders: true,
+			},
+		});
+		const answered = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			draftResponse: 'Your order ships Monday.',
+			receivedAt: NOW,
+		});
+		const sendId = await completeReply(t, th, answered, 'sent');
+		expect((await get(t, held)).processingStatus).toBe('archived');
+
+		vi.mocked(Date.now).mockReturnValue(NOW + 60_000);
+		await laterBounce(t, sendId);
+		const reopened = await get(t, held);
+		expect(reopened.processingStatus).toBe('awaiting_clarification');
+		expect(reopened.pendingClarification?.askedAt).toBe(NOW + 60_000);
+		expect(reopened.pendingClarification?.isRemindedForReaders).toBeUndefined();
+		expect(reopened.pendingClarification?.remindedAt).toBeUndefined();
+		const notices = () =>
+			t.run(async (ctx) =>
+				(await ctx.db.query('inboxAssignmentNotices').collect()).filter(
+					(n) => n.inboundMessageId === held
+				)
+			);
+		expect(await notices()).toHaveLength(1);
+
+		// The cleanup the archive queued, for the settled ask, runs only now.
+		await t.mutation(internal.inbox.clarificationHoldSync.clearClarificationNotices, {
+			inboundMessageId: held,
+			askedAt,
+			cursor: null,
+		});
+
+		expect(await notices()).toHaveLength(1);
 	});
 });
 
@@ -700,6 +753,131 @@ describe('the response clock of a reopened message', () => {
 
 		await savePolicy(t, BOUNCE_AT + 30_000);
 
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+	});
+
+	it.each(['sms', 'team_reply'] as const)(
+		'ends the obligation when a %s reply goes out, however much timeline follows',
+		async (channel) => {
+			const t = await pushHarness(modules, {});
+			const th = await seedThread(t);
+			await withTargets(t, th);
+			const { older, answered, sendId } = await answeredThenBounced(t, th);
+			await bounce(t, sendId);
+			expect((await get(t, older)).answerBouncedAt).toBe(BOUNCE_AT);
+
+			vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 10_000);
+			if (channel === 'sms') {
+				await t.mutation(internal.unifiedMessages.recordOutbound, {
+					threadId: th.threadId,
+					contactId: th.contactId,
+					channel: 'sms',
+					content: 'Your answer',
+					status: 'sent',
+				});
+			} else {
+				const followUpId = await t.run(async (ctx) =>
+					ctx.db.insert('inboxFollowUps', {
+						threadId: th.threadId,
+						inReplyToMessageId: answered,
+						subject: 'Re: Order',
+						body: 'Your answer',
+						status: 'sending',
+						createdBy: 'review-user',
+						createdAt: BOUNCE_AT + 10_000,
+						sendAt: BOUNCE_AT + 10_000,
+					})
+				);
+				await t.mutation(internal.inbox.followUps.completeSend, {
+					followUpId,
+					outcome: { kind: 'sent', at: BOUNCE_AT + 10_000, providerMessageId: 'followup-1' },
+				});
+			}
+			expect((await get(t, older)).answerBouncedAt).toBeUndefined();
+			expect((await thread(t, th)).responseDueAt).toBeUndefined();
+
+			// Fifty FYIs push that reply out of the timeline window.
+			for (let i = 0; i < 50; i++) {
+				vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 20_000 + i);
+				await seedInbound(t, th, {
+					processingStatus: 'informational',
+					receivedAt: BOUNCE_AT + 20_000 + i,
+				});
+				await t.run(async (ctx) =>
+					recordInboundMirror(ctx, {
+						threadId: th.threadId,
+						contactId: th.contactId,
+						channel: 'email',
+						content: 'FYI',
+						externalMessageId: `fyi-${i}`,
+					})
+				);
+			}
+			await savePolicy(t, BOUNCE_AT + 30_000);
+
+			expect((await thread(t, th)).responseDueAt).toBeUndefined();
+			expect(await t.run(async (ctx) => isReplyOwed(ctx, th.threadId))).toBe(false);
+		}
+	);
+
+	it('judges a marker some path left behind against every reply, not the timeline window', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const { older, sendId } = await answeredThenBounced(t, th);
+		await bounce(t, sendId);
+		vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 10_000);
+		await t.mutation(internal.unifiedMessages.recordOutbound, {
+			threadId: th.threadId,
+			contactId: th.contactId,
+			channel: 'sms',
+			content: 'Your answer',
+			status: 'sent',
+		});
+		// As if a path had missed clearing it: only the reply record can tell.
+		await t.run(async (ctx) => ctx.db.patch(older, { answerBouncedAt: BOUNCE_AT }));
+		for (let i = 0; i < 50; i++) {
+			vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 20_000 + i);
+			await t.run(async (ctx) =>
+				recordInboundMirror(ctx, {
+					threadId: th.threadId,
+					contactId: th.contactId,
+					channel: 'email',
+					content: 'FYI',
+					externalMessageId: `fyi-${i}`,
+				})
+			);
+		}
+
+		expect((await thread(t, th)).lastReplySentAt).toBe(BOUNCE_AT + 10_000);
+		expect(await t.run(async (ctx) => isReplyOwed(ctx, th.threadId))).toBe(false);
+	});
+
+	it('ends the obligation when a reply to an older message goes out, keeping a person’s draft', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const { older, sendId } = await answeredThenBounced(t, th);
+		await bounce(t, sendId);
+		await t.run(async (ctx) =>
+			appendDraftRevision(ctx, (await ctx.db.get(older))!, {
+				text: 'Human draft',
+				savedBy: 'review-user',
+			})
+		);
+		const earlier = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			draftResponse: 'New response',
+			receivedAt: NOW - 10_000,
+		});
+		vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 20_000);
+		await completeReply(t, th, earlier, 'sent');
+
+		const kept = await get(t, older);
+		expect(kept.draftResponse).toBe('Human draft');
+		expect(kept.answerBouncedAt).toBeUndefined();
+		expect(await t.run(async (ctx) => isReplyOwed(ctx, th.threadId))).toBe(false);
+		await savePolicy(t, BOUNCE_AT + 30_000);
 		expect((await thread(t, th)).responseDueAt).toBeUndefined();
 	});
 

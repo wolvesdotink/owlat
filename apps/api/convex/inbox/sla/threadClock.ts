@@ -19,19 +19,9 @@
  * it bounced back to the team (`answerBouncedAt`, inbox/answeredThread.ts) is
  * owed however old it is and whatever newer message was answered before the
  * bounce. That reply never reached the customer, so an earlier `sent` does not
- * speak for it. The marker is live-only and found through its own index, not
- * the recent-message scan:
- *
- *   - it is cleared when the obligation ends: the message moves to a state
- *     that needs no reply (sent, archived, informational, quarantined; here),
- *     or a later sent reply settles the thread (inbox/answeredThread.ts, even
- *     on a message with a person's draft, whose draft stays as it is);
- *   - and the check itself requires the message to still need a reply and no
- *     reply to have reached the customer since the bounce, so a marker some
- *     other path left behind still cannot reopen anything.
- *
- * Either alone would do; together they keep the index down to live rows and
- * the answer right if one path is ever missed.
+ * speak for it. How the marker stays live-only, and the check that stands in
+ * if a path ever misses clearing it: ./bounceObligations.ts. The marker is
+ * cleared here when its message moves to a state that needs no reply.
  */
 
 import type { MutationCtx } from '../../_generated/server';
@@ -39,6 +29,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { transition as threadTransition } from '../threads/module';
 import type { ProcessingStatus, TransitionInput } from '../processingLifecycle/types';
 import { loadSlaPolicy } from './policy';
+import { hasOpenBounceObligation, latestReplyAt } from './bounceObligations';
 import {
 	isClockSet,
 	pauseClock,
@@ -82,40 +73,6 @@ const OVERRULED_STATES: ReadonlySet<ProcessingStatus> = new Set(['informational'
 /** Does a message in this state still wait on the team? */
 function isAwaitingReply(status: ProcessingStatus): boolean {
 	return !NO_REPLY_STATES.has(status) && status !== 'sent';
-}
-
-/**
- * How many bounce markers a check reads. Live markers are few by construction:
- * one per message a bounced reply reopened that nobody has dealt with yet, and
- * every path that deals with it clears the marker. Newest bounces first, and
- * one owed match settles the question.
- */
-const BOUNCE_SCAN_LIMIT = 16;
-
-/**
- * Is work a bounce reopened still owed on this thread (see the header)? Read
- * through `by_thread_and_answer_bounced`, so the obligation is found however
- * many messages came after it. `exceptId`: the message settling right now.
- */
-async function hasOpenBounceObligation(
-	ctx: MutationCtx,
-	threadId: Id<'conversationThreads'>,
-	repliedAt: number | undefined,
-	exceptId?: Id<'inboundMessages'>
-): Promise<boolean> {
-	const marked = await ctx.db
-		.query('inboundMessages')
-		.withIndex('by_thread_and_answer_bounced', (q) =>
-			q.eq('threadId', threadId).gt('answerBouncedAt', 0)
-		)
-		.order('desc')
-		.take(BOUNCE_SCAN_LIMIT);
-	return marked.some(
-		(message) =>
-			message._id !== exceptId &&
-			isAwaitingReply(message.processingStatus) &&
-			(repliedAt === undefined || repliedAt < (message.answerBouncedAt ?? 0))
-	);
 }
 
 /** How many of a thread's messages the no-reply check reads. */
@@ -222,7 +179,9 @@ export async function isReplyOwed(
 		if (isAwaitingReply(newest.processingStatus)) {
 			if (repliedAt === undefined || newest.receivedAt > repliedAt) return true;
 		}
-		return await hasOpenBounceObligation(ctx, threadId, repliedAt);
+		const thread = await ctx.db.get(threadId);
+		const latest = latestReplyAt(thread, repliedAt);
+		return await hasOpenBounceObligation(ctx, threadId, latest, isAwaitingReply);
 	}
 	const latest = await ctx.db
 		.query('unifiedMessages')
@@ -247,7 +206,8 @@ export async function releaseClockIfNothingOwed(
 	const thread = await ctx.db.get(threadId);
 	if (!thread || !isClockSet(thread)) return;
 	const repliedAt = await lastReplyAt(ctx, threadId);
-	if (await hasOpenBounceObligation(ctx, threadId, repliedAt, settledId)) return;
+	const latest = latestReplyAt(thread, repliedAt);
+	if (await hasOpenBounceObligation(ctx, threadId, latest, isAwaitingReply, settledId)) return;
 	const messages = await ctx.db
 		.query('inboundMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
