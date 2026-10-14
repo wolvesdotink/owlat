@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
+import type * as StsFetch from '../mtaStsFetch.js';
 
 vi.mock('dns/promises', () => ({
 	resolveTxt: vi.fn(),
@@ -8,11 +9,31 @@ vi.mock('dns/promises', () => ({
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+// The HTTPS GET is covered against a real loopback server in mtaStsFetch.test.ts;
+// here it is a stub so the cache/refresh logic can be driven directly.
+vi.mock('../mtaStsFetch.js', async (importOriginal) => ({
+	...(await importOriginal<typeof StsFetch>()),
+	fetchStsPolicyText: vi.fn(),
+}));
 
-import { getStsTlsOptions, parseStsPolicy, isMxAllowed, fetchStsPolicy } from '../mtaSts.js';
+import {
+	getStsTlsOptions,
+	parseStsPolicy,
+	isMxAllowed,
+	fetchStsPolicy,
+	InvalidStsPolicyError,
+} from '../mtaSts.js';
+import { logger } from '../../monitoring/logger.js';
+import { fetchStsPolicyText } from '../mtaStsFetch.js';
 import { resolveTxt } from 'dns/promises';
+import {
+	startPolicyServer,
+	STS_TEST_DOMAIN,
+	type PolicyServer,
+} from './helpers/stsPolicyServer.js';
 
 const resolveTxtMock = vi.mocked(resolveTxt);
+const fetchTextMock = vi.mocked(fetchStsPolicyText);
 
 const CACHE_PREFIX = 'mta:sts:';
 
@@ -21,19 +42,17 @@ function dnsRecord(id: string): string[][] {
 	return [[`v=STSv1; id=${id};`]];
 }
 
-/** Build a valid STSv1 enforcing policy body for a fetch() stub. */
+/** Build a valid STSv1 enforcing policy body for a policy-fetch stub. */
 function policyBody(opts: { mode?: string; mx?: string[]; maxAge?: number | string } = {}): string {
 	const lines = ['version: STSv1'];
 	lines.push(`mode: ${opts.mode ?? 'enforce'}`);
 	for (const mx of opts.mx ?? ['*.example.com']) lines.push(`mx: ${mx}`);
-	if (opts.maxAge !== undefined) lines.push(`max_age: ${opts.maxAge}`);
+	lines.push(`max_age: ${opts.maxAge ?? 86400}`);
 	return lines.join('\n');
 }
 
 function stubFetch(body: string) {
-	return vi
-		.spyOn(globalThis, 'fetch')
-		.mockResolvedValue(new Response(body, { status: 200 }) as unknown as Response);
+	return fetchTextMock.mockResolvedValue(body);
 }
 
 describe('mtaSts', () => {
@@ -42,6 +61,7 @@ describe('mtaSts', () => {
 	beforeEach(() => {
 		redis = new Redis() as unknown as RealRedis;
 		resolveTxtMock.mockReset();
+		fetchTextMock.mockReset();
 	});
 
 	afterEach(async () => {
@@ -50,24 +70,38 @@ describe('mtaSts', () => {
 	});
 
 	describe('parseStsPolicy — version validation (RFC 8461 §3.1)', () => {
+		// A body that is not a valid policy throws (the fetch-failure path), so it
+		// can never overwrite a cached policy the way a mode:'none' result would.
 		it('rejects a body with no version line', () => {
-			const policy = parseStsPolicy('mode: enforce\nmx: *.example.com\nmax_age: 86400', 'id-1');
-			expect(policy.mode).toBe('none');
-			expect(policy.mx).toEqual([]);
+			expect(() =>
+				parseStsPolicy('mode: enforce\nmx: *.example.com\nmax_age: 86400', 'id-1')
+			).toThrow(InvalidStsPolicyError);
 		});
 
 		it('rejects a future STSv2 body', () => {
-			const policy = parseStsPolicy(
-				'version: STSv2\nmode: enforce\nmx: *.example.com\nmax_age: 86400',
-				'id-1'
-			);
-			expect(policy.mode).toBe('none');
-			expect(policy.mx).toEqual([]);
+			expect(() =>
+				parseStsPolicy('version: STSv2\nmode: enforce\nmx: *.example.com\nmax_age: 86400', 'id-1')
+			).toThrow(InvalidStsPolicyError);
 		});
 
 		it('rejects an HTML error page served instead of a policy', () => {
-			const policy = parseStsPolicy('<html><body>404 Not Found</body></html>', 'id-1');
-			expect(policy.mode).toBe('none');
+			expect(() => parseStsPolicy('<html><body>404 Not Found</body></html>', 'id-1')).toThrow(
+				InvalidStsPolicyError
+			);
+		});
+
+		it('rejects a missing or unknown mode', () => {
+			expect(() =>
+				parseStsPolicy('version: STSv1\nmx: *.example.com\nmax_age: 86400', 'id-1')
+			).toThrow(/mode is missing/);
+			expect(() =>
+				parseStsPolicy('version: STSv1\nmode: strict\nmx: *.example.com\nmax_age: 86400', 'id-1')
+			).toThrow(/mode is strict/);
+		});
+
+		it('accepts an explicit mode: none policy, which is not an error', () => {
+			const policy = parseStsPolicy('version: STSv1\nmode: none\nmax_age: 3600', 'id-1');
+			expect(policy).toMatchObject({ mode: 'none', mx: [], maxAge: 3600 });
 		});
 
 		it('accepts a valid STSv1 policy', () => {
@@ -82,14 +116,20 @@ describe('mtaSts', () => {
 		});
 
 		it('accepts STSv1 case-insensitively', () => {
-			const policy = parseStsPolicy('version: stsv1\nmode: testing\nmx: mx.example.com\nmax_age: 600', 'id-1');
+			const policy = parseStsPolicy(
+				'version: stsv1\nmode: testing\nmx: mx.example.com\nmax_age: 600',
+				'id-1'
+			);
 			expect(policy.mode).toBe('testing');
 		});
 	});
 
 	describe('parseStsPolicy — max_age clamping (RFC 8461 §3.2)', () => {
 		it('clamps an over-large max_age to the one-year ceiling', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 99999999', 'id-1');
+			const policy = parseStsPolicy(
+				'version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 99999999',
+				'id-1'
+			);
 			expect(policy.maxAge).toBe(31557600);
 		});
 
@@ -100,25 +140,31 @@ describe('mtaSts', () => {
 		});
 
 		it('preserves max_age: 0 even for an enforce policy (does not coerce to 86400)', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 0', 'id-1');
+			const policy = parseStsPolicy(
+				'version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 0',
+				'id-1'
+			);
 			expect(policy.maxAge).toBe(0);
 		});
 
-		it('never accepts a negative max_age', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: -5', 'id-1');
-			expect(policy.maxAge).toBeGreaterThanOrEqual(0);
-			// Negative is invalid → falls back to the 1-day default for an enforce policy.
-			expect(policy.maxAge).toBe(86400);
+		it.each([
+			['-5', 'negative'],
+			['abc', 'non-numeric'],
+			['1.5', 'fractional'],
+			['', 'empty'],
+		])('rejects max_age %j (%s)', (value) => {
+			expect(() =>
+				parseStsPolicy(
+					`version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: ${value}`,
+					'id-1'
+				)
+			).toThrow(/max_age/);
 		});
 
-		it('falls back to the default for a non-numeric max_age', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: abc', 'id-1');
-			expect(policy.maxAge).toBe(86400);
-		});
-
-		it('falls back to the default for an absent max_age', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com', 'id-1');
-			expect(policy.maxAge).toBe(86400);
+		it('rejects a policy with no max_age', () => {
+			expect(() =>
+				parseStsPolicy('version: STSv1\nmode: enforce\nmx: *.example.com', 'id-1')
+			).toThrow(/max_age is missing/);
 		});
 	});
 
@@ -197,9 +243,7 @@ describe('mtaSts', () => {
 
 			// DNS advertises a bumped id-2 but the policy fetch is blocked/fails.
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
-			const fetchSpy = vi
-				.spyOn(globalThis, 'fetch')
-				.mockRejectedValue(new Error('connect ECONNREFUSED'));
+			const fetchSpy = fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
 
 			const opts = await getStsTlsOptions(redis, 'example.com');
 
@@ -262,10 +306,331 @@ describe('mtaSts', () => {
 		});
 	});
 
+	// RFC 8461 §3.2/§5: a policy applies for max_age seconds from when it was
+	// fetched. An expired policy or a new DNS id means a fetch; the only thing
+	// that holds a fetch back is a recent FAILED fetch of the same id.
+	describe('getStsTlsOptions — max_age expiry and refetch', () => {
+		const ENFORCE_OPTS = {
+			requireTLS: true,
+			rejectUnauthorized: true,
+			allowedMxHosts: ['mail.example.com'],
+			policyMode: 'enforce',
+		};
+		const ENFORCE_BODY = policyBody({ mx: ['mail.example.com'] });
+
+		async function cachePolicy(opts: {
+			mode?: string;
+			maxAge: number;
+			ageSeconds: number;
+			version?: string;
+		}) {
+			await redis.set(
+				`${CACHE_PREFIX}example.com`,
+				JSON.stringify({
+					mode: opts.mode ?? 'enforce',
+					mx: opts.mode === 'none' ? [] : ['mail.example.com'],
+					maxAge: opts.maxAge,
+					version: opts.version ?? 'id-1',
+					cachedAt: Date.now() - opts.ageSeconds * 1000,
+				})
+			);
+		}
+
+		it('applies an unexpired short-lived policy without a fetch', async () => {
+			await cachePolicy({ maxAge: 600, ageSeconds: 60 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			[0, 1],
+			[1, 2],
+			[60, 61],
+		])(
+			'refetches a max_age %i policy %is old from a healthy server, same id',
+			async (maxAge, ageSeconds) => {
+				await cachePolicy({ mode: 'testing', maxAge, ageSeconds });
+				resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+				stubFetch(ENFORCE_BODY);
+
+				expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+				expect(fetchTextMock).toHaveBeenCalledTimes(1);
+			}
+		);
+
+		it('fetches a new DNS id at once, even right after the previous fetch', async () => {
+			await cachePolicy({ mode: 'testing', maxAge: 1, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(ENFORCE_BODY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
+
+		it('moves from mode none to enforce when the id changes (max_age 0 none)', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch('version: STSv1\nmode: none\nmax_age: 0');
+			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(ENFORCE_BODY);
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(2);
+		});
+
+		it('moves from a cached long-lived none to enforce when the id changes', async () => {
+			await cachePolicy({ mode: 'none', maxAge: 86400, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(ENFORCE_BODY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+		});
+
+		it('applies a fresh max_age 0 policy to this delivery only, then fetches again', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'], maxAge: 0 }));
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(await redis.get(`${CACHE_PREFIX}example.com`)).toBeNull();
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			// A successful fetch never starts the backoff.
+			expect(fetchTextMock).toHaveBeenCalledTimes(2);
+		});
+
+		it('caches a policy for exactly its max_age', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'], maxAge: 60 }));
+
+			await getStsTlsOptions(redis, 'example.com');
+			expect(await redis.ttl(`${CACHE_PREFIX}example.com`)).toBe(60);
+		});
+
+		it('does not fall back to an expired policy when the refresh fails', async () => {
+			await cachePolicy({ maxAge: 60, ageSeconds: 400 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+			const opts = await getStsTlsOptions(redis, 'example.com');
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+			expect(opts.policyMode).toBe('none');
+		});
+
+		it('backs off the same id for 300 s after a failed fetch, but not a new id', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+			expect(await redis.ttl('mta:sts-fetch-failures:example.com')).toBe(300);
+
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(ENFORCE_BODY);
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(2);
+		});
+
+		it('keeps serving an unexpired cached policy while a new id is backed off', async () => {
+			await cachePolicy({ maxAge: 86400, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
+
+		it('treats a cache entry without cachedAt as absent and refetches', async () => {
+			await redis.set(
+				`${CACHE_PREFIX}example.com`,
+				JSON.stringify({
+					mode: 'enforce',
+					mx: ['mail.example.com'],
+					maxAge: 86400,
+					version: 'id-1',
+				})
+			);
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(ENFORCE_BODY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	// Issue #1326 review: the fetch gate (mtaStsFetchGate.ts) limits fetches,
+	// but neither its limits nor a storage error may change which policy applies.
+	describe('getStsTlsOptions — fetch gate and storage errors', () => {
+		const ENFORCE_OPTS = {
+			requireTLS: true,
+			rejectUnauthorized: true,
+			allowedMxHosts: ['mail.example.com'],
+			policyMode: 'enforce',
+		};
+		const CACHE_KEY = `${CACHE_PREFIX}example.com`;
+		const FAILED_KEY = 'mta:sts-fetch-failures:example.com';
+		const BUDGET_KEY = 'mta:sts-fetch-budget:example.com';
+
+		async function cacheEnforce(opts: { maxAge: number; ageSeconds: number }) {
+			const entry = {
+				mode: 'enforce',
+				mx: ['mail.example.com'],
+				maxAge: opts.maxAge,
+				version: 'id-1',
+				cachedAt: Date.now() - opts.ageSeconds * 1000,
+			};
+			await redis.set(CACHE_KEY, JSON.stringify(entry));
+			return entry;
+		}
+
+		/**
+		 * Make one Redis command fail for keys with `prefix`; others pass through.
+		 * The key is the first argument, or the third for EVAL (script, 1, key).
+		 */
+		function failFor(command: 'set' | 'zscore' | 'eval', prefix: string) {
+			const real = redis[command].bind(redis) as (...args: unknown[]) => Promise<unknown>;
+			const keyAt = command === 'eval' ? 2 : 0;
+			vi.spyOn(redis, command).mockImplementation(((...args: unknown[]) =>
+				String(args[keyAt]).startsWith(prefix)
+					? Promise.reject(new Error('READONLY'))
+					: real(...args)) as never);
+		}
+
+		it('keeps the cached enforce policy when the backoff read fails', async () => {
+			const cached = await cacheEnforce({ maxAge: 86400, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+			failFor('zscore', FAILED_KEY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(JSON.parse((await redis.get(CACHE_KEY))!)).toEqual(cached);
+		});
+
+		it('keeps the cached enforce policy when the backoff write fails', async () => {
+			const cached = await cacheEnforce({ maxAge: 86400, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+			failFor('eval', FAILED_KEY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(JSON.parse((await redis.get(CACHE_KEY))!)).toEqual(cached);
+		});
+
+		it('applies a freshly fetched policy even when caching it fails', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'] }));
+			failFor('set', CACHE_KEY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+		});
+
+		it('keeps an unexpired cached policy when the domain fetch budget is spent', async () => {
+			await cacheEnforce({ maxAge: 86400, ageSeconds: 10 });
+			await redis.set(BUDGET_KEY, '999', 'EX', 300);
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(policyBody({ mode: 'testing', mx: ['mail.example.com'] }));
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).not.toHaveBeenCalled();
+		});
+
+		it('does not extend an expired policy when the budget is spent', async () => {
+			await cacheEnforce({ maxAge: 60, ageSeconds: 120 });
+			await redis.set(BUDGET_KEY, '999', 'EX', 300);
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+
+			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+			expect(fetchTextMock).not.toHaveBeenCalled();
+		});
+
+		it('rotating DNS ids stop fetching once the budget is spent', async () => {
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+			for (let i = 0; i < 20; i++) {
+				resolveTxtMock.mockResolvedValue(dnsRecord(`rotating-${i}`));
+				expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+			}
+
+			expect(fetchTextMock).toHaveBeenCalledTimes(6);
+		});
+
+		it('20 concurrent cold lookups share one fetch', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'] }));
+
+			const results = await Promise.all(
+				Array.from({ length: 20 }, () => getStsTlsOptions(redis, 'example.com'))
+			);
+
+			expect(results).toEqual(Array(20).fill(ENFORCE_OPTS));
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	// RFC 8461 §3.2: later occurrences of version, mode and max_age are ignored,
+	// and every mx is a hostname with an optional leading `*.` label.
+	describe('parseStsPolicy — repeated fields and mx syntax', () => {
+		it('keeps the first mode, version and max_age', () => {
+			const policy = parseStsPolicy(
+				[
+					'version: STSv1',
+					'mode: enforce',
+					'mx: mail.example.com',
+					'max_age: 86400',
+					'version: STSv2',
+					'mode: none',
+					'max_age: 0',
+				].join('\n'),
+				'id-1'
+			);
+			expect(policy).toMatchObject({ mode: 'enforce', mx: ['mail.example.com'], maxAge: 86400 });
+		});
+
+		it('a valid later version does not rescue an invalid first one', () => {
+			expect(() => parseStsPolicy(`version: STSv2\n${policyBody()}`, 'id-1')).toThrow(
+				InvalidStsPolicyError
+			);
+		});
+
+		it('a valid later max_age does not rescue an invalid first one', () => {
+			expect(() =>
+				parseStsPolicy(`${policyBody({ maxAge: 'soon' })}\nmax_age: 86400`, 'id-1')
+			).toThrow(/max_age is soon/);
+		});
+
+		it.each([
+			'*.example.com',
+			'MAIL.Example.COM',
+			'mx.example.com.',
+			'mx1',
+			'xn--bcher-kva.example',
+		])('accepts mx %j', (value) => {
+			expect(parseStsPolicy(policyBody({ mx: [value] }), 'id-1').mx).toEqual([value]);
+		});
+
+		it.each([
+			'',
+			'*',
+			'*.',
+			'a.*.example.com',
+			'mail_host.example.com',
+			'mx.example.com:25',
+			'exa mple.com',
+			'-mx.example.com',
+			'mx..example.com',
+			`${'a'.repeat(64)}.example.com`,
+		])('rejects mx %j', (value) => {
+			expect(() => parseStsPolicy(policyBody({ mx: ['mail.example.com', value] }), 'id-1')).toThrow(
+				/is not a hostname/
+			);
+		});
+	});
+
 	describe('isMxAllowed', () => {
 		it('matches exact and wildcard patterns', () => {
 			expect(isMxAllowed('mail.google.com', ['*.google.com'])).toBe(true);
-			expect(isMxAllowed('aspmx.l.google.com', ['*.google.com'])).toBe(true);
+			expect(isMxAllowed('aspmx.l.google.com', ['*.l.google.com'])).toBe(true);
 			expect(isMxAllowed('mail.google.com', ['mail.google.com'])).toBe(true);
 			expect(isMxAllowed('evil.com', ['*.google.com'])).toBe(false);
 		});
@@ -281,60 +646,149 @@ describe('mtaSts', () => {
 	// option mapping, wildcard matching, the empty-mx validation guard, the
 	// fetch/Redis fail-open, and the negative cache. RFC 8461 §3.3/§4.1/§5.
 
-	describe('fetchStsPolicy — HTTPS retrieval (RFC 8461 §3.3)', () => {
-		it('GETs exactly https://mta-sts.<domain>/.well-known/mta-sts.txt', async () => {
-			const fetchSpy = vi
-				.spyOn(globalThis, 'fetch')
-				.mockResolvedValue(new Response(policyBody(), { status: 200 }) as unknown as Response);
-
-			await fetchStsPolicy('example.com', 'id-1');
-
-			expect(fetchSpy).toHaveBeenCalledTimes(1);
-			const calledUrl = fetchSpy.mock.calls[0]![0];
-			expect(calledUrl).toBe('https://mta-sts.example.com/.well-known/mta-sts.txt');
-		});
-
-		it('throws on a non-2xx response (404)', async () => {
-			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response('not found', { status: 404, statusText: 'Not Found' }) as unknown as Response
-			);
-
-			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/404/);
-		});
-
-		it('throws on a 5xx response (does not silently treat it as no-policy)', async () => {
-			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response('boom', { status: 503, statusText: 'Service Unavailable' }) as unknown as Response
-			);
-
-			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow();
-		});
-
-		it('passes an AbortSignal that aborts at the 10s timeout', async () => {
-			let capturedSignal: AbortSignal | undefined;
-			vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-				capturedSignal = (init as RequestInit | undefined)?.signal ?? undefined;
-				return Promise.resolve(new Response(policyBody(), { status: 200 }) as unknown as Response);
-			});
-			// AbortSignal.timeout(ms) — assert the deadline is the 10s budget, not 0/∞.
-			const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
-
-			await fetchStsPolicy('example.com', 'id-1');
-
-			expect(capturedSignal).toBeInstanceOf(AbortSignal);
-			expect(timeoutSpy).toHaveBeenCalledWith(10_000);
-		});
-
-		it('carries the policy DNS id onto the parsed policy', async () => {
-			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-				new Response(policyBody({ mode: 'enforce', mx: ['*.example.com'] }), {
-					status: 200,
-				}) as unknown as Response
-			);
+	describe('fetchStsPolicy — parses the fetched text against the DNS id', () => {
+		it('fetches for the recipient domain and carries the DNS id onto the policy', async () => {
+			stubFetch(policyBody({ mode: 'enforce', mx: ['*.example.com'] }));
 
 			const policy = await fetchStsPolicy('example.com', 'id-xyz');
+			expect(fetchTextMock).toHaveBeenCalledWith('example.com');
 			expect(policy.version).toBe('id-xyz');
 			expect(policy.mode).toBe('enforce');
+		});
+
+		it('propagates a fetch failure instead of returning a policy', async () => {
+			fetchTextMock.mockRejectedValue(new Error('MTA-STS policy fetch refused redirect: 302'));
+
+			await expect(fetchStsPolicy('example.com', 'id-1')).rejects.toThrow(/redirect/);
+		});
+	});
+
+	// RFC 8461 §3.2: unknown fields are ignored, and nothing caps the mx count.
+	// The fetch's 64 KiB byte cap is what bounds parsing.
+	describe('parseStsPolicy — large and extended policies', () => {
+		const manyMx = Array.from({ length: 500 }, (_, i) => `mx${i}.example.com`);
+
+		it('accepts a valid policy with hundreds of mx entries', () => {
+			expect(parseStsPolicy(policyBody({ mx: manyMx }), 'id-1').mx).toEqual(manyMx);
+		});
+
+		it('ignores unknown extension fields, however many', () => {
+			const ext = Array.from({ length: 1000 }, (_, i) => `x-ext${i}: 1`).join('\n');
+			const policy = parseStsPolicy(`${policyBody()}\n${ext}`, 'id-1');
+			expect(policy).toMatchObject({ mode: 'enforce', mx: ['*.example.com'] });
+		});
+
+		it('caches every mx but logs only the first few', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: manyMx }));
+
+			const opts = await getStsTlsOptions(redis, 'example.com');
+
+			expect(opts.allowedMxHosts).toEqual(manyMx);
+			const cached = JSON.parse((await redis.get(`${CACHE_PREFIX}example.com`))!);
+			expect(cached.mx).toHaveLength(500);
+			const [fields] = vi.mocked(logger.info).mock.calls.at(-1)!;
+			expect(fields).toMatchObject({ mxCount: 500 });
+			expect((fields as { mx: string[] }).mx).toHaveLength(10);
+		});
+	});
+
+	// RFC 8461 §5.1/§6.2 + issue #1326: each kind of refused refresh keeps the
+	// cached enforce policy. These run the real HTTPS GET against a loopback
+	// policy server, so the failure is the one production would see.
+	describe('cached enforce policy survives a refused refresh', () => {
+		let server: PolicyServer | undefined;
+
+		afterEach(async () => {
+			await server?.close();
+			server = undefined;
+		});
+
+		async function refreshAgainst(
+			handler: Parameters<typeof startPolicyServer>[0],
+			overrides: { untrustedCert?: boolean } = {}
+		) {
+			server = await startPolicyServer(handler);
+			const actual = await vi.importActual<typeof StsFetch>('../mtaStsFetch.js');
+			const transport = {
+				...server.transport,
+				timeoutMs: 300,
+				...(overrides.untrustedCert ? { ca: undefined } : {}),
+			};
+			fetchTextMock.mockImplementation((domain) => actual.fetchStsPolicyText(domain, transport));
+
+			const cacheKey = `${CACHE_PREFIX}${STS_TEST_DOMAIN}`;
+			const cached = {
+				mode: 'enforce',
+				mx: ['mx1.owlat.test'],
+				maxAge: 86400,
+				version: 'id-1',
+				cachedAt: Date.now(),
+			};
+			await redis.set(cacheKey, JSON.stringify(cached));
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+
+			const opts = await getStsTlsOptions(redis, STS_TEST_DOMAIN);
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+			expect(opts).toEqual({
+				requireTLS: true,
+				rejectUnauthorized: true,
+				allowedMxHosts: ['mx1.owlat.test'],
+				policyMode: 'enforce',
+			});
+			expect(JSON.parse((await redis.get(cacheKey))!)).toEqual(cached);
+		}
+
+		it('on a redirect', async () => {
+			await refreshAgainst((_req, res) => {
+				res.writeHead(302, { Location: 'http://127.0.0.1/.well-known/mta-sts.txt' });
+				res.end();
+			});
+		});
+
+		it('on an oversized body', async () => {
+			await refreshAgainst((_req, res) => res.end('x'.repeat(1024 * 1024)));
+		});
+
+		it.each([204, 206])('on a %i (only a 200 is a policy)', async (status) => {
+			await refreshAgainst((_req, res) => {
+				res.writeHead(status);
+				res.end();
+			});
+		});
+
+		it('on a policy served as text/html', async () => {
+			await refreshAgainst((_req, res) => {
+				res.setHeader('Content-Type', 'text/html');
+				res.end(policyBody({ mx: ['evil.owlat.test'] }));
+			});
+		});
+
+		it.each([
+			['an HTML error page', '<html><body>Service Unavailable</body></html>'],
+			[
+				'an unsupported version',
+				'version: STSv2\nmode: enforce\nmx: evil.owlat.test\nmax_age: 86400',
+			],
+			['an enforce policy with no mx', 'version: STSv1\nmode: enforce\nmax_age: 86400'],
+			['a policy with no max_age', 'version: STSv1\nmode: enforce\nmx: evil.owlat.test'],
+			['an unknown mode', 'version: STSv1\nmode: off\nmx: evil.owlat.test\nmax_age: 86400'],
+			['an empty mx', 'version: STSv1\nmode: enforce\nmx:\nmax_age: 86400'],
+			['a malformed mx', 'version: STSv1\nmode: enforce\nmx: evil host\nmax_age: 86400'],
+		])('on a 200 carrying %s', async (_label, body) => {
+			await refreshAgainst((_req, res) => res.end(body));
+		});
+
+		it('on a certificate the trust store rejects', async () => {
+			await refreshAgainst((_req, res) => res.end(policyBody({ mx: ['evil.owlat.test'] })), {
+				untrustedCert: true,
+			});
+		});
+
+		it('on a timeout', async () => {
+			await refreshAgainst(() => {
+				// Never respond.
+			});
 		});
 	});
 
@@ -404,12 +858,18 @@ describe('mtaSts', () => {
 	});
 
 	describe('isMxAllowed — wildcard semantics (RFC 8461 §4.1)', () => {
-		it('*.google.com matches a multi-label subdomain a.b.google.com', () => {
-			expect(isMxAllowed('a.b.google.com', ['*.google.com'])).toBe(true);
+		// The wildcard stands for exactly one label.
+		it('*.google.com matches the one-label subdomain mail.google.com', () => {
+			expect(isMxAllowed('mail.google.com', ['*.google.com'])).toBe(true);
 		});
 
-		it('*.google.com matches aspmx.l.google.com', () => {
-			expect(isMxAllowed('aspmx.l.google.com', ['*.google.com'])).toBe(true);
+		it('*.google.com does NOT match a two-label subdomain a.b.google.com', () => {
+			expect(isMxAllowed('a.b.google.com', ['*.google.com'])).toBe(false);
+			expect(isMxAllowed('aspmx.l.google.com', ['*.google.com'])).toBe(false);
+		});
+
+		it('*.l.google.com matches aspmx.l.google.com', () => {
+			expect(isMxAllowed('aspmx.l.google.com', ['*.l.google.com'])).toBe(true);
 		});
 
 		it('*.google.com does NOT match the bare apex google.com', () => {
@@ -432,16 +892,16 @@ describe('mtaSts', () => {
 	});
 
 	describe('empty-mx enforce policy is a validation failure, not allow-all (RFC 8461 §3.2)', () => {
-		it('parses an enforce body with no mx line as mode: none (fail closed)', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: enforce\nmax_age: 86400', 'id-1');
-			expect(policy.mode).toBe('none');
-			expect(policy.mx).toEqual([]);
+		it('rejects an enforce body with no mx line (fail closed)', () => {
+			expect(() => parseStsPolicy('version: STSv1\nmode: enforce\nmax_age: 86400', 'id-1')).toThrow(
+				/enforce policy lists no mx/
+			);
 		});
 
-		it('parses a testing body with no mx line as mode: none', () => {
-			const policy = parseStsPolicy('version: STSv1\nmode: testing\nmax_age: 600', 'id-1');
-			expect(policy.mode).toBe('none');
-			expect(policy.mx).toEqual([]);
+		it('rejects a testing body with no mx line', () => {
+			expect(() => parseStsPolicy('version: STSv1\nmode: testing\nmax_age: 600', 'id-1')).toThrow(
+				/testing policy lists no mx/
+			);
 		});
 
 		it('getStsTlsOptions does NOT enter enforce for a no-mx policy (no allow-all)', async () => {
@@ -471,7 +931,7 @@ describe('mtaSts', () => {
 	describe('fetch / Redis error → fail-open to opportunistic TLS (no throw) (RFC 8461 §5)', () => {
 		it('a thrown fetch yields policyMode none / requireTLS false and does NOT throw', async () => {
 			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
-			vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('connect ECONNREFUSED'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
 
 			const opts = await getStsTlsOptions(redis, 'example.com');
 
