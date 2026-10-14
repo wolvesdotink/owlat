@@ -50,13 +50,17 @@ async function seedShare(t: T, token: string): Promise<void> {
 	});
 }
 
-/** Use up the shared global failure budget in one step. */
+/**
+ * Use up every failure budget the unresolved address can reach, in one step:
+ * the global key, and the per-address key an earlier design used for it.
+ */
 async function drainGlobalFailures(t: T): Promise<void> {
 	await t.run(async (ctx) => {
 		await rateLimiter.limit(ctx, 'publicTokenFailureGlobal', {
 			key: 'global',
 			count: GLOBAL_CAPACITY,
 		});
+		await rateLimiter.limit(ctx, 'publicTokenFailure', { key: 'unknown', count: SHARD_CAPACITY });
 	});
 }
 
