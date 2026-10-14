@@ -88,13 +88,15 @@ describe('MX hostname validation', () => {
 	});
 
 	it('should allow wildcard match', () => {
-		expect(isMxAllowed('aspmx.l.google.com', ['*.google.com'])).toBe(true);
+		expect(isMxAllowed('aspmx.google.com', ['*.google.com'])).toBe(true);
 	});
 
-	it('should allow nested subdomain match for wildcard (RFC 8461 §4.1)', () => {
-		// Per RFC 8461, *.google.com matches any subdomain depth
-		expect(isMxAllowed('sub.mail.google.com', ['*.google.com'])).toBe(true);
-		expect(isMxAllowed('aspmx.l.google.com', ['*.google.com'])).toBe(true);
+	it('should not let a wildcard span more than one label (RFC 8461 §4.1)', () => {
+		// *.google.com stands for exactly one label: mail.google.com, not
+		// sub.mail.google.com.
+		expect(isMxAllowed('sub.mail.google.com', ['*.google.com'])).toBe(false);
+		expect(isMxAllowed('aspmx.l.google.com', ['*.google.com'])).toBe(false);
+		expect(isMxAllowed('aspmx.l.google.com', ['*.l.google.com'])).toBe(true);
 	});
 
 	it('should reject hosts not in the pattern list', () => {

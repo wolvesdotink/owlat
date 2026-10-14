@@ -16,16 +16,10 @@ import { resolveTxt } from 'dns/promises';
 import type Redis from 'ioredis';
 import { logger } from '../monitoring/logger.js';
 import { fetchStsPolicyText, isLdhName } from './mtaStsFetch.js';
+import { gatedPolicyFetch } from './mtaStsFetchGate.js';
 
 const STS_CACHE_PREFIX = 'mta:sts:';
-// Holds the DNS id whose policy fetch last failed, for the backoff below.
-const STS_FETCH_FAILURE_PREFIX = 'mta:sts-fetch-failed:';
 const STS_DNS_NEGATIVE_CACHE_TTL = 3600; // 1h cache for domains without MTA-STS
-// Backoff after a FAILED policy fetch: the same DNS id is not fetched again
-// for this long, so an unreachable or broken policy host can't turn every send
-// into a 10s HTTPS round trip. A successful fetch never starts it, and a new
-// DNS id is fetched straight away.
-const STS_FETCH_FAILURE_BACKOFF_SECONDS = 300;
 // RFC 8461 §3.2: max_age has a maximum of 31557600 seconds (one year).
 const STS_MAX_AGE_CEILING = 31_557_600;
 // How many mx patterns the "policy cached" log line carries; the full list is cached.
@@ -121,12 +115,13 @@ export function isMxAllowed(mxHost: string, allowedPatterns: string[]): boolean 
 
 		if (p === mx) return true;
 
-		// Wildcard matching: *.example.com matches any hostname under example.com
-		// Per RFC 8461 §4.1: wildcards match any subdomain depth
-		// e.g., *.google.com matches mail.google.com AND aspmx.l.google.com
+		// RFC 8461 §4.1: a wildcard stands for exactly one label, so
+		// *.example.com matches mail.example.com but neither example.com nor
+		// foo.mail.example.com.
 		if (p.startsWith('*.')) {
 			const suffix = p.slice(1); // ".example.com"
-			if (mx.endsWith(suffix) && mx.length > suffix.length) return true;
+			const label = mx.slice(0, -suffix.length);
+			if (mx.endsWith(suffix) && label !== '' && !label.includes('.')) return true;
 		}
 	}
 
@@ -169,17 +164,15 @@ async function fetchOrCachedPolicy(redis: Redis, domain: string): Promise<StsPol
 		return noPolicy;
 	}
 
-	// The cache is empty or expired, or DNS announces a new id: fetch, unless
-	// this very id failed to fetch moments ago.
-	const failureKey = `${STS_FETCH_FAILURE_PREFIX}${domain}`;
-	if ((await redis.get(failureKey)) === dnsVersion) {
-		return cachedPolicy ?? noActivePolicy(dnsVersion);
-	}
-
+	// The cache is empty or expired, or DNS announces a new id: fetch, within
+	// the per-id backoff and per-domain budget (mtaStsFetchGate.ts). A skipped
+	// fetch means no fresh policy: keep the unexpired cached one, or apply none.
 	try {
-		return await refetchAndCache(redis, cacheKey, domain, dnsVersion);
+		const fresh = await gatedPolicyFetch(redis, domain, dnsVersion, () =>
+			refetchAndCache(redis, cacheKey, domain, dnsVersion)
+		);
+		return fresh ?? cachedPolicy ?? noActivePolicy(dnsVersion);
 	} catch (err) {
-		await redis.set(failureKey, dnsVersion, 'EX', STS_FETCH_FAILURE_BACKOFF_SECONDS);
 		// Cold or expired cache: nothing to fall back to, so the failure bubbles
 		// up to opportunistic TLS.
 		if (!cachedPolicy) throw err;
@@ -233,11 +226,16 @@ async function refetchAndCache(
 	const policy = await fetchStsPolicy(domain, dnsVersion);
 
 	// The entry lives exactly as long as the policy. A max_age 0 policy applies
-	// to this delivery only, and replaces whatever was cached before it.
-	if (policy.maxAge > 0) {
-		await redis.set(cacheKey, JSON.stringify(policy), 'EX', policy.maxAge);
-	} else {
-		await redis.del(cacheKey);
+	// to this delivery only, and replaces whatever was cached before it. A
+	// failed write doesn't undo the fetch: the policy still applies now.
+	try {
+		if (policy.maxAge > 0) {
+			await redis.set(cacheKey, JSON.stringify(policy), 'EX', policy.maxAge);
+		} else {
+			await redis.del(cacheKey);
+		}
+	} catch (err) {
+		logger.warn({ domain, err }, 'MTA-STS policy fetched but not cached');
 	}
 
 	logger.info(

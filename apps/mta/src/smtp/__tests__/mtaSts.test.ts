@@ -460,6 +460,110 @@ describe('mtaSts', () => {
 		});
 	});
 
+	// Issue #1326 review: the fetch gate (mtaStsFetchGate.ts) limits fetches,
+	// but neither its limits nor a storage error may change which policy applies.
+	describe('getStsTlsOptions — fetch gate and storage errors', () => {
+		const ENFORCE_OPTS = {
+			requireTLS: true,
+			rejectUnauthorized: true,
+			allowedMxHosts: ['mail.example.com'],
+			policyMode: 'enforce',
+		};
+		const CACHE_KEY = `${CACHE_PREFIX}example.com`;
+		const FAILED_KEY = 'mta:sts-fetch-failed:example.com';
+		const BUDGET_KEY = 'mta:sts-fetch-budget:example.com';
+
+		async function cacheEnforce(opts: { maxAge: number; ageSeconds: number }) {
+			const entry = {
+				mode: 'enforce',
+				mx: ['mail.example.com'],
+				maxAge: opts.maxAge,
+				version: 'id-1',
+				cachedAt: Date.now() - opts.ageSeconds * 1000,
+			};
+			await redis.set(CACHE_KEY, JSON.stringify(entry));
+			return entry;
+		}
+
+		/** Make one Redis command fail for keys with `prefix`; others pass through. */
+		function failFor(command: 'get' | 'set', prefix: string) {
+			const real = redis[command].bind(redis) as (...args: unknown[]) => Promise<unknown>;
+			vi.spyOn(redis, command).mockImplementation(((key: string, ...rest: unknown[]) =>
+				key.startsWith(prefix)
+					? Promise.reject(new Error('READONLY'))
+					: real(key, ...rest)) as never);
+		}
+
+		it('keeps the cached enforce policy when the backoff read fails', async () => {
+			const cached = await cacheEnforce({ maxAge: 86400, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+			failFor('get', FAILED_KEY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(JSON.parse((await redis.get(CACHE_KEY))!)).toEqual(cached);
+		});
+
+		it('keeps the cached enforce policy when the backoff write fails', async () => {
+			const cached = await cacheEnforce({ maxAge: 86400, ageSeconds: 10 });
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+			failFor('set', FAILED_KEY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(JSON.parse((await redis.get(CACHE_KEY))!)).toEqual(cached);
+		});
+
+		it('applies a freshly fetched policy even when caching it fails', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'] }));
+			failFor('set', CACHE_KEY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+		});
+
+		it('keeps an unexpired cached policy when the domain fetch budget is spent', async () => {
+			await cacheEnforce({ maxAge: 86400, ageSeconds: 10 });
+			await redis.set(BUDGET_KEY, '999', 'EX', 300);
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-2'));
+			stubFetch(policyBody({ mode: 'testing', mx: ['mail.example.com'] }));
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).not.toHaveBeenCalled();
+		});
+
+		it('does not extend an expired policy when the budget is spent', async () => {
+			await cacheEnforce({ maxAge: 60, ageSeconds: 120 });
+			await redis.set(BUDGET_KEY, '999', 'EX', 300);
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+
+			expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+			expect(fetchTextMock).not.toHaveBeenCalled();
+		});
+
+		it('rotating DNS ids stop fetching once the budget is spent', async () => {
+			fetchTextMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+			for (let i = 0; i < 20; i++) {
+				resolveTxtMock.mockResolvedValue(dnsRecord(`rotating-${i}`));
+				expect((await getStsTlsOptions(redis, 'example.com')).policyMode).toBe('none');
+			}
+
+			expect(fetchTextMock).toHaveBeenCalledTimes(6);
+		});
+
+		it('20 concurrent cold lookups share one fetch', async () => {
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(policyBody({ mx: ['mail.example.com'] }));
+
+			const results = await Promise.all(
+				Array.from({ length: 20 }, () => getStsTlsOptions(redis, 'example.com'))
+			);
+
+			expect(results).toEqual(Array(20).fill(ENFORCE_OPTS));
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
+	});
+
 	// RFC 8461 §3.2: later occurrences of version, mode and max_age are ignored,
 	// and every mx is a hostname with an optional leading `*.` label.
 	describe('parseStsPolicy — repeated fields and mx syntax', () => {
@@ -522,7 +626,7 @@ describe('mtaSts', () => {
 	describe('isMxAllowed', () => {
 		it('matches exact and wildcard patterns', () => {
 			expect(isMxAllowed('mail.google.com', ['*.google.com'])).toBe(true);
-			expect(isMxAllowed('aspmx.l.google.com', ['*.google.com'])).toBe(true);
+			expect(isMxAllowed('aspmx.l.google.com', ['*.l.google.com'])).toBe(true);
 			expect(isMxAllowed('mail.google.com', ['mail.google.com'])).toBe(true);
 			expect(isMxAllowed('evil.com', ['*.google.com'])).toBe(false);
 		});
@@ -750,12 +854,18 @@ describe('mtaSts', () => {
 	});
 
 	describe('isMxAllowed — wildcard semantics (RFC 8461 §4.1)', () => {
-		it('*.google.com matches a multi-label subdomain a.b.google.com', () => {
-			expect(isMxAllowed('a.b.google.com', ['*.google.com'])).toBe(true);
+		// The wildcard stands for exactly one label.
+		it('*.google.com matches the one-label subdomain mail.google.com', () => {
+			expect(isMxAllowed('mail.google.com', ['*.google.com'])).toBe(true);
 		});
 
-		it('*.google.com matches aspmx.l.google.com', () => {
-			expect(isMxAllowed('aspmx.l.google.com', ['*.google.com'])).toBe(true);
+		it('*.google.com does NOT match a two-label subdomain a.b.google.com', () => {
+			expect(isMxAllowed('a.b.google.com', ['*.google.com'])).toBe(false);
+			expect(isMxAllowed('aspmx.l.google.com', ['*.google.com'])).toBe(false);
+		});
+
+		it('*.l.google.com matches aspmx.l.google.com', () => {
+			expect(isMxAllowed('aspmx.l.google.com', ['*.l.google.com'])).toBe(true);
 		});
 
 		it('*.google.com does NOT match the bare apex google.com', () => {

@@ -111,6 +111,20 @@ describe('fetchStsPolicyText', () => {
 			);
 		});
 
+		it('accepts an exact SAN listed after a refused wildcard (*.co.uk, mta-sts.co.uk)', async () => {
+			const server = await serverWith('suffixWildcardThenExact');
+
+			await expect(fetchStsPolicyText('co.uk', server.transport)).resolves.toBe(POLICY);
+		});
+
+		it('still refuses that cert for a host only its wildcard covers', async () => {
+			const server = await serverWith('suffixWildcardThenExact');
+
+			await expect(fetchStsPolicyText('example.co.uk', server.transport)).rejects.toThrow(
+				/not named in a certificate DNS subjectAltName/
+			);
+		});
+
 		it('accepts a whole-label wildcard under a registrable domain', async () => {
 			const server = await serverWith('wildcard');
 

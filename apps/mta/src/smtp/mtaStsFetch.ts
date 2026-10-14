@@ -128,15 +128,18 @@ function guardedLookup(
  * by TLS itself.
  */
 function checkPolicyHostIdentity(hostname: string, cert: PeerCertificate): Error | undefined {
-	const matched = new X509Certificate(cert.raw).checkHost(hostname, {
-		subject: 'never',
-		partialWildcards: false,
-	});
+	const x509 = new X509Certificate(cert.raw);
+	// An exact SAN wins outright: checkHost returns the first SAN that
+	// matches, so a refused wildcard listed earlier must not hide it.
+	if (x509.checkHost(hostname, { subject: 'never', wildcards: false })) return undefined;
+	const matched = x509.checkHost(hostname, { subject: 'never', partialWildcards: false });
 	if (!matched) {
 		return new Error(
 			`MTA-STS policy host ${hostname} is not named in a certificate DNS subjectAltName`
 		);
 	}
+	// Only one whole-label wildcard can match a given host, so this is the
+	// only candidate.
 	if (matched.startsWith('*.') && trySplitZone(matched.slice(2)) === null) {
 		return new Error(`MTA-STS policy host certificate wildcard ${matched} covers a public suffix`);
 	}

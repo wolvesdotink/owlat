@@ -13,7 +13,8 @@
  * - `cnOnly`: CN=mta-sts.owlat.test and no subjectAltName at all;
  * - `wildcard`: DNS:*.owlat.test, a whole-label wildcard;
  * - `partialWildcard`: DNS:mta-*.owlat.test;
- * - `suffixWildcard`: DNS:*.co.uk, a wildcard on a public suffix.
+ * - `suffixWildcard`: DNS:*.co.uk, a wildcard on a public suffix;
+ * - `suffixWildcardThenExact`: DNS:*.co.uk then DNS:mta-sts.co.uk.
  * The three wildcard certs reuse the default cert's key.
  */
 import { createServer, type Server } from 'node:https';
@@ -182,12 +183,34 @@ Xxe31NxAu5jaPMaX3CBvvFqMFz+eVJU4Bn25LTiTgcAFQ3KHdd/XnDaCiIo0LRX3
 hP1TmKReMK5AFyRO6xjTKiyvz2OiA3aKAwVnfENNCk05067Znb8+Fyl+GQ==
 -----END CERTIFICATE-----`;
 
+const STS_SUFFIX_WILDCARD_THEN_EXACT_CERT = `-----BEGIN CERTIFICATE-----
+MIIDNjCCAh6gAwIBAgIUXi+FN1CWErIhs+W8RmWzQJFmJxEwDQYJKoZIhvcNAQEL
+BQAwGDEWMBQGA1UEAwwNd2lsZGNhcmQgdGVzdDAgFw0yNjEwMTQwODA1MzVaGA8y
+MTI2MDkyMDA4MDUzNVowGDEWMBQGA1UEAwwNd2lsZGNhcmQgdGVzdDCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBALTqzupKm1XBXGuaq8irfs+RihrWx5k5
+J4CxgYNqT0Fv5UAZa9raLdoNooCrbsqP+qu789tvVEt3L6jNYI2bjwZA6XUtTlHP
+ZalBka4sfKooLuX74PfhDjgOKDsmaIuRCXxOIeiub27s9NO6L9qhOyPMnPDMXvlI
+QTEO4927/a5mMpfglKePAcOOzwx5SXAKDzF7Zwck2pN2PsZtem+Nz34Drr+3Xf6F
+JekseraXHMxI/mizcV8E/L4aOtl9yuq/7WRg/vqWTogxiVH1ajq+p6zErU//llbe
+vnCIuei/9RxkQo5zYRuoYpM5yBoDqSvPNDGMAWooS7TiN6dWzEhEtOUCAwEAAaN2
+MHQwHQYDVR0OBBYEFGYEp8KjeBZJaV/5/i57Lk6/cLDGMB8GA1UdIwQYMBaAFGYE
+p8KjeBZJaV/5/i57Lk6/cLDGMCEGA1UdEQQaMBiCByouY28udWuCDW10YS1zdHMu
+Y28udWswDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAY98B5aw9
+UKSpvp5BO+MeQHslc+4cPKT3TiAAeX5vcwb8kBn1vpGTn4jeNJNiCSjXq1KumZmv
+lNX7zwjW7mTQocNsdcmWpM6nosxOnl6WpkBh+mE5LwuGmqOGp7IeW7RIFQHZvBbc
+CkpVOYm/nND5aRZjQbXxbDzp/xvlQGdOBB8cmMuU38//k266uQWxAPU/Zpaa23Qi
+Bh4LZ0ErkdiLVI8U81Ye5J/SIEQnxzT7p3zVJKs6OVPxw8+qDGPYGEqv1up4Q3pK
+Rm3QraVotPJdzpEAKGnI1wfxt3x25sYXqqZkKc0k8r25o452WT0d1vMRvDyxlpoH
+WsXGHjQxt17miw==
+-----END CERTIFICATE-----`;
+
 export type PolicyServerCert =
 	| 'default'
 	| 'cnOnly'
 	| 'wildcard'
 	| 'partialWildcard'
-	| 'suffixWildcard';
+	| 'suffixWildcard'
+	| 'suffixWildcardThenExact';
 
 const CERTS: Record<PolicyServerCert, { cert: string; key: string }> = {
 	default: { cert: STS_TEST_CERT, key: STS_TEST_KEY },
@@ -195,6 +218,7 @@ const CERTS: Record<PolicyServerCert, { cert: string; key: string }> = {
 	wildcard: { cert: STS_WILDCARD_CERT, key: STS_TEST_KEY },
 	partialWildcard: { cert: STS_PARTIAL_WILDCARD_CERT, key: STS_TEST_KEY },
 	suffixWildcard: { cert: STS_SUFFIX_WILDCARD_CERT, key: STS_TEST_KEY },
+	suffixWildcardThenExact: { cert: STS_SUFFIX_WILDCARD_THEN_EXACT_CERT, key: STS_TEST_KEY },
 };
 
 export interface PolicyServer {
