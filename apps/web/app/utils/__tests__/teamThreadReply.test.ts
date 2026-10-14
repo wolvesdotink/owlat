@@ -26,19 +26,13 @@ describe('replyBlocker', () => {
 		expect(replyBlocker('failed')).toBeNull();
 	});
 
-	it('lets a person reply when the agent is off and the scan has stopped the pipeline', () => {
-		expect(replyBlocker('security_check', { agentEnabled: false, scanFinished: true })).toBeNull();
+	it('lets a person reply once the scan has stopped the pipeline', () => {
+		expect(replyBlocker('security_check', { scanFinished: true })).toBeNull();
 		// The scan is still running: the server refuses, so the composer waits too.
-		expect(replyBlocker('security_check', { agentEnabled: false, scanFinished: false })).toBe(
-			'processing'
-		);
-		expect(replyBlocker('security_check', { agentEnabled: false })).toBe('processing');
-		// With the agent on, the same state means it is still reading.
-		expect(replyBlocker('security_check', { agentEnabled: true, scanFinished: true })).toBe(
-			'processing'
-		);
+		expect(replyBlocker('security_check', { scanFinished: false })).toBe('processing');
+		expect(replyBlocker('security_check', {})).toBe('processing');
 		// The scan has not run yet: never answer ahead of the quarantine check.
-		expect(replyBlocker('received', { agentEnabled: false })).toBe('processing');
+		expect(replyBlocker('received', {})).toBe('processing');
 	});
 
 	it('lets a person answer a rejected draft or an archived message', () => {
@@ -50,7 +44,7 @@ describe('replyBlocker', () => {
 	it('opens the composer on a message the pipeline never picked up, after the server wait', () => {
 		const receivedAt = 1_000_000;
 		// The server's wait follows the follow-up window, so it can exceed 5 minutes.
-		const waiting = { agentEnabled: true, pipelineStarted: false, receivedWaitMs: 11 * 60_000 };
+		const waiting = { pipelineStarted: false, receivedWaitMs: 11 * 60_000 };
 		expect(replyBlocker('received', { ...waiting, receivedAt, now: receivedAt + 6 * 60_000 })).toBe(
 			'processing'
 		);
@@ -93,7 +87,7 @@ describe('replyBlocker', () => {
 		expect(needsTakeOver('sent')).toBe(false);
 		expect(replyNotice('sent')).toBe('followUp');
 		// A channel thread has no follow-up path yet.
-		expect(replyBlocker('sent', { agentEnabled: true, isChannel: true })).toBe('answered');
+		expect(replyBlocker('sent', { isChannel: true })).toBe('answered');
 	});
 
 	it('tells channel messages from email ones by their `to`', () => {

@@ -49,7 +49,6 @@ export function useAnswerTeamReply(opts: {
 }) {
 	const { t } = useI18n();
 	const { showToast } = useToast();
-	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 	const { isAdmin } = usePermissions();
 	const { messages, takeOver, contact } = opts.detail;
 
@@ -73,7 +72,6 @@ export function useAnswerTeamReply(opts: {
 		// on a message `takeOverReply` would refuse.
 		const facts = takeOver.value?.messages.find((m) => m.messageId === message._id);
 		return replyBlocker(message.processingStatus, {
-			agentEnabled: isFeatureEnabled('ai.agent'),
 			scanFinished: facts?.scanFinished,
 			pipelineStarted: facts?.pipelineStarted,
 			receivedWaitMs: takeOver.value?.receivedWaitMs,
