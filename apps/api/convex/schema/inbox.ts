@@ -341,9 +341,9 @@ export const inboxTables = {
 			})
 		),
 		// When the reply that had answered this message bounced and reopened it
-		// (inbox/answeredThread.ts). While the message still needs a reply it is
-		// owed whatever later messages say: the response clock reads it
-		// (inbox/sla/threadClock.ts). Cleared when another sent reply settles it.
+		// (inbox/answeredThread.ts): a live response obligation, read by the
+		// response clock (inbox/sla/threadClock.ts). Cleared when it ends: the
+		// message needs no reply any more, or another sent reply settles it.
 		answerBouncedAt: v.optional(v.number()),
 		// Timestamps
 		receivedAt: v.number(),
@@ -358,7 +358,9 @@ export const inboxTables = {
 		// scanned range to rows that still hold a blob, so the walk is bounded by
 		// what is left to release rather than by the size of the table.
 		.index('by_raw_retention', ['isRawRetained', 'receivedAt'])
-		.index('by_answered_stash_at', ['answeredStash.at']),
+		.index('by_answered_stash_at', ['answeredStash.at'])
+		// Live bounce obligations of a thread (inbox/sla/threadClock.ts).
+		.index('by_thread_and_answer_bounced', ['threadId', 'answerBouncedAt']),
 
 	// Agent Actions - tracks individual pipeline step executions
 	agentActions: defineTable({

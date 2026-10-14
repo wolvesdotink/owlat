@@ -17,12 +17,21 @@
  *
  * One exception, and both checks honour it: a message the reply that answered
  * it bounced back to the team (`answerBouncedAt`, inbox/answeredThread.ts) is
- * owed while it still needs a reply, however old it is and whatever newer
- * message was answered since. That reply never reached the customer, so
- * neither a later `sent` nor the timeline's last reply speaks for it. The
- * marker lives on the message, not the thread: the message's own status ends
- * the obligation (sent, archived, set aside) on every path that does, with
- * nothing to clear.
+ * owed however old it is and whatever newer message was answered before the
+ * bounce. That reply never reached the customer, so an earlier `sent` does not
+ * speak for it. The marker is live-only and found through its own index, not
+ * the recent-message scan:
+ *
+ *   - it is cleared when the obligation ends: the message moves to a state
+ *     that needs no reply (sent, archived, informational, quarantined; here),
+ *     or a later sent reply settles the thread (inbox/answeredThread.ts, even
+ *     on a message with a person's draft, whose draft stays as it is);
+ *   - and the check itself requires the message to still need a reply and no
+ *     reply to have reached the customer since the bounce, so a marker some
+ *     other path left behind still cannot reopen anything.
+ *
+ * Either alone would do; together they keep the index down to live rows and
+ * the answer right if one path is ever missed.
  */
 
 import type { MutationCtx } from '../../_generated/server';
@@ -75,9 +84,38 @@ function isAwaitingReply(status: ProcessingStatus): boolean {
 	return !NO_REPLY_STATES.has(status) && status !== 'sent';
 }
 
-/** Reopened by a bounce of its answer, and still waiting on the team (see the header). */
-function isOwedAfterBounce(message: Doc<'inboundMessages'>): boolean {
-	return message.answerBouncedAt !== undefined && isAwaitingReply(message.processingStatus);
+/**
+ * How many bounce markers a check reads. Live markers are few by construction:
+ * one per message a bounced reply reopened that nobody has dealt with yet, and
+ * every path that deals with it clears the marker. Newest bounces first, and
+ * one owed match settles the question.
+ */
+const BOUNCE_SCAN_LIMIT = 16;
+
+/**
+ * Is work a bounce reopened still owed on this thread (see the header)? Read
+ * through `by_thread_and_answer_bounced`, so the obligation is found however
+ * many messages came after it. `exceptId`: the message settling right now.
+ */
+async function hasOpenBounceObligation(
+	ctx: MutationCtx,
+	threadId: Id<'conversationThreads'>,
+	repliedAt: number | undefined,
+	exceptId?: Id<'inboundMessages'>
+): Promise<boolean> {
+	const marked = await ctx.db
+		.query('inboundMessages')
+		.withIndex('by_thread_and_answer_bounced', (q) =>
+			q.eq('threadId', threadId).gt('answerBouncedAt', 0)
+		)
+		.order('desc')
+		.take(BOUNCE_SCAN_LIMIT);
+	return marked.some(
+		(message) =>
+			message._id !== exceptId &&
+			isAwaitingReply(message.processingStatus) &&
+			(repliedAt === undefined || repliedAt < (message.answerBouncedAt ?? 0))
+	);
 }
 
 /** How many of a thread's messages the no-reply check reads. */
@@ -117,6 +155,10 @@ export async function settleClockForMessage(
 ): Promise<void> {
 	const threadId = message.threadId;
 	if (!threadId) return;
+	// The message needs no reply any more: a bounce obligation on it ends here.
+	if (!isAwaitingReply(input.to) && message.answerBouncedAt !== undefined) {
+		await ctx.db.patch(message._id, { answerBouncedAt: undefined });
+	}
 	if (input.to === 'sent') {
 		await threadTransition(ctx, { threadId, input: { kind: 'reply_sent', at: input.at } });
 		return;
@@ -176,16 +218,11 @@ export async function isReplyOwed(
 		.order('desc')
 		.first();
 	if (newest) {
+		const repliedAt = await lastReplyAt(ctx, threadId);
 		if (isAwaitingReply(newest.processingStatus)) {
-			const repliedAt = await lastReplyAt(ctx, threadId);
 			if (repliedAt === undefined || newest.receivedAt > repliedAt) return true;
 		}
-		const messages = await ctx.db
-			.query('inboundMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-			.order('desc')
-			.take(MESSAGE_SCAN_LIMIT);
-		return messages.some(isOwedAfterBounce);
+		return await hasOpenBounceObligation(ctx, threadId, repliedAt);
 	}
 	const latest = await ctx.db
 		.query('unifiedMessages')
@@ -210,21 +247,15 @@ export async function releaseClockIfNothingOwed(
 	const thread = await ctx.db.get(threadId);
 	if (!thread || !isClockSet(thread)) return;
 	const repliedAt = await lastReplyAt(ctx, threadId);
+	if (await hasOpenBounceObligation(ctx, threadId, repliedAt, settledId)) return;
 	const messages = await ctx.db
 		.query('inboundMessages')
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
 		.order('desc')
 		.take(MESSAGE_SCAN_LIMIT);
-	// Past the newest answered message only work reopened by a bounce counts.
-	let isPastAnswered = false;
 	for (const message of messages) {
 		if (message._id === settledId) continue;
-		if (isOwedAfterBounce(message)) return;
-		if (isPastAnswered) continue;
-		if (message.processingStatus === 'sent') {
-			isPastAnswered = true;
-			continue;
-		}
+		if (message.processingStatus === 'sent') break;
 		if (repliedAt !== undefined && message.receivedAt <= repliedAt) continue;
 		if (isAwaitingReply(message.processingStatus)) return;
 	}

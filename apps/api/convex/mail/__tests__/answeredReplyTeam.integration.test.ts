@@ -9,13 +9,14 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkId } from '@convex-dev/workpool';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { createTestContact, flushScheduled } from '../../__tests__/factories';
 import { pushHarness } from '../../push/__tests__/pushFixtures';
+import { appendDraftRevision } from '../../inbox/draftRevisions';
 import { modules } from './helpers.testlib';
 import { ANSWERED_RETENTION_MS, MAX_TRACKED_ANSWERS } from '../answeredReply';
 
@@ -402,6 +403,16 @@ describe('the response clock of a reopened message', () => {
 	const NEXT_RESPONSE_MS = 120 * 60_000;
 	const BOUNCE_AT = NOW + 60_000;
 
+	// One clock for the whole story: the reply goes out at NOW, the bounce
+	// comes at BOUNCE_AT (timeline rows are stamped with Date.now()).
+	beforeEach(() => {
+		vi.spyOn(Date, 'now').mockReturnValue(NOW);
+	});
+	const bounce = async (t: T, sendId: Id<'transactionalSends'>, at = BOUNCE_AT) => {
+		vi.mocked(Date.now).mockReturnValue(at);
+		await laterBounce(t, sendId);
+	};
+
 	/** Response targets on (calendar hours), and the thread's clock running from the older mail. */
 	async function withTargets(t: T, th: Thread): Promise<void> {
 		await t.run(async (ctx) => {
@@ -446,7 +457,7 @@ describe('the response clock of a reopened message', () => {
 			const sendId = await completeReply(t, th, answered, 'sent');
 			expect((await thread(t, th)).responseDueAt).toBeUndefined(); // answered: clock closed
 
-			await laterBounce(t, sendId);
+			await bounce(t, sendId);
 
 			expect((await get(t, older)).processingStatus).toBe(status);
 			const reopened = await thread(t, th);
@@ -473,18 +484,19 @@ describe('the response clock of a reopened message', () => {
 			ctx.db.patch(th.threadId, { ...running, responseDueKind: 'next' as const })
 		);
 
-		await laterBounce(t, sendId);
+		await bounce(t, sendId);
 
 		expect(await thread(t, th)).toMatchObject(running);
 	});
 
 	/** The reply to a newer message settled `older`; its bounce reopens it. Returns the send. */
-	async function answeredThenBounced(t: T, th: Thread) {
+	async function answeredThenBounced(t: T, th: Thread, between?: () => Promise<void>) {
 		const older = await seedInbound(t, th, {
 			processingStatus: 'draft_ready',
 			draftResponse: 'Your order ships Monday.',
 			receivedAt: NOW - 3_000,
 		});
+		await between?.();
 		const answered = await seedInbound(t, th, {
 			processingStatus: 'approved',
 			draftResponse: 'All orders ship Monday.',
@@ -499,7 +511,7 @@ describe('the response clock of a reopened message', () => {
 		const th = await seedThread(t);
 		await withTargets(t, th);
 		const { older, sendId } = await answeredThenBounced(t, th);
-		await laterBounce(t, sendId);
+		await bounce(t, sendId);
 		expect((await thread(t, th)).responseDueAt).toBe(BOUNCE_AT + NEXT_RESPONSE_MS);
 
 		// A newer mail is classified as an FYI: the cleanup scan passes the
@@ -525,19 +537,128 @@ describe('the response clock of a reopened message', () => {
 		const policy = await t.run(async (ctx) => (await ctx.db.query('inboxSlaPolicies').first())!);
 		await t.run(async (ctx) => ctx.db.patch(policy._id, { isEnabled: false, updatedAt: NOW }));
 		const { older, answered, sendId } = await answeredThenBounced(t, th);
-		await laterBounce(t, sendId);
+		await bounce(t, sendId);
 		expect((await get(t, older)).processingStatus).toBe('draft_ready');
 		expect((await get(t, answered)).processingStatus).toBe('sent'); // the newest message
 		expect((await thread(t, th)).responseDueAt).toBeUndefined();
 
 		const generation = BOUNCE_AT + 30_000;
-		vi.spyOn(Date, 'now').mockReturnValue(generation);
+		vi.mocked(Date.now).mockReturnValue(generation);
 		await t.run(async (ctx) =>
 			ctx.db.patch(policy._id, { isEnabled: true, updatedAt: generation })
 		);
 		await t.mutation(internal.inbox.sla.apply.applyPage, { generation, cursor: null });
 
 		expect((await thread(t, th)).responseDueAt).toBe(generation + NEXT_RESPONSE_MS);
+	});
+
+	/** Save the response-target policy (targets on) and run its switch-on sweep at `at`. */
+	async function savePolicy(t: T, at: number, isEnabled = true): Promise<void> {
+		vi.mocked(Date.now).mockReturnValue(at);
+		const policy = await t.run(async (ctx) => (await ctx.db.query('inboxSlaPolicies').first())!);
+		await t.run(async (ctx) => ctx.db.patch(policy._id, { isEnabled, updatedAt: at }));
+		await t.mutation(internal.inbox.sla.apply.applyPage, { generation: at, cursor: null });
+	}
+
+	/** `count` newer FYI mails, which need no reply. */
+	async function newerUpdates(t: T, th: Thread, count: number): Promise<void> {
+		for (let i = 0; i < count; i++) {
+			await seedInbound(t, th, { processingStatus: 'informational', receivedAt: NOW + 1_000 + i });
+		}
+	}
+
+	it('keeps the reopened clock behind more than 200 newer messages', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const { older, sendId } = await answeredThenBounced(t, th, () => newerUpdates(t, th, 200));
+		await bounce(t, sendId);
+		expect((await get(t, older)).answerBouncedAt).toBe(BOUNCE_AT);
+		expect((await thread(t, th)).responseDueAt).toBe(BOUNCE_AT + NEXT_RESPONSE_MS);
+
+		const newer = await seedInbound(t, th, {
+			processingStatus: 'classifying',
+			receivedAt: BOUNCE_AT + 30_000,
+		});
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: newer,
+			input: { to: 'informational', at: BOUNCE_AT + 30_000 },
+		});
+
+		expect((await thread(t, th)).responseDueAt).toBe(BOUNCE_AT + NEXT_RESPONSE_MS);
+	});
+
+	it('finds reopened work behind more than 200 newer messages when targets are switched on', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const policy = await t.run(async (ctx) => (await ctx.db.query('inboxSlaPolicies').first())!);
+		await t.run(async (ctx) => ctx.db.patch(policy._id, { isEnabled: false, updatedAt: NOW }));
+		const { sendId } = await answeredThenBounced(t, th, () => newerUpdates(t, th, 200));
+		await bounce(t, sendId);
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+
+		const generation = BOUNCE_AT + 30_000;
+		await savePolicy(t, generation);
+
+		expect((await thread(t, th)).responseDueAt).toBe(generation + NEXT_RESPONSE_MS);
+	});
+
+	it('ends the obligation when the reopened message is archived, so a takeover owes nothing', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const { older, sendId } = await answeredThenBounced(t, th);
+		await bounce(t, sendId);
+		expect((await get(t, older)).answerBouncedAt).toBe(BOUNCE_AT);
+
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: older,
+			input: { to: 'archived', at: BOUNCE_AT + 1, reason: 'handling_rule_archive' },
+		});
+		expect((await get(t, older)).answerBouncedAt).toBeUndefined();
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: older,
+			input: { to: 'draft_ready', at: BOUNCE_AT + 2, manualTakeover: true },
+		});
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+
+		await savePolicy(t, BOUNCE_AT + 30_000);
+
+		// Archiving ended the obligation: this is a person's own reply now.
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+	});
+
+	it('ends the obligation when a later reply goes out, keeping a person’s draft', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const { older, sendId } = await answeredThenBounced(t, th);
+		await bounce(t, sendId);
+		await t.run(async (ctx) =>
+			appendDraftRevision(ctx, (await ctx.db.get(older))!, {
+				text: 'Human draft',
+				savedBy: 'review-user',
+			})
+		);
+		const newer = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			draftResponse: 'New response',
+			receivedAt: BOUNCE_AT + 10_000,
+		});
+		vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 20_000);
+		await completeReply(t, th, newer, 'sent');
+
+		const kept = await get(t, older);
+		expect(kept.processingStatus).toBe('draft_ready');
+		expect(kept.draftResponse).toBe('Human draft');
+		expect(kept.answerBouncedAt).toBeUndefined();
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+
+		await savePolicy(t, BOUNCE_AT + 30_000);
+
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
 	});
 
 	it('starts nothing for a person taking over an archived message, as before', async () => {

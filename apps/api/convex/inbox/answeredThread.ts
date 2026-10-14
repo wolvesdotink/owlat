@@ -79,6 +79,11 @@ export async function settleAnsweredTeamThread(
 	if (!answered?.threadId) return;
 	for (const message of await threadMessages(ctx, answered.threadId)) {
 		if (message._id === answered._id || message.receivedAt > answered.receivedAt) continue;
+		// This reply answers it: a bounce obligation on it ends (SLA bookkeeping
+		// only; a person's draft below stays exactly as it is).
+		if (message.answerBouncedAt !== undefined) {
+			await ctx.db.patch(message._id, { answerBouncedAt: undefined });
+		}
 		// Already settled by another sent reply: this one answers it too, so a
 		// bounce of either alone leaves it answered.
 		const stash = message.answeredStash;
@@ -116,7 +121,6 @@ export async function settleAnsweredTeamThread(
 			},
 			draftResponse: undefined,
 			pendingClarification: undefined,
-			answerBouncedAt: undefined,
 		});
 	}
 }
