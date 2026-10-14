@@ -41,6 +41,7 @@ import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
 import { NO_SAVED_EDITS } from './processingLifecycle/draftFields';
 import { dispatch } from './processingLifecycle/effects';
 import { asTeamGapQuestion, checkDraftGaps } from '../mail/ai/gapQuestions';
+import { hasUnconsentedOpenQuestion, hasUsableAnswer } from './clarificationAnswers';
 import { UNASKABLE_GAP_REASON } from '../lib/heldGapDraft';
 import type { MutationCtx } from '../_generated/server';
 
@@ -118,9 +119,11 @@ export const recordAgentDecision = internalMutation({
  * consent ("Draft with what I have" on the stored clarification, or the
  * caller's `isGapsAccepted`, which the draft step passes when asking is off).
  * Without it the draft is not stored, whoever wrote it: a draft action that
- * started before this rule finishes here too. Its gaps go back to the owner
- * as questions, or, when only a question Owlat never asks could fill them,
- * the reply is left to a person with no AI draft.
+ * started before this rule finishes here too. Nor is any draft while a stored
+ * question is still open without that consent. The open questions and the
+ * draft's gaps go back to the owner as questions, or, when only a question
+ * Owlat never asks could fill the gaps, the reply is left to a person with no
+ * AI draft.
  */
 export const recordDraftOutput = internalMutation({
 	args: {
@@ -153,7 +156,10 @@ export const recordDraftOutput = internalMutation({
 		const hasGaps = authoredDraftHasGaps({ text: args.draftResponse });
 		const isGapsAccepted =
 			args.isGapsAccepted === true || message.pendingClarification?.isGapsAccepted === true;
-		if (hasGaps && !isGapsAccepted) {
+		// A stored question still open without consent holds the draft too,
+		// whatever its text: a draft that leaves the fact out is no better.
+		const isQuestionOpen = hasUnconsentedOpenQuestion(message.pendingClarification, isGapsAccepted);
+		if ((hasGaps && !isGapsAccepted) || isQuestionOpen) {
 			await holdUnconsentedGapDraft(ctx, message, args.draftResponse);
 			return;
 		}
@@ -196,15 +202,14 @@ async function holdUnconsentedGapDraft(
 	if (message.processingStatus !== 'drafting') return;
 	const existing = message.pendingClarification?.questions ?? [];
 	const gaps = checkDraftGaps(draft, { fromAddress: message.from, existing });
+	const fresh = gaps.kind === 'ask' ? gaps.questions.map(asTeamGapQuestion) : [];
 	const at = Date.now();
-	if (gaps.kind === 'ask') {
+	// Questions to ask: the stored ones still open, and one per new gap.
+	if (fresh.length > 0 || !existing.every(hasUsableAnswer)) {
 		await dispatch(ctx, message, {
 			to: 'awaiting_clarification',
 			at,
-			pendingClarification: {
-				questions: [...existing, ...gaps.questions.map(asTeamGapQuestion)],
-				askedAt: at,
-			},
+			pendingClarification: { questions: [...existing, ...fresh], askedAt: at },
 		});
 		return;
 	}

@@ -288,6 +288,10 @@ export const inboxTables = {
 		// When a person last took the reply over from the agent (manualReply.ts).
 		// While set, late pipeline writes are refused; cleared on `→ received`.
 		manualTakeoverAt: v.optional(v.number()),
+		// Held on the agent's questions on a conversation someone resolved or
+		// closed: it needs nobody, so the Answer queue's index skips it. Kept by
+		// the thread module on every settle and reopen (inbox/clarificationHold.ts).
+		isThreadSettled: v.optional(v.boolean()),
 		// True while the working draft differs from the agent original (kept in
 		// sync by every revision-appending save — see inbox/draftRevisions.ts).
 		// Used to tell an UNEDITED owner-send of an answered-clarification draft
@@ -330,6 +334,8 @@ export const inboxTables = {
 		.index('by_message_id', ['messageId'])
 		.index('by_thread', ['threadId'])
 		.index('by_processing_status', ['processingStatus'])
+		// The Answer queue's held questions on open conversations (#1343).
+		.index('by_processing_status_and_thread_settled', ['processingStatus', 'isThreadSettled'])
 		.index('by_received_at', ['receivedAt'])
 		.index('by_contact', ['contactId'])
 		// Drives the raw-blob retention sweep: the equality component keeps the

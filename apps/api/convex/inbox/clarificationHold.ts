@@ -7,10 +7,15 @@
  * Answer queue and may be asked about again (`processingLifecycle.
  * reconcileAbandonedClarifications`) only while its conversation is still
  * open: a thread someone resolved or closed needs no answer, and a notice
- * queued before that happened is not delivered (`push/dispatch.ts`).
+ * queued before that happened is neither pushed (`push/dispatch.ts`) nor shown
+ * (`queries.pendingAssignments`).
+ *
+ * The queue reads held messages through an index that leaves out settled
+ * conversations (`isThreadSettled`, kept by the thread module on every settle
+ * and reopen), so open questions are never crowded out by settled ones.
  */
 
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { listSharedInboxReaderIds } from './access';
 
@@ -48,24 +53,117 @@ export async function resolveClarificationRecipients(
 	return readers;
 }
 
+/** Held messages the queue reads past its limit before it stops (stragglers). */
+const HELD_SCAN_BUDGET = 200;
+
 /**
- * The review queue's rows (`queries.getReviewQueue` and its badge count),
- * newest first: `draft_ready` messages, and messages held on the agent's
- * questions, which wait there until someone answers. A held message on a
- * resolved or closed conversation needs nobody.
+ * The review queue's rows (`queries.getReviewQueue` and its badge count, so
+ * the two agree), newest first: `draft_ready` messages, and messages held on
+ * the agent's questions on open conversations. The held ones come from the
+ * index that leaves settled conversations out; the live check behind it only
+ * skips a straggler the index has not caught up with (a row from before the
+ * flag, which the reminder cron marks), within a bounded read.
  */
 export async function readPendingReview(ctx: QueryCtx, limit: number) {
-	const newest = (status: 'draft_ready' | 'awaiting_clarification') =>
-		ctx.db
-			.query('inboundMessages')
-			.withIndex('by_processing_status', (q) => q.eq('processingStatus', status))
-			.order('desc')
-			.take(limit);
-	const [drafts, held] = await Promise.all([
-		newest('draft_ready'),
-		newest('awaiting_clarification'),
-	]);
-	const live = [];
-	for (const message of held) if (await isClarificationLive(ctx, message)) live.push(message);
-	return [...drafts, ...live].sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
+	const drafts = await ctx.db
+		.query('inboundMessages')
+		.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'draft_ready'))
+		.order('desc')
+		.take(limit);
+	const held: Doc<'inboundMessages'>[] = [];
+	let scanned = 0;
+	for await (const message of ctx.db
+		.query('inboundMessages')
+		.withIndex('by_processing_status_and_thread_settled', (q) =>
+			q.eq('processingStatus', 'awaiting_clarification').eq('isThreadSettled', undefined)
+		)
+		.order('desc')) {
+		if (held.length >= limit || scanned >= limit + HELD_SCAN_BUDGET) break;
+		scanned++;
+		if (await isClarificationLive(ctx, message)) held.push(message);
+	}
+	return [...drafts, ...held].sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
+}
+
+/**
+ * Keep `isThreadSettled` on a thread's held messages in step with its status.
+ * Called by the thread module whenever a status change crosses between open
+ * (`open`, `waiting`) and settled (`resolved`, `closed`).
+ */
+export async function syncHeldClarifications(
+	ctx: MutationCtx,
+	threadId: Id<'conversationThreads'>,
+	status: string
+): Promise<void> {
+	const isSettled = SETTLED_THREAD_STATUSES.has(status);
+	const messages = await ctx.db
+		.query('inboundMessages')
+		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+		.collect(); // bounded: one thread's inbound messages
+	for (const message of messages) {
+		if (message.processingStatus !== 'awaiting_clarification') continue;
+		if ((message.isThreadSettled === true) === isSettled) continue;
+		await ctx.db.patch(message._id, { isThreadSettled: isSettled ? true : undefined });
+	}
+}
+
+/** Whether `status` is a thread status that needs no answer. */
+export function isSettledThreadStatus(status: string): boolean {
+	return SETTLED_THREAD_STATUSES.has(status);
+}
+
+// ─── Reminder bookkeeping (a reminder notice per message and person) ────────
+
+/** Of `userIds`, those the reminder has not asked about `inboundMessageId` yet. */
+export async function notRemindedYet(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	userIds: readonly string[]
+): Promise<string[]> {
+	const fresh: string[] = [];
+	for (const userId of userIds) {
+		const notices = await ctx.db
+			.query('inboxAssignmentNotices')
+			.withIndex('by_inbound_message_and_user', (q) =>
+				q.eq('inboundMessageId', inboundMessageId).eq('userId', userId)
+			)
+			.collect(); // bounded: the ask and at most one reminder per person
+		if (!notices.some((notice) => notice.isReminder === true)) fresh.push(userId);
+	}
+	return fresh;
+}
+
+/**
+ * The questions are answered, dismissed or taken over: their notices go, the
+ * reminder records with them, so a later ask about new questions starts over.
+ */
+export async function clearClarificationReminders(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>
+): Promise<void> {
+	const notices = await ctx.db
+		.query('inboxAssignmentNotices')
+		.withIndex('by_inbound_message_and_user', (q) => q.eq('inboundMessageId', inboundMessageId))
+		.collect(); // bounded: an ask and a reminder per shared-inbox reader
+	for (const notice of notices) {
+		if (notice.kind === 'clarification') await ctx.db.delete(notice._id);
+	}
+}
+
+/**
+ * Notices a person should still see: a clarification notice only while its
+ * question still waits on an answer on an open conversation.
+ */
+export async function liveNotices<
+	N extends { kind?: string | undefined; inboundMessageId?: Id<'inboundMessages'> | undefined },
+>(ctx: QueryCtx, notices: readonly N[]): Promise<N[]> {
+	const out: N[] = [];
+	for (const notice of notices) {
+		if (notice.kind === 'clarification' && notice.inboundMessageId) {
+			const message = await ctx.db.get(notice.inboundMessageId);
+			if (!message || !(await isClarificationLive(ctx, message))) continue;
+		}
+		out.push(notice);
+	}
+	return out;
 }

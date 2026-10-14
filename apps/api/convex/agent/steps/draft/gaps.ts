@@ -46,8 +46,9 @@ export interface StoredClarificationDraft {
 }
 
 /**
- * Rebuild the owner's answers, their consent to gaps and the placeholders that
- * consent requires from the message's stored `pendingClarification`. The draft
+ * Rebuild the owner's answers, their consent to gaps (or the standing consent
+ * of asking turned off) and the placeholders that consent requires from the
+ * message's stored `pendingClarification`. The draft
  * step reads it on every entry, not only after an answer: a draft that failed
  * after "Draft with what I have" is retried through the whole pipeline
  * (`retryFailedActions`), and the clarify step's direct hand-off carries none
@@ -55,10 +56,11 @@ export interface StoredClarificationDraft {
  * pass the gap check as complete.
  */
 export function storedClarificationDraft(
-	pending: { questions: ClarificationQuestion[]; isGapsAccepted?: boolean | undefined } | undefined
+	pending: { questions: ClarificationQuestion[]; isGapsAccepted?: boolean | undefined } | undefined,
+	standingConsent = false
 ): StoredClarificationDraft {
 	const questions = pending?.questions ?? [];
-	const isGapsAccepted = pending?.isGapsAccepted === true;
+	const isGapsAccepted = standingConsent || pending?.isGapsAccepted === true;
 	const fileGaps = isGapsAccepted ? openFileGaps(questions) : [];
 	const questionGaps = isGapsAccepted ? openQuestionGaps(questions) : [];
 	return {

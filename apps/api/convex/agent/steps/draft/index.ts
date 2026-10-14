@@ -37,6 +37,7 @@ import {
 	type TeamDraftGapCheck,
 } from './gaps';
 import {
+	hasUnconsentedOpenQuestion,
 	joinConfirmedBlocks,
 	ownerAttachmentFromAnswers,
 } from '../../../inbox/clarificationAnswers';
@@ -126,8 +127,26 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// the stored clarification: the same on every path into this step,
 		// whether an answer resumed it, the clarify step handed off, or a retry
 		// ran the pipeline again (./gaps.ts).
-		const stored = storedClarificationDraft(message?.pendingClarification);
-		const isGapsAccepted = input.isGapsAccepted === true || stored.isGapsAccepted;
+		const pending = message?.pendingClarification;
+		const stored = storedClarificationDraft(pending, input.isGapsAccepted === true);
+		const isGapsAccepted = stored.isGapsAccepted;
+		// A question still open that nobody agreed to leave open (a clarification
+		// answered in part before this rule, then retried through the whole
+		// pipeline): nothing is drafted around it, and no model is called. The
+		// message goes back to asking.
+		if (pending && hasUnconsentedOpenQuestion(pending, isGapsAccepted)) {
+			return {
+				output: {
+					draftResponse: '',
+					draftSubject: buildReplySubject(message?.subject),
+					confidenceScore: input.classification.confidence,
+					category: input.classification.category,
+					confidence: input.classification.confidence,
+					draftQuality: null,
+					gapHold: { kind: 'ask', questions: pending.questions },
+				},
+			};
+		}
 		const confirmedContext = joinConfirmedBlocks(
 			input.confirmedContext ?? '',
 			stored.confirmedContext

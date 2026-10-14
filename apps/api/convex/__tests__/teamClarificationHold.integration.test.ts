@@ -23,6 +23,7 @@ import {
 } from './factories';
 import { pushHarness, setMemberRole } from '../push/__tests__/pushFixtures';
 import { HELD_GAP_DRAFT_REASON, UNASKABLE_GAP_REASON } from '../lib/heldGapDraft';
+import { transition as threadTransition } from '../inbox/threads/module';
 
 vi.mock('../lib/sessionOrganization', async () => ({
 	...(await vi.importActual('../lib/sessionOrganization')),
@@ -117,6 +118,24 @@ describe('the write-side fence', () => {
 		expect(message?.agentDecision?.reason).toBe(UNASKABLE_GAP_REASON);
 	});
 
+	// A clarification answered in part before this rule, retried through the
+	// whole pipeline: a draft that leaves the open fact out is held all the same.
+	it('asks again instead of storing a draft while a stored question is open', async () => {
+		const t = await pushHarness(modules);
+		const open = { id: 'clarify_1', slotType: 'date_time', text: 'When does it ship?' };
+		const { messageId } = await seed(t, {
+			processingStatus: 'drafting',
+			pendingClarification: { questions: [answered, open], askedAt: 1, answeredAt: 2 },
+		});
+
+		await agentDrafts(t, messageId, 'Hi Jonas, order #4821 is on its way.');
+
+		const message = await read(t, messageId);
+		expect(message?.processingStatus).toBe('awaiting_clarification');
+		expect(message?.draftResponse).toBeUndefined();
+		expect(message?.pendingClarification?.questions).toEqual([answered, open]);
+	});
+
 	it.each([
 		['"Draft with what I have"', { isGapsAccepted: true }, {}],
 		['asking turned off', {}, { isGapsAccepted: true }],
@@ -143,12 +162,15 @@ describe('an agent draft stored with gaps before the fence', () => {
 		const { messageId, threadId } = await seed(t, {
 			processingStatus: 'draft_ready',
 			draftResponse: gapped,
+			draftOptions: [gapped, 'Hi Jonas, your refund is on its way.'],
 			isDraftGapGuarded: true,
 		});
 
 		const [entry] = await t.query(api.inbox.queries.getReviewQueue, {});
 		expect(entry?.message._id).toBe(messageId);
 		expect(entry?.message.draftResponse).toBeUndefined();
+		// The legacy variants go with it: the first one is the held draft.
+		expect(entry?.message.draftOptions).toBeUndefined();
 		expect(entry?.message.agentDecision?.reason).toBe(HELD_GAP_DRAFT_REASON);
 
 		const thread = await t.query(api.inbox.queries.getThread, { threadId });
@@ -245,5 +267,96 @@ describe('the abandoned-question reminder', () => {
 		expect(await remind(t)).toEqual({ reminded: 1 });
 		expect(await noticesFor(t, messageId)).toEqual(['user-a', 'user-b']);
 		expect(await remind(t)).toEqual({ reminded: 0 });
+	});
+});
+
+describe('the Answer queue behind settled conversations', () => {
+	const settle = (t: Harness, threadId: Id<'conversationThreads'>, to: 'resolved' | 'open') =>
+		t.run((ctx) =>
+			threadTransition(ctx, { threadId, input: { kind: 'status_change', to, source: 'user' } })
+		);
+	const heldFields = {
+		processingStatus: 'awaiting_clarification',
+		pendingClarification: {
+			questions: [{ id: 'clarify_0', slotType: 'factual_lookup', text: 'Which order?' }],
+			askedAt: 1,
+		},
+	};
+
+	it('finds the open question behind three settled ones, and counts it', async () => {
+		const t = await pushHarness(modules);
+		const open = await seed(t, heldFields);
+		const settled = [];
+		for (let i = 0; i < 3; i++) settled.push(await seed(t, heldFields));
+		for (const { threadId } of settled) await settle(t, threadId, 'resolved');
+
+		const queue = await t.query(api.inbox.queries.getReviewQueue, { limit: 3 });
+		expect(queue.map((entry) => entry.message._id)).toEqual([open.messageId]);
+		expect(await t.query(api.inbox.queries.countReviewQueue, { limit: 3 })).toBe(1);
+
+		// Reopened, a settled one is back in the queue.
+		await settle(t, settled[2]!.threadId, 'open');
+		expect(await t.query(api.inbox.queries.countReviewQueue, { limit: 3 })).toBe(2);
+	});
+});
+
+describe('clarification notices in the app', () => {
+	it('shows a question only while it waits on an answer on an open conversation', async () => {
+		const t = await pushHarness(modules);
+		const heldFields = {
+			processingStatus: 'awaiting_clarification',
+			pendingClarification: { questions: [answered], askedAt: 1 },
+		};
+		const live = await seed(t, heldFields);
+		const answeredOne = await seed(t, { ...heldFields, processingStatus: 'drafting' });
+		const closed = await seed(t, heldFields, { status: 'closed' });
+		await t.run(async (ctx) => {
+			for (const { messageId, threadId } of [live, answeredOne, closed]) {
+				await ctx.db.insert('inboxAssignmentNotices', {
+					kind: 'clarification',
+					inboundMessageId: messageId,
+					userId: 'user-a',
+					threadId,
+					subject: 'Refund',
+					assignedByName: 'Jonas',
+					createdAt: Date.now(),
+				});
+			}
+		});
+
+		const notices = await t.query(api.inbox.queries.pendingAssignments, {});
+		expect(notices.map((n) => n.inboundMessageId)).toEqual([live.messageId]);
+	});
+});
+
+describe('reminder bookkeeping', () => {
+	it('records one reminder notice per person, and drops the notices when the question settles', async () => {
+		const t = await pushHarness(modules);
+		const { messageId } = await seed(t, {
+			processingStatus: 'awaiting_clarification',
+			pendingClarification: {
+				questions: [{ id: 'clarify_0', slotType: 'factual_lookup', text: 'Which order?' }],
+				askedAt: Date.now() - 2 * DAY,
+			},
+		});
+		const rows = () =>
+			t.run(async (ctx) =>
+				(await ctx.db.query('inboxAssignmentNotices').collect())
+					.filter((n) => n.inboundMessageId === messageId && n.isReminder === true)
+					.map((n) => n.userId)
+					.sort()
+			);
+
+		await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+		expect(await rows()).toEqual(['user-a', 'user-b']);
+		expect((await read(t, messageId))?.pendingClarification).not.toHaveProperty('remindedUserIds');
+
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: { to: 'drafting', at: Date.now() },
+		});
+		expect(await rows()).toEqual([]);
+		const left = await t.run(async (ctx) => ctx.db.query('inboxAssignmentNotices').collect());
+		expect(left.filter((n) => n.inboundMessageId === messageId)).toEqual([]);
 	});
 });

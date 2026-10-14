@@ -29,6 +29,7 @@ export const HELD_GAP_DRAFT_REASON =
 export interface HeldGapDraftFields {
 	processingStatus?: string;
 	draftResponse?: string | null;
+	draftOptions?: string[] | null;
 	isDraftGapGuarded?: boolean;
 	isDraftGapsAccepted?: boolean;
 	pendingClarification?: { isGapsAccepted?: boolean | undefined } | null;
@@ -59,10 +60,14 @@ export function isHeldGapDraft(row: HeldGapDraftFields): boolean {
 	return row.isDraftEdited !== true;
 }
 
-/** `row` without a held draft, and with the reason a reviewer reads. */
+/**
+ * `row` without a held draft, and with the reason a reviewer reads. The
+ * variants a legacy row keeps beside the draft go with it: the first of them
+ * is the held draft itself.
+ */
 export function withHeldGapDraft<T extends HeldGapDraftFields>(row: T): T {
 	if (!isHeldGapDraft(row)) return row;
-	const { draftResponse: _held, isDraftGapGuarded: _guard, ...rest } = row;
+	const { draftResponse: _held, draftOptions: _variants, isDraftGapGuarded: _guard, ...rest } = row;
 	return {
 		...rest,
 		agentDecision: {

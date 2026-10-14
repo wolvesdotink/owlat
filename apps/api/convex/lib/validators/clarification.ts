@@ -105,7 +105,7 @@ export const pendingClarificationValidator = v.object({
 	questions: v.array(clarificationQuestionValidator),
 	// When the questions were surfaced to the owner. Drives the abandoned-question
 	// reminder: after a configurable window with no answer, whoever has to answer
-	// is asked again once (`remindedUserIds`). Nothing is drafted until they answer.
+	// is asked again once. Nothing is drafted until they answer.
 	askedAt: v.number(),
 	// When the owner answered — set by `answerClarification`. Absent while pending.
 	answeredAt: v.optional(v.number()),
@@ -114,10 +114,9 @@ export const pendingClarificationValidator = v.object({
 	// a draft that comes back with gaps of its own is not shown: its gaps are
 	// asked as new questions (mail/ai/gapQuestions.ts).
 	isGapsAccepted: v.optional(v.boolean()),
-	// When the abandoned-question cron last asked again, and whom: each person
-	// who has to answer is reminded once per ask (inbox/clarificationHold.ts).
+	// When the abandoned-question cron last asked again. Whom it asked is kept
+	// in its notices marked `isReminder`, one per person (inbox/clarificationHold.ts).
 	remindedAt: v.optional(v.number()),
-	remindedUserIds: v.optional(v.array(v.string())),
 });
 
 /**

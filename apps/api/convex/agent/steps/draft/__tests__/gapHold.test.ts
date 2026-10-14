@@ -285,4 +285,42 @@ describe('draftStep — the stored clarification, on every path in', () => {
 		// No search either: the step context has no action route for it.
 		expect(stored[0]!['attachmentSuggestions']).toBeUndefined();
 	});
+
+	// Answered in part before "every question or consent" (no isGapsAccepted),
+	// then failed and retried through the whole pipeline: the clarify step's
+	// hand-off reaches here without resumeDraft's check.
+	it('asks again, without calling the model, while a legacy question is open', async () => {
+		drafts('Order #4821 is on its way.');
+		const open = { id: 'clarify_1', slotType: 'date_time', text: 'When does it ship?' };
+		const { ctx, stored } = makeCtx({
+			pendingClarification: { questions: [answered, open], askedAt: 1, answeredAt: 2 },
+		});
+
+		const { output } = await draftStep.execute(ctx, input);
+
+		expect(mocks.runLlmText).not.toHaveBeenCalled();
+		expect(stored).toHaveLength(0);
+		expect(draftStep.route(output, input, runCtx)).toEqual({
+			kind: 'transition',
+			transition: { to: 'awaiting_clarification', questions: [answered, open] },
+		});
+	});
+
+	it('drafts with the open placeholder when asking is turned off', async () => {
+		drafts('Order #4821 is on its way.');
+		const { ctx, stored } = makeCtx({
+			pendingClarification: {
+				questions: [
+					answered,
+					{ id: 'clarify_1', slotType: 'date_time', text: 'When does it ship?' },
+				],
+				askedAt: 1,
+				answeredAt: 2,
+			},
+		});
+
+		await draftStep.execute(ctx, { ...input, isGapsAccepted: true });
+
+		expect(stored[0]!['draftResponse']).toBe('Order #4821 is on its way.\n\n[[When does it ship]]');
+	});
 });

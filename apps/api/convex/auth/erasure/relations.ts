@@ -299,12 +299,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('conversationThreads', 'assignedTo', 'retain', ORG_ATTRIBUTION),
 	rel('inboundMessages', 'assignedTo', 'retain', ORG_ATTRIBUTION),
 	rel('inboundMessages', 'draftRevisions[].savedBy', 'retain', ORG_ATTRIBUTION),
-	rel(
-		'inboundMessages',
-		'pendingClarification.remindedUserIds[]',
-		'retain',
-		'Who the abandoned-question reminder already asked, so nobody is asked twice. It carries no content and grants nothing, and an id with no membership is never asked again.'
-	),
+
 	rel(
 		'unifiedMessages',
 		'memberId',

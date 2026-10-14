@@ -47,7 +47,11 @@ import {
 	type TransitionOutcome,
 } from './processingLifecycle/types';
 import { dispatch, notifyClarification } from './processingLifecycle/effects';
-import { isClarificationLive, resolveClarificationRecipients } from './clarificationHold';
+import {
+	isClarificationLive,
+	notRemindedYet,
+	resolveClarificationRecipients,
+} from './clarificationHold';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
 import { inboxRetryPlan } from '@owlat/shared/inboxRetry';
 import {
@@ -330,7 +334,7 @@ export const reconcileStuckApproved = internalMutation({
 // is drafted around an unanswered question: a reply guessed from the email
 // alone is the draft with silent gaps the question was there to prevent. After
 // a configurable window this cron asks again (the same notice the question
-// raised), once per person who has to answer (`remindedUserIds` on the ask),
+// raised), once per person who has to answer (a notice marked `isReminder`),
 // and the message keeps waiting in the Answer queue until someone answers,
 // chooses "Draft with what I have", writes the reply, dismisses it or settles
 // its conversation (./clarificationHold.ts).
@@ -365,23 +369,22 @@ export const reconcileAbandonedClarifications = internalMutation({
 			const pending = message.pendingClarification;
 			// A notice points at a conversation: without one there is nobody to ask.
 			if (!pending || pending.askedAt > cutoff || !message.threadId) continue;
-			// A conversation someone resolved or closed needs no answer.
-			if (!(await isClarificationLive(ctx, message))) continue;
+			// A conversation someone resolved or closed needs no answer. A row
+			// parked before the queue's index existed is marked on the way.
+			if (!(await isClarificationLive(ctx, message))) {
+				if (message.isThreadSettled !== true) {
+					await ctx.db.patch(message._id, { isThreadSettled: true });
+				}
+				continue;
+			}
 			// Each person who has to answer now is asked again once: an assignee
 			// who left or lost the role is replaced by the readers, and a new
 			// assignee hears of it, but nobody is reminded twice.
-			const already = new Set(pending.remindedUserIds ?? []);
 			const eligible = await resolveClarificationRecipients(ctx, message);
-			const fresh = eligible.filter((userId) => !already.has(userId));
+			const fresh = await notRemindedYet(ctx, message._id, eligible);
 			if (fresh.length === 0) continue;
-			await notifyClarification(ctx, message._id, fresh);
-			await ctx.db.patch(message._id, {
-				pendingClarification: {
-					...pending,
-					remindedAt: now,
-					remindedUserIds: [...already, ...fresh],
-				},
-			});
+			await notifyClarification(ctx, message._id, fresh, { isReminder: true });
+			await ctx.db.patch(message._id, { pendingClarification: { ...pending, remindedAt: now } });
 			reminded++;
 		}
 

@@ -27,7 +27,7 @@ import {
 import { compareResponseDue, isSlaSlice, slaSliceNow } from './sla/slices';
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
-import { readPendingReview } from './clarificationHold';
+import { liveNotices, readPendingReview } from './clarificationHold';
 import { redactContactCapabilityFields } from '../contacts/listing';
 import { openConversationThreadPreview } from '../lib/messageBody';
 import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBodyInbound';
@@ -478,7 +478,8 @@ export const pendingAssignments = publicQuery({
 			.order('desc')
 			.take(limit);
 
-		return rows
+		// An agent question answered, or its conversation settled, is no notice.
+		return (await liveNotices(ctx, rows))
 			.filter((r) => args.includeMentions || r.kind !== 'mention')
 			.filter((r) => args.includeSlaBreaches || r.kind !== 'sla_breach')
 			.map((r) => ({

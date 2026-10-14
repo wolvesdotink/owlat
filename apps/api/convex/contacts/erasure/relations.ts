@@ -391,7 +391,7 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		table: 'inboxAssignmentNotices',
 		field: 'inboundMessageId',
 		action: 'retain',
-		why: 'Known gap: the notice copies the message subject, but the table has no index by message to find it from here.',
+		why: 'Known gap: the notice copies the message subject. A clarification notice goes when its question settles; the others age out of the toast window.',
 	},
 	{
 		parent: 'inboundMessages',

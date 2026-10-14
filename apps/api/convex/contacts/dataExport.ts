@@ -26,6 +26,7 @@ import {
 	readStoredInboundPartForContactExport,
 	type StoredPartExportAvailability,
 } from '../lib/messageBodyExport';
+import { withHeldGapDraft } from '../lib/heldGapDraft';
 
 const CAP = 1000;
 
@@ -151,8 +152,10 @@ async function collectContactData(ctx: QueryCtx, contactId: Id<'contacts'>) {
 				text: await storedSize(ctx, row.textBodyStorageId),
 				html: await storedSize(ctx, row.htmlBodyStorageId),
 			};
+			// An agent draft with gaps nobody agreed to leaves no read boundary,
+			// the export's included (lib/heldGapDraft.ts, #1343).
 			return {
-				...row,
+				...withHeldGapDraft(row),
 				textBody: body.text,
 				htmlBody: body.html,
 				bodyExcerpt: body.excerpt,

@@ -14,7 +14,11 @@
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { resolveClarificationRecipients } from '../clarificationHold';
+import {
+	clearClarificationReminders,
+	isSettledThreadStatus,
+	resolveClarificationRecipients,
+} from '../clarificationHold';
 import { transition as threadTransition } from '../threads/module';
 import { settleClockForMessage } from '../sla/threadClock';
 import { applyInboxStatsDelta, bucketForStatus } from '../../lib/inboxStats';
@@ -82,7 +86,8 @@ export function resolveHumanApproveUndoDelayMs(configured: number | undefined): 
 /**
  * Append one `clarification` notice per recipient, and push it. The
  * recipients are `../clarificationHold.resolveClarificationRecipients` unless
- * the caller names them (the reminder cron names those not reminded yet).
+ * the caller names them (the reminder cron names those not reminded yet, and
+ * marks its notices `isReminder`, the record that they were asked again).
  * Returns who was notified. Best-effort: the message is already parked in
  * `awaiting_clarification`; a missing row or profile only means fewer notices,
  * never a failed transition.
@@ -90,7 +95,8 @@ export function resolveHumanApproveUndoDelayMs(configured: number | undefined): 
 export async function notifyClarification(
 	ctx: MutationCtx,
 	inboundMessageId: Id<'inboundMessages'>,
-	recipients?: readonly string[]
+	recipients?: readonly string[],
+	opts: { isReminder?: boolean } = {}
 ): Promise<string[]> {
 	const message = await ctx.db.get(inboundMessageId);
 	if (!message?.threadId) return [];
@@ -100,6 +106,7 @@ export async function notifyClarification(
 		const noticeId = await ctx.db.insert('inboxAssignmentNotices', {
 			kind: 'clarification',
 			inboundMessageId,
+			...(opts.isReminder ? { isReminder: true } : {}),
 			userId,
 			threadId: message.threadId,
 			subject: message.subject ?? 'No subject',
@@ -385,6 +392,18 @@ export async function dispatch(
 		await ctx.db.patch(message._id, result.patch as Partial<Doc<'inboundMessages'>>);
 	}
 	await applyEffects(ctx, result.effects);
+	// The agent's questions (../clarificationHold.ts): answered, dismissed or
+	// taken over, their reminder rows go; parked, they join the Answer queue's
+	// index unless the conversation is already settled.
+	if (from === 'awaiting_clarification' && input.to !== 'awaiting_clarification') {
+		await clearClarificationReminders(ctx, message._id);
+	} else if (input.to === 'awaiting_clarification' && message.threadId) {
+		const thread = await ctx.db.get(message.threadId);
+		const isSettled = !!thread && isSettledThreadStatus(thread.status);
+		if (isSettled !== (message.isThreadSettled === true)) {
+			await ctx.db.patch(message._id, { isThreadSettled: isSettled ? true : undefined });
+		}
+	}
 	// The thread's response clock (inbox/sla): a reply sent, nothing left to answer.
 	await settleClockForMessage(ctx, message, input);
 	// A rejected draft, or one a person took over, is no draft of the agent's any
