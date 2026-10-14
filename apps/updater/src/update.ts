@@ -291,11 +291,12 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// relative bind in the template resolves to the real file and not to a path
 	// that only exists inside this container.
 	//
-	// The override file rides along: the deploy step's `depends_on: convex`
-	// otherwise sees a convex service that differs from the running one (any
-	// override setting on it) and RECREATES convex mid-update — a cold boot the
-	// deploy then times out waiting for, failing the update.
-	const composeArgs = await composeArgv(withOverrideFile(composeFileForUpdate));
+	// The deploy also loads the override: its `depends_on: convex` otherwise sees
+	// a convex that differs from the running one and RECREATES it mid-update — a
+	// cold boot the deploy times out on. The pull does not: an override may pin
+	// a locally built image no registry has.
+	const composeArgs = await composeArgv([composeFileForUpdate]);
+	const deployArgs = await composeArgv(withOverrideFile(composeFileForUpdate));
 	if (stopping.aborted) return backOut();
 
 	// Step 4: Pull latest images (against the staged template, so a pull
@@ -324,7 +325,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// the old containers keep serving, and the next update deploys again.
 	const deploy = await exec(
 		'docker',
-		[...composeArgs, '--profile', 'deploy', 'run', '--rm', 'convex-deploy'],
+		[...deployArgs, '--profile', 'deploy', 'run', '--rm', 'convex-deploy'],
 		OWLAT_DIR,
 		{ signal: stopping }
 	);

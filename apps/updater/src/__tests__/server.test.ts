@@ -408,7 +408,7 @@ describe('POST /update', () => {
 		expect(res.status).toBe(200);
 	});
 
-	it('runs the staged pull and deploy with the install override file', async () => {
+	it('runs the staged deploy, not the pull, with the install override file', async () => {
 		const override = join(OWLAT_DIR, 'docker-compose.override.yml');
 		writeFileSync(override, 'services:\n  convex:\n    environment:\n      FOO: bar\n');
 		try {
@@ -420,9 +420,11 @@ describe('POST /update', () => {
 			].join('\n');
 			await post('/update', { composeTemplate: template });
 			const [pull, deploy] = composeCommands();
-			for (const cmd of [pull, deploy]) {
-				expect(cmd).toContain(`-f ${join(OWLAT_DIR, 'docker-compose.next.yml')} -f ${override}`);
-			}
+			const staged = `-f ${join(OWLAT_DIR, 'docker-compose.next.yml')}`;
+			// An override may pin a locally built image: pulling it would fail.
+			expect(pull).toContain(staged);
+			expect(pull).not.toContain(override);
+			expect(deploy).toContain(`${staged} -f ${override}`);
 		} finally {
 			rmSync(override, { force: true });
 		}
