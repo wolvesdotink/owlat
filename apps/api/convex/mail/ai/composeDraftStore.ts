@@ -40,6 +40,7 @@ import {
 import { authoredDraftHasGaps, type DraftBody } from '../../agent/shared/draftGaps';
 import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/errors';
 import { isThreadInterpretationFenced } from '../interpret/staleFence';
+import { mailThreadOf } from './answerStreamFence';
 import { DRAFT_PAUSED_STALE_INTERPRETATION } from '@owlat/shared/answerMode';
 import {
 	FILE_QUESTION_ID,
@@ -167,15 +168,6 @@ export function isSameReplyTarget(stored: AnswerAskTarget, asked: AnswerAskTarge
 		);
 	}
 	return stored.threadId === asked.threadId && stored.inboundMessageId === asked.inboundMessageId;
-}
-
-/** The Postbox thread a target replies in, or null (a team thread, a draft without one). */
-async function mailThreadOf(
-	ctx: Pick<QueryCtx, 'db'>,
-	target: AnswerAskTarget
-): Promise<Id<'mailThreads'> | null> {
-	if (target.kind !== 'mailDraft') return null;
-	return (await ctx.db.get(target.draftId))?.threadId ?? null;
 }
 
 /** Delete a session and the draft stream it owns. */
@@ -425,11 +417,8 @@ export const openSessionStream = internalMutation({
 			if (old && old.ownerId === row.ownerId) await ctx.db.delete(row.streamId);
 		}
 		const now = Date.now();
-		// Bound to the thread whose reading it drafts from, for the stale fence.
-		const mailThreadId = await mailThreadOf(ctx, row.target);
 		const streamId = await ctx.db.insert('aiDraftStreams', {
 			ownerId: row.ownerId,
-			...(mailThreadId ? { mailThreadId } : {}),
 			surface: 'answer',
 			status: 'streaming',
 			text: '',

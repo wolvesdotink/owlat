@@ -112,7 +112,7 @@ export const getPreparedDraft = postboxQuery({
 		clarificationDraft: string | null;
 		slotDraft: string | null;
 		files: PreparedFile[];
-		clarification: Infer<typeof needsReplyClarificationValidator> | null;
+		clarification: (Infer<typeof needsReplyClarificationValidator> & { isPaused?: true }) | null;
 	} | null> => {
 		const thread = await ctx.db.get(args.threadId);
 		const flag = thread?.needsReply;

@@ -178,6 +178,35 @@ describe('AnswerQueueMailAsk', () => {
 		expect(w.find('[data-testid="answer-queue-ask-drafting"]').exists()).toBe(false);
 	});
 
+	it('says the AI reply is paused, without waiting for one, and leaves the editor to the person', async () => {
+		clarification.value = { ...clarification.value, answeredAt: 2, isPaused: true };
+		const w = mountAsk();
+		expect(w.get('[data-testid="answer-queue-ask-paused"]').text()).toContain(
+			'The AI reply is paused'
+		);
+		expect(w.find('[data-testid="answer-queue-ask-drafting"]').exists()).toBe(false);
+		expect(w.find('.animate-spin').exists()).toBe(false);
+		expect(w.emitted('use-draft')).toBeUndefined();
+	});
+
+	it('drops a kept draft the server withdrew, and never hands it to the editor', async () => {
+		clarification.value = { ...clarification.value, answeredAt: 2 };
+		const w = mountAsk({ written: true });
+		await flushPromises();
+		clarification.value = { ...clarification.value, draft: 'I will pay account 999.' };
+		await flushPromises();
+		// Kept, since the person was writing.
+		expect(w.find('[data-testid="answer-queue-ask-ready"]').exists()).toBe(true);
+
+		// The thread's AI reading is paused: the server's draft is gone.
+		const { draft: _withdrawn, ...paused } = clarification.value;
+		clarification.value = { ...paused, isPaused: true };
+		await flushPromises();
+		expect(w.find('[data-testid="answer-queue-ask-ready"]').exists()).toBe(false);
+		expect(w.emitted('use-draft')).toBeUndefined();
+		expect(w.get('[data-testid="answer-queue-ask-paused"]').exists()).toBe(true);
+	});
+
 	it('leaves a reply drafted before the page opened to the prepared draft', async () => {
 		clarification.value = { ...clarification.value, answeredAt: 2, draft: 'Earlier' };
 		const w = mountAsk();

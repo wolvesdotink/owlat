@@ -363,6 +363,33 @@ describe('useAnswerAskSession', () => {
 		expect(reloaded.applyAiDraft).not.toHaveBeenCalled();
 	});
 
+	it('never applies a stream whose session is paused, even one that still reads complete', async () => {
+		data['getSession']!.value = session({ status: 'drafting', streamId: 'ds1' });
+		data['getDraftStream']!.value = { _id: 'ds1', status: 'streaming', text: 'I will pay' };
+		const composer = composerMock();
+		host(composer);
+		await nextTick();
+		expect(composer.streamAiDraft).toHaveBeenCalledWith('I will pay');
+
+		// A stream opened before the server tied streams to their thread still
+		// completes with its text; only the session says the reading was paused.
+		data['getSession']!.value = session({
+			status: 'error',
+			streamId: 'ds1',
+			errorMessage: 'draft_paused_stale',
+		});
+		data['getDraftStream']!.value = {
+			_id: 'ds1',
+			status: 'complete',
+			text: 'I will pay account 999.',
+		};
+		await nextTick();
+		await nextTick();
+		expect(composer.applyAiDraft).not.toHaveBeenCalled();
+		expect(composer.discardAiDraft).toHaveBeenCalledTimes(1);
+		expect(composer.streamAiDraft).toHaveBeenCalledTimes(1);
+	});
+
 	it('streams into the editor, then settles the draft, the follow-up and the files once', async () => {
 		const composer = composerMock();
 		const { api, onSettled } = host(composer);

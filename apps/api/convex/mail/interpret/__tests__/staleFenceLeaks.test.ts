@@ -351,6 +351,8 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 			});
 		});
 		const shown = await prepared();
+		// The card says the AI reply is paused, rather than waiting for one.
+		expect(shown?.clarification?.isPaused).toBe(true);
 		expect(shown?.clarificationDraft).toBeNull();
 		expect(shown?.slotDraft).toBeNull();
 		expect(shown?.clarification?.questions[0]?.answer).toEqual(answer);
@@ -400,7 +402,6 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 		const streamId = await t.mutation(internal.mail.ai.composeDraftStore.openSessionStream, {
 			sessionId,
 		});
-		expect((await t.run((ctx) => ctx.db.get(streamId)))!.mailThreadId).toBe(threadId);
 		const read = () => t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
 		await t.mutation(internal.mail.draftStreamStore.appendDraftStream, {
 			streamId,
@@ -433,5 +434,80 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 		expect(view).toMatchObject({ status: 'error', questions: [], streamId });
 		// The person's own draft is untouched.
 		expect((await t.run((ctx) => ctx.db.get(draftId)))!.bodyHtml).toBe(OWN);
+	});
+
+	it('pauses an Answer stream opened the old way (no thread on it) and one with no session', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, threadId } = await seedThread(t);
+		const now = Date.now();
+		// Inserted as a release before the fence opened them: the stream carries
+		// no thread, only its session knows it.
+		const { legacyId, orphanId } = await t.run(async (ctx) => {
+			const draftId = await ctx.db.insert('mailDrafts', {
+				mailboxId,
+				threadId,
+				toAddresses: ['jonas@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				fromAddress: 'me@owlat.test',
+				subject: 'Re: invoice',
+				bodyHtml: '<p></p>',
+				attachments: [],
+				state: 'draft' as const,
+				lastEditedAt: now,
+				createdAt: now,
+			});
+			const stream = {
+				ownerId: 'user-A',
+				surface: 'answer' as const,
+				status: 'streaming' as const,
+				text: '',
+				createdAt: now,
+				updatedAt: now,
+			};
+			const legacyId = await ctx.db.insert('aiDraftStreams', stream);
+			const orphanId = await ctx.db.insert('aiDraftStreams', stream);
+			await ctx.db.insert('answerAskSessions', {
+				ownerId: 'user-A',
+				organizationId: 'org-1',
+				target: { kind: 'mailDraft', draftId },
+				targetKey: `mailDraft:${draftId}`,
+				locale: 'en',
+				round: 1,
+				status: 'drafting',
+				questions: [],
+				streamId: legacyId,
+				attachedFiles: [],
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { legacyId, orphanId };
+		});
+		const finalize = (streamId: Id<'aiDraftStreams'>) =>
+			t.mutation(internal.mail.draftStreamStore.finalizeDraftStream, {
+				streamId,
+				text: STALE_DRAFT,
+				status: 'complete',
+			});
+		const read = (streamId: Id<'aiDraftStreams'>) =>
+			t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
+
+		// Before the fence, the session's stream is an ordinary draft.
+		await t.mutation(internal.mail.draftStreamStore.appendDraftStream, {
+			streamId: legacyId,
+			text: 'I will pay',
+		});
+		expect((await read(legacyId))?.text).toBe('I will pay');
+
+		await fence(t, threadId);
+		await finalize(legacyId);
+		expect(await read(legacyId)).toMatchObject({
+			status: 'error',
+			text: '',
+			errorMessage: 'draft_paused_stale',
+		});
+		// An Answer stream no session owns cannot be tied to a thread: it fails closed.
+		await finalize(orphanId);
+		expect(await read(orphanId)).toMatchObject({ status: 'error', text: '' });
 	});
 });

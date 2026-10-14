@@ -73,6 +73,9 @@ export const answerAskTables = {
 		.index('by_target_owner', ['targetKey', 'ownerId'])
 		// Member erasure drops a departing member's sessions.
 		.index('by_owner', ['ownerId'])
+		// The session a draft stream belongs to (the stale fence resolves a
+		// stream's thread through it, mail/ai/composeDraftStore.ts).
+		.index('by_stream', ['streamId'])
 		// Contact erasure drops every session about the erased person.
 		.index('by_contact', ['contactId']),
 };

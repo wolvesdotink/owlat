@@ -80,6 +80,7 @@ const visible = computed(
 		(state.value === 'asking' ||
 			state.value === 'drafting' ||
 			state.value === 'held' ||
+			state.value === 'paused' ||
 			waitingDraft.value !== null)
 );
 watch(visible, (value) => emit('visible', value), { immediate: true });
@@ -101,10 +102,22 @@ watch(
 	{ immediate: true }
 );
 
+// A kept draft stands only while it is still the server's: one withdrawn (the
+// thread's AI reading was paused) or replaced since goes with it.
+watch(
+	() => row.value?.clarification?.draft,
+	(draft) => {
+		if (waitingDraft.value !== null && draft !== waitingDraft.value) waitingDraft.value = null;
+	}
+);
+
 function useWaitingDraft() {
 	const draft = waitingDraft.value;
 	waitingDraft.value = null;
-	if (draft) emit('use-draft', draft);
+	// Checked against the server's draft as it is now, not as it was kept.
+	if (draft && state.value === 'ready' && row.value?.clarification?.draft === draft) {
+		emit('use-draft', draft);
+	}
 }
 
 const askCardRef = ref<InstanceType<typeof AskCard> | null>(null);
@@ -149,6 +162,15 @@ async function submit(answers: AskCardAnswer[], withGaps = false) {
 			@answer="submit"
 			@skip="submit($event, true)"
 		/>
+		<div
+			v-else-if="state === 'paused'"
+			class="flex items-center gap-2 border-b border-border-subtle px-3 py-3 text-sm text-text-secondary"
+			role="status"
+			data-testid="answer-queue-ask-paused"
+		>
+			<Icon name="lucide:circle-pause" class="size-4 shrink-0" aria-hidden="true" />
+			<span class="flex-1">{{ t('components.postbox.postboxClarificationCard.paused') }}</span>
+		</div>
 		<div
 			v-else-if="waitingDraft !== null"
 			class="flex items-center gap-2 border-b border-border-subtle px-3 py-3 text-sm text-text-secondary"

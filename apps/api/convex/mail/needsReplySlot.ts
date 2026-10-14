@@ -69,20 +69,21 @@ export function visibleThreadDraftSlot<S extends { draft: string }, C extends Cl
 }
 
 /**
- * The clarification a thread may show (as the card shows it): without the
- * AI-written draft while the thread's interpretation is fenced off
- * (interpret/staleFence.ts), the questions and the person's answers kept.
+ * The clarification a thread may show (as the card shows it). While the
+ * thread's interpretation is fenced off (interpret/staleFence.ts) it is
+ * `isPaused`: no AI-written draft, and the card says the AI reply is paused
+ * instead of waiting for one; the questions and the person's answers stay.
  */
 export function visibleThreadClarification<C extends ClarificationLike>(thread: {
 	needsReply?: { clarification?: C | undefined } | undefined | null;
 	interpretationStaleSince?: number | undefined;
-}): C | undefined {
+}): (C & { isPaused?: true }) | undefined {
 	const clarification = thread.needsReply?.clarification;
 	if (!clarification) return undefined;
 	const shown = visibleClarification(clarification);
-	if (!isFencedThread(thread) || shown.draft === undefined) return shown;
+	if (!isFencedThread(thread)) return shown;
 	const { draft: _ai, ...answered } = shown;
-	return answered as C;
+	return { ...(answered as C), isPaused: true };
 }
 
 /**

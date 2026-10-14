@@ -27,10 +27,6 @@ export const draftStreamTables = {
 	aiDraftStreams: defineTable({
 		// BetterAuth user id — the sole owner. Reads are owner-scoped.
 		ownerId: v.string(),
-		// The Postbox thread whose AI reading the draft was written from (Answer
-		// mode's "Draft with AI"). While it is fenced off
-		// (mail/interpret/staleFence.ts) the buffer keeps and shows no text.
-		mailThreadId: v.optional(v.id('mailThreads')),
 		// Which surface asked for the revise (analytics / display only).
 		surface: draftSurfaceValidator,
 		// Lifecycle: streaming → complete | error.
