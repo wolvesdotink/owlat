@@ -243,8 +243,6 @@ export interface NewPurgeJob {
 	/** `sources` jobs of a received Team Inbox message: its team replies are added as found. */
 	inboundMessageId?: Id<'inboundMessages'>;
 	mode?: InterpretMode;
-	/** `sources` jobs: keep the snapshots and interpret the sources again on settle. */
-	isReread?: boolean;
 }
 
 export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promise<PurgeJob> {
@@ -256,7 +254,6 @@ export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promis
 		...(job.sources ? { sources: job.sources } : {}),
 		...(job.inboundMessageId ? { inboundMessageId: job.inboundMessageId } : {}),
 		...(job.mode ? { mode: job.mode } : {}),
-		...(job.isReread ? { isReread: true } : {}),
 		rangeIndex: 0,
 		isInterpreted: false,
 		isItemDeleted: false,

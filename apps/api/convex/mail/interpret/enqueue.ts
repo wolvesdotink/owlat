@@ -17,6 +17,9 @@
  *   - {@link enqueueSentInterpretation}: a send we made reached its recipient
  *     (Postbox transport `sent`, team Send finalized). Once per send: the
  *     caller only enqueues when its `reply_sent` activity was new.
+ *   - {@link enqueueReread}: an interpreted message whose stored body now
+ *     reads differently (a re-verified signature scope narrowed it to the
+ *     signed block, `mail/mailbox/signatureReverify.ts`).
  *
  * The mode is the run's to derive (`resolveThreadMode`: shared-scope
  * mailboxes and Team Inbox threads run in `actions` mode), so none is passed.
@@ -28,9 +31,12 @@ import { internal } from '../../_generated/api';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { isInterpretationEligible } from './eligibility';
 import { markBriefPending } from './briefRow';
-import { captureInterpretSource } from './sources';
+import { captureInterpretSource, loadInterpretSource } from './sources';
 import { markOutstanding } from './outstanding';
-import { interpretationSourceKey } from '../../lib/validators/threadBrief';
+import {
+	interpretationSourceKey,
+	type InterpretationSource,
+} from '../../lib/validators/threadBrief';
 import type { OutboundSource } from './sendFailure';
 import { deferIfDisplayOnly } from './defer';
 
@@ -108,4 +114,28 @@ export async function enqueueSentInterpretation(
 	}
 	await ctx.scheduler.runAfter(0, internal.mail.interpret.outboundRun.interpretSent, { source });
 	await markBriefPending(ctx, ref);
+}
+
+/**
+ * Interpret a message again from its body as it reads now. Nothing is erased:
+ * the run reads a new content revision and the reducer folds it onto the
+ * thread like any re-read (`reduce.ts`, `fold.ts`). Items it reproduces keep
+ * their identity and every field a person set (status, completion,
+ * confirmation, reminder, undo snapshot) and gain the new evidence; an item it
+ * no longer reproduces whose every quote came from this message is flagged
+ * for review, never deleted (`flagUnreproduced`); other messages' items are
+ * not touched. The run goes through the gate and the spend hold like any
+ * other. A source with no snapshot was never enqueued and has nothing to
+ * re-read; one already outstanding has a run under way, which the body
+ * fingerprint (`sourceVersion.ts`) starts over on the new read.
+ */
+export async function enqueueReread(
+	ctx: MutationCtx,
+	source: InterpretationSource
+): Promise<boolean> {
+	const snapshot = await loadInterpretSource(ctx, source);
+	if (!snapshot || snapshot.isOutstanding) return false;
+	await markOutstanding(ctx, snapshot.sourceKey);
+	await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, { source });
+	return true;
 }

@@ -41,7 +41,7 @@ import {
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { scopedIdempotencyKey } from './activity';
 import { recordItemChange } from './counters';
-import { clearClaimRecords, deleteExtractions } from './purgeRows';
+import { deleteExtractions } from './purgeRows';
 import { drainFactLinks, drainItemLinks } from './purgeLinks';
 import { stripFact, stripItem, type PurgedSources } from './purgeClaims';
 import {
@@ -213,32 +213,27 @@ const extractionsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
 		)
 	);
 
-/**
- * 2. The purged sources' snapshots (and claim records). A re-read keeps the
- * snapshots and drops only their claim records (`purgeRows.ts`).
- */
-const snapshotsRange: PurgeRange = (ctx, { job, cursor, budget, state }) =>
-	job.isReread
-		? clearClaimRecords(ctx, purgedOf(state).keys, budget)
-		: drainSteps(
+/** 2. The purged sources' snapshots (and claim records). */
+const snapshotsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
+	drainSteps(
+		budget,
+		cursor,
+		stepsOf(purgedOf(state).keys, (key) =>
+			drainShrinking(
 				budget,
-				cursor,
-				stepsOf(purgedOf(state).keys, (key) =>
-					drainShrinking(
-						budget,
-						(n) =>
-							ctx.db
-								.query('interpretSources')
-								.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
-								.take(n),
-						async (row) => {
-							// A purged source will never record an outcome.
-							await settleSource(ctx, row.sourceKey, 'purged');
-							return deleting(ctx)(row);
-						}
-					)
-				)
-			);
+				(n) =>
+					ctx.db
+						.query('interpretSources')
+						.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
+						.take(n),
+				async (row) => {
+					// A purged source will never record an outcome.
+					await settleSource(ctx, row.sourceKey, 'purged');
+					return deleting(ctx)(row);
+				}
+			)
+		)
+	);
 
 /** The activity key ranges `[from, to]` that name a purged source in this thread. */
 function activityKeyRanges(ref: ThreadRef, purged: PurgedSources): Array<[string, string]> {

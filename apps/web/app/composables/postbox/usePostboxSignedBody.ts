@@ -88,19 +88,23 @@ export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
 
 	// A verdict from before scopes were recorded is withheld, so ask the server
 	// to verify the message again (#1320); the row picks up the scoped verdict
-	// when it lands. Once per expansion: collapsing the card, or a request that
-	// failed, lets the next expansion ask again while the verdict has no scope.
-	// The server throttles repeats per message.
-	const reverifyRequested = new Set<string>();
+	// when it lands. At most once per expansion, whatever the answer: collapsing
+	// the card lets the next expansion ask again while the verdict has no scope,
+	// and a request still on its way is never sent twice. The server throttles
+	// repeats per message.
+	const askedThisExpansion = new Set<string>();
+	const inFlight = new Set<string>();
 	watch(
 		() => [source.active(), source.message()._id, source.message().inboundSignatureInfo] as const,
 		([active, messageId, info]) => {
 			if (!active) {
-				reverifyRequested.clear();
+				askedThisExpansion.clear();
 				return;
 			}
-			if (!info || info.scope !== undefined || reverifyRequested.has(messageId)) return;
-			reverifyRequested.add(messageId);
+			if (!info || info.scope !== undefined) return;
+			if (askedThisExpansion.has(messageId) || inFlight.has(messageId)) return;
+			askedThisExpansion.add(messageId);
+			inFlight.add(messageId);
 			Promise.resolve()
 				.then(() =>
 					requireConvex().mutation(api.mail.mailbox.signatureReverify.request, {
@@ -108,9 +112,9 @@ export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
 					})
 				)
 				.catch(() => {
-					// Best effort: the verdict stays withheld, and the next look asks again.
-					reverifyRequested.delete(messageId);
-				});
+					// Best effort: the verdict stays withheld until the next expansion asks.
+				})
+				.finally(() => inFlight.delete(messageId));
 		},
 		{ immediate: true }
 	);

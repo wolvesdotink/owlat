@@ -2,13 +2,15 @@
  * A signature verdict re-verified after it was stored can gain a clearsigned
  * scope (#1320), and that changes what interpretation reads: before, a
  * clearsigned body beside an unrelated `.asc` attachment was read whole (its
- * unsigned trailer and HTML included); after, only the signed block counts.
+ * unsigned trailer included); after, only the signed block counts.
  *
- *   - CACHED: what the old read contributed to the brief goes (extraction,
- *     its claims), the enqueue snapshot stays, and the message is queued to be
- *     interpreted again through the normal run (gate, spend hold, model);
- *   - IN FLIGHT: a run that read the old body cannot commit, by the body
- *     fingerprint (`sourceVersion.ts`) as well as by the purge epoch;
+ *   - CACHED: nothing is erased. The message is queued to be read again
+ *     (`enqueue.ts enqueueReread`); the re-read keeps every item it reproduces
+ *     with each field a person set, flags an item only the unsigned trailer
+ *     supported for review (human state kept), and leaves other messages'
+ *     items alone;
+ *   - IN FLIGHT: a run that read the old body cannot commit (the body
+ *     fingerprint, `sourceVersion.ts`) and starts over on the new read;
  *   - a MIME scope reads the body as it was, so nothing is re-read.
  */
 
@@ -16,7 +18,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
-import type { Id } from '../../../_generated/dataModel';
+import type { Doc, Id } from '../../../_generated/dataModel';
 import type { InboundSignatureInfo } from '../../../e2ee/inboundSignature';
 import { interpretationSourceKey } from '../../../lib/validators/threadBrief';
 import {
@@ -32,8 +34,17 @@ import {
 } from '../../../e2ee/__tests__/signedMailTestHelpers';
 import { expectScheduledFailure } from '../../../__tests__/helpers/scheduledFailures';
 import { captureInterpretSource } from '../sources';
+import { listBucketOf } from '../counters';
 import { sourceVersionOf } from '../sourceVersion';
-import { modules, reduceItem, reduceResult, seedMailThread, type Test } from './interpret.testlib';
+import type { ReduceResult } from '../reduceInput';
+import {
+	addMessageToThread,
+	modules,
+	reduceItem,
+	reduceResult,
+	seedMailThread,
+	type Test,
+} from './interpret.testlib';
 
 const SENDER = 'jonas@example.com';
 const SIGNED_TEXT = 'Please pay invoice 4471 to the usual account.';
@@ -44,7 +55,12 @@ const ASC = {
 	size: 833,
 	partIndex: '2',
 };
+const T = Date.UTC(2026, 9, 7, 9, 0);
+const RUN = 'mail/interpret/run:interpretMessage';
 
+/** Supported by the signed block: the re-read reproduces it. */
+const signedItem = reduceItem();
+/** Supported only by the unsigned trailer: the re-read no longer shows it. */
 const trailerItem = reduceItem({
 	intent: 'request',
 	facets: ['payment'],
@@ -54,6 +70,30 @@ const trailerItem = reduceItem({
 	due: undefined,
 	evidence: [{ segmentId: 's0', start: 0, end: 16, quote: 'UNSIGNED TRAILER' }],
 });
+/** Another message's item in the same thread. */
+const venueItem = reduceItem({
+	intent: 'question',
+	facets: ['meeting'],
+	consequences: [],
+	assertion: 'Confirm the venue',
+	display: { en: 'Confirm the venue', de: 'Bestätig den Ort' },
+	due: undefined,
+	evidence: [{ segmentId: 's0', start: 0, end: 12, quote: 'which venue?' }],
+});
+
+/** Everything a person can set on an item: completion, a confirmation, a reminder. */
+const HUMAN = {
+	status: 'done',
+	completion: 'asserted',
+	correction: { by: 'user-A', at: T + 1, kind: 'confirmed' },
+	remindAt: T + 86_400_000,
+	confirmedFrom: {
+		kind: 'proposal',
+		confirmation: { by: 'user-A', at: T + 1, kind: 'confirmed' },
+		verify: 'passed',
+		addedEvidenceKeys: [],
+	},
+} as const;
 
 beforeEach(() => {
 	vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
@@ -69,7 +109,7 @@ afterEach(() => {
  * message the verifier reads.
  */
 async function seedLegacy(t: Test, opts: { mime?: boolean } = {}) {
-	const { messageId, threadId } = await seedMailThread(t);
+	const { mailboxId, messageId, threadId } = await seedMailThread(t);
 	const sender = await generateTestKeypair(SENDER);
 	await seedPinnedSender(t, {
 		address: SENDER,
@@ -114,26 +154,30 @@ async function seedLegacy(t: Test, opts: { mime?: boolean } = {}) {
 		});
 		await captureInterpretSource(ctx, { source: { kind: 'mail', id: messageId }, isLive: true });
 	});
-	return { messageId, threadId };
+	// The enqueue snapshot marks it outstanding; the cached read below records it.
+	return { mailboxId, messageId, threadId };
 }
 
 async function interpret(
 	t: Test,
 	messageId: Id<'mailMessages'>,
 	threadId: Id<'mailThreads'>,
-	at: { sourceVersion: string; deletionEpoch: number; expectedRevision: number }
+	opts: { contentRevision: string; result: ReduceResult; sourceVersion?: string }
 ) {
+	const now = await stateOf(t, messageId, threadId);
 	return t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
 		source: { kind: 'mail', id: messageId },
 		threadRef: { kind: 'mail', id: threadId },
 		mode: 'brief',
-		contentRevision: 'rev-old-read',
+		contentRevision: opts.contentRevision,
 		extractorVersion: 2,
-		sourceAt: Date.UTC(2026, 9, 7, 9, 0),
+		sourceAt: T,
 		direction: 'inbound',
 		status: 'complete',
-		result: reduceResult({ items: [trailerItem] }),
-		...at,
+		result: opts.result,
+		sourceVersion: opts.sourceVersion ?? now.version!,
+		deletionEpoch: now.epoch,
+		expectedRevision: now.revision,
 	});
 }
 
@@ -162,49 +206,89 @@ async function stateOf(t: Test, messageId: Id<'mailMessages'>, threadId: Id<'mai
 				.withIndex('by_source_key', (q) => q.eq('sourceKey', sourceKey))
 				.first(),
 			queued: (await ctx.db.system.query('_scheduled_functions').collect()).filter(
-				(job) => job.name === 'mail/interpret/run:interpretMessage' && job.state.kind === 'pending'
+				(job) => job.name === RUN && job.state.kind === 'pending'
 			),
 		};
 	});
 }
 
+/** The item a fold made from `claim` (matched by its facets, which differ per claim here). */
+function itemOf(items: Doc<'threadItems'>[], claim: { facets: readonly string[] }) {
+	return items.find((i) => i.facets.join() === claim.facets.join());
+}
+
 describe('a re-verified clearsigned scope re-reads the interpretation (#1320)', () => {
-	it('drops the cached read of the unsigned trailer and queues the message again', async () => {
+	it('keeps every item and what people set on them, and flags what the trailer alone supported', async () => {
 		// The queued run needs the LLM provider, which this module map leaves out.
-		expectScheduledFailure('mail/interpret/run:interpretMessage');
+		expectScheduledFailure(RUN);
 		const t = convexTest(schema, modules);
-		const { messageId, threadId } = await seedLegacy(t);
-		const before = await stateOf(t, messageId, threadId);
-		expect(
-			await interpret(t, messageId, threadId, {
-				sourceVersion: before.version!,
-				deletionEpoch: before.epoch,
-				expectedRevision: before.revision,
-			})
-		).toMatchObject({ outcome: 'applied' });
-		expect((await stateOf(t, messageId, threadId)).items).toHaveLength(1);
+		const { mailboxId, messageId, threadId } = await seedLegacy(t);
+		const otherId = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'Which venue do we use?', receivedAt: T - 3_600_000 }
+		);
+		await interpret(t, otherId, threadId, {
+			contentRevision: 'rev-venue',
+			result: reduceResult({ items: [venueItem] }),
+		});
+		// The old read took the trailer: one item from the signed block, one from the trailer.
+		await interpret(t, messageId, threadId, {
+			contentRevision: 'rev-old-read',
+			result: reduceResult({ items: [signedItem, trailerItem] }),
+		});
+		const seeded = await stateOf(t, messageId, threadId);
+		const signedId = itemOf(seeded.items, signedItem)!._id;
+		const trailerId = itemOf(seeded.items, trailerItem)!._id;
+		const venueId = itemOf(seeded.items, venueItem)!._id;
+		await t.run(async (ctx) => {
+			for (const id of [signedId, trailerId, venueId]) {
+				// The list projection follows the status, as the write path keeps it.
+				const item = (await ctx.db.get(id))!;
+				await ctx.db.patch(id, { ...HUMAN, listBucket: listBucketOf({ ...item, ...HUMAN }) });
+			}
+		});
+		const venueBefore = await t.run((ctx) => ctx.db.get(venueId));
 
 		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
 
-		const after = await stateOf(t, messageId, threadId);
-		expect(after.verdict).toMatchObject({ isSignatureValid: true, scope: 'clearsigned' });
-		// What the old read contributed is gone ...
-		expect(after.extractions).toHaveLength(0);
-		expect(after.items).toHaveLength(0);
-		// ... the eligibility snapshot stays, with no claims of its own ...
-		expect(after.snapshot).not.toBeNull();
-		expect(after.snapshot!.claimIds ?? []).toHaveLength(0);
-		expect(after.snapshot!.isOutstanding).toBe(true);
-		// ... and the message is interpreted again, through the normal run.
-		expect(after.queued.map((job) => job.args[0])).toEqual([
+		// Nothing is erased; the message is queued to be read again, once.
+		const queued = await stateOf(t, messageId, threadId);
+		expect(queued.verdict).toMatchObject({ isSignatureValid: true, scope: 'clearsigned' });
+		expect(queued.extractions).toHaveLength(1);
+		expect(queued.items).toHaveLength(3);
+		expect(queued.epoch).toBe(seeded.epoch);
+		expect(queued.snapshot).toMatchObject({ isOutstanding: true });
+		expect(queued.snapshot!.claimIds?.length).toBeGreaterThan(0);
+		expect(queued.queued.map((job) => job.args[0])).toEqual([
 			{ source: { kind: 'mail', id: messageId } },
 		]);
+		expect(queued.version).not.toBe(seeded.version);
+
+		// The queued run lands: the signed block shows only the signed claim.
+		expect(
+			await interpret(t, messageId, threadId, {
+				contentRevision: 'rev-signed-block',
+				result: reduceResult({ items: [signedItem] }),
+			})
+		).toMatchObject({ outcome: 'applied' });
+
+		const after = await stateOf(t, messageId, threadId);
+		// (a) the signed-block claim keeps its identity, completion, confirmation and reminder.
+		expect(after.items.find((i) => i._id === signedId)).toMatchObject(HUMAN);
+		// (c) the trailer-only claim is flagged for review, never deleted; its human state stays.
+		expect(after.items.find((i) => i._id === trailerId)).toMatchObject({
+			...HUMAN,
+			isReviewNeeded: true,
+		});
+		// (b) another message's item is not touched at all, its undo snapshot included.
+		expect(await t.run((ctx) => ctx.db.get(venueId))).toEqual(venueBefore);
+		expect(after.snapshot?.isOutstanding).not.toBe(true);
 	});
 
-	it('refuses a run that read the old body, by its fingerprint and by the epoch', async () => {
+	it('refuses a first run that read the old body, which starts over on the new read', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedLegacy(t);
-		// Never interpreted yet: the run below is the first, still in flight.
 		const loaded = await stateOf(t, messageId, threadId);
 
 		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
@@ -212,60 +296,58 @@ describe('a re-verified clearsigned scope re-reads the interpretation (#1320)', 
 		const now = await stateOf(t, messageId, threadId);
 		expect(now.verdict).toMatchObject({ scope: 'clearsigned' });
 		expect(now.version).not.toBe(loaded.version);
+		// Never interpreted: nothing cached to read again, the run under way restarts.
+		expect(now.queued).toHaveLength(0);
 		expect(
 			await interpret(t, messageId, threadId, {
+				contentRevision: 'rev-old-read',
+				result: reduceResult({ items: [trailerItem] }),
 				sourceVersion: loaded.version!,
-				deletionEpoch: now.epoch,
-				expectedRevision: now.revision,
 			})
 		).toEqual({ outcome: 'sourceChanged' });
 		expect((await stateOf(t, messageId, threadId)).items).toHaveLength(0);
 	});
 
-	it('refuses a cached run in flight across the re-read', async () => {
-		expectScheduledFailure('mail/interpret/run:interpretMessage');
+	it('refuses a retry of the cached read in flight across the re-verify', async () => {
+		expectScheduledFailure(RUN);
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedLegacy(t);
-		const first = await stateOf(t, messageId, threadId);
 		await interpret(t, messageId, threadId, {
-			sourceVersion: first.version!,
-			deletionEpoch: first.epoch,
-			expectedRevision: first.revision,
+			contentRevision: 'rev-old-read',
+			result: reduceResult({ items: [signedItem] }),
 		});
 		// A retry of the old read loads here ...
 		const loaded = await stateOf(t, messageId, threadId);
 
 		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
 
-		// ... and lands after the re-read started: erased, nothing written back.
+		// ... and lands after the scope changed: nothing of it is written.
 		expect(
 			await interpret(t, messageId, threadId, {
+				contentRevision: 'rev-old-read-retry',
+				result: reduceResult({ items: [signedItem, trailerItem] }),
 				sourceVersion: loaded.version!,
-				deletionEpoch: loaded.epoch,
-				expectedRevision: (await stateOf(t, messageId, threadId)).revision,
 			})
-		).toEqual({ outcome: 'erased' });
+		).toEqual({ outcome: 'sourceChanged' });
 		const after = await stateOf(t, messageId, threadId);
-		expect(after.extractions).toHaveLength(0);
-		expect(after.items).toHaveLength(0);
+		expect(after.items).toHaveLength(1);
+		expect(itemOf(after.items, trailerItem)).toBeUndefined();
 	});
 
 	it('leaves the interpretation alone when the new scope reads the body as it was (MIME)', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedLegacy(t, { mime: true });
-		const before = await stateOf(t, messageId, threadId);
 		await interpret(t, messageId, threadId, {
-			sourceVersion: before.version!,
-			deletionEpoch: before.epoch,
-			expectedRevision: before.revision,
+			contentRevision: 'rev-old-read',
+			result: reduceResult({ items: [signedItem] }),
 		});
+		const before = await stateOf(t, messageId, threadId);
 
 		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
 
 		const after = await stateOf(t, messageId, threadId);
 		expect(after.verdict).toMatchObject({ isSignatureValid: true, scope: 'mime' });
 		expect(after.version).toBe(before.version);
-		expect(after.epoch).toBe(before.epoch);
 		expect(after.extractions).toHaveLength(1);
 		expect(after.queued).toHaveLength(0);
 	});

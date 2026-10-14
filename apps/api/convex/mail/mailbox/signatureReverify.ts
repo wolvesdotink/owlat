@@ -28,10 +28,11 @@
  *
  * A scope can change what interpretation reads: a clearsigned scope narrows the
  * body to the signed block, so the unsigned text around it and an HTML
- * alternative no longer count. Then what the old read contributed to the thread
- * brief is re-read from scratch (`interpret/purgeRun.ts rereadSourcesInThread`),
- * once, as part of the write; a run of the old read still in flight is refused
- * by the epoch and the body fingerprint (`interpret/sourceVersion.ts`).
+ * alternative no longer count. Then the message is interpreted again, once, as
+ * part of the write (`interpret/enqueue.ts enqueueReread`): a re-read that keeps
+ * every item a person touched and flags what the signed block no longer
+ * supports. A run of the old read still in flight is refused by the body
+ * fingerprint (`interpret/sourceVersion.ts`) and starts over on the new read.
  */
 
 import { v } from 'convex/values';
@@ -49,7 +50,7 @@ import { logError } from '../../lib/runtimeLog';
 import { postboxMutation } from '../_helpers';
 import { requireMailboxAccess } from '../permissions';
 import { isMailReadChangedBy } from '../interpret/scope';
-import { rereadSourcesInThread } from '../interpret/purgeRun';
+import { enqueueReread } from '../interpret/enqueue';
 
 /** A signed plaintext row whose verdict has no scope, so the reader withholds it. */
 export function needsSignatureReverify(
@@ -146,8 +147,8 @@ function isSettledVerdict(info: { failure?: string; keySource: string }): boolea
  * Replace the unscoped verdict with the re-verified one. Compare-and-set: a row
  * that meanwhile got a scoped verdict (a concurrent run) is left alone, and an
  * unscoped verdict is never written. When the new scope changes what
- * interpretation reads (`isReadChanged`) and the message was interpreted, its
- * contribution to the thread brief is re-read in the same transaction.
+ * interpretation reads (`isReadChanged`) and the message was interpreted, it is
+ * queued to be read again in the same transaction.
  */
 export const apply = internalMutation({
 	args: {
@@ -166,13 +167,12 @@ export const apply = internalMutation({
 	},
 });
 
-/** Re-read the message's interpretation, when it has one. */
+/** Read the message again, when it was interpreted (a cached read to replace). */
 async function rereadInterpretation(ctx: MutationCtx, message: Doc<'mailMessages'>): Promise<void> {
 	const source = { kind: 'mail' as const, id: message._id };
 	const extraction = await ctx.db
 		.query('messageInterpretations')
 		.withIndex('by_source_revision', (q) => q.eq('sourceKey', interpretationSourceKey(source)))
 		.first();
-	if (!extraction) return;
-	await rereadSourcesInThread(ctx, { kind: 'mail', id: message.threadId }, [source]);
+	if (extraction) await enqueueReread(ctx, source);
 }

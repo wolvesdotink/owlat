@@ -23,7 +23,6 @@ import type { ThreadRef } from '../../lib/validators/threadRef';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
 import { briefCompleteness, isRepairMarked, markRepair } from './purgeRepairs';
-import { markOutstanding } from './outstanding';
 import {
 	scanRange,
 	type DrainBudget,
@@ -325,13 +324,5 @@ export async function settleSourcesJob(
 	});
 	if (ref.kind === 'mail') {
 		await refreshBriefTop(ctx, ref.id, state.isInterpreted ? { latest: null } : {});
-	}
-	if (job.isReread) {
-		// After the epoch was settled, so the runs read the cleared state. Each
-		// source is outstanding until its run records, the stale sweep's cue.
-		for (const source of state.sources) {
-			await markOutstanding(ctx, interpretationSourceKey(source));
-			await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, { source });
-		}
 	}
 }

@@ -58,11 +58,6 @@ export const threadPurgeJobTables = {
 		inboundMessageId: v.optional(v.id('inboundMessages')),
 		// `scope` jobs: the thread's new mode.
 		mode: v.optional(interpretModeValidator),
-		// `sources` jobs that re-read their sources instead of erasing them: what
-		// the sources contributed goes, their enqueue snapshots stay, and each is
-		// interpreted again when the job settles (a signature verdict that now
-		// narrows what of the body is read, `mail/mailbox/signatureReverify.ts`).
-		isReread: v.optional(v.boolean()),
 		// The range being drained (index into the kind's range list) and its cursor.
 		rangeIndex: v.number(),
 		cursor: v.optional(purgeCursorValidator),

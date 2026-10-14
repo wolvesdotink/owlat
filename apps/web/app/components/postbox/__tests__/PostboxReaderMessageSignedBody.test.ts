@@ -494,6 +494,37 @@ describe('PostboxReaderMessage · a verdict without a scope is never shown', () 
 		expect(mutation).toHaveBeenCalledTimes(3);
 	});
 
+	it('a flapping backend gets at most one request per expansion', async () => {
+		const message = { textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY };
+		mutation.mockRejectedValue(new Error('flapping'));
+		const w = mountCard(message, { secureClass: 'pgp-clearsigned', hideBody: true });
+		await flushPromises();
+		// Every reactive refresh of the row brings a fresh verdict object.
+		for (let i = 0; i < 20; i++) {
+			await w.setProps({
+				message: { ...base, ...message, inboundSignatureInfo: { ...LEGACY } } as never,
+			});
+			await flushPromises();
+		}
+		expect(mutation).toHaveBeenCalledTimes(1);
+
+		await w.setProps({ expanded: false });
+		await w.setProps({ expanded: true });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(2);
+	});
+
+	it('never sends a second request while one is on its way', async () => {
+		const message = { textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY };
+		mutation.mockReturnValue(new Promise(() => {}));
+		const w = mountCard(message, { secureClass: 'pgp-clearsigned', hideBody: true });
+		await flushPromises();
+		await w.setProps({ expanded: false });
+		await w.setProps({ expanded: true });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(1);
+	});
+
 	it('asks nothing for a collapsed card, a scoped verdict or unsigned mail', async () => {
 		mountCard({ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY }, { expanded: false });
 		mountCard({ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: VERIFIED });
