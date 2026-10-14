@@ -1,6 +1,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { decrementContactCount } from './contactCountHelpers';
+import { throwInvalidState } from '../_utils/errors';
 import { recordContactGrowth } from '../contacts/growthCounters';
 import { deleteIdentitiesForContact } from '../contacts/resolution';
 import {
@@ -188,13 +189,35 @@ async function mergeDraftStrategySelections(
 }
 
 /**
+ * Why `contactId` cannot take part in a merge, or `undefined` when it can. A
+ * soft-deleted contact is on its way to erasure and one with an erasure job is
+ * being erased: rows moved off it onto a live contact would leave the
+ * erasure's reach, and rows moved onto it would be erased with it (#1337).
+ */
+export async function contactMergeBlocker(
+	ctx: MutationCtx,
+	contactId: Id<'contacts'>
+): Promise<'missing' | 'deleted' | 'erasing' | undefined> {
+	const contact = await ctx.db.get(contactId);
+	if (!contact) return 'missing';
+	if (contact.deletedAt !== undefined) return 'deleted';
+	const job = await ctx.db
+		.query('contactErasureJobs')
+		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.first();
+	return job ? 'erasing' : undefined;
+}
+
+/**
  * Move every contact-owned row (identities, relationships, topic memberships,
  * property values, learned clarification answers, and all
  * `CONTACT_REPOINT_TABLES` FK rows) from `source` onto `target`, deduping the
  * tables that carry a unique-per-contact constraint.
  *
  * This is the cascade half of a contact merge — it leaves both contact rows in
- * place; the caller deletes the source afterwards. Factored here (next to the
+ * place; the caller deletes the source afterwards. It refuses, before moving
+ * anything, when either contact is deleted or being erased
+ * (`contactMergeBlocker`). Factored here (next to the
  * permanent-delete cascade) so the merge and delete paths enumerate the same
  * FK tables from one list and can't drift.
  *
@@ -219,6 +242,14 @@ export async function mergeContactRelations(
 	targetContactId: Id<'contacts'>,
 	sourceContactId: Id<'contacts'>
 ): Promise<void> {
+	// Nothing moves while either side is deleted or being erased.
+	for (const contactId of [targetContactId, sourceContactId]) {
+		const blocker = await contactMergeBlocker(ctx, contactId);
+		if (blocker) {
+			throwInvalidState('A deleted contact cannot be merged', { contactId, reason: blocker });
+		}
+	}
+
 	// Identities — dedupe by (channel, identifier), keep target's primary.
 	const sourceIdentities = await ctx.db
 		.query('contactIdentities')

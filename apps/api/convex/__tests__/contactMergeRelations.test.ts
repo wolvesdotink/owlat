@@ -4,11 +4,18 @@ import type { Id } from '../_generated/dataModel';
 import { createTestContact } from './factories';
 import { newHarness } from './testModules';
 import {
+	contactReferencesIn,
 	referencesTo,
-	schemaReferencesTo,
+	schemaContactReferences,
 	schemaStringContactReferences,
+	schemaStringFields,
+	stringFieldsIn,
 	stringReferencesTo,
 } from './schemaReferences';
+import {
+	DECLARED_CONTACT_STRING_REFERENCES,
+	NOT_CONTACT_STRING_REFERENCES,
+} from '../lib/contactStringReferences';
 import {
 	CONTACT_MERGE_EXCLUSIONS,
 	CONTACT_MERGE_ROUTINES,
@@ -41,11 +48,25 @@ const handled = (): string[] => [
 
 describe('contact merge relation coverage', () => {
 	it('handles every field in the schema that references contacts', () => {
-		const inSchema = [
-			...schemaReferencesTo('contacts'),
-			...schemaStringContactReferences().map((r) => r.ref),
-		].sort();
-		expect([...handled()].sort()).toEqual(inSchema);
+		expect([...handled()].sort()).toEqual(schemaContactReferences());
+	});
+
+	it('declares only plain-string contact ids the name rule cannot see', () => {
+		const strings = new Set(schemaStringFields());
+		const recognised = new Set(schemaStringContactReferences().map((r) => r.ref));
+		for (const [ref, why] of Object.entries(DECLARED_CONTACT_STRING_REFERENCES)) {
+			expect(strings.has(ref), `${ref} is not a plain string in the schema`).toBe(true);
+			expect(recognised.has(ref), `${ref} is already found by its name`).toBe(false);
+			expect(why.trim().length, ref).toBeGreaterThan(0);
+		}
+	});
+
+	it('exempts only strings the name rule actually claims', () => {
+		const recognised = new Set(schemaStringContactReferences().map((r) => r.ref));
+		for (const [ref, why] of Object.entries(NOT_CONTACT_STRING_REFERENCES)) {
+			expect(recognised.has(ref), `${ref} is not claimed by the name rule`).toBe(true);
+			expect(why.trim().length, ref).toBeGreaterThan(0);
+		}
 	});
 
 	it('handles each field one way only', () => {
@@ -60,6 +81,23 @@ describe('contact merge relation coverage', () => {
 });
 
 describe('schema reference walk', () => {
+	it('counts a field once when both walks find it, and adds declared strings', () => {
+		const tables = {
+			mixed: { validator: v.object({ contactId: v.union(v.id('contacts'), v.string()) }) },
+			hidden: {
+				validator: v.object({ owner: v.string(), keyed: v.record(v.string(), v.number()) }),
+			},
+		};
+		expect(
+			contactReferencesIn(tables, { 'hidden.owner': 'why', 'hidden.keyed{key}': 'why' }, {})
+		).toEqual(['hidden.keyed{key}', 'hidden.owner', 'mixed.contactId']);
+		expect(stringFieldsIn(tables)).toEqual([
+			'hidden.keyed{key}',
+			'hidden.owner',
+			'mixed.contactId',
+		]);
+	});
+
 	it('recognises contact ids held in plain strings by their discriminator or name', () => {
 		const tables = {
 			scoped: {
@@ -83,9 +121,26 @@ describe('schema reference walk', () => {
 				validator: v.object({ fromContactId: v.string(), contactIds: v.array(v.string()) }),
 			},
 			typed: { validator: v.object({ contactId: v.id('contacts') }) },
+			containers: {
+				validator: v.object({
+					contactIds: v.union(v.array(v.string()), v.null()),
+					grid: v.object({ contactIds: v.array(v.array(v.string())) }),
+					byContact: v.optional(v.object({ contactIds: v.record(v.string(), v.string()) })),
+					scopeType: v.literal('contact'),
+					scopeIds: v.array(v.string()),
+					nested: v.array(
+						v.object({ targetKind: v.literal('contact'), targetId: v.optional(v.string()) })
+					),
+				}),
+			},
 		};
 		expect(stringReferencesTo(tables, 'contact')).toEqual([
 			{ ref: 'audited.resourceId', discriminator: 'resource' },
+			{ ref: 'containers.byContact.contactIds{}' },
+			{ ref: 'containers.contactIds[]' },
+			{ ref: 'containers.grid.contactIds[][]' },
+			{ ref: 'containers.nested[].targetId', discriminator: 'targetKind' },
+			{ ref: 'containers.scopeIds[]', discriminator: 'scopeType' },
 			{ ref: 'named.contactIds[]' },
 			{ ref: 'named.fromContactId' },
 			{ ref: 'scoped.scopeId', discriminator: 'scopeType' },

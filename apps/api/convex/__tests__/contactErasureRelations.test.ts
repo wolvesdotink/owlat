@@ -4,7 +4,11 @@ import {
 	DESCENDANT_RELATIONS,
 	tablesErasureDeletesFrom,
 } from '../contacts/erasure/relations';
-import { schemaReferencesTo, schemaStringContactReferences } from './schemaReferences';
+import {
+	schemaContactReferences,
+	schemaReferencesTo,
+	schemaStringContactReferences,
+} from './schemaReferences';
 
 /**
  * Schema coverage gate for the contact erasure relation registry
@@ -19,11 +23,7 @@ import { schemaReferencesTo, schemaStringContactReferences } from './schemaRefer
 describe('contact erasure relation registry', () => {
 	it('declares a policy for every field in the schema that references contacts', () => {
 		const declared = CONTACT_RELATIONS.map((r) => `${r.table}.${r.field}`).sort();
-		const inSchema = [
-			...schemaReferencesTo('contacts'),
-			...schemaStringContactReferences().map((r) => r.ref),
-		].sort();
-		expect(declared).toEqual(inSchema);
+		expect(declared).toEqual(schemaContactReferences());
 	});
 
 	it('names the discriminator of every contact id held in a plain string', () => {

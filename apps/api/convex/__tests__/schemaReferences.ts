@@ -1,4 +1,8 @@
 import schema from '../schema';
+import {
+	DECLARED_CONTACT_STRING_REFERENCES,
+	NOT_CONTACT_STRING_REFERENCES,
+} from '../lib/contactStringReferences';
 
 /**
  * The schema walk behind the relation coverage gates: every field, at any
@@ -70,29 +74,30 @@ export function schemaReferencesTo(target: string): string[] {
 }
 
 /**
- * A plain `v.string()` field the walk recognises as holding an id of `kind`,
- * which `v.id` typing would have made visible to `referencesTo`. Two shapes:
+ * A plain-string field the walk recognises as holding an id of `kind`, which
+ * `v.id` typing would have made visible to `referencesTo`. Two shapes:
  *
- *   - a discriminated id: `<x>Id` next to a sibling `<x>`, `<x>Type` or
- *     `<x>Kind` field whose literals include `kind` (`scopeType: 'contact'` +
- *     `scopeId`, `resource: 'contact'` + `resourceId`). The pairing by name is
- *     what keeps unrelated strings out: `organizationId` beside `scopeType` is
- *     not claimed, because no `organization`/`organizationType` field says so;
+ *   - a discriminated id: `<x>Id` or `<x>Ids` next to a sibling `<x>`,
+ *     `<x>Type` or `<x>Kind` field whose literals include `kind`
+ *     (`scopeType: 'contact'` + `scopeId`, `resource: 'contact'` +
+ *     `resourceId`). Pairing by name is what keeps unrelated strings out:
+ *     `organizationId` beside `scopeType` is not claimed, because no
+ *     `organization`/`organizationType` field says it is a contact;
  *   - a string named for the kind itself: `contactId`, `fromContactId`,
- *     `contactIds` (as `[]`), which should have been `v.id` in the first place.
+ *     `contactIds`, which should have been `v.id` in the first place.
+ *
+ * The field's name and its siblings decide; its container does not. A string
+ * reached through a union, an optional, an array (of any depth) or a record
+ * value counts, with the path saying where (`contactIds[]`, `matrix[][]`,
+ * `byContact{}`). What no name can reveal (an arbitrarily named string, a
+ * plain-string record key) is declared by hand in
+ * `lib/contactStringReferences.ts`.
  */
 export interface StringReference {
 	/** `table.field` */
 	ref: string;
 	/** The sibling field naming the id's kind; absent for a name-only match. */
 	discriminator?: string;
-}
-
-function isStringField(validator: ValidatorJson | undefined): boolean {
-	if (!validator) return false;
-	if (validator.kind === 'string') return true;
-	if (validator.kind === 'union') return (validator.members ?? []).some(isStringField);
-	return false;
 }
 
 function namesLiteral(validator: ValidatorJson | undefined, kind: string): boolean {
@@ -103,44 +108,84 @@ function namesLiteral(validator: ValidatorJson | undefined, kind: string): boole
 	return false;
 }
 
-function collectStringReferences(
+/**
+ * The path suffixes at which `validator` holds a plain string, looking through
+ * unions, arrays and record values but not into objects (an object's own
+ * fields are judged by their own names).
+ */
+function stringSuffixes(
 	validator: ValidatorJson | undefined,
-	kind: string,
-	path: string,
-	out: StringReference[]
+	suffix: string,
+	out: Set<string>
 ): void {
 	if (!validator) return;
-	if (validator.kind === 'union') {
-		for (const member of validator.members ?? []) collectStringReferences(member, kind, path, out);
-		return;
+	switch (validator.kind) {
+		case 'string':
+			out.add(suffix);
+			return;
+		case 'union':
+			for (const member of validator.members ?? []) stringSuffixes(member, suffix, out);
+			return;
+		case 'array':
+			stringSuffixes(validator.element, `${suffix}[]`, out);
+			return;
+		case 'record':
+			stringSuffixes(validator.value, `${suffix}{}`, out);
+			return;
 	}
-	if (validator.kind === 'array') {
-		collectStringReferences(validator.element, kind, `${path}[]`, out);
-		return;
+}
+
+/** Every object reachable from `validator` without passing through another object's field. */
+function objectsIn(
+	validator: ValidatorJson | undefined,
+	path: string,
+	visit: (object: ValidatorJson, path: string) => void
+): void {
+	if (!validator) return;
+	switch (validator.kind) {
+		case 'object':
+			visit(validator, path);
+			return;
+		case 'union':
+			for (const member of validator.members ?? []) objectsIn(member, path, visit);
+			return;
+		case 'array':
+			objectsIn(validator.element, `${path}[]`, visit);
+			return;
+		case 'record':
+			objectsIn(validator.value, `${path}{}`, visit);
+			return;
 	}
-	if (validator.kind === 'record') {
-		collectStringReferences(validator.value, kind, `${path}{}`, out);
-		return;
-	}
-	if (validator.kind !== 'object') return;
-	const fields = validator.fields ?? {};
+}
+
+function collectStringReferences(
+	object: ValidatorJson,
+	kind: string,
+	path: string,
+	out: Map<string, StringReference>
+): void {
+	const fields = object.fields ?? {};
 	const capitalised = kind.charAt(0).toUpperCase() + kind.slice(1);
 	const named = new RegExp(`(^${kind}|${capitalised})Ids?$`);
 	for (const [name, field] of Object.entries(fields)) {
 		const fieldPath = path ? `${path}.${name}` : name;
-		const element = field.kind === 'array' ? field.element : field;
-		if (isStringField(element)) {
-			const ref = field.kind === 'array' ? `${fieldPath}[]` : fieldPath;
-			const prefix = name.endsWith('Id') ? name.slice(0, -2) : undefined;
-			const discriminator = prefix
-				? [prefix, `${prefix}Type`, `${prefix}Kind`].find((sibling) =>
-						namesLiteral(fields[sibling], kind)
-					)
-				: undefined;
-			if (discriminator) out.push({ ref, discriminator });
-			else if (named.test(name)) out.push({ ref });
+		const prefix = /Ids?$/.test(name) ? name.replace(/Ids?$/, '') : undefined;
+		const discriminator = prefix
+			? [prefix, `${prefix}Type`, `${prefix}Kind`].find((sibling) =>
+					namesLiteral(fields[sibling], kind)
+				)
+			: undefined;
+		if (discriminator || named.test(name)) {
+			const suffixes = new Set<string>();
+			stringSuffixes(field, '', suffixes);
+			for (const suffix of suffixes) {
+				const ref = `${fieldPath}${suffix}`;
+				out.set(ref, discriminator ? { ref, discriminator } : { ref });
+			}
 		}
-		collectStringReferences(field, kind, fieldPath, out);
+		objectsIn(field, fieldPath, (nested, nestedPath) =>
+			collectStringReferences(nested, kind, nestedPath, out)
+		);
 	}
 }
 
@@ -151,17 +196,96 @@ export function stringReferencesTo(
 ): StringReference[] {
 	const refs: StringReference[] = [];
 	for (const [table, definition] of Object.entries(tables)) {
-		const found: StringReference[] = [];
-		collectStringReferences(definition.validator as ValidatorJson, kind, '', found);
-		for (const reference of found) refs.push({ ...reference, ref: `${table}.${reference.ref}` });
+		const found = new Map<string, StringReference>();
+		objectsIn(definition.validator as ValidatorJson, '', (object, path) =>
+			collectStringReferences(object, kind, path, found)
+		);
+		for (const reference of found.values()) {
+			refs.push({ ...reference, ref: `${table}.${reference.ref}` });
+		}
 	}
 	return refs.sort((a, b) => a.ref.localeCompare(b.ref));
 }
 
+/** `table.field` for every place in `tables` that holds a plain string, sorted. */
+export function stringFieldsIn(tables: Record<string, { validator: unknown }>): string[] {
+	const refs = new Set<string>();
+	const visitObject = (table: string) => (object: ValidatorJson, path: string) => {
+		for (const [name, field] of Object.entries(object.fields ?? {})) {
+			const fieldPath = path ? `${path}.${name}` : name;
+			const suffixes = new Set<string>();
+			stringSuffixes(field, '', suffixes);
+			for (const suffix of suffixes) refs.add(`${table}.${fieldPath}${suffix}`);
+			stringRecordKeys(field, fieldPath, table, refs);
+			objectsIn(field, fieldPath, visitObject(table));
+		}
+	};
+	for (const [table, definition] of Object.entries(tables)) {
+		objectsIn(definition.validator as ValidatorJson, '', visitObject(table));
+	}
+	return [...refs].sort();
+}
+
+/** Record `field{key}` for every plain-string record key under `validator`. */
+function stringRecordKeys(
+	validator: ValidatorJson | undefined,
+	path: string,
+	table: string,
+	out: Set<string>
+): void {
+	if (!validator) return;
+	switch (validator.kind) {
+		case 'union':
+			for (const member of validator.members ?? []) stringRecordKeys(member, path, table, out);
+			return;
+		case 'array':
+			stringRecordKeys(validator.element, `${path}[]`, table, out);
+			return;
+		case 'record':
+			if (validator.key?.kind === 'string') out.add(`${table}.${path}{key}`);
+			stringRecordKeys(validator.value, `${path}{}`, table, out);
+			return;
+	}
+}
+
+const schemaTables = (): Record<string, { validator: unknown }> =>
+	(schema as unknown as { tables: Record<string, { validator: unknown }> }).tables;
+
 /** The schema's plain-string fields recognised as contact ids. */
 export function schemaStringContactReferences(): StringReference[] {
-	return stringReferencesTo(
-		(schema as unknown as { tables: Record<string, { validator: unknown }> }).tables,
-		'contact'
+	return stringReferencesTo(schemaTables(), 'contact');
+}
+
+/** Every place in the schema that holds a plain string. */
+export function schemaStringFields(): string[] {
+	return stringFieldsIn(schemaTables());
+}
+
+/**
+ * Every place in `tables` that holds a contact id, as `table.field`, sorted
+ * and once each: the `v.id('contacts')` fields, the plain strings the name
+ * rule recognises (minus `notContact`), and the hand-declared ones. A field
+ * typed `v.union(v.id('contacts'), v.string())` is found by both walks and
+ * counted once.
+ */
+export function contactReferencesIn(
+	tables: Record<string, { validator: unknown }>,
+	declared: Readonly<Record<string, string>>,
+	notContact: Readonly<Record<string, string>>
+): string[] {
+	const refs = new Set(referencesTo(tables, 'contacts'));
+	for (const { ref } of stringReferencesTo(tables, 'contact')) {
+		if (!(ref in notContact)) refs.add(ref);
+	}
+	for (const ref of Object.keys(declared)) refs.add(ref);
+	return [...refs].sort();
+}
+
+/** Every place in the schema that holds a contact id; what both coverage gates check. */
+export function schemaContactReferences(): string[] {
+	return contactReferencesIn(
+		schemaTables(),
+		DECLARED_CONTACT_STRING_REFERENCES,
+		NOT_CONTACT_STRING_REFERENCES
 	);
 }
