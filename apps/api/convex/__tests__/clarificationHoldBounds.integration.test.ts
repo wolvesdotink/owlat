@@ -39,13 +39,26 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-/** `readers` shared-inbox readers with a device, under real limits unless told. */
-async function harness(readers = 1, hasLimits = true): Promise<Harness> {
+/**
+ * `readers` shared-inbox readers with a device, under real limits unless told.
+ * `largest` builds the worst case the reminder's arithmetic counts: an
+ * organization row near the document limit, and devices whose endpoint is the
+ * longest Unicode one the subscription writer accepts.
+ */
+async function harness(readers = 1, hasLimits = true, largest = false): Promise<Harness> {
 	_resetSingletonOrgCacheForTests();
 	const t = convexTest({ schema, modules, transactionLimits: hasLimits });
 	t.registerComponent('betterAuth', betterAuthSchema, betterAuthModules);
 	const org = (await t.mutation(components.betterAuth.adapter.create, {
-		input: { model: 'organization', data: { name: 'Acme', slug: 'acme', createdAt: Date.now() } },
+		input: {
+			model: 'organization',
+			data: {
+				name: 'Acme',
+				slug: 'acme',
+				createdAt: Date.now(),
+				...(largest ? { metadata: 'x'.repeat(1000 * KiB) } : {}),
+			},
+		},
 	} as never)) as { _id: string };
 	for (let i = 0; i < readers; i++) {
 		const userId = `reader-${i}`;
@@ -55,7 +68,11 @@ async function harness(readers = 1, hasLimits = true): Promise<Harness> {
 				data: { organizationId: org._id, userId, role: 'admin', createdAt: Date.now() },
 			},
 		} as never);
-		await seedDevice(t, userId);
+		await seedDevice(
+			t,
+			userId,
+			largest ? { endpoint: `https://push.example.com/${'界'.repeat(2048 - 25)}` } : {}
+		);
 	}
 	return t;
 }
@@ -231,9 +248,9 @@ it('fits the largest worker pages and cron with near-limit threads, bodies and p
 	expect(await run()).toHaveLength(1600);
 }, 180_000);
 
-it('keeps a worker link under the read limit, the patch reads counted', async () => {
-	const t = await harness(200, false);
-	vi.unstubAllEnvs();
+it('keeps a worker link under its documented ceiling, every read counted', async () => {
+	// Push stays on, so every send reads its device row.
+	const t = await harness(200, false, true);
 	const askedAt = Date.now() - 2 * DAY;
 	const held = await seedHeld(t, 8, 'open', askedAt);
 	for (const [j, id] of held.entries()) {
@@ -248,7 +265,8 @@ it('keeps a worker link under the read limit, the patch reads counted', async ()
 			})
 		);
 		await t.run(async (ctx) => {
-			for (let i = 0; i < 150; i++) {
+			// 100 of 200 readers reminded already: 4 questions x 100 = 400 sends.
+			for (let i = 0; i < 100; i++) {
 				await ctx.db.insert('inboxAssignmentNotices', {
 					kind: 'clarification',
 					inboundMessageId: id,
@@ -275,6 +293,8 @@ it('keeps a worker link under the read limit, the patch reads counted', async ()
 		})
 	);
 
+	// A cold cache: the reader lookup reads the organization row too.
+	_resetSingletonOrgCacheForTests();
 	const metrics = await t.run(async (ctx) => {
 		const result = await (
 			remindHeldClarifications as unknown as {
@@ -289,8 +309,45 @@ it('keeps a worker link under the read limit, the patch reads counted', async ()
 		return { result, bytesRead: used.bytesRead.used };
 	});
 	expect(metrics.result).toEqual({ reminded: 4 });
-	// The documented worst case is 11.4 MiB; this valid fixture stays under it.
-	expect(metrics.bytesRead).toBeLessThanOrEqual(11.4 * 1024 * KiB);
+	// The documented worst case (clarificationReminders.ts) is 13.9 MiB.
+	expect(metrics.bytesRead).toBeLessThanOrEqual(13.9 * 1024 * KiB);
+	// 8 x 100 seeded reminders, and the link's 400 sends on top.
+	const reminders = await t.run(async (ctx) =>
+		(await ctx.db.query('inboxAssignmentNotices').collect()).filter((n) => n.isReminder)
+	);
+	expect(reminders).toHaveLength(800 + 400);
+}, 180_000);
+
+it('reads at most 4 MiB settling a thread in the transition, the rest in pages', async () => {
+	const t = await harness();
+	vi.unstubAllEnvs();
+	const held = await seedHeld(t, 3, 'open', Date.now() - 2 * DAY);
+	for (const id of held) {
+		await t.run((ctx) =>
+			ctx.db.patch(id, { textBody: 'x'.repeat(1010 * KiB), htmlBody: undefined })
+		);
+	}
+	const threadId = (await t.run((ctx) => ctx.db.get(held[0]!)))!.threadId!;
+
+	const bytesRead = await t.run(async (ctx) => {
+		await threadTransition(ctx, {
+			threadId,
+			input: { kind: 'status_change', to: 'resolved', source: 'user' },
+		});
+		const used = await (
+			ctx as unknown as {
+				meta: { getTransactionMetrics(): Promise<{ bytesRead: { used: number } }> };
+			}
+		).meta.getTransactionMetrics();
+		return used.bytesRead.used;
+	});
+	// clarificationHold.ts documents 4 MiB for the settlement itself; the thread
+	// transition's own reads (a small thread, its clock) are a few KiB here.
+	// Reading one row past the budget, as before, came to 4.93 MiB.
+	expect(bytesRead).toBeLessThanOrEqual(4 * 1024 * KiB + 64 * KiB);
+	await t.finishAllScheduledFunctions(vi.runAllTimers);
+	const rows = await Promise.all(held.map((id) => t.run((ctx) => ctx.db.get(id))));
+	expect(rows.every((m) => m?.isThreadSettled === true)).toBe(true);
 }, 120_000);
 
 it('gives a question its turn while earlier ones ask anew every run', async () => {

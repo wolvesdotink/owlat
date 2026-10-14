@@ -23,18 +23,22 @@
  *     row each (`clarificationHold.hasReminder`), for at most 200 readers a
  *     question (`access.listSharedInboxReaderIds`). A reminder notice keeps
  *     at most 200 UTF-16 units of subject and of sender (<= 600 bytes each)
- *     beside ids and numbers, so <= 2 KiB: 4 x 200 x 2 KiB = 1.6 MiB;
+ *     beside ids and numbers, so <= 2 KiB: 4 x 200 x 2 KiB = 1.5625 MiB;
  *   - push devices, one `.first()` per send (`push/events.enqueuePush`), at
- *     most {@link MAX_REMINDER_SENDS} sends; a device row is capped at a
- *     2,048-character endpoint, a 200-character key, an 80-character label
- *     and a 64-character time zone, so <= 4 KiB: 400 x 4 KiB = 1.6 MiB;
- *   - the reader list, read once per link: <= 200 member rows, < 0.2 MiB;
+ *     most {@link MAX_REMINDER_SENDS} sends. The writer caps a device row at
+ *     a 2,048-unit endpoint (<= 6 KiB of Unicode), a 200-unit key, an 80-unit
+ *     label and a 64-unit time zone, so <= 8 KiB: 400 x 8 KiB = 3.125 MiB;
+ *   - the reader list, read once per link: <= 200 member rows, < 0.2 MiB,
+ *     and on a cold cache the organization row it is scoped to
+ *     (`lib/sessionOrganization.getSingletonOrganizationId`), whose metadata
+ *     can come close to the document limit: 1 MiB;
  *   - no `agentConfig` read (the cron passes the cutoff) and no second read
  *     of a message (the notice reuses the loaded row).
- * Total <= 11.4 MiB of the 16 MiB a transaction may read. Index ranges: at
- * most 4 x 200 lookups + 400 device lookups + a few, far below 4,096. Writes:
- * at most 400 small notices and 4 message patches (<= 4 MiB). Scheduled
- * functions: at most 400 pushes and one continuation.
+ * Total <= 2 + 2 + 4 + 1.5625 + 3.125 + 0.2 + 1 = 13.9 MiB of the 16 MiB a
+ * transaction may read. Index ranges: at most 4 x 200 lookups + 400 device
+ * lookups + a few, far below 4,096. Writes: at most 400 small notices and 4
+ * message patches (<= 4 MiB). Scheduled functions: at most 400 pushes and one
+ * continuation.
  *
  * A link finishes every row of its page before the next link takes the next
  * page, so the chain's cursor only moves forward; it ends when the run's sends

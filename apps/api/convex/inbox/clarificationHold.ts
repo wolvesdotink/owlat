@@ -114,10 +114,11 @@ export async function readPendingReview(ctx: QueryCtx, limit: number) {
 /**
  * The settlement sync's reads, by shape (a document is at most 1 MiB):
  *   - in the transition (it runs inside whatever settles or reopens the
- *     thread, so its share stays small): held messages read one at a time
- *     until {@link INLINE_ROWS} rows or {@link INLINE_BYTES} are read, so at
- *     most 1 MiB + one 1 MiB document = 2 MiB, and the patches of those rows
- *     read them again: 2 MiB. 4 MiB in all;
+ *     thread, so its share stays small): held messages read one at a time,
+ *     stopping as soon as {@link INLINE_ROWS} rows or {@link INLINE_BYTES}
+ *     have been read, so the rows before the last stay under 1 MiB and the
+ *     last is at most 1 MiB: 2 MiB. The patches of those rows read them
+ *     again: 2 MiB. 4 MiB in all;
  *   - in a scheduled page: the thread (1 MiB), a `paginate` page of at most
  *     {@link PAGE_ROWS} rows that stops at {@link PAGE_BYTES} (2 MiB + one
  *     1 MiB overshoot = 3 MiB), and the patches reading those rows again
@@ -147,12 +148,14 @@ export async function syncHeldClarifications(
 	let bytes = 0;
 	let isMore = false;
 	for await (const message of heldOf(ctx, threadId)) {
+		held.push(message);
+		bytes += documentBytes(message);
+		// Stop as soon as the budget is reached, before reading another row:
+		// whatever is left (perhaps nothing) goes to the scheduled pages.
 		if (held.length >= INLINE_ROWS || bytes >= INLINE_BYTES) {
 			isMore = true;
 			break;
 		}
-		held.push(message);
-		bytes += documentBytes(message);
 	}
 	await applySettled(ctx, held, status);
 	if (isMore) {
