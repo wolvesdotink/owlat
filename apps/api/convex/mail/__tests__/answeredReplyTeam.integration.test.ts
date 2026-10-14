@@ -9,7 +9,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkId } from '@convex-dev/workpool';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
@@ -23,6 +23,7 @@ const NOW = 1_700_000_000_000;
 const workId = 'test-work-id' as WorkId;
 
 afterEach(async () => {
+	vi.restoreAllMocks();
 	await flushScheduled();
 });
 
@@ -475,6 +476,68 @@ describe('the response clock of a reopened message', () => {
 		await laterBounce(t, sendId);
 
 		expect(await thread(t, th)).toMatchObject(running);
+	});
+
+	/** The reply to a newer message settled `older`; its bounce reopens it. Returns the send. */
+	async function answeredThenBounced(t: T, th: Thread) {
+		const older = await seedInbound(t, th, {
+			processingStatus: 'draft_ready',
+			draftResponse: 'Your order ships Monday.',
+			receivedAt: NOW - 3_000,
+		});
+		const answered = await seedInbound(t, th, {
+			processingStatus: 'approved',
+			draftResponse: 'All orders ship Monday.',
+			receivedAt: NOW,
+		});
+		const sendId = await completeReply(t, th, answered, 'sent');
+		return { older, answered, sendId };
+	}
+
+	it('keeps the reopened clock when a newer message turns out to need no reply', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const { older, sendId } = await answeredThenBounced(t, th);
+		await laterBounce(t, sendId);
+		expect((await thread(t, th)).responseDueAt).toBe(BOUNCE_AT + NEXT_RESPONSE_MS);
+
+		// A newer mail is classified as an FYI: the cleanup scan passes the
+		// answered (`sent`) message on its way down, and must not stop there.
+		const newer = await seedInbound(t, th, {
+			processingStatus: 'classifying',
+			receivedAt: BOUNCE_AT + 30_000,
+		});
+		const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: newer,
+			input: { to: 'informational', at: BOUNCE_AT + 30_000 },
+		});
+
+		expect(outcome.ok).toBe(true);
+		expect((await get(t, older)).processingStatus).toBe('draft_ready');
+		expect((await thread(t, th)).responseDueAt).toBe(BOUNCE_AT + NEXT_RESPONSE_MS);
+	});
+
+	it('starts a clock for reopened work when targets are switched on after the bounce', async () => {
+		const t = await pushHarness(modules, {});
+		const th = await seedThread(t);
+		await withTargets(t, th);
+		const policy = await t.run(async (ctx) => (await ctx.db.query('inboxSlaPolicies').first())!);
+		await t.run(async (ctx) => ctx.db.patch(policy._id, { isEnabled: false, updatedAt: NOW }));
+		const { older, answered, sendId } = await answeredThenBounced(t, th);
+		await laterBounce(t, sendId);
+		expect((await get(t, older)).processingStatus).toBe('draft_ready');
+		expect((await get(t, answered)).processingStatus).toBe('sent'); // the newest message
+		expect((await thread(t, th)).responseDueAt).toBeUndefined();
+
+		const generation = BOUNCE_AT + 30_000;
+		vi.spyOn(Date, 'now').mockReturnValue(generation);
+		await t.run(async (ctx) =>
+			ctx.db.patch(policy._id, { isEnabled: true, updatedAt: generation })
+		);
+		await t.mutation(internal.inbox.sla.apply.applyPage, { generation, cursor: null });
+
+		expect((await thread(t, th)).responseDueAt).toBe(generation + NEXT_RESPONSE_MS);
 	});
 
 	it('starts nothing for a person taking over an archived message, as before', async () => {

@@ -116,6 +116,7 @@ export async function settleAnsweredTeamThread(
 			},
 			draftResponse: undefined,
 			pendingClarification: undefined,
+			answerBouncedAt: undefined,
 		});
 	}
 }
@@ -167,7 +168,12 @@ export async function restoreAnsweredTeamThread(
 						},
 		});
 		if (reopened.ok) {
-			await ctx.db.patch(message._id, { answeredStash: undefined, archiveReason: undefined });
+			await ctx.db.patch(message._id, {
+				answeredStash: undefined,
+				archiveReason: undefined,
+				// Owed again, whatever came after it (inbox/sla/threadClock.ts).
+				answerBouncedAt: at,
+			});
 		}
 	}
 }

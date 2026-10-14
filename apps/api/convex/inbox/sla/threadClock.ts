@@ -14,6 +14,15 @@
  * after the team last replied. The last reply is read off the unified timeline
  * (`unifiedMessages`), which records every reply channel, including a person's
  * SMS, WhatsApp or chat reply that leaves the inbound message untouched.
+ *
+ * One exception, and both checks honour it: a message the reply that answered
+ * it bounced back to the team (`answerBouncedAt`, inbox/answeredThread.ts) is
+ * owed while it still needs a reply, however old it is and whatever newer
+ * message was answered since. That reply never reached the customer, so
+ * neither a later `sent` nor the timeline's last reply speaks for it. The
+ * marker lives on the message, not the thread: the message's own status ends
+ * the obligation (sent, archived, set aside) on every path that does, with
+ * nothing to clear.
  */
 
 import type { MutationCtx } from '../../_generated/server';
@@ -64,6 +73,11 @@ const OVERRULED_STATES: ReadonlySet<ProcessingStatus> = new Set(['informational'
 /** Does a message in this state still wait on the team? */
 function isAwaitingReply(status: ProcessingStatus): boolean {
 	return !NO_REPLY_STATES.has(status) && status !== 'sent';
+}
+
+/** Reopened by a bounce of its answer, and still waiting on the team (see the header). */
+function isOwedAfterBounce(message: Doc<'inboundMessages'>): boolean {
+	return message.answerBouncedAt !== undefined && isAwaitingReply(message.processingStatus);
 }
 
 /** How many of a thread's messages the no-reply check reads. */
@@ -146,7 +160,8 @@ async function lastReplyAt(
 /**
  * Does the customer still wait on an answer? Read off the thread's newest
  * inbound message: answered, set aside as needing none, or older than the
- * team's last reply means no. A thread without inbound messages (a channel
+ * team's last reply means no, unless a bounce reopened earlier work that still
+ * needs a reply (see the header). A thread without inbound messages (a channel
  * conversation while the agent is off) is read off its timeline instead: it
  * waits when the customer wrote last, or when nothing is on record, as an open
  * thread does for the list's waiting time (inbox/threadSort.ts).
@@ -161,9 +176,16 @@ export async function isReplyOwed(
 		.order('desc')
 		.first();
 	if (newest) {
-		if (!isAwaitingReply(newest.processingStatus)) return false;
-		const repliedAt = await lastReplyAt(ctx, threadId);
-		return repliedAt === undefined || newest.receivedAt > repliedAt;
+		if (isAwaitingReply(newest.processingStatus)) {
+			const repliedAt = await lastReplyAt(ctx, threadId);
+			if (repliedAt === undefined || newest.receivedAt > repliedAt) return true;
+		}
+		const messages = await ctx.db
+			.query('inboundMessages')
+			.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+			.order('desc')
+			.take(MESSAGE_SCAN_LIMIT);
+		return messages.some(isOwedAfterBounce);
 	}
 	const latest = await ctx.db
 		.query('unifiedMessages')
@@ -177,7 +199,8 @@ export async function isReplyOwed(
  * Stop the clock when nothing on the thread still needs an answer, now that
  * `settledId` turned out to need none. Newest first: a message already
  * answered (`sent`) means everything before it was answered too, and a message
- * from before the team's last reply is not owed whatever its state says.
+ * from before the team's last reply is not owed whatever its state says,
+ * except work a bounce reopened (see the header), which is owed wherever it is.
  */
 export async function releaseClockIfNothingOwed(
 	ctx: MutationCtx,
@@ -192,9 +215,16 @@ export async function releaseClockIfNothingOwed(
 		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
 		.order('desc')
 		.take(MESSAGE_SCAN_LIMIT);
+	// Past the newest answered message only work reopened by a bounce counts.
+	let isPastAnswered = false;
 	for (const message of messages) {
 		if (message._id === settledId) continue;
-		if (message.processingStatus === 'sent') break;
+		if (isOwedAfterBounce(message)) return;
+		if (isPastAnswered) continue;
+		if (message.processingStatus === 'sent') {
+			isPastAnswered = true;
+			continue;
+		}
 		if (repliedAt !== undefined && message.receivedAt <= repliedAt) continue;
 		if (isAwaitingReply(message.processingStatus)) return;
 	}

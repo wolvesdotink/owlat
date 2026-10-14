@@ -340,6 +340,11 @@ export const inboxTables = {
 				pendingClarification: v.optional(pendingClarificationValidator),
 			})
 		),
+		// When the reply that had answered this message bounced and reopened it
+		// (inbox/answeredThread.ts). While the message still needs a reply it is
+		// owed whatever later messages say: the response clock reads it
+		// (inbox/sla/threadClock.ts). Cleared when another sent reply settles it.
+		answerBouncedAt: v.optional(v.number()),
 		// Timestamps
 		receivedAt: v.number(),
 		processedAt: v.optional(v.number()),
