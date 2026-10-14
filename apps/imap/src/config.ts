@@ -38,6 +38,12 @@ export interface ImapConfig {
 	 * (slowloris / connection-slot exhaustion). Default 30 s.
 	 */
 	preAuthDeadlineMs?: number;
+	/**
+	 * Deadline (ms) for an IMAPS peer to finish the TLS handshake, counted from
+	 * TCP accept. The session timers above only start once TLS is up, so this is
+	 * the only bound on a peer that connects and never negotiates. Default 30 s.
+	 */
+	tlsHandshakeTimeoutMs?: number;
 	authRateLimit: { failuresPerWindow: number; windowMs: number; tarpitMs: number };
 }
 
