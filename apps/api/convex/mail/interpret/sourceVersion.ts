@@ -6,7 +6,11 @@
  * body changed in between, so claims extracted from an older body never
  * commit against a newer one.
  *
- * Flag or folder changes do not move it; only the body columns do.
+ * Flag or folder changes do not move it; only the body columns do, and a
+ * clearsigned signature scope, which narrows what of the body is read
+ * (`scope.ts`; a verdict re-verified after it was stored can gain one,
+ * `mail/mailbox/signatureReverify.ts`). A MIME scope reads the body as it is,
+ * so it leaves the fingerprint alone.
  */
 
 import type { QueryCtx } from '../../_generated/server';
@@ -14,6 +18,7 @@ import type { InterpretationSource } from '../../lib/validators/threadBrief';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import { loadStoredInlineBody } from '../../lib/messageBodyStore';
 import { inboundMessageBody } from '../../lib/messageBodyInbound';
+import { signedBodyScopeOf } from '@owlat/shared/signedScope';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
@@ -37,6 +42,8 @@ export async function sourceVersionOf(
 				await loadStoredInlineBody(ctx.db, row),
 				row.textBodyStorageId ?? null,
 				row.htmlBodyStorageId ?? null,
+				// Appended only when present, so every other body keeps its fingerprint.
+				...(signedBodyScopeOf(row.inboundSignatureInfo) === 'clearsigned' ? ['clearsigned'] : []),
 			];
 			break;
 		}

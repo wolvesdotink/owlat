@@ -213,8 +213,38 @@ const extractionsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
 		)
 	);
 
-/** 2. The purged sources' snapshots (and claim records). */
-const snapshotsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
+/**
+ * 2. The purged sources' snapshots (and claim records). A re-read keeps each
+ * snapshot, the eligibility its next run decides on, and drops only its claim
+ * record: the run starts from no claims of its own.
+ */
+const snapshotsRange: PurgeRange = (ctx, { job, cursor, budget, state }) =>
+	job.isReread
+		? clearClaimRecords(ctx, purgedOf(state).keys, budget)
+		: erasedSnapshots(ctx, { cursor, budget, state });
+
+async function clearClaimRecords(
+	ctx: MutationCtx,
+	keys: ReadonlySet<string>,
+	budget: RangeRun['budget']
+): Promise<{ isDone: true }> {
+	for (const key of keys) {
+		const snapshot = await ctx.db
+			.query('interpretSources')
+			.withIndex('by_source_key', (q) => q.eq('sourceKey', key))
+			.first();
+		budget.charge(snapshot);
+		if (snapshot?.claimIds !== undefined) {
+			await ctx.db.patch(snapshot._id, { claimIds: undefined, updatedAt: Date.now() });
+		}
+	}
+	return { isDone: true };
+}
+
+const erasedSnapshots = (
+	ctx: MutationCtx,
+	{ cursor, budget, state }: Pick<RangeRun, 'cursor' | 'budget' | 'state'>
+) =>
 	drainSteps(
 		budget,
 		cursor,

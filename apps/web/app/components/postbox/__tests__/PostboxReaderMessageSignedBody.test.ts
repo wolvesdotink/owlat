@@ -473,6 +473,27 @@ describe('PostboxReaderMessage · a verdict without a scope is never shown', () 
 		expect(mutation).toHaveBeenCalledTimes(1);
 	});
 
+	it('asks again when the card is reopened after a failed or unanswered request', async () => {
+		const message = { textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY };
+		mutation.mockRejectedValueOnce(new Error('offline'));
+		const w = mountCard(message, { secureClass: 'pgp-clearsigned', hideBody: true });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(1);
+
+		// Rejected: collapsed and opened again later, the card asks again.
+		await w.setProps({ expanded: false });
+		await w.setProps({ expanded: true });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(2);
+
+		// Answered, but the verdict is still unscoped (a throttled or failed
+		// re-verify): the next expansion asks again, the server decides.
+		await w.setProps({ expanded: false });
+		await w.setProps({ expanded: true });
+		await flushPromises();
+		expect(mutation).toHaveBeenCalledTimes(3);
+	});
+
 	it('asks nothing for a collapsed card, a scoped verdict or unsigned mail', async () => {
 		mountCard({ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: LEGACY }, { expanded: false });
 		mountCard({ textBodyInline: SIGNED_BLOCK, inboundSignatureInfo: VERIFIED });

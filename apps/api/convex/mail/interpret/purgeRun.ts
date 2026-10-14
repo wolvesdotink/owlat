@@ -111,6 +111,22 @@ export async function purgeSourcesFromThread(
 	await startScheduled(ctx, { ref, kind: 'sources', sources: [...sources] }, true);
 }
 
+/**
+ * Re-read `sources` from scratch: what they contributed to the thread's brief
+ * goes as in a purge, their snapshots stay, and each is interpreted again when
+ * the job settles (`purgeQuestions.ts settleSourcesJob`). The epoch bump stops
+ * a run of the old read that is still in flight.
+ */
+export async function rereadSourcesInThread(
+	ctx: MutationCtx,
+	ref: ThreadRef,
+	sources: readonly InterpretationSource[]
+): Promise<void> {
+	if (sources.length === 0) return;
+	await bumpDeletionEpoch(ctx, ref);
+	await startScheduled(ctx, { ref, kind: 'sources', sources: [...sources], isReread: true }, true);
+}
+
 /** Purge a deleted thread's brief (see `purgeThread.ts`). Call where the thread is deleted. */
 export async function purgeThreadBrief(
 	ctx: MutationCtx,

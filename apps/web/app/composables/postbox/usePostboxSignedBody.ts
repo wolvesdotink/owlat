@@ -88,12 +88,18 @@ export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
 
 	// A verdict from before scopes were recorded is withheld, so ask the server
 	// to verify the message again (#1320); the row picks up the scoped verdict
-	// when it lands. Once per message for this card: the server drops repeats.
+	// when it lands. Once per expansion: collapsing the card, or a request that
+	// failed, lets the next expansion ask again while the verdict has no scope.
+	// The server throttles repeats per message.
 	const reverifyRequested = new Set<string>();
 	watch(
 		() => [source.active(), source.message()._id, source.message().inboundSignatureInfo] as const,
 		([active, messageId, info]) => {
-			if (!active || !info || info.scope !== undefined || reverifyRequested.has(messageId)) return;
+			if (!active) {
+				reverifyRequested.clear();
+				return;
+			}
+			if (!info || info.scope !== undefined || reverifyRequested.has(messageId)) return;
 			reverifyRequested.add(messageId);
 			Promise.resolve()
 				.then(() =>
@@ -102,7 +108,8 @@ export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
 					})
 				)
 				.catch(() => {
-					// Best effort: the withheld verdict stays withheld.
+					// Best effort: the verdict stays withheld, and the next look asks again.
+					reverifyRequested.delete(messageId);
 				});
 		},
 		{ immediate: true }

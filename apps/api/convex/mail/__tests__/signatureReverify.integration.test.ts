@@ -222,6 +222,51 @@ describe('re-verifying signed mail stored before verdict scopes (#1320)', () => 
 		expect(row.inboundSignatureInfo).toEqual(legacy);
 	});
 
+	it('a key lookup that found nothing is not kept: the row is verified once the key shows up', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const mailboxId = await seedMailbox(t, { userId: 'user-A', address: 'me@example.com' });
+		await seedFolder(t, mailboxId);
+		const sender = await generateTestKeypair(SENDER);
+		const legacy = LEGACY_VERIFIED(sender.fingerprint);
+		const messageId = await seedStored(
+			t,
+			mailboxId,
+			await signedMime(sender.privateKeyArmored),
+			legacy
+		);
+
+		// No pin and no discovery (a WKD outage records the same miss): the
+		// row keeps its withheld verdict, so the reader keeps the neutral state.
+		const missed = await reverify(t, messageId);
+		expect(missed.inboundSignatureInfo).toEqual(legacy);
+		await t.mutation(api.mail.mailbox.signatureReverify.request, { messageId });
+		expect(await scheduledReverifies(t)).toBe(1);
+
+		// The key is known now: the next attempt verifies.
+		await seedPinnedSender(t, {
+			address: SENDER,
+			domain: 'sender.test',
+			pinnedPublicKeyArmored: sender.publicKeyArmored,
+		});
+		const recovered = await reverify(t, messageId);
+		expect(recovered.inboundSignatureInfo).toEqual({ ...legacy, scope: 'mime' });
+	});
+
+	it('a scoped "key not found" is never written', async () => {
+		const { t, mailboxId, sender } = await setup();
+		const legacy = LEGACY_VERIFIED(sender.fingerprint);
+		const messageId = await seedStored(t, mailboxId, null, legacy);
+		await t.mutation(internal.mail.mailbox.signatureReverify.apply, {
+			messageId,
+			info: { isSigned: true, isSignatureValid: false, keySource: 'not_found', scope: 'mime' },
+			isReadChanged: false,
+		});
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(messageId))!.inboundSignatureInfo).toEqual(legacy);
+		});
+	});
+
 	it('unsigned mail is never queued and never touched', async () => {
 		const { t, mailboxId } = await setup();
 		const raw = 'From: alice@sender.test\r\nSubject: plain\r\n\r\nHello.\r\n';
@@ -264,11 +309,13 @@ describe('re-verifying signed mail stored before verdict scopes (#1320)', () => 
 		await t.mutation(internal.mail.mailbox.signatureReverify.apply, {
 			messageId,
 			info: { ...LEGACY_VERIFIED(sender.fingerprint), scope: 'mime' },
+			isReadChanged: false,
 		});
 		const legacyId = await seedStored(t, mailboxId, null, LEGACY_VERIFIED(sender.fingerprint));
 		await t.mutation(internal.mail.mailbox.signatureReverify.apply, {
 			messageId: legacyId,
 			info: { ...LEGACY_VERIFIED(sender.fingerprint), isSignatureValid: true },
+			isReadChanged: false,
 		});
 
 		await t.run(async (ctx) => {
