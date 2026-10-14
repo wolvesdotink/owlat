@@ -96,9 +96,10 @@ export async function notifyClarification(
 	ctx: MutationCtx,
 	inboundMessageId: Id<'inboundMessages'>,
 	recipients?: readonly string[],
-	opts: { isReminder?: boolean } = {}
+	/** `message`: the row when the caller already read it, so it is not read again. */
+	opts: { isReminder?: boolean; message?: Doc<'inboundMessages'> } = {}
 ): Promise<string[]> {
-	const message = await ctx.db.get(inboundMessageId);
+	const message = opts.message ?? (await ctx.db.get(inboundMessageId));
 	if (!message?.threadId) return [];
 	const userIds = recipients ?? (await resolveClarificationRecipients(ctx, message));
 	const now = Date.now();

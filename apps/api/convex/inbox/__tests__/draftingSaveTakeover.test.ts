@@ -243,7 +243,7 @@ describe('a save while the agent waits on its clarification questions', () => {
 			confidenceScore: 0.95,
 		});
 
-		expect(resumed).toEqual({ reminded: 0 });
+		expect(resumed).toEqual({ stamped: 0 });
 		const message = await getMessage(t, messageId);
 		expect(message.processingStatus).toBe('draft_ready');
 		expect(message.pendingClarification).toBeUndefined();

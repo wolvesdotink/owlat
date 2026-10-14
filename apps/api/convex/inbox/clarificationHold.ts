@@ -15,6 +15,7 @@
  * and reopen), so open questions are never crowded out by settled ones.
  */
 
+import { getConvexSize, type Value } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
@@ -57,14 +58,21 @@ export async function resolveClarificationRecipients(
 export async function clarificationTarget(
 	ctx: MutationCtx,
 	message: Pick<Doc<'inboundMessages'>, 'assignedTo' | 'threadId'>,
-	readers: readonly string[]
+	readers: readonly string[],
+	/** The message's thread when the caller already read it (null: none). */
+	loadedThread?: Doc<'conversationThreads'> | null
 ): Promise<{ assignee?: string; recipients: string[] }> {
 	const isReader = (userId: string | undefined): userId is string =>
 		userId !== undefined && readers.includes(userId);
 	if (isReader(message.assignedTo)) {
 		return { assignee: message.assignedTo, recipients: [message.assignedTo] };
 	}
-	const thread = message.threadId ? await ctx.db.get(message.threadId) : null;
+	const thread =
+		loadedThread !== undefined
+			? loadedThread
+			: message.threadId
+				? await ctx.db.get(message.threadId)
+				: null;
 	if (isReader(thread?.assignedTo)) {
 		return { assignee: thread.assignedTo, recipients: [thread.assignedTo] };
 	}
@@ -200,14 +208,23 @@ export const MAX_NOTICES_PER_QUESTION = 500;
 export async function remindedUserIds(
 	ctx: MutationCtx,
 	inboundMessageId: Id<'inboundMessages'>
-): Promise<{ userIds: Set<string>; read: number }> {
+): Promise<{ userIds: Set<string>; read: number; bytes: number }> {
 	const notices = await ctx.db
 		.query('inboxAssignmentNotices')
 		.withIndex('by_inbound_message_and_user', (q) => q.eq('inboundMessageId', inboundMessageId))
 		.take(MAX_NOTICES_PER_QUESTION);
 	const userIds = new Set(notices.filter((n) => n.isReminder === true).map((n) => n.userId));
-	return { userIds, read: notices.length };
+	const bytes = notices.reduce((sum, notice) => sum + documentBytes(notice), 0);
+	return { userIds, read: notices.length, bytes };
 }
+
+/** What reading `doc` costs a transaction's byte budget, roughly. */
+export function documentBytes(doc: unknown): number {
+	return getConvexSize(doc as Value) + DOCUMENT_OVERHEAD_BYTES;
+}
+
+/** System fields and per-document framing a size estimate leaves out. */
+const DOCUMENT_OVERHEAD_BYTES = 128;
 
 /**
  * The questions are answered, dismissed or taken over: their notices go, the

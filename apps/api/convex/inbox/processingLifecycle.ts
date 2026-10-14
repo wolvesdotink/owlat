@@ -48,7 +48,7 @@ import {
 } from './processingLifecycle/types';
 import { dispatch } from './processingLifecycle/effects';
 import { isClarificationLive } from './clarificationHold';
-import { logError } from '../lib/runtimeLog';
+import { MAX_REMINDER_SENDS } from './clarificationReminders';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
 import { inboxRetryPlan } from '@owlat/shared/inboxRetry';
 import {
@@ -340,62 +340,53 @@ export const reconcileStuckApproved = internalMutation({
 // raised), once per person who has to answer (a notice marked `isReminder`),
 // and the message keeps waiting in the Answer queue until someone answers,
 // chooses "Draft with what I have", writes the reply, dismisses it or settles
-// its conversation (./clarificationHold.ts).
+// its conversation (./clarificationHold.ts). This cron keeps the queue's index
+// right; the sends are ./clarificationReminders.ts, in their own transactions.
 
-/** Default window before an unanswered clarification is asked again.
- * Overridable per-deployment via `agentConfig.clarificationTimeoutMs`. */
-export const DEFAULT_CLARIFICATION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+export { DEFAULT_CLARIFICATION_TIMEOUT_MS } from './clarificationReminders';
 
-/** Messages read per run; a longer queue continues in a scheduled follow-up. */
+/** Messages read per page; a longer queue continues in a scheduled follow-up. */
 const CLARIFICATION_REMINDER_PAGE = 100;
+
+/**
+ * Bytes one page may read: held messages keep their bodies inline, so a page
+ * of them is bounded by size too, not only by count. Overshoots by at most the
+ * one document that crosses it.
+ */
+export const CLARIFICATION_PAGE_BYTES = 2 * 1024 * 1024;
 
 export const reconcileAbandonedClarifications = internalMutation({
 	args: { cursor: v.optional(v.string()) },
-	handler: async (ctx, args): Promise<{ reminded: number }> => {
-		const configs = await ctx.db.query('agentConfig').take(1);
-		const windowMs = Math.max(
-			0,
-			configs[0]?.clarificationTimeoutMs ?? DEFAULT_CLARIFICATION_TIMEOUT_MS
-		);
-		const now = Date.now();
-		const cutoff = now - windowMs;
+	handler: async (ctx, args): Promise<{ stamped: number }> => {
+		// The reminders run in their own transactions (./clarificationReminders.ts),
+		// never in this one: one worker per run, started with the run's first page.
+		if (args.cursor === undefined) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.inbox.clarificationReminders.remindHeldClarifications,
+				{ cursor: null, sendsLeft: MAX_REMINDER_SENDS }
+			);
+		}
 
-		// Paged through every held row, so messages already reminded (which stay
-		// in this state) never crowd out the ones behind them, and every row's
-		// `isThreadSettled` is reconciled on each run.
+		// Paged through every held row, bounded by bytes as well as rows (a held
+		// message keeps its body inline), so every row's `isThreadSettled` is
+		// reconciled on each run, whatever its age: a row parked before the index
+		// existed is stamped on the first run after deploy, and legacy settled
+		// rows never pile up in front of live questions.
 		const page = await ctx.db
 			.query('inboundMessages')
 			.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'awaiting_clarification'))
-			.paginate({ numItems: CLARIFICATION_REMINDER_PAGE, cursor: args.cursor ?? null });
-
-		// First, for every held row whatever its age: keep the Answer queue's
-		// index right (`isThreadSettled`). A row parked before the index existed
-		// is stamped on the first run after deploy, so legacy settled rows never
-		// pile up in front of live questions. Then collect the overdue ones.
-		const overdue: Id<'inboundMessages'>[] = [];
+			.paginate({
+				numItems: CLARIFICATION_REMINDER_PAGE,
+				cursor: args.cursor ?? null,
+				maximumBytesRead: CLARIFICATION_PAGE_BYTES,
+			});
+		let stamped = 0;
 		for (const message of page.page) {
 			const isLive = await isClarificationLive(ctx, message);
 			if (!isLive !== (message.isThreadSettled === true)) {
 				await ctx.db.patch(message._id, { isThreadSettled: isLive ? undefined : true });
-			}
-			const pending = message.pendingClarification;
-			if (isLive && pending && pending.askedAt <= cutoff && message.threadId) {
-				overdue.push(message._id);
-			}
-		}
-
-		// Then ask again, as a sub-transaction: whatever happens to the sends
-		// (./clarificationReminders.ts caps them per run), the bookkeeping above
-		// commits.
-		let reminded = 0;
-		if (overdue.length > 0) {
-			try {
-				({ reminded } = await ctx.runMutation(
-					internal.inbox.clarificationReminders.remindHeldClarifications,
-					{ inboundMessageIds: overdue }
-				));
-			} catch (error) {
-				logError('[Clarification reminder] sending failed; the next run tries again:', error);
+				stamped++;
 			}
 		}
 
@@ -406,7 +397,7 @@ export const reconcileAbandonedClarifications = internalMutation({
 				{ cursor: page.continueCursor }
 			);
 		}
-		return { reminded };
+		return { stamped };
 	},
 });
 

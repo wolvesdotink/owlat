@@ -12,7 +12,7 @@
  *     conversations, and replaces an assignee who no longer reads the inbox.
  */
 import type { TestConvex } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -219,9 +219,34 @@ describe('the Answer queue', () => {
 	});
 });
 
+/** One cron run with its reminder chain; the questions it reminded anyone about. */
+async function remindRun(t: Harness): Promise<number> {
+	const reminded = async () =>
+		new Set(
+			await t.run(async (ctx) =>
+				(await ctx.db.query('inboxAssignmentNotices').collect())
+					.filter((n) => n.isReminder)
+					.map((n) => `${n.inboundMessageId}:${n.userId}`)
+			)
+		);
+	const before = await reminded();
+	await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+	await t.finishAllScheduledFunctions(vi.runAllTimers);
+	const after = await reminded();
+	const questions = new Set(
+		[...after].filter((key) => !before.has(key)).map((key) => key.split(':')[0])
+	);
+	return questions.size;
+}
+
 describe('the abandoned-question reminder', () => {
-	const remind = (t: Harness) =>
-		t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+	const remind = (t: Harness) => remindRun(t);
 	const noticesFor = (t: Harness, id: Id<'inboundMessages'>) =>
 		t.run(async (ctx) =>
 			(await ctx.db.query('inboxAssignmentNotices').collect())
@@ -242,7 +267,7 @@ describe('the abandoned-question reminder', () => {
 		const t = await pushHarness(modules);
 		const { messageId } = await seed(t, held(), { status: 'closed' });
 
-		expect(await remind(t)).toEqual({ reminded: 0 });
+		expect(await remind(t)).toBe(0);
 		expect(await noticesFor(t, messageId)).toEqual([]);
 	});
 
@@ -250,9 +275,9 @@ describe('the abandoned-question reminder', () => {
 		const t = await pushHarness(modules);
 		const { messageId } = await seed(t, held({ assignedTo: 'user-gone' }));
 
-		expect(await remind(t)).toEqual({ reminded: 1 });
+		expect(await remind(t)).toBe(1);
 		expect(await noticesFor(t, messageId)).toEqual(['user-a', 'user-b']);
-		expect(await remind(t)).toEqual({ reminded: 0 });
+		expect(await remind(t)).toBe(0);
 		expect(await noticesFor(t, messageId)).toEqual(['user-a', 'user-b']);
 	});
 
@@ -260,15 +285,15 @@ describe('the abandoned-question reminder', () => {
 		const t = await pushHarness(modules, { 'user-a': 'admin', 'user-b': 'editor' });
 		const { messageId } = await seed(t, held({ assignedTo: 'user-a' }));
 
-		expect(await remind(t)).toEqual({ reminded: 1 });
+		expect(await remind(t)).toBe(1);
 		expect(await noticesFor(t, messageId)).toEqual(['user-a']);
 
 		// The thread changes hands: user-b becomes a reader and the assignee.
 		await setMemberRole(t, 'user-b', 'admin');
 		await t.run((ctx) => ctx.db.patch(messageId, { assignedTo: 'user-b' }));
-		expect(await remind(t)).toEqual({ reminded: 1 });
+		expect(await remind(t)).toBe(1);
 		expect(await noticesFor(t, messageId)).toEqual(['user-a', 'user-b']);
-		expect(await remind(t)).toEqual({ reminded: 0 });
+		expect(await remind(t)).toBe(0);
 	});
 });
 
@@ -349,7 +374,9 @@ describe('reminder bookkeeping', () => {
 					.sort()
 			);
 
-		await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+		vi.useFakeTimers();
+		await remindRun(t);
+		vi.useRealTimers();
 		expect(await rows()).toEqual(['user-a', 'user-b']);
 		expect((await read(t, messageId))?.pendingClarification).not.toHaveProperty('remindedUserIds');
 

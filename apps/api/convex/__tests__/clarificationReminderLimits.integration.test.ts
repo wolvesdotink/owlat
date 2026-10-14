@@ -66,7 +66,13 @@ async function harness(readers = READERS, hasDevices = true): Promise<Harness> {
 }
 
 /** `count` held messages on one new thread with this status, asked `askedAt`. */
-async function seedHeld(t: Harness, count: number, status: string, askedAt: number) {
+async function seedHeld(
+	t: Harness,
+	count: number,
+	status: string,
+	askedAt: number,
+	fields: Record<string, unknown> = {}
+) {
 	return t.run(async (ctx) => {
 		const { updatedAt: _u, ...thread } = createTestConversationThread({
 			contactId: undefined,
@@ -82,6 +88,7 @@ async function seedHeld(t: Harness, count: number, status: string, askedAt: numb
 					questions: [{ id: 'clarify_0', slotType: 'factual_lookup', text: 'Which order?' }],
 					askedAt,
 				},
+				...fields,
 			});
 			ids.push(await ctx.db.insert('inboundMessages', { ...row, threadId }));
 		}
@@ -145,5 +152,29 @@ it('drains 100 questions x 50 readers over runs, a full share each run, nobody t
 	expect(new Set(all.map((n) => `${n.inboundMessageId}:${n.userId}`)).size).toBe(total);
 	// Done questions are skipped from then on, and nothing more goes out.
 	await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+	await t.finishAllScheduledFunctions(vi.runAllTimers);
 	expect(await reminders()).toHaveLength(total);
+}, 180_000);
+
+// Sol's round-6 probe: held messages keep their bodies inline. When the sends
+// ran inside the cron's own transaction, the cron's scan of 100 such messages
+// plus the reminder's reads went over the 16 MiB a transaction may read; the
+// reminders rolled back on every run and none went out. They now run in their
+// own transactions, each reading a byte-bounded page.
+it('reminds about 100 questions with 96 KiB bodies, with nothing rolled back', async () => {
+	const t = await harness(1, false);
+	await seedHeld(t, OVERDUE, 'open', Date.now() - 2 * DAY, {
+		textBody: 'x'.repeat(96 * 1024),
+	});
+	const reminders = () =>
+		t.run(async (ctx) =>
+			(await ctx.db.query('inboxAssignmentNotices').collect()).filter((n) => n.isReminder)
+		);
+
+	for (let run = 0; run < 2; run++) {
+		await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		// Everything on the first run; nothing again on the second.
+		expect(await reminders()).toHaveLength(OVERDUE);
+	}
 }, 180_000);

@@ -20,7 +20,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -332,6 +332,25 @@ describe('inbox.answerClarification', () => {
 });
 
 describe('processingLifecycle.reconcileAbandonedClarifications', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/** One cron run with its reminder chain (scheduled); the reminder notices it sent. */
+	async function remindRun(t: ReturnType<typeof convexTest>): Promise<number> {
+		const count = () =>
+			t.run(async (ctx) =>
+				(await ctx.db.query('inboxAssignmentNotices').collect()).filter((n) => n.isReminder)
+			);
+		const before = (await count()).length;
+		await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		return (await count()).length - before;
+	}
+
 	// On a conversation, with shared-inbox readers to ask (pushHarness seeds
 	// two admins): the reminder notifies them.
 	async function seedAwaiting(t: ReturnType<typeof convexTest>, askedAt: number) {
@@ -363,16 +382,9 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 		const t = await pushHarness(modules);
 		const messageId = await seedAwaiting(t, Date.now() - 48 * 60 * 60 * 1000);
 
-		const first = await t.mutation(
-			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
-			{}
-		);
-		expect(first).toEqual({ reminded: 1 });
-		const again = await t.mutation(
-			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
-			{}
-		);
-		expect(again).toEqual({ reminded: 0 });
+		// Both shared-inbox readers, once.
+		expect(await remindRun(t)).toBe(2);
+		expect(await remindRun(t)).toBe(0);
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
@@ -391,11 +403,7 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 		const t = await pushHarness(modules);
 		const messageId = await seedAwaiting(t, Date.now());
 
-		const { reminded } = await t.mutation(
-			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
-			{}
-		);
-		expect(reminded).toBe(0);
+		expect(await remindRun(t)).toBe(0);
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
@@ -417,11 +425,7 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 		});
 		const messageId = await seedAwaiting(t, Date.now() - 2 * 60 * 1000);
 
-		const { reminded } = await t.mutation(
-			internal.inbox.processingLifecycle.reconcileAbandonedClarifications,
-			{}
-		);
-		expect(reminded).toBe(1);
+		expect(await remindRun(t)).toBe(2);
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(messageId);
