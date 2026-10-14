@@ -13,14 +13,16 @@
  *      sandbox without allow-popups silently swallows those clicks. Escaping
  *      the sandbox means the opened page is an ordinary tab (or, in the desktop
  *      app, the default browser), not one that inherits these restrictions.
- *   2. Inline meta-CSP that blocks everything except styles + (gated) images
+ *   2. Inline meta-CSP that blocks everything except styles + inline images,
+ *      admitting remote images only once the user consents
  *   3. Parser-based sanitize-html allowlist (drops <script>/<style>/<base>/
  *      <meta refresh>/etc.; whitelisted CSS properties; blocks javascript: in
  *      every URL attribute). Replaces a regex-based stripper that left several
  *      privacy/exfiltration holes (style-tag CSS exfil, meta refresh, srcset
  *      bypass) under a sandboxed-but-not-script-free iframe.
- *   4. External images are gated behind a "Show images" button; inline
- *      `cid:` images are resolved from the message's own parts to `data:` URLs
+ *   4. External images (img src/srcset, CSS backgrounds) are gated behind a
+ *      "Show images" button; inline `cid:` images are resolved from the
+ *      message's own parts to `data:` URLs
  *   5. All <a> rewritten to target=_blank rel=noreferrer noopener
  *   6. Link transparency: real-destination-host tooltips, inline markers on
  *      text-vs-href host mismatches, tracking query params stripped
@@ -28,11 +30,7 @@
 
 import sanitizeHtml from 'sanitize-html';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
-import {
-	detectTrackers,
-	stripTrackerPixels,
-	type TrackerDetection,
-} from '@owlat/shared/postboxTrackers';
+import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import { applyLinkTransparency } from '@owlat/shared/postboxLinkTransparency';
 import { adaptEmailHtml, buildBaseStyle, type PostboxRenderScheme } from '~/utils/postboxDarkMode';
 import { trimTrailingBlankBlocks } from '~/utils/postboxBodyTidy';
@@ -43,9 +41,11 @@ import {
 } from '~/utils/postboxRenderCache';
 import {
 	POSTBOX_BODY_META_CSP,
+	POSTBOX_BODY_META_CSP_NO_REMOTE,
 	POSTBOX_SRCDOC_HEAD,
 	postboxBodyPlaceholder,
 } from '~/utils/postboxBodyPlaceholder';
+import { applyPostboxImageConsent } from '~/utils/postboxRemoteResources';
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
 import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAutosize';
 import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
@@ -203,16 +203,6 @@ function sanitize(html: string): string {
 	return sanitizeHtml(html, POSTBOX_SANITIZE_CONFIG);
 }
 
-function gateImages(html: string, allow: boolean): string {
-	if (allow) return html;
-	return html.replace(/<img\s+([^>]*)>/gi, (match, attrs: string) => {
-		const srcMatch = attrs.match(/src=(["'])(?<url>[^"']+)\1/);
-		const url = srcMatch?.groups?.['url'];
-		if (!url || url.startsWith('data:') || url.startsWith('cid:')) return match;
-		return `<span data-blocked-img="${url}" style="display:inline-block;padding:4px 8px;background:#eee;color:#666;font-size:11px;border-radius:3px;">${t('components.postbox.postboxMessageBody.blockedImage')}</span>`;
-	});
-}
-
 function rewriteLinks(html: string): string {
 	return html.replace(/<a\s+([^>]*)>/gi, (_match, attrs: string) => {
 		// Strip target/rel attrs and rewrite uniformly
@@ -258,20 +248,35 @@ function buildRender(): Omit<PostboxRenderEntry, 'height'> {
 	// Adaptive dark rendering runs AFTER sanitization on the sanitized string
 	// only; when the app is light (or forced light) it's a pass-through no-op.
 	const adapted = adaptEmailHtml(combined, appScheme.value);
-	// Tracking-pixel detection on the SANITIZED output only (never raw mail).
-	const detection = detectTrackers(adapted.html);
-	let html = adapted.html;
-	// "Show images" loads real content but keeps probable tracking pixels
-	// stripped; "Load everything" is the explicit escalation past that.
-	if (showImages.value && !loadEverything.value && detection.pixelCount > 0) {
-		html = stripTrackerPixels(html);
-	}
-	const gated = resolveCidImages(gateImages(html, showImages.value), cidImageUrls.value);
+	const resolved = resolveCidImages(adapted.html, cidImageUrls.value);
 	// Link transparency (real-host tooltips, phish-mismatch markers, tracking
 	// param stripping) runs on sanitized output only and fails soft to a no-op.
-	const linked = rewriteLinks(applyLinkTransparency(gated));
-	const srcdoc = `${POSTBOX_SRCDOC_HEAD}${POSTBOX_BODY_META_CSP}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${linked || t('components.postbox.postboxMessageBody.emptyMessage')}</body></html>`;
-	return { srcdoc, renderScheme: adapted.scheme, kind: adapted.kind, detection };
+	const linked = rewriteLinks(applyLinkTransparency(resolved));
+	// Remote-resource consent runs last, over the SANITIZED output only (never
+	// raw mail): one inventory of every img src, srcset candidate and CSS
+	// background gates the body and counts the trackers. "Show images" loads
+	// real content but keeps probable tracking pixels stripped; "Load
+	// everything" is the explicit escalation past that.
+	const consent = !showImages.value ? 'blocked' : loadEverything.value ? 'everything' : 'images';
+	const gated = applyPostboxImageConsent(
+		linked,
+		consent,
+		t('components.postbox.postboxMessageBody.blockedImage')
+	);
+	// Until the user consents, the frame's policy admits no remote image at
+	// all, whatever spelling the reference uses; nor does it when the body
+	// could not be inventoried.
+	const csp =
+		showImages.value && !gated.noRemote ? POSTBOX_BODY_META_CSP : POSTBOX_BODY_META_CSP_NO_REMOTE;
+	const srcdoc = `${POSTBOX_SRCDOC_HEAD}${csp}${buildBaseStyle(adapted.scheme, adapted.kind)}</head><body>${gated.html || t('components.postbox.postboxMessageBody.emptyMessage')}</body></html>`;
+	return {
+		srcdoc,
+		renderScheme: adapted.scheme,
+		kind: adapted.kind,
+		detection: gated.detection,
+		hasRemoteImages: gated.hasRemoteResources,
+		inventoryFailed: gated.noRemote,
+	};
 }
 
 // The render key includes every option that changes the output; a body is
@@ -342,11 +347,11 @@ const trackerDetection = computed<TrackerDetection>(() => render.value.detection
 
 watch(trackerDetection, (detection) => emit('trackers', detection), { immediate: true });
 
-const hasRemoteImages = computed(() => /<img\s/i.test(effectiveHtml.value ?? ''));
+const hasRemoteImages = computed(() => render.value.hasRemoteImages);
 
 // Exactly one banner sits above the body; which one is a pure function of the
-// render's facts (utils/postboxImageAllowlist), so the four-way choice is
-// unit-tested without mounting this component.
+// render's facts (utils/postboxImageAllowlist), so the choice between the
+// banner states is unit-tested without mounting this component.
 const imageBanner = computed(() =>
 	resolvePostboxImageBanner({
 		hasRemoteImages: hasRemoteImages.value,
@@ -355,6 +360,7 @@ const imageBanner = computed(() =>
 		isSenderAllowed: !!props.senderImagesAllowed,
 		hasSenderKey: senderKey.value !== null,
 		trackerCount: trackerDetection.value.pixelCount,
+		inventoryFailed: render.value.inventoryFailed,
 	})
 );
 
@@ -372,6 +378,15 @@ function trustSender() {
 	// reader should not wait on a round trip to honour a click it already has.
 	showImages.value = true;
 	emit('trustSender', from);
+}
+
+/**
+ * "Load everything" from any banner. From the `unchecked` banner images may
+ * not be shown yet, and the escalation has to include them.
+ */
+function loadEverythingNow() {
+	showImages.value = true;
+	loadEverything.value = true;
 }
 
 function untrustSender() {
@@ -427,7 +442,7 @@ usePostboxFrameAutosize({
 			:can-trust-sender="canTrustSender"
 			:sender-label="senderTrustLabel"
 			@show-once="showImages = true"
-			@load-everything="loadEverything = true"
+			@load-everything="loadEverythingNow()"
 			@trust-sender="trustSender()"
 			@untrust-sender="untrustSender()"
 		/>

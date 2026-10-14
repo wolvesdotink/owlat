@@ -4977,6 +4977,7 @@
 				"imagesAutoLoaded": "Images from {host} load automatically. Tracking pixels are still stripped.",
 				"imagesBlocked": "Images blocked to protect your privacy.",
 				"imagesBlockedTrackers": "Images blocked — {count} tracking pixel detected. | Images blocked — {count} tracking pixels detected.",
+				"imagesUnchecked": "Images stay blocked because this message couldn't be checked safely.",
 				"loadEverything": "Load everything",
 				"manageTrustedSenders": "Manage trusted senders",
 				"showOnce": "Show once",

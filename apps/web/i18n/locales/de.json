@@ -4977,6 +4977,7 @@
 				"imagesAutoLoaded": "Bilder von {host} werden automatisch geladen. Zählpixel werden weiterhin entfernt.",
 				"imagesBlocked": "Bilder blockiert, um deine Privatsphäre zu schützen.",
 				"imagesBlockedTrackers": "Bilder blockiert — {count} Trackingpixel erkannt. | Bilder blockiert — {count} Trackingpixel erkannt.",
+				"imagesUnchecked": "Bilder bleiben blockiert, weil diese Nachricht nicht sicher geprüft werden konnte.",
 				"loadEverything": "Alles laden",
 				"manageTrustedSenders": "Vertraute Absender verwalten",
 				"showOnce": "Einmalig anzeigen",
