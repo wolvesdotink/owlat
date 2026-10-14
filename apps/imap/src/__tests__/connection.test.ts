@@ -1091,6 +1091,24 @@ describe('ImapConnection — LOGIN literal continuation (RFC 3501 §4.3 / RFC 78
 		expect(convex.action).not.toHaveBeenCalled();
 	});
 
+	it('rejects an unterminated continuation segment that outgrows the command budget', async () => {
+		const { socket, convex } = makeMocks();
+		socket.written.length = 0;
+
+		// Two legal 4 KiB literals leave ~4 KiB of the 12 KiB pre-auth budget;
+		// the next segment never sends its CRLF, so only the budget can stop it
+		// (it stays under the 64 KiB line ceiling).
+		const body = 'a'.repeat(4096);
+		socket.receive(`w LOGIN {4096+}\r\n${body} {4096+}\r\n${body}`);
+		expect(socket.ended).toBe(false);
+		socket.receive(` ${'b'.repeat(8192)}`);
+		for (let i = 0; i < 4; i += 1) await Promise.resolve();
+
+		expect(socket.written.join('')).toContain('* BYE Command too large');
+		expect(socket.ended).toBe(true);
+		expect(convex.action).not.toHaveBeenCalled();
+	});
+
 	it('accepts an authenticated literal command within the aggregate budget', async () => {
 		const { socket, convex } = makeMocks();
 		convex.action.mockResolvedValue({
@@ -1109,6 +1127,25 @@ describe('ImapConnection — LOGIN literal continuation (RFC 3501 §4.3 / RFC 78
 
 		expect(socket.ended).toBe(false);
 		expect(socket.lines()).toContain('c OK NOOP completed');
+	});
+});
+
+describe('ImapConnection — disconnect', () => {
+	it('drops buffered input on close while authentication is still pending', async () => {
+		const { socket, convex, connection } = makeMocks();
+		// The backend never answers: LOGIN's completion stays pending and holds
+		// a reference to the connection after the socket is gone.
+		convex.action.mockReturnValue(new Promise(() => {}));
+		socket.receive('a LOGIN "alice@test" "good"\r\n');
+		await Promise.resolve();
+		// Held behind the running LOGIN, so it stays in the buffer.
+		socket.receive(`b NOOP ${'x'.repeat(60_000)}\r\n`);
+		const buffered = () => (connection as unknown as { buffer: Buffer }).buffer.length;
+		expect(buffered()).toBeGreaterThan(60_000);
+
+		socket.emit('close');
+
+		expect(buffered()).toBe(0);
 	});
 });
 

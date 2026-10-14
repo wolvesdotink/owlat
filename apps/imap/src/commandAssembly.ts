@@ -92,6 +92,19 @@ export function admitLiteral(
 	return { ok: true, pending: next };
 }
 
+/**
+ * Whether a further `lineBytes` of segment text still fits the command's
+ * budget. Checked on every buffered continuation line, finished or not, so an
+ * unterminated tail cannot outgrow the budget while the pump waits for its CRLF.
+ */
+export function segmentFits(
+	pending: PendingCommand,
+	lineBytes: number,
+	limits: CommandLimits
+): boolean {
+	return pending.bytes + lineBytes <= commandByteBudget(limits);
+}
+
 /** Admit the final segment (no trailing literal) of an assembled command. */
 export function admitFinalSegment(
 	pending: PendingCommand,
@@ -99,7 +112,7 @@ export function admitFinalSegment(
 	lineBytes: number,
 	limits: CommandLimits
 ): boolean {
-	if (pending.bytes + lineBytes > commandByteBudget(limits)) return false;
+	if (!segmentFits(pending, lineBytes, limits)) return false;
 	pending.segments.push(line);
 	pending.bytes += lineBytes;
 	return true;

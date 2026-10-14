@@ -33,6 +33,7 @@ import { SequenceGate } from './commands/helpers/sequenceGate.js';
 import {
 	admitFinalSegment,
 	admitLiteral,
+	segmentFits,
 	type CommandLimits,
 	type PendingCommand,
 } from './commandAssembly.js';
@@ -167,6 +168,9 @@ export class ImapConnection {
 		}
 		this.activeSession = null;
 		this.literalRemaining = 0;
+		// A pending completion callback can keep this object alive after the
+		// server releases the slot: drop the buffered input now.
+		this.buffer = Buffer.alloc(0);
 		this.pendingCommand = null;
 		this.commandLiteralRemaining = 0;
 		this.commandLiteralChunks = [];
@@ -307,6 +311,10 @@ export class ImapConnection {
 						: this.buffer.length - (this.buffer[this.buffer.length - 1] === 0x0d ? 1 : 0);
 				if (lineBytes > this.maxLineBytes) {
 					this.destroyConnection('Command line too long');
+					return 'drained';
+				}
+				if (this.pendingCommand && !segmentFits(this.pendingCommand, lineBytes, this.limits())) {
+					this.destroyConnection('Command too large');
 					return 'drained';
 				}
 				if (newlineIdx < 0) break;
