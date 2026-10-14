@@ -14,7 +14,7 @@
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { listSharedInboxReaderIds } from '../access';
+import { resolveClarificationRecipients } from '../clarificationHold';
 import { transition as threadTransition } from '../threads/module';
 import { settleClockForMessage } from '../sla/threadClock';
 import { applyInboxStatsDelta, bucketForStatus } from '../../lib/inboxStats';
@@ -80,35 +80,23 @@ export function resolveHumanApproveUndoDelayMs(configured: number | undefined): 
 // ─── Clarification notices ──────────────────────────────────────────────────
 
 /**
- * Who has to answer the agent's questions on this message: the message's own
- * assignee, else the thread's assignee. Without either there is no single
- * responsible person, so the notice fans out to every shared-inbox reader
- * (owner / admin) — the same set that sees the review queue.
+ * Append one `clarification` notice per recipient, and push it. The
+ * recipients are `../clarificationHold.resolveClarificationRecipients` unless
+ * the caller names them (the reminder cron names those not reminded yet).
+ * Returns who was notified. Best-effort: the message is already parked in
+ * `awaiting_clarification`; a missing row or profile only means fewer notices,
+ * never a failed transition.
  */
-export async function resolveClarificationRecipients(
+export async function notifyClarification(
 	ctx: MutationCtx,
-	message: Doc<'inboundMessages'>
+	inboundMessageId: Id<'inboundMessages'>,
+	recipients?: readonly string[]
 ): Promise<string[]> {
-	if (message.assignedTo) return [message.assignedTo];
-	const thread = message.threadId ? await ctx.db.get(message.threadId) : null;
-	if (thread?.assignedTo) return [thread.assignedTo];
-	return listSharedInboxReaderIds(ctx);
-}
-
-/**
- * Append one `clarification` notice per recipient. Best-effort: the message
- * is already parked in `awaiting_clarification`; a missing row or profile
- * only means fewer notices, never a failed transition.
- */
-async function notifyClarification(
-	ctx: MutationCtx,
-	inboundMessageId: Id<'inboundMessages'>
-): Promise<void> {
 	const message = await ctx.db.get(inboundMessageId);
-	if (!message?.threadId) return;
-	const recipients = await resolveClarificationRecipients(ctx, message);
+	if (!message?.threadId) return [];
+	const userIds = recipients ?? (await resolveClarificationRecipients(ctx, message));
 	const now = Date.now();
-	for (const userId of recipients) {
+	for (const userId of userIds) {
 		const noticeId = await ctx.db.insert('inboxAssignmentNotices', {
 			kind: 'clarification',
 			inboundMessageId,
@@ -120,6 +108,7 @@ async function notifyClarification(
 		});
 		await enqueuePush(ctx, userId, { kind: 'assignment', noticeId });
 	}
+	return [...userIds];
 }
 
 // ─── Failed step rows ───────────────────────────────────────────────────────

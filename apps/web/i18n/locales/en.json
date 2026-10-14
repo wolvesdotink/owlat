@@ -6907,6 +6907,7 @@
 				"needsTitle": "Needs an answer",
 				"allInQueue": "All {count} in the queue",
 				"draftReady": "draft ready",
+				"question": "needs your input",
 				"mention": "mention",
 				"mentionTitle": "#{room}: {preview}",
 				"clearTitleIn": "Nothing in {inbox} needs an answer"

@@ -46,7 +46,8 @@ import {
 	transitionInputValidator,
 	type TransitionOutcome,
 } from './processingLifecycle/types';
-import { applyEffects, dispatch } from './processingLifecycle/effects';
+import { dispatch, notifyClarification } from './processingLifecycle/effects';
+import { isClarificationLive, resolveClarificationRecipients } from './clarificationHold';
 import { MAX_RETRY_ATTEMPTS } from '../lib/constants';
 import { inboxRetryPlan } from '@owlat/shared/inboxRetry';
 import {
@@ -328,10 +329,11 @@ export const reconcileStuckApproved = internalMutation({
 // A message parked in `awaiting_clarification` waits on a human answer. Nothing
 // is drafted around an unanswered question: a reply guessed from the email
 // alone is the draft with silent gaps the question was there to prevent. After
-// a configurable window this cron asks the owner again, once (the same notice
-// the question raised, `remindedAt` on the ask), and the message keeps waiting
-// in the review queue until someone answers, chooses "Draft with what I have",
-// writes the reply or dismisses it.
+// a configurable window this cron asks again (the same notice the question
+// raised), once per person who has to answer (`remindedUserIds` on the ask),
+// and the message keeps waiting in the Answer queue until someone answers,
+// chooses "Draft with what I have", writes the reply, dismisses it or settles
+// its conversation (./clarificationHold.ts).
 
 /** Default window before an unanswered clarification is asked again.
  * Overridable per-deployment via `agentConfig.clarificationTimeoutMs`. */
@@ -361,10 +363,25 @@ export const reconcileAbandonedClarifications = internalMutation({
 		let reminded = 0;
 		for (const message of page.page) {
 			const pending = message.pendingClarification;
-			if (!pending || pending.remindedAt !== undefined) continue;
-			if (pending.askedAt > cutoff) continue;
-			await ctx.db.patch(message._id, { pendingClarification: { ...pending, remindedAt: now } });
-			await applyEffects(ctx, [{ kind: 'notify_clarification', inboundMessageId: message._id }]);
+			// A notice points at a conversation: without one there is nobody to ask.
+			if (!pending || pending.askedAt > cutoff || !message.threadId) continue;
+			// A conversation someone resolved or closed needs no answer.
+			if (!(await isClarificationLive(ctx, message))) continue;
+			// Each person who has to answer now is asked again once: an assignee
+			// who left or lost the role is replaced by the readers, and a new
+			// assignee hears of it, but nobody is reminded twice.
+			const already = new Set(pending.remindedUserIds ?? []);
+			const eligible = await resolveClarificationRecipients(ctx, message);
+			const fresh = eligible.filter((userId) => !already.has(userId));
+			if (fresh.length === 0) continue;
+			await notifyClarification(ctx, message._id, fresh);
+			await ctx.db.patch(message._id, {
+				pendingClarification: {
+					...pending,
+					remindedAt: now,
+					remindedUserIds: [...already, ...fresh],
+				},
+			});
 			reminded++;
 		}
 

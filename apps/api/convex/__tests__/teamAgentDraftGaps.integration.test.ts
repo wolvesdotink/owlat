@@ -81,13 +81,18 @@ async function seedMessage(
 	});
 }
 
-/** The draft step's write, then the route step's hold for review. */
+/**
+ * The draft step's write, then the route step's hold for review. With the
+ * owner's consent to gaps: without it a draft with gaps is not stored at all
+ * (#1343, `teamClarificationHold.integration.test.ts`).
+ */
 async function agentDrafts(t: Harness, messageId: Id<'inboundMessages'>, draftResponse: string) {
 	await t.mutation(internal.inbox.stepOutputs.recordDraftOutput, {
 		inboundMessageId: messageId,
 		draftResponse,
 		draftSubject: 'Re: Refund',
 		confidenceScore: 0.8,
+		isGapsAccepted: true,
 	});
 	await t.run((ctx) => ctx.db.patch(messageId, { processingStatus: 'draft_ready' }));
 }

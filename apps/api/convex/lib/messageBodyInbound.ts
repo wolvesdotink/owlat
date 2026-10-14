@@ -32,6 +32,7 @@ import { getOptional } from './env';
 import { readSealedBlobBytes, type BlobGet } from './sealedBlob';
 import { deleteBlobQuietly, type BlobStorage } from './storageBlobs';
 import { withShownDraftVariants, type DraftVariantFields } from './draftVariants';
+import { withHeldGapDraft, type HeldGapDraftFields } from './heldGapDraft';
 
 /** The body columns of an `inboundMessages` row. `null` is tolerated so a
  * projection that carries a part as `string | null` passes through unchanged. */
@@ -132,12 +133,13 @@ export async function openInboundMessageBody(
  * starts travelling as a present `undefined`.
  *
  * The agent's draft variants leave only with the draft they belong to
- * (`draftVariants.withShownDraftVariants`).
+ * (`draftVariants.withShownDraftVariants`), and an agent draft with gaps
+ * nobody agreed to does not leave at all (`heldGapDraft.withHeldGapDraft`).
  */
 export async function openInboundMessageRow<
-	T extends InboundMessageBodyFields & DraftVariantFields,
+	T extends InboundMessageBodyFields & DraftVariantFields & HeldGapDraftFields,
 >(stored: T): Promise<T> {
-	const row = withShownDraftVariants(stored);
+	const row = withHeldGapDraft(withShownDraftVariants(stored));
 	if (row.textBody == null && row.htmlBody == null && row.bodyExcerpt == null) return row;
 	const [text, html, excerpt] = await Promise.all([
 		openOptional(row.textBody),
@@ -154,7 +156,7 @@ export async function openInboundMessageRow<
 
 /** {@link openInboundMessageRow} over a page of rows, preserving order. */
 export async function openInboundMessageRows<
-	T extends InboundMessageBodyFields & DraftVariantFields,
+	T extends InboundMessageBodyFields & DraftVariantFields & HeldGapDraftFields,
 >(rows: T[]): Promise<T[]> {
 	return Promise.all(rows.map((row) => openInboundMessageRow(row)));
 }

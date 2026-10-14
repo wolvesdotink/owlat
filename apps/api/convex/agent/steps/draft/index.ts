@@ -30,7 +30,16 @@ import { teamRoot } from '../../shared/agentSpend';
 import { boundedRoot } from '../../../lib/llm/actionDeadline';
 import { draftAttachmentPatch } from './attachment';
 import { loadDraftPlan, recordDraftPlan } from './plan';
-import { checkTeamDraftGaps, DRAFT_HELD_REASON, type TeamDraftGapCheck } from './gaps';
+import {
+	checkTeamDraftGaps,
+	DRAFT_HELD_REASON,
+	storedClarificationDraft,
+	type TeamDraftGapCheck,
+} from './gaps';
+import {
+	joinConfirmedBlocks,
+	ownerAttachmentFromAnswers,
+} from '../../../inbox/clarificationAnswers';
 import { ensureGapPlaceholders } from '../../../mail/ai/composeDraftPolicy';
 import type { AttachmentSuggestions } from '../../../inbox/attachmentSuggest';
 import {
@@ -66,25 +75,25 @@ export type DraftInput = {
 		// Optional for back-compat with rows classified before the field existed.
 		language?: string;
 	};
-	// TRUSTED facts the mailbox owner confirmed via the clarification loop
-	// (`inbox.answerClarification`). Rendered as a `[CONFIRMED BY OWNER]` block
-	// OUTSIDE the `<untrusted_email_content>` tags, so the model treats it as
-	// authoritative instruction rather than data. Absent on the normal draft
-	// path (no clarification was needed). See buildConfirmedContext.
+	// TRUSTED facts confirmed outside the stored clarification: the answers
+	// answer-memory filled in silently (`clarify` step). Rendered as a
+	// `[CONFIRMED BY OWNER]` block OUTSIDE the `<untrusted_email_content>` tags,
+	// so the model treats it as authoritative instruction rather than data. The
+	// owner's own answers are not passed here: the step rebuilds them from the
+	// stored `pendingClarification` on every entry (./gaps.ts
+	// `storedClarificationDraft`), so a retried draft keeps them too.
 	confirmedContext?: string;
-	// The owner's answer to the attachment question, threaded by
-	// `walker.resumeDraft`: the file they picked (recorded as a confident
-	// suggestion) or null when they answered without a file ("It isn't ready
-	// yet"). Absent when no attachment question was answered; the step then
-	// searches Files itself. See ./attachment.ts.
+	// The owner's answer to the attachment question: the file they picked
+	// (recorded as a confident suggestion) or null when they answered without a
+	// file ("It isn't ready yet"). Absent: read from the stored answers, and when
+	// none was answered the step searches Files itself. See ./attachment.ts.
 	ownerAttachment?: AttachmentSuggestions | null;
-	// The owner agreed to a draft with gaps: "Draft with what I have"
-	// (`pendingClarification.isGapsAccepted`, threaded by `walker.resumeDraft`),
-	// or asking turned off. Without it a draft with gaps is not stored; its gaps
-	// are asked as questions.
+	// Standing consent to a draft with gaps: asking is turned off. The owner's
+	// own "Draft with what I have" is read from the stored clarification.
+	// Without either, a draft with gaps is not stored; its gaps are asked.
 	isGapsAccepted?: boolean;
-	// The fixed placeholders of the questions left open under that consent. Each
-	// one ends up in the reply even when the model drops it.
+	// Placeholders that must end up in the reply even when the model drops
+	// them. Those of the stored clarification's open questions are added here.
 	gapPlaceholders?: string[];
 };
 
@@ -112,6 +121,27 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: input.inboundMessageId,
 		});
+
+		// The owner's answers, their consent to gaps and its placeholders, from
+		// the stored clarification: the same on every path into this step,
+		// whether an answer resumed it, the clarify step handed off, or a retry
+		// ran the pipeline again (./gaps.ts).
+		const stored = storedClarificationDraft(message?.pendingClarification);
+		const isGapsAccepted = input.isGapsAccepted === true || stored.isGapsAccepted;
+		const confirmedContext = joinConfirmedBlocks(
+			input.confirmedContext ?? '',
+			stored.confirmedContext
+		);
+		const gapPlaceholders = [
+			...new Set([...(input.gapPlaceholders ?? []), ...stored.gapPlaceholders]),
+		];
+		const ownerAttachment =
+			input.ownerAttachment !== undefined
+				? input.ownerAttachment
+				: ownerAttachmentFromAnswers(
+						message?.pendingClarification?.questions ?? [],
+						message?.attachmentSuggestions
+					);
 
 		// Personalize to the recipient's learned writing voice when a Postbox
 		// mailbox for this inbound recipient has opted in and has a derived
@@ -224,7 +254,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			audience: 'an organization',
 			styleReference: "the organization's",
 			context: input.context,
-			confirmedContext: input.confirmedContext,
+			confirmedContext: confirmedContext.length > 0 ? confirmedContext : undefined,
 			stanceGuidance,
 			classification: {
 				category: safeCategory,
@@ -253,7 +283,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		});
 
 		const { draftQuality, planCoverage, tokenUsage, modelUsed } = shared;
-		const draftBody = ensureGapPlaceholders(shared.draftBody, input.gapPlaceholders ?? []);
+		const draftBody = ensureGapPlaceholders(shared.draftBody, gapPlaceholders);
 
 		// Compose the reply subject from the original (fetched above).
 		const replySubject = buildReplySubject(message?.subject);
@@ -268,7 +298,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		};
 
 		// Gaps nobody agreed to: the draft is not stored, so it is never shown.
-		if (input.isGapsAccepted !== true) {
+		if (!isGapsAccepted) {
 			const gaps = await checkTeamDraftGaps(ctx, input.inboundMessageId, draftBody, message);
 			if (gaps.kind !== 'complete') {
 				if (gaps.kind === 'unaskable') {
@@ -292,13 +322,15 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			draftSubject: replySubject,
 			confidenceScore: input.classification.confidence,
 			...(draftQuality ? { draftQuality } : {}),
+			// The write-side fence stores gaps only with this consent.
+			...(isGapsAccepted ? { isGapsAccepted: true } : {}),
 			// A cheap-first draft is for review only (the `cheap_first_draft` gate).
 			...(route === 'cheap_first' ? { isCheapFirstDraft: true } : {}),
 			...(await draftAttachmentPatch(
 				ctx,
 				input.context,
 				message?.contactId,
-				input.ownerAttachment,
+				ownerAttachment,
 				root
 			)),
 		});

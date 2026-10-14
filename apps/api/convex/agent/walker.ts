@@ -35,17 +35,7 @@ import {
 	pluginStepsFollowing,
 } from './steps/catalog';
 import { contextRetrievalStep } from './steps/context_retrieval';
-import { buildConfirmedContext } from './steps/draft';
-import {
-	buildFileAnswerNotes,
-	buildOpenFileNote,
-	buildOpenQuestionNote,
-	hasUsableAnswer,
-	joinConfirmedBlocks,
-	openFileGaps,
-	openQuestionGaps,
-	ownerAttachmentFromAnswers,
-} from '../inbox/clarificationAnswers';
+import { hasUsableAnswer } from '../inbox/clarificationAnswers';
 import type {
 	AgentRoute,
 	AgentRunContext,
@@ -191,10 +181,10 @@ export const start = internalAction({
  *
  * Two callers, both after the lifecycle has already moved the message into
  * `drafting`:
- *   - `inbox.answerClarification` — the owner answered; the confirmed answers
- *     are folded in as a TRUSTED `[CONFIRMED BY OWNER]` block. A question the
- *     owner left open under "Draft with what I have" gets a fixed `[[...]]`
- *     placeholder, which the draft step keeps in the reply.
+ *   - `inbox.answerClarification` — the owner answered. The draft step folds
+ *     the stored answers in as a TRUSTED `[CONFIRMED BY OWNER]` block, and a
+ *     question left open under "Draft with what I have" as a fixed `[[...]]`
+ *     placeholder it keeps in the reply (agent/steps/draft/gaps.ts).
  *   - `inbox.updates.requestReply` — a reader asked for a reply to an update;
  *     there are no questions.
  *
@@ -202,8 +192,8 @@ export const start = internalAction({
  * before that rule) is never drafted around: the message goes back to asking.
  *
  * Re-enters the DRAFT step specifically (not the whole tail): it rebuilds the
- * retrieval context, folds in the confirmed answers, and schedules the draft
- * step, which then hands off to `route` as usual.
+ * retrieval context and schedules the draft step (which reads the stored answers)
+ * and then hands off to `route` as usual.
  *
  * FAIL-SOFT: a vanished message, a message no longer in `drafting` (a racing
  * transition won), or a context-retrieval failure never wedges anything — it
@@ -271,32 +261,15 @@ export const resumeDraft = internalAction({
 			return;
 		}
 
-		// Fold the owner-confirmed answers into a trusted block. A file the owner
-		// attached gets its own line so the reply mentions it, and each question
-		// left open under "Draft with what I have" its placeholder.
-		const fileGaps = isGapsAccepted ? openFileGaps(questions) : [];
-		const questionGaps = isGapsAccepted ? openQuestionGaps(questions) : [];
-		const confirmedContext = joinConfirmedBlocks(
-			buildConfirmedContext(pending),
-			buildFileAnswerNotes(questions),
-			buildOpenFileNote(fileGaps),
-			buildOpenQuestionNote(questionGaps)
-		);
-		// The owner's answer to a file question replaces the draft step's own
-		// file search (undefined when none was answered).
-		const ownerAttachment = ownerAttachmentFromAnswers(questions, message.attachmentSuggestions);
-
 		await scheduleAfterCoreStep(ctx, args.inboundMessageId, 'clarify', {
 			kind: 'draft',
 			input: {
 				inboundMessageId: args.inboundMessageId,
 				context,
+				// The owner's answers, files, consent to gaps and its placeholders
+				// are read from the stored clarification by the draft step itself
+				// (agent/steps/draft/gaps.ts), so every path into it gets them.
 				classification,
-				confirmedContext,
-				...(ownerAttachment !== undefined ? { ownerAttachment } : {}),
-				...(isGapsAccepted
-					? { isGapsAccepted: true, gapPlaceholders: [...fileGaps, ...questionGaps] }
-					: {}),
 			},
 		});
 	},

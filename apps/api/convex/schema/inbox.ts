@@ -312,6 +312,10 @@ export const inboxTables = {
 		// Written by the composer's saves (`draftRevisions.appendDraftRevision`)
 		// and with the agent's draft (`stepOutputs.recordDraftOutput`).
 		isDraftGapGuarded: v.optional(v.boolean()),
+		// The agent's draft was stored with gaps the owner agreed to ("Draft with
+		// what I have", or asking turned off). Without it an agent draft with
+		// gaps is never shown (lib/heldGapDraft.ts, #1343).
+		isDraftGapsAccepted: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
 		// Where a `failed` message failed: `send` when the approved reply could not

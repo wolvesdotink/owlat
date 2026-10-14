@@ -72,3 +72,17 @@ export function checkDraftGaps(
 	).map((question) => withAnswerKind({ ...question, id: freshId() }));
 	return questions.length > 0 ? { kind: 'ask', questions } : { kind: 'unaskable' };
 }
+
+/**
+ * A gap question in the Team inbox's `pendingClarification` shape, which has
+ * no `origin`: the card names the sender from the message itself.
+ */
+export function asTeamGapQuestion(question: AskQuestion) {
+	return {
+		id: question.id,
+		slotType: question.slotType,
+		text: question.text,
+		...(question.answerKind ? { answerKind: question.answerKind } : {}),
+		...(question.options && question.options.length > 0 ? { options: question.options } : {}),
+	};
+}

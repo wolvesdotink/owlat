@@ -35,9 +35,12 @@ const band = computed(() => {
 		return {
 			label: t('components.answer.band.answeringAs', { name: t('components.shell.teamInbox') }),
 			detail: t('components.answer.band.teamDetail'),
-			kind: item.entry.message.draftResponse?.trim()
-				? t('components.answer.band.draftReady')
-				: t('components.answer.band.escalation'),
+			kind:
+				item.entry.message.processingStatus === 'awaiting_clarification'
+					? t('components.answer.band.question')
+					: item.entry.message.draftResponse?.trim()
+						? t('components.answer.band.draftReady')
+						: t('components.answer.band.escalation'),
 			swatch: null,
 			icon: 'lucide:bot',
 		};

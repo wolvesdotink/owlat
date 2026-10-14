@@ -27,6 +27,7 @@ import {
 import { compareResponseDue, isSlaSlice, slaSliceNow } from './sla/slices';
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
+import { isClarificationLive } from './clarificationHold';
 import { redactContactCapabilityFields } from '../contacts/listing';
 import { openConversationThreadPreview } from '../lib/messageBody';
 import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBodyInbound';
@@ -266,7 +267,10 @@ export const getThread = publicQuery({
 });
 
 /**
- * Get the review queue — threads with pending drafts needing human attention
+ * Get the review queue — team messages waiting on a person: an agent draft to
+ * review (`draft_ready`), or the agent's questions to answer before it drafts
+ * (`awaiting_clarification`, on a conversation still open). A held message has
+ * no draft and carries its questions on `pendingClarification`.
  */
 // public: soft-auth — admin-only shared inbox; returns empty for non-admins
 export const getReviewQueue = publicQuery({
@@ -312,13 +316,25 @@ export const countReviewQueue = publicQuery({
 	},
 });
 
-/** The newest `draft_ready` messages, the review queue's rows. */
+/**
+ * The review queue's rows, newest first: `draft_ready` messages, and messages
+ * held on the agent's questions (#1343), which wait there until someone
+ * answers. A held message on a resolved or closed conversation needs nobody.
+ */
 async function readPendingReview(ctx: QueryCtx, limit: number) {
-	return await ctx.db
-		.query('inboundMessages')
-		.withIndex('by_processing_status', (q) => q.eq('processingStatus', 'draft_ready'))
-		.order('desc')
-		.take(limit);
+	const newest = (status: 'draft_ready' | 'awaiting_clarification') =>
+		ctx.db
+			.query('inboundMessages')
+			.withIndex('by_processing_status', (q) => q.eq('processingStatus', status))
+			.order('desc')
+			.take(limit);
+	const [drafts, held] = await Promise.all([
+		newest('draft_ready'),
+		newest('awaiting_clarification'),
+	]);
+	const live = [];
+	for (const message of held) if (await isClarificationLive(ctx, message)) live.push(message);
+	return [...drafts, ...live].sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
 }
 
 /**

@@ -18,7 +18,16 @@ import type { Infer } from 'convex/values';
 import type { ActionCtx } from '../../../_generated/server';
 import type { Id } from '../../../_generated/dataModel';
 import type { clarificationQuestionValidator } from '../../../lib/validators/clarification';
-import { checkDraftGaps } from '../../../mail/ai/gapQuestions';
+import { asTeamGapQuestion, checkDraftGaps } from '../../../mail/ai/gapQuestions';
+import {
+	buildFileAnswerNotes,
+	buildOpenFileNote,
+	buildOpenQuestionNote,
+	joinConfirmedBlocks,
+	openFileGaps,
+	openQuestionGaps,
+} from '../../../inbox/clarificationAnswers';
+import { buildConfirmedContext } from '../../shared/draftService';
 import { localizeQuestions } from '../../../inbox/clarificationLocalize';
 import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { meterAgentCall } from '../../shared/agentSpend';
@@ -26,9 +35,46 @@ import { rethrowAdmissionRefusal } from '../../../analytics/backgroundDeferral';
 
 type ClarificationQuestion = Infer<typeof clarificationQuestionValidator>;
 
+/** What the stored clarification gives a draft, whichever path reached the step. */
+export interface StoredClarificationDraft {
+	/** The owner's answers and files, and each open question's placeholder under consent. */
+	confirmedContext: string;
+	/** The owner chose "Draft with what I have". */
+	isGapsAccepted: boolean;
+	/** The fixed placeholder of each question left open under that choice. */
+	gapPlaceholders: string[];
+}
+
+/**
+ * Rebuild the owner's answers, their consent to gaps and the placeholders that
+ * consent requires from the message's stored `pendingClarification`. The draft
+ * step reads it on every entry, not only after an answer: a draft that failed
+ * after "Draft with what I have" is retried through the whole pipeline
+ * (`retryFailedActions`), and the clarify step's direct hand-off carries none
+ * of it. Without this, a retried draft that leaves an open detail out would
+ * pass the gap check as complete.
+ */
+export function storedClarificationDraft(
+	pending: { questions: ClarificationQuestion[]; isGapsAccepted?: boolean | undefined } | undefined
+): StoredClarificationDraft {
+	const questions = pending?.questions ?? [];
+	const isGapsAccepted = pending?.isGapsAccepted === true;
+	const fileGaps = isGapsAccepted ? openFileGaps(questions) : [];
+	const questionGaps = isGapsAccepted ? openQuestionGaps(questions) : [];
+	return {
+		confirmedContext: joinConfirmedBlocks(
+			buildConfirmedContext(pending),
+			buildFileAnswerNotes(questions),
+			buildOpenFileNote(fileGaps),
+			buildOpenQuestionNote(questionGaps)
+		),
+		isGapsAccepted,
+		gapPlaceholders: [...fileGaps, ...questionGaps],
+	};
+}
+
 /** The `agentDecision` reason a draft held for an unaskable gap carries. */
-export const DRAFT_HELD_REASON =
-	'This reply needs a detail Owlat never asks for, such as a password, so there is no AI draft. Write it yourself.';
+export { UNASKABLE_GAP_REASON as DRAFT_HELD_REASON } from '../../../lib/heldGapDraft';
 
 /** What a team draft still needs before it may be stored. */
 export type TeamDraftGapCheck =
@@ -56,14 +102,7 @@ export async function checkTeamDraftGaps(
 	const existing = message?.pendingClarification?.questions ?? [];
 	const gaps = checkDraftGaps(draft, { fromAddress: message?.from ?? '', existing });
 	if (gaps.kind !== 'ask') return gaps;
-	// The Reply Queue shape carries `origin`; the team question has no such field.
-	let questions: ClarificationQuestion[] = gaps.questions.map((q) => ({
-		id: q.id,
-		slotType: q.slotType,
-		text: q.text,
-		...(q.answerKind ? { answerKind: q.answerKind } : {}),
-		...(q.options && q.options.length > 0 ? { options: q.options } : {}),
-	}));
+	let questions: ClarificationQuestion[] = gaps.questions.map(asTeamGapQuestion);
 	try {
 		const model = await resolveLanguageModel(ctx, 'mail.clarify');
 		const localized = await meterAgentCall(ctx, 'agent_clarify', inboundMessageId, (meter) =>

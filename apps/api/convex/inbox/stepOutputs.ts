@@ -39,6 +39,10 @@ import { attachmentSuggestionsValidator } from '../lib/validators/attachment';
 import { contextTierValidator } from '../lib/literalValidators';
 import { authoredDraftHasGaps } from '../agent/shared/draftGaps';
 import { NO_SAVED_EDITS } from './processingLifecycle/draftFields';
+import { dispatch } from './processingLifecycle/effects';
+import { asTeamGapQuestion, checkDraftGaps } from '../mail/ai/gapQuestions';
+import { UNASKABLE_GAP_REASON } from '../lib/heldGapDraft';
+import type { MutationCtx } from '../_generated/server';
 
 /**
  * Record the context-tier metadata onto an inboundMessage without
@@ -109,6 +113,14 @@ export const recordAgentDecision = internalMutation({
  * decision. A draft with `[[...]]` placeholders is stored gap-guarded
  * (`isDraftGapGuarded`), so a reviewer's Approve cannot send them. A new
  * draft starts without the saved edits of the one it replaces.
+ *
+ * WRITE-SIDE FENCE (#1343): a draft with gaps is stored only with the owner's
+ * consent ("Draft with what I have" on the stored clarification, or the
+ * caller's `isGapsAccepted`, which the draft step passes when asking is off).
+ * Without it the draft is not stored, whoever wrote it: a draft action that
+ * started before this rule finishes here too. Its gaps go back to the owner
+ * as questions, or, when only a question Owlat never asks could fill them,
+ * the reply is left to a person with no AI draft.
  */
 export const recordDraftOutput = internalMutation({
 	args: {
@@ -129,19 +141,31 @@ export const recordDraftOutput = internalMutation({
 		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
 		// The draft was written cheap-first (D2): never auto-sent.
 		isCheapFirstDraft: v.optional(v.boolean()),
+		// Standing consent to gaps (asking is turned off). The owner's own
+		// "Draft with what I have" is read from the stored clarification.
+		isGapsAccepted: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		// A person took the reply over while this draft was being written: their
 		// text is the reply now, so the late agent draft is dropped.
 		const message = await ctx.db.get(args.inboundMessageId);
 		if (!message || message.manualTakeoverAt !== undefined) return;
+		const hasGaps = authoredDraftHasGaps({ text: args.draftResponse });
+		const isGapsAccepted =
+			args.isGapsAccepted === true || message.pendingClarification?.isGapsAccepted === true;
+		if (hasGaps && !isGapsAccepted) {
+			await holdUnconsentedGapDraft(ctx, message, args.draftResponse);
+			return;
+		}
 		await ctx.db.patch(args.inboundMessageId, {
 			draftResponse: args.draftResponse,
 			draftSubject: args.draftSubject,
 			// A `[[...]]` placeholder marks a fact the agent did not have. Stored as
 			// the gap guard, so the composer highlights and counts it and
 			// `approveDraft` refuses to send it (DRAFT_HAS_GAPS) until it is filled.
-			isDraftGapGuarded: authoredDraftHasGaps({ text: args.draftResponse }),
+			isDraftGapGuarded: hasGaps,
+			// Gaps the owner agreed to: shown, highlighted (lib/heldGapDraft.ts).
+			isDraftGapsAccepted: hasGaps ? true : undefined,
 			confidenceScore: args.confidenceScore,
 			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
 			// No screen offers variants any more (#1200): a new draft drops the ones
@@ -157,6 +181,45 @@ export const recordDraftOutput = internalMutation({
 		});
 	},
 });
+
+/**
+ * The fence's hold (see `recordDraftOutput`): nothing of the draft is stored.
+ * Only a message still in `drafting` moves; anywhere else the late draft is
+ * simply dropped. Questions are written untranslated (a mutation cannot call
+ * the model); the draft step's own hold translates them.
+ */
+async function holdUnconsentedGapDraft(
+	ctx: MutationCtx,
+	message: Doc<'inboundMessages'>,
+	draft: string
+): Promise<void> {
+	if (message.processingStatus !== 'drafting') return;
+	const existing = message.pendingClarification?.questions ?? [];
+	const gaps = checkDraftGaps(draft, { fromAddress: message.from, existing });
+	const at = Date.now();
+	if (gaps.kind === 'ask') {
+		await dispatch(ctx, message, {
+			to: 'awaiting_clarification',
+			at,
+			pendingClarification: {
+				questions: [...existing, ...gaps.questions.map(asTeamGapQuestion)],
+				askedAt: at,
+			},
+		});
+		return;
+	}
+	// Only a credential could fill the gap: a person writes the reply. Blocked
+	// from autonomous sending too, since the route step may still run after.
+	await ctx.db.patch(message._id, {
+		isAutoSendBlocked: true,
+		agentDecision: {
+			decision: 'human_review',
+			reason: UNASKABLE_GAP_REASON,
+			confidence: message.confidenceScore ?? 0,
+		},
+	});
+	await dispatch(ctx, message, { to: 'draft_ready', at, draftResponse: '' });
+}
 
 /**
  * D13 (ADR-0073): persist the scan of a message that arrived while the agent

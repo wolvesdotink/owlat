@@ -6907,6 +6907,7 @@
 				"needsTitle": "Wartet auf Antwort",
 				"allInQueue": "Alle {count} in der Liste",
 				"draftReady": "Entwurf bereit",
+				"question": "Braucht deine Angabe",
 				"mention": "Erwähnung",
 				"mentionTitle": "#{room}: „{preview}“",
 				"clearTitleIn": "In {inbox} wartet nichts auf eine Antwort"

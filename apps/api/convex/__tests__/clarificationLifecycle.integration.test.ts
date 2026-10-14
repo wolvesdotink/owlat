@@ -27,6 +27,7 @@ import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { createTestInboundMessage } from './factories';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
+import { pushHarness } from '../push/__tests__/pushFixtures';
 
 // The flow under test schedules the functions below, which this suite's
 // module map leaves out (or which need a setup it does not make). Their jobs
@@ -241,6 +242,52 @@ describe('inbox.answerClarification', () => {
 		});
 	});
 
+	// The draft step reads the consent and the open question back from here on
+	// the retry (agent/steps/draft/__tests__/gapHold.test.ts), so a provider
+	// failure after "Draft with what I have" must not lose them.
+	it('keeps "Draft with what I have" across a failed draft and its retry', async () => {
+		const t = convexTest(schema, modules);
+		let messageId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({
+					processingStatus: 'awaiting_clarification',
+					classification,
+					pendingClarification: pending(1000),
+				})
+			);
+		});
+		await t.withIdentity(testIdentity).mutation(api.inbox.clarification.answerClarification, {
+			inboundMessageId: messageId,
+			answers: [{ questionId: 'q1', value: 'A-123' }],
+			withGaps: true,
+		});
+
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'draft',
+		});
+		await t.mutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: messageId,
+			input: {
+				to: 'failed',
+				at: Date.now(),
+				errorMessage: 'provider down',
+				failingActionId: actionId,
+			},
+		});
+		await t.mutation(internal.inbox.processingLifecycle.retryFailedActions, {});
+
+		await t.run(async (ctx) => {
+			const msg = await ctx.db.get(messageId);
+			expect(msg!.processingStatus).toBe('received');
+			expect(msg!.pendingClarification!.isGapsAccepted).toBe(true);
+			const q2 = msg!.pendingClarification!.questions.find((q) => q.id === 'q2');
+			expect(q2!.answer).toBeUndefined();
+		});
+	});
+
 	it('refuses a message that is not awaiting clarification', async () => {
 		const t = convexTest(schema, modules);
 
@@ -285,21 +332,35 @@ describe('inbox.answerClarification', () => {
 });
 
 describe('processingLifecycle.reconcileAbandonedClarifications', () => {
+	// On a conversation, with shared-inbox readers to ask (pushHarness seeds
+	// two admins): the reminder notifies them.
 	async function seedAwaiting(t: ReturnType<typeof convexTest>, askedAt: number) {
-		return await t.run(async (ctx) =>
-			ctx.db.insert(
+		return await t.run(async (ctx) => {
+			const now = Date.now();
+			const threadId = await ctx.db.insert('conversationThreads', {
+				subject: 'Order',
+				normalizedSubject: 'order',
+				contactIdentifier: 'customer@example.com',
+				status: 'open',
+				messageCount: 1,
+				lastMessageAt: now,
+				firstMessageAt: now,
+				createdAt: now,
+			});
+			return ctx.db.insert(
 				'inboundMessages',
 				msgData({
+					threadId,
 					processingStatus: 'awaiting_clarification',
 					classification,
 					pendingClarification: pending(askedAt),
 				})
-			)
-		);
+			);
+		});
 	}
 
 	it('asks an abandoned await again, once, and drafts nothing', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const messageId = await seedAwaiting(t, Date.now() - 48 * 60 * 60 * 1000);
 
 		const first = await t.mutation(
@@ -327,7 +388,7 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 	});
 
 	it('leaves a still-fresh await untouched', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		const messageId = await seedAwaiting(t, Date.now());
 
 		const { reminded } = await t.mutation(
@@ -344,7 +405,7 @@ describe('processingLifecycle.reconcileAbandonedClarifications', () => {
 	});
 
 	it('respects a shorter configured window (clarificationTimeoutMs)', async () => {
-		const t = convexTest(schema, modules);
+		const t = await pushHarness(modules);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('agentConfig', {
 				isAutoReplyEnabled: false,

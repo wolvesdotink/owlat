@@ -56,7 +56,7 @@ const answered = {
 	answer: { value: '#4821', source: 'user' as const, at: 1 },
 };
 
-function makeCtx() {
+function makeCtx(message: Record<string, unknown> = {}) {
 	const stored: Array<Record<string, unknown>> = [];
 	const decisions: Array<Record<string, unknown>> = [];
 	const ctx = makeStepCtx<Parameters<typeof draftStep.execute>[0]>({
@@ -66,6 +66,7 @@ function makeCtx() {
 				subject: 'Order status',
 				from: 'customer@example.com',
 				pendingClarification: { questions: [answered], askedAt: 1 },
+				...message,
 			},
 		},
 		mutations: {
@@ -179,5 +180,109 @@ describe('draftStep — the owner agreed to gaps', () => {
 		);
 		expect(mocks.localizeQuestions).not.toHaveBeenCalled();
 		expect(draftStep.route(output, consented, runCtx)).toMatchObject({ kind: 'in_state' });
+	});
+});
+
+/** What the model was asked, as text. */
+const prompt = () => JSON.stringify(mocks.runLlmText.mock.calls[0]?.[0] ?? {});
+
+describe('draftStep — the stored clarification, on every path in', () => {
+	// "Draft with what I have", then the draft failed: `retryFailedActions`
+	// runs the whole pipeline again and the clarify step hands off with none of
+	// the owner's answers, consent or placeholders in the input.
+	it('keeps the answers, the consent and the open placeholder on a retry', async () => {
+		drafts('Order #4821 is on its way.');
+		const { ctx, stored } = makeCtx({
+			pendingClarification: {
+				questions: [
+					answered,
+					{ id: 'clarify_1', slotType: 'date_time', text: 'When does it ship?' },
+				],
+				askedAt: 1,
+				answeredAt: 2,
+				isGapsAccepted: true,
+			},
+		});
+
+		const { output } = await draftStep.execute(ctx, input);
+
+		expect(prompt()).toContain('#4821');
+		expect(stored).toHaveLength(1);
+		// The model left the open detail out: its placeholder is still there, so
+		// the draft is gap-guarded and the `draft_gaps` gate keeps it from sending.
+		expect(stored[0]!['draftResponse']).toBe('Order #4821 is on its way.\n\n[[When does it ship]]');
+		expect(stored[0]!['isGapsAccepted']).toBe(true);
+		expect(mocks.localizeQuestions).not.toHaveBeenCalled();
+		expect(draftStep.route(output, input, runCtx)).toMatchObject({ kind: 'in_state' });
+	});
+
+	it("keeps the owner's file pick instead of searching Files again", async () => {
+		const pick = {
+			query: 'signed contract',
+			ambiguous: false,
+			candidates: [
+				{
+					fileId: 'file_pick',
+					storageId: 'store_pick',
+					filename: 'contract-signed.pdf',
+					mimeType: 'application/pdf',
+					fileSize: 2048,
+					score: 1,
+				},
+			],
+		};
+		drafts('Here is the signed contract.');
+		const { ctx, stored } = makeCtx({
+			attachmentSuggestions: pick,
+			pendingClarification: {
+				questions: [
+					{
+						id: 'clarify_attachment',
+						slotType: 'attachment',
+						answerKind: 'file',
+						text: 'Which file should I attach to this reply?',
+						answer: {
+							value: 'contract-signed.pdf',
+							source: 'user',
+							at: 2,
+							file: { source: 'semanticFile', id: 'file_pick', filename: 'contract-signed.pdf' },
+						},
+					},
+				],
+				askedAt: 1,
+				answeredAt: 2,
+			},
+		});
+
+		await draftStep.execute(ctx, input);
+
+		expect(prompt()).toContain('The file \\"contract-signed.pdf\\" is attached to this reply');
+		expect(stored[0]!['attachmentSuggestions']).toEqual(pick);
+	});
+
+	it('suggests no file when the owner said it is not ready', async () => {
+		drafts('The document will follow once it is ready.');
+		const { ctx, stored } = makeCtx({
+			pendingClarification: {
+				questions: [
+					{
+						id: 'clarify_attachment',
+						slotType: 'attachment',
+						answerKind: 'file',
+						text: "They asked for a file. I couldn't find it in Files.",
+						options: ["It isn't ready yet"],
+						answer: { value: "It isn't ready yet", source: 'user', at: 2 },
+					},
+				],
+				askedAt: 1,
+				answeredAt: 2,
+			},
+		});
+
+		await draftStep.execute(ctx, input);
+
+		expect(prompt()).toContain("It isn't ready yet");
+		// No search either: the step context has no action route for it.
+		expect(stored[0]!['attachmentSuggestions']).toBeUndefined();
 	});
 });

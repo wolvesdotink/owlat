@@ -34,7 +34,7 @@ export interface AnswerQueueFailure {
 
 /**
  * Everything waiting on the viewer's answer, in one ranked list:
- * reply-queue rows from every inbox they read, the team inbox's agent drafts
+ * reply-queue rows from every inbox they read, the team inbox's agent drafts and agent questions
  * (owners/admins with the team inbox on) and unread chat mentions (where chat
  * is available to them). Each source keeps its own permission check — this
  * only merges what the viewer could already open. A Workbench tab narrows the
