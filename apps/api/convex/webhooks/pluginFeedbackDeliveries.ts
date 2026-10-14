@@ -55,8 +55,16 @@ const EXPIRED_SWEEP_LIMIT = 32;
  *                           retryably.
  *  - `duplicate_completed`— the batch has already been applied. The caller may
  *                           safely acknowledge it.
+ *  - `expired`            — the request itself stopped verifying between the
+ *                           signature check and this claim. Nothing was read or
+ *                           written; the caller must refuse it as the stale
+ *                           request it now is.
  */
-export type PluginFeedbackClaimResult = 'claimed' | 'duplicate_in_flight' | 'duplicate_completed';
+export type PluginFeedbackClaimResult =
+	| 'claimed'
+	| 'duplicate_in_flight'
+	| 'duplicate_completed'
+	| 'expired';
 
 export const claim = internalMutation({
 	args: {
@@ -67,6 +75,17 @@ export const claim = internalMutation({
 	},
 	handler: async (ctx, args): Promise<PluginFeedbackClaimResult> => {
 		const now = Date.now();
+		// FIRST, before any receipt is read or swept: is the request still alive?
+		// `expiresAt` is no earlier than the first instant its signed timestamp
+		// stops verifying (`claimExpiresAtMs` in `plugins/inboundSignature.ts`),
+		// and every copy of one delivery carries the same one. The route verifies
+		// and then awaits authorization before it gets here, so a replay can verify
+		// in the last moment of its window and arrive after it — exactly when its
+		// original's receipt has aged out. Refusing it here, in the same
+		// transaction that would otherwise claim it, means a claim is only ever
+		// taken while any earlier receipt for the same delivery is still live.
+		if (now >= args.expiresAt) return 'expired';
+
 		const expired = await ctx.db
 			.query('pluginWebhookDeliveries')
 			.withIndex('by_expires_at', (q) => q.lte('expiresAt', now))

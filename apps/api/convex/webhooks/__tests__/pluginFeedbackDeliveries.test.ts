@@ -39,6 +39,26 @@ function claimArgs(digest: string, expiresAt = Date.now() + TOLERANCE_MS) {
 	return { pluginId: PLUGIN_ID, transportKind: KIND, deliveryDigest: digest, expiresAt };
 }
 
+/**
+ * Receipts whose window has already closed, written straight to the table: the
+ * claim mutation refuses to take a claim that is already expired, so it cannot
+ * be used to make one.
+ */
+async function insertExpiredRows(t: ReturnType<typeof convexTest>, digests: readonly string[]) {
+	await t.run(async (ctx) => {
+		for (const digest of digests) {
+			await ctx.db.insert('pluginWebhookDeliveries', {
+				pluginId: PLUGIN_ID,
+				transportKind: KIND,
+				deliveryDigest: digest,
+				claimedAt: Date.now() - TOLERANCE_MS,
+				expiresAt: Date.now() - 1,
+				status: 'completed',
+			});
+		}
+	});
+}
+
 function completeArgs(digest: string) {
 	return { pluginId: PLUGIN_ID, transportKind: KIND, deliveryDigest: digest };
 }
@@ -85,7 +105,7 @@ describe('plugin webhook delivery claims', () => {
 		const t = convexTest(schema, modules);
 		const claim = internal.webhooks.pluginFeedbackDeliveries.claim;
 
-		await t.mutation(claim, claimArgs('digest-d', Date.now() - 1));
+		await insertExpiredRows(t, ['digest-d']);
 		await expect(t.mutation(claim, claimArgs('digest-d'))).resolves.toBe('claimed');
 		const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
 		expect(rows.filter((row) => row.deliveryDigest === 'digest-d')).toHaveLength(1);
@@ -94,9 +114,10 @@ describe('plugin webhook delivery claims', () => {
 	it('ages expired rows out as it goes', async () => {
 		const t = convexTest(schema, modules);
 		const claim = internal.webhooks.pluginFeedbackDeliveries.claim;
-		for (let index = 0; index < 10; index += 1) {
-			await t.mutation(claim, claimArgs(`stale-${index}`, Date.now() - 1));
-		}
+		await insertExpiredRows(
+			t,
+			Array.from({ length: 10 }, (_, index) => `stale-${index}`)
+		);
 		await t.mutation(claim, claimArgs('fresh'));
 
 		const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
@@ -113,17 +134,10 @@ describe('plugin webhook delivery claims', () => {
 		// Written straight to the table: the point is rows NO later claim ever
 		// reaches, which is exactly what going through the claim mutation would
 		// clean up on the way in.
-		await t.run(async (ctx) => {
-			for (let index = 0; index < 5; index += 1) {
-				await ctx.db.insert('pluginWebhookDeliveries', {
-					pluginId: PLUGIN_ID,
-					transportKind: KIND,
-					deliveryDigest: `abandoned-${index}`,
-					claimedAt: Date.now() - TOLERANCE_MS,
-					expiresAt: Date.now() - 1,
-				});
-			}
-		});
+		await insertExpiredRows(
+			t,
+			Array.from({ length: 5 }, (_, index) => `abandoned-${index}`)
+		);
 
 		const { deletedCount } = await t.mutation(
 			internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
@@ -189,15 +203,24 @@ describe('a claim that has been completed', () => {
 		// cannot verify again, so the row buys nothing and the sweeps take it.
 		const t = convexTest(schema, modules);
 		const { claim, complete } = internal.webhooks.pluginFeedbackDeliveries;
+		const claimedAt = 1_770_000_000_000;
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			// Claimed while live — a claim whose window has already closed is refused.
+			vi.setSystemTime(claimedAt);
+			await t.mutation(claim, claimArgs('digest-h', claimedAt + 1_000));
+			await t.mutation(complete, completeArgs('digest-h'));
 
-		await t.mutation(claim, claimArgs('digest-h', Date.now() - 1));
-		await t.mutation(complete, completeArgs('digest-h'));
-		const { deletedCount } = await t.mutation(
-			internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
-			{}
-		);
+			vi.setSystemTime(claimedAt + 1_001);
+			const { deletedCount } = await t.mutation(
+				internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
+				{}
+			);
 
-		expect(deletedCount).toBe(1);
+			expect(deletedCount).toBe(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('reads a row written before the state column existed as IN FLIGHT', async () => {
@@ -367,6 +390,18 @@ describe('a claim and the signature it records', () => {
 			await expect(
 				t.mutation(table.claim, claimArgs(replay.deliveryDigest, replay.expiresAtMs))
 			).resolves.toBe('duplicate_completed');
+
+			// A copy that verified in time but reaches the claim once the window has
+			// closed is refused there, and the receipt it would have displaced is
+			// left exactly as it was.
+			vi.setSystemTime(replay.expiresAtMs);
+			await expect(
+				t.mutation(table.claim, claimArgs(replay.deliveryDigest, replay.expiresAtMs))
+			).resolves.toBe('expired');
+			const rows = await t.run((ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+			expect(rows).toEqual([
+				expect.objectContaining({ deliveryDigest: first.deliveryDigest, status: 'completed' }),
+			]);
 
 			// One millisecond on, the request itself is refused, so the claim has
 			// nothing left to guard.

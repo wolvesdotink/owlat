@@ -33,7 +33,8 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
  *   6. authorization      — flag, operator grant, env and singleton scope,
  *                           rechecked now (`sendTransportWebhookAuthorization`)
  *   7. replay             — the delivery digest is claimed, or this is a repeat of
- *                           one already applied (200) or still in flight (503)
+ *                           one already applied (200) or still in flight (503),
+ *                           or the request went stale since gate 5 (401)
  *   8. retention          — raw payload stored only if the adapter opted in, and
  *                           stored BEFORE the plugin's module runs (see below)
  *   9. parse              — the plugin's parse-only module, its output revalidated
@@ -240,6 +241,13 @@ async function deliver(
 		deliveryDigest: verification.deliveryDigest,
 		expiresAt: verification.expiresAtMs,
 	});
+	// A request that stopped verifying while it waited for authorization is
+	// refused like any stale request: claiming it could reuse the slot of a
+	// receipt that aged out at the same instant, and apply the batch twice.
+	if (claimed === 'expired') {
+		logError(`[${definition.kind} Webhook] Inbound timestamp outside tolerance at claim`);
+		return jsonResponse(401, { error: 'Inbound timestamp outside tolerance' });
+	}
 	if (claimed !== 'claimed') return duplicateResponse(claimed);
 
 	// (8) RETENTION IS OPT-IN, and it happens BEFORE the plugin's module runs: a
@@ -316,7 +324,9 @@ const IN_FLIGHT_RETRY_AFTER_SECONDS = 30;
  * One 503 among the 2xx a healthy channel returns is not a deactivation risk;
  * silently dropping a batch has no upper bound on what it costs.
  */
-function duplicateResponse(outcome: Exclude<PluginFeedbackClaimResult, 'claimed'>): Response {
+function duplicateResponse(
+	outcome: Exclude<PluginFeedbackClaimResult, 'claimed' | 'expired'>
+): Response {
 	if (outcome === 'duplicate_completed') {
 		return jsonResponse(200, { success: true, duplicate: true });
 	}
