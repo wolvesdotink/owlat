@@ -10,22 +10,20 @@
  * is kicked again, and a second chain beside the first only takes turns with it.
  *
  * Started for existing folders by `migrations/0054_backfill_folder_membership`,
- * whose `finish` step also restarts a walk that stopped moving; a new folder
- * starts ready (`startFolderMembership(…, { isEmpty: true })`).
+ * whose `finish` step also restarts a walk that stopped moving and counts the
+ * steps that failed; a new folder starts ready
+ * (`startFolderMembership(…, { isEmpty: true })`).
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
-import { internal } from '../_generated/api';
-import { runFolderMembershipBackfillStep } from '../mail/folderMembership';
+import { runFolderMembershipBackfillStep, scheduleFolderWalkStep } from '../mail/folderMembership';
 
 export const step = internalMutation({
 	args: { folderId: v.id('mailFolders') },
 	handler: async (ctx, { folderId }) => {
 		if (await runFolderMembershipBackfillStep(ctx, folderId)) {
-			await ctx.scheduler.runAfter(0, internal.maintenance.folderMembershipBackfill.step, {
-				folderId,
-			});
+			await scheduleFolderWalkStep(ctx, folderId, { madeProgress: true });
 		}
 	},
 });

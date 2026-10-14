@@ -34,6 +34,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 
 export const MIGRATION = '0067_empty_retired_summaries';
@@ -139,7 +140,9 @@ export const processPage = internalMutation({
 			generation: run.generation,
 		});
 		if (!isDone) {
-			await ctx.scheduler.runAfter(
+			await scheduleMigrationPage(
+				ctx,
+				run,
 				0,
 				internal.migrations['0067_empty_retired_summaries'].processPage,
 				{ cursor: next, generation: run.generation }
@@ -172,7 +175,9 @@ export const run = internalMutation({
 		if (!begun) {
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
-		await ctx.scheduler.runAfter(
+		await scheduleMigrationPage(
+			ctx,
+			begun,
 			0,
 			internal.migrations['0067_empty_retired_summaries'].processPage,
 			{ cursor: begun.cursor ?? null, generation: begun.generation }

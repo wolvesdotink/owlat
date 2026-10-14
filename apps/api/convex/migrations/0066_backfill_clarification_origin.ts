@@ -51,6 +51,7 @@ import {
 	isCurrentMigrationPage,
 	readMigrationRun,
 	recordMigrationPage,
+	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 
 export const MIGRATION = '0066_backfill_clarification_origin';
@@ -185,7 +186,9 @@ export const processPage = internalMutation({
 			generation: run.generation,
 		});
 		if (!isDone) {
-			await ctx.scheduler.runAfter(
+			await scheduleMigrationPage(
+				ctx,
+				run,
 				0,
 				internal.migrations['0066_backfill_clarification_origin'].processPage,
 				{ cursor: next, generation: run.generation }
@@ -218,7 +221,9 @@ export const run = internalMutation({
 		if (!begun) {
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
-		await ctx.scheduler.runAfter(
+		await scheduleMigrationPage(
+			ctx,
+			begun,
 			0,
 			internal.migrations['0066_backfill_clarification_origin'].processPage,
 			{ cursor: begun.cursor ?? null, generation: begun.generation }
