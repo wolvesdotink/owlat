@@ -221,6 +221,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailMessages', 'mailDrafts', 'inReplyToMessageId', 'delete', SAME_MAILBOX),
 	desc(
 		'mailMessages',
+		'mailMessages',
+		'answeredMessageId',
+		'retain',
+		'An Owlat reply’s answered message: in a personal mailbox the reply is deleted with it; a send-as copy keeps a dangling id, which settling the conversation skips.'
+	),
+	desc(
+		'mailMessages',
 		'mailDrafts',
 		'expectedAttachments[].source.messageId',
 		'retain',
