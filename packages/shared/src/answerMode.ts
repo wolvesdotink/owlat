@@ -7,7 +7,7 @@
  * gap placeholders a "draft with gaps" leaves behind.
  */
 
-import { escapeHtmlWithBreaks } from './html';
+import { escapeHtmlWithBreaks, htmlToPlainText } from './html';
 
 /**
  * The error a "Draft with AI" stream ends with when the draft would need a fact
@@ -108,31 +108,6 @@ export function aiTextToHtml(text: string): string {
 	return paragraphs.map((p) => `<p>${escapeHtmlWithBreaks(p)}</p>`).join('');
 }
 
-const ANSWER_ENTITIES: Record<string, string> = {
-	amp: '&',
-	apos: "'",
-	gt: '>',
-	lt: '<',
-	nbsp: ' ',
-	quot: '"',
-};
-
-/** Visible text of a body fragment: tags as spaces, entities decoded, whitespace collapsed. */
-function answerPlainText(html: string): string {
-	return html
-		.replace(/<[^>]*>/g, ' ')
-		.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (whole, body: string) => {
-			if (!body.startsWith('#')) return ANSWER_ENTITIES[body.toLowerCase()] ?? whole;
-			const isHex = body[1] === 'x' || body[1] === 'X';
-			const code = isHex ? parseInt(body.slice(2), 16) : Number(body.slice(1));
-			return Number.isFinite(code) && code > 0 && code <= 0x10ffff
-				? String.fromCodePoint(code)
-				: whole;
-		})
-		.replace(/\s+/g, ' ')
-		.trim();
-}
-
 /**
  * Whether the written part of a reply body is still exactly the AI's text
  * (`aiText`, the draft's recorded AI baseline): no word added, removed or
@@ -140,6 +115,6 @@ function answerPlainText(html: string): string {
  * a person typed does, including text kept above the AI's.
  */
 export function isUntouchedAiAnswer(bodyHtml: string, aiText: string): boolean {
-	const expected = answerPlainText(aiTextToHtml(aiText));
-	return expected.length > 0 && answerPlainText(splitAnswerBody(bodyHtml).fresh) === expected;
+	const expected = htmlToPlainText(aiTextToHtml(aiText));
+	return expected.length > 0 && htmlToPlainText(splitAnswerBody(bodyHtml).fresh) === expected;
 }
