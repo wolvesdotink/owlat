@@ -159,7 +159,7 @@ const smtpHost = computed(() => imapHost.value);
 					<div>
 						<div class="flex items-center gap-2">
 							<span class="font-medium">{{ pw.label }}</span>
-							<span class="text-xs text-text-tertiary font-mono"> {{ pw.passwordPrefix }}… </span>
+							<span class="text-xs text-text-tertiary font-mono">{{ pw.passwordPrefix }}…</span>
 							<span
 								v-if="pw.revokedAt"
 								class="text-xs px-1.5 py-0.5 rounded bg-error/10 text-error"

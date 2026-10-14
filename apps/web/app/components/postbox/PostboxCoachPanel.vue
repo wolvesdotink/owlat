@@ -97,7 +97,11 @@ const CATEGORY_DOT: Record<string, string> = {
 				data-testid="postbox-coach-run"
 				@click="onCoachClick"
 			>
-				<Icon v-if="coach.isLoading()" name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+				<Icon
+					v-if="coach.isLoading()"
+					name="lucide:loader-2"
+					class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
+				/>
 				<Icon v-else name="lucide:graduation-cap" class="w-3.5 h-3.5" />
 				<span>{{ t('components.postbox.postboxCoachPanel.run') }}</span>
 			</UiButton>
@@ -128,12 +132,15 @@ const CATEGORY_DOT: Record<string, string> = {
 					:class="CATEGORY_DOT[s.category] ?? 'bg-info'"
 				/>
 				<span>
-					<span v-if="categoryLabel(s.category)" class="font-medium text-text-secondary">{{
-						t('components.postbox.postboxCoachPanel.suggestionCategory', {
-							category: categoryLabel(s.category),
-						})
-					}}</span>
-					<span class="text-text-secondary"> {{ s.message }}</span>
+					<template v-if="categoryLabel(s.category)"
+						><span class="font-medium text-text-secondary">{{
+							t('components.postbox.postboxCoachPanel.suggestionCategory', {
+								category: categoryLabel(s.category),
+							})
+						}}</span
+						>{{ ' ' }}</template
+					>
+					<span class="text-text-secondary">{{ s.message }}</span>
 				</span>
 			</li>
 		</ul>

@@ -273,8 +273,10 @@ async function reset() {
 		<!-- Say the quiet part. Which signal the yahoo cell actually runs on,
 		     and how confident it is. A caveat, never a warning and never a nag. -->
 		<p class="mt-3 text-xs text-text-tertiary" data-testid="yahoocfl-confidence">
-			{{ guide.complaintSignal.confidenceNote }}
-			<template v-if="guide.complaintSignal.caveat"> {{ guide.complaintSignal.caveat }}</template>
+			{{ guide.complaintSignal.confidenceNote
+			}}<template v-if="guide.complaintSignal.caveat"
+				>{{ ' ' }}{{ guide.complaintSignal.caveat }}</template
+			>
 		</p>
 	</div>
 </template>
