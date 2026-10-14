@@ -24,24 +24,26 @@
  * capture or a file that is gone is restricted.
  *
  * ONE SWEEP, BOUNDED: `knowledgeEntries` in creation order up to the time the
- * walk started (entries written after it come from this release), a few rows a
- * page and at most {@link PAGE_BYTES} read, since every row carries its
- * embedding. Each page records its cursor in the migration ledger
- * (`migrationRuns` row `0069_restrict_captured_file_knowledge`,
- * lib/migrationLedger.ts) before the next is scheduled, and a page always
- * advances past at least one row. Running `run` again on an unfinished walk
- * resumes it; on a finished one it does nothing (`'{"restart":true}'` starts
- * over with a new start time). Pages are idempotent.
+ * walk started — the ledger row's `startedAt`, written before the first page is
+ * scheduled and kept by every resume, so a second `run` cannot move it (entries
+ * written after it come from this release). A page stops after
+ * {@link PAGE_SIZE} entries or {@link PAGE_BYTES} read, counting the entries
+ * (each carries its embedding) and the source files it looks up, and always
+ * handles at least one entry. Each page records its position in the migration
+ * ledger (`migrationRuns` row `0069_restrict_captured_file_knowledge`,
+ * lib/migrationLedger.ts) before the next is scheduled. Running `run` again on
+ * an unfinished walk resumes it; on a finished one it does nothing
+ * (`'{"restart":true}'` starts over with a new start time). Pages are idempotent.
  */
 
-import { v } from 'convex/values';
+import { getDocumentSize, v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { logInfo } from '../lib/runtimeLog';
 import { isInboxDerivedKnowledge } from '../inbox/access';
-import { resolveMemberAccess } from '../knowledge/entryDedupe';
+import { isMailCapture } from '../lib/semanticFileAccess';
 import {
 	beginMigrationRun,
 	isCurrentMigrationPage,
@@ -52,19 +54,32 @@ import {
 export const MIGRATION = '0069_restrict_captured_file_knowledge';
 /** The release this migration ships in, recorded on its ledger row. */
 const INTRODUCED_IN = '0.6.13';
-/** Rows per page at most. */
-export const PAGE_SIZE = 16;
-/** Bytes a page reads at most (rows carry 1536-float embeddings), well inside a transaction. */
-export const PAGE_BYTES = 4 * 1024 * 1024;
+/** Entries a page handles at most. */
+export const PAGE_SIZE = 32;
+/**
+ * Bytes a page reads before it stops: the entries (each carries a 1536-float
+ * embedding) AND the source files it looks up. The check runs before each
+ * entry, so one entry and its file (a document is at most 1 MiB each) and the
+ * next entry read can still be added: a page reads under 10 MiB, inside the
+ * 16 MiB a transaction may read.
+ */
+export const PAGE_BYTES = 8 * 1024 * 1024;
 
-/** The ledger cursor: `<walk start ms>:<convex cursor>`. */
-export function encodeCursor(cutoff: number, cursor: string | null): string {
-	return `${cutoff}:${cursor ?? ''}`;
+/** Where the sweep stands: just after the entry created at `time` with id `id`. */
+export type SweepPosition = { time: number; id: Id<'knowledgeEntries'> };
+
+/** The ledger cursor: `<_creationTime>:<_id>` of the last entry handled, or '' at the start. */
+export function encodeCursor(position: SweepPosition | null): string {
+	return position ? `${position.time}:${position.id}` : '';
 }
 
-export function decodeCursor(stored: string): { cutoff: number; cursor: string | null } {
-	const split = stored.indexOf(':');
-	return { cutoff: Number(stored.slice(0, split)), cursor: stored.slice(split + 1) || null };
+export function decodeCursor(stored: string | null | undefined): SweepPosition | null {
+	const split = stored ? stored.indexOf(':') : -1;
+	if (!stored || split === -1) return null;
+	return {
+		time: Number(stored.slice(0, split)),
+		id: stored.slice(split + 1) as Id<'knowledgeEntries'>,
+	};
 }
 
 /** Whether an entry's content could hold a merged-in loser (`mergeContent` appends on a new line). */
@@ -72,9 +87,29 @@ export function couldHoldMergedContent(entry: Pick<Doc<'knowledgeEntries'>, 'con
 	return entry.content.includes('\n');
 }
 
+/** Reads the source files of one page, each once, counting the bytes read. */
+class SourceFiles {
+	bytes = 0;
+	private readonly seen = new Map<string, Doc<'semanticFiles'> | null>();
+	constructor(private readonly ctx: Pick<MutationCtx, 'db'>) {}
+
+	/** For a file entry: `members` for an upload, `restricted` for a capture or a gone file. */
+	async accessOf(entry: Doc<'knowledgeEntries'>): Promise<'members' | 'restricted'> {
+		const fileId = entry.sourceId ? this.ctx.db.normalizeId('semanticFiles', entry.sourceId) : null;
+		if (!fileId) return 'restricted';
+		if (!this.seen.has(fileId)) {
+			const file = await this.ctx.db.get(fileId);
+			if (file) this.bytes += getDocumentSize(file);
+			this.seen.set(fileId, file);
+		}
+		const file = this.seen.get(fileId);
+		return file && !isMailCapture(file) ? 'members' : 'restricted';
+	}
+}
+
 /** What this walk writes for one entry, or null to leave it. */
-export async function sweptAccess(
-	ctx: Pick<MutationCtx, 'db'>,
+async function sweptAccess(
+	files: SourceFiles,
 	entry: Doc<'knowledgeEntries'>
 ): Promise<Doc<'knowledgeEntries'>['memberAccess'] | null> {
 	if (entry.memberAccess === 'restricted') return null;
@@ -85,35 +120,83 @@ export async function sweptAccess(
 		return 'restricted';
 	}
 	if (entry.sourceType !== 'file' || entry.memberAccess === 'members') return null;
-	return (await resolveMemberAccess(ctx, entry)) ?? null;
+	return await files.accessOf(entry);
 }
 
-/** One page of the sweep; `maxBytes` is a parameter so a test can make it small. */
+/**
+ * One page of the sweep: the entries created before `cutoff`, from just after
+ * `after`, until the page has handled {@link PAGE_SIZE} entries or read
+ * `maxBytes` (entries and source files together). At least one entry is
+ * handled, so a resume always advances. The position is the last entry handled;
+ * entries sharing its creation time that come before it are not handled twice,
+ * except when it was deleted since, when they are (a page is idempotent).
+ */
 export async function sweepPage(
 	ctx: MutationCtx,
-	page: { cutoff: number; cursor: string | null; maxBytes?: number }
-) {
-	const result = await ctx.db
+	page: { cutoff: number; after: SweepPosition | null; maxBytes?: number }
+): Promise<{
+	after: SweepPosition | null;
+	isDone: boolean;
+	scanned: number;
+	changed: number;
+	bytesRead: number;
+}> {
+	const { cutoff, after } = page;
+	const maxBytes = page.maxBytes ?? PAGE_BYTES;
+	const rows = ctx.db
 		.query('knowledgeEntries')
-		.withIndex('by_creation_time', (q) => q.lt('_creationTime', page.cutoff))
-		.paginate({
-			numItems: PAGE_SIZE,
-			cursor: page.cursor,
-			maximumBytesRead: page.maxBytes ?? PAGE_BYTES,
-		});
+		.withIndex('by_creation_time', (q) =>
+			after
+				? q.gte('_creationTime', after.time).lt('_creationTime', cutoff)
+				: q.lt('_creationTime', cutoff)
+		);
+	const files = new SourceFiles(ctx);
+	let entryBytes = 0;
+	let last = after;
+	let scanned = 0;
 	let changed = 0;
-	for (const entry of result.page) {
-		const access = await sweptAccess(ctx, entry);
-		if (access === null || access === entry.memberAccess) continue;
-		await ctx.db.patch(entry._id, { memberAccess: access });
-		changed++;
+	// Entries tied with `after`'s creation time, read before `after` itself.
+	let held: Doc<'knowledgeEntries'>[] = [];
+	let isPastAfter = after === null;
+
+	const handle = async (entry: Doc<'knowledgeEntries'>): Promise<void> => {
+		const access = await sweptAccess(files, entry);
+		if (access !== null && access !== entry.memberAccess) {
+			await ctx.db.patch(entry._id, { memberAccess: access });
+			changed++;
+		}
+		scanned++;
+		last = { time: entry._creationTime, id: entry._id };
+	};
+
+	for await (const entry of rows) {
+		entryBytes += getDocumentSize(entry);
+		if (!isPastAfter && after) {
+			if (entry._creationTime === after.time) {
+				if (entry._id === after.id) {
+					isPastAfter = true;
+					held = []; // handled before `after`, by an earlier page
+				} else {
+					held.push(entry);
+				}
+				continue;
+			}
+			// `after` is gone: handle its ties again rather than skip one.
+			isPastAfter = true;
+			for (const tie of held) await handle(tie);
+		}
+		if (scanned > 0 && (scanned >= PAGE_SIZE || entryBytes + files.bytes >= maxBytes)) {
+			return { after: last, isDone: false, scanned, changed, bytesRead: entryBytes + files.bytes };
+		}
+		await handle(entry);
 	}
-	return { ...result, scanned: result.page.length, changed };
+	if (!isPastAfter) for (const tie of held) await handle(tie);
+	return { after: last, isDone: true, scanned, changed, bytesRead: entryBytes + files.bytes };
 }
 
 /** Run one page and schedule the next one of the same run. */
 export const processPage = internalMutation({
-	args: { cursor: v.string(), generation: v.number() },
+	args: { cursor: v.union(v.string(), v.null()), generation: v.number() },
 	handler: async (ctx, args): Promise<{ isDone: boolean; isSuperseded?: boolean }> => {
 		const run = await readMigrationRun(ctx, MIGRATION);
 		if (!isCurrentMigrationPage(run, args.generation)) {
@@ -122,9 +205,14 @@ export const processPage = internalMutation({
 			});
 			return { isDone: false, isSuperseded: true };
 		}
-		const { cutoff, cursor } = decodeCursor(args.cursor);
-		const result = await sweepPage(ctx, { cutoff, cursor });
-		const next = encodeCursor(cutoff, result.continueCursor);
+		// The walk covers what existed when it was started. The start time lives
+		// on the ledger row, written before the first page is scheduled and kept
+		// by every resume, so a second `run` cannot move it.
+		const result = await sweepPage(ctx, {
+			cutoff: run.startedAt,
+			after: decodeCursor(args.cursor),
+		});
+		const next = encodeCursor(result.after);
 		await recordMigrationPage(ctx, run, {
 			cursor: next,
 			isDone: result.isDone,
@@ -171,7 +259,7 @@ export const run = internalMutation({
 		if (!begun) {
 			return { started: false, reason: 'Already completed; pass restart to run it again' };
 		}
-		const cursor = begun.cursor ?? encodeCursor(Date.now(), null);
+		const cursor = begun.cursor ?? null;
 		await ctx.scheduler.runAfter(
 			0,
 			internal.migrations['0069_restrict_captured_file_knowledge'].processPage,
