@@ -1,11 +1,13 @@
 /**
  * Migration 0069 (#1322): one sweep over the knowledge that existed when it
- * started. Every member-visible entry a historical dedup merge could have
- * written into (content on more than one line) is restricted, whatever its
- * source and whether any capture still exists; a single-line entry from an
- * uploaded file is opened to members; one from a capture or a gone file stays
- * restricted. No Message-ID is used to widen a capture. Pages are bounded by
- * bytes as well as rows, always advance, and are recorded in the ledger.
+ * started. A historical dedup merge may have folded captured or Team Inbox
+ * text, tags or contact links into any member-visible entry of any source
+ * type, and nothing on an entry proves it did not, so every member-visible
+ * entry and every file-derived entry becomes owner/admin-only (Marcel,
+ * 2026-10-14). Nothing is opened; entries written after the walk started are
+ * left to the write-time rules. No Message-ID widens a capture. Pages are
+ * bounded by entries and bytes, always advance, and are recorded in the ledger
+ * with a start time a second `run` cannot move.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -81,66 +83,114 @@ const entry = (
 
 const read = (t: T, id: Id<'knowledgeEntries'>) => t.run(async (ctx) => (await ctx.db.get(id))!);
 
+async function runToEnd(t: T): Promise<void> {
+	tick();
+	await t.mutation(migration.run, {});
+	await t.finishAllScheduledFunctions(vi.runAllTimers);
+}
+
+async function ledger(t: T) {
+	return t.run(
+		async (ctx) =>
+			(await ctx.db
+				.query('migrationRuns')
+				.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
+				.first())!
+	);
+}
+
 describe('0069_restrict_captured_file_knowledge', () => {
-	it('restricts every multi-line member-visible entry and opens single-line upload knowledge', async () => {
+	it('restricts every member-visible entry of every source type, and every file-derived one', async () => {
 		const t = convexTest(schema, modules);
 		const upload = await file(t, { sourceType: 'upload' });
 		const capture = await file(t, { captureSource: 'team_inbox' });
-		const gone = await file(t, { sourceType: 'upload' });
-		await t.run((ctx) => ctx.db.delete(gone));
+		const contactId = await t.run((ctx) =>
+			ctx.db.insert('contacts', {
+				email: 'c@example.com',
+				source: 'api',
+				doiStatus: 'not_required',
+				createdAt: 1,
+				updatedAt: 1,
+			})
+		);
 
-		const ids = {
-			upload: await entry(t, { sourceType: 'file', sourceId: upload, content: 'Open fact' }),
-			uploadMultiLine: await entry(t, {
+		const restricted = {
+			// Proven from an upload at write time: a merge could still have reached it.
+			uploadOpened: await entry(t, {
 				sourceType: 'file',
 				sourceId: upload,
-				content: 'Upload fact\nfolded in',
+				content: 'Upload fact',
+				memberAccess: 'members',
 			}),
+			uploadUnmarked: await entry(t, { sourceType: 'file', sourceId: upload, content: 'U' }),
 			capture: await entry(t, { sourceType: 'file', sourceId: capture, content: 'Private' }),
-			orphan: await entry(t, { sourceType: 'file', sourceId: gone, content: 'Orphan' }),
-			// No capture, no contact link left: a multi-line survivor is restricted anyway.
-			manualMultiLine: await entry(t, {
-				sourceType: 'manual',
-				content: 'Survivor\nprivate fact from a capture',
+			email: await entry(t, { sourceType: 'email', content: 'From imported mail' }),
+			chat: await entry(t, { sourceType: 'chat', content: 'From chat' }),
+			manual: await entry(t, { sourceType: 'manual', content: 'Hand-written fact' }),
+			curated: await entry(t, {
+				sourceType: 'curated',
+				content: 'Refunds within 30 days.',
+				isAuthoritative: true,
 			}),
-			chatMultiLine: await entry(t, { sourceType: 'chat', content: 'Chat\nfolded' }),
-			manual: await entry(t, { sourceType: 'manual', content: 'One plain fact' }),
-			teamInbox: await entry(t, { sourceType: 'agent_extracted', content: 'Team\nfact' }),
+			// (a) A merge appended private text on a new line; an edit since put it
+			// on one line. The text is still there, and nothing shows the merge.
+			editedSurvivor: await entry(t, {
+				sourceType: 'manual',
+				content: 'Survivor fact and the private fact from a capture',
+				updatedAt: 5,
+			}),
+			// (b) A merge that only added a private tag and a contact link: the
+			// survivor already contained the loser's text, so no newline either.
+			taggedSurvivor: await entry(t, {
+				sourceType: 'manual',
+				content: 'Plain fact',
+				tags: ['acme-acquisition'],
+				contactIds: [contactId],
+				updatedAt: 5,
+			}),
 		};
-		tick();
-		await t.mutation(migration.run, {});
-		tick();
-		// Written after the walk started: this release's own write, left alone.
-		const later = await entry(t, { sourceType: 'manual', content: 'Written\nafter' });
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		// Already kept from members by their source: left as they are.
+		const teamInbox = await entry(t, { sourceType: 'agent_extracted', content: 'Team fact' });
 
-		expect((await read(t, ids.upload)).memberAccess).toBe('members');
-		for (const key of [
-			'uploadMultiLine',
-			'capture',
-			'orphan',
-			'manualMultiLine',
-			'chatMultiLine',
-		] as const) {
-			const row = await read(t, ids[key]);
+		await runToEnd(t);
+
+		for (const [key, id] of Object.entries(restricted)) {
+			const row = await read(t, id);
 			expect(row.memberAccess, key).toBe('restricted');
 			expect(isInboxDerivedKnowledge(row), key).toBe(true);
 		}
-		const plain = await read(t, ids.manual);
-		expect(plain.memberAccess).toBeUndefined();
-		expect(isInboxDerivedKnowledge(plain)).toBe(false);
-		// Already restricted by its source: nothing to write.
-		expect((await read(t, ids.teamInbox)).memberAccess).toBeUndefined();
-		expect((await read(t, later)).memberAccess).toBeUndefined();
+		const team = await read(t, teamInbox);
+		expect(team.memberAccess).toBeUndefined();
+		expect(isInboxDerivedKnowledge(team)).toBe(true);
 
-		await t.run(async (ctx) => {
-			const run = await ctx.db
-				.query('migrationRuns')
-				.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
-				.first();
-			expect(run?.status).toBe('completed');
-		});
+		const run = await ledger(t);
+		expect(run.status).toBe('completed');
+		expect(run.changedCount).toBe(Object.keys(restricted).length);
 		expect(await t.mutation(migration.run, {})).toMatchObject({ started: false });
+	});
+
+	it('(c) leaves entries written after the walk started to the write-time rules', async () => {
+		const t = convexTest(schema, modules);
+		const upload = await file(t, { sourceType: 'upload' });
+		const old = await entry(t, { sourceType: 'manual', content: 'Old fact' });
+		tick();
+		await t.mutation(migration.run, {});
+		tick();
+		const later = {
+			manual: await entry(t, { sourceType: 'manual', content: 'New\nmulti-line fact' }),
+			upload: await entry(t, {
+				sourceType: 'file',
+				sourceId: upload,
+				content: 'New upload fact',
+				memberAccess: 'members',
+			}),
+		};
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect((await read(t, old)).memberAccess).toBe('restricted');
+		expect((await read(t, later.manual)).memberAccess).toBeUndefined();
+		expect(isInboxDerivedKnowledge(await read(t, later.manual))).toBe(false);
+		expect((await read(t, later.upload)).memberAccess).toBe('members');
 	});
 
 	it('never widens a capture by its Message-ID', async () => {
@@ -154,14 +204,11 @@ describe('0069_restrict_captured_file_knowledge', () => {
 			captureSource: 'mailbox',
 			sourceMessageId: '<reused@example.com>',
 		});
-		tick();
-		await t.mutation(migration.run, {});
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await runToEnd(t);
 
 		await t.run(async (ctx) => {
 			for (const id of [unmarked, postbox]) {
-				const row = (await ctx.db.get(id))!;
-				expect(row.sourceMailboxId).toBeUndefined();
+				expect((await ctx.db.get(id))!.sourceMailboxId).toBeUndefined();
 			}
 			expect((await ctx.db.get(unmarked))!.captureSource).toBeUndefined();
 		});
@@ -169,13 +216,10 @@ describe('0069_restrict_captured_file_knowledge', () => {
 
 	it('bounds a page by bytes: rows with full embeddings split across pages that always advance', async () => {
 		const t = convexTest(schema, modules);
-		const upload = await file(t, { sourceType: 'upload' });
 		const embedding = Array.from({ length: 1536 }, (_, i) => i / 1536);
 		const ids: Id<'knowledgeEntries'>[] = [];
 		for (let i = 0; i < 6; i++) {
-			ids.push(
-				await entry(t, { sourceType: 'file', sourceId: upload, content: `fact ${i}`, embedding })
-			);
+			ids.push(await entry(t, { sourceType: 'manual', content: `fact ${i}`, embedding }));
 		}
 		tick();
 		const cutoff = Date.now();
@@ -195,17 +239,15 @@ describe('0069_restrict_captured_file_knowledge', () => {
 			after = result.after;
 		}
 		expect(pages).toBeGreaterThan(1);
-		for (const id of ids) expect((await read(t, id)).memberAccess).toBe('members');
+		for (const id of ids) expect((await read(t, id)).memberAccess).toBe('restricted');
 	});
 
-	it('counts the source files it reads: many files near 1 MiB keep every page under a transaction', async () => {
+	it('keeps every page under a transaction when entries are near the 1 MiB document limit', async () => {
 		const t = convexTest(schema, modules);
-		// Distinct uploads near the 1 MiB document limit, one entry each.
 		const text = 'x'.repeat(1_000_000);
 		const ids: Id<'knowledgeEntries'>[] = [];
 		for (let i = 0; i < 24; i++) {
-			const fileId = await file(t, { sourceType: 'upload', extractedText: text });
-			ids.push(await entry(t, { sourceType: 'file', sourceId: fileId, content: `fact ${i}` }));
+			ids.push(await entry(t, { sourceType: 'manual', content: `fact ${i} ${text}` }));
 		}
 		tick();
 		const cutoff = Date.now();
@@ -215,7 +257,7 @@ describe('0069_restrict_captured_file_knowledge', () => {
 		for (;;) {
 			const result = await t.run((ctx) => sweepPage(ctx, { cutoff, after }));
 			pages++;
-			// Under the 16 MiB a transaction may read, files included.
+			// The budget, plus the peeked entry and the resume anchor re-read.
 			expect(result.bytesRead).toBeLessThan(PAGE_BYTES + 2 * 1024 * 1024);
 			expect(result.bytesRead).toBeLessThan(16 * 1024 * 1024);
 			if (result.isDone) break;
@@ -223,51 +265,26 @@ describe('0069_restrict_captured_file_knowledge', () => {
 			after = result.after;
 		}
 		expect(pages).toBeGreaterThan(2);
-		for (const id of ids) expect((await read(t, id)).memberAccess).toBe('members');
-
-		// The scheduled walk gets there too, checkpointing every page.
-		const row = await entry(t, { sourceType: 'manual', content: 'late\nentry' });
-		tick();
-		await t.mutation(migration.run, {});
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		expect((await read(t, row)).memberAccess).toBe('restricted');
-		await t.run(async (ctx) => {
-			const run = await ctx.db
-				.query('migrationRuns')
-				.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
-				.first();
-			expect(run?.status).toBe('completed');
-		});
+		for (const id of ids) expect((await read(t, id)).memberAccess).toBe('restricted');
 	});
 
 	it('keeps the start time when run is called again before the first page commits', async () => {
 		const t = convexTest(schema, modules);
-		const before = await entry(t, { sourceType: 'manual', content: 'Old\nsurvivor' });
+		const before = await entry(t, { sourceType: 'manual', content: 'Old fact' });
 		tick();
 		expect(await t.mutation(migration.run, {})).toMatchObject({ started: true });
-		const startedAt = await t.run(
-			async (ctx) =>
-				(await ctx.db
-					.query('migrationRuns')
-					.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
-					.first())!.startedAt
-		);
+		const { startedAt } = await ledger(t);
 		tick();
 		// Written by this release after the walk started, before its first page ran.
-		const after = await entry(t, { sourceType: 'manual', content: 'New\nmulti-line fact' });
+		const after = await entry(t, { sourceType: 'manual', content: 'New fact' });
 		tick();
 		// A second run before any page committed resumes the same walk.
 		expect(await t.mutation(migration.run, {})).toMatchObject({ started: true });
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-		await t.run(async (ctx) => {
-			const run = (await ctx.db
-				.query('migrationRuns')
-				.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
-				.first())!;
-			expect(run.startedAt).toBe(startedAt);
-			expect(run.status).toBe('completed');
-		});
+		const run = await ledger(t);
+		expect(run.startedAt).toBe(startedAt);
+		expect(run.status).toBe('completed');
 		expect((await read(t, before)).memberAccess).toBe('restricted');
 		expect((await read(t, after)).memberAccess).toBeUndefined();
 	});

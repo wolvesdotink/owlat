@@ -160,11 +160,11 @@ export const knowledgeEntriesFields = {
 	threadId: v.optional(v.id('conversationThreads')),
 	// Whether members may see what was learned here (inbox/access.ts
 	// `isInboxDerivedKnowledge`). `restricted` keeps it to shared-inbox readers
-	// whatever the source. For `sourceType: 'file'` only `members` opens it: the
-	// write (`knowledge.graph.saveEntry`) sets it from the source FILE, `members`
-	// for an upload and `restricted` for a mail capture or a file that is gone,
-	// so an entry written before the field existed stays restricted until
-	// migration 0069 resolves it. Never set by a client.
+	// whatever the source. For `sourceType: 'file'` only `members` opens it, and
+	// only the write sets that (`knowledge.graph.saveEntry`, from the source
+	// FILE: `members` for an upload, `restricted` for a mail capture or a file
+	// that is gone). Entries that existed before this release are restricted by
+	// migration 0069 and never reopened. Never set by a client.
 	memberAccess: v.optional(v.union(v.literal('members'), v.literal('restricted'))),
 	// Vector embedding for semantic search (1536 dimensions for text-embedding-3-small)
 	embedding: v.array(v.float64()),
