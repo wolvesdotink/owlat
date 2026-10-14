@@ -59,6 +59,7 @@ import {
 	recoverStackAfterFailedUp,
 	scheduleUpdaterRecreateSafely,
 	servicesToRecreate,
+	withOverrideFile,
 } from './rollout.js';
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
 import { failingBeforeRollout, verifyReadiness } from './readiness.js';
@@ -289,7 +290,12 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// Every compose call names the project directory as the HOST sees it, so a
 	// relative bind in the template resolves to the real file and not to a path
 	// that only exists inside this container.
-	const composeArgs = await composeArgv([composeFileForUpdate]);
+	//
+	// The override file rides along: the deploy step's `depends_on: convex`
+	// otherwise sees a convex service that differs from the running one (any
+	// override setting on it) and RECREATES convex mid-update — a cold boot the
+	// deploy then times out waiting for, failing the update.
+	const composeArgs = await composeArgv(withOverrideFile(composeFileForUpdate));
 	if (stopping.aborted) return backOut();
 
 	// Step 4: Pull latest images (against the staged template, so a pull

@@ -408,6 +408,26 @@ describe('POST /update', () => {
 		expect(res.status).toBe(200);
 	});
 
+	it('runs the staged pull and deploy with the install override file', async () => {
+		const override = join(OWLAT_DIR, 'docker-compose.override.yml');
+		writeFileSync(override, 'services:\n  convex:\n    environment:\n      FOO: bar\n');
+		try {
+			const template = [
+				'services:',
+				'  web:',
+				'    image: ghcr.io/wolvesdotink/web:1.0.0',
+				'',
+			].join('\n');
+			await post('/update', { composeTemplate: template });
+			const [pull, deploy] = composeCommands();
+			for (const cmd of [pull, deploy]) {
+				expect(cmd).toContain(`-f ${join(OWLAT_DIR, 'docker-compose.next.yml')} -f ${override}`);
+			}
+		} finally {
+			rmSync(override, { force: true });
+		}
+	});
+
 	/**
 	 * `.env` is the CONFIGURED version of the deployment — compose interpolates
 	 * it into every container's OWLAT_VERSION, which is what the dashboard
