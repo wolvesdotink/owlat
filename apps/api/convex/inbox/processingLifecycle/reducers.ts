@@ -426,7 +426,8 @@ function reduceFailed(message: Doc<'inboundMessages'>, input: InputFor<'failed'>
 function buildTransition(message: Doc<'inboundMessages'>, input: TransitionInput): TransitionParts {
 	switch (input.to) {
 		case 'security_check':
-			return { patch: {}, effects: [] };
+			// Marks the start of this run's scan (inbox/manualReply.ts).
+			return { patch: { securityCheckEnteredAt: input.at }, effects: [] };
 		case 'classifying':
 			return reduceClassifying(message, input);
 		case 'drafting':

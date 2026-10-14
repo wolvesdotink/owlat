@@ -288,6 +288,10 @@ export const inboxTables = {
 		// When a person last took the reply over from the agent (manualReply.ts).
 		// While set, late pipeline writes are refused; cleared on `→ received`.
 		manualTakeoverAt: v.optional(v.number()),
+		// When the message last entered `security_check`. Only a scan that began
+		// at or after it belongs to the current run (manualReply.ts): a retried
+		// or released message keeps its earlier run's completed scan.
+		securityCheckEnteredAt: v.optional(v.number()),
 		// True while the working draft differs from the agent original (kept in
 		// sync by every revision-appending save — see inbox/draftRevisions.ts).
 		// Used to tell an UNEDITED owner-send of an answered-clarification draft

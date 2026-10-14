@@ -371,6 +371,61 @@ describe('manualReply.takeOverReply', () => {
 		expect(late.ok).toBe(false);
 	});
 
+	it('never counts an earlier run’s scan before the retried run begins its own', async () => {
+		const t = convexTest(schema, modules);
+		const messageId = await seed(t, 'failed');
+		await t.run(async (ctx) => {
+			const earlier = Date.now() - 60_000;
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({
+					inboundMessageId: messageId,
+					status: 'completed',
+					startedAt: earlier,
+					createdAt: earlier,
+				})
+			);
+		});
+		const asUser = t.withIdentity(testIdentity);
+		const scanFinished = () =>
+			t.run(async (ctx) => {
+				const message = await ctx.db.get(messageId);
+				const view = await takeOverViewFor(ctx, message ? [message] : []);
+				return view.messages[0]?.scanFinished;
+			});
+
+		// The retry, then `walker.start` entering `security_check`, stopped
+		// before the walker's `recordStepBegin` for the new scan.
+		vi.setSystemTime(Date.now() + 1_000);
+		for (const input of [
+			{ to: 'received' as const, at: Date.now(), source: 'cron_retry' as const },
+			{ to: 'security_check' as const, at: Date.now() },
+		]) {
+			const outcome = await t.mutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId: messageId,
+				input,
+			});
+			expect(outcome.ok).toBe(true);
+		}
+		expect(await scanFinished()).toBe(false);
+		await expect(
+			asUser.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId })
+		).rejects.toThrow(/security check/);
+
+		// The new scan runs and stops with the agent off: now it is a person's.
+		vi.setSystemTime(Date.now() + 1_000);
+		const { actionId } = await t.mutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: messageId,
+			actionType: 'security_scan',
+		});
+		expect(await scanFinished()).toBe(false);
+		await t.mutation(internal.inbox.processingLifecycle.recordStepEnd, { actionId });
+		expect(await scanFinished()).toBe(true);
+		await asUser.mutation(api.inbox.manualReply.takeOverReply, { inboundMessageId: messageId });
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.processingStatus).toBe('draft_ready');
+	});
+
 	it('refuses while a retried run rescans, even after an earlier scan finished', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await seed(t, 'security_check', 'completed');

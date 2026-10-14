@@ -26,9 +26,11 @@
  *   late draft, auto-send or failure refused by the lifecycle
  *   (`processingLifecycle/effects.ts`).
  *
- * It never answers a message whose security scan is still running. Only the
- * latest scan counts: a retried or released message keeps the completed scan
- * of its earlier run while the new one runs. Every outcome of a clean scan
+ * It never answers a message whose security scan is still running or has not
+ * started yet. Only a scan of the current run counts: a retried or released
+ * message keeps the completed scan of its earlier run, and enters
+ * `security_check` (`securityCheckEnteredAt`) before the walker begins the new
+ * scan. Every outcome of a clean scan
  * that goes on leaves `security_check` in the same mutation that completes the
  * scan, so a finished latest scan on a message still in `security_check` means
  * the run stopped there and nothing will pick the message up.
@@ -49,7 +51,7 @@ import type { TransitionOutcome } from './processingLifecycle';
 
 /** What {@link takeOverRefusal} needs to know besides the status. */
 export interface TakeOverFacts {
-	/** The message's latest security scan has completed. */
+	/** The security scan of the message's current run has completed. */
 	scanFinished: boolean;
 	/** Any agent action exists for the message: a pipeline run started. */
 	pipelineStarted: boolean;
@@ -107,9 +109,20 @@ async function agentActionsFor(ctx: QueryCtx, message: Doc<'inboundMessages'>) {
 		.take(50);
 }
 
-/** The latest security scan has completed (`actions` newest first). */
-function isLatestScanFinished(actions: readonly Doc<'agentActions'>[]): boolean {
-	return actions.find((a) => a.actionType === 'security_scan')?.status === 'completed';
+/**
+ * The current run's security scan has completed (`actions` newest first): the
+ * latest scan is done and began once the message entered `security_check`.
+ * A message that entered it before the field existed has only its latest scan
+ * to go on.
+ */
+function isScanFinished(
+	message: Doc<'inboundMessages'>,
+	actions: readonly Doc<'agentActions'>[]
+): boolean {
+	const scan = actions.find((a) => a.actionType === 'security_scan');
+	if (scan?.status !== 'completed') return false;
+	const enteredAt = message.securityCheckEnteredAt;
+	return enteredAt === undefined || (scan.startedAt ?? scan.createdAt) >= enteredAt;
 }
 
 /** The per-message facts the thread composer needs to apply {@link takeOverRefusal}. */
@@ -143,7 +156,7 @@ export async function takeOverViewFor(
 				const actions = await agentActionsFor(ctx, message);
 				return {
 					messageId: message._id,
-					scanFinished: isLatestScanFinished(actions),
+					scanFinished: isScanFinished(message, actions),
 					pipelineStarted: actions.length > 0,
 				};
 			})
@@ -164,7 +177,7 @@ export const takeOverReply = adminMutation({
 				? await agentActionsFor(ctx, message)
 				: [];
 		const refusal = takeOverRefusal(status, {
-			scanFinished: isLatestScanFinished(actions),
+			scanFinished: isScanFinished(message, actions),
 			pipelineStarted: actions.length > 0,
 			receivedLongEnough:
 				status === 'received' && Date.now() - message._creationTime >= (await receivedWaitMs(ctx)),
