@@ -1081,6 +1081,7 @@
 				"securityLead": "Sicherheits-E-Mail.",
 				"security": "Wird so angezeigt, wie geschrieben, und nie zusammengefasst.",
 				"signed": "Nur der signierte Teil ist zusammengefasst.",
+				"stale": "Der Überblick ist pausiert: Eine Signaturprüfung hat geändert, wofür eine Nachricht hier verlässlich ist. Im E-Mail-Verlauf siehst du alles.",
 				"openConversation": "E-Mail-Verlauf öffnen",
 				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich der Überblick gleich."
 			},

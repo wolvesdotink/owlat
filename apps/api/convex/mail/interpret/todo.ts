@@ -22,6 +22,7 @@ import { isThreadMuted } from '../../lib/mailMute';
 import { openMessageBody } from '../../lib/messageBody';
 import { loadBriefRow } from './briefRow';
 import { itemCountsOf } from './counters';
+import { isFencedThread } from './staleFence';
 
 /** Rows the band shows at most. */
 export const TODO_BAND_LIMIT = 20;
@@ -81,7 +82,8 @@ async function eligibleThreads(
 		}
 		if (!threads.has(threadId)) threads.set(threadId, await ctx.db.get(threadId));
 		const thread = threads.get(threadId);
-		if (!thread || thread.needsReply || isThreadMuted(thread)) continue;
+		// A fenced thread's items are not the model's to list (staleFence.ts).
+		if (!thread || thread.needsReply || isThreadMuted(thread) || isFencedThread(thread)) continue;
 		seen.add(threadId);
 		found.push({ thread, first: item });
 		if (found.length > want) return { found: found.slice(0, want), isTruncated: true };

@@ -123,6 +123,15 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 	if (!loaded) return { status: 'gone' };
 	const mode: InterpretMode = loaded.mode;
 
+	// A fenced thread (staleFence.ts) is not read: nothing is recorded (a record
+	// would rebuild what the fence hides), and the source stops being outstanding.
+	const source = { source: args.source };
+	if (await ctx.runQuery(internal.mail.interpret.staleFence.isSourceFenced, source)) {
+		await ctx.runMutation(internal.mail.interpret.outstanding.settleRecorded, source);
+		const skip = { status: 'skipped', isReplayed: false, createdItemIds: [] } as const;
+		return { ...skip, errorCode: 'interpretation_fenced' };
+	}
+
 	// A bulk-stranger candidate whose thread category is still provisional
 	// (PR-4): wait for the category refinement, bounded, instead of deciding
 	// the bulk rule on the baseline label. Only the deferral is recorded.

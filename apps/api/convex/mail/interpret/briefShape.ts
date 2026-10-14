@@ -228,7 +228,9 @@ export const briefGapViewValidator = v.object({
 			v.literal('undecryptable'),
 			v.literal('ineligible'),
 			v.literal('security'),
-			v.literal('short')
+			v.literal('short'),
+			// The thread's interpretation is fenced off (staleFence.ts): only its items show.
+			v.literal('stale')
 		)
 	),
 });

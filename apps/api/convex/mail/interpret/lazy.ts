@@ -30,12 +30,21 @@ import { interpretGate } from './gate';
 import { enqueueHistoryPage, isHistoryRunning } from './backfillSources';
 import { activeModeOf } from './backfill';
 import { hasDeferredSources, resumeDeferredSources } from './defer';
+import { isInterpretationFenced } from './staleFence';
 
 export type EnsureOutcome =
 	| { isEnqueued: true; runs: number }
 	| {
 			isEnqueued: false;
-			reason: 'has_brief' | 'running' | 'nothing_to_read' | 'ai_off' | 'budget' | 'busy';
+			reason:
+				| 'has_brief'
+				| 'running'
+				| 'nothing_to_read'
+				| 'ai_off'
+				| 'budget'
+				| 'busy'
+				// The thread's interpretation is fenced off (staleFence.ts): nothing is read.
+				| 'fenced';
 	  };
 
 export const ensure = threadBriefMutation({
@@ -44,6 +53,9 @@ export const ensure = threadBriefMutation({
 		// authz: requireThreadReader applies the thread's reader rule:
 		// requireMailboxAccess for a mail thread, requirePermission(isSharedInboxReader) for a team one.
 		await requireThreadReader(ctx, args.threadRef, session);
+		if (await isInterpretationFenced(ctx, args.threadRef)) {
+			return { isEnqueued: false, reason: 'fenced' };
+		}
 		const brief = await loadBriefRow(ctx, args.threadRef);
 		// D10: sources deferred until an open run now, even when the history was
 		// read through long ago.

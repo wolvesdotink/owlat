@@ -1081,6 +1081,7 @@
 				"securityLead": "Security email.",
 				"security": "Shown as written, never summarised.",
 				"signed": "Only the signed part is summarised.",
+				"stale": "The overview is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
 				"openConversation": "Open the conversation",
 				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the overview fills in shortly."
 			},

@@ -37,6 +37,7 @@ import {
 	type PlanStance,
 } from './responsePlanRules';
 import type { AttachmentRef } from './planCheck';
+import { isInterpretationFenced } from './staleFence';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 type ItemId = Id<'threadItems'>;
@@ -274,9 +275,11 @@ export async function loadPlanState(
 	draftRef: DraftRef | null,
 	options: { chosen?: readonly PlanStance<ItemId>[]; openSlots?: readonly string[] } = {}
 ): Promise<PlanState> {
+	// A fenced thread (staleFence.ts) has no items to plan, and no brief.
+	const isFenced = await isInterpretationFenced(ctx, ref);
 	const [brief, loaded, row, slots] = await Promise.all([
 		loadBriefRow(ctx, ref),
-		loadPlanItems(ctx, ref),
+		isFenced ? { rows: [], items: [], isOverflow: false } : loadPlanItems(ctx, ref),
 		draftRef ? readPlanRow(ctx, draftRef) : Promise.resolve(null),
 		openSlotItemIds(ctx, ref, draftRef),
 	]);
@@ -286,7 +289,7 @@ export async function loadPlanState(
 	const latest = [...new Map(chosen.map((s) => [s.itemId as string, s])).values()];
 	return {
 		threadRevision: brief?.interpretationRevision ?? 0,
-		completeness: brief?.completeness ?? 'none',
+		completeness: isFenced ? 'none' : (brief?.completeness ?? 'none'),
 		rows: loaded.rows,
 		items: loaded.items,
 		isOverflow: loaded.isOverflow,

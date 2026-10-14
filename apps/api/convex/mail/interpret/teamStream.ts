@@ -29,6 +29,7 @@ import { loadReadableMailbox } from '../permissions';
 import { mailboxOwnAddresses } from '../identities';
 import { teamStreamPageValidator, type TeamStreamEntry, type TeamStreamPage } from './briefShape';
 import { readNoteReactions } from './noteReactions';
+import { isFencedThread } from './staleFence';
 import {
 	decodeStreamCursor,
 	mergeStreamPage,
@@ -217,7 +218,10 @@ export const page = publicQuery({
 			isChatOn
 				? discussionBatch(ctx, ref, before, session.userId, itemText)
 				: Promise.resolve<SourceBatch<Entry>>({ entries: [], floor: null }),
-			readActivityBatch(ctx, ref, before, itemText),
+			// A fenced thread's activity is the model's reading (staleFence.ts): left out.
+			isFencedThread(thread)
+				? Promise.resolve<SourceBatch<Entry>>({ entries: [], floor: null })
+				: readActivityBatch(ctx, ref, before, itemText),
 		]);
 		const merged = mergeStreamPage<Entry>([mail, notes, activity], STREAM_PAGE_SIZE);
 		const seenPosition = await readSeenPosition(ctx, ref, session.userId);

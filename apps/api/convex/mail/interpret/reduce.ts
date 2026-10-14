@@ -41,7 +41,6 @@ import { appendActivity } from './activity';
 import { applyInterpretationArgs } from './reduceInput';
 import { briefTopLatestOf, loadFoldState, sourceStillInThread } from './reduceState';
 import { flagUnreproduced, foldEntry } from './fold';
-import { restoreWithdrawn } from './withdraw';
 import {
 	identityTargets,
 	loadIdentityTargets,
@@ -333,10 +332,6 @@ export const applyInterpretation = internalMutation({
 			});
 		}
 		const written = fold ? await writeState(ctx, fold) : null;
-		// A read after a withdrawal (withdraw.ts) restores what it reproduced.
-		if (written && previous?.isWithdrawn && ref.kind === 'mail') {
-			await restoreWithdrawn(ctx, ref.id, sourceKey, args.contentRevision);
-		}
 		const createdItemIds = written?.created ?? [];
 		// Commitments extracted before this message was interpreted link now.
 		await onItemsCreated(ctx, args.source, createdItemIds);

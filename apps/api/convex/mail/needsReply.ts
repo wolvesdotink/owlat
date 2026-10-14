@@ -51,6 +51,7 @@ import { mailboxOwnAddresses } from './identities';
 import { normalizeEmail } from '@owlat/shared';
 import { needsReplyResultFields } from '../schema/mailThreads';
 import type { needsReplyClarificationValidator } from '../lib/validators/clarification';
+import { isFencedThread, withoutAskSummary } from './interpret/staleFence';
 
 /** True when an attachment is a calendar invite (.ics / text/calendar). */
 export function isCalendarAttachment(att: { filename: string; contentType: string }): boolean {
@@ -276,7 +277,8 @@ export const applyResult = internalMutation({
 				resolved === null
 					? undefined
 					: {
-							...resolved,
+							// A fenced thread keeps no model summary (interpret/staleFence.ts).
+							...(isFencedThread(thread) ? withoutAskSummary(resolved) : resolved),
 							detectedAt: Date.now(),
 							// The queue row's sender and subject, so listQueue need not load
 							// the message (plan C8).
@@ -343,7 +345,11 @@ export const listQueue = publicQuery({
 				// Ranking key — sender-importance × urgency blend. Falls back to the
 				// urgency bucket for rows persisted before scoring existed.
 				priorityScore: flag.priorityScore ?? urgencyFallbackScore(flag.urgency),
-				askSummary: mailboxScope(mailbox) === 'shared' ? undefined : flag.askSummary, // a summary: never on a team surface
+				// A summary: never on a team surface, nor from a fenced thread (interpret/staleFence.ts).
+				askSummary:
+					mailboxScope(mailbox) === 'shared' || isFencedThread(thread)
+						? undefined
+						: flag.askSummary,
 				dueHint: flag.dueHint,
 				detectedAt: flag.detectedAt,
 				source: flag.source,

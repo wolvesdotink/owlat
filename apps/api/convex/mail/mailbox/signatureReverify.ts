@@ -28,13 +28,11 @@
  *
  * A scope can change what interpretation reads: a clearsigned scope narrows the
  * body to the signed block, so the unsigned text around it and an HTML
- * alternative no longer count. Then, in the same write, what the old read
- * contributed is withdrawn (`interpret/withdraw.ts`: facts retracted, items
- * held as proposals for review, every human field kept), whether or not a new
- * read can run, and the message is queued to be read again
- * (`interpret/enqueue.ts enqueueReread`), which restores what the signed block
- * still supports. A run of the old read still in flight is refused by the body
- * fingerprint (`interpret/sourceVersion.ts`) and starts over on the new read.
+ * alternative no longer count. What the old read took from them is spread
+ * over the thread's brief, so the whole thread's interpretation is fenced off
+ * in the same write (`interpret/staleFence.ts`), whether or not a new read
+ * could run. A run of the old read still in flight is refused by the body
+ * fingerprint (`interpret/sourceVersion.ts`).
  */
 
 import { v } from 'convex/values';
@@ -52,8 +50,7 @@ import { logError } from '../../lib/runtimeLog';
 import { postboxMutation } from '../_helpers';
 import { requireMailboxAccess } from '../permissions';
 import { isMailReadChangedBy } from '../interpret/scope';
-import { enqueueReread } from '../interpret/enqueue';
-import { withdrawSourceRead } from '../interpret/withdraw';
+import { fenceThreadInterpretation } from '../interpret/staleFence';
 
 /** A signed plaintext row whose verdict has no scope, so the reader withholds it. */
 export function needsSignatureReverify(
@@ -150,8 +147,8 @@ function isSettledVerdict(info: { failure?: string; keySource: string }): boolea
  * Replace the unscoped verdict with the re-verified one. Compare-and-set: a row
  * that meanwhile got a scoped verdict (a concurrent run) is left alone, and an
  * unscoped verdict is never written. When the new scope changes what
- * interpretation reads (`isReadChanged`) and the message was interpreted, it is
- * queued to be read again in the same transaction.
+ * interpretation reads (`isReadChanged`) and the message was interpreted, its
+ * thread's interpretation is fenced off in the same transaction.
  */
 export const apply = internalMutation({
 	args: {
@@ -165,23 +162,19 @@ export const apply = internalMutation({
 		const message = await ctx.db.get(args.messageId);
 		if (!message || !needsSignatureReverify(message)) return null;
 		await ctx.db.patch(args.messageId, { inboundSignatureInfo: args.info, updatedAt: Date.now() });
-		if (args.isReadChanged) await rereadInterpretation(ctx, message);
+		if (args.isReadChanged && (await isInterpreted(ctx, message))) {
+			await fenceThreadInterpretation(ctx, message.threadId);
+		}
 		return null;
 	},
 });
 
-/**
- * When the message was interpreted: withdraw what its old read contributed,
- * now, whether or not a new read can run (`interpret/withdraw.ts`), then queue
- * that read, which restores what the signed block still supports.
- */
-async function rereadInterpretation(ctx: MutationCtx, message: Doc<'mailMessages'>): Promise<void> {
-	const source = { kind: 'mail' as const, id: message._id };
+/** Did a read of the message contribute to its thread's interpretation? */
+async function isInterpreted(ctx: MutationCtx, message: Doc<'mailMessages'>): Promise<boolean> {
+	const sourceKey = interpretationSourceKey({ kind: 'mail', id: message._id });
 	const extraction = await ctx.db
 		.query('messageInterpretations')
-		.withIndex('by_source_revision', (q) => q.eq('sourceKey', interpretationSourceKey(source)))
+		.withIndex('by_source_revision', (q) => q.eq('sourceKey', sourceKey))
 		.first();
-	if (!extraction) return;
-	await withdrawSourceRead(ctx, message.threadId, source);
-	await enqueueReread(ctx, source);
+	return extraction !== null;
 }

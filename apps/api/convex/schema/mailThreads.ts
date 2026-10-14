@@ -224,6 +224,11 @@ export const mailThreadsTables = {
 		// sealed). Rewritten by mail/interpret/briefTop.ts whenever the items
 		// change; absent until the thread is first interpreted.
 		briefTop: v.optional(briefTopValidator),
+		// The stale fence (mail/interpret/staleFence.ts): a re-verified signature
+		// narrowed what one of the thread's messages may be read for, so its AI
+		// interpretation is not used anywhere until an operator lifts the fence.
+		// Human state on its items stays.
+		interpretationStaleSince: v.optional(v.number()),
 		// RETIRED (ADR-0072): the reader strip's cached thread summary, replaced by
 		// the thread brief. Nothing writes or reads it; migration 0067 clears it and
 		// the next release drops the field (mail/legacySummaryRows.ts).

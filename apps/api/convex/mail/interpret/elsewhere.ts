@@ -35,6 +35,7 @@ import { openMessageBody } from '../../lib/messageBody';
 import { appLocaleOf, type AppLocale } from '@owlat/shared/appLocales';
 import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
 import { itemResponsibilityValidator } from '../../lib/validators/threadBrief';
+import { isFencedThread, isInterpretationFenced } from './staleFence';
 
 /** People of this thread looked up (the most frequent counterparties first). */
 export const ELSEWHERE_PEOPLE = 2;
@@ -148,7 +149,8 @@ async function scopesOf(ctx: QueryCtx, session: Session): Promise<Scope[]> {
 async function sourceOf(ctx: QueryCtx, item: Doc<'threadItems'>): Promise<ItemSource | null> {
 	if (item.mailThreadId) {
 		const thread = await ctx.db.get(item.mailThreadId);
-		if (!thread) return null;
+		// A fenced thread's items are not the model's to show (staleFence.ts).
+		if (!thread || isFencedThread(thread)) return null;
 		return {
 			ref: { kind: 'mail', id: thread._id },
 			subject: thread.latestSubject,
@@ -303,6 +305,8 @@ export const list = publicQuery({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session) return null;
 		if (!(await canReadThread(ctx, args.threadRef, session))) return null;
+		// A fenced thread's items name no one to look up (staleFence.ts).
+		if (await isInterpretationFenced(ctx, args.threadRef)) return { groups: [] };
 		const own = await ownItems(ctx, args.threadRef);
 		const keys = counterpartiesOf(own).slice(0, ELSEWHERE_PEOPLE);
 		const scopes = await scopesOf(ctx, session);
