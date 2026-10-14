@@ -13,6 +13,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import type * as ManifestModule from '../migrations/manifest';
 import { scheduleMigrationPage } from '../lib/migrationLedger';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
@@ -310,7 +311,7 @@ describe('0054 folder walks', () => {
 	/** `count` folders whose walk has a stored cursor no page can read: every step throws. */
 	async function seedFailingWalks(t: T, count: number) {
 		const mailboxId = await seedMailbox(t);
-		const folderIds = [];
+		const folderIds: Id<'mailFolders'>[] = [];
 		for (let i = 0; i < count; i++) folderIds.push(await seedFolder(t, mailboxId));
 		await seedMessage(t, mailboxId, { subject: 's' });
 		await t.run(async (ctx) => {
@@ -329,11 +330,11 @@ describe('0054 folder walks', () => {
 		return folderIds;
 	}
 
-	const walkOf = (t: T, folderId: string) =>
+	const walkOf = (t: T, folderId: Id<'mailFolders'>) =>
 		t.run(async (ctx) =>
 			ctx.db
 				.query('mailFolderMembership')
-				.withIndex('by_folder', (q) => q.eq('folderId', folderId as never))
+				.withIndex('by_folder', (q) => q.eq('folderId', folderId))
 				.unique()
 		);
 
