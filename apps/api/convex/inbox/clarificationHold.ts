@@ -15,7 +15,6 @@
  * and reopen), so open questions are never crowded out by settled ones.
  */
 
-import { getConvexSize, type Value } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
@@ -194,52 +193,82 @@ export function isSettledThreadStatus(status: string): boolean {
 	return SETTLED_THREAD_STATUSES.has(status);
 }
 
-// ─── Reminder bookkeeping (a reminder notice per message and person) ────────
-
-/** The most notices one question can carry: an ask and a reminder per reader, with room. */
-export const MAX_NOTICES_PER_QUESTION = 500;
+// ─── Reminder bookkeeping (a reminder notice per message, person and ask) ───
 
 /**
- * Who the reminder already asked about `inboundMessageId`, in ONE range read
- * of the question's notices (not one read per person), and how many notices
- * that read. A question carries at most an ask and a reminder per
- * shared-inbox reader (`access.listSharedInboxReaderIds` reads at most 200).
+ * Whether `userId` was already reminded about the questions `inboundMessageId`
+ * asked at `askedAt`: ONE point lookup on the notices' (message, person, ask)
+ * index, which returns at most one row, a reminder notice this module wrote
+ * (its subject is capped, `processingLifecycle/effects.notifyClarification`).
+ * No range of notices is read, and no cap can hide a reminder.
  */
-export async function remindedUserIds(
+export async function hasReminder(
 	ctx: MutationCtx,
-	inboundMessageId: Id<'inboundMessages'>
-): Promise<{ userIds: Set<string>; read: number; bytes: number }> {
-	const notices = await ctx.db
+	inboundMessageId: Id<'inboundMessages'>,
+	userId: string,
+	askedAt: number
+): Promise<boolean> {
+	const reminder = await ctx.db
 		.query('inboxAssignmentNotices')
-		.withIndex('by_inbound_message_and_user', (q) => q.eq('inboundMessageId', inboundMessageId))
-		.take(MAX_NOTICES_PER_QUESTION);
-	const userIds = new Set(notices.filter((n) => n.isReminder === true).map((n) => n.userId));
-	const bytes = notices.reduce((sum, notice) => sum + documentBytes(notice), 0);
-	return { userIds, read: notices.length, bytes };
+		.withIndex('by_inbound_message_user_and_reminder', (q) =>
+			q.eq('inboundMessageId', inboundMessageId).eq('userId', userId).eq('reminderAskedAt', askedAt)
+		)
+		.first();
+	return reminder !== null;
 }
 
-/** What reading `doc` costs a transaction's byte budget, roughly. */
-export function documentBytes(doc: unknown): number {
-	return getConvexSize(doc as Value) + DOCUMENT_OVERHEAD_BYTES;
-}
-
-/** System fields and per-document framing a size estimate leaves out. */
-const DOCUMENT_OVERHEAD_BYTES = 128;
+/** Notices one cleanup page deletes, and the bytes it may read. */
+const CLEANUP_PAGE = 64;
+const CLEANUP_PAGE_BYTES = 2 * 1024 * 1024;
 
 /**
- * The questions are answered, dismissed or taken over: their notices go, the
- * reminder records with them, so a later ask about new questions starts over.
+ * The questions are answered, dismissed or taken over: their notices go.
+ * Not in the transaction that settles them (a question may carry an ask and a
+ * reminder per reader): a scheduled cleanup pages through them
+ * (`./clarificationHoldSync.ts`), deleting only notices written up to `at`, so
+ * the notices of a question asked again meanwhile stay. Reminder dedup does
+ * not wait on it: a new ask has a new `askedAt`.
  */
 export async function clearClarificationReminders(
 	ctx: MutationCtx,
-	inboundMessageId: Id<'inboundMessages'>
+	inboundMessageId: Id<'inboundMessages'>,
+	at: number
 ): Promise<void> {
-	const notices = await ctx.db
+	await ctx.scheduler.runAfter(0, internal.inbox.clarificationHoldSync.clearClarificationNotices, {
+		inboundMessageId,
+		before: at,
+		cursor: null,
+	});
+}
+
+/** One page of the cleanup; schedules the next while there is more. */
+export async function clearNoticesPage(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	before: number,
+	cursor: string | null
+): Promise<void> {
+	const page = await ctx.db
 		.query('inboxAssignmentNotices')
-		.withIndex('by_inbound_message_and_user', (q) => q.eq('inboundMessageId', inboundMessageId))
-		.collect(); // bounded: an ask and a reminder per shared-inbox reader
-	for (const notice of notices) {
-		if (notice.kind === 'clarification') await ctx.db.delete(notice._id);
+		.withIndex('by_inbound_message_user_and_reminder', (q) =>
+			q.eq('inboundMessageId', inboundMessageId)
+		)
+		.paginate({ numItems: CLEANUP_PAGE, cursor, maximumBytesRead: CLEANUP_PAGE_BYTES });
+	for (const notice of page.page) {
+		if (notice.kind === 'clarification' && notice.createdAt <= before) {
+			await ctx.db.delete(notice._id);
+		}
+	}
+	if (!page.isDone) {
+		await ctx.scheduler.runAfter(
+			0,
+			internal.inbox.clarificationHoldSync.clearClarificationNotices,
+			{
+				inboundMessageId,
+				before,
+				cursor: page.continueCursor,
+			}
+		);
 	}
 }
 

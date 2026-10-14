@@ -345,14 +345,14 @@ export const reconcileStuckApproved = internalMutation({
 
 export { DEFAULT_CLARIFICATION_TIMEOUT_MS } from './clarificationReminders';
 
-/** Messages read per page; a longer queue continues in a scheduled follow-up. */
-const CLARIFICATION_REMINDER_PAGE = 100;
-
 /**
- * Bytes one page may read: held messages keep their bodies inline, so a page
- * of them is bounded by size too, not only by count. Overshoots by at most the
- * one document that crosses it.
+ * Held messages one cron page reads, and the bytes that page may read (a held
+ * message keeps its body inline; the page overshoots by at most the one row
+ * that crosses it). Each row costs one thread `get`, so a page reads at most
+ * eight threads of at most 1 MiB: its bound is its shape, not a counted budget.
+ * A longer queue continues in a scheduled follow-up page.
  */
+const CLARIFICATION_REMINDER_PAGE = 8;
 export const CLARIFICATION_PAGE_BYTES = 2 * 1024 * 1024;
 
 export const reconcileAbandonedClarifications = internalMutation({

@@ -178,3 +178,156 @@ it('reminds about 100 questions with 96 KiB bodies, with nothing rolled back', a
 		expect(await reminders()).toHaveLength(OVERDUE);
 	}
 }, 180_000);
+
+// ─── Sol's round-7 probes: bounds by shape, not by counted budgets ──────────
+
+const KiB = 1024;
+
+/** One run with its reminder chain, drained; the reminder notices written. */
+async function runOnce(t: Harness) {
+	await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+	await t.finishAllScheduledFunctions(vi.runAllTimers);
+	return t.run(async (ctx) =>
+		(await ctx.db.query('inboxAssignmentNotices').collect()).filter((n) => n.isReminder)
+	);
+}
+
+/** A thread whose subject makes it about `bytes` large. */
+async function bigThread(t: Harness, status: string, bytes: number) {
+	return t.run(async (ctx) => {
+		const { updatedAt: _u, ...thread } = createTestConversationThread({
+			contactId: undefined,
+			status,
+			subject: 'x'.repeat(bytes),
+		});
+		return ctx.db.insert('conversationThreads', thread);
+	});
+}
+
+/** A held, overdue message on `threadId`. */
+async function heldOn(
+	t: Harness,
+	threadId: Id<'conversationThreads'>,
+	askedAt: number,
+	fields = {}
+) {
+	return t.run(async (ctx) => {
+		const { threadId: _t, ...row } = createTestInboundMessage({
+			contactId: undefined,
+			processingStatus: 'awaiting_clarification',
+			pendingClarification: {
+				questions: [{ id: 'clarify_0', slotType: 'factual_lookup', text: 'Which order?' }],
+				askedAt,
+			},
+			...fields,
+		});
+		return ctx.db.insert('inboundMessages', { ...row, threadId });
+	});
+}
+
+/** Notices on one question, written a few per transaction (each one is large). */
+async function seedNotices(
+	t: Harness,
+	messageId: Id<'inboundMessages'>,
+	threadId: Id<'conversationThreads'>,
+	rows: Array<Record<string, unknown>>
+) {
+	for (let i = 0; i < rows.length; i += 10) {
+		await t.run(async (ctx) => {
+			for (const row of rows.slice(i, i + 10)) {
+				await ctx.db.insert('inboxAssignmentNotices', {
+					kind: 'clarification',
+					inboundMessageId: messageId,
+					threadId,
+					subject: 'Order',
+					assignedByName: 'Jonas',
+					createdAt: Date.now(),
+					userId: 'nobody',
+					...row,
+				});
+			}
+		});
+	}
+}
+
+it('reaches a live question behind settled rows on a 512 KiB thread', async () => {
+	const t = await harness(1, false);
+	const askedAt = Date.now() - 2 * DAY;
+	const settled = await bigThread(t, 'resolved', 512 * KiB);
+	for (let i = 0; i < 10; i++) await heldOn(t, settled, askedAt);
+	const open = await bigThread(t, 'open', 1);
+	const live = await heldOn(t, open, askedAt);
+
+	const sent = await runOnce(t);
+	expect(sent.map((n) => n.inboundMessageId)).toEqual([live]);
+});
+
+it("checks reminders without reading a question's large notices as a range", async () => {
+	const readers = 50;
+	const t = await harness(readers, false);
+	const askedAt = Date.now() - 2 * DAY;
+	const thread = await bigThread(t, 'open', 1);
+	const messageId = await heldOn(t, thread, askedAt);
+	const people = Array.from({ length: readers }, (_, i) => `reader-${i}`);
+	const subject = 'x'.repeat(192 * KiB);
+	await seedNotices(t, messageId, thread, [
+		...people.map((userId) => ({ userId, subject })),
+		...people.map((userId) => ({ userId, subject, isReminder: true, reminderAskedAt: askedAt })),
+	]);
+
+	await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
+	await t.finishAllScheduledFunctions(vi.runAllTimers);
+	// Everyone was reminded already: nobody twice, and the question is done.
+	// (Counted per person: all of the question's notices at once are too large
+	// for one test transaction too.)
+	for (const userId of people) {
+		const reminders = await t.run(
+			async (ctx) =>
+				(
+					await ctx.db
+						.query('inboxAssignmentNotices')
+						.withIndex('by_inbound_message_user_and_reminder', (q) =>
+							q
+								.eq('inboundMessageId', messageId)
+								.eq('userId', userId)
+								.eq('reminderAskedAt', askedAt)
+						)
+						.collect()
+				).length
+		);
+		expect(reminders).toBe(1);
+	}
+	const message = await t.run((ctx) => ctx.db.get(messageId));
+	expect(message?.pendingClarification?.isRemindedForReaders).toBe(true);
+});
+
+it('finds a reminder past 500 other notices on the question', async () => {
+	const t = await harness(1, false);
+	const askedAt = Date.now() - 2 * DAY;
+	const thread = await bigThread(t, 'open', 1);
+	// Reassigned back to reader-0, who was reminded about this ask before the
+	// question changed hands 500 times.
+	const messageId = await heldOn(t, thread, askedAt, { assignedTo: 'reader-0' });
+	await seedNotices(t, messageId, thread, [
+		...Array.from({ length: 500 }, (_, i) => ({
+			userId: `a-${String(i).padStart(3, '0')}`,
+			isReminder: true,
+			reminderAskedAt: askedAt,
+		})),
+		{ userId: 'reader-0', isReminder: true, reminderAskedAt: askedAt },
+	]);
+
+	const sent = await runOnce(t);
+	expect(sent.filter((n) => n.userId === 'reader-0')).toHaveLength(1);
+}, 60_000);
+
+it('keeps the cron within limits over 100 questions on their own 192 KiB threads', async () => {
+	const t = await harness(1, false);
+	const askedAt = Date.now() - 2 * DAY;
+	for (let i = 0; i < OVERDUE; i++) {
+		await heldOn(t, await bigThread(t, 'open', 192 * KiB), askedAt);
+	}
+
+	const sent = await runOnce(t);
+	expect(sent).toHaveLength(OVERDUE);
+}, 180_000);

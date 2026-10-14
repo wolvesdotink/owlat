@@ -376,14 +376,16 @@ describe('reminder bookkeeping', () => {
 
 		vi.useFakeTimers();
 		await remindRun(t);
-		vi.useRealTimers();
 		expect(await rows()).toEqual(['user-a', 'user-b']);
 		expect((await read(t, messageId))?.pendingClarification).not.toHaveProperty('remindedUserIds');
 
+		// Answered: the cleanup runs on its own, in pages, after the answer.
 		await t.mutation(internal.inbox.processingLifecycle.transition, {
 			inboundMessageId: messageId,
 			input: { to: 'drafting', at: Date.now() },
 		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		vi.useRealTimers();
 		expect(await rows()).toEqual([]);
 		const left = await t.run(async (ctx) => ctx.db.query('inboxAssignmentNotices').collect());
 		expect(left.filter((n) => n.inboundMessageId === messageId)).toEqual([]);

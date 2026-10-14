@@ -83,11 +83,17 @@ export function resolveHumanApproveUndoDelayMs(configured: number | undefined): 
 
 // ─── Clarification notices ──────────────────────────────────────────────────
 
+/** Characters of the subject (and sender) a clarification notice keeps. */
+export const NOTICE_SUBJECT_CHARS = 200;
+
 /**
  * Append one `clarification` notice per recipient, and push it. The
  * recipients are `../clarificationHold.resolveClarificationRecipients` unless
- * the caller names them (the reminder cron names those not reminded yet, and
- * marks its notices `isReminder`, the record that they were asked again).
+ * the caller names them (the reminder names those not reminded yet, and marks
+ * its notices `isReminder` with the ask they remind about, `reminderAskedAt`:
+ * the record that they were asked again). A notice is a toast: it keeps the
+ * first {@link NOTICE_SUBJECT_CHARS} characters of the subject, so every
+ * clarification notice is a small row whoever reads it.
  * Returns who was notified. Best-effort: the message is already parked in
  * `awaiting_clarification`; a missing row or profile only means fewer notices,
  * never a failed transition.
@@ -97,7 +103,7 @@ export async function notifyClarification(
 	inboundMessageId: Id<'inboundMessages'>,
 	recipients?: readonly string[],
 	/** `message`: the row when the caller already read it, so it is not read again. */
-	opts: { isReminder?: boolean; message?: Doc<'inboundMessages'> } = {}
+	opts: { reminderAskedAt?: number; message?: Doc<'inboundMessages'> } = {}
 ): Promise<string[]> {
 	const message = opts.message ?? (await ctx.db.get(inboundMessageId));
 	if (!message?.threadId) return [];
@@ -107,11 +113,13 @@ export async function notifyClarification(
 		const noticeId = await ctx.db.insert('inboxAssignmentNotices', {
 			kind: 'clarification',
 			inboundMessageId,
-			...(opts.isReminder ? { isReminder: true } : {}),
+			...(opts.reminderAskedAt !== undefined
+				? { isReminder: true, reminderAskedAt: opts.reminderAskedAt }
+				: {}),
 			userId,
 			threadId: message.threadId,
-			subject: message.subject ?? 'No subject',
-			assignedByName: message.from,
+			subject: (message.subject ?? 'No subject').slice(0, NOTICE_SUBJECT_CHARS),
+			assignedByName: message.from.slice(0, NOTICE_SUBJECT_CHARS),
 			createdAt: now,
 		});
 		await enqueuePush(ctx, userId, { kind: 'assignment', noticeId });
@@ -397,7 +405,7 @@ export async function dispatch(
 	// taken over, their reminder rows go; parked, they join the Answer queue's
 	// index unless the conversation is already settled.
 	if (from === 'awaiting_clarification' && input.to !== 'awaiting_clarification') {
-		await clearClarificationReminders(ctx, message._id);
+		await clearClarificationReminders(ctx, message._id, input.at);
 	} else if (input.to === 'awaiting_clarification' && message.threadId) {
 		const thread = await ctx.db.get(message.threadId);
 		const isSettled = !!thread && isSettledThreadStatus(thread.status);
