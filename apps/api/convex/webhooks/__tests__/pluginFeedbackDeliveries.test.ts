@@ -39,12 +39,30 @@ function claimArgs(digest: string, expiresAt = Date.now() + TOLERANCE_MS) {
 	return { pluginId: PLUGIN_ID, transportKind: KIND, deliveryDigest: digest, expiresAt };
 }
 
+/** A claim row's state; `undefined` is a row written before the column existed. */
+type RowStatus = 'completed' | 'in_flight' | undefined;
+
+/**
+ * Every state an expired row can be left in. Expiry must retire all three: a
+ * sweep that kept in-flight rows (a dispatch that died mid-way) or legacy rows
+ * (no status at all) would let the table grow without bound.
+ */
+const EXPIRED_ROW_STATES: readonly (readonly [string, RowStatus])[] = [
+	['completed', 'completed'],
+	['in flight', 'in_flight'],
+	['legacy (no status)', undefined],
+];
+
 /**
  * Receipts whose window has already closed, written straight to the table: the
  * claim mutation refuses to take a claim that is already expired, so it cannot
  * be used to make one.
  */
-async function insertExpiredRows(t: ReturnType<typeof convexTest>, digests: readonly string[]) {
+async function insertExpiredRows(
+	t: ReturnType<typeof convexTest>,
+	digests: readonly string[],
+	status: RowStatus
+) {
 	await t.run(async (ctx) => {
 		for (const digest of digests) {
 			await ctx.db.insert('pluginWebhookDeliveries', {
@@ -53,7 +71,7 @@ async function insertExpiredRows(t: ReturnType<typeof convexTest>, digests: read
 				deliveryDigest: digest,
 				claimedAt: Date.now() - TOLERANCE_MS,
 				expiresAt: Date.now() - 1,
-				status: 'completed',
+				...(status === undefined ? {} : { status }),
 			});
 		}
 	});
@@ -98,25 +116,28 @@ describe('plugin webhook delivery claims', () => {
 		expect(rows[0]!.status).toBe('in_flight');
 	});
 
-	it('lets an EXPIRED digest through again', async () => {
+	it.each(EXPIRED_ROW_STATES)('lets an EXPIRED %s digest through again', async (_label, status) => {
 		// Not a loosening: the same request can no longer verify once its signed
 		// timestamp is outside tolerance, so remembering it past that point buys
 		// nothing and only grows the table.
 		const t = convexTest(schema, modules);
 		const claim = internal.webhooks.pluginFeedbackDeliveries.claim;
 
-		await insertExpiredRows(t, ['digest-d']);
+		await insertExpiredRows(t, ['digest-d'], status);
 		await expect(t.mutation(claim, claimArgs('digest-d'))).resolves.toBe('claimed');
 		const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
-		expect(rows.filter((row) => row.deliveryDigest === 'digest-d')).toHaveLength(1);
+		expect(rows.filter((row) => row.deliveryDigest === 'digest-d')).toEqual([
+			expect.objectContaining({ status: 'in_flight' }),
+		]);
 	});
 
-	it('ages expired rows out as it goes', async () => {
+	it.each(EXPIRED_ROW_STATES)('ages expired %s rows out as it goes', async (_label, status) => {
 		const t = convexTest(schema, modules);
 		const claim = internal.webhooks.pluginFeedbackDeliveries.claim;
 		await insertExpiredRows(
 			t,
-			Array.from({ length: 10 }, (_, index) => `stale-${index}`)
+			Array.from({ length: 10 }, (_, index) => `stale-${index}`),
+			status
 		);
 		await t.mutation(claim, claimArgs('fresh'));
 
@@ -124,30 +145,34 @@ describe('plugin webhook delivery claims', () => {
 		expect(rows.map((row) => row.deliveryDigest)).toEqual(['fresh']);
 	});
 
-	it('the cron sweeps what an idle route leaves behind, and only that', async () => {
-		// The claim mutation's own sweep runs only when a delivery is authorized.
-		// Disable the plugin, or let the provider go quiet after a burst, and the
-		// residue would otherwise sit there forever — so the invariant "this table
-		// empties itself" belongs to the cron, not to the hot path.
-		const t = convexTest(schema, modules);
-		await t.mutation(internal.webhooks.pluginFeedbackDeliveries.claim, claimArgs('still-live'));
-		// Written straight to the table: the point is rows NO later claim ever
-		// reaches, which is exactly what going through the claim mutation would
-		// clean up on the way in.
-		await insertExpiredRows(
-			t,
-			Array.from({ length: 5 }, (_, index) => `abandoned-${index}`)
-		);
+	it.each(EXPIRED_ROW_STATES)(
+		'the cron sweeps the %s rows an idle route leaves behind, and only those',
+		async (_label, status) => {
+			// The claim mutation's own sweep runs only when a delivery is authorized.
+			// Disable the plugin, or let the provider go quiet after a burst, and the
+			// residue would otherwise sit there forever — so the invariant "this table
+			// empties itself" belongs to the cron, not to the hot path.
+			const t = convexTest(schema, modules);
+			await t.mutation(internal.webhooks.pluginFeedbackDeliveries.claim, claimArgs('still-live'));
+			// Written straight to the table: the point is rows NO later claim ever
+			// reaches, which is exactly what going through the claim mutation would
+			// clean up on the way in.
+			await insertExpiredRows(
+				t,
+				Array.from({ length: 5 }, (_, index) => `abandoned-${index}`),
+				status
+			);
 
-		const { deletedCount } = await t.mutation(
-			internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
-			{}
-		);
+			const { deletedCount } = await t.mutation(
+				internal.webhooks.cleanup.cleanupPluginWebhookDeliveries,
+				{}
+			);
 
-		expect(deletedCount).toBe(5);
-		const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
-		expect(rows.map((row) => row.deliveryDigest)).toEqual(['still-live']);
-	});
+			expect(deletedCount).toBe(5);
+			const rows = await t.run(async (ctx) => ctx.db.query('pluginWebhookDeliveries').collect());
+			expect(rows.map((row) => row.deliveryDigest)).toEqual(['still-live']);
+		}
+	);
 
 	it('releases a claim so a redelivery after our failure is accepted', async () => {
 		const t = convexTest(schema, modules);
