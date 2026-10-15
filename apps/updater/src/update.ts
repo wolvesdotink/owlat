@@ -323,11 +323,11 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	//
 	// Stopping it on a SIGTERM is no worse than letting it finish: either way
 	// the old containers keep serving, and the next update deploys again.
-	const backend = await deployTarget('convex', deployArgs);
+	const backend = await deployTarget('convex', deployArgs, stopping);
 	if (stopping.aborted) return backOut();
 	if (backend.kind === 'unavailable') {
 		await discardStaged();
-		const error = `convex is not serving — ${backend.detail}; update aborted, running stack untouched`;
+		const error = `convex is not serving — ${backend.detail}; update aborted, running stack untouched. Check \`docker compose logs convex\`, bring it back up, then retry.`;
 		return answer(500, { error, steps });
 	}
 	const noDeps = backend.kind === 'serving' ? ['--no-deps'] : [];
