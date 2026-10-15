@@ -61,7 +61,12 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      # The backend loads its whole SQLite file before it answers: ~100 s for a
+      # 2 GB database on a 4-vCPU host. A shorter grace marks a booting backend
+      # unhealthy, failing every `depends_on: convex` waiter (convex-deploy in
+      # an update). Probes still run during the grace, so a fast boot is
+      # healthy as soon as it answers.
+      start_period: 300s
     security_opt:
       - no-new-privileges:true
     # Also attached to the isolated `code-worker` network so the untrusted

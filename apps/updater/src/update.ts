@@ -59,9 +59,11 @@ import {
 	recoverStackAfterFailedUp,
 	scheduleUpdaterRecreateSafely,
 	servicesToRecreate,
+	withOverrideFile,
 } from './rollout.js';
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
 import { failingBeforeRollout, verifyReadiness } from './readiness.js';
+import { deployTarget } from './deployTarget.js';
 import {
 	interruptedVerdict,
 	isAttemptId,
@@ -289,7 +291,12 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// Every compose call names the project directory as the HOST sees it, so a
 	// relative bind in the template resolves to the real file and not to a path
 	// that only exists inside this container.
+	//
+	// The deploy also loads the override, so a convex it has to start (below)
+	// runs as the install configured it. The pull does not: an override may pin
+	// a locally built image no registry has.
 	const composeArgs = await composeArgv([composeFileForUpdate]);
+	const deployArgs = await composeArgv(withOverrideFile(composeFileForUpdate));
 	if (stopping.aborted) return backOut();
 
 	// Step 4: Pull latest images (against the staged template, so a pull
@@ -311,14 +318,22 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// (still compatible) code rather than being restarted against a half-
 	// deployed backend.
 	//
-	// This requires the existing convex container to still be running at
-	// its previous version, so the one-shot deployer can reach it.
+	// It deploys to the convex that is already serving, as it is — never one
+	// `run` recreated first (deployTarget.ts).
 	//
 	// Stopping it on a SIGTERM is no worse than letting it finish: either way
 	// the old containers keep serving, and the next update deploys again.
+	const backend = await deployTarget('convex', deployArgs, stopping);
+	if (stopping.aborted) return backOut();
+	if (backend.kind === 'unavailable') {
+		await discardStaged();
+		const error = `convex is not serving — ${backend.detail}; update aborted, running stack untouched. Check \`docker compose logs convex\`, bring it back up, then retry.`;
+		return answer(500, { error, steps });
+	}
+	const noDeps = backend.kind === 'serving' ? ['--no-deps'] : [];
 	const deploy = await exec(
 		'docker',
-		[...composeArgs, '--profile', 'deploy', 'run', '--rm', 'convex-deploy'],
+		[...deployArgs, '--profile', 'deploy', 'run', '--rm', ...noDeps, 'convex-deploy'],
 		OWLAT_DIR,
 		{ signal: stopping }
 	);

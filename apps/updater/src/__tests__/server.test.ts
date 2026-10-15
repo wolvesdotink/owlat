@@ -120,6 +120,8 @@ function dockerFixture(file: unknown, args: unknown): string {
 		].join('\n');
 	}
 	if (cmd.startsWith('docker run')) return 'helper-container-id\n';
+	// The pre-deploy look at the convex that is serving.
+	if (cmd.endsWith(' ps --format json convex')) return composePs(RUNNING);
 	// The readiness check after `up`: every recreated service is up.
 	if (cmd.includes(' ps --all --format json')) return composePs(RUNNING);
 	return '';
@@ -243,11 +245,13 @@ describe('POST /update', () => {
 		expect(json.success).toBe(true);
 		const cmds = composeCommands();
 		expect(cmds[0]).toBe(`${COMPOSE} pull`);
-		expect(cmds[1]).toBe(`${COMPOSE} --profile deploy run --rm convex-deploy`);
-		expect(cmds[2]).toBe(`${COMPOSE} config --services`);
+		// A serving convex is deployed to as it is, never recreated by `run`.
+		expect(cmds[1]).toBe(`${COMPOSE} ps --format json convex`);
+		expect(cmds[2]).toBe(`${COMPOSE} --profile deploy run --rm --no-deps convex-deploy`);
+		expect(cmds[3]).toBe(`${COMPOSE} config --services`);
 		// What was already failing before the release touched anything.
-		expect(cmds[3]).toBe(`${COMPOSE} ps --all --format json`);
-		expect(cmds[4]).toBe(`${COMPOSE} up -d --remove-orphans web convex mta`);
+		expect(cmds[4]).toBe(`${COMPOSE} ps --all --format json`);
+		expect(cmds[5]).toBe(`${COMPOSE} up -d --remove-orphans web convex mta`);
 	});
 
 	/**
@@ -406,6 +410,73 @@ describe('POST /update', () => {
 		expect(readFileSync(join(OWLAT_DIR, 'docker-compose.yml'), 'utf-8')).toBe(template);
 		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
 		expect(res.status).toBe(200);
+	});
+
+	/** Answer the pre-deploy look at convex with `answer`; everything else as usual. */
+	function convexBeforeDeploy(answer: () => string): void {
+		commandMock.mockImplementation((file: string, args: string[]) =>
+			[file, ...args].join(' ').endsWith(' ps --format json convex')
+				? answer()
+				: dockerFixture(file, args)
+		);
+	}
+	const deployCommand = () => composeCommands().find((cmd) => cmd.includes('convex-deploy'));
+
+	it('leaves a convex that does not exist yet to depends_on to start', async () => {
+		convexBeforeDeploy(() => '');
+		await post('/update');
+		expect(deployCommand()).toBe(`${COMPOSE} --profile deploy run --rm convex-deploy`);
+	});
+
+	it('waits for a convex that is still booting, then deploys to it as it is', async () => {
+		convexBeforeDeploy(() =>
+			composePs([{ Service: 'convex', State: 'running', Health: 'starting' }])
+		);
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		expect(deployCommand()).toBe(`${COMPOSE} --profile deploy run --rm --no-deps convex-deploy`);
+	});
+
+	it.each([
+		[
+			'failing its healthcheck',
+			() => composePs([{ Service: 'convex', State: 'running', Health: 'unhealthy' }]),
+		],
+		[
+			'unreadable',
+			() => {
+				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'daemon hiccup' });
+			},
+		],
+	])('aborts before the deploy when convex is %s', async (_label, answer) => {
+		convexBeforeDeploy(answer);
+		const res = await post('/update', { composeTemplate: 'services: {}\n' });
+		expect(res.status).toBe(500);
+		expect(((await res.json()) as { error: string }).error).toContain('convex is not serving');
+		expect(deployCommand()).toBeUndefined();
+		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
+	});
+
+	it('runs the staged deploy, not the pull, with the install override file', async () => {
+		const override = join(OWLAT_DIR, 'docker-compose.override.yml');
+		writeFileSync(override, 'services:\n  convex:\n    environment:\n      FOO: bar\n');
+		try {
+			const template = [
+				'services:',
+				'  web:',
+				'    image: ghcr.io/wolvesdotink/web:1.0.0',
+				'',
+			].join('\n');
+			await post('/update', { composeTemplate: template });
+			const [pull, , deploy] = composeCommands();
+			const staged = `-f ${join(OWLAT_DIR, 'docker-compose.next.yml')}`;
+			// An override may pin a locally built image: pulling it would fail.
+			expect(pull).toContain(staged);
+			expect(pull).not.toContain(override);
+			expect(deploy).toContain(`${staged} -f ${override}`);
+		} finally {
+			rmSync(override, { force: true });
+		}
 	});
 
 	/**

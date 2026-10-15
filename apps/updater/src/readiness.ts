@@ -34,9 +34,9 @@ import { shutdownSignal } from './lifecycle.js';
 import { parseHealthCadence, type HealthCadence } from './healthCadence.js';
 
 /** Where a service stands against the contract above. */
-type Standing = 'ready' | 'warming' | 'starting' | 'missing' | 'failing';
+export type Standing = 'ready' | 'warming' | 'starting' | 'missing' | 'failing';
 
-interface ServiceVerdict {
+export interface ServiceVerdict {
 	service: string;
 	standing: Standing;
 	detail: string;
@@ -79,8 +79,9 @@ export interface ReadinessResult {
 }
 
 /**
- * Three minutes covers convex (healthy within ~25 s: 10 s start period, 15 s
- * interval) and redis (10 s interval) with room to spare. ClamAV declares a
+ * Three minutes covers redis (10 s interval) and a small convex with room to
+ * spare; a large convex database stretches the wait to its 300 s start
+ * period. ClamAV declares a
  * 600 s start period and a 60 s interval, so a rollout that recreates it may
  * wait up to 665 s; twelve minutes is the most any declared cadence gets.
  */
@@ -153,7 +154,7 @@ function judgeContainer(row: ComposeService): { standing: Standing; detail: stri
  * running ones are judged: a recreate that was cut short can leave the old,
  * stopped container behind next to the new one.
  */
-function judgeService(service: string, rows: ComposeService[]): ServiceVerdict {
+export function judgeService(service: string, rows: ComposeService[]): ServiceVerdict {
 	const mine = rows.filter((row) => row.service === service);
 	if (mine.length === 0) return { service, standing: 'missing', detail: 'no container' };
 	const running = mine.filter((row) => row.state === 'running');

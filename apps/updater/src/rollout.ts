@@ -191,13 +191,14 @@ async function hostInstallDir(): Promise<string | null> {
 	return bind?.split(':')[0] ?? null;
 }
 
-/** The compose files an unqualified `docker compose` in OWLAT_DIR would load. */
-function defaultComposeFiles(): string[] {
-	const files = [join(OWLAT_DIR, 'docker-compose.yml')];
+/** `base` plus the install's override file — `-f` turns off compose's own discovery. */
+export function withOverrideFile(base: string): string[] {
 	const override = join(OWLAT_DIR, 'docker-compose.override.yml');
-	if (existsSync(override)) files.push(override);
-	return files;
+	return existsSync(override) ? [base, override] : [base];
 }
+
+/** The compose files an unqualified `docker compose` in OWLAT_DIR would load. */
+const defaultComposeFiles = () => withOverrideFile(join(OWLAT_DIR, 'docker-compose.yml'));
 
 /**
  * `docker compose`, told where the project really lives.
