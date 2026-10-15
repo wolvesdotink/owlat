@@ -703,7 +703,7 @@ describe('worker status heartbeats', () => {
 				CREDS
 			);
 			const report = (args: {
-				status: 'connected' | 'error';
+				status: 'connected' | 'error' | 'auth_error';
 				lastError?: string;
 				markSynced?: boolean;
 			}) =>
@@ -744,6 +744,13 @@ describe('worker status heartbeats', () => {
 			vi.setSystemTime(t1 + 2_000);
 			await report({ status: 'error', lastError: 'refused' });
 			expect(await read()).toMatchObject({ lastError: 'refused', lastErrorAt: t1 + 2_000 });
+
+			// An auth failure is news even with the same message; repeated, it is not.
+			vi.setSystemTime(t1 + 2_500);
+			await report({ status: 'auth_error', lastError: 'refused' });
+			vi.setSystemTime(t1 + 2_700);
+			await report({ status: 'auth_error', lastError: 'refused' });
+			expect(await read()).toMatchObject({ status: 'auth_error', lastErrorAt: t1 + 2_500 });
 
 			// Recovering clears the error even within the stamp window.
 			vi.setSystemTime(t1 + 3_000);
