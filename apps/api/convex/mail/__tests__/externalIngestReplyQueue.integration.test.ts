@@ -27,6 +27,7 @@ import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
+import { SYNC_STAMP_REFRESH_MS } from '../external/accountShared';
 
 const OWNER_ADDRESS = 'me@gmail.example';
 const SENDER = 'sam@acme.test';
@@ -495,6 +496,29 @@ describe('ingestExternalRaw → Reply Queue enqueue', () => {
 
 			expect(await pendingAt(t, seeded.mailboxId)).toBeNull();
 			expect(await scheduled(t)).toEqual([]);
+		});
+	});
+});
+
+describe('ingest sync stamp', () => {
+	it('stamps the account once per refresh window, not once per message', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedExternalAccount(t);
+		const lastSyncAt = () => t.run(async (ctx) => (await ctx.db.get(seeded.accountId))?.lastSyncAt);
+
+		await withHeldScheduler(async () => {
+			const t0 = new Date('2026-10-14T12:00:00Z').getTime();
+			vi.setSystemTime(t0);
+			await ingest(t, seeded, { origin: 'backfill', uid: 1 });
+			expect(await lastSyncAt()).toBe(t0);
+
+			vi.setSystemTime(t0 + 60_000);
+			await ingest(t, seeded, { origin: 'backfill', uid: 2 });
+			expect(await lastSyncAt()).toBe(t0);
+
+			vi.setSystemTime(t0 + SYNC_STAMP_REFRESH_MS);
+			await ingest(t, seeded, { origin: 'backfill', uid: 3 });
+			expect(await lastSyncAt()).toBe(t0 + SYNC_STAMP_REFRESH_MS);
 		});
 	});
 });

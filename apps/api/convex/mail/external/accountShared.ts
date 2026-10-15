@@ -28,6 +28,23 @@ import { deleteStoredAccessToken } from './accessTokenStore';
 export const CONNECTABLE_ACCOUNT_STATUSES = ['pending', 'connected', 'error'] as const;
 
 /**
+ * How stale `lastSyncAt` may get before a sync heartbeat rewrites it.
+ *
+ * The worker reports a sync after every poll and every ingested message, but
+ * the stamp is display-only ("last synced 14:05"). The account row is read by
+ * the mailbox identity query, by every remote-op mutation and by the worker's
+ * own reconcile — so each needless rewrite re-runs those subscriptions and
+ * makes concurrent mutations on the row retry (OCC). Measured on a live
+ * instance: ~700 writes/day across two accounts before this window.
+ */
+export const SYNC_STAMP_REFRESH_MS = 5 * 60_000;
+
+/** Whether a sync heartbeat at `now` should rewrite the account's `lastSyncAt`. */
+export function isSyncStampStale(lastSyncAt: number | undefined, now: number): boolean {
+	return lastSyncAt === undefined || now - lastSyncAt >= SYNC_STAMP_REFRESH_MS;
+}
+
+/**
  * Every account status that is NOT retired — i.e. a row the operator still owns
  * and expects to be counted. Wider than `CONNECTABLE_ACCOUNT_STATUSES`:
  * `auth_error` is a seed the operator has to re-authenticate, not a seed they

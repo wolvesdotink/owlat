@@ -44,6 +44,7 @@ import { base64ToBytes } from '../../lib/bytes';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import { folderRoleValidator } from '../../lib/validators/mail';
 import { ensureMirroredFolder, resolveIngestFolder } from './mirroredFolders';
+import { isSyncStampStale } from './accountShared';
 
 /**
  * What one ingest did, so the worker can tell the three apart.
@@ -179,7 +180,10 @@ export const ingestExternalMessage = internalMutation({
 			antiLoopHeaders: args.antiLoopHeaders,
 		});
 		await advanceCursor(ctx, args, mailbox._id);
-		await ctx.db.patch(args.accountId, { lastSyncAt: Date.now(), updatedAt: Date.now() });
+		// One stamp per refresh window, not per message: each rewrite re-runs the row's readers.
+		const now = Date.now();
+		if (isSyncStampStale(account.lastSyncAt, now))
+			await ctx.db.patch(args.accountId, { lastSyncAt: now, updatedAt: now });
 		return { messageId };
 	},
 });

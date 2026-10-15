@@ -61,6 +61,7 @@ import {
 	applyCredentialRotation,
 	toPublicAccountView,
 	CONNECTABLE_ACCOUNT_STATUSES,
+	isSyncStampStale,
 } from './accountShared';
 import { claimExternalAddress, provisionExternalMailbox } from './connectMailbox';
 import { stopExternalAccountSync, prepareAccountPurge } from './accountTeardown';
@@ -363,6 +364,19 @@ export const setSyncStatus = internalMutation({
 		// reconnect that could fix it.
 		if (account.status === 'disconnected') return;
 		const now = Date.now();
+		// A report that restates the stored state is a heartbeat, not news: skip
+		// the write so the row's readers are not re-run every poll. Only a status
+		// change, a new error message, or a sync stamp past its refresh window
+		// is written.
+		const isSameStatus = args.status === account.status;
+		const isErrorStatus = args.status === 'auth_error' || args.status === 'error';
+		const isSameError =
+			args.status === 'connected'
+				? account.lastError === undefined
+				: !isErrorStatus || account.lastError === args.lastError;
+		const isSyncStampDue = args.markSynced === true && isSyncStampStale(account.lastSyncAt, now);
+		if (isSameStatus && isSameError && !isSyncStampDue) return;
+
 		const patch: Record<string, unknown> = { status: args.status, updatedAt: now };
 		if (args.status === 'connected') {
 			patch['lastConnectedAt'] = now;

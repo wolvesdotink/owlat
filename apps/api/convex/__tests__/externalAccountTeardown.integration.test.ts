@@ -13,7 +13,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
-import { takeLiveSeedAccounts } from '../mail/external/accountShared';
+import { SYNC_STAMP_REFRESH_MS, takeLiveSeedAccounts } from '../mail/external/accountShared';
 import { stopExternalAccountSync } from '../mail/external/accountTeardown';
 
 const sessionMocks = vi.hoisted(() => ({
@@ -688,5 +688,78 @@ describe('seed mailboxes', () => {
 				accountId: seed.externalAccountId,
 			})
 		).rejects.toThrow(/not found|seed mailbox/i);
+	});
+});
+
+describe('worker status heartbeats', () => {
+	it('writes the account row only on news, and the sync stamp once per refresh window', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const t = convexTest(schema, modules);
+			await enableExternal(t);
+			setSession('user-A', 'owner');
+			const { externalAccountId } = await t.mutation(
+				internal.mail.external.accounts._connectInternal,
+				CREDS
+			);
+			const report = (args: {
+				status: 'connected' | 'error' | 'auth_error';
+				lastError?: string;
+				markSynced?: boolean;
+			}) =>
+				t.mutation(internal.mail.external.accounts.setSyncStatus, {
+					accountId: externalAccountId,
+					...args,
+				});
+			const read = () => t.run((ctx) => ctx.db.get(externalAccountId));
+
+			const t0 = new Date('2026-10-14T12:00:00Z').getTime();
+			vi.setSystemTime(t0);
+			await report({ status: 'connected', markSynced: true });
+			expect((await read())?.lastSyncAt).toBe(t0);
+
+			// A poll a minute later restates the same state: no write at all.
+			vi.setSystemTime(t0 + 60_000);
+			await report({ status: 'connected', markSynced: true });
+			const unchanged = await read();
+			expect(unchanged?.lastSyncAt).toBe(t0);
+			expect(unchanged?.updatedAt).toBe(t0);
+
+			// Past the refresh window the stamp moves.
+			vi.setSystemTime(t0 + SYNC_STAMP_REFRESH_MS);
+			await report({ status: 'connected', markSynced: true });
+			expect((await read())?.lastSyncAt).toBe(t0 + SYNC_STAMP_REFRESH_MS);
+
+			// An error is news; the same error repeated is not; a different one is.
+			const t1 = t0 + SYNC_STAMP_REFRESH_MS + 1_000;
+			vi.setSystemTime(t1);
+			await report({ status: 'error', lastError: 'timeout' });
+			vi.setSystemTime(t1 + 1_000);
+			await report({ status: 'error', lastError: 'timeout' });
+			expect(await read()).toMatchObject({
+				status: 'error',
+				lastError: 'timeout',
+				lastErrorAt: t1,
+			});
+			vi.setSystemTime(t1 + 2_000);
+			await report({ status: 'error', lastError: 'refused' });
+			expect(await read()).toMatchObject({ lastError: 'refused', lastErrorAt: t1 + 2_000 });
+
+			// An auth failure is news even with the same message; repeated, it is not.
+			vi.setSystemTime(t1 + 2_500);
+			await report({ status: 'auth_error', lastError: 'refused' });
+			vi.setSystemTime(t1 + 2_700);
+			await report({ status: 'auth_error', lastError: 'refused' });
+			expect(await read()).toMatchObject({ status: 'auth_error', lastErrorAt: t1 + 2_500 });
+
+			// Recovering clears the error even within the stamp window.
+			vi.setSystemTime(t1 + 3_000);
+			await report({ status: 'connected' });
+			const recovered = await read();
+			expect(recovered?.status).toBe('connected');
+			expect(recovered?.lastError).toBeUndefined();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
