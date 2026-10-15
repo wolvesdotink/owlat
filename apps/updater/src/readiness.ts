@@ -34,9 +34,9 @@ import { shutdownSignal } from './lifecycle.js';
 import { parseHealthCadence, type HealthCadence } from './healthCadence.js';
 
 /** Where a service stands against the contract above. */
-type Standing = 'ready' | 'warming' | 'starting' | 'missing' | 'failing';
+export type Standing = 'ready' | 'warming' | 'starting' | 'missing' | 'failing';
 
-interface ServiceVerdict {
+export interface ServiceVerdict {
 	service: string;
 	standing: Standing;
 	detail: string;
@@ -154,7 +154,7 @@ function judgeContainer(row: ComposeService): { standing: Standing; detail: stri
  * running ones are judged: a recreate that was cut short can leave the old,
  * stopped container behind next to the new one.
  */
-function judgeService(service: string, rows: ComposeService[]): ServiceVerdict {
+export function judgeService(service: string, rows: ComposeService[]): ServiceVerdict {
 	const mine = rows.filter((row) => row.service === service);
 	if (mine.length === 0) return { service, standing: 'missing', detail: 'no container' };
 	const running = mine.filter((row) => row.state === 'running');
@@ -446,21 +446,6 @@ export async function failingBeforeRollout(
 		// Best-effort context for the verdict; never a reason to stop.
 	}
 	return failing;
-}
-
-/** Whether `service` is serving right now; an unreadable container list says no. */
-export async function servingNow(service: string, composeArgs: string[]): Promise<boolean> {
-	try {
-		const listed = await exec(
-			'docker',
-			[...composeArgs, 'ps', '--format', 'json', service],
-			OWLAT_DIR
-		);
-		if (!listed.ok || !listed.stdout.trim()) return false;
-		return judgeService(service, parseComposePs(listed.stdout)).standing === 'ready';
-	} catch {
-		return false;
-	}
 }
 
 interface VerifyOptions extends ReadinessContext {

@@ -412,15 +412,49 @@ describe('POST /update', () => {
 		expect(res.status).toBe(200);
 	});
 
-	it('leaves a convex that is not serving to depends_on to start', async () => {
+	/** Answer the pre-deploy look at convex with `answer`; everything else as usual. */
+	function convexBeforeDeploy(answer: () => string): void {
 		commandMock.mockImplementation((file: string, args: string[]) =>
 			[file, ...args].join(' ').endsWith(' ps --format json convex')
-				? composePs([{ Service: 'convex', State: 'running', Health: 'unhealthy' }])
+				? answer()
 				: dockerFixture(file, args)
 		);
+	}
+	const deployCommand = () => composeCommands().find((cmd) => cmd.includes('convex-deploy'));
+
+	it('leaves a convex that does not exist yet to depends_on to start', async () => {
+		convexBeforeDeploy(() => '');
 		await post('/update');
-		const deploy = composeCommands().find((cmd) => cmd.includes('convex-deploy'));
-		expect(deploy).toBe(`${COMPOSE} --profile deploy run --rm convex-deploy`);
+		expect(deployCommand()).toBe(`${COMPOSE} --profile deploy run --rm convex-deploy`);
+	});
+
+	it('waits for a convex that is still booting, then deploys to it as it is', async () => {
+		convexBeforeDeploy(() =>
+			composePs([{ Service: 'convex', State: 'running', Health: 'starting' }])
+		);
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		expect(deployCommand()).toBe(`${COMPOSE} --profile deploy run --rm --no-deps convex-deploy`);
+	});
+
+	it.each([
+		[
+			'failing its healthcheck',
+			() => composePs([{ Service: 'convex', State: 'running', Health: 'unhealthy' }]),
+		],
+		[
+			'unreadable',
+			() => {
+				throw Object.assign(new Error('boom'), { stdout: '', stderr: 'daemon hiccup' });
+			},
+		],
+	])('aborts before the deploy when convex is %s', async (_label, answer) => {
+		convexBeforeDeploy(answer);
+		const res = await post('/update', { composeTemplate: 'services: {}\n' });
+		expect(res.status).toBe(500);
+		expect(((await res.json()) as { error: string }).error).toContain('convex is not serving');
+		expect(deployCommand()).toBeUndefined();
+		expect(existsSync(join(OWLAT_DIR, 'docker-compose.next.yml'))).toBe(false);
 	});
 
 	it('runs the staged deploy, not the pull, with the install override file', async () => {

@@ -62,7 +62,8 @@ import {
 	withOverrideFile,
 } from './rollout.js';
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
-import { failingBeforeRollout, servingNow, verifyReadiness } from './readiness.js';
+import { failingBeforeRollout, verifyReadiness } from './readiness.js';
+import { deployTarget } from './deployTarget.js';
 import {
 	interruptedVerdict,
 	isAttemptId,
@@ -317,15 +318,19 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// (still compatible) code rather than being restarted against a half-
 	// deployed backend.
 	//
-	// It deploys to the convex that is already serving, as it is: `run`
-	// otherwise reconciles `depends_on` against the staged template and
-	// recreates convex whenever the release changes its config — a cold boot
-	// before the schema is even validated. Only a convex that is not serving
-	// is left to `depends_on` to start.
+	// It deploys to the convex that is already serving, as it is — never one
+	// `run` recreated first (deployTarget.ts).
 	//
 	// Stopping it on a SIGTERM is no worse than letting it finish: either way
 	// the old containers keep serving, and the next update deploys again.
-	const noDeps = (await servingNow('convex', deployArgs)) ? ['--no-deps'] : [];
+	const backend = await deployTarget('convex', deployArgs);
+	if (stopping.aborted) return backOut();
+	if (backend.kind === 'unavailable') {
+		await discardStaged();
+		const error = `convex is not serving — ${backend.detail}; update aborted, running stack untouched`;
+		return answer(500, { error, steps });
+	}
+	const noDeps = backend.kind === 'serving' ? ['--no-deps'] : [];
 	const deploy = await exec(
 		'docker',
 		[...deployArgs, '--profile', 'deploy', 'run', '--rm', ...noDeps, 'convex-deploy'],
