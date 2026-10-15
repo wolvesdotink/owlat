@@ -120,6 +120,8 @@ function dockerFixture(file: unknown, args: unknown): string {
 		].join('\n');
 	}
 	if (cmd.startsWith('docker run')) return 'helper-container-id\n';
+	// The pre-deploy look at the convex that is serving.
+	if (cmd.endsWith(' ps --format json convex')) return composePs(RUNNING);
 	// The readiness check after `up`: every recreated service is up.
 	if (cmd.includes(' ps --all --format json')) return composePs(RUNNING);
 	return '';
@@ -243,11 +245,13 @@ describe('POST /update', () => {
 		expect(json.success).toBe(true);
 		const cmds = composeCommands();
 		expect(cmds[0]).toBe(`${COMPOSE} pull`);
-		expect(cmds[1]).toBe(`${COMPOSE} --profile deploy run --rm convex-deploy`);
-		expect(cmds[2]).toBe(`${COMPOSE} config --services`);
+		// A serving convex is deployed to as it is, never recreated by `run`.
+		expect(cmds[1]).toBe(`${COMPOSE} ps --format json convex`);
+		expect(cmds[2]).toBe(`${COMPOSE} --profile deploy run --rm --no-deps convex-deploy`);
+		expect(cmds[3]).toBe(`${COMPOSE} config --services`);
 		// What was already failing before the release touched anything.
-		expect(cmds[3]).toBe(`${COMPOSE} ps --all --format json`);
-		expect(cmds[4]).toBe(`${COMPOSE} up -d --remove-orphans web convex mta`);
+		expect(cmds[4]).toBe(`${COMPOSE} ps --all --format json`);
+		expect(cmds[5]).toBe(`${COMPOSE} up -d --remove-orphans web convex mta`);
 	});
 
 	/**
@@ -408,6 +412,17 @@ describe('POST /update', () => {
 		expect(res.status).toBe(200);
 	});
 
+	it('leaves a convex that is not serving to depends_on to start', async () => {
+		commandMock.mockImplementation((file: string, args: string[]) =>
+			[file, ...args].join(' ').endsWith(' ps --format json convex')
+				? composePs([{ Service: 'convex', State: 'running', Health: 'unhealthy' }])
+				: dockerFixture(file, args)
+		);
+		await post('/update');
+		const deploy = composeCommands().find((cmd) => cmd.includes('convex-deploy'));
+		expect(deploy).toBe(`${COMPOSE} --profile deploy run --rm convex-deploy`);
+	});
+
 	it('runs the staged deploy, not the pull, with the install override file', async () => {
 		const override = join(OWLAT_DIR, 'docker-compose.override.yml');
 		writeFileSync(override, 'services:\n  convex:\n    environment:\n      FOO: bar\n');
@@ -419,7 +434,7 @@ describe('POST /update', () => {
 				'',
 			].join('\n');
 			await post('/update', { composeTemplate: template });
-			const [pull, deploy] = composeCommands();
+			const [pull, , deploy] = composeCommands();
 			const staged = `-f ${join(OWLAT_DIR, 'docker-compose.next.yml')}`;
 			// An override may pin a locally built image: pulling it would fail.
 			expect(pull).toContain(staged);

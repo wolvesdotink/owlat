@@ -62,7 +62,7 @@ import {
 	withOverrideFile,
 } from './rollout.js';
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
-import { failingBeforeRollout, verifyReadiness } from './readiness.js';
+import { failingBeforeRollout, servingNow, verifyReadiness } from './readiness.js';
 import {
 	interruptedVerdict,
 	isAttemptId,
@@ -291,9 +291,8 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// relative bind in the template resolves to the real file and not to a path
 	// that only exists inside this container.
 	//
-	// The deploy also loads the override: its `depends_on: convex` otherwise sees
-	// a convex that differs from the running one and RECREATES it mid-update — a
-	// cold boot the deploy times out on. The pull does not: an override may pin
+	// The deploy also loads the override, so a convex it has to start (below)
+	// runs as the install configured it. The pull does not: an override may pin
 	// a locally built image no registry has.
 	const composeArgs = await composeArgv([composeFileForUpdate]);
 	const deployArgs = await composeArgv(withOverrideFile(composeFileForUpdate));
@@ -318,14 +317,18 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 	// (still compatible) code rather than being restarted against a half-
 	// deployed backend.
 	//
-	// This requires the existing convex container to still be running at
-	// its previous version, so the one-shot deployer can reach it.
+	// It deploys to the convex that is already serving, as it is: `run`
+	// otherwise reconciles `depends_on` against the staged template and
+	// recreates convex whenever the release changes its config — a cold boot
+	// before the schema is even validated. Only a convex that is not serving
+	// is left to `depends_on` to start.
 	//
 	// Stopping it on a SIGTERM is no worse than letting it finish: either way
 	// the old containers keep serving, and the next update deploys again.
+	const noDeps = (await servingNow('convex', deployArgs)) ? ['--no-deps'] : [];
 	const deploy = await exec(
 		'docker',
-		[...deployArgs, '--profile', 'deploy', 'run', '--rm', 'convex-deploy'],
+		[...deployArgs, '--profile', 'deploy', 'run', '--rm', ...noDeps, 'convex-deploy'],
 		OWLAT_DIR,
 		{ signal: stopping }
 	);

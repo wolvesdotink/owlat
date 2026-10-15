@@ -79,8 +79,9 @@ export interface ReadinessResult {
 }
 
 /**
- * Three minutes covers convex (healthy within ~25 s: 10 s start period, 15 s
- * interval) and redis (10 s interval) with room to spare. ClamAV declares a
+ * Three minutes covers redis (10 s interval) and a small convex with room to
+ * spare; a large convex database stretches the wait to its 300 s start
+ * period. ClamAV declares a
  * 600 s start period and a 60 s interval, so a rollout that recreates it may
  * wait up to 665 s; twelve minutes is the most any declared cadence gets.
  */
@@ -445,6 +446,21 @@ export async function failingBeforeRollout(
 		// Best-effort context for the verdict; never a reason to stop.
 	}
 	return failing;
+}
+
+/** Whether `service` is serving right now; an unreadable container list says no. */
+export async function servingNow(service: string, composeArgs: string[]): Promise<boolean> {
+	try {
+		const listed = await exec(
+			'docker',
+			[...composeArgs, 'ps', '--format', 'json', service],
+			OWLAT_DIR
+		);
+		if (!listed.ok || !listed.stdout.trim()) return false;
+		return judgeService(service, parseComposePs(listed.stdout)).standing === 'ready';
+	} catch {
+		return false;
+	}
 }
 
 interface VerifyOptions extends ReadinessContext {
