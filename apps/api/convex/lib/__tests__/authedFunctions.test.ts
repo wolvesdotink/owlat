@@ -139,8 +139,8 @@ describe('the org-scoped builders thread their floor’s session', () => {
 			};
 
 			// The SAME object the floor returned, not a re-derived copy — and `ctx` /
-			// `args` pass through untouched: nothing is spread onto or bolted into the
-			// Convex context. The one exception is a mutation's `db`, which is the
+			// `args` preserve their identity. Queries attach a private, non-enumerable
+			// invocation cache. A mutation's `db` is the
 			// write-fenced handle (lib/writeFence.ts); everything else is the caller's.
 			expect(result.session).toBe(session);
 			if (name.endsWith('Query')) {

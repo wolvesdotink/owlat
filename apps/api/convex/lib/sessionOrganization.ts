@@ -1,5 +1,6 @@
 import type { QueryCtx, MutationCtx, ActionCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
+import { memoizeSessionQuery } from './sessionQueryCache';
 import { components } from '../_generated/api';
 import { throwUnauthenticated, throwForbidden } from '../_utils/errors';
 import {
@@ -47,6 +48,10 @@ export async function getBetterAuthSession(ctx: QueryCtx | MutationCtx): Promise
 	userId: string;
 	activeOrganizationId: string | null;
 } | null> {
+	return memoizeSessionQuery(ctx, 'session', () => resolveBetterAuthSession(ctx));
+}
+
+async function resolveBetterAuthSession(ctx: QueryCtx | MutationCtx) {
 	try {
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) {
@@ -161,10 +166,15 @@ export async function assertSingletonOrgInvariant(
 export async function getSingletonOrganizationId(
 	ctx: QueryCtx | MutationCtx | ActionCtx
 ): Promise<string> {
-	if (cachedSingletonOrgId !== null) {
-		return cachedSingletonOrgId;
-	}
+	cachedSingletonOrgId ??= await memoizeSessionQuery(ctx, 'singletonOrganization', () =>
+		resolveSingletonOrganizationId(ctx)
+	);
+	return cachedSingletonOrgId;
+}
 
+async function resolveSingletonOrganizationId(
+	ctx: QueryCtx | MutationCtx | ActionCtx
+): Promise<string> {
 	const result = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
 		model: 'organization',
 		where: [],
@@ -189,7 +199,6 @@ export async function getSingletonOrganizationId(
 	if (!singletonId) {
 		throwForbidden('No organization configured on this Owlat instance');
 	}
-	cachedSingletonOrgId = singletonId;
 	return singletonId;
 }
 
@@ -206,6 +215,10 @@ export async function getBetterAuthSessionWithRole(ctx: QueryCtx | MutationCtx):
 	activeOrganizationId: string | null;
 	role: OrganizationRole | null;
 } | null> {
+	return memoizeSessionQuery(ctx, 'sessionWithRole', () => resolveBetterAuthSessionWithRole(ctx));
+}
+
+async function resolveBetterAuthSessionWithRole(ctx: QueryCtx | MutationCtx) {
 	const session = await getBetterAuthSession(ctx);
 	if (!session) return null;
 

@@ -1146,6 +1146,7 @@ import type * as lib_sendProviders_types from '../lib/sendProviders/types.js';
 import type * as lib_sendProviders_warmingCapGate from '../lib/sendProviders/warmingCapGate.js';
 import type * as lib_sendingLimits from '../lib/sendingLimits.js';
 import type * as lib_sessionOrganization from '../lib/sessionOrganization.js';
+import type * as lib_sessionQueryCache from '../lib/sessionQueryCache.js';
 import type * as lib_ssrfGuard from '../lib/ssrfGuard.js';
 import type * as lib_statShards from '../lib/statShards.js';
 import type * as lib_storageBlobs from '../lib/storageBlobs.js';
@@ -2912,6 +2913,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/warmingCapGate': typeof lib_sendProviders_warmingCapGate;
 	'lib/sendingLimits': typeof lib_sendingLimits;
 	'lib/sessionOrganization': typeof lib_sessionOrganization;
+	'lib/sessionQueryCache': typeof lib_sessionQueryCache;
 	'lib/ssrfGuard': typeof lib_ssrfGuard;
 	'lib/statShards': typeof lib_statShards;
 	'lib/storageBlobs': typeof lib_storageBlobs;

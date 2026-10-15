@@ -635,7 +635,10 @@ This codebase tracks the official Convex AI/cursor rules
   check ignores it.
 - **Cache the singleton-org check.** `assertSingletonOrgInvariant` in
   `lib/sessionOrganization.ts` is process-cached after the first hit — do
-  not re-implement the check inline in callers.
+  not re-implement the check inline in callers. Per-user auth reads (session,
+  membership) are reused only within one query invocation
+  (`lib/sessionQueryCache.ts`); never cache them across invocations, and
+  mutations and actions always read fresh.
 - **Use `console.info`/`warn`/`error`, never `console.log`.** Convex's stdout
   pipe to log sinks treats all four equivalently, but the typed level
   signals intent and dodges the `no-console` ratchet.
