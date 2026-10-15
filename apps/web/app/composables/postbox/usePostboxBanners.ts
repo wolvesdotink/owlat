@@ -56,7 +56,7 @@ export function usePostboxReplyQueueBanner(
 	folderRole: Ref<string>,
 	railOnScreen: Ref<boolean>
 ) {
-	const { count } = usePostboxReplyQueue(mailboxId);
+	const { count } = usePostboxReplyQueueCount(mailboxId);
 	const dismissed = useState('postbox:reply-queue-strip-dismissed', () => false);
 	const visible = computed(
 		() => folderRole.value === 'inbox' && count.value > 0 && !dismissed.value && !railOnScreen.value

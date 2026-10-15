@@ -1147,3 +1147,33 @@ describe('mail.needsReplyPending.settlePending', () => {
 		expect((await getThread(t, threadId))?.needsReplyPendingAt).toBeUndefined();
 	});
 });
+
+describe('mail.needsReply.getThreadContext', () => {
+	it('keeps the newest six in presentation order, including timestamp ties', async () => {
+		const t = convexTest(schema, modules);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await t.run(async (ctx) => {
+			const original = await ctx.db.get(messageId);
+			if (!original) throw new Error('missing fixture');
+			const { _id, _creationTime, ...message } = original;
+			await ctx.db.patch(messageId, { receivedAt: 100 });
+			for (const receivedAt of [900, 300, 800, 500, 800, 700, 600]) {
+				await ctx.db.insert('mailMessages', { ...message, receivedAt });
+			}
+		});
+		const expected = await t.run(async (ctx) =>
+			(
+				await ctx.db
+					.query('mailMessages')
+					.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+					.collect()
+			)
+				.sort((a, b) => a.receivedAt - b.receivedAt)
+				.slice(-6)
+				.map((m) => m._id)
+		);
+		const result = await t.query(internal.mail.needsReply.getThreadContext, { threadId });
+		expect(result?.messages.map((m) => m.messageId)).toEqual(expected);
+	});
+});

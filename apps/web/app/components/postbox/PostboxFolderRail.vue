@@ -39,7 +39,7 @@ const railCollapsed = computed(() => !props.forceExpanded && savedCollapsed.valu
 // says which mailbox it covers — the sidebar's Answer queue counts every inbox,
 // so a bare number here read as a second queue that disagreed with it (#767).
 // The count subscription is shared/deduped with the inbox strip in PostboxLayout.
-const { count: replyQueueCount } = usePostboxReplyQueue(mailboxIdRef);
+const { count: replyQueueCount } = usePostboxReplyQueueCount(mailboxIdRef);
 const { sections: mailboxSections } = usePostboxMailbox();
 const mailboxName = computed(
 	() =>

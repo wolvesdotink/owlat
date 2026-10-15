@@ -32,7 +32,7 @@ beforeAll(() => {
 			unreadByRole: ref({}),
 		}),
 		usePostboxRailCollapsed: () => ({ collapsed, toggle: vi.fn() }),
-		usePostboxReplyQueue: () => ({ count: computed(() => replyCount.value) }),
+		usePostboxReplyQueueCount: () => ({ count: computed(() => replyCount.value) }),
 		usePostboxMailbox: () => ({ sections }),
 		usePostboxManageDialog: () => ({
 			openManager: vi.fn(),
