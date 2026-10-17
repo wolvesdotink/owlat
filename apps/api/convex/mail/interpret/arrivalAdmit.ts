@@ -19,7 +19,8 @@
  *   - Everything else takes one token of the owner's `arrivalReadPerOwner`
  *     bucket, once per read job (Sol r2 F2): the charge is stamped on the
  *     source for {@link ARRIVAL_ADMISSION_TTL_MS}, its continuations ride on
- *     the stamp, and its predecessor reads on the parent's admission. Over it, display-only mail is settled as an upgradeable `count`
+ *     the stamp, and its predecessor reads ride on the parent's stamp when the
+ *     parent has one (verified, Sol r3 F1). Over it, display-only mail is settled as an upgradeable `count`
  *     in this mutation; eager work and full reads wait for the bucket, and the
  *     wait persists its own continuation at `retryAt` unless the caller
  *     resumes itself (the Reply Queue classifier, a predecessor loop).
@@ -34,7 +35,11 @@ import { rateLimiter } from '../../lib/rateLimiter';
 import { chooseArrivalDepth } from '@owlat/shared/arrivalDepth';
 import { depthValidator } from '../../lib/validators/arrival';
 import { isPersonalMailbox } from '../permissions';
-import { loadArrivalRecord, noteArrivalRun } from '../arrival/records';
+import { loadArrivalRecord } from '../arrival/records';
+import {
+	interpretationSourceValidator,
+	type InterpretationSource,
+} from '../../lib/validators/threadBrief';
 import { isDisplayOnlyInterpretation } from './defer';
 import { isInterpretationEligible } from './eligibility';
 import { leaseLostAt, releaseLeaseIfHeld } from './lease';
@@ -84,6 +89,16 @@ async function categoryWait(
 	return { kind: 'wait', retryAt: until };
 }
 
+/** Whether `source` carries a live admission stamp from an actual charge. */
+async function isStampLive(
+	ctx: MutationCtx,
+	source: InterpretationSource,
+	now: number
+): Promise<boolean> {
+	const row = await loadInterpretSource(ctx, source);
+	return row?.arrivalAdmittedUntil !== undefined && row.arrivalAdmittedUntil > now;
+}
+
 export const admitArrivalRun = internalMutation({
 	args: {
 		source: v.object({ kind: v.literal('mail'), id: v.id('mailMessages') }),
@@ -92,8 +107,13 @@ export const admitArrivalRun = internalMutation({
 		isUpgrade: v.optional(v.boolean()),
 		/** The caller schedules its own continuation on `wait` (classifier, predecessor loop). */
 		isCallerResuming: v.boolean(),
-		/** A predecessor read inside an admitted run: the parent's admission covers it (Sol r2 F2). */
-		isCoveredByParent: v.optional(v.boolean()),
+		/**
+		 * A predecessor read: the parent run whose loop reads it. Its admission
+		 * covers this read only when the parent's source carries a live stamp
+		 * from an actual charge (Sol r2 F2, r3 F1); otherwise it is admitted on
+		 * its own (an outbound parent, a parent of a shared mailbox, …).
+		 */
+		parentSource: v.optional(interpretationSourceValidator),
 	},
 	handler: async (ctx, args): Promise<ArrivalAdmission> => {
 		const row = await loadInterpretSource(ctx, args.source);
@@ -135,7 +155,7 @@ export const admitArrivalRun = internalMutation({
 		}
 		// Once per read job (Sol r2 F2): the parent's admission covers its
 		// predecessor reads, and its continuations ride on its stamp.
-		if (args.isCoveredByParent) return GO;
+		if (args.parentSource && (await isStampLive(ctx, args.parentSource, now))) return GO;
 		if (row.arrivalAdmittedUntil !== undefined && row.arrivalAdmittedUntil > now) return GO;
 		const limited = await rateLimiter.limit(ctx, 'arrivalReadPerOwner', { key: mailbox.userId });
 		if (!limited.ok) {
@@ -155,10 +175,6 @@ export const admitArrivalRun = internalMutation({
 			return { kind: 'wait', retryAt };
 		}
 		await ctx.db.patch(row._id, { arrivalAdmittedUntil: now + ARRIVAL_ADMISSION_TTL_MS });
-		// An upgrade's call is the record's too (Sol r1 F8).
-		if (isFull && row.readOutcome !== undefined) {
-			await noteArrivalRun(ctx, message._id, { depth: 'full', modelCalls: 1 });
-		}
 		return GO;
 	},
 });

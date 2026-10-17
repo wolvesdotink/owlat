@@ -23,6 +23,7 @@ import {
 	reserveRunReturns,
 } from '../../aiRouting/admission';
 import { leaseLostAt } from './lease';
+import { noteArrivalRun } from '../arrival/records';
 import { loadInterpretSource } from './sources';
 import { interpretModeValidator } from '../../lib/validators/threadBrief';
 import { interpretGate, type InterpretGateVerdict } from './gate';
@@ -82,5 +83,19 @@ export const gateOrCount = internalMutation({
 		const isCounted =
 			!verdict.isAllowed && verdict.code === 'budget' ? await countRefused(ctx, args) : false;
 		return { verdict, isCounted };
+	},
+});
+
+/**
+ * A full read of a live arrival that the depth decision did not count (an
+ * upgrade, a predecessor read, an open) is about to call the model: its
+ * record counts the call (Sol r3 F2), whatever admission charged. Called once
+ * the run's hold is admitted, so a replayed extraction (the dedupe) counts
+ * nothing.
+ */
+export const noteFullReadCall = internalMutation({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args): Promise<void> => {
+		await noteArrivalRun(ctx, args.messageId, { depth: 'full', modelCalls: 1 });
 	},
 });

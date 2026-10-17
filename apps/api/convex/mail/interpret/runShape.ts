@@ -39,6 +39,8 @@ export interface InterpretArgs {
 	 * earlier gist-only and counted mail first. An open (also `full`) does not.
 	 */
 	isUpgrade?: boolean;
+	/** Set by the predecessor loop: the run whose loop reads this source (`arrivalAdmit.ts`). */
+	parentSource?: InterpretationSource;
 	/** Set by the run itself: the source lease it holds, checked at commit (`lease.ts`). */
 	leaseToken?: string;
 }
