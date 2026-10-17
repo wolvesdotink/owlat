@@ -30,6 +30,7 @@ import { isOrgInfrastructureAccount } from '../../mail/external/personalAccount'
 import { deleteStoredAccessToken } from '../../mail/external/accessTokenStore';
 import { drainThreadBrief, eraseDraftPlans } from '../../contacts/erasure/threadBriefPhases';
 import { eraseCapturedFiles } from './capturedFilePhases';
+import { arrivalMailboxRanges } from './arrivalPhases';
 import {
 	deleteAskSession,
 	deleteBlobAndReceipt,
@@ -338,6 +339,7 @@ export const eraseMailboxRecords: MemberPhaseRunner = (phase) =>
 		const id = mailbox._id;
 		if (!(await eraseCapturedFiles(phase, id))) return false;
 		return deleteRanges(phase, [
+			...arrivalMailboxRanges(ctx, id),
 			(n) =>
 				ctx.db
 					.query('mailFilters')

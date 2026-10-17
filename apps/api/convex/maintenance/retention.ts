@@ -177,6 +177,57 @@ export const sweepAiRoutingRecords = internalMutation({
 	},
 });
 
+/** Settled delayed actions (done or cancelled) are kept a month past their run time. */
+const SETTLED_DELAYED_ACTION_RETENTION_MS = 30 * DAY_MS;
+
+/**
+ * Read on arrival (SPEC §2.9): every table that carries `expiresAt` past it
+ * (arrival records 90 days, the undo log 30, rule drafts 7, digests 30), and
+ * delayed actions a month after they settled. Pending delayed actions stay.
+ */
+export const sweepArrivalRecords = internalMutation({
+	// `now` is injectable so the horizons are testable without waiting for them.
+	args: { now: v.optional(v.number()) },
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		const now = args.now ?? Date.now();
+		const settledCutoff = now - SETTLED_DELAYED_ACTION_RETENTION_MS;
+		const pages = await Promise.all([
+			ctx.db
+				.query('mailArrivalRecords')
+				.withIndex('by_expires', (q) => q.lt('expiresAt', now))
+				.take(BATCH),
+			ctx.db
+				.query('mailArrivalOperationChanges')
+				.withIndex('by_expires', (q) => q.lt('expiresAt', now))
+				.take(BATCH),
+			ctx.db
+				.query('mailArrivalOperations')
+				.withIndex('by_expires', (q) => q.lt('expiresAt', now))
+				.take(BATCH),
+			ctx.db
+				.query('mailRuleDrafts')
+				.withIndex('by_expires', (q) => q.lt('expiresAt', now))
+				.take(BATCH),
+			ctx.db
+				.query('mailDigests')
+				.withIndex('by_expires', (q) => q.lt('expiresAt', now))
+				.take(BATCH),
+			...(['done', 'cancelled'] as const).map((state) =>
+				ctx.db
+					.query('mailDelayedActions')
+					.withIndex('by_state_run', (q) => q.eq('state', state).lt('runAt', settledCutoff))
+					.take(BATCH)
+			),
+		]);
+		for (const row of pages.flat()) await ctx.db.delete(row._id);
+		if (pages.some((page) => page.length === BATCH)) {
+			await ctx.scheduler.runAfter(0, internal.maintenance.retention.sweepArrivalRecords, args);
+		}
+		return null;
+	},
+});
+
 /**
  * Agent-health rollup points (`agentMetrics`) past their 7-day window.
  *

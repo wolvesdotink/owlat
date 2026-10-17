@@ -25,6 +25,7 @@ import { mailMessageSources } from './interpret/purge';
 import { purgeSourcesFromThread } from './interpret/purgeRun';
 import { dropExtractionProgress } from '../knowledge/extractionProgress';
 import { deleteMailMessageArtifacts } from '../decision/artifacts';
+import { deleteMailMessageArrivalRows } from './arrival/purge';
 
 /** The `mailMessages` columns that hold a storage blob a SIBLING row may share. */
 type SharedBlobColumn = 'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageId';
@@ -119,6 +120,8 @@ export async function deleteMessageRowAndBlobs(
 	await dropExtractionProgress(ctx, 'email', message._id);
 	// Decision artifacts are content-derived labels about this message (ADR-0073).
 	await deleteMailMessageArtifacts(ctx, message._id);
+	// Read on arrival: its record, delayed actions, undo rows and digest lines.
+	await deleteMailMessageArrivalRows(ctx, message);
 	await recordMessageCounters(ctx, message, null);
 	await recordFolderMembership(ctx, message, null);
 

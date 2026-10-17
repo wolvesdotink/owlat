@@ -1771,6 +1771,15 @@ import type * as workspaces_deletion_steps_transactionalSends from '../workspace
 import type * as workspaces_deletion_walker from '../workspaces/deletion/walker.js';
 import type * as workspaces_featureFlags from '../workspaces/featureFlags.js';
 import type * as workspaces_settings from '../workspaces/settings.js';
+import type * as auth_erasure_arrivalPhases from '../auth/erasure/arrivalPhases.js';
+import type * as auth_erasure_arrivalRelations from '../auth/erasure/arrivalRelations.js';
+import type * as lib_validators_arrival from '../lib/validators/arrival.js';
+import type * as mail_arrival_changeRows from '../mail/arrival/changeRows.js';
+import type * as mail_arrival_hooks from '../mail/arrival/hooks.js';
+import type * as mail_arrival_purge from '../mail/arrival/purge.js';
+import type * as mail_arrival_scopeDrain from '../mail/arrival/scopeDrain.js';
+import type * as schema_mailArrival from '../schema/mailArrival.js';
+import type * as schema_mailArrivalRules from '../schema/mailArrivalRules.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3538,6 +3547,15 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/walker': typeof workspaces_deletion_walker;
 	'workspaces/featureFlags': typeof workspaces_featureFlags;
 	'workspaces/settings': typeof workspaces_settings;
+	'auth/erasure/arrivalPhases': typeof auth_erasure_arrivalPhases;
+	'auth/erasure/arrivalRelations': typeof auth_erasure_arrivalRelations;
+	'lib/validators/arrival': typeof lib_validators_arrival;
+	'mail/arrival/changeRows': typeof mail_arrival_changeRows;
+	'mail/arrival/hooks': typeof mail_arrival_hooks;
+	'mail/arrival/purge': typeof mail_arrival_purge;
+	'mail/arrival/scopeDrain': typeof mail_arrival_scopeDrain;
+	'schema/mailArrival': typeof schema_mailArrival;
+	'schema/mailArrivalRules': typeof schema_mailArrivalRules;
 }>;
 
 /**

@@ -14,7 +14,10 @@
  *    brief). A row a new-mode run already wrote stays;
  *  - every viewer's `viewOverride` (team surfaces have no Overview switch);
  *  - the thread's response plans (marked `stale`);
- *  - `mailThreads.briefTop`, recomputed in the new mode (no latest line).
+ *  - `mailThreads.briefTop`, recomputed in the new mode (no latest line);
+ *  - going shared, read on arrival's state: `threadBriefs.gist`, the thread's
+ *    `arrival`, `placementOverride` and `digestPendingSince`, and its arrival
+ *    records (`mail/arrival/purge.ts clearSharedThreadArrival`).
  *
  * Items carry over: both modes produce them. The brief row takes the new
  * mode (the reducer reconciles the mode the same way on its next run and
@@ -43,6 +46,7 @@ import type { InterpretMode } from '@owlat/shared/threadBrief';
 import { mailboxScope } from '../mailbox/shared';
 import { loadBriefRow } from './briefRow';
 import { refreshBriefTop } from './briefTop';
+import { clearSharedThreadArrival } from '../arrival/purge';
 import { deleteExtractions, recomputeCompleteness } from './purgeRows';
 import {
 	drainShrinking,
@@ -85,6 +89,9 @@ export async function startScopeChange(
 	threadId: Id<'mailThreads'>,
 	mode: InterpretMode
 ): Promise<boolean> {
+	// Read on arrival is personal-only: a team inbox keeps no placement,
+	// override, digest eligibility or arrival record (SPEC §2.9).
+	if (mode === 'actions') await clearSharedThreadArrival(ctx, threadId);
 	const brief = await loadBriefRow(ctx, { kind: 'mail', id: threadId });
 	if (!brief) {
 		const thread = await ctx.db.get(threadId);
@@ -97,6 +104,8 @@ export async function startScopeChange(
 		interpretationRevision: brief.interpretationRevision + 1,
 		overview: undefined,
 		checkpoint: undefined,
+		// The arrival gist is a brief-mode reading (SPEC §2.4).
+		...(mode === 'actions' ? { gist: undefined } : {}),
 		updatedAt: Date.now(),
 	});
 	return true;
