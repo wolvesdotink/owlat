@@ -116,7 +116,11 @@ interface BriefEmailPayload {
 	generatedAt: number;
 	items: BriefEmailItem[];
 	bundledCounts: { newsletter: number; notification: number; receipt: number };
+	/** The weekly Senders line, when this brief carries one (mail/senders/brief.ts). */
+	senders?: BriefEmailPayloadSenders;
 }
+
+export type BriefEmailPayloadSenders = Doc<'mailDailyBriefs'>['senders'];
 
 // ── The cron's reads ──────────────────────────────────────────────
 
@@ -150,7 +154,8 @@ export const listDue = internalQuery({
 				.first();
 			// No brief yet (a fresh mailbox before the build cron's first run) —
 			// send nothing rather than an empty digest that looks like a bug.
-			if (!brief || brief.items.length === 0) continue;
+			// The weekly Senders line is reason enough on its own.
+			if (!brief || (brief.items.length === 0 && !brief.senders)) continue;
 
 			// The item threads are independent rows — read them in one pass.
 			const itemRows = brief.items.slice(0, MAX_EMAIL_ITEMS);
@@ -191,6 +196,7 @@ export const listDue = internalQuery({
 				generatedAt: brief.generatedAt,
 				items,
 				bundledCounts: brief.bundledCounts,
+				...(brief.senders ? { senders: brief.senders } : {}),
 			});
 		}
 		return due;

@@ -61,9 +61,9 @@ const LINKS: Array<{ to: string; icon: string; labelKey: string; role: string }>
 		role: '',
 	},
 	{
-		to: '/dashboard/postbox/subscriptions',
-		icon: 'lucide:bell-off',
-		labelKey: 'components.postbox.postboxFolderRail.subscriptions',
+		to: '/dashboard/postbox/senders',
+		icon: 'lucide:at-sign',
+		labelKey: 'postbox.senders.rail',
 		role: '',
 	},
 	{

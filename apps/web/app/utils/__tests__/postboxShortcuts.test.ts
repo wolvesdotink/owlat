@@ -34,6 +34,18 @@ describe('resolvePostboxShortcut', () => {
 		expect(resolvePostboxShortcut('?')).toBe('help');
 	});
 
+	it('maps the sender chords: ⇧E auto-archives, ⇧O unsubscribes, ⇧U stays mark-unread', () => {
+		expect(resolvePostboxShortcut('E')).toBe('senderAutoArchive');
+		expect(resolvePostboxShortcut('O')).toBe('senderUnsubscribe');
+		// ⇧U keeps its shipped meaning in every map.
+		for (const preset of ['owlat', 'gmail', 'superhuman', 'outlook'] as const) {
+			applyShortcutPreferences(preset);
+			expect(resolvePostboxShortcut('U')).toBe('markUnread');
+			expect(resolvePostboxShortcut('O')).toBe('senderUnsubscribe');
+		}
+		applyShortcutPreferences('owlat');
+	});
+
 	it('maps the vocabulary added with the registry (n/p unread jumps, z undo)', () => {
 		expect(resolvePostboxShortcut('n')).toBe('nextUnread');
 		expect(resolvePostboxShortcut('p')).toBe('previousUnread');
@@ -63,7 +75,6 @@ describe('resolvePostboxShortcut', () => {
 		expect(resolvePostboxShortcut('Tab')).toBeNull();
 		// Capitalized variants of mapped keys are NOT mapped (Shift changes meaning).
 		expect(resolvePostboxShortcut('R')).toBeNull();
-		expect(resolvePostboxShortcut('E')).toBeNull();
 		expect(resolvePostboxShortcut('M')).toBeNull();
 	});
 });

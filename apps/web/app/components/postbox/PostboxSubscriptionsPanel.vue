@@ -8,10 +8,11 @@
  * and one "Unsubscribe and archive" that runs the selection through the same
  * RFC 8058 One-Click flow — sequenced server-side, one sender at a time.
  *
- * Only One-Click senders can be finished here. The rest are listed with a link
- * to their own page instead of being silently dropped or silently failed: the
- * batch never promises what the protocol cannot deliver, and the result summary
- * says exactly which senders still want attention.
+ * Only One-Click senders can be finished in the batch. The rest get their own
+ * button, one at a time (the page or a prefilled mail opens), instead of being
+ * silently dropped or silently failed. Either way it is the one unsubscribe
+ * path (`usePostboxSenderActions`): for personal mail the sender is also
+ * suppressed locally and the result recorded on the Senders page.
  */
 
 import { api } from '@owlat/api';
@@ -109,6 +110,16 @@ function statusLabel(status: PostboxSubscriptionOutcome['status']): string {
 	return t(`components.postbox.postboxSubscriptionsPanel.status.${status}`);
 }
 
+// A sender the batch cannot finish (no one-click) still goes through the one
+// unsubscribe path, one at a time: suppressed locally, page or mail opened.
+const senderActions = usePostboxSenderActions();
+async function unsubscribeManually(sender: PostboxSubscriptionSender) {
+	await senderActions.unsubscribe(
+		{ messageId: sender.actionMessageId as Id<'mailMessages'> },
+		{ mailboxId: props.mailboxId, name: sender.senderName || sender.senderEmail }
+	);
+}
+
 const now = Date.now();
 function lastReadLabel(sender: PostboxSubscriptionSender): string {
 	const message = subscriptionLastReadMessage(sender.lastReadAt, now);
@@ -144,7 +155,10 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 		</header>
 
 		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+			<Icon
+				name="lucide:loader-2"
+				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+			/>
 		</div>
 		<!-- A failed read is not "no subscriptions" (#721). -->
 		<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
@@ -220,15 +234,17 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 						<span class="mx-1">·</span>
 						{{ lastReadLabel(sender) }}
 					</span>
-					<a
-						v-if="sender.method !== 'one-click' && sender.httpUrl"
-						:href="sender.httpUrl"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="text-xs text-brand hover:underline shrink-0"
+					<!-- The one unsubscribe path: local suppression, then the sender's page
+					     or a prefilled mail, with the outcome recorded on the sender. -->
+					<button
+						v-if="sender.method !== 'one-click'"
+						type="button"
+						class="text-xs text-brand hover:underline shrink-0 disabled:opacity-50"
+						:disabled="senderActions.isBusy.value"
+						@click="unsubscribeManually(sender)"
 					>
 						{{ t('components.postbox.postboxSubscriptionsPanel.openPage') }}
-					</a>
+					</button>
 				</li>
 			</ul>
 

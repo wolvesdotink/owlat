@@ -15,6 +15,8 @@ export interface PostboxSubscriptionSender {
 	lastReceivedAt: number;
 	lastReadAt: number | null;
 	method: 'one-click' | 'http' | 'mailto';
+	/** Newest message offering `method`: what an unsubscribe acts on. */
+	actionMessageId: string;
 	httpUrl?: string;
 	mailtoUrl?: string;
 }

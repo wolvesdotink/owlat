@@ -33,7 +33,7 @@ describe('Postbox pages render the mailbox guard', () => {
 		expect(pages.map(({ page }) => page)).toEqual(
 			expect.arrayContaining([
 				'files.vue',
-				'subscriptions.vue',
+				'senders.vue',
 				'search.vue',
 				'contacts.vue',
 				join('[folder]', '[[messageId]].vue'),

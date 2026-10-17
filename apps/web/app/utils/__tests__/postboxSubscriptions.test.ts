@@ -23,6 +23,7 @@ function sender(overrides: Partial<PostboxSubscriptionSender> = {}): PostboxSubs
 		lastReceivedAt: NOW,
 		lastReadAt: null,
 		method: 'one-click',
+		actionMessageId: 'm1',
 		...overrides,
 	};
 }

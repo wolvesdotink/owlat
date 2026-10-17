@@ -13004,6 +13004,99 @@
 			"reservedBody": "{address} is reserved for you. It'll appear here automatically as soon as it's ready.",
 			"reservedHeading": "Your mailbox is being set up"
 		},
+		"senders": {
+			"pageTitle": "Senders",
+			"rail": "Senders",
+			"heading": "Senders",
+			"subtitle": "Who writes to you, and what Owlat does with their mail.",
+			"tabs": {
+				"review": "To review",
+				"all": "All",
+				"digest": "Digest",
+				"auto_archive": "Auto-archived",
+				"unsubscribed": "Unsubscribed"
+			},
+			"columns": {
+				"sender": "Sender",
+				"mails": "Mails, about 90 days",
+				"read": "You read",
+				"kind": "Kind",
+				"action": "What Owlat does"
+			},
+			"status": {
+				"keep": "Keep",
+				"digest": "Digest",
+				"auto_archive": "Auto-archive",
+				"unsubscribed": "Unsubscribe"
+			},
+			"kind": {
+				"person": "Person",
+				"newsletter": "Newsletter",
+				"notification": "Notification",
+				"receipt": "Receipt",
+				"promotion": "Promotion",
+				"spam": "Spam",
+				"other": "Other",
+				"unknown": "Not sorted yet"
+			},
+			"suggested": "Suggested: {status}",
+			"suggestion": {
+				"digest": "Digest",
+				"auto_archive": "Auto-archive",
+				"unsubscribe": "Unsubscribe"
+			},
+			"keepAsIs": "Keep as is",
+			"keepAsIsTitle": "Keep this sender as it is and stop suggesting a change",
+			"result": {
+				"confirmed": "Unsubscribed",
+				"failed": "Couldn't unsubscribe; mail from them is archived",
+				"opened": "Finish unsubscribing on the page we opened; mail from them is archived meanwhile"
+			},
+			"draftsPaused": "Drafts paused",
+			"resume": "Resume",
+			"readTitle": "You opened {opened} of {delivered}",
+			"readPercent": "{percent}% read",
+			"controlLabel": "What Owlat does with mail from {name}",
+			"empty": {
+				"review": "Nothing to review. Senders you rarely read show up here.",
+				"all": "No senders yet. They appear as new mail arrives.",
+				"digest": "No sender goes to your digest.",
+				"auto_archive": "No sender is auto-archived.",
+				"unsubscribed": "You haven't unsubscribed from anyone here."
+			},
+			"loadMore": "Load more",
+			"apply": "Apply {count} suggestion | Apply {count} suggestions",
+			"applyRule": "Suggestions: under 10% read in about 90 days → Digest; promotions you never read → Unsubscribe",
+			"dialog": {
+				"title": "Apply {count} suggestion? | Apply {count} suggestions?",
+				"description": "Each sender gets the status shown. Unsubscribing asks one-click senders to stop and archives their recent mail. You can change any of them later.",
+				"confirm": "Apply"
+			},
+			"operations": {
+				"setStatus": "Change sender",
+				"unsubscribe": "Unsubscribe",
+				"resumeDrafts": "Resume drafts",
+				"apply": "Apply suggestions",
+				"markOpened": "Count as read"
+			},
+			"toast": {
+				"archived": "Archived {count} recent mail from {name} | Archived {count} recent mails from {name}",
+				"status": {
+					"keep": "Mail from {name} stays where it lands",
+					"digest": "Mail from {name} now goes to your digest",
+					"auto_archive": "Mail from {name} is archived from now on"
+				},
+				"unsubscribed": "Unsubscribed from {name}",
+				"localOnly": "{name} offers no unsubscribe link; their mail is archived from now on",
+				"draftsResumed": "Drafts resumed",
+				"applied": "Applied {count} suggestion | Applied {count} suggestions"
+			},
+			"confirmUnsubscribe": "Unsubscribe from {name}? Their mail will be archived from now on.",
+			"shortcuts": {
+				"autoArchive": "Auto-archive this sender's mail",
+				"unsubscribe": "Unsubscribe from this sender"
+			}
+		},
 		"reader": {
 			"header": {
 				"reply": "Reply",
