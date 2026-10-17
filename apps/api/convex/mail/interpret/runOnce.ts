@@ -37,7 +37,14 @@ import { interpretRoot } from './verify';
 import { planVerification, verifyHoldPlanOf, verifyRouted } from './verifyRoute';
 import { apply as applyRecord } from './runApply';
 import type { ReserveRunAllocations } from '../../aiRouting/admission';
-import { arrivalAnswer, countArrival, decideArrival, isArrivalRead } from './arrivalRun';
+import {
+	arrivalAnswer,
+	countArrival,
+	decideArrival,
+	isArrivalRead,
+	settledAnswer,
+} from './arrivalRun';
+import type { InterpretGateVerdict } from './gate';
 import { runGist } from './gist';
 import { isRetryDue } from './retry';
 import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
@@ -229,7 +236,21 @@ export async function runOnce(
 			...(sourceVersion ? { sourceVersion } : {}),
 		};
 
-		const gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
+		// A display-only arrival read asks the gate in a mutation that counts it
+		// on a budget refusal (Sol r2 F4); everything else asks as before.
+		let gate: InterpretGateVerdict;
+		if (countOnRefusal && arrivalArgs) {
+			const gated = await ctx.runMutation(internal.mail.interpret.arrivalHold.gateOrCount, {
+				source: { kind: 'mail', id: arrivalArgs.source.id },
+				...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
+				deletionEpoch: loaded.brief.deletionEpoch,
+				mode,
+			});
+			if (gated.isCounted) return settledAnswer('count');
+			gate = gated.verdict;
+		} else {
+			gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
+		}
 		if (!gate.isAllowed) {
 			if (gate.code === 'budget' && countOnRefusal) return await countOnRefusal();
 			const gateRefusal =
