@@ -10,6 +10,7 @@
  * applies it as one operation.
  */
 import { api } from '@owlat/api';
+import { usePostboxArrivalUndo } from '~/composables/postbox/usePostboxArrivalUndo';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	APPLY_SUGGESTIONS_MAX,
@@ -26,7 +27,6 @@ const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
-const { showToast } = useToast();
 const actions = usePostboxSenderActions();
 
 const tab = computed<SenderTab>({
@@ -85,6 +85,7 @@ const suggestions = computed(() =>
 	(review.data.value?.rows ?? []).filter((row) => row.suggestion).slice(0, APPLY_SUGGESTIONS_MAX)
 );
 const isDialogOpen = ref(false);
+const { offerUndo } = usePostboxArrivalUndo();
 const applyOp = useBackendOperation(api.mail.senders.suggestions.applySuggestions, {
 	label: () => t('postbox.senders.operations.apply'),
 });
@@ -100,7 +101,10 @@ async function applySuggestions() {
 	isDialogOpen.value = false;
 	if (!result.ok) return;
 	const applied = result.result.applied;
-	showToast(t('postbox.senders.toast.applied', { count: applied }, applied));
+	offerUndo(
+		t('postbox.senders.toast.applied', { count: applied }, applied),
+		result.result.operationId
+	);
 }
 </script>
 
