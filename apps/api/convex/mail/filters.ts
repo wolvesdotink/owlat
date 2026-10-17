@@ -24,6 +24,7 @@ import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors'
 import { removeFilterRunJob } from './filterRun';
 import { evalMessageFromRow, filterConditionsMatch } from './filtersEval';
 import { validateFilterForSave } from './filterValidation';
+import { openMessageBody } from '../lib/messageBody';
 import {
 	mailFilterActionValidator,
 	mailFilterConditionValidator,
@@ -38,10 +39,16 @@ export const list = publicQuery({
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
-		return ctx.db
+		const rows = await ctx.db
 			.query('mailFilters')
 			.withIndex('by_mailbox_and_priority', (q) => q.eq('mailboxId', args.mailboxId))
 			.collect(); // bounded: one mailbox's filters
+		// A plain-language rule's text is sealed at rest (§6.1).
+		return await Promise.all(
+			rows.map(async (row) =>
+				row.sourceText ? { ...row, sourceText: await openMessageBody(row.sourceText) } : row
+			)
+		);
 	},
 });
 

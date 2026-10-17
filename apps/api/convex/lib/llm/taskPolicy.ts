@@ -326,7 +326,7 @@ const ENTRIES = {
 		tiers: ['fast'],
 		...interactive,
 		...oneShot,
-		features: ['handling_rule_compile'],
+		features: ['handling_rule_compile', 'filter_rule_compile'],
 	}),
 	'knowledge.extract': language({
 		...LARGE_OUTPUT,

@@ -17,6 +17,7 @@ import {
 	type FilterAction,
 } from '~/composables/postbox/usePostboxFilters';
 import { moveSibling } from '~/utils/postboxReorder';
+import { isPlainLanguageRule } from '~/composables/postbox/usePostboxRules';
 
 const { t } = useI18n();
 
@@ -58,6 +59,15 @@ interface DraftFilter {
 }
 
 const editor = ref<DraftFilter | null>(null);
+
+// Plain-language and AI rules live in their own section above (read on
+// arrival, SPEC §6.1) and run after the manual filters; this list is the rest.
+const manualFilters = computed(() => filters.value.filter((f) => !isPlainLanguageRule(f)));
+const ruleIds = computed(() =>
+	filters.value.filter((f) => isPlainLanguageRule(f)).map((f) => f._id)
+);
+// Plain-language rules exist for personal mailboxes only.
+const isPersonalMailbox = computed(() => currentMailbox.value?.scope !== 'shared');
 
 function startCreate() {
 	editor.value = {
@@ -174,20 +184,20 @@ async function save() {
 const draggingId = ref<Id<'mailFilters'> | null>(null);
 
 async function moveFilter(filterId: Id<'mailFilters'>, delta: -1 | 1) {
-	const ids = filters.value.map((f) => f._id);
+	const ids = manualFilters.value.map((f) => f._id);
 	const next = moveSibling(ids, filterId, delta);
 	if (next.every((id, i) => id === ids[i])) return;
-	await reorder(next as Id<'mailFilters'>[]);
+	await reorder([...(next as Id<'mailFilters'>[]), ...ruleIds.value]);
 }
 
 async function dropOn(targetId: Id<'mailFilters'>) {
 	const sourceId = draggingId.value;
 	draggingId.value = null;
 	if (!sourceId || sourceId === targetId) return;
-	const ids = filters.value.map((f) => f._id).filter((id) => id !== sourceId);
+	const ids = manualFilters.value.map((f) => f._id).filter((id) => id !== sourceId);
 	const at = ids.indexOf(targetId);
 	ids.splice(at === -1 ? ids.length : at, 0, sourceId);
-	await reorder(ids as Id<'mailFilters'>[]);
+	await reorder([...ids, ...ruleIds.value]);
 }
 
 const filterToRemove = ref<Id<'mailFilters'> | null>(null);
@@ -208,6 +218,14 @@ async function confirmRemove() {
 
 <template>
 	<div>
+		<PostboxPlainRules
+			v-if="mailboxId && isPersonalMailbox && !editor"
+			:mailbox-id="mailboxId"
+			:filters="filters"
+			@toggle="setEnabled"
+			@remove="(id: Id<'mailFilters'>) => (filterToRemove = id)"
+		/>
+
 		<header
 			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
 		>
@@ -254,12 +272,12 @@ async function confirmRemove() {
 			</div>
 			<!-- A failed read is not an empty list (#721). -->
 			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
-			<div v-else-if="filters.length === 0" class="p-8 text-center text-text-secondary">
+			<div v-else-if="manualFilters.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.filters.empty') }}
 			</div>
 			<ul v-else class="divide-y divide-border-subtle">
 				<li
-					v-for="f in filters"
+					v-for="f in manualFilters"
 					:key="f._id"
 					class="px-5 py-3 flex items-center justify-between gap-3"
 					:class="{ 'opacity-50': draggingId === f._id }"

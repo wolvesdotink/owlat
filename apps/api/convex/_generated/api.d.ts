@@ -1817,6 +1817,8 @@ import type * as mail_rules_ruleApply from '../mail/rules/ruleApply.js';
 import type * as mail_rules_rulesPass from '../mail/rules/rulesPass.js';
 import type * as mail_rules_dryRun from '../mail/rules/dryRun.js';
 import type * as mail_rules_dryRunData from '../mail/rules/dryRunData.js';
+import type * as mail_filterCompile from '../mail/filterCompile.js';
+import type * as mail_filterCompileStore from '../mail/filterCompileStore.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3630,6 +3632,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/rules/rulesPass': typeof mail_rules_rulesPass;
 	'mail/rules/dryRun': typeof mail_rules_dryRun;
 	'mail/rules/dryRunData': typeof mail_rules_dryRunData;
+	'mail/filterCompile': typeof mail_filterCompile;
+	'mail/filterCompileStore': typeof mail_filterCompileStore;
 }>;
 
 /**
