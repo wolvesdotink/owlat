@@ -20,8 +20,9 @@
  *
  * A message row also renders chips that live on its THREAD, not on the message:
  * the follow-up watch, the mute marker, the back-from-snooze marker and the
- * smart-inbox category, and the thread brief's top item (`briefTop`, opened
- * from its at-rest seal once per thread). {@link attachThreadState} joins them
+ * smart-inbox category, the thread brief's top item (`briefTop`, opened
+ * from its at-rest seal once per thread) and the Priority view's placement
+ * (read on arrival, SPEC §3). {@link attachThreadState} joins them
  * in so no client has to join a second, capped thread subscription to recover
  * a field the server already read.
  *
@@ -33,6 +34,7 @@ import type { QueryCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
 import type { mailCategoryLabelValidator } from '../../lib/literalValidators';
 import { batchGet } from '../../_utils/batchLoader';
+import type { Placement } from '@owlat/shared/arrival';
 import { modeOfMailbox, openBriefTop, type BriefTopRow } from '../interpret/briefTop';
 
 /**
@@ -120,7 +122,21 @@ export type RowThreadState = {
 	snoozeReturnedAt?: number;
 	category?: Infer<typeof mailCategoryLabelValidator>;
 	briefTop?: BriefTopRow;
+	/**
+	 * Where the Priority view groups the row (SPEC §3): the thread's own
+	 * placement override, else the arrival projection's placement. Absent
+	 * until the thread has an arrival projection; the view then falls back to
+	 * its category grouping. Read off the thread doc this page already loaded.
+	 */
+	placement?: Placement;
 };
+
+/** The thread's effective Priority placement: the override wins (SPEC §2.8 step 1). */
+function threadPlacement(
+	thread: Pick<Doc<'mailThreads'>, 'arrival' | 'placementOverride'> | null
+): Placement | undefined {
+	return thread?.placementOverride?.placement ?? thread?.arrival?.placement;
+}
 
 export async function attachThreadState(
 	ctx: QueryCtx,
@@ -153,6 +169,7 @@ export async function attachThreadState(
 		const followUp = thread?.followUp;
 		const category = thread?.category?.label;
 		const briefTop = briefTops.get(m.threadId);
+		const placement = threadPlacement(thread);
 		const state: RowThreadState = {
 			...(followUp
 				? {
@@ -169,6 +186,7 @@ export async function attachThreadState(
 				: {}),
 			...(category !== undefined ? { category } : {}),
 			...(briefTop !== undefined ? { briefTop } : {}),
+			...(placement !== undefined ? { placement } : {}),
 		};
 		out.push({ ...toMailListRow(m), ...state });
 	}
