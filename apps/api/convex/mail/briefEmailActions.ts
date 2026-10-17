@@ -23,7 +23,7 @@ import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
 import { buildMessageId, buildRfc822, type DraftRow } from './rfc822';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
-import { MAX_EMAIL_ITEMS, type BriefEmailItem } from './briefEmail';
+import { MAX_EMAIL_ITEMS, type BriefEmailItem, type BriefEmailPayloadSenders } from './briefEmail';
 import { dailyBriefEmailCopy, systemEmailLocale } from '../lib/systemEmailCopy';
 
 /** Snippet length that matches what the delivery pipeline stores elsewhere. */
@@ -108,6 +108,39 @@ function briefEmailBlocks(input: {
 	return blocks;
 }
 
+/** The weekly Senders line (mail/senders/brief.ts): a small heading, its lines, one link. */
+function sendersBlocks(input: {
+	senders: NonNullable<BriefEmailPayloadSenders>;
+	copy: ReturnType<typeof dailyBriefEmailCopy>;
+	baseUrl: string;
+}): EditorBlock[] {
+	const { senders, copy } = input;
+	const lines = [
+		...(senders.rarelyRead > 0 ? [copy.rarelyReadLine(senders.rarelyRead)] : []),
+		...senders.openedInUpdates.map((sender) =>
+			copy.openedInUpdatesLine(sender.displayName ?? sender.address)
+		),
+	];
+	const href = `${input.baseUrl}/dashboard/postbox/senders?tab=review`;
+	const html = [
+		`<strong>${escapeHtml(copy.sendersHeading)}</strong>`,
+		...lines.map((line) => escapeHtml(line)),
+		`<a href="${escapeHtml(href)}">${escapeHtml(copy.sendersLink)}</a>`,
+	].join('<br>');
+	return [
+		{
+			id: 'senders',
+			type: 'text',
+			content: {
+				html: `<p style="margin:16px 0 0">${html}</p>`,
+				blockType: 'paragraph',
+				fontSize: 13,
+				textColor: '#444',
+			},
+		},
+	];
+}
+
 /**
  * Deliver every brief that is due in this tick.
  *
@@ -140,6 +173,7 @@ export const deliverDueBriefs = internalAction({
 					emptyLine: copy.emptyLine,
 					baseUrl,
 				});
+				if (entry.senders) blocks.push(...sendersBlocks({ senders: entry.senders, copy, baseUrl }));
 				const bodyHtml = renderEmailHtml(blocks);
 				const bodyText = renderPlainText(blocks);
 				const domain = entry.address.split('@')[1] ?? 'localhost';

@@ -113,6 +113,11 @@ interface DailyBriefEmailCopy {
 	heading: string;
 	emptyLine: string;
 	bundledLine: (total: number) => string;
+	/** The weekly Senders line (mail/senders/brief.ts). */
+	sendersHeading: string;
+	rarelyReadLine: (count: number) => string;
+	openedInUpdatesLine: (sender: string) => string;
+	sendersLink: string;
 }
 
 const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
@@ -127,6 +132,14 @@ const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 			total === 1
 				? '1 low-signal message was bundled away and is waiting in your inbox.'
 				: `${total} low-signal messages were bundled away and are waiting in your inbox.`,
+		sendersHeading: 'Your senders this week',
+		rarelyReadLine: (count) =>
+			count === 1
+				? '1 sender you rarely read is waiting for a decision.'
+				: `${count} senders you rarely read are waiting for a decision.`,
+		openedInUpdatesLine: (sender) =>
+			`You open everything from ${sender} in Updates. Want it in Today instead?`,
+		sendersLink: 'Review your senders',
 	},
 	de: {
 		subject: (count) =>
@@ -139,6 +152,13 @@ const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 			total === 1
 				? '1 Nachricht mit geringer Relevanz wurde gebündelt und wartet in deinem Posteingang.'
 				: `${total} Nachrichten mit geringer Relevanz wurden gebündelt und warten in deinem Posteingang.`,
+		sendersHeading: 'Deine Absender diese Woche',
+		rarelyReadLine: (count) =>
+			count === 1
+				? '1 Absender, den du selten liest, wartet auf deine Entscheidung.'
+				: `${count} Absender, die du selten liest, warten auf deine Entscheidung.`,
+		openedInUpdatesLine: (sender) => `Du öffnest alles von ${sender} in Updates. Lieber in Heute?`,
+		sendersLink: 'Absender ansehen',
 	},
 };
 

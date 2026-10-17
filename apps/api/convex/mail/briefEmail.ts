@@ -116,7 +116,11 @@ interface BriefEmailPayload {
 	generatedAt: number;
 	items: BriefEmailItem[];
 	bundledCounts: { newsletter: number; notification: number; receipt: number };
+	/** The weekly Senders line, when this brief carries one (mail/senders/brief.ts). */
+	senders?: BriefEmailPayloadSenders;
 }
+
+export type BriefEmailPayloadSenders = Doc<'mailDailyBriefs'>['senders'];
 
 // ── The cron's reads ──────────────────────────────────────────────
 
@@ -191,6 +195,7 @@ export const listDue = internalQuery({
 				generatedAt: brief.generatedAt,
 				items,
 				bundledCounts: brief.bundledCounts,
+				...(brief.senders ? { senders: brief.senders } : {}),
 			});
 		}
 		return due;
