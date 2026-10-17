@@ -28,7 +28,7 @@
  * arrives already labelled; only the ambiguous remainder schedules the LLM.
  */
 
-import { v, type Infer } from 'convex/values';
+import { v, type Infer, type ObjectType } from 'convex/values';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { postboxMutation } from './_helpers';
@@ -269,25 +269,40 @@ export const getThreadCategoryContext = internalQuery({
  * non-user result is dropped — the newer ingest re-enqueued its own check. A
  * `user` override always applies (it is authoritative and set synchronously).
  */
+/** `applyCategory`'s arguments (also carried by R2's one combined commit, `arrival/r2.ts`). */
+export const applyCategoryArgs = {
+	threadId: v.id('mailThreads'),
+	expectedLatestMessageId: v.optional(v.id('mailMessages')),
+	label: mailCategoryLabelValidator,
+	source: mailCategorySourceValidator,
+};
+
+/**
+ * Write the category unless a newer ingest made the call stale (an owner's
+ * label always lands). True when it was written.
+ */
+export async function applyCategoryIfCurrent(
+	ctx: MutationCtx,
+	args: ObjectType<typeof applyCategoryArgs>
+): Promise<boolean> {
+	const thread = await ctx.db.get(args.threadId);
+	if (!thread) return false;
+	if (
+		args.source !== 'user' &&
+		args.expectedLatestMessageId !== undefined &&
+		thread.latestMessageId !== undefined &&
+		thread.latestMessageId !== args.expectedLatestMessageId
+	) {
+		return false; // stale — a newer ingest re-enqueued its own check
+	}
+	await writeCategory(ctx, thread, args.label, args.source);
+	return true;
+}
+
 export const applyCategory = internalMutation({
-	args: {
-		threadId: v.id('mailThreads'),
-		expectedLatestMessageId: v.optional(v.id('mailMessages')),
-		label: mailCategoryLabelValidator,
-		source: mailCategorySourceValidator,
-	},
-	handler: async (ctx, args) => {
-		const thread = await ctx.db.get(args.threadId);
-		if (!thread) return;
-		if (
-			args.source !== 'user' &&
-			args.expectedLatestMessageId !== undefined &&
-			thread.latestMessageId !== undefined &&
-			thread.latestMessageId !== args.expectedLatestMessageId
-		) {
-			return; // stale — a newer ingest re-enqueued its own check
-		}
-		await writeCategory(ctx, thread, args.label, args.source);
+	args: applyCategoryArgs,
+	handler: async (ctx, args): Promise<void> => {
+		await applyCategoryIfCurrent(ctx, args);
 	},
 });
 

@@ -30,11 +30,9 @@ export const isOfferable = internalQuery({
 			now: Date.now(),
 			direction: 'inbound',
 		});
-		// A category still settling decides on what the thread says now.
-		const signals =
-			'signals' in settled
-				? settled.signals
-				: { ...row.eligibility, ...(thread?.category ? { category: thread.category.label } : {}) };
-		return isInterpretationEligible(signals, { direction: 'inbound' }).isEligible;
+		// A stranger's bulk mail whose category is still settling is not read
+		// yet by interpretation either: nothing is offered (final review r2 F1).
+		if (!('signals' in settled)) return false;
+		return isInterpretationEligible(settled.signals, { direction: 'inbound' }).isEligible;
 	},
 });

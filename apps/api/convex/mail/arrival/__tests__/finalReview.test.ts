@@ -18,7 +18,12 @@ import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { enableFeatures } from '../../../__tests__/factories';
 import { gistOutputSchema } from '../../interpret/gist';
-import { modules, seedMailThread, type Test } from '../../interpret/__tests__/interpret.testlib';
+import {
+	addMessageToThread,
+	modules,
+	seedMailThread,
+	type Test,
+} from '../../interpret/__tests__/interpret.testlib';
 import { captureInterpretSource, loadInterpretSource } from '../../interpret/sources';
 import { writeArrivalRecord } from '../records';
 import { refreshArrivalProjection } from '../projection';
@@ -227,5 +232,94 @@ describe('final review F4: pending rule questions are depth-decision work', () =
 			errorCode: 'arrival_settled_count',
 		});
 		expect(gistCalls()).toBe(0);
+	});
+});
+
+describe('final review r2 F1: a stranger bulk mail still settling offers nothing', () => {
+	it('isOfferable is false while the category is provisional, true once it settles', async () => {
+		const t = setup();
+		const { messageId, threadId, source } = await waiting(t);
+		await t.run(async (ctx) => {
+			const row = (await loadInterpretSource(ctx, source))!;
+			await ctx.db.patch(row._id, {
+				eligibility: { ...row.eligibility, isBulkHeaderPresent: true, isSenderKnown: false },
+			});
+			await ctx.db.patch(threadId, {
+				category: { label: 'other', source: 'heuristic', classifiedAt: Date.now() },
+			});
+		});
+		expect(await t.query(internal.mail.arrival.offerable.isOfferable, { messageId })).toBe(false);
+		// Settled as a person's mail: offered.
+		await t.run((ctx) =>
+			ctx.db.patch(threadId, {
+				category: { label: 'person', source: 'llm', classifiedAt: Date.now() },
+			})
+		);
+		expect(await t.query(internal.mail.arrival.offerable.isOfferable, { messageId })).toBe(true);
+	});
+});
+
+describe('final review r2 F2: the combined R2 commit writes the category first', () => {
+	it('category, answers and the release land in one mutation', async () => {
+		const t = setup();
+		const { threadId, messageId, mailboxId, source } = await waiting(t);
+		const filterId = await seedQuestion(t, mailboxId, messageId);
+		await t.run((ctx) =>
+			ctx.db.patch(threadId, {
+				category: { label: 'other', source: 'heuristic', classifiedAt: Date.now() },
+			})
+		);
+		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
+			messageId,
+			answers: [{ filterId, revision: 1, answer: false }],
+			category: { threadId, label: 'receipt', source: 'llm' },
+		});
+		const state = await t.run(async (ctx) => ({
+			thread: (await ctx.db.get(threadId))!,
+			row: await loadInterpretSource(ctx, source),
+		}));
+		expect(state.thread.category).toMatchObject({ label: 'receipt', source: 'llm' });
+		expect(state.row?.categoryPendingAt).toBeUndefined();
+		expect(await pendingRuns(t)).toBe(1);
+	});
+
+	it('a stale category or a missing one releases nothing: the wait keeps its bound', async () => {
+		const t = setup();
+		const { threadId, messageId, mailboxId, source } = await waiting(t);
+		const filterId = await seedQuestion(t, mailboxId, messageId);
+		const newer = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{
+				text: 'A newer message.',
+				receivedAt: Date.UTC(2026, 9, 7, 12, 0),
+			}
+		);
+		await t.run((ctx) => ctx.db.patch(threadId, { latestMessageId: newer }));
+		// The refinement read the thread before the newer message: its category is stale.
+		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
+			messageId,
+			answers: [{ filterId, revision: 1, answer: false }],
+			category: { threadId, expectedLatestMessageId: messageId, label: 'receipt', source: 'llm' },
+		});
+		expect((await t.run((ctx) => loadInterpretSource(ctx, source)))?.categoryPendingAt).toEqual(
+			expect.any(Number)
+		);
+		expect(await pendingRuns(t)).toBe(0);
+	});
+
+	it('answers committed without the category (the model gave none) release nothing', async () => {
+		const t = setup();
+		const { messageId, mailboxId, source } = await waiting(t);
+		const filterId = await seedQuestion(t, mailboxId, messageId);
+		await t.mutation(internal.mail.arrival.r2.commitArrivalAiAnswers, {
+			messageId,
+			answers: [{ filterId, revision: 1, answer: false }],
+			isReleasing: false,
+		});
+		expect((await t.run((ctx) => loadInterpretSource(ctx, source)))?.categoryPendingAt).toEqual(
+			expect.any(Number)
+		);
+		expect(await pendingRuns(t)).toBe(0);
 	});
 });
