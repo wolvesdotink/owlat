@@ -7,7 +7,7 @@
  *     the sender name, which in the full card opens the sender profile.
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
@@ -96,12 +96,30 @@ const has = (w: ReturnType<typeof mountCard>, id: string) =>
 	w.find(`[data-testid="${id}"]`).exists();
 
 describe('PostboxReaderMessage reduced', () => {
-	it('reports its own message as shown while expanded (Senders open count)', () => {
+	it('reports its own message as read once its rendered body is on screen', async () => {
 		senderOpen.mockClear();
 		mountCard(true);
+		await nextTick();
 		const [messageId, isShown] = senderOpen.mock.calls[0] as [() => string, () => boolean];
 		expect(messageId()).toBe('msg_1');
 		expect(isShown()).toBe(true);
+	});
+
+	it('does not count an expanded card whose body is off screen', async () => {
+		senderOpen.mockClear();
+		// Every element sits far below the viewport, and no observer callback
+		// ever reports it intersecting.
+		const rect = vi
+			.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+			.mockReturnValue({ top: 5000, bottom: 5400, left: 0, right: 600 } as DOMRect);
+		try {
+			mountCard(true);
+			await nextTick();
+			const [, isShown] = senderOpen.mock.calls[0] as [() => string, () => boolean];
+			expect(isShown()).toBe(false);
+		} finally {
+			rect.mockRestore();
+		}
 	});
 
 	it('drops the action row and keeps the body', () => {

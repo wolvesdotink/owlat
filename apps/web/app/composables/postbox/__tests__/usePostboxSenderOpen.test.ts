@@ -4,7 +4,7 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
-import { usePostboxSenderOpen } from '../usePostboxSenderOpen';
+import { useElementShownOnce, usePostboxSenderOpen } from '../usePostboxSenderOpen';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, { get: () => anyPath, apply: () => anyPath });
@@ -53,5 +53,60 @@ describe('usePostboxSenderOpen', () => {
 			{ messageId: 'm-1' },
 			{ messageId: 'm-2' },
 		]);
+	});
+});
+
+describe('useElementShownOnce', () => {
+	/** A controllable IntersectionObserver: `fire(true)` reports the element on screen. */
+	function fakeObserver() {
+		const instances: Array<{ fire: (isIntersecting: boolean) => void }> = [];
+		vi.stubGlobal(
+			'IntersectionObserver',
+			class {
+				constructor(private readonly callback: IntersectionObserverCallback) {
+					instances.push({
+						fire: (isIntersecting) =>
+							this.callback(
+								[{ isIntersecting } as IntersectionObserverEntry],
+								this as unknown as IntersectionObserver
+							),
+					});
+				}
+				observe() {}
+				disconnect() {}
+			}
+		);
+		return instances;
+	}
+
+	function element(top: number) {
+		const el = document.createElement('div');
+		el.getBoundingClientRect = () => ({ top, bottom: top + 400 }) as DOMRect;
+		return el;
+	}
+
+	it('is not shown while the body is unrendered or off screen, then latches once visible', async () => {
+		const observers = fakeObserver();
+		const target = ref<HTMLElement | null>(null);
+		const shown = useElementShownOnce(target);
+		await nextTick();
+		expect(shown.value).toBe(false);
+
+		target.value = element(5000);
+		await nextTick();
+		expect(shown.value).toBe(false);
+
+		observers.at(-1)!.fire(false);
+		expect(shown.value).toBe(false);
+		observers.at(-1)!.fire(true);
+		expect(shown.value).toBe(true);
+	});
+
+	it('is shown at once for a body already on screen', async () => {
+		fakeObserver();
+		const target = ref<HTMLElement | null>(element(10));
+		const shown = useElementShownOnce(target);
+		await nextTick();
+		expect(shown.value).toBe(true);
 	});
 });

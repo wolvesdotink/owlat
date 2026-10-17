@@ -28,6 +28,7 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
+import { useElementShownOnce } from '~/composables/postbox/usePostboxSenderOpen';
 import type { PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
@@ -144,10 +145,18 @@ const {
 	active: () => props.expanded,
 });
 
-// Senders (§5): a shown body is a read for its sender's counter; collapsed is not.
+// Senders (§5): a body actually on screen is a read for its sender's counter.
+// Collapsed is not, and neither is an expanded card whose body is still the
+// lazy placeholder or sits off screen: the ref only binds once the real body
+// renders, and it counts once that element intersects the viewport.
+const shownBody = ref<{ $el?: unknown } | null>(null);
+const shownBodyEl = computed(() =>
+	shownBody.value?.$el instanceof HTMLElement ? shownBody.value.$el : null
+);
+const isBodyShown = useElementShownOnce(shownBodyEl);
 usePostboxSenderOpen(
 	() => props.message._id,
-	() => props.expanded
+	() => props.expanded && isBodyShown.value
 );
 
 /**
@@ -453,6 +462,7 @@ const renderToggleLabel = computed(() =>
 			:eager="eagerBody"
 		>
 			<PostboxMessageBody
+				ref="shownBody"
 				:message="msg"
 				:force-light="forcedLight"
 				:sender-images-allowed="imagesAllowed"
