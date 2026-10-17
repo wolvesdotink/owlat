@@ -35,7 +35,7 @@ vi.mock('~/utils/postboxTodayPartition', async (importOriginal) => {
 	return { ...actual, partitionTodayMessages: vi.fn(actual.partitionTodayMessages) };
 });
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
-import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
+import { POSTBOX_PRIORITY_BRIEF_LINES, POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -74,7 +74,11 @@ const routerReplace = vi.fn((loc: { hash?: string }) => {
 	routeState.hash = loc.hash ?? '';
 });
 
+// The viewer's "Show the brief above conversations" (isAutoSummarizeOn).
+const isBriefShown = ref(true);
+
 beforeAll(() => {
+	vi.stubGlobal('usePostboxSettings', () => ({ autoSummarize: isBriefShown }));
 	vi.stubGlobal('usePostboxThreads', () => feed);
 	vi.stubGlobal('usePostboxReplyQueue', () => queue);
 	vi.stubGlobal('useConvexQuery', convexQuery);
@@ -121,6 +125,7 @@ const threadListStub = defineComponent({
 	setup(props) {
 		// The rows render as one line under the Priority view.
 		const isPriority = inject(POSTBOX_PRIORITY_ROWS, false);
+		const briefLines = inject(POSTBOX_PRIORITY_BRIEF_LINES, null);
 		return () =>
 			h('div', {
 				class: 'thread-list',
@@ -129,6 +134,7 @@ const threadListStub = defineComponent({
 				'data-selectable': String(props.selectable),
 				'data-active': props.activeMessageId ?? '',
 				'data-priority': String(isPriority),
+				'data-brief-lines': String(briefLines?.value),
 			});
 	},
 });
@@ -171,6 +177,7 @@ afterEach(() => {
 	for (const w of mountedWrappers) w.unmount();
 	mountedWrappers.length = 0;
 	feed.error.value = null;
+	isBriefShown.value = true;
 });
 
 function mountView(extraProps: Record<string, unknown> = {}) {
@@ -485,5 +492,21 @@ describe('PostboxTodayView', () => {
 		expect(digest.text()).toContain('in your digest');
 		await digest.trigger('click');
 		expect(w.emitted('view-digest')).toHaveLength(1);
+	});
+
+	it('shows subjects instead of AI lines when the viewer turned the brief off', async () => {
+		feed.messages.value = [todayMsg('m-today')];
+		queue.items.value = [queueItem('q1', { askSummary: 'Send the deck by noon' })];
+		const w = mountView();
+		const queueRow = () => w.get('[data-testid="priority-queue"] li').text();
+		expect(queueRow()).toContain('Send the deck by noon');
+		expect(w.get('.thread-list').attributes('data-brief-lines')).toBe('true');
+
+		isBriefShown.value = false;
+		await nextTick();
+		expect(queueRow()).toContain('Need the deck');
+		expect(queueRow()).not.toContain('Send the deck by noon');
+		// The thread rows read the same switch (PostboxThreadRowBody).
+		expect(w.get('.thread-list').attributes('data-brief-lines')).toBe('false');
 	});
 });

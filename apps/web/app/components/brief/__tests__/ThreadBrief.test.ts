@@ -214,7 +214,7 @@ describe('ThreadBrief', () => {
 		});
 		const banner = w.get('[data-testid="brief-incomplete"]');
 		expect(banner.text()).toContain('Partly read.');
-		expect(banner.text()).toContain('2 of 3 messages are in this overview.');
+		expect(banner.text()).toContain('2 of 3 messages are in this brief.');
 		expect(w.get('[data-testid="brief-items-forYou-empty"]').text()).toBe(
 			'Nothing found in the part that was read.'
 		);

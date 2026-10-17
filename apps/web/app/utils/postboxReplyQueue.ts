@@ -171,7 +171,7 @@ export function replyQueueHeadline(
 	item: Pick<ReplyQueueItem, 'askSummary' | 'subject' | 'kind' | 'waitingOn'> &
 		Partial<Pick<ReplyQueueItem, 'fromAddress' | 'fromName' | 'briefTop'>>,
 	locale?: string,
-	opts: { isShared?: boolean } = {}
+	opts: { isShared?: boolean; showBrief?: boolean } = {}
 ): ReplyQueueText {
 	// Follow-up items invert the framing: WE are waiting on THEM. The server
 	// resolves the counterpart's name when it knows one; the address is the fallback.
@@ -181,6 +181,8 @@ export function replyQueueHeadline(
 			? { key: 'shared.postboxReplyQueue.waitingOn', params: { who } }
 			: 'shared.postboxReplyQueue.waitingOnReply';
 	}
+	// The viewer turned the brief off: no AI line, the subject.
+	if (opts.showBrief === false) return item.subject.trim() || 'shared.postboxReplyQueue.noSubject';
 	const top = item.briefTop?.top;
 	if (top && top.responsibility !== 'them') {
 		const text = (locale?.toLowerCase().startsWith('de') ? top.text.de : top.text.en).trim();

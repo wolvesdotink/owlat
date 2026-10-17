@@ -10,13 +10,14 @@
  * "Senders page" goes to the sender list. Reasons arrive as keys and render
  * from `postbox.<key>`; a key this build has no copy for is left out.
  *
- * Anchored under the element the click came from (the strip link, the header,
- * a Priority row's hover button); Esc and a click elsewhere close it.
+ * Anchored to the element the click came from (the strip link, the header,
+ * a Priority row's hover button), below it or flipped above when there is no
+ * room; Esc and a click elsewhere close it.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { Placement } from '@owlat/shared/arrival';
-import { computed, nextTick, ref, useId, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import type { PostboxWhyHereTarget } from '~/composables/postbox/usePostboxWhyHere';
 import {
 	destinationForPlacement,
@@ -24,6 +25,7 @@ import {
 	type PostboxFixTarget,
 } from '~/composables/postbox/usePostboxArrivalExplain';
 import { useLocalized } from '~/composables/useLocalized';
+import { isAnchorInView, placeAnchoredPanel } from '~/utils/anchoredPanelPlacement';
 
 const target = defineModel<PostboxWhyHereTarget | null>('target', { required: true });
 const emit = defineEmits<{ fix: [target: PostboxFixTarget] }>();
@@ -50,7 +52,9 @@ let returnFocus: HTMLElement | null = null;
 function restoreFocus(anchor: HTMLElement | null) {
 	for (const el of [anchor, returnFocus]) {
 		if (!el?.isConnected) continue;
-		el.focus();
+		// An anchor scrolled out of view takes focus where it is, without
+		// scrolling the page back to it.
+		el.focus({ preventScroll: true });
 		if (document.activeElement === el) break;
 	}
 	returnFocus = null;
@@ -73,14 +77,63 @@ const { data: why, isLoading } = useConvexQuery(api.mail.arrival.explain.forThre
 	target.value ? { threadId: target.value.threadId as Id<'mailThreads'> } : 'skip'
 );
 
-/** Under the anchor, kept on screen; centred near the top without one. */
+/**
+ * Under the anchor; above it when there is no room below (a lower row on a
+ * short window); capped with internal scroll when it fits on neither side.
+ * Centred near the top without an anchor. Placed once the panel has rendered
+ * (it is measured), again when the record arrives (it grows), and on resize
+ * and on any scroll outside the panel, always inside the window. An anchor
+ * that a scroll or resize took out of the window closes the popover rather
+ * than leaving it pointing at nothing. Written straight onto the element: a
+ * reactive style would re-render the panel right after it took focus.
+ */
 const PANEL_WIDTH = 352;
-const position = computed(() => {
-	const rect = target.value?.anchor?.getBoundingClientRect();
-	const width = Math.min(PANEL_WIDTH, window.innerWidth - 16);
-	if (!rect) return { top: '15vh', left: `${(window.innerWidth - width) / 2}px` };
-	const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
-	return { top: `${Math.round(rect.bottom + 6)}px`, left: `${Math.round(left)}px` };
+function place() {
+	const el = panel.value;
+	if (!el || !target.value) return;
+	const anchor = target.value.anchor;
+	const viewport = { width: window.innerWidth, height: window.innerHeight };
+	const width = Math.min(PANEL_WIDTH, viewport.width - 16);
+	const style = anchor?.isConnected
+		? placeAnchoredPanel({
+				anchor: anchor.getBoundingClientRect(),
+				panelHeight: el.scrollHeight,
+				panelWidth: PANEL_WIDTH,
+				viewport,
+			}).style
+		: { top: '15vh', left: `${(viewport.width - width) / 2}px`, maxHeight: 'calc(85vh - 8px)' };
+	Object.assign(el.style, { top: '', bottom: '', ...style });
+}
+watch([() => target.value, panel, () => why.value, () => isLoading.value], place, {
+	immediate: true,
+	flush: 'post',
+});
+function onViewportChange(event: Event) {
+	if (!target.value) return;
+	// Scrolling the panel's own content moves nothing it is anchored to.
+	if (
+		event.type === 'scroll' &&
+		event.target instanceof Node &&
+		panel.value?.contains(event.target)
+	)
+		return;
+	const anchor = target.value.anchor;
+	const viewport = { width: window.innerWidth, height: window.innerHeight };
+	if (anchor?.isConnected && !isAnchorInView(anchor.getBoundingClientRect(), viewport)) {
+		target.value = null;
+		return;
+	}
+	place();
+}
+// Capture: a scroll inside any container (the list column) never bubbles to window.
+const SCROLL_OPTIONS = { capture: true, passive: true } as const;
+onMounted(() => {
+	window.addEventListener('resize', onViewportChange);
+	window.addEventListener('scroll', onViewportChange, SCROLL_OPTIONS);
+});
+onBeforeUnmount(() => {
+	window.removeEventListener('resize', onViewportChange);
+	window.removeEventListener('scroll', onViewportChange, SCROLL_OPTIONS);
 });
 
 const placement = computed<Placement | undefined>(
@@ -171,8 +224,7 @@ async function keepHere() {
 			role="dialog"
 			tabindex="-1"
 			:aria-labelledby="titleId"
-			class="fixed z-50 w-[22rem] max-w-[calc(100vw-1rem)] rounded-xl border border-border-subtle bg-bg-elevated p-4 text-sm shadow-lg outline-none"
-			:style="position"
+			class="fixed z-50 w-[22rem] max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain rounded-xl border border-border-subtle bg-bg-elevated p-4 text-sm shadow-lg outline-none"
 			data-testid="why-here-popover"
 		>
 			<h3 :id="titleId" class="mb-3 font-semibold text-text-primary">{{ title }}</h3>

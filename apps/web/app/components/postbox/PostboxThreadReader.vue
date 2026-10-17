@@ -267,6 +267,10 @@ const readerThread = computed(
 			| undefined
 );
 // The thread brief (SPEC §7, personal mailboxes): the strip, cites, latest lines, reactions.
+// Per-user reader preferences (auto-advance, reply default, mark-read policy, the
+// brief), read before the brief and the mark-read watcher, which both run immediately.
+const { autoAdvance, replyDefault, markReadPolicy, autoSummarize } = usePostboxSettings();
+
 const rb = usePostboxReaderBrief({
 	mailboxId: () => props.message.mailboxId,
 	threadId: () => readerThread.value?._id ?? props.message.threadId,
@@ -277,6 +281,7 @@ const rb = usePostboxReaderBrief({
 	secureClass,
 	isOwnAddress: (address) => ownAddresses.value.has(extractEmailAddress(address)),
 	onReply: () => runReaderAction('reply'),
+	showBrief: () => autoSummarize.value,
 });
 
 const latestOutboundId = computed(() => {
@@ -358,10 +363,6 @@ function schedulingTimesFor(msg: {
 	});
 	return show ? (intent?.proposedTimes ?? []) : null;
 }
-
-// Per-user reader preferences (auto-advance, reply default, mark-read policy), read
-// here because the mark-read watcher below runs immediately.
-const { autoAdvance, replyDefault, markReadPolicy } = usePostboxSettings();
 
 // Mark-as-read on open under markReadPolicy: 'immediate' on render (also unset),
 // 'after-dwell' after POSTBOX_MARK_READ_DWELL_MS of visible dwell (cancelled on
@@ -752,6 +753,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:marking-read="markThreadReadOp.isLoading.value"
 			:show-why-here="!rb.isShared.value"
 			:show-ask="isFeatureEnabled('ai')"
+			:show-full-brief="rb.hasFullBrief.value"
 			@toggle-mute="toggleOpenThreadMute"
 			@toggle-alert="toggleOpenThreadAlert"
 			@mark-read="markOpenThreadRead"
@@ -760,6 +762,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			@snooze="runReaderAction('snooze')"
 			@ask="calm.asking.value = !calm.asking.value"
 			@details="calm.detailsOpen.value = true"
+			@full-brief="calm.sheetOpen.value = true"
 			@why-here="calm.openWhyHere"
 		>
 			<template #actions>
@@ -778,7 +781,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:summary="calm.summary.value"
 			:show-why-here="!rb.isShared.value"
 			:has-exact-wording="!!rb.firstExactWordingId.value"
-			:has-full-brief="rb.hasFullBrief.value"
+			:has-full-brief="rb.hasFullBrief.value && rb.isBriefShown.value"
 			@why-here="calm.openWhyHere"
 			@full-brief="calm.sheetOpen.value = true"
 			@exact-wording="rb.citeMessage(rb.firstExactWordingId.value ?? '')"

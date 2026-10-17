@@ -1067,31 +1067,31 @@
 			},
 			"incomplete": {
 				"partialLead": "Teilweise gelesen.",
-				"partialCount": "{done} von {total} Nachrichten sind in diesem Überblick.",
-				"partialPlain": "Ein Teil dieses Verlaufs fehlt in diesem Überblick.",
+				"partialCount": "{done} von {total} Nachrichten sind in dieser Übersicht.",
+				"partialPlain": "Ein Teil dieses Verlaufs fehlt in dieser Übersicht.",
 				"partialReason": {
-					"tooLong": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest war zu lang.",
-					"failed": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest konnte nicht gelesen werden.",
-					"undecryptable": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest ließ sich nicht entschlüsseln.",
-					"pending": "{done} von {total} Nachrichten sind in diesem Überblick. Der Rest wird noch gelesen.",
-					"history": "{done} von {total} Nachrichten sind in diesem Überblick. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie."
+					"tooLong": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest war zu lang.",
+					"failed": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest konnte nicht gelesen werden.",
+					"undecryptable": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest ließ sich nicht entschlüsseln.",
+					"pending": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest wird noch gelesen.",
+					"history": "{done} von {total} Nachrichten sind in dieser Übersicht. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie."
 				},
-				"pending": "Dieser Verlauf wird gerade gelesen. Der Überblick folgt gleich.",
+				"pending": "Dieser Verlauf wird gerade gelesen. Die Übersicht folgt gleich.",
 				"none": {
-					"default": "Für diesen Verlauf gibt es noch keinen Überblick. Im E-Mail-Verlauf siehst du alles.",
-					"aiOff": "Die KI ist aus, deshalb gibt es keinen Überblick. Im E-Mail-Verlauf siehst du alles.",
-					"undecryptable": "Diese Nachricht ließ sich nicht entschlüsseln, deshalb gibt es keinen Überblick.",
-					"ineligible": "Mails wie diese werden nicht zusammengefasst, deshalb gibt es keinen Überblick.",
-					"failed": "Das Lesen dieses Verlaufs ist fehlgeschlagen, deshalb gibt es keinen Überblick.",
-					"pending": "Dieser Verlauf wurde noch nicht gelesen. Der Überblick folgt gleich."
+					"default": "Für diesen Verlauf gibt es noch keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"aiOff": "Die KI ist aus, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"undecryptable": "Diese Nachricht ließ sich nicht entschlüsseln, deshalb gibt es keine Übersicht.",
+					"ineligible": "Mails wie diese werden nicht zusammengefasst, deshalb gibt es keine Übersicht.",
+					"failed": "Das Lesen dieses Verlaufs ist fehlgeschlagen, deshalb gibt es keine Übersicht.",
+					"pending": "Dieser Verlauf wurde noch nicht gelesen. Die Übersicht folgt gleich."
 				},
 				"short": "So angezeigt, wie geschrieben. Hier gibt es nichts zusammenzufassen.",
 				"securityLead": "Sicherheits-E-Mail.",
 				"security": "Wird so angezeigt, wie geschrieben, und nie zusammengefasst.",
 				"signed": "Nur der signierte Teil ist zusammengefasst.",
-				"stale": "Der Überblick ist pausiert: Eine Signaturprüfung hat geändert, wofür eine Nachricht hier verlässlich ist. Im E-Mail-Verlauf siehst du alles.",
+				"stale": "Die Übersicht ist pausiert: Eine Signaturprüfung hat geändert, wofür eine Nachricht hier verlässlich ist. Im E-Mail-Verlauf siehst du alles.",
 				"openConversation": "E-Mail-Verlauf öffnen",
-				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich der Überblick gleich."
+				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich die Übersicht gleich."
 			},
 			"conversation": {
 				"read": "Den ganzen Verlauf lesen",
@@ -1111,7 +1111,7 @@
 			},
 			"cite": {
 				"showing": "Quelle von „{label}“",
-				"back": "zurück zum Überblick",
+				"back": "zurück zur Übersicht",
 				"notLocated": "Die genaue Stelle ließ sich in dieser Nachricht nicht finden.",
 				"loading": "diese Nachricht wird geladen…",
 				"unreachable": "diese Nachricht ist nicht im geladenen Verlauf"
@@ -1139,10 +1139,10 @@
 				"reminder": "Du wirst morgen früh erinnert."
 			},
 			"operations": {
-				"markSeen": "Überblick als gesehen markieren",
+				"markSeen": "Übersicht als gesehen markieren",
 				"saveView": "Ansicht des Verlaufs speichern",
 				"react": "Punkt aktualisieren",
-				"ensure": "Überblick vorbereiten"
+				"ensure": "Übersicht vorbereiten"
 			},
 			"evidence": {
 				"label": "Quelle zeigen: {name}, {date}",
@@ -6037,14 +6037,10 @@
 				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen kannst du eine Antwort auf „Allen antworten“ umstellen.",
 				"writingSuggestionsLabel": "Schreibvorschläge",
 				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
-				"autoSummarizeLabel": "Überblicke anzeigen",
-				"autoSummarizeHelp": "Öffne einen Verlauf mit dem Neuesten, dem Stand der Dinge und dem, worum du gebeten wirst, jeweils mit Link zur Quelle. Nur für persönliche Postfächer.",
-				"threadViewLabel": "Verläufe öffnen mit",
-				"threadViewHelp": "Überblick oder der ganze E-Mail-Verlauf. Wechselst du in einem Verlauf, merkt er sich das. Nur für persönliche Postfächer.",
-				"threadViewConversation": "E-Mail-Verlauf",
-				"threadViewOperation": "Speichern, womit Verläufe öffnen",
-				"backfillLabel": "Überblicke für neuere E-Mails vorbereiten",
-				"backfillHelp": "Liest deine aktiven Gespräche der letzten 30 Tage, damit sie mit einem Überblick öffnen. Ältere werden vorbereitet, wenn du sie zum ersten Mal öffnest. Das nutzt das KI-Budget.",
+				"autoSummarizeLabel": "Übersicht über dem Verlauf anzeigen",
+				"autoSummarizeHelp": "Eine kurze KI-Zusammenfassung über der Mail: was sich geändert hat und was du noch tun musst. Aus: du siehst nur den Verlauf.",
+				"backfillLabel": "Übersichten für neuere E-Mails vorbereiten",
+				"backfillHelp": "Liest deine aktiven Gespräche der letzten 30 Tage, damit jedes mit seiner Übersicht über dem Verlauf öffnet. Ältere werden gelesen, wenn du sie zum ersten Mal öffnest. Das nutzt das KI-Budget.",
 				"backfillStart": "Vorbereiten",
 				"backfillResume": "Fortsetzen",
 				"backfillCancel": "Stoppen",
@@ -6054,8 +6050,8 @@
 				"backfillPausedOff": "Pausiert: KI ist ausgeschaltet.",
 				"backfillPausedCap": "Nach {count} Gesprächen pausiert. Setz es fort, um weiterzumachen.",
 				"backfillCancelled": "Gestoppt. Setz es fort, um dort weiterzumachen, wo es aufgehört hat.",
-				"backfillOperation": "Überblicke vorbereiten",
-				"backfillCancelOperation": "Vorbereitung der Überblicke stoppen",
+				"backfillOperation": "Übersichten vorbereiten",
+				"backfillCancelOperation": "Vorbereitung der Übersichten stoppen",
 				"sendSoundLabel": "Ton beim Senden abspielen",
 				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
 				"swipeLeftLabel": "Nach links wischen",
@@ -13064,6 +13060,7 @@
 			"resume": "Fortsetzen",
 			"readTitle": "Du hast {opened} von {delivered} geöffnet",
 			"readPercent": "{percent} % gelesen",
+			"phoneStats": "{count} Mail · {percent} % gelesen | {count} Mails · {percent} % gelesen",
 			"controlLabel": "Was Owlat mit Mails von {name} macht",
 			"empty": {
 				"review": "Nichts zu prüfen. Absender, die du selten liest, erscheinen hier.",
@@ -13111,6 +13108,7 @@
 				"archive": "Archivieren",
 				"whyHere": "Warum ist das hier?",
 				"details": "Einzelheiten",
+				"fullBrief": "Ganze Übersicht",
 				"snooze": "Zurückstellen",
 				"ask": "Frag zu diesem Verlauf"
 			},
@@ -13174,7 +13172,7 @@
 		"arrival": {
 			"settings": {
 				"label": "Neue Mails beim Eingang lesen",
-				"help": "Wenn das an ist, liest dein KI-Anbieter persönliche Mails, sobald sie ankommen, auch Mails, die du nie öffnest. Wenn es aus ist, prüft Owlat neue Mails weiter auf Antworten und Kategorien, baut den Überblick über andere Mails aber erst, wenn du sie öffnest."
+				"help": "Wenn das an ist, liest dein KI-Anbieter persönliche Mails, sobald sie ankommen, auch Mails, die du nie öffnest. Wenn es aus ist, prüft Owlat neue Mails weiter auf Antworten und Kategorien, bereitet die Übersicht anderer Mails aber erst vor, wenn du sie öffnest."
 			},
 			"reason": {
 				"aiOff": "KI ist aus",
@@ -16227,12 +16225,8 @@
 					"keywords": "KI, Autovervollständigung, Schreibhilfe"
 				},
 				"autoSummarize": {
-					"title": "Überblicke anzeigen",
-					"keywords": "ki, zusammenfassung, überblick"
-				},
-				"threadView": {
-					"title": "Verläufe öffnen mit",
-					"keywords": "überblick, e-mail-verlauf, standardansicht"
+					"title": "Übersicht über dem Verlauf anzeigen",
+					"keywords": "ki, zusammenfassung, übersicht, überblick"
 				},
 				"sendSound": {
 					"title": "Ton beim Senden abspielen",

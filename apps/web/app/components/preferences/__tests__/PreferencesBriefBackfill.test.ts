@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * "Prepare overviews for recent mail" (ADR-0072, D5): Prepare starts the
+ * "Prepare briefs for recent mail" (ADR-0072, D5): Prepare starts the
  * personal mailbox's backfill, a running walk offers Stop, and a paused or
  * stopped one says why and offers Resume.
  */
@@ -28,7 +28,7 @@ beforeAll(() => {
 	vi.stubGlobal('useInboxes', () => ({ inboxes }));
 	vi.stubGlobal('useConvexQuery', () => ({ data: status, isLoading: ref(false) }));
 	vi.stubGlobal('useBackendOperation', (_fn: unknown, opts: { label: () => string }) =>
-		opts.label() === 'Prepare overviews'
+		opts.label() === 'Prepare briefs'
 			? { run: startRun, isLoading: ref(false) }
 			: { run: cancelRun, isLoading: ref(false) }
 	);

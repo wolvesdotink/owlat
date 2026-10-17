@@ -9,8 +9,9 @@ import type { Id } from '@owlat/api/dataModel';
  *
  * The ⋯ menu holds the conversation's state as checkable items (alert on
  * reply, muted, back-from-snooze, mark-read under the `manual` policy), the
- * two ways into the strip that also work without one ("Why is this here?",
- * "Details"), and the verbs that left the old Overview's button row (Snooze,
+ * ways into the strip that also work without one ("Why is this here?",
+ * "Details", and "Full brief", the only way to the brief when the viewer turned
+ * the strip off), and the verbs that left the old Overview's button row (Snooze,
  * "Ask about this thread").
  */
 const props = defineProps<{
@@ -37,6 +38,8 @@ const props = defineProps<{
 	showWhyHere?: boolean;
 	/** Offer "Ask about this thread" (the AI flag). */
 	showAsk?: boolean;
+	/** Offer "Full brief" (the brief holds anything, `briefHasContent`). */
+	showFullBrief?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -48,6 +51,7 @@ const emit = defineEmits<{
 	(e: 'snooze'): void;
 	(e: 'ask'): void;
 	(e: 'details'): void;
+	(e: 'full-brief'): void;
 	(e: 'why-here', anchor: HTMLElement | null): void;
 }>();
 
@@ -148,6 +152,20 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 					>
 						<Icon name="lucide:list" :class="ICON_CLASS" aria-hidden="true" />
 						{{ t('postbox.reader.header.details') }}
+					</button>
+					<button
+						v-if="showFullBrief"
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						data-testid="thread-menu-full-brief"
+						@click="
+							emit('full-brief');
+							close();
+						"
+					>
+						<Icon name="lucide:file-text" :class="ICON_CLASS" aria-hidden="true" />
+						{{ t('postbox.reader.header.fullBrief') }}
 					</button>
 					<button
 						type="button"

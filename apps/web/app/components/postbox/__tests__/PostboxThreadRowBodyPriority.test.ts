@@ -6,9 +6,10 @@
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
-import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
+import { POSTBOX_PRIORITY_BRIEF_LINES, POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
 
 vi.mock('~/composables/postbox/usePostboxListClock', () => ({
 	usePostboxThreadTimestamp: () => () => '09:12',
@@ -21,7 +22,10 @@ beforeAll(() => {
 
 const BRIEF_TOP = { mode: 'brief', forYou: 0, waiting: 0, isReplyNeeded: false };
 
-function mountRow(msg: Record<string, unknown>, opts: { priority?: boolean } = {}) {
+function mountRow(
+	msg: Record<string, unknown>,
+	opts: { priority?: boolean; briefShown?: boolean } = {}
+) {
 	return mount(PostboxThreadRowBody, {
 		props: {
 			msg: {
@@ -38,7 +42,12 @@ function mountRow(msg: Record<string, unknown>, opts: { priority?: boolean } = {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			provide: opts.priority ? { [POSTBOX_PRIORITY_ROWS as symbol]: true } : {},
+			provide: {
+				...(opts.priority ? { [POSTBOX_PRIORITY_ROWS as symbol]: true } : {}),
+				...(opts.briefShown !== undefined
+					? { [POSTBOX_PRIORITY_BRIEF_LINES as symbol]: ref(opts.briefShown) }
+					: {}),
+			},
 			stubs: {
 				PostboxRowCore: { template: '<div data-testid="row-core"><slot /></div>' },
 				PostboxThreadRowFollowUp: true,
@@ -51,6 +60,21 @@ function mountRow(msg: Record<string, unknown>, opts: { priority?: boolean } = {
 const GIST = { ...BRIEF_TOP, gist: { text: 'Parcel delivered to the neighbour at no. 14' } };
 
 describe('PostboxThreadRowBody under the Priority view', () => {
+	it('shows the subject, not the gist, when the viewer turned the brief off', () => {
+		const w = mountRow(
+			{ placement: 'updates', briefTop: GIST },
+			{ priority: true, briefShown: false }
+		);
+		const line = w.get('[data-testid="priority-row-line"]');
+		expect(line.text()).toBe('Your parcel');
+		expect(line.attributes('data-source')).toBe('subject');
+		const on = mountRow(
+			{ placement: 'updates', briefTop: GIST },
+			{ priority: true, briefShown: true }
+		);
+		expect(on.get('[data-testid="priority-row-line"]').attributes('data-source')).toBe('gist');
+	});
+
 	it('is one line: sender, the gist, the time', () => {
 		const w = mountRow({ placement: 'updates', briefTop: GIST }, { priority: true });
 		expect(w.find('[data-testid="row-core"]').exists()).toBe(false);

@@ -164,4 +164,25 @@ describe('PostboxReaderStrip', () => {
 		expect(quote.length).toBeLessThanOrEqual(160);
 		expect(quote.endsWith('…')).toBe(true);
 	});
+
+	it('never lets a wrapped line start with a dot: each dot rides on the item before it', () => {
+		const brief = mountStrip(
+			{ kind: 'brief', lead: null, owe: null, waiting },
+			{ hasFullBrief: true }
+		);
+		const reading = mountStrip({ kind: 'meta', note: 'reading' }, { hasFullBrief: true });
+		for (const row of [
+			brief.get('[data-testid="strip-meta"]'),
+			reading.get('[data-testid="reader-meta-line"]'),
+		]) {
+			// The row is a flex-wrap line: a dot that is its own flex item can open a line.
+			const items = [...row.element.children];
+			expect(items.length).toBeGreaterThan(2);
+			for (const child of items) expect(child.textContent?.trim()).not.toMatch(/^·/);
+		}
+		// The lead's dot is glued to its last word with a no-break space.
+		expect(brief.get('[data-testid="strip-waiting"]').element.parentElement?.textContent).toBe(
+			'Waiting on Lena: final paper sample\u00a0·'
+		);
+	});
 });

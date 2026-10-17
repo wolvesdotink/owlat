@@ -232,6 +232,18 @@ describe('briefHasContent (Full brief)', () => {
 		expect(briefHasContent(null)).toBe(false);
 		expect(briefHasContent(briefView({ completeness: 'none' }))).toBe(false);
 	});
+
+	it('does not count the people alone while the brief is still pending', () => {
+		const people = {
+			...empty,
+			participants: [{ email: 'lena@studio.example', isUs: false, role: 'from' as const }],
+		};
+		expect(briefHasContent({ ...people, completeness: 'pending' })).toBe(false);
+		// Anything read so far still opens it.
+		expect(
+			briefHasContent({ ...people, completeness: 'pending', activity: briefView().activity })
+		).toBe(true);
+	});
 });
 
 describe('stripItemActions', () => {
