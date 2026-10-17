@@ -90,6 +90,16 @@ describe('usePostboxComposerAnswerApi', () => {
 		expect(run).toHaveBeenCalledWith({ draftId: 'd1', aiBaseline: 'Hi Jonas,\n\nattached.' });
 	});
 
+	it('records the offer the AI draft copies with its baseline', async () => {
+		const { answerApi } = setup();
+		await answerApi.applyAiDraft('Hi Jonas', { offerKey: 'thr_1:msg_1' });
+		expect(run).toHaveBeenCalledWith({
+			draftId: 'd1',
+			aiBaseline: 'Hi Jonas',
+			offerKey: 'thr_1:msg_1',
+		});
+	});
+
 	it('puts back what was written before the AI draft on Discard', async () => {
 		const { answerApi, state } = setup();
 		await answerApi.applyAiDraft('AI text');

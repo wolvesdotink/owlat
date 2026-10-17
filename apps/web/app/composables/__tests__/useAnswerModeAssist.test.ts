@@ -50,9 +50,14 @@ vi.mock('~/composables/useAnswerAskSession', () => ({
 	useAnswerAskSession: () => ({ start: askStart }),
 }));
 const preparedText = ref<string | null>(null);
+const preparedOfferKey = ref<string | null>('thr_1:msg_1');
 const preparedAttach = vi.fn(async () => {});
 vi.mock('~/composables/useAnswerPreparedDraft', () => ({
-	useAnswerPreparedDraft: () => ({ text: preparedText, attachFiles: preparedAttach }),
+	useAnswerPreparedDraft: () => ({
+		text: preparedText,
+		offerKey: preparedOfferKey,
+		attachFiles: preparedAttach,
+	}),
 }));
 const indexIdOf = vi.fn();
 const toFile = vi.fn();
@@ -210,7 +215,10 @@ describe('useAnswerModeAssist: a prepared draft', () => {
 		host({ composer });
 		preparedText.value = 'Hi Jonas, here it is.';
 		await flushPromises();
-		expect(composer.applyAiDraft).toHaveBeenCalledWith('Hi Jonas, here it is.');
+		// It is the thread's offered reply: every write applying it names the offer.
+		expect(composer.applyAiDraft).toHaveBeenCalledWith('Hi Jonas, here it is.', {
+			offerKey: 'thr_1:msg_1',
+		});
 		// The files answered on the Reply Queue follow the text onto the draft.
 		expect(preparedAttach).toHaveBeenCalledWith(composer);
 		expect(planState.checkCoverage).toHaveBeenCalled();
@@ -246,7 +254,9 @@ describe('useAnswerModeAssist: the starter reply of the queue', () => {
 
 		preparedText.value = 'Here are your invoices, attached.';
 		await assist.applyQueueDraft(composer, 'Here are your invoices, attached.');
-		expect(composer.applyAiDraft).toHaveBeenLastCalledWith('Here are your invoices, attached.');
+		expect(composer.applyAiDraft).toHaveBeenLastCalledWith('Here are your invoices, attached.', {
+			offerKey: 'thr_1:msg_1',
+		});
 		expect(preparedAttach).toHaveBeenCalledOnce();
 	});
 

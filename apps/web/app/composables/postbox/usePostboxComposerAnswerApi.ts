@@ -40,8 +40,12 @@ export interface AnswerComposerApi {
 	ensureDraftId: () => Promise<Id<'mailDrafts'> | null>;
 	/** Show a draft still streaming in the editor. */
 	streamAiDraft: (text: string) => void;
-	/** Settle an AI draft in the editor and record it as the draft's baseline. */
-	applyAiDraft: (text: string) => Promise<void>;
+	/**
+	 * Settle an AI draft in the editor and record it as the draft's baseline.
+	 * `offerKey` names the thread's offered reply when the text is that reply
+	 * (a prepared draft); every write applying it carries the key.
+	 */
+	applyAiDraft: (text: string, opts?: { offerKey?: string | null }) => Promise<void>;
 	/** Put back what was written before the AI draft. */
 	discardAiDraft: () => void;
 	/** The draft's attachments as the server now has them. */
@@ -98,14 +102,19 @@ export function usePostboxComposerAnswerApi(opts: {
 			opts.bodyHtml.value = replaceAnswerText(opts.bodyHtml.value, text);
 			setAiWrittenText(opts.bodyHtml, text);
 		},
-		async applyAiDraft(text) {
+		async applyAiDraft(text, apply) {
+			const offerKey = apply?.offerKey ?? undefined;
 			keepWrittenBefore();
 			opts.bodyHtml.value = replaceAnswerText(opts.bodyHtml.value, text);
-			setAiWrittenText(opts.bodyHtml, text);
+			setAiWrittenText(opts.bodyHtml, text, offerKey);
 			aiDraft.value = text;
 			const saved = await opts.flush();
 			if (saved.ok && saved.result) {
-				await recordBaseline.run({ draftId: saved.result, aiBaseline: text });
+				await recordBaseline.run({
+					draftId: saved.result,
+					aiBaseline: text,
+					...(offerKey ? { offerKey } : {}),
+				});
 			}
 		},
 		discardAiDraft() {

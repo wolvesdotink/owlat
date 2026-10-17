@@ -121,7 +121,7 @@ export function useAnswerModeAssist(opts: {
 			if (composer.draftText.value.trim()) return;
 			appliedText = text;
 			void composer
-				.applyAiDraft(text)
+				.applyAiDraft(text, { offerKey: prepared.offerKey.value })
 				.then(() => adoptPrepared(composer))
 				.then(() => prepared.attachFiles(composer))
 				.then(() => plan.checkCoverage());
@@ -156,7 +156,8 @@ export function useAnswerModeAssist(opts: {
 		if (appliedText === text) return;
 		preparedTaken = true;
 		appliedText = text;
-		await composer.applyAiDraft(text);
+		// The Reply Queue's draft is the thread's offered reply (mail/draftPause.ts).
+		await composer.applyAiDraft(text, { offerKey: prepared.offerKey.value });
 		await adoptPrepared(composer);
 		await prepared.attachFiles(composer);
 		void plan.checkCoverage();
