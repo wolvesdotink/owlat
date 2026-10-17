@@ -87,6 +87,8 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 			slotDraft: null,
 			files: [],
 			clarification: expect.objectContaining({ draft: '  Hi Jonas, attached.  ' }),
+			// The offer this reply is (mail/draftPause.ts): the thread and its owed message.
+			offerKey: expect.stringMatching(new RegExp(`^${threadId}:`)),
 		});
 	});
 
@@ -98,6 +100,7 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 			slotDraft: 'Hi Jonas, here it is.',
 			files: [],
 			clarification: null,
+			offerKey: expect.stringMatching(new RegExp(`^${threadId}:`)),
 		});
 	});
 
@@ -113,7 +116,13 @@ describe('mail.needsReplyPrepared.getPreparedDraft', () => {
 		const flagged = await seedFlaggedThread(t, {});
 		expect(
 			await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId: flagged })
-		).toEqual({ clarificationDraft: null, slotDraft: null, files: [], clarification: null });
+		).toEqual({
+			clarificationDraft: null,
+			slotDraft: null,
+			files: [],
+			clarification: null,
+			offerKey: null,
+		});
 		const plain = await seedFlaggedThread(t, null);
 		expect(
 			await t.query(api.mail.needsReplyPrepared.getPreparedDraft, { threadId: plain })
