@@ -27,6 +27,7 @@ beforeAll(() => {
 		onKeydown: vi.fn(),
 	}));
 	vi.stubGlobal('navigateTo', vi.fn());
+	vi.stubGlobal('usePostboxSettings', () => ({ autoSummarize: ref(true) }));
 });
 
 function msg(id: string): PostboxThreadRowMessage {

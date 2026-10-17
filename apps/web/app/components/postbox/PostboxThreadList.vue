@@ -10,6 +10,7 @@ import { usePostboxThreadListWindow } from '~/composables/postbox/usePostboxThre
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { postboxListEmptyState } from '~/utils/postboxListEmptyState';
 import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
+import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -322,7 +323,8 @@ watch([focusedIndex, () => props.activeMessageId], () => {
 });
 
 // --- Windowed rendering + infinite scroll (large folders) --------------------
-const { density, swipeLeftAction, swipeRightAction } = usePostboxSettings();
+const { density, swipeLeftAction, swipeRightAction, autoSummarize } = usePostboxSettings();
+provideBriefLines(autoSummarize); // rows: no AI lines with the brief turned off
 const {
 	scrollEl,
 	listEl,

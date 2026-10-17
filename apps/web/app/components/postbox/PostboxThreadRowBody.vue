@@ -14,8 +14,10 @@
  *
  * Under the Priority view (`POSTBOX_PRIORITY_ROWS`, read on arrival §3) the
  * row is one line: sender, the brief's lead or ask (else the gist, else the
- * subject; only the subject when the viewer turned the brief off) and one state. Elsewhere a row without a brief line shows the gist
- * in place of the snippet when the thread has one.
+ * subject) and one state. Elsewhere a row without a brief line shows the gist
+ * in place of the snippet when the thread has one. With the viewer's brief
+ * turned off (usePostboxBriefLines) no row shows an AI line: the subject under
+ * the Priority view, the plain snippet elsewhere.
  */
 import { inject } from 'vue';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
@@ -25,11 +27,11 @@ import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListC
 import { briefRowLine } from '~/utils/briefRowLine';
 import { rowGistOf } from '~/utils/postboxReaderStrip';
 import {
-	POSTBOX_PRIORITY_BRIEF_LINES,
 	POSTBOX_PRIORITY_ROWS,
 	priorityGroupOf,
 	priorityRowLine,
 } from '~/utils/postboxPriorityGroups';
+import { useBriefLinesShown } from '~/composables/postbox/usePostboxBriefLines';
 
 const { t, locale } = useI18n();
 // Ticks with the list's shared minute clock (usePostboxListClock).
@@ -86,18 +88,20 @@ const trustMarkerLabel = computed(() => {
 	return `${t(marker.label)} — ${markerText(marker.title)}`;
 });
 
+// The viewer's "Show the brief above conversations": off, no AI line on any row.
+const isBriefShown = useBriefLinesShown();
 /** The top open item instead of the snippet, once the thread is interpreted (SPEC §7). */
-const briefLine = computed(() => briefRowLine(props.msg.briefTop, locale.value));
+const briefLine = computed(() =>
+	isBriefShown.value ? briefRowLine(props.msg.briefTop, locale.value) : null
+);
 /** Read on arrival: the gist where a row has no brief line (SPEC §3). */
-const gistLine = computed(() => rowGistOf(props.msg.briefTop));
+const gistLine = computed(() => (isBriefShown.value ? rowGistOf(props.msg.briefTop) : null));
 
 const isPriority = inject(POSTBOX_PRIORITY_ROWS, false);
-// The viewer's "Show the brief above conversations": off, the line is the subject.
-const showBriefLines = inject(POSTBOX_PRIORITY_BRIEF_LINES, null);
 const priorityLine = computed(() =>
 	isPriority
 		? priorityRowLine(props.msg, priorityGroupOf(props.msg.placement), locale.value, {
-				showBrief: showBriefLines?.value !== false,
+				showBrief: isBriefShown.value,
 			})
 		: null
 );

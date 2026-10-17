@@ -40,6 +40,10 @@ const TOP = 3;
 const top = computed(() => props.items.slice(0, TOP));
 
 const text = useLocalized();
+// The viewer's "Show the brief above conversations": off, a personal mail row
+// reads like plain mail (subject, sender and preview), never the AI's ask or
+// latest update.
+const { autoSummarize } = usePostboxSettings();
 
 // A team row leads with its top open action (inbox.teamStream.topItems), never a summary.
 const teamThreadIds = computed(() =>
@@ -66,7 +70,12 @@ function isSharedRow(item: AnswerItem): boolean {
 }
 function rowTitle(item: AnswerItem): string {
 	if (item.source === 'mail') {
-		return text(replyQueueHeadline(item.row, locale.value, { isShared: isSharedRow(item) }));
+		return text(
+			replyQueueHeadline(item.row, locale.value, {
+				isShared: isSharedRow(item),
+				showBrief: autoSummarize.value,
+			})
+		);
 	}
 	if (item.source === 'team') {
 		return teamTopOf(item)?.text || item.entry.message.subject || t('components.shell.noSubject');
@@ -89,11 +98,12 @@ function rowDetail(item: AnswerItem): string {
 		const who = item.row.fromName || item.row.fromAddress;
 		const named = rowTitle(item).includes(who) ? '' : who;
 		const top = item.row.briefTop;
-		const parts = isSharedRow(item)
-			? [named, quoted(item.row.snippet)]
-			: top?.top
-				? [named, item.row.subject, briefRowLatest(top, locale.value) ?? '']
-				: [named];
+		const parts =
+			isSharedRow(item) || !autoSummarize.value
+				? [named, quoted(item.row.snippet)]
+				: top?.top
+					? [named, item.row.subject, briefRowLatest(top, locale.value) ?? '']
+					: [named];
 		return parts.filter(Boolean).join(' · ');
 	}
 	if (item.source === 'team') {
@@ -111,7 +121,7 @@ function rowMore(item: AnswerItem): string {
 		const chip = briefMoreChip(team.count);
 		return chip ? t(chip.key, { count: chip.count }) : '';
 	}
-	if (item.source !== 'mail') return '';
+	if (item.source !== 'mail' || !autoSummarize.value) return '';
 	const top = item.row.briefTop;
 	if (!top?.top || top.top.bucket === 'waitingOnOthers' || top.top.responsibility === 'them') {
 		return '';

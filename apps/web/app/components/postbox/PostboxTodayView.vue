@@ -40,11 +40,8 @@ import { provide } from 'vue';
 import { POSTBOX_READER_HOST_KEY } from '~/composables/postbox/usePostboxReaderActions';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { formatAutoFiledLine, startOfLocalDay } from '~/utils/postboxTodayPartition';
-import {
-	POSTBOX_PRIORITY_BRIEF_LINES,
-	POSTBOX_PRIORITY_ROWS,
-	groupPriorityRows,
-} from '~/utils/postboxPriorityGroups';
+import { POSTBOX_PRIORITY_ROWS, groupPriorityRows } from '~/utils/postboxPriorityGroups';
+import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
 
 /**
@@ -110,7 +107,7 @@ const queuedThreadIds = computed(() => new Set(forYouItems.value.map((item) => i
 // of the AI's line when the viewer turned the brief off.
 provide(POSTBOX_PRIORITY_ROWS, true);
 const { autoSummarize } = usePostboxSettings();
-provide(POSTBOX_PRIORITY_BRIEF_LINES, autoSummarize);
+provideBriefLines(autoSummarize);
 
 const groups = computed(() =>
 	// Each row carries its thread's placement and advisory category (attached
