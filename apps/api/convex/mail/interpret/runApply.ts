@@ -95,7 +95,8 @@ export async function withSourceLease<R>(
 	ctx: Pick<ActionCtx, 'runMutation'>,
 	source: InterpretationSource,
 	depth: Depth | undefined,
-	body: (token: string) => Promise<R>
+	/** `token`: the lease to commit with; none when there was nothing to lease. */
+	body: (token: string | undefined) => Promise<R>
 ): Promise<R | { status: 'busy'; retryAt: number } | { status: 'done' }> {
 	const claim: LeaseClaim = await ctx.runMutation(internal.mail.interpret.lease.claimSourceLease, {
 		source,
@@ -103,6 +104,7 @@ export async function withSourceLease<R>(
 	});
 	if (claim.kind === 'busy') return { status: 'busy', retryAt: claim.retryAt };
 	if (claim.kind === 'done') return { status: 'done' };
+	if (!claim.isHeld) return body(undefined);
 	try {
 		return await body(claim.token);
 	} finally {

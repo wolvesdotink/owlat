@@ -183,8 +183,10 @@ async function wakePage(
 		});
 		woken += 1;
 	}
+	// A full page may have more behind it, whatever the read returned: rows in
+	// `seen` that were deleted since make the read short (Sol fixes-r2 F2).
 	const last = page[page.length - 1];
-	if (read.length === limit && last) {
+	if (page.length === CATEGORY_WAKE_PAGE && last) {
 		const at = last._creationTime;
 		const tied = page.filter((row) => row._creationTime === at).map((row) => row._id);
 		if (cursor?.at === at) tied.push(...seen);
