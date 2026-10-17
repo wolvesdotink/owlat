@@ -27,7 +27,11 @@ import { newRootRequest } from '../../lib/llm/requestMeter';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 import { throwForbidden } from '../../_utils/errors';
 import { logWarn } from '../../lib/runtimeLog';
-import { buildScopedMessageInput, type ScopedMessageInput } from '../arrival/scopedInput';
+import {
+	buildScopedMessageInput,
+	type ScopedMessageInput,
+	type ScopedSegment,
+} from '../arrival/scopedInput';
 import { defuseDelimiters } from '../interpret/prompt';
 import { dryRunDraftValidator, type DryRunData, type DryRunMessage } from './dryRunData';
 
@@ -74,7 +78,7 @@ export const ruleTestOutputSchema = z.object({
 /** The batched question over every offered message, each fenced as data. Pure. */
 export function buildRuleTestPrompt(
 	question: string,
-	inputs: { ref: number; input: Pick<ScopedMessageInput, 'subject' | 'segments'> }[]
+	inputs: { ref: number; input: { subject: string; segments: Pick<ScopedSegment, 'text'>[] } }[]
 ): string {
 	const asked = question
 		.replace(/[\s<>]+/g, ' ')
