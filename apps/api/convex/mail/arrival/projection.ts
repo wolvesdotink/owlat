@@ -32,14 +32,16 @@ import { isPersonalMailbox } from '../permissions';
 type Thread = Doc<'mailThreads'>;
 
 /**
- * Whether the thread's needs-reply verdict is SETTLED: a flag is set and no
- * classification is pending. A heuristic candidate still waiting for its
- * verdict is not (it reads as `today` until the verdict lands). Pure.
+ * Whether the thread's needs-reply verdict is SETTLED: a model (or owner)
+ * verdict, or a heuristic flag no classification is still refining. A
+ * heuristic candidate waiting for its verdict is not (it reads as `today`
+ * until the verdict lands); a model verdict being re-checked still is. Pure.
  */
 export function isReplyVerdictSettled(
 	thread: Pick<Thread, 'needsReply' | 'needsReplyPendingAt'>
 ): boolean {
-	return thread.needsReply !== undefined && thread.needsReplyPendingAt === undefined;
+	if (thread.needsReply === undefined) return false;
+	return thread.needsReply.source !== 'heuristic' || thread.needsReplyPendingAt === undefined;
 }
 
 /** The sender profile of a message's From address in its mailbox, or null. */
