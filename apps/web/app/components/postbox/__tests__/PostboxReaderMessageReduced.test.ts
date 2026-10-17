@@ -6,15 +6,18 @@
  *   - To/Cc, the unsubscribe chip and the message details behind a click on
  *     the sender name, which in the full card opens the sender profile.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
+/** The Senders open signal (§5): every card reports its own body being shown. */
+const senderOpen = vi.fn();
+
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n, usePostboxSenderOpen: senderOpen });
 });
 
 const marker = (name: string, props: string[] = []) =>
@@ -93,6 +96,14 @@ const has = (w: ReturnType<typeof mountCard>, id: string) =>
 	w.find(`[data-testid="${id}"]`).exists();
 
 describe('PostboxReaderMessage reduced', () => {
+	it('reports its own message as shown while expanded (Senders open count)', () => {
+		senderOpen.mockClear();
+		mountCard(true);
+		const [messageId, isShown] = senderOpen.mock.calls[0] as [() => string, () => boolean];
+		expect(messageId()).toBe('msg_1');
+		expect(isShown()).toBe(true);
+	});
+
 	it('drops the action row and keeps the body', () => {
 		const w = mountCard(true);
 		expect(has(w, 'PostboxReaderMessageActions')).toBe(false);

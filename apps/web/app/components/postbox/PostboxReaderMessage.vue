@@ -138,6 +138,12 @@ const {
 	active: () => props.expanded,
 });
 
+// Senders (§5): a shown body is a read for its sender's counter; collapsed is not.
+usePostboxSenderOpen(
+	() => props.message._id,
+	() => props.expanded
+);
+
 /**
  * The legacy DMARC-fail line. `senderAuthBadges` moved this into the auth badge;
  * with the flag off the banner is still the only place a DMARC failure is said
