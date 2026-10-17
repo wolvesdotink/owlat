@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { reactive } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxTriageFilterChips from '../PostboxTriageFilterChips.vue';
 import {
@@ -17,8 +18,15 @@ import {
 	type PostboxTriageFilter,
 } from '~/composables/postbox/usePostboxTriageFilters';
 
+const route = reactive({ query: {} as Record<string, unknown> });
+const routerReplace = vi.fn((loc: { query: Record<string, unknown> }) => {
+	route.query = loc.query;
+});
+
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	vi.stubGlobal('useRoute', () => route);
+	vi.stubGlobal('useRouter', () => ({ replace: routerReplace }));
 });
 
 const stubs = {
@@ -75,5 +83,23 @@ describe('PostboxTriageFilterChips open-in-search', () => {
 			.map((b) => b.text());
 		expect(labels).toHaveLength(4);
 		expect(labels[0]).toContain('All');
+	});
+});
+
+describe('PostboxTriageFilterChips placement filter (read on arrival §3)', () => {
+	it("shows the Priority view's digest filter as an active chip whose × drops it", async () => {
+		route.query = { placement: 'digest', q: 'kept' };
+		const w = mountChips('all');
+		const chip = w.get('[data-testid="placement-filter-chip"]');
+		expect(chip.text()).toContain('In your digest');
+		await chip.trigger('click');
+		expect(routerReplace).toHaveBeenCalledWith({ query: { q: 'kept' } });
+		expect(w.find('[data-testid="placement-filter-chip"]').exists()).toBe(false);
+	});
+
+	it('ignores a placement it does not know', () => {
+		route.query = { placement: 'everything' };
+		expect(mountChips('all').find('[data-testid="placement-filter-chip"]').exists()).toBe(false);
+		route.query = {};
 	});
 });

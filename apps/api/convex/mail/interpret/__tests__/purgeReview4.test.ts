@@ -18,6 +18,7 @@ import { MAX_RANGE_READS, unitBudget, type DrainBudget } from '../purgeDrain';
 import { drivePurgeJob } from '../purgeRun';
 import { mailMessageSources } from '../purge';
 import { modules, reduceItem, reduceResult, seedMailThread, type Test } from './interpret.testlib';
+import { applyAsRun } from './lease.testlib';
 import { SENT, addSibling, applyArgs, insertItem } from './purge.testlib';
 
 beforeEach(() => {
@@ -151,7 +152,7 @@ describe('F3: a refill touches only the redacted fields', () => {
 		const t = convexTest(schema, modules);
 		const { messageId: a, threadId } = await seedMailThread(t);
 		const c = await addSibling(t, a);
-		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, applyArgs(c, threadId));
+		await applyAsRun(t, applyArgs(c, threadId));
 		const { item, brief } = await t.run(async (ctx) => {
 			const row = (await ctx.db
 				.query('threadItems')
@@ -172,7 +173,7 @@ describe('F3: a refill touches only the redacted fields', () => {
 		});
 		const deadline = { phrase: 'by Friday', at: Date.UTC(2026, 9, 9), isAmbiguous: false };
 
-		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		await applyAsRun(t, {
 			...applyArgs(a, threadId),
 			expectedRevision: brief.interpretationRevision,
 			deletionEpoch: brief.deletionEpoch,
@@ -273,7 +274,7 @@ describe('F5: completeness follows outstanding repairs', () => {
 	/** B's repair run recording its result, as the reducer does. */
 	async function landRepair(t: Test, threadId: Id<'mailThreads'>, b: Id<'mailMessages'>) {
 		const brief = (await briefOf(t, threadId))!;
-		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		await applyAsRun(t, {
 			...applyArgs(b, threadId),
 			expectedRevision: brief.interpretationRevision,
 			deletionEpoch: brief.deletionEpoch,

@@ -3,6 +3,7 @@ import { resolveActiveChord, shortcutBindings } from '~/utils/shortcutScope';
 import { formatChord } from '~/utils/shortcutRegistry';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isDialogOpen } from '~/utils/dialogOpen';
+import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 
 /**
  * The bar above an open conversation when the list is not beside it.
@@ -24,6 +25,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ back: [] }>();
 const { t } = useI18n();
+const listQuery = usePostboxListQuery(); // a filtered list keeps `?placement=`
 
 const index = computed(() => props.orderedIds.indexOf(props.activeMessageId));
 const previousId = computed(() =>
@@ -45,7 +47,7 @@ function keyHint(id: 'postbox.next' | 'postbox.previous'): string {
 }
 
 function open(id: string | null) {
-	if (id) void navigateTo(`/dashboard/postbox/${props.folderPath}/${id}`);
+	if (id) void navigateTo(`/dashboard/postbox/${props.folderPath}/${id}${listQuery.value}`);
 }
 
 // j/k in Zen: the list that normally owns them is not on screen.

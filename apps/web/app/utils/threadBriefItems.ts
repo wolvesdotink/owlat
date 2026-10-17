@@ -79,6 +79,13 @@ export function menuReactions(
 	return [...new Set(rest)];
 }
 
+/** The catalog key of an item action's label (the brief's item rows and the reader strip). */
+export function briefActionLabelKey(action: BriefAction): string {
+	if (action === 'undo') return 'components.brief.item.undo';
+	if (action === 'confirmProposal') return 'components.brief.item.track';
+	return `components.brief.reaction.${action}`;
+}
+
 /** Reactions that open Answer mode rather than change the item. */
 const REPLYING: ReadonlySet<ItemReaction> = new Set<ItemReaction>([
 	'reply',

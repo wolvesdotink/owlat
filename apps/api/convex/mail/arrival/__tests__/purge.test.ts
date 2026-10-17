@@ -18,7 +18,12 @@ import { MAIL_ARRIVAL_TABLES } from '../../../schema/mailArrival';
 import { arrivalChangeRow } from '../changeRows';
 import { drivePurgeJob } from '../../interpret/purgeRun';
 import { unitBudget, type DrainBudget } from '../../interpret/purgeDrain';
-import { markDigestFailed, markDigestSent, retireGeneratedDigests } from '../digestState';
+import {
+	commitGeneratedDigest,
+	markDigestFailed,
+	markDigestSent,
+	retireGeneratedDigests,
+} from '../digestState';
 import { mailMessageSources } from '../../interpret/purge';
 import { seedArrivalRows } from './arrival.testlib';
 
@@ -391,6 +396,86 @@ describe('digest state invariants', () => {
 				false
 			);
 			expect((await ctx.db.get(id))!.sentAt).toBe(sentAt);
+		});
+	});
+
+	it('keeps one generated digest however overlapping claims commit', async () => {
+		const orders = [
+			['a', 'b', 'c'],
+			['c', 'a', 'b'],
+			['b', 'c', 'a'],
+		] as const;
+		for (const order of orders) {
+			const { t, mailboxId, messageId, threadId } = await setup();
+			const now = Date.now();
+			// Three periods claimed before any of them commits: each claim saw no
+			// generated digest.
+			const claimed = await t.run(async (ctx) => {
+				const ids: Record<string, Id<'mailDigests'>> = {};
+				for (const period of ['a', 'b', 'c']) {
+					ids[period] = await ctx.db.insert('mailDigests', {
+						...digestRow(mailboxId, 'claimed', period, []),
+						claimToken: `token-${period}`,
+						claimUntil: now + 60_000,
+					});
+				}
+				return ids;
+			});
+			for (const period of order) {
+				const result = await t.run((ctx) =>
+					commitGeneratedDigest(ctx, {
+						digestId: claimed[period]!,
+						claimToken: `token-${period}`,
+						items: [{ threadId, messageId, kind: 'newsletter', spans: [{ quote: 'sealed:q' }] }],
+						now,
+					})
+				);
+				expect(result).toEqual({ ok: true });
+			}
+			await t.run(async (ctx) => {
+				const generated = await ctx.db
+					.query('mailDigests')
+					.withIndex('by_mailbox_state', (q) =>
+						q.eq('mailboxId', mailboxId).eq('state', 'generated')
+					)
+					.collect();
+				expect(generated.map((digest) => digest.periodKey)).toEqual([order[2]]);
+				for (const period of order.slice(0, 2)) {
+					expect(await ctx.db.get(claimed[period]!)).toMatchObject({ state: 'failed', items: [] });
+				}
+			});
+		}
+	});
+
+	it('refuses a commit without the live claim, writing nothing', async () => {
+		const { t, mailboxId, messageId, threadId } = await setup();
+		const now = Date.now();
+		const items = [{ threadId, messageId, kind: 'newsletter' as const }];
+		await t.run(async (ctx) => {
+			const claimedId = await ctx.db.insert('mailDigests', {
+				...digestRow(mailboxId, 'claimed', 'p', []),
+				claimToken: 'mine',
+				claimUntil: now + 1000,
+			});
+			const failedId = await ctx.db.insert('mailDigests', digestRow(mailboxId, 'failed', 'f', []));
+			const otherGenerated = await ctx.db.insert(
+				'mailDigests',
+				digestRow(mailboxId, 'generated', 'g', [{ threadId, messageId }])
+			);
+			const commit = (digestId: Id<'mailDigests'>, claimToken: string, at: number) =>
+				commitGeneratedDigest(ctx, { digestId, claimToken, items, now: at });
+			expect(await commit(claimedId, 'theirs', now)).toEqual({
+				ok: false,
+				reason: 'claim_mismatch',
+			});
+			expect(await commit(claimedId, 'mine', now + 5000)).toEqual({
+				ok: false,
+				reason: 'lease_expired',
+			});
+			expect(await commit(failedId, 't', now)).toEqual({ ok: false, reason: 'not_claimed' });
+			expect((await ctx.db.get(claimedId))!).toMatchObject({ state: 'claimed', items: [] });
+			// A refused commit retires nothing either.
+			expect((await ctx.db.get(otherGenerated))!.state).toBe('generated');
 		});
 	});
 

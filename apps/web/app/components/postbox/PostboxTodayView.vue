@@ -6,16 +6,24 @@
  * top to bottom:
  *
  *   - minimal header ("Inbox (n)" + the shared Priority|All mail switch)
- *   - the Brief slot (empty placeholder region — the Daily Brief lands here)
- *   - "FOR YOU (n)": compact agent-task strips from the existing Reply Queue
- *     feed; clicking opens the Answer queue filtered to this mailbox
- *   - "RECEIVED TODAY": thread rows (received since local midnight + unread from
- *     yesterday), reusing PostboxThreadList so hover quick-actions, unread
- *     emphasis, j/k/Enter and single-key triage all carry over unchanged
- *   - a quiet roll-up line for auto-filed smart-inbox mail (newsletters /
- *     notifications / receipts never render as Today rows)
+ *   - the Brief slot (the Daily Brief greeting card)
+ *   - "NEEDS YOU": the Reply Queue's rows (they open the Answer queue,
+ *     filtered to this mailbox) and the threads placed `needs_me`
+ *   - "EVERYTHING ELSE": the `today` placement (the Categories view's word;
+ *     "Today" names the home page, #776)
+ *   - "UPDATES · NO REPLY NEEDED": three rows, then a fold
+ *   - "N newsletters and promotions · in your digest": the `digest` placement
+ *     as a count, linking to All mail filtered to it
+ *   - for rows without an arrival placement, the old grouping: received today
+ *     (under "Everything else"), auto-filed categories rolled up into one
+ *     quiet line, the rest past mail
  *   - a centered "Show past mails (n)" affordance that expands older mail
  *     inline (same rows, same pagination).
+ *
+ * The groups come from each row's placement (utils/postboxPriorityGroups,
+ * read on arrival §3). Rows are one line each (POSTBOX_PRIORITY_ROWS) but stay
+ * PostboxThreadList rows, so hover quick-actions, unread emphasis, j/k/Enter
+ * and single-key triage carry over unchanged.
  *
  * Opening a row renders the conversation in PostboxTodayReaderOverlay — a
  * centered pane over the list, so the column (scroll + selection) stays put
@@ -31,17 +39,9 @@ import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { provide } from 'vue';
 import { POSTBOX_READER_HOST_KEY } from '~/composables/postbox/usePostboxReaderActions';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
-import {
-	partitionTodayMessages,
-	formatAutoFiledLine,
-	startOfLocalDay,
-} from '~/utils/postboxTodayPartition';
-import {
-	answerQueueHrefFor,
-	replyQueueHeadline,
-	type ReplyQueueItem,
-} from '~/utils/postboxReplyQueue';
-import { useLocalized } from '~/composables/useLocalized';
+import { formatAutoFiledLine, startOfLocalDay } from '~/utils/postboxTodayPartition';
+import { POSTBOX_PRIORITY_ROWS, groupPriorityRows } from '~/utils/postboxPriorityGroups';
+import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
 
 /**
  * Client detection that is both SSR-safe (no `window` on the server) and
@@ -51,7 +51,7 @@ import { useLocalized } from '~/composables/useLocalized';
  */
 const IS_CLIENT = typeof window !== 'undefined';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -67,6 +67,8 @@ const emit = defineEmits<{
 	'open-rail': [];
 	/** Open the auto-filed mail: browse mode with the Categories view. */
 	'view-auto-filed': [];
+	/** Open All mail filtered to the digest placement. */
+	'view-digest': [];
 	/** The reader overlay closed (Esc / scrim / advance past the ends) — the
 	 * host clears a deep-linked message route back to the plain inbox URL. */
 	'reader-closed': [];
@@ -91,23 +93,41 @@ const now = usePostboxListNow();
 // not 1,440 times a day.
 const todayStart = computed(() => startOfLocalDay(new Date(now.value)));
 
-const partition = computed(() =>
-	// Each row carries its thread's advisory category (attached server-side), so
-	// a row on a later page is auto-filed exactly like one on the first.
-	// Fail-open: an unclassified row is never auto-filed.
-	partitionTodayMessages(messages.value, { now: new Date(todayStart.value) })
-);
-const todayRows = computed(() => partition.value.today);
-const olderRows = computed(() => partition.value.older);
-const autoFiledLine = computed(() => formatAutoFiledLine(partition.value.autoFiledCounts));
-
-// "For you" — the existing Reply Queue feed (usePostboxReplyQueue already
-// ranks by priority). The strips stay compact: the Answer queue remains the
-// doing-surface, so every strip routes there, filtered to this mailbox.
+// "Needs you" starts with the Reply Queue feed (usePostboxReplyQueue already
+// ranks by priority). Its rows stay compact: the Answer queue remains the
+// doing-surface, so every row routes there, filtered to this mailbox.
 const FOR_YOU_CAP = 5;
 const answerQueueHref = computed(() => answerQueueHrefFor(props.mailboxId));
 const { items: forYouItems, count: forYouCount } = usePostboxReplyQueue(mailboxIdRef);
 const forYouVisible = computed(() => forYouItems.value.slice(0, FOR_YOU_CAP));
+const queuedThreadIds = computed(() => new Set(forYouItems.value.map((item) => item.threadId)));
+
+// One line per thread (PostboxThreadRowBody reads this).
+provide(POSTBOX_PRIORITY_ROWS, true);
+
+const groups = computed(() =>
+	// Each row carries its thread's placement and advisory category (attached
+	// server-side), so a row on a later page groups exactly like one on the
+	// first. Fail-open: an unclassified, unplaced row is never auto-filed.
+	groupPriorityRows(messages.value, {
+		now: new Date(todayStart.value),
+		queuedThreadIds: queuedThreadIds.value,
+	})
+);
+const needsRows = computed(() => groups.value.needsMe);
+const todayRows = computed(() => groups.value.today);
+const updateRows = computed(() => groups.value.updates);
+const digestCount = computed(() => groups.value.digest.length);
+const olderRows = computed(() => groups.value.older);
+const autoFiledLine = computed(() => formatAutoFiledLine(groups.value.autoFiledCounts));
+const needsCount = computed(() => forYouCount.value + needsRows.value.length);
+const shownCount = computed(
+	() => needsRows.value.length + todayRows.value.length + updateRows.value.length
+);
+/** Nothing to show in any group: the quiet "All clear" line. */
+const isInboxZero = computed(
+	() => shownCount.value === 0 && forYouCount.value === 0 && digestCount.value === 0
+);
 
 // Deep link target for the desktop titlebar unread pill
 // (/dashboard/postbox/inbox#postbox-for-you). The section renders only once the
@@ -152,33 +172,6 @@ watch(
 	{ immediate: true }
 );
 
-/** One muted line of context under the ask: who it is + what they wrote. */
-/**
- * The queue helpers are pure, so copy reaches us as an i18n key (optionally
- * with params) while message-derived text (a subject, an AI ask summary)
- * arrives as itself — resolve both here, the rendering layer.
- */
-const replyQueueText = useLocalized();
-
-/** The strip's headline — the AI's ask summary, the subject, or the fallback copy. */
-function forYouHeadline(item: ReplyQueueItem): string {
-	return replyQueueText(replyQueueHeadline(item, locale.value));
-}
-
-function forYouDetail(item: ReplyQueueItem): string {
-	const who = item.fromName?.trim() || item.fromAddress;
-	const snippet = item.snippet?.trim();
-	return snippet ? t('components.postbox.postboxTodayView.forYouDetail', { who, snippet }) : who;
-}
-
-/** The strip's action says what happens (no jargon). */
-function forYouAction(item: ReplyQueueItem): string {
-	if (item.kind === 'followup') return t('common.open');
-	if (item.hasDraftSlot || item.clarification?.draft)
-		return t('components.postbox.postboxTodayView.reviewAndSend');
-	return t('components.postbox.postboxTodayView.answer');
-}
-
 // The column scrolls as one: both lists sit in auto-height boxes inside it, so
 // they window and auto-load against this scroller, not their own boxes (which
 // never scroll and would mount every loaded row).
@@ -209,7 +202,9 @@ watch(
 // The visible row order the overlay's j/k and the reader's triage
 // auto-advance walk: today's rows, then the expanded past rows.
 const overlayAdvanceIds = computed(() => [
+	...needsRows.value.map((m) => m._id),
 	...todayRows.value.map((m) => m._id),
+	...updateRows.value.map((m) => m._id),
 	...(showPast.value ? olderRows.value.map((m) => m._id) : []),
 ]);
 
@@ -269,7 +264,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 				</button>
 				<h1 class="flex-1 min-w-0 text-lg font-semibold text-text-primary">
 					{{ t('components.postbox.postboxTodayView.inbox') }}
-					<span class="font-normal text-text-tertiary tabular-nums">({{ todayRows.length }})</span>
+					<span class="font-normal text-text-tertiary tabular-nums">({{ shownCount }})</span>
 				</h1>
 				<PostboxInboxModeToggle class="flex-shrink-0" mode="today" @select="onModeSelect" />
 			</header>
@@ -279,58 +274,54 @@ function onModeSelect(mode: PostboxInboxMode) {
 			     the focal point). Its counts deep-link to the sections below. -->
 			<PostboxDailyBrief :mailbox-id="mailboxId" />
 
-			<!-- FOR YOU: what the agent queued for the owner, why in one muted line. -->
+			<!-- NEEDS YOU: the Reply Queue, then the threads placed needs_me. -->
 			<section
-				v-if="forYouCount > 0"
+				v-if="needsCount > 0"
 				id="postbox-for-you"
 				ref="forYouSection"
-				:aria-label="t('components.postbox.postboxTodayView.forYou')"
+				:aria-label="t('postbox.priority.needsYou.title')"
 			>
 				<h2
-					class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary tabular-nums"
+					class="flex items-baseline text-[11px] font-semibold uppercase tracking-wider text-text-tertiary tabular-nums"
 				>
-					{{ t('components.postbox.postboxTodayView.forYouHeading', { count: forYouCount }) }}
+					{{ t('postbox.priority.needsYou.title') }}
+					<NuxtLink
+						v-if="forYouCount > 0"
+						:to="answerQueueHref"
+						class="ml-auto normal-case tracking-normal text-xs font-normal text-brand hover:underline"
+						>{{ t('postbox.priority.needsYou.queue', { count: forYouCount }) }}</NuxtLink
+					>
 				</h2>
-				<ul
+				<div
 					class="mt-2 divide-y divide-border-subtle rounded-lg border border-border-subtle bg-bg-surface overflow-hidden"
 				>
-					<li v-for="item in forYouVisible" :key="item.messageId">
-						<NuxtLink
-							:to="answerQueueHref"
-							class="flex items-center gap-3 px-4 py-3 hover:bg-(--surface-1-hover) focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand/40 outline-none"
-						>
-							<Icon
-								:name="item.kind === 'followup' ? 'lucide:clock' : 'lucide:reply'"
-								class="w-4 h-4 text-brand flex-shrink-0"
-							/>
-							<span class="flex-1 min-w-0">
-								<span class="block truncate text-sm font-semibold text-text-primary">
-									{{ forYouHeadline(item) }}
-								</span>
-								<span class="block truncate text-xs text-text-tertiary mt-0.5">
-									{{ forYouDetail(item) }}
-								</span>
-							</span>
-							<span class="flex-shrink-0 text-sm font-medium text-brand" aria-hidden="true">
-								{{ forYouAction(item) }}
-							</span>
-						</NuxtLink>
-					</li>
-				</ul>
-				<div v-if="forYouCount > FOR_YOU_CAP" class="mt-1.5 text-right">
-					<NuxtLink :to="answerQueueHref" class="text-xs text-brand hover:underline">
-						{{ t('components.postbox.postboxTodayView.viewAllCount', { count: forYouCount }) }}
-					</NuxtLink>
+					<PostboxPriorityQueueList
+						v-if="forYouVisible.length > 0"
+						:items="forYouVisible"
+						:href="answerQueueHref"
+					/>
+					<PostboxThreadList
+						v-if="needsRows.length > 0"
+						:mailbox-id="mailboxId"
+						:messages="needsRows"
+						:loading="false"
+						folder-role="inbox"
+						:scroll-parent="scrollHost"
+						selectable
+						:active-message-id="openMessageId"
+						@select="openMessageId = $event"
+					/>
 				</div>
 			</section>
 
-			<!-- RECEIVED TODAY: the day's mail, same rows/shortcuts as the full list. -->
+			<!-- EVERYTHING ELSE: the today placement (and today's unplaced mail), same rows/shortcuts as the full list. -->
 			<section
+				v-if="todayRows.length > 0 || error || isLoading || isInboxZero || autoFiledLine"
 				id="postbox-today"
-				:aria-label="t('components.postbox.postboxTodayView.receivedToday')"
+				:aria-label="t('postbox.priority.everythingElse.title')"
 			>
 				<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
-					{{ t('components.postbox.postboxTodayView.receivedToday') }}
+					{{ t('postbox.priority.everythingElse.title') }}
 				</h2>
 				<div
 					v-if="todayRows.length > 0"
@@ -351,10 +342,14 @@ function onModeSelect(mode: PostboxInboxMode) {
 				<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
 				<PostboxThreadListSkeleton v-else-if="isLoading" class="mt-2" />
 				<!-- Inbox zero: one quiet line; the Brief + past mail stay put. -->
-				<p v-else class="mt-3 text-sm text-text-tertiary">
+				<p v-else-if="isInboxZero" class="mt-3 text-sm text-text-tertiary">
 					{{ t('components.postbox.postboxTodayView.allClear') }}
 				</p>
-				<p v-if="autoFiledLine" class="mt-2 text-xs text-text-tertiary">
+				<p
+					v-if="autoFiledLine"
+					class="mt-2 text-xs text-text-tertiary"
+					data-testid="auto-filed-line"
+				>
 					{{ t(autoFiledLine.key, autoFiledLine.params) }} ·
 					<button
 						type="button"
@@ -365,6 +360,30 @@ function onModeSelect(mode: PostboxInboxMode) {
 					</button>
 				</p>
 			</section>
+
+			<!-- UPDATES: three one-liners, then the fold. -->
+			<PostboxPriorityUpdates
+				:mailbox-id="mailboxId"
+				:rows="updateRows"
+				:scroll-parent="scrollHost"
+				:active-message-id="openMessageId"
+				@select="openMessageId = $event"
+			/>
+
+			<!-- Newsletters and promotions are a count and a way to the digest. -->
+			<button
+				v-if="digestCount > 0"
+				type="button"
+				class="flex items-baseline gap-2 rounded-lg border border-dashed border-border-subtle px-4 py-2.5 text-left text-sm text-text-secondary hover:bg-bg-surface focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+				data-testid="priority-digest-fold"
+				@click="emit('view-digest')"
+			>
+				<b class="font-medium text-text-primary">{{
+					t('postbox.priority.digest.count', { count: digestCount }, digestCount)
+				}}</b>
+				<span>· {{ t('postbox.priority.digest.inDigest') }}</span>
+				<span class="ml-auto text-xs text-brand">{{ t('postbox.priority.digest.open') }}</span>
+			</button>
 
 			<!-- Older mail: collapsed by default, expands inline with the same rows. -->
 			<Transition name="pbx-fade" mode="out-in">

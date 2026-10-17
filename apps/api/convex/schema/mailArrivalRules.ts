@@ -85,7 +85,8 @@ export const mailArrivalRulesTables = {
 		generationAttempts: v.number(),
 		// ≤15 rendered lines (≤5 per kind); spans sealed. Non-empty ONLY while
 		// `generated`; failed and sent digests are stripped, and a mailbox has at
-		// most one generated digest (invariants in mail/arrival/digestState.ts).
+		// most one generated digest. Written ONLY by `commitGeneratedDigest`
+		// (mail/arrival/digestState.ts, the invariants).
 		items: v.array(digestItemValidator),
 		// ≤200 threads consumed on send, with the boundary snapshotted at selection.
 		visited: v.array(digestVisitedValidator),

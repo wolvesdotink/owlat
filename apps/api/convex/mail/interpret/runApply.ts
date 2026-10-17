@@ -86,25 +86,39 @@ export async function apply(
 	return outcome;
 }
 
+/** A run of a source without an enqueue snapshot: not interpreted, nothing recorded. */
+type UnsnapshottedRun = {
+	status: 'skipped';
+	isReplayed: false;
+	createdItemIds: never[];
+	errorCode: 'no_snapshot';
+};
+const unsnapshotted = (): UnsnapshottedRun => ({
+	status: 'skipped',
+	isReplayed: false,
+	createdItemIds: [],
+	errorCode: 'no_snapshot',
+});
+
 /**
  * Run `body` under the source's lease: claimed first, released however
  * `body` ends (a no-op when its commit already cleared it). `busy` and `done`
- * come back without running `body`.
+ * come back without running `body`, and so does a source with no snapshot
+ * row: never run unleased (Sol fixes-r3 F1).
  */
 export async function withSourceLease<R>(
 	ctx: Pick<ActionCtx, 'runMutation'>,
 	source: InterpretationSource,
 	depth: Depth | undefined,
-	/** `token`: the lease to commit with; none when there was nothing to lease. */
-	body: (token: string | undefined) => Promise<R>
-): Promise<R | { status: 'busy'; retryAt: number } | { status: 'done' }> {
+	body: (token: string) => Promise<R>
+): Promise<R | { status: 'busy'; retryAt: number } | { status: 'done' } | UnsnapshottedRun> {
 	const claim: LeaseClaim = await ctx.runMutation(internal.mail.interpret.lease.claimSourceLease, {
 		source,
 		...(depth ? { depth } : {}),
 	});
 	if (claim.kind === 'busy') return { status: 'busy', retryAt: claim.retryAt };
 	if (claim.kind === 'done') return { status: 'done' };
-	if (!claim.isHeld) return body(undefined);
+	if (claim.kind === 'unsnapshotted') return unsnapshotted();
 	try {
 		return await body(claim.token);
 	} finally {

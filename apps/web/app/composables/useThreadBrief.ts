@@ -1,7 +1,7 @@
 /**
  * The thread brief of one Postbox thread (SPEC §7): the `brief.get` read in
  * the UI's locale, and `markSeen` once the viewer has actually looked at the
- * Overview, so "new since you last looked" moves only on a real look.
+ * brief, so "new since you last looked" moves only on a real look.
  *
  * `brief` is `undefined` while loading, `null` when the server has nothing
  * (no access, or no brief row), else the view. A thread with nothing
@@ -14,7 +14,6 @@ import type { BriefModeView, ThreadBriefView } from '../../../api/convex/mail/in
 import { api } from '@owlat/api';
 import { briefLocale, type MailThreadRefArg } from '~/composables/threadBrief/briefApi';
 import type { Ref } from 'vue';
-import type { BriefAvailability } from '~/utils/threadBriefView';
 import {
 	BRIEF_MAX_PAGES,
 	mergeBriefPages,
@@ -78,19 +77,9 @@ export function useThreadBrief(opts: {
 		const p = paged.value;
 		return p === undefined ? undefined : (p?.brief ?? null);
 	});
-	/** Whether the item lists are whole; the Overview never says "nothing to do" otherwise. */
+	/** Whether the item lists are whole; the brief never says "nothing to do" otherwise. */
 	const itemsState = computed<BriefItemsState>(() => paged.value?.itemsState ?? 'complete');
 	const isClosedTruncated = computed(() => paged.value?.isClosedTruncated === true);
-
-	/** What the opening-view rule needs to know (utils/threadBriefView). */
-	const availability = computed<BriefAvailability>(() => {
-		const b = brief.value;
-		if (b === undefined && query.isLoading.value) return 'loading';
-		if (!b || b.completeness === 'none') return 'none';
-		const reason = b.gap?.reason;
-		if (reason === 'short' || reason === 'security') return 'original';
-		return 'available';
-	});
 
 	// An older thread with nothing interpreted yet (D5), or messages whose
 	// reading waited for this open (D10): ask for their interpretation; the
@@ -107,7 +96,7 @@ export function useThreadBrief(opts: {
 		announce: false,
 	});
 	const seen = new Set<string>();
-	/** Record that the viewer looked at this revision of the Overview (once per revision). */
+	/** Record that the viewer looked at this revision of the brief (once per revision). */
 	function markSeen() {
 		const ref = threadRef.value;
 		const b = brief.value;
@@ -125,7 +114,6 @@ export function useThreadBrief(opts: {
 		brief,
 		itemsState,
 		isClosedTruncated,
-		availability,
 		isLoading: query.isLoading,
 		error: query.error,
 		markSeen,

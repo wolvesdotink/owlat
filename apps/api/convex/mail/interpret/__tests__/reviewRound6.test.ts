@@ -25,6 +25,7 @@ import {
 	seedMailThread,
 	type Test,
 } from './interpret.testlib';
+import { applyAsRun } from './lease.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
@@ -66,7 +67,7 @@ async function apply(
 			.first();
 		return brief?.interpretationRevision ?? 0;
 	});
-	return t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+	return applyAsRun(t, {
 		source: { kind: 'mail', id: messageId },
 		threadRef: { kind: 'mail', id: threadId },
 		mode: 'brief',
