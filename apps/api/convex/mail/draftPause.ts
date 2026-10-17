@@ -19,9 +19,10 @@
  * Sending a draft with an AI baseline resets the streak. At
  * {@link UNUSED_DRAFT_PAUSE_AT} the profile gets `autoDraftPausedAt` and
  * draft-on-arrival skips the sender (`isDraftOnArrivalPaused`); the
- * clarification questions still run. While paused the streak is frozen:
- * nothing counts or resets until Resume (`senders/status.resumeDrafts`)
- * clears both fields.
+ * clarification questions still run. While paused nothing counts up, but an
+ * AI-based send still resets the streak as a new operation (the pause's own
+ * undo then fails its guard, which is right). Resume
+ * (`senders/status.resumeDrafts`) clears both fields.
  *
  * **Never twice.** Each count consumes what it counted in the same mutation:
  * a discard deletes the draft row, and a reply clears the thread's needs-reply
@@ -79,13 +80,17 @@ export function nextDraftPause(
 	use: DraftUse,
 	now: number
 ): { after: SenderDraftPauseValue; isLogged: boolean } | null {
-	// Frozen while paused: only Resume moves it.
-	if (current.autoDraftPausedAt !== undefined) return null;
+	const isPaused = current.autoDraftPausedAt !== undefined;
 	if (use === 'used') {
-		return current.unusedDraftStreak === 0
-			? null
-			: { after: { unusedDraftStreak: 0 }, isLogged: true };
+		// A reset, paused or not; the pause itself waits for Resume.
+		if (current.unusedDraftStreak === 0) return null;
+		const after = isPaused
+			? { autoDraftPausedAt: current.autoDraftPausedAt, unusedDraftStreak: 0 }
+			: { unusedDraftStreak: 0 };
+		return { after, isLogged: true };
 	}
+	// Already paused: nothing more to count.
+	if (isPaused) return null;
 	const streak = current.unusedDraftStreak + 1;
 	if (streak >= UNUSED_DRAFT_PAUSE_AT) {
 		return { after: { autoDraftPausedAt: now, unusedDraftStreak: streak }, isLogged: true };

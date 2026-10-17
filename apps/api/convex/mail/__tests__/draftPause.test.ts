@@ -1,7 +1,7 @@
 /**
  * How the unused-draft streak moves (SPEC §7, mail/draftPause.ts): an unused
- * draft counts, the fifth pauses, a used one resets, and a paused streak is
- * frozen until Resume.
+ * draft counts, the fifth pauses, a used one resets (also while paused), and
+ * nothing counts up while paused.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -30,9 +30,12 @@ describe('nextDraftPause', () => {
 		expect(nextDraftPause({ unusedDraftStreak: 0 }, 'used', 7)).toBeNull();
 	});
 
-	it('is frozen while paused', () => {
+	it('resets while paused, keeping the pause, and counts nothing more', () => {
 		const paused = { autoDraftPausedAt: 1, unusedDraftStreak: 5 };
+		expect(nextDraftPause(paused, 'used', 7)).toEqual({
+			after: { autoDraftPausedAt: 1, unusedDraftStreak: 0 },
+			isLogged: true,
+		});
 		expect(nextDraftPause(paused, 'unused', 7)).toBeNull();
-		expect(nextDraftPause(paused, 'used', 7)).toBeNull();
 	});
 });
