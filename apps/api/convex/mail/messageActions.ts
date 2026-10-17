@@ -280,18 +280,15 @@ export const move = postboxMutation({
 	args: {
 		messageIds: v.array(v.id('mailMessages')),
 		targetFolderId: v.id('mailFolders'),
-		// Set by server callers whose archive is a side effect (mute, unsubscribe):
-		// not a person archiving, so never learning evidence (read on arrival §4.3).
+		// A server caller's side-effect archive (mute, unsubscribe): never evidence (§4.3).
 		isAutomatic: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args, session): Promise<MoveResult> => {
-		const unread = args.isAutomatic
+		const { isAutomatic, ...move } = args;
+		const unread = isAutomatic
 			? null
-			: await unreadArchiveCandidates(ctx, args.messageIds, args.targetFolderId);
-		const result = await moveWithAccess(ctx, createMailboxAccessGate(ctx, session), {
-			messageIds: args.messageIds,
-			targetFolderId: args.targetFolderId,
-		});
+			: await unreadArchiveCandidates(ctx, move.messageIds, move.targetFolderId);
+		const result = await moveWithAccess(ctx, createMailboxAccessGate(ctx, session), move);
 		await recordUnreadArchives(ctx, unread, result.moved, { now: Date.now() });
 		return result;
 	},

@@ -167,9 +167,10 @@ async function runCompile(
 ): Promise<void> {
 	let preview: Preview | null = null;
 	try {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
-			...(args.ownerUserId ? { ownerUserId: args.ownerUserId } : {}),
-		});
+		await ctx.runMutation(
+			internal.mail.ai.gate.assertAiAllowed,
+			args.ownerUserId ? { ownerUserId: args.ownerUserId } : {}
+		);
 		const model = await resolveLanguageModel(ctx, 'mail.rule_compile');
 		const { object } = await meterLlmCall(
 			ctx,
