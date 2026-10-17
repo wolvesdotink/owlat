@@ -16,7 +16,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { Placement } from '@owlat/shared/arrival';
-import { computed, ref, useId } from 'vue';
+import { computed, nextTick, ref, useId, watch } from 'vue';
 import type { PostboxWhyHereTarget } from '~/composables/postbox/usePostboxWhyHere';
 import {
 	destinationForPlacement,
@@ -42,6 +42,32 @@ useEscapeToClose(isOpen);
 useClickOutside([panel, computed(() => target.value?.anchor ?? null)], () => {
 	isOpen.value = false;
 });
+
+// Focus moves into the popover when it opens and back where it came from when
+// it closes (the anchor, else what had focus), so keyboard and screen-reader
+// users land in it and are not stranded behind it.
+let returnFocus: HTMLElement | null = null;
+function restoreFocus(anchor: HTMLElement | null) {
+	for (const el of [anchor, returnFocus]) {
+		if (!el?.isConnected) continue;
+		el.focus();
+		if (document.activeElement === el) break;
+	}
+	returnFocus = null;
+}
+watch(
+	() => target.value,
+	async (next, previous) => {
+		if (next && !previous) {
+			returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+			await nextTick();
+			panel.value?.focus();
+		} else if (!next && previous) {
+			restoreFocus(previous.anchor);
+		}
+	},
+	{ immediate: true }
+);
 
 const { data: why, isLoading } = useConvexQuery(api.mail.arrival.explain.forThread, () =>
 	target.value ? { threadId: target.value.threadId as Id<'mailThreads'> } : 'skip'
@@ -143,8 +169,9 @@ async function keepHere() {
 			v-if="target"
 			ref="panel"
 			role="dialog"
+			tabindex="-1"
 			:aria-labelledby="titleId"
-			class="fixed z-50 w-[22rem] max-w-[calc(100vw-1rem)] rounded-xl border border-border-subtle bg-bg-elevated p-4 text-sm shadow-lg"
+			class="fixed z-50 w-[22rem] max-w-[calc(100vw-1rem)] rounded-xl border border-border-subtle bg-bg-elevated p-4 text-sm shadow-lg outline-none"
 			:style="position"
 			data-testid="why-here-popover"
 		>

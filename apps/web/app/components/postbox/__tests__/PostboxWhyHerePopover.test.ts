@@ -62,10 +62,10 @@ beforeEach(() => {
 
 const buttonStub = { template: '<button type="button"><slot /></button>' };
 
-function mountPopover() {
-	const anchor = document.createElement('button');
+function mountPopover(anchor = document.createElement('button')) {
 	document.body.appendChild(anchor);
 	return mount(PostboxWhyHerePopover, {
+		attachTo: document.body,
 		props: {
 			target: { mailboxId: 'mb1', threadId: 't1', placement: 'updates', anchor },
 		},
@@ -133,6 +133,16 @@ describe('PostboxWhyHerePopover', () => {
 			expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })
 		);
 		expect(w.emitted('update:target')?.[0]).toEqual([null]);
+	});
+
+	it('takes focus when it opens and gives it back to the anchor when it closes', async () => {
+		const anchor = document.createElement('button');
+		const w = mountPopover(anchor);
+		await flushPromises();
+		expect(document.activeElement).toBe(w.get('[data-testid="why-here-popover"]').element);
+		await w.setProps({ target: null });
+		expect(document.activeElement).toBe(anchor);
+		w.unmount();
 	});
 
 	it('says so when there is nothing to explain, and still links to the Senders page', () => {
