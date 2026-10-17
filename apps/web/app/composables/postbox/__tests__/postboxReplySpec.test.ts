@@ -41,4 +41,14 @@ describe('buildReplyComposeSeed', () => {
 		expect(seed.replyAllRecipients).toEqual(['legal@acme.test']);
 		expect(seed.inReplyToMessageId).toBe('msg-1');
 	});
+
+	it('falls back to the Cc of our own message when its To was only us (F8)', async () => {
+		const seed = await buildReplyComposeSeed(
+			'reply',
+			{ ...base, fromAddress: 'me@example.com', toAddresses: ['me@example.com'] },
+			{ mailboxId: 'mb-1' as never, ownAddresses: OWN }
+		);
+		expect(seed.prefillTo).toEqual(['legal@acme.test']);
+		expect(seed.replyAllRecipients).toBeUndefined();
+	});
 });

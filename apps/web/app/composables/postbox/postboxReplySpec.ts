@@ -85,11 +85,13 @@ export async function buildReplyComposeSeed(
 	}
 	const spec: ReplyComposeSeed = buildReplySpec(ctx.mailboxId, target, ctx.leadText);
 	// A reply to our own message (a follow-up, a nudge) goes to the people it
-	// went to, not back to us.
+	// went to, not back to us: its To, else its Cc when it went only to us.
 	const own = [...ctx.ownAddresses];
 	if (isOwnAddress(target.fromAddress, own)) {
-		const to = target.toAddresses.filter((a) => !isOwnAddress(a, own));
-		if (to.length > 0) spec.prefillTo = to;
+		const others = (list: string[]) => list.filter((a) => !isOwnAddress(a, own));
+		const to = others(target.toAddresses);
+		const recipients = to.length > 0 ? to : others(target.ccAddresses);
+		if (recipients.length > 0) spec.prefillTo = recipients;
 	}
 	const extras = deriveReplyAllExtras(target, [...own, ...(spec.prefillTo ?? [])]);
 	if (kind === 'replyAll') {
