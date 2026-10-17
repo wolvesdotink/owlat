@@ -41,6 +41,7 @@ import { isPersonalMailboxId } from '../senders/profiles';
 import { applyThreadFlagDeltas, type ThreadFlagDeltas } from '../threadAggregates';
 import type { UndoProgress } from '../../lib/validators/arrival';
 import { addUndoPage } from './undoProgress';
+import { cancelDelayedActionsOf } from '../rules/delayedActions';
 import { refreshArrivalProjection } from './projection';
 import { newUndoBatch, restoreChange, type UndoBatch } from './undoChanges';
 
@@ -88,15 +89,12 @@ async function applyFlags(ctx: MutationCtx, batch: UndoBatch): Promise<void> {
 
 /**
  * Cancel the pending delayed actions this operation created
- * (`createdByOperationId`) for the messages it names: the header's
- * `messageId` (page one) and every change row's message.
- *
- * Seam for lane rules: once `mail/rules/delayedActions.ts` is in the base,
- * this calls `cancelDelayedActionsOf(ctx, operation)` there (it finds rows by
- * the header's `messageId`) and keeps the per-row pass for operations whose
- * delayed actions hang off other messages. The rules executor also refuses a
- * row whose creating operation is no longer `applied`, which the first page
- * marks before anything else.
+ * (`createdByOperationId`). Page one calls lane rules' `cancelDelayedActionsOf`
+ * (`mail/rules/delayedActions.ts`), which finds them by the header's
+ * `messageId`; every page also passes the messages its change rows name, for
+ * operations whose delayed actions hang off other messages. The rules
+ * executor refuses a row whose creating operation is no longer `applied`,
+ * which page one marks first.
  */
 async function cancelDelayedActions(
 	ctx: MutationCtx,
@@ -177,7 +175,7 @@ async function runPage(
 		.withIndex('by_operation', (q) => q.eq('operationId', operation._id))
 		.paginate({ cursor, numItems });
 	const batch = newUndoBatch();
-	if (cursor === null && operation.messageId) batch.messages.add(operation.messageId);
+	if (cursor === null) await cancelDelayedActionsOf(ctx, operation);
 	let restored = 0;
 	let skipped = 0;
 	for (const row of page.page) {
