@@ -139,6 +139,54 @@ describe('today model', () => {
 		expect(model.filed).toMatchObject({ newsletter: 2, promotion: 2, notification: 1 });
 	});
 
+	it('carries no AI sentence on a mail line when the viewer turned the brief off', () => {
+		const input = (isBriefShown?: boolean) => ({
+			digests: [
+				digest({
+					changed: [
+						{
+							threadId: 't0',
+							mailboxId: 'mb',
+							subject: 'Print run',
+							newMessages: 2,
+							lastMessageAt: 4,
+							snippet: 'raw',
+							summary: 'Lena moved delivery to 28 October.',
+							sources: [source('m0', 4)],
+						},
+					],
+					arrived: [
+						{
+							threadId: 't1',
+							mailboxId: 'mb',
+							subject: 'Files',
+							snippet: '',
+							summary: 'Harbor sent the files.',
+							category: 'person',
+							lastMessageAt: 3,
+							sources: [source('m1', 3)],
+						},
+					],
+				}),
+			],
+			teamUpdates: [],
+			teamCounts: null,
+			since: 0,
+			...(isBriefShown === undefined ? {} : { isBriefShown }),
+		});
+		const on = buildTodayModel(input());
+		expect(on.changed[0]?.summary).toBe('Lena moved delivery to 28 October.');
+		expect(on.worth[0]).toMatchObject({ text: 'Harbor sent the files.', isSummary: true });
+
+		const off = buildTodayModel(input(false));
+		// A changed thread falls back to who wrote and the new mail's own words.
+		expect(off.changed[0]).toMatchObject({ summary: null, subject: 'Print run' });
+		expect(off.changed[0]?.latest?.snippet).toBe('snippet');
+		expect(off.worth[0]).toMatchObject({ lead: 'Harbor Design', text: 'Files', isSummary: false });
+		// Counts are not sentences: they stay.
+		expect(off.newMail).toBe(on.newMail);
+	});
+
 	it('follows the server triage and keeps a few senders per filed kind', () => {
 		const line = (id: string, bucket: 'important' | 'routine', reason: 'alert' | null) => ({
 			threadId: id,

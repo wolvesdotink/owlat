@@ -19,7 +19,7 @@
  * past mails". A thread the Reply Queue lists shows once, as the queue's row,
  * and nowhere else.
  */
-import type { InjectionKey, Ref } from 'vue';
+import type { InjectionKey } from 'vue';
 import type { Placement } from '@owlat/shared/arrival';
 import type { BriefTopRow } from '../../../api/convex/mail/interpret/briefTop';
 import { briefRowLatest } from '~/utils/briefRowLine';
@@ -38,15 +38,6 @@ export type PriorityGroup = 'needsMe' | 'today' | 'updates' | 'digest';
  * (PostboxThreadRowBody), keeping the shared list's hover triage and keys.
  */
 export const POSTBOX_PRIORITY_ROWS: InjectionKey<boolean> = Symbol('postboxPriorityRows');
-
-/**
- * Provided by the Priority view: the viewer's "Show the brief above
- * conversations" (`isAutoSummarizeOn`). Off, a row's line is its subject, never
- * the AI's lead, ask or gist. Not provided reads as on.
- */
-export const POSTBOX_PRIORITY_BRIEF_LINES: InjectionKey<Readonly<Ref<boolean>>> = Symbol(
-	'postboxPriorityBriefLines'
-);
 
 /** The group a row's placement puts it in; no placement reads as `today`. */
 export function priorityGroupOf(placement: Placement | undefined): PriorityGroup {
@@ -176,8 +167,9 @@ export function priorityRowLine(
 	const gistText = rowGistOf(row.briefTop);
 	const gist = gistText ? { text: gistText, source: 'gist' as const } : null;
 	const subject = { text: row.subject.trim(), source: 'subject' as const };
+	// Off gates the personal brief only; a shared mailbox's actions stay.
 	const picked =
-		opts.showBrief === false
+		opts.showBrief === false && row.briefTop?.mode !== 'actions'
 			? subject
 			: ((group === 'needsMe' ? (ask ?? lead) : (lead ?? ask)) ?? gist ?? subject);
 

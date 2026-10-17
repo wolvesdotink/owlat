@@ -84,6 +84,9 @@ describe('replyQueueHeadline', () => {
 		};
 		expect(replyQueueHeadline(row, 'en')).toBe('Refund the order');
 		expect(replyQueueHeadline(row, 'en', { showBrief: false })).toBe('Order #4471');
+		// A shared mailbox's actions are the team's, not the viewer's brief: they stay.
+		const shared = { ...row, briefTop: { ...row.briefTop, mode: 'actions' as const } };
+		expect(replyQueueHeadline(shared, 'en', { showBrief: false })).toBe('Refund the order');
 	});
 
 	it('never uses the ask summary of a shared mailbox (SPEC §7)', () => {

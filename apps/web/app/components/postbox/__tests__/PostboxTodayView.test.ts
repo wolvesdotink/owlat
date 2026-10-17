@@ -35,7 +35,8 @@ vi.mock('~/utils/postboxTodayPartition', async (importOriginal) => {
 	return { ...actual, partitionTodayMessages: vi.fn(actual.partitionTodayMessages) };
 });
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
-import { POSTBOX_PRIORITY_BRIEF_LINES, POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
+import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
+import { POSTBOX_BRIEF_LINES } from '~/composables/postbox/usePostboxBriefLines';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -125,7 +126,7 @@ const threadListStub = defineComponent({
 	setup(props) {
 		// The rows render as one line under the Priority view.
 		const isPriority = inject(POSTBOX_PRIORITY_ROWS, false);
-		const briefLines = inject(POSTBOX_PRIORITY_BRIEF_LINES, null);
+		const briefLines = inject(POSTBOX_BRIEF_LINES, null);
 		return () =>
 			h('div', {
 				class: 'thread-list',

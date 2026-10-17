@@ -9,6 +9,11 @@
  * Personal and shared mailboxes alike; renders nothing when there is nothing
  * to do, and nothing for the team inbox tab (no mailbox there). When more
  * threads owe something than the band lists, it says so.
+ *
+ * With the viewer's brief turned off ("Show the brief above conversations"),
+ * a personal mailbox's row is its subject and sender, without the item's AI
+ * wording or the "+N more" chip; a shared mailbox's rows are the team's
+ * actions and stay.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -18,6 +23,11 @@ import { briefMoreChip } from '~/utils/briefRowLine';
 const props = defineProps<{ mailboxId: string }>();
 
 const { t, locale } = useI18n();
+const { autoSummarize } = usePostboxSettings();
+const { byId } = useInboxes();
+const isPlain = computed(
+	() => !autoSummarize.value && byId.value.get(props.mailboxId as never)?.scope !== 'shared'
+);
 
 const { data } = useConvexQuery(api.mail.interpret.todo.listNoReplyToDo, () => ({
 	mailboxId: props.mailboxId as Id<'mailboxes'>,
@@ -29,12 +39,15 @@ const isTruncated = computed(() => data.value?.isTruncated === true);
 type Row = (typeof rows.value)[number];
 
 function title(row: Row): string {
+	if (isPlain.value) return row.subject || t('components.shell.noSubject');
 	return locale.value.toLowerCase().startsWith('de') ? row.text.de : row.text.en;
 }
 function detail(row: Row): string {
-	return [row.fromName || row.fromAddress, row.subject].filter(Boolean).join(' · ');
+	const from = row.fromName || row.fromAddress;
+	return (isPlain.value ? [from] : [from, row.subject]).filter(Boolean).join(' · ');
 }
 function more(row: Row): string {
+	if (isPlain.value) return '';
 	const chip = briefMoreChip(row.count);
 	return chip ? t(chip.key, { count: chip.count }) : '';
 }

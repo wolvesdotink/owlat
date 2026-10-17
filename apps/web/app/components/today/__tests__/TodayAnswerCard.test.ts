@@ -21,8 +21,11 @@ import {
 const { t } = createTestI18n().global;
 
 const teamTops = ref<unknown[]>([]);
+// The viewer's "Show the brief above conversations" (isAutoSummarizeOn).
+const isBriefShown = ref(true);
 beforeAll(() => {
 	Object.assign(globalThis, {
+		usePostboxSettings: () => ({ autoSummarize: isBriefShown }),
 		useI18n: i18nStubs.useI18n,
 		formatCompactRelativeTime: () => '1m',
 		inject,
@@ -319,6 +322,21 @@ describe('TodayAnswerCard · brief rows (SPEC §7)', () => {
 	it('shows no chip for a single open item', () => {
 		const text = mountRows([mail('personal', { briefTop: { ...top, forYou: 1 } })]).text();
 		expect(text).not.toContain('more');
+	});
+
+	it('a personal row reads like plain mail when the viewer turned the brief off', () => {
+		isBriefShown.value = false;
+		try {
+			const text = mountRows([mail('personal', { briefTop: top })]).text();
+			expect(text).toContain('Order #4471');
+			expect(text).toContain('Ana Costa · “The replacement arrived with a cracked base too”');
+			expect(text).not.toContain('Approve the revised quote');
+			expect(text).not.toContain('Launch moved');
+			expect(text).not.toContain('Ana wants a refund');
+			expect(text).not.toContain('more');
+		} finally {
+			isBriefShown.value = true;
+		}
 	});
 
 	it('a shared row without an item never shows the AI ask summary', () => {
