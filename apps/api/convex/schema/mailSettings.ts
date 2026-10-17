@@ -45,6 +45,9 @@ export const mailSettingsTables = {
 		// undefined; the reader defaults it to 'overview', or 'conversation' when
 		// isAutoSummarizeOn is false (D1).
 		threadDefaultView: v.optional(threadViewValidator),
+		// Read on arrival (SPEC §2.1, spec name `readOnArrival`): personal mail is
+		// read by the AI provider when it arrives. Absent reads as on.
+		isReadOnArrival: v.optional(v.boolean()),
 		// Default reply behavior: whether the primary reply affordance (Reply button
 		// and the `r` shortcut) opens a plain Reply or a Reply-all. Optional so
 		// existing rows read as undefined; the reader defaults it to 'reply'.

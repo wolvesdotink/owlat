@@ -1,6 +1,9 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { ARRIVAL_FILTER_ACTION_TYPES } from '@owlat/shared/arrival';
 import { mailboxJobFields } from '../lib/validators/mail';
+import { filterAiConditionValidator, filterOriginValidator } from '../lib/validators/arrival';
+import { literalUnion } from '../lib/literalUnion';
 
 /** Field record of `mailVacationResponders`, shared with the functions that write it. */
 export const mailVacationRespondersFields = {
@@ -59,7 +62,11 @@ export const mailFilterActionValidator = v.object({
 		// Inbox — `pinnedSection` on the row is the only thing that changes —
 		// so a section is a reading arrangement, never a hiding place.
 		v.literal('pinToSection'),
-		v.literal('discard')
+		v.literal('discard'),
+		// Read on arrival (SPEC §6.3): sendToDigest, placeInUpdates,
+		// placeInNeedsMe, archiveAfter, notify. Placement-only or delayed;
+		// never applied by the manual delivery pass or a retroactive run.
+		...literalUnion(ARRIVAL_FILTER_ACTION_TYPES).members
 	),
 	folderId: v.optional(v.id('mailFolders')),
 	labelId: v.optional(v.id('mailLabels')),
@@ -68,6 +75,8 @@ export const mailFilterActionValidator = v.object({
 	// identity (there is no section table; the set of sections is derived
 	// from the enabled filters that name one).
 	sectionName: v.optional(v.string()),
+	// For `archiveAfter`: hours after arrival, 1..720.
+	hours: v.optional(v.number()),
 });
 
 /**
@@ -95,6 +104,13 @@ export const mailRulesTables = {
 		actions: v.array(mailFilterActionValidator),
 		matchType: v.optional(mailFilterMatchTypeValidator),
 		stopProcessing: v.boolean(),
+		// Read on arrival (SPEC §6.1, §6.2): what the person typed (sealed), an
+		// AI condition R2 answers, where the rule came from (absent = manual) and
+		// a revision every edit bumps, so a pending answer binds to one version.
+		sourceText: v.optional(v.string()),
+		aiCondition: v.optional(filterAiConditionValidator),
+		origin: v.optional(filterOriginValidator),
+		revision: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

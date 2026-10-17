@@ -103,6 +103,9 @@ export const mailMessagesTables = {
 		flagDeleted: v.boolean(),
 		customFlags: v.array(v.string()),
 		labelIds: v.array(v.id('mailLabels')),
+		// Read on arrival (SPEC §5): the first open was counted in the sender's
+		// opened weeks. Set once by `recordFirstOpen`.
+		isOpenCounted: v.optional(v.boolean()),
 
 		// When this message was moved INTO the trash (idea 67). Stamped by
 		// `moveMessagesToFolder` on a trash destination and cleared on the way

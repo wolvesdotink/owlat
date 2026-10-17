@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { needsReplyClarificationValidator } from '../lib/validators/clarification';
 import { briefTopValidator } from '../lib/validators/briefTop';
+import { placementOverrideValidator, threadArrivalValidator } from '../lib/validators/arrival';
 import { draftQualityValidator } from '../lib/convexValidators';
 import {
 	mailCategoryLabelValidator,
@@ -229,6 +230,16 @@ export const mailThreadsTables = {
 		// interpretation is not used anywhere until an operator lifts the fence.
 		// Human state on its items stays.
 		interpretationStaleSince: v.optional(v.number()),
+		// Read on arrival (SPEC §2.8, §6.5): the derived placement of the newest
+		// inbound message, rewritten only by `refreshArrivalProjection`; digest
+		// eligibility and the boundary the last sent digest consumed through (a
+		// sourceOrderKey); a Fix override and the undo ABA guard. Cleared when
+		// the mailbox becomes a team inbox (mail/interpret/scopeChange.ts).
+		arrival: v.optional(threadArrivalValidator),
+		digestPendingSince: v.optional(v.number()),
+		digestConsumedThrough: v.optional(v.string()),
+		placementOverride: v.optional(placementOverrideValidator),
+		lastArrivalOperationId: v.optional(v.id('mailArrivalOperations')),
 		// RETIRED (ADR-0072): the reader strip's cached thread summary, replaced by
 		// the thread brief. Nothing writes or reads it; migration 0067 clears it and
 		// the next release drops the field (mail/legacySummaryRows.ts).
@@ -276,7 +287,9 @@ export const mailThreadsTables = {
 		.index('by_follow_up_remind', ['followUpRemindAt'])
 		// Backs the Reply Queue's "You're waiting on <name>" follow-up items —
 		// due watches per mailbox without a full-table scan.
-		.index('by_mailbox_follow_up_due', ['mailboxId', 'followUp.dueAt']),
+		.index('by_mailbox_follow_up_due', ['mailboxId', 'followUp.dueAt'])
+		// The digest's selection: a mailbox's digest-eligible threads, newest first.
+		.index('by_mailbox_digest_pending', ['mailboxId', 'digestPendingSince']),
 
 	// Per-identity (mailbox) writing-voice profile, derived from the user's own
 	// SENT mail so advisory AI drafts sound like them. Recomputed lazily (see
