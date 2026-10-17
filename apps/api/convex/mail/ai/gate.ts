@@ -1,10 +1,18 @@
 /**
- * Gate for the user-triggered Postbox AI actions. Lives outside the 'use node'
- * mail/ai/assist.ts (which can't hold mutations) so the action can runMutation it
- * before spending an LLM call: it enforces the `ai` feature flag and a
- * per-user rate limit, mirroring the inbound pipeline's gating.
+ * Gate for every Postbox AI call made through `mail.ai.*`. Lives outside the
+ * 'use node' mail/ai/assist.ts (which can't hold mutations) so an action can
+ * runMutation it before spending an LLM call: it enforces the `ai` feature
+ * flag, spend admission and a rate limit.
+ *
+ * Rate-limit keying (#1380). A call with a session is charged to the session
+ * user in an interactive per-user bucket. Scheduled work has no session
+ * (Convex passes no auth to scheduled functions), so a background caller MUST
+ * pass `ownerUserId`, the user whose bucket pays (the mailbox owner, or the
+ * person whose click scheduled the work), and is charged to the
+ * `postboxAiBackground` bucket under that key. A session-less call without it
+ * throws: there is no shared fallback key any more.
  */
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import type { FunctionReturnType } from 'convex/server';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -17,9 +25,10 @@ import { throwForbidden, throwRateLimited } from '../../_utils/errors';
 import { budgetHeadroom, throwBudgetRefused } from '../../aiRouting/enforcedBudget';
 
 /**
- * Per-user rate-limit bucket the gate charges. Each user-triggered AI surface
- * passes its OWN bucket so one feature's tight loop can't starve another's
- * headroom; `postboxAiPerUser` stays the default for the original callers.
+ * Per-user rate-limit bucket an interactive call is charged to. Each
+ * user-triggered AI surface passes its OWN bucket so one feature's tight loop
+ * can't starve another's headroom; `postboxAiPerUser` stays the default for
+ * the original callers. Session-less calls ignore it (`postboxAiBackground`).
  */
 const AI_RATE_BUCKET = v.union(
 	v.literal('postboxAiPerUser'),
@@ -28,9 +37,26 @@ const AI_RATE_BUCKET = v.union(
 	v.literal('answerCoveragePerUser')
 );
 
+/** Thrown for a session-less gate call that names no owner: a caller bug, never a refusal. */
+export const MISSING_AI_OWNER_MESSAGE =
+	'assertAiAllowed: a call without a session must pass ownerUserId';
+
 export const assertAiAllowed = internalMutation({
-	args: { rateLimitBucket: v.optional(AI_RATE_BUCKET) },
+	args: {
+		rateLimitBucket: v.optional(AI_RATE_BUCKET),
+		/** Required without a session: the user whose background bucket pays. */
+		ownerUserId: v.optional(v.string()),
+	},
 	handler: async (ctx, args) => {
+		// Resolved first: a caller that names nobody is a bug whatever the flag says.
+		const session = await getBetterAuthSessionWithRole(ctx);
+		const charge = session
+			? { bucket: args.rateLimitBucket ?? 'postboxAiPerUser', key: session.userId }
+			: args.ownerUserId
+				? { bucket: 'postboxAiBackground' as const, key: args.ownerUserId }
+				: null;
+		if (!charge) throw new Error(MISSING_AI_OWNER_MESSAGE);
+
 		if (!(await isFeatureEnabled(ctx, 'ai'))) {
 			throwForbidden('AI features are disabled');
 		}
@@ -44,14 +70,26 @@ export const assertAiAllowed = internalMutation({
 		const budget = await budgetHeadroom(ctx, { priority: 'interactive' });
 		if (!budget.isAdmitted) throwBudgetRefused(budget);
 
-		const session = await getBetterAuthSessionWithRole(ctx);
-		const key = session?.userId ?? 'anon';
-		const res = await rateLimiter.limit(ctx, args.rateLimitBucket ?? 'postboxAiPerUser', { key });
+		const res = await rateLimiter.limit(ctx, charge.bucket, { key: charge.key });
 		if (!res.ok) {
 			throwRateLimited('AI is busy — try again in a moment.', res.retryAfter);
 		}
 	},
 });
+
+/**
+ * The rate-limit refusal an error carries (the gate's `rate_limited`
+ * operation error, also after it crossed the action boundary), with the
+ * limiter's `retryAfter` in ms when it named one; null for anything else,
+ * including a budget refusal.
+ */
+export function rateLimitRefusalOf(error: unknown): { retryAfter?: number } | null {
+	if (!(error instanceof ConvexError)) return null;
+	const payload = error.data as { category?: unknown; data?: { retryAfter?: unknown } } | null;
+	if (!payload || typeof payload !== 'object' || payload.category !== 'rate_limited') return null;
+	const retryAfter = payload.data?.retryAfter;
+	return typeof retryAfter === 'number' ? { retryAfter } : {};
+}
 
 type ThreadMessages = FunctionReturnType<typeof api.mail.mailbox.messages.listThreadMessages>;
 
