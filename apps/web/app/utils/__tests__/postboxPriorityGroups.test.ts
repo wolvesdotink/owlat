@@ -43,17 +43,39 @@ describe('groupPriorityRows', () => {
 		expect(g.autoFiled).toEqual([]);
 	});
 
-	it('keeps a needs_me thread in sight at any age; other old mail is past mail', () => {
+	it('groups needs_me, updates and digest at any age; today and unplaced rows keep the window', () => {
+		const old = { receivedAt: LAST_WEEK, flagSeen: true };
 		const g = groupPriorityRows(
 			[
-				row('old-ask', { placement: 'needs_me', receivedAt: LAST_WEEK, flagSeen: true }),
-				row('old-update', { placement: 'updates', receivedAt: LAST_WEEK, flagSeen: true }),
+				row('old-ask', { placement: 'needs_me', ...old }),
+				row('old-update', { placement: 'updates', ...old }),
+				row('old-news', { placement: 'digest', ...old }),
+				row('old-today', { placement: 'today', ...old }),
+				row('old-legacy', old),
 				row('filed', { placement: 'archived' }),
 			],
 			{ now: NOW }
 		);
 		expect(ids(g.needsMe)).toEqual(['old-ask']);
-		expect(ids(g.older)).toEqual(['old-update', 'filed']);
+		expect(ids(g.updates)).toEqual(['old-update']);
+		expect(ids(g.digest)).toEqual(['old-news']);
+		expect(ids(g.older)).toEqual(['old-today', 'old-legacy', 'filed']);
+	});
+
+	it('counts each conversation once, by its newest row, across pages', () => {
+		const page1 = [
+			{ ...row('news-2', { placement: 'digest' }), threadId: 't-news' },
+			{ ...row('bahn-2', { placement: 'updates' }), threadId: 't-bahn' },
+		];
+		const page2 = [
+			{ ...row('news-1', { placement: 'digest' }), threadId: 't-news' },
+			{ ...row('bahn-1', { placement: 'updates' }), threadId: 't-bahn' },
+			{ ...row('bahn-0', { placement: 'updates', receivedAt: LAST_WEEK }), threadId: 't-bahn' },
+		];
+		const g = groupPriorityRows([...page1, ...page2], { now: NOW });
+		expect(ids(g.digest)).toEqual(['news-2']);
+		expect(ids(g.updates)).toEqual(['bahn-2']);
+		expect(g.older).toEqual([]);
 	});
 
 	it('falls back to the category grouping for rows without a placement', () => {
