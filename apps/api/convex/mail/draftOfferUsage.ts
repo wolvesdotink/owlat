@@ -14,9 +14,6 @@
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 
-/** Rows one thread deletion removes per pass; a thread holds one per owed message at most. */
-const THREAD_USAGE_PAGE = 100;
-
 /**
  * Record `offerKey` as counted, in the caller's mutation. False (nothing
  * written) when it already was, or when the key names no thread of this
@@ -49,19 +46,4 @@ export async function claimDraftOffer(
 		countedAt: now,
 	});
 	return true;
-}
-
-/** A thread is deleted: its counted offers go with it. */
-export async function deleteThreadOfferUsage(
-	ctx: MutationCtx,
-	threadId: Id<'mailThreads'>
-): Promise<void> {
-	for (;;) {
-		const rows = await ctx.db
-			.query('mailDraftOfferUsage')
-			.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-			.take(THREAD_USAGE_PAGE);
-		for (const row of rows) await ctx.db.delete(row._id);
-		if (rows.length < THREAD_USAGE_PAGE) return;
-	}
 }

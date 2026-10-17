@@ -200,6 +200,31 @@ async function loadMailBrief(
 		.unique();
 }
 
+/**
+ * A deleted Postbox thread's counted draft offers (`mailDraftOfferUsage`,
+ * mail/draftPause.ts), drained in the `thread` purge job's shared budget.
+ */
+const threadOfferUsageRange: PurgeRange = async (ctx, run) => {
+	if (run.ref.kind !== 'mail') return { isDone: true };
+	const threadId = run.ref.id;
+	const isEmpty = await drainShrinking(
+		run.budget,
+		(n) =>
+			ctx.db
+				.query('mailDraftOfferUsage')
+				.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+				.take(n),
+		async (row) => {
+			await ctx.db.delete(row._id);
+			return true;
+		}
+	);
+	return isEmpty ? { isDone: true } : { isDone: false, cursor: undefined };
+};
+
+/** The read-on-arrival ranges of a `thread` purge job, appended after the brief's. */
+export const arrivalThreadRanges: readonly PurgeRange[] = [threadOfferUsageRange];
+
 /** The read-on-arrival ranges of a `sources` purge job, in order. */
 export const arrivalSourceRanges: readonly PurgeRange[] = [
 	generatedDigestRange,

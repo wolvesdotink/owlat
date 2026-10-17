@@ -423,6 +423,40 @@ describe('the unused-draft streak', () => {
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(0);
 	});
 
+	it('forgets counted offers with their thread, in the resumable thread purge (r5 F2)', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		// More rows than one purge slice: the job finishes them in later transactions.
+		await t.run(async (ctx) => {
+			for (let n = 0; n < 600; n++) {
+				await ctx.db.insert('mailDraftOfferUsage', {
+					mailboxId: c.mailboxId,
+					threadId: c.threadId,
+					offerKey: `${c.threadId}:old-${n}`,
+					countedAt: Date.now(),
+				});
+			}
+		});
+		vi.useFakeTimers();
+		try {
+			await t.run(async (ctx) => {
+				for (const m of await ctx.db
+					.query('mailMessages')
+					.withIndex('by_thread', (q) => q.eq('threadId', c.threadId))
+					.collect()) {
+					await ctx.db.delete(m._id);
+				}
+				await rebuildThreadAggregates(ctx, c.threadId);
+			});
+			// The thread's own transaction did not delete them all (no unbounded loop).
+			expect((await usage(t, c)).length).toBeGreaterThan(0);
+			await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1));
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(await usage(t, c)).toEqual([]);
+	});
+
 	it('never writes a usage row for a purged owed message (r5 F1)', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
