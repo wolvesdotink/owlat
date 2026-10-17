@@ -3,8 +3,10 @@
  * PostboxThreadReader.vue: what sits between the header and the first body.
  *
  *  - the one notice (`pickReaderNotice`: danger > key change > left draft >
- *    image consent), and where the latest message's image banner goes: in
- *    place when it IS the notice, else into Details;
+ *    image consent) for EVERY expanded card: a danger on any of them is the
+ *    thread's danger (no card repeats it), the latest message's image banner
+ *    stays in place only when it IS the notice, and every other image banner
+ *    goes into Details (`cardOf`);
  *  - Details open or closed (the strip's link and the header ⋯ both open it),
  *    the panel the latest message's chips teleport into, and its quiet
  *    summary ("signed · images off");
@@ -36,6 +38,8 @@ export function usePostboxCalmReader(opts: {
 	placement: () => Placement | undefined;
 	messages: Ref<readonly CalmReaderMessage[]>;
 	latest: Ref<CalmReaderMessage | undefined>;
+	/** The expanded cards: their banners share the one notice slot. */
+	expanded: Ref<ReadonlySet<string>>;
 	keyChanged: Ref<boolean>;
 	/** A message of the thread is clearsigned. */
 	isSigned: Ref<boolean>;
@@ -60,11 +64,19 @@ export function usePostboxCalmReader(opts: {
 		return !!id && opts.messages.value.some((m) => m._id === id);
 	});
 
-	const danger = computed(() => readerDangerOf(opts.latest.value));
-	/** What a DMARC failure means for this sender (the trust chip's own summary). */
-	const dangerText = computed(() => {
+	/** The message the danger is about: the latest, else the first expanded one. */
+	const dangerMessage = computed(() => {
 		const latest = opts.latest.value;
-		const key = latest ? deriveSenderAuth(senderAuthInputOf(latest))?.summary : undefined;
+		if (readerDangerOf(latest)) return latest;
+		return opts.messages.value.find(
+			(m) => opts.expanded.value.has(m._id) && readerDangerOf(m) !== null
+		);
+	});
+	const danger = computed(() => readerDangerOf(dangerMessage.value));
+	/** What a failed sender check means for this sender (the trust chip's own summary). */
+	const dangerText = computed(() => {
+		const message = dangerMessage.value;
+		const key = message ? deriveSenderAuth(senderAuthInputOf(message))?.summary : undefined;
 		return key ? t(key) : '';
 	});
 	const notice = computed(() =>
@@ -80,6 +92,21 @@ export function usePostboxCalmReader(opts: {
 	const imageBannerTo = computed(() =>
 		notice.value === 'images' ? null : (opts.detailsEl.value ?? null)
 	);
+
+	/**
+	 * A card's part in the one-page chrome: the LATEST card's chips render in
+	 * Details; every card leaves the danger to the notice slot; image banners go
+	 * to Details except the latest one's while it is the notice.
+	 */
+	function cardOf(messageId: string) {
+		const isLatest = messageId === opts.latest.value?._id;
+		const details = opts.detailsEl.value ?? null;
+		return {
+			detailsTo: isLatest ? details : null,
+			imageBannerTo: isLatest ? imageBannerTo.value : details,
+			hideDanger: true,
+		};
+	}
 
 	function onImageState(messageId: string, kind: ImageKind) {
 		if (messageId === opts.latest.value?._id) latestImage.value = kind;
@@ -107,14 +134,13 @@ export function usePostboxCalmReader(opts: {
 	}
 
 	return {
-		detailsEl: opts.detailsEl,
 		detailsOpen,
 		sheetOpen,
 		asking,
 		notice,
 		danger,
 		dangerText,
-		imageBannerTo,
+		cardOf,
 		onImageState,
 		summary,
 		openWhyHere,

@@ -18,7 +18,7 @@ import { dashboardShellStubs, installNuxtStubs, paginatedResult } from '~/__test
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useClickOutside } from '~/composables/useClickOutside';
 import { POSTBOX_WHY_HERE_KEY } from '~/composables/postbox/usePostboxWhyHere';
-import { briefView } from '~/utils/__tests__/threadBriefFixtures';
+import { briefView, item } from '~/utils/__tests__/threadBriefFixtures';
 import type { BriefModeView } from '../../../../../api/convex/mail/interpret/briefShape';
 
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
@@ -56,6 +56,8 @@ interface Fixture {
 	keyChanged?: boolean;
 	leftDraftFor?: string;
 	isShared?: boolean;
+	/** The message the reader was opened on (default: the latest). */
+	open?: string;
 }
 
 let fixture: Fixture;
@@ -237,6 +239,7 @@ afterEach(() => {
 async function mountReader(next: Fixture, provide: Record<symbol, unknown> = {}) {
 	fixture = next;
 	const latest = next.messages[next.messages.length - 1]!;
+	const opened = next.messages.find((m) => m._id === next.open) ?? latest;
 	if (next.leftDraftFor) {
 		states.set(
 			'answer:left-draft',
@@ -244,7 +247,7 @@ async function mountReader(next: Fixture, provide: Record<symbol, unknown> = {})
 		);
 	}
 	const w = mount(PostboxThreadReader, {
-		props: { message: latest, folderRole: 'inbox' },
+		props: { message: opened, folderRole: 'inbox' },
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
@@ -308,8 +311,15 @@ describe('the calm reader, one page', () => {
 		expect(w.find('[data-testid="thread-overview"]').exists()).toBe(false);
 	});
 
-	it('earlier messages collapse to one line; the latest is expanded', async () => {
-		const w = await mountReader({ messages: [...earlier(), message('m3')], brief: briefView() });
+	it('earlier messages collapse to one line, unread ones too; the latest is expanded', async () => {
+		const w = await mountReader({
+			messages: [
+				message('m1', { flagSeen: false }),
+				message('m2', { flagSeen: false }),
+				message('m3', { flagSeen: false }),
+			],
+			brief: briefView(),
+		});
 		expect(w.findAll('[data-testid="body"]').map((b) => b.text())).toEqual(['Body m3']);
 		expect(w.findAll('button[data-message-id]')).toHaveLength(2);
 	});
@@ -374,6 +384,70 @@ describe('the calm reader, one page', () => {
 		expect(aboveFirstBody(w)).toEqual(['header', 'strip']);
 		expect(w.find('[data-testid="strip-why-here"]').exists()).toBe(false);
 		expect(w.find('[data-testid="thread-menu-why-here"]').exists()).toBe(false);
+	});
+});
+
+describe('every expanded card shares the one notice slot', () => {
+	it('an opened earlier message with blocked images and spam, under a spam latest: still three', async () => {
+		const w = await mountReader({
+			messages: [
+				message('m1', { spamVerdict: 'spam' }),
+				message('m2'),
+				message('m3', { spamVerdict: 'spam' }),
+			],
+			brief: briefView(),
+			images: { m1: 'blocked', m3: 'blocked' },
+			open: 'm1',
+		});
+		expect(w.findAll('[data-testid="body"]').map((b) => b.text())).toEqual(['Body m1', 'Body m3']);
+		expect(aboveFirstBody(w)).toEqual(['header', 'strip', 'notice']);
+		expect(w.get('[data-reader-chrome="notice"]').attributes('data-notice')).toBe('danger');
+		// No card repeats the danger; both image banners wait in Details.
+		expect(w.findAll('section .bg-warning\\/10')).toHaveLength(0);
+		const details = w.get('[data-testid="strip-details-panel"]');
+		expect(details.findAll('[data-testid="image-banner"]')).toHaveLength(2);
+	});
+
+	it('an earlier expanded message is the danger when the latest is clean', async () => {
+		const w = await mountReader({
+			messages: [message('m1', { spamVerdict: 'spam' }), message('m2'), message('m3')],
+			brief: briefView(),
+			open: 'm1',
+		});
+		expect(w.get('[data-reader-chrome="notice"]').attributes('data-notice')).toBe('danger');
+		expect(aboveFirstBody(w)).toEqual(['header', 'strip', 'notice']);
+	});
+
+	it('a DMARC failure a trusted forwarder rescued is not danger; the key change shows', async () => {
+		const w = await mountReader({
+			messages: [
+				message('m3', {
+					spfResult: 'pass',
+					dmarcResult: 'fail',
+					dmarcOverride: 'arc',
+					arcSealer: 'lists.example',
+				}),
+			],
+			brief: briefView(),
+			keyChanged: true,
+		});
+		expect(w.get('[data-reader-chrome="notice"]').attributes('data-notice')).toBe('keyChange');
+	});
+});
+
+describe('Full brief', () => {
+	it('opens from the slim line when the brief only holds what the strip never shows', async () => {
+		const w = await mountReader({
+			messages: [message('m3')],
+			brief: briefView({
+				latest: [],
+				forYou: [],
+				waitingOnOthers: [],
+				unclear: [item({ id: 'i_u', text: 'Who books the venue?', responsibility: 'unclear' })],
+			}),
+		});
+		expect(w.get('[data-reader-chrome="strip"]').attributes('data-strip')).toBe('meta');
+		expect(w.find('[data-testid="strip-full-brief"]').exists()).toBe(true);
 	});
 });
 

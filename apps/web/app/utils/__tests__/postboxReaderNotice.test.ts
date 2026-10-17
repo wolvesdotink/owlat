@@ -22,10 +22,36 @@ describe('pickReaderNotice', () => {
 });
 
 describe('readerDangerOf', () => {
-	it('names spam first, then a DMARC failure, and nothing else', () => {
-		expect(readerDangerOf({ spamVerdict: 'spam', dmarcResult: 'fail' })).toBe('spam');
-		expect(readerDangerOf({ dmarcResult: 'fail' })).toBe('dmarc');
-		expect(readerDangerOf({ spamVerdict: 'ham', dmarcResult: 'pass' })).toBeNull();
+	const from = 'lena@studio.example';
+
+	it('names spam first, then a sender check that resolved to failed', () => {
+		expect(readerDangerOf({ fromAddress: from, spamVerdict: 'spam', dmarcResult: 'fail' })).toBe(
+			'spam'
+		);
+		expect(readerDangerOf({ fromAddress: from, dmarcResult: 'fail' })).toBe('dmarc');
+		expect(
+			readerDangerOf({ fromAddress: from, spamVerdict: 'ham', dmarcResult: 'pass' })
+		).toBeNull();
 		expect(readerDangerOf(undefined)).toBeNull();
+	});
+
+	it('is not danger when a trusted forwarder rescued the DMARC failure (ARC)', () => {
+		expect(
+			readerDangerOf({
+				fromAddress: from,
+				dmarcResult: 'fail',
+				dmarcOverride: 'arc',
+				arcSealer: 'lists.example',
+			})
+		).toBeNull();
+		// Spam stays danger whatever the authentication says.
+		expect(
+			readerDangerOf({
+				fromAddress: from,
+				spamVerdict: 'spam',
+				dmarcResult: 'fail',
+				dmarcOverride: 'arc',
+			})
+		).toBe('spam');
 	});
 });

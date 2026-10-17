@@ -210,8 +210,10 @@ const { expanded, toggleExpanded } = usePostboxReaderExpansion({
 	activeId: () => props.message._id,
 	messages: () => threadPages.newestRows.value,
 	startsThread: () => threadPages.startsThread.value,
-	// One page (read on arrival §3): earlier messages are one line each.
+	// One page (read on arrival §3): earlier messages, read or not, are one
+	// line each; the latest (and the opened one) are expanded.
 	expandFirst: false,
+	expandUnread: false,
 });
 // The opened message is always in the conversation, even before the page that
 // holds it has loaded; an expanded envelope gets its body folded in.
@@ -570,20 +572,11 @@ const calm = usePostboxCalmReader({
 		readerThread.value?.placementOverride?.placement ?? readerThread.value?.arrival?.placement,
 	messages: allMessages,
 	latest: latestMessage,
+	expanded,
 	keyChanged: computed(() => !!correspondentKeyChanged.value),
 	isSigned: rb.isSigned,
 	detailsEl: computed(() => stripEl.value?.detailsEl ?? null),
 });
-/** The calm reader's per-card props: the LATEST message's chrome goes to Details. */
-function calmCardOf(msg: { _id: string }) {
-	const isLatest = msg._id === latestMessage.value?._id;
-	return {
-		detailsTo: isLatest ? calm.detailsEl.value : null,
-		imageBannerTo: isLatest ? calm.imageBannerTo.value : null,
-		hideDanger: isLatest,
-	};
-}
-
 /** The seal status belongs to the ONE sender it describes, not to every message. */
 function sealStatusFor(msg: { fromAddress: string }) {
 	const from = extractEmailAddress(msg.fromAddress).toLowerCase();
@@ -781,6 +774,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:summary="calm.summary.value"
 			:show-why-here="!rb.isShared.value"
 			:has-exact-wording="!!rb.firstExactWordingId.value"
+			:has-full-brief="rb.hasFullBrief.value"
 			@why-here="calm.openWhyHere"
 			@full-brief="calm.sheetOpen.value = true"
 			@exact-wording="rb.citeMessage(rb.firstExactWordingId.value ?? '')"
@@ -868,7 +862,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 					:eager-body="mountAllBodies"
 					:latest-line="rb.latestFor(msg._id)"
 					:cite-quote="rb.citeQuoteFor(msg._id)"
-					v-bind="calmCardOf(msg)"
+					v-bind="calm.cardOf(msg._id)"
 					@image-state="calm.onImageState(msg._id, $event)"
 					@toggle-expanded="toggleExpanded(msg._id)"
 					@open-sender-profile="openSenderProfile(msg)"

@@ -13,6 +13,8 @@
  * The other per-message banners move into Details.
  */
 
+import { deriveSenderAuth, senderAuthInputOf, type SenderAuthMessage } from '~/utils/senderAuth';
+
 export type ReaderNoticeKind = 'danger' | 'keyChange' | 'leftDraft' | 'images';
 
 const READER_NOTICE_ORDER: readonly ReaderNoticeKind[] = [
@@ -28,11 +30,15 @@ export function pickReaderNotice(
 	return READER_NOTICE_ORDER.find((kind) => active[kind] === true) ?? null;
 }
 
-/** The danger the slot raises for a message: spam, or a DMARC failure. */
+/**
+ * The danger the slot raises for a message: a spam verdict, or a sender check
+ * that resolved to `failed` (the trust chip's own verdict, so a DMARC failure a
+ * trusted forwarder's ARC chain rescued reads as verified, not as danger).
+ */
 export function readerDangerOf(
-	message: { spamVerdict?: string; dmarcResult?: string } | undefined
+	message: (SenderAuthMessage & { spamVerdict?: string }) | undefined
 ): 'spam' | 'dmarc' | null {
 	if (!message) return null;
 	if (message.spamVerdict === 'spam') return 'spam';
-	return message.dmarcResult === 'fail' ? 'dmarc' : null;
+	return deriveSenderAuth(senderAuthInputOf(message))?.state === 'failed' ? 'dmarc' : null;
 }
