@@ -22,6 +22,7 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { Depth, DegradedBy, ReasonKey } from '@owlat/shared/arrival';
+import { ARRIVAL_DEPTH_REASONS } from '@owlat/shared/arrivalDepth';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import { isFromMailboxOwner } from '../needsReplyHeuristic';
 import { isPersonalMailbox } from '../permissions';
@@ -145,6 +146,27 @@ export async function noteArrivalRun(
 	});
 	await refreshArrivalProjection(ctx, record.threadId);
 	return true;
+}
+
+/** The run's skips that are rows 1 and 5 of the depth table (§2.2), by skip reason. */
+const SKIP_DEPTH_REASONS: Readonly<Record<string, string>> = {
+	ineligible: ARRIVAL_DEPTH_REASONS.ineligible,
+	bulk: ARRIVAL_DEPTH_REASONS.ineligible,
+	security: ARRIVAL_DEPTH_REASONS.security,
+};
+
+/**
+ * A run that skipped the message before any depth decision (bulk mail from a
+ * stranger, a muted thread, security mail flagged by the guard) read it at
+ * depth `none`: the record says so, instead of "not read yet" for good.
+ */
+export async function noteArrivalSkip(
+	ctx: MutationCtx,
+	messageId: Id<'mailMessages'>,
+	skipReason: string | undefined
+): Promise<void> {
+	const key = skipReason ? SKIP_DEPTH_REASONS[skipReason] : undefined;
+	if (key) await noteArrivalRun(ctx, messageId, { depth: 'none', reasonKeys: [{ key }] });
 }
 
 /**
