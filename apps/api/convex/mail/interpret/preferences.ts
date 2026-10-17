@@ -18,6 +18,7 @@ import { publicQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { threadViewValidator } from '../../lib/validators/threadBrief';
 import { threadBriefMutation } from '../_helpers';
+import type { QueryCtx } from '../../_generated/server';
 
 /** The effective default view (D1). Pure. */
 export function resolveThreadDefaultView(
@@ -25,6 +26,21 @@ export function resolveThreadDefaultView(
 ): ThreadView {
 	if (row?.threadDefaultView) return row.threadDefaultView;
 	return row?.isAutoSummarizeOn === false ? 'conversation' : 'overview';
+}
+
+/**
+ * Read on arrival (SPEC §2.1): whether `userId` lets their AI provider read
+ * personal mail when it arrives, including mail they never open. Absent = on.
+ */
+export async function isReadOnArrivalOn(
+	ctx: Pick<QueryCtx, 'db'>,
+	userId: string
+): Promise<boolean> {
+	const row = await ctx.db
+		.query('mailUserSettings')
+		.withIndex('by_user', (q) => q.eq('userId', userId))
+		.first();
+	return row?.isReadOnArrival !== false;
 }
 
 // public: soft-auth — returns null for anonymous; the row is self-scoped to

@@ -59,6 +59,7 @@ import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { loadInterpretSource } from './sources';
 import { CLOSED_STATUSES, recentlyClosedItems, threadItemsWithStatus } from './load';
 import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
+import { isReadOnArrivalOn } from './preferences';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
@@ -116,20 +117,25 @@ export async function isDisplayOnlyInterpretation(
 }
 
 /**
- * Defer a captured Postbox source when its interpretation is display-only.
- * True when it was deferred (the caller then runs nothing).
+ * Defer a captured Postbox source when its interpretation is display-only
+ * and its owner turned read on arrival off (SPEC §2.1: with it on, the run
+ * reads it now at the depth it chooses, `arrivalDecide.ts`). True when it was
+ * deferred (the caller then runs nothing).
  */
 export async function deferIfDisplayOnly(
 	ctx: MutationCtx,
 	message: Doc<'mailMessages'>
 ): Promise<boolean> {
 	if (!(await isDisplayOnlyInterpretation(ctx, message))) return false;
+	const mailbox = await ctx.db.get(message.mailboxId);
+	if (mailbox && (await isReadOnArrivalOn(ctx, mailbox.userId))) return false;
 	return deferSource(ctx, interpretationSourceKey({ kind: 'mail', id: message._id }), DISPLAY_ONLY);
 }
 
 /**
  * The needs-reply classifier's question for a delivered message that is no
- * reply candidate (`mail/ai/needsReplyClassify.ts`): defer it, or run it now.
+ * reply candidate (`mail/ai/needsReplyClassify.ts`): defer it, or run it now
+ * (`mail/arrival/dispatch.ts`).
  */
 export const deferDeliveredIfDisplayOnly = internalMutation({
 	args: { mailMessageId: v.id('mailMessages') },

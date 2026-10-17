@@ -27,6 +27,8 @@ import { shouldExtractLiveMessage } from '../liveKnowledge';
 import { enqueuePush } from '../../push/events';
 import { enqueueDeliveredInterpretation } from '../interpret/enqueue';
 import { queuesNeedsReplyCheck, type InboundOrigin } from './insert';
+import { writeArrivalRecord, type ArrivalRecordSeed } from '../arrival/records';
+import { refreshArrivalProjection } from '../arrival/projection';
 
 export type { InboundOrigin };
 
@@ -54,6 +56,10 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *     reply).
  *   - Knowledge extraction, under the same conditions (`../liveKnowledge`).
  *     A backfill is history, which a mailbox import's indexing sweep covers.
+ *   - Read on arrival: the message's arrival record (live inbound mail of a
+ *     personal mailbox), written before the category check so the category
+ *     lands in it, and the thread's projection once everything is in
+ *     (`../arrival/records.ts`, `../arrival/projection.ts`).
  *   - Interpretation (the thread brief, SPEC §5): the classify above
  *     interprets the delivered message; other live mail that could be
  *     eligible is scheduled on its own (`../interpret/enqueue.ts`). Either way
@@ -72,6 +78,8 @@ export async function runPostInsertInboundEffects(
 		folder: Doc<'mailFolders'>;
 		origin: InboundOrigin;
 		antiLoopHeaders?: Record<string, string>;
+		/** What the live-ingest rules pass decided for the record (lane rules, SPEC §6.2). */
+		arrival?: ArrivalRecordSeed;
 	}
 ): Promise<void> {
 	const { messageId, folder, origin, antiLoopHeaders } = params;
@@ -81,7 +89,11 @@ export async function runPostInsertInboundEffects(
 
 	const precedence = antiLoopHeaders?.['precedence'];
 	const listId = antiLoopHeaders?.['list-id'];
+	// Read on arrival (SPEC §2.8): the arrival record, before the category
+	// check below writes its category into it.
+	const record = await writeArrivalRecord(ctx, delivered, { isLive, ...params.arrival });
 	const isClassifyQueued = queuesNeedsReplyCheck(origin, folder, delivered.folderId);
+	let isCategoryRefining = false;
 	if (isClassifyQueued) {
 		await scheduleNeedsReplyClassify(ctx, delivered.threadId, {
 			precedence,
@@ -93,14 +105,28 @@ export async function runPostInsertInboundEffects(
 			// The classify run interprets this message too (one model read).
 			interpretMessageId: messageId,
 		});
-		await enqueueCategoryCheck(ctx, delivered.threadId, { precedence });
+		isCategoryRefining = await enqueueCategoryCheck(ctx, delivered.threadId, {
+			precedence,
+			messageId,
+		});
+	}
+	// R2 also answers this message's pending rule questions (SPEC §6.2): per
+	// message, also when the heuristic settled the category without the model.
+	if (record?.pendingAiFilters?.length && !isCategoryRefining) {
+		await ctx.scheduler.runAfter(0, internal.mail.ai.categoryClassify.classifyThread, {
+			threadId: delivered.threadId,
+			messageId,
+			baselineApplied: true,
+		});
 	}
 	await enqueueDeliveredInterpretation(ctx, delivered, {
 		isLive,
 		isInterpretedByClassify: isClassifyQueued,
 		precedence,
 		listId,
+		isCategoryRefining: isCategoryRefining && record !== null,
 	});
+	if (record) await refreshArrivalProjection(ctx, delivered.threadId);
 
 	if (isLive && !(folder.role !== undefined && NOT_A_REPLY_ROLES.has(folder.role))) {
 		const mailbox = await ctx.db.get(delivered.mailboxId);

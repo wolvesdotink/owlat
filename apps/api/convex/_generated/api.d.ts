@@ -1782,6 +1782,13 @@ import type * as mail_arrival_purgeRanges from '../mail/arrival/purgeRanges.js';
 import type * as mail_arrival_sharedConversion from '../mail/arrival/sharedConversion.js';
 import type * as schema_mailArrival from '../schema/mailArrival.js';
 import type * as schema_mailArrivalRules from '../schema/mailArrivalRules.js';
+import type * as mail_arrival_records from '../mail/arrival/records.js';
+import type * as mail_arrival_projection from '../mail/arrival/projection.js';
+import type * as mail_arrival_scopedInput from '../mail/arrival/scopedInput.js';
+import type * as mail_arrival_dispatch from '../mail/arrival/dispatch.js';
+import type * as mail_arrival_r2 from '../mail/arrival/r2.js';
+import type * as mail_interpret_gistState from '../mail/interpret/gistState.js';
+import type * as mail_ai_categoryQuestions from '../mail/ai/categoryQuestions.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3560,6 +3567,13 @@ declare const fullApi: ApiFromModules<{
 	'mail/arrival/sharedConversion': typeof mail_arrival_sharedConversion;
 	'schema/mailArrival': typeof schema_mailArrival;
 	'schema/mailArrivalRules': typeof schema_mailArrivalRules;
+	'mail/arrival/records': typeof mail_arrival_records;
+	'mail/arrival/projection': typeof mail_arrival_projection;
+	'mail/arrival/scopedInput': typeof mail_arrival_scopedInput;
+	'mail/arrival/dispatch': typeof mail_arrival_dispatch;
+	'mail/arrival/r2': typeof mail_arrival_r2;
+	'mail/interpret/gistState': typeof mail_interpret_gistState;
+	'mail/ai/categoryQuestions': typeof mail_ai_categoryQuestions;
 }>;
 
 /**
