@@ -23,7 +23,7 @@ import { publicQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
 import { threadViewValidator } from '../../lib/validators/threadBrief';
 import { threadBriefMutation } from '../_helpers';
-import type { QueryCtx } from '../../_generated/server';
+import { internalQuery, type QueryCtx } from '../../_generated/server';
 
 /** The effective default view (D1). Pure. */
 export function resolveThreadDefaultView(
@@ -47,6 +47,12 @@ export async function isReadOnArrivalOn(
 		.first();
 	return row?.isReadOnArrival !== false;
 }
+
+/** {@link isReadOnArrivalOn} for an action (the digest, final review F2). */
+export const readOnArrivalOf = internalQuery({
+	args: { userId: v.string() },
+	handler: (ctx, args): Promise<boolean> => isReadOnArrivalOn(ctx, args.userId),
+});
 
 /** Read on arrival (SPEC §2.1): the viewer's own preference, for the reader and Settings. */
 // public: soft-auth — returns null for anonymous; the row is self-scoped to

@@ -14,7 +14,9 @@
  *     left out;
  *   - a fenced thread (`interpret/staleFence.ts`) reads nothing.
  *
- * It returns null for security mail (codes, password resets: never shown
+ * It returns null for a message interpretation would not read itself (an
+ * ineligible snapshot, a stranger's bulk mail, a terminal exclusion at
+ * arrival: `offerable.ts`), for security mail (codes, password resets: never shown
  * through a model's pick), exact-wording candidates (`exactWordingDetector`:
  * they get a full read instead), a fenced thread and a message that is gone
  * (purged).
@@ -100,6 +102,10 @@ export async function buildScopedMessageInput(
 	opts: { maxChars: number }
 ): Promise<ScopedMessageInput | null> {
 	const source = { kind: 'mail' as const, id: messageId };
+	// Only what interpretation would read itself (final review F1, `offerable.ts`).
+	if (!(await ctx.runQuery(internal.mail.arrival.offerable.isOfferable, { messageId }))) {
+		return null;
+	}
 	if (await ctx.runQuery(internal.mail.interpret.staleFence.isSourceFenced, { source })) {
 		return null;
 	}

@@ -592,3 +592,50 @@ describe('review r2', () => {
 		expect((await settings(t))!.dailyBriefDeferredAt).toBeUndefined();
 	});
 });
+
+describe('final review (read on arrival)', () => {
+	it('F1: a message interpretation would not read offers no body text, only its subject', async () => {
+		const { t, messageIds } = await digestSetup(3, { briefEmail: true });
+		await t.run(async (ctx) => {
+			const sourceOf = (id: Id<'mailMessages'>) =>
+				ctx.db
+					.query('interpretSources')
+					.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${id}`))
+					.first();
+			// A stranger's bulk mail (ineligible), and a terminal exclusion at arrival.
+			const bulk = (await sourceOf(messageIds[0]!))!;
+			await ctx.db.patch(bulk._id, {
+				eligibility: {
+					...bulk.eligibility,
+					isBulkHeaderPresent: true,
+					isSenderKnown: false,
+					category: 'newsletter',
+				},
+			});
+			const excluded = (await sourceOf(messageIds[1]!))!;
+			await ctx.db.patch(excluded._id, {
+				readOutcome: 'skipped',
+				depth: 'none',
+				isUpgradeable: false,
+			});
+		});
+		await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {});
+		expect(digestCalls()).toHaveLength(1);
+		const prompt = (digestCalls()[0]![0] as { prompt: string }).prompt;
+		expect(prompt.match(/<untrusted_email_content ref=/g)).toHaveLength(1);
+	});
+
+	it('F2: with read on arrival off the digest calls no model and lists subjects', async () => {
+		const { t } = await digestSetup(2, { briefEmail: true });
+		await t.run(async (ctx) => {
+			const row = (await ctx.db
+				.query('mailUserSettings')
+				.withIndex('by_user', (q) => q.eq('userId', 'user-A'))
+				.first())!;
+			await ctx.db.patch(row._id, { isReadOnArrival: false });
+		});
+		const result = await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {});
+		expect(result.delivered).toBe(1);
+		expect(digestCalls()).toHaveLength(0);
+	});
+});

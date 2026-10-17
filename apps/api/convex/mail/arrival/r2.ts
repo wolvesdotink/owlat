@@ -24,6 +24,7 @@ import {
 	type PendingAiFilter,
 } from './hooks';
 import type { ScopedMessageInput } from './scopedInput';
+import { releaseDepthWait } from '../interpret/categoryDefer';
 import { defuseDelimiters } from '../interpret/prompt';
 
 /** The most characters of the message one R2 question pass reads. */
@@ -51,6 +52,8 @@ export const commitArrivalAiAnswers = internalMutation({
 	handler: async (ctx, args): Promise<void> => {
 		if (args.answers.length === 0) return;
 		await applyArrivalAiAnswers(ctx, { messageId: args.messageId, answers: args.answers });
+		// The answers are in: a display-only read waiting on them runs now (final review F4).
+		await releaseDepthWait(ctx, args.messageId);
 	},
 });
 

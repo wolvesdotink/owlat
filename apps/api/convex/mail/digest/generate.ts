@@ -127,6 +127,12 @@ async function generateSpans(
 	ctx: ActionCtx,
 	args: { digestId: Id<'mailDigests'>; ownerUserId: string; items: ClaimedItems }
 ): Promise<Map<number, string[]>> {
+	// Read on arrival off: unopened mail is not read by the AI provider, the
+	// digest included; subjects only, no model call (final review F2).
+	const isReadOnArrival = await ctx.runQuery(internal.mail.interpret.preferences.readOnArrivalOf, {
+		userId: args.ownerUserId,
+	});
+	if (!isReadOnArrival) return new Map();
 	const offered = await offeredInputs(ctx, args.items);
 	if (offered.length === 0) return new Map();
 	try {

@@ -221,15 +221,40 @@ export async function wakeCategoryDepthWaits(
 		.take(DEPTH_WAKE_RECORDS);
 	let woken = 0;
 	for (const record of records) {
-		const row = await loadInterpretSource(ctx, { kind: 'mail', id: record.messageId });
-		if (row?.categoryPendingAt === undefined) continue;
-		await ctx.db.patch(row._id, { categoryPendingAt: undefined, updatedAt: Date.now() });
-		// D10 kept it for its open (read on arrival off): nothing runs it now (Sol r1 F1).
-		if (row.isDeferred === true || row.readOutcome !== undefined) continue;
-		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
-			source: row.source,
-		});
-		woken += 1;
+		// Its rule questions are still out: R2's answers release it (final review F4).
+		if (record.pendingAiFilters?.length) continue;
+		woken += await releaseSourceWait(ctx, record.messageId);
 	}
 	return woken;
+}
+
+/**
+ * R2 committed this message's answers (`arrival/r2.ts`, final review F4):
+ * with no question left, the depth wait ends and the run goes now, so a
+ * `sendToDigest` answer is in before the depth decision. Returns the runs
+ * scheduled (0 or 1).
+ */
+export async function releaseDepthWait(
+	ctx: MutationCtx,
+	messageId: Id<'mailMessages'>
+): Promise<number> {
+	const record = await ctx.db
+		.query('mailArrivalRecords')
+		.withIndex('by_message', (q) => q.eq('messageId', messageId))
+		.first();
+	if (record?.pendingAiFilters?.length) return 0;
+	return releaseSourceWait(ctx, messageId);
+}
+
+/** Clear one source's depth-wait marker and run it now, unless D10 deferred or it settled. */
+async function releaseSourceWait(ctx: MutationCtx, messageId: Id<'mailMessages'>): Promise<number> {
+	const row = await loadInterpretSource(ctx, { kind: 'mail', id: messageId });
+	if (row?.categoryPendingAt === undefined) return 0;
+	await ctx.db.patch(row._id, { categoryPendingAt: undefined, updatedAt: Date.now() });
+	// D10 kept it for its open (read on arrival off): nothing runs it now (Sol r1 F1).
+	if (row.isDeferred === true || row.readOutcome !== undefined) return 0;
+	await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
+		source: row.source,
+	});
+	return 1;
 }
