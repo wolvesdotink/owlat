@@ -62,7 +62,7 @@ function splitImageRef(image: string): { repository: string; tag: string } {
  * exercised through `evaluateVersionDrift`, which only judges owned images.
  *
  * Only these may be compared against the configured version. Third-party pins
- * (`redis:7.4-alpine`, `caddy:2.8-alpine`, `ghcr.io/get-convex/convex-backend`,
+ * (`redis:7.4-alpine`, `caddy:2.8-alpine`, `ghcr.io/convex/convex-backend`,
  * `alpine`, `ollama/ollama`, `tecnativa/docker-socket-proxy`) carry their own
  * independent versions and would otherwise all report as drifted.
  */

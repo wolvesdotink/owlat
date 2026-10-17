@@ -67,7 +67,7 @@ describe('validateComposeTemplate', () => {
   web:
     image: ghcr.io/wolvesdotink/web:0.2.0
   convex:
-    image: ghcr.io/get-convex/convex-backend:latest
+    image: ghcr.io/wolvesdotink/convex-backend:0.2.0
   redis:
     image: redis:7
     volumes:

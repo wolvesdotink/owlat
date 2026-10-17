@@ -67,7 +67,7 @@ describe('which images are judged for drift', () => {
 			'alpine:3.20',
 			'ollama/ollama:latest',
 			'tecnativa/docker-socket-proxy:0.3',
-			'ghcr.io/get-convex/convex-backend:latest',
+			'ghcr.io/convex/convex-backend:latest',
 		]) {
 			expect(isJudgedForDrift(image)).toBe(false);
 		}
@@ -226,7 +226,7 @@ describe('evaluateVersionDrift', () => {
 			service({ service: 'caddy', image: 'caddy:2.8-alpine', imageTag: '2.8-alpine' }),
 			service({
 				service: 'convex',
-				image: 'ghcr.io/get-convex/convex-backend:latest',
+				image: 'ghcr.io/convex/convex-backend:latest',
 				imageTag: 'latest',
 			}),
 		];

@@ -15,8 +15,9 @@
 #     that vanishes bricks every install pulling it. (The Owlat images in the
 #     RELEASE-generated docker-compose-<version>.yml ARE digest-pinned; that
 #     is scripts/gen-release-compose.sh, which does not touch this template.)
-#   • CONVEX_BACKEND_VERSION / CONVEX_DASHBOARD_VERSION let operators pin
-#     upstream Convex images without editing the template.
+#   • Convex ships as a first-party wrapper (ghcr.io/wolvesdotink/convex-backend,
+#     docker/convex-backend.Dockerfile), so it is pinned to OWLAT_VERSION like
+#     every other Owlat image.
 #
 # Feature-flag profile mapping (packages/shared/src/featureFlags.ts):
 #   Profile name           Feature flag             Service(s) it activates
@@ -45,7 +46,7 @@ services:
   # ── Convex Backend (database + serverless functions) ──
   convex:
     logging: *default-logging
-    image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_VERSION:?CONVEX_BACKEND_VERSION must be set}
+    image: ghcr.io/wolvesdotink/convex-backend:${OWLAT_VERSION:?OWLAT_VERSION must be set}
     ports:
       - '127.0.0.1:3210:3210'
       - '127.0.0.1:3211:3211'

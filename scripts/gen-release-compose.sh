@@ -62,7 +62,7 @@ fi
 #   ghcr.io/wolvesdotink/<svc>:${OWLAT_VERSION}           →  ghcr.io/wolvesdotink/<svc>:<version>
 #   ghcr.io/wolvesdotink/<svc>:{latest,dev}               →  ghcr.io/wolvesdotink/<svc>:<version>
 #
-# (Other images like ghcr.io/get-convex/* and redis: are untouched.)
+# (Third-party images like redis: and caddy: are untouched.)
 sed -E \
 	-e "s#(ghcr\.io/wolvesdotink/[a-z0-9-]+):\\\$\\{OWLAT_VERSION:-[A-Za-z0-9._-]+\\}#\\1:${VERSION}#g" \
 	-e "s#(ghcr\.io/wolvesdotink/[a-z0-9-]+):\\\$\\{OWLAT_VERSION\\}#\\1:${VERSION}#g" \

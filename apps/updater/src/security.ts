@@ -33,8 +33,11 @@ import {
 // / vpsComposeImagesAreAllowed tests in __tests__/security.test.ts assert the
 // allowlist and the shipped compose files never drift apart again.
 export const ALLOWED_IMAGE_PREFIXES = [
-	'ghcr.io/get-convex/convex-backend',
-	'ghcr.io/get-convex/convex-dashboard', // `dashboard` profile, localhost-only
+	// Convex ships as first-party wrappers (ghcr.io/wolvesdotink/convex-backend,
+	// …/convex-dashboard; see docker/convex-backend.Dockerfile). Upstream's own
+	// repositories stay allowed for an operator pointing straight at them.
+	'ghcr.io/convex/convex-backend',
+	'ghcr.io/convex/convex-dashboard', // `dashboard` profile, localhost-only
 	'ghcr.io/wolvesdotink/', // canonical org — emitted by the root docker-compose.yml, the VPS template, and gen-release-compose.sh
 	'redis:',
 	// ClamAV and the code-worker egress proxy ship as first-party wrappers
