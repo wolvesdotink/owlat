@@ -14,7 +14,7 @@
 
 import type { TestConvex } from 'convex-test';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import schema from '../../schema';
+import type schema from '../../schema';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { findDuplicateInMailbox, insertDeliveredMessage } from '../deliveryPipeline/insert';

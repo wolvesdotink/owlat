@@ -16,7 +16,7 @@
 
 import type { TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
-import schema from '../../schema';
+import type schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { seedFolder, seedMailbox, seedMessage, liveMailTest } from './helpers.testlib';

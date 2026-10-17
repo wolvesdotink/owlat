@@ -9,7 +9,7 @@
 import type { TestConvex } from 'convex-test';
 import { afterEach, describe, expect, it } from 'vitest';
 import { aiTextToHtml } from '@owlat/shared/answerMode';
-import schema from '../../schema';
+import type schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { liveMailTest } from './helpers.testlib';

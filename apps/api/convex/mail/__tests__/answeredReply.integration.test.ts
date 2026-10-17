@@ -13,7 +13,7 @@
 import type { TestConvex } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import { aiTextToHtml } from '@owlat/shared/answerMode';
-import schema from '../../schema';
+import type schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { seedFolder, seedMailbox, seedMessage, liveMailTest } from './helpers.testlib';
