@@ -7,6 +7,7 @@
  * a run that comes later replays the stored result.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
@@ -141,6 +142,7 @@ const leaseOf = (t: Test, messageId: string) =>
 describe('per-source lease', () => {
 	it('two overlapping runs of one source buy exactly one extraction', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { source, messageId } = await eligibleSource(t);
 
 		const results = await Promise.all([
@@ -161,6 +163,7 @@ describe('per-source lease', () => {
 
 	it('keeps the lease across a restart, so a run that starts meanwhile buys nothing', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { source, messageId } = await eligibleSource(t);
 		let overlapping: Awaited<ReturnType<typeof t.action>> | undefined;
 		llm.beforeExtraction = async (n) => {
@@ -186,6 +189,7 @@ describe('per-source lease', () => {
 
 	it('refuses a commit whose lease was given up, even with nobody holding it now', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { source, messageId } = await eligibleSource(t);
 		llm.beforeExtraction = async () => {
 			// Another run took the source over and finished meanwhile.
@@ -207,6 +211,7 @@ describe('per-source lease', () => {
 
 	it('a snapshot captured between a run’s claim and its read buys one extraction', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedMailThread(t, { text: TEXT });
 		const source = { kind: 'mail' as const, id: messageId };
@@ -235,6 +240,7 @@ describe('per-source lease', () => {
 
 	it('refuses a tokenless commit for a source with a snapshot row', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { source, messageId, threadId } = await eligibleSource(t);
 		const out = await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
 			source,
@@ -257,6 +263,7 @@ describe('per-source lease', () => {
 
 	it('claims by compare-and-set: busy while held, free again once released or expired', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { source } = await eligibleSource(t);
 		const claim = (args = {}) =>
 			t.mutation(internal.mail.interpret.lease.claimSourceLease, { source, ...args });
@@ -285,6 +292,7 @@ describe('per-source lease', () => {
 
 	it('answers done for a source already terminal at the depth asked for', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { source, messageId } = await eligibleSource(t);
 		await t.run(async (ctx) => {
 			const row = await ctx.db
@@ -302,6 +310,7 @@ describe('per-source lease', () => {
 
 	it('refuses a commit whose lease another run holds now', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { source, messageId } = await eligibleSource(t);
 		// This run's lease ran out mid-run and another run took the source over.
 		const theirs = await t.mutation(internal.mail.interpret.lease.claimSourceLease, { source });
@@ -317,6 +326,7 @@ describe('per-source lease', () => {
 
 	it('the category ceiling waits out a live lease instead of starting a run that is busy', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { source, messageId } = await eligibleSource(t);
 		const until = Date.now() + CATEGORY_SETTLE_MS;
 		await t.run(async (ctx) => {

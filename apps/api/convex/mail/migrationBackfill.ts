@@ -31,6 +31,7 @@ import { latestMigrationRow } from './migration';
 import { scheduleVoiceProfileRefresh } from './ai/voiceProfile';
 import { findDuplicateInMailbox } from './deliveryPipeline/insert';
 import { INDEX_CHUNK_SIZE } from './migrationIndexing';
+import { startAutoBackfillAfterImport } from './arrival/autoBackfill';
 
 /** Upper bound on one `findKnownMessageIds` call — one backfill batch's worth. */
 const MAX_KNOWN_MESSAGE_ID_LOOKUP = 500;
@@ -403,5 +404,7 @@ export const completeBackfillImport = internalMutation({
 		// background now (no-op when personalization is off for this mailbox) so the
 		// first draft after the import doesn't pay the derivation latency.
 		await scheduleVoiceProfileRefresh(ctx, migration.mailboxId);
+		// Read on arrival (D4): the imported month is read once, like new mail.
+		await startAutoBackfillAfterImport(ctx, migration.mailboxId);
 	},
 });

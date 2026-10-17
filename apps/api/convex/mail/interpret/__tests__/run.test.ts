@@ -4,6 +4,7 @@
  * fail-soft paths, eligibility skips, and dedupe of an applied revision.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
@@ -105,6 +106,7 @@ beforeEach(() => {
 describe('interpretMessage', () => {
 	it('interprets, verifies and folds the message into its thread', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
 		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
@@ -155,6 +157,7 @@ describe('interpretMessage', () => {
 		it('is never verified, and the run is partial with no retry and no further extraction', async () => {
 			expect(long.length).toBeGreaterThan(400);
 			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
 			const { source, output } = await seedLong(t);
 			llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
 				if (schema === briefModelSchema) return { object: output };
@@ -190,6 +193,7 @@ describe('interpretMessage', () => {
 
 		it('lets a transient verifier failure in the same run win, so the run retries', async () => {
 			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
 			const { source, output } = await seedLong(t);
 			// A second, sendable claim whose verify call fails.
 			const short = modelOutput('s0').items[0]!;
@@ -210,6 +214,7 @@ describe('interpretMessage', () => {
 
 	it('reuses an applied revision instead of calling the model again', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedCaptured(t, { text: TEXT });
 		await t.action(internal.mail.interpret.run.interpretMessage, {
@@ -229,6 +234,7 @@ describe('interpretMessage', () => {
 
 	it('records ai_off as an incomplete brief without calling the model', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
 		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
 			source: { kind: 'mail', id: messageId },
@@ -246,6 +252,7 @@ describe('interpretMessage', () => {
 
 	it('defers, without spending a retry, when spend admission refuses the model call (Sol r1 F7)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedCaptured(t, { text: TEXT });
 		const source = { kind: 'mail' as const, id: messageId };
@@ -275,6 +282,7 @@ describe('interpretMessage', () => {
 			// A ceiling the gate's smallest probe fits under and the run's hold does not.
 			vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '0.01');
 			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
 			await enableFeatures(t, ['ai']);
 			await reconcileSpend(t);
 			const { messageId } = await seedCaptured(t, { text: TEXT });
@@ -308,6 +316,7 @@ describe('interpretMessage', () => {
 		it('an admitted run draws every call on its hold, so the verifier cannot be refused', async () => {
 			vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '10');
 			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
 			await enableFeatures(t, ['ai']);
 			await reconcileSpend(t);
 			const { messageId } = await seedCaptured(t, { text: TEXT });
@@ -368,6 +377,7 @@ describe('interpretMessage', () => {
 
 		it('an AI-off gate counts no attempt', async () => {
 			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
 			await enableFeatures(t, ['ai']);
 			const { messageId } = await seedCaptured(t, { text: TEXT });
 			const source = { kind: 'mail' as const, id: messageId };
@@ -402,6 +412,7 @@ describe('interpretMessage', () => {
 
 		it('reports a verifier refusal as an ordinary incomplete run, with the refusal (Sol r4 F2)', async () => {
 			const t = convexTest(schema, modules);
+			rateLimiterTest.register(t);
 			await enableFeatures(t, ['ai']);
 			const { messageId } = await seedCaptured(t, { text: TEXT });
 			llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
@@ -422,6 +433,7 @@ describe('interpretMessage', () => {
 
 	it('fails soft when the model throws', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		llm.runLlmObject.mockRejectedValue(new Error('provider down'));
 		const { messageId } = await seedCaptured(t, { text: TEXT });
@@ -433,6 +445,7 @@ describe('interpretMessage', () => {
 
 	it('skips a muted thread and backfilled mail without a model call', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedCaptured(t, { text: TEXT, isLive: false });
 		const source = { kind: 'mail' as const, id: messageId };
@@ -457,6 +470,7 @@ describe('interpretMessage', () => {
 
 	it('does not interpret a message without an enqueue snapshot (F15)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedMailThread(t, { text: TEXT });
 		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
@@ -469,6 +483,7 @@ describe('interpretMessage', () => {
 
 	it('reports a partial run as partial, and repairs it once its retry is due (F2)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		// The first verifier call fails: the run is partial ('verify').
 		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) => {
@@ -517,6 +532,7 @@ describe('interpretMessage', () => {
 
 	it('drops a claim the verifier rejects', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		llm.runLlmObject.mockImplementation(async ({ schema }: { schema: unknown }) =>
 			schema === briefModelSchema
@@ -532,6 +548,7 @@ describe('interpretMessage', () => {
 
 	it('checks the body on every attempt and records a body that keeps changing (round 2 F1)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
 		let edits = 0;
@@ -562,6 +579,7 @@ describe('interpretMessage', () => {
 
 	it('re-extracts when the mailbox changes scope under the run (round 2 F6)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId, threadId, mailboxId } = await seedCaptured(t, { text: TEXT });
 		const schemas: unknown[] = [];
@@ -598,6 +616,7 @@ describe('interpretMessage', () => {
 
 	it('re-extracts an older revision that is no longer current (round 3 F2)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedCaptured(t, { text: TEXT });
 		const source = { kind: 'mail' as const, id: messageId };
@@ -621,6 +640,7 @@ describe('interpretMessage', () => {
 
 	it('re-extracts after the thread changed mode instead of reusing a brief extraction (round 3 F3)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId, mailboxId } = await seedCaptured(t, { text: TEXT });
 		const source = { kind: 'mail' as const, id: messageId };
@@ -642,6 +662,7 @@ describe('interpretMessage', () => {
 
 	it('records every failed repair and never spends retries on gate refusals (round 3 F4)', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
 		const source = { kind: 'mail' as const, id: messageId };
 		// 1. AI is off: a gate refusal, retried freely.

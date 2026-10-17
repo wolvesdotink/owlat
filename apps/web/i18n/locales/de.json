@@ -13170,6 +13170,29 @@
 				"archived": "Abgelegt",
 				"clear": "Wieder alle E-Mails zeigen, nicht nur „{name}“"
 			}
+		},
+		"arrival": {
+			"settings": {
+				"label": "Neue Mails beim Eingang lesen",
+				"help": "Dein KI-Anbieter liest persönliche Mails, sobald sie ankommen, auch Mails, die du nie öffnest. So sind sie sortiert und zusammengefasst, bevor du reinschaust. Schalte es aus, wenn Mails erst beim Öffnen gelesen werden sollen."
+			},
+			"reason": {
+				"aiOff": "KI ist aus",
+				"ineligible": "Nicht gelesen: diese Art Mail liest die KI nie",
+				"openWork": "Ganz gelesen: sie braucht dich vielleicht",
+				"readOnArrivalOff": "Lesen beim Eingang ist aus",
+				"senderStatus": "Nicht gelesen, weil du diesen Absender so eingestellt hast",
+				"security": "Nicht gelesen: Sicherheitsmails zeigen wir so, wie sie sind",
+				"budget": "Nur gezählt: das KI-Budget war aufgebraucht",
+				"digest": "Für deinen Digest gezählt",
+				"override": "So gelesen, wie du es eingeordnet hast",
+				"category": "Nach Art der Mail gelesen",
+				"exactWording": "Ganz gelesen: der genaue Wortlaut zählt",
+				"ownerLimit": "Nur gezählt: gerade kam sehr viel Mail an",
+				"categoryTimeout": "Entschieden, bevor die Art der Mail klar war",
+				"gistUnavailable": "Nur gezählt: kein kurzes Zitat möglich",
+				"gistFailed": "Nur gezählt: das kurze Lesen ist fehlgeschlagen"
+			}
 		}
 	},
 	"recipient": {

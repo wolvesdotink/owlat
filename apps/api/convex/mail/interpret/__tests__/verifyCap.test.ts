@@ -9,6 +9,7 @@
  *   retried. A claim over the cap is never silently accepted.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
@@ -102,6 +103,7 @@ async function interpret(t: Test, cap: number | null) {
 			});
 		});
 	}
+	rateLimiterTest.register(t);
 	const seeded = await seedMailThread(t, { text: TEXT });
 	await t.run((ctx) =>
 		captureInterpretSource(ctx, { source: { kind: 'mail', id: seeded.messageId }, isLive: true })

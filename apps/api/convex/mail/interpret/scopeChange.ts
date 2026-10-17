@@ -111,8 +111,13 @@ export async function startScopeChange(
 		interpretationRevision: brief.interpretationRevision + 1,
 		overview: undefined,
 		checkpoint: undefined,
-		// The arrival gist is a brief-mode reading (SPEC §2.4).
-		...(mode === 'actions' ? { gist: undefined } : {}),
+		// The arrival gist is a brief-mode reading (SPEC §2.4), and so are the
+		// gist-only and counted settlements: the team surfaces read the brief as
+		// what was actually extracted (`none` once the extractions are gone). The
+		// sources stay upgradeable, so the thread's next full read reads them.
+		...(mode === 'actions'
+			? { gist: undefined, gistSources: undefined, skippedSources: undefined }
+			: {}),
 		updatedAt: Date.now(),
 	});
 	return true;

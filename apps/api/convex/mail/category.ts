@@ -45,7 +45,8 @@ import { noteSenderKind } from './senders/profiles';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
 import { recordOwnerCorrection } from '../decision/artifacts';
-import { wakeCategoryDeferredRuns } from './interpret/categoryDefer';
+import { wakeCategoryDeferredRuns, wakeCategoryDepthWaits } from './interpret/categoryDefer';
+import { noteRecordCategory } from './arrival/records';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -310,6 +311,10 @@ export async function writeCategory(
 	});
 	await noteSenderKind(ctx, thread, label);
 	await wakeCategoryDeferredRuns(ctx, thread._id, { label, source }, thread.category);
+	// Read on arrival: the newest inbound message's record takes the category,
+	// the projection follows, and a run waiting on it to choose its depth runs now.
+	await noteRecordCategory(ctx, thread._id, { label, source });
+	await wakeCategoryDepthWaits(ctx, thread._id);
 	if (label === 'spam' && previous !== 'spam') {
 		await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
 	}

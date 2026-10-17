@@ -197,3 +197,37 @@ async function wakePage(
 	}
 	return woken;
 }
+
+/** Newest inbound messages of a thread whose arrival-depth wait a category write ends. */
+const DEPTH_WAKE_RECORDS = 3;
+
+/**
+ * Read on arrival (SPEC §2.3.3b): a category was just written for the thread
+ * (the refinement, a heuristic label, an owner override). It is the category
+ * of the thread's newest inbound message, so that message's run, waiting up
+ * to `CATEGORY_DEPTH_WAIT_MS` to decide how deep to read, runs now: the wait
+ * marker is cleared and the run scheduled in this same transaction, so the
+ * wait's own ceiling run finds nothing to do. Bounded: the newest few records.
+ * Returns how many runs were scheduled.
+ */
+export async function wakeCategoryDepthWaits(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>
+): Promise<number> {
+	const records = await ctx.db
+		.query('mailArrivalRecords')
+		.withIndex('by_thread_source_order', (q) => q.eq('threadId', threadId))
+		.order('desc')
+		.take(DEPTH_WAKE_RECORDS);
+	let woken = 0;
+	for (const record of records) {
+		const row = await loadInterpretSource(ctx, { kind: 'mail', id: record.messageId });
+		if (row?.categoryPendingAt === undefined) continue;
+		await ctx.db.patch(row._id, { categoryPendingAt: undefined, updatedAt: Date.now() });
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
+			source: row.source,
+		});
+		woken += 1;
+	}
+	return woken;
+}

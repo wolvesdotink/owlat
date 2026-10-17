@@ -51,13 +51,19 @@ export function briefCompleteness(
 		| 'pendingSources'
 		| 'unreadSources'
 		| 'deferredSources'
+		| 'skippedSources'
+		| 'gistSources'
 	>
 ): BriefCompleteness {
 	// A source the stale sweep gave up on: partial, whatever else was read.
 	if ((brief.unreadSources ?? 0) > 0) return 'partial';
 	if ((brief.pendingRepairs ?? 0) > 0 || (brief.activePurgeJobs ?? 0) > 0) return 'partial';
 	if ((brief.pendingMatchRuns ?? 0) > 0 || brief.isFoldScanCut === true) return 'partial';
-	const counted = completenessOfCounts(brief.sourceCounts ?? EMPTY_SOURCE_COUNTS);
+	// Read on arrival (SPEC §2.5): a source settled as gist-only or skipped is
+	// settled, like a recorded skip, though it has no extraction row.
+	const recorded = completenessOfCounts(brief.sourceCounts ?? EMPTY_SOURCE_COUNTS);
+	const isArrivalSettled = (brief.skippedSources ?? 0) + (brief.gistSources ?? 0) > 0;
+	const counted = recorded === 'none' && isArrivalSettled ? 'complete' : recorded;
 	// Runs still out, or deferred until the thread is opened (D10): `pending`
 	// while nothing is recorded yet, else partial.
 	const waiting = (brief.pendingSources ?? 0) + (brief.deferredSources ?? 0);

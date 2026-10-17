@@ -35,6 +35,7 @@ import { buildSnippet } from '../deliveryPipeline/insert';
 import { changedRemoteFlags, recordRemoteChanges } from '../external/remoteOps';
 import { refuse } from '../../lib/lifecycle';
 import { noteDraftSent } from '../draftPause';
+import { refreshArrivalProjection } from '../arrival/projection';
 import {
 	DRAFT_LIFECYCLE,
 	dedupedRecipients,
@@ -219,8 +220,7 @@ async function runSentEffects(
 		latestSnippet: snippet,
 		latestFromAddress: draft.fromAddress,
 		latestSubject: draft.subject || '(no subject)',
-		// Any outbound in the thread answers the Reply Queue signal — clear the
-		// needs-reply flag and any in-flight classification marker.
+		// Any outbound answers the Reply Queue: clear the flag and any pending marker.
 		needsReply: undefined,
 		needsReplyPendingAt: undefined,
 		needsReplyRetryCount: undefined,
@@ -247,9 +247,8 @@ async function runSentEffects(
 			latestMessageId: messageId,
 			// A just-sent message is never snoozed (plan C8).
 			latestSnoozedUntil: null,
-			// Team-inbox collision safety: record this reply as the thread's newest
-			// outbound so a second teammate who opened the thread earlier is warned
-			// before sending a duplicate (see mail/mailbox/messages.ts::latestReplyState).
+			// Team-inbox collision safety: the newest outbound, so a teammate is warned
+			// before a duplicate send (mail/mailbox/messages.ts::latestReplyState).
 			latestReply: { messageId, byUserId: draft.sentByUserId, at: now },
 			folderRoles: Array.from(folderRoles),
 			...(followUpRemindAt !== undefined
@@ -264,6 +263,7 @@ async function runSentEffects(
 					}
 				: {}),
 		});
+		await refreshArrivalProjection(ctx, threadId); // the reply answered needs_me
 	}
 
 	// Team-thread marker (send-as choice). When the reply went out under a

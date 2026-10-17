@@ -218,10 +218,20 @@ describe('D10: the classify run defers a display-only non-candidate', () => {
 			isScreenerOn: false,
 			sender: 'no-reply@shop.example.com',
 		});
-		// Delivery captured the eligibility snapshot, outstanding.
-		await t.run((ctx) =>
-			captureInterpretSource(ctx, { source: { kind: 'mail', id: messageId }, isLive: true })
-		);
+		// Delivery captured the eligibility snapshot, outstanding. D10 defers
+		// with read on arrival off (with it on, the run reads it now, SPEC §2.1).
+		await t.run(async (ctx) => {
+			await captureInterpretSource(ctx, { source: { kind: 'mail', id: messageId }, isLive: true });
+			const message = (await ctx.db.get(messageId))!;
+			const userId = (await ctx.db.get(message.mailboxId))!.userId;
+			await ctx.db.insert('mailUserSettings', {
+				userId,
+				autoAdvance: 'next',
+				isReadOnArrival: false,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
 
 		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, {
 			threadId,

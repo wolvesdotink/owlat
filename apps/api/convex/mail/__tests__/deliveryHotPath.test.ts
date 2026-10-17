@@ -105,10 +105,12 @@ describe('Reply Queue pending marker rides the insert thread patch', () => {
 		const markerPatches = threadPatches.filter((keys) => keys.includes('needsReplyPendingAt'));
 		expect(markerPatches).toHaveLength(1);
 		expect(markerPatches[0]).toContain('latestMessageId');
-		// The only other thread write is the category stamp, which the heuristic
-		// now writes in the same mutation (plan E7) instead of a later one.
+		// The only other thread writes are the category stamp, which the heuristic
+		// now writes in the same mutation (plan E7) instead of a later one, and
+		// the read-on-arrival projection, once (`arrival/projection.ts`).
 		expect(threadPatches.filter((keys) => !keys.includes('needsReplyPendingAt'))).toEqual([
 			['category', 'updatedAt'],
+			['arrival'],
 		]);
 		expect(thread.category).toEqual(expect.objectContaining({ source: 'heuristic' }));
 		expect(thread.needsReplyPendingAt).toBe(thread.updatedAt);
