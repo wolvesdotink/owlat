@@ -66,6 +66,7 @@ import { onItemsCreated } from './commitmentLink';
 import { factKeyHashes } from './factKeys';
 import { startPendingMatch } from './pendingMatch';
 import { leaseLostAt, releaseLeaseIfHeld } from './lease';
+import { noteArrivalSkip } from '../arrival/records';
 
 export type ApplyOutcome =
 	| {
@@ -400,6 +401,10 @@ async function applyLeased(
 	}
 	// This source has its outcome now: no longer outstanding (p4 final review F2).
 	await settleSource(ctx, sourceKey, 'recorded');
+	// Read on arrival: a skip before the depth decision reads as depth `none`.
+	if (status === 'skipped' && args.source.kind === 'mail') {
+		await noteArrivalSkip(ctx, args.source.id, args.skipReason);
+	}
 	// A pending-transition scan in flight keeps the brief partial (round 6 R2),
 	// and so do an outstanding purge repair and unread history (briefCompleteness).
 	const briefNow = await ctx.db.get(brief._id);

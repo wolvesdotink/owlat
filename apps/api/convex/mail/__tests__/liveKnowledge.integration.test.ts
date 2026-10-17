@@ -9,6 +9,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { v } from 'convex/values';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
@@ -36,6 +37,13 @@ const modules = {
 		}),
 	}),
 };
+
+/** Live deliveries schedule the classifiers and the arrival read, which take rate-limiter tokens. */
+function harness(): TestConvex<typeof schema> {
+	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
+	return t;
+}
 
 beforeEach(() => {
 	extracted.length = 0;
@@ -182,7 +190,7 @@ async function withHeldScheduler(body: () => Promise<void>): Promise<void> {
 
 describe('live mail → knowledge extraction', () => {
 	it('forward sync from another person schedules extraction of that message', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			const messageId = await ingest(t, seeded);
@@ -191,7 +199,7 @@ describe('live mail → knowledge extraction', () => {
 	});
 
 	it('schedules nothing while ai.knowledge is off', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const seeded = await seed(t, { ai: true });
 		await withHeldScheduler(async () => {
 			await ingest(t, seeded);
@@ -200,7 +208,7 @@ describe('live mail → knowledge extraction', () => {
 	});
 
 	it('a historical import (backfill) is left to the import sweep', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			await ingest(t, seeded, { origin: 'backfill' });
@@ -209,7 +217,7 @@ describe('live mail → knowledge extraction', () => {
 	});
 
 	it("skips the mailbox's own mail and the Sent folder", async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			const own = await ingest(t, seeded, { from: `Team <${OWNER_ADDRESS}>` });
@@ -220,7 +228,7 @@ describe('live mail → knowledge extraction', () => {
 	});
 
 	it('skips mailing-list and auto-submitted mail', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			const list = await ingest(t, seeded, {
@@ -235,7 +243,7 @@ describe('live mail → knowledge extraction', () => {
 	});
 
 	it('extracts a normal message and resolves its sender contact', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			const messageId = await ingest(t, seeded);
@@ -246,7 +254,7 @@ describe('live mail → knowledge extraction', () => {
 	});
 
 	it('refuses phishing from a connected mailbox (no verdict) and creates no contact', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			const messageId = await ingest(t, seeded, PHISHING);
@@ -260,7 +268,7 @@ describe('live mail → knowledge extraction', () => {
 	});
 
 	it('refuses a clean-looking message whose DMARC failed', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const seeded = await seed(t);
 		await withHeldScheduler(async () => {
 			const messageId = await ingest(t, seeded);

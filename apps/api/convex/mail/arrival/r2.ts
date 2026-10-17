@@ -4,8 +4,8 @@
  * besides the thread category it answers THAT message's pending rule
  * questions, read with the rules hook `listArrivalAiQuestions`, from that
  * message's own scoped text (`scopedInput.ts`), and commits the answers
- * through `applyArrivalAiAnswers` (lane rules owns both hooks; they are stubs
- * until it lands, so no question is asked yet).
+ * through `applyArrivalAiAnswers` (lane rules owns both hooks, implemented in
+ * `mail/rules/rulesPass.ts`).
  *
  * The questions are the mailbox owner's own rule text, the message is
  * untrusted data: both are fenced in the prompt, and the answers are a

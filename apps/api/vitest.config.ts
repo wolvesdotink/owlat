@@ -3,14 +3,17 @@ import { defineConfig } from 'vitest/config';
 import { packageCoverage } from '../../vitest.shared';
 import { scheduledFailureSeam } from './convex/__tests__/helpers/scheduledFailureSeam.ts';
 import { creationTimeSeam } from './convex/__tests__/helpers/creationTimeSeam.ts';
+import { storageStoreSeam } from './convex/__tests__/helpers/storageStoreSeam.ts';
 
 const integrationTestPattern = 'convex/**/__tests__/**/*.integration.test.ts';
 
 export default defineConfig({
 	// Lets the scheduled-failure gate (vitest.setup.ts) see a throwing scheduled
 	// function even while a test has console.error mocked, and lets a test give
-	// documents one shared `_creationTime` (helpers/creationTimeSeam.ts).
-	plugins: [scheduledFailureSeam(), creationTimeSeam()],
+	// documents one shared `_creationTime` (helpers/creationTimeSeam.ts), and
+	// keeps parallel blob stores in one action from racing convex-test's
+	// transaction flag (helpers/storageStoreSeam.ts).
+	plugins: [scheduledFailureSeam(), creationTimeSeam(), storageStoreSeam()],
 	test: {
 		setupFiles: ['./vitest.setup.ts'],
 		server: { deps: { inline: ['convex-test'] } },

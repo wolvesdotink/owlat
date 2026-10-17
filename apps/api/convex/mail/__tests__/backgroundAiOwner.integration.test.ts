@@ -161,8 +161,17 @@ describe('commitment sweep (#1380)', () => {
 			);
 		}
 
+		// Each `runAfter` reads the clock itself, so a loaded host can let a
+		// millisecond pass between two of them (6001 vs 6000). Freeze only
+		// `Date` for the sweep: the offsets are then exactly the stagger.
 		const before = Date.now();
-		const { scheduled } = await t.mutation(internal.mail.commitments.sweep, {});
+		vi.useFakeTimers({ toFake: ['Date'], now: before });
+		let scheduled: number;
+		try {
+			({ scheduled } = await t.mutation(internal.mail.commitments.sweep, {}));
+		} finally {
+			vi.useRealTimers();
+		}
 		expect(scheduled).toBe(3);
 
 		const times = await t.run(async (ctx) =>

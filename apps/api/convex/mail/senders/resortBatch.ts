@@ -16,7 +16,7 @@
 import type { Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
-import { refreshArrivalProjection } from './arrivalProjection';
+import { refreshArrivalProjection } from '../arrival/projection';
 
 /** Threads one mutation recomputes: about 20 projections fit the read budget many times over. */
 export const RESORT_INLINE_THREADS = 20;

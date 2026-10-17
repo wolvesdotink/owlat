@@ -5,6 +5,7 @@
  */
 
 import { convexTest } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../../schema';
 import betterAuthSchema from '../../betterAuth/schema';
 import { components } from '../../_generated/api';
@@ -26,6 +27,8 @@ export async function pushHarness(
 	_resetSingletonOrgCacheForTests();
 	const t = convexTest(schema, modules);
 	t.registerComponent('betterAuth', betterAuthSchema, betterAuthModules);
+	// Live mail deliveries schedule the classifiers, which take rate-limiter tokens.
+	rateLimiterTest.register(t);
 	const org = (await t.mutation(components.betterAuth.adapter.create, {
 		input: { model: 'organization', data: { name: 'Acme', slug: 'acme', createdAt: Date.now() } },
 	} as never)) as { _id: string };

@@ -102,6 +102,7 @@ export const sidebarConfig: SidebarGroup[] = [
 			{ label: 'Postbox', to: '/guide/postbox' },
 			{ label: 'Reply Queue', to: '/guide/reply-queue' },
 			{ label: 'Smart Inbox', to: '/guide/smart-inbox' },
+			{ label: 'Read on Arrival', to: '/guide/read-on-arrival' },
 			{ label: 'Calendar Availability', to: '/guide/calendar-availability' },
 			{ label: 'Postbox Settings', to: '/guide/postbox-settings' },
 			{ label: 'Secure Email, Explained', to: '/guide/secure-email' },

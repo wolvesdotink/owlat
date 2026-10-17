@@ -5,12 +5,10 @@
  * mailbox was personal does not move the counters.
  */
 
-import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
-import schema from '../../../schema';
 import type { Id } from '../../../_generated/dataModel';
 import { api } from '../../../_generated/api';
-import { modules } from '../../__tests__/helpers.testlib';
+import { liveMailTest } from '../../__tests__/helpers.testlib';
 import { deliverHosted, profileOf, roleOf, seedPersonalMailbox, type T } from './senders.testlib';
 import { addSenderDelivery, emptySenderWeeks } from '../counters';
 
@@ -37,7 +35,7 @@ describe('a mailbox that became a team inbox', () => {
 	it('gets no archive from a suggestion settled after the conversion', async () => {
 		vi.useFakeTimers();
 		try {
-			const t = convexTest(schema, modules);
+			const t = liveMailTest();
 			const { mailboxId } = await seedPersonalMailbox(t);
 			const id = (await deliverHosted(t))!;
 			const profile = (await profileOf(t, mailboxId))!;
@@ -62,7 +60,7 @@ describe('a mailbox that became a team inbox', () => {
 	});
 
 	it('does not count an open of mail counted before the conversion', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
 		await makeShared(t, mailboxId);
