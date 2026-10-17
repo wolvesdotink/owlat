@@ -289,7 +289,7 @@ export const move = postboxMutation({
 			messageIds: args.messageIds,
 			targetFolderId: args.targetFolderId,
 		});
-		await recordUnreadArchives(ctx, unread, { now: Date.now() });
+		await recordUnreadArchives(ctx, unread, result.moved, { now: Date.now() });
 		return result;
 	},
 });
@@ -322,7 +322,7 @@ export const archive = postboxMutation({
 		// mail through `move`, and a rule's own work must never become evidence
 		// for suggesting that rule again.
 		await recordTriageVerb(ctx, args.messageIds, 'archive');
-		await recordUnreadArchives(ctx, unread, { now: Date.now() });
+		await recordUnreadArchives(ctx, unread, result.moved, { now: Date.now() });
 		await recordArchivedMoves(ctx, result.moved, session.userId);
 		return result;
 	},

@@ -87,6 +87,21 @@ describe('unread archive evidence', () => {
 		});
 	});
 
+	it('counts each moved message once, however often the call names it', async () => {
+		vi.useFakeTimers();
+		const t = learnTest();
+		const { mailboxId } = await seedPersonalMailbox(t);
+		const first = (await deliverLive(t)).message._id;
+		const second = (await deliverLive(t)).message._id;
+		await t.mutation(api.mail.messageActions.archive, {
+			messageIds: [first, first, first, second, first],
+		});
+		expect((await profileOf(t, mailboxId))!.unreadArchiveEvidence).toMatchObject({
+			count: 2,
+			sessions: 1,
+		});
+	});
+
 	it('counts a move into Archive, but not an automatic one', async () => {
 		vi.useFakeTimers();
 		const t = learnTest();

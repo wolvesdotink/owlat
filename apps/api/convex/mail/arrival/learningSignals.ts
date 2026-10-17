@@ -111,15 +111,16 @@ export function isLearnableProfile(profile: Pick<Profile, 'status' | 'statusSour
 	);
 }
 
-/** Per sender: how many of a call's messages are unread live archives. */
+/** The messages of one archive call that count as evidence, and their senders. */
 export interface UnreadArchiveCandidates {
 	mailboxId: Id<'mailboxes'>;
-	bySender: Map<string, number>;
+	senderOf: Map<Id<'mailMessages'>, string>;
 }
 
 /**
  * Read, BEFORE the move, which of the messages an archive call moves into
- * `targetFolderId` count as evidence. Reads only. Null when none do.
+ * `targetFolderId` count as evidence. Reads only; ids are deduplicated before
+ * the per-call bound. Null when none count.
  */
 export async function unreadArchiveCandidates(
 	ctx: Pick<MutationCtx, 'db'>,
@@ -128,35 +129,40 @@ export async function unreadArchiveCandidates(
 ): Promise<UnreadArchiveCandidates | null> {
 	const target = await ctx.db.get(targetFolderId);
 	if (target?.role !== 'archive') return null;
-	const messages = await Promise.all(
-		messageIds.slice(0, MAX_EVIDENCE_PER_CALL).map((id) => ctx.db.get(id))
-	);
-	const bySender = new Map<string, number>();
+	const ids = [...new Set(messageIds)].slice(0, MAX_EVIDENCE_PER_CALL);
+	const messages = await Promise.all(ids.map((id) => ctx.db.get(id)));
+	const senderOf = new Map<Id<'mailMessages'>, string>();
 	for (const message of messages) {
 		if (!message || message.mailboxId !== target.mailboxId) continue;
 		if (message.folderId === targetFolderId || !isUnreadLiveInbound(message)) continue;
-		const { senderDigest } = senderKeyOf(message.fromAddress);
-		bySender.set(senderDigest, (bySender.get(senderDigest) ?? 0) + 1);
+		senderOf.set(message._id, senderKeyOf(message.fromAddress).senderDigest);
 	}
-	return bySender.size > 0 ? { mailboxId: target.mailboxId, bySender } : null;
+	return senderOf.size > 0 ? { mailboxId: target.mailboxId, senderOf } : null;
 }
 
 /**
- * Fold the candidates into each sender's evidence (after the move went
- * through), and schedule the learned digest for a sender whose evidence just
- * crossed both gates. Personal mailboxes only; senders without a profile were
- * never counted as delivered and are skipped.
+ * Fold the candidates the move actually moved into each sender's evidence,
+ * and schedule the learned digest for a sender whose evidence just crossed
+ * both gates. Personal mailboxes only; senders without a profile were never
+ * counted as delivered and are skipped.
  */
 export async function recordUnreadArchives(
 	ctx: MutationCtx,
 	candidates: UnreadArchiveCandidates | null,
+	moved: ReadonlyArray<{ messageId: Id<'mailMessages'> }>,
 	opts: { now: number; clientActionId?: string }
 ): Promise<void> {
 	if (!candidates) return;
+	const bySender = new Map<string, number>();
+	for (const { messageId } of moved) {
+		const digest = candidates.senderOf.get(messageId);
+		if (digest) bySender.set(digest, (bySender.get(digest) ?? 0) + 1);
+	}
+	if (bySender.size === 0) return;
 	const mailbox = await ctx.db.get(candidates.mailboxId);
 	if (!mailbox || !isPersonalMailbox(mailbox)) return;
 	const sessionKey = archiveSessionKey(opts.now, opts.clientActionId);
-	for (const [digest, count] of candidates.bySender) {
+	for (const [digest, count] of bySender) {
 		const profile = await loadSenderProfile(ctx, mailbox._id, digest);
 		if (!profile) continue;
 		const evidence = foldUnreadArchives(profile.unreadArchiveEvidence, count, sessionKey);
