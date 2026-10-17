@@ -50,6 +50,8 @@ const SAFE_ACTION_TYPES = new Set([
 	// and is undone by deleting the rule — the stamp then names no rendered
 	// section, so `mail/sections.ts` reads the mail back under "Everything else".
 	'pinToSection',
+	// sendToDigest / placeInUpdates / placeInNeedsMe / archiveAfter / notify are
+	// not retroactive: explicit no-ops here, handled by lane rules (SPEC §6.3).
 ]);
 
 /**

@@ -15,6 +15,7 @@ import {
 	itemResponsibilityValidator,
 	localizedSealedTextValidator,
 } from './threadBrief';
+import { briefTopGistValidator } from './arrival';
 
 export const briefTopValidator = v.object({
 	// `brief` for personal mailboxes, `actions` for shared ones: a shared row
@@ -39,6 +40,8 @@ export const briefTopValidator = v.object({
 	),
 	// The first "Latest update" line (brief mode only).
 	latest: v.optional(localizedSealedTextValidator),
+	// Read on arrival (SPEC §2.4): the gist for a row with no brief line. Sealed.
+	gist: v.optional(briefTopGistValidator),
 	// The brief's interpretationRevision this was folded at.
 	revision: v.number(),
 	updatedAt: v.number(),

@@ -75,6 +75,8 @@ export function resolveFilterOutcome(
 	const pinAction = evalResult.actions.find(
 		(a) => a.type === 'pinToSection' && (a.sectionName ?? '').length > 0
 	);
+	// sendToDigest / placeInUpdates / placeInNeedsMe / archiveAfter / notify are
+	// explicit no-ops in this manual pass: handled by lane rules (SPEC §6.3).
 	return {
 		pinnedSection: pinAction?.sectionName,
 		// `discard` short-circuits — the caller drops the message entirely (and
