@@ -375,6 +375,41 @@ sentence. The web says it in the reader's language.
   settles, because the batch was billed. Only mail in an extractable folder is
   batched, so imported Sent or Trash mail stays real-time.
 
+### Amendment, 2026-10-17: read on arrival (D10)
+
+Accepted by the owner with the read-on-arrival plan (INBOX_ZERO_PLAN, D1 and
+D4). The text of D10 above still holds when a person turns the new per-user
+preference `mailUserSettings.isReadOnArrival` off. It is on by default, and
+then, for personal Postbox mail only (shared and team mailboxes are
+unchanged):
+
+- Where D10 would defer a display-only source, the source is read when it
+  arrives instead. The Settings copy says that the AI provider reads mail when
+  it arrives, including mail the person never opens.
+- The interpretation run itself decides how deep to read, once the message is
+  scoped (`mail/interpret/arrivalDecide.ts`, the table in
+  `@owlat/shared/arrivalDepth`). Only a display-only source can be read less
+  than in full: `gist` (one `mail.gist` call, two verbatim spans and an
+  optional fact, each quote grounded in its segment), `count` or `none` (no
+  model call). Newsletters and promotions are counted. Notifications and
+  receipts get a gist, unless a deterministic detector finds payment, legal
+  or invoice wording, which is read in full. Security mail and suppressed
+  senders are not read. Everything that is not display-only keeps today's
+  eager full read.
+- Admission: a display-only read that would call a model passes the owner's
+  `arrivalReadPerOwner` bucket and the background budget first. If either
+  refuses, or the spend hold refuses later, the source is settled as an
+  upgradeable `count`. It is never retried and never deferred to the open.
+  Eager work over the owner bucket waits for it; budget behaviour for eager
+  work is unchanged.
+- A source settled as gist or count is terminal. It stops being outstanding
+  and is counted in `threadBriefs.gistSources` / `skippedSources`, which the
+  brief reads as settled. A later source of the thread that needs a full read
+  reads the upgradeable ones first, through the D10 predecessor mechanism.
+  Opening a thread upgrades nothing.
+- A finished history import starts the 30-day interpretation backfill once
+  (`mail/arrival/autoBackfill.ts`), when the preference is on.
+
 ## Consequences
 
 - Upgrading changes no route. The new columns are optional, the policy defaults
