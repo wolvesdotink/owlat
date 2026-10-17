@@ -7,22 +7,20 @@
  *     the sender name, which in the full card opens the sender profile.
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { defineComponent, h, nextTick } from 'vue';
+import { defineComponent, h } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import { usePostboxSenderBodyOpen } from '~/composables/postbox/usePostboxSenderOpen';
 
 /** The Senders open signal (§5): every card reports its own body being shown. */
-const markOpened = vi.fn();
+const senderBodyOpen = vi.fn();
 
 beforeAll(() => {
-	// The real card wiring over a stubbed backend: `markOpened` is the server call.
+	// The open counting itself is PostboxSenderReadableBody.test.ts's.
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
-		usePostboxSenderBodyOpen,
-		useBackendOperation: () => ({ run: markOpened }),
+		usePostboxSenderBodyOpen: senderBodyOpen,
 	});
 });
 
@@ -102,29 +100,14 @@ const has = (w: ReturnType<typeof mountCard>, id: string) =>
 	w.find(`[data-testid="${id}"]`).exists();
 
 describe('PostboxReaderMessage reduced', () => {
-	it('counts its message as opened once its rendered body is on screen', async () => {
-		markOpened.mockClear();
+	it('wires its message into the Senders open count', () => {
+		senderBodyOpen.mockClear();
 		mountCard(true);
-		await nextTick();
-		await nextTick();
-		expect(markOpened).toHaveBeenCalledWith({ messageId: 'msg_1' });
-	});
-
-	it('does not count an expanded card whose body is off screen', async () => {
-		markOpened.mockClear();
-		// Every element sits far below the viewport, and no observer callback
-		// ever reports it intersecting.
-		const rect = vi
-			.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-			.mockReturnValue({ top: 5000, bottom: 5400, left: 0, right: 600 } as DOMRect);
-		try {
-			mountCard(true);
-			await nextTick();
-			await nextTick();
-			expect(markOpened).not.toHaveBeenCalled();
-		} finally {
-			rect.mockRestore();
-		}
+		const [card] = senderBodyOpen.mock.calls[0] as [
+			{ message: { _id: string }; expanded: boolean },
+		];
+		expect(card.message._id).toBe('msg_1');
+		expect(card.expanded).toBe(true);
 	});
 
 	it('drops the action row and keeps the body', () => {

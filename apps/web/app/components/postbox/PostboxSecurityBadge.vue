@@ -2,6 +2,7 @@
 import { binaryStringToBytes } from '@owlat/shared/mailMime';
 import { extractClearsignedText, type SecureMessageClass } from '@owlat/shared/secureMessage';
 import { computeSecureMessageRecovery } from '~/composables/postbox/useSecureMessageRecovery';
+import { useRegisterReadableBody } from '~/composables/postbox/usePostboxSenderOpen';
 import { deriveSealedBadge, type InboundEncryptionInfo } from '~/utils/sealedMessage';
 import {
 	deriveSignatureBadge,
@@ -105,6 +106,10 @@ const clearsignedText = computed(() =>
 		? extractClearsignedText(props.message.textBodyInline)
 		: null
 );
+
+// Senders (§5): the signed cleartext is this message's readable body.
+const clearsignedEl = ref<HTMLElement | null>(null);
+useRegisterReadableBody(() => clearsignedEl.value);
 
 const meta = computed(() => {
 	switch (props.klass) {
@@ -290,6 +295,7 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 		     can sign nothing but whitespace, so the note must not depend on it. -->
 		<template v-if="clearsignedText !== null && !sealedBadge">
 			<pre
+				ref="clearsignedEl"
 				class="mt-2 text-sm whitespace-pre-wrap font-sans text-text-primary"
 				data-testid="clearsigned-text"
 				>{{ clearsignedText }}</pre>

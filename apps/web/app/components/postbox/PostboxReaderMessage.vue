@@ -143,7 +143,7 @@ const {
 	hideBody: () => props.hideBody,
 	active: () => props.expanded,
 });
-const { shownBody } = usePostboxSenderBodyOpen(props); // Senders §5: counts once the body is on screen
+usePostboxSenderBodyOpen(props); // Senders §5: counts once a readable body is on screen
 
 /**
  * The legacy DMARC-fail line. `senderAuthBadges` moved this into the auth badge;
@@ -447,7 +447,6 @@ const renderToggleLabel = computed(() =>
 			:eager="eagerBody"
 		>
 			<PostboxMessageBody
-				ref="shownBody"
 				:message="msg"
 				:force-light="forcedLight"
 				:sender-images-allowed="imagesAllowed"
