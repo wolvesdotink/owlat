@@ -108,7 +108,7 @@ const {
 	isLoading,
 	isRefetching,
 });
-const displayMessages = usePostboxPlacementFilter(shownRows);
+const { rows: displayMessages, placement } = usePostboxPlacementFilter(shownRows);
 
 const {
 	active: triageFilter,
@@ -356,7 +356,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 								:folder-id="folderId"
 								:sort-order="sortOrder"
 								:page-ids="listMessageIds"
-								:select-all-scope-matches-list="triageFilter === 'all'"
+								:select-all-scope-matches-list="triageFilter === 'all' && !placement"
 							/>
 							<div class="flex-1 overflow-auto">
 								<!-- Keyed on folder + renderer so both folder changes and view-mode

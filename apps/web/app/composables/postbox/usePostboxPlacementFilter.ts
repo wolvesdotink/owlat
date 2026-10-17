@@ -20,8 +20,12 @@ export function parsePlacementQuery(raw: unknown): Placement | null {
 export function usePostboxPlacementFilter<T extends { placement?: Placement }>(rows: Ref<T[]>) {
 	const route = useRoute();
 	const placement = computed(() => parsePlacementQuery(route.query['placement']));
-	return computed(() => {
-		const wanted = placement.value;
-		return wanted ? rows.value.filter((row) => row.placement === wanted) : rows.value;
-	});
+	return {
+		/** The active placement filter, or null. */
+		placement,
+		rows: computed(() => {
+			const wanted = placement.value;
+			return wanted ? rows.value.filter((row) => row.placement === wanted) : rows.value;
+		}),
+	};
 }

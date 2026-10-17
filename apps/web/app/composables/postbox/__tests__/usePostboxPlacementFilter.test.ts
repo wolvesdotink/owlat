@@ -16,10 +16,12 @@ describe('usePostboxPlacementFilter', () => {
 			{ _id: 'bahn', placement: 'updates' },
 			{ _id: 'legacy' },
 		]);
-		const shown = usePostboxPlacementFilter(rows);
+		const { rows: shown, placement } = usePostboxPlacementFilter(rows);
 		expect(shown.value.map((r) => r._id)).toEqual(['news', 'bahn', 'legacy']);
+		expect(placement.value).toBeNull();
 		route.query = { placement: 'digest' };
 		expect(shown.value.map((r) => r._id)).toEqual(['news']);
+		expect(placement.value).toBe('digest');
 	});
 
 	it('only knows the contract placements', () => {

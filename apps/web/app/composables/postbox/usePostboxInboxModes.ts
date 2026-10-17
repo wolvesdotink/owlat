@@ -28,6 +28,7 @@ import { isEditableTarget } from '~/utils/postboxShortcuts';
 import type { ShortcutScope } from '~/utils/shortcutRegistry';
 import { chordFromEvent } from '~/utils/shortcutRegistry';
 import { resolveActiveChord } from '~/utils/shortcutScope';
+import { parsePlacementQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 
 interface PostboxInboxModesOptions {
 	folderRole: Ref<string>;
@@ -44,6 +45,22 @@ interface PostboxInboxModesOptions {
 export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 	const { folderRole, folderId, activeMessageId, railOpen } = options;
 	const { t } = useI18n();
+	const route = useRoute();
+	const router = useRouter();
+
+	// All mail filtered to a Priority placement (`?placement=`, read on arrival
+	// §3): the URL alone decides it, so a reload or a shared link lands on the
+	// filtered flat list whatever the saved modes are. Leaving the flat list or
+	// All mail drops the filter rather than hiding it under another renderer.
+	const placementFilter = computed(() =>
+		folderRole.value === 'inbox' && !folderId.value
+			? parsePlacementQuery(route.query['placement'])
+			: null
+	);
+	function dropPlacementFilter() {
+		const { placement: _placement, ...rest } = route.query;
+		void router.replace({ query: rest });
+	}
 
 	// Inbox view mode — exactly one of Flat / Conversations / Categories is
 	// active. The saved (server-persisted) value drives the list; a pending
@@ -51,8 +68,8 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 	// then hands back to the server value. Grouped renderers are inbox-only; the
 	// flat list with its hover/keyboard triage serves all other folders.
 	const pendingViewMode = ref<PostboxViewMode | null>(null);
-	const viewMode = computed<PostboxViewMode>(
-		() => pendingViewMode.value ?? options.savedViewMode.value
+	const viewMode = computed<PostboxViewMode>(() =>
+		placementFilter.value ? 'flat' : (pendingViewMode.value ?? options.savedViewMode.value)
 	);
 	watch(options.savedViewMode, (saved) => {
 		if (pendingViewMode.value === saved) pendingViewMode.value = null;
@@ -60,6 +77,7 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 	function selectViewMode(value: string) {
 		const mode = resolvePostboxViewMode(value);
 		if (mode === viewMode.value) return;
+		if (placementFilter.value) dropPlacementFilter();
 		pendingViewMode.value = mode;
 		// The list already switched optimistically; useBackendOperation surfaces a
 		// toast if the save fails, and the override snaps back to the saved mode.
@@ -85,14 +103,15 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 	// the unchanged three-pane reader. Same optimistic-override pattern as the
 	// view mode above; the server remembers the last-used mode.
 	const pendingInboxMode = ref<PostboxInboxMode | null>(null);
-	const inboxMode = computed<PostboxInboxMode>(
-		() => pendingInboxMode.value ?? options.savedInboxMode.value
+	const inboxMode = computed<PostboxInboxMode>(() =>
+		placementFilter.value ? 'browse' : (pendingInboxMode.value ?? options.savedInboxMode.value)
 	);
 	watch(options.savedInboxMode, (saved) => {
 		if (pendingInboxMode.value === saved) pendingInboxMode.value = null;
 	});
 	function switchInboxMode(mode: PostboxInboxMode) {
 		if (mode === inboxMode.value) return;
+		if (placementFilter.value) dropPlacementFilter();
 		pendingInboxMode.value = mode;
 		void options.setInboxMode(mode).then((saved) => {
 			if (!saved && pendingInboxMode.value === mode) pendingInboxMode.value = null;
@@ -113,12 +132,9 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 
 	// "N newsletters and promotions · in your digest" (read on arrival §3):
 	// All mail's flat list, filtered to the digest placement through the URL
-	// (usePostboxPlacementFilter). The flat renderer is transient here too.
-	const router = useRouter();
+	// (`placementFilter` above); nothing about the saved modes changes.
 	function viewDigest() {
-		pendingViewMode.value = 'flat';
-		switchInboxMode('browse');
-		void router.replace({ query: { ...router.currentRoute.value.query, placement: 'digest' } });
+		void router.replace({ query: { ...route.query, placement: 'digest' } });
 	}
 
 	// Search is the app-wide overlay now, so `/` no longer has to leave Today to
@@ -182,5 +198,6 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 		todayActive,
 		viewAutoFiled,
 		viewDigest,
+		placementFilter,
 	};
 }
