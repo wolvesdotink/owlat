@@ -14,6 +14,9 @@
  *  - the messages whose exact wording matters (legal notices, changed terms,
  *    payment details): loaded and expanded the same way (`exactWording`);
  *  - the collapsed rows' "latest update" sentence (`latestFor`);
+ *  - the viewer's "Show the brief above conversations" (`showBrief`): off, no
+ *    strip and no latest lines, only the slim line; the brief stays reachable
+ *    as the Full brief sheet from the header's ⋯;
  *  - marking the brief seen once the strip has shown it;
  *  - running item reactions, with the replying ones handed to the reader.
  */
@@ -62,6 +65,8 @@ export function usePostboxReaderBrief(opts: {
 	isOwnAddress: (address: string) => boolean;
 	/** A replying reaction or the brief's Reply: open Answer mode (guarded). */
 	onReply: (item: BriefItemView | null, action: BriefAction | null) => void;
+	/** The viewer shows briefs in the reader (`isAutoSummarizeOn`, default on). */
+	showBrief?: () => boolean;
 }) {
 	const { byId } = useInboxes();
 	const isShared = computed(() => byId.value.get(opts.mailboxId() as never)?.scope === 'shared');
@@ -69,6 +74,7 @@ export function usePostboxReaderBrief(opts: {
 	const read = useThreadBrief({ threadId: () => (isShared.value ? null : opts.threadId()) });
 
 	const gist = computed(() => (isShared.value ? null : readerGistOf(read.brief.value)));
+	const isBriefShown = computed(() => opts.showBrief?.() !== false);
 	// Read on arrival: whether a pending brief is being read now (the "reading" line).
 	const { isEnabled: isAiEnabled } = useFeatureFlag();
 	const arrivalPreference = useConvexQuery(
@@ -83,6 +89,7 @@ export function usePostboxReaderBrief(opts: {
 			gist: gist.value,
 			isReadOnArrival: arrivalPreference.data.value?.isReadOnArrival,
 			isAiOn: isAiEnabled('ai'),
+			isBriefShown: isBriefShown.value,
 		})
 	);
 
@@ -194,7 +201,9 @@ export function usePostboxReaderBrief(opts: {
 		{ immediate: true }
 	);
 
-	const latest = computed(() => (isShared.value ? new Map() : messageLatestMap(read.brief.value)));
+	const latest = computed(() =>
+		isShared.value || !isBriefShown.value ? new Map() : messageLatestMap(read.brief.value)
+	);
 	function latestFor(messageId: string): string | null {
 		return latest.value.get(messageId) ?? null;
 	}
@@ -240,6 +249,7 @@ export function usePostboxReaderBrief(opts: {
 		itemsState: read.itemsState,
 		isClosedTruncated: read.isClosedTruncated,
 		strip,
+		isBriefShown,
 		hasFullBrief,
 		gistAttribution,
 		cited,

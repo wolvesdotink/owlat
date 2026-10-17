@@ -31,6 +31,7 @@ import PostboxReaderNotice from '../PostboxReaderNotice.vue';
 
 const THREAD = 'mail/mailbox/messages:listThreadMessages';
 const BRIEF = 'mail/interpret/brief:get';
+const SETTINGS = 'mail/settings:get';
 
 function autoImportedHelpers(): Record<string, unknown> {
 	const modules = {
@@ -59,6 +60,8 @@ interface Fixture {
 	isShared?: boolean;
 	/** The message the reader was opened on (default: the latest). */
 	open?: string;
+	/** The viewer's "Show the brief above conversations" (`isAutoSummarizeOn`), default on. */
+	isBriefShown?: boolean;
 }
 
 let fixture: Fixture;
@@ -139,6 +142,9 @@ beforeEach(() => {
 					};
 				}
 				if (name === BRIEF) return fixture.brief;
+				if (name === SETTINGS && fixture.isBriefShown === false) {
+					return { isAutoSummarizeOn: false };
+				}
 				return undefined;
 			});
 			return {
@@ -451,6 +457,47 @@ describe('Full brief', () => {
 		});
 		expect(w.get('[data-reader-chrome="strip"]').attributes('data-strip')).toBe('meta');
 		expect(w.find('[data-testid="strip-full-brief"]').exists()).toBe(true);
+	});
+});
+
+describe('the brief turned off ("Show the brief above conversations")', () => {
+	const withLatest = () =>
+		briefView({ messageLatest: [{ messageId: 'm1', text: 'Lena asked for 4,000 copies.' }] });
+
+	it('renders no strip, only the slim line; Full brief moves to the ⋯ menu', async () => {
+		const w = await mountReader({
+			messages: [...earlier(), message('m3')],
+			brief: withLatest(),
+			isBriefShown: false,
+		});
+		expect(aboveFirstBody(w)).toEqual(['header', 'strip']);
+		expect(w.get('[data-reader-chrome="strip"]').attributes('data-strip')).toBe('meta');
+		expect(w.find('[data-testid="reader-strip"]').exists()).toBe(false);
+		expect(w.find('[data-testid="strip-lead"]').exists()).toBe(false);
+		expect(w.find('[data-testid="strip-why-here"]').exists()).toBe(true);
+		expect(w.find('[data-testid="strip-details"]').exists()).toBe(true);
+		expect(w.find('[data-testid="strip-full-brief"]').exists()).toBe(false);
+		expect(w.get('[data-testid="thread-menu-full-brief"]').text()).toBe('Full brief');
+		// The collapsed earlier rows show no AI "latest update" line either.
+		expect(w.text()).not.toContain('Lena asked for 4,000 copies.');
+	});
+
+	it('with the brief on, the strip and its latest lines show, and ⋯ offers Full brief too', async () => {
+		const w = await mountReader({ messages: [...earlier(), message('m3')], brief: withLatest() });
+		expect(w.find('[data-testid="reader-strip"]').exists()).toBe(true);
+		expect(w.find('[data-testid="strip-full-brief"]').exists()).toBe(true);
+		expect(w.find('[data-testid="thread-menu-full-brief"]').exists()).toBe(true);
+		expect(w.text()).toContain('Lena asked for 4,000 copies.');
+	});
+
+	it('offers no Full brief anywhere when the brief holds nothing', async () => {
+		const w = await mountReader({
+			messages: [message('m3')],
+			brief: briefView({ completeness: 'none' }),
+			isBriefShown: false,
+		});
+		expect(w.find('[data-testid="thread-menu-full-brief"]').exists()).toBe(false);
+		expect(w.find('[data-testid="strip-full-brief"]').exists()).toBe(false);
 	});
 });
 

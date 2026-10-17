@@ -13,7 +13,8 @@
  *     shared mailbox, mail whose original is the primary view. Never a skeleton: the strip fades in when
  *     the brief is ready. `note: 'reading'` is the one quiet line that replaces
  *     the old skeleton while messages wait for this open to be read (D10, or
- *     read on arrival turned off).
+ *     read on arrival turned off). Also the viewer's choice not to see briefs
+ *     ("Show the brief above conversations" off): the slim line, no note.
  */
 import type { BriefItemView, BriefModeView } from '../../../api/convex/mail/interpret/briefShape';
 import type { BriefTopRow } from '../../../api/convex/mail/interpret/briefTop';
@@ -71,6 +72,8 @@ export interface ReaderStripInput {
 	isReadOnArrival?: boolean;
 	/** Whether AI runs at all here (the `ai` flag): off, nothing is being read. */
 	isAiOn?: boolean;
+	/** The viewer's "Show the brief above conversations" (`isAutoSummarizeOn`); absent = on. */
+	isBriefShown?: boolean;
 }
 
 const META: ReaderStrip = { kind: 'meta', note: null };
@@ -81,7 +84,7 @@ function firstOpen(items: readonly BriefItemView[] | undefined): BriefItemView |
 
 export function resolveReaderStrip(input: ReaderStripInput): ReaderStrip {
 	const { brief } = input;
-	if (input.isShared || !brief) return META;
+	if (input.isShared || !brief || input.isBriefShown === false) return META;
 	const reason = brief.gap?.reason;
 	// The original is the primary view: short mail, security mail.
 	if (reason === 'short' || reason === 'security') return META;
