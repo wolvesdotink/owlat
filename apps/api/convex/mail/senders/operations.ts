@@ -8,8 +8,9 @@
  * operation marker on the message; undo checks their value only.
  *
  * After a status change the sender's threads are re-sorted: placement is
- * derived, so `refreshArrivalProjection` on the sender's newest ≤200 inbox
- * threads re-sorts them. `auto_archive` and `unsubscribed` also archive the
+ * derived, so recomputing the projections of the sender's newest ≤200 inbox
+ * threads re-sorts them, the first batch inline and the rest by a bounded
+ * chain (§16, `./resortChain.ts`). `auto_archive` and `unsubscribed` also archive the
  * sender's newest ≤200 Inbox messages through `moveMessagesToFolder` (provider
  * writeback included), each logged as a `messageFolder` change. Older mail
  * stays where it is; there is no continuation.
@@ -22,7 +23,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { ARRIVAL_RETENTION_MS, arrivalChangeRow } from '../arrival/changeRows';
 import { moveMessagesToFolder } from '../messageActions';
-import { refreshArrivalProjection } from './arrivalProjection';
+import { refreshThreadsBounded } from './resortBatch';
 
 /** The newest Inbox messages (and their threads) one status change touches. */
 export const SENDER_RESORT_LIMIT = 200;
@@ -197,25 +198,27 @@ export async function archiveSenderInbox(
 			})
 		);
 	}
-	for (const threadId of threadIds) await refreshArrivalProjection(ctx, threadId);
+	await refreshThreadsBounded(ctx, threadIds);
 	return moved.length;
 }
 
 /**
- * Re-sort the sender's newest ≤200 Inbox threads (placement is derived).
- * Returns how many Inbox messages the page covered.
+ * Re-sort the sender's newest ≤200 Inbox threads (placement is derived): the
+ * first batch now, the rest of that same set by a bounded chain (§16,
+ * `./resortChain.ts`). `undoOperationId` ties the chain to an undo's progress.
+ * Returns how many Inbox messages the page covered and whether a chain runs.
  */
 export async function resortSenderThreads(
 	ctx: MutationCtx,
-	profile: Pick<Doc<'mailSenderProfiles'>, 'mailboxId' | 'address'>
-): Promise<number> {
+	profile: Pick<Doc<'mailSenderProfiles'>, 'mailboxId' | 'address'>,
+	opts: { undoOperationId?: Id<'mailArrivalOperations'> } = {}
+): Promise<{ resorted: number; isContinued: boolean }> {
 	const inboxId = await folderId(ctx, profile.mailboxId, 'inbox');
-	if (!inboxId) return 0;
+	if (!inboxId) return { resorted: 0, isContinued: false };
 	const messages = await senderInboxMessages(ctx, profile, inboxId);
-	for (const threadId of new Set(messages.map((message) => message.threadId))) {
-		await refreshArrivalProjection(ctx, threadId);
-	}
-	return messages.length;
+	const threadIds = [...new Set(messages.map((message) => message.threadId))];
+	const { isContinued } = await refreshThreadsBounded(ctx, threadIds, opts);
+	return { resorted: messages.length, isContinued };
 }
 
 /** Whether a status files the sender's mail away (and so archives what is there). */

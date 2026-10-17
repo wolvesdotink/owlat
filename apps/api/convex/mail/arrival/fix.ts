@@ -15,8 +15,9 @@
  * called. Statuses are `statusSource: 'user'`, which learning never overrides.
  *
  * Sender scope re-sorts by itself, because placement is derived: the new
- * status or override plus `refreshArrivalProjection` over the sender's newest
- * ≤200 Inbox messages (`by_folder_from_received`, lane senders' helpers).
+ * status or override plus a recompute of the sender's newest ≤200 Inbox
+ * threads (`by_folder_from_received`, lane senders' helpers), the first batch
+ * in this mutation and the rest by a bounded chain (§16).
  * `auto_archive` archives those same messages through `moveMessagesToFolder`
  * (provider writeback included), each a `messageFolder` change. Older mail is
  * left where it is; there is no continuation.
@@ -281,7 +282,7 @@ async function fixSender(
 		changes += await writeSenderOverride(fix, profile, destination);
 		changes += await restoreFromArchive(fix);
 	}
-	const resorted = await resortSenderThreads(ctx, profile);
+	const { resorted } = await resortSenderThreads(ctx, profile);
 	return { changes, archived: 0, resorted, isNeedsReplyCleared: false };
 }
 

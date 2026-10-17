@@ -201,6 +201,8 @@ describe('operations.undo', () => {
 			restored: 150,
 			skipped: 1,
 			isNeedsReplyCleared: true,
+			isPagingDone: true,
+			pendingResorts: 0,
 			isDone: true,
 		});
 		for (const id of [message._id, ...ids.filter((id) => id !== ids[1])]) {

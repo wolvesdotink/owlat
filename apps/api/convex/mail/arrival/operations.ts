@@ -40,6 +40,7 @@ import { resortSenderThreads } from '../senders/operations';
 import { isPersonalMailboxId } from '../senders/profiles';
 import { applyThreadFlagDeltas, type ThreadFlagDeltas } from '../threadAggregates';
 import type { UndoProgress } from '../../lib/validators/arrival';
+import { addUndoPage } from './undoProgress';
 import { refreshArrivalProjection } from './projection';
 import { newUndoBatch, restoreChange, type UndoBatch } from './undoChanges';
 
@@ -115,8 +116,15 @@ async function cancelDelayedActions(
 	}
 }
 
-/** Apply what a page of restored rows collected (see `UndoBatch`). */
-async function applyBatch(ctx: MutationCtx, operation: Operation, batch: UndoBatch): Promise<void> {
+/**
+ * Apply what a page of restored rows collected (see `UndoBatch`). Returns how
+ * many sender re-sort chains it started (§16).
+ */
+async function applyBatch(
+	ctx: MutationCtx,
+	operation: Operation,
+	batch: UndoBatch
+): Promise<number> {
 	// Flags first, while each message still sits in the folder the write counts it in.
 	await applyFlags(ctx, batch);
 	for (const [targetFolderId, messageIds] of batch.moves) {
@@ -128,14 +136,18 @@ async function applyBatch(ctx: MutationCtx, operation: Operation, batch: UndoBat
 	}
 	await cancelDelayedActions(ctx, operation, batch.messages);
 	for (const threadId of batch.threads) await refreshArrivalProjection(ctx, threadId);
-	// A restored sender is re-sorted here, in the mutation that restored it (§2.8):
-	// one bounded page of its newest Inbox messages each.
+	// A restored sender is re-sorted from the mutation that restored it: its
+	// first batch of threads here, the rest by a chain tied to this undo (§16).
+	let startedResorts = 0;
 	for (const profileId of batch.senders) {
 		const profile = await ctx.db.get(profileId);
-		if (profile && (await isPersonalMailboxId(ctx, profile.mailboxId))) {
-			await resortSenderThreads(ctx, profile);
-		}
+		if (!profile || !(await isPersonalMailboxId(ctx, profile.mailboxId))) continue;
+		const { isContinued } = await resortSenderThreads(ctx, profile, {
+			undoOperationId: operation._id,
+		});
+		if (isContinued) startedResorts += 1;
 	}
+	return startedResorts;
 }
 
 /**
@@ -172,14 +184,16 @@ async function runPage(
 		if (await restoreChange(ctx, operation, row, batch)) restored += 1;
 		else skipped += 1;
 	}
-	await applyBatch(ctx, operation, batch);
-	const previous = operation.undoProgress ?? EMPTY_PROGRESS;
-	const undoProgress: UndoProgress = {
-		restored: previous.restored + restored,
-		skipped: previous.skipped + skipped,
-		isNeedsReplyCleared: previous.isNeedsReplyCleared || batch.isNeedsReplyCleared,
-		isDone: page.isDone,
-	};
+	const startedResorts = await applyBatch(ctx, operation, batch);
+	// Re-read: a chain an earlier page started may have finished since.
+	const current = (await ctx.db.get(operation._id))?.undoProgress;
+	const undoProgress = addUndoPage(current, {
+		restored,
+		skipped,
+		isNeedsReplyCleared: batch.isNeedsReplyCleared,
+		isLastPage: page.isDone,
+		startedResorts,
+	});
 	await ctx.db.patch(operation._id, {
 		undoProgress,
 		...(skipped > 0 ? { status: 'undo_partial' as const } : {}),
@@ -194,17 +208,11 @@ async function runPage(
 	return {
 		restored: undoProgress.restored,
 		skipped: undoProgress.skipped,
-		hasMore: !page.isDone,
+		// More pages, or a sender re-sort chain still running (§16).
+		hasMore: !undoProgress.isDone,
 		isNeedsReplyCleared: undoProgress.isNeedsReplyCleared,
 	};
 }
-
-const EMPTY_PROGRESS: UndoProgress = {
-	restored: 0,
-	skipped: 0,
-	isNeedsReplyCleared: false,
-	isDone: false,
-};
 
 /** Undo one operation (see the module doc). */
 // authz: requireMailboxAccess on the operation's mailbox.
