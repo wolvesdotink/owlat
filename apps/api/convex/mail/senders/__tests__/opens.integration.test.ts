@@ -5,6 +5,7 @@
  * as delivered (a backfill, a team inbox) never counts as opened.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
@@ -29,6 +30,7 @@ const opened = (weeks: number[] | undefined) => (weeks ?? []).reduce((sum, n) =>
 describe('first opens', () => {
 	it('counts the reader open once', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
 		await t.mutation(api.mail.senders.opens.markOpened, { messageId: id });
@@ -39,6 +41,7 @@ describe('first opens', () => {
 
 	it('does not count bulk mark-read or markThreadRead', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const first = (await deliverHosted(t))!;
 		const second = (await deliverHosted(t))!;
@@ -53,6 +56,7 @@ describe('first opens', () => {
 
 	it('counts the newest inbound message when the Overview is marked seen', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
 		const threadId = (await t.run(async (ctx) => await ctx.db.get(id)))!.threadId;
@@ -66,6 +70,7 @@ describe('first opens', () => {
 
 	it('ignores mail that was never counted as delivered', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
 		await t.run(async (ctx) => await ctx.db.patch(id, { isOpenCounted: undefined }));

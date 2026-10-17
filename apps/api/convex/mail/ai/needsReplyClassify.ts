@@ -58,6 +58,8 @@ import { draftClarificationReply } from './needsReplyDraft';
 import { continuesLater, isDeferredUntilOpen, isHeldOutByScreener } from './needsReplyGates';
 import { refineClarification, type ClarificationFlag } from './needsReplyRefine';
 import { logError } from '../../lib/runtimeLog';
+import { prepareThreadForConsumer } from '../interpret/fullReadPrepare';
+import { FULL_READ_RECHECK_MS, MAX_FULL_READ_WAITS } from '../interpret/fullRead';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 import {
 	BudgetDeferral,
@@ -100,6 +102,8 @@ const classifyThreadArgs = {
 	interpretMessageId: v.optional(v.id('mailMessages')),
 	/** Runs this work deferred at the spend ceiling (ADR-0073, D1). */
 	deferrals: v.optional(v.number()),
+	/** Times it looked again for the thread to be fully read before clarifying (read on arrival). */
+	fullReadWaits: v.optional(v.number()),
 };
 
 export const classifyThread = internalAction({
@@ -186,8 +190,32 @@ export const classifyThread = internalAction({
 			// pending and runs again.
 			if (isBudgetRefused(run)) throw new BudgetDeferral();
 			const projection = usableProjection(run);
+			// Read on arrival (Sol r2 F1): clarification reasons over the whole
+			// thread, so it waits until the thread is fully read. This run looks
+			// again later (the thread stays pending); past the bound it settles
+			// the verdict without clarifying.
+			const fullReadWaits = (args.fullReadWaits ?? 0) + 1;
+			const isClarifying =
+				!!projection &&
+				needsReplyResultOf(projection, {
+					messageId: latestInbound.messageId,
+					fromAddress: latestInbound.fromAddress,
+					hasCalendarInvite: latestInbound.hasCalendarInvite,
+				}).decision.needsReply;
+			const isFullyRead =
+				!isClarifying ||
+				(await prepareThreadForConsumer(ctx, { kind: 'mail', id: args.threadId })) === 'ready';
+			if (!isFullyRead && fullReadWaits <= MAX_FULL_READ_WAITS) {
+				await ctx.scheduler.runAfter(
+					FULL_READ_RECHECK_MS,
+					internal.mail.ai.needsReplyClassify.classifyThread,
+					{ ...args, fullReadWaits }
+				);
+				return;
+			}
 			const hasVerdict = projection
 				? await applyProjection(ctx, {
+						isClarificationSkipped: !isFullyRead,
 						threadId: args.threadId,
 						mailboxId: context.mailboxId,
 						ownerUserId: context.ownerUserId,
@@ -225,6 +253,8 @@ export const classifyThread = internalAction({
 async function applyProjection(
 	ctx: ActionCtx,
 	args: {
+		/** The thread is not fully read: the verdict without the clarification passes. */
+		isClarificationSkipped?: boolean;
 		threadId: Id<'mailThreads'>;
 		mailboxId: Id<'mailboxes'>;
 		ownerUserId: string;
@@ -242,7 +272,7 @@ async function applyProjection(
 	// clarification with it. Self-contained fail-soft (undefined on any
 	// error), so a clarification failure never downgrades the verdict.
 	const clarification =
-		decision.needsReply && !(await isHeldOutByScreener(ctx, args))
+		decision.needsReply && !args.isClarificationSkipped && !(await isHeldOutByScreener(ctx, args))
 			? await clarifyWithMemory(ctx, {
 					ownerUserId: args.ownerUserId,
 					transcript: args.transcript,
@@ -367,16 +397,20 @@ export const draftWithAnswers = internalAction({
 		/** Who answered the card: the rate limit is theirs (#1380). */
 		triggeredByUserId: v.optional(v.string()),
 		deferrals: v.optional(v.number()),
+		/** Times it looked again for the thread to be fully read (read on arrival). */
+		fullReadWaits: v.optional(v.number()),
 	},
 	handler: deferredHandler<{
 		threadId: Id<'mailThreads'>;
 		triggeredByUserId?: string;
 		deferrals?: number;
+		fullReadWaits?: number;
 	}>(deferDraft, async (ctx, args) => {
 		anchorActionDeadline(ctx);
 		await draftClarificationReply(ctx, {
 			threadId: args.threadId,
 			...(args.triggeredByUserId ? { triggeredByUserId: args.triggeredByUserId } : {}),
+			...(args.fullReadWaits !== undefined ? { fullReadWaits: args.fullReadWaits } : {}),
 		});
 	}),
 });

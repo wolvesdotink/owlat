@@ -59,6 +59,7 @@ import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { loadInterpretSource } from './sources';
 import { CLOSED_STATUSES, recentlyClosedItems, threadItemsWithStatus } from './load';
 import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
+import type { Depth } from '@owlat/shared/arrival';
 import { isReadOnArrivalOn } from './preferences';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
@@ -242,7 +243,11 @@ function deferredInOrder(ctx: ReadCtx, threadId: Doc<'mailThreads'>['_id']) {
  * null: one indexed read (Sol r4 F2), however long the backlog.
  */
 export const oldestDeferredBefore = internalQuery({
-	args: { source: interpretationSourceValidator },
+	args: {
+		source: interpretationSourceValidator,
+		/** A full-read prerequisite's upgrade (`fullRead.ts`): upgradeable mail comes first too. */
+		isUpgrade: v.optional(v.boolean()),
+	},
 	handler: async (ctx, args): Promise<InterpretationSource | null> => {
 		if (args.source.kind !== 'mail' && args.source.kind !== 'outboundMail') return null;
 		const message = await ctx.db.get(args.source.id);
@@ -261,11 +266,14 @@ export const oldestDeferredBefore = internalQuery({
 				.take(2)
 		).find((row) => row.sourceKey !== ownKey);
 		// Read on arrival (SPEC §2.3.4): a source that needs a full read (a sent
-		// reply, mail that is not display-only) reads the thread's earlier
-		// gist-only or counted mail first, the same way. Display-only mail never
-		// upgrades anything, and neither does an open.
+		// reply, mail that is not display-only, a full-read prerequisite's
+		// upgrade) reads the thread's earlier gist-only or counted mail first,
+		// the same way. Display-only mail never upgrades anything, and neither
+		// does an open.
 		const isUpgrading =
-			args.source.kind === 'outboundMail' || !(await isDisplayOnlyInterpretation(ctx, message));
+			args.isUpgrade === true ||
+			args.source.kind === 'outboundMail' ||
+			!(await isDisplayOnlyInterpretation(ctx, message));
 		const upgradeable = isUpgrading
 			? (
 					await ctx.db
@@ -334,7 +342,13 @@ export async function runDeferredPredecessors(
 	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation' | 'scheduler'>,
 	source: InterpretationSource,
 	run: (source: InterpretationSource) => Promise<unknown>,
-	opts: { budget?: number; predecessors?: PredecessorMode } = {}
+	opts: {
+		budget?: number;
+		predecessors?: PredecessorMode;
+		/** Carried into the source's own rescheduled run (a full read stays one). */
+		depth?: Depth;
+		isUpgrade?: boolean;
+	} = {}
 ): Promise<{ retryAt: number } | null> {
 	// Team Inbox threads never defer: no round trip for them. A predecessor the
 	// loop selected is the oldest left: nothing older to read before it.
@@ -342,7 +356,15 @@ export async function runDeferredPredecessors(
 	if (opts.predecessors === 'already_read') return null;
 	const comeBack = async (delayMs: number) => {
 		if (opts.predecessors !== 'caller_continues') {
-			await ctx.scheduler.runAfter(delayMs, runOf(source), { source });
+			if (source.kind === 'mail') {
+				await ctx.scheduler.runAfter(delayMs, internal.mail.interpret.run.interpretMessage, {
+					source,
+					...(opts.depth ? { depth: opts.depth } : {}),
+					...(opts.isUpgrade ? { isUpgrade: true } : {}),
+				});
+			} else {
+				await ctx.scheduler.runAfter(delayMs, runOf(source), { source });
+			}
 		}
 		return { retryAt: Date.now() + delayMs };
 	};
@@ -351,7 +373,10 @@ export async function runDeferredPredecessors(
 	for (let reads = 0; ;) {
 		let next: InterpretationSource | null;
 		try {
-			next = await ctx.runQuery(internal.mail.interpret.defer.oldestDeferredBefore, { source });
+			next = await ctx.runQuery(internal.mail.interpret.defer.oldestDeferredBefore, {
+				source,
+				...(opts.isUpgrade ? { isUpgrade: true } : {}),
+			});
 		} catch {
 			return comeBack(PREDECESSOR_RETRY_MS);
 		}
@@ -368,8 +393,15 @@ export async function runDeferredPredecessors(
 			continue;
 		}
 		if (reads >= budget) return comeBack(0);
-		await run(next);
+		const out = (await run(next)) as { status?: string; retryAt?: number } | undefined;
 		reads++;
 		previous = key;
+		// A predecessor that waits (its category, the owner bucket, a gist retry)
+		// or is busy names when to look again: honour it (Sol r2 F2).
+		if (out?.status === 'wait' && out.retryAt !== undefined) {
+			return comeBack(Math.max(0, out.retryAt - Date.now()));
+		}
+		// Busy: its lease names its expiry, the run holding it usually ends far sooner.
+		if (out?.status === 'busy') return comeBack(PREDECESSOR_RETRY_MS);
 	}
 }

@@ -11,6 +11,7 @@
  * we did not verify).
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
@@ -70,6 +71,7 @@ async function setupMailbox(t: ReturnType<typeof convexTest>): Promise<Id<'_stor
 describe('mail.delivery.deliverToMailbox — auth verdicts + DMARC alignment (Sealed Mail A1)', () => {
 	it('persists SPF/DKIM/DMARC verdicts AND the two DMARC alignment domains', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {
@@ -109,6 +111,7 @@ describe('mail.delivery.deliverToMailbox — auth verdicts + DMARC alignment (Se
 
 	it('stores the alignment domains as ABSENT when an old MTA omits them', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {

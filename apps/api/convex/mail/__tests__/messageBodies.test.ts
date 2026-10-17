@@ -14,6 +14,7 @@
  *     never changes what a reader returns.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
@@ -145,6 +146,7 @@ function expectReaderBody(
 describe('mailMessageBodies (plan 3.2)', () => {
 	it('delivery stores the body in its own row and the reader still returns it', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await setup(t);
 		const id = await deliver(t, { text: 'plain part', html: '<p>html part</p>' });
 
@@ -164,6 +166,7 @@ describe('mailMessageBodies (plan 3.2)', () => {
 	it('seals the body row at rest when the instance has a key', async () => {
 		withInstanceKey();
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await setup(t);
 		const id = await deliver(t, { text: 'secret contract terms' });
 
@@ -177,6 +180,7 @@ describe('mailMessageBodies (plan 3.2)', () => {
 
 	it('a message without an inline body gets no body row', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await setup(t);
 		const id = await deliver(t, {});
 		expect(await bodyRows(t, id)).toHaveLength(0);
@@ -185,6 +189,7 @@ describe('mailMessageBodies (plan 3.2)', () => {
 
 	it('a legacy row with its body still on the row reads the same', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await setup(t);
 		const id = await seedMessage(t, mailboxId, {
 			textBodyInline: 'legacy text',
@@ -196,6 +201,7 @@ describe('mailMessageBodies (plan 3.2)', () => {
 
 	it('IMAP COPY gives the copy its own body row; purge removes only its own', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await setup(t);
 		const id = await deliver(t, { text: 'copied body' });
 		const folders = await t.run((ctx) =>
@@ -230,6 +236,7 @@ describe('mailMessageBodies (plan 3.2)', () => {
 
 	it('the AI context queries read the moved body', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await setup(t);
 		const id = await deliver(t, { text: 'Can you send the signed lease by Friday?' });
 		const row = await readRow(t, id);
@@ -246,6 +253,7 @@ describe('mailMessageBodies (plan 3.2)', () => {
 
 	it('the filter preview matches a body condition against the moved body', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await setup(t);
 		await deliver(t, { text: 'the invoice number is 4411' });
 		await deliver(t, { text: 'nothing to see' });
@@ -280,6 +288,7 @@ describe('migration 0049_move_message_bodies', () => {
 
 	it('moves legacy bodies off the row without changing what the reader returns', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await setup(t);
 		const legacy = await seedLegacy(t, mailboxId, 30);
 		const fresh = await deliver(t, { text: 'already in the body table' });
@@ -312,6 +321,7 @@ describe('migration 0049_move_message_bodies', () => {
 
 	it('keeps an existing body row and only clears stale legacy columns', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await setup(t);
 		const id = await seedMessage(t, mailboxId, { textBodyInline: 'stale copy' });
 		await t.run((ctx) =>
@@ -327,6 +337,7 @@ describe('migration 0049_move_message_bodies', () => {
 
 	it('seals a plaintext legacy body on the way when the instance has a key', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await setup(t);
 		const id = await seedMessage(t, mailboxId, { textBodyInline: 'plaintext from before E8b' });
 
@@ -339,6 +350,7 @@ describe('migration 0049_move_message_bodies', () => {
 
 	it('migration 0035 seals body rows written while the instance had no key', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await setup(t);
 		const id = await deliver(t, { text: 'written before the key existed' });
 		const [plain] = await bodyRows(t, id);

@@ -99,6 +99,23 @@ describe('resolveReaderStrip', () => {
 				brief: briefView({ completeness: 'pending' }),
 			})
 		).toEqual({ kind: 'meta', note: 'reading' });
+		// An untouched thread is not being read, preference or not (Sol r1 F10).
+		expect(
+			resolveReaderStrip({
+				...base,
+				isReadOnArrival: true,
+				brief: briefView({ completeness: 'none', latest: [] }),
+			})
+		).toEqual({ kind: 'meta', note: null });
+		// With AI off nothing is read, deferred sources included.
+		expect(
+			resolveReaderStrip({
+				...base,
+				isAiOn: false,
+				isReadOnArrival: true,
+				brief: briefView({ completeness: 'pending', deferredSources: 2 }),
+			})
+		).toEqual({ kind: 'meta', note: null });
 		expect(
 			resolveReaderStrip({
 				...base,

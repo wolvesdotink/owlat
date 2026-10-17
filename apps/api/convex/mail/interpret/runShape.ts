@@ -34,6 +34,11 @@ export interface InterpretArgs {
 	root?: LlmRootContext;
 	/** The depth asked for; a source already terminal for it is `done` (`lease.ts`). */
 	depth?: Depth;
+	/**
+	 * A full-read prerequisite's upgrade (`fullRead.ts`): it reads the thread's
+	 * earlier gist-only and counted mail first. An open (also `full`) does not.
+	 */
+	isUpgrade?: boolean;
 	/** Set by the run itself: the source lease it holds, checked at commit (`lease.ts`). */
 	leaseToken?: string;
 }

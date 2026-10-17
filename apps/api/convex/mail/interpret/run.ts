@@ -37,6 +37,8 @@
 
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
+import { admissionAnswer } from './arrivalRun';
 import {
 	interpretModeValidator,
 	interpretationSourceValidator,
@@ -68,6 +70,18 @@ export async function runInterpretation(
 }
 
 async function runLeased(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRunResult> {
+	// Read on arrival: admitted before anything is read, predecessors included (Sol r1 F3/F4).
+	if (args.source.kind === 'mail') {
+		const admitted = await ctx.runMutation(internal.mail.interpret.arrivalAdmit.admitArrivalRun, {
+			source: { kind: 'mail', id: args.source.id },
+			...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
+			...(args.depth ? { depth: args.depth } : {}),
+			...(args.isUpgrade ? { isUpgrade: true } : {}),
+			isCallerResuming: args.predecessors !== undefined,
+			...(args.predecessors === 'already_read' ? { isCoveredByParent: true } : {}),
+		});
+		if (admitted.kind !== 'go') return admissionAnswer(admitted);
+	}
 	// D10: earlier deferred mail of the thread first, under the caller's deadline (defer.ts).
 	const deadlineAt = args.root?.deadlineAt;
 	// Each is read in full: a deferred one as today, an upgradeable one (read on
@@ -101,6 +115,7 @@ export const interpretMessage = internalAction({
 		listId: v.optional(v.string()),
 		root: v.optional(llmRootContextValidator),
 		depth: v.optional(depthValidator),
+		isUpgrade: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<InterpretRunResult> => runInterpretation(ctx, args),
 });

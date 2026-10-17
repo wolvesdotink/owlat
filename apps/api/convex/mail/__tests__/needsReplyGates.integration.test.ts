@@ -264,3 +264,48 @@ describe('D10: the classify run defers a display-only non-candidate', () => {
 		expect(runInterpretationMock).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('read on arrival: clarification waits for the thread to be fully read (Sol r2 F1)', () => {
+	it('a thread with gist-only mail is not clarified yet; the classification looks again', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['mail.external', 'ai']);
+		const { threadId, messageId } = await seed(t, { isScreenerOn: false });
+		// An earlier message of the thread read only as a gist (upgradeable).
+		await t.run(async (ctx) => {
+			await captureInterpretSource(ctx, { source: { kind: 'mail', id: messageId }, isLive: true });
+			const row = (await ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${messageId}`))
+				.first())!;
+			await ctx.db.patch(row._id, {
+				readOutcome: 'gist',
+				isUpgradeable: true,
+				sourceOrderKey: '0',
+			});
+		});
+		await t.action(internal.mail.ai.needsReplyClassify.classifyThread, { threadId });
+		expect(runLlmObjectMock).not.toHaveBeenCalled();
+		const jobs = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect())
+				.filter((job) => job.state.kind === 'pending')
+				.map((job) => ({ name: job.name, args: job.args[0] as Record<string, unknown> }))
+		);
+		expect(jobs).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					name: expect.stringContaining('needsReplyClassify:classifyThread'),
+					args: expect.objectContaining({ fullReadWaits: 1 }),
+				}),
+				expect.objectContaining({
+					name: expect.stringContaining('interpretMessage'),
+					args: expect.objectContaining({ depth: 'full', isUpgrade: true }),
+				}),
+			])
+		);
+		// Still pending: the verdict waits for the full read.
+		expect((await t.run((ctx) => ctx.db.get(threadId)))?.needsReplyPendingAt).toEqual(
+			expect.any(Number)
+		);
+	});
+});

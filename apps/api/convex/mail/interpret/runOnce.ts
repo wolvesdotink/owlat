@@ -36,7 +36,15 @@ import { needsReplyProjectionOf } from './needsReplyProjection';
 import { interpretRoot } from './verify';
 import { planVerification, verifyHoldPlanOf, verifyRouted } from './verifyRoute';
 import { apply as applyRecord } from './runApply';
-import { arrivalAnswer, countArrival, decideArrival, isArrivalRead } from './arrivalRun';
+import type { ReserveRunAllocations } from '../../aiRouting/admission';
+import {
+	arrivalAnswer,
+	countArrival,
+	decideArrival,
+	isArrivalRead,
+	settledAnswer,
+} from './arrivalRun';
+import type { InterpretGateVerdict } from './gate';
 import { runGist } from './gist';
 import { isRetryDue } from './retry';
 import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
@@ -207,7 +215,12 @@ export async function runOnce(
 		// that the message is scoped. `count` / `none` were settled by the decision.
 		const arrivalArgs = isArrivalRead(args, loaded) ? args : null;
 		const arrival = arrivalArgs
-			? await decideArrival(ctx, arrivalArgs, { subject: scoped.subject, segmented })
+			? await decideArrival(
+					ctx,
+					arrivalArgs,
+					{ subject: scoped.subject, segmented },
+					loaded.brief.deletionEpoch
+				)
 			: null;
 		if (arrivalArgs && arrival?.kind === 'gist') return await runGist(ctx, arrivalArgs, loaded);
 		if (arrival && arrival.kind !== 'full' && arrival.kind !== 'gist')
@@ -215,7 +228,7 @@ export async function runOnce(
 		// A display-only read whose spend is refused from here on counts (§2.6).
 		countOnRefusal =
 			arrivalArgs && arrival?.kind === 'full' && arrival.isDisplayOnly
-				? () => countArrival(ctx, arrivalArgs, 'budget')
+				? () => countArrival(ctx, arrivalArgs, 'budget', loaded.brief.deletionEpoch)
 				: null;
 		retryCount = priorAttempts + 1;
 		const attempt = {
@@ -223,7 +236,21 @@ export async function runOnce(
 			...(sourceVersion ? { sourceVersion } : {}),
 		};
 
-		const gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
+		// A display-only arrival read asks the gate in a mutation that counts it
+		// on a budget refusal (Sol r2 F4); everything else asks as before.
+		let gate: InterpretGateVerdict;
+		if (countOnRefusal && arrivalArgs) {
+			const gated = await ctx.runMutation(internal.mail.interpret.arrivalHold.gateOrCount, {
+				source: { kind: 'mail', id: arrivalArgs.source.id },
+				...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
+				deletionEpoch: loaded.brief.deletionEpoch,
+				mode,
+			});
+			if (gated.isCounted) return settledAnswer('count');
+			gate = gated.verdict;
+		} else {
+			gate = await ctx.runQuery(internal.mail.interpret.gate.checkAllowed, { mode });
+		}
 		if (!gate.isAllowed) {
 			if (gate.code === 'budget' && countOnRefusal) return await countOnRefusal();
 			const gateRefusal =
@@ -282,6 +309,19 @@ export async function runOnce(
 				verify,
 				root,
 				priority,
+				// A display-only arrival read: a refused hold counts in the refusing
+				// mutation itself (Sol r1 F13); the catch below only reports it.
+				...(countOnRefusal && arrivalArgs
+					? {
+							reserve: (allocations: ReserveRunAllocations) =>
+								ctx.runMutation(internal.mail.interpret.arrivalHold.reserveArrivalRun, {
+									allocations,
+									source: { kind: 'mail', id: arrivalArgs.source.id },
+									...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
+									deletionEpoch: loaded.brief.deletionEpoch,
+								}),
+						}
+					: {}),
 			});
 		} catch (error) {
 			const refusal = admissionRefusalOf(error);

@@ -13174,7 +13174,7 @@
 		"arrival": {
 			"settings": {
 				"label": "Neue Mails beim Eingang lesen",
-				"help": "Dein KI-Anbieter liest persönliche Mails, sobald sie ankommen, auch Mails, die du nie öffnest. So sind sie sortiert und zusammengefasst, bevor du reinschaust. Schalte es aus, wenn Mails erst beim Öffnen gelesen werden sollen."
+				"help": "Wenn das an ist, liest dein KI-Anbieter persönliche Mails, sobald sie ankommen, auch Mails, die du nie öffnest. Wenn es aus ist, prüft Owlat neue Mails weiter auf Antworten und Kategorien, baut den Überblick über andere Mails aber erst, wenn du sie öffnest."
 			},
 			"reason": {
 				"aiOff": "KI ist aus",
