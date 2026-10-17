@@ -19,7 +19,11 @@ import { CATEGORY_SETTLE_MS } from '../eligibility';
 import { BUSY_RECHECK_MS, continuesLater } from '../../ai/needsReplyGates';
 import { modules, seedMailThread, type Test } from './interpret.testlib';
 
-const llm = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
+const llm = vi.hoisted(() => ({
+	runLlmObject: vi.fn(),
+	/** Called before extraction `n` (1-based) answers. */
+	beforeExtraction: undefined as undefined | ((n: number) => Promise<void>),
+}));
 
 vi.mock('../../../lib/llm/dispatch', async () => {
 	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
@@ -66,12 +70,14 @@ const extractions = () =>
 	).length;
 
 beforeEach(() => {
+	llm.beforeExtraction = undefined;
 	llm.runLlmObject.mockReset();
 	llm.runLlmObject.mockImplementation(
 		async ({ schema, prompt }: { schema: unknown; prompt: string }) => {
 			// A model call takes a while: long enough for a second run to overlap.
 			await new Promise((resolve) => setTimeout(resolve, 20));
 			if (schema === briefModelSchema) {
+				await llm.beforeExtraction?.(extractions());
 				return { object: OUTPUT, tokenUsage: undefined, modelUsed: 'stub-model' };
 			}
 			const ids = [...prompt.matchAll(/CLAIM (\S+):/g)].map((m) => m[1]);
@@ -120,6 +126,52 @@ describe('per-source lease', () => {
 		const later = await t.action(internal.mail.interpret.run.interpretMessage, { source });
 		expect(later).toMatchObject({ status: 'complete', isReplayed: true });
 		expect(extractions()).toBe(1);
+	});
+
+	it('keeps the lease across a restart, so a run that starts meanwhile buys nothing', async () => {
+		const t = convexTest(schema, modules);
+		const { source, messageId } = await eligibleSource(t);
+		let overlapping: Awaited<ReturnType<typeof t.action>> | undefined;
+		llm.beforeExtraction = async (n) => {
+			// The body changes under the first read: its commit answers
+			// sourceChanged and the run starts over.
+			if (n === 1) {
+				await t.run((ctx) => ctx.db.patch(messageId, { textBodyInline: `${TEXT} Thanks!` }));
+			}
+			// While the restarted read is in flight, another run of the source starts.
+			if (n === 2) {
+				overlapping = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			}
+		};
+
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+
+		expect(overlapping).toMatchObject({ status: 'busy' });
+		expect(out).toMatchObject({ status: 'complete', isReplayed: false });
+		// The first read and the restarted one; the overlapping run bought none.
+		expect(extractions()).toBe(2);
+		expect(await leaseOf(t, messageId)).toEqual({ token: null, until: null });
+	});
+
+	it('refuses a commit whose lease was given up, even with nobody holding it now', async () => {
+		const t = convexTest(schema, modules);
+		const { source, messageId } = await eligibleSource(t);
+		llm.beforeExtraction = async () => {
+			// Another run took the source over and finished meanwhile.
+			await t.run(async (ctx) => {
+				const row = await ctx.db
+					.query('interpretSources')
+					.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${messageId}`))
+					.first();
+				await ctx.db.patch(row!._id, { leaseToken: undefined, leaseUntil: undefined });
+			});
+		};
+
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+
+		expect(out.status).toBe('busy');
+		const rows = await t.run((ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows).toEqual([]);
 	});
 
 	it('claims by compare-and-set: busy while held, free again once released or expired', async () => {
