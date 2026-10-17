@@ -25,7 +25,7 @@
 
 import { v } from 'convex/values';
 import { mailUnsubscribeValidator } from '../../lib/validators/mailContent';
-import { internalAction, internalQuery, type MutationCtx } from '../../_generated/server';
+import { internalAction, internalQuery } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -36,6 +36,9 @@ import {
 	insertDeliveredMessage,
 } from '../deliveryPipeline/insert';
 import { runPostInsertInboundEffects } from '../deliveryPipeline/afterInsert';
+import { applySenderStatusAtDelivery } from '../arrival/hooks';
+import { settleSenderDelivery } from '../senders/delivery';
+import { advanceCursor } from './syncCursor';
 import { deliveredEnvelopeFields, storedBodyFields } from '../deliveryPipeline/ingestFields';
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { buildSearchBody } from '../searchBody';
@@ -171,6 +174,19 @@ export const ingestExternalMessage = internalMutation({
 			inboundOrigin: origin,
 		});
 
+		// Sender status (§5): forward-synced Inbox mail from an unsubscribed or
+		// auto-archived sender moves to Archive, written back to the provider.
+		const senderStatus =
+			origin === 'sync'
+				? await applySenderStatusAtDelivery(ctx, {
+						mailboxId: mailbox._id,
+						fromAddress: args.from,
+						origin,
+						isMovedByFilter: folder.role !== 'inbox',
+						messageId,
+					})
+				: null;
+
 		// Classifier enqueues, follow-up / snooze-until-reply clears and the
 		// owner-reply Reply Queue settle — the tail shared with hosted delivery.
 		await runPostInsertInboundEffects(ctx, {
@@ -179,6 +195,7 @@ export const ingestExternalMessage = internalMutation({
 			origin,
 			antiLoopHeaders: args.antiLoopHeaders,
 		});
+		await settleSenderDelivery(ctx, { messageId, origin, senderStatus });
 		await advanceCursor(ctx, args, mailbox._id);
 		// One stamp per refresh window, not per message: each rewrite re-runs the row's readers.
 		const now = Date.now();
@@ -187,53 +204,6 @@ export const ingestExternalMessage = internalMutation({
 		return { messageId };
 	},
 });
-
-/** Upsert the (account, remoteName) cursor, advancing lastSeenUid monotonically. */
-async function advanceCursor(
-	ctx: MutationCtx,
-	args: {
-		accountId: Id<'externalMailAccounts'>;
-		remoteName: string;
-		remoteUid: number;
-		remoteUidValidity: number;
-	},
-	mailboxId: Id<'mailboxes'>
-): Promise<void> {
-	const now = Date.now();
-	const existing = await ctx.db
-		.query('externalMailFolderSync')
-		.withIndex('by_account_and_remote', (q) =>
-			q.eq('accountId', args.accountId).eq('remoteName', args.remoteName)
-		)
-		.first();
-	if (existing) {
-		await ctx.db.patch(existing._id, {
-			lastSeenUid: Math.max(existing.lastSeenUid, args.remoteUid),
-			remoteUidValidity: args.remoteUidValidity,
-			lastSyncedAt: now,
-			forwardIngestFailures: existing.forwardIngestFailures?.filter(
-				(failure) => failure.uid !== args.remoteUid
-			),
-		});
-		return;
-	}
-	// No mapping row yet (worker ingesting before discovery recorded it) — find
-	// the local folder so the cursor row is complete.
-	const folder = await ctx.db
-		.query('mailFolders')
-		.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
-		.first();
-	if (!folder) return;
-	await ctx.db.insert('externalMailFolderSync', {
-		accountId: args.accountId,
-		mailboxId,
-		folderId: folder._id,
-		remoteName: args.remoteName,
-		remoteUidValidity: args.remoteUidValidity,
-		lastSeenUid: args.remoteUid,
-		lastSyncedAt: now,
-	});
-}
 
 /**
  * Folder cursors for an account, so the worker resumes incremental fetch from

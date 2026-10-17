@@ -38,6 +38,7 @@ import {
 import { threadBriefViewValidator, type ThreadBriefView } from './briefShape';
 import { loadBriefRow } from './briefRow';
 import { projectBrief } from './briefProject';
+import { countThreadOpen } from '../senders/opens';
 import { readResult } from './load';
 import {
 	gapOf,
@@ -262,6 +263,8 @@ export const markSeen = threadBriefMutation({
 			seenActivitySeq: brief?.lastActivitySeq ?? 0,
 			...(args.streamPosition ? { streamPosition: args.streamPosition } : {}),
 		});
+		// Senders (§5): seeing a mail thread's Overview opens its newest inbound message.
+		if (args.threadRef.kind === 'mail') await countThreadOpen(ctx, args.threadRef.id);
 		return null;
 	},
 });

@@ -41,6 +41,7 @@ import { buildThreadTranscript, CATEGORY } from './ai/transcript';
 import { withStoredInlineBodies } from '../lib/messageBodyStore';
 import { requireMailboxAccess } from './permissions';
 import { moveMessagesToFolder } from './messageActions';
+import { noteSenderKind } from './senders/profiles';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
 import { recordOwnerCorrection } from '../decision/artifacts';
@@ -299,6 +300,7 @@ export async function writeCategory(
 		category: { label, source, classifiedAt: now },
 		updatedAt: now,
 	});
+	await noteSenderKind(ctx, thread, label);
 	if (label === 'spam' && previous !== 'spam') {
 		await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
 	}
@@ -393,6 +395,7 @@ export const recategorize = postboxMutation({
 			category: { label: args.label, source: 'user', classifiedAt: now },
 			updatedAt: now,
 		});
+		await noteSenderKind(ctx, thread, args.label);
 		// The owner is in charge: marking spam files it away, and "Not spam" —
 		// any other label on a thread the classifier filed as spam — brings the
 		// messages back to the inbox. The per-sender override above makes sure
