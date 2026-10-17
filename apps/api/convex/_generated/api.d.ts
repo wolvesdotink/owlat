@@ -1843,6 +1843,7 @@ import type * as mail_rules_dryRunData from '../mail/rules/dryRunData.js';
 import type * as mail_rules_operationLog from '../mail/rules/operationLog.js';
 import type * as mail_rules_ruleApply from '../mail/rules/ruleApply.js';
 import type * as mail_rules_rulesPass from '../mail/rules/rulesPass.js';
+import type * as mail_arrival_offerable from '../mail/arrival/offerable.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3682,6 +3683,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/rules/operationLog': typeof mail_rules_operationLog;
 	'mail/rules/ruleApply': typeof mail_rules_ruleApply;
 	'mail/rules/rulesPass': typeof mail_rules_rulesPass;
+	'mail/arrival/offerable': typeof mail_arrival_offerable;
 }>;
 
 /**

@@ -417,6 +417,10 @@ export const recategorize = postboxMutation({
 			{ label: args.label, source: 'user' },
 			thread.category
 		);
+		// Read on arrival (final review F3): the record takes the owner's label,
+		// placement and digest eligibility follow, a depth wait on it ends.
+		await noteRecordCategory(ctx, args.threadId, { label: args.label, source: 'user' });
+		await wakeCategoryDepthWaits(ctx, args.threadId);
 		// The owner is in charge: marking spam files it away, and "Not spam" —
 		// any other label on a thread the classifier filed as spam — brings the
 		// messages back to the inbox. The per-sender override above makes sure

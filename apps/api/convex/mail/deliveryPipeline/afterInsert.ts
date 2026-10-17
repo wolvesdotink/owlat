@@ -119,12 +119,16 @@ export async function runPostInsertInboundEffects(
 			baselineApplied: true,
 		});
 	}
+	// Depth-decision work still out (read on arrival, final review F4): the
+	// category refinement, or this message's rule questions (a `sendToDigest`
+	// answer is a count hint). Display-only reads wait for it, bounded.
+	const isDepthPending = isCategoryRefining || !!record?.pendingAiFilters?.length;
 	await enqueueDeliveredInterpretation(ctx, delivered, {
 		isLive,
 		isInterpretedByClassify: isClassifyQueued,
 		precedence,
 		listId,
-		isCategoryRefining: isCategoryRefining && record !== null,
+		isCategoryRefining: isDepthPending && record !== null,
 	});
 	if (record) await refreshArrivalProjection(ctx, delivered.threadId);
 
