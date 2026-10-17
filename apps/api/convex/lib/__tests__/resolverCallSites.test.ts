@@ -166,6 +166,7 @@ const INVENTORY: readonly CallSite[] = [
 	// Read on arrival (§6): the rule dry run's one batched question.
 	site('mail/rules/dryRun.ts', "ctx, 'mail.rule_test'", 'classify'),
 	site('mail/filterCompile.ts', "ctx, 'mail.rule_compile'", 'classify'),
+	site('mail/digest/generate.ts', "ctx, 'mail.digest'", 'classify'),
 	site('mail/replyOptions.ts', "ctx, 'mail.suggest'", 'suggest'),
 	site('mail/interpret/coverage.ts', "ctx, 'mail.plan_coverage'", 'summarize'),
 	site('mail/interpret/verify.ts', "ctx, 'mail.verify'", 'guard'),

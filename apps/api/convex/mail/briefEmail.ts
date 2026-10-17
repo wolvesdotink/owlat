@@ -42,6 +42,8 @@ import { insertDeliveredMessage } from './deliveryPipeline/insert';
 import { batchGet } from '../_utils/batchLoader';
 import { getActiveMailboxForUser } from './mailbox/identity';
 import { isFencedThread } from './interpret/staleFence';
+import { hasDigestPending } from './digest/select';
+import { consumeSentDigest } from './digest/view';
 
 /**
  * How often the delivery cron runs. A brief is due when the user's local
@@ -66,6 +68,11 @@ export function localMinuteOfDay(nowMs: number, utcOffsetMinutes: number): numbe
 /** The user's local calendar day (days since epoch) for an instant. */
 export function localDayIndex(nowMs: number, utcOffsetMinutes: number): number {
 	return Math.floor((nowMs + utcOffsetMinutes * 60_000) / 86_400_000);
+}
+
+/** The digest period of a brief: the user's local day (§6.5, one digest per day). */
+export function digestPeriodKey(nowMs: number, utcOffsetMinutes: number): string {
+	return `day:${localDayIndex(nowMs, utcOffsetMinutes)}`;
 }
 
 /**
@@ -118,6 +125,8 @@ interface BriefEmailPayload {
 	bundledCounts: { newsletter: number; notification: number; receipt: number };
 	/** The weekly Senders line, when this brief carries one (mail/senders/brief.ts). */
 	senders?: BriefEmailPayloadSenders;
+	/** Read on arrival (§6.5): the digest's period, when digest threads are waiting. */
+	digestPeriodKey?: string;
 }
 
 export type BriefEmailPayloadSenders = Doc<'mailDailyBriefs'>['senders'];
@@ -152,13 +161,15 @@ export const listDue = internalQuery({
 				.withIndex('by_mailbox_and_generated', (q) => q.eq('mailboxId', mailbox._id))
 				.order('desc')
 				.first();
-			// No brief yet (a fresh mailbox before the build cron's first run) —
-			// send nothing rather than an empty digest that looks like a bug.
-			// The weekly Senders line is reason enough on its own.
-			if (!brief || (brief.items.length === 0 && !brief.senders)) continue;
+			// Read on arrival (§6.5): digest threads waiting are reason enough to
+			// send, and so is the weekly Senders line. Otherwise no brief yet (a
+			// fresh mailbox before the build cron's first run), or an empty one,
+			// sends nothing rather than a mail that looks like a bug.
+			const hasDigest = await hasDigestPending(ctx, mailbox._id);
+			if (!hasDigest && (!brief || (brief.items.length === 0 && !brief.senders))) continue;
 
 			// The item threads are independent rows — read them in one pass.
-			const itemRows = brief.items.slice(0, MAX_EMAIL_ITEMS);
+			const itemRows = (brief?.items ?? []).slice(0, MAX_EMAIL_ITEMS);
 			const threads = await batchGet(
 				ctx,
 				itemRows.map((item) => item.threadId)
@@ -193,10 +204,13 @@ export const listDue = internalQuery({
 				mailboxId: mailbox._id,
 				address: mailbox.address,
 				locale: profile?.locale,
-				generatedAt: brief.generatedAt,
+				generatedAt: brief?.generatedAt ?? now,
 				items,
-				bundledCounts: brief.bundledCounts,
-				...(brief.senders ? { senders: brief.senders } : {}),
+				bundledCounts: brief?.bundledCounts ?? { newsletter: 0, notification: 0, receipt: 0 },
+				...(brief?.senders ? { senders: brief.senders } : {}),
+				...(hasDigest
+					? { digestPeriodKey: digestPeriodKey(now, row.dailyBriefEmail?.utcOffsetMinutes ?? 0) }
+					: {}),
 			});
 		}
 		return due;
@@ -224,10 +238,24 @@ export const deliverBriefEmail = internalMutation({
 		bodyHtml: v.string(),
 		snippet: v.string(),
 		attachments: v.optional(v.array(mailMessageAttachmentValidator)),
+		/** Read on arrival (§6.5): the generated digest this mail carries. */
+		digest: v.optional(v.object({ digestId: v.id('mailDigests'), claimToken: v.string() })),
 	},
 	handler: async (ctx, args): Promise<{ delivered: boolean }> => {
 		const mailbox = await ctx.db.get(args.mailboxId);
 		if (!mailbox) return { delivered: false };
+		// The digest must still be generated under this claim: a second delivery
+		// sees it sent and does nothing (§6.5).
+		const digest = args.digest ? await ctx.db.get(args.digest.digestId) : null;
+		if (
+			args.digest &&
+			(!digest ||
+				digest.mailboxId !== args.mailboxId ||
+				digest.state !== 'generated' ||
+				digest.claimToken !== args.digest.claimToken)
+		) {
+			return { delivered: false };
+		}
 		const folder = await ctx.db
 			.query('mailFolders')
 			.withIndex('by_mailbox_and_role', (q) =>
@@ -260,6 +288,8 @@ export const deliverBriefEmail = internalMutation({
 		});
 
 		await markThreadAsBrief(ctx, messageId);
+		// In the same transaction as the mail: sent, stripped, threads consumed.
+		if (digest) await consumeSentDigest(ctx, digest, { sentMessageId: messageId, sentAt: now });
 		const settings = await ctx.db
 			.query('mailUserSettings')
 			.withIndex('by_user', (q) => q.eq('userId', args.userId))

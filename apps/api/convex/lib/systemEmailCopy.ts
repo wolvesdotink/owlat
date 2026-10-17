@@ -119,6 +119,12 @@ interface DailyBriefEmailCopy {
 	rarelyReadLine: (count: number) => string;
 	openedInUpdatesLine: (sender: string) => string;
 	sendersLink: string;
+	/** Read on arrival's digest section (SPEC §6.5, mail/digest/emailBlocks.ts). */
+	digestSubject: string;
+	digestHeading: string;
+	digestGroups: Record<'newsletter' | 'updates' | 'promotion', string>;
+	digestMore: (count: number) => string;
+	digestAtLeastMore: (count: number) => string;
 }
 
 const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
@@ -142,6 +148,11 @@ const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 		openedInUpdatesLine: (sender) =>
 			`You open everything from ${sender} in Updates. Want it in Today instead?`,
 		sendersLink: 'Review your senders',
+		digestSubject: 'Your daily brief — your digest',
+		digestHeading: 'Your digest',
+		digestGroups: { newsletter: 'Newsletters', updates: 'Updates', promotion: 'Promotions' },
+		digestMore: (count) => `and ${count} more`,
+		digestAtLeastMore: (count) => `and at least ${count} more`,
 	},
 	de: {
 		subject: (count) =>
@@ -162,6 +173,11 @@ const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 				: `${count} Absender, die du selten liest, warten auf deine Entscheidung.`,
 		openedInUpdatesLine: (sender) => `Du öffnest alles von ${sender} in Updates. Lieber in Heute?`,
 		sendersLink: 'Absender ansehen',
+		digestSubject: 'Dein Tagesüberblick — dein Digest',
+		digestHeading: 'Dein Digest',
+		digestGroups: { newsletter: 'Newsletter', updates: 'Updates', promotion: 'Werbung' },
+		digestMore: (count) => `und ${count} weitere`,
+		digestAtLeastMore: (count) => `und mindestens ${count} weitere`,
 	},
 };
 

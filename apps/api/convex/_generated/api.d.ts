@@ -1819,6 +1819,11 @@ import type * as mail_rules_dryRun from '../mail/rules/dryRun.js';
 import type * as mail_rules_dryRunData from '../mail/rules/dryRunData.js';
 import type * as mail_filterCompile from '../mail/filterCompile.js';
 import type * as mail_filterCompileStore from '../mail/filterCompileStore.js';
+import type * as mail_digest_claim from '../mail/digest/claim.js';
+import type * as mail_digest_emailBlocks from '../mail/digest/emailBlocks.js';
+import type * as mail_digest_generate from '../mail/digest/generate.js';
+import type * as mail_digest_select from '../mail/digest/select.js';
+import type * as mail_digest_view from '../mail/digest/view.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3634,6 +3639,11 @@ declare const fullApi: ApiFromModules<{
 	'mail/rules/dryRunData': typeof mail_rules_dryRunData;
 	'mail/filterCompile': typeof mail_filterCompile;
 	'mail/filterCompileStore': typeof mail_filterCompileStore;
+	'mail/digest/claim': typeof mail_digest_claim;
+	'mail/digest/emailBlocks': typeof mail_digest_emailBlocks;
+	'mail/digest/generate': typeof mail_digest_generate;
+	'mail/digest/select': typeof mail_digest_select;
+	'mail/digest/view': typeof mail_digest_view;
 }>;
 
 /**

@@ -25,6 +25,8 @@ import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
 import { MAX_EMAIL_ITEMS, type BriefEmailItem, type BriefEmailPayloadSenders } from './briefEmail';
 import { dailyBriefEmailCopy, systemEmailLocale } from '../lib/systemEmailCopy';
+import { prepareDigest } from './digest/generate';
+import { digestBlocks } from './digest/emailBlocks';
 
 /** Snippet length that matches what the delivery pipeline stores elsewhere. */
 const SNIPPET_LENGTH = 200;
@@ -108,13 +110,16 @@ function briefEmailBlocks(input: {
 	return blocks;
 }
 
-/** The subject: the item count, or the Senders line when that is all the brief carries. */
+/** The subject: the item count, or the Senders line or digest when that is all the brief carries. */
 export function briefEmailSubject(
 	copy: ReturnType<typeof dailyBriefEmailCopy>,
 	itemCount: number,
-	hasSenders: boolean
+	hasSenders: boolean,
+	hasDigest = false
 ): string {
-	return itemCount === 0 && hasSenders ? copy.sendersSubject : copy.subject(itemCount);
+	if (itemCount > 0) return copy.subject(itemCount);
+	if (hasSenders) return copy.sendersSubject;
+	return hasDigest ? copy.digestSubject : copy.subject(itemCount);
 }
 
 /** The weekly Senders line (mail/senders/brief.ts): a small heading, its lines, one link. */
@@ -173,7 +178,25 @@ export const deliverDueBriefs = internalAction({
 				// absent means English, exactly what every account had before the
 				// picker existed.
 				const copy = dailyBriefEmailCopy(systemEmailLocale(entry.locale));
-				const subject = briefEmailSubject(copy, entry.items.length, Boolean(entry.senders));
+				// Read on arrival (§6.5): claim and generate the digest, then read its lines.
+				const digestRef = entry.digestPeriodKey
+					? await prepareDigest(ctx, {
+							mailboxId: entry.mailboxId,
+							periodKey: entry.digestPeriodKey,
+							ownerUserId: entry.userId,
+						})
+					: null;
+				const digest = digestRef
+					? await ctx.runQuery(internal.mail.digest.view.digestForEmail, digestRef)
+					: null;
+				const hasDigest = (digest?.groups.length ?? 0) > 0;
+				if (entry.items.length === 0 && !entry.senders && !hasDigest) continue;
+				const subject = briefEmailSubject(
+					copy,
+					entry.items.length,
+					Boolean(entry.senders),
+					hasDigest
+				);
 				const blocks = briefEmailBlocks({
 					items: entry.items,
 					bundledCounts: entry.bundledCounts,
@@ -182,6 +205,7 @@ export const deliverDueBriefs = internalAction({
 					emptyLine: copy.emptyLine,
 					baseUrl,
 				});
+				if (digest && hasDigest) blocks.push(...digestBlocks({ digest, copy, baseUrl }));
 				if (entry.senders) blocks.push(...sendersBlocks({ senders: entry.senders, copy, baseUrl }));
 				const bodyHtml = renderEmailHtml(blocks);
 				const bodyText = renderPlainText(blocks);
@@ -214,6 +238,7 @@ export const deliverDueBriefs = internalAction({
 					bodyText,
 					bodyHtml,
 					snippet: bodyText.replace(/\s+/g, ' ').trim().slice(0, SNIPPET_LENGTH),
+					...(digestRef && hasDigest ? { digest: digestRef } : {}),
 				});
 				if (result.delivered) delivered += 1;
 			} catch (err) {
