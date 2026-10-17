@@ -19,6 +19,7 @@ import {
 	type CompiledFilter,
 } from '../../filterCompile';
 import { seedLabel, seedPersonalMailbox, seedUserFolder, type T } from './rules.testlib';
+import type * as SessionOrganization from '../../../lib/sessionOrganization';
 
 const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), output: null as unknown }));
 
@@ -32,7 +33,7 @@ vi.mock('../../../lib/llmProvider', () => ({
 
 const SESSION = { userId: 'user-A', role: 'owner' as const, activeOrganizationId: 'org-1' };
 vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => SESSION),

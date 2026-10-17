@@ -123,10 +123,10 @@ async function scopedInputs(
 		const built = await Promise.all(
 			chunk.map((m) => buildScopedMessageInput(ctx, m.messageId, { maxChars: RULE_TEST_CHARS }))
 		);
-		chunk.forEach((m, i) => {
+		for (const [i, m] of chunk.entries()) {
 			const input = built[i];
 			if (input && input.segments.length > 0) inputs.set(m.messageId, input);
-		});
+		}
 	}
 	return inputs;
 }
