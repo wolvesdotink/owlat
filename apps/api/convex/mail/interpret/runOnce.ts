@@ -343,6 +343,14 @@ export async function runOnce(
 				{ errorCode: 'budget', budgetRefusal }
 			);
 		}
+		// A full read the depth decision did not count (an upgrade, a predecessor,
+		// an open): its arrival record counts the call (Sol r3 F2). Replays never
+		// get here (the dedupe above).
+		if (!arrival && args.source.kind === 'mail' && loaded.direction === 'inbound') {
+			await ctx.runMutation(internal.mail.interpret.arrivalHold.noteFullReadCall, {
+				messageId: args.source.id,
+			});
+		}
 		const output = await extractOutput(ctx, prepared, { root, priority, hold });
 		const grounding = groundProposals(output, segmented);
 		const ownAddresses = new Set(loaded.ownAddresses);
