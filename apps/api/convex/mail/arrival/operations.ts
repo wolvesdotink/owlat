@@ -85,7 +85,18 @@ async function applyFlags(ctx: MutationCtx, batch: UndoBatch): Promise<void> {
 	await recordRemoteChanges(ctx, remote);
 }
 
-/** Cancel the pending delayed actions this operation created for these messages. */
+/**
+ * Cancel the pending delayed actions this operation created
+ * (`createdByOperationId`) for the messages it names: the header's
+ * `messageId` (page one) and every change row's message.
+ *
+ * Seam for lane rules: once `mail/rules/delayedActions.ts` is in the base,
+ * this calls `cancelDelayedActionsOf(ctx, operation)` there (it finds rows by
+ * the header's `messageId`) and keeps the per-row pass for operations whose
+ * delayed actions hang off other messages. The rules executor also refuses a
+ * row whose creating operation is no longer `applied`, which the first page
+ * marks before anything else.
+ */
 async function cancelDelayedActions(
 	ctx: MutationCtx,
 	operation: Operation,
