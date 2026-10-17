@@ -22,9 +22,10 @@ export interface AnswerCardControls {
 	/**
 	 * Answer this item in Answer mode. The queue keeps its place, and the item
 	 * is done only once the reply is sent there (or it is archived, snoozed or
-	 * marked done); opening the composer alone finishes nothing.
+	 * marked done); opening the composer alone finishes nothing. `nudge`
+	 * drafts a follow-up nudge there ("Draft a nudge").
 	 */
-	openAnswer(): void;
+	openAnswer(opts?: { nudge?: boolean }): void;
 }
 
 /** The flow kind of a Postbox reply-queue row (drives ordering + card). */

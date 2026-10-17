@@ -51,6 +51,7 @@ export const ARRIVAL_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 			'mailRuleDrafts',
 			'mailDelayedActions',
 			'mailDigests',
+			'mailDraftOfferUsage',
 		] as const
 	).map((table) => del('mailboxes', table, 'mailboxId', WITH_MAILBOX)),
 	...OPERATION_REFS.map(([table, field]) => del('mailArrivalOperations', table, field)),
@@ -67,6 +68,7 @@ export const ARRIVAL_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 	del('mailMessages', 'mailThreads', 'arrival.messageId'),
 
 	del('mailThreads', 'mailArrivalRecords', 'threadId'),
+	del('mailThreads', 'mailDraftOfferUsage', 'threadId'),
 	del('mailThreads', 'mailArrivalOperations', 'threadId'),
 	del('mailThreads', 'mailArrivalOperationChanges', 'change.threadId'),
 	del('mailThreads', 'mailDelayedActions', 'threadId'),

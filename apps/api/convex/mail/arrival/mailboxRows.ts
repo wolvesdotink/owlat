@@ -24,6 +24,11 @@ export function arrivalMailboxRanges(
 	return [
 		(n) =>
 			ctx.db
+				.query('mailDraftOfferUsage')
+				.withIndex('by_mailbox_offer', (q) => q.eq('mailboxId', mailboxId))
+				.take(n),
+		(n) =>
+			ctx.db
 				.query('mailArrivalOperationChanges')
 				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
 				.take(n),

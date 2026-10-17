@@ -27,6 +27,7 @@ import { mailArrivalRulesTables } from './mailArrivalRules';
  * registry, the wipe union and the coverage tests spread.
  */
 export const MAIL_ARRIVAL_TABLES = [
+	'mailDraftOfferUsage',
 	'mailArrivalOperationChanges',
 	'mailDelayedActions',
 	'mailDigests',
@@ -51,8 +52,10 @@ export type MailArrivalTable = (typeof MAIL_ARRIVAL_TABLES)[number];
  * its lines from unsent digests and clears a gist read from it: ranges of the
  * resumable `sources` purge job (`mail/arrival/purgeRanges.ts`). A mailbox that
  * becomes a team inbox loses all of it (`mail/arrival/sharedConversion.ts`).
- * Every row except the sender profile carries `expiresAt`
- * (`maintenance/retention.ts`).
+ * Every row except the sender profile and the draft-offer usage carries
+ * `expiresAt` (`maintenance/retention.ts`). Offer usage has no time limit: it
+ * goes with its thread (`threadAggregates.ts`), the owed message
+ * (`purgeRanges.ts`) or the mailbox.
  *
  * Spread into `mailTables` from schema/mail.ts.
  */
@@ -176,6 +179,20 @@ export const mailArrivalTables = {
 		.index('by_message', ['messageId'])
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_expires', ['expiresAt']),
+
+	// Unused-draft streak (SPEC §7, mail/draftPause.ts): one row per offered AI
+	// reply (an arrival slot or a clarification draft) whose outcome already
+	// counted, keyed `<threadId>:<owed messageId>`. Checked and written in the
+	// mutation that counts, so no copy of the offer counts again. No expiry:
+	// deleted with the thread, the owed message (a message purge) or the mailbox.
+	mailDraftOfferUsage: defineTable({
+		mailboxId: v.id('mailboxes'),
+		threadId: v.id('mailThreads'),
+		offerKey: v.string(),
+		countedAt: v.number(),
+	})
+		.index('by_mailbox_offer', ['mailboxId', 'offerKey'])
+		.index('by_thread', ['threadId']),
 
 	...mailArrivalRulesTables,
 };

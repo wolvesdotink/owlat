@@ -233,7 +233,8 @@ export function useAnswerAskSession(opts: {
 		}
 	}
 
-	async function start(instruction: string) {
+	/** `purpose: 'nudge'` drafts a follow-up nudge instead of an answer (mail/ai/nudgeDraft.ts). */
+	async function start(instruction: string, purpose?: 'nudge') {
 		const composer = opts.composer();
 		if (!composer || busy.value) return;
 		// A new try: the budget may have room again (a recount, the next day).
@@ -255,6 +256,7 @@ export function useAnswerAskSession(opts: {
 			startOp.run({
 				target,
 				...(trimmed ? { instruction: trimmed } : {}),
+				...(purpose ? { purpose } : {}),
 				locale: locale.value,
 				...timeZoneArg(),
 			})

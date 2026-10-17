@@ -23,10 +23,11 @@ import type {
 } from '../../lib/validators/answerAsk';
 import { assembleInboundBriefing } from '../../agent/steps/context_retrieval';
 import { guardAllowsInboundMessage } from '../../agent/steps/security_scan/guard';
-import { throwInvalidState } from '../../_utils/errors';
+import { throwInvalidInput, throwInvalidState } from '../../_utils/errors';
 import type { EagernessMode } from '../../inbox/askEagerness';
 import type { BundleSubject } from '../../decision/bundleRunner';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
+import { draftAudience, type DraftPurpose } from './nudgeDraft';
 
 /**
  * Answer mode's refusal for a team message the injection guard held back
@@ -77,11 +78,13 @@ async function commitmentSection(ctx: ActionCtx, contactId: Id<'contacts'>): Pro
 /** Load (access-checked) and assemble the context for a target. */
 export async function loadAnswerContext(
 	ctx: ActionCtx,
-	target: AnswerAskTarget
+	target: AnswerAskTarget,
+	purpose?: DraftPurpose
 ): Promise<AnswerContext> {
 	if (target.kind === 'mailDraft') {
 		const loaded = await ctx.runQuery(internal.mail.ai.composeDraftContext.loadMailDraftContext, {
 			draftId: target.draftId,
+			...(purpose ? { purpose } : {}),
 		});
 		const contact = loaded.contact;
 		const contactLine = contact
@@ -107,7 +110,7 @@ export async function loadAnswerContext(
 						},
 					}
 				: {}),
-			audience: `the mailbox owner (${loaded.ownerAddress}), answering the last message in the thread, which the other party sent`,
+			audience: draftAudience(loaded.ownerAddress, purpose),
 			styleReference: "the owner's",
 			toneInstruction: PERSONAL_TONE,
 			signatureInstruction: '',
@@ -117,6 +120,7 @@ export async function loadAnswerContext(
 			),
 		};
 	}
+	if (purpose) throwInvalidInput('A nudge is drafted on a Postbox reply');
 	const loaded = await ctx.runQuery(internal.mail.ai.composeDraftContext.loadTeamThreadContext, {
 		threadId: target.threadId,
 		...(target.inboundMessageId ? { inboundMessageId: target.inboundMessageId } : {}),

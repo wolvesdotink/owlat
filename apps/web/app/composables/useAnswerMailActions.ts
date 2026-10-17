@@ -1,6 +1,7 @@
 /**
  * The verbs that finish a Postbox item of the Answer queue without a reply:
- * Done (clear the needs-reply flag, or dismiss a follow-up reminder), Archive
+ * Done (clear the needs-reply flag, dismiss a follow-up reminder, or mark a
+ * stale waiting item received, mail/nudges.ts), Archive
  * (undoable: the messages move back) and Snooze. The queue card and Answer
  * mode's queue bar both run them, and each reports back through the queue's
  * controls, so an item leaves the queue only when one of these (or a send)
@@ -19,7 +20,7 @@ import {
 import type { AnswerCardControls } from '~/utils/answerCard';
 import type { ReplyQueueItem } from '~/utils/postboxReplyQueue';
 
-type MailRow = Pick<ReplyQueueItem, 'kind' | 'threadId' | 'messageId'>;
+type MailRow = Pick<ReplyQueueItem, 'kind' | 'threadId' | 'messageId' | 'nudge'>;
 
 export function useAnswerMailActions(
 	row: () => MailRow | null,
@@ -32,6 +33,10 @@ export function useAnswerMailActions(
 	});
 	const cancelFollowUpOp = useBackendOperation(api.mail.followUps.cancel, {
 		label: () => t('components.postbox.postboxReplyFlow.operations.dismissReminder'),
+	});
+	// A stale "Waiting on others" item's card: Done says what we waited for arrived.
+	const markReceivedOp = useBackendOperation(api.mail.interpret.reactions.markReceived, {
+		label: () => t('answer.nudge.markReceivedOperation'),
 	});
 	const archiveOp = useBackendOperation(api.mail.messageActions.archive, {
 		label: () => t('components.postbox.postboxReplyFlow.operations.archive'),
@@ -50,10 +55,13 @@ export function useAnswerMailActions(
 		const current = row();
 		if (!current) return false;
 		const threadId = current.threadId as Id<'mailThreads'>;
+		const nudge = current.nudge;
 		const result =
-			current.kind === 'followup'
-				? await cancelFollowUpOp.run({ threadId })
-				: await clearOp.run({ threadId });
+			nudge && 'itemId' in nudge
+				? await markReceivedOp.run({ itemId: nudge.itemId as Id<'threadItems'> })
+				: current.kind === 'followup'
+					? await cancelFollowUpOp.run({ threadId })
+					: await clearOp.run({ threadId });
 		if (result.ok) controls()?.complete('cleared');
 		return result.ok;
 	}

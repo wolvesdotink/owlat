@@ -40,7 +40,11 @@ beforeAll(() => {
 	});
 	vi.stubGlobal('navigateTo', navigateTo);
 	vi.stubGlobal('useInboxes', () => ({ byId: { value: new Map() } }));
+	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: (flag: string) => flags.has(flag) }));
 });
+
+/** The feature flags that are on. */
+const flags = new Set<string>(['ai']);
 
 // Every card listens on window; a card left mounted would answer the next test's keys.
 enableAutoUnmount(afterEach);
@@ -55,6 +59,8 @@ const controls: AnswerCardControls = {
 };
 
 beforeEach(() => {
+	flags.clear();
+	flags.add('ai');
 	runs.clear();
 	navigateTo.mockClear();
 	for (const fn of Object.values(controls)) vi.mocked(fn).mockClear();
@@ -186,5 +192,47 @@ describe('AnswerMailCard keyboard', () => {
 		input.remove();
 		expect(runs.get('Dismiss reminder')).not.toHaveBeenCalled();
 		expect(controls.complete).not.toHaveBeenCalled();
+	});
+});
+
+describe('AnswerMailCard offers "Draft a nudge" (SPEC §7)', () => {
+	const stale = { reason: 'stale' as const, itemId: 'item-1' };
+
+	it('opens Answer mode with a nudge to draft, finishing nothing', async () => {
+		const wrapper = mountCard(followUp({ nudge: { reason: 'reminder' } }));
+		await wrapper.get('[data-testid="answer-mail-draft-nudge"]').trigger('click');
+		expect(controls.openAnswer).toHaveBeenCalledExactlyOnceWith({ nudge: true });
+		expect(controls.complete).not.toHaveBeenCalled();
+	});
+
+	it('is not offered without a nudge (a fenced thread) or with AI off', () => {
+		expect(mountCard().find('[data-testid="answer-mail-draft-nudge"]').exists()).toBe(false);
+		flags.clear();
+		const off = mountCard(followUp({ nudge: stale }));
+		expect(off.find('[data-testid="answer-mail-draft-nudge"]').exists()).toBe(false);
+	});
+
+	it('says why a waiting item asks for one', () => {
+		expect(
+			mountCard(followUp({ nudge: stale }))
+				.get('.context')
+				.text()
+		).toContain('No reply for 3 business days');
+		const overdue = mountCard(followUp({ nudge: { ...stale, reason: 'overdue', dueAt: 1 } }));
+		expect(overdue.get('.context').text()).toContain('Past its due date');
+		expect(
+			mountCard(followUp({ nudge: { reason: 'reminder' } }))
+				.get('.context')
+				.text()
+		).toBe('Follow-up');
+	});
+
+	it('Done on a waiting item marks it received', async () => {
+		const wrapper = mountCard(followUp({ nudge: stale }));
+		await wrapper.get('.primary').trigger('click');
+		await flushPromises();
+		expect(runs.get('Mark received')).toHaveBeenCalledWith({ itemId: 'item-1' });
+		expect(runs.get('Dismiss reminder')).not.toHaveBeenCalled();
+		expect(controls.complete).toHaveBeenCalledWith('cleared');
 	});
 });

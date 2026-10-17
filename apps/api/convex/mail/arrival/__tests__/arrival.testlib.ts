@@ -23,6 +23,7 @@ export interface ArrivalSeedIds {
 	ruleDraftId: Id<'mailRuleDrafts'>;
 	delayedActionId: Id<'mailDelayedActions'>;
 	digestId: Id<'mailDigests'>;
+	offerUsageId: Id<'mailDraftOfferUsage'>;
 	filterId: Id<'mailFilters'>;
 	labelId: Id<'mailLabels'>;
 }
@@ -180,9 +181,17 @@ export async function seedArrivalRows(
 		createdAt: now,
 		expiresAt,
 	});
+	// The draft offer for this message counted (mail/draftPause.ts).
+	const offerUsageId = await ctx.db.insert('mailDraftOfferUsage', {
+		mailboxId,
+		threadId,
+		offerKey: `${threadId}:${messageId}`,
+		countedAt: now,
+	});
 	return {
 		recordId,
 		profileId,
+		offerUsageId,
 		operationId,
 		changeIds,
 		ruleDraftId,
