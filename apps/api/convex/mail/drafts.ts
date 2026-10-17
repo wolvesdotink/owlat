@@ -6,11 +6,10 @@
  *   which is the sole writer of `mailDrafts.state` and its companion fields
  *   (`scheduledSendAt`, `undoToken`). See ADR-0028.
  *
- * Drafts live in mailDrafts (separate from mailMessages) so autosaves
- * don't pollute the Drafts folder visible to IMAP. On final send the
- * draft row is deleted and a new mailMessages row is inserted in Sent
- * (with outbound.state='queued') by the Mail draft lifecycle module's
- * `→ sent` reducer (invoked from the dispatch action in mail/outbound.ts).
+ * Drafts live in mailDrafts (separate from mailMessages) so autosaves don't
+ * pollute the Drafts folder visible to IMAP. On final send the draft row is
+ * deleted and a new mailMessages row (outbound.state='queued') is inserted in
+ * Sent by the lifecycle's `→ sent` reducer (from mail/outbound.ts's dispatch).
  */
 
 import { v } from 'convex/values';
@@ -43,6 +42,7 @@ import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } fro
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteDraftRow } from './answeredReply';
+import { noteDraftDiscarded } from './draftPause';
 import { editPatch, humanEdit, provenancePatch } from './draftProvenance';
 import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
@@ -403,6 +403,7 @@ export const discard = postboxMutation({
 		if (!draft) return;
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return;
+		await noteDraftDiscarded(ctx, draft); // an unused AI draft (mail/draftPause.ts)
 		await deleteDraftRow(ctx, draft);
 	},
 });
