@@ -114,6 +114,7 @@ interface DailyBriefEmailCopy {
 	emptyLine: string;
 	bundledLine: (total: number) => string;
 	/** The weekly Senders line (mail/senders/brief.ts). */
+	sendersSubject: string;
 	sendersHeading: string;
 	rarelyReadLine: (count: number) => string;
 	openedInUpdatesLine: (sender: string) => string;
@@ -132,6 +133,7 @@ const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 			total === 1
 				? '1 low-signal message was bundled away and is waiting in your inbox.'
 				: `${total} low-signal messages were bundled away and are waiting in your inbox.`,
+		sendersSubject: 'Your daily brief — your senders this week',
 		sendersHeading: 'Your senders this week',
 		rarelyReadLine: (count) =>
 			count === 1
@@ -152,6 +154,7 @@ const DAILY_BRIEF_EMAIL: Record<AppLocale, DailyBriefEmailCopy> = {
 			total === 1
 				? '1 Nachricht mit geringer Relevanz wurde gebündelt und wartet in deinem Posteingang.'
 				: `${total} Nachrichten mit geringer Relevanz wurden gebündelt und warten in deinem Posteingang.`,
+		sendersSubject: 'Dein Tagesüberblick — deine Absender diese Woche',
 		sendersHeading: 'Deine Absender diese Woche',
 		rarelyReadLine: (count) =>
 			count === 1

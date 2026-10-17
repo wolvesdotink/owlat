@@ -108,8 +108,17 @@ function briefEmailBlocks(input: {
 	return blocks;
 }
 
+/** The subject: the item count, or the Senders line when that is all the brief carries. */
+export function briefEmailSubject(
+	copy: ReturnType<typeof dailyBriefEmailCopy>,
+	itemCount: number,
+	hasSenders: boolean
+): string {
+	return itemCount === 0 && hasSenders ? copy.sendersSubject : copy.subject(itemCount);
+}
+
 /** The weekly Senders line (mail/senders/brief.ts): a small heading, its lines, one link. */
-function sendersBlocks(input: {
+export function sendersBlocks(input: {
 	senders: NonNullable<BriefEmailPayloadSenders>;
 	copy: ReturnType<typeof dailyBriefEmailCopy>;
 	baseUrl: string;
@@ -164,7 +173,7 @@ export const deliverDueBriefs = internalAction({
 				// absent means English, exactly what every account had before the
 				// picker existed.
 				const copy = dailyBriefEmailCopy(systemEmailLocale(entry.locale));
-				const subject = copy.subject(entry.items.length);
+				const subject = briefEmailSubject(copy, entry.items.length, Boolean(entry.senders));
 				const blocks = briefEmailBlocks({
 					items: entry.items,
 					bundledCounts: entry.bundledCounts,

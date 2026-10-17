@@ -154,7 +154,8 @@ export const listDue = internalQuery({
 				.first();
 			// No brief yet (a fresh mailbox before the build cron's first run) —
 			// send nothing rather than an empty digest that looks like a bug.
-			if (!brief || brief.items.length === 0) continue;
+			// The weekly Senders line is reason enough on its own.
+			if (!brief || (brief.items.length === 0 && !brief.senders)) continue;
 
 			// The item threads are independent rows — read them in one pass.
 			const itemRows = brief.items.slice(0, MAX_EMAIL_ITEMS);
