@@ -74,6 +74,8 @@ export const sweepPending = internalMutation({
 					needsReplyPendingAt: undefined,
 					needsReplyRetryCount: undefined,
 				});
+				// A heuristic flag left for a human is settled now (Sol r1 F9).
+				await refreshArrivalProjection(ctx, thread._id);
 				abandoned += 1;
 				continue;
 			}

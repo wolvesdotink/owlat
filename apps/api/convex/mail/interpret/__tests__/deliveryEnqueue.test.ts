@@ -4,6 +4,7 @@
  * never for backfill, spam or a muted thread, and the brief reads pending.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import schema from '../../../schema';
@@ -96,6 +97,7 @@ async function seed(t: Test, roles: SeededFolderRole[] = ['inbox']) {
 describe('delivery → interpretation', () => {
 	it('an inbox delivery hands the message to the needs-reply classify, not a second run', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seed(t);
 		const message = await t.run(async (ctx) => deliver(ctx, mailboxId, { origin: 'mx' }));
 
@@ -108,6 +110,7 @@ describe('delivery → interpretation', () => {
 
 	it('live mail outside the inbox is scheduled on its own, with the ingest headers', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		// A shared mailbox (actions mode): a personal one would defer this
 		// display-only message until the thread is opened (D10, lazyDefer.test.ts).
 		const mailboxId = await seedMailbox(t, { address: 'me@owlat.test', scope: 'shared' });
@@ -138,6 +141,7 @@ describe('delivery → interpretation', () => {
 
 	it('a backfill is history: nothing is scheduled and no brief row appears', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seed(t);
 		const message = await t.run(async (ctx) => deliver(ctx, mailboxId, { origin: 'backfill' }));
 
@@ -149,6 +153,7 @@ describe('delivery → interpretation', () => {
 
 	it('spam is not interpreted', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seed(t, ['inbox', 'spam']);
 		const message = await t.run(async (ctx) =>
 			deliver(ctx, mailboxId, { origin: 'mx', role: 'spam' })
@@ -161,6 +166,7 @@ describe('delivery → interpretation', () => {
 
 	it('a muted thread is not interpreted', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seed(t, ['inbox', 'archive']);
 		const first = await t.run(async (ctx) => deliver(ctx, mailboxId, { origin: 'backfill' }));
 		await t.run(async (ctx) => {

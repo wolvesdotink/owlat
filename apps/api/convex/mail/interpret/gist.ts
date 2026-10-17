@@ -17,11 +17,12 @@
  * dispatch's own admission is the hold of this one-call path.
  *
  * The typed outcome ({@link GistOutcome}) maps every way it ends onto the
- * source: `ok` commits the gist (`gistCommit.ts`); `budget` (a refused hold),
- * `permanent` (nothing groundable, no readable input) and `transient` (the
- * model failed) settle an upgradeable `count`, so a display-only message is
- * never retried at arrival and never deferred to the open; `busy` (the lease
- * was lost) and `wait` hand back to the caller.
+ * source: `ok` commits the gist (`gistCommit.ts`; a body that changed since
+ * starts the run over); `budget` (a refused hold) and `permanent` (nothing
+ * groundable, no readable input) settle an upgradeable `count`; `transient`
+ * (the model failed) is retried on `retry.ts`'s schedule and counts once the
+ * attempts are used up (`gistCommit.retryGist`); `busy` (the lease was lost)
+ * and `wait` hand back to the caller. Never deferred to the open.
  */
 
 import { z } from 'zod';
@@ -38,7 +39,7 @@ import { buildScopedMessageInput, type ScopedMessageInput } from '../arrival/sco
 import { defuseDelimiters } from './prompt';
 import { verifyQuote } from './ground';
 import { countArrival, settledAnswer } from './arrivalRun';
-import type { InterpretArgs, InterpretRunResult } from './runShape';
+import type { InterpretArgs, InterpretRunResult, Restart } from './runShape';
 
 /** Characters of the message the gist reads at most. */
 export const GIST_INPUT_CHARS = 6_000;
@@ -71,7 +72,7 @@ export interface GroundedGist {
 }
 
 export type GistOutcome =
-	| { kind: 'ok'; gist: GroundedGist }
+	| { kind: 'ok'; gist: GroundedGist; sourceVersion?: string }
 	| { kind: 'transient' }
 	| { kind: 'budget' }
 	| { kind: 'permanent' }
@@ -95,31 +96,38 @@ export function buildGistPrompt(input: Pick<ScopedMessageInput, 'subject' | 'seg
 	);
 }
 
-/** Every span verbatim in its segment, or null; a fact that is not is dropped alone. Pure. */
+/**
+ * Every span verbatim in one of the segments OFFERED to the model, inside
+ * the offered characters (Sol r1 F7: never quoted history, a signature, or
+ * text past the cap), or null; a fact that is not is dropped alone. Pure.
+ */
 export function groundGist(
 	output: GistOutput,
-	input: Pick<ScopedMessageInput, 'segmented'>
+	input: Pick<ScopedMessageInput, 'segmented' | 'segments'>
 ): GroundedGist | null {
-	const { segments, canonicalText } = input.segmented;
+	const { canonicalText } = input.segmented;
+	// The segmentation cut down to what was offered: only those ids, only those ranges.
+	const offered = input.segments.flatMap((o) => {
+		const segment = input.segmented.segments.find((s) => s.id === o.id);
+		return segment ? [{ ...segment, start: o.start, end: o.end }] : [];
+	});
+	const ground = (segmentId: string, text: string) => {
+		const quote = text.trim();
+		if (!quote) return null;
+		const verdict = verifyQuote(offered, canonicalText, { segmentId, text: quote });
+		return verdict.ok ? canonicalText.slice(verdict.start, verdict.end) : null;
+	};
 	const spans: GroundedGist['spans'] = [];
 	for (const span of output.spans) {
-		const quote = span.quote.trim();
-		if (!quote) return null;
-		const verdict = verifyQuote(segments, canonicalText, { segmentId: span.segment, text: quote });
-		if (!verdict.ok) return null;
-		spans.push({ segmentId: span.segment, quote: canonicalText.slice(verdict.start, verdict.end) });
+		const quote = ground(span.segment, span.quote);
+		if (quote === null) return null;
+		spans.push({ segmentId: span.segment, quote });
 	}
-	const fact = output.fact;
-	const factVerdict =
-		fact && fact.quote.trim()
-			? verifyQuote(segments, canonicalText, { segmentId: fact.segment, text: fact.quote.trim() })
-			: null;
+	const factQuote = output.fact ? ground(output.fact.segment, output.fact.quote) : null;
 	return {
 		spans,
-		...(fact && factVerdict?.ok
-			? {
-					fact: { kind: fact.kind, quote: canonicalText.slice(factVerdict.start, factVerdict.end) },
-				}
+		...(output.fact && factQuote !== null
+			? { fact: { kind: output.fact.kind, quote: factQuote } }
 			: {}),
 	};
 }
@@ -150,7 +158,12 @@ async function readGist(ctx: ActionCtx, messageId: Id<'mailMessages'>): Promise<
 		);
 		const parsed = gistOutputSchema.safeParse(object);
 		const gist = parsed.success ? groundGist(parsed.data, input) : null;
-		return gist ? { kind: 'ok', gist } : { kind: 'permanent' };
+		if (!gist) return { kind: 'permanent' };
+		return {
+			kind: 'ok',
+			gist,
+			...(input.sourceVersion ? { sourceVersion: input.sourceVersion } : {}),
+		};
 	} catch (error) {
 		if (admissionRefusalOf(error)) return { kind: 'budget' };
 		logWarn(
@@ -170,28 +183,42 @@ export async function runGist(
 	ctx: ActionCtx,
 	args: InterpretArgs & { source: { kind: 'mail' } },
 	loaded: { brief: { deletionEpoch: number } }
-): Promise<InterpretRunResult> {
+): Promise<InterpretRunResult | Restart> {
+	const epoch = loaded.brief.deletionEpoch;
+	const source = { kind: 'mail' as const, id: args.source.id };
+	const lease = args.leaseToken ? { leaseToken: args.leaseToken } : {};
 	const outcome = await readGist(ctx, args.source.id);
 	switch (outcome.kind) {
 		case 'busy':
 		case 'wait':
 			return { status: outcome.kind, retryAt: outcome.retryAt };
 		case 'budget':
-			return countArrival(ctx, args, 'budget');
+			return countArrival(ctx, args, 'budget', epoch);
 		case 'permanent':
-			return countArrival(ctx, args, 'gistUnavailable');
-		case 'transient':
-			return countArrival(ctx, args, 'gistFailed');
+			return countArrival(ctx, args, 'gistUnavailable', epoch);
+		case 'transient': {
+			// retry.ts's schedule, attempts counted on the record (Sol r1 F12).
+			const retry = await ctx.runMutation(internal.mail.interpret.gistCommit.retryGist, {
+				source,
+				...lease,
+				deletionEpoch: epoch,
+			});
+			if (retry.kind === 'retry') return { status: 'wait', retryAt: retry.retryAt };
+			if (retry.kind === 'busy') return { status: 'busy', retryAt: retry.retryAt };
+			return retry.kind === 'gone' ? { status: 'gone' } : settledAnswer('count');
+		}
 		case 'ok': {
 			const committed = await ctx.runMutation(internal.mail.interpret.gistCommit.commitGist, {
-				source: { kind: 'mail', id: args.source.id },
-				...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
-				deletionEpoch: loaded.brief.deletionEpoch,
+				source,
+				...lease,
+				deletionEpoch: epoch,
+				...(outcome.sourceVersion ? { sourceVersion: outcome.sourceVersion } : {}),
 				gist: { ...outcome.gist, gistVersion: GIST_VERSION },
 			});
+			if (committed.kind === 'sourceChanged') return { restart: 'sourceChanged' };
 			if (committed.kind === 'busy') return { status: 'busy', retryAt: committed.retryAt };
 			if (committed.kind === 'gone') return { status: 'gone' };
-			return settledAnswer('gist');
+			return settledAnswer(committed.kind === 'counted' ? 'count' : 'gist');
 		}
 	}
 }

@@ -9,7 +9,13 @@
  * projection.
  *
  * One gist per thread: a gist of an older message never replaces a newer
- * one's (the source settles either way).
+ * one's (the source settles either way). The commit also rechecks the body
+ * fingerprint the gist read (`sourceVersion`, Sol r1 F6): quotes from an
+ * earlier body are never stored.
+ *
+ * {@link retryGist}: a gist whose model call failed transiently is tried
+ * again on `retry.ts`'s schedule (Sol r1 F12), counting the record's model
+ * calls as its attempts; past the last one it counts (`gistFailed`).
  */
 
 import { v } from 'convex/values';
@@ -17,7 +23,7 @@ import type { MutationCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { isPersonalMailbox } from '../permissions';
-import { noteArrivalRun } from '../arrival/records';
+import { loadArrivalRecord, noteArrivalRun } from '../arrival/records';
 import { ensureBriefRow } from './briefRow';
 import { setBriefTopGist } from './briefTop';
 import { gistTopText } from './gistState';
@@ -25,13 +31,24 @@ import { leaseLostAt } from './lease';
 import { settleArrivalSource } from './outstanding';
 import { loadInterpretSource } from './sources';
 import { isFencedThread } from './staleFence';
-import { ARRIVAL_ADMISSION_REASONS, refusedCount, settleArrivalSkip } from './arrivalDecide';
+import { sourceVersionOf } from './sourceVersion';
+import { nextRetryAtOf } from './retry';
+import { internal } from '../../_generated/api';
+import {
+	ARRIVAL_ADMISSION_REASONS,
+	isSettlementCurrent,
+	refusedCount,
+	settleArrivalSkip,
+} from './arrivalDecide';
 
 export type GistCommit =
 	| { kind: 'committed' }
-	/** Settled as a count instead: the thread is fenced or shared now. */
+	/** Settled as a count instead: the thread is fenced now. */
 	| { kind: 'counted' }
+	/** The body changed since the gist read it: read again (Sol r1 F6). */
+	| { kind: 'sourceChanged' }
 	| { kind: 'busy'; retryAt: number }
+	/** The message is gone, purged since the load, or its mailbox is shared now. */
 	| { kind: 'gone' };
 
 const spanValidator = v.object({ segmentId: v.string(), quote: v.string() });
@@ -56,6 +73,8 @@ export const commitGist = internalMutation({
 		source: v.object({ kind: v.literal('mail'), id: v.id('mailMessages') }),
 		leaseToken: v.optional(v.string()),
 		deletionEpoch: v.number(),
+		/** The body fingerprint the gist read (`scopedInput.ts`); the commit rechecks it. */
+		sourceVersion: v.optional(v.string()),
 		gist: v.object({
 			spans: v.array(spanValidator),
 			fact: v.optional(v.object({ kind: v.string(), quote: v.string() })),
@@ -71,11 +90,16 @@ export const commitGist = internalMutation({
 		const thread = await ctx.db.get(message.threadId);
 		const mailbox = await ctx.db.get(message.mailboxId);
 		if (!thread || !mailbox) return { kind: 'gone' };
+		// A team inbox now: nothing of read on arrival is written (Sol r1 F5).
+		if (!isPersonalMailbox(mailbox)) return { kind: 'gone' };
 		const ref = { kind: 'mail' as const, id: thread._id };
 		const brief = await ensureBriefRow(ctx, ref);
 		if (!brief || brief.deletionEpoch !== args.deletionEpoch) return { kind: 'gone' };
-		// A record would rebuild what the fence hides; a shared mailbox shows no gist.
-		if (isFencedThread(thread) || !isPersonalMailbox(mailbox)) {
+		if ((await sourceVersionOf(ctx, args.source)) !== (args.sourceVersion ?? null)) {
+			return { kind: 'sourceChanged' };
+		}
+		// A record would rebuild what the fence hides.
+		if (isFencedThread(thread)) {
 			const choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.gistUnavailable });
 			await settleArrivalSkip(ctx, row, message._id, choice);
 			return { kind: 'counted' };
@@ -117,5 +141,43 @@ export const commitGist = internalMutation({
 		});
 		await noteArrivalRun(ctx, message._id, { depth: 'gist' });
 		return { kind: 'committed' };
+	},
+});
+
+export type GistRetry =
+	| { kind: 'retry'; retryAt: number }
+	| { kind: 'counted' }
+	| { kind: 'gone' }
+	| { kind: 'busy'; retryAt: number };
+
+export const retryGist = internalMutation({
+	args: {
+		source: v.object({ kind: v.literal('mail'), id: v.id('mailMessages') }),
+		leaseToken: v.optional(v.string()),
+		deletionEpoch: v.number(),
+	},
+	handler: async (ctx, args): Promise<GistRetry> => {
+		const row = await loadInterpretSource(ctx, args.source);
+		const message = await ctx.db.get(args.source.id);
+		if (!row || !message) return { kind: 'gone' };
+		const lostAt = await leaseLostAt(ctx, args.source, args.leaseToken);
+		if (lostAt !== null) return { kind: 'busy', retryAt: lostAt };
+		if (!(await isSettlementCurrent(ctx, message, args.deletionEpoch))) return { kind: 'gone' };
+		const record = await loadArrivalRecord(ctx, message._id);
+		const now = Date.now();
+		const retryAt = nextRetryAtOf(
+			{ status: 'failed', errorCode: 'model_error', retryCount: record?.modelCalls ?? 1 },
+			now
+		);
+		if (retryAt !== undefined) {
+			// Still outstanding: the retry (or, failing that, the stale sweep) reads it.
+			await ctx.scheduler.runAt(retryAt, internal.mail.interpret.run.interpretMessage, {
+				source: args.source,
+			});
+			return { kind: 'retry', retryAt };
+		}
+		const choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.gistFailed });
+		await settleArrivalSkip(ctx, row, message._id, choice);
+		return { kind: 'counted' };
 	},
 });

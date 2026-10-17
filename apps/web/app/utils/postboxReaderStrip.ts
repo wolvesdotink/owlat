@@ -65,9 +65,12 @@ export interface ReaderStripInput {
 	gist: ReaderGist | null;
 	/**
 	 * The viewer's read-on-arrival preference (`getArrivalPreference`): on, a
-	 * pending brief is being read now; off, only when this open reads it.
+	 * brief with runs in flight (`pending`) is being read now; off, only when
+	 * this open reads it (deferred sources).
 	 */
 	isReadOnArrival?: boolean;
+	/** Whether AI runs at all here (the `ai` flag): off, nothing is being read. */
+	isAiOn?: boolean;
 }
 
 const META: ReaderStrip = { kind: 'meta', note: null };
@@ -83,11 +86,14 @@ export function resolveReaderStrip(input: ReaderStripInput): ReaderStrip {
 	// The original is the primary view: short mail, security mail.
 	if (reason === 'short' || reason === 'security') return META;
 	if (brief.completeness === 'none' || brief.completeness === 'pending') {
-		// Nothing recorded yet. Quietly say it is being read: when this open is
-		// what reads it (D10), or when mail is read as it arrives. Otherwise the
-		// strip just fades in once it is ready.
-		const isBeingRead = (brief.deferredSources ?? 0) > 0 || input.isReadOnArrival === true;
-		return { kind: 'meta', note: isBeingRead ? 'reading' : null };
+		// Nothing recorded yet. Quietly say it is being read only while work is
+		// actually admitted: this open reads deferred sources (D10), or, with
+		// read on arrival on, runs are in flight (`pending`). An untouched thread
+		// (`none`) or AI off says nothing; the strip fades in once it is ready.
+		const isRunning =
+			(brief.deferredSources ?? 0) > 0 ||
+			(brief.completeness === 'pending' && input.isReadOnArrival === true);
+		return { kind: 'meta', note: input.isAiOn !== false && isRunning ? 'reading' : null };
 	}
 	const latest = brief.latest?.[0]?.text.trim();
 	const owe = firstOpen(brief.forYou);

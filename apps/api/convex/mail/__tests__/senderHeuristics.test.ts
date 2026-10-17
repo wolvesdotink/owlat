@@ -10,6 +10,7 @@
  * and a homoglyph From domain sets isFromDomainSpoofed.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
@@ -97,6 +98,7 @@ const baseArgs = (
 describe('mail.delivery.deliverToMailbox — sender heuristics (Sealed Mail A4)', () => {
 	it('flags a first-time sender', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		const result = await t.mutation(
@@ -118,6 +120,7 @@ describe('mail.delivery.deliverToMailbox — sender heuristics (Sealed Mail A4)'
 
 	it('does NOT flag first-time on a second message from the same address', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		await t.mutation(
@@ -149,6 +152,7 @@ describe('mail.delivery.deliverToMailbox — sender heuristics (Sealed Mail A4)'
 
 	it('persists a lookalike-of-known-contact hit with the resembled domain', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 		await t.run(async (ctx) => {
 			await insertContact(ctx, 'billing@paypal.com');
@@ -174,6 +178,7 @@ describe('mail.delivery.deliverToMailbox — sender heuristics (Sealed Mail A4)'
 
 	it('does NOT flag a lookalike when the sender matches a contact domain exactly', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 		await t.run(async (ctx) => {
 			await insertContact(ctx, 'billing@paypal.com');
@@ -198,6 +203,7 @@ describe('mail.delivery.deliverToMailbox — sender heuristics (Sealed Mail A4)'
 
 	it('sets isFromDomainSpoofed for a homoglyph From domain', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setupMailbox(t);
 
 		// paypаl.com — Cyrillic а (U+0430) mimicking Latin a.

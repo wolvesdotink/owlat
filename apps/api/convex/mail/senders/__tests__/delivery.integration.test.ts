@@ -6,6 +6,7 @@
  * backfills are never enforced or counted.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import schema from '../../../schema';
@@ -48,6 +49,7 @@ async function seedMoveFilter(t: T, mailboxId: Id<'mailboxes'>, folderId: Id<'ma
 describe('hosted MX enforcement', () => {
 	it('files an auto-archived sender into Archive, read', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'auto_archive', statusSource: 'user' });
 		const id = (await deliverHosted(t))!;
@@ -57,6 +59,7 @@ describe('hosted MX enforcement', () => {
 
 	it('files an unsubscribed sender into Archive, unread', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'unsubscribed', statusSource: 'user' });
 		const id = (await deliverHosted(t))!;
@@ -66,6 +69,7 @@ describe('hosted MX enforcement', () => {
 
 	it('leaves digest and keep senders in the Inbox', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'digest', statusSource: 'user' });
 		await seedProfile(t, mailboxId, { address: 'friend@example.com' });
@@ -76,6 +80,7 @@ describe('hosted MX enforcement', () => {
 
 	it('lets a user filter that moved the mail win over sender status', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'auto_archive', statusSource: 'user' });
 		await seedMoveFilter(t, mailboxId, folders.trash);
@@ -86,6 +91,7 @@ describe('hosted MX enforcement', () => {
 
 	it('never pulls quarantined mail out of Spam', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'unsubscribed', statusSource: 'user' });
 		expect(await roleOf(t, (await deliverHosted(t, { spamVerdict: 'spam' }))!)).toBe('spam');
@@ -93,6 +99,7 @@ describe('hosted MX enforcement', () => {
 
 	it('does nothing for a team inbox', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t, { scope: 'shared' });
 		await seedProfile(t, mailboxId, { status: 'auto_archive', statusSource: 'user' });
 		expect(await roleOf(t, (await deliverHosted(t))!)).toBe('inbox');
@@ -102,6 +109,7 @@ describe('hosted MX enforcement', () => {
 describe('delivered counters', () => {
 	it('counts live mail and marks it as part of the open cohort', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
 		await deliverHosted(t);
@@ -116,6 +124,7 @@ describe('delivered counters', () => {
 
 	it('follows the settled category as the sender’s kind', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
 		const threadId = (await t.run(async (ctx) => await ctx.db.get(id)))!.threadId;
@@ -129,6 +138,7 @@ describe('delivered counters', () => {
 
 	it('counts an enforced archive as delivered', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'auto_archive', statusSource: 'user' });
 		await deliverHosted(t);
@@ -137,6 +147,7 @@ describe('delivered counters', () => {
 
 	it('skips the owner’s own mail, Spam, and team inboxes', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await deliverHosted(t, { from: OWNER });
 		await deliverHosted(t, { spamVerdict: 'spam' });
@@ -144,6 +155,7 @@ describe('delivered counters', () => {
 		expect(await profileOf(t, mailboxId)).toBeNull();
 
 		const team = convexTest(schema, modules);
+		rateLimiterTest.register(team);
 		const shared = await seedPersonalMailbox(team, { scope: 'shared' });
 		const id = (await deliverHosted(team))!;
 		expect(await profileOf(team, shared.mailboxId)).toBeNull();
@@ -214,6 +226,7 @@ describe('external forward sync', () => {
 
 	it('moves synced mail from an auto-archived sender to Archive, read, and writes it back', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId, accountId } = await seedExternal(t);
 		await seedProfile(t, mailboxId, { status: 'auto_archive', statusSource: 'user' });
 		const id = await ingest(t, accountId, 1, 'sync');
@@ -228,6 +241,7 @@ describe('external forward sync', () => {
 
 	it('neither enforces nor counts a history backfill', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId, accountId } = await seedExternal(t);
 		const seeded = await seedProfile(t, mailboxId, {
 			status: 'unsubscribed',
@@ -243,6 +257,7 @@ describe('external forward sync', () => {
 describe('the arrival-record stamp', () => {
 	it('records sender status as the folder winner with a reason key, once', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const id = (await deliverHosted(t))!;
 		await t.run(async (ctx) => {
