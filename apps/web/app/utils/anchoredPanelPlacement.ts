@@ -9,13 +9,13 @@
  * Pure so the flip and clamp are testable without layout; the caller measures
  * the panel's natural height (`scrollHeight`) and the anchor's rect.
  */
-export interface AnchorRect {
+interface AnchorRect {
 	top: number;
 	bottom: number;
 	left: number;
 }
 
-export interface AnchoredPanelInput {
+interface AnchoredPanelInput {
 	anchor: AnchorRect;
 	/** The panel's natural (unclamped) height; 0 before it has rendered. */
 	panelHeight: number;
@@ -27,7 +27,7 @@ export interface AnchoredPanelInput {
 	minRoom?: number;
 }
 
-export interface AnchoredPanelPlacement {
+interface AnchoredPanelPlacement {
 	side: 'below' | 'above' | 'overlay';
 	style: { top?: string; bottom?: string; left: string; maxHeight: string };
 }
