@@ -146,10 +146,9 @@ const {
 const chunkWarmup = usePostboxChunkWarmup();
 watch(isLoading, (loading) => !loading && chunkWarmup.warm(), { immediate: true });
 
-// Cmd/Ctrl+Z walks back the undo stack (newest first) while entries are
-// pending. The listener is installed app-wide by usePostboxTriageUndo itself
-// while the stack is non-empty, so binding it here too would undo two entries
-// per keypress.
+// Cmd/Ctrl+Z (the undo stack) is bound app-wide by usePostboxTriageUndo; never here too.
+// "Why here?", Fix and the learned-digest notice (read on arrival §4).
+usePostboxArrivalExplainHost(mailboxIdRef);
 
 // Folder name shown in the list header (custom folders carry no role).
 const currentFolderName = usePostboxFolderName({
@@ -496,5 +495,6 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 		</Transition>
 
 		<PostboxShortcutHelp />
+		<PostboxArrivalExplain />
 	</div>
 </template>

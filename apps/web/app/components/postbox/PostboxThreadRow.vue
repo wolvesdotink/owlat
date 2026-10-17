@@ -20,6 +20,7 @@ import type { Placement } from '@owlat/shared/arrival';
  */
 export type PostboxThreadRowMessage = SenderAuthMessage & {
 	_id: Id<'mailMessages'>;
+	mailboxId?: string;
 	threadId?: string;
 	fromAddress: string;
 	fromName?: string;
@@ -71,6 +72,9 @@ import { usePostboxRowGestures } from '~/composables/postbox/usePostboxRowGestur
 import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
+import { inject } from 'vue';
+import { usePostboxWhyHere } from '~/composables/postbox/usePostboxWhyHere';
+import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
 
 const { t } = useI18n();
 // A filtered list (`?placement=`) keeps its filter on the message route.
@@ -177,6 +181,25 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 	event.stopPropagation();
 	event.preventDefault();
 	triage(e);
+}
+
+// Read on arrival §4.1: a Priority row explains its placement from the hover bar.
+const whyHere = usePostboxWhyHere();
+const isPriorityRow = inject(POSTBOX_PRIORITY_ROWS, false);
+const isWhyHereShown = computed(
+	() => isPriorityRow && !!props.msg.placement && !!props.msg.threadId
+);
+function openWhyHere(event: MouseEvent) {
+	event.stopPropagation();
+	event.preventDefault();
+	const { mailboxId, threadId, placement } = props.msg;
+	if (!mailboxId || !threadId) return;
+	whyHere.open({
+		mailboxId,
+		threadId,
+		...(placement ? { placement } : {}),
+		anchor: event.currentTarget as HTMLElement,
+	});
 }
 
 // Right-click / context-menu-key items — the same triage verbs as the hover
@@ -361,6 +384,17 @@ function onCapturedClick(event: MouseEvent) {
 				<div
 					class="ui-hover-reveal absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
 				>
+					<button
+						v-if="isWhyHereShown"
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+						:title="t('postbox.explain.rowLink')"
+						:aria-label="t('postbox.explain.rowLink')"
+						data-testid="row-why-here"
+						@click="openWhyHere($event)"
+					>
+						<Icon name="lucide:help-circle" class="w-4 h-4" />
+					</button>
 					<button
 						type="button"
 						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-warning"
