@@ -28,7 +28,6 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
-import { useElementShownOnce } from '~/composables/postbox/usePostboxSenderOpen';
 import type { PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
@@ -144,20 +143,7 @@ const {
 	hideBody: () => props.hideBody,
 	active: () => props.expanded,
 });
-
-// Senders (§5): a body actually on screen is a read for its sender's counter.
-// Collapsed is not, and neither is an expanded card whose body is still the
-// lazy placeholder or sits off screen: the ref only binds once the real body
-// renders, and it counts once that element intersects the viewport.
-const shownBody = ref<{ $el?: unknown } | null>(null);
-const shownBodyEl = computed(() =>
-	shownBody.value?.$el instanceof HTMLElement ? shownBody.value.$el : null
-);
-const isBodyShown = useElementShownOnce(shownBodyEl);
-usePostboxSenderOpen(
-	() => props.message._id,
-	() => props.expanded && isBodyShown.value
-);
+const { shownBody } = usePostboxSenderBodyOpen(props); // Senders §5: counts once the body is on screen
 
 /**
  * The legacy DMARC-fail line. `senderAuthBadges` moved this into the auth badge;
@@ -452,8 +438,7 @@ const renderToggleLabel = computed(() =>
 			:signature="shownSignature"
 			:omits-content="signedView.kind === 'signed' && signedView.omitsContent"
 		/>
-		<!-- Off-screen bodies of a long thread wait as a sized placeholder
-		     until they scroll near the viewport (plan D8). -->
+		<!-- Off-screen bodies wait as a sized placeholder until near the viewport (plan D8). -->
 		<PostboxLazyBody
 			v-else
 			:message-id="msg._id"

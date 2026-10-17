@@ -1,4 +1,4 @@
-import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import { computed, getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isNearViewport } from './usePostboxLazyBody';
@@ -74,4 +74,26 @@ export function useElementShownOnce(target: Ref<HTMLElement | null>): Ref<boolea
 	);
 	if (getCurrentInstance()) onBeforeUnmount(stop);
 	return shown;
+}
+
+/**
+ * The reader card's wiring (`PostboxReaderMessage`): bind the returned
+ * `shownBody` as the `ref` of the rendered body component. The ref only binds
+ * once the real body renders (never the lazy placeholder), and the open
+ * counts once that element is on screen while the card is expanded.
+ */
+export function usePostboxSenderBodyOpen(card: {
+	readonly message: { _id: string };
+	readonly expanded: boolean;
+}) {
+	const shownBody = ref<{ $el?: unknown } | null>(null);
+	const bodyEl = computed(() =>
+		shownBody.value?.$el instanceof HTMLElement ? shownBody.value.$el : null
+	);
+	const isBodyShown = useElementShownOnce(bodyEl);
+	usePostboxSenderOpen(
+		() => card.message._id,
+		() => card.expanded && isBodyShown.value
+	);
+	return { shownBody };
 }

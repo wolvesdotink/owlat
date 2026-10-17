@@ -18,7 +18,10 @@ import PostboxReaderMessage from '../PostboxReaderMessage.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n, usePostboxSenderOpen: () => {} });
+	Object.assign(globalThis, {
+		useI18n: i18nStubs.useI18n,
+		usePostboxSenderBodyOpen: () => ({ shownBody: { value: null } }),
+	});
 });
 
 const marker = (name: string) =>

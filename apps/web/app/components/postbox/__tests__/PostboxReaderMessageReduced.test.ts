@@ -12,12 +12,18 @@ import { mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { usePostboxSenderBodyOpen } from '~/composables/postbox/usePostboxSenderOpen';
 
 /** The Senders open signal (§5): every card reports its own body being shown. */
-const senderOpen = vi.fn();
+const markOpened = vi.fn();
 
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n, usePostboxSenderOpen: senderOpen });
+	// The real card wiring over a stubbed backend: `markOpened` is the server call.
+	Object.assign(globalThis, {
+		useI18n: i18nStubs.useI18n,
+		usePostboxSenderBodyOpen,
+		useBackendOperation: () => ({ run: markOpened }),
+	});
 });
 
 const marker = (name: string, props: string[] = []) =>
@@ -96,17 +102,16 @@ const has = (w: ReturnType<typeof mountCard>, id: string) =>
 	w.find(`[data-testid="${id}"]`).exists();
 
 describe('PostboxReaderMessage reduced', () => {
-	it('reports its own message as read once its rendered body is on screen', async () => {
-		senderOpen.mockClear();
+	it('counts its message as opened once its rendered body is on screen', async () => {
+		markOpened.mockClear();
 		mountCard(true);
 		await nextTick();
-		const [messageId, isShown] = senderOpen.mock.calls[0] as [() => string, () => boolean];
-		expect(messageId()).toBe('msg_1');
-		expect(isShown()).toBe(true);
+		await nextTick();
+		expect(markOpened).toHaveBeenCalledWith({ messageId: 'msg_1' });
 	});
 
 	it('does not count an expanded card whose body is off screen', async () => {
-		senderOpen.mockClear();
+		markOpened.mockClear();
 		// Every element sits far below the viewport, and no observer callback
 		// ever reports it intersecting.
 		const rect = vi
@@ -115,8 +120,8 @@ describe('PostboxReaderMessage reduced', () => {
 		try {
 			mountCard(true);
 			await nextTick();
-			const [, isShown] = senderOpen.mock.calls[0] as [() => string, () => boolean];
-			expect(isShown()).toBe(false);
+			await nextTick();
+			expect(markOpened).not.toHaveBeenCalled();
 		} finally {
 			rect.mockRestore();
 		}
