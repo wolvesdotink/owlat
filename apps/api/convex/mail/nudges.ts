@@ -2,12 +2,24 @@
  * Follow-up nudges (SPEC §7): a "Waiting on others" item that went stale
  * shows in the Answer queue as a follow-up card offering "Draft a nudge".
  *
- * Derived when the queue is read, from what is already stored: the thread
- * brief's open items the other side owes (`threadItems`, responsibility
- * `them`, read off `by_mailbox_responsibility_due`) and the thread's newest
- * messages. No cron and no new rows. Because nothing is written when an item
- * goes stale, a card appears the next time the queue query runs, not at the
- * exact minute.
+ * Derived when the Answer queue list is read (`needsReply.listQueue`), from
+ * what is already stored: the thread brief's open items the other side owes
+ * (`threadItems`, responsibility `them`, read off
+ * `by_mailbox_responsibility_due`) and the thread's newest messages. No cron
+ * and no new rows. Because nothing is written when an item goes stale, a
+ * card appears the next time the list query runs, not at the exact minute.
+ * The always-mounted badge (`countQueue`) does not count nudge cards: it
+ * would pay this scan on every rerun.
+ *
+ * **Budget.** One read inspects at most {@link NUDGE_ITEM_BUDGET} items and
+ * {@link NUDGE_THREAD_BUDGET} threads (each: the thread and at most
+ * {@link THREAD_MESSAGE_SCAN} messages), however many cards that yields.
+ * When the budget runs out the scan stops and shows what it has.
+ *
+ * **Fail closed.** A thread whose newest message is theirs and newer than
+ * the cut-off is cancelled from the thread row alone. Otherwise its newest
+ * messages are read; when they do not reach back to the ask, a reply from
+ * them may sit beyond them, so the item offers no nudge.
  *
  * An item asks for a nudge ({@link nudgeVerdict}):
  *
@@ -33,6 +45,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
 import { DAY_MS } from '../lib/constants';
+import { extractEmail } from '../lib/emailAddress';
 import { isThreadMuted } from '../lib/mailMute';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { isPersonalMailbox } from './permissions';
@@ -40,12 +53,12 @@ import { isFencedThread } from './interpret/staleFence';
 
 /** Business days a dateless waiting item waits before it asks for a nudge. */
 export const NUDGE_AFTER_BUSINESS_DAYS = 3;
-/** Nudge cards one queue read shows at most. */
-export const NUDGE_LIMIT = 20;
-/** Items one scan reads before it stops. */
-export const NUDGE_SCAN_BUDGET = 200;
+/** Waiting items one scan reads before it stops. */
+export const NUDGE_ITEM_BUDGET = 100;
+/** Threads one scan inspects (thread row plus its newest messages) before it stops. */
+export const NUDGE_THREAD_BUDGET = 20;
 /** Newest messages of a thread read for the reply check. */
-const THREAD_MESSAGE_SCAN = 10;
+export const THREAD_MESSAGE_SCAN = 10;
 
 export type NudgeReason = 'overdue' | 'stale';
 
@@ -124,32 +137,60 @@ async function ownAddressesOf(
 	return new Set([mailbox.address, ...aliases.map((a) => a.alias)].map(normalizeEmail));
 }
 
-/** The thread's newest own and inbound messages among its last few. */
-async function threadSides(
-	ctx: Pick<QueryCtx, 'db'>,
-	thread: Doc<'mailThreads'>,
-	own: ReadonlySet<string>
-): Promise<{ newest?: Doc<'mailMessages'>; ownMessage?: Doc<'mailMessages'>; inboundAt?: number }> {
-	const newest = await ctx.db
-		.query('mailMessages')
-		.withIndex('by_thread_and_received', (q) => q.eq('threadId', thread._id))
-		.order('desc')
-		.take(THREAD_MESSAGE_SCAN);
-	const isOwn = (m: Doc<'mailMessages'>) =>
-		m.outbound !== undefined || own.has(normalizeEmail(m.fromAddress));
-	const ownMessage = newest.find(isOwn);
-	const inbound = newest.find((m) => !isOwn(m) && !m.flagDraft);
-	return {
-		...(newest[0] ? { newest: newest[0] } : {}),
-		...(ownMessage ? { ownMessage } : {}),
-		...(inbound ? { inboundAt: inbound.receivedAt } : {}),
-	};
+/** What the reply check knows about one thread, read once per scan. */
+interface ThreadSignals {
+	thread: Doc<'mailThreads'>;
+	/** Its newest messages, newest first (at most {@link THREAD_MESSAGE_SCAN}). */
+	newest: Doc<'mailMessages'>[];
+	/** `newest` holds the whole thread. */
+	isComplete: boolean;
+}
+
+function isOwnAddress(address: string, own: ReadonlySet<string>): boolean {
+	return own.has(normalizeEmail(extractEmail(address)));
+}
+
+function isOwnMessage(m: Doc<'mailMessages'>, own: ReadonlySet<string>): boolean {
+	return m.outbound !== undefined || isOwnAddress(m.fromAddress, own);
+}
+
+/**
+ * The verdict for one item from its thread's signals, or null: also null
+ * when the messages read cannot show there was no reply since the ask.
+ */
+function verdictFor(
+	item: Doc<'threadItems'>,
+	signals: ThreadSignals,
+	own: ReadonlySet<string>,
+	now: number
+): { message: Doc<'mailMessages'>; reason: NudgeReason; since: number } | null {
+	const { thread, newest, isComplete } = signals;
+	const dueAt = item.due?.at;
+	const cancelAfter = dueAt !== undefined ? Math.max(item.askedAt, dueAt) : item.askedAt;
+	// Their message is the thread's newest: answered, from the row alone.
+	const isLatestTheirs = !isOwnAddress(thread.latestFromAddress, own);
+	if (isLatestTheirs && thread.lastMessageAt > cancelAfter) return null;
+	const oldest = newest[newest.length - 1];
+	if (!oldest || (!isComplete && oldest.receivedAt > item.askedAt)) return null; // fail closed
+	const ownMessage = newest.find((m) => isOwnMessage(m, own));
+	const inbound = newest.find((m) => !isOwnMessage(m, own) && !m.flagDraft);
+	const verdict = nudgeVerdict({
+		dueAt,
+		askedAt: item.askedAt,
+		lastOwnAt: ownMessage?.receivedAt,
+		lastInboundAt: inbound?.receivedAt,
+		now,
+	});
+	const message = ownMessage ?? newest[0]!;
+	if (!verdict || isMessageSnoozed(message, now)) return null;
+	return { message, reason: verdict.reason, since: verdict.at };
 }
 
 /**
  * The mailbox's nudge rows: overdue items first (soonest due first), then
- * dateless ones, one per thread, skipping threads in `taken`. Bounded by
- * {@link NUDGE_SCAN_BUDGET} items read and {@link NUDGE_LIMIT} rows.
+ * dateless ones, one per thread, skipping threads in `taken`. Reads at most
+ * {@link NUDGE_ITEM_BUDGET} items and inspects at most
+ * {@link NUDGE_THREAD_BUDGET} threads (see the module header).
  */
 export async function scanNudges(
 	ctx: Pick<QueryCtx, 'db'>,
@@ -161,33 +202,46 @@ export async function scanNudges(
 	if (!mailbox || !isPersonalMailbox(mailbox)) return [];
 	const own = await ownAddressesOf(ctx, mailbox);
 	const rows: NudgeQueueRow[] = [];
-	const seen = new Set<string>(taken);
+	const emitted = new Set<string>(taken);
+	const signals = new Map<string, ThreadSignals | null>();
 	let read = 0;
 	for (const isDated of [true, false]) {
 		for await (const item of openWaitingItems(ctx, mailboxId, now, isDated)) {
-			if (++read > NUDGE_SCAN_BUDGET || rows.length >= NUDGE_LIMIT) return rows;
+			if (++read > NUDGE_ITEM_BUDGET) return rows;
 			const threadId = item.mailThreadId;
-			if (!threadId || item.verify === 'proposal' || seen.has(threadId)) continue;
+			if (!threadId || item.verify === 'proposal' || emitted.has(threadId)) continue;
 			// Cheap first: a dateless item younger than the wait cannot be stale.
 			if (!isDated && addBusinessDays(item.askedAt, NUDGE_AFTER_BUSINESS_DAYS) > now) continue;
-			seen.add(threadId);
-			const thread = await ctx.db.get(threadId);
-			if (!thread || thread.mailboxId !== mailboxId) continue;
-			if (isThreadMuted(thread) || isFencedThread(thread)) continue;
-			const sides = await threadSides(ctx, thread, own);
-			const message = sides.ownMessage ?? sides.newest;
-			if (!message || isMessageSnoozed(message, now)) continue;
-			const verdict = nudgeVerdict({
-				dueAt: item.due?.at,
-				askedAt: item.askedAt,
-				lastOwnAt: sides.ownMessage?.receivedAt,
-				lastInboundAt: sides.inboundAt,
-				now,
-			});
-			if (verdict) rows.push({ thread, item, message, reason: verdict.reason, since: verdict.at });
+			if (!signals.has(threadId)) {
+				if (signals.size >= NUDGE_THREAD_BUDGET) return rows;
+				signals.set(threadId, await loadSignals(ctx, threadId, mailboxId));
+			}
+			const known = signals.get(threadId);
+			if (!known) continue;
+			const verdict = verdictFor(item, known, own, now);
+			if (!verdict) continue; // a later item of this thread may still qualify
+			emitted.add(threadId);
+			rows.push({ thread: known.thread, item, ...verdict });
 		}
 	}
 	return rows;
+}
+
+/** A thread's signals, or null when it offers no nudge at all (gone, muted, fenced). */
+async function loadSignals(
+	ctx: Pick<QueryCtx, 'db'>,
+	threadId: Id<'mailThreads'>,
+	mailboxId: Id<'mailboxes'>
+): Promise<ThreadSignals | null> {
+	const thread = await ctx.db.get(threadId);
+	if (!thread || thread.mailboxId !== mailboxId) return null;
+	if (isThreadMuted(thread) || isFencedThread(thread)) return null;
+	const newest = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread_and_received', (q) => q.eq('threadId', thread._id))
+		.order('desc')
+		.take(THREAD_MESSAGE_SCAN);
+	return { thread, newest, isComplete: newest.length < THREAD_MESSAGE_SCAN };
 }
 
 /** The nudge a "Remind me" follow-up card offers: none while the thread is fenced. */

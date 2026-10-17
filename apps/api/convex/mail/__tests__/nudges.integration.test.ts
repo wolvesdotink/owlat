@@ -3,8 +3,10 @@
  * on others" item past its due date, or 3 business days old with no reply
  * since, is a follow-up card offering "Draft a nudge", derived when the queue
  * is read. A reply from them cancels it; a fenced, muted or team thread
- * offers none; a "Remind me" reminder card offers one itself, and its thread
- * gets no second card. The badge counts what the list shows.
+ * offers none; a "Remind me" reminder card offers one itself (personal
+ * mailboxes only), and its thread gets no second card. The always-mounted
+ * badge never counts nudge cards, one read inspects a bounded number of
+ * threads, and a reply the bounded read cannot rule out means no nudge.
  */
 
 import { convexTest } from 'convex-test';
@@ -15,6 +17,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 import { listBucketOf } from '../interpret/counters';
 import type { T } from '../senders/__tests__/senders.testlib';
+import { NUDGE_THREAD_BUDGET, THREAD_MESSAGE_SCAN } from '../nudges';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -107,9 +110,34 @@ async function seedWaiting(
 
 async function queue(t: T, mailboxId: Id<'mailboxes'>) {
 	const { items } = await t.query(api.mail.needsReply.listQueue, { mailboxId });
+	// The badge counts the reply and reminder rows, never a nudge card (F5).
 	const count = await t.query(api.mail.needsReply.countQueue, { mailboxId });
-	expect(count).toBe(items.length);
+	expect(count).toBe(
+		items.filter((item) => !item.nudge || item.nudge.reason === 'reminder').length
+	);
 	return items;
+}
+
+/** Another waiting item on the same thread, asked at `askedAt`. */
+async function addItem(t: T, w: Waiting, askedAt: number): Promise<Id<'threadItems'>> {
+	return await t.run(async (ctx) => {
+		const { _id, _creationTime, ...fields } = (await ctx.db.get(w.itemId))!;
+		return await ctx.db.insert('threadItems', { ...fields, askedAt, createdAt: askedAt });
+	});
+}
+
+/** One more message of ours in the thread, at `at`. */
+async function ownMessage(t: T, w: Waiting, at: number): Promise<void> {
+	await t.run(async (ctx) => {
+		const { _id, _creationTime, ...base } = (await ctx.db.get(w.askId))!;
+		await ctx.db.insert('mailMessages', {
+			...base,
+			rfc822MessageId: `<own-${at}@owlat.test>`,
+			receivedAt: at,
+			internalDate: at,
+		});
+		await ctx.db.patch(w.threadId, { lastMessageAt: at, latestFromAddress: OWNER });
+	});
 }
 
 async function replyFromSam(t: T, w: Waiting, at: number): Promise<void> {
@@ -129,6 +157,10 @@ async function replyFromSam(t: T, w: Waiting, at: number): Promise<void> {
 			receivedAt: at,
 			internalDate: at,
 		});
+		const thread = (await ctx.db.get(w.threadId))!;
+		if (at > thread.lastMessageAt) {
+			await ctx.db.patch(w.threadId, { lastMessageAt: at, latestFromAddress: SAM });
+		}
 	});
 }
 
@@ -203,5 +235,45 @@ describe('nudge cards', () => {
 		const fenced = await queue(t, w.mailboxId);
 		expect(fenced).toHaveLength(1);
 		expect(fenced[0]!.nudge).toBeUndefined();
+	});
+
+	it('keeps looking at a thread whose older item was answered (F3)', async () => {
+		const t = convexTest(schema, modules);
+		const w = await seedWaiting(t);
+		await replyFromSam(t, w, ASKED + 30 * 60_000);
+		// A new ask after their reply, now stale in its own right.
+		const later = await addItem(t, w, ASKED + 45 * 60_000);
+		await ownMessage(t, w, ASKED + 45 * 60_000);
+		const items = await queue(t, w.mailboxId);
+		expect(items.map((item) => item.nudge)).toEqual([{ reason: 'stale', itemId: later }]);
+	});
+
+	it('offers no nudge when their reply may sit beyond the messages read (F4)', async () => {
+		const t = convexTest(schema, modules);
+		const w = await seedWaiting(t);
+		await replyFromSam(t, w, ASKED + HOUR);
+		for (let i = 1; i <= THREAD_MESSAGE_SCAN; i++)
+			await ownMessage(t, w, ASKED + HOUR + i * 60_000);
+		expect(await queue(t, w.mailboxId)).toEqual([]);
+	});
+
+	it('inspects a bounded number of threads per read (F5)', async () => {
+		const t = convexTest(schema, modules);
+		const first = await seedWaiting(t);
+		for (let i = 0; i < NUDGE_THREAD_BUDGET; i++) {
+			await t.run(async (ctx) => {
+				const ask = (await ctx.db.get(first.askId))!;
+				const { _id, _creationTime, ...thread } = (await ctx.db.get(ask.threadId))!;
+				const threadId = await ctx.db.insert('mailThreads', thread);
+				const { _id: _m, _creationTime: _mc, ...message } = ask;
+				const askId = await ctx.db.insert('mailMessages', { ...message, threadId });
+				const { _id: _i, _creationTime: _ic, ...item } = (await ctx.db.get(first.itemId))!;
+				await ctx.db.insert('threadItems', { ...item, mailThreadId: threadId });
+				await ctx.db.patch(threadId, { latestMessageId: askId });
+			});
+		}
+		const items = await queue(t, first.mailboxId);
+		expect(items).toHaveLength(NUDGE_THREAD_BUDGET);
+		expect(await t.query(api.mail.needsReply.countQueue, { mailboxId: first.mailboxId })).toBe(0);
 	});
 });

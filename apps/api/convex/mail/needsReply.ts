@@ -39,7 +39,7 @@ import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { needsReplyTriggerOf } from './needsReplyTrigger';
 import { QUEUE_LIMIT, scanReplyQueue } from './needsReplyQueueScan';
 import { nudgeQueueItem } from './nudgeQueue';
-import { reminderNudge, type QueueNudge } from './nudges';
+import { reminderNudge, scanNudges, type QueueNudge } from './nudges';
 import { requireMailboxAccess, loadReadableMailbox } from './permissions';
 import { urgencyFallbackScore } from './ai/priorityScore';
 import { visibleThreadClarification, visibleThreadDraftSlot } from './needsReplySlot';
@@ -320,7 +320,10 @@ export const listQueue = publicQuery({
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return { items: [] };
 
-		const { needsReply, followUps, nudges } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
+		const now = Date.now();
+		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, now);
+		const taken = new Set<string>([...needsReply, ...followUps].map((row) => row.thread._id));
+		const nudges = await scanNudges(ctx, args.mailboxId, now, taken); // list only, not the badge
 		const items = [];
 		for (const { thread, flag, trigger } of needsReply) {
 			items.push({
@@ -396,8 +399,9 @@ export const listQueue = publicQuery({
  * How many rows `listQueue` returns for the mailbox, without building them
  * (plan 2.11). The shell's Answer badge subscribes to this on every dashboard
  * page; the full list is only read on the Answer and Today pages. Same scan,
- * same filters, so the badge matches the list; it skips the per-follow-up name
- * lookups, and a change to a card's text does not re-send anything.
+ * same filters, so the badge matches the list's reply and follow-up rows; it
+ * skips the name lookups and the nudge cards (mail/nudges.ts), whose scan is
+ * too heavy for every rerun.
  */
 // public: soft-auth — returns 0 for anonymous; mailbox access is still enforced in-handler
 export const countQueue = publicQuery({
@@ -405,8 +409,8 @@ export const countQueue = publicQuery({
 	handler: async (ctx, args): Promise<number> => {
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return 0;
-		const { needsReply, followUps, nudges } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
-		return needsReply.length + followUps.length + nudges.length;
+		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
+		return needsReply.length + followUps.length;
 	},
 });
 
