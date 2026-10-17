@@ -34,9 +34,6 @@ export const purgeCursorValidator = v.object({
 	inner: v.optional(v.number()),
 	// The last slice stopped inside a row: read the range one row at a time.
 	isNarrow: v.optional(v.boolean()),
-	// A range walked by `_creationTime`, which rows can share: the ids already
-	// handled at `at`, skipped when the next slice re-reads from `at`.
-	tieIds: v.optional(v.array(v.string())),
 });
 
 /**

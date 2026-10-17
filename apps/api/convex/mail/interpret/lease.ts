@@ -9,9 +9,11 @@
  *     compare-and-set: `leaseUntil = now + LEASE_MS` and a fresh token. A
  *     live lease someone else holds answers `busy` (retry at its expiry); a
  *     source already terminal for the requested depth answers `done`.
- *   - The run's commit (`reduce.ts applyInterpretation`) checks the token: a
- *     lease another run holds now refuses the write (`leaseLost`), and a
- *     recorded outcome clears the lease in the same transaction.
+ *   - The run's commit (`reduce.ts applyInterpretation`) checks the token:
+ *     unless it is the source's CURRENT lease the write is refused
+ *     (`leaseLost`). A recorded outcome clears the lease in the same
+ *     transaction; one the run goes on from (a stale revision, a restart on
+ *     a changed body or mode) keeps it, so the run stays the only reader.
  *   - Every other way a run ends releases it ({@link releaseSourceLease},
  *     compare-and-set on the token; the run's side is `runApply.ts
  *     withSourceLease`), and the category wait releases it when
@@ -20,7 +22,10 @@
  * The lease outlives the longest action (10 min), so a run never loses it
  * while alive; a run that died leaves it to expire, and its source is still
  * outstanding for the stale sweep. A source without a snapshot row has
- * nothing to lease: its run records a skip without a model call.
+ * nothing to lease, and its run ends at the claim (`unsnapshotted`): it
+ * reads nothing and commits nothing, unleased, so a snapshot captured right
+ * after cannot be read by it (Sol fixes-r3 F1). The capture enqueues the run
+ * that reads it, and that run claims like any other.
  */
 
 import { v } from 'convex/values';
@@ -40,6 +45,8 @@ export const LEASE_MS = 10 * 60 * 1000;
 /** What a claim answers. */
 export type LeaseClaim =
 	| { kind: 'claimed'; token: string }
+	/** No snapshot row: nothing to lease, and nothing for the run to read. */
+	| { kind: 'unsnapshotted' }
 	| { kind: 'busy'; retryAt: number }
 	| { kind: 'done' };
 
@@ -62,14 +69,14 @@ function isTerminalFor(
 export const claimSourceLease = internalMutation({
 	args: { source: interpretationSourceValidator, depth: v.optional(depthValidator) },
 	handler: async (ctx, args): Promise<LeaseClaim> => {
-		const token = globalThis.crypto.randomUUID();
 		const row = await loadInterpretSource(ctx, args.source);
-		if (!row) return { kind: 'claimed', token };
+		if (!row) return { kind: 'unsnapshotted' };
 		if (isTerminalFor(row.readOutcome, args.depth)) return { kind: 'done' };
 		const now = Date.now();
 		if (row.leaseToken !== undefined && row.leaseUntil !== undefined && row.leaseUntil > now) {
 			return { kind: 'busy', retryAt: row.leaseUntil };
 		}
+		const token = globalThis.crypto.randomUUID();
 		await ctx.db.patch(row._id, { leaseToken: token, leaseUntil: now + LEASE_MS });
 		return { kind: 'claimed', token };
 	},
@@ -95,17 +102,20 @@ export async function releaseLeaseIfHeld(
 }
 
 /**
- * The commit's token check: null when a write with `token` may go through
- * (no token given, the source is gone, or nobody else holds the lease), else
- * when the lease another run holds ends.
+ * The commit's token check: null when the write may go through, else when to
+ * look again (the end of the lease another run holds, or now when the lease
+ * was given up). A source with a snapshot row commits only with its CURRENT
+ * lease token; no token, a cleared lease or another run's token is refused,
+ * since another run may have read and committed the source since. A source
+ * without a row has no lease anyone could hold; no run commits it (the run
+ * ends at its claim), only a direct reducer call can.
  */
 export async function leaseLostAt(
 	ctx: MutationCtx,
 	source: InterpretationSource,
 	token: string | undefined
 ): Promise<number | null> {
-	if (token === undefined) return null;
 	const row = await loadInterpretSource(ctx, source);
-	if (!row || row.leaseToken === undefined || row.leaseToken === token) return null;
+	if (!row || (token !== undefined && row.leaseToken === token)) return null;
 	return row.leaseUntil ?? Date.now();
 }

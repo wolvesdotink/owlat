@@ -26,6 +26,7 @@ import {
 	seedTeamThread,
 	type Test,
 } from './interpret.testlib';
+import { applyAsRun } from './lease.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
@@ -57,7 +58,7 @@ async function apply(
 			.first();
 		return brief?.interpretationRevision ?? 0;
 	});
-	return t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+	return applyAsRun(t, {
 		source: { kind: 'mail', id: messageId },
 		threadRef: { kind: 'mail', id: threadId },
 		mode: 'brief',
@@ -453,7 +454,7 @@ describe('W1: a human team follow-up resolves its thread through the follow-up',
 			captureInterpretSource(ctx, { source, isLive: true })
 		);
 		expect(sourceRowId).not.toBeNull();
-		const out = await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+		const out = await applyAsRun(t, {
 			source,
 			threadRef: { kind: 'team', id: threadId },
 			mode: 'actions',

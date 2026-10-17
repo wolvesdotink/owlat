@@ -33,12 +33,15 @@ export const MAX_AUTO_EXPANDED_UNREAD = 3;
  * oldest message is not the thread's first, so it stays collapsed.
  * `expandFirst` false leaves the first message collapsed too: Answer mode shows
  * the newest and the unread messages in full and everything older as rows.
+ * `expandUnread` false leaves unread earlier messages collapsed as well: the
+ * calm reader (read on arrival §3) opens on the latest message alone.
  */
 export function initialExpandedIds(
 	messages: readonly ReaderExpansionMessage[],
 	activeId: string,
 	startsThread = true,
-	expandFirst = true
+	expandFirst = true,
+	expandUnread = true
 ): Set<string> {
 	const next = new Set<string>();
 	const last = messages[messages.length - 1];
@@ -46,7 +49,8 @@ export function initialExpandedIds(
 	const first = messages[0];
 	if (expandFirst && startsThread && messages.length > 2 && first) next.add(first._id);
 	let unread = 0;
-	for (let i = messages.length - 1; i >= 0 && unread < MAX_AUTO_EXPANDED_UNREAD; i--) {
+	const unreadCap = expandUnread ? MAX_AUTO_EXPANDED_UNREAD : 0;
+	for (let i = messages.length - 1; i >= 0 && unread < unreadCap; i--) {
 		const m = messages[i];
 		if (m && !m.flagSeen) {
 			next.add(m._id);
@@ -70,8 +74,10 @@ export interface PostboxReaderExpansionSource {
 	messages: () => readonly ReaderExpansionMessage[] | undefined;
 	/** The messages reach back to the thread's first one. Absent: they do. */
 	startsThread?: () => boolean;
-	/** Open the thread's first message by default (the reader does). Absent: yes. */
+	/** Open the thread's first message by default. Absent: yes. */
 	expandFirst?: boolean;
+	/** Open the newest unread messages by default (Answer mode does). Absent: yes. */
+	expandUnread?: boolean;
 }
 
 export function usePostboxReaderExpansion(source: PostboxReaderExpansionSource): {
@@ -116,7 +122,8 @@ export function usePostboxReaderExpansion(source: PostboxReaderExpansionSource):
 					messages,
 					active,
 					source.startsThread?.() ?? true,
-					source.expandFirst ?? true
+					source.expandFirst ?? true,
+					source.expandUnread ?? true
 				);
 				return;
 			}

@@ -76,6 +76,68 @@ async function runTimes(t: T): Promise<number[]> {
 	);
 }
 
+/** One more message in the thread and its source row, waiting for the category or not. */
+async function insertSource(
+	t: T,
+	at: { mailboxId: Id<'mailboxes'>; threadId: Id<'mailThreads'> },
+	waiting: boolean,
+	n: number
+): Promise<Id<'mailMessages'>> {
+	const id = await addMessageToThread(t, at, {
+		text: `Update ${n}`,
+		receivedAt: NOW - 100_000 + n,
+	});
+	await t.run((ctx) =>
+		ctx.db.insert('interpretSources', {
+			threadKind: 'mail',
+			mailThreadId: at.threadId,
+			source: { kind: 'mail', id },
+			sourceKey: `mail:${id}`,
+			eligibility: {
+				isLive: true,
+				folder: 'inbox',
+				isThreadMuted: false,
+				isBulkHeaderPresent: true,
+				isSenderKnown: false,
+			},
+			...(waiting ? { categoryDeferredUntil: UNTIL } : {}),
+			createdAt: NOW,
+			updatedAt: NOW,
+		})
+	);
+	return id;
+}
+
+/** Run the wake's scheduled continuations, page by page. Returns how many ran. */
+async function driveWake(t: T): Promise<number> {
+	const continued = new Set<string>();
+	for (let page = 0; page < 20; page++) {
+		const next = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+				(job) => job.name.includes('continueCategoryWake') && !continued.has(job._id)
+			)
+		);
+		if (next.length === 0) break;
+		for (const job of next) {
+			continued.add(job._id);
+			await t.mutation(
+				internal.mail.interpret.categoryDefer.continueCategoryWake,
+				job.args[0] as never
+			);
+		}
+	}
+	return continued.size;
+}
+
+/** Scheduled interpretation runs, as the message ids they read. */
+async function runIds(t: T): Promise<string[]> {
+	return t.run(async (ctx) =>
+		(await ctx.db.system.query('_scheduled_functions').collect())
+			.filter((job) => job.name.includes('interpretMessage'))
+			.map((job) => (job.args[0] as { source: { id: string } }).source.id)
+	);
+}
+
 describe('category wait wake-up', () => {
 	it('runs the waiting source as soon as the refinement lands; the ceiling then does nothing', async () => {
 		const t = convexTest(schema, modules);
@@ -186,70 +248,59 @@ describe('category wait wake-up', () => {
 
 	it('wakes every waiting source of a long thread, past newer sources that are not waiting', async () => {
 		const t = convexTest(schema, modules);
-		const { mailboxId, messageId, threadId, source } = await waitingSource(t);
+		const { mailboxId, messageId, threadId } = await waitingSource(t);
+		const at = { mailboxId, threadId };
 		// 64 more waiting sources, then 20 newer ones that are not waiting, so the
 		// waiting ones sit far below the first page.
-		const insertSource = async (waiting: boolean, n: number) => {
-			const id = await addMessageToThread(
-				t,
-				{ mailboxId, threadId },
-				{ text: `Update ${n}`, receivedAt: NOW - 100_000 + n }
-			);
-			await t.run((ctx) =>
-				ctx.db.insert('interpretSources', {
-					threadKind: 'mail',
-					mailThreadId: threadId,
-					source: { kind: 'mail', id },
-					sourceKey: `mail:${id}`,
-					eligibility: {
-						isLive: true,
-						folder: 'inbox',
-						isThreadMuted: false,
-						isBulkHeaderPresent: true,
-						isSenderKnown: false,
-					},
-					...(waiting ? { categoryDeferredUntil: UNTIL } : {}),
-					createdAt: NOW,
-					updatedAt: NOW,
-				})
-			);
-			return id;
-		};
 		const waiting = [messageId];
-		for (let n = 0; n < 64; n++) waiting.push(await insertSource(true, n));
-		for (let n = 64; n < 84; n++) await insertSource(false, n);
+		for (let n = 0; n < 64; n++) waiting.push(await insertSource(t, at, true, n));
+		for (let n = 64; n < 84; n++) await insertSource(t, at, false, n);
 
 		await t.mutation(internal.mail.category.applyCategory, {
 			threadId,
 			label: 'newsletter',
 			source: 'llm',
 		});
-		// Drive the continuations the wake scheduled, one page each.
-		const continued = new Set<string>();
-		for (let page = 0; page < 10; page++) {
-			const next = await t.run(async (ctx) =>
-				(await ctx.db.system.query('_scheduled_functions').collect()).filter(
-					(job) => job.name.includes('continueCategoryWake') && !continued.has(job._id)
-				)
-			);
-			if (next.length === 0) break;
-			for (const job of next) {
-				continued.add(job._id);
-				await t.mutation(
-					internal.mail.interpret.categoryDefer.continueCategoryWake,
-					job.args[0] as never
-				);
-			}
-		}
+		const continued = await driveWake(t);
 
-		expect(continued.size).toBeGreaterThan(0);
+		expect(continued).toBeGreaterThan(0);
 		for (const id of waiting) expect(await deferredUntil(t, id)).toBeNull();
-		const runs = await t.run(async (ctx) =>
-			(await ctx.db.system.query('_scheduled_functions').collect())
-				.filter((job) => job.name.includes('interpretMessage'))
-				.map((job) => (job.args[0] as { source: { id: string } }).source.id)
-		);
+		const runs = await runIds(t);
 		// Each waiting source runs exactly once; no source that was not waiting runs.
 		expect(runs.sort()).toEqual([...waiting].sort());
+	});
+
+	it('keeps paging when sources a cursor already read are deleted meanwhile', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, messageId, threadId } = await waitingSource(t);
+		const at = { mailboxId, threadId };
+		const waiting = [messageId];
+		for (let n = 0; n < 110; n++) waiting.push(await insertSource(t, at, true, n));
+		// The 50 newest were one page, all at one creation time, and a purge
+		// deleted them before the next page ran (Sol fixes-r2 F2): the cursor
+		// names 50 ids the read can no longer return.
+		const rows = await t.run((ctx) =>
+			ctx.db
+				.query('interpretSources')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.order('desc')
+				.collect()
+		);
+		const visited = rows.slice(0, 50);
+		await t.run(async (ctx) => {
+			for (const row of visited) await ctx.db.delete(row._id);
+		});
+		const cursor = { at: visited[49]!._creationTime, seen: visited.map((row) => row._id) };
+
+		await t.mutation(internal.mail.interpret.categoryDefer.continueCategoryWake, {
+			threadId,
+			cursor,
+		});
+		await driveWake(t);
+
+		const left = waiting.filter((id) => !visited.some((row) => row.source.id === id));
+		expect(left).toHaveLength(61);
+		for (const id of left) expect(await deferredUntil(t, id)).toBeNull();
+		expect((await runIds(t)).sort()).toEqual([...left].sort());
 	});
 });

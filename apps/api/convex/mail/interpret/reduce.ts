@@ -116,18 +116,27 @@ async function markedRowsOf(
 }
 
 /**
- * The run's commit. Its lease token is checked first (`lease.ts`): while
- * another run holds the source, nothing is written. Any outcome but `stale`
- * (the run applies again) ends the run's hold on the source, in this
- * transaction.
+ * The run's commit. Its lease token is checked first (`lease.ts`): unless the
+ * run still holds the source's CURRENT lease, nothing is written. A recorded
+ * (or final) outcome ends the run's hold on the source, in this transaction;
+ * one the run goes on from (`stale`: it applies again; `sourceChanged` and
+ * `modeChanged`: it starts over) keeps it, so no other run reads the source
+ * meanwhile (Sol fixes-r2 F1).
  */
+/** Outcomes the run goes on from, still holding the source's lease. */
+const CONTINUED_OUTCOMES: ReadonlySet<ApplyOutcome['outcome']> = new Set([
+	'stale',
+	'sourceChanged',
+	'modeChanged',
+]);
+
 export const applyInterpretation = internalMutation({
 	args: applyInterpretationArgs,
 	handler: async (ctx, args): Promise<ApplyOutcome> => {
 		const lostAt = await leaseLostAt(ctx, args.source, args.leaseToken);
 		if (lostAt !== null) return { outcome: 'leaseLost', retryAt: lostAt };
 		const outcome = await applyLeased(ctx, args);
-		if (args.leaseToken !== undefined && outcome.outcome !== 'stale') {
+		if (args.leaseToken !== undefined && !CONTINUED_OUTCOMES.has(outcome.outcome)) {
 			await releaseLeaseIfHeld(ctx, args.source, args.leaseToken);
 		}
 		return outcome;

@@ -18,13 +18,47 @@ import { LEASE_MS } from '../lease';
 import { CATEGORY_SETTLE_MS } from '../eligibility';
 import { BUSY_RECHECK_MS, continuesLater } from '../../ai/needsReplyGates';
 import { modules, seedMailThread, type Test } from './interpret.testlib';
+import type * as RunApply from '../runApply';
 
-const llm = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
+const llm = vi.hoisted(() => ({
+	runLlmObject: vi.fn(),
+	/** Called before extraction `n` (1-based) answers. */
+	beforeExtraction: undefined as undefined | ((n: number) => Promise<void>),
+}));
 
 vi.mock('../../../lib/llm/dispatch', async () => {
 	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
 	return { runLlmObject: metered((opts: unknown) => llm.runLlmObject(opts)) };
 });
+/** Runs right after a run's lease claim returns, once (Sol fixes-r3 F1's interleaving). */
+const afterClaim = vi.hoisted(() => ({ hook: undefined as undefined | (() => Promise<void>) }));
+
+vi.mock('../runApply', async () => {
+	const actual = await vi.importActual<typeof RunApply>('../runApply');
+	const { getFunctionName } = await import('convex/server');
+	const withSourceLease: typeof actual.withSourceLease = (ctx, source, depth, body) =>
+		actual.withSourceLease(
+			{
+				runMutation: (async (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
+					const out = await (ctx.runMutation as (r: unknown, a: unknown) => Promise<unknown>)(
+						ref,
+						args
+					);
+					const hook = afterClaim.hook;
+					if (hook && getFunctionName(ref).includes('claimSourceLease')) {
+						afterClaim.hook = undefined;
+						await hook();
+					}
+					return out;
+				}) as typeof ctx.runMutation,
+			},
+			source,
+			depth,
+			body
+		);
+	return { ...actual, withSourceLease };
+});
+
 vi.mock('../../../lib/llmProvider', () => ({
 	resolveLanguageModel: vi.fn(async () => ({ modelId: 'stub-model' })),
 }));
@@ -66,12 +100,15 @@ const extractions = () =>
 	).length;
 
 beforeEach(() => {
+	afterClaim.hook = undefined;
+	llm.beforeExtraction = undefined;
 	llm.runLlmObject.mockReset();
 	llm.runLlmObject.mockImplementation(
 		async ({ schema, prompt }: { schema: unknown; prompt: string }) => {
 			// A model call takes a while: long enough for a second run to overlap.
 			await new Promise((resolve) => setTimeout(resolve, 20));
 			if (schema === briefModelSchema) {
+				await llm.beforeExtraction?.(extractions());
 				return { object: OUTPUT, tokenUsage: undefined, modelUsed: 'stub-model' };
 			}
 			const ids = [...prompt.matchAll(/CLAIM (\S+):/g)].map((m) => m[1]);
@@ -120,6 +157,102 @@ describe('per-source lease', () => {
 		const later = await t.action(internal.mail.interpret.run.interpretMessage, { source });
 		expect(later).toMatchObject({ status: 'complete', isReplayed: true });
 		expect(extractions()).toBe(1);
+	});
+
+	it('keeps the lease across a restart, so a run that starts meanwhile buys nothing', async () => {
+		const t = convexTest(schema, modules);
+		const { source, messageId } = await eligibleSource(t);
+		let overlapping: Awaited<ReturnType<typeof t.action>> | undefined;
+		llm.beforeExtraction = async (n) => {
+			// The body changes under the first read: its commit answers
+			// sourceChanged and the run starts over.
+			if (n === 1) {
+				await t.run((ctx) => ctx.db.patch(messageId, { textBodyInline: `${TEXT} Thanks!` }));
+			}
+			// While the restarted read is in flight, another run of the source starts.
+			if (n === 2) {
+				overlapping = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			}
+		};
+
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+
+		expect(overlapping).toMatchObject({ status: 'busy' });
+		expect(out).toMatchObject({ status: 'complete', isReplayed: false });
+		// The first read and the restarted one; the overlapping run bought none.
+		expect(extractions()).toBe(2);
+		expect(await leaseOf(t, messageId)).toEqual({ token: null, until: null });
+	});
+
+	it('refuses a commit whose lease was given up, even with nobody holding it now', async () => {
+		const t = convexTest(schema, modules);
+		const { source, messageId } = await eligibleSource(t);
+		llm.beforeExtraction = async () => {
+			// Another run took the source over and finished meanwhile.
+			await t.run(async (ctx) => {
+				const row = await ctx.db
+					.query('interpretSources')
+					.withIndex('by_source_key', (q) => q.eq('sourceKey', `mail:${messageId}`))
+					.first();
+				await ctx.db.patch(row!._id, { leaseToken: undefined, leaseUntil: undefined });
+			});
+		};
+
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+
+		expect(out.status).toBe('busy');
+		const rows = await t.run((ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows).toEqual([]);
+	});
+
+	it('a snapshot captured between a run’s claim and its read buys one extraction', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai']);
+		const { messageId } = await seedMailThread(t, { text: TEXT });
+		const source = { kind: 'mail' as const, id: messageId };
+		let competitor: Promise<unknown> | undefined;
+		// The run claims while the source has no snapshot; delivery captures it
+		// right after and starts the run that reads it (Sol fixes-r3 F1).
+		afterClaim.hook = async () => {
+			await t.run((ctx) => captureInterpretSource(ctx, { source, isLive: true }));
+			competitor = t.action(internal.mail.interpret.run.interpretMessage, { source });
+		};
+
+		const first = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		const second = await competitor;
+
+		expect(first).toEqual({
+			status: 'skipped',
+			isReplayed: false,
+			createdItemIds: [],
+			errorCode: 'no_snapshot',
+		});
+		expect(second).toMatchObject({ status: 'complete', isReplayed: false });
+		expect(extractions()).toBe(1);
+		const rows = await t.run((ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows).toHaveLength(1);
+	});
+
+	it('refuses a tokenless commit for a source with a snapshot row', async () => {
+		const t = convexTest(schema, modules);
+		const { source, messageId, threadId } = await eligibleSource(t);
+		const out = await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+			source,
+			threadRef: { kind: 'mail', id: threadId },
+			mode: 'brief',
+			contentRevision: 'r1',
+			extractorVersion: 1,
+			expectedRevision: 0,
+			deletionEpoch: 0,
+			sourceAt: Date.now(),
+			direction: 'inbound',
+			status: 'skipped',
+			skipReason: 'ineligible',
+		});
+		expect(out).toMatchObject({ outcome: 'leaseLost' });
+		expect((await leaseOf(t, messageId)).token).toBeNull();
+		const rows = await t.run((ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows).toEqual([]);
 	});
 
 	it('claims by compare-and-set: busy while held, free again once released or expired', async () => {

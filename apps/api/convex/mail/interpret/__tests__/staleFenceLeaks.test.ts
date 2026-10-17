@@ -22,6 +22,7 @@ import { captureInterpretSource } from '../sources';
 import { fenceThreadInterpretation } from '../staleFence';
 import { sourceVersionOf } from '../sourceVersion';
 import { modules, reduceResult, seedMailThread, type Test } from './interpret.testlib';
+import { applyAsRun } from './lease.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
@@ -52,7 +53,7 @@ async function seedThread(t: Test) {
 	const { mailboxId, messageId, threadId } = await seedMailThread(t);
 	const source = { kind: 'mail' as const, id: messageId };
 	await t.run((ctx) => captureInterpretSource(ctx, { source, isLive: true }));
-	await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
+	await applyAsRun(t, {
 		source,
 		threadRef: { kind: 'mail', id: threadId },
 		mode: 'brief',
