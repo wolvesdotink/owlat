@@ -96,8 +96,8 @@ describe('PostboxSenderRow', () => {
 		const suggestion = w.get('[data-testid="sender-keep-as-is"]').element.parentElement!;
 		expect(suggestion.className).toContain('order-last');
 		expect(suggestion.className).toContain('md:order-none');
-		expect(mountRow({ delivered: 1, opened: 1 }).get('[data-testid="sender-phone-stats"]').text()).toBe(
-			'1 mail · read 100%'
-		);
+		expect(
+			mountRow({ delivered: 1, opened: 1 }).get('[data-testid="sender-phone-stats"]').text()
+		).toBe('1 mail · read 100%');
 	});
 });

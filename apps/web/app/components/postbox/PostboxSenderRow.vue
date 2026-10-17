@@ -82,7 +82,10 @@ function onStatus(value: string) {
 					{{ t('postbox.senders.keepAsIs') }}
 				</button>
 			</p>
-			<p v-if="resultKey" class="order-last md:order-none w-full text-xs text-text-secondary md:mt-0.5">
+			<p
+				v-if="resultKey"
+				class="order-last md:order-none w-full text-xs text-text-secondary md:mt-0.5"
+			>
 				{{ t(resultKey) }}
 			</p>
 			<p
@@ -131,7 +134,9 @@ function onStatus(value: string) {
 		<td class="md:py-3 md:pr-3 text-xs md:text-sm text-text-secondary">
 			{{ row.kind ? t(`postbox.senders.kind.${row.kind}`) : t('postbox.senders.kind.unknown') }}
 		</td>
-		<td class="w-full max-w-full overflow-x-auto max-md:mt-1 md:w-auto md:max-w-none md:overflow-visible md:py-3">
+		<td
+			class="w-full max-w-full overflow-x-auto max-md:mt-1 md:w-auto md:max-w-none md:overflow-visible md:py-3"
+		>
 			<UiSegmentedControl
 				:model-value="row.status"
 				:options="options"
