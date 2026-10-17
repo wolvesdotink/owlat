@@ -6,13 +6,13 @@
  * worker forwards is stored on the row.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
-import { describe, expect, it } from 'vitest';
+import type { TestConvex } from 'convex-test';
+import { afterEach, describe, expect, it } from 'vitest';
 import { aiTextToHtml } from '@owlat/shared/answerMode';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
-import { modules } from './helpers.testlib';
+import { liveMailTest } from './helpers.testlib';
 
 const OWNER = 'me@gmail.example';
 const SENDER = 'sam@acme.test';
@@ -20,6 +20,23 @@ const T0 = 1_700_000_000_000;
 const AI_TEXT = 'Hi Sam,\n\nFriday works.';
 
 type T = TestConvex<typeof schema>;
+
+let current: T | undefined;
+
+/**
+ * A live-mail deployment whose scheduled work (the reply classifier, the
+ * arrival read) is drained before the test ends: a job left running would
+ * otherwise outlive its test on a loaded host.
+ */
+function harness(): T {
+	current = liveMailTest();
+	return current;
+}
+
+afterEach(async () => {
+	await current?.finishAllScheduledFunctions(() => {});
+	current = undefined;
+});
 
 interface Seeded {
 	accountId: Id<'externalMailAccounts'>;
@@ -199,7 +216,7 @@ async function appendReply(t: T, s: Seeded, headerBlock: string): Promise<void> 
 
 describe('our reply synced through ingest', () => {
 	it('removes the untouched AI draft for the answered mail', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const s = await seedAccount(t);
 		const { draftId } = await askWithAiDraft(t, s);
 
@@ -216,7 +233,7 @@ describe('our reply synced through ingest', () => {
 	});
 
 	it('keeps it for a vacation auto-reply (Auto-Submitted: auto-replied)', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const s = await seedAccount(t);
 		const { draftId } = await askWithAiDraft(t, s);
 
@@ -234,7 +251,7 @@ describe('our reply synced through ingest', () => {
 	});
 
 	it('keeps it for an unsent \\Draft kept in a custom folder, and stores the flag', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const s = await seedAccount(t);
 		const { draftId, threadId } = await askWithAiDraft(t, s);
 
@@ -263,7 +280,7 @@ describe('our reply synced through ingest', () => {
 
 describe('our reply filed through IMAP APPEND', () => {
 	it('hides the untouched AI draft for the answered mail', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const s = await seedAccount(t);
 		const { draftId } = await askWithAiDraft(t, s);
 
@@ -273,7 +290,7 @@ describe('our reply filed through IMAP APPEND', () => {
 	});
 
 	it('keeps it for a vacation auto-reply (Auto-Submitted: auto-replied)', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 		const s = await seedAccount(t);
 		const { draftId } = await askWithAiDraft(t, s);
 

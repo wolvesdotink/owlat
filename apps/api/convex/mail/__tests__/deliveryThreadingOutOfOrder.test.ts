@@ -12,13 +12,13 @@
  * client's Sent copy of a reply joins the conversation it answers.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { insertDeliveredMessage } from '../deliveryPipeline/insert';
-import { modules, seedMailbox, seedFolder } from './helpers.testlib';
+import { seedMailbox, seedFolder, liveMailTest } from './helpers.testlib';
 
 const ME = 'me@owlat.test';
 const ALICE = 'alice@example.com';
@@ -36,7 +36,7 @@ interface Delivered {
 }
 
 async function setup(): Promise<{ t: TestConvex<typeof schema>; mailboxId: Id<'mailboxes'> }> {
-	const t = convexTest(schema, modules);
+	const t = liveMailTest();
 	const mailboxId = await seedMailbox(t, { address: ME, domain: 'owlat.test' });
 	await seedFolder(t, mailboxId, 'inbox');
 	await seedFolder(t, mailboxId, 'sent');

@@ -14,12 +14,12 @@
  * a history backfill clear nothing.
  */
 
-import { convexTest, type TestConvex } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
-import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
+import { seedFolder, seedMailbox, seedMessage, liveMailTest } from './helpers.testlib';
 
 const OWNER = 'me@gmail.example';
 const CORRESPONDENT = 'sam@acme.test';
@@ -164,7 +164,7 @@ async function withHeldScheduler(body: () => Promise<void>): Promise<void> {
 
 describe('external IMAP sync clears reply watches', () => {
 	it("a correspondent's reply synced by forward sync clears the follow-up and the snooze", async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedWatchedThread(t, 'external');
 
 		await withHeldScheduler(async () => {
@@ -180,7 +180,7 @@ describe('external IMAP sync clears reply watches', () => {
 	});
 
 	it("the owner's own Sent copy, synced from the provider, leaves both watches armed", async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedWatchedThread(t, 'external');
 
 		await withHeldScheduler(async () => {
@@ -200,7 +200,7 @@ describe('external IMAP sync clears reply watches', () => {
 	});
 
 	it('the owner writing from another client into the inbox is still not a reply', async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedWatchedThread(t, 'external');
 
 		await withHeldScheduler(async () => {
@@ -214,7 +214,7 @@ describe('external IMAP sync clears reply watches', () => {
 
 	it('a history backfill (or an older worker with no origin) clears nothing', async () => {
 		for (const origin of ['backfill', undefined] as const) {
-			const t = convexTest(schema, modules);
+			const t = liveMailTest();
 			const seeded = await seedWatchedThread(t, 'external');
 
 			await withHeldScheduler(async () => {
@@ -250,7 +250,7 @@ describe('hosted MX delivery clears reply watches', () => {
 	}
 
 	it("a correspondent's reply clears the follow-up and the snooze", async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedWatchedThread(t, 'hosted');
 
 		await withHeldScheduler(async () => {
@@ -264,7 +264,7 @@ describe('hosted MX delivery clears reply watches', () => {
 	});
 
 	it("a copy of the owner's own mail delivered back to them is not a reply", async () => {
-		const t = convexTest(schema, modules);
+		const t = liveMailTest();
 		const seeded = await seedWatchedThread(t, 'hosted');
 
 		await withHeldScheduler(async () => {
