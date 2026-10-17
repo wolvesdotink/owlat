@@ -153,5 +153,8 @@ describe('PostboxThreadRowBody in All mail', () => {
 			expect(off.find('[data-testid="row-gist-line"]').exists()).toBe(false);
 			expect(off.text()).toContain('raw snippet');
 		}
+		// A shared mailbox's action line is the team's, not the viewer's brief.
+		const shared = mountRow({ briefTop: { ...ask, mode: 'actions' } }, { briefShown: false });
+		expect(shared.text()).toContain('Send the signed quote');
 	});
 });

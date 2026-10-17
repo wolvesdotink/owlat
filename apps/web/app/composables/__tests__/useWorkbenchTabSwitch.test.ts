@@ -17,6 +17,8 @@ interface QueryHandle {
 }
 
 let queries: QueryHandle[] = [];
+// The viewer's "Show the brief above conversations".
+const isBriefShown = ref(true);
 let scope: ReturnType<typeof effectScope>;
 
 /** The live handle whose current args match, newest first. */
@@ -70,6 +72,7 @@ beforeEach(() => {
 	vi.stubGlobal('useI18n', () => ({ t: (key: string) => key, locale: ref('en') }));
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
 	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(false) }));
+	vi.stubGlobal('usePostboxSettings', () => ({ autoSummarize: isBriefShown }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn() }));
 	vi.stubGlobal('requireConvex', () => ({ action: vi.fn() }));
 });
@@ -90,6 +93,7 @@ function watchArgs(handle: QueryHandle) {
 
 afterEach(() => {
 	scope.stop();
+	isBriefShown.value = true;
 });
 
 /** The unscoped state read: hide list plus every tab's watermark. */
@@ -190,5 +194,37 @@ describe('useWorkbench queries', () => {
 		// Identical args, so the subscription registry shares one subscription;
 		// no per-mount `now` and no scope that would key a second one.
 		expect(stateArgs).toEqual([{}, {}]);
+	});
+});
+
+describe('useWorkbench with the brief turned off', () => {
+	it('builds mail lines from subjects, never the AI summary', async () => {
+		isBriefShown.value = false;
+		const tab = ref<string | null>('mailbox-a');
+		const workbench = scope.run(() => useWorkbench(tab as Ref<never>))!;
+		deliver(handleFor(isStateRead), state([{ scope: 'mailbox-a', seenAt: 100 }]));
+		await nextTick();
+		deliver(
+			handleFor((a) => a['mailboxId'] === 'mailbox-a'),
+			{
+				...digest('mailbox-a', 1),
+				arrived: [
+					{
+						threadId: 't1',
+						mailboxId: 'mailbox-a',
+						subject: 'Files',
+						snippet: '',
+						summary: 'Harbor sent the files.',
+						category: 'person',
+						lastMessageAt: 3,
+						sources: [],
+					},
+				],
+			}
+		);
+		await nextTick();
+		expect(workbench.model.value.worth.map((l) => [l.text, l.isSummary])).toEqual([
+			['Files', false],
+		]);
 	});
 });

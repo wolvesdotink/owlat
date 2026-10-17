@@ -88,8 +88,12 @@ const trustMarkerLabel = computed(() => {
 	return `${t(marker.label)} — ${markerText(marker.title)}`;
 });
 
-// The viewer's "Show the brief above conversations": off, no AI line on any row.
-const isBriefShown = useBriefLinesShown();
+// The viewer's "Show the brief above conversations": off, no line from their
+// personal brief on any row. A shared mailbox's actions are the team's and stay.
+const isBriefPreferred = useBriefLinesShown();
+const isBriefShown = computed(
+	() => isBriefPreferred.value || props.msg.briefTop?.mode === 'actions'
+);
 /** The top open item instead of the snippet, once the thread is interpreted (SPEC §7). */
 const briefLine = computed(() =>
 	isBriefShown.value ? briefRowLine(props.msg.briefTop, locale.value) : null

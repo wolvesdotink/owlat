@@ -181,14 +181,17 @@ export function replyQueueHeadline(
 			? { key: 'shared.postboxReplyQueue.waitingOn', params: { who } }
 			: 'shared.postboxReplyQueue.waitingOnReply';
 	}
-	// The viewer turned the brief off: no AI line, the subject.
-	if (opts.showBrief === false) return item.subject.trim() || 'shared.postboxReplyQueue.noSubject';
+	const isShared = opts.isShared === true || item.briefTop?.mode === 'actions';
+	// The viewer turned their (personal) brief off: no AI line, the subject. A
+	// shared mailbox's actions are the team's, not the brief, and stay.
+	if (opts.showBrief === false && !isShared) {
+		return item.subject.trim() || 'shared.postboxReplyQueue.noSubject';
+	}
 	const top = item.briefTop?.top;
 	if (top && top.responsibility !== 'them') {
 		const text = (locale?.toLowerCase().startsWith('de') ? top.text.de : top.text.en).trim();
 		if (text) return text;
 	}
-	const isShared = opts.isShared === true || item.briefTop?.mode === 'actions';
 	const ask = isShared ? undefined : item.askSummary?.trim();
 	if (ask) return ask;
 	return item.subject.trim() || 'shared.postboxReplyQueue.noSubject';

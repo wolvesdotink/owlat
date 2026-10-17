@@ -73,7 +73,7 @@ function rowTitle(item: AnswerItem): string {
 		return text(
 			replyQueueHeadline(item.row, locale.value, {
 				isShared: isSharedRow(item),
-				showBrief: autoSummarize.value,
+				showBrief: autoSummarize.value || isSharedRow(item),
 			})
 		);
 	}
@@ -121,7 +121,7 @@ function rowMore(item: AnswerItem): string {
 		const chip = briefMoreChip(team.count);
 		return chip ? t(chip.key, { count: chip.count }) : '';
 	}
-	if (item.source !== 'mail' || !autoSummarize.value) return '';
+	if (item.source !== 'mail' || (!autoSummarize.value && !isSharedRow(item))) return '';
 	const top = item.row.briefTop;
 	if (!top?.top || top.top.bucket === 'waitingOnOthers' || top.top.responsibility === 'them') {
 		return '';

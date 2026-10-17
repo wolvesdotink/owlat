@@ -198,7 +198,15 @@ export function buildTodayModel(input: {
 	teamUpdates: ReadonlyArray<TeamUpdate>;
 	teamCounts: TeamUpdateCounts | null;
 	since: number;
+	/**
+	 * The viewer's "Show the brief above conversations" (`isAutoSummarizeOn`).
+	 * Off, no mail line carries an AI sentence: a changed thread says who wrote
+	 * and quotes the new mail, an update is its sender and subject. Absent = on.
+	 * Team-inbox lines never carry one (D7) and are unaffected.
+	 */
+	isBriefShown?: boolean;
 }): TodayModel {
+	const showsSummary = input.isBriefShown !== false;
 	const filed: Record<FiledCategory, number> = {
 		newsletter: 0,
 		notification: 0,
@@ -237,7 +245,7 @@ export function buildTodayModel(input: {
 				subject: c.subject,
 				inboxId: c.mailboxId,
 				newMessages: c.newMessages,
-				summary: c.summary,
+				summary: showsSummary ? c.summary : null,
 				latest: sources[0] ?? null,
 				sources,
 				at: c.lastMessageAt,
@@ -249,8 +257,8 @@ export function buildTodayModel(input: {
 			const line: TodayLine = {
 				key: `mail:${a.threadId}`,
 				lead: first ? senderName(first.fromName, first.fromAddress) : '',
-				text: a.summary ?? a.subject,
-				isSummary: a.summary !== null,
+				text: (showsSummary ? a.summary : null) ?? a.subject,
+				isSummary: showsSummary && a.summary !== null,
 				sources,
 				inboxId: a.mailboxId,
 				reason: a.reason ?? null,

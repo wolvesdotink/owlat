@@ -167,8 +167,9 @@ export function priorityRowLine(
 	const gistText = rowGistOf(row.briefTop);
 	const gist = gistText ? { text: gistText, source: 'gist' as const } : null;
 	const subject = { text: row.subject.trim(), source: 'subject' as const };
+	// Off gates the personal brief only; a shared mailbox's actions stay.
 	const picked =
-		opts.showBrief === false
+		opts.showBrief === false && row.briefTop?.mode !== 'actions'
 			? subject
 			: ((group === 'needsMe' ? (ask ?? lead) : (lead ?? ask)) ?? gist ?? subject);
 
