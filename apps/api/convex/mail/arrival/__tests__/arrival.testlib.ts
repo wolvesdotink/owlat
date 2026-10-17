@@ -70,6 +70,7 @@ export async function seedArrivalRows(
 		threadId,
 		messageId,
 		sourceKey: `mail:${messageId}`,
+		sourceOrderKey: 'k1',
 		depth: 'count',
 		category: 'newsletter',
 		categorySource: 'heuristic',

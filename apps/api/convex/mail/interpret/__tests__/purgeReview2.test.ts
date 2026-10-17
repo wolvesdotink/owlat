@@ -128,8 +128,10 @@ describe('F2: sub-range progress is kept across slices', () => {
 			() => unitBudget(CONTINUATION_UNITS, CONTINUATION_BYTES)
 		);
 
-		// ~2,800 sub-range queries: two continuation slices, not a restart loop.
-		expect(slices).toBeLessThanOrEqual(3);
+		// ~3,400 sub-range queries (read on arrival adds three per purged message,
+		// mail/arrival/purgeRanges.ts): a few continuation slices of at most
+		// MAX_RANGE_READS each, not a restart loop.
+		expect(slices).toBeLessThanOrEqual(4);
 		expect(await t.run((ctx) => ctx.db.query('messageInterpretations').collect())).toHaveLength(0);
 	});
 });

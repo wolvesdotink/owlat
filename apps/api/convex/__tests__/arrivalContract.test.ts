@@ -54,6 +54,7 @@ function indexesOf(table: TableName): Record<string, string[]> {
 const EXPECTED_INDEXES: [TableName, string, string[]][] = [
 	['mailArrivalRecords', 'by_message', ['messageId']],
 	['mailArrivalRecords', 'by_thread_created', ['threadId', 'createdAt']],
+	['mailArrivalRecords', 'by_thread_source_order', ['threadId', 'sourceOrderKey']],
 	['mailArrivalRecords', 'by_mailbox', ['mailboxId']],
 	['mailArrivalRecords', 'by_expires', ['expiresAt']],
 	['mailSenderProfiles', 'by_mailbox_sender', ['mailboxId', 'senderDigest']],

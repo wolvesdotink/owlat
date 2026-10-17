@@ -44,13 +44,15 @@ export type MailArrivalTable = (typeof MAIL_ARRIVAL_TABLES)[number];
  *
  * Every row is mailbox-scoped and inherits the mailbox's read permission.
  *
- * ERASURE (SPEC §0): member erasure and the organization wipe delete every row
- * with its mailbox (`auth/erasure/arrivalPhases.ts`, the wipe steps). Purging a
- * message deletes its arrival record, delayed actions and the change rows that
- * name it, and drops its lines from unsent digests (`mail/arrival/purge.ts`,
- * called from `deleteMessageRowAndBlobs`). A mailbox that becomes a team inbox
- * loses its threads' records and projections (`scopeChange.ts`). Every row
- * except the sender profile carries `expiresAt` (`maintenance/retention.ts`).
+ * ERASURE (SPEC §0): member erasure, an external mailbox's teardown and the
+ * organization wipe delete every row with its mailbox
+ * (`mail/arrival/mailboxRows.ts`, the wipe steps). Purging a message deletes
+ * its arrival record, delayed actions and the change rows that name it, drops
+ * its lines from unsent digests and clears a gist read from it: ranges of the
+ * resumable `sources` purge job (`mail/arrival/purgeRanges.ts`). A mailbox that
+ * becomes a team inbox loses all of it (`mail/arrival/sharedConversion.ts`).
+ * Every row except the sender profile carries `expiresAt`
+ * (`maintenance/retention.ts`).
  *
  * Spread into `mailTables` from schema/mail.ts.
  */
@@ -63,6 +65,10 @@ export const mailArrivalTables = {
 		threadId: v.id('mailThreads'),
 		messageId: v.id('mailMessages'),
 		sourceKey: v.string(),
+		// The message's place in its thread (the interpret source's
+		// `sourceOrderKey`, mail/interpret/sourceOrder.ts). Records are
+		// inbound-only, so the thread's newest inbound record is one indexed read.
+		sourceOrderKey: v.optional(v.string()),
 		depth: v.optional(depthValidator),
 		category: v.optional(mailCategoryLabelValidator),
 		categorySource: v.optional(mailCategorySourceValidator),
@@ -85,6 +91,8 @@ export const mailArrivalTables = {
 	})
 		.index('by_message', ['messageId'])
 		.index('by_thread_created', ['threadId', 'createdAt'])
+		// §2.8 projection: `.order('desc').first()` is the newest inbound message.
+		.index('by_thread_source_order', ['threadId', 'sourceOrderKey'])
 		// Mailbox erasure.
 		.index('by_mailbox', ['mailboxId'])
 		.index('by_expires', ['expiresAt']),

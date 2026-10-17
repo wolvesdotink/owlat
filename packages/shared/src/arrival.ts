@@ -207,8 +207,13 @@ export interface SenderDraftPauseValue {
 /**
  * One changed entity of an operation (`mailArrivalOperationChanges.change`).
  * Ids are strings here; the API's validator types them. Undo restores a row
- * only when the entity still equals `after` (and, except for `messageFolder`,
- * its last-operation id still names this operation).
+ * only when the entity still equals `after` (SPEC §4.4). The message-level
+ * kinds (`messageFolder`, `messageRead`, `messageLabel`, `messageFlag`,
+ * `messageSection`) check that value only: messages carry no operation marker.
+ * Every other kind also requires its entity's last-operation id to still name
+ * this operation (`mailArrivalRecords.lastOperationId` for
+ * `recordRulePlacement`, `mailThreads.lastArrivalOperationId`,
+ * `mailSenderProfiles.lastOperationId`).
  */
 export type ArrivalOperationChange =
 	| { kind: 'messageFolder'; messageId: string; before: string; after: string }
