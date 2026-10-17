@@ -31,10 +31,10 @@ const modules = {
 
 it('lands every blob of a parallel store', async () => {
 	const t = convexTest(schema, modules);
-	const statuses = await t.action(
-		makeFunctionReference<'action'>('storageSeamProbe:storeInParallel') as never,
-		{}
+	const probe = makeFunctionReference<'action', Record<string, never>, string[]>(
+		'storageSeamProbe:storeInParallel'
 	);
+	const statuses = await t.action(probe, {});
 	expect(statuses).toEqual(['fulfilled', 'fulfilled']);
 	expect(await t.run((ctx) => ctx.db.system.query('_storage').collect())).toHaveLength(2);
 });
