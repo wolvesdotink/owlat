@@ -186,7 +186,7 @@ describe('D10: display-only interpretation is deferred', () => {
 			runs: 1,
 		});
 		const { runs, snapshot, brief } = await state(t, message);
-		expect(runs).toEqual([{ source: { kind: 'mail', id: message._id } }]);
+		expect(runs).toEqual([{ source: { kind: 'mail', id: message._id }, depth: 'full' }]);
 		expect(snapshot).toMatchObject({ isOutstanding: true });
 		expect(snapshot?.isDeferred).toBeUndefined();
 		expect(brief?.deferredSources).toBeUndefined();
@@ -240,7 +240,7 @@ describe('D10: display-only interpretation is deferred', () => {
 		// The newest runs (and reads the older one first, in its run); the older
 		// one stays deferred until that run takes it.
 		const { runs } = await state(t, second);
-		expect(runs).toEqual([{ source: { kind: 'mail', id: second._id } }]);
+		expect(runs).toEqual([{ source: { kind: 'mail', id: second._id }, depth: 'full' }]);
 		expect((await state(t, second)).snapshot).toMatchObject({ isOutstanding: true });
 		expect((await state(t, first)).snapshot?.isDeferred).toBe(true);
 		// A second open while that run is in flight starts no second reader.

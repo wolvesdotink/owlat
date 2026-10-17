@@ -59,6 +59,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
 import { requireThreadReader } from './threadAccess';
 import { isHistoryRunning } from './backfillSources';
+import { openGist } from './gistState';
 
 // public: soft-auth — returns null for anonymous callers and for anyone the
 // thread's reader rule refuses (mailbox access, or the shared-inbox reader gate).
@@ -199,6 +200,8 @@ export const get = publicQuery({
 					}
 				: {}),
 			...(brief?.deferredSources ? { deferredSources: brief.deferredSources } : {}),
+			// Read on arrival: the gist (the fenced branch above never shows it).
+			...(mode === 'brief' && brief?.gist ? { gist: await openGist(ctx, brief.gist) } : {}),
 			isNoReplyNeeded: checkpointResult
 				? !isReplyExpectingIntent(checkpointResult.replyIntent as ReplyIntent)
 				: false,

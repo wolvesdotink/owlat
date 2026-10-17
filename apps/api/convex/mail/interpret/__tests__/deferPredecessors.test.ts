@@ -370,6 +370,7 @@ describe('D10: the predecessor loop is bounded and crash-safe (Sol r3)', () => {
 			vi.useRealTimers();
 		}
 		const t2 = convexTest(schema, modules);
+		rateLimiterTest.register(t2);
 		await enableFeatures(t2, ['ai']);
 		const chain = await seedChain(t2);
 		await t2.action(internal.mail.interpret.run.interpretMessage, { source: chain.eager });

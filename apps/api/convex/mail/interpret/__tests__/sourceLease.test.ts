@@ -211,6 +211,7 @@ describe('per-source lease', () => {
 
 	it('a snapshot captured between a run’s claim and its read buys one extraction', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedMailThread(t, { text: TEXT });
 		const source = { kind: 'mail' as const, id: messageId };
@@ -239,6 +240,7 @@ describe('per-source lease', () => {
 
 	it('refuses a tokenless commit for a source with a snapshot row', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { source, messageId, threadId } = await eligibleSource(t);
 		const out = await t.mutation(internal.mail.interpret.reduce.applyInterpretation, {
 			source,

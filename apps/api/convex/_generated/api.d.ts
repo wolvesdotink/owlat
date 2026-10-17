@@ -1794,6 +1794,7 @@ import type * as mail_interpret_arrivalDecide from '../mail/interpret/arrivalDec
 import type * as mail_interpret_arrivalRun from '../mail/interpret/arrivalRun.js';
 import type * as mail_interpret_gist from '../mail/interpret/gist.js';
 import type * as mail_interpret_gistCommit from '../mail/interpret/gistCommit.js';
+import type * as mail_arrival_autoBackfill from '../mail/arrival/autoBackfill.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3584,6 +3585,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/arrivalRun': typeof mail_interpret_arrivalRun;
 	'mail/interpret/gist': typeof mail_interpret_gist;
 	'mail/interpret/gistCommit': typeof mail_interpret_gistCommit;
+	'mail/arrival/autoBackfill': typeof mail_arrival_autoBackfill;
 }>;
 
 /**

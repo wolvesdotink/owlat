@@ -134,6 +134,10 @@ export const decideArrivalDepth = internalMutation({
 		}
 		const isDisplayOnly = await isDisplayOnlyInterpretation(ctx, message);
 		if (!isDisplayOnly) return admitEager(ctx, row, message, mailbox.userId);
+		// Row 3, the preference off: D10 deferred at dispatch, and a run that
+		// reaches this source anyway reads it in full exactly as today.
+		const isReadOnArrival = await isReadOnArrivalOn(ctx, mailbox.userId);
+		if (!isReadOnArrival) return { kind: 'full', isDisplayOnly: false };
 
 		const now = Date.now();
 		const reasons: ReasonKey[] = [];
@@ -153,7 +157,7 @@ export const decideArrivalDepth = internalMutation({
 		const record = await loadArrivalRecord(ctx, message._id);
 		const placementOverride = thread.placementOverride?.placement ?? profile?.placementOverride;
 		const input = {
-			isReadOnArrival: await isReadOnArrivalOn(ctx, mailbox.userId),
+			isReadOnArrival,
 			isAiOn: await isFeatureEnabled(ctx, 'ai'),
 			isEligible: true, // the run already recorded an ineligible source's skip
 			isDisplayOnly,
@@ -167,8 +171,7 @@ export const decideArrivalDepth = internalMutation({
 			budget: 'normal' as const,
 		};
 		const first = chooseArrivalDepth(input);
-		// Row 3 (the preference off): D10 deferred at dispatch; a run reads in full.
-		if (first.depth === 'deferred') return { kind: 'full', isDisplayOnly: false };
+		if (first.depth === 'deferred') return { kind: 'full', isDisplayOnly: false }; // see above
 		let choice: ArrivalDepthChoice & { depth: Depth } = { ...first, depth: first.depth };
 		let degradedBy: DegradedBy | undefined;
 		if (choice.depth === 'full' || choice.depth === 'gist') {

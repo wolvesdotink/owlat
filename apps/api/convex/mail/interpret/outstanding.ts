@@ -201,7 +201,7 @@ export async function settleArrivalSource(
 		...NOT_DEFERRED,
 		depth: settlement.depth,
 		readOutcome: settlement.readOutcome,
-		isUpgradeable: settlement.isUpgradeable ? true : false,
+		isUpgradeable: settlement.isUpgradeable,
 		skipReason: settlement.skipReason,
 		categoryPendingAt: undefined,
 		leaseToken: undefined,
