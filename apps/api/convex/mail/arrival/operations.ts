@@ -11,8 +11,8 @@
  *
  * Each page also cancels the pending delayed actions the operation created
  * (`createdByOperationId`) for the messages it names, and recomputes the
- * projections it touched; a restored sender is re-sorted in its own scheduled
- * mutation ({@link resortSender}), one bounded page each.
+ * projections it touched, a restored sender's newest ≤200 Inbox threads
+ * included, in the same mutation (pages that name senders are smaller).
  *
  * Not restored: a reply reminder an archive cleared (`moveMessagesToFolder`
  * clears it). The result says so (`isNeedsReplyCleared`), from the rows'
@@ -42,6 +42,9 @@ type Operation = Doc<'mailArrivalOperations'>;
 
 /** Change rows one undo mutation restores. */
 export const UNDO_PAGE = 100;
+
+/** Change rows a page reads while sender rows (each one a re-sort) are in reach. */
+export const SENDER_UNDO_PAGE = 10;
 
 /**
  * Further change rows the first page looks through for an `isNeedsReplyCleared`
@@ -109,21 +112,42 @@ async function applyBatch(ctx: MutationCtx, operation: Operation, batch: UndoBat
 	}
 	await cancelDelayedActions(ctx, operation, batch.messages);
 	for (const threadId of batch.threads) await refreshArrivalProjection(ctx, threadId);
+	// A restored sender is re-sorted here, in the mutation that restored it (§2.8):
+	// one bounded page of its newest Inbox messages each.
 	for (const profileId of batch.senders) {
-		await ctx.scheduler.runAfter(0, internal.mail.arrival.operations.resortSender, { profileId });
+		const profile = await ctx.db.get(profileId);
+		if (profile && (await isPersonalMailboxId(ctx, profile.mailboxId))) {
+			await resortSenderThreads(ctx, profile);
+		}
 	}
+}
+
+/**
+ * Rows the next page reads. A sender re-sort reads up to 200 messages and
+ * their threads, so a page that names senders stays small; message-level
+ * pages take the full {@link UNDO_PAGE}. A suggestions operation leads with
+ * its (≤50) sender rows, so its first page starts small.
+ */
+function pageSizeAfter(page: readonly Doc<'mailArrivalOperationChanges'>[]): number {
+	return page.some((row) => isSenderChange(row)) ? SENDER_UNDO_PAGE : UNDO_PAGE;
+}
+
+function isSenderChange(row: Doc<'mailArrivalOperationChanges'>): boolean {
+	const kind = row.change.kind;
+	return kind === 'senderStatus' || kind === 'senderPlacementOverride';
 }
 
 /** Restore one page of the operation's change rows; schedule the next page. */
 async function runPage(
 	ctx: MutationCtx,
 	operation: Operation,
-	cursor: string | null
+	cursor: string | null,
+	numItems: number
 ): Promise<Omit<UndoResult, 'status' | 'kind'>> {
 	const page = await ctx.db
 		.query('mailArrivalOperationChanges')
 		.withIndex('by_operation', (q) => q.eq('operationId', operation._id))
-		.paginate({ cursor, numItems: UNDO_PAGE });
+		.paginate({ cursor, numItems });
 	const batch = newUndoBatch();
 	if (cursor === null && operation.messageId) batch.messages.add(operation.messageId);
 	let restored = 0;
@@ -140,6 +164,7 @@ async function runPage(
 		await ctx.scheduler.runAfter(0, internal.mail.arrival.operations.undoPage, {
 			operationId: operation._id,
 			cursor: page.continueCursor,
+			numItems: pageSizeAfter(page.page),
 		});
 	}
 	return {
@@ -177,7 +202,8 @@ export const undo = postboxMutation({
 			return { ...none, status: 'expired', isNeedsReplyCleared: false };
 		await ctx.db.patch(operation._id, { status: 'undone', undoneAt: now });
 		const marked = { ...operation, status: 'undone' as const };
-		const page = await runPage(ctx, marked, null);
+		const firstPage = operation.kind === 'suggestions' ? SENDER_UNDO_PAGE : UNDO_PAGE;
+		const page = await runPage(ctx, marked, null, firstPage);
 		const isNeedsReplyCleared =
 			page.isNeedsReplyCleared || (page.hasMore && (await hasClearedReplyLater(ctx, marked)));
 		const status =
@@ -188,20 +214,15 @@ export const undo = postboxMutation({
 
 /** The next page of an undo the public mutation started (after its access check). */
 export const undoPage = internalMutation({
-	args: { operationId: v.id('mailArrivalOperations'), cursor: v.string() },
+	args: {
+		operationId: v.id('mailArrivalOperations'),
+		cursor: v.string(),
+		numItems: v.optional(v.number()),
+	},
 	handler: async (ctx, args): Promise<void> => {
 		const operation = await ctx.db.get(args.operationId);
 		if (!operation || operation.status === 'applied') return;
-		await runPage(ctx, operation, args.cursor);
-	},
-});
-
-/** Re-sort a sender after its status or override was restored. */
-export const resortSender = internalMutation({
-	args: { profileId: v.id('mailSenderProfiles') },
-	handler: async (ctx, args): Promise<void> => {
-		const profile = await ctx.db.get(args.profileId);
-		if (!profile || !(await isPersonalMailboxId(ctx, profile.mailboxId))) return;
-		await resortSenderThreads(ctx, profile);
+		const numItems = Math.min(Math.max(1, args.numItems ?? UNDO_PAGE), UNDO_PAGE);
+		await runPage(ctx, operation, args.cursor, numItems);
 	},
 });

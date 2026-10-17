@@ -67,6 +67,26 @@ describe('operations.undo', () => {
 		expect((await undo(t, fix.operationId!)).status).toBe('not_applied');
 	});
 
+	it('re-sorts a restored sender in the same mutation, before anything scheduled runs', async () => {
+		vi.useFakeTimers();
+		const t = learnTest();
+		await seedPersonalMailbox(t);
+		const first = await deliverLive(t);
+		const other = await deliverLive(t, { subject: 'Winter catalogue', id: 'winter' });
+		expect(other.thread._id).not.toBe(first.thread._id);
+		const before = (await threadOf(t, other.thread._id)).arrival?.placement;
+		expect(before).not.toBe('needs_me');
+		const fix = await t.mutation(api.mail.arrival.fix.apply, {
+			messageId: first.message._id,
+			destination: 'needs_me',
+			scope: 'sender',
+		});
+		expect((await threadOf(t, other.thread._id)).arrival?.placement).toBe('needs_me');
+		await undo(t, fix.operationId!);
+		// No scheduled function has run: the undo itself re-sorted the sender.
+		expect((await threadOf(t, other.thread._id)).arrival?.placement).toBe(before);
+	});
+
 	it('skips a sender status another operation changed since (ABA) and ends partial', async () => {
 		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
