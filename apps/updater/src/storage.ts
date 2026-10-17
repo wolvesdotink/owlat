@@ -78,13 +78,36 @@ async function ownImageSource(): Promise<string | null> {
 }
 
 /**
- * The third-party images the stack runs: every allowlisted image prefix except
- * our own published images and the two sidecars built on the host (removing
- * those would force a rebuild, not a pull).
+ * Repositories no release names any more, whose last image nothing else will
+ * ever replace or remove. Listed here rather than relied on through the
+ * allowlist, which only has to hold what a compose file may name: an install
+ * can also hold an image the allowlist never accepted, such as
+ * `ghcr.io/convex/convex-backend` from an operator who pointed their compose
+ * at upstream's new home by hand before Owlat shipped its wrapper.
  */
-const THIRD_PARTY_IMAGE_PREFIXES = ALLOWED_IMAGE_PREFIXES.filter(
-	(prefix) => !prefix.startsWith('ghcr.io/wolvesdotink/') && !prefix.startsWith('owlat-')
-);
+const RETIRED_IMAGE_PREFIXES = [
+	// Convex's images before upstream renamed the repository (≤ v0.6.13), and
+	// upstream's new home, which Owlat never pulls (docker/convex-backend.Dockerfile).
+	'ghcr.io/get-convex/convex-backend',
+	'ghcr.io/get-convex/convex-dashboard',
+	'ghcr.io/convex/convex-backend',
+	'ghcr.io/convex/convex-dashboard',
+];
+
+/**
+ * The third-party images the stack runs or once ran: every allowlisted image
+ * prefix except our own published images and the two sidecars built on the
+ * host (removing those would force a rebuild, not a pull), plus the retired
+ * repositories above.
+ */
+const THIRD_PARTY_IMAGE_PREFIXES = [
+	...new Set([
+		...ALLOWED_IMAGE_PREFIXES.filter(
+			(prefix) => !prefix.startsWith('ghcr.io/wolvesdotink/') && !prefix.startsWith('owlat-')
+		),
+		...RETIRED_IMAGE_PREFIXES,
+	]),
+];
 
 const reclaimedSpace = (stdout: string) =>
 	stdout.match(/Total reclaimed space:\s*(.+)/)?.[1]?.trim() ?? '0B';

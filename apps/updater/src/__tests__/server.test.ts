@@ -129,13 +129,17 @@ function dockerFixture(file: unknown, args: unknown): string {
 
 /**
  * What `docker image ls` lists on a host one Ollama bump in: the stack's
- * running images, the superseded Ollama tag, Owlat's digest-pinned images and
- * an operator's own image.
+ * running images, the superseded Ollama tag, the Convex backend from before
+ * upstream renamed its repository and the one from its new home (pulled by an
+ * operator by hand before Owlat shipped its wrapper, so outside the allowlist),
+ * Owlat's digest-pinned images and an operator's own image.
  */
 const IMAGE_LIST = [
 	'ollama/ollama:0.34.3',
 	'ollama/ollama:0.34.4',
 	'redis:7.4-alpine',
+	'ghcr.io/get-convex/convex-backend:latest',
+	'ghcr.io/convex/convex-backend:latest',
 	'ghcr.io/wolvesdotink/web:<none>',
 	'owlat-code-worker:0.5.5',
 	'my-own-app:latest',
@@ -627,6 +631,8 @@ describe('POST /update', () => {
 				'docker image rm ollama/ollama:0.34.3',
 				'docker image rm ollama/ollama:0.34.4',
 				'docker image rm redis:7.4-alpine',
+				'docker image rm ghcr.io/get-convex/convex-backend:latest',
+				'docker image rm ghcr.io/convex/convex-backend:latest',
 			]);
 			const json = (await res.json()) as {
 				steps: { step: string; ok?: boolean; stdout: string }[];
@@ -635,7 +641,7 @@ describe('POST /update', () => {
 			// The images still in use refusing removal is not a failure.
 			expect(reclaim?.ok).toBe(true);
 			expect(reclaim?.stdout).toMatch(
-				/^Removed unused third-party images: ollama\/ollama:0\.34\.3$/m
+				/^Removed unused third-party images: ollama\/ollama:0\.34\.3, ghcr\.io\/get-convex\/convex-backend:latest, ghcr\.io\/convex\/convex-backend:latest$/m
 			);
 		});
 
