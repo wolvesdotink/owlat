@@ -392,3 +392,45 @@ describe('the Subscriptions panel batch (one unsubscribe path)', () => {
 		expect(operations.map((operation) => operation.kind)).toEqual(['unsubscribe']);
 	});
 });
+
+describe('performOneClick (one-release shim for the previous chip)', () => {
+	beforeEach(() => vi.mocked(fetchGuarded).mockReset());
+
+	it('runs the one path and answers in the old {ok} shape', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedPersonalMailbox(t);
+		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
+		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 200 }));
+		expect(await t.action(api.mail.unsubscribe.performOneClick, { messageId: id })).toEqual({
+			ok: true,
+		});
+		const profile = (await profileOf(t, mailboxId))!;
+		expect(profile).toMatchObject({ status: 'unsubscribed', statusSource: 'user' });
+		expect(profile.unsubscribe?.result).toBe('confirmed');
+	});
+
+	it('answers {ok: false, error} when the POST fails', async () => {
+		const t = convexTest(schema, modules);
+		await seedPersonalMailbox(t);
+		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
+		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 503 }));
+		expect(await t.action(api.mail.unsubscribe.performOneClick, { messageId: id })).toEqual({
+			ok: false,
+			error: 'http_503',
+		});
+	});
+
+	it('changes nothing for a message without a one-click target', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedPersonalMailbox(t);
+		const id = (await deliverHosted(t, {
+			unsubscribe: { oneClick: false, httpUrl: 'https://shop.example/u' },
+		}))!;
+		expect(await t.action(api.mail.unsubscribe.performOneClick, { messageId: id })).toEqual({
+			ok: false,
+			error: 'not_one_click',
+		});
+		expect((await profileOf(t, mailboxId))!.status).toBe('keep');
+		expect(fetchGuarded).not.toHaveBeenCalled();
+	});
+});
