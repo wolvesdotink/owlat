@@ -423,23 +423,31 @@ describe('the unused-draft streak', () => {
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(0);
 	});
 
-	it('forgets a counted offer with its thread and with its owed message', async () => {
+	it('never writes a usage row for a purged owed message (r5 F1)', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
-		await t.mutation(api.mail.drafts.discard, {
-			draftId: await seedDraft(t, c, { baseline: SLOT, offerKey: offerOf(c) }),
-		});
+		const copy = { baseline: SLOT, offerKey: offerOf(c) };
+		const copyB = await seedDraft(t, c, copy);
+		await t.mutation(api.mail.drafts.discard, { draftId: await seedDraft(t, c, copy) });
 		expect(await usage(t, c)).toHaveLength(1);
+		// The owed message is purged (its usage row with it); the thread and copy B stay.
 		await t.run(async (ctx) => {
-			for (const m of await ctx.db
-				.query('mailMessages')
+			const { _id, _creationTime, ...base } = (await ctx.db.get(c.askId))!;
+			await ctx.db.insert('mailMessages', {
+				...base,
+				rfc822MessageId: '<keeps-the-thread@acme.test>',
+			});
+			for (const row of await ctx.db
+				.query('mailDraftOfferUsage')
 				.withIndex('by_thread', (q) => q.eq('threadId', c.threadId))
 				.collect()) {
-				await ctx.db.delete(m._id);
+				await ctx.db.delete(row._id);
 			}
-			await rebuildThreadAggregates(ctx, c.threadId);
+			await ctx.db.delete(c.askId);
 		});
+		await t.mutation(api.mail.drafts.discard, { draftId: copyB });
 		expect(await usage(t, c)).toEqual([]);
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
 	});
 
 	it('counts a reply from another client when the thread offered an AI reply', async () => {
