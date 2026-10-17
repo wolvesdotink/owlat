@@ -86,6 +86,8 @@ export interface PushDelivery {
 /** How an event is judged per device, once it has been resolved to copy. */
 type Rule =
 	| { kind: 'mail-rules'; category?: string; muted: boolean; alerted: boolean }
+	// A rule's `notify` (read on arrival §6.3): past the scope, never past mute or quiet hours.
+	| { kind: 'rule-notify'; muted: boolean }
 	| { kind: 'unless-nothing' }
 	| { kind: 'always' };
 
@@ -134,16 +136,22 @@ async function hasMailFeature(ctx: MutationCtx): Promise<boolean> {
 	return (await isFeatureEnabled(ctx, 'postbox')) || (await isFeatureEnabled(ctx, 'mail.external'));
 }
 
+/** Folders a rule's `notify` never pushes from. */
+const RULE_NOTIFY_SILENT_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent', 'drafts']);
+
 async function resolveMail(
 	ctx: MutationCtx,
 	userId: string,
 	messageId: Id<'mailMessages'>,
-	prefs: Preferences
+	prefs: Preferences,
+	isRuleNotify = false
 ): Promise<Resolved | null> {
 	const message = await ctx.db.get(messageId);
 	if (!message || message.flagSeen) return null;
 	const folder = await ctx.db.get(message.folderId);
-	if (folder?.role !== 'inbox') return null;
+	if (isRuleNotify) {
+		if (folder?.role !== undefined && RULE_NOTIFY_SILENT_ROLES.has(folder.role)) return null;
+	} else if (folder?.role !== 'inbox') return null;
 	// Only the owner's own personal mailbox, and only while it is live.
 	const mailbox = await loadPersonalMailboxForUser(ctx, message.mailboxId, userId);
 	if (mailbox?.status !== 'active' || !(await hasMailFeature(ctx))) return null;
@@ -161,12 +169,14 @@ async function resolveMail(
 			prefs.locale,
 			prefs.isPrivate
 		),
-		rule: {
-			kind: 'mail-rules',
-			category: thread?.category?.label,
-			muted: isThreadMuted(thread),
-			alerted: thread?.notifyOnReplyAt != null,
-		},
+		rule: isRuleNotify
+			? { kind: 'rule-notify', muted: isThreadMuted(thread) }
+			: {
+					kind: 'mail-rules',
+					category: thread?.category?.label,
+					muted: isThreadMuted(thread),
+					alerted: thread?.notifyOnReplyAt != null,
+				},
 		ttlSeconds: TTL_SECONDS.mail,
 	};
 }
@@ -272,7 +282,7 @@ async function resolveEvent(
 ): Promise<Resolved | null> {
 	switch (event.kind) {
 		case 'mail':
-			return resolveMail(ctx, userId, event.messageId, prefs);
+			return resolveMail(ctx, userId, event.messageId, prefs, event.isRuleNotify === true);
 		case 'assignment':
 			return resolveAssignment(ctx, userId, event.noticeId, prefs, role);
 		case 'chat':
@@ -365,6 +375,13 @@ export const prepareDelivery = internalMutation({
 				if (prefs.notifyAbout !== 'nothing') {
 					deliveries.push(toDelivery(subscription, resolved.payload, resolved.ttlSeconds));
 				}
+				continue;
+			}
+			if (rule.kind === 'rule-notify') {
+				const isQuiet = isQuietAt(prefs.quietHours, localClockIn(subscription.timeZone, now));
+				if (rule.muted) continue;
+				if (isQuiet) await deferForQuietHours(ctx, subscription, prefs.quietHours, now);
+				else deliveries.push(toDelivery(subscription, resolved.payload, resolved.ttlSeconds));
 				continue;
 			}
 			const decision = decideNotification({

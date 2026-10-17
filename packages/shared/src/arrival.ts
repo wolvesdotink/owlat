@@ -170,6 +170,8 @@ export interface ExclusiveWinner {
 	 * the value survives every JSON boundary).
 	 */
 	priority: number;
+	/** Folder winners: the folder the winning move put the message in. */
+	folderId?: string;
 }
 
 /** @public Contract type for the read-on-arrival lanes. */

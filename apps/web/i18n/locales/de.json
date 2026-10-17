@@ -13193,6 +13193,54 @@
 				"gistUnavailable": "Nur gezählt: kein kurzes Zitat möglich",
 				"gistFailed": "Nur gezählt: das kurze Lesen ist fehlgeschlagen"
 			}
+		},
+		"rules": {
+			"title": "Regeln in deinen Worten",
+			"intro": "Sag, was mit bestimmter Mail passieren soll. Owlat macht daraus eine Regel, die du prüfst, bevor sie läuft. Regeln sortieren, labeln, markieren, ordnen ein oder benachrichtigen; sie leiten nie weiter, löschen nie und antworten nie.",
+			"placeholder": "Rechnungen von Lieferanten kommen in Finanzen",
+			"inputLabel": "Beschreib eine Regel",
+			"add": "Regel hinzufügen",
+			"compiling": "Wird zur Regel …",
+			"failed": "Daraus ließ sich keine Regel machen. Nenn am besten einen Absender, einen Betreff oder einen deiner Ordner.",
+			"save": "Regel speichern",
+			"discard": "Verwerfen",
+			"test": "Mit aktueller Mail testen",
+			"empty": "Noch keine Regeln in deinen Worten.",
+			"aiNote": "Die KI-Frage wird einmal gestellt, wenn eine Mail ankommt. Eine Mail wartet auf höchstens fünf davon; Regeln weiter unten werden für sie übersprungen. KI-Regeln laufen nie über ältere Mail.",
+			"chips": {
+				"condition": "{field} {op} „{value}“",
+				"ai": "KI: {question}",
+				"and": "und",
+				"or": "oder",
+				"moveTo": "Nach {folder} verschieben",
+				"label": "Label {label} setzen",
+				"section": "Bereich {section}",
+				"archiveAfter": "Nach {hours} Std. archivieren"
+			},
+			"codes": {
+				"label": "Codes und Anmeldelinks nach einem Tag archivieren",
+				"help": "Einmalcodes und Anmeldelinks verlassen deinen Posteingang 24 Stunden nach ihrer Ankunft, außer du markierst sie mit Stern oder antwortest."
+			},
+			"dryRun": {
+				"title": "Probelauf · letzte {count} Mails",
+				"summary": "{matches} von {count} passen",
+				"aiUnavailable": "Die KI-Frage ließ sich gerade nicht stellen, deshalb sind diese Mails nicht getestet.",
+				"empty": "Nichts in deiner aktuellen Mail passt.",
+				"source": {
+					"noMatch": "passt nicht",
+					"rule": "Regel",
+					"aiYes": "KI · ja",
+					"aiNo": "KI · nein",
+					"aiUnknown": "KI · unsicher",
+					"notTested": "nicht getestet"
+				}
+			},
+			"operations": {
+				"compile": "Regel erstellen",
+				"confirm": "Regel speichern",
+				"discard": "Regelentwurf verwerfen",
+				"test": "Regel testen"
+			}
 		}
 	},
 	"recipient": {

@@ -78,6 +78,9 @@ export const ARRIVAL_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 	del('mailFolders', 'mailArrivalOperationChanges', 'change.before'),
 	del('mailFolders', 'mailArrivalOperationChanges', 'change.after'),
 	del('mailFolders', 'mailDelayedActions', 'anchor.folderId'),
+	del('mailFolders', 'mailArrivalRecords', 'exclusiveWinners.folder.folderId'),
+	del('mailFolders', 'mailArrivalRecords', 'exclusiveWinners.section.folderId'),
+	del('mailFolders', 'mailArrivalRecords', 'exclusiveWinners.placement.folderId'),
 	del('mailFolders', 'mailRuleDrafts', 'preview.actions[].folderId'),
 
 	del('mailLabels', 'mailArrivalOperationChanges', 'labelId'),

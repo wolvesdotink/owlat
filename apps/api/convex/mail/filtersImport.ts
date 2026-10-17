@@ -23,6 +23,7 @@ import type { Id } from '../_generated/dataModel';
 import { throwForbidden } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 import { resolveLabelPath } from './labelsTree';
+import { validateFilterForSave } from './filterValidation';
 
 /** Filters accepted in one import. Gmail's own limit is well under this. */
 const MAX_IMPORTED_FILTERS = 100;
@@ -137,6 +138,12 @@ export const importGmailFilters = postboxMutation({
 				continue;
 			}
 
+			// The same boundary check as `filters.create` (an import is manual).
+			await validateFilterForSave(ctx, args.mailboxId, {
+				conditions: incoming.conditions,
+				actions,
+				stopProcessing: false,
+			});
 			await ctx.db.insert('mailFilters', {
 				mailboxId: args.mailboxId,
 				name,

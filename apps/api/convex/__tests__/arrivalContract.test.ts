@@ -277,6 +277,7 @@ describe('new filter actions on the existing paths', () => {
 			flagSeen: false,
 			flagFlagged: false,
 			filterForwardTo: [],
+			manualPass: { winners: {} },
 		});
 		expect(evaluateFilters([filter(actions)], message).actions.map((a) => a.type)).toEqual([
 			...ARRIVAL_FILTER_ACTION_TYPES,

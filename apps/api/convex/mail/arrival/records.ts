@@ -38,6 +38,10 @@ const MAX_REASON_KEYS = 12;
 export interface ArrivalRecordSeed {
 	pendingAiFilters?: ArrivalRecord['pendingAiFilters'];
 	rulePlacement?: ArrivalRecord['rulePlacement'];
+	exclusiveWinners?: ArrivalRecord['exclusiveWinners'];
+	filterMatches?: ArrivalRecord['filterMatches'];
+	/** The rule operation that set `rulePlacement` (its undo guard, §4.4). */
+	lastOperationId?: ArrivalRecord['lastOperationId'];
 }
 
 /** A message's arrival record, or null. */
@@ -90,6 +94,9 @@ export async function writeArrivalRecord(
 		sourceOrderKey: sourceOrderKey(message),
 		...(opts.pendingAiFilters?.length ? { pendingAiFilters: opts.pendingAiFilters } : {}),
 		...(opts.rulePlacement ? { rulePlacement: opts.rulePlacement } : {}),
+		...(opts.exclusiveWinners ? { exclusiveWinners: opts.exclusiveWinners } : {}),
+		...(opts.filterMatches?.length ? { filterMatches: opts.filterMatches } : {}),
+		...(opts.lastOperationId ? { lastOperationId: opts.lastOperationId } : {}),
 		modelCalls: 0,
 		reasonKeys: [],
 		createdAt: now,

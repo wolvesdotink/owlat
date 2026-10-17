@@ -1814,11 +1814,26 @@ import type * as mail_senders_suggestions from '../mail/senders/suggestions.js';
 import type * as mail_senders_unsubscribe from '../mail/senders/unsubscribe.js';
 import type * as mail_senders_unsubscribeActions from '../mail/senders/unsubscribeActions.js';
 import type * as mail_senders_targets from '../mail/senders/targets.js';
+import type * as mail_archiveSingleMessage from '../mail/archiveSingleMessage.js';
+import type * as mail_digest_claim from '../mail/digest/claim.js';
+import type * as mail_digest_emailBlocks from '../mail/digest/emailBlocks.js';
+import type * as mail_digest_generate from '../mail/digest/generate.js';
+import type * as mail_digest_select from '../mail/digest/select.js';
+import type * as mail_digest_view from '../mail/digest/view.js';
+import type * as mail_filterCompile from '../mail/filterCompile.js';
+import type * as mail_filterCompileStore from '../mail/filterCompileStore.js';
+import type * as mail_filterValidation from '../mail/filterValidation.js';
 import type * as mail_interpret_arrivalAdmit from '../mail/interpret/arrivalAdmit.js';
-import type * as mail_interpret_fullRead from '../mail/interpret/fullRead.js';
 import type * as mail_interpret_arrivalHold from '../mail/interpret/arrivalHold.js';
+import type * as mail_interpret_fullRead from '../mail/interpret/fullRead.js';
 import type * as mail_interpret_fullReadPrepare from '../mail/interpret/fullReadPrepare.js';
 import type * as mail_ai_composeDraftFullRead from '../mail/ai/composeDraftFullRead.js';
+import type * as mail_rules_delayedActions from '../mail/rules/delayedActions.js';
+import type * as mail_rules_dryRun from '../mail/rules/dryRun.js';
+import type * as mail_rules_dryRunData from '../mail/rules/dryRunData.js';
+import type * as mail_rules_operationLog from '../mail/rules/operationLog.js';
+import type * as mail_rules_ruleApply from '../mail/rules/ruleApply.js';
+import type * as mail_rules_rulesPass from '../mail/rules/rulesPass.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3629,11 +3644,26 @@ declare const fullApi: ApiFromModules<{
 	'mail/senders/unsubscribe': typeof mail_senders_unsubscribe;
 	'mail/senders/unsubscribeActions': typeof mail_senders_unsubscribeActions;
 	'mail/senders/targets': typeof mail_senders_targets;
+	'mail/archiveSingleMessage': typeof mail_archiveSingleMessage;
+	'mail/digest/claim': typeof mail_digest_claim;
+	'mail/digest/emailBlocks': typeof mail_digest_emailBlocks;
+	'mail/digest/generate': typeof mail_digest_generate;
+	'mail/digest/select': typeof mail_digest_select;
+	'mail/digest/view': typeof mail_digest_view;
+	'mail/filterCompile': typeof mail_filterCompile;
+	'mail/filterCompileStore': typeof mail_filterCompileStore;
+	'mail/filterValidation': typeof mail_filterValidation;
 	'mail/interpret/arrivalAdmit': typeof mail_interpret_arrivalAdmit;
-	'mail/interpret/fullRead': typeof mail_interpret_fullRead;
 	'mail/interpret/arrivalHold': typeof mail_interpret_arrivalHold;
+	'mail/interpret/fullRead': typeof mail_interpret_fullRead;
 	'mail/interpret/fullReadPrepare': typeof mail_interpret_fullReadPrepare;
 	'mail/ai/composeDraftFullRead': typeof mail_ai_composeDraftFullRead;
+	'mail/rules/delayedActions': typeof mail_rules_delayedActions;
+	'mail/rules/dryRun': typeof mail_rules_dryRun;
+	'mail/rules/dryRunData': typeof mail_rules_dryRunData;
+	'mail/rules/operationLog': typeof mail_rules_operationLog;
+	'mail/rules/ruleApply': typeof mail_rules_ruleApply;
+	'mail/rules/rulesPass': typeof mail_rules_rulesPass;
 }>;
 
 /**
