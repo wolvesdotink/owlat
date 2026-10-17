@@ -28,8 +28,10 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 </script>
 
 <template>
-	<!-- flex-col so the guard's loading and no-mailbox states fill the frame. -->
 	<div class="h-[calc(100vh-var(--shell-chrome-h,4rem))] overflow-auto bg-bg-base flex flex-col">
+		<!-- flex-col so the guard's loading and no-mailbox states fill the frame.
+		     The comment sits inside the root: one above it makes a second root
+		     node in dev (NUXT_E4004). -->
 		<PostboxMailboxGuard
 			:mailbox-id="mailboxId"
 			:loading="mailboxesLoading"
