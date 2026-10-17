@@ -4,8 +4,23 @@
  * the operation log.
  */
 
+import { convexTest } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
+import schema from '../../../schema';
 import type { Doc, Id } from '../../../_generated/dataModel';
+import { modules } from '../../__tests__/helpers.testlib';
 import { deliverHosted, type T } from '../../senders/__tests__/senders.testlib';
+
+/**
+ * A test deployment for these suites. Live deliveries schedule the classifier
+ * and the arrival read, which take rate-limiter tokens, so the component is
+ * registered.
+ */
+export function learnTest(): T {
+	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
+	return t;
+}
 
 export {
 	OWNER,

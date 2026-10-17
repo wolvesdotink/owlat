@@ -6,12 +6,9 @@
  * touched.
  */
 
-import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import schema from '../../../schema';
 import type { Id } from '../../../_generated/dataModel';
 import { api } from '../../../_generated/api';
-import { modules } from '../../__tests__/helpers.testlib';
 import { settleOwnerReply } from '../../answeredReply';
 import { archiveSessionKey, foldUnreadArchives, hasEarnedLearnedDigest } from '../learningSignals';
 import {
@@ -23,6 +20,7 @@ import {
 	seedPersonalMailbox,
 	seedProfile,
 	type T,
+	learnTest,
 } from './learn.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
@@ -71,7 +69,7 @@ describe('evidence folding', () => {
 describe('unread archive evidence', () => {
 	it('counts unread live mail a person archives, not read mail, not imported mail', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const unread = (await deliverLive(t)).message._id;
 		const read = (await deliverLive(t)).message._id;
@@ -91,7 +89,7 @@ describe('unread archive evidence', () => {
 
 	it('counts a move into Archive, but not an automatic one', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const first = (await deliverLive(t)).message._id;
 		const second = (await deliverLive(t)).message._id;
@@ -110,7 +108,7 @@ describe('unread archive evidence', () => {
 
 	it('learns a digest after both gates, as an operation with a one-time notice', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await archiveSession(t, 2);
 		await archiveSession(t, 2);
@@ -143,7 +141,7 @@ describe('unread archive evidence', () => {
 
 	it('never changes a user or suggestion status', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'keep', statusSource: 'user' });
 		for (let i = 0; i < 3; i++) await archiveSession(t, 2);
@@ -156,7 +154,7 @@ describe('unread archive evidence', () => {
 
 	it('undo restores the status and leaves the do-not-relearn sentinel', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		for (let i = 0; i < 3; i++) await archiveSession(t, 2);
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -226,7 +224,7 @@ describe('reply reversal', () => {
 
 	it('puts a learned digest back to the default and resets the evidence', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		await deliverLive(t);
 		const profile = (await profileOf(t, mailboxId))!;
@@ -252,7 +250,7 @@ describe('reply reversal', () => {
 
 	it('leaves a user digest alone', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		await deliverLive(t);
 		const profile = (await profileOf(t, mailboxId))!;

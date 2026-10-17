@@ -4,13 +4,11 @@
  * nothing a model derived.
  */
 
-import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
-import schema from '../../../schema';
 import { api } from '../../../_generated/api';
-import { modules, seedMailbox } from '../../__tests__/helpers.testlib';
+import { seedMailbox } from '../../__tests__/helpers.testlib';
 import { isReasonShownWhenFenced } from '../explain';
-import { deliverLive, patchRecord, seedPersonalMailbox } from './learn.testlib';
+import { deliverLive, learnTest, patchRecord, seedPersonalMailbox } from './learn.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
@@ -26,7 +24,7 @@ vi.mock('../../../lib/sessionOrganization', async () => {
 
 describe('explain.forThread', () => {
 	it('returns the record, the sender counters and what decided the placement', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		await seedPersonalMailbox(t);
 		const { message, thread } = await deliverLive(t);
 		await deliverLive(t, { subject: 'Another sale' });
@@ -60,7 +58,7 @@ describe('explain.forThread', () => {
 	});
 
 	it('names a thread override set by a person', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		await seedPersonalMailbox(t);
 		const { message, thread } = await deliverLive(t);
 		await t.mutation(api.mail.arrival.fix.apply, {
@@ -77,7 +75,7 @@ describe('explain.forThread', () => {
 	});
 
 	it('hides model-derived reasons and the model category on a fenced thread', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		await seedPersonalMailbox(t);
 		const { message, thread } = await deliverLive(t);
 		await patchRecord(t, message._id, {
@@ -99,7 +97,7 @@ describe('explain.forThread', () => {
 	});
 
 	it('is null for a mailbox the caller cannot read, and for a thread without a record', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		await seedPersonalMailbox(t);
 		const { thread } = await deliverLive(t);
 		const otherMailbox = await seedMailbox(t, {

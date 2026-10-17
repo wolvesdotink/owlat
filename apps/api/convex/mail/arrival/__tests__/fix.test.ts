@@ -5,11 +5,8 @@
  * reason starts a rule-draft compile.
  */
 
-import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
-import schema from '../../../schema';
 import { api } from '../../../_generated/api';
-import { modules } from '../../__tests__/helpers.testlib';
 import { openMessageBody } from '../../../lib/messageBody';
 import {
 	SENDER,
@@ -21,6 +18,7 @@ import {
 	seedProfile,
 	seedSenderMessages,
 	threadOf,
+	learnTest,
 } from './learn.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
@@ -37,7 +35,7 @@ vi.mock('../../../lib/sessionOrganization', async () => {
 
 describe('fix.apply, message scope', () => {
 	it('sets the thread override, logs it and stamps the thread', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		await seedPersonalMailbox(t);
 		const { message, thread } = await deliverLive(t);
 		const categoryBefore = thread.category;
@@ -76,7 +74,7 @@ describe('fix.apply, message scope', () => {
 	});
 
 	it('archives the thread now for auto_archive, one messageFolder row per message', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { folders } = await seedPersonalMailbox(t);
 		const { message, thread } = await deliverLive(t);
 		await t.run(async (ctx) => {
@@ -111,7 +109,7 @@ describe('fix.apply, message scope', () => {
 	});
 
 	it('writes no operation when nothing changes and there is no reason', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		await seedPersonalMailbox(t);
 		const { message } = await deliverLive(t);
 		const args = {
@@ -126,7 +124,7 @@ describe('fix.apply, message scope', () => {
 	});
 
 	it('brings an auto-archived message back to the Inbox when the person places it', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'auto_archive', statusSource: 'user' });
 		const { message } = await deliverLive(t);
@@ -147,7 +145,7 @@ describe('fix.apply, message scope', () => {
 
 describe('fix.apply, sender scope', () => {
 	it('sets the sender override and turns a digest status back to keep', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'digest', statusSource: 'learned' });
 		const { message, thread } = await deliverLive(t);
@@ -185,7 +183,7 @@ describe('fix.apply, sender scope', () => {
 	});
 
 	it('sets status digest and re-sorts only the newest 200 Inbox messages', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const { message } = await deliverLive(t);
 		await seedSenderMessages(
@@ -207,7 +205,7 @@ describe('fix.apply, sender scope', () => {
 	});
 
 	it('auto_archive archives the newest 200 Inbox messages of the sender, logged', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const { message } = await deliverLive(t);
 		const old = await seedSenderMessages(
@@ -231,7 +229,7 @@ describe('fix.apply, sender scope', () => {
 	});
 
 	it('refuses the owner own mail and a team inbox', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		await seedPersonalMailbox(t, { scope: 'shared' });
 		const { message } = await deliverLive(t);
 		await expect(
@@ -246,7 +244,7 @@ describe('fix.apply, sender scope', () => {
 
 describe('fix.apply, reason', () => {
 	it('stores the reason sealed and starts a compiling rule draft', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const { message } = await deliverLive(t);
 		const result = await t.mutation(api.mail.arrival.fix.apply, {
@@ -280,7 +278,7 @@ describe('fix.apply, reason', () => {
 });
 
 it('keeps the sender address in the result for the toast', async () => {
-	const t = convexTest(schema, modules);
+	const t = learnTest();
 	await seedPersonalMailbox(t);
 	const { message } = await deliverLive(t);
 	const result = await t.mutation(api.mail.arrival.fix.apply, {

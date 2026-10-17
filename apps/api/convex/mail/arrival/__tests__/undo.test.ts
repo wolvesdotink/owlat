@@ -5,12 +5,9 @@
  * operation created are cancelled and projections recomputed.
  */
 
-import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import schema from '../../../schema';
 import type { Id } from '../../../_generated/dataModel';
 import { api } from '../../../_generated/api';
-import { modules } from '../../__tests__/helpers.testlib';
 import { arrivalChangeRow } from '../changeRows';
 import {
 	deliverLive,
@@ -23,6 +20,7 @@ import {
 	seedSenderMessages,
 	threadOf,
 	type T,
+	learnTest,
 } from './learn.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
@@ -46,7 +44,7 @@ const undo = (t: T, operationId: Id<'mailArrivalOperations'>) =>
 
 describe('operations.undo', () => {
 	it('restores a thread override, recomputes the projection, and runs once', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		await seedPersonalMailbox(t);
 		const { message, thread } = await deliverLive(t);
 		const placed = thread.arrival?.placement;
@@ -70,7 +68,7 @@ describe('operations.undo', () => {
 	});
 
 	it('skips a sender status another operation changed since (ABA) and ends partial', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const { message } = await deliverLive(t);
 		const fix = await t.mutation(api.mail.arrival.fix.apply, {
@@ -100,7 +98,7 @@ describe('operations.undo', () => {
 
 	it('restores what still matches and skips a message moved by hand since', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const { message } = await deliverLive(t);
 		const others = await seedSenderMessages(t, mailboxId, folders.inbox, [10, 20]);
@@ -128,7 +126,7 @@ describe('operations.undo', () => {
 
 	it('pages through more than 100 rows and says a reply reminder was not restored', async () => {
 		vi.useFakeTimers();
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const { message } = await deliverLive(t);
 		const ids = await seedSenderMessages(
@@ -171,7 +169,7 @@ describe('operations.undo', () => {
 	});
 
 	it('restores message flags, labels and sections, skipping a label deleted since', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const { message } = await deliverLive(t);
 		const { operationId, gone } = await t.run(async (ctx) => {
@@ -246,7 +244,7 @@ describe('operations.undo', () => {
 	});
 
 	it('cancels the pending delayed actions the operation created, and restores a rule placement', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const { message, thread } = await deliverLive(t);
 		const { operationId, actionId, othersId } = await t.run(async (ctx) => {
@@ -317,7 +315,7 @@ describe('operations.undo', () => {
 	});
 
 	it('restores a resumed draft pause', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const profile = await seedProfile(t, mailboxId, { autoDraftPausedAt: 5, unusedDraftStreak: 5 });
 		const resumed = await t.mutation(api.mail.senders.status.resumeDrafts, {
@@ -332,7 +330,7 @@ describe('operations.undo', () => {
 	});
 
 	it('refuses an operation of a mailbox the caller cannot reach', async () => {
-		const t = convexTest(schema, modules);
+		const t = learnTest();
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const operationId = await t.run(async (ctx) => {
 			await ctx.db.patch(mailboxId, { organizationId: 'org-2' });
