@@ -601,3 +601,61 @@ describe('Sol r2 F5: a gist retry runs only at its time', () => {
 		expect(gistCalls()).toBe(2);
 	});
 });
+
+describe('Sol r3 F1: parent coverage is verified', () => {
+	it('an outbound parent with no charge does not cover its predecessor upgrades', async () => {
+		const t = setup();
+		const first = await arrive(t);
+		await run(t, { source: first.source });
+		expect(gistCalls()).toBe(1);
+		const sentId = await t.run(async (ctx) => {
+			const inbound = (await ctx.db.get(first.messageId))!;
+			const { _id, _creationTime, ...rest } = inbound;
+			return ctx.db.insert('mailMessages', {
+				...rest,
+				rfc822MessageId: '<sent-1@owlat.test>',
+				uid: 50,
+				fromAddress: 'me@owlat.test',
+				toAddresses: ['jonas@example.com'],
+				receivedAt: inbound.receivedAt + 60_000,
+				internalDate: inbound.receivedAt + 60_000,
+				outbound: { state: 'sent', recipients: [] },
+			});
+		});
+		const sent = { kind: 'outboundMail' as const, id: sentId };
+		await t.run((ctx) => captureInterpretSource(ctx, { source: sent, isLive: true }));
+		await exhaustOwnerBucket(t, first.mailboxId);
+		await run(t, { source: sent });
+		// The gisted inbound message was not read on the parent's say-so.
+		expect(await sourceRow(t, first.messageId)).toMatchObject({ readOutcome: 'gist' });
+		const extractedFirst = llm.runLlmObject.mock.calls.filter(
+			([opts]) =>
+				(opts as { schema: unknown }).schema === briefModelSchema &&
+				JSON.stringify(opts).includes('front door')
+		);
+		expect(extractedFirst).toHaveLength(0);
+	});
+});
+
+describe('Sol r3 F2: upgrade calls are recorded whatever admission charged', () => {
+	it('a gist then a full upgrade inside the admission window counts two calls, a replay none', async () => {
+		const t = setup();
+		const { source, messageId } = await arrive(t);
+		await run(t, { source });
+		await run(t, { source, depth: 'full', isUpgrade: true });
+		const calls = async () =>
+			t.run(async (ctx) => {
+				const record = await ctx.db
+					.query('mailArrivalRecords')
+					.withIndex('by_message', (q) => q.eq('messageId', messageId))
+					.first();
+				return record?.modelCalls;
+			});
+		expect(extractions()).toBe(1);
+		expect(await calls()).toBe(2);
+		// A replay of the same full read buys nothing and counts nothing.
+		await run(t, { source, depth: 'full', isUpgrade: true });
+		expect(extractions()).toBe(1);
+		expect(await calls()).toBe(2);
+	});
+});
