@@ -16,7 +16,7 @@ import { internal } from '../../../_generated/api';
 import { enableFeatures } from '../../../__tests__/factories';
 import { modules } from '../../__tests__/helpers.testlib';
 import { localMinuteOfDay } from '../../briefEmail';
-import { digestOutputSchema } from '../generate';
+import { digestOutputSchema, groundDigestLines } from '../generate';
 import { DIGEST_MAX_VISITED, selectDigest, type DigestCandidate } from '../select';
 import { MAX_DIGEST_ATTEMPTS } from '../claim';
 import { openStoredInlineBody } from '../../../lib/messageBodyStore';
@@ -105,6 +105,42 @@ describe('selectDigest', () => {
 		expect(selection.visited).toHaveLength(DIGEST_MAX_VISITED);
 		expect(selection.overflowByKind.promotion).toBe(DIGEST_MAX_VISITED - 5);
 		expect(selection.overflowLabel).toBe('at_least');
+	});
+});
+
+describe('groundDigestLines', () => {
+	it('keeps only verbatim spans inside the offered segments and ranges', () => {
+		const canonicalText = 'Sale ends Sunday. Twenty percent off.\n> Earlier quoted text.';
+		const segmented = {
+			canonicalText,
+			segments: [
+				{ id: 's0', kind: 'fresh', start: 0, end: 37 },
+				{ id: 's1', kind: 'quoted', start: 38, end: canonicalText.length },
+			],
+		} as never;
+		// Offered: s0 cut to its first sentence.
+		const input = {
+			subject: 'Sale',
+			segments: [{ id: 's0', kind: 'fresh', text: 'Sale ends Sunday.', start: 0, end: 17 }],
+			segmented,
+		};
+		const lines = groundDigestLines(
+			{
+				lines: [
+					{
+						ref: 1,
+						spans: [
+							{ segment: 's0', quote: 'Sale ends Sunday.' },
+							{ segment: 's0', quote: 'Twenty percent off.' },
+							{ segment: 's1', quote: 'Earlier quoted text.' },
+						],
+					},
+					{ ref: 7, spans: [{ segment: 's0', quote: 'Sale ends Sunday.' }] },
+				],
+			},
+			[{ ref: 1, input }]
+		);
+		expect([...lines.entries()]).toEqual([[1, ['Sale ends Sunday.']]]);
 	});
 });
 

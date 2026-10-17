@@ -6,6 +6,7 @@
  * `delayed_archive` log, and the opt-in code detector.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import schema from '../../../schema';
@@ -34,6 +35,7 @@ import {
 
 async function archiveAfterSetup(hours = 24) {
 	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
 	const { mailboxId, folders } = await seedPersonalMailbox(t);
 	await seedFilter(t, mailboxId, { actions: [{ type: 'archiveAfter', hours }] });
 	const id = (await deliverHosted(t))!;
@@ -193,6 +195,7 @@ describe('execution', () => {
 describe('archiveSingleMessage', () => {
 	it('keeps the thread’s reply state while it has other Inbox mail', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await seedPersonalMailbox(t);
 		const first = (await deliverHosted(t, { subject: 'Plans' }))!;
 		const second = await t.run(async (ctx) => {
@@ -218,6 +221,7 @@ describe('archiveSingleMessage', () => {
 describe('the code detector', () => {
 	it('archives one-time codes after a day, only when turned on', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await seedPersonalMailbox(t);
 		const before = (await deliverHosted(t, { subject: 'Your verification code' }))!;
 		expect(await delayedOf(t, before)).toHaveLength(0);

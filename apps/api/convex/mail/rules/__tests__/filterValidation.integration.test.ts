@@ -7,6 +7,7 @@
  * retroactive run is refused.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
@@ -67,6 +68,7 @@ async function check(t: T, mailboxId: Id<'mailboxes'>, filter: Partial<FilterFor
 describe('hook filters (plain language, Fix, AI)', () => {
 	it('accept every restrict-only action', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const labelId = await seedLabel(t, mailboxId);
 		const actions: Action[] = [
@@ -86,6 +88,7 @@ describe('hook filters (plain language, Fix, AI)', () => {
 
 	it.each(['forward', 'delete', 'discard'] as const)('refuse %s', async (type) => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const action: Action = type === 'forward' ? { type, forwardTo: 'x@example.com' } : { type };
 		expect(await check(t, mailboxId, { actions: [action] })).toMatch(/cannot use the action/);
@@ -105,6 +108,7 @@ describe('hook filters (plain language, Fix, AI)', () => {
 
 	it.each(['trash', 'spam', 'sent'] as const)('refuse a move into %s', async (role) => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		expect(
 			await check(t, mailboxId, { actions: [{ type: 'moveToFolder', folderId: folders[role] }] })
@@ -113,6 +117,7 @@ describe('hook filters (plain language, Fix, AI)', () => {
 
 	it('refuse a role-less provider Junk folder and another mailbox’s folder', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const junk = await seedUserFolder(t, mailboxId, 'Junk E-mail');
 		expect(
@@ -141,6 +146,7 @@ describe('hook filters (plain language, Fix, AI)', () => {
 
 	it.each([0, 721, 1.5, undefined])('refuse archiveAfter %s hours', async (hours) => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		expect(
 			await check(t, mailboxId, {
@@ -151,6 +157,7 @@ describe('hook filters (plain language, Fix, AI)', () => {
 
 	it('refuse header conditions', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		expect(
 			await check(t, mailboxId, {
@@ -161,6 +168,7 @@ describe('hook filters (plain language, Fix, AI)', () => {
 
 	it('refuse stopProcessing with an AI condition, and allow an empty deterministic part', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		expect(
 			await check(t, mailboxId, { aiCondition: { question: 'Invoice?' }, stopProcessing: true })
@@ -175,6 +183,7 @@ describe('hook filters (plain language, Fix, AI)', () => {
 describe('the save boundaries', () => {
 	it('create keeps manual filters to today’s actions', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await expect(
 			t.mutation(api.mail.filters.create, {
@@ -196,6 +205,7 @@ describe('the save boundaries', () => {
 
 	it('update checks the stored origin and AI condition, and bumps the revision', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const plain = await seedFilter(t, mailboxId);
 		await expect(
@@ -227,6 +237,7 @@ describe('the save boundaries', () => {
 
 	it('a retroactive run refuses an AI rule and stops one that became AI', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const ai = await seedFilter(t, mailboxId, {
 			aiCondition: { question: 'Invoice?', revision: 0 },

@@ -6,6 +6,7 @@
  * and the `rule_apply` log written with every change.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import schema from '../../../schema';
@@ -37,6 +38,7 @@ describe('the rules hooks', () => {
 describe('the hook pass at hosted delivery', () => {
 	it('applies a plain-language rule and logs it as one rule_apply operation', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const labelId = await seedLabel(t, mailboxId);
 		const filterId = await seedFilter(t, mailboxId, {
@@ -67,6 +69,7 @@ describe('the hook pass at hosted delivery', () => {
 
 	it('runs in priority order and stops at a stopProcessing rule', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const first = await seedLabel(t, mailboxId, 'First');
 		const later = await seedLabel(t, mailboxId, 'Later');
@@ -85,6 +88,7 @@ describe('the hook pass at hosted delivery', () => {
 
 	it('lets a manual rule that stopped processing stop the later hook rules', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const manual = await seedLabel(t, mailboxId, 'Manual');
 		await seedFilter(t, mailboxId, {
@@ -102,6 +106,7 @@ describe('the hook pass at hosted delivery', () => {
 
 	it('keeps plain-language and AI rules out of the manual pass', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const finance = await seedUserFolder(t, mailboxId, 'Finance');
 		await seedFilter(t, mailboxId, {
@@ -117,6 +122,7 @@ describe('the hook pass at hosted delivery', () => {
 
 	it('ranks the folder by priority against the manual pass', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const manualFolder = await seedUserFolder(t, mailboxId, 'Manual');
 		const ruleFolder = await seedUserFolder(t, mailboxId, 'Rule');
@@ -150,6 +156,7 @@ describe('the hook pass at hosted delivery', () => {
 
 	it('beats sender status for the folder, and sender status does not overwrite the winner', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'auto_archive', statusSource: 'user' });
 		const finance = await seedUserFolder(t, mailboxId, 'Finance');
@@ -161,6 +168,7 @@ describe('the hook pass at hosted delivery', () => {
 
 	it('records a placement on the record with its undo guard', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedFilter(t, mailboxId, { actions: [{ type: 'sendToDigest' }] });
 		const id = (await deliverHosted(t))!;
@@ -183,6 +191,7 @@ describe('the hook pass at hosted delivery', () => {
 
 	it('does nothing for a team inbox', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t, { scope: 'shared' });
 		await seedFilter(t, mailboxId, { actions: [{ type: 'markFlagged' }] });
 		const id = (await deliverHosted(t))!;
@@ -192,6 +201,7 @@ describe('the hook pass at hosted delivery', () => {
 
 	it('caps the pending questions at five, highest priority first', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		for (let i = 0; i < 7; i += 1) {
 			await seedFilter(t, mailboxId, {
@@ -213,6 +223,7 @@ describe('the hook pass at hosted delivery', () => {
 describe('the hook pass at external sync', () => {
 	it('applies on forward sync with provider writeback, never on a backfill', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { accountId, mailboxId } = await seedExternalMailbox(t);
 		const finance = await seedUserFolder(t, mailboxId, 'Finance');
 		await seedFilter(t, mailboxId, { actions: [{ type: 'moveToFolder', folderId: finance }] });
@@ -231,6 +242,7 @@ describe('the hook pass at external sync', () => {
 describe('R2 answers', () => {
 	async function pendingSetup() {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId, folders } = await seedPersonalMailbox(t);
 		const finance = await seedUserFolder(t, mailboxId, 'Finance');
 		const filterId = await seedFilter(t, mailboxId, {
@@ -300,6 +312,7 @@ describe('R2 answers', () => {
 
 	it('loses the folder to an earlier, lower-numbered winner', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		const early = await seedUserFolder(t, mailboxId, 'Early');
 		const late = await seedUserFolder(t, mailboxId, 'Late');
@@ -322,6 +335,7 @@ describe('R2 answers', () => {
 
 	it('moves an auto-archived sender’s mail: sender status ranks after every rule', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const { mailboxId } = await seedPersonalMailbox(t);
 		await seedProfile(t, mailboxId, { status: 'auto_archive', statusSource: 'user' });
 		const finance = await seedUserFolder(t, mailboxId, 'Finance');

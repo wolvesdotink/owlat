@@ -73,7 +73,10 @@ export function buildDigestPrompt(offered: readonly Offered[]): string {
 	);
 }
 
-/** The verbatim spans per offered ref; unknown refs and ungrounded quotes are dropped. Pure. */
+/**
+ * The verbatim spans per offered ref, grounded only in the offered segments and
+ * ranges; unknown refs and ungrounded quotes are dropped. Pure.
+ */
 export function groundDigestLines(
 	output: DigestOutput,
 	offered: readonly Offered[]
@@ -83,12 +86,20 @@ export function groundDigestLines(
 	for (const line of output.lines) {
 		const input = byRef.get(line.ref);
 		if (!input || lines.has(line.ref)) continue;
-		const { segments, canonicalText } = input.segmented;
+		const { canonicalText } = input.segmented;
+		// Only the offered segments, only their offered ranges (as the gist grounds).
+		const offeredSegments = input.segments.flatMap((o) => {
+			const segment = input.segmented.segments.find((s) => s.id === o.id);
+			return segment ? [{ ...segment, start: o.start, end: o.end }] : [];
+		});
 		const quotes: string[] = [];
 		for (const span of line.spans) {
 			const text = span.quote.trim();
 			if (!text) continue;
-			const verdict = verifyQuote(segments, canonicalText, { segmentId: span.segment, text });
+			const verdict = verifyQuote(offeredSegments, canonicalText, {
+				segmentId: span.segment,
+				text,
+			});
 			if (verdict.ok) quotes.push(canonicalText.slice(verdict.start, verdict.end));
 		}
 		if (quotes.length > 0) lines.set(line.ref, quotes);
