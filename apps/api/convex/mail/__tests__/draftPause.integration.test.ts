@@ -1,9 +1,9 @@
 /**
  * The unused-draft pause (SPEC §7, mail/draftPause.ts) through the real draft
- * lifecycle: an AI draft discarded while its reply is owed counts, so does a
- * reply sent without the AI reply the thread offered (through Owlat or from
- * another client), and no draft ever counts twice. An AI-based send resets
- * the streak. The fifth unused draft pauses draft-on-arrival for that sender
+ * lifecycle: an AI draft discarded (the row, or taken back out in the editor)
+ * counts, so does a reply sent without the AI reply the thread offered
+ * (through Owlat or from another client), and no logical draft ever counts
+ * twice. An AI-based send resets the streak, also while paused. The fifth unused draft pauses draft-on-arrival for that sender
  * until Resume. Pauses and resets are logged operations; a team inbox keeps
  * no streak.
  */
@@ -16,6 +16,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 import { seedProfile, type T } from '../senders/__tests__/senders.testlib';
 import { settleOwnerReply } from '../answeredReply';
+import { aiTextToHtml } from '@owlat/shared/answerMode';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -176,23 +177,91 @@ describe('the unused-draft streak', () => {
 		expect(await profile(t, c.mailboxId)).toBeNull();
 	});
 
-	it('counts a reply sent without the offered AI reply once, never again for its copy', async () => {
+	it('counts a discarded copy of the offered reply once; a later reply or copy never again (F2)', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
-		// Answer mode put the arrival draft in a composer; discarding that copy
-		// leaves the slot on offer, so it does not count yet.
+		const leftover = await seedDraft(t, c, { baseline: SLOT });
 		await t.mutation(api.mail.drafts.discard, {
 			draftId: await seedDraft(t, c, { baseline: SLOT }),
 		});
-		expect(await profile(t, c.mailboxId)).toBeNull();
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
+		expect((await t.run(async (ctx) => ctx.db.get(c.threadId)))?.needsReply).toMatchObject({
+			isDraftUsageCounted: true,
+		});
 
-		const leftover = await seedDraft(t, c, { baseline: SLOT });
+		// The same arrival reply: its other copy, and a reply sent without it.
+		await t.mutation(api.mail.drafts.discard, { draftId: leftover });
 		await send(t, await seedDraft(t, c));
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
+	});
 
-		// The reply settled the thread: the copy left behind is cleanup now.
+	it('counts discard-then-archive of each arrival reply (F2)', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		for (let round = 1; round <= 2; round++) {
+			await t.mutation(api.mail.drafts.discard, {
+				draftId: await seedDraft(t, c, { baseline: SLOT }),
+			});
+			// Archive clears the flag; the next message brings a new slot.
+			await t.run(async (ctx) => ctx.db.patch(c.threadId, { needsReply: undefined }));
+			expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(round);
+			await t.run(async (ctx) =>
+				ctx.db.patch(c.threadId, {
+					needsReply: {
+						messageId: c.askId,
+						detectedAt: Date.now(),
+						source: 'llm' as const,
+						urgency: 'normal' as const,
+						draftSlot: { draft: SLOT, confidence: 0.9, generatedAt: Date.now() },
+					},
+				})
+			);
+		}
+	});
+
+	it('counts a reply sent without the offered AI reply once, and its leftover copy never', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const leftover = await seedDraft(t, c, { baseline: SLOT });
+		const other = await seedDraft(t, c, { baseline: OTHER_AI });
+		await send(t, await seedDraft(t, c));
+		// The arrival reply and the other AI draft both went unused.
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(2);
 		await t.mutation(api.mail.drafts.discard, { draftId: leftover });
-		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
+		await t.mutation(api.mail.drafts.discard, { draftId: other });
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(2);
+	});
+
+	it('counts the AI draft taken back out in the editor, and its send is not AI-based (F1)', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		await seedProfile(t, c.mailboxId, { address: SENDER, unusedDraftStreak: 2 });
+		const draftId = await seedDraft(t, c, { baseline: SLOT });
+
+		await t.mutation(api.mail.draftPause.markAiDraftDiscarded, { draftId });
+		await t.mutation(api.mail.draftPause.markAiDraftDiscarded, { draftId });
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(3);
+
+		// The person writes their own reply in the same row and sends it.
+		await send(t, draftId);
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(3);
+		expect(await operations(t, c.mailboxId)).toEqual([]);
+	});
+
+	it('treats a send as AI-based again once an AI draft went back in', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t, { slot: false });
+		await seedProfile(t, c.mailboxId, { address: SENDER, unusedDraftStreak: 2 });
+		const draftId = await seedDraft(t, c, { baseline: OTHER_AI });
+		await t.mutation(api.mail.draftPause.markAiDraftDiscarded, { draftId });
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bodyHtml: aiTextToHtml(OTHER_AI),
+			aiText: OTHER_AI,
+		});
+		expect((await t.run(async (ctx) => ctx.db.get(draftId)))?.aiDraftDiscardedAt).toBeUndefined();
+		await send(t, draftId);
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(0);
 	});
 
 	it('counts a reply from another client when the thread offered an AI reply', async () => {
@@ -278,9 +347,20 @@ describe('the pause', () => {
 			undefined
 		);
 
-		// Frozen while paused: an AI-based send leaves it alone.
+		// An AI-based send resets the streak while paused, as a new operation:
+		// the pause's undo now fails its guard (F7). The pause waits for Resume.
 		await send(t, await seedDraft(t, c, { baseline: OTHER_AI }));
-		expect((await profile(t, c.mailboxId))?.autoDraftPausedAt).toBe(paused.autoDraftPausedAt);
+		const reset = (await profile(t, c.mailboxId))!;
+		expect(reset).toMatchObject({
+			autoDraftPausedAt: paused.autoDraftPausedAt,
+			unusedDraftStreak: 0,
+		});
+		const resetOp = (await operations(t, c.mailboxId)).find((o) => o.op._id !== logged!.op._id);
+		expect(resetOp!.changes[0]!.change).toMatchObject({
+			before: { autoDraftPausedAt: paused.autoDraftPausedAt, unusedDraftStreak: 5 },
+			after: { autoDraftPausedAt: paused.autoDraftPausedAt, unusedDraftStreak: 0 },
+		});
+		expect(reset.lastOperationId).toBe(resetOp!.op._id);
 
 		// Resume clears both fields, as its own operation.
 		const resumed = await t.mutation(api.mail.senders.status.resumeDrafts, {

@@ -3,27 +3,40 @@
  * The composer's Answer mode API (composables/postbox/usePostboxComposerAnswerApi):
  *   - an AI draft replaces only what was written (quote and signature stay),
  *     and is recorded once as the draft's AI baseline after the row is saved;
- *   - Discard puts back what was written before the AI draft;
+ *   - Discard puts back what was written before the AI draft, saves, and
+ *     reports the AI draft unused;
  *   - the footer says how many gaps are left, else the host's note, else the
  *     save state.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { usePostboxComposerAnswerApi } from '../usePostboxComposerAnswerApi';
 
-vi.mock('@owlat/api', () => ({ api: { mail: { drafts: { update: 'drafts.update' } } } }));
+vi.mock('@owlat/api', () => ({
+	api: {
+		mail: {
+			drafts: { update: 'drafts.update' },
+			draftPause: { markAiDraftDiscarded: 'draftPause.markAiDraftDiscarded' },
+		},
+	},
+}));
 
 const QUOTE = '<br><br><div class="gmail_quote"><blockquote>Could you send it?</blockquote></div>';
 const run = vi.fn(async () => ({ ok: true }));
+const discardRun = vi.fn(async () => ({ ok: true }));
 
 beforeEach(() => {
 	run.mockClear();
+	discardRun.mockClear();
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
-		useBackendOperation: () => ({ run, isLoading: ref(false) }),
+		useBackendOperation: (fn: string) => ({
+			run: fn === 'draftPause.markAiDraftDiscarded' ? discardRun : run,
+			isLoading: ref(false),
+		}),
 	});
 });
 
@@ -84,6 +97,10 @@ describe('usePostboxComposerAnswerApi', () => {
 		expect(state.bodyHtml.value).toBe(`<p>my notes</p>${QUOTE}`);
 		expect(answerApi.aiDraft.value).toBeNull();
 		expect(state.focusBody).toHaveBeenCalled();
+		// Saved first, then reported: the AI draft went unused (mail/draftPause.ts).
+		await flushPromises();
+		expect(discardRun).toHaveBeenCalledExactlyOnceWith({ draftId: 'd1' });
+		expect(state.flush).toHaveBeenCalledTimes(2);
 	});
 
 	it('takes the server attachments and the follow-up date', () => {

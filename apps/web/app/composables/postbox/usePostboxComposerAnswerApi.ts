@@ -71,6 +71,11 @@ export function usePostboxComposerAnswerApi(opts: {
 		label: () => t('shared.postbox.usePostboxCompose.saveOperation'),
 		announce: false,
 	});
+	// The AI draft taken back out counts toward its sender's unused-draft streak.
+	const recordDiscard = useBackendOperation(api.mail.draftPause.markAiDraftDiscarded, {
+		label: () => t('shared.postbox.usePostboxCompose.saveOperation'),
+		announce: false,
+	});
 
 	const aiDraft = ref<string | null>(null);
 	/** What was written before the AI draft went in, for Discard. */
@@ -110,6 +115,10 @@ export function usePostboxComposerAnswerApi(opts: {
 			aiDraft.value = null;
 			setAiWrittenText(opts.bodyHtml, null);
 			opts.focusBody();
+			// After the save that takes the AI text out, so the row holds what is on screen.
+			void opts.flush().then((saved) => {
+				if (saved.ok && saved.result) void recordDiscard.run({ draftId: saved.result });
+			});
 		},
 		setAttachments(list) {
 			opts.attachments.value = list.map((a) => ({

@@ -123,6 +123,10 @@ export async function provenancePatch(
 	const changed = envelopeChanged || bodyChanged ? humanEdit(now) : {};
 	return {
 		...(isNewAiText ? { aiAuthored: { text: write.aiText, at: now } } : {}),
+		// An AI draft went in again after one was taken back out (mail/draftPause.ts).
+		...(isAiWrite && draft.aiDraftDiscardedAt !== undefined
+			? { aiDraftDiscardedAt: undefined }
+			: {}),
 		...(aiBodyChanged ? { lastEditedAt: now } : {}),
 		...changed,
 	};

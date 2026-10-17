@@ -92,6 +92,10 @@ export const needsReplyValidator = v.object({
 			generatedAt: v.number(),
 		})
 	),
+	// Unused-draft streak (mail/draftPause.ts): the AI reply this flag offers
+	// (the slot or the clarification draft) already counted toward the
+	// sender's streak, through a discarded copy of it. Goes with the flag.
+	isDraftUsageCounted: v.optional(v.boolean()),
 	// The trigger message's list fields, copied by applyResult (plan C8) so
 	// the Reply Queue read serves a row without loading the message. Absent on
 	// flags written before it existed; `migrations/0047_denormalize_thread_rows`
