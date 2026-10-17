@@ -1775,6 +1775,7 @@ import type * as workspaces_settings from '../workspaces/settings.js';
 import type * as auth_erasure_arrivalRelations from '../auth/erasure/arrivalRelations.js';
 import type * as lib_validators_arrival from '../lib/validators/arrival.js';
 import type * as mail_arrival_changeRows from '../mail/arrival/changeRows.js';
+import type * as mail_arrival_digestState from '../mail/arrival/digestState.js';
 import type * as mail_arrival_hooks from '../mail/arrival/hooks.js';
 import type * as mail_arrival_mailboxRows from '../mail/arrival/mailboxRows.js';
 import type * as mail_arrival_purgeRanges from '../mail/arrival/purgeRanges.js';
@@ -3552,6 +3553,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/erasure/arrivalRelations': typeof auth_erasure_arrivalRelations;
 	'lib/validators/arrival': typeof lib_validators_arrival;
 	'mail/arrival/changeRows': typeof mail_arrival_changeRows;
+	'mail/arrival/digestState': typeof mail_arrival_digestState;
 	'mail/arrival/hooks': typeof mail_arrival_hooks;
 	'mail/arrival/mailboxRows': typeof mail_arrival_mailboxRows;
 	'mail/arrival/purgeRanges': typeof mail_arrival_purgeRanges;

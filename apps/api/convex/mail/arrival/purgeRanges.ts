@@ -5,11 +5,12 @@
  * they share its transaction budget and its durable cursor
  * (`mail/interpret/purgeDrain.ts`). In order:
  *
- *  1–3. the purged messages' lines in every unsent digest of the mailbox
- *       (`claimed`, `generated`, `failed`), walked by creation time;
- *  4.   the messages' arrival records, delayed actions and undo-log change rows;
- *  5.   the thread's projection when it points at a purged message, and the
- *       brief's gist when it was read from one (`briefTop.gist` with it).
+ *  1. the purged messages' lines in the mailbox's generated digest, the only
+ *     state that holds item text (`digestState.ts`); the mailbox is the one
+ *     persisted on the job;
+ *  2. the messages' arrival records, delayed actions and undo-log change rows;
+ *  3. the thread's projection when it points at a purged message, and the
+ *     brief's gist when it was read from one (`briefTop.gist` with it).
  *
  * `releaseArrivalSourceAccounting` is called by the job's snapshot range as it
  * deletes a purged source's `interpretSources` row: a gist-only or skipped
@@ -29,7 +30,6 @@ import type { ThreadRef } from '../../lib/validators/threadRef';
 import {
 	drainShrinking,
 	drainSteps,
-	scanRange,
 	type PurgeRange,
 	type RangeRun,
 } from '../interpret/purgeDrain';
@@ -44,64 +44,49 @@ function purgedMessageIds(run: RangeRun): Id<'mailMessages'>[] {
 }
 
 /**
- * The mailbox the purged messages belonged to: the thread's, or, once the
- * thread is gone too, a purged message's arrival record's (those ranges come
- * later, so the records are still there). Null when neither is left: a message
- * with no record never reached a digest.
+ * The mailbox the purged messages belonged to, persisted on the job when it
+ * started (`purgeRun.ts purgeSourcesFromThread`), so neither the thread nor an
+ * arrival record has to outlive the walk. A job without one (a Team Inbox
+ * thread) has no digests.
  */
-async function mailboxOfRun(
-	ctx: MutationCtx,
-	run: RangeRun,
-	ids: readonly Id<'mailMessages'>[]
-): Promise<Id<'mailboxes'> | null> {
-	if (run.ref.kind !== 'mail') return null;
+function mailboxOfRun(run: RangeRun): Id<'mailboxes'> | null {
+	return run.ref.kind === 'mail' ? (run.job.mailboxId ?? null) : null;
+}
+
+/**
+ * Most generated digests a mailbox can hold is one (`digestState.ts`); two
+ * are read so a broken invariant is seen, logged and still handled.
+ */
+const GENERATED_DIGEST_PROBE = 2;
+
+/**
+ * 1. The purged messages' lines in the mailbox's generated digest. Only a
+ * `generated` digest holds item text (`digestState.ts`: claimed has none yet,
+ * failed and sent are stripped), so this is one bounded read, no cursor.
+ */
+const generatedDigestRange: PurgeRange = async (ctx, run) => {
+	const ids = purgedMessageIds(run);
+	const mailboxId = mailboxOfRun(run);
+	if (ids.length === 0 || !mailboxId) return { isDone: true };
+	const purged = new Set<string>(ids);
 	run.budget.range();
-	const thread = await ctx.db.get(run.ref.id);
-	run.budget.charge(thread);
-	if (thread) return thread.mailboxId;
-	for (const messageId of ids) {
-		run.budget.range();
-		const record = await ctx.db
-			.query('mailArrivalRecords')
-			.withIndex('by_message', (q) => q.eq('messageId', messageId))
-			.first();
-		run.budget.charge(record);
-		if (record) return record.mailboxId;
+	const digests = await ctx.db
+		.query('mailDigests')
+		.withIndex('by_mailbox_state', (q) => q.eq('mailboxId', mailboxId).eq('state', 'generated'))
+		.take(GENERATED_DIGEST_PROBE);
+	for (const digest of digests) run.budget.charge(digest);
+	if (digests.length >= GENERATED_DIGEST_PROBE) {
+		console.warn('arrival: more than one generated digest in a mailbox', { mailboxId });
 	}
-	return null;
-}
+	for (const digest of digests) {
+		const items = digest.items.filter((item) => !purged.has(item.messageId));
+		if (items.length !== digest.items.length) await ctx.db.patch(digest._id, { items });
+		run.budget.progress();
+	}
+	return { isDone: true };
+};
 
-/** One unsent digest state: drop the purged messages' lines, walked by creation time. */
-function unsentDigestRange(state: 'claimed' | 'generated' | 'failed'): PurgeRange {
-	return async (ctx, run) => {
-		const ids = purgedMessageIds(run);
-		if (ids.length === 0) return { isDone: true };
-		const mailboxId = await mailboxOfRun(ctx, run, ids);
-		if (!mailboxId) return { isDone: true };
-		const purged = new Set<string>(ids);
-		return scanRange(
-			run.budget,
-			run.cursor,
-			(after, n) =>
-				ctx.db
-					.query('mailDigests')
-					.withIndex('by_mailbox_state', (q) =>
-						typeof after === 'number'
-							? q.eq('mailboxId', mailboxId).eq('state', state).gt('_creationTime', after)
-							: q.eq('mailboxId', mailboxId).eq('state', state)
-					)
-					.take(n),
-			(digest) => digest._creationTime,
-			async (digest) => {
-				const items = digest.items.filter((item) => !purged.has(item.messageId));
-				if (items.length !== digest.items.length) await ctx.db.patch(digest._id, { items });
-				return true;
-			}
-		);
-	};
-}
-
-/** 4. Every per-message arrival row of the purged messages. */
+/** 2. Every per-message arrival row of the purged messages. */
 const messageRowsRange: PurgeRange = (ctx, run) => {
 	const deleting = async (row: {
 		_id: Id<'mailArrivalRecords' | 'mailDelayedActions' | 'mailArrivalOperationChanges'>;
@@ -147,7 +132,7 @@ const messageRowsRange: PurgeRange = (ctx, run) => {
 	);
 };
 
-/** 5. The thread projection and the gist, when a purged message is what they show. */
+/** 3. The thread projection and the gist, when a purged message is what they show. */
 const projectionRange: PurgeRange = async (ctx, run) => {
 	if (run.ref.kind !== 'mail') return { isDone: true };
 	const threadId = run.ref.id;
@@ -188,9 +173,7 @@ async function loadMailBrief(
 
 /** The read-on-arrival ranges of a `sources` purge job, in order. */
 export const arrivalSourceRanges: readonly PurgeRange[] = [
-	unsentDigestRange('claimed'),
-	unsentDigestRange('generated'),
-	unsentDigestRange('failed'),
+	generatedDigestRange,
 	messageRowsRange,
 	projectionRange,
 ];

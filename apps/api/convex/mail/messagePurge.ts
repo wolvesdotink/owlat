@@ -146,16 +146,19 @@ export async function deleteMessageRowAndBlobs(
  * ({@link purgeThreadBriefsOf}) runs once per thread rather than once per
  * message: it scans the thread's items and facts.
  */
-export type PurgedMessages = Map<Id<'mailThreads'>, Id<'mailMessages'>[]>;
+export type PurgedMessages = Map<
+	Id<'mailThreads'>,
+	{ mailboxId: Id<'mailboxes'>; messageIds: Id<'mailMessages'>[] }
+>;
 
 /** Record one purged message in `purged`. */
 export function notePurgedMessage(
 	purged: PurgedMessages,
-	message: Pick<Doc<'mailMessages'>, '_id' | 'threadId'>
+	message: Pick<Doc<'mailMessages'>, '_id' | 'threadId' | 'mailboxId'>
 ): void {
-	const ids = purged.get(message.threadId);
-	if (ids) ids.push(message._id);
-	else purged.set(message.threadId, [message._id]);
+	const entry = purged.get(message.threadId);
+	if (entry) entry.messageIds.push(message._id);
+	else purged.set(message.threadId, { mailboxId: message.mailboxId, messageIds: [message._id] });
 }
 
 /**
@@ -167,11 +170,12 @@ export function notePurgedMessage(
  * delete whole threads purge per thread instead.
  */
 export async function purgeThreadBriefsOf(ctx: MutationCtx, purged: PurgedMessages): Promise<void> {
-	for (const [threadId, messageIds] of purged) {
+	for (const [threadId, { mailboxId, messageIds }] of purged) {
 		await purgeSourcesFromThread(
 			ctx,
 			{ kind: 'mail', id: threadId },
-			messageIds.flatMap(mailMessageSources)
+			messageIds.flatMap(mailMessageSources),
+			{ mailboxId }
 		);
 	}
 }
