@@ -240,11 +240,6 @@ export const mailThreadsTables = {
 		digestConsumedThrough: v.optional(v.string()),
 		placementOverride: v.optional(placementOverrideValidator),
 		lastArrivalOperationId: v.optional(v.id('mailArrivalOperations')),
-		// Unused-draft streak (mail/draftPause.ts): the offer keys
-		// (`<threadId>:<owed messageId>`) of this thread's offered AI replies that
-		// already counted, used or unused, newest last, at most 8. Outlives the
-		// needs-reply flag, so no copy of a counted offer counts again.
-		draftOfferCountedKeys: v.optional(v.array(v.string())),
 		// RETIRED (ADR-0072): the reader strip's cached thread summary, replaced by
 		// the thread brief. Nothing writes or reads it; migration 0067 clears it and
 		// the next release drops the field (mail/legacySummaryRows.ts).

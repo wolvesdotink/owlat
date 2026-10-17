@@ -15,6 +15,7 @@ import { batchGet } from '../_utils/batchLoader';
 import { deleteMailThreadCatchUps } from './legacySummaryRows';
 import { deleteResourceUploads, mailThreadUploadKey } from '../storage/uploads';
 import { purgeThreadBrief } from './interpret/purgeRun';
+import { deleteThreadOfferUsage } from './draftOfferUsage';
 
 /**
  * Most addresses a thread's `participants` array holds. Every message adds its
@@ -68,6 +69,7 @@ export async function rebuildThreadAggregates(
 		await deleteResourceUploads(ctx, mailThreadUploadKey(threadId));
 		// The thread brief (items, facts, activity, plans …) is derived from it too.
 		await purgeThreadBrief(ctx, { kind: 'mail', id: threadId });
+		await deleteThreadOfferUsage(ctx, threadId); // counted draft offers (mail/draftPause.ts)
 		await ctx.db.delete(threadId);
 		return;
 	}

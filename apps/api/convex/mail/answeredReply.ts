@@ -46,7 +46,7 @@ import {
 import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
 import { clearThreadNeedsReply, isOwnMessage } from './needsReply';
 import { mailboxOwnAddresses } from './identities';
-import { noteReplyWithoutAiDraft } from './draftPause';
+import { noteDraftDiscarded, noteReplyWithoutAiDraft } from './draftPause';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -93,8 +93,12 @@ export function isAutomatedResponse(headers: Record<string, string> | undefined)
 	return isMachineGeneratedForReply(evidence) || isBulkPrecedenceForReply(evidence);
 }
 
-/** Delete a draft row with its uploads and Answer mode ask sessions. */
+/**
+ * Delete an unsent draft row with its uploads and Answer mode ask sessions.
+ * An AI draft that dies this way went unused (mail/draftPause.ts).
+ */
 export async function deleteDraftRow(ctx: MutationCtx, draft: Doc<'mailDrafts'>): Promise<void> {
+	await noteDraftDiscarded(ctx, draft);
 	for (const att of draft.attachments) {
 		await deleteOwnedUpload(ctx, att.storageId, `mailDrafts:${draft._id}`);
 	}

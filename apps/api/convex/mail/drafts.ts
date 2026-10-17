@@ -41,7 +41,6 @@ import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } fro
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteDraftRow } from './answeredReply';
-import { noteDraftDiscarded } from './draftPause';
 import { aiWritePatch, editPatch, humanEdit, provenancePatch } from './draftProvenance';
 import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
@@ -393,7 +392,6 @@ export const discard = postboxMutation({
 		if (!draft) return;
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) return;
-		await noteDraftDiscarded(ctx, draft); // an unused AI draft (mail/draftPause.ts)
 		await deleteDraftRow(ctx, draft);
 	},
 });

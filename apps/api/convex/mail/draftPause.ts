@@ -14,22 +14,27 @@
  *    whichever lands first), and the row keeps it (`mailDrafts.offerKey`,
  *    mail/draftProvenance.ts `aiWritePatch`).
  *
- * **Exactly once.** An offer's outcome is stored on the thread
- * (`mailThreads.draftOfferCountedKeys`, the last 8 keys), which outlives the
- * flag: once its key is there, no copy's discard, reply or send counts it
- * again. A row's own outcome is stored on the row
- * (`mailDrafts.isDraftUsageCounted`). Each check and its write happen in one
- * mutation. Nothing scans for copies.
+ * **Exactly once.** An offer's outcome is a row of `mailDraftOfferUsage`
+ * (mail/draftOfferUsage.ts), checked and written in the mutation that
+ * counts, kept for as long as the thread and its owed message exist: once it
+ * is there, no copy's discard, death, reply or send counts that offer again.
+ * A standalone row's outcome is stored on the row
+ * (`mailDrafts.isDraftUsageCounted`). Nothing scans for copies.
  *
  * **Unused** (`unusedDraftStreak` + 1 per logical draft):
  *
- *  - the person takes the AI draft back out in the editor ("AI draft ·
- *    Discard", `markAiDraftDiscarded`), or discards the draft row
- *    (`drafts.discard`): a copy counts its offer, any other row itself;
+ *  - a saved AI draft dies unused: the person discards it
+ *    (`drafts.discard`), the answered-draft cleanup purges it
+ *    (mail/answeredReply.ts), or the person takes the AI draft back out in
+ *    the editor ("AI draft · Discard", `markAiDraftDiscarded`). Every one of
+ *    them goes through `deleteDraftRow` or that mutation. A copy counts its
+ *    offer, whichever copy goes first; a standalone draft counts itself;
  *  - the owner replies in the thread without an AI-based draft (an Owlat
  *    send, or our reply from another client) while the thread offers a reply
- *    that has not counted. A saved AI draft that is not a copy counts when it
- *    is discarded.
+ *    that has not counted. A standalone AI draft left behind counts when the
+ *    cleanup removes it, not at the reply.
+ *
+ * A draft that is sent never counts as unused.
  *
  * **Used.** Sending a row with a baseline whose AI draft was not taken back
  * out (`aiDraftDiscardedAt` absent; a later AI write clears it) resets the
@@ -65,12 +70,10 @@ import {
 	senderKeyOf,
 } from './senders/profiles';
 import { visibleThreadClarification, visibleThreadDraftSlot } from './needsReplySlot';
+import { claimDraftOffer } from './draftOfferUsage';
 
 /** Unused AI drafts in a row that pause draft-on-arrival for a sender. */
 export const UNUSED_DRAFT_PAUSE_AT = 5;
-
-/** Counted offer keys a thread keeps (newest last). */
-const COUNTED_OFFER_KEYS = 8;
 
 export type DraftUse = 'unused' | 'used';
 
@@ -215,34 +218,15 @@ async function senderOf(
 }
 
 /**
- * Record `key`'s offer as counted on its thread. False (nothing written) when
- * it already was, or when the thread is not this mailbox's.
- */
-async function consumeOffer(
-	ctx: MutationCtx,
-	mailboxId: Id<'mailboxes'>,
-	key: string
-): Promise<boolean> {
-	const threadId = ctx.db.normalizeId('mailThreads', key.slice(0, key.indexOf(':')));
-	const thread = threadId ? await ctx.db.get(threadId) : null;
-	if (!thread || thread.mailboxId !== mailboxId) return false;
-	const counted = thread.draftOfferCountedKeys ?? [];
-	if (counted.includes(key)) return false;
-	await ctx.db.patch(thread._id, {
-		draftOfferCountedKeys: [...counted, key].slice(-COUNTED_OFFER_KEYS),
-	});
-	return true;
-}
-
-/**
  * The AI draft of `draft` went unused (discarded, or taken back out in the
  * editor). A copy counts its offer once; any other row counts itself once.
  */
 async function countUnusedRow(ctx: MutationCtx, draft: Doc<'mailDrafts'>): Promise<void> {
-	if (!baselineOf(draft) || draft.isDraftUsageCounted || draft.obsoleted) return;
+	if (!baselineOf(draft) || draft.isDraftUsageCounted) return;
 	if (draft.state !== 'draft' || !(await isPersonalMailboxId(ctx, draft.mailboxId))) return;
 	await ctx.db.patch(draft._id, { isDraftUsageCounted: true });
-	if (draft.offerKey && !(await consumeOffer(ctx, draft.mailboxId, draft.offerKey))) return;
+	if (draft.offerKey && !(await claimDraftOffer(ctx, draft.mailboxId, draft.offerKey, Date.now())))
+		return;
 	const sender = await senderOf(ctx, draft.mailboxId, draft.inReplyToMessageId);
 	if (!sender) return;
 	await recordDraftUse(ctx, {
@@ -265,7 +249,7 @@ export async function noteReplyWithoutAiDraft(
 	const flag = thread.needsReply;
 	const key = draftOfferKeyOf(thread);
 	if (!flag || !key || !(await isPersonalMailboxId(ctx, thread.mailboxId))) return;
-	if (!(await consumeOffer(ctx, thread.mailboxId, key))) return;
+	if (!(await claimDraftOffer(ctx, thread.mailboxId, key, Date.now()))) return;
 	const sender = await senderOf(ctx, thread.mailboxId, flag.messageId);
 	if (!sender) return;
 	await recordDraftUse(ctx, {
@@ -293,7 +277,7 @@ export async function noteDraftSent(ctx: MutationCtx, draft: Doc<'mailDrafts'>):
 		if (thread && thread.mailboxId === draft.mailboxId) await noteReplyWithoutAiDraft(ctx, thread);
 		return;
 	}
-	if (draft.offerKey) await consumeOffer(ctx, draft.mailboxId, draft.offerKey);
+	if (draft.offerKey) await claimDraftOffer(ctx, draft.mailboxId, draft.offerKey, Date.now());
 	const sender = await senderOf(ctx, draft.mailboxId, draft.inReplyToMessageId);
 	if (!sender) return;
 	await recordDraftUse(ctx, {
@@ -304,7 +288,10 @@ export async function noteDraftSent(ctx: MutationCtx, draft: Doc<'mailDrafts'>):
 	});
 }
 
-/** `drafts.discard`, before the row is deleted: its AI draft went unused. */
+/**
+ * A draft row is deleted unsent (`answeredReply.deleteDraftRow`: a discard,
+ * the answered-draft cleanup): its AI draft went unused.
+ */
 export async function noteDraftDiscarded(
 	ctx: MutationCtx,
 	draft: Doc<'mailDrafts'>

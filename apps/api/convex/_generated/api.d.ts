@@ -34,6 +34,7 @@ import type * as lib_rowCounters from '../lib/rowCounters.js';
 import type * as lib_semanticFileText from '../lib/semanticFileText.js';
 import type * as mail_ai_gapQuestions from '../mail/ai/gapQuestions.js';
 import type * as mail_ai_nudgeDraft from '../mail/ai/nudgeDraft.js';
+import type * as mail_draftOfferUsage from '../mail/draftOfferUsage.js';
 import type * as mail_draftPause from '../mail/draftPause.js';
 import type * as mail_interpret___eval___liveModel from '../mail/interpret/__eval__/liveModel.js';
 import type * as mail_interpret_activity from '../mail/interpret/activity.js';
@@ -1853,6 +1854,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/semanticFileText': typeof lib_semanticFileText;
 	'mail/ai/gapQuestions': typeof mail_ai_gapQuestions;
 	'mail/ai/nudgeDraft': typeof mail_ai_nudgeDraft;
+	'mail/draftOfferUsage': typeof mail_draftOfferUsage;
 	'mail/draftPause': typeof mail_draftPause;
 	'mail/interpret/__eval__/liveModel': typeof mail_interpret___eval___liveModel;
 	'mail/interpret/activity': typeof mail_interpret_activity;

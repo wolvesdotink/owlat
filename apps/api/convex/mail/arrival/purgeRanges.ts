@@ -87,18 +87,43 @@ const generatedDigestRange: PurgeRange = async (ctx, run) => {
 	return { isDone: true };
 };
 
-/** 2. Every per-message arrival row of the purged messages. */
+/**
+ * 2. Every per-message arrival row of the purged messages, and the counted
+ * draft offer a purged message was owed for (`mailDraftOfferUsage`, keyed
+ * `<threadId>:<messageId>`, mail/draftPause.ts).
+ */
 const messageRowsRange: PurgeRange = (ctx, run) => {
 	const deleting = async (row: {
-		_id: Id<'mailArrivalRecords' | 'mailDelayedActions' | 'mailArrivalOperationChanges'>;
+		_id: Id<
+			| 'mailArrivalRecords'
+			| 'mailDelayedActions'
+			| 'mailArrivalOperationChanges'
+			| 'mailDraftOfferUsage'
+		>;
 	}) => {
 		await ctx.db.delete(row._id);
 		return true;
 	};
+	const mailboxId = mailboxOfRun(run);
+	const threadId = run.ref.kind === 'mail' ? run.ref.id : null;
 	return drainSteps(
 		run.budget,
 		run.cursor,
 		purgedMessageIds(run).flatMap((messageId) => [
+			() =>
+				mailboxId && threadId
+					? drainShrinking(
+							run.budget,
+							(n) =>
+								ctx.db
+									.query('mailDraftOfferUsage')
+									.withIndex('by_mailbox_offer', (q) =>
+										q.eq('mailboxId', mailboxId).eq('offerKey', `${threadId}:${messageId}`)
+									)
+									.take(n),
+							deleting
+						)
+					: Promise.resolve(true),
 			() =>
 				drainShrinking(
 					run.budget,

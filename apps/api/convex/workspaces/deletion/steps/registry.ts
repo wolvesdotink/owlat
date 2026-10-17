@@ -277,6 +277,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	embeddingCoverage: makeSweepStep('embeddingCoverage'),
 	decisionArtifacts: makeSweepStep('decisionArtifacts'),
 	senderMemory: makeSweepStep('senderMemory'),
+	mailDraftOfferUsage: makeSweepStep('mailDraftOfferUsage'),
 	mailArrivalOperationChanges: makeSweepStep('mailArrivalOperationChanges'),
 	mailDelayedActions: makeSweepStep('mailDelayedActions'),
 	mailDigests: makeSweepStep('mailDigests'),

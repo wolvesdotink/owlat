@@ -15,8 +15,9 @@ import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 import { seedProfile, type T } from '../senders/__tests__/senders.testlib';
-import { settleOwnerReply } from '../answeredReply';
+import { ANSWERED_RETENTION_MS, settleOwnerReply } from '../answeredReply';
 import { aiTextToHtml } from '@owlat/shared/answerMode';
+import { rebuildThreadAggregates } from '../threadAggregates';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -147,6 +148,37 @@ async function profile(
 	});
 }
 
+/** The counted offers of the conversation's mailbox. */
+async function usage(t: T, c: Conversation) {
+	return await t.run(async (ctx) =>
+		ctx.db
+			.query('mailDraftOfferUsage')
+			.withIndex('by_mailbox_offer', (q) => q.eq('mailboxId', c.mailboxId))
+			.collect()
+	);
+}
+
+/** A new message from them in the thread, owed a reply, with a new offered slot. */
+async function nextOffer(t: T, c: Conversation, n: number): Promise<Id<'mailMessages'>> {
+	return await t.run(async (ctx) => {
+		const { _id, _creationTime, ...base } = (await ctx.db.get(c.askId))!;
+		const next = await ctx.db.insert('mailMessages', {
+			...base,
+			rfc822MessageId: `<offer-${n}@acme.test>`,
+		});
+		await ctx.db.patch(c.threadId, {
+			needsReply: {
+				messageId: next,
+				detectedAt: Date.now(),
+				source: 'llm' as const,
+				urgency: 'normal' as const,
+				draftSlot: { draft: SLOT, confidence: 0.9, generatedAt: Date.now() },
+			},
+		});
+		return next;
+	});
+}
+
 async function operations(t: T, mailboxId: Id<'mailboxes'>) {
 	return await t.run(async (ctx) => {
 		const ops = await ctx.db
@@ -193,9 +225,7 @@ describe('the unused-draft streak', () => {
 		const leftover = await seedDraft(t, c, copy);
 		await t.mutation(api.mail.drafts.discard, { draftId: await seedDraft(t, c, copy) });
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
-		expect((await t.run(async (ctx) => ctx.db.get(c.threadId)))?.draftOfferCountedKeys).toEqual([
-			offerOf(c),
-		]);
+		expect((await usage(t, c)).map((row) => row.offerKey)).toEqual([offerOf(c)]);
 
 		// The same offer: its other copy, and a reply sent without it.
 		await t.mutation(api.mail.drafts.discard, { draftId: leftover });
@@ -332,6 +362,84 @@ describe('the unused-draft streak', () => {
 		expect((await t.run(async (ctx) => ctx.db.get(draftId)))?.aiDraftDiscardedAt).toBeUndefined();
 		await send(t, draftId);
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(0);
+	});
+
+	it('never counts an old copy after more than eight newer offers (r4 F2)', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const copy = { baseline: SLOT, offerKey: offerOf(c) };
+		const edited = await seedDraft(t, c, copy);
+		await t.mutation(api.mail.drafts.discard, { draftId: await seedDraft(t, c, copy) });
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
+		// Nine newer offers, each counted through a discarded copy of its own.
+		for (let n = 1; n <= 9; n++) {
+			const askId = await nextOffer(t, c, n);
+			await t.mutation(api.mail.drafts.discard, {
+				draftId: await seedDraft(t, c, {
+					baseline: SLOT,
+					offerKey: offerOf(c, askId),
+					inReplyTo: askId,
+				}),
+			});
+		}
+		expect((await profile(t, c.mailboxId))?.autoDraftPausedAt).toBeTypeOf('number');
+		await t.run(async (ctx) => {
+			const profileRow = (await ctx.db
+				.query('mailSenderProfiles')
+				.withIndex('by_mailbox_last', (q) => q.eq('mailboxId', c.mailboxId))
+				.first())!;
+			// Resume, so a double count would show.
+			await ctx.db.patch(profileRow._id, { autoDraftPausedAt: undefined, unusedDraftStreak: 0 });
+		});
+		await t.mutation(api.mail.drafts.discard, { draftId: edited });
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(0);
+		expect(await usage(t, c)).toHaveLength(10);
+	});
+
+	it('counts a standalone AI draft once when the cleanup removes it after a manual reply (r4 F1)', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t, { slot: false });
+		const standalone = await seedDraft(t, c, { baseline: OTHER_AI });
+		await send(t, await seedDraft(t, c));
+		// No offer on the thread: the reply itself counts nothing.
+		expect(await profile(t, c.mailboxId)).toBeNull();
+		// The answered-draft cleanup hid it, and purges it after the retention window.
+		await t.run(async (ctx) =>
+			ctx.db.patch(standalone, {
+				obsoleted: { byMessageIds: [], at: Date.now() - ANSWERED_RETENTION_MS - 1 },
+			})
+		);
+		await t.mutation(internal.mail.answeredReply.purgeExpired, {});
+		await t.mutation(internal.mail.answeredReply.purgeExpired, {});
+		expect(await t.run(async (ctx) => ctx.db.get(standalone))).toBeNull();
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
+	});
+
+	it('resets on a standalone AI draft sent, never counting it unused (r4 F1)', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t, { slot: false });
+		await seedProfile(t, c.mailboxId, { address: SENDER, unusedDraftStreak: 2 });
+		await send(t, await seedDraft(t, c, { baseline: OTHER_AI }));
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(0);
+	});
+
+	it('forgets a counted offer with its thread and with its owed message', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		await t.mutation(api.mail.drafts.discard, {
+			draftId: await seedDraft(t, c, { baseline: SLOT, offerKey: offerOf(c) }),
+		});
+		expect(await usage(t, c)).toHaveLength(1);
+		await t.run(async (ctx) => {
+			for (const m of await ctx.db
+				.query('mailMessages')
+				.withIndex('by_thread', (q) => q.eq('threadId', c.threadId))
+				.collect()) {
+				await ctx.db.delete(m._id);
+			}
+			await rebuildThreadAggregates(ctx, c.threadId);
+		});
+		expect(await usage(t, c)).toEqual([]);
 	});
 
 	it('counts a reply from another client when the thread offered an AI reply', async () => {
