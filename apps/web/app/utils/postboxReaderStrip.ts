@@ -130,7 +130,9 @@ export function gistLine(gist: ReaderGist, max: number = GIST_LINE_MAX): string 
 /**
  * Whether "Full brief" has anything to open, independent of what the strip
  * shows: any item in any state (open, closed, unclear, hidden), a fact or an
- * overview, activity, files, or other people to look up elsewhere.
+ * overview, activity, files, or other people to look up elsewhere. The people
+ * come from the headers, not from reading, so while the brief is still pending
+ * they alone do not count: the sheet would open on nothing.
  */
 export function briefHasContent(brief: BriefModeView | null | undefined): boolean {
 	if (!brief || brief.completeness === 'none') return false;
@@ -143,7 +145,7 @@ export function briefHasContent(brief: BriefModeView | null | undefined): boolea
 		!!brief.standing?.overview ||
 		brief.activity.length > 0 ||
 		brief.files.length > 0 ||
-		brief.participants.some((p) => !p.isUs)
+		(brief.completeness !== 'pending' && brief.participants.some((p) => !p.isUs))
 	);
 }
 
