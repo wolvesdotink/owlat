@@ -170,7 +170,9 @@ export const retryGist = internalMutation({
 			now
 		);
 		if (retryAt !== undefined) {
-			// Still outstanding: the retry (or, failing that, the stale sweep) reads it.
+			// Still outstanding: the retry (or, failing that, the stale sweep) reads
+			// it, never before `arrivalRetryAt` (admission enforces it, Sol r2 F5).
+			await ctx.db.patch(row._id, { arrivalRetryAt: retryAt, updatedAt: now });
 			await ctx.scheduler.runAt(retryAt, internal.mail.interpret.run.interpretMessage, {
 				source: args.source,
 			});

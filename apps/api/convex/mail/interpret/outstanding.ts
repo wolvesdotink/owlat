@@ -205,6 +205,7 @@ export async function settleArrivalSource(
 		isUpgradeable: settlement.isUpgradeable,
 		skipReason: settlement.skipReason,
 		categoryPendingAt: undefined,
+		arrivalRetryAt: undefined,
 		leaseToken: undefined,
 		leaseUntil: undefined,
 		updatedAt: Date.now(),
@@ -238,6 +239,7 @@ async function dischargeArrival(
 		depth: 'full',
 		skipReason: undefined,
 		categoryPendingAt: undefined,
+		arrivalRetryAt: undefined,
 		updatedAt: Date.now(),
 	});
 	await clearGistOf(ctx, threadRefFromFields(snapshot), snapshot.sourceKey);
