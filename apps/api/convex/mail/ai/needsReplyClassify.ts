@@ -58,6 +58,7 @@ import { draftClarificationReply } from './needsReplyDraft';
 import { continuesLater, isDeferredUntilOpen, isHeldOutByScreener } from './needsReplyGates';
 import { refineClarification, type ClarificationFlag } from './needsReplyRefine';
 import { logError } from '../../lib/runtimeLog';
+import { prepareThreadForConsumer } from '../interpret/fullReadPrepare';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 import {
 	BudgetDeferral,
@@ -342,6 +343,7 @@ async function slotItemsFor(
 	threadId: Id<'mailThreads'>
 ): Promise<SlotItem<Id<'threadItems'>>[]> {
 	try {
+		await prepareThreadForConsumer(ctx, { kind: 'mail', id: threadId }); // read on arrival (fullRead.ts)
 		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForDraft, {
 			threadRef: { kind: 'mail', id: threadId },
 		});

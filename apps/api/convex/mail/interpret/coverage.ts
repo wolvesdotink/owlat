@@ -18,6 +18,7 @@
  * come back. The draft and the item texts reach the model only as data.
  */
 
+import { prepareThreadForConsumer } from './fullReadPrepare';
 import { v } from 'convex/values';
 import { authedAction } from '../../lib/authedFunctions';
 import { internal } from '../../_generated/api';
@@ -121,6 +122,9 @@ export const check = authedAction({
 			draftRef: args.draftRef,
 		});
 		if (!loaded) return null;
+		// Read on arrival: gist-only mail of the thread is read in full first; the
+		// plan reads `partial` until it is (fullRead.ts). After the access check.
+		if (!loaded.isFullyRead) await prepareThreadForConsumer(ctx, args.threadRef);
 		const draft = args.draftText.slice(0, MAX_DRAFT_CHARS);
 		const items = toPromptItems(loaded.items, loaded.stances);
 		let budgetRefusal: BudgetHoldReason | undefined;
