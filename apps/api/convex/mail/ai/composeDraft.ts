@@ -49,6 +49,7 @@ import { normalizeTimeZone, resolveFollowUpAt } from './composeDraftDates';
 import { attributionFor, localizeForOwner, runGapCheck } from './composeDraftGap';
 import { writeAnswerDraft } from './composeDraftWrite';
 import { loadAnswerPlan, loadSlotItems } from './composeDraftPlan';
+import { requireFullRead } from './composeDraftFullRead';
 import {
 	FILE_QUESTION_ID,
 	FOLLOW_UP_QUESTION_ID,
@@ -223,6 +224,7 @@ async function draftNow(
 			remindAt: followUp.at,
 		});
 	}
+	await requireFullRead(ctx, session.target);
 	const plan = await loadAnswerPlan(ctx, session);
 	await writeAnswerDraft(ctx, {
 		sessionId: session._id,
@@ -272,6 +274,8 @@ export const start = authedAction({
 		const locale = isAppLocale(args.locale) ? args.locale : 'en';
 		const timeZone = normalizeTimeZone(args.timeZone);
 		const context = await loadAnswerContext(ctx, args.target);
+		// Read on arrival: no model call on a thread not fully read (Sol r2 F1).
+		await requireFullRead(ctx, args.target);
 		const gap = await runGapCheck(ctx, {
 			context: context.context,
 			triggerText: context.triggerText,

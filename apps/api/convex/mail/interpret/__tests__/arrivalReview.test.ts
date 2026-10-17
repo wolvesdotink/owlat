@@ -410,6 +410,9 @@ describe('Sol r1 F12: a transient gist failure retries on schedule', () => {
 				.withIndex('by_message', (q) => q.eq('messageId', messageId))
 				.first())!;
 			await ctx.db.patch(record._id, { modelCalls: 10 });
+			// Its time has come (Sol r2 F5 holds an early run back).
+			const source = (await loadInterpretSource(ctx, { kind: 'mail', id: messageId }))!;
+			await ctx.db.patch(source._id, { arrivalRetryAt: Date.now() - 1 });
 		});
 		expect(await run(t, { source })).toMatchObject({ errorCode: 'arrival_settled_count' });
 		expect(await sourceRow(t, messageId)).toMatchObject({
@@ -470,5 +473,189 @@ describe('Sol r1 F13: a refused hold counts in the refusing mutation', () => {
 			readOutcome: 'skipped',
 			skipReason: { key: 'arrival.reason.budget' },
 		});
+	});
+});
+
+describe('Sol r2 F2: one owner charge per read job', () => {
+	it('two threads under sustained exhaustion both make progress, one token each', async () => {
+		vi.useFakeTimers();
+		try {
+			const t = setup();
+			const a = await arrive(t);
+			await run(t, { source: a.source });
+			const aLater = await arriveLater(t, a, ASK, 10);
+			const b = await t.run(async (ctx) => {
+				// A second thread of the same owner, as delivery leaves it.
+				const first = (await ctx.db.get(a.messageId))!;
+				const threadId = await ctx.db.insert('mailThreads', {
+					...(({ _id, _creationTime, ...rest }) => rest)((await ctx.db.get(a.threadId))!),
+				});
+				const id = await ctx.db.insert('mailMessages', {
+					...(({ _id, _creationTime, ...rest }) => rest)(first),
+					threadId,
+					rfc822MessageId: '<b-1@example.com>',
+					uid: 99,
+				});
+				return { threadId, messageId: id, mailboxId: a.mailboxId };
+			});
+			await t.run(async (ctx) => {
+				await writeArrivalRecord(ctx, (await ctx.db.get(b.messageId))!, { isLive: true });
+				await captureInterpretSource(ctx, {
+					source: { kind: 'mail', id: b.messageId },
+					isLive: true,
+				});
+			});
+			await run(t, { source: { kind: 'mail', id: b.messageId } });
+			const bLater = await arriveLater(t, b, ASK, 11);
+			expect(gistCalls()).toBe(2);
+			await t.run(async (ctx) => {
+				await ctx.db.patch(a.threadId, { needsReplyPendingAt: Date.now() });
+				await ctx.db.patch(b.threadId, { needsReplyPendingAt: Date.now() });
+			});
+			await exhaustOwnerBucket(t, a.mailboxId);
+
+			// One token: thread A's job takes it and reads its predecessor and itself on it.
+			vi.advanceTimersByTime(31_000);
+			// (The stub's extraction does not parse, so a read records `failed`: still a read.)
+			expect((await run(t, { source: aLater })).status).not.toBe('wait');
+			expect(await run(t, { source: bLater })).toMatchObject({ status: 'wait' });
+			expect(extractions()).toBe(2);
+			// The next token is B's.
+			vi.advanceTimersByTime(31_000);
+			expect((await run(t, { source: bLater })).status).not.toBe('wait');
+			expect(extractions()).toBe(4);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+describe('Sol r2 F3: terminal exclusions are never upgraded', () => {
+	it('eager demand on security mail reads nothing', async () => {
+		const t = setup();
+		const { source, threadId, messageId } = await arrive(t, {
+			text: 'Your verification code is 482913.',
+		});
+		await run(t, { source });
+		expect(await sourceRow(t, messageId)).toMatchObject({ depth: 'none', isUpgradeable: false });
+		await t.run((ctx) => ctx.db.patch(threadId, { needsReplyPendingAt: Date.now() }));
+		expect(await run(t, { source })).toEqual({ status: 'done' });
+		expect(await run(t, { source, depth: 'full' })).toEqual({ status: 'done' });
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+	});
+});
+
+describe('Sol r2 F4: every refusal counts where it is seen', () => {
+	it('the gist holds its spend through the arrival hold and counts on refusal', async () => {
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '0.0001');
+		const t = setup();
+		await reconcileSpend(t);
+		const { source, messageId } = await arrive(t);
+		expect(await run(t, { source })).toMatchObject({ errorCode: 'arrival_settled_count' });
+		expect(gistCalls()).toBe(0);
+		expect(await sourceRow(t, messageId)).toMatchObject({
+			readOutcome: 'skipped',
+			skipReason: { key: 'arrival.reason.budget' },
+		});
+	});
+
+	it('the full read gate counts a display-only source in the refusing mutation', async () => {
+		// A configured ceiling whose spend state is not reconciled refuses (#1333).
+		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '1');
+		const t = setup();
+		const { source, messageId, threadId } = await arrive(t, { text: ASK });
+		const leaseToken = await claim(t, source);
+		const out = await t.mutation(internal.mail.interpret.arrivalHold.gateOrCount, {
+			source,
+			leaseToken,
+			deletionEpoch: await epochOf(t, threadId),
+			mode: 'brief',
+		});
+		expect(out).toMatchObject({ isCounted: true, verdict: { isAllowed: false, code: 'budget' } });
+		expect(await sourceRow(t, messageId)).toMatchObject({
+			readOutcome: 'skipped',
+			skipReason: { key: 'arrival.reason.budget' },
+		});
+	});
+});
+
+describe('Sol r2 F5: a gist retry runs only at its time', () => {
+	it('the stale sweep or a duplicate cannot buy an early retry', async () => {
+		const t = setup();
+		const { source, messageId } = await arrive(t);
+		llm.gistFails = true;
+		const first = await run(t, { source });
+		expect(first).toMatchObject({ status: 'wait' });
+		const row = await sourceRow(t, messageId);
+		expect(row?.arrivalRetryAt).toEqual(expect.any(Number));
+		llm.gistFails = false;
+		// Any early run (the sweep's, a duplicate) waits for the retry time, no call.
+		expect(await run(t, { source })).toMatchObject({
+			status: 'wait',
+			retryAt: row!.arrivalRetryAt,
+		});
+		expect(gistCalls()).toBe(1);
+		// At its time it runs.
+		await t.run((ctx) => ctx.db.patch(row!._id, { arrivalRetryAt: Date.now() - 1 }));
+		expect(await run(t, { source })).toMatchObject({ errorCode: 'arrival_settled_gist' });
+		expect(gistCalls()).toBe(2);
+	});
+});
+
+describe('Sol r3 F1: parent coverage is verified', () => {
+	it('an outbound parent with no charge does not cover its predecessor upgrades', async () => {
+		const t = setup();
+		const first = await arrive(t);
+		await run(t, { source: first.source });
+		expect(gistCalls()).toBe(1);
+		const sentId = await t.run(async (ctx) => {
+			const inbound = (await ctx.db.get(first.messageId))!;
+			const { _id, _creationTime, ...rest } = inbound;
+			return ctx.db.insert('mailMessages', {
+				...rest,
+				rfc822MessageId: '<sent-1@owlat.test>',
+				uid: 50,
+				fromAddress: 'me@owlat.test',
+				toAddresses: ['jonas@example.com'],
+				receivedAt: inbound.receivedAt + 60_000,
+				internalDate: inbound.receivedAt + 60_000,
+				outbound: { state: 'sent', recipients: [] },
+			});
+		});
+		const sent = { kind: 'outboundMail' as const, id: sentId };
+		await t.run((ctx) => captureInterpretSource(ctx, { source: sent, isLive: true }));
+		await exhaustOwnerBucket(t, first.mailboxId);
+		await run(t, { source: sent });
+		// The gisted inbound message was not read on the parent's say-so.
+		expect(await sourceRow(t, first.messageId)).toMatchObject({ readOutcome: 'gist' });
+		const extractedFirst = llm.runLlmObject.mock.calls.filter(
+			([opts]) =>
+				(opts as { schema: unknown }).schema === briefModelSchema &&
+				JSON.stringify(opts).includes('front door')
+		);
+		expect(extractedFirst).toHaveLength(0);
+	});
+});
+
+describe('Sol r3 F2: upgrade calls are recorded whatever admission charged', () => {
+	it('a gist then a full upgrade inside the admission window counts two calls, a replay none', async () => {
+		const t = setup();
+		const { source, messageId } = await arrive(t);
+		await run(t, { source });
+		await run(t, { source, depth: 'full', isUpgrade: true });
+		const calls = async () =>
+			t.run(async (ctx) => {
+				const record = await ctx.db
+					.query('mailArrivalRecords')
+					.withIndex('by_message', (q) => q.eq('messageId', messageId))
+					.first();
+				return record?.modelCalls;
+			});
+		expect(extractions()).toBe(1);
+		expect(await calls()).toBe(2);
+		// A replay of the same full read buys nothing and counts nothing.
+		await run(t, { source, depth: 'full', isUpgrade: true });
+		expect(extractions()).toBe(1);
+		expect(await calls()).toBe(2);
 	});
 });

@@ -78,6 +78,7 @@ async function runLeased(ctx: ActionCtx, args: InterpretArgs): Promise<Interpret
 			...(args.depth ? { depth: args.depth } : {}),
 			...(args.isUpgrade ? { isUpgrade: true } : {}),
 			isCallerResuming: args.predecessors !== undefined,
+			...(args.parentSource ? { parentSource: args.parentSource } : {}),
 		});
 		if (admitted.kind !== 'go') return admissionAnswer(admitted);
 	}
@@ -89,6 +90,7 @@ async function runLeased(ctx: ActionCtx, args: InterpretArgs): Promise<Interpret
 		runInterpretation(ctx, {
 			source,
 			predecessors: 'already_read',
+			parentSource: args.source,
 			depth: 'full',
 			...predecessorRoot(source, deadlineAt),
 		});

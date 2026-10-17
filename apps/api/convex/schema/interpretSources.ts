@@ -67,6 +67,11 @@ export const interpretSourceTables = {
 		categoryPendingAt: v.optional(v.number()),
 		leaseUntil: v.optional(v.number()),
 		leaseToken: v.optional(v.string()),
+		// Read on arrival (Sol r2 F2, F5): until when the owner's arrival bucket
+		// was charged for this source's read job (its predecessor reads and its
+		// continuations ride on it), and the earliest a retried gist may run.
+		arrivalAdmittedUntil: v.optional(v.number()),
+		arrivalRetryAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

@@ -205,6 +205,9 @@ export async function settleArrivalSource(
 		isUpgradeable: settlement.isUpgradeable,
 		skipReason: settlement.skipReason,
 		categoryPendingAt: undefined,
+		arrivalRetryAt: undefined,
+		// The read job is over: its admission covers nothing more (Sol r3 F1).
+		arrivalAdmittedUntil: undefined,
 		leaseToken: undefined,
 		leaseUntil: undefined,
 		updatedAt: Date.now(),
@@ -238,6 +241,7 @@ async function dischargeArrival(
 		depth: 'full',
 		skipReason: undefined,
 		categoryPendingAt: undefined,
+		arrivalRetryAt: undefined,
 		updatedAt: Date.now(),
 	});
 	await clearGistOf(ctx, threadRefFromFields(snapshot), snapshot.sourceKey);
@@ -275,6 +279,10 @@ export async function settleSource(
 	// else started) is no longer waiting for the thread to be opened.
 	const wasDeferred = snapshot.isDeferred === true;
 	const isUnread = outcome === 'unread';
+	// A recorded outcome ends the source's read job: its admission stamp goes (Sol r3 F1).
+	if (outcome !== 'purged' && snapshot.arrivalAdmittedUntil !== undefined) {
+		await ctx.db.patch(snapshot._id, { arrivalAdmittedUntil: undefined });
+	}
 	if (!wasPending && !wasDeferred && wasUnread === isUnread) return;
 	if (outcome !== 'purged') {
 		await ctx.db.patch(snapshot._id, {

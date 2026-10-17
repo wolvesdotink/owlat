@@ -16,10 +16,6 @@ import { attachmentSetHashOf, draftHashOf } from '@owlat/shared/threadBriefRules
 import { toPromptItems, type PlanPromptItem } from '../interpret/planCheck';
 import { planVerdictOf, type PlanCoverage } from '../interpret/responsePlanRules';
 import type { PlanForDraft } from '../interpret/responsePlanState';
-import {
-	prepareAskTargetForConsumer,
-	prepareThreadForConsumer,
-} from '../interpret/fullReadPrepare';
 
 /**
  * A team reply's exact draft: the inbound message the drafter's context
@@ -41,12 +37,10 @@ async function answeredInbound(
 
 /** The plan's items with their stances, or undefined when there are none. */
 export async function loadAnswerPlan(
-	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation'>,
+	ctx: Pick<ActionCtx, 'runQuery'>,
 	session: Pick<Doc<'answerAskSessions'>, 'target' | 'questions'>
 ): Promise<PlanPromptItem[] | undefined> {
 	try {
-		// Read on arrival: the thread's gist-only mail is read in full first (fullRead.ts).
-		await prepareAskTargetForConsumer(ctx, session.target);
 		const openSlots = session.questions.flatMap((q) => (q.itemId && !q.answer ? [q.itemId] : []));
 		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForAskTarget, {
 			target: session.target,
@@ -66,11 +60,10 @@ export async function loadAnswerPlan(
 
 /** The target thread's open items for the gap check, so a question names its item. */
 export async function loadSlotItems(
-	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation'>,
+	ctx: Pick<ActionCtx, 'runQuery'>,
 	target: AnswerAskTarget
 ): Promise<SlotItem<Id<'threadItems'>>[]> {
 	try {
-		await prepareAskTargetForConsumer(ctx, target);
 		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForAskTarget, {
 			target,
 			openSlots: [],
@@ -101,12 +94,10 @@ export interface ThreadPlan {
  * failed read: the draft is written as before.
  */
 export async function loadThreadPlan(
-	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation'>,
+	ctx: Pick<ActionCtx, 'runQuery'>,
 	threadId: Id<'mailThreads'>
 ): Promise<ThreadPlan | undefined> {
 	try {
-		// Read on arrival: the thread's gist-only mail is read in full first (fullRead.ts).
-		await prepareThreadForConsumer(ctx, { kind: 'mail', id: threadId });
 		const loaded = await ctx.runQuery(internal.mail.interpret.responsePlanDraft.loadForDraft, {
 			threadRef: { kind: 'mail', id: threadId },
 			draftRef: { kind: 'arrivalDraft', id: threadId },
