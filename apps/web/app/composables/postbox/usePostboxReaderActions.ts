@@ -5,6 +5,7 @@ import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import { pickAdjacentMessageId, type PostboxAutoAdvanceMode } from '~/utils/postboxAutoAdvance';
 import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
 import { hidePostboxRowEverywhere, unhidePostboxRowEverywhere } from './usePostboxOptimisticHide';
+import type { SenderShortcutMessage } from './usePostboxSenderShortcuts';
 import {
 	optimisticArchive,
 	optimisticMarkRead,
@@ -24,7 +25,7 @@ export type ReaderActionThread = {
 };
 
 /** The open message as the actions see it: id plus the text the snooze hint reads. */
-type ReaderActionMessage = {
+type ReaderActionMessage = SenderShortcutMessage & {
 	_id: string;
 	subject: string;
 	snippet?: string;
@@ -100,6 +101,7 @@ export function usePostboxReaderActions(opts: {
 	const readerHost = hasInjectionContext() ? inject(POSTBOX_READER_HOST_KEY, null) : null;
 
 	const bulk = usePostboxBulkActions(mailboxId);
+	const senderShortcuts = usePostboxSenderShortcuts(mailboxId);
 	const { labels, setOnMessage: setLabelOnMessage } = usePostboxLabels(mailboxId);
 	const { folders } = usePostboxFolders(mailboxId);
 	const movableFolders = computed(() =>
@@ -438,6 +440,8 @@ export function usePostboxReaderActions(opts: {
 				else window.print();
 				break;
 			}
+			default:
+				senderShortcuts.runSenderShortcut(action, getMessage());
 		}
 	}
 

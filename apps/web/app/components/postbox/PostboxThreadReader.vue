@@ -360,6 +360,8 @@ const markThreadReadOp = useBackendOperation(api.mail.messageActions.markThreadR
 	optimisticUpdate: optimisticMarkThreadRead,
 });
 const markedThreads = new Set<string>();
+// Senders (§5): the open message counts as read for its sender, whatever the policy.
+usePostboxSenderOpen(messageId);
 let dwellTimer: ReturnType<typeof setTimeout> | undefined;
 
 function cancelDwell() {

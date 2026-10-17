@@ -23,6 +23,7 @@
  */
 
 import type { ShortcutDefinition } from './shortcutRegistry';
+import { SENDER_SHORTCUTS } from './shortcutCatalogSenders';
 
 const G = {
 	navigation: 'shared.shortcuts.groups.navigation',
@@ -281,10 +282,11 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 	{
 		id: 'postbox.markUnread',
 		scope: 'postbox',
-		keys: ['U'],
+		keys: [],
 		labelKey: L('markUnread'),
 		groupKey: G.triage,
 	},
+	...SENDER_SHORTCUTS,
 	{
 		id: 'postbox.toggleSelect',
 		scope: 'postbox',

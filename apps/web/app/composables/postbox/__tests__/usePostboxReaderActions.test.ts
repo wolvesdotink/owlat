@@ -68,6 +68,7 @@ beforeEach(() => {
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
 	vi.stubGlobal('usePostboxTriageUndo', () => ({ registerMoveBack }));
+	vi.stubGlobal('usePostboxSenderShortcuts', () => ({ runSenderShortcut: vi.fn() }));
 	vi.stubGlobal(
 		'useBackendOperation',
 		(_fn: unknown, opts: { label: () => string; optimisticUpdate?: unknown }) => {

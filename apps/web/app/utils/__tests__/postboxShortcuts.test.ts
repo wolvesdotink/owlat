@@ -30,8 +30,17 @@ describe('resolvePostboxShortcut', () => {
 		expect(resolvePostboxShortcut('v')).toBe('move');
 		expect(resolvePostboxShortcut('x')).toBe('toggleSelect');
 		// Shift+U produces the key 'U' — distinct from the plain 'u' toggle.
-		expect(resolvePostboxShortcut('U')).toBe('markUnread');
+		expect(resolvePostboxShortcut('U')).toBe('senderUnsubscribe');
 		expect(resolvePostboxShortcut('?')).toBe('help');
+	});
+
+	it('maps the sender chords: ⇧E auto-archives, ⇧U unsubscribes', () => {
+		expect(resolvePostboxShortcut('E')).toBe('senderAutoArchive');
+		expect(resolvePostboxShortcut('U')).toBe('senderUnsubscribe');
+		// Gmail keeps Shift+U for "mark unread" and leaves unsubscribe unbound.
+		applyShortcutPreferences('gmail');
+		expect(resolvePostboxShortcut('U')).toBe('markUnread');
+		applyShortcutPreferences('owlat');
 	});
 
 	it('maps the vocabulary added with the registry (n/p unread jumps, z undo)', () => {
@@ -63,7 +72,6 @@ describe('resolvePostboxShortcut', () => {
 		expect(resolvePostboxShortcut('Tab')).toBeNull();
 		// Capitalized variants of mapped keys are NOT mapped (Shift changes meaning).
 		expect(resolvePostboxShortcut('R')).toBeNull();
-		expect(resolvePostboxShortcut('E')).toBeNull();
 		expect(resolvePostboxShortcut('M')).toBeNull();
 	});
 });

@@ -24,6 +24,8 @@ export type PostboxShortcutAction =
 	| 'star'
 	| 'toggleRead'
 	| 'markUnread'
+	| 'senderAutoArchive'
+	| 'senderUnsubscribe'
 	| 'reply'
 	| 'replyAll'
 	| 'forward'
@@ -52,6 +54,8 @@ const ACTION_BY_ID: Readonly<Record<string, PostboxShortcutAction>> = {
 	'postbox.star': 'star',
 	'postbox.toggleRead': 'toggleRead',
 	'postbox.markUnread': 'markUnread',
+	'postbox.senderAutoArchive': 'senderAutoArchive',
+	'postbox.senderUnsubscribe': 'senderUnsubscribe',
 	'postbox.reply': 'reply',
 	'postbox.replyAll': 'replyAll',
 	'postbox.forward': 'forward',
