@@ -2,39 +2,37 @@
  * Read on arrival (SPEC §2.2, §2.3, §2.6): the run's depth decision for a
  * Postbox arrival read, in one mutation once the run has scoped the message
  * (it brings the security-mail and exact-wording screens of the text).
+ * Admission, the owner bucket and the category wait came first, before any
+ * predecessor read (`arrivalAdmit.ts`).
  *
- *   (b) category wait: a display-only source whose category refinement is
- *       still out (`interpretSources.categoryPendingAt`, stamped at delivery)
- *       waits up to {@link CATEGORY_DEPTH_WAIT_MS}: the lease is given back
- *       and a ceiling scheduled; the category write for this message runs it
- *       sooner (`categoryDefer.ts wakeCategoryDepthWaits`). After the wait the
- *       heuristic category decides, with `arrival.reason.categoryTimeout`.
  *   (d) the inputs: preference, `ai` flag, display-only, sender status,
- *       overrides, a digest rule hint, the category.
+ *       overrides, a digest rule hint, the category ({@link arrivalInputs}).
  *   (e) `chooseArrivalDepth`. `count` / `none` are settled right here as
- *       terminal skips with no model call (`outstanding.settleArrivalSource`).
- *
- * Admission for every read that will call a model: the owner's
- * `arrivalReadPerOwner` bucket, then (display-only only) the background
- * budget. Over either, display-only mail is settled as an upgradeable
- * `count` in this mutation, never retried and never deferred to the open;
- * eager work over the owner limit waits for the bucket (`wait`), and keeps
- * today's budget behaviour.
+ *       terminal skips with no model call (`outstanding.settleArrivalSource`);
+ *       a display-only read the background budget refuses counts too.
  *
  * Only display-only sources are ever read less than in full: anything else
  * keeps today's eager full read untouched (`full`), the `ai` flag included,
- * whose refusal the run's own gate records as today. With the preference off
- * a display-only source was deferred at dispatch (D10); one that reaches a
- * run anyway keeps today's full read.
+ * whose refusal the run's own gate records as today. A source settled short
+ * of a full read is read in full again when eager demand reaches it (Sol r1
+ * F2): this same source turning eager, or a full-read prerequisite
+ * (`fullRead.ts`). With the preference off a display-only source was
+ * deferred at dispatch (D10); one that reaches a run anyway keeps today's
+ * full read.
+ *
+ * Every settlement here and in {@link settleArrivalCount} is bound to the
+ * brief's deletion epoch the run loaded at and to the mailbox still being
+ * personal: a purge or a team-inbox conversion since then refuses it (Sol r1
+ * F5).
  */
 
 import { v } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
+import { loadBriefRow } from './briefRow';
 import { internalMutation } from '../../lib/writeFence';
 import { isFeatureEnabled } from '../../lib/featureFlags';
-import { rateLimiter } from '../../lib/rateLimiter';
 import { budgetHeadroom } from '../../aiRouting/enforcedBudget';
 import type { DegradedBy, Depth, ReasonKey } from '@owlat/shared/arrival';
 import {
@@ -46,7 +44,7 @@ import { isPersonalMailbox } from '../permissions';
 import { senderProfileOf } from '../arrival/projection';
 import { loadArrivalRecord, noteArrivalRun } from '../arrival/records';
 import { isDisplayOnlyInterpretation } from './defer';
-import { leaseLostAt, releaseLeaseIfHeld } from './lease';
+import { leaseLostAt } from './lease';
 import { settleArrivalSource } from './outstanding';
 import { isReadOnArrivalOn } from './preferences';
 import { loadInterpretSource } from './sources';
@@ -111,10 +109,53 @@ export function refusedCount(reason: ReasonKey): ArrivalDepthChoice & { depth: '
 	return { depth: 'count', reasonKeys: [reason], isUpgradeable: true };
 }
 
+/**
+ * Whether a settlement for `message` may still be written: the mailbox is
+ * personal and no purge or scope conversion bumped the brief's deletion
+ * epoch since the run loaded it.
+ */
+export async function isSettlementCurrent(
+	ctx: MutationCtx,
+	message: Doc<'mailMessages'>,
+	deletionEpoch: number
+): Promise<boolean> {
+	const mailbox = await ctx.db.get(message.mailboxId);
+	if (!mailbox || !isPersonalMailbox(mailbox)) return false;
+	const brief = await loadBriefRow(ctx, { kind: 'mail', id: message.threadId });
+	return (brief?.deletionEpoch ?? 0) === deletionEpoch;
+}
+
+/** The decision table's inputs for a display-only message (§2.2), screens from the caller. */
+export async function arrivalInputs(
+	ctx: MutationCtx,
+	message: Doc<'mailMessages'>,
+	screens: { isSecurityMail: boolean; isExactWordingCandidate: boolean }
+) {
+	const thread = await ctx.db.get(message.threadId);
+	const profile = await senderProfileOf(ctx, message.mailboxId, message.fromAddress);
+	const record = await loadArrivalRecord(ctx, message._id);
+	const placementOverride = thread?.placementOverride?.placement ?? profile?.placementOverride;
+	return {
+		isReadOnArrival: true,
+		isAiOn: await isFeatureEnabled(ctx, 'ai'),
+		isEligible: true, // the run already recorded an ineligible source's skip
+		isDisplayOnly: true,
+		senderStatus: profile?.status,
+		...(placementOverride ? { placementOverride } : {}),
+		...(record?.rulePlacement === 'digest' ? { ruleDepthHint: 'count' as const } : {}),
+		category: thread?.category?.label ?? 'other',
+		categorySource: thread?.category?.source ?? 'heuristic',
+		...screens,
+		budget: 'normal' as const,
+	};
+}
+
 export const decideArrivalDepth = internalMutation({
 	args: {
 		source: mailSourceValidator,
 		leaseToken: v.optional(v.string()),
+		/** The brief's deletion epoch at the run's load. */
+		deletionEpoch: v.number(),
 		isSecurityMail: v.boolean(),
 		isExactWordingCandidate: v.boolean(),
 	},
@@ -126,60 +167,41 @@ export const decideArrivalDepth = internalMutation({
 		if (!row) return { kind: 'full', isDisplayOnly: false };
 		const lostAt = await leaseLostAt(ctx, args.source, args.leaseToken);
 		if (lostAt !== null) return { kind: 'busy', retryAt: lostAt };
-		if (row.readOutcome !== undefined) return { kind: 'done' };
 		const mailbox = await ctx.db.get(message.mailboxId);
-		const thread = await ctx.db.get(message.threadId);
-		if (!mailbox || !thread || !isPersonalMailbox(mailbox) || message.outbound !== undefined) {
+		if (!mailbox || !isPersonalMailbox(mailbox) || message.outbound !== undefined) {
 			return { kind: 'full', isDisplayOnly: false };
 		}
-		const isDisplayOnly = await isDisplayOnlyInterpretation(ctx, message);
-		if (!isDisplayOnly) return admitEager(ctx, row, message, mailbox.userId);
-		// Row 3, the preference off: D10 deferred at dispatch, and a run that
-		// reaches this source anyway reads it in full exactly as today.
-		const isReadOnArrival = await isReadOnArrivalOn(ctx, mailbox.userId);
-		if (!isReadOnArrival) return { kind: 'full', isDisplayOnly: false };
-
-		const now = Date.now();
-		const reasons: ReasonKey[] = [];
-		if (row.categoryPendingAt !== undefined) {
-			const until = row.categoryPendingAt + CATEGORY_DEPTH_WAIT_MS;
-			if (now < until) {
-				if (args.leaseToken) await releaseLeaseIfHeld(ctx, args.source, args.leaseToken);
-				await ctx.scheduler.runAt(until, internal.mail.interpret.arrivalDecide.depthWaitCeiling, {
-					source: args.source,
-					pendingAt: row.categoryPendingAt,
-				});
-				return { kind: 'wait', retryAt: until };
-			}
-			reasons.push({ key: ARRIVAL_ADMISSION_REASONS.categoryTimeout });
+		// Eager demand (Sol r1 F2): anything not display-only is read in full,
+		// a source settled short of it earlier included (its commit discharges it).
+		if (!(await isDisplayOnlyInterpretation(ctx, message))) {
+			await noteArrivalRun(ctx, message._id, {
+				depth: 'full',
+				reasonKeys: [{ key: ARRIVAL_DEPTH_REASONS.openWork }],
+				modelCalls: 1,
+			});
+			return { kind: 'full', isDisplayOnly: false };
 		}
-		const profile = await senderProfileOf(ctx, mailbox._id, message.fromAddress);
-		const record = await loadArrivalRecord(ctx, message._id);
-		const placementOverride = thread.placementOverride?.placement ?? profile?.placementOverride;
-		const input = {
-			isReadOnArrival,
-			isAiOn: await isFeatureEnabled(ctx, 'ai'),
-			isEligible: true, // the run already recorded an ineligible source's skip
-			isDisplayOnly,
-			senderStatus: profile?.status,
-			...(placementOverride ? { placementOverride } : {}),
-			...(record?.rulePlacement === 'digest' ? { ruleDepthHint: 'count' as const } : {}),
-			category: thread.category?.label ?? 'other',
-			categorySource: thread.category?.source ?? 'heuristic',
+		if (row.readOutcome !== undefined || row.isDeferred === true) return { kind: 'done' };
+		// Row 3, the preference off: a run that reaches this source reads it in full as today.
+		if (!(await isReadOnArrivalOn(ctx, mailbox.userId))) {
+			return { kind: 'full', isDisplayOnly: false };
+		}
+		if (!(await isSettlementCurrent(ctx, message, args.deletionEpoch))) return { kind: 'gone' };
+		const reasons: ReasonKey[] =
+			row.categoryPendingAt !== undefined
+				? [{ key: ARRIVAL_ADMISSION_REASONS.categoryTimeout }]
+				: [];
+		const input = await arrivalInputs(ctx, message, {
 			isSecurityMail: args.isSecurityMail,
 			isExactWordingCandidate: args.isExactWordingCandidate,
-			budget: 'normal' as const,
-		};
+		});
 		const first = chooseArrivalDepth(input);
-		if (first.depth === 'deferred') return { kind: 'full', isDisplayOnly: false }; // see above
+		if (first.depth === 'deferred') return { kind: 'full', isDisplayOnly: false };
 		let choice: ArrivalDepthChoice & { depth: Depth } = { ...first, depth: first.depth };
 		let degradedBy: DegradedBy | undefined;
+		// The owner bucket was taken at admission; the budget is display-only's own.
 		if (choice.depth === 'full' || choice.depth === 'gist') {
-			const limited = await rateLimiter.limit(ctx, 'arrivalReadPerOwner', { key: mailbox.userId });
-			if (!limited.ok) {
-				choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.ownerLimit });
-				degradedBy = 'owner_limit';
-			} else if (!(await budgetHeadroom(ctx, { priority: 'background' })).isAdmitted) {
+			if (!(await budgetHeadroom(ctx, { priority: 'background' })).isAdmitted) {
 				choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.budget });
 				degradedBy = 'budget';
 			}
@@ -197,7 +219,7 @@ export const decideArrivalDepth = internalMutation({
 			return { kind: 'settled', depth: decided.depth };
 		}
 		if (row.categoryPendingAt !== undefined) {
-			await ctx.db.patch(row._id, { categoryPendingAt: undefined, updatedAt: now });
+			await ctx.db.patch(row._id, { categoryPendingAt: undefined, updatedAt: Date.now() });
 		}
 		await noteArrivalRun(ctx, message._id, {
 			depth: decided.depth,
@@ -209,47 +231,29 @@ export const decideArrivalDepth = internalMutation({
 });
 
 /**
- * Eager work (not display-only): today's full read, paced by the owner's
- * arrival bucket. Over it, the run waits for the bucket (the caller continues
- * at `retryAt`, `needsReplyGates.continuesLater`); it is never deferred to the
- * open and never dropped.
- */
-async function admitEager(
-	ctx: MutationCtx,
-	row: Doc<'interpretSources'>,
-	message: Doc<'mailMessages'>,
-	ownerUserId: string
-): Promise<ArrivalVerdict> {
-	const limited = await rateLimiter.limit(ctx, 'arrivalReadPerOwner', { key: ownerUserId });
-	if (!limited.ok) return { kind: 'wait', retryAt: Date.now() + (limited.retryAfter ?? 60_000) };
-	if (row.categoryPendingAt !== undefined) {
-		await ctx.db.patch(row._id, { categoryPendingAt: undefined, updatedAt: Date.now() });
-	}
-	await noteArrivalRun(ctx, message._id, {
-		depth: 'full',
-		reasonKeys: [{ key: ARRIVAL_DEPTH_REASONS.openWork }],
-		modelCalls: 1,
-	});
-	return { kind: 'full', isDisplayOnly: false };
-}
-
-/**
  * The run's spend was refused after the decision (the gate, the run's hold,
  * a model call): a display-only source is settled as an upgradeable `count`
  * (`arrival.reason.budget`), never retried (§2.6). `gistUnavailable` /
  * `gistFailed`: the gist could not be read or grounded, and counts instead.
- * Checks the lease: a run that lost it writes nothing.
+ * Checks the lease (a run that lost it writes nothing), the deletion epoch and
+ * the scope (a purge or a team-inbox conversion since the load refuses it).
  */
 export const settleArrivalCount = internalMutation({
 	args: {
 		source: mailSourceValidator,
 		leaseToken: v.optional(v.string()),
+		/** The brief's deletion epoch at the run's load (Sol r1 F5). */
+		deletionEpoch: v.number(),
 		reason: v.union(v.literal('budget'), v.literal('gistUnavailable'), v.literal('gistFailed')),
 	},
 	handler: async (ctx, args): Promise<'settled' | 'busy' | 'gone'> => {
 		const row = await loadInterpretSource(ctx, args.source);
-		if (!row || !(await ctx.db.get(args.source.id))) return 'gone';
+		const message = await ctx.db.get(args.source.id);
+		if (!row || !message) return 'gone';
+		// Already counted, by the hold's own refusal (`arrivalHold.ts`): nothing more.
+		if (row.readOutcome === 'skipped') return 'settled';
 		if ((await leaseLostAt(ctx, args.source, args.leaseToken)) !== null) return 'busy';
+		if (!(await isSettlementCurrent(ctx, message, args.deletionEpoch))) return 'gone';
 		const choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS[args.reason] });
 		await settleArrivalSkip(
 			ctx,

@@ -83,22 +83,24 @@ export async function enqueueDeliveredInterpretation(
 		...(opts.listId ? { listId: opts.listId } : {}),
 	});
 	if (!captured) return false;
-	// Read on arrival (SPEC §2.3.1): the per-message marker the run's depth
-	// decision waits on, cleared by this message's category write.
-	if (opts.isCategoryRefining) await stampCategoryPending(ctx, captured);
 	if (!opts.isInterpretedByClassify) {
 		// No Reply Queue check was queued for it, so the reader display may be
 		// its only consumer: D10 defers it with read on arrival off, else its run
 		// reads it now at the depth it chooses (`mail/arrival/dispatch.ts`).
 		if ((await scheduleArrivalRead(ctx, message)) === 'deferred') return true;
 	}
+	// Read on arrival (SPEC §2.3.1): the per-message marker the run's depth
+	// decision waits on, cleared by this message's category write. Never on a
+	// source D10 deferred (Sol r1 F1).
+	if (opts.isCategoryRefining) await stampCategoryPending(ctx, captured);
 	await markBriefPending(ctx, ref);
 	return true;
 }
 
 async function stampCategoryPending(ctx: MutationCtx, id: Id<'interpretSources'>): Promise<void> {
 	const row = await ctx.db.get(id);
-	if (!row || row.readOutcome !== undefined || row.categoryPendingAt !== undefined) return;
+	if (!row || row.isDeferred === true || row.readOutcome !== undefined) return;
+	if (row.categoryPendingAt !== undefined) return;
 	await ctx.db.patch(id, { categoryPendingAt: Date.now() });
 }
 

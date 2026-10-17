@@ -224,6 +224,8 @@ export async function wakeCategoryDepthWaits(
 		const row = await loadInterpretSource(ctx, { kind: 'mail', id: record.messageId });
 		if (row?.categoryPendingAt === undefined) continue;
 		await ctx.db.patch(row._id, { categoryPendingAt: undefined, updatedAt: Date.now() });
+		// D10 kept it for its open (read on arrival off): nothing runs it now (Sol r1 F1).
+		if (row.isDeferred === true || row.readOutcome !== undefined) continue;
 		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
 			source: row.source,
 		});
