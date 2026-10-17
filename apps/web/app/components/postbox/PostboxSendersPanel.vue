@@ -113,7 +113,11 @@ async function applySuggestions() {
 		<header class="px-5 pt-4 pb-3 border-b border-border-subtle">
 			<h1 class="text-lg font-semibold text-text-primary">{{ t('postbox.senders.heading') }}</h1>
 			<p class="text-sm text-text-secondary">{{ t('postbox.senders.subtitle') }}</p>
-			<UiTabs v-model="tab" :tabs="tabs" class="mt-3" />
+			<!-- On a phone the strip scrolls out to the card's edges instead of
+			     being cut inside its padding. -->
+			<div class="-mx-5 mt-3 overflow-x-auto px-5 md:mx-0 md:overflow-visible md:px-0">
+				<UiTabs v-model="tab" :tabs="tabs" class="max-md:w-max max-md:max-w-none!" />
+			</div>
 		</header>
 
 		<div v-if="isLoading" class="p-8 flex justify-center">
@@ -128,8 +132,9 @@ async function applySuggestions() {
 			<p class="text-text-secondary">{{ t(`postbox.senders.empty.${tab}`) }}</p>
 		</div>
 		<div v-else class="px-5 overflow-x-auto">
-			<table class="w-full text-left">
-				<thead>
+			<!-- Below md each row is a stacked card (PostboxSenderRow). -->
+			<table class="block w-full text-left md:table">
+				<thead class="hidden md:table-header-group">
 					<tr class="text-xs text-text-tertiary">
 						<th class="py-2 pr-3 font-medium">{{ t('postbox.senders.columns.sender') }}</th>
 						<th class="py-2 pr-3 font-medium whitespace-nowrap">
@@ -144,7 +149,7 @@ async function applySuggestions() {
 						</th>
 					</tr>
 				</thead>
-				<tbody class="divide-y divide-border-subtle">
+				<tbody class="block divide-y divide-border-subtle md:table-row-group">
 					<PostboxSenderRow
 						v-for="row in rows"
 						:key="row.senderDigest"

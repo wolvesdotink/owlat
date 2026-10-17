@@ -85,4 +85,19 @@ describe('PostboxSenderRow', () => {
 		const suggested = mountRow({ suggestion: 'digest' });
 		expect(suggested.text()).toContain('Suggested: Digest');
 	});
+
+	it('carries a phone line with volume and read rate, and orders the suggestion after the control there', () => {
+		const w = mountRow({ suggestion: 'digest' });
+		expect(w.get('[data-testid="sender-phone-stats"]').text()).toBe('38 mails · read 5%');
+		expect(w.get('[data-testid="sender-phone-stats"]').classes()).toContain('md:hidden');
+		// Below md the first cell dissolves into the card so its suggestion line
+		// can sit after the full-width control; from md up it is a table cell.
+		expect(w.get('td').classes()).toEqual(expect.arrayContaining(['contents', 'md:table-cell']));
+		const suggestion = w.get('[data-testid="sender-keep-as-is"]').element.parentElement!;
+		expect(suggestion.className).toContain('order-last');
+		expect(suggestion.className).toContain('md:order-none');
+		expect(mountRow({ delivered: 1, opened: 1 }).get('[data-testid="sender-phone-stats"]').text()).toBe(
+			'1 mail · read 100%'
+		);
+	});
 });

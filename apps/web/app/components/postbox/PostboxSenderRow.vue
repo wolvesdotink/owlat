@@ -47,13 +47,23 @@ function onStatus(value: string) {
 </script>
 
 <template>
-	<tr class="align-top">
-		<td class="py-3 pr-3 min-w-0">
-			<p class="text-sm font-medium text-text-primary truncate" :title="row.address">
+	<!-- Below md the row is a stacked card (the table's cells become flex items):
+	     name and address; "N mails · read X%", the bar and the kind on one line;
+	     the control full width; then the suggestion with "Keep as is" and the
+	     markers. The first cell is `display: contents` there so its lines can
+	     take their place in that order. From md up it is the table row. -->
+	<tr class="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-3 md:table-row md:py-0 md:align-top">
+		<td class="contents md:table-cell md:py-3 md:pr-3 md:min-w-0">
+			<p class="w-full text-sm font-medium text-text-primary truncate" :title="row.address">
 				{{ name }}
 			</p>
-			<p v-if="row.displayName" class="text-xs text-text-tertiary truncate">{{ row.address }}</p>
-			<p v-if="row.suggestion" class="text-xs text-brand mt-0.5 flex items-center gap-1.5">
+			<p v-if="row.displayName" class="w-full text-xs text-text-tertiary truncate">
+				{{ row.address }}
+			</p>
+			<p
+				v-if="row.suggestion"
+				class="order-last md:order-none w-full text-xs text-brand md:mt-0.5 flex flex-wrap items-center gap-x-1.5"
+			>
 				{{
 					t('postbox.senders.suggested', {
 						status: t(`postbox.senders.status.${suggestedStatus(row.suggestion)}`),
@@ -63,7 +73,7 @@ function onStatus(value: string) {
 				     "I chose Keep": this records it, and the suggestion goes away. -->
 				<button
 					type="button"
-					class="text-text-secondary font-medium hover:underline disabled:opacity-50"
+					class="text-text-secondary font-medium whitespace-nowrap hover:underline disabled:opacity-50"
 					:disabled="busy"
 					:title="t('postbox.senders.keepAsIsTitle')"
 					data-testid="sender-keep-as-is"
@@ -72,10 +82,12 @@ function onStatus(value: string) {
 					{{ t('postbox.senders.keepAsIs') }}
 				</button>
 			</p>
-			<p v-if="resultKey" class="text-xs text-text-secondary mt-0.5">{{ t(resultKey) }}</p>
+			<p v-if="resultKey" class="order-last md:order-none w-full text-xs text-text-secondary md:mt-0.5">
+				{{ t(resultKey) }}
+			</p>
 			<p
 				v-if="row.autoDraftPausedAt !== undefined"
-				class="text-xs text-text-secondary mt-0.5 flex items-center gap-1.5"
+				class="order-last md:order-none w-full text-xs text-text-secondary md:mt-0.5 flex items-center gap-1.5"
 			>
 				<Icon name="lucide:pause" class="w-3 h-3" aria-hidden="true" />
 				{{ t('postbox.senders.draftsPaused') }}
@@ -89,8 +101,19 @@ function onStatus(value: string) {
 				</button>
 			</p>
 		</td>
-		<td class="py-3 pr-3 text-sm tabular-nums text-text-secondary">{{ row.delivered }}</td>
-		<td class="py-3 pr-3">
+		<td class="md:py-3 md:pr-3 text-xs md:text-sm tabular-nums text-text-secondary">
+			<span class="hidden md:inline">{{ row.delivered }}</span>
+			<span class="md:hidden whitespace-nowrap" data-testid="sender-phone-stats">
+				{{
+					t(
+						'postbox.senders.phoneStats',
+						{ count: row.delivered, percent: readPercent },
+						row.delivered
+					)
+				}}
+			</span>
+		</td>
+		<td class="md:py-3 md:pr-3">
 			<span
 				class="inline-flex items-center gap-2 text-sm tabular-nums text-text-secondary"
 				:title="t('postbox.senders.readTitle', { opened: row.opened, delivered: row.delivered })"
@@ -102,18 +125,19 @@ function onStatus(value: string) {
 				>
 					<span class="absolute inset-y-0 left-0 bg-brand" :style="{ width: `${readPercent}%` }" />
 				</span>
-				{{ row.opened }}
+				<span class="hidden md:inline">{{ row.opened }}</span>
 			</span>
 		</td>
-		<td class="py-3 pr-3 text-sm text-text-secondary">
+		<td class="md:py-3 md:pr-3 text-xs md:text-sm text-text-secondary">
 			{{ row.kind ? t(`postbox.senders.kind.${row.kind}`) : t('postbox.senders.kind.unknown') }}
 		</td>
-		<td class="py-3">
+		<td class="w-full max-w-full overflow-x-auto max-md:mt-1 md:w-auto md:max-w-none md:overflow-visible md:py-3">
 			<UiSegmentedControl
 				:model-value="row.status"
 				:options="options"
 				size="sm"
 				fit="content"
+				class="max-md:w-full!"
 				:aria-label="t('postbox.senders.controlLabel', { name })"
 				@update:model-value="onStatus"
 			/>
