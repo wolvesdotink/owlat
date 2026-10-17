@@ -13,7 +13,7 @@ import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { CATEGORY_SETTLE_MS } from '../eligibility';
 import { captureInterpretSource } from '../sources';
-import { modules, seedMailThread, type Test } from './interpret.testlib';
+import { addMessageToThread, modules, seedMailThread, type Test } from './interpret.testlib';
 
 const session = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -41,7 +41,7 @@ type T = Test;
 
 /** A stranger's List-Id mail on a provisional thread, its run waiting for the category. */
 async function waitingSource(t: T) {
-	const { messageId, threadId } = await seedMailThread(t);
+	const { mailboxId, messageId, threadId } = await seedMailThread(t);
 	const source = { kind: 'mail' as const, id: messageId };
 	await t.run(async (ctx) => {
 		await ctx.db.patch(threadId, {
@@ -54,7 +54,7 @@ async function waitingSource(t: T) {
 		until: UNTIL,
 	});
 	expect(deferred).toEqual({ isScheduled: true });
-	return { messageId, threadId, source };
+	return { mailboxId, messageId, threadId, source };
 }
 
 async function deferredUntil(t: T, messageId: Id<'mailMessages'>) {
@@ -178,5 +178,74 @@ describe('category wait wake-up', () => {
 		// the stale deferral is left to its ceiling.
 		expect(await deferredUntil(t, messageId)).toBe(UNTIL);
 		expect(await runTimes(t)).toEqual([]);
+	});
+
+	it('wakes every waiting source of a long thread, past newer sources that are not waiting', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, messageId, threadId, source } = await waitingSource(t);
+		// 64 more waiting sources, then 20 newer ones that are not waiting, so the
+		// waiting ones sit far below the first page.
+		const insertSource = async (waiting: boolean, n: number) => {
+			const id = await addMessageToThread(
+				t,
+				{ mailboxId, threadId },
+				{ text: `Update ${n}`, receivedAt: NOW - 100_000 + n }
+			);
+			await t.run((ctx) =>
+				ctx.db.insert('interpretSources', {
+					threadKind: 'mail',
+					mailThreadId: threadId,
+					source: { kind: 'mail', id },
+					sourceKey: `mail:${id}`,
+					eligibility: {
+						isLive: true,
+						folder: 'inbox',
+						isThreadMuted: false,
+						isBulkHeaderPresent: true,
+						isSenderKnown: false,
+					},
+					...(waiting ? { categoryDeferredUntil: UNTIL } : {}),
+					createdAt: NOW,
+					updatedAt: NOW,
+				})
+			);
+			return id;
+		};
+		const waiting = [messageId];
+		for (let n = 0; n < 64; n++) waiting.push(await insertSource(true, n));
+		for (let n = 64; n < 84; n++) await insertSource(false, n);
+
+		await t.mutation(internal.mail.category.applyCategory, {
+			threadId,
+			label: 'newsletter',
+			source: 'llm',
+		});
+		// Drive the continuations the wake scheduled, one page each.
+		const continued = new Set<string>();
+		for (let page = 0; page < 10; page++) {
+			const next = await t.run(async (ctx) =>
+				(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+					(job) => job.name.includes('continueCategoryWake') && !continued.has(job._id)
+				)
+			);
+			if (next.length === 0) break;
+			for (const job of next) {
+				continued.add(job._id);
+				await t.mutation(
+					internal.mail.interpret.categoryDefer.continueCategoryWake,
+					job.args[0] as never
+				);
+			}
+		}
+
+		expect(continued.size).toBeGreaterThan(0);
+		for (const id of waiting) expect(await deferredUntil(t, id)).toBeNull();
+		const runs = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect())
+				.filter((job) => job.name.includes('interpretMessage'))
+				.map((job) => (job.args[0] as { source: { id: string } }).source.id)
+		);
+		// Each waiting source runs exactly once; no source that was not waiting runs.
+		expect(runs.sort()).toEqual([...waiting].sort());
 	});
 });

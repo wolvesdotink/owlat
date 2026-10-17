@@ -33,11 +33,12 @@ import { isProvisionalCategory } from './eligibility';
 import { loadInterpretSource } from './sources';
 
 /**
- * Newest sources of a thread a wake looks at. A waiting source was captured
- * less than the settle time ago, so it is among the newest; one beyond the
- * bound still runs at its ceiling.
+ * Sources of a thread one wake transaction reads. The wake walks the thread's
+ * whole source range, newest first, in pages of this size, each later page in
+ * its own continuation ({@link continueCategoryWake}): neither the number of
+ * waiting sources nor newer sources that are not waiting can leave one asleep.
  */
-const CATEGORY_WAKE_SCAN = 25;
+const CATEGORY_WAKE_PAGE = 50;
 
 export const deferForCategory = internalMutation({
 	args: { source: interpretationSourceValidator, until: v.number() },
@@ -88,7 +89,8 @@ export const settleAtCeiling = internalMutation({
  * every source still waiting for it runs now instead of at its ceiling.
  * `previous` is the label it replaced: a run only ever waits while the label
  * is provisional, so replacing a settled label wakes nothing and reads nothing.
- * Returns how many runs it scheduled.
+ * The first page is woken in the caller's transaction, the rest through
+ * continuations. Returns how many runs this transaction scheduled.
  */
 export async function wakeCategoryDeferredRuns(
 	ctx: MutationCtx,
@@ -97,14 +99,50 @@ export async function wakeCategoryDeferredRuns(
 	previous: { label: string; source: string } | undefined
 ): Promise<number> {
 	if (isProvisionalCategory(category) || !isProvisionalCategory(previous)) return 0;
+	return wakePage(ctx, threadId, undefined);
+}
+
+/**
+ * Where the next page of a wake starts: sources created at or before `at`,
+ * minus `seen`, the ones created exactly at `at` that a page already read
+ * (creation times can tie, so a strict bound could skip a source).
+ */
+const wakeCursorValidator = v.object({ at: v.number(), seen: v.array(v.id('interpretSources')) });
+type WakeCursor = { at: number; seen: Id<'interpretSources'>[] };
+
+/** A later page of a wake (see {@link wakeCategoryDeferredRuns}). */
+export const continueCategoryWake = internalMutation({
+	args: { threadId: v.id('mailThreads'), cursor: wakeCursorValidator },
+	handler: async (ctx, args): Promise<number> => wakePage(ctx, args.threadId, args.cursor),
+});
+
+/**
+ * Wake the waiting sources among one page of the thread's sources, newest
+ * first from `cursor` (none: the newest), and continue with the next page
+ * while the range may hold more. Bounded: one page per transaction. (Not
+ * `paginate`, which a function may call only once: this first page runs
+ * inside whatever mutation wrote the category.)
+ */
+async function wakePage(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	cursor: WakeCursor | undefined
+): Promise<number> {
 	const now = Date.now();
-	const newest = await ctx.db
+	const seen = new Set(cursor?.seen ?? []);
+	const limit = CATEGORY_WAKE_PAGE + seen.size;
+	const read = await ctx.db
 		.query('interpretSources')
-		.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+		.withIndex('by_mail_thread', (q) =>
+			cursor
+				? q.eq('mailThreadId', threadId).lte('_creationTime', cursor.at)
+				: q.eq('mailThreadId', threadId)
+		)
 		.order('desc')
-		.take(CATEGORY_WAKE_SCAN);
+		.take(limit);
+	const page = read.filter((row) => !seen.has(row._id)).slice(0, CATEGORY_WAKE_PAGE);
 	let woken = 0;
-	for (const row of newest) {
+	for (const row of page) {
 		// A deadline already past is its ceiling job's (or a legacy job's) to run.
 		if (row.categoryDeferredUntil === undefined || row.categoryDeferredUntil <= now) continue;
 		await ctx.db.patch(row._id, { categoryDeferredUntil: undefined, updatedAt: now });
@@ -112,6 +150,16 @@ export async function wakeCategoryDeferredRuns(
 			source: row.source,
 		});
 		woken += 1;
+	}
+	const last = page[page.length - 1];
+	if (read.length === limit && last) {
+		const at = last._creationTime;
+		const tied = page.filter((row) => row._creationTime === at).map((row) => row._id);
+		if (cursor?.at === at) tied.push(...seen);
+		await ctx.scheduler.runAfter(0, internal.mail.interpret.categoryDefer.continueCategoryWake, {
+			threadId,
+			cursor: { at, seen: tied },
+		});
 	}
 	return woken;
 }
