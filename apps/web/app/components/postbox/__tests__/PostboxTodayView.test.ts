@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * PostboxTodayView smoke — the focused inbox landing surface (the Priority view):
- *   - renders the sections in order (header → Needs you → Received today →
+ *   - renders the sections in order (header → Needs you → Everything else →
  *     Show past)
  *   - "Needs you" rows come from the Reply Queue feed and route there, plus the
  *     threads placed `needs_me` (read on arrival §3)
@@ -200,7 +200,7 @@ function mountView(extraProps: Record<string, unknown> = {}) {
 }
 
 describe('PostboxTodayView', () => {
-	it('renders header, Needs you, Received today and Show past mails in order', () => {
+	it('renders header, Needs you, Everything else and Show past mails in order', () => {
 		feed.messages.value = [
 			todayMsg('m-today'),
 			todayMsg('m-old', { receivedAt: Date.now() - 8 * 86_400_000, flagSeen: true }),
@@ -208,10 +208,10 @@ describe('PostboxTodayView', () => {
 		queue.items.value = [queueItem('q1', { threadId: 't1', fromAddress: 'boss@example.com' })];
 		const w = mountView();
 		const text = w.text();
-		// Section order: header count → Needs you → Received today → Show past.
+		// Section order: header count → Needs you → Everything else → Show past.
 		expect(text.indexOf('Inbox')).toBeLessThan(text.indexOf('Needs you'));
-		expect(text.indexOf('Needs you')).toBeLessThan(text.indexOf('Received today'));
-		expect(text.indexOf('Received today')).toBeLessThan(text.indexOf('Show past mails (1)'));
+		expect(text.indexOf('Needs you')).toBeLessThan(text.indexOf('Everything else'));
+		expect(text.indexOf('Everything else')).toBeLessThan(text.indexOf('Show past mails (1)'));
 		// "Today" names the home page only (#776).
 		expect(text).not.toMatch(/\bToday\b/);
 		expect(w.find('#postbox-for-you').exists()).toBe(true);

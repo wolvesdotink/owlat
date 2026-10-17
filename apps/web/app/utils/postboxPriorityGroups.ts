@@ -7,17 +7,17 @@
  *
  *   needsMe   `needs_me`, unless the Reply Queue already lists the thread
  *             (the queue's row stands for it)
- *   today     `today`
+ *   today     `today`, headed "Everything else" (the Categories view's word)
  *   updates   `updates`: the view shows three, then folds the rest
  *   digest    `digest`: a count and a link to All mail filtered to the digest
  *
  * The feed lists messages; each conversation counts once, by its newest row.
- * `needs_me`, `updates` and `digest` group at any age: they say what a thread
- * needs, not when it came. `today` (the "Received today" group, #776) and the
- * rows without a placement (no arrival projection yet, which fall back to the
- * category grouping) keep the Today window: received since local midnight, or
- * unread from yesterday. Older mail stays behind "Show past mails". A thread
- * the Reply Queue lists shows once, in "Needs you".
+ * Every explicit placement groups at any age: it says what a thread needs, not
+ * when it came. Only threads without an arrival projection keep the legacy
+ * grouping: the Today window (received since local midnight, or unread from
+ * yesterday) with auto-filed categories rolled up, and older mail behind "Show
+ * past mails". A thread the Reply Queue lists shows once, as the queue's row,
+ * and nowhere else.
  */
 import type { InjectionKey } from 'vue';
 import type { Placement } from '@owlat/shared/arrival';
@@ -61,9 +61,10 @@ export interface PriorityGroups<T> {
 	older: T[];
 }
 
-/** The placements that group at any age (the `today` placement keeps the Today window). */
+/** Where each placement groups, at any age (`archived` is past mail). */
 const GROUP_OF: Partial<Record<Placement, PriorityGroup>> = {
 	needs_me: 'needsMe',
+	today: 'today',
 	updates: 'updates',
 	digest: 'digest',
 };
@@ -87,12 +88,14 @@ export function groupPriorityRows<T extends PriorityRow>(
 	opts: { now: Date; queuedThreadIds?: ReadonlySet<string> }
 ): PriorityGroups<T> {
 	const queued = opts.queuedThreadIds ?? new Set<string>();
-	const isQueued = (row: T) => row.threadId !== undefined && queued.has(row.threadId);
-	const threads = newestPerThread(rows);
-	// The Today window only bounds `today` and the rows without a placement
-	// (the legacy grouping); the time-free placements group at any age.
+	// The Reply Queue's row stands for its thread: it shows nowhere else.
+	const threads = newestPerThread(rows).filter(
+		(row) => row.threadId === undefined || !queued.has(row.threadId)
+	);
+	// Only threads without an arrival projection keep the legacy grouping: the
+	// Today window and the category roll-up. A placement groups at any age.
 	const split = partitionTodayMessages(
-		threads.filter((row) => !row.placement || row.placement === 'today'),
+		threads.filter((row) => !row.placement),
 		{ now: opts.now }
 	);
 	const autoFiled = new Set(split.autoFiled);
@@ -108,18 +111,9 @@ export function groupPriorityRows<T extends PriorityRow>(
 	};
 	// Walk the feed's own order (newest first).
 	for (const row of threads) {
-		if (row.placement === 'archived') {
-			groups.older.push(row);
-			continue;
-		}
-		const timeFree = row.placement ? GROUP_OF[row.placement] : undefined;
-		if (!timeFree && !inWindow.has(row)) {
-			groups.older.push(row);
-			continue;
-		}
-		if (isQueued(row)) continue;
-		if (timeFree) groups[timeFree].push(row);
-		else if (row.placement === 'today') groups.today.push(row);
+		const group = row.placement ? GROUP_OF[row.placement] : undefined;
+		if (group) groups[group].push(row);
+		else if (row.placement === 'archived' || !inWindow.has(row)) groups.older.push(row);
 		else if (autoFiled.has(row)) {
 			groups.autoFiled.push(row);
 			const category = row.category as PostboxAutoFiledCategory;

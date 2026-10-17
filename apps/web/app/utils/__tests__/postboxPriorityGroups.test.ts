@@ -43,7 +43,7 @@ describe('groupPriorityRows', () => {
 		expect(g.autoFiled).toEqual([]);
 	});
 
-	it('groups needs_me, updates and digest at any age; today and unplaced rows keep the window', () => {
+	it('groups every explicit placement at any age; only unplaced threads keep the window', () => {
 		const old = { receivedAt: LAST_WEEK, flagSeen: true };
 		const g = groupPriorityRows(
 			[
@@ -59,7 +59,22 @@ describe('groupPriorityRows', () => {
 		expect(ids(g.needsMe)).toEqual(['old-ask']);
 		expect(ids(g.updates)).toEqual(['old-update']);
 		expect(ids(g.digest)).toEqual(['old-news']);
-		expect(ids(g.older)).toEqual(['old-today', 'old-legacy', 'filed']);
+		expect(ids(g.today)).toEqual(['old-today']);
+		expect(ids(g.older)).toEqual(['old-legacy', 'filed']);
+	});
+
+	it('leaves a queued thread out of every group, past mail included', () => {
+		const old = { receivedAt: LAST_WEEK, flagSeen: true };
+		const g = groupPriorityRows(
+			[
+				row('old-queued', old),
+				row('old-placed', { placement: 'updates', ...old }),
+				row('old-free', old),
+			],
+			{ now: NOW, queuedThreadIds: new Set(['t-old-queued', 't-old-placed']) }
+		);
+		expect(ids(g.older)).toEqual(['old-free']);
+		expect(g.updates).toEqual([]);
 	});
 
 	it('counts each conversation once, by its newest row, across pages', () => {

@@ -13039,6 +13039,9 @@
 				"title": "Braucht dich",
 				"queue": "Antwortliste ({count})"
 			},
+			"everythingElse": {
+				"title": "Alles andere"
+			},
 			"state": {
 				"due": "bis {date}",
 				"reply": "antworten",
@@ -13060,7 +13063,7 @@
 			},
 			"filter": {
 				"needs_me": "Braucht dich",
-				"today": "Heute eingegangen",
+				"today": "Alles andere",
 				"updates": "Neuigkeiten",
 				"digest": "In deiner Zusammenfassung",
 				"archived": "Abgelegt",

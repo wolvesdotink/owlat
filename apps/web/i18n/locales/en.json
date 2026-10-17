@@ -13039,6 +13039,9 @@
 				"title": "Needs you",
 				"queue": "Answer queue ({count})"
 			},
+			"everythingElse": {
+				"title": "Everything else"
+			},
 			"state": {
 				"due": "by {date}",
 				"reply": "reply",
@@ -13060,7 +13063,7 @@
 			},
 			"filter": {
 				"needs_me": "Needs you",
-				"today": "Received today",
+				"today": "Everything else",
 				"updates": "Updates",
 				"digest": "In your digest",
 				"archived": "Filed away",

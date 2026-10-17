@@ -9,12 +9,14 @@
  *   - the Brief slot (the Daily Brief greeting card)
  *   - "NEEDS YOU": the Reply Queue's rows (they open the Answer queue,
  *     filtered to this mailbox) and the threads placed `needs_me`
- *   - "RECEIVED TODAY": the `today` placement
+ *   - "EVERYTHING ELSE": the `today` placement (the Categories view's word;
+ *     "Today" names the home page, #776)
  *   - "UPDATES · NO REPLY NEEDED": three rows, then a fold
  *   - "N newsletters and promotions · in your digest": the `digest` placement
  *     as a count, linking to All mail filtered to it
- *   - for rows without an arrival placement, the old grouping: received today,
- *     with auto-filed categories rolled up into one quiet line
+ *   - for rows without an arrival placement, the old grouping: received today
+ *     (under "Everything else"), auto-filed categories rolled up into one
+ *     quiet line, the rest past mail
  *   - a centered "Show past mails (n)" affordance that expands older mail
  *     inline (same rows, same pagination).
  *
@@ -312,14 +314,14 @@ function onModeSelect(mode: PostboxInboxMode) {
 				</div>
 			</section>
 
-			<!-- RECEIVED TODAY: the day's mail, same rows/shortcuts as the full list. -->
+			<!-- EVERYTHING ELSE: the today placement (and today's unplaced mail), same rows/shortcuts as the full list. -->
 			<section
 				v-if="todayRows.length > 0 || error || isLoading || isInboxZero || autoFiledLine"
 				id="postbox-today"
-				:aria-label="t('components.postbox.postboxTodayView.receivedToday')"
+				:aria-label="t('postbox.priority.everythingElse.title')"
 			>
 				<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
-					{{ t('components.postbox.postboxTodayView.receivedToday') }}
+					{{ t('postbox.priority.everythingElse.title') }}
 				</h2>
 				<div
 					v-if="todayRows.length > 0"
