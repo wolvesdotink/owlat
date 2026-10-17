@@ -1067,31 +1067,31 @@
 			},
 			"incomplete": {
 				"partialLead": "Partly read.",
-				"partialCount": "{done} of {total} messages are in this overview.",
-				"partialPlain": "Some of this thread is not in this overview.",
+				"partialCount": "{done} of {total} messages are in this brief.",
+				"partialPlain": "Some of this thread is not in this brief.",
 				"partialReason": {
-					"tooLong": "{done} of {total} messages are in this overview. The rest was too long to process.",
-					"failed": "{done} of {total} messages are in this overview. Reading the rest failed.",
-					"undecryptable": "{done} of {total} messages are in this overview. The rest could not be decrypted.",
-					"pending": "{done} of {total} messages are in this overview. The rest is still being read.",
-					"history": "{done} of {total} messages are in this overview. Some earlier replies were sent before Owlat kept their text, so they are not in it."
+					"tooLong": "{done} of {total} messages are in this brief. The rest was too long to process.",
+					"failed": "{done} of {total} messages are in this brief. Reading the rest failed.",
+					"undecryptable": "{done} of {total} messages are in this brief. The rest could not be decrypted.",
+					"pending": "{done} of {total} messages are in this brief. The rest is still being read.",
+					"history": "{done} of {total} messages are in this brief. Some earlier replies were sent before Owlat kept their text, so they are not in it."
 				},
-				"pending": "Reading this thread. The overview fills in shortly.",
+				"pending": "Reading this thread. The brief fills in shortly.",
 				"none": {
-					"default": "There is no overview for this thread yet. The conversation shows everything.",
-					"aiOff": "AI is off, so there is no overview. The conversation shows everything.",
-					"undecryptable": "This message could not be decrypted, so there is no overview.",
-					"ineligible": "Mail like this is not summarised, so there is no overview.",
-					"failed": "Reading this thread failed, so there is no overview.",
-					"pending": "This thread has not been read yet. The overview fills in shortly."
+					"default": "There is no brief for this thread yet. The conversation shows everything.",
+					"aiOff": "AI is off, so there is no brief. The conversation shows everything.",
+					"undecryptable": "This message could not be decrypted, so there is no brief.",
+					"ineligible": "Mail like this is not summarised, so there is no brief.",
+					"failed": "Reading this thread failed, so there is no brief.",
+					"pending": "This thread has not been read yet. The brief fills in shortly."
 				},
 				"short": "Shown as written. There's nothing to summarise.",
 				"securityLead": "Security email.",
 				"security": "Shown as written, never summarised.",
 				"signed": "Only the signed part is summarised.",
-				"stale": "The overview is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
+				"stale": "The brief is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
 				"openConversation": "Open the conversation",
-				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the overview fills in shortly."
+				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the brief fills in shortly."
 			},
 			"conversation": {
 				"read": "Read the whole thread",
@@ -1111,7 +1111,7 @@
 			},
 			"cite": {
 				"showing": "Showing the source of “{label}”",
-				"back": "back to the overview",
+				"back": "back to the brief",
 				"notLocated": "Couldn't locate the exact passage in this message.",
 				"loading": "loading that message…",
 				"unreachable": "that message isn't in the loaded conversation"
@@ -1139,10 +1139,10 @@
 				"reminder": "You'll be reminded tomorrow morning."
 			},
 			"operations": {
-				"markSeen": "Mark the overview as seen",
+				"markSeen": "Mark the brief as seen",
 				"saveView": "Save the thread view",
 				"react": "Update the item",
-				"ensure": "Prepare the overview"
+				"ensure": "Prepare the brief"
 			},
 			"evidence": {
 				"label": "Show the source: {name}, {date}",
@@ -6037,6 +6037,8 @@
 				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
 				"writingSuggestionsLabel": "Writing suggestions",
 				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
+				"autoSummarizeLabel": "Show the brief above conversations",
+				"autoSummarizeHelp": "A short AI summary of what changed and what you owe, above the mail. Off: you see only the conversation.",
 				"backfillLabel": "Prepare briefs for recent mail",
 				"backfillHelp": "Reads your active conversations from the last 30 days, so each one opens with its brief above the conversation. Older ones are read when you first open them. This uses the AI budget.",
 				"backfillStart": "Prepare",
@@ -13106,6 +13108,7 @@
 				"archive": "Archive",
 				"whyHere": "Why is this here?",
 				"details": "Details",
+				"fullBrief": "Full brief",
 				"snooze": "Snooze",
 				"ask": "Ask about this thread"
 			},
@@ -16220,6 +16223,10 @@
 				"writingSuggestions": {
 					"title": "Writing suggestions",
 					"keywords": "ai, autocomplete, drafting help"
+				},
+				"autoSummarize": {
+					"title": "Show the brief above conversations",
+					"keywords": "ai, summary, brief, overview, strip"
 				},
 				"sendSound": {
 					"title": "Play sound when sending",

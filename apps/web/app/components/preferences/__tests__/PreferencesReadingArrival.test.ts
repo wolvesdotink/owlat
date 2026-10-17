@@ -3,7 +3,8 @@
  * Read on arrival's switch in the Reading card (SPEC §2.1): it says plainly
  * that the AI provider reads mail when it arrives, including mail that is
  * never opened; it writes `isReadOnArrival`; and it is only offered when AI
- * is on at all.
+ * is on at all. Next to it, "Show the brief above conversations"
+ * (`isAutoSummarizeOn`), which also gates the brief backfill row.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
@@ -12,11 +13,15 @@ import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18
 import PreferencesReading from '../PreferencesReading.vue';
 
 const setReadOnArrival = vi.fn();
+const setAutoSummarize = vi.fn();
 let isAiOn = true;
+let isBriefShown = true;
 
 beforeEach(() => {
 	setReadOnArrival.mockClear();
+	setAutoSummarize.mockClear();
 	isAiOn = true;
+	isBriefShown = true;
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: (flag: string) => flag === 'ai' && isAiOn }));
 	vi.stubGlobal('usePostboxSettings', () => ({
@@ -24,6 +29,8 @@ beforeEach(() => {
 		setAutoAdvance: vi.fn(),
 		writingSuggestions: ref(true),
 		setWritingSuggestions: vi.fn(),
+		autoSummarize: ref(isBriefShown),
+		setAutoSummarize,
 		readOnArrival: ref(true),
 		setReadOnArrival,
 		replyDefault: ref('reply'),
@@ -84,12 +91,23 @@ describe('PreferencesReading: read on arrival', () => {
 		expect(mountCard().find('#postbox-read-on-arrival').exists()).toBe(false);
 	});
 
-	it('has no Overview switch since the one-page reader, and offers the brief backfill with AI on', () => {
+	it('keeps the brief switch, worded for the one-page reader, and writes it', async () => {
 		const card = mountCard();
-		expect(card.find('#postbox-auto-summarize').exists()).toBe(false);
+		expect(card.text()).toContain('Show the brief above conversations');
+		expect(card.text()).toContain('Off: you see only the conversation.');
 		expect(card.text().toLowerCase()).not.toContain('overview');
-		expect(card.find('preferences-brief-backfill-stub').exists()).toBe(true);
-		isAiOn = false;
+		await card.get('#postbox-auto-summarize').trigger('click');
+		expect(setAutoSummarize).toHaveBeenCalledWith(false);
+	});
+
+	it('offers the brief backfill only with AI on and the brief shown', () => {
+		expect(mountCard().find('preferences-brief-backfill-stub').exists()).toBe(true);
+		isBriefShown = false;
 		expect(mountCard().find('preferences-brief-backfill-stub').exists()).toBe(false);
+		isBriefShown = true;
+		isAiOn = false;
+		const off = mountCard();
+		expect(off.find('preferences-brief-backfill-stub').exists()).toBe(false);
+		expect(off.find('#postbox-auto-summarize').exists()).toBe(false);
 	});
 });

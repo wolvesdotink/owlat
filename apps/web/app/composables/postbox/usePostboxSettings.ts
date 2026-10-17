@@ -9,6 +9,10 @@
  *   - `writingSuggestions` — inline ghost-text autocomplete in the composer.
  *     Defaults ON (undefined => true) so it's on by default wherever the `ai`
  *     feature flag is enabled; the flag itself is the master gate.
+ *   - `autoSummarize` — show the brief (the AI strip above the conversation
+ *     and the AI lead lines of the Priority view). Off: the reader shows the
+ *     slim "Why here? · Details" line and Priority rows show the subject.
+ *     Defaults ON (undefined => true).
  *   - `readOnArrival` — read on arrival: personal mail is read by the AI
  *     provider when it arrives, not when it is opened.
  *     Defaults ON (undefined => true), same master-gate reasoning as above.
@@ -123,6 +127,10 @@ export function usePostboxSettings() {
 	// Default ON: an unset preference means "use suggestions" — the `ai` flag is
 	// the real on/off switch, this is a user opt-out within an AI-enabled deploy.
 	const writingSuggestions = computed<boolean>(() => data.value?.isWritingSuggestionsOn ?? true);
+
+	// Default ON, same as writing suggestions: the `ai` flag is the master gate,
+	// this is a per-user opt-out from seeing AI briefs (`isAutoSummarizeOn`).
+	const autoSummarize = computed<boolean>(() => data.value?.isAutoSummarizeOn ?? true);
 
 	// Read on arrival (SPEC §2.1): default ON. The AI provider reads personal
 	// mail as it arrives; off, mail waits until a thread is opened.
@@ -274,6 +282,10 @@ export function usePostboxSettings() {
 		await updateOp.run({ isWritingSuggestionsOn: enabled });
 	}
 
+	async function setAutoSummarize(enabled: boolean) {
+		await updateOp.run({ isAutoSummarizeOn: enabled });
+	}
+
 	async function setReadOnArrival(enabled: boolean) {
 		await updateOp.run({ isReadOnArrival: enabled });
 	}
@@ -399,6 +411,7 @@ export function usePostboxSettings() {
 	return {
 		autoAdvance,
 		writingSuggestions,
+		autoSummarize,
 		readOnArrival,
 		codeAutoArchive,
 		replyDefault,
@@ -428,6 +441,7 @@ export function usePostboxSettings() {
 		isLoading,
 		setAutoAdvance,
 		setWritingSuggestions,
+		setAutoSummarize,
 		setReadOnArrival,
 		setCodeAutoArchive,
 		setReplyDefault,
