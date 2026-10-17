@@ -40,8 +40,12 @@ export const SUGGEST_MAX_READ_RATE = 0.1;
 /** `keep` profiles one suggestion pass reads. */
 export const SUGGESTION_SCAN = 400;
 
-/** Never-read promotions checked for a one-click target per pass. */
-const ONE_CLICK_CHECKS = 50;
+/**
+ * Never-read promotions checked for a one-click target per pass. A promotion
+ * past the budget is left out of the pass rather than guessed: without the
+ * lookup the suggestion (Unsubscribe or Auto-archive) is not known.
+ */
+export const ONE_CLICK_CHECKS = 50;
 
 /** Senders one apply may change. */
 export const APPLY_SUGGESTIONS_MAX = 50;
@@ -81,16 +85,22 @@ interface OneClickBudget {
 	checks: number;
 }
 
-/** The suggestion for one profile; the one-click lookup only runs when it decides. */
+/**
+ * The suggestion for one profile. Ineligible profiles are excluded before any
+ * lookup, so they never spend the one-click budget; a never-read promotion the
+ * budget cannot resolve is omitted (null), never suggested as Auto-archive.
+ */
 async function suggestionFor(
 	ctx: Pick<QueryCtx, 'db'>,
 	profile: Doc<'mailSenderProfiles'>,
 	now: number,
 	budget: OneClickBudget
 ): Promise<SuggestedSender | null> {
+	if (profile.status !== 'keep' || profile.statusSource === 'user') return null;
 	const totals = senderWindowTotals(profile, now);
 	let hasOneClick = false;
-	if (isNeverReadPromotion(profile, totals) && budget.checks > 0) {
+	if (isNeverReadPromotion(profile, totals)) {
+		if (budget.checks <= 0) return null;
 		budget.checks -= 1;
 		hasOneClick = await hasOneClickTarget(ctx, profile);
 	}
@@ -108,14 +118,15 @@ async function suggestionFor(
 export async function listSenderSuggestions(
 	ctx: Pick<QueryCtx, 'db'>,
 	mailboxId: Id<'mailboxes'>,
-	now: number
+	now: number,
+	oneClickChecks = ONE_CLICK_CHECKS
 ): Promise<SuggestedSender[]> {
 	const keep = await ctx.db
 		.query('mailSenderProfiles')
 		.withIndex('by_mailbox_status_last', (q) => q.eq('mailboxId', mailboxId).eq('status', 'keep'))
 		.order('desc')
 		.take(SUGGESTION_SCAN);
-	const budget: OneClickBudget = { checks: ONE_CLICK_CHECKS };
+	const budget: OneClickBudget = { checks: oneClickChecks };
 	const out: SuggestedSender[] = [];
 	for (const profile of keep) {
 		const suggested = await suggestionFor(ctx, profile, now, budget);
@@ -130,25 +141,37 @@ const STATUS_OF: Record<SenderSuggestion, SenderStatus> = {
 	unsubscribe: 'unsubscribed',
 };
 
+const suggestionValidator = v.union(
+	v.literal('digest'),
+	v.literal('auto_archive'),
+	v.literal('unsubscribe')
+);
+
 /**
- * Apply the suggestions the person confirmed. Each sender is re-checked
- * server-side; one that no longer qualifies is skipped.
+ * Apply the suggestions the person confirmed, each with the action the dialog
+ * showed. Each sender is re-checked server-side; one whose suggestion is gone
+ * or changed (a one-click target appeared or vanished) is skipped, so nothing
+ * is applied that the person did not confirm.
  */
 // authz: requireMailboxAccess on the mailbox; personal mailboxes only.
 export const applySuggestions = postboxMutation({
-	args: { mailboxId: v.id('mailboxes'), senderDigests: v.array(v.string()) },
+	args: {
+		mailboxId: v.id('mailboxes'),
+		items: v.array(v.object({ senderDigest: v.string(), suggestion: suggestionValidator })),
+	},
 	handler: async (ctx, args, session) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'member', session);
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		if (!isPersonalMailbox(owned.mailbox)) throwInvalidInput('Senders are personal mail only');
-		const digests = [...new Set(args.senderDigests)].slice(0, APPLY_SUGGESTIONS_MAX);
+		const confirmed = new Map(args.items.map((item) => [item.senderDigest, item.suggestion]));
 		const now = Date.now();
 		const chosen: SuggestedSender[] = [];
+		// One lookup per confirmed sender at most: every one resolves.
 		const budget: OneClickBudget = { checks: APPLY_SUGGESTIONS_MAX };
-		for (const digest of digests) {
+		for (const [digest, suggestion] of [...confirmed].slice(0, APPLY_SUGGESTIONS_MAX)) {
 			const profile = await loadSenderProfile(ctx, args.mailboxId, digest);
 			const suggested = profile ? await suggestionFor(ctx, profile, now, budget) : null;
-			if (suggested) chosen.push(suggested);
+			if (suggested?.suggestion === suggestion) chosen.push(suggested);
 		}
 		if (chosen.length === 0) return { operationId: null, applied: 0 };
 

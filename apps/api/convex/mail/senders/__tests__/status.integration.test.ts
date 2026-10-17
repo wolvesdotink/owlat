@@ -261,7 +261,10 @@ describe('suggestions', () => {
 
 			const result = await t.mutation(api.mail.senders.suggestions.applySuggestions, {
 				mailboxId,
-				senderDigests: [quiet.senderDigest, 'not-a-sender'],
+				items: [
+					{ senderDigest: quiet.senderDigest, suggestion: 'digest' },
+					{ senderDigest: 'not-a-sender', suggestion: 'digest' },
+				],
 			});
 			expect(result.applied).toBe(1);
 			const { operation, changes } = await changesOf(t, result.operationId!);

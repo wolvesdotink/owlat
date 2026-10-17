@@ -92,7 +92,10 @@ const applyOp = useBackendOperation(api.mail.senders.suggestions.applySuggestion
 async function applySuggestions() {
 	const result = await applyOp.run({
 		mailboxId: props.mailboxId,
-		senderDigests: suggestions.value.map((row) => row.senderDigest),
+		// The action each row showed: the server applies a sender only if it still agrees.
+		items: suggestions.value.flatMap((row) =>
+			row.suggestion ? [{ senderDigest: row.senderDigest, suggestion: row.suggestion }] : []
+		),
 	});
 	isDialogOpen.value = false;
 	if (!result.ok) return;
