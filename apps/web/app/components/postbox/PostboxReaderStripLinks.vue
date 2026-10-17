@@ -5,6 +5,9 @@
  * Read the exact wording, Why here? and Details, separated by quiet dots, and
  * a summary of what Details holds on the right. Shared by the brief strip and
  * the slim line that stands in for it. Presentational: everything emits.
+ *
+ * Each dot belongs to the item before it (one flex item, the slot's lead glues
+ * its dot with a no-break space), so a wrapped line never starts with "·".
  */
 const props = defineProps<{
 	showFullBrief?: boolean;
@@ -64,7 +67,11 @@ const LINK = 'text-text-secondary hover:text-text-primary hover:underline';
 <template>
 	<p class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-text-tertiary">
 		<slot />
-		<template v-for="link in links" :key="link.id">
+		<span
+			v-for="link in links"
+			:key="link.id"
+			class="inline-flex items-center gap-x-1.5 whitespace-nowrap"
+		>
 			<button
 				:ref="link.id === 'why' ? (el) => (whyEl = el as HTMLElement | null) : undefined"
 				type="button"
@@ -75,7 +82,7 @@ const LINK = 'text-text-secondary hover:text-text-primary hover:underline';
 				{{ link.label }}
 			</button>
 			<span aria-hidden="true">·</span>
-		</template>
+		</span>
 		<button
 			type="button"
 			:class="LINK"

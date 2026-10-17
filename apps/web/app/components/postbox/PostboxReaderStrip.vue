@@ -158,10 +158,10 @@ const linkHandlers = {
 					v-bind="{ ...linkProps, ...linkHandlers }"
 					data-testid="strip-meta"
 				>
-					<template v-if="waiting">
-						<span class="text-text-secondary" data-testid="strip-waiting">{{ waitingLine }}</span>
-						<span aria-hidden="true">·</span>
-					</template>
+					<span v-if="waiting" class="text-text-secondary"
+						><span data-testid="strip-waiting">{{ waitingLine }}</span
+						>&nbsp;<span aria-hidden="true">·</span></span
+					>
 				</PostboxReaderStripLinks>
 			</div>
 			<PostboxReaderStripLinks
@@ -170,10 +170,10 @@ const linkHandlers = {
 				v-bind="{ ...linkProps, ...linkHandlers }"
 				data-testid="reader-meta-line"
 			>
-				<template v-if="note === 'reading'">
-					<span data-testid="meta-reading">{{ t('postbox.reader.strip.reading') }}</span>
-					<span aria-hidden="true">·</span>
-				</template>
+				<span v-if="note === 'reading'"
+					><span data-testid="meta-reading">{{ t('postbox.reader.strip.reading') }}</span
+					>&nbsp;<span aria-hidden="true">·</span></span
+				>
 			</PostboxReaderStripLinks>
 		</Transition>
 		<!-- Always mounted: the host teleports the latest message's chips in here. -->
