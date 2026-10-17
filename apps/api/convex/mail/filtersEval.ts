@@ -46,6 +46,9 @@ export interface EvalResultAction {
 	forwardTo?: string;
 	sectionName?: string;
 	hours?: number;
+	/** The filter this action came from, and its priority (exclusive winners, §6.2). */
+	filterId?: Id<'mailFilters'>;
+	priority?: number;
 }
 
 export interface EvalResult {
@@ -209,6 +212,8 @@ export function evaluateFilters(filters: Doc<'mailFilters'>[], message: EvalMess
 				forwardTo: action.forwardTo,
 				sectionName: action.sectionName,
 				hours: action.hours,
+				filterId: filter._id,
+				priority: filter.priority,
 			});
 		}
 		if (filter.stopProcessing) {

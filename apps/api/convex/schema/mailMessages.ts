@@ -335,12 +335,17 @@ export const mailMessagesTables = {
 		// `by_thread` is a prefix of `by_thread_and_received` and can go once its
 		// readers move over.
 		.index('by_thread_and_received', ['threadId', 'receivedAt'])
-		// Read on arrival Fix (§4.2): a conversation's newest Inbox messages, the
-		// folder applied before the 200-message bound.
-		.index('by_thread_folder_received', ['threadId', 'folderId', 'receivedAt'])
 		.index('by_thread_and_seen', ['threadId', 'flagSeen'])
 		.index('by_thread_and_flagged', ['threadId', 'flagFlagged'])
 		.index('by_thread_and_outbound_state', ['threadId', 'outbound.state'])
+		// Read on arrival (lane rules): index-backed existence proofs for delayed
+		// actions. "Another message of this thread is still in the Inbox"
+		// (`archiveSingleMessage`) and "the owner replied in this thread since the
+		// anchor" (Sent copies by folder, the owner's address by sender), without a
+		// truncated scan of a long thread. Lane learn's Fix reads a conversation's
+		// newest Inbox messages through it too (the folder before the 200 bound).
+		.index('by_thread_folder_received', ['threadId', 'folderId', 'receivedAt'])
+		.index('by_thread_from_received', ['threadId', 'fromAddress', 'receivedAt'])
 		.index('by_rfc822_message_id', ['rfc822MessageId'])
 		// Per-mailbox Message-ID lookups — the delivery dedup and the threading
 		// walk seek straight to one mailbox's copy instead of reading every

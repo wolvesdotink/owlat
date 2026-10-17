@@ -58,7 +58,8 @@ import {
 	isOverQuota,
 } from './deliveryPipeline/insert';
 import { runPostInsertInboundEffects } from './deliveryPipeline/afterInsert';
-import { applySenderStatusAtDelivery } from './arrival/hooks';
+import { applySenderStatusAtDelivery, evaluateArrivalRules } from './arrival/hooks';
+import { getOrThrow } from '../_utils/errors';
 import { settleSenderDelivery } from './senders/delivery';
 import { withMailboxUsage } from './mailboxUsage';
 import { partBlobIds, recordStoredParts, stageMessageParts } from './messageParts';
@@ -438,6 +439,13 @@ export const deliverToMailbox = internalMutation({
 			inboundOrigin: 'mx',
 		});
 
+		// 11a. Plain-language and AI rules (§6.2), ranked against the manual pass.
+		const arrival = await evaluateArrivalRules(ctx, {
+			message: await getOrThrow(ctx, messageId, 'Message'),
+			mailboxId: mailbox._id,
+			origin: 'mx',
+			manualPass: filterOutcome.manualPass,
+		});
 		// 11b. Classifier enqueues, follow-up / snooze-until-reply clears and the
 		// owner-reply Reply Queue settle — the tail shared with IMAP sync.
 		await runPostInsertInboundEffects(ctx, {
@@ -445,6 +453,7 @@ export const deliverToMailbox = internalMutation({
 			folder,
 			origin: 'mx',
 			antiLoopHeaders: args.antiLoopHeaders,
+			arrival,
 		});
 		// 11b, senders: count the delivery, stamp the status outcome on the record.
 		await settleSenderDelivery(ctx, { messageId, origin: 'mx', senderStatus });

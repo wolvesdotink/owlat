@@ -156,9 +156,11 @@ export const continueMarkThreadRead = internalMutation({
 export async function moveMessagesToFolder(
 	ctx: MutationCtx,
 	args: { messageIds: Id<'mailMessages'>[]; targetFolderId: Id<'mailFolders'> },
-	// false when the move mirrors one the provider already made
+	// writeBack false: the move mirrors one the provider already made
 	// (mail/external/remoteState.ts), so it is not written back.
-	options: { writeBack?: boolean } = {}
+	// isNeedsReplyKept: an archive that keeps the thread's Reply Queue state
+	// (`archiveSingleMessage.ts`, the thread still has Inbox mail).
+	options: { writeBack?: boolean; isNeedsReplyKept?: boolean } = {}
 ): Promise<MoveResult> {
 	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
 	const now = Date.now();
@@ -244,7 +246,8 @@ export async function moveMessagesToFolder(
 
 	// Archiving or trashing a thread's mail dismisses the Reply Queue signal
 	// (the owner triaged it away without replying).
-	const clearsNeedsReply = target.role === 'archive' || target.role === 'trash';
+	const clearsNeedsReply =
+		(target.role === 'archive' || target.role === 'trash') && !options.isNeedsReplyKept;
 	for (const t of touchedThreads) {
 		await rebuildThreadAggregates(ctx, t);
 		if (clearsNeedsReply) await clearThreadNeedsReply(ctx, t);

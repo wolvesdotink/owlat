@@ -48,6 +48,9 @@ export const mailSettingsTables = {
 		// Read on arrival (SPEC §2.1, spec name `readOnArrival`): personal mail is
 		// read by the AI provider when it arrives. Absent reads as on.
 		isReadOnArrival: v.optional(v.boolean()),
+		// Read on arrival (SPEC §6.4): archive one-time codes and sign-in links a
+		// day after they arrive. Absent reads as off.
+		isCodeAutoArchiveOn: v.optional(v.boolean()),
 		// Default reply behavior: whether the primary reply affordance (Reply button
 		// and the `r` shortcut) opens a plain Reply or a Reply-all. Optional so
 		// existing rows read as undefined; the reader defaults it to 'reply'.
@@ -145,6 +148,10 @@ export const mailSettingsTables = {
 		// its LOCAL day against today's, which is what makes the send
 		// at-most-once-per-day and idempotent across cron ticks and retries.
 		lastDailyBriefEmailAt: v.optional(v.number()),
+		// Read on arrival (§6.5): the brief waited for a digest another tick was
+		// still generating. Set by the first deferral, cleared on delivery; the
+		// brief is due again on the next tick, bounded (mail/briefEmail.ts).
+		dailyBriefDeferredAt: v.optional(v.number()),
 		// Trash auto-purge horizon in days (idea 67): how long a trashed message
 		// survives before `mail/trashRetention.ts` deletes it for good. `0` is
 		// "Never", and so is ABSENT — Owlat has never auto-emptied a trash folder,

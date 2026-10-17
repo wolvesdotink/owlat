@@ -42,6 +42,8 @@ import { insertDeliveredMessage } from './deliveryPipeline/insert';
 import { batchGet } from '../_utils/batchLoader';
 import { getActiveMailboxForUser } from './mailbox/identity';
 import { isFencedThread } from './interpret/staleFence';
+import { hasDigestPending } from './digest/select';
+import { checkDigestDelivery, consumeSentDigest } from './digest/view';
 
 /**
  * How often the delivery cron runs. A brief is due when the user's local
@@ -66,6 +68,37 @@ export function localMinuteOfDay(nowMs: number, utcOffsetMinutes: number): numbe
 /** The user's local calendar day (days since epoch) for an instant. */
 export function localDayIndex(nowMs: number, utcOffsetMinutes: number): number {
 	return Math.floor((nowMs + utcOffsetMinutes * 60_000) / 86_400_000);
+}
+
+/**
+ * How long a brief waits for a digest another tick is still generating
+ * (§6.5): two more ticks. Past it the brief goes without the digest, whose
+ * threads stay pending for the next one.
+ */
+export const DIGEST_WAIT_MS = 2 * DELIVERY_WINDOW_MINUTES * 60_000;
+
+/**
+ * Is a brief that waited for its digest due again? It is until it is
+ * delivered, for at most {@link DIGEST_WAIT_MS} plus one tick, and only while
+ * the person still wants the brief. Pure.
+ */
+export function isDeferredBriefDue(
+	row: {
+		dailyBriefEmail?: { enabled: boolean };
+		dailyBriefDeferredAt?: number;
+		lastDailyBriefEmailAt?: number;
+	},
+	nowMs: number
+): boolean {
+	const deferredAt = row.dailyBriefDeferredAt;
+	if (deferredAt === undefined || !row.dailyBriefEmail?.enabled) return false;
+	if ((row.lastDailyBriefEmailAt ?? 0) >= deferredAt) return false;
+	return nowMs - deferredAt <= DIGEST_WAIT_MS + DELIVERY_WINDOW_MINUTES * 60_000;
+}
+
+/** The digest period of a brief: the user's local day (§6.5, one digest per day). */
+export function digestPeriodKey(nowMs: number, utcOffsetMinutes: number): string {
+	return `day:${localDayIndex(nowMs, utcOffsetMinutes)}`;
 }
 
 /**
@@ -118,6 +151,10 @@ interface BriefEmailPayload {
 	bundledCounts: { newsletter: number; notification: number; receipt: number };
 	/** The weekly Senders line, when this brief carries one (mail/senders/brief.ts). */
 	senders?: BriefEmailPayloadSenders;
+	/** Read on arrival (§6.5): the digest's period, when digest threads are waiting. */
+	digestPeriodKey?: string;
+	/** When this brief first waited for a busy digest (§6.5). */
+	deferredSince?: number;
 }
 
 export type BriefEmailPayloadSenders = Doc<'mailDailyBriefs'>['senders'];
@@ -140,7 +177,10 @@ export const listDue = internalQuery({
 		const due: Array<{ userId: string } & BriefEmailPayload> = [];
 
 		for (const row of rows) {
-			if (!isBriefDue(row.dailyBriefEmail, row.lastDailyBriefEmailAt, now)) continue;
+			const isDeferred = isDeferredBriefDue(row, now);
+			if (!isDeferred && !isBriefDue(row.dailyBriefEmail, row.lastDailyBriefEmailAt, now)) {
+				continue;
+			}
 			// The brief is per MAILBOX; the preference is per person. Deliver to the
 			// person's own active mailbox — a member with none simply gets nothing.
 			// A team inbox they own is not theirs to be briefed on privately.
@@ -152,13 +192,18 @@ export const listDue = internalQuery({
 				.withIndex('by_mailbox_and_generated', (q) => q.eq('mailboxId', mailbox._id))
 				.order('desc')
 				.first();
-			// No brief yet (a fresh mailbox before the build cron's first run) —
-			// send nothing rather than an empty digest that looks like a bug.
-			// The weekly Senders line is reason enough on its own.
-			if (!brief || (brief.items.length === 0 && !brief.senders)) continue;
+			// Read on arrival (§6.5): digest threads waiting are reason enough to
+			// send, and so is the weekly Senders line. Otherwise no brief yet (a
+			// fresh mailbox before the build cron's first run), or an empty one,
+			// sends nothing rather than a mail that looks like a bug.
+			const hasDigest = await hasDigestPending(ctx, mailbox._id);
+			// A deferred brief is always listed: with nothing left to send, the
+			// delivery pass ends its wait (`endBriefDeferral`) rather than leave it.
+			const isEmpty = !brief || (brief.items.length === 0 && !brief.senders);
+			if (!hasDigest && isEmpty && !isDeferred) continue;
 
 			// The item threads are independent rows — read them in one pass.
-			const itemRows = brief.items.slice(0, MAX_EMAIL_ITEMS);
+			const itemRows = (brief?.items ?? []).slice(0, MAX_EMAIL_ITEMS);
 			const threads = await batchGet(
 				ctx,
 				itemRows.map((item) => item.threadId)
@@ -193,10 +238,14 @@ export const listDue = internalQuery({
 				mailboxId: mailbox._id,
 				address: mailbox.address,
 				locale: profile?.locale,
-				generatedAt: brief.generatedAt,
+				generatedAt: brief?.generatedAt ?? now,
 				items,
-				bundledCounts: brief.bundledCounts,
-				...(brief.senders ? { senders: brief.senders } : {}),
+				bundledCounts: brief?.bundledCounts ?? { newsletter: 0, notification: 0, receipt: 0 },
+				...(brief?.senders ? { senders: brief.senders } : {}),
+				...(hasDigest
+					? { digestPeriodKey: digestPeriodKey(now, row.dailyBriefEmail?.utcOffsetMinutes ?? 0) }
+					: {}),
+				...(isDeferred ? { deferredSince: row.dailyBriefDeferredAt } : {}),
 			});
 		}
 		return due;
@@ -224,10 +273,34 @@ export const deliverBriefEmail = internalMutation({
 		bodyHtml: v.string(),
 		snippet: v.string(),
 		attachments: v.optional(v.array(mailMessageAttachmentValidator)),
+		/**
+		 * Read on arrival (§6.5): the generated digest this mail carries, and the
+		 * lines it was rendered with (message ids, in render order).
+		 */
+		digest: v.optional(
+			v.object({
+				digestId: v.id('mailDigests'),
+				claimToken: v.string(),
+				renderedMessageIds: v.array(v.id('mailMessages')),
+			})
+		),
 	},
-	handler: async (ctx, args): Promise<{ delivered: boolean }> => {
+	handler: async (ctx, args): Promise<{ delivered: boolean; isDigestStale?: boolean }> => {
 		const mailbox = await ctx.db.get(args.mailboxId);
 		if (!mailbox) return { delivered: false };
+		// The digest must still be generated under this claim (a second delivery
+		// sees it sent and does nothing), and its lines must still be the rendered
+		// ones: a purge, a fence or a scope change since asks for a re-render.
+		let digest: Doc<'mailDigests'> | null = null;
+		if (args.digest) {
+			const checked = await checkDigestDelivery(ctx, mailbox, args.digest);
+			if (checked.kind !== 'ok') {
+				return checked.kind === 'stale'
+					? { delivered: false, isDigestStale: true }
+					: { delivered: false };
+			}
+			digest = checked.digest;
+		}
 		const folder = await ctx.db
 			.query('mailFolders')
 			.withIndex('by_mailbox_and_role', (q) =>
@@ -260,12 +333,18 @@ export const deliverBriefEmail = internalMutation({
 		});
 
 		await markThreadAsBrief(ctx, messageId);
+		// In the same transaction as the mail: sent, stripped, threads consumed.
+		if (digest) await consumeSentDigest(ctx, digest, { sentMessageId: messageId, sentAt: now });
 		const settings = await ctx.db
 			.query('mailUserSettings')
 			.withIndex('by_user', (q) => q.eq('userId', args.userId))
 			.first();
 		if (settings) {
-			await ctx.db.patch(settings._id, { lastDailyBriefEmailAt: now, updatedAt: now });
+			await ctx.db.patch(settings._id, {
+				lastDailyBriefEmailAt: now,
+				dailyBriefDeferredAt: undefined,
+				updatedAt: now,
+			});
 		}
 		return { delivered: true };
 	},
@@ -277,3 +356,70 @@ async function markThreadAsBrief(ctx: MutationCtx, messageId: Id<'mailMessages'>
 	if (!delivered) return;
 	await ctx.db.patch(delivered.threadId, { isSelfDeliveredBrief: true });
 }
+
+/**
+ * The brief waits for a digest another tick is still generating (§6.5): no
+ * delivery stamp, so the next tick sends it ({@link isDeferredBriefDue}).
+ * A wait that continues (`deferredSince`, from `listDue`) keeps its start,
+ * which bounds it; a new wait always writes a fresh timestamp, whatever an
+ * abandoned earlier one left behind.
+ */
+export const deferBriefEmail = internalMutation({
+	args: { userId: v.string(), now: v.number(), deferredSince: v.optional(v.number()) },
+	handler: async (ctx, args): Promise<void> => {
+		const settings = await ctx.db
+			.query('mailUserSettings')
+			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+			.first();
+		if (!settings) return;
+		const deferredAt = args.deferredSince ?? args.now;
+		if (settings.dailyBriefDeferredAt === deferredAt) return;
+		await ctx.db.patch(settings._id, { dailyBriefDeferredAt: deferredAt, updatedAt: args.now });
+	},
+});
+
+/**
+ * A deferred brief that this pass neither deferred again nor delivered (its
+ * digest is no longer busy and nothing was left to send): the wait is over.
+ * Clears only the deferral it was given.
+ */
+export const endBriefDeferral = internalMutation({
+	args: { userId: v.string(), deferredAt: v.number() },
+	handler: async (ctx, args): Promise<void> => {
+		const settings = await ctx.db
+			.query('mailUserSettings')
+			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+			.first();
+		if (settings?.dailyBriefDeferredAt !== args.deferredAt) return;
+		await ctx.db.patch(settings._id, { dailyBriefDeferredAt: undefined, updatedAt: Date.now() });
+	},
+});
+
+/** Whether a stored deferral is stale: delivered since, or past its bound. Pure. */
+export function isStaleBriefDeferral(
+	row: { dailyBriefDeferredAt?: number; lastDailyBriefEmailAt?: number },
+	nowMs: number
+): boolean {
+	const deferredAt = row.dailyBriefDeferredAt;
+	if (deferredAt === undefined) return false;
+	if ((row.lastDailyBriefEmailAt ?? 0) >= deferredAt) return true;
+	return nowMs - deferredAt > DIGEST_WAIT_MS + DELIVERY_WINDOW_MINUTES * 60_000;
+}
+
+/**
+ * Every pass starts here: clear stale deferrals (the same bounded read as
+ * {@link listDue}), so an abandoned wait can never linger.
+ */
+export const sweepBriefDeferrals = internalMutation({
+	args: { now: v.number() },
+	handler: async (ctx, args): Promise<number> => {
+		const rows = await ctx.db.query('mailUserSettings').take(MAX_BRIEF_EMAIL_USERS);
+		let cleared = 0;
+		for (const row of rows) {
+			if (!isStaleBriefDeferral(row, args.now)) continue;
+			await ctx.db.patch(row._id, { dailyBriefDeferredAt: undefined });
+			cleared += 1;
+		}
+		return cleared;
+	},
+});

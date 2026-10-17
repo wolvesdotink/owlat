@@ -13312,6 +13312,54 @@
 			"unsubscribeNotRecalled": "The unsubscribe request was already sent and cannot be taken back.",
 			"expired": "This can no longer be undone",
 			"already": "This was already undone"
+		},
+		"rules": {
+			"title": "Rules in your words",
+			"intro": "Say what should happen to some of your mail. Owlat turns it into a rule you check before it runs. Rules only file, label, flag, place or notify; they never forward, delete or reply.",
+			"placeholder": "Invoices from suppliers go to Finance",
+			"inputLabel": "Describe a rule",
+			"add": "Add rule",
+			"compiling": "Turning this into a rule…",
+			"failed": "Couldn't turn this into a rule. Try naming a sender, a subject or one of your folders.",
+			"save": "Save rule",
+			"discard": "Discard",
+			"test": "Test on recent mail",
+			"empty": "No rules in your words yet.",
+			"aiNote": "The AI question is asked once, when a mail arrives. A mail waits for at most five of them; rules further down are skipped for it. AI rules never run on older mail.",
+			"chips": {
+				"condition": "{field} {op} “{value}”",
+				"ai": "AI: {question}",
+				"and": "and",
+				"or": "or",
+				"moveTo": "Move to {folder}",
+				"label": "Label {label}",
+				"section": "Section {section}",
+				"archiveAfter": "Archive after {hours} h"
+			},
+			"codes": {
+				"label": "Archive codes and sign-in links after a day",
+				"help": "One-time codes and sign-in links leave your inbox 24 hours after they arrive, unless you star them or reply."
+			},
+			"dryRun": {
+				"title": "Dry run · last {count} mails",
+				"summary": "{matches} of {count} match",
+				"aiUnavailable": "The AI question couldn't be asked right now, so those mails are not tested.",
+				"empty": "Nothing in your recent mail matches.",
+				"source": {
+					"noMatch": "no match",
+					"rule": "rule",
+					"aiYes": "AI · yes",
+					"aiNo": "AI · no",
+					"aiUnknown": "AI · unsure",
+					"notTested": "not tested"
+				}
+			},
+			"operations": {
+				"compile": "Create rule",
+				"confirm": "Save rule",
+				"discard": "Discard rule draft",
+				"test": "Test rule"
+			}
 		}
 	},
 	"recipient": {

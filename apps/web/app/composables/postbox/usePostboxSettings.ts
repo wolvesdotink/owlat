@@ -132,6 +132,8 @@ export function usePostboxSettings() {
 	// Read on arrival (SPEC §2.1): default ON. The AI provider reads personal
 	// mail as it arrives; off, mail waits until a thread is opened.
 	const readOnArrival = computed<boolean>(() => data.value?.isReadOnArrival ?? true);
+	// Read on arrival (SPEC §6.4): archive codes and sign-in links after a day. Default OFF.
+	const codeAutoArchive = computed<boolean>(() => data.value?.isCodeAutoArchiveOn ?? false);
 
 	// Which mode the primary reply affordance (Reply button / `r`) uses. Reads
 	// default to 'reply' while loading or when never saved, so the reader can
@@ -285,6 +287,10 @@ export function usePostboxSettings() {
 		await updateOp.run({ isReadOnArrival: enabled });
 	}
 
+	async function setCodeAutoArchive(enabled: boolean) {
+		await updateOp.run({ isCodeAutoArchiveOn: enabled });
+	}
+
 	async function setReplyDefault(mode: PostboxReplyDefaultMode) {
 		await updateOp.run({ replyDefault: mode });
 	}
@@ -404,6 +410,7 @@ export function usePostboxSettings() {
 		writingSuggestions,
 		autoSummarize,
 		readOnArrival,
+		codeAutoArchive,
 		replyDefault,
 		density,
 		viewMode,
@@ -433,6 +440,7 @@ export function usePostboxSettings() {
 		setWritingSuggestions,
 		setAutoSummarize,
 		setReadOnArrival,
+		setCodeAutoArchive,
 		setReplyDefault,
 		setDensity,
 		setViewMode,

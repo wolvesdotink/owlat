@@ -285,6 +285,7 @@ describe('the arrival-record stamp', () => {
 			expect(record.exclusiveWinners?.folder).toEqual({
 				source: 'sender_status',
 				priority: SENDER_STATUS_WINNER_PRIORITY,
+				folderId: message.folderId,
 			});
 			expect(record.reasonKeys).toEqual([
 				{ key: SENDER_STATUS_REASON_KEY, params: { status: 'auto_archive' } },

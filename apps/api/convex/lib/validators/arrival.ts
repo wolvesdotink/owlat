@@ -70,6 +70,10 @@ export const exclusiveWinnerValidator = v.object({
 	filterId: v.optional(v.id('mailFilters')),
 	// Lower runs first; sender status uses SENDER_STATUS_WINNER_PRIORITY.
 	priority: v.number(),
+	// Folder winners: the folder the winner's move put the message in. A later,
+	// higher-priority AI answer may move the message only while it is still
+	// there (lane rules, review r1 F3).
+	folderId: v.optional(v.id('mailFolders')),
 });
 
 export const exclusiveWinnersValidator = v.object({

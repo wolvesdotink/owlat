@@ -23,6 +23,8 @@ import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { removeFilterRunJob } from './filterRun';
 import { evalMessageFromRow, filterConditionsMatch } from './filtersEval';
+import { validateFilterForSave } from './filterValidation';
+import { openMessageBody } from '../lib/messageBody';
 import {
 	mailFilterActionValidator,
 	mailFilterConditionValidator,
@@ -37,10 +39,16 @@ export const list = publicQuery({
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
-		return ctx.db
+		const rows = await ctx.db
 			.query('mailFilters')
 			.withIndex('by_mailbox_and_priority', (q) => q.eq('mailboxId', args.mailboxId))
 			.collect(); // bounded: one mailbox's filters
+		// A plain-language rule's text is sealed at rest (§6.1).
+		return await Promise.all(
+			rows.map(async (row) =>
+				row.sourceText ? { ...row, sourceText: await openMessageBody(row.sourceText) } : row
+			)
+		);
 	},
 });
 
@@ -99,28 +107,14 @@ export const create = postboxMutation({
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const trimmed = args.name.trim();
 		if (!trimmed) throwInvalidInput('Filter name required');
-		if (args.conditions.length === 0) {
-			throwInvalidInput('At least one condition is required');
-		}
-		if (args.actions.length === 0) {
-			throwInvalidInput('At least one action is required');
-		}
 		const actions = normalizeFilterActions(args.actions);
-		// Validate any folder/label refs belong to this mailbox
-		for (const action of actions) {
-			if (action.folderId) {
-				const folder = await ctx.db.get(action.folderId);
-				if (!folder || folder.mailboxId !== args.mailboxId) {
-					throwInvalidInput('moveToFolder action references unknown folder');
-				}
-			}
-			if (action.labelId) {
-				const label = await ctx.db.get(action.labelId);
-				if (!label || label.mailboxId !== args.mailboxId) {
-					throwInvalidInput('addLabel action references unknown label');
-				}
-			}
-		}
+		// Read on arrival (§6.1): a manual filter keeps today's action set; the
+		// arrival actions belong to plain-language rules (`filterCompile.confirm`).
+		await validateFilterForSave(ctx, args.mailboxId, {
+			conditions: args.conditions,
+			actions,
+			stopProcessing: args.stopProcessing ?? false,
+		});
 
 		const now = Date.now();
 		// If priority not provided, append at end
@@ -159,18 +153,49 @@ export const update = postboxMutation({
 		actions: v.optional(v.array(mailFilterActionValidator)),
 		matchType: v.optional(mailFilterMatchTypeValidator),
 		stopProcessing: v.optional(v.boolean()),
+		/** A rule with an AI condition: its new question. */
+		aiQuestion: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const filter = await getOrThrow(ctx, args.filterId, 'Filter');
 		const owned = await requireMailboxAccess(ctx, filter.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Filter not accessible');
 
+		const actions = args.actions !== undefined ? normalizeFilterActions(args.actions) : undefined;
+		const question = args.aiQuestion?.trim();
+		if (question !== undefined && !filter.aiCondition) {
+			throwInvalidInput('Only a rule with an AI condition has a question');
+		}
+		const isRuleEdit =
+			args.conditions !== undefined ||
+			actions !== undefined ||
+			args.matchType !== undefined ||
+			args.stopProcessing !== undefined ||
+			question !== undefined;
 		const patch: Record<string, unknown> = { updatedAt: Date.now() };
+		if (isRuleEdit) {
+			// Checked against the stored origin and AI condition, so a plain-language
+			// or AI rule cannot be edited past its limits (§6.1). A rename, a toggle
+			// or a reorder changes nothing the check reads.
+			await validateFilterForSave(ctx, filter.mailboxId, {
+				origin: filter.origin,
+				aiCondition: question !== undefined ? { question } : filter.aiCondition,
+				conditions: args.conditions ?? filter.conditions,
+				actions: actions ?? filter.actions,
+				stopProcessing: args.stopProcessing ?? filter.stopProcessing,
+			});
+			// A new revision: an AI answer pending for the old rule no longer applies (§6.2).
+			const revision = (filter.revision ?? 0) + 1;
+			patch['revision'] = revision;
+			if (filter.aiCondition) {
+				patch['aiCondition'] = { question: question ?? filter.aiCondition.question, revision };
+			}
+		}
 		if (args.name !== undefined) patch['name'] = args.name.trim();
 		if (args.isEnabled !== undefined) patch['isEnabled'] = args.isEnabled;
 		if (args.priority !== undefined) patch['priority'] = args.priority;
 		if (args.conditions !== undefined) patch['conditions'] = args.conditions;
-		if (args.actions !== undefined) patch['actions'] = normalizeFilterActions(args.actions);
+		if (actions !== undefined) patch['actions'] = actions;
 		// `all` clears the field rather than storing it, keeping "absent = today's
 		// behavior" true for a filter that is toggled back.
 		if (args.matchType !== undefined) {
