@@ -3,7 +3,7 @@
  *
  * | destination                   | `message` scope            | `sender` scope                        |
  * |-------------------------------|----------------------------|---------------------------------------|
- * | `needs_me`, `today`, `updates` | thread `placementOverride` | sender `placementOverride` (+ `keep`) |
+ * | `needs_me`, `today`, `updates` | thread `placementOverride` | sender `placementOverride` + `keep`/`user` |
  * | `digest`                      | thread `placementOverride` | status `digest`                       |
  * | `auto_archive`                | archive the thread's Inbox | status `auto_archive` (+ archive)     |
  *
@@ -274,7 +274,9 @@ async function fixSender(
 	if (destination === 'digest') {
 		await setStatus('digest');
 	} else {
-		if (profile.status !== 'keep') await setStatus('keep');
+		// Always `keep` set by the person: a default or learned `keep` would stay
+		// learnable, and a later learned digest would undo "Always here".
+		await setStatus('keep');
 		changes += await writeSenderOverride(fix, profile, destination);
 		changes += await restoreFromArchive(fix);
 	}

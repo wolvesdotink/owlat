@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { api } from '../../../_generated/api';
+import { api, internal } from '../../../_generated/api';
 import { openMessageBody } from '../../../lib/messageBody';
 import {
 	SENDER,
@@ -180,6 +180,34 @@ describe('fix.apply, sender scope', () => {
 				after: 'needs_me',
 			},
 		]);
+	});
+
+	it('makes a default keep the person\'s own, so learning can never override it', async () => {
+		const t = learnTest();
+		const { mailboxId } = await seedPersonalMailbox(t);
+		const { message } = await deliverLive(t);
+		const result = await t.mutation(api.mail.arrival.fix.apply, {
+			messageId: message._id,
+			destination: 'updates',
+			scope: 'sender',
+		});
+		const profile = (await profileOf(t, mailboxId))!;
+		expect(profile).toMatchObject({ status: 'keep', statusSource: 'user' });
+		const { changes } = await operationOf(t, result.operationId!);
+		expect(changes.map((row) => row.change.kind)).toEqual([
+			'senderStatus',
+			'senderPlacementOverride',
+		]);
+		// Evidence that crossed both gates no longer leads anywhere.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(profile._id, {
+				unreadArchiveEvidence: { count: 9, sessions: 4, version: 1 },
+			});
+		});
+		expect(
+			await t.mutation(internal.mail.arrival.learning.learnDigest, { profileId: profile._id })
+		).toBeNull();
+		expect((await profileOf(t, mailboxId))!.status).toBe('keep');
 	});
 
 	it('sets status digest and re-sorts only the newest 200 Inbox messages', async () => {
