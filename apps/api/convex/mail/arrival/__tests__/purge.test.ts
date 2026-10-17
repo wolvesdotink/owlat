@@ -16,6 +16,9 @@ import { rebuildThreadAggregates } from '../../threadAggregates';
 import { scheduleScopeInvalidation, startScopeChange } from '../../interpret/scopeChange';
 import { MAIL_ARRIVAL_TABLES } from '../../../schema/mailArrival';
 import { arrivalChangeRow } from '../changeRows';
+import { drivePurgeJob } from '../../interpret/purgeRun';
+import { unitBudget } from '../../interpret/purgeDrain';
+import { mailMessageSources } from '../../interpret/purge';
 import { seedArrivalRows } from './arrival.testlib';
 
 afterEach(() => {
@@ -210,6 +213,153 @@ describe('message purge', () => {
 			expect(await ctx.db.get(threadId)).toBeNull();
 			expect((await ctx.db.get(ids.digestId))!.items).toEqual([]);
 			expect(await ctx.db.get(ids.recordId)).toBeNull();
+		});
+	});
+});
+
+/** One digest of `state` for `mailboxId` naming the given lines. */
+function digestRow(
+	mailboxId: Id<'mailboxes'>,
+	state: 'claimed' | 'failed',
+	periodKey: string,
+	items: Array<{ threadId: Id<'mailThreads'>; messageId: Id<'mailMessages'> }>,
+	expiresAt: number
+) {
+	return {
+		mailboxId,
+		periodKey,
+		state,
+		claimToken: 't',
+		claimUntil: 0,
+		generationAttempts: 1,
+		items: items.map((item) => ({ ...item, kind: 'newsletter' as const })),
+		visited: [],
+		overflowByKind: { newsletter: 0, updates: 0, promotion: 0 },
+		overflowLabel: 'exact' as const,
+		createdAt: 0,
+		expiresAt,
+	};
+}
+
+describe('the digest walk across purge slices', () => {
+	it('handles digests that share a creation time, a slice boundary between them', async () => {
+		const { t, mailboxId, messageId, otherId, threadId, otherThreadId } = await setup();
+		// Far enough out that convex-test's +0.001 ms bump no longer moves the
+		// float: every row inserted now shares one `_creationTime`.
+		vi.useFakeTimers();
+		vi.setSystemTime(8_000_000_000_000_000);
+		const digestIds = await t.run(async (ctx) => {
+			const ids: Id<'mailDigests'>[] = [];
+			for (let i = 0; i < 12; i++) {
+				ids.push(
+					await ctx.db.insert(
+						'mailDigests',
+						digestRow(
+							mailboxId,
+							'failed',
+							`p${i}`,
+							[
+								{ threadId, messageId },
+								{ threadId: otherThreadId, messageId: otherId },
+							],
+							Number.MAX_SAFE_INTEGER
+						)
+					)
+				);
+			}
+			return ids;
+		});
+		vi.useRealTimers();
+		const times = await t.run(async (ctx) =>
+			Promise.all(digestIds.map(async (id) => (await ctx.db.get(id))!._creationTime))
+		);
+		expect(new Set(times).size).toBe(1);
+
+		// A few rows per slice, so the cursor lands inside the tie.
+		let slices = 0;
+		for (; slices < 200; slices++) {
+			const isDone = await t.run((ctx) =>
+				drivePurgeJob(
+					ctx,
+					'ties',
+					{
+						ref: { kind: 'mail', id: threadId },
+						kind: 'sources',
+						sources: mailMessageSources(messageId),
+						mailboxId,
+					},
+					unitBudget(5)
+				)
+			);
+			if (isDone) break;
+		}
+		expect(slices).toBeGreaterThan(1);
+		await t.run(async (ctx) => {
+			for (const id of digestIds) {
+				expect((await ctx.db.get(id))!.items.map((item) => item.messageId)).toEqual([otherId]);
+			}
+		});
+	});
+
+	it('still finds the mailbox after the thread is gone and retention took the record', async () => {
+		const { t, mailboxId, messageId, threadId, otherId, otherThreadId } = await setup();
+		const far = Date.now() + 365 * 24 * 60 * 60 * 1000;
+		const failedId = await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('mailArrivalRecords', {
+				mailboxId,
+				threadId,
+				messageId,
+				sourceKey: `mail:${messageId}`,
+				modelCalls: 0,
+				reasonKeys: [],
+				createdAt: now,
+				updatedAt: now,
+				expiresAt: now + 1000,
+			});
+			// More claimed digests than the inline slice can read, so the failed
+			// one is reached only by a scheduled continuation.
+			for (let i = 0; i < 500; i++) {
+				await ctx.db.insert(
+					'mailDigests',
+					digestRow(
+						mailboxId,
+						'claimed',
+						`c${i}`,
+						[{ threadId: otherThreadId, messageId: otherId }],
+						far
+					)
+				);
+			}
+			return ctx.db.insert(
+				'mailDigests',
+				digestRow(mailboxId, 'failed', 'f', [{ threadId, messageId }], far)
+			);
+		});
+
+		// The purge empties and deletes the thread in its own transaction.
+		await t.run(async (ctx) => {
+			const purged: PurgedMessages = new Map();
+			const id = await purgeMessageRow(ctx, (await ctx.db.get(messageId))!, purged);
+			await purgeThreadBriefsOf(ctx, purged);
+			await rebuildThreadAggregates(ctx, id);
+		});
+		const job = await t.run(async (ctx) => ctx.db.query('threadPurgeJobs').first());
+		expect(job?.mailboxId).toBe(mailboxId);
+		// Retention runs between the slices and takes the arrival record.
+		await t.mutation(internal.maintenance.retention.sweepArrivalRecords, {
+			now: Date.now() + 60_000,
+		});
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(threadId)).toBeNull();
+			expect(await ctx.db.query('mailArrivalRecords').collect()).toEqual([]);
+		});
+
+		await drain(t);
+
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(failedId))!.items).toEqual([]);
+			expect(await ctx.db.query('threadPurgeJobs').collect()).toEqual([]);
 		});
 	});
 });
