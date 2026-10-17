@@ -2,8 +2,8 @@
  * The read-on-arrival contract (SPEC §2.9): every new table and field
  * validates a realistic row, every index the later lanes build on exists with
  * the fields they query by, the shared vocabularies match the validators, the
- * new filter actions are no-ops on the existing paths, and the hook stubs keep
- * their stable shape until their lanes replace them.
+ * new filter actions are no-ops on the existing paths, and no hook is still
+ * a stub (the final wiring gate, SPEC §9).
  */
 
 import { convexTest } from 'convex-test';
@@ -31,16 +31,7 @@ import { arrivalChangeRow } from '../mail/arrival/changeRows';
 import { evaluateFilters } from '../mail/filters';
 import { resolveFilterOutcome } from '../mail/deliveryPipeline/routing';
 import { hasRetroactiveActions } from '../mail/filterRun';
-import {
-	ARRIVAL_HOOK_OWNERS,
-	ARRIVAL_HOOK_STUBS,
-	applyArrivalAiAnswers,
-	applySenderStatusAtDelivery,
-	evaluateArrivalRules,
-	listArrivalAiQuestions,
-	recordFirstOpen,
-	recordSenderDelivery,
-} from '../mail/arrival/hooks';
+import { ARRIVAL_HOOK_OWNERS, ARRIVAL_HOOK_STUBS } from '../mail/arrival/hooks';
 
 type TableName = keyof typeof schema.tables;
 
@@ -292,42 +283,20 @@ describe('new filter actions on the existing paths', () => {
 	});
 });
 
-describe('arrival hook stubs', () => {
-	it('name an owning lane for every stub', () => {
-		for (const hook of ARRIVAL_HOOK_STUBS) expect(ARRIVAL_HOOK_OWNERS[hook]).toBeDefined();
+describe('the wiring gate (SPEC §9)', () => {
+	it('leaves no hook a stub', () => {
+		expect([...ARRIVAL_HOOK_STUBS]).toEqual([]);
 	});
 
-	it('return empty or nothing while stubbed', async () => {
-		const { t, mailboxId, messageId } = await seedOne();
-		await t.run(async (ctx) => {
-			const message = (await ctx.db.get(messageId))!;
-			if (ARRIVAL_HOOK_STUBS.has('evaluateArrivalRules')) {
-				expect(await evaluateArrivalRules(ctx, { message, mailboxId, origin: 'mx' })).toEqual({
-					pendingAiFilters: [],
-					delayedActions: [],
-				});
-			}
-			if (ARRIVAL_HOOK_STUBS.has('listArrivalAiQuestions')) {
-				expect(await listArrivalAiQuestions(ctx, { mailboxId, messageId })).toEqual([]);
-			}
-			if (ARRIVAL_HOOK_STUBS.has('applySenderStatusAtDelivery')) {
-				expect(
-					await applySenderStatusAtDelivery(ctx, {
-						mailboxId,
-						fromAddress: message.fromAddress,
-						origin: 'mx',
-						isMovedByFilter: false,
-					})
-				).toBeNull();
-			}
-			if (ARRIVAL_HOOK_STUBS.has('applyArrivalAiAnswers')) {
-				await applyArrivalAiAnswers(ctx, { messageId, answers: [] });
-			}
-			if (ARRIVAL_HOOK_STUBS.has('recordSenderDelivery')) {
-				await recordSenderDelivery(ctx, { message, origin: 'mx' });
-			}
-			if (ARRIVAL_HOOK_STUBS.has('recordFirstOpen')) await recordFirstOpen(ctx, messageId);
-			expect(await ctx.db.query('mailSenderProfiles').collect()).toEqual([]);
-		});
+	it('names an owning lane for every hook', () => {
+		expect(Object.keys(ARRIVAL_HOOK_OWNERS).sort()).toEqual([
+			'applyArrivalAiAnswers',
+			'applySenderStatusAtDelivery',
+			'compileFixRuleDraft',
+			'evaluateArrivalRules',
+			'listArrivalAiQuestions',
+			'recordFirstOpen',
+			'recordSenderDelivery',
+		]);
 	});
 });

@@ -1,11 +1,11 @@
 /**
  * Read on arrival: the cross-lane hooks (SPEC §2.9). Each hook has a stable
- * signature that its call sites build against, a no-op stub, and an owning
- * lane that replaces the stub with the real implementation.
+ * signature that its call sites build against and an owning lane whose module
+ * implements it; the hook itself only delegates.
  *
- * `ARRIVAL_HOOK_STUBS` names every hook that is still a stub. An owning lane
- * removes its hook's name when it lands the implementation; the final wiring
- * gate (SPEC §9) fails while the set is not empty.
+ * `ARRIVAL_HOOK_STUBS` names every hook that is still a stub. It is empty, and
+ * the final wiring gate (SPEC §9, `__tests__/arrivalContract.test.ts`) fails
+ * if a name is ever added back.
  *
  * Isolate-safe helpers, no Convex functions.
  */
@@ -205,5 +205,5 @@ export const ARRIVAL_HOOK_OWNERS: Readonly<Record<ArrivalHookName, 'rules' | 'se
 	compileFixRuleDraft: 'rules',
 };
 
-/** Hooks still stubbed. Remove a name when its implementation lands. */
+/** Hooks still stubbed: none. The wiring gate asserts the set stays empty. */
 export const ARRIVAL_HOOK_STUBS: ReadonlySet<ArrivalHookName> = new Set<ArrivalHookName>([]);

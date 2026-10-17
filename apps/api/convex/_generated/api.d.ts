@@ -1801,7 +1801,6 @@ import type * as mail_interpret_gist from '../mail/interpret/gist.js';
 import type * as mail_interpret_gistCommit from '../mail/interpret/gistCommit.js';
 import type * as mail_arrival_autoBackfill from '../mail/arrival/autoBackfill.js';
 import type * as mail_external_syncCursor from '../mail/external/syncCursor.js';
-import type * as mail_senders_arrivalProjection from '../mail/senders/arrivalProjection.js';
 import type * as mail_senders_brief from '../mail/senders/brief.js';
 import type * as mail_senders_counters from '../mail/senders/counters.js';
 import type * as mail_senders_delivery from '../mail/senders/delivery.js';
@@ -3641,7 +3640,6 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/gistCommit': typeof mail_interpret_gistCommit;
 	'mail/arrival/autoBackfill': typeof mail_arrival_autoBackfill;
 	'mail/external/syncCursor': typeof mail_external_syncCursor;
-	'mail/senders/arrivalProjection': typeof mail_senders_arrivalProjection;
 	'mail/senders/brief': typeof mail_senders_brief;
 	'mail/senders/counters': typeof mail_senders_counters;
 	'mail/senders/delivery': typeof mail_senders_delivery;
