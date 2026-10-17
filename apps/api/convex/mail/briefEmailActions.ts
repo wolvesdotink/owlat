@@ -27,6 +27,7 @@ import { MAX_EMAIL_ITEMS, type BriefEmailItem, type BriefEmailPayloadSenders } f
 import { dailyBriefEmailCopy, systemEmailLocale } from '../lib/systemEmailCopy';
 import { prepareDigest } from './digest/generate';
 import { digestBlocks } from './digest/emailBlocks';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 
 /** Snippet length that matches what the delivery pipeline stores elsewhere. */
 const SNIPPET_LENGTH = 200;
@@ -166,6 +167,8 @@ export function sendersBlocks(input: {
 export const deliverDueBriefs = internalAction({
 	args: {},
 	handler: async (ctx): Promise<{ delivered: number }> => {
+		// The digest lines are one model call per due mailbox (§6.5).
+		anchorActionDeadline(ctx);
 		const due = await ctx.runQuery(internal.mail.briefEmail.listDue, {});
 		if (due.length === 0) return { delivered: 0 };
 
