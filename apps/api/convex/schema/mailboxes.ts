@@ -107,6 +107,9 @@ export const mailboxesTables = {
 		usedBytes: v.number(),
 		usageRevision: v.optional(v.number()),
 		uidValidity: v.number(), // initialized to Date.now()
+		// Read on arrival (SPEC §2.7): when the automatic 30-day interpretation
+		// backfill after a history import was started. Set once; never again.
+		interpretAutoBackfillAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

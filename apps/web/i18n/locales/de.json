@@ -4659,7 +4659,12 @@
 					"markFlagged": "Mit Stern markieren",
 					"markRead": "Als gelesen markieren",
 					"moveToFolder": "In Ordner verschieben",
-					"pinToSection": "In Posteingangs-Bereich anheften"
+					"pinToSection": "In Posteingangs-Bereich anheften",
+					"sendToDigest": "In den Digest",
+					"placeInUpdates": "Als Update einordnen",
+					"placeInNeedsMe": "Als „braucht dich“ einordnen",
+					"archiveAfter": "Nach einer Weile archivieren",
+					"notify": "Benachrichtige mich"
 				},
 				"actionsHeading": "Dann Folgendes tun…",
 				"addAction": "+ Aktion hinzufügen",

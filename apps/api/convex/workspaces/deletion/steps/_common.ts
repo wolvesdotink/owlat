@@ -13,6 +13,7 @@ import type { MutationCtx } from '../../../_generated/server';
 import { literalUnion } from '../../../lib/literalUnion';
 import { BRIEF_WIPE_TABLES, type BriefWipeTable } from '../../../schema/threadPurgeJobs';
 import { AI_ROUTING_TABLES, type AiRoutingTable } from '../../../schema/aiRouting';
+import { MAIL_ARRIVAL_TABLES, type MailArrivalTable } from '../../../schema/mailArrival';
 
 /**
  * Typed literal union of every table the wipe walks. The walker's `runStep`
@@ -219,6 +220,7 @@ export type OrganizationDeletionTable =
 	| 'answerAskSessions'
 	| 'aiProviderConfig'
 	| AiRoutingTable
+	| MailArrivalTable
 	| 'coalesceBatches'
 	| 'visualizations'
 	| 'dashboardLayouts'
@@ -238,8 +240,7 @@ import { TENANT_TABLES } from '../../../lib/tenantTables';
 
 /**
  * Compile-time guard: every TENANT_TABLES entry MUST have a deletion step (41
- * once survived 'Delete organization', externalMailAccounts among them). A
- * tenant table missing from the union above is a compile error.
+ * once survived 'Delete organization'); a missing one is a compile error.
  */
 type TenantTableMissingFromWipe = Exclude<
 	(typeof TENANT_TABLES)[number],
@@ -289,6 +290,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('threadCatchUps'),
 	...literalUnion(BRIEF_WIPE_TABLES).members,
 	...literalUnion(AI_ROUTING_TABLES).members,
+	...literalUnion(MAIL_ARRIVAL_TABLES).members,
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
 	v.literal('conversationThreads'),
@@ -488,10 +490,8 @@ export interface OrganizationDeletionStepModule<T extends OrganizationDeletionTa
 }
 
 /**
- * Helper for declaring a step module — preserves the literal `table`
- * type so the registry in `walker.ts` is type-safe at the per-key level
- * (`ORGANIZATION_DELETION_STEPS['mediaAssets']` has `table: 'mediaAssets'`,
- * not the broad union).
+ * Declare a step module, keeping the literal `table` type so the registry is
+ * type-safe per key (`ORGANIZATION_DELETION_STEPS['mediaAssets'].table`).
  */
 export function defineStep<T extends OrganizationDeletionTable>(
 	module: OrganizationDeletionStepModule<T>

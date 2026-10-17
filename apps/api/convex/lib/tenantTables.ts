@@ -1,6 +1,7 @@
 import type { TableNames } from '../_generated/dataModel';
 import { THREAD_BRIEF_TABLES } from '../schema/threadBrief';
 import { AI_ROUTING_TABLES } from '../schema/aiRouting';
+import { MAIL_ARRIVAL_TABLES } from '../schema/mailArrival';
 
 /**
  * The single source of truth for "which tables hold tenant business data".
@@ -15,13 +16,11 @@ import { AI_ROUTING_TABLES } from '../schema/aiRouting';
  * `lib/sessionOrganization.ts`), so "the organization's data" *is* the entire
  * tenant dataset — both paths delete every row of every table below.
  *
- * Tables are ordered children-before-parents. Convex deletes are independent
- * (there is no enforced referential integrity), so the ordering is defensive
- * hygiene rather than a correctness requirement, but it keeps the intent legible.
+ * Tables are ordered children-before-parents: Convex enforces no referential
+ * integrity, so the order is defensive hygiene that keeps the intent legible.
  *
- * Previously this list was copy-pasted into both wipers and had silently
- * drifted — account deletion was leaving a deleted user's Postbox mail,
- * knowledge graph, chat history, and agent state behind. The compile-time guard
+ * Previously this list was copy-pasted into both wipers and had drifted: account
+ * deletion left a user's Postbox mail, knowledge and chats behind. The guard
  * at the bottom of this file now forces every schema table to be classified as
  * either tenant data (here) or non-tenant (handled separately), so the lists
  * can never drift again.
@@ -227,6 +226,7 @@ export const TENANT_TABLES = [
 	// The thread brief's 30-day backfill walk (mail/interpret/backfill.ts):
 	// bookkeeping over this org's mailboxes, wiped with the mail it walked.
 	'interpretBackfillJobs',
+	...MAIL_ARRIVAL_TABLES, // read on arrival: records, senders, undo log, rules, digests
 	// Inline bodies, 1:1 with the message rows below (plan 3.2).
 	'mailMessageBodies',
 	'mailMessages',

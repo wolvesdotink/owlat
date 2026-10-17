@@ -12,6 +12,7 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { ARRIVAL_FILTER_ACTION_TYPES, type ArrivalFilterActionType } from '@owlat/shared/arrival';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import type {
 	FilterMatchType,
@@ -49,6 +50,21 @@ const { labels } = usePostboxLabels(mailboxIdRef);
  * tail of what was typed.
  */
 const MAX_SECTION_NAME_LENGTH = 60;
+
+/**
+ * Read on arrival (SPEC §6.3): actions the rules UI writes. Labelled here so a
+ * saved rule reads correctly, but never offered as a new choice in this editor.
+ */
+function isArrivalActionType(type: string): type is ArrivalFilterActionType {
+	return (ARRIVAL_FILTER_ACTION_TYPES as readonly string[]).includes(type);
+}
+const arrivalActionLabels = computed<Record<ArrivalFilterActionType, string>>(() => ({
+	sendToDigest: t('components.postbox.postboxFilterRuleBuilder.actions.sendToDigest'),
+	placeInUpdates: t('components.postbox.postboxFilterRuleBuilder.actions.placeInUpdates'),
+	placeInNeedsMe: t('components.postbox.postboxFilterRuleBuilder.actions.placeInNeedsMe'),
+	archiveAfter: t('components.postbox.postboxFilterRuleBuilder.actions.archiveAfter'),
+	notify: t('components.postbox.postboxFilterRuleBuilder.actions.notify'),
+}));
 
 const local = reactive<FilterDraft>(JSON.parse(JSON.stringify(props.modelValue)));
 
@@ -290,6 +306,9 @@ function removeAction(idx: number) {
 						</option>
 						<option value="discard">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.discard') }}
+						</option>
+						<option v-if="isArrivalActionType(action.type)" :value="action.type">
+							{{ arrivalActionLabels[action.type] }}
 						</option>
 					</select>
 					<select

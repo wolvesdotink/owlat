@@ -4659,7 +4659,12 @@
 					"markFlagged": "Star",
 					"markRead": "Mark read",
 					"moveToFolder": "Move to folder",
-					"pinToSection": "Pin to inbox section"
+					"pinToSection": "Pin to inbox section",
+					"sendToDigest": "Send to digest",
+					"placeInUpdates": "Show as an update",
+					"placeInNeedsMe": "Show as needing me",
+					"archiveAfter": "Archive after a while",
+					"notify": "Notify me"
 				},
 				"actionsHeading": "Then do…",
 				"addAction": "+ Add action",

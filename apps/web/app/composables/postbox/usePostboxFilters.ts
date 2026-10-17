@@ -7,6 +7,7 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { ArrivalFilterActionType } from '@owlat/shared/arrival';
 
 export type FilterField =
 	| 'from'
@@ -36,7 +37,9 @@ export type FilterActionType =
 	| 'delete'
 	/** Split inbox (idea 24): file into a named inbox SECTION, moving nothing. */
 	| 'pinToSection'
-	| 'discard';
+	| 'discard'
+	/** Read on arrival (SPEC §6.3): placement-only or delayed; the rules UI writes them. */
+	| ArrivalFilterActionType;
 
 export interface MailFilterCondition {
 	field: FilterField;
@@ -74,6 +77,8 @@ export interface FilterAction {
 	forwardTo?: string;
 	/** For `pinToSection` — the section name, which IS the section's identity. */
 	sectionName?: string;
+	/** For `archiveAfter` — hours after arrival, 1..720. */
+	hours?: number;
 }
 
 export function usePostboxFilters(mailboxId: Ref<Id<'mailboxes'> | null>) {
