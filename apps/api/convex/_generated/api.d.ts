@@ -1809,6 +1809,13 @@ import type * as mail_senders_suggestions from '../mail/senders/suggestions.js';
 import type * as mail_senders_unsubscribe from '../mail/senders/unsubscribe.js';
 import type * as mail_senders_unsubscribeActions from '../mail/senders/unsubscribeActions.js';
 import type * as mail_senders_targets from '../mail/senders/targets.js';
+import type * as mail_arrival_explain from '../mail/arrival/explain.js';
+import type * as mail_arrival_fix from '../mail/arrival/fix.js';
+import type * as mail_arrival_fixCompile from '../mail/arrival/fixCompile.js';
+import type * as mail_arrival_learning from '../mail/arrival/learning.js';
+import type * as mail_arrival_learningSignals from '../mail/arrival/learningSignals.js';
+import type * as mail_arrival_operations from '../mail/arrival/operations.js';
+import type * as mail_arrival_undoChanges from '../mail/arrival/undoChanges.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3614,6 +3621,13 @@ declare const fullApi: ApiFromModules<{
 	'mail/senders/unsubscribe': typeof mail_senders_unsubscribe;
 	'mail/senders/unsubscribeActions': typeof mail_senders_unsubscribeActions;
 	'mail/senders/targets': typeof mail_senders_targets;
+	'mail/arrival/explain': typeof mail_arrival_explain;
+	'mail/arrival/fix': typeof mail_arrival_fix;
+	'mail/arrival/fixCompile': typeof mail_arrival_fixCompile;
+	'mail/arrival/learning': typeof mail_arrival_learning;
+	'mail/arrival/learningSignals': typeof mail_arrival_learningSignals;
+	'mail/arrival/operations': typeof mail_arrival_operations;
+	'mail/arrival/undoChanges': typeof mail_arrival_undoChanges;
 }>;
 
 /**

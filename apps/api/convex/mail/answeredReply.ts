@@ -46,6 +46,7 @@ import {
 import { deleteAskSessionsForDraft } from './ai/composeDraftStore';
 import { clearThreadNeedsReply, isOwnMessage } from './needsReply';
 import { mailboxOwnAddresses } from './identities';
+import { noteOwnerReply } from './arrival/learningSignals';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -206,6 +207,7 @@ export async function reconcileAnsweredReply(
 		.filter((r) => correspondents.has(normalizeEmail(r.address)))
 		.map((r) => r.state);
 	if (states.includes('sent')) {
+		await noteOwnerReply(ctx, sent); // a reply reverses a learned digest (read on arrival §4.3)
 		const drafts = await composingDrafts(ctx, answered.threadId);
 		await obsoleteAnsweredDrafts(ctx, drafts, {
 			byMessageId: sent._id,
@@ -235,6 +237,7 @@ export async function settleOwnerReply(
 	if (opts.isAutomated) return;
 	const message = await ctx.db.get(messageId);
 	if (!message || message.flagDraft) return;
+	await noteOwnerReply(ctx, message); // a reply reverses a learned digest (read on arrival §4.3)
 	const thread = await ctx.db.get(message.threadId);
 	if (!thread) return;
 	const drafts = await composingDrafts(ctx, thread._id);

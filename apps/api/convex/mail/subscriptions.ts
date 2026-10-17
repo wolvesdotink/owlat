@@ -324,6 +324,7 @@ export const archiveSenderInInbox = internalMutation({
 		await ctx.runMutation(api.mail.messageActions.move, {
 			messageIds,
 			targetFolderId: archive._id,
+			isAutomatic: true,
 		});
 		return { archived: messageIds.length };
 	},

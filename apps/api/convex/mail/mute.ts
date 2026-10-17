@@ -112,6 +112,7 @@ async function applyMute(
 		await ctx.runMutation(api.mail.messageActions.move, {
 			messageIds: inboxMessageIds,
 			targetFolderId: archive._id,
+			isAutomatic: true,
 		});
 	}
 	return { ok: true, archived: inboxMessageIds.length };
