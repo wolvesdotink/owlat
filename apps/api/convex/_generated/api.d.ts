@@ -1816,6 +1816,10 @@ import type * as mail_arrival_learning from '../mail/arrival/learning.js';
 import type * as mail_arrival_learningSignals from '../mail/arrival/learningSignals.js';
 import type * as mail_arrival_operations from '../mail/arrival/operations.js';
 import type * as mail_arrival_undoChanges from '../mail/arrival/undoChanges.js';
+import type * as mail_interpret_arrivalAdmit from '../mail/interpret/arrivalAdmit.js';
+import type * as mail_interpret_arrivalHold from '../mail/interpret/arrivalHold.js';
+import type * as mail_interpret_fullRead from '../mail/interpret/fullRead.js';
+import type * as mail_interpret_fullReadPrepare from '../mail/interpret/fullReadPrepare.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3628,6 +3632,10 @@ declare const fullApi: ApiFromModules<{
 	'mail/arrival/learningSignals': typeof mail_arrival_learningSignals;
 	'mail/arrival/operations': typeof mail_arrival_operations;
 	'mail/arrival/undoChanges': typeof mail_arrival_undoChanges;
+	'mail/interpret/arrivalAdmit': typeof mail_interpret_arrivalAdmit;
+	'mail/interpret/arrivalHold': typeof mail_interpret_arrivalHold;
+	'mail/interpret/fullRead': typeof mail_interpret_fullRead;
+	'mail/interpret/fullReadPrepare': typeof mail_interpret_fullReadPrepare;
 }>;
 
 /**

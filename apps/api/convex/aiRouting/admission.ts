@@ -185,39 +185,57 @@ export const reserve = internalMutation({
  * admitted. Each allocation is an ordinary hold that settles on its own plane.
  * Idempotent by the allocations' `reservationId`s.
  */
-export const reserveRun = internalMutation({
-	args: { allocations: v.array(v.object(reserveArgs)) },
-	returns: v.union(
-		v.object({ isAdmitted: v.literal(true), heldReservationIds: v.array(v.string()) }),
-		refusalValidator
-	),
-	handler: async (ctx, args) => {
-		const inserted: string[] = [];
-		const held: string[] = [];
-		for (const allocation of args.allocations) {
-			const isNew =
-				(await ctx.db
+/** The allocations of one run's hold (`reserveRun`'s body), for a mutation that reserves them itself. */
+export const reserveRunArgs = { allocations: v.array(v.object(reserveArgs)) };
+export const reserveRunReturns = v.union(
+	v.object({ isAdmitted: v.literal(true), heldReservationIds: v.array(v.string()) }),
+	refusalValidator
+);
+
+/**
+ * Reserve every allocation of one run, or none: a refused one removes the
+ * holds inserted before it. Shared by {@link reserveRun} and a caller that
+ * must act on the refusal in the same transaction (read on arrival's
+ * display-only count, `mail/interpret/arrivalHold.ts`).
+ */
+export type ReserveRunAllocations = Infer<typeof reserveRunArgs.allocations>;
+export type ReserveRunVerdict = Infer<typeof reserveRunReturns>;
+
+export async function reserveRunAllocations(
+	ctx: MutationCtx,
+	allocations: ReserveRunAllocations
+): Promise<ReserveRunVerdict> {
+	const inserted: string[] = [];
+	const held: string[] = [];
+	for (const allocation of allocations) {
+		const isNew =
+			(await ctx.db
+				.query('llmReservations')
+				.withIndex('by_reservation_id', (q) => q.eq('reservationId', allocation.reservationId))
+				.first()) === null;
+		const result = await reserveInMutation(ctx, allocation);
+		if (!result.isAdmitted) {
+			for (const reservationId of inserted) {
+				const row = await ctx.db
 					.query('llmReservations')
-					.withIndex('by_reservation_id', (q) => q.eq('reservationId', allocation.reservationId))
-					.first()) === null;
-			const result = await reserveInMutation(ctx, allocation);
-			if (!result.isAdmitted) {
-				for (const reservationId of inserted) {
-					const row = await ctx.db
-						.query('llmReservations')
-						.withIndex('by_reservation_id', (q) => q.eq('reservationId', reservationId))
-						.first();
-					if (row) await ctx.db.delete(row._id);
-				}
-				return result;
+					.withIndex('by_reservation_id', (q) => q.eq('reservationId', reservationId))
+					.first();
+				if (row) await ctx.db.delete(row._id);
 			}
-			if (result.isHeld) {
-				held.push(allocation.reservationId);
-				if (isNew) inserted.push(allocation.reservationId);
-			}
+			return result;
 		}
-		return { isAdmitted: true as const, heldReservationIds: held };
-	},
+		if (result.isHeld) {
+			held.push(allocation.reservationId);
+			if (isNew) inserted.push(allocation.reservationId);
+		}
+	}
+	return { isAdmitted: true as const, heldReservationIds: held };
+}
+
+export const reserveRun = internalMutation({
+	args: reserveRunArgs,
+	returns: reserveRunReturns,
+	handler: (ctx, args) => reserveRunAllocations(ctx, args.allocations),
 });
 
 /**

@@ -16,6 +16,7 @@
  * computed).
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
@@ -132,6 +133,7 @@ describe('mail reader queries — surface inbound auth verdicts (Sealed Mail A2)
 	it('returns the four verdicts and both alignment domains for a seeded message', async () => {
 		setOwnerSession();
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setup(t);
 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {
@@ -163,6 +165,7 @@ describe('mail reader queries — surface inbound auth verdicts (Sealed Mail A2)
 	it('surfaces all six fields as ABSENT for a legacy message that carried none', async () => {
 		setOwnerSession();
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const rawStorageId = await setup(t);
 
 		const result = await t.mutation(internal.mail.delivery.deliverToMailbox, {

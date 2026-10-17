@@ -208,6 +208,8 @@ export async function admitInterpretRun(
 		readonly verify: VerifyHoldPlan;
 		readonly root: LlmRootContext;
 		readonly priority: AdmissionPriority;
+		/** Reserve through the caller's mutation (read on arrival acts on a refusal there). */
+		readonly reserve?: NonNullable<Parameters<typeof reserveHolds>[2]>['reserve'];
 	}
 ): Promise<InterpretRunHold> {
 	const extractSize = dispatchRequestSize(opts.extract.prompt);
@@ -280,7 +282,8 @@ export async function admitInterpretRun(
 			budgetClass: 'standard' as const,
 			priority: opts.priority,
 			root: opts.root,
-		}))
+		})),
+		opts.reserve ? { reserve: opts.reserve } : {}
 	);
 	const languageId = wanted[0]?.plane === 'language' ? (ids[0] ?? undefined) : undefined;
 	const decisionIndex = wanted.findIndex((a) => a.plane === 'decision');

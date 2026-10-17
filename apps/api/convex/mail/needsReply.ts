@@ -84,6 +84,7 @@ export async function enqueueNeedsReplyCheck(
 		needsReplyRetryCount: undefined,
 		updatedAt: Date.now(),
 	});
+	await refreshArrivalProjection(ctx, threadId); // a re-checked heuristic flag is pending again
 	await scheduleNeedsReplyClassify(ctx, threadId, opts);
 }
 

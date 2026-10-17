@@ -10,6 +10,7 @@
  *   - cancel() clears an armed or due watch
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
@@ -179,6 +180,7 @@ async function deliverInboundReply(
 describe('postbox follow-up reminders', () => {
 	it('arm() stores the watch on the thread with the sweep key', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'proposal' });
@@ -198,6 +200,7 @@ describe('postbox follow-up reminders', () => {
 
 	it('an inbound reply before the deadline clears the watch silently', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'proposal' });
@@ -225,6 +228,7 @@ describe('postbox follow-up reminders', () => {
 
 	it('sweep past the deadline resurfaces the thread (inbox, unread, flagged) exactly once', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'proposal' });
@@ -281,6 +285,7 @@ describe('postbox follow-up reminders', () => {
 
 	it('names the counterpart on a due follow-up: address book first, then their own mail', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'contract' });
@@ -376,6 +381,7 @@ describe('postbox follow-up reminders', () => {
 
 	it('cancel() clears an armed watch, and dismisses a due one from the queue', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		const { messageId, threadId } = await seedSentMessage(t, seeded, { subject: 'proposal' });
@@ -415,6 +421,7 @@ describe('postbox follow-up reminders', () => {
 
 	it('arm() rejects a non-outbound (received) message', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		await enableFeatures(t, ['mail.external']);
 		const seeded = await seed(t);
 		// Seed an inbound message in the inbox (no outbound marker).

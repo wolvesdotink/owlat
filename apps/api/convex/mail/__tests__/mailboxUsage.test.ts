@@ -9,6 +9,7 @@
  * backfill runs.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import schema from '../../schema';
@@ -64,6 +65,7 @@ async function usageRow(t: Test, mailboxId: Id<'mailboxes'>) {
 describe('mailbox usage row', () => {
 	it('a delivery charges the usage row and leaves the mailbox document untouched', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t, { address: ADDRESS });
 		await seedFolder(t, mailboxId, 'inbox');
 		const before = await mailboxDoc(t, mailboxId);
@@ -78,6 +80,7 @@ describe('mailbox usage row', () => {
 
 	it('reads and carries on from the deprecated columns before the backfill', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t, { address: ADDRESS });
 		await seedFolder(t, mailboxId, 'inbox');
 		// A pre-split mailbox: usage only on the mailbox document.
@@ -103,6 +106,7 @@ describe('mailbox usage row', () => {
 
 	it('serves the live count to the MTA cache push and the member usage list', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const mailboxId = await seedMailbox(t, { address: ADDRESS });
 		await seedFolder(t, mailboxId, 'inbox');
 		await deliver(t, 4_096, '<cache@example.org>');
@@ -115,6 +119,7 @@ describe('mailbox usage row', () => {
 
 	it('the 0046 backfill creates missing rows from the columns and never overwrites one', async () => {
 		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
 		const legacyId = await seedMailbox(t, { address: 'legacy@owlat.test' });
 		const liveId = await seedMailbox(t, { address: ADDRESS });
 		await seedFolder(t, liveId, 'inbox');
