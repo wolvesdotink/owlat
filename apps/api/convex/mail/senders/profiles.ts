@@ -39,6 +39,19 @@ export async function loadSenderProfile(
 		.unique();
 }
 
+/**
+ * Whether the mailbox is (still) personal. Writers that run later than the
+ * call that decided to write (a scheduled settlement, an open of mail counted
+ * before the mailbox became a team inbox) check it again at write time.
+ */
+export async function isPersonalMailboxId(
+	ctx: DbCtx,
+	mailboxId: Id<'mailboxes'>
+): Promise<boolean> {
+	const mailbox = await ctx.db.get(mailboxId);
+	return mailbox !== null && isPersonalMailbox(mailbox);
+}
+
 /** A new profile: `keep` by default, empty counters. */
 export function newSenderProfile(args: {
 	mailboxId: Id<'mailboxes'>;

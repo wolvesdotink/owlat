@@ -21,7 +21,12 @@ import type { MutationCtx } from '../../_generated/server';
 import { postboxMutation } from '../_helpers';
 import { requireMailboxAccess } from '../permissions';
 import { addSenderOpen } from './counters';
-import { loadSenderProfile, newestInboundMessage, senderKeyOf } from './profiles';
+import {
+	isPersonalMailboxId,
+	loadSenderProfile,
+	newestInboundMessage,
+	senderKeyOf,
+} from './profiles';
 
 /** Count a message's first open in its sender's delivery-week bucket. */
 export async function countFirstOpen(
@@ -30,6 +35,9 @@ export async function countFirstOpen(
 ): Promise<void> {
 	const message = await ctx.db.get(messageId);
 	if (!message || message.isOpenCounted !== false) return;
+	// Counted while personal, opened after the mailbox became a team inbox:
+	// a team's reading is not the person's.
+	if (!(await isPersonalMailboxId(ctx, message.mailboxId))) return;
 	const now = Date.now();
 	await ctx.db.patch(message._id, { isOpenCounted: true });
 	const profile = await loadSenderProfile(

@@ -25,7 +25,7 @@ import {
 	resortSenderThreads,
 	startSenderOperation,
 } from './operations';
-import { ensureSenderProfile, loadSenderProfile } from './profiles';
+import { ensureSenderProfile, isPersonalMailboxId, loadSenderProfile } from './profiles';
 import { findUnsubscribeTarget, requestExternalUnsubscribe } from './unsubscribe';
 
 export const senderTargetValidator = v.union(
@@ -185,6 +185,9 @@ export const settleSuggestedSender = internalMutation({
 	handler: async (ctx, args) => {
 		const profile = await ctx.db.get(args.profileId);
 		if (!profile || profile.lastOperationId !== args.operationId) return;
+		// The mailbox may have become a team inbox since the apply: never
+		// archive a team inbox's mail on a person's sender status.
+		if (!(await isPersonalMailboxId(ctx, profile.mailboxId))) return;
 		if (!isArchivingStatus(profile.status)) {
 			await resortSenderThreads(ctx, profile);
 			return;
