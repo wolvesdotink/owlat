@@ -72,17 +72,12 @@ const CLASSIFICATION = {
  */
 export async function draftClarificationReply(
 	ctx: ActionCtx,
-	args: { threadId: Id<'mailThreads'> }
-): Promise<void> {
-	// Same gate as the user-triggered Postbox AI (feature flag + rate limit). A
-	// refusal (AI off, rate-limited) is expected and stays silent.
-	try {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-	} catch (error) {
-		rethrowAdmissionRefusal(error);
-		return;
+	args: {
+		threadId: Id<'mailThreads'>;
+		/** The person whose answer scheduled this draft (#1380); absent on older jobs. */
+		triggeredByUserId?: string;
 	}
-
+): Promise<void> {
 	try {
 		const context = await ctx.runQuery(internal.mail.ai.needsReplyClarify.getClarificationContext, {
 			threadId: args.threadId,
@@ -90,6 +85,20 @@ export async function draftClarificationReply(
 		if (!context) return;
 		// Nothing answered: only "Draft with what I have" drafts all of it as gaps.
 		if (context.answers.length === 0 && !context.isGapsAccepted) return;
+
+		// Same gate as the user-triggered Postbox AI (feature flag + rate limit). A
+		// refusal (AI off, rate-limited) is expected and stays silent. A person
+		// asked for this draft, so it is charged to them, not to the mailbox's
+		// arrival volume; a job scheduled before that was recorded falls back to
+		// the owner (#1380).
+		try {
+			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+				ownerUserId: args.triggeredByUserId ?? context.ownerUserId,
+			});
+		} catch (error) {
+			rethrowAdmissionRefusal(error);
+			return;
+		}
 
 		// Personalize to the owner's learned voice (opt-in, fail-soft). No access
 		// check: a scheduled internal action for the flagged thread's own mailbox.

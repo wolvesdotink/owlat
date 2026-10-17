@@ -142,8 +142,11 @@ export const classifyThread = internalAction({
 			let settled: MailCategory = 'other';
 			try {
 				// Same gate as the user-triggered Postbox AI: `ai` feature flag +
-				// rate limit. Throws when disabled/limited → the `other` baseline stays.
-				await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
+				// rate limit, charged to the mailbox owner's background bucket
+				// (#1380). Throws when disabled/limited → the `other` baseline stays.
+				await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+					ownerUserId: context.ownerUserId,
+				});
 
 				// High-volume background classification → cheap "summarize" tier.
 				const model = await resolveLanguageModel(ctx, 'mail.classify');

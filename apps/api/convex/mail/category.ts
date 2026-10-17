@@ -161,11 +161,15 @@ async function latestInboundMessage(
 	return (await threadInboundView(ctx, thread))?.latestInbound ?? null;
 }
 
-/** The thread's messages oldest-first plus its latest inbound one (see above). */
+/** The thread's messages oldest-first, its latest inbound one (see above) and the mailbox owner. */
 async function threadInboundView(
 	ctx: { db: QueryCtx['db'] },
 	thread: Doc<'mailThreads'>
-): Promise<{ ordered: Doc<'mailMessages'>[]; latestInbound: Doc<'mailMessages'> } | null> {
+): Promise<{
+	ordered: Doc<'mailMessages'>[];
+	latestInbound: Doc<'mailMessages'>;
+	ownerUserId: string;
+} | null> {
 	const mailbox = await ctx.db.get(thread.mailboxId);
 	if (!mailbox || mailbox.status !== 'active') return null;
 	const ownerAddress = mailbox.address.toLowerCase();
@@ -181,7 +185,7 @@ async function threadInboundView(
 		const isFromOwner = m.outbound !== undefined || m.fromAddress.toLowerCase() === ownerAddress;
 		if (!isFromOwner) latestInbound = m;
 	}
-	return latestInbound ? { ordered, latestInbound } : null;
+	return latestInbound ? { ordered, latestInbound, ownerUserId: mailbox.userId } : null;
 }
 
 /**
@@ -246,6 +250,8 @@ export const getThreadCategoryContext = internalQuery({
 
 		return {
 			latestMessageId: thread.latestMessageId,
+			// Whose background AI bucket the refinement is charged to (#1380).
+			ownerUserId: view.ownerUserId,
 			senderEmail: signals.senderEmail,
 			override: signals.override,
 			deterministicInput: signals.deterministicInput,

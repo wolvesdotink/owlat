@@ -63,6 +63,7 @@ function context(overrides: Record<string, unknown> = {}) {
 		questionIds: ['clarify_0'],
 		senderAddress: 'jonas@brightpath.example',
 		ownerAddress: 'ada@example.com',
+		ownerUserId: 'owner_user',
 		contactId: 'contact_1',
 		transcript: 'Them: could you send us the September invoice?',
 		answers: [{ question: 'Is the PO number on it?', answer: 'Yes, it is on it' }],
@@ -299,8 +300,25 @@ describe('draftClarificationReply', () => {
 
 		const off = makeCtx({ gateThrows: true });
 		await draftClarificationReply(off.ctx, { threadId });
-		expect(off.raw.runQuery).not.toHaveBeenCalled();
+		// Only the context read ran: the gate needs the owner it names (#1380).
+		expect(off.raw.runQuery).toHaveBeenCalledOnce();
 		expect(mocks.runSharedDraft).toHaveBeenCalledOnce();
+	});
+
+	it('charges the person who answered the card, else the mailbox owner (#1380)', async () => {
+		const gateArgs = (raw: ReturnType<typeof makeCtx>['raw']) =>
+			raw.runMutation.mock.calls
+				.filter(([ref]) =>
+					getFunctionName(ref as Parameters<typeof getFunctionName>[0]).includes('assertAiAllowed')
+				)
+				.map(([, args]) => args);
+		const answered = makeCtx();
+		await draftClarificationReply(answered.ctx, { threadId, triggeredByUserId: 'member_user' });
+		expect(gateArgs(answered.raw)).toEqual([{ ownerUserId: 'member_user' }]);
+
+		const legacy = makeCtx();
+		await draftClarificationReply(legacy.ctx, { threadId });
+		expect(gateArgs(legacy.raw)).toEqual([{ ownerUserId: 'owner_user' }]);
 	});
 
 	it('skips drafting when the card has no answers', async () => {

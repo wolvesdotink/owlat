@@ -133,6 +133,8 @@ export const getMessageContext = internalQuery({
 		).slice(0, 8000);
 		return {
 			mailboxId: message.mailboxId,
+			// Whose background AI bucket the extraction is charged to (#1380).
+			ownerUserId: mailbox.userId,
 			threadId: message.threadId,
 			ownerAddress: mailbox.address.toLowerCase(),
 			fromAddress: message.fromAddress,
@@ -203,6 +205,14 @@ const REMIND_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const COMMITMENT_SCAN_LIMIT = 50;
 /** Global cap on extractions scheduled per sweep tick. */
 const GLOBAL_EXTRACT_CAP = 40;
+/**
+ * Gap between the extractions one tick schedules (#1380). Each is charged to
+ * its owner's `postboxAiBackground` bucket (60/min, capacity 120); spread 3 s
+ * apart, a whole tick (≤ 40, ~2 min) adds at most 20 a minute to any one
+ * owner, under the refill rate, so a sweep never empties a bucket that the
+ * owner's arriving mail needs. Well inside the 30-minute tick.
+ */
+export const EXTRACT_STAGGER_MS = 3_000;
 
 /**
  * Commitment sweep cron. Two bounded passes over active mailboxes:
@@ -264,10 +274,11 @@ export const sweep = internalMutation({
 					.withIndex('by_message', (q) => q.eq('messageId', msg._id).eq('direction', 'outbound'))
 					.first();
 				if (already) continue;
-				await ctx.scheduler.runAfter(0, internal.mail.ai.commitmentExtract.extractCommitment, {
-					messageId: msg._id,
-					direction: 'outbound',
-				});
+				await ctx.scheduler.runAfter(
+					scheduled * EXTRACT_STAGGER_MS,
+					internal.mail.ai.commitmentExtract.extractCommitment,
+					{ messageId: msg._id, direction: 'outbound' }
+				);
 				scheduled += 1;
 				perMailbox += 1;
 			}

@@ -55,20 +55,23 @@ export async function generateDraftOnArrival(
 	ctx: ActionCtx,
 	args: { threadId: Id<'mailThreads'> }
 ): Promise<void> {
-	// Defense-in-depth: refuse if the AI stack is off, even though the schedule
-	// site already flag-gated. assertAiAllowed throws when AI is disabled; that
-	// (and every other failure below) degrades to no slot.
-	try {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
-	} catch (error) {
-		rethrowAdmissionRefusal(error);
-		return;
-	}
-
 	const loaded = await ctx.runQuery(internal.mail.ai.draftOnArrivalStore.loadForDraft, {
 		threadId: args.threadId,
 	});
 	if (!loaded) return; // not a live needs-reply personal-mail thread
+
+	// Defense-in-depth: refuse if the AI stack is off, even though the schedule
+	// site already flag-gated. assertAiAllowed throws when AI is disabled; that
+	// (and every other failure below) degrades to no slot. Loaded first: the
+	// rate limit is charged to the mailbox owner's background bucket (#1380).
+	try {
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+			ownerUserId: loaded.ownerUserId,
+		});
+	} catch (error) {
+		rethrowAdmissionRefusal(error);
+		return;
+	}
 
 	// Personalize to the owner's learned writing voice (opt-in, fail-soft). No
 	// access check: a scheduled internal action for the thread's own mailbox.

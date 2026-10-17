@@ -69,6 +69,7 @@ function makeLoaded(over: Record<string, unknown> = {}) {
 		triggerMessageId: 'msg1',
 		triggerSubject: 'Hi',
 		mailboxId: 'mbx1',
+		ownerUserId: 'owner1',
 		latestMessageId: 'msg1',
 		urgency: 'normal',
 		isBulk: false,
@@ -79,7 +80,7 @@ function makeLoaded(over: Record<string, unknown> = {}) {
 
 /**
  * Build a mock ActionCtx. runMutation distinguishes the three call sites by the
- * shape of their args (assertAiAllowed: {}, getGuidanceForMailbox: {mailboxId},
+ * shape of their args (assertAiAllowed: {ownerUserId}, getGuidanceForMailbox: {mailboxId},
  * persistDraftSlot: {draft}). runQuery always returns `loaded`.
  */
 function makeCtx(opts: { aiOff?: boolean; loaded: unknown }) {
@@ -95,7 +96,7 @@ function makeCtx(opts: { aiOff?: boolean; loaded: unknown }) {
 			return;
 		}
 		if (params && 'mailboxId' in params) return { guidance: null };
-		// assertAiAllowed ({})
+		// assertAiAllowed ({ ownerUserId })
 		if (opts.aiOff) throw new Error('AI disabled');
 		return;
 	});
@@ -118,11 +119,20 @@ beforeEach(() => {
 });
 
 describe('generateDraftOnArrival', () => {
-	it('FAIL-SOFT: AI disabled → no slot persisted, loader never consulted', async () => {
+	it('FAIL-SOFT: AI disabled → no slot persisted, nothing past the gate runs', async () => {
 		const h = makeCtx({ aiOff: true, loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(h.persisted).toHaveLength(0);
-		expect(h.runQuery).not.toHaveBeenCalled();
+		// Only the loader ran: the gate needs the owner it names (#1380).
+		expect(h.runQuery).toHaveBeenCalledTimes(1);
+		expect(h.runMutation).toHaveBeenCalledTimes(1);
+		expect(h.runMutation.mock.calls[0]![1]).toEqual({ ownerUserId: 'owner1' });
+	});
+
+	it('no live needs-reply thread → the gate is not charged at all', async () => {
+		const h = makeCtx({ loaded: null });
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+		expect(h.runMutation).not.toHaveBeenCalled();
 	});
 
 	it('FAIL-SOFT: no live needs-reply thread (loader null) → no slot persisted', async () => {
