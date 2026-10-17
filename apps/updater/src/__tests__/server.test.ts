@@ -33,6 +33,13 @@ vi.mock('../security.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../security.js')>();
 	return { ...actual, isRateLimited: rateLimitedMock };
 });
+// The real exec, behind a spy so a case can read the bound a step ran under.
+const { execSpy } = vi.hoisted(() => ({ execSpy: vi.fn() }));
+vi.mock('../http.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../http.js')>();
+	execSpy.mockImplementation(actual.exec);
+	return { ...actual, exec: execSpy };
+});
 // The real owner-only writer, behind a spy so a case can make it refuse.
 const { writeOwnerOnlyFileSpy } = vi.hoisted(() => ({ writeOwnerOnlyFileSpy: vi.fn() }));
 vi.mock('@owlat/shared/ownerOnlyFile', async (importOriginal) => {
@@ -48,6 +55,7 @@ process.env['OWLAT_DIR'] = OWLAT_DIR;
 // Dynamic import AFTER env is staged — server.ts reads env at module load.
 const { buildRequestListener, readListenPort } = await import('../server.js');
 const { fastReadiness } = await import('./readinessStubs.js');
+const { PULL_TIMEOUT_MS, CONVEX_DEPLOY_TIMEOUT_MS } = await import('../update.js');
 
 let server: Server;
 let base: string;
@@ -71,6 +79,7 @@ beforeEach(() => {
 	rateLimitedMock.mockReturnValue(false);
 	freeBytesMock.mockReset().mockReturnValue(50 * 1024 ** 3);
 	commandMock.mockReset().mockImplementation(dockerFixture);
+	execSpy.mockClear();
 	writeFileSync(
 		join(OWLAT_DIR, '.env'),
 		'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n'
@@ -713,6 +722,26 @@ describe('POST /update', () => {
 					'The update was aborted and nothing changed.'
 			);
 		});
+	});
+
+	/**
+	 * Five minutes, `exec`'s default, was too short for a deploy that pulls a
+	 * 2 GB image and then waits for Convex to backfill a new index over an
+	 * instance's data: it was killed with the index nearly built, the update
+	 * was reported failed, and the deploy it had abandoned went on to succeed.
+	 */
+	it('gives the pull and the convex deploy longer than the default five minutes', async () => {
+		const res = await post('/update');
+		expect(res.status).toBe(200);
+		const boundOf = (match: (args: string[]) => boolean) =>
+			execSpy.mock.calls.find(([file, args]) => file === 'docker' && match(args as string[]))?.[3]
+				?.timeoutMs;
+		expect(boundOf((args) => args.at(-1) === 'pull')).toBe(PULL_TIMEOUT_MS);
+		expect(boundOf((args) => args.at(-1) === 'convex-deploy')).toBe(CONVEX_DEPLOY_TIMEOUT_MS);
+		expect(PULL_TIMEOUT_MS).toBeGreaterThan(300_000);
+		expect(CONVEX_DEPLOY_TIMEOUT_MS).toBeGreaterThan(300_000);
+		// Both, plus `up` and readiness, inside the 30 minutes the web app waits.
+		expect(PULL_TIMEOUT_MS + CONVEX_DEPLOY_TIMEOUT_MS).toBeLessThan(30 * 60_000);
 	});
 
 	it('stops before docker compose up when convex-deploy fails', async () => {
