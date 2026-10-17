@@ -5,6 +5,11 @@
  * brief's ask, else the AI's ask summary, else the subject) and one state.
  * Every row routes to the Answer queue, filtered to this mailbox: the queue
  * stays the doing surface.
+ *
+ * The rows sit on the thread rows' grid (PostboxThreadRow), so every group of
+ * the Priority view lines up: `pl-10` is the row's `px-4` plus the bulk-select
+ * checkbox's gutter (`w-4` + `gap-2`) these rows do not have, and `gap-2` is
+ * the gap between avatar and sender there.
  */
 import {
 	formatReplyQueueDueHint,
@@ -44,7 +49,7 @@ function hasDraft(item: ReplyQueueItem): boolean {
 		<li v-for="item in items" :key="item.messageId">
 			<NuxtLink
 				:to="href"
-				class="flex items-start sm:items-baseline gap-3 px-4 py-2.5 hover:bg-(--surface-1-hover) focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand/40 outline-none"
+				class="flex items-start sm:items-baseline gap-2 pl-10 pr-4 py-2.5 hover:bg-(--surface-1-hover) focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand/40 outline-none"
 			>
 				<UiAvatar
 					:name="item.fromName"
