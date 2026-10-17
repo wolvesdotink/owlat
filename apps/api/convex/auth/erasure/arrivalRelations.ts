@@ -2,9 +2,8 @@
  * Member erasure policy for the read-on-arrival tables (schema/mailArrival.ts)
  * and the fields the plan adds to `mailThreads`, spread into
  * `DESCENDANT_RELATIONS` (descendantRelations.ts). Every row is scoped to one
- * mailbox and goes with a personal one: the `mailboxMessages` phase takes the
- * per-message rows with each message (`mail/arrival/purge.ts`), the
- * `mailboxRecords` phase the rest (`arrivalPhases.ts`).
+ * mailbox and goes with a personal one: the `mailboxRecords` phase reads every
+ * arrival table by mailbox (`mail/arrival/mailboxRows.ts`).
  */
 
 import type { TableNames } from '../../_generated/dataModel';
@@ -13,7 +12,7 @@ import type { DescendantRelation } from './descendantRelations';
 const WITH_MAILBOX = 'Read on arrival state of the personal mailbox; deleted with it.';
 const SAME_MAILBOX = 'Points within the same personal mailbox, whose rows are all deleted.';
 const WITH_MESSAGE =
-	'Deleted with its message (mail/arrival/purge.ts), and with the mailbox regardless.';
+	'Deleted with its message (mail/arrival/purgeRanges.ts), and with the mailbox regardless.';
 
 const del = (parent: TableNames, table: TableNames, field: string, why = SAME_MAILBOX) =>
 	({ parent, table, field, action: 'delete', why }) satisfies DescendantRelation;
