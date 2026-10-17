@@ -11,6 +11,7 @@
  */
 
 import type { Placement } from '@owlat/shared/arrival';
+import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
 import type { InboundOrigin } from '../deliveryPipeline/insert';
@@ -178,9 +179,11 @@ export async function recordFirstOpen(
  * never enables a rule: the person confirms the preview.
  */
 export async function compileFixRuleDraft(
-	_ctx: ActionCtx,
-	_args: { draftId: Id<'mailRuleDrafts'> }
-): Promise<void> {}
+	ctx: ActionCtx,
+	args: { draftId: Id<'mailRuleDrafts'> }
+): Promise<void> {
+	await ctx.runAction(internal.mail.filterCompile.compileDraft, args);
+}
 
 export type ArrivalHookName =
 	| 'evaluateArrivalRules'
@@ -203,6 +206,4 @@ export const ARRIVAL_HOOK_OWNERS: Readonly<Record<ArrivalHookName, 'rules' | 'se
 };
 
 /** Hooks still stubbed. Remove a name when its implementation lands. */
-export const ARRIVAL_HOOK_STUBS: ReadonlySet<ArrivalHookName> = new Set<ArrivalHookName>([
-	'compileFixRuleDraft',
-]);
+export const ARRIVAL_HOOK_STUBS: ReadonlySet<ArrivalHookName> = new Set<ArrivalHookName>([]);

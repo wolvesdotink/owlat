@@ -12,7 +12,7 @@
 
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { postboxMutation, postboxQuery } from './_helpers';
 import { isPersonalMailbox, requireMailboxAccess } from './permissions';
@@ -70,18 +70,48 @@ export const startDraft = internalMutation({
 			createdAt: now,
 			expiresAt: now + ARRIVAL_RETENTION_MS.ruleDraft,
 		});
-		const folders = await ctx.db
-			.query('mailFolders')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.take(MAX_TARGETS);
-		const labels = await ctx.db
-			.query('mailLabels')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.take(MAX_TARGETS);
+		return { draftId, ...(await compileTargets(ctx, args.mailboxId)) };
+	},
+});
+
+/** The mailbox's own folders and labels a compile may name. */
+async function compileTargets(
+	ctx: Pick<QueryCtx, 'db'>,
+	mailboxId: Id<'mailboxes'>
+): Promise<CompileTargets> {
+	const folders = await ctx.db
+		.query('mailFolders')
+		.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+		.take(MAX_TARGETS);
+	const labels = await ctx.db
+		.query('mailLabels')
+		.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+		.take(MAX_TARGETS);
+	return {
+		folders: folders.map((folder) => ({ id: folder._id, name: folder.name })),
+		labels: labels.map((label) => ({ id: label._id, name: label.name })),
+	};
+}
+
+/**
+ * What `filterCompile.compileDraft` needs for a draft another mutation wrote
+ * (a Fix reason): its text, what it may name, and whose background bucket
+ * pays. Null unless it is still `compiling` in a personal mailbox.
+ */
+export const draftForCompile = internalQuery({
+	args: { draftId: v.id('mailRuleDrafts') },
+	handler: async (
+		ctx,
+		args
+	): Promise<({ sourceText: string; ownerUserId: string } & CompileTargets) | null> => {
+		const draft = await ctx.db.get(args.draftId);
+		if (draft?.status !== 'compiling') return null;
+		const mailbox = await ctx.db.get(draft.mailboxId);
+		if (!mailbox || !isPersonalMailbox(mailbox)) return null;
 		return {
-			draftId,
-			folders: folders.map((folder) => ({ id: folder._id, name: folder.name })),
-			labels: labels.map((label) => ({ id: label._id, name: label.name })),
+			sourceText: await openMessageBody(draft.sourceText),
+			ownerUserId: mailbox.userId,
+			...(await compileTargets(ctx, draft.mailboxId)),
 		};
 	},
 });
