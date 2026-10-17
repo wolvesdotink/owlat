@@ -33,13 +33,18 @@ import {
 // / vpsComposeImagesAreAllowed tests in __tests__/security.test.ts assert the
 // allowlist and the shipped compose files never drift apart again.
 export const ALLOWED_IMAGE_PREFIXES = [
+	// No release from v0.6.14 on names these: Convex moved its images to
+	// ghcr.io/convex/, and Owlat ships them as ghcr.io/wolvesdotink/convex-backend
+	// and convex-dashboard (docker/convex-backend.Dockerfile). They stay listed
+	// so the third-party reclaim in storage.ts still removes the image an older
+	// release left behind, and so an older template still validates.
 	'ghcr.io/get-convex/convex-backend',
 	'ghcr.io/get-convex/convex-dashboard', // `dashboard` profile, localhost-only
 	'ghcr.io/wolvesdotink/', // canonical org — emitted by the root docker-compose.yml, the VPS template, and gen-release-compose.sh
 	'redis:',
-	// ClamAV and the code-worker egress proxy ship as first-party wrappers
-	// (ghcr.io/wolvesdotink/clamav, ghcr.io/wolvesdotink/tinyproxy) — see
-	// docker/clamav.Dockerfile for why they are not pulled from Docker Hub.
+	// Convex, ClamAV and the code-worker egress proxy ship as first-party
+	// wrappers (ghcr.io/wolvesdotink/convex-backend, …/clamav, …/tinyproxy) —
+	// see docker/clamav.Dockerfile for why they are not pulled upstream.
 	'caddy:', // `tls` profile reverse proxy (release + quickstart installs)
 	'alpine:', // one-shot init helpers (e.g. imap-cert-init)
 	'goacme/lego:', // ACME/Let's Encrypt cert issuance

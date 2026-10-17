@@ -102,5 +102,21 @@
 		"title": "owlat-decision-local",
 		"description": "Owlat local decision engine (GLiNER, CPU)",
 		"rootCompose": "ghcr"
+	},
+	{
+		"name": "convex-backend",
+		"dockerfile": "docker/convex-backend.Dockerfile",
+		"context": "docker",
+		"title": "owlat-convex-backend",
+		"description": "Owlat Convex backend (pinned wrapper around ghcr.io/convex/convex-backend)",
+		"rootCompose": "ghcr"
+	},
+	{
+		"name": "convex-dashboard",
+		"dockerfile": "docker/convex-dashboard.Dockerfile",
+		"context": "docker",
+		"title": "owlat-convex-dashboard",
+		"description": "Owlat Convex dashboard (pinned wrapper around ghcr.io/convex/convex-dashboard)",
+		"rootCompose": "ghcr"
 	}
 ]

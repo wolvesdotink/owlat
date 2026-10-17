@@ -443,7 +443,6 @@ jobs:
           # compose-required-vars test in scripts/__tests__ keeps the two lists
           # in sync.
           OWLAT_VERSION: ${{ inputs.version }}
-          CONVEX_BACKEND_VERSION: placeholder
           INSTANCE_SECRET: placeholder
           MTA_API_KEY: placeholder
           MTA_WEBHOOK_SECRET: placeholder
@@ -653,6 +652,11 @@ jobs:
           # ownership left behind by an earlier run — boot them from the
           # previous release until healthy (ClamAV healthy = signature DB
           # downloaded and owned), then stop, PRESERVING the volumes.
+          #
+          # Only those two are pulled and started, so a previous release that
+          # still names ghcr.io/get-convex/* (v0.6.13 and older; that repository
+          # now refuses anonymous pulls) seeds fine. Seeding convex too would
+          # need an overlay pointing its image at ghcr.io/convex/convex-backend.
           docker compose -f prev-compose.yml -f prev-clamav-override.yml pull redis clamav
           docker compose -f prev-compose.yml -f prev-clamav-override.yml up -d redis clamav
           wait_healthy "$PREV_COMPOSE_FILES" redis 120

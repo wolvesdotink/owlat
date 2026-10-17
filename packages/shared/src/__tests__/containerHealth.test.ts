@@ -54,6 +54,7 @@ describe('which images are judged for drift', () => {
 			'ghcr.io/wolvesdotink/imap:0.4.12',
 			'owlat-code-worker:0.4.13',
 			'owlat-convex-fn-proxy:dev',
+			'ghcr.io/wolvesdotink/convex-backend:0.6.14',
 		]) {
 			expect(isJudgedForDrift(image)).toBe(true);
 		}

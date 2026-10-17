@@ -23,6 +23,12 @@ export interface ComposeBuildService {
 const CODE_TASK_PROFILES = ['inbox-codetasks', 'plugin-tasks', 'dev'] as const;
 
 export const COMPOSE_BUILD_SERVICES: readonly ComposeBuildService[] = [
+	{ service: 'convex', image: 'ghcr.io/wolvesdotink/convex-backend', profiles: [] },
+	{
+		service: 'convex-dashboard',
+		image: 'ghcr.io/wolvesdotink/convex-dashboard',
+		profiles: ['dashboard'],
+	},
 	{ service: 'web', image: 'ghcr.io/wolvesdotink/web', profiles: [] },
 	{ service: 'mta', image: 'ghcr.io/wolvesdotink/mta', profiles: ['mta'] },
 	{ service: 'dns-resolver', image: 'ghcr.io/wolvesdotink/unbound', profiles: ['mta'] },

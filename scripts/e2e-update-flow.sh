@@ -93,6 +93,21 @@ mkdir -p "$BASE/templates"
 mv docker-compose-*.yml* "$BASE/templates/"
 cp "$BASE/templates/docker-compose-$FROM.yml" docker-compose.yml
 
+# Convex moved its images from ghcr.io/get-convex/ to ghcr.io/convex/, and the
+# old repository now refuses anonymous pulls. Releases up to v0.6.13 name the
+# old one, and their published templates cannot change. As FROM, such a release
+# is booted from the same upstream image under its new name: the updater only
+# validates and pulls the TO template, so this edit never reaches the rollout.
+# As TO, there is nothing to test, because no updater can pull that template.
+if grep -q 'ghcr\.io/get-convex/' "$BASE/templates/docker-compose-$TO.yml"; then
+	echo "::warning::$TO names ghcr.io/get-convex/, which no longer pulls; an update to it cannot be tested"
+	exit 0
+fi
+if grep -q 'ghcr\.io/get-convex/' docker-compose.yml; then
+	sed -i 's#ghcr\.io/get-convex/#ghcr.io/convex/#g' docker-compose.yml
+	pass "$FROM boots Convex from ghcr.io/convex/ (its ghcr.io/get-convex/ images no longer pull)"
+fi
+
 # ── 2. A fresh install at FROM ───────────────────────────────────────────────
 log "Installing $FROM"
 secret() { openssl rand -hex 32; }

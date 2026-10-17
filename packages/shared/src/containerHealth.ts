@@ -62,9 +62,11 @@ function splitImageRef(image: string): { repository: string; tag: string } {
  * exercised through `evaluateVersionDrift`, which only judges owned images.
  *
  * Only these may be compared against the configured version. Third-party pins
- * (`redis:7.4-alpine`, `caddy:2.8-alpine`, `ghcr.io/get-convex/convex-backend`,
- * `alpine`, `ollama/ollama`, `tecnativa/docker-socket-proxy`) carry their own
- * independent versions and would otherwise all report as drifted.
+ * (`redis:7.4-alpine`, `caddy:2.8-alpine`, `alpine`, `ollama/ollama`,
+ * `tecnativa/docker-socket-proxy`, and `ghcr.io/get-convex/convex-backend` on
+ * installs older than v0.6.14) carry their own independent versions and would
+ * otherwise all report as drifted. The Convex wrappers under
+ * ghcr.io/wolvesdotink/ are release images and are judged.
  */
 function isOwlatOwnedImage(image: string): boolean {
 	const { repository } = splitImageRef(image);
