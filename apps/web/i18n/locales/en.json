@@ -13003,6 +13003,71 @@
 			"requestOperation": "Request a mailbox",
 			"reservedBody": "{address} is reserved for you. It'll appear here automatically as soon as it's ready.",
 			"reservedHeading": "Your mailbox is being set up"
+		},
+		"reader": {
+			"header": {
+				"reply": "Reply",
+				"archive": "Archive",
+				"whyHere": "Why is this here?",
+				"details": "Details",
+				"snooze": "Snooze",
+				"ask": "Ask about this thread"
+			},
+			"strip": {
+				"reading": "Reading this thread now",
+				"waitingOn": "Waiting on {name}: {text}",
+				"waiting": "Waiting: {text}",
+				"due": "by {date}",
+				"reply": "Reply",
+				"done": "Done",
+				"fullBrief": "Full brief",
+				"exactWording": "Read the exact wording",
+				"whyHere": "Why here?",
+				"details": "Details"
+			},
+			"summary": {
+				"signed": "signed",
+				"imagesOff": "images off"
+			},
+			"sheet": {
+				"title": "Full brief"
+			},
+			"cite": {
+				"clear": "clear the mark"
+			}
+		},
+		"priority": {
+			"needsYou": {
+				"title": "Needs you",
+				"queue": "Answer queue ({count})"
+			},
+			"state": {
+				"due": "by {date}",
+				"reply": "reply",
+				"waiting": "waiting"
+			},
+			"draftReady": "draft ready",
+			"updates": {
+				"title": "Updates · no reply needed",
+				"show": "show",
+				"foldOne": "{count} more update from {a} | {count} more updates from {a}",
+				"foldTwo": "{count} more updates from {a} and {b}",
+				"foldOneOther": "{count} more updates from {a}, {b} and 1 other",
+				"foldOthers": "{count} more updates from {a}, {b} and {others} others"
+			},
+			"digest": {
+				"count": "{count} newsletter or promotion | {count} newsletters and promotions",
+				"inDigest": "in your digest",
+				"open": "open"
+			},
+			"filter": {
+				"needs_me": "Needs you",
+				"today": "Received today",
+				"updates": "Updates",
+				"digest": "In your digest",
+				"archived": "Filed away",
+				"clear": "Show all mail again, not only “{name}”"
+			}
 		}
 	},
 	"recipient": {

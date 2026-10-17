@@ -51,4 +51,10 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous Answer queue card, in tabs opened before the deploy (#1188)',
 	'analytics/llmUsage.ts#record':
 		'spend writes the previous release scheduled, and its actions mid-run (ADR-0073 ledger)',
+	'mail/interpret/brief.ts#setViewOverride':
+		'the previous reader view switch, in tabs opened before the deploy (read on arrival §3)',
+	'mail/interpret/preferences.ts#getViewPreference':
+		'the previous reader and "Open threads on" row, in tabs opened before the deploy (read on arrival §3)',
+	'mail/interpret/preferences.ts#setThreadDefaultView':
+		'the previous "Open threads on" row, in tabs opened before the deploy (read on arrival §3)',
 };
