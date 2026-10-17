@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { defineComponent } from 'vue';
+import { pendingArrivalUndos } from '~/composables/postbox/usePostboxArrivalUndo';
 
 // Skip auth-dependent identity tracking on public pages (share, archive, etc.)
 // to avoid unnecessary session/token requests for unauthenticated visitors. It
@@ -33,6 +34,10 @@ const PostHogIdentity = defineComponent({
  */
 const localeHead = useLocaleHead();
 
+// Read-on-arrival undos still finishing on the server outlive the toast or
+// page that started them; their host lives here, only while one is pending.
+const hasPendingArrivalUndo = computed(() => pendingArrivalUndos.value.length > 0);
+
 useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
 </script>
 
@@ -54,6 +59,7 @@ useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
 		<!-- Global toast notifications (client-only to avoid SSR hydration mismatch) -->
 		<ClientOnly>
 			<UiToast />
+			<PostboxArrivalUndoHost v-if="hasPendingArrivalUndo" />
 		</ClientOnly>
 	</div>
 </template>

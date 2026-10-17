@@ -14,50 +14,79 @@ interface UndoOutcome {
 }
 
 /**
+ * Undos still running on the server (more pages, or a sender re-sort chain),
+ * app-wide: whichever component started one may be gone before it finishes.
+ * `PostboxArrivalUndoHost` (mounted in app.vue while this is not empty)
+ * subscribes to each and announces its outcome.
+ */
+export const pendingArrivalUndos = ref<Id<'mailArrivalOperations'>[]>([]);
+
+/**
+ * The outcome in words. Each fact is its own sentence, so none hides another:
+ * the result (undone, or partly), lost reply reminders, an unsubscribe request
+ * that cannot be recalled.
+ */
+function outcomeText(t: (key: string) => string, outcome: UndoOutcome): string {
+	const lines = [
+		outcome.status === 'undo_partial'
+			? t('postbox.undo.partial')
+			: outcome.isNeedsReplyCleared
+				? t('postbox.undo.movedBack')
+				: t('postbox.undo.done'),
+	];
+	if (outcome.isNeedsReplyCleared) lines.push(t('postbox.undo.remindersNotRestored'));
+	if (outcome.kind === 'unsubscribe') lines.push(t('postbox.undo.unsubscribeNotRecalled'));
+	return lines.join(' ');
+}
+
+function useAnnounce() {
+	const { t } = useI18n();
+	const { showToast } = useToast();
+	return (outcome: UndoOutcome) =>
+		showToast(outcomeText(t, outcome), outcome.status === 'undo_partial' ? 'info' : 'success');
+}
+
+/**
+ * The app-lifetime half (`PostboxArrivalUndoHost`): one `undoStatus`
+ * subscription per pending undo, and its announcement once it is done.
+ */
+export function usePostboxArrivalUndoAnnouncer(): void {
+	const announce = useAnnounce();
+	const statuses = useConvexQueryMap(
+		api.mail.arrival.operations.undoStatus,
+		pendingArrivalUndos,
+		(id) => ({ operationId: id })
+	);
+	watch(
+		() => pendingArrivalUndos.value.map((id) => [id, statuses.get(id)?.data.value] as const),
+		(entries) => {
+			for (const [id, status] of entries) {
+				if (!status?.isDone) continue;
+				pendingArrivalUndos.value = pendingArrivalUndos.value.filter((other) => other !== id);
+				announce(status);
+			}
+		},
+		{ immediate: true }
+	);
+}
+
+/**
  * Undo for read-on-arrival operations (SPEC §4.4): Fix, sender status (the
  * Senders page, ⇧E, ⇧O, Keep), suggestions, the learned-digest notice.
  *
  * `offerUndo` shows the toast that says what happened, with an Undo button
  * that runs `api.mail.arrival.operations.undo`. The FINAL outcome is
- * announced: an undo larger than one page continues on the server, and this
- * composable subscribes to `operations.undoStatus` until its last page ran,
- * then says what could not come back (a reply reminder an archive cleared,
- * an unsubscribe request already sent, rows changed since: `undo_partial`).
+ * announced: a one-page undo at once; a longer one (more pages, or a sender
+ * re-sort chain, §16) is handed to {@link pendingArrivalUndos}, and the
+ * app-level host announces it when the server reports `isDone`.
  */
 export function usePostboxArrivalUndo() {
 	const { t } = useI18n();
 	const { showToast } = useToast();
+	const announce = useAnnounce();
 	const undoOp = useBackendOperation(api.mail.arrival.operations.undo, {
 		label: () => t('postbox.undo.operation'),
 	});
-
-	function announce(outcome: UndoOutcome): void {
-		const lines = [
-			outcome.isNeedsReplyCleared
-				? t('postbox.undo.movedBackNoReminders')
-				: outcome.status === 'undo_partial'
-					? t('postbox.undo.partial')
-					: t('postbox.undo.done'),
-		];
-		if (outcome.kind === 'unsubscribe') lines.push(t('postbox.undo.unsubscribeNotRecalled'));
-		showToast(lines.join(' '), outcome.status === 'undo_partial' ? 'info' : 'success');
-	}
-
-	// Undos still running in the background, until their last page reports.
-	const pending = ref<Id<'mailArrivalOperations'>[]>([]);
-	const statuses = useConvexQueryMap(api.mail.arrival.operations.undoStatus, pending, (id) => ({
-		operationId: id,
-	}));
-	watch(
-		() => pending.value.map((id) => [id, statuses.get(id)?.data.value] as const),
-		(entries) => {
-			for (const [id, status] of entries) {
-				if (!status?.isDone) continue;
-				pending.value = pending.value.filter((other) => other !== id);
-				announce(status);
-			}
-		}
-	);
 
 	async function undo(operationId: Id<'mailArrivalOperations'>): Promise<boolean> {
 		const run = await undoOp.run({ operationId });
@@ -73,7 +102,9 @@ export function usePostboxArrivalUndo() {
 		}
 		if (result.hasMore) {
 			showToast(t('postbox.undo.inProgress'), 'info');
-			pending.value = [...pending.value, operationId];
+			if (!pendingArrivalUndos.value.includes(operationId)) {
+				pendingArrivalUndos.value = [...pendingArrivalUndos.value, operationId];
+			}
 			return true;
 		}
 		announce({

@@ -7,9 +7,14 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
-import { nextTick, ref } from 'vue';
+import { defineComponent, h, nextTick, ref } from 'vue';
+import { mount } from '@vue/test-utils';
 import { createTestI18n } from '~/__tests__/i18n';
-import { usePostboxArrivalUndo } from '../usePostboxArrivalUndo';
+import {
+	pendingArrivalUndos,
+	usePostboxArrivalUndo,
+	usePostboxArrivalUndoAnnouncer,
+} from '../usePostboxArrivalUndo';
 import { usePostboxLearnedNotices } from '../usePostboxLearnedNotices';
 
 vi.mock('@owlat/api', () => {
@@ -44,6 +49,7 @@ beforeEach(() => {
 	showToast.mockReset();
 	notices.value = null;
 	undoStatus.value = null;
+	pendingArrivalUndos.value = [];
 });
 
 function result(overrides: Record<string, unknown>) {
@@ -78,50 +84,83 @@ async function pressUndo(): Promise<unknown[]> {
 describe('usePostboxArrivalUndo', () => {
 	it('says a reply reminder the archive cleared did not come back', async () => {
 		undoRun.mockResolvedValue(result({ isNeedsReplyCleared: true }));
-		expect((await pressUndo())[0]).toBe('Moved back; reply reminders were not restored.');
+		expect((await pressUndo())[0]).toBe('Moved back. Reply reminders were not restored.');
 	});
 
 	it('says an unsubscribe request cannot be recalled', async () => {
 		undoRun.mockResolvedValue(result({ kind: 'unsubscribe' }));
 		expect((await pressUndo())[0]).toBe(
-			'Undone The unsubscribe request was already sent and cannot be taken back.'
+			'Undone. The unsubscribe request was already sent and cannot be taken back.'
 		);
 	});
 
 	it('says when only part could be undone, or nothing any more', async () => {
 		undoRun.mockResolvedValue(result({ status: 'undo_partial', skipped: 1 }));
-		expect(await pressUndo()).toEqual(['Undone, except what changed since', 'info']);
+		expect(await pressUndo()).toEqual(['Undone, except what changed since.', 'info']);
 		showToast.mockReset();
 		undoRun.mockResolvedValue(result({ status: 'expired' }));
 		expect((await pressUndo())[0]).toBe('This can no longer be undone');
 	});
 
-	it('announces a multi-page undo once its last page ran, with every page counted', async () => {
+	it('says both that it was partial and that reply reminders were lost', async () => {
+		undoRun.mockResolvedValue(result({ status: 'undo_partial', isNeedsReplyCleared: true }));
+		expect(await pressUndo()).toEqual([
+			'Undone, except what changed since. Reply reminders were not restored.',
+			'info',
+		]);
+	});
+
+	it('announces a long undo from the app host, after the component that started it is gone', async () => {
+		const Host = defineComponent({
+			setup() {
+				usePostboxArrivalUndoAnnouncer();
+				return () => h('span');
+			},
+		});
+		let undoOf: ((id: never) => Promise<boolean>) | undefined;
+		const Initiator = defineComponent({
+			setup() {
+				undoOf = usePostboxArrivalUndo().undo;
+				return () => h('span');
+			},
+		});
+		const host = mount(Host);
+		const initiator = mount(Initiator);
 		undoRun.mockResolvedValue(result({ restored: 100, hasMore: true }));
-		const [first] = await pressUndo();
-		expect(first).toBe('Undoing. The rest follows in a moment.');
+		await undoOf!('op1' as never);
+		expect(showToast.mock.calls[0]![0]).toBe('Undoing. The rest follows in a moment.');
+		expect(pendingArrivalUndos.value).toEqual(['op1']);
+		initiator.unmount();
+
 		undoStatus.value = {
 			status: 'undone',
 			kind: 'fix',
 			restored: 140,
 			skipped: 0,
 			isNeedsReplyCleared: false,
+			isPagingDone: true,
+			pendingResorts: 1,
 			isDone: false,
 		};
 		await nextTick();
-		expect(showToast).toHaveBeenCalledTimes(2);
-		// A later page skipped a row and found a cleared reminder.
+		expect(showToast).toHaveBeenCalledTimes(1);
 		undoStatus.value = {
 			...undoStatus.value,
 			status: 'undo_partial',
 			restored: 150,
 			skipped: 1,
 			isNeedsReplyCleared: true,
+			pendingResorts: 0,
 			isDone: true,
 		};
 		await nextTick();
-		expect(showToast).toHaveBeenCalledTimes(3);
-		expect(showToast.mock.calls[2]![0]).toBe('Moved back; reply reminders were not restored.');
+		expect(showToast).toHaveBeenCalledTimes(2);
+		expect(showToast.mock.calls[1]).toEqual([
+			'Undone, except what changed since. Reply reminders were not restored.',
+			'info',
+		]);
+		expect(pendingArrivalUndos.value).toEqual([]);
+		host.unmount();
 	});
 
 	it('shows a plain toast when there is no operation to undo', () => {

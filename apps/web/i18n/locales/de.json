@@ -13296,10 +13296,11 @@
 		},
 		"undo": {
 			"operation": "Rückgängig machen",
-			"done": "Rückgängig gemacht",
+			"done": "Rückgängig gemacht.",
 			"inProgress": "Wird rückgängig gemacht. Der Rest folgt gleich.",
-			"partial": "Rückgängig gemacht, außer was sich seitdem geändert hat",
-			"movedBackNoReminders": "Zurückgelegt; Antworterinnerungen wurden nicht wiederhergestellt.",
+			"partial": "Rückgängig gemacht, außer was sich seitdem geändert hat.",
+			"movedBack": "Zurückgelegt.",
+			"remindersNotRestored": "Antworterinnerungen wurden nicht wiederhergestellt.",
 			"unsubscribeNotRecalled": "Die Abmeldung wurde schon gesendet und lässt sich nicht zurücknehmen.",
 			"expired": "Das lässt sich nicht mehr rückgängig machen",
 			"already": "Das wurde schon rückgängig gemacht"
