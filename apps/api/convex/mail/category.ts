@@ -44,6 +44,7 @@ import { moveMessagesToFolder } from './messageActions';
 import { mailCategoryLabelValidator, mailCategorySourceValidator } from '../lib/literalValidators';
 import { invalidateSenderMemoryForCorrection } from '../decision/senderMemory';
 import { recordOwnerCorrection } from '../decision/artifacts';
+import { wakeCategoryDeferredRuns } from './interpret/categoryDefer';
 
 // ─── Pure deterministic classifier ───────────────────────────────────────────
 
@@ -291,7 +292,8 @@ export const applyCategory = internalMutation({
 /**
  * Stamp a thread's category. Spam goes to the Spam folder the moment the
  * classifier says so; the thread keeps its label, so "Not spam"
- * (recategorize) can bring it back.
+ * (recategorize) can bring it back. A settled label wakes the thread's
+ * interpretation runs waiting for it (interpret/categoryDefer.ts).
  */
 export async function writeCategory(
 	ctx: MutationCtx,
@@ -305,6 +307,7 @@ export async function writeCategory(
 		category: { label, source, classifiedAt: now },
 		updatedAt: now,
 	});
+	await wakeCategoryDeferredRuns(ctx, thread._id, { label, source }, thread.category);
 	if (label === 'spam' && previous !== 'spam') {
 		await moveThreadBetweenRoles(ctx, thread, 'inbox', 'spam');
 	}
@@ -399,6 +402,13 @@ export const recategorize = postboxMutation({
 			category: { label: args.label, source: 'user', classifiedAt: now },
 			updatedAt: now,
 		});
+		// The owner settled it: waiting interpretation runs go now (categoryDefer.ts).
+		await wakeCategoryDeferredRuns(
+			ctx,
+			args.threadId,
+			{ label: args.label, source: 'user' },
+			thread.category
+		);
 		// The owner is in charge: marking spam files it away, and "Not spam" —
 		// any other label on a thread the classifier filed as spam — brings the
 		// messages back to the inbox. The per-sender override above makes sure

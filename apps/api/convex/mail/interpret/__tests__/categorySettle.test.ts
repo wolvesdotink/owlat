@@ -127,12 +127,14 @@ describe('owner’s repro: provisional category, List-Id capture, newsletter ref
 			expect(result).toMatchObject({ status: 'skipped', errorCode: 'category_pending' });
 		}
 		const scheduled = await t.run(async (ctx) =>
-			(await ctx.db.system.query('_scheduled_functions').collect()).filter((f) =>
-				f.name.includes('interpretMessage')
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+				(f) => f.name.includes('interpretMessage') || f.name.includes('settleAtCeiling')
 			)
 		);
-		// One deferred job for the source, at the settle time; recorded on its snapshot.
-		expect(scheduled.map((f) => f.scheduledTime)).toEqual([NOW + CATEGORY_SETTLE_MS]);
+		// One deferred job for the source, its ceiling at the settle time; recorded on its snapshot.
+		expect(scheduled.map((f) => [f.name, f.scheduledTime])).toEqual([
+			[expect.stringContaining('settleAtCeiling'), NOW + CATEGORY_SETTLE_MS],
+		]);
 		const row = await t.run(async (ctx) =>
 			ctx.db
 				.query('interpretSources')
