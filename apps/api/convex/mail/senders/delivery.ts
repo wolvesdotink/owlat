@@ -148,7 +148,8 @@ export async function countSenderDelivery(
 
 /**
  * Stamp an enforced archive on the message's arrival record. Returns false
- * when there is nothing to stamp (no archive, or no record).
+ * when there is nothing to stamp (no archive, no record, or a filter already
+ * holds the folder).
  */
 export async function stampSenderStatusOnRecord(
 	ctx: MutationCtx,
@@ -160,7 +161,10 @@ export async function stampSenderStatusOnRecord(
 		.query('mailArrivalRecords')
 		.withIndex('by_message', (q) => q.eq('messageId', messageId))
 		.first();
-	if (!record) return false;
+	// A filter recorded the folder first (the hook pass after the hosted insert
+	// may have moved it on): sender status ranks after every filter (§6.2).
+	const folderWinner = record?.exclusiveWinners?.folder;
+	if (!record || (folderWinner && folderWinner.source !== 'sender_status')) return false;
 	const reason: ReasonKey = { key: SENDER_STATUS_REASON_KEY, params: { status: outcome.status } };
 	const reasonKeys = record.reasonKeys.some((key) => key.key === SENDER_STATUS_REASON_KEY)
 		? record.reasonKeys

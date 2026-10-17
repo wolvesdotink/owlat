@@ -14,8 +14,15 @@ import { v } from 'convex/values';
  * content sits in the scheduler's argument log.
  */
 export const pushEventValidator = v.union(
-	// New mail landed in the inbox of a personal mailbox.
-	v.object({ kind: v.literal('mail'), messageId: v.id('mailMessages') }),
+	// New mail landed in the inbox of a personal mailbox. `isRuleNotify`: a
+	// rule's `notify` action (read on arrival §6.3), which notifies whatever
+	// "Notify me about" says and wherever the rule filed it, but never past a
+	// mute, quiet hours or the preview-privacy setting.
+	v.object({
+		kind: v.literal('mail'),
+		messageId: v.id('mailMessages'),
+		isRuleNotify: v.optional(v.boolean()),
+	}),
 	// A shared-inbox thread was handed to this person (or the agent asked them).
 	v.object({ kind: v.literal('assignment'), noticeId: v.id('inboxAssignmentNotices') }),
 	// A chat message that @-mentions this person, or a direct message to them.

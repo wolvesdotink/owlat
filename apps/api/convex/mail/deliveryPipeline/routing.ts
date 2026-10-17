@@ -12,7 +12,20 @@
 import { DEFAULT_TRUSTED_ARC_FORWARDERS, shouldArcOverrideDmarc } from '@owlat/shared/arcTrust';
 import { scanContent } from '@owlat/email-scanner';
 import { evaluateFilters } from '../filters';
+import { isHookFilter } from '../filterValidation';
 import type { Doc, Id } from '../../_generated/dataModel';
+
+type ExclusiveWinners = NonNullable<Doc<'mailArrivalRecords'>['exclusiveWinners']>;
+
+/**
+ * What the manual pass handed the arrival rules hook (§6.2): the exclusive
+ * actions it applied (`exclusiveWinners`, source `manual`) and, when a filter
+ * stopped processing, that filter's priority (later filters do not run).
+ */
+export interface ManualPassOutcome {
+	winners: ExclusiveWinners;
+	stoppedAtPriority?: number;
+}
 
 /**
  * Content/spam scan for personal mailboxes.
@@ -53,9 +66,13 @@ export function resolveSpamVerdict(input: {
  * folder, flags, labels, an inbox section, filter-level forward targets, and the
  * two short-circuits (`discard` drops the message entirely; `delete` routes it
  * to Trash).
+ *
+ * MANUAL filters only: plain-language, Fix and AI-conditioned filters run in
+ * the arrival rules hook after the insert (`mail/rules/rulesPass.ts`, §6.2).
+ * `manualPass` is what that hook needs to rank its own exclusive actions.
  */
 export function resolveFilterOutcome(
-	filters: Doc<'mailFilters'>[],
+	allFilters: Doc<'mailFilters'>[],
 	message: Parameters<typeof evaluateFilters>[1]
 ): {
 	isDiscarded: boolean;
@@ -66,7 +83,9 @@ export function resolveFilterOutcome(
 	flagFlagged: boolean;
 	pinnedSection?: string;
 	filterForwardTo: string[];
+	manualPass: ManualPassOutcome;
 } {
+	const filters = allFilters.filter((filter) => !isHookFilter(filter));
 	const evalResult = evaluateFilters(filters, message);
 	const moveAction = evalResult.actions.find((a) => a.type === 'moveToFolder');
 	// A message has ONE section — the first `pinToSection` in priority order wins,
@@ -76,8 +95,28 @@ export function resolveFilterOutcome(
 		(a) => a.type === 'pinToSection' && (a.sectionName ?? '').length > 0
 	);
 	// sendToDigest / placeInUpdates / placeInNeedsMe / archiveAfter / notify are
-	// explicit no-ops in this manual pass: handled by lane rules (SPEC §6.3).
+	// explicit no-ops in this manual pass (a manual filter cannot carry them).
+	const winners: ExclusiveWinners = {};
+	if (moveAction?.folderId && moveAction.filterId && moveAction.priority !== undefined) {
+		winners.folder = {
+			source: 'manual',
+			filterId: moveAction.filterId,
+			priority: moveAction.priority,
+		};
+	}
+	if (pinAction?.filterId && pinAction.priority !== undefined) {
+		winners.section = {
+			source: 'manual',
+			filterId: pinAction.filterId,
+			priority: pinAction.priority,
+		};
+	}
+	const stopper = evalResult.stopped
+		? evalResult.matchedFilterIds[evalResult.matchedFilterIds.length - 1]
+		: undefined;
+	const stoppedAtPriority = filters.find((filter) => filter._id === stopper)?.priority;
 	return {
+		manualPass: { winners, ...(stoppedAtPriority !== undefined ? { stoppedAtPriority } : {}) },
 		pinnedSection: pinAction?.sectionName,
 		// `discard` short-circuits — the caller drops the message entirely (and
 		// its staged storage blob) without writing it anywhere.

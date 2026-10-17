@@ -36,7 +36,8 @@ import {
 	insertDeliveredMessage,
 } from '../deliveryPipeline/insert';
 import { runPostInsertInboundEffects } from '../deliveryPipeline/afterInsert';
-import { applySenderStatusAtDelivery } from '../arrival/hooks';
+import { applySenderStatusAtDelivery, evaluateArrivalRules } from '../arrival/hooks';
+import { getOrThrow } from '../../_utils/errors';
 import { settleSenderDelivery } from '../senders/delivery';
 import { advanceCursor } from './syncCursor';
 import { deliveredEnvelopeFields, storedBodyFields } from '../deliveryPipeline/ingestFields';
@@ -174,6 +175,15 @@ export const ingestExternalMessage = internalMutation({
 			inboundOrigin: origin,
 		});
 
+		// Plain-language and AI rules (§6.2), live sync only; before sender status.
+		const arrival =
+			origin === 'sync'
+				? await evaluateArrivalRules(ctx, {
+						message: await getOrThrow(ctx, messageId, 'Message'),
+						mailboxId: mailbox._id,
+						origin,
+					})
+				: undefined;
 		// Sender status (§5): forward-synced Inbox mail from an unsubscribed or
 		// auto-archived sender moves to Archive, written back to the provider.
 		const senderStatus =
@@ -194,6 +204,7 @@ export const ingestExternalMessage = internalMutation({
 			folder,
 			origin,
 			antiLoopHeaders: args.antiLoopHeaders,
+			arrival,
 		});
 		await settleSenderDelivery(ctx, { messageId, origin, senderStatus });
 		await advanceCursor(ctx, args, mailbox._id);

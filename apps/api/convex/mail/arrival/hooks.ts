@@ -16,6 +16,13 @@ import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { InboundOrigin } from '../deliveryPipeline/insert';
 import { applySenderStatus, countSenderDelivery } from '../senders/delivery';
 import { countFirstOpen } from '../senders/opens';
+import type { ManualPassOutcome } from '../deliveryPipeline/routing';
+import {
+	applyRuleAnswers,
+	listPendingRuleQuestions,
+	runArrivalRulesPass,
+} from '../rules/rulesPass';
+import type { ArrivalRecordSeed } from './records';
 
 /** The live ingest origins (hosted MX, forward sync). Never a history import. */
 export type LiveInboundOrigin = Exclude<InboundOrigin, 'backfill'>;
@@ -38,6 +45,11 @@ export interface EvaluateArrivalRulesArgs {
 	message: Doc<'mailMessages'>;
 	mailboxId: Id<'mailboxes'>;
 	origin: LiveInboundOrigin;
+	/**
+	 * Hosted MX only: what the manual pre-insert pass applied (its exclusive
+	 * winners) and where it stopped processing. External sync has no manual pass.
+	 */
+	manualPass?: ManualPassOutcome;
 }
 
 export interface EvaluateArrivalRulesResult {
@@ -47,6 +59,10 @@ export interface EvaluateArrivalRulesResult {
 	rulePlacement?: Placement;
 	/** The `archiveAfter` rows the pass created. */
 	delayedActions: Id<'mailDelayedActions'>[];
+	/** The record's other rule fields, written with it (§6.2). */
+	exclusiveWinners?: ArrivalRecordSeed['exclusiveWinners'];
+	filterMatches?: ArrivalRecordSeed['filterMatches'];
+	lastOperationId?: Id<'mailArrivalOperations'>;
 }
 
 /**
@@ -76,35 +92,41 @@ export type SenderStatusAtDelivery = {
  * Lane rules (SPEC §6.2). The plain-language / Fix-origin and AI-conditioned
  * filter pass, called once from each live-ingest path (`mail/delivery.ts`,
  * `mail/external/delivery.ts`) right after `insertDeliveredMessage`. Never
- * called for history imports or backfill.
+ * called for history imports or backfill. Implemented in
+ * `mail/rules/rulesPass.ts runArrivalRulesPass`; the result goes to
+ * `runPostInsertInboundEffects({ arrival })`, which seeds the record with it.
  */
 export async function evaluateArrivalRules(
-	_ctx: MutationCtx,
-	_args: EvaluateArrivalRulesArgs
+	ctx: MutationCtx,
+	args: EvaluateArrivalRulesArgs
 ): Promise<EvaluateArrivalRulesResult> {
-	return { pendingAiFilters: [], delayedActions: [] };
+	return await runArrivalRulesPass(ctx, args);
 }
 
 /**
  * Lane rules (SPEC §6.2). The pending AI questions of ONE message, read from
  * its arrival record's `pendingAiFilters`; R2 (`categoryClassify`) asks them.
+ * Implemented in `mail/rules/rulesPass.ts listPendingRuleQuestions`.
  */
 export async function listArrivalAiQuestions(
-	_ctx: Pick<QueryCtx, 'db'>,
-	_args: { mailboxId: Id<'mailboxes'>; messageId: Id<'mailMessages'> }
+	ctx: Pick<QueryCtx, 'db'>,
+	args: { mailboxId: Id<'mailboxes'>; messageId: Id<'mailMessages'> }
 ): Promise<PendingAiFilter[]> {
-	return [];
+	return await listPendingRuleQuestions(ctx, args);
 }
 
 /**
  * Lane rules (SPEC §6.2). Apply R2's answers for ONE message: revision-checked,
  * restrict-only, subject to `exclusiveWinners`, logged as a `rule_apply`
  * operation in the same mutation, then the projection is refreshed.
+ * Implemented in `mail/rules/rulesPass.ts applyRuleAnswers`.
  */
 export async function applyArrivalAiAnswers(
-	_ctx: MutationCtx,
-	_args: { messageId: Id<'mailMessages'>; answers: ArrivalAiAnswer[] }
-): Promise<void> {}
+	ctx: MutationCtx,
+	args: { messageId: Id<'mailMessages'>; answers: ArrivalAiAnswer[] }
+): Promise<void> {
+	await applyRuleAnswers(ctx, args);
+}
 
 /**
  * Lane senders (SPEC §5). Sender-status enforcement at delivery, after user
@@ -163,8 +185,4 @@ export const ARRIVAL_HOOK_OWNERS: Readonly<Record<ArrivalHookName, 'rules' | 'se
 };
 
 /** Hooks still stubbed. Remove a name when its implementation lands. */
-export const ARRIVAL_HOOK_STUBS: ReadonlySet<ArrivalHookName> = new Set<ArrivalHookName>([
-	'evaluateArrivalRules',
-	'listArrivalAiQuestions',
-	'applyArrivalAiAnswers',
-]);
+export const ARRIVAL_HOOK_STUBS: ReadonlySet<ArrivalHookName> = new Set<ArrivalHookName>([]);

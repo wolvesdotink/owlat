@@ -131,24 +131,30 @@ export function isShortMail(input: { freshChars: number; threadMessageCount: num
 	return input.threadMessageCount <= 1 && input.freshChars <= SHORT_MAIL_MAX_CHARS;
 }
 
-const SECURITY_SUBJECT = [
+/** One-time codes and sign-in links in a subject (also the §6.4 code detector's). */
+const CODE_SUBJECT = [
 	/\b(?:verification|security|login|log-in|sign[- ]?in|one[- ]time|confirmation|access|auth(?:entication)?)\s*(?:code|pin|link)\b/i,
+	/\b(?:2fa|two[- ]factor|mfa|otp)\b/i,
+	/\b(?:bestätigungscode|sicherheitscode|anmeldecode|einmalcode|verifizierungscode)\b/i,
+];
+
+/** A code in the body: "your verification code", "code: 123456". */
+const CODE_BODY = [
+	/\b(?:your|ihr|dein|votre) (?:verification|security|login|one[- ]time|bestätigungs|sicherheits|anmelde)[- ]?(?:code|pin)\b/i,
+	/\b(?:code|pin)(?: is|:| lautet| est)\s*[A-Z0-9]{4,10}\b/i,
+];
+
+const SECURITY_SUBJECT = [
+	...CODE_SUBJECT,
 	/\b(?:password|passcode)\s*(?:reset|change|recovery)\b/i,
 	/\breset (?:your )?password\b/i,
 	/\b(?:new|unusual|suspicious) (?:sign[- ]?in|login|log-in|device|activity)\b/i,
-	/\b(?:2fa|two[- ]factor|mfa|otp)\b/i,
-	/\b(?:bestätigungscode|sicherheitscode|anmeldecode|einmalcode|verifizierungscode)\b/i,
 	/\bpasswort (?:zurücksetzen|ändern|vergessen)\b/i,
 	/\bneue anmeldung\b/i,
 	/\b(?:code de (?:vérification|sécurité|connexion)|réinitialis\w* (?:de )?(?:votre |ton )?mot de passe)\b/i,
 ];
 
-const SECURITY_BODY = [
-	/\b(?:your|ihr|dein|votre) (?:verification|security|login|one[- ]time|bestätigungs|sicherheits|anmelde)[- ]?(?:code|pin)\b/i,
-	/\b(?:code|pin)(?: is|:| lautet| est)\s*[A-Z0-9]{4,10}\b/i,
-	/\breset (?:your )?password\b/i,
-	/\bpasswort zurücksetzen\b/i,
-];
+const SECURITY_BODY = [...CODE_BODY, /\breset (?:your )?password\b/i, /\bpasswort zurücksetzen\b/i];
 
 /**
  * Security mail (codes, password resets, login alerts): no "Latest update",
@@ -160,6 +166,18 @@ export function isSecurityMail(input: { subject?: string; freshText: string }): 
 	if (SECURITY_SUBJECT.some((re) => re.test(subject))) return true;
 	const head = input.freshText.slice(0, 2000);
 	return SECURITY_BODY.some((re) => re.test(head));
+}
+
+/**
+ * One-time codes and sign-in links, for the opt-in "archive after a day"
+ * detector (SPEC §6.4): the code patterns of the security screen above,
+ * without password resets or login alerts, which stay put. Pure.
+ */
+export function isCodeOrSignInMail(input: { subject?: string; text: string }): boolean {
+	const subject = input.subject ?? '';
+	if (CODE_SUBJECT.some((re) => re.test(subject))) return true;
+	const head = input.text.slice(0, 2000);
+	return CODE_BODY.some((re) => re.test(head));
 }
 
 // ── Loaders ────────────────────────────────────────────────────────────────

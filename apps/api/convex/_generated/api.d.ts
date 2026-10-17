@@ -1809,6 +1809,12 @@ import type * as mail_senders_suggestions from '../mail/senders/suggestions.js';
 import type * as mail_senders_unsubscribe from '../mail/senders/unsubscribe.js';
 import type * as mail_senders_unsubscribeActions from '../mail/senders/unsubscribeActions.js';
 import type * as mail_senders_targets from '../mail/senders/targets.js';
+import type * as mail_archiveSingleMessage from '../mail/archiveSingleMessage.js';
+import type * as mail_filterValidation from '../mail/filterValidation.js';
+import type * as mail_rules_delayedActions from '../mail/rules/delayedActions.js';
+import type * as mail_rules_operationLog from '../mail/rules/operationLog.js';
+import type * as mail_rules_ruleApply from '../mail/rules/ruleApply.js';
+import type * as mail_rules_rulesPass from '../mail/rules/rulesPass.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
@@ -3614,6 +3620,12 @@ declare const fullApi: ApiFromModules<{
 	'mail/senders/unsubscribe': typeof mail_senders_unsubscribe;
 	'mail/senders/unsubscribeActions': typeof mail_senders_unsubscribeActions;
 	'mail/senders/targets': typeof mail_senders_targets;
+	'mail/archiveSingleMessage': typeof mail_archiveSingleMessage;
+	'mail/filterValidation': typeof mail_filterValidation;
+	'mail/rules/delayedActions': typeof mail_rules_delayedActions;
+	'mail/rules/operationLog': typeof mail_rules_operationLog;
+	'mail/rules/ruleApply': typeof mail_rules_ruleApply;
+	'mail/rules/rulesPass': typeof mail_rules_rulesPass;
 }>;
 
 /**
