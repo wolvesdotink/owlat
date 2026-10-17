@@ -20,6 +20,10 @@ let wrapper: VueWrapper | null = null;
 let savedInboxMode: Ref<PostboxInboxMode>;
 let setInboxMode: ReturnType<typeof vi.fn>;
 let openPalette: ReturnType<typeof vi.fn>;
+let modes: ReturnType<typeof usePostboxInboxModes>;
+const setViewMode = vi.fn(async () => true);
+const routerReplace = vi.fn();
+const currentRoute = ref({ query: { q: 'kept' } as Record<string, unknown> });
 
 function mountModes(inboxMode: PostboxInboxMode = 'today') {
 	savedInboxMode = ref(inboxMode);
@@ -29,13 +33,13 @@ function mountModes(inboxMode: PostboxInboxMode = 'today') {
 	});
 	const Host = defineComponent({
 		setup() {
-			usePostboxInboxModes({
+			modes = usePostboxInboxModes({
 				folderRole: ref('inbox'),
 				folderId: ref(undefined),
 				activeMessageId: ref(null),
 				railOpen: ref(false),
-				savedViewMode: ref('flat'),
-				setViewMode: async () => true,
+				savedViewMode: ref('conversations'),
+				setViewMode,
 				savedInboxMode,
 				setInboxMode,
 			});
@@ -55,6 +59,8 @@ beforeEach(() => {
 	vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
 	openPalette = vi.fn();
 	vi.stubGlobal('useCommandPalette', () => ({ open: openPalette }));
+	routerReplace.mockClear();
+	vi.stubGlobal('useRouter', () => ({ replace: routerReplace, currentRoute }));
 	vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 		let state = states.get(key);
 		if (!state) states.set(key, (state = ref(init())));
@@ -120,5 +126,17 @@ describe('usePostboxInboxModes — mode keys go through the registry', () => {
 		expect(openPalette).not.toHaveBeenCalled();
 		press(';');
 		expect(openPalette).toHaveBeenCalledWith({ scope: 'mail' });
+	});
+});
+
+describe("usePostboxInboxModes — the Priority view's digest link", () => {
+	it('opens All mail, flat, filtered to the digest placement through the URL', () => {
+		mountModes('today');
+		modes.viewDigest();
+		expect(setInboxMode).toHaveBeenCalledWith('browse');
+		// Transient: the saved list preference is not overwritten.
+		expect(modes.viewMode.value).toBe('flat');
+		expect(setViewMode).not.toHaveBeenCalled();
+		expect(routerReplace).toHaveBeenCalledWith({ query: { q: 'kept', placement: 'digest' } });
 	});
 });

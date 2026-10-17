@@ -111,6 +111,16 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 		switchInboxMode('browse');
 	}
 
+	// "N newsletters and promotions · in your digest" (read on arrival §3):
+	// All mail's flat list, filtered to the digest placement through the URL
+	// (usePostboxPlacementFilter). The flat renderer is transient here too.
+	const router = useRouter();
+	function viewDigest() {
+		pendingViewMode.value = 'flat';
+		switchInboxMode('browse');
+		void router.replace({ query: { ...router.currentRoute.value.query, placement: 'digest' } });
+	}
+
 	// Search is the app-wide overlay now, so `/` no longer has to leave Today to
 	// reach a box that lived in the folder rail — it opens the overlay in Mail
 	// scope over whichever mode is on screen. The rail owns the same shortcut for
@@ -171,5 +181,6 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 		switchInboxMode,
 		todayActive,
 		viewAutoFiled,
+		viewDigest,
 	};
 }

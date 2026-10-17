@@ -85,20 +85,19 @@ const { messages, isLoading, isLoadingMore, isRefetching, hasMore, canLoadMore, 
 // Load more that cannot advance — the same posture the label view takes.
 const listCapped = computed(() => hasMore.value && !canLoadMore.value);
 
-// Triage filter chips (All / Unread / Starred / Attachments) — client-side
-// over the fetched window, persisted per mailbox+folder. Flat list only; the
-// grouped renderers own their sections. Wired to `displayMessages` below so
-// the chips filter what's actually shown (cache or live).
+// Triage filter chips (All / Unread / Starred / Attachments): client-side over
+// the fetched window, persisted per mailbox+folder, flat list only. Wired to
+// `displayMessages` below so they filter what's shown (cache or live).
 const triageScope = computed(
 	() => `${String(props.mailboxId)}:${props.folderId ?? props.folderRole}`
 );
 
-// Offline read cache: serve the last-cached inbox rows instantly on a cold
-// start (with an "updating…" shimmer) and hand back to live rows the moment
-// they arrive. `displayMessages` is what the flat list renders; live always
-// wins. Non-inbox folders are a transparent pass-through.
+// Offline read cache: cached inbox rows on a cold start (with an "updating…"
+// shimmer), live rows the moment they arrive; non-inbox folders pass through.
+// `displayMessages` is what the flat list renders, narrowed by `?placement=`
+// (the Priority view's digest link, read on arrival §3).
 const {
-	rows: displayMessages,
+	rows: shownRows,
 	showingCached,
 	isOffline,
 	cachedAt,
@@ -109,6 +108,7 @@ const {
 	isLoading,
 	isRefetching,
 });
+const displayMessages = usePostboxPlacementFilter(shownRows);
 
 const {
 	active: triageFilter,
@@ -185,6 +185,7 @@ const {
 	switchInboxMode,
 	todayActive,
 	viewAutoFiled,
+	viewDigest,
 } = usePostboxInboxModes({
 	folderRole: folderRef,
 	folderId: folderIdRef,
@@ -282,6 +283,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 				@browse="switchInboxMode('browse')"
 				@open-rail="railOpen = true"
 				@view-auto-filed="viewAutoFiled"
+				@view-digest="viewDigest"
 				@reader-closed="onTodayReaderClosed"
 			/>
 			<!-- The list + reader split. Its own flex container so the reading
