@@ -30,6 +30,7 @@ import { enqueueDeliveredInterpretation } from '../enqueue';
 import { openMessageBody } from '../../../lib/messageBody';
 import { rateLimiter } from '../../../lib/rateLimiter';
 import { CATEGORY_DEPTH_WAIT_MS } from '../arrivalDecide';
+import { senderKeyOf } from '../../senders/profiles';
 
 const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), refuseNext: false }));
 
@@ -466,5 +467,45 @@ describe('read on arrival: admission and the category wait', () => {
 		expect(row).toMatchObject({ depth: 'count' });
 		expect(row?.categoryPendingAt).toBeUndefined();
 		expect(record?.reasonKeys[0]).toEqual({ key: 'arrival.reason.categoryTimeout' });
+	});
+});
+
+describe('read on arrival: sender status', () => {
+	it("a digest sender is counted, and the sender lane's reason key survives the run", async () => {
+		const t = setup();
+		const { source, messageId, mailboxId } = await arrive(t, { category: 'person', text: ASK });
+		await t.run(async (ctx) => {
+			const key = senderKeyOf('jonas@example.com');
+			const now = Date.now();
+			await ctx.db.insert('mailSenderProfiles', {
+				mailboxId,
+				senderDigest: key.senderDigest,
+				address: key.address,
+				status: 'digest',
+				statusSource: 'user',
+				weekAnchor: 0,
+				deliveredWeeks: [],
+				openedWeeks: [],
+				unusedDraftStreak: 0,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const record = (await ctx.db
+				.query('mailArrivalRecords')
+				.withIndex('by_message', (q) => q.eq('messageId', messageId))
+				.first())!;
+			await ctx.db.patch(record._id, {
+				reasonKeys: [{ key: 'arrival.reason.senderStatus', params: { status: 'digest' } }],
+			});
+		});
+		await run(t, source);
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+		const { source: row, record, thread } = await snapshot(t, messageId);
+		expect(row).toMatchObject({ readOutcome: 'skipped', depth: 'count' });
+		expect(record?.reasonKeys.map((r) => r.key)).toEqual([
+			'arrival.reason.senderStatus',
+			'arrival.reason.digest',
+		]);
+		expect(thread.arrival).toMatchObject({ placement: 'digest' });
 	});
 });
