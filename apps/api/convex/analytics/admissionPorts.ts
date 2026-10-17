@@ -10,6 +10,7 @@
  * admitted call. Runtime-neutral.
  */
 
+import type { ReserveRunAllocations, ReserveRunVerdict } from '../aiRouting/admission';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { AiTaskName } from '@owlat/shared/aiRouting';
@@ -109,7 +110,15 @@ export async function reserveHold(
  */
 export async function reserveHolds(
 	ctx: object,
-	requests: readonly HoldRequest[]
+	requests: readonly HoldRequest[],
+	opts: {
+		/**
+		 * Reserve through the caller's own mutation (same arguments and answer as
+		 * `reserveRun`), when the caller must act on a refusal in the transaction
+		 * that sees it (read on arrival, `mail/interpret/arrivalHold.ts`).
+		 */
+		reserve?: (allocations: ReserveRunAllocations) => Promise<ReserveRunVerdict>;
+	} = {}
 ): Promise<(string | null)[]> {
 	const applies = requests.map((request) => admissionApplies(request.budgetClass));
 	if (!applies.some(Boolean)) return requests.map(() => null);
@@ -137,7 +146,9 @@ export async function reserveHolds(
 	});
 	let verdict;
 	try {
-		verdict = await ctx.runMutation(internal.aiRouting.admission.reserveRun, { allocations });
+		verdict = opts.reserve
+			? await opts.reserve(allocations)
+			: await ctx.runMutation(internal.aiRouting.admission.reserveRun, { allocations });
 	} catch {
 		// The reservation state could not be written or read: refuse (D1).
 		throw new AdmissionRefusedError('spend_unverifiable', 'unverifiable');
