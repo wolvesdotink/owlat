@@ -76,7 +76,11 @@ export function usePostboxArrivalUndo() {
 			pending.value = [...pending.value, operationId];
 			return true;
 		}
-		announce(result);
+		announce({
+			status: result.status,
+			kind: result.kind,
+			isNeedsReplyCleared: result.isNeedsReplyCleared,
+		});
 		return true;
 	}
 
