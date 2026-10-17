@@ -14,7 +14,7 @@
  *
  * Under the Priority view (`POSTBOX_PRIORITY_ROWS`, read on arrival §3) the
  * row is one line: sender, the brief's lead or ask (else the gist, else the
- * subject) and one state. Elsewhere a row without a brief line shows the gist
+ * subject; only the subject when the viewer turned the brief off) and one state. Elsewhere a row without a brief line shows the gist
  * in place of the snippet when the thread has one.
  */
 import { inject } from 'vue';
@@ -25,6 +25,7 @@ import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListC
 import { briefRowLine } from '~/utils/briefRowLine';
 import { rowGistOf } from '~/utils/postboxReaderStrip';
 import {
+	POSTBOX_PRIORITY_BRIEF_LINES,
 	POSTBOX_PRIORITY_ROWS,
 	priorityGroupOf,
 	priorityRowLine,
@@ -91,8 +92,14 @@ const briefLine = computed(() => briefRowLine(props.msg.briefTop, locale.value))
 const gistLine = computed(() => rowGistOf(props.msg.briefTop));
 
 const isPriority = inject(POSTBOX_PRIORITY_ROWS, false);
+// The viewer's "Show the brief above conversations": off, the line is the subject.
+const showBriefLines = inject(POSTBOX_PRIORITY_BRIEF_LINES, null);
 const priorityLine = computed(() =>
-	isPriority ? priorityRowLine(props.msg, priorityGroupOf(props.msg.placement), locale.value) : null
+	isPriority
+		? priorityRowLine(props.msg, priorityGroupOf(props.msg.placement), locale.value, {
+				showBrief: showBriefLines?.value !== false,
+			})
+		: null
 );
 const priorityState = computed(() => {
 	const state = priorityLine.value?.state;

@@ -18,11 +18,16 @@ import {
 } from '~/utils/postboxReplyQueue';
 import { useLocalized } from '~/composables/useLocalized';
 
-defineProps<{
-	items: readonly ReplyQueueItem[];
-	/** The Answer queue, filtered to this mailbox. */
-	href: string;
-}>();
+withDefaults(
+	defineProps<{
+		items: readonly ReplyQueueItem[];
+		/** The Answer queue, filtered to this mailbox. */
+		href: string;
+		/** The viewer's "Show the brief above conversations"; off, rows show the subject. */
+		showBrief?: boolean;
+	}>(),
+	{ showBrief: true }
+);
 
 const { t, locale } = useI18n();
 // The queue helpers are pure: copy arrives as a key, message text as itself.
@@ -73,7 +78,7 @@ function hasDraft(item: ReplyQueueItem): boolean {
 					<span
 						class="min-w-0 flex-1 truncate text-sm text-text-secondary max-sm:whitespace-normal"
 					>
-						{{ text(replyQueueHeadline(item, locale)) }}
+						{{ text(replyQueueHeadline(item, locale, { showBrief })) }}
 						<i v-if="hasDraft(item)" class="text-text-tertiary"
 							>· {{ t('postbox.priority.draftReady') }}</i
 						>

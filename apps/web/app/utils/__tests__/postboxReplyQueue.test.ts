@@ -65,6 +65,27 @@ describe('compareReplyQueueItems', () => {
 });
 
 describe('replyQueueHeadline', () => {
+	it('is the subject when the viewer turned the brief off', () => {
+		const row = {
+			askSummary: 'Wants a refund',
+			subject: 'Order #4471',
+			briefTop: {
+				mode: 'brief' as const,
+				forYou: 1,
+				waiting: 0,
+				isReplyNeeded: true,
+				top: {
+					itemId: 'i1',
+					bucket: 'forUs' as const,
+					responsibility: 'us' as const,
+					text: { en: 'Refund the order', de: 'Bestellung erstatten' },
+				},
+			},
+		};
+		expect(replyQueueHeadline(row, 'en')).toBe('Refund the order');
+		expect(replyQueueHeadline(row, 'en', { showBrief: false })).toBe('Order #4471');
+	});
+
 	it('never uses the ask summary of a shared mailbox (SPEC §7)', () => {
 		const row = { askSummary: 'Wants a refund', subject: 'Order #4471' };
 		expect(replyQueueHeadline(row, 'en', { isShared: true })).toBe('Order #4471');

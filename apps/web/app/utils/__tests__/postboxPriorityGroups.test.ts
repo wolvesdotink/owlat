@@ -163,7 +163,11 @@ describe('priorityRowLine', () => {
 	it('says a due date, "reply", "waiting" or the time', () => {
 		const due = Date.UTC(2026, 9, 19, 12);
 		const dueRow = { subject, receivedAt: TODAY, briefTop: top({ top: { ...ASK, dueAt: due } }) };
-		expect(priorityRowLine(dueRow, 'needsMe', 'en', NOW.getTime()).state.kind).toBe('due');
+		expect(priorityRowLine(dueRow, 'needsMe', 'en', { now: NOW.getTime() }).state.kind).toBe('due');
+		// The viewer turned the brief off: the subject, the state kept.
+		expect(
+			priorityRowLine(dueRow, 'needsMe', 'en', { now: NOW.getTime(), showBrief: false })
+		).toMatchObject({ source: 'subject', state: { kind: 'due' } });
 		const replyRow = { subject, receivedAt: TODAY, briefTop: top({ isReplyNeeded: true }) };
 		expect(priorityRowLine(replyRow, 'today', 'en').state).toEqual({ kind: 'reply' });
 		const waiting = {

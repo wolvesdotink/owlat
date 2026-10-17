@@ -40,7 +40,11 @@ import { provide } from 'vue';
 import { POSTBOX_READER_HOST_KEY } from '~/composables/postbox/usePostboxReaderActions';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import { formatAutoFiledLine, startOfLocalDay } from '~/utils/postboxTodayPartition';
-import { POSTBOX_PRIORITY_ROWS, groupPriorityRows } from '~/utils/postboxPriorityGroups';
+import {
+	POSTBOX_PRIORITY_BRIEF_LINES,
+	POSTBOX_PRIORITY_ROWS,
+	groupPriorityRows,
+} from '~/utils/postboxPriorityGroups';
 import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
 
 /**
@@ -102,8 +106,11 @@ const { items: forYouItems, count: forYouCount } = usePostboxReplyQueue(mailboxI
 const forYouVisible = computed(() => forYouItems.value.slice(0, FOR_YOU_CAP));
 const queuedThreadIds = computed(() => new Set(forYouItems.value.map((item) => item.threadId)));
 
-// One line per thread (PostboxThreadRowBody reads this).
+// One line per thread (PostboxThreadRowBody reads this), the subject in place
+// of the AI's line when the viewer turned the brief off.
 provide(POSTBOX_PRIORITY_ROWS, true);
+const { autoSummarize } = usePostboxSettings();
+provide(POSTBOX_PRIORITY_BRIEF_LINES, autoSummarize);
 
 const groups = computed(() =>
 	// Each row carries its thread's placement and advisory category (attached
@@ -299,6 +306,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 						v-if="forYouVisible.length > 0"
 						:items="forYouVisible"
 						:href="answerQueueHref"
+						:show-brief="autoSummarize"
 					/>
 					<PostboxThreadList
 						v-if="needsRows.length > 0"
