@@ -2,32 +2,39 @@
  * Unused-draft pause (SPEC §7): draft-on-arrival stops for a sender whose AI
  * drafts keep going unused, until the owner resumes it on the Senders page.
  *
- * **Logical drafts.** One AI draft is either a saved draft row with an AI
- * baseline (`aiDraftBaseline`), keyed by its id, or the AI reply a thread's
- * needs-reply flag offers for its owed message (the arrival slot, or the
- * draft written from the owner's answers), keyed by the thread and that
- * flag. A saved row holding the same text as the reply the thread offers is
- * a copy of that reply, not a draft of its own.
+ * **Logical drafts.** One AI draft is either
  *
- * **Exactly once.** Each logical draft's outcome is counted once, and the
- * fact is stored with it: `mailDrafts.isDraftUsageCounted` on a row,
- * `needsReply.isDraftUsageCounted` on the flag (a reply clears the flag
- * itself). A copy settles its arrival reply too, so no later discard, reply
- * or send counts that reply again.
+ *  - an **offer**: the AI reply a thread's needs-reply flag offers for its
+ *    owed message (the arrival slot, or the draft written from the owner's
+ *    answers), keyed `<threadId>:<owed messageId>` ({@link draftOfferKeyOf});
+ *    or
+ *  - a saved draft row with an AI baseline (`aiDraftBaseline`), keyed by its
+ *    id, unless it is a **copy** of an offer: the composer sends the offer
+ *    key with every write that applies the offered reply (body or baseline,
+ *    whichever lands first), and the row keeps it (`mailDrafts.offerKey`,
+ *    mail/draftProvenance.ts `aiWritePatch`).
+ *
+ * **Exactly once.** An offer's outcome is stored on the thread
+ * (`mailThreads.draftOfferCountedKeys`, the last 8 keys), which outlives the
+ * flag: once its key is there, no copy's discard, reply or send counts it
+ * again. A row's own outcome is stored on the row
+ * (`mailDrafts.isDraftUsageCounted`). Each check and its write happen in one
+ * mutation. Nothing scans for copies.
  *
  * **Unused** (`unusedDraftStreak` + 1 per logical draft):
  *
  *  - the person takes the AI draft back out in the editor ("AI draft ·
  *    Discard", `markAiDraftDiscarded`), or discards the draft row
- *    (`drafts.discard`);
+ *    (`drafts.discard`): a copy counts its offer, any other row itself;
  *  - the owner replies in the thread without an AI-based draft (an Owlat
- *    send, or our reply from another client): every uncounted AI draft for
- *    the owed message counts, the offered reply included.
+ *    send, or our reply from another client) while the thread offers a reply
+ *    that has not counted. A saved AI draft that is not a copy counts when it
+ *    is discarded.
  *
  * **Used.** Sending a row with a baseline whose AI draft was not taken back
  * out (`aiDraftDiscardedAt` absent; a later AI write clears it) resets the
  * streak, also while paused: the pause's own undo then fails its guard,
- * which is right. Its copies of the offered reply settle with it.
+ * which is right. A copy's send settles its offer as used.
  *
  * At {@link UNUSED_DRAFT_PAUSE_AT} the profile gets `autoDraftPausedAt` and
  * draft-on-arrival skips the sender (`isDraftOnArrivalPaused`); the
@@ -62,8 +69,8 @@ import { visibleThreadClarification, visibleThreadDraftSlot } from './needsReply
 /** Unused AI drafts in a row that pause draft-on-arrival for a sender. */
 export const UNUSED_DRAFT_PAUSE_AT = 5;
 
-/** Saved drafts of one conversation the reply check reads at most. */
-const THREAD_DRAFT_SCAN = 50;
+/** Counted offer keys a thread keeps (newest last). */
+const COUNTED_OFFER_KEYS = 8;
 
 export type DraftUse = 'unused' | 'used';
 
@@ -179,28 +186,22 @@ export async function isDraftOnArrivalPaused(
 	return profile?.autoDraftPausedAt !== undefined;
 }
 
-function sameText(a: string, b: string): boolean {
-	const words = (text: string) => text.replace(/\s+/g, ' ').trim();
-	return words(a) === words(b);
-}
-
-/** The AI replies the thread itself offers for its owed message (slot, clarification draft). */
-function offeredReplies(thread: Doc<'mailThreads'>): string[] {
+/** Whether the thread offers an AI reply for its owed message (slot or clarification draft). */
+function isReplyOffered(thread: Doc<'mailThreads'>): boolean {
 	const slot = visibleThreadDraftSlot(thread)?.draft;
 	const answered = visibleThreadClarification(thread)?.draft;
-	return [slot, answered].filter((text): text is string => !!text?.trim());
+	return !!slot?.trim() || !!answered?.trim();
+}
+
+/** The key of the AI reply the thread offers now, or undefined when it offers none. */
+export function draftOfferKeyOf(thread: Doc<'mailThreads'>): string | undefined {
+	const flag = thread.needsReply;
+	return flag && isReplyOffered(thread) ? `${thread._id}:${flag.messageId}` : undefined;
 }
 
 function baselineOf(draft: Doc<'mailDrafts'>): string | undefined {
 	const text = draft.aiDraftBaseline?.text;
 	return text?.trim() ? text : undefined;
-}
-
-/** Whether `draft` holds a copy of the AI reply `thread` offers for the message the draft answers. */
-function isOfferedCopy(draft: Doc<'mailDrafts'>, thread: Doc<'mailThreads'>): boolean {
-	const baseline = baselineOf(draft);
-	if (!baseline || thread.needsReply?.messageId !== draft.inReplyToMessageId) return false;
-	return offeredReplies(thread).some((text) => sameText(text, baseline));
 }
 
 /** The person who wrote `messageId`, when it is mail of this mailbox. */
@@ -214,51 +215,34 @@ async function senderOf(
 }
 
 /**
- * Mark the thread's offered AI reply counted, and every saved copy of it with
- * it, so no copy counts once the flag is gone (an archive, a new message).
+ * Record `key`'s offer as counted on its thread. False (nothing written) when
+ * it already was, or when the thread is not this mailbox's.
  */
-async function settleOfferedReply(ctx: MutationCtx, thread: Doc<'mailThreads'>): Promise<void> {
-	const flag = thread.needsReply;
-	if (!flag) return;
-	for (const row of await uncountedAiRows(ctx, thread, flag.messageId, undefined)) {
-		if (isOfferedCopy(row, thread)) await ctx.db.patch(row._id, { isDraftUsageCounted: true });
-	}
-	if (flag.isDraftUsageCounted) return;
-	await ctx.db.patch(thread._id, { needsReply: { ...flag, isDraftUsageCounted: true } });
-}
-
-/**
- * `drafts.update` as it snapshots a draft's AI baseline: a copy of an offered
- * reply that already counted is counted from the start, so it never counts
- * once that reply's flag is gone.
- */
-export async function baselineUsagePatch(
-	ctx: Pick<QueryCtx, 'db'>,
-	draft: Doc<'mailDrafts'>,
-	baseline: string
-): Promise<{ isDraftUsageCounted?: true }> {
-	const thread = draft.threadId ? await ctx.db.get(draft.threadId) : null;
-	if (!thread || thread.mailboxId !== draft.mailboxId) return {};
-	if (!thread.needsReply?.isDraftUsageCounted) return {};
-	const withBaseline = { ...draft, aiDraftBaseline: { text: baseline, capturedAt: 0 } };
-	return isOfferedCopy(withBaseline, thread) ? { isDraftUsageCounted: true } : {};
+async function consumeOffer(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>,
+	key: string
+): Promise<boolean> {
+	const threadId = ctx.db.normalizeId('mailThreads', key.slice(0, key.indexOf(':')));
+	const thread = threadId ? await ctx.db.get(threadId) : null;
+	if (!thread || thread.mailboxId !== mailboxId) return false;
+	const counted = thread.draftOfferCountedKeys ?? [];
+	if (counted.includes(key)) return false;
+	await ctx.db.patch(thread._id, {
+		draftOfferCountedKeys: [...counted, key].slice(-COUNTED_OFFER_KEYS),
+	});
+	return true;
 }
 
 /**
  * The AI draft of `draft` went unused (discarded, or taken back out in the
- * editor). Counts once for the sender it answers, unless it is a copy of an
- * offered reply that already counted; settles that reply either way.
+ * editor). A copy counts its offer once; any other row counts itself once.
  */
 async function countUnusedRow(ctx: MutationCtx, draft: Doc<'mailDrafts'>): Promise<void> {
 	if (!baselineOf(draft) || draft.isDraftUsageCounted || draft.obsoleted) return;
 	if (draft.state !== 'draft' || !(await isPersonalMailboxId(ctx, draft.mailboxId))) return;
 	await ctx.db.patch(draft._id, { isDraftUsageCounted: true });
-	const thread = draft.threadId ? await ctx.db.get(draft.threadId) : null;
-	const sameMailbox = thread !== null && thread.mailboxId === draft.mailboxId;
-	if (sameMailbox && isOfferedCopy(draft, thread)) {
-		if (thread.needsReply?.isDraftUsageCounted) return;
-		await settleOfferedReply(ctx, thread);
-	}
+	if (draft.offerKey && !(await consumeOffer(ctx, draft.mailboxId, draft.offerKey))) return;
 	const sender = await senderOf(ctx, draft.mailboxId, draft.inReplyToMessageId);
 	if (!sender) return;
 	await recordDraftUse(ctx, {
@@ -269,59 +253,27 @@ async function countUnusedRow(ctx: MutationCtx, draft: Doc<'mailDrafts'>): Promi
 	});
 }
 
-/** The thread's saved drafts still being composed with an uncounted AI draft for `messageId`. */
-async function uncountedAiRows(
-	ctx: Pick<QueryCtx, 'db'>,
-	thread: Doc<'mailThreads'>,
-	messageId: Id<'mailMessages'>,
-	exceptDraftId: Id<'mailDrafts'> | undefined
-): Promise<Doc<'mailDrafts'>[]> {
-	const drafts = await ctx.db
-		.query('mailDrafts')
-		.withIndex('by_thread', (q) => q.eq('threadId', thread._id))
-		.take(THREAD_DRAFT_SCAN);
-	return drafts.filter(
-		(d) =>
-			d._id !== exceptDraftId &&
-			d.state === 'draft' &&
-			!d.obsoleted &&
-			!d.isDraftUsageCounted &&
-			d.inReplyToMessageId === messageId &&
-			baselineOf(d) !== undefined
-	);
-}
-
 /**
  * The owner answered `thread` without an AI-based draft (a send of a draft
- * without one, or a reply from another client). Every AI draft for the owed
- * message that has not counted yet counts once: the offered reply, and each
- * saved draft that is not a copy of it. Call it before the reply clears the
- * thread's needs-reply flag; `exceptDraftId` is the draft being sent.
+ * without one, or a reply from another client). The reply the thread offers
+ * counts as unused, once. Call it before the reply clears the flag.
  */
 export async function noteReplyWithoutAiDraft(
 	ctx: MutationCtx,
-	thread: Doc<'mailThreads'>,
-	exceptDraftId?: Id<'mailDrafts'>
+	thread: Doc<'mailThreads'>
 ): Promise<void> {
 	const flag = thread.needsReply;
-	if (!flag || !(await isPersonalMailboxId(ctx, thread.mailboxId))) return;
-	let unused = offeredReplies(thread).length > 0 && !flag.isDraftUsageCounted ? 1 : 0;
-	for (const row of await uncountedAiRows(ctx, thread, flag.messageId, exceptDraftId)) {
-		await ctx.db.patch(row._id, { isDraftUsageCounted: true });
-		if (!isOfferedCopy(row, thread)) unused++;
-	}
-	if (unused === 0) return;
-	await settleOfferedReply(ctx, thread);
+	const key = draftOfferKeyOf(thread);
+	if (!flag || !key || !(await isPersonalMailboxId(ctx, thread.mailboxId))) return;
+	if (!(await consumeOffer(ctx, thread.mailboxId, key))) return;
 	const sender = await senderOf(ctx, thread.mailboxId, flag.messageId);
 	if (!sender) return;
-	for (let i = 0; i < unused; i++) {
-		await recordDraftUse(ctx, {
-			mailboxId: thread.mailboxId,
-			address: sender,
-			use: 'unused',
-			now: Date.now(),
-		});
-	}
+	await recordDraftUse(ctx, {
+		mailboxId: thread.mailboxId,
+		address: sender,
+		use: 'unused',
+		now: Date.now(),
+	});
 }
 
 /** Whether sending `draft` is an AI-based send: it holds an AI draft nobody took back out. */
@@ -331,24 +283,17 @@ function isAiBasedSend(draft: Doc<'mailDrafts'>): boolean {
 
 /**
  * The lifecycle's `→ sent`, before the send's cascade clears the thread's
- * needs-reply flag: an AI-based send resets its sender's streak and settles
- * the copies of the reply it used; any other reply counts the thread's
- * unused AI drafts.
+ * needs-reply flag: an AI-based send resets its sender's streak (a copy
+ * settles its offer as used); any other reply counts the offered reply.
  */
 export async function noteDraftSent(ctx: MutationCtx, draft: Doc<'mailDrafts'>): Promise<void> {
 	if (!(await isPersonalMailboxId(ctx, draft.mailboxId))) return;
-	const thread = draft.threadId ? await ctx.db.get(draft.threadId) : null;
-	const ownThread = thread && thread.mailboxId === draft.mailboxId ? thread : null;
 	if (!isAiBasedSend(draft)) {
-		if (ownThread) await noteReplyWithoutAiDraft(ctx, ownThread, draft._id);
+		const thread = draft.threadId ? await ctx.db.get(draft.threadId) : null;
+		if (thread && thread.mailboxId === draft.mailboxId) await noteReplyWithoutAiDraft(ctx, thread);
 		return;
 	}
-	if (ownThread && isOfferedCopy(draft, ownThread)) {
-		const flag = ownThread.needsReply!;
-		for (const row of await uncountedAiRows(ctx, ownThread, flag.messageId, draft._id)) {
-			if (isOfferedCopy(row, ownThread)) await ctx.db.patch(row._id, { isDraftUsageCounted: true });
-		}
-	}
+	if (draft.offerKey) await consumeOffer(ctx, draft.mailboxId, draft.offerKey);
 	const sender = await senderOf(ctx, draft.mailboxId, draft.inReplyToMessageId);
 	if (!sender) return;
 	await recordDraftUse(ctx, {

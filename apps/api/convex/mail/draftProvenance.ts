@@ -25,7 +25,7 @@
  */
 
 import type { Doc } from '../_generated/dataModel';
-import { aiTextToHtml, splitAnswerBody } from '@owlat/shared/answerMode';
+import { aiTextToHtml, hasDraftGaps, splitAnswerBody } from '@owlat/shared/answerMode';
 import { htmlToPlainText } from '@owlat/shared/html';
 import { openMailDraftBody } from '../lib/messageBody';
 
@@ -130,4 +130,45 @@ export async function provenancePatch(
 		...(aiBodyChanged ? { lastEditedAt: now } : {}),
 		...changed,
 	};
+}
+
+/** The AI fields of a `drafts.update` write. */
+export interface AiWrite {
+	aiBaseline?: string;
+	aiText?: string;
+	offerKey?: string;
+}
+
+/**
+ * The fields an AI write sets on a draft: the AI baseline, snapshotted once
+ * (the first apply wins, so a later edit diffs against it); `isGapGuarded`
+ * when any AI text holds `[[...]]` gaps (a later one may be the one that
+ * still waits for files); and the offered reply it copies (`offerKey`, see
+ * mail/draftPause.ts), kept from the first AI write that names one of this
+ * draft's thread. Pure.
+ */
+export function aiWritePatch(
+	draft: Doc<'mailDrafts'>,
+	write: AiWrite,
+	now: number
+): Record<string, unknown> {
+	const patch: Record<string, unknown> = {};
+	const baseline = write.aiBaseline;
+	if (baseline !== undefined && baseline.trim().length > 0 && draft.aiDraftBaseline === undefined) {
+		patch['aiDraftBaseline'] = { text: baseline, capturedAt: now };
+	}
+	if (baseline !== undefined && !draft.isGapGuarded && hasDraftGaps(baseline)) {
+		patch['isGapGuarded'] = true;
+	}
+	const key = write.offerKey;
+	const isAiWrite = baseline !== undefined || write.aiText !== undefined;
+	if (isAiWrite && key && draft.offerKey === undefined && isOfferKeyOf(draft, key)) {
+		patch['offerKey'] = key;
+	}
+	return patch;
+}
+
+/** An offer key (`<threadId>:<owed messageId>`) of the draft's own thread. */
+function isOfferKeyOf(draft: Doc<'mailDrafts'>, key: string): boolean {
+	return !!draft.threadId && key.length <= 128 && key.startsWith(`${draft.threadId}:`);
 }

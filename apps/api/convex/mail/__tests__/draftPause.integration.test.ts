@@ -72,17 +72,25 @@ async function seedConversation(t: T, opts: { scope?: 'shared'; slot?: boolean }
 	return { mailboxId, threadId, askId } satisfies Conversation;
 }
 
-/** A saved reply draft; `baseline` makes it an AI draft (the composer recorded the AI text). */
+/** The key of the reply the conversation offers for `askId`. */
+function offerOf(c: Conversation, askId: Id<'mailMessages'> = c.askId): string {
+	return `${c.threadId}:${askId}`;
+}
+
+/**
+ * A saved reply draft; `baseline` makes it an AI draft (the composer recorded
+ * the AI text), `offerKey` a copy of the thread's offered reply.
+ */
 async function seedDraft(
 	t: T,
 	c: Conversation,
-	opts: { baseline?: string } = {}
+	opts: { baseline?: string; offerKey?: string; inReplyTo?: Id<'mailMessages'> } = {}
 ): Promise<Id<'mailDrafts'>> {
 	return await t.run(async (ctx) =>
 		ctx.db.insert('mailDrafts', {
 			mailboxId: c.mailboxId,
 			threadId: c.threadId,
-			inReplyToMessageId: c.askId,
+			inReplyToMessageId: opts.inReplyTo ?? c.askId,
 			toAddresses: [SENDER],
 			ccAddresses: [],
 			bccAddresses: [],
@@ -92,6 +100,7 @@ async function seedDraft(
 			...(opts.baseline
 				? { aiDraftBaseline: { text: opts.baseline, capturedAt: Date.now() } }
 				: {}),
+			...(opts.offerKey ? { offerKey: opts.offerKey } : {}),
 			attachments: [],
 			state: 'draft',
 			lastEditedAt: Date.now(),
@@ -177,82 +186,127 @@ describe('the unused-draft streak', () => {
 		expect(await profile(t, c.mailboxId)).toBeNull();
 	});
 
-	it('counts a discarded copy of the offered reply once; a later reply or copy never again (F2)', async () => {
+	it('counts a discarded copy of the offered reply once; a later reply or copy never again', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
-		const leftover = await seedDraft(t, c, { baseline: SLOT });
-		await t.mutation(api.mail.drafts.discard, {
-			draftId: await seedDraft(t, c, { baseline: SLOT }),
-		});
+		const copy = { baseline: SLOT, offerKey: offerOf(c) };
+		const leftover = await seedDraft(t, c, copy);
+		await t.mutation(api.mail.drafts.discard, { draftId: await seedDraft(t, c, copy) });
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
-		expect((await t.run(async (ctx) => ctx.db.get(c.threadId)))?.needsReply).toMatchObject({
-			isDraftUsageCounted: true,
-		});
+		expect((await t.run(async (ctx) => ctx.db.get(c.threadId)))?.draftOfferCountedKeys).toEqual([
+			offerOf(c),
+		]);
 
-		// The same arrival reply: its other copy, and a reply sent without it.
+		// The same offer: its other copy, and a reply sent without it.
 		await t.mutation(api.mail.drafts.discard, { draftId: leftover });
 		await send(t, await seedDraft(t, c));
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
 	});
 
-	it('never counts a copy left behind once its counted reply is archived (r2 F1)', async () => {
+	it('counts the offer once with 49 older drafts in the thread (r3 F1)', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
-		const copyA = await seedDraft(t, c, { baseline: SLOT });
-		const copyB = await seedDraft(t, c, { baseline: SLOT });
+		for (let i = 0; i < 49; i++) await seedDraft(t, c);
+		const copy = { baseline: SLOT, offerKey: offerOf(c) };
+		const copyA = await seedDraft(t, c, copy);
+		const copyB = await seedDraft(t, c, copy);
 		await t.mutation(api.mail.drafts.discard, { draftId: copyA });
-		// A copy made after the reply counted is counted from the start.
-		const copyC = await seedDraft(t, c);
-		await t.mutation(api.mail.drafts.update, { draftId: copyC, aiBaseline: SLOT });
-		// Archive clears the flag.
-		await t.run(async (ctx) => ctx.db.patch(c.threadId, { needsReply: undefined }));
+		await t.run(async (ctx) => ctx.db.patch(c.threadId, { needsReply: undefined })); // archive
 		await t.mutation(api.mail.drafts.discard, { draftId: copyB });
-		await t.mutation(api.mail.drafts.discard, { draftId: copyC });
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
 	});
 
-	it('counts discard-then-archive of each arrival reply (F2)', async () => {
+	it("counts the offer once when a copy's baseline is recorded after the archive (r3 F2)", async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
+		await t.mutation(api.mail.drafts.discard, {
+			draftId: await seedDraft(t, c, { baseline: SLOT, offerKey: offerOf(c) }),
+		});
+		// Another composer applies the offer: its body save lands, then the archive,
+		// then its baseline save. Both writes carry the offer key.
+		const copyB = await seedDraft(t, c);
+		await t.mutation(api.mail.drafts.update, {
+			draftId: copyB,
+			bodyHtml: aiTextToHtml(SLOT),
+			aiText: SLOT,
+			offerKey: offerOf(c),
+		});
+		await t.run(async (ctx) => ctx.db.patch(c.threadId, { needsReply: undefined })); // archive
+		await t.mutation(api.mail.drafts.update, {
+			draftId: copyB,
+			aiBaseline: SLOT,
+			offerKey: offerOf(c),
+		});
+		expect((await t.run(async (ctx) => ctx.db.get(copyB)))?.offerKey).toBe(offerOf(c));
+		await t.mutation(api.mail.drafts.discard, { draftId: copyB });
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
+	});
+
+	it("keeps an offer key only for the draft's own thread", async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		const draftId = await seedDraft(t, c);
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			aiBaseline: SLOT,
+			offerKey: 'mailThreads_other:message',
+		});
+		expect((await t.run(async (ctx) => ctx.db.get(draftId)))?.offerKey).toBeUndefined();
+	});
+
+	it('counts discard-then-archive of each new offer', async () => {
+		const t = convexTest(schema, modules);
+		const c = await seedConversation(t);
+		let askId = c.askId;
 		for (let round = 1; round <= 2; round++) {
 			await t.mutation(api.mail.drafts.discard, {
-				draftId: await seedDraft(t, c, { baseline: SLOT }),
+				draftId: await seedDraft(t, c, {
+					baseline: SLOT,
+					offerKey: offerOf(c, askId),
+					inReplyTo: askId,
+				}),
 			});
-			// Archive clears the flag; the next message brings a new slot.
-			await t.run(async (ctx) => ctx.db.patch(c.threadId, { needsReply: undefined }));
 			expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(round);
-			await t.run(async (ctx) =>
-				ctx.db.patch(c.threadId, {
+			// Archive, then their next message brings a new offer.
+			askId = await t.run(async (ctx) => {
+				const { _id, _creationTime, ...base } = (await ctx.db.get(c.askId))!;
+				const next = await ctx.db.insert('mailMessages', {
+					...base,
+					rfc822MessageId: `<next-${round}@acme.test>`,
+				});
+				await ctx.db.patch(c.threadId, {
 					needsReply: {
-						messageId: c.askId,
+						messageId: next,
 						detectedAt: Date.now(),
 						source: 'llm' as const,
 						urgency: 'normal' as const,
 						draftSlot: { draft: SLOT, confidence: 0.9, generatedAt: Date.now() },
 					},
-				})
-			);
+				});
+				return next;
+			});
 		}
 	});
 
-	it('counts a reply sent without the offered AI reply once, and its leftover copy never', async () => {
+	it('counts a reply sent without the offered reply once; other AI drafts when discarded', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
-		const leftover = await seedDraft(t, c, { baseline: SLOT });
+		const leftover = await seedDraft(t, c, { baseline: SLOT, offerKey: offerOf(c) });
 		const other = await seedDraft(t, c, { baseline: OTHER_AI });
 		await send(t, await seedDraft(t, c));
-		// The arrival reply and the other AI draft both went unused.
-		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(2);
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
 		await t.mutation(api.mail.drafts.discard, { draftId: leftover });
+		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(1);
+		await t.mutation(api.mail.drafts.discard, { draftId: other });
 		await t.mutation(api.mail.drafts.discard, { draftId: other });
 		expect((await profile(t, c.mailboxId))?.unusedDraftStreak).toBe(2);
 	});
 
-	it('counts the AI draft taken back out in the editor, and its send is not AI-based (F1)', async () => {
+	it('counts the AI draft taken back out in the editor, and its send is not AI-based', async () => {
 		const t = convexTest(schema, modules);
 		const c = await seedConversation(t);
 		await seedProfile(t, c.mailboxId, { address: SENDER, unusedDraftStreak: 2 });
-		const draftId = await seedDraft(t, c, { baseline: SLOT });
+		const draftId = await seedDraft(t, c, { baseline: SLOT, offerKey: offerOf(c) });
 
 		await t.mutation(api.mail.draftPause.markAiDraftDiscarded, { draftId });
 		await t.mutation(api.mail.draftPause.markAiDraftDiscarded, { draftId });
