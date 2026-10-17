@@ -37,6 +37,10 @@ export async function startSenderOperation(
 		kind: OperationKind;
 		actor: OperationActor;
 		senderDigest?: string;
+		threadId?: Id<'mailThreads'>;
+		messageId?: Id<'mailMessages'>;
+		/** Already sealed (`sealBodyAtWrite`). */
+		reason?: string;
 		now: number;
 	}
 ): Promise<Id<'mailArrivalOperations'>> {
@@ -45,6 +49,9 @@ export async function startSenderOperation(
 		kind: args.kind,
 		actor: args.actor,
 		...(args.senderDigest ? { senderDigest: args.senderDigest } : {}),
+		...(args.threadId ? { threadId: args.threadId } : {}),
+		...(args.messageId ? { messageId: args.messageId } : {}),
+		...(args.reason ? { reason: args.reason } : {}),
 		changeCount: 0,
 		status: 'applied',
 		createdAt: args.now,
@@ -104,7 +111,8 @@ export async function writeSenderStatus(
 	return true;
 }
 
-async function folderId(
+/** The mailbox's system folder of a role, or null. */
+export async function folderId(
 	ctx: MutationCtx,
 	mailboxId: Id<'mailboxes'>,
 	role: 'inbox' | 'archive'
@@ -193,17 +201,21 @@ export async function archiveSenderInbox(
 	return moved.length;
 }
 
-/** Re-sort the sender's newest ≤200 Inbox threads (placement is derived). */
+/**
+ * Re-sort the sender's newest ≤200 Inbox threads (placement is derived).
+ * Returns how many Inbox messages the page covered.
+ */
 export async function resortSenderThreads(
 	ctx: MutationCtx,
 	profile: Pick<Doc<'mailSenderProfiles'>, 'mailboxId' | 'address'>
-): Promise<void> {
+): Promise<number> {
 	const inboxId = await folderId(ctx, profile.mailboxId, 'inbox');
-	if (!inboxId) return;
+	if (!inboxId) return 0;
 	const messages = await senderInboxMessages(ctx, profile, inboxId);
 	for (const threadId of new Set(messages.map((message) => message.threadId))) {
 		await refreshArrivalProjection(ctx, threadId);
 	}
+	return messages.length;
 }
 
 /** Whether a status files the sender's mail away (and so archives what is there). */

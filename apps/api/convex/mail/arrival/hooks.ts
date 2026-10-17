@@ -12,7 +12,7 @@
 
 import type { Placement } from '@owlat/shared/arrival';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
 import type { InboundOrigin } from '../deliveryPipeline/insert';
 import { applySenderStatus, countSenderDelivery } from '../senders/delivery';
 import { countFirstOpen } from '../senders/opens';
@@ -144,13 +144,30 @@ export async function recordFirstOpen(
 	await countFirstOpen(ctx, messageId);
 }
 
+/**
+ * Lane rules / wiring (SPEC §4.2, §6.1). Compile the rule a person described
+ * in Fix's optional "why" into its `mailRuleDrafts` row. Fix
+ * (`mail/arrival/fix.ts`) writes the row (`status: 'compiling'`, origin `fix`,
+ * `sourceText` sealed, `fromMessageId`) in the Fix mutation and schedules
+ * `internal.mail.arrival.fixCompile.compile`, which calls this. The real body
+ * runs the §6.1 compile action (`mail/filterCompile.compile`) over the draft
+ * and moves it to `ready` (a disabled draft rule in Rules) or `failed`; it
+ * never enables a rule. While stubbed the row stays `compiling` until its
+ * `expiresAt` sweep.
+ */
+export async function compileFixRuleDraft(
+	_ctx: ActionCtx,
+	_args: { draftId: Id<'mailRuleDrafts'> }
+): Promise<void> {}
+
 export type ArrivalHookName =
 	| 'evaluateArrivalRules'
 	| 'listArrivalAiQuestions'
 	| 'applyArrivalAiAnswers'
 	| 'applySenderStatusAtDelivery'
 	| 'recordSenderDelivery'
-	| 'recordFirstOpen';
+	| 'recordFirstOpen'
+	| 'compileFixRuleDraft';
 
 /** The lane that owns each hook. */
 export const ARRIVAL_HOOK_OWNERS: Readonly<Record<ArrivalHookName, 'rules' | 'senders'>> = {
@@ -160,6 +177,7 @@ export const ARRIVAL_HOOK_OWNERS: Readonly<Record<ArrivalHookName, 'rules' | 'se
 	applySenderStatusAtDelivery: 'senders',
 	recordSenderDelivery: 'senders',
 	recordFirstOpen: 'senders',
+	compileFixRuleDraft: 'rules',
 };
 
 /** Hooks still stubbed. Remove a name when its implementation lands. */
@@ -167,4 +185,5 @@ export const ARRIVAL_HOOK_STUBS: ReadonlySet<ArrivalHookName> = new Set<ArrivalH
 	'evaluateArrivalRules',
 	'listArrivalAiQuestions',
 	'applyArrivalAiAnswers',
+	'compileFixRuleDraft',
 ]);
