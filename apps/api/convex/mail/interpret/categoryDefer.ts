@@ -21,6 +21,13 @@
  *   - the CEILING: {@link settleAtCeiling}, scheduled at the settle time, runs
  *     the source only while it still waits for that deadline. After it the
  *     thread's label is final, whatever it is.
+ *
+ * Every run of the source goes through its lease (`lease.ts`, SPEC §2.5).
+ * Recording the wait ends the waiting run's lease. A category that settled
+ * between the run's read and its deferral sends the run back to read again,
+ * under the lease it still holds, with nothing scheduled. The wake and the
+ * ceiling schedule a run that claims the lease like any other; the ceiling
+ * first waits out a live lease.
  */
 
 import { v } from 'convex/values';
@@ -31,6 +38,7 @@ import { internalMutation } from '../../lib/writeFence';
 import { interpretationSourceValidator } from '../../lib/validators/threadBrief';
 import { isProvisionalCategory } from './eligibility';
 import { loadInterpretSource } from './sources';
+import { releaseLeaseIfHeld } from './lease';
 
 /**
  * Sources of a thread one wake transaction reads. The wake walks the thread's
@@ -40,43 +48,67 @@ import { loadInterpretSource } from './sources';
  */
 const CATEGORY_WAKE_PAGE = 50;
 
+/** What {@link deferForCategory} answers the run. */
+export type CategoryWait =
+	| { kind: 'waiting'; until: number }
+	/** The category settled after the run read it: read again, under the same lease. */
+	| { kind: 'settled' }
+	| { kind: 'gone' };
+
+/**
+ * Record that the run waits for the category until `until`, and end the
+ * run's lease (`lease.ts`) in the same transaction: the wait is its outcome.
+ * Nothing is scheduled to run the source but the ceiling (and the wake), so
+ * calling this again, from the same or another run, adds no run.
+ */
 export const deferForCategory = internalMutation({
-	args: { source: interpretationSourceValidator, until: v.number() },
-	handler: async (ctx, args): Promise<{ isScheduled: boolean }> => {
+	args: {
+		source: interpretationSourceValidator,
+		until: v.number(),
+		leaseToken: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<CategoryWait> => {
 		const row = await loadInterpretSource(ctx, args.source);
-		if (!row) return { isScheduled: false };
-		// Already waiting for this (or a later) deadline: the scheduled run covers it.
-		if (row.categoryDeferredUntil !== undefined && row.categoryDeferredUntil >= args.until) {
-			return { isScheduled: false };
-		}
+		if (!row) return { kind: 'gone' };
 		// The category settled after the run read it (and its wake found nothing
-		// waiting yet): run now rather than wait for the ceiling.
+		// waiting yet): the run reads again itself rather than wait for the ceiling.
 		const thread = row.mailThreadId ? await ctx.db.get(row.mailThreadId) : null;
-		if (thread && !isProvisionalCategory(thread.category)) {
-			await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
-				source: args.source,
-			});
-			return { isScheduled: true };
+		if (thread && !isProvisionalCategory(thread.category)) return { kind: 'settled' };
+		if (args.leaseToken) await releaseLeaseIfHeld(ctx, args.source, args.leaseToken);
+		// Already waiting for this (or a later) deadline: the scheduled ceiling covers it.
+		if (row.categoryDeferredUntil !== undefined && row.categoryDeferredUntil >= args.until) {
+			return { kind: 'waiting', until: row.categoryDeferredUntil };
 		}
 		await ctx.db.patch(row._id, { categoryDeferredUntil: args.until, updatedAt: Date.now() });
 		await ctx.scheduler.runAt(args.until, internal.mail.interpret.categoryDefer.settleAtCeiling, {
 			source: args.source,
 			until: args.until,
 		});
-		return { isScheduled: true };
+		return { kind: 'waiting', until: args.until };
 	},
 });
 
 /**
  * The ceiling of a category wait: run the source, unless a wake already did
- * (the deferral is cleared) or a later deferral replaced this one.
+ * (the deferral is cleared) or a later deferral replaced this one. While a
+ * run holds the source's lease, the ceiling comes back when it ends, so it
+ * never schedules a run that would only find the source busy.
  */
 export const settleAtCeiling = internalMutation({
 	args: { source: interpretationSourceValidator, until: v.number() },
 	handler: async (ctx, args): Promise<{ isScheduled: boolean }> => {
 		const row = await loadInterpretSource(ctx, args.source);
 		if (!row || row.categoryDeferredUntil !== args.until) return { isScheduled: false };
-		await ctx.db.patch(row._id, { categoryDeferredUntil: undefined, updatedAt: Date.now() });
+		const now = Date.now();
+		if (row.leaseToken !== undefined && row.leaseUntil !== undefined && row.leaseUntil > now) {
+			await ctx.scheduler.runAt(
+				row.leaseUntil,
+				internal.mail.interpret.categoryDefer.settleAtCeiling,
+				args
+			);
+			return { isScheduled: false };
+		}
+		await ctx.db.patch(row._id, { categoryDeferredUntil: undefined, updatedAt: now });
 		await ctx.scheduler.runAfter(0, internal.mail.interpret.run.interpretMessage, {
 			source: args.source,
 		});

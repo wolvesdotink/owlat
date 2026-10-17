@@ -53,7 +53,7 @@ async function waitingSource(t: T) {
 		source,
 		until: UNTIL,
 	});
-	expect(deferred).toEqual({ isScheduled: true });
+	expect(deferred).toEqual({ kind: 'waiting', until: UNTIL });
 	return { mailboxId, messageId, threadId, source };
 }
 
@@ -138,7 +138,7 @@ describe('category wait wake-up', () => {
 		expect(await runTimes(t)).toEqual([UNTIL]);
 	});
 
-	it('does not wait when the category settled between the run’s read and its deferral', async () => {
+	it('sends the run back to read when the category settled between its read and its deferral', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedMailThread(t);
 		const source = { kind: 'mail' as const, id: messageId };
@@ -150,13 +150,17 @@ describe('category wait wake-up', () => {
 			});
 		});
 
-		await t.mutation(internal.mail.interpret.categoryDefer.deferForCategory, {
-			source,
-			until: UNTIL,
-		});
+		const args = { source, until: UNTIL };
+		const answers = [
+			await t.mutation(internal.mail.interpret.categoryDefer.deferForCategory, args),
+			await t.mutation(internal.mail.interpret.categoryDefer.deferForCategory, args),
+		];
 
+		// The run reads again itself, under its lease: nothing is recorded or
+		// scheduled, however often the stale deferral is repeated (Sol r1 F1).
+		expect(answers).toEqual([{ kind: 'settled' }, { kind: 'settled' }]);
 		expect(await deferredUntil(t, messageId)).toBeNull();
-		expect(await runTimes(t)).toEqual([NOW]);
+		expect(await runTimes(t)).toEqual([]);
 	});
 
 	it('replacing a settled label wakes nothing', async () => {

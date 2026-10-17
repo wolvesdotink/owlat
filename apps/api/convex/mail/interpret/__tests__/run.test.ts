@@ -166,7 +166,7 @@ describe('interpretMessage', () => {
 			// The extraction only: the clipped claim never reached the verifier.
 			expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
 			expect(out).toMatchObject({ status: 'partial', errorCode: 'verify_unsendable' });
-			if (out.status === 'gone') throw new Error('unreachable');
+			if (!('isReplayed' in out)) throw new Error('unreachable');
 			expect(out.retryAt).toBeUndefined();
 			const items = await t.run(async (ctx) => ctx.db.query('threadItems').collect());
 			expect(items).toHaveLength(1);
@@ -203,7 +203,7 @@ describe('interpretMessage', () => {
 			const out = await t.action(internal.mail.interpret.run.interpretMessage, { source });
 
 			expect(out).toMatchObject({ status: 'partial', errorCode: 'verify' });
-			if (out.status === 'gone') throw new Error('unreachable');
+			if (!('isReplayed' in out)) throw new Error('unreachable');
 			expect(out.retryAt).toBeGreaterThan(Date.now());
 		});
 	});
@@ -287,7 +287,7 @@ describe('interpretMessage', () => {
 				errorCode: 'budget',
 				budgetRefusal: { reason: 'daily_ceiling' },
 			});
-			if (first.status === 'gone') throw new Error('unreachable');
+			if (!('isReplayed' in first)) throw new Error('unreachable');
 			expect(first.retryAt).toBeGreaterThanOrEqual(before + 5 * 60 * 1000);
 			expect(llm.runLlmObject).not.toHaveBeenCalled();
 			expect(await counted(t)).toMatchObject({ retryCount: 0, budgetDeferrals: 1 });
@@ -299,7 +299,7 @@ describe('interpretMessage', () => {
 			const row = await counted(t);
 			if (row) await t.run((ctx) => ctx.db.patch(row._id, { nextRetryAt: 0 }));
 			const second = await t.action(internal.mail.interpret.run.interpretMessage, { source });
-			if (second.status === 'gone') throw new Error('unreachable');
+			if (!('isReplayed' in second)) throw new Error('unreachable');
 			expect(second.retryAt).toBeGreaterThanOrEqual(Date.now() + 9 * 60 * 1000);
 			expect(await counted(t)).toMatchObject({ retryCount: 0, budgetDeferrals: 2 });
 			expect(llm.runLlmObject).not.toHaveBeenCalled();
@@ -479,7 +479,7 @@ describe('interpretMessage', () => {
 		const source = { kind: 'mail' as const, id: messageId };
 		const first = await t.action(internal.mail.interpret.run.interpretMessage, { source });
 		expect(first).toMatchObject({ status: 'partial', isReplayed: false, errorCode: 'verify' });
-		if (first.status === 'gone') throw new Error('unreachable');
+		if (!('isReplayed' in first)) throw new Error('unreachable');
 		expect(first.retryAt).toBeGreaterThan(Date.now());
 
 		// Not due yet: reported as partial, never as a bare replay.
@@ -655,7 +655,7 @@ describe('interpretMessage', () => {
 		});
 		const partial = await t.action(internal.mail.interpret.run.interpretMessage, { source });
 		expect(partial).toMatchObject({ status: 'partial', errorCode: 'verify' });
-		if (partial.status === 'gone') throw new Error('unreachable');
+		if (!('isReplayed' in partial)) throw new Error('unreachable');
 		expect(partial.retryAt).toBeDefined();
 		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
 		// One admitted attempt (the model ran); the gate refusal before it counted nothing.
@@ -668,7 +668,7 @@ describe('interpretMessage', () => {
 		llm.runLlmObject.mockRejectedValue(new Error('provider down'));
 		const failed = await t.action(internal.mail.interpret.run.interpretMessage, { source });
 		expect(failed).toMatchObject({ status: 'failed', errorCode: 'model_error' });
-		if (failed.status === 'gone') throw new Error('unreachable');
+		if (!('isReplayed' in failed)) throw new Error('unreachable');
 		expect(failed.retryAt).toBeDefined();
 		const brief = await t.run(async (ctx) =>
 			ctx.db

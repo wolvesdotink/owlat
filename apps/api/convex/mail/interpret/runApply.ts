@@ -1,18 +1,23 @@
 /**
  * Writing an interpretation run's record through the reducer (split out of
  * `./run.ts` to hold it under the size cap): the apply that reloads the
- * revision while it is stale.
+ * revision while it is stale, and the run's source lease (`./lease.ts`).
  */
 
 import type { Infer } from 'convex/values';
 import type { ActionCtx } from '../../_generated/server';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
 import type { ThreadRef } from '../../lib/validators/threadRef';
-import type { interpretEligibilitySignalsValidator } from '../../lib/validators/threadBrief';
+import type {
+	InterpretationSource,
+	interpretEligibilitySignalsValidator,
+} from '../../lib/validators/threadBrief';
 import { internal } from '../../_generated/api';
 import { INTERPRET_EXTRACTOR_VERSION } from './schema';
 import type { InterpretArgs, RunRecord } from './runShape';
 import type { ApplyOutcome } from './reduce';
+import type { Depth } from '@owlat/shared/arrival';
+import type { LeaseClaim } from './lease';
 
 /** Reducer attempts against a moving revision before the run gives up as partial. */
 const MAX_APPLY_ATTEMPTS = 3;
@@ -66,6 +71,7 @@ export async function apply(
 			...(record.budgetDeferrals !== undefined ? { budgetDeferrals: record.budgetDeferrals } : {}),
 			...(record.budgetRefusal ? { budgetRefusal: record.budgetRefusal } : {}),
 			...(state.threadAssigneeUserId ? { threadAssigneeUserId: state.threadAssigneeUserId } : {}),
+			...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
 		});
 		if (outcome.outcome !== 'stale') return outcome;
 		const reloaded = await reload();
@@ -78,4 +84,30 @@ export async function apply(
 		state = reloaded;
 	}
 	return outcome;
+}
+
+/**
+ * Run `body` under the source's lease: claimed first, released however
+ * `body` ends (a no-op when its commit already cleared it). `busy` and `done`
+ * come back without running `body`.
+ */
+export async function withSourceLease<R>(
+	ctx: Pick<ActionCtx, 'runMutation'>,
+	source: InterpretationSource,
+	depth: Depth | undefined,
+	body: (token: string) => Promise<R>
+): Promise<R | { status: 'busy'; retryAt: number } | { status: 'done' }> {
+	const claim: LeaseClaim = await ctx.runMutation(internal.mail.interpret.lease.claimSourceLease, {
+		source,
+		...(depth ? { depth } : {}),
+	});
+	if (claim.kind === 'busy') return { status: 'busy', retryAt: claim.retryAt };
+	if (claim.kind === 'done') return { status: 'done' };
+	try {
+		return await body(claim.token);
+	} finally {
+		await ctx
+			.runMutation(internal.mail.interpret.lease.releaseSourceLease, { source, token: claim.token })
+			.catch(() => undefined); // it expires on its own
+	}
 }

@@ -4,6 +4,7 @@
  * `interpretMessage` (SPEC §4 `run.ts`): interpret one message and fold it
  * into its thread.
  *
+ *   0. lease     one run per source (`lease.ts`): held elsewhere → `busy`
  *   1. load      thread, mode, the eligibility snapshot taken at enqueue
  *                (`sources.ts`; none → not interpreted), brief revision, items, facts
  *   2. eligible? an ineligible message is recorded as skipped and stops here
@@ -48,6 +49,7 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { predecessorRoot, predecessorsPending, runDeferredPredecessors } from './defer';
 import {
 	finish,
+	RESTART_ERROR_CODE,
 	type InterpretArgs,
 	type InterpretRunResult,
 	type Restart,
@@ -60,11 +62,12 @@ import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from
 import { needsReplyProjectionOf } from './needsReplyProjection';
 import { interpretRoot } from './verify';
 import { planVerification, verifyHoldPlanOf, verifyRouted } from './verifyRoute';
-import { apply as applyRecord } from './runApply';
+import { apply as applyRecord, withSourceLease } from './runApply';
 import { isRetryDue } from './retry';
 import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
 import { anchorActionDeadline } from '../../lib/llm/actionDeadline';
 import { llmRootContextValidator } from '../../lib/llmUsageTags';
+import { depthValidator } from '../../lib/validators/arrival';
 
 export type { InterpretArgs, InterpretRunResult } from './runShape';
 
@@ -88,6 +91,13 @@ export async function runInterpretation(
 	args: InterpretArgs
 ): Promise<InterpretRunResult> {
 	anchorActionDeadline(ctx); // one model budget per action, from here (ADR-0073)
+	// One run per source at a time (lease.ts): claimed before anything is read or bought.
+	return withSourceLease(ctx, args.source, args.depth, (leaseToken) =>
+		runLeased(ctx, { ...args, leaseToken })
+	);
+}
+
+async function runLeased(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRunResult> {
 	// D10: earlier deferred mail of the thread first, under the caller's deadline (defer.ts).
 	const deadlineAt = args.root?.deadlineAt;
 	const readFirst = (source: InterpretationSource) =>
@@ -106,7 +116,7 @@ export async function runInterpretation(
 	}
 	// The body (or the scope) kept changing under every attempt: record that, with
 	// no claims written, and keep the last good read (the reducer does).
-	const errorCode = reason === 'sourceChanged' ? 'source_changed' : 'mode_changed';
+	const errorCode = RESTART_ERROR_CODE[reason];
 	const loaded = await loadState(ctx, args);
 	if (!loaded) return { status: 'gone' };
 	const out = finish(
@@ -128,30 +138,27 @@ async function runOnce(ctx: ActionCtx, args: InterpretArgs): Promise<InterpretRu
 	const source = { source: args.source };
 	if (await ctx.runQuery(internal.mail.interpret.staleFence.isSourceFenced, source)) {
 		await ctx.runMutation(internal.mail.interpret.outstanding.settleRecorded, source);
-		const skipped: InterpretRunResult = {
+		return {
 			status: 'skipped',
 			isReplayed: false,
 			createdItemIds: [],
 			errorCode: 'interpretation_fenced',
 		};
-		return skipped;
 	}
 
 	// A bulk-stranger candidate whose thread category is still provisional
 	// (PR-4): wait for the category refinement, bounded, instead of deciding
-	// the bulk rule on the baseline label. Only the deferral is recorded.
+	// the bulk rule on the baseline label. Only the deferral is recorded, and
+	// it ends the lease; settled meanwhile, the run reads again, still leased.
 	if (loaded.categoryPendingUntil !== undefined) {
-		// One deferred job per source and deadline (categoryDefer.ts).
-		await ctx.runMutation(internal.mail.interpret.categoryDefer.deferForCategory, {
+		const waited = await ctx.runMutation(internal.mail.interpret.categoryDefer.deferForCategory, {
 			source: args.source,
 			until: loaded.categoryPendingUntil,
+			...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
 		});
-		return {
-			status: 'skipped',
-			isReplayed: false,
-			createdItemIds: [],
-			errorCode: 'category_pending',
-		};
+		if (waited.kind === 'gone') return { status: 'gone' };
+		if (waited.kind === 'settled') return { restart: 'categorySettled' };
+		return { status: 'wait', retryAt: waited.until };
 	}
 
 	const eligible = loaded.eligibility
@@ -486,6 +493,7 @@ export const interpretMessage = internalAction({
 		precedence: v.optional(v.string()),
 		listId: v.optional(v.string()),
 		root: v.optional(llmRootContextValidator),
+		depth: v.optional(depthValidator),
 	},
 	handler: async (ctx, args): Promise<InterpretRunResult> => runInterpretation(ctx, args),
 });

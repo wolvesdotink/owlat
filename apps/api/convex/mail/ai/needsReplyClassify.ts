@@ -170,8 +170,10 @@ export const classifyThread = internalAction({
 
 			// Never throws; a replayed run (the sweep, a retry) hands back the stored
 			// projection instead of calling the model again. While the thread's
-			// earlier deferred mail is still being read (D10), this classification
-			// continues later and the thread stays pending (needsReplyGates.ts).
+			// earlier deferred mail is still being read (D10), or another run holds
+			// the message or it waits for its category (SPEC §2.5), this
+			// classification continues later and the thread stays pending
+			// (needsReplyGates.ts).
 			const run = await runInterpretation(ctx, {
 				source: { kind: 'mail', id: latestInbound.messageId },
 				predecessors: 'caller_continues',

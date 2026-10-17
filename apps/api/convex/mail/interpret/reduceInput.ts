@@ -185,6 +185,8 @@ export const applyInterpretationArgs = {
 	budgetDeferrals: v.optional(v.number()),
 	// A spend refusal the run met (D1), stored so a replay reports it.
 	budgetRefusal: v.optional(runBudgetRefusalValidator),
+	// The run's source lease (lease.ts): checked, and cleared on a recorded outcome.
+	leaseToken: v.optional(v.string()),
 };
 
 export type ReduceEvidence = Infer<typeof reduceEvidenceValidator>;

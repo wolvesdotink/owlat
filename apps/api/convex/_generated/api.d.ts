@@ -59,6 +59,7 @@ import type * as mail_interpret_fold from '../mail/interpret/fold.js';
 import type * as mail_interpret_gate from '../mail/interpret/gate.js';
 import type * as mail_interpret_heldSources from '../mail/interpret/heldSources.js';
 import type * as mail_interpret_lazy from '../mail/interpret/lazy.js';
+import type * as mail_interpret_lease from '../mail/interpret/lease.js';
 import type * as mail_interpret_load from '../mail/interpret/load.js';
 import type * as mail_interpret_needsReplyProjection from '../mail/interpret/needsReplyProjection.js';
 import type * as mail_interpret_noteReactions from '../mail/interpret/noteReactions.js';
@@ -1845,6 +1846,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/gate': typeof mail_interpret_gate;
 	'mail/interpret/heldSources': typeof mail_interpret_heldSources;
 	'mail/interpret/lazy': typeof mail_interpret_lazy;
+	'mail/interpret/lease': typeof mail_interpret_lease;
 	'mail/interpret/load': typeof mail_interpret_load;
 	'mail/interpret/needsReplyProjection': typeof mail_interpret_needsReplyProjection;
 	'mail/interpret/noteReactions': typeof mail_interpret_noteReactions;
