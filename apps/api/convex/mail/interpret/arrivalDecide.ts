@@ -171,6 +171,8 @@ export const decideArrivalDepth = internalMutation({
 		if (!mailbox || !isPersonalMailbox(mailbox) || message.outbound !== undefined) {
 			return { kind: 'full', isDisplayOnly: false };
 		}
+		// A terminal exclusion stays one, eager demand or not (Sol r2 F3).
+		if (row.readOutcome !== undefined && row.isUpgradeable === false) return { kind: 'done' };
 		// Eager demand (Sol r1 F2): anything not display-only is read in full,
 		// a source settled short of it earlier included (its commit discharges it).
 		if (!(await isDisplayOnlyInterpretation(ctx, message))) {

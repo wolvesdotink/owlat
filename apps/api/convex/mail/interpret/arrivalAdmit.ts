@@ -17,7 +17,9 @@
  *     table settles without a model call whatever the text (a count, a
  *     suppressed sender) goes on uncharged.
  *   - Everything else takes one token of the owner's `arrivalReadPerOwner`
- *     bucket. Over it, display-only mail is settled as an upgradeable `count`
+ *     bucket, once per read job (Sol r2 F2): the charge is stamped on the
+ *     source for {@link ARRIVAL_ADMISSION_TTL_MS}, its continuations ride on
+ *     the stamp, and its predecessor reads on the parent's admission. Over it, display-only mail is settled as an upgradeable `count`
  *     in this mutation; eager work and full reads wait for the bucket, and the
  *     wait persists its own continuation at `retryAt` unless the caller
  *     resumes itself (the Reply Queue classifier, a predecessor loop).
@@ -45,6 +47,12 @@ import {
 	refusedCount,
 	settleArrivalSkip,
 } from './arrivalDecide';
+
+/**
+ * How long one charge covers a source's read job: its predecessor loop's
+ * continuations, a classifier's continuations, a retry after a lost lease.
+ */
+export const ARRIVAL_ADMISSION_TTL_MS = 30 * 60 * 1000;
 
 /** How long eager work waits when the limiter names no time. */
 const OWNER_LIMIT_FALLBACK_MS = 60_000;
@@ -84,6 +92,8 @@ export const admitArrivalRun = internalMutation({
 		isUpgrade: v.optional(v.boolean()),
 		/** The caller schedules its own continuation on `wait` (classifier, predecessor loop). */
 		isCallerResuming: v.boolean(),
+		/** A predecessor read inside an admitted run: the parent's admission covers it (Sol r2 F2). */
+		isCoveredByParent: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<ArrivalAdmission> => {
 		const row = await loadInterpretSource(ctx, args.source);
@@ -100,11 +110,19 @@ export const admitArrivalRun = internalMutation({
 		// history backfill keeps its own gate and caps.
 		if (!(await loadArrivalRecord(ctx, message._id))) return GO;
 		const isFull = args.depth === 'full';
+		// A terminal exclusion (security mail, a suppressed sender) is never read,
+		// whatever asks (Sol r2 F3).
+		if (row.readOutcome !== undefined && row.isUpgradeable === false) return { kind: 'done' };
 		// D10 leftovers wait for their open, which reads them in full (Sol r1 F1).
 		if (!isFull && row.isDeferred === true) return { kind: 'done' };
+		const now = Date.now();
 		const isDisplayOnly = !isFull && (await isDisplayOnlyInterpretation(ctx, message));
 		if (isDisplayOnly) {
 			if (row.readOutcome !== undefined) return { kind: 'done' };
+			// A gist retry is due only at its time, whoever runs it (Sol r2 F5).
+			if (row.arrivalRetryAt !== undefined && row.arrivalRetryAt > now) {
+				return { kind: 'wait', retryAt: row.arrivalRetryAt };
+			}
 			if (row.categoryPendingAt !== undefined) {
 				const wait = await categoryWait(ctx, args.source, row.categoryPendingAt, args.leaseToken);
 				if (wait) return wait;
@@ -115,6 +133,10 @@ export const admitArrivalRun = internalMutation({
 			);
 			if (pre.depth === 'count' || pre.depth === 'none') return GO;
 		}
+		// Once per read job (Sol r2 F2): the parent's admission covers its
+		// predecessor reads, and its continuations ride on its stamp.
+		if (args.isCoveredByParent) return GO;
+		if (row.arrivalAdmittedUntil !== undefined && row.arrivalAdmittedUntil > now) return GO;
 		const limited = await rateLimiter.limit(ctx, 'arrivalReadPerOwner', { key: mailbox.userId });
 		if (!limited.ok) {
 			if (isDisplayOnly) {
@@ -132,6 +154,7 @@ export const admitArrivalRun = internalMutation({
 			}
 			return { kind: 'wait', retryAt };
 		}
+		await ctx.db.patch(row._id, { arrivalAdmittedUntil: now + ARRIVAL_ADMISSION_TTL_MS });
 		// An upgrade's call is the record's too (Sol r1 F8).
 		if (isFull && row.readOutcome !== undefined) {
 			await noteArrivalRun(ctx, message._id, { depth: 'full', modelCalls: 1 });

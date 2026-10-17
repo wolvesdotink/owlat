@@ -13,8 +13,9 @@
  * fact that does not is dropped alone.
  *
  * The call is `mail.gist` (fast tier, ≤256 output tokens, no reasoning, one
- * attempt), metered as `interpret_gist` with background priority: the
- * dispatch's own admission is the hold of this one-call path.
+ * attempt), metered as `interpret_gist` with background priority, drawing on
+ * its own hold (`runHold.admitSingleCall`), taken through the arrival hold
+ * mutation so a refusal counts the source in the refusing transaction.
  *
  * The typed outcome ({@link GistOutcome}) maps every way it ends onto the
  * source: `ok` commits the gist (`gistCommit.ts`; a body that changed since
@@ -39,6 +40,8 @@ import { buildScopedMessageInput, type ScopedMessageInput } from '../arrival/sco
 import { defuseDelimiters } from './prompt';
 import { verifyQuote } from './ground';
 import { countArrival, settledAnswer } from './arrivalRun';
+import { admitSingleCall, type InterpretRunHold } from './runHold';
+import type { ReserveRunAllocations } from '../../aiRouting/admission';
 import type { InterpretArgs, InterpretRunResult, Restart } from './runShape';
 
 /** Characters of the message the gist reads at most. */
@@ -132,28 +135,62 @@ export function groundGist(
 	};
 }
 
-/** Read and ground the gist (no writes). */
-async function readGist(ctx: ActionCtx, messageId: Id<'mailMessages'>): Promise<GistOutcome> {
+/**
+ * Read and ground the gist. Its one call holds its spend first through the
+ * arrival hold (`arrivalHold.reserveArrivalRun`): a refusal counts the
+ * source in the refusing mutation itself (Sol r2 F4).
+ */
+async function readGist(
+	ctx: ActionCtx,
+	args: InterpretArgs & { source: { kind: 'mail' } },
+	deletionEpoch: number
+): Promise<GistOutcome> {
+	const messageId: Id<'mailMessages'> = args.source.id;
 	const input = await buildScopedMessageInput(ctx, messageId, { maxChars: GIST_INPUT_CHARS });
 	if (!input || input.segments.length === 0) return { kind: 'permanent' };
+	let hold: InterpretRunHold | undefined;
 	try {
 		const model = await resolveLanguageModel(ctx, 'mail.gist');
+		const prompt = buildGistPrompt(input);
+		const root = rootRequest('postbox', messageId);
+		hold = await admitSingleCall(ctx, {
+			task: 'mail.gist',
+			model,
+			prompt: { prompt },
+			schema: gistOutputSchema,
+			root,
+			priority: 'background',
+			reserve: (allocations: ReserveRunAllocations) =>
+				ctx.runMutation(internal.mail.interpret.arrivalHold.reserveArrivalRun, {
+					allocations,
+					source: { kind: 'mail', id: messageId },
+					...(args.leaseToken ? { leaseToken: args.leaseToken } : {}),
+					deletionEpoch,
+				}),
+		});
+		const held = hold;
 		const { object } = await meterLlmCall(
 			ctx,
 			{
 				feature: GIST_FEATURE,
 				task: 'mail.gist',
-				root: rootRequest('postbox', messageId),
+				root,
 				priority: 'background',
+				...held.extractTarget,
 			},
-			(meter) =>
-				runLlmObject({
-					meter,
-					model,
-					schema: gistOutputSchema,
-					prompt: buildGistPrompt(input),
-					temperature: 0,
-				}),
+			async (meter) => {
+				try {
+					return await runLlmObject({
+						meter,
+						model,
+						schema: gistOutputSchema,
+						prompt,
+						temperature: 0,
+					});
+				} finally {
+					held.count(meter.requests.length);
+				}
+			},
 			{ onWriteError: 'ignore' }
 		);
 		const parsed = gistOutputSchema.safeParse(object);
@@ -171,6 +208,8 @@ async function readGist(ctx: ActionCtx, messageId: Id<'mailMessages'>): Promise<
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
 		return { kind: 'transient' };
+	} finally {
+		await hold?.settle();
 	}
 }
 
@@ -187,7 +226,7 @@ export async function runGist(
 	const epoch = loaded.brief.deletionEpoch;
 	const source = { kind: 'mail' as const, id: args.source.id };
 	const lease = args.leaseToken ? { leaseToken: args.leaseToken } : {};
-	const outcome = await readGist(ctx, args.source.id);
+	const outcome = await readGist(ctx, args, epoch);
 	switch (outcome.kind) {
 		case 'busy':
 		case 'wait':
