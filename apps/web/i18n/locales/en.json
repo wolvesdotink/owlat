@@ -6037,14 +6037,8 @@
 				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
 				"writingSuggestionsLabel": "Writing suggestions",
 				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
-				"autoSummarizeLabel": "Show overviews",
-				"autoSummarizeHelp": "Open a conversation on what is new, where things stand and what is asked of you, with a link to every source. Personal mailboxes only.",
-				"threadViewLabel": "Open threads on",
-				"threadViewHelp": "Overview or the whole conversation. Switching inside a thread remembers that thread. Personal mailboxes only.",
-				"threadViewConversation": "Conversation",
-				"threadViewOperation": "Save where threads open",
-				"backfillLabel": "Prepare overviews for recent mail",
-				"backfillHelp": "Reads your active conversations from the last 30 days so they open on an overview. Older ones are prepared when you first open them. This uses the AI budget.",
+				"backfillLabel": "Prepare briefs for recent mail",
+				"backfillHelp": "Reads your active conversations from the last 30 days, so each one opens with its brief above the conversation. Older ones are read when you first open them. This uses the AI budget.",
 				"backfillStart": "Prepare",
 				"backfillResume": "Resume",
 				"backfillCancel": "Stop",
@@ -6054,8 +6048,8 @@
 				"backfillPausedOff": "Paused: AI is turned off.",
 				"backfillPausedCap": "Paused after {count} conversations. Resume to continue.",
 				"backfillCancelled": "Stopped. Resume to continue where it left off.",
-				"backfillOperation": "Prepare overviews",
-				"backfillCancelOperation": "Stop preparing overviews",
+				"backfillOperation": "Prepare briefs",
+				"backfillCancelOperation": "Stop preparing briefs",
 				"sendSoundLabel": "Play sound when sending",
 				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
 				"swipeLeftLabel": "Swipe left on a message",
@@ -13064,6 +13058,7 @@
 			"resume": "Resume",
 			"readTitle": "You opened {opened} of {delivered}",
 			"readPercent": "{percent}% read",
+			"phoneStats": "{count} mail · read {percent}% | {count} mails · read {percent}%",
 			"controlLabel": "What Owlat does with mail from {name}",
 			"empty": {
 				"review": "Nothing to review. Senders you rarely read show up here.",
@@ -13174,7 +13169,7 @@
 		"arrival": {
 			"settings": {
 				"label": "Read new mail when it arrives",
-				"help": "When on, your AI provider reads personal mail as soon as it arrives, including mail you never open. When off, Owlat still checks new mail for replies and categories, but only builds the overview of other mail when you open it."
+				"help": "When on, your AI provider reads personal mail as soon as it arrives, including mail you never open. When off, Owlat still checks new mail for replies and categories, but only prepares the brief of other mail when you open it."
 			},
 			"reason": {
 				"aiOff": "AI is off",
@@ -16225,14 +16220,6 @@
 				"writingSuggestions": {
 					"title": "Writing suggestions",
 					"keywords": "ai, autocomplete, drafting help"
-				},
-				"autoSummarize": {
-					"title": "Show overviews",
-					"keywords": "ai, summary, digest, overview, brief"
-				},
-				"threadView": {
-					"title": "Open threads on",
-					"keywords": "overview, conversation, default view"
 				},
 				"sendSound": {
 					"title": "Play sound when sending",

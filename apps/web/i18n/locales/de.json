@@ -6037,14 +6037,8 @@
 				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen kannst du eine Antwort auf „Allen antworten“ umstellen.",
 				"writingSuggestionsLabel": "Schreibvorschläge",
 				"writingSuggestionsHelp": "Inline-KI-Autovervollständigung beim Schreiben anzeigen. Mit Tab übernehmen.",
-				"autoSummarizeLabel": "Überblicke anzeigen",
-				"autoSummarizeHelp": "Öffne einen Verlauf mit dem Neuesten, dem Stand der Dinge und dem, worum du gebeten wirst, jeweils mit Link zur Quelle. Nur für persönliche Postfächer.",
-				"threadViewLabel": "Verläufe öffnen mit",
-				"threadViewHelp": "Überblick oder der ganze E-Mail-Verlauf. Wechselst du in einem Verlauf, merkt er sich das. Nur für persönliche Postfächer.",
-				"threadViewConversation": "E-Mail-Verlauf",
-				"threadViewOperation": "Speichern, womit Verläufe öffnen",
-				"backfillLabel": "Überblicke für neuere E-Mails vorbereiten",
-				"backfillHelp": "Liest deine aktiven Gespräche der letzten 30 Tage, damit sie mit einem Überblick öffnen. Ältere werden vorbereitet, wenn du sie zum ersten Mal öffnest. Das nutzt das KI-Budget.",
+				"backfillLabel": "Übersichten für neuere E-Mails vorbereiten",
+				"backfillHelp": "Liest deine aktiven Gespräche der letzten 30 Tage, damit jedes mit seiner Übersicht über dem Verlauf öffnet. Ältere werden gelesen, wenn du sie zum ersten Mal öffnest. Das nutzt das KI-Budget.",
 				"backfillStart": "Vorbereiten",
 				"backfillResume": "Fortsetzen",
 				"backfillCancel": "Stoppen",
@@ -6054,8 +6048,8 @@
 				"backfillPausedOff": "Pausiert: KI ist ausgeschaltet.",
 				"backfillPausedCap": "Nach {count} Gesprächen pausiert. Setz es fort, um weiterzumachen.",
 				"backfillCancelled": "Gestoppt. Setz es fort, um dort weiterzumachen, wo es aufgehört hat.",
-				"backfillOperation": "Überblicke vorbereiten",
-				"backfillCancelOperation": "Vorbereitung der Überblicke stoppen",
+				"backfillOperation": "Übersichten vorbereiten",
+				"backfillCancelOperation": "Vorbereitung der Übersichten stoppen",
 				"sendSoundLabel": "Ton beim Senden abspielen",
 				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
 				"swipeLeftLabel": "Nach links wischen",
@@ -13064,6 +13058,7 @@
 			"resume": "Fortsetzen",
 			"readTitle": "Du hast {opened} von {delivered} geöffnet",
 			"readPercent": "{percent} % gelesen",
+			"phoneStats": "{count} Mail · {percent} % gelesen | {count} Mails · {percent} % gelesen",
 			"controlLabel": "Was Owlat mit Mails von {name} macht",
 			"empty": {
 				"review": "Nichts zu prüfen. Absender, die du selten liest, erscheinen hier.",
@@ -13174,7 +13169,7 @@
 		"arrival": {
 			"settings": {
 				"label": "Neue Mails beim Eingang lesen",
-				"help": "Wenn das an ist, liest dein KI-Anbieter persönliche Mails, sobald sie ankommen, auch Mails, die du nie öffnest. Wenn es aus ist, prüft Owlat neue Mails weiter auf Antworten und Kategorien, baut den Überblick über andere Mails aber erst, wenn du sie öffnest."
+				"help": "Wenn das an ist, liest dein KI-Anbieter persönliche Mails, sobald sie ankommen, auch Mails, die du nie öffnest. Wenn es aus ist, prüft Owlat neue Mails weiter auf Antworten und Kategorien, bereitet die Übersicht anderer Mails aber erst vor, wenn du sie öffnest."
 			},
 			"reason": {
 				"aiOff": "KI ist aus",
@@ -16225,14 +16220,6 @@
 				"writingSuggestions": {
 					"title": "Schreibvorschläge",
 					"keywords": "KI, Autovervollständigung, Schreibhilfe"
-				},
-				"autoSummarize": {
-					"title": "Überblicke anzeigen",
-					"keywords": "ki, zusammenfassung, überblick"
-				},
-				"threadView": {
-					"title": "Verläufe öffnen mit",
-					"keywords": "überblick, e-mail-verlauf, standardansicht"
 				},
 				"sendSound": {
 					"title": "Ton beim Senden abspielen",
